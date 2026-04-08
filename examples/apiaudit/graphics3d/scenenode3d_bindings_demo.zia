@@ -1,0 +1,53 @@
+module SceneNode3DBindingsDemo;
+
+bind Viper.Graphics3D;
+bind Viper.Math;
+bind Viper.Terminal;
+
+func start() {
+    Say("SceneNode3D bindings demo");
+
+    var scene = Scene3D.New();
+    var parent = SceneNode3D.New();
+    var child = SceneNode3D.New();
+    var body = Physics3DBody.NewSphere(0.5, 1.0);
+
+    SceneNode3D.SetPosition(parent, 5.0, 0.0, 0.0);
+    SceneNode3D.AddChild(parent, child);
+    Scene3D.Add(scene, parent);
+
+    SceneNode3D.BindBody(child, body);
+    SceneNode3D.set_SyncMode(child, 0);
+    Physics3DBody.SetPosition(body, 6.0, 1.5, -2.0);
+    Scene3D.SyncBindings(scene, 0.016);
+
+    var childPos = SceneNode3D.get_Position(child);
+    Say("Child local X from body = " + toString(Vec3.get_X(childPos)));
+
+    var skel = Skeleton3D.New();
+    var rootBone = Skeleton3D.AddBone(skel, "root", -1, Mat4.Identity());
+    Skeleton3D.ComputeInverseBind(skel);
+
+    var walk = Animation3D.New("walk", 1.0);
+    Animation3D.set_Looping(walk, true);
+    var rot = Quat.Identity();
+    var scl = Vec3.One();
+    Animation3D.AddKeyframe(walk, rootBone, 0.0, Vec3.Zero(), rot, scl);
+    Animation3D.AddKeyframe(walk, rootBone, 1.0, Vec3.New(4.0, 0.0, 0.0), rot, scl);
+
+    var controller = AnimController3D.New(skel);
+    AnimController3D.AddState(controller, "walk", walk);
+    AnimController3D.SetRootMotionBone(controller, rootBone);
+    AnimController3D.Play(controller, "walk");
+    AnimController3D.Update(controller, 0.5);
+
+    var animNode = SceneNode3D.New();
+    SceneNode3D.BindAnimator(animNode, controller);
+    SceneNode3D.set_SyncMode(animNode, 2);
+    Scene3D.Add(scene, animNode);
+    Scene3D.SyncBindings(scene, 0.016);
+
+    var animPos = SceneNode3D.get_Position(animNode);
+    Say("Animator root motion X = " + toString(Vec3.get_X(animPos)));
+    Say("Sync mode = " + toString(SceneNode3D.get_SyncMode(animNode)));
+}

@@ -254,6 +254,8 @@ set(RT_GRAPHICS_SOURCES
         graphics/rt_rendertarget3d.c
         graphics/rt_scene3d.c
         graphics/rt_scene3d_vscn.c
+        graphics/rt_animcontroller3d.c
+        graphics/rt_model3d.c
         graphics/rt_skeleton3d.c
         graphics/rt_fbx_loader.c
         graphics/rt_morphtarget3d.c

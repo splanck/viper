@@ -1,0 +1,143 @@
+module TestAnimController3D;
+
+bind Viper.Graphics3D;
+bind Viper.Math;
+bind Viper.Terminal;
+
+func start() {
+    var skel = Skeleton3D.New();
+    var rootBone = Skeleton3D.AddBone(skel, "root", -1, Mat4.Identity());
+    var armBone = Skeleton3D.AddBone(skel, "arm", rootBone, Mat4.Identity());
+    Skeleton3D.ComputeInverseBind(skel);
+
+    var rot = Quat.Identity();
+    var scl = Vec3.One();
+
+    var idle = Animation3D.New("idle", 1.0);
+    Animation3D.set_Looping(idle, true);
+    Animation3D.AddKeyframe(idle, rootBone, 0.0, Vec3.Zero(), rot, scl);
+    Animation3D.AddKeyframe(idle, rootBone, 1.0, Vec3.Zero(), rot, scl);
+
+    var walk = Animation3D.New("walk", 1.0);
+    Animation3D.set_Looping(walk, true);
+    Animation3D.AddKeyframe(walk, rootBone, 0.0, Vec3.Zero(), rot, scl);
+    Animation3D.AddKeyframe(walk, rootBone, 1.0, Vec3.New(10.0, 0.0, 0.0), rot, scl);
+
+    var wave = Animation3D.New("wave", 1.0);
+    Animation3D.set_Looping(wave, true);
+    Animation3D.AddKeyframe(wave, armBone, 0.0, Vec3.Zero(), rot, scl);
+    Animation3D.AddKeyframe(wave, armBone, 1.0, Vec3.New(0.0, 2.0, 0.0), rot, scl);
+
+    var controller = AnimController3D.New(skel);
+    if (AnimController3D.AddState(controller, "idle", idle) != 0) {
+        Say("FAIL: AddState idle should return 0");
+        return;
+    }
+    if (AnimController3D.AddState(controller, "walk", walk) != 1) {
+        Say("FAIL: AddState walk should return 1");
+        return;
+    }
+    if (AnimController3D.AddState(controller, "wave", wave) != 2) {
+        Say("FAIL: AddState wave should return 2");
+        return;
+    }
+    if (AnimController3D.get_StateCount(controller) != 3) {
+        Say("FAIL: StateCount should be 3");
+        return;
+    }
+
+    AnimController3D.SetStateSpeed(controller, "walk", 1.0);
+    AnimController3D.SetStateLooping(controller, "wave", true);
+    AnimController3D.AddEvent(controller, "walk", 0.5, "step");
+    if (AnimController3D.AddTransition(controller, "idle", "walk", 0.25) == 0) {
+        Say("FAIL: AddTransition idle->walk should succeed");
+        return;
+    }
+
+    if (AnimController3D.Play(controller, "idle") == 0) {
+        Say("FAIL: Play idle should succeed");
+        return;
+    }
+    if (AnimController3D.get_CurrentState(controller) != "idle") {
+        Say("FAIL: CurrentState should be idle");
+        return;
+    }
+
+    if (AnimController3D.Play(controller, "walk") == 0) {
+        Say("FAIL: Play walk should succeed");
+        return;
+    }
+    if (AnimController3D.get_IsTransitioning(controller) == 0) {
+        Say("FAIL: Play walk should use the configured transition");
+        return;
+    }
+    if (AnimController3D.get_PreviousState(controller) != "idle") {
+        Say("FAIL: PreviousState should be idle");
+        return;
+    }
+
+    AnimController3D.SetRootMotionBone(controller, rootBone);
+    AnimController3D.Update(controller, 0.5);
+    var rootMat = AnimController3D.GetBoneMatrix(controller, rootBone);
+    if (Mat4.Get(rootMat, 0, 3) < 4.9 || Mat4.Get(rootMat, 0, 3) > 5.1) {
+        Say("FAIL: root x should be near 5 after walk update");
+        return;
+    }
+
+    var delta = AnimController3D.ConsumeRootMotion(controller);
+    if (Vec3.get_X(delta) < 4.9 || Vec3.get_X(delta) > 5.1) {
+        Say("FAIL: ConsumeRootMotion should return the sampled x delta");
+        return;
+    }
+    delta = AnimController3D.get_RootMotionDelta(controller);
+    if (Vec3.get_X(delta) < -0.01 || Vec3.get_X(delta) > 0.01) {
+        Say("FAIL: RootMotionDelta should clear after ConsumeRootMotion");
+        return;
+    }
+
+    if (AnimController3D.PollEvent(controller) != "step") {
+        Say("FAIL: PollEvent should return the queued step event");
+        return;
+    }
+    if (AnimController3D.PollEvent(controller) != "") {
+        Say("FAIL: PollEvent should return empty string after the queue drains");
+        return;
+    }
+
+    var layered = AnimController3D.New(skel);
+    AnimController3D.AddState(layered, "walk", walk);
+    AnimController3D.AddState(layered, "wave", wave);
+    AnimController3D.Play(layered, "walk");
+    AnimController3D.SetLayerMask(layered, 1, armBone);
+    AnimController3D.SetLayerWeight(layered, 1, 1.0);
+    if (AnimController3D.PlayLayer(layered, 1, "wave") == 0) {
+        Say("FAIL: PlayLayer should succeed");
+        return;
+    }
+
+    AnimController3D.Update(layered, 0.5);
+    var layeredRoot = AnimController3D.GetBoneMatrix(layered, rootBone);
+    var layeredArm = AnimController3D.GetBoneMatrix(layered, armBone);
+    if (Mat4.Get(layeredRoot, 0, 3) < 4.9 || Mat4.Get(layeredRoot, 0, 3) > 5.1) {
+        Say("FAIL: masked overlay should preserve the base root motion");
+        return;
+    }
+    if (Mat4.Get(layeredRoot, 1, 3) < -0.01 || Mat4.Get(layeredRoot, 1, 3) > 0.01) {
+        Say("FAIL: masked overlay should not change the base root y");
+        return;
+    }
+    if (Mat4.Get(layeredArm, 1, 3) < 0.9 || Mat4.Get(layeredArm, 1, 3) > 1.1) {
+        Say("FAIL: masked overlay should drive the arm subtree");
+        return;
+    }
+
+    AnimController3D.StopLayer(layered, 1);
+    if (AnimController3D.CrossfadeLayer(layered, 1, "wave", 0.2) == 0) {
+        Say("FAIL: CrossfadeLayer should succeed");
+        return;
+    }
+    AnimController3D.Stop(controller);
+    AnimController3D.Stop(layered);
+
+    Say("PASS");
+}

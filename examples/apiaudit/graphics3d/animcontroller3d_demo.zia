@@ -1,0 +1,61 @@
+module AnimController3DDemo;
+
+bind Viper.Fmt as Fmt;
+bind Viper.Graphics3D;
+bind Viper.Math;
+bind Viper.Terminal;
+
+func start() {
+    Say("AnimController3D demo");
+
+    var skel = Skeleton3D.New();
+    var rootBone = Skeleton3D.AddBone(skel, "root", -1, Mat4.Identity());
+    var armBone = Skeleton3D.AddBone(skel, "arm", rootBone, Mat4.Identity());
+    Skeleton3D.ComputeInverseBind(skel);
+
+    var rot = Quat.Identity();
+    var scl = Vec3.One();
+
+    var idle = Animation3D.New("idle", 1.0);
+    Animation3D.set_Looping(idle, true);
+    Animation3D.AddKeyframe(idle, rootBone, 0.0, Vec3.Zero(), rot, scl);
+    Animation3D.AddKeyframe(idle, rootBone, 1.0, Vec3.Zero(), rot, scl);
+
+    var walk = Animation3D.New("walk", 1.0);
+    Animation3D.set_Looping(walk, true);
+    Animation3D.AddKeyframe(walk, rootBone, 0.0, Vec3.Zero(), rot, scl);
+    Animation3D.AddKeyframe(walk, rootBone, 1.0, Vec3.New(10.0, 0.0, 0.0), rot, scl);
+
+    var wave = Animation3D.New("wave", 1.0);
+    Animation3D.set_Looping(wave, true);
+    Animation3D.AddKeyframe(wave, armBone, 0.0, Vec3.Zero(), rot, scl);
+    Animation3D.AddKeyframe(wave, armBone, 1.0, Vec3.New(0.0, 2.0, 0.0), rot, scl);
+
+    var controller = AnimController3D.New(skel);
+    AnimController3D.AddState(controller, "idle", idle);
+    AnimController3D.AddState(controller, "walk", walk);
+    AnimController3D.AddState(controller, "wave", wave);
+    AnimController3D.AddTransition(controller, "idle", "walk", 0.25);
+    AnimController3D.AddEvent(controller, "walk", 0.5, "step");
+    AnimController3D.SetRootMotionBone(controller, rootBone);
+    AnimController3D.SetLayerMask(controller, 1, armBone);
+    AnimController3D.SetLayerWeight(controller, 1, 1.0);
+
+    AnimController3D.Play(controller, "idle");
+    Say("CurrentState = " + AnimController3D.get_CurrentState(controller));
+
+    AnimController3D.Play(controller, "walk");
+    AnimController3D.PlayLayer(controller, 1, "wave");
+    AnimController3D.Update(controller, 0.5);
+
+    var delta = AnimController3D.ConsumeRootMotion(controller);
+    var rootMat = AnimController3D.GetBoneMatrix(controller, rootBone);
+    var armMat = AnimController3D.GetBoneMatrix(controller, armBone);
+
+    Say("StateCount = " + Fmt.Int(AnimController3D.get_StateCount(controller)));
+    Say("PreviousState = " + AnimController3D.get_PreviousState(controller));
+    Say("RootMotion X = " + Fmt.Num(Vec3.get_X(delta)));
+    Say("QueuedEvent = " + AnimController3D.PollEvent(controller));
+    Say("Root bone X = " + Fmt.Num(Mat4.Get(rootMat, 0, 3)));
+    Say("Arm bone Y = " + Fmt.Num(Mat4.Get(armMat, 1, 3)));
+}

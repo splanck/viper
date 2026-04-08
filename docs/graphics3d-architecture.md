@@ -163,7 +163,7 @@ src/runtime/graphics/
 │   ├── rt_material3d.c            Material3D (color, texture, shininess, maps)
 │   └── rt_light3d.c               Light3D (directional, point, ambient)
 ├── Scene Graph
-│   ├── rt_scene3d.c/h             Scene3D + SceneNode3D hierarchy, frustum culling, LOD
+│   ├── rt_scene3d.c/h             Scene3D + SceneNode3D hierarchy, frustum culling, LOD, binding sync
 │   ├── rt_transform3d.c           Transform3D (standalone TRS transform)
 │   └── vgfx3d_frustum.c/h        Frustum culling math
 ├── Physics
@@ -171,6 +171,7 @@ src/runtime/graphics/
 │   └── rt_raycast3d.c/h           Ray3D + RayHit3D intersection tests
 ├── Animation
 │   ├── rt_skeleton3d.c/h          Skeleton3D + Animation3D + AnimPlayer3D
+│   ├── rt_animcontroller3d.c/h    AnimController3D state flow, events, root motion, masks
 │   ├── rt_morphtarget3d.c         MorphTarget3D blend shapes
 │   └── vgfx3d_skinning.c/h       Vertex skinning math
 ├── Rendering Backends
@@ -200,7 +201,8 @@ src/runtime/graphics/
 │   └── rt_path3d.c/h              Path3D spline following
 ├── Asset Loading
 │   ├── rt_fbx_loader.c/h          FBX binary format loader
-│   └── rt_gltf.c/h                glTF 2.0 format loader
+│   ├── rt_gltf.c/h                glTF 2.0 format loader
+│   └── rt_model3d.c/h             Model3D unified prefab/import wrapper
 └── Audio
     └── rt_audio3d.c/h             Audio3D spatial audio
 ```
@@ -268,12 +270,16 @@ Canvas3D coexists with the existing 2D Canvas system:
 
 ## Scene Graph and Frustum Culling
 
+`Scene3D.SyncBindings(dt)` is the explicit integration step for node bindings. It applies body-driven transforms, node-driven kinematic pushes, and animator root motion before rendering.
+
 `Scene3D.Draw()` performs depth-first traversal of the scene node tree:
 
 1. Extract VP matrix from camera, build frustum planes (Gribb-Hartmann)
 2. For each visible node: recompute world matrix if dirty (lazy TRS propagation)
 3. If node has a mesh: transform its object-space AABB to world space (8-corner expansion), test against frustum (p-vertex/n-vertex method). Skip draw if fully outside.
 4. Children are ALWAYS traversed even if parent mesh is culled (child transforms may place them inside the frustum independently).
+
+When a node is bound to an `AnimController3D`, the draw path forwards the controller's blended bone palette into the deferred draw command so skinned meshes render through the scene graph without manually calling `DrawMeshAnimated`.
 
 ## Skeletal Animation Pipeline
 

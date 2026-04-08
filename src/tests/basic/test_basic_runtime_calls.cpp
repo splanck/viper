@@ -311,6 +311,155 @@ PRINT count
 )"));
 }
 
+TEST(BasicRuntimeCalls, Model3DSurface) {
+    ASSERT_TRUE(compileOk(R"(
+DIM scene AS OBJECT
+DIM parent AS OBJECT
+DIM child AS OBJECT
+DIM mesh AS OBJECT
+DIM mat AS OBJECT
+DIM model AS OBJECT
+DIM inst AS OBJECT
+DIM instScene AS OBJECT
+DIM node AS OBJECT
+DIM count AS INTEGER
+scene = Viper.Graphics3D.Scene3D.New()
+parent = Viper.Graphics3D.SceneNode3D.New()
+child = Viper.Graphics3D.SceneNode3D.New()
+mesh = Viper.Graphics3D.Mesh3D.NewBox(1.0, 1.0, 1.0)
+mat = Viper.Graphics3D.Material3D.NewColor(0.2, 0.4, 0.6)
+Viper.Graphics3D.SceneNode3D.set_Name(parent, "parent")
+Viper.Graphics3D.SceneNode3D.set_Name(child, "child")
+Viper.Graphics3D.SceneNode3D.SetPosition(parent, 1.0, 2.0, 3.0)
+parent.Mesh = mesh
+parent.Material = mat
+child.Mesh = mesh
+child.Material = mat
+Viper.Graphics3D.SceneNode3D.AddChild(parent, child)
+Viper.Graphics3D.Scene3D.Add(scene, parent)
+count = Viper.Graphics3D.Scene3D.Save(scene, "tests/runtime/_basic_model3d_surface.vscn")
+model = Viper.Graphics3D.Model3D.Load("tests/runtime/_basic_model3d_surface.vscn")
+count = model.MeshCount
+count = model.MaterialCount
+count = model.SkeletonCount
+count = model.AnimationCount
+count = model.NodeCount
+mesh = model.GetMesh(0)
+mat = model.GetMaterial(0)
+node = model.FindNode("child")
+inst = model.Instantiate()
+instScene = model.InstantiateScene()
+PRINT count
+)"));
+}
+
+TEST(BasicRuntimeCalls, AnimController3DSurface) {
+    ASSERT_TRUE(compileOk(R"(
+DIM skel AS OBJECT
+DIM controller AS OBJECT
+DIM walk AS OBJECT
+DIM wave AS OBJECT
+DIM pos0 AS OBJECT
+DIM pos1 AS OBJECT
+DIM rot AS OBJECT
+DIM scl AS OBJECT
+DIM mat AS OBJECT
+DIM delta AS OBJECT
+DIM evt AS STRING
+DIM state AS STRING
+DIM ok AS BOOLEAN
+DIM count AS INTEGER
+skel = Viper.Graphics3D.Skeleton3D.New()
+Viper.Graphics3D.Skeleton3D.AddBone(skel, "root", -1, Viper.Math.Mat4.Identity())
+Viper.Graphics3D.Skeleton3D.AddBone(skel, "arm", 0, Viper.Math.Mat4.Identity())
+Viper.Graphics3D.Skeleton3D.ComputeInverseBind(skel)
+walk = Viper.Graphics3D.Animation3D.New("walk", 1.0)
+wave = Viper.Graphics3D.Animation3D.New("wave", 1.0)
+pos0 = Viper.Math.Vec3.New(0.0, 0.0, 0.0)
+pos1 = Viper.Math.Vec3.New(5.0, 0.0, 0.0)
+rot = Viper.Math.Quat.Identity()
+scl = Viper.Math.Vec3.One()
+Viper.Graphics3D.Animation3D.AddKeyframe(walk, 0, 0.0, pos0, rot, scl)
+Viper.Graphics3D.Animation3D.AddKeyframe(walk, 0, 1.0, pos1, rot, scl)
+Viper.Graphics3D.Animation3D.AddKeyframe(wave, 1, 0.0, pos0, rot, scl)
+Viper.Graphics3D.Animation3D.AddKeyframe(wave, 1, 1.0, pos1, rot, scl)
+controller = Viper.Graphics3D.AnimController3D.New(skel)
+count = controller.AddState("walk", walk)
+count = controller.AddState("wave", wave)
+ok = controller.AddTransition("walk", "wave", 0.2)
+controller.SetStateSpeed("walk", 1.25)
+controller.SetStateLooping("walk", 1)
+controller.AddEvent("walk", 0.5, "step")
+ok = controller.Play("walk")
+ok = controller.Crossfade("wave", 0.2)
+controller.SetRootMotionBone(0)
+controller.SetLayerMask(1, 1)
+controller.SetLayerWeight(1, 0.5)
+ok = controller.PlayLayer(1, "wave")
+ok = controller.CrossfadeLayer(1, "walk", 0.1)
+controller.StopLayer(1)
+controller.Update(0.016)
+state = controller.CurrentState
+state = controller.PreviousState
+ok = controller.IsTransitioning
+count = controller.StateCount
+evt = controller.PollEvent()
+delta = controller.RootMotionDelta
+delta = controller.ConsumeRootMotion()
+mat = controller.GetBoneMatrix(0)
+controller.Stop()
+PRINT count
+)"));
+}
+
+TEST(BasicRuntimeCalls, Scene3DBindingSurface) {
+    ASSERT_TRUE(compileOk(R"(
+DIM scene AS OBJECT
+DIM parent AS OBJECT
+DIM node AS OBJECT
+DIM body AS OBJECT
+DIM skel AS OBJECT
+DIM controller AS OBJECT
+DIM anim AS OBJECT
+DIM pos0 AS OBJECT
+DIM pos1 AS OBJECT
+DIM rot AS OBJECT
+DIM scl AS OBJECT
+DIM count AS INTEGER
+DIM mode AS INTEGER
+DIM bound AS OBJECT
+scene = Viper.Graphics3D.Scene3D.New()
+parent = Viper.Graphics3D.SceneNode3D.New()
+node = Viper.Graphics3D.SceneNode3D.New()
+body = Viper.Graphics3D.Physics3DBody.NewSphere(0.5, 1.0)
+skel = Viper.Graphics3D.Skeleton3D.New()
+Viper.Graphics3D.Skeleton3D.AddBone(skel, "root", -1, Viper.Math.Mat4.Identity())
+Viper.Graphics3D.Skeleton3D.ComputeInverseBind(skel)
+anim = Viper.Graphics3D.Animation3D.New("walk", 1.0)
+pos0 = Viper.Math.Vec3.New(0.0, 0.0, 0.0)
+pos1 = Viper.Math.Vec3.New(1.0, 0.0, 0.0)
+rot = Viper.Math.Quat.Identity()
+scl = Viper.Math.Vec3.One()
+Viper.Graphics3D.Animation3D.AddKeyframe(anim, 0, 0.0, pos0, rot, scl)
+Viper.Graphics3D.Animation3D.AddKeyframe(anim, 0, 1.0, pos1, rot, scl)
+controller = Viper.Graphics3D.AnimController3D.New(skel)
+controller.AddState("walk", anim)
+controller.Play("walk")
+Viper.Graphics3D.SceneNode3D.AddChild(parent, node)
+Viper.Graphics3D.Scene3D.Add(scene, parent)
+node.BindBody(body)
+bound = node.Body
+node.SyncMode = 1
+mode = node.SyncMode
+node.BindAnimator(controller)
+bound = node.Animator
+scene.SyncBindings(0.016)
+node.ClearAnimatorBinding()
+node.ClearBodyBinding()
+PRINT mode
+)"));
+}
+
 TEST(BasicRuntimeCalls, CompiledPatternObjectResultKeepsSeqSurface) {
     auto module = compileModule(R"(
 DIM pat AS OBJECT

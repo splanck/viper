@@ -21,6 +21,7 @@
 #ifdef VIPER_ENABLE_GRAPHICS
 
 #include "rt_gltf.h"
+#include "rt_scene3d_internal.h"
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
 #include "rt_pixels.h"
@@ -43,6 +44,7 @@ extern double rt_unbox_f64(void *boxed);
 extern int64_t rt_unbox_i1(void *boxed);
 extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
 extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
+extern void rt_obj_retain_maybe(void *obj);
 #include "rt_trap.h"
 extern int64_t rt_obj_release_check0(void *obj);
 extern void rt_obj_free(void *obj);
@@ -64,6 +66,8 @@ typedef struct {
     int32_t mesh_count;
     void **materials;
     int32_t material_count;
+    void *scene_root;
+    int32_t node_count;
 } rt_gltf_asset;
 
 static void gltf_asset_finalize(void *obj) {
@@ -84,11 +88,81 @@ static void gltf_asset_finalize(void *obj) {
     }
     free(a->materials);
     a->materials = NULL;
+    if (a->scene_root && rt_obj_release_check0(a->scene_root))
+        rt_obj_free(a->scene_root);
+    a->scene_root = NULL;
+    a->node_count = 0;
 }
 
 //===----------------------------------------------------------------------===//
 // JSON helpers
 //===----------------------------------------------------------------------===//
+
+static void gltf_set_node_name(rt_scene_node3d *node, const char *name) {
+    if (!node || !name || name[0] == '\0')
+        return;
+    rt_scene_node3d_set_name(node, rt_const_cstr(name));
+}
+
+static void gltf_matrix_to_trs(const double *m, double *pos, double *quat, double *scale) {
+    double r00, r01, r02;
+    double r10, r11, r12;
+    double r20, r21, r22;
+    double trace, s;
+    if (!m || !pos || !quat || !scale)
+        return;
+
+    pos[0] = m[12];
+    pos[1] = m[13];
+    pos[2] = m[14];
+
+    scale[0] = sqrt(m[0] * m[0] + m[1] * m[1] + m[2] * m[2]);
+    scale[1] = sqrt(m[4] * m[4] + m[5] * m[5] + m[6] * m[6]);
+    scale[2] = sqrt(m[8] * m[8] + m[9] * m[9] + m[10] * m[10]);
+    if (scale[0] <= 1e-12)
+        scale[0] = 1.0;
+    if (scale[1] <= 1e-12)
+        scale[1] = 1.0;
+    if (scale[2] <= 1e-12)
+        scale[2] = 1.0;
+
+    r00 = m[0] / scale[0];
+    r10 = m[1] / scale[0];
+    r20 = m[2] / scale[0];
+    r01 = m[4] / scale[1];
+    r11 = m[5] / scale[1];
+    r21 = m[6] / scale[1];
+    r02 = m[8] / scale[2];
+    r12 = m[9] / scale[2];
+    r22 = m[10] / scale[2];
+
+    trace = r00 + r11 + r22;
+    if (trace > 0.0) {
+        s = sqrt(trace + 1.0) * 2.0;
+        quat[3] = 0.25 * s;
+        quat[0] = (r21 - r12) / s;
+        quat[1] = (r02 - r20) / s;
+        quat[2] = (r10 - r01) / s;
+    } else if (r00 > r11 && r00 > r22) {
+        s = sqrt(1.0 + r00 - r11 - r22) * 2.0;
+        quat[3] = (r21 - r12) / s;
+        quat[0] = 0.25 * s;
+        quat[1] = (r01 + r10) / s;
+        quat[2] = (r02 + r20) / s;
+    } else if (r11 > r22) {
+        s = sqrt(1.0 + r11 - r00 - r22) * 2.0;
+        quat[3] = (r02 - r20) / s;
+        quat[0] = (r01 + r10) / s;
+        quat[1] = 0.25 * s;
+        quat[2] = (r12 + r21) / s;
+    } else {
+        s = sqrt(1.0 + r22 - r00 - r11) * 2.0;
+        quat[3] = (r10 - r01) / s;
+        quat[0] = (r02 + r20) / s;
+        quat[1] = (r12 + r21) / s;
+        quat[2] = 0.25 * s;
+    }
+}
 
 static void *jget(void *obj, const char *key) {
     if (!obj)
@@ -154,6 +228,30 @@ static double jvalue_num(void *value, double def) {
         default:
             return def;
     }
+}
+
+static int64_t jvalue_int(void *value, int64_t def) {
+    if (!value)
+        return def;
+    switch (rt_box_type(value)) {
+        case 0:
+            return rt_unbox_i64(value);
+        case 1:
+            return (int64_t)rt_unbox_f64(value);
+        case 2:
+            return rt_unbox_i1(value);
+        default:
+            return def;
+    }
+}
+
+static int32_t gltf_count_subtree(const rt_scene_node3d *node) {
+    int32_t total = 1;
+    if (!node)
+        return 0;
+    for (int32_t i = 0; i < node->child_count; i++)
+        total += gltf_count_subtree(node->children[i]);
+    return total;
 }
 
 //===----------------------------------------------------------------------===//
@@ -371,6 +469,11 @@ static void gltf_release_ref(void **slot) {
     *slot = NULL;
 }
 
+static void gltf_release_local(void *obj) {
+    void *tmp = obj;
+    gltf_release_ref(&tmp);
+}
+
 static void gltf_resolve_relative_path(const char *base_path,
                                        const char *uri,
                                        char *out,
@@ -529,6 +632,9 @@ void *rt_gltf_load(rt_string path) {
     int buf_count = (int)jarr_len(buffers_arr);
     gltf_buffer_t *buffers =
         (gltf_buffer_t *)calloc((size_t)(buf_count + 1), sizeof(gltf_buffer_t));
+    int *mesh_prim_start = NULL;
+    int *mesh_prim_count = NULL;
+    void **primitive_materials = NULL;
     if (!buffers) {
         free(file_data);
         return NULL;
@@ -582,6 +688,9 @@ void *rt_gltf_load(rt_string path) {
             if (buffers[i].data != bin_chunk)
                 free(buffers[i].data);
         }
+        free(mesh_prim_start);
+        free(mesh_prim_count);
+        free(primitive_materials);
         free(buffers);
         free(file_data);
         return NULL;
@@ -591,6 +700,8 @@ void *rt_gltf_load(rt_string path) {
     asset->mesh_count = 0;
     asset->materials = NULL;
     asset->material_count = 0;
+    asset->scene_root = NULL;
+    asset->node_count = 0;
     rt_obj_set_finalizer(asset, gltf_asset_finalize);
 
     void **images = NULL;
@@ -733,6 +844,9 @@ void *rt_gltf_load(rt_string path) {
         }
 
         if (total_prims > 0) {
+            mesh_prim_start = (int *)calloc((size_t)mesh_json_count, sizeof(int));
+            mesh_prim_count = (int *)calloc((size_t)mesh_json_count, sizeof(int));
+            primitive_materials = (void **)calloc((size_t)total_prims, sizeof(void *));
             asset->meshes = (void **)calloc((size_t)total_prims, sizeof(void *));
             int mesh_idx = 0;
 
@@ -740,10 +854,15 @@ void *rt_gltf_load(rt_string path) {
                 void *mesh_json = rt_seq_get(meshes_arr, (int64_t)mi);
                 void *prims = jarr(mesh_json, "primitives");
                 int prim_count = (int)jarr_len(prims);
+                if (mesh_prim_start)
+                    mesh_prim_start[mi] = mesh_idx;
+                if (mesh_prim_count)
+                    mesh_prim_count[mi] = prim_count;
 
                 for (int pi = 0; pi < prim_count; pi++) {
                     void *prim = rt_seq_get(prims, (int64_t)pi);
                     void *attrs = jget(prim, "attributes");
+                    int64_t material_idx = jint(prim, "material", -1);
                     if (!attrs)
                         continue;
 
@@ -849,8 +968,145 @@ void *rt_gltf_load(rt_string path) {
 
                     asset->meshes[mesh_idx++] = mesh;
                     asset->mesh_count = mesh_idx;
+                    if (primitive_materials && material_idx >= 0 && material_idx < asset->material_count)
+                        primitive_materials[mesh_idx - 1] = asset->materials[material_idx];
                 }
             }
+        }
+    }
+
+    // Build a reusable template node hierarchy from the active glTF scene.
+    {
+        void *nodes_arr = jarr(root, "nodes");
+        int node_json_count = (int)jarr_len(nodes_arr);
+        if (node_json_count > 0) {
+            rt_scene_node3d **nodes = (rt_scene_node3d **)calloc((size_t)node_json_count, sizeof(*nodes));
+            int *has_parent = (int *)calloc((size_t)node_json_count, sizeof(int));
+            asset->scene_root = rt_scene_node3d_new();
+
+            for (int ni = 0; ni < node_json_count && nodes; ni++) {
+                void *node_json = rt_seq_get(nodes_arr, (int64_t)ni);
+                rt_scene_node3d *node = (rt_scene_node3d *)rt_scene_node3d_new();
+                const char *name = jstr(node_json, "name");
+                void *translation = jarr(node_json, "translation");
+                void *rotation = jarr(node_json, "rotation");
+                void *scale_arr = jarr(node_json, "scale");
+                void *matrix_arr = jarr(node_json, "matrix");
+                int64_t mesh_ref = jint(node_json, "mesh", -1);
+                nodes[ni] = node;
+                if (!node)
+                    continue;
+
+                if (name)
+                    gltf_set_node_name(node, name);
+
+                if (matrix_arr && jarr_len(matrix_arr) >= 16) {
+                    double m[16];
+                    for (int i = 0; i < 16; i++)
+                        m[i] = jvalue_num(rt_seq_get(matrix_arr, (int64_t)i), i % 5 == 0 ? 1.0 : 0.0);
+                    gltf_matrix_to_trs(m, node->position, node->rotation, node->scale_xyz);
+                } else {
+                    node->position[0] = translation && jarr_len(translation) > 0
+                                            ? jvalue_num(rt_seq_get(translation, 0), 0.0)
+                                            : 0.0;
+                    node->position[1] = translation && jarr_len(translation) > 1
+                                            ? jvalue_num(rt_seq_get(translation, 1), 0.0)
+                                            : 0.0;
+                    node->position[2] = translation && jarr_len(translation) > 2
+                                            ? jvalue_num(rt_seq_get(translation, 2), 0.0)
+                                            : 0.0;
+
+                    node->rotation[0] = rotation && jarr_len(rotation) > 0
+                                            ? jvalue_num(rt_seq_get(rotation, 0), 0.0)
+                                            : 0.0;
+                    node->rotation[1] = rotation && jarr_len(rotation) > 1
+                                            ? jvalue_num(rt_seq_get(rotation, 1), 0.0)
+                                            : 0.0;
+                    node->rotation[2] = rotation && jarr_len(rotation) > 2
+                                            ? jvalue_num(rt_seq_get(rotation, 2), 0.0)
+                                            : 0.0;
+                    node->rotation[3] = rotation && jarr_len(rotation) > 3
+                                            ? jvalue_num(rt_seq_get(rotation, 3), 1.0)
+                                            : 1.0;
+
+                    node->scale_xyz[0] = scale_arr && jarr_len(scale_arr) > 0
+                                             ? jvalue_num(rt_seq_get(scale_arr, 0), 1.0)
+                                             : 1.0;
+                    node->scale_xyz[1] = scale_arr && jarr_len(scale_arr) > 1
+                                             ? jvalue_num(rt_seq_get(scale_arr, 1), 1.0)
+                                             : 1.0;
+                    node->scale_xyz[2] = scale_arr && jarr_len(scale_arr) > 2
+                                             ? jvalue_num(rt_seq_get(scale_arr, 2), 1.0)
+                                             : 1.0;
+                }
+
+                node->world_dirty = 1;
+
+                if (mesh_ref >= 0 && mesh_ref < mesh_json_count && mesh_prim_count && mesh_prim_start) {
+                    int prim_start = mesh_prim_start[mesh_ref];
+                    int prim_count = mesh_prim_count[mesh_ref];
+                    if (prim_count > 0) {
+                        rt_scene_node3d_set_mesh(node, asset->meshes[prim_start]);
+                        if (primitive_materials && primitive_materials[prim_start])
+                            rt_scene_node3d_set_material(node, primitive_materials[prim_start]);
+                        for (int pi = 1; pi < prim_count; pi++) {
+                            rt_scene_node3d *prim_node =
+                                (rt_scene_node3d *)rt_scene_node3d_new();
+                            if (!prim_node)
+                                continue;
+                            rt_scene_node3d_set_mesh(prim_node, asset->meshes[prim_start + pi]);
+                            if (primitive_materials && primitive_materials[prim_start + pi])
+                                rt_scene_node3d_set_material(
+                                    prim_node, primitive_materials[prim_start + pi]);
+                            rt_scene_node3d_add_child(node, prim_node);
+                            gltf_release_local(prim_node);
+                        }
+                    }
+                }
+            }
+
+            for (int ni = 0; ni < node_json_count && nodes; ni++) {
+                void *node_json = rt_seq_get(nodes_arr, (int64_t)ni);
+                void *children = jarr(node_json, "children");
+                for (int ci = 0; ci < jarr_len(children); ci++) {
+                    int64_t child_idx = jvalue_int(rt_seq_get(children, (int64_t)ci), -1);
+                    if (child_idx >= 0 && child_idx < node_json_count && nodes[ni] && nodes[child_idx]) {
+                        rt_scene_node3d_add_child(nodes[ni], nodes[child_idx]);
+                        has_parent[child_idx] = 1;
+                    }
+                }
+            }
+
+            if (asset->scene_root) {
+                void *scenes_arr = jarr(root, "scenes");
+                int64_t active_scene = jint(root, "scene", 0);
+                int attached_any = 0;
+                if (scenes_arr && jarr_len(scenes_arr) > 0 && active_scene >= 0 &&
+                    active_scene < jarr_len(scenes_arr)) {
+                    void *scene_json = rt_seq_get(scenes_arr, active_scene);
+                    void *scene_nodes = jarr(scene_json, "nodes");
+                    for (int i = 0; i < jarr_len(scene_nodes); i++) {
+                        int64_t node_idx = jvalue_int(rt_seq_get(scene_nodes, (int64_t)i), -1);
+                        if (node_idx >= 0 && node_idx < node_json_count && nodes[node_idx]) {
+                            rt_scene_node3d_add_child(asset->scene_root, nodes[node_idx]);
+                            attached_any = 1;
+                        }
+                    }
+                }
+                if (!attached_any) {
+                    for (int i = 0; i < node_json_count; i++) {
+                        if (!has_parent[i] && nodes[i])
+                            rt_scene_node3d_add_child(asset->scene_root, nodes[i]);
+                    }
+                }
+                if (asset->scene_root)
+                    asset->node_count = gltf_count_subtree(asset->scene_root) - 1;
+                for (int i = 0; i < node_json_count; i++)
+                    gltf_release_ref((void **)&nodes[i]);
+            }
+
+            free(nodes);
+            free(has_parent);
         }
     }
 
@@ -860,6 +1116,9 @@ void *rt_gltf_load(rt_string path) {
     }
     free(images);
     free(texture_images);
+    free(mesh_prim_start);
+    free(mesh_prim_count);
+    free(primitive_materials);
 
     // Cleanup buffers (except BIN chunk which is part of file_data)
     for (int i = 0; i < buf_count; i++) {
@@ -900,6 +1159,14 @@ void *rt_gltf_get_material(void *obj, int64_t index) {
     if (index < 0 || index >= a->material_count)
         return NULL;
     return a->materials[index];
+}
+
+int64_t rt_gltf_node_count(void *obj) {
+    return obj ? ((rt_gltf_asset *)obj)->node_count : 0;
+}
+
+void *rt_gltf_get_scene_root(void *obj) {
+    return obj ? ((rt_gltf_asset *)obj)->scene_root : NULL;
 }
 
 #else

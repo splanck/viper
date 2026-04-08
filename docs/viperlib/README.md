@@ -190,10 +190,12 @@ implemented in C and exposed through the IL runtime system.
 | Class | Type | Description |
 |-------|------|-------------|
 | [`Character3D`](graphics/physics3d.md#vipergraphics3dcharacter3d) | Instance | Slide-and-step character controller |
+| [`AnimController3D`](../graphics3d-guide.md#animcontroller3d) | Instance | Stateful skeletal animation controller with transitions, events, root motion, and scene-node binding support |
 | [`CollisionEvent3D`](graphics/physics3d.md#vipergraphics3dcollisionevent3d) | Instance | Structured collision pair event with contact, speed, and impulse data |
 | [`Collider3D`](graphics/physics3d.md#vipergraphics3dcollider3d) | Instance | Reusable 3D collision shape including compound, mesh, and heightfield variants |
 | [`ContactPoint3D`](graphics/physics3d.md#vipergraphics3dcontactpoint3d) | Instance | Contact manifold point with position, normal, and signed separation |
 | [`DistanceJoint3D`](graphics/physics3d.md#vipergraphics3ddistancejoint3d) | Instance | Fixed-distance constraint between bodies |
+| [`Model3D`](../graphics3d-guide.md#model3d) | Instance | Unified imported asset with shared resources and scene instantiation |
 | [`Physics3DBody`](graphics/physics3d.md#vipergraphics3dphysics3dbody) | Instance | 3D rigid body with linear/angular motion, sleep, and CCD |
 | [`PhysicsHit3D`](graphics/physics3d.md#vipergraphics3dphysicshit3d) | Instance | World-query hit result with body, collider, point, normal, and fraction |
 | [`PhysicsHitList3D`](graphics/physics3d.md#vipergraphics3dphysicshitlist3d) | Instance | List of `PhysicsHit3D` results returned by overlap and multi-hit queries |

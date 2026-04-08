@@ -1,0 +1,288 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/tests/unit/test_rt_scene3d_bindings.cpp
+// Purpose: Unit tests for Scene3D / SceneNode3D runtime bindings to physics
+//   bodies and animation controllers.
+//
+//===----------------------------------------------------------------------===//
+
+#ifndef VIPER_ENABLE_GRAPHICS
+#define VIPER_ENABLE_GRAPHICS 1
+#endif
+
+#include "rt_animcontroller3d.h"
+#include "rt_canvas3d.h"
+#include "rt_canvas3d_internal.h"
+#include "rt_physics3d.h"
+#include "rt_scene3d.h"
+#include "rt_skeleton3d.h"
+#include "rt_string.h"
+#include "vgfx3d_backend.h"
+
+#include <cmath>
+#include <cstdio>
+#include <cstring>
+
+extern "C" {
+extern void *rt_vec3_new(double x, double y, double z);
+extern double rt_vec3_x(void *v);
+extern double rt_vec3_y(void *v);
+extern double rt_vec3_z(void *v);
+extern void *rt_quat_new(double x, double y, double z, double w);
+extern void *rt_quat_from_euler(double pitch, double yaw, double roll);
+extern double rt_quat_x(void *q);
+extern double rt_quat_y(void *q);
+extern double rt_quat_z(void *q);
+extern double rt_quat_w(void *q);
+extern void *rt_mat4_identity(void);
+extern double rt_mat4_get(void *m, int64_t row, int64_t col);
+extern rt_string rt_const_cstr(const char *s);
+extern void *rt_material3d_new_color(double r, double g, double b);
+extern void *rt_mesh3d_new_box(double w, double h, double d);
+extern void *rt_camera3d_new(double fov, double aspect, double near, double far);
+extern void rt_camera3d_look_at(void *cam, void *eye, void *target, void *up);
+}
+
+static int tests_passed = 0;
+static int tests_run = 0;
+
+#define EXPECT_TRUE(cond, msg)                                                                     \
+    do {                                                                                           \
+        tests_run++;                                                                               \
+        if (!(cond)) {                                                                             \
+            std::fprintf(stderr, "FAIL: %s\n", msg);                                               \
+        } else {                                                                                   \
+            tests_passed++;                                                                        \
+        }                                                                                          \
+    } while (0)
+
+#define EXPECT_NEAR(a, b, eps, msg)                                                                \
+    do {                                                                                           \
+        tests_run++;                                                                               \
+        if (std::fabs((double)(a) - (double)(b)) > (eps)) {                                        \
+            std::fprintf(stderr,                                                                   \
+                         "FAIL: %s (got %f, expected %f)\n",                                       \
+                         msg,                                                                      \
+                         (double)(a),                                                              \
+                         (double)(b));                                                             \
+        } else {                                                                                   \
+            tests_passed++;                                                                        \
+        }                                                                                          \
+    } while (0)
+
+static void *make_anim(const char *name,
+                       int64_t bone_index,
+                       double x0,
+                       double y0,
+                       double z0,
+                       double x1,
+                       double y1,
+                       double z1) {
+    void *anim = rt_animation3d_new(rt_const_cstr(name), 1.0);
+    void *pos0 = rt_vec3_new(x0, y0, z0);
+    void *pos1 = rt_vec3_new(x1, y1, z1);
+    void *rot = rt_quat_new(0.0, 0.0, 0.0, 1.0);
+    void *scl = rt_vec3_new(1.0, 1.0, 1.0);
+    rt_animation3d_set_looping(anim, 1);
+    rt_animation3d_add_keyframe(anim, bone_index, 0.0, pos0, rot, scl);
+    rt_animation3d_add_keyframe(anim, bone_index, 1.0, pos1, rot, scl);
+    return anim;
+}
+
+static void init_test_canvas(rt_canvas3d *canvas, const vgfx3d_backend_t *backend) {
+    std::memset(canvas, 0, sizeof(*canvas));
+    canvas->backend = backend;
+    canvas->gfx_win = (vgfx_window_t)1;
+}
+
+static int g_submit_count = 0;
+static const float *g_last_bone_palette = nullptr;
+static int32_t g_last_bone_count = 0;
+
+static void test_begin_frame(void *, const vgfx3d_camera_params_t *) {}
+
+static void test_end_frame(void *) {}
+
+static void test_submit_draw(void *,
+                             vgfx_window_t,
+                             const vgfx3d_draw_cmd_t *cmd,
+                             const vgfx3d_light_params_t *,
+                             int32_t,
+                             const float *,
+                             int8_t,
+                             int8_t) {
+    g_submit_count++;
+    g_last_bone_palette = cmd ? cmd->bone_palette : nullptr;
+    g_last_bone_count = cmd ? cmd->bone_count : 0;
+}
+
+static void test_node_from_body_resolves_child_local_space() {
+    void *scene = rt_scene3d_new();
+    void *parent = rt_scene_node3d_new();
+    void *child = rt_scene_node3d_new();
+    void *body = rt_body3d_new_sphere(0.5, 1.0);
+    void *rot = rt_quat_from_euler(1.5707963267948966, 0.0, 0.0);
+    void *pos;
+    void *local_rot;
+    rt_scene_node3d_set_position(parent, 5.0, 0.0, 0.0);
+    rt_scene_node3d_add_child(parent, child);
+    rt_scene3d_add(scene, parent);
+    rt_body3d_set_position(body, 6.0, 2.0, -3.0);
+    rt_body3d_set_orientation(body, rot);
+
+    rt_scene_node3d_bind_body(child, body);
+    rt_scene_node3d_set_sync_mode(child, RT_SCENE_NODE3D_SYNC_NODE_FROM_BODY);
+    rt_scene3d_sync_bindings(scene, 0.016);
+
+    pos = rt_scene_node3d_get_position(child);
+    local_rot = rt_scene_node3d_get_rotation(child);
+    EXPECT_NEAR(rt_vec3_x(pos), 1.0, 0.001, "NodeFromBody converts world X into child local X");
+    EXPECT_NEAR(rt_vec3_y(pos), 2.0, 0.001, "NodeFromBody preserves child local Y");
+    EXPECT_NEAR(rt_vec3_z(pos), -3.0, 0.001, "NodeFromBody preserves child local Z");
+    EXPECT_NEAR(rt_quat_y(local_rot), rt_quat_y(rot), 0.001, "NodeFromBody copies orientation");
+    EXPECT_NEAR(rt_quat_w(local_rot), rt_quat_w(rot), 0.001, "NodeFromBody copies orientation W");
+}
+
+static void test_body_from_node_uses_world_space() {
+    void *scene = rt_scene3d_new();
+    void *parent = rt_scene_node3d_new();
+    void *child = rt_scene_node3d_new();
+    void *body = rt_body3d_new_sphere(0.5, 1.0);
+    void *body_pos;
+    void *body_rot;
+    rt_scene_node3d_set_rotation(parent, rt_quat_from_euler(1.5707963267948966, 0.0, 0.0));
+    rt_scene_node3d_set_position(child, 1.0, 0.0, 0.0);
+    rt_scene_node3d_add_child(parent, child);
+    rt_scene3d_add(scene, parent);
+
+    rt_scene_node3d_bind_body(child, body);
+    rt_scene_node3d_set_sync_mode(child, RT_SCENE_NODE3D_SYNC_BODY_FROM_NODE);
+    rt_scene3d_sync_bindings(scene, 0.016);
+
+    body_pos = rt_body3d_get_position(body);
+    body_rot = rt_body3d_get_orientation(body);
+    EXPECT_NEAR(rt_vec3_x(body_pos), 0.0, 0.01, "BodyFromNode pushes rotated child world X");
+    EXPECT_NEAR(rt_vec3_y(body_pos), 0.0, 0.01, "BodyFromNode pushes child world Y");
+    EXPECT_NEAR(rt_vec3_z(body_pos), -1.0, 0.01, "BodyFromNode pushes rotated child world Z");
+    EXPECT_NEAR(std::fabs(rt_quat_y(body_rot)), std::fabs(rt_quat_y(rt_scene_node3d_get_rotation(parent))), 0.001,
+                "BodyFromNode composes parent rotation into body orientation");
+}
+
+static void test_two_way_kinematic_switches_direction() {
+    void *scene = rt_scene3d_new();
+    void *node = rt_scene_node3d_new();
+    void *body = rt_body3d_new_sphere(0.5, 1.0);
+    void *body_pos;
+    void *node_pos;
+    rt_scene3d_add(scene, node);
+    rt_scene_node3d_bind_body(node, body);
+    rt_scene_node3d_set_sync_mode(node, RT_SCENE_NODE3D_SYNC_TWO_WAY_KINEMATIC);
+
+    rt_body3d_set_kinematic(body, 1);
+    rt_scene_node3d_set_position(node, 2.5, 0.0, 0.0);
+    rt_scene3d_sync_bindings(scene, 0.016);
+    body_pos = rt_body3d_get_position(body);
+    EXPECT_NEAR(rt_vec3_x(body_pos), 2.5, 0.001, "TwoWayKinematic pushes node pose into kinematic body");
+
+    rt_body3d_set_kinematic(body, 0);
+    rt_body3d_set_position(body, -4.0, 0.0, 0.0);
+    rt_scene3d_sync_bindings(scene, 0.016);
+    node_pos = rt_scene_node3d_get_position(node);
+    EXPECT_NEAR(rt_vec3_x(node_pos), -4.0, 0.001, "TwoWayKinematic pulls dynamic body pose back into node");
+}
+
+static void test_animator_root_motion_mode_consumes_delta_once() {
+    void *scene = rt_scene3d_new();
+    void *node = rt_scene_node3d_new();
+    void *skel = rt_skeleton3d_new();
+    void *controller;
+    void *walk;
+    void *pos;
+    rt_scene3d_add(scene, node);
+
+    rt_skeleton3d_add_bone(skel, rt_const_cstr("root"), -1, rt_mat4_identity());
+    rt_skeleton3d_compute_inverse_bind(skel);
+    walk = make_anim("walk", 0, 0.0, 0.0, 0.0, 6.0, 0.0, 0.0);
+    controller = rt_anim_controller3d_new(skel);
+    rt_anim_controller3d_add_state(controller, rt_const_cstr("walk"), walk);
+    rt_anim_controller3d_set_root_motion_bone(controller, 0);
+    rt_anim_controller3d_play(controller, rt_const_cstr("walk"));
+    rt_anim_controller3d_update(controller, 0.5);
+
+    rt_scene_node3d_bind_animator(node, controller);
+    rt_scene_node3d_set_sync_mode(node, RT_SCENE_NODE3D_SYNC_NODE_FROM_ANIMATOR_ROOT_MOTION);
+    rt_scene3d_sync_bindings(scene, 0.016);
+
+    pos = rt_scene_node3d_get_position(node);
+    EXPECT_NEAR(rt_vec3_x(pos), 3.0, 0.1, "Animator root motion moves the bound node");
+
+    rt_scene3d_sync_bindings(scene, 0.016);
+    pos = rt_scene_node3d_get_position(node);
+    EXPECT_NEAR(rt_vec3_x(pos), 3.0, 0.1, "Animator root motion is consumed once per update");
+}
+
+static void test_scene_draw_uses_bound_animator_palette() {
+    vgfx3d_backend_t backend = {};
+    rt_canvas3d canvas;
+    void *scene = rt_scene3d_new();
+    void *node = rt_scene_node3d_new();
+    void *mesh = rt_mesh3d_new_box(1.0, 1.0, 1.0);
+    void *material = rt_material3d_new_color(1.0, 1.0, 1.0);
+    void *camera = rt_camera3d_new(60.0, 1.0, 0.1, 100.0);
+    void *eye = rt_vec3_new(0.0, 0.0, 5.0);
+    void *target = rt_vec3_new(0.0, 0.0, 0.0);
+    void *up = rt_vec3_new(0.0, 1.0, 0.0);
+    void *skel = rt_skeleton3d_new();
+    void *controller;
+    void *anim;
+    int32_t palette_bones = 0;
+    const float *palette;
+
+    backend.name = "opengl";
+    backend.begin_frame = test_begin_frame;
+    backend.end_frame = test_end_frame;
+    backend.submit_draw = test_submit_draw;
+    init_test_canvas(&canvas, &backend);
+    rt_camera3d_look_at(camera, eye, target, up);
+    g_submit_count = 0;
+    g_last_bone_palette = nullptr;
+    g_last_bone_count = 0;
+
+    rt_skeleton3d_add_bone(skel, rt_const_cstr("root"), -1, rt_mat4_identity());
+    rt_skeleton3d_compute_inverse_bind(skel);
+    anim = make_anim("walk", 0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0);
+    controller = rt_anim_controller3d_new(skel);
+    rt_anim_controller3d_add_state(controller, rt_const_cstr("walk"), anim);
+    rt_anim_controller3d_play(controller, rt_const_cstr("walk"));
+    rt_anim_controller3d_update(controller, 0.25);
+    palette = rt_anim_controller3d_get_final_palette_data(controller, &palette_bones);
+
+    ((rt_mesh3d *)mesh)->bone_count = 1;
+    rt_scene_node3d_set_mesh(node, mesh);
+    rt_scene_node3d_set_material(node, material);
+    rt_scene_node3d_bind_animator(node, controller);
+    rt_scene3d_add(scene, node);
+    rt_scene3d_draw(scene, &canvas, camera);
+
+    EXPECT_TRUE(g_submit_count == 1, "Scene3D.Draw submits one animated draw");
+    EXPECT_TRUE(g_last_bone_palette == palette,
+                "Scene3D.Draw uses the bound AnimController3D palette");
+    EXPECT_TRUE(g_last_bone_count == palette_bones,
+                "Scene3D.Draw forwards the animator bone count");
+}
+
+int main() {
+    test_node_from_body_resolves_child_local_space();
+    test_body_from_node_uses_world_space();
+    test_two_way_kinematic_switches_direction();
+    test_animator_root_motion_mode_consumes_delta_once();
+    test_scene_draw_uses_bound_animator_palette();
+
+    std::printf("Scene3D binding tests: %d/%d passed\n", tests_passed, tests_run);
+    return tests_passed == tests_run ? 0 : 1;
+}

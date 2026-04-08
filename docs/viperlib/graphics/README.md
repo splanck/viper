@@ -1,11 +1,11 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-07
+last-verified: 2026-04-08
 ---
 
 # Graphics
-> 2D graphics, scene management, and 3D runtime surfaces.
+> 2D graphics, scene management, 3D runtime surfaces, and asset import workflows.
 
 **Part of [Viper Runtime Library](../README.md)**
 
@@ -20,6 +20,7 @@ last-verified: 2026-04-07
 | [Images & Sprites](pixels.md) | Pixels, Sprite, SpriteSheet, Tilemap |
 | [Scene Graph](scene.md) | SceneNode, Scene, SpriteBatch, TextureAtlas, Camera, SpriteAnimation |
 | [3D Physics](physics3d.md) | `Physics3DWorld`, `PhysicsHit3D`, `PhysicsHitList3D`, `CollisionEvent3D`, `ContactPoint3D`, `Collider3D`, `Physics3DBody`, `Character3D`, `DistanceJoint3D`, `SpringJoint3D` |
+| [Graphics 3D Guide](../../graphics3d-guide.md) | `Model3D`, `AnimController3D`, `Canvas3D`, `Scene3D`, `SceneNode3D`, `Scene3D.SyncBindings`, `Mesh3D`, `Material3D`, `FBX`, `GLTF`, and the higher-level 3D asset pipeline |
 
 ## See Also
 
