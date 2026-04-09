@@ -14,6 +14,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "codegen/x86_64/Backend.hpp"
+#include "tests/common/PlatformSkip.h"
 
 #include <string>
 
@@ -84,7 +85,7 @@ int main() {
 #ifdef _WIN32
     // Windows x64 ABI doesn't use %al for varargs XMM count.
     // This test is SysV ABI specific.
-    return 0;
+    VIPER_PLATFORM_SKIP("SysV-only varargs %al test");
 #endif
     {
         const auto text = buildAsmWithCallee("rt_snprintf");

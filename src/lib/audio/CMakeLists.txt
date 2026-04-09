@@ -39,29 +39,55 @@ set(VAUD_CORE_SOURCES
         src/vaud_mixer.c
 )
 
+set(VIPERAUD_AVAILABLE OFF CACHE INTERNAL "Whether ViperAUD is available in this build" FORCE)
+set(VIPERAUD_UNAVAILABLE_REASON "audio support disabled" CACHE INTERNAL
+    "Reason ViperAUD is unavailable" FORCE)
+set(VIPERAUD_BACKEND "disabled" CACHE INTERNAL "Selected ViperAUD backend" FORCE)
+
+if (NOT DEFINED VIPER_AUDIO_MODE)
+    message(FATAL_ERROR "VIPER_AUDIO_MODE must be defined before adding src/lib/audio")
+endif ()
+
+if (VIPER_AUDIO_MODE STREQUAL "OFF")
+    message(STATUS "ViperAUD: disabled by VIPER_AUDIO_MODE=OFF")
+    set(VIPERAUD_UNAVAILABLE_REASON "disabled by VIPER_AUDIO_MODE=OFF" CACHE INTERNAL
+        "Reason ViperAUD is unavailable" FORCE)
+    return()
+endif ()
+
 # Platform detection and source selection
 if (APPLE)
     message(STATUS "ViperAUD: Building for macOS (AudioQueue backend)")
     set(VAUD_PLATFORM_SOURCES src/vaud_platform_macos.m)
     set(VAUD_PLATFORM_LIBS "-framework AudioToolbox")
+    set(VIPERAUD_BACKEND "AudioQueue" CACHE INTERNAL "Selected ViperAUD backend" FORCE)
     enable_language(OBJC)
 elseif (UNIX)
     # Check for ALSA on Linux
     find_package(ALSA QUIET)
     if (NOT ALSA_FOUND)
-        message(WARNING "ViperAUD: ALSA not found — audio library will not be built.\n"
-                "  Install libasound2-dev (Debian/Ubuntu) or alsa-lib-devel (Fedora/RHEL) to enable.\n"
-                "  Targets that link viperaud will fail if this library is needed.")
+        set(VIPERAUD_UNAVAILABLE_REASON
+            "ALSA not found; install libasound2-dev/alsa-lib-devel or set VIPER_AUDIO_MODE=OFF"
+            CACHE INTERNAL "Reason ViperAUD is unavailable" FORCE)
+        if (VIPER_AUDIO_MODE STREQUAL "REQUIRE")
+            message(FATAL_ERROR
+                    "ViperAUD: ALSA not found and VIPER_AUDIO_MODE=REQUIRE.\n"
+                    "Install libasound2-dev (Debian/Ubuntu) or alsa-lib-devel (Fedora/RHEL),\n"
+                    "or reconfigure with -DVIPER_AUDIO_MODE=OFF.")
+        endif ()
+        message(STATUS "ViperAUD: disabled (${VIPERAUD_UNAVAILABLE_REASON})")
         return()
     endif ()
     message(STATUS "ViperAUD: Building for Linux (ALSA backend)")
     set(VAUD_PLATFORM_SOURCES src/vaud_platform_linux.c)
     set(VAUD_PLATFORM_LIBS ${ALSA_LIBRARIES})
+    set(VIPERAUD_BACKEND "ALSA" CACHE INTERNAL "Selected ViperAUD backend" FORCE)
     include_directories(${ALSA_INCLUDE_DIRS})
 elseif (WIN32)
     message(STATUS "ViperAUD: Building for Windows (WASAPI backend)")
     set(VAUD_PLATFORM_SOURCES src/vaud_platform_win32.c)
     set(VAUD_PLATFORM_LIBS ole32)
+    set(VIPERAUD_BACKEND "WASAPI" CACHE INTERNAL "Selected ViperAUD backend" FORCE)
 else ()
     message(FATAL_ERROR "ViperAUD: Unsupported platform")
 endif ()
@@ -94,6 +120,9 @@ set_target_properties(viperaud PROPERTIES
         OUTPUT_NAME "viperaud"
         ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
 )
+
+set(VIPERAUD_AVAILABLE ON CACHE INTERNAL "Whether ViperAUD is available in this build" FORCE)
+set(VIPERAUD_UNAVAILABLE_REASON "" CACHE INTERNAL "Reason ViperAUD is unavailable" FORCE)
 
 # Subdirectories (only if options enabled)
 if (VAUD_BUILD_TESTS AND EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/tests)

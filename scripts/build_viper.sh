@@ -17,7 +17,11 @@ case "$(uname -s 2>/dev/null)" in
             if command -v cygpath >/dev/null 2>&1; then
                 CMD_SCRIPT="$(cygpath -aw "$CMD_SCRIPT")"
             fi
-            exec cmd.exe //c "$CMD_SCRIPT"
+            if [[ $# -gt 0 ]]; then
+                printf -v CMD_ARGS ' "%s"' "$@"
+                exec cmd.exe //c "\"$CMD_SCRIPT\"$CMD_ARGS"
+            fi
+            exec cmd.exe //c "\"$CMD_SCRIPT\""
         fi
         echo "Error: use scripts/build_viper.cmd on Windows"
         exit 1

@@ -7,15 +7,21 @@
 //
 // File: src/codegen/common/RuntimeComponents.hpp
 // Purpose: Common runtime component classification for native code linking.
-// Key invariants: Symbol prefix mappings must be kept in sync with runtime
-//                 library organization in src/runtime/CMakeLists.txt.
+// Key invariants: Symbol prefix mappings must stay aligned with runtime
+//                 library organization; archive names are generated from the
+//                 runtime build graph.
 // Ownership/Lifetime: Header-only stateless utilities with no global state.
 // Links: src/tools/viper/cmd_codegen_arm64.cpp
 //        src/codegen/x86_64/CodegenPipeline.cpp
+// Cross-platform touchpoints: runtime archive composition, native-link
+//                             archive discovery, host-dependent optional
+//                             runtime surfaces.
 //
 //===----------------------------------------------------------------------===//
 
 #pragma once
+
+#include "viper/runtime/RuntimeComponentManifest.hpp"
 
 #include <optional>
 #include <string_view>
@@ -40,6 +46,7 @@ enum class RtComponent {
     Graphics,    ///< Graphics (rt_canvas_*, rt_color_*, etc.)
     Audio,       ///< Audio (rt_audio_*, rt_playlist_*)
     Network,     ///< Network (rt_network_*, rt_restclient_*, etc.)
+    Count,
 };
 
 /// @brief Map a runtime symbol to its component for selective linking.
@@ -195,33 +202,13 @@ inline std::optional<RtComponent> componentForRuntimeSymbol(std::string_view sym
 /// @param comp The runtime component.
 /// @return Library base name (e.g., "viper_rt_collections").
 inline std::string_view archiveNameForComponent(RtComponent comp) {
-    switch (comp) {
-        case RtComponent::Base:
-            return "viper_rt_base";
-        case RtComponent::Arrays:
-            return "viper_rt_arrays";
-        case RtComponent::Oop:
-            return "viper_rt_oop";
-        case RtComponent::Collections:
-            return "viper_rt_collections";
-        case RtComponent::Game:
-            return "viper_rt_game";
-        case RtComponent::Text:
-            return "viper_rt_text";
-        case RtComponent::IoFs:
-            return "viper_rt_io_fs";
-        case RtComponent::Exec:
-            return "viper_rt_exec";
-        case RtComponent::Threads:
-            return "viper_rt_threads";
-        case RtComponent::Graphics:
-            return "viper_rt_graphics";
-        case RtComponent::Audio:
-            return "viper_rt_audio";
-        case RtComponent::Network:
-            return "viper_rt_network";
+    static_assert(viper::runtime_manifest::kRuntimeComponentArchives.size() ==
+                  static_cast<size_t>(RtComponent::Count));
+    const size_t index = static_cast<size_t>(comp);
+    if (index < viper::runtime_manifest::kRuntimeComponentArchives.size()) {
+        return viper::runtime_manifest::kRuntimeComponentArchives[index];
     }
-    return "viper_rt_base";
+    return viper::runtime_manifest::kRuntimeComponentArchives[0];
 }
 
 /// @brief Resolve the full set of required runtime components from referenced symbols.

@@ -256,7 +256,7 @@ Build flow:
    done
    exit 0
    ```
-6. Generate `postinstall` script (MUST be mode 0755 in the cpio):
+6. Generate `postinstall` script (MUST be mode 0755 in the cpio Scripts archive):
    ```bash
    #!/bin/bash
    # Create /usr/local/bin symlinks for Viper CLI tools
@@ -265,11 +265,16 @@ Build flow:
        ln -sf /usr/local/viper/bin/$tool /usr/local/bin/$tool
    done
    # Update man page database if available
-   if command -v /usr/libexec/makewhatis >/dev/null 2>&1; then
-       /usr/libexec/makewhatis /usr/local/share/man
-   fi
+   # macOS Ventura+ uses /usr/libexec/makewhatis; older uses /usr/bin/makewhatis
+   for cmd in /usr/libexec/makewhatis /usr/bin/makewhatis; do
+       if [ -x "$cmd" ]; then
+           "$cmd" /usr/local/share/man 2>/dev/null || true
+           break
+       fi
+   done
    exit 0
    ```
+   **Important**: The Scripts directory in the .pkg is a SEPARATE cpio archive from the Payload. Apple's Installer.app extracts Scripts to a temp directory and executes them. The postinstall script path within PackageInfo is `./postinstall` (relative to the extracted Scripts dir). The script must have mode 0100755 in the Scripts cpio.
 7. Generate `Distribution` XML:
    ```xml
    <?xml version="1.0" encoding="utf-8"?>
@@ -292,14 +297,23 @@ Build flow:
        </volume-check>
    </installer-gui-script>
    ```
-8. Pack everything into a xar archive using `XarWriter`:
+8. Build the Scripts archive — a SEPARATE gzipped cpio containing preinstall and postinstall:
+   ```
+   CpioWriter scriptsCpio;
+   scriptsCpio.addFile("./preinstall", preinstallBytes, preinstallLen, 0100755);
+   scriptsCpio.addFile("./postinstall", postinstallBytes, postinstallLen, 0100755);
+   auto scriptsPayload = PkgGzip::gzip(scriptsCpio.finish());
+   ```
+   Note: paths in the Scripts cpio use `./` prefix (relative to extraction dir).
+9. Pack everything into a xar archive using `XarWriter`:
    - `Distribution` (file)
    - `Resources/en.lproj/license.txt` (file — the LICENSE text)
    - `viper.pkg/PackageInfo` (file)
-   - `viper.pkg/Payload` (file — the gzipped cpio)
-   - `viper.pkg/Scripts/preinstall` (file — mode 0755)
-   - `viper.pkg/Scripts/postinstall` (file — mode 0755)
-9. Write to output path
+   - `viper.pkg/Payload` (file — the gzipped cpio of installed files)
+   - `viper.pkg/Scripts` (file — the gzipped cpio of pre/postinstall scripts)
+10. Write to output path
+
+**Critical .pkg structure note**: Both `Payload` and `Scripts` are gzipped cpio archives stored as opaque blobs inside the xar. They are NOT individual files within the xar — the xar sees them as single binary entries. Apple's Installer.app knows to decompress and extract them based on the PackageInfo XML.
 
 **Architecture handling**: The `hostArchitectures` attribute in the Distribution XML controls which Mac architectures can install. For a universal installer containing both arm64 and x86_64 binaries, set `hostArchitectures="arm64,x86_64"`. For single-arch installers, use just the target arch. The builder generates separate .pkg files per architecture.
 

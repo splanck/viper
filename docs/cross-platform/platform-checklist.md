@@ -18,7 +18,14 @@ For a user-facing reference of runtime behavioral differences across platforms, 
 
 ## Platform Abstraction Layer
 
-All platform detection is centralized in one header:
+Viper now uses two shared platform/capability layers:
+
+| Layer | Intended Users | Entry Point |
+|-------|----------------|-------------|
+| Runtime C platform macros | Runtime C code and low-level platform adapters | `src/runtime/rt_platform.h` |
+| Generated C++/tool/test capabilities | Codegen, tools, tests, REPL, common utilities | `src/common/PlatformCapabilities.hpp` |
+
+### Runtime C Platform Macros
 
 | Macro | Detects | Header |
 |-------|---------|--------|
@@ -29,10 +36,25 @@ All platform detection is centralized in one header:
 | `RT_COMPILER_MSVC` | MSVC (not Clang-CL) | `src/runtime/rt_platform.h` |
 | `RT_COMPILER_GCC_LIKE` | GCC or Clang | `src/runtime/rt_platform.h` |
 
-This header also provides cross-platform shims for TLS (`RT_THREAD_LOCAL`),
-weak symbols, atomics (MSVC intrinsics vs `__atomic_*` builtins), and POSIX
-compatibility mappings on Windows (`mkdir`, `unlink`, `ssize_t`, `S_ISDIR`,
-etc.).
+`rt_platform.h` also provides cross-platform shims for TLS
+(`RT_THREAD_LOCAL`), weak symbols, atomics (MSVC intrinsics vs
+`__atomic_*` builtins), and POSIX compatibility mappings on Windows
+(`mkdir`, `unlink`, `ssize_t`, `S_ISDIR`, etc.).
+
+### C++ Capability Header
+
+`src/common/PlatformCapabilities.hpp` includes the generated
+`viper/platform/Capabilities.hpp` header from the build tree. Use it in normal
+C++ code instead of introducing new raw `_WIN32` / `__APPLE__` /
+`__linux__` checks.
+
+Important rule:
+
+- raw host/compiler macros belong only in platform adapter files, build probes,
+  or other low-level OS/toolchain boundaries
+- shared code should use the repo’s capability headers and explicit capability
+  names
+- `scripts/lint_platform_policy.sh` enforces this boundary
 
 ---
 
@@ -86,10 +108,11 @@ etc.).
 
 | File | Reason |
 |------|--------|
-| `src/runtime/system/rt_exec.c` | Process execution — Windows: `_popen`/`_pclose`, `cmd.exe /c` for shell mode. POSIX: `posix_spawn()` with argv array, `/bin/sh -c` for shell mode. `extern char **environ` is POSIX-only. |
+| `src/runtime/system/rt_exec.c` | Runtime process execution — direct argv spawning on Windows/POSIX, shell mode only when explicitly requested. |
 | `src/runtime/system/rt_machine.c` | System info — four separate implementations: Windows (`GetSystemInfo`, `GlobalMemoryStatusEx`, `GetComputerNameA`), macOS (`sysctl`, `host_statistics64`), Linux (`sysconf`, `sysinfo`), ViperDOS (POSIX `sysconf`/`uname`). |
 | `src/vm/VM.cpp` | Ctrl-C / interrupt handling — Windows: `SetConsoleCtrlHandler` + `windowsCtrlHandler`. POSIX: `sigaction(SIGINT)` + `posixSigintHandler` with `SA_RESTART`. |
 | `src/tests/common/PosixCompat.h` | Test compatibility layer — Windows stubs for `fork()` (returns -1), `waitpid()`, `pipe()` → `_pipe()`, `usleep()` → `Sleep()`, `mkstemp()` → `_mktemp_s()`. Uses `SKIP_TEST_NO_FORK()` macro. |
+| `src/common/RunProcess.cpp` | Tool/common subprocess launcher — native argv-based spawning with separate stdout/stderr capture; shell mode must be explicit via `run_shell_command()`. |
 
 ~~**[GAP]** Windows has no `fork()`.~~ **Resolved:** Tests use `ProcessIsolation` (CreateProcess self-relaunch + Job Object on Windows, fork on POSIX). See `src/tests/common/ProcessIsolation.hpp`.
 
@@ -128,7 +151,7 @@ etc.).
 | `src/runtime/core/rt_term.c` | Terminal input — Windows: `<conio.h>`, `_kbhit()`, `_getch()`, `ENABLE_VIRTUAL_TERMINAL_PROCESSING`. POSIX: `<termios.h>`, `select()` with zero timeout, raw mode caching. |
 | `src/repl/ReplLineEditor.cpp` | REPL terminal width — Windows: `GetConsoleScreenBufferInfo()`. POSIX: `ioctl(TIOCGWINSZ)`. Raw I/O: Windows `WriteConsoleA()` vs POSIX `::write()`. |
 
-**[GAP]** Linux graphics requires X11 dev headers (`libx11-dev`). If not found, ViperGFX is silently omitted — downstream targets linking it will fail.
+Linux graphics availability is now controlled by `VIPER_GRAPHICS_MODE=AUTO|REQUIRE|OFF`. Missing X11 in `REQUIRE` mode fails configure; `AUTO` reports the disabled feature explicitly in the capability summary.
 
 ---
 
@@ -144,7 +167,7 @@ etc.).
 | `src/lib/audio/CMakeLists.txt` | Platform source selection: `-framework AudioToolbox` (macOS), ALSA (Linux), `ole32` (Windows). FATAL_ERROR on unknown platform. |
 | `src/runtime/audio/rt_audio.c` | Runtime bridge — delegates to ViperAUD. Gated by `VIPER_ENABLE_AUDIO`; stubs provided when disabled. |
 
-**[GAP]** Linux audio requires ALSA dev headers (`libasound2-dev`). If not found, ViperAUD is silently omitted.
+Linux audio availability is now controlled by `VIPER_AUDIO_MODE=AUTO|REQUIRE|OFF`. Missing ALSA in `REQUIRE` mode fails configure; `AUTO` reports the disabled feature explicitly in the capability summary.
 
 ---
 
@@ -166,7 +189,7 @@ etc.).
 | File | Reason |
 |------|--------|
 | `CMakeLists.txt` (lines 480-498) | CPack generator selection — macOS: `productbuild` (.pkg), Windows: ZIP + NSIS, Linux: DEB + RPM. Output filename patterns differ per platform. |
-| `scripts/build_viper.sh`, `scripts/build_viper_mac.sh`, `scripts/build_viper_linux.sh` | Install location — Windows: `$LOCALAPPDATA/viper`, macOS/Linux: `/usr/local` (with sudo). Compiler selection: Windows clang-cl/MSVC, Unix clang/gcc. Job count: `nproc` / `sysctl` / `NUMBER_OF_PROCESSORS`. |
+| `scripts/build_viper.sh`, `scripts/build_viper_unix.sh`, `scripts/build_viper_mac.sh`, `scripts/build_viper_linux.sh`, `scripts/build_viper.cmd` | Canonical build/test/install entry points. Shared env vars: `VIPER_BUILD_DIR`, `VIPER_BUILD_TYPE`, `VIPER_SKIP_INSTALL`, `VIPER_SKIP_LINT`, `VIPER_SKIP_AUDIT`, `VIPER_SKIP_SMOKE`, `VIPER_CMAKE_GENERATOR`, `VIPER_EXTRA_CMAKE_ARGS`. |
 | `viperdos/scripts/build_viperdos.sh` | Auto-installs prerequisites per OS: Homebrew (macOS), apt (Debian), yum (RedHat). UEFI ESP image creation uses platform-specific tools. |
 | `viperdos/scripts/build_viperdos.cmd` | Windows batch equivalent — QEMU/CMake/Clang detection with Windows-specific paths. |
 
@@ -181,8 +204,11 @@ etc.).
 | File | Reason |
 |------|--------|
 | `CMakeLists.txt` | Compiler flags — MSVC: `/FS`, `/utf-8`, `/W4`, `/permissive-`. GCC/Clang: `-Wall -Wextra -Wpedantic`, sanitizers, LTO. Symbol visibility (`-fvisibility=hidden`) on non-Windows. LLD linker gated on `IL_USE_LLD`. Apple-specific: suppress ld64 warnings, ARM64 cross-compilation flags. |
-| `src/runtime/CMakeLists.txt` | Feature definitions — `_POSIX_C_SOURCE=200809L` on non-Windows, `_DEFAULT_SOURCE` on Linux (not macOS), `_GNU_SOURCE` on Linux. MSVC link optimization `/OPT:REF /OPT:ICF`. macOS frameworks: IOKit, CoreFoundation, Security. |
+| `src/runtime/CMakeLists.txt` | Feature definitions — `_POSIX_C_SOURCE=200809L` on non-Windows, `_DEFAULT_SOURCE` on Linux (not macOS), `_GNU_SOURCE` on Linux. MSVC link optimization `/OPT:REF /OPT:ICF`. macOS frameworks: IOKit, CoreFoundation, Security. Runtime component archives are exported for generated manifest consumers. |
 | `src/tests/CMakeLists.txt` | Test gating — ARM64 tests enabled only on `arm64|aarch64|ARM64` processors. Windows tests add `WinDialogSuppress.c` to suppress crash dialogs. |
+| `scripts/lint_platform_policy.sh` | Advisory/strict lint for raw host macro usage outside approved adapter files plus required touchpoint notes for high-risk chokepoints. |
+| `scripts/run_cross_platform_smoke.sh` | Host-capability smoke slice: core smoke tests, disabled-surface coverage, planner smoke, and display-bound probes when a display is available. |
+| `scripts/audit_runtime_surface.sh` | Runtime surface audit plus disabled graphics/audio link-surface checks. |
 
 ---
 
@@ -194,8 +220,8 @@ etc.).
 | GAP-2 | Filesystem | Windows `MAX_PATH` (260 char) limit on directory operations | Medium |
 | ~~GAP-3~~ | ~~Process~~ | ~~Resolved: Windows uses CreateProcess self-relaunch + Job Object~~ | ~~Resolved~~ |
 | ~~GAP-4~~ | ~~Codegen~~ | ~~Resolved: Both SysV and Win64 ABIs now implemented~~ | ~~Resolved~~ |
-| GAP-5 | Graphics | Linux requires X11 dev headers; silently omitted if missing | Low |
-| GAP-6 | Audio | Linux requires ALSA dev headers; silently omitted if missing | Low |
+| GAP-5 | Graphics | Linux requires X11 dev headers; configure now fails in `REQUIRE` mode and reports explicitly in `AUTO` mode | Low |
+| GAP-6 | Audio | Linux requires ALSA dev headers; configure now fails in `REQUIRE` mode and reports explicitly in `AUTO` mode | Low |
 | GAP-7 | Packaging | ViperDOS Windows build cannot create UEFI ESP images | Low |
 
 ---

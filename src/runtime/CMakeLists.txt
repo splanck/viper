@@ -697,8 +697,39 @@ install(FILES ${PROJECT_SOURCE_DIR}/include/viper/runtime/rt.h
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/viper/runtime
 )
 
-# Graphics support (optional, enabled by default)
-option(VIPER_ENABLE_GRAPHICS "Enable ViperGFX graphics support" ON)
+set(VIPER_RUNTIME_COMPONENT_ARCHIVES
+        viper_rt_base
+        viper_rt_arrays
+        viper_rt_oop
+        viper_rt_collections
+        viper_rt_game
+        viper_rt_text
+        viper_rt_io_fs
+        viper_rt_exec
+        viper_rt_threads
+        viper_rt_graphics
+        viper_rt_audio
+        viper_rt_network
+        PARENT_SCOPE)
+
+if (NOT DEFINED VIPER_GRAPHICS_MODE)
+    message(FATAL_ERROR "VIPER_GRAPHICS_MODE must be defined before configuring src/runtime")
+endif ()
+if (NOT DEFINED VIPER_AUDIO_MODE)
+    message(FATAL_ERROR "VIPER_AUDIO_MODE must be defined before configuring src/runtime")
+endif ()
+
+if (VIPER_GRAPHICS_MODE STREQUAL "OFF")
+    set(VIPER_ENABLE_GRAPHICS OFF)
+else ()
+    set(VIPER_ENABLE_GRAPHICS ON)
+endif ()
+
+if (VIPER_AUDIO_MODE STREQUAL "OFF")
+    set(VIPER_ENABLE_AUDIO OFF)
+else ()
+    set(VIPER_ENABLE_AUDIO ON)
+endif ()
 
 if (VIPER_ENABLE_GRAPHICS AND TARGET vipergfx)
     message(STATUS "viper_runtime: Graphics support enabled")
@@ -720,9 +751,6 @@ else ()
     # Replace backend-dependent sources with the no-backend runtime surface.
     set_property(TARGET viper_rt_graphics_obj PROPERTY SOURCES ${RT_GRAPHICS_DISABLED_SOURCES})
 endif ()
-
-# Audio support (optional, enabled by default)
-option(VIPER_ENABLE_AUDIO "Enable ViperAUD audio support" ON)
 
 if (VIPER_ENABLE_AUDIO AND TARGET viperaud)
     message(STATUS "viper_runtime: Audio support enabled")

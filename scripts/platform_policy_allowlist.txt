@@ -1,0 +1,23 @@
+# Files and path globs that are allowed to use raw host/compiler macros.
+# The lint is intentionally narrow: these are direct platform adapters, build
+# probes, or other low-level host integration boundaries.
+
+CMakeLists.txt
+cmake/*
+scripts/*
+src/runtime/rt_platform.h
+src/runtime/*
+src/lib/graphics/*
+src/lib/audio/*
+src/common/RunProcess.cpp
+src/common/PlatformCapabilities.hpp
+src/repl/ReplLineEditor.cpp
+src/codegen/common/LinkerSupport.cpp
+src/codegen/common/linker/NativeLinker.cpp
+src/codegen/common/linker/*ImportPlanner.cpp
+src/codegen/common/linker/PlatformImportPlanner.hpp
+src/codegen/x86_64/CodegenPipeline.cpp
+src/codegen/aarch64/CodegenPipeline.cpp
+src/tests/common/*
+src/tests/runtime/RTTermColorTests.cpp
+src/tests/codegen/x86_64/test_varargs_al.cpp

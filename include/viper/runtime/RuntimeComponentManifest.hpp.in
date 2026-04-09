@@ -1,0 +1,25 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: generated/viper/runtime/RuntimeComponentManifest.hpp
+// Purpose: Generated runtime component/archive manifest shared by codegen and
+//          audit tooling.
+//
+//===----------------------------------------------------------------------===//
+
+#pragma once
+
+#include <array>
+#include <string_view>
+
+namespace viper::runtime_manifest {
+
+inline constexpr std::array<std::string_view, @VIPER_RUNTIME_COMPONENT_ARCHIVE_COUNT@>
+    kRuntimeComponentArchives = {
+@VIPER_RUNTIME_COMPONENT_ARCHIVE_ENTRIES@};
+
+} // namespace viper::runtime_manifest

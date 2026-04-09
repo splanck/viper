@@ -96,8 +96,9 @@ All added to `src/tests/unit/test_packaging.cpp` (extending the existing 71 test
 - `TEST(MacOSPkg, BuildMinimal)` — build .pkg from 3-file manifest, verify xar structure
 - `TEST(MacOSPkg, DistributionPresent)` — verify Distribution file in xar TOC
 - `TEST(MacOSPkg, PayloadIsCpio)` — extract and gunzip Payload, verify cpio entries
-- `TEST(MacOSPkg, PostinstallPresent)` — verify Scripts/postinstall in xar
-- `TEST(MacOSPkg, PostinstallExecutable)` — verify postinstall has correct cpio mode (0100755)
+- `TEST(MacOSPkg, ScriptsArchivePresent)` — verify viper.pkg/Scripts entry in xar
+- `TEST(MacOSPkg, ScriptsIsCpio)` — decompress Scripts entry, verify it's a valid gzipped cpio containing ./postinstall
+- `TEST(MacOSPkg, PostinstallExecutable)` — verify postinstall has mode 0100755 in the Scripts cpio
 - `TEST(MacOSPkg, LicensePresent)` — verify Resources/en.lproj/license.txt in xar
 - `TEST(MacOSPkg, PackageInfoValid)` — verify PackageInfo XML contains identifier, version, installKBytes
 
@@ -116,6 +117,14 @@ All added to `src/tests/unit/test_packaging.cpp` (extending the existing 71 test
 - `TEST(ViperLinuxDeb, MimeXml)` — verify MIME type XML for .zia/.bas/.il
 - `TEST(ViperLinuxDeb, DataContainsBinaries)` — verify data.tar.gz contains usr/bin/viper
 - `TEST(ViperLinuxDeb, ManPagesPresent)` — verify usr/share/man/man1/*.1 entries
+
+### Phase 0: Runtime Library Discovery Tests
+- `TEST(LinkerSupport, FindInstalledLibDirViaEnvVar)` — set VIPER_LIB_PATH to temp dir with probe lib, verify found
+- `TEST(LinkerSupport, FindInstalledLibDirRelativeToExe)` — create ../lib/ relative to mock exe path, verify found
+- `TEST(LinkerSupport, FallbackToBuildDir)` — no installed layout, verify existing findBuildDir still works
+- `TEST(LinkerSupport, InstalledLayoutFlatPaths)` — verify runtimeArchivePath returns flat path (lib/libfoo.a) for installed layout
+- `TEST(LinkerSupport, BuildLayoutNestedPaths)` — verify runtimeArchivePath returns nested path (build/src/runtime/libfoo.a) for build layout
+- `TEST(LinkerSupport, WindowsLibExtension)` — verify .lib extension on Windows, .a on Unix
 
 ### Verification Function Tests
 - `TEST(Verify, XarValid)` — valid xar passes verifyXar
@@ -146,6 +155,12 @@ test -L /usr/local/bin/viper
 readlink /usr/local/bin/viper  # should be /usr/local/viper/bin/viper
 /usr/local/bin/viper --version
 
+# Verify installed Viper can actually compile (tests Phase 0 library discovery)
+echo 'module Test; bind Viper.Terminal; func start() { Say("installed"); }' > /tmp/viper_install_test.zia
+/usr/local/bin/viper build /tmp/viper_install_test.zia -o /tmp/viper_install_test
+/tmp/viper_install_test | grep "installed"
+rm -f /tmp/viper_install_test /tmp/viper_install_test.zia
+
 # Verify man pages accessible
 man -w viper  # should find the man page
 
@@ -167,6 +182,11 @@ dpkg-deb -c build/installers/viper_*.deb | grep usr/share/man
 sudo dpkg -i build/installers/viper_*.deb
 viper --version
 which viper  # should be /usr/bin/viper
+# Verify installed Viper can compile (tests Phase 0 library discovery)
+echo 'module Test; bind Viper.Terminal; func start() { Say("installed"); }' > /tmp/viper_install_test.zia
+viper build /tmp/viper_install_test.zia -o /tmp/viper_install_test
+/tmp/viper_install_test | grep "installed"
+rm -f /tmp/viper_install_test /tmp/viper_install_test.zia
 man -w viper  # should find the man page
 sudo dpkg -r viper
 

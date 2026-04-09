@@ -150,10 +150,16 @@ echo Installer(s) written to %OUTPUT_DIR%\
 dir /b "%OUTPUT_DIR%\viper-*" 2>nul
 ```
 
+## Relationship with Existing `viper package`
+
+`src/tools/viper/cmd_package.cpp` (223 lines) implements `viper package` which compiles a Viper PROJECT into a platform-specific app installer. It takes a `viper.project` file with app metadata and produces .app/.deb/.exe/.tar.gz packages for distributing apps built WITH Viper.
+
+`viper install-package` is different: it packages VIPER ITSELF from a cmake install tree. Different input (cmake install prefix), different output (platform SDK/toolchain installer), different metadata (version from buildmeta/VERSION, not viper.project). Minimal code overlap — they share only the low-level format writers (ZipWriter, ArWriter, etc.) through the `viper_packaging` library.
+
 ## Modified Files
 
 - `src/tools/viper/main.cpp` — add `install-package` to command dispatch table (alongside existing `package`, `build`, `run`, etc.)
-- `src/CMakeLists.txt` — add `cmd_install_package.cpp` to viper CLI sources (VIPER_CLI_SOURCES or equivalent)
+- `src/CMakeLists.txt` — add `cmd_install_package.cpp` to viper CLI sources
 
 ## Testing
 

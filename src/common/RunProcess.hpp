@@ -35,3 +35,13 @@ struct RunResult {
 RunResult run_process(const std::vector<std::string> &argv,
                       std::optional<std::string> cwd = std::nullopt,
                       const std::vector<std::pair<std::string, std::string>> &env = {});
+
+/// @brief Spawn a subprocess through the host shell explicitly.
+/// @param command Shell command text.
+/// @param cwd Optional working directory to set before launching the process.
+/// @param env Environment variable overrides expressed as key/value pairs.
+/// @return Captured process result including exit code and output streams.
+RunResult run_shell_command(
+    const std::string &command,
+    std::optional<std::string> cwd = std::nullopt,
+    const std::vector<std::pair<std::string, std::string>> &env = {});

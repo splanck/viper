@@ -36,13 +36,15 @@ else
     JOBS="${NUMBER_OF_PROCESSORS:-8}"
 fi
 
-make -C "${BUILD_DIR}" -j"${JOBS}" \
+cmake --build "${BUILD_DIR}" -j"${JOBS}" --target \
     rtgen \
     test_runtime_surface_audit \
     test_runtime_name_map \
     test_runtime_classes_catalog \
     test_zia_static_calls \
-    test_basic_runtime_calls
+    test_basic_runtime_calls \
+    test_rt_graphics_surface_link \
+    test_rt_audio_surface_link
 
 audit_cmd=("${BUILD_DIR}/src/rtgen" --audit)
 if [[ -n "${STRICT_HEADER_FLAG}" ]]; then
@@ -58,4 +60,4 @@ audit_cmd+=(src/il/runtime/runtime.def)
 "${audit_cmd[@]}"
 
 ctest --test-dir "${BUILD_DIR}" --output-on-failure -R \
-    '^(test_runtime_surface_audit|test_runtime_name_map|test_runtime_classes_catalog|test_zia_static_calls|test_basic_runtime_calls)$'
+    '^(test_runtime_surface_audit|test_runtime_name_map|test_runtime_classes_catalog|test_zia_static_calls|test_basic_runtime_calls|test_rt_graphics_surface_link|test_rt_audio_surface_link)$'

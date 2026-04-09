@@ -9,6 +9,9 @@
 // Purpose: Implements the modular AArch64 code-generation pipeline by wiring
 //          all AArch64 passes through the PassManager in the correct order and
 //          providing a reusable end-to-end pipeline for the CLI.
+// Cross-platform touchpoints: host/native-link availability, runtime archive
+//                             composition, and system tool invocation for
+//                             fallback flows.
 //
 //===----------------------------------------------------------------------===//
 

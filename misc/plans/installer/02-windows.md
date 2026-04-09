@@ -75,11 +75,12 @@ Additionally, call `InitCommonControlsEx()` with `ICC_PROGRESS_CLASS` in WinMain
 
 **ZIP overlay reading**: Use existing `ZipReader` class to parse the overlay. The overlay start offset is found by scanning backward from EOF for the EOCD signature (0x06054B50).
 
-**PATH modification**:
-1. Read current user PATH: `RegOpenKeyExW(HKCU, "Environment")`, `RegQueryValueExW("Path")`
-2. Check if bin dir already present (case-insensitive match)
-3. If not present: append `;C:\Program Files\Viper\bin` and `RegSetValueExW`
-4. Broadcast `WM_SETTINGCHANGE` with `lParam = "Environment"` so running shells pick up the change
+**PATH modification** (new — the existing InstallerStub does NOT touch PATH at all):
+1. Read current user PATH: `RegOpenKeyExW(HKEY_CURRENT_USER, L"Environment")`, `RegQueryValueExW(L"Path")`
+2. Parse PATH as semicolon-delimited, check if bin dir already present (case-insensitive `_wcsicmp` per segment)
+3. If not present: append `;C:\Program Files\Viper\bin` and `RegSetValueExW` with `REG_EXPAND_SZ` type (preserves `%USERPROFILE%` references in existing PATH)
+4. Broadcast `SendMessageTimeoutW(HWND_BROADCAST, WM_SETTINGCHANGE, 0, (LPARAM)L"Environment", SMTO_ABORTIFHUNG, 5000, NULL)` so running Explorer/shells pick up the change
+5. **Important**: Use HKCU (user PATH), not HKLM (system PATH). User PATH doesn't require admin elevation and is the standard for per-user dev tool installations. The existing InstallerStub uses HKLM for the uninstall registry key — keep that for Add/Remove Programs, but PATH goes in HKCU.
 
 **File association registration** (when opted in):
 ```
@@ -97,11 +98,11 @@ Standalone Win32 program compiled as `viper_platform_uninstaller.exe`.
 1. Parse command line for `/S` (silent mode)
 2. If not silent: `MessageBoxW` confirmation: "Remove Viper vX.Y.Z and all its components?"
 3. Read `meta/manifest.ini` from install directory for file list
-4. Delete all installed files (iterate manifest, DeleteFileW)
-5. Remove empty directories bottom-up (RemoveDirectoryW)
-6. Remove Viper bin path from `HKCU\Environment\Path` (read, strip, write back)
-7. Remove file association registry keys (`HKCR\.zia`, `HKCR\ViperZiaFile`, etc.)
-8. Remove `HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Viper` key
+4. Delete all installed files (iterate manifest, `DeleteFileW`)
+5. Remove empty directories bottom-up (`RemoveDirectoryW`)
+6. Remove Viper bin path from `HKCU\Environment\Path` (read PATH string, find and remove the Viper bin segment, write back, broadcast `WM_SETTINGCHANGE`)
+7. Remove file association registry keys (`HKCR\.zia`, `HKCR\ViperZiaFile`, etc.) + `SHChangeNotify(SHCNE_ASSOCCHANGED)`
+8. Remove `HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Viper` key (this is in HKLM, matching the existing InstallerStub pattern)
 9. Remove Start Menu shortcuts (delete .lnk files from `%APPDATA%\Microsoft\Windows\Start Menu\Programs\Viper\`)
 10. Remove Desktop shortcut if present
 11. Broadcast `WM_SETTINGCHANGE` and `SHChangeNotify(SHCNE_ASSOCCHANGED)`

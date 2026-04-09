@@ -14,6 +14,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt.hpp"
+#include "tests/common/PlatformSkip.h"
 
 #include <cassert>
 #include <cstdio>
@@ -21,8 +22,7 @@
 #ifdef _WIN32
 // This test requires PTY support which is not available on Windows
 int main() {
-    printf("Test skipped: PTY not available on Windows\n");
-    return 0;
+    VIPER_PLATFORM_SKIP("PTY not available on Windows");
 }
 #else
 // POSIX-only implementation
@@ -111,9 +111,7 @@ int main() {
     {
         int m = -1, s = -1;
         if (openpty(&m, &s, nullptr, nullptr, nullptr) != 0) {
-            std::fprintf(stderr,
-                         "Skipping RTTermColorTests: openpty unavailable in this environment\n");
-            return 0; // mark as skipped/passed in constrained environments
+            VIPER_PLATFORM_SKIP("openpty unavailable in this environment");
         }
         close(m);
         close(s);

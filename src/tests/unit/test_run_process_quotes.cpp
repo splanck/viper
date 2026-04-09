@@ -75,6 +75,13 @@ TEST(RunProcess, ForwardsEnvironmentVariables) {
     EXPECT_NE(std::string::npos, result.out.find(expectedLine));
 }
 
+TEST(RunProcess, ExplicitShellModeIsSeparate) {
+    const RunResult result = run_shell_command("cmake -E echo viper-shell-mode");
+
+    EXPECT_NE(-1, result.exit_code);
+    EXPECT_EQ("viper-shell-mode", trim_trailing_newlines(result.out));
+}
+
 TEST(RunProcess, ScopedEnvironmentAssignmentSurvivesMove) {
     const std::string varName = "VIPER_SCOPED_ENV_MOVE_TEST";
     const std::string varValue = "scoped-env-move-value";
@@ -128,6 +135,14 @@ TEST(RunProcess, ReportsPosixExitStatus) {
 
     EXPECT_EQ(42, result.exit_code);
 }
+
+TEST(RunProcess, SeparatesStdoutAndStderr) {
+    const RunResult result =
+        run_process({"sh", "-c", "printf stdout-only; printf stderr-only >&2"});
+
+    EXPECT_EQ("stdout-only", result.out);
+    EXPECT_EQ("stderr-only", result.err);
+}
 #else
 TEST(RunProcess, CapturesWindowsStderr) {
     const RunResult result = run_process({"cmd", "/C", "echo viper-stderr-sample 1>&2"});
@@ -135,6 +150,7 @@ TEST(RunProcess, CapturesWindowsStderr) {
     EXPECT_NE(-1, result.exit_code);
     const std::string trimmed = trim_trailing_newlines(result.err);
     EXPECT_NE(std::string::npos, trimmed.find("viper-stderr-sample"));
+    EXPECT_EQ("", trim_trailing_newlines(result.out));
 }
 #endif
 

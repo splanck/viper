@@ -7,6 +7,8 @@
 //
 // File: codegen/common/LinkerSupport.cpp
 // Purpose: Implementation of shared linker utilities.
+// Cross-platform touchpoints: runtime archive discovery, system-library
+//                             naming, tool invocation, and host linker flags.
 //
 //===----------------------------------------------------------------------===//
 

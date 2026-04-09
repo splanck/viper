@@ -1036,6 +1036,11 @@ function(viper_add_runtime_tests)
     viper_add_ctest(test_rt_audio_unavailable test_rt_audio_unavailable)
     viper_add_test_labels(test_rt_audio_unavailable requires_audio_disabled)
 
+    viper_add_test(test_rt_audio_surface_link ${VIPER_TESTS_DIR}/runtime/RTAudioSurfaceLinkTests.cpp)
+    target_link_libraries(test_rt_audio_surface_link PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_audio_surface_link test_rt_audio_surface_link)
+    viper_add_test_labels(test_rt_audio_surface_link requires_audio_disabled)
+
     viper_add_isolated_runtime_test(test_rt_achievement_contract
             ${VIPER_TESTS_DIR}/runtime/RTAchievementTests.cpp
             ${CMAKE_SOURCE_DIR}/src/runtime/game/rt_achievement.c)

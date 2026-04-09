@@ -16,6 +16,7 @@ NOTES: Never mention Claude in any commit messages or comments. Never commit cha
 - Do not launch background agents or ask clarifying questions unless explicitly asked. When given a task, proceed directly with execution.
 - If interrupted with new requirements, incorporate them immediately without re-asking.
 - On macOS, use POSIX-compatible shell commands. Avoid GNU-specific awk/sed syntax (no `^` anchors for indented content, no GNU awk features). Test commands mentally for BSD compatibility before running.
+- For cross-platform-sensitive work, run `./scripts/lint_platform_policy.sh` and `./scripts/run_cross_platform_smoke.sh` before reporting done.
 
 REPEAT! DO NOT USE AGENTS FOR WRITING CODE!! Agents can be used for investigation and collecting information, BUT DO NOT USE THEM TO WRITE CODE! NO EXCEPTIONS!!
 
@@ -28,6 +29,7 @@ REPEAT! DO NOT USE AGENTS FOR WRITING CODE!! Agents can be used for investigatio
 5. **Determinism** — VM and native outputs must match for all defined programs.
 6. **Zero Dependencies** - Viper is 100% a from scratch project. We dont introduce external dependencies for any reason.
 7. **Cross platform** - Every feature must be completely implemented for Macos, Windows, and Linux. 100% cross platform always!
+8. **Shared Platform Policy** - In normal code use `src/common/PlatformCapabilities.hpp` or `src/runtime/rt_platform.h`; raw `_WIN32` / `__APPLE__` / `__linux__` checks belong only in approved adapter layers.
 
 ---
 

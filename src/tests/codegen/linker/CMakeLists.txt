@@ -15,6 +15,7 @@ set(_linker_tests
         macho_codesign
         linker_integration
         native_linker
+        platform_import_planners
         icf
         branch_trampoline
         debug_sections)

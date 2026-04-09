@@ -11,7 +11,7 @@
 
 ### Release Overview
 
-Version 0.2.4 is a game engine, asset system, rendering, 3D physics, codegen optimization, native linker, language features, media codecs, IL optimizer, IDE intelligence, typed runtime metadata, and showcase release. Highlights:
+Version 0.2.4 is a game engine, asset system, rendering, 3D physics, PBR materials, asset import pipeline, codegen optimization, native linker, language features, media codecs, IL optimizer, IDE intelligence, typed runtime metadata, and showcase release. Highlights:
 
 - **3D Engine Enhancements** — Procedural terrain generation (`Terrain3D.GeneratePerlin`), terrain LOD with frustum culling and multi-resolution chunks, Gerstner wave water simulation (`Water3D.AddWave`), new `Vegetation3D` instanced grass/foliage system with wind animation, and material shader hooks (`SetShadingModel` for Toon/Fresnel/Emissive effects).
 - **3D Format Loaders** — From-scratch glTF 2.0 (.gltf/.glb), STL (binary + ASCII), OBJ .mtl material parser, FBX texture and morph target extraction. Scene3D.Save for JSON serialization.
@@ -53,16 +53,21 @@ Version 0.2.4 is a game engine, asset system, rendering, 3D physics, codegen opt
 - **Physics3D Expansion** — Quaternion-based orientation with angular velocity/torque/impulse, dynamic/static/kinematic body modes, linear and angular damping, sleep system (configurable thresholds, manual Wake/Sleep), continuous collision detection (CCD) via substep sweeps, and a mass-only `Body3D.New` constructor.
 - **ELF Dynamic Linking** — Native linker now produces dynamically-linked Linux executables: PT_INTERP, PT_DYNAMIC, .dynsym, .dynstr, .hash (SYSV), .rela.dyn with R_X86_64_GLOB_DAT. Linux x86_64 programs can natively link against libc/libm/libpthread/libX11/libasound without system linker fallback.
 - **Native Linker Overhaul** — Table-driven macOS/Windows import plans replacing ad-hoc if/else chains, DynamicSymbolPolicy extraction, proper S_ZEROFILL (Mach-O) and SHT_NOBITS (ELF) for BSS sections, string dedup section compaction, dead-strip applied to all objects (not just archives), ICF cross-object address-taken resolution.
+- **Model3D Asset Import** — Unified 3D asset container with `Load` (routes by extension: .vscn/.fbx/.gltf/.glb), `Instantiate` (clones node hierarchy with shared resources), and `InstantiateScene` (creates full Scene3D). Imported meshes, materials, skeletons, and animations are shared across instances.
+- **AnimController3D** — High-level animation state controller with named states, crossfade transitions, play/pause/stop, speed control, loop modes, and event frame callbacks. `SceneNode3D.BindAnimator` + `Scene3D.SyncBindings(dt)` for automatic skeleton-driven pose updates.
+- **PBR Materials** — `Material3D.NewPBR(metallic, roughness, ao)` with metallic-roughness workflow. Albedo, metallic-roughness, AO, normal, and emissive texture map slots. `Clone`/`MakeInstance` for shared-base + per-instance overrides. AlphaMode (opaque/mask/blend), DoubleSided, NormalScale properties. Cook-Torrance BRDF with GGX distribution and Schlick fresnel implemented across all 4 GPU backends.
+- **NavAgent3D** — Autonomous pathfinding agent on NavMesh3D surfaces. A* path query, string-pulling corridor smoothing, steering with configurable speed/acceleration/stopping distance, node binding for automatic SceneNode3D sync.
+- **3D Audio Objects** — `AudioListener3D` (position/forward/velocity with node and camera binding) and `AudioSource3D` (inner/outer cone, min/max distance, rolloff, looping, pitch, gain). `Audio3D.SyncBindings(dt)` batch-updates spatial positions. Distance attenuation and stereo panning in the audio mixer.
 - **Demos & Documentation** — XENOSCAPE sidescroller (17K LOC), 3D bowling (3.1K LOC), ViperSQL (10 SQL features, runtime API migration), ViperIDE professional IDE (live diagnostics, hover, go-to-def, search, symbol outline, 21 files / 7 dirs), Chess (pre-rendered sprites, core/engine/ui), 8 Graphics3D API demos, 6 app/game smoke probes; 185 markdown files reviewed, 700+ Doxygen comments, 70+ factual errors fixed.
 
 #### By the Numbers
 
 | Metric | v0.2.3 | v0.2.4 | Delta |
 |--------|--------|--------|-------|
-| Commits | — | 93 | +93 |
-| Source files | 2,671 | 2,831 | +160 |
-| Production SLOC | ~348K | ~437K | +89K |
-| Test count | 1,351 | 1,432 | +81 |
+| Commits | — | 101 | +101 |
+| Source files | 2,671 | 2,845 | +174 |
+| Production SLOC | ~348K | ~442K | +94K |
+| Test count | 1,351 | 1,455 | +104 |
 
 ---
 
@@ -384,6 +389,15 @@ Seven new language features expanding Zia's operator, declaration, and parameter
 - `test_native_asm` `EquivBasicReturn` test skipped when system assembler (clang/cc) is not in PATH.
 - Assorted Windows build/compat fixes in runtime graphics, networking, and text hashing.
 
+**Linux native build:**
+- Split `build_viper.sh` into platform-specific `build_viper_linux.sh` and `build_viper_mac.sh` scripts for cleaner CI. New `build_demos_linux.sh` for native x86_64 demo compilation on Linux.
+- ELF writer extended with GOT/PLT-style dynamic relocation support for shared library imports on Linux.
+- ELF object writer, COFF writer, and Mach-O writer hardened for cross-platform emission edge cases (alignment, section flags, symbol ordering).
+- OpenGL 3D backend: Linux-specific initialization fixes, PBR uniform forwarding, shader compilation guards.
+- Software 3D backend: platform-gated overrides to prevent non-graphics builds from pulling GPU symbols.
+- x86_64 LowerDiv: IDIV encoding fix for Linux ABI (RDX clobber handling).
+- Runtime: ALSA audio backend, crypto/TLS, threading, and network test portability fixes for Linux.
+
 **Smoke probes:**
 - 6 new Zia smoke probe tests (`zia_smoke_paint`, `zia_smoke_viperide`, `zia_smoke_vipersql`, `zia_smoke_3dbowling`, `zia_smoke_chess`, `zia_smoke_xenoscape`) exercise real example app/game module stacks with deterministic probes that verify core subsystem wiring without requiring a display.
 
@@ -426,7 +440,7 @@ Seven new language features expanding Zia's operator, declaration, and parameter
 
 #### 3D Format Loaders
 
-- **glTF 2.0** — `.gltf` (JSON + external buffers) and `.glb` (single binary container). Mesh extraction with positions, normals, UVs, tangents. PBR metallic-roughness → Blinn-Phong material conversion. Skeletal animation and morph target support
+- **glTF 2.0** — `.gltf` (JSON + external buffers) and `.glb` (single binary container). Mesh extraction with positions, normals, UVs, tangents. PBR metallic-roughness material extraction (baseColorFactor, metallicFactor, roughnessFactor, texture indices). Skeletal animation with joint hierarchy reconstruction, inverse bind matrices, and skin/animation channel extraction. Morph target support
 - **STL** — Binary and ASCII auto-detection. Normal computation via `rt_mesh3d_recalc_normals`
 - **OBJ .mtl** — Material parser with Kd/Ks/Ns/d properties, texture path resolution relative to OBJ directory, up to 64 materials per file
 - **FBX enhancements** — Texture path extraction via Texture node parsing and connection tracing. Morph target extraction from BlendShape/Shape nodes with sparse position/normal deltas
@@ -447,6 +461,12 @@ Seven new language features expanding Zia's operator, declaration, and parameter
 - **Physics3D sleep system** — Bodies track linear and angular velocity magnitude against configurable thresholds (`PH3D_SLEEP_LINEAR_THRESHOLD`, `PH3D_SLEEP_ANGULAR_THRESHOLD`). After `PH3D_SLEEP_DELAY` seconds of sub-threshold motion, bodies enter sleep state and are skipped during simulation. `CanSleep`, `Sleeping`, `Wake()`, `Sleep()` API.
 - **Physics3D CCD** — `UseCCD` property enables continuous collision detection via substep sweeps (`PH3D_MAX_CCD_SUBSTEPS = 16`). Fast-moving bodies are advanced in sub-increments to detect tunneling through thin geometry.
 - **DistanceJoint3D / SpringJoint3D** — Physics joint constraints with 6-iteration sequential impulse solver
+- **Model3D** — New unified 3D asset container (`rt_model3d.c`, 513 LOC). `Model3D.Load(path)` routes by file extension (.vscn, .fbx, .gltf, .glb) and builds an internal resource collection (meshes, materials, skeletons, animations). `Instantiate()` clones the node tree with shared resources — imported geometry is loaded once and reused across instances. `InstantiateScene()` creates a fresh `Scene3D` and attaches cloned top-level nodes below the scene root. `MeshCount`/`MaterialCount`/`AnimationCount` accessors for content inspection.
+- **AnimController3D** — High-level animation state controller (`rt_animcontroller3d.c`, 871 LOC). Named states (`AddState`), crossfade transitions (`SetTransitionDuration`), `Play(name)`/`Pause`/`Stop`, speed control, loop modes (once/loop/pingpong), and event frame callbacks (`SetEventFrame`/`EventFired`). `SceneNode3D.BindAnimator` attaches a controller to a node; `Scene3D.SyncBindings(dt)` advances all bound animators and applies skeletal poses.
+- **SceneNode3D bindings** — `BindBody(body)`/`ClearBodyBinding()` attaches a `Physics3DBody` to a scene node. `BindAnimator(ctrl)`/`ClearAnimatorBinding()` attaches an `AnimController3D`. `SyncMode` property (0=none, 1=body→node, 2=node→body) controls transform propagation direction. `Scene3D.SyncBindings(dt)` batch-updates all bound nodes from physics bodies and advances bound animators in a single pass.
+- **PBR materials** — `Material3D.NewPBR(metallic, roughness, ao)` constructor. Metallic-roughness workflow with `SetAlbedoMap`, `SetMetallicRoughnessMap`, `SetAOMap`, `SetNormalScale`, `SetEmissiveIntensity`. `AlphaMode` (0=opaque, 1=mask, 2=blend), `DoubleSided`, and per-instance `Clone`/`MakeInstance`. Cook-Torrance BRDF with GGX normal distribution and Schlick fresnel implemented in all 4 GPU backends (Metal MSL, D3D11 HLSL, OpenGL GLSL, software rasterizer).
+- **NavAgent3D** — Autonomous pathfinding agent on NavMesh3D surfaces (`rt_navagent3d.c`, 548 LOC). A* path query, string-pulling corridor smoothing, steering with configurable speed/acceleration/stopping distance. `SetDestination(x,y,z)` triggers path computation; `Update(dt)` advances along the smoothed corridor. `BindNode(node)` for automatic `SceneNode3D` position sync. Agent states: idle, moving, arrived, stuck.
+- **AudioListener3D / AudioSource3D** — 3D positional audio objects (`rt_audio3d_objects.c`, 653 LOC). `AudioListener3D`: position, forward, velocity, with `BindNode`/`BindCamera` for automatic spatial tracking. `AudioSource3D`: positional emitter with inner/outer cone attenuation, min/max distance, inverse-distance rolloff, looping, pitch, gain. `Audio3D.SyncBindings(dt)` batch-updates all bound positions from scene nodes. Distance attenuation and stereo panning integrated into the audio mixer.
 - **Audio3D** — Per-voice `max_distance` tracking table (replaces shared global that caused cross-voice attenuation bugs)
 - **SLERP domain clamp** — Prevent NaN from `acosf` with dot products > 1.0 due to rounding
 - **Water3D/Decal3D finalizer leaks** — Free mesh/material on GC

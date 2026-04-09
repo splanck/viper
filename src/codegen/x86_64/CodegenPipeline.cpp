@@ -12,6 +12,9 @@
 // Ownership/Lifetime: The pipeline borrows IL modules and writes assembly/binaries to caller-
 //                     specified locations without assuming ownership of external resources.
 // Links: docs/codemap.md, src/tools/common/module_loader.hpp
+// Cross-platform touchpoints: host ABI selection, native-link fallback rules,
+//                             system tool invocation, and runtime archive
+//                             composition.
 //
 //===----------------------------------------------------------------------===//
 

@@ -38,28 +38,54 @@ set(VGFX_CORE_SOURCES
         src/vgfx_draw.c
 )
 
+set(VIPERGFX_AVAILABLE OFF CACHE INTERNAL "Whether ViperGFX is available in this build" FORCE)
+set(VIPERGFX_UNAVAILABLE_REASON "graphics support disabled" CACHE INTERNAL
+    "Reason ViperGFX is unavailable" FORCE)
+set(VIPERGFX_BACKEND "disabled" CACHE INTERNAL "Selected ViperGFX backend" FORCE)
+
+if (NOT DEFINED VIPER_GRAPHICS_MODE)
+    message(FATAL_ERROR "VIPER_GRAPHICS_MODE must be defined before adding src/lib/graphics")
+endif ()
+
+if (VIPER_GRAPHICS_MODE STREQUAL "OFF")
+    message(STATUS "ViperGFX: disabled by VIPER_GRAPHICS_MODE=OFF")
+    set(VIPERGFX_UNAVAILABLE_REASON "disabled by VIPER_GRAPHICS_MODE=OFF" CACHE INTERNAL
+        "Reason ViperGFX is unavailable" FORCE)
+    return()
+endif ()
+
 # Platform detection and source selection
 if (APPLE)
     message(STATUS "ViperGFX: Building for macOS (Cocoa backend)")
     set(VGFX_PLATFORM_SOURCES src/vgfx_platform_macos.m)
     set(VGFX_PLATFORM_LIBS "-framework Cocoa")
+    set(VIPERGFX_BACKEND "Cocoa" CACHE INTERNAL "Selected ViperGFX backend" FORCE)
     enable_language(OBJC)
 elseif (UNIX)
     find_package(X11 QUIET)
     if (NOT X11_FOUND)
-        message(WARNING "ViperGFX: X11 not found — graphics library will not be built.\n"
-                "  Install libx11-dev (Debian/Ubuntu) or libX11-devel (Fedora/RHEL) to enable.\n"
-                "  Targets that link vipergfx will fail if this library is needed.")
+        set(VIPERGFX_UNAVAILABLE_REASON
+            "X11 not found; install libx11-dev/libX11-devel or set VIPER_GRAPHICS_MODE=OFF"
+            CACHE INTERNAL "Reason ViperGFX is unavailable" FORCE)
+        if (VIPER_GRAPHICS_MODE STREQUAL "REQUIRE")
+            message(FATAL_ERROR
+                    "ViperGFX: X11 not found and VIPER_GRAPHICS_MODE=REQUIRE.\n"
+                    "Install libx11-dev (Debian/Ubuntu) or libX11-devel (Fedora/RHEL),\n"
+                    "or reconfigure with -DVIPER_GRAPHICS_MODE=OFF.")
+        endif ()
+        message(STATUS "ViperGFX: disabled (${VIPERGFX_UNAVAILABLE_REASON})")
         return()
     endif ()
     message(STATUS "ViperGFX: Building for Linux (X11 backend)")
     set(VGFX_PLATFORM_SOURCES src/vgfx_platform_linux.c)
     set(VGFX_PLATFORM_LIBS ${X11_LIBRARIES})
+    set(VIPERGFX_BACKEND "X11" CACHE INTERNAL "Selected ViperGFX backend" FORCE)
     include_directories(${X11_INCLUDE_DIR})
 elseif (WIN32)
     message(STATUS "ViperGFX: Building for Windows (Win32 backend)")
     set(VGFX_PLATFORM_SOURCES src/vgfx_platform_win32.c)
     set(VGFX_PLATFORM_LIBS user32 gdi32)
+    set(VIPERGFX_BACKEND "Win32" CACHE INTERNAL "Selected ViperGFX backend" FORCE)
 else ()
     message(FATAL_ERROR "ViperGFX: Unsupported platform")
 endif ()
@@ -97,6 +123,9 @@ set_target_properties(vipergfx PROPERTIES
         OUTPUT_NAME "vipergfx"
         ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
 )
+
+set(VIPERGFX_AVAILABLE ON CACHE INTERNAL "Whether ViperGFX is available in this build" FORCE)
+set(VIPERGFX_UNAVAILABLE_REASON "" CACHE INTERNAL "Reason ViperGFX is unavailable" FORCE)
 
 # Subdirectories (only if options enabled)
 if (VGFX_BUILD_TESTS)

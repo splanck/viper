@@ -3,7 +3,8 @@
 # Purpose: Tests for shared codegen utilities (architecture-agnostic).
 
 set(_common_tests
-        dataflow_liveness)
+        dataflow_liveness
+        runtime_manifest)
 
 foreach (_test IN LISTS _common_tests)
     set(_target test_codegen_common_${_test})

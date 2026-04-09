@@ -189,7 +189,8 @@ void buildViperRpm(const ViperLinuxBuildParams& params);
   Section: devel
   Priority: optional
   Installed-Size: NNNN
-  Depends: libc6 (>= 2.17), libx11-6
+  Depends: libc6 (>= 2.17)
+  Recommends: libx11-6, libasound2
   Suggests: libx11-dev, libasound2-dev
   Homepage: https://viper-lang.dev
   Description: Viper IL compiler toolchain and VM

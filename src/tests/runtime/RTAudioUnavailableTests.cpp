@@ -13,6 +13,7 @@
 
 #include "rt.hpp"
 #include "rt_audio.h"
+#include "tests/common/PlatformSkip.h"
 
 #include <cassert>
 #include <cstdio>
@@ -63,8 +64,7 @@ static void trap_music_play() {
 int main() {
 #ifdef VIPER_ENABLE_AUDIO
     assert(rt_audio_is_available() == 1);
-    std::printf("SKIP: audio enabled in this build\n");
-    return 0;
+    VIPER_PLATFORM_SKIP("audio enabled in this build");
 #else
     assert(rt_audio_is_available() == 0);
     expect_invalid_operation(trap_sound_load, "not compiled in");
