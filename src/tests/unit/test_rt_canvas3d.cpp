@@ -31,12 +31,18 @@
 #include "rt_sprite3d.h"
 #include "rt_string.h"
 #include "rt_terrain3d.h"
+#include "tests/common/PosixCompat.h"
 #include <cassert>
 #include <cmath>
 #include <csetjmp>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <string>
+
+extern "C" {
+#include "vgfx3d_backend.h"
+}
 
 namespace {
 static std::jmp_buf g_trap_jmp;
@@ -97,9 +103,6 @@ extern "C" void rt_obj_free(void *obj);
 extern "C" void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
 extern "C" void *rt_postfx3d_new(void);
 extern "C" void rt_canvas3d_set_post_fx(void *canvas, void *postfx);
-
-/* Backend selection test */
-extern "C" const void *vgfx3d_select_backend(void);
 
 //=============================================================================
 // Mesh3D tests
@@ -278,6 +281,64 @@ static void test_mesh_obj_loader_flattens_material_groups() {
     assert(mesh);
     EXPECT_EQ(rt_mesh3d_get_vertex_count(mesh), 3);
     EXPECT_EQ(rt_mesh3d_get_triangle_count(mesh), 1);
+    PASS();
+}
+
+namespace {
+struct BackendEnvGuard {
+    bool had_value = false;
+    std::string original;
+
+    BackendEnvGuard() {
+        if (const char *value = getenv("VIPER_3D_BACKEND")) {
+            had_value = true;
+            original = value;
+        }
+    }
+
+    ~BackendEnvGuard() {
+        if (had_value)
+            setenv("VIPER_3D_BACKEND", original.c_str(), 1);
+        else
+            unsetenv("VIPER_3D_BACKEND");
+    }
+};
+} // namespace
+
+static void test_backend_select_software_override() {
+    TEST("Backend selection - software override");
+    BackendEnvGuard guard;
+    assert(setenv("VIPER_3D_BACKEND", "software", 1) == 0);
+    const vgfx3d_backend_t *b = vgfx3d_select_backend();
+    if (!b || strcmp(b->name, "software") != 0) {
+        printf("FAIL: expected backend software, got %s\n",
+               (b && b->name) ? b->name : "(null)");
+        return;
+    }
+    PASS();
+}
+
+static void test_backend_select_platform_override() {
+#if defined(__APPLE__)
+    const char *expected = "metal";
+#elif defined(_WIN32)
+    const char *expected = "d3d11";
+#elif defined(__linux__)
+    const char *expected = "opengl";
+#else
+    const char *expected = "software";
+#endif
+
+    TEST("Backend selection - platform override");
+    BackendEnvGuard guard;
+    assert(setenv("VIPER_3D_BACKEND", expected, 1) == 0);
+    const vgfx3d_backend_t *b = vgfx3d_select_backend();
+    if (!b || strcmp(b->name, expected) != 0) {
+        printf("FAIL: expected backend %s, got %s\n",
+               expected,
+               (b && b->name) ? b->name : "(null)");
+        return;
+    }
     PASS();
 }
 
@@ -1293,8 +1354,8 @@ static void test_metal_skinned_mesh_bone_fields() {
 //=============================================================================
 
 static void test_backend_select() {
-    TEST("Backend selection — returns non-null");
-    const void *b = vgfx3d_select_backend();
+    TEST("Backend selection - returns non-null");
+    const vgfx3d_backend_t *b = vgfx3d_select_backend();
     assert(b != NULL);
     PASS();
 }
@@ -1434,6 +1495,8 @@ int main() {
 
     /* Backend */
     test_backend_select();
+    test_backend_select_software_override();
+    test_backend_select_platform_override();
 
     printf("\n%d/%d tests passed\n", tests_passed, tests_total);
     return tests_passed == tests_total ? 0 : 1;

@@ -1841,12 +1841,22 @@ const vgfx3d_backend_t vgfx3d_software_backend = {
 };
 
 const vgfx3d_backend_t *vgfx3d_select_backend(void) {
-    /* Explicit backend override for Linux bring-up and backend testing. */
+    /* Only honor overrides for backends compiled on this platform. */
     const char *env = getenv("VIPER_3D_BACKEND");
-    if (env && strcmp(env, "software") == 0)
-        return &vgfx3d_software_backend;
-    if (env && strcmp(env, "opengl") == 0)
-        return &vgfx3d_opengl_backend;
+    if (env) {
+        if (strcmp(env, "software") == 0)
+            return &vgfx3d_software_backend;
+#if defined(__APPLE__)
+        if (strcmp(env, "metal") == 0)
+            return &vgfx3d_metal_backend;
+#elif defined(_WIN32)
+        if (strcmp(env, "d3d11") == 0)
+            return &vgfx3d_d3d11_backend;
+#elif defined(__linux__)
+        if (strcmp(env, "opengl") == 0)
+            return &vgfx3d_opengl_backend;
+#endif
+    }
 
     /* Linux OpenGL is still under active bring-up, so prefer the software
      * backend by default there until the GL path is stable across frames. */
