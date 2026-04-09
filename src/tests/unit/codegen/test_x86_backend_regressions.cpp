@@ -14,9 +14,17 @@
 
 #include "codegen/x86_64/Backend.hpp"
 
+#include <array>
+#include <cstdio>
 #include <iostream>
 #include <regex>
 #include <string>
+
+#if defined(_WIN32)
+#include <io.h>
+#else
+#include <unistd.h>
+#endif
 
 using namespace viper::codegen::x64;
 
@@ -65,6 +73,81 @@ CodegenResult compile(const ILFunction &fn) {
 
 bool containsRegex(const std::string &text, const std::string &pattern) {
     return std::regex_search(text, std::regex(pattern));
+}
+
+int dupFd(int fd) {
+#if defined(_WIN32)
+    return _dup(fd);
+#else
+    return dup(fd);
+#endif
+}
+
+int dup2Fd(int src, int dst) {
+#if defined(_WIN32)
+    return _dup2(src, dst);
+#else
+    return dup2(src, dst);
+#endif
+}
+
+int closeFd(int fd) {
+#if defined(_WIN32)
+    return _close(fd);
+#else
+    return close(fd);
+#endif
+}
+
+int fileNumber(FILE *file) {
+#if defined(_WIN32)
+    return _fileno(file);
+#else
+    return fileno(file);
+#endif
+}
+
+template <typename Fn>
+std::string captureStderr(Fn &&fn) {
+    std::fflush(stderr);
+    std::cerr.flush();
+
+    FILE *capture = std::tmpfile();
+    if (capture == nullptr)
+        return {};
+
+    const int stderrFd = fileNumber(stderr);
+    const int captureFd = fileNumber(capture);
+    const int savedFd = dupFd(stderrFd);
+    if (savedFd < 0) {
+        std::fclose(capture);
+        return {};
+    }
+
+    if (dup2Fd(captureFd, stderrFd) < 0) {
+        closeFd(savedFd);
+        std::fclose(capture);
+        return {};
+    }
+
+    fn();
+
+    std::fflush(stderr);
+    std::cerr.flush();
+    dup2Fd(savedFd, stderrFd);
+    closeFd(savedFd);
+
+    std::rewind(capture);
+    std::string out;
+    std::array<char, 256> buffer{};
+    while (true) {
+        const std::size_t n = std::fread(buffer.data(), 1, buffer.size(), capture);
+        if (n == 0)
+            break;
+        out.append(buffer.data(), n);
+    }
+    std::fclose(capture);
+    return out;
 }
 
 } // namespace
@@ -194,6 +277,23 @@ TEST(X86BackendRegressions, CompareBranchUsesFlagsDirectly) {
     EXPECT_TRUE(result.asmText.find("setne ") == std::string::npos);
     EXPECT_TRUE(result.asmText.find("movzbq ") == std::string::npos);
     EXPECT_TRUE(result.asmText.find("testq ") == std::string::npos);
+}
+
+TEST(X86BackendRegressions, SuccessfulAssemblyEmissionIsSilentOnStderr) {
+    ILBlock entry{};
+    entry.name = "entry";
+    entry.instrs = {op("ret", {imm(7)})};
+
+    ILFunction fn{};
+    fn.name = "quiet_return";
+    fn.blocks = {entry};
+
+    CodegenResult result{};
+    const std::string stderrText = captureStderr([&] { result = compile(fn); });
+
+    ASSERT_TRUE(result.errors.empty());
+    EXPECT_FALSE(result.asmText.empty());
+    EXPECT_TRUE(stderrText.empty());
 }
 
 int main(int argc, char **argv) {

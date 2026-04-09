@@ -223,8 +223,6 @@ bool legalizeModuleToMIR(const ILModule &mod,
 
     for (std::size_t fi = 0; fi < mod.funcs.size(); ++fi) {
         const auto &func = mod.funcs[fi];
-        fprintf(stderr, "[leg] %zu/%zu: %s\n", fi, mod.funcs.size(), func.name.c_str());
-        fflush(stderr);
         FrameInfo frame{};
         MFunction machineFunc{};
         legalizeFunctionPipeline(func, lowering, target, frame, machineFunc);
@@ -245,12 +243,9 @@ bool allocateModuleMIR(std::vector<MFunction> &mir,
         return false;
     }
 
-    fprintf(stderr, "[alloc] start\n"); fflush(stderr);
     for (std::size_t i = 0; i < mir.size(); ++i) {
-        fprintf(stderr, "[alloc] %zu: %s\n", i, mir[i].name.c_str()); fflush(stderr);
         allocateFunctionPipeline(mir[i], target, options, frames[i]);
     }
-    fprintf(stderr, "[alloc] done\n"); fflush(stderr);
 
     // Strip identity moves (mov r, r) that the register allocator may insert
     // when a virtual register happens to be assigned the same physical register
@@ -279,12 +274,9 @@ bool optimizeModuleMIR(std::vector<MFunction> &mir,
     if (options.optimizeLevel < 1)
         return true;
 
-    fprintf(stderr, "[peep] start\n"); fflush(stderr);
     for (auto &fn : mir) {
-        fprintf(stderr, "[peep] %s\n", fn.name.c_str()); fflush(stderr);
         runPeepholes(fn);
     }
-    fprintf(stderr, "[peep] done\n"); fflush(stderr);
     return true;
 }
 
@@ -422,7 +414,6 @@ BinaryEmitResult emitMIRToBinary(const std::vector<MFunction> &mir,
     }
 
     for (std::size_t i = 0; i < mir.size(); ++i) {
-        fprintf(stderr, "[emit] %zu: %s\n", i, mir[i].name.c_str()); fflush(stderr);
         objfile::CodeSection funcText;
         DebugLineTable funcDebugLines;
         seedDebugFiles(funcDebugLines, std::vector<MFunction>{mir[i]}, opt.debugSourcePath);

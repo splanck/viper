@@ -545,6 +545,14 @@ if (NOT TARGET test_aarch64_vararg)
     viper_add_ctest(test_aarch64_vararg test_aarch64_vararg)
 endif ()
 
+if (NOT TARGET test_aarch64_cross_block_reload)
+    viper_add_test(
+            test_aarch64_cross_block_reload
+            ${VIPER_TESTS_DIR}/unit/codegen/test_aarch64_cross_block_reload.cpp)
+    target_link_libraries(test_aarch64_cross_block_reload PRIVATE il_codegen_aarch64)
+    viper_add_ctest(test_aarch64_cross_block_reload test_aarch64_cross_block_reload)
+endif ()
+
 # Bytecode VM tests
 if (NOT TARGET test_bytecode_vm)
     viper_add_test(test_bytecode_vm ${VIPER_TESTS_DIR}/unit/test_bytecode_vm.cpp)

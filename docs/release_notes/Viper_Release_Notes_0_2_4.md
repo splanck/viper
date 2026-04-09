@@ -11,7 +11,7 @@
 
 ### Release Overview
 
-Version 0.2.4 is a game engine, asset system, rendering, 3D physics, PBR materials, asset import pipeline, codegen optimization, native linker, cross-platform hardening, language features, media codecs, IL optimizer, IDE intelligence, typed runtime metadata, and showcase release. Highlights:
+Version 0.2.4 is a game engine, asset system, rendering, 3D physics, PBR materials, asset import pipeline, codegen optimization, native linker, cross-platform hardening, toolchain packaging foundation, language features, media codecs, IL optimizer, IDE intelligence, typed runtime metadata, and showcase release. Highlights:
 
 - **3D Engine Enhancements** — Procedural terrain generation (`Terrain3D.GeneratePerlin`), terrain LOD with frustum culling and multi-resolution chunks, Gerstner wave water simulation (`Water3D.AddWave`), new `Vegetation3D` instanced grass/foliage system with wind animation, and material shader hooks (`SetShadingModel` for Toon/Fresnel/Emissive effects).
 - **3D Format Loaders** — From-scratch glTF 2.0 (.gltf/.glb), STL (binary + ASCII), OBJ .mtl material parser, FBX texture and morph target extraction. Scene3D.Save for JSON serialization.
@@ -59,16 +59,18 @@ Version 0.2.4 is a game engine, asset system, rendering, 3D physics, PBR materia
 - **NavAgent3D** — Autonomous pathfinding agent on NavMesh3D surfaces. A* path query, string-pulling corridor smoothing, steering with configurable speed/acceleration/stopping distance, node binding for automatic SceneNode3D sync.
 - **3D Audio Objects** — `AudioListener3D` (position/forward/velocity with node and camera binding) and `AudioSource3D` (inner/outer cone, min/max distance, rolloff, looping, pitch, gain). `Audio3D.SyncBindings(dt)` batch-updates spatial positions. Distance attenuation and stereo panning in the audio mixer.
 - **Cross-Platform Hardening** — Shared `PlatformCapabilities.hpp` with `VIPER_HOST_*`/`VIPER_CAN_*` capability macros replacing scattered raw `_WIN32`/`__APPLE__`/`__linux__` checks. CMake capability summary gate (`VIPER_GRAPHICS_MODE`/`VIPER_AUDIO_MODE` with AUTO/REQUIRE/OFF modes). Generated `RuntimeComponentManifest` for machine-checked archive names. Platform import planners split from monolithic NativeLinker.cpp. Unified `build_viper_unix.sh` replacing near-identical mac/linux scripts. Platform policy lint script. CTest `SKIP_RETURN_CODE 77` for visible test skips.
+- **Toolchain Packaging Foundation** — New `viper install-package` CLI command with `ToolchainInstallManifest` as the shared data model for packaging Viper itself from a staged `cmake --install` tree (separate from the existing app packaging `viper package`). Windows/macOS/Linux package builders gain toolchain entry points. `build_installer.sh`/`.cmd` wrapper scripts. Installer plans revised with reuse-first architecture, prerequisite fixes, and a verification matrix (plans at `misc/plans/installer/`).
+- **Installed Runtime Library Discovery** — `LinkerSupport.cpp` gains layered search for runtime archives: `VIPER_LIB_PATH` env → exe-relative `../lib` → platform standard paths → build-tree fallback. Companion library resolvers (vipergfx, viperaud, vipergui) threaded through both x86_64 and AArch64 codegen pipelines so an installed Viper can compile native executables without a build tree. Prerequisite for shipping installers.
 - **Demos & Documentation** — XENOSCAPE sidescroller (17K LOC), 3D bowling (3.1K LOC), ViperSQL (10 SQL features, runtime API migration), ViperIDE professional IDE (live diagnostics, hover, go-to-def, search, symbol outline, 21 files / 7 dirs), Chess (pre-rendered sprites, core/engine/ui), 8 Graphics3D API demos, 6 app/game smoke probes; 185 markdown files reviewed, 700+ Doxygen comments, 70+ factual errors fixed.
 
 #### By the Numbers
 
 | Metric | v0.2.3 | v0.2.4 | Delta |
 |--------|--------|--------|-------|
-| Commits | — | 102 | +102 |
-| Source files | 2,671 | 2,854 | +183 |
-| Production SLOC | ~348K | ~442K | +94K |
-| Test count | 1,351 | 1,460 | +109 |
+| Commits | — | 103 | +103 |
+| Source files | 2,671 | 2,859 | +188 |
+| Production SLOC | ~348K | ~444K | +96K |
+| Test count | 1,351 | 1,470 | +119 |
 
 ---
 
@@ -416,6 +418,33 @@ Seven new language features expanding Zia's operator, declaration, and parameter
 - `run_cross_platform_smoke.sh` — detects host capabilities, runs the appropriate ctest label slice and example smoke probes, reports skips explicitly.
 - `PlatformSkip.h` + CTest `SKIP_RETURN_CODE 77` — test skips are now visible in CI output ("131 passed, 19 skipped" instead of "150 passed"). `viper_add_ctest()` sets skip return code centrally.
 - Audio surface link tests (`RTAudioSurfaceLinkTests.cpp`) — verifies disabled-audio builds link correctly against stubs.
+
+**Toolchain packaging foundation:**
+- `ToolchainInstallManifest` (`src/tools/common/packaging/ToolchainInstallManifest.hpp/cpp`) — shared data model for packaging Viper itself. Consumed by every platform builder; preserves the staged relative install layout underneath the platform-specific install root. Distinct from `PackageConfig` (which is for apps built WITH Viper).
+- `viper install-package` CLI (`cmd_install_package.cpp`) with `--target`, `--arch`, `--stage-dir`, `--build-dir`, `--verify-only`, `--no-verify`, `--keep-stage-dir`, `--stage-only`, and `--metadata-file` flags.
+- Platform builders extended with toolchain entry points: `buildWindowsToolchainInstaller` reuses PE+ZIP overlay, `buildMacOSToolchainPkg` builds on `.app` bundle knowledge, `buildLinuxToolchainPackages` extends the `.deb` pipeline.
+- `scripts/build_installer.sh` and `scripts/build_installer.cmd` — thin wrappers that stage via `cmake --install`, then invoke the CLI.
+- `InstallPackageTarballSmoke.cmake` and `InstalledViperConfigSmoke.cmake` — CTest integration tests validating the staged install tree and the installed `ViperConfig.cmake`/`ViperTargets.cmake` export.
+- Installer plans revised at `misc/plans/installer/` with prerequisite fixes, verification matrix, and Phase 7 signing/release scaffolding.
+
+**Installed runtime library discovery:**
+- `LinkerSupport.cpp` gains layered search: `VIPER_LIB_PATH` env var → exe-relative `../lib/` → platform standard paths (`/usr/lib/viper`, `/usr/local/viper/lib`, etc.) → existing build-tree fallback.
+- Companion library resolvers for `vipergfx`, `viperaud`, `vipergui` threaded through x86_64 and AArch64 `CodegenPipeline` so native linking works identically whether Viper runs from a build tree or an installed prefix.
+- `test_linker_support.cpp` unit test covering all four discovery tiers.
+- `test_runtime_surface_audit.cpp` validates that every runtime component archive the discovery code looks for is actually produced by the build.
+- Exported target set in `ViperTargets.cmake` reconciled with the actual built runtime component libraries, so downstream `find_package(Viper CONFIG REQUIRED)` consumers see the complete runtime.
+
+**AArch64 backend hardening (from `misc/plans/backend-20260409.md`):**
+- `FrameBuilder` spill slot lifetimes now carry a block epoch; cross-block reuse is guarded by `(lifetime epoch == current epoch || lifetime still live)`. Prevents an orphaned-slot edge case where a slot allocated in one block could be silently reused in another with a stale offset. `test_aarch64_frame_spill_reuse` regression test added.
+- Register allocator `isLiveOut()` wired through the FPR spill path.
+- x86_64 `Backend.cpp` debug `fprintf` (left in during a previous session) removed; native compilation no longer writes one stderr line per function.
+
+**IL optimizer:**
+- `SCCP` now declares preserved analyses (dominators, loop info, CFG). Previously SCCP conservatively invalidated everything, forcing downstream passes to rebuild. `test_il_pass_manager` validates SCCP preservation.
+
+**Runtime surface policy:**
+- New `RuntimeSurfacePolicy.inc` (366 lines) — machine-checked declaration of which runtime components are required for each capability bundle (graphics-enabled, audio-enabled, headless, etc.). Used by `test_runtime_surface_audit` to catch disabled-build link gaps before they ship.
+- `rtgen` header parser test (`test_rtgen_header_parse`) validates that runtime metadata generation stays in sync with C header declarations.
 
 ---
 

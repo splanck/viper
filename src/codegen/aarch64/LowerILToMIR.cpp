@@ -241,6 +241,38 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const {
         // cross-block temps that are spilled/reloaded. It's already cleared at function start.
         // Helper lambda to get current output block (avoids dangling references)
         auto bbOutFn = [&]() -> MBasicBlock & { return mf.blocks[bi]; };
+        std::unordered_set<unsigned> reloadedCrossBlockTemps;
+
+        auto reloadCrossBlockTempAtBlockEntry = [&](unsigned tempId) {
+            auto spillIt = liveness.crossBlockSpillOffset.find(tempId);
+            auto defIt = liveness.tempDefBlock.find(tempId);
+            if (spillIt == liveness.crossBlockSpillOffset.end() ||
+                defIt == liveness.tempDefBlock.end() || defIt->second == bi) {
+                return;
+            }
+
+            // Cross-block temps need a fresh vreg in each block because the register allocator
+            // is free to assign unrelated physical registers once control leaves the defining
+            // block. Reload exactly once per block and then reuse the rematerialized mapping.
+            if (!reloadedCrossBlockTemps.insert(tempId).second)
+                return;
+
+            const uint16_t vid = allocateNextVReg(nextVRegId);
+            tempVReg[tempId] = vid;
+            const int offset = spillIt->second;
+            auto clsIt = tempRegClass.find(tempId);
+            const RegClass cls =
+                (clsIt != tempRegClass.end()) ? clsIt->second : RegClass::GPR;
+            if (cls == RegClass::FPR) {
+                bbOutFn().instrs.push_back(
+                    MInstr{MOpcode::LdrFprFpImm,
+                           {MOperand::vregOp(RegClass::FPR, vid), MOperand::immOp(offset)}});
+            } else {
+                bbOutFn().instrs.push_back(
+                    MInstr{MOpcode::LdrRegFpImm,
+                           {MOperand::vregOp(RegClass::GPR, vid), MOperand::immOp(offset)}});
+            }
+        };
 
         // Entry block (bi == 0): Spill function parameters to stack slots immediately.
         // This ensures parameters are preserved across function calls within the entry block.
@@ -380,37 +412,8 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const {
         // reused their physical registers in intervening blocks.
         for (const auto &ins : bbIn.instructions) {
             for (const auto &op : ins.operands) {
-                if (op.kind == il::core::Value::Kind::Temp) {
-                    auto spillIt = liveness.crossBlockSpillOffset.find(op.id);
-                    auto defIt = liveness.tempDefBlock.find(op.id);
-                    if (spillIt != liveness.crossBlockSpillOffset.end() &&
-                        defIt != liveness.tempDefBlock.end() && defIt->second != bi) {
-                        // This temp is defined in another block and used here - reload it
-                        // Only reload if we haven't already in this block
-                        if (tempVReg.find(op.id) == tempVReg.end() ||
-                            tempVReg[op.id] < 60000) // Use high range for reloaded values
-                        {
-                            const uint16_t vid = allocateNextVReg(nextVRegId);
-                            tempVReg[op.id] = vid;
-                            const int offset = spillIt->second;
-                            // Check register class for this temp
-                            auto clsIt = tempRegClass.find(op.id);
-                            const RegClass cls =
-                                (clsIt != tempRegClass.end()) ? clsIt->second : RegClass::GPR;
-                            if (cls == RegClass::FPR) {
-                                bbOutFn().instrs.push_back(
-                                    MInstr{MOpcode::LdrFprFpImm,
-                                           {MOperand::vregOp(RegClass::FPR, vid),
-                                            MOperand::immOp(offset)}});
-                            } else {
-                                bbOutFn().instrs.push_back(
-                                    MInstr{MOpcode::LdrRegFpImm,
-                                           {MOperand::vregOp(RegClass::GPR, vid),
-                                            MOperand::immOp(offset)}});
-                            }
-                        }
-                    }
-                }
+                if (op.kind == il::core::Value::Kind::Temp)
+                    reloadCrossBlockTempAtBlockEntry(op.id);
             }
         }
         // Also check terminator for cross-block temp uses (CBr condition)
@@ -418,21 +421,8 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const {
             const auto &term = bbIn.instructions.back();
             if (term.op == il::core::Opcode::CBr && !term.operands.empty()) {
                 const auto &cond = term.operands[0];
-                if (cond.kind == il::core::Value::Kind::Temp) {
-                    auto spillIt = liveness.crossBlockSpillOffset.find(cond.id);
-                    auto defIt = liveness.tempDefBlock.find(cond.id);
-                    if (spillIt != liveness.crossBlockSpillOffset.end() &&
-                        defIt != liveness.tempDefBlock.end() && defIt->second != bi) {
-                        if (tempVReg.find(cond.id) == tempVReg.end()) {
-                            const uint16_t vid = allocateNextVReg(nextVRegId);
-                            tempVReg[cond.id] = vid;
-                            const int offset = spillIt->second;
-                            bbOutFn().instrs.push_back(MInstr{
-                                MOpcode::LdrRegFpImm,
-                                {MOperand::vregOp(RegClass::GPR, vid), MOperand::immOp(offset)}});
-                        }
-                    }
-                }
+                if (cond.kind == il::core::Value::Kind::Temp)
+                    reloadCrossBlockTempAtBlockEntry(cond.id);
             }
         }
 
