@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-05
+last-verified: 2026-04-09
 ---
 
 # Viper BASIC — Tutorial
@@ -173,8 +173,13 @@ SUB GREET(NAME$)
   PRINT "Hello, "; NAME$
 END SUB
 
-GREET("Ada")          ' Statement call with parentheses
-GREET                 ' Legacy: zero-arg call without parentheses (statement form)
+SUB BANNER()
+  PRINT "*****"
+END SUB
+
+GREET("Ada")          ' Statement call with parentheses (required when passing args)
+BANNER()              ' Zero-arg call with parentheses
+BANNER                ' Legacy: zero-arg call without parentheses (statement form)
 ```
 
 ### Functions (FUNCTION)
@@ -257,18 +262,18 @@ Notes:
 ```basic
 CLASS Counter
   X AS INTEGER
-30
+
   SUB NEW()
-   LET ME.X = 0
+    LET ME.X = 0
   END SUB
-70
+
   SUB INCREMENT()
-   LET ME.X = ME.X + 1
-END SUB
-110
-FUNCTION VALUE()
-  RETURN ME.X
-END FUNCTION
+    LET ME.X = ME.X + 1
+  END SUB
+
+  FUNCTION VALUE()
+    RETURN ME.X
+  END FUNCTION
 END CLASS
 
 DIM C AS Counter
@@ -301,15 +306,15 @@ Common mistakes and tips:
 ```basic
 CLASS FileHandler
   FH AS INTEGER
-30
+
   SUB NEW(FILENAME$)
-   OPEN FILENAME$ FOR OUTPUT AS #1
-   LET ME.FH = 1
+    OPEN FILENAME$ FOR OUTPUT AS #1
+    LET ME.FH = 1
   END SUB
-80
-  DESTRUCTOR()
-  IF ME.FH <> 0 THEN CLOSE #ME.FH
-END DESTRUCTOR
+
+  DESTRUCTOR
+    IF ME.FH <> 0 THEN CLOSE #ME.FH
+  END DESTRUCTOR
 END CLASS
 ```
 
@@ -472,14 +477,18 @@ END
 
 ErrHandler:
 PRINT "Error: Could not open file"
-RESUME 0
+END
 ```
 
 **Resume options:**
 
 - `RESUME` — Retry the statement that caused the error
 - `RESUME NEXT` — Continue with the next statement
-- `RESUME 0` — End the program
+- `RESUME <label>` — Resume execution at a specific line label
+
+To stop execution from a handler use `END` (or fall through). Viper BASIC does **not** treat
+`RESUME 0` as "end the program"; it parses as a `RESUME <label>` jump to label `0`, which simply
+fails to lower if no such label exists.
 
 ---
 
@@ -495,15 +504,15 @@ LET ATTEMPTS = 0
 DO
   INPUT "Guess a number (1-100): ", GUESS
   LET ATTEMPTS = ATTEMPTS + 1
-70
+
   IF GUESS = SECRET THEN
-   PRINT "Correct! You won in "; ATTEMPTS; " attempts!"
-  EXIT DO
-ELSEIF GUESS < SECRET THEN
-  PRINT "Higher!"
-ELSE
-  PRINT "Lower!"
-END IF
+    PRINT "Correct! You won in "; ATTEMPTS; " attempts!"
+    EXIT DO
+  ELSEIF GUESS < SECRET THEN
+    PRINT "Higher!"
+  ELSE
+    PRINT "Lower!"
+  END IF
 LOOP
 ```
 
@@ -530,7 +539,7 @@ END
 
 CopyErr:
 PRINT "Error: Could not copy file"
-RESUME 0
+END
 ```
 
 ---

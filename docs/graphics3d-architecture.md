@@ -49,9 +49,12 @@ typedef struct vgfx3d_backend {
                                   const float *instance_matrices, int32_t instance_count, ...);
     /* Display */
     void (*present)(void *ctx);
-    void (*readback_rgba)(void *ctx, uint8_t *out, int32_t w, int32_t h);
-    void (*show_gpu_layer)(void *ctx, vgfx_window_t win);
-    void (*hide_gpu_layer)(void *ctx, vgfx_window_t win);
+    int (*readback_rgba)(void *ctx, uint8_t *out, int32_t w, int32_t h, int32_t stride);
+    void (*present_postfx)(void *ctx, const vgfx3d_postfx_snapshot_t *postfx);
+    void (*set_gpu_postfx_enabled)(void *ctx, int8_t enabled);
+    void (*set_gpu_postfx_snapshot)(void *ctx, const vgfx3d_postfx_snapshot_t *postfx);
+    void (*show_gpu_layer)(void *ctx);
+    void (*hide_gpu_layer)(void *ctx);
 } vgfx3d_backend_t;
 ```
 
@@ -59,6 +62,33 @@ typedef struct vgfx3d_backend {
 1. Try platform GPU backend (Metal/D3D11/OpenGL)
 2. If `create_ctx` returns NULL → fall back to software
 3. Software backend always succeeds
+
+### D3D11 Window Presentation Model
+
+The D3D11 backend now uses two window-backed presentation modes:
+
+- direct mode: when GPU postfx is disabled, draws render straight into the swapchain backbuffer
+- postfx mode: the main scene renders into HDR scene targets, optional overlays render into a separate UNORM overlay target, and `present_postfx` composites the final image to the swapchain
+
+This split keeps the no-postfx path cheap while preserving correct motion/depth history for SSAO, DOF, and motion blur when the GPU postfx path is active.
+
+### OpenGL Window Presentation Model
+
+The OpenGL backend now follows the same high-level split, adapted to its GLX/swapchain model:
+
+- direct mode: when GPU postfx is disabled, window-backed draws render straight into the default framebuffer and `present()` only swaps buffers
+- postfx mode: the main scene renders into an HDR scene FBO, screenshots/readback can composite that scene through the backend-owned postfx shader, and 2D overlay passes preserve scene history instead of overwriting it
+- overlay composition: when a screen overlay follows a GPU-postfx main scene, OpenGL first composites the postfx result to the default framebuffer, then renders the overlay directly on top so SSAO / DOF / motion-blur history remains sourced from the 3D scene
+
+Like D3D11, this keeps the no-postfx path cheap while preserving the scene depth/history inputs required by the advanced GPU postfx path.
+
+### RenderTarget3D Readback Ownership
+
+GPU backends now treat `RenderTarget3D` color buffers as lazily synchronized CPU mirrors instead of forcing a readback at the end of every RTT frame.
+
+- backends mark the render target color as dirty when an RTT pass finishes
+- [`rt_rendertarget3d_as_pixels()`](/Users/stephen/git/viper/src/runtime/graphics/rt_rendertarget3d.c) and [`rt_canvas3d_screenshot()`](/Users/stephen/git/viper/src/runtime/graphics/rt_canvas3d_overlay.c) call the backend-owned sync hook only when CPU pixels are actually requested
+- this avoids unconditional GPU stalls on RTT-heavy frames while preserving the `RenderTarget3D.AsPixels()` contract
 
 ## Software Renderer Pipeline (vgfx3d_backend_sw.c)
 
@@ -179,7 +209,9 @@ src/runtime/graphics/
 │   ├── vgfx3d_backend_sw.c        Software rasterizer (always available)
 │   ├── vgfx3d_backend_metal.m     Metal GPU backend (macOS)
 │   ├── vgfx3d_backend_d3d11.c     D3D11 GPU backend (Windows)
-│   └── vgfx3d_backend_opengl.c    OpenGL 3.3 GPU backend (Linux)
+│   ├── vgfx3d_backend_d3d11_shared.c/h  Shared D3D11 packing/history helper layer
+│   ├── vgfx3d_backend_opengl.c    OpenGL 3.3 GPU backend (Linux)
+│   └── vgfx3d_backend_opengl_shared.c/h Shared OpenGL target/history helper layer
 ├── Effects & Advanced
 │   ├── rt_particles3d.c/h         Particles3D emitter system
 │   ├── rt_postfx3d.c/h            PostFX3D (bloom, FXAA, tonemap, vignette, SSAO, DOF, motion blur)
@@ -214,6 +246,8 @@ src/runtime/graphics/
 ## Shader Architecture
 
 All three GPU backends now share the same material contract: the legacy Blinn-Phong path remains for compatibility, and `Material3D.NewPBR` uses the same direct-light metallic/roughness PBR path across Metal, D3D11, and OpenGL.
+
+For D3D11 specifically, the CPU and HLSL sides now share explicit packed `float4` layouts for morph weights and material custom parameters. D3D11 and OpenGL both now use small shared helper layers to keep target selection, frame-history updates, cache growth, and upload/readback policy consistent with the portable tests.
 
 | Stage | Software | Metal (MSL) | D3D11 (HLSL) | OpenGL (GLSL 330) |
 |-------|----------|-------------|---------------|-------------------|

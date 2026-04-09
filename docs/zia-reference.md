@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-06
+last-verified: 2026-04-09
 ---
 
 # Zia — Reference
@@ -1506,7 +1506,7 @@ Flush();             // Flush output buffer
 ```viper
 // SleepMs is available under Viper.Time (RT_ALIAS from ClockSleep)
 Viper.Time.SleepMs(ms);         // Sleep for milliseconds
-Viper.Time.GetTickCount();       // Milliseconds since epoch
+Viper.Time.GetTickCount();      // Monotonic milliseconds (CLOCK_MONOTONIC, not Unix epoch)
 ```
 
 #### Math

@@ -1,7 +1,7 @@
 ---
 status: active
 audience: contributors
-last-verified: 2026-04-05
+last-verified: 2026-04-09
 ---
 
 # Zia vs Viper BASIC: Feature Parity Matrix
@@ -393,4 +393,4 @@ To spot-check specific claims, inspect:
 ### IL and runtime
 - IL EH opcodes: `src/il/core/Opcode.def` (EhPush, EhPop, EhEntry, Resume*)
 - Runtime class registry: `src/il/runtime/classes/RuntimeClasses.hpp` (RuntimeTypeId enum)
-- Runtime definitions: `src/il/runtime/runtime.def` (293 RT_CLASS_BEGIN blocks, 3965 RT_FUNC entries)
+- Runtime definitions: `src/il/runtime/runtime.def` (310 RT_CLASS_BEGIN blocks, 4413 RT_FUNC entries as of 2026-04-09)

@@ -1,7 +1,7 @@
 ---
 status: active
 audience: contributors
-last-verified: 2026-04-05
+last-verified: 2026-04-09
 ---
 
 # CODEMAP: Virtual Machine

@@ -76,6 +76,28 @@ OpenGL follow-on status:
 - OGL-17 through OGL-20 are now implemented in the Linux backend.
 - OGL-20 now includes a velocity-buffer motion-blur path backed by shared previous-frame model, instancing, skinning, and morph history where available.
 
+## 2026-04 Runtime Hardening Notes
+
+The Linux OpenGL backend was reworked further on 2026-04-09 to close the remaining correctness and performance gaps from the runtime audit:
+
+- presentation and history:
+  - window-backed frames now render directly to the default framebuffer when GPU postfx is disabled instead of always forcing an offscreen scene pass
+  - GPU postfx main passes render into an HDR scene color target (`GL_RGBA16F`)
+  - overlay passes no longer overwrite the scene-history inputs used by SSAO / DOF / motion blur
+  - when a GPU-postfx scene is followed by a 2D overlay pass, OpenGL now composites the postfx result first and then renders the overlay directly to the swapchain
+- draw-state correctness:
+  - opaque and masked materials now disable `GL_BLEND`; alpha-blended materials enable it per draw
+  - the scene-motion attachment is now written only for opaque/masked scene draws, so alpha-blended surfaces no longer blend motion vectors into the history buffer
+- RTT ownership and screenshots:
+  - render-target readback is now lazy instead of unconditional at `end_frame()`
+  - `RenderTarget3D.AsPixels()` and `Canvas3D.Screenshot()` now trigger backend sync only when CPU pixels are requested
+  - window-backed screenshots now read the final GPU postfx composite instead of the pre-postfx scene buffer
+- upload, cache, and quality fixes:
+  - dynamic mesh, instance, bone, and transient morph uploads now orphan stream buffers before `glBufferSubData`
+  - morph payloads now reuse backend-side cache entries keyed by `morph_key` / `morph_revision`
+  - imported textures and cubemaps now generate mip chains
+  - texture, cubemap, and morph caches now prune old entries instead of growing forever
+
 ## Backend-Local Work
 
 The detailed implementation work is split across the OpenGL backend plan set in [`misc/plans/3d/backends`](/Users/stephen/git/viper/misc/plans/3d/backends):
@@ -107,5 +129,8 @@ This phase is now implemented against the current runtime, not against the older
 Focused runtime coverage added for this implementation:
 
 - [`test_rt_canvas3d_gpu_paths.cpp`](/Users/stephen/git/viper/src/tests/unit/test_rt_canvas3d_gpu_paths.cpp) validates the shared GPU skinning / morph producer paths, previous-frame motion-history propagation, and their CPU fallbacks.
+- [`test_rt_canvas3d.cpp`](/Users/stephen/git/viper/src/tests/unit/test_rt_canvas3d.cpp) validates on-demand render-target sync for `RenderTarget3D.AsPixels()` and `Canvas3D.Screenshot()`.
 - [`test_vgfx3d_backend_utils.c`](/Users/stephen/git/viper/src/tests/unit/test_vgfx3d_backend_utils.c) validates pixel unpacking, RTT row-flip, and inverse-transpose normal-matrix helpers.
+- [`test_vgfx3d_backend_opengl_shared.c`](/Users/stephen/git/viper/src/tests/unit/test_vgfx3d_backend_opengl_shared.c) validates OpenGL target selection, HDR/postfx readback policy, blend/motion routing, frame-history preservation, cache growth, and morph-cache keying.
+- [`test_rt_morphtarget3d.cpp`](/Users/stephen/git/viper/src/tests/unit/test_rt_morphtarget3d.cpp) validates stable morph payload generation/revision behavior used by the backend cache.
 - [`test_rt_postfx3d_snapshot.c`](/Users/stephen/git/viper/src/tests/unit/test_rt_postfx3d_snapshot.c) validates advanced GPU PostFX snapshot export for SSAO, DOF, and motion blur.

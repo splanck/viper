@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-05
+last-verified: 2026-04-09
 ---
 
 # Viper REPL
@@ -13,19 +13,21 @@ The Viper REPL (Read-Eval-Print Loop) provides an interactive environment for ex
 Launch the REPL:
 
 ```bash
-# Zia REPL (default)
+# Zia REPL (default — only via the unified driver)
 viper repl
-zia
 
-# BASIC REPL
+# BASIC REPL — both forms work
 viper repl basic
-vbasic
+vbasic                  # zero-arg vbasic launches the BASIC REPL directly
 ```
+
+> Note: the standalone `zia` binary requires a source file argument and does **not** launch a REPL.
+> Use `viper repl` for an interactive Zia session.
 
 You'll see a prompt where you can type code:
 
 ```text
-Viper zia REPL v0.2.2-snapshot
+Viper zia REPL v0.2.4-snapshot
 Type .help for commands, .quit to exit.
 
 zia> 2 + 3

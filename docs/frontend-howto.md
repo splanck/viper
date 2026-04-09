@@ -1,7 +1,7 @@
 ---
 status: active
 audience: developers
-last-verified: 2026-04-05
+last-verified: 2026-04-09
 ---
 
 # How to Write a Viper Frontend
@@ -341,9 +341,11 @@ public:
         // via FFI at execution time. We declare them as "extern" so the IL
         // knows their signature, but we don't provide implementation.
         //
-        // rt_print_i64: void rt_print_i64(int64_t value)
+        // Canonical IL extern name: Viper.Terminal.PrintI64
+        // Backed by C function rt_print_i64; legacy `rt_print_i64` extern
+        // remains accepted while VIPER_RUNTIME_NS_DUAL=ON (the current default).
         //
-        builder_.addExtern("rt_print_i64",
+        builder_.addExtern("Viper.Terminal.PrintI64",
                           Type(Type::Kind::Void),    // return type
                           {Type(Type::Kind::I64)});  // parameter types
 
@@ -483,11 +485,11 @@ cmake --build build
 ```il
 il 0.2.0
 
-extern @rt_print_i64(i64) -> void
+extern @Viper.Terminal.PrintI64(i64) -> void
 
 func @main() -> i64 {
 entry:
-  call @rt_print_i64(42)
+  call @Viper.Terminal.PrintI64(42)
   ret 0
 }
 ```
@@ -495,17 +497,21 @@ entry:
 **Understanding the IL output:**
 
 - `il 0.2.0` — IL version header (required by spec)
-- `extern @rt_print_i64(i64) -> void` — External function declaration (implemented in C runtime)
+- `extern @Viper.Terminal.PrintI64(i64) -> void` — External function declaration (implemented in C runtime)
 - `func @main() -> i64 { ... }` — Function definition with signature
 - `entry:` — Basic block label
-- `call @rt_print_i64(42)` — Function call instruction with constant argument
+- `call @Viper.Terminal.PrintI64(42)` — Function call instruction with constant argument
 - `ret 0` — Return terminator (exit code)
+
+> **Runtime namespace compatibility:** Viper's runtime symbols use the canonical `@Viper.*` form. When the
+> runtime is built with `-DVIPER_RUNTIME_NS_DUAL=ON` (the current default), legacy `@rt_*` aliases such as
+> `@rt_print_i64` are also accepted, but new frontends should emit the canonical names.
 
 This IL can be:
 
 - **Verified**: `il-verify output.il` checks for structural correctness
 - **Executed**: `viper -run output.il` runs it in the VM
-- **Compiled**: `viper codegen x64 -S output.il` compiles to native x86-64
+- **Compiled**: `viper codegen x64 output.il -S out.s` compiles to native x86-64 assembly
 
 ### Key Takeaways
 
@@ -803,7 +809,7 @@ int cmdFrontYourFrontend(int argc, char **argv) {
     //
     if (de.errorCount() > 0) {
         // Print errors to stderr
-        for (const auto &diag : de.all()) {
+        for (const auto &diag : de.diagnostics()) {
             std::cerr << diag.message << "\n";
         }
         return 1;  // Non-zero = compilation failed
@@ -2348,12 +2354,15 @@ Value::constBool(bool v)           // true/false
 Value::constFloat(double v)        // Float literal
 Value::null()                      // Null pointer
 
+// String constant payloads (used for IL textual constants)
+Value::constStr(std::string s)     // string literal payload
+
 // Global references
 Value::global(std::string name)    // @{name}
-
-// Block addresses (for error handling)
-Value::blockAddr(BasicBlock *bb)   // ^{label}
 ```
+
+> Block addresses (e.g., handler labels) are not represented as `Value` objects. The IRBuilder
+> takes `BasicBlock&` parameters directly (`emitResumeLabel`, `cbr`, `br`).
 
 ### IRBuilder Core API
 
@@ -2410,37 +2419,46 @@ public:
 
 ### Manual Instruction Emission
 
-For operations not exposed by IRBuilder (arithmetic, loads, stores, etc.), create instructions directly:
+For operations not exposed by IRBuilder (arithmetic, loads, stores, etc.), create instructions directly.
+The verifier rejects plain signed-integer arithmetic opcodes (`Opcode::Add`, `Sub`, `Mul`, `SDiv`, `UDiv`,
+`SRem`, `URem`); use the overflow-checked variants (`IAddOvf`, `ISubOvf`, `IMulOvf`) and divide-by-zero
+checked variants (`SDivChk0`, `UDivChk0`, `SRemChk0`, `URemChk0`) instead. The plain enumerators still
+exist in `Opcode.hpp` but only for legacy/internal lowering passes.
+
+`Instr::result` is a `std::optional<unsigned>`, so capture the temp id in a local variable **before**
+moving the `Instr` into the block; reading `instr.result` after a `std::move` is undefined.
 
 ```cpp
 #include "il/core/Instr.hpp"
 #include "il/core/Opcode.hpp"
 
-// Example: %result = add %lhs, %rhs
-Value emitAdd(BasicBlock &bb, Value lhs, Value rhs) {
+// Example: %result = iadd.ovf %lhs, %rhs
+Value emitIAdd(BasicBlock &bb, Value lhs, Value rhs) {
+    unsigned id = reserveTempId();
     Instr instr;
-    instr.result = reserveTempId();
-    instr.op = Opcode::Add;
+    instr.result = id;
+    instr.op = Opcode::IAddOvf;          // overflow-checked signed addition
     instr.type = Type(Type::Kind::I64);
     instr.operands.push_back(lhs);
     instr.operands.push_back(rhs);
-    instr.loc = currentSourceLoc;  // Track source location
+    instr.loc = currentSourceLoc;        // Track source location
 
     bb.instructions.push_back(std::move(instr));
-    return Value::temp(instr.result);
+    return Value::temp(id);
 }
 
 // Example: %result = load i64, %ptr
 Value emitLoad(BasicBlock &bb, Type ty, Value ptr) {
+    unsigned id = reserveTempId();
     Instr instr;
-    instr.result = reserveTempId();
+    instr.result = id;
     instr.op = Opcode::Load;
     instr.type = ty;
     instr.operands.push_back(ptr);
     instr.loc = currentSourceLoc;
 
     bb.instructions.push_back(std::move(instr));
-    return Value::temp(instr.result);
+    return Value::temp(id);
 }
 
 // Example: store i64, %ptr, %value
@@ -2453,20 +2471,22 @@ void emitStore(BasicBlock &bb, Type ty, Value ptr, Value value) {
     instr.loc = currentSourceLoc;
 
     bb.instructions.push_back(std::move(instr));
-    bb.terminated = false;  // Store is not a terminator
+    // Store is not a terminator; the block's `terminated` flag is set
+    // separately by branch/return emission helpers.
 }
 
 // Example: %result = alloca 8
 Value emitAlloca(BasicBlock &bb, int64_t bytes) {
+    unsigned id = reserveTempId();
     Instr instr;
-    instr.result = reserveTempId();
+    instr.result = id;
     instr.op = Opcode::Alloca;
     instr.type = Type(Type::Kind::Ptr);
     instr.operands.push_back(Value::constInt(bytes));
     instr.loc = currentSourceLoc;
 
     bb.instructions.push_back(std::move(instr));
-    return Value::temp(instr.result);
+    return Value::temp(id);
 }
 ```
 
@@ -2475,18 +2495,15 @@ Value emitAlloca(BasicBlock &bb, int64_t bytes) {
 **File:** `il/core/Opcode.def`
 
 ```cpp
-// Arithmetic
-Opcode::Add, Sub, Mul
-Opcode::SDiv, UDiv        // Signed/unsigned division
-Opcode::SRem, URem        // Signed/unsigned remainder
+// Signed integer arithmetic — verifier ONLY accepts the checked forms below
+// (plain Opcode::Add/Sub/Mul/SDiv/UDiv/SRem/URem still exist as enumerators
+// for internal lowering passes but are rejected by the IL verifier).
+Opcode::IAddOvf, ISubOvf, IMulOvf            // Trap on signed overflow
+Opcode::SDivChk0, UDivChk0, SRemChk0, URemChk0  // Trap on divide-by-zero (and overflow for sdiv)
 
-// Bitwise
+// Bitwise (no overflow semantics, accepted as-is)
 Opcode::And, Or, Xor
 Opcode::Shl, LShr, AShr
-
-// Checked variants (trap on overflow)
-Opcode::IAddOvf, ISubOvf, IMulOvf
-Opcode::SDivChk0, UDivChk0, SRemChk0, URemChk0
 
 // Floating-point
 Opcode::FAdd, FSub, FMul, FDiv
@@ -2498,30 +2515,38 @@ Opcode::UCmpLT, UCmpLE, UCmpGT, UCmpGE  // Unsigned
 
 // Comparisons (floating-point)
 Opcode::FCmpEQ, FCmpNE, FCmpLT, FCmpLE, FCmpGT, FCmpGE
+Opcode::FCmpOrd, FCmpUno                // Ordered / unordered
 
 // Conversions
-Opcode::Sitofp           // Signed int → float
-Opcode::Fptosi           // Float → signed int
-Opcode::Zext1            // i1 → i64 (zero-extend)
-Opcode::Trunc1           // i64 → i1 (truncate)
+Opcode::Sitofp                          // Signed int → float
+Opcode::Fptosi                          // Float → signed int
+Opcode::CastSiToFp, CastUiToFp          // Explicit signed/unsigned int → float
+Opcode::CastFpToSiRteChk, CastFpToUiRteChk  // Float → int with rounding/range check
+Opcode::CastSiNarrowChk, CastUiNarrowChk    // Narrow with overflow check
+Opcode::Zext1                           // i1 → i64 (zero-extend)
+Opcode::Trunc1                          // i64 → i1 (truncate)
 
 // Memory
 Opcode::Alloca           // Stack allocation
 Opcode::Load             // Load from memory
 Opcode::Store            // Store to memory
 Opcode::GEP              // Get element pointer (offset)
+Opcode::AddrOf, GAddr    // Address-of local / global symbol
+Opcode::ConstStr, ConstNull, ConstF64   // Materialize constant payloads
 
 // Control flow
 Opcode::Br               // Unconditional branch
 Opcode::CBr              // Conditional branch
+Opcode::SwitchI32        // 32-bit switch dispatch
 Opcode::Ret              // Return
-Opcode::Call             // Function call
+Opcode::Call, CallIndirect              // Direct / indirect function call
 Opcode::Trap             // Abort execution
 
 // Exception handling
 Opcode::EhPush, EhPop, EhEntry
 Opcode::ResumeSame, ResumeNext, ResumeLabel
 Opcode::TrapKind, TrapErr, TrapFromErr
+Opcode::ErrGetKind, ErrGetCode, ErrGetIp, ErrGetLine, ErrGetMsg
 ```
 
 ### Lowerer Implementation
@@ -2734,27 +2759,37 @@ Value Lowerer::lowerBinaryExpr(BinaryExpr &expr) {
         ? Type::Float : Type::Int;
 
     if (lhsType != resultType)
-        lhs = emitCoerceToI64OrF64(lhs, lhsType, resultType);
+        lhs = (resultType == Type::Float)
+            ? emitCoerceToF64(lhs, lhsType)
+            : emitCoerceToI64(lhs, lhsType);
     if (rhsType != resultType)
-        rhs = emitCoerceToI64OrF64(rhs, rhsType, resultType);
+        rhs = (resultType == Type::Float)
+            ? emitCoerceToF64(rhs, rhsType)
+            : emitCoerceToI64(rhs, rhsType);
+
+    const bool isFloat = (resultType == Type::Float);
 
     switch (expr.op) {
         case BinaryExpr::Op::Add:
-            return emitBinary(Opcode::Add, ilType(resultType), lhs, rhs);
+            return emitBinary(isFloat ? Opcode::FAdd : Opcode::IAddOvf,
+                              ilType(resultType), lhs, rhs);
         case BinaryExpr::Op::Sub:
-            return emitBinary(Opcode::Sub, ilType(resultType), lhs, rhs);
+            return emitBinary(isFloat ? Opcode::FSub : Opcode::ISubOvf,
+                              ilType(resultType), lhs, rhs);
         case BinaryExpr::Op::Mul:
-            return emitBinary(Opcode::Mul, ilType(resultType), lhs, rhs);
+            return emitBinary(isFloat ? Opcode::FMul : Opcode::IMulOvf,
+                              ilType(resultType), lhs, rhs);
         case BinaryExpr::Op::Div:
-            return emitBinary(Opcode::Sdiv, ilType(resultType), lhs, rhs);
+            return emitBinary(isFloat ? Opcode::FDiv : Opcode::SDivChk0,
+                              ilType(resultType), lhs, rhs);
         case BinaryExpr::Op::Equal:
-            return emitCompare(Opcode::IcmpEq, lhs, rhs);
+            return emitCompare(Opcode::ICmpEq, lhs, rhs);
         case BinaryExpr::Op::NotEqual:
-            return emitCompare(Opcode::IcmpNe, lhs, rhs);
+            return emitCompare(Opcode::ICmpNe, lhs, rhs);
         case BinaryExpr::Op::Less:
-            return emitCompare(Opcode::ScmpLt, lhs, rhs);
+            return emitCompare(Opcode::SCmpLT, lhs, rhs);
         case BinaryExpr::Op::Greater:
-            return emitCompare(Opcode::ScmpGt, lhs, rhs);
+            return emitCompare(Opcode::SCmpGT, lhs, rhs);
         default:
             return Value::constInt(0);
     }
@@ -2892,23 +2927,25 @@ unsigned Lowerer::allocateLocal(const std::string &name) {
 }
 
 Value Lowerer::emitAlloca(int64_t bytes) {
+    unsigned id = nextTempId_++;
     Instr instr;
-    instr.result = nextTempId_++;
+    instr.result = id;
     instr.op = Opcode::Alloca;
     instr.type = il::core::Type(il::core::Type::Kind::Ptr);
     instr.operands.push_back(Value::constInt(bytes));
     currentBlock_->instructions.push_back(std::move(instr));
-    return Value::temp(instr.result);
+    return Value::temp(id);
 }
 
 Value Lowerer::emitLoad(il::core::Type ty, Value ptr) {
+    unsigned id = nextTempId_++;
     Instr instr;
-    instr.result = nextTempId_++;
+    instr.result = id;
     instr.op = Opcode::Load;
     instr.type = ty;
     instr.operands.push_back(ptr);
     currentBlock_->instructions.push_back(std::move(instr));
-    return Value::temp(instr.result);
+    return Value::temp(id);
 }
 
 void Lowerer::emitStore(il::core::Type ty, Value ptr, Value value) {
@@ -2921,25 +2958,27 @@ void Lowerer::emitStore(il::core::Type ty, Value ptr, Value value) {
 }
 
 Value Lowerer::emitBinary(Opcode op, il::core::Type ty, Value lhs, Value rhs) {
+    unsigned id = nextTempId_++;
     Instr instr;
-    instr.result = nextTempId_++;
+    instr.result = id;
     instr.op = op;
     instr.type = ty;
     instr.operands.push_back(lhs);
     instr.operands.push_back(rhs);
     currentBlock_->instructions.push_back(std::move(instr));
-    return Value::temp(instr.result);
+    return Value::temp(id);
 }
 
 Value Lowerer::emitCompare(Opcode op, Value lhs, Value rhs) {
+    unsigned id = nextTempId_++;
     Instr instr;
-    instr.result = nextTempId_++;
+    instr.result = id;
     instr.op = op;
     instr.type = il::core::Type(il::core::Type::Kind::I1);
     instr.operands.push_back(lhs);
     instr.operands.push_back(rhs);
     currentBlock_->instructions.push_back(std::move(instr));
-    return Value::temp(instr.result);
+    return Value::temp(id);
 }
 ```
 
@@ -2981,14 +3020,14 @@ Value Lowerer::coerceToF64(Value val, Type fromType) {
         return val;  // Already float
 
     if (fromType == Type::Int) {
-        // Emit sitofp instruction
+        unsigned id = nextTempId_++;
         Instr instr;
-        instr.result = nextTempId_++;
+        instr.result = id;
         instr.op = Opcode::Sitofp;
         instr.type = il::core::Type(il::core::Type::Kind::F64);
         instr.operands.push_back(val);
         currentBlock_->instructions.push_back(std::move(instr));
-        return Value::temp(instr.result);
+        return Value::temp(id);
     }
 
     return val;
@@ -3000,14 +3039,14 @@ Value Lowerer::coerceToI64(Value val, Type fromType) {
         return val;  // Already int
 
     if (fromType == Type::Float) {
-        // Emit fptosi instruction
+        unsigned id = nextTempId_++;
         Instr instr;
-        instr.result = nextTempId_++;
+        instr.result = id;
         instr.op = Opcode::Fptosi;
         instr.type = il::core::Type(il::core::Type::Kind::I64);
         instr.operands.push_back(val);
         currentBlock_->instructions.push_back(std::move(instr));
-        return Value::temp(instr.result);
+        return Value::temp(id);
     }
 
     return val;
@@ -3015,13 +3054,14 @@ Value Lowerer::coerceToI64(Value val, Type fromType) {
 
 // Bool → Int (zero-extend)
 Value Lowerer::coerceBoolToI64(Value val) {
+    unsigned id = nextTempId_++;
     Instr instr;
-    instr.result = nextTempId_++;
+    instr.result = id;
     instr.op = Opcode::Zext1;
     instr.type = il::core::Type(il::core::Type::Kind::I64);
     instr.operands.push_back(val);
     currentBlock_->instructions.push_back(std::move(instr));
-    return Value::temp(instr.result);
+    return Value::temp(id);
 }
 ```
 
@@ -3042,50 +3082,65 @@ Viper provides a C-based runtime library with common functionality.
 ### String Operations
 
 ```cpp
-// Declare in IL:
-builder.addExtern("rt_str_concat", Type(Type::Kind::Str),
+// Declare in IL (canonical name):
+builder.addExtern("Viper.String.Concat", Type(Type::Kind::Str),
                  {Type(Type::Kind::Str), Type(Type::Kind::Str)});
 
 // Call:
-// %result = call @rt_str_concat(%str1, %str2)
+// %result = call @Viper.String.Concat(%str1, %str2)
 
-// Available functions:
-rt_str_concat(str, str) -> str      // String concatenation
-rt_str_eq(str, str) -> i1           // Equality
-rt_str_lt(str, str) -> i1           // Less than
-rt_str_len(str) -> i64              // Length in bytes
-rt_str_left(str, i64) -> str        // Left substring
-rt_str_right(str, i64) -> str       // Right substring
-rt_str_mid_len(str, i64, i64) -> str // Substring (start, len)
-rt_str_ucase(str) -> str            // Uppercase
-rt_str_lcase(str) -> str            // Lowercase
-rt_str_chr(i64) -> str              // Int → char
-rt_str_asc(str) -> i64              // First char → int
-rt_val(str) -> f64                  // Parse double
-rt_str_from_i64(i64) -> str         // Int → string
-rt_str_from_f64(f64) -> str         // Float → string
-
-// Reference counting:
-rt_string_ref(str) -> void          // Retain
-rt_string_unref(str) -> void        // Release
+// Selected functions (canonical name | legacy alias when VIPER_RUNTIME_NS_DUAL=ON):
+Viper.String.Concat       | rt_str_concat        : str(str,str)        // Concatenation
+Viper.String.Equals       | rt_str_eq            : i1(str,str)         // Equality
+Viper.String.Cmp          | rt_str_cmp           : i64(str,str)        // <0/0/>0 ordering
+Viper.String.get_Length   | rt_str_len           : i64(str)            // Length in bytes
+Viper.String.Left         | rt_str_left          : str(str,i64)        // Left substring
+Viper.String.Right        | rt_str_right         : str(str,i64)        // Right substring
+Viper.String.MidLen       | rt_str_mid_len       : str(str,i64,i64)    // Substring (start, len)
+Viper.String.ToUpper      | rt_str_ucase         : str(str)            // Uppercase
+Viper.String.ToLower      | rt_str_lcase         : str(str)            // Lowercase
+Viper.String.Chr          | rt_str_chr           : str(i64)            // Codepoint → char
+Viper.String.Asc          | rt_str_asc           : i64(str)            // First char → int
+Viper.String.IndexOf      | rt_str_index_of      : i64(str,str)        // Find substring
+Viper.String.FromI16      | rt_str_i16_alloc     : str(i16)            // i16 → string
+Viper.String.FromI32      | rt_str_i32_alloc     : str(i32)            // i32 → string
+Viper.Fmt.Int             | rt_fmt_int           : str(i64)            // i64 → string
+Viper.Core.Convert.ToString_Double | rt_f64_to_str : str(f64)          // f64 → string
 ```
+
+> **Reference counting note:** `rt_string_ref` / `rt_string_unref` are internal C runtime helpers and are
+> NOT exposed to IL frontends. The runtime applies retain/release at the boundaries of the runtime
+> functions listed above and at the call/ret/store sites managed by the lowerer; do not call them
+> directly from emitted IL.
 
 ### Array Operations
 
-```cpp
-// Integer arrays
-rt_arr_i32_new(i64) -> ptr          // Allocate
-rt_arr_i32_release(ptr) -> void     // Release
-rt_arr_i32_len(ptr) -> i64          // Length
-rt_arr_i32_get(ptr, i64) -> i32     // Get element
-rt_arr_i32_set(ptr, i64, i32) -> void  // Set element
+These helpers are registered through `Signatures_Arrays.cpp` (not `runtime.def`) and are intended for
+frontend-emitted IL that needs raw array storage. They are passed/returned as `ptr` array handles.
+
+```text
+// 32-bit integer arrays (i32 element type, but get/set use i64 sign-extended values in the IL signature)
+rt_arr_i32_new(i64) -> ptr               // Allocate, length in elements
+rt_arr_i32_retain(ptr) -> void           // Retain (refcount++)
+rt_arr_i32_release(ptr) -> void          // Release (refcount--)
+rt_arr_i32_len(ptr) -> i64               // Length in elements
+rt_arr_i32_get(ptr, i64) -> i64          // Get element (sign-extended)
+rt_arr_i32_set(ptr, i64, i64) -> void    // Set element
+rt_arr_i32_resize(ptr, i64) -> ptr       // Resize, returns possibly relocated handle
+
+// 64-bit integer arrays (mirrors the i32 family)
+rt_arr_i64_new / rt_arr_i64_retain / rt_arr_i64_release
+rt_arr_i64_len / rt_arr_i64_get / rt_arr_i64_set / rt_arr_i64_resize
 
 // String arrays
-rt_arr_str_alloc(i64) -> ptr        // Allocate
-rt_arr_str_release(ptr) -> void     // Release
-rt_arr_str_len(ptr) -> i64          // Length
-rt_arr_str_get(ptr, i64) -> str     // Get element
-rt_arr_str_put(ptr, i64, str) -> void  // Set element
+rt_arr_str_alloc(i64) -> ptr             // Allocate, length in elements
+rt_arr_str_release(ptr, i64) -> void     // Release (length needed for element teardown)
+rt_arr_str_len(ptr) -> i64               // Length in elements
+rt_arr_str_get(ptr, i64) -> ptr          // Get element (string handle as ptr)
+rt_arr_str_put(ptr, i64, ptr) -> void    // Set element (handle as ptr)
+
+// Out-of-bounds panic shared by all arrays
+rt_arr_oob_panic(i64, i64) -> void       // (index, length)
 ```
 
 ### OOP: Array Fields (BASIC CLASS)
@@ -3140,42 +3195,50 @@ Notes:
 
 ### I/O Operations
 
-```cpp
-rt_print_str(str) -> void           // Print string
-rt_print_i64(i64) -> void           // Print integer
-rt_print_f64(f64) -> void           // Print float
-rt_print_newline() -> void          // Print newline
-rt_input_line() -> str              // Read line from stdin
+```text
+// Canonical name              | legacy alias       | signature             // notes
+Viper.Terminal.PrintStr        | rt_print_str       : void(str)            // Print string, no newline
+Viper.Terminal.PrintI64        | rt_print_i64       : void(i64)            // Print integer, no newline
+Viper.Terminal.PrintF64        | rt_print_f64       : void(f64)            // Print float, no newline
+Viper.Terminal.Say             | rt_term_say        : void(str)            // Print string + newline
+Viper.Terminal.SayInt          | rt_term_say_i64    : void(i64)            // Print integer + newline
+Viper.Terminal.SayNum          | rt_term_say_f64    : void(f64)            // Print float + newline
+Viper.Terminal.InputLine       | rt_input_line      : str()                // Read line from stdin
+Viper.Terminal.ReadLine        | rt_term_read_line  : str?()               // Optional read (nullable)
 ```
+
+There is no dedicated `rt_print_newline`; use one of the `Say*` variants (which append a newline) or
+emit `Viper.Terminal.PrintStr` with `"\n"`.
 
 ### Math Operations
 
-```cpp
-rt_sqrt(f64) -> f64                 // Square root
-rt_abs_i64(i64) -> i64              // Absolute value (int)
-rt_abs_f64(f64) -> f64              // Absolute value (float)
-rt_floor(f64) -> f64                // Floor
-rt_ceil(f64) -> f64                 // Ceiling
-rt_sin(f64) -> f64                  // Sine
-rt_cos(f64) -> f64                  // Cosine
-rt_tan(f64) -> f64                  // Tangent
-rt_atan(f64) -> f64                 // Arctangent
-rt_exp(f64) -> f64                  // Exponential
-rt_log(f64) -> f64                  // Natural logarithm
-rt_pow(f64, f64) -> f64             // Power
+```text
+Viper.Math.Sqrt                | rt_sqrt            : f64(f64)             // Square root
+Viper.Math.AbsInt              | rt_abs_i64         : i64(i64)             // Absolute value (int)
+Viper.Math.Abs                 | rt_abs_f64         : f64(f64)             // Absolute value (float)
+Viper.Math.Floor               | rt_floor           : f64(f64)             // Floor
+Viper.Math.Ceil                | rt_ceil            : f64(f64)             // Ceiling
+Viper.Math.Sin                 | rt_sin             : f64(f64)             // Sine
+Viper.Math.Cos                 | rt_cos             : f64(f64)             // Cosine
+Viper.Math.Tan                 | rt_tan             : f64(f64)             // Tangent
+Viper.Math.Atan                | rt_atan            : f64(f64)             // Arctangent
+Viper.Math.Exp                 | rt_exp             : f64(f64)             // Exponential
+Viper.Math.Log                 | rt_log             : f64(f64)             // Natural logarithm
+Viper.Math.Pow                 | rt_math_pow        : f64(f64,f64)         // Power
 ```
 
 ### Example: String Concatenation
 
 ```cpp
-void Lowerer::lowerStringConcat(Value lhs, Value rhs) {
-    // Declare runtime function
-    builder_.addExtern("rt_str_concat", Type(Type::Kind::Str),
+Value Lowerer::lowerStringConcat(Value lhs, Value rhs) {
+    // Declare runtime function (canonical name; legacy rt_str_concat alias
+    // is also accepted while VIPER_RUNTIME_NS_DUAL=ON).
+    builder_.addExtern("Viper.String.Concat", Type(Type::Kind::Str),
                       {Type(Type::Kind::Str), Type(Type::Kind::Str)});
 
     // Emit call
     unsigned resultId = nextTempId_++;
-    builder_.emitCall("rt_str_concat", {lhs, rhs},
+    builder_.emitCall("Viper.String.Concat", {lhs, rhs},
                      Value::temp(resultId), currentSourceLoc);
 
     return Value::temp(resultId);
@@ -3186,45 +3249,52 @@ void Lowerer::lowerStringConcat(Value lhs, Value rhs) {
 
 ## 11. Diagnostics and Error Reporting
 
-### DiagnosticEmitter API
+### DiagnosticEngine API
 
-**File:** `support/diagnostics.hpp`
+**File:** `src/support/diagnostics.hpp`
 
 ```cpp
 #include "support/diagnostics.hpp"
 #include "support/source_manager.hpp"
 
+namespace il::support {
+
+enum class Severity { Note, Warning, Error };
+
+struct Diagnostic {
+    Severity severity;    // Note, Warning, Error
+    std::string message;  // Human-readable text
+    SourceLoc loc;        // Optional source location
+    std::string code;     // Optional diagnostic code (e.g., "B1001", "IL001")
+};
+
 class DiagnosticEngine {
 public:
-    struct Diagnostic {
-        Severity severity;    // Error, Warning, Note
-        std::string code;     // E.g., "E001"
-        std::string message;
-        il::support::SourceLoc loc;
-    };
-
-    void emit(Severity sev, const std::string &code,
-             il::support::SourceLoc loc, const std::string &message);
+    void report(Diagnostic d);
 
     size_t errorCount() const;
     size_t warningCount() const;
 
-    const std::vector<Diagnostic> &all() const;
+    // Access collected diagnostics for inspection.
+    const std::vector<Diagnostic> &diagnostics() const;
+
+    // Pretty-print all recorded diagnostics.
+    void printAll(std::ostream &os, const SourceManager *sm = nullptr) const;
 };
 
-enum class Severity { Note, Warning, Error };
+} // namespace il::support
 ```
 
 ### Emitting Diagnostics
 
 ```cpp
 void Parser::emitError(const std::string &message, il::support::SourceLoc loc) {
-    de_.emit(il::support::Severity::Error, "E001", loc, message);
+    de_.report({il::support::Severity::Error, message, loc, "E001"});
 }
 
 void SemanticAnalyzer::emitError(const std::string &message,
-                                il::support::SourceLoc loc) {
-    de_.emit(il::support::Severity::Error, "S001", loc, message);
+                                 il::support::SourceLoc loc) {
+    de_.report({il::support::Severity::Error, message, loc, "S001"});
 }
 ```
 
@@ -3297,8 +3367,9 @@ unsigned Lowerer::allocateVariable(const std::string &name, Type type) {
     // Emit alloca
     Value slot = emitAlloca(8);  // 8 bytes for i64/f64/ptr/str
 
-    // Record in symbol table
-    unsigned slotId = slot.id();  // Extract temp ID from Value::temp
+    // Record in symbol table. `Value::id` is a public union field on
+    // Value, valid when `slot.kind == Value::Kind::Temp`.
+    unsigned slotId = slot.id;
     locals_[name] = {slotId, type};
 
     return slotId;
@@ -3371,16 +3442,16 @@ Value i = builder_.blockParam(loop, 0);
 Value sum = builder_.blockParam(loop, 1);
 
 // if i < 10
-Value cond = emitCompare(Opcode::ScmpLt, i, Value::constInt(10));
+Value cond = emitCompare(Opcode::SCmpLT, i, Value::constInt(10));
 
 BasicBlock &body = builder_.addBlock(fn, "body");
 builder_.cbr(cond, body, {}, done, {});
 
 // body:
 builder_.setInsertPoint(body);
-Value i_next = emitBinary(Opcode::Add, Type(Type::Kind::I64),
+Value i_next = emitBinary(Opcode::IAddOvf, Type(Type::Kind::I64),
                          i, Value::constInt(1));
-Value sum_next = emitBinary(Opcode::Add, Type(Type::Kind::I64), sum, i);
+Value sum_next = emitBinary(Opcode::IAddOvf, Type(Type::Kind::I64), sum, i);
 builder_.br(loop, {i_next, sum_next});
 
 // done: return sum
@@ -3390,18 +3461,37 @@ builder_.setInsertPoint(done);
 
 ### Exception Handling (ON ERROR GOTO)
 
+`IRBuilder` does not expose `emitEhPush` / `emitEhPop` directly — those instructions are constructed
+manually as `Instr` objects with `Opcode::EhPush` / `Opcode::EhPop`. The handler block must declare
+two parameters `(%err:Error, %tok:ResumeTok)` so the runtime can pass the active error/resume token.
+The BASIC frontend's helper at `src/frontends/basic/lower/Emit_Control.cpp` (`Lowerer::emitEhPush`)
+is a useful template.
+
 ```cpp
 // ON ERROR GOTO handler
-BasicBlock &handler = builder_.addBlock(fn, "handler");
-builder_.emitEhPush(handler, loc);
+BasicBlock &handler = builder_.createBlock(fn, "handler",
+    {{"err", Type(Type::Kind::Error)},
+     {"tok", Type(Type::Kind::ResumeTok)}});
+
+// Push handler (manual Instr construction)
+{
+    Instr push;
+    push.op = Opcode::EhPush;
+    push.type = Type(Type::Kind::Void);
+    push.labels.push_back(handler.label);
+    push.brArgs.push_back({});  // EhPush takes no arguments to the handler
+    push.loc = loc;
+    currentBlock_->instructions.push_back(std::move(push));
+}
 
 // ... code that might trap ...
 
 // handler:
 builder_.setInsertPoint(handler);
+Value tok = builder_.blockParam(handler, 1);  // %tok:ResumeTok
 // Handle error, then:
 // RESUME NEXT
-builder_.emitResumeNext(Value::temp(resumeTokId), loc);
+builder_.emitResumeNext(tok, loc);
 ```
 
 ### ADDFILE Directive (Parse-Time Include)
@@ -3626,16 +3716,17 @@ if (!currentBlock_->terminated) {
 
 **Cause:**
 
-```cpp
-// WRONG: adding i64 and f64
-%result = add %int_val, %float_val
+```text
+; WRONG: i64+f64 has no opcode at all, and plain `add` is verifier-rejected
+; for signed integers anyway — use the .ovf form once both sides are i64
+%result = iadd.ovf %int_val, %float_val
 ```
 
-**Fix:** Coerce to common type:
+**Fix:** Coerce to a common type *before* the arithmetic, then use the matching opcode family:
 
-```cpp
+```text
 %float_int = sitofp %int_val
-%result = fadd %float_int, %float_val
+%result    = fadd %float_int, %float_val
 ```
 
 ### 4. Branch Argument Arity Mismatch
@@ -3663,20 +3754,19 @@ builder_.br(loop, {Value::constInt(0), Value::constInt(0)});
 
 **Error:** Memory leaks in long-running programs
 
-**Cause:** Not releasing runtime-managed values:
+**Cause:** Refcounted values (strings, arrays, objects) escape their lowering scope without the
+matching retain/release bookkeeping. Frontends do not call retain/release runtime helpers directly —
+they emit IL that participates in the runtime's automatic refcount accounting at call/store/return
+sites.
 
-```cpp
-Value str = emitStringConcat(s1, s2);
-// FORGOT: rt_string_unref(str)
-```
+**Fix:** Mirror the BASIC frontend's lowering passes (`src/frontends/basic/lower/`), which:
 
-**Fix:** Release when done:
-
-```cpp
-Value str = emitStringConcat(s1, s2);
-// ... use str ...
-builder_.emitCall("rt_string_unref", {str}, std::nullopt, loc);
-```
+1. Track which temporaries hold refcounted values.
+2. Emit balanced retain/release as part of variable assignment, function call boundaries, and
+   block parameter handoff.
+3. Use the runtime helpers exposed through `runtime.def` (`Viper.String.*`, `Viper.Collections.*`)
+   rather than the internal `rt_string_ref` / `rt_string_unref` C entry points, which are not
+   surfaced as IL externs.
 
 ### 6. Debugging Tips
 
@@ -3687,7 +3777,8 @@ builder_.emitCall("rt_string_unref", {str}, std::nullopt, loc);
 
 auto result = il::verify::Verifier::verify(module);
 if (!result) {
-    std::cerr << "Verification failed: " << result.error().message() << "\n";
+    // result.error() returns a const Diag&; .message is a public std::string field.
+    std::cerr << "Verification failed: " << result.error().message << "\n";
 }
 ```
 
@@ -3707,11 +3798,13 @@ il::io::Serializer::write(module, std::cerr);
 **Check Opcode Usage:**
 Ensure you're using the right opcode for the operation:
 
-- Signed arithmetic: `add`, `sub`, `mul`, `sdiv`, `srem`
-- Unsigned: `udiv`, `urem`
+- Signed arithmetic: `iadd.ovf`, `isub.ovf`, `imul.ovf`, `sdiv.chk0`, `srem.chk0` — the plain
+  `add`/`sub`/`mul`/`sdiv`/`srem` opcodes still exist in `Opcode.def` for legacy/internal use but
+  are rejected by the IL verifier on signed integer types.
+- Unsigned division/remainder: `udiv.chk0`, `urem.chk0` (plain `udiv`/`urem` are similarly rejected).
 - Floating-point: `fadd`, `fsub`, `fmul`, `fdiv`
-- Signed comparison: `scmp_lt`, `scmp_le`, etc.
-- Unsigned comparison: `ucmp_lt`, `ucmp_le`, etc.
+- Signed comparison: `scmp_lt`, `scmp_le`, `scmp_gt`, `scmp_ge`
+- Unsigned comparison: `ucmp_lt`, `ucmp_le`, `ucmp_gt`, `ucmp_ge`
 
 ---
 
@@ -3758,7 +3851,7 @@ Study the BASIC frontend for patterns:
 
 ### Example Programs
 
-26. **examples/smoke/combined.cpp** — Manual IL construction
+26. **examples/embedding/combined.cpp** — Manual IL construction (embedded use)
 27. **src/tests/golden/basic/*.bas** — BASIC examples
 
 ---

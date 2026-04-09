@@ -22,6 +22,7 @@
 #ifdef VIPER_ENABLE_GRAPHICS
 
 #include "vgfx.h"
+#include "rt_postfx3d.h"
 #include "vgfx3d_frustum.h"
 #include <float.h>
 #include <math.h>
@@ -213,13 +214,40 @@ typedef struct {
 // RenderTarget3D — offscreen color + depth buffers
 //=============================================================================
 
-typedef struct {
+typedef struct vgfx3d_rendertarget vgfx3d_rendertarget_t;
+typedef int (*vgfx3d_rendertarget_sync_fn)(void *userdata, vgfx3d_rendertarget_t *target);
+
+struct vgfx3d_rendertarget {
     uint8_t *color_buf; /* RGBA pixels (software path) */
     float *depth_buf;   /* float depth buffer */
     int32_t width;
     int32_t height;
     int32_t stride; /* width * 4 */
-} vgfx3d_rendertarget_t;
+    int8_t color_dirty;
+    vgfx3d_rendertarget_sync_fn sync_color;
+    void *sync_color_userdata;
+};
+
+static inline int vgfx3d_rendertarget_sync_color_if_needed(vgfx3d_rendertarget_t *target) {
+    if (!target)
+        return 0;
+    if (!target->color_dirty)
+        return 1;
+    if (!target->sync_color)
+        return 0;
+    if (!target->sync_color(target->sync_color_userdata, target))
+        return 0;
+    target->color_dirty = 0;
+    return 1;
+}
+
+static inline void vgfx3d_rendertarget_clear_sync(vgfx3d_rendertarget_t *target) {
+    if (!target)
+        return;
+    target->color_dirty = 0;
+    target->sync_color = NULL;
+    target->sync_color_userdata = NULL;
+}
 
 typedef struct {
     void *vptr;
@@ -267,6 +295,9 @@ typedef struct {
 
     /* Post-processing effect chain (NULL = disabled) */
     void *postfx;
+    vgfx3d_postfx_snapshot_t frame_postfx_snapshot;
+    int8_t frame_gpu_postfx_enabled;
+    int8_t frame_postfx_state_latched;
 
     /* Temporary raw buffers freed at end of frame (e.g., skinned vertex data) */
     void **temp_buffers;

@@ -151,6 +151,8 @@ void *rt_rendertarget3d_as_pixels(void *obj) {
     rt_rendertarget3d *rtd = (rt_rendertarget3d *)obj;
     if (!rtd->target || !rtd->target->color_buf)
         return NULL;
+    if (!vgfx3d_rendertarget_sync_color_if_needed(rtd->target))
+        return NULL;
 
     void *pixels = rt_pixels_new(rtd->width, rtd->height);
     if (!pixels)

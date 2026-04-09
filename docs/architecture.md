@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-05
+last-verified: 2026-04-09
 ---
 
 # Viper Architecture Overview
@@ -139,17 +139,24 @@ Example:
 il 0.2.0
 func @main() -> i64 {
 entry:
-  %v0 = iadd 2, 2
+  %v0 = iadd.ovf 2, 2
   ret %v0
 }
 ```
 
 Key design points:
 
-- **Types:** `i1`, `i32`, `i64`, `f64`, `ptr`, `str`; keep the set minimal and orthogonal.
+- **Types:** `void`, `i1`, `i16`, `i32`, `i64`, `f64`, `ptr`, `str`, `Error`, and `ResumeTok`; the scalar surface stays minimal and orthogonal while `Error`/`ResumeTok` exist only for structured exception lowering.
 - **Values:** virtual registers, constants, globals, function symbols; names are interned for determinism.
-- **Instructions (v1 focus):** arithmetic (`add`, `sub`, `mul`, `div`), bitwise ops, comparisons, control flow (`br`,
-  `cbr`, `ret`, `trap`), memory ops (`alloca`, `load`, `store`, `gep`), calls, constant constructors, and minimal casts.
+- **Instructions:** integer arithmetic (`iadd.ovf`, `isub.ovf`, `imul.ovf`, `sdiv`, `udiv`, `sdiv.chk0`, `udiv.chk0`,
+  `srem`, `urem`, `srem.chk0`, `urem.chk0`), floating arithmetic (`fadd`, `fsub`, `fmul`, `fdiv`), bitwise ops (`and`,
+  `or`, `xor`, `shl`, `ashr`, `lshr`), comparisons (`icmp_eq`/`_ne`, `scmp_lt`..`_ge`, `ucmp_lt`..`_ge`, `fcmp_*`),
+  control flow (`br`, `cbr`, `ret`, `trap`, `switch.i32`), memory ops (`alloca`, `load`, `store`, `gep`, `gaddr`,
+  `addr_of`), casts (`sitofp`, `fptosi`, `zext1`, `trunc1`, `cast.si_narrow.chk`, `cast.ui_narrow.chk`,
+  `cast.fp_to_si.rte.chk`, `cast.fp_to_ui.rte.chk`, `cast.si_to_fp`, `cast.ui_to_fp`), calls (`call`, `call.indirect`),
+  constant constructors (`const.f64`, `const_str`, `const_null`), bounds checks (`idx.chk`), and structured exception
+  handling (`eh.push`, `eh.pop`, `eh.entry`, `resume.same`, `resume.next`, `resume.label`, `trap.err`, `trap.from_err`,
+  `trap.kind`, `err.get_code`/`_ip`/`_kind`/`_line`/`_msg`).
 - **Metadata:** source locations, attributes, visibility, and string tables stored per module.
 - **Calling convention:** by-value scalars with explicit pointers for aggregates; strings remain opaque handles
   manipulated through runtime helpers.
@@ -209,9 +216,10 @@ Ownership rules mirror strings. The lowering pipeline emits retains on assignmen
 parameter teardown releases, and function returns transfer ownership to the caller. Violating these rules (e.g.,
 releasing then reusing a temp in the same block) is caught by the IL verifier.
 
-Define `VIPER_RC_DEBUG=1` (set automatically for Debug builds) or export the environment variable `VIPER_RC_DEBUG` to
-make the runtime log every retain/release along with the resulting refcount. These checks highlight double releases,
-missing retains, or stale handles early in development.
+Build with `-DCMAKE_CXX_FLAGS="-DVIPER_RC_DEBUG=1"` (or add it to `CFLAGS` for the C runtime) to enable
+retain/release logging. The macro is a compile-time switch — it is not read from the environment at runtime — and is
+not enabled automatically by Debug builds. When set, the runtime logs every retain/release along with the resulting
+refcount, highlighting double releases, missing retains, or stale handles early in development.
 
 Additional runtime details live in the [VM Documentation](vm.md).
 
@@ -222,7 +230,8 @@ versioned and may evolve; breaking changes require coordinated updates.
 
 The VM is a register-file engine that dispatches opcodes using a pluggable strategy (function-table, switch, or
 threaded/computed-goto). Each call creates a frame holding registers, an evaluation stack, and block state. Values are
-stored in a tagged `Slot` that represents integers, floats, pointers, and strings.
+stored in an 8-byte `Slot` union that can hold an `i64`, `f64`, `void*`, or `rt_string`; the active member is implied
+by the IL type of the containing virtual register rather than carried in a runtime tag.
 
 Execution model and state:
 
@@ -263,8 +272,9 @@ function, block, and source location information.
 
 - **x86-64** (`src/codegen/x86_64/`) — Implemented backend targeting System V AMD64 and Windows x64 ABIs (linear-scan).
   Validated on Windows with full codegen test suite passing.
-- **ARM64** (`src/codegen/aarch64/`) — Functional backend targeting AAPCS64 (Apple Silicon, Linux ARM64). Validated
-  end‑to‑end on Apple Silicon across all demo games.
+- **ARM64** (`src/codegen/aarch64/`) — Functional backend targeting AAPCS64 (Apple Silicon, Linux ARM64, Windows ARM64).
+  Validated end-to-end on Apple Silicon across all demo games; Windows ARM64 emits COFF objects via the native
+  assembler and is exercised by dedicated codegen tests.
 
 Pipeline expectations:
 
@@ -283,19 +293,28 @@ Differential testing against the VM keeps codegen honest once implemented.
 
 The CLI (`viper`) dispatches to focused handlers based on the first tokens:
 
-- `run <target> [--trace] [--stdin-from <file>] [--max-steps N] [--bounds-checks]`
+- `run <target> [--trace=il|src] [--stdin-from <file>] [--max-steps N] [--bounds-checks]`
 - `build <target> [-o output] [--bounds-checks] [--no-runtime-namespaces]`
-- `-run <file.il> [--trace] [--stdin-from <file>] [--max-steps N] [--bounds-checks]`
+- `init <project-name> [--lang zia|basic]`
+- `repl [zia|basic]`
+- `package [target] [--target macos|linux|windows|tarball] [--arch arm64|x64]`
+- `install-package [--target windows|macos|linux-deb|linux-rpm|tarball|all] (--stage-dir DIR | --build-dir DIR)`
+- `-run <file.il> [--trace=il|src] [--stdin-from <file>] [--max-steps N] [--bounds-checks]`
 - `front zia -emit-il|-run <file.zia>`
 - `front basic -emit-il <file.bas> [--bounds-checks]`
-- `front basic -run <file.bas> [--trace] [--stdin-from <file>] [--max-steps N] [--bounds-checks]`
-- `il-opt <in.il> -o <out.il> --passes p1,p2`
+- `front basic -run <file.bas> [--trace=il|src] [--stdin-from <file>] [--max-steps N] [--bounds-checks]`
+- `codegen x64 <in.il> [-S <out.s>] [-o <exe|obj>] [-run-native]`
+- `codegen arm64 <in.il> [-S <out.s>] [-o <exe|obj>] [-run-native]`
+- `il-opt <in.il> -o <out.il> [--passes p1,p2] [-print-before] [-print-after] [-verify-each]`
+- `bench <file.il> [-n N] [--table|--switch|--threaded] [--json]`
 
 Handlers live in `src/tools/viper/cmd_run.cpp`, `cmd_run_il.cpp`,
-`cmd_front_zia.cpp`, `cmd_front_basic.cpp`, and `cmd_il_opt.cpp`;
-`src/tools/viper/main.cpp` merely dispatches to these subcommands.
-Additional tools (verifier, disassembler, wrapper frontends) reuse the same IL
-libraries.
+`cmd_front_zia.cpp`, `cmd_front_basic.cpp`, `cmd_il_opt.cpp`,
+`cmd_codegen_x64.cpp`, `cmd_codegen_arm64.cpp`, `cmd_init.cpp`,
+`cmd_package.cpp`, `cmd_install_package.cpp`, `cmd_bench.cpp`,
+and `cmd_repl.cpp`; `src/tools/viper/main.cpp` merely dispatches to
+these subcommands. Additional tools (verifier, disassembler, wrapper
+frontends) reuse the same IL libraries.
 
 Diagnostics carry source mapping (file/line/column) through AST → IL → VM/native for clear errors. The REPL (
 `viper repl`) provides interactive evaluation backed by the VM.
@@ -319,13 +338,19 @@ See `docs/viperlib/io/assets.md` for the full API reference.
 - `il-verify` — IL structural/type verifier
 - `ilrun` — Convenience wrapper for IL execution (`ilrun program.il`)
 - `vbasic` — Convenience wrapper for BASIC (`vbasic script.bas --emit-il|-o`)
+- `vbasic-server` — BASIC language server (LSP + MCP dual protocol)
 - `viper` — Unified driver
     - `run <target>` — Build and run a Zia or BASIC target
     - `build <target>` — Emit IL or build a native executable
+    - `init <project-name>` — Scaffold a new Zia or BASIC project
+    - `repl [zia|basic]` — Interactive REPL session
+    - `package [target]` — Build a platform-native app installer
+    - `install-package [--target …]` — Build a Viper toolchain installer
+    - `bench <file.il> [-n N]` — IL benchmark runner
     - `-run <file.il>` — Execute IL on the VM
-    - `codegen arm64 <in.il> -S <out.s> [-run-native]` — AArch64 assembly generation / native run
-    - `codegen x64 -S <in.il> [-o exe] [-run-native]` — x86-64 native path
-    - `front zia -emit-il|-run <file.zia>` — Legacy direct Zia frontend path
+    - `codegen arm64 <in.il> [-S <out.s>] [-o <exe|obj>] [-run-native]` — AArch64 assembly / object / native run
+    - `codegen x64 <in.il> [-S <out.s>] [-o <exe|obj>] [-run-native]` — x86-64 assembly / object / native run
+    - `front zia -emit-il|-run <file.zia>` — Direct Zia frontend path
     - `front basic -emit-il|-run <file.bas>` — BASIC compile/run
     - `il-opt <in.il> -o <out.il> [--passes ...]` — Optimizer
 - `zia` — Zia compiler (`zia script.zia` to run, `zia script.zia --emit-il` to emit IL)
@@ -368,7 +393,7 @@ bumping the IL version and updating consumers.
 - `il::vm` for the VM engine.
 - `viper::codegen::x64` for the x86-64 native backend.
 - `viper::codegen::aarch64` for the AArch64 native backend.
-- `fe::basic` for the BASIC front end.
+- `il::frontends::basic` for the BASIC front end.
 - `il::frontends::zia` for the Zia front end.
 - `rt` (C ABI) for the runtime library.
 

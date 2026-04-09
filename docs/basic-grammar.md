@@ -1,7 +1,7 @@
 ---
 status: active
 audience: contributors
-last-verified: 2026-04-05
+last-verified: 2026-04-09
 ---
 
 # BASIC Frontend Grammar Notes
@@ -158,15 +158,17 @@ Constraints:
 - No access modifiers on destructors.
 - Destructors are not allowed in `INTERFACE` declarations.
 
-### DISPOSE statement
+### DELETE statement
 
 - Explicit disposal of an object reference:
 
   ```basic
-  DISPOSE <expr>
+  DELETE <expr>
   ```
 
-`<expr>` must evaluate to an object handle; disposing `NULL` is a no‑op.
+`<expr>` must evaluate to an object handle; deleting `NULL` is a no‑op. The keyword is `DELETE`
+(parser handler `Parser::parseDeleteStatement` in `Parser_Stmt_OOP.cpp`); there is no `DISPOSE`
+keyword in the BASIC frontend.
 
 - Base‑qualified call:
 

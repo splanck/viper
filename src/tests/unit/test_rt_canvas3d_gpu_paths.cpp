@@ -6,6 +6,7 @@
 #include "rt_canvas3d_internal.h"
 #include "rt_instbatch3d.h"
 #include "rt_morphtarget3d.h"
+#include "rt_postfx3d.h"
 #include "rt_skeleton3d.h"
 #include "rt_string.h"
 #include "vgfx3d_backend.h"
@@ -20,6 +21,8 @@ extern rt_string rt_const_cstr(const char *s);
 extern void *rt_pixels_new(int64_t width, int64_t height);
 extern void rt_pixels_set(void *pixels, int64_t x, int64_t y, int64_t color);
 extern void *rt_canvas3d_screenshot(void *canvas);
+extern int rt_obj_release_check0(void *obj);
+extern void rt_obj_free(void *obj);
 }
 
 static int tests_run = 0;
@@ -74,8 +77,25 @@ static float *last_prev_instance_matrices_copy = nullptr;
 static int32_t last_readback_w = 0;
 static int32_t last_readback_h = 0;
 static int32_t last_readback_stride = 0;
+static int begin_frame_calls = 0;
+static vgfx3d_camera_params_t begin_frame_params[4];
+static int set_gpu_postfx_enabled_calls = 0;
+static int8_t set_gpu_postfx_enabled_values[4];
+static int set_gpu_postfx_snapshot_calls = 0;
+static int8_t set_gpu_postfx_snapshot_present[4];
+static vgfx3d_postfx_snapshot_t set_gpu_postfx_snapshots[4];
 
 static void noop_end_frame(void *) {}
+static void noop_present_postfx(void *, const vgfx3d_postfx_snapshot_t *) {}
+
+static void noop_draw(void *,
+                      vgfx_window_t,
+                      const vgfx3d_draw_cmd_t *,
+                      const vgfx3d_light_params_t *,
+                      int32_t,
+                      const float *,
+                      int8_t,
+                      int8_t) {}
 
 static void record_draw_skybox(void *, const void *) {
     skybox_draw_calls++;
@@ -158,12 +178,55 @@ static int record_readback_rgba(void *, uint8_t *dst_rgba, int32_t w, int32_t h,
     return 1;
 }
 
+static void reset_postfx_records(void) {
+    begin_frame_calls = 0;
+    std::memset(begin_frame_params, 0, sizeof(begin_frame_params));
+    set_gpu_postfx_enabled_calls = 0;
+    std::memset(set_gpu_postfx_enabled_values, 0, sizeof(set_gpu_postfx_enabled_values));
+    set_gpu_postfx_snapshot_calls = 0;
+    std::memset(set_gpu_postfx_snapshot_present, 0, sizeof(set_gpu_postfx_snapshot_present));
+    std::memset(set_gpu_postfx_snapshots, 0, sizeof(set_gpu_postfx_snapshots));
+}
+
+static void record_begin_frame(void *, const vgfx3d_camera_params_t *cam) {
+    if (begin_frame_calls < (int)(sizeof(begin_frame_params) / sizeof(begin_frame_params[0])) && cam)
+        begin_frame_params[begin_frame_calls] = *cam;
+    begin_frame_calls++;
+}
+
+static void record_set_gpu_postfx_enabled(void *, int8_t enabled) {
+    if (set_gpu_postfx_enabled_calls <
+        (int)(sizeof(set_gpu_postfx_enabled_values) / sizeof(set_gpu_postfx_enabled_values[0]))) {
+        set_gpu_postfx_enabled_values[set_gpu_postfx_enabled_calls] = enabled;
+    }
+    set_gpu_postfx_enabled_calls++;
+}
+
+static void record_set_gpu_postfx_snapshot(void *, const vgfx3d_postfx_snapshot_t *snapshot) {
+    if (set_gpu_postfx_snapshot_calls <
+        (int)(sizeof(set_gpu_postfx_snapshot_present) /
+              sizeof(set_gpu_postfx_snapshot_present[0]))) {
+        set_gpu_postfx_snapshot_present[set_gpu_postfx_snapshot_calls] = snapshot ? 1 : 0;
+        if (snapshot)
+            set_gpu_postfx_snapshots[set_gpu_postfx_snapshot_calls] = *snapshot;
+    }
+    set_gpu_postfx_snapshot_calls++;
+}
+
 static void set_identity4x4(float *m) {
     std::memset(m, 0, sizeof(float) * 16);
     m[0] = 1.0f;
     m[5] = 1.0f;
     m[10] = 1.0f;
     m[15] = 1.0f;
+}
+
+static void set_identity4x4d(double *m) {
+    std::memset(m, 0, sizeof(double) * 16);
+    m[0] = 1.0;
+    m[5] = 1.0;
+    m[10] = 1.0;
+    m[15] = 1.0;
 }
 
 static void init_fake_canvas(rt_canvas3d *canvas, const vgfx3d_backend_t *backend) {
@@ -179,13 +242,23 @@ static void init_fake_canvas(rt_canvas3d *canvas, const vgfx3d_backend_t *backen
 static void cleanup_fake_canvas(rt_canvas3d *canvas) {
     for (int32_t i = 0; i < canvas->temp_buf_count; i++)
         std::free(canvas->temp_buffers[i]);
+    for (int32_t i = 0; i < canvas->temp_obj_count; i++) {
+        if (canvas->temp_objects[i] && rt_obj_release_check0(canvas->temp_objects[i]))
+            rt_obj_free(canvas->temp_objects[i]);
+    }
     std::free(canvas->temp_buffers);
+    std::free(canvas->temp_objects);
     std::free(canvas->draw_cmds);
     std::free(canvas->motion_history);
+    if (canvas->postfx && rt_obj_release_check0(canvas->postfx))
+        rt_obj_free(canvas->postfx);
     canvas->temp_buffers = nullptr;
+    canvas->temp_objects = nullptr;
     canvas->draw_cmds = nullptr;
     canvas->motion_history = nullptr;
+    canvas->postfx = nullptr;
     canvas->temp_buf_count = canvas->temp_buf_capacity = 0;
+    canvas->temp_obj_count = canvas->temp_obj_capacity = 0;
     canvas->draw_count = canvas->draw_capacity = 0;
     canvas->motion_history_count = canvas->motion_history_capacity = 0;
     reset_recorded_instancing();
@@ -302,8 +375,10 @@ static void test_gpu_morph_payload_for_opengl(void) {
     rt_mesh3d *mesh_view = (rt_mesh3d *)mesh;
     test_deferred_draw_t *draws = (test_deferred_draw_t *)canvas.draw_cmds;
     EXPECT_TRUE(canvas.draw_count == 1, "OpenGL morphed draw enqueues one draw");
-    EXPECT_TRUE(canvas.temp_buf_count == 2,
-                "OpenGL morphed draw registers packed deltas and weights");
+    EXPECT_TRUE(canvas.temp_buf_count == 0,
+                "OpenGL morphed draw avoids transient packed payload buffers");
+    EXPECT_TRUE(canvas.temp_obj_count == 1,
+                "OpenGL morphed draw retains the morph object until frame end");
     EXPECT_TRUE(draws[0].cmd.vertices == mesh_view->vertices,
                 "OpenGL morphed draw keeps original mesh vertices for GPU morphing");
     EXPECT_TRUE(draws[0].cmd.morph_deltas != nullptr,
@@ -313,6 +388,10 @@ static void test_gpu_morph_payload_for_opengl(void) {
     EXPECT_TRUE(draws[0].cmd.morph_weights != nullptr,
                 "OpenGL morphed draw forwards packed morph weights");
     EXPECT_TRUE(draws[0].cmd.morph_shape_count == 1, "OpenGL morphed draw forwards shape count");
+    EXPECT_TRUE(draws[0].cmd.morph_key == morph,
+                "OpenGL morphed draw forwards the stable morph identity");
+    EXPECT_TRUE(draws[0].cmd.morph_revision == rt_morphtarget3d_get_payload_generation(morph),
+                "OpenGL morphed draw forwards the morph payload revision");
     if (draws[0].cmd.morph_deltas && draws[0].cmd.morph_weights) {
         EXPECT_TRUE(draws[0].cmd.morph_deltas[0] == 1.0f && draws[0].cmd.morph_deltas[1] == 2.0f &&
                         draws[0].cmd.morph_deltas[2] == 3.0f,
@@ -341,8 +420,10 @@ static void test_gpu_morph_payload_for_d3d11(void) {
     rt_mesh3d *mesh_view = (rt_mesh3d *)mesh;
     test_deferred_draw_t *draws = (test_deferred_draw_t *)canvas.draw_cmds;
     EXPECT_TRUE(canvas.draw_count == 1, "D3D11 morphed draw enqueues one draw");
-    EXPECT_TRUE(canvas.temp_buf_count == 2,
-                "D3D11 morphed draw registers packed deltas and weights");
+    EXPECT_TRUE(canvas.temp_buf_count == 0,
+                "D3D11 morphed draw avoids transient packed payload buffers");
+    EXPECT_TRUE(canvas.temp_obj_count == 1,
+                "D3D11 morphed draw retains the morph object until frame end");
     EXPECT_TRUE(draws[0].cmd.vertices == mesh_view->vertices,
                 "D3D11 morphed draw keeps original mesh vertices for GPU morphing");
     EXPECT_TRUE(draws[0].cmd.morph_deltas != nullptr,
@@ -350,6 +431,10 @@ static void test_gpu_morph_payload_for_d3d11(void) {
     EXPECT_TRUE(draws[0].cmd.morph_weights != nullptr,
                 "D3D11 morphed draw forwards packed morph weights");
     EXPECT_TRUE(draws[0].cmd.morph_shape_count == 1, "D3D11 morphed draw forwards shape count");
+    EXPECT_TRUE(draws[0].cmd.morph_key == morph,
+                "D3D11 morphed draw forwards the stable morph identity");
+    EXPECT_TRUE(draws[0].cmd.morph_revision == rt_morphtarget3d_get_payload_generation(morph),
+                "D3D11 morphed draw forwards the morph payload revision");
 
     cleanup_fake_canvas(&canvas);
 }
@@ -371,8 +456,10 @@ static void test_gpu_morph_normal_payload_for_d3d11(void) {
 
     test_deferred_draw_t *draws = (test_deferred_draw_t *)canvas.draw_cmds;
     EXPECT_TRUE(canvas.draw_count == 1, "D3D11 morphed-normal draw enqueues one draw");
-    EXPECT_TRUE(canvas.temp_buf_count == 3,
-                "D3D11 morphed-normal draw registers packed deltas, normal deltas, and weights");
+    EXPECT_TRUE(canvas.temp_buf_count == 0,
+                "D3D11 morphed-normal draw avoids transient packed payload buffers");
+    EXPECT_TRUE(canvas.temp_obj_count == 1,
+                "D3D11 morphed-normal draw retains the morph object until frame end");
     EXPECT_TRUE(draws[0].cmd.morph_normal_deltas != nullptr,
                 "D3D11 morphed-normal draw forwards packed morph normal deltas");
     if (draws[0].cmd.morph_normal_deltas) {
@@ -402,8 +489,10 @@ static void test_gpu_morph_normal_payload_for_opengl(void) {
 
     test_deferred_draw_t *draws = (test_deferred_draw_t *)canvas.draw_cmds;
     EXPECT_TRUE(canvas.draw_count == 1, "OpenGL morphed-normal draw enqueues one draw");
-    EXPECT_TRUE(canvas.temp_buf_count == 3,
-                "OpenGL morphed-normal draw registers packed deltas, normal deltas, and weights");
+    EXPECT_TRUE(canvas.temp_buf_count == 0,
+                "OpenGL morphed-normal draw avoids transient packed payload buffers");
+    EXPECT_TRUE(canvas.temp_obj_count == 1,
+                "OpenGL morphed-normal draw retains the morph object until frame end");
     EXPECT_TRUE(draws[0].cmd.morph_normal_deltas != nullptr,
                 "OpenGL morphed-normal draw forwards packed morph normal deltas");
     if (draws[0].cmd.morph_normal_deltas) {
@@ -433,8 +522,10 @@ static void test_attached_morph_targets_route_through_draw_mesh(void) {
 
     test_deferred_draw_t *draws = (test_deferred_draw_t *)canvas.draw_cmds;
     EXPECT_TRUE(canvas.draw_count == 1, "Attached morph targets still enqueue one draw");
-    EXPECT_TRUE(canvas.temp_buf_count == 2,
-                "Attached morph targets allocate transient GPU morph payload buffers");
+    EXPECT_TRUE(canvas.temp_buf_count == 0,
+                "Attached morph targets avoid transient GPU morph payload buffers");
+    EXPECT_TRUE(canvas.temp_obj_count == 1,
+                "Attached morph targets retain the morph object until frame end");
     EXPECT_TRUE(draws[0].cmd.morph_deltas != nullptr,
                 "Attached morph targets route DrawMesh through the morph payload path");
     EXPECT_TRUE(draws[0].cmd.morph_shape_count == 1,
@@ -927,6 +1018,69 @@ static void test_screenshot_prefers_backend_readback(void) {
     }
 }
 
+static void test_gpu_postfx_state_latches_across_overlay_pass(void) {
+    vgfx3d_backend_t backend = {};
+    rt_canvas3d canvas;
+    rt_camera3d camera = {};
+    void *mesh = make_test_mesh();
+    void *material = rt_material3d_new();
+    void *transform = rt_mat4_identity();
+    void *fx = rt_postfx3d_new();
+
+    backend.name = "d3d11";
+    backend.begin_frame = record_begin_frame;
+    backend.submit_draw = noop_draw;
+    backend.end_frame = noop_end_frame;
+    backend.present_postfx = noop_present_postfx;
+    backend.set_gpu_postfx_enabled = record_set_gpu_postfx_enabled;
+    backend.set_gpu_postfx_snapshot = record_set_gpu_postfx_snapshot;
+
+    init_fake_canvas(&canvas, &backend);
+    canvas.in_frame = 0;
+    canvas.width = 320;
+    canvas.height = 180;
+    set_identity4x4d(camera.view);
+    set_identity4x4d(camera.projection);
+    camera.eye[2] = 3.0;
+    rt_postfx3d_add_bloom(fx, 0.8, 1.5, 2);
+    rt_canvas3d_set_post_fx(&canvas, fx);
+    reset_postfx_records();
+
+    rt_canvas3d_begin(&canvas, &camera);
+    rt_canvas3d_draw_mesh(&canvas, mesh, transform, material);
+    rt_canvas3d_draw_rect2d(&canvas, 10, 20, 30, 40, 0xFFFFFFFF);
+    rt_canvas3d_end(&canvas);
+
+    EXPECT_TRUE(begin_frame_calls == 2,
+                "Canvas3D issues separate backend begin_frame calls for scene and overlay passes");
+    EXPECT_TRUE(begin_frame_params[0].load_existing_color == 0,
+                "Main scene pass starts with a fresh color target");
+    EXPECT_TRUE(begin_frame_params[1].load_existing_color == 1,
+                "Overlay pass preserves the main scene color");
+    EXPECT_TRUE(set_gpu_postfx_enabled_calls == 2,
+                "Canvas3D reapplies the latched GPU postfx state for the overlay pass");
+    EXPECT_TRUE(set_gpu_postfx_enabled_values[0] == 1 && set_gpu_postfx_enabled_values[1] == 1,
+                "Canvas3D keeps GPU postfx enabled across both backend passes");
+    EXPECT_TRUE(set_gpu_postfx_snapshot_calls == 2,
+                "Canvas3D forwards the latched postfx snapshot to both backend passes");
+    EXPECT_TRUE(set_gpu_postfx_snapshot_present[0] == 1 && set_gpu_postfx_snapshot_present[1] == 1,
+                "Canvas3D keeps the postfx snapshot alive across the overlay pass");
+    EXPECT_TRUE(set_gpu_postfx_snapshots[0].bloom_enabled == 1 &&
+                    set_gpu_postfx_snapshots[1].bloom_threshold == 0.8f &&
+                    set_gpu_postfx_snapshots[1].bloom_intensity == 1.5f,
+                "Canvas3D forwards the same latched postfx values to both backend passes");
+    EXPECT_TRUE(canvas.frame_postfx_state_latched == 1,
+                "Canvas3D keeps the frame postfx snapshot latched until Flip");
+    EXPECT_TRUE(canvas.frame_gpu_postfx_enabled == 1,
+                "Canvas3D records the frame as GPU-postfx-enabled");
+    EXPECT_TRUE(canvas.frame_postfx_snapshot.bloom_enabled == 1 &&
+                    canvas.frame_postfx_snapshot.bloom_threshold == 0.8f &&
+                    canvas.frame_postfx_snapshot.bloom_intensity == 1.5f,
+                "Canvas3D preserves the original postfx snapshot across the overlay pass");
+
+    cleanup_fake_canvas(&canvas);
+}
+
 int main() {
     test_gpu_skinning_bypass_for_opengl();
     test_gpu_skinning_bypass_for_d3d11();
@@ -950,6 +1104,7 @@ int main() {
     test_instanced_runtime_culls_outside_frustum();
     test_instanced_shadow_pass_includes_instances();
     test_screenshot_prefers_backend_readback();
+    test_gpu_postfx_state_latches_across_overlay_pass();
 
     std::printf("Canvas3D GPU path tests: %d/%d passed\n", tests_passed, tests_run);
     return tests_passed == tests_run ? 0 : 1;

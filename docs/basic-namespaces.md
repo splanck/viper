@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-05
+last-verified: 2026-04-09
 ---
 
 # Viper BASIC Namespaces — Reference
@@ -706,7 +706,7 @@ Console I/O operations:
 - `Viper.Terminal.PrintStr(str)->void` — Print string
 - `Viper.Terminal.PrintI64(i64)->void` — Print integer
 - `Viper.Terminal.PrintF64(f64)->void` — Print double
-- `Viper.Terminal.ReadLine()->str` — Read line from console
+- `Viper.Terminal.ReadLine()->str?` — Read line from console (returns null on EOF)
 
 #### Viper.String
 
@@ -1180,8 +1180,6 @@ END
   defined as `A.B.F()`. This is a bug; all lookups should be case-insensitive per the specification.
 - **File-scoped USING only**: USING directives are not inherited across compilation units; each file must declare its
   own imports.
-- **Qualified names in DIM AS**: Parser does not yet support dotted paths like `DIM p AS Graphics.Point`. Use USING
-  directives to enable unqualified type references.
 
 ## Future Enhancements
 

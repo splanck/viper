@@ -1,7 +1,7 @@
 ---
 status: active
 audience: internal
-last-verified: 2026-04-05
+last-verified: 2026-04-09
 ---
 
 # Viper C++ Compiler Specifications

@@ -13,14 +13,14 @@ file(REMOVE_RECURSE "${_tmp_root}")
 file(MAKE_DIRECTORY "${_tmp_root}")
 
 execute_process(
-    COMMAND "${VIPER_BIN}" install-package --build-dir "${VIPER_BUILD_DIR}" --target tarball -o "${_artifact}"
-    RESULT_VARIABLE _build_rv
-    OUTPUT_VARIABLE _build_out
-    ERROR_VARIABLE _build_err
+        COMMAND "${VIPER_BIN}" install-package --build-dir "${VIPER_BUILD_DIR}" --target tarball -o "${_artifact}"
+        RESULT_VARIABLE _build_rv
+        OUTPUT_VARIABLE _build_out
+        ERROR_VARIABLE _build_err
 )
 if (NOT _build_rv EQUAL 0)
     message(FATAL_ERROR
-        "viper install-package tarball smoke failed\nstdout:\n${_build_out}\nstderr:\n${_build_err}")
+            "viper install-package tarball smoke failed\nstdout:\n${_build_out}\nstderr:\n${_build_err}")
 endif ()
 
 if (NOT EXISTS "${_artifact}")
@@ -28,12 +28,12 @@ if (NOT EXISTS "${_artifact}")
 endif ()
 
 execute_process(
-    COMMAND "${VIPER_BIN}" install-package --verify-only "${_artifact}"
-    RESULT_VARIABLE _verify_rv
-    OUTPUT_VARIABLE _verify_out
-    ERROR_VARIABLE _verify_err
+        COMMAND "${VIPER_BIN}" install-package --verify-only "${_artifact}"
+        RESULT_VARIABLE _verify_rv
+        OUTPUT_VARIABLE _verify_out
+        ERROR_VARIABLE _verify_err
 )
 if (NOT _verify_rv EQUAL 0)
     message(FATAL_ERROR
-        "viper install-package verify-only failed\nstdout:\n${_verify_out}\nstderr:\n${_verify_err}")
+            "viper install-package verify-only failed\nstdout:\n${_verify_out}\nstderr:\n${_verify_err}")
 endif ()

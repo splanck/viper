@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-05
+last-verified: 2026-04-09
 ---
 
 # Viper IL — Complete Guide
@@ -164,7 +164,7 @@ il 0.2.0
 extern @Viper.Terminal.PrintI64(i64) -> void
 func @add(i64 %a, i64 %b) -> i64 {
 entry:
-  %sum = add %a, %b        # compute a + b
+  %sum = iadd.ovf %a, %b   # compute a + b (traps on overflow)
   ret %sum
 }
 func @main() -> i64 {
@@ -178,7 +178,7 @@ entry:
 **Line by line**
 
 - `func @add(i64 %a, i64 %b) -> i64` – declare a function with two `i64` parameters and an `i64` return type.
-- `%sum = add %a, %b` – add the two parameters and bind the sum.
+- `%sum = iadd.ovf %a, %b` – add the two parameters with overflow checking; traps on signed overflow.
 - `ret %sum` – return the computed sum.
 - `func @main() -> i64 { ... }` – define the entry point.
 - `%v0 = call @add(2, 3)` – call `@add` with literal arguments; result stored in `%v0`.
@@ -187,7 +187,8 @@ entry:
 
 **What just happened?** `call` pushes arguments and receives a result. Each function has one entry block.
 
-**Gotcha:** Arguments are immutable; use `alloca` + `store` if you need a mutable local.
+**Gotcha:** Arguments are immutable; use `alloca` + `store` if you need a mutable local. Signed integer arithmetic
+must use the `.ovf` forms (`iadd.ovf`, `isub.ovf`, `imul.ovf`) — plain `add`/`sub`/`mul` are rejected by the verifier.
 
 ### Arithmetic and comparisons
 
@@ -196,23 +197,25 @@ il 0.2.0
 extern @Viper.Terminal.PrintI64(i64) -> void
 func @main() -> i64 {
 entry:
-  %v0 = add 2, 2           # 4
+  %v0 = iadd.ovf 2, 2      # 4
   %v1 = scmp_gt %v0, 3     # 1 (true)
-  call @Viper.Terminal.PrintI64(%v1)  # prints 1
+  %v2 = zext1 %v1          # widen i1 → i64 before printing
+  call @Viper.Terminal.PrintI64(%v2)  # prints 1
   ret 0
 }
 ```
 
 **Line by line**
 
-- `%v0 = add 2, 2` – compute the constant expression `2 + 2`.
+- `%v0 = iadd.ovf 2, 2` – compute the constant expression `2 + 2` with overflow checking.
 - `%v1 = scmp_gt %v0, 3` – signed compare‑greater; result is `1` because 4 > 3.
-- `call @Viper.Terminal.PrintI64(%v1)` – zero‑extend the `i1` result and print it.
+- `%v2 = zext1 %v1` – zero-extend the `i1` result to `i64` so it can be passed to `PrintI64`.
+- `call @Viper.Terminal.PrintI64(%v2)` – print the widened value.
 - `ret 0` – terminate `main` with success.
 
 **What just happened?** `scmp_gt` compares signed integers and yields an `i1` (0 or 1).
 
-**Gotcha:** Comparison results are `i1`; printing them with `Viper.Terminal.PrintI64` zero-extends to `i64`.
+**Gotcha:** Comparison results are `i1`; widen to `i64` with `zext1` before passing them to `i64`-typed callees.
 
 ### Control flow
 
@@ -322,7 +325,7 @@ il 0.2.0
 extern @Viper.Terminal.PrintI64(i64) -> void
 func @main() -> i64 {
 entry:
-  %t0 = add 2, 2
+  %t0 = iadd.ovf 2, 2
   call @Viper.Terminal.PrintI64(%t0)
   ret 0
 }
@@ -330,15 +333,15 @@ entry:
 
 **Line by line**
 
-- `%t0 = add 2, 2` – compute the arithmetic expression from the BASIC code.
+- `%t0 = iadd.ovf 2, 2` – compute the arithmetic expression from the BASIC code with overflow checking.
 - `call @Viper.Terminal.PrintI64(%t0)` – print the result.
 - `ret 0` – exit with success.
 
-**What just happened?** The front end evaluated the expression, emitted an `add`, and called the print routine.
+**What just happened?** The front end evaluated the expression, emitted an `iadd.ovf`, and called the print routine.
 
 ### Debugging IL
 
-- `viper -run --trace foo.il` prints each instruction as it executes.
+- `viper -run --trace=il foo.il` prints each instruction as it executes (`--trace=src` prints source lines instead).
 - `il-verify foo.il` checks structural rules without running.
 - Common errors like "type mismatch" or "undefined block" point to the offending line.
 
@@ -370,7 +373,8 @@ Happy hacking!
 
 The current IL v0.2.0 specification builds on the design principles established in earlier versions: IL acts as the "thin waist"
 between front ends and execution engines, enforces explicit control flow with one terminator per block, and keeps the
-type system intentionally small (`i1`, `i64`, `f64`, `ptr`, `str`, `void`). The material below supersedes earlier
+type system intentionally small (`void`, `i1`, `i16`, `i32`, `i64`, `f64`, `ptr`, `str`, plus `error` and `resumetok`
+for structured exception handling). The material below supersedes earlier
 drafts (including v0.1.x) while remaining source-compatible with modules written for those versions. Numeric promotion
 semantics are specified in [specs/numerics.md](specs/numerics.md) and the unified trap/handler model is
 defined in [specs/errors.md](specs/errors.md); both documents are normative for all front ends and the
@@ -387,7 +391,8 @@ Its goals are:
 
 * **Determinism** – VM and native back ends must produce identical observable behaviour.
 * **Explicit control flow** – each basic block ends with exactly one terminator; no fallthrough.
-* **Static types** – a minimal set of primitive types (`i1`, `i64`, `f64`, `ptr`, `str`, `void`).
+* **Static types** – a minimal set of primitive types (`void`, `i1`, `i16`, `i32`, `i64`, `f64`, `ptr`, `str`) plus
+  `error` and `resumetok` for structured exception handling.
 
 Execution is organized as functions consisting of labelled basic blocks. Modules may execute either under the IL virtual
 machine (VM) or after lowering to native code through a C runtime. Front ends such as BASIC first lower into IL
@@ -441,7 +446,7 @@ Functions may have a linkage keyword between `func` and the name:
 ```text
 func export @calculateScore(i64 %x, i64 %y) -> i64 {
 entry:
-  %r = mul %x, %y
+  %r = imul.ovf %x, %y
   ret %r
 }
 
@@ -583,43 +588,31 @@ operands.
 
 ##### Integer Arithmetic
 
-| Instr  | Form        | Result                                |
-|--------|-------------|---------------------------------------|
-| `add`  | `add x, y`  | `i64`                                 |
-| `mul`  | `mul x, y`  | `i64`                                 |
-| `sdiv` | `sdiv x, y` | `i64` (no divide-by-zero check)       |
-| `srem` | `srem x, y` | `i64` (no divide-by-zero check)       |
-| `sub`  | `sub x, y`  | `i64`                                 |
-| `udiv` | `udiv x, y` | `i64` (no divide-by-zero check)       |
-| `urem` | `urem x, y` | `i64` (no divide-by-zero check)       |
+All signed integer arithmetic opcodes in Viper IL trap on overflow or divide-by-zero; the non-checking variants
+(`add`, `sub`, `mul`, `sdiv`, `udiv`, `srem`, `urem`) are reserved in the opcode table but **rejected by the verifier**.
+Front ends must emit the checked forms.
 
-`sdiv` and `srem` follow C semantics: the quotient is truncated toward zero and the remainder keeps the dividend's sign.
-Neither checks for division by zero; use `sdiv.chk0` or `srem.chk0` for checked variants that trap on zero divisors.
-Front ends such as BASIC map `\` to `sdiv.chk0` and `MOD` to `srem.chk0`.
+| Instr       | Form             | Result | Notes                                                         |
+|-------------|------------------|--------|---------------------------------------------------------------|
+| `iadd.ovf`  | `iadd.ovf x, y`  | `i64`  | signed add, trap on signed overflow                           |
+| `isub.ovf`  | `isub.ovf x, y`  | `i64`  | signed subtract, trap on signed overflow                      |
+| `imul.ovf`  | `imul.ovf x, y`  | `i64`  | signed multiply, trap on signed overflow                      |
+| `sdiv.chk0` | `sdiv.chk0 x, y` | `i64`  | signed divide, trap on divide-by-zero or INT64_MIN/-1         |
+| `udiv.chk0` | `udiv.chk0 x, y` | `i64`  | unsigned divide, trap on divide-by-zero                       |
+| `srem.chk0` | `srem.chk0 x, y` | `i64`  | signed remainder, trap on divide-by-zero (matches BASIC `MOD`) |
+| `urem.chk0` | `urem.chk0 x, y` | `i64`  | unsigned remainder, trap on divide-by-zero                    |
+
+`sdiv.chk0` and `srem.chk0` follow C semantics: the quotient is truncated toward zero and the remainder keeps the
+dividend's sign. Front ends such as BASIC map `\` (integer divide) to `sdiv.chk0` and `MOD` to `srem.chk0`.
 
 ```text
 il 0.2.0
 func @main() -> i64 {
 entry:
-  %t0 = add 2, 3
+  %t0 = iadd.ovf 2, 3
   ret %t0
 }
 ```
-
-##### Checked Integer Arithmetic
-
-| Instr       | Form             | Result | Notes                              |
-|-------------|------------------|--------|------------------------------------|
-| `iadd.ovf`  | `iadd.ovf x, y`  | `i64`  | trap on signed overflow            |
-| `imul.ovf`  | `imul.ovf x, y`  | `i64`  | trap on signed overflow            |
-| `isub.ovf`  | `isub.ovf x, y`  | `i64`  | trap on signed overflow            |
-| `sdiv.chk0` | `sdiv.chk0 x, y` | `i64`  | trap on divide-by-zero or overflow |
-| `srem.chk0` | `srem.chk0 x, y` | `i64`  | trap on divide-by-zero             |
-| `udiv.chk0` | `udiv.chk0 x, y` | `i64`  | trap on divide-by-zero             |
-| `urem.chk0` | `urem.chk0 x, y` | `i64`  | trap on divide-by-zero             |
-
-The `.ovf` variants detect signed overflow and trap before producing a wrapped result. The `.chk0` variants explicitly
-check for zero divisors.
 
 ##### Bitwise and Shifts
 
@@ -753,9 +746,9 @@ IL provides a structured error handling system with error values, handler stacks
 | Instr | Form | Notes |
 |-------|------|-------|
 | `trap` | `trap` | Unconditional trap (abort) |
-| `trap.err` | `trap.err code, msg` | Create an error value (i32 code, str message); returns `error` |
-| `trap.from_err` | `trap.from_err i32 code` | Terminate with error kind and code |
-| `trap.kind` | `trap.kind` | Read current trap kind from most recent error; returns `i64` |
+| `trap.err` | `%e = trap.err %kind, %msg` | Create an error value from i32 kind + str message; returns `Error` |
+| `trap.from_err` | `trap.from_err i32 7` | Terminator: trap with the given i32 trap-kind code (the `i32` type prefix is required before a constant) |
+| `trap.kind` | `%k = trap.kind` | Read the current trap kind from the most recent error; returns `i64` |
 
 **Resume Operations:**
 | Instr | Form | Notes |
@@ -771,7 +764,7 @@ IL provides a structured error handling system with error values, handler stacks
 | `err.get_ip` | `err.get_ip %err` | `i64` |
 | `err.get_kind` | `err.get_kind %err` | `i32` |
 | `err.get_line` | `err.get_line %err` | `i32` |
-| `err.get_msg` | `err.get_msg` | `str` |
+| `err.get_msg` | `err.get_msg %err` | `str` |
 
 **Example:**
 
@@ -782,11 +775,14 @@ entry:
   %result = sdiv.chk0 %a, %b
   eh.pop
   ret %result
-handler:
+handler(%err:Error, %tok:ResumeTok):
   eh.entry
   trap
 }
 ```
+
+Error-handler blocks must declare `(%err:Error, %tok:ResumeTok)` parameters; the runtime passes the captured error
+value and a resume token into the handler so it can inspect or resume the faulting operation.
 
 #### Runtime ABI
 
@@ -852,7 +848,7 @@ null or misaligned) trap deterministically.
 
 ```text
 .loc 1 3 4
-%v = add 1, 2
+%v = iadd.ovf 1, 2
 ```
 
 #### Verifier Rules
@@ -1348,7 +1344,7 @@ entry:
   br L1
 L1:
   %t1 = load i64, %t0
-  %t2 = add %t1, 1
+  %t2 = iadd.ovf %t1, 1
   store i64, %t0, %t2
   %t3 = scmp_lt %t2, 10
   cbr %t3, L1, Exit
@@ -1366,7 +1362,7 @@ func @main() -> i64 {
 entry:
   br L1(0)
 L1(%a0:i64):
-  %t2 = add %a0, 1
+  %t2 = iadd.ovf %a0, 1
   %t3 = scmp_lt %t2, 10
   cbr %t3, L1(%t2), Exit(%t2)
 Exit(%a1:i64):
@@ -1429,10 +1425,10 @@ func @main() -> i64 {
 entry:
   %x_slot = alloca 8
   %y_slot = alloca 8
-  %t0 = add 2, 3
+  %t0 = iadd.ovf 2, 3
   store i64, %x_slot, %t0
   %xv = load i64, %x_slot
-  %t1 = mul %xv, 2
+  %t1 = imul.ovf %xv, 2
   store i64, %y_slot, %t1
   %s0 = const_str @.L0
   call @rt_print_str(%s0)
@@ -1496,9 +1492,9 @@ loop_head:
   cbr %cond, loop_body, done
 loop_body:
   %s0 = load i64, %s_slot
-  %s1 = add %s0, %i0
+  %s1 = iadd.ovf %s0, %i0
   store i64, %s_slot, %s1
-  %i1 = add %i0, 1
+  %i1 = iadd.ovf %i0, 1
   store i64, %i_slot, %i1
   br loop_head
 done:
@@ -1563,13 +1559,13 @@ inner_head:
   cbr %ic, inner_body, inner_done
 inner_body:
   %i1 = load i64, %i_slot
-  %prod = mul %i1, %j0
+  %prod = imul.ovf %i1, %j0
   call @rt_print_i64(%prod)
-  %j1 = add %j0, 1
+  %j1 = iadd.ovf %j0, 1
   store i64, %j_slot, %j1
   br inner_head
 inner_done:
-  %i2 = add %i0, 1
+  %i2 = iadd.ovf %i0, 1
   store i64, %i_slot, %i2
   br outer_head
 outer_done:
@@ -1629,9 +1625,9 @@ loop_head:
   cbr %cond, loop_body, done
 loop_body:
   %r0 = load i64, %r_slot
-  %r1 = mul %r0, %n1
+  %r1 = imul.ovf %r0, %n1
   store i64, %r_slot, %r1
-  %n2 = sub %n1, 1
+  %n2 = isub.ovf %n1, 1
   store i64, %n_slot, %n2
   br loop_head
 done:
@@ -1751,7 +1747,7 @@ entry:
   store i64, %i_slot, 0
   store i64, %sum_slot, 0
   %n0 = load i64, %n_slot
-  %bytes = mul %n0, 8
+  %bytes = imul.ovf %n0, 8
   %base = call @rt_alloc(%bytes)
   store ptr, %a_slot, %base
   br loop_head
@@ -1764,12 +1760,12 @@ loop_body:
   %a0 = load ptr, %a_slot
   %offset = shl %i0, 3
   %elem_ptr = gep %a0, %offset
-  %sq = mul %i0, %i0
+  %sq = imul.ovf %i0, %i0
   store i64, %elem_ptr, %sq
   %sum0 = load i64, %sum_slot
-  %sum1 = add %sum0, %sq
+  %sum1 = iadd.ovf %sum0, %sq
   store i64, %sum_slot, %sum1
-  %i1 = add %i0, 1
+  %i1 = iadd.ovf %i0, 1
   store i64, %i_slot, %i1
   br loop_head
 done:

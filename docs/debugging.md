@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-05
+last-verified: 2026-04-09
 ---
 
 # Viper Debugging Guide
@@ -311,33 +311,40 @@ Default level: INFO. Messages below the current level are suppressed.
 
 ### Viper.Core.Diagnostics API
 
-The runtime assertion library provides 12 assertion variants for test and debug use:
+The runtime assertion library provides assertion variants for test and debug use. Every assertion
+takes a trailing `msg: str` argument that describes the failure:
 
-| Function | Description |
-|----------|-------------|
-| `Assert(condition)` | Assert condition is true |
-| `AssertEq(a, b)` | Assert values are equal |
-| `AssertNeq(a, b)` | Assert values are not equal |
-| `AssertEqNum(a, b)` | Assert numeric equality |
-| `AssertEqStr(a, b)` | Assert string equality |
-| `AssertNull(val)` | Assert value is null |
-| `AssertNotNull(val)` | Assert value is non-null |
-| `AssertFail(msg)` | Unconditionally fail with message |
-| `AssertGt(a, b)` | Assert a > b |
-| `AssertLt(a, b)` | Assert a < b |
-| `AssertGte(a, b)` | Assert a >= b |
-| `AssertLte(a, b)` | Assert a <= b |
-| `Trap(msg)` | Raise a runtime trap with message |
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `Assert(cond, msg)` | `void(i1, str)` | Assert condition is true |
+| `AssertEq(a, b, msg)` | `void(i64, i64, str)` | Assert i64 values are equal |
+| `AssertNeq(a, b, msg)` | `void(i64, i64, str)` | Assert i64 values are not equal |
+| `AssertEqNum(a, b, msg)` | `void(f64, f64, str)` | Assert f64 values are equal |
+| `AssertEqStr(a, b, msg)` | `void(str, str, str)` | Assert string equality |
+| `AssertNull(val, msg)` | `void(obj, str)` | Assert object is null |
+| `AssertNotNull(val, msg)` | `void(obj, str)` | Assert object is non-null |
+| `AssertFail(msg)` | `void(str)` | Unconditionally fail with message |
+| `AssertGt(a, b, msg)` | `void(i64, i64, str)` | Assert `a > b` |
+| `AssertLt(a, b, msg)` | `void(i64, i64, str)` | Assert `a < b` |
+| `AssertGte(a, b, msg)` | `void(i64, i64, str)` | Assert `a >= b` |
+| `AssertLte(a, b, msg)` | `void(i64, i64, str)` | Assert `a <= b` |
+| `Trap(msg)` | `void(str)` | Raise a runtime trap with message |
+
+These are exposed as static methods on `Viper.Core.Diagnostics` and registered in
+`runtime.def:1148-1160`.
 
 ### Debug Print
 
-For quick debugging, use:
-```rust
-Viper.Debug.PrintI32(value)    // Print integer to stderr
-Viper.Debug.PrintStr(text)     // Print string to stderr
+There is no `Viper.Debug` namespace. For quick debugging, route messages through `Viper.Log` (see
+above) or directly to the terminal:
+
+```viper
+Viper.Log.Debug("value=" + IntToStr(value))    // Goes through the leveled logger
+Viper.Terminal.Print("debug: " + msg)          // Prints to stdout
 ```
 
-These flush immediately for crash safety.
+`Viper.Log.*` writes to stderr (or the configured log sink) and is suppressed when the active level
+is above the call's level.
 
 ---
 
@@ -531,7 +538,7 @@ viper front zia -run program.zia --dump-il    # IL after lowering to stderr
 The IL verifier (`Verifier::verify()`) checks:
 - Type consistency across instructions
 - Control flow graph validity (block connectivity, terminator presence)
-- Exception handling structure (EhEntry/EhExit pairing)
+- Exception handling structure (`eh.push`/`eh.pop` balancing per CFG path, handler block parameter shape)
 - External function declaration correctness
 - Global variable definitions
 
@@ -575,15 +582,22 @@ config.pollCallback = [&]() -> bool {
 
 ### IL Exception Model
 
-Viper IL uses structured exception handling with `EhEntry`/`EhExit` opcodes:
+Viper IL uses structured exception handling with `eh.push` / `eh.pop` opcodes that bracket the
+protected region, plus an `eh.entry` marker inside the handler block:
 
 ```il
-EhEntry handler_block
+eh.push ^handler         ; install handler on the EH stack
   ; protected code
-EhExit
+eh.pop                   ; uninstall on normal exit
+
+handler(%err:Error, %tok:ResumeTok):
+  eh.entry               ; handler entry marker
+  ; recovery code
+  resume.label %tok, ^after_try
 ```
 
-Handler blocks receive `(%err: Error, %tok: ResumeTok)` parameters.
+Handler blocks declare two parameters: `%err: Error` (the active error) and
+`%tok: ResumeTok` (the resume token used by `resume.same` / `resume.next` / `resume.label`).
 
 ### Resume Variants
 

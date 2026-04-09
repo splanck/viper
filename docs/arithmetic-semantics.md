@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-05
+last-verified: 2026-04-09
 ---
 
 # Viper Arithmetic Semantics Reference
@@ -17,17 +17,7 @@ All integer arithmetic operates on **I64** (64-bit signed two's complement).
 There are no sub-width arithmetic instructions; narrowing is explicit via cast
 opcodes.
 
-### Wrapping Arithmetic
-
-| Opcode | Behavior | On Overflow |
-|--------|----------|-------------|
-| `add`  | Two's complement addition | Silent wrap |
-| `sub`  | Two's complement subtraction | Silent wrap |
-| `mul`  | Two's complement multiplication | Silent wrap |
-
-These never trap. `INT64_MAX + 1` silently wraps to `INT64_MIN`.
-
-### Checked (Overflow-Trapping) Arithmetic
+### Checked (Overflow-Trapping) Arithmetic — the only legal signed forms
 
 | Opcode | Behavior | On Overflow |
 |--------|----------|-------------|
@@ -39,21 +29,27 @@ These support sub-width type annotations (I32, I16). The overflow check uses
 the type's range: `iadd.ovf : i32` traps when the result exceeds `INT32_MAX` or
 falls below `INT32_MIN`.
 
-Zia uses checked variants by default (`overflowChecks` is `true`). Disable with
-`--no-overflow-checks` for wrapping semantics.
+> **Plain `add`/`sub`/`mul` are verifier-rejected.** The opcodes still exist
+> in `Opcode.def` for legacy lowering, but the IL verifier (see
+> `src/il/verify/generated/SpecTables.cpp`) rejects them with messages like
+> *"signed integer add must use iadd.ovf (traps on overflow)"*. Frontends
+> must emit the `.ovf` forms; there is no public "wrapping arithmetic" path
+> at the IL level for signed integers.
+
+Zia uses these checked variants by default (`overflowChecks` is `true`). The
+`--no-overflow-checks` flag is reserved for future use; currently the verifier
+still requires `.ovf` opcodes regardless of the flag.
 
 ### Division
 
 | Opcode | Truncation | Div-by-zero | MIN/-1 |
 |--------|-----------|-------------|--------|
-| `sdiv` | Toward zero (C99) | **Trap** | **Trap** |
 | `sdiv.chk0` | Toward zero (C99) | **Trap** | **Trap** |
-| `udiv` | Toward zero | **Trap** | N/A |
 | `udiv.chk0` | Toward zero | **Trap** | N/A |
 
-Both `sdiv` and `sdiv.chk0` trap on divide-by-zero and `MIN / -1`. The `.chk0`
-suffix is a naming convention inherited from early design; behavior is identical
-in the current VM.
+The plain `sdiv` / `udiv` opcodes are verifier-rejected with
+*"signed/unsigned division must use sdiv.chk0/udiv.chk0"*. Use the `.chk0`
+forms exclusively.
 
 **Division truncation direction**: `7 / -2 = -3`, `-7 / 2 = -3`.
 
@@ -61,10 +57,11 @@ in the current VM.
 
 | Opcode | Sign rule | Div-by-zero | MIN%-1 |
 |--------|-----------|-------------|--------|
-| `srem` | Dividend's sign | **Trap** | `0` (no trap) |
 | `srem.chk0` | Dividend's sign | **Trap** | `0` (no trap) |
-| `urem` | Unsigned | **Trap** | N/A |
 | `urem.chk0` | Unsigned | **Trap** | N/A |
+
+The plain `srem` / `urem` opcodes are verifier-rejected (matches BASIC `MOD`
+semantics per the verifier message). Use the `.chk0` forms exclusively.
 
 **Remainder sign rule** (C99): `-7 % 2 = -1`, `7 % -2 = 1`, `-7 % -2 = -1`.
 
@@ -177,12 +174,12 @@ Type hierarchy: `Byte < Integer < Number`
 
 | Expression | IL Emitted | Notes |
 |-----------|-----------|-------|
-| `Integer + Integer` | `add` (or `iadd.ovf` if overflow checks) | |
+| `Integer + Integer` | `iadd.ovf` | Trap on signed overflow |
 | `Number + Number` | `fadd` | |
 | `Integer + Number` | `sitofp` on Integer operand, then `fadd` | Implicit widening |
-| `Integer / Integer` | `sdiv` (or `sdiv.chk0` if overflow checks) | Truncation toward zero |
-| `Integer % Integer` | `srem` (or `srem.chk0` if overflow checks) | Dividend sign |
-| `Byte + Integer` | `add` (both I64 at IL level) | Byte is I32 in sema, but I64 in IL |
+| `Integer / Integer` | `sdiv.chk0` | Truncation toward zero, trap on `/0` and `MIN/-1` |
+| `Integer % Integer` | `srem.chk0` | Dividend sign, trap on `/0` |
+| `Byte + Integer` | `iadd.ovf` (both I64 at IL level) | Byte is I32 in sema, but I64 in IL |
 
 ### BASIC
 
@@ -190,14 +187,15 @@ Type hierarchy: `INTEGER% (I16) < LONG& (I64) < SINGLE! (F64) < DOUBLE# (F64)`
 
 | Expression | IL Emitted | Notes |
 |-----------|-----------|-------|
-| `A% + B%` | `add` | I64 result |
+| `A% + B%` | `iadd.ovf` | I64 result |
 | `A + B` (float) | `fadd` | |
 | `A \ B` (integer div) | `sdiv.chk0` | Always checked, always I64 |
 | `A MOD B` | `srem.chk0` | Always checked, always I64 |
 | `A / B` (float div) | `fdiv` | Both promoted to F64 |
 | `TRUE` | `-1` (I64) | BASIC uses `-1` for true |
 
-**Key difference**: BASIC integer division and modulo always use checked variants
-(`sdiv.chk0`, `srem.chk0`). Zia also defaults to checked variants (`sdiv.chk0`,
-`srem.chk0`) since `overflowChecks` is `true` by default. Pass
-`--no-overflow-checks` for unchecked `sdiv`/`srem`.
+Both frontends emit the checked variants because the IL verifier rejects the
+plain (non-`.ovf` / non-`.chk0`) signed integer opcodes. The BASIC frontend
+exposes an internal `OverflowPolicy::Wrap` switch (in `EmitCommon.cpp:135`),
+but every current call site passes `OverflowPolicy::Checked`, so the wrapping
+path is dead code at lowering time and would fail verification if enabled.

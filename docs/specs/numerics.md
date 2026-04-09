@@ -1,7 +1,7 @@
 ---
 status: draft
 audience: internal
-last-verified: 2026-04-05
+last-verified: 2026-04-09
 ---
 
 # Numeric Semantics
@@ -10,7 +10,18 @@ This document is the single source of truth for numeric behaviour across the BAS
 front end, IL constant-folder, and the runtime/VM. All language layers must agree
 with these rules.
 
-> **⚠️ IMPLEMENTATION NOTE (2025-11-13):**
+> **⚠️ IMPLEMENTATION NOTE (2026-04-09):**
+> Several types in this spec describe an *intended* numeric model that does not match the current
+> Viper BASIC frontend. Per `Parser_Stmt_Core.cpp:478-496`:
+> - `INTEGER`, `INT`, and `LONG` all map to **`i64`** (not `i16`/`i32`).
+> - `SINGLE` maps to **`f64`** (not `f32`); the `f32` type does not exist in `Type.hpp`.
+> - The `!` suffix and `CSNG` are parsed but promote to `f64`.
+>
+> The narrower types described in the table below remain the *target* numeric model, kept here
+> as forward-looking documentation. Runtime traps still apply to the i64/f64 forms via
+> `iadd.ovf`, `sdiv.chk0`, etc.
+>
+> Earlier note (2025-11-13):
 > The `f32` (SINGLE) type is documented throughout this specification but **does not currently exist** in the IL type
 > system (see `src/il/core/Type.hpp`). All SINGLE values are currently widened to `f64` (DOUBLE) during lowering. The CSNG
 > function and SINGLE type suffixes (`!`) are parsed but effectively promote values to DOUBLE. This affects BASIC programs
@@ -140,8 +151,11 @@ indicated condition.
 | `sdiv.chk0`             | Signed integer division.                               | `DivideByZero` on zero divisor; `Overflow` on `MIN / -1`. |
 | `srem.chk0`             | Signed remainder.                                      | `DivideByZero` on zero divisor.                           |
 
-Front ends may use the unchecked versions (`add`, `sub`, …) only when the result
-is statically proven to be in range.
+> **Note (2026-04-09):** The plain `add`/`sub`/`mul`/`sdiv`/`udiv`/`srem`/`urem` opcodes still
+> exist in `Opcode.def` for legacy lowering paths but are **rejected by the IL verifier** for
+> signed integer types (see `src/il/verify/generated/SpecTables.cpp`). Frontends must always emit
+> the checked variants listed above; the doc's earlier wording allowing unchecked use "when the
+> result is statically proven in range" is obsolete.
 
 ## BASIC ↔ IL Lowering Table
 

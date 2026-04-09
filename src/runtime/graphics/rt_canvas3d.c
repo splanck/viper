@@ -26,6 +26,7 @@
 
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
+#include "rt_morphtarget3d.h"
 #include "rt_string.h"
 #include "vgfx3d_backend.h"
 #include "vgfx3d_backend_utils.h"
@@ -42,6 +43,32 @@ static int canvas3d_backend_uses_gpu_postfx(const rt_canvas3d *c) {
 
 static int canvas3d_backend_owns_gpu_rtt(const rt_canvas3d *c) {
     return c && c->render_target && c->backend && c->backend != &vgfx3d_software_backend;
+}
+
+static void canvas3d_apply_gpu_postfx_state(rt_canvas3d *c) {
+    const vgfx3d_postfx_snapshot_t *snapshot = NULL;
+
+    if (!c || !c->backend)
+        return;
+    if (c->frame_gpu_postfx_enabled)
+        snapshot = &c->frame_postfx_snapshot;
+    if (c->backend->set_gpu_postfx_enabled)
+        c->backend->set_gpu_postfx_enabled(c->backend_ctx, c->frame_gpu_postfx_enabled);
+    if (c->backend->set_gpu_postfx_snapshot)
+        c->backend->set_gpu_postfx_snapshot(c->backend_ctx, snapshot);
+}
+
+static void canvas3d_latch_gpu_postfx_state(rt_canvas3d *c) {
+    if (!c)
+        return;
+    memset(&c->frame_postfx_snapshot, 0, sizeof(c->frame_postfx_snapshot));
+    c->frame_gpu_postfx_enabled = 0;
+    c->frame_postfx_state_latched = 1;
+    if (canvas3d_backend_uses_gpu_postfx(c) &&
+        vgfx3d_postfx_get_snapshot(c->postfx, &c->frame_postfx_snapshot)) {
+        c->frame_gpu_postfx_enabled = 1;
+    }
+    canvas3d_apply_gpu_postfx_state(c);
 }
 
 static void rt_canvas3d_apply_resize(rt_canvas3d *c, int32_t w, int32_t h) {
@@ -487,6 +514,10 @@ int canvas3d_begin_overlay_frame(rt_canvas3d *c, int8_t preserve_existing_color)
     canvas3d_build_ortho_camera(c, &params);
     params.load_existing_color = preserve_existing_color ? 1 : 0;
     params.load_existing_depth = 0;
+    if (!c->frame_postfx_state_latched)
+        canvas3d_latch_gpu_postfx_state(c);
+    else
+        canvas3d_apply_gpu_postfx_state(c);
     c->cached_cam_pos[0] = 0.0f;
     c->cached_cam_pos[1] = 0.0f;
     c->cached_cam_pos[2] = 1.0f;
@@ -1245,6 +1276,7 @@ void rt_canvas3d_begin_2d(void *obj) {
     c->frame_is_2d = 1;
     memcpy(c->cached_vp, params.projection, sizeof(c->cached_vp));
 
+    canvas3d_latch_gpu_postfx_state(c);
     c->backend->begin_frame(c->backend_ctx, &params);
     c->in_frame = 1;
 }
@@ -1479,6 +1511,7 @@ void rt_canvas3d_begin(void *obj, void *camera) {
     memcpy(c->last_scene_cam_pos, c->cached_cam_pos, sizeof(c->last_scene_cam_pos));
     c->has_last_scene_vp = 1;
 
+    canvas3d_latch_gpu_postfx_state(c);
     c->backend->begin_frame(c->backend_ctx, &params);
     c->in_frame = 1;
 }
@@ -1572,6 +1605,10 @@ void rt_canvas3d_draw_mesh_matrix_keyed(void *obj,
     dd->cmd.morph_weights = mesh->morph_weights;
     dd->cmd.prev_morph_weights = prev_morph_weights ? prev_morph_weights : mesh->prev_morph_weights;
     dd->cmd.morph_shape_count = mesh->morph_shape_count;
+    dd->cmd.morph_key = mesh->morph_targets_ref;
+    dd->cmd.morph_revision = mesh->morph_targets_ref
+                                 ? rt_morphtarget3d_get_payload_generation(mesh->morph_targets_ref)
+                                 : 0;
 
     /* Build light params */
     dd->light_count = build_light_params(c, dd->lights, VGFX3D_MAX_LIGHTS);
@@ -1649,6 +1686,10 @@ void rt_canvas3d_queue_instanced_batch(void *canvas_obj,
     base_cmd.morph_weights = mesh->morph_weights;
     base_cmd.prev_morph_weights = mesh->prev_morph_weights;
     base_cmd.morph_shape_count = mesh->morph_shape_count;
+    base_cmd.morph_key = mesh->morph_targets_ref;
+    base_cmd.morph_revision = mesh->morph_targets_ref
+                                  ? rt_morphtarget3d_get_payload_generation(mesh->morph_targets_ref)
+                                  : 0;
 
     if (canvas3d_cmd_requires_blend(&base_cmd) || !c->backend->submit_draw_instanced) {
         for (int32_t i = 0; i < instance_count; i++) {
@@ -1930,6 +1971,7 @@ void rt_canvas3d_end(void *obj) {
     }
 
     c->backend->end_frame(c->backend_ctx);
+    c->in_frame = 0;
 
     if (!c->frame_is_2d && overlay_count > 0) {
         if (canvas3d_begin_overlay_frame(c, 1)) {
@@ -1966,9 +2008,8 @@ void rt_canvas3d_flip(void *obj) {
 
     int gpu_postfx_presented = 0;
     if (canvas3d_backend_uses_gpu_postfx(c)) {
-        vgfx3d_postfx_snapshot_t snapshot;
-        if (vgfx3d_postfx_get_snapshot(c->postfx, &snapshot)) {
-            c->backend->present_postfx(c->backend_ctx, &snapshot);
+        if (c->frame_gpu_postfx_enabled) {
+            c->backend->present_postfx(c->backend_ctx, &c->frame_postfx_snapshot);
             gpu_postfx_presented = 1;
         }
     }
@@ -1986,6 +2027,9 @@ void rt_canvas3d_flip(void *obj) {
     /* Always call vgfx_update to keep the window alive and process display
      * refresh. GPU backends own the final on-screen present path. */
     vgfx_update(c->gfx_win);
+    c->frame_postfx_state_latched = 0;
+    c->frame_gpu_postfx_enabled = 0;
+    memset(&c->frame_postfx_snapshot, 0, sizeof(c->frame_postfx_snapshot));
 
     int64_t now_us = rt_clock_ticks_us();
     if (c->last_flip_us > 0) {

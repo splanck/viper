@@ -1,7 +1,7 @@
 ---
 status: active
 audience: contributors
-last-verified: 2026-04-05
+last-verified: 2026-04-09
 ---
 
 # IL Optimization Passes
@@ -90,7 +90,9 @@ Promotes alloca/store/load patterns to pure SSA values:
 ## Inline
 
 - Enhanced cost model considers multiple factors beyond raw instruction count:
-  - Base instruction/block budgets (configurable thresholds, default ≤80 instructions, ≤8 blocks)
+  - Base instruction/block budgets (defaults: `instrThreshold = 80` instructions, `blockBudget = 1` block,
+    `maxInlineDepth = 3`). `blockBudget` was temporarily raised to 8 but has been reverted to 1 until open
+    correctness issues in viperide and chess-zia are resolved.
   - Constant argument bonus: each constant arg reduces effective cost, enabling more inlining when optimization
     opportunities exist
   - Nested call penalty: functions with many internal calls incur code growth penalty
@@ -102,13 +104,13 @@ Promotes alloca/store/load patterns to pure SSA values:
 - Rewrites calls by cloning the callee CFG, threading branch arguments for block parameters, and branching returns to a
   continuation block at the call site.
 
-### Threshold Changes (2026-02-17)
+### Threshold Changes
 
-| Parameter | Old Value | New Value | Rationale |
-|-----------|-----------|-----------|-----------|
-| `instrThreshold` | 32 | 80 | Captures medium-sized helpers that previously stayed as call overhead |
-| `blockBudget` | 4 | 8 | Allows inlining functions with conditional branches |
-| `maxInlineDepth` | 2 | 3 | Enables deeper utility-function chains to collapse |
+| Parameter | Current Default | History |
+|-----------|-----------------|---------|
+| `instrThreshold` | 80 | raised from 32 on 2026-02-17 to capture medium-sized helpers |
+| `blockBudget` | 1 | raised to 8 on 2026-02-17, reverted to 1 after viperide/chess-zia regressions at O1 |
+| `maxInlineDepth` | 3 | raised from 2 on 2026-02-17 to enable deeper utility-function chains |
 
 ## LateCleanup
 
@@ -161,8 +163,10 @@ The pass is table-driven, making it easy to add new rules without modifying core
 
 Constant folding evaluates pure operations at compile time:
 
-- **Arithmetic**: add, div, mul, rem, sub (signed and unsigned)
-- **Bitwise**: and, or, shifts, xor
+- **Checked integer arithmetic**: `iadd.ovf`, `isub.ovf`, `imul.ovf`, `sdiv.chk0`, `udiv.chk0`, `srem.chk0`,
+  `urem.chk0` (folded when both operands are constants and the result does not trap)
+- **Floating arithmetic**: `fadd`, `fsub`, `fmul`, `fdiv`
+- **Bitwise**: `and`, `or`, `xor`, `shl`, `ashr`, `lshr`
 - **Comparisons**: all signed, unsigned, and float comparison opcodes
 - **Intrinsics**: `abs`, `ceil`, `clamp`, `cos`, `exp`, `floor`, `log`, `max`, `min`, `pow`, `sgn`, `sin`, `sqrt`, `tan`
 - **Type conversions**: int/float casts with constant operands

@@ -103,6 +103,7 @@ extern "C" void rt_obj_free(void *obj);
 extern "C" void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
 extern "C" void *rt_postfx3d_new(void);
 extern "C" void rt_canvas3d_set_post_fx(void *canvas, void *postfx);
+extern "C" void *rt_canvas3d_screenshot(void *canvas);
 
 //=============================================================================
 // Mesh3D tests
@@ -977,7 +978,26 @@ static void test_rendertarget_null_safety() {
 namespace {
 static int g_postfx_release_count = 0;
 static int g_render_target_release_count = 0;
+static int g_render_target_sync_calls = 0;
+static uint8_t g_render_target_sync_rgba[4] = {0};
 } // namespace
+
+typedef struct {
+    int64_t w;
+    int64_t h;
+    uint32_t *data;
+} pixels_view_t;
+
+extern "C" int tracked_render_target_sync(void *, vgfx3d_rendertarget_t *target) {
+    if (!target || !target->color_buf)
+        return 0;
+    g_render_target_sync_calls++;
+    target->color_buf[0] = g_render_target_sync_rgba[0];
+    target->color_buf[1] = g_render_target_sync_rgba[1];
+    target->color_buf[2] = g_render_target_sync_rgba[2];
+    target->color_buf[3] = g_render_target_sync_rgba[3];
+    return 1;
+}
 
 extern "C" void tracked_postfx_finalizer(void *obj) {
     (void)obj;
@@ -1047,6 +1067,75 @@ static void test_canvas_render_target_retains_owned_reference() {
     rt_canvas3d_reset_render_target(&canvas);
     if (g_render_target_release_count != 1) {
         FAIL("Canvas3D did not release RenderTarget3D on reset");
+        return;
+    }
+    PASS();
+}
+
+static void test_rendertarget_as_pixels_syncs_gpu_color_on_demand() {
+    TEST("RenderTarget3D.AsPixels syncs backend-owned color on demand");
+    rt_rendertarget3d *rt = (rt_rendertarget3d *)rt_rendertarget3d_new(1, 1);
+    assert(rt != NULL && rt->target != NULL);
+
+    g_render_target_sync_calls = 0;
+    g_render_target_sync_rgba[0] = 0xAB;
+    g_render_target_sync_rgba[1] = 0xCD;
+    g_render_target_sync_rgba[2] = 0xEF;
+    g_render_target_sync_rgba[3] = 0x12;
+    rt->target->color_dirty = 1;
+    rt->target->sync_color = tracked_render_target_sync;
+    rt->target->sync_color_userdata = NULL;
+
+    pixels_view_t *px = (pixels_view_t *)rt_rendertarget3d_as_pixels(rt);
+    assert(px != NULL);
+    if (g_render_target_sync_calls != 1) {
+        FAIL("RenderTarget3D.AsPixels did not trigger the backend sync callback");
+        return;
+    }
+    if (rt->target->color_dirty != 0) {
+        FAIL("RenderTarget3D.AsPixels did not clear the dirty color flag");
+        return;
+    }
+    if (!px->data || px->data[0] != 0xABCDEF12u) {
+        FAIL("RenderTarget3D.AsPixels did not copy the synced RGBA bytes");
+        return;
+    }
+    PASS();
+}
+
+static void test_canvas_screenshot_syncs_render_target_on_demand() {
+    TEST("Canvas3D.Screenshot syncs backend-owned render targets on demand");
+    rt_canvas3d canvas;
+    rt_rendertarget3d *rt = (rt_rendertarget3d *)rt_rendertarget3d_new(1, 1);
+    assert(rt != NULL && rt->target != NULL);
+
+    memset(&canvas, 0, sizeof(canvas));
+    canvas.gfx_win = (vgfx_window_t)1;
+    canvas.render_target = rt->target;
+    canvas.width = 1;
+    canvas.height = 1;
+
+    g_render_target_sync_calls = 0;
+    g_render_target_sync_rgba[0] = 0x10;
+    g_render_target_sync_rgba[1] = 0x20;
+    g_render_target_sync_rgba[2] = 0x30;
+    g_render_target_sync_rgba[3] = 0x40;
+    rt->target->color_dirty = 1;
+    rt->target->sync_color = tracked_render_target_sync;
+    rt->target->sync_color_userdata = NULL;
+
+    pixels_view_t *shot = (pixels_view_t *)rt_canvas3d_screenshot(&canvas);
+    assert(shot != NULL);
+    if (g_render_target_sync_calls != 1) {
+        FAIL("Canvas3D.Screenshot did not trigger the render-target sync callback");
+        return;
+    }
+    if (rt->target->color_dirty != 0) {
+        FAIL("Canvas3D.Screenshot did not clear the render-target dirty flag");
+        return;
+    }
+    if (!shot->data || shot->data[0] != 0x10203040u) {
+        FAIL("Canvas3D.Screenshot did not copy the synced render-target RGBA bytes");
         return;
     }
     PASS();
@@ -1458,6 +1547,8 @@ int main() {
     test_rendertarget_dimensions();
     test_rendertarget_as_pixels();
     test_rendertarget_null_safety();
+    test_rendertarget_as_pixels_syncs_gpu_color_on_demand();
+    test_canvas_screenshot_syncs_render_target_on_demand();
     test_canvas_postfx_retains_owned_reference();
     test_canvas_render_target_retains_owned_reference();
 

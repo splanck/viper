@@ -1,7 +1,7 @@
 ---
 status: active
 audience: contributors
-last-verified: 2026-04-08
+last-verified: 2026-04-09
 ---
 
 # CODEMAP: Runtime Library (C)

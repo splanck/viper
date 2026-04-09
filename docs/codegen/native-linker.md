@@ -1,7 +1,7 @@
 ---
 status: active
 audience: contributors
-last-verified: 2026-04-07
+last-verified: 2026-04-09
 ---
 
 # Native Linker — Object File Linking & Executable Generation

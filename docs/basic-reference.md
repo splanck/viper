@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-05
+last-verified: 2026-04-09
 ---
 
 # Viper BASIC — Reference
@@ -133,26 +133,27 @@ CLOSE #1
 ### COLOR
 
 Sets terminal foreground and background colors. Uses values 0-7 for normal colors, 8-15 for bright colors, or -1 to
-leave unchanged.
+leave that channel unchanged. `COLOR -1, -1` is a no-op (it leaves both channels unchanged); the runtime does not
+provide a built-in "reset to defaults" form.
 
 ```basic
 COLOR 15, 1   ' Bright white on blue
 PRINT "Colored text"
-COLOR -1, -1  ' Reset to defaults
+COLOR 7, -1   ' Switch foreground to white, leave background as-is
 ```
 
 ### DESTRUCTOR
 
-Optional destructor called on DELETE and finalization.
+Optional destructor called on DELETE and finalization. Declared without parentheses.
 
 ```basic
 CLASS WithFile
   FH AS INTEGER
   SUB NEW()
-   OPEN "out.txt" FOR OUTPUT AS #1
+    OPEN "out.txt" FOR OUTPUT AS #1
   END SUB
-  DESTRUCTOR()
-   CLOSE #1
+  DESTRUCTOR
+    CLOSE #1
   END DESTRUCTOR
 END CLASS
 ```
@@ -268,22 +269,24 @@ instance) is passed as the first argument when lowering to the runtime.
 DIM s AS Viper.String
 LET s = "hello"
 PRINT s.Length              ' prints 5
-PRINT s.Substring(1, 3)     ' zero-based start, length → "ell"
-PRINT s.Mid(1)              ' suffix from index 1 → "ello"
+PRINT s.Substring(1, 3)     ' zero-based BYTE start, length → "ell"
+PRINT s.Mid(2)              ' 1-based CODEPOINT start → "ello" (suffix from char 2)
 LET s2 = NEW Viper.String("abc")  ' optional: requires ctor helper
 ```
 
 Lowering equivalence (receiver as first argument):
 
 - `s.Length` → `Viper.String.get_Length(s)`
-- `s.Substring(i, n)` → `Viper.String.Substring(s, i, n)`
-- `s.Mid(i)` → `Viper.String.Mid(s, i)` — suffix from position i (no length)
+- `s.Substring(i, n)` → `Viper.String.Substring(s, i, n)` — `i` is a 0-based byte offset.
+- `s.Mid(i)` → `Viper.String.Mid(s, i)` — `i` is a **1-based codepoint** position (matches BASIC `MID$`).
 - `NEW Viper.String(x)` → `Viper.String.FromStr(x)` (when available)
 
 Null and bounds:
 
 - Accessing a property/method on a null receiver traps.
-- `Substring` traps on invalid inputs consistent with runtime rules; zero-length results return the empty string.
+- `Substring` clamps negative starts to 0 and over-long lengths to the available bytes; zero-length
+  results return the empty string. (See `rt_str_substr` in `src/runtime/core/rt_string_ops.c`.)
+- `Mid` traps when `start < 1` (the legacy BASIC `MID$` semantics).
 
 BASIC `STRING` alias:
 
@@ -302,8 +305,10 @@ Properties:
 
 Methods:
 
-- `Substring(i64 start, i64 length) -> string` → `Viper.String.Substring(string, i64, i64)`
-- `Mid(i64 start) -> string` → `Viper.String.Mid(string, i64)` — suffix from start (no length)
+- `Substring(i64 start, i64 length) -> string` → `Viper.String.Substring(string, i64, i64)` —
+  `start` is a 0-based byte offset.
+- `Mid(i64 start) -> string` → `Viper.String.Mid(string, i64)` — `start` is a **1-based codepoint**
+  index; suffix from `start` to end of string.
 - `Concat(string other) -> string` → `Viper.String.Concat(string, string)`
 
 Constructor helper (optional):
@@ -407,7 +412,7 @@ PRINT "opened"
 END
 ErrHandler:
 PRINT "failed to open"
-RESUME 0
+END
 ```
 
 ### TRY … CATCH
@@ -534,11 +539,18 @@ REDIM A(10)        ' 0..9
 
 ### RESUME
 
-Resumes execution after an error; forms: RESUME, RESUME NEXT, RESUME 0.
+Resumes execution after an error. Forms:
+
+- `RESUME` — retry the statement that caused the error.
+- `RESUME NEXT` — continue at the statement after the one that errored.
+- `RESUME <label>` — jump to a numeric or named line label.
+
+There is no special "end the program" form; use `END` from inside the handler instead.
 
 ```basic
+ErrHandler:
 PRINT "failed to open"
-RESUME 0
+RESUME NEXT
 ```
 
 ### RETURN
@@ -681,7 +693,7 @@ The following built-ins are available. Use them in expressions (e.g., `LET X = A
 | SQR     | 1    | Float   |
 | STR$    | 1    | String  |
 | TAN     | 1    | Float   |
-| TIMER   | 0    | Float   |
+| TIMER   | 0    | Integer |
 | TRIM$   | 1    | String  |
 | UCASE$  | 1    | String  |
 | VAL     | 1    | Float   |
@@ -986,6 +998,7 @@ For complete namespace documentation, see [Namespace Reference](basic-namespaces
 
 ### D
 
+- `DECLARE`
 - `DELETE`
 - `DESTRUCTOR`
 - `DIM`
@@ -1010,6 +1023,7 @@ For complete namespace documentation, see [Namespace Reference](basic-namespaces
 - `FINALLY`
 - `FLOOR`
 - `FOR`
+- `FOREIGN`
 - `FUNCTION`
 
 ### G
@@ -1267,8 +1281,9 @@ Property sugar:
 - Chaining order: derived body runs first, then base, continuing up the chain.
 - One instance destructor per class; no parameters or return value.
 - `STATIC DESTRUCTOR` runs at program shutdown in class declaration order.
-- `DISPOSE expr` invokes the derived→base destructor chain and releases storage when retain count drops to zero.
-- Disposing `NULL` is a no-op; double dispose traps in debug builds.
+- `DELETE expr` invokes the derived→base destructor chain and releases storage when retain count drops to zero.
+- Deleting `NULL` is a no-op; double-delete traps in debug builds. (The BASIC keyword is `DELETE`; there
+  is no `DISPOSE` keyword.)
 
 ### Overload resolution
 

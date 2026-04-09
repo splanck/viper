@@ -231,6 +231,8 @@ void *rt_canvas3d_screenshot(void *obj) {
     px_view *pv = (px_view *)pixels;
 
     if (c->render_target && c->render_target->color_buf) {
+        if (!vgfx3d_rendertarget_sync_color_if_needed(c->render_target))
+            return pixels;
         for (int32_t y = 0; y < shot_h; y++)
             for (int32_t x = 0; x < shot_w; x++) {
                 const uint8_t *src =

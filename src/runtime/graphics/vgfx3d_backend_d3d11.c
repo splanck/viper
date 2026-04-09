@@ -28,6 +28,7 @@
 
 #include "vgfx.h"
 #include "vgfx3d_backend.h"
+#include "vgfx3d_backend_d3d11_shared.h"
 #include "vgfx3d_backend_utils.h"
 
 #include <math.h>
@@ -85,8 +86,8 @@ static const char *d3d11_shader_source =
     "    int vertexCount;\n"
     "    int hasPrevMorphWeights;\n"
     "    int hasPrevInstanceMatrices;\n"
-    "    float morphWeights[32];\n"
-    "    float prevMorphWeights[32];\n"
+    "    float4 morphWeightsPacked[8];\n"
+    "    float4 prevMorphWeightsPacked[8];\n"
     "};\n"
     "\n"
     "cbuffer PerScene : register(b1) {\n"
@@ -118,7 +119,8 @@ static const char *d3d11_shader_source =
     "    int4 pbrFlags;\n"
     "    float4 splatScales;\n"
     "    int shadingModel;\n"
-    "    float customParams[8];\n"
+    "    float3 _materialPad0;\n"
+    "    float4 customParamsPacked[2];\n"
     "};\n"
     "\n"
     "cbuffer PerLights : register(b3) {\n"
@@ -202,11 +204,31 @@ static const char *d3d11_shader_source =
     "    float4 motion : SV_Target1;\n"
     "};\n"
     "\n"
+    "float readPackedScalar8(float4 packed[8], int idx) {\n"
+    "    int vecIdx = idx >> 2;\n"
+    "    int lane = idx & 3;\n"
+    "    float4 v = packed[vecIdx];\n"
+    "    return lane == 0 ? v.x : (lane == 1 ? v.y : (lane == 2 ? v.z : v.w));\n"
+    "}\n"
+    "float readPackedScalar2(float4 packed[2], int idx) {\n"
+    "    int vecIdx = idx >> 2;\n"
+    "    int lane = idx & 3;\n"
+    "    float4 v = packed[vecIdx];\n"
+    "    return lane == 0 ? v.x : (lane == 1 ? v.y : (lane == 2 ? v.z : v.w));\n"
+    "}\n"
+    "float morphWeightAt(int idx, int usePrevWeights) {\n"
+    "    return usePrevWeights != 0 ? readPackedScalar8(prevMorphWeightsPacked, idx)\n"
+    "                               : readPackedScalar8(morphWeightsPacked, idx);\n"
+    "}\n"
+    "float customParamAt(int idx) {\n"
+    "    return readPackedScalar2(customParamsPacked, idx);\n"
+    "}\n"
+    "\n"
     "float3 applyMorphPosition(float3 pos, uint vid, int usePrevWeights) {\n"
     "    if (morphShapeCount <= 0 || vertexCount <= 0)\n"
     "        return pos;\n"
     "    for (int s = 0; s < morphShapeCount; s++) {\n"
-    "        float w = usePrevWeights != 0 ? prevMorphWeights[s] : morphWeights[s];\n"
+    "        float w = morphWeightAt(s, usePrevWeights);\n"
     "        if (abs(w) > 0.0001) {\n"
     "            int base = (s * vertexCount + int(vid)) * 3;\n"
     "            pos.x += morphDeltas[base + 0] * w;\n"
@@ -221,7 +243,7 @@ static const char *d3d11_shader_source =
     "    if (morphShapeCount <= 0 || vertexCount <= 0 || hasMorphNormalDeltas == 0)\n"
     "        return nrm;\n"
     "    for (int s = 0; s < morphShapeCount; s++) {\n"
-    "        float w = usePrevWeights != 0 ? prevMorphWeights[s] : morphWeights[s];\n"
+    "        float w = morphWeightAt(s, usePrevWeights);\n"
     "        if (abs(w) > 0.0001) {\n"
     "            int base = (s * vertexCount + int(vid)) * 3;\n"
     "            nrm.x += morphNormalDeltas[base + 0] * w;\n"
@@ -551,7 +573,7 @@ static const char *d3d11_shader_source =
     "                }\n"
     "                float NdotL = max(dot(N, L), 0.0);\n"
     "                if (shadingModel == 1) {\n"
-    "                    float bands = max(customParams[0], 2.0);\n"
+    "                    float bands = max(customParamAt(0), 2.0);\n"
     "                    NdotL = floor(NdotL * bands) / max(bands - 1.0, 1.0);\n"
     "                }\n"
     "                result += lights[i].color.rgb * lights[i].intensity * NdotL * baseColor * "
@@ -560,7 +582,7 @@ static const char *d3d11_shader_source =
     "                    float3 H = normalize(L + V);\n"
     "                    float spec = pow(max(dot(N, H), 0.0), specularColor.w);\n"
     "                    if (shadingModel == 1)\n"
-    "                        spec = spec >= max(customParams[1], 0.5) ? 1.0 : 0.0;\n"
+    "                        spec = spec >= max(customParamAt(1), 0.5) ? 1.0 : 0.0;\n"
     "                    result += lights[i].color.rgb * lights[i].intensity * spec * specColor * "
     "atten;\n"
     "                }\n"
@@ -574,15 +596,15 @@ static const char *d3d11_shader_source =
     "        result = lerp(result, envColor, saturate(scalars.y));\n"
     "    }\n"
     "    if (shadingModel == 1 && pbrFlags.x != 0) {\n"
-    "        float bands = max(customParams[0], 2.0);\n"
+    "        float bands = max(customParamAt(0), 2.0);\n"
     "        result = floor(result * bands) / bands;\n"
     "    } else if (shadingModel == 4) {\n"
     "        float ndv = saturate(dot(N, V));\n"
-    "        float power = max(customParams[0], 1.0);\n"
-    "        float bias = customParams[1];\n"
+    "        float power = max(customParamAt(0), 1.0);\n"
+    "        float bias = customParamAt(1);\n"
     "        finalAlpha *= saturate(pow(1.0 - ndv, power) + bias);\n"
     "    } else if (shadingModel == 5) {\n"
-    "        float strength = max(customParams[0], 1.0);\n"
+    "        float strength = max(customParamAt(0), 1.0);\n"
     "        result += emissive * (strength - 1.0);\n"
     "    }\n"
     "    if (fogColor.a > 0.5) {\n"
@@ -676,6 +698,7 @@ static const char *d3d11_postfx_shader_source =
     "Texture2D sceneTex : register(t0);\n"
     "Texture2D depthTex : register(t1);\n"
     "Texture2D motionTex : register(t2);\n"
+    "Texture2D overlayTex : register(t3);\n"
     "SamplerState postSampler : register(s0);\n"
     "struct VS_OUTPUT {\n"
     "    float4 pos : SV_POSITION;\n"
@@ -822,6 +845,9 @@ static const char *d3d11_postfx_shader_source =
     "    color = applyVignette(input.uv, color);\n"
     "    color = applyFXAA(input.uv, color);\n"
     "    return float4(saturate(color), 1.0);\n"
+    "}\n"
+    "float4 PSOverlayComposite(VS_OUTPUT input) : SV_Target {\n"
+    "    return overlayTex.Sample(postSampler, input.uv);\n"
     "}\n";
 
 typedef struct {
@@ -857,21 +883,7 @@ typedef struct {
     int has_ao_map;
 } d3d_draw_resources_t;
 
-typedef struct {
-    float model[16];
-    float prev_model[16];
-    float normal[16];
-    int32_t has_prev_model_matrix;
-    int32_t has_skinning;
-    int32_t has_prev_skinning;
-    int32_t has_morph_normal_deltas;
-    int32_t morph_shape_count;
-    int32_t vertex_count;
-    int32_t has_prev_morph_weights;
-    int32_t has_prev_instance_matrices;
-    float morph_weights[32];
-    float prev_morph_weights[32];
-} d3d_per_object_t;
+typedef vgfx3d_d3d11_per_object_t d3d_per_object_t;
 
 typedef struct {
     float vp[16];
@@ -890,20 +902,7 @@ typedef struct {
     float _pad2;
 } d3d_per_scene_t;
 
-typedef struct {
-    float diffuse[4];
-    float specular[4];
-    float emissive[4];
-    float scalars[4];
-    float pbr_scalars0[4];
-    float pbr_scalars1[4];
-    int32_t flags0[4];
-    int32_t flags1[4];
-    int32_t pbr_flags[4];
-    float splat_scales[4];
-    int32_t shading_model;
-    float custom_params[8];
-} d3d_per_material_t;
+typedef vgfx3d_d3d11_per_material_t d3d_per_material_t;
 
 typedef struct {
     int32_t type;
@@ -957,11 +956,7 @@ typedef struct {
     float _pad1;
 } d3d_postfx_cb_t;
 
-typedef struct {
-    float model[16];
-    float normal[16];
-    float prev_model[16];
-} d3d_instance_data_t;
+typedef vgfx3d_d3d11_instance_data_t d3d_instance_data_t;
 
 #define D3D11_MESH_CACHE_CAPACITY 128
 
@@ -975,6 +970,23 @@ typedef struct {
     uint64_t last_used_frame;
 } d3d11_mesh_cache_entry_t;
 
+#define D3D11_MORPH_CACHE_CAPACITY 32
+
+typedef struct {
+    const void *key;
+    uint64_t generation;
+    uint32_t vertex_count;
+    uint32_t shape_count;
+    int has_normal_deltas;
+    ID3D11Buffer *buffer;
+    ID3D11ShaderResourceView *srv;
+    size_t element_count;
+    ID3D11Buffer *normal_buffer;
+    ID3D11ShaderResourceView *normal_srv;
+    size_t normal_element_count;
+    uint64_t last_used_frame;
+} d3d11_morph_cache_entry_t;
+
 typedef struct {
     ID3D11Device *device;
     ID3D11DeviceContext *ctx;
@@ -983,7 +995,8 @@ typedef struct {
     ID3D11Texture2D *depth_tex;
     ID3D11DepthStencilView *dsv;
 
-    ID3D11BlendState *blend_state;
+    ID3D11BlendState *blend_state_opaque;
+    ID3D11BlendState *blend_state_alpha;
     ID3D11DepthStencilState *depth_state;
     ID3D11DepthStencilState *depth_state_no_write;
     ID3D11DepthStencilState *depth_state_readonly_lequal;
@@ -1003,6 +1016,7 @@ typedef struct {
     ID3D11PixelShader *ps_skybox;
     ID3D11VertexShader *vs_postfx;
     ID3D11PixelShader *ps_postfx;
+    ID3D11PixelShader *ps_overlay_composite;
 
     ID3D11InputLayout *input_layout;
     ID3D11InputLayout *input_layout_instanced;
@@ -1024,6 +1038,8 @@ typedef struct {
     size_t dynamic_vb_size;
     size_t dynamic_ib_size;
     size_t instance_buffer_size;
+    d3d_instance_data_t *instance_upload_data;
+    size_t instance_upload_capacity;
 
     ID3D11Buffer *morph_buffer;
     ID3D11ShaderResourceView *morph_srv;
@@ -1031,6 +1047,9 @@ typedef struct {
     ID3D11Buffer *morph_normal_buffer;
     ID3D11ShaderResourceView *morph_normal_srv;
     size_t morph_normal_buffer_size;
+    ID3D11ShaderResourceView *current_morph_srv;
+    ID3D11ShaderResourceView *current_morph_normal_srv;
+    d3d11_morph_cache_entry_t morph_cache[D3D11_MORPH_CACHE_CAPACITY];
 
     ID3D11Texture2D *scene_color_tex;
     ID3D11RenderTargetView *scene_color_rtv;
@@ -1041,8 +1060,13 @@ typedef struct {
     ID3D11Texture2D *scene_depth_tex;
     ID3D11DepthStencilView *scene_dsv;
     ID3D11ShaderResourceView *scene_depth_srv;
+    ID3D11Texture2D *overlay_color_tex;
+    ID3D11RenderTargetView *overlay_color_rtv;
+    ID3D11ShaderResourceView *overlay_color_srv;
     int32_t scene_width;
     int32_t scene_height;
+    int32_t overlay_width;
+    int32_t overlay_height;
 
     ID3D11Texture2D *rtt_color_tex;
     ID3D11RenderTargetView *rtt_rtv;
@@ -1063,16 +1087,20 @@ typedef struct {
     float shadow_vp[16];
     float shadow_bias;
 
-    d3d_tex_cache_entry_t tex_cache[64];
+    d3d_tex_cache_entry_t *tex_cache;
     int32_t tex_cache_count;
-    d3d_cubemap_cache_entry_t cubemap_cache[16];
+    int32_t tex_cache_capacity;
+    d3d_cubemap_cache_entry_t *cubemap_cache;
     int32_t cubemap_cache_count;
+    int32_t cubemap_cache_capacity;
     d3d11_mesh_cache_entry_t mesh_cache[D3D11_MESH_CACHE_CAPACITY];
     uint64_t frame_serial;
 
     ID3D11RenderTargetView *current_rtvs[2];
     UINT current_rtv_count;
     ID3D11DepthStencilView *current_dsv;
+    vgfx3d_d3d11_target_kind_t current_target_kind;
+    vgfx3d_d3d11_target_kind_t active_target_kind;
     int32_t current_width;
     int32_t current_height;
 
@@ -1081,10 +1109,14 @@ typedef struct {
     float view[16];
     float projection[16];
     float vp[16];
-    float prev_vp[16];
     float inv_vp[16];
-    int8_t prev_vp_valid;
+    float draw_prev_vp[16];
+    float scene_vp[16];
+    float scene_prev_vp[16];
+    float scene_inv_vp[16];
+    int8_t scene_history_valid;
     float cam_pos[3];
+    float scene_cam_pos[3];
     float clear_r;
     float clear_g;
     float clear_b;
@@ -1092,6 +1124,9 @@ typedef struct {
     float fog_near;
     float fog_far;
     float fog_color[3];
+    int8_t gpu_postfx_enabled;
+    int8_t current_pass_is_overlay;
+    int8_t overlay_used_this_frame;
 } d3d11_context_t;
 
 #define SAFE_RELEASE(x)                                                                            \
@@ -1204,6 +1239,11 @@ static UINT d3d11_constant_buffer_byte_width(size_t size) {
     return (UINT)((size + 15u) & ~15u);
 }
 
+static DXGI_FORMAT d3d11_color_format_to_dxgi(vgfx3d_d3d11_color_format_t format_class) {
+    return format_class == VGFX3D_D3D11_COLOR_FORMAT_HDR16F ? DXGI_FORMAT_R16G16B16A16_FLOAT
+                                                            : DXGI_FORMAT_R8G8B8A8_UNORM;
+}
+
 static HRESULT d3d11_update_constant_buffer(d3d11_context_t *ctx,
                                             ID3D11Buffer *buffer,
                                             const void *data,
@@ -1282,6 +1322,27 @@ static int d3d11_upload_dynamic_buffer(d3d11_context_t *ctx,
     }
     memcpy(mapped.pData, data, bytes);
     ID3D11DeviceContext_Unmap(ctx->ctx, (ID3D11Resource *)*buffer, 0);
+    return 1;
+}
+
+static int d3d11_ensure_instance_upload_capacity(d3d11_context_t *ctx, int32_t instance_count) {
+    size_t new_capacity;
+    d3d_instance_data_t *new_data;
+
+    if (!ctx || instance_count <= 0)
+        return 0;
+    if (ctx->instance_upload_capacity >= (size_t)instance_count)
+        return 1;
+
+    new_capacity = ctx->instance_upload_capacity > 0 ? ctx->instance_upload_capacity : 32u;
+    while (new_capacity < (size_t)instance_count)
+        new_capacity *= 2u;
+    new_data =
+        (d3d_instance_data_t *)realloc(ctx->instance_upload_data, new_capacity * sizeof(*new_data));
+    if (!new_data)
+        return 0;
+    ctx->instance_upload_data = new_data;
+    ctx->instance_upload_capacity = new_capacity;
     return 1;
 }
 
@@ -1479,6 +1540,9 @@ static void d3d11_release_texture_cache(d3d11_context_t *ctx) {
         ctx->tex_cache[i].pixels_ptr = NULL;
     }
     ctx->tex_cache_count = 0;
+    free(ctx->tex_cache);
+    ctx->tex_cache = NULL;
+    ctx->tex_cache_capacity = 0;
 }
 
 static void d3d11_release_cubemap_cache(d3d11_context_t *ctx) {
@@ -1490,6 +1554,68 @@ static void d3d11_release_cubemap_cache(d3d11_context_t *ctx) {
         ctx->cubemap_cache[i].cubemap_ptr = NULL;
     }
     ctx->cubemap_cache_count = 0;
+    free(ctx->cubemap_cache);
+    ctx->cubemap_cache = NULL;
+    ctx->cubemap_cache_capacity = 0;
+}
+
+static int d3d11_ensure_tex_cache_capacity(d3d11_context_t *ctx, int32_t needed) {
+    int32_t new_capacity;
+    d3d_tex_cache_entry_t *new_entries;
+
+    if (!ctx || needed <= 0)
+        return 0;
+    if (ctx->tex_cache_capacity >= needed)
+        return 1;
+    new_capacity = vgfx3d_d3d11_next_capacity(ctx->tex_cache_capacity, needed, 64);
+    new_entries =
+        (d3d_tex_cache_entry_t *)realloc(ctx->tex_cache, (size_t)new_capacity * sizeof(*new_entries));
+    if (!new_entries)
+        return 0;
+    memset(new_entries + ctx->tex_cache_capacity,
+           0,
+           (size_t)(new_capacity - ctx->tex_cache_capacity) * sizeof(*new_entries));
+    ctx->tex_cache = new_entries;
+    ctx->tex_cache_capacity = new_capacity;
+    return 1;
+}
+
+static int d3d11_ensure_cubemap_cache_capacity(d3d11_context_t *ctx, int32_t needed) {
+    int32_t new_capacity;
+    d3d_cubemap_cache_entry_t *new_entries;
+
+    if (!ctx || needed <= 0)
+        return 0;
+    if (ctx->cubemap_cache_capacity >= needed)
+        return 1;
+    new_capacity = vgfx3d_d3d11_next_capacity(ctx->cubemap_cache_capacity, needed, 16);
+    new_entries = (d3d_cubemap_cache_entry_t *)realloc(
+        ctx->cubemap_cache, (size_t)new_capacity * sizeof(*new_entries));
+    if (!new_entries)
+        return 0;
+    memset(new_entries + ctx->cubemap_cache_capacity,
+           0,
+           (size_t)(new_capacity - ctx->cubemap_cache_capacity) * sizeof(*new_entries));
+    ctx->cubemap_cache = new_entries;
+    ctx->cubemap_cache_capacity = new_capacity;
+    return 1;
+}
+
+static void d3d11_release_morph_cache_entry(d3d11_morph_cache_entry_t *entry) {
+    if (!entry)
+        return;
+    SAFE_RELEASE(entry->normal_srv);
+    SAFE_RELEASE(entry->normal_buffer);
+    SAFE_RELEASE(entry->srv);
+    SAFE_RELEASE(entry->buffer);
+    memset(entry, 0, sizeof(*entry));
+}
+
+static void d3d11_release_morph_cache(d3d11_context_t *ctx) {
+    if (!ctx)
+        return;
+    for (int32_t i = 0; i < D3D11_MORPH_CACHE_CAPACITY; i++)
+        d3d11_release_morph_cache_entry(&ctx->morph_cache[i]);
 }
 
 static void d3d11_release_temp_srv(d3d_temp_srv_t *entry) {
@@ -1508,8 +1634,8 @@ static HRESULT d3d11_create_texture_srv(d3d11_context_t *ctx,
     int32_t h = 0;
     uint8_t *rgba = NULL;
     D3D11_TEXTURE2D_DESC desc;
-    D3D11_SUBRESOURCE_DATA init;
     D3D11_SHADER_RESOURCE_VIEW_DESC srv_desc;
+    int32_t mip_count;
     HRESULT hr;
 
     if (!ctx || !pixels || !out_tex || !out_srv)
@@ -1520,25 +1646,28 @@ static HRESULT d3d11_create_texture_srv(d3d11_context_t *ctx,
     memset(&desc, 0, sizeof(desc));
     desc.Width = (UINT)w;
     desc.Height = (UINT)h;
-    desc.MipLevels = 1;
+    mip_count = vgfx3d_d3d11_compute_mip_count(w, h);
+    desc.MipLevels = (UINT)mip_count;
     desc.ArraySize = 1;
     desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
     desc.SampleDesc.Count = 1;
     desc.Usage = D3D11_USAGE_DEFAULT;
-    desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+    desc.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET;
+    desc.MiscFlags = D3D11_RESOURCE_MISC_GENERATE_MIPS;
 
-    memset(&init, 0, sizeof(init));
-    init.pSysMem = rgba;
-    init.SysMemPitch = (UINT)(w * 4);
-
-    hr = ID3D11Device_CreateTexture2D(ctx->device, &desc, &init, out_tex);
+    hr = ID3D11Device_CreateTexture2D(ctx->device, &desc, NULL, out_tex);
     if (SUCCEEDED(hr)) {
         memset(&srv_desc, 0, sizeof(srv_desc));
         srv_desc.Format = desc.Format;
         srv_desc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
-        srv_desc.Texture2D.MipLevels = 1;
+        srv_desc.Texture2D.MipLevels = desc.MipLevels;
         hr = ID3D11Device_CreateShaderResourceView(
             ctx->device, (ID3D11Resource *)*out_tex, &srv_desc, out_srv);
+        if (SUCCEEDED(hr)) {
+            ID3D11DeviceContext_UpdateSubresource(
+                ctx->ctx, (ID3D11Resource *)*out_tex, 0, NULL, rgba, (UINT)(w * 4), 0);
+            ID3D11DeviceContext_GenerateMips(ctx->ctx, *out_srv);
+        }
     }
     free(rgba);
     if (FAILED(hr)) {
@@ -1582,7 +1711,7 @@ static ID3D11ShaderResourceView *d3d11_get_or_create_srv(d3d11_context_t *ctx,
     if (FAILED(d3d11_create_texture_srv(ctx, pixels, &tex, &srv)))
         return NULL;
 
-    if (ctx->tex_cache_count < (int32_t)(sizeof(ctx->tex_cache) / sizeof(ctx->tex_cache[0]))) {
+    if (d3d11_ensure_tex_cache_capacity(ctx, ctx->tex_cache_count + 1)) {
         ctx->tex_cache[ctx->tex_cache_count].pixels_ptr = pixels;
         ctx->tex_cache[ctx->tex_cache_count].generation = generation;
         ctx->tex_cache[ctx->tex_cache_count].tex = tex;
@@ -1606,8 +1735,8 @@ static HRESULT d3d11_create_cubemap_srv(d3d11_context_t *ctx,
     uint8_t *faces[6];
     int32_t face_size = 0;
     D3D11_TEXTURE2D_DESC desc;
-    D3D11_SUBRESOURCE_DATA init[6];
     D3D11_SHADER_RESOURCE_VIEW_DESC srv_desc;
+    int32_t mip_count;
     HRESULT hr;
 
     if (!ctx || !cubemap || !out_tex || !out_srv)
@@ -1618,28 +1747,35 @@ static HRESULT d3d11_create_cubemap_srv(d3d11_context_t *ctx,
     memset(&desc, 0, sizeof(desc));
     desc.Width = (UINT)face_size;
     desc.Height = (UINT)face_size;
-    desc.MipLevels = 1;
+    mip_count = vgfx3d_d3d11_compute_mip_count(face_size, face_size);
+    desc.MipLevels = (UINT)mip_count;
     desc.ArraySize = 6;
     desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
     desc.SampleDesc.Count = 1;
     desc.Usage = D3D11_USAGE_DEFAULT;
-    desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
-    desc.MiscFlags = D3D11_RESOURCE_MISC_TEXTURECUBE;
+    desc.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET;
+    desc.MiscFlags = D3D11_RESOURCE_MISC_TEXTURECUBE | D3D11_RESOURCE_MISC_GENERATE_MIPS;
 
-    memset(init, 0, sizeof(init));
-    for (int i = 0; i < 6; i++) {
-        init[i].pSysMem = faces[i];
-        init[i].SysMemPitch = (UINT)(face_size * 4);
-    }
-
-    hr = ID3D11Device_CreateTexture2D(ctx->device, &desc, init, out_tex);
+    hr = ID3D11Device_CreateTexture2D(ctx->device, &desc, NULL, out_tex);
     if (SUCCEEDED(hr)) {
         memset(&srv_desc, 0, sizeof(srv_desc));
         srv_desc.Format = desc.Format;
         srv_desc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURECUBE;
-        srv_desc.TextureCube.MipLevels = 1;
+        srv_desc.TextureCube.MipLevels = desc.MipLevels;
         hr = ID3D11Device_CreateShaderResourceView(
             ctx->device, (ID3D11Resource *)*out_tex, &srv_desc, out_srv);
+        if (SUCCEEDED(hr)) {
+            for (int i = 0; i < 6; i++) {
+                ID3D11DeviceContext_UpdateSubresource(ctx->ctx,
+                                                     (ID3D11Resource *)*out_tex,
+                                                     D3D11CalcSubresource(0, (UINT)i, (UINT)mip_count),
+                                                     NULL,
+                                                     faces[i],
+                                                     (UINT)(face_size * 4),
+                                                     0);
+            }
+            ID3D11DeviceContext_GenerateMips(ctx->ctx, *out_srv);
+        }
     }
     for (int i = 0; i < 6; i++)
         free(faces[i]);
@@ -1685,8 +1821,7 @@ static ID3D11ShaderResourceView *d3d11_get_or_create_cubemap_srv(d3d11_context_t
     if (FAILED(d3d11_create_cubemap_srv(ctx, cubemap, &tex, &srv)))
         return NULL;
 
-    if (ctx->cubemap_cache_count <
-        (int32_t)(sizeof(ctx->cubemap_cache) / sizeof(ctx->cubemap_cache[0]))) {
+    if (d3d11_ensure_cubemap_cache_capacity(ctx, ctx->cubemap_cache_count + 1)) {
         ctx->cubemap_cache[ctx->cubemap_cache_count].cubemap_ptr = cubemap;
         ctx->cubemap_cache[ctx->cubemap_cache_count].generation = generation;
         ctx->cubemap_cache[ctx->cubemap_cache_count].tex = tex;
@@ -1706,6 +1841,7 @@ static ID3D11ShaderResourceView *d3d11_get_or_create_cubemap_srv(d3d11_context_t
 static HRESULT d3d11_create_color_target(d3d11_context_t *ctx,
                                          int32_t width,
                                          int32_t height,
+                                         vgfx3d_d3d11_color_format_t format_class,
                                          ID3D11Texture2D **out_tex,
                                          ID3D11RenderTargetView **out_rtv,
                                          ID3D11ShaderResourceView **out_srv) {
@@ -1722,7 +1858,7 @@ static HRESULT d3d11_create_color_target(d3d11_context_t *ctx,
     desc.Height = (UINT)height;
     desc.MipLevels = 1;
     desc.ArraySize = 1;
-    desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    desc.Format = d3d11_color_format_to_dxgi(format_class);
     desc.SampleDesc.Count = 1;
     desc.Usage = D3D11_USAGE_DEFAULT;
     desc.BindFlags = D3D11_BIND_RENDER_TARGET | (out_srv ? D3D11_BIND_SHADER_RESOURCE : 0);
@@ -1818,6 +1954,7 @@ static HRESULT d3d11_create_depth_target(d3d11_context_t *ctx,
 static HRESULT d3d11_create_staging_texture(d3d11_context_t *ctx,
                                             int32_t width,
                                             int32_t height,
+                                            DXGI_FORMAT format,
                                             ID3D11Texture2D **out_tex) {
     D3D11_TEXTURE2D_DESC desc;
 
@@ -1829,7 +1966,7 @@ static HRESULT d3d11_create_staging_texture(d3d11_context_t *ctx,
     desc.Height = (UINT)height;
     desc.MipLevels = 1;
     desc.ArraySize = 1;
-    desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    desc.Format = format;
     desc.SampleDesc.Count = 1;
     desc.Usage = D3D11_USAGE_STAGING;
     desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
@@ -1839,6 +1976,9 @@ static HRESULT d3d11_create_staging_texture(d3d11_context_t *ctx,
 static void d3d11_destroy_scene_targets(d3d11_context_t *ctx) {
     if (!ctx)
         return;
+    SAFE_RELEASE(ctx->overlay_color_srv);
+    SAFE_RELEASE(ctx->overlay_color_rtv);
+    SAFE_RELEASE(ctx->overlay_color_tex);
     SAFE_RELEASE(ctx->scene_depth_srv);
     SAFE_RELEASE(ctx->scene_dsv);
     SAFE_RELEASE(ctx->scene_depth_tex);
@@ -1850,6 +1990,8 @@ static void d3d11_destroy_scene_targets(d3d11_context_t *ctx) {
     SAFE_RELEASE(ctx->scene_color_tex);
     ctx->scene_width = 0;
     ctx->scene_height = 0;
+    ctx->overlay_width = 0;
+    ctx->overlay_height = 0;
 }
 
 static HRESULT d3d11_ensure_scene_targets(d3d11_context_t *ctx, int32_t width, int32_t height) {
@@ -1863,11 +2005,23 @@ static HRESULT d3d11_ensure_scene_targets(d3d11_context_t *ctx, int32_t width, i
     d3d11_destroy_scene_targets(ctx);
 
     hr = d3d11_create_color_target(
-        ctx, width, height, &ctx->scene_color_tex, &ctx->scene_color_rtv, &ctx->scene_color_srv);
+        ctx,
+        width,
+        height,
+        vgfx3d_d3d11_choose_color_format(VGFX3D_D3D11_TARGET_SCENE),
+        &ctx->scene_color_tex,
+        &ctx->scene_color_rtv,
+        &ctx->scene_color_srv);
     if (FAILED(hr))
         return hr;
     hr = d3d11_create_color_target(
-        ctx, width, height, &ctx->scene_motion_tex, &ctx->scene_motion_rtv, &ctx->scene_motion_srv);
+        ctx,
+        width,
+        height,
+        vgfx3d_d3d11_choose_color_format(VGFX3D_D3D11_TARGET_SWAPCHAIN),
+        &ctx->scene_motion_tex,
+        &ctx->scene_motion_rtv,
+        &ctx->scene_motion_srv);
     if (FAILED(hr)) {
         d3d11_destroy_scene_targets(ctx);
         return hr;
@@ -1882,6 +2036,36 @@ static HRESULT d3d11_ensure_scene_targets(d3d11_context_t *ctx, int32_t width, i
     ctx->scene_width = width;
     ctx->scene_height = height;
     return S_OK;
+}
+
+static HRESULT d3d11_ensure_overlay_target(d3d11_context_t *ctx, int32_t width, int32_t height) {
+    HRESULT hr;
+
+    if (!ctx || width <= 0 || height <= 0)
+        return E_INVALIDARG;
+    if (ctx->overlay_color_rtv && ctx->overlay_width == width && ctx->overlay_height == height)
+        return S_OK;
+    if (ctx->overlay_color_rtv) {
+        SAFE_RELEASE(ctx->overlay_color_srv);
+        SAFE_RELEASE(ctx->overlay_color_rtv);
+        SAFE_RELEASE(ctx->overlay_color_tex);
+    }
+    hr = d3d11_create_color_target(ctx,
+                                   width,
+                                   height,
+                                   vgfx3d_d3d11_choose_color_format(VGFX3D_D3D11_TARGET_OVERLAY),
+                                   &ctx->overlay_color_tex,
+                                   &ctx->overlay_color_rtv,
+                                   &ctx->overlay_color_srv);
+    if (FAILED(hr)) {
+        SAFE_RELEASE(ctx->overlay_color_srv);
+        SAFE_RELEASE(ctx->overlay_color_rtv);
+        SAFE_RELEASE(ctx->overlay_color_tex);
+    } else {
+        ctx->overlay_width = width;
+        ctx->overlay_height = height;
+    }
+    return hr;
 }
 
 static void d3d11_destroy_rtt_targets(d3d11_context_t *ctx) {
@@ -1912,7 +2096,13 @@ static HRESULT d3d11_ensure_rtt_targets(d3d11_context_t *ctx, vgfx3d_rendertarge
     d3d11_destroy_rtt_targets(ctx);
 
     hr = d3d11_create_color_target(
-        ctx, rt->width, rt->height, &ctx->rtt_color_tex, &ctx->rtt_rtv, NULL);
+        ctx,
+        rt->width,
+        rt->height,
+        vgfx3d_d3d11_choose_color_format(VGFX3D_D3D11_TARGET_RTT),
+        &ctx->rtt_color_tex,
+        &ctx->rtt_rtv,
+        NULL);
     if (FAILED(hr))
         return hr;
     hr = d3d11_create_depth_target(
@@ -1921,7 +2111,8 @@ static HRESULT d3d11_ensure_rtt_targets(d3d11_context_t *ctx, vgfx3d_rendertarge
         d3d11_destroy_rtt_targets(ctx);
         return hr;
     }
-    hr = d3d11_create_staging_texture(ctx, rt->width, rt->height, &ctx->rtt_staging);
+    hr = d3d11_create_staging_texture(
+        ctx, rt->width, rt->height, DXGI_FORMAT_R8G8B8A8_UNORM, &ctx->rtt_staging);
     if (FAILED(hr)) {
         d3d11_destroy_rtt_targets(ctx);
         return hr;
@@ -1980,23 +2171,46 @@ static void d3d11_bind_render_targets(d3d11_context_t *ctx) {
     ID3D11DeviceContext_RSSetViewports(ctx->ctx, 1, &viewport);
 }
 
-static void d3d11_select_scene_targets(d3d11_context_t *ctx) {
+static void d3d11_select_current_targets(d3d11_context_t *ctx) {
     if (!ctx)
         return;
-    if (ctx->rtt_active && ctx->rtt_rtv && ctx->rtt_dsv) {
+    if (ctx->active_target_kind == VGFX3D_D3D11_TARGET_RTT && ctx->rtt_rtv && ctx->rtt_dsv) {
         ctx->current_rtvs[0] = ctx->rtt_rtv;
         ctx->current_rtvs[1] = NULL;
         ctx->current_rtv_count = 1;
         ctx->current_dsv = ctx->rtt_dsv;
         ctx->current_width = ctx->rtt_width;
         ctx->current_height = ctx->rtt_height;
-    } else if (ctx->scene_color_rtv && ctx->scene_motion_rtv && ctx->scene_dsv) {
+        ctx->current_target_kind = VGFX3D_D3D11_TARGET_RTT;
+    } else if (ctx->active_target_kind == VGFX3D_D3D11_TARGET_SCENE && ctx->scene_color_rtv &&
+               ctx->scene_motion_rtv && ctx->scene_dsv) {
         ctx->current_rtvs[0] = ctx->scene_color_rtv;
         ctx->current_rtvs[1] = ctx->scene_motion_rtv;
         ctx->current_rtv_count = 2;
         ctx->current_dsv = ctx->scene_dsv;
         ctx->current_width = ctx->scene_width;
         ctx->current_height = ctx->scene_height;
+        ctx->current_target_kind = VGFX3D_D3D11_TARGET_SCENE;
+    } else if (ctx->active_target_kind == VGFX3D_D3D11_TARGET_OVERLAY) {
+        ctx->current_rtvs[1] = NULL;
+        ctx->current_rtv_count = 1;
+        ctx->current_dsv = NULL;
+        ctx->current_target_kind = VGFX3D_D3D11_TARGET_OVERLAY;
+        if (ctx->overlay_color_rtv) {
+            ctx->current_rtvs[0] = ctx->overlay_color_rtv;
+            ctx->current_width = ctx->overlay_width;
+            ctx->current_height = ctx->overlay_height;
+        } else if (ctx->scene_color_rtv) {
+            ctx->current_rtvs[0] = ctx->scene_color_rtv;
+            ctx->current_width = ctx->scene_width;
+            ctx->current_height = ctx->scene_height;
+        } else {
+            ctx->current_rtvs[0] = ctx->rtv;
+            ctx->current_dsv = ctx->dsv;
+            ctx->current_width = ctx->width;
+            ctx->current_height = ctx->height;
+            ctx->current_target_kind = VGFX3D_D3D11_TARGET_SWAPCHAIN;
+        }
     } else {
         ctx->current_rtvs[0] = ctx->rtv;
         ctx->current_rtvs[1] = NULL;
@@ -2004,41 +2218,47 @@ static void d3d11_select_scene_targets(d3d11_context_t *ctx) {
         ctx->current_dsv = ctx->dsv;
         ctx->current_width = ctx->width;
         ctx->current_height = ctx->height;
+        ctx->current_target_kind = VGFX3D_D3D11_TARGET_SWAPCHAIN;
     }
     d3d11_bind_render_targets(ctx);
 }
 
 static void d3d11_bind_swapchain_target(d3d11_context_t *ctx) {
-    D3D11_VIEWPORT viewport;
-
     if (!ctx)
         return;
-    ID3D11DeviceContext_OMSetRenderTargets(ctx->ctx, 1, &ctx->rtv, NULL);
-    memset(&viewport, 0, sizeof(viewport));
-    viewport.Width = (FLOAT)ctx->width;
-    viewport.Height = (FLOAT)ctx->height;
-    viewport.MinDepth = 0.0f;
-    viewport.MaxDepth = 1.0f;
-    ID3D11DeviceContext_RSSetViewports(ctx->ctx, 1, &viewport);
+    ctx->current_rtvs[0] = ctx->rtv;
+    ctx->current_rtvs[1] = NULL;
+    ctx->current_rtv_count = 1;
+    ctx->current_dsv = NULL;
+    ctx->current_width = ctx->width;
+    ctx->current_height = ctx->height;
+    ctx->current_target_kind = VGFX3D_D3D11_TARGET_SWAPCHAIN;
+    d3d11_bind_render_targets(ctx);
 }
 
 static void d3d11_clear_current_targets(d3d11_context_t *ctx,
                                         int8_t load_existing_color,
                                         int8_t load_existing_depth) {
     float clear_color[4];
+    static const float overlay_clear[4] = {0.0f, 0.0f, 0.0f, 0.0f};
     float motion_clear[4] = {0.5f, 0.5f, 0.0f, 1.0f};
 
     if (!ctx)
         return;
 
-    clear_color[0] = ctx->clear_r;
-    clear_color[1] = ctx->clear_g;
-    clear_color[2] = ctx->clear_b;
-    clear_color[3] = 1.0f;
+    if (ctx->current_target_kind == VGFX3D_D3D11_TARGET_OVERLAY) {
+        memcpy(clear_color, overlay_clear, sizeof(clear_color));
+    } else {
+        clear_color[0] = ctx->clear_r;
+        clear_color[1] = ctx->clear_g;
+        clear_color[2] = ctx->clear_b;
+        clear_color[3] = 1.0f;
+    }
 
     if (!load_existing_color && ctx->current_rtv_count > 0 && ctx->current_rtvs[0])
         ID3D11DeviceContext_ClearRenderTargetView(ctx->ctx, ctx->current_rtvs[0], clear_color);
-    if (!load_existing_color && ctx->current_rtv_count > 1 && ctx->current_rtvs[1])
+    if (!load_existing_color && ctx->current_target_kind == VGFX3D_D3D11_TARGET_SCENE &&
+        ctx->current_rtv_count > 1 && ctx->current_rtvs[1])
         ID3D11DeviceContext_ClearRenderTargetView(ctx->ctx, ctx->current_rtvs[1], motion_clear);
     if (!load_existing_depth && ctx->current_dsv)
         ID3D11DeviceContext_ClearDepthStencilView(
@@ -2046,11 +2266,8 @@ static void d3d11_clear_current_targets(d3d11_context_t *ctx,
 }
 
 static void d3d11_bind_common_state(d3d11_context_t *ctx) {
-    float blend_factor[4] = {0, 0, 0, 0};
-
     if (!ctx)
         return;
-    ID3D11DeviceContext_OMSetBlendState(ctx->ctx, ctx->blend_state, blend_factor, 0xFFFFFFFF);
     if (ctx->linear_wrap_sampler)
         ID3D11DeviceContext_PSSetSamplers(ctx->ctx, 0, 1, &ctx->linear_wrap_sampler);
     if (ctx->shadow_cmp_sampler)
@@ -2070,16 +2287,18 @@ static void d3d11_prepare_object_data(const vgfx3d_draw_cmd_t *cmd, d3d_per_obje
     vgfx3d_compute_normal_matrix4(cmd->model_matrix, object_data->normal);
 
     object_data->has_prev_model_matrix = cmd->has_prev_model_matrix ? 1 : 0;
-    object_data->has_skinning =
-        (cmd->bone_palette && cmd->bone_count > 0 && cmd->bone_count <= 128) ? 1 : 0;
+    object_data->has_skinning = (cmd->bone_palette && cmd->bone_count > 0 &&
+                                 cmd->bone_count <= VGFX3D_D3D11_MAX_BONES)
+                                    ? 1
+                                    : 0;
     object_data->has_prev_skinning =
         (object_data->has_skinning && cmd->prev_bone_palette != NULL) ? 1 : 0;
     object_data->has_prev_instance_matrices = cmd->has_prev_instance_matrices ? 1 : 0;
 
     if (cmd->morph_deltas && cmd->morph_weights && cmd->morph_shape_count > 0) {
         morph_count = cmd->morph_shape_count;
-        if (morph_count > 32)
-            morph_count = 32;
+        if (morph_count > VGFX3D_D3D11_MAX_MORPH_SHAPES)
+            morph_count = VGFX3D_D3D11_MAX_MORPH_SHAPES;
     }
     object_data->morph_shape_count = morph_count;
     object_data->vertex_count = morph_count > 0 ? (int32_t)cmd->vertex_count : 0;
@@ -2088,15 +2307,15 @@ static void d3d11_prepare_object_data(const vgfx3d_draw_cmd_t *cmd, d3d_per_obje
     object_data->has_morph_normal_deltas =
         (morph_count > 0 && cmd->morph_normal_deltas != NULL) ? 1 : 0;
     if (morph_count > 0) {
-        memcpy(object_data->morph_weights, cmd->morph_weights, (size_t)morph_count * sizeof(float));
-        if (cmd->prev_morph_weights)
-            memcpy(object_data->prev_morph_weights,
-                   cmd->prev_morph_weights,
-                   (size_t)morph_count * sizeof(float));
-        else
-            memcpy(object_data->prev_morph_weights,
-                   cmd->morph_weights,
-                   (size_t)morph_count * sizeof(float));
+        vgfx3d_d3d11_pack_scalar_array4(object_data->morph_weights_packed,
+                                        VGFX3D_D3D11_PACKED_MORPH_WEIGHT_VECS,
+                                        cmd->morph_weights,
+                                        morph_count);
+        vgfx3d_d3d11_pack_scalar_array4(object_data->prev_morph_weights_packed,
+                                        VGFX3D_D3D11_PACKED_MORPH_WEIGHT_VECS,
+                                        cmd->prev_morph_weights ? cmd->prev_morph_weights
+                                                                : cmd->morph_weights,
+                                        morph_count);
     }
 }
 
@@ -2107,9 +2326,7 @@ static void d3d11_prepare_scene_data(d3d11_context_t *ctx,
                                      d3d_per_scene_t *scene_data) {
     memset(scene_data, 0, sizeof(*scene_data));
     memcpy(scene_data->vp, ctx->vp, sizeof(scene_data->vp));
-    memcpy(scene_data->prev_vp,
-           ctx->prev_vp_valid ? ctx->prev_vp : ctx->vp,
-           sizeof(scene_data->prev_vp));
+    memcpy(scene_data->prev_vp, ctx->draw_prev_vp, sizeof(scene_data->prev_vp));
     memcpy(scene_data->shadow_vp, ctx->shadow_vp, sizeof(scene_data->shadow_vp));
     memcpy(scene_data->camera_pos, ctx->cam_pos, sizeof(float) * 3);
     scene_data->camera_pos[3] = 1.0f;
@@ -2170,7 +2387,10 @@ static void d3d11_prepare_material_data(const vgfx3d_draw_cmd_t *cmd,
     material_data->pbr_flags[2] = has_metallic_roughness_map;
     material_data->pbr_flags[3] = has_ao_map;
     material_data->shading_model = cmd->shading_model;
-    memcpy(material_data->custom_params, cmd->custom_params, sizeof(material_data->custom_params));
+    vgfx3d_d3d11_pack_scalar_array4(material_data->custom_params_packed,
+                                    VGFX3D_D3D11_PACKED_CUSTOM_PARAM_VECS,
+                                    cmd->custom_params,
+                                    8);
     memcpy(
         material_data->splat_scales, cmd->splat_layer_scales, sizeof(material_data->splat_scales));
 }
@@ -2200,28 +2420,42 @@ static void d3d11_prepare_light_data(const vgfx3d_light_params_t *lights,
 static int d3d11_prepare_anim_resources(d3d11_context_t *ctx,
                                         const vgfx3d_draw_cmd_t *cmd,
                                         d3d_per_object_t *object_data) {
-    static const float k_zero_bones[128 * 16] = {0};
+    float bone_palette[VGFX3D_D3D11_MAX_BONES * 16];
+    float prev_bone_palette[VGFX3D_D3D11_MAX_BONES * 16];
     HRESULT hr;
     size_t morph_count;
+    int current_bone_upload_ok = 1;
+    int prev_bone_upload_ok = 1;
+    int morph_upload_ok = 1;
+    int morph_normal_upload_ok = 1;
 
     if (!ctx || !cmd || !object_data)
         return 0;
 
-    hr = d3d11_update_constant_buffer(ctx,
-                                      ctx->cb_bones,
-                                      object_data->has_skinning ? cmd->bone_palette : k_zero_bones,
-                                      sizeof(k_zero_bones));
+    ctx->current_morph_srv = NULL;
+    ctx->current_morph_normal_srv = NULL;
+
+    vgfx3d_d3d11_pack_bone_palette(bone_palette,
+                                   object_data->has_skinning ? cmd->bone_palette : NULL,
+                                   cmd->bone_count);
+    vgfx3d_d3d11_pack_bone_palette(prev_bone_palette,
+                                   object_data->has_prev_skinning ? cmd->prev_bone_palette
+                                                                  : (object_data->has_skinning
+                                                                         ? cmd->bone_palette
+                                                                         : NULL),
+                                   cmd->bone_count);
+
+    hr = d3d11_update_constant_buffer(ctx, ctx->cb_bones, bone_palette, sizeof(bone_palette));
     if (FAILED(hr))
         d3d11_log_hresult("Map(cbBones)", hr);
+    current_bone_upload_ok = SUCCEEDED(hr);
     hr = d3d11_update_constant_buffer(
-        ctx,
-        ctx->cb_prev_bones,
-        object_data->has_prev_skinning
-            ? cmd->prev_bone_palette
-            : (object_data->has_skinning ? cmd->bone_palette : k_zero_bones),
-        sizeof(k_zero_bones));
+        ctx, ctx->cb_prev_bones, prev_bone_palette, sizeof(prev_bone_palette));
     if (FAILED(hr))
         d3d11_log_hresult("Map(cbPrevBones)", hr);
+    prev_bone_upload_ok = SUCCEEDED(hr);
+    vgfx3d_d3d11_resolve_bone_upload_status(
+        object_data, current_bone_upload_ok, prev_bone_upload_ok);
 
     if (object_data->morph_shape_count <= 0 || !cmd->morph_deltas || !cmd->morph_weights) {
         object_data->morph_shape_count = 0;
@@ -2232,34 +2466,113 @@ static int d3d11_prepare_anim_resources(d3d11_context_t *ctx,
     }
 
     morph_count = (size_t)object_data->morph_shape_count * (size_t)cmd->vertex_count * 3u;
-    hr = d3d11_update_float_srv_buffer(ctx,
-                                       &ctx->morph_buffer,
-                                       &ctx->morph_srv,
-                                       &ctx->morph_buffer_size,
-                                       cmd->morph_deltas,
-                                       morph_count);
-    if (FAILED(hr)) {
-        d3d11_log_hresult("Create/UpdateBuffer(morphDeltas)", hr);
-        object_data->morph_shape_count = 0;
-        object_data->vertex_count = 0;
-        object_data->has_prev_morph_weights = 0;
-        object_data->has_morph_normal_deltas = 0;
-        return 0;
-    }
+    morph_upload_ok = 0;
+    morph_normal_upload_ok = object_data->has_morph_normal_deltas ? 0 : 1;
+    if (cmd->morph_key && cmd->morph_revision != 0) {
+        d3d11_morph_cache_entry_t *slot = NULL;
+        d3d11_morph_cache_entry_t *oldest = NULL;
 
-    if (object_data->has_morph_normal_deltas) {
-        hr = d3d11_update_float_srv_buffer(ctx,
-                                           &ctx->morph_normal_buffer,
-                                           &ctx->morph_normal_srv,
-                                           &ctx->morph_normal_buffer_size,
-                                           cmd->morph_normal_deltas,
-                                           morph_count);
-        if (FAILED(hr)) {
-            d3d11_log_hresult("Create/UpdateBuffer(morphNormalDeltas)", hr);
-            object_data->has_morph_normal_deltas = 0;
+        for (int32_t i = 0; i < D3D11_MORPH_CACHE_CAPACITY; i++) {
+            d3d11_morph_cache_entry_t *entry = &ctx->morph_cache[i];
+            if (entry->key == cmd->morph_key && entry->generation == cmd->morph_revision) {
+                slot = entry;
+                break;
+            }
+            if (!entry->key && !slot)
+                slot = entry;
+            if (!oldest || entry->last_used_frame < oldest->last_used_frame)
+                oldest = entry;
+        }
+        if (!slot)
+            slot = oldest;
+        if (slot) {
+            if (slot->key != cmd->morph_key || slot->generation != cmd->morph_revision ||
+                slot->vertex_count != cmd->vertex_count ||
+                slot->shape_count != (uint32_t)object_data->morph_shape_count || !slot->buffer ||
+                !slot->srv ||
+                (object_data->has_morph_normal_deltas && (!slot->normal_buffer || !slot->normal_srv))) {
+                d3d11_release_morph_cache_entry(slot);
+                hr = d3d11_update_float_srv_buffer(ctx,
+                                                   &slot->buffer,
+                                                   &slot->srv,
+                                                   &slot->element_count,
+                                                   cmd->morph_deltas,
+                                                   morph_count);
+                if (FAILED(hr)) {
+                    d3d11_log_hresult("Create/UpdateBuffer(morphDeltas cache)", hr);
+                } else {
+                    slot->key = cmd->morph_key;
+                    slot->generation = cmd->morph_revision;
+                    slot->vertex_count = (uint32_t)cmd->vertex_count;
+                    slot->shape_count = (uint32_t)object_data->morph_shape_count;
+                    slot->has_normal_deltas = object_data->has_morph_normal_deltas ? 1 : 0;
+                    morph_upload_ok = 1;
+                    if (object_data->has_morph_normal_deltas) {
+                        hr = d3d11_update_float_srv_buffer(ctx,
+                                                           &slot->normal_buffer,
+                                                           &slot->normal_srv,
+                                                           &slot->normal_element_count,
+                                                           cmd->morph_normal_deltas,
+                                                           morph_count);
+                        if (FAILED(hr)) {
+                            d3d11_log_hresult("Create/UpdateBuffer(morphNormalDeltas cache)", hr);
+                        } else {
+                            morph_normal_upload_ok = 1;
+                        }
+                    }
+                }
+            } else {
+                morph_upload_ok = 1;
+                morph_normal_upload_ok =
+                    object_data->has_morph_normal_deltas ? (slot->normal_srv != NULL) : 1;
+            }
+            if (morph_upload_ok) {
+                slot->last_used_frame = ctx->frame_serial;
+                ctx->current_morph_srv = slot->srv;
+                ctx->current_morph_normal_srv =
+                    morph_normal_upload_ok ? slot->normal_srv : NULL;
+            }
         }
     }
 
+    if (!ctx->current_morph_srv) {
+        hr = d3d11_update_float_srv_buffer(ctx,
+                                           &ctx->morph_buffer,
+                                           &ctx->morph_srv,
+                                           &ctx->morph_buffer_size,
+                                           cmd->morph_deltas,
+                                           morph_count);
+        if (FAILED(hr)) {
+            d3d11_log_hresult("Create/UpdateBuffer(morphDeltas)", hr);
+        } else {
+            morph_upload_ok = 1;
+            ctx->current_morph_srv = ctx->morph_srv;
+        }
+        if (object_data->has_morph_normal_deltas) {
+            hr = d3d11_update_float_srv_buffer(ctx,
+                                               &ctx->morph_normal_buffer,
+                                               &ctx->morph_normal_srv,
+                                               &ctx->morph_normal_buffer_size,
+                                               cmd->morph_normal_deltas,
+                                               morph_count);
+            if (FAILED(hr)) {
+                d3d11_log_hresult("Create/UpdateBuffer(morphNormalDeltas)", hr);
+            } else {
+                morph_normal_upload_ok = 1;
+                ctx->current_morph_normal_srv = ctx->morph_normal_srv;
+            }
+        }
+    }
+
+    vgfx3d_d3d11_resolve_morph_upload_status(
+        object_data, morph_upload_ok, morph_normal_upload_ok);
+    if (object_data->morph_shape_count <= 0) {
+        ctx->current_morph_srv = NULL;
+        ctx->current_morph_normal_srv = NULL;
+        return 0;
+    }
+    if (!object_data->has_morph_normal_deltas)
+        ctx->current_morph_normal_srv = NULL;
     return 1;
 }
 
@@ -2270,13 +2583,22 @@ static void d3d11_bind_main_pipeline(d3d11_context_t *ctx,
                                      int instanced) {
     ID3D11RasterizerState *rasterizer;
     ID3D11ShaderResourceView *vs_srvs[2];
-    int alpha_blend = vgfx3d_draw_cmd_uses_alpha_blend(cmd);
+    float blend_factor[4] = {0, 0, 0, 0};
+    vgfx3d_d3d11_blend_mode_t blend_mode = vgfx3d_d3d11_choose_blend_mode(cmd);
 
     rasterizer = d3d11_choose_rasterizer(ctx, wireframe, backface_cull);
     if (rasterizer)
         ID3D11DeviceContext_RSSetState(ctx->ctx, rasterizer);
     ID3D11DeviceContext_OMSetDepthStencilState(
-        ctx->ctx, alpha_blend ? ctx->depth_state_no_write : ctx->depth_state, 0);
+        ctx->ctx, blend_mode == VGFX3D_D3D11_BLEND_ALPHA ? ctx->depth_state_no_write
+                                                         : ctx->depth_state,
+        0);
+    ID3D11DeviceContext_OMSetBlendState(ctx->ctx,
+                                        blend_mode == VGFX3D_D3D11_BLEND_ALPHA
+                                            ? ctx->blend_state_alpha
+                                            : ctx->blend_state_opaque,
+                                        blend_factor,
+                                        0xFFFFFFFF);
     ID3D11DeviceContext_IASetPrimitiveTopology(ctx->ctx, D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     ID3D11DeviceContext_IASetInputLayout(
         ctx->ctx, instanced ? ctx->input_layout_instanced : ctx->input_layout);
@@ -2292,8 +2614,8 @@ static void d3d11_bind_main_pipeline(d3d11_context_t *ctx,
     ID3D11DeviceContext_PSSetConstantBuffers(ctx->ctx, 3, 1, &ctx->cb_per_lights);
     d3d11_bind_common_state(ctx);
 
-    vs_srvs[0] = ctx->morph_srv;
-    vs_srvs[1] = ctx->morph_normal_srv;
+    vs_srvs[0] = ctx->current_morph_srv;
+    vs_srvs[1] = ctx->current_morph_normal_srv;
     ID3D11DeviceContext_VSSetShaderResources(ctx->ctx, 0, 2, vs_srvs);
 }
 
@@ -2319,11 +2641,9 @@ static void d3d11_prepare_postfx_data(d3d11_context_t *ctx,
                                       const vgfx3d_postfx_snapshot_t *snapshot,
                                       d3d_postfx_cb_t *postfx_data) {
     memset(postfx_data, 0, sizeof(*postfx_data));
-    memcpy(postfx_data->inv_vp, ctx->inv_vp, sizeof(postfx_data->inv_vp));
-    memcpy(postfx_data->prev_vp,
-           ctx->prev_vp_valid ? ctx->prev_vp : ctx->vp,
-           sizeof(postfx_data->prev_vp));
-    memcpy(postfx_data->camera_pos, ctx->cam_pos, sizeof(float) * 3);
+    memcpy(postfx_data->inv_vp, ctx->scene_inv_vp, sizeof(postfx_data->inv_vp));
+    memcpy(postfx_data->prev_vp, ctx->scene_prev_vp, sizeof(postfx_data->prev_vp));
+    memcpy(postfx_data->camera_pos, ctx->scene_cam_pos, sizeof(float) * 3);
     postfx_data->camera_pos[3] = 1.0f;
     postfx_data->inv_resolution[0] = ctx->scene_width > 0 ? 1.0f / (float)ctx->scene_width : 0.0f;
     postfx_data->inv_resolution[1] = ctx->scene_height > 0 ? 1.0f / (float)ctx->scene_height : 0.0f;
@@ -2511,7 +2831,6 @@ static void d3d11_submit_draw_instanced(void *ctx_ptr,
     d3d_per_scene_t scene_data;
     d3d_per_material_t material_data;
     d3d_light_t light_data[8];
-    d3d_instance_data_t *instance_data = NULL;
     d3d_draw_resources_t draw_resources;
     int has_splat;
     HRESULT hr;
@@ -2526,24 +2845,13 @@ static void d3d11_submit_draw_instanced(void *ctx_ptr,
         !cmd->indices)
         return;
 
-    instance_data =
-        (d3d_instance_data_t *)malloc((size_t)instance_count * sizeof(d3d_instance_data_t));
-    if (!instance_data)
+    if (!d3d11_ensure_instance_upload_capacity(ctx, instance_count))
         return;
-    for (int32_t i = 0; i < instance_count; i++) {
-        memcpy(instance_data[i].model,
-               &instance_matrices[(size_t)i * 16u],
-               sizeof(instance_data[i].model));
-        vgfx3d_compute_normal_matrix4(&instance_matrices[(size_t)i * 16u], instance_data[i].normal);
-        if (cmd->has_prev_instance_matrices && cmd->prev_instance_matrices)
-            memcpy(instance_data[i].prev_model,
-                   &cmd->prev_instance_matrices[(size_t)i * 16u],
-                   sizeof(instance_data[i].prev_model));
-        else
-            memcpy(instance_data[i].prev_model,
-                   instance_data[i].model,
-                   sizeof(instance_data[i].prev_model));
-    }
+    vgfx3d_d3d11_fill_instance_data(ctx->instance_upload_data,
+                                    instance_count,
+                                    instance_matrices,
+                                    cmd->prev_instance_matrices,
+                                    cmd->has_prev_instance_matrices);
 
     d3d11_prepare_object_data(cmd, &object_data);
     object_data.has_prev_model_matrix = 0;
@@ -2555,19 +2863,16 @@ static void d3d11_submit_draw_instanced(void *ctx_ptr,
     hr = d3d11_update_constant_buffer(ctx, ctx->cb_per_object, &object_data, sizeof(object_data));
     if (FAILED(hr)) {
         d3d11_log_hresult("Map(cbPerObject)", hr);
-        free(instance_data);
         return;
     }
     hr = d3d11_update_constant_buffer(ctx, ctx->cb_per_scene, &scene_data, sizeof(scene_data));
     if (FAILED(hr)) {
         d3d11_log_hresult("Map(cbPerScene)", hr);
-        free(instance_data);
         return;
     }
     hr = d3d11_update_constant_buffer(ctx, ctx->cb_per_lights, light_data, sizeof(light_data));
     if (FAILED(hr)) {
         d3d11_log_hresult("Map(cbPerLights)", hr);
-        free(instance_data);
         return;
     }
 
@@ -2588,7 +2893,6 @@ static void d3d11_submit_draw_instanced(void *ctx_ptr,
         d3d11_log_hresult("Map(cbPerMaterial)", hr);
         d3d11_unbind_draw_resources(ctx);
         d3d11_release_temporary_resources(&draw_resources);
-        free(instance_data);
         return;
     }
 
@@ -2597,12 +2901,11 @@ static void d3d11_submit_draw_instanced(void *ctx_ptr,
                                      &ctx->instance_buffer,
                                      &ctx->instance_buffer_size,
                                      D3D11_BIND_VERTEX_BUFFER,
-                                     instance_data,
+                                     ctx->instance_upload_data,
                                      (size_t)instance_count * sizeof(d3d_instance_data_t),
                                      D3D11_INITIAL_INSTANCE_BUFFER_SIZE)) {
         d3d11_unbind_draw_resources(ctx);
         d3d11_release_temporary_resources(&draw_resources);
-        free(instance_data);
         return;
     }
 
@@ -2617,7 +2920,6 @@ static void d3d11_submit_draw_instanced(void *ctx_ptr,
 
     d3d11_unbind_draw_resources(ctx);
     d3d11_release_temporary_resources(&draw_resources);
-    free(instance_data);
 }
 
 static void *d3d11_create_ctx(vgfx_window_t win, int32_t width, int32_t height) {
@@ -2636,6 +2938,7 @@ static void *d3d11_create_ctx(vgfx_window_t win, int32_t width, int32_t height) 
     ID3DBlob *ps_skybox_blob = NULL;
     ID3DBlob *vs_postfx_blob = NULL;
     ID3DBlob *ps_postfx_blob = NULL;
+    ID3DBlob *ps_overlay_blob = NULL;
     ID3D11Texture2D *back_buffer = NULL;
     D3D11_INPUT_ELEMENT_DESC layout[7];
     D3D11_INPUT_ELEMENT_DESC instanced_layout[19];
@@ -2664,8 +2967,16 @@ static void *d3d11_create_ctx(vgfx_window_t win, int32_t width, int32_t height) 
         return NULL;
     ctx->width = width;
     ctx->height = height;
-    memcpy(ctx->prev_vp, k_identity4x4, sizeof(ctx->prev_vp));
+    memcpy(ctx->view, k_identity4x4, sizeof(ctx->view));
+    memcpy(ctx->projection, k_identity4x4, sizeof(ctx->projection));
+    memcpy(ctx->vp, k_identity4x4, sizeof(ctx->vp));
     memcpy(ctx->inv_vp, k_identity4x4, sizeof(ctx->inv_vp));
+    memcpy(ctx->draw_prev_vp, k_identity4x4, sizeof(ctx->draw_prev_vp));
+    memcpy(ctx->scene_vp, k_identity4x4, sizeof(ctx->scene_vp));
+    memcpy(ctx->scene_prev_vp, k_identity4x4, sizeof(ctx->scene_prev_vp));
+    memcpy(ctx->scene_inv_vp, k_identity4x4, sizeof(ctx->scene_inv_vp));
+    ctx->current_target_kind = VGFX3D_D3D11_TARGET_SWAPCHAIN;
+    ctx->active_target_kind = VGFX3D_D3D11_TARGET_SWAPCHAIN;
 
     memset(&swap_desc, 0, sizeof(swap_desc));
     swap_desc.BufferCount = 1;
@@ -2740,6 +3051,16 @@ static void *d3d11_create_ctx(vgfx_window_t win, int32_t width, int32_t height) 
     }
 
     memset(&blend_desc, 0, sizeof(blend_desc));
+    blend_desc.IndependentBlendEnable = TRUE;
+    blend_desc.RenderTarget[0].RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
+    blend_desc.RenderTarget[1].RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
+    hr = ID3D11Device_CreateBlendState(ctx->device, &blend_desc, &ctx->blend_state_opaque);
+    if (FAILED(hr)) {
+        d3d11_log_hresult("CreateBlendState(opaque)", hr);
+        goto fail;
+    }
+    memset(&blend_desc, 0, sizeof(blend_desc));
+    blend_desc.IndependentBlendEnable = TRUE;
     blend_desc.RenderTarget[0].BlendEnable = TRUE;
     blend_desc.RenderTarget[0].SrcBlend = D3D11_BLEND_SRC_ALPHA;
     blend_desc.RenderTarget[0].DestBlend = D3D11_BLEND_INV_SRC_ALPHA;
@@ -2748,8 +3069,9 @@ static void *d3d11_create_ctx(vgfx_window_t win, int32_t width, int32_t height) 
     blend_desc.RenderTarget[0].DestBlendAlpha = D3D11_BLEND_INV_SRC_ALPHA;
     blend_desc.RenderTarget[0].BlendOpAlpha = D3D11_BLEND_OP_ADD;
     blend_desc.RenderTarget[0].RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
-    blend_desc.RenderTarget[1] = blend_desc.RenderTarget[0];
-    hr = ID3D11Device_CreateBlendState(ctx->device, &blend_desc, &ctx->blend_state);
+    blend_desc.RenderTarget[1].BlendEnable = FALSE;
+    blend_desc.RenderTarget[1].RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
+    hr = ID3D11Device_CreateBlendState(ctx->device, &blend_desc, &ctx->blend_state_alpha);
     if (FAILED(hr)) {
         d3d11_log_hresult("CreateBlendState(alpha)", hr);
         goto fail;
@@ -2839,6 +3161,10 @@ static void *d3d11_create_ctx(vgfx_window_t win, int32_t width, int32_t height) 
     hr = d3d11_compile_shader(d3d11_postfx_shader_source, "PSPostFX", "ps_5_0", &ps_postfx_blob);
     if (FAILED(hr))
         goto fail;
+    hr = d3d11_compile_shader(
+        d3d11_postfx_shader_source, "PSOverlayComposite", "ps_5_0", &ps_overlay_blob);
+    if (FAILED(hr))
+        goto fail;
 
     hr = ID3D11Device_CreateVertexShader(ctx->device,
                                          ID3D10Blob_GetBufferPointer(vs_blob),
@@ -2910,6 +3236,15 @@ static void *d3d11_create_ctx(vgfx_window_t win, int32_t width, int32_t height) 
                                         &ctx->ps_postfx);
     if (FAILED(hr)) {
         d3d11_log_hresult("CreatePixelShader(postfx)", hr);
+        goto fail;
+    }
+    hr = ID3D11Device_CreatePixelShader(ctx->device,
+                                        ID3D10Blob_GetBufferPointer(ps_overlay_blob),
+                                        ID3D10Blob_GetBufferSize(ps_overlay_blob),
+                                        NULL,
+                                        &ctx->ps_overlay_composite);
+    if (FAILED(hr)) {
+        d3d11_log_hresult("CreatePixelShader(overlayComposite)", hr);
         goto fail;
     }
 
@@ -3120,6 +3455,7 @@ static void *d3d11_create_ctx(vgfx_window_t win, int32_t width, int32_t height) 
     SAFE_RELEASE(ps_skybox_blob);
     SAFE_RELEASE(vs_postfx_blob);
     SAFE_RELEASE(ps_postfx_blob);
+    SAFE_RELEASE(ps_overlay_blob);
     return ctx;
 
 fail:
@@ -3131,6 +3467,7 @@ fail:
     SAFE_RELEASE(ps_skybox_blob);
     SAFE_RELEASE(vs_postfx_blob);
     SAFE_RELEASE(ps_postfx_blob);
+    SAFE_RELEASE(ps_overlay_blob);
     SAFE_RELEASE(back_buffer);
     d3d11_destroy_ctx(ctx);
     return NULL;
@@ -3144,6 +3481,7 @@ static void d3d11_destroy_ctx(void *ctx_ptr) {
     d3d11_release_texture_cache(ctx);
     d3d11_release_cubemap_cache(ctx);
     d3d11_release_mesh_cache(ctx);
+    d3d11_release_morph_cache(ctx);
     d3d11_destroy_shadow_targets(ctx);
     d3d11_destroy_rtt_targets(ctx);
     d3d11_destroy_scene_targets(ctx);
@@ -3168,6 +3506,7 @@ static void d3d11_destroy_ctx(void *ctx_ptr) {
     SAFE_RELEASE(ctx->input_layout_instanced);
     SAFE_RELEASE(ctx->input_layout);
     SAFE_RELEASE(ctx->ps_postfx);
+    SAFE_RELEASE(ctx->ps_overlay_composite);
     SAFE_RELEASE(ctx->vs_postfx);
     SAFE_RELEASE(ctx->ps_skybox);
     SAFE_RELEASE(ctx->vs_skybox);
@@ -3185,13 +3524,15 @@ static void d3d11_destroy_ctx(void *ctx_ptr) {
     SAFE_RELEASE(ctx->depth_state_readonly_lequal);
     SAFE_RELEASE(ctx->depth_state_no_write);
     SAFE_RELEASE(ctx->depth_state);
-    SAFE_RELEASE(ctx->blend_state);
+    SAFE_RELEASE(ctx->blend_state_alpha);
+    SAFE_RELEASE(ctx->blend_state_opaque);
     SAFE_RELEASE(ctx->dsv);
     SAFE_RELEASE(ctx->depth_tex);
     SAFE_RELEASE(ctx->rtv);
     SAFE_RELEASE(ctx->swap_chain);
     SAFE_RELEASE(ctx->ctx);
     SAFE_RELEASE(ctx->device);
+    free(ctx->instance_upload_data);
     free(ctx);
 }
 
@@ -3215,29 +3556,63 @@ static void d3d11_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) 
     ctx->frame_serial++;
     ctx->shadow_active = 0;
 
-    if (ctx->prev_vp_valid)
-        memcpy(ctx->prev_vp, ctx->vp, sizeof(ctx->prev_vp));
     memcpy(ctx->view, cam->view, sizeof(ctx->view));
     memcpy(ctx->projection, cam->projection, sizeof(ctx->projection));
     mat4f_mul_d3d(cam->projection, cam->view, ctx->vp);
     if (vgfx3d_invert_matrix4(ctx->vp, ctx->inv_vp) != 0)
         memcpy(ctx->inv_vp, k_identity4x4, sizeof(ctx->inv_vp));
-    if (!ctx->prev_vp_valid) {
-        memcpy(ctx->prev_vp, ctx->vp, sizeof(ctx->prev_vp));
-        ctx->prev_vp_valid = 1;
-    }
     memcpy(ctx->cam_pos, cam->position, sizeof(float) * 3);
     ctx->fog_enabled = cam->fog_enabled;
     ctx->fog_near = cam->fog_near;
     ctx->fog_far = cam->fog_far;
     memcpy(ctx->fog_color, cam->fog_color, sizeof(ctx->fog_color));
+    ctx->current_pass_is_overlay = (!ctx->rtt_active && cam->load_existing_color) ? 1 : 0;
+    ctx->active_target_kind = vgfx3d_d3d11_choose_target_kind(
+        ctx->rtt_active, ctx->gpu_postfx_enabled, cam->load_existing_color);
 
-    if (!ctx->rtt_active) {
+    if (!ctx->current_pass_is_overlay)
+        ctx->overlay_used_this_frame = 0;
+
+    if (!ctx->rtt_active && ctx->active_target_kind != VGFX3D_D3D11_TARGET_SWAPCHAIN) {
         hr = d3d11_ensure_scene_targets(ctx, ctx->width, ctx->height);
-        if (FAILED(hr))
+        if (FAILED(hr)) {
             d3d11_log_hresult("CreateSceneTargets", hr);
+            ctx->active_target_kind = VGFX3D_D3D11_TARGET_SWAPCHAIN;
+        }
     }
-    d3d11_select_scene_targets(ctx);
+    if (ctx->active_target_kind == VGFX3D_D3D11_TARGET_OVERLAY) {
+        hr = d3d11_ensure_overlay_target(ctx, ctx->width, ctx->height);
+        if (FAILED(hr))
+            d3d11_log_hresult("CreateOverlayTarget", hr);
+    }
+
+    {
+        vgfx3d_d3d11_frame_history_t history;
+
+        memcpy(history.scene_vp, ctx->scene_vp, sizeof(history.scene_vp));
+        memcpy(history.scene_prev_vp, ctx->scene_prev_vp, sizeof(history.scene_prev_vp));
+        memcpy(history.scene_inv_vp, ctx->scene_inv_vp, sizeof(history.scene_inv_vp));
+        memcpy(history.draw_prev_vp, ctx->draw_prev_vp, sizeof(history.draw_prev_vp));
+        memcpy(history.scene_cam_pos, ctx->scene_cam_pos, sizeof(history.scene_cam_pos));
+        history.scene_history_valid = ctx->scene_history_valid;
+        history.overlay_used_this_frame = ctx->overlay_used_this_frame;
+        vgfx3d_d3d11_update_frame_history(
+            &history,
+            ctx->vp,
+            ctx->inv_vp,
+            cam->position,
+            ctx->current_pass_is_overlay,
+            (ctx->gpu_postfx_enabled && ctx->overlay_color_rtv != NULL) ? 1 : 0);
+        memcpy(ctx->scene_vp, history.scene_vp, sizeof(ctx->scene_vp));
+        memcpy(ctx->scene_prev_vp, history.scene_prev_vp, sizeof(ctx->scene_prev_vp));
+        memcpy(ctx->scene_inv_vp, history.scene_inv_vp, sizeof(ctx->scene_inv_vp));
+        memcpy(ctx->draw_prev_vp, history.draw_prev_vp, sizeof(ctx->draw_prev_vp));
+        memcpy(ctx->scene_cam_pos, history.scene_cam_pos, sizeof(ctx->scene_cam_pos));
+        ctx->scene_history_valid = history.scene_history_valid;
+        ctx->overlay_used_this_frame = history.overlay_used_this_frame;
+    }
+
+    d3d11_select_current_targets(ctx);
     d3d11_clear_current_targets(ctx, cam->load_existing_color, cam->load_existing_depth);
     d3d11_bind_common_state(ctx);
 }
@@ -3316,20 +3691,96 @@ static void d3d11_resize(void *ctx_ptr, int32_t w, int32_t h) {
     ctx->height = h;
 }
 
-static int d3d11_readback_rgba(
-    void *ctx_ptr, uint8_t *dst_rgba, int32_t w, int32_t h, int32_t stride) {
-    d3d11_context_t *ctx = (d3d11_context_t *)ctx_ptr;
+static float d3d11_half_to_float(uint16_t bits) {
+    uint32_t sign = (uint32_t)(bits & 0x8000u) << 16;
+    uint32_t exp = (bits >> 10) & 0x1Fu;
+    uint32_t mant = bits & 0x03FFu;
+    uint32_t fbits;
+    float out;
+
+    if (exp == 0) {
+        if (mant == 0) {
+            fbits = sign;
+        } else {
+            exp = 127u - 15u + 1u;
+            while ((mant & 0x0400u) == 0) {
+                mant <<= 1u;
+                exp--;
+            }
+            mant &= 0x03FFu;
+            fbits = sign | (exp << 23) | (mant << 13);
+        }
+    } else if (exp == 0x1Fu) {
+        fbits = sign | 0x7F800000u | (mant << 13);
+    } else {
+        fbits = sign | ((exp + (127u - 15u)) << 23) | (mant << 13);
+    }
+
+    memcpy(&out, &fbits, sizeof(out));
+    return out;
+}
+
+static uint8_t d3d11_float_to_unorm8(float value) {
+    if (value <= 0.0f)
+        return 0;
+    if (value >= 1.0f)
+        return 255;
+    return (uint8_t)(value * 255.0f + 0.5f);
+}
+
+static void d3d11_copy_mapped_texture_to_rgba8(uint8_t *dst_rgba,
+                                               int32_t dst_stride,
+                                               int32_t copy_w,
+                                               int32_t copy_h,
+                                               const D3D11_MAPPED_SUBRESOURCE *mapped,
+                                               DXGI_FORMAT format) {
+    if (!dst_rgba || !mapped || copy_w <= 0 || copy_h <= 0)
+        return;
+
+    for (int32_t y = 0; y < copy_h; y++) {
+        uint8_t *dst_row = dst_rgba + (size_t)y * (size_t)dst_stride;
+        const uint8_t *src_row = (const uint8_t *)mapped->pData + (size_t)y * mapped->RowPitch;
+
+        if (format == DXGI_FORMAT_R8G8B8A8_UNORM) {
+            memcpy(dst_row, src_row, (size_t)copy_w * 4u);
+            continue;
+        }
+        if (format == DXGI_FORMAT_R16G16B16A16_FLOAT) {
+            const uint16_t *src16 = (const uint16_t *)src_row;
+            for (int32_t x = 0; x < copy_w; x++) {
+                dst_row[(size_t)x * 4u + 0u] = d3d11_float_to_unorm8(d3d11_half_to_float(src16[0]));
+                dst_row[(size_t)x * 4u + 1u] = d3d11_float_to_unorm8(d3d11_half_to_float(src16[1]));
+                dst_row[(size_t)x * 4u + 2u] = d3d11_float_to_unorm8(d3d11_half_to_float(src16[2]));
+                dst_row[(size_t)x * 4u + 3u] = d3d11_float_to_unorm8(d3d11_half_to_float(src16[3]));
+                src16 += 4;
+            }
+        }
+    }
+}
+
+static int d3d11_readback_texture_rgba(d3d11_context_t *ctx,
+                                       ID3D11Texture2D *source_tex,
+                                       uint8_t *dst_rgba,
+                                       int32_t w,
+                                       int32_t h,
+                                       int32_t stride) {
     ID3D11Texture2D *staging = NULL;
+    D3D11_TEXTURE2D_DESC desc;
     D3D11_MAPPED_SUBRESOURCE mapped;
     HRESULT hr;
-    int32_t copy_w, copy_h;
+    int32_t copy_w;
+    int32_t copy_h;
 
-    if (!ctx || !dst_rgba || w <= 0 || h <= 0 || stride < w * 4)
-        return 0;
-    if (!ctx->scene_color_tex || ctx->scene_width <= 0 || ctx->scene_height <= 0)
+    if (!ctx || !source_tex || !dst_rgba || w <= 0 || h <= 0 || stride < w * 4)
         return 0;
 
-    hr = d3d11_create_staging_texture(ctx, ctx->scene_width, ctx->scene_height, &staging);
+    ID3D11Texture2D_GetDesc(source_tex, &desc);
+    if (desc.Format != DXGI_FORMAT_R8G8B8A8_UNORM &&
+        desc.Format != DXGI_FORMAT_R16G16B16A16_FLOAT) {
+        return 0;
+    }
+    hr = d3d11_create_staging_texture(
+        ctx, (int32_t)desc.Width, (int32_t)desc.Height, desc.Format, &staging);
     if (FAILED(hr)) {
         d3d11_log_hresult("CreateTexture2D(sceneStaging)", hr);
         return 0;
@@ -3337,7 +3788,7 @@ static int d3d11_readback_rgba(
 
     memset(dst_rgba, 0, (size_t)stride * (size_t)h);
     ID3D11DeviceContext_CopyResource(
-        ctx->ctx, (ID3D11Resource *)staging, (ID3D11Resource *)ctx->scene_color_tex);
+        ctx->ctx, (ID3D11Resource *)staging, (ID3D11Resource *)source_tex);
     hr =
         ID3D11DeviceContext_Map(ctx->ctx, (ID3D11Resource *)staging, 0, D3D11_MAP_READ, 0, &mapped);
     if (FAILED(hr)) {
@@ -3346,26 +3797,55 @@ static int d3d11_readback_rgba(
         return 0;
     }
 
-    copy_w = ctx->scene_width < w ? ctx->scene_width : w;
-    copy_h = ctx->scene_height < h ? ctx->scene_height : h;
-    for (int32_t y = 0; y < copy_h; y++) {
-        memcpy(dst_rgba + (size_t)y * (size_t)stride,
-               (const uint8_t *)mapped.pData + (size_t)y * mapped.RowPitch,
-               (size_t)copy_w * 4u);
-    }
+    copy_w = (int32_t)desc.Width < w ? (int32_t)desc.Width : w;
+    copy_h = (int32_t)desc.Height < h ? (int32_t)desc.Height : h;
+    d3d11_copy_mapped_texture_to_rgba8(dst_rgba, stride, copy_w, copy_h, &mapped, desc.Format);
     ID3D11DeviceContext_Unmap(ctx->ctx, (ID3D11Resource *)staging, 0);
     SAFE_RELEASE(staging);
     return 1;
 }
 
+static int d3d11_readback_rgba(
+    void *ctx_ptr, uint8_t *dst_rgba, int32_t w, int32_t h, int32_t stride) {
+    d3d11_context_t *ctx = (d3d11_context_t *)ctx_ptr;
+    ID3D11Texture2D *back_buffer = NULL;
+    ID3D11Texture2D *source_tex = NULL;
+    HRESULT hr;
+
+    if (!ctx || !dst_rgba || w <= 0 || h <= 0 || stride < w * 4)
+        return 0;
+    if (ctx->gpu_postfx_enabled && ctx->scene_color_tex && ctx->scene_width > 0 &&
+        ctx->scene_height > 0) {
+        source_tex = ctx->scene_color_tex;
+    } else {
+        hr = IDXGISwapChain_GetBuffer(
+            ctx->swap_chain, 0, &IID_ID3D11Texture2D, (void **)&back_buffer);
+        if (FAILED(hr)) {
+            d3d11_log_hresult("IDXGISwapChain::GetBuffer(readback)", hr);
+            return 0;
+        }
+        source_tex = back_buffer;
+    }
+
+    {
+        int ok = d3d11_readback_texture_rgba(ctx, source_tex, dst_rgba, w, h, stride);
+        SAFE_RELEASE(back_buffer);
+        return ok;
+    }
+}
+
 static void d3d11_present_internal(d3d11_context_t *ctx, const vgfx3d_postfx_snapshot_t *snapshot) {
     d3d_postfx_cb_t postfx_data;
-    ID3D11ShaderResourceView *srvs[3];
+    ID3D11ShaderResourceView *srvs[4];
+    ID3D11ShaderResourceView *null_srvs[4] = {NULL, NULL, NULL, NULL};
+    float blend_factor[4] = {0, 0, 0, 0};
     HRESULT hr;
+    int use_postfx;
 
     if (!ctx || ctx->rtt_active)
         return;
-    if (!ctx->scene_color_srv) {
+    use_postfx = (snapshot != NULL && ctx->gpu_postfx_enabled) ? 1 : 0;
+    if (!use_postfx || !ctx->scene_color_srv || !ctx->scene_depth_srv || !ctx->scene_motion_srv) {
         IDXGISwapChain_Present(ctx->swap_chain, 1, 0);
         return;
     }
@@ -3382,6 +3862,7 @@ static void d3d11_present_internal(d3d11_context_t *ctx, const vgfx3d_postfx_sna
     srvs[0] = ctx->scene_color_srv;
     srvs[1] = ctx->scene_depth_srv;
     srvs[2] = ctx->scene_motion_srv;
+    srvs[3] = NULL;
     ID3D11DeviceContext_IASetInputLayout(ctx->ctx, NULL);
     ID3D11DeviceContext_IASetPrimitiveTopology(ctx->ctx, D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     ID3D11DeviceContext_VSSetShader(ctx->ctx, ctx->vs_postfx, NULL, 0);
@@ -3390,13 +3871,22 @@ static void d3d11_present_internal(d3d11_context_t *ctx, const vgfx3d_postfx_sna
     ID3D11DeviceContext_PSSetConstantBuffers(ctx->ctx, 0, 1, &ctx->cb_postfx);
     if (ctx->linear_clamp_sampler)
         ID3D11DeviceContext_PSSetSamplers(ctx->ctx, 0, 1, &ctx->linear_clamp_sampler);
-    ID3D11DeviceContext_PSSetShaderResources(ctx->ctx, 0, 3, srvs);
+    ID3D11DeviceContext_PSSetShaderResources(ctx->ctx, 0, 4, srvs);
     ID3D11DeviceContext_RSSetState(ctx->ctx, ctx->rs_solid_no_cull);
     ID3D11DeviceContext_OMSetDepthStencilState(ctx->ctx, NULL, 0);
+    ID3D11DeviceContext_OMSetBlendState(
+        ctx->ctx, ctx->blend_state_opaque, blend_factor, 0xFFFFFFFF);
     ID3D11DeviceContext_Draw(ctx->ctx, 3, 0);
-    {
-        ID3D11ShaderResourceView *null_srvs[3] = {NULL, NULL, NULL};
-        ID3D11DeviceContext_PSSetShaderResources(ctx->ctx, 0, 3, null_srvs);
+    ID3D11DeviceContext_PSSetShaderResources(ctx->ctx, 0, 4, null_srvs);
+
+    if (ctx->overlay_used_this_frame && ctx->overlay_color_srv && ctx->ps_overlay_composite) {
+        srvs[3] = ctx->overlay_color_srv;
+        ID3D11DeviceContext_PSSetShader(ctx->ctx, ctx->ps_overlay_composite, NULL, 0);
+        ID3D11DeviceContext_PSSetShaderResources(ctx->ctx, 3, 1, &srvs[3]);
+        ID3D11DeviceContext_OMSetBlendState(
+            ctx->ctx, ctx->blend_state_alpha, blend_factor, 0xFFFFFFFF);
+        ID3D11DeviceContext_Draw(ctx->ctx, 3, 0);
+        ID3D11DeviceContext_PSSetShaderResources(ctx->ctx, 3, 1, &null_srvs[3]);
     }
     IDXGISwapChain_Present(ctx->swap_chain, 1, 0);
 }
@@ -3407,6 +3897,13 @@ static void d3d11_present(void *ctx_ptr) {
 
 static void d3d11_present_postfx(void *ctx_ptr, const vgfx3d_postfx_snapshot_t *postfx) {
     d3d11_present_internal((d3d11_context_t *)ctx_ptr, postfx);
+}
+
+static void d3d11_set_gpu_postfx_enabled(void *ctx_ptr, int8_t enabled) {
+    d3d11_context_t *ctx = (d3d11_context_t *)ctx_ptr;
+    if (!ctx)
+        return;
+    ctx->gpu_postfx_enabled = enabled ? 1 : 0;
 }
 
 static void d3d11_set_render_target(void *ctx_ptr, vgfx3d_rendertarget_t *rt) {
@@ -3500,7 +3997,7 @@ static void d3d11_shadow_draw(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) {
     ID3D11DeviceContext_VSSetConstantBuffers(ctx->ctx, 4, 1, &ctx->cb_bones);
     ID3D11DeviceContext_VSSetConstantBuffers(ctx->ctx, 5, 1, &ctx->cb_prev_bones);
     {
-        ID3D11ShaderResourceView *vs_srvs[2] = {ctx->morph_srv, NULL};
+        ID3D11ShaderResourceView *vs_srvs[2] = {ctx->current_morph_srv, NULL};
         ID3D11DeviceContext_VSSetShaderResources(ctx->ctx, 0, 2, vs_srvs);
     }
     ID3D11DeviceContext_DrawIndexed(ctx->ctx, cmd->index_count, 0, 0);
@@ -3516,7 +4013,7 @@ static void d3d11_shadow_end(void *ctx_ptr, float bias) {
         return;
     ctx->shadow_active = 1;
     ctx->shadow_bias = bias;
-    d3d11_select_scene_targets(ctx);
+    d3d11_select_current_targets(ctx);
 }
 
 static void d3d11_draw_skybox(void *ctx_ptr, const void *cubemap_ptr) {
@@ -3582,6 +4079,7 @@ const vgfx3d_backend_t vgfx3d_d3d11_backend = {
     .present = d3d11_present,
     .readback_rgba = d3d11_readback_rgba,
     .present_postfx = d3d11_present_postfx,
+    .set_gpu_postfx_enabled = d3d11_set_gpu_postfx_enabled,
 };
 
 #endif /* _WIN32 && VIPER_ENABLE_GRAPHICS */

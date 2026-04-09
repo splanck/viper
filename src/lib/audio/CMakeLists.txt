@@ -41,7 +41,7 @@ set(VAUD_CORE_SOURCES
 
 set(VIPERAUD_AVAILABLE OFF CACHE INTERNAL "Whether ViperAUD is available in this build" FORCE)
 set(VIPERAUD_UNAVAILABLE_REASON "audio support disabled" CACHE INTERNAL
-    "Reason ViperAUD is unavailable" FORCE)
+        "Reason ViperAUD is unavailable" FORCE)
 set(VIPERAUD_BACKEND "disabled" CACHE INTERNAL "Selected ViperAUD backend" FORCE)
 
 if (NOT DEFINED VIPER_AUDIO_MODE)
@@ -51,7 +51,7 @@ endif ()
 if (VIPER_AUDIO_MODE STREQUAL "OFF")
     message(STATUS "ViperAUD: disabled by VIPER_AUDIO_MODE=OFF")
     set(VIPERAUD_UNAVAILABLE_REASON "disabled by VIPER_AUDIO_MODE=OFF" CACHE INTERNAL
-        "Reason ViperAUD is unavailable" FORCE)
+            "Reason ViperAUD is unavailable" FORCE)
     return()
 endif ()
 
@@ -67,8 +67,8 @@ elseif (UNIX)
     find_package(ALSA QUIET)
     if (NOT ALSA_FOUND)
         set(VIPERAUD_UNAVAILABLE_REASON
-            "ALSA not found; install libasound2-dev/alsa-lib-devel or set VIPER_AUDIO_MODE=OFF"
-            CACHE INTERNAL "Reason ViperAUD is unavailable" FORCE)
+                "ALSA not found; install libasound2-dev/alsa-lib-devel or set VIPER_AUDIO_MODE=OFF"
+                CACHE INTERNAL "Reason ViperAUD is unavailable" FORCE)
         if (VIPER_AUDIO_MODE STREQUAL "REQUIRE")
             message(FATAL_ERROR
                     "ViperAUD: ALSA not found and VIPER_AUDIO_MODE=REQUIRE.\n"

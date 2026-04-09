@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-05
+last-verified: 2026-04-09
 ---
 
 # Getting Started on macOS
@@ -100,7 +100,7 @@ After building, confirm Viper is working:
 viper --version
 ```
 
-You should see the version string (e.g., `viper 0.2.3-snapshot`). If the command is not found, ensure `/usr/local/bin` is in your `PATH`:
+You should see the version string (e.g., `viper 0.2.4-snapshot`). If the command is not found, ensure `/usr/local/bin` is in your `PATH`:
 
 ```bash
 echo $PATH | tr ':' '\n' | grep /usr/local/bin

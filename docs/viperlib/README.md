@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-07
+last-verified: 2026-04-09
 ---
 
 # Viper Runtime Library Reference

@@ -20,6 +20,7 @@
 #include "rt_string.h"
 #include <cassert>
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
 #include <cstring>
 
@@ -116,6 +117,56 @@ static void test_null_safety() {
     EXPECT_TRUE(rt_morphtarget3d_get_shape_count(NULL) == 0, "Null shape count = 0");
 }
 
+static void test_packed_payload_generation_tracks_delta_edits_only() {
+    void *mt = rt_morphtarget3d_new(2);
+    uint64_t initial_generation = rt_morphtarget3d_get_payload_generation(mt);
+
+    rt_morphtarget3d_add_shape(mt, rt_const_cstr("smile"));
+    uint64_t after_shape_generation = rt_morphtarget3d_get_payload_generation(mt);
+    rt_morphtarget3d_set_delta(mt, 0, 0, 1.0, 2.0, 3.0);
+    uint64_t after_delta_generation = rt_morphtarget3d_get_payload_generation(mt);
+    rt_morphtarget3d_set_weight(mt, 0, 0.5);
+    EXPECT_TRUE(after_shape_generation > initial_generation,
+                "Adding a shape bumps the packed-payload generation");
+    EXPECT_TRUE(after_delta_generation > after_shape_generation,
+                "Editing morph deltas bumps the packed-payload generation");
+    EXPECT_TRUE(rt_morphtarget3d_get_payload_generation(mt) == after_delta_generation,
+                "Changing only morph weights does not bump the packed-payload generation");
+}
+
+static void test_packed_payload_exports_positions_and_normals() {
+    void *mt = rt_morphtarget3d_new(2);
+    const float *packed_pos;
+    const float *packed_nrm;
+
+    rt_morphtarget3d_add_shape(mt, rt_const_cstr("raise"));
+    rt_morphtarget3d_set_delta(mt, 0, 0, 1.0, 2.0, 3.0);
+    rt_morphtarget3d_set_delta(mt, 0, 1, 4.0, 5.0, 6.0);
+    packed_pos = rt_morphtarget3d_get_packed_deltas(mt);
+    EXPECT_TRUE(packed_pos != nullptr, "Packed morph positions export successfully");
+    if (packed_pos) {
+        EXPECT_NEAR(packed_pos[0], 1.0f, 1e-6f, "Packed morph positions keep vertex 0 X");
+        EXPECT_NEAR(packed_pos[1], 2.0f, 1e-6f, "Packed morph positions keep vertex 0 Y");
+        EXPECT_NEAR(packed_pos[2], 3.0f, 1e-6f, "Packed morph positions keep vertex 0 Z");
+        EXPECT_NEAR(packed_pos[3], 4.0f, 1e-6f, "Packed morph positions keep vertex 1 X");
+        EXPECT_NEAR(packed_pos[4], 5.0f, 1e-6f, "Packed morph positions keep vertex 1 Y");
+        EXPECT_NEAR(packed_pos[5], 6.0f, 1e-6f, "Packed morph positions keep vertex 1 Z");
+    }
+
+    EXPECT_TRUE(rt_morphtarget3d_get_packed_normal_deltas(mt) == nullptr,
+                "Packed morph normals stay null until normal deltas exist");
+
+    rt_morphtarget3d_set_normal_delta(mt, 0, 0, 0.25, 0.5, 0.75);
+    packed_nrm = rt_morphtarget3d_get_packed_normal_deltas(mt);
+    EXPECT_TRUE(packed_nrm != nullptr, "Packed morph normals export successfully");
+    if (packed_nrm) {
+        EXPECT_NEAR(packed_nrm[0], 0.25f, 1e-6f, "Packed morph normals keep vertex 0 X");
+        EXPECT_NEAR(packed_nrm[1], 0.5f, 1e-6f, "Packed morph normals keep vertex 0 Y");
+        EXPECT_NEAR(packed_nrm[2], 0.75f, 1e-6f, "Packed morph normals keep vertex 0 Z");
+        EXPECT_NEAR(packed_nrm[3], 0.0f, 1e-6f, "Packed morph normals zero-pad untouched vertices");
+    }
+}
+
 int main() {
     test_create();
     test_add_shape();
@@ -125,6 +176,8 @@ int main() {
     test_negative_weight();
     test_bounds_checks();
     test_null_safety();
+    test_packed_payload_generation_tracks_delta_edits_only();
+    test_packed_payload_exports_positions_and_normals();
 
     printf("MorphTarget3D tests: %d/%d passed\n", tests_passed, tests_run);
     return tests_passed == tests_run ? 0 : 1;

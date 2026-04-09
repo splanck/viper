@@ -26,6 +26,7 @@
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
 #include "vgfx3d_backend.h"
+#include "vgfx3d_backend_d3d11_shared.h"
 
 #include <math.h>
 #include <stdint.h>
@@ -38,6 +39,7 @@ extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
 extern rt_string rt_const_cstr(const char *s);
 extern const char *rt_string_cstr(rt_string s);
 extern void rt_canvas3d_add_temp_buffer(void *canvas, void *buffer);
+extern void rt_canvas3d_add_temp_object(void *canvas, void *value);
 extern void rt_canvas3d_draw_mesh_matrix_keyed(void *obj,
                                                void *mesh,
                                                const double *model_matrix,
@@ -45,8 +47,6 @@ extern void rt_canvas3d_draw_mesh_matrix_keyed(void *obj,
                                                const void *motion_key,
                                                const float *prev_bone_palette,
                                                const float *prev_morph_weights);
-
-#define VGFX3D_MAX_MORPH_SHAPES 32
 
 typedef struct {
     char name[64];
@@ -56,15 +56,79 @@ typedef struct {
 
 typedef struct {
     void *vptr;
-    vgfx3d_morph_shape_t shapes[VGFX3D_MAX_MORPH_SHAPES];
-    float weights[VGFX3D_MAX_MORPH_SHAPES];
-    float prev_weights[VGFX3D_MAX_MORPH_SHAPES];
-    float motion_weight_snapshot[VGFX3D_MAX_MORPH_SHAPES];
+    vgfx3d_morph_shape_t shapes[VGFX3D_D3D11_MAX_MORPH_SHAPES];
+    float weights[VGFX3D_D3D11_MAX_MORPH_SHAPES];
+    float prev_weights[VGFX3D_D3D11_MAX_MORPH_SHAPES];
+    float motion_weight_snapshot[VGFX3D_D3D11_MAX_MORPH_SHAPES];
+    float *packed_pos_deltas;
+    float *packed_nrm_deltas;
+    uint64_t payload_generation;
     int32_t shape_count;
     int32_t vertex_count;
     int64_t last_motion_frame;
     int8_t has_prev_weights;
+    int8_t packed_dirty;
 } rt_morphtarget3d;
+
+static void morphtarget_touch_payload(rt_morphtarget3d *mt) {
+    if (!mt)
+        return;
+    mt->packed_dirty = 1;
+    if (mt->payload_generation == UINT64_MAX)
+        mt->payload_generation = 1;
+    else
+        mt->payload_generation++;
+}
+
+static int morphtarget_rebuild_packed_payload(rt_morphtarget3d *mt) {
+    size_t delta_count;
+    float *packed_pos = NULL;
+    float *packed_nrm = NULL;
+    int has_normal_deltas = 0;
+
+    if (!mt)
+        return 0;
+    if (!mt->packed_dirty)
+        return 1;
+
+    delta_count = (size_t)mt->shape_count * (size_t)mt->vertex_count * 3u;
+    if (delta_count > 0)
+        packed_pos = (float *)calloc(delta_count, sizeof(float));
+    for (int32_t s = 0; s < mt->shape_count; s++) {
+        if (mt->shapes[s].nrm_deltas) {
+            has_normal_deltas = 1;
+            break;
+        }
+    }
+    if (delta_count > 0 && has_normal_deltas)
+        packed_nrm = (float *)calloc(delta_count, sizeof(float));
+    if (delta_count > 0 && (!packed_pos || (has_normal_deltas && !packed_nrm))) {
+        free(packed_pos);
+        free(packed_nrm);
+        return 0;
+    }
+
+    for (int32_t s = 0; s < mt->shape_count; s++) {
+        size_t offset = (size_t)s * (size_t)mt->vertex_count * 3u;
+        if (packed_pos && mt->shapes[s].pos_deltas) {
+            memcpy(&packed_pos[offset],
+                   mt->shapes[s].pos_deltas,
+                   (size_t)mt->vertex_count * 3u * sizeof(float));
+        }
+        if (packed_nrm && mt->shapes[s].nrm_deltas) {
+            memcpy(&packed_nrm[offset],
+                   mt->shapes[s].nrm_deltas,
+                   (size_t)mt->vertex_count * 3u * sizeof(float));
+        }
+    }
+
+    free(mt->packed_pos_deltas);
+    free(mt->packed_nrm_deltas);
+    mt->packed_pos_deltas = packed_pos;
+    mt->packed_nrm_deltas = packed_nrm;
+    mt->packed_dirty = 0;
+    return 1;
+}
 
 static int vgfx3d_backend_prefers_gpu_morph(const char *backend_name) {
     if (!backend_name)
@@ -83,6 +147,8 @@ static void rt_morphtarget3d_finalize(void *obj) {
         free(mt->shapes[i].pos_deltas);
         free(mt->shapes[i].nrm_deltas);
     }
+    free(mt->packed_pos_deltas);
+    free(mt->packed_nrm_deltas);
 }
 
 /// @brief Create a morph target container for blendshape animation.
@@ -111,6 +177,10 @@ void *rt_morphtarget3d_new(int64_t vertex_count) {
     mt->vertex_count = (int32_t)vertex_count;
     mt->last_motion_frame = 0;
     mt->has_prev_weights = 0;
+    mt->packed_pos_deltas = NULL;
+    mt->packed_nrm_deltas = NULL;
+    mt->payload_generation = 1;
+    mt->packed_dirty = 1;
     rt_obj_set_finalizer(mt, rt_morphtarget3d_finalize);
     return mt;
 }
@@ -124,7 +194,7 @@ int64_t rt_morphtarget3d_add_shape(void *obj, rt_string name) {
     if (!obj)
         return -1;
     rt_morphtarget3d *mt = (rt_morphtarget3d *)obj;
-    if (mt->shape_count >= VGFX3D_MAX_MORPH_SHAPES) {
+    if (mt->shape_count >= VGFX3D_D3D11_MAX_MORPH_SHAPES) {
         rt_trap("MorphTarget3D.AddShape: max 32 shapes exceeded");
         return -1;
     }
@@ -149,6 +219,7 @@ int64_t rt_morphtarget3d_add_shape(void *obj, rt_string name) {
         return -1;
     /* Normal deltas allocated on first use (SetNormalDelta) */
 
+    morphtarget_touch_payload(mt);
     return mt->shape_count++;
 }
 
@@ -168,6 +239,7 @@ void rt_morphtarget3d_set_delta(
     pd[vertex * 3 + 0] = (float)dx;
     pd[vertex * 3 + 1] = (float)dy;
     pd[vertex * 3 + 2] = (float)dz;
+    morphtarget_touch_payload(mt);
 }
 
 void rt_morphtarget3d_set_normal_delta(
@@ -192,6 +264,7 @@ void rt_morphtarget3d_set_normal_delta(
     nd[vertex * 3 + 0] = (float)dx;
     nd[vertex * 3 + 1] = (float)dy;
     nd[vertex * 3 + 2] = (float)dz;
+    morphtarget_touch_payload(mt);
 }
 
 /*==========================================================================
@@ -237,6 +310,31 @@ void rt_morphtarget3d_set_weight_by_name(void *obj, rt_string name, double weigh
 /// @brief Get the number of registered blend shapes.
 int64_t rt_morphtarget3d_get_shape_count(void *obj) {
     return obj ? ((rt_morphtarget3d *)obj)->shape_count : 0;
+}
+
+const float *rt_morphtarget3d_get_packed_deltas(void *obj) {
+    rt_morphtarget3d *mt = (rt_morphtarget3d *)obj;
+    if (!mt)
+        return NULL;
+    if (!morphtarget_rebuild_packed_payload(mt))
+        return NULL;
+    return mt->packed_pos_deltas;
+}
+
+const float *rt_morphtarget3d_get_packed_normal_deltas(void *obj) {
+    rt_morphtarget3d *mt = (rt_morphtarget3d *)obj;
+    if (!mt)
+        return NULL;
+    if (!morphtarget_rebuild_packed_payload(mt))
+        return NULL;
+    return mt->packed_nrm_deltas;
+}
+
+uint64_t rt_morphtarget3d_get_payload_generation(void *obj) {
+    rt_morphtarget3d *mt = (rt_morphtarget3d *)obj;
+    if (!mt)
+        return 0;
+    return mt->payload_generation;
 }
 
 static const float *morphtarget_prepare_prev_weights(rt_morphtarget3d *mt, int64_t frame_serial) {
@@ -296,58 +394,17 @@ static void morphtarget_draw_mesh_matrix(void *canvas,
     if (c && c->backend && vgfx3d_backend_prefers_gpu_morph(c->backend->name)) {
         const float *prev_weights =
             morphtarget_prepare_prev_weights(mt, rt_canvas3d_get_frame_serial(canvas));
-        size_t delta_count = (size_t)mt->shape_count * (size_t)mt->vertex_count * 3;
-        float *packed_deltas = NULL;
-        float *packed_normal_deltas = NULL;
-        float *packed_weights = NULL;
-        int has_normal_deltas = 0;
-        if (delta_count > 0)
-            packed_deltas = (float *)calloc(delta_count, sizeof(float));
-        for (int32_t s = 0; s < mt->shape_count; s++) {
-            if (mt->shapes[s].nrm_deltas) {
-                has_normal_deltas = 1;
-                break;
-            }
-        }
-        if (delta_count > 0 && has_normal_deltas)
-            packed_normal_deltas = (float *)calloc(delta_count, sizeof(float));
-        if (mt->shape_count > 0)
-            packed_weights = (float *)malloc((size_t)mt->shape_count * sizeof(float));
-        if ((delta_count > 0 && !packed_deltas) ||
-            (delta_count > 0 && has_normal_deltas && !packed_normal_deltas) ||
-            (mt->shape_count > 0 && !packed_weights)) {
-            free(packed_deltas);
-            free(packed_normal_deltas);
-            free(packed_weights);
+        const float *packed_deltas = rt_morphtarget3d_get_packed_deltas(mt);
+        const float *packed_normal_deltas = rt_morphtarget3d_get_packed_normal_deltas(mt);
+        if (mt->shape_count > 0 && !packed_deltas)
             return;
-        }
-
-        for (int32_t s = 0; s < mt->shape_count; s++) {
-            if (packed_weights)
-                packed_weights[s] = mt->weights[s];
-            if (packed_deltas && mt->shapes[s].pos_deltas) {
-                memcpy(&packed_deltas[(size_t)s * (size_t)mt->vertex_count * 3],
-                       mt->shapes[s].pos_deltas,
-                       (size_t)mt->vertex_count * 3 * sizeof(float));
-            }
-            if (packed_normal_deltas && mt->shapes[s].nrm_deltas) {
-                memcpy(&packed_normal_deltas[(size_t)s * (size_t)mt->vertex_count * 3],
-                       mt->shapes[s].nrm_deltas,
-                       (size_t)mt->vertex_count * 3 * sizeof(float));
-            }
-        }
-
-        if (packed_deltas)
-            rt_canvas3d_add_temp_buffer(canvas, packed_deltas);
-        if (packed_normal_deltas)
-            rt_canvas3d_add_temp_buffer(canvas, packed_normal_deltas);
-        if (packed_weights)
-            rt_canvas3d_add_temp_buffer(canvas, packed_weights);
+        rt_canvas3d_add_temp_object(canvas, mt);
 
         rt_mesh3d tmp = *m;
+        tmp.morph_targets_ref = morph_targets;
         tmp.morph_deltas = packed_deltas;
         tmp.morph_normal_deltas = packed_normal_deltas;
-        tmp.morph_weights = packed_weights;
+        tmp.morph_weights = mt->weights;
         tmp.prev_morph_weights = prev_weights;
         tmp.morph_shape_count = mt->shape_count;
         rt_canvas3d_draw_mesh_matrix_keyed(

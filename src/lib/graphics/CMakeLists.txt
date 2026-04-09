@@ -40,7 +40,7 @@ set(VGFX_CORE_SOURCES
 
 set(VIPERGFX_AVAILABLE OFF CACHE INTERNAL "Whether ViperGFX is available in this build" FORCE)
 set(VIPERGFX_UNAVAILABLE_REASON "graphics support disabled" CACHE INTERNAL
-    "Reason ViperGFX is unavailable" FORCE)
+        "Reason ViperGFX is unavailable" FORCE)
 set(VIPERGFX_BACKEND "disabled" CACHE INTERNAL "Selected ViperGFX backend" FORCE)
 
 if (NOT DEFINED VIPER_GRAPHICS_MODE)
@@ -50,7 +50,7 @@ endif ()
 if (VIPER_GRAPHICS_MODE STREQUAL "OFF")
     message(STATUS "ViperGFX: disabled by VIPER_GRAPHICS_MODE=OFF")
     set(VIPERGFX_UNAVAILABLE_REASON "disabled by VIPER_GRAPHICS_MODE=OFF" CACHE INTERNAL
-        "Reason ViperGFX is unavailable" FORCE)
+            "Reason ViperGFX is unavailable" FORCE)
     return()
 endif ()
 
@@ -65,8 +65,8 @@ elseif (UNIX)
     find_package(X11 QUIET)
     if (NOT X11_FOUND)
         set(VIPERGFX_UNAVAILABLE_REASON
-            "X11 not found; install libx11-dev/libX11-devel or set VIPER_GRAPHICS_MODE=OFF"
-            CACHE INTERNAL "Reason ViperGFX is unavailable" FORCE)
+                "X11 not found; install libx11-dev/libX11-devel or set VIPER_GRAPHICS_MODE=OFF"
+                CACHE INTERNAL "Reason ViperGFX is unavailable" FORCE)
         if (VIPER_GRAPHICS_MODE STREQUAL "REQUIRE")
             message(FATAL_ERROR
                     "ViperGFX: X11 not found and VIPER_GRAPHICS_MODE=REQUIRE.\n"

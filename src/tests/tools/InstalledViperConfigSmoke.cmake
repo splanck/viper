@@ -19,25 +19,25 @@ if (DEFINED VIPER_CONFIG AND NOT "${VIPER_CONFIG}" STREQUAL "")
     list(APPEND _install_cmd --config "${VIPER_CONFIG}")
 endif ()
 execute_process(
-    COMMAND ${_install_cmd}
-    RESULT_VARIABLE _install_rv
-    OUTPUT_VARIABLE _install_out
-    ERROR_VARIABLE _install_err
+        COMMAND ${_install_cmd}
+        RESULT_VARIABLE _install_rv
+        OUTPUT_VARIABLE _install_out
+        ERROR_VARIABLE _install_err
 )
 if (NOT _install_rv EQUAL 0)
     message(FATAL_ERROR
-        "cmake --install for installed-config smoke failed\nstdout:\n${_install_out}\nstderr:\n${_install_err}")
+            "cmake --install for installed-config smoke failed\nstdout:\n${_install_out}\nstderr:\n${_install_err}")
 endif ()
 
 execute_process(
-    COMMAND "${VIPER_BIN}" install-package --stage-dir "${_stage_dir}" --stage-only
-    RESULT_VARIABLE _stage_rv
-    OUTPUT_VARIABLE _stage_out
-    ERROR_VARIABLE _stage_err
+        COMMAND "${VIPER_BIN}" install-package --stage-dir "${_stage_dir}" --stage-only
+        RESULT_VARIABLE _stage_rv
+        OUTPUT_VARIABLE _stage_out
+        ERROR_VARIABLE _stage_err
 )
 if (NOT _stage_rv EQUAL 0)
     message(FATAL_ERROR
-        "viper install-package --stage-only failed for staged install\nstdout:\n${_stage_out}\nstderr:\n${_stage_err}")
+            "viper install-package --stage-only failed for staged install\nstdout:\n${_stage_out}\nstderr:\n${_stage_err}")
 endif ()
 
 file(WRITE "${_src_dir}/CMakeLists.txt" [=[
@@ -82,14 +82,14 @@ int main() {
 ]=])
 
 execute_process(
-    COMMAND "${CMAKE_BIN}" -S "${_src_dir}" -B "${_build_dir}" "-DCMAKE_PREFIX_PATH=${_stage_dir}"
-    RESULT_VARIABLE _cfg_rv
-    OUTPUT_VARIABLE _cfg_out
-    ERROR_VARIABLE _cfg_err
+        COMMAND "${CMAKE_BIN}" -S "${_src_dir}" -B "${_build_dir}" "-DCMAKE_PREFIX_PATH=${_stage_dir}"
+        RESULT_VARIABLE _cfg_rv
+        OUTPUT_VARIABLE _cfg_out
+        ERROR_VARIABLE _cfg_err
 )
 if (NOT _cfg_rv EQUAL 0)
     message(FATAL_ERROR
-        "external find_package(Viper) configure failed\nstdout:\n${_cfg_out}\nstderr:\n${_cfg_err}")
+            "external find_package(Viper) configure failed\nstdout:\n${_cfg_out}\nstderr:\n${_cfg_err}")
 endif ()
 
 set(_consumer_build_cmd "${CMAKE_BIN}" --build "${_build_dir}")
@@ -97,14 +97,14 @@ if (DEFINED VIPER_CONFIG AND NOT "${VIPER_CONFIG}" STREQUAL "")
     list(APPEND _consumer_build_cmd --config "${VIPER_CONFIG}")
 endif ()
 execute_process(
-    COMMAND ${_consumer_build_cmd}
-    RESULT_VARIABLE _build_rv
-    OUTPUT_VARIABLE _build_out
-    ERROR_VARIABLE _build_err
+        COMMAND ${_consumer_build_cmd}
+        RESULT_VARIABLE _build_rv
+        OUTPUT_VARIABLE _build_out
+        ERROR_VARIABLE _build_err
 )
 if (NOT _build_rv EQUAL 0)
     message(FATAL_ERROR
-        "external find_package(Viper) build failed\nstdout:\n${_build_out}\nstderr:\n${_build_err}")
+            "external find_package(Viper) build failed\nstdout:\n${_build_out}\nstderr:\n${_build_err}")
 endif ()
 
 if (WIN32)
@@ -130,14 +130,14 @@ if (NOT EXISTS "${_exe_path}")
 endif ()
 
 execute_process(
-    COMMAND "${_exe_path}"
-    RESULT_VARIABLE _run_rv
-    OUTPUT_VARIABLE _run_out
-    ERROR_VARIABLE _run_err
+        COMMAND "${_exe_path}"
+        RESULT_VARIABLE _run_rv
+        OUTPUT_VARIABLE _run_out
+        ERROR_VARIABLE _run_err
 )
 if (NOT _run_rv EQUAL 0)
     message(FATAL_ERROR
-        "external find_package(Viper) smoke executable failed\nstdout:\n${_run_out}\nstderr:\n${_run_err}")
+            "external find_package(Viper) smoke executable failed\nstdout:\n${_run_out}\nstderr:\n${_run_err}")
 endif ()
 
 set(_host_arch "")
@@ -147,15 +147,15 @@ elseif (DEFINED ENV{PROCESSOR_ARCHITECTURE} AND NOT "$ENV{PROCESSOR_ARCHITECTURE
     set(_host_arch "$ENV{PROCESSOR_ARCHITECTURE}")
 else ()
     execute_process(
-        COMMAND uname -m
-        RESULT_VARIABLE _uname_rv
-        OUTPUT_VARIABLE _host_arch
-        ERROR_VARIABLE _uname_err
-        OUTPUT_STRIP_TRAILING_WHITESPACE
+            COMMAND uname -m
+            RESULT_VARIABLE _uname_rv
+            OUTPUT_VARIABLE _host_arch
+            ERROR_VARIABLE _uname_err
+            OUTPUT_STRIP_TRAILING_WHITESPACE
     )
     if (NOT _uname_rv EQUAL 0)
         message(FATAL_ERROR
-            "unable to determine host architecture for installed viper smoke\nstderr:\n${_uname_err}")
+                "unable to determine host architecture for installed viper smoke\nstderr:\n${_uname_err}")
     endif ()
 endif ()
 
@@ -183,15 +183,15 @@ entry:
 ]=])
 
 execute_process(
-    COMMAND "${CMAKE_BIN}" -E env --unset=VIPER_LIB_PATH "${_installed_viper_bin}" codegen "${_installed_codegen_arch}" "${_installed_il}" -o "${_installed_exe}"
-    WORKING_DIRECTORY "${_tmp_root}"
-    RESULT_VARIABLE _installed_codegen_rv
-    OUTPUT_VARIABLE _installed_codegen_out
-    ERROR_VARIABLE _installed_codegen_err
+        COMMAND "${CMAKE_BIN}" -E env --unset=VIPER_LIB_PATH "${_installed_viper_bin}" codegen "${_installed_codegen_arch}" "${_installed_il}" -o "${_installed_exe}"
+        WORKING_DIRECTORY "${_tmp_root}"
+        RESULT_VARIABLE _installed_codegen_rv
+        OUTPUT_VARIABLE _installed_codegen_out
+        ERROR_VARIABLE _installed_codegen_err
 )
 if (NOT _installed_codegen_rv EQUAL 0)
     message(FATAL_ERROR
-        "staged viper failed to compile a native executable outside the build tree\nstdout:\n${_installed_codegen_out}\nstderr:\n${_installed_codegen_err}")
+            "staged viper failed to compile a native executable outside the build tree\nstdout:\n${_installed_codegen_out}\nstderr:\n${_installed_codegen_err}")
 endif ()
 
 if (NOT EXISTS "${_installed_exe}")
@@ -199,18 +199,18 @@ if (NOT EXISTS "${_installed_exe}")
 endif ()
 
 execute_process(
-    COMMAND "${_installed_exe}"
-    WORKING_DIRECTORY "${_tmp_root}"
-    RESULT_VARIABLE _installed_run_rv
-    OUTPUT_VARIABLE _installed_run_out
-    ERROR_VARIABLE _installed_run_err
+        COMMAND "${_installed_exe}"
+        WORKING_DIRECTORY "${_tmp_root}"
+        RESULT_VARIABLE _installed_run_rv
+        OUTPUT_VARIABLE _installed_run_out
+        ERROR_VARIABLE _installed_run_err
 )
 if (NOT _installed_run_rv EQUAL 0)
     message(FATAL_ERROR
-        "native executable built by staged viper failed\nstdout:\n${_installed_run_out}\nstderr:\n${_installed_run_err}")
+            "native executable built by staged viper failed\nstdout:\n${_installed_run_out}\nstderr:\n${_installed_run_err}")
 endif ()
 
 if (NOT _installed_run_out MATCHES "Hello, installed Viper!")
     message(FATAL_ERROR
-        "native executable built by staged viper produced unexpected output\nstdout:\n${_installed_run_out}\nstderr:\n${_installed_run_err}")
+            "native executable built by staged viper produced unexpected output\nstdout:\n${_installed_run_out}\nstderr:\n${_installed_run_err}")
 endif ()

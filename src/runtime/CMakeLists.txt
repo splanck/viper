@@ -285,6 +285,8 @@ set(RT_GRAPHICS_SOURCES
         graphics/vgfx3d_frustum.c
         graphics/vgfx3d_skinning.c
         graphics/vgfx3d_backend_utils.c
+        graphics/vgfx3d_backend_d3d11_shared.c
+        graphics/vgfx3d_backend_opengl_shared.c
 )
 
 set(RT_GRAPHICS_PLATFORM_SOURCES)
@@ -333,6 +335,8 @@ set(RT_GRAPHICS_DISABLED_SOURCES
         graphics/rt_theora.c
         graphics/rt_ycbcr.c
         graphics/vgfx3d_backend_utils.c
+        graphics/vgfx3d_backend_d3d11_shared.c
+        graphics/vgfx3d_backend_opengl_shared.c
         graphics/rt_graphics_stubs.c
 )
 

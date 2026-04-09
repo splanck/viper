@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-06
+last-verified: 2026-04-09
 ---
 
 # Viper FAQ
@@ -67,12 +67,13 @@ ilrun program.il
 
 ### 6. Where can I find example programs?
 
-- `/demos/zia/frogger/` - Full Frogger game in Zia demonstrating modules and game architecture
-- `/demos/zia/centipede/` - Centipede game in Zia
-- `/demos/zia/pacman/` - Pac-Man game in Zia
-- `/demos/basic/vtris/` - Full Tetris game demonstrating OOP, graphics, and game loop patterns (BASIC)
-- `/demos/basic/chess/` - Chess game in BASIC
-- `/examples/games/` - Larger Zia game examples
+- `/examples/games/frogger/` - Full Frogger game in Zia demonstrating modules and game architecture
+- `/examples/games/centipede/` - Centipede game in Zia
+- `/examples/games/pacman/` - Pac-Man game in Zia
+- `/examples/games/xenoscape/` - Side-scroller game in Zia using ten game-engine helpers
+- `/examples/games/vtris/` - Full Tetris game demonstrating OOP, graphics, and game loop patterns (BASIC)
+- `/examples/games/chess-basic/` - Chess game in BASIC
+- `/examples/games/frogger-basic/`, `/examples/games/centipede-basic/`, `/examples/games/pacman-basic/` - BASIC ports of the same games
 - `/examples/apps/` - Zia application examples such as `vipersql/` and `viperide/`
 - `/examples/apiaudit/` - Focused runtime API examples in both Zia and BASIC
 - `/src/tests/zia/` - Frontend tests covering specific Zia language features
@@ -182,7 +183,7 @@ Yes! Viper BASIC includes:
 - Reference-based object semantics
 - Method calls and field access
 
-See `/demos/basic/vtris/` for extensive OOP examples.
+See `/examples/games/vtris/` for extensive OOP examples.
 
 ### 14. Are there any known language limitations or gotchas?
 
@@ -273,13 +274,13 @@ See VM debugging tests in `/src/tests/vm/` for examples.
 
 ### 24. What runtime functions are available?
 
-Both frontends (Zia, BASIC) share the same runtime library. Built-in functions include:
+Both frontends (Zia, BASIC) share the same runtime library. Sample built-in functions:
 
-- **Math**: `Sin`, `Cos`, `Tan`, `Sqrt`, `Abs`, `Round`, `Trunc`
-- **String**: `Length`/`Len`, `Copy`/`Mid$`, `Concat`, `Trim`
-- **I/O**: `Print`/`Write`, `Input`/`Read`
-- **Graphics**: `Color`, `Locate`, `Cls`
-- **Conversion**: `ToString_Int`/`Str$`, `ToInt`/`Val`
+- **Math**: BASIC `SIN`/`COS`/`TAN`/`SQR`/`ABS`/`ROUND`/`FIX`/`POW`; Zia `Sin`/`Cos`/`Sqrt`/`Abs`/`Floor`/`Ceil`/`Pow` (under `Viper.Math.*`)
+- **String**: BASIC `LEN`/`MID$`/`LEFT$`/`RIGHT$`/`LCASE$`/`UCASE$`/`TRIM$` (concatenation uses `+`, not a function); Zia `Substring`/`Mid`/`Concat`/`Trim` on `Viper.String`
+- **I/O**: BASIC `PRINT`/`INPUT`/`LINE INPUT`/`OPEN`; Zia `Say`/`Print`/`ReadLine` under `Viper.Terminal`
+- **Graphics**: BASIC `COLOR`/`LOCATE`/`CLS`; Zia `Viper.Graphics.Canvas` and friends
+- **Conversion**: BASIC `STR$`/`VAL`/`CINT`/`CLNG`/`CSNG`/`CDBL`; Zia `Viper.Core.Convert.ToInt64`/`ToString_Int`/`ToString_Double`
 
 See the respective builtin registries in `/src/frontends/zia/` and `/src/frontends/basic/builtins/`
 for language-specific function lists.

@@ -82,6 +82,8 @@ typedef struct {
     const float *morph_weights;          /* shape_count floats */
     const float *prev_morph_weights;     /* previous-frame shape_count floats or NULL */
     int32_t morph_shape_count;           /* number of active morph shapes (0 = none) */
+    const void *morph_key;               /* stable identity for backend morph-payload caches */
+    uint64_t morph_revision;             /* bumps when morph delta payload changes */
     const float *prev_instance_matrices; /* N * 16 floats for instanced motion blur */
     int8_t has_prev_model_matrix;        /* 1 when prev_model_matrix is valid */
     int8_t has_prev_instance_matrices;   /* 1 when prev_instance_matrices matches instance_count */
@@ -197,6 +199,15 @@ typedef struct vgfx3d_backend {
      * skips the CPU postfx pass and lets the backend own the final onscreen
      * composite for the supplied snapshot. */
     void (*present_postfx)(void *ctx, const vgfx3d_postfx_snapshot_t *postfx);
+
+    /* Optional per-frame hint for backends that need to know whether the
+     * current window-backed frame will be presented through GPU postfx. */
+    void (*set_gpu_postfx_enabled)(void *ctx, int8_t enabled);
+
+    /* Optional latched postfx snapshot for GPU backends that need the current
+     * frame's effect settings outside the immediate present_postfx call, for
+     * example to service screenshots from the backend-owned presentation path. */
+    void (*set_gpu_postfx_snapshot)(void *ctx, const vgfx3d_postfx_snapshot_t *postfx);
 
     /* Show/hide GPU layer. Called from Canvas3D.Begin/End to toggle
      * visibility of the GPU rendering layer (e.g., CAMetalLayer).

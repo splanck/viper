@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-05
+last-verified: 2026-04-09
 ---
 
 # Viper IL — Quickstart
@@ -110,7 +110,7 @@ Functions contain basic blocks and instructions:
 ```llvm
 func @square(i64 %x) -> i64 {
 entry:
-  %result = mul %x, %x
+  %result = imul.ovf %x, %x
   ret %result
 }
 ```
@@ -121,6 +121,8 @@ entry:
 - `%var` — SSA register (assigned once, used many times)
 - `entry:` — First basic block label
 - `ret` — Return terminator (required at end of block)
+- Signed integer arithmetic uses overflow-checked opcodes (`iadd.ovf`, `isub.ovf`, `imul.ovf`); the plain `add`/`sub`/
+  `mul` opcodes are rejected by the verifier.
 
 ---
 
@@ -131,7 +133,7 @@ entry:
 ```llvm
 func @add(i64 %a, i64 %b) -> i64 {
 entry:
-  %sum = add %a, %b
+  %sum = iadd.ovf %a, %b
   ret %sum
 }
 ```
@@ -157,7 +159,7 @@ less_or_equal:
 ```llvm
 func @square(i64 %x) -> i64 {
 entry:
-  %result = mul %x, %x
+  %result = imul.ovf %x, %x
   ret %result
 }
 
@@ -236,14 +238,17 @@ viper il-opt program.il --passes "simplify-cfg" -o optimized.il
 Preset pipelines via `viper il-opt`:
 
 ```sh
-# O1 (default): simplify-cfg + mem2reg + SCCP + LICM + peephole + DCE
+# O1 (default): simplify-cfg → SCCP → ConstFold → DCE → SimplifyCFG → SCCP → Inline → DCE → SimplifyCFG
+# (mem2reg, LICM, and peephole are intentionally excluded from O1 because of open correctness issues.)
 viper il-opt program.il --pipeline O1 -o program.o1.il
 
-# O2: adds loop-simplify + loop-unroll + indvars + inline + GVN + EarlyCSE + DSE + late-cleanup
+# O2: LoopSimplify → LoopRotate → IndVars → LoopUnroll → SimplifyCFG → SCCP → CheckOpt → EHOpt → DCE →
+#     SimplifyCFG → SiblingRecursion → Inline → SimplifyCFG → SCCP → ConstFold → DCE → SimplifyCFG →
+#     GVN → Reassociate → EarlyCSE → DSE → DCE → LateCleanup
 viper il-opt program.il --pipeline O2 -o program.o2.il
 
 # Custom sequence
-viper il-opt program.il --passes "simplify-cfg,mem2reg,sccp,dce" -o out.il
+viper il-opt program.il --passes "simplify-cfg,sccp,dce" -o out.il
 ```
 
 Available passes: `check-opt`, `constfold`, `dce`, `dse`, `earlycse`, `ehopt`, `gvn`, `indvars`, `inline`, `late-cleanup`, `licm`, `loop-rotate`, `loop-simplify`, `loop-unroll`, `mem2reg`, `peephole`, `reassociate`, `sccp`, `simplify-cfg`

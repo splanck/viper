@@ -14,6 +14,7 @@
 
 #include "vgfx.h"
 #include "vgfx3d_backend.h"
+#include "vgfx3d_backend_opengl_shared.h"
 #include "vgfx3d_backend_utils.h"
 
 #include <X11/Xlib.h>
@@ -74,6 +75,7 @@ typedef unsigned int GLbitfield;
 #define GL_TEXTURE_CUBE_MAP_POSITIVE_X 0x8515
 #define GL_RGBA 0x1908
 #define GL_RGBA8 0x8058
+#define GL_RGBA16F 0x881A
 #define GL_R32F 0x822E
 #define GL_DEPTH_COMPONENT 0x1902
 #define GL_DEPTH_COMPONENT32F 0x8CAC
@@ -85,6 +87,7 @@ typedef unsigned int GLbitfield;
 #define GL_TEXTURE_MAG_FILTER 0x2800
 #define GL_REPEAT 0x2901
 #define GL_LINEAR 0x2601
+#define GL_LINEAR_MIPMAP_LINEAR 0x2703
 #define GL_NEAREST 0x2600
 #define GL_CLAMP_TO_EDGE 0x812F
 #define GL_SRC_ALPHA 0x0302
@@ -161,6 +164,7 @@ typedef void (*PFNGLTEXIMAGE2DPROC)(
     GLenum, GLint, GLint, GLsizei, GLsizei, GLint, GLenum, GLenum, const void *);
 typedef void (*PFNGLTEXPARAMETERIPROC)(GLenum, GLenum, GLint);
 typedef void (*PFNGLTEXBUFFERPROC)(GLenum, GLenum, GLuint);
+typedef void (*PFNGLGENERATEMIPMAPPROC)(GLenum);
 typedef void (*PFNGLGENFRAMEBUFFERSPROC)(GLsizei, GLuint *);
 typedef void (*PFNGLDELETEFRAMEBUFFERSPROC)(GLsizei, const GLuint *);
 typedef void (*PFNGLBINDFRAMEBUFFERPROC)(GLenum, GLuint);
@@ -240,6 +244,7 @@ static struct {
     PFNGLTEXIMAGE2DPROC TexImage2D;
     PFNGLTEXPARAMETERIPROC TexParameteri;
     PFNGLTEXBUFFERPROC TexBuffer;
+    PFNGLGENERATEMIPMAPPROC GenerateMipmap;
     PFNGLGENFRAMEBUFFERSPROC GenFramebuffers;
     PFNGLDELETEFRAMEBUFFERSPROC DeleteFramebuffers;
     PFNGLBINDFRAMEBUFFERPROC BindFramebuffer;
@@ -316,13 +321,30 @@ typedef struct {
     const void *pixels;
     uint64_t generation;
     GLuint tex;
+    uint64_t last_used_frame;
 } gl_texture_cache_entry_t;
 
 typedef struct {
     const void *cubemap;
     uint64_t generation;
     GLuint tex;
+    uint64_t last_used_frame;
 } gl_cubemap_cache_entry_t;
+
+typedef struct {
+    const void *key;
+    uint64_t revision;
+    int32_t shape_count;
+    uint32_t vertex_count;
+    int8_t has_normal_deltas;
+    GLuint morph_buffer;
+    GLuint morph_tbo;
+    GLuint morph_normal_buffer;
+    GLuint morph_normal_tbo;
+    size_t morph_bytes;
+    size_t morph_normal_bytes;
+    uint64_t last_used_frame;
+} gl_morph_cache_entry_t;
 
 #define GL_MESH_CACHE_CAPACITY 128
 
@@ -379,6 +401,11 @@ typedef struct {
     int32_t scene_width;
     int32_t scene_height;
 
+    GLuint postfx_readback_fbo;
+    GLuint postfx_readback_tex;
+    int32_t postfx_readback_width;
+    int32_t postfx_readback_height;
+
     GLuint rtt_fbo;
     GLuint rtt_color_tex;
     GLuint rtt_depth_rbo;
@@ -401,6 +428,9 @@ typedef struct {
     gl_cubemap_cache_entry_t *cubemap_cache;
     int32_t cubemap_cache_count;
     int32_t cubemap_cache_capacity;
+    gl_morph_cache_entry_t *morph_cache;
+    int32_t morph_cache_count;
+    int32_t morph_cache_capacity;
     gl_mesh_cache_entry_t mesh_cache[GL_MESH_CACHE_CAPACITY];
     uint64_t frame_serial;
 
@@ -410,14 +440,26 @@ typedef struct {
     float projection[16];
     float vp[16];
     float inv_vp[16];
-    float prev_vp[16];
-    int8_t prev_vp_valid;
+    float draw_prev_vp[16];
+    float scene_vp[16];
+    float scene_prev_vp[16];
+    float scene_inv_vp[16];
+    int8_t scene_history_valid;
     float cam_pos[3];
+    float scene_cam_pos[3];
     int8_t fog_enabled;
     float fog_near;
     float fog_far;
     float fog_color[3];
     float clearR, clearG, clearB;
+    int8_t current_pass_is_overlay;
+    int8_t gpu_postfx_enabled;
+    int8_t gpu_postfx_snapshot_valid;
+    int8_t rtt_color_dirty;
+    int8_t scene_postfx_pending;
+    int8_t scene_composited_to_backbuffer;
+    vgfx3d_opengl_target_kind_t active_target_kind;
+    vgfx3d_postfx_snapshot_t gpu_postfx_snapshot;
 
     GLint uModelMatrix, uPrevModelMatrix, uViewProjection, uPrevViewProjection, uNormalMatrix,
         uShadowVP;
@@ -613,6 +655,7 @@ static int load_gl(void) {
     LOADP(TexImage2D);
     LOADP(TexParameteri);
     LOADP(TexBuffer);
+    LOADP(GenerateMipmap);
     LOADP(GenFramebuffers);
     LOADP(DeleteFramebuffers);
     LOADP(BindFramebuffer);
@@ -1353,23 +1396,41 @@ static GLuint link_program(GLuint vs, GLuint fs) {
     return program;
 }
 
+#define GL_TEXTURE_CACHE_MAX_RESIDENT 256
+#define GL_TEXTURE_CACHE_PRUNE_AGE 240u
+#define GL_CUBEMAP_CACHE_MAX_RESIDENT 64
+#define GL_CUBEMAP_CACHE_PRUNE_AGE 240u
+#define GL_MORPH_CACHE_MAX_RESIDENT 64
+#define GL_MORPH_CACHE_PRUNE_AGE 240u
+
 static int ensure_buffer_capacity(GLenum target,
                                   GLuint buffer,
                                   size_t *capacity,
                                   size_t needed,
                                   size_t initial_capacity,
                                   GLenum usage) {
+    int32_t new_capacity;
+
+    if (!capacity)
+        return -1;
     if (needed == 0)
         needed = 4;
     if (*capacity >= needed)
         return 0;
-    size_t new_capacity = *capacity > 0 ? *capacity : initial_capacity;
-    while (new_capacity < needed)
-        new_capacity *= 2;
+    new_capacity = vgfx3d_opengl_next_capacity((int32_t)(*capacity),
+                                               (int32_t)needed,
+                                               (int32_t)initial_capacity);
     gl.BindBuffer(target, buffer);
     gl.BufferData(target, (GLsizeiptr)new_capacity, NULL, usage);
-    *capacity = new_capacity;
+    *capacity = (size_t)new_capacity;
     return 0;
+}
+
+static void orphan_stream_buffer(GLenum target, GLuint buffer, size_t capacity, GLenum usage) {
+    if (!buffer || capacity == 0)
+        return;
+    gl.BindBuffer(target, buffer);
+    gl.BufferData(target, (GLsizeiptr)capacity, NULL, usage);
 }
 
 static void texture_cache_clear(gl_context_t *ctx) {
@@ -1392,17 +1453,122 @@ static void cubemap_cache_clear(gl_context_t *ctx) {
     ctx->cubemap_cache_count = 0;
 }
 
+static void morph_cache_clear(gl_context_t *ctx) {
+    if (!ctx || !ctx->morph_cache)
+        return;
+    for (int32_t i = 0; i < ctx->morph_cache_count; i++) {
+        if (ctx->morph_cache[i].morph_tbo)
+            gl.DeleteTextures(1, &ctx->morph_cache[i].morph_tbo);
+        if (ctx->morph_cache[i].morph_buffer)
+            gl.DeleteBuffers(1, &ctx->morph_cache[i].morph_buffer);
+        if (ctx->morph_cache[i].morph_normal_tbo)
+            gl.DeleteTextures(1, &ctx->morph_cache[i].morph_normal_tbo);
+        if (ctx->morph_cache[i].morph_normal_buffer)
+            gl.DeleteBuffers(1, &ctx->morph_cache[i].morph_normal_buffer);
+    }
+    ctx->morph_cache_count = 0;
+}
+
+static void morph_cache_release_entry(gl_morph_cache_entry_t *entry) {
+    if (!entry)
+        return;
+    if (entry->morph_tbo)
+        gl.DeleteTextures(1, &entry->morph_tbo);
+    if (entry->morph_buffer)
+        gl.DeleteBuffers(1, &entry->morph_buffer);
+    if (entry->morph_normal_tbo)
+        gl.DeleteTextures(1, &entry->morph_normal_tbo);
+    if (entry->morph_normal_buffer)
+        gl.DeleteBuffers(1, &entry->morph_normal_buffer);
+    memset(entry, 0, sizeof(*entry));
+}
+
+static void texture_cache_prune(gl_context_t *ctx) {
+    int32_t write_index = 0;
+
+    if (!ctx || !ctx->texture_cache)
+        return;
+    for (int32_t i = 0; i < ctx->texture_cache_count; i++) {
+        int keep = 1;
+        if (ctx->texture_cache_count - write_index > GL_TEXTURE_CACHE_MAX_RESIDENT &&
+            vgfx3d_opengl_should_prune_cache_entry(
+                ctx->frame_serial, ctx->texture_cache[i].last_used_frame, GL_TEXTURE_CACHE_PRUNE_AGE)) {
+            keep = 0;
+        }
+        if (!keep) {
+            if (ctx->texture_cache[i].tex)
+                gl.DeleteTextures(1, &ctx->texture_cache[i].tex);
+            continue;
+        }
+        if (write_index != i)
+            ctx->texture_cache[write_index] = ctx->texture_cache[i];
+        write_index++;
+    }
+    ctx->texture_cache_count = write_index;
+}
+
+static void cubemap_cache_prune(gl_context_t *ctx) {
+    int32_t write_index = 0;
+
+    if (!ctx || !ctx->cubemap_cache)
+        return;
+    for (int32_t i = 0; i < ctx->cubemap_cache_count; i++) {
+        int keep = 1;
+        if (ctx->cubemap_cache_count - write_index > GL_CUBEMAP_CACHE_MAX_RESIDENT &&
+            vgfx3d_opengl_should_prune_cache_entry(
+                ctx->frame_serial, ctx->cubemap_cache[i].last_used_frame, GL_CUBEMAP_CACHE_PRUNE_AGE)) {
+            keep = 0;
+        }
+        if (!keep) {
+            if (ctx->cubemap_cache[i].tex)
+                gl.DeleteTextures(1, &ctx->cubemap_cache[i].tex);
+            continue;
+        }
+        if (write_index != i)
+            ctx->cubemap_cache[write_index] = ctx->cubemap_cache[i];
+        write_index++;
+    }
+    ctx->cubemap_cache_count = write_index;
+}
+
+static void morph_cache_prune(gl_context_t *ctx) {
+    int32_t write_index = 0;
+
+    if (!ctx || !ctx->morph_cache)
+        return;
+    for (int32_t i = 0; i < ctx->morph_cache_count; i++) {
+        int keep = 1;
+        if (ctx->morph_cache_count - write_index > GL_MORPH_CACHE_MAX_RESIDENT &&
+            vgfx3d_opengl_should_prune_cache_entry(
+                ctx->frame_serial, ctx->morph_cache[i].last_used_frame, GL_MORPH_CACHE_PRUNE_AGE)) {
+            keep = 0;
+        }
+        if (!keep) {
+            morph_cache_release_entry(&ctx->morph_cache[i]);
+            continue;
+        }
+        if (write_index != i)
+            ctx->morph_cache[write_index] = ctx->morph_cache[i];
+        write_index++;
+    }
+    ctx->morph_cache_count = write_index;
+}
+
 static void texture_cache_destroy(gl_context_t *ctx) {
     if (!ctx)
         return;
     texture_cache_clear(ctx);
     cubemap_cache_clear(ctx);
+    morph_cache_clear(ctx);
     free(ctx->texture_cache);
     ctx->texture_cache = NULL;
     ctx->texture_cache_capacity = 0;
     free(ctx->cubemap_cache);
     ctx->cubemap_cache = NULL;
     ctx->cubemap_cache_capacity = 0;
+    free(ctx->morph_cache);
+    ctx->morph_cache = NULL;
+    ctx->morph_cache_capacity = 0;
 }
 
 static GLuint gl_get_cached_texture(gl_context_t *ctx, const void *pixels_ptr) {
@@ -1413,8 +1579,10 @@ static GLuint gl_get_cached_texture(gl_context_t *ctx, const void *pixels_ptr) {
 
     for (int32_t i = 0; i < ctx->texture_cache_count; i++) {
         if (ctx->texture_cache[i].pixels == pixels_ptr &&
-            ctx->texture_cache[i].generation == generation)
+            ctx->texture_cache[i].generation == generation) {
+            ctx->texture_cache[i].last_used_frame = ctx->frame_serial;
             return ctx->texture_cache[i].tex;
+        }
     }
 
     for (int32_t i = 0; i < ctx->texture_cache_count; i++) {
@@ -1425,8 +1593,10 @@ static GLuint gl_get_cached_texture(gl_context_t *ctx, const void *pixels_ptr) {
                 return 0;
             gl.BindTexture(GL_TEXTURE_2D, ctx->texture_cache[i].tex);
             gl.TexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, rgba);
+            gl.GenerateMipmap(GL_TEXTURE_2D);
             free(rgba);
             ctx->texture_cache[i].generation = generation;
+            ctx->texture_cache[i].last_used_frame = ctx->frame_serial;
             return ctx->texture_cache[i].tex;
         }
     }
@@ -1442,12 +1612,14 @@ static GLuint gl_get_cached_texture(gl_context_t *ctx, const void *pixels_ptr) {
     gl.TexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, rgba);
     gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
     gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
     gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    gl.GenerateMipmap(GL_TEXTURE_2D);
     free(rgba);
 
     if (ctx->texture_cache_count >= ctx->texture_cache_capacity) {
-        int32_t new_cap = ctx->texture_cache_capacity > 0 ? ctx->texture_cache_capacity * 2 : 16;
+        int32_t new_cap = vgfx3d_opengl_next_capacity(
+            ctx->texture_cache_capacity, ctx->texture_cache_count + 1, 16);
         gl_texture_cache_entry_t *nv = (gl_texture_cache_entry_t *)realloc(
             ctx->texture_cache, (size_t)new_cap * sizeof(gl_texture_cache_entry_t));
         if (!nv) {
@@ -1461,6 +1633,7 @@ static GLuint gl_get_cached_texture(gl_context_t *ctx, const void *pixels_ptr) {
     ctx->texture_cache[ctx->texture_cache_count].pixels = pixels_ptr;
     ctx->texture_cache[ctx->texture_cache_count].generation = generation;
     ctx->texture_cache[ctx->texture_cache_count].tex = tex;
+    ctx->texture_cache[ctx->texture_cache_count].last_used_frame = ctx->frame_serial;
     ctx->texture_cache_count++;
     return tex;
 }
@@ -1473,8 +1646,10 @@ static GLuint gl_get_cached_cubemap(gl_context_t *ctx, const rt_cubemap3d *cubem
 
     for (int32_t i = 0; i < ctx->cubemap_cache_count; i++) {
         if (ctx->cubemap_cache[i].cubemap == cubemap &&
-            ctx->cubemap_cache[i].generation == generation)
+            ctx->cubemap_cache[i].generation == generation) {
+            ctx->cubemap_cache[i].last_used_frame = ctx->frame_serial;
             return ctx->cubemap_cache[i].tex;
+        }
     }
 
     for (int32_t i = 0; i < ctx->cubemap_cache_count; i++) {
@@ -1499,7 +1674,9 @@ static GLuint gl_get_cached_cubemap(gl_context_t *ctx, const rt_cubemap3d *cubem
                               rgba);
                 free(rgba);
             }
+            gl.GenerateMipmap(GL_TEXTURE_CUBE_MAP);
             ctx->cubemap_cache[i].generation = generation;
+            ctx->cubemap_cache[i].last_used_frame = ctx->frame_serial;
             return ctx->cubemap_cache[i].tex;
         }
     }
@@ -1510,7 +1687,7 @@ static GLuint gl_get_cached_cubemap(gl_context_t *ctx, const rt_cubemap3d *cubem
     gl.TexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     gl.TexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     gl.TexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
-    gl.TexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    gl.TexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
     gl.TexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
     for (int face = 0; face < 6; face++) {
@@ -1533,9 +1710,11 @@ static GLuint gl_get_cached_cubemap(gl_context_t *ctx, const rt_cubemap3d *cubem
                       rgba);
         free(rgba);
     }
+    gl.GenerateMipmap(GL_TEXTURE_CUBE_MAP);
 
     if (ctx->cubemap_cache_count >= ctx->cubemap_cache_capacity) {
-        int32_t new_cap = ctx->cubemap_cache_capacity > 0 ? ctx->cubemap_cache_capacity * 2 : 8;
+        int32_t new_cap = vgfx3d_opengl_next_capacity(
+            ctx->cubemap_cache_capacity, ctx->cubemap_cache_count + 1, 8);
         gl_cubemap_cache_entry_t *nv = (gl_cubemap_cache_entry_t *)realloc(
             ctx->cubemap_cache, (size_t)new_cap * sizeof(gl_cubemap_cache_entry_t));
         if (!nv) {
@@ -1549,9 +1728,13 @@ static GLuint gl_get_cached_cubemap(gl_context_t *ctx, const rt_cubemap3d *cubem
     ctx->cubemap_cache[ctx->cubemap_cache_count].cubemap = cubemap;
     ctx->cubemap_cache[ctx->cubemap_cache_count].generation = generation;
     ctx->cubemap_cache[ctx->cubemap_cache_count].tex = tex;
+    ctx->cubemap_cache[ctx->cubemap_cache_count].last_used_frame = ctx->frame_serial;
     ctx->cubemap_cache_count++;
     return tex;
 }
+
+static int gl_sync_render_target_color(void *ctx_ptr, vgfx3d_rendertarget_t *rt);
+static void bind_texture_unit(GLint uniform_loc, int unit, GLenum target, GLuint texture);
 
 static void destroy_scene_targets(gl_context_t *ctx) {
     if (!ctx)
@@ -1572,20 +1755,41 @@ static void destroy_scene_targets(gl_context_t *ctx) {
     ctx->scene_height = 0;
 }
 
+static void destroy_postfx_readback_target(gl_context_t *ctx) {
+    if (!ctx)
+        return;
+    if (ctx->postfx_readback_tex)
+        gl.DeleteTextures(1, &ctx->postfx_readback_tex);
+    if (ctx->postfx_readback_fbo)
+        gl.DeleteFramebuffers(1, &ctx->postfx_readback_fbo);
+    ctx->postfx_readback_tex = 0;
+    ctx->postfx_readback_fbo = 0;
+    ctx->postfx_readback_width = 0;
+    ctx->postfx_readback_height = 0;
+}
+
 static int ensure_scene_targets(gl_context_t *ctx, int32_t w, int32_t h) {
+    GLint color_format;
+    GLenum color_type;
+
     if (!ctx || w <= 0 || h <= 0)
         return -1;
     if (ctx->scene_fbo && ctx->scene_width == w && ctx->scene_height == h)
         return 0;
 
     destroy_scene_targets(ctx);
+    color_format = vgfx3d_opengl_choose_color_format(VGFX3D_OPENGL_TARGET_SCENE) ==
+                           VGFX3D_OPENGL_COLOR_FORMAT_HDR16F
+                       ? GL_RGBA16F
+                       : GL_RGBA8;
+    color_type = color_format == GL_RGBA16F ? GL_FLOAT : GL_UNSIGNED_BYTE;
 
     gl.GenFramebuffers(1, &ctx->scene_fbo);
     gl.BindFramebuffer(GL_FRAMEBUFFER, ctx->scene_fbo);
 
     gl.GenTextures(1, &ctx->scene_color_tex);
     gl.BindTexture(GL_TEXTURE_2D, ctx->scene_color_tex);
-    gl.TexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+    gl.TexImage2D(GL_TEXTURE_2D, 0, color_format, w, h, 0, GL_RGBA, color_type, NULL);
     gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
@@ -1628,9 +1832,47 @@ static int ensure_scene_targets(gl_context_t *ctx, int32_t w, int32_t h) {
     return 0;
 }
 
+static int ensure_postfx_readback_target(gl_context_t *ctx, int32_t w, int32_t h) {
+    if (!ctx || w <= 0 || h <= 0)
+        return -1;
+    if (ctx->postfx_readback_fbo && ctx->postfx_readback_width == w &&
+        ctx->postfx_readback_height == h) {
+        return 0;
+    }
+
+    destroy_postfx_readback_target(ctx);
+
+    gl.GenFramebuffers(1, &ctx->postfx_readback_fbo);
+    gl.BindFramebuffer(GL_FRAMEBUFFER, ctx->postfx_readback_fbo);
+    gl.GenTextures(1, &ctx->postfx_readback_tex);
+    gl.BindTexture(GL_TEXTURE_2D, ctx->postfx_readback_tex);
+    gl.TexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    gl.FramebufferTexture2D(
+        GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, ctx->postfx_readback_tex, 0);
+    gl.DrawBuffer(GL_COLOR_ATTACHMENT0);
+    gl.ReadBuffer(GL_COLOR_ATTACHMENT0);
+    if (gl.CheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+        destroy_postfx_readback_target(ctx);
+        return -1;
+    }
+
+    ctx->postfx_readback_width = w;
+    ctx->postfx_readback_height = h;
+    return 0;
+}
+
 static void destroy_rtt_targets(gl_context_t *ctx) {
     if (!ctx)
         return;
+    if (ctx->rtt_target) {
+        if (ctx->rtt_color_dirty)
+            gl_sync_render_target_color(ctx, ctx->rtt_target);
+        vgfx3d_rendertarget_clear_sync(ctx->rtt_target);
+    }
     if (ctx->rtt_depth_rbo)
         gl.DeleteRenderbuffers(1, &ctx->rtt_depth_rbo);
     if (ctx->rtt_color_tex)
@@ -1650,8 +1892,17 @@ static int ensure_rtt_targets(gl_context_t *ctx, vgfx3d_rendertarget_t *rt) {
     if (!ctx || !rt)
         return -1;
     if (ctx->rtt_fbo && ctx->rtt_width == rt->width && ctx->rtt_height == rt->height) {
+        if (ctx->rtt_target && ctx->rtt_target != rt) {
+            if (ctx->rtt_color_dirty)
+                gl_sync_render_target_color(ctx, ctx->rtt_target);
+            vgfx3d_rendertarget_clear_sync(ctx->rtt_target);
+        }
         ctx->rtt_active = 1;
         ctx->rtt_target = rt;
+        ctx->rtt_color_dirty = 0;
+        rt->color_dirty = 0;
+        rt->sync_color = gl_sync_render_target_color;
+        rt->sync_color_userdata = ctx;
         return 0;
     }
 
@@ -1688,6 +1939,10 @@ static int ensure_rtt_targets(gl_context_t *ctx, vgfx3d_rendertarget_t *rt) {
     ctx->rtt_height = rt->height;
     ctx->rtt_active = 1;
     ctx->rtt_target = rt;
+    ctx->rtt_color_dirty = 0;
+    rt->color_dirty = 0;
+    rt->sync_color = gl_sync_render_target_color;
+    rt->sync_color_userdata = ctx;
     return 0;
 }
 
@@ -1743,6 +1998,10 @@ static void bind_main_framebuffer(gl_context_t *ctx) {
         gl.BindFramebuffer(GL_FRAMEBUFFER, ctx->rtt_fbo);
         gl.DrawBuffer(GL_COLOR_ATTACHMENT0);
         gl.Viewport(0, 0, ctx->rtt_width, ctx->rtt_height);
+    } else if (ctx->active_target_kind == VGFX3D_OPENGL_TARGET_SWAPCHAIN) {
+        gl.BindFramebuffer(GL_FRAMEBUFFER, 0);
+        gl.DrawBuffer(GL_BACK);
+        gl.Viewport(0, 0, ctx->width, ctx->height);
     } else {
         gl.BindFramebuffer(GL_FRAMEBUFFER, ctx->scene_fbo);
         {
@@ -1751,6 +2010,165 @@ static void bind_main_framebuffer(gl_context_t *ctx) {
         }
         gl.Viewport(0, 0, ctx->scene_width, ctx->scene_height);
     }
+}
+
+static void gl_configure_draw_output(gl_context_t *ctx, const vgfx3d_draw_cmd_t *cmd) {
+    vgfx3d_opengl_blend_mode_t blend_mode;
+    vgfx3d_opengl_motion_attachment_mode_t motion_mode;
+
+    if (!ctx)
+        return;
+    blend_mode = vgfx3d_opengl_choose_blend_mode(cmd);
+    motion_mode = vgfx3d_opengl_choose_motion_attachment_mode(ctx->active_target_kind, cmd);
+
+    if (blend_mode == VGFX3D_OPENGL_BLEND_ALPHA)
+        gl.Enable(GL_BLEND);
+    else
+        gl.Disable(GL_BLEND);
+    gl.DepthMask(blend_mode == VGFX3D_OPENGL_BLEND_ALPHA ? GL_FALSE : GL_TRUE);
+
+    if (ctx->active_target_kind == VGFX3D_OPENGL_TARGET_SCENE) {
+        gl.BindFramebuffer(GL_FRAMEBUFFER, ctx->scene_fbo);
+        if (motion_mode == VGFX3D_OPENGL_MOTION_ATTACHMENTS_COLOR_AND_MOTION) {
+            const GLenum attachments[2] = {GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1};
+            gl.DrawBuffers(2, attachments);
+        } else {
+            gl.DrawBuffer(GL_COLOR_ATTACHMENT0);
+        }
+        gl.Viewport(0, 0, ctx->scene_width, ctx->scene_height);
+        return;
+    }
+    if (ctx->active_target_kind == VGFX3D_OPENGL_TARGET_RTT) {
+        gl.BindFramebuffer(GL_FRAMEBUFFER, ctx->rtt_fbo);
+        gl.DrawBuffer(GL_COLOR_ATTACHMENT0);
+        gl.Viewport(0, 0, ctx->rtt_width, ctx->rtt_height);
+        return;
+    }
+    gl.BindFramebuffer(GL_FRAMEBUFFER, 0);
+    gl.DrawBuffer(GL_BACK);
+    gl.Viewport(0, 0, ctx->width, ctx->height);
+}
+
+static void gl_apply_postfx_uniforms(gl_context_t *ctx, const vgfx3d_postfx_snapshot_t *snapshot) {
+    if (!ctx)
+        return;
+    gl.Uniform2f(ctx->postfx_uInvResolution,
+                 1.0f / (float)ctx->scene_width,
+                 1.0f / (float)ctx->scene_height);
+    gl.Uniform3f(
+        ctx->postfx_uCameraPos, ctx->scene_cam_pos[0], ctx->scene_cam_pos[1], ctx->scene_cam_pos[2]);
+    gl.UniformMatrix4fv(ctx->postfx_uInvViewProjection, 1, GL_TRUE, ctx->scene_inv_vp);
+    gl.UniformMatrix4fv(ctx->postfx_uPrevViewProjection, 1, GL_TRUE, ctx->scene_prev_vp);
+
+    if (!snapshot) {
+        gl.Uniform1i(ctx->postfx_uBloomEnabled, 0);
+        gl.Uniform1f(ctx->postfx_uBloomThreshold, 1.0f);
+        gl.Uniform1f(ctx->postfx_uBloomIntensity, 0.0f);
+        gl.Uniform1i(ctx->postfx_uTonemapMode, 0);
+        gl.Uniform1f(ctx->postfx_uTonemapExposure, 1.0f);
+        gl.Uniform1i(ctx->postfx_uFxaaEnabled, 0);
+        gl.Uniform1i(ctx->postfx_uColorGradeEnabled, 0);
+        gl.Uniform1f(ctx->postfx_uCgBrightness, 0.0f);
+        gl.Uniform1f(ctx->postfx_uCgContrast, 1.0f);
+        gl.Uniform1f(ctx->postfx_uCgSaturation, 1.0f);
+        gl.Uniform1i(ctx->postfx_uVignetteEnabled, 0);
+        gl.Uniform1f(ctx->postfx_uVignetteRadius, 1.0f);
+        gl.Uniform1f(ctx->postfx_uVignetteSoftness, 0.0f);
+        gl.Uniform1i(ctx->postfx_uSsaoEnabled, 0);
+        gl.Uniform1f(ctx->postfx_uSsaoRadius, 0.0f);
+        gl.Uniform1f(ctx->postfx_uSsaoIntensity, 0.0f);
+        gl.Uniform1i(ctx->postfx_uSsaoSamples, 0);
+        gl.Uniform1i(ctx->postfx_uDofEnabled, 0);
+        gl.Uniform1f(ctx->postfx_uDofFocusDistance, 0.0f);
+        gl.Uniform1f(ctx->postfx_uDofAperture, 0.0f);
+        gl.Uniform1f(ctx->postfx_uDofMaxBlur, 0.0f);
+        gl.Uniform1i(ctx->postfx_uMotionBlurEnabled, 0);
+        gl.Uniform1f(ctx->postfx_uMotionBlurIntensity, 0.0f);
+        gl.Uniform1i(ctx->postfx_uMotionBlurSamples, 0);
+        return;
+    }
+
+    gl.Uniform1i(ctx->postfx_uBloomEnabled, snapshot->bloom_enabled ? 1 : 0);
+    gl.Uniform1f(ctx->postfx_uBloomThreshold, snapshot->bloom_threshold);
+    gl.Uniform1f(ctx->postfx_uBloomIntensity, snapshot->bloom_intensity);
+    gl.Uniform1i(ctx->postfx_uTonemapMode, snapshot->tonemap_mode);
+    gl.Uniform1f(ctx->postfx_uTonemapExposure, snapshot->tonemap_exposure);
+    gl.Uniform1i(ctx->postfx_uFxaaEnabled, snapshot->fxaa_enabled ? 1 : 0);
+    gl.Uniform1i(ctx->postfx_uColorGradeEnabled, snapshot->color_grade_enabled ? 1 : 0);
+    gl.Uniform1f(ctx->postfx_uCgBrightness, snapshot->cg_brightness);
+    gl.Uniform1f(ctx->postfx_uCgContrast, snapshot->cg_contrast);
+    gl.Uniform1f(ctx->postfx_uCgSaturation, snapshot->cg_saturation);
+    gl.Uniform1i(ctx->postfx_uVignetteEnabled, snapshot->vignette_enabled ? 1 : 0);
+    gl.Uniform1f(ctx->postfx_uVignetteRadius, snapshot->vignette_radius);
+    gl.Uniform1f(ctx->postfx_uVignetteSoftness, snapshot->vignette_softness);
+    gl.Uniform1i(ctx->postfx_uSsaoEnabled, snapshot->ssao_enabled ? 1 : 0);
+    gl.Uniform1f(ctx->postfx_uSsaoRadius, snapshot->ssao_radius);
+    gl.Uniform1f(ctx->postfx_uSsaoIntensity, snapshot->ssao_intensity);
+    gl.Uniform1i(ctx->postfx_uSsaoSamples, snapshot->ssao_samples);
+    gl.Uniform1i(ctx->postfx_uDofEnabled, snapshot->dof_enabled ? 1 : 0);
+    gl.Uniform1f(ctx->postfx_uDofFocusDistance, snapshot->dof_focus_distance);
+    gl.Uniform1f(ctx->postfx_uDofAperture, snapshot->dof_aperture);
+    gl.Uniform1f(ctx->postfx_uDofMaxBlur, snapshot->dof_max_blur);
+    gl.Uniform1i(ctx->postfx_uMotionBlurEnabled, snapshot->motion_blur_enabled ? 1 : 0);
+    gl.Uniform1f(ctx->postfx_uMotionBlurIntensity, snapshot->motion_blur_intensity);
+    gl.Uniform1i(ctx->postfx_uMotionBlurSamples, snapshot->motion_blur_samples);
+}
+
+static void gl_draw_scene_texture_to_target(gl_context_t *ctx,
+                                            GLuint framebuffer,
+                                            GLenum draw_buffer,
+                                            int32_t width,
+                                            int32_t height,
+                                            const vgfx3d_postfx_snapshot_t *snapshot) {
+    if (!ctx || !ctx->postfx_program || !ctx->scene_color_tex || width <= 0 || height <= 0)
+        return;
+
+    gl.BindFramebuffer(GL_FRAMEBUFFER, framebuffer);
+    gl.DrawBuffer(draw_buffer);
+    gl.ReadBuffer(draw_buffer);
+    gl.Viewport(0, 0, width, height);
+    gl.Disable(GL_DEPTH_TEST);
+    gl.Disable(GL_CULL_FACE);
+    gl.Disable(GL_BLEND);
+    gl.DepthMask(GL_FALSE);
+    gl.PolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+    gl.UseProgram(ctx->postfx_program);
+    gl.BindVertexArray(ctx->fullscreen_vao);
+    bind_texture_unit(ctx->postfx_uSceneTex, 0, GL_TEXTURE_2D, ctx->scene_color_tex);
+    bind_texture_unit(ctx->postfx_uSceneDepthTex, 1, GL_TEXTURE_2D, ctx->scene_depth_tex);
+    bind_texture_unit(ctx->postfx_uSceneMotionTex, 2, GL_TEXTURE_2D, ctx->scene_motion_tex);
+    gl_apply_postfx_uniforms(ctx, snapshot);
+    gl.DrawArrays(GL_TRIANGLES, 0, 3);
+    GL_CHECK();
+}
+
+static int gl_sync_render_target_color(void *ctx_ptr, vgfx3d_rendertarget_t *rt) {
+    gl_context_t *ctx = (gl_context_t *)ctx_ptr;
+    uint8_t *tmp;
+    size_t bytes;
+
+    if (!ctx || !rt || !rt->color_buf || rt->width <= 0 || rt->height <= 0 || !ctx->rtt_fbo ||
+        ctx->rtt_target != rt) {
+        return 0;
+    }
+
+    bytes = (size_t)rt->height * (size_t)rt->stride;
+    tmp = (uint8_t *)malloc(bytes);
+    if (!tmp)
+        return 0;
+
+    glx.MakeCurrent(ctx->display, ctx->window, ctx->glxCtx);
+    gl.BindFramebuffer(GL_FRAMEBUFFER, ctx->rtt_fbo);
+    gl.ReadBuffer(GL_COLOR_ATTACHMENT0);
+    gl.ReadPixels(0, 0, rt->width, rt->height, GL_RGBA, GL_UNSIGNED_BYTE, tmp);
+    vgfx3d_flip_rgba_rows(tmp, rt->width, rt->height);
+    memcpy(rt->color_buf, tmp, bytes);
+    free(tmp);
+
+    ctx->rtt_color_dirty = 0;
+    rt->color_dirty = 0;
+    bind_main_framebuffer(ctx);
+    return 1;
 }
 
 static void gl_destroy_mesh_cache(gl_context_t *ctx) {
@@ -1841,6 +2259,7 @@ static void prepare_mesh_buffers(gl_context_t *ctx,
                            vbytes,
                            4u * 1024u * 1024u,
                            GL_STREAM_DRAW);
+    orphan_stream_buffer(GL_ARRAY_BUFFER, ctx->mesh_vbo, ctx->mesh_vbo_capacity, GL_STREAM_DRAW);
     gl.BindBuffer(GL_ARRAY_BUFFER, ctx->mesh_vbo);
     gl.BufferSubData(GL_ARRAY_BUFFER, 0, (GLsizeiptr)vbytes, cmd->vertices);
 
@@ -1850,6 +2269,8 @@ static void prepare_mesh_buffers(gl_context_t *ctx,
                            ibytes,
                            1u * 1024u * 1024u,
                            GL_STREAM_DRAW);
+    orphan_stream_buffer(
+        GL_ELEMENT_ARRAY_BUFFER, ctx->mesh_ibo, ctx->mesh_ibo_capacity, GL_STREAM_DRAW);
     gl.BindBuffer(GL_ELEMENT_ARRAY_BUFFER, ctx->mesh_ibo);
     gl.BufferSubData(GL_ELEMENT_ARRAY_BUFFER, 0, (GLsizeiptr)ibytes, cmd->indices);
     *out_vbo = ctx->mesh_vbo;
@@ -1916,6 +2337,8 @@ static void configure_instance_attributes(gl_context_t *ctx,
                            bytes,
                            64u * 1024u,
                            GL_STREAM_DRAW);
+    orphan_stream_buffer(
+        GL_ARRAY_BUFFER, ctx->instance_vbo, ctx->instance_vbo_capacity, GL_STREAM_DRAW);
     gl.BindBuffer(GL_ARRAY_BUFFER, ctx->instance_vbo);
     gl.BufferSubData(GL_ARRAY_BUFFER, 0, (GLsizeiptr)bytes, instance_matrices);
 
@@ -1942,6 +2365,8 @@ static void configure_instance_attributes(gl_context_t *ctx,
                                bytes,
                                64u * 1024u,
                                GL_STREAM_DRAW);
+        orphan_stream_buffer(
+            GL_ARRAY_BUFFER, ctx->prev_instance_vbo, ctx->prev_instance_vbo_capacity, GL_STREAM_DRAW);
         gl.BindBuffer(GL_ARRAY_BUFFER, ctx->prev_instance_vbo);
         gl.BufferSubData(GL_ARRAY_BUFFER, 0, (GLsizeiptr)bytes, prev_instance_matrices);
         gl.EnableVertexAttribArray(11);
@@ -1979,18 +2404,21 @@ static void upload_bone_palette(gl_context_t *ctx,
                                 GLuint ubo,
                                 const float *bone_palette,
                                 int32_t bone_count) {
+    static const size_t kBonePaletteBytes = 128u * 16u * sizeof(float);
+    float upload[128 * 16];
+
     if (!ctx || !bone_palette || bone_count <= 0)
         return;
 
-    float upload[128 * 16];
+    memset(upload, 0, sizeof(upload));
     if (bone_count > 128)
         bone_count = 128;
     for (int32_t i = 0; i < bone_count; i++)
         transpose4x4(&bone_palette[i * 16], &upload[i * 16]);
 
+    orphan_stream_buffer(GL_UNIFORM_BUFFER, ubo, kBonePaletteBytes, GL_DYNAMIC_DRAW);
     gl.BindBuffer(GL_UNIFORM_BUFFER, ubo);
-    gl.BufferSubData(
-        GL_UNIFORM_BUFFER, 0, (GLsizeiptr)((size_t)bone_count * 16 * sizeof(float)), upload);
+    gl.BufferSubData(GL_UNIFORM_BUFFER, 0, (GLsizeiptr)sizeof(upload), upload);
 }
 
 static void upload_active_bone_palettes(gl_context_t *ctx, const vgfx3d_draw_cmd_t *cmd) {
@@ -2007,6 +2435,120 @@ static void upload_active_bone_palettes(gl_context_t *ctx, const vgfx3d_draw_cmd
     }
 }
 
+static int gl_upload_morph_payload_texture(GLuint *buffer,
+                                           GLuint *tbo,
+                                           const float *payload,
+                                           size_t bytes) {
+    if (!buffer || !tbo || !payload || bytes == 0)
+        return 0;
+    if (*buffer == 0)
+        gl.GenBuffers(1, buffer);
+    if (*tbo == 0)
+        gl.GenTextures(1, tbo);
+    if (*buffer == 0 || *tbo == 0)
+        return 0;
+    gl.BindBuffer(GL_TEXTURE_BUFFER, *buffer);
+    gl.BufferData(GL_TEXTURE_BUFFER, (GLsizeiptr)bytes, payload, GL_STATIC_DRAW);
+    gl.BindTexture(GL_TEXTURE_BUFFER, *tbo);
+    gl.TexBuffer(GL_TEXTURE_BUFFER, GL_R32F, *buffer);
+    return 1;
+}
+
+static int gl_upload_transient_morph_payload(gl_context_t *ctx,
+                                             GLuint buffer,
+                                             GLuint tbo,
+                                             size_t *capacity_bytes,
+                                             const float *payload,
+                                             size_t bytes) {
+    if (!ctx || !capacity_bytes || !payload || bytes == 0)
+        return 0;
+    ensure_buffer_capacity(
+        GL_TEXTURE_BUFFER, buffer, capacity_bytes, bytes, 64u * 1024u, GL_STREAM_DRAW);
+    orphan_stream_buffer(GL_TEXTURE_BUFFER, buffer, *capacity_bytes, GL_STREAM_DRAW);
+    gl.BindBuffer(GL_TEXTURE_BUFFER, buffer);
+    gl.BufferSubData(GL_TEXTURE_BUFFER, 0, (GLsizeiptr)bytes, payload);
+    gl.BindTexture(GL_TEXTURE_BUFFER, tbo);
+    gl.TexBuffer(GL_TEXTURE_BUFFER, GL_R32F, buffer);
+    return 1;
+}
+
+static gl_morph_cache_entry_t *gl_get_cached_morph_entry(gl_context_t *ctx,
+                                                         const vgfx3d_draw_cmd_t *cmd,
+                                                         int32_t morph_count) {
+    gl_morph_cache_entry_t *slot = NULL;
+    gl_morph_cache_entry_t *oldest = NULL;
+    size_t bytes;
+    int32_t slot_index = -1;
+
+    if (!ctx || !cmd || morph_count <= 0 || !cmd->morph_key || cmd->morph_revision == 0)
+        return NULL;
+
+    for (int32_t i = 0; i < ctx->morph_cache_count; i++) {
+        gl_morph_cache_entry_t *entry = &ctx->morph_cache[i];
+        if (vgfx3d_opengl_should_reuse_morph_cache(entry->key,
+                                                   entry->revision,
+                                                   entry->shape_count,
+                                                   entry->vertex_count,
+                                                   entry->has_normal_deltas,
+                                                   cmd)) {
+            entry->last_used_frame = ctx->frame_serial;
+            return entry;
+        }
+        if (entry->key == cmd->morph_key)
+            slot = entry;
+        if (!oldest || entry->last_used_frame < oldest->last_used_frame)
+            oldest = entry;
+    }
+
+    if (!slot && ctx->morph_cache_count < ctx->morph_cache_capacity) {
+        slot_index = ctx->morph_cache_count++;
+        slot = &ctx->morph_cache[slot_index];
+        memset(slot, 0, sizeof(*slot));
+    }
+    if (!slot && ctx->morph_cache_count == ctx->morph_cache_capacity) {
+        int32_t new_cap =
+            vgfx3d_opengl_next_capacity(ctx->morph_cache_capacity, ctx->morph_cache_count + 1, 8);
+        gl_morph_cache_entry_t *nv = (gl_morph_cache_entry_t *)realloc(
+            ctx->morph_cache, (size_t)new_cap * sizeof(gl_morph_cache_entry_t));
+        if (!nv)
+            return NULL;
+        memset(nv + ctx->morph_cache_capacity,
+               0,
+               (size_t)(new_cap - ctx->morph_cache_capacity) * sizeof(gl_morph_cache_entry_t));
+        slot_index = ctx->morph_cache_count++;
+        ctx->morph_cache = nv;
+        ctx->morph_cache_capacity = new_cap;
+        slot = &ctx->morph_cache[slot_index];
+    }
+    if (!slot)
+        slot = oldest;
+    if (!slot)
+        return NULL;
+
+    morph_cache_release_entry(slot);
+    bytes = (size_t)morph_count * (size_t)cmd->vertex_count * 3u * sizeof(float);
+    if (!gl_upload_morph_payload_texture(
+            &slot->morph_buffer, &slot->morph_tbo, cmd->morph_deltas, bytes)) {
+        morph_cache_release_entry(slot);
+        return NULL;
+    }
+    if (cmd->morph_normal_deltas &&
+        !gl_upload_morph_payload_texture(
+            &slot->morph_normal_buffer, &slot->morph_normal_tbo, cmd->morph_normal_deltas, bytes)) {
+        morph_cache_release_entry(slot);
+        return NULL;
+    }
+    slot->key = cmd->morph_key;
+    slot->revision = cmd->morph_revision;
+    slot->shape_count = cmd->morph_shape_count;
+    slot->vertex_count = cmd->vertex_count;
+    slot->has_normal_deltas = cmd->morph_normal_deltas ? 1 : 0;
+    slot->morph_bytes = bytes;
+    slot->morph_normal_bytes = cmd->morph_normal_deltas ? bytes : 0;
+    slot->last_used_frame = ctx->frame_serial;
+    return slot;
+}
+
 static void bind_morph_payload(gl_context_t *ctx,
                                const vgfx3d_draw_cmd_t *cmd,
                                GLint uHasSkinning,
@@ -2017,6 +2559,9 @@ static void bind_morph_payload(gl_context_t *ctx,
                                GLint uMorphDeltas,
                                GLint uHasMorphNormalDeltas,
                                GLint uMorphNormalDeltas) {
+    gl_morph_cache_entry_t *cached_entry = NULL;
+    GLuint morph_tbo = 0;
+    GLuint morph_normal_tbo = 0;
     int use_skinning = (cmd->bone_palette && cmd->bone_count > 0 && cmd->bone_count <= 128) ? 1 : 0;
     int morph_count = (cmd->morph_deltas && cmd->morph_weights && cmd->morph_shape_count > 0)
                           ? cmd->morph_shape_count
@@ -2040,35 +2585,40 @@ static void bind_morph_payload(gl_context_t *ctx,
     gl.ActiveTexture(GL_TEXTURE0 + 10);
     if (morph_count > 0) {
         size_t bytes = (size_t)morph_count * (size_t)cmd->vertex_count * 3 * sizeof(float);
-        ensure_buffer_capacity(GL_TEXTURE_BUFFER,
-                               ctx->morph_buffer,
-                               &ctx->morph_capacity_bytes,
-                               bytes,
-                               64u * 1024u,
-                               GL_STREAM_DRAW);
-        gl.BindBuffer(GL_TEXTURE_BUFFER, ctx->morph_buffer);
-        gl.BufferSubData(GL_TEXTURE_BUFFER, 0, (GLsizeiptr)bytes, cmd->morph_deltas);
-        gl.BindTexture(GL_TEXTURE_BUFFER, ctx->morph_tbo);
-        gl.TexBuffer(GL_TEXTURE_BUFFER, GL_R32F, ctx->morph_buffer);
+        cached_entry = gl_get_cached_morph_entry(ctx, cmd, morph_count);
+        if (cached_entry) {
+            morph_tbo = cached_entry->morph_tbo;
+            morph_normal_tbo = cached_entry->morph_normal_tbo;
+        } else if (gl_upload_transient_morph_payload(ctx,
+                                                     ctx->morph_buffer,
+                                                     ctx->morph_tbo,
+                                                     &ctx->morph_capacity_bytes,
+                                                     cmd->morph_deltas,
+                                                     bytes)) {
+            morph_tbo = ctx->morph_tbo;
+            if (cmd->morph_normal_deltas &&
+                gl_upload_transient_morph_payload(ctx,
+                                                  ctx->morph_normal_buffer,
+                                                  ctx->morph_normal_tbo,
+                                                  &ctx->morph_normal_capacity_bytes,
+                                                  cmd->morph_normal_deltas,
+                                                  bytes)) {
+                morph_normal_tbo = ctx->morph_normal_tbo;
+            }
+        }
+        gl.BindTexture(GL_TEXTURE_BUFFER, morph_tbo);
     } else {
         gl.BindTexture(GL_TEXTURE_BUFFER, 0);
     }
     gl.Uniform1i(uMorphDeltas, 10);
     gl.ActiveTexture(GL_TEXTURE0 + 11);
-    if (uHasMorphNormalDeltas >= 0)
-        gl.Uniform1i(uHasMorphNormalDeltas, (morph_count > 0 && cmd->morph_normal_deltas) ? 1 : 0);
+    if (uHasMorphNormalDeltas >= 0) {
+        gl.Uniform1i(uHasMorphNormalDeltas,
+                     (morph_count > 0 && cmd->morph_normal_deltas && morph_normal_tbo != 0) ? 1
+                                                                                             : 0);
+    }
     if (morph_count > 0 && cmd->morph_normal_deltas && uMorphNormalDeltas >= 0) {
-        size_t bytes = (size_t)morph_count * (size_t)cmd->vertex_count * 3 * sizeof(float);
-        ensure_buffer_capacity(GL_TEXTURE_BUFFER,
-                               ctx->morph_normal_buffer,
-                               &ctx->morph_normal_capacity_bytes,
-                               bytes,
-                               64u * 1024u,
-                               GL_STREAM_DRAW);
-        gl.BindBuffer(GL_TEXTURE_BUFFER, ctx->morph_normal_buffer);
-        gl.BufferSubData(GL_TEXTURE_BUFFER, 0, (GLsizeiptr)bytes, cmd->morph_normal_deltas);
-        gl.BindTexture(GL_TEXTURE_BUFFER, ctx->morph_normal_tbo);
-        gl.TexBuffer(GL_TEXTURE_BUFFER, GL_R32F, ctx->morph_normal_buffer);
+        gl.BindTexture(GL_TEXTURE_BUFFER, morph_normal_tbo);
     } else {
         gl.BindTexture(GL_TEXTURE_BUFFER, 0);
     }
@@ -2122,8 +2672,7 @@ static void upload_main_uniforms(gl_context_t *ctx,
                         GL_TRUE,
                         cmd->has_prev_model_matrix ? cmd->prev_model_matrix : cmd->model_matrix);
     gl.UniformMatrix4fv(ctx->uViewProjection, 1, GL_TRUE, ctx->vp);
-    gl.UniformMatrix4fv(
-        ctx->uPrevViewProjection, 1, GL_TRUE, ctx->prev_vp_valid ? ctx->prev_vp : ctx->vp);
+    gl.UniformMatrix4fv(ctx->uPrevViewProjection, 1, GL_TRUE, ctx->draw_prev_vp);
     gl.UniformMatrix4fv(ctx->uNormalMatrix, 1, GL_TRUE, normal_matrix);
     gl.UniformMatrix4fv(ctx->uShadowVP, 1, GL_TRUE, ctx->shadow_vp);
 
@@ -2258,85 +2807,9 @@ static void bind_shadow_anim(gl_context_t *ctx, const vgfx3d_draw_cmd_t *cmd) {
 }
 
 static void draw_scene_texture(gl_context_t *ctx, const vgfx3d_postfx_snapshot_t *snapshot) {
-    if (!ctx || !ctx->postfx_program || !ctx->scene_color_tex)
+    if (!ctx)
         return;
-
-    gl.BindFramebuffer(GL_FRAMEBUFFER, 0);
-    gl.DrawBuffer(GL_BACK);
-    gl.ReadBuffer(GL_BACK);
-    gl.Viewport(0, 0, ctx->width, ctx->height);
-    gl.Disable(GL_DEPTH_TEST);
-    gl.Disable(GL_CULL_FACE);
-    gl.Disable(GL_BLEND);
-    gl.DepthMask(GL_FALSE);
-    gl.PolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-    gl.UseProgram(ctx->postfx_program);
-    gl.BindVertexArray(ctx->fullscreen_vao);
-    bind_texture_unit(ctx->postfx_uSceneTex, 0, GL_TEXTURE_2D, ctx->scene_color_tex);
-    bind_texture_unit(ctx->postfx_uSceneDepthTex, 1, GL_TEXTURE_2D, ctx->scene_depth_tex);
-    bind_texture_unit(ctx->postfx_uSceneMotionTex, 2, GL_TEXTURE_2D, ctx->scene_motion_tex);
-    gl.Uniform2f(ctx->postfx_uInvResolution,
-                 1.0f / (float)ctx->scene_width,
-                 1.0f / (float)ctx->scene_height);
-    gl.Uniform3f(ctx->postfx_uCameraPos, ctx->cam_pos[0], ctx->cam_pos[1], ctx->cam_pos[2]);
-    gl.UniformMatrix4fv(ctx->postfx_uInvViewProjection, 1, GL_TRUE, ctx->inv_vp);
-    gl.UniformMatrix4fv(
-        ctx->postfx_uPrevViewProjection, 1, GL_TRUE, ctx->prev_vp_valid ? ctx->prev_vp : ctx->vp);
-
-    if (snapshot) {
-        gl.Uniform1i(ctx->postfx_uBloomEnabled, snapshot->bloom_enabled ? 1 : 0);
-        gl.Uniform1f(ctx->postfx_uBloomThreshold, snapshot->bloom_threshold);
-        gl.Uniform1f(ctx->postfx_uBloomIntensity, snapshot->bloom_intensity);
-        gl.Uniform1i(ctx->postfx_uTonemapMode, snapshot->tonemap_mode);
-        gl.Uniform1f(ctx->postfx_uTonemapExposure, snapshot->tonemap_exposure);
-        gl.Uniform1i(ctx->postfx_uFxaaEnabled, snapshot->fxaa_enabled ? 1 : 0);
-        gl.Uniform1i(ctx->postfx_uColorGradeEnabled, snapshot->color_grade_enabled ? 1 : 0);
-        gl.Uniform1f(ctx->postfx_uCgBrightness, snapshot->cg_brightness);
-        gl.Uniform1f(ctx->postfx_uCgContrast, snapshot->cg_contrast);
-        gl.Uniform1f(ctx->postfx_uCgSaturation, snapshot->cg_saturation);
-        gl.Uniform1i(ctx->postfx_uVignetteEnabled, snapshot->vignette_enabled ? 1 : 0);
-        gl.Uniform1f(ctx->postfx_uVignetteRadius, snapshot->vignette_radius);
-        gl.Uniform1f(ctx->postfx_uVignetteSoftness, snapshot->vignette_softness);
-        gl.Uniform1i(ctx->postfx_uSsaoEnabled, snapshot->ssao_enabled ? 1 : 0);
-        gl.Uniform1f(ctx->postfx_uSsaoRadius, snapshot->ssao_radius);
-        gl.Uniform1f(ctx->postfx_uSsaoIntensity, snapshot->ssao_intensity);
-        gl.Uniform1i(ctx->postfx_uSsaoSamples, snapshot->ssao_samples);
-        gl.Uniform1i(ctx->postfx_uDofEnabled, snapshot->dof_enabled ? 1 : 0);
-        gl.Uniform1f(ctx->postfx_uDofFocusDistance, snapshot->dof_focus_distance);
-        gl.Uniform1f(ctx->postfx_uDofAperture, snapshot->dof_aperture);
-        gl.Uniform1f(ctx->postfx_uDofMaxBlur, snapshot->dof_max_blur);
-        gl.Uniform1i(ctx->postfx_uMotionBlurEnabled, snapshot->motion_blur_enabled ? 1 : 0);
-        gl.Uniform1f(ctx->postfx_uMotionBlurIntensity, snapshot->motion_blur_intensity);
-        gl.Uniform1i(ctx->postfx_uMotionBlurSamples, snapshot->motion_blur_samples);
-    } else {
-        gl.Uniform1i(ctx->postfx_uBloomEnabled, 0);
-        gl.Uniform1f(ctx->postfx_uBloomThreshold, 1.0f);
-        gl.Uniform1f(ctx->postfx_uBloomIntensity, 0.0f);
-        gl.Uniform1i(ctx->postfx_uTonemapMode, 0);
-        gl.Uniform1f(ctx->postfx_uTonemapExposure, 1.0f);
-        gl.Uniform1i(ctx->postfx_uFxaaEnabled, 0);
-        gl.Uniform1i(ctx->postfx_uColorGradeEnabled, 0);
-        gl.Uniform1f(ctx->postfx_uCgBrightness, 0.0f);
-        gl.Uniform1f(ctx->postfx_uCgContrast, 1.0f);
-        gl.Uniform1f(ctx->postfx_uCgSaturation, 1.0f);
-        gl.Uniform1i(ctx->postfx_uVignetteEnabled, 0);
-        gl.Uniform1f(ctx->postfx_uVignetteRadius, 1.0f);
-        gl.Uniform1f(ctx->postfx_uVignetteSoftness, 0.0f);
-        gl.Uniform1i(ctx->postfx_uSsaoEnabled, 0);
-        gl.Uniform1f(ctx->postfx_uSsaoRadius, 0.0f);
-        gl.Uniform1f(ctx->postfx_uSsaoIntensity, 0.0f);
-        gl.Uniform1i(ctx->postfx_uSsaoSamples, 0);
-        gl.Uniform1i(ctx->postfx_uDofEnabled, 0);
-        gl.Uniform1f(ctx->postfx_uDofFocusDistance, 0.0f);
-        gl.Uniform1f(ctx->postfx_uDofAperture, 0.0f);
-        gl.Uniform1f(ctx->postfx_uDofMaxBlur, 0.0f);
-        gl.Uniform1i(ctx->postfx_uMotionBlurEnabled, 0);
-        gl.Uniform1f(ctx->postfx_uMotionBlurIntensity, 0.0f);
-        gl.Uniform1i(ctx->postfx_uMotionBlurSamples, 0);
-    }
-
-    gl.DrawArrays(GL_TRIANGLES, 0, 3);
-    GL_CHECK();
+    gl_draw_scene_texture_to_target(ctx, 0, GL_BACK, ctx->width, ctx->height, snapshot);
 }
 
 static void gl_draw_skybox_impl(gl_context_t *ctx, const rt_cubemap3d *cubemap) {
@@ -2352,6 +2825,11 @@ static void gl_draw_skybox_impl(gl_context_t *ctx, const rt_cubemap3d *cubemap) 
     view_rotation[3] = 0.0f;
     view_rotation[7] = 0.0f;
     view_rotation[11] = 0.0f;
+
+    if (ctx->active_target_kind == VGFX3D_OPENGL_TARGET_SCENE) {
+        gl.BindFramebuffer(GL_FRAMEBUFFER, ctx->scene_fbo);
+        gl.DrawBuffer(GL_COLOR_ATTACHMENT0);
+    }
 
     gl.DepthMask(GL_FALSE);
     gl.DepthFunc(GL_LEQUAL);
@@ -2369,6 +2847,8 @@ static void gl_draw_skybox_impl(gl_context_t *ctx, const rt_cubemap3d *cubemap) 
     gl.Enable(GL_CULL_FACE);
     gl.UseProgram(ctx->program);
     gl.BindVertexArray(ctx->vao);
+    if (ctx->active_target_kind == VGFX3D_OPENGL_TARGET_SCENE)
+        bind_main_framebuffer(ctx);
 }
 
 static void query_main_uniforms(gl_context_t *ctx) {
@@ -2514,6 +2994,24 @@ static void query_postfx_uniforms(gl_context_t *ctx) {
 }
 
 static void *gl_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
+    static const float kIdentity4x4[16] = {
+        1.0f,
+        0.0f,
+        0.0f,
+        0.0f,
+        0.0f,
+        1.0f,
+        0.0f,
+        0.0f,
+        0.0f,
+        0.0f,
+        1.0f,
+        0.0f,
+        0.0f,
+        0.0f,
+        0.0f,
+        1.0f,
+    };
     if (load_gl() != 0)
         return NULL;
 
@@ -2592,6 +3090,15 @@ static void *gl_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
     ctx->glxCtx = glxCtx;
     ctx->width = w;
     ctx->height = h;
+    memcpy(ctx->view, kIdentity4x4, sizeof(ctx->view));
+    memcpy(ctx->projection, kIdentity4x4, sizeof(ctx->projection));
+    memcpy(ctx->vp, kIdentity4x4, sizeof(ctx->vp));
+    memcpy(ctx->inv_vp, kIdentity4x4, sizeof(ctx->inv_vp));
+    memcpy(ctx->draw_prev_vp, kIdentity4x4, sizeof(ctx->draw_prev_vp));
+    memcpy(ctx->scene_vp, kIdentity4x4, sizeof(ctx->scene_vp));
+    memcpy(ctx->scene_prev_vp, kIdentity4x4, sizeof(ctx->scene_prev_vp));
+    memcpy(ctx->scene_inv_vp, kIdentity4x4, sizeof(ctx->scene_inv_vp));
+    ctx->active_target_kind = VGFX3D_OPENGL_TARGET_SWAPCHAIN;
 
     GLuint vs = compile_shader_parts(
         GL_VERTEX_SHADER, glsl_vertex_src, (GLsizei)(sizeof(glsl_vertex_src) / sizeof(glsl_vertex_src[0])));
@@ -2762,19 +3269,9 @@ static void *gl_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
     gl.Enable(GL_CULL_FACE);
     gl.CullFace(GL_BACK);
     gl.FrontFace(GL_CCW);
-    gl.Enable(GL_BLEND);
+    gl.Disable(GL_BLEND);
     gl.BlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     gl.PolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-
-    if (ensure_scene_targets(ctx, w, h) != 0) {
-        gl.DeleteProgram(ctx->program);
-        gl.DeleteProgram(ctx->shadow_program);
-        gl.DeleteProgram(ctx->postfx_program);
-        gl.DeleteProgram(ctx->skybox_program);
-        glx.DestroyContext(dpy, glxCtx);
-        free(ctx);
-        return NULL;
-    }
 
     return ctx;
 }
@@ -2790,6 +3287,7 @@ static void gl_destroy_ctx(void *ctx_ptr) {
     texture_cache_destroy(ctx);
     gl_destroy_mesh_cache(ctx);
     destroy_scene_targets(ctx);
+    destroy_postfx_readback_target(ctx);
     destroy_rtt_targets(ctx);
     destroy_shadow_targets(ctx);
 
@@ -2848,6 +3346,7 @@ static void gl_clear(void *ctx_ptr, vgfx_window_t win, float r, float g, float b
 
 static void gl_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) {
     gl_context_t *ctx = (gl_context_t *)ctx_ptr;
+    vgfx3d_opengl_frame_history_t history;
     static const float kIdentity4x4[16] = {
         1.0f,
         0.0f,
@@ -2871,17 +3370,20 @@ static void gl_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) {
 
     ctx->frame_serial++;
     ctx->shadow_active = 0;
-    if (ctx->prev_vp_valid)
-        memcpy(ctx->prev_vp, ctx->vp, sizeof(ctx->prev_vp));
+    ctx->current_pass_is_overlay = (!ctx->rtt_active && cam->load_existing_color) ? 1 : 0;
+    if (!ctx->current_pass_is_overlay) {
+        ctx->scene_composited_to_backbuffer = 0;
+        ctx->scene_postfx_pending = 0;
+    }
+    texture_cache_prune(ctx);
+    cubemap_cache_prune(ctx);
+    morph_cache_prune(ctx);
+
     memcpy(ctx->view, cam->view, sizeof(ctx->view));
     memcpy(ctx->projection, cam->projection, sizeof(ctx->projection));
     mat4f_mul_gl(cam->projection, cam->view, ctx->vp);
     if (mat4f_inverse_gl(ctx->vp, ctx->inv_vp) != 0)
         memcpy(ctx->inv_vp, kIdentity4x4, sizeof(ctx->inv_vp));
-    if (!ctx->prev_vp_valid) {
-        memcpy(ctx->prev_vp, ctx->vp, sizeof(ctx->prev_vp));
-        ctx->prev_vp_valid = 1;
-    }
     memcpy(ctx->cam_pos, cam->position, sizeof(float) * 3);
     ctx->fog_enabled = cam->fog_enabled;
     ctx->fog_near = cam->fog_near;
@@ -2891,11 +3393,46 @@ static void gl_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) {
     ctx->fog_color[2] = cam->fog_color[2];
     glx.MakeCurrent(ctx->display, ctx->window, ctx->glxCtx);
 
-    if (!ctx->rtt_active)
-        ensure_scene_targets(ctx, ctx->width, ctx->height);
+    memcpy(history.scene_vp, ctx->scene_vp, sizeof(history.scene_vp));
+    memcpy(history.scene_prev_vp, ctx->scene_prev_vp, sizeof(history.scene_prev_vp));
+    memcpy(history.scene_inv_vp, ctx->scene_inv_vp, sizeof(history.scene_inv_vp));
+    memcpy(history.draw_prev_vp, ctx->draw_prev_vp, sizeof(history.draw_prev_vp));
+    memcpy(history.scene_cam_pos, ctx->scene_cam_pos, sizeof(history.scene_cam_pos));
+    history.scene_history_valid = ctx->scene_history_valid;
+    vgfx3d_opengl_update_frame_history(
+        &history, ctx->vp, ctx->inv_vp, cam->position, ctx->current_pass_is_overlay);
+    memcpy(ctx->scene_vp, history.scene_vp, sizeof(ctx->scene_vp));
+    memcpy(ctx->scene_prev_vp, history.scene_prev_vp, sizeof(ctx->scene_prev_vp));
+    memcpy(ctx->scene_inv_vp, history.scene_inv_vp, sizeof(ctx->scene_inv_vp));
+    memcpy(ctx->draw_prev_vp, history.draw_prev_vp, sizeof(ctx->draw_prev_vp));
+    memcpy(ctx->scene_cam_pos, history.scene_cam_pos, sizeof(ctx->scene_cam_pos));
+    ctx->scene_history_valid = history.scene_history_valid;
+
+    if (ctx->current_pass_is_overlay && ctx->gpu_postfx_enabled && ctx->scene_postfx_pending &&
+        !ctx->scene_composited_to_backbuffer) {
+        draw_scene_texture(
+            ctx, ctx->gpu_postfx_snapshot_valid ? &ctx->gpu_postfx_snapshot : NULL);
+        ctx->scene_composited_to_backbuffer = 1;
+    }
+
+    if (ctx->current_pass_is_overlay && ctx->gpu_postfx_enabled)
+        ctx->active_target_kind = VGFX3D_OPENGL_TARGET_SWAPCHAIN;
+    else
+        ctx->active_target_kind =
+            vgfx3d_opengl_choose_target_kind(ctx->rtt_active, ctx->gpu_postfx_enabled);
+
+    if (ctx->active_target_kind == VGFX3D_OPENGL_TARGET_SCENE) {
+        if (ensure_scene_targets(ctx, ctx->width, ctx->height) != 0)
+            ctx->active_target_kind = VGFX3D_OPENGL_TARGET_SWAPCHAIN;
+        else
+            ctx->scene_postfx_pending = 1;
+    } else if (!ctx->current_pass_is_overlay) {
+        ctx->scene_postfx_pending = 0;
+    }
+
     bind_main_framebuffer(ctx);
 
-    if (ctx->rtt_active) {
+    if (ctx->active_target_kind == VGFX3D_OPENGL_TARGET_RTT) {
         GLbitfield clear_mask = 0;
         if (!cam->load_existing_color) {
             gl.ClearColor(ctx->clearR, ctx->clearG, ctx->clearB, 1.0f);
@@ -2907,7 +3444,7 @@ static void gl_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) {
         }
         if (clear_mask)
             gl.Clear(clear_mask);
-    } else {
+    } else if (ctx->active_target_kind == VGFX3D_OPENGL_TARGET_SCENE) {
         if (!cam->load_existing_color) {
             gl.DrawBuffer(GL_COLOR_ATTACHMENT0);
             gl.ClearColor(ctx->clearR, ctx->clearG, ctx->clearB, 1.0f);
@@ -2925,11 +3462,24 @@ static void gl_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) {
             const GLenum attachments[2] = {GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1};
             gl.DrawBuffers(2, attachments);
         }
+    } else {
+        GLbitfield clear_mask = 0;
+        if (!cam->load_existing_color) {
+            gl.ClearColor(ctx->clearR, ctx->clearG, ctx->clearB, 1.0f);
+            clear_mask |= GL_COLOR_BUFFER_BIT;
+        }
+        if (!cam->load_existing_depth) {
+            gl.ClearDepth(1.0);
+            clear_mask |= GL_DEPTH_BUFFER_BIT;
+        }
+        if (clear_mask)
+            gl.Clear(clear_mask);
     }
-    gl.Enable(GL_BLEND);
+    gl.Disable(GL_BLEND);
     gl.BlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     gl.Enable(GL_DEPTH_TEST);
     gl.DepthMask(GL_TRUE);
+    gl.PolygonMode(GL_FRONT_AND_BACK, GL_FILL);
     gl.UseProgram(ctx->program);
     gl.BindVertexArray(ctx->vao);
 }
@@ -2957,7 +3507,7 @@ static void gl_submit_draw(void *ctx_ptr,
     else
         gl.Disable(GL_CULL_FACE);
     gl.PolygonMode(GL_FRONT_AND_BACK, wireframe ? GL_LINE : GL_FILL);
-    gl.DepthMask(vgfx3d_draw_cmd_uses_alpha_blend(cmd) ? GL_FALSE : GL_TRUE);
+    gl_configure_draw_output(ctx, cmd);
 
     gl.UseProgram(ctx->program);
     upload_main_uniforms(ctx, cmd, lights, light_count, ambient, 0);
@@ -2974,18 +3524,8 @@ static void gl_end_frame(void *ctx_ptr) {
         return;
 
     if (ctx->rtt_active && ctx->rtt_target && ctx->rtt_color_tex) {
-        int32_t w = ctx->rtt_width;
-        int32_t h = ctx->rtt_height;
-        size_t bytes = (size_t)w * (size_t)h * 4;
-        uint8_t *tmp = (uint8_t *)malloc(bytes);
-        if (!tmp)
-            return;
-        gl.BindFramebuffer(GL_FRAMEBUFFER, ctx->rtt_fbo);
-        gl.ReadBuffer(GL_COLOR_ATTACHMENT0);
-        gl.ReadPixels(0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, tmp);
-        vgfx3d_flip_rgba_rows(tmp, w, h);
-        memcpy(ctx->rtt_target->color_buf, tmp, bytes);
-        free(tmp);
+        ctx->rtt_color_dirty = 1;
+        ctx->rtt_target->color_dirty = 1;
     }
 }
 
@@ -2995,14 +3535,19 @@ static void gl_resize(void *ctx_ptr, int32_t w, int32_t h) {
         return;
     ctx->width = w;
     ctx->height = h;
+    ctx->scene_composited_to_backbuffer = 0;
     glx.MakeCurrent(ctx->display, ctx->window, ctx->glxCtx);
-    if (!ctx->rtt_active)
+    if (!ctx->rtt_active) {
         destroy_scene_targets(ctx);
+        destroy_postfx_readback_target(ctx);
+    }
 }
 
 static int gl_readback_rgba(
     void *ctx_ptr, uint8_t *dst_rgba, int32_t w, int32_t h, int32_t stride) {
     gl_context_t *ctx = (gl_context_t *)ctx_ptr;
+    int use_postfx_readback;
+    int32_t source_w, source_h;
     int32_t copy_w, copy_h;
     uint8_t *tmp;
 
@@ -3010,18 +3555,40 @@ static int gl_readback_rgba(
         return 0;
 
     glx.MakeCurrent(ctx->display, ctx->window, ctx->glxCtx);
-    if (!ctx->scene_fbo || ctx->scene_width <= 0 || ctx->scene_height <= 0)
-        return 0;
+    use_postfx_readback =
+        !ctx->scene_composited_to_backbuffer &&
+        vgfx3d_opengl_choose_readback_kind(
+            (ctx->gpu_postfx_enabled && ctx->scene_postfx_pending) ? 1 : 0) ==
+            VGFX3D_OPENGL_READBACK_POSTFX_COMPOSITE;
+    if (use_postfx_readback) {
+        if (!ctx->scene_fbo || ctx->scene_width <= 0 || ctx->scene_height <= 0)
+            return 0;
+        if (ensure_postfx_readback_target(ctx, ctx->scene_width, ctx->scene_height) != 0)
+            return 0;
+        gl_draw_scene_texture_to_target(ctx,
+                                        ctx->postfx_readback_fbo,
+                                        GL_COLOR_ATTACHMENT0,
+                                        ctx->scene_width,
+                                        ctx->scene_height,
+                                        ctx->gpu_postfx_snapshot_valid ? &ctx->gpu_postfx_snapshot
+                                                                       : NULL);
+        source_w = ctx->scene_width;
+        source_h = ctx->scene_height;
+    } else {
+        source_w = ctx->width;
+        source_h = ctx->height;
+    }
 
-    copy_w = ctx->scene_width < w ? ctx->scene_width : w;
-    copy_h = ctx->scene_height < h ? ctx->scene_height : h;
+    copy_w = source_w < w ? source_w : w;
+    copy_h = source_h < h ? source_h : h;
     tmp = (uint8_t *)malloc((size_t)copy_w * (size_t)copy_h * 4u);
     if (!tmp)
         return 0;
 
     memset(dst_rgba, 0, (size_t)stride * (size_t)h);
-    gl.BindFramebuffer(GL_FRAMEBUFFER, ctx->scene_fbo);
-    gl.ReadBuffer(GL_COLOR_ATTACHMENT0);
+    gl.BindFramebuffer(
+        GL_FRAMEBUFFER, use_postfx_readback ? ctx->postfx_readback_fbo : 0);
+    gl.ReadBuffer(use_postfx_readback ? GL_COLOR_ATTACHMENT0 : GL_BACK);
     gl.ReadPixels(0, 0, copy_w, copy_h, GL_RGBA, GL_UNSIGNED_BYTE, tmp);
     vgfx3d_flip_rgba_rows(tmp, copy_w, copy_h);
     for (int32_t y = 0; y < copy_h; y++)
@@ -3030,19 +3597,23 @@ static int gl_readback_rgba(
                (size_t)copy_w * 4u);
     free(tmp);
 
-    if (ctx->rtt_active)
-        gl.BindFramebuffer(GL_FRAMEBUFFER, ctx->rtt_fbo);
-    else
-        bind_main_framebuffer(ctx);
+    bind_main_framebuffer(ctx);
     return 1;
 }
 
 static void gl_present_impl(gl_context_t *ctx, const vgfx3d_postfx_snapshot_t *snapshot) {
+    int use_postfx;
+
     if (!ctx || ctx->rtt_active)
         return;
     glx.MakeCurrent(ctx->display, ctx->window, ctx->glxCtx);
-    draw_scene_texture(ctx, snapshot);
+    use_postfx =
+        (snapshot != NULL && ctx->gpu_postfx_enabled && ctx->scene_postfx_pending) ? 1 : 0;
+    if (use_postfx && !ctx->scene_composited_to_backbuffer)
+        draw_scene_texture(ctx, snapshot);
     glx.SwapBuffers(ctx->display, ctx->window);
+    ctx->scene_postfx_pending = 0;
+    ctx->scene_composited_to_backbuffer = 0;
 }
 
 static void gl_present(void *ctx_ptr) {
@@ -3053,11 +3624,37 @@ static void gl_present_postfx(void *ctx_ptr, const vgfx3d_postfx_snapshot_t *pos
     gl_present_impl((gl_context_t *)ctx_ptr, postfx);
 }
 
+static void gl_set_gpu_postfx_enabled(void *ctx_ptr, int8_t enabled) {
+    gl_context_t *ctx = (gl_context_t *)ctx_ptr;
+    if (!ctx)
+        return;
+    ctx->gpu_postfx_enabled = enabled ? 1 : 0;
+    if (!ctx->gpu_postfx_enabled) {
+        ctx->scene_postfx_pending = 0;
+        ctx->scene_composited_to_backbuffer = 0;
+    }
+}
+
+static void gl_set_gpu_postfx_snapshot(void *ctx_ptr, const vgfx3d_postfx_snapshot_t *postfx) {
+    gl_context_t *ctx = (gl_context_t *)ctx_ptr;
+    if (!ctx)
+        return;
+    if (!postfx) {
+        memset(&ctx->gpu_postfx_snapshot, 0, sizeof(ctx->gpu_postfx_snapshot));
+        ctx->gpu_postfx_snapshot_valid = 0;
+        return;
+    }
+    ctx->gpu_postfx_snapshot = *postfx;
+    ctx->gpu_postfx_snapshot_valid = 1;
+}
+
 static void gl_set_render_target(void *ctx_ptr, vgfx3d_rendertarget_t *rt) {
     gl_context_t *ctx = (gl_context_t *)ctx_ptr;
     if (!ctx)
         return;
     glx.MakeCurrent(ctx->display, ctx->window, ctx->glxCtx);
+    ctx->scene_postfx_pending = 0;
+    ctx->scene_composited_to_backbuffer = 0;
     if (!rt) {
         destroy_rtt_targets(ctx);
         gl.BindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -3130,7 +3727,7 @@ static void gl_submit_draw_instanced(void *ctx_ptr,
     else
         gl.Disable(GL_CULL_FACE);
     gl.PolygonMode(GL_FRONT_AND_BACK, wireframe ? GL_LINE : GL_FILL);
-    gl.DepthMask(vgfx3d_draw_cmd_uses_alpha_blend(cmd) ? GL_FALSE : GL_TRUE);
+    gl_configure_draw_output(ctx, cmd);
 
     gl.UseProgram(ctx->program);
     upload_main_uniforms(ctx, cmd, lights, light_count, ambient, 1);
@@ -3165,6 +3762,8 @@ const vgfx3d_backend_t vgfx3d_opengl_backend = {
     .present = gl_present,
     .readback_rgba = gl_readback_rgba,
     .present_postfx = gl_present_postfx,
+    .set_gpu_postfx_enabled = gl_set_gpu_postfx_enabled,
+    .set_gpu_postfx_snapshot = gl_set_gpu_postfx_snapshot,
 };
 
 #endif /* __linux__ && VIPER_ENABLE_GRAPHICS */

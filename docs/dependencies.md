@@ -1,7 +1,7 @@
 ---
 status: active
 audience: contributors
-last-verified: 2026-04-05
+last-verified: 2026-04-09
 ---
 
 # ViperDOS Dependencies for Viper Compiler Toolchain
@@ -57,8 +57,8 @@ To get basic compilation and VM execution working, ViperDOS must provide:
 | `__atomic_thread_fence` | Runtime | Memory barrier |
 
 **Source locations:**
-- `src/runtime/rt_heap.c:51,67,146,169,178,201,210` - Reference counting atomics
-- `src/runtime/rt_threads.c:500` - Thread ID generation (POSIX)
+- `src/runtime/core/rt_heap.c:51,67,146,169,178,201,210` - Reference counting atomics
+- `src/runtime/threads/rt_threads.c:500` - Thread ID generation (POSIX)
 
 **Notes:**
 - No `mmap`/`munmap` usage - all allocation through malloc
@@ -93,9 +93,9 @@ S_IRUSR, S_IWUSR, S_IRGRP, S_IWGRP, S_IROTH, S_IWOTH
 ```
 
 **Source locations:**
-- `src/runtime/rt_file_io.c:323-360` - File open implementation
-- `src/runtime/rt_file_io.c:397-439` - Read byte
-- `src/runtime/rt_file_io.c:599-643` - Write with retry
+- `src/runtime/io/rt_file_io.c:323-360` - File open implementation
+- `src/runtime/io/rt_file_io.c:397-439` - Read byte
+- `src/runtime/io/rt_file_io.c:599-643` - Write with retry
 
 #### Extended (Directory operations)
 
@@ -114,8 +114,8 @@ S_IRUSR, S_IWUSR, S_IRGRP, S_IWGRP, S_IROTH, S_IWOTH
 | `unlink(path)` | `<unistd.h>` | Runtime | Delete file |
 
 **Source locations:**
-- `src/runtime/rt_dir.c` - All directory operations
-- `src/runtime/rt_file_ext.c` - File metadata operations
+- `src/runtime/io/rt_dir.c` - All directory operations
+- `src/runtime/io/rt_file_ext.c` - File metadata operations
 
 ---
 
@@ -136,9 +136,9 @@ S_IRUSR, S_IWUSR, S_IRGRP, S_IWGRP, S_IROTH, S_IWOTH
 - `stderr` - Standard error (FILE*)
 
 **Source locations:**
-- `src/runtime/rt_output.c:57` - `setvbuf` for output buffering
-- `src/runtime/rt_output.c:66-78` - `fputs`, `fwrite`, `fflush` (exact lines)
-- `src/runtime/rt_io.c` - Core I/O operations
+- `src/runtime/core/rt_output.c:57` - `setvbuf` for output buffering
+- `src/runtime/core/rt_output.c:66-78` - `fputs`, `fwrite`, `fflush` (exact lines)
+- `src/runtime/core/rt_io.c` - Core I/O operations
 
 #### Terminal Control (Optional - for interactive programs)
 
@@ -161,9 +161,9 @@ TCSANOW   // Apply changes immediately
 ```
 
 **Source locations:**
-- `src/runtime/rt_term.c:99-148` - Terminal raw mode handling (`init_term_cache`, `rt_term_enable_raw_mode`)
-- `src/runtime/rt_term.c:397-508` - Non-blocking key input (`readkey_nonblocking`)
-- `src/runtime/rt_term.c:171-181` - TTY detection (`stdout_isatty`)
+- `src/runtime/core/rt_term.c:99-148` - Terminal raw mode handling (`init_term_cache`, `rt_term_enable_raw_mode`)
+- `src/runtime/core/rt_term.c:397-508` - Non-blocking key input (`readkey_nonblocking`)
+- `src/runtime/core/rt_term.c:171-181` - TTY detection (`stdout_isatty`)
 
 ---
 
@@ -184,9 +184,9 @@ CLOCK_REALTIME    // For wall-clock time (fallback)
 ```
 
 **Source locations:**
-- `src/runtime/rt_time.c:281-335` - `clock_gettime` for timer (CLOCK_MONOTONIC and CLOCK_REALTIME)
-- `src/runtime/rt_time.c:182-244` - `nanosleep` with EINTR retry
-- `src/runtime/rt_datetime.c:197` - `localtime` for timestamps
+- `src/runtime/core/rt_time.c:281-335` - `clock_gettime` for timer (CLOCK_MONOTONIC and CLOCK_REALTIME)
+- `src/runtime/core/rt_time.c:182-244` - `nanosleep` with EINTR retry
+- `src/runtime/core/rt_datetime.c:197` - `localtime` for timestamps
 
 #### Date/Time (Optional - for DateTime class)
 
@@ -199,9 +199,9 @@ CLOCK_REALTIME    // For wall-clock time (fallback)
 | `strftime(buf, max, fmt, tm)` | `<time.h>` | Runtime | Format time string |
 
 **Source locations:**
-- `src/runtime/rt_datetime.c:144-165` - Platform-specific ms time (gettimeofday on macOS)
-- `src/runtime/rt_datetime.c:197-408` - Date component extraction
-- `src/runtime/rt_datetime.c:450-482` - Time formatting
+- `src/runtime/core/rt_datetime.c:144-165` - Platform-specific ms time (gettimeofday on macOS)
+- `src/runtime/core/rt_datetime.c:197-408` - Date component extraction
+- `src/runtime/core/rt_datetime.c:450-482` - Time formatting
 
 ---
 
@@ -218,8 +218,8 @@ CLOCK_REALTIME    // For wall-clock time (fallback)
 | `sched_yield()` | `<sched.h>` | Runtime | Yield CPU |
 
 **Source locations:**
-- `src/runtime/rt_threads.c:604-660` - Thread creation with `pthread_create`
-- `src/runtime/rt_threads.c:984-988` - `sched_yield` wrapper
+- `src/runtime/threads/rt_threads.c:604-660` - Thread creation with `pthread_create`
+- `src/runtime/threads/rt_threads.c:984-988` - `sched_yield` wrapper
 
 #### Mutex Operations
 
@@ -231,8 +231,8 @@ CLOCK_REALTIME    // For wall-clock time (fallback)
 | `pthread_mutex_unlock(mutex)` | `<pthread.h>` | Runtime | Unlock mutex |
 
 **Source locations:**
-- `src/runtime/rt_threads.c:641` - Mutex init (`pthread_mutex_init`)
-- `src/runtime/rt_monitor.c:794,810-835` - Global monitor table mutex usage
+- `src/runtime/threads/rt_threads.c:641` - Mutex init (`pthread_mutex_init`)
+- `src/runtime/threads/rt_monitor.c:794,810-835` - Global monitor table mutex usage
 
 #### Condition Variables
 
@@ -246,9 +246,9 @@ CLOCK_REALTIME    // For wall-clock time (fallback)
 | `pthread_cond_wait(cond, mutex)` | `<pthread.h>` | Runtime | Wait on condition |
 
 **Source locations:**
-- `src/runtime/rt_threads.c:719` - `pthread_cond_wait`
-- `src/runtime/rt_threads.c:860` - `pthread_cond_timedwait`
-- `src/runtime/rt_monitor.c:858,1436,1502` - Condition signaling (`pthread_cond_signal`)
+- `src/runtime/threads/rt_threads.c:719` - `pthread_cond_wait`
+- `src/runtime/threads/rt_threads.c:860` - `pthread_cond_timedwait`
+- `src/runtime/threads/rt_monitor.c:858,1436,1502` - Condition signaling (`pthread_cond_signal`)
 
 ---
 
@@ -298,7 +298,7 @@ CLOCK_REALTIME    // For wall-clock time (fallback)
 | `trunc(x)` | `<math.h>` | Runtime | Truncate toward zero |
 
 **Source locations:**
-- `src/runtime/rt_math.c:41-464` - All math wrappers
+- `src/runtime/core/rt_math.c:41-464` - All math wrappers
 
 ---
 
@@ -329,8 +329,8 @@ CLOCK_REALTIME    // For wall-clock time (fallback)
 | `waitpid(pid, status, options)` | `<sys/wait.h>` | Runtime | Wait for child |
 
 **Source locations:**
-- `src/runtime/rt_exec.c:203,253` - `posix_spawn` usage
-- `src/runtime/rt_exec.c:108,114` - `environ` global (conditional declarations)
+- `src/runtime/system/rt_exec.c:203,253` - `posix_spawn` usage
+- `src/runtime/system/rt_exec.c:108,114` - `environ` global (conditional declarations)
 
 ---
 
@@ -345,9 +345,9 @@ CLOCK_REALTIME    // For wall-clock time (fallback)
 | `unsetenv(name)` | `<stdlib.h>` | Runtime | Unset environment variable |
 
 **Source locations:**
-- `src/runtime/rt_args.c:400` - Get environment variable
-- `src/runtime/rt_args.c:449` - Set environment variable
-- `src/runtime/rt_machine.c:196-265` - Get user/home/temp directories
+- `src/runtime/core/rt_args.c:400` - Get environment variable
+- `src/runtime/core/rt_args.c:449` - Set environment variable
+- `src/runtime/system/rt_machine.c:196-265` - Get user/home/temp directories
 
 ---
 
@@ -421,12 +421,12 @@ The codebase uses `#ifdef` blocks for platform differences:
 ```
 
 **Files with platform conditionals:**
-- `src/runtime/rt_dir.c:92-107` - Directory operations
-- `src/runtime/rt_exec.c:97-108` - Process spawning (platform conditional)
-- `src/runtime/rt_file_io.c:40-91` - Windows CRT mappings
-- `src/runtime/rt_term.c:31-71` - Terminal headers (platform conditionals)
-- `src/runtime/rt_threads.c:127` - Windows thread stubs (`#if defined(_WIN32)`)
-- `src/runtime/rt_time.c:58-168` - Time implementations (platform selection)
+- `src/runtime/io/rt_dir.c:92-107` - Directory operations
+- `src/runtime/system/rt_exec.c:97-108` - Process spawning (platform conditional)
+- `src/runtime/io/rt_file_io.c:40-91` - Windows CRT mappings
+- `src/runtime/core/rt_term.c:31-71` - Terminal headers (platform conditionals)
+- `src/runtime/threads/rt_threads.c:127` - Windows thread stubs (`#if defined(_WIN32)`)
+- `src/runtime/core/rt_time.c:58-168` - Time implementations (platform selection)
 
 ### macOS-Specific
 
@@ -437,7 +437,7 @@ The codebase uses `#ifdef` blocks for platform differences:
 ```
 
 **Source locations:**
-- `src/runtime/rt_datetime.c:82,161-163` - macOS time functions (`RT_PLATFORM_MACOS`, `gettimeofday`)
+- `src/runtime/core/rt_datetime.c:82,161-163` - macOS time functions (`RT_PLATFORM_MACOS`, `gettimeofday`)
 - `src/runtime/rt_platform.h` - Platform detection macros
 
 ---
@@ -459,7 +459,7 @@ The runtime uses C++ for some threading primitives:
 | `<thread>` | `std::thread::id`, `std::this_thread::get_id()` |
 
 **Source locations:**
-- `src/runtime/rt_threads_primitives.cpp:34-41` - C++ headers for threading
+- `src/runtime/threads/rt_threads_primitives.cpp:34-41` - C++ headers for threading
 
 **Note:** These are only needed for the advanced threading primitives (Gate, Barrier, RwLock). The core threading (`rt_threads.c`) uses pthreads directly.
 

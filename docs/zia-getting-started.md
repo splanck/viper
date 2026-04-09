@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-06
+last-verified: 2026-04-09
 ---
 
 # Zia — Getting Started
@@ -371,7 +371,8 @@ while i < numbers.count() {
 ```viper
 bind Viper.Terminal;
 
-var scores: Map[String, Integer] = new Map[String, Integer]();
+// Empty map literal: {}. Map literals also support {key: value, ...}.
+var scores: Map[String, Integer] = {};
 scores.set("Alice", 95);
 scores.set("Bob", 87);
 
@@ -379,6 +380,9 @@ if scores.has("Alice") {
     SayInt(scores.get("Alice"));
 }
 ```
+
+> Map keys must be `String` (the Sema layer rejects other key types). Use the literal form `{}`
+> for an empty map; there is no `new Map[K, V]()` constructor in the language-level generics.
 
 ### Class Instance Lists
 

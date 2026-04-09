@@ -1,7 +1,7 @@
 ---
 status: active
 audience: developers
-last-verified: 2026-04-05
+last-verified: 2026-04-09
 ---
 
 # Viper Backend — Native Code Generation
@@ -342,7 +342,8 @@ if (rule) {
 
 **Categories:**
 
-- **Arithmetic** (`Lowering.Arith.cpp`): `add`, `sub`, `mul`, `div`, `rem`
+- **Arithmetic** (`Lowering.Arith.cpp`): `iadd.ovf`, `isub.ovf`, `imul.ovf`, `sdiv.chk0`, `udiv.chk0`, `srem.chk0`,
+  `urem.chk0`, `fadd`, `fsub`, `fmul`, `fdiv`
 - **Bitwise** (`Lowering.Bitwise.cpp`): `and`, `or`, `xor`, `shl`, `shr`
 - **Control Flow** (`Lowering.CF.cpp`): `br`, `cbr`, `ret`, `switch`
 - **Memory** (`Lowering.Mem.cpp`): `load`, `store`, `alloca`, `gep`
@@ -904,7 +905,7 @@ x86-64 backend but is tailored for the ARM instruction set and AAPCS64 calling c
 - Comparisons and conditional branches
 - Floating-point arithmetic (fadd, fsub, fmul, fdiv)
 - Function calls (direct)
-- Integer arithmetic (add, sub, mul)
+- Integer arithmetic (iadd.ovf, isub.ovf, imul.ovf, sdiv.chk0, udiv.chk0, srem.chk0, urem.chk0)
 - Local variables (FP-relative addressing)
 - Switch statements
 
@@ -1087,9 +1088,9 @@ src/codegen/
 - Basic exception handling
 - Bitwise operations (and, or, xor, shifts)
 - Comparisons and branches
-- Floating-point arithmetic (add, sub, mul, div)
+- Floating-point arithmetic (fadd, fsub, fmul, fdiv)
 - Function calls (direct)
-- Integer arithmetic (add, sub, mul, div, rem)
+- Integer arithmetic (iadd.ovf, isub.ovf, imul.ovf, sdiv.chk0, udiv.chk0, srem.chk0, urem.chk0)
 - Local variables (via stack)
 
 **Limitations:**

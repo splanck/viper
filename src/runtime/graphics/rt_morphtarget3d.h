@@ -37,6 +37,9 @@ void rt_morphtarget3d_set_weight(void *mt, int64_t shape, double weight);
 double rt_morphtarget3d_get_weight(void *mt, int64_t shape);
 void rt_morphtarget3d_set_weight_by_name(void *mt, rt_string name, double weight);
 int64_t rt_morphtarget3d_get_shape_count(void *mt);
+const float *rt_morphtarget3d_get_packed_deltas(void *mt);
+const float *rt_morphtarget3d_get_packed_normal_deltas(void *mt);
+uint64_t rt_morphtarget3d_get_payload_generation(void *mt);
 void rt_mesh3d_set_morph_targets(void *mesh, void *morph_targets);
 void rt_canvas3d_draw_mesh_morphed(
     void *canvas, void *mesh, void *transform, void *material, void *morph_targets);

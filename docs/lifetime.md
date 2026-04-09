@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-05
+last-verified: 2026-04-09
 ---
 
 # Lifetime Model
@@ -17,10 +17,10 @@ model and best practices.
 
 ## Explicit Disposal
 
-- Disposing `NULL` is a no-op.
-- Multiple disposals of the same object are a programming error; debug builds trap to aid diagnosis.
-- Use `DISPOSE obj` to deterministically destroy an instance when it goes out of scope or when you finish with it
-  earlier.
+- Deleting `NULL` is a no-op.
+- Multiple deletes of the same object are a programming error; debug builds trap to aid diagnosis.
+- Use `DELETE obj` to deterministically destroy an instance when it goes out of scope or when you finish with it
+  earlier. (The BASIC keyword is `DELETE`; there is no `DISPOSE` keyword.)
 
 ## Destructors
 
@@ -68,18 +68,18 @@ a.Other = NULL
 ' And a can be freed after that
 ```
 
-For complex data structures like doubly-linked lists or graphs, use `DISPOSE` with explicit
+For complex data structures like doubly-linked lists or graphs, use `DELETE` with explicit
 cleanup that clears cyclic references:
 
 ```basic
 ' Clean up a doubly-linked list
 DIM current AS Node = head
 WHILE current <> NULL
-    DIM next AS Node = current.Next
+    DIM nxt AS Node = current.Next
     current.Prev = NULL
     current.Next = NULL
-    DISPOSE current
-    current = next
+    DELETE current
+    current = nxt
 WEND
 ```
 
@@ -101,8 +101,8 @@ Viper includes a cycle-detecting garbage collector (`rt_gc.c`) that uses a trial
 ## Guidance
 
 - Be mindful of cyclic references; break them explicitly before objects go out of scope.
-- Do not dispose `ME` inside a destructor; this is diagnosed as an error to prevent recursion.
-- Prefer `DISPOSE` when you want timely cleanup of scarce resources (file handles, OS objects) and ordering relative to
+- Do not delete `ME` inside a destructor; this is diagnosed as an error to prevent recursion.
+- Prefer `DELETE` when you want timely cleanup of scarce resources (file handles, OS objects) and ordering relative to
   surrounding code matters.
 - Use static destructors for module-scoped resources that must outlive all user code in the module.
 

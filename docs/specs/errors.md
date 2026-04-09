@@ -1,6 +1,6 @@
 ---
 status: draft
-last-verified: 2026-04-05
+last-verified: 2026-04-09
 audience: public
 ---
 
@@ -142,7 +142,7 @@ simply fall off the end (which behaves like re-raising the same trap).
 
 ### Runtime `Err` Code → Trap Kind
 
-The `Err` enum is defined in `src/runtime/rt_error.h`. Numeric values are listed for reference.
+The `Err` enum is defined in `src/runtime/core/rt_error.h`. Numeric values are listed for reference.
 
 | Runtime `Err`                         | Value | Trap Kind          |
 |---------------------------------------|-------|--------------------|

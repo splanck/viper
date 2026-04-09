@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-05
+last-verified: 2026-04-09
 ---
 
 # Viper IL — Reference
@@ -70,11 +70,58 @@ entry:
 
 ### Arithmetic
 
-**`add`** — Integer addition (no overflow check).
+> **Note**: Plain integer arithmetic opcodes (`add`, `sub`, `mul`, `sdiv`, `udiv`, `srem`, `urem`) exist in the opcode
+> table but are **rejected by the verifier**. Front ends must emit the overflow-checked (`.ovf`) or divide-by-zero
+> checked (`.chk0`) forms below. Floating-point uses the `f` prefix (`fadd`, `fsub`, `fmul`, `fdiv`).
+
+**`iadd.ovf`** — Signed integer addition; traps on signed overflow.
 
 ```llvm
-%sum = add %a, %b
-%t0 = add 10, 20
+%t0 = iadd.ovf 1, 2
+%sum = iadd.ovf %a, %b
+```
+
+**`isub.ovf`** — Signed integer subtraction; traps on signed overflow.
+
+```llvm
+%n2 = isub.ovf %n1, 1
+%diff = isub.ovf %lhs, %rhs
+```
+
+**`imul.ovf`** — Signed integer multiplication; traps on signed overflow.
+
+```llvm
+%t1 = imul.ovf %t0, 3
+%prod = imul.ovf %a, %b
+```
+
+**`sdiv.chk0`** — Signed integer division; traps on divide-by-zero or `INT64_MIN / -1`.
+
+```llvm
+%t0 = sdiv.chk0 %a, %b
+%t3 = sdiv.chk0 %t2, 5
+```
+
+**`udiv.chk0`** — Unsigned integer division; traps on divide-by-zero.
+
+```llvm
+%t2 = udiv.chk0 %a, %b
+%t4 = udiv.chk0 10, 2
+```
+
+**`srem.chk0`** — Signed integer remainder; traps on divide-by-zero. Quotient truncates toward zero; the remainder
+keeps the dividend's sign. Matches BASIC `MOD`.
+
+```llvm
+%rem = srem.chk0 %a, %b
+%t0 = srem.chk0 17, 5
+```
+
+**`urem.chk0`** — Unsigned integer remainder; traps on divide-by-zero.
+
+```llvm
+%rem = urem.chk0 %a, %b
+%t0 = urem.chk0 17, 5
 ```
 
 **`fadd`** — Floating-point addition.
@@ -84,11 +131,11 @@ entry:
 %t13 = fadd 1.0, 2.5
 ```
 
-**`fdiv`** — Floating-point division.
+**`fsub`** — Floating-point subtraction.
 
 ```llvm
-%avg = fdiv %fsum, %fn
-%t16 = fdiv %t15, 2.0
+%t14 = fsub %t13, 1.25
+%t10 = fsub %t8, %t9
 ```
 
 **`fmul`** — Floating-point multiplication.
@@ -97,102 +144,11 @@ entry:
 %t15 = fmul %t14, 4.0
 ```
 
-**`fsub`** — Floating-point subtraction.
+**`fdiv`** — Floating-point division.
 
 ```llvm
-%t14 = fsub %t13, 1.25
-%t10 = fsub %t8, %t9
-```
-
-**`iadd.ovf`** — Integer addition with overflow check (traps on overflow).
-
-```llvm
-%t0 = iadd.ovf 1, 2
-%sum = iadd.ovf %a, %b
-```
-
-**`imul.ovf`** — Integer multiplication with overflow check (traps on overflow).
-
-```llvm
-%t1 = imul.ovf %t0, 3
-%prod = imul.ovf %a, %b
-```
-
-**`isub.ovf`** — Integer subtraction with overflow check (traps on overflow).
-
-```llvm
-%n2 = isub.ovf %n1, 1
-%diff = isub.ovf %lhs, %rhs
-```
-
-**`mul`** — Integer multiplication (no overflow check).
-
-```llvm
-%prod = mul %a, %b
-%t0 = mul 3, 7
-```
-
-**`sdiv`** — Signed integer division (no divide-by-zero check; undefined behavior on zero).
-
-```llvm
-%quot = sdiv %a, %b
-%t0 = sdiv 20, 4
-```
-
-**`sdiv.chk0`** — Signed integer division with divide-by-zero check (traps if divisor is zero).
-
-```llvm
-%t0 = sdiv.chk0 %a, %b
-%t3 = sdiv.chk0 %t2, 5
-```
-
-**`srem`** — Signed integer remainder (no divide-by-zero check; undefined behavior on zero).
-
-```llvm
-%rem = srem %a, %b
-%t0 = srem 17, 5
-```
-
-**`srem.chk0`** — Signed integer remainder with divide-by-zero check (traps if divisor is zero).
-
-```llvm
-%rem = srem.chk0 %a, %b
-%t0 = srem.chk0 17, 5
-```
-
-**`sub`** — Integer subtraction (no overflow check).
-
-```llvm
-%diff = sub %a, %b
-%t0 = sub 10, 5
-```
-
-**`udiv`** — Unsigned integer division (no divide-by-zero check; undefined behavior on zero).
-
-```llvm
-%quot = udiv %a, %b
-%t0 = udiv 20, 4
-```
-
-**`udiv.chk0`** — Unsigned integer division with divide-by-zero check (traps if divisor is zero).
-
-```llvm
-%t2 = udiv.chk0 %a, %b
-%t4 = udiv.chk0 10, 2
-```
-
-**`urem`** — Unsigned integer remainder (no divide-by-zero check; undefined behavior on zero).
-
-```llvm
-%rem = urem %a, %b
-%t0 = urem 17, 5
-```
-
-**`urem.chk0`** — Unsigned integer remainder with divide-by-zero check (traps if divisor is zero).
-
-```llvm
-%rem = urem.chk0 %a, %b
-%t0 = urem.chk0 17, 5
+%avg = fdiv %fsum, %fn
+%t16 = fdiv %t15, 2.0
 ```
 
 ### Comparison
@@ -652,10 +608,9 @@ resume.same %tok
 %fn = sitofp %n2
 ```
 
-**`target`** — Specify target architecture or platform.
+**`target`** — Specify target architecture or platform. The triple must be quoted.
 
 ```llvm
-target wasm32-unknown-unknown
 target "wasm32-unknown-unknown"
 ```
 
@@ -685,7 +640,9 @@ target "wasm32-unknown-unknown"
 The verifier enforces structural and type rules. Typical checks include:
 
 - Block must end with a terminator (`ret`, `br`, `cbr`, `switch.i32`, `trap`, `trap.from_err`, or `resume.*`).
-- Operand types must match instruction requirements (e.g., `add` takes two `i64` operands).
+- Operand types must match instruction requirements (e.g., `iadd.ovf` takes two `i64` operands).
+- Plain integer arithmetic (`add`, `sub`, `mul`, `sdiv`, `udiv`, `srem`, `urem`) is rejected; use the `.ovf` and
+  `.chk0` variants.
 - Block parameters must be passed correctly by all predecessor branches.
 - Branch targets must be valid labels in the same function.
 - Calls must match callee signature exactly.

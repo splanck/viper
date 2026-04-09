@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-05
+last-verified: 2026-04-09
 ---
 
 # Getting Started on Windows
@@ -115,7 +115,7 @@ After building, run the Viper binary directly from the build directory:
 .\build\src\tools\viper\Debug\viper.exe --version
 ```
 
-You should see the version string (e.g., `viper 0.2.3-snapshot`).
+You should see the version string (e.g., `viper 0.2.4-snapshot`).
 
 To make `viper` available from any directory in your current session, add it to your `PATH`:
 

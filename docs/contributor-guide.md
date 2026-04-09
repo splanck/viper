@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-05
+last-verified: 2026-04-09
 ---
 
 # Contributor Guide
@@ -172,7 +172,7 @@ stored in files containing lines such as:
 EXPECT≈ 3.14 0.05
 ```
 
-The `tests/e2e/support/FloatOut` helper reads program output and these expectation files and fails
+The `src/tests/e2e/support/FloatOut` helper reads program output and these expectation files and fails
 if any absolute difference exceeds the specified tolerance. The CMake test driver runs this helper
 after executing the sample.
 
@@ -220,7 +220,7 @@ error[B1005]: duplicate parameter 'A'
 
 30 SUB S(X#())
         ^
-error[B2004]: array parameter must be i64[] or str[]
+error[B2004]: array parameter must be i64 or str
 
 50 FUNCTION S()
             ^
@@ -348,9 +348,9 @@ parameter list.
 
 #### Flags
 
-- `--break <file:line>`: Generic breakpoint flag. If the argument contains a path separator or dot, it is interpreted as
-  a source-line breakpoint.
-- `--break-src <file:line>`: Explicit source-line breakpoint.
+- `--break <spec>`: Generic breakpoint flag. If `<spec>` ends in `:<digits>` and the prefix is non-empty, it is treated
+  as a `<file:line>` source breakpoint; otherwise it is treated as an IL block label breakpoint.
+- `--break-src <file:line>`: Explicit source-line breakpoint. The argument must contain a colon and a numeric line.
 
 Paths are normalized before comparison, including platform separators and `.`/`..` segments. When the normalized path
 does not match the location recorded in the IL, `viper` falls back to comparing only the basename.
@@ -378,8 +378,11 @@ These built-in functions interact with the terminal and require manual testing t
 
 #### Non-blocking read (INKEY$)
 
+Create a temporary test file and run:
+
 ```sh
-vbasic examples/inkey_smoke.bas
+echo 'k$ = INKEY$(): IF LEN(k$) = 0 THEN PRINT "No key" ELSE PRINT "Got:"; ASC(k$)' > /tmp/inkey.bas
+vbasic /tmp/inkey.bas
 ```
 
 Expected: Program polls once, prints "No key" (or the key code if pressed quickly), and exits immediately without
