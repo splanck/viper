@@ -791,7 +791,8 @@ class ModuleAdapter {
 
     void adaptStore(const il::core::Instr &instr, ILInstr &out) {
         out.opcode = "store";
-        convertOperands(instr, {std::nullopt, ILValue::Kind::PTR, ILValue::Kind::I64}, out);
+        convertOperands(
+            instr, {ILValue::Kind::PTR, typeToKind(instr.type), ILValue::Kind::I64}, out);
         if (out.ops.size() > 3) {
             out.ops.resize(3);
         }

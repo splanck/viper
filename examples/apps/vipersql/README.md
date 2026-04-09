@@ -14,7 +14,8 @@ It runs interpreted (via the Viper VM) or compiled to native **ARM64 / x86-64** 
 
 ```bash
 # Build the toolchain first
-./scripts/build_viper.sh
+./scripts/build_viper_linux.sh   # Linux
+./scripts/build_viper_mac.sh     # macOS
 
 # Start the ViperSQL database server (port 5432)
 viper run examples/apps/vipersql/

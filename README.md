@@ -41,7 +41,14 @@
 Build and test:
 
 ```bash
-./scripts/build_viper.sh
+# macOS
+./scripts/build_viper_mac.sh
+
+# Linux
+./scripts/build_viper_linux.sh
+
+# Windows
+scripts\build_viper.cmd
 ```
 
 Create and run a project:
@@ -284,7 +291,11 @@ viper repl                     # Interactive REPL
 ### Build Steps
 
 ```bash
-./scripts/build_viper.sh
+# macOS
+./scripts/build_viper_mac.sh
+
+# Linux
+./scripts/build_viper_linux.sh
 ```
 
 This configures, builds, tests, and installs Viper in one step.

@@ -1097,6 +1097,8 @@ int vgfx_platform_process_events(struct vgfx_window *win) {
 int vgfx_platform_present(struct vgfx_window *win) {
     if (!win || !win->platform_data)
         return 0;
+    if (win->skip_software_present)
+        return 1;
 
     @autoreleasepool {
         vgfx_macos_platform *platform = (vgfx_macos_platform *)win->platform_data;

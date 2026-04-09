@@ -26,8 +26,11 @@
 Build the Viper toolchain from the repository root:
 
 ```bash
-# macOS / Linux
-./scripts/build_viper.sh
+# macOS
+./scripts/build_viper_mac.sh
+
+# Linux
+./scripts/build_viper_linux.sh
 
 # Windows
 scripts\build_viper.cmd

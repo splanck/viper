@@ -30,6 +30,7 @@
 #include <float.h>
 #include <math.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -106,6 +107,15 @@ typedef struct {
     float uv[2];
     float color[4];
 } pipe_vert_t;
+
+static int sw_debug_enabled(void) {
+    static int cached = -1;
+    if (cached == -1) {
+        const char *env = getenv("VIPER_3D_DEBUG");
+        cached = (env && *env && strcmp(env, "0") != 0) ? 1 : 0;
+    }
+    return cached;
+}
 
 #define MAX_CLIP_VERTS 9
 
@@ -525,28 +535,75 @@ static void raster_triangle(uint8_t *pixels,
                             int8_t backface_cull,
                             const sw_context_t *fog_ctx) {
     float area = (v1->sx - v0->sx) * (v2->sy - v0->sy) - (v2->sx - v0->sx) * (v1->sy - v0->sy);
+    float original_area = area;
+    int emit_debug = 0;
+    int min_x = 0, max_x = 0, min_y = 0, max_y = 0;
+    int inside_samples = 0;
+    int depth_passes = 0;
+    int pixels_written = 0;
+    static int debug_tri_count = 0;
+
+    if (sw_debug_enabled() && debug_tri_count < 16)
+        emit_debug = 1;
 
     /* After viewport Y-flip, CCW world-space triangles have NEGATIVE screen-space
      * area. So negative area = front face, positive area = back face.
      * Cull back faces (positive area) when backface culling is enabled. */
-    if (backface_cull && area >= 0.0f)
+    if (backface_cull && area >= 0.0f) {
+        if (emit_debug) {
+            fprintf(stderr,
+                    "[sw3d] tri %d culled area=%.3f v0=(%.2f %.2f %.3f) v1=(%.2f %.2f %.3f) "
+                    "v2=(%.2f %.2f %.3f)\n",
+                    debug_tri_count++,
+                    original_area,
+                    v0->sx,
+                    v0->sy,
+                    v0->sz,
+                    v1->sx,
+                    v1->sy,
+                    v1->sz,
+                    v2->sx,
+                    v2->sy,
+                    v2->sz);
+        }
         return;
+    }
     if (area < 0.0f) {
         const screen_vert_t *tmp = v1;
         v1 = v2;
         v2 = tmp;
         area = -area;
     }
-    if (area < 1e-6f)
+    if (area < 1e-6f) {
+        if (emit_debug) {
+            fprintf(stderr,
+                    "[sw3d] tri %d degenerate area=%.6f orig=%.6f\n",
+                    debug_tri_count++,
+                    area,
+                    original_area);
+        }
         return;
+    }
 
     float inv_area = 1.0f / area;
-    int min_x = (int)fmaxf(fminf(fminf(v0->sx, v1->sx), v2->sx), 0.0f);
-    int max_x = (int)fminf(fmaxf(fmaxf(v0->sx, v1->sx), v2->sx), (float)(fb_w - 1));
-    int min_y = (int)fmaxf(fminf(fminf(v0->sy, v1->sy), v2->sy), 0.0f);
-    int max_y = (int)fminf(fmaxf(fmaxf(v0->sy, v1->sy), v2->sy), (float)(fb_h - 1));
-    if (min_x > max_x || min_y > max_y)
+    min_x = (int)fmaxf(fminf(fminf(v0->sx, v1->sx), v2->sx), 0.0f);
+    max_x = (int)fminf(fmaxf(fmaxf(v0->sx, v1->sx), v2->sx), (float)(fb_w - 1));
+    min_y = (int)fmaxf(fminf(fminf(v0->sy, v1->sy), v2->sy), 0.0f);
+    max_y = (int)fminf(fmaxf(fmaxf(v0->sy, v1->sy), v2->sy), (float)(fb_h - 1));
+    if (min_x > max_x || min_y > max_y) {
+        if (emit_debug) {
+            fprintf(stderr,
+                    "[sw3d] tri %d clipped bbox=(%d..%d,%d..%d) area=%.3f orig=%.3f\n",
+                    debug_tri_count++,
+                    min_x,
+                    max_x,
+                    min_y,
+                    max_y,
+                    area,
+                    original_area);
+        }
         return;
+    }
 
     /* Half-space edge functions for rasterization.
      * w0/w1/w2 are the signed distances from pixel center to each edge.
@@ -564,6 +621,7 @@ static void raster_triangle(uint8_t *pixels,
         float w0 = row_w0, w1 = row_w1, w2 = row_w2;
         for (int x = min_x; x <= max_x; x++) {
             if (w0 >= 0.0f && w1 >= 0.0f && w2 >= 0.0f) {
+                inside_samples++;
                 /* Barycentric weights from edge functions; z is linearly
                  * interpolated in screen space (not perspective-correct,
                  * but sufficient for depth testing). */
@@ -571,6 +629,7 @@ static void raster_triangle(uint8_t *pixels,
                 float z = b0 * v0->sz + b1 * v1->sz + b2 * v2->sz;
                 int idx = y * fb_w + x;
                 if (z < zbuf[idx]) {
+                    depth_passes++;
                     float fr = b0 * v0->r + b1 * v1->r + b2 * v2->r;
                     float fg = b0 * v0->g + b1 * v1->g + b2 * v2->g;
                     float fb_c = b0 * v0->b + b1 * v1->b + b2 * v2->b;
@@ -1103,6 +1162,7 @@ static void raster_triangle(uint8_t *pixels,
                         dst[1] = (uint8_t)(clamp01f(fg) * 255.0f);
                         dst[2] = (uint8_t)(clamp01f(fb_c) * 255.0f);
                         dst[3] = 0xFF;
+                        pixels_written++;
                     } else if (!discard_fragment && fa > 0.0f) {
                         /* Transparent: alpha blend (src*a + dst*(1-a)).
                          * No Z-buffer write — transparent fragments don't occlude. */
@@ -1111,6 +1171,7 @@ static void raster_triangle(uint8_t *pixels,
                         dst[1] = (uint8_t)(clamp01f(fg) * 255.0f * fa + (float)dst[1] * inv_a);
                         dst[2] = (uint8_t)(clamp01f(fb_c) * 255.0f * fa + (float)dst[2] * inv_a);
                         dst[3] = 0xFF;
+                        pixels_written++;
                     }
                     /* else: alpha <= 0 → fully invisible, skip */
                 }
@@ -1122,6 +1183,31 @@ static void raster_triangle(uint8_t *pixels,
         row_w0 += e12_dx;
         row_w1 += e20_dx;
         row_w2 += e01_dx;
+    }
+
+    if (emit_debug) {
+        fprintf(stderr,
+                "[sw3d] tri %d area=%.3f orig=%.3f bbox=(%d..%d,%d..%d) inside=%d depth=%d "
+                "written=%d v0=(%.2f %.2f %.3f) v1=(%.2f %.2f %.3f) v2=(%.2f %.2f %.3f)\n",
+                debug_tri_count++,
+                area,
+                original_area,
+                min_x,
+                max_x,
+                min_y,
+                max_y,
+                inside_samples,
+                depth_passes,
+                pixels_written,
+                v0->sx,
+                v0->sy,
+                v0->sz,
+                v1->sx,
+                v1->sy,
+                v1->sz,
+                v2->sx,
+                v2->sy,
+                v2->sz);
     }
 }
 
@@ -1478,6 +1564,10 @@ static void sw_submit_draw(void *ctx_ptr,
 
     float half_w = (float)out_w * 0.5f;
     float half_h = (float)out_h * 0.5f;
+    int emit_debug = 0;
+    static int debug_draw_count = 0;
+    if (sw_debug_enabled() && debug_draw_count < 8)
+        emit_debug = 1;
 
     /* Transform mesh vertices */
     uint32_t vc = cmd->vertex_count;
@@ -1540,6 +1630,62 @@ static void sw_submit_draw(void *ctx_ptr,
         } else {
             compute_lighting(dst, ctx->cam_pos, cmd, lights, light_count, ambient);
         }
+    }
+
+    if (emit_debug) {
+        uint32_t limit = vc < 4 ? vc : 4;
+        fprintf(stderr,
+                "[sw3d] draw %d vc=%u ic=%u ambient=(%.3f %.3f %.3f) lights=%d alpha=%.3f "
+                "diffuse=(%.3f %.3f %.3f %.3f)\n",
+                debug_draw_count,
+                cmd->vertex_count,
+                cmd->index_count,
+                ambient ? ambient[0] : 0.0f,
+                ambient ? ambient[1] : 0.0f,
+                ambient ? ambient[2] : 0.0f,
+                light_count,
+                cmd->alpha,
+                cmd->diffuse_color[0],
+                cmd->diffuse_color[1],
+                cmd->diffuse_color[2],
+                cmd->diffuse_color[3]);
+        fprintf(stderr,
+                "[sw3d] mvp rows=(%.3f %.3f %.3f %.3f) (%.3f %.3f %.3f %.3f) (%.3f %.3f %.3f "
+                "%.3f) (%.3f %.3f %.3f %.3f)\n",
+                mvp[0],
+                mvp[1],
+                mvp[2],
+                mvp[3],
+                mvp[4],
+                mvp[5],
+                mvp[6],
+                mvp[7],
+                mvp[8],
+                mvp[9],
+                mvp[10],
+                mvp[11],
+                mvp[12],
+                mvp[13],
+                mvp[14],
+                mvp[15]);
+        for (uint32_t i = 0; i < limit; i++) {
+            fprintf(stderr,
+                    "[sw3d] v%u pos=(%.3f %.3f %.3f) clip=(%.3f %.3f %.3f %.3f) color=(%.3f "
+                    "%.3f %.3f %.3f)\n",
+                    i,
+                    cmd->vertices[i].pos[0],
+                    cmd->vertices[i].pos[1],
+                    cmd->vertices[i].pos[2],
+                    pv[i].clip[0],
+                    pv[i].clip[1],
+                    pv[i].clip[2],
+                    pv[i].clip[3],
+                    pv[i].color[0],
+                    pv[i].color[1],
+                    pv[i].color[2],
+                    pv[i].color[3]);
+        }
+        debug_draw_count++;
     }
 
     /* Process triangles: clip → rasterize */
@@ -1695,18 +1841,21 @@ const vgfx3d_backend_t vgfx3d_software_backend = {
 };
 
 const vgfx3d_backend_t *vgfx3d_select_backend(void) {
-    /* Check for VIPER_3D_BACKEND=software override */
+    /* Explicit backend override for Linux bring-up and backend testing. */
     const char *env = getenv("VIPER_3D_BACKEND");
     if (env && strcmp(env, "software") == 0)
         return &vgfx3d_software_backend;
+    if (env && strcmp(env, "opengl") == 0)
+        return &vgfx3d_opengl_backend;
 
-    /* Try GPU backend first, fall back to software. */
+    /* Linux OpenGL is still under active bring-up, so prefer the software
+     * backend by default there until the GL path is stable across frames. */
 #if defined(__APPLE__)
     return &vgfx3d_metal_backend;
 #elif defined(_WIN32)
     return &vgfx3d_d3d11_backend;
 #elif defined(__linux__)
-    return &vgfx3d_opengl_backend;
+    return &vgfx3d_software_backend;
 #else
     return &vgfx3d_software_backend;
 #endif

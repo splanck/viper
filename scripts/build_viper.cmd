@@ -3,7 +3,7 @@ setlocal enabledelayedexpansion
 set TESTS_FAILED=0
 
 REM build_viper.cmd - Windows Viper build + test + install script.
-REM Matches robustness and features of build_viper.sh.
+REM Matches robustness and features of the Unix build scripts.
 
 echo ==========================================
 echo Building Viper on Windows

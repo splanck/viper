@@ -8,7 +8,7 @@
 // File: src/runtime/graphics/rt_canvas3d.c
 // Purpose: Viper.Graphics3D.Canvas3D — 3D rendering surface that dispatches
 //   through the vgfx3d_backend_t vtable. Backend selection is automatic
-//   (software fallback always available).
+//   and platform-specific, with software fallback always available.
 //
 // Key invariants:
 //   - Begin/End must bracket DrawMesh calls (no nesting)
@@ -961,8 +961,8 @@ static void rt_canvas3d_finalize(void *obj) {
 }
 
 /// @brief Create a new 3D rendering canvas (window + backend context).
-/// @details Opens a platform window, selects the best available rendering backend
-///          (Metal > OpenGL > D3D11 > software), and initializes the framebuffer,
+/// @details Opens a platform window, selects the platform-default rendering backend
+///          with software fallback if initialization fails, and initializes the framebuffer,
 ///          depth buffer, deferred draw queue, and motion blur history. The canvas
 ///          is the main entry point for 3D rendering — call Begin/DrawMesh/End/Flip
 ///          each frame. GC finalizer destroys the backend context and window.
@@ -1002,11 +1002,11 @@ void *rt_canvas3d_new(rt_string title, int64_t w, int64_t h) {
     c->width = (int32_t)w;
     c->height = (int32_t)h;
 
-    /* Select and initialize backend (GPU first, software fallback) */
+    /* Select and initialize the platform-default backend, with software fallback. */
     c->backend = vgfx3d_select_backend();
     c->backend_ctx = c->backend->create_ctx(c->gfx_win, (int32_t)w, (int32_t)h);
     if (!c->backend_ctx) {
-        /* GPU backend failed — fall back to software */
+        /* Selected backend failed — fall back to software. */
         c->backend = &vgfx3d_software_backend;
         c->backend_ctx = c->backend->create_ctx(c->gfx_win, (int32_t)w, (int32_t)h);
         if (!c->backend_ctx) {
@@ -1014,6 +1014,7 @@ void *rt_canvas3d_new(rt_string title, int64_t w, int64_t h) {
             return NULL;
         }
     }
+    vgfx_set_gpu_present(c->gfx_win, c->backend != &vgfx3d_software_backend);
 
     vgfx_set_resize_callback(c->gfx_win, rt_canvas3d_on_resize, c);
 

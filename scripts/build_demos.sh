@@ -44,7 +44,7 @@ done
 
 if [[ ! -x "$VIPER" ]]; then
     echo -e "${RED}Error: viper tool not found at $VIPER${NC}"
-    echo "Run './scripts/build_viper.sh' first"
+    echo "Run './scripts/build_viper_mac.sh' first"
     exit 1
 fi
 

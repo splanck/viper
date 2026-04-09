@@ -36,7 +36,8 @@ Fuzz Tests (src/tests/fuzz/)
 
 ```bash
 # Build and run all tests
-./scripts/build_viper.sh
+./scripts/build_viper_linux.sh   # Linux
+./scripts/build_viper_mac.sh     # macOS
 
 # Run all tests (after building)
 ctest --test-dir build

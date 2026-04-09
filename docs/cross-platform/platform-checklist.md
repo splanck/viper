@@ -166,7 +166,7 @@ etc.).
 | File | Reason |
 |------|--------|
 | `CMakeLists.txt` (lines 480-498) | CPack generator selection — macOS: `productbuild` (.pkg), Windows: ZIP + NSIS, Linux: DEB + RPM. Output filename patterns differ per platform. |
-| `scripts/build_viper.sh` | Install location — Windows: `$LOCALAPPDATA/viper`, macOS/Linux: `/usr/local` (with sudo). Compiler selection: Windows clang-cl/MSVC, Unix clang/gcc. Job count: `nproc` / `sysctl` / `NUMBER_OF_PROCESSORS`. |
+| `scripts/build_viper.sh`, `scripts/build_viper_mac.sh`, `scripts/build_viper_linux.sh` | Install location — Windows: `$LOCALAPPDATA/viper`, macOS/Linux: `/usr/local` (with sudo). Compiler selection: Windows clang-cl/MSVC, Unix clang/gcc. Job count: `nproc` / `sysctl` / `NUMBER_OF_PROCESSORS`. |
 | `viperdos/scripts/build_viperdos.sh` | Auto-installs prerequisites per OS: Homebrew (macOS), apt (Debian), yum (RedHat). UEFI ESP image creation uses platform-specific tools. |
 | `viperdos/scripts/build_viperdos.cmd` | Windows batch equivalent — QEMU/CMake/Clang detection with Windows-specific paths. |
 

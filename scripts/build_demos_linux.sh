@@ -72,7 +72,7 @@ esac
 
 if [[ ! -x "$VIPER" ]]; then
     echo -e "${RED}Error: viper tool not found at $VIPER${NC}"
-    echo "Run './scripts/build_viper.sh' first"
+    echo "Run './scripts/build_viper_linux.sh' first"
     exit 1
 fi
 
@@ -89,7 +89,7 @@ fi
 for required in "$RUNTIME_ARCHIVE" "$GUI_LIB" "$GFX_LIB" "$AUDIO_LIB"; do
     if [[ ! -f "$required" ]]; then
         echo -e "${RED}Error: required library not found: $required${NC}"
-        echo "Run './scripts/build_viper.sh' first"
+        echo "Run './scripts/build_viper_linux.sh' first"
         exit 1
     fi
 done
@@ -180,17 +180,10 @@ run_demo() {
     snapshot_bin_dir >"$before_list"
 
     local rc=0
-    if [[ "$name" == "3dbowling" ]]; then
-        (
-            cd "$BIN_DIR"
-            timeout "$timeout_secs" env VIPER_3D_BACKEND=software "./$(basename "$exe_file")"
-        ) >"$run_out" 2>"$run_err" || rc=$?
-    else
-        (
-            cd "$BIN_DIR"
-            timeout "$timeout_secs" "./$(basename "$exe_file")"
-        ) >"$run_out" 2>"$run_err" || rc=$?
-    fi
+    (
+        cd "$BIN_DIR"
+        timeout "$timeout_secs" "./$(basename "$exe_file")"
+    ) >"$run_out" 2>"$run_err" || rc=$?
 
     snapshot_bin_dir >"$after_list"
     cleanup_run_artifacts "$before_list" "$after_list" "$(basename "$exe_file")"

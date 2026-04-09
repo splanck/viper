@@ -37,7 +37,8 @@ BASIC, it's intended for education, experimentation, and compiler research rathe
 ### 4. How do I build Viper?
 
 ```bash
-./scripts/build_viper.sh
+./scripts/build_viper_linux.sh   # Linux
+./scripts/build_viper_mac.sh     # macOS
 ```
 
 Requirements: CMake 3.20+, Clang or GCC with C++20 support. See the top-level README for platform-specific details.

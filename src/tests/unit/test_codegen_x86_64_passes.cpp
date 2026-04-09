@@ -28,6 +28,7 @@
 #include "il/core/Value.hpp"
 #include "tests/TestHarness.hpp"
 
+#include <algorithm>
 #include <memory>
 #include <string>
 
@@ -86,6 +87,41 @@ il::core::Module makeMalformedVoidCallModule() {
     return module;
 }
 
+il::core::Module makeStoreF64ImmediateModule() {
+    il::core::Module module{};
+
+    il::core::Function fn;
+    fn.name = "main";
+    fn.retType = il::core::Type(il::core::Type::Kind::Void);
+
+    il::core::BasicBlock entry;
+    entry.label = "entry";
+    entry.terminated = true;
+
+    il::core::Instr alloca;
+    alloca.op = il::core::Opcode::Alloca;
+    alloca.type = il::core::Type(il::core::Type::Kind::Ptr);
+    alloca.result = 1;
+    alloca.operands.push_back(il::core::Value::constInt(8));
+    entry.instructions.push_back(alloca);
+
+    il::core::Instr store;
+    store.op = il::core::Opcode::Store;
+    store.type = il::core::Type(il::core::Type::Kind::F64);
+    store.operands.push_back(il::core::Value::temp(1));
+    store.operands.push_back(il::core::Value::constFloat(50.0));
+    entry.instructions.push_back(store);
+
+    il::core::Instr ret;
+    ret.op = il::core::Opcode::Ret;
+    ret.type = il::core::Type(il::core::Type::Kind::Void);
+    entry.instructions.push_back(ret);
+
+    fn.blocks.push_back(entry);
+    module.functions.push_back(fn);
+    return module;
+}
+
 std::size_t binarySizeForOptLevel(int optimizeLevel) {
     Module module{};
     module.il = makeRetConstModule(0);
@@ -134,6 +170,30 @@ TEST(LoweringPass, RejectsVoidCallWithResultId) {
     LoweringPass pass{};
     EXPECT_FALSE(pass.run(module, diags));
     EXPECT_TRUE(diags.hasErrors());
+}
+
+TEST(LoweringPass, PreservesF64ImmediateStoreOperandKind) {
+    Module module{};
+    module.il = makeStoreF64ImmediateModule();
+
+    Diagnostics diags{};
+    LoweringPass pass{};
+    ASSERT_TRUE(pass.run(module, diags));
+    ASSERT_FALSE(diags.hasErrors());
+    ASSERT_TRUE(module.lowered.has_value());
+    ASSERT_EQ(module.lowered->funcs.size(), 1U);
+    ASSERT_EQ(module.lowered->funcs[0].blocks.size(), 1U);
+
+    const auto &instrs = module.lowered->funcs[0].blocks[0].instrs;
+    const auto it = std::find_if(instrs.begin(), instrs.end(), [](const auto &instr) {
+        return instr.opcode == "store";
+    });
+    ASSERT_TRUE(it != instrs.end());
+    ASSERT_GE(it->ops.size(), 2U);
+    EXPECT_EQ(it->ops[0].kind, viper::codegen::x64::ILValue::Kind::PTR);
+    EXPECT_EQ(it->ops[1].kind, viper::codegen::x64::ILValue::Kind::F64);
+    EXPECT_EQ(it->ops[1].id, -1);
+    EXPECT_NEAR(it->ops[1].f64, 50.0, 1e-12);
 }
 
 TEST(LegalizePass, FailsWhenLoweringMissing) {

@@ -69,7 +69,7 @@ Clone the repository and run the build script:
 ```bash
 git clone https://github.com/splanck/viper.git
 cd viper
-./scripts/build_viper.sh
+./scripts/build_viper_mac.sh
 ```
 
 The build script will:

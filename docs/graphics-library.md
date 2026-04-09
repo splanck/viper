@@ -53,7 +53,8 @@ management, pixel operations, drawing primitives, and input handling through a s
 ViperGFX builds as part of the main Viper build:
 
 ```bash
-./scripts/build_viper.sh
+./scripts/build_viper_linux.sh   # Linux
+./scripts/build_viper_mac.sh     # macOS
 ```
 
 Or build the graphics library standalone:

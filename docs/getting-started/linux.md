@@ -77,7 +77,7 @@ Clone the repository and run the build script:
 ```bash
 git clone https://github.com/splanck/viper.git
 cd viper
-./scripts/build_viper.sh
+./scripts/build_viper_linux.sh
 ```
 
 The build script will:
@@ -226,7 +226,7 @@ Then clean and rebuild:
 
 ```bash
 rm -rf build
-./scripts/build_viper.sh
+./scripts/build_viper_linux.sh
 ```
 
 If you only need the compiler, VM, and language frontends, these warnings are safe to ignore.

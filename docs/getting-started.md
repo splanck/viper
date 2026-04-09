@@ -33,13 +33,19 @@ Before you begin, ensure you have:
 
 ## Building Viper
 
-The build script configures, compiles, tests, and installs Viper in one step:
+The platform build scripts configure, compile, test, and install Viper in one step:
 
 ```sh
-./scripts/build_viper.sh
-```
+# macOS
+./scripts/build_viper_mac.sh
 
-On Windows, use `scripts/build_viper.cmd` instead.
+# Linux
+./scripts/build_viper_linux.sh
+
+# Windows
+scripts\build_viper.cmd
+```
+The compatibility wrapper `./scripts/build_viper.sh` still dispatches to the correct Unix script on macOS and Linux.
 
 ---
 

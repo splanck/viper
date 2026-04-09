@@ -20,7 +20,7 @@ BUILD_DIR="${BUILD_DIR:-${REPO_ROOT}/build}"
 
 if [ ! -d "${BUILD_DIR}" ]; then
     echo "Error: Build directory not found at ${BUILD_DIR}"
-    echo "Run ./scripts/build_viper.sh first."
+    echo "Run the appropriate build script first (for example ./scripts/build_viper_linux.sh or ./scripts/build_viper_mac.sh)."
     exit 1
 fi
 

@@ -29,6 +29,7 @@
 #include "il/runtime/RuntimeNameMap.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
 
+#include <bit>
 #include <string_view>
 #include <utility>
 #include <vector>
@@ -43,7 +44,9 @@ CallArg makeCallArg(const ILValue &argVal, MIRBuilder &builder) {
 
     if (argVal.kind != ILValue::Kind::LABEL && builder.isImmediate(argVal)) {
         arg.isImm = true;
-        arg.imm = argVal.i64;
+        arg.imm = (argVal.kind == ILValue::Kind::F64) ? static_cast<int64_t>(
+                                                            std::bit_cast<std::uint64_t>(argVal.f64))
+                                                      : argVal.i64;
         return arg;
     }
 

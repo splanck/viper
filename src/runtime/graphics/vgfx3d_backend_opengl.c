@@ -17,6 +17,7 @@
 #include "vgfx3d_backend_utils.h"
 
 #include <X11/Xlib.h>
+#include <X11/Xutil.h>
 
 #include <dlfcn.h>
 #include <math.h>
@@ -282,11 +283,13 @@ typedef void (*PFNGLXDESTROYCONTEXTPROC)(Display *, GLXContext);
 typedef __GLXextFuncPtr (*PFNGLXGETPROCADDRESSPROC)(const unsigned char *);
 typedef GLXContext (*PFNGLXCREATECONTEXTATTRIBSARBPROC)(
     Display *, GLXFBConfig, GLXContext, int, const int *);
+typedef XVisualInfo *(*PFNGLXGETVISUALFROMFBCONFIGPROC)(Display *, GLXFBConfig);
 
 static struct {
     PFNGLXCHOOSEFBCONFIGPROC ChooseFBConfig;
     PFNGLXCREATENEWCONTEXTPROC CreateNewContext;
     PFNGLXCREATECONTEXTATTRIBSARBPROC CreateContextAttribsARB;
+    PFNGLXGETVISUALFROMFBCONFIGPROC GetVisualFromFBConfig;
     PFNGLXSWAPBUFFERSPROC SwapBuffers;
     PFNGLXMAKECURRENTPROC MakeCurrent;
     PFNGLXDESTROYCONTEXTPROC DestroyContext;
@@ -344,6 +347,7 @@ typedef struct {
     GLuint skybox_program;
     GLuint vao;
     GLuint fullscreen_vao;
+    GLuint fullscreen_vbo;
     GLuint skybox_vao;
     GLuint skybox_vbo;
 
@@ -552,6 +556,7 @@ static int load_gl(void) {
 
     LOADX(ChooseFBConfig);
     LOADX(CreateNewContext);
+    LOADX(GetVisualFromFBConfig);
     LOADX(SwapBuffers);
     LOADX(MakeCurrent);
     LOADX(DestroyContext);
@@ -918,7 +923,7 @@ static const char *const glsl_fragment_src[] = {
     "        vec2 velocity = (currNdc - prevNdc) * 0.5;\n"
     "        MotionColor = vec4(clamp(velocity * 0.5 + 0.5, 0.0, 1.0), vHasObjectHistory, 1.0);\n"
     "        return;\n"
-    "    }\n"
+    "    }\n",
     "    vec3 result = vec3(0.0);\n"
     "    if (uWorkflow != 0) {\n"
     "        float metallic = clamp(uPbrScalars0.x, 0.0, 1.0);\n"
@@ -982,7 +987,7 @@ static const char *const glsl_fragment_src[] = {
     "            vec3 radiance = uLightColor[i] * uLightIntensity[i] * atten;\n"
     "            result += (diffuse + specular) * radiance * NdotL;\n"
     "        }\n"
-    "    } else {\n"
+    "    } else {\n",
     "        vec3 specColor = uSpecularColor.rgb;\n"
     "        if (uHasSpecularMap != 0) specColor *= texture(uSpecularTex, vUV).rgb;\n"
     "        result = uAmbientColor * baseColor;\n"
@@ -1023,7 +1028,7 @@ static const char *const glsl_fragment_src[] = {
     "                result += uLightColor[i] * uLightIntensity[i] * spec * specColor * atten;\n"
     "            }\n"
     "        }\n"
-    "    }\n"
+    "    }\n",
     "    result += emissive;\n"
     "    if (uHasEnvMap != 0) {\n"
     "        vec3 R = reflect(-V, N);\n"
@@ -1133,16 +1138,19 @@ static const float gl_skybox_vertices[] = {
     1.0f,  -1.0f, -1.0f, 1.0f,  -1.0f, -1.0f, -1.0f, -1.0f, 1.0f,  1.0f,  -1.0f, 1.0f,
 };
 
+static const float gl_fullscreen_triangle[] = {
+    -1.0f, -1.0f,
+    3.0f,  -1.0f,
+    -1.0f, 3.0f,
+};
+
 static const char *glsl_postfx_vertex_src =
     "#version 330 core\n"
+    "layout(location = 0) in vec2 aPosition;\n"
     "out vec2 vUV;\n"
     "void main() {\n"
-    "    vec2 pos;\n"
-    "    if (gl_VertexID == 0) pos = vec2(-1.0, -1.0);\n"
-    "    else if (gl_VertexID == 1) pos = vec2(3.0, -1.0);\n"
-    "    else pos = vec2(-1.0, 3.0);\n"
-    "    vUV = pos * 0.5 + 0.5;\n"
-    "    gl_Position = vec4(pos, 0.0, 1.0);\n"
+    "    vUV = aPosition * 0.5 + 0.5;\n"
+    "    gl_Position = vec4(aPosition, 0.0, 1.0);\n"
     "}\n";
 
 static const char *const glsl_postfx_fragment_src[] = {
@@ -2254,9 +2262,12 @@ static void draw_scene_texture(gl_context_t *ctx, const vgfx3d_postfx_snapshot_t
         return;
 
     gl.BindFramebuffer(GL_FRAMEBUFFER, 0);
+    gl.DrawBuffer(GL_BACK);
+    gl.ReadBuffer(GL_BACK);
     gl.Viewport(0, 0, ctx->width, ctx->height);
     gl.Disable(GL_DEPTH_TEST);
     gl.Disable(GL_CULL_FACE);
+    gl.Disable(GL_BLEND);
     gl.DepthMask(GL_FALSE);
     gl.PolygonMode(GL_FRONT_AND_BACK, GL_FILL);
     gl.UseProgram(ctx->postfx_program);
@@ -2325,6 +2336,7 @@ static void draw_scene_texture(gl_context_t *ctx, const vgfx3d_postfx_snapshot_t
     }
 
     gl.DrawArrays(GL_TRIANGLES, 0, 3);
+    GL_CHECK();
 }
 
 static void gl_draw_skybox_impl(gl_context_t *ctx, const rt_cubemap3d *cubemap) {
@@ -2535,6 +2547,23 @@ static void *gl_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
     if (!configs || fb_count == 0)
         return NULL;
 
+    GLXFBConfig chosen = configs[0];
+    XWindowAttributes window_attrs;
+    if (XGetWindowAttributes(dpy, xwin, &window_attrs)) {
+        for (int i = 0; i < fb_count; ++i) {
+            XVisualInfo *visual_info = glx.GetVisualFromFBConfig(dpy, configs[i]);
+            if (!visual_info)
+                continue;
+            const int visual_match = visual_info->visual == window_attrs.visual;
+            const int depth_match = visual_info->depth == window_attrs.depth;
+            XFree(visual_info);
+            if (visual_match && depth_match) {
+                chosen = configs[i];
+                break;
+            }
+        }
+    }
+
     GLXContext glxCtx = NULL;
     if (glx.CreateContextAttribsARB) {
         const int ctx_attribs[] = {GLX_CONTEXT_MAJOR_VERSION_ARB,
@@ -2544,10 +2573,10 @@ static void *gl_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
                                    GLX_CONTEXT_PROFILE_MASK_ARB,
                                    GLX_CONTEXT_CORE_PROFILE_BIT_ARB,
                                    0};
-        glxCtx = glx.CreateContextAttribsARB(dpy, configs[0], NULL, 1, ctx_attribs);
+        glxCtx = glx.CreateContextAttribsARB(dpy, chosen, NULL, 1, ctx_attribs);
     }
     if (!glxCtx)
-        glxCtx = glx.CreateNewContext(dpy, configs[0], GLX_RGBA_TYPE, NULL, 1);
+        glxCtx = glx.CreateNewContext(dpy, chosen, GLX_RGBA_TYPE, NULL, 1);
     XFree(configs);
     if (!glxCtx)
         return NULL;
@@ -2671,6 +2700,7 @@ static void *gl_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
     gl.GenVertexArrays(1, &ctx->vao);
     gl.GenVertexArrays(1, &ctx->fullscreen_vao);
     gl.GenVertexArrays(1, &ctx->skybox_vao);
+    gl.GenBuffers(1, &ctx->fullscreen_vbo);
     gl.GenBuffers(1, &ctx->mesh_vbo);
     gl.GenBuffers(1, &ctx->mesh_ibo);
     gl.GenBuffers(1, &ctx->instance_vbo);
@@ -2708,6 +2738,15 @@ static void *gl_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
     gl.BindBuffer(GL_UNIFORM_BUFFER, ctx->prev_bone_ubo);
     gl.BufferData(GL_UNIFORM_BUFFER, (GLsizeiptr)(128 * 16 * sizeof(float)), NULL, GL_DYNAMIC_DRAW);
     gl.BindBufferBase(GL_UNIFORM_BUFFER, 1, ctx->prev_bone_ubo);
+
+    gl.BindVertexArray(ctx->fullscreen_vao);
+    gl.BindBuffer(GL_ARRAY_BUFFER, ctx->fullscreen_vbo);
+    gl.BufferData(GL_ARRAY_BUFFER,
+                  (GLsizeiptr)sizeof(gl_fullscreen_triangle),
+                  gl_fullscreen_triangle,
+                  GL_STATIC_DRAW);
+    gl.VertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * (GLsizei)sizeof(float), (void *)0);
+    gl.EnableVertexAttribArray(0);
 
     gl.BindVertexArray(ctx->skybox_vao);
     gl.BindBuffer(GL_ARRAY_BUFFER, ctx->skybox_vbo);
@@ -2754,6 +2793,8 @@ static void gl_destroy_ctx(void *ctx_ptr) {
     destroy_rtt_targets(ctx);
     destroy_shadow_targets(ctx);
 
+    if (ctx->fullscreen_vbo)
+        gl.DeleteBuffers(1, &ctx->fullscreen_vbo);
     if (ctx->skybox_vbo)
         gl.DeleteBuffers(1, &ctx->skybox_vbo);
     if (ctx->morph_normal_tbo)
@@ -2924,6 +2965,7 @@ static void gl_submit_draw(void *ctx_ptr,
     prepare_mesh_buffers(ctx, cmd, &mesh_vbo, &mesh_ibo);
     configure_mesh_attributes(ctx, mesh_vbo, mesh_ibo);
     gl.DrawElements(GL_TRIANGLES, (GLsizei)cmd->index_count, GL_UNSIGNED_INT, NULL);
+    GL_CHECK();
 }
 
 static void gl_end_frame(void *ctx_ptr) {
