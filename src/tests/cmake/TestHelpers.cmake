@@ -14,6 +14,7 @@ set(_VIPER_TEST_LABEL_WHITELIST
         graphics3d
         il
         ilopt
+        installer
         namespace
         native_link
         native_run
@@ -132,6 +133,8 @@ function(_viper_assign_test_label name)
         viper_set_test_labels(${name} tui)
     elseif (name MATCHES "^perf_")
         viper_set_test_labels(${name} perf)
+    elseif (name MATCHES "^installer_")
+        viper_set_test_labels(${name} installer)
     elseif (name MATCHES "^test_cli_" OR name MATCHES "^NoAssertFalseGuard$" OR name MATCHES "^test_tools_" OR name MATCHES "^test_vbasic_" OR name MATCHES "^test_zia_server_")
         viper_set_test_labels(${name} tools)
     elseif (name MATCHES "^test_support$" OR name MATCHES "^test_run_" OR name MATCHES "^test_expected_" OR name MATCHES "^test_ident_" OR name MATCHES "^test_path_" OR name MATCHES "^test_integer_" OR name MATCHES "^test_window$" OR name MATCHES "^test_pixels$" OR name MATCHES "^test_drawing$" OR name MATCHES "^test_input$")

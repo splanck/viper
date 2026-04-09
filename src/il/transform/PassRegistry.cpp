@@ -377,8 +377,18 @@ void registerLICMPass(PassRegistry &registry) {
 
 void registerSCCPPass(PassRegistry &registry) {
     registry.registerModulePass("sccp", [](core::Module &module, AnalysisManager &) {
-        sccp(module);
-        return PreservedAnalyses::none();
+        PreservedAnalyses preserved;
+        bool changed = false;
+        for (auto &function : module.functions) {
+            if (!sccp(function))
+                continue;
+            changed = true;
+            preserved.markChangedFunction(function.name);
+        }
+        if (!changed)
+            return PreservedAnalyses::all();
+        preserved.preserveAllModules();
+        return preserved;
     });
 }
 

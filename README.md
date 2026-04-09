@@ -119,7 +119,7 @@ Viper is in **early development**. All components are functional but evolving:
 | [Game Engine](docs/viperlib/game/README.md) | Collision, pathfinding, physics, tweening, particles, state machines, UI widgets, entity system, AI behaviors, level loading, scene management, asset embedding (VPA) |
 | [GUI](docs/viperlib/gui/README.md) | 46 widget classes; cross-platform desktop apps |
 | [IDE / Language Servers](docs/zia-server.md) | ViperIDE with live diagnostics, hover, go-to-definition, project search; LSP + MCP servers |
-| [Packaging](docs/tools.md) | `viper package` → .app, .deb, .exe, .tar.gz |
+| [Packaging](docs/tools.md) | `viper package` for apps, `viper install-package` for the toolchain |
 
 Expect breaking changes. The IL specification, APIs, and tool interfaces are not stable.
 
@@ -265,6 +265,7 @@ All frontends share the **[Viper Runtime](docs/viperlib/README.md)** — 300 cla
 | `viper` | Unified driver — [run, build, compile, package](docs/tools.md) |
 | `viper repl` | [Interactive REPL](docs/repl.md) for Zia and BASIC |
 | `viper package` | Generate installers (.app, .deb, .exe, .tar.gz) |
+| `viper install-package` | Generate staged toolchain installers (.exe, .pkg, .deb, .rpm, .tar.gz) |
 | `zia` / `vbasic` | Standalone language compilers |
 | `zia-server` | [Language server](docs/zia-server.md) (LSP + MCP) |
 | `viper -run` | Execute IL programs directly |

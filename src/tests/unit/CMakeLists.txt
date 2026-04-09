@@ -252,6 +252,11 @@ if (NOT TARGET test_runtime_surface_audit)
     viper_add_ctest(test_runtime_surface_audit test_runtime_surface_audit)
 endif ()
 
+if (NOT TARGET test_rtgen_header_parse)
+    viper_add_test(test_rtgen_header_parse ${VIPER_TESTS_DIR}/unit/test_rtgen_header_parse.cpp)
+    viper_add_ctest(test_rtgen_header_parse test_rtgen_header_parse)
+endif ()
+
 viper_add_ctest(test_runtime_surface_cli
         $<TARGET_FILE:rtgen>
         --audit

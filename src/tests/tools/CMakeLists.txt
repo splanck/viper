@@ -183,4 +183,20 @@ function(viper_add_tools_tests)
     target_include_directories(test_tools_bench_output_format PRIVATE ${CMAKE_SOURCE_DIR}/src)
     target_link_libraries(test_tools_bench_output_format PRIVATE ${VIPER_TOOLS_LIBS})
     viper_add_ctest(test_tools_bench_output_format test_tools_bench_output_format)
+
+    viper_add_ctest(installer_tarball_smoke
+            ${CMAKE_COMMAND}
+            -DVIPER_BIN=$<TARGET_FILE:viper>
+            -DVIPER_BUILD_DIR=${CMAKE_BINARY_DIR}
+            -P ${_VIPER_TOOLS_DIR}/InstallPackageTarballSmoke.cmake)
+    viper_add_test_labels(installer_tarball_smoke installer tools slow)
+
+    viper_add_ctest(installer_installed_config_smoke
+            ${CMAKE_COMMAND}
+            -DCMAKE_BIN=${CMAKE_COMMAND}
+            -DVIPER_BIN=$<TARGET_FILE:viper>
+            -DVIPER_BUILD_DIR=${CMAKE_BINARY_DIR}
+            -DVIPER_CONFIG=$<CONFIG>
+            -P ${_VIPER_TOOLS_DIR}/InstalledViperConfigSmoke.cmake)
+    viper_add_test_labels(installer_installed_config_smoke installer tools slow)
 endfunction()

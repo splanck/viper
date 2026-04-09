@@ -236,6 +236,8 @@ void usage() {
         << "       viper repl [zia|basic]       Interactive REPL session\n"
         << "       viper package [target] [--target macos|linux|windows|tarball]\n"
         << "                              [--arch arm64|x64] [-o output]\n"
+        << "       viper install-package [--target windows|macos|linux-deb|linux-rpm|tarball|all]\n"
+        << "                             (--stage-dir DIR | --build-dir DIR) [-o output]\n"
         << "\n"
         << "  <target> is a .zia file, .bas file, directory, or viper.project path.\n"
         << "  If omitted, defaults to current directory.\n"
@@ -345,6 +347,9 @@ int main(int argc, char **argv) {
     }
     if (cmd == "package") {
         return cmdPackage(argc - 2, argv + 2);
+    }
+    if (cmd == "install-package") {
+        return cmdInstallPackage(argc - 2, argv + 2);
     }
     if (cmd == "repl") {
         return cmdRepl(argc - 2, argv + 2);

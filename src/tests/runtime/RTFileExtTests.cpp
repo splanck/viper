@@ -18,6 +18,7 @@
 #include "rt_bytes.h"
 #include "rt_file_ext.h"
 #include "rt_seq.h"
+#include "tests/common/PlatformSkip.h"
 
 #include <cassert>
 #include <cstdio>
@@ -533,8 +534,7 @@ static void test_nonexistent() {
 int main() {
 #ifdef _WIN32
     // Skip on Windows: test uses /tmp paths not available on Windows
-    printf("Test skipped: POSIX temp paths not available on Windows\n");
-    return 0;
+    VIPER_PLATFORM_SKIP("POSIX temp paths not available on Windows");
 #endif
     printf("=== RT File Extension Tests ===\n\n");
 

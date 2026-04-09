@@ -187,6 +187,24 @@ unsigned LinearAllocator::getNextUseDistance(uint16_t vreg, RegClass cls) const 
     return *pos - currentInstrIdx_;
 }
 
+unsigned LinearAllocator::computeSpillLastUse(uint16_t vreg,
+                                              RegClass cls,
+                                              bool forceLiveOut) const {
+    const auto &posMap = (cls == RegClass::GPR) ? usePositionsGPR_ : usePositionsFPR_;
+    unsigned trueLastUse = currentInstrIdx_;
+    auto posIt = posMap.find(vreg);
+    if (posIt != posMap.end() && !posIt->second.empty())
+        trueLastUse = std::max(trueLastUse, posIt->second.back());
+    if (forceLiveOut || isLiveOut(vreg, cls))
+        trueLastUse = std::max(trueLastUse, currentBlockInstrCount_);
+    return trueLastUse;
+}
+
+int LinearAllocator::ensureCurrentSpillSlot(uint16_t vreg, RegClass cls, bool forceLiveOut) {
+    return fb_.ensureSpillWithReuse(
+        vreg, computeSpillLastUse(vreg, cls, forceLiveOut), currentInstrIdx_);
+}
+
 // =========================================================================
 // Spilling
 // =========================================================================
@@ -210,16 +228,7 @@ void LinearAllocator::spillVictim(RegClass cls, uint16_t id, std::vector<MInstr>
     }
 
     if (st.dirty || st.fpOffset == 0) {
-        const auto &posMap = (cls == RegClass::GPR) ? usePositionsGPR_ : usePositionsFPR_;
-        unsigned trueLastUse = st.lastUse;
-        auto posIt = posMap.find(id);
-        if (posIt != posMap.end() && !posIt->second.empty())
-            trueLastUse = posIt->second.back();
-        else if (liveOut)
-            trueLastUse = std::max(trueLastUse, currentBlockInstrCount_);
-        const int off = (st.fpOffset != 0)
-                            ? st.fpOffset
-                            : fb_.ensureSpillWithReuse(id, trueLastUse, currentInstrIdx_);
+        const int off = ensureCurrentSpillSlot(id, cls);
         st.fpOffset = off;
         if (cls == RegClass::GPR)
             prefix.push_back(makeStrFp(st.phys, off));
@@ -463,7 +472,7 @@ void LinearAllocator::allocateBlock(MBasicBlock &bb) {
             if (it != gprStates_.end() && it->second.hasPhys) {
                 if (it->second.dirty || it->second.fpOffset == 0) {
                     const int off =
-                        (it->second.fpOffset != 0) ? it->second.fpOffset : fb_.ensureSpill(vid);
+                        ensureCurrentSpillSlot(vid, RegClass::GPR, /*forceLiveOut=*/true);
                     it->second.fpOffset = off;
                     endSpills.push_back(makeStrFp(it->second.phys, off));
                     it->second.dirty = false;
@@ -478,7 +487,7 @@ void LinearAllocator::allocateBlock(MBasicBlock &bb) {
             if (it != fprStates_.end() && it->second.hasPhys) {
                 if (it->second.dirty || it->second.fpOffset == 0) {
                     const int off =
-                        (it->second.fpOffset != 0) ? it->second.fpOffset : fb_.ensureSpill(vid);
+                        ensureCurrentSpillSlot(vid, RegClass::FPR, /*forceLiveOut=*/true);
                     it->second.fpOffset = off;
                     endSpills.push_back(
                         MInstr{MOpcode::StrFprFpImm,
@@ -599,7 +608,8 @@ void LinearAllocator::allocateInstruction(MInstr &ins, std::vector<MInstr> &rewr
     if (applyGetBarrier) {
         auto it = gprStates_.find(getBarrierDstVreg);
         if (it != gprStates_.end() && it->second.hasPhys) {
-            const int off = fb_.ensureSpill(getBarrierDstVreg);
+            const int off = ensureCurrentSpillSlot(getBarrierDstVreg, RegClass::GPR);
+            it->second.fpOffset = off;
             suffix.push_back(makeStrFp(it->second.phys, off));
             pools_.releaseGPR(it->second.phys, ti_);
             it->second.hasPhys = false;

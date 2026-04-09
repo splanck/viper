@@ -143,9 +143,9 @@ static int linkObjToExe(const std::string &objPath,
         if (fileExists(p))
             linkOpts.archivePaths.push_back(p.string());
     };
-    addIfExists(ctx.buildDir / "src" / "lib" / "gui" / "libvipergui.a");
-    addIfExists(ctx.buildDir / "lib" / "libvipergfx.a");
-    addIfExists(ctx.buildDir / "lib" / "libviperaud.a");
+    addIfExists(supportLibraryPath(ctx.buildDir, "vipergui"));
+    addIfExists(supportLibraryPath(ctx.buildDir, "vipergfx"));
+    addIfExists(supportLibraryPath(ctx.buildDir, "viperaud"));
 
     return viper::codegen::linker::nativeLink(linkOpts, out, err);
 }

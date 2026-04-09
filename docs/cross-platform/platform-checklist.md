@@ -188,8 +188,12 @@ Linux audio availability is now controlled by `VIPER_AUDIO_MODE=AUTO|REQUIRE|OFF
 
 | File | Reason |
 |------|--------|
-| `CMakeLists.txt` (lines 480-498) | CPack generator selection — macOS: `productbuild` (.pkg), Windows: ZIP + NSIS, Linux: DEB + RPM. Output filename patterns differ per platform. |
-| `scripts/build_viper.sh`, `scripts/build_viper_unix.sh`, `scripts/build_viper_mac.sh`, `scripts/build_viper_linux.sh`, `scripts/build_viper.cmd` | Canonical build/test/install entry points. Shared env vars: `VIPER_BUILD_DIR`, `VIPER_BUILD_TYPE`, `VIPER_SKIP_INSTALL`, `VIPER_SKIP_LINT`, `VIPER_SKIP_AUDIT`, `VIPER_SKIP_SMOKE`, `VIPER_CMAKE_GENERATOR`, `VIPER_EXTRA_CMAKE_ARGS`. |
+| `CMakeLists.txt`, `src/CMakeLists.txt` | Installed toolchain layout, exported targets, generated package config, public runtime archives, man pages, docs, and staged ship-set completeness all flow from the install rules. |
+| `src/tools/viper/cmd_install_package.cpp` | Canonical CLI for packaging the staged Viper toolchain. Any new format or verification rule should surface here. |
+| `src/tools/common/packaging/ToolchainInstallManifest.*` | Shared manifest and install-path mapping for Windows/macOS/Linux installers. This is the single source of truth for staged file selection. |
+| `src/tools/common/packaging/WindowsPackageBuilder.*`, `MacOSPackageBuilder.*`, `LinuxPackageBuilder.*` | Platform-specific installer writers and payload layout policy. Keep staged-relative layout stable across all three. |
+| `src/tools/common/packaging/PkgVerify.*` | Structural verification for produced installer artifacts. Extend this rather than adding format-specific one-off verification scripts. |
+| `scripts/build_viper.sh`, `scripts/build_viper_unix.sh`, `scripts/build_viper_mac.sh`, `scripts/build_viper_linux.sh`, `scripts/build_viper.cmd`, `scripts/build_installer.sh`, `scripts/build_installer.cmd` | Canonical build/test/install and toolchain-packaging entry points. Shared env vars: `VIPER_BUILD_DIR`, `VIPER_BUILD_TYPE`, `VIPER_SKIP_INSTALL`, `VIPER_SKIP_LINT`, `VIPER_SKIP_AUDIT`, `VIPER_SKIP_SMOKE`, `VIPER_CMAKE_GENERATOR`, `VIPER_EXTRA_CMAKE_ARGS`. |
 | `viperdos/scripts/build_viperdos.sh` | Auto-installs prerequisites per OS: Homebrew (macOS), apt (Debian), yum (RedHat). UEFI ESP image creation uses platform-specific tools. |
 | `viperdos/scripts/build_viperdos.cmd` | Windows batch equivalent — QEMU/CMake/Clang detection with Windows-specific paths. |
 

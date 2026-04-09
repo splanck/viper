@@ -19,6 +19,12 @@ viper \- Viper project driver, IL tool, and native build frontend
 [\fB--arch\fR arm64|x64] [\fB-o\fR \fIoutput\fR]
 .br
 .B viper
+\fBinstall-package\fR [\fB--target\fR windows|macos|linux-deb|linux-rpm|tarball|all]
+[\fB--build-dir\fR \fIDIR\fR|\fB--stage-dir\fR \fIDIR\fR|\fB--verify-only\fR \fIFILE\fR]
+[\fB--arch\fR arm64|x64] [\fB--stage-only\fR] [\fB--keep-stage-dir\fR]
+[\fB--no-verify\fR] [\fB-o\fR \fIOUTPUT\fR]
+.br
+.B viper
 \fB-run\fR \fIFILE.il\fR [\fIrun-options\fR]
 .br
 .B viper
@@ -58,6 +64,11 @@ it builds a native executable.
 .PP
 \fBrun\fR builds and runs a Zia or BASIC target. Legacy IL, Zia, and BASIC entry
 points remain available through \fB-run\fR, \fBfront zia\fR, and \fBfront basic\fR.
+.PP
+\fBinstall-package\fR packages the Viper toolchain itself from a staged
+\fCcmake --install\fR tree. It can stage from a build tree automatically,
+validate the staged install, emit native installer artifacts, or structurally
+verify an existing installer file.
 .SH BUILD AND RUN OPTIONS
 These options apply to \fBviper run\fR and \fBviper build\fR when relevant, and
 to legacy run modes where noted.

@@ -30,6 +30,7 @@
 #pragma once
 
 #include "PackageConfig.hpp"
+#include "ToolchainInstallManifest.hpp"
 
 #include <string>
 
@@ -65,5 +66,18 @@ struct WindowsBuildParams {
 /// @param params Build parameters.
 /// @throws std::runtime_error on failure.
 void buildWindowsPackage(const WindowsBuildParams &params);
+
+/// @brief Parameters for building a Windows toolchain installer from a staged manifest.
+struct WindowsToolchainBuildParams {
+    ToolchainInstallManifest manifest;
+    std::string outputPath;
+    std::string archStr{"x64"};
+    std::string displayName{"Viper"};
+    std::string publisher{"Viper Project"};
+    std::string identifier{"org.viper.toolchain"};
+};
+
+/// @brief Build a Windows toolchain installer from a staged install manifest.
+void buildWindowsToolchainInstaller(const WindowsToolchainBuildParams &params);
 
 } // namespace viper::pkg

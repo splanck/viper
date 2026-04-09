@@ -11,7 +11,7 @@
 
 ### Release Overview
 
-Version 0.2.4 is a game engine, asset system, rendering, 3D physics, PBR materials, asset import pipeline, codegen optimization, native linker, language features, media codecs, IL optimizer, IDE intelligence, typed runtime metadata, and showcase release. Highlights:
+Version 0.2.4 is a game engine, asset system, rendering, 3D physics, PBR materials, asset import pipeline, codegen optimization, native linker, cross-platform hardening, language features, media codecs, IL optimizer, IDE intelligence, typed runtime metadata, and showcase release. Highlights:
 
 - **3D Engine Enhancements** — Procedural terrain generation (`Terrain3D.GeneratePerlin`), terrain LOD with frustum culling and multi-resolution chunks, Gerstner wave water simulation (`Water3D.AddWave`), new `Vegetation3D` instanced grass/foliage system with wind animation, and material shader hooks (`SetShadingModel` for Toon/Fresnel/Emissive effects).
 - **3D Format Loaders** — From-scratch glTF 2.0 (.gltf/.glb), STL (binary + ASCII), OBJ .mtl material parser, FBX texture and morph target extraction. Scene3D.Save for JSON serialization.
@@ -58,16 +58,17 @@ Version 0.2.4 is a game engine, asset system, rendering, 3D physics, PBR materia
 - **PBR Materials** — `Material3D.NewPBR(metallic, roughness, ao)` with metallic-roughness workflow. Albedo, metallic-roughness, AO, normal, and emissive texture map slots. `Clone`/`MakeInstance` for shared-base + per-instance overrides. AlphaMode (opaque/mask/blend), DoubleSided, NormalScale properties. Cook-Torrance BRDF with GGX distribution and Schlick fresnel implemented across all 4 GPU backends.
 - **NavAgent3D** — Autonomous pathfinding agent on NavMesh3D surfaces. A* path query, string-pulling corridor smoothing, steering with configurable speed/acceleration/stopping distance, node binding for automatic SceneNode3D sync.
 - **3D Audio Objects** — `AudioListener3D` (position/forward/velocity with node and camera binding) and `AudioSource3D` (inner/outer cone, min/max distance, rolloff, looping, pitch, gain). `Audio3D.SyncBindings(dt)` batch-updates spatial positions. Distance attenuation and stereo panning in the audio mixer.
+- **Cross-Platform Hardening** — Shared `PlatformCapabilities.hpp` with `VIPER_HOST_*`/`VIPER_CAN_*` capability macros replacing scattered raw `_WIN32`/`__APPLE__`/`__linux__` checks. CMake capability summary gate (`VIPER_GRAPHICS_MODE`/`VIPER_AUDIO_MODE` with AUTO/REQUIRE/OFF modes). Generated `RuntimeComponentManifest` for machine-checked archive names. Platform import planners split from monolithic NativeLinker.cpp. Unified `build_viper_unix.sh` replacing near-identical mac/linux scripts. Platform policy lint script. CTest `SKIP_RETURN_CODE 77` for visible test skips.
 - **Demos & Documentation** — XENOSCAPE sidescroller (17K LOC), 3D bowling (3.1K LOC), ViperSQL (10 SQL features, runtime API migration), ViperIDE professional IDE (live diagnostics, hover, go-to-def, search, symbol outline, 21 files / 7 dirs), Chess (pre-rendered sprites, core/engine/ui), 8 Graphics3D API demos, 6 app/game smoke probes; 185 markdown files reviewed, 700+ Doxygen comments, 70+ factual errors fixed.
 
 #### By the Numbers
 
 | Metric | v0.2.3 | v0.2.4 | Delta |
 |--------|--------|--------|-------|
-| Commits | — | 101 | +101 |
-| Source files | 2,671 | 2,845 | +174 |
+| Commits | — | 102 | +102 |
+| Source files | 2,671 | 2,854 | +183 |
 | Production SLOC | ~348K | ~442K | +94K |
-| Test count | 1,351 | 1,455 | +104 |
+| Test count | 1,351 | 1,460 | +109 |
 
 ---
 
@@ -404,6 +405,17 @@ Seven new language features expanding Zia's operator, declaration, and parameter
 **AArch64 codegen tests:**
 - 4 new CBR edge block tests: different-target edge blocks, branch ladder correctness (run-native), branch ladder asm quality (join reload elimination), mixed fallthrough/join (run-native).
 - Loop phi test expectations updated for unconditional backedge after loop optimization.
+
+**Cross-platform infrastructure:**
+- `PlatformCapabilities.hpp` (`src/common/`) — shared C++ header with `VIPER_HOST_WINDOWS`/`VIPER_HOST_MACOS`/`VIPER_HOST_LINUX`, `VIPER_COMPILER_MSVC`/`VIPER_COMPILER_CLANG`/`VIPER_COMPILER_GCC`, and capability macros (`VIPER_CAN_FORK`, `VIPER_HAS_X11`, `VIPER_HAS_ALSA`, `VIPER_NATIVE_LINK_X86_64`, etc.). Replaces ad-hoc raw `_WIN32`/`__APPLE__`/`__linux__` checks in codegen, tools, and tests.
+- CMake capability gate — `VIPER_GRAPHICS_MODE` and `VIPER_AUDIO_MODE` cache variables with AUTO/REQUIRE/OFF modes. AUTO (default) uses the feature if deps are available, REQUIRE fails configure if deps are missing (with install instructions), OFF explicitly disables. Replaces silent `return()` in library CMakeLists.txt that could produce broken binaries without warning.
+- Generated `RuntimeComponentManifest.hpp` — machine-checked archive name → component mapping generated from `runtime.def`, replacing hand-maintained string tables in `RuntimeComponents.hpp`. Drift between runtime.def and linker discovery is now a build error.
+- Platform import planners — NativeLinker.cpp monolith (~1100 lines removed) split into `PlatformImportPlanner.hpp`, `MacImportPlanner.cpp`, `LinuxImportPlanner.cpp`, `WindowsImportPlanner.cpp`. Each planner owns its platform's symbol → dylib/DLL classification.
+- Unified `build_viper_unix.sh` — replaces near-identical `build_viper_mac.sh` and `build_viper_linux.sh` with platform detection via `uname -s`. Old scripts retained as thin wrappers. Standardized env vars (`VIPER_BUILD_DIR`, `VIPER_BUILD_TYPE`, `VIPER_SKIP_INSTALL`). Demo scripts similarly consolidated.
+- `lint_platform_policy.sh` — flags raw `_WIN32`/`__APPLE__`/`__linux__` usage outside approved adapter files listed in `platform_policy_allowlist.txt`.
+- `run_cross_platform_smoke.sh` — detects host capabilities, runs the appropriate ctest label slice and example smoke probes, reports skips explicitly.
+- `PlatformSkip.h` + CTest `SKIP_RETURN_CODE 77` — test skips are now visible in CI output ("131 passed, 19 skipped" instead of "150 passed"). `viper_add_ctest()` sets skip return code centrally.
+- Audio surface link tests (`RTAudioSurfaceLinkTests.cpp`) — verifies disabled-audio builds link correctly against stubs.
 
 ---
 

@@ -14,6 +14,7 @@
 #include "rt_bytes.h"
 #include "rt_internal.h"
 #include "rt_string.h"
+#include "tests/common/PlatformSkip.h"
 
 #include <cassert>
 #include <cstdio>
@@ -477,8 +478,7 @@ static void test_null_handling() {
 int main() {
 #ifdef _WIN32
     // Skip on Windows: test uses /tmp paths not available on Windows
-    printf("Test skipped: POSIX temp paths not available on Windows\n");
-    return 0;
+    VIPER_PLATFORM_SKIP("POSIX temp paths not available on Windows");
 #endif
     test_open_write_close();
     test_write_and_read_bytes();

@@ -12,6 +12,7 @@
 // Links: docs/viperlib.md
 
 #include "viper/runtime/rt.h"
+#include "tests/common/PlatformSkip.h"
 
 #include <cassert>
 #include <cstdio>
@@ -167,8 +168,7 @@ static void test_ticks_us_precision() {
 int main() {
 #ifdef _WIN32
     // Skip on Windows: timing tests have platform-specific quirks that need investigation
-    printf("Test skipped: Clock tests need Windows-specific calibration\n");
-    return 0;
+    VIPER_PLATFORM_SKIP("Clock tests need Windows-specific calibration");
 #endif
     printf("=== RT Clock Tests ===\n\n");
 

@@ -14,6 +14,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt.hpp"
+#include "tests/common/PlatformSkip.h"
 #include "tests/common/PosixCompat.h"
 #include <cassert>
 #include <cstdio>
@@ -23,8 +24,7 @@
 #ifdef _WIN32
 // This test requires overriding realloc which doesn't work with Windows DLL CRT
 int main() {
-    printf("Test skipped: Cannot override CRT functions on Windows DLL\n");
-    return 0;
+    VIPER_PLATFORM_SKIP("Cannot override CRT functions on Windows DLL");
 }
 #else
 

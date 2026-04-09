@@ -47,26 +47,46 @@ struct PropertyExpectation {
 std::vector<std::string> internalHeaders() {
     std::vector<std::string> headers;
 #define RUNTIME_SURFACE_INTERNAL_HEADER(path) headers.emplace_back(path);
+#define RUNTIME_SURFACE_INTERNAL_SYMBOL(symbol)
 #define RUNTIME_SURFACE_EXPECT_FUNCTION(canonical, symbol)
 #define RUNTIME_SURFACE_EXPECT_METHOD(class_name, method_name, signature)
 #define RUNTIME_SURFACE_EXPECT_PROPERTY(class_name, property_name, type_name)
 #include "il/runtime/RuntimeSurfacePolicy.inc"
 #undef RUNTIME_SURFACE_INTERNAL_HEADER
+#undef RUNTIME_SURFACE_INTERNAL_SYMBOL
 #undef RUNTIME_SURFACE_EXPECT_FUNCTION
 #undef RUNTIME_SURFACE_EXPECT_METHOD
 #undef RUNTIME_SURFACE_EXPECT_PROPERTY
     return headers;
 }
 
+std::vector<std::string> internalSymbols() {
+    std::vector<std::string> symbols;
+#define RUNTIME_SURFACE_INTERNAL_HEADER(path)
+#define RUNTIME_SURFACE_INTERNAL_SYMBOL(symbol) symbols.emplace_back(symbol);
+#define RUNTIME_SURFACE_EXPECT_FUNCTION(canonical, symbol)
+#define RUNTIME_SURFACE_EXPECT_METHOD(class_name, method_name, signature)
+#define RUNTIME_SURFACE_EXPECT_PROPERTY(class_name, property_name, type_name)
+#include "il/runtime/RuntimeSurfacePolicy.inc"
+#undef RUNTIME_SURFACE_INTERNAL_HEADER
+#undef RUNTIME_SURFACE_INTERNAL_SYMBOL
+#undef RUNTIME_SURFACE_EXPECT_FUNCTION
+#undef RUNTIME_SURFACE_EXPECT_METHOD
+#undef RUNTIME_SURFACE_EXPECT_PROPERTY
+    return symbols;
+}
+
 std::vector<FunctionExpectation> expectedFunctions() {
     std::vector<FunctionExpectation> functions;
 #define RUNTIME_SURFACE_INTERNAL_HEADER(path)
+#define RUNTIME_SURFACE_INTERNAL_SYMBOL(symbol)
 #define RUNTIME_SURFACE_EXPECT_FUNCTION(canonical, symbol)                                         \
     functions.push_back(FunctionExpectation{canonical, symbol});
 #define RUNTIME_SURFACE_EXPECT_METHOD(class_name, method_name, signature)
 #define RUNTIME_SURFACE_EXPECT_PROPERTY(class_name, property_name, type_name)
 #include "il/runtime/RuntimeSurfacePolicy.inc"
 #undef RUNTIME_SURFACE_INTERNAL_HEADER
+#undef RUNTIME_SURFACE_INTERNAL_SYMBOL
 #undef RUNTIME_SURFACE_EXPECT_FUNCTION
 #undef RUNTIME_SURFACE_EXPECT_METHOD
 #undef RUNTIME_SURFACE_EXPECT_PROPERTY
@@ -76,12 +96,14 @@ std::vector<FunctionExpectation> expectedFunctions() {
 std::vector<MethodExpectation> expectedMethods() {
     std::vector<MethodExpectation> methods;
 #define RUNTIME_SURFACE_INTERNAL_HEADER(path)
+#define RUNTIME_SURFACE_INTERNAL_SYMBOL(symbol)
 #define RUNTIME_SURFACE_EXPECT_FUNCTION(canonical, symbol)
 #define RUNTIME_SURFACE_EXPECT_METHOD(class_name, method_name, signature)                          \
     methods.push_back(MethodExpectation{class_name, method_name, signature});
 #define RUNTIME_SURFACE_EXPECT_PROPERTY(class_name, property_name, type_name)
 #include "il/runtime/RuntimeSurfacePolicy.inc"
 #undef RUNTIME_SURFACE_INTERNAL_HEADER
+#undef RUNTIME_SURFACE_INTERNAL_SYMBOL
 #undef RUNTIME_SURFACE_EXPECT_FUNCTION
 #undef RUNTIME_SURFACE_EXPECT_METHOD
 #undef RUNTIME_SURFACE_EXPECT_PROPERTY
@@ -91,12 +113,14 @@ std::vector<MethodExpectation> expectedMethods() {
 std::vector<PropertyExpectation> expectedProperties() {
     std::vector<PropertyExpectation> properties;
 #define RUNTIME_SURFACE_INTERNAL_HEADER(path)
+#define RUNTIME_SURFACE_INTERNAL_SYMBOL(symbol)
 #define RUNTIME_SURFACE_EXPECT_FUNCTION(canonical, symbol)
 #define RUNTIME_SURFACE_EXPECT_METHOD(class_name, method_name, signature)
 #define RUNTIME_SURFACE_EXPECT_PROPERTY(class_name, property_name, type_name)                      \
     properties.push_back(PropertyExpectation{class_name, property_name, type_name});
 #include "il/runtime/RuntimeSurfacePolicy.inc"
 #undef RUNTIME_SURFACE_INTERNAL_HEADER
+#undef RUNTIME_SURFACE_INTERNAL_SYMBOL
 #undef RUNTIME_SURFACE_EXPECT_FUNCTION
 #undef RUNTIME_SURFACE_EXPECT_METHOD
 #undef RUNTIME_SURFACE_EXPECT_PROPERTY
@@ -112,6 +136,83 @@ std::string readText(const fs::path &path) {
     std::ostringstream ss;
     ss << in.rdbuf();
     return ss.str();
+}
+
+std::string stripComments(std::string input) {
+    std::string out;
+    out.reserve(input.size());
+    bool inLine = false;
+    bool inBlock = false;
+
+    for (size_t i = 0; i < input.size(); ++i) {
+        char c = input[i];
+        char next = (i + 1 < input.size()) ? input[i + 1] : '\0';
+
+        if (inLine) {
+            if (c == '\n') {
+                inLine = false;
+                out.push_back(c);
+            }
+            continue;
+        }
+
+        if (inBlock) {
+            if (c == '*' && next == '/') {
+                inBlock = false;
+                ++i;
+            }
+            continue;
+        }
+
+        if (c == '/' && next == '/') {
+            inLine = true;
+            ++i;
+            continue;
+        }
+        if (c == '/' && next == '*') {
+            inBlock = true;
+            ++i;
+            continue;
+        }
+
+        out.push_back(c);
+    }
+    return out;
+}
+
+bool lineContinuesPreprocessorDirective(std::string_view line) {
+    size_t end = line.find_last_not_of(" \t\r");
+    return end != std::string_view::npos && line[end] == '\\';
+}
+
+std::string stripPreprocessor(std::string input) {
+    std::ostringstream out;
+    std::istringstream in(input);
+    std::string line;
+    bool inDirectiveContinuation = false;
+
+    while (std::getline(in, line)) {
+        if (inDirectiveContinuation) {
+            inDirectiveContinuation = lineContinuesPreprocessorDirective(line);
+            continue;
+        }
+
+        std::string_view trimmed(line);
+        size_t first = trimmed.find_first_not_of(" \t\r");
+        if (first != std::string_view::npos)
+            trimmed.remove_prefix(first);
+        else
+            trimmed = {};
+
+        if (!trimmed.empty() && trimmed.front() == '#') {
+            inDirectiveContinuation = lineContinuesPreprocessorDirective(line);
+            continue;
+        }
+
+        out << line << '\n';
+    }
+
+    return out.str();
 }
 
 std::unordered_map<std::string, std::string> runtimeDefCanonicalsToSymbols() {
@@ -149,6 +250,47 @@ std::unordered_set<std::string> runtimeSourceTokens() {
     return tokens;
 }
 
+std::unordered_set<std::string> runtimeHeaderFunctionSymbols() {
+    std::unordered_set<std::string> symbols;
+    const std::regex re(R"(\b(rt_[A-Za-z0-9_]+)\s*\()");
+    const fs::path root = repoRoot() / "src/runtime";
+    for (fs::recursive_directory_iterator it(root), end; it != end; ++it) {
+        if (!it->is_regular_file())
+            continue;
+        const fs::path path = it->path();
+        if (path.extension() != ".h" && path.extension() != ".hpp")
+            continue;
+
+        std::string text = readText(path);
+        text = stripComments(std::move(text));
+        text = stripPreprocessor(std::move(text));
+        for (std::sregex_iterator rit(text.begin(), text.end(), re), rend; rit != rend; ++rit)
+            symbols.insert((*rit)[1].str());
+    }
+    return symbols;
+}
+
+std::unordered_map<std::string, std::unordered_set<std::string>> runtimeHeaderFunctionSymbolsByHeader() {
+    std::unordered_map<std::string, std::unordered_set<std::string>> symbolsByHeader;
+    const std::regex re(R"(\b(rt_[A-Za-z0-9_]+)\s*\()");
+    const fs::path root = repoRoot() / "src/runtime";
+    for (fs::recursive_directory_iterator it(root), end; it != end; ++it) {
+        if (!it->is_regular_file())
+            continue;
+        const fs::path path = it->path();
+        if (path.extension() != ".h" && path.extension() != ".hpp")
+            continue;
+
+        std::string text = readText(path);
+        text = stripComments(std::move(text));
+        text = stripPreprocessor(std::move(text));
+        auto &symbols = symbolsByHeader[fs::relative(path, repoRoot()).generic_string()];
+        for (std::sregex_iterator rit(text.begin(), text.end(), re), rend; rit != rend; ++rit)
+            symbols.insert((*rit)[1].str());
+    }
+    return symbolsByHeader;
+}
+
 const il::runtime::RuntimeClass *findClass(std::string_view qname) {
     const auto &catalog = il::runtime::runtimeClassCatalog();
     for (const auto &cls : catalog) {
@@ -164,6 +306,45 @@ TEST(RuntimeSurfaceAudit, InternalHeadersExist) {
     for (const auto &header : internalHeaders()) {
         const fs::path path = repoRoot() / header;
         EXPECT_TRUE(fs::exists(path));
+    }
+}
+
+TEST(RuntimeSurfaceAudit, InternalSymbolsExistInRuntimeHeaders) {
+    const auto headerSymbols = runtimeHeaderFunctionSymbols();
+    for (const auto &symbol : internalSymbols()) {
+        const bool present = headerSymbols.count(symbol) != 0;
+        if (!present)
+            std::cerr << "Missing internal runtime header symbol " << symbol << "\n";
+        EXPECT_TRUE(present);
+    }
+}
+
+TEST(RuntimeSurfaceAudit, BroadInternalHeadersDoNotExposeRuntimeDefSymbols) {
+    const auto headerSymbols = runtimeHeaderFunctionSymbolsByHeader();
+    const auto defSymbols = runtimeDefSymbols();
+
+    const std::unordered_map<std::string, std::unordered_set<std::string>> allowedPublicTokens = {
+            // `rt_gui_internal.h` contains inline helpers that call public string APIs; the broad-header
+            // policy remains correct because the header does not declare these functions.
+            {"src/runtime/graphics/rt_gui_internal.h", {"rt_str_len", "rt_string_cstr"}},
+    };
+
+    for (const auto &header : internalHeaders()) {
+        const auto headerIt = headerSymbols.find(header);
+        if (headerIt == headerSymbols.end())
+            continue;
+
+        const auto allowIt = allowedPublicTokens.find(header);
+        const std::unordered_set<std::string> emptyAllow;
+        const auto &allowed = (allowIt != allowedPublicTokens.end()) ? allowIt->second : emptyAllow;
+
+        for (const auto &symbol : headerIt->second) {
+            if (defSymbols.count(symbol) == 0 || allowed.count(symbol) != 0)
+                continue;
+            std::cerr << "Broad internal header still references runtime.def symbol " << symbol
+                      << " in " << header << "\n";
+            EXPECT_TRUE(false);
+        }
     }
 }
 

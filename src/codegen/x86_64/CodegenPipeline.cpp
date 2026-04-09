@@ -206,20 +206,11 @@ void collectNativeLinkArchives(const common::LinkContext &ctx, std::vector<std::
     for (const auto &entry : ctx.requiredArchives)
         appendIfExists(entry.second);
 
-#if defined(_WIN32)
-    auto pickConfigPath =
-        [](std::initializer_list<std::filesystem::path> candidates) -> std::filesystem::path {
-        for (const auto &candidate : candidates) {
-            if (common::fileExists(candidate))
-                return candidate;
-        }
-        return {};
-    };
-
     // The Windows runtime build does not preserve the Unix weak-link defaults
     // used by viper_rt_base. Pull in the concrete component archives that
     // satisfy those cross-component references without regressing to
     // "link every runtime archive".
+#if defined(_WIN32)
     if (common::hasComponent(ctx, RtComponent::Base)) {
         appendComponent(RtComponent::Oop);
         appendComponent(RtComponent::Collections);
@@ -229,48 +220,14 @@ void collectNativeLinkArchives(const common::LinkContext &ctx, std::vector<std::
 #endif
 
     if (common::hasComponent(ctx, RtComponent::Graphics)) {
-#if defined(_WIN32)
-#if defined(NDEBUG)
-        const auto guiLib = pickConfigPath({ctx.buildDir / "src/lib/gui/Release/vipergui.lib",
-                                            ctx.buildDir / "src/lib/gui/Debug/vipergui.lib",
-                                            ctx.buildDir / "src/lib/gui/vipergui.lib"});
-        const auto gfxLib = pickConfigPath({ctx.buildDir / "lib/Release/vipergfx.lib",
-                                            ctx.buildDir / "lib/Debug/vipergfx.lib",
-                                            ctx.buildDir / "lib/vipergfx.lib"});
-#else
-        const auto guiLib = pickConfigPath({ctx.buildDir / "src/lib/gui/Debug/vipergui.lib",
-                                            ctx.buildDir / "src/lib/gui/Release/vipergui.lib",
-                                            ctx.buildDir / "src/lib/gui/vipergui.lib"});
-        const auto gfxLib = pickConfigPath({ctx.buildDir / "lib/Debug/vipergfx.lib",
-                                            ctx.buildDir / "lib/Release/vipergfx.lib",
-                                            ctx.buildDir / "lib/vipergfx.lib"});
-#endif
-#else
-        const auto guiLib = ctx.buildDir.empty()
-                                ? std::filesystem::path("src/lib/gui/libvipergui.a")
-                                : ctx.buildDir / "src/lib/gui/libvipergui.a";
-        const auto gfxLib = ctx.buildDir.empty() ? std::filesystem::path("lib/libvipergfx.a")
-                                                 : ctx.buildDir / "lib/libvipergfx.a";
-#endif
+        const auto guiLib = common::supportLibraryPath(ctx.buildDir, "vipergui");
+        const auto gfxLib = common::supportLibraryPath(ctx.buildDir, "vipergfx");
         appendIfExists(guiLib);
         appendIfExists(gfxLib);
     }
 
     if (common::hasComponent(ctx, RtComponent::Audio)) {
-#if defined(_WIN32)
-#if defined(NDEBUG)
-        const auto audLib = pickConfigPath({ctx.buildDir / "lib/Release/viperaud.lib",
-                                            ctx.buildDir / "lib/Debug/viperaud.lib",
-                                            ctx.buildDir / "lib/viperaud.lib"});
-#else
-        const auto audLib = pickConfigPath({ctx.buildDir / "lib/Debug/viperaud.lib",
-                                            ctx.buildDir / "lib/Release/viperaud.lib",
-                                            ctx.buildDir / "lib/viperaud.lib"});
-#endif
-#else
-        const auto audLib = ctx.buildDir.empty() ? std::filesystem::path("lib/libviperaud.a")
-                                                 : ctx.buildDir / "lib/libviperaud.a";
-#endif
+        const auto audLib = common::supportLibraryPath(ctx.buildDir, "viperaud");
         appendIfExists(audLib);
     }
 

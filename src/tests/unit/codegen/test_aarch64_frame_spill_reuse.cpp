@@ -138,6 +138,30 @@ TEST(AArch64SpillReuse, ReusedFrameSmallerThanUniqueSlots) {
     }
 }
 
+// -------------------------------------------------------------------------
+// Test 6: A stale vreg->slot mapping must not override current ownership.
+//
+//   vreg 0: [1, 3]   -> slot A
+//   vreg 1: [4, 10]  -> reuses slot A
+//   vreg 2: [7, 12]  -> needs slot B because slot A is still live
+//   vreg 0: [8, 14]  -> MUST NOT reuse stale slot A mapping while vreg 1 owns it
+//
+// Expected: the second lifetime of vreg 0 gets a fresh slot distinct from A.
+// -------------------------------------------------------------------------
+TEST(AArch64SpillReuse, SameVregDoesNotReuseSlotOwnedByAnotherLiveVreg) {
+    MFunction mf{};
+    FrameBuilder fb{mf};
+
+    const int off0_first = fb.ensureSpillWithReuse(0, /*lastUse=*/3, /*current=*/1);
+    const int off1 = fb.ensureSpillWithReuse(1, /*lastUse=*/10, /*current=*/4);
+    const int off2 = fb.ensureSpillWithReuse(2, /*lastUse=*/12, /*current=*/7);
+    const int off0_second = fb.ensureSpillWithReuse(0, /*lastUse=*/14, /*current=*/8);
+
+    EXPECT_EQ(off0_first, off1);
+    EXPECT_NE(off2, off1);
+    EXPECT_NE(off0_second, off1);
+}
+
 int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();

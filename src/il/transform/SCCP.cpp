@@ -786,14 +786,15 @@ class SCCPSolver {
         initialiseStates();
     }
 
-    void run() {
+    bool run() {
         if (function_.blocks.empty())
-            return;
+            return false;
 
         markBlockExecutable(0);
         process();
         rewriteConstants();
         foldTerminators();
+        return changed_;
     }
 
   private:
@@ -808,6 +809,7 @@ class SCCPSolver {
     std::queue<size_t> blockWorklist_;
     std::queue<Instr *> instrWorklist_;
     std::unordered_set<Instr *> inInstrWorklist_;
+    bool changed_ = false;
 
     //===------------------------------------------------------------------===//
     // Initialization
@@ -1354,12 +1356,16 @@ class SCCPSolver {
 
         for (Instr *instr : usesIt->second) {
             for (auto &operand : instr->operands)
-                if (operand.kind == Value::Kind::Temp && operand.id == id)
+                if (operand.kind == Value::Kind::Temp && operand.id == id) {
+                    changed_ = true;
                     operand = replacement;
+                }
             for (auto &args : instr->brArgs)
                 for (auto &arg : args)
-                    if (arg.kind == Value::Kind::Temp && arg.id == id)
+                    if (arg.kind == Value::Kind::Temp && arg.id == id) {
+                        changed_ = true;
                         arg = replacement;
+                    }
         }
     }
 
@@ -1413,6 +1419,7 @@ class SCCPSolver {
             args.push_back(instr.brArgs[succSlot]);
         else
             args.emplace_back();
+        changed_ = true;
         instr.op = Opcode::Br;
         instr.operands.clear();
         instr.labels.clear();
@@ -1439,20 +1446,20 @@ class SCCPSolver {
     }
 };
 
-void runSCCP(Function &function) {
-    SCCPSolver solver(function);
-    solver.run();
-}
-
 } // namespace
 
 //===----------------------------------------------------------------------===//
 // Section 4: Public API
 //===----------------------------------------------------------------------===//
 
+bool sccp(Function &function) {
+    SCCPSolver solver(function);
+    return solver.run();
+}
+
 void sccp(Module &module) {
     for (auto &function : module.functions)
-        runSCCP(function);
+        sccp(function);
 }
 
 } // namespace il::transform

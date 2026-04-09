@@ -149,6 +149,7 @@ class FrameBuilder : public common::FrameLayout {
     /// @p currentInstrIdx is a per-block counter that resets to 0 at each block
     /// boundary, making cross-epoch comparisons meaningless.
     struct SlotLifetime {
+        uint32_t vreg;       ///< Most-recent vreg assigned to this slot.
         int offset;          ///< FP-relative offset (always negative).
         int sizeBytes;       ///< Slot size (for size-compatible reuse check).
         unsigned lastUseIdx; ///< Last instruction index reading the current vreg.
@@ -162,6 +163,10 @@ class FrameBuilder : public common::FrameLayout {
     /// Lifetime records for every slot allocated via ensureSpillWithReuse().
     std::vector<SlotLifetime> slotLifetimes_;
 
+    [[nodiscard]] MFunction::SpillSlot *findLatestSpillSlot(uint32_t vreg) noexcept;
+    [[nodiscard]] const MFunction::SpillSlot *findLatestSpillSlot(uint32_t vreg) const noexcept;
+    [[nodiscard]] SlotLifetime *findSlotLifetime(int offset) noexcept;
+    [[nodiscard]] const SlotLifetime *findSlotLifetime(int offset) const noexcept;
     int assignAlignedSlot(int sizeBytes, int alignBytes);
 };
 

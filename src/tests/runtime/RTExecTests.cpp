@@ -14,6 +14,7 @@
 #include "rt_internal.h"
 #include "rt_seq.h"
 #include "rt_string.h"
+#include "tests/common/PlatformSkip.h"
 
 #include <cassert>
 #include <cstdio>
@@ -244,8 +245,7 @@ int main() {
 #ifdef _WIN32
     // Skip on Windows: test uses POSIX shell commands (true, false, /bin/echo)
     // that don't exist on Windows
-    printf("Test skipped: POSIX shell commands not available on Windows\n");
-    return 0;
+    VIPER_PLATFORM_SKIP("POSIX shell commands not available on Windows");
 #endif
     test_shell_true();
     test_shell_false();

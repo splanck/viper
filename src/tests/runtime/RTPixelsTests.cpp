@@ -15,6 +15,7 @@
 #include "rt_pixels.h"
 #include "rt_string.h"
 
+#include "tests/common/PlatformSkip.h"
 #include "tests/common/PosixCompat.h"
 #include <cassert>
 #include <cstdio>
@@ -923,8 +924,7 @@ static void test_blend_out_of_bounds() {
 int main() {
 #ifdef _WIN32
     // Skip on Windows: test uses /tmp paths not available on Windows
-    printf("Test skipped: POSIX temp paths not available on Windows\n");
-    return 0;
+    VIPER_PLATFORM_SKIP("POSIX temp paths not available on Windows");
 #endif
     printf("=== Viper.Graphics.Pixels Tests ===\n\n");
 

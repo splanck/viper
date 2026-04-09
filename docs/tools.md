@@ -110,6 +110,7 @@ The CLI is organized around primary entry points:
 - `viper codegen x64 <in.il> -o <out>` — Compile to x86-64 native code
 - `viper codegen arm64 <in.il> -S <out.s>` — Generate ARM64 assembly
 - `viper package <dir>` — Package a project for distribution (.app, .deb, .exe, .tar.gz)
+- `viper install-package` — Package the staged Viper toolchain itself (.exe, .pkg, .deb, .rpm, .tar.gz)
 - `viper repl` — Launch the interactive REPL
 
 ### viper init
@@ -202,6 +203,42 @@ viper codegen x64 <in.il> -S <out.s>  # Assembly only
 # ARM64 (Apple Silicon validated)
 viper codegen arm64 <in.il> -S <out.s>
 ```
+
+### viper install-package
+
+Package a staged Viper toolchain install tree.
+
+```bash
+viper install-package --build-dir build --target tarball
+viper install-package --build-dir build --target windows
+viper install-package --build-dir build --target macos
+viper install-package --build-dir build --stage-only
+viper install-package --verify-only build/installers/viper-0.2.4-macos-arm64.tar.gz
+```
+
+Typical workflow:
+
+- run `cmake --install <build-dir> --prefix <stage-dir>` yourself, or let `viper install-package --build-dir <build-dir>` create a temporary staged install
+- validate the staged install tree before packaging
+- emit one or more native toolchain artifacts from the same staged manifest
+
+| Option | Description |
+|--------|-------------|
+| `--target windows|macos|linux-deb|linux-rpm|tarball|all` | Select artifact format(s) |
+| `--build-dir <dir>` | Stage from an existing build tree via `cmake --install` |
+| `--stage-dir <dir>` | Package an already-staged install tree |
+| `--stage-only` | Validate and print staged metadata without producing artifacts |
+| `--verify-only <path>` | Structurally verify an existing installer artifact |
+| `--arch x64|arm64` | Override manifest architecture for output naming and format metadata |
+| `-o <path>` | Output path, or output directory when building multiple targets |
+| `--keep-stage-dir` | Preserve the auto-generated staging directory |
+| `--no-verify` | Skip post-build structural verification |
+| `--verbose` | Print staged version, arch, and file counts |
+
+Developer wrappers:
+
+- `scripts/build_installer.sh`
+- `scripts/build_installer.cmd`
 
 ---
 

@@ -1,133 +1,116 @@
-# Viper Platform Installer — Overview
+# Viper Toolchain Installers — Overview
 
-## Problem
+## Scope
 
-Viper requires building from source on every machine. End users need native installers that feel like standard platform software installs: a wizard EXE on Windows, a .pkg on macOS, and .deb/.rpm packages on Linux.
+This plan set covers packaging Viper itself, not packaging apps built with Viper.
 
-## Constraint
+Target outputs:
+- Windows: self-extracting `.exe`
+- macOS: flat `.pkg`
+- Linux: `.deb`, `.rpm`, and a portable `.tar.gz` fallback
 
-Zero external dependencies. All format writers hand-written in C++. No NSIS, no WiX, no dpkg-deb, no rpmbuild, no productbuild, no pkgbuild.
+The input to this workflow is a staged `cmake --install` tree. The packager should treat that staged install tree as the source of truth for what ships.
 
-## Existing Infrastructure (src/tools/common/packaging/)
+## What Already Exists
 
-VAPS already packages apps built WITH Viper. These format writers are fully reusable:
+Viper already has a substantial packaging stack. The installer work should extend it, not route around it.
 
-| Component | File | Reusable For |
-|-----------|------|-------------|
-| ZipWriter | ZipWriter.cpp | Windows overlay, macOS payload |
-| ZipReader | ZipReader.cpp | Windows installer extraction |
-| PEBuilder | PEBuilder.cpp | Windows installer PE |
-| InstallerStub | InstallerStub.cpp | Windows silent install (fallback) |
-| ArWriter | ArWriter.cpp | Linux .deb |
-| TarWriter | TarWriter.cpp | Linux .deb, .rpm payload base |
-| PkgDeflate | PkgDeflate.cpp | All compression |
-| PkgGzip | PkgGzip.cpp | Linux .deb/.rpm, macOS .pkg payload |
-| PkgMD5 | PkgMD5.cpp | Linux .deb checksums |
-| IconGenerator | IconGenerator.cpp | All platforms |
-| LnkWriter | LnkWriter.cpp | Windows shortcuts |
-| PlistGenerator | PlistGenerator.cpp | macOS metadata |
-| DesktopEntryGenerator | DesktopEntryGenerator.cpp | Linux .desktop |
-| LinuxPackageBuilder | LinuxPackageBuilder.cpp | .deb pattern |
-| WindowsPackageBuilder | WindowsPackageBuilder.cpp | .exe pattern |
-| MacOSPackageBuilder | MacOSPackageBuilder.cpp | .app pattern |
-| PkgVerify | PkgVerify.cpp | Structural validation |
-| PackageConfig | PackageConfig.hpp | File association infrastructure |
+| Existing piece | Current file(s) | Reuse in installer work |
+|---|---|---|
+| Packaging library target | `src/CMakeLists.txt` (`viper_packaging`) | Home for all installer-format code |
+| App packaging CLI | `src/tools/viper/cmd_package.cpp` | Reuse command patterns, output naming, verification flow |
+| Windows self-extracting installer | `src/tools/common/packaging/WindowsPackageBuilder.*` | Base path for Windows toolchain installer |
+| Windows install/uninstall stubs | `src/tools/common/packaging/InstallerStub.*`, `InstallerStubGen.hpp` | Extend for PATH, file associations, and toolchain payload layout |
+| Linux `.deb` builder | `src/tools/common/packaging/LinuxPackageBuilder.*` | Refactor/extend for toolchain packaging |
+| Linux portable tarball builder | `src/tools/common/packaging/LinuxPackageBuilder.*` | Keep as fallback artifact |
+| macOS `.app` bundle builder | `src/tools/common/packaging/MacOSPackageBuilder.*` | Reuse icon/plist/bundle knowledge; not the final `.pkg` format |
+| Common metadata types | `src/tools/common/packaging/PackageConfig.hpp` | Reuse `FileAssoc`; do not duplicate app/package metadata primitives |
+| Format writers | `ZipWriter`, `ZipReader`, `ArWriter`, `TarWriter`, `PEBuilder`, `PkgDeflate`, `PkgGzip`, `PkgMD5` | Reuse directly |
+| Generators | `IconGenerator`, `LnkWriter`, `PlistGenerator`, `DesktopEntryGenerator` | Reuse directly |
+| Structural verification | `src/tools/common/packaging/PkgVerify.*` | Extend instead of building separate verifier programs |
+| Install metadata from CMake | `cmake --install`, `install_manifest.txt`, generated CMake package files | Primary source for staged packaging |
+| Runtime component metadata | `include/viper/runtime/RuntimeComponentManifest.hpp.in` | Validate that installed runtime archives are complete |
+| Build capability metadata | `include/viper/platform/Capabilities.hpp.in` | Validate platform-conditional install contents |
+| CPack config | root `CMakeLists.txt` | Optional host-side oracle, not the shipping implementation |
 
-Existing test coverage: 71 tests in `src/tests/unit/test_packaging.cpp` covering ZIP, TAR, AR, PE, LNK, ICNS, ICO, Plist, Desktop entries, and verification.
+## Current Gaps
 
-## What Gets Installed
+1. Installed Viper cannot yet discover all native-link inputs outside the build tree. The current gaps are not only runtime archives in `LinkerSupport.cpp`, but also companion graphics/audio libraries in `LinkerSupport.cpp`, `src/codegen/x86_64/CodegenPipeline.cpp`, and `src/codegen/aarch64/CodegenPipeline.cpp`.
+2. The root install rules still point man page installation at `man/` instead of `docs/man/`.
+3. The staged install tree is not yet validated as a complete ship set. In practice that means the installer plans still need an explicit policy for `LICENSE`, README/release notes, optional editor artifacts such as the VS Code `.vsix`, and generated headers.
+4. The exported/installable target set is currently incomplete relative to the runtime components that are actually built. The plan must explicitly fix the missing installed/exported runtime libraries before packaging is treated as complete.
+5. There is still a mismatch today between some staged man pages and the binaries that are actually installed, notably `basic-ast-dump` and `basic-lex-dump`.
+6. There is no toolchain-specific manifest that maps staged files to platform install locations while preserving the staged install layout.
+7. Viper has no native writers yet for flat macOS `.pkg`, `xar`, `cpio`, or `.rpm`.
+8. There is no CLI entrypoint dedicated to packaging the Viper toolchain.
+9. Signing/notarization/release handling is only implicit and should be a separate phase.
 
-| Category | Files | Count |
-|----------|-------|-------|
-| CLI tools | viper, zia, vbasic, ilrun, il-verify, il-dis, zia-server, vbasic-server | 8 |
-| Runtime libs | libviper_runtime.a/.lib + component archives | ~15 |
-| Graphics/audio | libvipergfx, libviperaud, libvipergui | 3 |
-| Headers | include/viper/**/*.hpp | ~20+ |
-| Man pages | man1/*.1, man7/*.7 | 9 |
-| CMake config | ViperConfig.cmake, ViperTargets.cmake | 2 |
-| VS Code ext | zia-language-0.1.0.vsix | 1 |
-| License | LICENSE | 1 |
+## Guiding Decisions
 
-**Note on library extensions**: macOS/Linux use `.a` (e.g. `libviper_rt_base.a`). Windows with clang-cl uses `.lib` (e.g. `viper_rt_base.lib`). The manifest gatherer must handle both.
+### 1. Package from the staged install tree
 
-## Install Locations
+Do not package directly from the build tree unless there is no staged equivalent yet. If a file belongs in the installer, prefer fixing `install()` rules so `cmake --install` stages it correctly.
 
-| Category | Windows | macOS | Linux |
-|----------|---------|-------|-------|
-| Binaries | `C:\Program Files\Viper\bin\` | `/usr/local/viper/bin/` | `/usr/bin/` |
-| Libraries | `C:\Program Files\Viper\lib\` | `/usr/local/viper/lib/` | `/usr/lib/viper/` |
-| Headers | `C:\Program Files\Viper\include\viper\` | `/usr/local/viper/include/viper/` | `/usr/include/viper/` |
-| Man pages | N/A | `/usr/local/share/man/` | `/usr/share/man/` |
-| CMake | `C:\Program Files\Viper\lib\cmake\Viper\` | `/usr/local/viper/lib/cmake/Viper/` | `/usr/lib/cmake/Viper/` |
-| Docs | `C:\Program Files\Viper\` | `/usr/local/viper/` | `/usr/share/doc/viper/` |
-| PATH symlinks | N/A | `/usr/local/bin/` (symlinks) | N/A (installed directly) |
+Corollary:
+- do not invent a second "installer layout" when the staged tree already provides the correct relative layout for `bin/`, `lib/`, `include/`, `share/`, and `lib/cmake/Viper/`
+- platform builders may re-root the staged tree under a platform-specific prefix, but they should preserve the staged relative paths underneath that root
 
-## Critical Cross-Cutting Concern: Runtime Library Discovery
+### 2. Extend existing builders first
 
-Currently `findBuildDir()` in `src/codegen/common/LinkerSupport.cpp:59` only searches for `CMakeCache.txt` by walking up directories. After installation there is no build directory. **No installed-path search logic exists today.** A new layered search strategy is needed:
+Do not create parallel Windows/Linux/macOS packaging stacks if the current builders can be generalized. The default approach is:
+- refactor shared code out of an existing builder
+- add a toolchain-oriented entrypoint on top of it
+- keep app packaging and toolchain packaging on the same lower-level primitives
 
-1. `VIPER_LIB_PATH` environment variable (explicit override)
-2. Relative to viper executable: `<exe_dir>/../lib/` (standard FHS-like layout)
-3. Platform standard paths: `/usr/lib/viper/`, `/usr/local/viper/lib/`, `C:\Program Files\Viper\lib\`
-4. Existing `findBuildDir()` fallback (for development)
+### 3. Keep one shared manifest
 
-The installed layout is flat (`lib/libviper_rt_base.a`) while the build layout is nested (`build/src/runtime/libviper_rt_base.a`). The search must handle both.
+Every platform builder should consume the same toolchain manifest. Platform-specific code should only map that manifest into:
+- install paths
+- metadata files
+- platform post-install behavior
 
-This must be implemented as Phase 0 — without it, an installed Viper cannot compile native executables.
+### 4. Separate format generation from signing
 
-## Prerequisite Fix: Man Page Install Path
+Unsigned or locally signed artifacts are the output of the core builder. Authenticode, `productsign`, notarization, and RPM GPG signing are release steps, not format-generation steps.
 
-The root `CMakeLists.txt` install commands (lines 588-594) reference `${CMAKE_SOURCE_DIR}/man/` but the actual man pages are at `${CMAKE_SOURCE_DIR}/docs/man/`. This path mismatch means `cmake --install` silently skips man pages. Fix this before the installer can include them.
+### 5. Use host tools as verification oracles, not core dependencies
 
-## Existing `viper package` Command
+`pkgutil`, `installer`, `dpkg-deb`, `rpm`, `signtool`, and CPack are valuable validation tools on host CI. They should not be required to generate the package bytes in the normal path.
 
-`src/tools/viper/cmd_package.cpp` implements `viper package` which compiles Viper projects into platform-specific app installers (.app, .deb, .exe, .tar.gz). This is for packaging apps built WITH Viper — different scope from the planned `viper install-package` which packages Viper ITSELF. Minimal code overlap but can share the `PlatformInstallConfig` manifest struct.
+## Recommended Phase Order
 
-## Upgrade Behavior
-
-| Platform | Mechanism | Notes |
-|----------|-----------|-------|
-| Windows | Installer detects existing installation via registry, offers overwrite/cancel | Check `HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Viper` for `DisplayVersion` |
-| macOS | Installer.app overwrites files at same paths automatically | postinstall script is idempotent (ln -sf) |
-| Linux .deb | dpkg handles upgrades natively via version comparison | postinst must be idempotent |
-| Linux .rpm | rpm -U handles upgrades | Same FHS paths ensure clean replacement |
-
-## File Associations
-
-Infrastructure exists in `PackageConfig.hpp` (FileAssoc struct). The installer should register:
-- `.zia` → "Zia Source File" (`text/x-zia`) → open with `zia`
-- `.bas` → "BASIC Source File" (`text/x-basic`) → open with `vbasic`
-- `.il` → "Viper IL Module" (`text/x-viper-il`) → open with `ilrun`
-
-Platform-specific registration:
-- Windows: Registry keys under `HKCR\.zia`, `HKCR\ViperZiaFile`, `DefaultIcon`, `shell\open\command`
-- macOS: UTType declarations via `lsregister` in postinstall
-- Linux: Already handled by MIME XML + .desktop file in existing infrastructure
-
-## Phases
-
-| Phase | Deliverable | New Files | ~LOC |
-|-------|-------------|-----------|------|
-| 0 | Man page path fix + runtime library discovery for installed Viper | 2 modified | 120 |
-| 1 | Install manifest + path mapping | 2 new | 350 |
-| 2 | Windows GUI installer (.exe) | 4 new | 1400 |
-| 3 | macOS .pkg installer | 8 new | 1300 |
-| 4 | Linux .rpm package + .deb enhancements | 4 new | 900 |
-| 5 | CLI command + build scripts | 3 new | 400 |
-| 6 | Verification + tests | ~70 new test cases | 600 |
-
-Total: ~25 new files, ~5070 LOC
+| Phase | Deliverable | Notes |
+|---|---|---|
+| 0 | Install-tree prerequisites | Fix install rules and installed runtime discovery first |
+| 1 | Toolchain manifest + path mapping | Shared data model for every platform |
+| 2 | Windows toolchain installer | Extend current PE+ZIP installer path |
+| 3 | macOS `.pkg` | New format writers, but reuse current metadata/icon helpers |
+| 4 | Linux toolchain packages | Extend current `.deb`, add `.rpm`, keep tarball fallback |
+| 5 | CLI and scripts | `viper install-package` + staging/release wrappers |
+| 6 | Verification matrix | Unit, structural, staging, and install/uninstall tests |
+| 7 | Signing and release automation | Post-build only |
 
 ## Dependency Graph
 
-```
-Phase 0 (Library discovery + man page fix)
-  └── Phase 1 (Manifest)
-        ├── Phase 2 (Windows .exe)
-        ├── Phase 3 (macOS .pkg)
-        │     └── Phase 4 (Linux .rpm)  ← shares CpioWriter from Phase 3
-        └── Phase 5 (CLI orchestration) ← depends on 2-4
-              └── Phase 6 (Verification)
+```text
+Phase 0: install rules + installed runtime discovery
+  -> Phase 1: shared toolchain manifest
+     -> Phase 2: Windows
+     -> Phase 3: macOS
+     -> Phase 4: Linux
+        -> Phase 5: CLI and scripts
+           -> Phase 6: verification matrix
+              -> Phase 7: signing and release
 ```
 
-Phases 2, 3, and 4 can proceed in parallel after Phase 1.
+## Expected End State
+
+After all phases:
+- `cmake --install` stages a complete toolchain tree
+- the staged tree is internally consistent: installed binaries, man pages, generated headers, exported targets, and optional extras all match the intended ship set
+- `viper install-package` can turn that staged tree into native installers
+- installed Viper can compile native executables without needing a build tree or source tree
+- the installed `ViperConfig.cmake` / `ViperTargets.cmake` export works from the packaged install tree
+- Windows/macOS/Linux installers all come from the same manifest and verification flow
+- CPack remains a comparison oracle during implementation, not a parallel packaging stack
+- release signing is layered on top of already-valid unsigned artifacts

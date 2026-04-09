@@ -272,6 +272,7 @@ add_library(viper_packaging STATIC
         tools/common/packaging/IconGenerator.cpp
         tools/common/packaging/MacOSPackageBuilder.cpp
         tools/common/packaging/LinuxPackageBuilder.cpp
+        tools/common/packaging/ToolchainInstallManifest.cpp
         tools/common/packaging/PEBuilder.cpp
         tools/common/packaging/LnkWriter.cpp
         tools/common/packaging/WindowsPackageBuilder.cpp
@@ -282,7 +283,7 @@ add_library(viper_packaging STATIC
         tools/common/asset/VpaWriter.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/runtime/core/rt_crc32.c
 )
-target_link_libraries(viper_packaging PRIVATE viper_common_opts)
+target_link_libraries(viper_packaging PRIVATE viper_common_opts viper_common)
 target_include_directories(viper_packaging PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/tools/common/packaging>
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/tools/common/asset>
@@ -432,6 +433,7 @@ set(VIPER_CLI_SOURCES
         tools/viper/cmd_bench.cpp
         tools/viper/cmd_init.cpp
         tools/viper/cmd_package.cpp
+        tools/viper/cmd_install_package.cpp
         tools/viper/cmd_repl.cpp
         tools/viper/cli.cpp
         tools/viper/break_spec.cpp)
@@ -635,6 +637,7 @@ add_executable(basic-lex-dump
 set_target_properties(basic-lex-dump PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/src/tools/basic-lex-dump)
 target_link_libraries(basic-lex-dump PRIVATE fe_basic)
 target_compile_definitions(basic-lex-dump PRIVATE VIPER_BASIC_TOOL_USAGE="Usage: basic-lex-dump <file.bas>\\n")
+install(TARGETS basic-ast-dump basic-lex-dump RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/support/
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/viper/support

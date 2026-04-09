@@ -208,6 +208,9 @@ int cmdInit(int argc, char **argv);
 /// @return `0` on success, non-zero on failure.
 int cmdPackage(int argc, char **argv);
 
+/// @brief Handle `viper install-package` subcommand.
+int cmdInstallPackage(int argc, char **argv);
+
 /// @brief Handle `viper repl` subcommand.
 ///
 /// Launches an interactive REPL session for the specified language.

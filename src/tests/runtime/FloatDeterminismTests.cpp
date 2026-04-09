@@ -14,6 +14,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "viper/runtime/rt.h"
+#include "tests/common/PlatformSkip.h"
 
 #include <array>
 #include <cassert>
@@ -118,8 +119,7 @@ std::string build_parse_report() {
 int main() {
 #ifdef _WIN32
     // Skip on Windows: __FILE__ path handling differs, causing golden file lookup issues
-    std::cout << "Test skipped: Golden file paths need Windows adaptation\n";
-    return 0;
+    VIPER_PLATFORM_SKIP("Golden file paths need Windows adaptation");
 #endif
     const auto golden = golden_dir();
 

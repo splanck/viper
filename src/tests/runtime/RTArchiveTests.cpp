@@ -20,6 +20,7 @@
 #include "rt_map.h"
 #include "rt_seq.h"
 #include "rt_string.h"
+#include "tests/common/PlatformSkip.h"
 
 #include <cassert>
 #include <csetjmp>
@@ -643,8 +644,7 @@ static void test_large_file() {
 int main() {
 #ifdef _WIN32
     // Skip on Windows: test uses /tmp paths not available on Windows
-    printf("Test skipped: POSIX temp paths not available on Windows\n");
-    return 0;
+    VIPER_PLATFORM_SKIP("POSIX temp paths not available on Windows");
 #endif
     printf("=== RT Archive Tests ===\n\n");
 

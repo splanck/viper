@@ -308,4 +308,93 @@ void buildWindowsPackage(const WindowsBuildParams &params) {
     writePEToFile(peBytes, params.outputPath);
 }
 
+void buildWindowsToolchainInstaller(const WindowsToolchainBuildParams &params) {
+    WindowsPackageLayout layout;
+    layout.displayName = params.displayName;
+    layout.installDirName = "Viper";
+    layout.version = params.manifest.version;
+    layout.identifier = params.identifier;
+    layout.publisher = params.publisher;
+    layout.executableName = "viper.exe";
+    layout.createDesktopShortcut = false;
+    layout.createStartMenuShortcut = false;
+
+    std::set<std::string> installDirSet;
+
+    ZipWriter zip;
+    zip.setCompressionEnabled(false);
+    zip.addDirectory("app/");
+    zip.addDirectory("meta/");
+
+    for (const auto &file : params.manifest.files) {
+        const std::string relInstall =
+            sanitizePackageRelativePath(file.stagedRelativePath, "windows toolchain path");
+        addParentDirs(layout.installDirectories,
+                      installDirSet,
+                      WindowsInstallRoot::InstallDir,
+                      relInstall);
+        const auto data = readFile(file.stagedAbsolutePath.string());
+        addOverlayFile(zip,
+                       "app/" + relInstall,
+                       data.data(),
+                       data.size(),
+                       file.executable ? 0100755 : 0100644,
+                       layout,
+                       WindowsInstallRoot::InstallDir,
+                       relInstall,
+                       true);
+
+        const std::string lowerRel = normalizeExecName(relInstall);
+        if (lowerRel == "license" || lowerRel == "readme.md") {
+            const std::string overlayName = lowerRel == "license" ? "meta/license.txt" : "meta/readme.txt";
+            zip.addFile(overlayName, data.data(), data.size(), 0100644);
+        }
+    }
+
+    finalizeUninstallDirs(layout);
+
+    auto uninstStub = buildUninstallerStub(layout, params.archStr);
+    PEBuildParams uninstPe;
+    uninstPe.arch = uninstStub.peArch;
+    uninstPe.textSection = uninstStub.textSection;
+    uninstPe.rdataSection = uninstStub.stubData;
+    uninstPe.imports = uninstStub.imports;
+    uninstPe.manifest = generateAsInvokerManifest();
+    const auto uninstBytes = buildPE(uninstPe);
+    addOverlayFile(zip,
+                   "app/uninstall.exe",
+                   uninstBytes.data(),
+                   uninstBytes.size(),
+                   0100755,
+                   layout,
+                   WindowsInstallRoot::InstallDir,
+                   "uninstall.exe",
+                   false);
+
+    const auto zipPayload = zip.finishToVector();
+
+    layout.overlayFileOffset = 0;
+    auto provisionalStub = buildInstallerStub(layout, params.archStr);
+    PEBuildParams provisionalPe;
+    provisionalPe.arch = provisionalStub.peArch;
+    provisionalPe.textSection = provisionalStub.textSection;
+    provisionalPe.rdataSection = provisionalStub.stubData;
+    provisionalPe.imports = provisionalStub.imports;
+    provisionalPe.manifest = generateUacManifest();
+    provisionalPe.overlay = zipPayload;
+    const auto provisionalBytes = buildPE(provisionalPe);
+    layout.overlayFileOffset = static_cast<uint32_t>(provisionalBytes.size() - zipPayload.size());
+
+    auto instStub = buildInstallerStub(layout, params.archStr);
+    PEBuildParams pe;
+    pe.arch = instStub.peArch;
+    pe.textSection = instStub.textSection;
+    pe.rdataSection = instStub.stubData;
+    pe.imports = instStub.imports;
+    pe.manifest = generateUacManifest();
+    pe.overlay = zipPayload;
+    const auto peBytes = buildPE(pe);
+    writePEToFile(peBytes, params.outputPath);
+}
+
 } // namespace viper::pkg

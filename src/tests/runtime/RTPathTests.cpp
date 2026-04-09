@@ -15,6 +15,7 @@
 
 #include "rt.hpp"
 #include "rt_path.h"
+#include "tests/common/PlatformSkip.h"
 
 #include <cassert>
 #include <cstdio>
@@ -283,8 +284,7 @@ int main() {
 #ifdef _WIN32
     // Skip on Windows: tests use Unix-style paths (/foo/bar) that have different
     // semantics on Windows (not considered absolute paths)
-    printf("Test skipped: Unix path conventions not applicable on Windows\n");
-    return 0;
+    VIPER_PLATFORM_SKIP("Unix path conventions not applicable on Windows");
 #endif
     printf("=== RT Path Tests ===\n\n");
 

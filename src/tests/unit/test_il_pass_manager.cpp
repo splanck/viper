@@ -14,7 +14,13 @@
 //===----------------------------------------------------------------------===//
 
 #include "il/api/expected_api.hpp"
+#include "il/core/BasicBlock.hpp"
+#include "il/core/Function.hpp"
+#include "il/core/Instr.hpp"
 #include "il/core/Module.hpp"
+#include "il/core/Opcode.hpp"
+#include "il/core/Type.hpp"
+#include "il/core/Value.hpp"
 #include "il/io/Serializer.hpp"
 #include "il/transform/PassManager.hpp"
 #include "il/transform/analysis/Liveness.hpp"
@@ -67,6 +73,61 @@ core::Module parseParallelModule() {
     std::istringstream input(kParallelProgram);
     auto parsed = il::api::v2::parse_text_expected(input, module);
     assert(parsed);
+    return module;
+}
+
+core::Module buildSCCPSelectiveModule() {
+    core::Module module;
+
+    {
+        core::Function fn;
+        fn.name = "foo";
+        fn.retType = core::Type(core::Type::Kind::I64);
+
+        unsigned nextId = 0;
+        core::BasicBlock entry;
+        entry.label = "entry";
+
+        core::Instr add;
+        add.result = nextId++;
+        add.op = core::Opcode::IAddOvf;
+        add.type = core::Type(core::Type::Kind::I64);
+        add.operands.push_back(core::Value::constInt(3));
+        add.operands.push_back(core::Value::constInt(5));
+        entry.instructions.push_back(std::move(add));
+
+        core::Instr ret;
+        ret.op = core::Opcode::Ret;
+        ret.type = core::Type(core::Type::Kind::Void);
+        ret.operands.push_back(core::Value::temp(0));
+        entry.instructions.push_back(std::move(ret));
+        entry.terminated = true;
+
+        fn.blocks.push_back(std::move(entry));
+        fn.valueNames.resize(nextId);
+        fn.valueNames[0] = "sum";
+        module.functions.push_back(std::move(fn));
+    }
+
+    {
+        core::Function fn;
+        fn.name = "bar";
+        fn.retType = core::Type(core::Type::Kind::I64);
+
+        core::BasicBlock entry;
+        entry.label = "entry";
+
+        core::Instr ret;
+        ret.op = core::Opcode::Ret;
+        ret.type = core::Type(core::Type::Kind::Void);
+        ret.operands.push_back(core::Value::constInt(9));
+        entry.instructions.push_back(std::move(ret));
+        entry.terminated = true;
+
+        fn.blocks.push_back(std::move(entry));
+        module.functions.push_back(std::move(fn));
+    }
+
     return module;
 }
 
@@ -270,6 +331,85 @@ int main() {
         assert(ranSelective);
         assert(fooCount == 2);
         assert(barCount == 1);
+    }
+
+    {
+        int sccpNoopCount = 0;
+        transform::PassManager sccpNoopPm;
+        sccpNoopPm.registerFunctionAnalysis<int>(
+            "sccp-noop-count", [&sccpNoopCount](core::Module &, core::Function &) {
+                return ++sccpNoopCount;
+            });
+        sccpNoopPm.registerFunctionPass(
+            "seed-sccp-noop",
+            [](core::Function &fn, transform::AnalysisManager &analysis) {
+                int &value = analysis.getFunctionResult<int>("sccp-noop-count", fn);
+                assert(value == 1);
+                transform::PreservedAnalyses preserved;
+                preserved.preserveFunction("sccp-noop-count");
+                return preserved;
+            });
+        sccpNoopPm.registerFunctionPass(
+            "check-sccp-noop",
+            [](core::Function &fn, transform::AnalysisManager &analysis) {
+                int &value = analysis.getFunctionResult<int>("sccp-noop-count", fn);
+                assert(value == 1);
+                return transform::PreservedAnalyses::all();
+            });
+        sccpNoopPm.registerPipeline("sccp-noop-preservation",
+                                    {"seed-sccp-noop", "sccp", "check-sccp-noop"});
+
+        core::Module sccpNoopModule = parseModule();
+        bool ranSccpNoop = sccpNoopPm.runPipeline(sccpNoopModule, "sccp-noop-preservation");
+        assert(ranSccpNoop);
+        assert(sccpNoopCount == 1);
+    }
+
+    {
+        int fooCount = 0;
+        int barCount = 0;
+        transform::PassManager sccpSelectivePm;
+        sccpSelectivePm.registerFunctionAnalysis<int>(
+            "sccp-selective-count",
+            [&fooCount, &barCount](core::Module &, core::Function &fn) {
+                if (fn.name == "foo")
+                    return ++fooCount;
+                if (fn.name == "bar")
+                    return ++barCount;
+                return 0;
+            });
+        sccpSelectivePm.registerFunctionPass(
+            "seed-sccp-selective",
+            [](core::Function &fn, transform::AnalysisManager &analysis) {
+                int &value = analysis.getFunctionResult<int>("sccp-selective-count", fn);
+                (void)value;
+                transform::PreservedAnalyses preserved;
+                preserved.preserveFunction("sccp-selective-count");
+                return preserved;
+            });
+        sccpSelectivePm.registerFunctionPass(
+            "check-sccp-selective",
+            [&fooCount, &barCount](core::Function &fn, transform::AnalysisManager &analysis) {
+                int &value = analysis.getFunctionResult<int>("sccp-selective-count", fn);
+                if (fn.name == "foo")
+                    assert(value == 2);
+                else if (fn.name == "bar")
+                    assert(value == 1);
+                return transform::PreservedAnalyses::all();
+            });
+        sccpSelectivePm.registerPipeline("sccp-selective-preservation",
+                                         {"seed-sccp-selective", "sccp", "check-sccp-selective"});
+
+        core::Module sccpSelectiveModule = buildSCCPSelectiveModule();
+        bool ranSccpSelective = sccpSelectivePm.runPipeline(sccpSelectiveModule,
+                                                            "sccp-selective-preservation");
+        assert(ranSccpSelective);
+        assert(fooCount == 2);
+        assert(barCount == 1);
+        const auto &fooRet = sccpSelectiveModule.functions[0].blocks[0].instructions.back();
+        assert(fooRet.operands.size() == 1);
+        assert(fooRet.operands[0].kind == core::Value::Kind::ConstInt);
+        assert(fooRet.operands[0].i64 == 8);
     }
 
     assert(!pm.runPipeline(module, "missing"));

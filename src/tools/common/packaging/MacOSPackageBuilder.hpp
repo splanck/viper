@@ -23,6 +23,7 @@
 #pragma once
 
 #include "PackageConfig.hpp"
+#include "ToolchainInstallManifest.hpp"
 
 #include <string>
 
@@ -42,5 +43,16 @@ struct MacOSBuildParams {
 /// @param params Build parameters.
 /// @throws std::runtime_error on failure.
 void buildMacOSPackage(const MacOSBuildParams &params);
+
+/// @brief Parameters for building a macOS toolchain installer package.
+struct MacOSToolchainBuildParams {
+    ToolchainInstallManifest manifest;
+    std::string outputPath;
+    std::string identifier{"org.viper.toolchain"};
+    std::string displayName{"Viper Toolchain"};
+};
+
+/// @brief Build a macOS `.pkg` installer for the staged toolchain.
+void buildMacOSToolchainPackage(const MacOSToolchainBuildParams &params);
 
 } // namespace viper::pkg

@@ -107,9 +107,8 @@ int FrameBuilder::localOffset(unsigned tempId) const {
 }
 
 int FrameBuilder::ensureSpill(uint32_t vreg, int sizeBytes, int alignBytes) {
-    for (const auto &S : fn_->frame.spills)
-        if (S.vreg == vreg)
-            return S.offset;
+    if (const auto *slot = findLatestSpillSlot(vreg))
+        return slot->offset;
     const int off = assignAlignedSlot(sizeBytes, alignBytes);
     fn_->frame.spills.push_back(MFunction::SpillSlot{vreg, sizeBytes, alignBytes, off});
     return off;
@@ -120,10 +119,22 @@ int FrameBuilder::ensureSpillWithReuse(uint32_t vreg,
                                        unsigned currentInstrIdx,
                                        int sizeBytes,
                                        int alignBytes) {
-    // Fast path: this vreg was already assigned a slot (e.g., re-spill after reload).
-    for (const auto &S : fn_->frame.spills)
-        if (S.vreg == vreg)
-            return S.offset;
+    // Fast path: reuse the most-recent slot assignment for this vreg only while its
+    // tracked lifetime is still active. Once that lifetime is dead and the slot has
+    // potentially been recycled for another vreg in the same block, the caller must
+    // re-run slot selection instead of blindly reusing the cached offset.
+    if (const auto *slot = findLatestSpillSlot(vreg)) {
+        if (auto *lifetime = findSlotLifetime(slot->offset)) {
+            const bool sameEpoch = lifetime->epoch == blockEpoch_;
+            const bool stillLive = lifetime->lastUseIdx >= currentInstrIdx;
+            if (lifetime->vreg == vreg && (!sameEpoch || stillLive)) {
+                lifetime->lastUseIdx = std::max(lifetime->lastUseIdx, lastUseInstrIdx);
+                return slot->offset;
+            }
+        } else {
+            return slot->offset;
+        }
+    }
 
     // Try to reuse a dead slot.  A slot is dead when:
     //   (a) it was recorded in the SAME block epoch (same basic block), AND
@@ -136,6 +147,7 @@ int FrameBuilder::ensureSpillWithReuse(uint32_t vreg,
             // Recycle: update the vreg→offset mapping and refresh the lifetime.
             fn_->frame.spills.push_back(
                 MFunction::SpillSlot{vreg, sizeBytes, alignBytes, L.offset});
+            L.vreg = vreg;
             L.lastUseIdx = lastUseInstrIdx;
             // epoch stays the same (still the current block)
             return L.offset;
@@ -145,7 +157,7 @@ int FrameBuilder::ensureSpillWithReuse(uint32_t vreg,
     // No dead slot available: allocate a fresh one and track its lifetime.
     const int off = assignAlignedSlot(sizeBytes, alignBytes);
     fn_->frame.spills.push_back(MFunction::SpillSlot{vreg, sizeBytes, alignBytes, off});
-    slotLifetimes_.push_back(SlotLifetime{off, sizeBytes, lastUseInstrIdx, blockEpoch_});
+    slotLifetimes_.push_back(SlotLifetime{vreg, off, sizeBytes, lastUseInstrIdx, blockEpoch_});
     return off;
 }
 
@@ -172,6 +184,38 @@ void FrameBuilder::finalize() {
 
 int FrameBuilder::assignAlignedSlot(int sizeBytes, int alignBytes) {
     return slotCursor_.allocate(std::max(1, sizeBytes), alignBytes).offset;
+}
+
+MFunction::SpillSlot *FrameBuilder::findLatestSpillSlot(uint32_t vreg) noexcept {
+    for (auto it = fn_->frame.spills.rbegin(); it != fn_->frame.spills.rend(); ++it) {
+        if (it->vreg == vreg)
+            return &*it;
+    }
+    return nullptr;
+}
+
+const MFunction::SpillSlot *FrameBuilder::findLatestSpillSlot(uint32_t vreg) const noexcept {
+    for (auto it = fn_->frame.spills.rbegin(); it != fn_->frame.spills.rend(); ++it) {
+        if (it->vreg == vreg)
+            return &*it;
+    }
+    return nullptr;
+}
+
+FrameBuilder::SlotLifetime *FrameBuilder::findSlotLifetime(int offset) noexcept {
+    for (auto &lifetime : slotLifetimes_) {
+        if (lifetime.offset == offset)
+            return &lifetime;
+    }
+    return nullptr;
+}
+
+const FrameBuilder::SlotLifetime *FrameBuilder::findSlotLifetime(int offset) const noexcept {
+    for (const auto &lifetime : slotLifetimes_) {
+        if (lifetime.offset == offset)
+            return &lifetime;
+    }
+    return nullptr;
 }
 
 } // namespace viper::codegen::aarch64

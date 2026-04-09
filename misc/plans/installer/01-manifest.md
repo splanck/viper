@@ -1,237 +1,268 @@
-# Phase 0+1: Runtime Library Discovery and Install Manifest
+# Phase 0-1: Install Prerequisites, Installed Runtime Discovery, and Toolchain Manifest
 
-## Phase 0: Prerequisites
+## Why This Comes First
 
-### 0A: Fix Man Page Install Path
+Every later phase depends on two things being true:
+- the staged install tree is complete
+- an installed `viper` can find its runtime archives and support files without a build tree
 
-The root `CMakeLists.txt` install commands (lines 588-594) reference `${CMAKE_SOURCE_DIR}/man/` but the actual man pages live at `${CMAKE_SOURCE_DIR}/docs/man/`. Fix the install() commands to use the correct path. Without this, `cmake --install` silently skips man pages.
+If either of those is missing, the installers may build successfully but ship a broken toolchain.
 
-**Files**: `CMakeLists.txt` — change `man/man1` to `docs/man/man1` and `man/man7` to `docs/man/man7` in the install() calls.
+## Reuse First
 
-**Man pages available** (9 total):
-- `docs/man/man1/`: viper.1, zia.1, vbasic.1, ilrun.1, il-verify.1, il-dis.1, basic-ast-dump.1, basic-lex-dump.1
-- `docs/man/man7/`: viper.7
+Before adding any new code, this phase should reuse:
+- existing `install()` rules in the root `CMakeLists.txt` and `src/CMakeLists.txt`
+- CMake's generated `install_manifest.txt`
+- generated runtime archive metadata in `viper/runtime/RuntimeComponentManifest.hpp`
+- generated platform capability metadata in `viper/platform/Capabilities.hpp`
+- generated package config/export files in `ViperConfig.cmake` and `ViperTargets.cmake`
+- existing `PackageConfig::FileAssoc` rather than inventing a second file-association struct
 
-### 0B: Runtime Library Discovery (Critical)
+## Phase 0: Install-Tree Prerequisites
 
-#### Problem
+### 0A. Fix staged install contents
 
-`findBuildDir()` in `src/codegen/common/LinkerSupport.cpp:59` walks up directories looking for `CMakeCache.txt`. After installation, there is no CMakeCache.txt. **No installed-path search logic exists.** `viper build` will fail to find runtime `.a`/`.lib` archives and cannot produce native executables.
+The installer packager should not reach back into the source tree for normal ship artifacts. If the installer needs a file, the staging step should install it first.
 
-#### Solution
+Required fixes:
+- fix man page install paths in the root `CMakeLists.txt` from `man/man1` and `man/man7` to `docs/man/man1` and `docs/man/man7`
+- resolve the current man-page/binary mismatch for `basic-ast-dump` and `basic-lex-dump`
+  - either install those tools as part of the toolchain
+  - or stop staging their man pages
+- ensure the staged tree includes:
+  - binaries
+  - static libraries
+  - public headers
+  - generated public headers such as `version.hpp`, `Capabilities.hpp`, and `RuntimeComponentManifest.hpp`
+  - CMake package files
+  - man pages
+  - `LICENSE`
+  - `README.md` or a dedicated release note/readme file if we want it shipped
+  - any editor-extension artifact we explicitly choose to ship
+- ensure the installed/exported library set is complete enough for the staged `ViperTargets.cmake` to describe the actual shipped toolchain
+  - the current root export list misses runtime component libraries that are built in `src/runtime/CMakeLists.txt`
+  - Phase 0 should explicitly reconcile that before installer work relies on the installed export set
 
-Add `findInstalledLibDir()` as a new search path tried BEFORE `findBuildDir()`. The existing build-dir search remains as the final fallback for development mode.
+Recommendation:
+- add toolchain docs under `${CMAKE_INSTALL_DOCDIR}/viper/`
+- keep the shipped-file list conservative; do not install development-only docs by default
+- if the VS Code extension is shipped, stage the `.vsix` artifact only; do not stage the unpacked extension source tree or its `node_modules`
 
-```cpp
-/// Search for Viper runtime libraries in an installed layout.
-/// Returns the lib directory if found, or nullopt.
-static std::optional<std::filesystem::path> findInstalledLibDir() {
-    // 1. Explicit override via environment variable
-    if (const char* env = std::getenv("VIPER_LIB_PATH")) {
-        std::filesystem::path p(env);
-        if (fileExists(p / kProbeLibName))
-            return p;
-    }
+### 0B. Installed runtime discovery
 
-    // 2. Relative to executable: <exe_dir>/../lib/
-    //    This is the standard FHS-like layout for installed tools.
-    //    Uses the same exe-dir logic as rt_path_exe.c (Path.ExeDir).
-    auto exeDir = getExecutableDir();
-    if (exeDir) {
-        std::error_code ec;
-        auto libDir = std::filesystem::canonical(*exeDir / ".." / "lib", ec);
-        if (!ec && fileExists(libDir / kProbeLibName))
-            return libDir;
-    }
+Current installed-link support is still build-tree-centric in several places:
+- `src/codegen/common/LinkerSupport.cpp`
+- `src/codegen/x86_64/CodegenPipeline.cpp`
+- `src/codegen/aarch64/CodegenPipeline.cpp`
 
-    // 3. Platform standard install paths
-#if RT_PLATFORM_MACOS
-    static const char* kPaths[] = {"/usr/local/viper/lib", nullptr};
-#elif RT_PLATFORM_LINUX
-    static const char* kPaths[] = {"/usr/lib/viper", "/usr/local/lib/viper", nullptr};
-#elif RT_PLATFORM_WINDOWS
-    // Windows relies on exe-relative or VIPER_LIB_PATH; no fixed system path.
-    static const char* kPaths[] = {nullptr};
-#else
-    static const char* kPaths[] = {nullptr};
-#endif
-    for (const char** p = kPaths; *p; ++p) {
-        std::filesystem::path dir(*p);
-        if (fileExists(dir / kProbeLibName))
-            return dir;
-    }
+This phase is not done until an installed `viper` can discover all of its native-link inputs from the installed layout, not just the runtime component archives.
 
-    return std::nullopt;
-}
-```
+#### Required search order
 
-Where `kProbeLibName` is:
-```cpp
-#if RT_PLATFORM_WINDOWS
-static constexpr const char* kProbeLibName = "viper_rt_base.lib";
-#else
-static constexpr const char* kProbeLibName = "libviper_rt_base.a";
-#endif
-```
+1. `VIPER_LIB_PATH`
+2. executable-relative install layout, using the real/canonical executable path when launchers are symlinked
+3. configured standard install locations
+4. current build-tree fallback
 
-The `getExecutableDir()` function already exists conceptually in `rt_path_exe.c` — port the logic to C++ or call through `std::filesystem`.
+Recommended search logic:
+- executable-relative:
+  - `<exe_dir>/../lib`
+- standard locations:
+  - Linux: `/usr/lib`, `/usr/local/lib`, plus distro-specific `lib64` variants if the staged install/export layout uses them
+  - macOS: `/usr/local/viper/lib` or another compiled-in install prefix only when it matches the staged/exported layout policy
+  - Windows: prefer executable-relative and explicit env override; avoid hard-coded `Program Files` guessing
 
-#### Integration with existing code
+#### Implementation guidance
 
-`runtimeArchivePath()` (line 148) currently takes a `buildDir` and constructs nested build paths (`buildDir/src/runtime/libfoo.a`). For installed layout, the path is flat: `libDir/libfoo.a`. Modify to:
+Do not create a second archive naming table for installed layouts. Reuse:
+- `archiveNameForComponent()`
+- `RuntimeComponentManifest.hpp`
 
-```cpp
-std::filesystem::path runtimeArchivePath(const std::filesystem::path &libOrBuildDir,
-                                         std::string_view libBaseName,
-                                         bool installedLayout) {
-    if (installedLayout) {
-        // Flat layout: lib/libviper_rt_base.a
-#if RT_PLATFORM_WINDOWS
-        return libOrBuildDir / (std::string(libBaseName) + ".lib");
-#else
-        return libOrBuildDir / ("lib" + std::string(libBaseName) + ".a");
-#endif
-    }
-    // Existing build-dir nested layout...
-}
-```
+Add a small installed-layout helper instead:
+- build-layout path resolver
+- installed-layout path resolver
+- top-level function that tries installed layout first, then build layout
 
-Similarly update `appendSystemLinkInputs()` for graphics/audio/GUI libraries:
-- Installed: `lib/libvipergfx.a` (flat, same dir)
-- Build: `build/lib/libvipergfx.a` or `build/src/lib/gui/libvipergui.a` (nested)
+The same resolver family must also cover companion libraries such as `vipergfx`, `viperaud`, and `vipergui`.
 
-#### Modified Files
+Important detail:
+- those companion libraries are currently looked up directly in the backend pipelines, not only through `runtimeArchivePath()`
+- Phase 0 should therefore update the common resolver and then thread it through the x86_64 and AArch64 codegen pipelines so native-link behavior is consistent between build-tree and installed-tree execution
 
-- `src/codegen/common/LinkerSupport.cpp` — add `findInstalledLibDir()`, modify `runtimeArchivePath()` and `appendSystemLinkInputs()` for dual layout
-- `src/codegen/common/LinkerSupport.hpp` — update declarations
-- `CMakeLists.txt` — fix man page install path
+### 0C. Validation rules
 
-#### Testing
+Installed discovery must verify:
+- required runtime component archives exist
+- required companion libraries exist when capability-enabled features need them
+- capability-gated libraries match the installed platform config
+- diagnostics clearly report which archive or support library was missing
+- the installed CMake package files can still resolve the installed targets they refer to
 
-- Unit test: Create mock installed layout in temp dir (`lib/libviper_rt_base.a`), set `VIPER_LIB_PATH`, verify `findInstalledLibDir()` returns correct path
-- Unit test: Create mock exe-relative layout, verify `../lib/` search works
-- Unit test: Verify `runtimeArchivePath()` returns flat path when `installedLayout=true` and nested path when `false`
-- Integration test: After `cmake --install`, verify `viper build` finds libraries and produces a working native executable
-
----
-
-## Phase 1: Install Manifest and Path Mapping
+## Phase 1: Shared Toolchain Manifest
 
 ### Goal
 
-Create a data model that represents all files in a Viper platform installation, with platform-specific path mapping. This is the foundation every platform builder consumes.
+Define one manifest for "everything that ships in a Viper toolchain install" and make every platform builder consume it.
 
-### New Files
+This manifest is not a replacement for `PackageConfig`. `PackageConfig` remains the app-packaging config parsed from `viper.project`. The new manifest is the output of staging and validation for packaging Viper itself.
 
-#### `src/tools/common/packaging/PlatformInstallConfig.hpp`
+## Recommended New Files
+
+### `src/tools/common/packaging/ToolchainInstallManifest.hpp/cpp`
+
+Suggested model:
 
 ```cpp
 namespace viper::pkg {
 
-struct InstallFileEntry {
-    std::string sourcePath;   // absolute path on build host
-    std::string relativePath; // normalized relative path (forward slashes)
-    uint64_t fileSize;        // size in bytes (for progress bars, disk space checks)
-    uint32_t unixMode;        // 0755 for executables, 0644 for data
-    bool isExecutable;
-    bool isSymlink;           // for macOS /usr/local/bin symlinks
-    std::string symlinkTarget;
-};
-
-enum class InstallCategory {
+enum class ToolchainFileKind {
     Binary,
+    RuntimeArchive,
+    SupportLibrary,
     Library,
     Header,
-    ManPage,
     CMakeConfig,
+    ManPage,
     Doc,
-    Extra,          // VS Code extension
+    Extra,
 };
 
-struct ViperInstallManifest {
-    std::string version;      // from VIPER_VERSION_STR (e.g. "0.2.4")
-    std::string versionFull;  // from buildmeta/VERSION (e.g. "0.2.4-snapshot")
-    std::string arch;         // "x64" or "arm64"
+struct ToolchainFileEntry {
+    ToolchainFileKind kind;
+    std::filesystem::path stagedAbsolutePath;
+    std::string stagedRelativePath;
+    uint64_t sizeBytes;
+    uint32_t unixMode;
+    bool executable;
+};
 
-    std::vector<InstallFileEntry> binaries;   // CLI tools
-    std::vector<InstallFileEntry> libraries;  // static .a/.lib archives
-    std::vector<InstallFileEntry> headers;    // C++ API headers
-    std::vector<InstallFileEntry> manPages;   // man1/*.1, man7/*.7
-    std::vector<InstallFileEntry> cmakeFiles; // ViperConfig.cmake etc.
-    std::vector<InstallFileEntry> docs;       // LICENSE, README
-    std::vector<InstallFileEntry> extras;     // VS Code extension
+struct ToolchainInstallManifest {
+    std::string version;
+    std::string arch;
+    std::vector<ToolchainFileEntry> files;
+    std::vector<FileAssoc> fileAssociations;
 
-    std::string licenseText;  // full LICENSE file content (for embedding)
-
-    std::vector<InstallFileEntry> allFiles() const;
     uint64_t totalSizeBytes() const;
-    uint64_t totalSizeKiB() const;   // for .pkg installKBytes, .deb Installed-Size
-    size_t totalFileCount() const;
-
-    struct FileAssociation {
-        std::string extension;    // ".zia"
-        std::string description;  // "Zia Source File"
-        std::string mimeType;     // "text/x-zia"
-        std::string openWith;     // "zia" (binary name)
-    };
-    std::vector<FileAssociation> fileAssociations;
 };
 
-/// Scan a cmake --install prefix and gather all Viper files.
-/// @param installPrefix  Path to staged cmake install (e.g. build/install_staging)
-/// @param sourceRoot     Path to Viper source tree (for LICENSE, man pages, vsix)
-/// @param arch           "x64" or "arm64"
-ViperInstallManifest gatherViperInstallTree(
-    const std::string& installPrefix,
-    const std::string& sourceRoot,
-    const std::string& arch);
+enum class InstallPathPolicy {
+    WindowsProgramFilesRoot,
+    MacOSUsrLocalViperRoot,
+    LinuxUsrRoot,
+    PortableArchive,
+};
 
-/// Map a manifest entry to its platform-specific install path.
-/// Returns paths relative to the install root (no leading slash).
-std::string windowsInstallPath(const InstallFileEntry& entry);
-std::string macosInstallPath(const InstallFileEntry& entry);
-std::string linuxInstallPath(const InstallFileEntry& entry);
+ToolchainInstallManifest gatherToolchainInstallManifest(
+    const std::filesystem::path& stagePrefix,
+    std::optional<std::filesystem::path> installManifestPath = std::nullopt);
 
-/// Default install root per platform.
-std::string windowsDefaultInstallDir();  // "C:\\Program Files\\Viper"
-std::string macosInstallRoot();          // "/usr/local/viper"
-std::string linuxInstallRoot();          // "" (FHS paths are absolute)
+std::string mapInstallPath(const ToolchainFileEntry& file, InstallPathPolicy policy);
 
 } // namespace viper::pkg
 ```
 
-#### `src/tools/common/packaging/PlatformInstallConfig.cpp` (~300 LOC)
+## Manifest gathering rules
 
-`gatherViperInstallTree()` implementation:
-1. Read version string from `sourceRoot/src/buildmeta/VERSION`, strip trailing whitespace/newlines
-2. Walk `installPrefix/bin/` — collect the 8 CLI tools. On Windows, look for `.exe` suffix. Record file sizes via `std::filesystem::file_size()`.
-3. Walk `installPrefix/lib/` — collect library archives:
-   - macOS/Linux: `libviper_*.a`, `libvipergfx.a`, `libviperaud.a`, `libvipergui.a`
-   - Windows: `viper_*.lib`, `vipergfx.lib`, `viperaud.lib`, `vipergui.lib`
-4. Walk `installPrefix/include/viper/` — collect all .hpp/.h headers recursively, preserving subdirectory structure
-5. Walk `sourceRoot/docs/man/` — collect man pages (man1/*.1, man7/*.7). Note: these come from the SOURCE tree, not the install prefix, because the CMake install path is being fixed in Phase 0A.
-6. Walk `installPrefix/lib/cmake/Viper/` — collect CMake config files
-7. Collect `sourceRoot/LICENSE` — read full text into `licenseText`
-8. Optionally collect `sourceRoot/misc/editors/vscode/zia/zia-language-*.vsix` (currently `zia-language-0.1.0.vsix`)
-9. Populate `fileAssociations` with .zia, .bas, .il entries
+Preferred source:
+- `install_manifest.txt` from the build tree, if available
 
-Path mapping rules:
-- `windowsInstallPath()`: backslash separators, `.exe` suffix on binaries, `include\viper\` preserves subdirs, no man pages
-- `macosInstallPath()`: everything relative to `/usr/local/viper/` — `bin/`, `lib/`, `include/viper/`, man pages under `share/man/`
-- `linuxInstallPath()`: FHS standard — `usr/bin/`, `usr/lib/viper/`, `usr/include/viper/`, `usr/share/man/man1/`, `usr/share/doc/viper/`
+Fallback:
+- recursive walk of the staged prefix
 
-### Modified Files
+Why prefer `install_manifest.txt`:
+- it reflects exactly what CMake installed
+- it avoids drift between install rules and ad-hoc directory scans
+- it preserves symlink-aware intent if we later add staged symlinks
 
-- `src/CMakeLists.txt` — add PlatformInstallConfig.cpp to `viper_packaging` target
+The gatherer should normalize and categorize files into the manifest, not blindly mirror directory names.
 
-### Testing
+## Install path mapping
 
-Add to `src/tests/unit/test_packaging.cpp`:
-- `TEST(PlatformInstallConfig, GatherMockTree)` — create temp dir with mock bin/viper, lib/libviper_rt_base.a, include/viper/version.hpp, verify manifest completeness
-- `TEST(PlatformInstallConfig, WindowsPathMapping)` — verify bin/viper → `bin\viper.exe`, lib/libviper_rt_base.a → `lib\viper_rt_base.lib`
-- `TEST(PlatformInstallConfig, MacOSPathMapping)` — verify bin/viper → `bin/viper`, docs/man/man1/viper.1 → `share/man/man1/viper.1`
-- `TEST(PlatformInstallConfig, LinuxPathMapping)` — verify bin/viper → `usr/bin/viper`, lib/libviper_rt_base.a → `usr/lib/viper/libviper_rt_base.a`
-- `TEST(PlatformInstallConfig, TotalSizeBytes)` — verify sum across all categories
-- `TEST(PlatformInstallConfig, FileAssociations)` — verify .zia/.bas/.il entries populated
-- `TEST(PlatformInstallConfig, VersionParsing)` — verify version extraction from mock VERSION file containing "0.2.4-snapshot\n"
-- `TEST(PlatformInstallConfig, EmptyPrefixReportsError)` — verify error when install prefix doesn't contain expected binaries
+Centralize path mapping in one place. Do not duplicate Windows/macOS/Linux path decisions across builders.
+
+Recommended rule:
+- preserve `stagedRelativePath` underneath the chosen install root
+- use `ToolchainFileKind` for validation, metadata policy, and filtering, not for rebuilding a second hand-maintained directory map
+
+Examples:
+
+### Windows
+- install root: `C:\Program Files\Viper`
+- `bin/viper.exe` -> `C:\Program Files\Viper\bin\viper.exe`
+- `lib/cmake/Viper/ViperConfig.cmake` -> `C:\Program Files\Viper\lib\cmake\Viper\ViperConfig.cmake`
+
+### macOS
+- install root: `/usr/local/viper`
+- `bin/viper` -> `/usr/local/viper/bin/viper`
+- `lib/cmake/Viper/ViperConfig.cmake` -> `/usr/local/viper/lib/cmake/Viper/ViperConfig.cmake`
+- command symlinks are a platform-specific post-install policy and should not require duplicating the staged tree itself
+
+### Linux
+- install root: `/usr`
+- `bin/viper` -> `/usr/bin/viper`
+- `lib/libviper_runtime.a` -> `/usr/lib/libviper_runtime.a` or the staged/install-configured libdir equivalent
+- `lib/cmake/Viper/ViperConfig.cmake` -> `/usr/lib/cmake/Viper/ViperConfig.cmake` or the staged/install-configured libdir equivalent
+
+Important correction:
+- do not invent a Linux-only `lib/viper` subtree if the staged install and exported CMake package use the normal `lib/` install layout
+- if distro-specific `lib64` or multiarch directories are needed, let the staged install layout drive that outcome
+
+## Validation rules
+
+The gatherer should fail fast on:
+- missing `viper` binary
+- empty runtime archive set
+- missing generated CMake package files
+- missing runtime component archives that are required by the generated runtime manifest
+- missing support libraries such as `vipergfx`, `vipergui`, or `viperaud` when the generated capability/config state says they should ship
+- incomplete installed/exported target coverage relative to the staged runtime component set
+
+The gatherer should warn, not fail, on:
+- missing optional extras such as editor extensions
+- capability-disabled libraries that were intentionally not installed
+- omitted file associations for the toolchain package if the product decision is to keep them off by default
+
+## Modified Existing Files
+
+- `CMakeLists.txt`
+  - fix man page source paths
+  - install docs/license artifacts that should ship
+  - reconcile `VIPER_PUBLIC_LIB_TARGETS` with the actual shipped runtime component libraries
+- `src/codegen/common/LinkerSupport.cpp`
+  - add installed-layout discovery
+- `src/codegen/common/LinkerSupport.hpp`
+  - expose installed-layout helpers as needed
+- `src/codegen/x86_64/CodegenPipeline.cpp`
+  - replace build-tree-only companion-library lookups with shared installed/build-layout resolution
+- `src/codegen/aarch64/CodegenPipeline.cpp`
+  - replace build-tree-only companion-library lookups with shared installed/build-layout resolution
+- `src/CMakeLists.txt`
+  - add `ToolchainInstallManifest.cpp` to `viper_packaging`
+
+## Test Plan
+
+### Unit tests
+- installed-runtime discovery via `VIPER_LIB_PATH`
+- installed-runtime discovery via executable-relative layout
+- build-layout fallback preserved
+- manifest gather from mock staged prefix
+- manifest gather from mock `install_manifest.txt`
+- path mapping for Windows, macOS, Linux, portable archive
+- validation of runtime component completeness using generated manifest data
+- validation that the installed export set covers the staged/public runtime libraries we expect to ship
+
+### Integration tests
+- `cmake --install` to a temp prefix
+- gather toolchain manifest from that prefix
+- run installed `viper --version`
+- compile a tiny native executable with the installed toolchain
+- configure and build a tiny external CMake consumer with `find_package(Viper CONFIG REQUIRED)` against the staged install tree
+
+## Exit Criteria
+
+This phase is done when:
+- staged installs contain every file later installer phases need
+- installed `viper` can find runtime archives without a build tree
+- installed `viper` can find required companion graphics/audio libraries without a build tree
+- the staged export/config package is self-consistent and usable by an external CMake consumer
+- platform builders can consume a single validated toolchain manifest

@@ -28,13 +28,66 @@
 #include "PkgUtils.hpp"
 #include "PlistGenerator.hpp"
 #include "ZipWriter.hpp"
+#include "common/RunProcess.hpp"
 
 #include <filesystem>
+#include <fstream>
 #include <iostream>
+#include <sstream>
+#include <chrono>
+
+#if defined(_WIN32)
+#include <process.h>
+#else
+#include <unistd.h>
+#endif
 
 namespace fs = std::filesystem;
 
 namespace viper::pkg {
+namespace {
+
+void writeScriptFile(const fs::path &path, std::string_view text) {
+    std::ofstream out(path, std::ios::binary | std::ios::trunc);
+    if (!out)
+        throw std::runtime_error("cannot write macOS packaging script: " + path.string());
+    out << text;
+    out.close();
+    fs::permissions(path,
+                    fs::perms::owner_read | fs::perms::owner_write | fs::perms::owner_exec |
+                        fs::perms::group_read | fs::perms::group_exec |
+                        fs::perms::others_read | fs::perms::others_exec,
+                    fs::perm_options::replace);
+}
+
+fs::path uniqueTempPackagingDir(std::string_view stem) {
+    const auto tick =
+        static_cast<unsigned long long>(std::chrono::steady_clock::now().time_since_epoch().count());
+    const auto pid =
+#if defined(_WIN32)
+        static_cast<unsigned long long>(_getpid());
+#else
+        static_cast<unsigned long long>(::getpid());
+#endif
+    return fs::temp_directory_path() /
+           (std::string(stem) + "-" + std::to_string(pid) + "-" + std::to_string(tick));
+}
+
+class TempDirGuard {
+  public:
+    explicit TempDirGuard(fs::path path) : path_(std::move(path)) {}
+    ~TempDirGuard() {
+        if (!path_.empty()) {
+            std::error_code ec;
+            fs::remove_all(path_, ec);
+        }
+    }
+
+  private:
+    fs::path path_;
+};
+
+} // namespace
 
 //=============================================================================
 // MacOS Package Builder
@@ -134,6 +187,58 @@ void buildMacOSPackage(const MacOSBuildParams &params) {
 
     // Write the ZIP
     zip.finish(params.outputPath);
+}
+
+void buildMacOSToolchainPackage(const MacOSToolchainBuildParams &params) {
+    namespace fs = std::filesystem;
+    const std::string version = params.manifest.version.empty() ? "0.0.0" : params.manifest.version;
+
+    const fs::path tmpRoot = uniqueTempPackagingDir("viper-macos-toolchain-" + version);
+    TempDirGuard cleanup(tmpRoot);
+    fs::remove_all(tmpRoot);
+    fs::create_directories(tmpRoot / "root" / "usr" / "local" / "viper");
+    fs::create_directories(tmpRoot / "scripts");
+
+    const fs::path installRoot = tmpRoot / "root" / "usr" / "local" / "viper";
+    for (const auto &file : params.manifest.files) {
+        const fs::path dst = installRoot / fs::path(file.stagedRelativePath);
+        fs::create_directories(dst.parent_path());
+        fs::copy_file(file.stagedAbsolutePath, dst, fs::copy_options::overwrite_existing);
+        if (file.executable) {
+            fs::permissions(dst,
+                            fs::perms::owner_read | fs::perms::owner_write |
+                                fs::perms::owner_exec | fs::perms::group_read |
+                                fs::perms::group_exec | fs::perms::others_read |
+                                fs::perms::others_exec,
+                            fs::perm_options::replace);
+        }
+    }
+
+    std::ostringstream postinstall;
+    postinstall << "#!/bin/sh\nset -e\nmkdir -p /usr/local/bin\n";
+    for (const auto &file : params.manifest.files) {
+        if (file.kind != ToolchainFileKind::Binary)
+            continue;
+        const std::string name = fs::path(file.stagedRelativePath).filename().string();
+        postinstall << "ln -sf /usr/local/viper/bin/" << name << " /usr/local/bin/" << name << "\n";
+    }
+    writeScriptFile(tmpRoot / "scripts" / "postinstall", postinstall.str());
+
+    const RunResult rr = run_process(
+        {"pkgbuild",
+         "--root",
+         (tmpRoot / "root").string(),
+         "--scripts",
+         (tmpRoot / "scripts").string(),
+         "--identifier",
+         params.identifier,
+         "--version",
+         version,
+         params.outputPath});
+    if (rr.exit_code != 0) {
+        throw std::runtime_error("pkgbuild failed while generating macOS toolchain package:\n" +
+                                 rr.out + rr.err);
+    }
 }
 
 } // namespace viper::pkg

@@ -807,14 +807,27 @@ static std::string stripComments(const std::string &input) {
     return out;
 }
 
+static bool lineContinuesPreprocessorDirective(std::string_view line) {
+    size_t end = line.find_last_not_of(" \t\r");
+    return end != std::string_view::npos && line[end] == '\\';
+}
+
 static std::string stripPreprocessor(const std::string &input) {
     std::ostringstream out;
     std::istringstream in(input);
     std::string line;
+    bool inDirectiveContinuation = false;
     while (std::getline(in, line)) {
-        std::string_view trimmed = trimView(line);
-        if (!trimmed.empty() && trimmed.front() == '#')
+        if (inDirectiveContinuation) {
+            inDirectiveContinuation = lineContinuesPreprocessorDirective(line);
             continue;
+        }
+
+        std::string_view trimmed = trimView(line);
+        if (!trimmed.empty() && trimmed.front() == '#') {
+            inDirectiveContinuation = lineContinuesPreprocessorDirective(line);
+            continue;
+        }
         out << line << '\n';
     }
     return out.str();

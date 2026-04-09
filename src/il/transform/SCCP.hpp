@@ -32,6 +32,15 @@ namespace il::transform {
 /// discovered constants.  Block parameters are treated as SSA phi nodes whose
 /// meet only considers executable predecessors.
 ///
+/// \param function Function optimised in place.
+/// \return True when the function IR was rewritten.
+bool sccp(core::Function &function);
+
+/// \brief Propagate constants through every function in a module.
+///
+/// \details Applies SCCP independently to each function. Callers that need
+/// change tracking should invoke the function overload instead.
+///
 /// \param module Module optimised in place.
 void sccp(core::Module &module);
 

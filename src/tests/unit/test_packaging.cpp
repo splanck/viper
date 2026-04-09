@@ -29,7 +29,9 @@
 #include "IconGenerator.hpp"
 #include "InstallerStub.hpp"
 #include "InstallerStubGen.hpp"
+#include "LinuxPackageBuilder.hpp"
 #include "LnkWriter.hpp"
+#include "MacOSPackageBuilder.hpp"
 #include "PEBuilder.hpp"
 #include "PackageConfig.hpp"
 #include "PkgDeflate.hpp"
@@ -39,9 +41,12 @@
 #include "PkgVerify.hpp"
 #include "PlistGenerator.hpp"
 #include "TarWriter.hpp"
+#include "ToolchainInstallManifest.hpp"
 #include "WindowsPackageBuilder.hpp"
 #include "ZipReader.hpp"
 #include "ZipWriter.hpp"
+#include "viper/platform/Capabilities.hpp"
+#include "viper/runtime/RuntimeComponentManifest.hpp"
 
 #include <cstring>
 #include <filesystem>
@@ -65,6 +70,102 @@ static uint32_t readLE32(const uint8_t *p) {
 static uint32_t readBE32(const uint8_t *p) {
     return (static_cast<uint32_t>(p[0]) << 24) | (static_cast<uint32_t>(p[1]) << 16) |
            (static_cast<uint32_t>(p[2]) << 8) | static_cast<uint32_t>(p[3]);
+}
+
+static std::vector<uint8_t> inflateGzipPayload(const std::vector<uint8_t> &gzipData) {
+    if (gzipData.size() < 18)
+        return {};
+    return inflate(gzipData.data() + 10, gzipData.size() - 18);
+}
+
+static std::string tarFirstEntryName(const std::vector<uint8_t> &tarBytes) {
+    if (tarBytes.size() < 512)
+        return {};
+    const char *name = reinterpret_cast<const char *>(tarBytes.data());
+    size_t len = 0;
+    while (len < 100 && name[len] != '\0')
+        ++len;
+    return std::string(name, name + len);
+}
+
+static std::filesystem::path createMockToolchainStage(const std::filesystem::path &tmpRoot) {
+    namespace fs = std::filesystem;
+    const fs::path stage = tmpRoot / "stage";
+    fs::create_directories(stage / "bin");
+    fs::create_directories(stage / "lib" / "cmake" / "Viper");
+    fs::create_directories(stage / "include" / "viper");
+    fs::create_directories(stage / "share" / "man" / "man1");
+    fs::create_directories(stage / "share" / "doc" / "viper");
+
+#if defined(_WIN32)
+    const std::string exeName = "viper.exe";
+    auto archiveName = [](std::string_view base) { return std::string(base) + ".lib"; };
+#else
+    const std::string exeName = "viper";
+    auto archiveName = [](std::string_view base) { return "lib" + std::string(base) + ".a"; };
+#endif
+    {
+        std::ofstream out(stage / "bin" / exeName, std::ios::binary);
+        out << "stub";
+    }
+    for (const char *tool : {"zia", "vbasic", "ilrun", "il-verify", "il-dis", "zia-server",
+                             "vbasic-server", "basic-ast-dump", "basic-lex-dump"}) {
+        std::ofstream out(stage / "bin" / tool, std::ios::binary);
+        out << "stub";
+    }
+    {
+        std::ofstream out(stage / "lib" / "cmake" / "Viper" / "ViperConfig.cmake");
+        out << "# mock\n";
+    }
+    {
+        std::ofstream out(stage / "lib" / "cmake" / "Viper" / "ViperTargets.cmake");
+        out << "# mock\n";
+    }
+    {
+        std::ofstream out(stage / "lib" / "cmake" / "Viper" / "ViperConfigVersion.cmake");
+        out << "set(PACKAGE_VERSION \"9.8.7\")\n";
+    }
+    {
+        std::ofstream out(stage / "include" / "viper" / "version.hpp");
+        out << "#define VIPER_VERSION_STR \"9.8.7\"\n";
+    }
+    {
+        std::ofstream out(stage / "share" / "man" / "man1" / "viper.1");
+        out << ".TH viper 1\n";
+    }
+    {
+        std::ofstream out(stage / "share" / "doc" / "viper" / "README.md");
+        out << "Viper\n";
+    }
+    {
+        std::ofstream out(stage / "LICENSE");
+        out << "GPL\n";
+    }
+
+    fs::create_directories(stage / "lib");
+    for (std::string_view archive : viper::runtime_manifest::kRuntimeComponentArchives) {
+        std::ofstream out(stage / "lib" / archiveName(archive), std::ios::binary);
+        out << "ar";
+    }
+#if VIPER_BUILD_HAS_GRAPHICS
+    {
+        std::ofstream out(stage / "lib" / archiveName("vipergfx"), std::ios::binary);
+        out << "gfx";
+    }
+#endif
+#if VIPER_BUILD_HAS_GUI
+    {
+        std::ofstream out(stage / "lib" / archiveName("vipergui"), std::ios::binary);
+        out << "gui";
+    }
+#endif
+#if VIPER_BUILD_HAS_AUDIO
+    {
+        std::ofstream out(stage / "lib" / archiveName("viperaud"), std::ios::binary);
+        out << "aud";
+    }
+#endif
+    return stage;
 }
 
 // ============================================================================
@@ -1084,6 +1185,130 @@ TEST(WindowsPackageBuilder, BuildsArm64PayloadPackageWithX64Bootstrap) {
     EXPECT_EQ(readLE16(pe.data() + 0x84), static_cast<uint16_t>(0x8664));
     fs::remove_all(tmpRoot);
 }
+
+TEST(ToolchainInstallManifest, GatherAndValidateMockStage) {
+    namespace fs = std::filesystem;
+    const fs::path tmpRoot = fs::temp_directory_path() / "viper_toolchain_manifest_stage";
+    fs::remove_all(tmpRoot);
+    const fs::path stage = createMockToolchainStage(tmpRoot);
+
+    const auto manifest = gatherToolchainInstallManifest(stage);
+    EXPECT_EQ(manifest.version, std::string("9.8.7"));
+    EXPECT_TRUE(manifest.totalSizeBytes() > 0);
+    EXPECT_TRUE(std::any_of(manifest.files.begin(), manifest.files.end(), [](const ToolchainFileEntry &entry) {
+        return entry.kind == ToolchainFileKind::Binary &&
+               entry.stagedRelativePath.find("bin/") == 0;
+    }));
+    EXPECT_TRUE(std::any_of(manifest.files.begin(), manifest.files.end(), [](const ToolchainFileEntry &entry) {
+        return entry.kind == ToolchainFileKind::CMakeConfig &&
+               entry.stagedRelativePath == "lib/cmake/Viper/ViperTargets.cmake";
+    }));
+
+    fs::remove_all(tmpRoot);
+}
+
+TEST(ToolchainInstallManifest, InstallPathMappingPreservesRelativeLayout) {
+    ToolchainFileEntry file;
+    file.kind = ToolchainFileKind::CMakeConfig;
+    file.stagedRelativePath = "lib/cmake/Viper/ViperConfig.cmake";
+
+    EXPECT_EQ(mapInstallPath(file, InstallPathPolicy::PortableArchive),
+              std::string("lib/cmake/Viper/ViperConfig.cmake"));
+    EXPECT_EQ(mapInstallPath(file, InstallPathPolicy::MacOSUsrLocalViperRoot),
+              std::string("/usr/local/viper/lib/cmake/Viper/ViperConfig.cmake"));
+    EXPECT_EQ(mapInstallPath(file, InstallPathPolicy::LinuxUsrRoot),
+              std::string("/usr/lib/cmake/Viper/ViperConfig.cmake"));
+    EXPECT_EQ(mapInstallPath(file, InstallPathPolicy::WindowsProgramFilesRoot),
+              std::string("C:\\Program Files\\Viper\\lib\\cmake\\Viper\\ViperConfig.cmake"));
+}
+
+TEST(ToolchainLinuxPackageBuilder, BuildsDebFromManifest) {
+    namespace fs = std::filesystem;
+    const fs::path tmpRoot = fs::temp_directory_path() / "viper_toolchain_deb_stage";
+    fs::remove_all(tmpRoot);
+    const fs::path stage = createMockToolchainStage(tmpRoot);
+    const auto manifest = gatherToolchainInstallManifest(stage);
+
+    LinuxToolchainBuildParams params;
+    params.manifest = manifest;
+    params.outputPath = (tmpRoot / "viper_9.8.7_amd64.deb").string();
+    buildToolchainDebPackage(params);
+
+    const auto debBytes = readFile(params.outputPath);
+    std::ostringstream err;
+    EXPECT_TRUE(verifyDeb(debBytes, err));
+    fs::remove_all(tmpRoot);
+}
+
+TEST(ToolchainLinuxPackageBuilder, BuildsTarballFromManifest) {
+    namespace fs = std::filesystem;
+    const fs::path tmpRoot = fs::temp_directory_path() / "viper_toolchain_tar_stage";
+    fs::remove_all(tmpRoot);
+    const fs::path stage = createMockToolchainStage(tmpRoot);
+    const auto manifest = gatherToolchainInstallManifest(stage);
+
+    LinuxToolchainBuildParams params;
+    params.manifest = manifest;
+    params.outputPath = (tmpRoot / "viper-9.8.7-linux-x64.tar.gz").string();
+    buildToolchainTarball(params);
+
+    const auto tarGz = readFile(params.outputPath);
+    ASSERT_TRUE(tarGz.size() >= 2);
+    EXPECT_EQ(tarGz[0], static_cast<uint8_t>(0x1F));
+    EXPECT_EQ(tarGz[1], static_cast<uint8_t>(0x8B));
+    const auto tarBytes = inflateGzipPayload(tarGz);
+#if defined(__APPLE__)
+    EXPECT_EQ(tarFirstEntryName(tarBytes), std::string("viper-9.8.7-macos-") + manifest.arch + "/");
+#elif defined(_WIN32)
+    EXPECT_EQ(tarFirstEntryName(tarBytes), std::string("viper-9.8.7-windows-") + manifest.arch + "/");
+#else
+    EXPECT_EQ(tarFirstEntryName(tarBytes), std::string("viper-9.8.7-linux-") + manifest.arch + "/");
+#endif
+    fs::remove_all(tmpRoot);
+}
+
+TEST(ToolchainWindowsPackageBuilder, BuildsInstallerFromManifest) {
+    namespace fs = std::filesystem;
+    const fs::path tmpRoot = fs::temp_directory_path() / "viper_toolchain_windows_stage";
+    fs::remove_all(tmpRoot);
+    const fs::path stage = createMockToolchainStage(tmpRoot);
+    auto manifest = gatherToolchainInstallManifest(stage);
+    manifest.arch = "x64";
+
+    WindowsToolchainBuildParams params;
+    params.manifest = manifest;
+    params.outputPath = (tmpRoot / "viper-toolchain-setup.exe").string();
+    params.archStr = "x64";
+    buildWindowsToolchainInstaller(params);
+
+    const auto pe = readFile(params.outputPath);
+    std::ostringstream err;
+    EXPECT_TRUE(verifyPEZipOverlay(pe, err));
+    fs::remove_all(tmpRoot);
+}
+
+#if defined(__APPLE__)
+TEST(ToolchainMacOSPackageBuilder, BuildsPkgFromManifest) {
+    namespace fs = std::filesystem;
+    const fs::path tmpRoot = fs::temp_directory_path() / "viper_toolchain_pkg_stage";
+    fs::remove_all(tmpRoot);
+    const fs::path stage = createMockToolchainStage(tmpRoot);
+    const auto manifest = gatherToolchainInstallManifest(stage);
+
+    MacOSToolchainBuildParams params;
+    params.manifest = manifest;
+    params.outputPath = (tmpRoot / "viper-toolchain.pkg").string();
+    buildMacOSToolchainPackage(params);
+
+    const auto pkgBytes = readFile(params.outputPath);
+    ASSERT_TRUE(pkgBytes.size() >= 4);
+    EXPECT_EQ(pkgBytes[0], static_cast<uint8_t>('x'));
+    EXPECT_EQ(pkgBytes[1], static_cast<uint8_t>('a'));
+    EXPECT_EQ(pkgBytes[2], static_cast<uint8_t>('r'));
+    EXPECT_EQ(pkgBytes[3], static_cast<uint8_t>('!'));
+    fs::remove_all(tmpRoot);
+}
+#endif
 
 // ============================================================================
 // Main

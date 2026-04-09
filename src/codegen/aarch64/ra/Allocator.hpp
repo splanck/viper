@@ -88,6 +88,8 @@ class LinearAllocator {
     void computeNextUses(const MBasicBlock &bb);
     bool nextUseAfterCall(uint16_t vreg, RegClass cls) const;
     unsigned getNextUseDistance(uint16_t vreg, RegClass cls) const;
+    unsigned computeSpillLastUse(uint16_t vreg, RegClass cls, bool forceLiveOut = false) const;
+    int ensureCurrentSpillSlot(uint16_t vreg, RegClass cls, bool forceLiveOut = false);
     [[nodiscard]] bool isProtectedUse(uint16_t vreg, RegClass cls) const;
     [[nodiscard]] bool isLiveOut(uint16_t vreg, RegClass cls) const;
 

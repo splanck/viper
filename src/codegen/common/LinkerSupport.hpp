@@ -59,6 +59,14 @@ bool writeTextFile(const std::filesystem::path &path, std::string_view text, std
 /// @return The path to the build directory, or std::nullopt if not found.
 std::optional<std::filesystem::path> findBuildDir();
 
+/// @brief Return the canonical path to the current executable when available.
+std::optional<std::filesystem::path> currentExecutablePath();
+
+/// @brief Resolve the installed library directory for the current Viper executable.
+/// @details Searches explicit environment overrides, executable-relative layouts,
+///          and platform standard locations before falling back to build-tree logic.
+std::optional<std::filesystem::path> findInstalledLibDir();
+
 /// @brief Scan assembly text for referenced runtime symbols (rt_* / _rt_*).
 /// @details Parses the assembly source for call/reference instructions targeting
 ///          symbols matching the Viper runtime naming convention.
@@ -67,10 +75,19 @@ std::optional<std::filesystem::path> findBuildDir();
 std::unordered_set<std::string> parseRuntimeSymbols(std::string_view text);
 
 /// @brief Compute the filesystem path to a runtime library archive.
+/// @details Prefers a discovered installed layout when the archive exists there,
+///          then falls back to build-tree locations and final fallback probes.
 /// @param buildDir The CMake build directory containing compiled libraries.
 /// @param libBaseName Base name of the library (e.g., "viper_rt_core").
 /// @return The full path to the archive file (.a or .lib).
 std::filesystem::path runtimeArchivePath(const std::filesystem::path &buildDir,
+                                         std::string_view libBaseName);
+
+/// @brief Compute the filesystem path to a non-runtime support library archive.
+/// @details Used for companion graphics/audio libraries such as vipergfx,
+///          vipergui, and viperaud. Prefers discovered installed layouts before
+///          build-tree fallback paths.
+std::filesystem::path supportLibraryPath(const std::filesystem::path &buildDir,
                                          std::string_view libBaseName);
 
 // =========================================================================

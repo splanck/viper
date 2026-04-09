@@ -24,6 +24,7 @@
 #pragma once
 
 #include "PackageConfig.hpp"
+#include "ToolchainInstallManifest.hpp"
 
 #include <string>
 
@@ -49,5 +50,21 @@ void buildDebPackage(const LinuxBuildParams &params);
 /// @param params Build parameters.
 /// @throws std::runtime_error on failure.
 void buildTarball(const LinuxBuildParams &params);
+
+/// @brief Parameters for building Linux toolchain packages from a staged install tree.
+struct LinuxToolchainBuildParams {
+    ToolchainInstallManifest manifest;
+    std::string outputPath;
+    std::string packageName{"viper"};
+};
+
+/// @brief Build a Debian toolchain package from a staged install manifest.
+void buildToolchainDebPackage(const LinuxToolchainBuildParams &params);
+
+/// @brief Build an RPM toolchain package from a staged install manifest.
+void buildToolchainRpmPackage(const LinuxToolchainBuildParams &params);
+
+/// @brief Build a portable toolchain tarball from a staged install manifest.
+void buildToolchainTarball(const LinuxToolchainBuildParams &params);
 
 } // namespace viper::pkg

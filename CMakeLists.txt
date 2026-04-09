@@ -585,15 +585,28 @@ if(BUILD_EXAMPLES)
 endif()
 
 # Man pages (sections 1 and 7)
-if(EXISTS ${CMAKE_SOURCE_DIR}/man/man1)
-  install(DIRECTORY ${CMAKE_SOURCE_DIR}/man/man1/
+if(EXISTS ${CMAKE_SOURCE_DIR}/docs/man/man1)
+  install(DIRECTORY ${CMAKE_SOURCE_DIR}/docs/man/man1/
           DESTINATION ${CMAKE_INSTALL_MANDIR}/man1
           FILES_MATCHING PATTERN "*.1")
 endif()
-if(EXISTS ${CMAKE_SOURCE_DIR}/man/man7)
-  install(DIRECTORY ${CMAKE_SOURCE_DIR}/man/man7/
+if(EXISTS ${CMAKE_SOURCE_DIR}/docs/man/man7)
+  install(DIRECTORY ${CMAKE_SOURCE_DIR}/docs/man/man7/
           DESTINATION ${CMAKE_INSTALL_MANDIR}/man7
           FILES_MATCHING PATTERN "*.7")
+endif()
+
+install(FILES
+  ${CMAKE_SOURCE_DIR}/LICENSE
+  ${CMAKE_SOURCE_DIR}/README.md
+  DESTINATION ${CMAKE_INSTALL_DOCDIR}/viper
+)
+
+if(EXISTS ${CMAKE_SOURCE_DIR}/misc/editors/vscode/zia/zia-language-0.1.0.vsix)
+  install(FILES
+    ${CMAKE_SOURCE_DIR}/misc/editors/vscode/zia/zia-language-0.1.0.vsix
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/viper/vscode
+  )
 endif()
 
 # Uninstall convenience target (uses install_manifest.txt)
@@ -648,14 +661,13 @@ add_custom_target(distclean
 set(VIPER_PUBLIC_LIB_TARGETS
   viper_common_opts
   viper_support
-  viper_rt_base
-  viper_rt_arrays
-  viper_rt_oop
-  viper_rt_collections
-  viper_rt_text
-  viper_rt_io_fs
-  viper_rt_exec
-  viper_rt_graphics
+)
+
+if(DEFINED VIPER_RUNTIME_COMPONENT_ARCHIVES)
+  list(APPEND VIPER_PUBLIC_LIB_TARGETS ${VIPER_RUNTIME_COMPONENT_ARCHIVES})
+endif()
+
+list(APPEND VIPER_PUBLIC_LIB_TARGETS
   viper_runtime
   viper_pass
   viper_il_core
@@ -672,6 +684,7 @@ set(VIPER_PUBLIC_LIB_TARGETS
   fe_basic
   il_api
 )
+list(REMOVE_DUPLICATES VIPER_PUBLIC_LIB_TARGETS)
 
 # Add platform-dependent targets to export set only if they were built
 if (TARGET vipergfx)
@@ -682,6 +695,42 @@ if (TARGET vipergui)
 endif ()
 if (TARGET viperaud)
   list(APPEND VIPER_PUBLIC_LIB_TARGETS viperaud)
+endif ()
+
+set_target_properties(viper_common_opts PROPERTIES EXPORT_NAME common_opts)
+if (TARGET viper_support)
+  set_target_properties(viper_support PROPERTIES EXPORT_NAME support)
+endif ()
+foreach(_rt_target IN LISTS VIPER_RUNTIME_COMPONENT_ARCHIVES)
+  if (TARGET ${_rt_target})
+    string(REGEX REPLACE "^viper_" "" _export_name "${_rt_target}")
+    set_target_properties(${_rt_target} PROPERTIES EXPORT_NAME "${_export_name}")
+  endif ()
+endforeach()
+
+foreach(_rt_target IN LISTS VIPER_RUNTIME_COMPONENT_ARCHIVES)
+  if (TARGET ${_rt_target} AND NOT _rt_target IN_LIST VIPER_PUBLIC_LIB_TARGETS)
+    message(FATAL_ERROR
+      "Runtime component target ${_rt_target} is built but not exported via VIPER_PUBLIC_LIB_TARGETS.")
+  endif ()
+endforeach()
+if (TARGET viper_runtime)
+  set_target_properties(viper_runtime PROPERTIES EXPORT_NAME runtime)
+endif ()
+if (TARGET viper_pass)
+  set_target_properties(viper_pass PROPERTIES EXPORT_NAME pass)
+endif ()
+if (TARGET viper_il_core)
+  set_target_properties(viper_il_core PROPERTIES EXPORT_NAME il_core)
+endif ()
+if (TARGET viper_il_io)
+  set_target_properties(viper_il_io PROPERTIES EXPORT_NAME il_io)
+endif ()
+if (TARGET viper_il_verify)
+  set_target_properties(viper_il_verify PROPERTIES EXPORT_NAME il_verify)
+endif ()
+if (TARGET viper_il_full)
+  set_target_properties(viper_il_full PROPERTIES EXPORT_NAME il_full)
 endif ()
 
 install(TARGETS ${VIPER_PUBLIC_LIB_TARGETS}

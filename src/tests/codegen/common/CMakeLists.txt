@@ -4,6 +4,7 @@
 
 set(_common_tests
         dataflow_liveness
+        linker_support
         runtime_manifest)
 
 foreach (_test IN LISTS _common_tests)
