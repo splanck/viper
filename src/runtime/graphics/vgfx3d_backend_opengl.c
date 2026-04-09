@@ -41,6 +41,7 @@ typedef unsigned int GLbitfield;
 #define GL_TRUE 1
 #define GL_FALSE 0
 #define GL_NONE 0
+#define GL_NO_ERROR 0
 #define GL_COLOR_BUFFER_BIT 0x00004000
 #define GL_DEPTH_BUFFER_BIT 0x00000100
 #define GL_DEPTH_TEST 0x0B71
@@ -111,7 +112,7 @@ typedef void (*PFNGLDRAWELEMENTSPROC)(GLenum, GLsizei, GLenum, const void *);
 typedef void (*PFNGLDRAWARRAYSPROC)(GLenum, GLint, GLsizei);
 typedef void (*PFNGLDRAWELEMENTSINSTANCEDPROC)(GLenum, GLsizei, GLenum, const void *, GLsizei);
 typedef GLuint (*PFNGLCREATESHADERPROC)(GLenum);
-typedef void (*PFNGLSHADERSOURCEPROC)(GLuint, GLsizei, const GLchar **, const GLint *);
+typedef void (*PFNGLSHADERSOURCEPROC)(GLuint, GLsizei, const GLchar *const *, const GLint *);
 typedef void (*PFNGLCOMPILESHADERPROC)(GLuint);
 typedef void (*PFNGLGETSHADERIVPROC)(GLuint, GLenum, GLint *);
 typedef void (*PFNGLGETSHADERINFOLOGPROC)(GLuint, GLsizei, GLsizei *, GLchar *);
@@ -256,7 +257,7 @@ static struct {
 
 /* Debug GL error checking — enabled in debug builds only */
 #ifndef NDEBUG
-static void gl_check_error(const char *file, int line) {
+static __attribute__((unused)) void gl_check_error(const char *file, int line) {
     if (!gl.GetError)
         return;
     GLenum err = gl.GetError();
@@ -630,7 +631,7 @@ static int load_gl(void) {
     return 0;
 }
 
-static const char *glsl_vertex_src =
+static const char *const glsl_vertex_src[] = {
     "#version 330 core\n"
     "layout(location=0) in vec3 aPosition;\n"
     "layout(location=1) in vec3 aNormal;\n"
@@ -690,7 +691,7 @@ static const char *glsl_vertex_src =
     "            }\n"
     "        }\n"
     "    }\n"
-    "}\n"
+    "}\n",
     "vec4 skinPosition(vec4 localPos, int usePrevPalette) {\n"
     "    if (uHasSkinning == 0) return localPos;\n"
     "    vec4 skinnedPos = vec4(0.0);\n"
@@ -717,7 +718,7 @@ static const char *glsl_vertex_src =
     "        }\n"
     "    }\n"
     "    return skinnedNormal;\n"
-    "}\n"
+    "}\n",
     "void main() {\n"
     "    vec3 pos = aPosition;\n"
     "    vec3 nrm = aNormal;\n"
@@ -755,9 +756,10 @@ static const char *glsl_vertex_src =
     "    vHasObjectHistory = float((uHasPrevModelMatrix != 0) || (uHasPrevInstanceMatrices != 0) "
     "||\n"
     "                             (uHasPrevSkinning != 0) || (uHasPrevMorphWeights != 0));\n"
-    "}\n";
+    "}\n",
+};
 
-static const char *glsl_fragment_src =
+static const char *const glsl_fragment_src[] = {
     "#version 330 core\n"
     "in vec3 vWorldPos;\n"
     "in vec3 vNormal;\n"
@@ -855,7 +857,7 @@ static const char *glsl_fragment_src =
     "        }\n"
     "    }\n"
     "    return lit / 9.0;\n"
-    "}\n"
+    "}\n",
     "void main() {\n"
     "    vec3 baseColor = uDiffuseColor.rgb * vColor.rgb;\n"
     "    float texAlpha = 1.0;\n"
@@ -1051,7 +1053,8 @@ static const char *glsl_fragment_src =
     "    vec2 prevNdc = vPrevClip.xy / max(vPrevClip.w, 0.0001);\n"
     "    vec2 velocity = (currNdc - prevNdc) * 0.5;\n"
     "    MotionColor = vec4(clamp(velocity * 0.5 + 0.5, 0.0, 1.0), vHasObjectHistory, 1.0);\n"
-    "}\n";
+    "}\n",
+};
 
 static const char *glsl_shadow_vertex_src =
     "#version 330 core\n"
@@ -1142,7 +1145,7 @@ static const char *glsl_postfx_vertex_src =
     "    gl_Position = vec4(pos, 0.0, 1.0);\n"
     "}\n";
 
-static const char *glsl_postfx_fragment_src =
+static const char *const glsl_postfx_fragment_src[] = {
     "#version 330 core\n"
     "in vec2 vUV;\n"
     "out vec4 FragColor;\n"
@@ -1200,7 +1203,7 @@ static const char *glsl_postfx_fragment_src =
     "    }\n"
     "    float ao = 1.0 - clamp((occ / float(count)) * uSsaoIntensity * 32.0, 0.0, 1.0);\n"
     "    return ao;\n"
-    "}\n"
+    "}\n",
     "vec3 applyDof(vec2 uv, vec3 color, vec3 worldPos) {\n"
     "    float dist = length(worldPos - uCameraPos);\n"
     "    float blur = clamp(abs(dist - uDofFocusDistance) * max(uDofAperture, 0.0) * 0.02, 0.0, "
@@ -1255,7 +1258,7 @@ static const char *glsl_postfx_fragment_src =
     "                sampleScene(uv + vec2(0.0, uInvResolution.y)) +\n"
     "                sampleScene(uv + vec2(0.0, -uInvResolution.y))) * 0.25;\n"
     "    return mix(color, avg, 0.5);\n"
-    "}\n"
+    "}\n",
     "void main() {\n"
     "    vec3 color = sampleScene(vUV);\n"
     "    float depth = sampleDepth(vUV);\n"
@@ -1297,13 +1300,14 @@ static const char *glsl_postfx_fragment_src =
     "        color *= vig;\n"
     "    }\n"
     "    FragColor = vec4(color, 1.0);\n"
-    "}\n";
+    "}\n",
+};
 
-static GLuint compile_shader(GLenum type, const char *src) {
+static GLuint compile_shader_parts(GLenum type, const char *const *src, GLsizei src_count) {
     GLuint shader = gl.CreateShader(type);
     if (!shader)
         return 0;
-    gl.ShaderSource(shader, 1, &src, NULL);
+    gl.ShaderSource(shader, src_count, src, NULL);
     gl.CompileShader(shader);
     GLint ok = 0;
     gl.GetShaderiv(shader, GL_COMPILE_STATUS, &ok);
@@ -1315,6 +1319,11 @@ static GLuint compile_shader(GLenum type, const char *src) {
         return 0;
     }
     return shader;
+}
+
+static GLuint compile_shader(GLenum type, const char *src) {
+    const char *parts[] = {src};
+    return compile_shader_parts(type, parts, 1);
 }
 
 static GLuint link_program(GLuint vs, GLuint fs) {
@@ -2555,12 +2564,17 @@ static void *gl_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
     ctx->width = w;
     ctx->height = h;
 
-    GLuint vs = compile_shader(GL_VERTEX_SHADER, glsl_vertex_src);
-    GLuint fs = compile_shader(GL_FRAGMENT_SHADER, glsl_fragment_src);
+    GLuint vs = compile_shader_parts(
+        GL_VERTEX_SHADER, glsl_vertex_src, (GLsizei)(sizeof(glsl_vertex_src) / sizeof(glsl_vertex_src[0])));
+    GLuint fs = compile_shader_parts(
+        GL_FRAGMENT_SHADER, glsl_fragment_src, (GLsizei)(sizeof(glsl_fragment_src) / sizeof(glsl_fragment_src[0])));
     GLuint svs = compile_shader(GL_VERTEX_SHADER, glsl_shadow_vertex_src);
     GLuint sfs = compile_shader(GL_FRAGMENT_SHADER, glsl_shadow_fragment_src);
     GLuint pvs = compile_shader(GL_VERTEX_SHADER, glsl_postfx_vertex_src);
-    GLuint pfs = compile_shader(GL_FRAGMENT_SHADER, glsl_postfx_fragment_src);
+    GLuint pfs = compile_shader_parts(GL_FRAGMENT_SHADER,
+                                      glsl_postfx_fragment_src,
+                                      (GLsizei)(sizeof(glsl_postfx_fragment_src) /
+                                                sizeof(glsl_postfx_fragment_src[0])));
     GLuint skyvs = compile_shader(GL_VERTEX_SHADER, glsl_skybox_vertex_src);
     GLuint skyfs = compile_shader(GL_FRAGMENT_SHADER, glsl_skybox_fragment_src);
     if (!vs || !fs || !svs || !sfs || !pvs || !pfs || !skyvs || !skyfs) {

@@ -3,6 +3,8 @@
 # Works on macOS, Linux, and Windows (Git Bash / MSYS2 / WSL).
 set -e
 
+SKIP_INSTALL="${VIPER_SKIP_INSTALL:-0}"
+
 # ── OS and compiler detection ────────────────────────────────────────────────
 case "$(uname -s 2>/dev/null)" in
     Darwin)                  OS="macos" ;;
@@ -55,6 +57,11 @@ rm -rf build/Testing
 ctest --test-dir build --output-on-failure -j"$JOBS"
 
 # ── Install ──────────────────────────────────────────────────────────────────
+if [ "$SKIP_INSTALL" = "1" ]; then
+    echo "Skipping install (VIPER_SKIP_INSTALL=1)"
+    exit 0
+fi
+
 if [ "$OS" = "windows" ]; then
     # Windows: install to user-local directory (no sudo).
     INSTALL_PREFIX="${LOCALAPPDATA:-$HOME}/viper"

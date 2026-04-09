@@ -182,6 +182,13 @@ struct DynamicInfo {
     uint64_t rwVaddr = 0;
 };
 
+struct StartupStubInfo {
+    bool enabled = false;
+    std::vector<uint8_t> bytes;
+    size_t fileOffset = 0;
+    uint64_t vaddr = 0;
+};
+
 struct SyntheticSectionRef {
     const char *name = nullptr;
     uint32_t type = 0;
@@ -229,6 +236,17 @@ uint32_t dynInfoForSym(uint32_t symIndex, uint32_t type) {
     return (static_cast<uint64_t>(symIndex) << 32) | type;
 }
 
+bool fitsInt32(int64_t value) {
+    return value >= -2147483648LL && value <= 2147483647LL;
+}
+
+void putLE32(std::vector<uint8_t> &buf, size_t offset, uint32_t val) {
+    buf[offset] = static_cast<uint8_t>(val);
+    buf[offset + 1] = static_cast<uint8_t>(val >> 8);
+    buf[offset + 2] = static_cast<uint8_t>(val >> 16);
+    buf[offset + 3] = static_cast<uint8_t>(val >> 24);
+}
+
 uint32_t elfHash(std::string_view name) {
     uint32_t h = 0;
     for (unsigned char c : name) {
@@ -249,6 +267,51 @@ uint64_t maxAllocEndAddr(const LinkLayout &layout) {
         maxEnd = std::max(maxEnd, sec.virtualAddr + static_cast<uint64_t>(sec.data.size()));
     }
     return maxEnd;
+}
+
+std::vector<uint8_t> buildLinuxX64StartupStub(uint64_t stubVa,
+                                              uint64_t entryAddr,
+                                              std::ostream &err) {
+    std::vector<uint8_t> stub = {
+        0x48, 0x83, 0xE4, 0xF0,       // and rsp, -16
+        0xE8, 0x00, 0x00, 0x00, 0x00, // call entry
+        0x89, 0xC7,                   // mov edi, eax
+        0xB8, 0x3C, 0x00, 0x00, 0x00, // mov eax, 60
+        0x0F, 0x05,                   // syscall
+        0x0F, 0x0B,                   // ud2
+    };
+
+    const int64_t callDisp = static_cast<int64_t>(entryAddr) - static_cast<int64_t>(stubVa + 9);
+    if (!fitsInt32(callDisp)) {
+        err << "error: ELF x86_64 startup stub cannot reach entry point\n";
+        return {};
+    }
+
+    putLE32(stub, 5, static_cast<uint32_t>(static_cast<int32_t>(callDisp)));
+    return stub;
+}
+
+std::vector<uint8_t> buildLinuxAArch64StartupStub(uint64_t stubVa,
+                                                  uint64_t entryAddr,
+                                                  std::ostream &err) {
+    const int64_t delta = static_cast<int64_t>(entryAddr) - static_cast<int64_t>(stubVa);
+    if ((delta & 0x3) != 0) {
+        err << "error: ELF AArch64 startup stub target is not instruction aligned\n";
+        return {};
+    }
+
+    const int64_t imm26 = delta >> 2;
+    if (imm26 < -(1 << 25) || imm26 > ((1 << 25) - 1)) {
+        err << "error: ELF AArch64 startup stub branch is out of range\n";
+        return {};
+    }
+
+    std::vector<uint8_t> stub;
+    encoding::writeLE32(stub, 0x94000000U | (static_cast<uint32_t>(imm26) & 0x03FFFFFFU)); // bl entry
+    encoding::writeLE32(stub, 0xD2800BA8U); // movz x8, #93
+    encoding::writeLE32(stub, 0xD4000001U); // svc #0
+    encoding::writeLE32(stub, 0xD4200000U); // brk #0
+    return stub;
 }
 
 bool buildDynamicInfo(const LinkLayout &layout,
@@ -400,6 +463,7 @@ bool writeElfExe(const std::string &path,
                  const std::vector<std::string> &neededLibs,
                  const std::unordered_set<std::string> &dynSyms,
                  std::size_t stackSize,
+                 bool emitStartupStub,
                  std::ostream &err) {
     const size_t pageSize = layout.pageSize;
     const uint16_t machine = (arch == LinkArch::AArch64) ? EM_AARCH64 : EM_X86_64;
@@ -426,6 +490,32 @@ bool writeElfExe(const std::string &path,
     if (!buildDynamicInfo(layout, arch, neededLibs, dynSyms, pageSize, dynInfo, err))
         return false;
 
+    StartupStubInfo startupStub;
+    if (emitStartupStub) {
+        if (layout.entryAddr == 0) {
+            err << "error: ELF startup stub requested but entry address is missing\n";
+            return false;
+        }
+
+        uint64_t maxEnd = maxAllocEndAddr(layout);
+        if (dynInfo.enabled) {
+            if (!dynInfo.roBlob.empty())
+                maxEnd = std::max(maxEnd, dynInfo.roVaddr + dynInfo.roBlob.size());
+            if (!dynInfo.dynamic.empty())
+                maxEnd = std::max(maxEnd, dynInfo.rwVaddr + dynInfo.dynamic.size());
+        }
+        startupStub.vaddr = alignUp(maxEnd, pageSize);
+
+        if (arch == LinkArch::X86_64)
+            startupStub.bytes = buildLinuxX64StartupStub(startupStub.vaddr, layout.entryAddr, err);
+        else
+            startupStub.bytes =
+                buildLinuxAArch64StartupStub(startupStub.vaddr, layout.entryAddr, err);
+        if (startupStub.bytes.empty())
+            return false;
+        startupStub.enabled = true;
+    }
+
     std::vector<SegmentInfo> segments;
     const size_t ehdrSize = sizeof(Elf64_Ehdr);
     const size_t baseLoadCount = loadableIndices.size();
@@ -433,7 +523,8 @@ bool writeElfExe(const std::string &path,
     const bool hasDynRw = dynInfo.enabled && !dynInfo.dynamic.empty();
     const uint16_t numPhdrs = static_cast<uint16_t>(baseLoadCount + (hasDynRo ? 1 : 0) +
                                                     (hasDynRw ? 1 : 0) + (hasDynRo ? 1 : 0) +
-                                                    (hasDynRw ? 1 : 0) + 1);
+                                                    (hasDynRw ? 1 : 0) +
+                                                    (startupStub.enabled ? 1 : 0) + 1);
     const size_t phdrTableSize = numPhdrs * sizeof(Elf64_Phdr);
 
     size_t filePos = alignUp(ehdrSize + phdrTableSize, pageSize);
@@ -459,6 +550,11 @@ bool writeElfExe(const std::string &path,
         filePos = alignUp(filePos, pageSize);
         dynInfo.rwFileOff = filePos;
         filePos += dynInfo.dynamic.size();
+    }
+    if (startupStub.enabled) {
+        filePos = alignUp(filePos, pageSize);
+        startupStub.fileOffset = filePos;
+        filePos += startupStub.bytes.size();
     }
 
     std::vector<NonAllocInfo> nonAllocInfo;
@@ -520,7 +616,7 @@ bool writeElfExe(const std::string &path,
     ehdr.e_ident[7] = 0; // ELFOSABI_NONE
     ehdr.e_type = ET_EXEC;
     ehdr.e_machine = machine;
-    ehdr.e_entry = layout.entryAddr;
+    ehdr.e_entry = startupStub.enabled ? startupStub.vaddr : layout.entryAddr;
     ehdr.e_phoff = ehdrSize;
     ehdr.e_shoff = shdrsOff;
     ehdr.e_phnum = numPhdrs;
@@ -586,6 +682,18 @@ bool writeElfExe(const std::string &path,
         dynamic.p_memsz = dynInfo.dynamic.size();
         dynamic.p_align = 8;
         phdrs.push_back(dynamic);
+    }
+    if (startupStub.enabled) {
+        Elf64_Phdr load{};
+        load.p_type = PT_LOAD;
+        load.p_flags = PF_R | PF_X;
+        load.p_offset = startupStub.fileOffset;
+        load.p_vaddr = startupStub.vaddr;
+        load.p_paddr = startupStub.vaddr;
+        load.p_filesz = startupStub.bytes.size();
+        load.p_memsz = startupStub.bytes.size();
+        load.p_align = pageSize;
+        phdrs.push_back(load);
     }
     {
         Elf64_Phdr phdr{};
@@ -683,6 +791,10 @@ bool writeElfExe(const std::string &path,
         std::memcpy(fileData.data() + dynInfo.roFileOff, dynInfo.roBlob.data(), dynInfo.roBlob.size());
     if (hasDynRw)
         std::memcpy(fileData.data() + dynInfo.rwFileOff, dynInfo.dynamic.data(), dynInfo.dynamic.size());
+    if (startupStub.enabled)
+        std::memcpy(fileData.data() + startupStub.fileOffset,
+                    startupStub.bytes.data(),
+                    startupStub.bytes.size());
 
     for (size_t i = 0; i < nonAllocInfo.size(); ++i) {
         const auto &sec = layout.sections[nonAllocInfo[i].layoutIdx];

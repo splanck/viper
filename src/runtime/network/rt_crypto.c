@@ -1525,15 +1525,15 @@ void rt_crypto_random_bytes(uint8_t *buf, size_t len) {
 
     int fd = open("/dev/urandom", O_RDONLY);
     if (fd >= 0) {
-        size_t off = 0;
-        while (off < len) {
-            ssize_t n = read(fd, buf + off, len - off);
+        size_t urandom_off = 0;
+        while (urandom_off < len) {
+            ssize_t n = read(fd, buf + urandom_off, len - urandom_off);
             if (n <= 0)
                 break;
-            off += (size_t)n;
+            urandom_off += (size_t)n;
         }
         close(fd);
-        if (off == len)
+        if (urandom_off == len)
             return;
     }
 

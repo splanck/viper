@@ -31,9 +31,15 @@ static void sleep_ms(int ms) {
 #else
 #include <time.h>
 
+#if defined(__linux__)
+static constexpr int64_t kRestartUpperBoundMs = 50;
+static constexpr int64_t kShortSleepUpperBoundMs = 250;
+static constexpr int64_t kLongSleepUpperBoundMs = 400;
+#else
 static constexpr int64_t kRestartUpperBoundMs = 10;
 static constexpr int64_t kShortSleepUpperBoundMs = 100;
 static constexpr int64_t kLongSleepUpperBoundMs = 150;
+#endif
 
 static void sleep_ms(int ms) {
     struct timespec req;

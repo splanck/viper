@@ -29,6 +29,19 @@
 #include <stdlib.h>
 #include <string.h>
 
+static char *vaud_strdup(const char *s) {
+    if (!s)
+        return NULL;
+
+    size_t len = strlen(s) + 1;
+    char *copy = (char *)malloc(len);
+    if (!copy)
+        return NULL;
+
+    memcpy(copy, s, len);
+    return copy;
+}
+
 // Forward declarations for runtime codec APIs (avoids cross-layer #include)
 typedef struct ogg_reader ogg_reader_t;
 typedef struct vorbis_decoder vorbis_decoder_t;
@@ -1013,7 +1026,7 @@ vaud_music_t vaud_load_music_ogg(vaud_context_t ctx, const char *path) {
         vaud_free_music(music);
         return NULL;
     }
-    music->filepath = strdup(path);
+    music->filepath = vaud_strdup(path);
     music->frame_count =
         last_granule >= 0
             ? vaud_resample_output_frames(last_granule, music->source_sample_rate, VAUD_SAMPLE_RATE)
@@ -1050,7 +1063,7 @@ vaud_music_t vaud_load_music_mp3(vaud_context_t ctx, const char *path) {
         vaud_free_music(music);
         return NULL;
     }
-    music->filepath = strdup(path);
+    music->filepath = vaud_strdup(path);
 
     // Estimate frame count from file size (approximate for VBR)
     music->frame_count = 0;

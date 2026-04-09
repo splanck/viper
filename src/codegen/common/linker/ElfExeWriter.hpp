@@ -41,6 +41,7 @@ bool writeElfExe(const std::string &path,
                  const std::vector<std::string> &neededLibs,
                  const std::unordered_set<std::string> &dynSyms,
                  std::size_t stackSize,
+                 bool emitStartupStub,
                  std::ostream &err);
 
 inline bool writeElfExe(const std::string &path,
@@ -49,7 +50,7 @@ inline bool writeElfExe(const std::string &path,
                         const std::vector<std::string> &neededLibs,
                         const std::unordered_set<std::string> &dynSyms,
                         std::ostream &err) {
-    return writeElfExe(path, layout, arch, neededLibs, dynSyms, 0, err);
+    return writeElfExe(path, layout, arch, neededLibs, dynSyms, 0, false, err);
 }
 
 inline bool writeElfExe(const std::string &path,
@@ -57,14 +58,14 @@ inline bool writeElfExe(const std::string &path,
                         LinkArch arch,
                         std::size_t stackSize,
                         std::ostream &err) {
-    return writeElfExe(path, layout, arch, {}, {}, stackSize, err);
+    return writeElfExe(path, layout, arch, {}, {}, stackSize, false, err);
 }
 
 inline bool writeElfExe(const std::string &path,
                         const LinkLayout &layout,
                         LinkArch arch,
                         std::ostream &err) {
-    return writeElfExe(path, layout, arch, {}, {}, 0, err);
+    return writeElfExe(path, layout, arch, {}, {}, 0, false, err);
 }
 
 } // namespace viper::codegen::linker

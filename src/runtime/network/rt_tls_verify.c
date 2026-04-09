@@ -50,6 +50,12 @@
 #include <dlfcn.h>
 #endif
 
+#if defined(__GNUC__) || defined(__clang__)
+#define RT_TLS_MAYBE_UNUSED __attribute__((unused))
+#else
+#define RT_TLS_MAYBE_UNUSED
+#endif
+
 //=============================================================================
 // Certificate Validation — CS-1, CS-2, CS-3
 //=============================================================================
@@ -906,7 +912,7 @@ static void *tls_dlopen_libcrypto(void) {
 }
 
 /// @brief Try to find the system CA bundle.
-static const char *find_ca_bundle(void) {
+static RT_TLS_MAYBE_UNUSED const char *find_ca_bundle(void) {
     static const char *bundles[] = {"/etc/ssl/certs/ca-certificates.crt", // Debian/Ubuntu
                                     "/etc/pki/tls/certs/ca-bundle.crt",   // RHEL/CentOS
                                     "/etc/ssl/ca-bundle.pem",             // OpenSUSE
@@ -924,10 +930,10 @@ static const char *find_ca_bundle(void) {
 
 /// @brief Decode one PEM certificate (between -----BEGIN/END CERTIFICATE-----).
 /// Returns DER length written to out_der, or 0 on failure.
-static size_t pem_decode_cert(const char *pem_b64,
-                              size_t b64_len,
-                              uint8_t *out_der,
-                              size_t max_der) {
+static RT_TLS_MAYBE_UNUSED size_t pem_decode_cert(const char *pem_b64,
+                                                  size_t b64_len,
+                                                  uint8_t *out_der,
+                                                  size_t max_der) {
     // Simple base64 decode (no line breaks within the data stream)
     static const int8_t b64tab[256] = {
         -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
@@ -972,16 +978,19 @@ static size_t pem_decode_cert(const char *pem_b64,
 }
 
 /// @brief Compare two DER-encoded Name structures byte-for-byte.
-static int der_names_equal(const uint8_t *a_der, size_t a_len, const uint8_t *b_der, size_t b_len) {
+static RT_TLS_MAYBE_UNUSED int der_names_equal(const uint8_t *a_der,
+                                               size_t a_len,
+                                               const uint8_t *b_der,
+                                               size_t b_len) {
     if (a_len != b_len)
         return 0;
     return memcmp(a_der, b_der, a_len) == 0;
 }
 
 /// @brief Get the DER-encoded Subject from a certificate.
-static const uint8_t *cert_get_subject(const uint8_t *cert_der,
-                                       size_t cert_len,
-                                       size_t *subject_len) {
+static RT_TLS_MAYBE_UNUSED const uint8_t *cert_get_subject(const uint8_t *cert_der,
+                                                           size_t cert_len,
+                                                           size_t *subject_len) {
     uint8_t t;
     size_t vl, hl;
 
@@ -1027,9 +1036,9 @@ static const uint8_t *cert_get_subject(const uint8_t *cert_der,
 }
 
 /// @brief Get the DER-encoded Issuer from a certificate.
-static const uint8_t *cert_get_issuer(const uint8_t *cert_der,
-                                      size_t cert_len,
-                                      size_t *issuer_len) {
+static RT_TLS_MAYBE_UNUSED const uint8_t *cert_get_issuer(const uint8_t *cert_der,
+                                                          size_t cert_len,
+                                                          size_t *issuer_len) {
     uint8_t t;
     size_t vl, hl;
 
@@ -1111,7 +1120,7 @@ static time_t parse_der_time(const uint8_t *data, size_t len, uint8_t tag) {
 /// @param cert_der DER-encoded certificate.
 /// @param cert_len Length in bytes.
 /// @return 0 if valid (current time within notBefore..notAfter), -1 on error or expired.
-static int cert_check_expiry(const uint8_t *cert_der, size_t cert_len) {
+static RT_TLS_MAYBE_UNUSED int cert_check_expiry(const uint8_t *cert_der, size_t cert_len) {
     uint8_t t;
     size_t vl, hl;
 
@@ -1652,10 +1661,10 @@ static const uint8_t OID_PRIME256V1[] = {
 /// @brief Extract the P-256 public key (X, Y) from a DER-encoded certificate.
 /// Navigates: Certificate -> TBSCertificate -> SubjectPublicKeyInfo -> BIT STRING.
 /// @return 0 on success, -1 on error (not an EC key, wrong curve, parse failure).
-static int cert_get_ec_pubkey(const uint8_t *cert_der,
-                              size_t cert_len,
-                              uint8_t x_out[32],
-                              uint8_t y_out[32]) {
+static RT_TLS_MAYBE_UNUSED int cert_get_ec_pubkey(const uint8_t *cert_der,
+                                                  size_t cert_len,
+                                                  uint8_t x_out[32],
+                                                  uint8_t y_out[32]) {
     uint8_t tag;
     size_t vl, hl;
     const uint8_t *p = cert_der;
@@ -1762,10 +1771,10 @@ static int cert_get_ec_pubkey(const uint8_t *cert_der,
 /// @brief Parse a DER-encoded ECDSA signature: SEQUENCE { INTEGER r, INTEGER s }.
 /// Strips leading zero padding from DER integers and right-aligns into 32-byte buffers.
 /// @return 0 on success, -1 on error (malformed signature).
-static int parse_ecdsa_sig_der(const uint8_t *sig,
-                               size_t sig_len,
-                               uint8_t r_out[32],
-                               uint8_t s_out[32]) {
+static RT_TLS_MAYBE_UNUSED int parse_ecdsa_sig_der(const uint8_t *sig,
+                                                   size_t sig_len,
+                                                   uint8_t r_out[32],
+                                                   uint8_t s_out[32]) {
     uint8_t tag;
     size_t vl, hl;
 

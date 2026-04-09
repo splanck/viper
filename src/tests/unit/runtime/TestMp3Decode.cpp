@@ -20,6 +20,7 @@
 #include "tests/TestHarness.hpp"
 
 #include <cstdio>
+#include <cstdint>
 #include <cstdlib>
 #include <cstring>
 

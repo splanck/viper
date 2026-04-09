@@ -204,9 +204,9 @@ void lowerSignedDivRem(MFunction &fn) {
     };
 
     for (std::size_t blockIdx = 0; blockIdx < fn.blocks.size(); ++blockIdx) {
-        auto &block = fn.blocks[blockIdx];
-        for (std::size_t instrIdx = 0; instrIdx < block.instructions.size(); ++instrIdx) {
-            const MInstr &candidate = block.instructions[instrIdx];
+        for (std::size_t instrIdx = 0; instrIdx < fn.blocks[blockIdx].instructions.size();
+             ++instrIdx) {
+            const MInstr &candidate = fn.blocks[blockIdx].instructions[instrIdx];
             const bool isSignedDiv = candidate.opcode == MOpcode::DIVS64rr;
             const bool isSignedRem = candidate.opcode == MOpcode::REMS64rr;
             const bool isUnsignedDiv = candidate.opcode == MOpcode::DIVU64rr;
@@ -241,7 +241,7 @@ void lowerSignedDivRem(MFunction &fn) {
             // Unsigned rem by constant power-of-2: replace IDIV with AND mask.
             // This avoids the expensive IDIV (20-40 cycle latency).
             if (isUnsignedDiv || isUnsignedRem) {
-                auto constVal = findVRegConstant(block, instrIdx, divisorOp);
+                auto constVal = findVRegConstant(fn.blocks[blockIdx], instrIdx, divisorOp);
                 if (constVal) {
                     int log = log2IfPowerOf2(*constVal);
                     if (log >= 0 && log <= 63) {
@@ -250,12 +250,12 @@ void lowerSignedDivRem(MFunction &fn) {
 
                         // Move dividend to dest first (SHR/AND are in-place).
                         if (std::holds_alternative<OpImm>(dividendClone)) {
-                            block.instructions[instrIdx] =
+                            fn.blocks[blockIdx].instructions[instrIdx] =
                                 MInstr::make(MOpcode::MOVri,
                                              std::vector<Operand>{cloneOperand(destClone),
                                                                   cloneOperand(dividendClone)});
                         } else {
-                            block.instructions[instrIdx] =
+                            fn.blocks[blockIdx].instructions[instrIdx] =
                                 MInstr::make(MOpcode::MOVrr,
                                              std::vector<Operand>{cloneOperand(destClone),
                                                                   cloneOperand(dividendClone)});
@@ -263,16 +263,16 @@ void lowerSignedDivRem(MFunction &fn) {
 
                         if (isUnsignedDiv) {
                             // udiv x, 2^k  ->  shr x, k
-                            block.instructions.insert(
-                                block.instructions.begin() +
+                            fn.blocks[blockIdx].instructions.insert(
+                                fn.blocks[blockIdx].instructions.begin() +
                                     static_cast<std::ptrdiff_t>(instrIdx + 1),
                                 MInstr::make(MOpcode::SHRri,
                                              std::vector<Operand>{cloneOperand(destClone),
                                                                   makeImmOperand(log)}));
                         } else {
                             // urem x, 2^k  ->  and x, (2^k - 1)
-                            block.instructions.insert(
-                                block.instructions.begin() +
+                            fn.blocks[blockIdx].instructions.insert(
+                                fn.blocks[blockIdx].instructions.begin() +
                                     static_cast<std::ptrdiff_t>(instrIdx + 1),
                                 MInstr::make(MOpcode::ANDri,
                                              std::vector<Operand>{cloneOperand(destClone),
@@ -284,20 +284,23 @@ void lowerSignedDivRem(MFunction &fn) {
                 }
             }
 
-            MInstr pseudo = std::move(block.instructions[instrIdx]);
+            MInstr pseudo = std::move(fn.blocks[blockIdx].instructions[instrIdx]);
             const bool isDiv = isSignedDiv || isUnsignedDiv;
             const bool isSigned = isSignedDiv || isSignedRem;
 
             MBasicBlock afterBlock{};
-            afterBlock.label = makeContinuationLabel(fn, block, sequenceId++);
+            afterBlock.label = makeContinuationLabel(fn, fn.blocks[blockIdx], sequenceId++);
 
-            const auto tailBegin =
-                block.instructions.begin() + static_cast<std::ptrdiff_t>(instrIdx + 1U);
-            afterBlock.instructions.assign(std::make_move_iterator(tailBegin),
-                                           std::make_move_iterator(block.instructions.end()));
-            block.instructions.erase(tailBegin, block.instructions.end());
-            block.instructions.erase(block.instructions.begin() +
-                                     static_cast<std::ptrdiff_t>(instrIdx));
+            {
+                auto &block = fn.blocks[blockIdx];
+                const auto tailBegin =
+                    block.instructions.begin() + static_cast<std::ptrdiff_t>(instrIdx + 1U);
+                afterBlock.instructions.assign(std::make_move_iterator(tailBegin),
+                                               std::make_move_iterator(block.instructions.end()));
+                block.instructions.erase(tailBegin, block.instructions.end());
+                block.instructions.erase(block.instructions.begin() +
+                                         static_cast<std::ptrdiff_t>(instrIdx));
+            }
 
             ensureTrapBlock();
 
@@ -355,9 +358,10 @@ void lowerSignedDivRem(MFunction &fn) {
             currentBlock.append(MInstr::make(
                 MOpcode::JMP, std::vector<Operand>{makeLabelOperand(afterBlock.label)}));
 
+            const std::size_t nextInstrIdx = currentBlock.instructions.size();
             fn.blocks.push_back(std::move(afterBlock));
 
-            instrIdx = currentBlock.instructions.size();
+            instrIdx = nextInstrIdx;
         }
     }
 }

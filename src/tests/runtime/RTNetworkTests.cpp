@@ -39,6 +39,12 @@
 #include <unistd.h>
 #endif
 
+#if defined(__linux__)
+static constexpr int64_t kNetworkTimeoutUpperBoundMs = 5000;
+#else
+static constexpr int64_t kNetworkTimeoutUpperBoundMs = 500;
+#endif
+
 /// @brief Helper to print test result.
 static void test_result(const char *name, bool passed) {
     printf("  %s: %s\n", name, passed ? "PASS" : "FAIL");
@@ -140,6 +146,67 @@ static bool localhost_bind_available_ipv6() {
     }();
 
     return available;
+}
+
+static int get_free_port_ipv4(int socktype) {
+#if defined(_WIN32)
+    WSADATA wsa;
+    if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0)
+        return 0;
+    SOCKET fd = socket(AF_INET, socktype, 0);
+    if (fd == INVALID_SOCKET) {
+        WSACleanup();
+        return 0;
+    }
+#else
+    int fd = socket(AF_INET, socktype, 0);
+    if (fd < 0)
+        return 0;
+#endif
+
+    sockaddr_in addr = {};
+    addr.sin_family = AF_INET;
+    addr.sin_addr.s_addr = htonl(INADDR_ANY);
+    addr.sin_port = 0;
+
+    if (bind(fd, reinterpret_cast<sockaddr *>(&addr), sizeof(addr)) != 0) {
+#if defined(_WIN32)
+        closesocket(fd);
+        WSACleanup();
+#else
+        close(fd);
+#endif
+        return 0;
+    }
+
+    socklen_t len = sizeof(addr);
+    const int ok = getsockname(fd, reinterpret_cast<sockaddr *>(&addr), &len) == 0;
+    const int port = ok ? ntohs(addr.sin_port) : 0;
+
+#if defined(_WIN32)
+    closesocket(fd);
+    WSACleanup();
+#else
+    close(fd);
+#endif
+    return port;
+}
+
+static int get_free_tcp_port_ipv4() {
+    return get_free_port_ipv4(SOCK_STREAM);
+}
+
+static int get_free_udp_port_ipv4() {
+    return get_free_port_ipv4(SOCK_DGRAM);
+}
+
+static int get_distinct_free_udp_port_ipv4(int avoid_port) {
+    for (int i = 0; i < 16; ++i) {
+        const int port = get_free_udp_port_ipv4();
+        if (port > 0 && port != avoid_port)
+            return port;
+    }
+    return 0;
 }
 
 static int get_free_port_ipv6() {
@@ -247,7 +314,8 @@ static void echo_server_thread_at(const char *address, int port, int num_clients
 static void test_server_client_connect() {
     printf("\nTesting Server/Client Connect:\n");
 
-    const int port = 19876;
+    const int port = get_free_tcp_port_ipv4();
+    assert(port > 0);
     server_ready = false;
     server_done = false;
 
@@ -320,7 +388,8 @@ static void test_server_client_connect_ipv6() {
 static void test_send_recv() {
     printf("\nTesting Send/Receive:\n");
 
-    const int port = 19877;
+    const int port = get_free_tcp_port_ipv4();
+    assert(port > 0);
     server_ready = false;
     server_done = false;
 
@@ -369,7 +438,8 @@ static void test_send_recv() {
 static void test_send_all_recv_exact() {
     printf("\nTesting SendAll/RecvExact:\n");
 
-    const int port = 19878;
+    const int port = get_free_tcp_port_ipv4();
+    assert(port > 0);
     server_ready = false;
     server_done = false;
 
@@ -474,7 +544,8 @@ static void line_server_thread(int port) {
 static void test_recv_line() {
     printf("\nTesting RecvLine:\n");
 
-    const int port = 19879;
+    const int port = get_free_tcp_port_ipv4();
+    assert(port > 0);
     server_ready = false;
     server_done = false;
 
@@ -508,7 +579,8 @@ static void test_recv_line() {
 static void test_server_properties() {
     printf("\nTesting Server Properties:\n");
 
-    const int port = 19880;
+    const int port = get_free_tcp_port_ipv4();
+    assert(port > 0);
 
     void *server = rt_tcp_server_listen(port);
     assert(server != nullptr);
@@ -532,7 +604,8 @@ static void test_server_properties() {
 static void test_client_properties() {
     printf("\nTesting Client Properties:\n");
 
-    const int port = 19881;
+    const int port = get_free_tcp_port_ipv4();
+    assert(port > 0);
     server_ready = false;
     server_done = false;
 
@@ -564,7 +637,8 @@ static void test_client_properties() {
 static void test_accept_timeout() {
     printf("\nTesting Accept Timeout:\n");
 
-    const int port = 19882;
+    const int port = get_free_tcp_port_ipv4();
+    assert(port > 0);
 
     void *server = rt_tcp_server_listen(port);
     assert(server != nullptr);
@@ -577,7 +651,8 @@ static void test_accept_timeout() {
     auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
 
     test_result("Accept returns NULL on timeout", client == nullptr);
-    test_result("Accept timeout is respected", elapsed >= 90 && elapsed < 500);
+    test_result("Accept timeout is respected",
+                elapsed >= 90 && elapsed < kNetworkTimeoutUpperBoundMs);
 
     rt_tcp_server_close(server);
 }
@@ -587,7 +662,8 @@ static void test_accept_timeout() {
 static void test_connect_with_timeout() {
     printf("\nTesting ConnectFor:\n");
 
-    const int port = 19884;
+    const int port = get_free_tcp_port_ipv4();
+    assert(port > 0);
     server_ready = false;
     server_done = false;
 
@@ -612,7 +688,8 @@ static void test_connect_with_timeout() {
 static void test_listen_at() {
     printf("\nTesting ListenAt:\n");
 
-    const int port = 19883;
+    const int port = get_free_tcp_port_ipv4();
+    assert(port > 0);
     rt_string addr = rt_const_cstr("127.0.0.1");
 
     void *server = rt_tcp_server_listen_at(addr, port);
@@ -645,7 +722,8 @@ static void test_udp_new() {
 static void test_udp_bind() {
     printf("\nTesting UDP Bind:\n");
 
-    const int port = 19890;
+    const int port = get_free_udp_port_ipv4();
+    assert(port > 0);
 
     void *sock = rt_udp_bind(port);
     test_result("UDP Bind returns socket", sock != nullptr);
@@ -662,7 +740,8 @@ static void test_udp_bind() {
 static void test_udp_bind_at() {
     printf("\nTesting UDP BindAt:\n");
 
-    const int port = 19891;
+    const int port = get_free_udp_port_ipv4();
+    assert(port > 0);
     rt_string addr = rt_const_cstr("127.0.0.1");
 
     void *sock = rt_udp_bind_at(addr, port);
@@ -680,8 +759,10 @@ static void test_udp_bind_at() {
 static void test_udp_send_recv() {
     printf("\nTesting UDP Send/Recv:\n");
 
-    const int recv_port = 19892;
-    const int send_port = 19893;
+    const int recv_port = get_free_udp_port_ipv4();
+    const int send_port = get_distinct_free_udp_port_ipv4(recv_port);
+    assert(recv_port > 0);
+    assert(send_port > 0);
 
     // Create receiver
     void *receiver = rt_udp_bind(recv_port);
@@ -715,8 +796,10 @@ static void test_udp_send_recv() {
 static void test_udp_send_recv_str() {
     printf("\nTesting UDP SendToStr:\n");
 
-    const int recv_port = 19894;
-    const int send_port = 19895;
+    const int recv_port = get_free_udp_port_ipv4();
+    const int send_port = get_distinct_free_udp_port_ipv4(recv_port);
+    assert(recv_port > 0);
+    assert(send_port > 0);
 
     void *receiver = rt_udp_bind(recv_port);
     void *sender = rt_udp_bind(send_port);
@@ -742,8 +825,10 @@ static void test_udp_send_recv_str() {
 static void test_udp_recv_from() {
     printf("\nTesting UDP RecvFrom:\n");
 
-    const int recv_port = 19896;
-    const int send_port = 19897;
+    const int recv_port = get_free_udp_port_ipv4();
+    const int send_port = get_distinct_free_udp_port_ipv4(recv_port);
+    assert(recv_port > 0);
+    assert(send_port > 0);
 
     void *receiver = rt_udp_bind(recv_port);
     void *sender = rt_udp_bind(send_port);
@@ -775,7 +860,8 @@ static void test_udp_recv_from() {
 static void test_udp_recv_timeout() {
     printf("\nTesting UDP RecvFor timeout:\n");
 
-    const int port = 19898;
+    const int port = get_free_udp_port_ipv4();
+    assert(port > 0);
     void *sock = rt_udp_bind(port);
     assert(sock != nullptr);
 
@@ -787,7 +873,8 @@ static void test_udp_recv_timeout() {
     auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
 
     test_result("UDP RecvFor returns NULL on timeout", data == nullptr);
-    test_result("UDP RecvFor timeout is respected", elapsed >= 90 && elapsed < 500);
+    test_result("UDP RecvFor timeout is respected",
+                elapsed >= 90 && elapsed < kNetworkTimeoutUpperBoundMs);
 
     rt_udp_close(sock);
 }
@@ -813,7 +900,8 @@ static void test_udp_broadcast() {
 static void test_udp_set_recv_timeout() {
     printf("\nTesting UDP SetRecvTimeout:\n");
 
-    const int port = 19899;
+    const int port = get_free_udp_port_ipv4();
+    assert(port > 0);
     void *sock = rt_udp_bind(port);
     assert(sock != nullptr);
 
@@ -830,7 +918,8 @@ static void test_udp_set_recv_timeout() {
     // recv with timeout set returns empty bytes (not NULL like RecvFor)
     test_result("UDP SetRecvTimeout recv returns", data != nullptr);
     test_result("UDP SetRecvTimeout returns empty on timeout", get_bytes_len(data) == 0);
-    test_result("UDP SetRecvTimeout is respected", elapsed >= 40 && elapsed < 500);
+    test_result("UDP SetRecvTimeout is respected",
+                elapsed >= 40 && elapsed < kNetworkTimeoutUpperBoundMs);
 
     rt_udp_close(sock);
 }

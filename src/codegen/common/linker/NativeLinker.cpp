@@ -2030,8 +2030,14 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
             LinuxImportPlan importPlan;
             if (!planLinuxImports(dynamicSyms, importPlan, err))
                 return 1;
-            writeOk = writeElfExe(
-                opts.exePath, layout, opts.arch, importPlan.neededLibs, dynamicSyms, opts.stackSize, err);
+            writeOk = writeElfExe(opts.exePath,
+                                  layout,
+                                  opts.arch,
+                                  importPlan.neededLibs,
+                                  dynamicSyms,
+                                  opts.stackSize,
+                                  opts.entrySymbol == "main",
+                                  err);
             break;
         }
         case LinkPlatform::macOS: {

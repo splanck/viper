@@ -468,6 +468,7 @@ static thread_deadline_t thread_deadline_from_now(int64_t ms, int8_t use_monoton
     return d;
 }
 
+#if defined(__APPLE__)
 static int64_t thread_remaining_ms(thread_deadline_t deadline, int8_t use_monotonic) {
     struct timespec now = thread_now_clock(use_monotonic);
     int64_t sec = (int64_t)deadline.deadline.tv_sec - (int64_t)now.tv_sec;
@@ -480,6 +481,7 @@ static int64_t thread_remaining_ms(thread_deadline_t deadline, int8_t use_monoto
         return 0;
     return sec * 1000 + ns / 1000000L;
 }
+#endif
 
 static int thread_cond_timedwait_deadline(pthread_cond_t *cond,
                                           pthread_mutex_t *mutex,

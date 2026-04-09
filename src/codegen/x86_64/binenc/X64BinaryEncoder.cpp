@@ -1025,9 +1025,11 @@ void X64BinaryEncoder::encodeLEARip(PhysReg dst,
 
     // Emit placeholder disp32 and record relocation.
     std::string symName = isDarwin ? ("_" + rip.name) : rip.name;
-    uint32_t symIdx = text.findOrDeclareSymbol(symName);
-    const auto targetSection = (rodata.symbols().find(symName) != 0) ? objfile::SymbolSection::Rodata
-                                                                      : objfile::SymbolSection::Undefined;
+    const uint32_t rodataSymIdx = rodata.symbols().find(symName);
+    const uint32_t symIdx =
+        (rodataSymIdx != 0) ? rodataSymIdx : text.findOrDeclareSymbol(symName);
+    const auto targetSection = (rodataSymIdx != 0) ? objfile::SymbolSection::Rodata
+                                                   : objfile::SymbolSection::Undefined;
     size_t dispOffset = text.currentOffset();
     text.emit32LE(0); // Placeholder.
     text.addRelocationAt(dispOffset, objfile::RelocKind::PCRel32, symIdx, -4, targetSection);
@@ -1053,9 +1055,11 @@ void X64BinaryEncoder::encodeSseRipLoad(PhysReg dst,
     text.emit8(makeModRM(0b00, hwDst.bits3, 0b101));
     // Emit placeholder disp32 and record relocation.
     std::string symName = isDarwin ? ("_" + rip.name) : rip.name;
-    uint32_t symIdx = text.findOrDeclareSymbol(symName);
-    const auto targetSection = (rodata.symbols().find(symName) != 0) ? objfile::SymbolSection::Rodata
-                                                                      : objfile::SymbolSection::Undefined;
+    const uint32_t rodataSymIdx = rodata.symbols().find(symName);
+    const uint32_t symIdx =
+        (rodataSymIdx != 0) ? rodataSymIdx : text.findOrDeclareSymbol(symName);
+    const auto targetSection = (rodataSymIdx != 0) ? objfile::SymbolSection::Rodata
+                                                   : objfile::SymbolSection::Undefined;
     size_t dispOffset = text.currentOffset();
     text.emit32LE(0); // Placeholder.
     text.addRelocationAt(dispOffset, objfile::RelocKind::PCRel32, symIdx, -4, targetSection);

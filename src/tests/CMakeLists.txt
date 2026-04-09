@@ -791,6 +791,10 @@ set_tests_properties(zia_smoke_3dbowling PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
         LABELS "zia;smoke;graphics3d;requires_display"
         TIMEOUT 30)
+if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    set_tests_properties(zia_smoke_3dbowling PROPERTIES
+            ENVIRONMENT "VIPER_3D_BACKEND=software")
+endif ()
 
 add_test(NAME zia_smoke_chess
         COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/chess/smoke_probe.zia"

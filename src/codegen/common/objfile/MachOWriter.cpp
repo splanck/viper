@@ -459,11 +459,18 @@ bool MachOWriter::write(const std::string &path,
         uint32_t symIdx = 0;
         auto it = textSymMap.find(rel.symbolIndex);
         if (rel.targetSection == SymbolSection::Rodata) {
-            const Symbol &sym = text.symbols().at(rel.symbolIndex);
-            auto rodIt = definedRodataByName.find(sym.name);
-            if (rodIt != definedRodataByName.end())
-                symIdx = rodIt->second;
-            else if (it != textSymMap.end())
+            if (rel.symbolIndex < text.symbols().count()) {
+                const Symbol &sym = text.symbols().at(rel.symbolIndex);
+                auto rodIt = definedRodataByName.find(sym.name);
+                if (rodIt != definedRodataByName.end())
+                    symIdx = rodIt->second;
+            }
+            if (symIdx == 0) {
+                auto rit = rodataSymMap.find(rel.symbolIndex);
+                if (rit != rodataSymMap.end())
+                    symIdx = rit->second;
+            }
+            if (symIdx == 0 && it != textSymMap.end())
                 symIdx = it->second;
         } else if (it != textSymMap.end()) {
             symIdx = it->second;

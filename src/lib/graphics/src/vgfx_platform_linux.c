@@ -87,6 +87,8 @@ typedef struct {
     XIC xic;             ///< Input context for UTF-8 text input
 } vgfx_x11_data;
 
+static struct vgfx_window *g_vgfx_cursor_window = NULL;
+
 //===----------------------------------------------------------------------===//
 // Key Code Translation
 //===----------------------------------------------------------------------===//
@@ -273,6 +275,7 @@ int vgfx_platform_init_window(struct vgfx_window *win, const vgfx_window_params_
     }
 
     win->platform_data = x11;
+    g_vgfx_cursor_window = win;
     x11->close_requested = 0;
     x11->width = params->width;
     x11->height = params->height;
@@ -464,6 +467,9 @@ int vgfx_platform_init_window(struct vgfx_window *win, const vgfx_window_params_
 void vgfx_platform_destroy_window(struct vgfx_window *win) {
     if (!win || !win->platform_data)
         return;
+
+    if (g_vgfx_cursor_window == win)
+        g_vgfx_cursor_window = NULL;
 
     vgfx_x11_data *x11 = (vgfx_x11_data *)win->platform_data;
 
@@ -1312,6 +1318,16 @@ void vgfx_platform_set_cursor_visible(struct vgfx_window *win, int32_t visible) 
         XFreePixmap(x11->display, blank);
     }
     XFlush(x11->display);
+}
+
+void vgfx_platform_hide_cursor(void) {
+    if (g_vgfx_cursor_window)
+        vgfx_platform_set_cursor_visible(g_vgfx_cursor_window, 0);
+}
+
+void vgfx_platform_show_cursor(void) {
+    if (g_vgfx_cursor_window)
+        vgfx_platform_set_cursor_visible(g_vgfx_cursor_window, 1);
 }
 
 void vgfx_platform_get_monitor_size(struct vgfx_window *win, int32_t *out_w, int32_t *out_h) {

@@ -387,15 +387,22 @@ bool ElfWriter::write(const std::string &path,
         // Map symbol index to ELF index.
         uint32_t elfSymIdx = 0;
         auto it = textSymMap.find(rel.symbolIndex);
-        if (it != textSymMap.end()) {
-            const Symbol &sym = text.symbols().at(rel.symbolIndex);
-            if (rel.targetSection == SymbolSection::Rodata && !definedRodataByName.empty()) {
+        if (rel.targetSection == SymbolSection::Rodata && !definedRodataByName.empty()) {
+            if (rel.symbolIndex < text.symbols().count()) {
+                const Symbol &sym = text.symbols().at(rel.symbolIndex);
                 auto nameIt = definedRodataByName.find(sym.name);
                 if (nameIt != definedRodataByName.end())
                     elfSymIdx = nameIt->second;
-                else
-                    elfSymIdx = it->second;
-            } else if (sym.binding == SymbolBinding::External && !definedRodataByName.empty()) {
+            }
+            if (elfSymIdx == 0) {
+                auto rodIt = rodataSymMap.find(rel.symbolIndex);
+                if (rodIt != rodataSymMap.end())
+                    elfSymIdx = rodIt->second;
+            }
+        }
+        if (elfSymIdx == 0 && it != textSymMap.end()) {
+            const Symbol &sym = text.symbols().at(rel.symbolIndex);
+            if (sym.binding == SymbolBinding::External && !definedRodataByName.empty()) {
                 auto nameIt = definedRodataByName.find(sym.name);
                 if (nameIt != definedRodataByName.end())
                     elfSymIdx = nameIt->second;
@@ -404,7 +411,8 @@ bool ElfWriter::write(const std::string &path,
             } else {
                 elfSymIdx = it->second;
             }
-        } else {
+        }
+        if (elfSymIdx == 0) {
             elfSymIdx = textSecSymIdx; // fallback
         }
 
@@ -787,15 +795,22 @@ bool ElfWriter::write(const std::string &path,
         for (const auto &rel : textSections[ti].relocations()) {
             uint32_t elfSymIdx = 0;
             auto it = textSymMaps[ti].find(rel.symbolIndex);
-            if (it != textSymMaps[ti].end()) {
-                const Symbol &sym = textSections[ti].symbols().at(rel.symbolIndex);
-                if (rel.targetSection == SymbolSection::Rodata && !definedRodataByName.empty()) {
+            if (rel.targetSection == SymbolSection::Rodata && !definedRodataByName.empty()) {
+                if (rel.symbolIndex < textSections[ti].symbols().count()) {
+                    const Symbol &sym = textSections[ti].symbols().at(rel.symbolIndex);
                     auto nameIt = definedRodataByName.find(sym.name);
                     if (nameIt != definedRodataByName.end())
                         elfSymIdx = nameIt->second;
-                    else
-                        elfSymIdx = it->second;
-                } else if (sym.binding == SymbolBinding::External && !definedRodataByName.empty()) {
+                }
+                if (elfSymIdx == 0) {
+                    auto rodIt = rodataSymMap.find(rel.symbolIndex);
+                    if (rodIt != rodataSymMap.end())
+                        elfSymIdx = rodIt->second;
+                }
+            }
+            if (elfSymIdx == 0 && it != textSymMaps[ti].end()) {
+                const Symbol &sym = textSections[ti].symbols().at(rel.symbolIndex);
+                if (sym.binding == SymbolBinding::External && !definedRodataByName.empty()) {
                     auto nameIt = definedRodataByName.find(sym.name);
                     if (nameIt != definedRodataByName.end())
                         elfSymIdx = nameIt->second;
@@ -804,7 +819,8 @@ bool ElfWriter::write(const std::string &path,
                 } else {
                     elfSymIdx = it->second;
                 }
-            } else {
+            }
+            if (elfSymIdx == 0) {
                 elfSymIdx = static_cast<uint32_t>(ti + 1); // section sym
             }
             uint32_t relocType = elfRelocType(rel.kind, arch_);

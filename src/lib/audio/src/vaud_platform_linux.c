@@ -26,6 +26,10 @@
 /// @file
 /// @brief Linux ALSA audio backend for ViperAUD.
 
+#ifndef _POSIX_C_SOURCE
+#define _POSIX_C_SOURCE 200809L
+#endif
+
 #if defined(__linux__)
 
 #include "vaud_internal.h"

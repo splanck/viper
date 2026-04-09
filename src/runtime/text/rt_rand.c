@@ -105,9 +105,9 @@ static int secure_random_fill(uint8_t *buf, size_t len) {
         return -1;
     }
 
-    size_t bytes_read = 0;
-    while (bytes_read < len) {
-        ssize_t result = read(fd, buf + bytes_read, len - bytes_read);
+    size_t urandom_bytes_read = 0;
+    while (urandom_bytes_read < len) {
+        ssize_t result = read(fd, buf + urandom_bytes_read, len - urandom_bytes_read);
         if (result < 0) {
             if (errno == EINTR)
                 continue; // Interrupted, retry
@@ -119,7 +119,7 @@ static int secure_random_fill(uint8_t *buf, size_t len) {
             close(fd);
             return -1;
         }
-        bytes_read += (size_t)result;
+        urandom_bytes_read += (size_t)result;
     }
 
     close(fd);

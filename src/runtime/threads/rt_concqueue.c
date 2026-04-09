@@ -149,6 +149,7 @@ static cq_deadline_t cq_deadline_ms_from_now(int64_t timeout_ms, int8_t use_mono
     return d;
 }
 
+#if defined(__APPLE__)
 static int64_t cq_remaining_ms(cq_deadline_t deadline, int8_t use_monotonic) {
     struct timespec now = cq_now_clock(use_monotonic);
     int64_t sec = (int64_t)deadline.deadline.tv_sec - (int64_t)now.tv_sec;
@@ -161,6 +162,7 @@ static int64_t cq_remaining_ms(cq_deadline_t deadline, int8_t use_monotonic) {
         return 0;
     return sec * 1000 + ns / 1000000L;
 }
+#endif
 
 static int cq_cond_timedwait_deadline(pthread_cond_t *cond,
                                       pthread_mutex_t *mutex,

@@ -494,11 +494,18 @@ bool CoffWriter::write(const std::string &path,
         uint32_t coffSymIdx = 0;
         auto it = textSymMap.find(rel.symbolIndex);
         if (rel.targetSection == SymbolSection::Rodata) {
-            const Symbol &sym = text.symbols().at(rel.symbolIndex);
-            auto rodIt = definedRodataByName.find(sym.name);
-            if (rodIt != definedRodataByName.end())
-                coffSymIdx = rodIt->second;
-            else if (it != textSymMap.end())
+            if (rel.symbolIndex < text.symbols().count()) {
+                const Symbol &sym = text.symbols().at(rel.symbolIndex);
+                auto rodIt = definedRodataByName.find(sym.name);
+                if (rodIt != definedRodataByName.end())
+                    coffSymIdx = rodIt->second;
+            }
+            if (coffSymIdx == 0) {
+                auto rit = rodataSymMap.find(rel.symbolIndex);
+                if (rit != rodataSymMap.end())
+                    coffSymIdx = rit->second;
+            }
+            if (coffSymIdx == 0 && it != textSymMap.end())
                 coffSymIdx = it->second;
         } else {
             coffSymIdx = (it != textSymMap.end()) ? it->second : 0;
@@ -871,11 +878,18 @@ bool CoffWriter::write(const std::string &path,
             uint32_t coffSymIdx = 0;
             auto it = textSymMaps[ti].find(rel.symbolIndex);
             if (rel.targetSection == SymbolSection::Rodata) {
-                const Symbol &sym = text.symbols().at(rel.symbolIndex);
-                auto rodIt = definedRodataByName.find(sym.name);
-                if (rodIt != definedRodataByName.end())
-                    coffSymIdx = rodIt->second;
-                else if (it != textSymMaps[ti].end())
+                if (rel.symbolIndex < text.symbols().count()) {
+                    const Symbol &sym = text.symbols().at(rel.symbolIndex);
+                    auto rodIt = definedRodataByName.find(sym.name);
+                    if (rodIt != definedRodataByName.end())
+                        coffSymIdx = rodIt->second;
+                }
+                if (coffSymIdx == 0) {
+                    auto rit = rodataSymMap.find(rel.symbolIndex);
+                    if (rit != rodataSymMap.end())
+                        coffSymIdx = rit->second;
+                }
+                if (coffSymIdx == 0 && it != textSymMaps[ti].end())
                     coffSymIdx = it->second;
             } else {
                 coffSymIdx = (it != textSymMaps[ti].end()) ? it->second : 0;

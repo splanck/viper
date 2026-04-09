@@ -21,6 +21,7 @@
 #include "tests/common/PosixCompat.h"
 
 #include <cstdio>
+#include <cstdint>
 #include <cstdlib>
 #include <cstring>
 #include <string>

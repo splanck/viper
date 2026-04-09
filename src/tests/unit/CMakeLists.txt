@@ -788,6 +788,7 @@ function(viper_add_runtime_tests)
     viper_add_test(test_rt_stopwatch ${VIPER_TESTS_DIR}/runtime/RTStopwatchTests.cpp)
     target_link_libraries(test_rt_stopwatch PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_stopwatch test_rt_stopwatch)
+    set_tests_properties(test_rt_stopwatch PROPERTIES RUN_SERIAL TRUE)
 
     viper_add_test(test_rt_guid ${VIPER_TESTS_DIR}/runtime/RTGuidTests.cpp)
     target_link_libraries(test_rt_guid PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
@@ -983,6 +984,15 @@ function(viper_add_runtime_tests)
     target_link_libraries(test_rt_network_highlevel PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_network_highlevel test_rt_network_highlevel)
     viper_add_test_labels(test_rt_network_highlevel requires_local_bind)
+    foreach (_local_bind_test
+            test_rt_network
+            test_rt_network_timeout
+            test_rt_network_harden
+            test_rt_websocket
+            test_rt_restclient
+            test_rt_network_highlevel)
+        set_tests_properties(${_local_bind_test} PROPERTIES RESOURCE_LOCK local_bind)
+    endforeach ()
 
     viper_add_test(test_rt_bag ${VIPER_TESTS_DIR}/runtime/RTBagTests.cpp)
     target_link_libraries(test_rt_bag PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
@@ -1262,6 +1272,18 @@ function(viper_add_runtime_tests)
     viper_add_test(test_rt_async ${VIPER_TESTS_DIR}/runtime/RTAsyncTests.cpp)
     target_link_libraries(test_rt_async PRIVATE ${VIPER_RUNTIME_TEST_LIBS} Threads::Threads)
     viper_add_ctest(test_rt_async test_rt_async)
+
+    foreach (_timing_test
+            test_rt_clock
+            test_rt_stopwatch
+            test_rt_timer
+            test_rt_network
+            test_rt_websocket
+            test_rt_channel
+            test_rt_threadpool
+            test_rt_async)
+        set_tests_properties(${_timing_test} PROPERTIES RUN_SERIAL TRUE)
+    endforeach ()
 
     viper_add_test(test_rt_serialize ${VIPER_TESTS_DIR}/runtime/RTSerializeTests.cpp)
     target_link_libraries(test_rt_serialize PRIVATE ${VIPER_RUNTIME_TEST_LIBS})

@@ -158,6 +158,7 @@ static future_deadline_t future_deadline_abs_from_now(int64_t ms, int8_t use_mon
     return d;
 }
 
+#if defined(__APPLE__)
 static int64_t future_remaining_ms(future_deadline_t deadline, int8_t use_monotonic) {
     struct timespec now = future_now_clock(use_monotonic);
     int64_t sec = (int64_t)deadline.deadline.tv_sec - (int64_t)now.tv_sec;
@@ -170,6 +171,7 @@ static int64_t future_remaining_ms(future_deadline_t deadline, int8_t use_monoto
         return 0;
     return sec * 1000 + ns / 1000000L;
 }
+#endif
 
 static int future_cond_timedwait_deadline(pthread_cond_t *cond,
                                           pthread_mutex_t *mutex,
