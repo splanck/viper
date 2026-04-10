@@ -24,17 +24,22 @@ if "%VIPER_SKIP_SMOKE%"=="" set "VIPER_SKIP_SMOKE=0"
 
 set "CONFIG_ARGS="
 if not "%VIPER_CMAKE_GENERATOR%"=="" (
-    set "CONFIG_ARGS=%CONFIG_ARGS% -G "%VIPER_CMAKE_GENERATOR%""
+    set "CONFIG_ARGS=%CONFIG_ARGS% -G \"%VIPER_CMAKE_GENERATOR%\""
 )
 if not "%VIPER_EXTRA_CMAKE_ARGS%"=="" (
     set "CONFIG_ARGS=%CONFIG_ARGS% %VIPER_EXTRA_CMAKE_ARGS%"
 )
 
-REM --- Compiler detection -----------------------------------------------------
+REM --- Compiler selection -----------------------------------------------------
+REM Default to MSVC on Windows. Opt into clang-cl with VIPER_WINDOWS_COMPILER=clang-cl.
 set COMPILER_FLAGS=
-where clang-cl >nul 2>&1
-if not errorlevel 1 (
-    echo Using clang-cl
+if /I "%VIPER_WINDOWS_COMPILER%"=="clang-cl" (
+    where clang-cl >nul 2>&1
+    if errorlevel 1 (
+        echo ERROR: VIPER_WINDOWS_COMPILER=clang-cl but clang-cl was not found in PATH
+        exit /b 1
+    )
+    echo Using clang-cl ^(VIPER_WINDOWS_COMPILER=clang-cl^)
     set COMPILER_FLAGS=-DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl
 ) else (
     echo Using default compiler MSVC

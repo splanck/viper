@@ -124,6 +124,22 @@ if(MSVC)
   if(IL_WARN_AS_ERROR)
     list(APPEND IL_COMPILE_FLAGS /WX)
   endif()
+  if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    # clang-cl diagnoses a broader set of unused entities than cl.exe and maps
+    # them into -Werror under /WX. Keep parity with the existing GCC/Clang test
+    # policy so Windows builds do not fail on benign dead helpers or assertion-
+    # only locals.
+    list(APPEND IL_COMPILE_FLAGS
+      -Wno-unused-function
+      -Wno-unused-variable
+      -Wno-unused-but-set-variable
+      -Wno-unused-const-variable
+      -Wno-unused-private-field
+      -Wno-unused-local-typedef
+      -Wno-unused-lambda-capture
+      -Wno-overloaded-virtual
+    )
+  endif()
   if(VIPER_BUILD_TESTING)
     list(APPEND IL_COMPILE_FLAGS
       /wd4189  # local variable initialized but not referenced
@@ -738,7 +754,7 @@ install(TARGETS ${VIPER_PUBLIC_LIB_TARGETS}
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
   LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
   ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
-  INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/viper
+  INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
 )
 
 set(VIPER_CLI_TARGETS viper il-verify il-dis)

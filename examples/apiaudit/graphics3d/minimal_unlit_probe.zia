@@ -1,0 +1,34 @@
+module MinimalUnlitProbe;
+
+bind Viper.Graphics3D;
+bind Viper.Math;
+bind Viper.Input;
+bind Viper.Terminal;
+
+func start() {
+    var canvas = Canvas3D.New("Minimal Unlit Probe", 800, 600);
+    var camera = Camera3D.New(60.0, 800.0 / 600.0, 0.1, 100.0);
+
+    var eye = new Vec3(3.0, 3.0, 3.0);
+    var target = new Vec3(0.0, 0.0, 0.0);
+    var up = new Vec3(0.0, 1.0, 0.0);
+    Camera3D.LookAt(camera, eye, target, up);
+
+    var box = Mesh3D.NewBox(2.0, 2.0, 2.0);
+    var mat = Material3D.NewColor(0.2, 0.6, 0.3);
+    Material3D.SetShadingModel(mat, 3);
+    var xform = Mat4.Identity();
+
+    while (Canvas3D.get_ShouldClose(canvas) == 0) {
+        Canvas3D.Poll(canvas);
+        if (Keyboard.WasPressed(Keyboard.get_KEY_ESCAPE())) { break; }
+
+        Canvas3D.Clear(canvas, 0.1, 0.1, 0.15);
+        Canvas3D.Begin(canvas, camera);
+        Canvas3D.DrawMesh(canvas, box, xform, mat);
+        Canvas3D.End(canvas);
+        Canvas3D.Flip(canvas);
+    }
+
+    Say("Done.");
+}

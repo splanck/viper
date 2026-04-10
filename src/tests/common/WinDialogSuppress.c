@@ -46,7 +46,14 @@ static int viper_suppress_win_dialogs(void) {
 // before main() and before C++ static constructors.
 typedef int (*_viper_crt_init_fn)(void);
 #pragma section(".CRT$XIB", long, read)
-__declspec(allocate(".CRT$XIB")) static _viper_crt_init_fn viper_suppress_init_ =
+#if defined(__clang__)
+#define VIPER_CRT_SECTION_USED __attribute__((used))
+#else
+#define VIPER_CRT_SECTION_USED
+#endif
+__declspec(allocate(".CRT$XIB")) static _viper_crt_init_fn viper_suppress_init_
+    VIPER_CRT_SECTION_USED =
     viper_suppress_win_dialogs;
+#undef VIPER_CRT_SECTION_USED
 
 #endif // _WIN32

@@ -118,7 +118,7 @@ bool dllForImport(const std::string &name, bool debugRuntime, std::string &dllNa
         "__stdio_common_vsprintf","stdio_common_vsprintf","__stdio_common_vsscanf","stdio_common_vsscanf",
         "_vfprintf_l","_vsscanf_l","abort","access","abs","aligned_free","aligned_malloc",
         "aligned_alloc","atexit","atof","atoi","atol","bsearch","calloc_dbg","calloc","ceil","ceilf",
-        "clearerr","clock","close","cos","cosf","create_locale","dclass","dsign","dup","dup2","errno","exit",
+        "clearerr","clock","close","cos","cosf","create_locale","dclass","dsign","fdsign","ldsign","dup","dup2","errno","exit",
         "fabs","fabsf","fdclass","fclose","fcntl","ferror","feof","fflush","fgetc","fgets","fileno","fmax",
         "fmaxf","fmin","fminf","floor","floorf","fmod","fmodf","fopen","fprintf","fputc","fputs","fread",
         "free","free_locale","freopen","fseek","fstat64i32","ftell","fwrite","getc","getcwd","getenv","getch",

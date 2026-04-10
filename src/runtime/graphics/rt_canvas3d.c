@@ -921,7 +921,7 @@ static int canvas3d_build_shadow_light_vp(const deferred_draw_t *cmds,
         proj[3] = -(right + left) / (right - left);
         proj[5] = 2.0f / (top - bottom);
         proj[7] = -(top + bottom) / (top - bottom);
-        proj[10] = -2.0f / (far_z - near_z);
+        proj[10] = 2.0f / (far_z - near_z);
         proj[11] = -(far_z + near_z) / (far_z - near_z);
         proj[15] = 1.0f;
     }
@@ -1002,6 +1002,10 @@ static void rt_canvas3d_finalize(void *obj) {
 /// @param h     Window height in pixels (1–8192).
 /// @return Opaque canvas handle, or NULL on failure.
 void *rt_canvas3d_new(rt_string title, int64_t w, int64_t h) {
+    vgfx_framebuffer_t fb;
+    int32_t initial_width = (int32_t)w;
+    int32_t initial_height = (int32_t)h;
+
     if (w <= 0 || h <= 0 || w > 8192 || h > 8192) {
         rt_trap("Canvas3D.New: dimensions must be 1-8192");
         return NULL;
@@ -1030,16 +1034,22 @@ void *rt_canvas3d_new(rt_string title, int64_t w, int64_t h) {
         return NULL;
     }
 
-    c->width = (int32_t)w;
-    c->height = (int32_t)h;
+    vgfx_set_coord_scale(c->gfx_win, vgfx_window_get_scale(c->gfx_win));
+    if (vgfx_get_framebuffer(c->gfx_win, &fb) && fb.width > 0 && fb.height > 0) {
+        initial_width = fb.width;
+        initial_height = fb.height;
+    }
+
+    c->width = initial_width;
+    c->height = initial_height;
 
     /* Select and initialize the platform-default backend, with software fallback. */
     c->backend = vgfx3d_select_backend();
-    c->backend_ctx = c->backend->create_ctx(c->gfx_win, (int32_t)w, (int32_t)h);
+    c->backend_ctx = c->backend->create_ctx(c->gfx_win, initial_width, initial_height);
     if (!c->backend_ctx) {
         /* Selected backend failed — fall back to software. */
         c->backend = &vgfx3d_software_backend;
-        c->backend_ctx = c->backend->create_ctx(c->gfx_win, (int32_t)w, (int32_t)h);
+        c->backend_ctx = c->backend->create_ctx(c->gfx_win, initial_width, initial_height);
         if (!c->backend_ctx) {
             rt_trap("Canvas3D.New: backend initialization failed");
             return NULL;

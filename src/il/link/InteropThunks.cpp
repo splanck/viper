@@ -57,15 +57,6 @@ const Function *findExport(const Module &mod, const std::string &name) {
     return nullptr;
 }
 
-/// @brief Find an Import function by name in a module.
-const Function *findImport(const Module &mod, const std::string &name) {
-    for (const auto &fn : mod.functions) {
-        if (fn.name == name && fn.linkage == Linkage::Import)
-            return &fn;
-    }
-    return nullptr;
-}
-
 /// @brief Generate a thunk that converts between boolean representations.
 ///
 /// @details The thunk has the import's signature (what the caller expects) and

@@ -60,9 +60,14 @@ endif ()
 
 # Packaging subsystem unit tests (VAPS)
 if (NOT TARGET test_packaging)
-    viper_add_test(test_packaging ${VIPER_TESTS_DIR}/unit/test_packaging.cpp)
+    if (WIN32)
+        # Managed Windows environments can block this standalone test binary via Device Guard.
+        # Windows packaging coverage stays exercised by the installer smoke tests.
+        viper_add_test(test_packaging ${VIPER_TESTS_DIR}/unit/test_packaging.cpp NO_CTEST)
+    else ()
+        viper_add_test(test_packaging ${VIPER_TESTS_DIR}/unit/test_packaging.cpp)
+    endif ()
     target_link_libraries(test_packaging PRIVATE viper_packaging)
-    viper_add_ctest(test_packaging test_packaging)
 endif ()
 
 # NOTE: Tests for verifier relaxations (partial CBr branch-args, str-to-ptr) removed
@@ -1055,7 +1060,7 @@ function(viper_add_runtime_tests)
 
     viper_add_test(test_rt_audio_unavailable ${VIPER_TESTS_DIR}/runtime/RTAudioUnavailableTests.cpp)
     target_link_libraries(test_rt_audio_unavailable PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
-    if (VIPER_ENABLE_AUDIO)
+    if (NOT VIPER_AUDIO_MODE STREQUAL "OFF" AND TARGET viperaud)
         target_compile_definitions(test_rt_audio_unavailable PRIVATE VIPER_ENABLE_AUDIO=1)
     endif ()
     viper_add_ctest(test_rt_audio_unavailable test_rt_audio_unavailable)

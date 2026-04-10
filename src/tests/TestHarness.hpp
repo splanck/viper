@@ -389,10 +389,35 @@ struct is_streamable<
     viper_void_t<decltype(std::declval<std::ostream &>() << std::declval<const T &>())>>
     : std::true_type {};
 
+template <typename T, typename = void> struct decays_to_function_pointer : std::false_type {};
+
+template <typename T>
+struct decays_to_function_pointer<
+    T,
+    viper_void_t<decltype(+std::declval<const T &>())>>
+    : std::bool_constant<
+          std::is_pointer_v<decltype(+std::declval<const T &>())> &&
+          std::is_function_v<std::remove_pointer_t<decltype(+std::declval<const T &>())>>> {};
+
+template <typename T>
+struct is_function_like_value
+    : std::bool_constant<
+          (std::is_pointer_v<std::remove_cv_t<std::remove_reference_t<T>>> &&
+           std::is_function_v<std::remove_pointer_t<std::remove_cv_t<std::remove_reference_t<T>>>>) ||
+          decays_to_function_pointer<T>::value> {};
+
+template <typename T>
+inline auto value_to_string(const T &)
+    -> std::enable_if_t<is_function_like_value<T>::value, std::string> {
+    return "<function>";
+}
+
 /// @brief Convert a value to string for failure messages (streamable types).
 template <typename T>
 inline auto value_to_string(const T &val)
-    -> std::enable_if_t<is_streamable<T>::value, std::string> {
+    -> std::enable_if_t<is_streamable<T>::value &&
+                            !is_function_like_value<T>::value,
+                        std::string> {
     std::ostringstream oss;
     oss << val;
     return oss.str();

@@ -433,6 +433,11 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
             return 0;
         }
 
+        case WM_ERASEBKGND:
+            /* GPU backends own the visible surface. Letting GDI erase here can
+             * flash black between swapchain presents and during startup/resizes. */
+            return 1;
+
         case WM_DROPFILES: {
             HDROP hDrop = (HDROP)wparam;
             UINT count = DragQueryFileA(hDrop, 0xFFFFFFFF, NULL, 0);

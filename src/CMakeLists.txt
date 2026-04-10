@@ -90,8 +90,13 @@ target_include_directories(il_runtime PUBLIC
 )
 # Increase constexpr step limit for large descriptor table in RuntimeSignatures.cpp
 if (CMAKE_CXX_COMPILER_ID MATCHES "Clang|AppleClang")
-    set_source_files_properties(il/runtime/RuntimeSignatures.cpp
-            PROPERTIES COMPILE_FLAGS "-fconstexpr-steps=100000000")
+    if (CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
+        set_source_files_properties(il/runtime/RuntimeSignatures.cpp
+                PROPERTIES COMPILE_FLAGS "/clang:-fconstexpr-steps=100000000")
+    else ()
+        set_source_files_properties(il/runtime/RuntimeSignatures.cpp
+                PROPERTIES COMPILE_FLAGS "-fconstexpr-steps=100000000")
+    endif ()
 elseif (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     set_source_files_properties(il/runtime/RuntimeSignatures.cpp
             PROPERTIES COMPILE_FLAGS "-fconstexpr-ops-limit=100000000")

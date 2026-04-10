@@ -1,0 +1,26 @@
+module color_probe;
+
+bind Viper.Graphics3D;
+bind Viper.Terminal as Terminal;
+
+func main() {
+    var canvas = Canvas3D.New("Color Probe", 800, 600);
+
+    while (Canvas3D.get_ShouldClose(canvas) == 0) {
+        Canvas3D.Poll(canvas);
+        Canvas3D.Clear(canvas, 0.0, 0.0, 0.0);
+        Canvas3D.Begin2D(canvas);
+        Canvas3D.DrawRect2D(canvas, 40, 40, 160, 220, 0xFF0000);
+        Canvas3D.DrawRect2D(canvas, 220, 40, 160, 220, 0x00FF00);
+        Canvas3D.DrawRect2D(canvas, 400, 40, 160, 220, 0x0000FF);
+        Canvas3D.DrawRect2D(canvas, 580, 40, 160, 220, 0x00FFFF);
+        Canvas3D.DrawRect2D(canvas, 40, 320, 160, 220, 0xFF00FF);
+        Canvas3D.DrawRect2D(canvas, 220, 320, 160, 220, 0xFFFF00);
+        Canvas3D.DrawRect2D(canvas, 400, 320, 160, 220, 0xFFFFFF);
+        Canvas3D.DrawRect2D(canvas, 580, 320, 160, 220, 0x808080);
+        Canvas3D.End(canvas);
+        Canvas3D.Flip(canvas);
+    }
+
+    Terminal.Say("RESULT: ok");
+}

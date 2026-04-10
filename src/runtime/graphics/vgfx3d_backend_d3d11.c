@@ -43,6 +43,11 @@
 #pragma comment(lib, "d3dcompiler.lib")
 #pragma comment(lib, "dxguid.lib")
 
+#ifndef D3D11CalcSubresource
+#define D3D11CalcSubresource(MipSlice, ArraySlice, MipLevels)                                    \
+    ((MipSlice) + ((ArraySlice) * (MipLevels)))
+#endif
+
 static const float k_identity4x4[16] = {
     1.0f,
     0.0f,
@@ -266,7 +271,7 @@ static const char *d3d11_shader_source =
     "        uint idx = min(boneIdx[i], 127u);\n"
     "        row_major float4x4 bm = usePrevPalette != 0 ? prevBonePalette[idx] : "
     "bonePalette[idx];\n"
-    "        skinned += mul(pos, bm) * w;\n"
+    "        skinned += mul(bm, pos) * w;\n"
     "    }\n"
     "    return skinned;\n"
     "}\n"
@@ -280,7 +285,7 @@ static const char *d3d11_shader_source =
     "        if (w <= 0.0001)\n"
     "            continue;\n"
     "        uint idx = min(boneIdx[i], 127u);\n"
-    "        skinned += mul(float4(vec, 0.0), bonePalette[idx]).xyz * w;\n"
+    "        skinned += mul(bonePalette[idx], float4(vec, 0.0)).xyz * w;\n"
     "    }\n"
     "    return skinned;\n"
     "}\n"
@@ -303,15 +308,15 @@ static const char *d3d11_shader_source =
     "                     row_major float4x4 prevModel,\n"
     "                     float hasHistory) {\n"
     "    PS_INPUT output;\n"
-    "    float4 wp = mul(float4(pos, 1.0), currentModel);\n"
-    "    float4 prevWp = mul(float4(prevPos, 1.0), prevModel);\n"
-    "    float4 currClip = mul(wp, viewProjection);\n"
-    "    float4 prevClip = mul(prevWp, prevViewProjection);\n"
+    "    float4 wp = mul(currentModel, float4(pos, 1.0));\n"
+    "    float4 prevWp = mul(prevModel, float4(prevPos, 1.0));\n"
+    "    float4 currClip = mul(viewProjection, wp);\n"
+    "    float4 prevClip = mul(prevViewProjection, prevWp);\n"
     "    output.pos = currClip;\n"
     "    output.pos.z = output.pos.z * 0.5 + output.pos.w * 0.5;\n"
     "    output.worldPos = wp.xyz;\n"
-    "    output.normal = mul(float4(nrm, 0.0), currentNormal).xyz;\n"
-    "    output.tangent = mul(float4(tan, 0.0), currentModel).xyz;\n"
+    "    output.normal = mul(currentNormal, float4(nrm, 0.0)).xyz;\n"
+    "    output.tangent = mul(currentModel, float4(tan, 0.0)).xyz;\n"
     "    output.uv = uv;\n"
     "    output.color = color;\n"
     "    output.currClip = currClip;\n"
@@ -395,7 +400,7 @@ static const char *d3d11_shader_source =
     "float sampleShadow(float3 worldPos) {\n"
     "    if (shadowEnabled == 0)\n"
     "        return 1.0;\n"
-    "    float4 lc = mul(float4(worldPos, 1.0), shadowVP);\n"
+    "    float4 lc = mul(shadowVP, float4(worldPos, 1.0));\n"
     "    float invW = 1.0 / max(lc.w, 0.0001);\n"
     "    float3 ndc = lc.xyz * invW;\n"
     "    float2 uv = ndc.xy * 0.5 + 0.5;\n"
@@ -630,8 +635,8 @@ static const char *d3d11_shader_source =
     "    float4 skinnedPos = skinPosition(float4(pos, 1.0), input.boneIdx, input.boneWt, 0);\n"
     "    if (hasSkinning == 0)\n"
     "        skinnedPos = float4(pos, 1.0);\n"
-    "    float4 wp = mul(skinnedPos, modelMatrix);\n"
-    "    float4 clip = mul(wp, viewProjection);\n"
+    "    float4 wp = mul(modelMatrix, skinnedPos);\n"
+    "    float4 clip = mul(viewProjection, wp);\n"
     "    clip.z = clip.z * 0.5 + clip.w * 0.5;\n"
     "    output.pos = clip;\n"
     "    return output;\n"
@@ -651,8 +656,8 @@ static const char *d3d11_skybox_shader_source =
     "};\n"
     "VS_OUTPUT VSSkybox(VS_INPUT input) {\n"
     "    VS_OUTPUT output;\n"
-    "    float4 viewPos = mul(float4(input.pos, 1.0), viewRotation);\n"
-    "    float4 clip = mul(viewPos, projection);\n"
+    "    float4 viewPos = mul(viewRotation, float4(input.pos, 1.0));\n"
+    "    float4 clip = mul(projection, viewPos);\n"
     "    clip.z = clip.w;\n"
     "    output.pos = clip;\n"
     "    output.dir = input.pos;\n"
@@ -717,7 +722,7 @@ static const char *d3d11_postfx_shader_source =
     "float3 sceneAt(float2 uv) { return sceneTex.Sample(postSampler, uv).rgb; }\n"
     "float3 reconstructWorld(float2 uv, float depth) {\n"
     "    float4 clip = float4(uv * 2.0 - 1.0, depth * 2.0 - 1.0, 1.0);\n"
-    "    float4 world = mul(clip, invViewProjection);\n"
+    "    float4 world = mul(invViewProjection, clip);\n"
     "    return world.xyz / max(world.w, 0.0001);\n"
     "}\n"
     "float computeSSAO(float2 uv, float depth) {\n"
@@ -736,7 +741,7 @@ static const char *d3d11_postfx_shader_source =
     "}\n"
     "float2 cameraVelocity(float2 uv, float depth) {\n"
     "    float3 worldPos = reconstructWorld(uv, depth);\n"
-    "    float4 prevClip = mul(float4(worldPos, 1.0), prevViewProjection);\n"
+    "    float4 prevClip = mul(prevViewProjection, float4(worldPos, 1.0));\n"
     "    float2 prevNdc = prevClip.xy / max(prevClip.w, 0.0001);\n"
     "    float2 currNdc = uv * 2.0 - 1.0;\n"
     "    return (currNdc - prevNdc) * 0.5;\n"
@@ -779,16 +784,17 @@ static const char *d3d11_postfx_shader_source =
     "float3 applyBloom(float2 uv, float3 color) {\n"
     "    if (bloomEnabled == 0)\n"
     "        return color;\n"
-    "    float3 bloom = float3(0.0, 0.0, 0.0);\n"
-    "    float2 taps[4] = { float2(invResolution.x, 0.0), float2(-invResolution.x, 0.0),\n"
-    "                       float2(0.0, invResolution.y), float2(0.0, -invResolution.y) };\n"
-    "    for (int i = 0; i < 4; i++) {\n"
-    "        float3 sampleColor = sceneAt(uv + taps[i]);\n"
-    "        float l = luminance(sampleColor);\n"
-    "        if (l > bloomThreshold)\n"
-    "            bloom += sampleColor * (l - bloomThreshold);\n"
-    "    }\n"
-    "    return color + bloom * (bloomIntensity * 0.25);\n"
+    "    float3 bloom = max(color - float3(bloomThreshold, bloomThreshold, bloomThreshold), "
+    "float3(0.0, 0.0, 0.0));\n"
+    "    bloom += max(sceneAt(uv + float2(invResolution.x, 0.0)) - float3(bloomThreshold, "
+    "bloomThreshold, bloomThreshold), float3(0.0, 0.0, 0.0));\n"
+    "    bloom += max(sceneAt(uv + float2(-invResolution.x, 0.0)) - float3(bloomThreshold, "
+    "bloomThreshold, bloomThreshold), float3(0.0, 0.0, 0.0));\n"
+    "    bloom += max(sceneAt(uv + float2(0.0, invResolution.y)) - float3(bloomThreshold, "
+    "bloomThreshold, bloomThreshold), float3(0.0, 0.0, 0.0));\n"
+    "    bloom += max(sceneAt(uv + float2(0.0, -invResolution.y)) - float3(bloomThreshold, "
+    "bloomThreshold, bloomThreshold), float3(0.0, 0.0, 0.0));\n"
+    "    return color + bloom * (bloomIntensity / 5.0);\n"
     "}\n"
     "float3 tonemap(float3 color) {\n"
     "    color *= tonemapExposure;\n"
@@ -815,8 +821,8 @@ static const char *d3d11_postfx_shader_source =
     "float3 applyVignette(float2 uv, float3 color) {\n"
     "    if (vignetteEnabled == 0)\n"
     "        return color;\n"
-    "    float2 centered = uv * 2.0 - 1.0;\n"
-    "    float dist = length(centered);\n"
+    "    float2 centered = uv - 0.5;\n"
+    "    float dist = length(centered) * 1.41421356;\n"
     "    float vig = saturate((vignetteRadius - dist) / max(vignetteSoftness, 0.0001));\n"
     "    vig = vig * vig * (3.0 - 2.0 * vig);\n"
     "    return color * vig;\n"
@@ -836,14 +842,14 @@ static const char *d3d11_postfx_shader_source =
     "float4 PSPostFX(VS_OUTPUT input) : SV_Target {\n"
     "    float depth = depthAt(input.uv);\n"
     "    float3 color = sceneAt(input.uv);\n"
-    "    color *= computeSSAO(input.uv, depth);\n"
     "    color = applyMotionBlur(input.uv, depth, color);\n"
     "    color = applyDOF(input.uv, depth, color);\n"
+    "    color *= computeSSAO(input.uv, depth);\n"
+    "    color = applyFXAA(input.uv, color);\n"
     "    color = applyBloom(input.uv, color);\n"
     "    color = tonemap(color);\n"
     "    color = applyColorGrade(color);\n"
     "    color = applyVignette(input.uv, color);\n"
-    "    color = applyFXAA(input.uv, color);\n"
     "    return float4(saturate(color), 1.0);\n"
     "}\n"
     "float4 PSOverlayComposite(VS_OUTPUT input) : SV_Target {\n"
@@ -1144,6 +1150,7 @@ typedef struct {
 static void d3d11_destroy_ctx(void *ctx_ptr);
 static void d3d11_log_hresult(const char *msg, HRESULT hr);
 static void d3d11_log_shader_error(const char *stage, ID3DBlob *err_blob);
+static void d3d11_present_swapchain(d3d11_context_t *ctx);
 
 static void mat4f_mul_d3d(const float *a, const float *b, float *out) {
     for (int r = 0; r < 4; r++) {
@@ -1176,6 +1183,16 @@ static void d3d11_log_shader_error(const char *stage, ID3DBlob *err_blob) {
         OutputDebugStringA(buffer);
         fputs(buffer, stderr);
     }
+}
+
+static void d3d11_present_swapchain(d3d11_context_t *ctx) {
+    HRESULT hr;
+
+    if (!ctx || !ctx->swap_chain)
+        return;
+    hr = IDXGISwapChain_Present(ctx->swap_chain, 1, 0);
+    if (FAILED(hr))
+        d3d11_log_hresult("IDXGISwapChain::Present", hr);
 }
 
 static HRESULT d3d11_compile_shader(const char *source,
@@ -2255,8 +2272,12 @@ static void d3d11_clear_current_targets(d3d11_context_t *ctx,
         clear_color[3] = 1.0f;
     }
 
-    if (!load_existing_color && ctx->current_rtv_count > 0 && ctx->current_rtvs[0])
+    if (ctx->current_target_kind == VGFX3D_D3D11_TARGET_OVERLAY && ctx->current_rtv_count > 0 &&
+        ctx->current_rtvs[0]) {
         ID3D11DeviceContext_ClearRenderTargetView(ctx->ctx, ctx->current_rtvs[0], clear_color);
+    } else if (!load_existing_color && ctx->current_rtv_count > 0 && ctx->current_rtvs[0]) {
+        ID3D11DeviceContext_ClearRenderTargetView(ctx->ctx, ctx->current_rtvs[0], clear_color);
+    }
     if (!load_existing_color && ctx->current_target_kind == VGFX3D_D3D11_TARGET_SCENE &&
         ctx->current_rtv_count > 1 && ctx->current_rtvs[1])
         ID3D11DeviceContext_ClearRenderTargetView(ctx->ctx, ctx->current_rtvs[1], motion_clear);
@@ -2925,6 +2946,7 @@ static void d3d11_submit_draw_instanced(void *ctx_ptr,
 static void *d3d11_create_ctx(vgfx_window_t win, int32_t width, int32_t height) {
     d3d11_context_t *ctx = NULL;
     HWND hwnd = (HWND)vgfx_get_native_view(win);
+    vgfx_framebuffer_t fb;
     DXGI_SWAP_CHAIN_DESC swap_desc;
     D3D_FEATURE_LEVEL feature_level = D3D_FEATURE_LEVEL_11_0;
     D3D11_DEPTH_STENCIL_DESC depth_desc;
@@ -2961,6 +2983,10 @@ static void *d3d11_create_ctx(vgfx_window_t win, int32_t width, int32_t height) 
 
     if (!hwnd)
         return NULL;
+    if (vgfx_get_framebuffer(win, &fb) && fb.width > 0 && fb.height > 0) {
+        width = fb.width;
+        height = fb.height;
+    }
 
     ctx = (d3d11_context_t *)calloc(1, sizeof(d3d11_context_t));
     if (!ctx)
@@ -3814,8 +3840,9 @@ static int d3d11_readback_rgba(
 
     if (!ctx || !dst_rgba || w <= 0 || h <= 0 || stride < w * 4)
         return 0;
-    if (ctx->gpu_postfx_enabled && ctx->scene_color_tex && ctx->scene_width > 0 &&
-        ctx->scene_height > 0) {
+    if (ctx->scene_color_tex && ctx->scene_width > 0 && ctx->scene_height > 0 &&
+        (ctx->gpu_postfx_enabled ||
+         ctx->current_target_kind != VGFX3D_D3D11_TARGET_SWAPCHAIN)) {
         source_tex = ctx->scene_color_tex;
     } else {
         hr = IDXGISwapChain_GetBuffer(
@@ -3844,9 +3871,13 @@ static void d3d11_present_internal(d3d11_context_t *ctx, const vgfx3d_postfx_sna
 
     if (!ctx || ctx->rtt_active)
         return;
-    use_postfx = (snapshot != NULL && ctx->gpu_postfx_enabled) ? 1 : 0;
-    if (!use_postfx || !ctx->scene_color_srv || !ctx->scene_depth_srv || !ctx->scene_motion_srv) {
-        IDXGISwapChain_Present(ctx->swap_chain, 1, 0);
+    use_postfx =
+        (snapshot != NULL && ctx->gpu_postfx_enabled && ctx->scene_color_srv && ctx->scene_depth_srv &&
+         ctx->scene_motion_srv)
+            ? 1
+            : 0;
+    if (!use_postfx) {
+        d3d11_present_swapchain(ctx);
         return;
     }
 
@@ -3855,7 +3886,7 @@ static void d3d11_present_internal(d3d11_context_t *ctx, const vgfx3d_postfx_sna
     hr = d3d11_update_constant_buffer(ctx, ctx->cb_postfx, &postfx_data, sizeof(postfx_data));
     if (FAILED(hr)) {
         d3d11_log_hresult("Map(cbPostFX)", hr);
-        IDXGISwapChain_Present(ctx->swap_chain, 1, 0);
+        d3d11_present_swapchain(ctx);
         return;
     }
 
@@ -3888,7 +3919,7 @@ static void d3d11_present_internal(d3d11_context_t *ctx, const vgfx3d_postfx_sna
         ID3D11DeviceContext_Draw(ctx->ctx, 3, 0);
         ID3D11DeviceContext_PSSetShaderResources(ctx->ctx, 3, 1, &null_srvs[3]);
     }
-    IDXGISwapChain_Present(ctx->swap_chain, 1, 0);
+    d3d11_present_swapchain(ctx);
 }
 
 static void d3d11_present(void *ctx_ptr) {
@@ -3928,6 +3959,7 @@ static void d3d11_shadow_begin(
     void *ctx_ptr, float *depth_buf, int32_t width, int32_t height, const float *light_vp) {
     d3d11_context_t *ctx = (d3d11_context_t *)ctx_ptr;
     D3D11_VIEWPORT viewport;
+    ID3D11ShaderResourceView *null_shadow_srv = NULL;
     HRESULT hr;
 
     (void)depth_buf;
@@ -3940,6 +3972,7 @@ static void d3d11_shadow_begin(
     }
 
     memcpy(ctx->shadow_vp, light_vp, sizeof(ctx->shadow_vp));
+    ID3D11DeviceContext_PSSetShaderResources(ctx->ctx, 4, 1, &null_shadow_srv);
     ID3D11DeviceContext_OMSetRenderTargets(ctx->ctx, 0, NULL, ctx->shadow_dsv);
     ID3D11DeviceContext_ClearDepthStencilView(
         ctx->ctx, ctx->shadow_dsv, D3D11_CLEAR_DEPTH, 1.0f, 0);
@@ -3949,7 +3982,7 @@ static void d3d11_shadow_begin(
     viewport.MinDepth = 0.0f;
     viewport.MaxDepth = 1.0f;
     ID3D11DeviceContext_RSSetViewports(ctx->ctx, 1, &viewport);
-    ID3D11DeviceContext_RSSetState(ctx->ctx, ctx->rs_solid_cull);
+    ID3D11DeviceContext_RSSetState(ctx->ctx, ctx->rs_solid_no_cull);
     ID3D11DeviceContext_OMSetDepthStencilState(ctx->ctx, ctx->depth_state, 0);
     ID3D11DeviceContext_IASetInputLayout(ctx->ctx, ctx->input_layout);
     ID3D11DeviceContext_IASetPrimitiveTopology(ctx->ctx, D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);

@@ -67,14 +67,6 @@ bool peekIs(const parser_impl::ParserState &state, TokenKind kind) {
     return state.ts && state.ts->kind() == kind;
 }
 
-bool consumeIf(parser_impl::ParserState &state, TokenKind kind) {
-    if (!peekIs(state, kind))
-        return false;
-    state.ts->advance();
-    state.refresh();
-    return true;
-}
-
 void recoverTo(parser_impl::ParserState &state, TokenKind boundary) {
     if (!state.ts)
         return;

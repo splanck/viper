@@ -213,7 +213,9 @@ void collectNativeLinkArchives(const common::LinkContext &ctx, std::vector<std::
 #if defined(_WIN32)
     if (common::hasComponent(ctx, RtComponent::Base)) {
         appendComponent(RtComponent::Oop);
+        appendComponent(RtComponent::Arrays);
         appendComponent(RtComponent::Collections);
+        appendComponent(RtComponent::Threads);
         appendComponent(RtComponent::Text);
         appendComponent(RtComponent::IoFs);
     }

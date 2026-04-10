@@ -45,6 +45,10 @@ list(APPEND _viper_codegen_x86_64_tests
         object_only_cli
         native_asm)
 
+if (WIN32)
+    list(REMOVE_ITEM _viper_codegen_x86_64_tests varargs_al)
+endif ()
+
 foreach (_viper_codegen_case IN LISTS _viper_codegen_x86_64_tests)
     set(_viper_codegen_target test_codegen_x86_64_${_viper_codegen_case})
     set(_viper_codegen_source

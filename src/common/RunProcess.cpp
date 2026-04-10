@@ -55,7 +55,7 @@ bool needs_quoting(const std::string &arg) {
 
     for (const char ch : arg) {
         if (ch == ' ' || ch == '\t' || ch == '"' || ch == '&' || ch == '|' || ch == '<' ||
-            ch == '>' || ch == '^' || ch == '(' || ch == ')' || ch == '/') {
+            ch == '>' || ch == '^' || ch == '(' || ch == ')') {
             return true;
         }
     }

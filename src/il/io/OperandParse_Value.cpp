@@ -40,17 +40,6 @@ using ::il::support::Expected;
 using ::il::support::makeError;
 using viper::parse::Cursor;
 
-/// @brief Attach current line information to a diagnostic message.
-/// @details Delegates to @ref ::il::io::formatLineDiag so all operand parsers
-///          report errors with the same `line X: message` structure used by the
-///          legacy implementation.
-/// @param ctx Parser context carrying the current line number.
-/// @param message Diagnostic text produced by the caller.
-/// @return Message decorated with line information.
-std::string formatLineMessage(Context &ctx, std::string message) {
-    return ::il::io::formatLineDiag(ctx.state.lineNo, std::move(message));
-}
-
 /// @brief Create an Expected error tagged with the parser's current location.
 /// @details Value operand parsing frequently needs to propagate syntax failures
 ///          while still returning a value.  This helper produces an

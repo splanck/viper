@@ -29,6 +29,9 @@ namespace il::frontends::basic {
 /// node type; the base implementation provides no-op defaults.
 template <typename Derived> class BasicAstWalker : public ExprVisitor, public StmtVisitor {
   public:
+    using ExprVisitor::visit;
+    using StmtVisitor::visit;
+
     /// @brief Visit an expression subtree.
     /// @param expr Root expression to walk.
     void walkExpr(const Expr &expr) {

@@ -43,6 +43,8 @@ std::string toolchainBaseNameFromFilename(std::string filename) {
     filename = lowerCopy(filename);
     if (filename.size() > 4 && filename.substr(filename.size() - 4) == ".lib")
         filename.resize(filename.size() - 4);
+    else if (filename.size() > 4 && filename.substr(filename.size() - 4) == ".exe")
+        filename.resize(filename.size() - 4);
     else if (filename.size() > 2 && filename.substr(filename.size() - 2) == ".a")
         filename.resize(filename.size() - 2);
     if (filename.rfind("lib", 0) == 0)
@@ -182,7 +184,10 @@ std::vector<fs::path> gatherFromInstallManifest(const fs::path &stagePrefix, con
         if (!fs::is_regular_file(effective, ec) && !fs::is_symlink(effective, ec))
             continue;
         fs::path rel = fs::relative(effective, normalizedStage, ec);
-        if (ec || rel.empty() || rel.native().find("..") == 0)
+        if (ec || rel.empty())
+            continue;
+        auto relIt = rel.begin();
+        if (relIt != rel.end() && *relIt == fs::path(".."))
             continue;
         const std::string relKey = sanitizePackageRelativePath(toForwardSlashes(rel.generic_string()),
                                                                "staged install path");
