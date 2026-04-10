@@ -11,34 +11,40 @@ GPU-accelerated 3D rendering on macOS using Metal (system framework, 10.11+).
 
 Implements `vgfx3d_metal_backend` as a `vgfx3d_backend_t`, filling in all vtable function pointers.
 
-## Architecture
+## Current Architecture
 
-```
-Canvas3D.Begin(camera)
-  → Encode uniforms into MTLBuffer
-Canvas3D.DrawMesh(mesh, transform, material)
-  → Append draw call to MTLRenderCommandEncoder
-Canvas3D.End()
-  → Commit MTLCommandBuffer → present via CAMetalLayer
-```
+The shipping Metal runtime now has four major paths:
 
-## New Files
+1. `Canvas3D.Begin/Draw/End` records the main scene into a single `MTLCommandBuffer`
+2. direct window mode renders straight into the CAMetalLayer drawable when GPU postfx is disabled
+3. GPU-postfx window mode renders the scene into an HDR `RGBA16F` target, records overlays into a separate UNORM target, and composites the final image through the Metal postfx pass at `Flip`
+4. `RenderTarget3D` uses cached offscreen textures plus lazy CPU synchronization, so RTT frames no longer force an immediate `getBytes` stall at `End`
 
-**`src/lib/graphics/src/vgfx3d_metal.m`** (~800 LOC)
-- Metal device + command queue creation (lazy, on first Canvas3D.New)
-- CAMetalLayer setup: attach to existing NSView from vgfx_platform_macos
-- Render pipeline state objects (PSOs) for flat, Gouraud, Phong, textured variants
-- Depth-stencil state (MTLDepthStencilDescriptor)
-- Vertex buffer management: upload mesh data as MTLBuffer (shared storage)
-- Uniform buffers: per-frame (camera MVP), per-object (model matrix), per-material (color/shininess)
-- Light uniform buffer: array of 8 lights
-- Texture creation from Pixels RGBA data (MTLTextureDescriptor, 2D, RGBA8Unorm)
-- Mipmap generation via MTLBlitCommandEncoder
-- MSAA: configurable sample count (1, 2, 4) via render pass descriptor
-- Window resize: update CAMetalLayer.drawableSize
-- Triple buffering: semaphore with 3 in-flight frames
+## Runtime Files
 
-**`src/lib/graphics/src/vgfx3d_metal_shaders.metal`** (~200 LOC)
+**`src/runtime/graphics/vgfx3d_backend_metal.m`**
+- Metal device, command queue, and CAMetalLayer management
+- Direct swapchain rendering and HDR scene/postfx presentation
+- Separate overlay targets so screen-space UI is composited after GPU postfx
+- Cached geometry, texture, cubemap, morph, and render-target resources
+- GPU skinning, GPU morph positions, GPU morph normals, shadow mapping, and instanced rendering
+- Lazy `RenderTarget3D` readback ownership via backend-provided `sync_color`
+
+**`src/runtime/graphics/vgfx3d_backend_metal_shared.h`**
+**`src/runtime/graphics/vgfx3d_backend_metal_shared.c`**
+- Portable helpers for target-kind selection, frame-history preservation, blend/motion policy, cache growth, mip-count computation, bone zero-padding, and morph-cache reuse rules
+- Covered by `test_vgfx3d_backend_metal_shared`
+
+## Shader Overview
+
+Metal shaders are embedded as runtime-compiled MSL strings inside [`vgfx3d_backend_metal.m`](/Users/stephen/git/viper/src/runtime/graphics/vgfx3d_backend_metal.m). The important entry points are:
+
+- `vertex_main` / `vertex_main_instanced`: skinning, morph position deltas, morph normal deltas, motion-history output
+- `vertex_shadow`: shadow depth pass with GPU skinning and cached morph deltas
+- `fragment_main`: legacy + PBR surface shading, alpha-mode handling, motion-vector output
+- `postfx_fs`: bloom, tonemap, FXAA, color grading, vignette, SSAO, DOF, motion blur, and final overlay composite
+
+Legacy design sketch retained for reference:
 ```metal
 #include <metal_stdlib>
 using namespace metal;
@@ -141,34 +147,14 @@ fragment float4 fragment_main(VertexOut in [[stage_in]],
 }
 ```
 
-**`src/lib/graphics/src/vgfx3d_metal_internal.h`** (~50 LOC)
-- Forward declarations for Metal types (id<MTLDevice>, id<MTLCommandQueue>, etc.)
-- Internal context structure for Metal state
+## Key Correctness Guarantees
 
-## Metal Shader Embedding
-
-Two options (both maintain zero external deps):
-
-**Option A: Compile at build time** (recommended)
-- CMake custom command: `xcrun -sdk macosx metal -c shaders.metal -o shaders.air && xcrun metallib shaders.air -o shaders.metallib`
-- Embed `.metallib` as a C byte array via `xxd -i`
-- Load at runtime: `[device newLibraryWithData:]`
-
-**Option B: Compile at runtime**
-- Embed MSL source as a C string literal
-- Compile at runtime: `[device newLibraryWithSource:options:error:]`
-- Simpler build but slower startup (~100ms compile)
-
-## Platform Integration Changes
-
-**`src/lib/graphics/src/vgfx_platform_macos.m`**:
-- Add `CAMetalLayer` property to VGFXView
-- When Canvas3D is created, set up `layer.device = MTLCreateSystemDefaultDevice()`
-- Existing 2D CGImage path continues to work for regular Canvas
-
-**`src/lib/graphics/CMakeLists.txt`**:
-- Add `vgfx3d_metal.m` to sources (macOS only)
-- Link `-framework Metal -framework MetalKit -framework QuartzCore`
+- GPU postfx uses the main 3D scene camera history even when a 2D overlay pass follows the scene
+- Transparent PBR materials use alpha-blended pipelines with depth writes disabled and motion writes suppressed
+- The HDR scene target preserves highlight energy until tonemapping
+- `RenderTarget3D.AsPixels()` and `Canvas3D.Screenshot()` only trigger CPU readback when pixels are actually requested
+- Morph normal deltas now participate in Metal lighting, matching the OpenGL and D3D11 feature set
+- Texture and cubemap caches are mipmapped and pruned instead of growing unbounded for the lifetime of the process
 
 ## Fallback
 
@@ -176,4 +162,3 @@ If Metal is unavailable (pre-10.11, no GPU):
 - `MTLCreateSystemDefaultDevice()` returns nil
 - Canvas3D falls back to software backend automatically
 - Log warning: "Metal unavailable, using software 3D renderer"
-

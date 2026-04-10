@@ -63,6 +63,7 @@ static vgfx3d_backend_t make_backend(const char *name) {
 
 static vgfx3d_backend_t kOpenGLBackend = make_backend("opengl");
 static vgfx3d_backend_t kD3D11Backend = make_backend("d3d11");
+static vgfx3d_backend_t kMetalBackend = make_backend("metal");
 static vgfx3d_backend_t kSoftwareBackend = make_backend("software");
 
 static int skybox_draw_calls = 0;
@@ -335,6 +336,29 @@ static void test_gpu_skinning_bypass_for_d3d11(void) {
     cleanup_fake_canvas(&canvas);
 }
 
+static void test_gpu_skinning_bypass_for_metal(void) {
+    rt_canvas3d canvas;
+    init_fake_canvas(&canvas, &kMetalBackend);
+
+    void *mesh = make_test_mesh();
+    void *player = make_test_player();
+    void *material = rt_material3d_new();
+    void *transform = rt_mat4_identity();
+
+    rt_canvas3d_draw_mesh_skinned(&canvas, mesh, transform, material, player);
+
+    rt_mesh3d *mesh_view = (rt_mesh3d *)mesh;
+    test_deferred_draw_t *draws = (test_deferred_draw_t *)canvas.draw_cmds;
+    EXPECT_TRUE(canvas.draw_count == 1, "Metal skinned draw enqueues one draw");
+    EXPECT_TRUE(canvas.temp_buf_count == 0, "Metal skinned draw avoids CPU temp buffer");
+    EXPECT_TRUE(draws[0].cmd.vertices == mesh_view->vertices,
+                "Metal skinned draw keeps original mesh vertices for GPU skinning");
+    EXPECT_TRUE(draws[0].cmd.bone_palette != nullptr, "Metal skinned draw forwards bone palette");
+    EXPECT_TRUE(draws[0].cmd.bone_count == 1, "Metal skinned draw forwards bone count");
+
+    cleanup_fake_canvas(&canvas);
+}
+
 static void test_cpu_skinning_fallback_for_software(void) {
     rt_canvas3d canvas;
     init_fake_canvas(&canvas, &kSoftwareBackend);
@@ -439,6 +463,42 @@ static void test_gpu_morph_payload_for_d3d11(void) {
     cleanup_fake_canvas(&canvas);
 }
 
+static void test_gpu_morph_payload_for_metal(void) {
+    rt_canvas3d canvas;
+    init_fake_canvas(&canvas, &kMetalBackend);
+
+    void *mesh = make_test_mesh();
+    void *material = rt_material3d_new();
+    void *transform = rt_mat4_identity();
+    void *morph = rt_morphtarget3d_new(3);
+    rt_morphtarget3d_add_shape(morph, rt_const_cstr("raise"));
+    rt_morphtarget3d_set_delta(morph, 0, 0, 1.0, 2.0, 3.0);
+    rt_morphtarget3d_set_weight(morph, 0, 0.5);
+
+    rt_canvas3d_draw_mesh_morphed(&canvas, mesh, transform, material, morph);
+
+    rt_mesh3d *mesh_view = (rt_mesh3d *)mesh;
+    test_deferred_draw_t *draws = (test_deferred_draw_t *)canvas.draw_cmds;
+    EXPECT_TRUE(canvas.draw_count == 1, "Metal morphed draw enqueues one draw");
+    EXPECT_TRUE(canvas.temp_buf_count == 0,
+                "Metal morphed draw avoids transient packed payload buffers");
+    EXPECT_TRUE(canvas.temp_obj_count == 1,
+                "Metal morphed draw retains the morph object until frame end");
+    EXPECT_TRUE(draws[0].cmd.vertices == mesh_view->vertices,
+                "Metal morphed draw keeps original mesh vertices for GPU morphing");
+    EXPECT_TRUE(draws[0].cmd.morph_deltas != nullptr,
+                "Metal morphed draw forwards packed morph deltas");
+    EXPECT_TRUE(draws[0].cmd.morph_weights != nullptr,
+                "Metal morphed draw forwards packed morph weights");
+    EXPECT_TRUE(draws[0].cmd.morph_shape_count == 1, "Metal morphed draw forwards shape count");
+    EXPECT_TRUE(draws[0].cmd.morph_key == morph,
+                "Metal morphed draw forwards the stable morph identity");
+    EXPECT_TRUE(draws[0].cmd.morph_revision == rt_morphtarget3d_get_payload_generation(morph),
+                "Metal morphed draw forwards the morph payload revision");
+
+    cleanup_fake_canvas(&canvas);
+}
+
 static void test_gpu_morph_normal_payload_for_d3d11(void) {
     rt_canvas3d canvas;
     init_fake_canvas(&canvas, &kD3D11Backend);
@@ -500,6 +560,39 @@ static void test_gpu_morph_normal_payload_for_opengl(void) {
                         draws[0].cmd.morph_normal_deltas[1] == 0.5f &&
                         draws[0].cmd.morph_normal_deltas[2] == 0.75f,
                     "OpenGL morphed-normal draw packs normal deltas in XYZ order");
+    }
+
+    cleanup_fake_canvas(&canvas);
+}
+
+static void test_gpu_morph_normal_payload_for_metal(void) {
+    rt_canvas3d canvas;
+    init_fake_canvas(&canvas, &kMetalBackend);
+
+    void *mesh = make_test_mesh();
+    void *material = rt_material3d_new();
+    void *transform = rt_mat4_identity();
+    void *morph = rt_morphtarget3d_new(3);
+    rt_morphtarget3d_add_shape(morph, rt_const_cstr("raise"));
+    rt_morphtarget3d_set_delta(morph, 0, 0, 1.0, 2.0, 3.0);
+    rt_morphtarget3d_set_normal_delta(morph, 0, 0, 0.25, 0.5, 0.75);
+    rt_morphtarget3d_set_weight(morph, 0, 0.5);
+
+    rt_canvas3d_draw_mesh_morphed(&canvas, mesh, transform, material, morph);
+
+    test_deferred_draw_t *draws = (test_deferred_draw_t *)canvas.draw_cmds;
+    EXPECT_TRUE(canvas.draw_count == 1, "Metal morphed-normal draw enqueues one draw");
+    EXPECT_TRUE(canvas.temp_buf_count == 0,
+                "Metal morphed-normal draw avoids transient packed payload buffers");
+    EXPECT_TRUE(canvas.temp_obj_count == 1,
+                "Metal morphed-normal draw retains the morph object until frame end");
+    EXPECT_TRUE(draws[0].cmd.morph_normal_deltas != nullptr,
+                "Metal morphed-normal draw forwards packed morph normal deltas");
+    if (draws[0].cmd.morph_normal_deltas) {
+        EXPECT_TRUE(draws[0].cmd.morph_normal_deltas[0] == 0.25f &&
+                        draws[0].cmd.morph_normal_deltas[1] == 0.5f &&
+                        draws[0].cmd.morph_normal_deltas[2] == 0.75f,
+                    "Metal morphed-normal draw packs normal deltas in XYZ order");
     }
 
     cleanup_fake_canvas(&canvas);
@@ -770,7 +863,7 @@ static void test_instanced_transform_history_forwarded(void) {
 
 static void test_instanced_material_payload_forwarded(void) {
     vgfx3d_backend_t backend = {};
-    backend.name = "d3d11";
+    backend.name = "metal";
     backend.end_frame = noop_end_frame;
     backend.submit_draw_instanced = record_draw_instanced;
 
@@ -1084,11 +1177,14 @@ static void test_gpu_postfx_state_latches_across_overlay_pass(void) {
 int main() {
     test_gpu_skinning_bypass_for_opengl();
     test_gpu_skinning_bypass_for_d3d11();
+    test_gpu_skinning_bypass_for_metal();
     test_cpu_skinning_fallback_for_software();
     test_gpu_morph_payload_for_opengl();
     test_gpu_morph_payload_for_d3d11();
+    test_gpu_morph_payload_for_metal();
     test_gpu_morph_normal_payload_for_opengl();
     test_gpu_morph_normal_payload_for_d3d11();
+    test_gpu_morph_normal_payload_for_metal();
     test_attached_morph_targets_route_through_draw_mesh();
     test_cpu_morph_fallback_for_software();
     test_env_map_payload_forwarded();

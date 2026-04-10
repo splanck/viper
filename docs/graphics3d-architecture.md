@@ -63,6 +63,16 @@ typedef struct vgfx3d_backend {
 2. If `create_ctx` returns NULL → fall back to software
 3. Software backend always succeeds
 
+### Metal Window Presentation Model
+
+The Metal backend now follows the same split as the other GPU runtimes:
+
+- direct mode: when GPU postfx is disabled, window-backed draws render straight into the current CAMetalLayer drawable and `present()` just schedules that drawable for display
+- postfx mode: the main scene renders into an HDR `RGBA16F` scene target, optional overlays render into a separate UNORM overlay target, and `present_postfx` composites the final tonemapped image to the swapchain
+- overlay composition: screen-space overlays are blended after bloom / tonemap / SSAO / DOF / motion blur, so UI stays crisp and the post stack keeps using the main 3D scene camera, depth, and motion history
+
+This keeps the no-postfx path cheap while preserving the correct scene-history inputs required by the GPU postfx path.
+
 ### D3D11 Window Presentation Model
 
 The D3D11 backend now uses two window-backed presentation modes:
@@ -247,7 +257,9 @@ src/runtime/graphics/
 
 All three GPU backends now share the same material contract: the legacy Blinn-Phong path remains for compatibility, and `Material3D.NewPBR` uses the same direct-light metallic/roughness PBR path across Metal, D3D11, and OpenGL.
 
-For D3D11 specifically, the CPU and HLSL sides now share explicit packed `float4` layouts for morph weights and material custom parameters. D3D11 and OpenGL both now use small shared helper layers to keep target selection, frame-history updates, cache growth, and upload/readback policy consistent with the portable tests.
+Metal, D3D11, and OpenGL now all use small shared helper layers to keep target selection, frame-history updates, cache growth, and upload/readback policy consistent with the portable tests. Metal also now caches morph payloads by `morph_key` / `morph_revision`, applies morph normal deltas in the MSL vertex path, and keeps mipmapped texture/cubemap caches pruned by frame age.
+
+For D3D11 specifically, the CPU and HLSL sides also share explicit packed `float4` layouts for morph weights and material custom parameters.
 
 | Stage | Software | Metal (MSL) | D3D11 (HLSL) | OpenGL (GLSL 330) |
 |-------|----------|-------------|---------------|-------------------|

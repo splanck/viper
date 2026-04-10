@@ -25,6 +25,7 @@
 #include "rt_postfx3d.h"
 #include "vgfx.h"
 #include "vgfx3d_backend.h"
+#include "vgfx3d_backend_metal_shared.h"
 #include "vgfx3d_backend_utils.h"
 
 #include <stdint.h>
@@ -55,7 +56,13 @@
 @property(nonatomic, strong) id<MTLDevice> device;
 @property(nonatomic, strong) id<MTLCommandQueue> commandQueue;
 @property(nonatomic, strong) id<MTLRenderPipelineState> pipelineState;
+@property(nonatomic, strong) id<MTLRenderPipelineState> pipelineStateAlpha;
+@property(nonatomic, strong) id<MTLRenderPipelineState> pipelineStateColorOnly;
+@property(nonatomic, strong) id<MTLRenderPipelineState> pipelineStateColorOnlyAlpha;
 @property(nonatomic, strong) id<MTLRenderPipelineState> instancedPipelineState;
+@property(nonatomic, strong) id<MTLRenderPipelineState> instancedPipelineStateAlpha;
+@property(nonatomic, strong) id<MTLRenderPipelineState> instancedPipelineStateColorOnly;
+@property(nonatomic, strong) id<MTLRenderPipelineState> instancedPipelineStateColorOnlyAlpha;
 @property(nonatomic, strong) id<MTLDepthStencilState> depthState;
 @property(nonatomic, strong) id<MTLDepthStencilState> depthStateNoWrite;
 @property(nonatomic, strong) CAMetalLayer *metalLayer;
@@ -85,6 +92,8 @@
 @property(nonatomic, strong) NSMutableDictionary *textureCache;
 @property(nonatomic, strong) NSMutableDictionary *cubemapCache;
 @property(nonatomic, strong) NSMutableDictionary *geometryCache;
+@property(nonatomic, strong) NSMutableDictionary *morphCache;
+@property(nonatomic, strong) NSMutableDictionary *renderTargetCache;
 @property(nonatomic) uint64_t frameSerial;
 @property(nonatomic, strong) id<MTLSamplerState> sharedSampler;
 @property(nonatomic, strong) id<MTLSamplerState> cubeSampler;
@@ -102,14 +111,26 @@
 @property(nonatomic, strong) id<MTLTexture> postfxColorTexture;
 @property(nonatomic, strong) id<MTLRenderPipelineState> postfxPipeline;
 @property(nonatomic, strong) id<MTLLibrary> postfxLibrary;
+@property(nonatomic, strong) id<MTLTexture> overlayColorTexture;
+@property(nonatomic, strong) id<MTLTexture> overlayMotionTexture;
+@property(nonatomic, strong) id<MTLTexture> overlayDepthTexture;
 /* Window-backed scene/postfx rendering stays offscreen until present time. */
 @property(nonatomic, strong) id<MTLTexture> offscreenColor;
 @property(nonatomic, strong) id<MTLTexture> offscreenMotion;
 @property(nonatomic, strong) id<MTLTexture> displayTexture;
 @property(nonatomic, strong) id<MTLRenderPipelineState> skyboxPipeline;
+@property(nonatomic, strong) id<MTLRenderPipelineState> skyboxColorPipeline;
 @property(nonatomic, strong) id<MTLDepthStencilState> skyboxDepthState;
 @property(nonatomic, strong) id<MTLBuffer> skyboxVertexBuffer;
 @property(nonatomic, assign) vgfx_window_t vgfxWin; /* for framebuffer readback */
+@property(nonatomic, strong) NSMutableData *instanceScratch;
+@property(nonatomic) NSUInteger instanceCapacity;
+@property(nonatomic) vgfx3d_metal_target_kind_t currentTargetKind;
+@property(nonatomic) int8_t gpuPostfxEnabled;
+@property(nonatomic) int8_t gpuPostfxSnapshotValid;
+@property(nonatomic) vgfx3d_postfx_snapshot_t gpuPostfxSnapshot;
+@property(nonatomic) vgfx3d_metal_frame_history_t frameHistory;
+@property(nonatomic) int8_t postfxEncodedThisFrame;
 @end
 
 @implementation VGFXMetalContext
@@ -118,6 +139,7 @@
 @interface VGFXMetalTextureCacheEntry : NSObject
 @property(nonatomic, strong) id<MTLTexture> texture;
 @property(nonatomic) uint64_t generation;
+@property(nonatomic) uint64_t lastUsedFrame;
 @end
 
 @implementation VGFXMetalTextureCacheEntry
@@ -126,6 +148,7 @@
 @interface VGFXMetalCubemapCacheEntry : NSObject
 @property(nonatomic, strong) id<MTLTexture> texture;
 @property(nonatomic) uint64_t generation;
+@property(nonatomic) uint64_t lastUsedFrame;
 @end
 
 @implementation VGFXMetalCubemapCacheEntry
@@ -141,6 +164,34 @@
 @end
 
 @implementation VGFXMetalGeometryCacheEntry
+@end
+
+@interface VGFXMetalMorphCacheEntry : NSObject
+@property(nonatomic, strong) id<MTLBuffer> deltaBuffer;
+@property(nonatomic, strong) id<MTLBuffer> normalBuffer;
+@property(nonatomic, assign) const void *key;
+@property(nonatomic) uint64_t revision;
+@property(nonatomic) int32_t shapeCount;
+@property(nonatomic) uint32_t vertexCount;
+@property(nonatomic) int8_t hasNormalDeltas;
+@property(nonatomic) uint64_t lastUsedFrame;
+@end
+
+@implementation VGFXMetalMorphCacheEntry
+@end
+
+@interface VGFXMetalRenderTargetCacheEntry : NSObject
+@property(nonatomic, strong) id<MTLTexture> colorTexture;
+@property(nonatomic, strong) id<MTLTexture> motionTexture;
+@property(nonatomic, strong) id<MTLTexture> depthTexture;
+@property(nonatomic, strong) id<MTLCommandBuffer> pendingCommandBuffer;
+@property(nonatomic, assign) vgfx3d_rendertarget_t *target;
+@property(nonatomic) int32_t width;
+@property(nonatomic) int32_t height;
+@property(nonatomic) uint64_t lastUsedFrame;
+@end
+
+@implementation VGFXMetalRenderTargetCacheEntry
 @end
 
 //=============================================================================
@@ -258,6 +309,27 @@ static NSString *metal_shader_source =
      "    return pos;\n"
      "}\n"
      "\n"
+     "float3 applyMorphNormal(float3 nrm,\n"
+     "                       constant PerObject &obj,\n"
+     "                       constant float *morphNormalDeltas,\n"
+     "                       constant float *weights,\n"
+     "                       uint vid) {\n"
+     "    int morphShapeCount = obj.flags0.z;\n"
+     "    int vertexCount = obj.flags0.w;\n"
+     "    if (obj.flags1.w == 0 || morphShapeCount <= 0 || vertexCount <= 0)\n"
+     "        return nrm;\n"
+     "    for (int s = 0; s < morphShapeCount; s++) {\n"
+     "        float w = weights[s];\n"
+     "        if (fabs(w) > 0.0001) {\n"
+     "            int off = (s * vertexCount + int(vid)) * 3;\n"
+     "            nrm.x += morphNormalDeltas[off + 0] * w;\n"
+     "            nrm.y += morphNormalDeltas[off + 1] * w;\n"
+     "            nrm.z += morphNormalDeltas[off + 2] * w;\n"
+     "        }\n"
+     "    }\n"
+     "    return nrm;\n"
+     "}\n"
+     "\n"
      "float4 skinPosition(float4 pos,\n"
      "                    VertexIn in,\n"
      "                    constant float4x4 *palette,\n"
@@ -331,6 +403,7 @@ static NSString *metal_shader_source =
      "    constant float *morphWeights [[buffer(5)]],\n"
      "    constant float4x4 *prevBonePalette [[buffer(7)]],\n"
      "    constant float *prevMorphWeights [[buffer(8)]],\n"
+     "    constant float *morphNormalDeltas [[buffer(9)]],\n"
      "    uint vid [[vertex_id]]) {\n"
      "    float3 pos = applyMorphPosition(in.position, obj, morphDeltas, morphWeights, vid);\n"
      "    float3 prevPos = applyMorphPosition(in.position,\n"
@@ -338,7 +411,8 @@ static NSString *metal_shader_source =
      "                                       morphDeltas,\n"
      "                                       obj.flags1.y != 0 ? prevMorphWeights : morphWeights,\n"
      "                                       vid);\n"
-     "    float3 currNormal = in.normal;\n"
+     "    float3 currNormal = applyMorphNormal(in.normal, obj, morphNormalDeltas, morphWeights, "
+     "vid);\n"
      "    float3 currTangent = in.tangent;\n"
      "    float4 skinnedPos = skinPosition(float4(pos, 1.0), in, bonePalette, obj.flags0.x);\n"
      "    float4 prevSkinnedPos = skinPosition(float4(prevPos, 1.0),\n"
@@ -381,6 +455,7 @@ static NSString *metal_shader_source =
      "    device const InstanceData *instances [[buffer(6)]],\n"
      "    constant float4x4 *prevBonePalette [[buffer(7)]],\n"
      "    constant float *prevMorphWeights [[buffer(8)]],\n"
+     "    constant float *morphNormalDeltas [[buffer(9)]],\n"
      "    uint vid [[vertex_id]],\n"
      "    uint iid [[instance_id]]) {\n"
      "    InstanceData inst = instances[iid];\n"
@@ -390,7 +465,8 @@ static NSString *metal_shader_source =
      "                                       morphDeltas,\n"
      "                                       obj.flags1.y != 0 ? prevMorphWeights : morphWeights,\n"
      "                                       vid);\n"
-     "    float3 currNormal = in.normal;\n"
+     "    float3 currNormal = applyMorphNormal(in.normal, obj, morphNormalDeltas, morphWeights, "
+     "vid);\n"
      "    float3 currTangent = in.tangent;\n"
      "    float4 skinnedPos = skinPosition(float4(pos, 1.0), in, bonePalette, obj.flags0.x);\n"
      "    float4 prevSkinnedPos = skinPosition(float4(prevPos, 1.0),\n"
@@ -816,19 +892,39 @@ static MTLVertexDescriptor *create_skybox_vertex_descriptor(void) {
     return d;
 }
 
+static const uint64_t k_texture_cache_max_age = 240u;
+static const uint64_t k_cubemap_cache_max_age = 240u;
+static const uint64_t k_morph_cache_max_age = 240u;
+
+static int metal_copy_texture_to_rgba(
+    id<MTLTexture> tex, uint8_t *dst_rgba, int32_t w, int32_t h, int32_t stride);
+static void metal_update_layer_size(VGFXMetalContext *ctx);
+static int metal_capture_current_drawable_to_display_texture(VGFXMetalContext *ctx);
+static id<MTLTexture> metal_encode_postfx_if_needed(
+    VGFXMetalContext *ctx, const vgfx3d_postfx_snapshot_t *postfx);
+
+static MTLPixelFormat
+metal_color_pixel_format(vgfx3d_metal_color_format_t format) {
+    return format == VGFX3D_METAL_COLOR_FORMAT_HDR16F ? MTLPixelFormatRGBA16Float
+                                                      : MTLPixelFormatBGRA8Unorm;
+}
+
 static id<MTLTexture> metal_new_color_texture(VGFXMetalContext *ctx,
                                               int32_t w,
                                               int32_t h,
-                                              MTLTextureUsage usage) {
+                                              MTLPixelFormat pixel_format,
+                                              MTLTextureUsage usage,
+                                              MTLStorageMode storage_mode,
+                                              BOOL mipmapped) {
     MTLTextureDescriptor *td;
     if (!ctx || !ctx.device || w <= 0 || h <= 0)
         return nil;
-    td = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm
+    td = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:pixel_format
                                                             width:(NSUInteger)w
                                                            height:(NSUInteger)h
-                                                        mipmapped:NO];
+                                                        mipmapped:mipmapped];
     td.usage = usage;
-    td.storageMode = MTLStorageModeManaged;
+    td.storageMode = storage_mode;
     return [ctx.device newTextureWithDescriptor:td];
 }
 
@@ -848,6 +944,155 @@ static id<MTLTexture> metal_new_depth_texture(VGFXMetalContext *ctx,
     return [ctx.device newTextureWithDescriptor:td];
 }
 
+static void metal_generate_mipmaps(VGFXMetalContext *ctx, id<MTLTexture> texture) {
+    id<MTLCommandBuffer> cmd_buf;
+    id<MTLBlitCommandEncoder> blit;
+
+    if (!ctx || !texture || texture.mipmapLevelCount <= 1)
+        return;
+    cmd_buf = [ctx.commandQueue commandBuffer];
+    if (!cmd_buf)
+        return;
+    blit = [cmd_buf blitCommandEncoder];
+    if (!blit)
+        return;
+    [blit generateMipmapsForTexture:texture];
+    [blit endEncoding];
+    [cmd_buf commit];
+    [cmd_buf waitUntilCompleted];
+}
+
+static void metal_prune_texture_cache(VGFXMetalContext *ctx) {
+    NSMutableArray *keys_to_remove;
+
+    if (!ctx || !ctx.textureCache)
+        return;
+    keys_to_remove = [NSMutableArray array];
+    for (NSValue *key in ctx.textureCache) {
+        VGFXMetalTextureCacheEntry *entry = ctx.textureCache[key];
+        if (!entry || !entry.texture ||
+            vgfx3d_metal_should_prune_cache_entry(
+                ctx.frameSerial, entry.lastUsedFrame, k_texture_cache_max_age)) {
+            [keys_to_remove addObject:key];
+        }
+    }
+    [ctx.textureCache removeObjectsForKeys:keys_to_remove];
+}
+
+static void metal_prune_cubemap_cache(VGFXMetalContext *ctx) {
+    NSMutableArray *keys_to_remove;
+
+    if (!ctx || !ctx.cubemapCache)
+        return;
+    keys_to_remove = [NSMutableArray array];
+    for (NSValue *key in ctx.cubemapCache) {
+        VGFXMetalCubemapCacheEntry *entry = ctx.cubemapCache[key];
+        if (!entry || !entry.texture ||
+            vgfx3d_metal_should_prune_cache_entry(
+                ctx.frameSerial, entry.lastUsedFrame, k_cubemap_cache_max_age)) {
+            [keys_to_remove addObject:key];
+        }
+    }
+    [ctx.cubemapCache removeObjectsForKeys:keys_to_remove];
+}
+
+static void metal_prune_morph_cache(VGFXMetalContext *ctx) {
+    NSMutableArray *keys_to_remove;
+
+    if (!ctx || !ctx.morphCache)
+        return;
+    keys_to_remove = [NSMutableArray array];
+    for (NSValue *key in ctx.morphCache) {
+        VGFXMetalMorphCacheEntry *entry = ctx.morphCache[key];
+        if (!entry || !entry.deltaBuffer ||
+            vgfx3d_metal_should_prune_cache_entry(
+                ctx.frameSerial, entry.lastUsedFrame, k_morph_cache_max_age)) {
+            [keys_to_remove addObject:key];
+        }
+    }
+    [ctx.morphCache removeObjectsForKeys:keys_to_remove];
+}
+
+static VGFXMetalRenderTargetCacheEntry *
+metal_lookup_render_target_entry(VGFXMetalContext *ctx, vgfx3d_rendertarget_t *rt) {
+    if (!ctx || !ctx.renderTargetCache || !rt)
+        return nil;
+    return ctx.renderTargetCache[[NSValue valueWithPointer:rt]];
+}
+
+static VGFXMetalRenderTargetCacheEntry *
+metal_ensure_render_target_entry(VGFXMetalContext *ctx, vgfx3d_rendertarget_t *rt) {
+    NSValue *key;
+    VGFXMetalRenderTargetCacheEntry *entry;
+    MTLTextureDescriptor *color_desc;
+    MTLTextureDescriptor *depth_desc;
+
+    if (!ctx || !ctx.renderTargetCache || !rt || rt->width <= 0 || rt->height <= 0)
+        return nil;
+
+    key = [NSValue valueWithPointer:rt];
+    entry = ctx.renderTargetCache[key];
+    if (entry && entry.width == rt->width && entry.height == rt->height && entry.colorTexture &&
+        entry.motionTexture && entry.depthTexture) {
+        entry.target = rt;
+        entry.lastUsedFrame = ctx.frameSerial;
+        return entry;
+    }
+
+    if (entry && entry.pendingCommandBuffer) {
+        [entry.pendingCommandBuffer waitUntilCompleted];
+        entry.pendingCommandBuffer = nil;
+    }
+
+    entry = [[VGFXMetalRenderTargetCacheEntry alloc] init];
+    entry.target = rt;
+    entry.width = rt->width;
+    entry.height = rt->height;
+    entry.lastUsedFrame = ctx.frameSerial;
+
+    color_desc =
+        [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm
+                                                           width:(NSUInteger)rt->width
+                                                          height:(NSUInteger)rt->height
+                                                       mipmapped:NO];
+    color_desc.usage = MTLTextureUsageRenderTarget | MTLTextureUsageShaderRead;
+    color_desc.storageMode = MTLStorageModeShared;
+    entry.colorTexture = [ctx.device newTextureWithDescriptor:color_desc];
+
+    color_desc.usage = MTLTextureUsageRenderTarget;
+    color_desc.storageMode = MTLStorageModePrivate;
+    entry.motionTexture = [ctx.device newTextureWithDescriptor:color_desc];
+
+    depth_desc =
+        [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatDepth32Float
+                                                           width:(NSUInteger)rt->width
+                                                          height:(NSUInteger)rt->height
+                                                       mipmapped:NO];
+    depth_desc.usage = MTLTextureUsageRenderTarget;
+    depth_desc.storageMode = MTLStorageModePrivate;
+    entry.depthTexture = [ctx.device newTextureWithDescriptor:depth_desc];
+    ctx.renderTargetCache[key] = entry;
+    return entry;
+}
+
+static int metal_sync_render_target_color(void *userdata, vgfx3d_rendertarget_t *target) {
+    VGFXMetalContext *ctx = (__bridge VGFXMetalContext *)userdata;
+    VGFXMetalRenderTargetCacheEntry *entry;
+
+    if (!ctx || !target || !target->color_buf)
+        return 0;
+    entry = metal_lookup_render_target_entry(ctx, target);
+    if (!entry || !entry.colorTexture)
+        return 0;
+    if (entry.pendingCommandBuffer) {
+        [entry.pendingCommandBuffer waitUntilCompleted];
+        entry.pendingCommandBuffer = nil;
+    }
+    entry.lastUsedFrame = ctx.frameSerial;
+    return metal_copy_texture_to_rgba(
+        entry.colorTexture, target->color_buf, target->width, target->height, target->stride);
+}
+
 static MTLRenderPassDescriptor *metal_make_scene_pass_descriptor(VGFXMetalContext *ctx,
                                                                  BOOL loadExistingColor,
                                                                  BOOL loadExistingDepth) {
@@ -855,12 +1100,44 @@ static MTLRenderPassDescriptor *metal_make_scene_pass_descriptor(VGFXMetalContex
     id<MTLTexture> color;
     id<MTLTexture> motion;
     id<MTLTexture> depth;
+    MTLClearColor clear_color;
 
     if (!ctx)
         return nil;
-    color = ctx.rttActive ? ctx.rttColorTexture : ctx.offscreenColor;
-    motion = ctx.rttActive ? ctx.rttMotionTexture : ctx.offscreenMotion;
-    depth = ctx.rttActive ? ctx.rttDepthTexture : ctx.depthTexture;
+    color = nil;
+    motion = nil;
+    depth = nil;
+    clear_color = MTLClearColorMake(ctx.clearR, ctx.clearG, ctx.clearB, 1.0);
+
+    switch (ctx.currentTargetKind) {
+    case VGFX3D_METAL_TARGET_SCENE:
+        color = ctx.offscreenColor;
+        motion = ctx.offscreenMotion;
+        depth = ctx.depthTexture;
+        break;
+    case VGFX3D_METAL_TARGET_OVERLAY:
+        color = ctx.overlayColorTexture;
+        motion = ctx.overlayMotionTexture;
+        depth = ctx.overlayDepthTexture;
+        clear_color = MTLClearColorMake(0.0, 0.0, 0.0, 0.0);
+        break;
+    case VGFX3D_METAL_TARGET_RTT:
+        color = ctx.rttColorTexture;
+        motion = ctx.rttMotionTexture;
+        depth = ctx.rttDepthTexture;
+        break;
+    case VGFX3D_METAL_TARGET_SWAPCHAIN:
+        metal_update_layer_size(ctx);
+        if (!ctx.drawable && ctx.metalLayer)
+            ctx.drawable = [ctx.metalLayer nextDrawable];
+        color = ctx.drawable ? ctx.drawable.texture : nil;
+        motion = ctx.offscreenMotion;
+        depth = ctx.depthTexture;
+        break;
+    default:
+        break;
+    }
+
     if (!color || !motion || !depth)
         return nil;
 
@@ -868,7 +1145,7 @@ static MTLRenderPassDescriptor *metal_make_scene_pass_descriptor(VGFXMetalContex
     rp.colorAttachments[0].texture = color;
     rp.colorAttachments[0].loadAction = loadExistingColor ? MTLLoadActionLoad : MTLLoadActionClear;
     rp.colorAttachments[0].storeAction = MTLStoreActionStore;
-    rp.colorAttachments[0].clearColor = MTLClearColorMake(ctx.clearR, ctx.clearG, ctx.clearB, 1.0);
+    rp.colorAttachments[0].clearColor = clear_color;
 
     rp.colorAttachments[1].texture = motion;
     rp.colorAttachments[1].loadAction = loadExistingColor ? MTLLoadActionLoad : MTLLoadActionClear;
@@ -903,7 +1180,9 @@ static void metal_begin_scene_encoder(VGFXMetalContext *ctx,
     if (!ctx.encoder)
         return;
 
-    [ctx.encoder setRenderPipelineState:ctx.pipelineState];
+    [ctx.encoder setRenderPipelineState:(ctx.currentTargetKind == VGFX3D_METAL_TARGET_SCENE)
+                                     ? ctx.pipelineState
+                                     : ctx.pipelineStateColorOnly];
     [ctx.encoder setDepthStencilState:ctx.depthState];
     vw = (double)(ctx.rttActive ? ctx.rttWidth : ctx.width);
     vh = (double)(ctx.rttActive ? ctx.rttHeight : ctx.height);
@@ -916,18 +1195,74 @@ static void metal_begin_scene_encoder(VGFXMetalContext *ctx,
 static void metal_recreate_main_targets(VGFXMetalContext *ctx, int32_t w, int32_t h) {
     if (!ctx || w <= 0 || h <= 0)
         return;
-    ctx.offscreenColor =
-        metal_new_color_texture(ctx, w, h, MTLTextureUsageRenderTarget | MTLTextureUsageShaderRead);
-    ctx.offscreenMotion =
-        metal_new_color_texture(ctx, w, h, MTLTextureUsageRenderTarget | MTLTextureUsageShaderRead);
+
     ctx.depthTexture =
         metal_new_depth_texture(ctx, w, h, MTLTextureUsageRenderTarget | MTLTextureUsageShaderRead);
-    if (ctx.postfxPipeline) {
-        ctx.postfxColorTexture = metal_new_color_texture(
-            ctx, w, h, MTLTextureUsageRenderTarget | MTLTextureUsageShaderRead);
-    } else
+
+    if (ctx.gpuPostfxEnabled) {
+        ctx.offscreenColor = metal_new_color_texture(
+            ctx,
+            w,
+            h,
+            metal_color_pixel_format(VGFX3D_METAL_COLOR_FORMAT_HDR16F),
+            MTLTextureUsageRenderTarget | MTLTextureUsageShaderRead,
+            MTLStorageModePrivate,
+            NO);
+        ctx.offscreenMotion = metal_new_color_texture(ctx,
+                                                      w,
+                                                      h,
+                                                      MTLPixelFormatBGRA8Unorm,
+                                                      MTLTextureUsageRenderTarget |
+                                                          MTLTextureUsageShaderRead,
+                                                      MTLStorageModePrivate,
+                                                      NO);
+        ctx.overlayColorTexture = metal_new_color_texture(
+            ctx,
+            w,
+            h,
+            metal_color_pixel_format(VGFX3D_METAL_COLOR_FORMAT_UNORM8),
+            MTLTextureUsageRenderTarget | MTLTextureUsageShaderRead,
+            MTLStorageModePrivate,
+            NO);
+        ctx.overlayMotionTexture = metal_new_color_texture(ctx,
+                                                           w,
+                                                           h,
+                                                           MTLPixelFormatBGRA8Unorm,
+                                                           MTLTextureUsageRenderTarget |
+                                                               MTLTextureUsageShaderRead,
+                                                           MTLStorageModePrivate,
+                                                           NO);
+        ctx.overlayDepthTexture =
+            metal_new_depth_texture(ctx, w, h, MTLTextureUsageRenderTarget);
+        if (ctx.postfxPipeline) {
+            ctx.postfxColorTexture = metal_new_color_texture(
+                ctx,
+                w,
+                h,
+                metal_color_pixel_format(VGFX3D_METAL_COLOR_FORMAT_UNORM8),
+                MTLTextureUsageRenderTarget | MTLTextureUsageShaderRead,
+                MTLStorageModeShared,
+                NO);
+        } else {
+            ctx.postfxColorTexture = nil;
+        }
+    } else {
+        ctx.offscreenColor = nil;
+        ctx.offscreenMotion = metal_new_color_texture(ctx,
+                                                      w,
+                                                      h,
+                                                      MTLPixelFormatBGRA8Unorm,
+                                                      MTLTextureUsageRenderTarget,
+                                                      MTLStorageModePrivate,
+                                                      NO);
+        ctx.overlayColorTexture = nil;
+        ctx.overlayMotionTexture = nil;
+        ctx.overlayDepthTexture = nil;
         ctx.postfxColorTexture = nil;
+    }
+
     ctx.displayTexture = nil;
+    ctx.postfxEncodedThisFrame = 0;
 }
 
 static int metal_upload_rgba_to_bgra_texture(id<MTLTexture> tex,
@@ -1050,6 +1385,13 @@ static BOOL metal_present_texture(VGFXMetalContext *ctx, id<MTLTexture> texture)
 
     if (!ctx || !texture || ctx.rttActive)
         return NO;
+    if (!ctx.cmdBuf) {
+        ctx.cmdBuf = [ctx.commandQueue commandBuffer];
+        if (!ctx.cmdBuf)
+            return NO;
+        if (!ctx.frameBuffers)
+            ctx.frameBuffers = [NSMutableArray arrayWithCapacity:4];
+    }
     metal_update_layer_size(ctx);
     if (!ctx.metalLayer)
         return NO;
@@ -1087,6 +1429,12 @@ static id<MTLBuffer> metal_new_shared_buffer(VGFXMetalContext *ctx,
     if (!ctx || !bytes || length == 0)
         return nil;
     return [ctx.device newBufferWithBytes:bytes length:length options:MTLResourceStorageModeShared];
+}
+
+static id<MTLBuffer> metal_new_shared_buffer_with_length(VGFXMetalContext *ctx, size_t length) {
+    if (!ctx || !ctx.device || length == 0)
+        return nil;
+    return [ctx.device newBufferWithLength:length options:MTLResourceStorageModeShared];
 }
 
 static void metal_cache_evict_if_needed(VGFXMetalContext *ctx) {
@@ -1155,6 +1503,10 @@ static id<MTLTexture> metal_active_readback_texture(VGFXMetalContext *ctx) {
         return ctx.rttColorTexture;
     if (ctx.displayTexture)
         return ctx.displayTexture;
+    if (ctx.gpuPostfxEnabled && ctx.postfxEncodedThisFrame && ctx.postfxColorTexture)
+        return ctx.postfxColorTexture;
+    if (ctx.currentTargetKind == VGFX3D_METAL_TARGET_SWAPCHAIN && ctx.drawable)
+        return ctx.drawable.texture;
     return ctx.offscreenColor;
 }
 
@@ -1191,6 +1543,87 @@ static MTLVertexDescriptor *create_vertex_descriptor(void) {
     return d;
 }
 
+static void metal_configure_blend_state(MTLRenderPipelineColorAttachmentDescriptor *attachment,
+                                        BOOL enabled) {
+    if (!attachment)
+        return;
+    attachment.blendingEnabled = enabled;
+    attachment.sourceRGBBlendFactor = MTLBlendFactorSourceAlpha;
+    attachment.destinationRGBBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
+    attachment.sourceAlphaBlendFactor = MTLBlendFactorOne;
+    attachment.destinationAlphaBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
+}
+
+static id<MTLRenderPipelineState>
+metal_create_pipeline_state(id<MTLDevice> device,
+                            id<MTLFunction> vertex_function,
+                            id<MTLFunction> fragment_function,
+                            MTLVertexDescriptor *vertex_descriptor,
+                            MTLPixelFormat color0_format,
+                            BOOL alpha_blend,
+                            BOOL disable_motion_writes,
+                            NSError **error) {
+    MTLRenderPipelineDescriptor *descriptor;
+
+    if (!device || !vertex_function || !fragment_function)
+        return nil;
+
+    descriptor = [[MTLRenderPipelineDescriptor alloc] init];
+    descriptor.vertexFunction = vertex_function;
+    descriptor.fragmentFunction = fragment_function;
+    descriptor.vertexDescriptor = vertex_descriptor;
+    descriptor.colorAttachments[0].pixelFormat = color0_format;
+    descriptor.colorAttachments[1].pixelFormat = MTLPixelFormatBGRA8Unorm;
+    descriptor.depthAttachmentPixelFormat = MTLPixelFormatDepth32Float;
+    metal_configure_blend_state(descriptor.colorAttachments[0], alpha_blend);
+    descriptor.colorAttachments[1].writeMask =
+        disable_motion_writes ? MTLColorWriteMaskNone : MTLColorWriteMaskAll;
+    return [device newRenderPipelineStateWithDescriptor:descriptor error:error];
+}
+
+static id<MTLRenderPipelineState>
+metal_create_skybox_pipeline_state(id<MTLDevice> device,
+                                   id<MTLFunction> vertex_function,
+                                   id<MTLFunction> fragment_function,
+                                   MTLPixelFormat color0_format,
+                                   NSError **error) {
+    MTLRenderPipelineDescriptor *descriptor;
+
+    if (!device || !vertex_function || !fragment_function)
+        return nil;
+
+    descriptor = [[MTLRenderPipelineDescriptor alloc] init];
+    descriptor.vertexFunction = vertex_function;
+    descriptor.fragmentFunction = fragment_function;
+    descriptor.vertexDescriptor = create_skybox_vertex_descriptor();
+    descriptor.colorAttachments[0].pixelFormat = color0_format;
+    descriptor.colorAttachments[1].pixelFormat = MTLPixelFormatBGRA8Unorm;
+    descriptor.depthAttachmentPixelFormat = MTLPixelFormatDepth32Float;
+    descriptor.colorAttachments[1].writeMask = MTLColorWriteMaskNone;
+    return [device newRenderPipelineStateWithDescriptor:descriptor error:error];
+}
+
+static id<MTLRenderPipelineState>
+metal_select_pipeline_state(VGFXMetalContext *ctx, const vgfx3d_draw_cmd_t *cmd, BOOL instanced) {
+    vgfx3d_metal_blend_mode_t blend_mode;
+
+    if (!ctx)
+        return nil;
+    blend_mode = vgfx3d_metal_choose_blend_mode(cmd);
+    if (ctx.currentTargetKind == VGFX3D_METAL_TARGET_SCENE) {
+        if (instanced)
+            return blend_mode == VGFX3D_METAL_BLEND_ALPHA ? ctx.instancedPipelineStateAlpha
+                                                          : ctx.instancedPipelineState;
+        return blend_mode == VGFX3D_METAL_BLEND_ALPHA ? ctx.pipelineStateAlpha : ctx.pipelineState;
+    }
+
+    if (instanced)
+        return blend_mode == VGFX3D_METAL_BLEND_ALPHA ? ctx.instancedPipelineStateColorOnlyAlpha
+                                                      : ctx.instancedPipelineStateColorOnly;
+    return blend_mode == VGFX3D_METAL_BLEND_ALPHA ? ctx.pipelineStateColorOnlyAlpha
+                                                  : ctx.pipelineStateColorOnly;
+}
+
 //=============================================================================
 // Backend vtable
 //=============================================================================
@@ -1217,6 +1650,9 @@ static void *metal_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
         ctx.textureCache = [NSMutableDictionary dictionaryWithCapacity:32];
         ctx.cubemapCache = [NSMutableDictionary dictionaryWithCapacity:8];
         ctx.geometryCache = [NSMutableDictionary dictionaryWithCapacity:32];
+        ctx.morphCache = [NSMutableDictionary dictionaryWithCapacity:16];
+        ctx.renderTargetCache = [NSMutableDictionary dictionaryWithCapacity:8];
+        ctx.currentTargetKind = VGFX3D_METAL_TARGET_SWAPCHAIN;
 
         view.wantsLayer = YES;
         if (!view.layer)
@@ -1263,41 +1699,79 @@ static void *metal_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
             return NULL;
         }
 
-        MTLRenderPipelineDescriptor *pd = [[MTLRenderPipelineDescriptor alloc] init];
-        pd.vertexFunction = vf;
-        pd.fragmentFunction = ff;
-        pd.vertexDescriptor = create_vertex_descriptor();
-        pd.colorAttachments[0].pixelFormat = MTLPixelFormatBGRA8Unorm;
-        pd.colorAttachments[1].pixelFormat = MTLPixelFormatBGRA8Unorm;
-        /* Enable alpha blending: src*srcAlpha + dst*(1-srcAlpha) */
-        pd.colorAttachments[0].blendingEnabled = YES;
-        pd.colorAttachments[0].sourceRGBBlendFactor = MTLBlendFactorSourceAlpha;
-        pd.colorAttachments[0].destinationRGBBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
-        pd.colorAttachments[0].sourceAlphaBlendFactor = MTLBlendFactorOne;
-        pd.colorAttachments[0].destinationAlphaBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
-        pd.depthAttachmentPixelFormat = MTLPixelFormatDepth32Float;
-
-        ctx.pipelineState = [device newRenderPipelineStateWithDescriptor:pd error:&error];
-        if (!ctx.pipelineState) {
+        ctx.pipelineState = metal_create_pipeline_state(device,
+                                                        vf,
+                                                        ff,
+                                                        create_vertex_descriptor(),
+                                                        MTLPixelFormatRGBA16Float,
+                                                        NO,
+                                                        NO,
+                                                        &error);
+        ctx.pipelineStateAlpha = metal_create_pipeline_state(device,
+                                                             vf,
+                                                             ff,
+                                                             create_vertex_descriptor(),
+                                                             MTLPixelFormatRGBA16Float,
+                                                             YES,
+                                                             YES,
+                                                             &error);
+        ctx.pipelineStateColorOnly = metal_create_pipeline_state(device,
+                                                                 vf,
+                                                                 ff,
+                                                                 create_vertex_descriptor(),
+                                                                 MTLPixelFormatBGRA8Unorm,
+                                                                 NO,
+                                                                 NO,
+                                                                 &error);
+        ctx.pipelineStateColorOnlyAlpha =
+            metal_create_pipeline_state(device,
+                                        vf,
+                                        ff,
+                                        create_vertex_descriptor(),
+                                        MTLPixelFormatBGRA8Unorm,
+                                        YES,
+                                        YES,
+                                        &error);
+        ctx.instancedPipelineState = metal_create_pipeline_state(device,
+                                                                 vfInstanced,
+                                                                 ff,
+                                                                 create_vertex_descriptor(),
+                                                                 MTLPixelFormatRGBA16Float,
+                                                                 NO,
+                                                                 NO,
+                                                                 &error);
+        ctx.instancedPipelineStateAlpha =
+            metal_create_pipeline_state(device,
+                                        vfInstanced,
+                                        ff,
+                                        create_vertex_descriptor(),
+                                        MTLPixelFormatRGBA16Float,
+                                        YES,
+                                        YES,
+                                        &error);
+        ctx.instancedPipelineStateColorOnly =
+            metal_create_pipeline_state(device,
+                                        vfInstanced,
+                                        ff,
+                                        create_vertex_descriptor(),
+                                        MTLPixelFormatBGRA8Unorm,
+                                        NO,
+                                        NO,
+                                        &error);
+        ctx.instancedPipelineStateColorOnlyAlpha =
+            metal_create_pipeline_state(device,
+                                        vfInstanced,
+                                        ff,
+                                        create_vertex_descriptor(),
+                                        MTLPixelFormatBGRA8Unorm,
+                                        YES,
+                                        YES,
+                                        &error);
+        if (!ctx.pipelineState || !ctx.pipelineStateAlpha || !ctx.pipelineStateColorOnly ||
+            !ctx.pipelineStateColorOnlyAlpha || !ctx.instancedPipelineState ||
+            !ctx.instancedPipelineStateAlpha || !ctx.instancedPipelineStateColorOnly ||
+            !ctx.instancedPipelineStateColorOnlyAlpha) {
             NSLog(@ "Metal pipeline error: %@", error);
-            return NULL;
-        }
-
-        MTLRenderPipelineDescriptor *ipd = [[MTLRenderPipelineDescriptor alloc] init];
-        ipd.vertexFunction = vfInstanced;
-        ipd.fragmentFunction = ff;
-        ipd.vertexDescriptor = create_vertex_descriptor();
-        ipd.colorAttachments[0].pixelFormat = MTLPixelFormatBGRA8Unorm;
-        ipd.colorAttachments[1].pixelFormat = MTLPixelFormatBGRA8Unorm;
-        ipd.colorAttachments[0].blendingEnabled = YES;
-        ipd.colorAttachments[0].sourceRGBBlendFactor = MTLBlendFactorSourceAlpha;
-        ipd.colorAttachments[0].destinationRGBBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
-        ipd.colorAttachments[0].sourceAlphaBlendFactor = MTLBlendFactorOne;
-        ipd.colorAttachments[0].destinationAlphaBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
-        ipd.depthAttachmentPixelFormat = MTLPixelFormatDepth32Float;
-        ctx.instancedPipelineState = [device newRenderPipelineStateWithDescriptor:ipd error:&error];
-        if (!ctx.instancedPipelineState) {
-            NSLog(@ "Metal instanced pipeline error: %@", error);
             return NULL;
         }
 
@@ -1331,6 +1805,7 @@ static void *metal_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
             MTLSamplerDescriptor *sd = [[MTLSamplerDescriptor alloc] init];
             sd.minFilter = MTLSamplerMinMagFilterLinear;
             sd.magFilter = MTLSamplerMinMagFilterLinear;
+            sd.mipFilter = MTLSamplerMipFilterLinear;
             ctx.defaultSampler = [device newSamplerStateWithDescriptor:sd];
 
             MTLTextureDescriptor *cubeDesc =
@@ -1356,6 +1831,7 @@ static void *metal_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
             MTLSamplerDescriptor *sd = [[MTLSamplerDescriptor alloc] init];
             sd.minFilter = MTLSamplerMinMagFilterLinear;
             sd.magFilter = MTLSamplerMinMagFilterLinear;
+            sd.mipFilter = MTLSamplerMipFilterLinear;
             sd.sAddressMode = MTLSamplerAddressModeRepeat;
             sd.tAddressMode = MTLSamplerAddressModeRepeat;
             ctx.sharedSampler = [device newSamplerStateWithDescriptor:sd];
@@ -1363,6 +1839,7 @@ static void *metal_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
             MTLSamplerDescriptor *cubeSd = [[MTLSamplerDescriptor alloc] init];
             cubeSd.minFilter = MTLSamplerMinMagFilterLinear;
             cubeSd.magFilter = MTLSamplerMinMagFilterLinear;
+            cubeSd.mipFilter = MTLSamplerMipFilterLinear;
             cubeSd.sAddressMode = MTLSamplerAddressModeClampToEdge;
             cubeSd.tAddressMode = MTLSamplerAddressModeClampToEdge;
             cubeSd.rAddressMode = MTLSamplerAddressModeClampToEdge;
@@ -1429,11 +1906,11 @@ static void *metal_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
                         "    float dofFocusDist;\n"
                         "    float dofAperture;\n"
                         "    float dofMaxBlur;\n"
-                        "    int motionBlurEnabled;\n"
-                        "    float motionBlurIntensity;\n"
-                        "    int motionBlurSamples;\n"
-                        "    float _pad;\n"
-                        "};\n"
+	                        "    int motionBlurEnabled;\n"
+	                        "    float motionBlurIntensity;\n"
+	                        "    int motionBlurSamples;\n"
+	                        "    int overlayEnabled;\n"
+	                        "};\n"
                         "vertex FullscreenVert fullscreen_vs(uint vid [[vertex_id]]) {\n"
                         "    float2 positions[4] = {float2(-1,-1), float2(1,-1), float2(-1,1), "
                         "float2(1,1)};\n"
@@ -1555,13 +2032,14 @@ static void *metal_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
                               "    return mix(color, avg, 0.5);\n"
                               "}\n"],
                 [NSString stringWithUTF8String:
-                              "fragment float4 postfx_fs(\n"
-                              "    FullscreenVert in [[stage_in]],\n"
-                              "    texture2d<float> sceneTex [[texture(0)]],\n"
-                              "    depth2d<float> depthTex [[texture(1)]],\n"
-                              "    texture2d<float> motionTex [[texture(2)]],\n"
-                              "    sampler s [[sampler(0)]],\n"
-                              "    constant PostFXParams &p [[buffer(0)]]) {\n"
+	                              "fragment float4 postfx_fs(\n"
+	                              "    FullscreenVert in [[stage_in]],\n"
+	                              "    texture2d<float> sceneTex [[texture(0)]],\n"
+	                              "    depth2d<float> depthTex [[texture(1)]],\n"
+	                              "    texture2d<float> motionTex [[texture(2)]],\n"
+	                              "    texture2d<float> overlayTex [[texture(3)]],\n"
+	                              "    sampler s [[sampler(0)]],\n"
+	                              "    constant PostFXParams &p [[buffer(0)]]) {\n"
                               "    float3 color = sampleScene(sceneTex, s, in.uv);\n"
                               "    float depth = sampleDepth(depthTex, s, in.uv);\n"
                               "    float3 worldPos = reconstructWorld(p, in.uv, depth);\n"
@@ -1592,15 +2070,20 @@ static void *metal_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
                               "        float luma = dot(color, float3(0.299,0.587,0.114));\n"
                               "        color = mix(float3(luma), color, p.cgSat);\n"
                               "    }\n"
-                              "    if (p.vignetteEnabled) {\n"
-                              "        float2 ctr = in.uv - 0.5;\n"
-                              "        float d = length(ctr);\n"
-                              "        float vig = 1.0 - smoothstep(p.vigRadius, p.vigRadius + "
-                              "p.vigSoftness, d);\n"
-                              "        color *= vig;\n"
-                              "    }\n"
-                              "    return float4(color, 1.0);\n"
-                              "}\n"]
+	                              "    if (p.vignetteEnabled) {\n"
+	                              "        float2 ctr = in.uv - 0.5;\n"
+	                              "        float d = length(ctr);\n"
+	                              "        float vig = 1.0 - smoothstep(p.vigRadius, p.vigRadius + "
+	                              "p.vigSoftness, d);\n"
+	                              "        color *= vig;\n"
+	                              "    }\n"
+	                              "    if (p.overlayEnabled != 0) {\n"
+	                              "        float4 overlay = overlayTex.sample(s, in.uv);\n"
+	                              "        color = mix(color, overlay.rgb, clamp(overlay.a, 0.0, "
+	                              "1.0));\n"
+	                              "    }\n"
+	                              "    return float4(color, 1.0);\n"
+	                              "}\n"]
             ];
             NSString *postfxSrc = [postfxChunks componentsJoinedByString:@ ""];
 
@@ -1649,14 +2132,10 @@ static void *metal_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
                 id<MTLFunction> skyVS = [skyLib newFunctionWithName:@ "skybox_vs"];
                 id<MTLFunction> skyFS = [skyLib newFunctionWithName:@ "skybox_fs"];
                 if (skyVS && skyFS) {
-                    MTLRenderPipelineDescriptor *spd = [[MTLRenderPipelineDescriptor alloc] init];
-                    spd.vertexFunction = skyVS;
-                    spd.fragmentFunction = skyFS;
-                    spd.vertexDescriptor = create_skybox_vertex_descriptor();
-                    spd.colorAttachments[0].pixelFormat = MTLPixelFormatBGRA8Unorm;
-                    spd.depthAttachmentPixelFormat = MTLPixelFormatDepth32Float;
-                    ctx.skyboxPipeline = [device newRenderPipelineStateWithDescriptor:spd
-                                                                                error:&skyErr];
+                    ctx.skyboxPipeline = metal_create_skybox_pipeline_state(
+                        device, skyVS, skyFS, MTLPixelFormatRGBA16Float, &skyErr);
+                    ctx.skyboxColorPipeline = metal_create_skybox_pipeline_state(
+                        device, skyVS, skyFS, MTLPixelFormatBGRA8Unorm, &skyErr);
                 }
             }
             ctx.skyboxVertexBuffer = [device newBufferWithBytes:metal_skybox_vertices
@@ -1693,24 +2172,41 @@ static void metal_clear(void *ctx_ptr, vgfx_window_t win, float r, float g, floa
 static void metal_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) {
     @autoreleasepool {
         VGFXMetalContext *ctx = (__bridge VGFXMetalContext *)ctx_ptr;
+        BOOL new_command_buffer = NO;
+        float inv_vp[16];
+        vgfx3d_metal_frame_history_t history;
+        int8_t load_existing_color;
+        int8_t is_overlay_pass;
         if (!ctx)
             return;
 
         ctx.frameSerial++;
         float vp[16];
         mat4f_mul(cam->projection, cam->view, vp);
-        if (ctx->_prevVPValid)
-            memcpy(ctx->_prevVP, ctx->_vp, sizeof(float) * 16);
+        if (vgfx3d_invert_matrix4(vp, inv_vp) != 0)
+            mat4f_identity(inv_vp);
+
+        ctx.currentTargetKind = vgfx3d_metal_choose_target_kind(
+            ctx.rttActive ? 1 : 0, ctx.gpuPostfxEnabled, cam->load_existing_color);
+        is_overlay_pass = ctx.currentTargetKind == VGFX3D_METAL_TARGET_OVERLAY ? 1 : 0;
+        history = ctx.frameHistory;
+        load_existing_color = vgfx3d_metal_should_load_existing_color(
+            ctx.currentTargetKind, cam->load_existing_color, history.overlay_used_this_frame);
+        vgfx3d_metal_update_frame_history(&history,
+                                          vp,
+                                          inv_vp,
+                                          cam->position,
+                                          is_overlay_pass,
+                                          ctx.currentTargetKind == VGFX3D_METAL_TARGET_OVERLAY);
+        ctx.frameHistory = history;
+
         memcpy(ctx->_view, cam->view, sizeof(float) * 16);
         memcpy(ctx->_projection, cam->projection, sizeof(float) * 16);
         memcpy(ctx->_vp, vp, sizeof(float) * 16);
-        if (!ctx->_prevVPValid) {
-            memcpy(ctx->_prevVP, vp, sizeof(float) * 16);
-            ctx->_prevVPValid = YES;
-        }
-        if (vgfx3d_invert_matrix4(vp, ctx->_invVP) != 0)
-            mat4f_identity(ctx->_invVP);
+        memcpy(ctx->_prevVP, ctx.frameHistory.draw_prev_vp, sizeof(ctx->_prevVP));
+        memcpy(ctx->_invVP, inv_vp, sizeof(ctx->_invVP));
         memcpy(ctx->_camPos, cam->position, sizeof(float) * 3);
+        ctx->_prevVPValid = ctx.frameHistory.scene_history_valid ? YES : NO;
 
         /* MTL-07: Store fog parameters for submit_draw */
         ctx->_fogEnabled = cam->fog_enabled;
@@ -1720,11 +2216,6 @@ static void metal_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) 
         ctx->_fogColor[1] = cam->fog_color[1];
         ctx->_fogColor[2] = cam->fog_color[2];
 
-        ctx.displayTexture = nil;
-
-        /* Reset shadow state for this frame (may be re-enabled by shadow_begin) */
-        ctx.shadowActive = NO;
-
         /* Reuse the command buffer if one is already open (multi-pass frame).
          * RTT end_frame commits and nils the cmdBuf, so on-screen passes
          * after an RTT pass will create a fresh one. */
@@ -1733,10 +2224,22 @@ static void metal_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) 
             if (!ctx.cmdBuf)
                 return;
             ctx.frameBuffers = [NSMutableArray arrayWithCapacity:32];
+            ctx.drawable = nil;
+            ctx.displayTexture = nil;
+            ctx.postfxEncodedThisFrame = 0;
+            new_command_buffer = YES;
         } else if (!ctx.frameBuffers)
             ctx.frameBuffers = [NSMutableArray arrayWithCapacity:32];
-        ctx.drawable = nil;
-        metal_begin_scene_encoder(ctx, cam->load_existing_color, cam->load_existing_depth);
+        if (new_command_buffer || !is_overlay_pass)
+            ctx.shadowActive = NO;
+
+        if ((ctx.frameSerial & 31u) == 0u) {
+            metal_prune_texture_cache(ctx);
+            metal_prune_cubemap_cache(ctx);
+            metal_prune_morph_cache(ctx);
+        }
+
+        metal_begin_scene_encoder(ctx, load_existing_color, cam->load_existing_depth);
         if (!ctx.encoder)
             return;
         ctx.inFrame = YES;
@@ -1749,22 +2252,26 @@ static id<MTLTexture> metal_get_cached_texture(VGFXMetalContext *ctx, const void
     int32_t tw = 0;
     int32_t th = 0;
     uint8_t *rgba = NULL;
+    int32_t mip_count;
     uint64_t generation;
     NSValue *key = [NSValue valueWithPointer:pixels_ptr];
     VGFXMetalTextureCacheEntry *cached = ctx.textureCache[key];
     generation = vgfx3d_get_pixels_generation(pixels_ptr);
-    if (cached && cached.texture && cached.generation == generation)
+    if (cached && cached.texture && cached.generation == generation) {
+        cached.lastUsedFrame = ctx.frameSerial;
         return cached.texture;
+    }
     if (vgfx3d_unpack_pixels_rgba(pixels_ptr, &tw, &th, &rgba) != 0 || !rgba)
         return nil;
 
+    mip_count = vgfx3d_metal_compute_mip_count(tw, th);
     if (!cached || !cached.texture || (int32_t)cached.texture.width != tw ||
         (int32_t)cached.texture.height != th) {
         MTLTextureDescriptor *texDesc =
             [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm
                                                                width:(NSUInteger)tw
                                                               height:(NSUInteger)th
-                                                           mipmapped:NO];
+                                                           mipmapped:(mip_count > 1)];
         texDesc.usage = MTLTextureUsageShaderRead;
         texDesc.storageMode = MTLStorageModeShared;
         if (!cached)
@@ -1777,6 +2284,8 @@ static id<MTLTexture> metal_get_cached_texture(VGFXMetalContext *ctx, const void
     }
     free(rgba);
     cached.generation = generation;
+    cached.lastUsedFrame = ctx.frameSerial;
+    metal_generate_mipmaps(ctx, cached.texture);
     ctx.textureCache[key] = cached;
     return cached.texture;
 }
@@ -1784,6 +2293,7 @@ static id<MTLTexture> metal_get_cached_texture(VGFXMetalContext *ctx, const void
 static id<MTLTexture> metal_get_cached_cubemap(VGFXMetalContext *ctx, const rt_cubemap3d *cubemap) {
     int32_t face_size = 0;
     uint8_t *faces[6];
+    int32_t mip_count;
     uint64_t generation;
     NSValue *key;
     VGFXMetalCubemapCacheEntry *cached;
@@ -1794,16 +2304,19 @@ static id<MTLTexture> metal_get_cached_cubemap(VGFXMetalContext *ctx, const rt_c
     key = [NSValue valueWithPointer:cubemap];
     cached = ctx.cubemapCache[key];
     generation = vgfx3d_get_cubemap_generation(cubemap);
-    if (cached && cached.texture && cached.generation == generation)
+    if (cached && cached.texture && cached.generation == generation) {
+        cached.lastUsedFrame = ctx.frameSerial;
         return cached.texture;
+    }
     if (vgfx3d_unpack_cubemap_faces_rgba(cubemap, &face_size, faces) != 0)
         return nil;
 
+    mip_count = vgfx3d_metal_compute_mip_count(face_size, face_size);
     if (!cached || !cached.texture || (int32_t)cached.texture.width != face_size) {
         MTLTextureDescriptor *cubeDesc =
             [MTLTextureDescriptor textureCubeDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm
                                                                   size:(NSUInteger)face_size
-                                                             mipmapped:NO];
+                                                             mipmapped:(mip_count > 1)];
         cubeDesc.usage = MTLTextureUsageShaderRead;
         cubeDesc.storageMode = MTLStorageModeShared;
         if (!cached)
@@ -1839,8 +2352,133 @@ static id<MTLTexture> metal_get_cached_cubemap(VGFXMetalContext *ctx, const rt_c
         free(faces[cleanup]);
 
     cached.generation = generation;
+    cached.lastUsedFrame = ctx.frameSerial;
+    metal_generate_mipmaps(ctx, cached.texture);
     ctx.cubemapCache[key] = cached;
     return cached.texture;
+}
+
+static VGFXMetalMorphCacheEntry *
+metal_get_cached_morph_entry(VGFXMetalContext *ctx, const vgfx3d_draw_cmd_t *cmd) {
+    NSValue *key;
+    VGFXMetalMorphCacheEntry *entry;
+    size_t bytes;
+
+    if (!ctx || !ctx.morphCache || !cmd || !cmd->morph_key || cmd->morph_revision == 0 ||
+        !cmd->morph_deltas || !cmd->morph_weights || cmd->morph_shape_count <= 0 ||
+        cmd->vertex_count == 0) {
+        return nil;
+    }
+
+    key = [NSValue valueWithPointer:cmd->morph_key];
+    entry = ctx.morphCache[key];
+    if (entry && entry.deltaBuffer &&
+        vgfx3d_metal_should_reuse_morph_cache(entry.key,
+                                              entry.revision,
+                                              entry.shapeCount,
+                                              entry.vertexCount,
+                                              entry.hasNormalDeltas,
+                                              cmd)) {
+        entry.lastUsedFrame = ctx.frameSerial;
+        return entry;
+    }
+
+    bytes = (size_t)cmd->morph_shape_count * cmd->vertex_count * 3u * sizeof(float);
+    entry = entry ? entry : [[VGFXMetalMorphCacheEntry alloc] init];
+    entry.deltaBuffer = metal_new_shared_buffer(ctx, cmd->morph_deltas, bytes);
+    entry.normalBuffer = cmd->morph_normal_deltas
+                             ? metal_new_shared_buffer(ctx, cmd->morph_normal_deltas, bytes)
+                             : nil;
+    entry.key = cmd->morph_key;
+    entry.revision = cmd->morph_revision;
+    entry.shapeCount = cmd->morph_shape_count;
+    entry.vertexCount = cmd->vertex_count;
+    entry.hasNormalDeltas = cmd->morph_normal_deltas ? 1 : 0;
+    entry.lastUsedFrame = ctx.frameSerial;
+    ctx.morphCache[key] = entry;
+    return entry;
+}
+
+static void metal_bind_bone_palettes(VGFXMetalContext *ctx,
+                                     const vgfx3d_draw_cmd_t *cmd,
+                                     int has_skinning,
+                                     int has_prev_skinning) {
+    float packed_palette[VGFX3D_METAL_MAX_BONES * 16];
+    size_t palette_bytes = sizeof(packed_palette);
+
+    if (!ctx || !cmd || !has_skinning)
+        return;
+
+    vgfx3d_metal_pack_bone_palette(packed_palette, cmd->bone_palette, cmd->bone_count);
+    id<MTLBuffer> bone_buf = metal_new_shared_buffer(ctx, packed_palette, palette_bytes);
+    [ctx.encoder setVertexBuffer:bone_buf offset:0 atIndex:3];
+    if (ctx.frameBuffers && bone_buf)
+        [ctx.frameBuffers addObject:bone_buf];
+    if (has_prev_skinning) {
+        id<MTLBuffer> prev_bone_buf;
+        vgfx3d_metal_pack_bone_palette(packed_palette, cmd->prev_bone_palette, cmd->bone_count);
+        prev_bone_buf = metal_new_shared_buffer(ctx, packed_palette, palette_bytes);
+        [ctx.encoder setVertexBuffer:prev_bone_buf offset:0 atIndex:7];
+        if (ctx.frameBuffers && prev_bone_buf)
+            [ctx.frameBuffers addObject:prev_bone_buf];
+    }
+}
+
+static void metal_bind_morph_payload(VGFXMetalContext *ctx, const vgfx3d_draw_cmd_t *cmd) {
+    VGFXMetalMorphCacheEntry *cached_entry;
+    id<MTLBuffer> delta_buf = nil;
+    id<MTLBuffer> normal_buf = nil;
+    size_t delta_bytes;
+    size_t weight_bytes;
+
+    if (!ctx || !cmd || !cmd->morph_deltas || !cmd->morph_weights || cmd->morph_shape_count <= 0)
+        return;
+
+    cached_entry = metal_get_cached_morph_entry(ctx, cmd);
+    if (cached_entry) {
+        delta_buf = cached_entry.deltaBuffer;
+        normal_buf = cached_entry.normalBuffer;
+    } else {
+        delta_bytes = (size_t)cmd->morph_shape_count * cmd->vertex_count * 3u * sizeof(float);
+        delta_buf = metal_new_shared_buffer(ctx, cmd->morph_deltas, delta_bytes);
+        normal_buf = cmd->morph_normal_deltas
+                         ? metal_new_shared_buffer(ctx, cmd->morph_normal_deltas, delta_bytes)
+                         : nil;
+        if (ctx.frameBuffers && delta_buf)
+            [ctx.frameBuffers addObject:delta_buf];
+        if (ctx.frameBuffers && normal_buf)
+            [ctx.frameBuffers addObject:normal_buf];
+    }
+
+    weight_bytes = (size_t)cmd->morph_shape_count * sizeof(float);
+    if (delta_buf)
+        [ctx.encoder setVertexBuffer:delta_buf offset:0 atIndex:4];
+    if (normal_buf)
+        [ctx.encoder setVertexBuffer:normal_buf offset:0 atIndex:9];
+    [ctx.encoder setVertexBytes:cmd->morph_weights length:weight_bytes atIndex:5];
+    if (cmd->prev_morph_weights)
+        [ctx.encoder setVertexBytes:cmd->prev_morph_weights length:weight_bytes atIndex:8];
+}
+
+static void metal_ensure_instance_storage(VGFXMetalContext *ctx, int32_t instance_count) {
+    int32_t needed_capacity;
+    int32_t next_capacity;
+    NSUInteger byte_count;
+
+    if (!ctx || instance_count <= 0)
+        return;
+
+    needed_capacity = instance_count;
+    next_capacity =
+        vgfx3d_metal_next_capacity((int32_t)ctx.instanceCapacity, needed_capacity, 64);
+    if ((NSUInteger)next_capacity > ctx.instanceCapacity || !ctx.instanceScratch) {
+        byte_count = (NSUInteger)next_capacity * sizeof(vgfx3d_metal_instance_data_t);
+        ctx.instanceScratch = [NSMutableData dataWithLength:byte_count];
+        ctx.instanceCapacity = (NSUInteger)next_capacity;
+    }
+    if (!ctx.instanceBuf || ctx.instanceBuf.length < ctx.instanceScratch.length) {
+        ctx.instanceBuf = metal_new_shared_buffer_with_length(ctx, ctx.instanceScratch.length);
+    }
 }
 
 static void metal_submit_draw(void *ctx_ptr,
@@ -1856,10 +2494,12 @@ static void metal_submit_draw(void *ctx_ptr,
         VGFXMetalContext *ctx = (__bridge VGFXMetalContext *)ctx_ptr;
         id<MTLBuffer> vb;
         id<MTLBuffer> ib;
+        vgfx3d_metal_blend_mode_t blend_mode;
         if (!ctx || !ctx.encoder || !ctx.inFrame)
             return;
 
-        [ctx.encoder setRenderPipelineState:ctx.pipelineState];
+        blend_mode = vgfx3d_metal_choose_blend_mode(cmd);
+        [ctx.encoder setRenderPipelineState:metal_select_pipeline_state(ctx, cmd, NO)];
         [ctx.encoder setCullMode:backface_cull ? MTLCullModeBack : MTLCullModeNone];
 
         /* MTL-08: Wireframe mode via fill mode toggle */
@@ -1867,7 +2507,7 @@ static void metal_submit_draw(void *ctx_ptr,
             setTriangleFillMode:wireframe ? MTLTriangleFillModeLines : MTLTriangleFillModeFill];
 
         /* Switch depth state: no Z-write for transparent draws */
-        if (cmd->alpha < 1.0f)
+        if (blend_mode == VGFX3D_METAL_BLEND_ALPHA)
             [ctx.encoder setDepthStencilState:ctx.depthStateNoWrite];
         else
             [ctx.encoder setDepthStencilState:ctx.depthState];
@@ -1907,54 +2547,15 @@ static void metal_submit_draw(void *ctx_ptr,
         obj.flags1[1] =
             (cmd->morph_deltas && cmd->morph_shape_count > 0 && cmd->prev_morph_weights) ? 1 : 0;
         obj.flags1[2] = 0;
+        obj.flags1[3] =
+            (cmd->morph_deltas && cmd->morph_shape_count > 0 && cmd->morph_normal_deltas) ? 1 : 0;
         [ctx.encoder setVertexBytes:&obj length:sizeof(obj) atIndex:1];
 
         /* MTL-09: Bind bone palette if skinning active */
-        if (has_skinning) {
-            size_t bsz = (size_t)capped_bone_count * 16 * sizeof(float);
-            id<MTLBuffer> boneBuf = [ctx.device newBufferWithBytes:cmd->bone_palette
-                                                            length:bsz
-                                                           options:MTLResourceStorageModeShared];
-            [ctx.encoder setVertexBuffer:boneBuf offset:0 atIndex:3];
-            if (ctx.frameBuffers)
-                [ctx.frameBuffers addObject:boneBuf];
-            if (has_prev_skinning) {
-                id<MTLBuffer> prevBoneBuf =
-                    [ctx.device newBufferWithBytes:cmd->prev_bone_palette
-                                            length:bsz
-                                           options:MTLResourceStorageModeShared];
-                [ctx.encoder setVertexBuffer:prevBoneBuf offset:0 atIndex:7];
-                if (ctx.frameBuffers)
-                    [ctx.frameBuffers addObject:prevBoneBuf];
-            }
-        }
+        metal_bind_bone_palettes(ctx, cmd, has_skinning, has_prev_skinning);
 
         /* MTL-10: Bind morph deltas/weights if morph active */
-        if (cmd->morph_deltas && cmd->morph_shape_count > 0) {
-            size_t dsz = (size_t)cmd->morph_shape_count * cmd->vertex_count * 3 * sizeof(float);
-            id<MTLBuffer> deltaBuf = [ctx.device newBufferWithBytes:cmd->morph_deltas
-                                                             length:dsz
-                                                            options:MTLResourceStorageModeShared];
-            [ctx.encoder setVertexBuffer:deltaBuf offset:0 atIndex:4];
-            size_t wsz = (size_t)cmd->morph_shape_count * sizeof(float);
-            id<MTLBuffer> wtBuf = [ctx.device newBufferWithBytes:cmd->morph_weights
-                                                          length:wsz
-                                                         options:MTLResourceStorageModeShared];
-            [ctx.encoder setVertexBuffer:wtBuf offset:0 atIndex:5];
-            if (cmd->prev_morph_weights) {
-                id<MTLBuffer> prevWtBuf =
-                    [ctx.device newBufferWithBytes:cmd->prev_morph_weights
-                                            length:wsz
-                                           options:MTLResourceStorageModeShared];
-                [ctx.encoder setVertexBuffer:prevWtBuf offset:0 atIndex:8];
-                if (ctx.frameBuffers)
-                    [ctx.frameBuffers addObject:prevWtBuf];
-            }
-            if (ctx.frameBuffers) {
-                [ctx.frameBuffers addObject:deltaBuf];
-                [ctx.frameBuffers addObject:wtBuf];
-            }
-        }
+        metal_bind_morph_payload(ctx, cmd);
 
         /* Per-scene (includes MTL-07 fog) */
         mtl_per_scene_t scene;
@@ -1973,7 +2574,7 @@ static void metal_submit_draw(void *ctx_ptr,
         scene.counts[0] = light_count < 0 ? 0 : (light_count > 8 ? 8 : light_count);
         /* MTL-12: Shadow mapping */
         scene.counts[1] = ctx.shadowActive ? 1 : 0;
-        transpose4x4(ctx->_prevVP, scene.prev_vp);
+        transpose4x4(ctx.frameHistory.draw_prev_vp, scene.prev_vp);
         if (ctx.shadowActive)
             transpose4x4(ctx->_shadowLightVP, scene.shadow_vp);
         [ctx.encoder setVertexBytes:&scene length:sizeof(scene) atIndex:2];
@@ -2119,42 +2720,25 @@ static void metal_submit_draw(void *ctx_ptr,
 static void metal_end_frame(void *ctx_ptr) {
     @autoreleasepool {
         VGFXMetalContext *ctx = (__bridge VGFXMetalContext *)ctx_ptr;
+        VGFXMetalRenderTargetCacheEntry *rt_entry = nil;
+        id<MTLCommandBuffer> submitted = nil;
         if (!ctx || !ctx.encoder || !ctx.inFrame)
             return;
 
         [ctx.encoder endEncoding];
 
         if (ctx.rttActive && ctx.rttTarget && ctx.rttColorTexture) {
-            /* RTT path: commit GPU work, wait for completion, then read back
-             * the color texture to the CPU-side color_buf for AsPixels(). */
-            [ctx.cmdBuf commit];
-            [ctx.cmdBuf waitUntilCompleted];
-
-            /* Read GPU texture → CPU buffer (BGRA → RGBA conversion) */
-            int32_t w = ctx.rttWidth, h = ctx.rttHeight;
-            uint8_t *dst = ctx.rttTarget ? ctx.rttTarget->color_buf : NULL;
-            if (dst) {
-                [ctx.rttColorTexture getBytes:dst
-                                  bytesPerRow:(NSUInteger)(w * 4)
-                                   fromRegion:MTLRegionMake2D(0, 0, (NSUInteger)w, (NSUInteger)h)
-                                  mipmapLevel:0];
-                /* BGRA → RGBA in-place */
-                for (int32_t i = 0; i < w * h; i++) {
-                    uint8_t tmp = dst[i * 4];
-                    dst[i * 4] = dst[i * 4 + 2];
-                    dst[i * 4 + 2] = tmp;
-                }
-            }
-        } else {
-            /* On-screen path: DON'T commit yet. The command buffer stays open
-             * so subsequent Begin/End pairs add more render passes to the same
-             * buffer. Commit + present happens in metal_present() at Flip time. */
+            rt_entry = metal_lookup_render_target_entry(ctx, ctx.rttTarget);
+            submitted = ctx.cmdBuf;
+            if (rt_entry)
+                rt_entry.pendingCommandBuffer = submitted;
+            metal_commit_pending(ctx, NO);
+            ctx.rttTarget->sync_color = metal_sync_render_target_color;
+            ctx.rttTarget->sync_color_userdata = (__bridge void *)ctx;
+            ctx.rttTarget->color_dirty = 1;
         }
 
         ctx.encoder = nil;
-        /* Keep cmdBuf alive for on-screen (nil'd only for RTT above) */
-        if (ctx.rttActive)
-            ctx.cmdBuf = nil;
         ctx.inFrame = NO;
     }
 }
@@ -2167,11 +2751,27 @@ static void metal_present(void *backend_ctx) {
         return;
     @autoreleasepool {
         VGFXMetalContext *ctx = (__bridge VGFXMetalContext *)backend_ctx;
-        if (metal_present_texture(ctx, ctx.offscreenColor))
+        id<MTLTexture> final_texture = nil;
+
+        if (!ctx || ctx.rttActive)
+            return;
+
+        if (!ctx.gpuPostfxEnabled && ctx.currentTargetKind == VGFX3D_METAL_TARGET_SWAPCHAIN &&
+            ctx.cmdBuf && ctx.drawable) {
+            ctx.displayTexture = ctx.drawable.texture;
+            [ctx.cmdBuf presentDrawable:ctx.drawable];
+            metal_commit_pending(ctx, NO);
+            return;
+        }
+
+        final_texture = metal_active_readback_texture(ctx);
+        if (!final_texture)
+            final_texture = ctx.offscreenColor;
+        if (metal_present_texture(ctx, final_texture))
             metal_commit_pending(ctx, NO);
         else {
             metal_commit_pending(ctx, YES);
-            metal_present_texture_to_framebuffer(ctx, ctx.offscreenColor);
+            metal_present_texture_to_framebuffer(ctx, final_texture);
         }
     }
 }
@@ -2197,11 +2797,28 @@ static int metal_readback_rgba(
         return 0;
     @autoreleasepool {
         VGFXMetalContext *ctx = (__bridge VGFXMetalContext *)ctx_ptr;
-        id<MTLTexture> texture;
+        id<MTLTexture> texture = nil;
+        vgfx3d_postfx_snapshot_t snapshot_copy;
+        const vgfx3d_postfx_snapshot_t *snapshot = NULL;
+        vgfx3d_metal_readback_kind_t readback_kind;
         if (!ctx || !dst_rgba || w <= 0 || h <= 0 || stride < w * 4)
             return 0;
-        if (ctx.cmdBuf && !ctx.rttActive)
+
+        readback_kind = vgfx3d_metal_choose_readback_kind(
+            (ctx.gpuPostfxEnabled && ctx.gpuPostfxSnapshotValid) ? 1 : 0);
+        if (!ctx.rttActive && ctx.cmdBuf) {
+            if (readback_kind == VGFX3D_METAL_READBACK_POSTFX_COMPOSITE) {
+                if (ctx.gpuPostfxSnapshotValid) {
+                    snapshot_copy = ctx.gpuPostfxSnapshot;
+                    snapshot = &snapshot_copy;
+                }
+                texture = metal_encode_postfx_if_needed(ctx, snapshot);
+            } else if (ctx.currentTargetKind == VGFX3D_METAL_TARGET_SWAPCHAIN &&
+                       !metal_capture_current_drawable_to_display_texture(ctx)) {
+                return 0;
+            }
             metal_commit_pending(ctx, YES);
+        }
         texture = metal_active_readback_texture(ctx);
         return metal_copy_texture_to_rgba(texture, dst_rgba, w, h, stride);
     }
@@ -2214,11 +2831,12 @@ static int metal_readback_rgba(
 /// @brief Bind or unbind an offscreen render target for Metal GPU rendering.
 /// When rt is non-NULL, subsequent begin_frame/submit_draw/end_frame calls render
 /// to GPU textures instead of the on-screen CAMetalLayer drawable. When rt is NULL,
-/// rendering reverts to the screen. After rendering, end_frame copies the GPU color
-/// texture back to rt->color_buf for CPU readback (AsPixels).
+/// rendering reverts to the screen. RTT color stays GPU-owned until the runtime
+/// explicitly asks for CPU pixels through the lazy sync_color hook.
 static void metal_set_render_target(void *ctx_ptr, vgfx3d_rendertarget_t *rt) {
     @autoreleasepool {
         VGFXMetalContext *ctx = (__bridge VGFXMetalContext *)ctx_ptr;
+        VGFXMetalRenderTargetCacheEntry *entry;
         if (!ctx)
             return;
 
@@ -2230,38 +2848,22 @@ static void metal_set_render_target(void *ctx_ptr, vgfx3d_rendertarget_t *rt) {
             ctx.rttDepthTexture = nil;
             ctx.rttTarget = NULL;
             ctx.displayTexture = nil;
+            ctx.postfxEncodedThisFrame = 0;
             return;
         }
 
-        /* Enable RTT — create GPU textures for offscreen rendering */
+        entry = metal_ensure_render_target_entry(ctx, rt);
+        if (!entry)
+            return;
+
+        ctx.rttTarget = rt;
         ctx.rttWidth = rt->width;
         ctx.rttHeight = rt->height;
-        ctx.rttTarget = rt;
+        ctx.rttColorTexture = entry.colorTexture;
+        ctx.rttMotionTexture = entry.motionTexture;
+        ctx.rttDepthTexture = entry.depthTexture;
         ctx.displayTexture = nil;
-
-        /* Color texture: BGRA8Unorm, render target + shader read */
-        MTLTextureDescriptor *colorDesc =
-            [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm
-                                                               width:(NSUInteger)rt->width
-                                                              height:(NSUInteger)rt->height
-                                                           mipmapped:NO];
-        colorDesc.usage = MTLTextureUsageRenderTarget | MTLTextureUsageShaderRead;
-        colorDesc.storageMode = MTLStorageModeShared; /* CPU-readable for readback */
-        ctx.rttColorTexture = [ctx.device newTextureWithDescriptor:colorDesc];
-        colorDesc.usage = MTLTextureUsageRenderTarget;
-        colorDesc.storageMode = MTLStorageModePrivate;
-        ctx.rttMotionTexture = [ctx.device newTextureWithDescriptor:colorDesc];
-
-        /* Depth texture: Depth32Float, render target only */
-        MTLTextureDescriptor *depthDesc =
-            [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatDepth32Float
-                                                               width:(NSUInteger)rt->width
-                                                              height:(NSUInteger)rt->height
-                                                           mipmapped:NO];
-        depthDesc.usage = MTLTextureUsageRenderTarget;
-        depthDesc.storageMode = MTLStorageModePrivate;
-        ctx.rttDepthTexture = [ctx.device newTextureWithDescriptor:depthDesc];
-
+        ctx.postfxEncodedThisFrame = 0;
         ctx.rttActive = YES;
     }
 }
@@ -2325,6 +2927,7 @@ static void metal_shadow_draw(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) {
         VGFXMetalContext *ctx = (__bridge VGFXMetalContext *)ctx_ptr;
         id<MTLBuffer> vb;
         id<MTLBuffer> ib;
+        int has_skinning;
         if (!ctx || !ctx.encoder)
             return;
 
@@ -2346,36 +2949,13 @@ static void metal_shadow_draw(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) {
         transpose4x4(ctx->_shadowLightVP, lvp_t);
         memcpy(obj.vp, lvp_t, sizeof(float) * 16);
         memcpy(obj.nm, obj.m, sizeof(float) * 16);
-        obj.flags0[0] = (cmd->bone_palette && cmd->bone_count > 0) ? 1 : 0;
+        has_skinning = (cmd->bone_palette && cmd->bone_count > 0) ? 1 : 0;
+        obj.flags0[0] = has_skinning;
         obj.flags0[2] = cmd->morph_shape_count;
         obj.flags0[3] = (int32_t)cmd->vertex_count;
         [ctx.encoder setVertexBytes:&obj length:sizeof(obj) atIndex:1];
-        if (obj.flags0[0]) {
-            int capped_bone_count = cmd->bone_count > 128 ? 128 : cmd->bone_count;
-            size_t bsz = (size_t)capped_bone_count * 16 * sizeof(float);
-            id<MTLBuffer> boneBuf = [ctx.device newBufferWithBytes:cmd->bone_palette
-                                                            length:bsz
-                                                           options:MTLResourceStorageModeShared];
-            [ctx.encoder setVertexBuffer:boneBuf offset:0 atIndex:3];
-            if (ctx.frameBuffers)
-                [ctx.frameBuffers addObject:boneBuf];
-        }
-        if (cmd->morph_deltas && cmd->morph_shape_count > 0) {
-            size_t dsz = (size_t)cmd->morph_shape_count * cmd->vertex_count * 3 * sizeof(float);
-            size_t wsz = (size_t)cmd->morph_shape_count * sizeof(float);
-            id<MTLBuffer> deltaBuf = [ctx.device newBufferWithBytes:cmd->morph_deltas
-                                                             length:dsz
-                                                            options:MTLResourceStorageModeShared];
-            id<MTLBuffer> wtBuf = [ctx.device newBufferWithBytes:cmd->morph_weights
-                                                          length:wsz
-                                                         options:MTLResourceStorageModeShared];
-            [ctx.encoder setVertexBuffer:deltaBuf offset:0 atIndex:4];
-            [ctx.encoder setVertexBuffer:wtBuf offset:0 atIndex:5];
-            if (ctx.frameBuffers) {
-                [ctx.frameBuffers addObject:deltaBuf];
-                [ctx.frameBuffers addObject:wtBuf];
-            }
-        }
+        metal_bind_bone_palettes(ctx, cmd, has_skinning, 0);
+        metal_bind_morph_payload(ctx, cmd);
 
         [ctx.encoder drawIndexedPrimitives:MTLPrimitiveTypeTriangle
                                 indexCount:cmd->index_count
@@ -2415,52 +2995,47 @@ static void metal_submit_draw_instanced(void *ctx_ptr,
     @autoreleasepool {
         (void)win;
         VGFXMetalContext *ctx = (__bridge VGFXMetalContext *)ctx_ptr;
-        mtl_instance_t *instance_data = NULL;
+        vgfx3d_metal_instance_data_t *instance_data;
         id<MTLBuffer> vb;
         id<MTLBuffer> ib;
-        id<MTLBuffer> instBuf;
+        vgfx3d_metal_blend_mode_t blend_mode;
         if (!ctx || !ctx.encoder || !ctx.inFrame || instance_count <= 0)
             return;
 
-        instance_data = (mtl_instance_t *)malloc((size_t)instance_count * sizeof(mtl_instance_t));
+        metal_ensure_instance_storage(ctx, instance_count);
+        if (!ctx.instanceScratch || !ctx.instanceBuf)
+            return;
+        instance_data = (vgfx3d_metal_instance_data_t *)ctx.instanceScratch.mutableBytes;
         if (!instance_data)
             return;
-        for (int32_t i = 0; i < instance_count; i++) {
-            float normal_m[16];
-            transpose4x4(&instance_matrices[(size_t)i * 16u], instance_data[i].model);
-            vgfx3d_compute_normal_matrix4(&instance_matrices[(size_t)i * 16u], normal_m);
-            transpose4x4(normal_m, instance_data[i].normal);
-            if (cmd->has_prev_instance_matrices && cmd->prev_instance_matrices)
-                transpose4x4(&cmd->prev_instance_matrices[(size_t)i * 16u],
-                             instance_data[i].prev_model);
-            else
-                memcpy(instance_data[i].prev_model,
-                       instance_data[i].model,
-                       sizeof(instance_data[i].prev_model));
-        }
+        vgfx3d_metal_fill_instance_data(instance_data,
+                                        instance_count,
+                                        instance_matrices,
+                                        cmd->prev_instance_matrices,
+                                        cmd->has_prev_instance_matrices ? 1 : 0);
+        memcpy(ctx.instanceBuf.contents,
+               instance_data,
+               (size_t)instance_count * sizeof(vgfx3d_metal_instance_data_t));
 
-        [ctx.encoder setRenderPipelineState:ctx.instancedPipelineState];
+        blend_mode = vgfx3d_metal_choose_blend_mode(cmd);
+        [ctx.encoder setRenderPipelineState:metal_select_pipeline_state(ctx, cmd, YES)];
         [ctx.encoder setCullMode:backface_cull ? MTLCullModeBack : MTLCullModeNone];
         [ctx.encoder
             setTriangleFillMode:wireframe ? MTLTriangleFillModeLines : MTLTriangleFillModeFill];
-        if (cmd->alpha < 1.0f)
+        if (blend_mode == VGFX3D_METAL_BLEND_ALPHA)
             [ctx.encoder setDepthStencilState:ctx.depthStateNoWrite];
         else
             [ctx.encoder setDepthStencilState:ctx.depthState];
 
         /* Vertex/index buffers */
         metal_get_geometry_buffers(ctx, cmd, &vb, &ib);
-        instBuf = metal_new_shared_buffer(
-            ctx, instance_data, (NSUInteger)instance_count * sizeof(mtl_instance_t));
-        free(instance_data);
-        if (!vb || !ib || !instBuf)
+        if (!vb || !ib || !ctx.instanceBuf)
             return;
         [ctx.encoder setVertexBuffer:vb offset:0 atIndex:0];
-        [ctx.encoder setVertexBuffer:instBuf offset:0 atIndex:6];
+        [ctx.encoder setVertexBuffer:ctx.instanceBuf offset:0 atIndex:6];
         if (ctx.frameBuffers) {
             [ctx.frameBuffers addObject:vb];
             [ctx.frameBuffers addObject:ib];
-            [ctx.frameBuffers addObject:instBuf];
         }
 
         /* Per-object + per-scene + per-material + lights + textures */
@@ -2483,6 +3058,8 @@ static void metal_submit_draw_instanced(void *ctx_ptr,
         obj.flags1[1] =
             (cmd->morph_deltas && cmd->morph_shape_count > 0 && cmd->prev_morph_weights) ? 1 : 0;
         obj.flags1[2] = cmd->has_prev_instance_matrices ? 1 : 0;
+        obj.flags1[3] =
+            (cmd->morph_deltas && cmd->morph_shape_count > 0 && cmd->morph_normal_deltas) ? 1 : 0;
         [ctx.encoder setVertexBytes:&obj length:sizeof(obj) atIndex:1];
 
         mtl_per_scene_t scene;
@@ -2500,7 +3077,7 @@ static void metal_submit_draw_instanced(void *ctx_ptr,
         scene.fog_params[2] = ctx.shadowBias;
         scene.counts[0] = light_count < 0 ? 0 : (light_count > 8 ? 8 : light_count);
         scene.counts[1] = ctx.shadowActive ? 1 : 0;
-        transpose4x4(ctx->_prevVP, scene.prev_vp);
+        transpose4x4(ctx.frameHistory.draw_prev_vp, scene.prev_vp);
         if (ctx.shadowActive)
             transpose4x4(ctx->_shadowLightVP, scene.shadow_vp);
         [ctx.encoder setVertexBytes:&scene length:sizeof(scene) atIndex:2];
@@ -2543,50 +3120,8 @@ static void metal_submit_draw_instanced(void *ctx_ptr,
         memcpy(mat.customParams, cmd->custom_params, sizeof(float) * 8);
         [ctx.encoder setFragmentBytes:&mat length:sizeof(mat) atIndex:1];
 
-        if (has_skinning) {
-            size_t bsz = (size_t)capped_bone_count * 16 * sizeof(float);
-            id<MTLBuffer> boneBuf = [ctx.device newBufferWithBytes:cmd->bone_palette
-                                                            length:bsz
-                                                           options:MTLResourceStorageModeShared];
-            [ctx.encoder setVertexBuffer:boneBuf offset:0 atIndex:3];
-            if (ctx.frameBuffers)
-                [ctx.frameBuffers addObject:boneBuf];
-            if (has_prev_skinning) {
-                id<MTLBuffer> prevBoneBuf =
-                    [ctx.device newBufferWithBytes:cmd->prev_bone_palette
-                                            length:bsz
-                                           options:MTLResourceStorageModeShared];
-                [ctx.encoder setVertexBuffer:prevBoneBuf offset:0 atIndex:7];
-                if (ctx.frameBuffers)
-                    [ctx.frameBuffers addObject:prevBoneBuf];
-            }
-        }
-
-        if (cmd->morph_deltas && cmd->morph_shape_count > 0) {
-            size_t dsz = (size_t)cmd->morph_shape_count * cmd->vertex_count * 3 * sizeof(float);
-            size_t wsz = (size_t)cmd->morph_shape_count * sizeof(float);
-            id<MTLBuffer> deltaBuf = [ctx.device newBufferWithBytes:cmd->morph_deltas
-                                                             length:dsz
-                                                            options:MTLResourceStorageModeShared];
-            id<MTLBuffer> wtBuf = [ctx.device newBufferWithBytes:cmd->morph_weights
-                                                          length:wsz
-                                                         options:MTLResourceStorageModeShared];
-            [ctx.encoder setVertexBuffer:deltaBuf offset:0 atIndex:4];
-            [ctx.encoder setVertexBuffer:wtBuf offset:0 atIndex:5];
-            if (ctx.frameBuffers) {
-                [ctx.frameBuffers addObject:deltaBuf];
-                [ctx.frameBuffers addObject:wtBuf];
-            }
-            if (cmd->prev_morph_weights) {
-                id<MTLBuffer> prevWtBuf =
-                    [ctx.device newBufferWithBytes:cmd->prev_morph_weights
-                                            length:wsz
-                                           options:MTLResourceStorageModeShared];
-                [ctx.encoder setVertexBuffer:prevWtBuf offset:0 atIndex:8];
-                if (ctx.frameBuffers)
-                    [ctx.frameBuffers addObject:prevWtBuf];
-            }
-        }
+        metal_bind_bone_palettes(ctx, cmd, has_skinning, has_prev_skinning);
+        metal_bind_morph_payload(ctx, cmd);
 
         /* Default textures + sampler */
         for (int slot = 0; slot < 10; slot++)
@@ -2711,8 +3246,128 @@ typedef struct {
     int32_t motionBlurEnabled;
     float motionBlurIntensity;
     int32_t motionBlurSamples;
-    float _pad;
+    int32_t overlayEnabled;
 } mtl_postfx_params_t;
+
+static int metal_capture_current_drawable_to_display_texture(VGFXMetalContext *ctx) {
+    NSUInteger copy_w;
+    NSUInteger copy_h;
+    id<MTLBlitCommandEncoder> blit;
+
+    if (!ctx || !ctx.cmdBuf || !ctx.drawable)
+        return 0;
+    if (!ctx.displayTexture || ctx.displayTexture == ctx.postfxColorTexture ||
+        (int32_t)ctx.displayTexture.width != ctx.width ||
+        (int32_t)ctx.displayTexture.height != ctx.height) {
+        ctx.displayTexture = metal_new_color_texture(ctx,
+                                                     ctx.width,
+                                                     ctx.height,
+                                                     MTLPixelFormatBGRA8Unorm,
+                                                     MTLTextureUsageShaderRead,
+                                                     MTLStorageModeShared,
+                                                     NO);
+    }
+    if (!ctx.displayTexture)
+        return 0;
+
+    copy_w = ctx.drawable.texture.width < ctx.displayTexture.width ? ctx.drawable.texture.width
+                                                                   : ctx.displayTexture.width;
+    copy_h = ctx.drawable.texture.height < ctx.displayTexture.height ? ctx.drawable.texture.height
+                                                                     : ctx.displayTexture.height;
+    blit = [ctx.cmdBuf blitCommandEncoder];
+    if (!blit)
+        return 0;
+    [blit copyFromTexture:ctx.drawable.texture
+              sourceSlice:0
+              sourceLevel:0
+             sourceOrigin:MTLOriginMake(0, 0, 0)
+               sourceSize:MTLSizeMake(copy_w, copy_h, 1)
+                toTexture:ctx.displayTexture
+         destinationSlice:0
+         destinationLevel:0
+        destinationOrigin:MTLOriginMake(0, 0, 0)];
+    [blit endEncoding];
+    return 1;
+}
+
+static id<MTLTexture> metal_encode_postfx_if_needed(
+    VGFXMetalContext *ctx, const vgfx3d_postfx_snapshot_t *postfx) {
+    MTLRenderPassDescriptor *rp;
+    id<MTLRenderCommandEncoder> pfxEncoder;
+    mtl_postfx_params_t params;
+
+    if (!ctx)
+        return nil;
+    if (ctx.postfxEncodedThisFrame && ctx.postfxColorTexture) {
+        ctx.displayTexture = ctx.postfxColorTexture;
+        return ctx.postfxColorTexture;
+    }
+    if (!ctx.cmdBuf || !ctx.postfxPipeline || !ctx.postfxColorTexture || !ctx.offscreenColor ||
+        !ctx.offscreenMotion || !ctx.depthTexture || !postfx) {
+        return nil;
+    }
+
+    metal_finish_encoding(ctx);
+
+    rp = [MTLRenderPassDescriptor renderPassDescriptor];
+    rp.colorAttachments[0].texture = ctx.postfxColorTexture;
+    rp.colorAttachments[0].loadAction = MTLLoadActionDontCare;
+    rp.colorAttachments[0].storeAction = MTLStoreActionStore;
+
+    pfxEncoder = [ctx.cmdBuf renderCommandEncoderWithDescriptor:rp];
+    if (!pfxEncoder)
+        return nil;
+
+    [pfxEncoder setRenderPipelineState:ctx.postfxPipeline];
+    [pfxEncoder setFragmentTexture:ctx.offscreenColor atIndex:0];
+    [pfxEncoder setFragmentTexture:ctx.depthTexture atIndex:1];
+    [pfxEncoder setFragmentTexture:ctx.offscreenMotion atIndex:2];
+    if (ctx.frameHistory.overlay_used_this_frame && ctx.overlayColorTexture)
+        [pfxEncoder setFragmentTexture:ctx.overlayColorTexture atIndex:3];
+    [pfxEncoder
+        setFragmentSamplerState:(ctx.sharedSampler ? ctx.sharedSampler : ctx.defaultSampler)
+                        atIndex:0];
+
+    memset(&params, 0, sizeof(params));
+    transpose4x4(ctx.frameHistory.scene_inv_vp, params.invViewProjection);
+    transpose4x4(ctx.frameHistory.scene_prev_vp, params.prevViewProjection);
+    memcpy(params.cameraPosition, ctx.frameHistory.scene_cam_pos, sizeof(float) * 3);
+    params.cameraPosition[3] = 1.0f;
+    params.invResolution[0] = ctx.width > 0 ? 1.0f / (float)ctx.width : 0.0f;
+    params.invResolution[1] = ctx.height > 0 ? 1.0f / (float)ctx.height : 0.0f;
+    params.bloomEnabled = postfx->bloom_enabled ? 1 : 0;
+    params.bloomThreshold = postfx->bloom_threshold;
+    params.bloomStrength = postfx->bloom_intensity;
+    params.tonemapMode = (int32_t)postfx->tonemap_mode;
+    params.tonemapExposure = postfx->tonemap_exposure;
+    params.fxaaEnabled = postfx->fxaa_enabled ? 1 : 0;
+    params.colorGradeEnabled = postfx->color_grade_enabled ? 1 : 0;
+    params.cgBright = postfx->cg_brightness;
+    params.cgContrast = postfx->cg_contrast;
+    params.cgSat = postfx->cg_saturation;
+    params.vignetteEnabled = postfx->vignette_enabled ? 1 : 0;
+    params.vigRadius = postfx->vignette_radius;
+    params.vigSoftness = postfx->vignette_softness;
+    params.dofEnabled = postfx->dof_enabled ? 1 : 0;
+    params.dofFocusDist = postfx->dof_focus_distance;
+    params.dofAperture = postfx->dof_aperture;
+    params.dofMaxBlur = postfx->dof_max_blur;
+    params.ssaoEnabled = postfx->ssao_enabled ? 1 : 0;
+    params.ssaoRadius = postfx->ssao_radius;
+    params.ssaoIntensity = postfx->ssao_intensity;
+    params.ssaoSamples = postfx->ssao_samples;
+    params.motionBlurEnabled = postfx->motion_blur_enabled ? 1 : 0;
+    params.motionBlurIntensity = postfx->motion_blur_intensity;
+    params.motionBlurSamples = postfx->motion_blur_samples;
+    params.overlayEnabled = ctx.frameHistory.overlay_used_this_frame ? 1 : 0;
+    [pfxEncoder setFragmentBytes:&params length:sizeof(params) atIndex:0];
+
+    [pfxEncoder drawPrimitives:MTLPrimitiveTypeTriangleStrip vertexStart:0 vertexCount:4];
+    [pfxEncoder endEncoding];
+    ctx.postfxEncodedThisFrame = 1;
+    ctx.displayTexture = ctx.postfxColorTexture;
+    return ctx.postfxColorTexture;
+}
 
 /// @brief Metal PostFX presentation: render fullscreen quad with PostFX shader.
 /// Runs the fullscreen post-processing pass into an offscreen texture, then
@@ -2722,81 +3377,21 @@ static void metal_present_postfx(void *backend_ctx, const vgfx3d_postfx_snapshot
         return;
     @autoreleasepool {
         VGFXMetalContext *ctx = (__bridge VGFXMetalContext *)backend_ctx;
-        if (!ctx.postfxPipeline || !ctx.postfxColorTexture || !ctx.offscreenColor ||
-            !ctx.offscreenMotion || !ctx.depthTexture || !ctx.cmdBuf) {
+        id<MTLTexture> final_texture;
+
+        if (!ctx)
+            return;
+        final_texture = metal_encode_postfx_if_needed(ctx, postfx);
+        if (!final_texture) {
             metal_present(backend_ctx);
             return;
         }
 
-        /* Create a new render pass targeting the postfx output texture. */
-        MTLRenderPassDescriptor *rp = [MTLRenderPassDescriptor renderPassDescriptor];
-        rp.colorAttachments[0].texture = ctx.postfxColorTexture;
-        rp.colorAttachments[0].loadAction = MTLLoadActionDontCare;
-        rp.colorAttachments[0].storeAction = MTLStoreActionStore;
-
-        /* End the current scene encoder if still active */
-        if (ctx.encoder) {
-            [ctx.encoder endEncoding];
-            ctx.encoder = nil;
-        }
-
-        id<MTLRenderCommandEncoder> pfxEncoder = [ctx.cmdBuf renderCommandEncoderWithDescriptor:rp];
-        if (!pfxEncoder)
-            return;
-
-        [pfxEncoder setRenderPipelineState:ctx.postfxPipeline];
-
-        /* Bind the scene texture and sampler */
-        [pfxEncoder setFragmentTexture:ctx.offscreenColor atIndex:0];
-        [pfxEncoder setFragmentTexture:ctx.depthTexture atIndex:1];
-        [pfxEncoder setFragmentTexture:ctx.offscreenMotion atIndex:2];
-        [pfxEncoder
-            setFragmentSamplerState:(ctx.sharedSampler ? ctx.sharedSampler : ctx.defaultSampler)
-                            atIndex:0];
-
-        /* Fill PostFX uniform params from snapshot */
-        mtl_postfx_params_t params;
-        memset(&params, 0, sizeof(params));
-        transpose4x4(ctx->_invVP, params.invViewProjection);
-        transpose4x4(ctx->_prevVP, params.prevViewProjection);
-        memcpy(params.cameraPosition, ctx->_camPos, sizeof(float) * 3);
-        params.cameraPosition[3] = 1.0f;
-        params.invResolution[0] = ctx.width > 0 ? 1.0f / (float)ctx.width : 0.0f;
-        params.invResolution[1] = ctx.height > 0 ? 1.0f / (float)ctx.height : 0.0f;
-        params.bloomEnabled = postfx->bloom_enabled ? 1 : 0;
-        params.bloomThreshold = postfx->bloom_threshold;
-        params.bloomStrength = postfx->bloom_intensity;
-        params.tonemapMode = (int32_t)postfx->tonemap_mode;
-        params.tonemapExposure = postfx->tonemap_exposure;
-        params.fxaaEnabled = postfx->fxaa_enabled ? 1 : 0;
-        params.colorGradeEnabled = postfx->color_grade_enabled ? 1 : 0;
-        params.cgBright = postfx->cg_brightness;
-        params.cgContrast = postfx->cg_contrast;
-        params.cgSat = postfx->cg_saturation;
-        params.vignetteEnabled = postfx->vignette_enabled ? 1 : 0;
-        params.vigRadius = postfx->vignette_radius;
-        params.vigSoftness = postfx->vignette_softness;
-        params.dofEnabled = postfx->dof_enabled ? 1 : 0;
-        params.dofFocusDist = postfx->dof_focus_distance;
-        params.dofAperture = postfx->dof_aperture;
-        params.dofMaxBlur = postfx->dof_max_blur;
-        params.ssaoEnabled = postfx->ssao_enabled ? 1 : 0;
-        params.ssaoRadius = postfx->ssao_radius;
-        params.ssaoIntensity = postfx->ssao_intensity;
-        params.ssaoSamples = postfx->ssao_samples;
-        params.motionBlurEnabled = postfx->motion_blur_enabled ? 1 : 0;
-        params.motionBlurIntensity = postfx->motion_blur_intensity;
-        params.motionBlurSamples = postfx->motion_blur_samples;
-        [pfxEncoder setFragmentBytes:&params length:sizeof(params) atIndex:0];
-
-        /* Draw fullscreen quad as triangle strip (4 vertices, no VBO needed) */
-        [pfxEncoder drawPrimitives:MTLPrimitiveTypeTriangleStrip vertexStart:0 vertexCount:4];
-        [pfxEncoder endEncoding];
-        if (metal_present_texture(ctx, ctx.postfxColorTexture))
+        if (metal_present_texture(ctx, final_texture))
             metal_commit_pending(ctx, NO);
         else {
             metal_commit_pending(ctx, YES);
-            metal_present_texture_to_framebuffer(ctx, ctx.postfxColorTexture);
+            metal_present_texture_to_framebuffer(ctx, final_texture);
         }
     }
 }
@@ -2807,10 +3402,23 @@ static void metal_draw_skybox(void *ctx_ptr, const void *cubemap_ptr) {
     @autoreleasepool {
         VGFXMetalContext *ctx = (__bridge VGFXMetalContext *)ctx_ptr;
         id<MTLTexture> cubemap = metal_get_cached_cubemap(ctx, (const rt_cubemap3d *)cubemap_ptr);
+        id<MTLRenderPipelineState> skybox_pipeline;
+        id<MTLRenderPipelineState> default_pipeline;
         mtl_skybox_params_t params;
         float view_rot[16];
 
-        if (!ctx || !ctx.encoder || !ctx.skyboxPipeline || !ctx.skyboxVertexBuffer || !cubemap)
+        if (!ctx || !ctx.encoder || !ctx.skyboxVertexBuffer || !cubemap)
+            return;
+        skybox_pipeline = ctx.currentTargetKind == VGFX3D_METAL_TARGET_SCENE
+                              ? ctx.skyboxPipeline
+                              : ctx.skyboxColorPipeline;
+        default_pipeline = ctx.currentTargetKind == VGFX3D_METAL_TARGET_SCENE ? ctx.pipelineState
+                                                                               : ctx.pipelineStateColorOnly;
+        if (!skybox_pipeline)
+            skybox_pipeline = ctx.skyboxPipeline ? ctx.skyboxPipeline : ctx.skyboxColorPipeline;
+        if (!default_pipeline)
+            default_pipeline = ctx.pipelineState ? ctx.pipelineState : ctx.pipelineStateColorOnly;
+        if (!skybox_pipeline || !default_pipeline)
             return;
 
         memcpy(view_rot, ctx->_view, sizeof(view_rot));
@@ -2829,16 +3437,52 @@ static void metal_draw_skybox(void *ctx_ptr, const void *cubemap_ptr) {
         [ctx.encoder setCullMode:MTLCullModeNone];
         [ctx.encoder setDepthStencilState:(ctx.skyboxDepthState ? ctx.skyboxDepthState
                                                                 : ctx.depthStateNoWrite)];
-        [ctx.encoder setRenderPipelineState:ctx.skyboxPipeline];
+        [ctx.encoder setRenderPipelineState:skybox_pipeline];
         [ctx.encoder setVertexBuffer:ctx.skyboxVertexBuffer offset:0 atIndex:0];
         [ctx.encoder setVertexBytes:&params length:sizeof(params) atIndex:0];
         [ctx.encoder setFragmentTexture:cubemap atIndex:0];
         [ctx.encoder setFragmentSamplerState:(ctx.cubeSampler ? ctx.cubeSampler : ctx.sharedSampler)
                                      atIndex:0];
         [ctx.encoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:36];
-        [ctx.encoder setRenderPipelineState:ctx.pipelineState];
+        [ctx.encoder setRenderPipelineState:default_pipeline];
         [ctx.encoder setDepthStencilState:ctx.depthState];
         [ctx.encoder setCullMode:MTLCullModeBack];
+    }
+}
+
+static void metal_set_gpu_postfx_enabled(void *ctx_ptr, int8_t enabled) {
+    @autoreleasepool {
+        VGFXMetalContext *ctx = (__bridge VGFXMetalContext *)ctx_ptr;
+        int8_t desired_enabled;
+        if (!ctx)
+            return;
+        desired_enabled = (enabled && ctx.postfxPipeline) ? 1 : 0;
+        if (ctx.gpuPostfxEnabled == desired_enabled)
+            return;
+        ctx.gpuPostfxEnabled = desired_enabled;
+        ctx.postfxEncodedThisFrame = 0;
+        ctx.displayTexture = nil;
+        if (ctx.cmdBuf)
+            metal_commit_pending(ctx, YES);
+        if (!ctx.rttActive && ctx.width > 0 && ctx.height > 0)
+            metal_recreate_main_targets(ctx, ctx.width, ctx.height);
+    }
+}
+
+static void metal_set_gpu_postfx_snapshot(void *ctx_ptr, const vgfx3d_postfx_snapshot_t *postfx) {
+    @autoreleasepool {
+        VGFXMetalContext *ctx = (__bridge VGFXMetalContext *)ctx_ptr;
+        vgfx3d_postfx_snapshot_t empty_snapshot;
+        if (!ctx)
+            return;
+        if (!postfx) {
+            memset(&empty_snapshot, 0, sizeof(empty_snapshot));
+            ctx.gpuPostfxSnapshot = empty_snapshot;
+            ctx.gpuPostfxSnapshotValid = 0;
+            return;
+        }
+        ctx.gpuPostfxSnapshot = *postfx;
+        ctx.gpuPostfxSnapshotValid = 1;
     }
 }
 
@@ -2883,6 +3527,8 @@ const vgfx3d_backend_t vgfx3d_metal_backend = {
     .present = metal_present,
     .readback_rgba = metal_readback_rgba,
     .present_postfx = metal_present_postfx,
+    .set_gpu_postfx_enabled = metal_set_gpu_postfx_enabled,
+    .set_gpu_postfx_snapshot = metal_set_gpu_postfx_snapshot,
     .show_gpu_layer = metal_show_gpu_layer,
     .hide_gpu_layer = metal_hide_gpu_layer,
 };

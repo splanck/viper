@@ -686,6 +686,10 @@ function(viper_add_runtime_tests)
     target_link_libraries(test_vgfx3d_backend_d3d11_shared PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_vgfx3d_backend_d3d11_shared test_vgfx3d_backend_d3d11_shared)
 
+    viper_add_test(test_vgfx3d_backend_metal_shared ${VIPER_TESTS_DIR}/unit/test_vgfx3d_backend_metal_shared.c)
+    target_link_libraries(test_vgfx3d_backend_metal_shared PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_vgfx3d_backend_metal_shared test_vgfx3d_backend_metal_shared)
+
     viper_add_test(test_vgfx3d_backend_opengl_shared ${VIPER_TESTS_DIR}/unit/test_vgfx3d_backend_opengl_shared.c)
     target_link_libraries(test_vgfx3d_backend_opengl_shared PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_vgfx3d_backend_opengl_shared test_vgfx3d_backend_opengl_shared)
