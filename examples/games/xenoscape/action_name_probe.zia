@@ -1,0 +1,45 @@
+module action_name_probe;
+
+bind Viper.Terminal as Terminal;
+bind Viper.Fmt as Fmt;
+bind Viper.String as String;
+bind Viper.Input.Action as Action;
+bind "./config";
+
+func sayBool(name: String, value: Boolean) {
+    if value {
+        Terminal.Say(name + "=1");
+    } else {
+        Terminal.Say(name + "=0");
+    }
+}
+
+func sayInt(name: String, value: Integer) {
+    Terminal.Say(name + "=" + Fmt.Int(value));
+}
+
+func main() {
+    Action.LoadPreset("platformer");
+
+    Terminal.Say("VALUES");
+    Terminal.Say("ACT_LEFT=" + ACT_LEFT);
+    Terminal.Say("ACT_RIGHT=" + ACT_RIGHT);
+    sayInt("ACT_LEFT_LEN", String.Length(ACT_LEFT));
+    sayInt("ACT_RIGHT_LEN", String.Length(ACT_RIGHT));
+
+    Terminal.Say("EXISTS");
+    sayBool("exists_ACT_LEFT", Action.Exists(ACT_LEFT));
+    sayBool("exists_literal_left", Action.Exists("move_left"));
+    sayBool("exists_ACT_RIGHT", Action.Exists(ACT_RIGHT));
+    sayBool("exists_literal_right", Action.Exists("move_right"));
+
+    Terminal.Say("BINDINGS");
+    Terminal.Say("bindings_ACT_LEFT=" + Action.BindingsStr(ACT_LEFT));
+    Terminal.Say("bindings_literal_left=" + Action.BindingsStr("move_left"));
+    Terminal.Say("bindings_ACT_RIGHT=" + Action.BindingsStr(ACT_RIGHT));
+    Terminal.Say("bindings_literal_right=" + Action.BindingsStr("move_right"));
+
+    Terminal.Say("COMPARE");
+    sayBool("ACT_LEFT_eq_literal", ACT_LEFT == "move_left");
+    sayBool("ACT_RIGHT_eq_literal", ACT_RIGHT == "move_right");
+}

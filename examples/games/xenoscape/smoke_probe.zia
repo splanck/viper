@@ -38,7 +38,7 @@ func main() {
     hudObj.update(0, 0, 16);
 
     var camera = new GameCamera(pal);
-    camera.setLevelSize(level.levelWidth * TILE_SIZE, level.levelHeight * TILE_SIZE);
+    camera.setLevelSize(level.levelWidth, level.levelHeight);
     camera.snapTo(player.centerX(), player.centerY());
 
     var renderObj = new Renderer(pal);

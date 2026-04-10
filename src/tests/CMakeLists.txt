@@ -824,6 +824,24 @@ set_tests_properties(zia_smoke_xenoscape PROPERTIES
         LABELS "zia;smoke;requires_display"
         TIMEOUT 30)
 
+if (APPLE AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm64|aarch64)$")
+    add_test(NAME native_smoke_xenoscape_start_arm64
+            COMMAND /bin/bash "${CMAKE_SOURCE_DIR}/src/tests/e2e/test_xenoscape_native_start.sh"
+                    $<TARGET_FILE:viper> "${CMAKE_SOURCE_DIR}")
+    set_tests_properties(native_smoke_xenoscape_start_arm64 PROPERTIES
+            PASS_REGULAR_EXPRESSION "PASS"
+            LABELS "zia;smoke;native-link"
+            TIMEOUT 60)
+
+    add_test(NAME native_smoke_xenoscape_action_names_arm64
+            COMMAND /bin/bash "${CMAKE_SOURCE_DIR}/src/tests/e2e/test_xenoscape_native_action_names.sh"
+                    $<TARGET_FILE:viper> "${CMAKE_SOURCE_DIR}")
+    set_tests_properties(native_smoke_xenoscape_action_names_arm64 PROPERTIES
+            PASS_REGULAR_EXPRESSION "PASS"
+            LABELS "zia;smoke;native-link"
+            TIMEOUT 60)
+endif ()
+
 # =============================================================================
 # Graphics3D Zia Integration Tests (headless — no display required)
 # =============================================================================
@@ -852,3 +870,16 @@ foreach (test_name IN LISTS G3D_ZIA_TESTS)
                 TIMEOUT 30)
     endif ()
 endforeach ()
+
+if (NOT TARGET runtime_surface_audit_bundle)
+    add_custom_target(runtime_surface_audit_bundle
+            DEPENDS
+            rtgen
+            test_runtime_surface_audit
+            test_runtime_name_map
+            test_runtime_classes_catalog
+            test_zia_static_calls
+            test_basic_runtime_calls
+            test_rt_graphics_surface_link
+            test_rt_audio_surface_link)
+endif ()

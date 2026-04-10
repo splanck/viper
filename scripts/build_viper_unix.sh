@@ -28,6 +28,7 @@ BUILD_TYPE="${VIPER_BUILD_TYPE:-Debug}"
 SKIP_INSTALL="${VIPER_SKIP_INSTALL:-0}"
 SKIP_AUDIT="${VIPER_SKIP_AUDIT:-0}"
 SKIP_LINT="${VIPER_SKIP_LINT:-0}"
+LINT_CHANGED_ONLY="${VIPER_LINT_CHANGED_ONLY:-1}"
 SKIP_SMOKE="${VIPER_SKIP_SMOKE:-0}"
 INSTALL_PREFIX="${VIPER_INSTALL_PREFIX:-/usr/local}"
 CONFIGURE_ARGS=(
@@ -67,14 +68,21 @@ rm -rf "$BUILD_DIR/Testing"
 ctest --test-dir "$BUILD_DIR" --output-on-failure -j"$JOBS"
 
 if [[ "$SKIP_LINT" != "1" && -x "$SCRIPT_DIR/lint_platform_policy.sh" ]]; then
-    "$SCRIPT_DIR/lint_platform_policy.sh"
+    echo "[build_viper] Running platform policy lint..."
+    if [[ "$LINT_CHANGED_ONLY" == "1" ]]; then
+        "$SCRIPT_DIR/lint_platform_policy.sh" --changed-only
+    else
+        "$SCRIPT_DIR/lint_platform_policy.sh"
+    fi
 fi
 
 if [[ "$SKIP_AUDIT" != "1" && -x "$SCRIPT_DIR/audit_runtime_surface.sh" ]]; then
+    echo "[build_viper] Running runtime surface audit..."
     "$SCRIPT_DIR/audit_runtime_surface.sh" --build-dir="$BUILD_DIR"
 fi
 
 if [[ "$SKIP_SMOKE" != "1" && -x "$SCRIPT_DIR/run_cross_platform_smoke.sh" ]]; then
+    echo "[build_viper] Running cross-platform smoke tests..."
     "$SCRIPT_DIR/run_cross_platform_smoke.sh" --build-dir "$BUILD_DIR"
 fi
 

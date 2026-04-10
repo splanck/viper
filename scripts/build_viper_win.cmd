@@ -20,6 +20,7 @@ if "%VIPER_BUILD_TYPE%"=="" set "VIPER_BUILD_TYPE=Debug"
 if "%VIPER_SKIP_INSTALL%"=="" set "VIPER_SKIP_INSTALL=0"
 if "%VIPER_SKIP_LINT%"=="" set "VIPER_SKIP_LINT=0"
 if "%VIPER_SKIP_AUDIT%"=="" set "VIPER_SKIP_AUDIT=0"
+if "%VIPER_LINT_CHANGED_ONLY%"=="" set "VIPER_LINT_CHANGED_ONLY=1"
 if "%VIPER_SKIP_SMOKE%"=="" set "VIPER_SKIP_SMOKE=0"
 
 set "CONFIG_ARGS="
@@ -92,7 +93,12 @@ if errorlevel 1 (
 if "%VIPER_SKIP_LINT%"=="0" (
     where bash >nul 2>&1
     if not errorlevel 1 (
-        bash scripts/lint_platform_policy.sh
+        echo Running platform policy lint...
+        if "%VIPER_LINT_CHANGED_ONLY%"=="1" (
+            bash scripts/lint_platform_policy.sh --changed-only
+        ) else (
+            bash scripts/lint_platform_policy.sh
+        )
         if errorlevel 1 set TESTS_FAILED=1
     )
 )
@@ -100,6 +106,7 @@ if "%VIPER_SKIP_LINT%"=="0" (
 if "%VIPER_SKIP_AUDIT%"=="0" (
     where bash >nul 2>&1
     if not errorlevel 1 (
+        echo Running runtime surface audit...
         bash scripts/audit_runtime_surface.sh --build-dir="%VIPER_BUILD_DIR%"
         if errorlevel 1 set TESTS_FAILED=1
     )
@@ -108,6 +115,7 @@ if "%VIPER_SKIP_AUDIT%"=="0" (
 if "%VIPER_SKIP_SMOKE%"=="0" (
     where bash >nul 2>&1
     if not errorlevel 1 (
+        echo Running cross-platform smoke tests...
         bash scripts/run_cross_platform_smoke.sh --build-dir "%VIPER_BUILD_DIR%"
         if errorlevel 1 set TESTS_FAILED=1
     )

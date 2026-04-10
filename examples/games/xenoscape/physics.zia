@@ -24,14 +24,37 @@ bind Viper.Game;
 bind "./config";
 bind "./level";
 
-// Collision result — replaces the old out-parameter List[Integer] pattern.
-struct MoveResult {
+// Collision result. This stays heap-backed instead of a struct because the
+// native-linked macOS demo binary currently miscompiles aggregate returns here.
+class MoveResult {
     expose Integer x;
     expose Integer y;
     expose Boolean hitFloor;
     expose Boolean hitCeiling;
     expose Boolean hitLeft;
     expose Boolean hitRight;
+
+    expose func init(px: Integer, py: Integer,
+                     floor: Boolean, ceiling: Boolean,
+                     left: Boolean, right: Boolean) {
+        x = px;
+        y = py;
+        hitFloor = floor;
+        hitCeiling = ceiling;
+        hitLeft = left;
+        hitRight = right;
+    }
+
+    expose func set(px: Integer, py: Integer,
+                    floor: Boolean, ceiling: Boolean,
+                    left: Boolean, right: Boolean) {
+        x = px;
+        y = py;
+        hitFloor = floor;
+        hitCeiling = ceiling;
+        hitLeft = left;
+        hitRight = right;
+    }
 }
 
 class PhysicsHelper {
@@ -39,10 +62,12 @@ class PhysicsHelper {
     // CollisionRect instances reused each frame (avoid allocation per check).
     hide CollisionRect rectA;
     hide CollisionRect rectB;
+    hide MoveResult moveResult;
 
     expose func init() {
         rectA = CollisionRect.New(0.0, 0.0, 1.0, 1.0);
         rectB = CollisionRect.New(0.0, 0.0, 1.0, 1.0);
+        moveResult = new MoveResult(0, 0, false, false, false, false);
     }
 
     // Move an entity by (vx, vy) and resolve collisions against the tile grid.
@@ -111,7 +136,8 @@ class PhysicsHelper {
             }
         }
 
-        return new MoveResult(newX, newY, floor, ceiling, left, right);
+        moveResult.set(newX, newY, floor, ceiling, left, right);
+        return moveResult;
     }
 
     // Check if a point (x100) is on solid ground (one pixel below feet)

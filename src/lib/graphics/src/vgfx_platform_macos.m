@@ -343,6 +343,26 @@ static vgfx_key_t translate_keycode(unsigned short keycode, NSString *chars) {
     }
 }
 
+static bool macos_should_check_menu_key_equivalent(vgfx_key_t key, NSEventModifierFlags flags) {
+    if (!(flags & NSEventModifierFlagCommand))
+        return false;
+
+    switch (key) {
+        case VGFX_KEY_LEFT:
+        case VGFX_KEY_RIGHT:
+        case VGFX_KEY_UP:
+        case VGFX_KEY_DOWN:
+        case VGFX_KEY_TAB:
+        case VGFX_KEY_HOME:
+        case VGFX_KEY_END:
+        case VGFX_KEY_BACKSPACE:
+        case VGFX_KEY_DELETE:
+            return false;
+        default:
+            return key != VGFX_KEY_UNKNOWN;
+    }
+}
+
 //===----------------------------------------------------------------------===//
 // Custom NSView for Framebuffer Display
 //===----------------------------------------------------------------------===//
@@ -894,12 +914,16 @@ int vgfx_platform_process_events(struct vgfx_window *win) {
 
             NSEventType eventType = [event type];
             if (eventType == NSEventTypeKeyDown) {
-                /* Let the native app menu consume key equivalents (Cmd+N, F5, etc.)
-                   before we translate the event into Viper input. We still avoid
-                   forwarding arbitrary key presses to NSApp, which prevents the
-                   system beep for unhandled navigation keys. */
+                /* Let the native app menu consume real Command-based shortcuts
+                   before we translate the event into Viper input. Plain
+                   navigation keys (arrows, tab, home/end, delete) must always
+                   reach the game/runtime input path. */
+                NSEventModifierFlags flags = [event modifierFlags];
+                vgfx_key_t key =
+                    translate_keycode([event keyCode], [event charactersIgnoringModifiers]);
                 NSMenu *mainMenu = [NSApp mainMenu];
-                if (mainMenu && [mainMenu performKeyEquivalent:event]) {
+                if (mainMenu && macos_should_check_menu_key_equivalent(key, flags) &&
+                    [mainMenu performKeyEquivalent:event]) {
                     continue;
                 }
             }

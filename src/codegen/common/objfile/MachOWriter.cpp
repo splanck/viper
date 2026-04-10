@@ -455,29 +455,41 @@ bool MachOWriter::write(const std::string &path,
             return false;
         }
 
-        // Map encoder symbol index to Mach-O index.
+        // Map encoder symbol index to a Mach-O symbol index.
+        // Mach-O symbol indices are zero-based, so index 0 is valid and cannot
+        // double as a "not found" sentinel.
         uint32_t symIdx = 0;
+        bool haveSymIdx = false;
         auto it = textSymMap.find(rel.symbolIndex);
         if (rel.targetSection == SymbolSection::Rodata) {
             if (rel.symbolIndex < text.symbols().count()) {
                 const Symbol &sym = text.symbols().at(rel.symbolIndex);
                 auto rodIt = definedRodataByName.find(sym.name);
-                if (rodIt != definedRodataByName.end())
+                if (rodIt != definedRodataByName.end()) {
                     symIdx = rodIt->second;
+                    haveSymIdx = true;
+                }
             }
-            if (symIdx == 0) {
+            if (!haveSymIdx) {
                 auto rit = rodataSymMap.find(rel.symbolIndex);
-                if (rit != rodataSymMap.end())
+                if (rit != rodataSymMap.end()) {
                     symIdx = rit->second;
+                    haveSymIdx = true;
+                }
             }
-            if (symIdx == 0 && it != textSymMap.end())
+            if (!haveSymIdx && it != textSymMap.end()) {
                 symIdx = it->second;
+                haveSymIdx = true;
+            }
         } else if (it != textSymMap.end()) {
             symIdx = it->second;
+            haveSymIdx = true;
         } else {
             auto rit = rodataSymMap.find(rel.symbolIndex);
-            if (rit != rodataSymMap.end())
+            if (rit != rodataSymMap.end()) {
                 symIdx = rit->second;
+                haveSymIdx = true;
+            }
         }
 
         uint32_t packed =

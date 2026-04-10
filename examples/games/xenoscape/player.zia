@@ -146,7 +146,6 @@ class Player {
     }
 
     hide func handleInput(dt: Integer) {
-        // Read input state
         var inputLeft = Action.Held(ACT_LEFT);
         var inputRight = Action.Held(ACT_RIGHT);
         var jumpPressed = Action.Pressed(ACT_JUMP);
