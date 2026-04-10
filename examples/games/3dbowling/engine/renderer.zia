@@ -3,7 +3,6 @@ module renderer;
 
 bind Viper.Graphics3D;
 bind Viper.Graphics;
-bind Viper.Graphics.Color as Color;
 bind Viper.Terminal;
 bind Viper.Core.Convert as Convert;
 bind "../config";
@@ -19,6 +18,10 @@ class Renderer {
     hide Light3D lanePractical;
     hide Light3D deckFill;
     hide Integer qualityMode;
+
+    hide func packPixel(r: Integer, g: Integer, b: Integer, a: Integer) -> Integer {
+        return (((r * 256) + g) * 256 + b) * 256 + a;
+    }
 
     expose func initRenderer(startQuality: Integer) {
         canvas = Canvas3D.New(config.WINDOW_TITLE, config.WINDOW_WIDTH, config.WINDOW_HEIGHT);
@@ -187,7 +190,7 @@ class Renderer {
                     g = 212;
                     b = 128;
                 }
-                face.Set(px, py, Color.RGBA(r, g, b, 255));
+                face.Set(px, py, packPixel(r, g, b, 255));
             }
         }
         return face;
@@ -207,7 +210,7 @@ class Renderer {
                     g = 226;
                     b = 168;
                 }
-                face.Set(px, py, Color.RGBA(r, g, b, 255));
+                face.Set(px, py, packPixel(r, g, b, 255));
             }
         }
         return face;
@@ -228,7 +231,7 @@ class Renderer {
                     g = 42;
                     b = 24;
                 }
-                face.Set(px, py, Color.RGBA(r, g, b, 255));
+                face.Set(px, py, packPixel(r, g, b, 255));
             }
         }
         return face;

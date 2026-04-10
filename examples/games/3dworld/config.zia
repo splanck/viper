@@ -1,0 +1,57 @@
+// config.zia — Tunables for the 3D World outdoor starter project
+module config;
+
+var WINDOW_TITLE: String = "3D World";
+var WINDOW_WIDTH: Integer = 1280;
+var WINDOW_HEIGHT: Integer = 720;
+
+var CLEAR_R: Float = 0.56;
+var CLEAR_G: Float = 0.70;
+var CLEAR_B: Float = 0.91;
+
+var DT_MAX_MS: Integer = 50;
+var DT_MAX_SEC: Float = 0.05;
+
+var CAMERA_FOV: Float = 60.0;
+var CAMERA_NEAR: Float = 0.1;
+var CAMERA_FAR: Float = 360.0;
+var CAMERA_DISTANCE: Float = 8.8;
+var CAMERA_TARGET_HEIGHT: Float = 1.15;
+var CAMERA_LOOK_AHEAD: Float = 3.2;
+var CAMERA_MIN_CLEARANCE: Float = 1.1;
+var CAMERA_TURN_SPEED: Float = 1.5;
+var CAMERA_PITCH_START: Float = 0.18;
+var CAMERA_PITCH_MIN: Float = -0.32;
+var CAMERA_PITCH_MAX: Float = 0.78;
+var CAMERA_MOUSE_SENS: Float = 0.009;
+
+var PLAYER_MOVE_SPEED: Float = 9.0;
+var PLAYER_SPRINT_MULT: Float = 1.7;
+var PLAYER_SIZE: Float = 0.95;
+var PLAYER_GROUND_OFFSET: Float = 0.52;
+var PLAYER_EYE_HEIGHT: Float = 1.10;
+
+var TERRAIN_SIZE: Integer = 128;
+var TERRAIN_SCALE_X: Float = 1.8;
+var TERRAIN_SCALE_Y: Float = 24.0;
+var TERRAIN_SCALE_Z: Float = 1.8;
+var TERRAIN_NOISE_SCALE: Float = 3.8;
+var TERRAIN_NOISE_OCTAVES: Integer = 6;
+var TERRAIN_NOISE_PERSIST: Float = 0.48;
+var TERRAIN_MARGIN: Float = 4.0;
+var TERRAIN_LOD_NEAR: Float = 110.0;
+var TERRAIN_LOD_FAR: Float = 240.0;
+var TERRAIN_SKIRT_DEPTH: Float = 3.0;
+
+var SKYBOX_FACE_SIZE: Integer = 64;
+var BEACON_TRIGGER_RADIUS: Float = 2.4;
+var FOG_NEAR: Float = 90.0;
+var FOG_FAR: Float = 240.0;
+
+var HUD_PANEL: Integer = 0x162235;
+var HUD_CARD: Integer = 0x263449;
+var HUD_ACCENT: Integer = 0x62D2FF;
+var HUD_TEXT: Integer = 0xFFFFFF;
+var HUD_MUTED: Integer = 0xA5B7C8;
+var HUD_GOOD: Integer = 0x7DFF9A;
+var HUD_WARN: Integer = 0xFFDD44;

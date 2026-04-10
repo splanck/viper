@@ -1,0 +1,15 @@
+// smoke_probe.zia — one-frame render probe for the 3D World example
+module smoke_probe;
+
+bind Viper.Graphics3D;
+bind Viper.Terminal as Terminal;
+bind "./game";
+
+func main() {
+    var g = new WorldGame();
+    g.initGame("3D World Smoke", 960, 540);
+    g.step(0.016);
+    g.renderFrame();
+    Canvas3D.Flip(g.getCanvas());
+    Terminal.Say("RESULT: ok");
+}

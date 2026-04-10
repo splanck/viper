@@ -1,0 +1,11 @@
+// main.zia — Entry point for 3D World
+module main;
+
+bind "./config";
+bind "./game";
+
+func start() {
+    var g = new WorldGame();
+    g.initGame(config.WINDOW_TITLE, config.WINDOW_WIDTH, config.WINDOW_HEIGHT);
+    g.run();
+}

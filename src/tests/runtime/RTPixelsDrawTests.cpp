@@ -11,6 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_internal.h"
+#include "rt_graphics.h"
 #include "rt_pixels.h"
 
 #include "tests/common/PosixCompat.h"
@@ -49,6 +50,19 @@ static void test_getrgb_discards_alpha() {
     int64_t rgb = rt_pixels_get_rgb(p, 1, 1);
     assert(rgb == (int64_t)0xABCDEF); // alpha stripped
     printf("test_getrgb_discards_alpha: PASSED\n");
+}
+
+static void test_color_rgba_packing_differs_from_pixels_storage() {
+    void *p = rt_pixels_new(1, 1);
+    int64_t packed_pixels = 0x12345678;                 // 0xRRGGBBAA
+    int64_t packed_color = rt_color_rgba(0x12, 0x34, 0x56, 0x78); // 0xAARRGGBB
+
+    rt_pixels_set(p, 0, 0, packed_pixels);
+    assert(rt_pixels_get(p, 0, 0) == packed_pixels);
+    assert(packed_color == (int64_t)0x78123456);
+    assert(packed_color != packed_pixels);
+
+    printf("test_color_rgba_packing_differs_from_pixels_storage: PASSED\n");
 }
 
 // ============================================================================
@@ -291,6 +305,7 @@ int main() {
     test_setrgb_getrgb_roundtrip();
     test_setrgb_stores_full_alpha();
     test_getrgb_discards_alpha();
+    test_color_rgba_packing_differs_from_pixels_storage();
 
     // DrawLine
     test_drawline_horizontal();

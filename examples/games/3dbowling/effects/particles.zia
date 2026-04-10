@@ -3,7 +3,6 @@ module particles;
 
 bind Viper.Graphics3D;
 bind Viper.Graphics;
-bind Viper.Graphics.Color as Color;
 bind Viper.Math;
 bind Viper.Core.Convert as Convert;
 bind "../config";
@@ -19,6 +18,10 @@ class ParticleManager {
     hide Pixels skidTexture;
     hide Pixels impactTexture;
     hide List[Decal3D] decals;
+
+    hide func packPixel(r: Integer, g: Integer, b: Integer, a: Integer) -> Integer {
+        return (((r * 256) + g) * 256 + b) * 256 + a;
+    }
 
     expose func initParticles() {
         crashSparks = Particles3D.New(100);
@@ -95,7 +98,7 @@ class ParticleManager {
                     var a = Convert.NumToInt(alpha * 140.0);
                     if (a < 1) { a = 1; }
                     if (a > 180) { a = 180; }
-                    buf.Set(px, py, Color.RGBA(rr, gg, bb, a));
+                    buf.Set(px, py, packPixel(rr, gg, bb, a));
                 }
             }
         }

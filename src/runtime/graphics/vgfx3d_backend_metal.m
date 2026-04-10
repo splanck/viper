@@ -838,8 +838,8 @@ typedef struct {
 } mtl_instance_t;
 
 typedef struct {
-    float projection[16];
-    float viewRotation[16];
+    float inverseProjection[16];
+    float inverseViewRotation[16];
 } mtl_skybox_params_t;
 
 //=============================================================================
@@ -880,17 +880,6 @@ static const float metal_skybox_vertices[] = {
     -1.0f, 1.0f,  1.0f,  -1.0f, 1.0f,  -1.0f, -1.0f, -1.0f, -1.0f, -1.0f, -1.0f, 1.0f,
     1.0f,  -1.0f, -1.0f, 1.0f,  -1.0f, -1.0f, -1.0f, -1.0f, 1.0f,  1.0f,  -1.0f, 1.0f,
 };
-
-static MTLVertexDescriptor *create_skybox_vertex_descriptor(void) {
-    MTLVertexDescriptor *d = [[MTLVertexDescriptor alloc] init];
-    d.attributes[0].format = MTLVertexFormatFloat3;
-    d.attributes[0].offset = 0;
-    d.attributes[0].bufferIndex = 0;
-    d.layouts[0].stride = sizeof(float) * 3;
-    d.layouts[0].stepRate = 1;
-    d.layouts[0].stepFunction = MTLVertexStepFunctionPerVertex;
-    return d;
-}
 
 static const uint64_t k_texture_cache_max_age = 240u;
 static const uint64_t k_cubemap_cache_max_age = 240u;
@@ -1595,7 +1584,7 @@ metal_create_skybox_pipeline_state(id<MTLDevice> device,
     descriptor = [[MTLRenderPipelineDescriptor alloc] init];
     descriptor.vertexFunction = vertex_function;
     descriptor.fragmentFunction = fragment_function;
-    descriptor.vertexDescriptor = create_skybox_vertex_descriptor();
+    descriptor.vertexDescriptor = nil;
     descriptor.colorAttachments[0].pixelFormat = color0_format;
     descriptor.colorAttachments[1].pixelFormat = MTLPixelFormatBGRA8Unorm;
     descriptor.depthAttachmentPixelFormat = MTLPixelFormatDepth32Float;
@@ -2109,20 +2098,28 @@ static void *metal_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
                 @
                 "#include <metal_stdlib>\n"
                  "using namespace metal;\n"
-                 "struct SkyboxIn { float3 position [[attribute(0)]]; };\n"
-                 "struct SkyboxOut { float4 position [[position]]; float3 dir; };\n"
-                 "struct SkyboxParams { float4x4 projection; float4x4 viewRotation; };\n"
-                 "vertex SkyboxOut skybox_vs(SkyboxIn in [[stage_in]], constant SkyboxParams &p "
-                 "[[buffer(0)]]) {\n"
+                 "struct SkyboxOut { float4 position [[position]]; float2 ndc; };\n"
+                 "struct SkyboxParams { float4x4 inverseProjection; float4x4 "
+                 "inverseViewRotation; };\n"
+                 "vertex SkyboxOut skybox_vs(uint vid [[vertex_id]]) {\n"
                  "    SkyboxOut out;\n"
-                 "    float4 pos = p.projection * p.viewRotation * float4(in.position, 1.0);\n"
-                 "    out.position = float4(pos.x, pos.y, pos.w, pos.w);\n"
-                 "    out.dir = in.position;\n"
+                 "    float2 clip;\n"
+                 "    if (vid == 0) clip = float2(-1.0, -1.0);\n"
+                 "    else if (vid == 1) clip = float2(3.0, -1.0);\n"
+                 "    else clip = float2(-1.0, 3.0);\n"
+                 "    out.position = float4(clip, 1.0, 1.0);\n"
+                 "    out.ndc = clip;\n"
                  "    return out;\n"
                  "}\n"
-                 "fragment float4 skybox_fs(SkyboxOut in [[stage_in]], texturecube<float> "
-                 "skyboxTex [[texture(0)]], sampler s [[sampler(0)]]) {\n"
-                 "    return skyboxTex.sample(s, normalize(in.dir));\n"
+                 "fragment float4 skybox_fs(SkyboxOut in [[stage_in]], constant SkyboxParams &p "
+                 "[[buffer(0)]], texturecube<float> skyboxTex [[texture(0)]], sampler s "
+                 "[[sampler(0)]]) {\n"
+                 "    float4 clip = float4(in.ndc, 1.0, 1.0);\n"
+                 "    float4 view = p.inverseProjection * clip;\n"
+                 "    float3 viewDir = normalize(view.xyz / max(fabs(view.w), 0.0001));\n"
+                 "    float3 worldDir = normalize((p.inverseViewRotation * float4(viewDir, "
+                 "0.0)).xyz);\n"
+                 "    return skyboxTex.sample(s, worldDir);\n"
                  "}\n";
             NSError *skyErr = nil;
             id<MTLLibrary> skyLib = [device newLibraryWithSource:skyboxSrc
@@ -3406,8 +3403,10 @@ static void metal_draw_skybox(void *ctx_ptr, const void *cubemap_ptr) {
         id<MTLRenderPipelineState> default_pipeline;
         mtl_skybox_params_t params;
         float view_rot[16];
+        float inv_projection[16];
+        float inv_view_rot[16];
 
-        if (!ctx || !ctx.encoder || !ctx.skyboxVertexBuffer || !cubemap)
+        if (!ctx || !ctx.encoder || !cubemap)
             return;
         skybox_pipeline = ctx.currentTargetKind == VGFX3D_METAL_TARGET_SCENE
                               ? ctx.skyboxPipeline
@@ -3431,19 +3430,22 @@ static void metal_draw_skybox(void *ctx_ptr, const void *cubemap_ptr) {
         view_rot[15] = 1.0f;
 
         memset(&params, 0, sizeof(params));
-        transpose4x4(ctx->_projection, params.projection);
-        transpose4x4(view_rot, params.viewRotation);
+        if (vgfx3d_invert_matrix4(ctx->_projection, inv_projection) != 0)
+            mat4f_identity(inv_projection);
+        transpose4x4(view_rot, inv_view_rot);
+        transpose4x4(inv_projection, params.inverseProjection);
+        transpose4x4(inv_view_rot, params.inverseViewRotation);
 
         [ctx.encoder setCullMode:MTLCullModeNone];
         [ctx.encoder setDepthStencilState:(ctx.skyboxDepthState ? ctx.skyboxDepthState
                                                                 : ctx.depthStateNoWrite)];
         [ctx.encoder setRenderPipelineState:skybox_pipeline];
-        [ctx.encoder setVertexBuffer:ctx.skyboxVertexBuffer offset:0 atIndex:0];
         [ctx.encoder setVertexBytes:&params length:sizeof(params) atIndex:0];
+        [ctx.encoder setFragmentBytes:&params length:sizeof(params) atIndex:0];
         [ctx.encoder setFragmentTexture:cubemap atIndex:0];
         [ctx.encoder setFragmentSamplerState:(ctx.cubeSampler ? ctx.cubeSampler : ctx.sharedSampler)
                                      atIndex:0];
-        [ctx.encoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:36];
+        [ctx.encoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
         [ctx.encoder setRenderPipelineState:default_pipeline];
         [ctx.encoder setDepthStencilState:ctx.depthState];
         [ctx.encoder setCullMode:MTLCullModeBack];
