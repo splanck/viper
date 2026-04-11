@@ -1,0 +1,317 @@
+module plate_appearance_engine;
+
+bind Viper.Fmt as Fmt;
+bind "../model/constants";
+bind "../model/game_state";
+bind "../model/player";
+bind "../model/play_result";
+bind "./manager_policy";
+bind "./batted_ball_engine";
+bind "./runner_engine";
+bind "./rng";
+
+class PlateAppearanceEngine {
+    hide batted_ball_engine.BattedBallEngine battedBallEngine_;
+    hide runner_engine.RunnerEngine runnerEngine_;
+
+    expose func init() {
+        battedBallEngine_ = new batted_ball_engine.BattedBallEngine();
+        runnerEngine_ = new runner_engine.RunnerEngine();
+    }
+
+    expose func resolve(state: game_state.GameState,
+                        policy: manager_policy.DefaultManagerPolicy) -> play_result.PlayResult {
+        var offense = state.offense();
+        var defense = state.defense();
+        var batter = offense.currentBatter();
+        var pitcher = defense.lineup.activePitcher!;
+
+        state.currentBatter = batter;
+        state.currentPitcher = pitcher;
+        state.balls = 0;
+        state.strikes = 0;
+
+        if policy.shouldIntentionalWalk(state, batter, pitcher) {
+            var ibbLog: List[String] = ["Pitch 1: Manager puts " + batter.name + " on intentionally."];
+            return runnerEngine_.buildWalkResult(state, batter, pitcher, constants.WALK_INTENTIONAL, 1, 0, ibbLog);
+        }
+
+        var pitchLog: List[String] = [];
+        var pitchCount = 0;
+        var strikePitches = 0;
+
+        while true {
+            pitchCount = pitchCount + 1;
+            var intent = policy.choosePitchIntent(state, batter, pitcher);
+            var pitchType = self.choosePitchType(pitcher);
+            var zoneScore = pitcher.command + pitcher.control - 100;
+            if intent == manager_policy.INTENT_ATTACK {
+                zoneScore = zoneScore + 22;
+            }
+            if intent == manager_policy.INTENT_EDGE {
+                zoneScore = zoneScore + 5;
+            }
+            if intent == manager_policy.INTENT_CHASE {
+                zoneScore = zoneScore - 10;
+            }
+            if intent == manager_policy.INTENT_PITCH_AROUND {
+                zoneScore = zoneScore - 18;
+            }
+
+            var inZone = rng.chance(46 + zoneScore / 4);
+
+            if rng.nextInt(1000) < 2 {
+                pitchLog.add("Pitch " + Fmt.Int(pitchCount) + ": " + pitchType + " runs in and hits " + batter.name + ".");
+                return runnerEngine_.buildHitByPitchResult(state, batter, pitcher, pitchCount, strikePitches, pitchLog);
+            }
+
+            var swing = self.shouldSwing(batter, pitcher, state.balls, state.strikes, inZone, intent);
+            if !swing {
+                if inZone {
+                    strikePitches = strikePitches + 1;
+                    state.strikes = state.strikes + 1;
+                    pitchLog.add("Pitch " + Fmt.Int(pitchCount) + ": Called strike with a " +
+                                 pitchType + ". Count " + self.countText(state.balls, state.strikes) + ".");
+                    if state.strikes >= 3 {
+                        if self.shouldDropThirdStrike(state, defense) {
+                            pitchLog.add("The catcher can't secure strike three.");
+                            return runnerEngine_.buildUncaughtThirdStrikeResult(state, batter, pitcher, pitchCount, strikePitches, pitchLog);
+                        }
+                        return runnerEngine_.buildStrikeoutResult(batter, pitcher, constants.STRIKEOUT_LOOKING,
+                                                                  pitchCount, strikePitches, pitchLog);
+                    }
+                } else {
+                    state.balls = state.balls + 1;
+                    pitchLog.add("Pitch " + Fmt.Int(pitchCount) + ": Ball off the plate. Count " +
+                                 self.countText(state.balls, state.strikes) + ".");
+                    if state.balls >= 4 {
+                        return runnerEngine_.buildWalkResult(state, batter, pitcher, constants.WALK_STANDARD,
+                                                             pitchCount, strikePitches, pitchLog);
+                    }
+                }
+                continue;
+            }
+
+            var contactChance = batter.contact + batter.whiffAvoidance - pitcher.stuff + 22;
+            if state.strikes >= 2 {
+                contactChance = contactChance + 10;
+            }
+            if intent == manager_policy.INTENT_CHASE {
+                contactChance = contactChance - 10;
+            }
+            if !inZone {
+                contactChance = contactChance - 18;
+            }
+
+            if !rng.chance(contactChance) {
+                strikePitches = strikePitches + 1;
+                state.strikes = state.strikes + 1;
+                pitchLog.add("Pitch " + Fmt.Int(pitchCount) + ": " + batter.name + " swings through the " +
+                             pitchType + ". Count " + self.countText(state.balls, state.strikes) + ".");
+                if state.strikes >= 3 {
+                    if self.shouldDropThirdStrike(state, defense) {
+                        pitchLog.add("Strike three gets away from the catcher.");
+                        return runnerEngine_.buildUncaughtThirdStrikeResult(state, batter, pitcher, pitchCount, strikePitches, pitchLog);
+                    }
+                    return runnerEngine_.buildStrikeoutResult(batter, pitcher, constants.STRIKEOUT_SWINGING,
+                                                              pitchCount, strikePitches, pitchLog);
+                }
+                continue;
+            }
+
+            strikePitches = strikePitches + 1;
+            if self.shouldFoul(batter, state.strikes, inZone) {
+                if state.strikes < 2 {
+                    state.strikes = state.strikes + 1;
+                }
+                pitchLog.add("Pitch " + Fmt.Int(pitchCount) + ": Foul ball. Count " +
+                             self.countText(state.balls, state.strikes) + ".");
+                continue;
+            }
+
+            var ballType = self.chooseBallType(batter, pitcher);
+            var contactClass = self.chooseContactClass(batter, pitcher, state.balls, state.strikes, inZone);
+            var direction = self.chooseDirection(batter);
+            var exitVelocity = self.exitVelocityFor(contactClass, batter, pitcher);
+            var launchAngle = self.launchAngleFor(ballType, contactClass);
+            var hangTime = self.hangTimeFor(ballType, launchAngle, contactClass);
+
+            var bb = battedBallEngine_.resolve(state, batter, pitcher, ballType, contactClass,
+                                               direction, exitVelocity, launchAngle, hangTime);
+            pitchLog.add("Pitch " + Fmt.Int(pitchCount) + ": " + self.contactText(batter, bb) + ".");
+            return runnerEngine_.resolveBattedBall(state, batter, pitcher, bb, pitchCount, strikePitches, pitchLog);
+        }
+    }
+
+    hide func choosePitchType(pitcher: player.Player) -> String {
+        var roll = rng.nextInt(100);
+        if roll < 45 {
+            return "fastball";
+        }
+        if roll < 75 {
+            return "slider";
+        }
+        return "changeup";
+    }
+
+    hide func shouldSwing(batter: player.Player, pitcher: player.Player,
+                          balls: Integer, strikes: Integer,
+                          inZone: Boolean, intent: String) -> Boolean {
+        var swingScore = batter.attackAggression - 55;
+        if inZone {
+            swingScore = swingScore + 26 + batter.zoneJudgment / 4;
+        } else {
+            swingScore = swingScore - 46 + batter.chaseResistance / 4;
+        }
+        if balls > strikes {
+            swingScore = swingScore - 6;
+        }
+        if strikes >= 2 {
+            swingScore = swingScore + 10;
+        }
+        if balls == 3 {
+            swingScore = swingScore - 6;
+        }
+        if intent == manager_policy.INTENT_PITCH_AROUND {
+            swingScore = swingScore - 6;
+        }
+        return rng.chance(46 + swingScore / 2);
+    }
+
+    hide func shouldFoul(batter: player.Player, strikes: Integer, inZone: Boolean) -> Boolean {
+        var foulChance = 18;
+        if strikes >= 2 {
+            foulChance = foulChance + batter.whiffAvoidance / 5;
+        }
+        if !inZone {
+            foulChance = foulChance + batter.chaseResistance / 10;
+        }
+        return rng.chance(foulChance);
+    }
+
+    hide func chooseBallType(batter: player.Player, pitcher: player.Player) -> String {
+        var gb = batter.groundBallTendency + pitcher.groundBallTendency / 2;
+        var ld = batter.lineDriveTendency + 10;
+        var fb = batter.flyBallTendency + 12;
+        var pop = 4 + pitcher.popUpInduction / 12;
+        var total = gb + ld + fb + pop;
+        var roll = rng.nextInt(total);
+        if roll < gb { return constants.BALL_GROUND; }
+        roll = roll - gb;
+        if roll < ld { return constants.BALL_LINE; }
+        roll = roll - ld;
+        if roll < fb { return constants.BALL_FLY; }
+        return constants.BALL_POP;
+    }
+
+    hide func chooseContactClass(batter: player.Player, pitcher: player.Player,
+                                 balls: Integer, strikes: Integer,
+                                 inZone: Boolean) -> String {
+        var power = batter.rawPower + batter.gamePower + batter.hardContact;
+        var suppress = pitcher.movement + pitcher.command;
+        var score = power - suppress + 82;
+        if balls > strikes {
+            score = score + 14;
+        }
+        if !inZone {
+            score = score - 14;
+        }
+        if score >= 128 && rng.chance(24) {
+            return constants.CONTACT_BARRELED;
+        }
+        if score >= 102 && rng.chance(50) {
+            return constants.CONTACT_SOLID;
+        }
+        if rng.chance(32) {
+            return constants.CONTACT_TOPPED;
+        }
+        return constants.CONTACT_WEAK;
+    }
+
+    hide func chooseDirection(batter: player.Player) -> String {
+        var total = batter.pullTendency + batter.centerTendency + batter.oppositeFieldTendency;
+        var roll = rng.nextInt(total);
+        if roll < batter.pullTendency { return constants.DIR_PULL; }
+        roll = roll - batter.pullTendency;
+        if roll < batter.centerTendency { return constants.DIR_CENTER; }
+        return constants.DIR_OPPO;
+    }
+
+    hide func exitVelocityFor(contactClass: String, batter: player.Player,
+                              pitcher: player.Player) -> Integer {
+        var base = 78 + batter.hardContact / 3 - pitcher.movement / 5;
+        if contactClass == constants.CONTACT_TOPPED {
+            return base - 15 + rng.range(0, 8);
+        }
+        if contactClass == constants.CONTACT_WEAK {
+            return base - 8 + rng.range(0, 10);
+        }
+        if contactClass == constants.CONTACT_SOLID {
+            return base + 4 + rng.range(0, 10);
+        }
+        return base + 12 + rng.range(0, 10);
+    }
+
+    hide func launchAngleFor(ballType: String, contactClass: String) -> Integer {
+        if ballType == constants.BALL_GROUND {
+            return rng.range(-6, 8);
+        }
+        if ballType == constants.BALL_LINE {
+            return rng.range(9, 17);
+        }
+        if ballType == constants.BALL_POP {
+            return rng.range(50, 72);
+        }
+        if contactClass == constants.CONTACT_BARRELED {
+            return rng.range(24, 34);
+        }
+        return rng.range(18, 38);
+    }
+
+    hide func hangTimeFor(ballType: String, launchAngle: Integer, contactClass: String) -> Integer {
+        if ballType == constants.BALL_GROUND {
+            return 250;
+        }
+        if ballType == constants.BALL_LINE {
+            return 620 + launchAngle * 18;
+        }
+        if ballType == constants.BALL_POP {
+            return 2200 + launchAngle * 18;
+        }
+        var hang = 1400 + launchAngle * 30;
+        if contactClass == constants.CONTACT_BARRELED {
+            hang = hang + 180;
+        }
+        return hang;
+    }
+
+    hide func shouldDropThirdStrike(state: game_state.GameState,
+                                    defense: game_state.TeamGameState) -> Boolean {
+        if state.firstBase != null && state.outs < 2 {
+            return false;
+        }
+        var catcher = defense.lineup.getFieldPlayer(constants.POS_C);
+        var missChance = 4;
+        if catcher != null {
+            missChance = 6 - catcher!.catcherBlocking / 20;
+        }
+        return rng.chance(missChance);
+    }
+
+    hide func contactText(batter: player.Player, bb: play_result.BattedBallOutcome) -> String {
+        if bb.battedBallType == constants.BALL_GROUND {
+            return batter.name + " chops a grounder";
+        }
+        if bb.battedBallType == constants.BALL_LINE {
+            return batter.name + " lines one";
+        }
+        if bb.battedBallType == constants.BALL_POP {
+            return batter.name + " gets underneath it";
+        }
+        return batter.name + " sends a fly ball";
+    }
+
+    hide func countText(balls: Integer, strikes: Integer) -> String {
+        return Fmt.Int(balls) + "-" + Fmt.Int(strikes);
+    }
+}

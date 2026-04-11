@@ -1,0 +1,97 @@
+module play_by_play_writer;
+
+bind Viper.Fmt as Fmt;
+bind "../model/constants";
+bind "../model/game_state";
+bind "../model/player";
+bind "../model/play_result";
+
+func gameIntro(state: game_state.GameState) -> List[String] {
+    var lines: List[String] = [];
+    lines.add("========================================");
+    lines.add("  Viper Baseball Demo");
+    lines.add("========================================");
+    lines.add(state.away.teamRef.fullName + " at " + state.home.teamRef.fullName);
+    lines.add("Ballpark: " + state.park.name);
+    lines.add("Seed: " + Fmt.Int(state.rngSeed));
+    lines.add("");
+    return lines;
+}
+
+func halfHeader(state: game_state.GameState) -> String {
+    var half = "Top";
+    var club = state.away.teamRef.fullName;
+    if !state.topHalf {
+        half = "Bottom";
+        club = state.home.teamRef.fullName;
+    }
+    return half + " " + Fmt.Int(state.inning) + " - " + club + " batting";
+}
+
+func pitchingChange(teamName: String, oldPitcher: player.Player,
+                    newPitcher: player.Player, inherited: Integer) -> String {
+    var line = teamName + " goes to the bullpen: " + oldPitcher.name + " out, " + newPitcher.name + " in";
+    if inherited > 0 {
+        line = line + " (" + Fmt.Int(inherited) + " inherited runner";
+        if inherited != 1 {
+            line = line + "s";
+        }
+        line = line + ")";
+    }
+    return line;
+}
+
+func recordPA(state: game_state.GameState, result: play_result.PlayResult) -> List[String] {
+    var lines: List[String] = [];
+    lines.add(result.batter!.name + " vs " + result.pitcher!.name);
+    for i in 0..result.pitchLog.length() {
+        lines.add("  " + result.pitchLog.get(i));
+    }
+    lines.add("  " + result.playText + ".");
+    lines.add("  Score: " + scoreSummary(state));
+    lines.add("  " + baseSummary(state) + ", " + outSummary(state.outs));
+    return lines;
+}
+
+func inningEnd(state: game_state.GameState) -> String {
+    var half = "Top";
+    if !state.topHalf {
+        half = "Bottom";
+    }
+    return "End " + half + " " + Fmt.Int(state.inning) + ": " + scoreSummary(state);
+}
+
+func finalLine(state: game_state.GameState) -> String {
+    return "Final: " + scoreSummary(state);
+}
+
+func scoreSummary(state: game_state.GameState) -> String {
+    return state.away.teamRef.nickname + " " + Fmt.Int(state.away.score) +
+           ", " + state.home.teamRef.nickname + " " + Fmt.Int(state.home.score);
+}
+
+func outSummary(outs: Integer) -> String {
+    if outs == 1 { return "1 out"; }
+    return Fmt.Int(outs) + " outs";
+}
+
+func baseSummary(state: game_state.GameState) -> String {
+    if state.firstBase == null && state.secondBase == null && state.thirdBase == null {
+        return "Bases empty";
+    }
+
+    var text = "";
+    if state.firstBase != null {
+        text = "Runner on first";
+    }
+    if state.secondBase != null {
+        if text != "" { text = text + ", "; }
+        text = text + "runner on second";
+    }
+    if state.thirdBase != null {
+        if text != "" { text = text + ", "; }
+        text = text + "runner on third";
+    }
+    return text;
+}
+

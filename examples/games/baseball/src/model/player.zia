@@ -1,0 +1,192 @@
+module player;
+
+bind "./constants";
+
+class Player {
+    expose String id;
+    expose String name;
+    expose String bats;
+    expose String throwsHand;
+    expose String primaryPosition;
+
+    expose Integer zoneJudgment;
+    expose Integer chaseResistance;
+    expose Integer attackAggression;
+    expose Integer contact;
+    expose Integer whiffAvoidance;
+    expose Integer rawPower;
+    expose Integer gamePower;
+    expose Integer hardContact;
+    expose Integer groundBallTendency;
+    expose Integer lineDriveTendency;
+    expose Integer flyBallTendency;
+    expose Integer pullTendency;
+    expose Integer centerTendency;
+    expose Integer oppositeFieldTendency;
+
+    expose Integer speed;
+    expose Integer firstStep;
+    expose Integer baserunningInstinct;
+    expose Integer stealJump;
+    expose Integer stealSkill;
+
+    expose Integer starterRelieverProfile;
+    expose Integer stamina;
+    expose Integer stuff;
+    expose Integer control;
+    expose Integer command;
+    expose Integer movement;
+    expose Integer pitchMix;
+    expose Integer holdRunners;
+    expose Integer popUpInduction;
+
+    expose Integer range;
+    expose Integer reaction;
+    expose Integer hands;
+    expose Integer armStrength;
+    expose Integer armAccuracy;
+    expose Integer catcherFraming;
+    expose Integer catcherBlocking;
+    expose Integer catcherPopTime;
+    expose Integer doublePlaySkill;
+    expose Integer routeEfficiency;
+
+    expose Integer fatigueResistance;
+    expose Integer injuryProneness;
+
+    expose func init(pid: String, pname: String, pbats: String,
+                     pthrows: String, pos: String) {
+        id = pid;
+        name = pname;
+        bats = pbats;
+        throwsHand = pthrows;
+        primaryPosition = pos;
+
+        zoneJudgment = 50;
+        chaseResistance = 50;
+        attackAggression = 50;
+        contact = 50;
+        whiffAvoidance = 50;
+        rawPower = 50;
+        gamePower = 50;
+        hardContact = 50;
+        groundBallTendency = 34;
+        lineDriveTendency = 33;
+        flyBallTendency = 33;
+        pullTendency = 34;
+        centerTendency = 33;
+        oppositeFieldTendency = 33;
+
+        speed = 50;
+        firstStep = 50;
+        baserunningInstinct = 50;
+        stealJump = 50;
+        stealSkill = 50;
+
+        starterRelieverProfile = 50;
+        stamina = 50;
+        stuff = 50;
+        control = 50;
+        command = 50;
+        movement = 50;
+        pitchMix = 50;
+        holdRunners = 50;
+        popUpInduction = 50;
+
+        range = 50;
+        reaction = 50;
+        hands = 50;
+        armStrength = 50;
+        armAccuracy = 50;
+        catcherFraming = 50;
+        catcherBlocking = 50;
+        catcherPopTime = 50;
+        doublePlaySkill = 50;
+        routeEfficiency = 50;
+
+        fatigueResistance = 50;
+        injuryProneness = 50;
+    }
+
+    expose func setHitting(zj: Integer, chase: Integer, aggr: Integer,
+                           con: Integer, whiff: Integer, raw: Integer,
+                           gameP: Integer, hard: Integer, gb: Integer,
+                           ld: Integer, fb: Integer, pull: Integer,
+                           center: Integer, oppo: Integer) {
+        zoneJudgment = zj;
+        chaseResistance = chase;
+        attackAggression = aggr;
+        contact = con;
+        whiffAvoidance = whiff;
+        rawPower = raw;
+        gamePower = gameP;
+        hardContact = hard;
+        groundBallTendency = gb;
+        lineDriveTendency = ld;
+        flyBallTendency = fb;
+        pullTendency = pull;
+        centerTendency = center;
+        oppositeFieldTendency = oppo;
+    }
+
+    expose func setRunning(spd: Integer, step: Integer, instinct: Integer,
+                           jump: Integer, steal: Integer) {
+        speed = spd;
+        firstStep = step;
+        baserunningInstinct = instinct;
+        stealJump = jump;
+        stealSkill = steal;
+    }
+
+    expose func setPitching(profile: Integer, stam: Integer, stf: Integer,
+                            ctl: Integer, cmd: Integer, mov: Integer,
+                            mix: Integer, hold: Integer, popup: Integer) {
+        starterRelieverProfile = profile;
+        stamina = stam;
+        stuff = stf;
+        control = ctl;
+        command = cmd;
+        movement = mov;
+        pitchMix = mix;
+        holdRunners = hold;
+        popUpInduction = popup;
+    }
+
+    expose func setDefense(rng: Integer, react: Integer, h: Integer,
+                           arm: Integer, accuracy: Integer, frame: Integer,
+                           block: Integer, pop: Integer, turnDp: Integer,
+                           route: Integer) {
+        range = rng;
+        reaction = react;
+        hands = h;
+        armStrength = arm;
+        armAccuracy = accuracy;
+        catcherFraming = frame;
+        catcherBlocking = block;
+        catcherPopTime = pop;
+        doublePlaySkill = turnDp;
+        routeEfficiency = route;
+    }
+
+    expose func setDurability(fatigue: Integer, injury: Integer) {
+        fatigueResistance = fatigue;
+        injuryProneness = injury;
+    }
+
+    expose func isPitcher() -> Boolean {
+        return primaryPosition == constants.POS_P;
+    }
+
+    expose func isLeftHandedBatter() -> Boolean {
+        return bats == "L";
+    }
+
+    expose func dangerScore() -> Integer {
+        return rawPower + gamePower + hardContact + zoneJudgment;
+    }
+
+    expose func defenseScore() -> Integer {
+        return reaction + range + hands + armStrength + armAccuracy;
+    }
+}
+

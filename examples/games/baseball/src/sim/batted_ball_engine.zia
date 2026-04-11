@@ -1,0 +1,314 @@
+module batted_ball_engine;
+
+bind "../model/constants";
+bind "../model/game_state";
+bind "../model/play_result";
+bind "../model/player";
+bind "./rng";
+bind "./timing_model";
+
+class BattedBallEngine {
+    expose func init() { }
+
+    expose func resolve(state: game_state.GameState, batter: player.Player,
+                        pitcher: player.Player, ballType: String,
+                        contactClass: String, direction: String,
+                        exitVelocity: Integer, launchAngle: Integer,
+                        hangTime: Integer) -> play_result.BattedBallOutcome {
+        var out = new play_result.BattedBallOutcome();
+        out.battedBallType = ballType;
+        out.contactClass = contactClass;
+        out.direction = direction;
+        out.exitVelocity = exitVelocity;
+        out.launchAngle = launchAngle;
+        out.hangTime = hangTime;
+
+        if ballType == constants.BALL_GROUND {
+            out.defensePosition = self.chooseInfieldFielder(batter, direction);
+            self.resolveGroundBall(state, batter, out);
+            return out;
+        }
+
+        out.defensePosition = self.chooseAirFielder(batter, direction, ballType);
+        self.resolveAirBall(state, batter, out);
+        return out;
+    }
+
+    hide func chooseInfieldFielder(batter: player.Player, direction: String) -> String {
+        if batter.bats == "L" {
+            if direction == constants.DIR_PULL { return constants.POS_2B; }
+            if direction == constants.DIR_CENTER { return constants.POS_2B; }
+            return constants.POS_3B;
+        }
+        if direction == constants.DIR_PULL { return constants.POS_3B; }
+        if direction == constants.DIR_CENTER { return constants.POS_SS; }
+        return constants.POS_2B;
+    }
+
+    hide func chooseAirFielder(batter: player.Player, direction: String, ballType: String) -> String {
+        if ballType == constants.BALL_POP {
+            if direction == constants.DIR_CENTER {
+                return constants.POS_SS;
+            }
+            if batter.bats == "L" {
+                if direction == constants.DIR_PULL { return constants.POS_1B; }
+                return constants.POS_3B;
+            }
+            if direction == constants.DIR_PULL { return constants.POS_3B; }
+            return constants.POS_1B;
+        }
+
+        if direction == constants.DIR_CENTER {
+            return constants.POS_CF;
+        }
+        if batter.bats == "L" {
+            if direction == constants.DIR_PULL { return constants.POS_RF; }
+            return constants.POS_LF;
+        }
+        if direction == constants.DIR_PULL { return constants.POS_LF; }
+        return constants.POS_RF;
+    }
+
+    hide func estimateDistanceFeet(ballType: String, exitVelocity: Integer, launchAngle: Integer) -> Integer {
+        if ballType == constants.BALL_POP {
+            return 40 + exitVelocity / 2 + launchAngle / 2;
+        }
+        if ballType == constants.BALL_GROUND {
+            return 50 + exitVelocity / 2;
+        }
+        if ballType == constants.BALL_LINE {
+            return 120 + exitVelocity + launchAngle * 3;
+        }
+        return 160 + exitVelocity + launchAngle * 4;
+    }
+
+    hide func shouldCallInfieldFly(state: game_state.GameState,
+                                   defensePosition: String) -> Boolean {
+        // Real rule: less than two outs, AND a force play exists at third base.
+        // The force at third only exists when both first and second are occupied
+        // (third base is optional). Runners on the corners alone do NOT force the
+        // rule because the runner on first is not forced to advance.
+        if state.outs >= 2 {
+            return false;
+        }
+        if state.firstBase == null {
+            return false;
+        }
+        if state.secondBase == null {
+            return false;
+        }
+        return defensePosition == constants.POS_1B ||
+               defensePosition == constants.POS_2B ||
+               defensePosition == constants.POS_3B ||
+               defensePosition == constants.POS_SS ||
+               defensePosition == constants.POS_C;
+    }
+
+    hide func positionText(position: String) -> String {
+        if position == constants.POS_P { return "pitcher"; }
+        if position == constants.POS_C { return "catcher"; }
+        if position == constants.POS_1B { return "first baseman"; }
+        if position == constants.POS_2B { return "second baseman"; }
+        if position == constants.POS_3B { return "third baseman"; }
+        if position == constants.POS_SS { return "shortstop"; }
+        if position == constants.POS_LF { return "left fielder"; }
+        if position == constants.POS_CF { return "center fielder"; }
+        if position == constants.POS_RF { return "right fielder"; }
+        return "fielder";
+    }
+
+    hide func throwDistance(position: String) -> Integer {
+        if position == constants.POS_P { return 95; }
+        if position == constants.POS_C { return 110; }
+        if position == constants.POS_1B { return 45; }
+        if position == constants.POS_2B { return 90; }
+        if position == constants.POS_3B { return 127; }
+        if position == constants.POS_SS { return 130; }
+        if position == constants.POS_LF { return 180; }
+        if position == constants.POS_CF { return 210; }
+        if position == constants.POS_RF { return 180; }
+        return 127;
+    }
+
+    hide func resolveAirBall(state: game_state.GameState, batter: player.Player,
+                             out: play_result.BattedBallOutcome) {
+        var fielder = state.defense().lineup.getFieldPlayer(out.defensePosition);
+        var distanceFeet = self.estimateDistanceFeet(out.battedBallType, out.exitVelocity, out.launchAngle);
+        var wall = state.park.wallDistanceForDirection(out.direction, batter.bats);
+        var difficulty = 20;
+
+        if out.battedBallType == constants.BALL_LINE {
+            difficulty = 35;
+        } else if out.battedBallType == constants.BALL_FLY {
+            difficulty = 25;
+        } else if out.battedBallType == constants.BALL_POP {
+            difficulty = 8;
+        }
+
+        if out.battedBallType == constants.BALL_POP && self.shouldCallInfieldFly(state, out.defensePosition) {
+            out.infieldFlyCalled = true;
+            out.isCaught = true;
+            out.isOut = true;
+            out.ballStatus = constants.STATUS_CAUGHT;
+            out.depthBucket = "shallow";
+            out.description = "pops it up on the infield";
+            return;
+        }
+
+        if out.battedBallType == constants.BALL_FLY &&
+           out.launchAngle >= 24 && out.launchAngle <= 38 &&
+           out.exitVelocity >= 98 && distanceFeet >= wall + 8 &&
+           (out.contactClass == constants.CONTACT_SOLID ||
+            out.contactClass == constants.CONTACT_BARRELED) {
+            out.isHomeRun = true;
+            out.isHit = true;
+            out.ballStatus = constants.STATUS_OVER_WALL;
+            out.likelyBases = 4;
+            out.depthBucket = "deep";
+            out.description = "drives it over the wall";
+            return;
+        }
+
+        var interceptDistance = distanceFeet / 5;
+        if interceptDistance < 18 { interceptDistance = 18; }
+        if out.battedBallType == constants.BALL_LINE {
+            interceptDistance = interceptDistance + 42;
+        }
+        out.controlTime = timing_model.airInterceptMs(fielder, interceptDistance, difficulty);
+
+        var catchBonus = 0;
+        if fielder != null {
+            catchBonus = (fielder!.hands + fielder!.reaction) / 5;
+        }
+        if out.controlTime <= out.hangTime + catchBonus * 4 {
+            out.isCaught = true;
+            out.isOut = true;
+            out.ballStatus = constants.STATUS_CAUGHT;
+            if distanceFeet > 290 {
+                out.depthBucket = "deep";
+            } else if distanceFeet > 190 {
+                out.depthBucket = "medium";
+            } else {
+                out.depthBucket = "shallow";
+            }
+            out.description = self.describeCaughtBall(out, distanceFeet);
+            return;
+        }
+
+        if fielder != null {
+            var errorChance = 2 + (70 - fielder!.hands) / 10;
+            if rng.chance(errorChance) {
+                out.isError = true;
+                out.ballStatus = constants.STATUS_FIELDED_LIVE;
+                out.depthBucket = "medium";
+                out.description = "drops it in front of the " + self.positionText(out.defensePosition);
+                return;
+            }
+        }
+
+        out.ballStatus = constants.STATUS_FIELDED_LIVE;
+        out.isHit = true;
+        if distanceFeet > 360 {
+            out.likelyBases = 3;
+            out.depthBucket = "deep";
+        } else if out.battedBallType == constants.BALL_LINE {
+            if distanceFeet > 285 || (out.contactClass == constants.CONTACT_BARRELED && distanceFeet > 230) {
+                out.likelyBases = 2;
+                out.depthBucket = "medium";
+            } else {
+                out.likelyBases = 1;
+                out.depthBucket = "shallow";
+            }
+        } else if distanceFeet > 255 || (out.contactClass == constants.CONTACT_BARRELED && distanceFeet > 215) {
+            out.likelyBases = 2;
+            out.depthBucket = "medium";
+        } else {
+            out.likelyBases = 1;
+            out.depthBucket = "shallow";
+        }
+        out.description = self.describeDroppedBall(out);
+    }
+
+    hide func describeCaughtBall(out: play_result.BattedBallOutcome, distanceFeet: Integer) -> String {
+        if out.battedBallType == constants.BALL_POP {
+            return "pops it up to the " + self.positionText(out.defensePosition);
+        }
+        if out.battedBallType == constants.BALL_LINE {
+            return "lines out to the " + self.positionText(out.defensePosition);
+        }
+        if distanceFeet > 290 {
+            return "sends a deep fly to the " + self.positionText(out.defensePosition);
+        }
+        return "flies out to the " + self.positionText(out.defensePosition);
+    }
+
+    hide func describeDroppedBall(out: play_result.BattedBallOutcome) -> String {
+        if out.likelyBases >= 3 {
+            return "drives it into the gap";
+        }
+        if out.likelyBases == 2 {
+            return "strokes it into the alley";
+        }
+        if out.battedBallType == constants.BALL_LINE {
+            return "lines it into " + self.positionText(out.defensePosition) + " territory";
+        }
+        return "drops it in for a hit";
+    }
+
+    hide func resolveGroundBall(state: game_state.GameState, batter: player.Player,
+                                out: play_result.BattedBallOutcome) {
+        var fielder = state.defense().lineup.getFieldPlayer(out.defensePosition);
+        var difficulty = out.exitVelocity / 3;
+        out.controlTime = timing_model.groundFieldMs(fielder, out.exitVelocity, state.park.infieldSpeed, difficulty);
+
+        if fielder != null {
+            var errorChance = 2 + (68 - fielder!.hands) / 12;
+            if out.contactClass == constants.CONTACT_BARRELED {
+                errorChance = errorChance + 1;
+            }
+            if rng.chance(errorChance) {
+                out.isError = true;
+                out.ballStatus = constants.STATUS_FIELDED_LIVE;
+                out.description = "grounds one that gets muffed by the " + self.positionText(out.defensePosition);
+                return;
+            }
+        }
+
+        var throwMs = timing_model.throwMs(fielder, self.throwDistance(out.defensePosition));
+        var batterMs = timing_model.batterToFirstMs(batter);
+
+        var requiredMargin = 280;
+        if out.contactClass == constants.CONTACT_WEAK {
+            requiredMargin = 120;
+        } else if out.contactClass == constants.CONTACT_TOPPED {
+            requiredMargin = 180;
+        } else if out.contactClass == constants.CONTACT_SOLID {
+            requiredMargin = 380;
+        } else if out.contactClass == constants.CONTACT_BARRELED {
+            requiredMargin = 500;
+        }
+        if batter.speed > 60 {
+            requiredMargin = requiredMargin + (batter.speed - 60) * 8;
+        }
+
+        if out.controlTime + throwMs < batterMs - requiredMargin {
+            out.isOut = true;
+            out.ballStatus = constants.STATUS_FIELDED_LIVE;
+            out.doublePlayCandidate = state.firstBase != null && state.outs < 2 &&
+                                      out.contactClass != constants.CONTACT_WEAK;
+            out.description = "grounds to the " + self.positionText(out.defensePosition);
+            return;
+        }
+
+        out.ballStatus = constants.STATUS_FIELDED_LIVE;
+        out.isHit = true;
+        out.likelyBases = 1;
+        if batter.speed >= 75 && rng.chance(18) {
+            out.description = "beats out a slow roller";
+        } else if out.contactClass == constants.CONTACT_BARRELED {
+            out.description = "rips a grounder through the infield";
+        } else {
+            out.description = "sneaks a ground ball through";
+        }
+    }
+}

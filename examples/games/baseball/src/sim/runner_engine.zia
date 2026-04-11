@@ -1,0 +1,471 @@
+module runner_engine;
+
+bind "../model/constants";
+bind "../model/game_state";
+bind "../model/play_result";
+bind "../model/player";
+bind "./rng";
+
+class RunnerEngine {
+    expose func init() { }
+
+    expose func buildWalkResult(state: game_state.GameState, batter: player.Player,
+                                pitcher: player.Player, walkType: String,
+                                pitchCount: Integer, strikePitches: Integer,
+                                pitchLog: List[String]) -> play_result.PlayResult {
+        var result = new play_result.PlayResult();
+        result.batter = batter;
+        result.pitcher = pitcher;
+        result.endReason = constants.END_WALK;
+        result.batterResultCode = constants.RESULT_WALK;
+        result.walkType = walkType;
+        result.batterSafe = true;
+        result.pitchCount = pitchCount;
+        result.strikePitchCount = strikePitches;
+        result.pitchLog = pitchLog;
+
+        var post1 = state.firstBase;
+        var post2 = state.secondBase;
+        var post3 = state.thirdBase;
+
+        if state.firstBase != null {
+            if state.secondBase != null {
+                if state.thirdBase != null {
+                    result.addAdvance(new play_result.RunnerAdvance(state.thirdBase!.runner, 3, 4, true, false,
+                                                                    state.thirdBase!.responsiblePitcher,
+                                                                    state.thirdBase!.runner.name + " scores"));
+                    result.runsScored = result.runsScored + 1;
+                    result.RBIAwarded = result.RBIAwarded + 1;
+                }
+                post3 = state.secondBase;
+                result.addAdvance(new play_result.RunnerAdvance(state.secondBase!.runner, 2, 3, false, false,
+                                                                state.secondBase!.responsiblePitcher,
+                                                                state.secondBase!.runner.name + " to third"));
+            }
+            post2 = state.firstBase;
+            result.addAdvance(new play_result.RunnerAdvance(state.firstBase!.runner, 1, 2, false, false,
+                                                            state.firstBase!.responsiblePitcher,
+                                                            state.firstBase!.runner.name + " to second"));
+        }
+
+        post1 = new game_state.BaseOccupant(batter, pitcher, walkType);
+        result.postFirst = post1;
+        result.postSecond = post2;
+        result.postThird = post3;
+        result.playText = batter.name + " draws";
+        if walkType == constants.WALK_INTENTIONAL {
+            result.playText = batter.name + " is intentionally walked";
+        } else {
+            result.playText = result.playText + " a walk";
+        }
+        return result;
+    }
+
+    expose func buildHitByPitchResult(state: game_state.GameState, batter: player.Player,
+                                      pitcher: player.Player, pitchCount: Integer,
+                                      strikePitches: Integer,
+                                      pitchLog: List[String]) -> play_result.PlayResult {
+        var result = self.buildWalkResult(state, batter, pitcher, constants.RESULT_HBP,
+                                          pitchCount, strikePitches, pitchLog);
+        result.endReason = constants.END_HBP;
+        result.batterResultCode = constants.RESULT_HBP;
+        result.walkType = constants.WALK_STANDARD;
+        result.playText = batter.name + " is hit by the pitch";
+        return result;
+    }
+
+    expose func buildStrikeoutResult(batter: player.Player, pitcher: player.Player,
+                                     strikeoutType: String, pitchCount: Integer,
+                                     strikePitches: Integer,
+                                     pitchLog: List[String]) -> play_result.PlayResult {
+        var result = new play_result.PlayResult();
+        result.batter = batter;
+        result.pitcher = pitcher;
+        result.endReason = constants.END_STRIKEOUT;
+        result.batterResultCode = constants.RESULT_STRIKEOUT;
+        result.strikeoutType = strikeoutType;
+        result.outsAdded = 1;
+        result.creditedStrikeouts = 1;
+        result.pitchCount = pitchCount;
+        result.strikePitchCount = strikePitches;
+        result.pitchLog = pitchLog;
+        result.playText = batter.name + " strikes out";
+        if strikeoutType == constants.STRIKEOUT_LOOKING {
+            result.playText = batter.name + " strikes out looking";
+        }
+        return result;
+    }
+
+    expose func buildUncaughtThirdStrikeResult(state: game_state.GameState,
+                                               batter: player.Player,
+                                               pitcher: player.Player,
+                                               pitchCount: Integer,
+                                               strikePitches: Integer,
+                                               pitchLog: List[String]) -> play_result.PlayResult {
+        var result = new play_result.PlayResult();
+        result.batter = batter;
+        result.pitcher = pitcher;
+        result.endReason = constants.END_UNCAUGHT_THIRD;
+        result.batterResultCode = constants.RESULT_STRIKEOUT;
+        result.strikeoutType = constants.STRIKEOUT_UNCAUGHT;
+        result.batterReachedOnUncaughtThirdStrike = true;
+        result.batterSafe = true;
+        result.creditedStrikeouts = 1;
+        result.pitchCount = pitchCount;
+        result.strikePitchCount = strikePitches;
+        result.pitchLog = pitchLog;
+
+        var post1 = state.firstBase;
+        var post2 = state.secondBase;
+        var post3 = state.thirdBase;
+
+        if state.firstBase != null {
+            if state.secondBase != null {
+                if state.thirdBase != null {
+                    result.addAdvance(new play_result.RunnerAdvance(state.thirdBase!.runner, 3, 4, true, false,
+                                                                    state.thirdBase!.responsiblePitcher,
+                                                                    state.thirdBase!.runner.name + " scores"));
+                    result.runsScored = result.runsScored + 1;
+                    result.RBIAwarded = result.RBIAwarded + 1;
+                }
+                post3 = state.secondBase;
+                result.addAdvance(new play_result.RunnerAdvance(state.secondBase!.runner, 2, 3, false, false,
+                                                                state.secondBase!.responsiblePitcher,
+                                                                state.secondBase!.runner.name + " to third"));
+            }
+            post2 = state.firstBase;
+            result.addAdvance(new play_result.RunnerAdvance(state.firstBase!.runner, 1, 2, false, false,
+                                                            state.firstBase!.responsiblePitcher,
+                                                            state.firstBase!.runner.name + " to second"));
+        }
+
+        post1 = new game_state.BaseOccupant(batter, pitcher, constants.END_UNCAUGHT_THIRD);
+        result.postFirst = post1;
+        result.postSecond = post2;
+        result.postThird = post3;
+        result.playText = batter.name + " reaches on an uncaught third strike";
+        return result;
+    }
+
+    expose func resolveBattedBall(state: game_state.GameState, batter: player.Player,
+                                  pitcher: player.Player,
+                                  bb: play_result.BattedBallOutcome,
+                                  pitchCount: Integer, strikePitches: Integer,
+                                  pitchLog: List[String]) -> play_result.PlayResult {
+        var result = new play_result.PlayResult();
+        result.batter = batter;
+        result.pitcher = pitcher;
+        result.endReason = constants.END_BALL_IN_PLAY;
+        result.pitchCount = pitchCount;
+        result.strikePitchCount = strikePitches;
+        result.pitchLog = pitchLog;
+        result.battedBallType = bb.battedBallType;
+        result.contactClass = bb.contactClass;
+        result.direction = bb.direction;
+        result.defensePosition = bb.defensePosition;
+        result.infieldFlyCalled = bb.infieldFlyCalled;
+
+        if bb.isHomeRun {
+            self.applyHomeRun(state, batter, pitcher, bb, result);
+            return result;
+        }
+        if bb.isCaught {
+            self.applyCaughtBall(state, batter, bb, result);
+            return result;
+        }
+        if bb.isError {
+            self.applyError(state, batter, pitcher, bb, result);
+            return result;
+        }
+        if bb.isHit {
+            self.applyHit(state, batter, pitcher, bb, result);
+            return result;
+        }
+        self.applyGroundOut(state, batter, pitcher, bb, result);
+        return result;
+    }
+
+    hide func applyHomeRun(state: game_state.GameState, batter: player.Player,
+                           pitcher: player.Player, bb: play_result.BattedBallOutcome,
+                           result: play_result.PlayResult) {
+        result.isHit = true;
+        result.hitBases = 4;
+        result.batterResultCode = constants.RESULT_HOME_RUN;
+        result.batterSafe = true;
+
+        if state.thirdBase != null {
+            result.addAdvance(new play_result.RunnerAdvance(state.thirdBase!.runner, 3, 4, true, false,
+                                                            state.thirdBase!.responsiblePitcher,
+                                                            state.thirdBase!.runner.name + " scores"));
+            result.runsScored = result.runsScored + 1;
+        }
+        if state.secondBase != null {
+            result.addAdvance(new play_result.RunnerAdvance(state.secondBase!.runner, 2, 4, true, false,
+                                                            state.secondBase!.responsiblePitcher,
+                                                            state.secondBase!.runner.name + " scores"));
+            result.runsScored = result.runsScored + 1;
+        }
+        if state.firstBase != null {
+            result.addAdvance(new play_result.RunnerAdvance(state.firstBase!.runner, 1, 4, true, false,
+                                                            state.firstBase!.responsiblePitcher,
+                                                            state.firstBase!.runner.name + " scores"));
+            result.runsScored = result.runsScored + 1;
+        }
+
+        result.addAdvance(new play_result.RunnerAdvance(batter, 0, 4, true, false, pitcher,
+                                                        batter.name + " circles the bases"));
+        result.runsScored = result.runsScored + 1;
+        result.RBIAwarded = result.runsScored;
+        result.playText = batter.name + " " + bb.description;
+    }
+
+    hide func applyCaughtBall(state: game_state.GameState, batter: player.Player,
+                              bb: play_result.BattedBallOutcome,
+                              result: play_result.PlayResult) {
+        result.batterResultCode = constants.RESULT_OUT;
+        result.outsAdded = 1;
+        result.postFirst = state.firstBase;
+        result.postSecond = state.secondBase;
+        result.postThird = state.thirdBase;
+        result.playText = batter.name + " " + bb.description;
+
+        if !bb.infieldFlyCalled && state.thirdBase != null &&
+           bb.defensePosition != constants.POS_C &&
+           bb.defensePosition != constants.POS_1B &&
+           bb.defensePosition != constants.POS_2B &&
+           bb.defensePosition != constants.POS_3B &&
+           bb.defensePosition != constants.POS_SS &&
+           bb.depthBucket != "shallow" && state.outs < 2 {
+            result.addAdvance(new play_result.RunnerAdvance(state.thirdBase!.runner, 3, 4, true, false,
+                                                            state.thirdBase!.responsiblePitcher,
+                                                            state.thirdBase!.runner.name + " tags and scores"));
+            result.runsScored = result.runsScored + 1;
+            result.RBIAwarded = 1;
+            result.sacrificeType = constants.SAC_FLY;
+            result.postThird = null;
+        }
+    }
+
+    hide func applyError(state: game_state.GameState, batter: player.Player,
+                         pitcher: player.Player, bb: play_result.BattedBallOutcome,
+                         result: play_result.PlayResult) {
+        result.batterResultCode = constants.RESULT_REACHED_ON_ERROR;
+        result.isError = true;
+        result.errorsCharged = 1;
+        result.batterSafe = true;
+        result.playText = batter.name + " " + bb.description;
+
+        var post1: game_state.BaseOccupant? = new game_state.BaseOccupant(batter, pitcher, constants.RESULT_REACHED_ON_ERROR);
+        var post2 = state.firstBase;
+        var post3 = state.secondBase;
+
+        if state.firstBase == null {
+            post2 = state.secondBase;
+            post3 = state.thirdBase;
+        } else {
+            result.addAdvance(new play_result.RunnerAdvance(state.firstBase!.runner, 1, 2, false, false,
+                                                            state.firstBase!.responsiblePitcher,
+                                                            state.firstBase!.runner.name + " to second"));
+            if state.secondBase != null {
+                result.addAdvance(new play_result.RunnerAdvance(state.secondBase!.runner, 2, 3, false, false,
+                                                                state.secondBase!.responsiblePitcher,
+                                                                state.secondBase!.runner.name + " to third"));
+            }
+            if state.thirdBase != null && state.secondBase != null {
+                result.addAdvance(new play_result.RunnerAdvance(state.thirdBase!.runner, 3, 4, true, false,
+                                                                state.thirdBase!.responsiblePitcher,
+                                                                state.thirdBase!.runner.name + " scores"));
+                result.runsScored = result.runsScored + 1;
+            } else {
+                post3 = state.thirdBase;
+            }
+        }
+
+        result.postFirst = post1;
+        result.postSecond = post2;
+        result.postThird = post3;
+    }
+
+    hide func scoreRunner(result: play_result.PlayResult, occ: game_state.BaseOccupant,
+                          fromBase: Integer, msg: String) {
+        result.addAdvance(new play_result.RunnerAdvance(occ.runner, fromBase, 4, true, false,
+                                                        occ.responsiblePitcher, msg));
+        result.runsScored = result.runsScored + 1;
+    }
+
+    hide func applyHit(state: game_state.GameState, batter: player.Player,
+                       pitcher: player.Player, bb: play_result.BattedBallOutcome,
+                       result: play_result.PlayResult) {
+        result.isHit = true;
+        result.hitBases = bb.likelyBases;
+        result.batterSafe = true;
+        if bb.likelyBases == 1 { result.batterResultCode = constants.RESULT_SINGLE; }
+        if bb.likelyBases == 2 { result.batterResultCode = constants.RESULT_DOUBLE; }
+        if bb.likelyBases >= 3 { result.batterResultCode = constants.RESULT_TRIPLE; }
+        result.playText = batter.name + " " + bb.description;
+
+        var post1: game_state.BaseOccupant? = null;
+        var post2: game_state.BaseOccupant? = null;
+        var post3: game_state.BaseOccupant? = null;
+
+        if bb.likelyBases >= 3 {
+            if state.thirdBase != null { self.scoreRunner(result, state.thirdBase!, 3, state.thirdBase!.runner.name + " scores"); }
+            if state.secondBase != null { self.scoreRunner(result, state.secondBase!, 2, state.secondBase!.runner.name + " scores"); }
+            if state.firstBase != null { self.scoreRunner(result, state.firstBase!, 1, state.firstBase!.runner.name + " scores"); }
+            post3 = new game_state.BaseOccupant(batter, pitcher, result.batterResultCode);
+            result.addAdvance(new play_result.RunnerAdvance(batter, 0, 3, false, false, pitcher,
+                                                            batter.name + " into third"));
+            result.RBIAwarded = result.runsScored;
+            result.postFirst = post1;
+            result.postSecond = post2;
+            result.postThird = post3;
+            return;
+        }
+
+        if bb.likelyBases == 2 {
+            if state.thirdBase != null { self.scoreRunner(result, state.thirdBase!, 3, state.thirdBase!.runner.name + " scores"); }
+            if state.secondBase != null { self.scoreRunner(result, state.secondBase!, 2, state.secondBase!.runner.name + " scores"); }
+            if state.firstBase != null {
+                if state.outs == 2 || bb.depthBucket == "deep" || state.firstBase!.runner.speed >= 58 {
+                    self.scoreRunner(result, state.firstBase!, 1, state.firstBase!.runner.name + " scores");
+                } else {
+                    post3 = state.firstBase;
+                    result.addAdvance(new play_result.RunnerAdvance(state.firstBase!.runner, 1, 3, false, false,
+                                                                    state.firstBase!.responsiblePitcher,
+                                                                    state.firstBase!.runner.name + " to third"));
+                }
+            }
+            post2 = new game_state.BaseOccupant(batter, pitcher, result.batterResultCode);
+            result.addAdvance(new play_result.RunnerAdvance(batter, 0, 2, false, false, pitcher,
+                                                            batter.name + " hustles to second"));
+            result.RBIAwarded = result.runsScored;
+            result.postFirst = post1;
+            result.postSecond = post2;
+            result.postThird = post3;
+            return;
+        }
+
+        if state.thirdBase != null {
+            self.scoreRunner(result, state.thirdBase!, 3, state.thirdBase!.runner.name + " scores");
+        }
+        if state.secondBase != null {
+            if state.outs == 2 || bb.defensePosition == constants.POS_LF ||
+               bb.defensePosition == constants.POS_CF ||
+               bb.defensePosition == constants.POS_RF ||
+               bb.contactClass == constants.CONTACT_SOLID ||
+               bb.contactClass == constants.CONTACT_BARRELED {
+                self.scoreRunner(result, state.secondBase!, 2, state.secondBase!.runner.name + " scores");
+            } else {
+                post3 = state.secondBase;
+                result.addAdvance(new play_result.RunnerAdvance(state.secondBase!.runner, 2, 3, false, false,
+                                                                state.secondBase!.responsiblePitcher,
+                                                                state.secondBase!.runner.name + " to third"));
+            }
+        }
+        if state.firstBase != null {
+            if state.outs == 2 || bb.contactClass == constants.CONTACT_SOLID ||
+               bb.contactClass == constants.CONTACT_BARRELED ||
+               state.firstBase!.runner.speed >= 65 {
+                post3 = state.firstBase;
+                result.addAdvance(new play_result.RunnerAdvance(state.firstBase!.runner, 1, 3, false, false,
+                                                                state.firstBase!.responsiblePitcher,
+                                                                state.firstBase!.runner.name + " takes third"));
+            } else {
+                post2 = state.firstBase;
+                result.addAdvance(new play_result.RunnerAdvance(state.firstBase!.runner, 1, 2, false, false,
+                                                                state.firstBase!.responsiblePitcher,
+                                                                state.firstBase!.runner.name + " to second"));
+            }
+        }
+        post1 = new game_state.BaseOccupant(batter, pitcher, result.batterResultCode);
+        result.addAdvance(new play_result.RunnerAdvance(batter, 0, 1, false, false, pitcher,
+                                                        batter.name + " aboard with a single"));
+        result.RBIAwarded = result.runsScored;
+        result.postFirst = post1;
+        result.postSecond = post2;
+        result.postThird = post3;
+    }
+
+    hide func applyGroundOut(state: game_state.GameState, batter: player.Player,
+                             pitcher: player.Player, bb: play_result.BattedBallOutcome,
+                             result: play_result.PlayResult) {
+        result.batterResultCode = constants.RESULT_OUT;
+        result.playText = batter.name + " " + bb.description;
+
+        var post1 = state.firstBase;
+        var post2 = state.secondBase;
+        var post3 = state.thirdBase;
+
+        if bb.battedBallType == constants.BALL_GROUND && state.firstBase != null && state.outs < 2 {
+            var dpChance = 42;
+            var fielder = state.defense().lineup.getFieldPlayer(bb.defensePosition);
+            if fielder != null {
+                dpChance = dpChance + (fielder!.doublePlaySkill - 50) / 2;
+            }
+            dpChance = dpChance - (batter.speed - 50) / 2;
+
+            if bb.doublePlayCandidate && rng.chance(dpChance) {
+                result.outsAdded = 2;
+                result.isDoublePlay = true;
+                result.playText = batter.name + " grounds into a double play";
+                result.addAdvance(new play_result.RunnerAdvance(state.firstBase!.runner, 1, 0, false, true,
+                                                                state.firstBase!.responsiblePitcher,
+                                                                state.firstBase!.runner.name + " erased at second"));
+                post1 = null;
+                post2 = state.secondBase;
+                post3 = state.thirdBase;
+                result.postFirst = post1;
+                result.postSecond = post2;
+                result.postThird = post3;
+                return;
+            }
+
+            result.outsAdded = 1;
+            result.isFieldersChoice = true;
+            result.batterSafe = true;
+            result.batterResultCode = constants.RESULT_FIELDERS_CHOICE;
+            result.playText = batter.name + " reaches on a fielder's choice";
+            result.addAdvance(new play_result.RunnerAdvance(state.firstBase!.runner, 1, 0, false, true,
+                                                            state.firstBase!.responsiblePitcher,
+                                                            state.firstBase!.runner.name + " forced at second"));
+            post1 = new game_state.BaseOccupant(batter, pitcher, constants.RESULT_FIELDERS_CHOICE);
+            if state.secondBase != null {
+                post3 = state.secondBase;
+                result.addAdvance(new play_result.RunnerAdvance(state.secondBase!.runner, 2, 3, false, false,
+                                                                state.secondBase!.responsiblePitcher,
+                                                                state.secondBase!.runner.name + " to third"));
+            } else {
+                post3 = state.thirdBase;
+            }
+            if state.thirdBase != null && state.secondBase != null {
+                self.scoreRunner(result, state.thirdBase!, 3, state.thirdBase!.runner.name + " scores");
+                post3 = state.secondBase;
+                result.RBIAwarded = 0;
+            }
+            post2 = null;
+            result.postFirst = post1;
+            result.postSecond = post2;
+            result.postThird = post3;
+            return;
+        }
+
+        result.outsAdded = 1;
+        if bb.battedBallType == constants.BALL_GROUND && state.thirdBase != null && state.outs < 2 && rng.chance(28) {
+            self.scoreRunner(result, state.thirdBase!, 3, state.thirdBase!.runner.name + " scores on the groundout");
+            result.RBIAwarded = 1;
+            post3 = null;
+            if state.secondBase != null {
+                post3 = state.secondBase;
+                post2 = null;
+                result.addAdvance(new play_result.RunnerAdvance(state.secondBase!.runner, 2, 3, false, false,
+                                                                state.secondBase!.responsiblePitcher,
+                                                                state.secondBase!.runner.name + " advances to third"));
+            }
+        }
+
+        result.postFirst = post1;
+        result.postSecond = post2;
+        result.postThird = post3;
+    }
+}
+

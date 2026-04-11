@@ -1,0 +1,135 @@
+module game_engine;
+
+bind "../model/game_state";
+bind "./rng";
+bind "./manager_policy";
+bind "./plate_appearance_engine";
+bind "./scorer";
+bind "../output/play_by_play_writer";
+
+class GameEngine {
+    expose game_state.GameState state;
+
+    hide manager_policy.DefaultManagerPolicy policy_;
+    hide plate_appearance_engine.PlateAppearanceEngine pa_;
+    hide scorer.Scorer scorer_;
+
+    expose func init(s: game_state.GameState) {
+        state = s;
+        policy_ = new manager_policy.DefaultManagerPolicy();
+        pa_ = new plate_appearance_engine.PlateAppearanceEngine();
+        scorer_ = new scorer.Scorer();
+    }
+
+    expose func simulate() -> game_state.GameState {
+        rng.seed(state.rngSeed);
+
+        self.appendLines(play_by_play_writer.gameIntro(state));
+
+        // Lineup-card legality must hold before the first pitch — Phase 0 exit
+        // criterion. If either side's card is invalid, log it and abort the game
+        // rather than producing nonsense play-by-play.
+        if !state.away.lineup.validateStart() {
+            state.eventLog.add("Lineup invalid: " + state.away.teamRef.fullName);
+            return state;
+        }
+        if !state.home.lineup.validateStart() {
+            state.eventLog.add("Lineup invalid: " + state.home.teamRef.fullName);
+            return state;
+        }
+
+        while true {
+            state.eventLog.add(play_by_play_writer.halfHeader(state));
+            state.outs = 0;
+            state.clearCount();
+
+            while state.outs < 3 {
+                self.maybeChangePitcher();
+                var result = pa_.resolve(state, policy_);
+                scorer_.apply(state, result);
+                self.appendLines(play_by_play_writer.recordPA(state, result));
+
+                if self.shouldWalkOffNow() {
+                    state.eventLog.add(play_by_play_writer.finalLine(state));
+                    return state;
+                }
+                if state.outs >= 3 {
+                    break;
+                }
+            }
+
+            if self.shouldEndAfterHalfInning() {
+                state.eventLog.add(play_by_play_writer.inningEnd(state));
+                state.eventLog.add(play_by_play_writer.finalLine(state));
+                return state;
+            }
+
+            state.eventLog.add(play_by_play_writer.inningEnd(state));
+            self.advanceHalfInning();
+        }
+        return state;
+    }
+
+    hide func maybeChangePitcher() {
+        var defense = state.defense();
+        if !policy_.shouldChangePitcher(state, defense) {
+            return;
+        }
+        var oldPitcher = defense.lineup.activePitcher;
+        var newPitcher = defense.lineup.pullNextReliever();
+        if oldPitcher == null || newPitcher == null {
+            return;
+        }
+        var inherited = state.baseCount();
+        defense.enterPitcher(newPitcher!, inherited);
+        state.eventLog.add(play_by_play_writer.pitchingChange(defense.teamRef.fullName,
+                                                              oldPitcher!, newPitcher!,
+                                                              inherited));
+    }
+
+    hide func shouldWalkOffNow() -> Boolean {
+        if state.topHalf {
+            return false;
+        }
+        if state.inning < state.rules.inningsPerGame {
+            return false;
+        }
+        return state.home.score > state.away.score;
+    }
+
+    hide func shouldEndAfterHalfInning() -> Boolean {
+        if state.topHalf {
+            if state.inning >= state.rules.inningsPerGame && state.home.score > state.away.score {
+                return true;
+            }
+            return false;
+        }
+
+        if state.inning < state.rules.inningsPerGame {
+            return false;
+        }
+        return state.home.score != state.away.score;
+    }
+
+    hide func advanceHalfInning() {
+        state.clearBases();
+        state.clearCount();
+        state.outs = 0;
+        // Reset the per-half error tracker so the next half starts fresh
+        // for earned-run accounting.
+        state.currentHalfHadError = false;
+        if state.topHalf {
+            state.topHalf = false;
+            return;
+        }
+        state.topHalf = true;
+        state.inning = state.inning + 1;
+    }
+
+    hide func appendLines(lines: List[String]) {
+        for i in 0..lines.length() {
+            state.eventLog.add(lines.get(i));
+        }
+    }
+}
+

@@ -1,0 +1,60 @@
+module box_score_writer;
+
+bind Viper.Fmt as Fmt;
+bind "../model/game_state";
+
+func renderTeamBatting(teamState: game_state.TeamGameState) -> List[String] {
+    var lines: List[String] = [];
+    lines.add(teamState.teamRef.fullName + " Batting");
+    lines.add("Player              AB  R  H RBI BB SO");
+    for i in 0..teamState.battingLines.length() {
+        var line = teamState.battingLines.get(i);
+        var name = line.playerRef.name;
+        while name.length() < 18 {
+            name = name + " ";
+        }
+        var row = name;
+        row = row + Fmt.IntPad(line.AB, 4, " ");
+        row = row + Fmt.IntPad(line.R, 3, " ");
+        row = row + Fmt.IntPad(line.H, 3, " ");
+        row = row + Fmt.IntPad(line.RBI, 4, " ");
+        row = row + Fmt.IntPad(line.BB, 3, " ");
+        row = row + Fmt.IntPad(line.SO, 3, " ");
+        lines.add(row);
+    }
+    return lines;
+}
+
+func renderTeamPitching(teamState: game_state.TeamGameState) -> List[String] {
+    var lines: List[String] = [];
+    lines.add(teamState.teamRef.fullName + " Pitching");
+    lines.add("Pitcher             IP   H  R ER BB SO P-S");
+    for i in 0..teamState.pitchingLines.length() {
+        var line = teamState.pitchingLines.get(i);
+        var name = line.playerRef.name;
+        while name.length() < 18 {
+            name = name + " ";
+        }
+        var row = name;
+        row = row + ipText(line.outsRecorded);
+        row = row + Fmt.IntPad(line.H, 4, " ");
+        row = row + Fmt.IntPad(line.R, 3, " ");
+        row = row + Fmt.IntPad(line.ER, 3, " ");
+        row = row + Fmt.IntPad(line.BB, 3, " ");
+        row = row + Fmt.IntPad(line.SO, 3, " ");
+        row = row + " " + Fmt.Int(line.pitches) + "-" + Fmt.Int(line.strikes);
+        lines.add(row);
+    }
+    return lines;
+}
+
+func ipText(outsRecorded: Integer) -> String {
+    var whole = outsRecorded / 3;
+    var rem = outsRecorded % 3;
+    var text = Fmt.Int(whole) + "." + Fmt.Int(rem);
+    while text.length() < 5 {
+        text = " " + text;
+    }
+    return text;
+}
+

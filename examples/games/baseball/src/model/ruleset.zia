@@ -1,0 +1,16 @@
+module ruleset;
+
+class Ruleset {
+    expose Integer inningsPerGame;
+    expose Boolean designatedHitterEnabled;
+    expose Boolean extraInningsAutomaticRunnerEnabled;
+    expose Boolean threeBatterMinimumEnabled;
+
+    expose func init() {
+        inningsPerGame = 9;
+        designatedHitterEnabled = true;
+        extraInningsAutomaticRunnerEnabled = false;
+        threeBatterMinimumEnabled = true;
+    }
+}
+

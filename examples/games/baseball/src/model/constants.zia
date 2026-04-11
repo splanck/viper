@@ -1,0 +1,63 @@
+module constants;
+
+final SIDE_AWAY = "away";
+final SIDE_HOME = "home";
+
+final POS_P = "P";
+final POS_C = "C";
+final POS_1B = "1B";
+final POS_2B = "2B";
+final POS_3B = "3B";
+final POS_SS = "SS";
+final POS_LF = "LF";
+final POS_CF = "CF";
+final POS_RF = "RF";
+final POS_DH = "DH";
+
+final END_STRIKEOUT = "strikeout";
+final END_WALK = "walk";
+final END_HBP = "hit_by_pitch";
+final END_UNCAUGHT_THIRD = "uncaught_third_strike";
+final END_BALL_IN_PLAY = "ball_in_play";
+
+final RESULT_OUT = "out";
+final RESULT_SINGLE = "single";
+final RESULT_DOUBLE = "double";
+final RESULT_TRIPLE = "triple";
+final RESULT_HOME_RUN = "home_run";
+final RESULT_REACHED_ON_ERROR = "reached_on_error";
+final RESULT_FIELDERS_CHOICE = "fielders_choice";
+final RESULT_WALK = "walk";
+final RESULT_HBP = "hit_by_pitch";
+final RESULT_STRIKEOUT = "strikeout";
+
+final WALK_STANDARD = "standard";
+final WALK_INTENTIONAL = "intentional";
+
+final STRIKEOUT_SWINGING = "swinging";
+final STRIKEOUT_LOOKING = "looking";
+final STRIKEOUT_UNCAUGHT = "uncaught_third_strike";
+
+final SAC_NONE = "none";
+final SAC_FLY = "fly";
+final SAC_BUNT = "bunt";
+
+final CONTACT_TOPPED = "topped";
+final CONTACT_WEAK = "weak";
+final CONTACT_SOLID = "solid";
+final CONTACT_BARRELED = "barreled";
+
+final BALL_GROUND = "ground_ball";
+final BALL_LINE = "line_drive";
+final BALL_FLY = "fly_ball";
+final BALL_POP = "pop_up";
+
+final DIR_PULL = "pull";
+final DIR_CENTER = "center";
+final DIR_OPPO = "opposite";
+
+final STATUS_DEAD_FOUL = "dead_foul";
+final STATUS_CAUGHT = "caught";
+final STATUS_FIELDED_LIVE = "fielded_live";
+final STATUS_OVER_WALL = "over_wall_home_run";
+

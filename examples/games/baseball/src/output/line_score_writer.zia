@@ -1,0 +1,44 @@
+module line_score_writer;
+
+bind Viper.Fmt as Fmt;
+bind "../model/game_state";
+
+func render(state: game_state.GameState) -> List[String] {
+    var lines: List[String] = [];
+    var inningCount = state.away.lineScore.length();
+    if state.home.lineScore.length() > inningCount {
+        inningCount = state.home.lineScore.length();
+    }
+    if inningCount < state.rules.inningsPerGame {
+        inningCount = state.rules.inningsPerGame;
+    }
+
+    var header = "Inning  ";
+    for i in 0..inningCount {
+        header = header + Fmt.IntPad(i + 1, 3, " ");
+    }
+    header = header + "   R   H   E";
+    lines.add(header);
+    lines.add(renderTeamLine(state.away, inningCount));
+    lines.add(renderTeamLine(state.home, inningCount));
+    return lines;
+}
+
+func renderTeamLine(teamState: game_state.TeamGameState, inningCount: Integer) -> String {
+    var line = teamState.teamRef.nickname + " ";
+    while line.length() < 8 {
+        line = line + " ";
+    }
+    for i in 0..inningCount {
+        var runs = 0;
+        if i < teamState.lineScore.length() {
+            runs = teamState.lineScore.get(i);
+        }
+        line = line + Fmt.IntPad(runs, 3, " ");
+    }
+    line = line + " " + Fmt.IntPad(teamState.score, 3, " ");
+    line = line + " " + Fmt.IntPad(teamState.hits, 3, " ");
+    line = line + " " + Fmt.IntPad(teamState.errors, 3, " ");
+    return line;
+}
+

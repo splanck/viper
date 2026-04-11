@@ -1,0 +1,69 @@
+module manager_policy;
+
+bind "../model/constants";
+bind "../model/game_state";
+bind "../model/player";
+
+final INTENT_ATTACK = "attack_zone";
+final INTENT_EDGE = "edge_strike";
+final INTENT_CHASE = "chase_pitch";
+final INTENT_PITCH_AROUND = "pitch_around";
+
+class DefaultManagerPolicy {
+    expose func init() { }
+
+    expose func shouldIntentionalWalk(state: game_state.GameState,
+                                      batter: player.Player,
+                                      pitcher: player.Player) -> Boolean {
+        return false;
+    }
+
+    expose func choosePitchIntent(state: game_state.GameState,
+                                  batter: player.Player,
+                                  pitcher: player.Player) -> String {
+        if state.strikes >= 2 {
+            if state.firstBase == null && batter.dangerScore() >= 250 {
+                return INTENT_PITCH_AROUND;
+            }
+            if state.balls >= 2 {
+                return INTENT_EDGE;
+            }
+            return INTENT_CHASE;
+        }
+        if state.balls >= 2 {
+            return INTENT_ATTACK;
+        }
+        if state.firstBase == null && state.secondBase != null && batter.dangerScore() >= 245 {
+            return INTENT_PITCH_AROUND;
+        }
+        return INTENT_ATTACK;
+    }
+
+    expose func shouldChangePitcher(state: game_state.GameState,
+                                    defense: game_state.TeamGameState) -> Boolean {
+        if defense.lineup.activePitcher == null {
+            return false;
+        }
+        if !defense.lineup.hasUnusedReliever() {
+            return false;
+        }
+        if !defense.lineup.canRemovePitcher(state.rules) {
+            return false;
+        }
+
+        var line = defense.currentPitchingLine();
+        var currentPitcher = defense.lineup.activePitcher!;
+
+        if line.pitches >= 105 {
+            return true;
+        }
+        if state.inning >= 7 && line.pitches >= 85 && currentPitcher.stamina < 58 {
+            return true;
+        }
+        if line.R >= 4 && line.pitches >= 65 {
+            return true;
+        }
+        return false;
+    }
+}
+

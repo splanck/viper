@@ -1,0 +1,22 @@
+module team;
+
+bind "./player";
+
+class Team {
+    expose String city;
+    expose String nickname;
+    expose String fullName;
+    expose List[player.Player] roster;
+
+    expose func init(pcity: String, pnickname: String) {
+        city = pcity;
+        nickname = pnickname;
+        fullName = pcity + " " + pnickname;
+        roster = [];
+    }
+
+    expose func addPlayer(p: player.Player) {
+        roster.add(p);
+    }
+}
+

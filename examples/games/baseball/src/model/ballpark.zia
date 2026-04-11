@@ -1,0 +1,51 @@
+module ballpark;
+
+bind "./constants";
+
+class Ballpark {
+    expose String name;
+    expose Integer leftFieldDistance;
+    expose Integer leftCenterDistance;
+    expose Integer centerFieldDistance;
+    expose Integer rightCenterDistance;
+    expose Integer rightFieldDistance;
+    expose Integer foulTerritoryClass;
+    expose Integer infieldSpeed;
+    expose Integer outfieldSpeed;
+    expose Integer leftWallHeight;
+    expose Integer centerWallHeight;
+    expose Integer rightWallHeight;
+
+    expose func init(pname: String, lf: Integer, lcf: Integer, cf: Integer,
+                     rcf: Integer, rf: Integer) {
+        name = pname;
+        leftFieldDistance = lf;
+        leftCenterDistance = lcf;
+        centerFieldDistance = cf;
+        rightCenterDistance = rcf;
+        rightFieldDistance = rf;
+        foulTerritoryClass = 50;
+        infieldSpeed = 50;
+        outfieldSpeed = 50;
+        leftWallHeight = 8;
+        centerWallHeight = 10;
+        rightWallHeight = 8;
+    }
+
+    expose func wallDistanceForDirection(direction: String, batterBats: String) -> Integer {
+        if direction == constants.DIR_CENTER {
+            return centerFieldDistance;
+        }
+        if direction == constants.DIR_PULL {
+            if batterBats == "L" {
+                return rightFieldDistance;
+            }
+            return leftFieldDistance;
+        }
+        if batterBats == "L" {
+            return leftFieldDistance;
+        }
+        return rightFieldDistance;
+    }
+}
+

@@ -1,0 +1,32 @@
+module rng;
+
+bind Viper.Math.Random as Random;
+
+func seed(value: Integer) {
+    Random.Seed(value);
+}
+
+func nextInt(max: Integer) -> Integer {
+    if max <= 0 {
+        return 0;
+    }
+    return Random.NextInt(max);
+}
+
+func range(minValue: Integer, maxValue: Integer) -> Integer {
+    if maxValue <= minValue {
+        return minValue;
+    }
+    return minValue + Random.NextInt(maxValue - minValue + 1);
+}
+
+func chance(percent: Integer) -> Boolean {
+    if percent <= 0 {
+        return false;
+    }
+    if percent >= 100 {
+        return true;
+    }
+    return Random.NextInt(100) < percent;
+}
+

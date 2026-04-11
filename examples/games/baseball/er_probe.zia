@@ -1,0 +1,53 @@
+module er_probe;
+
+bind Viper.Terminal as Terminal;
+bind Viper.Fmt as Fmt;
+bind "./src/demo/default_game";
+bind "./src/sim/game_engine";
+bind "./src/model/game_state";
+
+func sumR(team: game_state.TeamGameState) -> Integer {
+    var t = 0;
+    for i in 0..team.pitchingLines.length() {
+        t = t + team.pitchingLines.get(i).R;
+    }
+    return t;
+}
+
+func sumER(team: game_state.TeamGameState) -> Integer {
+    var t = 0;
+    for i in 0..team.pitchingLines.length() {
+        t = t + team.pitchingLines.get(i).ER;
+    }
+    return t;
+}
+
+func start() {
+    var seeds = [4242, 7, 100, 999, 12345, 88, 314159, 271828];
+    var anyMismatch = false;
+    for i in 0..seeds.length() {
+        var s = seeds.get(i);
+        var state = default_game.buildDefaultGame(s);
+        var engine = new game_engine.GameEngine(state);
+        var finalState = engine.simulate();
+
+        var totalErr = finalState.away.errors + finalState.home.errors;
+        var awayR = sumR(finalState.away);
+        var awayER = sumER(finalState.away);
+        var homeR = sumR(finalState.home);
+        var homeER = sumER(finalState.home);
+        var rDelta = (awayR - awayER) + (homeR - homeER);
+
+        Terminal.Say("seed=" + Fmt.Int(s) +
+                     " errors=" + Fmt.Int(totalErr) +
+                     " awayR/ER=" + Fmt.Int(awayR) + "/" + Fmt.Int(awayER) +
+                     " homeR/ER=" + Fmt.Int(homeR) + "/" + Fmt.Int(homeER) +
+                     " unearned=" + Fmt.Int(rDelta));
+        if rDelta > 0 { anyMismatch = true; }
+    }
+    if anyMismatch {
+        Terminal.Say("RESULT: ok (ER tracking is producing unearned runs)");
+    } else {
+        Terminal.Say("RESULT: no_unearned_runs_observed");
+    }
+}

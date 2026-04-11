@@ -1,0 +1,261 @@
+module game_state;
+
+bind "./player";
+bind "./team";
+bind "./lineup_card";
+bind "./ruleset";
+bind "./ballpark";
+
+class BaseOccupant {
+    expose player.Player runner;
+    expose player.Player responsiblePitcher;
+    expose String reachedOnResult;
+
+    expose func init(p: player.Player, rp: player.Player, how: String) {
+        runner = p;
+        responsiblePitcher = rp;
+        reachedOnResult = how;
+    }
+}
+
+class BattingLine {
+    expose player.Player playerRef;
+    expose String position;
+    expose Integer PA;
+    expose Integer AB;
+    expose Integer R;
+    expose Integer H;
+    expose Integer RBI;
+    expose Integer BB;
+    expose Integer IBB;
+    expose Integer SO;
+    expose Integer HBP;
+    expose Integer SF;
+    expose Integer SH;
+    expose Integer GIDP;
+    expose Integer doubles;
+    expose Integer triples;
+    expose Integer homeRuns;
+
+    expose func init(p: player.Player, pos: String) {
+        playerRef = p;
+        position = pos;
+        PA = 0;
+        AB = 0;
+        R = 0;
+        H = 0;
+        RBI = 0;
+        BB = 0;
+        IBB = 0;
+        SO = 0;
+        HBP = 0;
+        SF = 0;
+        SH = 0;
+        GIDP = 0;
+        doubles = 0;
+        triples = 0;
+        homeRuns = 0;
+    }
+}
+
+class PitchingLine {
+    expose player.Player playerRef;
+    expose Integer BF;
+    expose Integer outsRecorded;
+    expose Integer H;
+    expose Integer R;
+    expose Integer ER;
+    expose Integer BB;
+    expose Integer IBB;
+    expose Integer SO;
+    expose Integer HBP;
+    expose Integer HR;
+    expose Integer pitches;
+    expose Integer strikes;
+    expose Integer inheritedRunners;
+    expose Integer inheritedRunnersScored;
+
+    expose func init(p: player.Player) {
+        playerRef = p;
+        BF = 0;
+        outsRecorded = 0;
+        H = 0;
+        R = 0;
+        ER = 0;
+        BB = 0;
+        IBB = 0;
+        SO = 0;
+        HBP = 0;
+        HR = 0;
+        pitches = 0;
+        strikes = 0;
+        inheritedRunners = 0;
+        inheritedRunnersScored = 0;
+    }
+}
+
+class TeamGameState {
+    expose team.Team teamRef;
+    expose lineup_card.LineupCard lineup;
+    expose List[BattingLine] battingLines;
+    expose List[PitchingLine] pitchingLines;
+    expose List[Integer] lineScore;
+    expose Integer score;
+    expose Integer hits;
+    expose Integer errors;
+
+    expose func init(t: team.Team, lc: lineup_card.LineupCard) {
+        teamRef = t;
+        lineup = lc;
+        battingLines = [];
+        pitchingLines = [];
+        lineScore = [];
+        score = 0;
+        hits = 0;
+        errors = 0;
+
+        for i in 0..lineup.battingOrder.length() {
+            battingLines.add(new BattingLine(lineup.battingOrder.get(i), lineup.battingPositions.get(i)));
+        }
+        if lineup.activePitcher != null {
+            pitchingLines.add(new PitchingLine(lineup.activePitcher!));
+        }
+    }
+
+    expose func currentBatter() -> player.Player {
+        return lineup.currentBatter();
+    }
+
+    expose func advanceBatter() {
+        lineup.advanceBatter();
+    }
+
+    expose func ensureInning(inning: Integer) {
+        while lineScore.length() < inning {
+            lineScore.add(0);
+        }
+    }
+
+    expose func addRun(inning: Integer) {
+        self.ensureInning(inning);
+        lineScore.set(inning - 1, lineScore.get(inning - 1) + 1);
+        score = score + 1;
+    }
+
+    expose func getBattingLine(p: player.Player) -> BattingLine {
+        for i in 0..battingLines.length() {
+            if battingLines.get(i).playerRef.id == p.id {
+                return battingLines.get(i);
+            }
+        }
+        var line = new BattingLine(p, p.primaryPosition);
+        battingLines.add(line);
+        return line;
+    }
+
+    expose func getPitchingLine(p: player.Player) -> PitchingLine {
+        for i in 0..pitchingLines.length() {
+            if pitchingLines.get(i).playerRef.id == p.id {
+                return pitchingLines.get(i);
+            }
+        }
+        var line = new PitchingLine(p);
+        pitchingLines.add(line);
+        return line;
+    }
+
+    expose func currentPitchingLine() -> PitchingLine {
+        return self.getPitchingLine(lineup.activePitcher!);
+    }
+
+    expose func enterPitcher(p: player.Player, inherited: Integer) {
+        lineup.setPitcher(p);
+        var line = self.getPitchingLine(p);
+        line.inheritedRunners = line.inheritedRunners + inherited;
+    }
+}
+
+class GameState {
+    expose ruleset.Ruleset rules;
+    expose ballpark.Ballpark park;
+    expose TeamGameState away;
+    expose TeamGameState home;
+
+    expose Integer inning;
+    expose Boolean topHalf;
+    expose Integer outs;
+    expose Integer balls;
+    expose Integer strikes;
+
+    expose BaseOccupant? firstBase;
+    expose BaseOccupant? secondBase;
+    expose BaseOccupant? thirdBase;
+
+    expose player.Player? currentBatter;
+    expose player.Player? currentPitcher;
+    expose List[String] eventLog;
+    expose Integer rngSeed;
+
+    // True for the rest of the current half-inning once any error occurs.
+    // The scorer uses this to mark subsequent runs as unearned. This is the
+    // coarse v1 approximation of MLB's earned-run rule (the precise rule
+    // tracks "would have been the third out without errors", which requires
+    // more bookkeeping than Phase 4 needs).
+    expose Boolean currentHalfHadError;
+
+    expose func init(r: ruleset.Ruleset, p: ballpark.Ballpark,
+                     awayState: TeamGameState, homeState: TeamGameState,
+                     seed: Integer) {
+        rules = r;
+        park = p;
+        away = awayState;
+        home = homeState;
+        inning = 1;
+        topHalf = true;
+        outs = 0;
+        balls = 0;
+        strikes = 0;
+        firstBase = null;
+        secondBase = null;
+        thirdBase = null;
+        currentBatter = null;
+        currentPitcher = null;
+        eventLog = [];
+        rngSeed = seed;
+        currentHalfHadError = false;
+    }
+
+    expose func offense() -> TeamGameState {
+        if topHalf {
+            return away;
+        }
+        return home;
+    }
+
+    expose func defense() -> TeamGameState {
+        if topHalf {
+            return home;
+        }
+        return away;
+    }
+
+    expose func baseCount() -> Integer {
+        var total = 0;
+        if firstBase != null { total = total + 1; }
+        if secondBase != null { total = total + 1; }
+        if thirdBase != null { total = total + 1; }
+        return total;
+    }
+
+    expose func clearCount() {
+        balls = 0;
+        strikes = 0;
+    }
+
+    expose func clearBases() {
+        firstBase = null;
+        secondBase = null;
+        thirdBase = null;
+    }
+}
+

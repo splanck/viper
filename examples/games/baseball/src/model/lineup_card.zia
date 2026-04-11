@@ -1,0 +1,157 @@
+module lineup_card;
+
+bind "./constants";
+bind "./player";
+bind "./team";
+bind "./ruleset";
+
+class LineupCard {
+    expose team.Team teamRef;
+    expose List[player.Player] battingOrder;
+    expose List[String] battingPositions;
+    expose player.Player? activePitcher;
+    expose List[player.Player] bench;
+    expose List[player.Player] bullpen;
+    expose Boolean dhEnabled;
+    expose Integer battingIndex;
+    expose Integer bullpenIndex;
+    expose Integer currentPitcherStintBatters;
+
+    expose func init(t: team.Team, useDh: Boolean) {
+        teamRef = t;
+        battingOrder = [];
+        battingPositions = [];
+        activePitcher = null;
+        bench = [];
+        bullpen = [];
+        dhEnabled = useDh;
+        battingIndex = 0;
+        bullpenIndex = 0;
+        currentPitcherStintBatters = 0;
+    }
+
+    expose func addStarter(p: player.Player, position: String) {
+        battingOrder.add(p);
+        battingPositions.add(position);
+    }
+
+    expose func addBench(p: player.Player) {
+        bench.add(p);
+    }
+
+    expose func addBullpenArm(p: player.Player) {
+        bullpen.add(p);
+    }
+
+    expose func setPitcher(p: player.Player) {
+        activePitcher = p;
+        currentPitcherStintBatters = 0;
+    }
+
+    expose func currentBatter() -> player.Player {
+        return battingOrder.get(battingIndex);
+    }
+
+    expose func advanceBatter() {
+        battingIndex = battingIndex + 1;
+        if battingIndex >= battingOrder.length() {
+            battingIndex = 0;
+        }
+    }
+
+    expose func getFieldPlayer(position: String) -> player.Player? {
+        if position == constants.POS_P {
+            return activePitcher;
+        }
+        for i in 0..battingOrder.length() {
+            if battingPositions.get(i) == position {
+                return battingOrder.get(i);
+            }
+        }
+        return null;
+    }
+
+    expose func noteBatterFaced() {
+        currentPitcherStintBatters = currentPitcherStintBatters + 1;
+    }
+
+    expose func canRemovePitcher(rules: ruleset.Ruleset) -> Boolean {
+        if activePitcher == null {
+            return false;
+        }
+        if !rules.threeBatterMinimumEnabled {
+            return true;
+        }
+        return currentPitcherStintBatters >= 3;
+    }
+
+    expose func hasUnusedReliever() -> Boolean {
+        return bullpenIndex < bullpen.length();
+    }
+
+    expose func pullNextReliever() -> player.Player? {
+        if bullpenIndex >= bullpen.length() {
+            return null;
+        }
+        var p = bullpen.get(bullpenIndex);
+        bullpenIndex = bullpenIndex + 1;
+        return p;
+    }
+
+    expose func validateStart() -> Boolean {
+        if battingOrder.length() != 9 {
+            return false;
+        }
+        if activePitcher == null {
+            return false;
+        }
+
+        var hasC = false;
+        var has1B = false;
+        var has2B = false;
+        var has3B = false;
+        var hasSS = false;
+        var hasLF = false;
+        var hasCF = false;
+        var hasRF = false;
+        var hasDH = false;
+        var pitcherInOrder = false;
+
+        for i in 0..battingPositions.length() {
+            var pos = battingPositions.get(i);
+            if pos == constants.POS_C { hasC = true; }
+            if pos == constants.POS_1B { has1B = true; }
+            if pos == constants.POS_2B { has2B = true; }
+            if pos == constants.POS_3B { has3B = true; }
+            if pos == constants.POS_SS { hasSS = true; }
+            if pos == constants.POS_LF { hasLF = true; }
+            if pos == constants.POS_CF { hasCF = true; }
+            if pos == constants.POS_RF { hasRF = true; }
+            if pos == constants.POS_DH { hasDH = true; }
+            if battingOrder.get(i).id == activePitcher!.id { pitcherInOrder = true; }
+        }
+
+        if !(hasC && has1B && has2B && has3B && hasSS && hasLF && hasCF && hasRF) {
+            return false;
+        }
+        // DH-on: a DH slot must exist, and the pitcher must NOT be in the batting order.
+        if dhEnabled {
+            if !hasDH {
+                return false;
+            }
+            if pitcherInOrder {
+                return false;
+            }
+        } else {
+            // DH-off (NL-style): no DH slot allowed, and the pitcher must bat.
+            if hasDH {
+                return false;
+            }
+            if !pitcherInOrder {
+                return false;
+            }
+        }
+        return true;
+    }
+}
+

@@ -1,0 +1,31 @@
+module Main;
+
+bind Viper.Terminal;
+bind "./demo/default_game";
+bind "./sim/game_engine";
+bind "./output/line_score_writer";
+bind "./output/box_score_writer";
+
+func writeLines(lines: List[String]) {
+    for i in 0..lines.length() {
+        Say(lines.get(i));
+    }
+}
+
+func start() {
+    var state = default_game.buildDefaultGame(4242);
+    var engine = new game_engine.GameEngine(state);
+    var finalState = engine.simulate();
+
+    writeLines(finalState.eventLog);
+    Say("");
+    writeLines(line_score_writer.render(finalState));
+    Say("");
+    writeLines(box_score_writer.renderTeamBatting(finalState.away));
+    Say("");
+    writeLines(box_score_writer.renderTeamBatting(finalState.home));
+    Say("");
+    writeLines(box_score_writer.renderTeamPitching(finalState.away));
+    Say("");
+    writeLines(box_score_writer.renderTeamPitching(finalState.home));
+}

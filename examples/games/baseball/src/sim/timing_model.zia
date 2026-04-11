@@ -1,0 +1,51 @@
+module timing_model;
+
+bind "../model/player";
+
+func clampInt(value: Integer, minValue: Integer, maxValue: Integer) -> Integer {
+    var v = value;
+    if v < minValue { v = minValue; }
+    if v > maxValue { v = maxValue; }
+    return v;
+}
+
+func batterToFirstMs(p: player.Player) -> Integer {
+    return clampInt(4350 - p.speed * 10 - p.firstStep * 5, 3000, 4500);
+}
+
+func runnerBaseMs(p: player.Player) -> Integer {
+    return clampInt(3650 - p.speed * 8 - p.firstStep * 4, 2500, 3900);
+}
+
+func runnerAdvanceMs(p: player.Player, bases: Integer) -> Integer {
+    return runnerBaseMs(p) * bases;
+}
+
+func airInterceptMs(fielder: player.Player?, distanceFeet: Integer, difficulty: Integer) -> Integer {
+    if fielder == null {
+        return 99999;
+    }
+    var reaction = clampInt(850 - fielder!.reaction * 5, 260, 850);
+    var speedScore = clampInt(70 + fielder!.range + fielder!.routeEfficiency, 70, 220);
+    var moveMs = (distanceFeet * 1000) / speedScore;
+    return reaction + moveMs + difficulty * 8;
+}
+
+func groundFieldMs(fielder: player.Player?, exitVelocity: Integer, infieldSpeed: Integer, difficulty: Integer) -> Integer {
+    if fielder == null {
+        return 99999;
+    }
+    var reaction = clampInt(760 - fielder!.reaction * 4, 250, 760);
+    var hands = clampInt(640 - fielder!.hands * 3, 220, 640);
+    var hop = exitVelocity * 5 - infieldSpeed * 4;
+    return clampInt(reaction + hands + hop + difficulty * 6, 450, 3600);
+}
+
+func throwMs(fielder: player.Player?, distanceFeet: Integer) -> Integer {
+    if fielder == null {
+        return 99999;
+    }
+    var arm = clampInt(80 + fielder!.armStrength + fielder!.armAccuracy, 90, 240);
+    return 250 + (distanceFeet * 900) / arm;
+}
+

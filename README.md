@@ -7,7 +7,7 @@
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-GPLv3-blue.svg" alt="License: GPL v3"></a>
   <img src="https://img.shields.io/badge/Platform-macOS%20%7C%20Linux%20%7C%20Windows-brightgreen" alt="Platform">
-  <img src="https://img.shields.io/badge/SLOC-437K-orange" alt="SLOC">
+  <img src="https://img.shields.io/badge/SLOC-446K-orange" alt="SLOC">
 </p>
 
 **Viper** is an IL-first compiler toolchain and virtual machine for building platform-native applications. Programs compile through a strongly typed, SSA-based intermediate language (**[Viper IL](docs/il-guide.md)**) that can be executed by the [VM](docs/vm.md) or compiled directly to native machine code.
@@ -114,7 +114,7 @@ Viper is in **early development**. All components are functional but evolving:
 | [AArch64 Backend](docs/codegen/aarch64.md) | Apple Silicon + Windows ARM64; register coalescer, protected-use eviction, post-RA scheduler |
 | [x86-64 Backend](docs/codegen/x86_64.md) | Windows + Linux; 300+ stress tests, IEEE 754 NaN-safe |
 | [Native Toolchain](docs/codegen/native-assembler.md) | Assembler (ELF/Mach-O/COFF) + linker (dead stripping, ICF, branch trampolines, DWARF v5, code signing, PE/COFF import tables, ELF dynamic linking) |
-| [Runtime](docs/viperlib/README.md) | 300+ classes across 22 modules; 1,432 tests |
+| [Runtime](docs/viperlib/README.md) | 300+ classes across 22 modules; 1,446 tests |
 | [3D Graphics](docs/graphics3d-guide.md) | 41 classes; terrain LOD, Gerstner water, vegetation, shader hooks, video playback, unified `Model3D` asset import/instantiation, `AnimController3D` state control, `Scene3D.SyncBindings` body/animator composition, Collider3D (7 shape types), Physics3D (rotation, sleep, CCD, world queries); Metal/D3D11 feature-complete, OpenGL/software |
 | [Game Engine](docs/viperlib/game/README.md) | Collision, pathfinding, physics, tweening, particles, state machines, UI widgets, entity system, AI behaviors, level loading, scene management, asset embedding (VPA) |
 | [GUI](docs/viperlib/gui/README.md) | 46 widget classes; cross-platform desktop apps |

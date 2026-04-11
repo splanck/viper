@@ -824,6 +824,22 @@ set_tests_properties(zia_smoke_xenoscape PROPERTIES
         LABELS "zia;smoke;requires_display"
         TIMEOUT 30)
 
+add_test(NAME zia_smoke_baseball
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/baseball/smoke_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/baseball")
+set_tests_properties(zia_smoke_baseball PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;smoke"
+        TIMEOUT 30)
+
+add_test(NAME zia_calibration_baseball
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/baseball/calibration_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/baseball")
+set_tests_properties(zia_calibration_baseball PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;comprehensive"
+        TIMEOUT 30)
+
 if (APPLE AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm64|aarch64)$")
     add_test(NAME native_smoke_xenoscape_start_arm64
             COMMAND /bin/bash "${CMAKE_SOURCE_DIR}/src/tests/e2e/test_xenoscape_native_start.sh"
