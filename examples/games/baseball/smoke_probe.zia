@@ -1,3 +1,14 @@
+// ============================================================================
+// File: smoke_probe.zia
+// Purpose: Single-game smoke test for the canonical demo. Builds the default
+//          game with seed 4242, simulates one full game, then asserts that
+//          the result lands inside a wide sanity band (innings >= 9, runs +
+//          hits + walks + plate appearances all within reasonable ranges,
+//          event log non-trivial). Prints "RESULT: ok" or "RESULT: fail".
+//          The bands are intentionally generous so the probe catches gross
+//          breakage but doesn't false-fail on RNG churn.
+// Run via: viper run examples/games/baseball/smoke_probe.zia
+// ============================================================================
 module smoke_probe;
 
 bind Viper.Terminal as Terminal;
@@ -6,6 +17,8 @@ bind "./src/demo/default_game";
 bind "./src/sim/game_engine";
 bind "./src/model/game_state";
 
+// Sum every batter's PA across one team's batting lines. Used to assert
+// the total game-level PA count is in a sensible band.
 func totalPlateAppearances(teamState: game_state.TeamGameState) -> Integer {
     var total = 0;
     for i in 0..teamState.battingLines.length() {
@@ -14,6 +27,7 @@ func totalPlateAppearances(teamState: game_state.TeamGameState) -> Integer {
     return total;
 }
 
+// Sum every batter's BB across one team's batting lines.
 func totalWalks(teamState: game_state.TeamGameState) -> Integer {
     var total = 0;
     for i in 0..teamState.battingLines.length() {
@@ -22,6 +36,8 @@ func totalWalks(teamState: game_state.TeamGameState) -> Integer {
     return total;
 }
 
+// Run the smoke test: simulate one game, print summary stats, assert
+// against the sanity bands, exit.
 func start() {
     var state = default_game.buildDefaultGame(4242);
     var engine = new game_engine.GameEngine(state);

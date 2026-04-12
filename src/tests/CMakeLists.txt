@@ -832,6 +832,14 @@ set_tests_properties(zia_smoke_baseball PROPERTIES
         LABELS "zia;smoke"
         TIMEOUT 30)
 
+add_test(NAME zia_lineup_legality_baseball
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/baseball/lineup_legality_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/baseball")
+set_tests_properties(zia_lineup_legality_baseball PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;smoke"
+        TIMEOUT 30)
+
 add_test(NAME zia_calibration_baseball
         COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/baseball/calibration_probe.zia"
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/baseball")
@@ -839,6 +847,38 @@ set_tests_properties(zia_calibration_baseball PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
         LABELS "zia;comprehensive"
         TIMEOUT 30)
+
+add_test(NAME zia_staff_usage_baseball
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/baseball/staff_usage_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/baseball")
+set_tests_properties(zia_staff_usage_baseball PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;smoke"
+        TIMEOUT 30)
+
+add_test(NAME zia_calendar_baseball
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/baseball/calendar_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/baseball")
+set_tests_properties(zia_calendar_baseball PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;smoke"
+        TIMEOUT 30)
+
+add_test(NAME zia_season_baseball
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/baseball/season_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/baseball")
+set_tests_properties(zia_season_baseball PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;comprehensive"
+        TIMEOUT 60)
+
+add_test(NAME zia_persistence_baseball
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/baseball/persistence_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/baseball")
+set_tests_properties(zia_persistence_baseball PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;comprehensive"
+        TIMEOUT 60)
 
 if (APPLE AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm64|aarch64)$")
     add_test(NAME native_smoke_xenoscape_start_arm64

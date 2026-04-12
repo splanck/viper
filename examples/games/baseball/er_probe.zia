@@ -1,3 +1,13 @@
+// ============================================================================
+// File: er_probe.zia
+// Purpose: Verify the earned-run accounting fix. Runs 8 different seeds,
+//          tallies each team's R and ER per pitcher, and counts unearned
+//          runs (R - ER). Asserts that at least one game in the sample
+//          shows R != ER — proving the unearned-runs path actually fires
+//          when an error occurs in the same half-inning before scoring.
+//          Background: Plan 04 ER fix in the implementation pass.
+// Run via: viper run examples/games/baseball/er_probe.zia
+// ============================================================================
 module er_probe;
 
 bind Viper.Terminal as Terminal;
@@ -6,6 +16,7 @@ bind "./src/demo/default_game";
 bind "./src/sim/game_engine";
 bind "./src/model/game_state";
 
+// Sum the R column across all of a team's pitching lines.
 func sumR(team: game_state.TeamGameState) -> Integer {
     var t = 0;
     for i in 0..team.pitchingLines.length() {
@@ -14,6 +25,7 @@ func sumR(team: game_state.TeamGameState) -> Integer {
     return t;
 }
 
+// Sum the ER column across all of a team's pitching lines.
 func sumER(team: game_state.TeamGameState) -> Integer {
     var t = 0;
     for i in 0..team.pitchingLines.length() {
@@ -22,6 +34,7 @@ func sumER(team: game_state.TeamGameState) -> Integer {
     return t;
 }
 
+// Run 8 seeds and verify at least one game shows unearned runs (R > ER).
 func start() {
     var seeds = [4242, 7, 100, 999, 12345, 88, 314159, 271828];
     var anyMismatch = false;

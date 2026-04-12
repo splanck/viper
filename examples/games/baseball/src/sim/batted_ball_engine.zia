@@ -1,3 +1,32 @@
+// ============================================================================
+// File: src/sim/batted_ball_engine.zia
+// Purpose: The BattedBallEngine resolves one fair ball in play. Given the
+//          contact-class, ball type, direction, and physical-ish values
+//          (exit velocity, launch angle, hang time) produced by the
+//          plate-appearance engine, it figures out which fielder is closest,
+//          whether the ball is caught, whether it's a home run, whether
+//          there's an error, and how many bases the batter likely takes.
+//
+//          Plan 07 § Recommended resolution pipeline is the design.
+//
+//          The output is a BattedBallOutcome value object — the runner_engine
+//          consumes that to compute base movement and build the final
+//          PlayResult.
+//
+// Key flow:
+//          1. Pick the fielder for this ball type + direction + handedness.
+//          2. For air balls: home-run check, then catch race using
+//             timing_model.airInterceptMs vs hang time, then drop / error /
+//             hit fallthrough.
+//          3. For ground balls: error roll, then race batter-to-first vs
+//             control + throw time, then double-play eligibility flag.
+//          4. Set descriptive text for the play-by-play writer.
+//
+// Cross-refs:
+//          - timing_model supplies the millisecond estimates.
+//          - constants.* defines the position / direction / status codes.
+//          - rng for the error rolls.
+// ============================================================================
 module batted_ball_engine;
 
 bind "../model/constants";
@@ -7,9 +36,14 @@ bind "../model/player";
 bind "./rng";
 bind "./timing_model";
 
+// Stateless engine that resolves one batted ball into a BattedBallOutcome.
 class BattedBallEngine {
+    // No state to initialise.
     expose func init() { }
 
+    // Top-level entry point. Builds a BattedBallOutcome and dispatches to
+    // resolveGroundBall or resolveAirBall depending on ball type. The
+    // outcome is fully populated on return.
     expose func resolve(state: game_state.GameState, batter: player.Player,
                         pitcher: player.Player, ballType: String,
                         contactClass: String, direction: String,
@@ -24,7 +58,7 @@ class BattedBallEngine {
         out.hangTime = hangTime;
 
         if ballType == constants.BALL_GROUND {
-            out.defensePosition = self.chooseInfieldFielder(batter, direction);
+            out.defensePosition = self.chooseGroundFielder(batter, direction, contactClass, exitVelocity);
             self.resolveGroundBall(state, batter, out);
             return out;
         }
@@ -34,7 +68,17 @@ class BattedBallEngine {
         return out;
     }
 
-    hide func chooseInfieldFielder(batter: player.Player, direction: String) -> String {
+    // Pick the most likely infielder to field a grounder, based on the
+    // batter's handedness and the spray direction. Center-cut comebackers
+    // (low-velocity / topped balls up the middle) go directly to the
+    // pitcher; everything else fans out by hand-pull-side. The infield
+    // position selection drives the throw distance and the batter-to-
+    // first race.
+    hide func chooseGroundFielder(batter: player.Player, direction: String,
+                                  contactClass: String, exitVelocity: Integer) -> String {
+        if self.isPitcherComebacker(direction, contactClass, exitVelocity) {
+            return constants.POS_P;
+        }
         if batter.bats == "L" {
             if direction == constants.DIR_PULL { return constants.POS_2B; }
             if direction == constants.DIR_CENTER { return constants.POS_2B; }
@@ -45,6 +89,25 @@ class BattedBallEngine {
         return constants.POS_2B;
     }
 
+    // True iff a center-spray grounder is weak/slow enough to be a "comebacker"
+    // — a ball the pitcher can field directly. Topped balls up the middle
+    // always count; weak contact at low exit velocity also qualifies. Used
+    // by chooseGroundFielder to route a small fraction of grounders to the
+    // pitcher position instead of always to a middle infielder.
+    hide func isPitcherComebacker(direction: String, contactClass: String,
+                                  exitVelocity: Integer) -> Boolean {
+        if direction != constants.DIR_CENTER {
+            return false;
+        }
+        if contactClass == constants.CONTACT_TOPPED {
+            return true;
+        }
+        return contactClass == constants.CONTACT_WEAK && exitVelocity <= 82;
+    }
+
+    // Pick the most likely fielder for an air ball. Pop-ups go to the
+    // appropriate corner infielder or the shortstop; fly balls / line drives
+    // go to the corresponding outfielder.
     hide func chooseAirFielder(batter: player.Player, direction: String, ballType: String) -> String {
         if ballType == constants.BALL_POP {
             if direction == constants.DIR_CENTER {
@@ -69,6 +132,9 @@ class BattedBallEngine {
         return constants.POS_RF;
     }
 
+    // Estimate the ball's flight distance in feet. The formulas are deliberately
+    // simple — they only need to be roughly monotonic in exit velocity and
+    // launch angle so the home-run check and depth bucketing work.
     hide func estimateDistanceFeet(ballType: String, exitVelocity: Integer, launchAngle: Integer) -> Integer {
         if ballType == constants.BALL_POP {
             return 40 + exitVelocity / 2 + launchAngle / 2;
@@ -82,6 +148,9 @@ class BattedBallEngine {
         return 160 + exitVelocity + launchAngle * 4;
     }
 
+    // Apply the infield-fly rule: less than two outs AND a force at third
+    // (which requires runners on first AND second; runners on the corners
+    // alone do NOT trigger the rule). Plan 07 § Infield-fly adjudication.
     hide func shouldCallInfieldFly(state: game_state.GameState,
                                    defensePosition: String) -> Boolean {
         // Real rule: less than two outs, AND a force play exists at third base.
@@ -104,6 +173,8 @@ class BattedBallEngine {
                defensePosition == constants.POS_C;
     }
 
+    // Translate a position constant into a human-readable role for play-by-
+    // play text ("first baseman", "left fielder", etc).
     hide func positionText(position: String) -> String {
         if position == constants.POS_P { return "pitcher"; }
         if position == constants.POS_C { return "catcher"; }
@@ -117,6 +188,10 @@ class BattedBallEngine {
         return "fielder";
     }
 
+    // Approximate distance (feet) from a fielder's normal position to first
+    // base. Used by timing_model.throwMs to compute throw time. Outfielder
+    // distances are big enough that they basically never throw out a runner
+    // at first directly.
     hide func throwDistance(position: String) -> Integer {
         if position == constants.POS_P { return 95; }
         if position == constants.POS_C { return 110; }
@@ -130,6 +205,10 @@ class BattedBallEngine {
         return 127;
     }
 
+    // Resolve an air ball (line drive, fly ball, or pop-up) into one of:
+    // infield-fly out, home run, caught for out, error/dropped, or hit
+    // (single/double/triple based on distance + barrel quality). Mutates
+    // the BattedBallOutcome in-place.
     hide func resolveAirBall(state: game_state.GameState, batter: player.Player,
                              out: play_result.BattedBallOutcome) {
         var fielder = state.defense().lineup.getFieldPlayer(out.defensePosition);
@@ -137,6 +216,7 @@ class BattedBallEngine {
         var wall = state.park.wallDistanceForDirection(out.direction, batter.bats);
         var difficulty = 20;
 
+        // Bucket the catch difficulty by ball type.
         if out.battedBallType == constants.BALL_LINE {
             difficulty = 35;
         } else if out.battedBallType == constants.BALL_FLY {
@@ -145,6 +225,7 @@ class BattedBallEngine {
             difficulty = 8;
         }
 
+        // Infield fly: rule trips, batter is automatically out.
         if out.battedBallType == constants.BALL_POP && self.shouldCallInfieldFly(state, out.defensePosition) {
             out.infieldFlyCalled = true;
             out.isCaught = true;
@@ -155,6 +236,8 @@ class BattedBallEngine {
             return;
         }
 
+        // Home run check: deep fly with the right launch profile and
+        // contact class clears the wall.
         if out.battedBallType == constants.BALL_FLY &&
            out.launchAngle >= 24 && out.launchAngle <= 38 &&
            out.exitVelocity >= 98 && distanceFeet >= wall + 8 &&
@@ -169,6 +252,8 @@ class BattedBallEngine {
             return;
         }
 
+        // Catch race: how long does it take the fielder to reach the
+        // intercept point versus the ball's hang time?
         var interceptDistance = distanceFeet / 5;
         if interceptDistance < 18 { interceptDistance = 18; }
         if out.battedBallType == constants.BALL_LINE {
@@ -181,6 +266,7 @@ class BattedBallEngine {
             catchBonus = (fielder!.hands + fielder!.reaction) / 5;
         }
         if out.controlTime <= out.hangTime + catchBonus * 4 {
+            // Caught — bucket the depth so the runner engine can decide tag-up.
             out.isCaught = true;
             out.isOut = true;
             out.ballStatus = constants.STATUS_CAUGHT;
@@ -195,6 +281,7 @@ class BattedBallEngine {
             return;
         }
 
+        // Not caught: small chance of an error on the attempt.
         if fielder != null {
             var errorChance = 2 + (70 - fielder!.hands) / 10;
             if rng.chance(errorChance) {
@@ -206,6 +293,7 @@ class BattedBallEngine {
             }
         }
 
+        // Hit: bucket bases by distance + line-drive vs fly-ball + barrel.
         out.ballStatus = constants.STATUS_FIELDED_LIVE;
         out.isHit = true;
         if distanceFeet > 360 {
@@ -229,6 +317,8 @@ class BattedBallEngine {
         out.description = self.describeDroppedBall(out);
     }
 
+    // Format a "X catches the ball" string for play-by-play, varying the
+    // verb by ball type and depth.
     hide func describeCaughtBall(out: play_result.BattedBallOutcome, distanceFeet: Integer) -> String {
         if out.battedBallType == constants.BALL_POP {
             return "pops it up to the " + self.positionText(out.defensePosition);
@@ -242,6 +332,8 @@ class BattedBallEngine {
         return "flies out to the " + self.positionText(out.defensePosition);
     }
 
+    // Format a "X falls in for a hit" string for play-by-play, varying by
+    // hit type (gap shot, line single, etc).
     hide func describeDroppedBall(out: play_result.BattedBallOutcome) -> String {
         if out.likelyBases >= 3 {
             return "drives it into the gap";
@@ -255,12 +347,18 @@ class BattedBallEngine {
         return "drops it in for a hit";
     }
 
+    // Resolve a ground ball into out (with double-play candidacy flag),
+    // error, or infield single. The race is "control time + throw time" vs
+    // "batter to first time minus required margin". Required margin scales
+    // with contact class — barreled grounders need more margin to retire
+    // because they're harder for the infielder to handle cleanly.
     hide func resolveGroundBall(state: game_state.GameState, batter: player.Player,
                                 out: play_result.BattedBallOutcome) {
         var fielder = state.defense().lineup.getFieldPlayer(out.defensePosition);
         var difficulty = out.exitVelocity / 3;
         out.controlTime = timing_model.groundFieldMs(fielder, out.exitVelocity, state.park.infieldSpeed, difficulty);
 
+        // Error roll: bad hands + barreled contact = higher error chance.
         if fielder != null {
             var errorChance = 2 + (68 - fielder!.hands) / 12;
             if out.contactClass == constants.CONTACT_BARRELED {
@@ -274,6 +372,7 @@ class BattedBallEngine {
             }
         }
 
+        // Race the batter to first.
         var throwMs = timing_model.throwMs(fielder, self.throwDistance(out.defensePosition));
         var batterMs = timing_model.batterToFirstMs(batter);
 
@@ -292,6 +391,8 @@ class BattedBallEngine {
         }
 
         if out.controlTime + throwMs < batterMs - requiredMargin {
+            // Out at first. Set the double-play candidacy flag for the
+            // runner engine to use.
             out.isOut = true;
             out.ballStatus = constants.STATUS_FIELDED_LIVE;
             out.doublePlayCandidate = state.firstBase != null && state.outs < 2 &&
@@ -300,6 +401,8 @@ class BattedBallEngine {
             return;
         }
 
+        // Infield single: speed-bonus chance for slow-roller beats, plus
+        // text variants for barreled vs ordinary grounders.
         out.ballStatus = constants.STATUS_FIELDED_LIVE;
         out.isHit = true;
         out.likelyBases = 1;

@@ -243,7 +243,8 @@ Stable metadata:
 - name
 - handedness
 - positions
-- age
+- `date_of_birth`
+- age is derived from the current simulation date or season reference date, not stored as a mutable integer
 
 ### 2. Talent
 
@@ -255,7 +256,35 @@ Persistent ratings:
 - running
 - durability
 
-### 3. Dynamic state
+### 3. Long-horizon latent profile
+
+Persistent but mostly hidden profile data:
+
+- development ceilings or potential bands by skill family
+- `development_variance_trait`
+- `aging_curve_profile`
+
+These are not per-pitch or per-game state. They are the slow-moving inputs that
+`13-player-development-and-aging.md` uses to make two players with the same current
+ratings age or develop differently over a five-year window.
+
+### 4. Manager-visible scouting view
+
+The manager layer should not consume raw `Player` objects directly forever.
+
+Define a manager-visible view that can eventually support scouting uncertainty:
+
+- visible role and position info
+- visible handedness
+- visible coarse ratings or scouting grades
+- visible workload and availability summaries
+
+For v1, with scouting depth deferred, this visible view can be a deterministic coarse
+projection of true ratings. The important modeling rule is to keep "what the engine
+knows" separate from "what the manager is allowed to see" so `14-manager-command-layer.md`
+has a stable information boundary later.
+
+### 5. Dynamic state
 
 Mutable simulation state:
 

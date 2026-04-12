@@ -24,6 +24,7 @@ Suggested first-cut fields:
   - `name`
   - `bats`
   - `throws`
+  - `date_of_birth`
   - primary and secondary positions
 
 - Hitting talent
@@ -80,6 +81,8 @@ Suggested first-cut fields:
 Use the ratings names and semantics from
 `04-player-ratings-schema.md` as the authoritative schema definition.
 This section exists only to anchor the domain model around the same talent families.
+Age should be derived from `date_of_birth` and the current season date, not manually
+incremented as mutable player state.
 
 For this first stage, do not use too many opaque "magic" ratings. Favor ratings that clearly map to baseball outcomes.
 

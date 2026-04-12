@@ -1,0 +1,98 @@
+// ============================================================================
+// File: src/season/output/season_writer.zia
+// Purpose: Text writers that turn season-level state into human-readable
+//          List[String] blocks for the terminal. Three top-level views:
+//
+//          - renderStandings(rows): a fixed-width standings table (W, L,
+//            GB, RS, RA, RD).
+//          - renderFranchiseSnapshot(franchise, standings): the league
+//            header + day pointer + completed-game count + decision and
+//            transaction totals + the standings table.
+//          - renderCompletedGameSummaries(games, maxCount): the most recent
+//            N completed-game one-line summaries.
+//
+//          These are pure-formatting helpers — they read from FranchiseState
+//          + StandingsRow + CompletedGameRecord and never mutate.
+// ============================================================================
+module season_writer;
+
+bind Viper.Fmt as Fmt;
+bind "../season_model";
+bind "../date_utils";
+
+// Render the standings table as a List[String] of fixed-width rows. The
+// header line is "Team W L GB RS RA RD" with right-aligned numeric
+// columns. GB displays as "-" for the leader, "X" or "X.5" otherwise.
+func renderStandings(rows: List[season_model.StandingsRow]) -> List[String] {
+    var lines: List[String] = [];
+    lines.add("Standings");
+    lines.add("Team                    W   L   GB   RS   RA   RD");
+    for i in 0..rows.length() {
+        var row = rows.get(i);
+        var name = row.teamName;
+        while name.length() < 22 {
+            name = name + " ";
+        }
+        // Convert the doubled-GB integer back to "X" or "X.5" for display.
+        var gbWhole = row.gamesBackTimes2 / 2;
+        var gbHalf = row.gamesBackTimes2 % 2;
+        var gbText = Fmt.Int(gbWhole);
+        if gbHalf != 0 {
+            gbText = gbText + ".5";
+        }
+        if row.gamesBackTimes2 == 0 {
+            gbText = "-";
+        }
+        while gbText.length() < 4 {
+            gbText = " " + gbText;
+        }
+        lines.add(name + Fmt.IntPad(row.wins, 4, " ") +
+                  Fmt.IntPad(row.losses, 4, " ") +
+                  gbText +
+                  Fmt.IntPad(row.runsScored, 5, " ") +
+                  Fmt.IntPad(row.runsAllowed, 5, " ") +
+                  Fmt.IntPad(row.runDifferential, 5, " "));
+    }
+    return lines;
+}
+
+// Render the league + season-snapshot header (league name, season year,
+// current calendar date or "season complete" marker, completed-game count,
+// decision-log entry count, transaction count) followed by the full
+// standings table.
+func renderFranchiseSnapshot(franchise: season_model.FranchiseState,
+                             standings: List[season_model.StandingsRow]) -> List[String] {
+    var lines: List[String] = [];
+    lines.add(franchise.leagueName + " " + Fmt.Int(franchise.seasonYear));
+    if franchise.calendar.currentDayIndex < franchise.calendar.days.length() {
+        lines.add("Current day: " +
+                  date_utils.fromDaysText(franchise.calendar.days.get(franchise.calendar.currentDayIndex).dateDays));
+    } else {
+        lines.add("Season complete through " + date_utils.fromDaysText(franchise.calendar.endDateDays));
+    }
+    lines.add("Completed games: " + Fmt.Int(franchise.completedGames.length()));
+    lines.add("Decision log entries: " + Fmt.Int(franchise.managerDecisionLog.length()));
+    lines.add("Transactions: " + Fmt.Int(franchise.transactionLog.length()));
+    lines.add("");
+    var standingsLines = renderStandings(standings);
+    for i in 0..standingsLines.length() {
+        lines.add(standingsLines.get(i));
+    }
+    return lines;
+}
+
+// Render the most recent maxCount completed games as one-line summaries.
+// If the franchise has fewer than maxCount games, all of them are shown.
+func renderCompletedGameSummaries(games: List[season_model.CompletedGameRecord],
+                                  maxCount: Integer) -> List[String] {
+    var lines: List[String] = [];
+    lines.add("Recent Games");
+    var start = 0;
+    if games.length() > maxCount {
+        start = games.length() - maxCount;
+    }
+    for i in start..games.length() {
+        lines.add(games.get(i).summary);
+    }
+    return lines;
+}

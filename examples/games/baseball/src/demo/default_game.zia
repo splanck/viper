@@ -1,3 +1,22 @@
+// ============================================================================
+// File: src/demo/default_game.zia
+// Purpose: Build the canonical single-game demo state used by the smoke,
+//          ER, lineup-legality, and calibration probes. Constructs two
+//          fully-rated teams (Port City Captains, Lakeview Stags) with a
+//          set of named players, fixed lineups, and a fixed ballpark, then
+//          packages them into a GameState that the single-game engine can
+//          run end-to-end.
+//
+//          This file exists ALONGSIDE the season-level demo
+//          (src/season/demo/default_franchise.zia). The two are
+//          independent — they construct different teams for different
+//          purposes:
+//            - default_game: one game, two teams, single-game probes.
+//            - default_franchise: four teams, full season, season probes.
+//
+//          The single-game probes (smoke_probe, er_probe, calibration_probe,
+//          lineup_legality_probe) all consume buildDefaultGame.
+// ============================================================================
 module default_game;
 
 bind "../model/constants";
@@ -8,6 +27,10 @@ bind "../model/ruleset";
 bind "../model/ballpark";
 bind "../model/game_state";
 
+// Build a position-player Player with a compact param set. The param order
+// is the most-needed-for-tuning fields: contact, power, patience, speed,
+// defense, arm. Tendency triplets default to balanced and durability
+// defaults to slightly below-average.
 func makeBatter(id: String, name: String, bats: String, throwsHand: String,
                 position: String, contact: Integer, power: Integer,
                 patience: Integer, speed: Integer, defense: Integer,
@@ -22,6 +45,9 @@ func makeBatter(id: String, name: String, bats: String, throwsHand: String,
     return p;
 }
 
+// Build a catcher with the makeBatter helper, then overwrite the defensive
+// rating block with catcher-specific values (framing, blocking, pop time).
+// Speed and athleticism are fixed-low to reflect a typical catcher profile.
 func makeCatcher(id: String, name: String, bats: String, throwsHand: String,
                  contact: Integer, power: Integer, patience: Integer) -> player.Player {
     var p = makeBatter(id, name, bats, throwsHand, constants.POS_C,
@@ -30,6 +56,9 @@ func makeCatcher(id: String, name: String, bats: String, throwsHand: String,
     return p;
 }
 
+// Build a pitcher with hitting/running/defense ratings fixed-low and the
+// pitching family fully parameterised. roleProfile is the starter/reliever
+// indicator (high = starter-shaped).
 func makePitcher(id: String, name: String, bats: String, throwsHand: String,
                  roleProfile: Integer, stamina: Integer, stuff: Integer,
                  control: Integer, command: Integer, movement: Integer) -> player.Player {
@@ -42,8 +71,11 @@ func makePitcher(id: String, name: String, bats: String, throwsHand: String,
     return p;
 }
 
+// Build the away team (Port City Captains) with 9 named position players,
+// 4 named pitchers, a fixed batting order, and a populated bullpen queue.
+// Returns a TeamGameState ready for GameState construction.
 func buildAwayTeam(useDh: Boolean) -> game_state.TeamGameState {
-    var t = new team.Team("Port City", "Captains");
+    var t = new team.Team("port_city", "Port City", "Captains");
     var lc = new lineup_card.LineupCard(t, useDh);
 
     var c = makeCatcher("away_c", "Leo Morales", "R", "R", 60, 52, 58);
@@ -87,8 +119,10 @@ func buildAwayTeam(useDh: Boolean) -> game_state.TeamGameState {
     return new game_state.TeamGameState(t, lc);
 }
 
+// Build the home team (Lakeview Stags) — same shape as buildAwayTeam, just
+// different player names and ratings.
 func buildHomeTeam(useDh: Boolean) -> game_state.TeamGameState {
-    var t = new team.Team("Lakeview", "Stags");
+    var t = new team.Team("lakeview", "Lakeview", "Stags");
     var lc = new lineup_card.LineupCard(t, useDh);
 
     var c = makeCatcher("home_c", "Avery Quinn", "L", "R", 58, 50, 59);
@@ -132,6 +166,10 @@ func buildHomeTeam(useDh: Boolean) -> game_state.TeamGameState {
     return new game_state.TeamGameState(t, lc);
 }
 
+// Construct a full GameState ready for game_engine.simulate. Builds the
+// ruleset, the home park, both teams, and packages them with the supplied
+// RNG seed. The seed is what makes single-game replay byte-for-byte
+// deterministic across runs.
 func buildDefaultGame(seed: Integer) -> game_state.GameState {
     var r = new ruleset.Ruleset();
     var park = new ballpark.Ballpark("Founders Field", 332, 376, 404, 382, 330);
@@ -142,4 +180,3 @@ func buildDefaultGame(seed: Integer) -> game_state.GameState {
     var home = buildHomeTeam(r.designatedHitterEnabled);
     return new game_state.GameState(r, park, away, home, seed);
 }
-

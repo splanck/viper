@@ -1,3 +1,14 @@
+// ============================================================================
+// File: lineup_legality_probe.zia
+// Purpose: Verify that the engine actually wires LineupCard.validateStart()
+//          into simulate(). Builds the default game with DH-on rosters,
+//          then flips the ruleset to no-DH AFTER construction. The DH-on
+//          rosters leave the pitcher OUT of the batting order, which makes
+//          them illegal under no-DH rules. The probe asserts that
+//          simulate() bails out cleanly with the "Lineup invalid" message
+//          rather than producing nonsense play-by-play.
+// Run via: viper run examples/games/baseball/lineup_legality_probe.zia
+// ============================================================================
 module lineup_legality_probe;
 
 bind Viper.Terminal as Terminal;
@@ -18,6 +29,8 @@ bind "./src/model/ruleset";
 //   - eventLog contains "Lineup invalid" lines for both teams
 //   - inning is still 1 and outs is still 0 (game never advanced past setup)
 
+// Run the probe: build a DH-on game, flip to no-DH after construction,
+// run simulate(), and verify it aborts cleanly with the expected error.
 func start() {
     var state = default_game.buildDefaultGame(4242);
     // Force the ruleset into no-DH mode after the rosters were built with the
@@ -42,7 +55,7 @@ func start() {
         if line == "Lineup invalid: Lakeview Stags" { sawHomeInvalid = true; }
     }
 
-    if sawAwayInvalid && finalState.inning == 1 && finalState.outs == 0 {
+    if sawAwayInvalid && sawHomeInvalid && finalState.inning == 1 && finalState.outs == 0 {
         Terminal.Say("RESULT: ok (validateStart rejects bad lineup, engine aborts cleanly)");
     } else {
         Terminal.Say("RESULT: fail");

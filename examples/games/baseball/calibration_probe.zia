@@ -1,3 +1,18 @@
+// ============================================================================
+// File: calibration_probe.zia
+// Purpose: Run a 120-game calibration sample and check that the per-game
+//          rate aggregates land inside the configured bands. Plan 06 §
+//          Calibration workflow is the design — the goal is to detect
+//          meaningful drift in the engine's outcome rates from one change
+//          to the next, NOT to claim the engine is calibrated to MLB
+//          targets (Phase 5 will narrow the bands further).
+//
+//          Tracked rates: runs, hits, walks, strikeouts, home runs, HBP,
+//          errors, plate appearances per game. Each is checked against a
+//          (min, max) band scaled by 100 (so a band of (700, 950) means
+//          7.00 to 9.50 per game).
+// Run via: viper run examples/games/baseball/calibration_probe.zia
+// ============================================================================
 module calibration_probe;
 
 bind Viper.Terminal as Terminal;
@@ -6,6 +21,8 @@ bind "./src/demo/default_game";
 bind "./src/sim/game_engine";
 bind "./src/model/game_state";
 
+// Per-run aggregate counters. Bumped per-team via accumulateTeam, then
+// divided by `games` (NOT 2*games) to get the per-game-both-teams rate.
 class AggregateStats {
     expose Integer games;
     expose Integer runs;
@@ -30,6 +47,7 @@ class AggregateStats {
     }
 }
 
+// Add one team's per-game totals into the running aggregate.
 func accumulateTeam(stats: AggregateStats, teamState: game_state.TeamGameState) {
     stats.runs = stats.runs + teamState.score;
     stats.hits = stats.hits + teamState.hits;
@@ -45,6 +63,9 @@ func accumulateTeam(stats: AggregateStats, teamState: game_state.TeamGameState) 
     }
 }
 
+// Format a (total, games) pair as a per-game decimal string with two
+// decimal places. e.g., (1015, 120) -> "8.45". Uses integer math so the
+// result is byte-for-byte deterministic.
 func perGameText(total: Integer, games: Integer) -> String {
     if games <= 0 {
         return "0.00";
@@ -55,6 +76,9 @@ func perGameText(total: Integer, games: Integer) -> String {
     return Fmt.Int(whole) + "." + Fmt.IntPad(frac, 2, "0");
 }
 
+// Check whether (total / games * 100) is within [minScaled, maxScaled].
+// minScaled and maxScaled are pre-multiplied by 100 so they can be integer
+// constants in the call site (e.g., 700 == 7.00 per game).
 func inBand(total: Integer, games: Integer, minScaled: Integer, maxScaled: Integer) -> Boolean {
     if games <= 0 {
         return false;
@@ -63,6 +87,9 @@ func inBand(total: Integer, games: Integer, minScaled: Integer, maxScaled: Integ
     return scaled >= minScaled && scaled <= maxScaled;
 }
 
+// Run the calibration sample: simulate 120 games with 120 distinct seeds,
+// accumulate per-game stats, print rates, check against the configured
+// bands, and emit RESULT: ok or RESULT: out_of_band.
 func start() {
     var sampleGames = 120;
     var stats = new AggregateStats();

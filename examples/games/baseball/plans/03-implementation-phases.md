@@ -258,6 +258,21 @@ This is the earliest point to expose them as real user-facing controls.
 - pinch hitter
 - pinch runner
 - steal attempt toggle
+
+## Phase 7 and beyond: season systems
+
+Once Phase 6 is stable, the next implementation layers are the season-level plans:
+
+- `10-season-simulation-architecture.md`
+- `11-roster-and-transaction-rules.md`
+- `12-fatigue-injuries-and-availability.md`
+- `13-player-development-and-aging.md`
+- `14-manager-command-layer.md`
+- `15-save-format-and-persistence.md`
+
+Those plans are intentionally not folded into the first six phases. The first six
+establish a believable single-game work unit; the later plans wrap that work unit in
+calendar, roster, persistence, and multi-season state.
 - bunt attempt toggle
 
 ### Exit criteria

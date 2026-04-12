@@ -1,12 +1,50 @@
+// ============================================================================
+// File: src/sim/scorer.zia
+// Purpose: The Scorer applies a finished PlayResult to game state. It is the
+//          ONLY thing that mutates BattingLine, PitchingLine, score totals,
+//          and the base state in response to a play. Every other engine
+//          layer is allowed to read game state and produce PlayResults but
+//          must route mutation through here.
+//
+//          This is the practical realization of plan 02 § Official Result
+//          Builder + plan 02 § Scoring And Stats Engine. The runner_engine
+//          builds the PlayResult; the Scorer applies it.
+//
+// Key invariants:
+//          - Plate appearances always increment PA + BF.
+//          - AB is incremented for outs, hits, errors, fielder's choices,
+//            and strikeouts; it is NOT incremented for walks, HBP, sac
+//            flies, or sac bunts.
+//          - Earned-run accounting: a run is earned only if the half-inning
+//            has not yet seen an error at the moment the run scores. The
+//            currentHalfHadError flag (set inside this function on any
+//            error) is the v1 coarse rule.
+//          - Inherited-runner-scored is credited when a run scores whose
+//            responsiblePitcher is NOT the current active pitcher.
+//          - Bases are overwritten from result.postFirst/Second/Third —
+//            the runner_engine has already done all the legwork; the Scorer
+//            just installs the new state.
+// Cross-refs:
+//          - PlayResult is built by runner_engine.zia.
+//          - GameState.currentHalfHadError is reset by game_engine.advanceHalfInning.
+// ============================================================================
 module scorer;
 
 bind "../model/constants";
 bind "../model/game_state";
 bind "../model/play_result";
 
+// The Scorer is a stateless service. It exists as a class purely so the
+// game engine can hold one instance without re-allocating per call.
 class Scorer {
+    // Construct an empty scorer. No state to initialise.
     expose func init() { }
 
+    // Apply a finished PlayResult to game state. Updates the batter's and
+    // pitcher's stat lines, the team's score/hits/errors totals, the base
+    // occupancy, the inning's earned-run flag, the out count, and finally
+    // advances the batting order. Every PA in the engine routes through
+    // here exactly once.
     expose func apply(state: game_state.GameState, result: play_result.PlayResult) {
         var offense = state.offense();
         var defense = state.defense();
@@ -16,6 +54,7 @@ class Scorer {
         var batLine = offense.getBattingLine(batter);
         var pitchLine = defense.currentPitchingLine();
 
+        // Plate appearance + batters faced + pitch counters always tick.
         batLine.PA = batLine.PA + 1;
         pitchLine.BF = pitchLine.BF + 1;
         pitchLine.pitches = pitchLine.pitches + result.pitchCount;
@@ -23,6 +62,7 @@ class Scorer {
         pitchLine.outsRecorded = pitchLine.outsRecorded + result.outsAdded;
         defense.lineup.noteBatterFaced();
 
+        // Walks and HBPs are NOT at-bats. Everything else is.
         if result.batterResultCode == constants.RESULT_WALK {
             batLine.BB = batLine.BB + 1;
             pitchLine.BB = pitchLine.BB + 1;
@@ -37,11 +77,16 @@ class Scorer {
             batLine.AB = batLine.AB + 1;
         }
 
+        // Strikeouts are credited to both the batter and the pitcher even
+        // when the batter reaches on an uncaught third strike — that's why
+        // creditedStrikeouts is a separate field.
         if result.creditedStrikeouts > 0 {
             batLine.SO = batLine.SO + result.creditedStrikeouts;
             pitchLine.SO = pitchLine.SO + result.creditedStrikeouts;
         }
 
+        // Hit accounting: team total + per-player + extra-base-type breakdown
+        // + home runs charged to the pitcher.
         if result.isHit {
             offense.hits = offense.hits + 1;
             batLine.H = batLine.H + 1;
@@ -62,6 +107,8 @@ class Scorer {
             state.currentHalfHadError = true;
         }
 
+        // Sacrifice flies and bunts swap an AB for an SF/SH credit (the
+        // runner_engine already counted them as AB above; back it out here).
         if result.sacrificeType == constants.SAC_FLY {
             batLine.AB = batLine.AB - 1;
             batLine.SF = batLine.SF + 1;
@@ -76,6 +123,11 @@ class Scorer {
 
         batLine.RBI = batLine.RBI + result.RBIAwarded;
 
+        // Apply each runner advance. Score scoring runs in the LINE SCORE
+        // (not just the team total), credit R to the runner's batting line,
+        // charge R + ER to the responsible pitcher, and bump
+        // inheritedRunnersScored when a runner put on by a prior pitcher
+        // crosses home.
         for i in 0..result.runnerAdvances.length() {
             var adv = result.runnerAdvances.get(i);
             if adv.scored {
@@ -97,6 +149,8 @@ class Scorer {
             }
         }
 
+        // Install the post-PA base state and bump the out count + count
+        // reset + batting order pointer.
         state.firstBase = result.postFirst;
         state.secondBase = result.postSecond;
         state.thirdBase = result.postThird;
@@ -105,4 +159,3 @@ class Scorer {
         offense.advanceBatter();
     }
 }
-

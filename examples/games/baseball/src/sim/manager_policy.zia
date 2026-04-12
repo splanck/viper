@@ -1,69 +1,220 @@
+// ============================================================================
+// File: src/sim/manager_policy.zia
+// Purpose: The single-game manager policy. Owns the typed `ManagerAction`
+//          value type, the action-kind constants, and the `DefaultManagerPolicy`
+//          implementation that the game engine consults at every checkpoint
+//          where the manager could intervene (intentional walks, pitch
+//          intent, pitching changes).
+//
+//          Plan 14 § Decision context types names this layer "the manager
+//          command layer". The implementation here is the Stage-1 default AI
+//          policy from plan 09 § Stage 1: Static default policy. Each
+//          decision returns a typed ManagerAction so the engine can route
+//          rationale strings into the decision log without parsing.
+//
+// Key design rules (from plans 09 + 14):
+//          - Decisions are TYPED, not booleans. The legacy boolean wrappers
+//            (shouldIntentionalWalk, shouldChangePitcher, choosePitchIntent)
+//            are kept for backwards compatibility with older callers.
+//          - The decision rationale is a short identifier string the season
+//            layer logs verbatim into the franchise decision log.
+//          - The engine never inspects ManagerAction internals — it just
+//            checks the .kind field against the ACTION_* constants.
+//          - Per-team policy: the game engine holds two DefaultManagerPolicy
+//            instances (away + home) so each team's manager can be configured
+//            independently. plan 14 § Per-team policy.
+// Cross-refs:
+//          - game_engine.zia constructs two policies and dispatches via
+//            defensePolicy() switching on topHalf.
+//          - plate_appearance_engine.zia consults policy.decideIntentionalWalkAction
+//            and policy.decidePitchIntentAction per pitch.
+//          - season layer wraps this in manager_layer.SeasonTeamManager which
+//            adds the lineup-card submission decision.
+// ============================================================================
 module manager_policy;
 
 bind "../model/constants";
 bind "../model/game_state";
 bind "../model/player";
+bind "../model/lineup_card";
 
+// --- Pitch intent buckets. The plate-appearance engine adjusts the in-zone
+//     probability based on which intent the manager picked. ----------------
 final INTENT_ATTACK = "attack_zone";
 final INTENT_EDGE = "edge_strike";
 final INTENT_CHASE = "chase_pitch";
 final INTENT_PITCH_AROUND = "pitch_around";
 
-class DefaultManagerPolicy {
-    expose func init() { }
+// --- Manager action kinds. ManagerAction.kind is set to one of these. ----
+final ACTION_NOOP = "no_action";
+final ACTION_ISSUE_INTENTIONAL_WALK = "issue_intentional_walk";
+final ACTION_SET_PITCH_INTENT = "set_pitch_intent";
+final ACTION_CHANGE_PITCHER = "change_pitcher";
+final ACTION_SUBMIT_LINEUP = "submit_lineup";
 
+// Typed manager decision. Carries the action kind, a short human-readable
+// rationale code (logged verbatim by the engine), and any payload fields the
+// specific action needs. Unused fields are null/empty.
+class ManagerAction {
+    expose String kind;
+    expose String rationale;
+    expose String intentValue;
+    expose player.Player? pitcherChoice;
+    expose lineup_card.LineupCard? lineupChoice;
+
+    // Construct a fresh ManagerAction with the given kind and rationale. All
+    // payload fields default to empty/null and are filled in by callers as
+    // needed.
+    expose func init(actionKind: String, why: String) {
+        kind = actionKind;
+        rationale = why;
+        intentValue = "";
+        pitcherChoice = null;
+        lineupChoice = null;
+    }
+}
+
+// The default in-game manager AI. Implements the Stage-1 policy from
+// plan 09: never bunt, never steal, no pinch hitting, no intentional walks,
+// fixed lineup, single starter unless one of the scripted pitching-change
+// rules triggers. Each "decide*Action" method returns a typed ManagerAction;
+// the legacy boolean / string wrappers below delegate to those.
+class DefaultManagerPolicy {
+    expose String policyName;
+
+    // Construct a default-named policy. Callers typically follow up with
+    // setPolicyName to give it a team-specific label so decision-log entries
+    // are attributable.
+    expose func init() {
+        policyName = "DefaultManagerPolicy";
+    }
+
+    // Override the policy name shown in the decision log. The season layer
+    // calls this with the team's full name + " Manager" so logs read
+    // naturally (e.g., "Port City Captains Manager|pitching_change|...").
+    expose func setPolicyName(name: String) {
+        policyName = name;
+    }
+
+    // Decision: should we issue an intentional walk to this batter? Default
+    // policy: never. The Stage-1 AI is conservative; smarter policies can
+    // override this method.
+    expose func decideIntentionalWalkAction(state: game_state.GameState,
+                                            batter: player.Player,
+                                            pitcher: player.Player) -> ManagerAction {
+        return new ManagerAction(ACTION_NOOP, "default_no_ibb");
+    }
+
+    // Legacy boolean wrapper around decideIntentionalWalkAction. Keeps older
+    // call sites working while the engine migrates to typed actions.
     expose func shouldIntentionalWalk(state: game_state.GameState,
                                       batter: player.Player,
                                       pitcher: player.Player) -> Boolean {
-        return false;
+        var action = self.decideIntentionalWalkAction(state, batter, pitcher);
+        return action.kind == ACTION_ISSUE_INTENTIONAL_WALK;
     }
 
+    // Decision: what pitch intent should the pitcher attack the batter with?
+    // Returns an ACTION_SET_PITCH_INTENT action with the chosen intent and
+    // a rationale string. The default policy makes context-aware choices:
+    //   - 0-2 / 1-2 with a dangerous batter on first base empty -> pitch around
+    //   - 0-2 / 1-2 with three balls -> nibble the edge
+    //   - 0-2 / 1-2 otherwise -> chase pitch
+    //   - 2+ balls otherwise -> attack the zone
+    //   - Runner in scoring position with first base open and a dangerous
+    //     batter -> pitch around
+    //   - Default -> attack the zone
+    // The "attack_default" rationale string is what the plate-appearance
+    // engine filters on when deciding NOT to log routine pitch decisions
+    // (otherwise the franchise decision log balloons by ~5x).
+    expose func decidePitchIntentAction(state: game_state.GameState,
+                                        batter: player.Player,
+                                        pitcher: player.Player) -> ManagerAction {
+        var action = new ManagerAction(ACTION_SET_PITCH_INTENT, "attack_default");
+        action.intentValue = INTENT_ATTACK;
+        if state.strikes >= 2 {
+            if state.firstBase == null && batter.dangerScore() >= 250 {
+                action.intentValue = INTENT_PITCH_AROUND;
+                action.rationale = "danger_two_strikes";
+                return action;
+            }
+            if state.balls >= 2 {
+                action.intentValue = INTENT_EDGE;
+                action.rationale = "two_strikes_two_balls";
+                return action;
+            }
+            action.intentValue = INTENT_CHASE;
+            action.rationale = "finish_with_two_strikes";
+            return action;
+        }
+        if state.balls >= 2 {
+            action.intentValue = INTENT_ATTACK;
+            action.rationale = "behind_attack";
+            return action;
+        }
+        if state.firstBase == null && state.secondBase != null && batter.dangerScore() >= 245 {
+            action.intentValue = INTENT_PITCH_AROUND;
+            action.rationale = "runner_scoring_position_danger";
+            return action;
+        }
+        return action;
+    }
+
+    // Legacy string wrapper around decidePitchIntentAction. Returns just the
+    // chosen intent value, dropping the rationale.
     expose func choosePitchIntent(state: game_state.GameState,
                                   batter: player.Player,
                                   pitcher: player.Player) -> String {
-        if state.strikes >= 2 {
-            if state.firstBase == null && batter.dangerScore() >= 250 {
-                return INTENT_PITCH_AROUND;
-            }
-            if state.balls >= 2 {
-                return INTENT_EDGE;
-            }
-            return INTENT_CHASE;
-        }
-        if state.balls >= 2 {
-            return INTENT_ATTACK;
-        }
-        if state.firstBase == null && state.secondBase != null && batter.dangerScore() >= 245 {
-            return INTENT_PITCH_AROUND;
-        }
-        return INTENT_ATTACK;
+        return self.decidePitchIntentAction(state, batter, pitcher).intentValue;
     }
 
-    expose func shouldChangePitcher(state: game_state.GameState,
-                                    defense: game_state.TeamGameState) -> Boolean {
+    // Decision: should we make a pitching change right now? Default policy
+    // checks pitch count, late-inning fatigue, and damage control:
+    //   - >= 105 pitches: change
+    //   - inning >= 7 AND >= 85 pitches AND low stamina: change
+    //   - >= 4 runs allowed AND >= 65 pitches: change
+    //   - else: stick with the pitcher
+    // Three-batter minimum and bullpen exhaustion are checked first; if
+    // either blocks the change, the action stays NOOP regardless of fatigue.
+    expose func decidePitchingChangeAction(state: game_state.GameState,
+                                           defense: game_state.TeamGameState) -> ManagerAction {
+        var action = new ManagerAction(ACTION_NOOP, "stick_with_pitcher");
         if defense.lineup.activePitcher == null {
-            return false;
+            return action;
         }
         if !defense.lineup.hasUnusedReliever() {
-            return false;
+            return action;
         }
         if !defense.lineup.canRemovePitcher(state.rules) {
-            return false;
+            action.rationale = "three_batter_minimum";
+            return action;
         }
 
         var line = defense.currentPitchingLine();
         var currentPitcher = defense.lineup.activePitcher!;
 
         if line.pitches >= 105 {
-            return true;
+            action.kind = ACTION_CHANGE_PITCHER;
+            action.rationale = "pitch_count_threshold";
+            return action;
         }
         if state.inning >= 7 && line.pitches >= 85 && currentPitcher.stamina < 58 {
-            return true;
+            action.kind = ACTION_CHANGE_PITCHER;
+            action.rationale = "late_fatigue";
+            return action;
         }
         if line.R >= 4 && line.pitches >= 65 {
-            return true;
+            action.kind = ACTION_CHANGE_PITCHER;
+            action.rationale = "damage_control";
+            return action;
         }
-        return false;
+        return action;
+    }
+
+    // Legacy boolean wrapper around decidePitchingChangeAction.
+    expose func shouldChangePitcher(state: game_state.GameState,
+                                    defense: game_state.TeamGameState) -> Boolean {
+        var action = self.decidePitchingChangeAction(state, defense);
+        return action.kind == ACTION_CHANGE_PITCHER;
     }
 }
-

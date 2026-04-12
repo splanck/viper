@@ -1,31 +1,51 @@
+// ============================================================================
+// File: src/main.zia
+// Purpose: Top-level entry point for the baseball manager simulation demo.
+//          Builds a default 4-team franchise, runs a full regular season via
+//          the SeasonEngine, prints the final standings, recent games, and a
+//          short readiness summary, then advances the calendar one off-season
+//          to demonstrate that multi-season state is wired correctly.
+// Owns:    Nothing — this file is purely orchestration. All real logic lives
+//          in the model/, sim/, season/, and output/ subdirectories.
+// Entry:   `func start()` is the canonical Zia entry function (matches the
+//          frogger / centipede / 3dworld convention used elsewhere in the
+//          repo).
+// ============================================================================
 module Main;
 
 bind Viper.Terminal;
-bind "./demo/default_game";
-bind "./sim/game_engine";
-bind "./output/line_score_writer";
-bind "./output/box_score_writer";
+bind Viper.Fmt as Fmt;
+bind "./season/demo/default_franchise";
+bind "./season/season_engine";
+bind "./season/output/season_writer";
+bind "./season/date_utils";
 
+// Print every entry of a List[String] as a separate terminal line. Used to
+// dump the multi-line output blocks returned by the season writers without
+// forcing every caller to write its own loop.
 func writeLines(lines: List[String]) {
     for i in 0..lines.length() {
         Say(lines.get(i));
     }
 }
 
+// Demo entry point. Constructs a deterministic franchise from a fixed seed,
+// simulates one regular season, prints the snapshot + recent results, runs
+// the off-season tick to advance to the next season, and exits cleanly.
 func start() {
-    var state = default_game.buildDefaultGame(4242);
-    var engine = new game_engine.GameEngine(state);
-    var finalState = engine.simulate();
+    var franchise = default_franchise.buildDefaultFranchise(4242);
+    var engine = new season_engine.SeasonEngine(franchise);
+    var finalState = engine.simulateRegularSeason();
+    var standings = engine.buildStandings();
 
-    writeLines(finalState.eventLog);
+    writeLines(season_writer.renderFranchiseSnapshot(finalState, standings));
     Say("");
-    writeLines(line_score_writer.render(finalState));
+    writeLines(season_writer.renderCompletedGameSummaries(finalState.completedGames, 8));
     Say("");
-    writeLines(box_score_writer.renderTeamBatting(finalState.away));
+    engine.runOffseason();
+    Say("Next season prepared: " + Fmt.Int(finalState.seasonYear));
+    Say("Opening day: " + date_utils.fromDaysText(finalState.calendar.startDateDays));
+    Say("Career ledger entries: " + Fmt.Int(finalState.careerLines.length()));
     Say("");
-    writeLines(box_score_writer.renderTeamBatting(finalState.home));
-    Say("");
-    writeLines(box_score_writer.renderTeamPitching(finalState.away));
-    Say("");
-    writeLines(box_score_writer.renderTeamPitching(finalState.home));
+    Say("Ready for continued simulation.");
 }
