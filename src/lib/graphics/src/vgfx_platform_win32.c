@@ -59,11 +59,16 @@ typedef struct {
     HDC hdc;                      ///< Device context for window
     HDC memdc;                    ///< Memory DC for off-screen rendering
     HBITMAP hbmp;                 ///< DIB section bitmap handle
+    HGDIOBJ old_bitmap;           ///< Original object selected into memdc
     void *dib_pixels;             ///< Pointer to DIB pixel data (BGRA format)
     int width;                    ///< Cached window width
     int height;                   ///< Cached window height
     int close_requested;          ///< 1 if WM_CLOSE received, 0 otherwise
     WCHAR pending_high_surrogate; ///< Pending UTF-16 high surrogate from WM_CHAR
+    DWORD saved_style;            ///< Windowed style saved for fullscreen restore
+    DWORD saved_exstyle;          ///< Windowed ex-style saved for fullscreen restore
+    RECT saved_rect;              ///< Windowed bounds saved for fullscreen restore
+    int is_fullscreen;            ///< 1 if this window is currently fullscreen
 } vgfx_win32_data;
 
 //===----------------------------------------------------------------------===//
@@ -105,6 +110,63 @@ static WCHAR *utf8_to_utf16(const char *utf8) {
     }
 
     return wstr;
+}
+
+static int32_t win32_logical_to_physical(const struct vgfx_window *win, int32_t logical) {
+    float scale = (win && win->scale_factor >= 1.0f) ? win->scale_factor : 1.0f;
+    return (int32_t)(logical * scale);
+}
+
+static void win32_client_to_physical_mouse(struct vgfx_window *win,
+                                           int32_t client_x,
+                                           int32_t client_y,
+                                           int32_t *out_x,
+                                           int32_t *out_y) {
+    int32_t x = win32_logical_to_physical(win, client_x);
+    int32_t y = win32_logical_to_physical(win, client_y);
+    if (out_x)
+        *out_x = x;
+    if (out_y)
+        *out_y = y;
+}
+
+static int win32_recreate_dib(struct vgfx_window *win) {
+    if (!win || !win->platform_data)
+        return 0;
+
+    vgfx_win32_data *w32 = (vgfx_win32_data *)win->platform_data;
+    if (!w32->memdc)
+        return 0;
+
+    if (w32->hbmp) {
+        if (w32->old_bitmap)
+            SelectObject(w32->memdc, w32->old_bitmap);
+        DeleteObject(w32->hbmp);
+        w32->hbmp = NULL;
+        w32->dib_pixels = NULL;
+    }
+
+    BITMAPINFO bmi = {0};
+    bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+    bmi.bmiHeader.biWidth = win->width;
+    bmi.bmiHeader.biHeight = -win->height;
+    bmi.bmiHeader.biPlanes = 1;
+    bmi.bmiHeader.biBitCount = 32;
+    bmi.bmiHeader.biCompression = BI_RGB;
+
+    w32->hbmp =
+        CreateDIBSection(w32->memdc, &bmi, DIB_RGB_COLORS, &w32->dib_pixels, NULL, 0);
+    if (!w32->hbmp || !w32->dib_pixels) {
+        w32->hbmp = NULL;
+        w32->dib_pixels = NULL;
+        vgfx_internal_set_error(VGFX_ERR_PLATFORM, "Failed to create Win32 DIB section");
+        return 0;
+    }
+
+    HGDIOBJ previous = SelectObject(w32->memdc, w32->hbmp);
+    if (!w32->old_bitmap)
+        w32->old_bitmap = previous;
+    return 1;
 }
 
 //===----------------------------------------------------------------------===//
@@ -221,26 +283,29 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
         }
 
         case WM_SIZE: {
-            /* Window resized.  Update only the w32 logical dimensions used by
-             * StretchBlt.  Do NOT touch win->width / win->height / win->stride
-             * because they describe the framebuffer allocation size and must
-             * remain immutable (matching win->pixels and w32->dib_pixels).
-             * True resize support would require reallocating both buffers. */
             int dip_w = LOWORD(lparam);
             int dip_h = HIWORD(lparam);
 
-            if (w32 && (dip_w != w32->width || dip_h != w32->height)) {
-                w32->width = dip_w; /* logical size for StretchBlt dest */
-                w32->height = dip_h;
+            if (!w32 || dip_w <= 0 || dip_h <= 0)
+                return 0;
 
-                /* Report physical pixel dimensions in the event for the app */
-                int phys_w = (int)(dip_w * win->scale_factor);
-                int phys_h = (int)(dip_h * win->scale_factor);
+            if (dip_w != w32->width || dip_h != w32->height) {
+                int phys_w = win32_logical_to_physical(win, dip_w);
+                int phys_h = win32_logical_to_physical(win, dip_h);
 
-                vgfx_event_t event = {.type = VGFX_EVENT_RESIZE,
-                                      .time_ms = timestamp,
-                                      .data.resize = {.width = phys_w, .height = phys_h}};
-                vgfx_internal_enqueue_event(win, &event);
+                if ((!w32->memdc || !w32->hdc) ||
+                    (vgfx_internal_resize_framebuffer(win, phys_w, phys_h) &&
+                     win32_recreate_dib(win))) {
+                    w32->width = dip_w;
+                    w32->height = dip_h;
+
+                    if (w32->memdc && w32->hdc) {
+                        vgfx_event_t event = {.type = VGFX_EVENT_RESIZE,
+                                              .time_ms = timestamp,
+                                              .data.resize = {.width = phys_w, .height = phys_h}};
+                        vgfx_internal_enqueue_event(win, &event);
+                    }
+                }
             }
             return 0;
         }
@@ -322,10 +387,10 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
         }
 
         case WM_MOUSEMOVE: {
-            /* Mouse moved.  With system DPI awareness, lparam gives DIP coords.
-             * Scale to physical pixels so hit-testing matches the physical framebuffer. */
-            int32_t x = (int32_t)((short)LOWORD(lparam) * win->scale_factor);
-            int32_t y = (int32_t)((short)HIWORD(lparam) * win->scale_factor);
+            int32_t x = 0;
+            int32_t y = 0;
+            win32_client_to_physical_mouse(
+                win, (int32_t)(short)LOWORD(lparam), (int32_t)(short)HIWORD(lparam), &x, &y);
 
             win->mouse_x = x; /* Update input state */
             win->mouse_y = y;
@@ -338,11 +403,14 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
         }
 
         case WM_LBUTTONDOWN: {
-            /* Left mouse button pressed — scale DIP coords to physical pixels */
-            int32_t x = (int32_t)((short)LOWORD(lparam) * win->scale_factor);
-            int32_t y = (int32_t)((short)HIWORD(lparam) * win->scale_factor);
+            int32_t x = 0;
+            int32_t y = 0;
+            win32_client_to_physical_mouse(
+                win, (int32_t)(short)LOWORD(lparam), (int32_t)(short)HIWORD(lparam), &x, &y);
 
             win->mouse_button_state[VGFX_MOUSE_LEFT] = 1;
+            win->mouse_x = x;
+            win->mouse_y = y;
 
             vgfx_event_t event = {.type = VGFX_EVENT_MOUSE_DOWN,
                                   .time_ms = timestamp,
@@ -352,11 +420,14 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
         }
 
         case WM_LBUTTONUP: {
-            /* Left mouse button released — scale DIP coords to physical pixels */
-            int32_t x = (int32_t)((short)LOWORD(lparam) * win->scale_factor);
-            int32_t y = (int32_t)((short)HIWORD(lparam) * win->scale_factor);
+            int32_t x = 0;
+            int32_t y = 0;
+            win32_client_to_physical_mouse(
+                win, (int32_t)(short)LOWORD(lparam), (int32_t)(short)HIWORD(lparam), &x, &y);
 
             win->mouse_button_state[VGFX_MOUSE_LEFT] = 0;
+            win->mouse_x = x;
+            win->mouse_y = y;
 
             vgfx_event_t event = {.type = VGFX_EVENT_MOUSE_UP,
                                   .time_ms = timestamp,
@@ -366,11 +437,14 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
         }
 
         case WM_RBUTTONDOWN: {
-            /* Right mouse button pressed — scale DIP coords to physical pixels */
-            int32_t x = (int32_t)((short)LOWORD(lparam) * win->scale_factor);
-            int32_t y = (int32_t)((short)HIWORD(lparam) * win->scale_factor);
+            int32_t x = 0;
+            int32_t y = 0;
+            win32_client_to_physical_mouse(
+                win, (int32_t)(short)LOWORD(lparam), (int32_t)(short)HIWORD(lparam), &x, &y);
 
             win->mouse_button_state[VGFX_MOUSE_RIGHT] = 1;
+            win->mouse_x = x;
+            win->mouse_y = y;
 
             vgfx_event_t event = {
                 .type = VGFX_EVENT_MOUSE_DOWN,
@@ -381,11 +455,14 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
         }
 
         case WM_RBUTTONUP: {
-            /* Right mouse button released — scale DIP coords to physical pixels */
-            int32_t x = (int32_t)((short)LOWORD(lparam) * win->scale_factor);
-            int32_t y = (int32_t)((short)HIWORD(lparam) * win->scale_factor);
+            int32_t x = 0;
+            int32_t y = 0;
+            win32_client_to_physical_mouse(
+                win, (int32_t)(short)LOWORD(lparam), (int32_t)(short)HIWORD(lparam), &x, &y);
 
             win->mouse_button_state[VGFX_MOUSE_RIGHT] = 0;
+            win->mouse_x = x;
+            win->mouse_y = y;
 
             vgfx_event_t event = {
                 .type = VGFX_EVENT_MOUSE_UP,
@@ -396,11 +473,14 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
         }
 
         case WM_MBUTTONDOWN: {
-            /* Middle mouse button pressed — scale DIP coords to physical pixels */
-            int32_t x = (int32_t)((short)LOWORD(lparam) * win->scale_factor);
-            int32_t y = (int32_t)((short)HIWORD(lparam) * win->scale_factor);
+            int32_t x = 0;
+            int32_t y = 0;
+            win32_client_to_physical_mouse(
+                win, (int32_t)(short)LOWORD(lparam), (int32_t)(short)HIWORD(lparam), &x, &y);
 
             win->mouse_button_state[VGFX_MOUSE_MIDDLE] = 1;
+            win->mouse_x = x;
+            win->mouse_y = y;
 
             vgfx_event_t event = {
                 .type = VGFX_EVENT_MOUSE_DOWN,
@@ -411,16 +491,44 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
         }
 
         case WM_MBUTTONUP: {
-            /* Middle mouse button released — scale DIP coords to physical pixels */
-            int32_t x = (int32_t)((short)LOWORD(lparam) * win->scale_factor);
-            int32_t y = (int32_t)((short)HIWORD(lparam) * win->scale_factor);
+            int32_t x = 0;
+            int32_t y = 0;
+            win32_client_to_physical_mouse(
+                win, (int32_t)(short)LOWORD(lparam), (int32_t)(short)HIWORD(lparam), &x, &y);
 
             win->mouse_button_state[VGFX_MOUSE_MIDDLE] = 0;
+            win->mouse_x = x;
+            win->mouse_y = y;
 
             vgfx_event_t event = {
                 .type = VGFX_EVENT_MOUSE_UP,
                 .time_ms = timestamp,
                 .data.mouse_button = {.x = x, .y = y, .button = VGFX_MOUSE_MIDDLE}};
+            vgfx_internal_enqueue_event(win, &event);
+            return 0;
+        }
+
+        case WM_MOUSEWHEEL:
+        case WM_MOUSEHWHEEL: {
+            POINT pt = {GET_X_LPARAM(lparam), GET_Y_LPARAM(lparam)};
+            ScreenToClient(hwnd, &pt);
+            int32_t x = 0;
+            int32_t y = 0;
+            win32_client_to_physical_mouse(win, (int32_t)pt.x, (int32_t)pt.y, &x, &y);
+            win->mouse_x = x;
+            win->mouse_y = y;
+
+            float delta = (float)GET_WHEEL_DELTA_WPARAM(wparam) / (float)WHEEL_DELTA;
+            vgfx_event_t event = {.type = VGFX_EVENT_SCROLL,
+                                  .time_ms = timestamp,
+                                  .data.scroll = {.delta_x = 0.0f,
+                                                  .delta_y = 0.0f,
+                                                  .x = x,
+                                                  .y = y}};
+            if (msg == WM_MOUSEWHEEL)
+                event.data.scroll.delta_y = -delta;
+            else
+                event.data.scroll.delta_x = delta;
             vgfx_internal_enqueue_event(win, &event);
             return 0;
         }
@@ -636,37 +744,14 @@ int vgfx_platform_init_window(struct vgfx_window *win, const vgfx_window_params_
         return 0;
     }
 
-    /* Create DIB section for framebuffer (32-bit BGRA, top-down).
-     * Use physical dimensions (win->width × win->height) so the bitmap
-     * holds one pixel per physical screen pixel on HiDPI displays.
-     * The present function uses StretchBlt to map it into the logical window. */
-    BITMAPINFO bmi = {0};
-    bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
-    bmi.bmiHeader.biWidth = win->width;
-    bmi.bmiHeader.biHeight = -win->height; /* Negative = top-down */
-    bmi.bmiHeader.biPlanes = 1;
-    bmi.bmiHeader.biBitCount = 32;
-    bmi.bmiHeader.biCompression = BI_RGB;
-
-    w32->hbmp = CreateDIBSection(w32->memdc,
-                                 &bmi,
-                                 DIB_RGB_COLORS,
-                                 &w32->dib_pixels, /* Pointer to pixel data */
-                                 NULL,
-                                 0);
-
-    if (!w32->hbmp || !w32->dib_pixels) {
+    if (!win32_recreate_dib(win)) {
         DeleteDC(w32->memdc);
         ReleaseDC(w32->hwnd, w32->hdc);
         DestroyWindow(w32->hwnd);
         free(w32);
         win->platform_data = NULL;
-        vgfx_internal_set_error(VGFX_ERR_PLATFORM, "Failed to create DIB section");
         return 0;
     }
-
-    /* Select DIB into memory DC */
-    SelectObject(w32->memdc, w32->hbmp);
 
     /* Show and update window */
     ShowWindow(w32->hwnd, SW_SHOW);
@@ -692,6 +777,8 @@ void vgfx_platform_destroy_window(struct vgfx_window *win) {
 
     /* Delete DIB section */
     if (w32->hbmp) {
+        if (w32->old_bitmap)
+            SelectObject(w32->memdc, w32->old_bitmap);
         DeleteObject(w32->hbmp);
         w32->hbmp = NULL;
         w32->dib_pixels = NULL;
@@ -959,17 +1046,6 @@ void vgfx_clipboard_clear(void) {
 // Window Title and Fullscreen
 //===----------------------------------------------------------------------===//
 
-/// @brief Saved window state for restoring from fullscreen.
-typedef struct {
-    DWORD style;
-    DWORD exStyle;
-    RECT rect;
-    int is_fullscreen;
-} vgfx_win32_saved_state;
-
-/// @brief Global saved window state (one window at a time for simplicity).
-static vgfx_win32_saved_state g_saved_state = {0};
-
 /// @brief Set the window title.
 /// @details Updates the Win32 window's title bar text using SetWindowTextW.
 ///
@@ -1007,12 +1083,12 @@ int vgfx_platform_set_fullscreen(struct vgfx_window *win, int fullscreen) {
     if (!w32->hwnd)
         return 0;
 
-    if (fullscreen && !g_saved_state.is_fullscreen) {
+    if (fullscreen && !w32->is_fullscreen) {
         /* Save current window state */
-        g_saved_state.style = GetWindowLong(w32->hwnd, GWL_STYLE);
-        g_saved_state.exStyle = GetWindowLong(w32->hwnd, GWL_EXSTYLE);
-        GetWindowRect(w32->hwnd, &g_saved_state.rect);
-        g_saved_state.is_fullscreen = 1;
+        w32->saved_style = (DWORD)GetWindowLong(w32->hwnd, GWL_STYLE);
+        w32->saved_exstyle = (DWORD)GetWindowLong(w32->hwnd, GWL_EXSTYLE);
+        GetWindowRect(w32->hwnd, &w32->saved_rect);
+        w32->is_fullscreen = 1;
 
         /* Get monitor info for the monitor containing this window */
         HMONITOR hMonitor = MonitorFromWindow(w32->hwnd, MONITOR_DEFAULTTONEAREST);
@@ -1020,11 +1096,11 @@ int vgfx_platform_set_fullscreen(struct vgfx_window *win, int fullscreen) {
         GetMonitorInfo(hMonitor, &mi);
 
         /* Remove window decorations and maximize to monitor size */
-        SetWindowLong(w32->hwnd, GWL_STYLE, g_saved_state.style & ~(WS_CAPTION | WS_THICKFRAME));
+        SetWindowLong(w32->hwnd, GWL_STYLE, w32->saved_style & ~(WS_CAPTION | WS_THICKFRAME));
         SetWindowLong(w32->hwnd,
                       GWL_EXSTYLE,
-                      g_saved_state.exStyle & ~(WS_EX_DLGMODALFRAME | WS_EX_WINDOWEDGE |
-                                                WS_EX_CLIENTEDGE | WS_EX_STATICEDGE));
+                      w32->saved_exstyle & ~(WS_EX_DLGMODALFRAME | WS_EX_WINDOWEDGE |
+                                             WS_EX_CLIENTEDGE | WS_EX_STATICEDGE));
 
         SetWindowPos(w32->hwnd,
                      HWND_TOP,
@@ -1033,20 +1109,20 @@ int vgfx_platform_set_fullscreen(struct vgfx_window *win, int fullscreen) {
                      mi.rcMonitor.right - mi.rcMonitor.left,
                      mi.rcMonitor.bottom - mi.rcMonitor.top,
                      SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
-    } else if (!fullscreen && g_saved_state.is_fullscreen) {
+    } else if (!fullscreen && w32->is_fullscreen) {
         /* Restore previous window state */
-        SetWindowLong(w32->hwnd, GWL_STYLE, g_saved_state.style);
-        SetWindowLong(w32->hwnd, GWL_EXSTYLE, g_saved_state.exStyle);
+        SetWindowLong(w32->hwnd, GWL_STYLE, w32->saved_style);
+        SetWindowLong(w32->hwnd, GWL_EXSTYLE, w32->saved_exstyle);
 
         SetWindowPos(w32->hwnd,
                      NULL,
-                     g_saved_state.rect.left,
-                     g_saved_state.rect.top,
-                     g_saved_state.rect.right - g_saved_state.rect.left,
-                     g_saved_state.rect.bottom - g_saved_state.rect.top,
+                     w32->saved_rect.left,
+                     w32->saved_rect.top,
+                     w32->saved_rect.right - w32->saved_rect.left,
+                     w32->saved_rect.bottom - w32->saved_rect.top,
                      SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
 
-        g_saved_state.is_fullscreen = 0;
+        w32->is_fullscreen = 0;
     }
 
     return 1;
@@ -1056,8 +1132,10 @@ int vgfx_platform_set_fullscreen(struct vgfx_window *win, int fullscreen) {
 /// @param win Pointer to the window structure
 /// @return 1 if fullscreen, 0 if windowed
 int vgfx_platform_is_fullscreen(struct vgfx_window *win) {
-    (void)win;
-    return g_saved_state.is_fullscreen;
+    if (!win || !win->platform_data)
+        return 0;
+    vgfx_win32_data *w32 = (vgfx_win32_data *)win->platform_data;
+    return w32->is_fullscreen;
 }
 
 /// @brief Minimize (iconify) the window.
@@ -1195,7 +1273,17 @@ void vgfx_platform_set_window_size(struct vgfx_window *win, int32_t w, int32_t h
     vgfx_win32_data *data = (vgfx_win32_data *)win->platform_data;
     if (!data->hwnd)
         return;
-    SetWindowPos(data->hwnd, NULL, 0, 0, w, h, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+    RECT rect = {0, 0, w, h};
+    DWORD style = (DWORD)GetWindowLong(data->hwnd, GWL_STYLE);
+    DWORD exstyle = (DWORD)GetWindowLong(data->hwnd, GWL_EXSTYLE);
+    AdjustWindowRectEx(&rect, style, FALSE, exstyle);
+    SetWindowPos(data->hwnd,
+                 NULL,
+                 0,
+                 0,
+                 rect.right - rect.left,
+                 rect.bottom - rect.top,
+                 SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
 }
 
 void *vgfx_get_native_display(vgfx_window_t window) {

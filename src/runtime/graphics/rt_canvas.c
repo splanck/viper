@@ -31,6 +31,21 @@
 
 extern int64_t rt_clock_ticks_us(void);
 
+static void rt_canvas_detach_input(vgfx_window_t gfx_win) {
+    if (!gfx_win)
+        return;
+    rt_keyboard_clear_canvas_if_matches(gfx_win);
+    rt_mouse_clear_canvas_if_matches(gfx_win);
+}
+
+static void rt_canvas_destroy_window(rt_canvas *canvas) {
+    if (!canvas || !canvas->gfx_win)
+        return;
+    rt_canvas_detach_input(canvas->gfx_win);
+    vgfx_destroy_window(canvas->gfx_win);
+    canvas->gfx_win = NULL;
+}
+
 static void rt_canvas_finalize(void *obj) {
     if (!obj)
         return;
@@ -40,10 +55,7 @@ static void rt_canvas_finalize(void *obj) {
         free(canvas->title);
         canvas->title = NULL;
     }
-    if (canvas->gfx_win) {
-        vgfx_destroy_window(canvas->gfx_win);
-        canvas->gfx_win = NULL;
-    }
+    rt_canvas_destroy_window(canvas);
 }
 
 /// @brief Report that Canvas support is compiled into this runtime.
@@ -219,8 +231,7 @@ void rt_canvas_flip(void *canvas_ptr) {
 
     /* Signal close to the application; caller checks canvas.should_close */
     if (vgfx_close_requested(canvas->gfx_win)) {
-        vgfx_destroy_window(canvas->gfx_win);
-        canvas->gfx_win = NULL;
+        rt_canvas_destroy_window(canvas);
         canvas->should_close = 1;
     }
 }
@@ -283,9 +294,14 @@ int64_t rt_canvas_poll(void *canvas_ptr) {
     rt_keyboard_begin_frame();
     rt_mouse_begin_frame();
     rt_pad_begin_frame();
+    canvas->last_event.type = VGFX_EVENT_NONE;
 
     // Poll gamepads for state updates
     rt_pad_poll();
+
+    // Pump the native event queue before draining translated events.
+    if (!vgfx_pump_events(canvas->gfx_win))
+        canvas->should_close = 1;
 
     while (vgfx_poll_event(canvas->gfx_win, &canvas->last_event)) {
         if (canvas->last_event.type == VGFX_EVENT_CLOSE)
@@ -296,6 +312,8 @@ int64_t rt_canvas_poll(void *canvas_ptr) {
             rt_keyboard_on_key_down((int64_t)canvas->last_event.data.key.key);
         else if (canvas->last_event.type == VGFX_EVENT_KEY_UP)
             rt_keyboard_on_key_up((int64_t)canvas->last_event.data.key.key);
+        else if (canvas->last_event.type == VGFX_EVENT_TEXT_INPUT)
+            rt_keyboard_text_input((int32_t)canvas->last_event.data.text.codepoint);
 
         // Forward mouse events to mouse module (convert physical -> logical)
         if (canvas->last_event.type == VGFX_EVENT_MOUSE_MOVE) {
@@ -321,6 +339,9 @@ int64_t rt_canvas_poll(void *canvas_ptr) {
             int64_t emy = (int64_t)(canvas->last_event.data.mouse_button.y / cs);
             rt_mouse_update_pos(emx, emy);
             rt_mouse_button_up((int64_t)canvas->last_event.data.mouse_button.button);
+        } else if (canvas->last_event.type == VGFX_EVENT_SCROLL) {
+            rt_mouse_update_wheel((int64_t)canvas->last_event.data.scroll.delta_x,
+                                  (int64_t)canvas->last_event.data.scroll.delta_y);
         }
     }
 
@@ -426,8 +447,7 @@ void rt_canvas_resize(void *canvas_ptr, int64_t width, int64_t height) {
 void rt_canvas_close(void *canvas_ptr) {
     rt_canvas *canvas = (rt_canvas *)canvas_ptr;
     if (canvas && canvas->gfx_win) {
-        vgfx_destroy_window(canvas->gfx_win);
-        canvas->gfx_win = NULL;
+        rt_canvas_destroy_window(canvas);
         canvas->should_close = 1;
     }
 }

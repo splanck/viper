@@ -182,6 +182,10 @@ void rt_keyboard_text_input(int32_t ch);
 /// @param canvas Canvas handle (opaque pointer to vgfx window).
 void rt_keyboard_set_canvas(void *canvas);
 
+/// @brief Clear the active keyboard canvas if it matches the destroyed window.
+/// @param canvas Canvas handle being destroyed.
+void rt_keyboard_clear_canvas_if_matches(void *canvas);
+
 //=========================================================================
 // Polling Methods (Current State)
 //=========================================================================
@@ -423,6 +427,10 @@ void rt_mouse_update_wheel(int64_t dx, int64_t dy);
 /// @brief Set the active Canvas for mouse input.
 /// @param canvas Canvas handle (opaque pointer to vgfx window).
 void rt_mouse_set_canvas(void *canvas);
+
+/// @brief Clear the active mouse canvas if it matches the destroyed window.
+/// @param canvas Canvas handle being destroyed.
+void rt_mouse_clear_canvas_if_matches(void *canvas);
 
 //=========================================================================
 // Position Methods

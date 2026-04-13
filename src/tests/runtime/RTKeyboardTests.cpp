@@ -24,6 +24,7 @@ extern "C" void vm_trap(const char *msg) {
 
 extern "C" void rt_input_set_caps_lock_query_hook(int32_t (*hook)(void *canvas));
 extern "C" void rt_input_reset_test_hooks(void);
+extern "C" void rt_keyboard_clear_canvas_if_matches(void *canvas);
 
 static int g_caps_lock_query_calls = 0;
 static void *g_caps_lock_canvas = nullptr;
@@ -197,6 +198,32 @@ static void test_caps_lock_query() {
     printf("test_caps_lock_query: PASSED\n");
 }
 
+static void test_canvas_detach() {
+    rt_input_reset_test_hooks();
+    rt_keyboard_init();
+
+    g_caps_lock_query_calls = 0;
+    g_caps_lock_canvas = nullptr;
+    g_caps_lock_value = 1;
+
+    void *canvas_a = reinterpret_cast<void *>(0x1111);
+    void *canvas_b = reinterpret_cast<void *>(0x2222);
+    rt_input_set_caps_lock_query_hook(test_caps_lock_query_hook);
+    rt_keyboard_set_canvas(canvas_a);
+
+    rt_keyboard_clear_canvas_if_matches(canvas_b);
+    assert(rt_keyboard_caps_lock() == 1);
+    assert(g_caps_lock_canvas == canvas_a);
+
+    rt_keyboard_clear_canvas_if_matches(canvas_a);
+    g_caps_lock_canvas = canvas_b;
+    assert(rt_keyboard_caps_lock() == 1);
+    assert(g_caps_lock_canvas == nullptr);
+
+    rt_input_reset_test_hooks();
+    printf("test_canvas_detach: PASSED\n");
+}
+
 // ============================================================================
 // Text Input
 // ============================================================================
@@ -251,6 +278,7 @@ int main() {
     test_key_name();
     test_modifier_state();
     test_caps_lock_query();
+    test_canvas_detach();
     test_text_input();
     test_boundary_cases();
 

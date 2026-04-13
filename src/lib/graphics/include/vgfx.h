@@ -22,8 +22,8 @@
 //
 // Supported platforms:
 // - macOS (Cocoa/AppKit backend)
-// - Linux (X11 backend - stub)
-// - Windows (Win32 backend - stub)
+// - Linux (X11 backend)
+// - Windows (Win32 backend)
 //
 //===----------------------------------------------------------------------===//
 
@@ -137,7 +137,7 @@ typedef enum {
     VGFX_EVENT_MOUSE_MOVE,   ///< Mouse cursor moved
     VGFX_EVENT_MOUSE_DOWN,   ///< Mouse button pressed
     VGFX_EVENT_MOUSE_UP,     ///< Mouse button released
-    VGFX_EVENT_RESIZE,       ///< Window resized (framebuffer reallocated)
+    VGFX_EVENT_RESIZE,       ///< Window resized (framebuffer reallocated and cleared)
     VGFX_EVENT_CLOSE,        ///< Window close requested by user
     VGFX_EVENT_FOCUS_GAINED, ///< Window gained keyboard focus
     VGFX_EVENT_FOCUS_LOST,   ///< Window lost keyboard focus
@@ -347,9 +347,19 @@ void vgfx_destroy_window(vgfx_window_t window);
 /// @return 1 on success, 0 on fatal error
 int vgfx_update(vgfx_window_t window);
 
+/// @brief Pump pending OS events without presenting the framebuffer.
+/// @details Polls the native event queue and enqueues translated ViperGFX
+///          events for later consumption via vgfx_poll_event(). Use this when
+///          input must be processed before rendering or presenting a frame.
+/// @param window Window handle
+/// @return 1 on success, 0 on fatal error
+int vgfx_pump_events(vgfx_window_t window);
+
 /// @brief Get the current window dimensions.
-/// @details Retrieves the framebuffer width and height in pixels.  Dimensions
-///          may change if the window is resizable and the user resizes it.
+/// @details Retrieves the current drawable size. When coord scaling is
+///          enabled, this returns logical dimensions; otherwise it returns the
+///          framebuffer size in physical pixels. Dimensions may change when a
+///          resizable window is resized.
 /// @param window Window handle
 /// @param out_width Pointer to receive width (may be NULL)
 /// @param out_height Pointer to receive height (may be NULL)
@@ -478,13 +488,13 @@ void vgfx_set_cursor_visible(vgfx_window_t window, int32_t visible);
 void vgfx_get_monitor_size(vgfx_window_t window, int32_t *out_w, int32_t *out_h);
 
 /// @brief Resize the native OS window.
-/// @details Changes the window's client area dimensions.  On macOS the
-///          frame origin is preserved; the window may be clipped by the
-///          screen bounds.  A RESIZE event is NOT synthesized — the caller
-///          should update the root widget size after calling this function.
+/// @details Changes the window's logical client/content area dimensions. The
+///          native backend performs any frame/content conversion it needs. The
+///          resulting resize is reported asynchronously through
+///          VGFX_EVENT_RESIZE after the framebuffer has been reallocated.
 /// @param window Window handle
-/// @param w New window width in pixels (must be > 0)
-/// @param h New window height in pixels (must be > 0)
+/// @param w New logical window width in pixels (must be > 0)
+/// @param h New logical window height in pixels (must be > 0)
 void vgfx_set_window_size(vgfx_window_t window, int32_t w, int32_t h);
 
 /// @brief Query the HiDPI backing scale factor for a window.

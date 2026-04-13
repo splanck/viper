@@ -231,6 +231,107 @@ void test_resize_event(void) {
     TEST_END();
 }
 
+/* T22: Pump Events Without Present */
+void test_pump_events_without_present(void) {
+    TEST_BEGIN("T22: Pump Events Without Present");
+
+    vgfx_window_params_t params = {
+        .width = 640, .height = 480, .title = "Test", .fps = 0, .resizable = 0};
+
+    vgfx_window_t win = vgfx_create_window(&params);
+    ASSERT_NOT_NULL(win);
+
+    vgfx_mock_inject_key_event(win, VGFX_KEY_A, 1);
+    ASSERT_EQ(vgfx_key_down(win, VGFX_KEY_A), 0);
+
+    ASSERT_EQ(vgfx_pump_events(win), 1);
+    ASSERT_EQ(vgfx_key_down(win, VGFX_KEY_A), 1);
+
+    vgfx_event_t ev;
+    ASSERT_EQ(vgfx_poll_event(win, &ev), 1);
+    ASSERT_EQ(ev.type, VGFX_EVENT_KEY_DOWN);
+
+    vgfx_destroy_window(win);
+    TEST_END();
+}
+
+/* T23: Text Input Event */
+void test_text_input_event(void) {
+    TEST_BEGIN("T23: Text Input Event");
+
+    vgfx_window_params_t params = {
+        .width = 320, .height = 240, .title = "Test", .fps = 0, .resizable = 0};
+
+    vgfx_window_t win = vgfx_create_window(&params);
+    ASSERT_NOT_NULL(win);
+
+    vgfx_mock_inject_text_input(win, 'A');
+    ASSERT_EQ(vgfx_pump_events(win), 1);
+
+    vgfx_event_t ev;
+    ASSERT_EQ(vgfx_poll_event(win, &ev), 1);
+    ASSERT_EQ(ev.type, VGFX_EVENT_TEXT_INPUT);
+    ASSERT_EQ(ev.data.text.codepoint, 'A');
+
+    vgfx_destroy_window(win);
+    TEST_END();
+}
+
+/* T24: Scroll Event */
+void test_scroll_event(void) {
+    TEST_BEGIN("T24: Scroll Event");
+
+    vgfx_window_params_t params = {
+        .width = 320, .height = 240, .title = "Test", .fps = 0, .resizable = 0};
+
+    vgfx_window_t win = vgfx_create_window(&params);
+    ASSERT_NOT_NULL(win);
+
+    vgfx_mock_inject_scroll(win, 2.0f, -1.0f, 10, 20);
+    ASSERT_EQ(vgfx_pump_events(win), 1);
+
+    vgfx_event_t ev;
+    ASSERT_EQ(vgfx_poll_event(win, &ev), 1);
+    ASSERT_EQ(ev.type, VGFX_EVENT_SCROLL);
+    ASSERT_EQ(ev.data.scroll.delta_x, 2.0f);
+    ASSERT_EQ(ev.data.scroll.delta_y, -1.0f);
+    ASSERT_EQ(ev.data.scroll.x, 10);
+    ASSERT_EQ(ev.data.scroll.y, 20);
+
+    vgfx_destroy_window(win);
+    TEST_END();
+}
+
+/* T25: Focus State Sync */
+void test_focus_state_sync(void) {
+    TEST_BEGIN("T25: Focus State Sync");
+
+    vgfx_window_params_t params = {
+        .width = 320, .height = 240, .title = "Test", .fps = 0, .resizable = 0};
+
+    vgfx_window_t win = vgfx_create_window(&params);
+    ASSERT_NOT_NULL(win);
+    ASSERT_EQ(vgfx_is_focused(win), 1);
+
+    vgfx_mock_inject_focus(win, 0);
+    ASSERT_EQ(vgfx_pump_events(win), 1);
+    ASSERT_EQ(vgfx_is_focused(win), 0);
+
+    vgfx_event_t ev;
+    ASSERT_EQ(vgfx_poll_event(win, &ev), 1);
+    ASSERT_EQ(ev.type, VGFX_EVENT_FOCUS_LOST);
+
+    vgfx_mock_inject_focus(win, 1);
+    ASSERT_EQ(vgfx_pump_events(win), 1);
+    ASSERT_EQ(vgfx_is_focused(win), 1);
+
+    ASSERT_EQ(vgfx_poll_event(win, &ev), 1);
+    ASSERT_EQ(ev.type, VGFX_EVENT_FOCUS_GAINED);
+
+    vgfx_destroy_window(win);
+    TEST_END();
+}
+
 /* Main test runner */
 /// What: Entry point for input tests covering key/mouse event handling.
 /// Why:  Validate that the input subsystem reports and sequences events
@@ -248,6 +349,10 @@ int main(void) {
     test_event_queue_basic();
     test_event_queue_overflow();
     test_resize_event();
+    test_pump_events_without_present();
+    test_text_input_event();
+    test_scroll_event();
+    test_focus_state_sync();
 
     TEST_SUMMARY();
     return TEST_RETURN_CODE();

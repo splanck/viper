@@ -151,6 +151,7 @@ gcc main.c -o myapp -Iinclude -Llib -lvipergfx -framework Cocoa
 vgfx_window_t vgfx_create_window(const vgfx_window_params_t* params);
 void vgfx_destroy_window(vgfx_window_t window);
 int vgfx_update(vgfx_window_t window);  // Present + events + FPS limit
+int vgfx_pump_events(vgfx_window_t window);  // Events only, no present
 int vgfx_should_close(vgfx_window_t window);
 ```
 
@@ -224,7 +225,9 @@ void* worker_thread(void* arg) {
 ### Current Limitations
 
 1. **Single Window** - Only one window per application
-2. **No DPI Awareness** - Fixed pixel dimensions, no high-DPI scaling
+2. **HiDPI Support Is Low-Level** - Backing scale and logical coordinate scaling
+   are supported, but applications must opt into coordinate scaling and handle
+   any higher-level UI/layout policy themselves
 3. **Software Rendering Only** - No GPU acceleration
 4. **No Text Rendering** - No built-in font/text support (primitives only)
 5. **No Image Loading** - No PNG/JPEG support (raw pixels only)
@@ -265,9 +268,9 @@ ctest -V
 | **test_window**  | T1-T3      | Window lifecycle: create, destroy, size queries                   |
 | **test_pixels**  | T4-T6, T14 | Pixel operations: pset, point, cls, framebuffer access            |
 | **test_drawing** | T7-T13     | Drawing primitives: lines, rectangles, circles (outline & filled) |
-| **test_input**   | T16-T21    | Input handling: keyboard, mouse, event queue, overflow, resize    |
+| **test_input**   | T16-T25    | Input handling: keyboard, mouse, queueing, overflow, resize, text, scroll, focus |
 
-**Total: 20 tests, 100% pass rate**
+**Total: 25 tests, 100% pass rate**
 
 ### Mock Backend
 

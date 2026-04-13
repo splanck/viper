@@ -22,6 +22,7 @@ extern "C" void vm_trap(const char *msg) {
 
 extern "C" void rt_input_set_mouse_warp_hook(void (*hook)(void *canvas, int64_t x, int64_t y));
 extern "C" void rt_input_reset_test_hooks(void);
+extern "C" void rt_mouse_clear_canvas_if_matches(void *canvas);
 
 static int g_mouse_warp_calls = 0;
 static void *g_mouse_warp_canvas = nullptr;
@@ -244,6 +245,33 @@ static void test_cursor_control() {
     printf("test_cursor_control: PASSED\n");
 }
 
+static void test_canvas_detach() {
+    rt_mouse_init();
+    rt_input_reset_test_hooks();
+
+    g_mouse_warp_calls = 0;
+    g_mouse_warp_canvas = nullptr;
+    g_mouse_warp_x = 0;
+    g_mouse_warp_y = 0;
+
+    void *canvas_a = reinterpret_cast<void *>(0x5678);
+    void *canvas_b = reinterpret_cast<void *>(0x9999);
+    rt_input_set_mouse_warp_hook(test_mouse_warp_hook);
+    rt_mouse_set_canvas(canvas_a);
+
+    rt_mouse_clear_canvas_if_matches(canvas_b);
+    rt_mouse_set_pos(50, 60);
+    assert(g_mouse_warp_calls == 1);
+    assert(g_mouse_warp_canvas == canvas_a);
+
+    rt_mouse_clear_canvas_if_matches(canvas_a);
+    rt_mouse_set_pos(70, 80);
+    assert(g_mouse_warp_calls == 1);
+
+    rt_input_reset_test_hooks();
+    printf("test_canvas_detach: PASSED\n");
+}
+
 // ============================================================================
 // Boundary Cases
 // ============================================================================
@@ -284,6 +312,7 @@ int main() {
     test_click_detection();
     test_scroll_wheel();
     test_cursor_control();
+    test_canvas_detach();
     test_boundary_cases();
 
     printf("\nAll tests passed!\n");

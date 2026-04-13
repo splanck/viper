@@ -67,6 +67,12 @@ void vgfx_mock_inject_close(vgfx_window_t window);
 /** Inject synthetic focus gained/lost event */
 void vgfx_mock_inject_focus(vgfx_window_t window, int gained);
 
+/** Inject synthetic text input */
+void vgfx_mock_inject_text_input(vgfx_window_t window, uint32_t codepoint);
+
+/** Inject synthetic scroll wheel/trackpad delta */
+void vgfx_mock_inject_scroll(vgfx_window_t window, float dx, float dy, int32_t x, int32_t y);
+
 #ifdef __cplusplus
 }
 #endif

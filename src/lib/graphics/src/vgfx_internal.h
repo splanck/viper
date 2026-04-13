@@ -73,10 +73,10 @@ struct vgfx_window {
     // Window Properties
     //===------------------------------------------------------------------===//
 
-    /// @brief Window width in pixels (immutable after creation).
+    /// @brief Current framebuffer width in physical pixels.
     int32_t width;
 
-    /// @brief Window height in pixels (immutable after creation).
+    /// @brief Current framebuffer height in physical pixels.
     int32_t height;
 
     /// @brief HiDPI backing scale factor (e.g. 2.0 on Retina, 1.0 elsewhere).
@@ -100,9 +100,8 @@ struct vgfx_window {
     int32_t fps;
 
     /// @brief Whether the window is resizable (1 = yes, 0 = no).
-    /// @details Currently for metadata only; resizing is not fully supported
-    ///          in v1 (would require framebuffer reallocation and event queue
-    ///          handling).
+    /// @details Backends use this to decide whether user-initiated resizing is
+    ///          allowed at the native window level.
     int32_t resizable;
 
     //===------------------------------------------------------------------===//
@@ -507,6 +506,16 @@ int vgfx_internal_dequeue_event(struct vgfx_window *win, vgfx_event_t *out_event
 /// @post If 1 returned: out_event contains the next event, queue unchanged
 /// @post If 0 returned: out_event unchanged, queue is empty
 int vgfx_internal_peek_event(struct vgfx_window *win, vgfx_event_t *out_event);
+
+/// @brief Reallocate and clear the shared RGBA framebuffer for a new size.
+/// @details Backends call this from resize handlers before enqueuing
+///          VGFX_EVENT_RESIZE so the public framebuffer contract stays true on
+///          every platform.
+/// @param win Pointer to the window structure
+/// @param width New physical framebuffer width in pixels
+/// @param height New physical framebuffer height in pixels
+/// @return 1 on success, 0 on allocation or validation failure
+int vgfx_internal_resize_framebuffer(struct vgfx_window *win, int32_t width, int32_t height);
 
 /// @brief Check if pixel coordinates are within the window's bounds.
 /// @details Fast bounds check for drawing operations.  Returns true if the

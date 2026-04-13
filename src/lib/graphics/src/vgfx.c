@@ -172,6 +172,63 @@ static void aligned_free_wrapper(void *ptr) {
 #endif
 }
 
+static void clear_framebuffer_rgba(uint8_t *pixels, size_t size) {
+    if (!pixels || size == 0)
+        return;
+    memset(pixels, 0, size);
+    for (size_t i = 3; i < size; i += 4)
+        pixels[i] = 0xFF;
+}
+
+int vgfx_internal_resize_framebuffer(struct vgfx_window *win, int32_t width, int32_t height) {
+    if (!win || width <= 0 || height <= 0) {
+        vgfx_internal_set_error(VGFX_ERR_INVALID_PARAM,
+                                "Invalid framebuffer resize dimensions");
+        return 0;
+    }
+    if (width > VGFX_MAX_WIDTH || height > VGFX_MAX_HEIGHT) {
+        vgfx_internal_set_error(VGFX_ERR_INVALID_PARAM,
+                                "Framebuffer resize dimensions exceed maximum");
+        return 0;
+    }
+    if (win->width == width && win->height == height)
+        return 1;
+
+    size_t fb_size = (size_t)width * (size_t)height * 4u;
+    uint8_t *new_pixels =
+        (uint8_t *)aligned_alloc_wrapper(VGFX_FRAMEBUFFER_ALIGNMENT, fb_size);
+    if (!new_pixels) {
+        vgfx_internal_set_error(VGFX_ERR_ALLOC, "Failed to allocate resized framebuffer");
+        return 0;
+    }
+
+    clear_framebuffer_rgba(new_pixels, fb_size);
+
+    if (win->pixels)
+        aligned_free_wrapper(win->pixels);
+    win->pixels = new_pixels;
+    win->width = width;
+    win->height = height;
+    win->stride = width * 4;
+
+    if (win->clip_enabled) {
+        if (win->clip_x >= width || win->clip_y >= height) {
+            win->clip_enabled = 0;
+        } else {
+            int32_t max_w = width - win->clip_x;
+            int32_t max_h = height - win->clip_y;
+            if (win->clip_w > max_w)
+                win->clip_w = max_w;
+            if (win->clip_h > max_h)
+                win->clip_h = max_h;
+            if (win->clip_w <= 0 || win->clip_h <= 0)
+                win->clip_enabled = 0;
+        }
+    }
+
+    return 1;
+}
+
 //===----------------------------------------------------------------------===//
 // Event Queue Implementation (Lock-Free SPSC Ring Buffer)
 //===----------------------------------------------------------------------===//
@@ -650,13 +707,7 @@ vgfx_window_t vgfx_create_window(const vgfx_window_params_t *params) {
         return NULL;
     }
 
-    /* Clear framebuffer to black (RGB = 0, 0, 0) */
-    memset(win->pixels, 0, fb_size);
-
-    /* Set all alpha channels to 0xFF (fully opaque) */
-    for (size_t i = 3; i < fb_size; i += 4) {
-        win->pixels[i] = 0xFF;
-    }
+    clear_framebuffer_rgba(win->pixels, fb_size);
 
     /* Initialize event queue (empty ring buffer) */
     win->event_head = 0;
@@ -743,11 +794,8 @@ int32_t vgfx_update(vgfx_window_t window) {
         return 0;
     }
 
-    /* Process OS events (keyboard, mouse, window) */
-    if (!vgfx_platform_process_events(window)) {
-        vgfx_internal_set_error(VGFX_ERR_PLATFORM, "Event processing error");
+    if (!vgfx_pump_events(window))
         return 0;
-    }
 
     /* FPS limiting (only if fps > 0) */
     if (window->fps > 0) {
@@ -787,6 +835,16 @@ int32_t vgfx_frame_time_ms(vgfx_window_t window) {
     if (!window)
         return -1;
     return (int32_t)window->last_frame_time_ms;
+}
+
+int32_t vgfx_pump_events(vgfx_window_t window) {
+    if (!window)
+        return 0;
+    if (!vgfx_platform_process_events(window)) {
+        vgfx_internal_set_error(VGFX_ERR_PLATFORM, "Event processing error");
+        return 0;
+    }
+    return 1;
 }
 
 /// @brief Get the window's dimensions.

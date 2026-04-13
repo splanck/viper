@@ -301,6 +301,12 @@ void rt_keyboard_set_canvas(void *canvas) {
         g_caps_lock = rt_input_query_caps_lock_platform() != 0;
 }
 
+void rt_keyboard_clear_canvas_if_matches(void *canvas) {
+    RT_ASSERT_MAIN_THREAD();
+    if (canvas && g_active_canvas == canvas)
+        g_active_canvas = NULL;
+}
+
 //=============================================================================
 // Polling Methods
 //=============================================================================
@@ -1216,6 +1222,12 @@ void rt_mouse_set_canvas(void *canvas) {
     if (canvas)
         rt_mouse_init();
     g_mouse_canvas = canvas;
+}
+
+void rt_mouse_clear_canvas_if_matches(void *canvas) {
+    RT_ASSERT_MAIN_THREAD();
+    if (canvas && g_mouse_canvas == canvas)
+        g_mouse_canvas = NULL;
 }
 
 //=============================================================================

@@ -94,8 +94,11 @@ extern void rt_obj_free(void *obj);
 #include "rt_trap.h"
 extern int64_t rt_clock_ticks_us(void);
 extern void rt_keyboard_set_canvas(vgfx_window_t win);
+extern void rt_keyboard_clear_canvas_if_matches(void *canvas);
 extern void rt_keyboard_begin_frame(void);
+extern void rt_keyboard_text_input(int32_t ch);
 extern void rt_mouse_set_canvas(vgfx_window_t win);
+extern void rt_mouse_clear_canvas_if_matches(void *canvas);
 extern void rt_mouse_begin_frame(void);
 extern void rt_pad_init(void);
 extern void rt_pad_begin_frame(void);
@@ -115,6 +118,13 @@ static void canvas3d_release_owned_ref(void **slot) {
     if (rt_obj_release_check0(*slot))
         rt_obj_free(*slot);
     *slot = NULL;
+}
+
+static void rt_canvas3d_detach_input(vgfx_window_t gfx_win) {
+    if (!gfx_win)
+        return;
+    rt_keyboard_clear_canvas_if_matches(gfx_win);
+    rt_mouse_clear_canvas_if_matches(gfx_win);
 }
 
 /*==========================================================================
@@ -986,6 +996,7 @@ static void rt_canvas3d_finalize(void *obj) {
     c->render_target = NULL;
 
     if (c->gfx_win) {
+        rt_canvas3d_detach_input(c->gfx_win);
         vgfx_destroy_window(c->gfx_win);
         c->gfx_win = NULL;
     }
@@ -2050,6 +2061,7 @@ void rt_canvas3d_flip(void *obj) {
     c->last_flip_us = now_us;
 
     if (vgfx_close_requested(c->gfx_win)) {
+        rt_canvas3d_detach_input(c->gfx_win);
         vgfx_destroy_window(c->gfx_win);
         c->gfx_win = NULL;
         c->should_close = 1;
@@ -2066,6 +2078,7 @@ extern void rt_mouse_update_pos(int64_t x, int64_t y);
 extern void rt_mouse_force_delta(int64_t dx, int64_t dy);
 extern void rt_mouse_button_down(int64_t button);
 extern void rt_mouse_button_up(int64_t button);
+extern void rt_mouse_update_wheel(int64_t dx, int64_t dy);
 extern int8_t rt_mouse_is_captured(void);
 
 int64_t rt_canvas3d_poll(void *obj) {
@@ -2082,6 +2095,9 @@ int64_t rt_canvas3d_poll(void *obj) {
     rt_mouse_begin_frame();
     rt_pad_begin_frame();
     rt_pad_poll();
+
+    if (!vgfx_pump_events(c->gfx_win))
+        c->should_close = 1;
 
     /* Read current platform mouse position */
     int32_t mx, my;
@@ -2107,6 +2123,8 @@ int64_t rt_canvas3d_poll(void *obj) {
             rt_keyboard_on_key_down((int64_t)evt.data.key.key);
         else if (evt.type == VGFX_EVENT_KEY_UP)
             rt_keyboard_on_key_up((int64_t)evt.data.key.key);
+        else if (evt.type == VGFX_EVENT_TEXT_INPUT)
+            rt_keyboard_text_input((int32_t)evt.data.text.codepoint);
         else if (!captured && evt.type == VGFX_EVENT_MOUSE_MOVE) {
             float cs = vgfx_window_get_scale(c->gfx_win);
             if (cs < 0.001f)
@@ -2129,6 +2147,9 @@ int64_t rt_canvas3d_poll(void *obj) {
             rt_mouse_button_up((int64_t)evt.data.mouse_button.button);
         } else if (evt.type == VGFX_EVENT_RESIZE) {
             rt_canvas3d_apply_resize(c, evt.data.resize.width, evt.data.resize.height);
+        } else if (evt.type == VGFX_EVENT_SCROLL) {
+            rt_mouse_update_wheel((int64_t)evt.data.scroll.delta_x,
+                                  (int64_t)evt.data.scroll.delta_y);
         }
     }
 

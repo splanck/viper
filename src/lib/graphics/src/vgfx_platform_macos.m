@@ -611,33 +611,8 @@ static bool macos_should_check_menu_key_equivalent(vgfx_key_t key, NSEventModifi
         return;
     }
 
-    /* Update window dimensions */
-    _vgfxWindow->width = new_width;
-    _vgfxWindow->height = new_height;
-    _vgfxWindow->stride = new_width * 4;
-
-    /* Reallocate framebuffer to match new size.  Use posix_memalign (the same
-     * mechanism used at creation time via aligned_alloc_wrapper) to preserve
-     * the cache-line alignment guarantee.  posix_memalign memory is freed with
-     * regular free() — no separate aligned_free needed on POSIX platforms. */
-    if (_vgfxWindow->pixels) {
-        free(_vgfxWindow->pixels);
-        _vgfxWindow->pixels = NULL;
-    }
-
-    size_t buffer_size = (size_t)new_width * (size_t)new_height * 4;
-    void *aligned_buf = NULL;
-    if (posix_memalign(&aligned_buf, VGFX_FRAMEBUFFER_ALIGNMENT, buffer_size) == 0) {
-        _vgfxWindow->pixels = (uint8_t *)aligned_buf;
-    }
-
-    if (_vgfxWindow->pixels) {
-        /* Clear framebuffer to black (RGB = 0, 0, 0) with fully opaque alpha,
-         * matching the initialization in vgfx_create_window(). */
-        memset(_vgfxWindow->pixels, 0, buffer_size);
-        for (size_t i = 3; i < buffer_size; i += 4)
-            _vgfxWindow->pixels[i] = 0xFF;
-    }
+    if (!vgfx_internal_resize_framebuffer(_vgfxWindow, new_width, new_height))
+        return;
 
     /* Enqueue RESIZE event for the application to handle */
     vgfx_event_t event = {.type = VGFX_EVENT_RESIZE,
@@ -667,6 +642,7 @@ static bool macos_should_check_menu_key_equivalent(vgfx_key_t key, NSEventModifi
     if (!_vgfxWindow)
         return;
 
+    _vgfxWindow->is_focused = 1;
     vgfx_event_t event = {.type = VGFX_EVENT_FOCUS_GAINED, .time_ms = vgfx_platform_now_ms()};
     vgfx_internal_enqueue_event(_vgfxWindow, &event);
 }
@@ -684,6 +660,7 @@ static bool macos_should_check_menu_key_equivalent(vgfx_key_t key, NSEventModifi
     if (!_vgfxWindow)
         return;
 
+    _vgfxWindow->is_focused = 0;
     vgfx_event_t event = {.type = VGFX_EVENT_FOCUS_LOST, .time_ms = vgfx_platform_now_ms()};
     vgfx_internal_enqueue_event(_vgfxWindow, &event);
 }
@@ -1504,9 +1481,7 @@ void vgfx_platform_set_window_size(struct vgfx_window *win, int32_t w, int32_t h
         vgfx_macos_platform *platform = (vgfx_macos_platform *)win->platform_data;
         if (!platform->window)
             return;
-        NSRect frame = [platform->window frame];
-        frame.size = NSMakeSize((CGFloat)w, (CGFloat)h);
-        [platform->window setFrame:frame display:YES animate:NO];
+        [platform->window setContentSize:NSMakeSize((CGFloat)w, (CGFloat)h)];
     }
 }
 

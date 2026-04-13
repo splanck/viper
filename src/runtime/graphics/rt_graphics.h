@@ -11,7 +11,7 @@
 // Key invariants:
 //   - All canvas pointers are opaque handles returned by rt_canvas_new.
 //   - Drawing coordinates are in logical pixels; HiDPI scaling is applied internally.
-//   - rt_canvas_poll must be called each frame to process window events.
+//   - rt_canvas_poll pumps OS events and updates input state for the frame.
 //   - rt_canvas_flip presents the completed frame to the display.
 //
 // Ownership/Lifetime:
@@ -125,7 +125,9 @@ void rt_canvas_ring(void *canvas, int64_t cx, int64_t cy, int64_t radius, int64_
 /// @param color Pixel color (0x00RRGGBB).
 void rt_canvas_plot(void *canvas, int64_t x, int64_t y, int64_t color);
 
-/// @brief Poll the next event from the canvas.
+/// @brief Pump pending OS events and update per-frame input state.
+/// @details Processes pending window/input events, forwards text and scroll
+///   input to the runtime input layer, and then updates action bindings.
 /// @param canvas Canvas handle.
 /// @return Event type code (0 = no event).
 int64_t rt_canvas_poll(void *canvas);

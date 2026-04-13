@@ -106,6 +106,28 @@ static int64_t sprite_scale_origin(int64_t origin, int64_t scale) {
     return (origin * scale) / 100;
 }
 
+static void sprite_release_if_owned(void *pixels, void *frame) {
+    if (pixels && pixels != frame)
+        rt_heap_release(pixels);
+}
+
+static void *sprite_clone_for_edit(void *transformed, void *frame) {
+    if (!transformed || transformed != frame)
+        return transformed;
+    return rt_pixels_clone(frame);
+}
+
+static void *sprite_replace_pixels(void *replacement, void **slot, void *frame) {
+    if (!replacement)
+        return *slot;
+    if (replacement == *slot)
+        return *slot;
+    if (*slot && *slot != frame)
+        rt_heap_release(*slot);
+    *slot = replacement;
+    return *slot;
+}
+
 static void *sprite_prepare_pixels(rt_sprite_impl *sprite,
                                    int64_t scale_x,
                                    int64_t scale_y,
@@ -122,13 +144,12 @@ static void *sprite_prepare_pixels(rt_sprite_impl *sprite,
     void *transformed = frame;
 
     if (sprite->flip_x) {
-        transformed = rt_pixels_clone(transformed);
+        transformed = sprite_clone_for_edit(transformed, frame);
         if (transformed)
             rt_pixels_flip_h(transformed);
     }
     if (sprite->flip_y) {
-        if (transformed == frame)
-            transformed = rt_pixels_clone(transformed);
+        transformed = sprite_clone_for_edit(transformed, frame);
         if (transformed)
             rt_pixels_flip_v(transformed);
     }
@@ -144,8 +165,7 @@ static void *sprite_prepare_pixels(rt_sprite_impl *sprite,
         if (new_h < 1)
             new_h = 1;
         void *scaled = rt_pixels_scale(transformed, new_w, new_h);
-        if (scaled)
-            transformed = scaled;
+        transformed = sprite_replace_pixels(scaled, &transformed, frame);
     }
 
     int64_t origin_x = sprite_scale_origin(sprite->origin_x, scale_x);
@@ -176,31 +196,26 @@ static void *sprite_prepare_pixels(rt_sprite_impl *sprite,
             if (padded) {
                 rt_pixels_copy(
                     padded, half_w - origin_x, half_h - origin_y, transformed, 0, 0, src_w, src_h);
-                transformed = padded;
+                transformed = sprite_replace_pixels(padded, &transformed, frame);
                 origin_x = half_w;
                 origin_y = half_h;
             }
         }
 
         void *rotated = rt_pixels_rotate(transformed, (double)rotation);
-        if (rotated)
-            transformed = rotated;
+        transformed = sprite_replace_pixels(rotated, &transformed, frame);
         origin_centered = 1;
     }
 
     if (tint_color != 0) {
         void *tinted = rt_pixels_tint(transformed, tint_color);
-        if (tinted)
-            transformed = tinted;
+        transformed = sprite_replace_pixels(tinted, &transformed, frame);
     }
 
     if (alpha < 255) {
-        if (transformed == frame) {
-            void *cloned = rt_pixels_clone(transformed);
-            if (!cloned)
-                return transformed;
-            transformed = cloned;
-        }
+        transformed = sprite_clone_for_edit(transformed, frame);
+        if (!transformed)
+            return NULL;
         sprite_apply_alpha(transformed, alpha);
     }
 
@@ -269,7 +284,6 @@ void *rt_sprite_new(void *pixels) {
     if (cloned) {
         sprite->frames[0] = cloned;
         sprite->frame_count = 1;
-        rt_heap_retain(cloned);
     }
 
     return sprite;
@@ -612,6 +626,7 @@ void rt_sprite_draw_transformed(void *sprite_ptr,
     }
 
     rt_canvas_blit_alpha(canvas_ptr, blit_x, blit_y, transformed);
+    sprite_release_if_owned(transformed, frame);
 }
 
 void rt_sprite_draw(void *sprite_ptr, void *canvas_ptr) {

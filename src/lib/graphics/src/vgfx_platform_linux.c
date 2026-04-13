@@ -177,6 +177,58 @@ static uint32_t utf8_first_codepoint(const char *bytes, int len) {
     return 0;
 }
 
+static int32_t x11_logical_to_physical(const struct vgfx_window *win, int32_t logical) {
+    float scale = (win && win->scale_factor >= 1.0f) ? win->scale_factor : 1.0f;
+    return (int32_t)(logical * scale);
+}
+
+static int x11_recreate_ximage(struct vgfx_window *win) {
+    if (!win || !win->platform_data)
+        return 0;
+
+    vgfx_x11_data *x11 = (vgfx_x11_data *)win->platform_data;
+    if (!x11->display)
+        return 0;
+
+    if (x11->ximage) {
+        x11->ximage->data = NULL;
+        XDestroyImage(x11->ximage);
+        x11->ximage = NULL;
+    }
+
+    free(x11->ximage_buf);
+    x11->ximage_buf_size = win->height * win->stride;
+    x11->ximage_buf = (uint8_t *)calloc(1, (size_t)x11->ximage_buf_size);
+    if (!x11->ximage_buf) {
+        x11->ximage_buf_size = 0;
+        vgfx_internal_set_error(VGFX_ERR_ALLOC, "Failed to allocate XImage buffer");
+        return 0;
+    }
+
+    x11->ximage = XCreateImage(x11->display,
+                               x11->visual,
+                               x11->depth,
+                               ZPixmap,
+                               0,
+                               (char *)x11->ximage_buf,
+                               win->width,
+                               win->height,
+                               32,
+                               win->stride);
+    if (!x11->ximage) {
+        free(x11->ximage_buf);
+        x11->ximage_buf = NULL;
+        x11->ximage_buf_size = 0;
+        vgfx_internal_set_error(VGFX_ERR_PLATFORM, "Failed to create XImage");
+        return 0;
+    }
+
+    x11->ximage->byte_order = LSBFirst;
+    x11->width = win->width;
+    x11->height = win->height;
+    return 1;
+}
+
 //===----------------------------------------------------------------------===//
 // Platform API Implementation
 //===----------------------------------------------------------------------===//
@@ -277,8 +329,8 @@ int vgfx_platform_init_window(struct vgfx_window *win, const vgfx_window_params_
     win->platform_data = x11;
     g_vgfx_cursor_window = win;
     x11->close_requested = 0;
-    x11->width = params->width;
-    x11->height = params->height;
+    x11->width = win->width;
+    x11->height = win->height;
 
     /* Open connection to X server */
     x11->display = XOpenDisplay(NULL);
@@ -318,8 +370,8 @@ int vgfx_platform_init_window(struct vgfx_window *win, const vgfx_window_params_
                                 root,
                                 0,
                                 0, /* x, y position (will be overridden) */
-                                params->width,
-                                params->height,
+                                (unsigned int)win->width,
+                                (unsigned int)win->height,
                                 0,           /* border width */
                                 x11->depth,  /* depth matching our visual */
                                 InputOutput, /* class */
@@ -355,12 +407,12 @@ int vgfx_platform_init_window(struct vgfx_window *win, const vgfx_window_params_
     XSizeHints *size_hints = XAllocSizeHints();
     if (size_hints) {
         size_hints->flags = PSize | PMinSize | PMaxSize;
-        size_hints->width = params->width;
-        size_hints->height = params->height;
-        size_hints->min_width = params->resizable ? 1 : params->width;
-        size_hints->min_height = params->resizable ? 1 : params->height;
-        size_hints->max_width = params->resizable ? 16384 : params->width;
-        size_hints->max_height = params->resizable ? 16384 : params->height;
+        size_hints->width = win->width;
+        size_hints->height = win->height;
+        size_hints->min_width = params->resizable ? 1 : win->width;
+        size_hints->min_height = params->resizable ? 1 : win->height;
+        size_hints->max_width = params->resizable ? 16384 : win->width;
+        size_hints->max_height = params->resizable ? 16384 : win->height;
         XSetWMNormalHints(x11->display, x11->window, size_hints);
         XFree(size_hints);
     }
@@ -404,48 +456,16 @@ int vgfx_platform_init_window(struct vgfx_window *win, const vgfx_window_params_
         return 0;
     }
 
-    /* Allocate a presentation buffer for the XImage.  The draw code writes
-     * pixels in RGBA byte order (R=byte[0], G=byte[1], B=byte[2], A=byte[3])
-     * which matches macOS CGImage.  X11 TrueColor visuals on little-endian
-     * systems expect BGRA byte order (pixel value 0xAARRGGBB stored as
-     * BB,GG,RR,AA).  We swizzle R↔B during present rather than changing all
-     * draw code, keeping macOS/Windows unaffected. */
-    x11->ximage_buf_size = params->height * win->stride;
-    x11->ximage_buf = (uint8_t *)calloc(1, x11->ximage_buf_size);
-    if (!x11->ximage_buf) {
+    /* Allocate the presentation buffer/XImage at the framebuffer size in
+     * physical pixels so present and resize stay consistent with win->pixels. */
+    if (!x11_recreate_ximage(win)) {
         XFreeGC(x11->display, x11->gc);
         XDestroyWindow(x11->display, x11->window);
         XCloseDisplay(x11->display);
         free(x11);
         win->platform_data = NULL;
-        vgfx_internal_set_error(VGFX_ERR_ALLOC, "Failed to allocate XImage buffer");
         return 0;
     }
-
-    x11->ximage = XCreateImage(x11->display,
-                               x11->visual,
-                               x11->depth,
-                               ZPixmap,                 /* format */
-                               0,                       /* offset */
-                               (char *)x11->ximage_buf, /* presentation buffer */
-                               params->width,
-                               params->height,
-                               32,         /* bitmap_pad (32-bit alignment) */
-                               win->stride /* bytes_per_line */
-    );
-
-    if (!x11->ximage) {
-        free(x11->ximage_buf);
-        XFreeGC(x11->display, x11->gc);
-        XDestroyWindow(x11->display, x11->window);
-        XCloseDisplay(x11->display);
-        free(x11);
-        win->platform_data = NULL;
-        vgfx_internal_set_error(VGFX_ERR_PLATFORM, "Failed to create XImage");
-        return 0;
-    }
-
-    x11->ximage->byte_order = LSBFirst;
 
     /* Map (show) the window */
     XMapWindow(x11->display, x11->window);
@@ -826,6 +846,7 @@ int vgfx_platform_process_events(struct vgfx_window *win) {
             case FocusIn: {
                 if (x11->xic)
                     XSetICFocus(x11->xic);
+                win->is_focused = 1;
                 vgfx_event_t vgfx_event = {.type = VGFX_EVENT_FOCUS_GAINED, .time_ms = timestamp};
                 vgfx_internal_enqueue_event(win, &vgfx_event);
                 break;
@@ -834,23 +855,25 @@ int vgfx_platform_process_events(struct vgfx_window *win) {
             case FocusOut: {
                 if (x11->xic)
                     XUnsetICFocus(x11->xic);
+                win->is_focused = 0;
                 vgfx_event_t vgfx_event = {.type = VGFX_EVENT_FOCUS_LOST, .time_ms = timestamp};
                 vgfx_internal_enqueue_event(win, &vgfx_event);
                 break;
             }
 
             case ConfigureNotify: {
-                /* Window resized - note: full resize support not in v1 */
-                if (event.xconfigure.width != x11->width ||
-                    event.xconfigure.height != x11->height) {
-                    x11->width = event.xconfigure.width;
-                    x11->height = event.xconfigure.height;
-
-                    vgfx_event_t vgfx_event = {.type = VGFX_EVENT_RESIZE,
-                                               .time_ms = timestamp,
-                                               .data.resize = {.width = event.xconfigure.width,
-                                                               .height = event.xconfigure.height}};
-                    vgfx_internal_enqueue_event(win, &vgfx_event);
+                if (event.xconfigure.width > 0 && event.xconfigure.height > 0 &&
+                    (event.xconfigure.width != x11->width ||
+                     event.xconfigure.height != x11->height)) {
+                    if (vgfx_internal_resize_framebuffer(
+                            win, event.xconfigure.width, event.xconfigure.height) &&
+                        x11_recreate_ximage(win)) {
+                        vgfx_event_t vgfx_event = {.type = VGFX_EVENT_RESIZE,
+                                                   .time_ms = timestamp,
+                                                   .data.resize = {.width = event.xconfigure.width,
+                                                                   .height = event.xconfigure.height}};
+                        vgfx_internal_enqueue_event(win, &vgfx_event);
+                    }
                 }
                 break;
             }
@@ -1355,7 +1378,10 @@ void vgfx_platform_set_window_size(struct vgfx_window *win, int32_t w, int32_t h
     vgfx_x11_data *x11 = (vgfx_x11_data *)win->platform_data;
     if (!x11->display || !x11->window)
         return;
-    XResizeWindow(x11->display, x11->window, (unsigned int)w, (unsigned int)h);
+    XResizeWindow(x11->display,
+                  x11->window,
+                  (unsigned int)x11_logical_to_physical(win, w),
+                  (unsigned int)x11_logical_to_physical(win, h));
     XFlush(x11->display);
 }
 
@@ -1402,7 +1428,16 @@ void vgfx_platform_warp_cursor(vgfx_window_t window, int32_t x, int32_t y) {
     vgfx_x11_data *x11 = (vgfx_x11_data *)window->platform_data;
     if (!x11->display || !x11->window)
         return;
-    XWarpPointer(x11->display, None, x11->window, 0, 0, 0, 0, x, y);
+    float cs = window->coord_scale > 1.0f ? window->coord_scale : 1.0f;
+    XWarpPointer(x11->display,
+                 None,
+                 x11->window,
+                 0,
+                 0,
+                 0,
+                 0,
+                 (int)(x * cs),
+                 (int)(y * cs));
     XFlush(x11->display);
 }
 
