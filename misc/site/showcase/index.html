@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Showcase — Viper</title>
-  <meta name="description" content="Applications and games built with the Viper platform: SQL database, IDE, chess, platformer, paint app, and more. All compile to native binaries.">
+  <meta name="description" content="Applications and games built with the Viper platform: PostgreSQL-compatible database, IDE with IntelliSense, Metroid-style sidescroller, 3D bowling, chess, paint app, and more. All compile to native binaries.">
   <link rel="stylesheet" href="../style.css">
   <link rel="icon" href="../favicon.png">
 </head>
@@ -39,26 +39,26 @@
   <div class="showcase-grid">
 
     <a href="sqldb.html" class="showcase-card" data-tags="app zia">
-      <h3>SQL Database</h3>
-      <p>PostgreSQL-compatible database engine with MVCC transactions, WAL, B-tree indexes, and wire protocol support.</p>
+      <h3>ViperSQL</h3>
+      <p>PostgreSQL-compatible database engine with MVCC transactions, WAL, B-tree indexes, PG wire protocol, and the vsql interactive client.</p>
       <span class="showcase-badge badge-zia">Zia</span>
-      <span class="badge-loc">73,701 LOC</span>
+      <span class="badge-loc">78,300 LOC</span>
       <span class="badge-complexity advanced">Advanced</span>
     </a>
 
     <a href="viperide.html" class="showcase-card" data-tags="app zia">
-      <h3>Viper IDE</h3>
-      <p>Code editor with tabs, find/replace, syntax highlighting, IntelliSense, and integrated build system.</p>
+      <h3>ViperIDE</h3>
+      <p>IDE with live diagnostics, hover tooltips, IntelliSense, go-to-definition, project search, symbol outline, multi-cursor editing.</p>
       <span class="showcase-badge badge-zia">Zia</span>
-      <span class="badge-loc">2,792 LOC</span>
+      <span class="badge-loc">3,300 LOC</span>
       <span class="badge-complexity advanced">Advanced</span>
     </a>
 
     <a href="paint.html" class="showcase-card" data-tags="app zia">
       <h3>Paint</h3>
-      <p>Drawing application with 8 tools, shapes, color picker, and undo/redo support.</p>
+      <p>Drawing application with 8 tools, shapes, color palette, and undo/redo support.</p>
       <span class="showcase-badge badge-zia">Zia</span>
-      <span class="badge-loc">2,410 LOC</span>
+      <span class="badge-loc">2,900 LOC</span>
       <span class="badge-complexity intermediate">Intermediate</span>
     </a>
 
@@ -66,15 +66,15 @@
       <h3>Web Server</h3>
       <p>Multi-threaded HTTP server with routing, request logging, and static file serving.</p>
       <span class="showcase-badge badge-zia">Zia</span>
-      <span class="badge-loc">1,352 LOC</span>
+      <span class="badge-loc">1,350 LOC</span>
       <span class="badge-complexity intermediate">Intermediate</span>
     </a>
 
     <a href="varc.html" class="showcase-card" data-tags="app zia">
-      <h3>Archive Utility</h3>
+      <h3>Archive Utility (VARC)</h3>
       <p>Archive tool with DEFLATE compression and AES-256 encryption.</p>
       <span class="showcase-badge badge-zia">Zia</span>
-      <span class="badge-loc">893 LOC</span>
+      <span class="badge-loc">900 LOC</span>
       <span class="badge-complexity intermediate">Intermediate</span>
     </a>
 
@@ -82,31 +82,39 @@
       <h3>Telnet</h3>
       <p>Telnet client and server with interactive shell and multi-client threading.</p>
       <span class="showcase-badge badge-zia">Zia</span>
-      <span class="badge-loc">491 LOC</span>
+      <span class="badge-loc">500 LOC</span>
       <span class="badge-complexity intermediate">Intermediate</span>
     </a>
 
     <a href="sidescroller.html" class="showcase-card" data-tags="game zia">
-      <h3>Nova Run</h3>
-      <p>2D platformer with jetpack physics, parallax scrolling, particle effects, 5 themed levels, and boss fights.</p>
+      <h3>XENOSCAPE</h3>
+      <p>Metroid-style sidescroller: 10 levels across 6 biomes, 25+ enemies, bosses, abilities, JSON level loading, save/load.</p>
       <span class="showcase-badge badge-zia">Zia</span>
-      <span class="badge-loc">6,592 LOC</span>
+      <span class="badge-loc">17,400 LOC</span>
+      <span class="badge-complexity advanced">Advanced</span>
+    </a>
+
+    <a href="bowling.html" class="showcase-card" data-tags="game zia">
+      <h3>3D Bowling</h3>
+      <p>3D bowling with Physics3D pin collision (CCD), ball spin/hook, four camera modes, full ten-frame scoring; Metal/D3D11/OpenGL/software backends.</p>
+      <span class="showcase-badge badge-zia">Zia</span>
+      <span class="badge-loc">4,600 LOC</span>
       <span class="badge-complexity advanced">Advanced</span>
     </a>
 
     <a href="chess.html" class="showcase-card" data-tags="game zia">
       <h3>Chess</h3>
-      <p>Full chess engine with alpha-beta AI, transposition tables, opening book, and canvas-rendered GUI.</p>
+      <p>Alpha-beta AI with transposition tables, pre-rendered piece sprites, drag-and-drop GUI, full rule enforcement.</p>
       <span class="showcase-badge badge-zia">Zia</span>
-      <span class="badge-loc">2,937 LOC</span>
+      <span class="badge-loc">3,200 LOC</span>
       <span class="badge-complexity advanced">Advanced</span>
     </a>
 
     <a href="pacman.html" class="showcase-card" data-tags="game zia">
       <h3>Pac-Man</h3>
-      <p>Arcade clone with ghost AI personalities, power pellets, animations, and tile-based rendering.</p>
+      <p>Ghost AI personalities (Blinky, Pinky, Inky, Clyde) with BFS pathfinding, scatter/chase modes, tile-based rendering.</p>
       <span class="showcase-badge badge-zia">Zia</span>
-      <span class="badge-loc">2,207 LOC</span>
+      <span class="badge-loc">2,200 LOC</span>
       <span class="badge-complexity advanced">Advanced</span>
     </a>
 
@@ -114,7 +122,7 @@
       <h3>Centipede</h3>
       <p>Classic arcade game with segmented enemies, mushroom fields, and particle effects.</p>
       <span class="showcase-badge badge-zia">Zia</span>
-      <span class="badge-loc">2,553 LOC</span>
+      <span class="badge-loc">2,550 LOC</span>
       <span class="badge-complexity advanced">Advanced</span>
     </a>
 
@@ -122,7 +130,7 @@
       <h3>Frogger</h3>
       <p>Multi-lane traffic and river crossing with sprite-based rendering.</p>
       <span class="showcase-badge badge-zia">Zia</span>
-      <span class="badge-loc">754 LOC</span>
+      <span class="badge-loc">750 LOC</span>
       <span class="badge-complexity intermediate">Intermediate</span>
     </a>
 

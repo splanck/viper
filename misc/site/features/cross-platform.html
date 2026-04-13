@@ -53,11 +53,15 @@
     <table>
       <thead><tr><th>Subsystem</th><th>macOS</th><th>Linux</th><th>Windows</th></tr></thead>
       <tbody>
-        <tr><td><strong>Graphics</strong></td><td>Cocoa / Core Graphics</td><td>X11 / Xlib</td><td>Win32 GDI</td></tr>
+        <tr><td><strong>2D Graphics</strong></td><td>Cocoa / Core Graphics</td><td>X11 / Xlib</td><td>Win32 GDI</td></tr>
+        <tr><td><strong>3D Graphics</strong></td><td>Metal</td><td>OpenGL</td><td>Direct3D 11</td></tr>
         <tr><td><strong>Audio</strong></td><td>AudioQueue Services</td><td>ALSA</td><td>WASAPI</td></tr>
+        <tr><td><strong>Native menubar</strong></td><td>NSMenu (mirrored)</td><td>(none)</td><td>(none)</td></tr>
         <tr><td><strong>Networking</strong></td><td colspan="2">POSIX sockets (BSD)</td><td>WinSock2</td></tr>
         <tr><td><strong>Threading</strong></td><td colspan="2">pthreads</td><td>Win32 CreateThread</td></tr>
         <tr><td><strong>File I/O</strong></td><td colspan="2">POSIX (open, read, write)</td><td>Win32 + POSIX compat</td></tr>
+        <tr><td><strong>File watcher</strong></td><td>FSEvents</td><td>inotify</td><td>ReadDirectoryChangesW</td></tr>
+        <tr><td><strong>Native linker</strong></td><td>Mach-O writer with ad-hoc code signing</td><td>ELF writer with full dynamic linking</td><td>PE32+ writer with .idata import tables</td></tr>
         <tr><td><strong>Atomics</strong></td><td colspan="2">GCC/Clang __atomic builtins</td><td>_Interlocked* intrinsics</td></tr>
         <tr><td><strong>Memory barriers</strong></td><td>ARM64: __dmb</td><td>ARM64: __dmb / x86: MFENCE</td><td>_ReadWriteBarrier</td></tr>
         <tr><td><strong>TLS</strong></td><td colspan="2">_Thread_local / __thread</td><td>__declspec(thread)</td></tr>
@@ -66,26 +70,27 @@
 
     <h2>The Abstraction Layer</h2>
 
-    <p>All platform differences are handled in a single file: <code>rt_platform.h</code> (666 lines). It provides:</p>
+    <p>Platform differences are concentrated into two shared headers: <code>src/runtime/rt_platform.h</code> (runtime layer) and <code>src/common/PlatformCapabilities.hpp</code> (compiler layer). Together they provide:</p>
 
     <ul>
-      <li><strong>Platform detection macros</strong> &mdash; <code>RT_PLATFORM_WINDOWS</code>, <code>RT_PLATFORM_MACOS</code>, <code>RT_PLATFORM_LINUX</code>, <code>RT_PLATFORM_VIPERDOS</code></li>
-      <li><strong>Compiler detection</strong> &mdash; <code>RT_COMPILER_MSVC</code>, <code>RT_COMPILER_GCC_LIKE</code></li>
-      <li><strong>Portable atomic operations</strong> &mdash; 32-bit, 64-bit, pointer, and size_t variants</li>
+      <li><strong>Host detection</strong> &mdash; <code>VIPER_HOST_WINDOWS</code> / <code>VIPER_HOST_MACOS</code> / <code>VIPER_HOST_LINUX</code></li>
+      <li><strong>Compiler detection</strong> &mdash; <code>VIPER_COMPILER_MSVC</code> / <code>VIPER_COMPILER_CLANG</code> / <code>VIPER_COMPILER_GCC</code></li>
+      <li><strong>Capability macros</strong> &mdash; <code>VIPER_CAN_FORK</code>, <code>VIPER_HAS_X11</code>, <code>VIPER_HAS_ALSA</code>, <code>VIPER_NATIVE_LINK_X86_64</code>, etc.</li>
+      <li><strong>Portable atomic operations</strong> &mdash; 32-bit, 64-bit, pointer, and size_t variants (32-bit `__atomic_compare_exchange_n` is MSVC-safe; 64-bit uses direct `_InterlockedCompareExchange64` on Windows)</li>
       <li><strong>Memory barrier abstractions</strong> &mdash; DMB on ARM64, MFENCE on x86, compiler barriers</li>
-      <li><strong>Thread-local storage</strong> &mdash; <code>RT_THREAD_LOCAL</code> macro</li>
+      <li><strong>Thread-local storage</strong> &mdash; portable TLS macros</li>
       <li><strong>High-resolution timing</strong> &mdash; <code>clock_gettime()</code> on POSIX, <code>QueryPerformanceCounter</code> on Windows</li>
       <li><strong>POSIX compatibility shims</strong> &mdash; Windows remappings for <code>lseek64</code>, <code>strtok_r</code>, path separators</li>
     </ul>
 
-    <p>The rest of the 146K-line runtime compiles identically on all platforms, using only these portable abstractions.</p>
+    <p>The rest of the runtime compiles identically on all platforms, using only these portable abstractions. A `lint_platform_policy.sh` lint script enforces that raw `_WIN32`/`__APPLE__`/`__linux__` checks only appear in approved adapter files.</p>
 
     <h2>Build System Parity</h2>
 
     <table>
       <thead><tr><th>Platform</th><th>Build Command</th><th>Demo Command</th></tr></thead>
       <tbody>
-        <tr><td>macOS / Linux</td><td><code>./scripts/build_viper.sh</code></td><td><code>./scripts/build_demos.sh</code></td></tr>
+        <tr><td>macOS / Linux</td><td><code>./scripts/build_viper_unix.sh</code></td><td><code>./scripts/build_demos.sh</code></td></tr>
         <tr><td>Windows</td><td><code>.\scripts\build_viper.cmd</code></td><td><code>.\scripts\build_demos.cmd</code></td></tr>
         <tr><td>ViperDOS</td><td><code>./scripts/build_viperdos.sh</code></td><td>N/A (boots in QEMU)</td></tr>
       </tbody>

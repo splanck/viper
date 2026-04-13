@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>v0.2.4: Game Engine, Native Linker, 3D Backends, Toolchain Packaging — Viper</title>
+  <meta name="description" content="Viper v0.2.4 release notes: full PE/COFF + ELF dynamic linking, Metal &amp; D3D11 GPU backends feature-complete, PBR materials, Physics3D, video playback, asset embedding, 10 new game engine systems, native macOS menu bar, GUI overhaul, Zia language additions.">
+  <link rel="stylesheet" href="../style.css">
+  <link rel="icon" href="../favicon.png">
+</head>
+<body>
+
+<nav class="top-nav">
+  <a href="../" class="nav-logo"><img src="../logo.png" alt="Viper logo">Viper</a>
+  <div class="nav-links">
+    <a href="../docs/" class="active">Docs</a>
+    <a href="../learn/">Learn</a>
+    <a href="../showcase/">Showcase</a>
+    <a href="../performance/">Performance</a>
+    <a href="../blog/">Blog</a>
+    <a href="https://github.com/splanck/viper">GitHub</a>
+    <button id="theme-toggle" aria-label="Toggle theme"></button>
+  </div>
+  <button class="nav-mobile-toggle" aria-label="Menu"></button>
+</nav>
+
+<div class="breadcrumb">
+  <a href="../">Home</a> / <a href="./">Blog</a> / <span>v0.2.4</span>
+</div>
+
+<div class="section">
+  <div class="prose" style="max-width: 800px; margin: 0 auto;">
+    <h1>v0.2.4: Game Engine, Native Linker, 3D Backends, Toolchain Packaging</h1>
+    <p><span class="version-badge">v0.2.4</span> <span class="release-date">April 2026 &middot; DRAFT</span></p>
+
+    <p>Viper&#x27;s largest release to date. The native toolchain becomes self-sufficient on every platform, the 3D graphics stack reaches feature parity across Metal / D3D11 / OpenGL / software, the runtime grows to 300 classes across 22 modules, and Zia gains seven new language features. The full release notes live in the repo at <code>docs/release_notes/Viper_Release_Notes_0_2_4.md</code>; this is the highlight reel.</p>
+
+    <h2>Native toolchain &mdash; zero external dependencies on every platform</h2>
+    <ul>
+      <li><strong>Native PE/COFF linker pipeline</strong> &mdash; Full Windows native linking without clang or link.exe. ArchiveReader, SymbolResolver, SectionMerger, DeadStrip, ICF, RelocApplier, and PeExeWriter with proper <code>.idata</code> import tables. <code>viper build</code> now produces native <code>.exe</code> end-to-end with zero external tool dependencies.</li>
+      <li><strong>ELF dynamic linking</strong> &mdash; <code>ElfExeWriter</code> rewritten from static-only to full dynamic-link support: PT_INTERP, PT_DYNAMIC, .dynsym, .dynstr, .hash (SYSV), .rela.dyn with R_X86_64_GLOB_DAT. Linux x86_64 programs natively link against libc/libm/libpthread/libX11/libasound without falling back to the system linker.</li>
+      <li><strong>Mach-O hardening</strong> &mdash; ObjC metadata sections emit proper section types (S_CSTRING_LITERALS, S_LITERAL_POINTERS, S_ATTR_NO_DEAD_STRIP, S_COALESCED), framework auto-linking via symbol normalization, ad-hoc code signing, and a symbol-index sentinel fix in MachOWriter so symbols resolved to slot 0 are no longer dropped.</li>
+      <li><strong>Native Exception Handling lowering</strong> &mdash; New <code>NativeEHLowering</code> pass (683 LOC) rewrites structured IL EH markers into ordinary calls and branches before backend lowering, enabling cross-platform native exception handling on x86_64 and AArch64.</li>
+      <li><strong>Toolchain packaging foundation</strong> &mdash; New <code>viper install-package</code> CLI command with <code>ToolchainInstallManifest</code> as the shared data model; Windows / macOS / Linux package builders gain toolchain entry points.</li>
+      <li><strong>Installed-layout discovery</strong> &mdash; Layered runtime archive search: <code>VIPER_LIB_PATH</code> env &rarr; exe-relative <code>../lib</code> &rarr; platform standard paths &rarr; build-tree fallback. An installed Viper can compile native executables without a build tree.</li>
+    </ul>
+
+    <h2>3D graphics backends &mdash; Metal and D3D11 feature-complete</h2>
+    <ul>
+      <li><strong>Metal</strong> &mdash; All 14 backend plans implemented (47% &rarr; 94% feature parity with the software renderer). GPU skinning, morph targets (with normal deltas), shadow mapping, terrain splatting, post-processing, instanced rendering, fullscreen-triangle skybox, direct vs GPU-postfx window paths, cached RTT and morph payloads.</li>
+      <li><strong>D3D11</strong> &mdash; All 20 backend plans implemented in a 3,173-line HLSL+C backend rewrite. Full PBR with Cook-Torrance + GGX, GPU skinning, morph targets, shadow mapping, instanced rendering, terrain splatting, advanced post-FX (DOF, motion blur, SSAO, chromatic aberration), cubemap skybox, environment reflections.</li>
+      <li><strong>Software renderer upgrades</strong> &mdash; Per-pixel terrain splatting (4-layer weight blend), bilinear filtering, vertex color, shadow mapping, material shader hooks (Toon / Fresnel / Emissive shading models).</li>
+      <li><strong>Generation-aware texture caching</strong> &mdash; All GPU backends now track a generation counter on <code>Pixels</code> and <code>CubeMap3D</code> objects. In-place mutations re-upload textures without allocating new GPU resources.</li>
+    </ul>
+
+    <h2>Runtime library &mdash; 300 classes, 22 modules</h2>
+    <ul>
+      <li><strong>3D graphics suite</strong> &mdash; PBR materials (<code>Material3D.NewPBR</code>), <code>Collider3D</code> with 7 shape types (box, sphere, capsule, hull, mesh, heightfield, compound), <code>Body3D</code>/<code>Physics3D</code> with quaternion orientation, sleep, CCD, joints, world queries (raycast / sweep / overlap), collision events with contact manifolds, <code>NavAgent3D</code> A* pathfinding, <code>AudioListener3D</code>/<code>AudioSource3D</code> for spatial audio, <code>Model3D</code> unified asset import (.vscn/.fbx/.gltf/.glb), <code>AnimController3D</code> state machine.</li>
+      <li><strong>Media codecs</strong> &mdash; From-scratch JPEG, GIF (animated), OGG Vorbis, MP3 decoders. PNG decoder extended to all color types, bit depths, interlacing, transparency. WAV loader extended to 24-bit and float32 PCM. OGG/MP3 music streaming with on-the-fly resampling.</li>
+      <li><strong>Video playback</strong> &mdash; <code>VideoPlayer</code> runtime class with AVI/MJPEG decoder (DHT injection), Theora codec infrastructure, OGG multi-stream demux, GUI <code>VideoWidget</code>.</li>
+      <li><strong>Game engine APIs</strong> &mdash; 10 new systems: <code>Entity</code>, <code>Behavior</code>, <code>Raycast2D</code>, <code>LevelData</code>, <code>SceneManager</code>, <code>Camera.SmoothFollow</code>, <code>AnimStateMachine</code> named states, <code>MenuList.HandleInput</code>, <code>Config.Load</code>, <code>Tilemap.SetTileAnim</code>. Plus <code>PlatformerController</code>, <code>Lighting2D</code>, <code>AchievementTracker</code>, <code>Typewriter</code>.</li>
+      <li><strong>Asset embedding</strong> &mdash; Compile-time VPA packaging via <code>embed</code> / <code>pack</code> / <code>pack-compressed</code> project directives. Assets injected into <code>.rodata</code> for zero-file-dependency executables.</li>
+      <li><strong>HttpServer</strong> runtime class wired through both Zia and BASIC frontends with <code>Listen</code>, <code>Accept</code>, <code>Respond</code>, <code>Close</code>, and request property accessors.</li>
+      <li><strong>Native macOS menu bar</strong> &mdash; 554-line ObjC bridge mirrors Viper GUI menubars to NSMenu with About / Preferences / Quit relocation, Cmd+key accelerators, Services submenu.</li>
+      <li><strong>GUI overhaul</strong> &mdash; Hover events (MOUSE_ENTER/LEAVE) tracked in toolkit runtime state, two-pass painting (normal + overlay) so dropdowns/popups/floating panels render above siblings, justify-content layout (CENTER/SPACE_BETWEEN/SPACE_AROUND/SPACE_EVENLY), ScrollView clipping, FloatingPanel children promoted to real widget tree, per-app theme ownership.</li>
+    </ul>
+
+    <h2>Zia language additions</h2>
+    <ul>
+      <li><strong>Variadic parameters</strong>: <code>func sum(nums: ...Integer)</code></li>
+      <li><strong>Type aliases</strong>: <code>type Name = TargetType;</code></li>
+      <li><strong>Shift operators</strong> (<code>&lt;&lt;</code>, <code>&gt;&gt;</code>) and compound bitwise assignments (<code>&lt;&lt;=</code>, <code>&gt;&gt;=</code>, <code>&amp;=</code>, <code>|=</code>, <code>^=</code>)</li>
+      <li><strong>Single-expression functions</strong>: <code>func f(x: Integer) -&gt; Integer = x * 2;</code></li>
+      <li><strong>Lambdas</strong>: <code>(x: Integer) =&gt; x * 2</code></li>
+      <li><strong>Polymorphic <code>is</code> expressions</strong> &mdash; subclass-aware runtime type checks</li>
+      <li><strong>Enum support</strong> in both Zia and BASIC, with exhaustiveness checking in <code>match</code></li>
+      <li><strong><code>final</code> enforcement</strong> &mdash; semantic analyzer rejects reassignment of <code>final</code> variables, for-in loop variables, and match pattern bindings</li>
+      <li><strong>Keyword rename</strong>: <code>entity</code> &rarr; <code>class</code>, <code>value</code> &rarr; <code>struct</code> across all source, tests, REPL, LSP, docs, and the VS Code extension.</li>
+      <li><strong>Completion runtime APIs</strong> &mdash; <code>Viper.Zia.Completion.Check</code> / <code>.Hover</code> / <code>.Symbols</code> expose the compiler&#x27;s analysis pipeline directly to Zia programs (used by ViperIDE).</li>
+    </ul>
+
+    <h2>Codegen &amp; optimizer</h2>
+    <ul>
+      <li><strong>Codegen pipeline decomposition</strong> &mdash; Both x86_64 and AArch64 backends refactored from monolithic per-function pipelines into composable PassManager-based pass architectures.</li>
+      <li><strong>AArch64 join-phi coalescing</strong> &mdash; New peephole pass eliminates stack round-trips at CFG join blocks by replacing them with topologically-ordered register moves.</li>
+      <li><strong>x86-64 carry-through</strong> &mdash; <code>canCarryIntoNextBlock()</code> avoids forced spills at single-predecessor fallthrough edges. Branch relaxation (short JMP / Jcc) reduces code size.</li>
+      <li><strong>Register allocator hardening</strong> &mdash; AArch64 protected-use eviction, isLiveOut() query, block-epoch spill slot lifetimes, FPR load/store classification.</li>
+      <li><strong>IL optimizer correctness</strong> &mdash; EarlyCSE and GVN now enforce textual block ordering when replacing across dominator-ordered blocks. SCCP declares preserved analyses (dominators, loop info, CFG).</li>
+    </ul>
+
+    <h2>Cross-platform infrastructure</h2>
+    <ul>
+      <li><code>PlatformCapabilities.hpp</code> with VIPER_HOST_* / VIPER_CAN_* macros replacing scattered raw <code>_WIN32</code>/<code>__APPLE__</code>/<code>__linux__</code> checks.</li>
+      <li>CMake capability gate (<code>VIPER_GRAPHICS_MODE</code>/<code>VIPER_AUDIO_MODE</code>) with AUTO/REQUIRE/OFF modes.</li>
+      <li>Generated <code>RuntimeComponentManifest</code> for machine-checked archive names &mdash; drift between runtime.def and linker discovery is now a build error.</li>
+      <li>Platform import planners split from monolithic NativeLinker.cpp into <code>MacImportPlanner.cpp</code>, <code>LinuxImportPlanner.cpp</code>, <code>WindowsImportPlanner.cpp</code>.</li>
+      <li>Unified <code>build_viper_unix.sh</code> replacing near-identical mac/linux scripts.</li>
+      <li>Platform policy lint script <code>lint_platform_policy.sh</code> flags raw <code>_WIN32</code>/<code>__APPLE__</code>/<code>__linux__</code> usage outside approved adapter files.</li>
+    </ul>
+
+    <h2>By the numbers</h2>
+    <ul>
+      <li><strong>Production SLOC</strong>: ~348K &rarr; ~446K (+98K)</li>
+      <li><strong>Source files</strong>: 2,671 &rarr; 2,869 (+198)</li>
+      <li><strong>Test count</strong>: 1,351 &rarr; 1,454 (+103)</li>
+      <li><strong>Runtime classes</strong>: 229 &rarr; 300 across 22 modules</li>
+    </ul>
+
+    <h2>Demos shipped</h2>
+    <p>XENOSCAPE Metroid-style sidescroller (~17K LOC), 3D bowling with Physics3D pin collision, 3D world starter demo, ViperSQL grown to ~78K LOC, ViperIDE with live diagnostics + IntelliSense + project search, plus Chess, Pac-Man, and 8 Graphics3D API demos.</p>
+
+    <p><a href="./">&larr; Back to Blog</a> &middot; <a href="https://github.com/splanck/viper/blob/master/docs/release_notes/Viper_Release_Notes_0_2_4.md">Full release notes on GitHub &rarr;</a></p>
+  </div>
+</div>
+
+<footer class="site-footer">
+  <div class="footer-grid">
+    <div class="footer-col">
+      <h4>Platform</h4>
+      <a href="../features/zero-deps.html">Zero Dependencies</a>
+      <a href="../features/native-targets.html">Native Targets</a>
+      <a href="../features/two-languages.html">Languages</a>
+      <a href="../features/runtime.html">Runtime Library</a>
+      <a href="../performance/">Performance</a>
+    </div>
+    <div class="footer-col">
+      <h4>Documentation</h4>
+      <a href="../docs/getting-started.html">Getting Started</a>
+      <a href="../docs/zia/tutorial.html">Zia Tutorial</a>
+      <a href="../docs/basic/tutorial.html">BASIC Tutorial</a>
+      <a href="../docs/runtime/">Runtime API</a>
+      <a href="../docs/faq.html">FAQ</a>
+    </div>
+    <div class="footer-col">
+      <h4>Community</h4>
+      <a href="https://github.com/splanck/viper">GitHub</a>
+      <a href="https://github.com/splanck/viper/releases">Releases</a>
+      <a href="../contributing/">Contributing</a>
+      <a href="../blog/">Blog</a>
+    </div>
+  </div>
+  <p>Viper Compiler Platform &middot; Pre-Alpha &middot; GPL-3.0</p>
+</footer>
+
+<script src="../main.js"></script>
+</body>
+</html>

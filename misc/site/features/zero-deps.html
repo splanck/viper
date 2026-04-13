@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Zero Dependencies — Viper</title>
-  <meta name="description" content="Viper is built entirely from scratch with zero external dependencies. Custom assemblers, linkers, optimizer passes, and a 229-class runtime — every line is Viper's own.">
+  <meta name="description" content="Viper is built entirely from scratch with zero external dependencies. Custom assemblers, linkers, optimizer passes, and a 300-class runtime — every line is Viper's own.">
   <link rel="stylesheet" href="../style.css">
   <link rel="icon" href="../favicon.png">
 </head>
@@ -50,7 +50,7 @@
   <main class="page-main prose">
     <h1 id="overview">Zero Dependencies</h1>
 
-    <p>Viper has <strong>no external dependencies</strong>. No LLVM, no Boost, no SDL, no OpenSSL, no libcurl, no nlohmann/json, no Qt. Every component of the compiler, runtime, and toolchain is written from scratch in C++ and C.</p>
+    <p>Viper has <strong>no external dependencies</strong>. No LLVM, no Boost, no SDL, no OpenSSL, no libcurl, no nlohmann/json, no Qt, no zlib. Every component of the compiler, runtime, and toolchain is written from scratch in C++ and C.</p>
 
     <p>This isn't a philosophical choice about purity &mdash; it's a practical decision that gives Viper complete control over its compilation pipeline, enables portability to unusual targets (like ViperDOS), and makes the entire system auditable and educational.</p>
 
@@ -70,18 +70,24 @@
         <tr><td>Code generation</td><td>LLVM, GNU binutils</td><td>Custom binary encoders (x86-64 + AArch64)</td></tr>
         <tr><td>Linking</td><td>GNU ld, Apple ld, lld</td><td>Custom linker (ELF, Mach-O, PE)</td></tr>
         <tr><td>Object files</td><td>LLVM MC, binutils</td><td>Custom writers for 3 formats</td></tr>
-        <tr><td>Optimization</td><td>LLVM passes</td><td>28 custom IL optimizer passes</td></tr>
-        <tr><td>Graphics</td><td>SDL2, SFML, DirectX</td><td>ViperGFX (Cocoa / X11 / Win32)</td></tr>
-        <tr><td>Audio</td><td>OpenAL, PortAudio</td><td>Custom (AudioQueue / ALSA / WASAPI)</td></tr>
-        <tr><td>Networking</td><td>libcurl, Boost.Asio</td><td>Custom TCP/UDP/HTTP/WebSocket/TLS</td></tr>
-        <tr><td>Compression</td><td>zlib, libzip</td><td>Custom DEFLATE implementation</td></tr>
-        <tr><td>Cryptography</td><td>OpenSSL, libsodium</td><td>Custom AES, SHA-256, Blake2b, Argon2, TLS</td></tr>
-        <tr><td>JSON/XML/YAML</td><td>nlohmann, rapidjson, libxml2</td><td>Custom parsers for all formats</td></tr>
-        <tr><td>GUI framework</td><td>Qt, GTK, wxWidgets</td><td>Custom widget system</td></tr>
-        <tr><td>Collections</td><td>Boost, EASTL</td><td>Custom SmallVector, Arena, LRUCache, etc.</td></tr>
+        <tr><td>Optimization</td><td>LLVM passes</td><td>20+ custom IL optimizer passes</td></tr>
+        <tr><td>2D graphics</td><td>SDL2, SFML, DirectX</td><td>ViperGFX (Cocoa / X11 / Win32)</td></tr>
+        <tr><td>3D graphics</td><td>OGRE, bgfx, raylib</td><td>4 backends written from scratch (Metal, D3D11, OpenGL, software)</td></tr>
+        <tr><td>Audio</td><td>OpenAL, PortAudio, miniaudio</td><td>Custom mixer (AudioQueue / ALSA / WASAPI)</td></tr>
+        <tr><td>Audio codecs</td><td>libvorbis, libmp3lame, mpg123</td><td>Custom WAV/OGG-Vorbis/MP3 decoders + streaming</td></tr>
+        <tr><td>Image codecs</td><td>libpng, libjpeg, giflib</td><td>Custom PNG/JPEG/GIF/BMP decoders</td></tr>
+        <tr><td>Video codecs</td><td>FFmpeg, libtheora</td><td>Custom AVI/MJPEG decoder + Theora infrastructure</td></tr>
+        <tr><td>Networking</td><td>libcurl, Boost.Asio</td><td>Custom TCP/UDP/HTTP server &amp; client/WebSocket/TLS/SMTP/SSE</td></tr>
+        <tr><td>Compression</td><td>zlib, libzip</td><td>Custom DEFLATE / ZIP / .deb / archive writers</td></tr>
+        <tr><td>Cryptography</td><td>OpenSSL, libsodium</td><td>Custom AES (incl. AES-GCM), SHA-2, HMAC, HKDF, PBKDF2, Argon2, ECDSA, full TLS 1.2/1.3</td></tr>
+        <tr><td>JSON/XML/YAML</td><td>nlohmann, rapidjson, libxml2</td><td>Custom parsers for all formats (plus TOML, CSV, Markdown, HTML)</td></tr>
+        <tr><td>GUI framework</td><td>Qt, GTK, wxWidgets, Dear ImGui</td><td>Custom 46-widget toolkit (vg_*) with theming, layout, hover events</td></tr>
+        <tr><td>Collections</td><td>Boost, EASTL</td><td>Custom SmallVector, Arena, LRUCache, BloomFilter, etc.</td></tr>
         <tr><td>Regex</td><td>PCRE2, Boost.Regex</td><td>Custom Pattern engine</td></tr>
-        <tr><td>Thread pool</td><td>Intel TBB, Boost</td><td>Custom thread pool + primitives</td></tr>
-        <tr><td>Date/time</td><td>Boost.DateTime</td><td>Custom DateTime, Duration, Stopwatch</td></tr>
+        <tr><td>Thread pool</td><td>Intel TBB, Boost</td><td>Custom thread pool + channels + futures + concurrent collections</td></tr>
+        <tr><td>Date/time</td><td>Boost.DateTime</td><td>Custom DateTime, Duration, Stopwatch, Countdown</td></tr>
+        <tr><td>Native linker</td><td>GNU ld, lld</td><td>Custom linker with ELF dynamic linking, PE/COFF imports, Mach-O code signing</td></tr>
+        <tr><td>3D physics</td><td>Bullet, PhysX</td><td>Custom Physics3D (Collider3D, CCD, sleep, joints)</td></tr>
       </tbody>
     </table>
 
@@ -130,7 +136,7 @@
       <li><strong>COFF writer</strong> &mdash; IMAGE_FILE_MACHINE_AMD64/ARM64, 10-byte relocations with implicit addends</li>
     </ul>
 
-    <h2 id="optimizer">28 Optimization Passes</h2>
+    <h2 id="optimizer">20+ Optimization Passes</h2>
 
     <p>The IL optimizer is a full optimization pipeline comparable to what LLVM provides, built entirely from scratch:</p>
 
@@ -160,33 +166,38 @@
 
     <p>Plus backend peephole optimizers for each architecture: strength reduction (div &rarr; shift), copy propagation, branch optimization, dead MIR elimination, and loop-invariant constant hoisting.</p>
 
-    <h2 id="runtime">229-Class Runtime Library</h2>
+    <h2 id="runtime">300-Class Runtime Library</h2>
 
-    <p>The runtime is <strong>146,872 lines of portable C</strong> implementing 229 classes across 12 modules. Every class is hand-written &mdash; no external libraries:</p>
+    <p>The runtime implements <strong>300 classes across 22 modules</strong>, all in portable C. Every class is hand-written &mdash; no external libraries:</p>
 
     <table>
       <thead><tr><th>Module</th><th>Classes</th><th>Highlights</th></tr></thead>
       <tbody>
-        <tr><td>Collections</td><td>19+</td><td>List, Map, Set, TreeMap, BloomFilter, LRUCache, Trie, WeakMap</td></tr>
-        <tr><td>Graphics</td><td>10+</td><td>Canvas, Sprite, Tilemap, Camera, Pixels, Scene graph</td></tr>
-        <tr><td>Audio</td><td>4</td><td>Sound effects, music streaming, voice</td></tr>
-        <tr><td>Network</td><td>12+</td><td>TCP, UDP, HTTP, WebSocket, TLS, DNS, REST client</td></tr>
-        <tr><td>Crypto</td><td>7</td><td>AES, SHA-256, Blake2b, PBKDF2, Argon2, Bcrypt</td></tr>
-        <tr><td>Text</td><td>20+</td><td>JSON, XML, YAML, TOML, CSV, Markdown, HTML, Regex</td></tr>
-        <tr><td>I/O</td><td>15+</td><td>File, Directory, Stream, Archive, Compress, Watcher</td></tr>
-        <tr><td>Threading</td><td>14+</td><td>Thread pool, channels, mutex, async/await, futures</td></tr>
-        <tr><td>Game</td><td>12+</td><td>Physics 2D, particles, tweening, state machines, path following</td></tr>
-        <tr><td>GUI</td><td>8+</td><td>Buttons, labels, text input, sliders, modals</td></tr>
-        <tr><td>Math</td><td>10+</td><td>Vec2/Vec3, Mat3/Mat4, Quaternions, Perlin noise, splines</td></tr>
+        <tr><td>Collections</td><td>29</td><td>List, Map, Set, TreeMap, BloomFilter, LRUCache, Trie, WeakMap, ring buffers</td></tr>
+        <tr><td>Graphics (2D)</td><td>12</td><td>Canvas, Sprite, Tilemap, Camera, Pixels, BitmapFont, VideoPlayer/Widget</td></tr>
+        <tr><td>Graphics3D</td><td>41</td><td>Mesh3D, Material3D (PBR), Light3D, Camera3D, Skeleton/Animation, Terrain3D (LOD), Water3D (Gerstner), Vegetation3D, Collider3D, NavAgent3D, Audio3D, Model3D, AnimController3D</td></tr>
+        <tr><td>Audio</td><td>7</td><td>Sound effects, music streaming (WAV/OGG/MP3), playlists, sound banks</td></tr>
+        <tr><td>Network</td><td>22</td><td>TCP, UDP, HTTP server &amp; client, WebSocket, TLS, DNS, SMTP, SSE, connection pool, rate limiter</td></tr>
+        <tr><td>Crypto</td><td>10</td><td>AES, AES-GCM, SHA-2, HMAC, HKDF, PBKDF2, TLS, ECDSA, secure RNG</td></tr>
+        <tr><td>Text</td><td>20</td><td>JSON, XML, YAML, TOML, CSV, Markdown, HTML, Regex, templates</td></tr>
+        <tr><td>I/O</td><td>16</td><td>File, Directory, Archive, Compress, Streaming, Watcher, asset embedding (VPA)</td></tr>
+        <tr><td>Threading</td><td>18</td><td>Async, channels, futures, pools, concurrent collections</td></tr>
+        <tr><td>Game</td><td>22</td><td>Collision, pathfinding, tweening, particles, state machines, platformer controller, lighting, achievements, entity system, AI behaviors, level loading, scene management</td></tr>
+        <tr><td>Game.Physics2D</td><td>6</td><td>Rigid bodies, joints (hinge, spring, rope, distance)</td></tr>
+        <tr><td>Game.UI</td><td>5</td><td>HUD widgets (bars, labels, menus, panels, buttons)</td></tr>
+        <tr><td>GUI</td><td>46</td><td>Buttons, labels, text input, sliders, modals, code editor, tree views, scroll views, floating panels, dropdowns</td></tr>
+        <tr><td>Input</td><td>6</td><td>Keyboard, mouse, gamepad, action mapping</td></tr>
+        <tr><td>Math</td><td>12</td><td>Vec2/Vec3, Mat3/Mat4, Quaternions, Perlin/Simplex noise, splines, BigInt</td></tr>
         <tr><td>Time</td><td>8</td><td>Clock, DateTime, Duration, Stopwatch, Countdown</td></tr>
       </tbody>
     </table>
 
     <p>Platform-specific backends use only OS-native APIs:</p>
     <ul>
-      <li><strong>Graphics:</strong> Cocoa (macOS), X11 (Linux), Win32 (Windows)</li>
+      <li><strong>2D graphics:</strong> Cocoa (macOS), X11 (Linux), Win32 (Windows)</li>
+      <li><strong>3D graphics:</strong> Metal (macOS), D3D11 (Windows), OpenGL (Linux), software rasterizer (everywhere)</li>
       <li><strong>Audio:</strong> AudioQueue (macOS), ALSA (Linux), WASAPI (Windows)</li>
-      <li><strong>Networking:</strong> POSIX sockets + WinSock, with custom TLS</li>
+      <li><strong>Networking:</strong> POSIX sockets + WinSock, with custom TLS 1.2/1.3</li>
     </ul>
 
     <h2 id="data-structures">Custom Data Structures</h2>
@@ -221,13 +232,13 @@
     <table>
       <thead><tr><th>Metric</th><th>Count</th></tr></thead>
       <tbody>
-        <tr><td>Total production LOC</td><td>510,024</td></tr>
-        <tr><td>Runtime LOC (C)</td><td>146,872</td></tr>
-        <tr><td>Binary encoder LOC</td><td>3,334</td></tr>
-        <tr><td>Native linker LOC</td><td>8,162</td></tr>
-        <tr><td>Object file writer LOC</td><td>3,618</td></tr>
-        <tr><td>Optimizer passes</td><td>28</td></tr>
-        <tr><td>Runtime classes</td><td>229</td></tr>
+        <tr><td>Total production SLOC</td><td>446,980</td></tr>
+        <tr><td>Production source files</td><td>2,869</td></tr>
+        <tr><td>Optimizer passes</td><td>20+</td></tr>
+        <tr><td>Runtime classes</td><td>300</td></tr>
+        <tr><td>Runtime modules</td><td>22</td></tr>
+        <tr><td>Native targets</td><td>6 (ARM64/x86-64 &times; macOS/Linux/Windows)</td></tr>
+        <tr><td>3D backends</td><td>4 (Metal, D3D11, OpenGL, software)</td></tr>
         <tr><td>External dependencies</td><td><strong>0</strong></td></tr>
       </tbody>
     </table>

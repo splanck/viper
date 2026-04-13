@@ -455,7 +455,11 @@ cd viper
 </code></pre>
 <p>Now run the build script:</p>
 <pre><code data-lang="bash">
-./scripts/build_viper.sh
+# macOS / Linux
+./scripts/build_viper_unix.sh
+
+# Windows
+scripts\build_viper.cmd
 </code></pre>
 <p><strong>What does this do?</strong></p>
 <p>The build script:</p>
@@ -589,7 +593,7 @@ Setup complete!
 <p><strong>What it means:</strong> Your computer doesn&#x27;t know where to find the Viper program.</p>
 <p><strong>Solutions:</strong></p>
 <ol>
-<li>**Did you complete the build?** Make sure <code>./scripts/build_viper.sh</code> finished without errors.</li>
+<li>**Did you complete the build?** Make sure <code>./scripts/build_viper_unix.sh</code> (macOS/Linux) or <code>scripts\build_viper.cmd</code> (Windows) finished without errors.</li>
 </ul>
 <ol>
 <li>**Did you set up your PATH?** Run the export command again:</li>
@@ -669,7 +673,7 @@ Setup complete!
 <pre><code data-lang="bash">
    cd ~/dev/viper
    rm -rf build
-   ./scripts/build_viper.sh
+   ./scripts/build_viper_unix.sh   # or scripts\build_viper.cmd on Windows
 </code></pre>
 </ul>
 <ol>

@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>13+ Optimizer Passes — Viper</title>
-  <meta name="description" content="Viper's IL optimizer includes 28 custom-built optimization passes: SCCP, GVN, LICM, inlining, loop unrolling, dead store elimination, and more.">
+  <title>20+ Optimizer Passes — Viper</title>
+  <meta name="description" content="Viper's IL optimizer includes 20+ custom-built optimization passes: SCCP, GVN, LICM, EarlyCSE, inlining, loop unrolling, dead store elimination, and more.">
   <link rel="stylesheet" href="../style.css">
   <link rel="icon" href="../favicon.png">
 </head>
@@ -45,7 +45,7 @@
   <main class="page-main prose">
     <h1 id="overview">Optimizer Passes</h1>
 
-    <p>Viper's IL optimizer is a full optimization pipeline with <strong>28 transformation passes</strong> and <strong>7+ analysis passes</strong>, all built from scratch. The pass list reads like an LLVM textbook &mdash; SCCP, GVN, LICM, Mem2Reg, loop unrolling, dead store elimination &mdash; but every line is Viper's own implementation.</p>
+    <p>Viper's IL optimizer is a full optimization pipeline with <strong>20+ transformation passes</strong> and <strong>8 analysis passes</strong>, all built from scratch. The pass list reads like an LLVM textbook &mdash; SCCP, GVN, LICM, EarlyCSE, Mem2Reg, loop unrolling, dead store elimination &mdash; but every line is Viper's own implementation. Recent passes added textual ordering guards on EarlyCSE/GVN to prevent illegal use-before-def replacements, and SCCP now declares preserved analyses so downstream passes don't have to rebuild dominator/loop info.</p>
 
     <h2 id="pipelines">Optimization Levels</h2>
 

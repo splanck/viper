@@ -34,24 +34,30 @@
 
     <p>
       <span class="showcase-badge badge-zia">Zia</span>
-      <span class="badge-loc">2,792 LOC</span>
+      <span class="badge-loc">3,300 LOC</span>
     </p>
 
-    <p>An integrated development environment written in Zia with professional IDE features including IntelliSense, tabbed editing, and build system integration.</p>
+    <p>An integrated development environment written in Zia using the Viper GUI toolkit. Live diagnostics, hover tooltips, IntelliSense, go-to-definition, project search, and a code editor with multi-cursor editing.</p>
 
     <div class="screenshot-placeholder">Screenshot coming soon</div>
 
     <h2>Features</h2>
     <ul>
       <li>Tabbed document editor with multiple open files</li>
-      <li>6-phase IntelliSense code completion</li>
+      <li>Live diagnostics powered by `Viper.Zia.Completion.Check`</li>
+      <li>Hover tooltips with type and signature info (`Viper.Zia.Completion.Hover`)</li>
+      <li>IntelliSense code completion (6-phase pipeline: Sema &rarr; Engine &rarr; C bridge &rarr; runtime.def &rarr; UI)</li>
+      <li>Symbol outline via `Viper.Zia.Completion.Symbols`</li>
+      <li>Project search across the workspace</li>
+      <li>Multi-cursor editing in the code editor widget</li>
       <li>Syntax highlighting for Zia and BASIC</li>
       <li>Find and replace with regex support</li>
       <li>Integrated build system</li>
       <li>Project tree navigation</li>
-      <li>Font zoom and theme toggling</li>
-      <li>Settings persistence</li>
+      <li>Font zoom and dark/light theme toggling</li>
+      <li>Settings persistence (HiDPI scale, theme, font size, last project)</li>
       <li>F11 fullscreen mode</li>
+      <li>Native menu bar mirroring on macOS (Cmd+N, Cmd+S, Cmd+Q)</li>
     </ul>
 
     <h2>Build &amp; Run</h2>

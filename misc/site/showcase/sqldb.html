@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>SQL Database — Viper Showcase</title>
-  <meta name="description" content="A PostgreSQL-compatible database engine written entirely in Zia. Features MVCC transactions, write-ahead logging, B-tree indexes, and wire protocol support for ">
+  <title>ViperSQL — Viper Showcase</title>
+  <meta name="description" content="A PostgreSQL-compatible database engine written entirely in Zia. Features MVCC transactions, write-ahead logging, B-tree indexes, and PG wire protocol support for standard SQL clients.">
   <link rel="stylesheet" href="../style.css">
   <link rel="icon" href="../favicon.png">
 </head>
@@ -25,19 +25,19 @@
 </nav>
 
 <div class="breadcrumb">
-  <a href="../">Home</a> / <a href="./">Showcase</a> / <span>SQL Database</span>
+  <a href="../">Home</a> / <a href="./">Showcase</a> / <span>ViperSQL</span>
 </div>
 
 <div class="section">
   <div class="prose" style="max-width: 800px; margin: 0 auto;">
-    <h1>SQL Database</h1>
+    <h1>ViperSQL</h1>
 
     <p>
       <span class="showcase-badge badge-zia">Zia</span>
-      <span class="badge-loc">73,701 LOC</span>
+      <span class="badge-loc">78,300 LOC</span>
     </p>
 
-    <p>A PostgreSQL-compatible database engine written entirely in Zia. Features MVCC transactions, write-ahead logging, B-tree indexes, and wire protocol support for standard SQL clients.</p>
+    <p>A PostgreSQL-compatible database engine written entirely in Zia. Features MVCC transactions, write-ahead logging, B-tree indexes, and PG wire protocol support for standard SQL clients. Ships with a `vsql` interactive client.</p>
 
     <div class="screenshot-placeholder">Screenshot coming soon</div>
 
@@ -47,20 +47,24 @@
       <li>Multi-Version Concurrency Control (MVCC)</li>
       <li>Write-Ahead Logging (WAL) for crash durability</li>
       <li>B-tree indexes for efficient query execution</li>
-      <li>Full SQL language support (DDL, DML, window functions, set operations)</li>
+      <li>Full SQL language support (DDL, DML, window functions with PARTITION BY, set operations, JOIN with IS NULL, ALTER TABLE)</li>
       <li>Session management and stored procedures</li>
-      <li>Interactive SQL REPL</li>
+      <li>Interactive `vsql` REPL client</li>
       <li>System views and metadata tables</li>
+      <li>CSV import/export with validation</li>
     </ul>
 
     <h2>Build &amp; Run</h2>
     <pre><code><span class="comment"># Build all demos</span>
 <span class="cmd">./scripts/build_demos.sh</span>
 
-<span class="comment"># Run this demo</span>
-<span class="cmd">viper run examples/apps/sqldb/</span></code></pre>
+<span class="comment"># Run the database server</span>
+<span class="cmd">viper run examples/apps/vipersql/</span>
 
-    <p><a href="https://github.com/splanck/viper/tree/master/examples/apps/sqldb/">View source on GitHub &rarr;</a></p>
+<span class="comment"># Or use the interactive client</span>
+<span class="cmd">viper run examples/apps/vipersql/vsql.zia</span></code></pre>
+
+    <p><a href="https://github.com/splanck/viper/tree/master/examples/apps/vipersql/">View source on GitHub &rarr;</a></p>
 
     <p><a href="./">&larr; Back to Showcase</a></p>
   </div>

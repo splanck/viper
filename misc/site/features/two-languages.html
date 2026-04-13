@@ -54,15 +54,20 @@
     <p>Zia is a statically-typed, modern language designed for building real applications:</p>
 
     <ul>
-      <li><strong>Entities</strong> (reference-type classes) with inheritance, interfaces, and destructors</li>
-      <li><strong>Values</strong> (stack-allocated structs) with copy semantics</li>
+      <li><strong>Classes</strong> (reference-type) with inheritance, interfaces, destructors, and `final` enforcement</li>
+      <li><strong>Structs</strong> (value-type, stack-allocated) with copy semantics</li>
       <li><strong>Generics</strong> with type constraints</li>
-      <li><strong>Pattern matching</strong> with exhaustiveness checking</li>
-      <li><strong>Enums</strong> with discriminant values</li>
-      <li><strong>Optional types</strong> with safe navigation (<code>?.)</code></li>
-      <li><strong>Lambdas</strong> and first-class functions</li>
+      <li><strong>Pattern matching</strong> with exhaustiveness checking (including enum variants)</li>
+      <li><strong>Enums</strong> with discriminant values and exhaustiveness checking in `match`</li>
+      <li><strong>Optional types</strong> with safe navigation (<code>?.</code>) and unwrap (<code>!</code>)</li>
+      <li><strong>Lambdas</strong> and single-expression functions (<code>(x: Integer) =&gt; x * 2</code>, <code>func f(x) -&gt; T = expr;</code>)</li>
+      <li><strong>Variadic parameters</strong> (<code>func sum(nums: ...Integer)</code>)</li>
+      <li><strong>Type aliases</strong> (<code>type Name = TargetType;</code>)</li>
+      <li><strong>Shift &amp; compound bitwise operators</strong> (<code>&lt;&lt;</code>, <code>&gt;&gt;</code>, <code>&lt;&lt;=</code>, <code>&gt;&gt;=</code>, <code>&amp;=</code>, <code>|=</code>, <code>^=</code>)</li>
+      <li><strong>Polymorphic <code>is</code></strong> &mdash; subclass-aware runtime type checks</li>
+      <li><strong>String interpolation</strong> (<code>"${name}"</code>)</li>
       <li><strong>Module system</strong> with <code>bind</code> imports</li>
-      <li><strong>Try/catch</strong> exception handling</li>
+      <li><strong>Try/catch</strong> exception handling with typed catch (e.g. <code>catch(e: DivideByZero)</code>)</li>
     </ul>
 
     <pre><code data-lang="zia">module GameDemo;
@@ -162,14 +167,19 @@ END CLASS</code></pre>
       <tbody>
         <tr><td>Type inference</td><td>Full</td><td>Partial (suffixes)</td></tr>
         <tr><td>Generics</td><td>Yes</td><td>No</td></tr>
-        <tr><td>Lambdas</td><td>Yes</td><td>No</td></tr>
-        <tr><td>Pattern matching</td><td>Full with guards</td><td>SELECT CASE only</td></tr>
+        <tr><td>Lambdas / single-expr functions</td><td>Yes</td><td>No</td></tr>
+        <tr><td>Variadic parameters</td><td>Yes</td><td>No</td></tr>
+        <tr><td>Type aliases</td><td>Yes</td><td>No</td></tr>
+        <tr><td>Pattern matching</td><td>Full with guards &amp; enum exhaustiveness</td><td>SELECT CASE only</td></tr>
         <tr><td>Enums</td><td>Yes</td><td>Yes</td></tr>
         <tr><td>Optional types</td><td>Yes (T?)</td><td>No</td></tr>
         <tr><td>Inheritance</td><td>Yes</td><td>Yes</td></tr>
         <tr><td>Interfaces</td><td>Yes</td><td>Yes</td></tr>
-        <tr><td>Exception handling</td><td>Try/catch</td><td>No</td></tr>
+        <tr><td>Exception handling</td><td>Try/catch (typed)</td><td>No</td></tr>
+        <tr><td>String interpolation</td><td>Yes (<code>${expr}</code>)</td><td>No</td></tr>
         <tr><td>Canvas graphics</td><td>Yes</td><td>Yes</td></tr>
+        <tr><td>Canvas3D</td><td>Yes</td><td>Yes</td></tr>
+        <tr><td>HttpServer</td><td>Yes</td><td>Yes</td></tr>
         <tr><td>Native compilation</td><td>Yes</td><td>Yes</td></tr>
       </tbody>
     </table>
@@ -198,7 +208,7 @@ entry(%self:ptr):
 
     <h2 id="own">Build Your Own Frontend</h2>
 
-    <p>The IL is a stable, documented interface. You can write your own language frontend that targets Viper IL and immediately get access to the optimizer, VM, native codegen, and entire 229-class runtime. The <a href="../docs/architecture.html">architecture documentation</a> and the existing frontends serve as reference implementations.</p>
+    <p>The IL is a stable, documented interface. You can write your own language frontend that targets Viper IL and immediately get access to the optimizer, VM, native codegen, and entire 300-class runtime. The <a href="../docs/architecture.html">architecture documentation</a> and the existing frontends serve as reference implementations.</p>
 
   </main>
 </div>

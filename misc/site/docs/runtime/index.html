@@ -44,7 +44,7 @@
 </tr>
 <tr>
 <td>[Audio](viperlib/audio.md)</td>
-<td>`Audio`, `Music`, `Sound`, `Voice` — audio playback for games and applications</td>
+<td>`Audio`, `Music` (WAV / OGG Vorbis / MP3 streaming), `Sound`, `SoundBank`, `Playlist`, `Voice` — audio playback for games and applications</td>
 </tr>
 <tr>
 <td>[Collections](viperlib/collections/README.md)</td>
@@ -56,7 +56,7 @@
 </tr>
 <tr>
 <td>[Cryptography](viperlib/crypto.md)</td>
-<td>`Aes`, `Cipher`, `Hash`, `KeyDerive`, `Password`, `Rand`, `Tls`</td>
+<td>`Aes`, `AesGcm`, `Cipher`, `Ecdsa`, `Hash` (SHA-2 family), `Hkdf`, `Hmac`, `Pbkdf2`, `Rand`, `Tls`</td>
 </tr>
 <tr>
 <td>[Diagnostics](viperlib/diagnostics.md)</td>
@@ -68,11 +68,15 @@
 </tr>
 <tr>
 <td>[Game Utilities](viperlib/game.md)</td>
-<td>`ButtonGroup`, `Collision`, `CollisionRect`, `Grid2D`, `ObjectPool`, `ParticleEmitter` (with batch Draw/DrawAt/DrawToPixels), `PathFollower`, `Physics2D`, `Quadtree`, `ScreenFX`, `SmoothValue`, `SpriteAnimation`, `SpriteSheet`, `StateMachine`, `Timer`, `Tween`</td>
+<td>`AchievementTracker`, `AnimStateMachine`, `Behavior`, `ButtonGroup`, `Collision`, `Config`, `Entity`, `Grid2D`, `LevelData`, `Lighting2D`, `MenuList`, `ObjectPool`, `ParticleEmitter`, `PathFollower`, `Physics2D` (joints), `PlatformerController`, `Quadtree`, `Raycast2D`, `SceneManager`, `ScreenFX`, `SmoothValue`, `StateMachine`, `Timer` (with ms-mode), `Tween`, `Typewriter`</td>
 </tr>
 <tr>
 <td>[Graphics](viperlib/graphics/README.md)</td>
-<td>`Camera` (with parallax layers), `Canvas` (with DeltaTime), `Color`, `Pixels`, `Scene`, `SceneNode`, `Sprite`, `SpriteBatch`, `Tilemap`</td>
+<td>`Camera` (with smooth follow + deadzone), `Canvas`, `BitmapFont`, `Color`, `Pixels` (auto-detect PNG/JPEG/GIF/BMP), `Scene`, `SceneNode`, `Sprite`, `SpriteBatch`, `Tilemap` (per-tile animation), `VideoPlayer`, `VideoWidget`</td>
+</tr>
+<tr>
+<td>[Graphics3D](../../graphics3d-guide.html) (41 classes)</td>
+<td>`Mesh3D`, `Material3D` (Blinn-Phong + PBR), `Light3D`, `Camera3D`, `Skeleton3D` / `Animation3D` / `AnimController3D`, `Terrain3D` (LOD + splat), `Water3D` (Gerstner waves), `Vegetation3D` (instanced), `Collider3D` (7 shape types), `Body3D` / `Physics3D` (joints, sleep, CCD), `NavMesh3D` / `NavAgent3D`, `AudioListener3D` / `AudioSource3D`, `Model3D` (.vscn/.fbx/.gltf/.glb), `Scene3D` — Metal / D3D11 / OpenGL / software backends</td>
 </tr>
 <tr>
 <td>[GUI](viperlib/gui/README.md)</td>
@@ -88,15 +92,15 @@
 </tr>
 <tr>
 <td>[Input/Output](viperlib/io/README.md)</td>
-<td>`Archive`, `BinaryBuffer`, `BinFile`, `Compress`, `Dir`, `File`, `Glob`, `LineReader`, `LineWriter`, `MemStream`, `Path`, `Stream`, `TempFile`, `Watcher`</td>
+<td>`Archive`, `Assets` (VPA embedding), `BinaryBuffer`, `BinFile`, `Compress`, `Dir`, `File`, `Glob` (character classes, `**` recursion), `LineReader`, `LineWriter`, `MemStream`, `Path` (with `ExeDir()`), `SaveData`, `Stream`, `TempFile` (atomic), `Watcher`</td>
 </tr>
 <tr>
 <td>[Mathematics](viperlib/math.md)</td>
-<td>`Bits`, `Easing`, `Math`, `PerlinNoise`, `Quaternion`, `Random`, `Spline`, `Vec2`, `Vec3`</td>
+<td>`BigInt`, `Bits`, `Easing`, `Math`, `PerlinNoise`, `SimplexNoise`, `Quaternion`, `Random`, `Spline`, `Vec2`, `Vec3`, `Mat3`, `Mat4`</td>
 </tr>
 <tr>
 <td>[Network](viperlib/network.md)</td>
-<td>`Dns`, `Http`, `HttpReq`, `HttpRes`, `RateLimiter`, `RestClient`, `RetryPolicy`, `Tcp`, `TcpServer`, `Udp`, `Url`, `WebSocket`</td>
+<td>`Dns`, `Http`, `HttpReq`, `HttpRes`, `HttpServer`, `ConnectionPool`, `RateLimiter`, `RestClient`, `RetryPolicy`, `Smtp`, `Sse`, `Tcp`, `TcpServer`, `Tls` (1.2 / 1.3, RSA-PSS, ECDSA P-256), `Udp`, `Url`, `WebSocket`</td>
 </tr>
 <tr>
 <td>[System](viperlib/system.md)</td>

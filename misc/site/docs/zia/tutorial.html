@@ -55,7 +55,7 @@
 <h1 id="zia-getting-started">Zia — Getting Started</h1>
 <p>Learn Zia by example. For a complete reference, see <strong>[Zia Reference](zia-reference.md)</strong>.</p>
 <blockquote><p>**What is Zia?**</p></blockquote>
-<blockquote><p>A modern, statically-typed language with C-like syntax, first-class entities (reference types), value types,</p></blockquote>
+<blockquote><p>A modern, statically-typed language with C-like syntax, first-class classes (reference types), structs (value types),</p></blockquote>
 <blockquote><p>generics, and module bindings. It runs on Viper&#x27;s VM and can be compiled to native code.</p></blockquote>
 <p>---</p>
 <h2 id="table-of-contents">Table of Contents</h2>
@@ -301,7 +301,7 @@ class Player {
     }
 }
 </code></pre>
-<h3 id="using-entities">Using Entities</h3>
+<h3 id="using-classes">Using Classes</h3>
 <pre><code data-lang="viper">
 bind Viper.Terminal;
 
@@ -320,7 +320,7 @@ func start() {
 </code></pre>
 <p><strong>Key points:</strong></p>
 <ul>
-<li>Use <code>new EntityName()</code> to create instances</li>
+<li>Use <code>new ClassName()</code> to create instances</li>
 <li>Fields are accessed with dot notation</li>
 <li><code>init()</code> is the conventional initializer method</li>
 <li>Methods can access fields directly (implicit <code>self</code>)</li>
@@ -368,7 +368,7 @@ while i &lt; numbers.size() {
     i = i + 1;
 }
 </code></pre>
-<h3 id="class-lists">Entity Lists</h3>
+<h3 id="class-lists">Class Lists</h3>
 <pre><code data-lang="viper">
 // List of class instances
 var players: List[Player] = new List[Player]();
@@ -556,10 +556,12 @@ func getNextGuess() -&gt; Integer {
     return 50;
 }
 </code></pre>
-<p>For more complete examples, see the <code>demos/zia/</code> directory:</p>
+<p>For more complete examples, see the <code>examples/games/</code> directory:</p>
 <ul>
-<li><code>frogger/main.zia</code> — Full Frogger game with entities and collision detection</li>
-<li><code>centipede/</code> — Centipede arcade game with entities and game loop</li>
+<li><code>xenoscape/</code> — 17K-line Metroid-style sidescroller demonstrating large-project structure, JSON level loading, and the full game runtime</li>
+<li><code>3dbowling/</code> — 3D bowling using Physics3D and the Graphics3D backend</li>
+<li><code>frogger/</code> — Full Frogger game with classes and collision detection</li>
+<li><code>centipede/</code> — Centipede arcade game with classes and game loop</li>
 <li><code>pacman/</code> — Pac-Man game demonstrating movement and collision</li>
 </ul>
 <p>---</p>
@@ -571,9 +573,12 @@ func getNextGuess() -&gt; Integer {
 </ul>
 <p><strong>Examples:</strong></p>
 <ul>
-<li><code>demos/zia/frogger/</code> — Complete Frogger game example</li>
-<li><code>demos/zia/centipede/</code> — Centipede arcade game</li>
-<li><code>demos/zia/pacman/</code> — Pac-Man game</li>
+<li><code>examples/games/xenoscape/</code> — 17K-line Metroid-style sidescroller</li>
+<li><code>examples/games/3dbowling/</code> — 3D bowling with Physics3D</li>
+<li><code>examples/games/frogger/</code> — Complete Frogger game example</li>
+<li><code>examples/games/centipede/</code> — Centipede arcade game</li>
+<li><code>examples/games/pacman/</code> — Pac-Man game</li>
+<li><code>examples/apps/vipersql/</code> — 78K-line PostgreSQL-compatible database</li>
 </ul>
 <p><strong>Interactive:</strong></p>
 <ul>

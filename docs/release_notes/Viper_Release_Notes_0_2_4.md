@@ -45,6 +45,7 @@ Version 0.2.4 is a game engine, asset system, rendering, 3D physics, PBR materia
 - **Zia Language: `entity`/`value` renamed to `class`/`struct`** — Mainstream keyword alignment across all source, tests, REPL, LSP, docs, and VS Code extension.
 - **VAPS Packaging Overhaul** — InstallerStub rewrite with full Windows .exe generation, WindowsPackageBuilder improvements, ZipWriter enhancements, PkgVerify expansion, symlink safety, dry-run mode, 57+ new tests.
 - **GUI Runtime Hardening** — Theme ownership moved to per-app structs (no more mutating built-in dark/light singletons), modal dialog routing follows the real dialog stack, overlay timing uses wall-clock time, platform text input events (`VGFX_EVENT_TEXT_INPUT`) wired through macOS/Win32/X11 backends replacing ASCII key synthesis, dropdown placeholder ownership fix, notification compaction, and command palette UTF-8 query path.
+- **GUI Widget Tree & Overlay Pass** — Toolkit runtime state now tracks the hovered widget and dispatches `MOUSE_ENTER`/`MOUSE_LEAVE` events across capture, modal, and normal hit-test paths; modal keyboard events fall back to the modal root when no widget is focused; `vg_widget_set_focus(NULL)` properly clears focus and notifies the previously focused widget. Painting splits into normal + overlay tree passes so dropdowns, menubar popups, and `FloatingPanel` overlays render above sibling content; `FloatingPanel` children are now real widget-tree nodes (no more private array) so hit testing, focus, and destruction follow the standard widget machinery. Layout containers (`VBox`, `HBox`, `Flex`) gain full `justify-content` distribution (`CENTER`/`END`/`SPACE_BETWEEN`/`SPACE_AROUND`/`SPACE_EVENLY`) via a polymorphic `vg_container_set_spacing` helper. `ScrollView` measures children before sizing content, applies a `vgfx` clip rect during child rendering, and walks the parent chain in `scroll_to_widget`. `rt_widget_set_position` invalidates layout/paint so manual positioning takes effect immediately.
 - **IO Runtime Hardening** — SaveData migrated from raw C strings to GC-managed `rt_string` keys/values with versioned JSON format and migration support. Glob pattern matching extended with character classes (`[a-z]`, `[!0-9]`), case-insensitive matching on Windows, `**` recursive directory descent, and correct path separator handling. File watcher debounced event coalescing, single-file watch with directory monitoring, and Windows `OVERLAPPED` handle leak fix. TempFile atomic `O_CREAT|O_EXCL` creation with collision retry. Archive extraction path traversal validation.
 - **HTTP Server Runtime Bindings** — `HttpServer` class wired through bytecode VM and both Zia/BASIC frontends with `Listen`, `Accept`, `Respond`, `Close` methods and request property accessors (`Method`, `Path`, `Header`, `Body`).
 - **Graphics3D Ownership Hardening** — CubeMap3D, Material3D, Decal3D, Sprite3D, InstanceBatch3D, and Water3D now properly retain/release their texture, mesh, and material references. Prevents GC from collecting assets still in use by the renderer.
@@ -74,7 +75,7 @@ Version 0.2.4 is a game engine, asset system, rendering, 3D physics, PBR materia
 | Commits | — | 112 | +112 |
 | Source files | 2,671 | 2,869 | +198 |
 | Production SLOC | ~348K | ~446K | +98K |
-| Test count | 1,351 | 1,446 | +95 |
+| Test count | 1,351 | 1,454 | +103 |
 
 ---
 
@@ -418,7 +419,7 @@ Seven new language features expanding Zia's operator, declaration, and parameter
 - Generated `RuntimeComponentManifest.hpp` — machine-checked archive name → component mapping generated from `runtime.def`, replacing hand-maintained string tables in `RuntimeComponents.hpp`. Drift between runtime.def and linker discovery is now a build error.
 - Platform import planners — NativeLinker.cpp monolith (~1100 lines removed) split into `PlatformImportPlanner.hpp`, `MacImportPlanner.cpp`, `LinuxImportPlanner.cpp`, `WindowsImportPlanner.cpp`. Each planner owns its platform's symbol → dylib/DLL classification.
 - Unified `build_viper_unix.sh` — replaces near-identical `build_viper_mac.sh` and `build_viper_linux.sh` with platform detection via `uname -s`. Old scripts retained as thin wrappers. Standardized env vars (`VIPER_BUILD_DIR`, `VIPER_BUILD_TYPE`, `VIPER_SKIP_INSTALL`). Demo scripts similarly consolidated.
-- `lint_platform_policy.sh` — flags raw `_WIN32`/`__APPLE__`/`__linux__` usage outside approved adapter files listed in `platform_policy_allowlist.txt`.
+- `lint_platform_policy.sh` — flags raw `_WIN32`/`__APPLE__`/`__linux__` usage outside approved adapter files listed in `platform_policy_allowlist.txt`. Bash 3.2 + `set -u` empty-array expansion guarded so a clean tree (or a `--paths` filter that matches nothing) reports `Platform policy lint: clean` instead of unbound-variable. New `test_platform_policy_lint_empty_candidates.sh` e2e smoke covers the path.
 - `run_cross_platform_smoke.sh` — detects host capabilities, runs the appropriate ctest label slice and example smoke probes, reports skips explicitly.
 - `PlatformSkip.h` + CTest `SKIP_RETURN_CODE 77` — test skips are now visible in CI output ("131 passed, 19 skipped" instead of "150 passed"). `viper_add_ctest()` sets skip return code centrally.
 - Audio surface link tests (`RTAudioSurfaceLinkTests.cpp`) — verifies disabled-audio builds link correctly against stubs.
@@ -781,6 +782,25 @@ Architectural improvements to the GUI subsystem for correctness and platform fid
 - Command palette placeholder and UTF-8 query path completed
 - MessageBox prompt/builder flows honor default/cancel button semantics
 - Font inheritance applied consistently at construction for all text-bearing widgets
+
+#### Widget Tree, Hover, and Overlay Pass
+- **Hover tracking in toolkit runtime state** — `vg_widget_runtime_state_t` gains a `hovered_widget` slot saved/restored alongside focus, capture, and modal root. Mouse-move dispatch (capture, modal, and normal hit-test paths) now emits `VG_EVENT_MOUSE_ENTER`/`VG_EVENT_MOUSE_LEAVE` on hover transitions. New `test_vg_tier2_fixes` cases validate enter/leave dispatch.
+- **Modal keyboard fallback** — When a modal dialog is active and no widget owns focus, keyboard events route to the modal root instead of being dropped on the floor.
+- **`vg_widget_set_focus(NULL)` clears focus** — Previously a no-op; now releases the previously focused widget, clears its `VG_STATE_FOCUSED` bit, calls its `on_focus(false)` hook, and marks it for repaint.
+- **Two-pass painting** — `vg_widget_paint` runs a normal tree walk followed by an overlay tree walk. Widgets that paint children internally (`ScrollView`, custom widgets implementing `paint_overlay`) act as render boundaries so the runtime does not double-recurse into their subtrees.
+- **`rt_gui_app_render` overlay walk** — Replaced the legacy single-capture-widget overlay paint with a full overlay tree walk, so multiple simultaneous overlays (e.g., a dropdown above a menubar above a floating panel) all render in the correct order.
+- **`FloatingPanel` reparented children** — `vg_floatingpanel_add_child` now adds children to the real widget tree (previously a private array). The panel implements an `arrange` method that lays children out within its absolute rect and renders them through recursive normal/overlay subtree passes during `paint_overlay`. Hit testing, focus, and destruction now follow standard widget machinery.
+- **`Dropdown` overlay** — Open popup moved from the normal `paint` path into a dedicated `paint_overlay` so it participates in the overlay tree pass; popup hit testing uses screen bounds via `vg_widget_get_screen_bounds` instead of unscoped widget-local coordinates.
+- **`ScrollView` clipping and content sizing** — Children are measured before content size is computed (auto-sized scrollers now match measured extents). Rendering uses `vgfx_set_clip` to clip the visible viewport. `scroll_to_widget` walks the parent chain to compute the child's scroller-relative position instead of assuming `child.x` is already relative to the scrollview.
+- **Coordinate model cleanup** — `vg_widget_get_screen_bounds` no longer applies parent padding or scrollview-specific scroll-offset shims (those concerns are owned by the layout/render passes that arrange children). Removes the duplicate `vg_scrollview_scroll_t` shim from `vg_widget.c`.
+- **`rt_widget_set_position` invalidates layout/paint** — Manual position changes now mark the widget dirty so the next render reflects the new placement immediately.
+
+#### Layout — Justify Content
+- **`VBox`, `HBox`, `Flex` justify-content** — `vg_layout.c` distributes leftover main-axis space according to the container's `justify` mode: `START` (default), `CENTER`, `END`, `SPACE_BETWEEN`, `SPACE_AROUND`, `SPACE_EVENLY`. Shared `compute_justify_distribution()` helper computes the leading offset and per-gap addend used by all three containers.
+- **`vg_container_set_spacing`** — New polymorphic API in `vg_layout.h` that dispatches to the right spacing setter for VBox, HBox, or Flex containers; other widget types are a safe no-op. `rt_container_set_spacing` now routes through it instead of unconditionally calling the VBox setter.
+
+#### SplitPane Argument Semantics
+- **`SplitPane.New(parent, horizontal)` boolean** — The runtime constructor now treats the second argument as `horizontal != 0` (1 → horizontal split, 0 → vertical split), aligning with the API audit demos and CSS-style intuition. New `RTGuiRuntimeTests.c` regression covers both directions.
 
 ---
 

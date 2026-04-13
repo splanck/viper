@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Full-Stack Runtime — Viper</title>
-  <meta name="description" content="Viper's 229-class runtime library covers graphics, audio, networking, crypto, threading, GUI, I/O, collections, text processing, and more — all built from scratch in portable C.">
+  <meta name="description" content="Viper's 300-class runtime library covers 2D + 3D graphics, audio, video, networking, crypto, threading, GUI, I/O, collections, text processing, and more — all built from scratch in portable C.">
   <link rel="stylesheet" href="../style.css">
   <link rel="icon" href="../favicon.png">
 </head>
@@ -35,14 +35,16 @@
       <ul>
         <li><a href="#overview">Overview</a></li>
         <li><a href="#collections">Collections</a></li>
-        <li><a href="#graphics">Graphics & Audio</a></li>
+        <li><a href="#graphics">Graphics &amp; Audio</a></li>
+        <li><a href="#graphics3d">Graphics3D</a></li>
         <li><a href="#network">Networking</a></li>
         <li><a href="#crypto">Cryptography</a></li>
         <li><a href="#text">Text Processing</a></li>
-        <li><a href="#io">I/O & File System</a></li>
+        <li><a href="#io">I/O &amp; File System</a></li>
         <li><a href="#threads">Threading</a></li>
         <li><a href="#game">Game Utilities</a></li>
-        <li><a href="#math">Math & Physics</a></li>
+        <li><a href="#gui">GUI Toolkit</a></li>
+        <li><a href="#math">Math</a></li>
         <li><a href="#platform">Platform Layer</a></li>
       </ul>
     </nav>
@@ -51,11 +53,11 @@
   <main class="page-main prose">
     <h1 id="overview">Full-Stack Runtime</h1>
 
-    <p>Viper's runtime library is <strong>146,872 lines of portable C</strong> implementing <strong>229 classes</strong> across 12+ modules. It rivals the standard libraries of established platforms like Python, Java, or C# &mdash; but every line is hand-written with zero external dependencies.</p>
+    <p>Viper's runtime library is portable C implementing <strong>300 classes across 22 modules</strong>. It rivals the standard libraries of established platforms like Python, Java, or C# &mdash; but every line is hand-written with zero external dependencies.</p>
 
-    <p>Platform-specific backends use only OS-native APIs: Cocoa on macOS, X11 on Linux, Win32 on Windows.</p>
+    <p>Platform-specific backends use only OS-native APIs: Cocoa / Metal on macOS, X11 / OpenGL on Linux, Win32 / D3D11 on Windows. A pure-software 3D rasterizer is always available as a fallback.</p>
 
-    <h2 id="collections">Collections (19+ classes)</h2>
+    <h2 id="collections">Collections (29 classes)</h2>
     <table>
       <thead><tr><th>Class</th><th>Description</th></tr></thead>
       <tbody>
@@ -77,55 +79,83 @@
       </tbody>
     </table>
 
-    <h2 id="graphics">Graphics & Audio (15+ classes)</h2>
+    <h2 id="graphics">Graphics &amp; Audio (12 + 7 classes)</h2>
     <table>
       <thead><tr><th>Class</th><th>Description</th></tr></thead>
       <tbody>
         <tr><td>Canvas</td><td>2D drawing surface &mdash; Box, Disc, Ring, Frame, Line, Text primitives</td></tr>
-        <tr><td>Sprite / SpriteBatch</td><td>Sprite rendering with animation, rotation, and batching</td></tr>
+        <tr><td>Sprite / SpriteBatch</td><td>Sprite rendering with animation, rotation, batching, flip</td></tr>
         <tr><td>SpriteSheet</td><td>Texture atlas with frame extraction</td></tr>
-        <tr><td>Tilemap</td><td>Tile-based map rendering with collision support</td></tr>
-        <tr><td>Camera</td><td>Viewport management and scrolling</td></tr>
-        <tr><td>Pixels</td><td>Pixel-level image manipulation</td></tr>
-        <tr><td>Color</td><td>RGB/HSV conversion, named colors</td></tr>
-        <tr><td>Scene / SceneNode</td><td>Scene graph hierarchy</td></tr>
-        <tr><td>Audio / Sound / Music</td><td>Sound effect playback, music streaming, volume control</td></tr>
-        <tr><td>Voice</td><td>Voice/speech support</td></tr>
+        <tr><td>Tilemap</td><td>Tile-based map rendering with collision and per-tile animation</td></tr>
+        <tr><td>Camera</td><td>Viewport management, scrolling, smooth follow with deadzone</td></tr>
+        <tr><td>Pixels</td><td>Pixel-level image manipulation; auto-detects PNG/JPEG/GIF/BMP on Load</td></tr>
+        <tr><td>BitmapFont</td><td>Bitmap font rendering</td></tr>
+        <tr><td>VideoPlayer / VideoWidget</td><td>AVI/MJPEG playback with audio sync, GUI widget integration</td></tr>
+        <tr><td>Audio / Sound / Music</td><td>Sound effect playback (WAV/OGG/MP3/VAF), music streaming with looping</td></tr>
+        <tr><td>SoundBank / Playlist</td><td>Bulk sound loading and playlist control</td></tr>
       </tbody>
     </table>
 
-    <h2 id="network">Networking (12+ classes)</h2>
+    <h2 id="graphics3d">Graphics3D (41 classes)</h2>
+    <table>
+      <thead><tr><th>Class</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td>Canvas3D</td><td>3D rendering surface; auto-selects Metal / D3D11 / OpenGL / software backend</td></tr>
+        <tr><td>Mesh3D</td><td>Triangle mesh with positions, normals, UVs, tangents</td></tr>
+        <tr><td>Material3D</td><td>Blinn-Phong materials and PBR (metallic-roughness, AO, normal, emissive)</td></tr>
+        <tr><td>Light3D</td><td>Directional, point, and spot lights with smoothstep cone attenuation</td></tr>
+        <tr><td>Camera3D</td><td>Perspective and orthographic cameras</td></tr>
+        <tr><td>Skeleton3D / Animation3D / AnimController3D</td><td>Skeletal animation with crossfade, named states, event frames</td></tr>
+        <tr><td>Terrain3D</td><td>Procedural terrain (Perlin), LOD with frustum culling, 4-layer splat maps, skirts</td></tr>
+        <tr><td>Water3D</td><td>Gerstner waves (up to 8), env-map reflections</td></tr>
+        <tr><td>Vegetation3D</td><td>Instanced grass/foliage with wind, density maps, distance LOD</td></tr>
+        <tr><td>Collider3D</td><td>7 shape types: box, sphere, capsule, hull, mesh, heightfield, compound</td></tr>
+        <tr><td>Body3D / Physics3D</td><td>Quaternion orientation, sleep system, CCD, joints, collision events</td></tr>
+        <tr><td>NavMesh3D / NavAgent3D</td><td>A* pathfinding with corridor smoothing, steering</td></tr>
+        <tr><td>AudioListener3D / AudioSource3D</td><td>3D positional audio with cone attenuation, distance rolloff</td></tr>
+        <tr><td>Model3D</td><td>Unified asset import: .vscn / .fbx / .gltf / .glb with shared resources</td></tr>
+        <tr><td>Scene3D</td><td>Scene graph with body/animator bindings; .vscn save/load</td></tr>
+        <tr><td>CubeMap3D / Decal3D / InstanceBatch3D / Sprite3D / ParticleEmitter3D</td><td>Skybox/reflection probes, decals, instanced rendering, billboards, particles</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="network">Networking (22 classes)</h2>
     <table>
       <thead><tr><th>Class</th><th>Description</th></tr></thead>
       <tbody>
         <tr><td>Tcp / TcpServer</td><td>TCP client and server sockets</td></tr>
         <tr><td>Udp</td><td>UDP datagram sockets</td></tr>
         <tr><td>Http / HttpReq / HttpRes</td><td>HTTP client with request/response objects</td></tr>
-        <tr><td>WebSocket</td><td>Full WebSocket protocol (text and binary frames)</td></tr>
-        <tr><td>Tls</td><td>TLS 1.3 with certificate verification, ECDSA P-256</td></tr>
+        <tr><td>HttpServer</td><td>HTTP server with Listen/Accept/Respond/Close and request property accessors</td></tr>
+        <tr><td>WebSocket</td><td>Full WebSocket protocol (text and binary frames, server upgrade)</td></tr>
+        <tr><td>Tls</td><td>TLS 1.2 / 1.3 with certificate verification, ECDSA P-256, RSA-PSS SHA-256/384/512</td></tr>
+        <tr><td>Smtp</td><td>SMTP client for outbound mail</td></tr>
+        <tr><td>Sse</td><td>Server-Sent Events client (chunked transfer)</td></tr>
         <tr><td>Dns</td><td>Domain name resolution</td></tr>
         <tr><td>Url</td><td>URL parsing and construction</td></tr>
         <tr><td>RestClient</td><td>Convenience layer for REST APIs</td></tr>
+        <tr><td>ConnectionPool</td><td>Reusable HTTP/TCP connection pool</td></tr>
         <tr><td>RateLimiter</td><td>Request throttling</td></tr>
-        <tr><td>RetryPolicy</td><td>Automatic retry with jitter</td></tr>
+        <tr><td>RetryPolicy</td><td>Automatic retry with jittered backoff</td></tr>
       </tbody>
     </table>
 
-    <h2 id="crypto">Cryptography (7 classes)</h2>
+    <h2 id="crypto">Cryptography (10 classes)</h2>
     <table>
       <thead><tr><th>Class</th><th>Description</th></tr></thead>
       <tbody>
-        <tr><td>Aes</td><td>AES-256 block cipher</td></tr>
-        <tr><td>Cipher</td><td>High-level encryption interface</td></tr>
-        <tr><td>Hash</td><td>MD5, SHA-1, SHA-256, Blake2b, CRC32</td></tr>
-        <tr><td>KeyDerive</td><td>PBKDF2, Scrypt key derivation</td></tr>
-        <tr><td>Password</td><td>Bcrypt, Argon2 password hashing</td></tr>
-        <tr><td>Rand</td><td>Cryptographically secure RNG</td></tr>
-        <tr><td>Tls</td><td>TLS protocol with cipher suite negotiation</td></tr>
+        <tr><td>Aes / AesGcm</td><td>AES-128/256 block cipher and AES-GCM authenticated encryption</td></tr>
+        <tr><td>Cipher</td><td>High-level encryption interface (PBKDF2 + HKDF key derivation)</td></tr>
+        <tr><td>Hash</td><td>MD5, SHA-1, SHA-256, SHA-384, SHA-512, CRC32</td></tr>
+        <tr><td>Hmac</td><td>HMAC with all SHA-2 variants</td></tr>
+        <tr><td>Hkdf / Pbkdf2</td><td>Key derivation functions</td></tr>
+        <tr><td>Ecdsa</td><td>ECDSA P-256 sign / verify</td></tr>
+        <tr><td>Rand</td><td>Cryptographically secure RNG (OS-backed)</td></tr>
+        <tr><td>Tls</td><td>Full TLS 1.2 / 1.3 with cipher suite negotiation, certificate validation, RSA-PSS</td></tr>
       </tbody>
     </table>
 
-    <h2 id="text">Text Processing (20+ classes)</h2>
+    <h2 id="text">Text Processing (20 classes)</h2>
     <table>
       <thead><tr><th>Class</th><th>Description</th></tr></thead>
       <tbody>
@@ -143,22 +173,23 @@
       </tbody>
     </table>
 
-    <h2 id="io">I/O & File System (15+ classes)</h2>
+    <h2 id="io">I/O &amp; File System (16 classes)</h2>
     <table>
       <thead><tr><th>Class</th><th>Description</th></tr></thead>
       <tbody>
         <tr><td>File / BinFile</td><td>Text and binary file operations</td></tr>
-        <tr><td>Dir / Path / Glob</td><td>Directory traversal, path manipulation, pattern matching</td></tr>
+        <tr><td>Dir / Path / Glob</td><td>Directory traversal, path manipulation, pattern matching with character classes and `**` recursion</td></tr>
         <tr><td>Stream / MemStream</td><td>Abstract and in-memory streams</td></tr>
-        <tr><td>Archive / Compress</td><td>Archive handling and DEFLATE compression</td></tr>
+        <tr><td>Archive / Compress</td><td>Archive handling and DEFLATE compression with zip-slip path-traversal validation</td></tr>
         <tr><td>LineReader / LineWriter</td><td>Line-based I/O</td></tr>
-        <tr><td>Watcher</td><td>File system change detection</td></tr>
-        <tr><td>SaveData</td><td>Persistent save file management</td></tr>
-        <tr><td>TempFile</td><td>Temporary file creation</td></tr>
+        <tr><td>Watcher</td><td>File system change detection (FSEvents / inotify / ReadDirectoryChangesW) with debounced coalescing</td></tr>
+        <tr><td>SaveData</td><td>Persistent save file management with versioned JSON migration</td></tr>
+        <tr><td>TempFile</td><td>Atomic temporary file creation (O_CREAT|O_EXCL / CREATE_NEW)</td></tr>
+        <tr><td>Assets</td><td>VPA asset embedding (compile-time `embed`/`pack`/`pack-compressed`) with mountable archives</td></tr>
       </tbody>
     </table>
 
-    <h2 id="threads">Threading & Concurrency (14+ classes)</h2>
+    <h2 id="threads">Threading &amp; Concurrency (18 classes)</h2>
     <table>
       <thead><tr><th>Class</th><th>Description</th></tr></thead>
       <tbody>
@@ -173,35 +204,46 @@
       </tbody>
     </table>
 
-    <h2 id="game">Game Utilities (12+ classes)</h2>
+    <h2 id="game">Game Utilities (22 + 6 + 5 classes)</h2>
     <table>
       <thead><tr><th>Class</th><th>Description</th></tr></thead>
       <tbody>
-        <tr><td>Grid2D</td><td>2D tile storage and lookup</td></tr>
-        <tr><td>Timer</td><td>Frame-based timing and repeating events</td></tr>
-        <tr><td>Tween</td><td>Smooth value interpolation with easing</td></tr>
+        <tr><td>Entity</td><td>2D game object with built-in physics, HP, AABB collision flags, tilemap-aware sweep</td></tr>
+        <tr><td>Behavior</td><td>Composable AI presets: Patrol, Chase, Gravity, EdgeReverse, Shoot, SineFloat</td></tr>
+        <tr><td>Raycast2D</td><td>Tilemap line-of-sight queries, line/rect &amp; line/circle collision</td></tr>
+        <tr><td>SceneManager</td><td>Multi-scene transitions with fade/wipe</td></tr>
+        <tr><td>LevelData</td><td>JSON level loader (tilemap, objects, player start, theme)</td></tr>
+        <tr><td>AnimStateMachine</td><td>Named animation states with `Play(name)` and event frames</td></tr>
+        <tr><td>PlatformerController</td><td>Jump buffering, coyote time, variable jump, apex gravity bonus</td></tr>
+        <tr><td>Lighting2D</td><td>Darkness overlay with pulsing player light, pooled dynamic lights</td></tr>
+        <tr><td>AchievementTracker</td><td>Up to 64 achievements + 32 stat counters with animated popups</td></tr>
+        <tr><td>Typewriter</td><td>Character-by-character text reveal with configurable rate</td></tr>
+        <tr><td>Timer</td><td>Frame and ms-mode countdowns</td></tr>
+        <tr><td>Tween / Easing</td><td>Smooth value interpolation with easing functions</td></tr>
         <tr><td>StateMachine</td><td>Finite state machine</td></tr>
-        <tr><td>Physics2D / Collision</td><td>2D physics simulation and collision detection</td></tr>
+        <tr><td>Physics2D / Collision</td><td>2D physics simulation, joints (hinge, spring, rope, distance)</td></tr>
         <tr><td>ParticleEmitter</td><td>Particle system with lifetime management</td></tr>
         <tr><td>ObjectPool</td><td>Reusable object pooling</td></tr>
-        <tr><td>PathFollower</td><td>Path-based movement</td></tr>
-        <tr><td>SmoothValue</td><td>Animated numeric counters</td></tr>
-        <tr><td>ScreenFX</td><td>Screen shake, flash, and fade effects</td></tr>
+        <tr><td>Config</td><td>JSON config loader with typed accessors</td></tr>
+        <tr><td>GameButton / MenuList / GameUI</td><td>HUD widgets: bars, labels, menus, panels, styled buttons</td></tr>
       </tbody>
     </table>
 
-    <h2 id="math">Math & Physics (10+ classes)</h2>
+    <h2 id="gui">GUI Toolkit (46 classes)</h2>
+    <p>Cross-platform desktop widgets for building IDEs and tools. Includes buttons, labels, text input, sliders, modals, dropdowns, menubars, tab bars, tree views, code editor with multi-cursor, scroll views with clipping, floating panels, video widgets, and more. Recent additions: full hover events (MOUSE_ENTER/MOUSE_LEAVE), justify-content layout (CENTER/SPACE_BETWEEN/SPACE_AROUND/SPACE_EVENLY), per-app theme ownership, and platform text input (`VGFX_EVENT_TEXT_INPUT`) for non-QWERTY keyboards.</p>
+
+    <h2 id="math">Math (12 classes)</h2>
     <table>
       <thead><tr><th>Class</th><th>Description</th></tr></thead>
       <tbody>
-        <tr><td>Vec2 / Vec3</td><td>2D and 3D vector types with full operator set</td></tr>
+        <tr><td>Vec2 / Vec3</td><td>2D and 3D vector types with pooled allocation</td></tr>
         <tr><td>Mat3 / Mat4</td><td>3x3 and 4x4 matrix operations</td></tr>
-        <tr><td>Quaternion</td><td>Quaternion math for rotations</td></tr>
+        <tr><td>Quaternion</td><td>Quaternion math for rotations (used by Physics3D and Animation)</td></tr>
         <tr><td>Math</td><td>Standard math functions (sin, cos, sqrt, pow, etc.)</td></tr>
         <tr><td>Random</td><td>Pseudo-random number generation</td></tr>
-        <tr><td>PerlinNoise</td><td>2D/3D Perlin noise generation</td></tr>
-        <tr><td>Spline</td><td>Spline interpolation</td></tr>
-        <tr><td>Easing</td><td>Animation easing functions (quad, cubic, elastic, bounce)</td></tr>
+        <tr><td>PerlinNoise / SimplexNoise</td><td>Coherent noise generation</td></tr>
+        <tr><td>Spline</td><td>Spline interpolation (Catmull-Rom, B&eacute;zier)</td></tr>
+        <tr><td>BigInt</td><td>Arbitrary-precision integer arithmetic</td></tr>
         <tr><td>Bits</td><td>Bit manipulation (count, rotate, swap)</td></tr>
       </tbody>
     </table>
@@ -213,11 +255,13 @@
     <table>
       <thead><tr><th>Subsystem</th><th>macOS</th><th>Linux</th><th>Windows</th></tr></thead>
       <tbody>
-        <tr><td>Graphics</td><td>Cocoa / Core Graphics</td><td>X11</td><td>Win32 GDI</td></tr>
+        <tr><td>2D Graphics</td><td>Cocoa / Core Graphics</td><td>X11</td><td>Win32 GDI</td></tr>
+        <tr><td>3D Graphics</td><td>Metal</td><td>OpenGL</td><td>Direct3D 11</td></tr>
         <tr><td>Audio</td><td>AudioQueue</td><td>ALSA</td><td>WASAPI</td></tr>
         <tr><td>Networking</td><td colspan="2">POSIX sockets</td><td>WinSock</td></tr>
         <tr><td>Threading</td><td colspan="2">pthreads</td><td>Win32 threads</td></tr>
         <tr><td>File I/O</td><td colspan="2">POSIX</td><td>Win32 + POSIX compat</td></tr>
+        <tr><td>Native menu bar</td><td>NSMenu (mirrored)</td><td>(none)</td><td>(none)</td></tr>
         <tr><td>Atomics</td><td colspan="2">__atomic builtins</td><td>Interlocked*</td></tr>
       </tbody>
     </table>

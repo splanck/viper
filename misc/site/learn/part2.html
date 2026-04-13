@@ -101,7 +101,7 @@
         <li><a href="#default-values-and-initialization">Default Values and Initialization</a></li>
         <li><a href="#design-principles-making-good-structures">Design Principles: Making Good Structures</a></li>
         <li><a href="#practical-examples">Practical Examples</a></li>
-        <li><a href="#a-complete-example-game-entities">A Complete Example: Game Entities</a></li>
+        <li><a href="#a-complete-example-game-objects">A Complete Example: Game Objects</a></li>
         <li><a href="#the-two-languages">The Two Languages</a></li>
         <li><a href="#structures-vs-classes-preview">Structures vs. Classes (Preview)</a></li>
         <li><a href="#common-patterns">Common Patterns</a></li>
@@ -5640,7 +5640,7 @@ func start() {
 }
 </code></pre>
 <p>---</p>
-<h2 id="a-complete-example-game-entities">A Complete Example: Game Entities</h2>
+<h2 id="a-complete-example-game-objects">A Complete Example: Game Objects</h2>
 <p>Let&#x27;s put everything together in a more complex game example:</p>
 <pre><code data-lang="rust">
 module GameDemo;
@@ -5897,8 +5897,8 @@ PRINT p.x
 <li><strong>Methods are simple.</strong> There&#x27;s no way to override a method in a &quot;child&quot; type.</li>
 <li><strong>Copying can be expensive.</strong> For large structures passed frequently, making copies has a cost.</li>
 </ul>
-<p>For more complex needs, we use <em>entities</em> (similar to classes in other languages), which we&#x27;ll cover in Part III. Entities have reference semantics (assigning creates an alias, not a copy), support inheritance and polymorphism, and offer more flexibility.</p>
-<p>For now, structures handle most cases beautifully. They&#x27;re simpler, safer, and sufficient for organizing data in the majority of programs. When you truly need the power of entities, you&#x27;ll know — and we&#x27;ll be ready to teach you.</p>
+<p>For more complex needs, we use <em>classes</em> (Zia&#x27;s reference-type construct), which we&#x27;ll cover in Part III. Classes have reference semantics (assigning creates an alias, not a copy), support inheritance and polymorphism, and offer more flexibility.</p>
+<p>For now, structs handle most cases beautifully. They&#x27;re simpler, safer, and sufficient for organizing data in the majority of programs. When you truly need the power of classes, you&#x27;ll know — and we&#x27;ll be ready to teach you.</p>
 <p>---</p>
 <h2 id="common-patterns">Common Patterns</h2>
 <h3 id="factory-functions">Factory Functions</h3>

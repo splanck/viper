@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Real Applications — Viper</title>
-  <meta name="description" content="Real applications built with Viper: a 73K-line SQL database, an IDE with IntelliSense, a chess engine with AI, a multi-threaded web server, and more.">
+  <meta name="description" content="Real applications built with Viper: a 78K-line PostgreSQL-compatible database, an IDE with IntelliSense, a Metroid-style sidescroller, a 3D bowling game with Physics3D, a chess engine with AI, and more.">
   <link rel="stylesheet" href="../style.css">
   <link rel="icon" href="../favicon.png">
 </head>
@@ -32,7 +32,7 @@
   <div class="prose" style="max-width: 800px; margin: 0 auto;">
     <h1>Real Applications</h1>
 
-    <p>Viper isn't a "hello world" compiler. The examples directory contains <strong>production-quality applications and games</strong> totaling over 100,000 lines of code &mdash; all written in Viper's own languages and compiling to native binaries.</p>
+    <p>Viper isn't a "hello world" compiler. The examples directory contains <strong>production-quality applications and games</strong> totaling well over 100,000 lines of code &mdash; all written in Viper's own languages and compiling to native binaries.</p>
 
     <h2>Applications</h2>
 
@@ -40,39 +40,39 @@
       <thead><tr><th>Project</th><th>Language</th><th>LOC</th><th>Highlights</th></tr></thead>
       <tbody>
         <tr>
-          <td><a href="../showcase/sqldb.html"><strong>SQL Database</strong></a></td>
+          <td><a href="../showcase/sqldb.html"><strong>ViperSQL</strong></a></td>
           <td>Zia</td>
-          <td>73,701</td>
-          <td>PostgreSQL-compatible with MVCC, WAL, B-tree indexes, wire protocol, stored procedures</td>
+          <td>78,300</td>
+          <td>PostgreSQL-compatible engine with MVCC, WAL, B-tree indexes, PG wire protocol, vsql interactive client, stored procedures</td>
         </tr>
         <tr>
           <td><a href="../showcase/viperide.html"><strong>ViperIDE</strong></a></td>
           <td>Zia</td>
-          <td>2,792</td>
-          <td>Tabbed editor, IntelliSense, syntax highlighting, integrated build, settings persistence</td>
+          <td>3,300</td>
+          <td>Live diagnostics, hover tooltips, IntelliSense, go-to-definition, project search, symbol outline, code editor with multi-cursor</td>
         </tr>
         <tr>
           <td><a href="../showcase/paint.html"><strong>Paint</strong></a></td>
           <td>Zia</td>
-          <td>2,410</td>
-          <td>8 drawing tools, color picker, undo/redo, Canvas-based rendering</td>
+          <td>2,900</td>
+          <td>8 drawing tools, shapes, color palette, undo/redo, Canvas-based rendering</td>
         </tr>
         <tr>
           <td><a href="../showcase/webserver.html"><strong>Web Server</strong></a></td>
           <td>Zia</td>
-          <td>1,352</td>
+          <td>1,350</td>
           <td>Multi-threaded HTTP, routing, static file serving, JSON API endpoints</td>
         </tr>
         <tr>
-          <td><strong>Archive Utility</strong></td>
+          <td><a href="../showcase/varc.html"><strong>Archive Utility (VARC)</strong></a></td>
           <td>Zia</td>
-          <td>893</td>
+          <td>900</td>
           <td>DEFLATE compression, AES-256 encryption, custom VARC format</td>
         </tr>
         <tr>
-          <td><strong>Telnet</strong></td>
+          <td><a href="../showcase/telnet.html"><strong>Telnet</strong></a></td>
           <td>Zia</td>
-          <td>491</td>
+          <td>500</td>
           <td>TCP client/server, session management, multi-client threading</td>
         </tr>
       </tbody>
@@ -84,28 +84,33 @@
       <thead><tr><th>Project</th><th>LOC</th><th>Highlights</th></tr></thead>
       <tbody>
         <tr>
-          <td><a href="../showcase/sidescroller.html"><strong>Nova Run</strong></a></td>
-          <td>6,592</td>
-          <td>2D platformer with physics, parallax scrolling, particle effects, 5 levels, boss fights</td>
+          <td><a href="../showcase/sidescroller.html"><strong>XENOSCAPE</strong></a></td>
+          <td>17,400</td>
+          <td>Metroid-style sidescroller: 10 levels, 25+ enemies, bosses, abilities, JSON level loading, save/load, 6 biomes</td>
+        </tr>
+        <tr>
+          <td><strong>3D Bowling</strong></td>
+          <td>4,600</td>
+          <td>3D bowling with Physics3D pin collision, ball spin/hook, 4-mode camera, 10-frame scoring</td>
         </tr>
         <tr>
           <td><a href="../showcase/chess.html"><strong>Chess</strong></a></td>
-          <td>2,937</td>
-          <td>Alpha-beta AI with transposition tables, drag-drop GUI, full rule enforcement</td>
+          <td>3,200</td>
+          <td>Alpha-beta AI with transposition tables, pre-rendered piece sprites, drag-and-drop GUI, full rule enforcement</td>
         </tr>
         <tr>
-          <td><strong>Centipede</strong></td>
-          <td>2,553</td>
+          <td><a href="../showcase/centipede.html"><strong>Centipede</strong></a></td>
+          <td>2,550</td>
           <td>Multiple enemy types, mushroom fields, particle effects, level progression</td>
         </tr>
         <tr>
           <td><a href="../showcase/pacman.html"><strong>Pac-Man</strong></a></td>
-          <td>2,207</td>
-          <td>Ghost AI personalities (Blinky, Pinky, Inky, Clyde), BFS pathfinding, Canvas rendering</td>
+          <td>2,200</td>
+          <td>Ghost AI personalities (Blinky, Pinky, Inky, Clyde), BFS pathfinding, scatter/chase modes</td>
         </tr>
         <tr>
-          <td><strong>Frogger</strong></td>
-          <td>754</td>
+          <td><a href="../showcase/frogger.html"><strong>Frogger</strong></a></td>
+          <td>750</td>
           <td>Multi-lane traffic and river crossing, sprite-based rendering</td>
         </tr>
       </tbody>
@@ -151,12 +156,12 @@
 
     <h2>What This Proves</h2>
 
-    <p>A 73,000-line SQL database with MVCC and a wire protocol isn't a toy example. A chess engine with transposition tables and a drag-drop GUI isn't a demo. These are real applications that exercise every layer of the platform:</p>
+    <p>A 78,000-line PostgreSQL-compatible database with MVCC and a wire protocol isn't a toy example. A 17K-line Metroid-style sidescroller, a 3D bowling game with full rigid-body physics, an IDE with IntelliSense and live diagnostics &mdash; none of these are demos. They are real applications that exercise every layer of the platform:</p>
 
     <ul>
-      <li><strong>Language features</strong> &mdash; Classes, inheritance, generics, pattern matching, modules</li>
-      <li><strong>Runtime capabilities</strong> &mdash; Graphics, networking, threading, crypto, file I/O</li>
-      <li><strong>Compiler quality</strong> &mdash; These programs run correctly at scale, handling edge cases across 73K+ lines</li>
+      <li><strong>Language features</strong> &mdash; Classes, structs, inheritance, generics, lambdas, variadic params, pattern matching, modules, typed exception handling</li>
+      <li><strong>Runtime capabilities</strong> &mdash; 2D + 3D graphics, audio (WAV/OGG/MP3), video, networking (HTTP server, WebSocket, TLS), threading, crypto, GUI widgets, asset embedding</li>
+      <li><strong>Compiler quality</strong> &mdash; These programs run correctly at scale, handling edge cases across tens of thousands of lines</li>
       <li><strong>Performance</strong> &mdash; Games run at interactive frame rates; the database handles concurrent transactions</li>
     </ul>
 

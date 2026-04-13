@@ -105,10 +105,12 @@ bind &quot;path/to/module&quot;;
 var globalVar: Type = value;
 final CONSTANT = value;
 
-// Type declarations (class, value, interface)
-class MyEntity { ... }
+// Type declarations (class, struct, interface, enum, type alias)
+class MyClass { ... }
 struct MyStruct { ... }
 interface MyInterface { ... }
+enum Color { Red, Green, Blue }
+type Vec = List[Integer];
 
 // Function declarations
 func functionName(params) -&gt; ReturnType { ... }
@@ -261,13 +263,13 @@ List[Player]            // List of class instances
 Map[String, Integer]    // Map from strings to integers
 </code></pre>
 <p>Map keys are restricted to <code>String</code>.</p>
-<h3 id="class-types">Entity Types</h3>
-<p>Reference types defined with the <code>class</code> keyword:</p>
+<h3 id="class-types">Class Types</h3>
+<p>Reference types defined with the <code>class</code> keyword (renamed from <code>entity</code> in v0.2.4):</p>
 <pre><code data-lang="viper">
 var player: Player = new Player();
 </code></pre>
-<h3 id="value-types">Value Types</h3>
-<p>Copy-semantics types defined with the <code>value</code> keyword:</p>
+<h3 id="struct-types">Struct Types (Value Types)</h3>
+<p>Copy-semantics types defined with the <code>struct</code> keyword (renamed from <code>value</code> in v0.2.4):</p>
 <pre><code data-lang="viper">
 var point: Point;
 </code></pre>
@@ -963,7 +965,7 @@ interface InterfaceName {
 </code></pre>
 <h3 id="implementing-interfaces">Implementing Interfaces</h3>
 <pre><code data-lang="viper">
-class MyEntity implements InterfaceName {
+class MyClass implements InterfaceName {
     expose func methodSignature(params) -&gt; ReturnType {
         // Implementation
     }

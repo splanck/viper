@@ -66,9 +66,13 @@
 <h2 id="getting-started">Getting Started</h2>
 <h3 id="4-how-do-i-build-viper">4. How do I build Viper?</h3>
 <pre><code data-lang="bash">
-./scripts/build_viper.sh
+# macOS / Linux
+./scripts/build_viper_unix.sh
+
+# Windows
+scripts\build_viper.cmd
 </code></pre>
-<p>Requirements: CMake 3.20+, Clang or GCC with C++20 support. See the top-level README for platform-specific details.</p>
+<p>Requirements: CMake 3.20+, Clang or GCC with C++20 support (or MSVC on Windows). See the top-level README for platform-specific details.</p>
 <h3 id="5-how-do-i-run-a-program">5. How do I run a program?</h3>
 <pre><code data-lang="bash">
 viper run myprogram.zia
@@ -87,12 +91,18 @@ ilrun program.il
 </code></pre>
 <h3 id="6-where-can-i-find-example-programs">6. Where can I find example programs?</h3>
 <ul>
-<li><code>/demos/zia/frogger/</code> - Full Frogger game in Zia demonstrating modules and game architecture</li>
-<li><code>/demos/zia/centipede/</code> - Centipede game in Zia</li>
-<li><code>/demos/zia/pacman/</code> - Pac-Man game in Zia</li>
-<li><code>/demos/basic/vtris/</code> - Full Tetris game demonstrating OOP, graphics, and game loop patterns (BASIC)</li>
-<li><code>/demos/basic/chess/</code> - Chess game in BASIC</li>
-<li><code>/examples/basic/</code> - BASIC example programs</li>
+<li><code>/examples/games/xenoscape/</code> - 17K-line Metroid-style sidescroller in Zia</li>
+<li><code>/examples/games/3dbowling/</code> - 3D bowling with Physics3D in Zia</li>
+<li><code>/examples/games/chess/</code> - Chess with alpha-beta AI in Zia</li>
+<li><code>/examples/games/pacman/</code> - Pac-Man in Zia</li>
+<li><code>/examples/games/frogger/</code> - Frogger in Zia</li>
+<li><code>/examples/games/centipede/</code> - Centipede in Zia</li>
+<li><code>/examples/apps/vipersql/</code> - 78K-line PostgreSQL-compatible database in Zia</li>
+<li><code>/examples/apps/viperide/</code> - IDE with IntelliSense in Zia</li>
+<li><code>/examples/apps/paint/</code> - Drawing app in Zia</li>
+<li><code>/examples/games/vtris/</code> - Tetris in BASIC</li>
+<li><code>/examples/games/chess-basic/</code>, <code>/examples/games/pacman-basic/</code>, etc. - Other BASIC ports</li>
+<li><code>/examples/basic/</code> - Small BASIC example programs</li>
 <li><code>/src/tests/golden/zia/</code> - Zia test programs showing specific language features</li>
 <li><code>/src/tests/golden/basic/</code> - BASIC test programs showing specific language features</li>
 </ul>
@@ -100,22 +110,25 @@ ilrun program.il
 <p>Viper builds and runs on:</p>
 <ul>
 <li><strong>macOS</strong> (Apple Silicon and Intel)</li>
-<li><strong>Linux</strong> (x86-64)</li>
-<li><strong>Windows</strong> (x86-64)</li>
+<li><strong>Linux</strong> (x86-64 and ARM64)</li>
+<li><strong>Windows</strong> (x86-64; ARM64 object emission only)</li>
 </ul>
-<p>Native code generation targets x86-64 (System V and Windows x64 ABIs) and AArch64.</p>
+<p>Native code generation targets x86-64 (System V and Windows x64 ABIs) and AArch64. The native linker produces ELF (with full dynamic linking on Linux), Mach-O (with code signing on macOS), and PE32+ (with .idata import tables on Windows) without requiring any external assembler or linker.</p>
 <p>---</p>
 <h2 id="zia-language">Zia Language</h2>
 <h3 id="8-what-is-zia">8. What is Zia?</h3>
 <p>Zia is Viper&#x27;s primary language, designed as a modern, clean systems programming language. It includes:</p>
 <ul>
 <li>Module system for code organization</li>
-<li>Entity types (similar to classes) with methods and fields</li>
-<li>Strong static typing (Integer, Boolean, String, etc.)</li>
-<li>Structured control flow (if/else, while, for, match)</li>
-<li>Functions with type annotations</li>
+<li>Classes (reference type) and structs (value type) with methods, fields, inheritance, and interfaces</li>
+<li>Strong static typing (Integer, Boolean, String, etc.) with full inference</li>
+<li>Structured control flow (if/else, while, for-in, match with exhaustiveness)</li>
+<li>Generics, lambdas, variadic parameters, type aliases</li>
+<li>Optional types with safe-navigation (<code>?.</code>) and unwrap (<code>!</code>)</li>
+<li>String interpolation (<code>"${name}"</code>)</li>
+<li>Try/catch with typed catch blocks</li>
 <li>Bind system for multi-file projects</li>
-<li>First-class support for the Viper runtime library</li>
+<li>First-class support for the Viper runtime library (300 classes)</li>
 </ul>
 <h3 id="9-how-do-i-write-a-simple-zia-program">9. How do I write a simple Zia program?</h3>
 <pre><code data-lang="rust">
@@ -129,8 +142,8 @@ func start() {
 <pre><code data-lang="bash">
 ./build/src/tools/zia/zia hello.zia
 </code></pre>
-<h3 id="10-what-are-entities-in-zia">10. What are entities in Zia?</h3>
-<p>Entities are Zia&#x27;s object-oriented construct, similar to classes:</p>
+<h3 id="10-what-are-classes-in-zia">10. What are classes in Zia?</h3>
+<p>Classes are Zia&#x27;s reference-type object construct (renamed from <code>entity</code> in v0.2.4). Companion value-types use <code>struct</code> (renamed from <code>value</code>).</p>
 <pre><code data-lang="rust">
 class Counter {
     expose Integer value;

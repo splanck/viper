@@ -120,9 +120,9 @@
     <table>
       <thead><tr><th>Format</th><th>Key Details</th></tr></thead>
       <tbody>
-        <tr><td>ELF</td><td>Static ET_EXEC, PT_GNU_STACK for non-executable stack</td></tr>
-        <tr><td>Mach-O</td><td>MH_EXECUTE | MH_PIE, __PAGEZERO (4 GB guard), LC_BUILD_VERSION, ad-hoc code signing</td></tr>
-        <tr><td>PE</td><td>PE32+, NX_COMPAT, HIGH_ENTROPY_VA, DLL characteristics, 1 MB stack reserve</td></tr>
+        <tr><td>ELF</td><td>Static or dynamic-linked ET_EXEC: PT_INTERP (`/lib64/ld-linux-x86-64.so.2`), PT_DYNAMIC, .dynsym, .dynstr, .hash (SYSV), .rela.dyn with R_X86_64_GLOB_DAT relocations. Linux native binaries link against libc/libm/libpthread/libX11/libasound without falling back to the system linker.</td></tr>
+        <tr><td>Mach-O</td><td>MH_EXECUTE | MH_PIE, __PAGEZERO (4 GB guard), LC_BUILD_VERSION, ad-hoc code signing, ObjC metadata sections (`S_CSTRING_LITERALS`, `S_LITERAL_POINTERS`, `S_ATTR_NO_DEAD_STRIP`), framework auto-linking</td></tr>
+        <tr><td>PE</td><td>PE32+, NX_COMPAT, HIGH_ENTROPY_VA, DLL characteristics, 1 MB stack reserve, full `.idata` import tables (no clang/link.exe required)</td></tr>
       </tbody>
     </table>
 
@@ -135,7 +135,11 @@
       <li>Block-order traversal with cross-block persistence via exit-state caching</li>
       <li>Copy coalescer integrated before linear scan (~270 LOC)</li>
       <li>Next-use distance heuristics for spill victim selection</li>
+      <li>Protected-use eviction so the source operands of the currently-allocating instruction can never be evicted</li>
+      <li>`isLiveOut()` query prevents premature release for vregs with no remaining uses in the current block but live across CFG boundaries</li>
+      <li>Block-epoch spill slot lifetimes prevent stale offset reuse across blocks</li>
       <li>Callee-saved register tracking for automatic prologue/epilogue generation</li>
+      <li>Apple M-series scheduler latency tuning (FP divide 10 cycles, integer divide 7, FP multiply 4)</li>
     </ul>
 
     <h3>x86-64</h3>
@@ -143,6 +147,8 @@
       <li>Pre-computed live intervals for priority-ordered assignment</li>
       <li>Aggressive copy coalescing as post-allocation pass</li>
       <li>Dedicated spiller with reload/store pair insertion</li>
+      <li>Carry-through across simple block boundaries (`canCarryIntoNextBlock()`) avoids forced spills at single-predecessor fallthrough edges</li>
+      <li>Branch relaxation: short JMP (2 bytes) and short Jcc (2 bytes) for near branches replace always-near 5-byte / 6-byte forms</li>
       <li>16 GPR + 16 XMM register tracking</li>
     </ul>
 
@@ -150,14 +156,16 @@
 
     <p>After register allocation, both backends apply target-specific peephole passes:</p>
 
-    <h3>AArch64 (7 passes)</h3>
+    <h3>AArch64 (7+ passes)</h3>
     <ul>
       <li><strong>BranchOpt</strong> &mdash; Jump-to-jump elimination, unreachable block removal</li>
       <li><strong>CopyPropDCE</strong> &mdash; Forward copy propagation + dead code elimination</li>
       <li><strong>IdentityElim</strong> &mdash; Self-move removal (MOV Xn, Xn)</li>
-      <li><strong>LoopOpt</strong> &mdash; Loop-invariant constant hoisting to callee-saved registers (~720 LOC)</li>
+      <li><strong>LoopOpt</strong> &mdash; Loop-invariant constant hoisting; multi-block phi-spill rewriting</li>
       <li><strong>MemoryOpt</strong> &mdash; Redundant load/store elimination</li>
       <li><strong>StrengthReduce</strong> &mdash; Multiply/divide by power-of-2 &rarr; shift/AND</li>
+      <li><strong>JoinPhiCoalesce</strong> &mdash; Eliminates stack round-trips at CFG join blocks by proving all predecessors store the same physical registers and replacing the load prefix with topologically-ordered moves</li>
+      <li><strong>Scheduler / BlockLayout</strong> &mdash; PassManager-driven post-RA scheduling and block layout at O1+</li>
     </ul>
 
     <h3>x86-64 (5 passes)</h3>

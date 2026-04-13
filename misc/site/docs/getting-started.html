@@ -72,9 +72,13 @@
 <h2 id="building-viper">Building Viper</h2>
 <p>The build script configures, compiles, tests, and installs Viper in one step:</p>
 <pre><code data-lang="sh">
-./scripts/build_viper.sh
+# macOS / Linux
+./scripts/build_viper_unix.sh
+
+# Windows
+scripts\build_viper.cmd
 </code></pre>
-<p>On Windows, use <code>scripts/build_viper.cmd</code> instead.</p>
+<p>The <code>build_viper_unix.sh</code> script auto-detects host OS via <code>uname -s</code> and selects the right toolchain. Older platform-specific scripts (<code>build_viper_mac.sh</code>, <code>build_viper_linux.sh</code>) are retained as thin wrappers.</p>
 <p>---</p>
 <h2 id="verify-the-installation">Verify the Installation</h2>
 <p>After building, confirm the primary tool works correctly:</p>

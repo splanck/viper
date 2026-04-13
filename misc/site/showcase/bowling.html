@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>XENOSCAPE — Viper Showcase</title>
-  <meta name="description" content="A 17K-line Metroid-style sidescroller built in Zia: 10 levels across 6 biomes, 25+ enemies, bosses, abilities, JSON level loading, save/load. The largest game demo in the Viper showcase.">
+  <title>3D Bowling — Viper Showcase</title>
+  <meta name="description" content="A 3D bowling game built with the Viper Physics3D + Graphics3D runtime. Pin collision, ball spin/hook, four camera modes, full 10-frame scoring.">
   <link rel="stylesheet" href="../style.css">
   <link rel="icon" href="../favicon.png">
 </head>
@@ -25,35 +25,33 @@
 </nav>
 
 <div class="breadcrumb">
-  <a href="../">Home</a> / <a href="./">Showcase</a> / <span>XENOSCAPE</span>
+  <a href="../">Home</a> / <a href="./">Showcase</a> / <span>3D Bowling</span>
 </div>
 
 <div class="section">
   <div class="prose" style="max-width: 800px; margin: 0 auto;">
-    <h1>XENOSCAPE</h1>
+    <h1>3D Bowling</h1>
 
     <p>
       <span class="showcase-badge badge-zia">Zia</span>
-      <span class="badge-loc">17,400 LOC</span>
+      <span class="badge-loc">4,600 LOC</span>
     </p>
 
-    <p>A Metroid-style sidescroller exploring an alien planet. Ten interconnected levels across six biomes, 25+ enemies, mid-bosses, and a final boss arena. Built end-to-end in Zia using the Viper game engine, runtime asset embedding (VPA), and the same native ARM64/x86-64 codegen used to build Viper itself. The largest game demo in the Viper showcase.</p>
+    <p>A complete 3D bowling game built on Viper's from-scratch Graphics3D and Physics3D runtimes. Demonstrates Metal / Direct3D 11 / OpenGL / software backend parity, rigid-body pin collision with continuous collision detection, ball spin and hook, four camera modes, and the full ten-frame scoring including strikes, spares, and the tenth-frame fill ball.</p>
 
     <div class="screenshot-placeholder">Screenshot coming soon</div>
 
     <h2>Features</h2>
     <ul>
-      <li>Tilemap-based world with physics, gravity, and AABB collision</li>
-      <li>Camera with smooth follow + deadzone tracking</li>
-      <li>25+ enemy types using composable Behavior presets (Patrol, Chase, Shoot, EdgeReverse, SineFloat)</li>
-      <li>Boss fights with multi-phase encounter scripts</li>
-      <li>Player abilities: double jump, dash, projectile attacks, health pickups</li>
-      <li>JSON level loading via `LevelData` (objects, spawn points, theme metadata)</li>
-      <li>Save/load via SaveData (versioned JSON, GC-managed strings)</li>
-      <li>Six biomes with unique tilesets, parallax backgrounds, and particle effects</li>
-      <li>HUD via `Viper.Game.UI` (bars, labels, achievement popups)</li>
-      <li>Audio: ambient music streaming + spatial sound effects</li>
-      <li>Native cross-platform: macOS / Linux / Windows (incl. ARM64 native smoke)</li>
+      <li>Physics3D rigid bodies with quaternion orientation, angular velocity, sleep system, and CCD substep sweeps</li>
+      <li>Collider3D shapes: box (lane), capsule (pin), sphere (ball), with proper restitution and friction</li>
+      <li>Ball spin and hook via angular impulse + lateral force during release</li>
+      <li>Material3D with Blinn-Phong lighting; all four 3D backends supported (Metal on macOS, D3D11 on Windows, OpenGL on Linux, software fallback)</li>
+      <li>Four camera modes: chase, behind-pins, top-down, free-fly</li>
+      <li>Full bowling scoring: strikes, spares, double/triple strikes, tenth-frame fill ball</li>
+      <li>Animated pin reset and lane sweep between frames</li>
+      <li>HUD with frame-by-frame score display and current roll indicator</li>
+      <li>Native cross-platform: macOS / Linux / Windows</li>
     </ul>
 
     <h2>Build &amp; Run</h2>
@@ -61,9 +59,9 @@
 <span class="cmd">./scripts/build_demos.sh</span>
 
 <span class="comment"># Run this demo</span>
-<span class="cmd">viper run examples/games/xenoscape/</span></code></pre>
+<span class="cmd">viper run examples/games/3dbowling/</span></code></pre>
 
-    <p><a href="https://github.com/splanck/viper/tree/master/examples/games/xenoscape/">View source on GitHub &rarr;</a></p>
+    <p><a href="https://github.com/splanck/viper/tree/master/examples/games/3dbowling/">View source on GitHub &rarr;</a></p>
 
     <p><a href="./">&larr; Back to Showcase</a></p>
   </div>

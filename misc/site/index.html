@@ -4,9 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Viper — IL-First Compiler Platform</title>
-  <meta name="description" content="Viper is a complete compiler platform built from scratch with zero dependencies. 509K lines of code, two languages, native ARM64/x86-64 codegen, 226-class runtime, and performance that beats C -O0.">
+  <meta name="description" content="Viper is a complete compiler platform built from scratch with zero dependencies. 446K lines of production code, two languages, native ARM64/x86-64 codegen, 300-class runtime, and performance that beats C -O0.">
   <meta property="og:title" content="Viper — A Complete Compiler Platform, Built From Scratch">
-  <meta property="og:description" content="Zero dependencies. Custom assemblers, linkers, optimizer passes. Two languages, 6 native targets, 226+ runtime classes. Beats C -O0 on 8 of 9 benchmarks.">
+  <meta property="og:description" content="Zero dependencies. Custom assemblers, linkers, optimizer passes. Two languages, 6 native targets, 300 runtime classes. Beats C -O0 on 8 of 9 benchmarks.">
   <meta property="og:type" content="website">
   <link rel="stylesheet" href="style.css">
   <link rel="icon" href="favicon.png">
@@ -33,8 +33,8 @@
   <div class="hero-bg" aria-hidden="true"></div>
   <img src="logo-full.png" alt="Viper" class="hero-logo">
   <h1 class="hero-title">Viper</h1>
-  <p class="hero-tagline">A complete compiler platform built entirely from scratch &mdash; two languages, native codegen, 226-class runtime, zero dependencies</p>
-  <p class="hero-status">Pre-alpha &middot; v0.2.3-snapshot &middot; GPL-3.0</p>
+  <p class="hero-tagline">A complete compiler platform built entirely from scratch &mdash; two languages, native codegen, 300-class runtime, zero dependencies</p>
+  <p class="hero-status">Pre-alpha &middot; v0.2.3 &middot; GPL-3.0</p>
   <div class="hero-buttons">
     <a href="docs/" class="btn btn-primary">Get Started</a>
     <a href="https://github.com/splanck/viper" class="btn btn-secondary">View on GitHub</a>
@@ -45,8 +45,8 @@
 <div class="stats-bar">
   <div class="stats-bar-inner reveal-stagger">
     <div class="stat-item reveal">
-      <span class="stat-value">509K</span>
-      <span class="stat-label">Lines of Code</span>
+      <span class="stat-value">446K</span>
+      <span class="stat-label">Production SLOC</span>
     </div>
     <div class="stat-item reveal">
       <span class="stat-value">0</span>
@@ -57,15 +57,15 @@
       <span class="stat-label">Native Targets</span>
     </div>
     <div class="stat-item reveal">
-      <span class="stat-value">226+</span>
+      <span class="stat-value">300</span>
       <span class="stat-label">Runtime Classes</span>
     </div>
     <div class="stat-item reveal">
-      <span class="stat-value">13+</span>
+      <span class="stat-value">20</span>
       <span class="stat-label">Optimizer Passes</span>
     </div>
     <div class="stat-item reveal">
-      <span class="stat-value">1,984</span>
+      <span class="stat-value">1,454</span>
       <span class="stat-label">Tests</span>
     </div>
   </div>
@@ -252,7 +252,7 @@ entry_0:
         </tbody>
       </table>
     </div>
-    <p class="perf-note">Apple M4 Max &middot; 10 iterations, 2 warmup &middot; Identical algorithms across all languages &middot; March 2026</p>
+    <p class="perf-note">Apple M4 Max &middot; 10 iterations, 2 warmup &middot; Identical algorithms across all languages &middot; April 2026</p>
   </div>
 </div>
 
@@ -265,7 +265,7 @@ entry_0:
     <a href="features/zero-deps.html" class="feature-card reveal">
       <div class="feature-icon"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l7 4v5c0 5.25-3.5 9.74-7 11-3.5-1.26-7-5.75-7-11V6l7-4z"/></svg></div>
       <h3>Zero Dependencies</h3>
-      <p>No LLVM, no Boost, no SDL, no libcurl. Custom assemblers, linkers, optimizer passes, and a 226-class runtime &mdash; every line is Viper's own.</p>
+      <p>No LLVM, no Boost, no SDL, no libcurl. Custom assemblers, linkers, optimizer passes, and a 300-class runtime &mdash; every line is Viper's own.</p>
     </a>
 
     <a href="features/native-targets.html" class="feature-card reveal">
@@ -277,19 +277,19 @@ entry_0:
     <a href="features/two-languages.html" class="feature-card reveal">
       <div class="feature-icon"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg></div>
       <h3>Two Languages, One IL</h3>
-      <p>Zia (modern: entities, generics, pattern matching) and BASIC (classic with OOP) both compile through a typed SSA intermediate language. Build your own frontend too.</p>
+      <p>Zia (modern: classes, structs, generics, lambdas, variadic params, pattern matching) and BASIC (classic with OOP and enums) both compile through a typed SSA intermediate language. Build your own frontend too.</p>
     </a>
 
     <a href="features/optimizer.html" class="feature-card reveal">
       <div class="feature-icon"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg></div>
-      <h3>13+ Optimizer Passes</h3>
-      <p>SCCP, GVN, LICM, inlining, loop unrolling, strength reduction, dead store elimination with MemorySSA, and more &mdash; plus backend peephole optimizers.</p>
+      <h3>20 Optimizer Passes</h3>
+      <p>SCCP, GVN, LICM, inlining, loop unrolling, strength reduction, dead store elimination with MemorySSA, EarlyCSE with textual ordering guards, and more &mdash; plus backend peephole, register coalescer, and AArch64 join-phi coalescing.</p>
     </a>
 
     <a href="features/runtime.html" class="feature-card reveal">
       <div class="feature-icon"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg></div>
       <h3>Full-Stack Runtime</h3>
-      <p>Graphics, sprites, tilemaps, audio, HTTP, WebSocket, TLS, crypto, threading, GUI widgets, JSON/YAML/XML parsing, 2D physics &mdash; all from scratch in portable C.</p>
+      <p>2D + 3D graphics (Metal/D3D11/OpenGL/software), PBR materials, terrain LOD, audio (WAV/OGG/MP3), video (MJPEG/Theora), HTTP server, WebSocket, TLS, crypto, threading, 46 GUI widgets, JSON/YAML/XML/CSV/TOML/Markdown, 2D + 3D physics &mdash; all from scratch in portable C.</p>
     </a>
 
     <a href="features/determinism.html" class="feature-card reveal">
@@ -301,7 +301,7 @@ entry_0:
     <a href="features/applications.html" class="feature-card reveal">
       <div class="feature-icon"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="18" rx="2"/><line x1="2" y1="9" x2="22" y2="9"/></svg></div>
       <h3>Real Applications</h3>
-      <p>Chess with AI, a SQL database, a multi-threaded web server, an IDE with IntelliSense, Pac-Man &mdash; all written in Viper's own languages.</p>
+      <p>Chess with AI, a PostgreSQL-compatible SQL database, an IDE with IntelliSense, Pac-Man, XENOSCAPE Metroid-style sidescroller, 3D bowling with Physics3D &mdash; all written in Viper's own languages.</p>
     </a>
 
     <a href="features/cross-platform.html" class="feature-card reveal">
@@ -313,7 +313,7 @@ entry_0:
     <a href="features/testing.html" class="feature-card reveal">
       <div class="feature-icon"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l7 4v5c0 5.25-3.5 9.74-7 11-3.5-1.26-7-5.75-7-11V6l7-4z"/><polyline points="9 12 11 14 15 10"/></svg></div>
       <h3>Battle-Tested</h3>
-      <p>1,984 tests across unit, golden, E2E, and fuzz suites. Sanitizer CI (ASan, UBSan, TSan). 509K lines of production code. 4,197 commits.</p>
+      <p>1,454 tests across unit, golden, E2E, and fuzz suites. Sanitizer CI (ASan, UBSan, TSan). 446K lines of production code across 2,869 source files.</p>
     </a>
   </div>
 </div>
@@ -326,26 +326,26 @@ entry_0:
 
   <div class="showcase-grid reveal-stagger">
     <a href="showcase/sqldb.html" class="showcase-card reveal">
-      <h3>SQL Database</h3>
-      <p>PostgreSQL-compatible engine with MVCC, WAL, B-tree indexes, and wire protocol.</p>
+      <h3>ViperSQL</h3>
+      <p>PostgreSQL-compatible engine with MVCC, WAL, B-tree indexes, and PG wire protocol.</p>
       <span class="showcase-badge badge-app">App</span>
     </a>
 
     <a href="showcase/viperide.html" class="showcase-card reveal">
-      <h3>Viper IDE</h3>
-      <p>Code editor with tabs, find/replace, syntax highlighting, and integrated build.</p>
+      <h3>ViperIDE</h3>
+      <p>IDE with live diagnostics, hover tooltips, IntelliSense, go-to-definition, project search.</p>
       <span class="showcase-badge badge-app">App</span>
     </a>
 
     <a href="showcase/chess.html" class="showcase-card reveal">
       <h3>Chess</h3>
-      <p>Full chess engine with alpha-beta AI, transposition tables, and canvas UI.</p>
+      <p>Alpha-beta AI with transposition tables, pre-rendered piece sprites, drag-and-drop GUI.</p>
       <span class="showcase-badge badge-zia">Zia</span>
     </a>
 
     <a href="showcase/sidescroller.html" class="showcase-card reveal">
-      <h3>Sidescroller</h3>
-      <p>2D platformer with physics, parallax scrolling, particles, and boss fights.</p>
+      <h3>XENOSCAPE</h3>
+      <p>Metroid-style sidescroller: 10 levels, 25+ enemies, bosses, abilities, JSON levels.</p>
       <span class="showcase-badge badge-zia">Zia</span>
     </a>
 
@@ -357,12 +357,12 @@ entry_0:
 
     <a href="showcase/pacman.html" class="showcase-card reveal">
       <h3>Pac-Man</h3>
-      <p>Arcade clone with ghost AI, animations, and tile-based rendering.</p>
+      <p>Ghost AI with BFS pathfinding, scatter/chase modes, tile-based rendering.</p>
       <span class="showcase-badge badge-zia">Zia</span>
     </a>
   </div>
 
-  <p class="text-center mt-2"><a href="showcase.html">View all demos &rarr;</a></p>
+  <p class="text-center mt-2"><a href="showcase/">View all demos &rarr;</a></p>
 </div>
 </div>
 
@@ -398,9 +398,9 @@ entry_0:
     <pre><span class="comment"># Clone and build</span>
 <span class="cmd">git clone https://github.com/splanck/viper.git</span>
 <span class="cmd">cd viper</span>
-<span class="cmd">./scripts/build_viper.sh</span>
+<span class="cmd">./scripts/build_viper_unix.sh   # macOS &amp; Linux</span>
 
-<span class="comment"># Create a new project</span>
+<span class="comment"># Create a new project (Zia by default; --lang basic for BASIC)</span>
 <span class="cmd">viper init my-app</span>
 <span class="cmd">viper run my-app</span>
 

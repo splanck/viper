@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Battle-Tested — Viper</title>
-  <meta name="description" content="Viper has 1,984 tests across unit, golden, E2E, and fuzz suites, plus sanitizer CI with ASan, UBSan, and TSan. 509K lines of production code, 4,197 commits.">
+  <meta name="description" content="Viper has 1,454 tests across unit, golden, E2E, and fuzz suites, plus sanitizer CI with ASan, UBSan, and TSan. 446K lines of production code, 4,349 commits.">
   <link rel="stylesheet" href="../style.css">
   <link rel="icon" href="../favicon.png">
 </head>
@@ -47,27 +47,27 @@
   <main class="page-main prose">
     <h1 id="overview">Battle-Tested</h1>
 
-    <p>Viper's test suite has <strong>1,984 tests</strong> across 876 test files, covering every layer of the platform. All 1,279 CTest targets pass on every commit. The project runs sanitizer CI (ASan, UBSan, TSan) and includes 5 fuzz harnesses for input surface robustness.</p>
+    <p>Viper's test suite has <strong>1,454 CTest targets</strong> spread across nearly 1,000 test source files, covering every layer of the platform. The project runs sanitizer CI (ASan, UBSan, TSan) and includes 5 fuzz harnesses for input surface robustness.</p>
 
     <h2 id="categories">Test Categories</h2>
 
     <table>
       <thead><tr><th>Category</th><th>Tests</th><th>What It Covers</th></tr></thead>
       <tbody>
-        <tr><td><strong>Runtime</strong></td><td>~318</td><td>C runtime library: strings, collections, I/O, math, network</td></tr>
-        <tr><td><strong>Golden</strong></td><td>~203</td><td>Textual stability: IL output, diagnostics, optimizer transformations</td></tr>
-        <tr><td><strong>IL</strong></td><td>~186</td><td>IL parsing, serialization, verification, analysis, transforms</td></tr>
-        <tr><td><strong>VM</strong></td><td>~111</td><td>Opcode semantics, traps, debugging, concurrency</td></tr>
-        <tr><td><strong>Codegen</strong></td><td>~95</td><td>x86-64 and AArch64 code generation, linker, binary encoding</td></tr>
-        <tr><td><strong>BASIC</strong></td><td>~94</td><td>BASIC frontend: lexer, parser, sema, lowerer</td></tr>
-        <tr><td><strong>Zia</strong></td><td>~88</td><td>Zia frontend: parser, sema, lowerer, enums, pattern matching</td></tr>
-        <tr><td><strong>OOP</strong></td><td>~31</td><td>Object-oriented: classes, inheritance, interfaces</td></tr>
-        <tr><td><strong>Tools</strong></td><td>~29</td><td>CLI tools, language server</td></tr>
-        <tr><td><strong>TUI</strong></td><td>~28</td><td>Terminal UI, REPL</td></tr>
-        <tr><td><strong>E2E</strong></td><td>~19</td><td>Full pipeline: source &rarr; IL &rarr; VM/native &rarr; output</td></tr>
-        <tr><td><strong>Namespace</strong></td><td>~13</td><td>Module system, cross-module references</td></tr>
-        <tr><td><strong>Conformance</strong></td><td>~10</td><td>Arithmetic semantics cross-layer equivalence</td></tr>
-        <tr><td><strong>Smoke</strong></td><td>~5</td><td>Quick sanity checks</td></tr>
+        <tr><td><strong>Runtime</strong></td><td>~360</td><td>C runtime library: strings, collections, I/O, math, network, audio, graphics, GUI, 3D, video, crypto/TLS</td></tr>
+        <tr><td><strong>Golden</strong></td><td>~205</td><td>Textual stability: IL output, diagnostics, optimizer transformations</td></tr>
+        <tr><td><strong>IL</strong></td><td>~190</td><td>IL parsing, serialization, verification, analysis, transforms</td></tr>
+        <tr><td><strong>Codegen</strong></td><td>~140</td><td>x86-64 and AArch64 code generation, register allocator, native assembler/linker, binary encoding</td></tr>
+        <tr><td><strong>VM</strong></td><td>~115</td><td>Opcode semantics, traps, debugging, concurrency, threaded dispatch</td></tr>
+        <tr><td><strong>Zia</strong></td><td>~110</td><td>Zia frontend: parser, sema, lowerer, enums, pattern matching, generics, lambdas</td></tr>
+        <tr><td><strong>BASIC</strong></td><td>~95</td><td>BASIC frontend: lexer, parser, sema, lowerer, enums, namespaces</td></tr>
+        <tr><td><strong>Smoke probes</strong></td><td>~50</td><td>Cross-platform demo and module smoke probes (paint, IDE, sql, chess, sidescroller, 3D bowling, etc.)</td></tr>
+        <tr><td><strong>OOP</strong></td><td>~35</td><td>Object-oriented: classes, structs, inheritance, interfaces, destructors</td></tr>
+        <tr><td><strong>Tools</strong></td><td>~30</td><td>CLI tools, language server, packaging, install-package toolchain</td></tr>
+        <tr><td><strong>TUI</strong></td><td>~30</td><td>Terminal UI, REPL</td></tr>
+        <tr><td><strong>E2E</strong></td><td>~50</td><td>Full pipeline: source &rarr; IL &rarr; VM/native &rarr; output, plus platform-specific native smoke tests</td></tr>
+        <tr><td><strong>Namespace</strong></td><td>~15</td><td>Module system, cross-module references</td></tr>
+        <tr><td><strong>Conformance</strong></td><td>~15</td><td>Arithmetic semantics cross-layer equivalence (VM vs native)</td></tr>
       </tbody>
     </table>
 
@@ -127,16 +127,15 @@
     <table>
       <thead><tr><th>Metric</th><th>Count</th></tr></thead>
       <tbody>
-        <tr><td>Total test cases</td><td>1,984</td></tr>
-        <tr><td>Test source files</td><td>876</td></tr>
-        <tr><td>CTest targets (all passing)</td><td>1,279</td></tr>
+        <tr><td>CTest targets (all passing)</td><td>1,454</td></tr>
+        <tr><td>Test source files</td><td>~990</td></tr>
         <tr><td>Fuzz harnesses</td><td>5</td></tr>
-        <tr><td>Golden test files</td><td>~203</td></tr>
-        <tr><td>E2E test scripts</td><td>19+</td></tr>
-        <tr><td>Production LOC</td><td>510,024</td></tr>
-        <tr><td>Test LOC</td><td>186,863</td></tr>
-        <tr><td>Test/production ratio</td><td>37%</td></tr>
-        <tr><td>Commits</td><td>4,197</td></tr>
+        <tr><td>Golden test files</td><td>~205</td></tr>
+        <tr><td>E2E test scripts</td><td>50+</td></tr>
+        <tr><td>Production SLOC</td><td>446,980</td></tr>
+        <tr><td>Test SLOC</td><td>181,887</td></tr>
+        <tr><td>Test/production ratio</td><td>~41%</td></tr>
+        <tr><td>Commits</td><td>4,349</td></tr>
       </tbody>
     </table>
 

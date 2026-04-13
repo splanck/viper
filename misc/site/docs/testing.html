@@ -78,7 +78,8 @@ Fuzz Tests (src/tests/fuzz/)
 <h2 id="running-tests">Running Tests</h2>
 <pre><code data-lang="bash">
 # Build and run all tests
-./scripts/build_viper.sh
+./scripts/build_viper_unix.sh   # macOS &amp; Linux
+scripts\build_viper.cmd         # Windows
 
 # Run all tests (after building)
 ctest --test-dir build
