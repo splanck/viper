@@ -23,6 +23,7 @@
 static void dropdown_destroy(vg_widget_t *widget);
 static void dropdown_measure(vg_widget_t *widget, float avail_w, float avail_h);
 static void dropdown_paint(vg_widget_t *widget, void *canvas);
+static void dropdown_paint_overlay(vg_widget_t *widget, void *canvas);
 static bool dropdown_handle_event(vg_widget_t *widget, vg_event_t *event);
 static bool dropdown_can_focus(vg_widget_t *widget);
 
@@ -34,6 +35,7 @@ static vg_widget_vtable_t g_dropdown_vtable = {.destroy = dropdown_destroy,
                                                .measure = dropdown_measure,
                                                .arrange = NULL,
                                                .paint = dropdown_paint,
+                                               .paint_overlay = dropdown_paint_overlay,
                                                .handle_event = dropdown_handle_event,
                                                .can_focus = dropdown_can_focus,
                                                .on_focus = NULL};
@@ -116,45 +118,46 @@ static void dropdown_paint(vg_widget_t *widget, void *canvas) {
               (int32_t)(ay - as2 / 2),
               dd->text_color);
 
-    // Draw open panel below header
-    if (dd->open && dd->item_count > 0) {
-        float ih = dropdown_item_height(dd);
-        float panel_h = ih * dd->item_count;
-        if (panel_h > dd->dropdown_height)
-            panel_h = dd->dropdown_height;
+}
 
-        int32_t px = x;
-        int32_t py = y + h;
-        int32_t pw = w;
-        int32_t ph = (int32_t)panel_h;
+static void dropdown_paint_overlay(vg_widget_t *widget, void *canvas) {
+    vg_dropdown_t *dd = (vg_dropdown_t *)widget;
+    vgfx_window_t win = (vgfx_window_t)canvas;
 
-        vgfx_fill_rect(win, px, py, pw, ph, dd->dropdown_bg);
-        vgfx_rect(win, px, py, pw, ph, dd->border_color);
+    if (!dd->open || dd->item_count <= 0)
+        return;
 
-        int visible_count = (int)(panel_h / ih);
-        int start_item = (int)(dd->scroll_y / ih);
-        if (start_item < 0)
-            start_item = 0;
+    float ih = dropdown_item_height(dd);
+    float panel_h = ih * dd->item_count;
+    if (panel_h > dd->dropdown_height)
+        panel_h = dd->dropdown_height;
 
-        for (int i = start_item; i < dd->item_count && i < start_item + visible_count + 1; i++) {
-            float iy = py + (i - start_item) * ih;
-            int32_t iy32 = (int32_t)iy;
+    int32_t px = (int32_t)widget->x;
+    int32_t py = (int32_t)(widget->y + widget->height);
+    int32_t pw = (int32_t)widget->width;
+    int32_t ph = (int32_t)panel_h;
 
-            if (i == dd->hovered_index)
-                vgfx_fill_rect(win, px + 1, iy32, pw - 2, (int32_t)ih, dd->hover_bg);
-            else if (i == dd->selected_index)
-                vgfx_fill_rect(win, px + 1, iy32, pw - 2, (int32_t)ih, dd->selected_bg);
+    vgfx_fill_rect(win, px, py, pw, ph, dd->dropdown_bg);
+    vgfx_rect(win, px, py, pw, ph, dd->border_color);
 
-            if (dd->items[i] && dd->font) {
-                float ty2 = iy + ih * 0.7f;
-                vg_font_draw_text(canvas,
-                                  dd->font,
-                                  dd->font_size,
-                                  (float)(px + 6),
-                                  ty2,
-                                  dd->items[i],
-                                  dd->text_color);
-            }
+    int visible_count = (int)(panel_h / ih);
+    int start_item = (int)(dd->scroll_y / ih);
+    if (start_item < 0)
+        start_item = 0;
+
+    for (int i = start_item; i < dd->item_count && i < start_item + visible_count + 1; i++) {
+        float iy = (float)py + (i - start_item) * ih;
+        int32_t iy32 = (int32_t)iy;
+
+        if (i == dd->hovered_index)
+            vgfx_fill_rect(win, px + 1, iy32, pw - 2, (int32_t)ih, dd->hover_bg);
+        else if (i == dd->selected_index)
+            vgfx_fill_rect(win, px + 1, iy32, pw - 2, (int32_t)ih, dd->selected_bg);
+
+        if (dd->items[i] && dd->font) {
+            float ty = iy + ih * 0.7f;
+            vg_font_draw_text(
+                canvas, dd->font, dd->font_size, (float)(px + 6), ty, dd->items[i], dd->text_color);
         }
     }
 }
@@ -176,7 +179,9 @@ static bool dropdown_handle_event(vg_widget_t *widget, vg_event_t *event) {
             } else {
                 // Check if click is inside the panel
                 float ih = dropdown_item_height(dd);
-                float panel_top = widget->y + widget->height;
+                float sy = 0.0f;
+                vg_widget_get_screen_bounds(widget, NULL, &sy, NULL, NULL);
+                float panel_top = sy + widget->height;
                 float rel_y = event->mouse.screen_y - panel_top + dd->scroll_y;
                 if (rel_y >= 0) {
                     int idx = (int)(rel_y / ih);
@@ -196,7 +201,9 @@ static bool dropdown_handle_event(vg_widget_t *widget, vg_event_t *event) {
         case VG_EVENT_MOUSE_MOVE:
             if (dd->open) {
                 float ih = dropdown_item_height(dd);
-                float panel_top = widget->y + widget->height;
+                float sy = 0.0f;
+                vg_widget_get_screen_bounds(widget, NULL, &sy, NULL, NULL);
+                float panel_top = sy + widget->height;
                 float rel_y = event->mouse.screen_y - panel_top + dd->scroll_y;
                 dd->hovered_index = (rel_y >= 0) ? (int)(rel_y / ih) : -1;
                 if (dd->hovered_index >= dd->item_count)

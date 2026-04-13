@@ -22,8 +22,8 @@
 //     subtree recursively via vg_treeview_remove_node.
 //   - ScrollView scroll offsets are clamped to [0, content_size - viewport_size]
 //     by the vg layout engine; GetScrollX/Y may return 0 if content fits.
-//   - FloatingPanel children are in a private array (not the widget tree);
-//     they are drawn in paint_overlay to appear above all other content.
+//   - FloatingPanel children are reparented under the panel widget and rendered
+//     during the overlay pass so hit testing and destruction stay tree-based.
 //   - CodeEditor selection retrieval allocates a C string that the caller owns.
 //
 // Ownership/Lifetime:
@@ -445,10 +445,7 @@ void rt_container_set_spacing(void *container, double spacing) {
     RT_ASSERT_MAIN_THREAD();
     if (!container)
         return;
-    // Both vg_vbox_layout_t and vg_hbox_layout_t have spacing as their first
-    // field, so vg_vbox_set_spacing works for either type. For plain containers
-    // without impl_data, the call is a safe no-op.
-    vg_vbox_set_spacing((vg_widget_t *)container, (float)spacing);
+    vg_container_set_spacing((vg_widget_t *)container, (float)spacing);
 }
 
 /// @brief Set the padding of the container.
@@ -507,12 +504,17 @@ int64_t rt_widget_was_clicked(void *widget) {
 }
 
 /// @brief Set the position of the widget.
+/// @details Intended for widgets that are manually positioned outside managed
+///          layout containers. Managed layouts may override x/y on the next
+///          layout pass.
 void rt_widget_set_position(void *widget, int64_t x, int64_t y) {
     RT_ASSERT_MAIN_THREAD();
     if (widget) {
         vg_widget_t *w = (vg_widget_t *)widget;
         w->x = (float)x;
         w->y = (float)y;
+        vg_widget_invalidate_layout(w);
+        vg_widget_invalidate(w);
     }
 }
 

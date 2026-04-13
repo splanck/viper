@@ -25,6 +25,52 @@ static void hbox_arrange(vg_widget_t *self, float x, float y, float width, float
 static void flex_measure(vg_widget_t *self, float available_width, float available_height);
 static void flex_arrange(vg_widget_t *self, float x, float y, float width, float height);
 
+static void compute_justify_distribution(vg_justify_t justify,
+                                         int visible_count,
+                                         float extra_space,
+                                         float *out_offset,
+                                         float *out_gap_add) {
+    float offset = 0.0f;
+    float gap_add = 0.0f;
+
+    if (extra_space <= 0.0f || visible_count <= 0) {
+        if (out_offset)
+            *out_offset = 0.0f;
+        if (out_gap_add)
+            *out_gap_add = 0.0f;
+        return;
+    }
+
+    switch (justify) {
+        case VG_JUSTIFY_CENTER:
+            offset = extra_space * 0.5f;
+            break;
+        case VG_JUSTIFY_END:
+            offset = extra_space;
+            break;
+        case VG_JUSTIFY_SPACE_BETWEEN:
+            if (visible_count > 1)
+                gap_add = extra_space / (float)(visible_count - 1);
+            break;
+        case VG_JUSTIFY_SPACE_AROUND:
+            gap_add = extra_space / (float)visible_count;
+            offset = gap_add * 0.5f;
+            break;
+        case VG_JUSTIFY_SPACE_EVENLY:
+            gap_add = extra_space / (float)(visible_count + 1);
+            offset = gap_add;
+            break;
+        case VG_JUSTIFY_START:
+        default:
+            break;
+    }
+
+    if (out_offset)
+        *out_offset = offset;
+    if (out_gap_add)
+        *out_gap_add = gap_add;
+}
+
 static const vg_widget_vtable_t g_vbox_vtable = {
     .measure = vbox_measure,
     .arrange = vbox_arrange,
@@ -170,9 +216,15 @@ static void vbox_arrange(vg_widget_t *self, float x, float y, float width, float
     float total_spacing = (visible_count > 1) ? layout->spacing * (visible_count - 1) : 0;
     float available = content_height - total_fixed - total_spacing;
     float flex_unit = (total_flex > 0 && available > 0) ? available / total_flex : 0;
+    float used_height = total_fixed + total_spacing + (flex_unit * total_flex);
+    float extra_space = content_height - used_height;
+    float justify_offset = 0.0f;
+    float justify_gap_add = 0.0f;
+    compute_justify_distribution(
+        layout->justify, visible_count, extra_space, &justify_offset, &justify_gap_add);
 
     // Arrange children
-    float child_y = content_y;
+    float child_y = content_y + justify_offset;
 
     VG_FOREACH_VISIBLE_CHILD(self, child) {
         float child_height;
@@ -211,7 +263,8 @@ static void vbox_arrange(vg_widget_t *self, float x, float y, float width, float
         vg_widget_arrange(
             child, child_x, child_y + child->layout.margin_top, child_width, child_height);
         child_y +=
-            child_height + child->layout.margin_top + child->layout.margin_bottom + layout->spacing;
+            child_height + child->layout.margin_top + child->layout.margin_bottom + layout->spacing +
+            justify_gap_add;
     }
 }
 
@@ -339,8 +392,14 @@ static void hbox_arrange(vg_widget_t *self, float x, float y, float width, float
     float total_spacing = (visible_count > 1) ? layout->spacing * (visible_count - 1) : 0;
     float available = content_width - total_fixed - total_spacing;
     float flex_unit = (total_flex > 0 && available > 0) ? available / total_flex : 0;
+    float used_width = total_fixed + total_spacing + (flex_unit * total_flex);
+    float extra_space = content_width - used_width;
+    float justify_offset = 0.0f;
+    float justify_gap_add = 0.0f;
+    compute_justify_distribution(
+        layout->justify, visible_count, extra_space, &justify_offset, &justify_gap_add);
 
-    float child_x = content_x;
+    float child_x = content_x + justify_offset;
 
     VG_FOREACH_VISIBLE_CHILD(self, child) {
         float child_width;
@@ -378,7 +437,8 @@ static void hbox_arrange(vg_widget_t *self, float x, float y, float width, float
         vg_widget_arrange(
             child, child_x + child->layout.margin_left, child_y, child_width, child_height);
         child_x +=
-            child_width + child->layout.margin_left + child->layout.margin_right + layout->spacing;
+            child_width + child->layout.margin_left + child->layout.margin_right + layout->spacing +
+            justify_gap_add;
     }
 }
 
@@ -439,6 +499,23 @@ void vg_flex_set_gap(vg_widget_t *flex, float gap) {
     vg_flex_layout_t *layout = (vg_flex_layout_t *)flex->impl_data;
     layout->gap = gap;
     flex->needs_layout = true;
+}
+
+void vg_container_set_spacing(vg_widget_t *container, float spacing) {
+    if (!container || !container->impl_data || !container->vtable)
+        return;
+
+    if (container->vtable == &g_vbox_vtable) {
+        vg_vbox_set_spacing(container, spacing);
+        return;
+    }
+    if (container->vtable == &g_hbox_vtable) {
+        vg_hbox_set_spacing(container, spacing);
+        return;
+    }
+    if (container->vtable == &g_flex_vtable) {
+        vg_flex_set_gap(container, spacing);
+    }
 }
 
 void vg_flex_set_wrap(vg_widget_t *flex, bool wrap) {
@@ -539,8 +616,17 @@ static void flex_arrange(vg_widget_t *self, float x, float y, float width, float
     float gap_total = (visible_count > 1) ? layout->gap * (visible_count - 1) : 0;
     float available = main_size - total_fixed - gap_total;
     float flex_unit = (total_flex > 0 && available > 0) ? available / total_flex : 0;
+    float used_main = total_fixed + gap_total + (flex_unit * total_flex);
+    float extra_space = main_size - used_main;
+    float justify_offset = 0.0f;
+    float justify_gap_add = 0.0f;
+    compute_justify_distribution(layout->justify_content,
+                                 visible_count,
+                                 extra_space,
+                                 &justify_offset,
+                                 &justify_gap_add);
 
-    float main_pos = is_reverse ? main_size : 0;
+    float main_pos = is_reverse ? (main_size - justify_offset) : justify_offset;
 
     VG_FOREACH_VISIBLE_CHILD(self, child) {
         float child_main_size;
@@ -566,11 +652,11 @@ static void flex_arrange(vg_widget_t *self, float x, float y, float width, float
             if (is_reverse) {
                 main_pos -= child_main_size + child->layout.margin_right;
                 child_x = content_x + main_pos;
-                main_pos -= child->layout.margin_left + layout->gap;
+                main_pos -= child->layout.margin_left + layout->gap + justify_gap_add;
             } else {
                 child_x = content_x + main_pos + child->layout.margin_left;
                 main_pos += child_main_size + child->layout.margin_left +
-                            child->layout.margin_right + layout->gap;
+                            child->layout.margin_right + layout->gap + justify_gap_add;
             }
 
             switch (layout->align_items) {
@@ -594,11 +680,11 @@ static void flex_arrange(vg_widget_t *self, float x, float y, float width, float
             if (is_reverse) {
                 main_pos -= child_main_size + child->layout.margin_bottom;
                 child_y = content_y + main_pos;
-                main_pos -= child->layout.margin_top + layout->gap;
+                main_pos -= child->layout.margin_top + layout->gap + justify_gap_add;
             } else {
                 child_y = content_y + main_pos + child->layout.margin_top;
                 main_pos += child_main_size + child->layout.margin_top +
-                            child->layout.margin_bottom + layout->gap;
+                            child->layout.margin_bottom + layout->gap + justify_gap_add;
             }
 
             switch (layout->align_items) {

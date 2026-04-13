@@ -16,6 +16,41 @@
 #include "vgfx.h"
 #include <string.h>
 
+static vg_widget_t *get_hovered_widget(void) {
+    vg_widget_runtime_state_t state = {0};
+    vg_widget_get_runtime_state(&state);
+    return state.hovered_widget;
+}
+
+static void set_hovered_widget(vg_widget_t *widget) {
+    vg_widget_runtime_state_t state = {0};
+    vg_widget_get_runtime_state(&state);
+    state.hovered_widget = widget;
+    vg_widget_set_runtime_state(&state);
+}
+
+static void update_hovered_widget(vg_widget_t *widget) {
+    vg_widget_t *previous = get_hovered_widget();
+    if (previous == widget)
+        return;
+
+    if (previous) {
+        vg_event_t leave = {0};
+        leave.type = VG_EVENT_MOUSE_LEAVE;
+        leave.target = previous;
+        vg_event_send(previous, &leave);
+    }
+
+    set_hovered_widget(widget);
+
+    if (widget) {
+        vg_event_t enter = {0};
+        enter.type = VG_EVENT_MOUSE_ENTER;
+        enter.target = widget;
+        vg_event_send(widget, &enter);
+    }
+}
+
 //=============================================================================
 // Event Creation Helpers
 //=============================================================================
@@ -210,6 +245,7 @@ bool vg_event_dispatch(vg_widget_t *root, vg_event_t *event) {
         // even though the dropdown renders outside the menubar's widget bounds.
         vg_widget_t *capture = vg_widget_get_input_capture();
         if (capture) {
+            update_hovered_widget(capture);
             event->target = capture;
 
             // Convert to capture-widget-relative coordinates
@@ -231,12 +267,28 @@ bool vg_event_dispatch(vg_widget_t *root, vg_event_t *event) {
                 click_event.type = VG_EVENT_CLICK;
                 if (capture->vtable && capture->vtable->handle_event)
                     capture->vtable->handle_event(capture, &click_event);
+                if (vg_widget_get_input_capture() != capture) {
+                    vg_widget_t *modal = vg_widget_get_modal_root();
+                    vg_widget_t *hit_root = (modal && modal->visible) ? modal : root;
+                    vg_widget_t *target =
+                        vg_widget_hit_test(hit_root, event->mouse.screen_x, event->mouse.screen_y);
+                    update_hovered_widget(target);
+                }
                 return true;
             }
 
             // For other mouse events, call handle_event directly
-            if (capture->vtable && capture->vtable->handle_event)
-                return capture->vtable->handle_event(capture, event);
+            if (capture->vtable && capture->vtable->handle_event) {
+                bool handled = capture->vtable->handle_event(capture, event);
+                if (vg_widget_get_input_capture() != capture) {
+                    vg_widget_t *modal = vg_widget_get_modal_root();
+                    vg_widget_t *hit_root = (modal && modal->visible) ? modal : root;
+                    vg_widget_t *target =
+                        vg_widget_hit_test(hit_root, event->mouse.screen_x, event->mouse.screen_y);
+                    update_hovered_widget(target);
+                }
+                return handled;
+            }
             return false;
         }
 
@@ -247,6 +299,7 @@ bool vg_event_dispatch(vg_widget_t *root, vg_event_t *event) {
 
         vg_widget_t *target =
             vg_widget_hit_test(hit_root, event->mouse.screen_x, event->mouse.screen_y);
+        update_hovered_widget(target);
         if (!target && modal && modal->visible) {
             // Click landed outside the modal dialog: swallow the event silently.
             return true;
@@ -284,17 +337,20 @@ bool vg_event_dispatch(vg_widget_t *root, vg_event_t *event) {
         // When a modal is active, redirect keyboard events to the modal if the
         // focused widget is outside the modal's subtree.
         vg_widget_t *modal_kb = vg_widget_get_modal_root();
-        if (modal_kb && modal_kb->visible && focused) {
-            // Walk the parent chain to test if focused is inside the modal
-            bool inside = false;
-            for (vg_widget_t *w = focused; w; w = w->parent) {
-                if (w == modal_kb) {
-                    inside = true;
-                    break;
-                }
-            }
-            if (!inside)
+        if (modal_kb && modal_kb->visible) {
+            if (!focused) {
                 focused = modal_kb;
+            } else {
+                bool inside = false;
+                for (vg_widget_t *w = focused; w; w = w->parent) {
+                    if (w == modal_kb) {
+                        inside = true;
+                        break;
+                    }
+                }
+                if (!inside)
+                    focused = modal_kb;
+            }
         }
 
         if (focused) {

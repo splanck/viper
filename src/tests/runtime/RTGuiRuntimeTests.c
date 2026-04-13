@@ -304,6 +304,36 @@ static void test_codeeditor_runtime_supports_multicursor_editing(void) {
     printf("test_codeeditor_runtime_supports_multicursor_editing: PASSED\n");
 }
 
+static void test_splitpane_runtime_boolean_matches_horizontal_semantics(void) {
+    vg_splitpane_t *horizontal = (vg_splitpane_t *)rt_splitpane_new(NULL, 1);
+    vg_splitpane_t *vertical = (vg_splitpane_t *)rt_splitpane_new(NULL, 0);
+
+    assert(horizontal);
+    assert(vertical);
+    assert(horizontal->direction == VG_SPLIT_HORIZONTAL);
+    assert(vertical->direction == VG_SPLIT_VERTICAL);
+
+    vg_widget_destroy(&horizontal->base);
+    vg_widget_destroy(&vertical->base);
+    printf("test_splitpane_runtime_boolean_matches_horizontal_semantics: PASSED\n");
+}
+
+static void test_widget_set_position_marks_widget_dirty(void) {
+    vg_widget_t *widget = vg_widget_create(VG_WIDGET_CONTAINER);
+    assert(widget);
+    widget->needs_layout = false;
+    widget->needs_paint = false;
+
+    rt_widget_set_position(widget, 12, 34);
+    assert(widget->x == 12.0f);
+    assert(widget->y == 34.0f);
+    assert(widget->needs_layout);
+    assert(widget->needs_paint);
+
+    vg_widget_destroy(widget);
+    printf("test_widget_set_position_marks_widget_dirty: PASSED\n");
+}
+
 int main(void) {
     printf("=== GUI Runtime Regression Tests ===\n\n");
 
@@ -318,6 +348,8 @@ int main(void) {
     test_platform_text_events_translate_to_gui_text();
     test_app_handles_resolve_to_root_widgets_for_overlays();
     test_codeeditor_runtime_supports_multicursor_editing();
+    test_splitpane_runtime_boolean_matches_horizontal_semantics();
+    test_widget_set_position_marks_widget_dirty();
 
     printf("\nAll GUI runtime regression tests passed!\n");
     return 0;

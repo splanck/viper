@@ -50,9 +50,7 @@ class CompletionController {
         popup.SetSize(300.0, 200.0);
 
         // Embed a ListBox inside the panel for the item list.
-        // Create with null parent — FloatingPanel owns it via AddChild, not the
-        // normal widget tree.  Using popup as parent would double-register the
-        // widget and corrupt layout/painting.
+        // Create unattached, then reparent it into the FloatingPanel via AddChild.
         listbox = GUI.ListBox.New(null);
         popup.AddChild(listbox);
 

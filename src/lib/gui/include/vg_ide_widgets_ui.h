@@ -615,10 +615,11 @@ void vg_notification_manager_set_font(vg_notification_manager_t *mgr, vg_font_t 
 
 /// @brief Floating panel widget.
 /// @details A lightweight overlay that draws at an absolute screen position
-///          regardless of the normal layout hierarchy.  Children added via
-///          vg_floatingpanel_add_child() are stored privately and painted
-///          during the paint_overlay pass so they appear above all normal
-///          widget content.
+///          regardless of the normal layout hierarchy. Children added via
+///          vg_floatingpanel_add_child() are reparented under the panel so hit
+///          testing, focus, and destruction follow the normal widget tree, but
+///          the panel paints them during the overlay pass so they appear above
+///          normal widget content.
 typedef struct vg_floatingpanel {
     vg_widget_t base; ///< Base widget (connected to root as last child).
 
@@ -630,11 +631,6 @@ typedef struct vg_floatingpanel {
     uint32_t bg_color;     ///< Background fill color (0xAARRGGBB).
     uint32_t border_color; ///< Border color (0xAARRGGBB).
     float border_width;    ///< Border width in pixels (0 = no border).
-
-    /// @brief Private child array (not part of the widget tree).
-    vg_widget_t **children;
-    int child_count;
-    int child_cap;
 } vg_floatingpanel_t;
 
 /// @brief Create a floating panel connected to @p root.
@@ -652,7 +648,7 @@ void vg_floatingpanel_set_size(vg_floatingpanel_t *panel, float w, float h);
 /// @brief Show or hide the floating panel.
 void vg_floatingpanel_set_visible(vg_floatingpanel_t *panel, int visible);
 
-/// @brief Add a widget as a private child of the floating panel.
+/// @brief Add a widget as a child of the floating panel.
 void vg_floatingpanel_add_child(vg_floatingpanel_t *panel, vg_widget_t *child);
 
 #ifdef __cplusplus

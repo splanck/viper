@@ -790,8 +790,20 @@ static void render_widget_tree(vgfx_window_t window,
                                vg_widget_t *widget,
                                float parent_abs_x,
                                float parent_abs_y);
+static void render_widget_overlay_tree(vgfx_window_t window,
+                                       vg_widget_t *widget,
+                                       float parent_abs_x,
+                                       float parent_abs_y);
 static int rt_gui_widget_accepts_drop_type(vg_widget_t *widget, const char *type);
 static int rt_gui_send_event_to_widget(vg_widget_t *widget, vg_event_t *event);
+
+static int rt_gui_widget_paints_children_internally(vg_widget_t *widget) {
+    if (!widget)
+        return 0;
+    if (widget->type == VG_WIDGET_SCROLLVIEW)
+        return 1;
+    return widget->type == VG_WIDGET_CUSTOM && widget->vtable && widget->vtable->paint_overlay;
+}
 
 /// @brief Check if a widget accepts a given drag-and-drop data type.
 /// @details Parses the widget's comma-separated accepted_drop_types string and
@@ -1142,25 +1154,10 @@ void rt_gui_app_render(void *app_ptr) {
         render_widget_tree(app->window, app->root, 0.0f, 0.0f);
     }
 
-    // Paint overlays (popups, dropdowns) on top of all other widgets.
-    // The widget with input capture is typically the one with an open popup.
-    vg_widget_t *capture = vg_widget_get_input_capture();
-    if (capture && capture->vtable && capture->vtable->paint_overlay) {
-        // Need to compute absolute position for the overlay
-        float abs_x = 0, abs_y = 0;
-        vg_widget_get_screen_bounds(capture, &abs_x, &abs_y, NULL, NULL);
-
-        // Temporarily set absolute coords for overlay paint
-        float rel_x = capture->x;
-        float rel_y = capture->y;
-        capture->x = abs_x;
-        capture->y = abs_y;
-
-        capture->vtable->paint_overlay(capture, (void *)app->window);
-
-        // Restore relative coords
-        capture->x = rel_x;
-        capture->y = rel_y;
+    // Paint widget overlays (dropdowns, menubar popups, floating panels) in a
+    // second pass after the normal tree walk.
+    if (app->root) {
+        render_widget_overlay_tree(app->window, app->root, 0.0f, 0.0f);
     }
 
     for (int i = 0; i < app->command_palette_count; i++) {
@@ -1338,10 +1335,45 @@ static void render_widget_tree(vgfx_window_t window,
     widget->x = rel_x;
     widget->y = rel_y;
 
+    if (rt_gui_widget_paints_children_internally(widget))
+        return;
+
     // Render children — pass our absolute position as their parent offset
     vg_widget_t *child = widget->first_child;
     while (child) {
         render_widget_tree(window, child, abs_x, abs_y);
+        child = child->next_sibling;
+    }
+}
+
+static void render_widget_overlay_tree(vgfx_window_t window,
+                                       vg_widget_t *widget,
+                                       float parent_abs_x,
+                                       float parent_abs_y) {
+    if (!widget || !widget->visible)
+        return;
+
+    float abs_x = widget->x + parent_abs_x;
+    float abs_y = widget->y + parent_abs_y;
+
+    float rel_x = widget->x;
+    float rel_y = widget->y;
+    widget->x = abs_x;
+    widget->y = abs_y;
+
+    if (widget->vtable && widget->vtable->paint_overlay) {
+        widget->vtable->paint_overlay(widget, (void *)window);
+    }
+
+    widget->x = rel_x;
+    widget->y = rel_y;
+
+    if (rt_gui_widget_paints_children_internally(widget))
+        return;
+
+    vg_widget_t *child = widget->first_child;
+    while (child) {
+        render_widget_overlay_tree(window, child, abs_x, abs_y);
         child = child->next_sibling;
     }
 }

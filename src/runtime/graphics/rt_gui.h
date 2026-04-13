@@ -178,6 +178,9 @@ int64_t rt_widget_is_focused(void *widget);
 int64_t rt_widget_was_clicked(void *widget);
 
 /// @brief Set widget position.
+/// @details Intended for manually positioned widgets and overlay-style controls.
+///          Managed layout containers may override the position on the next
+///          layout pass.
 /// @param widget Widget handle.
 /// @param x X position in pixels.
 /// @param y Y position in pixels.

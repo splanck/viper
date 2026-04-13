@@ -39,6 +39,7 @@ class HoverController {
         tooltip.SetSize(400.0, 30.0);
         tooltip.SetVisible(0);
 
+        // Create unattached, then reparent it into the FloatingPanel via AddChild.
         tooltipLabel = GUI.Label.New(null, "");
         tooltip.AddChild(tooltipLabel);
     }

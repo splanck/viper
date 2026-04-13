@@ -9,7 +9,7 @@ func start() {
     Say("--- Font ---");
     Say("Load(path), Destroy()");
     Say("--- Widget (base) ---");
-    Say("Destroy(), SetVisible(v), SetEnabled(e), SetSize(w,h), SetFlex(f), AddChild(w), IsHovered, IsPressed, IsFocused, WasClicked, SetPosition(x,y)");
+    Say("Destroy(), SetVisible(v), SetEnabled(e), SetSize(w,h), SetFlex(f), AddChild(w), IsHovered, IsPressed, IsFocused, WasClicked, SetPosition(x,y) [manual layout only]");
     Say("--- Label ---");
     Say("New(parent,text), SetText(s), SetFont(f,sz), SetColor(c)");
     Say("--- Button ---");
@@ -25,7 +25,7 @@ func start() {
     Say("--- TabBar ---");
     Say("New(parent), AddTab(title,closable), RemoveTab(t), SetActive(t), GetActive, GetActiveIndex, WasChanged, TabCount, WasCloseClicked, GetCloseClickedIndex");
     Say("--- SplitPane ---");
-    Say("New(parent,vertical), SetPosition(ratio), First, Second");
+    Say("New(parent,horizontal), SetPosition(ratio), First, Second");
     Say("--- CodeEditor ---");
     Say("New(parent), SetText(s), Text, SetCursor(ln,col), ScrollToLine(n), LineCount, IsModified, ClearModified, SetFont(f,sz), CursorLine, CursorCol");
     Say("--- Dropdown ---");

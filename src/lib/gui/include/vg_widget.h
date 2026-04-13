@@ -61,12 +61,13 @@ typedef struct vg_theme vg_theme_t;
 /// @brief Snapshot of toolkit-global widget runtime state.
 ///
 /// @details The GUI runtime can save and restore this state when switching
-///          between multiple app windows so focus, modal roots, and input
-///          capture do not bleed across apps.
+///          between multiple app windows so focus, modal roots, input capture,
+///          and hover tracking do not bleed across apps.
 typedef struct vg_widget_runtime_state {
     vg_widget_t *focused_widget;
     vg_widget_t *input_capture_widget;
     vg_widget_t *modal_root;
+    vg_widget_t *hovered_widget;
 } vg_widget_runtime_state_t;
 
 //=============================================================================

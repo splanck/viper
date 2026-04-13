@@ -54,13 +54,19 @@ if [[ ! -f "$ALLOWLIST_FILE" ]]; then
     exit 1
 fi
 
-ALLOWLIST=()
+declare -a ALLOWLIST=()
 while IFS= read -r line; do
     ALLOWLIST+=("$line")
 done < <(grep -v '^[[:space:]]*#' "$ALLOWLIST_FILE" | sed '/^[[:space:]]*$/d')
 
 is_allowlisted() {
     local path="$1"
+    # macOS still ships Bash 3.2; under `set -u`, expanding an empty array
+    # with "${arr[@]}" throws "unbound variable". Guard zero-length arrays
+    # explicitly so clean trees and empty allowlists are valid inputs.
+    if [[ ${#ALLOWLIST[@]} -eq 0 ]]; then
+        return 1
+    fi
     for pattern in "${ALLOWLIST[@]}"; do
         case "$path" in
             $pattern)
@@ -118,30 +124,32 @@ is_source_like() {
 declare -a VIOLATIONS=()
 declare -a TOUCHPOINT_VIOLATIONS=()
 RAW_PATTERN='_WIN32|_WIN64|__APPLE__|__linux__|_MSC_VER'
-CANDIDATES=()
+declare -a CANDIDATES=()
 while IFS= read -r line; do
     CANDIDATES+=("$line")
 done < <(collect_candidates | LC_ALL=C sort -u)
 
-for path in "${CANDIDATES[@]}"; do
-    [[ -f "$ROOT_DIR/$path" ]] || continue
-    is_source_like "$path" || continue
-    matches_filter "$path" || continue
+if [[ ${#CANDIDATES[@]} -gt 0 ]]; then
+    for path in "${CANDIDATES[@]}"; do
+        [[ -f "$ROOT_DIR/$path" ]] || continue
+        is_source_like "$path" || continue
+        matches_filter "$path" || continue
 
-    if ! is_allowlisted "$path"; then
-        while IFS= read -r hit; do
-            VIOLATIONS+=("$hit")
-        done < <(cd "$ROOT_DIR" && rg -n -w "$RAW_PATTERN" --color never "$path" || true)
-    fi
+        if ! is_allowlisted "$path"; then
+            while IFS= read -r hit; do
+                VIOLATIONS+=("$hit")
+            done < <(cd "$ROOT_DIR" && rg -n -w "$RAW_PATTERN" --color never "$path" || true)
+        fi
 
-    case "$path" in
-        src/common/RunProcess.cpp|src/codegen/common/LinkerSupport.cpp|src/codegen/common/RuntimeComponents.hpp|src/codegen/common/linker/NativeLinker.cpp|src/codegen/x86_64/CodegenPipeline.cpp|src/codegen/aarch64/CodegenPipeline.cpp)
-            if ! head -n 30 "$ROOT_DIR/$path" | grep -q "Cross-platform touchpoints:"; then
-                TOUCHPOINT_VIOLATIONS+=("$path")
-            fi
-            ;;
-    esac
-done
+        case "$path" in
+            src/common/RunProcess.cpp|src/codegen/common/LinkerSupport.cpp|src/codegen/common/RuntimeComponents.hpp|src/codegen/common/linker/NativeLinker.cpp|src/codegen/x86_64/CodegenPipeline.cpp|src/codegen/aarch64/CodegenPipeline.cpp)
+                if ! head -n 30 "$ROOT_DIR/$path" | grep -q "Cross-platform touchpoints:"; then
+                    TOUCHPOINT_VIOLATIONS+=("$path")
+                fi
+                ;;
+        esac
+    done
+fi
 
 if [[ ${#VIOLATIONS[@]} -eq 0 && ${#TOUCHPOINT_VIOLATIONS[@]} -eq 0 ]]; then
     echo "Platform policy lint: clean"

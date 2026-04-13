@@ -322,6 +322,11 @@ void vg_flex_set_justify_content(vg_widget_t *flex, vg_justify_t justify);
 /// @param gap  Gap in pixels between adjacent items.
 void vg_flex_set_gap(vg_widget_t *flex, float gap);
 
+/// @brief Set the primary-axis spacing/gap for a supported layout container.
+/// @details Applies to VBox, HBox, and Flex containers. Other widgets are a
+///          safe no-op.
+void vg_container_set_spacing(vg_widget_t *container, float spacing);
+
 /// @brief Enable or disable line wrapping in a Flex container.
 ///
 /// @details When wrapping is enabled, children that exceed the main-axis

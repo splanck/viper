@@ -15,16 +15,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* Minimal layout-compatible stub for vg_scrollview_t scroll fields.
- * Avoids circular dependency on vg_widgets.h (which includes vg_widget.h).
- * Valid per C99 §6.7.2.1: a pointer to a struct may be converted to a pointer
- * to its first member, and these two structs share the same initial sequence. */
-typedef struct {
-    vg_widget_t base;
-    float scroll_x;
-    float scroll_y;
-} vg_scrollview_scroll_t;
-
 //=============================================================================
 // Global State
 //=============================================================================
@@ -33,6 +23,46 @@ static uint32_t g_next_widget_id = 1;
 static vg_widget_t *g_focused_widget = NULL;
 static vg_widget_t *g_input_capture_widget = NULL;
 static vg_widget_t *g_modal_root = NULL;
+static vg_widget_t *g_hovered_widget = NULL;
+
+static bool widget_paints_children_internally(const vg_widget_t *widget) {
+    if (!widget)
+        return false;
+    if (widget->type == VG_WIDGET_SCROLLVIEW)
+        return true;
+    return widget->type == VG_WIDGET_CUSTOM && widget->vtable && widget->vtable->paint_overlay;
+}
+
+static void paint_widget_normal_tree(vg_widget_t *root, void *canvas) {
+    if (!root || !root->visible || !canvas)
+        return;
+
+    if (root->vtable && root->vtable->paint) {
+        root->vtable->paint(root, canvas);
+    }
+
+    if (widget_paints_children_internally(root))
+        return;
+
+    VG_FOREACH_CHILD(root, child) {
+        paint_widget_normal_tree(child, canvas);
+    }
+}
+
+static void paint_widget_overlay_tree(vg_widget_t *root, void *canvas) {
+    if (!root || !root->visible || !canvas)
+        return;
+
+    if (root->vtable && root->vtable->paint_overlay) {
+        root->vtable->paint_overlay(root, canvas);
+        if (widget_paints_children_internally(root))
+            return;
+    }
+
+    VG_FOREACH_CHILD(root, child) {
+        paint_widget_overlay_tree(child, canvas);
+    }
+}
 
 //=============================================================================
 // ID Generation
@@ -227,6 +257,10 @@ void vg_widget_destroy(vg_widget_t *widget) {
     // Clear modal root if this widget was the modal
     if (g_modal_root == widget) {
         g_modal_root = NULL;
+    }
+
+    if (g_hovered_widget == widget) {
+        g_hovered_widget = NULL;
     }
 
     widget->parent = NULL;
@@ -487,20 +521,12 @@ void vg_widget_get_screen_bounds(
     float sx = widget->x;
     float sy = widget->y;
 
-    // Walk up the parent chain to get screen coordinates.
-    // ScrollView containers shift children by their scroll offset, so
-    // subtract scroll_x/scroll_y when passing through one.
+    // Child x/y are already stored relative to the arranged content origin of
+    // their parent, so screen conversion only adds ancestor positions.
     vg_widget_t *p = widget->parent;
     while (p) {
-        sx += p->x + p->layout.padding_left;
-        sy += p->y + p->layout.padding_top;
-
-        if (p->type == VG_WIDGET_SCROLLVIEW) {
-            const vg_scrollview_scroll_t *sv = (const vg_scrollview_scroll_t *)p;
-            sx -= sv->scroll_x;
-            sy -= sv->scroll_y;
-        }
-
+        sx += p->x;
+        sy += p->y;
         p = p->parent;
     }
 
@@ -683,15 +709,8 @@ void vg_widget_paint(vg_widget_t *root, void *canvas) {
     if (!root || !root->visible || !canvas)
         return;
 
-    // Paint this widget
-    if (root->vtable && root->vtable->paint) {
-        root->vtable->paint(root, canvas);
-    }
-
-    // Paint children
-    VG_FOREACH_CHILD(root, child) {
-        vg_widget_paint(child, canvas);
-    }
+    paint_widget_normal_tree(root, canvas);
+    paint_widget_overlay_tree(root, canvas);
 
     root->needs_paint = false;
 }
@@ -786,6 +805,7 @@ void vg_widget_get_runtime_state(vg_widget_runtime_state_t *state) {
     state->focused_widget = g_focused_widget;
     state->input_capture_widget = g_input_capture_widget;
     state->modal_root = g_modal_root;
+    state->hovered_widget = g_hovered_widget;
 }
 
 void vg_widget_set_runtime_state(const vg_widget_runtime_state_t *state) {
@@ -793,11 +813,13 @@ void vg_widget_set_runtime_state(const vg_widget_runtime_state_t *state) {
         g_focused_widget = NULL;
         g_input_capture_widget = NULL;
         g_modal_root = NULL;
+        g_hovered_widget = NULL;
         return;
     }
     g_focused_widget = state->focused_widget;
     g_input_capture_widget = state->input_capture_widget;
     g_modal_root = state->modal_root;
+    g_hovered_widget = state->hovered_widget;
 }
 
 //=============================================================================
@@ -805,8 +827,17 @@ void vg_widget_set_runtime_state(const vg_widget_runtime_state_t *state) {
 //=============================================================================
 
 void vg_widget_set_focus(vg_widget_t *widget) {
-    if (!widget)
+    if (!widget) {
+        if (g_focused_widget) {
+            if (g_focused_widget->vtable && g_focused_widget->vtable->on_focus) {
+                g_focused_widget->vtable->on_focus(g_focused_widget, false);
+            }
+            g_focused_widget->state &= ~VG_STATE_FOCUSED;
+            g_focused_widget->needs_paint = true;
+            g_focused_widget = NULL;
+        }
         return;
+    }
     if (!widget->enabled || !widget->visible)
         return;
     if (widget->vtable && widget->vtable->can_focus && !widget->vtable->can_focus(widget)) {
