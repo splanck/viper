@@ -70,6 +70,9 @@ void rt_tilemap_set_tile_property(void *tm, int64_t tile_index, rt_string key, i
     p->count++;
 }
 
+/// @brief Look up a custom integer property attached to tile `tile_index` (e.g., "damage",
+/// "speed_modifier"). Returns `default_val` if the tile has no such property or inputs are
+/// invalid. Properties are stored per-tile-type (not per-cell), max 8 keys per tile.
 int64_t rt_tilemap_get_tile_property(void *tm,
                                      int64_t tile_index,
                                      rt_string key,
@@ -125,6 +128,10 @@ static autotile_rule *find_or_create_rule(rt_tilemap_impl *tilemap, int64_t base
     return r;
 }
 
+/// @brief Register the *low half* (variants 0..7) of an autotile rule for `base_tile`. Each
+/// `vN` is the tile index to use for one of the 16 neighbor-bitmask cases. Pair with
+/// `_set_autotile_hi` to cover variants 8..15. Splits across two calls because the runtime ABI
+/// caps function args at 8.
 void rt_tilemap_set_autotile_lo(void *tm,
                                 int64_t base_tile,
                                 int64_t v0,
@@ -151,6 +158,9 @@ void rt_tilemap_set_autotile_lo(void *tm,
     r->active = 1;
 }
 
+/// @brief Register the *high half* (variants 8..15) of an autotile rule for `base_tile`. The
+/// 16 entries jointly cover every neighbor pattern (4-bit bitmask of N/E/S/W or NW/NE/SW/SE
+/// adjacency). Marks the rule active so `_apply_autotile_region` will start substituting tiles.
 void rt_tilemap_set_autotile_hi(void *tm,
                                 int64_t base_tile,
                                 int64_t v8,
@@ -367,7 +377,9 @@ static void assign_layer_tileset(rt_tilemap_impl *tm, int64_t layer, void *pixel
     lyr->tile_count = lyr->tileset_cols * lyr->tileset_rows;
 }
 
-/// @brief Save the to file of the tilemap.
+/// @brief Serialize the tilemap to a JSON file at `path`. Includes version (1), dimensions,
+/// tile size, every layer's data + tileset reference, tile properties, and autotile rules.
+/// Returns 1 on success, 0 on null inputs / missing path / I/O error.
 int8_t rt_tilemap_save_to_file(void *tm, rt_string path) {
     if (!tm || !path)
         return 0;
@@ -506,6 +518,10 @@ int8_t rt_tilemap_save_to_file(void *tm, rt_string path) {
     return written == len ? 1 : 0;
 }
 
+/// @brief Load a tilemap from a `.vtile` (or compatible) file at `path`. Reads dimensions,
+/// layer data, tile properties, and autotile rules. Returns a fresh tilemap handle on success
+/// or NULL on I/O / parse failure (file missing, version mismatch, truncated). See
+/// `_save_to_file` for the binary layout.
 void *rt_tilemap_load_from_file(rt_string path) {
     if (!path)
         return NULL;
@@ -717,6 +733,10 @@ void *rt_tilemap_load_from_file(rt_string path) {
 // CSV Import
 //=============================================================================
 
+/// @brief Load a tilemap from a CSV file (`,`-separated tile indices, one row per line). Two-pass
+/// reader: first scans for max columns and row count, then allocates a single-layer tilemap of
+/// that size and parses values. Empty lines are skipped; lines longer than 16 KiB are truncated.
+/// Returns NULL on missing path / empty file / allocation failure.
 void *rt_tilemap_load_csv(rt_string path, int64_t tile_w, int64_t tile_h) {
     if (!path)
         return NULL;

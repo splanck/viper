@@ -82,109 +82,139 @@ void *rt_entity_new(int64_t x, int64_t y, int64_t w, int64_t h) {
 
 //=============================================================================
 // Property accessors
+//
+// All getters/setters below operate directly on the rt_entity_impl struct.
+// Position (x, y) and velocity (vx, vy) are stored in *centipixels* (1/100 px)
+// for sub-pixel precision in the integer integrator. Width/height are in pixels.
+// `dir` is the facing direction (-1 = left, +1 = right). Each accessor returns
+// 0 / no-op for a NULL handle to keep call sites trap-free.
 //=============================================================================
 
+/// @brief Read X position in centipixels (divide by 100 to get pixels).
 int64_t rt_entity_get_x(void *ent) {
     return ent ? get(ent)->x : 0;
 }
 
+/// @brief Read Y position in centipixels.
 int64_t rt_entity_get_y(void *ent) {
     return ent ? get(ent)->y : 0;
 }
 
+/// @brief Set X position in centipixels (teleport — bypasses collision).
 void rt_entity_set_x(void *ent, int64_t v) {
     if (ent)
         get(ent)->x = v;
 }
 
+/// @brief Set Y position in centipixels.
 void rt_entity_set_y(void *ent, int64_t v) {
     if (ent)
         get(ent)->y = v;
 }
 
+/// @brief Read X velocity in centipixels per dt unit.
 int64_t rt_entity_get_vx(void *ent) {
     return ent ? get(ent)->vx : 0;
 }
 
+/// @brief Read Y velocity in centipixels per dt unit.
 int64_t rt_entity_get_vy(void *ent) {
     return ent ? get(ent)->vy : 0;
 }
 
+/// @brief Set X velocity in centipixels per dt.
 void rt_entity_set_vx(void *ent, int64_t v) {
     if (ent)
         get(ent)->vx = v;
 }
 
+/// @brief Set Y velocity in centipixels per dt.
 void rt_entity_set_vy(void *ent, int64_t v) {
     if (ent)
         get(ent)->vy = v;
 }
 
+/// @brief Read entity bounding-box width in pixels (set on construction).
 int64_t rt_entity_get_width(void *ent) {
     return ent ? get(ent)->width : 0;
 }
 
+/// @brief Read entity bounding-box height in pixels.
 int64_t rt_entity_get_height(void *ent) {
     return ent ? get(ent)->height : 0;
 }
 
+/// @brief Read facing direction (-1 = left, +1 = right). Defaults to +1 for NULL.
 int64_t rt_entity_get_dir(void *ent) {
     return ent ? get(ent)->dir : 1;
 }
 
+/// @brief Set facing direction. Used by sprite-mirroring and patrol/turn logic.
 void rt_entity_set_dir(void *ent, int64_t v) {
     if (ent)
         get(ent)->dir = v;
 }
 
+/// @brief Read current hit-point count.
 int64_t rt_entity_get_hp(void *ent) {
     return ent ? get(ent)->hp : 0;
 }
 
+/// @brief Set current hit-point count (no clamping — caller responsible for capping at max_hp).
 void rt_entity_set_hp(void *ent, int64_t v) {
     if (ent)
         get(ent)->hp = v;
 }
 
+/// @brief Read maximum hit-point cap.
 int64_t rt_entity_get_max_hp(void *ent) {
     return ent ? get(ent)->max_hp : 0;
 }
 
+/// @brief Set the max hit-point cap.
 void rt_entity_set_max_hp(void *ent, int64_t v) {
     if (ent)
         get(ent)->max_hp = v;
 }
 
+/// @brief Read user-defined entity type tag (e.g., 0=player, 1=enemy, 2=pickup). Game-specific.
 int64_t rt_entity_get_type(void *ent) {
     return ent ? get(ent)->type : 0;
 }
 
+/// @brief Set the entity type tag.
 void rt_entity_set_type(void *ent, int64_t v) {
     if (ent)
         get(ent)->type = v;
 }
 
+/// @brief Returns 1 if the entity is currently active (participates in update/draw).
 int8_t rt_entity_get_active(void *ent) {
     return ent ? get(ent)->active : 0;
 }
 
+/// @brief Toggle active flag. Inactive entities should be skipped by game-loop systems.
 void rt_entity_set_active(void *ent, int8_t v) {
     if (ent)
         get(ent)->active = v;
 }
 
+/// @brief Last-collision flag: 1 if the entity is touching a solid tile below.
 int8_t rt_entity_on_ground(void *ent) {
     return ent ? get(ent)->on_ground : 0;
 }
 
+/// @brief Last-collision flag: 1 if the entity bumped a solid tile on its left side.
 int8_t rt_entity_hit_left(void *ent) {
     return ent ? get(ent)->hit_left : 0;
 }
 
+/// @brief Last-collision flag: 1 if the entity bumped a solid tile on its right side.
 int8_t rt_entity_hit_right(void *ent) {
     return ent ? get(ent)->hit_right : 0;
 }
 
+/// @brief Last-collision flag: 1 if the entity bumped a solid tile above (head bonk).
 int8_t rt_entity_hit_ceiling(void *ent) {
     return ent ? get(ent)->hit_ceiling : 0;
 }

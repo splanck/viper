@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-09
+last-verified: 2026-04-13
 ---
 
 # Files & Directories
@@ -23,15 +23,15 @@ File system operations.
 |-------------------------------|------------------------|-------------------------------------------------------------------------------------------|
 | `Exists(path)`                | `Boolean(String)`      | Returns true only if the path exists and is a regular file                               |
 | `ReadAllText(path)`           | `String(String)`       | Reads the entire file contents as a string                                                |
-| `WriteAllText(path, content)` | `Void(String, String)` | Writes a string to a file (overwrites if exists)                                          |
+| `WriteAllText(path, content)` | `Void(String, String)` | Atomically replaces a text file with new contents                                          |
 | `Delete(path)`                | `Void(String)`         | Deletes a file                                                                            |
 | `Copy(src, dst)`              | `Void(String, String)` | Copies a file from src to dst                                                             |
-| `Move(src, dst)`              | `Void(String, String)` | Moves/renames a file from src to dst                                                      |
+| `Move(src, dst)`              | `Void(String, String)` | Moves or renames a file, replacing `dst` when supported by the platform                   |
 | `Size(path)`                  | `Integer(String)`      | Returns file size in bytes, or -1 if not found                                            |
 | `ReadBytes(path)`             | `ptr(String)`          | Reads the entire file as a raw runtime buffer                                             |
 | `WriteBytes(path, data)`      | `Void(String, ptr)`    | Writes a raw runtime buffer to a file                                                     |
 | `ReadAllBytes(path)`          | `Bytes(String)`        | Reads the entire file as binary data (traps on I/O errors)                                |
-| `WriteAllBytes(path, bytes)`  | `Void(String, Bytes)`  | Writes binary data to a file (overwrites; traps on I/O errors)                            |
+| `WriteAllBytes(path, bytes)`  | `Void(String, Bytes)`  | Atomically replaces a file with binary data (traps on I/O errors)                         |
 | `ReadLines(path)`             | `ptr(String)`          | Reads the file as a raw runtime buffer of lines                                           |
 | `WriteLines(path, lines)`     | `Void(String, Seq)`    | Writes a sequence of strings as lines                                                     |
 | `Append(path, text)`          | `Void(String, String)` | Appends text to a file                                                                    |
@@ -44,9 +44,11 @@ File system operations.
 
 - `AppendLine` always appends a single `\n` byte (no platform newline normalization).
 - `Exists` returns false for directories; use `Dir.Exists` for directory checks.
+- `WriteAllText` and `WriteAllBytes` write to a temporary file in the destination directory and then replace the live file. Failed writes trap instead of silently leaving a partial overwrite behind.
+- `Move` first attempts an in-place replace/rename. It only falls back to copy-plus-delete when the source and destination are on different filesystems or volumes.
 - `ReadAllLines` splits on `\n` and `\r\n` and does not include line endings in returned strings; a trailing line ending
   does not add an extra empty final line.
-- `ReadAllBytes`, `WriteAllBytes`, and `ReadAllLines` trap (write a diagnostic to stderr and terminate) on I/O errors.
+- `WriteAllText`, `ReadAllBytes`, `WriteAllBytes`, and `ReadAllLines` trap (write a diagnostic to stderr and terminate) on I/O errors.
 - `ReadBytes` and `ReadLines` return raw `ptr` values representing internal runtime buffer objects. They are intended for use with other low-level runtime functions and are not strongly-typed Zia objects. Similarly, `WriteBytes` accepts a raw `ptr` for the data parameter. For strongly-typed binary and line I/O, prefer `ReadAllBytes`, `WriteAllBytes`, and `ReadAllLines`.
 
 ### Zia Example

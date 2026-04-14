@@ -33,6 +33,7 @@
 
 #include "rt_object.h"
 #include "rt_box.h"
+#include "rt_gc.h"
 #include "rt_heap.h"
 #include "rt_oop.h"
 #include "rt_platform.h"
@@ -44,6 +45,11 @@
 #include <stdio.h>
 
 #include "rt_trap.h"
+
+// Internal weak-handle helpers used to implement zeroing weak fields. These
+// are intentionally kept out of the public runtime surface.
+int8_t rt_weakref_is_handle(void *candidate);
+void rt_weakref_reset(rt_weakref *ref, void *target);
 
 /// @brief Allocate a zeroed payload tagged as a heap object.
 /// @details Requests storage from @ref rt_heap_alloc with the
@@ -58,6 +64,23 @@ static inline void *alloc_payload(size_t bytes) {
     size_t len = bytes;
     size_t cap = bytes;
     return rt_heap_alloc(RT_HEAP_OBJECT, RT_ELEM_NONE, 1, len, cap);
+}
+
+/// @brief Build an rt_string from a NUL-terminated C string. Inline strlen avoids pulling in
+/// `<string.h>` for this single use.
+static rt_string rt_obj_make_cstr(const char *text) {
+    size_t len = 0;
+    while (text[len] != '\0')
+        ++len;
+    return rt_string_from_bytes(text, len);
+}
+
+/// @brief Look up an object's qualified type name from its class-info record. Falls back to
+/// "Object" if class info is missing or has no qname (e.g. for raw heap blobs).
+static rt_string rt_obj_type_name_from_class_info(const rt_class_info *ci) {
+    if (!ci || !ci->qname)
+        return rt_obj_make_cstr("Object");
+    return rt_obj_make_cstr(ci->qname);
 }
 
 /// @brief Allocate a new object payload with runtime heap bookkeeping.
@@ -317,11 +340,13 @@ rt_string rt_obj_to_string(void *self) {
 
     // Check if the pointer is a string handle (rt_string passed as obj).
     if (rt_string_is_handle(self))
-        return (rt_string)self;
+        return rt_string_ref((rt_string)self);
+
+    rt_heap_hdr_t *validated = NULL;
+    int has_header = rt_heap_try_get_header(self, &validated);
 
     // Check if the object is a boxed value and auto-unbox for display.
-    rt_heap_hdr_t *hdr = (rt_heap_hdr_t *)((uint8_t *)self - sizeof(rt_heap_hdr_t));
-    if (hdr->magic == RT_MAGIC && hdr->elem_kind == RT_ELEM_BOX) {
+    if (has_header && validated && validated->elem_kind == RT_ELEM_BOX) {
         int64_t tag = rt_box_type(self);
         if (tag == RT_BOX_STR) {
             return rt_unbox_str(self);
@@ -342,15 +367,13 @@ rt_string rt_obj_to_string(void *self) {
         }
     }
 
+    if (!has_header || !validated)
+        return rt_obj_make_cstr("Object");
+    if ((rt_heap_kind_t)validated->kind != RT_HEAP_OBJECT)
+        return rt_obj_make_cstr("Object");
+
     rt_object *obj = (rt_object *)self;
-    const rt_class_info *ci = rt_get_class_info_from_vptr(obj->vptr);
-    if (!ci || !ci->qname)
-        return rt_string_from_bytes("Object", 6);
-    const char *name = ci->qname;
-    size_t len = 0;
-    while (name[len] != '\0')
-        ++len;
-    return rt_string_from_bytes(name, len);
+    return rt_obj_type_name_from_class_info(rt_get_class_info_from_vptr(obj->vptr));
 }
 
 // ============================================================================
@@ -363,15 +386,19 @@ rt_string rt_obj_to_string(void *self) {
 rt_string rt_obj_type_name(void *self) {
     if (!self)
         return rt_string_from_bytes("<null>", 6);
+    if (rt_string_is_handle(self))
+        return rt_obj_make_cstr("Viper.String");
+
+    rt_heap_hdr_t *hdr = NULL;
+    if (!rt_heap_try_get_header(self, &hdr) || !hdr)
+        return rt_obj_make_cstr("Object");
+    if ((rt_heap_kind_t)hdr->kind != RT_HEAP_OBJECT)
+        return rt_obj_make_cstr("Object");
+
     rt_object *obj = (rt_object *)self;
-    const rt_class_info *ci = rt_get_class_info_from_vptr(obj->vptr);
-    if (!ci || !ci->qname)
-        return rt_string_from_bytes("Object", 6);
-    const char *name = ci->qname;
-    size_t len = 0;
-    while (name[len] != '\0')
-        ++len;
-    return rt_string_from_bytes(name, len);
+    if (!obj->vptr)
+        return rt_obj_make_cstr("Object");
+    return rt_obj_type_name_from_class_info(rt_get_class_info_from_vptr(obj->vptr));
 }
 
 /// @brief Get the numeric type ID of an object.
@@ -417,7 +444,22 @@ int64_t rt_obj_is_null(void *self) {
 void rt_weak_store(void **addr, void *value) {
     if (!addr)
         return;
-    // Store without incrementing reference count
+    void *current = *addr;
+    if (rt_weakref_is_handle(current)) {
+        if (value && rt_heap_is_payload(value) && !rt_string_is_handle(value)) {
+            rt_weakref_reset((rt_weakref *)current, value);
+            return;
+        }
+        rt_weakref_free((rt_weakref *)current);
+        current = NULL;
+    }
+
+    if (value && rt_heap_is_payload(value) && !rt_string_is_handle(value)) {
+        *addr = rt_weakref_new(value);
+        return;
+    }
+
+    // Fallback for legacy/raw pointers that are not runtime-managed heap objects.
     *addr = value;
 }
 
@@ -445,7 +487,8 @@ void rt_weak_store(void **addr, void *value) {
 void *rt_weak_load(void **addr) {
     if (!addr)
         return NULL;
-    // For now, just return the value
-    // Future: validate object still exists using zeroing weak refs
-    return *addr;
+    void *slot = *addr;
+    if (rt_weakref_is_handle(slot))
+        return rt_weakref_get((rt_weakref *)slot);
+    return slot;
 }

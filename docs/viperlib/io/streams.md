@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-09
+last-verified: 2026-04-13
 ---
 
 # Streams & Buffers
@@ -542,6 +542,8 @@ Buffered text file writer with configurable line endings.
 |------------------|-----------------|
 | Windows          | `\r\n` (CRLF)   |
 | Unix/Linux/macOS | `\n` (LF)       |
+
+`LineWriter` writes the `NewLine` bytes exactly as configured. On Windows it opens files in binary mode, so `\r\n` is written once and custom newline strings are not altered by CRT text translation.
 
 ### Zia Example
 

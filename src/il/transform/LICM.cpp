@@ -404,12 +404,9 @@ PreservedAnalyses LICM::run(Function &function, AnalysisManager &analysis) {
     if (!changed)
         return PreservedAnalyses::all();
 
-    PreservedAnalyses preserved;
-    preserved.preserveAllModules();
-    preserved.preserveFunction(kAnalysisCFG);
-    preserved.preserveFunction(kAnalysisDominators);
-    preserved.preserveFunction(kAnalysisLoopInfo);
-    return preserved;
+    // Hoisting mutates instruction placement across loop/preheader boundaries.
+    // Rebuilding analyses is safer than preserving stale CFG/dominance/loop data.
+    return PreservedAnalyses::none();
 }
 
 } // namespace il::transform

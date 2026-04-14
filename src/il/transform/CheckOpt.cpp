@@ -383,7 +383,7 @@ PreservedAnalyses CheckOpt::run(Function &function, AnalysisManager &analysis) {
     for (auto &bb : function.blocks)
         blockMap[bb.label] = &bb;
 
-    // Build use-def chains once for O(uses) replacement
+    // Build initial use-count info once for safe temp replacement queries.
     viper::il::UseDefInfo useInfo(function);
 
     // =========================================================================

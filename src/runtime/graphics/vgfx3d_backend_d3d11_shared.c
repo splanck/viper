@@ -1,3 +1,28 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/runtime/graphics/vgfx3d_backend_d3d11_shared.c
+// Purpose: D3D11 backend helpers shared with other backends — constant-buffer
+//   packing (HLSL float4 alignment), instance/bone palette upload prep,
+//   per-frame TAA history, mip count math, capacity growth, and policy
+//   choices for render-target / blend / color-format selection.
+//
+// Key invariants:
+//   - HLSL constant buffers require float4 alignment, so scalar arrays must be
+//     packed into vec4 slots (one scalar per .x, padding zeros in .yzw).
+//   - Bone palette is a fixed VGFX3D_D3D11_MAX_BONES × mat4 (16 floats); excess
+//     bones are silently truncated to keep the cbuffer size constant.
+//   - Frame history tracks scene VP and previous-frame VP separately from
+//     overlay/draw VP so motion vectors stay correct across overlay passes.
+//
+// Links: vgfx3d_backend_d3d11_shared.h, vgfx3d_backend_d3d11.c
+//
+//===----------------------------------------------------------------------===//
+
 #include "vgfx3d_backend_d3d11_shared.h"
 
 #include "vgfx3d_backend_utils.h"
@@ -5,6 +30,8 @@
 #include <limits.h>
 #include <string.h>
 
+/// @brief Pack a flat scalar array into HLSL-aligned float4 slots, one scalar per .x lane.
+/// Remaining lanes (.yzw) are zeroed. Truncates if @p src exceeds @p dst capacity.
 void vgfx3d_d3d11_pack_scalar_array4(float (*dst)[4],
                                      int32_t dst_vec_count,
                                      const float *src,
@@ -25,6 +52,9 @@ void vgfx3d_d3d11_pack_scalar_array4(float (*dst)[4],
         dst[i / 4][i % 4] = src[i];
 }
 
+/// @brief Copy a bone palette (mat4 per bone) into a fixed-size cbuffer slot.
+/// Zero-fills the entire palette first so unused slots produce identity-like behavior.
+/// Bones beyond `VGFX3D_D3D11_MAX_BONES` are silently dropped.
 void vgfx3d_d3d11_pack_bone_palette(float *dst, const float *src, int32_t bone_count) {
     size_t copy_count;
 
@@ -41,6 +71,9 @@ void vgfx3d_d3d11_pack_bone_palette(float *dst, const float *src, int32_t bone_c
     memcpy(dst, src, copy_count * sizeof(float));
 }
 
+/// @brief Build per-instance cbuffer entries (model + normal + prev_model) for instanced draws.
+/// When previous-frame matrices are missing, prev_model is filled with the current model so
+/// motion-vector shaders compute zero displacement (no false motion).
 void vgfx3d_d3d11_fill_instance_data(vgfx3d_d3d11_instance_data_t *dst,
                                      int32_t instance_count,
                                      const float *instance_matrices,
@@ -63,6 +96,9 @@ void vgfx3d_d3d11_fill_instance_data(vgfx3d_d3d11_instance_data_t *dst,
     }
 }
 
+/// @brief Roll the per-frame VP/inv-VP/cam-pos history forward by one frame.
+/// Scene VP and overlay VP are tracked separately because overlay passes use
+/// the current VP for both "current" and "previous" (no temporal coherence).
 void vgfx3d_d3d11_update_frame_history(vgfx3d_d3d11_frame_history_t *history,
                                        const float *vp,
                                        const float *inv_vp,
@@ -92,6 +128,10 @@ void vgfx3d_d3d11_update_frame_history(vgfx3d_d3d11_frame_history_t *history,
     history->overlay_used_this_frame = uses_separate_overlay_target ? 1 : 0;
 }
 
+/// @brief Reconcile bone-buffer upload outcomes into the per-object draw flags.
+/// If the current upload failed, both skinning flags are cleared so the shader
+/// falls back to the unskinned path. If only the prev-frame upload failed, motion
+/// vectors degrade gracefully to "no skinning history".
 void vgfx3d_d3d11_resolve_bone_upload_status(vgfx3d_d3d11_per_object_t *object_data,
                                              int current_upload_ok,
                                              int prev_upload_ok) {
@@ -106,6 +146,10 @@ void vgfx3d_d3d11_resolve_bone_upload_status(vgfx3d_d3d11_per_object_t *object_d
         object_data->has_prev_skinning = 0;
 }
 
+/// @brief Reconcile morph-target upload outcomes (positions and normals) into draw flags.
+/// On failure the shape count drops to 0 (mesh renders un-morphed). If only normal
+/// deltas fail, the position morph still applies but normals will be re-derived from
+/// the morphed positions.
 void vgfx3d_d3d11_resolve_morph_upload_status(vgfx3d_d3d11_per_object_t *object_data,
                                               int morph_upload_ok,
                                               int morph_normal_upload_ok) {
@@ -122,6 +166,8 @@ void vgfx3d_d3d11_resolve_morph_upload_status(vgfx3d_d3d11_per_object_t *object_
         object_data->has_morph_normal_deltas = 0;
 }
 
+/// @brief Compute the number of mipmap levels required to reach 1×1 from (width × height).
+/// Returns 1 for invalid dimensions. Used when creating textures with full mip chains.
 int32_t vgfx3d_d3d11_compute_mip_count(int32_t width, int32_t height) {
     int32_t mip_count = 1;
 
@@ -137,6 +183,8 @@ int32_t vgfx3d_d3d11_compute_mip_count(int32_t width, int32_t height) {
     return mip_count;
 }
 
+/// @brief Capacity-doubling growth helper: returns the next power-of-2 capacity >= @p needed.
+/// Saturates at @p needed when doubling would overflow INT_MAX.
 int32_t vgfx3d_d3d11_next_capacity(int32_t current_capacity,
                                    int32_t needed,
                                    int32_t minimum_capacity) {
@@ -155,6 +203,9 @@ int32_t vgfx3d_d3d11_next_capacity(int32_t current_capacity,
     return next_capacity;
 }
 
+/// @brief Pick the right render-target classification for the current draw context.
+/// Order of priority: explicit RTT > swapchain (no postfx) > overlay (loading existing
+/// color) > scene (HDR intermediate that postfx will tonemap).
 vgfx3d_d3d11_target_kind_t vgfx3d_d3d11_choose_target_kind(int8_t rtt_active,
                                                            int8_t gpu_postfx_enabled,
                                                            int8_t load_existing_color) {
@@ -167,12 +218,15 @@ vgfx3d_d3d11_target_kind_t vgfx3d_d3d11_choose_target_kind(int8_t rtt_active,
     return VGFX3D_D3D11_TARGET_SCENE;
 }
 
+/// @brief Map a draw command to its required blend state (alpha vs opaque).
 vgfx3d_d3d11_blend_mode_t
 vgfx3d_d3d11_choose_blend_mode(const vgfx3d_draw_cmd_t *cmd) {
     return vgfx3d_draw_cmd_uses_alpha_blend(cmd) ? VGFX3D_D3D11_BLEND_ALPHA
                                                  : VGFX3D_D3D11_BLEND_OPAQUE;
 }
 
+/// @brief Pick the color format for a render target — HDR16F for the scene pass
+/// (so post-FX tonemapping has headroom), UNORM8 for everything else.
 vgfx3d_d3d11_color_format_t
 vgfx3d_d3d11_choose_color_format(vgfx3d_d3d11_target_kind_t target_kind) {
     return target_kind == VGFX3D_D3D11_TARGET_SCENE ? VGFX3D_D3D11_COLOR_FORMAT_HDR16F

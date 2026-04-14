@@ -134,6 +134,12 @@ static const theora_dc_weight_t dc_weights[16] = {{{0, 0, 0, 0}, 1},
                                                   {{0, 3, 10, 3}, 16},
                                                   {{29, -26, 29, 0}, 32}};
 
+// Bitstream reader — Theora packets are bit-packed with MSB-first
+// ordering. Failure is sticky: once `failed` is set, all subsequent
+// reads return 0 so the caller can defer error checking until end of
+// packet.
+
+/// @brief Initialize a bitreader to consume `data` MSB-first.
 static void br_init(bitreader_t *br, const uint8_t *data, size_t len) {
     br->data = data;
     br->len = len;
@@ -142,6 +148,11 @@ static void br_init(bitreader_t *br, const uint8_t *data, size_t len) {
     br->failed = 0;
 }
 
+/// @brief Read `nbits` bits (MSB-first) from the stream.
+///
+/// Capped at 25 bits per call — enough for any single Theora field;
+/// 32-bit reads would overflow the accumulator on the last bit.
+/// Returns 0 and latches `failed` on EOF or overlong request.
 static uint32_t br_read(bitreader_t *br, int nbits) {
     uint32_t value = 0;
     if (!br || nbits < 0 || nbits > 25) {
@@ -165,10 +176,14 @@ static uint32_t br_read(bitreader_t *br, int nbits) {
     return value;
 }
 
+/// @brief Read one bit from the stream (convenience wrapper).
 static int br_read1(bitreader_t *br) {
     return (int)br_read(br, 1);
 }
 
+// Tiny scalar helpers used throughout the decoder:
+
+/// @brief Clamp `v` to `[lo, hi]`.
 static int clampi(int v, int lo, int hi) {
     if (v < lo)
         return lo;
@@ -177,10 +192,17 @@ static int clampi(int v, int lo, int hi) {
     return v;
 }
 
+/// @brief Truncate `v` to a 16-bit signed value (modular wrap, defined behavior).
+///
+/// Uses the unsigned-cast trick to avoid implementation-defined
+/// signed overflow when `v` is outside int16 range.
 static int16_t trunc_i16(int32_t v) {
     return (int16_t)(uint16_t)v;
 }
 
+/// @brief Bit-length of `v` (number of bits needed to encode it; 0 → 0).
+///
+/// Per Theora spec: `ilog(0) = 0`, `ilog(1) = 1`, `ilog(n) = floor(log2(n)) + 1`.
 static int ilog_u32(uint32_t v) {
     int ret = 0;
     while (v) {
@@ -190,6 +212,10 @@ static int ilog_u32(uint32_t v) {
     return ret;
 }
 
+/// @brief Symmetric integer division with rounding (positive and negative inputs).
+///
+/// Matches the spec's "rounded division" — `(v + d/2) / d` for
+/// positive `v`, mirrored for negative. Returns 0 when `d <= 0`.
 static int round_div_s32(int v, int d) {
     if (d <= 0)
         return 0;
@@ -198,6 +224,11 @@ static int round_div_s32(int v, int d) {
     return -(((-v) + d / 2) / d);
 }
 
+/// @brief Map a Theora MB mode to the reference frame index it samples.
+///
+/// Modes 1 (intra) → previous frame; 5/6 (golden + extra) → golden
+/// frame; everything else → last frame. Used during inter-frame
+/// motion compensation.
 static int theora_ref_index_for_mode(int mode) {
     switch (mode) {
         case 1:
@@ -210,6 +241,10 @@ static int theora_ref_index_for_mode(int mode) {
     }
 }
 
+/// @brief Number of 8×8 blocks per macroblock width, per plane (chroma format aware).
+///
+/// Luma always 2; chroma is 2 only for 4:4:4 (pixel_format 3),
+/// otherwise 1 (subsampled).
 static int plane_mb_block_w(const theora_decoder_t *dec, int plane) {
     if (plane == 0)
         return 2;
@@ -218,6 +253,9 @@ static int plane_mb_block_w(const theora_decoder_t *dec, int plane) {
     return 1;
 }
 
+/// @brief Number of 8×8 blocks per macroblock height, per plane.
+///
+/// Luma always 2; chroma is 1 only for 4:2:0 (pixel_format 0).
 static int plane_mb_block_h(const theora_decoder_t *dec, int plane) {
     if (plane == 0)
         return 2;
@@ -226,6 +264,9 @@ static int plane_mb_block_h(const theora_decoder_t *dec, int plane) {
     return 2;
 }
 
+/// @brief Tear down all heap allocations owned by the decoder's `priv`.
+///
+/// Called from the public destroy path. NULL-safe.
 static void theora_priv_free(theora_decoder_t *dec) {
     theora_priv_t *priv = (theora_priv_t *)dec->priv;
     if (!priv)
@@ -249,6 +290,10 @@ static void theora_priv_free(theora_decoder_t *dec) {
     dec->priv = NULL;
 }
 
+/// @brief Validate a Theora header packet's "type byte + magic 'theora'" prefix.
+///
+/// Theora's three header packet types (id=0x80, comment=0x81, setup=0x82)
+/// all begin with the type byte followed by the ASCII string "theora".
 static int check_header_sig(const uint8_t *data, size_t len, uint8_t type) {
     if (!data || len < 7 || data[0] != type)
         return 0;
@@ -256,6 +301,17 @@ static int check_header_sig(const uint8_t *data, size_t len, uint8_t type) {
            data[6] == 'a';
 }
 
+/// @brief Parse the 0x80 identification header (frame size, fps, color, etc.).
+///
+/// Reads:
+///   - Version triple (major.minor.sub)
+///   - Frame and picture dimensions (frame is multiple of 16)
+///   - Picture offset within frame
+///   - Frame rate as num/den fraction
+///   - Pixel aspect ratio
+///   - Color space + quality hint + keyframe granule shift
+///   - Pixel format (4:2:0 / 4:2:2 / 4:4:4)
+/// Computes the derived block / superblock / macroblock counts.
 static int parse_id_header(theora_decoder_t *dec, const uint8_t *data, size_t len) {
     bitreader_t br;
     if (!check_header_sig(data, len, 0x80) || len < 42)
@@ -296,11 +352,21 @@ static int parse_id_header(theora_decoder_t *dec, const uint8_t *data, size_t le
     return 0;
 }
 
+/// @brief Validate the 0x81 comment header (we don't actually parse the comments).
+///
+/// The decoder only needs to know the comment header was present (it
+/// occupies a packet slot in the header sequence). Fields like vendor
+/// string and user comments are ignored.
 static int parse_comment_header(theora_decoder_t *dec, const uint8_t *data, size_t len) {
     (void)dec;
     return check_header_sig(data, len, 0x81) ? 0 : -1;
 }
 
+/// @brief Recursive Huffman tree builder — read leaf bit, then either
+///        encode a symbol or recurse for left+right children.
+///
+/// `depth` enforces a 64-level maximum to bound stack use. Returns the
+/// new node's index, or -1 on overflow / read failure.
 static int huff_parse_node(theora_huff_table_t *tab, bitreader_t *br, int depth) {
     int idx;
     if (!tab || !br || depth > 64 || tab->node_count >= 64)
@@ -321,6 +387,10 @@ static int huff_parse_node(theora_huff_table_t *tab, bitreader_t *br, int depth)
     return br->failed ? -1 : idx;
 }
 
+/// @brief Decode one symbol from the bitstream by walking the Huffman tree.
+///
+/// One bit per tree edge until a leaf node is reached; returns the
+/// leaf's token. Returns -1 on bitreader failure or invalid index.
 static int huff_decode_token(const theora_huff_table_t *tab, bitreader_t *br) {
     int idx = 0;
     if (!tab || !br || tab->node_count <= 0)
@@ -336,6 +406,16 @@ static int huff_decode_token(const theora_huff_table_t *tab, bitreader_t *br) {
     return tab->nodes[idx].token;
 }
 
+/// @brief Build the per-plane block layout tables and allocate the working buffers.
+///
+/// Lays out:
+///   - Per-plane block/superblock counts and offsets.
+///   - Hilbert-curve ordering tables that map raster (x,y) → coded index
+///     (Theora codes blocks/superblocks/macroblocks in space-filling
+///     curve order for compression efficiency).
+///   - Per-block parallel arrays: bcoded, qiis, tis, ncoeffs, mvects, coeffs.
+///   - Per-MB and per-SB state arrays.
+/// Returns -1 on any malloc failure (caller cleans up via `theora_priv_free`).
 static int theora_alloc_layout(theora_decoder_t *dec, theora_priv_t *priv) {
     int plane;
     int32_t block_offset = 0;
@@ -487,6 +567,13 @@ static int theora_alloc_layout(theora_decoder_t *dec, theora_priv_t *priv) {
     return 0;
 }
 
+/// @brief Compute the quantization scale for one (qti, plane, qi, coeff) cell.
+///
+/// Combines the DC/AC base scale, the per-plane base matrix, the
+/// quantization-range remapping, and the AC/INTER scaling factor.
+/// Result is clamped to the spec-defined range [floor, 4096], then
+/// to a per-coeff minimum (8 for DC luma, 2 for chroma DC, etc.).
+/// Used to pre-bake the qmat tables consulted during inverse quant.
 static uint16_t theora_compute_qscale(const theora_priv_t *priv, int qti, int pli, int qi, int ci) {
     uint16_t qscale;
     uint16_t bm = 0;
@@ -516,6 +603,12 @@ static uint16_t theora_compute_qscale(const theora_priv_t *priv, int qti, int pl
     }
 }
 
+/// @brief Finalize decoder setup after all three header packets are parsed.
+///
+/// Pre-bakes the full quantization matrix lookup table (2 × 3 × 64 ×
+/// 64 entries), allocates the layout buffers, computes plane strides,
+/// and allocates the YUV output planes. Called once, just before the
+/// first compressed packet is decoded.
 static int theora_finish_setup(theora_decoder_t *dec, theora_priv_t *priv) {
     int32_t fw, fh;
     size_t y_size, c_size;
@@ -650,10 +743,19 @@ static int parse_setup_header(theora_decoder_t *dec, const uint8_t *data, size_t
     return theora_finish_setup(dec, priv);
 }
 
+/// @brief Public: zero-initialize a `theora_decoder_t`.
+///
+/// Caller-allocated struct; this just clears the slab. Allocations
+/// happen lazily as headers and frames are parsed.
 void theora_decoder_init(theora_decoder_t *dec) {
     memset(dec, 0, sizeof(*dec));
 }
 
+/// @brief Public: release every heap allocation owned by the decoder.
+///
+/// Frees the YUV reference frames (current, previous, golden) plus
+/// the private state via `theora_priv_free`. Re-zeros the struct
+/// so it could be reused with another `_init` call.
 void theora_decoder_free(theora_decoder_t *dec) {
     if (!dec)
         return;
@@ -670,6 +772,11 @@ void theora_decoder_free(theora_decoder_t *dec) {
     memset(dec, 0, sizeof(*dec));
 }
 
+/// @brief Public: classify a packet as a Theora header packet (vs. data).
+///
+/// Header packets begin with type byte 0x80/0x81/0x82 followed by the
+/// magic ASCII string "theora". Used by Ogg demuxers to route packets
+/// to `decode_header` vs. `decode_frame`.
 int theora_is_header_packet(const uint8_t *data, size_t len) {
     if (!data || len < 7)
         return 0;
@@ -679,6 +786,15 @@ int theora_is_header_packet(const uint8_t *data, size_t len) {
            data[6] == 'a';
 }
 
+/// @brief Public: dispatch one of the three header packets to its parser.
+///
+/// Returns:
+///   - 0 on successful header parse.
+///   - 1 if `data` isn't a Theora header packet (caller should treat
+///     it as a data packet).
+///   - -1 on any structural error in the header payload.
+/// Theora requires id (0x80), comment (0x81), setup (0x82) in that
+/// order before the first data packet.
 int theora_decode_header(theora_decoder_t *dec, const uint8_t *data, size_t len) {
     if (!dec || !data || len < 1)
         return -1;
@@ -702,6 +818,12 @@ typedef struct {
     uint8_t qi[3];
 } theora_frame_header_t;
 
+/// @brief Read the per-frame header (frame type + 1-3 quantization indices).
+///
+/// First bit must be 0 (denotes a video data packet). Frame type:
+/// 0=intra (keyframe), 1=inter (predicted from previous). 1-3 QI
+/// values follow, each indexing the per-color-plane quantization
+/// table; the count is encoded as 0/1/2 trailing flag bits.
 static int decode_frame_header(theora_decoder_t *dec, bitreader_t *br, theora_frame_header_t *fh) {
     int has_more;
     if (br_read1(br) != 0)
@@ -730,6 +852,11 @@ static int decode_frame_header(theora_decoder_t *dec, bitreader_t *br, theora_fr
     return 0;
 }
 
+/// @brief Decode a long-run-length value (variable-length; 1..4127 range).
+///
+/// Six-bucket prefix code: 0 → 1; 10x → 2-3; 110xx → 4-7; 1110xxx →
+/// 8-15; 11110xxxx → 16-31; 11111xxxxxxxxxxxx → 32-4127. Used to
+/// run-length-encode the bcoded bitmap and other per-block flags.
 static int decode_long_run_length(bitreader_t *br) {
     int bit0 = br_read1(br);
     if (bit0 == 0)
@@ -1866,6 +1993,20 @@ static void reconstruct_frame(theora_decoder_t *dec,
     apply_loop_filter(dec, priv, fh);
 }
 
+/// @brief Public: decode one compressed video packet into YUV420/422/444 planes.
+///
+/// Multi-pass pipeline:
+///   1. Frame header (type, QI list).
+///   2. Block coded-flags bitmap.
+///   3. Macroblock modes (intra / forward / etc.).
+///   4. Motion vectors.
+///   5. Per-block quantization-index selection.
+///   6. DCT coefficients (all blocks, all 64 frequencies).
+///   7. Undo DC prediction (DC coefficients are differential).
+///   8. Reconstruct the frame (IDCT, motion-compensate, loop filter).
+///   9. Update reference frames (and golden frame on intra).
+/// `out_y`/`out_cb`/`out_cr` receive pointers to the decoded planes
+/// (owned by the decoder). Returns 0 on success, -1 on any error.
 int theora_decode_frame(theora_decoder_t *dec,
                         const uint8_t *data,
                         size_t len,

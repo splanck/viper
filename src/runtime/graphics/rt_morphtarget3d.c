@@ -223,6 +223,9 @@ int64_t rt_morphtarget3d_add_shape(void *obj, rt_string name) {
     return mt->shape_count++;
 }
 
+/// @brief Set the position delta for a single vertex of a single shape.
+/// Out-of-range shape or vertex indices are silent no-ops; touches the payload
+/// generation so GPU caches re-upload on the next draw.
 void rt_morphtarget3d_set_delta(
     void *obj, int64_t shape, int64_t vertex, double dx, double dy, double dz) {
     if (!obj)
@@ -242,6 +245,9 @@ void rt_morphtarget3d_set_delta(
     morphtarget_touch_payload(mt);
 }
 
+/// @brief Set the normal delta for a single vertex of a single shape.
+/// Lazy-allocates the per-shape normal delta array on first use to keep
+/// position-only blendshapes memory-efficient. Triggers post-morph re-normalization.
 void rt_morphtarget3d_set_normal_delta(
     void *obj, int64_t shape, int64_t vertex, double dx, double dy, double dz) {
     if (!obj)
@@ -312,6 +318,9 @@ int64_t rt_morphtarget3d_get_shape_count(void *obj) {
     return obj ? ((rt_morphtarget3d *)obj)->shape_count : 0;
 }
 
+/// @brief Borrow the contiguous packed position-delta payload for GPU upload.
+/// Layout: shape-major, [shape][vertex][xyz]. Rebuilds on demand if dirty.
+/// Returns NULL if the morph target is empty or rebuild fails (OOM).
 const float *rt_morphtarget3d_get_packed_deltas(void *obj) {
     rt_morphtarget3d *mt = (rt_morphtarget3d *)obj;
     if (!mt)
@@ -321,6 +330,8 @@ const float *rt_morphtarget3d_get_packed_deltas(void *obj) {
     return mt->packed_pos_deltas;
 }
 
+/// @brief Borrow the packed normal-delta payload for GPU upload, or NULL when no
+/// shape has normal deltas. Same layout as `_get_packed_deltas`.
 const float *rt_morphtarget3d_get_packed_normal_deltas(void *obj) {
     rt_morphtarget3d *mt = (rt_morphtarget3d *)obj;
     if (!mt)
@@ -330,6 +341,8 @@ const float *rt_morphtarget3d_get_packed_normal_deltas(void *obj) {
     return mt->packed_nrm_deltas;
 }
 
+/// @brief Monotonic counter that bumps whenever any delta changes.
+/// GPU caches compare against the previous value to detect when re-upload is required.
 uint64_t rt_morphtarget3d_get_payload_generation(void *obj) {
     rt_morphtarget3d *mt = (rt_morphtarget3d *)obj;
     if (!mt)
@@ -355,6 +368,9 @@ static const float *morphtarget_prepare_prev_weights(rt_morphtarget3d *mt, int64
  * Mesh integration
  *=========================================================================*/
 
+/// @brief Bind a MorphTarget3D to a Mesh3D so subsequent draws apply blendshapes.
+/// Vertex counts must match exactly; mismatches are silently rejected. Pass NULL
+/// in @p morph_targets to detach.
 void rt_mesh3d_set_morph_targets(void *mesh, void *morph_targets) {
     if (!mesh)
         return;
@@ -471,6 +487,10 @@ static void morphtarget_draw_mesh_matrix(void *canvas,
         canvas, &tmp, model_matrix, material, motion_key, NULL, NULL);
 }
 
+/// @brief Draw a mesh with morph targets applied, using a raw 4×4 model matrix.
+/// On GPU-capable backends (Metal/OpenGL/D3D11), uploads packed deltas + weights
+/// and blends in the vertex shader. On other backends, applies CPU morph then
+/// submits via the standard draw pipeline.
 void rt_canvas3d_draw_mesh_matrix_morphed(void *canvas,
                                           void *mesh,
                                           const double *model_matrix,
@@ -480,6 +500,8 @@ void rt_canvas3d_draw_mesh_matrix_morphed(void *canvas,
     morphtarget_draw_mesh_matrix(canvas, mesh, model_matrix, material, motion_key, morph_targets);
 }
 
+/// @brief Draw a morphed mesh using a Mat4 transform handle (convenience wrapper).
+/// The transform doubles as the motion-vector key for temporal effects (TAA, motion blur).
 void rt_canvas3d_draw_mesh_morphed(
     void *canvas, void *mesh, void *transform, void *material, void *morph_targets) {
     if (!transform)

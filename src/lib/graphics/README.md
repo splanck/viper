@@ -103,13 +103,10 @@ int main(void) {
     // Main loop
     int running = 1;
     while (running) {
-        // Clear screen to black
-        vgfx_cls(win, VGFX_BLACK);
-
-        // Draw some primitives
-        vgfx_fill_circle(win, 400, 300, 100, VGFX_RED);
-        vgfx_circle(win, 400, 300, 105, VGFX_WHITE);
-        vgfx_line(win, 0, 0, 800, 600, VGFX_YELLOW);
+        // Pump OS events before simulation/rendering when same-frame input matters
+        if (!vgfx_pump_events(win)) {
+            break;
+        }
 
         // Handle events
         vgfx_event_t event;
@@ -123,13 +120,27 @@ int main(void) {
                         running = 0;
                     }
                     break;
+                case VGFX_EVENT_RESIZE:
+                    // event.data.resize.width/height are physical framebuffer pixels
+                    // event.data.resize.logical_width/logical_height match vgfx_get_size()
+                    break;
                 default:
                     break;
             }
         }
 
+        // Clear screen to black
+        vgfx_cls(win, VGFX_BLACK);
+
+        // Draw some primitives
+        vgfx_fill_circle(win, 400, 300, 100, VGFX_RED);
+        vgfx_circle(win, 400, 300, 105, VGFX_WHITE);
+        vgfx_line(win, 0, 0, 800, 600, VGFX_YELLOW);
+
         // Present framebuffer and handle FPS limiting
-        vgfx_update(win);
+        if (!vgfx_update(win)) {
+            break;
+        }
     }
 
     vgfx_destroy_window(win);
@@ -263,11 +274,11 @@ ctest -V
 
 ### Test Suites
 
-| Test Suite       | Tests      | Description                                                       |
-|------------------|------------|-------------------------------------------------------------------|
-| **test_window**  | T1-T3      | Window lifecycle: create, destroy, size queries                   |
-| **test_pixels**  | T4-T6, T14 | Pixel operations: pset, point, cls, framebuffer access            |
-| **test_drawing** | T7-T13     | Drawing primitives: lines, rectangles, circles (outline & filled) |
+| Test Suite       | Tests      | Description                                                                      |
+|------------------|------------|----------------------------------------------------------------------------------|
+| **test_window**  | T1-T3      | Window lifecycle: create, destroy, size queries                                  |
+| **test_pixels**  | T4-T6, T14 | Pixel operations: pset, point, cls, framebuffer access                           |
+| **test_drawing** | T7-T13     | Drawing primitives: lines, rectangles, circles (outline & filled)                |
 | **test_input**   | T16-T25    | Input handling: keyboard, mouse, queueing, overflow, resize, text, scroll, focus |
 
 **Total: 25 tests, 100% pass rate**

@@ -755,7 +755,11 @@ static void jpoint_to_affine(u256 x, u256 y, const jpoint *P) {
 // ECDSA P-256 Verification (FIPS 186-4 / SEC1 §4.1.4)
 //=============================================================================
 
-/// @brief Ecdsa p256 verify.
+/// @brief Verify an ECDSA-P256 signature against a public key and pre-computed message digest,
+/// per FIPS 186-4 / SEC1 §4.1.4. Performs full input validation (1 ≤ r, s < n; public key on
+/// curve), then computes R = s^-1·(e·G + r·Q) and checks that R.x ≡ r (mod n). All internal
+/// scalar math runs against the built-in u256/fp/sn helpers — no external crypto deps.
+/// Returns 1 on a valid signature, 0 on any failure (bad input, point at infinity, mismatch).
 int ecdsa_p256_verify(const uint8_t pubkey_x[32],
                       const uint8_t pubkey_y[32],
                       const uint8_t digest[32],

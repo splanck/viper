@@ -43,6 +43,10 @@
 #include <string.h>
 #include <windows.h>
 
+#ifndef WM_DPICHANGED
+#define WM_DPICHANGED 0x02E0
+#endif
+
 //===----------------------------------------------------------------------===//
 // Platform Data Structure
 //===----------------------------------------------------------------------===//
@@ -69,6 +73,7 @@ typedef struct {
     DWORD saved_exstyle;          ///< Windowed ex-style saved for fullscreen restore
     RECT saved_rect;              ///< Windowed bounds saved for fullscreen restore
     int is_fullscreen;            ///< 1 if this window is currently fullscreen
+    int cursor_type;              ///< Current cursor type for WM_SETCURSOR
 } vgfx_win32_data;
 
 //===----------------------------------------------------------------------===//
@@ -114,7 +119,7 @@ static WCHAR *utf8_to_utf16(const char *utf8) {
 
 static int32_t win32_logical_to_physical(const struct vgfx_window *win, int32_t logical) {
     float scale = (win && win->scale_factor >= 1.0f) ? win->scale_factor : 1.0f;
-    return (int32_t)(logical * scale);
+    return vgfx_internal_scale_up_i32(logical, scale);
 }
 
 static void win32_client_to_physical_mouse(struct vgfx_window *win,
@@ -128,6 +133,32 @@ static void win32_client_to_physical_mouse(struct vgfx_window *win,
         *out_x = x;
     if (out_y)
         *out_y = y;
+}
+
+static int32_t win32_public_to_client_coord(const struct vgfx_window *win, int32_t value) {
+    int32_t physical = vgfx_internal_scale_up_i32(value, vgfx_internal_coord_scale(win));
+    return vgfx_internal_scale_down_i32(physical, vgfx_internal_sanitize_scale(win->scale_factor));
+}
+
+static HCURSOR win32_cursor_handle(int32_t type) {
+    static LPCTSTR const s_cursor_ids[] = {
+        IDC_ARROW,  /* 0: default */
+        IDC_HAND,   /* 1: pointer */
+        IDC_IBEAM,  /* 2: text    */
+        IDC_SIZEWE, /* 3: resize_h */
+        IDC_SIZENS, /* 4: resize_v */
+        IDC_WAIT,   /* 5: wait    */
+    };
+    int idx = (type >= 0 && type < 6) ? type : 0;
+    return LoadCursor(NULL, s_cursor_ids[idx]);
+}
+
+static void win32_apply_cursor(vgfx_win32_data *w32) {
+    if (!w32)
+        return;
+    HCURSOR hc = win32_cursor_handle(w32->cursor_type);
+    if (hc)
+        SetCursor(hc);
 }
 
 static int win32_recreate_dib(struct vgfx_window *win) {
@@ -300,12 +331,32 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
                     w32->height = dip_h;
 
                     if (w32->memdc && w32->hdc) {
-                        vgfx_event_t event = {.type = VGFX_EVENT_RESIZE,
-                                              .time_ms = timestamp,
-                                              .data.resize = {.width = phys_w, .height = phys_h}};
+                        vgfx_event_t event = {0};
+                        vgfx_internal_init_resize_event(&event, win, timestamp, phys_w, phys_h);
                         vgfx_internal_enqueue_event(win, &event);
                     }
                 }
+            }
+            return 0;
+        }
+
+        case WM_DPICHANGED: {
+            UINT dpi_x = LOWORD(wparam);
+            UINT dpi_y = HIWORD(wparam);
+            UINT dpi = dpi_x > dpi_y ? dpi_x : dpi_y;
+            if (dpi < 96)
+                dpi = 96;
+            vgfx_internal_refresh_scale_factor(win, (float)dpi / 96.0f);
+
+            RECT *suggested = (RECT *)lparam;
+            if (suggested) {
+                SetWindowPos(hwnd,
+                             NULL,
+                             suggested->left,
+                             suggested->top,
+                             suggested->right - suggested->left,
+                             suggested->bottom - suggested->top,
+                             SWP_NOZORDER | SWP_NOACTIVATE);
             }
             return 0;
         }
@@ -531,6 +582,14 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
                 event.data.scroll.delta_x = delta;
             vgfx_internal_enqueue_event(win, &event);
             return 0;
+        }
+
+        case WM_SETCURSOR: {
+            if (LOWORD(lparam) == HTCLIENT && w32) {
+                win32_apply_cursor(w32);
+                return TRUE;
+            }
+            break;
         }
 
         case WM_PAINT: {
@@ -1229,19 +1288,11 @@ void vgfx_platform_set_prevent_close(struct vgfx_window *win, int32_t prevent) {
 /// @brief Change the cursor shape for this window.
 /// @param type 0=arrow, 1=hand, 2=ibeam, 3=resize_h, 4=resize_v, 5=wait
 void vgfx_platform_set_cursor(struct vgfx_window *win, int32_t type) {
-    (void)win;
-    static LPCTSTR const s_cursor_ids[] = {
-        IDC_ARROW,  /* 0: default */
-        IDC_HAND,   /* 1: pointer */
-        IDC_IBEAM,  /* 2: text    */
-        IDC_SIZEWE, /* 3: resize_h */
-        IDC_SIZENS, /* 4: resize_v */
-        IDC_WAIT,   /* 5: wait    */
-    };
-    int idx = (type >= 0 && type < 6) ? type : 0;
-    HCURSOR hc = LoadCursor(NULL, s_cursor_ids[idx]);
-    if (hc)
-        SetCursor(hc);
+    if (!win || !win->platform_data)
+        return;
+    vgfx_win32_data *w32 = (vgfx_win32_data *)win->platform_data;
+    w32->cursor_type = (type >= 0 && type < 6) ? type : 0;
+    win32_apply_cursor(w32);
 }
 
 /// @brief Show or hide the mouse cursor.
@@ -1260,11 +1311,29 @@ void vgfx_platform_set_cursor_visible(struct vgfx_window *win, int32_t visible) 
 }
 
 void vgfx_platform_get_monitor_size(struct vgfx_window *win, int32_t *out_w, int32_t *out_h) {
-    (void)win;
+    HMONITOR monitor = NULL;
+    if (win && win->platform_data) {
+        vgfx_win32_data *w32 = (vgfx_win32_data *)win->platform_data;
+        if (w32->hwnd)
+            monitor = MonitorFromWindow(w32->hwnd, MONITOR_DEFAULTTONEAREST);
+    }
+    if (!monitor)
+        monitor = MonitorFromPoint((POINT){0, 0}, MONITOR_DEFAULTTOPRIMARY);
+
+    MONITORINFO mi = {0};
+    mi.cbSize = sizeof(mi);
+    if (!GetMonitorInfo(monitor, &mi)) {
+        if (out_w)
+            *out_w = (int32_t)GetSystemMetrics(SM_CXSCREEN);
+        if (out_h)
+            *out_h = (int32_t)GetSystemMetrics(SM_CYSCREEN);
+        return;
+    }
+
     if (out_w)
-        *out_w = (int32_t)GetSystemMetrics(SM_CXSCREEN);
+        *out_w = mi.rcMonitor.right - mi.rcMonitor.left;
     if (out_h)
-        *out_h = (int32_t)GetSystemMetrics(SM_CYSCREEN);
+        *out_h = mi.rcMonitor.bottom - mi.rcMonitor.top;
 }
 
 void vgfx_platform_set_window_size(struct vgfx_window *win, int32_t w, int32_t h) {
@@ -1304,7 +1373,8 @@ void vgfx_platform_warp_cursor(vgfx_window_t window, int32_t x, int32_t y) {
     if (!window || !window->platform_data)
         return;
     vgfx_win32_data *w32 = (vgfx_win32_data *)window->platform_data;
-    POINT pt = {(LONG)x, (LONG)y};
+    POINT pt = {(LONG)win32_public_to_client_coord(window, x),
+                (LONG)win32_public_to_client_coord(window, y)};
     ClientToScreen(w32->hwnd, &pt);
     SetCursorPos(pt.x, pt.y);
 }

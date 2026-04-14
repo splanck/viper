@@ -87,6 +87,10 @@ static CRITICAL_SECTION g_monitor_table_cs;
 static INIT_ONCE g_monitor_table_cs_once = INIT_ONCE_STATIC_INIT;
 static RtMonitorEntry *g_monitor_table[RT_MONITOR_BUCKETS];
 
+/// @brief One-shot initialiser for the global monitor-table critical section.
+///
+/// Win32 lacks a static `CRITICAL_SECTION` initialiser, so we
+/// route through `InitOnceExecuteOnce` for thread-safe lazy init.
 static BOOL WINAPI init_table_cs_once(PINIT_ONCE once, PVOID param, PVOID *ctx) {
     (void)once;
     (void)param;
@@ -95,12 +99,19 @@ static BOOL WINAPI init_table_cs_once(PINIT_ONCE once, PVOID param, PVOID *ctx) 
     return TRUE;
 }
 
+/// @brief Lazy guard around `init_table_cs_once`; cheap on subsequent calls.
 static void ensure_table_cs_init(void) {
     /* InitOnceExecuteOnce is thread-safe: exactly one thread runs the
        callback and all concurrent callers block until it completes. */
     InitOnceExecuteOnce(&g_monitor_table_cs_once, init_table_cs_once, NULL, NULL);
 }
 
+/// @brief Hash a pointer to a monitor-table bucket index.
+///
+/// Drops the low 4 bits (object pointers are typically aligned),
+/// folds the upper half into the lower half, and multiplies by the
+/// fractional golden-ratio prime — a Knuth-style mixing function
+/// that gives a uniform distribution across the table.
 static size_t hash_ptr(void *p) {
     uintptr_t x = (uintptr_t)p;
     x >>= 4;
@@ -109,6 +120,13 @@ static size_t hash_ptr(void *p) {
     return (size_t)(x & (RT_MONITOR_BUCKETS - 1u));
 }
 
+/// @brief Locate (or lazily create) the monitor associated with `obj`.
+///
+/// Walks the hash chain at `hash_ptr(obj)`. If no entry exists, a
+/// new RtMonitor is allocated, initialised, and prepended to the
+/// chain — all under the table critical section so concurrent
+/// callers see at most one node per object.
+/// @return Pointer to the monitor (never NULL — traps on alloc failure).
 static RtMonitor *get_monitor_for(void *obj) {
     ensure_table_cs_init();
     size_t idx = hash_ptr(obj);
@@ -164,10 +182,17 @@ void rt_monitor_forget(void *obj) {
     free(node);
 }
 
+/// @brief True if the calling thread (`self`) currently owns monitor `m`.
 static int monitor_is_owner(const RtMonitor *m, DWORD self) {
     return m->owner_valid && m->owner == self;
 }
 
+/// @brief Hand the lock to the head of the FIFO acquisition queue and wake it.
+///
+/// Called by `rt_monitor_exit` once the recursion count drops to
+/// zero. Restores the new owner's prior recursion depth (used by
+/// `Wait`, which releases an arbitrarily deep nesting and reclaims
+/// it on wakeup) and signals their per-waiter condvar.
 static void monitor_grant_next_waiter(RtMonitor *m) {
     RtMonitorWaiter *w = m->acq_head;
     if (!w)
@@ -184,6 +209,14 @@ static void monitor_grant_next_waiter(RtMonitor *m) {
     WakeConditionVariable(&w->cv);
 }
 
+// ---------------------------------------------------------------------------
+// FIFO queue helpers — append/remove on the singly-linked acquisition
+// (lock-contention) and wait (condition-variable) queues. All callers
+// already hold the monitor's critical section, so no extra locking is
+// needed inside these helpers.
+// ---------------------------------------------------------------------------
+
+/// @brief Append `w` to the FIFO acquisition queue (lock contention).
 static void monitor_enqueue_acq(RtMonitor *m, RtMonitorWaiter *w) {
     w->next = NULL;
     if (m->acq_tail) {
@@ -195,6 +228,7 @@ static void monitor_enqueue_acq(RtMonitor *m, RtMonitorWaiter *w) {
     }
 }
 
+/// @brief Splice `w` out of the acquisition queue (used on timeout/abort).
 static void monitor_remove_acq(RtMonitor *m, RtMonitorWaiter *w) {
     RtMonitorWaiter *prev = NULL;
     RtMonitorWaiter *cur = m->acq_head;
@@ -214,6 +248,7 @@ static void monitor_remove_acq(RtMonitor *m, RtMonitorWaiter *w) {
     }
 }
 
+/// @brief Append `w` to the FIFO condition-wait queue (Wait / WaitFor).
 static void monitor_enqueue_wait(RtMonitor *m, RtMonitorWaiter *w) {
     w->next = NULL;
     if (m->wait_tail) {
@@ -225,6 +260,7 @@ static void monitor_enqueue_wait(RtMonitor *m, RtMonitorWaiter *w) {
     }
 }
 
+/// @brief Splice `w` out of the wait queue (timeout, signal-then-cancel).
 static void monitor_remove_wait(RtMonitor *m, RtMonitorWaiter *w) {
     RtMonitorWaiter *prev = NULL;
     RtMonitorWaiter *cur = m->wait_head;
@@ -244,6 +280,16 @@ static void monitor_remove_wait(RtMonitor *m, RtMonitorWaiter *w) {
     }
 }
 
+/// @brief Acquire monitor `m` for thread `self`, blocking up to `timeout_ms` if `timed`.
+///
+/// Three fast paths run before any blocking occurs:
+///   1. Re-entry (`self` already owns) — bumps recursion and returns.
+///   2. Uncontended (no owner, empty queue) — claims the lock immediately.
+///   3. Contended — appends a `RtMonitorWaiter` to the FIFO acquisition
+///      queue and sleeps on its per-waiter `CONDITION_VARIABLE` until
+///      `monitor_grant_next_waiter` flips its state.
+/// On timeout the waiter is spliced out and we return without owning
+/// the lock. Traps with a "null monitor" message if `m` is NULL.
 static void monitor_enter_blocking(RtMonitor *m, DWORD self, DWORD timeout_ms, int timed) {
     if (!m) {
         rt_trap("rt_monitor: null monitor");
@@ -689,6 +735,12 @@ typedef struct RtMonitorEntry {
 static pthread_mutex_t g_monitor_table_mu = PTHREAD_MUTEX_INITIALIZER;
 static RtMonitorEntry *g_monitor_table[RT_MONITOR_BUCKETS];
 
+// ---------------------------------------------------------------------------
+// POSIX backend — pthread_mutex_t + pthread_cond_t. Mirrors the
+// Win32 helpers above; see those for FIFO-fairness rationale.
+// ---------------------------------------------------------------------------
+
+/// @brief Hash a pointer to a monitor-table bucket index (Knuth golden-ratio mix).
 static size_t hash_ptr(void *p) {
     uintptr_t x = (uintptr_t)p;
     x >>= 4;
@@ -697,6 +749,8 @@ static size_t hash_ptr(void *p) {
     return (size_t)(x & (RT_MONITOR_BUCKETS - 1u));
 }
 
+/// @brief Locate (or lazily allocate) the monitor for `obj` (POSIX path).
+/// @see Win32 `get_monitor_for` for the design rationale.
 static RtMonitor *get_monitor_for(void *obj) {
     size_t idx = hash_ptr(obj);
 
@@ -726,6 +780,10 @@ static RtMonitor *get_monitor_for(void *obj) {
     return &node->monitor;
 }
 
+/// @brief Release the monitor associated with `obj` from the global table (POSIX).
+///
+/// Called from the GC finalizer of any object that has had a
+/// monitor attached. Idempotent: silently no-ops if no entry exists.
 void rt_monitor_forget(void *obj) {
     if (!obj)
         return;
@@ -749,10 +807,12 @@ void rt_monitor_forget(void *obj) {
     free(node);
 }
 
+/// @brief True if pthread `self` currently owns the monitor (POSIX equality).
 static int monitor_is_owner(const RtMonitor *m, pthread_t self) {
     return m->owner_valid && pthread_equal(m->owner, self);
 }
 
+/// @brief Pop the FIFO acquisition queue head, hand it the lock, signal its condvar (POSIX).
 static void monitor_grant_next_waiter(RtMonitor *m) {
     RtMonitorWaiter *w = m->acq_head;
     if (!w)
@@ -769,6 +829,7 @@ static void monitor_grant_next_waiter(RtMonitor *m) {
     pthread_cond_signal(&w->cv);
 }
 
+/// @brief POSIX FIFO append for the acquisition queue.
 static void monitor_enqueue_acq(RtMonitor *m, RtMonitorWaiter *w) {
     w->next = NULL;
     if (m->acq_tail) {
@@ -780,6 +841,7 @@ static void monitor_enqueue_acq(RtMonitor *m, RtMonitorWaiter *w) {
     }
 }
 
+/// @brief POSIX queue removal — splice `w` out of the acquisition queue.
 static void monitor_remove_acq(RtMonitor *m, RtMonitorWaiter *w) {
     RtMonitorWaiter *prev = NULL;
     RtMonitorWaiter *cur = m->acq_head;
@@ -799,6 +861,7 @@ static void monitor_remove_acq(RtMonitor *m, RtMonitorWaiter *w) {
     }
 }
 
+/// @brief POSIX FIFO append for the condition-wait queue.
 static void monitor_enqueue_wait(RtMonitor *m, RtMonitorWaiter *w) {
     w->next = NULL;
     if (m->wait_tail) {
@@ -810,6 +873,7 @@ static void monitor_enqueue_wait(RtMonitor *m, RtMonitorWaiter *w) {
     }
 }
 
+/// @brief POSIX queue removal — splice `w` out of the wait queue.
 static void monitor_remove_wait(RtMonitor *m, RtMonitorWaiter *w) {
     RtMonitorWaiter *prev = NULL;
     RtMonitorWaiter *cur = m->wait_head;
@@ -829,6 +893,11 @@ static void monitor_remove_wait(RtMonitor *m, RtMonitorWaiter *w) {
     }
 }
 
+/// @brief Compute an absolute `CLOCK_REALTIME` timespec `ms` ahead of now.
+///
+/// Used to feed `pthread_cond_timedwait`, which takes an absolute
+/// deadline rather than a relative timeout. Spurious wakeups are
+/// handled by the caller's loop (which retests its condition).
 static struct timespec abs_time_ms_from_now(int64_t ms) {
     struct timespec ts;
     clock_gettime(CLOCK_REALTIME, &ts);
@@ -848,6 +917,11 @@ static struct timespec abs_time_ms_from_now(int64_t ms) {
     return ts;
 }
 
+/// @brief POSIX equivalent of the Win32 `monitor_enter_blocking`.
+///
+/// Uses pthread mutex + per-waiter condvar. Identical fast-paths
+/// (re-entry, uncontended) and identical FIFO-fairness contract;
+/// see the Win32 version for the design rationale.
 static void monitor_enter_blocking(RtMonitor *m, pthread_t self, int64_t timeout_ms, int timed) {
     if (!m) {
         rt_trap("rt_monitor: null monitor");

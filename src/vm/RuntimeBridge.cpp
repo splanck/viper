@@ -24,6 +24,7 @@
 #include "vm/RuntimeBridge.hpp"
 #include "il/core/Opcode.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
+#include "rt_error.h"
 #include "vm/DiagFormat.hpp"
 #include "vm/Marshal.hpp"
 #include "vm/OpcodeHandlerHelpers.hpp"
@@ -31,6 +32,7 @@
 #include "vm/VM.hpp"
 
 #include <array>
+#include <atomic>
 #include <mutex>
 #include <optional>
 #include <span>
@@ -49,11 +51,13 @@ using il::vm::FrameInfo;
 using il::vm::ResultBuffers;
 using il::vm::RuntimeBridge;
 using il::vm::RuntimeCallContext;
+using il::vm::RuntimeTrapInterceptor;
+using il::vm::RuntimeTrapSignal;
 using il::vm::Slot;
 using il::vm::TrapKind;
 using il::vm::VM;
 using il::vm::vm_format_error;
-using il::vm::vm_raise;
+using il::vm::vm_raise_from_error;
 using il::vm::VmError;
 
 /// @brief Thread-local pointer to the runtime call context for active trap reporting.
@@ -63,6 +67,8 @@ using il::vm::VmError;
 /// source location.  The pointer is managed via @ref ContextGuard to ensure
 /// balanced updates.
 thread_local RuntimeCallContext *tlsContext = nullptr;
+thread_local RuntimeTrapInterceptor tlsTrapInterceptor = nullptr;
+thread_local void *tlsTrapInterceptorUserData = nullptr;
 
 using VmResult = Slot;
 using Thunk = VmResult (*)(VM &, FrameInfo &, const RuntimeCallContext &);
@@ -118,7 +124,31 @@ static VmResult executeDescriptor(const RuntimeDescriptor &desc,
 
     ResultBuffers buffers{};
     void *resultPtr = il::vm::resultBufferFor(desc.signature.retType.kind, buffers);
-    desc.handler(marshalledArgs.empty() ? nullptr : marshalledArgs.data(), resultPtr);
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) == 0) {
+        desc.handler(marshalledArgs.empty() ? nullptr : marshalledArgs.data(), resultPtr);
+        rt_trap_clear_recovery();
+    } else {
+        const TrapKind recoveredKind =
+            il::vm::trapKindFromValue(static_cast<int32_t>(rt_trap_get_kind()));
+        const int32_t recoveredCode = static_cast<int32_t>(rt_trap_get_code());
+        const int32_t recoveredLine = static_cast<int32_t>(rt_trap_get_line());
+        const char *recoveredMessage = rt_trap_get_error();
+        std::string recoveredMessageCopy =
+            (recoveredMessage && *recoveredMessage) ? recoveredMessage : "runtime trap";
+        rt_trap_clear_recovery();
+        SourceLoc recoveredLoc = ctx.loc;
+        if (recoveredLine >= 0)
+            recoveredLoc.line = static_cast<uint32_t>(recoveredLine);
+        RuntimeBridge::trap(recoveredKind,
+                            recoveredMessageCopy,
+                            recoveredLoc,
+                            ctx.function,
+                            ctx.block,
+                            recoveredCode);
+        return Slot{};
+    }
 
     std::span<const Slot> readonlyArgs{};
     if (argBegin && argCount)
@@ -210,14 +240,25 @@ struct TrapCtx {
 /// INVARIANT: If ctx.vm is non-null, VM::activeInstance() must also be non-null.
 /// GUARANTEE: This function does not return to its caller when no handler catches.
 static void finalizeTrap(TrapCtx &ctx) {
+    if (tlsTrapInterceptor) {
+        RuntimeTrapSignal signal{ctx.kind,
+                                 ctx.error.code,
+                                 ctx.message,
+                                 ctx.loc,
+                                 ctx.function,
+                                 ctx.block};
+        tlsTrapInterceptor(signal, tlsTrapInterceptorUserData);
+        throw signal;
+    }
+
     if (ctx.vm) {
         // Assert that activeInstance is consistent with ctx.vm
         VIPER_TRAP_ASSERT(RuntimeBridge::hasActiveVm(),
                           "ActiveVMGuard inconsistency: ctx.vm set but no active VM");
-        vm_raise(ctx.kind);
-        // vm_raise either throws TrapDispatchSignal or calls rt_abort; it does not return
-        // If we reach here, something is wrong
-        VIPER_TRAP_ASSERT(false, "vm_raise returned unexpectedly");
+        vm_raise_from_error(ctx.error);
+        // Tests may override vm_trap() with a non-terminating observer. In that
+        // case the trap has already been recorded on the active VM, and the
+        // caller is intentionally choosing to continue after observing it.
         return;
     }
 
@@ -272,28 +313,12 @@ static void handleGenericTrap(TrapCtx &ctx) {
 #elif defined(__GNUC__) || defined(__clang__)
 /// @brief Weak hook allowing embedders to override VM trap behaviour.
 extern "C" __attribute__((weak)) void vm_trap(const char *msg) {
-    const auto *ctx = il::vm::RuntimeBridge::activeContext();
-    const char *trapMsg = msg ? msg : "trap";
-    if (ctx) {
-        il::vm::RuntimeBridge::trap(
-            TrapKind::DomainError, trapMsg, ctx->loc, ctx->function, ctx->block);
-    }
-    if (trapMsg && *trapMsg)
-        std::fprintf(stderr, "%s\n", trapMsg);
-    std::_Exit(1);
+    rt_abort(msg ? msg : "trap");
 }
 #else
 /// @brief Default implementation that records traps on the active context.
 extern "C" void vm_trap(const char *msg) {
-    const auto *ctx = il::vm::RuntimeBridge::activeContext();
-    const char *trapMsg = msg ? msg : "trap";
-    if (ctx) {
-        il::vm::RuntimeBridge::trap(
-            TrapKind::DomainError, trapMsg, ctx->loc, ctx->function, ctx->block);
-    }
-    if (trapMsg && *trapMsg)
-        std::fprintf(stderr, "%s\n", trapMsg);
-    std::_Exit(1);
+    rt_abort(msg ? msg : "trap");
 }
 #endif
 
@@ -353,6 +378,7 @@ struct ExternRegistry {
     std::mutex mutex;                                   ///< Protects concurrent access.
     std::unordered_map<std::string, ExtRecord> entries; ///< Name -> record mapping.
     bool strictMode = false; ///< When true, reject re-registration with different signature.
+    std::atomic<uint32_t> refCount{1}; ///< Intrusive lifetime refs across VMs/workers.
 };
 
 namespace {
@@ -466,8 +492,8 @@ Slot RuntimeBridge::call(RuntimeCallContext &ctx,
     ContextGuard guard(ctx);
     Slot result{};
 
-    // Resolve against runtime extern registry first, then built-ins.
-    // Use the current context's registry (currently always process-global).
+    // Resolve against per-VM externs first, then process-global extern overrides,
+    // then built-in runtime descriptors.
     il::runtime::RuntimeDescriptor localDesc;
     const il::runtime::RuntimeDescriptor *desc = resolveRuntimeDescriptor(name, localDesc);
     if (!desc) {
@@ -491,8 +517,16 @@ static const RuntimeDescriptor *resolveRuntimeDescriptor(std::string_view name,
                                                          RuntimeDescriptor &localDesc) {
     il::runtime::RuntimeSignature sig;
     il::runtime::RuntimeHandler handler = nullptr;
-    const ExternDesc *extDesc =
-        il::vm::resolveExternIn(il::vm::currentExternRegistry(), name, &sig, &handler);
+    const ExternDesc *extDesc = nullptr;
+
+    if (ExternRegistry *activeRegistry = RuntimeBridge::activeVmRegistry()) {
+        extDesc = il::vm::resolveExternIn(*activeRegistry, name, &sig, &handler);
+    }
+
+    if (!extDesc) {
+        extDesc = il::vm::resolveExternIn(processGlobalExternRegistry(), name, &sig, &handler);
+    }
+
     if (extDesc) {
         localDesc.name = extDesc->name;
         localDesc.signature = sig;
@@ -537,9 +571,14 @@ void RuntimeBridge::trap(TrapKind kind,
                          const std::string &msg,
                          const SourceLoc &loc,
                          const std::string &fn,
-                         const std::string &block) {
+                         const std::string &block,
+                         int32_t code) {
     TrapCtx ctx{kind, msg, loc, fn, block};
     ctx.vm = VM::activeInstance();
+    ctx.error.kind = kind;
+    ctx.error.code = code;
+    ctx.error.ip = 0;
+    ctx.error.line = loc.hasLine() ? static_cast<int32_t>(loc.line) : -1;
     if (ctx.vm) {
         auto populateVm =
             [](VM &vm, const SourceLoc &loc, const std::string &fn, const std::string &block) {
@@ -566,19 +605,16 @@ void RuntimeBridge::trap(TrapKind kind,
         populateVm(*ctx.vm, loc, fn, block);
         ctx.vm->runtimeContext.message = msg;
     } else {
-        auto populateNoVm =
-            [](TrapCtx &c, TrapKind kind, const SourceLoc &loc, const std::string &fn) {
-                c.error.kind = kind;
-                c.error.code = 0;
-                c.error.ip = 0;
-                c.error.line = loc.hasLine() ? static_cast<int32_t>(loc.line) : -1;
+        auto populateNoVm = [](TrapCtx &c, const SourceLoc &loc, const std::string &fn) {
+            c.error.ip = 0;
+            c.error.line = loc.hasLine() ? static_cast<int32_t>(loc.line) : -1;
 
-                c.frame.function = fn.empty() ? std::string("<unknown>") : fn;
-                c.frame.ip = 0;
-                c.frame.line = c.error.line;
-                c.frame.handlerInstalled = false;
-            };
-        populateNoVm(ctx, kind, loc, fn);
+            c.frame.function = fn.empty() ? std::string("<unknown>") : fn;
+            c.frame.ip = 0;
+            c.frame.line = c.error.line;
+            c.frame.handlerInstalled = false;
+        };
+        populateNoVm(ctx, loc, fn);
     }
 
     constexpr Opcode trapOpcode = Opcode::Trap;
@@ -595,13 +631,10 @@ void RuntimeBridge::trap(TrapKind kind,
             handleGenericTrap(ctx);
             break;
     }
-        // handleOverflow / handleDivByZero / handleGenericTrap always throw
-        // TrapDispatchSignal or call rt_abort(); control never reaches here.
-#ifdef _MSC_VER
-    __assume(0);
-#else
-    __builtin_unreachable();
-#endif
+    // Tests may override vm_trap() with a non-terminating observer. In that
+    // configuration finalizeTrap() intentionally returns after recording the
+    // trap, so the bridge must not assume control flow is impossible here.
+    return;
 }
 
 /// @brief Retrieve the currently installed runtime call context, if any.
@@ -659,6 +692,19 @@ ExternRegistry &currentExternRegistry() {
     return globalRegistry();
 }
 
+void retainExternRegistry(ExternRegistry *registry) {
+    if (!registry)
+        return;
+    registry->refCount.fetch_add(1, std::memory_order_relaxed);
+}
+
+void releaseExternRegistry(ExternRegistry *registry) noexcept {
+    if (!registry)
+        return;
+    if (registry->refCount.fetch_sub(1, std::memory_order_acq_rel) == 1)
+        delete registry;
+}
+
 ExternRegisterResult registerExternIn(ExternRegistry &registry, const ExternDesc &ext) {
     ExtRecord rec;
     rec.pub = ext;
@@ -699,11 +745,16 @@ bool unregisterExternIn(ExternRegistry &registry, std::string_view name) {
 
 const ExternDesc *findExternIn(ExternRegistry &registry, std::string_view name) {
     const std::string key = canonicalizeExternName(name);
+    thread_local std::array<ExternDesc, 8> tlsExternCopies{};
+    thread_local size_t tlsExternCopyIndex = 0;
     std::lock_guard<std::mutex> lock(registry.mutex);
     auto it = registry.entries.find(key);
     if (it == registry.entries.end())
         return nullptr;
-    return &it->second.pub;
+    ExternDesc &slot = tlsExternCopies[tlsExternCopyIndex];
+    tlsExternCopyIndex = (tlsExternCopyIndex + 1) % tlsExternCopies.size();
+    slot = it->second.pub;
+    return &slot;
 }
 
 const ExternDesc *resolveExternIn(ExternRegistry &registry,
@@ -711,6 +762,8 @@ const ExternDesc *resolveExternIn(ExternRegistry &registry,
                                   il::runtime::RuntimeSignature *outSig,
                                   il::runtime::RuntimeHandler *outHandler) {
     const std::string key = canonicalizeExternName(name);
+    thread_local std::array<ExternDesc, 8> tlsExternCopies{};
+    thread_local size_t tlsExternCopyIndex = 0;
     std::lock_guard<std::mutex> lock(registry.mutex);
     auto it = registry.entries.find(key);
     if (it == registry.entries.end())
@@ -719,7 +772,10 @@ const ExternDesc *resolveExternIn(ExternRegistry &registry,
         *outSig = it->second.runtimeSig;
     if (outHandler)
         *outHandler = it->second.handler;
-    return &it->second.pub;
+    ExternDesc &slot = tlsExternCopies[tlsExternCopyIndex];
+    tlsExternCopyIndex = (tlsExternCopyIndex + 1) % tlsExternCopies.size();
+    slot = it->second.pub;
+    return &slot;
 }
 
 //===----------------------------------------------------------------------===//
@@ -743,11 +799,23 @@ bool isExternRegistryStrictMode(const ExternRegistry &registry) {
 //===----------------------------------------------------------------------===//
 
 void ExternRegistryDeleter::operator()(ExternRegistry *reg) const noexcept {
-    delete reg;
+    releaseExternRegistry(reg);
 }
 
 ExternRegistryPtr createExternRegistry() {
     return ExternRegistryPtr(new ExternRegistry());
+}
+
+ScopedRuntimeTrapInterceptor::ScopedRuntimeTrapInterceptor(RuntimeTrapInterceptor interceptor,
+                                                           void *userData)
+    : previousInterceptor_(tlsTrapInterceptor), previousUserData_(tlsTrapInterceptorUserData) {
+    tlsTrapInterceptor = interceptor;
+    tlsTrapInterceptorUserData = userData;
+}
+
+ScopedRuntimeTrapInterceptor::~ScopedRuntimeTrapInterceptor() {
+    tlsTrapInterceptor = previousInterceptor_;
+    tlsTrapInterceptorUserData = previousUserData_;
 }
 
 //===----------------------------------------------------------------------===//

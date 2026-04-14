@@ -55,6 +55,43 @@ static RtArgsState *rt_args_state(void) {
     return ctx ? &ctx->args_state : NULL;
 }
 
+#ifdef _WIN32
+static wchar_t *rt_env_utf8_to_wide_or_trap(const char *utf8, const char *context) {
+    if (!utf8)
+        return NULL;
+    int needed = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, utf8, -1, NULL, 0);
+    if (needed <= 0)
+        rt_trap(context ? context : "Environment: UTF-8 to UTF-16 conversion failed");
+    wchar_t *wide = (wchar_t *)malloc((size_t)needed * sizeof(wchar_t));
+    if (!wide)
+        rt_trap("Environment: allocation failed");
+    if (MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, utf8, -1, wide, needed) <= 0) {
+        free(wide);
+        rt_trap(context ? context : "Environment: UTF-8 to UTF-16 conversion failed");
+    }
+    return wide;
+}
+
+static rt_string rt_env_wide_to_string_or_trap(
+    const wchar_t *wide, int wide_len, const char *context) {
+    if (!wide || wide_len <= 0)
+        return rt_str_empty();
+    int needed = WideCharToMultiByte(CP_UTF8, 0, wide, wide_len, NULL, 0, NULL, NULL);
+    if (needed <= 0)
+        rt_trap(context ? context : "Environment: UTF-16 to UTF-8 conversion failed");
+    char *buffer = (char *)malloc((size_t)needed);
+    if (!buffer)
+        rt_trap("Environment: allocation failed");
+    if (WideCharToMultiByte(CP_UTF8, 0, wide, wide_len, buffer, needed, NULL, NULL) <= 0) {
+        free(buffer);
+        rt_trap(context ? context : "Environment: UTF-16 to UTF-8 conversion failed");
+    }
+    rt_string out = rt_string_from_bytes(buffer, (size_t)needed);
+    free(buffer);
+    return out;
+}
+#endif
+
 /// @brief Ensure the args array has capacity for at least @p new_size entries.
 /// @details Doubles capacity until sufficient; traps on overflow or alloc failure.
 static int rt_args_grow_if_needed(RtArgsState *state, size_t new_size) {
@@ -307,33 +344,44 @@ rt_string rt_env_get_var(rt_string name) {
         rt_env_require_name(name, "Viper.Environment.GetVariable: name must not be empty");
 
 #ifdef _WIN32
-    DWORD required = GetEnvironmentVariableA(cname, NULL, 0);
+    wchar_t *wname = rt_env_utf8_to_wide_or_trap(
+        cname, "Viper.Environment.GetVariable: invalid UTF-8 variable name");
+    SetLastError(ERROR_SUCCESS);
+    DWORD required = GetEnvironmentVariableW(wname, NULL, 0);
     if (required == 0) {
-        if (GetLastError() == ERROR_ENVVAR_NOT_FOUND) {
+        DWORD err = GetLastError();
+        free(wname);
+        if (err == ERROR_ENVVAR_NOT_FOUND || err == ERROR_SUCCESS) {
             return rt_str_empty();
         }
         rt_trap("Viper.Environment.GetVariable: failed to query variable");
     }
 
     if (required <= 1) {
+        free(wname);
         return rt_str_empty();
     }
 
-    char *buffer = (char *)malloc(required);
+    wchar_t *buffer = (wchar_t *)malloc((size_t)required * sizeof(wchar_t));
     if (!buffer) {
+        free(wname);
         rt_trap("Viper.Environment.GetVariable: allocation failed");
     }
 
-    DWORD written = GetEnvironmentVariableA(cname, buffer, required);
+    SetLastError(ERROR_SUCCESS);
+    DWORD written = GetEnvironmentVariableW(wname, buffer, required);
+    free(wname);
     if (written == 0) {
+        DWORD err = GetLastError();
         free(buffer);
-        if (GetLastError() == ERROR_ENVVAR_NOT_FOUND) {
+        if (err == ERROR_ENVVAR_NOT_FOUND || err == ERROR_SUCCESS) {
             return rt_str_empty();
         }
         rt_trap("Viper.Environment.GetVariable: failed to read variable");
     }
 
-    rt_string out = rt_string_from_bytes(buffer, written);
+    rt_string out = rt_env_wide_to_string_or_trap(
+        buffer, (int)written, "Viper.Environment.GetVariable: invalid UTF-16 value");
     free(buffer);
     return out;
 #else
@@ -355,8 +403,13 @@ int64_t rt_env_has_var(rt_string name) {
         rt_env_require_name(name, "Viper.Environment.HasVariable: name must not be empty");
 
 #ifdef _WIN32
-    DWORD required = GetEnvironmentVariableA(cname, NULL, 0);
-    if (required == 0 && GetLastError() == ERROR_ENVVAR_NOT_FOUND) {
+    wchar_t *wname = rt_env_utf8_to_wide_or_trap(
+        cname, "Viper.Environment.HasVariable: invalid UTF-8 variable name");
+    SetLastError(ERROR_SUCCESS);
+    DWORD required = GetEnvironmentVariableW(wname, NULL, 0);
+    DWORD err = GetLastError();
+    free(wname);
+    if (required == 0 && err == ERROR_ENVVAR_NOT_FOUND) {
         return 0;
     }
     return 1;
@@ -384,7 +437,14 @@ void rt_env_set_var(rt_string name, rt_string value) {
         rt_trap("Viper.Environment.SetVariable: value must not contain null bytes");
 
 #ifdef _WIN32
-    if (!SetEnvironmentVariableA(cname, cvalue)) {
+    wchar_t *wname = rt_env_utf8_to_wide_or_trap(
+        cname, "Viper.Environment.SetVariable: invalid UTF-8 variable name");
+    wchar_t *wvalue = rt_env_utf8_to_wide_or_trap(
+        cvalue, "Viper.Environment.SetVariable: invalid UTF-8 variable value");
+    int ok = SetEnvironmentVariableW(wname, wvalue) ? 1 : 0;
+    free(wname);
+    free(wvalue);
+    if (!ok) {
         rt_trap("Viper.Environment.SetVariable: failed to set variable");
     }
 #else

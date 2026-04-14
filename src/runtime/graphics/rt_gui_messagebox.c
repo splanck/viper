@@ -66,6 +66,8 @@ static vg_dialog_result_t rt_messagebox_run_modal(rt_gui_app_t *app, vg_dialog_t
     return dlg ? vg_dialog_get_result(dlg) : VG_DIALOG_RESULT_NONE;
 }
 
+/// @brief One-shot informational message box (single OK button, info icon). Blocks until user
+/// dismisses. Returns 0 (no meaningful selection — the OK is the only choice).
 int64_t rt_messagebox_info(rt_string title, rt_string message) {
     rt_gui_app_t *app = rt_messagebox_app();
     char *ctitle = rt_string_to_cstr(title);
@@ -83,6 +85,8 @@ int64_t rt_messagebox_info(rt_string title, rt_string message) {
     return 0;
 }
 
+/// @brief One-shot warning message box (single OK button, warning/exclamation icon). Always
+/// returns 0; for accept/decline use `_confirm` or `_question`.
 int64_t rt_messagebox_warning(rt_string title, rt_string message) {
     rt_gui_app_t *app = rt_messagebox_app();
     char *ctitle = rt_string_to_cstr(title);
@@ -101,6 +105,7 @@ int64_t rt_messagebox_warning(rt_string title, rt_string message) {
     return 0;
 }
 
+/// @brief One-shot error message box (single OK, red/error icon). Returns 0 always.
 int64_t rt_messagebox_error(rt_string title, rt_string message) {
     rt_gui_app_t *app = rt_messagebox_app();
     char *ctitle = rt_string_to_cstr(title);
@@ -118,6 +123,8 @@ int64_t rt_messagebox_error(rt_string title, rt_string message) {
     return 0;
 }
 
+/// @brief Yes/No question box (question icon). Returns 1 if user chose Yes, 0 for No or any
+/// other dismissal (Esc, window close).
 int64_t rt_messagebox_question(rt_string title, rt_string message) {
     rt_gui_app_t *app = rt_messagebox_app();
     char *ctitle = rt_string_to_cstr(title);
@@ -136,6 +143,7 @@ int64_t rt_messagebox_question(rt_string title, rt_string message) {
     return (result == VG_DIALOG_RESULT_YES) ? 1 : 0;
 }
 
+/// @brief OK/Cancel confirmation box (question icon). Returns 1 for OK, 0 for Cancel.
 int64_t rt_messagebox_confirm(rt_string title, rt_string message) {
     rt_gui_app_t *app = rt_messagebox_app();
     char *ctitle = rt_string_to_cstr(title);
@@ -167,6 +175,9 @@ static void prompt_on_commit(vg_widget_t *w, const char *text, void *user_data) 
         vg_dialog_close(d->dialog, VG_DIALOG_RESULT_OK);
 }
 
+/// @brief Single-line text-input prompt: shows `message`, an editable text field, and OK/Cancel.
+/// Pressing Enter inside the input dismisses as OK. Returns the entered text on OK, or empty
+/// on Cancel/empty submission. The text input receives focus immediately for fast typing.
 rt_string rt_messagebox_prompt(rt_string title, rt_string message) {
     rt_gui_app_t *app = rt_messagebox_app();
     if (!app)
@@ -266,6 +277,9 @@ static void rt_messagebox_finalize(void *box) {
     rt_messagebox_dispose((rt_messagebox_data_t *)box);
 }
 
+/// @brief Build a stateful MessageBox (icon by `type`: INFO/WARNING/ERROR/QUESTION). Buttons
+/// start empty — call `_add_button` to register them, then `_show` to display modally. Returns
+/// the GC-managed handle, or NULL on failure.
 void *rt_messagebox_new(rt_string title, rt_string message, int64_t type) {
     char *ctitle = rt_string_to_cstr(title);
     vg_dialog_t *dlg = vg_dialog_create(ctitle);
@@ -315,22 +329,28 @@ void *rt_messagebox_new(rt_string title, rt_string message, int64_t type) {
     return data;
 }
 
+/// @brief Convenience: stateful MessageBox with INFO icon.
 void *rt_messagebox_new_info(rt_string title, rt_string message) {
     return rt_messagebox_new(title, message, RT_MESSAGEBOX_INFO);
 }
 
+/// @brief Convenience: stateful MessageBox with WARNING icon.
 void *rt_messagebox_new_warning(rt_string title, rt_string message) {
     return rt_messagebox_new(title, message, RT_MESSAGEBOX_WARNING);
 }
 
+/// @brief Convenience: stateful MessageBox with ERROR icon.
 void *rt_messagebox_new_error(rt_string title, rt_string message) {
     return rt_messagebox_new(title, message, RT_MESSAGEBOX_ERROR);
 }
 
+/// @brief Convenience: stateful MessageBox with QUESTION icon.
 void *rt_messagebox_new_question(rt_string title, rt_string message) {
     return rt_messagebox_new(title, message, RT_MESSAGEBOX_QUESTION);
 }
 
+/// @brief Append a custom button (`text` label, `id` returned on click). Multiple calls extend
+/// the button row; auto-detects "Cancel"/"Close"/"No" labels for Esc-binding behavior.
 void rt_messagebox_add_button(void *box, rt_string text, int64_t id) {
     if (!box)
         return;
@@ -355,6 +375,8 @@ void rt_messagebox_add_button(void *box, rt_string text, int64_t id) {
     btn->is_cancel = rt_messagebox_label_is_cancel(btn->label);
 }
 
+/// @brief Mark the button with `id` as the default (Enter-key activated). Updates any matching
+/// button in the buttons-list. Stored separately so it works even if added later.
 void rt_messagebox_set_default_button(void *box, int64_t id) {
     if (!box)
         return;
@@ -365,6 +387,10 @@ void rt_messagebox_set_default_button(void *box, int64_t id) {
     }
 }
 
+/// @brief Display the dialog modally and return the chosen button's id (or for preset
+/// OK/Yes/No/Cancel: 0/0/1/2 respectively). Returns -1 if no app context, the dialog wasn't
+/// constructed, or the user closed the window without picking. Custom buttons (added via
+/// `_add_button`) take precedence over preset mappings.
 int64_t rt_messagebox_show(void *box) {
     if (!box)
         return -1;
@@ -395,6 +421,8 @@ int64_t rt_messagebox_show(void *box) {
     return data->default_button;
 }
 
+/// @brief Manually free dialog resources (custom buttons, backend handle). The GC finalizer
+/// also calls this — explicit destruction is optional but useful for early cleanup.
 void rt_messagebox_destroy(void *box) {
     if (!box)
         return;

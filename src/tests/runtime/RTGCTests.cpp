@@ -61,6 +61,11 @@ static void *make_node() {
     return obj;
 }
 
+static void release_obj(void *obj) {
+    if (rt_obj_release_check0(obj))
+        rt_obj_free(obj);
+}
+
 //=============================================================================
 // GC Tracking Tests
 //=============================================================================
@@ -317,6 +322,33 @@ static void test_collect_preserves_reachable() {
         rt_obj_free(a);
 }
 
+static void test_collect_preserves_cycle_with_extra_external_ref() {
+    void *a = make_node();
+    void *b = make_node();
+
+    struct test_node *na = (struct test_node *)a;
+    struct test_node *nb = (struct test_node *)b;
+    na->child = b;
+    nb->child = a;
+
+    rt_gc_track(a, test_node_traverse);
+    rt_gc_track(b, test_node_traverse);
+    rt_obj_retain_maybe(a); // extra external retain must keep the cycle reachable
+
+    int64_t freed = rt_gc_collect();
+    ASSERT(freed == 0, "cycle with extra external retain is preserved");
+    ASSERT(rt_gc_is_tracked(a) == 1, "a remains tracked");
+    ASSERT(rt_gc_is_tracked(b) == 1, "b remains tracked");
+
+    rt_gc_untrack(a);
+    rt_gc_untrack(b);
+    na->child = NULL;
+    nb->child = NULL;
+    release_obj(a); // drop extra retain
+    release_obj(a); // drop initial retain
+    release_obj(b);
+}
+
 static void test_weakref_cleared_by_collect() {
     // Create a cycle and weak ref to one of the nodes
     void *a = make_node();
@@ -346,6 +378,29 @@ static void test_weakref_cleared_by_collect() {
 
     rt_weakref_free(ref_a);
     rt_weakref_free(ref_b);
+}
+
+static void test_weak_field_zeroed_by_collect() {
+    void *a = make_node();
+    void *b = make_node();
+    void *slot = NULL;
+
+    struct test_node *na = (struct test_node *)a;
+    struct test_node *nb = (struct test_node *)b;
+    na->child = b;
+    nb->child = a;
+
+    rt_weak_store(&slot, a);
+    ASSERT(rt_weak_load(&slot) == a, "weak field returns live target before collect");
+
+    rt_gc_track(a, test_node_traverse);
+    rt_gc_track(b, test_node_traverse);
+
+    int64_t freed = rt_gc_collect();
+    ASSERT(freed == 2, "cycle with weak field collected");
+    ASSERT(rt_weak_load(&slot) == NULL, "weak field cleared after collect");
+
+    rt_weak_store(&slot, NULL);
 }
 
 //=============================================================================
@@ -387,7 +442,9 @@ int main() {
     test_collect_simple_cycle();
     test_collect_self_cycle();
     test_collect_preserves_reachable();
+    test_collect_preserves_cycle_with_extra_external_ref();
     test_weakref_cleared_by_collect();
+    test_weak_field_zeroed_by_collect();
 
     // Statistics
     test_statistics();

@@ -317,6 +317,8 @@ static void collider3d_recompute_bounds(rt_collider3d *collider) {
     }
 }
 
+/// @brief Construct an axis-aligned box collider with half-extents (hx, hy, hz). Negative
+/// values are taken as their absolute value. Box AABB is fully cached for fast queries.
 void *rt_collider3d_new_box(double hx, double hy, double hz) {
     rt_collider3d *collider = collider3d_alloc(RT_COLLIDER3D_TYPE_BOX);
     if (!collider)
@@ -328,6 +330,7 @@ void *rt_collider3d_new_box(double hx, double hy, double hz) {
     return collider;
 }
 
+/// @brief Construct a sphere collider centered on the local origin with the given `radius`.
 void *rt_collider3d_new_sphere(double radius) {
     rt_collider3d *collider = collider3d_alloc(RT_COLLIDER3D_TYPE_SPHERE);
     if (!collider)
@@ -337,6 +340,8 @@ void *rt_collider3d_new_sphere(double radius) {
     return collider;
 }
 
+/// @brief Construct a Y-axis capsule collider — cylinder of `height` with hemispherical caps of
+/// `radius`. Total bounding height is `height + 2*radius`. Common for character controllers.
 void *rt_collider3d_new_capsule(double radius, double height) {
     rt_collider3d *collider = collider3d_alloc(RT_COLLIDER3D_TYPE_CAPSULE);
     if (!collider)
@@ -363,14 +368,22 @@ static void *collider3d_new_mesh_like(void *mesh, int32_t type, int8_t static_on
     return collider;
 }
 
+/// @brief Wrap a Mesh3D as a *convex hull* collider — the mesh's vertex set is treated as a
+/// convex polytope (caller's responsibility to ensure convexity). Suitable for dynamic bodies.
 void *rt_collider3d_new_convex_hull(void *mesh) {
     return collider3d_new_mesh_like(mesh, RT_COLLIDER3D_TYPE_CONVEX_HULL, 0);
 }
 
+/// @brief Wrap a Mesh3D as a *triangle-mesh* collider — uses every triangle for collision tests.
+/// Marked static-only: cannot be attached to dynamic rigid bodies (use the mesh as level geometry).
 void *rt_collider3d_new_mesh(void *mesh) {
     return collider3d_new_mesh_like(mesh, RT_COLLIDER3D_TYPE_MESH, 1);
 }
 
+/// @brief Build a heightfield collider from a Pixels heightmap. Heights are decoded with 16-bit
+/// precision (R = high byte, G = low byte) into [0, 1] then scaled by `scale_y`. `scale_x` and
+/// `scale_z` are the per-cell spacing in world units. Static-only. Traps on invalid heightmap
+/// (< 2×2 or null buffer).
 void *rt_collider3d_new_heightfield(
     void *heightmap, double scale_x, double scale_y, double scale_z) {
     const uint32_t *raw;
@@ -428,6 +441,8 @@ void *rt_collider3d_new_heightfield(
     return collider;
 }
 
+/// @brief Construct an empty compound collider — a container holding child colliders, each
+/// with its own local transform. Use `_add_child` to populate, then attach to a rigid body.
 void *rt_collider3d_new_compound(void) {
     rt_collider3d *collider = collider3d_alloc(RT_COLLIDER3D_TYPE_COMPOUND);
     if (!collider)
@@ -436,6 +451,9 @@ void *rt_collider3d_new_compound(void) {
     return collider;
 }
 
+/// @brief Append a child collider to a compound, transformed by `local_transform` (a Transform3D).
+/// Children are retained for the compound's lifetime. Recomputes the compound's AABB to enclose
+/// the new child. Traps if the parent isn't compound, child is null, or self-reference is attempted.
 void rt_collider3d_add_child(void *compound_obj, void *child_obj, void *local_transform) {
     rt_collider3d *compound = (rt_collider3d *)compound_obj;
     int32_t new_capacity;
@@ -485,10 +503,13 @@ void rt_collider3d_add_child(void *compound_obj, void *child_obj, void *local_tr
     collider3d_recompute_bounds(compound);
 }
 
+/// @brief Return the collider's discriminator (RT_COLLIDER3D_TYPE_BOX, _SPHERE, ...). -1 if NULL.
 int64_t rt_collider3d_get_type(void *collider) {
     return collider ? ((rt_collider3d *)collider)->type : -1;
 }
 
+/// @brief Return the AABB minimum corner in *local* space as a fresh Vec3. Returns origin
+/// for a NULL handle. Re-derives the bounds from the underlying shape data first.
 void *rt_collider3d_get_local_bounds_min(void *collider) {
     rt_collider3d *shape = (rt_collider3d *)collider;
     if (!shape)
@@ -497,6 +518,7 @@ void *rt_collider3d_get_local_bounds_min(void *collider) {
     return rt_vec3_new(shape->bounds_min[0], shape->bounds_min[1], shape->bounds_min[2]);
 }
 
+/// @brief Return the AABB maximum corner in *local* space as a fresh Vec3.
 void *rt_collider3d_get_local_bounds_max(void *collider) {
     rt_collider3d *shape = (rt_collider3d *)collider;
     if (!shape)
@@ -505,6 +527,8 @@ void *rt_collider3d_get_local_bounds_max(void *collider) {
     return rt_vec3_new(shape->bounds_max[0], shape->bounds_max[1], shape->bounds_max[2]);
 }
 
+/// @brief Internal: write the local AABB into the two raw double[3] arrays. Faster than the
+/// Vec3-returning getters when the physics core needs the bounds many times per frame.
 void rt_collider3d_get_local_bounds_raw(void *collider, double *min_out, double *max_out) {
     rt_collider3d *shape = (rt_collider3d *)collider;
     if (!min_out || !max_out) {
@@ -520,6 +544,9 @@ void rt_collider3d_get_local_bounds_raw(void *collider, double *min_out, double 
     vec3_copy(max_out, shape->bounds_max);
 }
 
+/// @brief Internal: transform the local AABB by (position, rotation quat, scale) and write the
+/// resulting world-space AABB into `min_out` / `max_out`. Defaults: zero pos, identity rotation,
+/// unit scale when individual params are NULL.
 void rt_collider3d_compute_world_aabb_raw(void *collider,
                                           const double *position,
                                           const double *rotation,
@@ -555,10 +582,12 @@ void rt_collider3d_compute_world_aabb_raw(void *collider,
                          max_out);
 }
 
+/// @brief Internal: 1 if the collider can only be used on static bodies (mesh, heightfield).
 int8_t rt_collider3d_is_static_only_raw(void *collider) {
     return collider ? ((rt_collider3d *)collider)->static_only : 0;
 }
 
+/// @brief Internal: fill `half_extents_out[3]` with the box's half-extents. Zeros for non-box.
 void rt_collider3d_get_box_half_extents_raw(void *collider, double *half_extents_out) {
     rt_collider3d *shape = (rt_collider3d *)collider;
     if (!half_extents_out) {
@@ -571,6 +600,7 @@ void rt_collider3d_get_box_half_extents_raw(void *collider, double *half_extents
     vec3_copy(half_extents_out, shape->half_extents);
 }
 
+/// @brief Internal: sphere/capsule radius. Returns 0 for unsupported shapes.
 double rt_collider3d_get_radius_raw(void *collider) {
     rt_collider3d *shape = (rt_collider3d *)collider;
     if (!shape)
@@ -578,6 +608,7 @@ double rt_collider3d_get_radius_raw(void *collider) {
     return shape->radius;
 }
 
+/// @brief Internal: capsule cylindrical height (excludes hemispherical caps). 0 for non-capsule.
 double rt_collider3d_get_height_raw(void *collider) {
     rt_collider3d *shape = (rt_collider3d *)collider;
     if (!shape)
@@ -585,6 +616,8 @@ double rt_collider3d_get_height_raw(void *collider) {
     return shape->height;
 }
 
+/// @brief Internal: borrow the underlying Mesh3D for convex-hull / triangle-mesh colliders.
+/// Returns NULL for primitive shapes. Caller must NOT release — collider retains ownership.
 void *rt_collider3d_get_mesh_raw(void *collider) {
     rt_collider3d *shape = (rt_collider3d *)collider;
     if (!shape)
@@ -594,6 +627,7 @@ void *rt_collider3d_get_mesh_raw(void *collider) {
     return shape->mesh;
 }
 
+/// @brief Internal: number of child colliders in a compound. 0 for non-compound shapes.
 int64_t rt_collider3d_get_child_count_raw(void *collider) {
     rt_collider3d *shape = (rt_collider3d *)collider;
     if (!shape || shape->type != RT_COLLIDER3D_TYPE_COMPOUND)
@@ -601,6 +635,7 @@ int64_t rt_collider3d_get_child_count_raw(void *collider) {
     return shape->child_count;
 }
 
+/// @brief Internal: borrow the i-th child collider from a compound. NULL if out of range.
 void *rt_collider3d_get_child_raw(void *collider, int64_t index) {
     rt_collider3d *shape = (rt_collider3d *)collider;
     if (!shape || shape->type != RT_COLLIDER3D_TYPE_COMPOUND)
@@ -610,6 +645,8 @@ void *rt_collider3d_get_child_raw(void *collider, int64_t index) {
     return shape->children[index];
 }
 
+/// @brief Internal: copy the i-th compound child's local TRS into the output buffers
+/// (position_out[3], rotation_out[4] quaternion, scale_out[3]). Outputs default to identity.
 void rt_collider3d_get_child_transform_raw(void *compound,
                                            int64_t index,
                                            double *position_out,
@@ -650,6 +687,10 @@ static double collider3d_heightfield_height_at(
     return collider->heightfield_heights[z * collider->heightfield_width + x];
 }
 
+/// @brief Internal: bilinearly sample a heightfield at local-space (local_x, local_z), writing
+/// the world-Y height (scaled) and surface normal (central difference) to the out-pointers.
+/// Returns 1 if the sample was inside the field, 0 otherwise (out-pointers default to safe
+/// fallback values: y=0, normal=(0,1,0)).
 int8_t rt_collider3d_sample_heightfield_raw(void *collider,
                                             double local_x,
                                             double local_z,

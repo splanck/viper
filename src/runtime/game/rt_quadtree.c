@@ -441,6 +441,10 @@ void rt_quadtree_clear(rt_quadtree tree) {
         clear_node(tree->root);
 }
 
+/// @brief Insert an axis-aligned item into the quadtree.
+/// (x, y) is the item *center*; (width, height) is its full extent. Returns 0
+/// if the tree is full, the item lies outside the world bounds, or the ID is
+/// already present (use `_update` to move an existing item instead).
 int8_t rt_quadtree_insert(
     rt_quadtree tree, int64_t id, int64_t x, int64_t y, int64_t width, int64_t height) {
     if (!tree || tree->item_count >= MAX_TOTAL_ITEMS)
@@ -490,6 +494,8 @@ int8_t rt_quadtree_remove(rt_quadtree tree, int64_t id) {
     return 0;
 }
 
+/// @brief Move/resize an existing item; equivalent to remove + insert but cheaper.
+/// Returns 0 if the ID is not present.
 int8_t rt_quadtree_update(
     rt_quadtree tree, int64_t id, int64_t x, int64_t y, int64_t width, int64_t height) {
     if (!tree)
@@ -515,6 +521,10 @@ int8_t rt_quadtree_update(
     return 0;
 }
 
+/// @brief Find all items intersecting the given AABB; returns the result count.
+/// Results are stored internally and accessed via `_get_result(i)`. If more than
+/// RT_QUADTREE_MAX_RESULTS items match, only the first batch is returned and
+/// `_query_was_truncated` returns 1.
 int64_t rt_quadtree_query_rect(
     rt_quadtree tree, int64_t x, int64_t y, int64_t width, int64_t height) {
     if (!tree)

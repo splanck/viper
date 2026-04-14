@@ -35,6 +35,9 @@
 // Phase 5: FileDialog
 //=============================================================================
 
+/// @brief One-shot "open file" dialog. Blocks the caller until the user picks a single file or
+/// cancels. Returns the absolute path on selection, or an empty string on cancel. `filter` is a
+/// pattern like "*.png" or "*" for any file (platform-formatted via the GUI backend).
 rt_string rt_filedialog_open(rt_string title, rt_string default_path, rt_string filter) {
     char *ctitle = rt_string_to_cstr(title);
     char *cfilter = rt_string_to_cstr(filter);
@@ -63,6 +66,8 @@ rt_string rt_filedialog_open(rt_string title, rt_string default_path, rt_string 
     return rt_str_empty();
 }
 
+/// @brief Open dialog with multi-select. Returns paths as a single newline-separated string
+/// (caller can split on '\n'), or empty on cancel. Useful for batch-import workflows.
 rt_string rt_filedialog_open_multiple(rt_string title, rt_string default_path, rt_string filter) {
     char *ctitle = rt_string_to_cstr(title);
     char *cpath = rt_string_to_cstr(default_path);
@@ -129,6 +134,9 @@ rt_string rt_filedialog_open_multiple(rt_string title, rt_string default_path, r
     return result;
 }
 
+/// @brief One-shot "save file" dialog. Returns the chosen path (with extension if user typed
+/// one or accepted the default), or empty on cancel. Does not actually create the file — the
+/// caller writes to the returned path.
 rt_string rt_filedialog_save(rt_string title,
                              rt_string default_path,
                              rt_string filter,
@@ -163,6 +171,7 @@ rt_string rt_filedialog_save(rt_string title,
     return rt_str_empty();
 }
 
+/// @brief One-shot folder-picker dialog. Returns the absolute folder path or empty on cancel.
 rt_string rt_filedialog_select_folder(rt_string title, rt_string default_path) {
     char *ctitle = rt_string_to_cstr(title);
     char *cpath = rt_string_to_cstr(default_path);
@@ -217,6 +226,9 @@ static void rt_filedialog_finalize(void *dialog) {
     rt_filedialog_dispose((rt_filedialog_data_t *)dialog);
 }
 
+/// @brief Construct a stateful FileDialog object — `type` is RT_FILEDIALOG_OPEN/SAVE/FOLDER.
+/// Use the setters (`_set_title`, `_set_path`, `_add_filter`, ...) to configure, then `_show`
+/// to display modally. Returns NULL on backend or allocation failure.
 void *rt_filedialog_new(int64_t type) {
     vg_filedialog_mode_t mode;
     switch (type) {
@@ -253,18 +265,22 @@ void *rt_filedialog_new(int64_t type) {
     return data;
 }
 
+/// @brief Convenience constructor for an Open-file dialog.
 void *rt_filedialog_new_open(void) {
     return rt_filedialog_new(RT_FILEDIALOG_OPEN);
 }
 
+/// @brief Convenience constructor for a Save-file dialog.
 void *rt_filedialog_new_save(void) {
     return rt_filedialog_new(RT_FILEDIALOG_SAVE);
 }
 
+/// @brief Convenience constructor for a Select-folder dialog.
 void *rt_filedialog_new_folder(void) {
     return rt_filedialog_new(RT_FILEDIALOG_FOLDER);
 }
 
+/// @brief Set the dialog's titlebar text. No-op if `dialog` is NULL.
 void rt_filedialog_set_title(void *dialog, rt_string title) {
     if (!dialog)
         return;
@@ -275,6 +291,8 @@ void rt_filedialog_set_title(void *dialog, rt_string title) {
         free(ctitle);
 }
 
+/// @brief Set the directory the dialog opens in. Subsequent navigation may move elsewhere; the
+/// returned selection is always an absolute path.
 void rt_filedialog_set_path(void *dialog, rt_string path) {
     if (!dialog)
         return;
@@ -285,6 +303,8 @@ void rt_filedialog_set_path(void *dialog, rt_string path) {
         free(cpath);
 }
 
+/// @brief Replace all filename filters with a single (`name`, `pattern`) entry. `name` is the
+/// human label shown in the dialog (e.g., "Image files"), `pattern` is the glob (e.g., "*.png").
 void rt_filedialog_set_filter(void *dialog, rt_string name, rt_string pattern) {
     if (!dialog)
         return;
@@ -299,6 +319,8 @@ void rt_filedialog_set_filter(void *dialog, rt_string name, rt_string pattern) {
         free(cpattern);
 }
 
+/// @brief Append an additional (`name`, `pattern`) filter without clearing existing ones. The
+/// dialog typically shows them in a dropdown; users can switch between filters at picking time.
 void rt_filedialog_add_filter(void *dialog, rt_string name, rt_string pattern) {
     if (!dialog)
         return;
@@ -312,6 +334,7 @@ void rt_filedialog_add_filter(void *dialog, rt_string name, rt_string pattern) {
         free(cpattern);
 }
 
+/// @brief Pre-fill the filename field (Save dialogs primarily). User can edit before confirming.
 void rt_filedialog_set_default_name(void *dialog, rt_string name) {
     if (!dialog)
         return;
@@ -322,6 +345,8 @@ void rt_filedialog_set_default_name(void *dialog, rt_string name) {
         free(cname);
 }
 
+/// @brief Toggle multi-select. After `_show`, retrieve count via `_get_path_count` and individual
+/// paths via `_get_path_at(i)`. Has no effect on Save/Folder dialogs.
 void rt_filedialog_set_multiple(void *dialog, int64_t multiple) {
     if (!dialog)
         return;
@@ -329,6 +354,9 @@ void rt_filedialog_set_multiple(void *dialog, int64_t multiple) {
     vg_filedialog_set_multi_select(data->dialog, multiple != 0);
 }
 
+/// @brief Show the dialog modally. Blocks the caller until the user dismisses it. Returns 1 if
+/// the user confirmed at least one selection, 0 if cancelled. Replaces any prior selection
+/// snapshot (calling `_show` twice on the same handle is allowed).
 int64_t rt_filedialog_show(void *dialog) {
     if (!dialog)
         return 0;
@@ -350,6 +378,7 @@ int64_t rt_filedialog_show(void *dialog) {
     return data->result;
 }
 
+/// @brief Return the first selected path from the most recent `_show`. Empty if no selection.
 rt_string rt_filedialog_get_path(void *dialog) {
     if (!dialog)
         return rt_str_empty();
@@ -360,6 +389,7 @@ rt_string rt_filedialog_get_path(void *dialog) {
     return rt_str_empty();
 }
 
+/// @brief Number of paths selected by the most recent `_show` (0 if cancelled or pre-show).
 int64_t rt_filedialog_get_path_count(void *dialog) {
     if (!dialog)
         return 0;
@@ -367,6 +397,8 @@ int64_t rt_filedialog_get_path_count(void *dialog) {
     return (int64_t)data->selected_count;
 }
 
+/// @brief Return the i-th selected path (0-based) from a multi-select dialog. Empty if `index`
+/// is out of range. Use `_get_path_count` first to bound the iteration.
 rt_string rt_filedialog_get_path_at(void *dialog, int64_t index) {
     if (!dialog)
         return rt_str_empty();
@@ -378,6 +410,8 @@ rt_string rt_filedialog_get_path_at(void *dialog, int64_t index) {
     return rt_str_empty();
 }
 
+/// @brief Manually free dialog resources (paths, backend handle). The GC finalizer also calls
+/// this, so explicit destruction is optional — useful for early cleanup before GC catches up.
 void rt_filedialog_destroy(void *dialog) {
     if (!dialog)
         return;

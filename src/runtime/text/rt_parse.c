@@ -74,6 +74,10 @@ static inline int str_eq_ci(const char *a, const char *b) {
     return *a == *b;
 }
 
+/// @brief Parse a string as a 64-bit decimal integer; on success writes to `*out_value` and
+/// returns 1. Strict validation: rejects empty input, non-numeric trailing characters, and
+/// overflow (ERANGE). Leading/trailing whitespace is tolerated. Never traps — designed for
+/// caller-supplied "did the parse succeed?" branching rather than exceptions.
 int8_t rt_parse_try_int(rt_string s, int64_t *out_value) {
     if (!out_value)
         return 0;
@@ -101,6 +105,10 @@ int8_t rt_parse_try_int(rt_string s, int64_t *out_value) {
     return 1;
 }
 
+/// @brief Parse a string as a double-precision float. **Locale-isolated:** temporarily switches
+/// the LC_NUMERIC locale to "C" so the decimal separator is always `.` regardless of the user's
+/// system locale (avoids the classic French/German `1,5` parse failure). Rejects NaN/Inf via
+/// `isfinite`. On Win32 uses `_strtod_l` (per-call locale); on POSIX uses `uselocale` thread-local.
 int8_t rt_parse_try_num(rt_string s, double *out_value) {
     if (!out_value)
         return 0;
@@ -144,6 +152,9 @@ int8_t rt_parse_try_num(rt_string s, double *out_value) {
     return 1;
 }
 
+/// @brief Parse a string as a boolean. Accepts case-insensitively: true/yes/1/on → true,
+/// false/no/0/off → false. Anything else fails. Tolerates leading/trailing whitespace; multiple
+/// words are rejected (so "true today" doesn't parse as true).
 int8_t rt_parse_try_bool(rt_string s, int8_t *out_value) {
     if (!out_value)
         return 0;
@@ -184,6 +195,7 @@ int8_t rt_parse_try_bool(rt_string s, int8_t *out_value) {
     return 0;
 }
 
+/// @brief Parse-or-default convenience for integers. Equivalent to `try_int(s, &x) ? x : default`.
 int64_t rt_parse_int_or(rt_string s, int64_t default_value) {
     int64_t result;
     if (rt_parse_try_int(s, &result))
@@ -191,6 +203,7 @@ int64_t rt_parse_int_or(rt_string s, int64_t default_value) {
     return default_value;
 }
 
+/// @brief Parse-or-default convenience for doubles.
 double rt_parse_num_or(rt_string s, double default_value) {
     double result;
     if (rt_parse_try_num(s, &result))
@@ -198,6 +211,7 @@ double rt_parse_num_or(rt_string s, double default_value) {
     return default_value;
 }
 
+/// @brief Parse-or-default convenience for booleans.
 int8_t rt_parse_bool_or(rt_string s, int8_t default_value) {
     int8_t result;
     if (rt_parse_try_bool(s, &result))
@@ -205,16 +219,22 @@ int8_t rt_parse_bool_or(rt_string s, int8_t default_value) {
     return default_value;
 }
 
+/// @brief Returns 1 if `s` parses as a valid integer (no value extracted). Equivalent to a
+/// `try_int` call that discards the result — handy for input validation gates.
 int8_t rt_parse_is_int(rt_string s) {
     int64_t dummy;
     return rt_parse_try_int(s, &dummy);
 }
 
+/// @brief Returns 1 if `s` parses as a valid double (locale-isolated, like `try_num`).
 int8_t rt_parse_is_num(rt_string s) {
     double dummy;
     return rt_parse_try_num(s, &dummy);
 }
 
+/// @brief Parse an integer in any radix from 2 to 36 (covers binary, octal, decimal, hex, base32,
+/// base36 for short URLs). Returns `default_value` for out-of-range radix or any parse failure.
+/// Like the standard `strtoll`, alphabetic digits beyond 9 use `a-z`/`A-Z` (case-insensitive).
 int64_t rt_parse_int_radix(rt_string s, int64_t radix, int64_t default_value) {
     // Validate radix range
     if (radix < 2 || radix > 36)

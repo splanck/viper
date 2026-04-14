@@ -272,6 +272,58 @@ TEST(AArch64Scheduler, LoadUseSeparation) {
     EXPECT_NE(m.assembly.find("ret"), std::string::npos);
 }
 
+TEST(AArch64Scheduler, IndependentStackSlotsDoNotSerializeLoadAfterStore) {
+    const TargetInfo &ti = darwinTarget();
+    AArch64Module module;
+    module.ti = &ti;
+
+    MFunction fn;
+    fn.name = "independent_stack_slots";
+
+    MBasicBlock bb;
+    bb.name = "entry";
+
+    MInstr store;
+    store.opc = MOpcode::StrRegFpImm;
+    store.ops = {MOperand::regOp(PhysReg::X0), MOperand::immOp(-8)};
+    bb.instrs.push_back(std::move(store));
+
+    MInstr load;
+    load.opc = MOpcode::LdrRegFpImm;
+    load.ops = {MOperand::regOp(PhysReg::X1), MOperand::immOp(-32)};
+    bb.instrs.push_back(std::move(load));
+
+    MInstr add;
+    add.opc = MOpcode::AddRRR;
+    add.ops = {MOperand::regOp(PhysReg::X2),
+               MOperand::regOp(PhysReg::X1),
+               MOperand::regOp(PhysReg::X3)};
+    bb.instrs.push_back(std::move(add));
+
+    MInstr ret;
+    ret.opc = MOpcode::Ret;
+    bb.instrs.push_back(std::move(ret));
+
+    fn.blocks.push_back(std::move(bb));
+    module.mir.push_back(std::move(fn));
+
+    Diagnostics diags;
+    ASSERT_TRUE(SchedulerPass().run(module, diags));
+
+    ASSERT_EQ(module.mir.size(), 1u);
+    ASSERT_EQ(module.mir[0].blocks.size(), 1u);
+    const auto &instrs = module.mir[0].blocks[0].instrs;
+    ASSERT_GE(instrs.size(), 4u);
+    EXPECT_EQ(instrs[0].opc, MOpcode::LdrRegFpImm);
+    auto storeIt = std::find_if(instrs.begin(), instrs.end(), [](const MInstr &instr) {
+        return instr.opc == MOpcode::StrRegFpImm;
+    });
+    ASSERT_NE(storeIt, instrs.end());
+    EXPECT_LT(instrs.begin(), storeIt);
+    EXPECT_EQ(instrs.front().opc, MOpcode::LdrRegFpImm);
+    EXPECT_EQ(instrs.back().opc, MOpcode::Ret);
+}
+
 // ---------------------------------------------------------------------------
 // Test 4: Terminators remain at the end of their block after scheduling.
 // ---------------------------------------------------------------------------

@@ -262,9 +262,16 @@ typedef struct {
 
         /// @brief Resize event data (RESIZE).
         /// @details The framebuffer has been reallocated and cleared to black.
+        ///          `width`/`height` report the physical framebuffer size in
+        ///          pixels. `logical_width`/`logical_height` report the
+        ///          current public coordinate-space size after coord scaling
+        ///          (matches what vgfx_get_size() returns immediately after
+        ///          the event).
         struct {
-            int32_t width;  ///< New window width
-            int32_t height; ///< New window height
+            int32_t width;          ///< New framebuffer width in physical pixels
+            int32_t height;         ///< New framebuffer height in physical pixels
+            int32_t logical_width;  ///< New logical/public width
+            int32_t logical_height; ///< New logical/public height
         } resize;
 
         /// @brief Scroll event data (SCROLL).
@@ -479,9 +486,10 @@ void vgfx_set_cursor(vgfx_window_t window, int32_t cursor_type);
 /// @param visible 1 to show, 0 to hide
 void vgfx_set_cursor_visible(vgfx_window_t window, int32_t visible);
 
-/// @brief Get the primary monitor's screen dimensions.
-/// @details Queries the size of the monitor containing the window.  Falls
-///          back to the primary monitor when the window is NULL.
+/// @brief Get the current monitor's screen dimensions.
+/// @details Queries the size of the monitor containing the window when the
+///          backend can determine it, otherwise falls back to the primary or
+///          default screen. Reported dimensions are physical pixels.
 /// @param window Window handle (may be NULL to query primary monitor)
 /// @param out_w Pointer to receive monitor width (may be NULL)
 /// @param out_h Pointer to receive monitor height (may be NULL)
@@ -498,9 +506,10 @@ void vgfx_get_monitor_size(vgfx_window_t window, int32_t *out_w, int32_t *out_h)
 void vgfx_set_window_size(vgfx_window_t window, int32_t w, int32_t h);
 
 /// @brief Query the HiDPI backing scale factor for a window.
-/// @details Returns the ratio of physical pixels to logical points that was
-///          applied when the window was created.  On a 2× macOS Retina display
-///          this returns 2.0; on a standard 96 DPI display it returns 1.0.
+/// @details Returns the current ratio of physical pixels to logical points.
+///          On a 2× macOS Retina display this returns 2.0; on a standard
+///          96 DPI display it returns 1.0. The value may change if the window
+///          moves between displays with different scale factors.
 ///          Use this value to scale logical coordinates to physical pixels or
 ///          to adjust font/UI element sizes for crisp rendering.
 /// @param window Window handle (may be NULL → returns 1.0)

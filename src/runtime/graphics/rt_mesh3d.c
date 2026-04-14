@@ -49,6 +49,7 @@ extern const char *rt_string_cstr(rt_string s);
 #define MESH_INIT_VERTS 64
 #define MESH_INIT_IDXS 128
 
+/// @brief GC finalizer for Mesh3D — releases the owned vertex and index buffers.
 static void rt_mesh3d_finalize(void *obj) {
     rt_mesh3d *m = (rt_mesh3d *)obj;
     free(m->vertices);
@@ -531,6 +532,14 @@ void *rt_mesh3d_new_cylinder(double radius, double height, int64_t segments) {
 
 /* Parse one integer from a face index string, advancing *p past it.
  * Returns 0 if no integer found (empty between slashes). */
+// ---------------------------------------------------------------------------
+// Wavefront OBJ parser helpers — OBJ is a text format where each
+// line begins with a tag (`v` for vertex, `vt` for tex coord, `vn`
+// for normal, `f` for face). These parsers walk a `**p` cursor
+// through the line, consuming whitespace and tokens.
+// ---------------------------------------------------------------------------
+
+/// @brief Parse a signed decimal integer from `*p`, advancing `*p` past it.
 static int64_t obj_parse_int(const char **p) {
     if (!**p || **p == '/' || **p == ' ' || **p == '\n' || **p == '\r')
         return 0;
@@ -549,6 +558,15 @@ static int64_t obj_parse_int(const char **p) {
 
 /* Parse a face vertex index: v[/vt[/vn]] or v//vn
  * Sets vi, ti, ni to 1-based indices (0 = not present) */
+/// @brief Parse a face vertex spec `v[/[vt][/vn]]` — slash-separated optional indices.
+///
+/// The OBJ face syntax allows three forms:
+///   - `v`         (vertex only — `ti = ni = 0`)
+///   - `v/vt`      (vertex + tex)
+///   - `v//vn`     (vertex + normal, no tex)
+///   - `v/vt/vn`   (all three)
+/// 1-based indices in the file (OBJ convention); negative values
+/// reference from the end of the current vertex list.
 static void obj_parse_face_vert(const char **p, int64_t *vi, int64_t *ti, int64_t *ni) {
     *vi = obj_parse_int(p);
     *ti = 0;
@@ -563,6 +581,7 @@ static void obj_parse_face_vert(const char **p, int64_t *vi, int64_t *ti, int64_
     }
 }
 
+/// @brief Parse a double-precision float from `*p` via `strtod`, advancing `*p` past it.
 static double obj_parse_double(const char **p) {
     while (**p == ' ' || **p == '\t')
         (*p)++;
@@ -831,16 +850,31 @@ void *rt_mesh3d_from_obj(rt_string path) {
 // STL Loading (Binary + ASCII)
 //=============================================================================
 
+// ---------------------------------------------------------------------------
+// STL parser helpers — STL is a much simpler 3D mesh format with
+// two variants: binary (84-byte header + per-triangle records) and
+// ASCII (text "facet normal …" blocks). Both lack texture coords
+// and vertex sharing — every triangle is stored in full.
+// ---------------------------------------------------------------------------
+
+/// @brief Read a little-endian uint32 from a binary STL byte stream.
 static uint32_t stl_read_u32_le(const uint8_t *p) {
     return (uint32_t)p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
 }
 
+/// @brief Read a little-endian IEEE-754 float from a binary STL byte stream.
 static float stl_read_f32_le(const uint8_t *p) {
     float val;
     memcpy(&val, p, sizeof(float));
     return val;
 }
 
+/// @brief Decode a binary-STL byte buffer into a Mesh3D.
+///
+/// Layout: 80-byte header + `uint32` triangle count + 50 bytes
+/// per triangle (12-byte normal + 3 × 12-byte vertices + 2-byte
+/// attribute count). Vertices are not deduplicated — STL emits
+/// each face's vertices in full.
 static void *stl_load_binary(const uint8_t *data, size_t len) {
     if (len < 84)
         return NULL;
@@ -874,6 +908,7 @@ static void *stl_load_binary(const uint8_t *data, size_t len) {
     return mesh;
 }
 
+/// @brief Parse a double from an ASCII STL stream, advancing the cursor past it.
 static double stl_parse_double(const char **pp) {
     while (**pp == ' ' || **pp == '\t')
         (*pp)++;
@@ -883,6 +918,11 @@ static double stl_parse_double(const char **pp) {
     return val;
 }
 
+/// @brief Decode an ASCII-STL byte buffer into a Mesh3D.
+///
+/// Walks the text, recognising `facet normal …` blocks each
+/// containing three `vertex …` lines. Same no-deduplication
+/// rule as the binary loader.
 static void *stl_load_ascii(const uint8_t *data, size_t len) {
     void *mesh = rt_mesh3d_new();
     if (!mesh)

@@ -40,7 +40,6 @@
 #include "il/core/Type.hpp"
 #include "il/core/Value.hpp"
 
-#include "il/utils/UseDefInfo.hpp"
 #include "il/utils/Utils.hpp"
 
 #include <algorithm>
@@ -98,6 +97,7 @@ struct LoadKeyHash {
 struct AvailableValue {
     Value value;
     BasicBlock *block{nullptr};
+    std::size_t instrIndex{0};
 };
 
 /// @brief Per-path state threaded through the dominator-tree traversal.
@@ -110,10 +110,14 @@ struct State {
 };
 
 static bool isTextuallyAvailable(const std::unordered_map<const BasicBlock *, std::size_t> &order,
-                                 const BasicBlock *defBlock,
-                                 const BasicBlock *useBlock) {
+                                 const AvailableValue &avail,
+                                 const BasicBlock *useBlock,
+                                 std::size_t useInstrIndex) {
+    const BasicBlock *defBlock = avail.block;
     if (!defBlock || !useBlock)
         return false;
+    if (defBlock == useBlock)
+        return avail.instrIndex < useInstrIndex;
     auto defIt = order.find(defBlock);
     auto useIt = order.find(useBlock);
     if (defIt == order.end() || useIt == order.end())
@@ -132,14 +136,14 @@ static bool isTextuallyAvailable(const std::unordered_map<const BasicBlock *, st
 /// @param B Current basic block in dominator traversal.
 /// @param DT Dominator tree for the function.
 /// @param AA Alias analysis used for load/store reasoning.
-/// @param useInfo Use-def chains for O(uses) value replacement.
+/// @param blockOrder Textual block order used to avoid cross-block
+///                   use-before-def substitutions.
 /// @param state Current value/load memoization state (copied per child).
 /// @param changed Output flag set true if any instruction is removed.
 void visitBlock(Function &F,
                 BasicBlock *B,
                 const viper::analysis::DomTree &DT,
                 viper::analysis::BasicAA &AA,
-                viper::il::UseDefInfo &useInfo,
                 const std::unordered_map<const BasicBlock *, std::size_t> &blockOrder,
                 State state,
                 bool &changed) {
@@ -156,9 +160,9 @@ void visitBlock(Function &F,
             auto it = state.loads.find(key);
             if (it != state.loads.end()) {
                 for (auto avail = it->second.rbegin(); avail != it->second.rend(); ++avail) {
-                    if (!isTextuallyAvailable(blockOrder, avail->block, B))
+                    if (!isTextuallyAvailable(blockOrder, *avail, B, idx))
                         continue;
-                    useInfo.replaceAllUses(*I.result, avail->value);
+                    viper::il::replaceAllUses(F, *I.result, avail->value);
                     B->instructions.erase(B->instructions.begin() + static_cast<long>(idx));
                     changed = true;
                     goto next_instruction;
@@ -175,9 +179,9 @@ void visitBlock(Function &F,
                     continue;
                 }
                 for (auto avail = kv.second.rbegin(); avail != kv.second.rend(); ++avail) {
-                    if (!isTextuallyAvailable(blockOrder, avail->block, B))
+                    if (!isTextuallyAvailable(blockOrder, *avail, B, idx))
                         continue;
-                    useInfo.replaceAllUses(*I.result, avail->value);
+                    viper::il::replaceAllUses(F, *I.result, avail->value);
                     B->instructions.erase(B->instructions.begin() + static_cast<long>(idx));
                     changed = true;
                     replaced = true;
@@ -190,7 +194,7 @@ void visitBlock(Function &F,
                 goto next_instruction;
 
             // Record available load
-            state.loads[key].push_back(AvailableValue{Value::temp(*I.result), B});
+            state.loads[key].push_back(AvailableValue{Value::temp(*I.result), B, idx});
             ++idx;
             continue;
         }
@@ -237,15 +241,15 @@ void visitBlock(Function &F,
             auto found = state.exprs.find(*key);
             if (found != state.exprs.end()) {
                 for (auto avail = found->second.rbegin(); avail != found->second.rend(); ++avail) {
-                    if (!isTextuallyAvailable(blockOrder, avail->block, B))
+                    if (!isTextuallyAvailable(blockOrder, *avail, B, idx))
                         continue;
-                    useInfo.replaceAllUses(*I.result, avail->value);
+                    viper::il::replaceAllUses(F, *I.result, avail->value);
                     B->instructions.erase(B->instructions.begin() + static_cast<long>(idx));
                     changed = true;
                     goto next_instruction;
                 }
             }
-            state.exprs[*key].push_back(AvailableValue{Value::temp(*I.result), B});
+            state.exprs[*key].push_back(AvailableValue{Value::temp(*I.result), B, idx});
             ++idx;
             continue;
         }
@@ -259,7 +263,7 @@ void visitBlock(Function &F,
     auto it = DT.children.find(B);
     if (it != DT.children.end()) {
         for (auto *Child : it->second) {
-            visitBlock(F, Child, DT, AA, useInfo, blockOrder, state, changed);
+            visitBlock(F, Child, DT, AA, blockOrder, state, changed);
         }
     }
 }
@@ -293,9 +297,6 @@ PreservedAnalyses GVN::run(Function &function, AnalysisManager &analysis) {
     if (function.blocks.empty())
         return PreservedAnalyses::all();
 
-    // Build use-def chains once for O(uses) replacement instead of O(instructions)
-    viper::il::UseDefInfo useInfo(function);
-
     State state;
     std::unordered_map<const BasicBlock *, std::size_t> blockOrder;
     blockOrder.reserve(function.blocks.size());
@@ -303,7 +304,7 @@ PreservedAnalyses GVN::run(Function &function, AnalysisManager &analysis) {
         blockOrder.emplace(&function.blocks[i], i);
 
     // Start at entry block
-    visitBlock(function, &function.blocks.front(), dom, aa, useInfo, blockOrder, state, changed);
+    visitBlock(function, &function.blocks.front(), dom, aa, blockOrder, state, changed);
 
     if (!changed)
         return PreservedAnalyses::all();

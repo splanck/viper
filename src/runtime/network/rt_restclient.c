@@ -40,6 +40,8 @@ typedef struct {
 // Finalizer
 //=============================================================================
 
+/// @brief GC finalizer: release the base URL string, headers map (which holds string K/V pairs),
+/// and any cached HTTP response.
 static void rest_client_finalize(void *obj) {
     if (!obj)
         return;
@@ -59,6 +61,9 @@ static void rest_client_finalize(void *obj) {
 // Helper Functions
 //=============================================================================
 
+/// @brief Concatenate a base URL and a path with a single `/` separator. Strips trailing slashes
+/// from `base` and leading slashes from `path` so callers can mix-and-match conventions without
+/// producing `//` artefacts. Always inserts exactly one separator.
 static rt_string join_url(rt_string base, rt_string path) {
     const char *base_str = rt_string_cstr(base);
     const char *path_str = rt_string_cstr(path);
@@ -102,6 +107,9 @@ static rt_string join_url(rt_string base, rt_string path) {
     return out;
 }
 
+/// @brief Build an HttpReq pre-populated with the client's defaults: full URL = `base+path`,
+/// every default header copied in, and the configured timeout applied. Returned req is owned by
+/// the caller (will be released by `execute_request`).
 static void *create_request(rest_client *client, rt_string method, rt_string path) {
     rt_string url = join_url(client->base_url, path);
     void *req = rt_http_req_new(method, url);
@@ -129,6 +137,9 @@ static void *create_request(rest_client *client, rt_string method, rt_string pat
     return req;
 }
 
+/// @brief Send the HttpReq, cache the resulting HttpRes on the client (releasing any prior cache),
+/// and update `last_status` for ergonomic post-call checks. Releases `req` regardless of outcome.
+/// Returns the HttpRes (a separate retained reference is stored in `client->last_response`).
 static void *execute_request(rest_client *client, void *req) {
     void *res = rt_http_req_send(req);
     if (req && rt_obj_release_check0(req))
@@ -148,6 +159,9 @@ static void *execute_request(rest_client *client, void *req) {
 // Creation and Configuration
 //=============================================================================
 
+/// @brief Construct a REST client targeting `base_url`. Defaults: empty headers map, 30-second
+/// timeout, no auth. The base URL is duplicated so the caller can release the original. Returns
+/// a GC-managed handle wired to `rest_client_finalize`.
 void *rt_restclient_new(rt_string base_url) {
     rest_client *client = (rest_client *)rt_obj_new_i64(0, (int64_t)sizeof(rest_client));
     memset(client, 0, sizeof(rest_client));
@@ -163,6 +177,7 @@ void *rt_restclient_new(rt_string base_url) {
     return client;
 }
 
+/// @brief Read the base URL the client is targeting (the same string passed to `_new`).
 rt_string rt_restclient_base_url(void *obj) {
     if (!obj)
         return rt_const_cstr("");
@@ -170,6 +185,8 @@ rt_string rt_restclient_base_url(void *obj) {
     return client->base_url;
 }
 
+/// @brief Set a default header sent on every subsequent request. Repeated calls overwrite. Pair
+/// with `_del_header` to remove specific entries; map-managed lifetime handles release.
 void rt_restclient_set_header(void *obj, rt_string name, rt_string value) {
     if (!obj)
         return;
@@ -177,6 +194,7 @@ void rt_restclient_set_header(void *obj, rt_string name, rt_string value) {
     rt_map_set(client->headers, name, (void *)value);
 }
 
+/// @brief Remove a default header so subsequent requests don't include it. No-op on missing keys.
 void rt_restclient_del_header(void *obj, rt_string name) {
     if (!obj)
         return;
@@ -184,6 +202,8 @@ void rt_restclient_del_header(void *obj, rt_string name) {
     rt_map_remove(client->headers, name);
 }
 
+/// @brief Convenience: set the `Authorization: Bearer <token>` header. The token is appended
+/// directly with no encoding (caller responsible for opaque-bearer-token formatting).
 void rt_restclient_set_auth_bearer(void *obj, rt_string token) {
     if (!obj)
         return;
@@ -210,6 +230,9 @@ void rt_restclient_set_auth_bearer(void *obj, rt_string token) {
     rt_string_unref(auth_str);
 }
 
+/// @brief Convenience: set `Authorization: Basic <base64(user:pass)>`. Builds the credential
+/// string `user:pass`, base64-encodes it via `rt_codec_base64_enc`, and prepends the `Basic `
+/// scheme. All temporary buffers are freed before returning.
 void rt_restclient_set_auth_basic(void *obj, rt_string username, rt_string password) {
     if (!obj)
         return;
@@ -262,12 +285,14 @@ void rt_restclient_set_auth_basic(void *obj, rt_string username, rt_string passw
     rt_string_unref(auth_str);
 }
 
+/// @brief Remove the `Authorization` header (whether Bearer or Basic was set).
 void rt_restclient_clear_auth(void *obj) {
     if (!obj)
         return;
     rt_restclient_del_header(obj, rt_const_cstr("Authorization"));
 }
 
+/// @brief Configure per-request timeout in milliseconds (default 30000). 0 disables the timeout.
 void rt_restclient_set_timeout(void *obj, int64_t timeout_ms) {
     if (!obj)
         return;
@@ -279,6 +304,7 @@ void rt_restclient_set_timeout(void *obj, int64_t timeout_ms) {
 // HTTP Methods - Raw
 //=============================================================================
 
+/// @brief Send a `GET` to `base_url + path`. Returns the raw HttpRes for caller inspection.
 void *rt_restclient_get(void *obj, rt_string path) {
     if (!obj)
         rt_trap("RestClient: null client");
@@ -288,6 +314,7 @@ void *rt_restclient_get(void *obj, rt_string path) {
     return execute_request(client, req);
 }
 
+/// @brief Send a `POST` with a string body. Caller sets Content-Type via `_set_header` if needed.
 void *rt_restclient_post(void *obj, rt_string path, rt_string body) {
     if (!obj)
         rt_trap("RestClient: null client");
@@ -298,6 +325,7 @@ void *rt_restclient_post(void *obj, rt_string path, rt_string body) {
     return execute_request(client, req);
 }
 
+/// @brief Send a `PUT` with a string body.
 void *rt_restclient_put(void *obj, rt_string path, rt_string body) {
     if (!obj)
         rt_trap("RestClient: null client");
@@ -308,6 +336,7 @@ void *rt_restclient_put(void *obj, rt_string path, rt_string body) {
     return execute_request(client, req);
 }
 
+/// @brief Send a `PATCH` with a string body.
 void *rt_restclient_patch(void *obj, rt_string path, rt_string body) {
     if (!obj)
         rt_trap("RestClient: null client");
@@ -318,6 +347,7 @@ void *rt_restclient_patch(void *obj, rt_string path, rt_string body) {
     return execute_request(client, req);
 }
 
+/// @brief Send a `DELETE` to `base_url + path` (no body).
 void *rt_restclient_delete(void *obj, rt_string path) {
     if (!obj)
         rt_trap("RestClient: null client");
@@ -327,6 +357,7 @@ void *rt_restclient_delete(void *obj, rt_string path) {
     return execute_request(client, req);
 }
 
+/// @brief Send a `HEAD` request — useful for checking resource existence/headers without body.
 void *rt_restclient_head(void *obj, rt_string path) {
     if (!obj)
         rt_trap("RestClient: null client");
@@ -340,6 +371,9 @@ void *rt_restclient_head(void *obj, rt_string path) {
 // HTTP Methods - JSON Convenience
 //=============================================================================
 
+/// @brief Send a `GET` with `Accept: application/json` and parse the response body as JSON.
+/// Returns the parsed JSON value, or NULL if the response is non-2xx (caller can re-inspect via
+/// `_last_response`/`_last_status`). One-call convenience for typical REST-API consumers.
 void *rt_restclient_get_json(void *obj, rt_string path) {
     if (!obj)
         rt_trap("RestClient: null client");
@@ -356,6 +390,9 @@ void *rt_restclient_get_json(void *obj, rt_string path) {
     return rt_json_parse(body);
 }
 
+/// @brief Send a `POST` with `Content-Type: application/json` carrying `rt_json_format(json_body)`.
+/// Sets `Accept: application/json` for response, parses the response body as JSON. NULL on
+/// non-2xx OR empty response body.
 void *rt_restclient_post_json(void *obj, rt_string path, void *json_body) {
     if (!obj)
         rt_trap("RestClient: null client");
@@ -380,6 +417,7 @@ void *rt_restclient_post_json(void *obj, rt_string path, void *json_body) {
     return rt_json_parse(res_body);
 }
 
+/// @brief `PUT` JSON body and parse response. Same Accept/Content-Type handling as `_post_json`.
 void *rt_restclient_put_json(void *obj, rt_string path, void *json_body) {
     if (!obj)
         rt_trap("RestClient: null client");
@@ -404,6 +442,7 @@ void *rt_restclient_put_json(void *obj, rt_string path, void *json_body) {
     return rt_json_parse(res_body);
 }
 
+/// @brief `PATCH` JSON body and parse response. Used for partial-update REST endpoints.
 void *rt_restclient_patch_json(void *obj, rt_string path, void *json_body) {
     if (!obj)
         rt_trap("RestClient: null client");
@@ -428,6 +467,8 @@ void *rt_restclient_patch_json(void *obj, rt_string path, void *json_body) {
     return rt_json_parse(res_body);
 }
 
+/// @brief `DELETE` (no body) and parse the response as JSON. Useful when the API returns a
+/// confirmation envelope on successful deletion.
 void *rt_restclient_delete_json(void *obj, rt_string path) {
     if (!obj)
         rt_trap("RestClient: null client");
@@ -452,6 +493,7 @@ void *rt_restclient_delete_json(void *obj, rt_string path) {
 // Error Handling
 //=============================================================================
 
+/// @brief Read the HTTP status of the last response. Returns 0 if no request has been issued yet.
 int64_t rt_restclient_last_status(void *obj) {
     if (!obj)
         return 0;
@@ -459,6 +501,8 @@ int64_t rt_restclient_last_status(void *obj) {
     return client->last_status;
 }
 
+/// @brief Return a retained reference to the last HttpRes (NULL if none yet). Caller must
+/// release. Use to inspect headers / raw body when a typed convenience method returned NULL.
 void *rt_restclient_last_response(void *obj) {
     if (!obj)
         return NULL;
@@ -467,6 +511,8 @@ void *rt_restclient_last_response(void *obj) {
     return client->last_response;
 }
 
+/// @brief Returns 1 if the last status was 2xx (success). Convenience for the common
+/// `if (!client.lastOk()) handle_error()` pattern.
 int8_t rt_restclient_last_ok(void *obj) {
     if (!obj)
         return 0;

@@ -88,6 +88,8 @@ rt_pixels_impl *pixels_alloc(int64_t width, int64_t height) {
 // Constructors
 //=============================================================================
 
+/// @brief Construct a Pixels buffer of `width × height` (zero-initialized, transparent).
+/// Each pixel is a 32-bit RGBA value (0xRRGGBBAA).
 void *rt_pixels_new(int64_t width, int64_t height) {
     return pixels_alloc(width, height);
 }
@@ -96,6 +98,7 @@ void *rt_pixels_new(int64_t width, int64_t height) {
 // Property Accessors
 //=============================================================================
 
+/// @brief Pixel buffer width. Traps on null.
 int64_t rt_pixels_width(void *pixels) {
     if (!pixels) {
         rt_trap("Pixels.Width: null pixels");
@@ -104,6 +107,7 @@ int64_t rt_pixels_width(void *pixels) {
     return ((rt_pixels_impl *)pixels)->width;
 }
 
+/// @brief Pixel buffer height. Traps on null.
 int64_t rt_pixels_height(void *pixels) {
     if (!pixels) {
         rt_trap("Pixels.Height: null pixels");
@@ -116,6 +120,7 @@ int64_t rt_pixels_height(void *pixels) {
 // Pixel Access
 //=============================================================================
 
+/// @brief Read the pixel at (x, y) as 0xRRGGBBAA. Out-of-bounds returns 0 (transparent).
 int64_t rt_pixels_get(void *pixels, int64_t x, int64_t y) {
     if (!pixels) {
         rt_trap("Pixels.Get: null pixels");
@@ -131,6 +136,7 @@ int64_t rt_pixels_get(void *pixels, int64_t x, int64_t y) {
     return (int64_t)p->data[idx];
 }
 
+/// @brief Write `color` (0xRRGGBBAA) at (x, y). Out-of-bounds is a silent no-op.
 void rt_pixels_set(void *pixels, int64_t x, int64_t y, int64_t color) {
     if (!pixels) {
         rt_trap("Pixels.Set: null pixels");
@@ -147,6 +153,8 @@ void rt_pixels_set(void *pixels, int64_t x, int64_t y, int64_t color) {
     pixels_touch(p);
 }
 
+/// @brief Internal: borrow the raw uint32_t pixel array (row-major). NULL-safe. Use sparingly —
+/// caller must respect width × height bounds and not free the pointer.
 const uint32_t *rt_pixels_raw_buffer(void *pixels) {
     if (!pixels)
         return NULL;
@@ -158,6 +166,7 @@ const uint32_t *rt_pixels_raw_buffer(void *pixels) {
 // Fill Operations
 //=============================================================================
 
+/// @brief Fill the entire buffer with `color`. Optimized for color=0 (memset).
 void rt_pixels_fill(void *pixels, int64_t color) {
     if (!pixels) {
         rt_trap("Pixels.Fill: null pixels");
@@ -177,6 +186,7 @@ void rt_pixels_fill(void *pixels, int64_t color) {
     pixels_touch(p);
 }
 
+/// @brief Reset every pixel to 0 (transparent black). Equivalent to `_fill(pixels, 0)`.
 void rt_pixels_clear(void *pixels) {
     if (!pixels) {
         rt_trap("Pixels.Clear: null pixels");
@@ -195,6 +205,8 @@ void rt_pixels_clear(void *pixels) {
 // Copy Operations
 //=============================================================================
 
+/// @brief Blit the `w × h` source rectangle (`src` at sx, sy) into `dst` at (dx, dy). Auto-clips
+/// to both source and dest bounds; out-of-range pixels are skipped silently.
 void rt_pixels_copy(
     void *dst, int64_t dx, int64_t dy, void *src, int64_t sx, int64_t sy, int64_t w, int64_t h) {
     if (!dst || !src) {
@@ -258,6 +270,8 @@ void rt_pixels_copy(
     pixels_touch(d);
 }
 
+/// @brief Return a deep copy of the buffer (independent storage). Useful before applying
+/// destructive transforms or sharing a snapshot across threads.
 void *rt_pixels_clone(void *pixels) {
     if (!pixels) {
         rt_trap("Pixels.Clone: null pixels");
@@ -283,6 +297,8 @@ typedef struct rt_bytes_impl {
     uint8_t *data;
 } rt_bytes_impl;
 
+/// @brief Serialize the buffer to a fresh Bytes blob (raw 4 bytes/pixel, row-major). Useful for
+/// hashing, persistence, or transmission. Inverse: `_from_bytes`.
 void *rt_pixels_to_bytes(void *pixels) {
     if (!pixels) {
         rt_trap("Pixels.ToBytes: null pixels");
@@ -301,6 +317,8 @@ void *rt_pixels_to_bytes(void *pixels) {
     return bytes;
 }
 
+/// @brief Deserialize a `width × height` pixel buffer from a Bytes blob (raw RGBA payload).
+/// Bytes length must equal `width * height * 4`; otherwise returns an empty Pixels.
 void *rt_pixels_from_bytes(int64_t width, int64_t height, void *bytes) {
     if (!bytes) {
         rt_trap("Pixels.FromBytes: null bytes");

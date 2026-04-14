@@ -122,6 +122,7 @@ void rt_tab_set_modified(void *tab, int64_t modified) {
     }
 }
 
+/// @brief Return the currently-active tab handle (NULL when no tabs / null bar).
 void *rt_tabbar_get_active(void *tabbar) {
     RT_ASSERT_MAIN_THREAD();
     return tabbar ? ((vg_tabbar_t *)tabbar)->active_tab : NULL;
@@ -176,6 +177,7 @@ int64_t rt_tabbar_get_close_clicked_index(void *tabbar) {
     return index;
 }
 
+/// @brief Return the tab at position `index`, or NULL if out of range.
 void *rt_tabbar_get_tab_at(void *tabbar, int64_t index) {
     RT_ASSERT_MAIN_THREAD();
     if (!tabbar)
@@ -225,6 +227,8 @@ double rt_splitpane_get_position(void *split) {
     return (double)vg_splitpane_get_position((vg_splitpane_t *)split);
 }
 
+/// @brief Return the first (left/top) panel container of a split pane.
+/// Add child widgets to this container to populate the leading half.
 void *rt_splitpane_get_first(void *split) {
     RT_ASSERT_MAIN_THREAD();
     if (!split)
@@ -232,6 +236,7 @@ void *rt_splitpane_get_first(void *split) {
     return vg_splitpane_get_first((vg_splitpane_t *)split);
 }
 
+/// @brief Return the second (right/bottom) panel container of a split pane.
 void *rt_splitpane_get_second(void *split) {
     RT_ASSERT_MAIN_THREAD();
     if (!split)
@@ -430,11 +435,13 @@ rt_string rt_theme_get_name(void) {
 // Layout Functions
 //=============================================================================
 
+/// @brief Create a vertical box-layout container (children stacked top-to-bottom).
 void *rt_vbox_new(void) {
     RT_ASSERT_MAIN_THREAD();
     return vg_vbox_create(0.0f);
 }
 
+/// @brief Create a horizontal box-layout container (children laid out left-to-right).
 void *rt_hbox_new(void) {
     RT_ASSERT_MAIN_THREAD();
     return vg_hbox_create(0.0f);
@@ -522,6 +529,7 @@ void rt_widget_set_position(void *widget, int64_t x, int64_t y) {
 // Dropdown Widget
 //=============================================================================
 
+/// @brief Create a dropdown (combo box) widget — a button that pops a list of choices.
 void *rt_dropdown_new(void *parent) {
     RT_ASSERT_MAIN_THREAD();
     vg_dropdown_t *dropdown = vg_dropdown_create(rt_gui_widget_parent_from_handle(parent));
@@ -597,6 +605,8 @@ void rt_dropdown_set_placeholder(void *dropdown, rt_string placeholder) {
 // Slider Widget
 //=============================================================================
 
+/// @brief Create a slider widget for picking a numeric value within a range.
+/// @param horizontal Non-zero for left-right slider, zero for top-bottom.
 void *rt_slider_new(void *parent, int64_t horizontal) {
     RT_ASSERT_MAIN_THREAD();
     vg_slider_orientation_t orient = horizontal ? VG_SLIDER_HORIZONTAL : VG_SLIDER_VERTICAL;
@@ -639,6 +649,7 @@ void rt_slider_set_step(void *slider, double step) {
 // ProgressBar Widget
 //=============================================================================
 
+/// @brief Create a horizontal progress bar (0.0–1.0 fill range).
 void *rt_progressbar_new(void *parent) {
     RT_ASSERT_MAIN_THREAD();
     return vg_progressbar_create(rt_gui_widget_parent_from_handle(parent));
@@ -664,6 +675,7 @@ double rt_progressbar_get_value(void *progress) {
 // ListBox Widget
 //=============================================================================
 
+/// @brief Create an empty scrollable list-box widget.
 void *rt_listbox_new(void *parent) {
     RT_ASSERT_MAIN_THREAD();
     vg_listbox_t *listbox = vg_listbox_create(rt_gui_widget_parent_from_handle(parent));
@@ -671,6 +683,7 @@ void *rt_listbox_new(void *parent) {
     return listbox;
 }
 
+/// @brief Append `text` as a new list-box item; returns the new item handle.
 void *rt_listbox_add_item(void *listbox, rt_string text) {
     RT_ASSERT_MAIN_THREAD();
     if (!listbox)
@@ -705,6 +718,7 @@ void rt_listbox_select(void *listbox, void *item) {
     }
 }
 
+/// @brief Return the currently-selected listbox item handle (NULL when none).
 void *rt_listbox_get_selected(void *listbox) {
     RT_ASSERT_MAIN_THREAD();
     if (!listbox)
@@ -815,6 +829,7 @@ void rt_listbox_set_font(void *listbox, void *font, double size) {
 // RadioButton Widget
 //=============================================================================
 
+/// @brief Create a radio-button group — only one member may be selected at a time.
 void *rt_radiogroup_new(void) {
     RT_ASSERT_MAIN_THREAD();
     return vg_radiogroup_create();
@@ -828,6 +843,8 @@ void rt_radiogroup_destroy(void *group) {
     }
 }
 
+/// @brief Create a single radio button bound to a given group.
+/// Selecting one radio in the group automatically deselects the others.
 void *rt_radiobutton_new(void *parent, rt_string text, void *group) {
     RT_ASSERT_MAIN_THREAD();
     vg_widget_t *parent_widget = rt_gui_widget_parent_from_handle(parent);
@@ -858,6 +875,7 @@ void rt_radiobutton_set_selected(void *radio, int64_t selected) {
 // Spinner Widget
 //=============================================================================
 
+/// @brief Create a numeric spinner widget (text field with up/down increment buttons).
 void *rt_spinner_new(void *parent) {
     RT_ASSERT_MAIN_THREAD();
     return vg_spinner_create(rt_gui_widget_parent_from_handle(parent));
@@ -907,6 +925,7 @@ void rt_spinner_set_decimals(void *spinner, int64_t decimals) {
 // Image Widget
 //=============================================================================
 
+/// @brief Create an image widget — displays a Pixels object as a static image.
 void *rt_image_new(void *parent) {
     RT_ASSERT_MAIN_THREAD();
     return vg_image_create(rt_gui_widget_parent_from_handle(parent));
@@ -1009,6 +1028,11 @@ int64_t rt_image_load_file(void *image, void *path) {
 // FloatingPanel Widget
 //=============================================================================
 
+/// @brief Create a free-floating panel — a draggable container that floats above its parent.
+///
+/// Used for tool palettes, inspectors, and side panels that the
+/// user can reposition. `root` is the top-level app handle that
+/// owns the panel's draw layer.
 void *rt_floatingpanel_new(void *root) {
     RT_ASSERT_MAIN_THREAD();
     return vg_floatingpanel_create(rt_gui_widget_parent_from_handle(root));
@@ -1043,6 +1067,14 @@ void rt_floatingpanel_add_child(void *panel, void *child) {
 }
 
 #else /* !VIPER_ENABLE_GRAPHICS */
+
+// ===========================================================================
+// Headless stubs — same prototypes as the real implementations above so
+// non-graphical builds (server / CLI / ViperDOS) can link without pulling
+// in the GUI subsystem. Each stub safely no-ops or returns a sentinel
+// (NULL pointer, 0, -1, or empty string). Doc comments are inherited
+// from the real implementations above by virtue of identical names.
+// ===========================================================================
 
 void *rt_tabbar_new(void *parent) {
     (void)parent;

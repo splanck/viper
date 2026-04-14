@@ -27,7 +27,8 @@
 //     callers do not need to free them explicitly.
 //   - Topic strings are retained on subscription and released in the finalizer
 //     or on explicit unsubscribe.
-//   - Callback pointers are reference-counted via rt_obj_release_check0.
+//   - Callback pointers are retained on subscribe and released on unsubscribe,
+//     clear, or finalization.
 //
 // Links: src/runtime/core/rt_msgbus.h (public API),
 //        src/runtime/core/rt_seq.c (sequence helpers used for dispatch),
@@ -72,6 +73,8 @@ typedef struct {
     int64_t total_subs;
 } rt_msgbus_impl;
 
+typedef void (*mb_callback_fn)(void *data);
+
 // --- FNV-1a hash ---
 
 static uint64_t mb_hash(const char *s) {
@@ -88,7 +91,8 @@ static uint64_t mb_hash(const char *s) {
 static void mb_free_sub(mb_sub *s) {
     if (s->topic)
         rt_string_unref(s->topic);
-    rt_obj_release_check0(s->callback);
+    if (rt_obj_release_check0(s->callback))
+        rt_obj_free(s->callback);
     free(s);
 }
 
@@ -172,7 +176,7 @@ void *rt_msgbus_new(void) {
 /// @param callback Function pointer (opaque) to invoke on publish.
 /// @return Subscription ID (>= 0 on success, -1 on failure).
 int64_t rt_msgbus_subscribe(void *obj, rt_string topic, void *callback) {
-    if (!obj || !topic)
+    if (!obj || !topic || !callback)
         return -1;
     rt_msgbus_impl *mb = (rt_msgbus_impl *)obj;
     mb_topic *t = mb_ensure_topic(mb, topic);
@@ -185,8 +189,15 @@ int64_t rt_msgbus_subscribe(void *obj, rt_string topic, void *callback) {
     rt_obj_retain_maybe(topic);
     s->callback = callback;
     rt_obj_retain_maybe(callback);
-    s->next = t->subs;
-    t->subs = s;
+    s->next = NULL;
+    if (!t->subs) {
+        t->subs = s;
+    } else {
+        mb_sub *tail = t->subs;
+        while (tail->next)
+            tail = tail->next;
+        tail->next = s;
+    }
     t->count++;
     mb->total_subs++;
     return s->id;
@@ -230,28 +241,41 @@ int8_t rt_msgbus_unsubscribe(void *obj, int64_t sub_id) {
 }
 
 /// @brief Publish a message to all subscribers of a topic.
-/// @details Looks up the topic by name using FNV-1a hashing, then counts
-///          the number of active subscribers. The actual callback invocation
-///          requires VM support (trampolining from C back into managed code),
-///          so currently this returns the subscriber count as a proxy for
-///          "messages that would be delivered." This is still useful: callers
-///          can check whether anyone is listening before constructing expensive
-///          payloads.
+/// @details Looks up the topic by name using FNV-1a hashing, snapshots the
+///          current subscriber list, then invokes each callback synchronously
+///          in subscription-insertion order. Unsubscribe/Clear during a publish
+///          affect future publishes but do not invalidate the in-flight snapshot.
 /// @param obj MessageBus object pointer; returns 0 if NULL.
 /// @param topic Topic name string to publish to.
-/// @param data Payload pointer (currently unused pending VM callback support).
-/// @return Number of subscribers that would receive the message, 0 if none.
+/// @param data Payload pointer passed to each callback.
+/// @return Number of subscribers notified, 0 if none.
 int64_t rt_msgbus_publish(void *obj, rt_string topic, void *data) {
     if (!obj || !topic)
         return 0;
     rt_msgbus_impl *mb = (rt_msgbus_impl *)obj;
     mb_topic *t = mb_find_topic(mb, rt_string_cstr(topic));
-    if (!t)
+    if (!t || t->count <= 0)
         return 0;
 
-    // Count subscribers (actual callback invocation would need VM support)
-    // For now, publish just tracks how many subscribers would be notified
-    return t->count;
+    void **callbacks = (void **)calloc((size_t)t->count, sizeof(void *));
+    if (!callbacks)
+        rt_trap("rt_msgbus: memory allocation failed");
+
+    int64_t count = 0;
+    for (mb_sub *s = t->subs; s; s = s->next) {
+        callbacks[count++] = s->callback;
+        rt_obj_retain_maybe(s->callback);
+    }
+
+    for (int64_t i = 0; i < count; ++i) {
+        mb_callback_fn fn = (mb_callback_fn)callbacks[i];
+        fn(data);
+        if (rt_obj_release_check0(callbacks[i]))
+            rt_obj_free(callbacks[i]);
+    }
+
+    free(callbacks);
+    return count;
 }
 
 /// @brief Return the number of active subscribers for a specific topic.

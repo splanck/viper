@@ -287,6 +287,9 @@ static int match_literal(rt_json_stream_impl *s, const char *lit, size_t len) {
 // Public API
 //=============================================================================
 
+/// @brief Construct a streaming JSON parser positioned at the start of `json`. Returns a
+/// GC-managed handle; advance through tokens via `_next` and read values via the type-specific
+/// `_string_value` / `_number_value` / `_bool_value` accessors.
 void *rt_json_stream_new(rt_string json) {
     rt_json_stream_impl *s =
         (rt_json_stream_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_json_stream_impl));
@@ -315,7 +318,9 @@ void *rt_json_stream_new(rt_string json) {
     return s;
 }
 
-/// @brief Next the stream.
+/// @brief Advance to the next token. Returns the token type (RT_JSON_TOK_* enum). Use the
+/// type-specific accessors below to read the value once positioned. Returns RT_JSON_TOK_END
+/// at end of input or RT_JSON_TOK_ERROR on parse failure (call `_error` for diagnostic).
 int64_t rt_json_stream_next(void *parser) {
     if (!parser)
         return RT_JSON_TOK_ERROR;
@@ -447,14 +452,15 @@ int64_t rt_json_stream_next(void *parser) {
     }
 }
 
-/// @brief Token the type of the stream.
+/// @brief Return the type of the most-recently-consumed token (RT_JSON_TOK_* enum).
 int64_t rt_json_stream_token_type(void *parser) {
     if (!parser)
         return RT_JSON_TOK_ERROR;
     return ((rt_json_stream_impl *)parser)->current_type;
 }
 
-/// @brief String the value of the stream.
+/// @brief Read the string value at the current STRING / KEY token. Returns the unescaped
+/// string content. Trap if called when the current token isn't a string-typed one.
 rt_string rt_json_stream_string_value(void *parser) {
     if (!parser)
         return rt_const_cstr("");
@@ -464,28 +470,29 @@ rt_string rt_json_stream_string_value(void *parser) {
     return rt_const_cstr("");
 }
 
-/// @brief Number the value of the stream.
+/// @brief Read the numeric value at the current NUMBER token (returns 0.0 if not a number).
 double rt_json_stream_number_value(void *parser) {
     if (!parser)
         return 0.0;
     return ((rt_json_stream_impl *)parser)->num_value;
 }
 
-/// @brief Bool the value of the stream.
+/// @brief Read the boolean value at the current BOOL token (1 = true, 0 = false / not bool).
 int8_t rt_json_stream_bool_value(void *parser) {
     if (!parser)
         return 0;
     return ((rt_json_stream_impl *)parser)->bool_value;
 }
 
-/// @brief Depth the stream.
+/// @brief Current nesting depth (number of open `[`/`{` minus close `]`/`}`). 0 = top level.
 int64_t rt_json_stream_depth(void *parser) {
     if (!parser)
         return 0;
     return ((rt_json_stream_impl *)parser)->depth;
 }
 
-/// @brief Skip the stream.
+/// @brief Skip past the current value (including nested arrays/objects). Useful for selectively
+/// parsing only certain fields and ignoring large irrelevant subtrees in big JSON documents.
 void rt_json_stream_skip(void *parser) {
     if (!parser)
         return;
@@ -505,7 +512,7 @@ void rt_json_stream_skip(void *parser) {
     /* Primitive values are already consumed */
 }
 
-/// @brief Has the next of the stream.
+/// @brief Returns 1 if more tokens remain (i.e., the next `_next` won't immediately return END).
 int8_t rt_json_stream_has_next(void *parser) {
     if (!parser)
         return 0;
@@ -516,7 +523,7 @@ int8_t rt_json_stream_has_next(void *parser) {
     return c != '\0' ? 1 : 0;
 }
 
-/// @brief Error the stream.
+/// @brief Return the diagnostic message for the most recent parse error (empty if none).
 rt_string rt_json_stream_error(void *parser) {
     if (!parser)
         return rt_const_cstr("");

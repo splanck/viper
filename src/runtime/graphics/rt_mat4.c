@@ -87,6 +87,8 @@ static mat4_impl *mat4_alloc(void) {
 // Construction
 //=============================================================================
 
+/// @brief Construct a 4×4 matrix from 16 row-major scalars (m00 = row 0 col 0, m01 = row 0 col 1,
+/// ..., m33 = row 3 col 3). Returns NULL on allocation failure.
 void *rt_mat4_new(double m00,
                   double m01,
                   double m02,
@@ -127,11 +129,13 @@ void *rt_mat4_new(double m00,
     return mat;
 }
 
+/// @brief Return the 4×4 identity matrix.
 void *rt_mat4_identity(void) {
     return rt_mat4_new(
         1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0);
 }
 
+/// @brief Return the 4×4 zero matrix (all entries 0). Useful as an accumulator base.
 void *rt_mat4_zero(void) {
     return rt_mat4_new(
         0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
@@ -141,36 +145,44 @@ void *rt_mat4_zero(void) {
 // 3D Transformation Factories
 //=============================================================================
 
+/// @brief Build a 4×4 translation matrix that moves points by (tx, ty, tz).
 void *rt_mat4_translate(double tx, double ty, double tz) {
     return rt_mat4_new(1.0, 0.0, 0.0, tx, 0.0, 1.0, 0.0, ty, 0.0, 0.0, 1.0, tz, 0.0, 0.0, 0.0, 1.0);
 }
 
+/// @brief Build a 4×4 non-uniform scaling matrix with per-axis factors (sx, sy, sz).
 void *rt_mat4_scale(double sx, double sy, double sz) {
     return rt_mat4_new(sx, 0.0, 0.0, 0.0, 0.0, sy, 0.0, 0.0, 0.0, 0.0, sz, 0.0, 0.0, 0.0, 0.0, 1.0);
 }
 
+/// @brief Build a 4×4 uniform scaling matrix (same factor on every axis).
 void *rt_mat4_scale_uniform(double s) {
     return rt_mat4_scale(s, s, s);
 }
 
+/// @brief Build a 4×4 right-handed rotation matrix about the X axis (angle in radians).
 void *rt_mat4_rotate_x(double angle) {
     double c = cos(angle);
     double s = sin(angle);
     return rt_mat4_new(1.0, 0.0, 0.0, 0.0, 0.0, c, -s, 0.0, 0.0, s, c, 0.0, 0.0, 0.0, 0.0, 1.0);
 }
 
+/// @brief Build a 4×4 right-handed rotation matrix about the Y axis (angle in radians).
 void *rt_mat4_rotate_y(double angle) {
     double c = cos(angle);
     double s = sin(angle);
     return rt_mat4_new(c, 0.0, s, 0.0, 0.0, 1.0, 0.0, 0.0, -s, 0.0, c, 0.0, 0.0, 0.0, 0.0, 1.0);
 }
 
+/// @brief Build a 4×4 right-handed rotation matrix about the Z axis (angle in radians).
 void *rt_mat4_rotate_z(double angle) {
     double c = cos(angle);
     double s = sin(angle);
     return rt_mat4_new(c, -s, 0.0, 0.0, s, c, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0);
 }
 
+/// @brief Build a 4×4 rotation matrix about an arbitrary axis (Rodrigues' rotation formula).
+/// `axis` is normalized internally; degenerate (zero-length) axes return identity.
 void *rt_mat4_rotate_axis(void *axis, double angle) {
     if (!axis)
         return rt_mat4_identity();
@@ -213,6 +225,9 @@ void *rt_mat4_rotate_axis(void *axis, double angle) {
 // Projection Matrices
 //=============================================================================
 
+/// @brief Build a right-handed perspective projection matrix. `fov` is vertical FOV in radians,
+/// `aspect` = width/height. Maps view-space Z to NDC Z in [-1, 1] (OpenGL convention). Returns
+/// identity for invalid params (fov ≤ 0, aspect ≤ 0, or near ≥ far).
 void *rt_mat4_perspective(double fov, double aspect, double near, double far) {
     if (fov <= 0.0 || aspect <= 0.0 || near >= far)
         return rt_mat4_identity();
@@ -239,6 +254,8 @@ void *rt_mat4_perspective(double fov, double aspect, double near, double far) {
                        0.0);
 }
 
+/// @brief Build an orthographic projection matrix mapping the box [(left, bottom, near),
+/// (right, top, far)] to NDC. Returns identity if any axis range is degenerate.
 void *rt_mat4_ortho(double left, double right, double bottom, double top, double near, double far) {
     if (right == left || top == bottom || far == near)
         return rt_mat4_identity();
@@ -265,6 +282,9 @@ void *rt_mat4_ortho(double left, double right, double bottom, double top, double
                        1.0);
 }
 
+/// @brief Build a right-handed view matrix that places the camera at `eye` looking toward
+/// `target` with `up` as the world up direction. Standard "look at" formulation. Returns
+/// identity if any input is NULL.
 void *rt_mat4_look_at(void *eye, void *target, void *up) {
     if (!eye || !target || !up)
         return rt_mat4_identity();
@@ -330,6 +350,8 @@ void *rt_mat4_look_at(void *eye, void *target, void *up) {
 // Element Access
 //=============================================================================
 
+/// @brief Read a single matrix element by (row, col) — both in [0, 3]. Returns 0 for null
+/// matrix or out-of-range indices.
 double rt_mat4_get(void *m, int64_t row, int64_t col) {
     if (!m || row < 0 || row > 3 || col < 0 || col > 3)
         return 0.0;
@@ -342,6 +364,7 @@ double rt_mat4_get(void *m, int64_t row, int64_t col) {
 // Arithmetic
 //=============================================================================
 
+/// @brief Element-wise addition (a + b). Returns identity for NULL inputs.
 void *rt_mat4_add(void *a, void *b) {
     if (!a || !b)
         return rt_mat4_zero();
@@ -371,6 +394,7 @@ void *rt_mat4_add(void *a, void *b) {
                        r[15]);
 }
 
+/// @brief Element-wise subtraction (a - b). Returns identity for NULL inputs.
 void *rt_mat4_sub(void *a, void *b) {
     if (!a || !b)
         return rt_mat4_zero();
@@ -400,6 +424,8 @@ void *rt_mat4_sub(void *a, void *b) {
                        r[15]);
 }
 
+/// @brief Standard matrix multiplication (a × b) — composes transforms in left-to-right order:
+/// `mul(A, B)` then applied to a point gives `A·B·p`. Returns identity for NULL inputs.
 void *rt_mat4_mul(void *a, void *b) {
     if (!a || !b)
         return rt_mat4_identity();
@@ -434,6 +460,7 @@ void *rt_mat4_mul(void *a, void *b) {
                        r[15]);
 }
 
+/// @brief Multiply every entry of `m` by scalar `s`. Returns identity for NULL `m`.
 void *rt_mat4_mul_scalar(void *m, double s) {
     if (!m)
         return rt_mat4_zero();
@@ -462,6 +489,8 @@ void *rt_mat4_mul_scalar(void *m, double s) {
                        r[15]);
 }
 
+/// @brief Transform a 3D point through `m` (treats v as homogeneous (x, y, z, 1)). Returns
+/// (0,0,0) for NULL inputs. Use `_transform_vec` for direction vectors (no translation).
 void *rt_mat4_transform_point(void *m, void *v) {
     if (!m || !v)
         return rt_vec3_zero();
@@ -487,6 +516,8 @@ void *rt_mat4_transform_point(void *m, void *v) {
     return rt_vec3_new(rx, ry, rz);
 }
 
+/// @brief Transform a 3D direction vector through `m` (treats v as homogeneous (x, y, z, 0) —
+/// translation is ignored). Use for normals/directions, not absolute positions.
 void *rt_mat4_transform_vec(void *m, void *v) {
     if (!m || !v)
         return rt_vec3_zero();
@@ -508,6 +539,8 @@ void *rt_mat4_transform_vec(void *m, void *v) {
 // Matrix Operations
 //=============================================================================
 
+/// @brief Return the transpose of `m` (rows become columns). Useful for converting between
+/// row-major and column-major matrix layouts when interfacing with other math libraries.
 void *rt_mat4_transpose(void *m) {
     if (!m)
         return rt_mat4_identity();
@@ -532,6 +565,8 @@ void *rt_mat4_transpose(void *m) {
                        mat->m[15]);
 }
 
+/// @brief Compute the 4×4 determinant via cofactor expansion. Returns 0 for NULL input. A
+/// near-zero determinant indicates a singular matrix that has no well-defined inverse.
 double rt_mat4_det(void *m) {
     if (!m)
         return 0.0;
@@ -557,6 +592,9 @@ double rt_mat4_det(void *m) {
     return s0 * c5 - s1 * c4 + s2 * c3 + s3 * c2 - s4 * c1 + s5 * c0;
 }
 
+/// @brief Compute the 4×4 inverse via the cofactor / adjugate formula. Returns identity for
+/// NULL input or a singular matrix (det ≈ 0). For affine-only transforms, often faster to
+/// invert the rotation+translation directly.
 void *rt_mat4_inverse(void *m) {
     if (!m)
         return rt_mat4_identity();
@@ -626,6 +664,7 @@ void *rt_mat4_inverse(void *m) {
                        r[15]);
 }
 
+/// @brief Element-wise negation (-m). Returns identity for NULL input.
 void *rt_mat4_neg(void *m) {
     if (!m)
         return rt_mat4_zero();
@@ -658,6 +697,8 @@ void *rt_mat4_neg(void *m) {
 // Comparison
 //=============================================================================
 
+/// @brief Returns 1 if every element of `a` and `b` differs by no more than `epsilon`. Use a
+/// small epsilon (e.g., 1e-6) for floating-point tolerance comparison.
 int8_t rt_mat4_eq(void *a, void *b, double epsilon) {
     if (!a || !b)
         return (!a && !b) ? 1 : 0;

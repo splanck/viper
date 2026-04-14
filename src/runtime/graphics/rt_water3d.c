@@ -82,6 +82,7 @@ typedef struct {
     int32_t resolution; /* grid resolution (default WATER_GRID) */
 } rt_water3d;
 
+/// @brief Drop one reference and zero the slot. Idempotent on null/empty slots.
 static void water3d_release_ref(void **slot) {
     if (!slot || !*slot)
         return;
@@ -90,6 +91,9 @@ static void water3d_release_ref(void **slot) {
     *slot = NULL;
 }
 
+/// @brief Replace `*slot` with `value`, retaining the new value first then releasing the old.
+/// Order matters — without retain-before-release, assigning a slot's current value to itself
+/// would briefly drop the refcount to 0 and free the object.
 static void water3d_assign_ref(void **slot, void *value) {
     if (*slot == value)
         return;
@@ -98,6 +102,7 @@ static void water3d_assign_ref(void **slot, void *value) {
     *slot = value;
 }
 
+/// @brief GC finalizer: release every retained graphics resource (textures, mesh, material).
 static void water3d_finalizer(void *obj) {
     rt_water3d *w = (rt_water3d *)obj;
     water3d_release_ref(&w->texture);

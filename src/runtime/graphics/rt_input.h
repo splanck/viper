@@ -182,10 +182,6 @@ void rt_keyboard_text_input(int32_t ch);
 /// @param canvas Canvas handle (opaque pointer to vgfx window).
 void rt_keyboard_set_canvas(void *canvas);
 
-/// @brief Clear the active keyboard canvas if it matches the destroyed window.
-/// @param canvas Canvas handle being destroyed.
-void rt_keyboard_clear_canvas_if_matches(void *canvas);
-
 //=========================================================================
 // Polling Methods (Current State)
 //=========================================================================
@@ -422,15 +418,11 @@ void rt_mouse_button_up(int64_t button);
 /// @brief Update scroll wheel deltas.
 /// @param dx Horizontal scroll delta.
 /// @param dy Vertical scroll delta.
-void rt_mouse_update_wheel(int64_t dx, int64_t dy);
+void rt_mouse_update_wheel(double dx, double dy);
 
 /// @brief Set the active Canvas for mouse input.
 /// @param canvas Canvas handle (opaque pointer to vgfx window).
 void rt_mouse_set_canvas(void *canvas);
-
-/// @brief Clear the active mouse canvas if it matches the destroyed window.
-/// @param canvas Canvas handle being destroyed.
-void rt_mouse_clear_canvas_if_matches(void *canvas);
 
 //=========================================================================
 // Position Methods
@@ -507,12 +499,24 @@ int8_t rt_mouse_was_double_clicked(int64_t button);
 //=========================================================================
 
 /// @brief Get horizontal scroll delta.
-/// @return Horizontal scroll amount since last poll.
+/// @return Whole-step horizontal scroll amount since last poll.
+/// @details Legacy integer accessor. Fractional wheel/trackpad motion is
+///          available via rt_mouse_wheel_xf().
 int64_t rt_mouse_wheel_x(void);
 
 /// @brief Get vertical scroll delta.
-/// @return Vertical scroll amount (positive = up) since last poll.
+/// @return Whole-step vertical scroll amount (positive = up) since last poll.
+/// @details Legacy integer accessor. Fractional wheel/trackpad motion is
+///          available via rt_mouse_wheel_yf().
 int64_t rt_mouse_wheel_y(void);
+
+/// @brief Get horizontal scroll delta with full precision.
+/// @return Horizontal scroll amount since last poll.
+double rt_mouse_wheel_xf(void);
+
+/// @brief Get vertical scroll delta with full precision.
+/// @return Vertical scroll amount (positive = up) since last poll.
+double rt_mouse_wheel_yf(void);
 
 //=========================================================================
 // Cursor Control

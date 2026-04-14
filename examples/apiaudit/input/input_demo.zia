@@ -11,7 +11,7 @@ func start() {
     Say("--- Mouse ---");
     Say("get_X, get_Y, get_DeltaX, get_DeltaY");
     Say("IsButtonDown(btn), WasButtonPressed(btn), WasButtonReleased(btn)");
-    Say("get_ScrollX, get_ScrollY, SetCursorVisible(v), SetCursorLocked(v)");
+    Say("get_ScrollX, get_ScrollY, WheelXF(), WheelYF(), SetCursorVisible(v), SetCursorLocked(v)");
     Say("");
     Say("--- Pad (Gamepad) ---");
     Say("IsConnected(idx), GetAxis(idx,axis), IsButtonDown(idx,btn)");
@@ -27,7 +27,7 @@ func start() {
     Say("");
     Say("--- Manager ---");
     Say("New(), AddAction(action), GetAction(name), RemoveAction(name), Update()");
-    Say("Clear(), get_ActionCount");
+    Say("Clear(), get_ActionCount, get_ScrollXF, get_ScrollYF");
     Say("");
     Say("--- KeyChord ---");
     Say("New(key1,key2), NewTriple(key1,key2,key3), IsActive(), WasActivated()");

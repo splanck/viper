@@ -192,6 +192,10 @@ static inline void rtg_hsl_to_rgb(
 
 #include "vgfx.h"
 
+/* Internal input teardown helpers used by canvas lifecycle code. */
+void rt_keyboard_clear_canvas_if_matches(void *canvas);
+void rt_mouse_clear_canvas_if_matches(void *canvas);
+
 /// @brief Internal canvas wrapper structure.
 /// @details Contains the vptr (for future OOP support) and the vgfx window handle.
 typedef struct {

@@ -48,6 +48,8 @@ const RtError RT_ERROR_NONE = {Err_None, 0};
 /// without requiring new IL opcodes.
 static _Thread_local rt_string tls_throw_msg = NULL;
 
+/// @brief Set the thread-local exception message used by `catch(e)` handlers.
+/// Releases any prior message and retains a reference to @p msg (NULL clears).
 void rt_throw_msg_set(rt_string msg) {
     // Release previous message if any
     if (tls_throw_msg) {
@@ -59,6 +61,8 @@ void rt_throw_msg_set(rt_string msg) {
     }
 }
 
+/// @brief Read the most recently thrown message on this thread (returns a fresh ref).
+/// Returns the empty string if no exception has been thrown.
 rt_string rt_throw_msg_get(void) {
     if (tls_throw_msg) {
         return rt_string_ref(tls_throw_msg);
@@ -75,32 +79,43 @@ static _Thread_local int32_t tls_trap_code = 0;
 static _Thread_local uint64_t tls_trap_ip = 0;
 static _Thread_local int32_t tls_trap_line = -1;
 
+/// @brief Populate the thread-local trap classification fields prior to a trap.
+/// Called by Zia lowering before emitting trap instructions so `ErrGetKind/Code/Line`
+/// can recover the values inside catch handlers.
 void rt_trap_fields_set(int32_t kind, int32_t code, int32_t line) {
     tls_trap_kind = kind;
     tls_trap_code = code;
     tls_trap_line = line;
 }
 
+/// @brief Record the instruction pointer at which a trap occurred (native handler use).
 void rt_trap_set_ip(uint64_t ip) {
     tls_trap_ip = ip;
 }
 
+/// @brief Read the trap kind enum from the most recent trap on this thread.
 int64_t rt_trap_get_kind(void) {
     return (int64_t)tls_trap_kind;
 }
 
+/// @brief Read the underlying error code from the most recent trap on this thread.
 int64_t rt_trap_get_code(void) {
     return (int64_t)tls_trap_code;
 }
 
+/// @brief Read the IL/native instruction pointer where the most recent trap fired.
 int64_t rt_trap_get_ip(void) {
     return (int64_t)tls_trap_ip;
 }
 
+/// @brief Read the source line associated with the most recent trap (-1 if unknown).
 int64_t rt_trap_get_line(void) {
     return (int64_t)tls_trap_line;
 }
 
+/// @brief Map an `Err_*` error code to its corresponding `RT_TRAP_KIND_*` enum.
+/// All network-related errors collapse to `RT_TRAP_KIND_NETWORK_ERROR`; unknown
+/// codes (including `Err_None`) map to `RT_TRAP_KIND_RUNTIME_ERROR`.
 int32_t rt_err_to_trap_kind(int32_t code) {
     switch (code) {
         case Err_FileNotFound:
@@ -137,17 +152,23 @@ int32_t rt_err_to_trap_kind(int32_t code) {
     }
 }
 
+/// @brief Package an error code and message into a trap-payload pointer.
+/// Sets the thread-local message and trap fields, then returns the code as a
+/// pointer-sized value suitable for the IL trap operand.
 void *rt_trap_error_make(int32_t code, rt_string msg) {
     rt_throw_msg_set(msg);
     rt_trap_fields_set(rt_err_to_trap_kind(code), code, -1);
     return (void *)(uintptr_t)(uint32_t)code;
 }
 
+/// @brief Raise a trap with the given error code and an optional C-string message.
+/// Populates trap classification fields from @p code before calling `rt_trap`.
 void rt_trap_raise_error_msg(int32_t code, const char *msg) {
     rt_trap_fields_set(rt_err_to_trap_kind(code), code, -1);
     rt_trap(msg);
 }
 
+/// @brief Raise a trap with the given error code and no associated message.
 void rt_trap_raise_error(int32_t code) {
     rt_trap_raise_error_msg(code, NULL);
 }

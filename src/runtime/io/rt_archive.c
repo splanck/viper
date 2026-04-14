@@ -37,6 +37,7 @@
 #include "rt_compress.h"
 #include "rt_crc32.h"
 #include "rt_dir.h"
+#include "rt_file_path.h"
 #include "rt_internal.h"
 #include "rt_map.h"
 #include "rt_object.h"
@@ -88,71 +89,178 @@ typedef struct {
     uint8_t *data;
 } bytes_impl;
 
+/// @brief Pointer to the raw byte buffer backing an `rt_bytes` handle.
+///
+/// The underlying layout is duplicated locally as `bytes_impl` to avoid
+/// pulling internal headers; this matches the public ABI of
+/// `rt_bytes_new`. Returns NULL for a NULL handle.
 static inline uint8_t *bytes_data(void *obj) {
     if (!obj)
         return NULL;
     return ((bytes_impl *)obj)->data;
 }
 
+/// @brief Length in bytes of an `rt_bytes` handle, or 0 if NULL.
 static inline int64_t bytes_len(void *obj) {
     if (!obj)
         return 0;
     return ((bytes_impl *)obj)->len;
 }
 
+/// @brief Drop a temporary GC object whose refcount has dropped to zero.
+///
+/// Used after we've materialized intermediate buffers (decompressed
+/// data, throw-away byte arrays) and want to release them eagerly
+/// instead of waiting for the next GC sweep.
 static void archive_release_temp_object(void *obj) {
     if (obj && rt_obj_release_check0(obj))
         rt_obj_free(obj);
 }
 
-static void archive_write_bytes_to_path(const char *cpath, void *data) {
-    if (!cpath || *cpath == '\0')
-        rt_trap("Archive: invalid destination path");
-
-    const uint8_t *src = bytes_data(data);
-    size_t total = (size_t)bytes_len(data);
-
 #ifdef _WIN32
-    HANDLE h =
-        CreateFileA(cpath, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-    if (h == INVALID_HANDLE_VALUE)
-        rt_trap("Archive: failed to create destination file");
+/// @brief Open a UTF-8 path on Windows via the wide-string CreateFileW API.
+///
+/// Translates the UTF-8 input to UTF-16 with the long-path-aware helper
+/// from `rt_file_path`, calls CreateFileW, and frees the wide buffer.
+/// Returns INVALID_HANDLE_VALUE on conversion failure or when the
+/// underlying open fails — the caller is expected to check.
+///
+/// @param cpath        UTF-8 file path.
+/// @param access       Win32 access flags (e.g., GENERIC_READ).
+/// @param share        Win32 share mode.
+/// @param create_disp  Win32 creation disposition (OPEN_EXISTING, CREATE_ALWAYS, ...).
+/// @return Open Windows file handle, or INVALID_HANDLE_VALUE on failure.
+static HANDLE archive_open_win_path(const char *cpath, DWORD access, DWORD share, DWORD create_disp) {
+    wchar_t *wide = rt_file_path_utf8_to_wide(cpath);
+    if (!wide)
+        return INVALID_HANDLE_VALUE;
+    HANDLE h = CreateFileW(wide, access, share, NULL, create_disp, FILE_ATTRIBUTE_NORMAL, NULL);
+    free(wide);
+    return h;
+}
 
+/// @brief Read exactly `total` bytes from a Windows handle or trap.
+///
+/// Loops over `ReadFile` until the requested count is satisfied,
+/// chunking each call to fit within DWORD_MAX. A short read that
+/// reports zero bytes is treated as EOF and triggers the supplied
+/// trap message — the archive parser must read complete records.
+///
+/// @param h        Open Windows file handle (positioned by caller).
+/// @param dst      Destination buffer of at least `total` bytes.
+/// @param total    Total number of bytes to read.
+/// @param trap_msg Trap message used on read failure / premature EOF.
+static void archive_read_exact_win(HANDLE h, uint8_t *dst, size_t total, const char *trap_msg) {
+    size_t read_total = 0;
+    while (read_total < total) {
+        DWORD chunk = 0;
+        size_t remaining = total - read_total;
+        DWORD want = remaining > (size_t)DWORD_MAX ? DWORD_MAX : (DWORD)remaining;
+        if (!ReadFile(h, dst + read_total, want, &chunk, NULL) || chunk == 0)
+            rt_trap(trap_msg);
+        read_total += (size_t)chunk;
+    }
+}
+
+/// @brief Write exactly `total` bytes to a Windows handle or trap.
+///
+/// Mirror of `archive_read_exact_win` for the write path. Loops over
+/// WriteFile, chunking by DWORD_MAX, and traps on any short write or
+/// failure so callers don't need to invent their own retry logic.
+static void archive_write_exact_win(HANDLE h, const uint8_t *src, size_t total, const char *trap_msg) {
     size_t written_total = 0;
     while (written_total < total) {
         DWORD chunk = 0;
-        DWORD want = (DWORD)(total - written_total);
-        if (!WriteFile(h, src + written_total, want, &chunk, NULL) || chunk == 0) {
-            CloseHandle(h);
-            rt_trap("Archive: failed to write destination file");
-        }
+        size_t remaining = total - written_total;
+        DWORD want = remaining > (size_t)DWORD_MAX ? DWORD_MAX : (DWORD)remaining;
+        if (!WriteFile(h, src + written_total, want, &chunk, NULL) || chunk == 0)
+            rt_trap(trap_msg);
         written_total += (size_t)chunk;
     }
-
-    CloseHandle(h);
+}
 #else
-    int fd = open(cpath, O_WRONLY | O_CREAT | O_TRUNC, 0644);
-    if (fd < 0)
-        rt_trap("Archive: failed to create destination file");
+/// @brief Read exactly `total` bytes from a POSIX fd or trap.
+///
+/// Loops over `read(2)` retrying EINTR. A zero return is treated as
+/// EOF and triggers the trap so partial archive reads cannot succeed
+/// silently. The fd is left positioned just after the last byte read.
+static void archive_read_exact_posix(int fd, uint8_t *dst, size_t total, const char *trap_msg) {
+    size_t read_total = 0;
+    while (read_total < total) {
+        ssize_t n = read(fd, dst + read_total, total - read_total);
+        if (n < 0) {
+            if (errno == EINTR)
+                continue;
+            rt_trap(trap_msg);
+        }
+        if (n == 0)
+            rt_trap(trap_msg);
+        read_total += (size_t)n;
+    }
+}
 
+/// @brief Write exactly `total` bytes to a POSIX fd or trap.
+///
+/// Mirror of `archive_read_exact_posix` for writes. Retries EINTR,
+/// traps on error or unexpected zero-byte writes (the kernel never
+/// returns zero on a regular file write unless the disk is full).
+static void archive_write_exact_posix(int fd, const uint8_t *src, size_t total, const char *trap_msg) {
     size_t written_total = 0;
     while (written_total < total) {
         ssize_t n = write(fd, src + written_total, total - written_total);
         if (n < 0) {
             if (errno == EINTR)
                 continue;
-            close(fd);
-            rt_trap("Archive: failed to write destination file");
+            rt_trap(trap_msg);
         }
-        if (n == 0) {
-            close(fd);
-            rt_trap("Archive: failed to write destination file");
-        }
+        if (n == 0)
+            rt_trap(trap_msg);
         written_total += (size_t)n;
     }
+}
+#endif
 
+/// @brief Truncate-create a file at a UTF-8 path and write `total` bytes.
+///
+/// Cross-platform helper used to flush the assembled write buffer
+/// during `Finish` and to drop extracted entries onto disk during
+/// `Extract`/`ExtractAll`. Always uses `CREATE_ALWAYS` (Windows) or
+/// `O_TRUNC` (POSIX) — the destination is replaced unconditionally.
+///
+/// @param cpath    UTF-8 destination file path.
+/// @param src      Source byte buffer.
+/// @param total    Number of bytes to write.
+/// @param trap_msg Trap message used on any failure.
+static void archive_write_file_all_utf8(const char *cpath, const uint8_t *src, size_t total, const char *trap_msg) {
+#ifdef _WIN32
+    HANDLE h = archive_open_win_path(cpath, GENERIC_WRITE, 0, CREATE_ALWAYS);
+    if (h == INVALID_HANDLE_VALUE)
+        rt_trap(trap_msg);
+    archive_write_exact_win(h, src, total, trap_msg);
+    CloseHandle(h);
+#else
+    int fd = open(cpath, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    if (fd < 0)
+        rt_trap(trap_msg);
+    archive_write_exact_posix(fd, src, total, trap_msg);
     close(fd);
 #endif
+}
+
+/// @brief Write the contents of an `rt_bytes` handle to a UTF-8 path.
+///
+/// Thin adapter over `archive_write_file_all_utf8` that unwraps the
+/// bytes handle. Traps if the path is empty or NULL.
+///
+/// @param cpath UTF-8 destination path.
+/// @param data  Source `rt_bytes` handle.
+static void archive_write_bytes_to_path(const char *cpath, void *data) {
+    if (!cpath || *cpath == '\0')
+        rt_trap("Archive: invalid destination path");
+
+    const uint8_t *src = bytes_data(data);
+    size_t total = (size_t)bytes_len(data);
+    archive_write_file_all_utf8(cpath, src, total, "Archive: failed to write destination file");
 }
 
 //=============================================================================
@@ -201,19 +309,27 @@ typedef struct rt_archive {
 // Little-Endian Helpers
 //=============================================================================
 
+// ZIP integers are little-endian regardless of host byte order. These
+// helpers do byte-level reads/writes so the parser/writer stays correct
+// on big-endian hosts and avoids strict-aliasing pitfalls.
+
+/// @brief Read a little-endian uint16 from `p` (no alignment required).
 static inline uint16_t read_u16(const uint8_t *p) {
     return (uint16_t)p[0] | ((uint16_t)p[1] << 8);
 }
 
+/// @brief Read a little-endian uint32 from `p` (no alignment required).
 static inline uint32_t read_u32(const uint8_t *p) {
     return (uint32_t)p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
 }
 
+/// @brief Write `v` to `p` as little-endian uint16.
 static inline void write_u16(uint8_t *p, uint16_t v) {
     p[0] = (uint8_t)(v & 0xFF);
     p[1] = (uint8_t)((v >> 8) & 0xFF);
 }
 
+/// @brief Write `v` to `p` as little-endian uint32.
 static inline void write_u32(uint8_t *p, uint32_t v) {
     p[0] = (uint8_t)(v & 0xFF);
     p[1] = (uint8_t)((v >> 8) & 0xFF);
@@ -225,6 +341,18 @@ static inline void write_u32(uint8_t *p, uint32_t v) {
 // Archive Allocation
 //=============================================================================
 
+static void archive_finalize(void *obj);
+static void archive_free_entries(rt_archive_t *ar);
+static void archive_require_zip32_size(size_t size, const char *context);
+static void archive_require_zip16_count(int count, const char *context);
+
+/// @brief Allocate a zero-initialized archive object via the GC heap.
+///
+/// Hooks `archive_finalize` so that file paths, copied data, and entry
+/// arrays are reclaimed when the GC drops the last reference. `fd` is
+/// initialized to -1 (sentinel for "not open"). Traps on OOM.
+///
+/// @return Pointer to a fresh `rt_archive_t`, never NULL.
 static rt_archive_t *archive_alloc(void) {
     size_t total = sizeof(rt_archive_t);
     rt_archive_t *ar = (rt_archive_t *)rt_obj_new_i64(0, (int64_t)total);
@@ -232,9 +360,16 @@ static rt_archive_t *archive_alloc(void) {
         rt_trap("Archive: memory allocation failed");
     memset(ar, 0, total);
     ar->fd = -1;
+    rt_obj_set_finalizer(ar, archive_finalize);
     return ar;
 }
 
+/// @brief Free both read-side and write-side entry arrays.
+///
+/// Walks each entry releasing its `name` allocation, then frees the
+/// containing array. Resets all counters to zero so the archive can
+/// be re-parsed without leaking. Safe to call on a half-initialized
+/// archive.
 static void archive_free_entries(rt_archive_t *ar) {
     if (ar->entries) {
         for (int i = 0; i < ar->entry_count; i++) {
@@ -242,6 +377,7 @@ static void archive_free_entries(rt_archive_t *ar) {
         }
         free(ar->entries);
         ar->entries = NULL;
+        ar->entry_count = 0;
     }
     if (ar->write_entries) {
         for (int i = 0; i < ar->write_entry_count; i++) {
@@ -249,14 +385,73 @@ static void archive_free_entries(rt_archive_t *ar) {
         }
         free(ar->write_entries);
         ar->write_entries = NULL;
+        ar->write_entry_count = 0;
+        ar->write_entry_cap = 0;
     }
+}
+
+/// @brief GC finalizer for archive objects.
+///
+/// Called when the GC drops the last reference. Releases the path
+/// string, frees any owned data buffer, walks the entry arrays,
+/// and disposes of any pending write buffer.
+///
+/// @param obj Archive pointer (may be NULL).
+static void archive_finalize(void *obj) {
+    rt_archive_t *ar = (rt_archive_t *)obj;
+    if (!ar)
+        return;
+
+    if (ar->path) {
+        rt_string_unref(ar->path);
+        ar->path = NULL;
+    }
+    if (ar->owns_data && ar->data) {
+        free(ar->data);
+        ar->data = NULL;
+    }
+    archive_free_entries(ar);
+    free(ar->write_buf);
+    ar->write_buf = NULL;
+    ar->write_len = 0;
+    ar->write_cap = 0;
+}
+
+/// @brief Trap if `size` would overflow the 32-bit ZIP size fields.
+///
+/// ZIP versions <2.0 cap individual entries / archive offsets at 4GiB.
+/// We don't yet implement ZIP64 (which uses 64-bit fields in extra
+/// records), so any oversized payload is rejected up front with a
+/// caller-provided message.
+static void archive_require_zip32_size(size_t size, const char *context) {
+    if (size > UINT32_MAX)
+        rt_trap(context);
+}
+
+/// @brief Trap if `count` would overflow the 16-bit ZIP entry counter.
+///
+/// The pre-ZIP64 EOCD record stores total entry count in a uint16, so
+/// archives with more than 65,535 entries are rejected.
+static void archive_require_zip16_count(int count, const char *context) {
+    if (count < 0 || count > UINT16_MAX)
+        rt_trap(context);
 }
 
 //=============================================================================
 // ZIP Parsing (for reading)
 //=============================================================================
 
-/// @brief Find the End of Central Directory record
+/// @brief Locate the End of Central Directory (EOCD) record within a ZIP buffer.
+///
+/// The EOCD is at the tail of every ZIP file, just before any optional
+/// archive comment (max 65,535 bytes per spec). We scan backwards from
+/// the end up to comment-max + EOCD-size for the 4-byte signature.
+/// On match, `*eocd_offset` is set; the caller reads fields off it.
+///
+/// @param data        Pointer to the full ZIP byte buffer.
+/// @param len         Length of `data`.
+/// @param eocd_offset Out-parameter: offset of the EOCD signature.
+/// @return True if EOCD found, false otherwise.
 static bool find_eocd(const uint8_t *data, size_t len, size_t *eocd_offset) {
     if (len < ZIP_END_RECORD_SIZE)
         return false;
@@ -276,7 +471,18 @@ static bool find_eocd(const uint8_t *data, size_t len, size_t *eocd_offset) {
     return false;
 }
 
-/// @brief Parse the central directory
+/// @brief Parse the central directory and populate `ar->entries`.
+///
+/// Locates the EOCD (`find_eocd`), validates it isn't a multi-disk
+/// archive (we don't support that), then walks each central-directory
+/// header: copying out method, CRC, sizes, mod time, local-header
+/// offset, and the entry name. Detects directories via trailing `/`.
+/// Returns false (without trapping) if the central directory is
+/// missing, malformed, multi-disk, or out of bounds — the caller's
+/// trap message lets us distinguish "not a ZIP" from other errors.
+///
+/// @param ar Archive whose `data`/`data_len` is already populated.
+/// @return True on successful parse, false on any structural problem.
 static bool parse_central_directory(rt_archive_t *ar) {
     size_t eocd_offset;
     if (!find_eocd(ar->data, ar->data_len, &eocd_offset))
@@ -301,9 +507,11 @@ static bool parse_central_directory(rt_archive_t *ar) {
         return false;
 
     ar->entry_count = total_entries;
-    ar->entries = (zip_entry_t *)calloc(total_entries, sizeof(zip_entry_t));
-    if (!ar->entries)
-        return false;
+    if (total_entries > 0) {
+        ar->entries = (zip_entry_t *)calloc(total_entries, sizeof(zip_entry_t));
+        if (!ar->entries)
+            return false;
+    }
 
     // Parse each central directory entry
     const uint8_t *p = ar->data + cd_offset;
@@ -351,7 +559,16 @@ static bool parse_central_directory(rt_archive_t *ar) {
     return true;
 }
 
-/// @brief Find entry by name
+/// @brief Linear-scan lookup of a central-directory entry by exact name.
+///
+/// Names are compared via `strcmp` — the caller must normalize ahead
+/// of time (path separators, leading `./`, etc.). Returns NULL when no
+/// matching entry exists. O(n); acceptable for typical ZIPs where n is
+/// small. If we ever need fast lookup we'd add a hash side-table here.
+///
+/// @param ar   Read-mode archive with parsed `entries`.
+/// @param name Normalized entry name.
+/// @return Pointer to the entry, or NULL if not found.
 static zip_entry_t *find_entry(rt_archive_t *ar, const char *name) {
     for (int i = 0; i < ar->entry_count; i++) {
         if (strcmp(ar->entries[i].name, name) == 0)
@@ -360,7 +577,21 @@ static zip_entry_t *find_entry(rt_archive_t *ar, const char *name) {
     return NULL;
 }
 
-/// @brief Read entry data (decompressing if needed)
+/// @brief Materialize a single entry's payload into a fresh `rt_bytes`.
+///
+/// Re-validates the local file header signature (defends against
+/// archives whose central-directory offsets point at garbage), skips
+/// the variable-length name + extra fields, then either:
+///   - copies stored data verbatim (method 0), or
+///   - inflates DEFLATE-compressed data via `rt_compress_inflate`
+///     (method 8).
+/// Both branches verify the CRC32 against the header. The DEFLATE
+/// branch additionally verifies the inflated size matches the
+/// uncompressed-size field. Traps on any mismatch.
+///
+/// @param ar Read-mode archive.
+/// @param e  Entry from `ar->entries`.
+/// @return Owned `rt_bytes` containing the uncompressed payload.
 static void *read_entry_data(rt_archive_t *ar, zip_entry_t *e) {
     // Find local header
     if (e->local_offset + ZIP_LOCAL_HEADER_SIZE > ar->data_len)
@@ -420,6 +651,11 @@ static void *read_entry_data(rt_archive_t *ar, zip_entry_t *e) {
 // Writing Helpers
 //=============================================================================
 
+/// @brief Grow the in-memory write buffer so `need` more bytes will fit.
+///
+/// Doubles the capacity (or jumps to `len + need + 4096` if doubling
+/// is still too small) using `realloc`. Traps on OOM. Cheap when the
+/// buffer is already large enough.
 static void write_ensure(rt_archive_t *ar, size_t need) {
     if (ar->write_len + need > ar->write_cap) {
         size_t new_cap = ar->write_cap * 2;
@@ -433,13 +669,25 @@ static void write_ensure(rt_archive_t *ar, size_t need) {
     }
 }
 
+/// @brief Append `len` bytes to the write buffer, growing it as needed.
+///
+/// Single-call wrapper around `write_ensure` + memcpy. Used as the
+/// only path for appending bytes during archive construction so the
+/// growth policy is centralized.
 static void write_bytes(rt_archive_t *ar, const uint8_t *data, size_t len) {
     write_ensure(ar, len);
     memcpy(ar->write_buf + ar->write_len, data, len);
     ar->write_len += len;
 }
 
+/// @brief Append a `zip_entry_t` to the writing-side entry table.
+///
+/// Verifies the new total stays within the 16-bit ZIP entry limit
+/// (or traps with a ZIP64 message), then doubles the capacity of
+/// `write_entries` if full. The supplied `*e` is copied by value —
+/// the caller may reuse the source struct after the call.
 static void add_write_entry(rt_archive_t *ar, zip_entry_t *e) {
+    archive_require_zip16_count(ar->write_entry_count + 1, "Archive: ZIP64 archives are not supported");
     if (ar->write_entry_count >= ar->write_entry_cap) {
         int new_cap = ar->write_entry_cap == 0 ? 16 : ar->write_entry_cap * 2;
         zip_entry_t *new_entries =
@@ -452,9 +700,22 @@ static void add_write_entry(rt_archive_t *ar, zip_entry_t *e) {
     ar->write_entries[ar->write_entry_count++] = *e;
 }
 
-/// @brief Normalize entry name (forward slashes, no dot segments, no absolute paths).
+/// @brief Result enum for `normalize_name` — distinguishes invalid input
+///        from out-of-memory so callers can pick the right trap message.
 typedef enum { NAME_OK = 0, NAME_INVALID, NAME_OOM } name_result_t;
 
+/// @brief Canonicalize an entry name to ZIP-safe POSIX-style form.
+///
+/// Rejects absolute paths (`/foo`, `\\foo`, `C:foo`) and any segment
+/// equal to `..` (path-traversal guard for `Extract`). Drops `.` and
+/// empty segments, collapses `\\` to `/`, and emits `/`-separated
+/// output in `*out`. The caller takes ownership of `*out` (free with
+/// `free()`).
+///
+/// @param name Caller-supplied entry name (UTF-8).
+/// @param out  Out-parameter for the normalized buffer.
+/// @return NAME_OK on success, NAME_INVALID for forbidden inputs,
+///         NAME_OOM on allocation failure.
 static name_result_t normalize_name(const char *name, char **out) {
     if (!name || !*name)
         return NAME_INVALID;
@@ -512,6 +773,10 @@ static name_result_t normalize_name(const char *name, char **out) {
     return NAME_OK;
 }
 
+/// @brief Whether `name` ends in `/` or `\\` (i.e., looks like a directory).
+///
+/// Used to disambiguate `Has("foo")` (file) from `Has("foo/")`
+/// (directory entry) since ZIP records the trailing slash.
 static bool name_ends_with_sep(const char *name) {
     if (!name)
         return false;
@@ -521,6 +786,15 @@ static bool name_ends_with_sep(const char *name) {
     return name[len - 1] == '/' || name[len - 1] == '\\';
 }
 
+/// @brief Ensure `name` ends with a `/`, reallocating in place if needed.
+///
+/// Takes ownership of `name` and either returns it unchanged (already
+/// ends in `/`) or returns a fresh malloc'd buffer with the slash
+/// appended. On allocation failure, frees `name` and traps — callers
+/// don't need to clean up.
+///
+/// @param name Caller-owned name buffer.
+/// @return The (possibly reallocated) name with trailing `/`.
 static char *ensure_trailing_slash(char *name) {
     size_t len = strlen(name);
     if (len > 0 && name[len - 1] == '/')
@@ -535,7 +809,14 @@ static char *ensure_trailing_slash(char *name) {
     return new_name;
 }
 
-/// @brief Get current DOS time/date
+/// @brief Produce DOS time/date words for the local-header timestamp.
+///
+/// Currently emits a fixed `2001-01-01 00:00:00` so that archives are
+/// reproducible (byte-for-byte identical given the same inputs). If
+/// per-file modification timestamps are ever needed, this is the spot
+/// to switch to `time(NULL)` + the DOS encoding (date: bits 0-4 day,
+/// 5-8 month, 9-15 year-since-1980; time: bits 0-4 sec/2, 5-10 min,
+/// 11-15 hour).
 static void get_dos_time(uint16_t *time, uint16_t *date) {
     // Use a fixed time for reproducibility (could use actual time)
     *time = 0;                        // 00:00:00
@@ -546,6 +827,18 @@ static void get_dos_time(uint16_t *time, uint16_t *date) {
 // Public API - Creation/Opening
 //=============================================================================
 
+/// @brief `Archive.Open(path)` — open an existing ZIP file for reading.
+///
+/// Reads the entire file into memory (no streaming yet) and parses the
+/// central directory. The path is captured (refcount-bumped) so the
+/// archive object survives the caller's string. Traps on:
+///   - empty/NULL path
+///   - file-not-found / permission errors
+///   - unreasonably large files (> SIZE_MAX)
+///   - invalid ZIP structure
+///
+/// @param path UTF-8 file path.
+/// @return Owned `Archive` handle in read mode.
 void *rt_archive_open(rt_string path) {
     const char *cpath = rt_string_cstr(path);
     if (!cpath || *cpath == '\0')
@@ -553,8 +846,7 @@ void *rt_archive_open(rt_string path) {
 
     // Open and read file
 #ifdef _WIN32
-    HANDLE h = CreateFileA(
-        cpath, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    HANDLE h = archive_open_win_path(cpath, GENERIC_READ, FILE_SHARE_READ, OPEN_EXISTING);
     if (h == INVALID_HANDLE_VALUE)
         rt_trap("Archive: file not found");
 
@@ -564,21 +856,19 @@ void *rt_archive_open(rt_string path) {
         rt_trap("Archive: failed to get file size");
     }
 
-    uint8_t *data = (uint8_t *)malloc((size_t)size.QuadPart);
+    if (size.QuadPart < 0 || (uint64_t)size.QuadPart > SIZE_MAX) {
+        CloseHandle(h);
+        rt_trap("Archive: file too large");
+    }
+
+    size_t data_len = (size_t)size.QuadPart;
+    uint8_t *data = (uint8_t *)malloc(data_len);
     if (!data) {
         CloseHandle(h);
         rt_trap("Archive: memory allocation failed");
     }
-
-    DWORD read;
-    if (!ReadFile(h, data, (DWORD)size.QuadPart, &read, NULL) || read != (DWORD)size.QuadPart) {
-        free(data);
-        CloseHandle(h);
-        rt_trap("Archive: failed to read file");
-    }
+    archive_read_exact_win(h, data, data_len, "Archive: failed to read file");
     CloseHandle(h);
-
-    size_t data_len = (size_t)size.QuadPart;
 #else
     int fd = open(cpath, O_RDONLY);
     if (fd < 0)
@@ -590,25 +880,23 @@ void *rt_archive_open(rt_string path) {
         rt_trap("Archive: failed to get file size");
     }
 
-    uint8_t *data = (uint8_t *)malloc((size_t)st.st_size);
+    if (st.st_size < 0) {
+        close(fd);
+        rt_trap("Archive: invalid file size");
+    }
+
+    size_t data_len = (size_t)st.st_size;
+    uint8_t *data = (uint8_t *)malloc(data_len);
     if (!data) {
         close(fd);
         rt_trap("Archive: memory allocation failed");
     }
-
-    ssize_t n = read(fd, data, (size_t)st.st_size);
+    archive_read_exact_posix(fd, data, data_len, "Archive: failed to read file");
     close(fd);
-
-    if (n != st.st_size) {
-        free(data);
-        rt_trap("Archive: failed to read file");
-    }
-
-    size_t data_len = (size_t)st.st_size;
 #endif
 
     rt_archive_t *ar = archive_alloc();
-    ar->path = path;
+    ar->path = rt_string_ref(path);
     ar->data = data;
     ar->data_len = data_len;
     ar->owns_data = true;
@@ -622,14 +910,23 @@ void *rt_archive_open(rt_string path) {
     return ar;
 }
 
+/// @brief `Archive.Create(path)` — start a new ZIP file for writing.
+///
+/// Truncates / creates the destination file immediately to fail-fast on
+/// permission errors, then closes the handle (we re-open at `Finish`
+/// time once the in-memory layout is complete). All entry data is
+/// buffered in `write_buf` until then. Traps on invalid path or
+/// allocation failure.
+///
+/// @param path UTF-8 destination path.
+/// @return Owned `Archive` handle in write mode.
 void *rt_archive_create(rt_string path) {
     const char *cpath = rt_string_cstr(path);
     if (!cpath || *cpath == '\0')
         rt_trap("Archive: invalid path");
 
 #ifdef _WIN32
-    HANDLE h =
-        CreateFileA(cpath, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    HANDLE h = archive_open_win_path(cpath, GENERIC_WRITE, 0, CREATE_ALWAYS);
     if (h == INVALID_HANDLE_VALUE)
         rt_trap("Archive: failed to create file");
     CloseHandle(h);
@@ -642,7 +939,7 @@ void *rt_archive_create(rt_string path) {
 #endif
 
     rt_archive_t *ar = archive_alloc();
-    ar->path = path;
+    ar->path = rt_string_ref(path);
     ar->is_writing = true;
     ar->write_cap = 4096;
     ar->write_buf = (uint8_t *)malloc(ar->write_cap);
@@ -652,6 +949,16 @@ void *rt_archive_create(rt_string path) {
     return ar;
 }
 
+/// @brief `Archive.FromBytes(data)` — open an in-memory ZIP for reading.
+///
+/// Used when ZIP data lives in a Bytes buffer (e.g., downloaded over
+/// HTTP, embedded as an asset). The bytes are *copied* internally so
+/// the archive owns its own buffer — the source can be freed
+/// immediately after the call returns. Traps on NULL data, OOM,
+/// or invalid ZIP structure.
+///
+/// @param data Source `rt_bytes` containing a complete ZIP archive.
+/// @return Owned `Archive` handle in read mode (no path).
 void *rt_archive_from_bytes(void *data) {
     if (!data)
         rt_trap("Archive: NULL data");
@@ -684,13 +991,28 @@ void *rt_archive_from_bytes(void *data) {
 // Properties
 //=============================================================================
 
+/// @brief `Archive.Path` — return the path the archive was opened from.
+///
+/// Returns the empty string for `FromBytes`-constructed archives
+/// (which have no associated path) or for a NULL receiver.
+///
+/// @param obj Archive handle.
+/// @return Owned `rt_string` containing the path, or `""`.
 rt_string rt_archive_path(void *obj) {
     rt_archive_t *ar = (rt_archive_t *)obj;
     if (!ar)
         return rt_str_empty();
-    return ar->path ? ar->path : rt_str_empty();
+    return ar->path ? rt_string_ref(ar->path) : rt_str_empty();
 }
 
+/// @brief `Archive.Count` — number of entries (files + directories).
+///
+/// Returns the size of `entries` for read-mode archives or
+/// `write_entries` for write-mode. Both increase as entries are
+/// added; neither shrinks.
+///
+/// @param obj Archive handle.
+/// @return Entry count, or 0 for NULL.
 int64_t rt_archive_count(void *obj) {
     rt_archive_t *ar = (rt_archive_t *)obj;
     if (!ar)
@@ -700,6 +1022,15 @@ int64_t rt_archive_count(void *obj) {
     return ar->entry_count;
 }
 
+/// @brief `Archive.Names` — return all entry names as a `seq<str>`.
+///
+/// Walks the appropriate entry table (read- or write-mode) and pushes
+/// each name as a `const_cstr`-flagged string (cheap, doesn't copy).
+/// Always returns a fresh seq, even for NULL or empty archives, so the
+/// caller can safely iterate.
+///
+/// @param obj Archive handle (may be NULL).
+/// @return Owned seq of entry names in archive order.
 void *rt_archive_names(void *obj) {
     rt_archive_t *ar = (rt_archive_t *)obj;
     void *seq = rt_seq_new();
@@ -726,6 +1057,17 @@ void *rt_archive_names(void *obj) {
 // Reading Methods
 //=============================================================================
 
+/// @brief `Archive.Has(name)` — test whether an entry exists.
+///
+/// Normalizes the name (path-traversal guard, separator collapse).
+/// If the original name ended with a `/` we add the trailing slash
+/// back after normalization so callers can distinguish file vs
+/// directory entries. Returns 0 for write-mode archives (which have
+/// no readable entries yet) or any normalization failure.
+///
+/// @param obj  Archive handle.
+/// @param name Entry name to look up.
+/// @return 1 if found, 0 otherwise.
 int8_t rt_archive_has(void *obj, rt_string name) {
     rt_archive_t *ar = (rt_archive_t *)obj;
     if (!ar || ar->is_writing)
@@ -750,6 +1092,15 @@ int8_t rt_archive_has(void *obj, rt_string name) {
     return found;
 }
 
+/// @brief `Archive.Read(name)` — extract entry contents as Bytes.
+///
+/// Normalizes the name then delegates to `read_entry_data`, which
+/// handles both stored and DEFLATE methods. Traps on a missing entry,
+/// invalid name, write-only archive, or any structural inconsistency.
+///
+/// @param obj  Archive handle.
+/// @param name Entry name.
+/// @return Owned `rt_bytes` with the uncompressed payload.
 void *rt_archive_read(void *obj, rt_string name) {
     rt_archive_t *ar = (rt_archive_t *)obj;
     if (!ar)
@@ -776,11 +1127,31 @@ void *rt_archive_read(void *obj, rt_string name) {
     return read_entry_data(ar, e);
 }
 
+/// @brief `Archive.ReadStr(name)` — extract entry contents as a string.
+///
+/// Convenience wrapper that reads the entry as Bytes then runs the
+/// bytes-to-string converter (which validates UTF-8). Traps on the
+/// same conditions as `Read`, plus any decode failure.
+///
+/// @param obj  Archive handle.
+/// @param name Entry name.
+/// @return Owned `rt_string` containing the entry text.
 rt_string rt_archive_read_str(void *obj, rt_string name) {
     void *data = rt_archive_read(obj, name);
     return rt_bytes_to_str(data);
 }
 
+/// @brief `Archive.Extract(name, destPath)` — write a single entry to disk.
+///
+/// Reads the entry into memory then writes it to `destPath`. The
+/// destination directory must already exist (we do not auto-create
+/// parents — that's `ExtractAll`'s job). Traps on any I/O error.
+/// The temporary `rt_bytes` is released eagerly to avoid retaining
+/// large entry payloads beyond this call.
+///
+/// @param obj       Archive handle.
+/// @param name      Entry to extract.
+/// @param dest_path UTF-8 destination file path.
 void rt_archive_extract(void *obj, rt_string name, rt_string dest_path) {
     void *data = rt_archive_read(obj, name);
 
@@ -792,6 +1163,18 @@ void rt_archive_extract(void *obj, rt_string name, rt_string dest_path) {
     archive_release_temp_object(data);
 }
 
+/// @brief `Archive.ExtractAll(destDir)` — explode the archive onto disk.
+///
+/// Creates `destDir` (and any missing parents), then iterates every
+/// entry: directory entries are created via `rt_dir_make_all`; file
+/// entries have their parent directory created on the fly (so deep
+/// hierarchies don't need a separate directory entry) and are written
+/// with `archive_write_bytes_to_path`. Forward slashes in entry names
+/// are translated to the platform path separator. Path-traversal
+/// attacks are blocked by `normalize_name` rejecting `..` segments.
+///
+/// @param obj      Archive handle.
+/// @param dest_dir UTF-8 destination directory.
 void rt_archive_extract_all(void *obj, rt_string dest_dir) {
     rt_archive_t *ar = (rt_archive_t *)obj;
     if (!ar)
@@ -858,6 +1241,19 @@ void rt_archive_extract_all(void *obj, rt_string dest_dir) {
     }
 }
 
+/// @brief `Archive.Info(name)` — return a metadata map for one entry.
+///
+/// The map keys are `size`, `compressedSize`, `crc`, `method`,
+/// `modifiedTime`, `isDirectory`, and `isDir` (alias). Values are
+/// boxed primitives so they survive map storage. `modifiedTime` is
+/// a Unix timestamp computed from the DOS date/time fields with a
+/// simple year/month/day arithmetic — accurate to the second granularity
+/// DOS can represent (2-second steps), but does not honour leap years
+/// or DST.
+///
+/// @param obj  Archive handle.
+/// @param name Entry name.
+/// @return Owned `rt_map` of metadata.
 void *rt_archive_info(void *obj, rt_string name) {
     rt_archive_t *ar = (rt_archive_t *)obj;
     if (!ar)
@@ -899,6 +1295,16 @@ void *rt_archive_info(void *obj, rt_string name) {
     if (boxed && rt_obj_release_check0(boxed))
         rt_obj_free(boxed);
 
+    boxed = rt_box_i64((int64_t)e->crc32);
+    rt_map_set(map, rt_const_cstr("crc"), boxed);
+    if (boxed && rt_obj_release_check0(boxed))
+        rt_obj_free(boxed);
+
+    boxed = rt_box_i64((int64_t)e->method);
+    rt_map_set(map, rt_const_cstr("method"), boxed);
+    if (boxed && rt_obj_release_check0(boxed))
+        rt_obj_free(boxed);
+
     // Add modified time (convert DOS time to Unix timestamp)
     // DOS date: bits 0-4 = day, 5-8 = month, 9-15 = year from 1980
     // DOS time: bits 0-4 = seconds/2, 5-10 = minutes, 11-15 = hours
@@ -926,6 +1332,7 @@ void *rt_archive_info(void *obj, rt_string name) {
     // Add isDirectory
     boxed = rt_box_i1(e->is_directory ? 1 : 0);
     rt_map_set(map, rt_const_cstr("isDirectory"), boxed);
+    rt_map_set(map, rt_const_cstr("isDir"), boxed);
     if (boxed && rt_obj_release_check0(boxed))
         rt_obj_free(boxed);
 
@@ -936,6 +1343,20 @@ void *rt_archive_info(void *obj, rt_string name) {
 // Writing Methods
 //=============================================================================
 
+/// @brief `Archive.Add(name, data)` — append a file entry from a Bytes buffer.
+///
+/// CRC32 is computed over the raw payload. For payloads >64 bytes we
+/// trial-deflate via `rt_compress_deflate` and pick whichever is
+/// smaller (stored vs deflate) — small inputs are always stored to
+/// avoid pathological cases where DEFLATE adds overhead. Local file
+/// header + name + payload are appended to `write_buf`; a matching
+/// `zip_entry_t` is recorded so `Finish` can emit the central directory.
+/// Traps if the archive is read-only, already finished, or the name
+/// is invalid.
+///
+/// @param obj  Archive handle (write mode).
+/// @param name Entry name (will be normalized).
+/// @param data Source `rt_bytes`.
 void rt_archive_add(void *obj, rt_string name, void *data) {
     rt_archive_t *ar = (rt_archive_t *)obj;
     if (!ar)
@@ -958,6 +1379,7 @@ void rt_archive_add(void *obj, rt_string name, void *data) {
 
     uint8_t *raw_data = bytes_data(data);
     size_t raw_len = (size_t)bytes_len(data);
+    archive_require_zip32_size(raw_len, "Archive: ZIP64 entries are not supported");
 
     // Compute CRC
     uint32_t crc = rt_crc32_compute(raw_data, raw_len);
@@ -968,8 +1390,7 @@ void rt_archive_add(void *obj, rt_string name, void *data) {
     const uint8_t *write_data = raw_data;
     size_t write_len = raw_len;
 
-    if (raw_len > 64) // Only compress larger data
-    {
+    if (raw_len > 64) {
         compressed = rt_compress_deflate(data);
         size_t comp_len = (size_t)bytes_len(compressed);
         if (comp_len < raw_len) {
@@ -978,6 +1399,8 @@ void rt_archive_add(void *obj, rt_string name, void *data) {
             write_len = comp_len;
         }
     }
+    archive_require_zip32_size(write_len, "Archive: ZIP64 entries are not supported");
+    archive_require_zip32_size(ar->write_len, "Archive: ZIP64 archives are not supported");
 
     // Record entry info
     zip_entry_t e = {0};
@@ -992,6 +1415,8 @@ void rt_archive_add(void *obj, rt_string name, void *data) {
 
     // Write local file header
     size_t name_len = strlen(norm_name);
+    if (name_len > UINT16_MAX)
+        rt_trap("Archive: entry name too long");
     uint8_t local_header[ZIP_LOCAL_HEADER_SIZE];
     write_u32(local_header, ZIP_LOCAL_HEADER_SIG);
     write_u16(local_header + 4, ZIP_VERSION_NEEDED);
@@ -1010,13 +1435,33 @@ void rt_archive_add(void *obj, rt_string name, void *data) {
     write_bytes(ar, write_data, write_len);
 
     add_write_entry(ar, &e);
+    archive_release_temp_object(compressed);
 }
 
+/// @brief `Archive.AddStr(name, text)` — convenience: store a string entry.
+///
+/// Converts `text` to UTF-8 Bytes via `rt_bytes_from_str` then delegates
+/// to `Add`. The temporary Bytes is released eagerly.
+///
+/// @param obj  Archive handle.
+/// @param name Entry name.
+/// @param text String contents.
 void rt_archive_add_str(void *obj, rt_string name, rt_string text) {
     void *data = rt_bytes_from_str(text);
     rt_archive_add(obj, name, data);
+    archive_release_temp_object(data);
 }
 
+/// @brief `Archive.AddFile(name, srcPath)` — copy a file from disk into the archive.
+///
+/// Reads `srcPath` fully into memory using `rt_bytes_new` + the
+/// platform-appropriate exact-read helper, then delegates to `Add` for
+/// CRC, compression, and entry recording. Traps on missing/invalid
+/// source file. The temporary Bytes is released eagerly.
+///
+/// @param obj      Archive handle.
+/// @param name     Name to use inside the archive.
+/// @param src_path UTF-8 source file path on disk.
 void rt_archive_add_file(void *obj, rt_string name, rt_string src_path) {
     const char *cpath = rt_string_cstr(src_path);
     if (!cpath || *cpath == '\0')
@@ -1024,8 +1469,7 @@ void rt_archive_add_file(void *obj, rt_string name, rt_string src_path) {
 
     // Read file contents
 #ifdef _WIN32
-    HANDLE h = CreateFileA(
-        cpath, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    HANDLE h = archive_open_win_path(cpath, GENERIC_READ, FILE_SHARE_READ, OPEN_EXISTING);
     if (h == INVALID_HANDLE_VALUE)
         rt_trap("Archive: source file not found");
 
@@ -1035,12 +1479,14 @@ void rt_archive_add_file(void *obj, rt_string name, rt_string src_path) {
         rt_trap("Archive: failed to get file size");
     }
 
-    void *data = rt_bytes_new((int64_t)size.QuadPart);
-    DWORD read_count;
-    if (!ReadFile(h, bytes_data(data), (DWORD)size.QuadPart, &read_count, NULL)) {
+    if (size.QuadPart < 0 || (uint64_t)size.QuadPart > INT64_MAX) {
         CloseHandle(h);
-        rt_trap("Archive: failed to read source file");
+        rt_trap("Archive: source file too large");
     }
+
+    void *data = rt_bytes_new((int64_t)size.QuadPart);
+    archive_read_exact_win(
+        h, bytes_data(data), (size_t)size.QuadPart, "Archive: failed to read source file");
     CloseHandle(h);
 #else
     int fd = open(cpath, O_RDONLY);
@@ -1053,17 +1499,31 @@ void rt_archive_add_file(void *obj, rt_string name, rt_string src_path) {
         rt_trap("Archive: failed to get file size");
     }
 
-    void *data = rt_bytes_new(st.st_size);
-    ssize_t n = read(fd, bytes_data(data), (size_t)st.st_size);
-    close(fd);
+    if (st.st_size < 0) {
+        close(fd);
+        rt_trap("Archive: invalid source file size");
+    }
 
-    if (n != st.st_size)
-        rt_trap("Archive: failed to read source file");
+    void *data = rt_bytes_new((int64_t)st.st_size);
+    archive_read_exact_posix(
+        fd, bytes_data(data), (size_t)st.st_size, "Archive: failed to read source file");
+    close(fd);
 #endif
 
     rt_archive_add(obj, name, data);
+    archive_release_temp_object(data);
 }
 
+/// @brief `Archive.AddDir(name)` — record an explicit directory entry.
+///
+/// Most ZIP tools infer directories from file paths, but explicit
+/// directory entries (zero-length, name ending in `/`) are useful for
+/// preserving empty directories. This function appends a stored-method
+/// entry with no payload and a trailing-slash name. Traps if the
+/// archive is read-only or finished.
+///
+/// @param obj  Archive handle.
+/// @param name Directory name (trailing slash added if absent).
 void rt_archive_add_dir(void *obj, rt_string name) {
     rt_archive_t *ar = (rt_archive_t *)obj;
     if (!ar)
@@ -1106,10 +1566,13 @@ void rt_archive_add_dir(void *obj, rt_string name) {
     e.uncompressed_size = 0;
     e.method = ZIP_METHOD_STORED;
     get_dos_time(&e.mod_time, &e.mod_date);
+    archive_require_zip32_size(ar->write_len, "Archive: ZIP64 archives are not supported");
     e.local_offset = (uint32_t)ar->write_len;
     e.is_directory = true;
 
     // Write local file header
+    if (len > UINT16_MAX)
+        rt_trap("Archive: entry name too long");
     uint8_t local_header[ZIP_LOCAL_HEADER_SIZE];
     write_u32(local_header, ZIP_LOCAL_HEADER_SIG);
     write_u16(local_header + 4, ZIP_VERSION_NEEDED);
@@ -1129,6 +1592,17 @@ void rt_archive_add_dir(void *obj, rt_string name) {
     add_write_entry(ar, &e);
 }
 
+/// @brief `Archive.Finish()` — emit the central directory and flush to disk.
+///
+/// Builds each central-directory header from the recorded entries
+/// (including the back-pointer to the local header offset captured at
+/// `Add` time), then writes the End of Central Directory record. Once
+/// the in-memory layout is complete, the entire write buffer is
+/// written to the destination path in a single shot. Sets `is_finished`
+/// so subsequent `Add`/`Finish` calls trap. The write buffer is
+/// released to free the memory immediately.
+///
+/// @param obj Archive handle (write mode).
 void rt_archive_finish(void *obj) {
     rt_archive_t *ar = (rt_archive_t *)obj;
     if (!ar)
@@ -1137,6 +1611,8 @@ void rt_archive_finish(void *obj) {
         rt_trap("Archive: cannot finish read-only archive");
     if (ar->is_finished)
         rt_trap("Archive: archive already finished");
+    archive_require_zip16_count(ar->write_entry_count, "Archive: ZIP64 archives are not supported");
+    archive_require_zip32_size(ar->write_len, "Archive: ZIP64 archives are not supported");
 
     // Record central directory offset
     uint32_t cd_offset = (uint32_t)ar->write_len;
@@ -1186,30 +1662,7 @@ void rt_archive_finish(void *obj) {
 
     // Write to file
     const char *cpath = rt_string_cstr(ar->path);
-#ifdef _WIN32
-    HANDLE h =
-        CreateFileA(cpath, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-    if (h == INVALID_HANDLE_VALUE)
-        rt_trap("Archive: failed to write archive file");
-
-    DWORD written;
-    if (!WriteFile(h, ar->write_buf, (DWORD)ar->write_len, &written, NULL) ||
-        written != ar->write_len) {
-        CloseHandle(h);
-        rt_trap("Archive: failed to write archive file");
-    }
-    CloseHandle(h);
-#else
-    int fd = open(cpath, O_WRONLY | O_CREAT | O_TRUNC, 0644);
-    if (fd < 0)
-        rt_trap("Archive: failed to write archive file");
-
-    ssize_t n = write(fd, ar->write_buf, ar->write_len);
-    close(fd);
-
-    if ((size_t)n != ar->write_len)
-        rt_trap("Archive: failed to write archive file");
-#endif
+    archive_write_file_all_utf8(cpath, ar->write_buf, ar->write_len, "Archive: failed to write archive file");
 
     ar->is_finished = true;
 
@@ -1224,19 +1677,29 @@ void rt_archive_finish(void *obj) {
 // Static Methods
 //=============================================================================
 
+/// @brief `Archive.IsZip(path)` — fast probe for ZIP signature on disk.
+///
+/// Reads the first four bytes and tests for either the local-file-header
+/// signature (typical archive) or the EOCD signature (empty archive
+/// edge case where there are zero entries). Does NOT validate the
+/// rest of the file — for that, call `Open` and let it trap.
+/// Returns 0 for missing/unreadable files instead of trapping, so
+/// scripts can probe untrusted paths safely.
+///
+/// @param path UTF-8 file path.
+/// @return 1 if the file looks like a ZIP, 0 otherwise.
 int8_t rt_archive_is_zip(rt_string path) {
     const char *cpath = rt_string_cstr(path);
     if (!cpath || *cpath == '\0')
         return 0;
 
 #ifdef _WIN32
-    HANDLE h = CreateFileA(
-        cpath, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    HANDLE h = archive_open_win_path(cpath, GENERIC_READ, FILE_SHARE_READ, OPEN_EXISTING);
     if (h == INVALID_HANDLE_VALUE)
         return 0;
 
     uint8_t sig[4];
-    DWORD read_count;
+    DWORD read_count = 0;
     BOOL ok = ReadFile(h, sig, 4, &read_count, NULL);
     CloseHandle(h);
 
@@ -1260,6 +1723,14 @@ int8_t rt_archive_is_zip(rt_string path) {
     return (magic == ZIP_LOCAL_HEADER_SIG || magic == ZIP_END_RECORD_SIG) ? 1 : 0;
 }
 
+/// @brief `Archive.IsZipBytes(data)` — same as `IsZip` but for an in-memory buffer.
+///
+/// Useful when checking downloaded payloads or asset blobs before
+/// committing to a full `FromBytes` parse. Same caveat as `IsZip`:
+/// only the first four bytes are inspected.
+///
+/// @param data `rt_bytes` candidate.
+/// @return 1 if the buffer starts with a ZIP signature, 0 otherwise.
 int8_t rt_archive_is_zip_bytes(void *data) {
     if (!data)
         return 0;

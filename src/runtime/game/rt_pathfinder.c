@@ -130,10 +130,15 @@ static rt_pathfinder_impl *pf_alloc(int32_t w, int32_t h) {
     return pf;
 }
 
+/// @brief Construct an empty grid pathfinder of `width × height` cells. All cells start
+/// walkable with cost 0. Configure with `_set_walkable` / `_set_cost` before pathing. The
+/// algorithm is A* with octile (or 4-connected) neighborhood.
 void *rt_pathfinder_new(int64_t width, int64_t height) {
     return pf_alloc((int32_t)width, (int32_t)height);
 }
 
+/// @brief Build a pathfinder from a Tilemap — cells with collision != 0 are non-walkable.
+/// One-shot snapshot of the tilemap; later tilemap changes don't update the pathfinder.
 void *rt_pathfinder_from_tilemap(void *tilemap) {
     if (!tilemap)
         return NULL;
@@ -156,6 +161,8 @@ void *rt_pathfinder_from_tilemap(void *tilemap) {
     return pf;
 }
 
+/// @brief Build a pathfinder from a Grid2D — cells with non-zero values are non-walkable.
+/// Useful when the level uses an int grid rather than a tilemap.
 void *rt_pathfinder_from_grid2d(void *grid) {
     if (!grid)
         return NULL;
@@ -183,6 +190,7 @@ void *rt_pathfinder_from_grid2d(void *grid) {
 // Configuration
 //=============================================================================
 
+/// @brief Mark cell (x, y) as walkable (1) or blocked (0). Out-of-bounds is a silent no-op.
 void rt_pathfinder_set_walkable(void *ptr, int64_t x, int64_t y, int8_t walkable) {
     if (!ptr)
         return;
@@ -192,6 +200,7 @@ void rt_pathfinder_set_walkable(void *ptr, int64_t x, int64_t y, int8_t walkable
     pf->cells[pf_idx(pf, (int32_t)x, (int32_t)y)].walkable = walkable ? 1 : 0;
 }
 
+/// @brief Returns 1 if cell (x, y) is walkable. Out-of-bounds returns 0 (treat as wall).
 int8_t rt_pathfinder_is_walkable(void *ptr, int64_t x, int64_t y) {
     if (!ptr)
         return 0;
@@ -201,6 +210,8 @@ int8_t rt_pathfinder_is_walkable(void *ptr, int64_t x, int64_t y) {
     return pf->cells[pf_idx(pf, (int32_t)x, (int32_t)y)].walkable;
 }
 
+/// @brief Set per-cell traversal cost (additive penalty for routing through it). Clamped to
+/// [0, 30000]. Useful for terrain types — sand/swamp slow movement without blocking.
 void rt_pathfinder_set_cost(void *ptr, int64_t x, int64_t y, int64_t cost) {
     if (!ptr)
         return;
@@ -214,6 +225,7 @@ void rt_pathfinder_set_cost(void *ptr, int64_t x, int64_t y, int64_t cost) {
     pf->cells[pf_idx(pf, (int32_t)x, (int32_t)y)].cost = (int16_t)cost;
 }
 
+/// @brief Read the additional cost of cell (x, y). 0 = no penalty.
 int64_t rt_pathfinder_get_cost(void *ptr, int64_t x, int64_t y) {
     if (!ptr)
         return 0;
@@ -223,12 +235,15 @@ int64_t rt_pathfinder_get_cost(void *ptr, int64_t x, int64_t y) {
     return pf->cells[pf_idx(pf, (int32_t)x, (int32_t)y)].cost;
 }
 
+/// @brief Toggle diagonal moves. 1 = octile (8-neighbor), 0 = manhattan (4-neighbor only).
 void rt_pathfinder_set_diagonal(void *ptr, int8_t allow) {
     if (!ptr)
         return;
     ((rt_pathfinder_impl *)ptr)->allow_diagonal = allow ? 1 : 0;
 }
 
+/// @brief Cap the search-step budget — A* gives up after `max` cell expansions and reports
+/// "no path". 0 disables the cap. Useful to prevent runaway searches in pathological maps.
 void rt_pathfinder_set_max_steps(void *ptr, int64_t max) {
     if (!ptr)
         return;
@@ -239,18 +254,23 @@ void rt_pathfinder_set_max_steps(void *ptr, int64_t max) {
 // Properties
 //=============================================================================
 
+/// @brief Grid width in cells.
 int64_t rt_pathfinder_get_width(void *ptr) {
     return ptr ? ((rt_pathfinder_impl *)ptr)->width : 0;
 }
 
+/// @brief Grid height in cells.
 int64_t rt_pathfinder_get_height(void *ptr) {
     return ptr ? ((rt_pathfinder_impl *)ptr)->height : 0;
 }
 
+/// @brief Number of cell expansions performed by the most recent `_find_path` call. Useful
+/// for performance tuning and verifying the max-steps cap.
 int64_t rt_pathfinder_get_last_steps(void *ptr) {
     return ptr ? ((rt_pathfinder_impl *)ptr)->last_steps : 0;
 }
 
+/// @brief Returns 1 if the most recent `_find_path` actually reached the goal, 0 otherwise.
 int8_t rt_pathfinder_get_last_found(void *ptr) {
     return ptr ? ((rt_pathfinder_impl *)ptr)->last_found : 0;
 }
@@ -559,6 +579,9 @@ static void *pf_astar(rt_pathfinder_impl *pf,
 // Public Pathfinding API
 //=============================================================================
 
+/// @brief Compute the shortest path from (sx, sy) to (gx, gy) using A* with the configured
+/// neighborhood + costs. Returns a List of (x, y) cell pairs (each entry is a 2-int Seq).
+/// Empty list if no path exists or `max_steps` was hit before reaching the goal.
 void *rt_pathfinder_find_path(void *ptr, int64_t sx, int64_t sy, int64_t gx, int64_t gy) {
     if (!ptr)
         return rt_list_new();
@@ -566,6 +589,8 @@ void *rt_pathfinder_find_path(void *ptr, int64_t sx, int64_t sy, int64_t gx, int
     return pf_astar(pf, (int32_t)sx, (int32_t)sy, (int32_t)gx, (int32_t)gy, 0, NULL);
 }
 
+/// @brief Compute just the path length (number of steps) from start to goal — faster than
+/// `_find_path` when you don't need the path itself. -1 if no path exists.
 int64_t rt_pathfinder_find_path_length(void *ptr, int64_t sx, int64_t sy, int64_t gx, int64_t gy) {
     if (!ptr)
         return -1;
@@ -575,6 +600,9 @@ int64_t rt_pathfinder_find_path_length(void *ptr, int64_t sx, int64_t sy, int64_
     return cost;
 }
 
+/// @brief BFS-style search: walk outward from (sx, sy) and return the path to the closest
+/// reachable cell whose stored value matches `target_value`. Useful for "find nearest
+/// resource / enemy / waypoint marker" workflows. Empty list if none found within `max_steps`.
 void *rt_pathfinder_find_nearest(void *ptr, int64_t sx, int64_t sy, int64_t target_value) {
     // Simple BFS-based nearest search: expand from start, return first matching cell.
     // This reuses the A* infrastructure but with heuristic=0 (degrades to Dijkstra).

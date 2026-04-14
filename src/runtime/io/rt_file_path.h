@@ -27,6 +27,10 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#ifdef _WIN32
+#include <wchar.h>
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -55,6 +59,18 @@ int8_t rt_file_path_from_vstr(const ViperString *path, const char **out_path);
 /// @param data_out Receives pointer to the string bytes when non-null.
 /// @return Number of bytes referenced by the view.
 size_t rt_file_string_view(const ViperString *s, const uint8_t **data_out);
+
+#ifdef _WIN32
+/// @brief Convert a UTF-8 path to a wide Windows path.
+/// @param utf8 Null-terminated UTF-8 path.
+/// @return Newly allocated wide string, or NULL on failure.
+wchar_t *rt_file_path_utf8_to_wide(const char *utf8);
+
+/// @brief Convert a wide Windows path to a runtime UTF-8 string.
+/// @param wide Null-terminated wide path.
+/// @return Runtime string, or empty string on failure.
+rt_string rt_file_path_wide_to_string(const wchar_t *wide);
+#endif
 
 #ifdef __cplusplus
 }

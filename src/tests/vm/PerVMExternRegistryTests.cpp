@@ -136,6 +136,29 @@ TEST(PerVMExternRegistry, VMAssignmentAndRetrieval) {
     EXPECT_EQ(vm.externRegistry(), nullptr);
 }
 
+TEST(PerVMExternRegistry, RegistrySurvivesOwnerResetWhileAssignedToVm) {
+    il::core::Module module;
+    VM vm(module);
+
+    ExternRegistryPtr reg = createExternRegistry();
+    ExternDesc desc;
+    desc.name = "survivor";
+    desc.signature = makeVoidToI64Sig("survivor");
+    desc.fn = reinterpret_cast<void *>(extern_vm_a_fn);
+    registerExternIn(*reg, desc);
+
+    vm.setExternRegistry(reg.get());
+    reg.reset();
+
+    ASSERT_NE(vm.externRegistry(), nullptr);
+    const ExternDesc *found = findExternIn(*vm.externRegistry(), "survivor");
+    ASSERT_NE(found, nullptr);
+    EXPECT_EQ(found->fn, reinterpret_cast<void *>(extern_vm_a_fn));
+
+    vm.setExternRegistry(nullptr);
+    EXPECT_EQ(vm.externRegistry(), nullptr);
+}
+
 TEST(PerVMExternRegistry, GlobalFallback) {
     // Register in the global registry
     ExternDesc globalDesc;

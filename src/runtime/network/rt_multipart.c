@@ -54,6 +54,9 @@ typedef struct {
 // Internal Helpers
 //=============================================================================
 
+/// @brief Fill `buf` (up to 40 chars + NUL) with random alphanumerics for use as a multipart
+/// boundary. Pulls 32 bytes from `rt_crypto_random_bytes` and reduces each modulo the alphabet
+/// size — biased but irrelevant for boundary uniqueness.
 static void generate_boundary(char *buf, size_t buf_len) {
     static const char chars[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
     uint8_t random[32];
@@ -118,6 +121,10 @@ static void rt_multipart_finalize(void *obj) {
 // Public API — Builder
 //=============================================================================
 
+/// @brief Construct a multipart form-data builder. Generates a 40-character random boundary at
+/// construction (RFC 2046 §5.1.1: must not collide with body content; 40 random alphanumerics
+/// gives ~2^238 entropy, far exceeding the standard's recommendation). Caller adds parts via
+/// `_add_field` / `_add_file`, then serializes with `_build`.
 void *rt_multipart_new(void) {
     rt_multipart_impl *mp =
         (rt_multipart_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_multipart_impl));
@@ -129,6 +136,8 @@ void *rt_multipart_new(void) {
     return mp;
 }
 
+/// @brief Append a text field (`Content-Disposition: form-data; name="..."`). Returns the
+/// builder for fluent chaining. Traps on null input or pool overflow (MAX_PARTS=128).
 void *rt_multipart_add_field(void *obj, rt_string name, rt_string value) {
     if (!obj)
         rt_trap("Multipart: NULL object");
@@ -152,6 +161,9 @@ void *rt_multipart_add_field(void *obj, rt_string name, rt_string value) {
     return obj;
 }
 
+/// @brief Append a file part (`Content-Disposition: form-data; name="..."; filename="..."`,
+/// `Content-Type: application/octet-stream`). `data` is a Bytes object (the raw file contents).
+/// Returns the builder for chaining. NULL filename defaults to "file".
 void *rt_multipart_add_file(void *obj, rt_string name, rt_string filename, void *data) {
     if (!obj)
         rt_trap("Multipart: NULL object");
@@ -187,6 +199,10 @@ rt_string rt_multipart_content_type(void *obj) {
     return rt_string_from_bytes(buf, strlen(buf));
 }
 
+/// @brief Serialize all parts to a single Bytes object suitable as an HTTP body. Layout per RFC 2046:
+/// `--boundary\r\n` headers `\r\n\r\n` body `\r\n` ... `--boundary--\r\n` (terminator). Total size
+/// is calculated up-front and a single buffer is allocated; no incremental growth. Caller pairs
+/// the result with `_content_type` for the matching Content-Type header.
 void *rt_multipart_build(void *obj) {
     if (!obj)
         return rt_bytes_new(0);
@@ -258,6 +274,11 @@ int64_t rt_multipart_count(void *obj) {
 // Public API — Parser
 //=============================================================================
 
+/// @brief Parse a received multipart body into a navigable Multipart object. Extracts the boundary
+/// from `content_type` (handles both quoted `"..."` and bare forms), then walks the body finding
+/// `--boundary` delimiters and per-part `Content-Disposition` headers. Captures `name=` and
+/// optional `filename=` attributes; presence of the latter flags the part as a file. Returns an
+/// empty Multipart on missing boundary or empty body — never traps.
 void *rt_multipart_parse(rt_string content_type, void *body) {
     if (!body)
         return rt_multipart_new();
@@ -419,6 +440,8 @@ rt_string rt_multipart_get_field(void *obj, rt_string name) {
     return rt_string_from_bytes("", 0);
 }
 
+/// @brief Look up a file part by name and return its raw contents as Bytes. Returns empty Bytes
+/// if the name doesn't match any file part (use `_get_field` for non-file parts).
 void *rt_multipart_get_file(void *obj, rt_string name) {
     if (!obj)
         return rt_bytes_new(0);

@@ -118,6 +118,9 @@ static void texatlas_finalize(void *obj) {
     }
 }
 
+/// @brief Construct an empty texture atlas backed by `pixels`. The Pixels object is retained;
+/// regions are added later via `rt_texatlas_add` or by using `rt_texatlas_load_grid`. Traps if
+/// `pixels` is NULL. Returns NULL on allocation failure.
 void *rt_texatlas_new(void *pixels) {
     if (!pixels) {
         rt_trap("TextureAtlas.New: null pixels");
@@ -136,6 +139,9 @@ void *rt_texatlas_new(void *pixels) {
     return impl;
 }
 
+/// @brief Build an atlas from `pixels` by auto-slicing it into a uniform grid of `frame_w ×
+/// frame_h` cells (left-to-right, top-to-bottom, named "0", "1", ... up to 512 regions). Traps
+/// if `pixels` is NULL or either dimension is non-positive. Useful for sprite sheets.
 void *rt_texatlas_load_grid(void *pixels, int64_t frame_w, int64_t frame_h) {
     if (!pixels || frame_w <= 0 || frame_h <= 0) {
         rt_trap("TextureAtlas.LoadGrid: invalid arguments");
@@ -273,6 +279,7 @@ int64_t rt_texatlas_get_h(void *atlas, void *name) {
     return idx >= 0 ? impl->regions[idx].h : 0;
 }
 
+/// @brief Return the backing Pixels object (still owned by the atlas — do not release).
 void *rt_texatlas_get_pixels(void *atlas) {
     if (!atlas)
         return NULL;
@@ -293,6 +300,8 @@ int64_t rt_texatlas_region_count(void *atlas) {
 // These are thin wrappers that resolve the named region and delegate to
 // the existing rt_spritebatch_draw_region function.
 
+/// @brief Look up region `name` in `atlas` and queue a sprite-batch draw at (x, y) at native
+/// size. Silent no-op if the named region doesn't exist (no trap — typical sprite-sheet usage).
 void rt_spritebatch_draw_atlas(void *batch, void *atlas, void *name, int64_t x, int64_t y) {
     if (!batch || !atlas || !name)
         return;
@@ -309,6 +318,8 @@ void rt_spritebatch_draw_atlas(void *batch, void *atlas, void *name, int64_t x, 
     rt_spritebatch_draw_region(batch, impl->pixels, x, y, r->x, r->y, r->w, r->h);
 }
 
+/// @brief Look up region `name` in `atlas` and queue a sprite-batch draw at (x, y) scaled
+/// uniformly by `scale` (integer multiplier). Silent no-op for missing regions.
 void rt_spritebatch_draw_atlas_scaled(
     void *batch, void *atlas, void *name, int64_t x, int64_t y, int64_t scale) {
     if (!batch || !atlas || !name)
@@ -327,6 +338,8 @@ void rt_spritebatch_draw_atlas_scaled(
         batch, impl->pixels, x, y, r->x, r->y, r->w, r->h, scale, scale, 0, 0);
 }
 
+/// @brief Full sprite-batch atlas draw: scale + rotation (degrees) + depth-sort layer. Silent
+/// no-op for missing regions or null inputs.
 void rt_spritebatch_draw_atlas_ex(void *batch,
                                   void *atlas,
                                   void *name,
@@ -351,12 +364,17 @@ void rt_spritebatch_draw_atlas_ex(void *batch,
 
 #else /* !VIPER_ENABLE_GRAPHICS */
 
-// Stubs when graphics is disabled
+// Stubs when graphics is disabled — every public entry-point returns a benign zero/no-op so
+// callers compile and link, but no pixels are produced. See the `VIPER_ENABLE_GRAPHICS` block
+// above for behavioral docs.
+
+/// @brief Stub — graphics disabled at build time. Returns 0.
 void *rt_texatlas_new(void *pixels) {
     (void)pixels;
     return 0;
 }
 
+/// @brief Stub — graphics disabled at build time. Returns 0.
 void *rt_texatlas_load_grid(void *p, int64_t w, int64_t h) {
     (void)p;
     (void)w;
@@ -409,6 +427,7 @@ int64_t rt_texatlas_get_h(void *a, void *n) {
     return 0;
 }
 
+/// @brief Stub — graphics disabled at build time. Returns 0.
 void *rt_texatlas_get_pixels(void *a) {
     (void)a;
     return 0;

@@ -41,18 +41,22 @@
 
 /* -- 32-bit helpers (int / long) ----------------------------------------- */
 
+/// @brief Atomic 32-bit load via `_InterlockedOr(p, 0)` (full barrier on MSVC).
 static __forceinline long rt__atomic_load_32(volatile long *p) {
     return _InterlockedOr(p, 0);
 }
 
+/// @brief Atomic 32-bit store via `_InterlockedExchange` (full barrier).
 static __forceinline void rt__atomic_store_32(volatile long *p, long v) {
     _InterlockedExchange(p, v);
 }
 
+/// @brief Atomic 32-bit fetch-then-add. Returns the value at @p p before the add.
 static __forceinline long rt__atomic_fetch_add_32(volatile long *p, long v) {
     return _InterlockedExchangeAdd(p, v);
 }
 
+/// @brief Atomic 32-bit compare-and-swap. Returns 1 on success; updates @p expected on failure.
 static __forceinline int rt__atomic_cas_32(volatile long *p, long *expected, long desired) {
     long old = _InterlockedCompareExchange(p, desired, *expected);
     if (old == *expected)
@@ -63,14 +67,17 @@ static __forceinline int rt__atomic_cas_32(volatile long *p, long *expected, lon
 
 /* -- 64-bit helpers (long long / int64_t) -------------------------------- */
 
+/// @brief Atomic 64-bit load via `_InterlockedOr64(p, 0)` (full barrier).
 static __forceinline long long rt__atomic_load_64(volatile long long *p) {
     return _InterlockedOr64(p, 0);
 }
 
+/// @brief Atomic 64-bit store (delegates to 32-bit `_InterlockedExchange` per current MSVC ABI).
 static __forceinline void rt__atomic_store_64(volatile long long *p, long long v) {
     _InterlockedExchange64(p, v);
 }
 
+/// @brief Atomic 64-bit fetch-then-add. Returns the value at @p p before the add.
 static __forceinline long long rt__atomic_fetch_add_64(volatile long long *p, long long v) {
     return _InterlockedExchangeAdd64(p, v);
 }

@@ -14,7 +14,9 @@
 //
 // Only pure, non-trapping, non-memory opcodes (as classified by makeValueKey)
 // are eligible. Commutative operands are normalised so that "a+b" and "b+a"
-// share the same key. UseDefInfo provides O(|uses|) value replacement.
+// share the same key. Replacements are applied through the shared IL utility
+// helper so the pass stays correct even when instruction vectors are mutated
+// during elimination.
 //
 //===----------------------------------------------------------------------===//
 
@@ -33,7 +35,6 @@
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Instr.hpp"
 #include "il/core/Module.hpp"
-#include "il/utils/UseDefInfo.hpp"
 #include "il/utils/Utils.hpp"
 
 #include <cstddef>
@@ -71,14 +72,15 @@ static bool isTextuallyAvailable(const std::unordered_map<const BasicBlock *, st
 ///          replaced and the instruction erased; on a miss the key is entered
 ///          into the current scope.
 /// @param B         Block being processed.
+/// @param F         Function being optimized; used for safe whole-function
+///                  operand rewrites after an instruction is removed.
 /// @param scopes    Stack of expression tables; the back element is the
 ///                  current scope. May be modified (entries appended to back).
-/// @param useInfo   Use-def information for O(uses) replacement.
 /// @return True if any instruction was removed from @p B.
 bool processBlock(BasicBlock &B,
+                  Function &F,
                   std::vector<CSETable> &scopes,
-                  const std::unordered_map<const BasicBlock *, std::size_t> &blockOrder,
-                  viper::il::UseDefInfo &useInfo) {
+                  const std::unordered_map<const BasicBlock *, std::size_t> &blockOrder) {
     bool changed = false;
     for (std::size_t idx = 0; idx < B.instructions.size();) {
         Instr &I = B.instructions[idx];
@@ -96,7 +98,7 @@ bool processBlock(BasicBlock &B,
                 continue;
             if (!isTextuallyAvailable(blockOrder, hit->second.block, &B))
                 continue;
-            useInfo.replaceAllUses(*I.result, hit->second.value);
+            viper::il::replaceAllUses(F, *I.result, hit->second.value);
             B.instructions.erase(B.instructions.begin() + static_cast<long>(idx));
             changed = true;
             found = true;
@@ -132,9 +134,6 @@ bool runEarlyCSE(Module &M, Function &F) {
     for (int iter = 0; iter < 4; ++iter) {
         viper::analysis::CFGContext cfg(M);
         viper::analysis::DomTree domTree = viper::analysis::computeDominatorTree(cfg, F);
-
-        // Build use-def chains for O(uses) replacement.
-        viper::il::UseDefInfo useInfo(F);
 
         // Iterative pre-order DFS over the dominator tree.
         // Each worklist entry is either "enter B" (push scope, process B, then
@@ -172,7 +171,7 @@ bool runEarlyCSE(Module &M, Function &F) {
             // Schedule scope pop after all children are processed.
             worklist.push_back({nullptr});
 
-            changed |= processBlock(*item.block, scopes, blockOrder, useInfo);
+            changed |= processBlock(*item.block, F, scopes, blockOrder);
 
             // Schedule dominated children (order doesn't matter for correctness).
             auto childIt = domTree.children.find(item.block);

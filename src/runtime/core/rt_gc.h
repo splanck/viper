@@ -12,7 +12,7 @@
 //   - Only objects with RT_MAGIC headers may be registered via rt_gc_track.
 //   - The collector does not move objects; heap addresses remain stable.
 //   - rt_gc_collect is synchronous and must not be called from within a finalizer.
-//   - Weak references registered via rt_gc_weak_ref are zeroed when their target is freed.
+//   - Weak references registered via rt_weakref_new are zeroed when their target is freed.
 //
 // Ownership/Lifetime:
 //   - Tracked objects are owned by their reference counts; the GC only breaks cycles.

@@ -574,6 +574,7 @@ In-process publish/subscribe message bus for decoupled communication between com
 - `Subscribe` returns a unique integer ID that can be used with `Unsubscribe`
 - `Publish` invokes all handlers for the given topic synchronously; returns the number of handlers called
 - Handler functions receive the published data as their argument
+- Publish uses a stable subscriber snapshot; unsubscribes during a handler affect later publishes, not the in-flight one
 - Subscribe/Publish require function pointer callbacks, which limits direct demonstration in simple examples
 - The bus is not thread-safe; use external synchronization if accessed from multiple threads
 

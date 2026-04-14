@@ -812,6 +812,8 @@ void *rt_vec3_lerp(void *a, void *b, double t) {
     return vec3_alloc(x, y, z);
 }
 
+/// @brief Reflect `v` across a surface with the given `normal` (assumed unit length). Used for
+/// bouncing rays/balls — `result = v - 2*(v·n)*n`. Returns the zero vector for null inputs.
 void *rt_vec3_reflect(void *v, void *normal) {
     if (!v || !normal)
         return vec3_alloc(0, 0, 0);
@@ -821,6 +823,8 @@ void *rt_vec3_reflect(void *v, void *normal) {
     return vec3_alloc(vv->x - d * n->x, vv->y - d * n->y, vv->z - d * n->z);
 }
 
+/// @brief Project `v` onto the line spanned by `onto`. Returns `((v·onto)/(onto·onto)) * onto`.
+/// Returns the zero vector if `onto` is degenerate (length² < 1e-12) or for null inputs.
 void *rt_vec3_project(void *v, void *onto) {
     if (!v || !onto)
         return vec3_alloc(0, 0, 0);
@@ -834,6 +838,9 @@ void *rt_vec3_project(void *v, void *onto) {
     return vec3_alloc(s * t->x, s * t->y, s * t->z);
 }
 
+/// @brief Clamp `v`'s length to at most `max_len`. Vectors already shorter pass through; longer
+/// ones are scaled proportionally. Useful for capping speeds. Returns zero for null `v` or
+/// non-positive `max_len`.
 void *rt_vec3_clamp_len(void *v, double max_len) {
     if (!v || max_len <= 0)
         return vec3_alloc(0, 0, 0);
@@ -845,6 +852,8 @@ void *rt_vec3_clamp_len(void *v, double max_len) {
     return vec3_alloc(vv->x * s, vv->y * s, vv->z * s);
 }
 
+/// @brief Step from `current` toward `target` by at most `max_delta` units. Snaps exactly to
+/// `target` when within reach. Useful for AI movement / smoothing without overshoot.
 void *rt_vec3_move_towards(void *current, void *target, double max_delta) {
     if (!current || !target)
         return vec3_alloc(0, 0, 0);
@@ -858,6 +867,9 @@ void *rt_vec3_move_towards(void *current, void *target, double max_delta) {
     return vec3_alloc(c->x + dx * s, c->y + dy * s, c->z + dz * s);
 }
 
+/// @brief Compute the unsigned angle in radians between vectors `a` and `b` via
+/// `acos((a·b)/(|a||b|))`. Result is in [0, π]. Returns 0 for degenerate (zero-length) inputs;
+/// the cosine is clamped to [-1, 1] for numerical safety against floating-point drift.
 double rt_vec3_angle(void *a, void *b) {
     if (!a || !b)
         return 0.0;
@@ -875,6 +887,8 @@ double rt_vec3_angle(void *a, void *b) {
     return acos(cos_a);
 }
 
+/// @brief Component-wise minimum: `(min(a.x,b.x), min(a.y,b.y), min(a.z,b.z))`. Useful for
+/// AABB construction. Returns the zero vector for null inputs.
 void *rt_vec3_min(void *a, void *b) {
     if (!a || !b)
         return vec3_alloc(0, 0, 0);
@@ -883,6 +897,8 @@ void *rt_vec3_min(void *a, void *b) {
     return vec3_alloc(fmin(va->x, vb->x), fmin(va->y, vb->y), fmin(va->z, vb->z));
 }
 
+/// @brief Component-wise maximum: `(max(a.x,b.x), max(a.y,b.y), max(a.z,b.z))`. Pairs with
+/// `_min` for AABB construction. Returns the zero vector for null inputs.
 void *rt_vec3_max(void *a, void *b) {
     if (!a || !b)
         return vec3_alloc(0, 0, 0);

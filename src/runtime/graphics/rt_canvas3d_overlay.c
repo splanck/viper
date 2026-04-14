@@ -48,6 +48,8 @@ static int world_to_screen(
     return 1;
 }
 
+/// @brief Draw a 3D world-space line between two Vec3 endpoints in `color`. Useful for debug
+/// visualizers, motion trails, gizmos. Color is 0xRRGGBBAA. Auto-projects to screen space.
 void rt_canvas3d_draw_line3d(void *obj, void *from, void *to, int64_t color) {
     int8_t started_temp_frame = 0;
 
@@ -91,6 +93,8 @@ void rt_canvas3d_draw_line3d(void *obj, void *from, void *to, int64_t color) {
         rt_canvas3d_end(c);
 }
 
+/// @brief Draw a 3D world-space point at `pos` (Vec3) as a `size`-pixel filled square in `color`.
+/// Useful for marking spawn points, raycast hits, AI waypoints during debug.
 void rt_canvas3d_draw_point3d(void *obj, void *pos, int64_t color, int64_t size) {
     int8_t started_temp_frame = 0;
 
@@ -132,6 +136,8 @@ void rt_canvas3d_draw_point3d(void *obj, void *pos, int64_t color, int64_t size)
         rt_canvas3d_end(c);
 }
 
+/// @brief Draw a screen-space (2D, ignores 3D camera) filled rectangle. Useful for HUDs and
+/// debug overlays composited over the 3D scene.
 void rt_canvas3d_draw_rect2d(void *obj, int64_t x, int64_t y, int64_t w, int64_t h, int64_t color) {
     int8_t started_temp_frame = 0;
 
@@ -150,6 +156,7 @@ void rt_canvas3d_draw_rect2d(void *obj, int64_t x, int64_t y, int64_t w, int64_t
         rt_canvas3d_end(c);
 }
 
+/// @brief Draw a centered crosshair (FPS reticle) at screen center with `size` arms in `color`.
 void rt_canvas3d_draw_crosshair(void *obj, int64_t color, int64_t size) {
     int8_t started_temp_frame = 0;
 
@@ -184,6 +191,7 @@ void rt_canvas3d_draw_crosshair(void *obj, int64_t color, int64_t size) {
         rt_canvas3d_end(c);
 }
 
+/// @brief Draw screen-space text at (x, y) using the built-in 8×8 font in `color`.
 void rt_canvas3d_draw_text2d(void *obj, int64_t x, int64_t y, rt_string text, int64_t color) {
     int8_t started_temp_frame = 0;
 
@@ -200,6 +208,8 @@ void rt_canvas3d_draw_text2d(void *obj, int64_t x, int64_t y, rt_string text, in
         rt_canvas3d_end(c);
 }
 
+/// @brief Return the active backend name as a string ("metal", "d3d11", "opengl", ...).
+/// Useful for backend-specific debug output / feature gating.
 rt_string rt_canvas3d_get_backend(void *obj) {
     if (!obj)
         return rt_const_cstr("unknown");
@@ -274,6 +284,8 @@ void *rt_canvas3d_screenshot(void *obj) {
     return pixels;
 }
 
+/// @brief Draw an axis-aligned bounding box (12 lines) between `min_v` and `max_v` Vec3s.
+/// Useful for collision/culling debug visualization.
 void rt_canvas3d_draw_aabb_wire(void *obj, void *min_v, void *max_v, int64_t color) {
     if (!obj || !min_v || !max_v)
         return;
@@ -301,6 +313,8 @@ void rt_canvas3d_draw_aabb_wire(void *obj, void *min_v, void *max_v, int64_t col
         rt_canvas3d_draw_line3d(obj, corners[edges[e][0]], corners[edges[e][1]], color);
 }
 
+/// @brief Draw three orthogonal great circles approximating a sphere (XY, XZ, YZ planes) at
+/// `center` with `radius`. Cheaper than tessellating a real sphere for debug viz.
 void rt_canvas3d_draw_sphere_wire(void *obj, void *center, double radius, int64_t color) {
     if (!obj || !center)
         return;
@@ -333,6 +347,8 @@ void rt_canvas3d_draw_sphere_wire(void *obj, void *center, double radius, int64_
     }
 }
 
+/// @brief Draw a ray from `origin` along `dir` (Vec3, normalized internally) for `length`
+/// world units. Useful for visualizing physics raycasts and AI line-of-sight.
 void rt_canvas3d_draw_debug_ray(void *obj, void *origin, void *dir, double length, int64_t color) {
     if (!obj || !origin || !dir)
         return;
@@ -344,6 +360,8 @@ void rt_canvas3d_draw_debug_ray(void *obj, void *origin, void *dir, double lengt
                             color);
 }
 
+/// @brief Draw an XYZ axis gizmo at `origin` with arms of length `scale`. Standard color
+/// convention: red=X, green=Y, blue=Z. Useful for visualizing world / object orientation.
 void rt_canvas3d_draw_axis(void *obj, void *origin, double scale) {
     if (!obj || !origin)
         return;

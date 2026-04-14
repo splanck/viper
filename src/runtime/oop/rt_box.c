@@ -51,11 +51,16 @@ typedef struct rt_box {
     } data;
 } rt_box_t;
 
-/// Allocate a new boxed value
+/// @brief Allocate a fresh boxed-value object via the heap (refcount=1, tagged RT_ELEM_BOX so
+/// `box_maybe` can later identify it). Caller fills the tag and union fields.
 static void *alloc_box(void) {
     return rt_heap_alloc(RT_HEAP_OBJECT, RT_ELEM_BOX, 1, sizeof(rt_box_t), sizeof(rt_box_t));
 }
 
+/// @brief Safe down-cast: returns the `rt_box_t *` only if `box` is a heap-allocated object whose
+/// element-kind is RT_ELEM_BOX. Returns NULL for null pointers, non-heap pointers, or heap objects
+/// of a different kind. Used to make `rt_box_eq_*`, `rt_box_hash`, and `rt_box_equal` safe when
+/// passed arbitrary collection elements.
 static rt_box_t *box_maybe(void *box) {
     rt_heap_hdr_t *hdr = NULL;
     if (!box || !rt_heap_try_get_header(box, &hdr))
@@ -65,6 +70,9 @@ static rt_box_t *box_maybe(void *box) {
     return (rt_box_t *)box;
 }
 
+/// @brief Strict accessor used by the unbox-* primitives: traps with a formatted message if `box`
+/// is null, isn't actually a boxed value, or has a tag that doesn't match `expected_tag`. Pass
+/// `expected_tag = -1` to skip the type check (accept any tag).
 static rt_box_t *box_require(void *box, const char *fn_name, int64_t expected_tag) {
     if (!box) {
         char buf[96];
@@ -106,6 +114,7 @@ static rt_box_t *box_require(void *box, const char *fn_name, int64_t expected_ta
     return b;
 }
 
+/// @brief Wrap an Int64 into a heap-allocated Box. Refcount=1; release as any other heap object.
 void *rt_box_i64(int64_t val) {
     rt_box_t *box = (rt_box_t *)alloc_box();
     if (!box)
@@ -115,6 +124,7 @@ void *rt_box_i64(int64_t val) {
     return box;
 }
 
+/// @brief Wrap a Float64 into a heap-allocated Box. NaN is stored as-is (round-trip safe).
 void *rt_box_f64(double val) {
     rt_box_t *box = (rt_box_t *)alloc_box();
     if (!box)
@@ -124,6 +134,8 @@ void *rt_box_f64(double val) {
     return box;
 }
 
+/// @brief Wrap a Boolean into a heap-allocated Box. Normalizes to {0, 1} so two true booleans
+/// from different sources compare equal.
 void *rt_box_i1(int64_t val) {
     rt_box_t *box = (rt_box_t *)alloc_box();
     if (!box)
@@ -133,6 +145,8 @@ void *rt_box_i1(int64_t val) {
     return box;
 }
 
+/// @brief GC finalizer for boxed strings — releases the contained rt_string reference. Other
+/// box variants (i64/f64/i1) hold no managed references so don't need a finalizer.
 static void box_str_finalizer(void *obj) {
     rt_box_t *box = (rt_box_t *)obj;
     if (box && box->tag == RT_BOX_STR && box->data.str_val) {
@@ -141,6 +155,9 @@ static void box_str_finalizer(void *obj) {
     }
 }
 
+/// @brief Wrap an rt_string into a heap-allocated Box, retaining the string (via `rt_string_ref`,
+/// which handles both heap and literal-pool strings) and registering `box_str_finalizer` to
+/// release it on collection. Stores NULL string as-is.
 void *rt_box_str(rt_string val) {
     rt_box_t *box = (rt_box_t *)alloc_box();
     if (!box)
@@ -156,6 +173,7 @@ void *rt_box_str(rt_string val) {
     return box;
 }
 
+/// @brief Extract the i64 contents. **Traps** if `box` isn't a Box or its tag isn't RT_BOX_I64.
 int64_t rt_unbox_i64(void *box) {
     rt_box_t *b = box_require(box, "rt_unbox_i64", RT_BOX_I64);
     if (!b)
@@ -163,6 +181,7 @@ int64_t rt_unbox_i64(void *box) {
     return b->data.i64_val;
 }
 
+/// @brief Extract the f64 contents. **Traps** if `box` isn't a Box or its tag isn't RT_BOX_F64.
 double rt_unbox_f64(void *box) {
     rt_box_t *b = box_require(box, "rt_unbox_f64", RT_BOX_F64);
     if (!b)
@@ -170,6 +189,7 @@ double rt_unbox_f64(void *box) {
     return b->data.f64_val;
 }
 
+/// @brief Extract the bool contents (returned as 0/1 in i64). **Traps** on tag mismatch.
 int64_t rt_unbox_i1(void *box) {
     rt_box_t *b = box_require(box, "rt_unbox_i1", RT_BOX_I1);
     if (!b)
@@ -177,6 +197,8 @@ int64_t rt_unbox_i1(void *box) {
     return b->data.i64_val;
 }
 
+/// @brief Extract the rt_string contents, **retaining a fresh reference** for the caller (the box
+/// retains its own; the returned ref must be released independently). Traps on tag mismatch.
 rt_string rt_unbox_str(void *box) {
     rt_box_t *b = box_require(box, "rt_unbox_str", RT_BOX_STR);
     if (!b)
@@ -189,6 +211,8 @@ rt_string rt_unbox_str(void *box) {
     return s;
 }
 
+/// @brief Read the type tag of a box (`RT_BOX_I64`, `RT_BOX_F64`, `RT_BOX_I1`, `RT_BOX_STR`),
+/// or -1 if the pointer isn't a Box. Used to dispatch on contained type without unboxing.
 int64_t rt_box_type(void *box) {
     rt_box_t *b = box_maybe(box);
     if (!b)
@@ -196,6 +220,8 @@ int64_t rt_box_type(void *box) {
     return b->tag;
 }
 
+/// @brief Compare a box to a raw i64. Returns 0 (not 1) for non-i64 boxes — never traps, so
+/// safe for heterogeneous collection scans (e.g. `Seq.contains(boxedValue)`).
 int64_t rt_box_eq_i64(void *box, int64_t val) {
     rt_box_t *b = box_maybe(box);
     if (!b)
@@ -205,6 +231,7 @@ int64_t rt_box_eq_i64(void *box, int64_t val) {
     return b->data.i64_val == val ? 1 : 0;
 }
 
+/// @brief Compare a box to a raw f64. Uses IEEE-754 `==`, so `Box(NaN).eq(NaN) == 0` (intentional).
 int64_t rt_box_eq_f64(void *box, double val) {
     rt_box_t *b = box_maybe(box);
     if (!b)
@@ -215,6 +242,8 @@ int64_t rt_box_eq_f64(void *box, double val) {
     return b->data.f64_val == val ? 1 : 0;
 }
 
+/// @brief Compare a box to a raw rt_string. Delegates to `rt_str_eq` so encoding is handled
+/// canonically; returns 0 if `box` isn't a string box.
 int64_t rt_box_eq_str(void *box, rt_string val) {
     rt_box_t *b = box_maybe(box);
     if (!b)
@@ -224,6 +253,9 @@ int64_t rt_box_eq_str(void *box, rt_string val) {
     return rt_str_eq(b->data.str_val, val);
 }
 
+/// @brief Allocate a raw heap region of `size` bytes for a Zia value-type instance (struct).
+/// Distinct from the tagged Box family — this isn't a Box at all (RT_ELEM_NONE), the compiler
+/// emits direct field copies into the returned memory. Returns NULL if `size <= 0`.
 void *rt_box_value_type(int64_t size) {
     if (size <= 0)
         return NULL;
@@ -242,6 +274,11 @@ static int is_boxed(void *elem) {
     return box_maybe(elem) != NULL;
 }
 
+/// @brief Content-based hash for hashtable storage. For boxed values: FNV-1a over the contained
+/// scalar bytes (or string content). For non-box pointers: Knuth-multiplicative pointer hash so
+/// raw heap pointers in mixed collections still distribute reasonably. **Caller-side note:**
+/// strings hash by content, so two boxed-string instances with equal text hash equally — required
+/// for `Map[Box, ...]` lookup correctness.
 size_t rt_box_hash(void *elem) {
     if (is_boxed(elem)) {
         rt_box_t *box = (rt_box_t *)elem;
@@ -270,6 +307,9 @@ size_t rt_box_hash(void *elem) {
     return (size_t)((val * KNUTH_MULT) >> 16);
 }
 
+/// @brief Content-based equality for hashtable buckets. Handles pointer-identity fast path,
+/// rejects mixed box vs non-box, then dispatches by tag. Companion to `rt_box_hash` — together
+/// they let `Set[Box]` and `Map[Box, ...]` deduplicate by VALUE, not by pointer identity.
 int8_t rt_box_equal(void *a, void *b) {
     if (a == b)
         return 1;

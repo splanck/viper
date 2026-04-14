@@ -62,6 +62,11 @@ typedef int socklen_t;
 #define SEND_FLAGS 0
 #endif
 
+/// @brief Suppress SIGPIPE on writes to a closed peer.
+///
+/// macOS uses the per-socket `SO_NOSIGPIPE` option; Linux uses
+/// per-call `MSG_NOSIGNAL` (set via `SEND_FLAGS`); other platforms
+/// have nothing to do.
 static void suppress_sigpipe(int sock) {
 #if defined(__APPLE__) && defined(SO_NOSIGPIPE)
     int val = 1;
@@ -109,10 +114,17 @@ typedef struct rt_ws_impl {
     size_t recv_buffer_len;  ///< Bytes currently in buffer.
 } rt_ws_impl;
 
+/// @brief True if `host` is an IPv6 literal that must be wrapped in `[…]` for URL/Host.
 static int host_needs_brackets(const char *host) {
     return host && strchr(host, ':') != NULL && host[0] != '[';
 }
 
+/// @brief Validate a WebSocket frame opcode against RFC 6455 §5.2.
+///
+/// Only the six defined opcodes (continuation, text, binary, close,
+/// ping, pong) are legal — reserved opcodes 0x3-0x7 and 0xB-0xF
+/// must trigger a protocol-error close.
+/// @return 1 if `opcode` is a defined WS opcode, 0 otherwise.
 static int ws_is_valid_opcode(uint8_t opcode) {
     switch (opcode) {
         case WS_OP_CONTINUATION:
@@ -127,6 +139,10 @@ static int ws_is_valid_opcode(uint8_t opcode) {
     }
 }
 
+/// @brief Encode `len` as a big-endian 8-byte payload-length field.
+///
+/// Used for WebSocket frames whose payload is >= 65536 bytes
+/// (RFC 6455 §5.2 — the 7+64 length encoding).
 static void ws_encode_u64_len(uint8_t out[8], size_t len) {
     uint64_t value = (uint64_t)len;
     for (int i = 7; i >= 0; i--) {
@@ -135,6 +151,11 @@ static void ws_encode_u64_len(uint8_t out[8], size_t len) {
     }
 }
 
+/// @brief Decode an 8-byte big-endian length field into a host `size_t`.
+///
+/// Rejects values that exceed `SIZE_MAX` so we never silently
+/// truncate on 32-bit platforms.
+/// @return 1 on success, 0 if the value would overflow `size_t`.
 static int ws_decode_u64_len(const uint8_t in[8], size_t *len_out) {
     uint64_t value = 0;
     for (int i = 0; i < 8; i++)
@@ -145,6 +166,16 @@ static int ws_decode_u64_len(const uint8_t in[8], size_t *len_out) {
     return 1;
 }
 
+/// @brief Validate a byte buffer as well-formed UTF-8 per RFC 3629.
+///
+/// Required by RFC 6455 §8.1 — text frames whose payload is not
+/// valid UTF-8 must trigger a 1007 close. Walks each codepoint and
+/// rejects:
+///   - over-long encodings (e.g. C0/C1, E0 with a < 0xA0 byte)
+///   - surrogate halves (ED A0..BF)
+///   - codepoints above U+10FFFF (F4 above 0x8F, F5..FF entirely)
+///   - truncated multi-byte sequences
+/// @return 1 if all `len` bytes form valid UTF-8, 0 otherwise.
 static int ws_is_valid_utf8(const uint8_t *data, size_t len) {
     size_t i = 0;
     while (i < len) {
@@ -429,6 +460,10 @@ static int parse_ws_url(const char *url, int *is_secure, char **host, int *port,
     return 1;
 }
 
+/// @brief Test hook exposing the otherwise-static `parse_ws_url`.
+/// Lets unit tests probe URL-parsing edge cases without going
+/// through `rt_ws_connect`. Output strings are heap-allocated and
+/// must be freed by the caller.
 int rt_ws_parse_url_for_test(const char *url, int *is_secure, char **host, int *port, char **path) {
     return parse_ws_url(url, is_secure, host, port, path);
 }
@@ -442,6 +477,12 @@ static long ws_send_partial(rt_ws_impl *ws, const void *data, size_t len) {
     }
 }
 
+/// @brief Send `len` bytes, looping on partial sends until done or failed.
+///
+/// Wraps `ws_send_partial` with a retry loop so callers don't have
+/// to handle short writes from TCP/TLS. A non-positive return from
+/// any partial send aborts the whole transfer.
+/// @return 1 if all bytes sent, 0 on failure.
 static int ws_send_all(rt_ws_impl *ws, const void *data, size_t len) {
     const uint8_t *ptr = (const uint8_t *)data;
     size_t total = 0;
@@ -520,6 +561,12 @@ static void ws_clear_socket_timeout(int fd, int is_recv) {
     ws_set_socket_timeout(fd, 0, is_recv);
 }
 
+/// @brief Case-insensitive ASCII compare of two `len`-byte regions.
+///
+/// Used for HTTP header name/value matching during the WebSocket
+/// handshake. ASCII-only — does not lowercase non-ASCII bytes (a
+/// deliberate narrow contract since headers are 7-bit ASCII per HTTP).
+/// @return 1 if the regions match case-insensitively, 0 otherwise.
 static int ws_ascii_ieq_n(const char *a, const char *b, size_t len) {
     for (size_t i = 0; i < len; i++) {
         unsigned char ca = (unsigned char)a[i];
@@ -534,6 +581,13 @@ static int ws_ascii_ieq_n(const char *a, const char *b, size_t len) {
     return 1;
 }
 
+/// @brief Test whether a comma-separated header `value` contains `token`.
+///
+/// Splits on `,`, trims surrounding whitespace from each element,
+/// and case-insensitively compares against `token`. Used to confirm
+/// `Connection: Upgrade` (which may appear as `Connection:
+/// keep-alive, Upgrade`).
+/// @return 1 if token is present, 0 otherwise.
 static int ws_header_has_token(const char *value, size_t len, const char *token) {
     size_t token_len = strlen(token);
     size_t i = 0;
@@ -552,6 +606,17 @@ static int ws_header_has_token(const char *value, size_t len, const char *token)
     return 0;
 }
 
+/// @brief Validate the server's WebSocket upgrade response (test-visible).
+///
+/// Per RFC 6455 §4.1 a successful handshake requires:
+///   - Status line `HTTP/1.1 101 …`
+///   - `Upgrade: websocket` header
+///   - `Connection` header containing the `Upgrade` token
+///   - `Sec-WebSocket-Accept` header equal to
+///     `base64(SHA1(key_copy + WS_MAGIC))` where `WS_MAGIC` is
+///     `258EAFA5-E914-47DA-95CA-C5AB0DC85B11`.
+/// Made non-static to allow direct unit testing of the parser.
+/// @return 1 on a valid response, 0 on any mismatch / malformed header.
 int rt_ws_validate_handshake_response_for_test(const char *response, const char *key_copy) {
     if (!response || !key_copy)
         return 0;
@@ -900,8 +965,26 @@ static int ws_recv_frame(
     return 1;
 }
 
+/// @brief Forward declaration for the control-frame handler (defined below).
 static void ws_handle_control(rt_ws_impl *ws, uint8_t opcode, uint8_t *data, size_t len);
 
+/// @brief Read a complete WebSocket message, reassembling fragments.
+///
+/// Loops over `ws_recv_frame`, transparently handling:
+///   - Control frames (ping/pong/close) — dispatched to
+///     `ws_handle_control` and not returned to the caller.
+///   - Continuation frames — concatenated into a growing buffer.
+///   - First data frame with `fin=1` — returned immediately.
+///   - Reassembly cap (`WS_MAX_REASSEMBLY_SIZE`, 64 MB) — closes
+///     with code 1009 (message too big).
+///   - Out-of-order frames (e.g. continuation without an opener)
+///     — closes with code 1002 (protocol error).
+///   - Text payloads — final UTF-8 validation; closes with 1007
+///     (invalid data) on failure.
+///
+/// On success `*data_out` is a heap allocation owned by the caller
+/// (must be `free`d) and `*opcode_out` is `WS_OP_TEXT` or `WS_OP_BINARY`.
+/// @return 1 on a complete message, 0 on close/error.
 static int ws_recv_message(rt_ws_impl *ws,
                            uint8_t **data_out,
                            size_t *len_out,
@@ -1066,10 +1149,22 @@ static void rt_ws_finalize(void *obj) {
     ws->recv_buffer = NULL;
 }
 
+/// @brief Connect to a WebSocket URL with a 30-second default timeout.
+/// @see rt_ws_connect_for
 void *rt_ws_connect(rt_string url) {
     return rt_ws_connect_for(url, 30000); // 30 second default timeout
 }
 
+/// @brief Connect to a WebSocket URL (`ws://` or `wss://`) with explicit timeout.
+///
+/// Resolves the host, opens a TCP (or TLS for `wss://`) connection,
+/// and performs the WebSocket handshake (RFC 6455 §4): generates a
+/// random 16-byte key, sends an HTTP/1.1 Upgrade request, and
+/// validates the server's `Sec-WebSocket-Accept` against the
+/// expected `base64(SHA1(key + WS_MAGIC))`. On success returns a
+/// GC-managed `rt_ws_impl` with `is_open == 1`.
+/// @throws Err_InvalidUrl on bad URL,
+///         generic trap on connect/handshake failure or NULL URL.
 void *rt_ws_connect_for(rt_string url, int64_t timeout_ms) {
     const char *url_cstr = rt_string_cstr(url);
     if (!url_cstr) {
@@ -1181,6 +1276,7 @@ void *rt_ws_connect_for(rt_string url, int64_t timeout_ms) {
     return ws;
 }
 
+/// @brief The URL the connection was opened with. Empty string for NULL/closed-with-no-url.
 rt_string rt_ws_url(void *obj) {
     if (!obj)
         return rt_str_empty();
@@ -1190,6 +1286,7 @@ rt_string rt_ws_url(void *obj) {
     return rt_string_from_bytes(ws->url, strlen(ws->url));
 }
 
+/// @brief True (1) if the connection is still established, false (0) once closed/error.
 int8_t rt_ws_is_open(void *obj) {
     if (!obj)
         return 0;
@@ -1197,6 +1294,7 @@ int8_t rt_ws_is_open(void *obj) {
     return ws->is_open;
 }
 
+/// @brief WebSocket close code (1000-4999 per RFC 6455 §7.4). 0 if still open.
 int64_t rt_ws_close_code(void *obj) {
     if (!obj)
         return 0;
@@ -1204,6 +1302,7 @@ int64_t rt_ws_close_code(void *obj) {
     return ws->close_code;
 }
 
+/// @brief Optional close reason text supplied by the peer. Empty string when none.
 rt_string rt_ws_close_reason(void *obj) {
     if (!obj)
         return rt_str_empty();
@@ -1213,6 +1312,9 @@ rt_string rt_ws_close_reason(void *obj) {
     return rt_string_from_bytes(ws->close_reason, strlen(ws->close_reason));
 }
 
+/// @brief Send a text frame. Sends the string's bytes as UTF-8 (no validation).
+/// @throws Err_ConnectionClosed if `is_open == 0`,
+///         Err_NetworkError if the underlying send fails.
 void rt_ws_send(void *obj, rt_string text) {
     if (!obj)
         return;
@@ -1231,6 +1333,8 @@ void rt_ws_send(void *obj, rt_string text) {
     }
 }
 
+/// @brief Send a binary frame containing the bytes of `data`.
+/// @throws Err_ConnectionClosed if closed, Err_NetworkError on send failure.
 void rt_ws_send_bytes(void *obj, void *data) {
     if (!obj)
         return;
@@ -1260,6 +1364,10 @@ void rt_ws_send_bytes(void *obj, void *data) {
     free(buffer);
 }
 
+/// @brief Send an empty PING control frame to keep the connection alive.
+///
+/// Silently no-ops on a closed connection. The peer's PONG (if any)
+/// is consumed transparently inside `ws_recv_message`.
 void rt_ws_ping(void *obj) {
     if (!obj)
         return;
@@ -1270,6 +1378,9 @@ void rt_ws_ping(void *obj) {
     ws_send_frame(ws, WS_OP_PING, NULL, 0);
 }
 
+/// @brief Block until a complete message arrives and return it as a string.
+/// Returns the empty string on close/error. Both text and binary
+/// payloads are decoded as UTF-8 (binary may produce mojibake).
 rt_string rt_ws_recv(void *obj) {
     if (!obj)
         return rt_str_empty();
@@ -1285,6 +1396,13 @@ rt_string rt_ws_recv(void *obj) {
     return result;
 }
 
+/// @brief Receive a message with an upper bound on wait time (returns NULL on timeout).
+///
+/// Probes the TLS read buffer first because `select()` only sees
+/// the raw socket — already-decrypted bytes wouldn't show up.
+/// Then waits on `select` for `timeout_ms` and pumps a recv if data arrives.
+/// @return The string message, or NULL if the connection isn't
+///         open, the timeout fires, or the recv fails.
 rt_string rt_ws_recv_for(void *obj, int64_t timeout_ms) {
     if (!obj)
         return NULL;
@@ -1308,6 +1426,8 @@ rt_string rt_ws_recv_for(void *obj, int64_t timeout_ms) {
     return rt_ws_recv(obj);
 }
 
+/// @brief Block for a complete message and return its raw bytes.
+/// Returns an empty Bytes object on close/error.
 void *rt_ws_recv_bytes(void *obj) {
     if (!obj)
         return rt_bytes_new(0);
@@ -1325,6 +1445,8 @@ void *rt_ws_recv_bytes(void *obj) {
     return result;
 }
 
+/// @brief Receive a binary message with a timeout (NULL on timeout).
+/// @see rt_ws_recv_for
 void *rt_ws_recv_bytes_for(void *obj, int64_t timeout_ms) {
     if (!obj)
         return NULL;
@@ -1348,10 +1470,18 @@ void *rt_ws_recv_bytes_for(void *obj, int64_t timeout_ms) {
     return rt_ws_recv_bytes(obj);
 }
 
+/// @brief Send a normal close (code 1000) and mark the connection closed.
+/// @see rt_ws_close_with
 void rt_ws_close(void *obj) {
     rt_ws_close_with(obj, WS_CLOSE_NORMAL, rt_str_empty());
 }
 
+/// @brief Send a close frame with a specific code and optional reason text.
+///
+/// Builds a close payload of `[code:u16-be][reason]`, hands it to
+/// `ws_send_frame`, and clears `is_open`. Silently no-ops on NULL
+/// or already-closed connections. The TCP/TLS layer is left to be
+/// torn down by the GC finalizer (`rt_ws_finalize`).
 void rt_ws_close_with(void *obj, int64_t code, rt_string reason) {
     if (!obj)
         return;

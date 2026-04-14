@@ -34,6 +34,13 @@
 // Extended Drawing Primitives
 //=============================================================================
 
+/// @brief Draw a thick line segment with rounded endcaps.
+///
+/// `thickness == 1` falls through to the fast hairline `vgfx_line`.
+/// Wider lines are tessellated as a filled parallelogram (the body
+/// of the line, perpendicular to the segment) plus two filled
+/// circles at the endpoints to round off the caps. Color is the
+/// standard `0xRRGGBBAA` packed format.
 void rt_canvas_thick_line(void *canvas_ptr,
                           int64_t x1,
                           int64_t y1,
@@ -133,6 +140,12 @@ void rt_canvas_thick_line(void *canvas_ptr,
     }
 }
 
+/// @brief Fill a rectangle whose corners are quarter-circles of radius `radius`.
+///
+/// Composed of one center rectangle + two side rectangles + four
+/// quarter-circle fills at the corners. Setting `radius >= min(w,h)/2`
+/// produces a stadium / capsule shape; `radius == 0` degenerates
+/// to a regular filled box.
 void rt_canvas_round_box(
     void *canvas_ptr, int64_t x, int64_t y, int64_t w, int64_t h, int64_t radius, int64_t color) {
     if (!canvas_ptr || w <= 0 || h <= 0)
@@ -199,6 +212,9 @@ void rt_canvas_round_box(
                      col);
 }
 
+/// @brief Stroke (outline only) the same rounded-rectangle shape as `rt_canvas_round_box`.
+///
+/// Renders four straight edge segments + four quarter-circle arcs.
 void rt_canvas_round_frame(
     void *canvas_ptr, int64_t x, int64_t y, int64_t w, int64_t h, int64_t radius, int64_t color) {
     if (!canvas_ptr || w <= 0 || h <= 0)
@@ -403,6 +419,11 @@ void rt_canvas_flood_fill(void *canvas_ptr, int64_t start_x, int64_t start_y, in
     free(stack_y);
 }
 
+/// @brief Filled triangle defined by three points (any winding order).
+///
+/// Uses scanline rasterisation: sorts vertices by Y, then walks each
+/// horizontal line filling between the active edges. Sub-pixel
+/// vertices are not antialiased — this is the fast solid-fill path.
 void rt_canvas_triangle(void *canvas_ptr,
                         int64_t x1,
                         int64_t y1,
@@ -490,6 +511,7 @@ void rt_canvas_triangle(void *canvas_ptr,
     }
 }
 
+/// @brief Outline-only triangle — three line segments connecting the vertices.
 void rt_canvas_triangle_frame(void *canvas_ptr,
                               int64_t x1,
                               int64_t y1,
@@ -513,6 +535,11 @@ void rt_canvas_triangle_frame(void *canvas_ptr,
     vgfx_line(canvas->gfx_win, (int32_t)x3, (int32_t)y3, (int32_t)x1, (int32_t)y1, col);
 }
 
+/// @brief Filled axis-aligned ellipse centered at `(cx, cy)` with radii `(rx, ry)`.
+///
+/// Uses the scanline algorithm: for each y from -ry to +ry, compute
+/// the x extent from the ellipse equation and fill that horizontal
+/// span. Avoids the trig calls of polar tessellation.
 void rt_canvas_ellipse(
     void *canvas_ptr, int64_t cx, int64_t cy, int64_t rx, int64_t ry, int64_t color) {
     if (!canvas_ptr || rx <= 0 || ry <= 0)
@@ -597,6 +624,11 @@ void rt_canvas_ellipse(
     }
 }
 
+/// @brief Stroke (outline only) an ellipse using a polyline approximation.
+///
+/// Tessellates the ellipse boundary into short line segments — segment
+/// count scales with the larger radius so small ellipses don't pay
+/// for unnecessary detail.
 void rt_canvas_ellipse_frame(
     void *canvas_ptr, int64_t cx, int64_t cy, int64_t rx, int64_t ry, int64_t color) {
     if (!canvas_ptr || rx <= 0 || ry <= 0)
@@ -670,6 +702,11 @@ void rt_canvas_ellipse_frame(
     }
 }
 
+/// @brief Filled ellipse with per-pixel alpha blending against the existing canvas.
+///
+/// Slower than `rt_canvas_ellipse` because each pixel goes through
+/// `vgfx_blend_pixel` instead of a fast solid fill — use only when
+/// translucency is needed.
 void rt_canvas_ellipse_alpha(void *canvas_ptr,
                              int64_t cx,
                              int64_t cy,
@@ -714,6 +751,11 @@ void rt_canvas_ellipse_alpha(void *canvas_ptr,
 // Advanced Curves & Shapes
 //=============================================================================
 
+/// @brief Filled circular arc (pie slice) from `start_deg` to `end_deg`.
+///
+/// Drawn as a fan of triangles from the center to points along the
+/// arc. Angles are in degrees, measured clockwise from the positive
+/// X axis.
 void rt_canvas_arc(void *canvas_ptr,
                    int64_t cx,
                    int64_t cy,
@@ -771,6 +813,7 @@ void rt_canvas_arc(void *canvas_ptr,
     }
 }
 
+/// @brief Stroke (outline only) a circular arc segment — just the curve, no radii.
 void rt_canvas_arc_frame(void *canvas_ptr,
                          int64_t cx,
                          int64_t cy,
@@ -809,6 +852,12 @@ void rt_canvas_arc_frame(void *canvas_ptr,
     }
 }
 
+/// @brief Stroke a cubic Bezier curve from `(x1,y1)` to `(x4,y4)` with two control points.
+///
+/// Tessellates the curve via De Casteljau subdivision and renders
+/// the resulting polyline as a thick line. Step count is chosen
+/// adaptively from the chord/curve length ratio so straight curves
+/// don't over-tessellate.
 void rt_canvas_bezier(void *canvas_ptr,
                       int64_t x1,
                       int64_t y1,
@@ -959,6 +1008,11 @@ void rt_canvas_polygon_frame(void *canvas_ptr, void *points_ptr, int64_t count, 
 // Gradients
 //=============================================================================
 
+/// @brief Fill a rectangle with a horizontal linear gradient between two colors.
+///
+/// Each column of pixels is a linear interpolation between
+/// `color_left` and `color_right`. The blend is per-channel in
+/// 0xRRGGBBAA format (alpha included).
 void rt_canvas_gradient_h(
     void *canvas_ptr, int64_t x, int64_t y, int64_t w, int64_t h, int64_t c1, int64_t c2) {
     if (!canvas_ptr || w <= 0 || h <= 0)
@@ -1024,6 +1078,8 @@ void rt_canvas_gradient_h(
     free(row_buf);
 }
 
+/// @brief Fill a rectangle with a vertical linear gradient between two colors.
+/// @see rt_canvas_gradient_h — same idea, rows instead of columns.
 void rt_canvas_gradient_v(
     void *canvas_ptr, int64_t x, int64_t y, int64_t w, int64_t h, int64_t c1, int64_t c2) {
     if (!canvas_ptr || w <= 0 || h <= 0)

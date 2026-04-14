@@ -68,6 +68,12 @@ static void seq_release_element(void *val) {
         rt_obj_free(val);
 }
 
+/// @brief GC finalizer for `Seq[T]` — releases each owned element and the items array.
+///
+/// The sequence may or may not own its elements (`owns_elements`
+/// flag). Borrowed-element sequences (typed views over a parent
+/// container, etc.) skip the per-element release pass to avoid
+/// double-free.
 static void rt_seq_finalize(void *obj) {
     if (!obj)
         return;
@@ -458,6 +464,11 @@ void rt_seq_push(void *obj, void *val) {
     seq->len++;
 }
 
+/// @brief Push without retaining the element — for sequences that don't own their values.
+///
+/// Used by typed-view paths (e.g. `Seq[Int]` over a packed int64
+/// array) where the underlying storage is not GC-managed and a
+/// retain would be a noop. Public-facing code should use `rt_seq_push`.
 void rt_seq_push_raw(void *obj, void *val) {
     if (!obj)
         rt_trap("Seq.Push: null sequence");

@@ -232,13 +232,13 @@ void VMContext::handleInlineResult(VM::ExecState &state, const VM::ExecResult &e
     vmInstance->finalizeDispatch(state, exec);
 }
 
-/// @brief Report an unimplemented opcode and terminate execution.
+/// @brief Report an unimplemented opcode.
 /// @details Builds a trap message containing the opcode mnemonic and current
 ///          execution context before routing it through the runtime bridge.
-///          Termination follows immediately because continuing would leave the
-///          VM in an undefined state.
+///          Production trap handlers terminate or redirect control, while test
+///          observers may return after recording the failure.
 /// @param opcode Opcode lacking an implementation.
-[[noreturn]] void VMContext::trapUnimplemented(il::core::Opcode opcode) const {
+void VMContext::trapUnimplemented(il::core::Opcode opcode) const {
     const auto ctx = vmInstance->currentTrapContext();
     const std::string funcName = ctx.function ? ctx.function->name : std::string("<unknown>");
     const std::string blockLabel = ctx.block ? ctx.block->label : std::string();
@@ -246,6 +246,7 @@ void VMContext::handleInlineResult(VM::ExecState &state, const VM::ExecResult &e
     if (!blockLabel.empty())
         detail += " (block " + blockLabel + ')';
     RuntimeBridge::trap(TrapKind::InvalidOperation, detail, ctx.loc, funcName, blockLabel);
+    return;
 }
 
 /// @brief Forward trace events to the underlying VM tracer.
@@ -429,6 +430,7 @@ Slot VM::eval(Frame &fr, const il::core::Value &value) {
                                     {},
                                     fr.func ? fr.func->name : std::string{},
                                     "");
+                return {};
             } else {
                 s.str = it->second.get();
             }
@@ -445,6 +447,7 @@ Slot VM::eval(Frame &fr, const il::core::Value &value) {
                                 {},
                                 fr.func ? fr.func->name : std::string{},
                                 "");
+            return {};
     }
 }
 
@@ -508,9 +511,10 @@ void VM::handleInlineResult(ExecState &state, const ExecResult &exec) {
 ///          @ref VMContext::trapUnimplemented to emit diagnostics before
 ///          terminating.
 /// @param opcode Opcode lacking an implementation.
-[[noreturn]] void VM::trapUnimplemented(il::core::Opcode opcode) {
+void VM::trapUnimplemented(il::core::Opcode opcode) {
     VMContext ctx(*this);
     ctx.trapUnimplemented(opcode);
+    return;
 }
 
 /// @brief Retrieve the currently active VM for the calling thread.

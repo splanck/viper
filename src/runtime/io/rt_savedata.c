@@ -29,6 +29,7 @@
 
 #include "rt_savedata.h"
 #include "rt_dir.h"
+#include "rt_file_path.h"
 #include "rt_object.h"
 #include "rt_string.h"
 #include "rt_string_builder.h"
@@ -40,9 +41,11 @@
 
 #ifdef _WIN32
 #include <direct.h>
+#include <io.h>
 #include <process.h>
 #include <windows.h>
 #else
+#include <fcntl.h>
 #include <pwd.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -150,6 +153,147 @@ static char *get_home_dir(void) {
 #endif
 }
 
+static char *savedata_parent_dir_dup(const char *file_path) {
+    if (!file_path)
+        return NULL;
+    const char *last_sep = NULL;
+    for (const char *p = file_path; *p; ++p) {
+        if (*p == '/' || *p == '\\')
+            last_sep = p;
+    }
+    if (!last_sep)
+        return NULL;
+    size_t len = (size_t)(last_sep - file_path);
+    char *dir = (char *)malloc(len + 1);
+    if (!dir)
+        return NULL;
+    memcpy(dir, file_path, len);
+    dir[len] = '\0';
+    return dir;
+}
+
+#ifdef _WIN32
+static FILE *savedata_fopen_utf8(const char *path, const wchar_t *mode) {
+    wchar_t *wide_path = rt_file_path_utf8_to_wide(path);
+    if (!wide_path)
+        return NULL;
+    FILE *fp = _wfopen(wide_path, mode);
+    free(wide_path);
+    return fp;
+}
+
+static int savedata_remove_utf8(const char *path) {
+    wchar_t *wide_path = rt_file_path_utf8_to_wide(path);
+    if (!wide_path)
+        return -1;
+    int rc = _wremove(wide_path);
+    free(wide_path);
+    return rc;
+}
+
+static int savedata_replace_utf8(const char *src, const char *dst) {
+    wchar_t *wsrc = rt_file_path_utf8_to_wide(src);
+    wchar_t *wdst = rt_file_path_utf8_to_wide(dst);
+    if (!wsrc || !wdst) {
+        free(wsrc);
+        free(wdst);
+        return 0;
+    }
+    BOOL ok = MoveFileExW(wsrc, wdst, MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH);
+    free(wsrc);
+    free(wdst);
+    return ok ? 1 : 0;
+}
+
+static int savedata_sync_file(FILE *fp) {
+    return _commit(_fileno(fp)) == 0 ? 1 : 0;
+}
+
+static int savedata_sync_parent_dir(const char *path) {
+    char *parent = savedata_parent_dir_dup(path);
+    if (!parent)
+        return 1;
+
+    wchar_t *wide_parent = rt_file_path_utf8_to_wide(parent);
+    free(parent);
+    if (!wide_parent)
+        return 0;
+
+    HANDLE h = CreateFileW(wide_parent,
+                           FILE_READ_ATTRIBUTES,
+                           FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                           NULL,
+                           OPEN_EXISTING,
+                           FILE_FLAG_BACKUP_SEMANTICS,
+                           NULL);
+    free(wide_parent);
+    if (h == INVALID_HANDLE_VALUE)
+        return 0;
+
+    if (FlushFileBuffers(h)) {
+        CloseHandle(h);
+        return 1;
+    }
+
+    DWORD err = GetLastError();
+    CloseHandle(h);
+    return (err == ERROR_INVALID_HANDLE || err == ERROR_ACCESS_DENIED) ? 1 : 0;
+}
+
+static int savedata_file_size(FILE *fp, uint64_t *out_size) {
+    if (_fseeki64(fp, 0, SEEK_END) != 0)
+        return 0;
+    __int64 size = _ftelli64(fp);
+    if (size < 0)
+        return 0;
+    if (_fseeki64(fp, 0, SEEK_SET) != 0)
+        return 0;
+    *out_size = (uint64_t)size;
+    return 1;
+}
+#else
+static FILE *savedata_fopen_utf8(const char *path, const char *mode) {
+    return fopen(path, mode);
+}
+
+static int savedata_remove_utf8(const char *path) {
+    return remove(path);
+}
+
+static int savedata_replace_utf8(const char *src, const char *dst) {
+    return rename(src, dst) == 0 ? 1 : 0;
+}
+
+static int savedata_sync_file(FILE *fp) {
+    return fsync(fileno(fp)) == 0 ? 1 : 0;
+}
+
+static int savedata_sync_parent_dir(const char *path) {
+    char *parent = savedata_parent_dir_dup(path);
+    if (!parent)
+        return 0;
+    int fd = open(parent, O_RDONLY);
+    free(parent);
+    if (fd < 0)
+        return 0;
+    int ok = fsync(fd) == 0 ? 1 : 0;
+    close(fd);
+    return ok;
+}
+
+static int savedata_file_size(FILE *fp, uint64_t *out_size) {
+    if (fseeko(fp, 0, SEEK_END) != 0)
+        return 0;
+    off_t size = ftello(fp);
+    if (size < 0)
+        return 0;
+    if (fseeko(fp, 0, SEEK_SET) != 0)
+        return 0;
+    *out_size = (uint64_t)size;
+    return 1;
+}
+#endif
+
 /// @brief Validate game_name contains only safe characters for use in file paths.
 /// Rejects path traversal (.. / \) and non-alphanumeric characters except - and _.
 static int is_safe_game_name(const char *name) {
@@ -173,44 +317,41 @@ static char *compute_save_path(const char *game_name) {
     char *home = get_home_dir();
     if (!home)
         return NULL;
-
-    char path[1024];
+    char *path = NULL;
 
 #ifdef _WIN32
     const char *appdata = getenv("APPDATA");
-    if (appdata)
-        snprintf(path, sizeof(path), "%s\\Viper\\%s\\save.json", appdata, game_name);
-    else
-        snprintf(path, sizeof(path), "%s\\AppData\\Roaming\\Viper\\%s\\save.json", home, game_name);
+    const char *base = appdata ? appdata : home;
+    const char *middle = appdata ? "\\Viper\\" : "\\AppData\\Roaming\\Viper\\";
+    size_t needed = strlen(base) + strlen(middle) + strlen(game_name) + strlen("\\save.json") + 1;
+    path = (char *)malloc(needed);
+    if (path)
+        snprintf(path, needed, "%s%s%s\\save.json", base, middle, game_name);
 #elif defined(__APPLE__)
-    snprintf(
-        path, sizeof(path), "%s/Library/Application Support/Viper/%s/save.json", home, game_name);
+    size_t needed = strlen(home) + strlen("/Library/Application Support/Viper/") + strlen(game_name) +
+                    strlen("/save.json") + 1;
+    path = (char *)malloc(needed);
+    if (path)
+        snprintf(path, needed, "%s/Library/Application Support/Viper/%s/save.json", home, game_name);
 #else
-    snprintf(path, sizeof(path), "%s/.local/share/viper/%s/save.json", home, game_name);
+    size_t needed =
+        strlen(home) + strlen("/.local/share/viper/") + strlen(game_name) + strlen("/save.json") + 1;
+    path = (char *)malloc(needed);
+    if (path)
+        snprintf(path, needed, "%s/.local/share/viper/%s/save.json", home, game_name);
 #endif
 
     free(home);
-    return strdup(path);
+    return path;
 }
 
 static void ensure_parent_dir(const char *file_path) {
-    /* Extract directory portion */
-    char *dir = strdup(file_path);
+    char *dir = savedata_parent_dir_dup(file_path);
     if (!dir)
         return;
-
-    /* Find last separator */
-    char *last_sep = NULL;
-    for (char *p = dir; *p; p++) {
-        if (*p == '/' || *p == '\\')
-            last_sep = p;
-    }
-    if (last_sep) {
-        *last_sep = '\0';
-        rt_string dir_str = rt_string_from_bytes(dir, strlen(dir));
-        rt_dir_make_all(dir_str);
-        rt_string_unref(dir_str);
-    }
+    rt_string dir_str = rt_string_from_bytes(dir, strlen(dir));
+    rt_dir_make_all(dir_str);
+    rt_string_unref(dir_str);
     free(dir);
 }
 
@@ -349,7 +490,12 @@ static int savedata_write_atomic(const char *path, const char *data, size_t len)
 #endif
     snprintf(tmp_path, path_len + 48, "%s.tmp.%lu.%p", path, pid, (const void *)data);
 
-    FILE *fp = fopen(tmp_path, "wb");
+    FILE *fp =
+#ifdef _WIN32
+        savedata_fopen_utf8(tmp_path, L"wb");
+#else
+        savedata_fopen_utf8(tmp_path, "wb");
+#endif
     if (!fp) {
         free(tmp_path);
         return 0;
@@ -368,20 +514,18 @@ static int savedata_write_atomic(const char *path, const char *data, size_t len)
     int ok = (written == len) ? 1 : 0;
     if (ok && fflush(fp) != 0)
         ok = 0;
+    if (ok && !savedata_sync_file(fp))
+        ok = 0;
     if (fclose(fp) != 0)
         ok = 0;
 
-    if (ok) {
-#ifdef _WIN32
-        ok =
-            MoveFileExA(tmp_path, path, MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) ? 1 : 0;
-#else
-        ok = (rename(tmp_path, path) == 0) ? 1 : 0;
-#endif
-    }
+    if (ok)
+        ok = savedata_replace_utf8(tmp_path, path);
+    if (ok)
+        ok = savedata_sync_parent_dir(path);
 
     if (!ok)
-        remove(tmp_path);
+        savedata_remove_utf8(tmp_path);
     free(tmp_path);
     return ok;
 }
@@ -403,6 +547,10 @@ static void savedata_finalizer(void *obj) {
 // Public API
 //=========================================================================
 
+/// @brief Construct a SaveData store keyed by `game_name`. The save file path is computed from
+/// the platform's per-user data directory (`%APPDATA%/<game>` on Win32, `~/.local/share/<game>`
+/// on Linux, `~/Library/Application Support/<game>` on macOS). Empty game-name traps. Returns a
+/// GC-managed handle; load existing data via `_load`.
 void *rt_savedata_new(rt_string game_name) {
     if (!game_name || rt_str_len(game_name) == 0) {
         rt_trap("SaveData.New: game name must not be empty");
@@ -428,6 +576,8 @@ void *rt_savedata_new(rt_string game_name) {
     return sd;
 }
 
+/// @brief Store an int64 under `key`. In-memory only — call `_save` to flush to disk.
+/// Re-setting an existing key overwrites; type-changing (string→int) is allowed.
 void rt_savedata_set_int(void *obj, rt_string key, int64_t value) {
     if (!obj || !key)
         return;
@@ -441,6 +591,7 @@ void rt_savedata_set_int(void *obj, rt_string key, int64_t value) {
     savedata_set_int_entry(&sd->entries, key, value);
 }
 
+/// @brief Store a string under `key`. In-memory only — call `_save` to persist.
 void rt_savedata_set_string(void *obj, rt_string key, rt_string value) {
     if (!obj || !key)
         return;
@@ -454,6 +605,7 @@ void rt_savedata_set_string(void *obj, rt_string key, rt_string value) {
     savedata_set_string_entry(&sd->entries, key, value);
 }
 
+/// @brief Read an int64 by `key`, returning `default_val` if missing or stored as a different type.
 int64_t rt_savedata_get_int(void *obj, rt_string key, int64_t default_val) {
     if (!obj || !key)
         return default_val;
@@ -467,6 +619,8 @@ int64_t rt_savedata_get_int(void *obj, rt_string key, int64_t default_val) {
     return e->int_val;
 }
 
+/// @brief Read a string by `key`, returning `default_val` (or empty) if missing/wrong type.
+/// The returned string is freshly retained.
 rt_string rt_savedata_get_string(void *obj, rt_string key, rt_string default_val) {
     if (!obj || !key)
         return default_val ? default_val : rt_str_empty();
@@ -480,6 +634,9 @@ rt_string rt_savedata_get_string(void *obj, rt_string key, rt_string default_val
     return e->str_val ? rt_string_ref(e->str_val) : rt_str_empty();
 }
 
+/// @brief Persist all in-memory entries to disk as JSON. Ensures the parent directory exists,
+/// builds the JSON object via string-builder, then atomically writes via the file-IO layer.
+/// Returns 1 on success, 0 on any failure.
 int8_t rt_savedata_save(void *obj) {
     if (!obj)
         return 0;
@@ -527,6 +684,9 @@ int8_t rt_savedata_save(void *obj) {
     return ok ? 1 : 0;
 }
 
+/// @brief Load existing entries from disk into memory, replacing the current state. Uses the
+/// streaming JSON parser (`rt_json_stream_*`) so large save files don't allocate everything at
+/// once. Returns 1 on success or "no file yet" (treats missing file as empty); 0 on parse error.
 int8_t rt_savedata_load(void *obj) {
     if (!obj)
         return 0;
@@ -534,16 +694,18 @@ int8_t rt_savedata_load(void *obj) {
     if (!sd->file_path)
         return 0;
 
-    FILE *fp = fopen(sd->file_path, "rb");
+    FILE *fp =
+#ifdef _WIN32
+        savedata_fopen_utf8(sd->file_path, L"rb");
+#else
+        savedata_fopen_utf8(sd->file_path, "rb");
+#endif
     if (!fp)
         return 0;
 
     /* Read entire file */
-    fseek(fp, 0, SEEK_END);
-    long file_size = ftell(fp);
-    fseek(fp, 0, SEEK_SET);
-
-    if (file_size <= 0) {
+    uint64_t file_size = 0;
+    if (!savedata_file_size(fp, &file_size) || file_size == 0 || file_size > SIZE_MAX) {
         fclose(fp);
         return 0;
     }
@@ -634,6 +796,7 @@ done:
     return 1;
 }
 
+/// @brief Returns 1 if `key` exists in the current entries, regardless of stored type.
 int8_t rt_savedata_has_key(void *obj, rt_string key) {
     if (!obj || !key)
         return 0;
@@ -644,6 +807,7 @@ int8_t rt_savedata_has_key(void *obj, rt_string key) {
     return find_entry(sd, kcstr, (size_t)rt_str_len(key)) != NULL;
 }
 
+/// @brief Remove an entry by key. Returns 1 if removed, 0 if absent. In-memory only.
 int8_t rt_savedata_remove(void *obj, rt_string key) {
     if (!obj || !key)
         return 0;
@@ -667,12 +831,14 @@ int8_t rt_savedata_remove(void *obj, rt_string key) {
     return 0;
 }
 
+/// @brief Drop every in-memory entry (call `_save` afterwards to clear the on-disk file too).
 void rt_savedata_clear(void *obj) {
     if (!obj)
         return;
     free_all_entries((rt_savedata_impl *)obj);
 }
 
+/// @brief Number of entries currently in the store.
 int64_t rt_savedata_count(void *obj) {
     if (!obj)
         return 0;
@@ -686,6 +852,8 @@ int64_t rt_savedata_count(void *obj) {
     return count;
 }
 
+/// @brief Read the absolute path where this SaveData persists. Useful for showing the user
+/// where their save lives or for backup/restore tooling.
 rt_string rt_savedata_get_path(void *obj) {
     if (!obj)
         return rt_str_empty();

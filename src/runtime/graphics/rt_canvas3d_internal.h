@@ -360,10 +360,12 @@ typedef struct {
     double m[16]; /* row-major: m[r*4+c] */
 } mat4_impl;
 
+/// @brief Internal: submit a mesh draw with an explicit row-major Mat4 (skips Mat4 wrapper alloc).
 void rt_canvas3d_draw_mesh_matrix(void *obj,
                                   void *mesh_obj,
                                   const double *model_matrix,
                                   void *material_obj);
+/// @brief Internal: submit a mesh draw with motion-key + previous bone/morph data for TAA + motion blur.
 void rt_canvas3d_draw_mesh_matrix_keyed(void *obj,
                                         void *mesh_obj,
                                         const double *model_matrix,
@@ -371,6 +373,7 @@ void rt_canvas3d_draw_mesh_matrix_keyed(void *obj,
                                         const void *motion_key,
                                         const float *prev_bone_palette,
                                         const float *prev_morph_weights);
+/// @brief Internal: queue an instanced batch (one draw call rendering many transforms of @p mesh).
 void rt_canvas3d_queue_instanced_batch(void *canvas_obj,
                                        void *mesh_obj,
                                        void *material_obj,
@@ -378,11 +381,16 @@ void rt_canvas3d_queue_instanced_batch(void *canvas_obj,
                                        int32_t instance_count,
                                        const float *prev_instance_matrices,
                                        int8_t has_prev_instance_matrices);
+/// @brief Internal: get the monotonic per-frame counter (used to seed motion-blur history).
 int64_t rt_canvas3d_get_frame_serial(void *obj);
+/// @brief Internal: begin a HUD/overlay sub-pass; @p preserve_existing_color skips the initial clear.
 int canvas3d_begin_overlay_frame(rt_canvas3d *c, int8_t preserve_existing_color);
+/// @brief Internal: borrow the most recently used scene VP matrix for billboard alignment.
 const float *canvas3d_active_scene_vp(const rt_canvas3d *c);
+/// @brief Internal: queue a 2D rect into the overlay pass at clip-space position with RGBA color.
 int canvas3d_queue_screen_rect(
     rt_canvas3d *c, float x, float y, float w, float h, float r, float g, float b, float a);
+/// @brief Internal: queue a 2D line into the overlay pass with thickness and RGBA color.
 int canvas3d_queue_screen_line(rt_canvas3d *c,
                                float x0,
                                float y0,

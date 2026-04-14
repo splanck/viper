@@ -586,11 +586,15 @@ class VM {
      */
     int64_t run();
 
-    /// @brief Request a graceful interrupt of any running program on this process.
-    /// Thread-safe.  Equivalent to the user pressing Ctrl-C.
+    /// @brief Request a graceful interrupt of all currently running VMs in this process.
+    /// @details Thread-safe. Equivalent to the user pressing Ctrl-C. The request is
+    ///          published as a process-wide epoch so every active VM observes it exactly once.
     static void requestInterrupt() noexcept;
 
-    /// @brief Clear the global interrupt flag after it has been handled.
+    /// @brief Clear any pending process-wide interrupt request.
+    /// @details Suppresses an interrupt request that has been published but not yet observed
+    ///          by the calling VM. Running VMs that already handled the current epoch are
+    ///          unaffected.
     static void clearInterrupt() noexcept;
 
     /// @brief Function signature for opcode handlers.
@@ -804,6 +808,12 @@ class VM {
     /// @invariant Monotonically increases during execution.
     uint64_t instrCount = 0;
 
+    /// @brief Most recent process-wide interrupt epoch observed by this VM.
+    /// @details Used to ensure one interrupt request is delivered independently to
+    ///          each active VM instead of being consumed process-globally by the first
+    ///          interpreter loop that notices it.
+    uint64_t lastObservedInterruptEpoch_ = 0;
+
     /// @brief Remaining instructions to step before pausing.
     uint64_t stepBudget = 0;
 
@@ -1010,6 +1020,9 @@ class VM {
     /// @brief Forward to debug control logic for pause decisions.
     std::optional<Slot> shouldPause(ExecState &st, const il::core::Instr *in, bool postExec);
 
+    /// @brief Consume the current process-wide interrupt epoch for this VM, if any.
+    bool consumePendingInterrupt() noexcept;
+
     /// @brief Execute a single interpreter step.
     std::optional<Slot> stepOnce(ExecState &st);
 
@@ -1025,7 +1038,7 @@ class VM {
     void handleInlineResult(ExecState &st, const ExecResult &exec);
 
     /// @brief Trap when no handler implementation exists for @p op.
-    [[noreturn]] void trapUnimplemented(il::core::Opcode op);
+    void trapUnimplemented(il::core::Opcode op);
 
     /// @brief Run the main interpreter loop.
     /// @param st Prepared execution state.
@@ -1100,18 +1113,24 @@ class VM {
     ///          registry before falling back to the process-global registry.
     ///          This enables multi-tenant scenarios where different VMs can
     ///          have different sets of host-provided functions.
-    /// @ownership Non-owning pointer; the registry must outlive the VM.
-    ///            Typically the embedder owns the registry via ExternRegistryPtr.
+    /// @ownership The VM retains a lifetime reference to the registry while
+    ///            this pointer is set, so worker VMs can safely outlive the
+    ///            original owning ExternRegistryPtr.
     /// @invariant May only be modified when the VM is not executing.
     ExternRegistry *externRegistry_ = nullptr;
 
   public:
     /// @brief Assign a per-VM extern registry for isolated function resolution.
     /// @param registry Pointer to the registry, or nullptr to use only global.
-    /// @details The registry must outlive the VM. Typically created via
-    ///          createExternRegistry() and owned by the embedder.
+    /// @details The VM retains the registry until another registry is assigned
+    ///          or the VM is destroyed. Callers may still keep an
+    ///          ExternRegistryPtr for their own ownership tracking.
     /// @note Thread safety: Call only when the VM is not executing.
     void setExternRegistry(ExternRegistry *registry) noexcept {
+        if (registry == externRegistry_)
+            return;
+        retainExternRegistry(registry);
+        releaseExternRegistry(externRegistry_);
         externRegistry_ = registry;
     }
 

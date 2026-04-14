@@ -129,6 +129,9 @@ static void ensure_cap(rt_spritesheet_impl *ss) {
 // Public API
 //=============================================================================
 
+/// @brief Construct a SpriteSheet that wraps an existing Pixels atlas. The atlas is retained;
+/// regions are added later via `_set_region` or `_from_grid`. Returns NULL if `atlas_pixels`
+/// is NULL or on allocation failure (which also traps).
 void *rt_spritesheet_new(void *atlas_pixels) {
     rt_spritesheet_impl *ss;
     if (!atlas_pixels)
@@ -154,6 +157,9 @@ void *rt_spritesheet_new(void *atlas_pixels) {
     return ss;
 }
 
+/// @brief Build a SpriteSheet from an atlas auto-sliced into a uniform `frame_w × frame_h` grid.
+/// Frames are named "0", "1", ... in row-major order (left-to-right, top-to-bottom). Useful for
+/// engine-friendly sprite sheets where each frame is the same size.
 void *rt_spritesheet_from_grid(void *atlas_pixels, int64_t frame_w, int64_t frame_h) {
     void *sheet;
     int64_t atlas_w, atlas_h, cols, rows, idx, iy, ix;
@@ -182,6 +188,9 @@ void *rt_spritesheet_from_grid(void *atlas_pixels, int64_t frame_w, int64_t fram
     return sheet;
 }
 
+/// @brief Define or update a named region (sub-rectangle) within the atlas. If a region with
+/// `name` already exists, its bounds are overwritten in place; otherwise a new entry is appended,
+/// growing the internal arrays as needed. The name string is copied internally.
 void rt_spritesheet_set_region(
     void *obj, rt_string name, int64_t x, int64_t y, int64_t w, int64_t h) {
     rt_spritesheet_impl *ss;
@@ -220,6 +229,9 @@ void rt_spritesheet_set_region(
     }
 }
 
+/// @brief Extract the named region as a freshly allocated Pixels copy. Returns NULL if the
+/// region doesn't exist or on allocation failure. The returned Pixels is independent of the
+/// atlas — modifying it has no effect on the source sheet.
 void *rt_spritesheet_get_region(void *obj, rt_string name) {
     rt_spritesheet_impl *ss;
     const char *cstr;
@@ -280,6 +292,8 @@ int64_t rt_spritesheet_height(void *obj) {
     return rt_pixels_height(((rt_spritesheet_impl *)obj)->atlas);
 }
 
+/// @brief Return a Seq of all defined region names (as rt_strings) in insertion order. Empty
+/// Seq for a NULL handle. Useful for enumerating the sheet's frames in editor/debug tools.
 void *rt_spritesheet_region_names(void *obj) {
     rt_spritesheet_impl *ss;
     void *seq;

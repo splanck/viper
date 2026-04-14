@@ -276,6 +276,9 @@ void rt_concmap_set(void *obj, rt_string key, void *value) {
     CM_UNLOCK(cm);
 }
 
+/// @brief Look up a value by string key. Returns a freshly-retained reference (caller releases)
+/// or NULL if absent. The string key is hashed via FNV-1a and the bucket is scanned linearly
+/// (collision chaining); thread-safe via the queue's mutex.
 void *rt_concmap_get(void *obj, rt_string key) {
     if (!obj)
         return NULL;
@@ -294,6 +297,8 @@ void *rt_concmap_get(void *obj, rt_string key) {
     return result;
 }
 
+/// @brief Look up a value, returning `default_value` if missing. Only the found value is
+/// retained; `default_value`'s lifetime is the caller's responsibility (passed-through unchanged).
 void *rt_concmap_get_or(void *obj, rt_string key, void *default_value) {
     if (!obj)
         return default_value;
@@ -414,6 +419,9 @@ void rt_concmap_clear(void *obj) {
     CM_UNLOCK(cm);
 }
 
+/// @brief Return a snapshot Seq containing every key currently in the map. The Seq owns its
+/// element strings (`set_owns_elements(1)`) so caller release frees them. Order is bucket-walk
+/// order — NOT insertion order; treat it as unordered.
 void *rt_concmap_keys(void *obj) {
     void *seq = rt_seq_new();
     rt_seq_set_owns_elements(seq, 1);
@@ -434,6 +442,9 @@ void *rt_concmap_keys(void *obj) {
     return seq;
 }
 
+/// @brief Return a snapshot Seq of all values. Like `_keys`, the Seq owns its elements (so the
+/// values get released when the Seq is) — implies a retain on each map value at snapshot time.
+/// Bucket-walk order; not insertion order.
 void *rt_concmap_values(void *obj) {
     void *seq = rt_seq_new();
     rt_seq_set_owns_elements(seq, 1);

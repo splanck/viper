@@ -211,7 +211,21 @@ void BytecodeVM::runThreaded() {
 
 #define DISPATCH()                                                                                 \
     do {                                                                                           \
-        instr = code[pc++];                                                                        \
+        if (!fp_ || !fp_->func) {                                                                  \
+            SYNC_STATE();                                                                          \
+            return;                                                                                \
+        }                                                                                          \
+        code = fp_->func->code.data();                                                             \
+        if (!ensurePcInRange(*fp_->func, pc, "BytecodeVM::runThreaded(fetch)")) {                  \
+            SYNC_STATE();                                                                          \
+            return;                                                                                \
+        }                                                                                          \
+        instr = code[pc];                                                                          \
+        if (!ensureStackForInstruction(*fp_, sp, instr, "BytecodeVM::runThreaded")) {              \
+            SYNC_STATE();                                                                          \
+            return;                                                                                \
+        }                                                                                          \
+        ++pc;                                                                                      \
         ++instrCount_;                                                                             \
         goto *dispatchTable[instr & 0xFF];                                                         \
     } while (0)
@@ -417,6 +431,10 @@ L_LOAD_I16:
 
 L_LOAD_I32: {
     // Extended format: the 32-bit value is stored in the next code word.
+    if (!ensureWordsAvailable(*fp_->func, pc, 1, "BytecodeVM::LOAD_I32(threaded)")) {
+        SYNC_STATE();
+        return;
+    }
     int32_t val = static_cast<int32_t>(code[pc++]);
     sp->i64 = val;
     setSlotOwnsString(sp, false);
@@ -425,12 +443,22 @@ L_LOAD_I32: {
 }
 
 L_LOAD_I64:
+    if (decodeArg16(instr) >= module_->i64Pool.size()) {
+        SYNC_STATE();
+        trap(TrapKind::InvalidOpcode, "LOAD_I64 constant index out of range");
+        return;
+    }
     sp->i64 = module_->i64Pool[decodeArg16(instr)];
     setSlotOwnsString(sp, false);
     sp++;
     DISPATCH();
 
 L_LOAD_F64:
+    if (decodeArg16(instr) >= module_->f64Pool.size()) {
+        SYNC_STATE();
+        trap(TrapKind::InvalidOpcode, "LOAD_F64 constant index out of range");
+        return;
+    }
     sp->f64 = module_->f64Pool[decodeArg16(instr)];
     setSlotOwnsString(sp, false);
     sp++;
@@ -475,11 +503,20 @@ L_LOAD_ONE:
 
 L_LOAD_GLOBAL: {
     uint16_t gIdx = decodeArg16(instr);
-    if (gIdx < globals_.size()) {
-        *sp = globals_[gIdx];
-        setSlotOwnsString(sp, false);
+    if (gIdx >= globals_.size()) {
+        SYNC_STATE();
+        trap(TrapKind::InvalidOpcode, "LOAD_GLOBAL index out of range");
+        return;
+    }
+    *sp = globals_[gIdx];
+    if (gIdx < globalsStringOwned_.size() && globalsStringOwned_[gIdx] && globals_[gIdx].ptr) {
+        if (!validateStringHandle(globals_[gIdx].ptr, "BytecodeVM::LOAD_GLOBAL(threaded)")) {
+            SYNC_STATE();
+            return;
+        }
+        rt_str_retain_maybe(static_cast<rt_string>(globals_[gIdx].ptr));
+        setSlotOwnsString(sp, true);
     } else {
-        sp->i64 = 0;
         setSlotOwnsString(sp, false);
     }
     sp++;
@@ -489,9 +526,22 @@ L_LOAD_GLOBAL: {
 L_STORE_GLOBAL: {
     sp--;
     uint16_t gIdx = decodeArg16(instr);
-    if (gIdx < globals_.size()) {
-        globals_[gIdx] = *sp;
+    if (gIdx >= globals_.size()) {
+        setSlotOwnsString(sp, false);
+        SYNC_STATE();
+        trap(TrapKind::InvalidOpcode, "STORE_GLOBAL index out of range");
+        return;
     }
+    if (gIdx < globalsStringOwned_.size() && globalsStringOwned_[gIdx] && globals_[gIdx].ptr) {
+        if (!validateStringHandle(globals_[gIdx].ptr, "BytecodeVM::STORE_GLOBAL(threaded)")) {
+            SYNC_STATE();
+            return;
+        }
+        rt_str_release_maybe(static_cast<rt_string>(globals_[gIdx].ptr));
+    }
+    globals_[gIdx] = *sp;
+    if (gIdx < globalsStringOwned_.size())
+        globalsStringOwned_[gIdx] = slotOwnsString(sp) ? 1 : 0;
     setSlotOwnsString(sp, false);
     DISPATCH();
 }
@@ -513,43 +563,115 @@ L_MUL_I64:
     DISPATCH();
 
 L_SDIV_I64:
-    sp[-2].i64 /= sp[-1].i64;
+    {
+        int64_t result = 0;
+        TrapKind fault = TrapKind::None;
+        if (!safeSignedDiv(sp[-2].i64, sp[-1].i64, result, fault)) {
+            SYNC_STATE();
+            sp_ = sp;
+            if (!dispatchTrap(fault)) {
+                trap(fault,
+                     fault == TrapKind::DivideByZero ? "division by zero"
+                                                      : "Overflow: integer division overflow");
+                return;
+            }
+            RELOAD_STATE();
+            DISPATCH();
+        }
+        sp[-2].i64 = result;
+    }
     sp--;
     DISPATCH();
 
 L_UDIV_I64:
-    sp[-2].i64 =
-        static_cast<int64_t>(static_cast<uint64_t>(sp[-2].i64) / static_cast<uint64_t>(sp[-1].i64));
+    {
+        int64_t result = 0;
+        TrapKind fault = TrapKind::None;
+        if (!safeUnsignedDiv(sp[-2].i64, sp[-1].i64, result, fault)) {
+            SYNC_STATE();
+            sp_ = sp;
+            if (!dispatchTrap(fault)) {
+                trap(fault, "division by zero");
+                return;
+            }
+            RELOAD_STATE();
+            DISPATCH();
+        }
+        sp[-2].i64 = result;
+    }
     sp--;
     DISPATCH();
 
 L_SREM_I64:
-    sp[-2].i64 %= sp[-1].i64;
+    {
+        int64_t result = 0;
+        TrapKind fault = TrapKind::None;
+        if (!safeSignedRem(sp[-2].i64, sp[-1].i64, result, fault)) {
+            SYNC_STATE();
+            sp_ = sp;
+            if (!dispatchTrap(fault)) {
+                trap(fault,
+                     fault == TrapKind::DivideByZero ? "division by zero"
+                                                      : "Overflow: integer remainder overflow");
+                return;
+            }
+            RELOAD_STATE();
+            DISPATCH();
+        }
+        sp[-2].i64 = result;
+    }
     sp--;
     DISPATCH();
 
 L_UREM_I64:
-    sp[-2].i64 =
-        static_cast<int64_t>(static_cast<uint64_t>(sp[-2].i64) % static_cast<uint64_t>(sp[-1].i64));
+    {
+        int64_t result = 0;
+        TrapKind fault = TrapKind::None;
+        if (!safeUnsignedRem(sp[-2].i64, sp[-1].i64, result, fault)) {
+            SYNC_STATE();
+            sp_ = sp;
+            if (!dispatchTrap(fault)) {
+                trap(fault, "division by zero");
+                return;
+            }
+            RELOAD_STATE();
+            DISPATCH();
+        }
+        sp[-2].i64 = result;
+    }
     sp--;
     DISPATCH();
 
 L_NEG_I64:
-    sp[-1].i64 = -sp[-1].i64;
+    {
+        int64_t result = 0;
+        TrapKind fault = TrapKind::None;
+        if (!safeNegate(sp[-1].i64, result, fault)) {
+            SYNC_STATE();
+            sp_ = sp;
+            if (!dispatchTrap(fault)) {
+                trap(fault, "Overflow: integer negation overflow");
+                return;
+            }
+            RELOAD_STATE();
+            DISPATCH();
+        }
+        sp[-1].i64 = result;
+    }
     DISPATCH();
 
 L_ADD_I64_OVF: {
     // Target type encoded in arg: 0=I1, 1=I16, 2=I32, 3=I64
     uint8_t targetType = decodeArg8_0(instr);
     int64_t a = sp[-2].i64, b = sp[-1].i64;
-    int64_t result = a + b;
+    int64_t result = 0;
     bool overflow = false;
     switch (targetType) {
         case 1: // I16
-            overflow = (result < INT16_MIN || result > INT16_MAX);
+            overflow = addOverflow(a, b, result) || result < INT16_MIN || result > INT16_MAX;
             break;
         case 2: // I32
-            overflow = (result < INT32_MIN || result > INT32_MAX);
+            overflow = addOverflow(a, b, result) || result < INT32_MIN || result > INT32_MAX;
             break;
         default: // I64
             overflow = addOverflow(a, b, result);
@@ -569,14 +691,14 @@ L_SUB_I64_OVF: {
     // Target type encoded in arg: 0=I1, 1=I16, 2=I32, 3=I64
     uint8_t targetType = decodeArg8_0(instr);
     int64_t a = sp[-2].i64, b = sp[-1].i64;
-    int64_t result = a - b;
+    int64_t result = 0;
     bool overflow = false;
     switch (targetType) {
         case 1: // I16
-            overflow = (result < INT16_MIN || result > INT16_MAX);
+            overflow = subOverflow(a, b, result) || result < INT16_MIN || result > INT16_MAX;
             break;
         case 2: // I32
-            overflow = (result < INT32_MIN || result > INT32_MAX);
+            overflow = subOverflow(a, b, result) || result < INT32_MIN || result > INT32_MAX;
             break;
         default: // I64
             overflow = subOverflow(a, b, result);
@@ -596,14 +718,14 @@ L_MUL_I64_OVF: {
     // Target type encoded in arg: 0=I1, 1=I16, 2=I32, 3=I64
     uint8_t targetType = decodeArg8_0(instr);
     int64_t a = sp[-2].i64, b = sp[-1].i64;
-    int64_t result = a * b;
+    int64_t result = 0;
     bool overflow = false;
     switch (targetType) {
         case 1: // I16
-            overflow = (result < INT16_MIN || result > INT16_MAX);
+            overflow = mulOverflow(a, b, result) || result < INT16_MIN || result > INT16_MAX;
             break;
         case 2: // I32
-            overflow = (result < INT32_MIN || result > INT32_MAX);
+            overflow = mulOverflow(a, b, result) || result < INT32_MIN || result > INT32_MAX;
             break;
         default: // I64
             overflow = mulOverflow(a, b, result);
@@ -620,64 +742,82 @@ L_MUL_I64_OVF: {
 }
 
 L_SDIV_I64_CHK:
-    if (sp[-1].i64 == 0) {
-        SYNC_STATE();
-        sp_ = sp;
-        if (!dispatchTrap(TrapKind::DivideByZero)) {
-            trap(TrapKind::DivideByZero, "division by zero");
-            return;
+    {
+        int64_t result = 0;
+        TrapKind fault = TrapKind::None;
+        if (!safeSignedDiv(sp[-2].i64, sp[-1].i64, result, fault)) {
+            SYNC_STATE();
+            sp_ = sp;
+            if (!dispatchTrap(fault)) {
+                trap(fault,
+                     fault == TrapKind::DivideByZero ? "division by zero"
+                                                      : "Overflow: integer division overflow");
+                return;
+            }
+            RELOAD_STATE();
+            DISPATCH();
         }
-        RELOAD_STATE();
-        DISPATCH();
+        sp[-2].i64 = result;
     }
-    sp[-2].i64 /= sp[-1].i64;
     sp--;
     DISPATCH();
 
 L_UDIV_I64_CHK:
-    if (sp[-1].i64 == 0) {
-        SYNC_STATE();
-        sp_ = sp;
-        if (!dispatchTrap(TrapKind::DivideByZero)) {
-            trap(TrapKind::DivideByZero, "division by zero");
-            return;
+    {
+        int64_t result = 0;
+        TrapKind fault = TrapKind::None;
+        if (!safeUnsignedDiv(sp[-2].i64, sp[-1].i64, result, fault)) {
+            SYNC_STATE();
+            sp_ = sp;
+            if (!dispatchTrap(fault)) {
+                trap(fault, "division by zero");
+                return;
+            }
+            RELOAD_STATE();
+            DISPATCH();
         }
-        RELOAD_STATE();
-        DISPATCH();
+        sp[-2].i64 = result;
     }
-    sp[-2].i64 =
-        static_cast<int64_t>(static_cast<uint64_t>(sp[-2].i64) / static_cast<uint64_t>(sp[-1].i64));
     sp--;
     DISPATCH();
 
 L_SREM_I64_CHK:
-    if (sp[-1].i64 == 0) {
-        SYNC_STATE();
-        sp_ = sp;
-        if (!dispatchTrap(TrapKind::DivideByZero)) {
-            trap(TrapKind::DivideByZero, "division by zero");
-            return;
+    {
+        int64_t result = 0;
+        TrapKind fault = TrapKind::None;
+        if (!safeSignedRem(sp[-2].i64, sp[-1].i64, result, fault)) {
+            SYNC_STATE();
+            sp_ = sp;
+            if (!dispatchTrap(fault)) {
+                trap(fault,
+                     fault == TrapKind::DivideByZero ? "division by zero"
+                                                      : "Overflow: integer remainder overflow");
+                return;
+            }
+            RELOAD_STATE();
+            DISPATCH();
         }
-        RELOAD_STATE();
-        DISPATCH();
+        sp[-2].i64 = result;
     }
-    sp[-2].i64 %= sp[-1].i64;
     sp--;
     DISPATCH();
 
 L_UREM_I64_CHK:
-    if (sp[-1].i64 == 0) {
-        SYNC_STATE();
-        sp_ = sp;
-        if (!dispatchTrap(TrapKind::DivideByZero)) {
-            trap(TrapKind::DivideByZero, "division by zero");
-            return;
+    {
+        int64_t result = 0;
+        TrapKind fault = TrapKind::None;
+        if (!safeUnsignedRem(sp[-2].i64, sp[-1].i64, result, fault)) {
+            SYNC_STATE();
+            sp_ = sp;
+            if (!dispatchTrap(fault)) {
+                trap(fault, "division by zero");
+                return;
+            }
+            RELOAD_STATE();
+            DISPATCH();
         }
-        RELOAD_STATE();
-        DISPATCH();
+        sp[-2].i64 = result;
     }
-    sp[-2].i64 =
-        static_cast<int64_t>(static_cast<uint64_t>(sp[-2].i64) % static_cast<uint64_t>(sp[-1].i64));
     sp--;
     DISPATCH();
 
@@ -1196,22 +1336,38 @@ L_STORE_STR_MEM: {
     // Control Flow
 L_JUMP:
     pc += decodeArgI16(instr);
+    if (!ensureBranchTarget(*fp_->func, pc, "BytecodeVM::JUMP(threaded)")) {
+        SYNC_STATE();
+        return;
+    }
     DISPATCH();
 
 L_JUMP_IF_TRUE:
     if ((--sp)->i64 != 0) {
         pc += decodeArgI16(instr);
+        if (!ensureBranchTarget(*fp_->func, pc, "BytecodeVM::JUMP_IF_TRUE(threaded)")) {
+            SYNC_STATE();
+            return;
+        }
     }
     DISPATCH();
 
 L_JUMP_IF_FALSE:
     if ((--sp)->i64 == 0) {
         pc += decodeArgI16(instr);
+        if (!ensureBranchTarget(*fp_->func, pc, "BytecodeVM::JUMP_IF_FALSE(threaded)")) {
+            SYNC_STATE();
+            return;
+        }
     }
     DISPATCH();
 
 L_JUMP_LONG:
     pc += decodeArgI24(instr);
+    if (!ensureBranchTarget(*fp_->func, pc, "BytecodeVM::JUMP_LONG(threaded)")) {
+        SYNC_STATE();
+        return;
+    }
     DISPATCH();
 
 L_SWITCH: {
@@ -1220,10 +1376,23 @@ L_SWITCH: {
     int32_t scrutinee = static_cast<int32_t>((--sp)->i64);
 
     // pc currently points to the word after SWITCH opcode (numCases)
+    if (!ensureWordsAvailable(*fp_->func, pc, 2, "BytecodeVM::SWITCH(header, threaded)")) {
+        SYNC_STATE();
+        return;
+    }
     uint32_t numCases = code[pc++];
 
     // Position of default offset word
     uint32_t defaultOffsetPos = pc++;
+    const uint64_t caseWords = static_cast<uint64_t>(numCases) * 2u;
+    if (caseWords > std::numeric_limits<uint32_t>::max() ||
+        !ensureWordsAvailable(*fp_->func,
+                              pc,
+                              static_cast<uint32_t>(caseWords),
+                              "BytecodeVM::SWITCH(cases, threaded)")) {
+        SYNC_STATE();
+        return;
+    }
 
     // Search for matching case
     bool found = false;
@@ -1236,6 +1405,10 @@ L_SWITCH: {
             // Offset is relative to the offset word position (same as EH_PUSH)
             int32_t caseOffset = static_cast<int32_t>(code[caseOffsetPos]);
             pc = caseOffsetPos + caseOffset;
+            if (!ensureBranchTarget(*fp_->func, pc, "BytecodeVM::SWITCH(case, threaded)")) {
+                SYNC_STATE();
+                return;
+            }
             found = true;
             break;
         }
@@ -1245,6 +1418,10 @@ L_SWITCH: {
         // No match - use default offset
         int32_t defaultOffset = static_cast<int32_t>(code[defaultOffsetPos]);
         pc = defaultOffsetPos + defaultOffset;
+        if (!ensureBranchTarget(*fp_->func, pc, "BytecodeVM::SWITCH(default, threaded)")) {
+            SYNC_STATE();
+            return;
+        }
     }
 
     DISPATCH();
@@ -1280,28 +1457,15 @@ L_CALL_NATIVE: {
     BCSlot result{};
 
     if (runtimeBridgeEnabled_) {
-        auto preservedArgs = cloneRuntimeStringArgs(ref.name, args, static_cast<size_t>(argCount));
-
-        struct RuntimeArgGuard {
-            const BytecodeVM *vm;
-            std::string_view name;
-            std::vector<BCSlot> &args;
-
-            ~RuntimeArgGuard() {
-                vm->releaseRuntimeStringArgs(name, args);
-            }
-        } argGuard{this, ref.name, preservedArgs};
-
-        // Use RuntimeBridge for native function calls
-        BCSlot *callArgs = preservedArgs.empty() ? args : preservedArgs.data();
-        il::vm::Slot *vmArgs = reinterpret_cast<il::vm::Slot *>(callArgs);
-        std::vector<il::vm::Slot> argVec(vmArgs, vmArgs + argCount);
-
-        il::vm::RuntimeCallContext ctx;
-        il::vm::Slot vmResult =
-            il::vm::RuntimeBridge::call(ctx, ref.name, argVec, il::support::SourceLoc{}, "", "");
-
-        result.i64 = vmResult.i64;
+        SYNC_STATE();
+        if (!invokeRuntimeBridgeNative(ref, args, argCount, result)) {
+            if (state_ == VMState::Trapped)
+                return;
+            RELOAD_STATE();
+            DISPATCH();
+        }
+        RELOAD_STATE();
+        args = sp - argCount;
     } else {
         auto it = nativeHandlers_.find(ref.name);
         if (it == nativeHandlers_.end()) {
@@ -1416,8 +1580,16 @@ L_RETURN_VOID: {
 
 L_EH_PUSH: {
     // Handler offset is in the next code word (raw i32 offset)
+    if (!ensureWordsAvailable(*fp_->func, pc, 1, "BytecodeVM::EH_PUSH(threaded)")) {
+        SYNC_STATE();
+        return;
+    }
     int32_t offset = static_cast<int32_t>(code[pc++]);
     uint32_t handlerPc = static_cast<uint32_t>(static_cast<int32_t>(pc - 1) + offset);
+    if (!ensureBranchTarget(*fp_->func, handlerPc, "BytecodeVM::EH_PUSH(threaded)")) {
+        SYNC_STATE();
+        return;
+    }
     SYNC_STATE();
     sp_ = sp;
     pushExceptionHandler(handlerPc);
@@ -1437,32 +1609,25 @@ L_EH_ENTRY: {
 }
 
 L_ERR_GET_KIND: {
-    // Get trap kind from error object on stack (or use current trap kind)
-    // If there's an operand, it's on the stack; otherwise use current
-    // For simplicity, always return the current trap kind
-    sp->i64 = static_cast<int64_t>(trapKind_);
-    sp++;
+    // The error token already carries the trap discriminator; replace-in-place
+    // is therefore a no-op with the correct consume-one / produce-one shape.
     DISPATCH();
 }
 
 L_ERR_GET_CODE: {
-    // Get error code - maps trap kind to BASIC error code
-    sp->i64 = static_cast<int64_t>(currentErrorCode_);
-    sp++;
+    // Replace the error token with the extracted code.
+    sp[-1].i64 = static_cast<int64_t>(currentErrorCode_);
     DISPATCH();
 }
 
 L_ERR_GET_IP: {
-    // Get fault instruction pointer - return current PC
-    sp->i64 = static_cast<int64_t>(fp_->pc);
-    sp++;
+    sp[-1].i64 = trapRecord_.valid ? static_cast<int64_t>(trapRecord_.faultPc)
+                                   : static_cast<int64_t>(fp_ ? fp_->pc : 0);
     DISPATCH();
 }
 
 L_ERR_GET_LINE: {
-    // Get source line - we don't track this in bytecode VM, return -1
-    sp->i64 = -1;
-    sp++;
+    sp[-1].i64 = trapRecord_.valid ? static_cast<int64_t>(trapRecord_.faultLine) : -1;
     DISPATCH();
 }
 
@@ -1496,19 +1661,48 @@ L_TRAP_FROM_ERR: {
 }
 
 L_RESUME_SAME: {
-    // Resume at fault point - for now just continue
+    SYNC_STATE();
+    sp_ = sp;
+    if (!resumeTrap(false)) {
+        trap(TrapKind::InvalidOperation, "resume.same: invalid resume token");
+        return;
+    }
+    RELOAD_STATE();
     DISPATCH();
 }
 
 L_RESUME_NEXT: {
-    // Resume after fault - for now just continue
+    SYNC_STATE();
+    sp_ = sp;
+    if (!resumeTrap(true)) {
+        trap(TrapKind::InvalidOperation, "resume.next: invalid resume token");
+        return;
+    }
+    RELOAD_STATE();
     DISPATCH();
 }
 
 L_RESUME_LABEL: {
+    BCSlot token = *--sp;
+    setSlotOwnsString(sp, false);
+    if (token.ptr != &trapRecord_ || !trapRecord_.valid) {
+        SYNC_STATE();
+        sp_ = sp;
+        trap(TrapKind::InvalidOperation, "resume.label: invalid resume token");
+        return;
+    }
+    clearTrapRecord();
     // Target offset is in the next code word (raw i32 offset)
+    if (!ensureWordsAvailable(*fp_->func, pc, 1, "BytecodeVM::RESUME_LABEL(threaded)")) {
+        SYNC_STATE();
+        return;
+    }
     int32_t offset = static_cast<int32_t>(code[pc++]);
     pc = static_cast<uint32_t>(static_cast<int32_t>(pc - 1) + offset);
+    if (!ensureBranchTarget(*fp_->func, pc, "BytecodeVM::RESUME_LABEL(threaded)")) {
+        SYNC_STATE();
+        return;
+    }
     DISPATCH();
 }
 

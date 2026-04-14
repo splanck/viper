@@ -46,6 +46,7 @@ typedef struct rt_udp {
     int recv_timeout_ms;               // Receive timeout (0 = none)
 } rt_udp_t;
 
+/// @brief GC finalizer: close the socket if still open and free the bound-address string.
 static void rt_udp_finalize(void *obj) {
     if (!obj)
         return;
@@ -65,6 +66,9 @@ static void rt_udp_finalize(void *obj) {
 // Udp - Creation
 //=============================================================================
 
+/// @brief Create an unbound UDP socket (AF_INET, SOCK_DGRAM). Suppresses SIGPIPE on platforms
+/// that need it. Returns a GC-managed handle wired to `rt_udp_finalize`. Traps on socket()
+/// failure or OOM. Use this for client-side senders that don't need to receive on a fixed port.
 void *rt_udp_new(void) {
     rt_net_init_wsa();
 
@@ -93,10 +97,18 @@ void *rt_udp_new(void) {
     return udp;
 }
 
+/// @brief Create a UDP socket and bind it to all interfaces (`0.0.0.0`) on `port`. Pass
+/// `port=0` to let the OS pick a free port (read it back via `rt_udp_port`). Convenience wrapper
+/// over `rt_udp_bind_at` for the common "listen on any address" case.
 void *rt_udp_bind(int64_t port) {
     return rt_udp_bind_at(rt_const_cstr("0.0.0.0"), port);
 }
 
+/// @brief Create and bind a UDP socket to `(address, port)`. `address` must be a valid IPv4 dotted
+/// quad. Sets `SO_REUSEADDR` so re-binding after process restart doesn't fail with TIME_WAIT.
+/// When `port==0` the OS assigns a free port; the actual port is queried back via `getsockname`
+/// and stored in `udp->port`. Translates kernel errors (EADDRINUSE → "port already in use",
+/// EACCES → "permission denied (port < 1024?)") into specific traps for ergonomic diagnostics.
 void *rt_udp_bind_at(rt_string address, int64_t port) {
     rt_net_init_wsa();
 
@@ -185,6 +197,8 @@ void *rt_udp_bind_at(rt_string address, int64_t port) {
 // Udp - Properties
 //=============================================================================
 
+/// @brief Read the bound port (0 for unbound sockets created via `rt_udp_new`). Useful when the
+/// constructor used `port=0` and you need to discover which ephemeral port the OS assigned.
 int64_t rt_udp_port(void *obj) {
     if (!obj)
         rt_trap("Network: NULL socket");
@@ -193,6 +207,8 @@ int64_t rt_udp_port(void *obj) {
     return udp->port;
 }
 
+/// @brief Read the bound address as an rt_string ("0.0.0.0" if bound to all interfaces). Returns
+/// the empty string for unbound sockets.
 rt_string rt_udp_address(void *obj) {
     if (!obj)
         rt_trap("Network: NULL socket");
@@ -203,6 +219,8 @@ rt_string rt_udp_address(void *obj) {
     return rt_str_empty();
 }
 
+/// @brief Returns 1 if the socket was created via `bind()` (i.e. has a fixed local port); 0 if
+/// it was created via `rt_udp_new` and only sends.
 int8_t rt_udp_is_bound(void *obj) {
     if (!obj)
         rt_trap("Network: NULL socket");
@@ -215,7 +233,10 @@ int8_t rt_udp_is_bound(void *obj) {
 // Udp - Send Methods
 //=============================================================================
 
-/// @brief Helper to resolve hostname and create sockaddr_in.
+/// @brief Resolve a host string (IPv4 dotted quad OR DNS name) into an IPv4 sockaddr_in.
+/// Tries `inet_pton` first (zero-allocation common path); falls back to `getaddrinfo` for
+/// real DNS. The returned sockaddr is filled with `(family, port, addr)`. Returns -1 on
+/// resolution failure so the caller can trap with a meaningful error class.
 static int resolve_host(const char *host, int port, struct sockaddr_in *addr) {
     memset(addr, 0, sizeof(*addr));
     addr->sin_family = AF_INET;
@@ -243,6 +264,11 @@ static int resolve_host(const char *host, int port, struct sockaddr_in *addr) {
     return 0;
 }
 
+/// @brief Send a Bytes payload as a single UDP datagram to `(host, port)`. Caps payload at the
+/// IPv4 UDP max of 65507 bytes (65535 IP MTU − 20 IP header − 8 UDP header) to avoid silent
+/// kernel fragmentation. Resolves `host` via `resolve_host` (IP-literal fast path + DNS fallback).
+/// Returns the byte count actually sent. Traps with specific kinds for EMSGSIZE, host-not-found,
+/// and generic send errors so callers can distinguish recoverable failures.
 int64_t rt_udp_send_to(void *obj, rt_string host, int64_t port, void *data) {
     if (!obj)
         rt_trap("Network: NULL socket");
@@ -296,6 +322,8 @@ int64_t rt_udp_send_to(void *obj, rt_string host, int64_t port, void *data) {
     return sent;
 }
 
+/// @brief String-payload variant of `rt_udp_send_to`. Sends the rt_string's UTF-8 bytes
+/// (without a NUL terminator) as a single datagram. Same 65507-byte cap and error semantics.
 int64_t rt_udp_send_to_str(void *obj, rt_string host, int64_t port, rt_string text) {
     if (!obj)
         rt_trap("Network: NULL socket");
@@ -342,10 +370,17 @@ int64_t rt_udp_send_to_str(void *obj, rt_string host, int64_t port, rt_string te
 // Udp - Receive Methods
 //=============================================================================
 
+/// @brief Convenience alias for `rt_udp_recv_from` — receive a single datagram up to `max_bytes`
+/// long. The sender's address is recorded and accessible via `rt_udp_sender_host` / `_port`.
 void *rt_udp_recv(void *obj, int64_t max_bytes) {
     return rt_udp_recv_from(obj, max_bytes);
 }
 
+/// @brief Receive one UDP datagram, capturing the sender's address into `udp->sender_host/port`.
+/// Right-sizes the result `Bytes` if the actual datagram was shorter than `max_bytes` (datagram
+/// boundaries are meaningful in UDP; trailing zeros must NOT be exposed). On socket timeout
+/// (EAGAIN / WSAETIMEDOUT, configured via `set_recv_timeout`), returns an empty Bytes rather
+/// than trapping — lets receive loops poll cheaply.
 void *rt_udp_recv_from(void *obj, int64_t max_bytes) {
     if (!obj)
         rt_trap("Network: NULL socket");
@@ -400,6 +435,9 @@ void *rt_udp_recv_from(void *obj, int64_t max_bytes) {
     return result;
 }
 
+/// @brief Bounded-wait variant: `select()` for up to `timeout_ms`, then receive (or return NULL
+/// on no-data). Distinct from setting socket-level recv timeout: this is one-shot and returns
+/// NULL on expiry, while `set_recv_timeout` sets a persistent socket option that returns empty Bytes.
 void *rt_udp_recv_for(void *obj, int64_t max_bytes, int64_t timeout_ms) {
     if (!obj)
         rt_trap("Network: NULL socket");
@@ -423,6 +461,8 @@ void *rt_udp_recv_for(void *obj, int64_t max_bytes, int64_t timeout_ms) {
     return rt_udp_recv_from(obj, max_bytes);
 }
 
+/// @brief Read the source IPv4 of the most recently received datagram. Empty until the first
+/// successful `recv*`.
 rt_string rt_udp_sender_host(void *obj) {
     if (!obj)
         rt_trap("Network: NULL socket");
@@ -431,6 +471,7 @@ rt_string rt_udp_sender_host(void *obj) {
     return rt_const_cstr(udp->sender_host);
 }
 
+/// @brief Read the source port of the most recently received datagram. 0 until the first recv*.
 int64_t rt_udp_sender_port(void *obj) {
     if (!obj)
         rt_trap("Network: NULL socket");
@@ -443,6 +484,8 @@ int64_t rt_udp_sender_port(void *obj) {
 // Udp - Options and Close
 //=============================================================================
 
+/// @brief Toggle SO_BROADCAST on the socket. Required before sending to 255.255.255.255 or any
+/// directed-broadcast address; without it the kernel returns EACCES.
 void rt_udp_set_broadcast(void *obj, int8_t enable) {
     if (!obj)
         rt_trap("Network: NULL socket");
@@ -458,6 +501,10 @@ void rt_udp_set_broadcast(void *obj, int8_t enable) {
     }
 }
 
+/// @brief Subscribe to an IPv4 multicast group via `IP_ADD_MEMBERSHIP`. Validates that
+/// `group_addr` falls in the canonical 224.0.0.0/4 range (high nibble == 0xE) before issuing
+/// the syscall — catches mistakes that would otherwise silently no-op. Joins on `INADDR_ANY`
+/// (let the kernel pick the routing interface).
 void rt_udp_join_group(void *obj, rt_string group_addr) {
     if (!obj)
         rt_trap("Network: NULL socket");
@@ -491,6 +538,9 @@ void rt_udp_join_group(void *obj, rt_string group_addr) {
     }
 }
 
+/// @brief Unsubscribe from a multicast group via `IP_DROP_MEMBERSHIP`. Tolerant of bad input —
+/// silently no-ops on closed sockets, empty addresses, or malformed IPs (so cleanup paths can
+/// be unconditional without fear of throwing during teardown).
 void rt_udp_leave_group(void *obj, rt_string group_addr) {
     if (!obj)
         rt_trap("Network: NULL socket");
@@ -514,6 +564,9 @@ void rt_udp_leave_group(void *obj, rt_string group_addr) {
     setsockopt(udp->sock, IPPROTO_IP, IP_DROP_MEMBERSHIP, (const char *)&mreq, sizeof(mreq));
 }
 
+/// @brief Set a persistent socket-level recv timeout via SO_RCVTIMEO. Subsequent `recv*` calls
+/// that exceed this duration return empty Bytes (rather than the per-call NULL of `recv_for`).
+/// Pass `0` to clear (block indefinitely).
 void rt_udp_set_recv_timeout(void *obj, int64_t timeout_ms) {
     if (!obj)
         rt_trap("Network: NULL socket");
@@ -523,6 +576,8 @@ void rt_udp_set_recv_timeout(void *obj, int64_t timeout_ms) {
     set_socket_timeout(udp->sock, (int)timeout_ms, true);
 }
 
+/// @brief Explicit close — releases the kernel socket immediately rather than waiting for GC.
+/// Idempotent (no-op on already-closed sockets). The handle remains valid for is_open queries.
 void rt_udp_close(void *obj) {
     if (!obj)
         return;

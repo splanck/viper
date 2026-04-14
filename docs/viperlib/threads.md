@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-09
+last-verified: 2026-04-13
 ---
 
 # Threads
@@ -97,6 +97,11 @@ entry:
 `StartSafe(entry, arg)` is like `Start` but wraps the thread entry in a trap recovery context
 using `setjmp`/`longjmp`. If the entry function triggers a trap (null dereference, bounds check
 failure, etc.), the trap is captured instead of crashing the process.
+
+This applies uniformly to VM-backed and BytecodeVM-backed worker functions. A
+trapped worker marks the safe thread handle as failed instead of silently
+completing. BytecodeVM-backed workers now route runtime-call traps through the
+same safe-thread boundary as bytecode traps raised directly by the interpreter.
 
 After the thread finishes, check `HasError` and `Error` on the returned handle:
 

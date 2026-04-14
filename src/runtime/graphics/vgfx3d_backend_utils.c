@@ -1,3 +1,26 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/runtime/graphics/vgfx3d_backend_utils.c
+// Purpose: Cross-backend utility helpers shared between the Metal/OpenGL/D3D11
+//   3D backends — pixel/cubemap unpack to RGBA8, generation tracking,
+//   row-flip, normal-matrix derivation from a model matrix, and 4×4 inverse.
+//
+// Key invariants:
+//   - Pixels payloads are 0xRRGGBBAA in `uint32_t`, row-major, top-left origin.
+//   - Normal matrix is the inverse-transpose of the model matrix's upper 3×3,
+//     stored in the upper-left 3×3 of the 4×4 output (M[15] = 1, rest 0).
+//   - Cubemap generation is a 64-bit FNV-style hash of all six face generations,
+//     enabling cheap "did anything change?" checks for backend caches.
+//
+// Links: vgfx3d_backend_utils.h, vgfx3d_backend_*.c (per-API implementations)
+//
+//===----------------------------------------------------------------------===//
+
 #include "vgfx3d_backend_utils.h"
 
 #include <math.h>
@@ -17,6 +40,9 @@ typedef struct {
     int64_t face_size;
 } vgfx3d_cubemap_view_t;
 
+/// @brief Read the monotonic generation counter on a Pixels object.
+/// Returns 0 for null. Backends compare against last-seen generation to detect
+/// when a GPU texture upload is required.
 uint64_t vgfx3d_get_pixels_generation(const void *pixels_ptr) {
     const vgfx3d_pixels_view_t *pv = (const vgfx3d_pixels_view_t *)pixels_ptr;
     if (!pv)
@@ -24,6 +50,9 @@ uint64_t vgfx3d_get_pixels_generation(const void *pixels_ptr) {
     return pv->generation;
 }
 
+/// @brief Decode a Pixels object into a freshly malloc'd RGBA8 byte array.
+/// Caller owns and frees the returned buffer. Returns 0 on success, -1 on
+/// invalid dimensions or allocation failure. Out-params are unmodified on error.
 int vgfx3d_unpack_pixels_rgba(const void *pixels_ptr,
                               int32_t *out_w,
                               int32_t *out_h,
@@ -56,6 +85,9 @@ int vgfx3d_unpack_pixels_rgba(const void *pixels_ptr,
     return 0;
 }
 
+/// @brief Decode all six cubemap faces into separate RGBA8 byte arrays.
+/// All faces must be square and the same size. Caller owns and frees each
+/// face buffer. On error any partially-allocated faces are freed automatically.
 int vgfx3d_unpack_cubemap_faces_rgba(const void *cubemap_ptr,
                                      int32_t *out_face_size,
                                      uint8_t *out_faces[6]) {
@@ -87,6 +119,9 @@ int vgfx3d_unpack_cubemap_faces_rgba(const void *cubemap_ptr,
     return 0;
 }
 
+/// @brief Hash all six face generations into a single cubemap-level signature.
+/// Uses an FNV-prime mixing scheme so per-face changes propagate. Returns 0
+/// when no faces are bound.
 uint64_t vgfx3d_get_cubemap_generation(const void *cubemap_ptr) {
     const vgfx3d_cubemap_view_t *cubemap = (const vgfx3d_cubemap_view_t *)cubemap_ptr;
     uint64_t signature = 1469598103934665603ull;
@@ -104,6 +139,9 @@ uint64_t vgfx3d_get_cubemap_generation(const void *cubemap_ptr) {
     return any_face ? signature : 0;
 }
 
+/// @brief Flip an RGBA8 image vertically in place (top<->bottom row swap).
+/// Used to convert between Pixels' top-left origin and APIs that expect
+/// bottom-left (e.g., OpenGL textures).
 void vgfx3d_flip_rgba_rows(uint8_t *rgba, int32_t w, int32_t h) {
     if (!rgba || w <= 0 || h <= 1)
         return;
@@ -124,6 +162,10 @@ void vgfx3d_flip_rgba_rows(uint8_t *rgba, int32_t w, int32_t h) {
     free(tmp);
 }
 
+/// @brief Compute the normal matrix (inverse-transpose of the upper 3×3 of
+/// @p model_matrix) and place it in the upper-left 3×3 of @p out_matrix.
+/// Falls back to copying the upper 3×3 directly when the matrix is singular,
+/// avoiding NaN/Inf propagation in shaders.
 void vgfx3d_compute_normal_matrix4(const float *model_matrix, float *out_matrix) {
     if (!model_matrix || !out_matrix)
         return;
@@ -174,6 +216,9 @@ void vgfx3d_compute_normal_matrix4(const float *model_matrix, float *out_matrix)
     out_matrix[10] = c22 * inv_det;
 }
 
+/// @brief Invert a 4×4 row-major matrix using cofactor expansion.
+/// @return 0 on success, -1 if @p matrix is null or singular (|det| < 1e-12).
+/// Out-buffer is unmodified on failure.
 int vgfx3d_invert_matrix4(const float *matrix, float *out_matrix) {
     float inv[16];
     float det;

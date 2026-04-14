@@ -19,6 +19,10 @@
 #include "codegen/aarch64/AsmEmitter.hpp"
 #include "codegen/aarch64/LowerILToMIR.hpp"
 #include "codegen/aarch64/TargetAArch64.hpp"
+#include "codegen/aarch64/passes/EmitPass.hpp"
+#include "codegen/aarch64/passes/LoweringPass.hpp"
+#include "codegen/aarch64/passes/PassManager.hpp"
+#include "codegen/aarch64/passes/RegAllocPass.hpp"
 #include "il/core/Function.hpp"
 #include "il/core/Instr.hpp"
 #include "il/core/Type.hpp"
@@ -98,6 +102,68 @@ static il::core::Function buildTestFunction() {
     return fn;
 }
 
+static il::core::Function buildCrossBlockAddrFunction() {
+    il::core::Function fn;
+    fn.name = "test_cross_block_local";
+    fn.retType = core::Type(core::Type::Kind::I64);
+
+    core::BasicBlock entry;
+    entry.label = "entry";
+
+    unsigned nextId = 0;
+
+    core::Instr allocaInstr;
+    allocaInstr.result = nextId++;
+    allocaInstr.op = core::Opcode::Alloca;
+    allocaInstr.type = core::Type(core::Type::Kind::Ptr);
+    allocaInstr.operands.push_back(core::Value::constInt(8));
+    entry.instructions.push_back(allocaInstr);
+
+    core::Instr addrOf;
+    addrOf.result = nextId++;
+    addrOf.op = core::Opcode::AddrOf;
+    addrOf.type = core::Type(core::Type::Kind::Ptr);
+    addrOf.operands.push_back(core::Value::temp(0));
+    entry.instructions.push_back(addrOf);
+
+    core::Instr br;
+    br.op = core::Opcode::Br;
+    br.type = core::Type(core::Type::Kind::Void);
+    br.labels.push_back("next");
+    br.brArgs.push_back({});
+    entry.instructions.push_back(br);
+    entry.terminated = true;
+
+    core::BasicBlock next;
+    next.label = "next";
+
+    core::Instr storeInstr;
+    storeInstr.op = core::Opcode::Store;
+    storeInstr.type = core::Type(core::Type::Kind::I64);
+    storeInstr.operands.push_back(core::Value::temp(1));
+    storeInstr.operands.push_back(core::Value::constInt(55));
+    next.instructions.push_back(storeInstr);
+
+    core::Instr loadInstr;
+    loadInstr.result = nextId++;
+    loadInstr.op = core::Opcode::Load;
+    loadInstr.type = core::Type(core::Type::Kind::I64);
+    loadInstr.operands.push_back(core::Value::temp(1));
+    next.instructions.push_back(loadInstr);
+
+    core::Instr retInstr;
+    retInstr.op = core::Opcode::Ret;
+    retInstr.type = core::Type(core::Type::Kind::Void);
+    retInstr.operands.push_back(core::Value::temp(2));
+    next.instructions.push_back(retInstr);
+    next.terminated = true;
+
+    fn.blocks.push_back(std::move(entry));
+    fn.blocks.push_back(std::move(next));
+    fn.valueNames.resize(nextId);
+    return fn;
+}
+
 TEST(AArch64Codegen, StackLocals_AllocaLoadStore) {
     auto &ti = darwinTarget();
     LowerILToMIR lowerer{ti};
@@ -138,6 +204,29 @@ TEST(AArch64Codegen, StackLocals_AllocaLoadStore) {
     EXPECT_NE(asmText.find("add sp, sp, #"), std::string::npos);
     EXPECT_NE(asmText.find("ldp x29, x30"), std::string::npos);
     EXPECT_NE(asmText.find("ret"), std::string::npos);
+}
+
+TEST(AArch64Codegen, StackLocals_CrossBlockAddrUsesFrameOffset) {
+    auto &ti = darwinTarget();
+    il::core::Module mod;
+    mod.functions.push_back(buildCrossBlockAddrFunction());
+
+    passes::AArch64Module module;
+    module.ilMod = &mod;
+    module.ti = &ti;
+
+    passes::PassManager pm;
+    pm.addPass(std::make_unique<passes::LoweringPass>());
+    pm.addPass(std::make_unique<passes::RegAllocPass>());
+    pm.addPass(std::make_unique<passes::EmitPass>());
+
+    passes::Diagnostics diags;
+    ASSERT_TRUE(pm.run(module, diags));
+    const std::string &asmText = module.assembly;
+
+    EXPECT_NE(asmText.find("str x"), std::string::npos);
+    EXPECT_NE(asmText.find("ldr x"), std::string::npos);
+    EXPECT_NE(asmText.find("[x29, #"), std::string::npos);
 }
 
 int main(int argc, char **argv) {

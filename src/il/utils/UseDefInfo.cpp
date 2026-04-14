@@ -6,16 +6,16 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/il/utils/UseDefInfo.cpp
-// Purpose: Implement use-def chain tracking for efficient SSA value replacement.
+// Purpose: Implement temporary use-count tracking and safe SSA value
+//          replacement for mutable IL.
 // Links: docs/codemap.md#il-utils
 //
 //===----------------------------------------------------------------------===//
 
 /// @file
-/// @brief Implements use-def chain construction and replacement.
-/// @details Pre-computing use locations allows O(uses) replacement instead of
-///          O(instructions) full-function scans, significantly improving the
-///          performance of optimization passes that frequently replace values.
+/// @brief Implements use-count construction and safe replacement.
+/// @details Counts are rebuilt from the function when replacements occur so the
+///          helper remains correct even after instruction vectors are mutated.
 
 #include "il/utils/UseDefInfo.hpp"
 
@@ -30,7 +30,8 @@ UseDefInfo::UseDefInfo(::il::core::Function &F) {
 }
 
 void UseDefInfo::build(::il::core::Function &F) {
-    uses_.clear();
+    function_ = &F;
+    useCounts_.clear();
 
     for (auto &B : F.blocks) {
         for (auto &I : B.instructions) {
@@ -51,41 +52,49 @@ void UseDefInfo::build(::il::core::Function &F) {
 
 void UseDefInfo::recordUse(::il::core::Value &v) {
     if (v.kind == ::il::core::Value::Kind::Temp) {
-        uses_[v.id].push_back(&v);
+        ++useCounts_[v.id];
     }
 }
 
 std::size_t UseDefInfo::replaceAllUses(unsigned tempId, const ::il::core::Value &replacement) {
-    auto it = uses_.find(tempId);
-    if (it == uses_.end()) {
+    if (!function_) {
         return 0;
     }
 
     std::size_t count = 0;
-    for (auto *usePtr : it->second) {
-        *usePtr = replacement;
-        ++count;
+    for (auto &B : function_->blocks) {
+        for (auto &I : B.instructions) {
+            for (auto &Op : I.operands) {
+                if (Op.kind == ::il::core::Value::Kind::Temp && Op.id == tempId) {
+                    Op = replacement;
+                    ++count;
+                }
+            }
+            for (auto &argList : I.brArgs) {
+                for (auto &Arg : argList) {
+                    if (Arg.kind == ::il::core::Value::Kind::Temp && Arg.id == tempId) {
+                        Arg = replacement;
+                        ++count;
+                    }
+                }
+            }
+        }
     }
 
-    // Clear the use list since we've replaced all uses
-    // If the replacement is also a temp, we should add these to that temp's uses
-    if (replacement.kind == ::il::core::Value::Kind::Temp) {
-        auto &newUses = uses_[replacement.id];
-        newUses.insert(newUses.end(), it->second.begin(), it->second.end());
-    }
-
-    it->second.clear();
+    // Rebuild observed counts from the mutated function so later queries are
+    // coherent even after instruction insertion/erasure shifted storage.
+    build(*function_);
     return count;
 }
 
 bool UseDefInfo::hasUses(unsigned tempId) const {
-    auto it = uses_.find(tempId);
-    return it != uses_.end() && !it->second.empty();
+    auto it = useCounts_.find(tempId);
+    return it != useCounts_.end() && it->second != 0;
 }
 
 std::size_t UseDefInfo::useCount(unsigned tempId) const {
-    auto it = uses_.find(tempId);
-    return it != uses_.end() ? it->second.size() : 0;
+    auto it = useCounts_.find(tempId);
+    return it != useCounts_.end() ? it->second : 0;
 }
 
 } // namespace viper::il

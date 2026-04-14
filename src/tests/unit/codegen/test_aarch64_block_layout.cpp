@@ -28,8 +28,10 @@
 //   2. BlockCountStable     — Block count unchanged (pure reorder).
 //   3. LoopBranchReduced    — Suboptimal block order (exit before loop) is
 //                             corrected, reducing unconditional branch count.
-//   4. EntryBlockFirst      — Entry block (block 0) always remains first.
-//   5. PipelineIntegration  — BlockLayoutPass between RegAlloc and Peephole
+//   4. ConditionalFalseEdgeBecomesFallthrough — conditional+branch layout
+//                             prefers the explicit false edge as the next block.
+//   5. EntryBlockFirst      — Entry block (block 0) always remains first.
+//   6. PipelineIntegration  — BlockLayoutPass between RegAlloc and Peephole
 //                             integrates cleanly with the full PassManager.
 //
 //===----------------------------------------------------------------------===//
@@ -263,6 +265,51 @@ TEST(AArch64BlockLayout, LoopBranchReduced) {
                   << "--- Without layout ---\n"
                   << m1.assembly << "--- With layout ---\n"
                   << m2.assembly;
+    }
+    EXPECT_TRUE(brWith < brWithout);
+}
+
+TEST(AArch64BlockLayout, ConditionalFalseEdgeBecomesFallthrough) {
+    const std::string il = "il 0.1\n"
+                           "func @branch_layout(%cond:i1) -> i64 {\n"
+                           "entry(%cond:i1):\n"
+                           "  cbr %cond, hot(), cold()\n"
+                           "hot:\n"
+                           "  ret 1\n"
+                           "cold:\n"
+                           "  ret 0\n"
+                           "}\n";
+
+    PassManager withoutLayout;
+    withoutLayout.addPass(std::make_unique<LoweringPass>());
+    withoutLayout.addPass(std::make_unique<RegAllocPass>());
+    withoutLayout.addPass(std::make_unique<PeepholePass>());
+    withoutLayout.addPass(std::make_unique<EmitPass>());
+
+    il::core::Module mod1 = parseIL(il);
+    il::core::Module mod2 = parseIL(il);
+    ASSERT_FALSE(mod1.functions.empty());
+    ASSERT_FALSE(mod2.functions.empty());
+
+    const TargetInfo &ti = darwinTarget();
+    AArch64Module m1, m2;
+    m1.ilMod = &mod1;
+    m1.ti = &ti;
+    m2.ilMod = &mod2;
+    m2.ti = &ti;
+
+    Diagnostics d1, d2;
+    ASSERT_TRUE(withoutLayout.run(m1, d1));
+    ASSERT_TRUE(buildLayoutPipeline().run(m2, d2));
+
+    const int brWithout = countSubstr(m1.assembly, "\n  b ");
+    const int brWith = countSubstr(m2.assembly, "\n  b ");
+
+    if (brWith >= brWithout) {
+        std::cerr << "Expected conditional layout to reduce explicit branches.\n"
+                  << "Without layout:\n"
+                  << m1.assembly << "\nWith layout:\n"
+                  << m2.assembly << "\n";
     }
     EXPECT_TRUE(brWith < brWithout);
 }

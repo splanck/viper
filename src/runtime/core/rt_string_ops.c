@@ -77,6 +77,15 @@ typedef struct {
 
 static rt_string_registry_t g_string_registry_;
 
+// ---------------------------------------------------------------------------
+// String-handle registry — a global open-addressed hash set keyed
+// by `rt_string` pointer. Lets `rt_string_is_handle` cheaply check
+// whether a `void*` is a known managed string vs. raw memory.
+// Protected by a hand-rolled spinlock since the operations are
+// short and contention is rare.
+// ---------------------------------------------------------------------------
+
+/// @brief Splittable-mix64 hash for a pointer-sized value (Stafford variant 13).
 static uint64_t rt_string_ptr_hash_(const void *p) {
     uint64_t v = (uint64_t)(uintptr_t)p;
     v = (v ^ (v >> 30)) * 0xbf58476d1ce4e5b9ULL;
@@ -84,6 +93,7 @@ static uint64_t rt_string_ptr_hash_(const void *p) {
     return v ^ (v >> 31);
 }
 
+/// @brief Acquire the registry spinlock; yields the OS thread on contention.
 static void rt_string_registry_lock_(void) {
     if (__atomic_test_and_set(&g_string_registry_.lock, __ATOMIC_ACQUIRE)) {
         do {
@@ -96,14 +106,22 @@ static void rt_string_registry_lock_(void) {
     }
 }
 
+/// @brief Release the registry spinlock.
 static void rt_string_registry_unlock_(void) {
     __atomic_clear(&g_string_registry_.lock, __ATOMIC_RELEASE);
 }
 
+/// @brief Slot-state predicate — true unless the slot is empty or a tombstone.
 static int rt_string_registry_slot_is_live_(rt_string slot) {
     return slot != RT_STRING_REG_EMPTY && slot != RT_STRING_REG_TOMBSTONE;
 }
 
+/// @brief Reallocate the registry to at least `min_capacity` slots and rehash live entries.
+///
+/// Capacity is always a power of two so the modulo can be a bitwise
+/// AND. Rehashing during growth also drops tombstones, so the load
+/// factor stays bounded.
+/// @return 1 on success, 0 on alloc failure / size overflow.
 static int rt_string_registry_grow_locked_(size_t min_capacity) {
     size_t new_capacity = g_string_registry_.capacity ? g_string_registry_.capacity * 2 : 256;
     while (new_capacity < min_capacity) {
@@ -136,6 +154,7 @@ static int rt_string_registry_grow_locked_(size_t min_capacity) {
     return 1;
 }
 
+/// @brief Grow if needed to keep load factor < 5/8 (count + tombstones / capacity).
 static int rt_string_registry_ensure_capacity_locked_(void) {
     if (g_string_registry_.capacity == 0)
         return rt_string_registry_grow_locked_(256);
@@ -145,6 +164,8 @@ static int rt_string_registry_ensure_capacity_locked_(void) {
     return 1;
 }
 
+/// @brief Add `s` to the registry. Tracks the first tombstone so re-insertions reuse it.
+/// @return 1 on success (or already present), 0 on grow failure.
 static int rt_string_registry_insert_locked_(rt_string s) {
     if (!s)
         return 1;
@@ -172,6 +193,7 @@ static int rt_string_registry_insert_locked_(rt_string s) {
     }
 }
 
+/// @brief Replace `s`'s slot with a tombstone — preserves probe sequences without needing to rehash.
 static void rt_string_registry_remove_locked_(rt_string s) {
     if (!s || !g_string_registry_.slots || g_string_registry_.capacity == 0)
         return;
@@ -191,6 +213,7 @@ static void rt_string_registry_remove_locked_(rt_string s) {
     }
 }
 
+/// @brief Probe the registry for `s`. Returns 1 if found, 0 otherwise.
 static int rt_string_registry_contains_locked_(const rt_string s) {
     if (!s || !g_string_registry_.slots || g_string_registry_.capacity == 0)
         return 0;
@@ -206,6 +229,8 @@ static int rt_string_registry_contains_locked_(const rt_string s) {
     }
 }
 
+/// @brief Public: register a managed string handle so `rt_string_is_handle` returns true for it.
+/// Traps if registry alloc fails — the runtime can't recover from this.
 void rt_string_register_handle(rt_string s) {
     if (!s)
         return;
@@ -216,6 +241,7 @@ void rt_string_register_handle(rt_string s) {
         rt_trap("rt_string_register_handle: registry alloc");
 }
 
+/// @brief Public: unregister a string handle when its memory is being freed.
 void rt_string_unregister_handle(rt_string s) {
     if (!s)
         return;
@@ -224,6 +250,8 @@ void rt_string_unregister_handle(rt_string s) {
     rt_string_registry_unlock_();
 }
 
+/// @brief Free the registry's backing storage at runtime shutdown.
+/// After this, `rt_string_is_handle` becomes effectively useless until re-init.
 void rt_string_registry_shutdown(void) {
     rt_string_registry_lock_();
     free(g_string_registry_.slots);
@@ -484,6 +512,10 @@ rt_string rt_str_from_lit(const char *bytes, size_t len) {
     return rt_string_from_bytes(bytes, len);
 }
 
+/// @brief Public predicate: is `p` a registered managed-string pointer?
+///
+/// Used at language boundaries where a `void*` could be either a
+/// real string or a raw object — the registry lookup tells them apart.
 int8_t rt_string_is_handle(const void *p) {
     if (!p)
         return 0;
@@ -928,10 +960,13 @@ int64_t rt_str_instr3(int64_t start, rt_string hay, rt_string needle) {
     return rt_find(hay, pos, needle);
 }
 
+/// @brief Find the first occurrence of `needle` in `hay` starting at `start` (0-based UTF-16 index).
+/// Returns -1 if not found, or 0/+ for the matched index.
 int64_t rt_str_index_of_from(rt_string hay, int64_t start, rt_string needle) {
     return rt_str_instr3(start, hay, needle);
 }
 
+/// @brief Whitespace predicate for `rt_str_trim*` — matches space, tab, CR, LF, vertical tab, form feed.
 static int is_trim_ws(char c) {
     return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\v' || c == '\f';
 }
@@ -1090,6 +1125,13 @@ int8_t rt_str_eq(rt_string a, rt_string b) {
     return memcmp(a->data, b->data, alen) == 0;
 }
 
+// ---------------------------------------------------------------------------
+// String comparison operators — `<`, `<=`, `>`, `>=` over the
+// rt_string type. Each compares byte-wise (memcmp) so they match
+// the natural lexicographic ordering of UTF-8 strings.
+// ---------------------------------------------------------------------------
+
+/// @brief True (1) if `a` is lexicographically less than `b`. NULL strings sort before non-NULL.
 int64_t rt_str_lt(rt_string a, rt_string b) {
     if (!a || !b)
         return 0;
@@ -1104,6 +1146,7 @@ int64_t rt_str_lt(rt_string a, rt_string b) {
     return alen < blen;
 }
 
+/// @brief True if `a <= b` lexicographically.
 int64_t rt_str_le(rt_string a, rt_string b) {
     if (!a || !b)
         return a == b;
@@ -1118,6 +1161,7 @@ int64_t rt_str_le(rt_string a, rt_string b) {
     return alen <= blen;
 }
 
+/// @brief True if `a > b` lexicographically.
 int64_t rt_str_gt(rt_string a, rt_string b) {
     if (!a || !b)
         return 0;
@@ -1132,6 +1176,7 @@ int64_t rt_str_gt(rt_string a, rt_string b) {
     return alen > blen;
 }
 
+/// @brief True if `a >= b` lexicographically.
 int64_t rt_str_ge(rt_string a, rt_string b) {
     if (!a || !b)
         return a == b;

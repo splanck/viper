@@ -111,6 +111,10 @@ static int bf_hex_byte(const char *s) {
     return (hi << 4) | lo;
 }
 
+/// @brief Load a font from a BDF (Glyph Bitmap Distribution Format) file.
+/// Parses ENCODING, BBX, DWIDTH, BITMAP entries and reconstructs per-glyph 1-bit
+/// bitmaps. Supports up to 256 codepoints; oversized glyphs (>4096 px or >1MB)
+/// are skipped silently. Returns NULL on file/parse failure or empty font.
 void *rt_bitmapfont_load_bdf(rt_string path) {
     if (!path)
         return NULL;
@@ -261,6 +265,10 @@ void *rt_bitmapfont_load_bdf(rt_string path) {
 #define PSF2_MAGIC2 0x4A
 #define PSF2_MAGIC3 0x86
 
+/// @brief Load a font from a PSF (PC Screen Font) v1 or v2 file.
+/// Auto-detects version via magic bytes. Glyphs are always monospace; v1 is
+/// fixed at 8 pixels wide, v2 reads width from the header. Always-NULL on
+/// magic mismatch or truncated header.
 void *rt_bitmapfont_load_psf(rt_string path) {
     if (!path)
         return NULL;
@@ -409,6 +417,8 @@ void *rt_bitmapfont_load_psf(rt_string path) {
 // Destructor
 //=============================================================================
 
+/// @brief GC finalizer that frees every per-glyph bitmap allocation.
+/// The font struct itself is GC-managed.
 void rt_bitmapfont_destroy(void *font_ptr) {
     if (!font_ptr)
         return;
@@ -424,6 +434,7 @@ void rt_bitmapfont_destroy(void *font_ptr) {
 // Properties
 //=============================================================================
 
+/// @brief Glyph width for monospace fonts (returns 0 for proportional fonts).
 int64_t rt_bitmapfont_char_width(void *font_ptr) {
     if (!font_ptr)
         return 0;
@@ -431,18 +442,21 @@ int64_t rt_bitmapfont_char_width(void *font_ptr) {
     return font->monospace ? font->max_width : 0;
 }
 
+/// @brief Line height in pixels (ascent + descent).
 int64_t rt_bitmapfont_char_height(void *font_ptr) {
     if (!font_ptr)
         return 0;
     return ((rt_bitmapfont_impl *)font_ptr)->line_height;
 }
 
+/// @brief Number of valid (non-empty) glyphs loaded.
 int64_t rt_bitmapfont_glyph_count(void *font_ptr) {
     if (!font_ptr)
         return 0;
     return ((rt_bitmapfont_impl *)font_ptr)->glyph_count;
 }
 
+/// @brief Returns 1 if every glyph has the same advance width, 0 otherwise.
 int8_t rt_bitmapfont_is_monospace(void *font_ptr) {
     if (!font_ptr)
         return 0;
@@ -453,6 +467,8 @@ int8_t rt_bitmapfont_is_monospace(void *font_ptr) {
 // Text Measurement
 //=============================================================================
 
+/// @brief Compute the rendered width of @p text in pixels for this font.
+/// Sums per-glyph advance widths; missing glyphs contribute the font's max_width.
 int64_t rt_bitmapfont_text_width(void *font_ptr, rt_string text) {
     if (!font_ptr || !text)
         return 0;
@@ -474,6 +490,7 @@ int64_t rt_bitmapfont_text_width(void *font_ptr, rt_string text) {
     return width;
 }
 
+/// @brief Single-line text height (same as line_height; multi-line callers must accumulate).
 int64_t rt_bitmapfont_text_height(void *font_ptr) {
     if (!font_ptr)
         return 0;
@@ -581,6 +598,9 @@ static void bf_draw_glyph_bg(vgfx_window_t win,
 // Canvas Drawing — Public API
 //=============================================================================
 
+/// @brief Render a string at (x, y) on @p canvas using the bitmap font.
+/// @p y is the top of the line; per-glyph baseline offsets are applied internally.
+/// Color is the canvas color format (typically 0x00RRGGBB).
 void rt_canvas_text_font(
     void *canvas_ptr, int64_t x, int64_t y, rt_string text, void *font_ptr, int64_t color) {
     if (!canvas_ptr || !font_ptr || !text)
@@ -610,6 +630,8 @@ void rt_canvas_text_font(
     }
 }
 
+/// @brief Like `_text_font` but fills the glyph advance × line_height background first.
+/// Useful for opaque text overlays (status bars, code editors).
 void rt_canvas_text_font_bg(void *canvas_ptr,
                             int64_t x,
                             int64_t y,
@@ -651,6 +673,8 @@ void rt_canvas_text_font_bg(void *canvas_ptr,
     }
 }
 
+/// @brief Render text at integer scale (each glyph pixel becomes a `scale × scale` rect).
+/// @p scale must be >= 1; smaller values cause the call to be a silent no-op.
 void rt_canvas_text_font_scaled(void *canvas_ptr,
                                 int64_t x,
                                 int64_t y,
@@ -685,6 +709,8 @@ void rt_canvas_text_font_scaled(void *canvas_ptr,
     }
 }
 
+/// @brief Render text horizontally centered in the canvas at row @p y.
+/// Width is derived from the canvas size; uses `_text_font` underneath.
 void rt_canvas_text_font_centered(
     void *canvas_ptr, int64_t y, rt_string text, void *font_ptr, int64_t color) {
     if (!canvas_ptr || !font_ptr || !text)
@@ -703,6 +729,7 @@ void rt_canvas_text_font_centered(
     rt_canvas_text_font(canvas_ptr, cx, y, text, font_ptr, color);
 }
 
+/// @brief Render text right-aligned with @p margin pixels of padding from the canvas right edge.
 void rt_canvas_text_font_right(
     void *canvas_ptr, int64_t margin, int64_t y, rt_string text, void *font_ptr, int64_t color) {
     if (!canvas_ptr || !font_ptr || !text)

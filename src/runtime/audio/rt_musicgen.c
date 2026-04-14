@@ -108,6 +108,7 @@ typedef struct {
 // Clamping Helpers
 //===----------------------------------------------------------------------===//
 
+/// @brief Clamp `v` into the inclusive range `[lo, hi]`.
 static int64_t mg_clamp(int64_t v, int64_t lo, int64_t hi) {
     if (v < lo)
         return lo;
@@ -700,6 +701,12 @@ static void mg_render_note(int32_t *accum,
 
 #define MG_CLIP_THRESHOLD 28000
 
+/// @brief Soft-clip a 32-bit accumulator into the 16-bit PCM range with knee compression.
+///
+/// Beyond `MG_CLIP_THRESHOLD` (~28k of int16's 32767 range) we
+/// scale the excess by 1/4 to round off the corner instead of
+/// hard-clipping. Saturates at ±32767. Avoids the harshness
+/// of digital clipping on summed-note loud passages.
 static int16_t mg_soft_clip(int32_t v) {
     if (v > MG_CLIP_THRESHOLD) {
         v = MG_CLIP_THRESHOLD + (v - MG_CLIP_THRESHOLD) / 4;
@@ -792,6 +799,10 @@ static mg_channel_t *mg_get_channel(void *song_ptr, int64_t ch) {
     return &song->channels[ch];
 }
 
+/// @brief Configure the ADSR envelope (Attack, Decay, Sustain level, Release) for a track.
+///
+/// Times are in milliseconds; sustain is a 0.0–1.0 amplitude scale.
+/// Applied to every note added to the track until changed again.
 void rt_musicgen_set_envelope(void *song,
                               int64_t ch,
                               int64_t attack_ms,
@@ -879,11 +890,18 @@ void rt_musicgen_set_portamento(void *song, int64_t ch, int64_t speed_ms) {
 // Public API — Notes
 //===----------------------------------------------------------------------===//
 
+/// @brief Schedule a note on a track. Equivalent to `add_note_vel` with full velocity (127).
 int64_t rt_musicgen_add_note(
     void *song, int64_t ch, int64_t beat_pos, int64_t midi_note, int64_t duration) {
     return rt_musicgen_add_note_vel(song, ch, beat_pos, midi_note, duration, 100);
 }
 
+/// @brief Schedule a note with explicit MIDI velocity (0-127) on a track.
+///
+/// `time_ms` is the song-time start, `duration_ms` how long the
+/// note sounds, `pitch` is the MIDI note number (0-127, 60 = middle C).
+/// Velocity scales note volume linearly. Returns a sequential
+/// note ID (0-based) for later editing.
 int64_t rt_musicgen_add_note_vel(void *song_ptr,
                                  int64_t ch,
                                  int64_t beat_pos,

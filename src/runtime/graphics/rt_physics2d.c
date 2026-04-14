@@ -249,6 +249,11 @@ void *rt_physics2d_world_new(double gravity_x, double gravity_y) {
     return w;
 }
 
+/// @brief Advance the physics world by `dt` seconds. Stages: (1) apply gravity + accumulated
+/// forces to dynamic body velocities (symplectic Euler) and reset force accumulators; (2)
+/// integrate velocity → position; (2.5) iteratively solve joint constraints; (3) broad-phase
+/// 8×8 grid + narrow-phase AABB overlap collision detection with bit-matrix de-dup, then resolve
+/// each collision per the bodies' restitution/friction/collision filter. No-op for dt ≤ 0.
 void rt_physics2d_world_step(void *obj, double dt) {
     rt_world_impl *w;
     int64_t i;
@@ -434,6 +439,8 @@ void rt_physics2d_world_step(void *obj, double dt) {
 #undef BPG_CELL_MAX
 }
 
+/// @brief Insert a body into the world's simulation list. The world retains the body; remove
+/// later via `_remove`. Traps if the world's body count cap (PH_MAX_BODIES) is hit.
 void rt_physics2d_world_add(void *obj, void *body) {
     rt_world_impl *w;
     if (!obj || !body)
@@ -448,6 +455,8 @@ void rt_physics2d_world_add(void *obj, void *body) {
     w->bodies[w->body_count++] = (rt_body_impl *)body;
 }
 
+/// @brief Remove a body from the world (linear scan, O(n)). The body is released; if its refcount
+/// hits 0, it's freed. Order is not preserved (uses swap-with-tail compaction).
 void rt_physics2d_world_remove(void *obj, void *body) {
     rt_world_impl *w;
     int64_t i;
@@ -467,12 +476,14 @@ void rt_physics2d_world_remove(void *obj, void *body) {
     }
 }
 
+/// @brief Number of bodies currently registered with the world.
 int64_t rt_physics2d_world_body_count(void *obj) {
     if (!obj)
         return 0;
     return ((rt_world_impl *)obj)->body_count;
 }
 
+/// @brief Set world gravity in world-units per second² (typical: gx=0, gy=9.8 for downward grav).
 void rt_physics2d_world_set_gravity(void *obj, double gx, double gy) {
     if (!obj)
         return;
@@ -484,6 +495,9 @@ void rt_physics2d_world_set_gravity(void *obj, double gx, double gy) {
 // Public API — Body
 //=============================================================================
 
+/// @brief Construct a 2D rigid body with bottom-left position (x, y), size (w, h), and `mass`.
+/// `mass <= 0` ⇒ static (immovable, infinite mass). Defaults: restitution 0.5 (moderately bouncy),
+/// friction 0.3, collision_layer 1, collision_mask 0xFFFFFFFF (collides with all 32 layers).
 void *rt_physics2d_body_new(double x, double y, double w, double h, double mass) {
     rt_body_impl *b = (rt_body_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_body_impl));
     if (!b) {
@@ -510,30 +524,41 @@ void *rt_physics2d_body_new(double x, double y, double w, double h, double mass)
     return b;
 }
 
+// The next six functions are simple accessors over the body's stored state
+// (position, size, velocity). Each returns 0.0 for a NULL handle.
+
+/// @brief Bottom-left X position in world units.
 double rt_physics2d_body_x(void *obj) {
     return obj ? ((rt_body_impl *)obj)->x : 0.0;
 }
 
+/// @brief Bottom-left Y position in world units.
 double rt_physics2d_body_y(void *obj) {
     return obj ? ((rt_body_impl *)obj)->y : 0.0;
 }
 
+/// @brief AABB width in world units.
 double rt_physics2d_body_w(void *obj) {
     return obj ? ((rt_body_impl *)obj)->w : 0.0;
 }
 
+/// @brief AABB height in world units.
 double rt_physics2d_body_h(void *obj) {
     return obj ? ((rt_body_impl *)obj)->h : 0.0;
 }
 
+/// @brief Linear X-velocity in world units per second.
 double rt_physics2d_body_vx(void *obj) {
     return obj ? ((rt_body_impl *)obj)->vx : 0.0;
 }
 
+/// @brief Linear Y-velocity in world units per second.
 double rt_physics2d_body_vy(void *obj) {
     return obj ? ((rt_body_impl *)obj)->vy : 0.0;
 }
 
+/// @brief Teleport the body to (x, y) world coordinates. Bypasses collision (the next `_step`
+/// will resolve any resulting overlap). Use `_apply_impulse` for physically realistic motion.
 void rt_physics2d_body_set_pos(void *obj, double x, double y) {
     if (!obj)
         return;
@@ -541,6 +566,8 @@ void rt_physics2d_body_set_pos(void *obj, double x, double y) {
     ((rt_body_impl *)obj)->y = y;
 }
 
+/// @brief Override the body's linear velocity directly. Useful for kinematic motion (e.g.,
+/// platforms that move on a script). Static bodies (mass=0) ignore this.
 void rt_physics2d_body_set_vel(void *obj, double vx, double vy) {
     if (!obj)
         return;
@@ -548,6 +575,8 @@ void rt_physics2d_body_set_vel(void *obj, double vx, double vy) {
     ((rt_body_impl *)obj)->vy = vy;
 }
 
+/// @brief Add (fx, fy) to the body's accumulated force vector. Forces are integrated and
+/// cleared each `_step`; call repeatedly within a frame to combine multiple force contributors.
 void rt_physics2d_body_apply_force(void *obj, double fx, double fy) {
     if (!obj)
         return;
@@ -557,6 +586,9 @@ void rt_physics2d_body_apply_force(void *obj, double fx, double fy) {
     ((rt_body_impl *)obj)->fy += fy;
 }
 
+/// @brief Apply an instantaneous velocity change of (ix, iy) * inv_mass. Use for jumps,
+/// explosions, kicks — anything that should change velocity *now* without requiring a force
+/// applied for a duration.
 void rt_physics2d_body_apply_impulse(void *obj, double ix, double iy) {
     rt_body_impl *b;
     if (!obj)
@@ -570,46 +602,59 @@ void rt_physics2d_body_apply_impulse(void *obj, double ix, double iy) {
     b->vy += iy * b->inv_mass;
 }
 
+/// @brief Read the body's bounciness coefficient ([0, 1] typical).
 double rt_physics2d_body_restitution(void *obj) {
     return obj ? ((rt_body_impl *)obj)->restitution : 0.0;
 }
 
+/// @brief Set bounciness: 0 = no bounce, 1 = perfectly elastic. Pair-wise restitution averages
+/// both bodies' values during collision response.
 void rt_physics2d_body_set_restitution(void *obj, double r) {
     if (obj)
         ((rt_body_impl *)obj)->restitution = r;
 }
 
+/// @brief Read the body's friction coefficient ([0, 1] typical).
 double rt_physics2d_body_friction(void *obj) {
     return obj ? ((rt_body_impl *)obj)->friction : 0.0;
 }
 
+/// @brief Set friction: 0 = ice, 1 = sandpaper. Applied as a tangential damping during contact.
 void rt_physics2d_body_set_friction(void *obj, double f) {
     if (obj)
         ((rt_body_impl *)obj)->friction = f;
 }
 
+/// @brief Returns 1 if the body is static (mass=0, immovable). Static bodies skip integration.
 int8_t rt_physics2d_body_is_static(void *obj) {
     /* A body is static when its inverse-mass is zero (mass == 0 at creation) */
     return (obj && ((rt_body_impl *)obj)->inv_mass == 0.0) ? 1 : 0;
 }
 
+/// @brief Read the body's mass (0 if static or NULL).
 double rt_physics2d_body_mass(void *obj) {
     return obj ? ((rt_body_impl *)obj)->mass : 0.0;
 }
 
+/// @brief Read the body's collision-layer bitmask (which layers it belongs to).
 int64_t rt_physics2d_body_collision_layer(void *obj) {
     return obj ? ((rt_body_impl *)obj)->collision_layer : 0;
 }
 
+/// @brief Set the collision-layer bitmask. Combined with the *other* body's collision_mask
+/// during overlap tests — only pairs where each body's layer matches the other's mask collide.
 void rt_physics2d_body_set_collision_layer(void *obj, int64_t layer) {
     if (obj)
         ((rt_body_impl *)obj)->collision_layer = layer;
 }
 
+/// @brief Read the body's collision-mask bitmask (which layers it tests against).
 int64_t rt_physics2d_body_collision_mask(void *obj) {
     return obj ? ((rt_body_impl *)obj)->collision_mask : 0;
 }
 
+/// @brief Set the collision-mask. Each bit corresponds to a layer this body collides with.
+/// Default 0xFFFFFFFF = collides with all 32 layers. Use 0 to make the body collision-free.
 void rt_physics2d_body_set_collision_mask(void *obj, int64_t mask) {
     if (obj)
         ((rt_body_impl *)obj)->collision_mask = mask;

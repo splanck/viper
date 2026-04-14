@@ -48,6 +48,11 @@ extern void *rt_cubemap3d_new(void *px, void *nx, void *py, void *ny, void *pz, 
 extern void *rt_mesh3d_new(void);
 extern void *rt_scene3d_new(void);
 
+/// @brief Release the GC reference held in `*slot` and null the pointer.
+///
+/// Safe on NULL slots and slots that already hold NULL. Used by
+/// the scene loader to roll back partial state on error and by
+/// the destructor to drop owned mesh / material / texture refs.
 static void scene3d_release_ref(void **slot) {
     if (!slot || !*slot)
         return;
@@ -56,6 +61,10 @@ static void scene3d_release_ref(void **slot) {
     *slot = NULL;
 }
 
+/// @brief Count the total number of nodes in the subtree rooted at `node` (inclusive).
+///
+/// Recursive; used to size descendant arrays before serialisation.
+/// Returns 0 for NULL.
 static int32_t scene3d_count_subtree(const rt_scene_node3d *node) {
     int32_t total = 1;
     if (!node)
@@ -83,6 +92,18 @@ typedef struct {
 static const char vscn_base64_chars[] =
     "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
+// ---------------------------------------------------------------------------
+// VSCN file format helpers — `.vscn` is a JSON document that
+// embeds binary asset data (textures, mesh buffers) as base64 to
+// stay textual. The helpers here cover the base64 codec, a
+// pointer-deduplication table (so two materials sharing a texture
+// only emit one copy), and tiny JSON accessors.
+// ---------------------------------------------------------------------------
+
+/// @brief Base64 alphabet table used by both encoder and decoder.
+
+/// @brief Decode a single base64 character to its 0-63 value.
+/// Returns -2 for `=` (padding sentinel) and -1 for any other invalid byte.
 static int vscn_base64_digit_value(char c) {
     if (c >= 'A' && c <= 'Z')
         return c - 'A';
@@ -99,6 +120,12 @@ static int vscn_base64_digit_value(char c) {
     return -1;
 }
 
+/// @brief Encode `len` raw bytes to a freshly-allocated NUL-terminated base64 string.
+///
+/// Output length is `((len + 2) / 3) * 4` characters. Trailing
+/// `=` padding is appended for inputs whose length is not a
+/// multiple of 3. Caller owns the buffer (`free`); writes the
+/// length sans NUL into `*out_len` if non-NULL.
 static char *vscn_base64_encode(const uint8_t *data, size_t len, size_t *out_len) {
     size_t olen = ((len + 2) / 3) * 4;
     char *output = (char *)malloc(olen + 1);
@@ -130,6 +157,12 @@ static char *vscn_base64_encode(const uint8_t *data, size_t len, size_t *out_len
     return output;
 }
 
+/// @brief Decode a base64 string of `len` characters into raw bytes.
+///
+/// Strict: rejects inputs whose length isn't a multiple of 4 and
+/// any non-alphabet bytes. Honours `=` padding to compute the
+/// exact output length. Returns a freshly-allocated buffer
+/// (caller `free`s) or NULL on error.
 static uint8_t *vscn_base64_decode(const char *data, size_t len, size_t *out_len) {
     if (!data)
         return NULL;
@@ -186,6 +219,7 @@ static uint8_t *vscn_base64_decode(const char *data, size_t len, size_t *out_len
     return output;
 }
 
+/// @brief Reset a pointer table — free its backing array and zero counts.
 static void vscn_free_ptr_table(vscn_ptr_table_t *table) {
     if (!table)
         return;
@@ -195,6 +229,10 @@ static void vscn_free_ptr_table(vscn_ptr_table_t *table) {
     table->capacity = 0;
 }
 
+/// @brief Drop GC references to all `count` loaded objects, then free the array itself.
+///
+/// Used by the loader to roll back partially-loaded resources
+/// when a later stage of `rt_scene3d_load` fails.
 static void vscn_release_loaded_refs(void **items, int count) {
     if (!items)
         return;
@@ -205,6 +243,12 @@ static void vscn_release_loaded_refs(void **items, int count) {
     free(items);
 }
 
+/// @brief Return the index of `item` in the table, inserting it if not present.
+///
+/// Provides O(n) interning of asset pointers so the saver can
+/// emit each shared mesh / material / texture exactly once and
+/// reference it by index from elsewhere in the JSON.
+/// @return Existing or newly-assigned index, or -1 on alloc failure / NULL inputs.
 static int vscn_ptr_table_index_or_add(vscn_ptr_table_t *table, void *item) {
     if (!table || !item)
         return -1;
@@ -225,16 +269,27 @@ static int vscn_ptr_table_index_or_add(vscn_ptr_table_t *table, void *item) {
     return table->count - 1;
 }
 
+// ---------------------------------------------------------------------------
+// `vjson_*` JSON accessor wrappers — these adapt the generic
+// rt_json runtime API to the conventions used throughout the
+// scene loader (default values for missing keys, return raw cstr
+// without allocating, etc.). Each takes a parsed JSON object/array
+// and a key/index, and returns the typed value or a caller-supplied default.
+// ---------------------------------------------------------------------------
+
+/// @brief Look up a JSON object member by C-string key. Returns NULL if absent.
 static void *vjson_get(void *obj, const char *key) {
     if (!obj || !key)
         return NULL;
     return rt_map_get(obj, rt_const_cstr(key));
 }
 
+/// @brief Length of a JSON array, or 0 for NULL.
 static int64_t vjson_len(void *seq) {
     return seq ? rt_seq_len(seq) : 0;
 }
 
+/// @brief Coerce a boxed JSON value to int64. Falls back to `def` for non-numeric or null.
 static int64_t vjson_value_i64(void *value, int64_t def) {
     if (!value)
         return def;
@@ -250,6 +305,7 @@ static int64_t vjson_value_i64(void *value, int64_t def) {
     }
 }
 
+/// @brief Coerce a boxed JSON value to double. `def` for non-numeric or null.
 static double vjson_value_f64(void *value, double def) {
     if (!value)
         return def;
@@ -265,43 +321,60 @@ static double vjson_value_f64(void *value, double def) {
     }
 }
 
+/// @brief Read `obj[key]` as int64, defaulting to `def` if absent / wrong type.
 static int64_t vjson_i64(void *obj, const char *key, int64_t def) {
     void *value = vjson_get(obj, key);
     return vjson_value_i64(value, def);
 }
 
+/// @brief Read `obj[key]` as double, defaulting to `def` if absent / wrong type.
 static double vjson_f64(void *obj, const char *key, double def) {
     void *value = vjson_get(obj, key);
     return vjson_value_f64(value, def);
 }
 
+/// @brief Read `obj[key]` as boolean (0/1), defaulting to `def`.
 static int8_t vjson_bool(void *obj, const char *key, int8_t def) {
     void *value = vjson_get(obj, key);
     return value ? (vjson_value_i64(value, def) ? 1 : 0) : def;
 }
 
+/// @brief Read `obj[key]` as a Viper rt_string. NULL if missing or non-string.
 static rt_string vjson_string_value(void *obj, const char *key) {
     void *value = vjson_get(obj, key);
     return (rt_string)value;
 }
 
+/// @brief Read `obj[key]` as a borrowed C string. NULL if missing or non-string.
+/// The pointer remains valid only as long as the underlying rt_string lives.
 static const char *vjson_cstr(void *obj, const char *key) {
     rt_string value = vjson_string_value(obj, key);
     return value ? rt_string_cstr(value) : NULL;
 }
 
+/// @brief Array-form `arr[index]` as double with default. Useful for vec3/vec4 unpacking.
 static double vjson_arr_f64(void *arr, int64_t index, double def) {
     if (!arr || index < 0 || index >= vjson_len(arr))
         return def;
     return vjson_value_f64(rt_seq_get(arr, index), def);
 }
 
+/// @brief Array-form `arr[index]` as int64 with default.
 static int64_t vjson_arr_i64(void *arr, int64_t index, int64_t def) {
     if (!arr || index < 0 || index >= vjson_len(arr))
         return def;
     return vjson_value_i64(rt_seq_get(arr, index), def);
 }
 
+// ---------------------------------------------------------------------------
+// Output buffer + JSON-formatting helpers used by the saver. The
+// growing buffer doubles on overflow; `vscn_append` is a printf-
+// style convenience and `vscn_append_json_string` handles the
+// usual JSON escapes so user-supplied strings can't break the
+// document.
+// ---------------------------------------------------------------------------
+
+/// @brief Write `depth` levels of two-space indentation into `indent` (NUL-terminated).
 static void vscn_make_indent(char *indent, size_t indent_cap, int depth) {
     size_t count;
     if (!indent || indent_cap == 0)
@@ -313,6 +386,8 @@ static void vscn_make_indent(char *indent, size_t indent_cap, int depth) {
     indent[count] = '\0';
 }
 
+/// @brief Append `src_len` raw bytes to a growing `*buf`, doubling capacity as needed.
+/// @return 1 on success, 0 on alloc failure.
 static int vscn_append_raw(char **buf, size_t *len, size_t *cap, const char *src, size_t src_len) {
     char *nb;
 
@@ -359,6 +434,12 @@ static int vscn_append(
     return 1;
 }
 
+/// @brief Append `text` to the buffer wrapped in JSON quotes with proper escapes.
+///
+/// Emits the standard backslash escapes (`\"`, `\\`, `\b`, `\f`,
+/// `\n`, `\r`, `\t`) for ASCII control characters and `\u00XX`
+/// for any other sub-0x20 byte. Bytes >= 0x20 are passed through
+/// verbatim — JSON allows raw UTF-8.
 static int vscn_append_json_string(char **buf, size_t *len, size_t *cap, const char *text) {
     if (!vscn_append_raw(buf, len, cap, "\"", 1))
         return 0;
@@ -409,6 +490,11 @@ static int vscn_append_json_string(char **buf, size_t *len, size_t *cap, const c
     return vscn_append_raw(buf, len, cap, "\"", 1);
 }
 
+/// @brief First pass: register every texture / cubemap referenced by `material` in the dedupe tables.
+///
+/// The save algorithm runs collection over the whole scene before
+/// any serialisation so each shared asset gets a stable index
+/// referenced from every material that uses it.
 static void vscn_collect_material_assets(rt_material3d *material, vscn_save_context_t *ctx) {
     if (!material || !ctx)
         return;
@@ -434,6 +520,7 @@ static void vscn_collect_material_assets(rt_material3d *material, vscn_save_cont
     }
 }
 
+/// @brief Recursively collect mesh / material / texture references from a node subtree.
 static void vscn_collect_node_assets(rt_scene_node3d *node, vscn_save_context_t *ctx) {
     if (!node || !ctx)
         return;
@@ -451,6 +538,7 @@ static void vscn_collect_node_assets(rt_scene_node3d *node, vscn_save_context_t 
         vscn_collect_node_assets(node->children[i], ctx);
 }
 
+/// @brief Emit a Pixels object as a `{"width":…, "height":…, "data":"<base64>"}` JSON entry.
 static int vscn_serialize_texture(
     rt_pixels_impl *pixels, char **buf, size_t *len, size_t *cap, int depth) {
     char indent[64];
@@ -498,6 +586,7 @@ static int vscn_serialize_texture(
     }
 }
 
+/// @brief Emit a cubemap as six texture-index references (px/nx/py/ny/pz/nz).
 static int vscn_serialize_cubemap(rt_cubemap3d *cubemap,
                                   vscn_save_context_t *ctx,
                                   char **buf,
@@ -518,6 +607,7 @@ static int vscn_serialize_cubemap(rt_cubemap3d *cubemap,
     return vscn_append(buf, len, cap, "]}");
 }
 
+/// @brief Emit a material as JSON: PBR parameters + texture-index references for each map.
 static int vscn_serialize_material(rt_material3d *material,
                                    vscn_save_context_t *ctx,
                                    char **buf,
@@ -601,6 +691,7 @@ static int vscn_serialize_material(rt_material3d *material,
     return vscn_append(buf, len, cap, "]}");
 }
 
+/// @brief Emit a mesh as JSON: vertex/index buffers as base64 + the layout descriptor.
 static int vscn_serialize_mesh(rt_mesh3d *mesh, char **buf, size_t *len, size_t *cap, int depth) {
     char indent[64];
     size_t vertex_bytes_len = (size_t)mesh->vertex_count * sizeof(vgfx3d_vertex_t);
@@ -642,6 +733,11 @@ static int vscn_serialize_mesh(rt_mesh3d *mesh, char **buf, size_t *len, size_t 
     }
 }
 
+/// @brief Recursively emit a scene node and its children as nested JSON objects.
+///
+/// Each node carries name, transform (TRS), mesh-index +
+/// material-index references, and a children array. References
+/// use the dedupe-table indices populated by the asset-collection pass.
 static int vscn_serialize_node(rt_scene_node3d *node,
                                vscn_save_context_t *ctx,
                                char **buf,
@@ -744,6 +840,7 @@ static int vscn_serialize_node(rt_scene_node3d *node,
     return vscn_append(buf, len, cap, "\n%s}", indent);
 }
 
+/// @brief Reverse of `vscn_serialize_texture` — build a Pixels object from a JSON entry.
 static rt_pixels_impl *vscn_parse_texture(void *texture_obj) {
     int64_t width;
     int64_t height;
@@ -785,6 +882,7 @@ static rt_pixels_impl *vscn_parse_texture(void *texture_obj) {
     return pixels;
 }
 
+/// @brief Reverse of `vscn_serialize_cubemap` — assemble a cubemap from texture-index references.
 static rt_cubemap3d *vscn_parse_cubemap(void *cubemap_obj,
                                         rt_pixels_impl **textures,
                                         int tex_count) {
@@ -808,6 +906,7 @@ static rt_cubemap3d *vscn_parse_cubemap(void *cubemap_obj,
         faces[0], faces[1], faces[2], faces[3], faces[4], faces[5]);
 }
 
+/// @brief Reverse of `vscn_serialize_material` — restore PBR parameters and bind texture refs.
 static rt_material3d *vscn_parse_material(void *material_obj,
                                           rt_pixels_impl **textures,
                                           int tex_count,
@@ -906,6 +1005,7 @@ static rt_material3d *vscn_parse_material(void *material_obj,
     return material;
 }
 
+/// @brief Reverse of `vscn_serialize_mesh` — decode base64 buffers and rebuild the mesh.
 static rt_mesh3d *vscn_parse_mesh(void *mesh_obj) {
     rt_mesh3d *mesh;
     const char *vertex_format;
@@ -1006,6 +1106,7 @@ static rt_mesh3d *vscn_parse_mesh(void *mesh_obj) {
     return mesh;
 }
 
+/// @brief Reverse of `vscn_serialize_node` — recursively rebuild a node subtree from JSON.
 static rt_scene_node3d *vscn_parse_node(void *node_obj,
                                         rt_mesh3d **meshes,
                                         int mesh_count,
@@ -1091,6 +1192,13 @@ static rt_scene_node3d *vscn_parse_node(void *node_obj,
     return node;
 }
 
+/// @brief Public API: save a Scene3D to a `.vscn` file at `path`.
+///
+/// Two-pass algorithm: (1) walk the scene to populate the mesh /
+/// material / texture / cubemap dedupe tables, (2) emit the JSON
+/// document with shared assets first, then nodes referencing them
+/// by index. Output is pretty-printed for diff-friendliness.
+/// @return 1 on success, 0 on any failure (open, alloc, write).
 int64_t rt_scene3d_save(void *scene_obj, rt_string path) {
     if (!scene_obj || !path)
         return 0;
@@ -1277,6 +1385,14 @@ int64_t rt_scene3d_save(void *scene_obj, rt_string path) {
     return 1;
 }
 
+/// @brief Public API: load a Scene3D from a `.vscn` file at `path`.
+///
+/// Inverts `rt_scene3d_save`: parses the JSON, rebuilds the
+/// shared-asset arrays in dependency order (textures first, then
+/// cubemaps, then materials, then meshes), and finally walks the
+/// node tree wiring index references back to the freshly-loaded
+/// objects. On any failure all partially-loaded refs are released
+/// and NULL is returned.
 void *rt_scene3d_load(rt_string path) {
     const char *filepath;
     FILE *f;

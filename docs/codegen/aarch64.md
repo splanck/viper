@@ -181,7 +181,12 @@ The AArch64 backend uses `CodegenPipeline` to orchestrate passes. The pipeline s
 9. **Assembly emission** (`AsmEmitter::emitFunction`) — MIR → text assembly
 10. **Binary encoding** (`A64BinaryEncoder`) — direct object code emission (optional)
 11. **Rodata emission** — string/FP constant pool to `.section __TEXT,__const` (macOS) or `.section .rodata` (Linux)
-12. **Assembly + linking** (`LinkerSupport`) — invoke assembler/linker, link with runtime archives
+12. **Assembly + linking** (`LinkerSupport`) — invoke assembler/linker, link with only the runtime archives and support libraries required by the module
+
+Before MIR lowering, `CodegenPipeline` now runs a selective IL optimization stage:
+
+- EH-sensitive modules run an `eh-opt`-only safety pipeline instead of bypassing IL optimization entirely.
+- Very large modules run a reduced CFG/SCCP/constfold/DCE pipeline instead of skipping IL optimization outright.
 
 ## Calling Convention (AAPCS64 / Darwin)
 

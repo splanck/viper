@@ -108,6 +108,7 @@ rt_string rt_textwrap_wrap(rt_string text, int64_t width) {
     return ret;
 }
 
+/// @brief Wrap text and return the result split into a Seq of rt_string lines (no trailing LF).
 void *rt_textwrap_wrap_lines(rt_string text, int64_t width) {
     rt_string wrapped = rt_textwrap_wrap(text, width);
     void *lines = rt_seq_new();

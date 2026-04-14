@@ -209,6 +209,8 @@ void test_resize_event(void) {
     ASSERT_EQ(ev.type, VGFX_EVENT_RESIZE);
     ASSERT_EQ(ev.data.resize.width, 800);
     ASSERT_EQ(ev.data.resize.height, 600);
+    ASSERT_EQ(ev.data.resize.logical_width, 800);
+    ASSERT_EQ(ev.data.resize.logical_height, 600);
 
     /* Check window size updated */
     int32_t w = 0, h = 0;
@@ -226,6 +228,37 @@ void test_resize_event(void) {
             ASSERT_EQ(color, 0x000000);
         }
     }
+
+    vgfx_destroy_window(win);
+    TEST_END();
+}
+
+/* T26: Resize Event Logical Dimensions with Coord Scale */
+void test_resize_event_scaled_logical(void) {
+    TEST_BEGIN("T26: Resize Event Logical Dimensions");
+
+    vgfx_window_params_t params = {
+        .width = 640, .height = 480, .title = "Test", .fps = 0, .resizable = 1};
+
+    vgfx_window_t win = vgfx_create_window(&params);
+    ASSERT_NOT_NULL(win);
+    vgfx_set_coord_scale(win, 1.5f);
+
+    vgfx_mock_inject_resize(win, 500, 333);
+    ASSERT_EQ(vgfx_pump_events(win), 1);
+
+    vgfx_event_t ev;
+    ASSERT_EQ(vgfx_poll_event(win, &ev), 1);
+    ASSERT_EQ(ev.type, VGFX_EVENT_RESIZE);
+    ASSERT_EQ(ev.data.resize.width, 500);
+    ASSERT_EQ(ev.data.resize.height, 333);
+    ASSERT_EQ(ev.data.resize.logical_width, 333);
+    ASSERT_EQ(ev.data.resize.logical_height, 222);
+
+    int32_t w = 0, h = 0;
+    ASSERT_EQ(vgfx_get_size(win, &w, &h), 1);
+    ASSERT_EQ(w, 333);
+    ASSERT_EQ(h, 222);
 
     vgfx_destroy_window(win);
     TEST_END();
@@ -302,6 +335,66 @@ void test_scroll_event(void) {
     TEST_END();
 }
 
+/* T27: Scroll Event Updates Mouse Position */
+void test_scroll_updates_mouse_position(void) {
+    TEST_BEGIN("T27: Scroll Event Updates Mouse Position");
+
+    vgfx_window_params_t params = {
+        .width = 320, .height = 240, .title = "Test", .fps = 0, .resizable = 0};
+
+    vgfx_window_t win = vgfx_create_window(&params);
+    ASSERT_NOT_NULL(win);
+
+    vgfx_mock_inject_scroll(win, 0.25f, -1.5f, 123, 45);
+    ASSERT_EQ(vgfx_pump_events(win), 1);
+
+    int32_t x = 0, y = 0;
+    ASSERT_EQ(vgfx_mouse_pos(win, &x, &y), 1);
+    ASSERT_EQ(x, 123);
+    ASSERT_EQ(y, 45);
+
+    vgfx_event_t ev;
+    ASSERT_EQ(vgfx_poll_event(win, &ev), 1);
+    ASSERT_EQ(ev.type, VGFX_EVENT_SCROLL);
+    ASSERT_EQ(ev.data.scroll.x, 123);
+    ASSERT_EQ(ev.data.scroll.y, 45);
+
+    vgfx_destroy_window(win);
+    TEST_END();
+}
+
+/* T28: Mock Fullscreen State Is Per Window */
+void test_mock_fullscreen_per_window(void) {
+    TEST_BEGIN("T28: Mock Fullscreen State Is Per Window");
+
+    vgfx_window_params_t params = {
+        .width = 320, .height = 240, .title = "Test", .fps = 0, .resizable = 0};
+
+    vgfx_window_t a = vgfx_create_window(&params);
+    vgfx_window_t b = vgfx_create_window(&params);
+    ASSERT_NOT_NULL(a);
+    ASSERT_NOT_NULL(b);
+
+    ASSERT_EQ(vgfx_is_fullscreen(a), 0);
+    ASSERT_EQ(vgfx_is_fullscreen(b), 0);
+
+    vgfx_set_fullscreen(a, 1);
+    ASSERT_EQ(vgfx_is_fullscreen(a), 1);
+    ASSERT_EQ(vgfx_is_fullscreen(b), 0);
+
+    vgfx_set_fullscreen(b, 1);
+    ASSERT_EQ(vgfx_is_fullscreen(a), 1);
+    ASSERT_EQ(vgfx_is_fullscreen(b), 1);
+
+    vgfx_set_fullscreen(a, 0);
+    ASSERT_EQ(vgfx_is_fullscreen(a), 0);
+    ASSERT_EQ(vgfx_is_fullscreen(b), 1);
+
+    vgfx_destroy_window(a);
+    vgfx_destroy_window(b);
+    TEST_END();
+}
+
 /* T25: Focus State Sync */
 void test_focus_state_sync(void) {
     TEST_BEGIN("T25: Focus State Sync");
@@ -349,10 +442,13 @@ int main(void) {
     test_event_queue_basic();
     test_event_queue_overflow();
     test_resize_event();
+    test_resize_event_scaled_logical();
     test_pump_events_without_present();
     test_text_input_event();
     test_scroll_event();
+    test_scroll_updates_mouse_position();
     test_focus_state_sync();
+    test_mock_fullscreen_per_window();
 
     TEST_SUMMARY();
     return TEST_RETURN_CODE();

@@ -223,6 +223,28 @@ class BytecodeVM {
     /// @param handler The callback to invoke when this function is called.
     void registerNativeHandler(const std::string &name, NativeHandler handler);
 
+    /// @brief Snapshot of worker-relevant execution settings.
+    /// @details Child bytecode VMs spawned for threads, async work, or HTTP
+    ///          callbacks must copy this state instead of borrowing the parent
+    ///          VM object, which may be destroyed before the worker finishes.
+    struct ExecutionEnvironment {
+        bool runtimeBridgeEnabled = false;
+        bool useThreadedDispatch = true;
+        std::unordered_map<std::string, NativeHandler> nativeHandlers;
+    };
+
+    /// @brief Capture the current worker-relevant execution settings.
+    [[nodiscard]] ExecutionEnvironment captureExecutionEnvironment() const;
+
+    /// @brief Apply a previously captured worker execution environment.
+    void applyExecutionEnvironment(const ExecutionEnvironment &env);
+
+    /// @brief Copy worker-relevant execution settings from another BytecodeVM.
+    /// @details Used by worker VMs spawned from Thread.Start/Async.Run so they
+    ///          inherit the parent VM's runtime bridge toggle, dispatch mode,
+    ///          and direct native handler registrations.
+    void copyExecutionEnvironmentFrom(const BytecodeVM &other);
+
     /// @brief Enable or disable threaded dispatch (computed goto).
     /// @details Threaded dispatch uses compiler-specific computed goto for
     ///          faster opcode dispatch. Only available on GCC and Clang.
@@ -314,6 +336,26 @@ class BytecodeVM {
     int32_t currentErrorCode_; ///< Error code for the current exception handler.
     std::string trapMessage_;  ///< Human-readable message for the most recent trap.
 
+    /// @brief Snapshot of the most recent resumable trap state.
+    struct TrapRecord {
+        bool valid = false;
+        TrapKind kind = TrapKind::None;
+        int32_t errorCode = 0;
+        uint32_t faultPc = 0;
+        uint32_t nextPc = 0;
+        int32_t faultLine = -1;
+        size_t valueCount = 0;
+        size_t stackPointerIndex = 0;
+        size_t resumeStackPointerIndex = 0;
+        size_t allocaSize = 0;
+        std::vector<BCSlot> valueSlots;
+        std::vector<uint8_t> valueOwned;
+        std::vector<BCFrame> callStack;
+        std::vector<BCExceptionHandler> ehStack;
+        std::vector<uint8_t> allocaBytes;
+    };
+    TrapRecord trapRecord_;
+
     /// @brief Value stack holding locals and operand stack entries for all frames.
     std::vector<BCSlot> valueStack_;
 
@@ -354,6 +396,9 @@ class BytecodeVM {
 
     /// @brief Global variable storage (one BCSlot per global, indexed by global index).
     std::vector<BCSlot> globals_;
+
+    /// @brief Per-global ownership flags for runtime string handles stored in globals_.
+    std::vector<uint8_t> globalsStringOwned_;
 
     /// @brief String literal cache storing proper rt_string objects for string constants.
     /// @details Indexed by string pool index. Ensures the runtime receives rt_string
@@ -400,6 +445,48 @@ class BytecodeVM {
     /// @brief Release string-owning locals in a frame before unwinding it.
     void releaseFrameLocals(const BCFrame &frame);
 
+    /// @brief Release any string-owning values left on the stack before reuse.
+    void releaseOwnedValueStack();
+
+    /// @brief Release any string-owning globals before reload or destruction.
+    void releaseOwnedGlobals();
+
+    /// @brief Release any retained string handles held by the active trap record.
+    void clearTrapRecord();
+
+    /// @brief Reset execution state and release owned values from the prior run.
+    void resetExecutionState();
+
+    /// @brief Return the current operand depth above @p frame.stackBase.
+    [[nodiscard]] uint32_t operandDepth(const BCFrame &frame, const BCSlot *sp) const;
+
+    /// @brief Validate that @p pc is a valid instruction fetch location.
+    bool ensurePcInRange(const BytecodeFunction &func, uint32_t pc, const char *site);
+
+    /// @brief Validate that @p words extra code words can be read from @p pc.
+    bool ensureWordsAvailable(const BytecodeFunction &func,
+                              uint32_t pc,
+                              uint32_t words,
+                              const char *site);
+
+    /// @brief Validate that a computed branch target lands inside @p func.
+    bool ensureBranchTarget(const BytecodeFunction &func, uint32_t target, const char *site);
+
+    /// @brief Validate stack depth and capacity requirements for @p instr.
+    bool ensureStackForInstruction(const BCFrame &frame,
+                                   const BCSlot *sp,
+                                   uint32_t instr,
+                                   const char *site);
+
+    /// @brief Validate that the active operand stack matches the callee arity exactly.
+    bool ensureCallArity(const BytecodeFunction *func,
+                         const BCFrame *caller,
+                         const BCSlot *sp,
+                         const char *site);
+
+    /// @brief Validate frame-local and operand-stack footprint for a callee.
+    bool ensureFrameFootprint(const BytecodeFunction *func, const BCSlot *sp, const char *site);
+
     /// @brief Clone runtime-call arguments for helpers that consume strings.
     /// @details The bytecode VM stores raw slot aliases in locals and on the
     ///          operand stack. Helpers such as `Viper.String.Concat` release
@@ -418,6 +505,15 @@ class BytecodeVM {
     /// @param name Runtime helper name.
     /// @param args Retained argument copy returned by @ref cloneRuntimeStringArgs.
     void releaseRuntimeStringArgs(std::string_view name, std::vector<BCSlot> &args) const;
+
+    /// @brief Invoke a runtime-bridge native helper with bytecode trap integration.
+    /// @details Returns false when execution was diverted into bytecode trap
+    ///          handling, either because a handler caught the trap or because
+    ///          the trap became terminal.
+    bool invokeRuntimeBridgeNative(const NativeFuncRef &ref,
+                                   BCSlot *args,
+                                   uint8_t argCount,
+                                   BCSlot &result);
 
     /// @brief Return whether a runtime helper consumes retained clones of string args.
     [[nodiscard]] static bool runtimeCallConsumesClonedStringArgs(std::string_view name);
@@ -473,6 +569,21 @@ class BytecodeVM {
     /// @return True if the multiplication overflows; false otherwise.
     bool mulOverflow(int64_t a, int64_t b, int64_t &result);
 
+    /// @brief Execute signed division without invoking host-language UB.
+    bool safeSignedDiv(int64_t a, int64_t b, int64_t &result, TrapKind &fault) const;
+
+    /// @brief Execute unsigned division without invoking host-language UB.
+    bool safeUnsignedDiv(int64_t a, int64_t b, int64_t &result, TrapKind &fault) const;
+
+    /// @brief Execute signed remainder without invoking host-language UB.
+    bool safeSignedRem(int64_t a, int64_t b, int64_t &result, TrapKind &fault) const;
+
+    /// @brief Execute unsigned remainder without invoking host-language UB.
+    bool safeUnsignedRem(int64_t a, int64_t b, int64_t &result, TrapKind &fault) const;
+
+    /// @brief Execute signed negation without invoking host-language UB.
+    bool safeNegate(int64_t value, int64_t &result, TrapKind &fault) const;
+
     /// @brief Push an exception handler onto the handler stack.
     /// @param handlerPc The PC of the handler entry point.
     void pushExceptionHandler(uint32_t handlerPc);
@@ -487,7 +598,10 @@ class BytecodeVM {
     /// @param kind The trap kind to dispatch.
     /// @return True if a handler was found and control was transferred; false
     ///         if the trap is unhandled.
-    bool dispatchTrap(TrapKind kind);
+    bool dispatchTrap(TrapKind kind, int32_t errorCode = -1, const char *message = nullptr);
+
+    /// @brief Restore execution state for resume.same or resume.next.
+    bool resumeTrap(bool useNextPc);
 
     /// @brief Check whether the current PC matches a breakpoint.
     /// @return True if the debugger should pause; false otherwise.

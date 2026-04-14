@@ -82,6 +82,17 @@ typedef struct bmp_info_header {
 
 #pragma pack(pop)
 
+/// @brief Decode a 24-bit uncompressed BMP file into a Pixels object.
+///
+/// Supports the most common BMP variant: BITMAPINFOHEADER, 24bpp,
+/// no compression. Handles both bottom-up (positive height — the
+/// historical default) and top-down (negative height) row layouts.
+/// Source rows are 4-byte aligned; we strip the BGR→RGBA conversion
+/// in the inner loop and force alpha = 255 since 24bpp BMP has no
+/// alpha channel. Caps width/height at 32768 to bound memory.
+/// @return GC-managed `rt_pixels_impl*` on success, NULL on any
+///         failure (file open, magic mismatch, unsupported variant,
+///         short read).
 void *rt_pixels_load_bmp(void *path) {
     if (!path)
         return NULL;
@@ -174,6 +185,13 @@ bmp_cleanup:
     return pixels;
 }
 
+/// @brief Save a Pixels object as a 24-bit uncompressed BMP file.
+///
+/// Always writes top-down (negative height) so consumers don't
+/// need to handle the row-order quirk. Refuses oversized images
+/// where the resulting file would overflow the 32-bit
+/// `bfSize` field. Pads each row to a 4-byte multiple.
+/// @return 1 on success, 0 on any failure (open, oversized, write).
 int64_t rt_pixels_save_bmp(void *pixels, void *path) {
     if (!pixels || !path)
         return 0;
@@ -278,11 +296,17 @@ int64_t rt_pixels_save_bmp(void *pixels, void *path) {
 //=============================================================================
 
 // PNG uses big-endian integers
+/// @brief Read a big-endian uint32 from a PNG chunk header / data.
 static uint32_t png_read_u32(const uint8_t *p) {
     return ((uint32_t)p[0] << 24) | ((uint32_t)p[1] << 16) | ((uint32_t)p[2] << 8) | (uint32_t)p[3];
 }
 
 // Paeth predictor as defined by the PNG spec
+/// @brief PNG Paeth filter predictor (RFC 2083 §6.6).
+///
+/// Predicts the current pixel as whichever of `a` (left), `b`
+/// (above), or `c` (upper-left) is closest to `p = a + b - c` —
+/// the linear extrapolation. Used as filter type 4.
 static uint8_t paeth_predict(uint8_t a, uint8_t b, uint8_t c) {
     int p = (int)a + (int)b - (int)c;
     int pa = p > (int)a ? p - (int)a : (int)a - p;
@@ -295,6 +319,17 @@ static uint8_t paeth_predict(uint8_t a, uint8_t b, uint8_t c) {
     return c;
 }
 
+/// @brief Decode a PNG file into a Pixels object.
+///
+/// Implements a focused PNG reader (RFC 2083): parses the 8-byte
+/// signature + IHDR header, walks the IDAT chunks, decompresses
+/// them with the in-tree DEFLATE engine, then unfilters each
+/// scanline using the standard 5 filters (None, Sub, Up, Average,
+/// Paeth) and converts to RGBA. Supports color types 2 (RGB), 6
+/// (RGBA), 0 (grayscale), 4 (gray + alpha), and 3 (palette via
+/// PLTE/tRNS chunks). Bit depth must be 8.
+/// @return GC-managed `rt_pixels_impl*` on success, NULL on any
+///         decode failure (malformed file, unsupported variant, OOM).
 void *rt_pixels_load_png(void *path) {
     if (!path)
         return NULL;
@@ -752,6 +787,15 @@ cleanup:
     return pixels;
 }
 
+/// @brief Save a Pixels object as an RGBA PNG file.
+///
+/// Writes the 8-byte signature, IHDR (color type 6 / RGBA, bit
+/// depth 8, default filter & interlace methods), a single IDAT
+/// chunk containing all scanlines compressed with our in-tree
+/// DEFLATE encoder (each row prefixed with filter byte 0 = None),
+/// and IEND. Each chunk's CRC32 is computed over `type ‖ data` per
+/// RFC 2083 §5.3.
+/// @return 1 on success, 0 on any failure.
 int64_t rt_pixels_save_png(void *pixels_ptr, void *path) {
     if (!pixels_ptr || !path)
         return 0;
@@ -1026,12 +1070,22 @@ typedef struct {
     int16_t dc_pred[4];
 } jpeg_ctx_t;
 
+// ---------------------------------------------------------------------------
+// JPEG baseline (sequential) decoder helpers.
+// Together these implement Huffman + dequantize + inverse-DCT
+// over the entropy-coded segment. Only the most common JPEG
+// variant — 8-bit baseline DCT, 1 or 3 components, no progressive
+// or arithmetic coding — is supported. Layout follows ITU-T T.81.
+// ---------------------------------------------------------------------------
+
+/// @brief Read one byte from the JPEG stream. Returns -1 at EOF.
 static int jpeg_read_u8(jpeg_ctx_t *ctx) {
     if (ctx->pos >= ctx->len)
         return -1;
     return ctx->data[ctx->pos++];
 }
 
+/// @brief Read a big-endian uint16 from the JPEG stream. Returns -1 on short read.
 static int jpeg_read_u16(jpeg_ctx_t *ctx) {
     if (ctx->pos + 2 > ctx->len)
         return -1;
@@ -1040,7 +1094,13 @@ static int jpeg_read_u16(jpeg_ctx_t *ctx) {
     return val;
 }
 
-// Bitstream reader: reads next byte, handling 0xFF00 byte-stuffing
+/// @brief Pull the next entropy-coded byte, transparent to byte-stuffing & RST markers.
+///
+/// JPEG escapes literal `0xFF` bytes inside the entropy segment as
+/// `FF 00`; this strips the stuff. Restart markers (`FF D0..D7`)
+/// are silently skipped — the higher-level scan loop is responsible
+/// for resetting DC predictors at restart boundaries. Any other
+/// `FF xx` sequence is an unexpected marker (returns -1).
 static int jpeg_next_byte(jpeg_ctx_t *ctx) {
     if (ctx->pos >= ctx->len)
         return -1;
@@ -1062,6 +1122,11 @@ static int jpeg_next_byte(jpeg_ctx_t *ctx) {
     return b;
 }
 
+/// @brief Extract `count` MSB-first bits from the JPEG bitstream.
+///
+/// Refills the 32-bit shift register one stuffed byte at a time
+/// until at least `count` bits are available, then shifts them out
+/// of the high end. Returns -1 on EOF/marker error.
 static int jpeg_get_bits(jpeg_ctx_t *ctx, int count) {
     while (ctx->bits_left < count) {
         int b = jpeg_next_byte(ctx);
@@ -1074,7 +1139,12 @@ static int jpeg_get_bits(jpeg_ctx_t *ctx, int count) {
     return (int)((ctx->bitbuf >> ctx->bits_left) & ((1u << count) - 1));
 }
 
-// Build derived Huffman tables for fast decoding
+/// @brief Precompute Huffman lookup tables (mincode/maxcode/valptr) per ITU-T T.81 Annex C.
+///
+/// JPEG transmits Huffman tables as a count-per-bit-length list
+/// (`bits[1..16]`). This expands them into the cumulative
+/// `mincode`/`maxcode` per length used by `jpeg_huff_decode` for
+/// fast symbol lookup.
 static void jpeg_build_huff(jpeg_huff_t *h) {
     int code = 0;
     int si = 0;
@@ -1092,7 +1162,7 @@ static void jpeg_build_huff(jpeg_huff_t *h) {
     h->maxcode[17] = 0x7FFFFFFF;
 }
 
-// Decode one Huffman symbol
+/// @brief Decode one Huffman symbol from the JPEG bitstream.
 static int jpeg_huff_decode(jpeg_ctx_t *ctx, jpeg_huff_t *h) {
     int code = 0;
     for (int i = 1; i <= 16; i++) {
@@ -1108,7 +1178,12 @@ static int jpeg_huff_decode(jpeg_ctx_t *ctx, jpeg_huff_t *h) {
     return -1; // invalid code
 }
 
-// Extend a partial value to a signed coefficient
+/// @brief Sign-extend a `bits`-wide unsigned magnitude per ITU-T T.81 §F.2.1.4.
+///
+/// JPEG stores coefficients as (size, magnitude) where negative
+/// values are encoded as 1s-complement. Convert back to a signed
+/// integer by adding `(-1 << bits) + 1` whenever the high bit
+/// indicates negativity.
 static int jpeg_extend(int val, int bits) {
     if (bits == 0)
         return 0;
@@ -1118,7 +1193,15 @@ static int jpeg_extend(int val, int bits) {
     return val;
 }
 
-// Decode one 8x8 block of DCT coefficients
+/// @brief Decode one 8×8 block of DCT coefficients into zig-zagged form.
+///
+/// Decodes the DC coefficient (delta-coded against `*dc_pred`),
+/// then runs the AC loop: each Huffman symbol carries a
+/// (zero-run, magnitude-bits) pair. Special symbols are EOB
+/// (00 — fill remainder with zeros) and ZRL (F0 — skip 16 zeros).
+/// Multiplies each non-zero coefficient by the matching quant
+/// table entry and stores it in natural row order using `jpeg_zigzag`.
+/// @return 0 on success, -1 on bitstream / Huffman decode failure.
 static int jpeg_decode_block(jpeg_ctx_t *ctx,
                              int16_t block[64],
                              jpeg_huff_t *dc_ht,
@@ -1173,12 +1256,17 @@ static int jpeg_decode_block(jpeg_ctx_t *ctx,
     return 0;
 }
 
-// AAN (Arai, Agui, Nakajima) integer IDCT
-// Fixed-point: 12-bit fractional precision
+// ---------------------------------------------------------------------------
+// Inverse DCT — fixed-point version of the AAN (Arai/Agui/Nakajima)
+// algorithm. Uses 12-bit fractional precision so we can do a full
+// 1D IDCT in 32-bit integers without overflow. The full 8×8 IDCT
+// is `jpeg_idct_block` which calls `_row` × 8 then `_col` × 8.
+// ---------------------------------------------------------------------------
 #define JPEG_FIX_1 4096
 #define JPEG_FIX(x) ((int32_t)((x) * 4096.0 + 0.5))
 #define JPEG_DESCALE(x, n) (((x) + (1 << ((n) - 1))) >> (n))
 
+/// @brief One-dimensional AAN IDCT applied to an 8-coefficient row, in place.
 static void jpeg_idct_row(int32_t *row) {
     int32_t x0 = row[0], x1 = row[1], x2 = row[2], x3 = row[3];
     int32_t x4 = row[4], x5 = row[5], x6 = row[6], x7 = row[7];
@@ -1223,6 +1311,7 @@ static void jpeg_idct_row(int32_t *row) {
     row[7] = e0 - o3;
 }
 
+/// @brief One-dimensional AAN IDCT applied to column `col` of an 8×8 workspace.
 static void jpeg_idct_col(int32_t *workspace, int col) {
     int32_t x0 = workspace[col + 0 * 8], x1 = workspace[col + 1 * 8];
     int32_t x2 = workspace[col + 2 * 8], x3 = workspace[col + 3 * 8];
@@ -1268,6 +1357,11 @@ static void jpeg_idct_col(int32_t *workspace, int col) {
     workspace[col + 7 * 8] = JPEG_DESCALE(e0 - o3, 5);
 }
 
+/// @brief Full 2D IDCT on an 8×8 coefficient block, producing 8-bit samples.
+///
+/// Applies `jpeg_idct_row` × 8 then `jpeg_idct_col` × 8 with the
+/// AAN-required pre-/post-scale. After descaling and biasing by
+/// 128 (level shift), the samples are clamped to [0, 255].
 static void jpeg_idct_block(int16_t block[64], uint8_t out[64]) {
     int32_t workspace[64];
     for (int i = 0; i < 64; i++)
@@ -1293,6 +1387,7 @@ static void jpeg_idct_block(int16_t block[64], uint8_t out[64]) {
 }
 
 // Clamp int to [0, 255]
+/// @brief Saturate an integer to the [0, 255] range as a byte.
 static uint8_t jpeg_clamp(int val) {
     if (val < 0)
         return 0;
@@ -1765,6 +1860,14 @@ void *rt_pixels_load_jpeg(void *path) {
 
 #include "rt_gif.h"
 
+/// @brief Decode a GIF file into a Pixels object (first frame only).
+///
+/// LZW-decompresses the indexed-color image stream and resolves
+/// each index against the Global Color Table. Always reads only
+/// the first frame — animated GIFs collapse to their initial
+/// snapshot. Used for sprite-sheet and texture loading; for full
+/// animation use the dedicated GIF decoder elsewhere.
+/// @return Pixels on success, NULL on file/format failure.
 void *rt_pixels_load_gif(void *path) {
     if (!path)
         return NULL;
@@ -1795,6 +1898,11 @@ void *rt_pixels_load_gif(void *path) {
 // Auto-detect loader
 //=============================================================================
 
+/// @brief Generic image loader — autodetects format from the file extension.
+///
+/// Dispatches to `rt_pixels_load_bmp`, `_png`, `_jpeg`, or `_gif`
+/// based on the path's lowercase extension. Returns NULL for
+/// unrecognised extensions or on any underlying decode failure.
 void *rt_pixels_load(void *path) {
     if (!path)
         return NULL;

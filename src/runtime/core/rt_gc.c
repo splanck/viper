@@ -90,6 +90,8 @@ struct rt_weakref {
     struct rt_weakref *next_for_target; ///< Chain of weak refs to same target.
 };
 
+#define RT_WEAKREF_CLASS_ID INT64_C(-0x57524546)
+
 /// Weak ref registry entry (per-target chain).
 typedef struct weak_chain {
     void *target;
@@ -263,6 +265,9 @@ static void gc_rehash(int64_t new_cap) {
 void rt_gc_track(void *obj, rt_gc_traverse_fn traverse) {
     if (!obj || !traverse)
         return;
+    rt_heap_hdr_t *hdr = NULL;
+    if (!rt_heap_try_get_header(obj, &hdr) || !hdr)
+        rt_trap("rt_gc_track: object is not a live heap payload");
 
     gc_lock();
 
@@ -397,6 +402,16 @@ static void unregister_weak_ref(void *target, rt_weakref *ref) {
     }
 }
 
+static int gc_is_weakref_handle_unlocked(void *candidate) {
+    rt_heap_hdr_t *hdr = NULL;
+    if (!candidate || !rt_heap_try_get_header(candidate, &hdr) || !hdr)
+        return 0;
+    return (rt_heap_kind_t)hdr->kind == RT_HEAP_OBJECT && hdr->class_id == RT_WEAKREF_CLASS_ID &&
+                   hdr->cap >= sizeof(rt_weakref)
+               ? 1
+               : 0;
+}
+
 //=============================================================================
 // Zeroing Weak References (Public API)
 //=============================================================================
@@ -404,7 +419,7 @@ static void unregister_weak_ref(void *target, rt_weakref *ref) {
 /// @brief Create a zeroing weak reference. The target's refcount is NOT bumped.
 /// @details When the target is freed, the reference automatically becomes NULL.
 rt_weakref *rt_weakref_new(void *target) {
-    rt_weakref *ref = (rt_weakref *)rt_obj_new_i64(0, (int64_t)sizeof(rt_weakref));
+    rt_weakref *ref = (rt_weakref *)rt_obj_new_i64(RT_WEAKREF_CLASS_ID, (int64_t)sizeof(rt_weakref));
     memset(ref, 0, sizeof(rt_weakref));
 
     gc_lock();
@@ -423,6 +438,10 @@ void *rt_weakref_get(rt_weakref *ref) {
         return NULL;
 
     gc_lock();
+    if (!gc_is_weakref_handle_unlocked(ref)) {
+        gc_unlock();
+        return NULL;
+    }
     void *t = ref->target;
     gc_unlock();
     return t;
@@ -434,6 +453,10 @@ int8_t rt_weakref_alive(rt_weakref *ref) {
         return 0;
 
     gc_lock();
+    if (!gc_is_weakref_handle_unlocked(ref)) {
+        gc_unlock();
+        return 0;
+    }
     int8_t alive = ref->target != NULL ? 1 : 0;
     gc_unlock();
     return alive;
@@ -445,8 +468,47 @@ void rt_weakref_free(rt_weakref *ref) {
         return;
 
     gc_lock();
+    if (!gc_is_weakref_handle_unlocked(ref)) {
+        gc_unlock();
+        return;
+    }
     if (ref->target)
         unregister_weak_ref(ref->target, ref);
+    ref->target = NULL;
+    ref->next_for_target = NULL;
+    gc_unlock();
+
+    if (rt_obj_release_check0(ref))
+        rt_obj_free(ref);
+}
+
+/// @brief Returns 1 if `candidate` is a registered weak-reference handle. Used by polymorphic
+/// dispatch sites to distinguish weak-ref objects from regular GC objects.
+int8_t rt_weakref_is_handle(void *candidate) {
+    int8_t is_handle = 0;
+    gc_lock();
+    is_handle = gc_is_weakref_handle_unlocked(candidate);
+    gc_unlock();
+    return is_handle;
+}
+
+/// @brief Re-point a weak reference at a different target (or to NULL to clear). Unregisters
+/// from the old target's weak-list and registers with the new one.
+void rt_weakref_reset(rt_weakref *ref, void *target) {
+    if (!ref)
+        return;
+
+    gc_lock();
+    if (!gc_is_weakref_handle_unlocked(ref)) {
+        gc_unlock();
+        return;
+    }
+    if (ref->target)
+        unregister_weak_ref(ref->target, ref);
+    ref->target = target;
+    ref->next_for_target = NULL;
+    if (target)
+        register_weak_ref(target, ref);
     gc_unlock();
 }
 
@@ -524,7 +586,7 @@ typedef struct {
 
 /// @brief Run one synchronous cycle-collection pass.
 /// @details Implements a four-phase trial-deletion algorithm:
-///   Phase 1: Initialize trial refcounts (assume 1 external ref per object).
+///   Phase 1: Initialize trial refcounts from the real heap-header refcount.
 ///   Phase 2: Trial-decrement children — objects whose trial_rc drops to 0 are
 ///            referenced only by other tracked objects (potential cycle members).
 ///   Phase 3: Restore reachable objects (trial_rc > 0) by marking them black and
@@ -561,7 +623,10 @@ int64_t rt_gc_collect(void) {
         if (!gc_slot_is_live(&g_gc.entries[i]))
             continue;
 
-        g_gc.entries[i].trial_rc = 1; /* assume 1 external ref */
+        rt_heap_hdr_t *hdr = NULL;
+        if (!rt_heap_try_get_header(g_gc.entries[i].obj, &hdr) || !hdr)
+            rt_trap("gc: tracked object is not a live heap payload");
+        g_gc.entries[i].trial_rc = (int64_t)__atomic_load_n(&hdr->refcnt, __ATOMIC_ACQUIRE);
 
         /* Skip promoted objects in non-full-scan passes: mark them black
            so they are treated as reachable without trial-deletion. */
@@ -608,14 +673,8 @@ int64_t rt_gc_collect(void) {
         }
     }
 
-    gc_unlock();
-
-    free(snapshot);
-
     /* Phase 4: Collect — white objects are unreachable cycle members.
        Gather them, remove from the hash table, clear weak refs, then free. */
-    gc_lock();
-
     int64_t garbage_count = 0;
     for (int64_t i = 0; i < g_gc.capacity; i++) {
         if (gc_slot_is_live(&g_gc.entries[i]) && g_gc.entries[i].color == 0)
@@ -645,6 +704,8 @@ int64_t rt_gc_collect(void) {
     freed = garbage_count;
 
     gc_unlock();
+
+    free(snapshot);
 
     /* Free garbage objects (outside the lock). */
     if (garbage) {
@@ -718,6 +779,9 @@ int64_t rt_gc_pass_count(void) {
 // Shutdown
 //=============================================================================
 
+/// @brief Iterate every tracked object, invoking its finalizer (if any) and freeing it.
+/// Called at process shutdown to clean up resources that depend on side-effects (file handles,
+/// network sockets) before the heap arena is released.
 void rt_gc_run_all_finalizers(void) {
     gc_lock();
 
@@ -760,6 +824,8 @@ void rt_gc_run_all_finalizers(void) {
     free(snapshot);
 }
 
+/// @brief Tear down GC state at process exit: drain tracked objects (running finalizers), free
+/// the tracking and weak-ref tables, and destroy the GC mutex. Idempotent; safe to call once.
 void rt_gc_shutdown(void) {
     gc_lock();
 

@@ -307,10 +307,156 @@ static void test_textual_order_guard_for_redundant_load_elim() {
     assert(UpdateB.instructions[1].operands[0].id == *UpdateB.instructions[0].result);
 }
 
+static void test_same_block_def_before_use_guard() {
+    Module M;
+    Function F;
+    F.name = "gvn_same_block_textual_order";
+    F.retType = Type(Type::Kind::I64);
+
+    unsigned id = 0;
+    Param a{"a", Type(Type::Kind::I64), id++};
+    Param b{"b", Type(Type::Kind::I64), id++};
+    F.params.push_back(a);
+    F.params.push_back(b);
+    F.valueNames.resize(id);
+
+    BasicBlock entry;
+    entry.label = "entry";
+    {
+        Instr first;
+        first.result = id++;
+        first.op = Opcode::Add;
+        first.type = Type(Type::Kind::I64);
+        first.operands.push_back(Value::temp(a.id));
+        first.operands.push_back(Value::temp(b.id));
+        const unsigned firstId = *first.result;
+
+        Instr second;
+        second.result = id++;
+        second.op = Opcode::Add;
+        second.type = Type(Type::Kind::I64);
+        second.operands.push_back(Value::temp(a.id));
+        second.operands.push_back(Value::temp(b.id));
+        const unsigned secondId = *second.result;
+
+        Instr ret;
+        ret.op = Opcode::Ret;
+        ret.type = Type(Type::Kind::Void);
+        ret.operands.push_back(Value::temp(firstId));
+
+        entry.instructions.push_back(std::move(first));
+        entry.instructions.push_back(std::move(second));
+        entry.instructions.push_back(std::move(ret));
+        entry.terminated = true;
+
+        (void)secondId;
+    }
+
+    F.blocks.push_back(std::move(entry));
+    M.functions.push_back(std::move(F));
+
+    Function &Fn = M.functions.back();
+    auto registry = makeRegistry();
+    il::transform::AnalysisManager AM(M, registry);
+
+    il::transform::GVN gvn;
+    gvn.run(Fn, AM);
+
+    const BasicBlock &EntryB = Fn.blocks.front();
+    assert(EntryB.instructions.size() == 2);
+    assert(EntryB.instructions.front().op == Opcode::Add);
+    assert(EntryB.instructions.back().op == Opcode::Ret);
+    assert(EntryB.instructions.back().operands.size() == 1);
+    assert(EntryB.instructions.back().operands.front().kind == Value::Kind::Temp);
+    assert(EntryB.instructions.back().operands.front().id == *EntryB.instructions.front().result);
+}
+
+static void test_repeated_same_block_elimination_updates_later_uses() {
+    Module M;
+    Function F;
+    F.name = "gvn_repeated_same_block";
+    F.retType = Type(Type::Kind::I64);
+
+    unsigned id = 0;
+    Param a{"a", Type(Type::Kind::I64), id++};
+    Param b{"b", Type(Type::Kind::I64), id++};
+    F.params.push_back(a);
+    F.params.push_back(b);
+    F.valueNames.resize(id);
+
+    BasicBlock entry;
+    entry.label = "entry";
+    {
+        Instr add0;
+        add0.result = id++;
+        add0.op = Opcode::Add;
+        add0.type = Type(Type::Kind::I64);
+        add0.operands = {Value::temp(a.id), Value::temp(b.id)};
+        const unsigned add0Id = *add0.result;
+        entry.instructions.push_back(std::move(add0));
+
+        Instr add1;
+        add1.result = id++;
+        add1.op = Opcode::Add;
+        add1.type = Type(Type::Kind::I64);
+        add1.operands = {Value::temp(a.id), Value::temp(b.id)};
+        const unsigned add1Id = *add1.result;
+        entry.instructions.push_back(std::move(add1));
+
+        Instr sub;
+        sub.result = id++;
+        sub.op = Opcode::Sub;
+        sub.type = Type(Type::Kind::I64);
+        sub.operands = {Value::temp(add1Id), Value::constInt(1)};
+        entry.instructions.push_back(std::move(sub));
+
+        Instr add2;
+        add2.result = id++;
+        add2.op = Opcode::Add;
+        add2.type = Type(Type::Kind::I64);
+        add2.operands = {Value::temp(a.id), Value::temp(b.id)};
+        const unsigned add2Id = *add2.result;
+        entry.instructions.push_back(std::move(add2));
+
+        Instr ret;
+        ret.op = Opcode::Ret;
+        ret.type = Type(Type::Kind::Void);
+        ret.operands.push_back(Value::temp(add2Id));
+        entry.instructions.push_back(std::move(ret));
+        entry.terminated = true;
+
+        (void)add0Id;
+    }
+
+    F.blocks.push_back(std::move(entry));
+    M.functions.push_back(std::move(F));
+
+    Function &Fn = M.functions.back();
+    auto registry = makeRegistry();
+    il::transform::AnalysisManager AM(M, registry);
+
+    il::transform::GVN gvn;
+    gvn.run(Fn, AM);
+
+    const BasicBlock &EntryB = Fn.blocks.front();
+    assert(EntryB.instructions.size() == 3);
+    assert(EntryB.instructions[0].op == Opcode::Add);
+    assert(EntryB.instructions[1].op == Opcode::Sub);
+    assert(EntryB.instructions[2].op == Opcode::Ret);
+    assert(EntryB.instructions[1].operands.size() == 2);
+    assert(EntryB.instructions[1].operands[0].kind == Value::Kind::Temp);
+    assert(EntryB.instructions[1].operands[0].id == *EntryB.instructions[0].result);
+    assert(EntryB.instructions[2].operands.size() == 1);
+    assert(EntryB.instructions[2].operands[0].kind == Value::Kind::Temp);
+    assert(EntryB.instructions[2].operands[0].id == *EntryB.instructions[0].result);
+}
+
 /// @brief Main.
 int main() {
     test_cse_cross_block();
     test_redundant_load_elim();
     test_textual_order_guard_for_redundant_load_elim();
+    test_same_block_def_before_use_guard();
+    test_repeated_same_block_elimination_updates_later_uses();
     return 0;
 }

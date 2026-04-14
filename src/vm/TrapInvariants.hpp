@@ -30,17 +30,15 @@
 // ----------------------------------
 // - May be called with or without an active VM.
 // - When VM::activeInstance() returns non-null:
-//   * vm_raise() is invoked to deliver the trap through the VM.
+//   * vm_raise_from_error() is invoked to deliver the trap through the VM.
 //   * The trap may be caught by an installed exception handler.
 //   * The VM updates currentContext, runtimeContext, and lastTrap.
 // - When VM::activeInstance() returns null:
 //   * The trap is formatted and delivered via rt_abort().
 //   * rt_abort() terminates the process; execution does not continue.
-// - GUARANTEE: RuntimeBridge::trap() does NOT return to its caller if
-//   no exception handler catches the trap. Either:
-//   (a) An exception handler is installed and control resumes there.
-//   (b) rt_abort() terminates the process.
-//   (c) A TrapDispatchSignal is thrown for the VM's internal dispatch loop.
+// - GUARANTEE: In production builds the common path does not return unless an
+//   exception handler catches the trap. Test harnesses and embedders may
+//   override vm_trap() with an observer that records the trap and returns.
 //
 // 3. lastTrap Lifetime and Updates
 // ---------------------------------

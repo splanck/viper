@@ -45,14 +45,21 @@
 // MenuBar Widget (Phase 2)
 //=============================================================================
 
+/// @brief Walk up from a menu to its owning menubar (NULL for orphan / context menus).
 static vg_menubar_t *rt_gui_menu_owner_from_menu(const vg_menu_t *menu) {
     return menu ? menu->owner_menubar : NULL;
 }
 
+/// @brief Walk from an item → parent menu → menubar; NULL if the chain isn't intact.
 static vg_menubar_t *rt_gui_menu_owner_from_item(const vg_menu_item_t *item) {
     return item && item->parent_menu ? item->parent_menu->owner_menubar : NULL;
 }
 
+/// @brief Push the menubar's current state into the macOS native menu strip.
+///
+/// No-op on Linux/Windows. Called after every mutation (add item,
+/// remove menu, toggle visibility) so the system menu stays in
+/// sync with the in-process model.
 static void rt_gui_menu_sync_menubar(vg_menubar_t *menubar) {
     rt_gui_macos_menu_sync_for_menubar(menubar);
 }
@@ -123,6 +130,10 @@ int64_t rt_menubar_get_menu_count(void *menubar) {
     return ((vg_menubar_t *)menubar)->menu_count;
 }
 
+/// @brief Return the `index`-th top-level menu in `menubar`, or NULL if out of range.
+///
+/// Linear walk through the singly-linked menu list — fine because
+/// the typical menubar has under 10 entries (File/Edit/View/Help/…).
 void *rt_menubar_get_menu(void *menubar, int64_t index) {
     RT_ASSERT_MAIN_THREAD();
     if (!menubar)
@@ -177,6 +188,8 @@ void *rt_menu_add_item(void *menu, rt_string text) {
     return item;
 }
 
+/// @brief Add an item with a keyboard shortcut (e.g. `"Ctrl+S"`).
+/// The shortcut string is parsed by the platform layer at sync time.
 void *rt_menu_add_item_with_shortcut(void *menu, rt_string text, rt_string shortcut) {
     RT_ASSERT_MAIN_THREAD();
     if (!menu)
@@ -190,6 +203,7 @@ void *rt_menu_add_item_with_shortcut(void *menu, rt_string text, rt_string short
     return item;
 }
 
+/// @brief Append a horizontal separator line between menu items.
 void *rt_menu_add_separator(void *menu) {
     RT_ASSERT_MAIN_THREAD();
     if (!menu)
@@ -199,6 +213,7 @@ void *rt_menu_add_separator(void *menu) {
     return item;
 }
 
+/// @brief Add a nested submenu with the given title; returns the new submenu handle.
 void *rt_menu_add_submenu(void *menu, rt_string title) {
     RT_ASSERT_MAIN_THREAD();
     if (!menu)
@@ -258,6 +273,7 @@ int64_t rt_menu_get_item_count(void *menu) {
     return ((vg_menu_t *)menu)->item_count;
 }
 
+/// @brief Return the `index`-th item in `menu` (linear walk; safe on out-of-range).
 void *rt_menu_get_item(void *menu, int64_t index) {
     RT_ASSERT_MAIN_THREAD();
     if (!menu)
@@ -451,6 +467,7 @@ void rt_contextmenu_destroy(void *menu) {
     }
 }
 
+/// @brief Add a clickable item to a context (right-click) popup menu.
 void *rt_contextmenu_add_item(void *menu, rt_string text) {
     RT_ASSERT_MAIN_THREAD();
     if (!menu)
@@ -462,6 +479,7 @@ void *rt_contextmenu_add_item(void *menu, rt_string text) {
     return item;
 }
 
+/// @brief Add a context-menu item with an associated keyboard shortcut.
 void *rt_contextmenu_add_item_with_shortcut(void *menu, rt_string text, rt_string shortcut) {
     RT_ASSERT_MAIN_THREAD();
     if (!menu)
@@ -475,6 +493,8 @@ void *rt_contextmenu_add_item_with_shortcut(void *menu, rt_string text, rt_strin
     return item;
 }
 
+/// @brief Append a separator line to a context menu.
+/// Returns NULL because the underlying separator is not addressable.
 void *rt_contextmenu_add_separator(void *menu) {
     RT_ASSERT_MAIN_THREAD();
     if (!menu)
@@ -483,6 +503,7 @@ void *rt_contextmenu_add_separator(void *menu) {
     return NULL; // vg_contextmenu_add_separator returns void
 }
 
+/// @brief Add a nested submenu to a context menu; returns the new submenu handle.
 void *rt_contextmenu_add_submenu(void *menu, rt_string title) {
     RT_ASSERT_MAIN_THREAD();
     if (!menu)
@@ -532,6 +553,11 @@ int64_t rt_contextmenu_is_visible(void *menu) {
     return ((vg_contextmenu_t *)menu)->is_visible ? 1 : 0;
 }
 
+/// @brief Return (and consume) the most recently clicked context-menu item.
+///
+/// Edge-triggered: each click is reported exactly once. Subsequent
+/// calls without a fresh click return NULL. The expected polling
+/// pattern is `if (item := get_clicked()) handle(item);` once per frame.
 void *rt_contextmenu_get_clicked_item(void *menu) {
     RT_ASSERT_MAIN_THREAD();
     if (!menu)
@@ -578,7 +604,12 @@ void rt_statusbar_destroy(void *bar) {
     }
 }
 
-// Internal: helper to get first text item in a zone
+/// @brief Return the first text-type item in the given status-bar zone (or NULL).
+///
+/// Used by the convenience setters (`set_left_text` etc.) so they
+/// can update an existing label rather than appending a new one
+/// each time. Walking the zone is fine — zones rarely hold more
+/// than a handful of items.
 static vg_statusbar_item_t *get_zone_text_item(vg_statusbar_t *sb, vg_statusbar_zone_t zone) {
     vg_statusbar_item_t **items = NULL;
     size_t count = 0;
@@ -695,6 +726,14 @@ rt_string rt_statusbar_get_right_text(void *bar) {
     return rt_str_empty();
 }
 
+// ===========================================================================
+// Status-bar zone-targeted item builders. `zone` is one of
+// `VG_STATUSBAR_ZONE_LEFT/CENTER/RIGHT` (passed in as int64 from
+// the language layer). Each returns the new item handle so callers
+// can capture it for later updates (e.g. progress value).
+// ===========================================================================
+
+/// @brief Append a text label to the given status-bar zone.
 void *rt_statusbar_add_text(void *bar, rt_string text, int64_t zone) {
     RT_ASSERT_MAIN_THREAD();
     if (!bar)
@@ -706,6 +745,7 @@ void *rt_statusbar_add_text(void *bar, rt_string text, int64_t zone) {
     return item;
 }
 
+/// @brief Append a clickable button to a status-bar zone.
 void *rt_statusbar_add_button(void *bar, rt_string text, int64_t zone) {
     RT_ASSERT_MAIN_THREAD();
     if (!bar)
@@ -717,6 +757,7 @@ void *rt_statusbar_add_button(void *bar, rt_string text, int64_t zone) {
     return item;
 }
 
+/// @brief Append a progress bar to a status-bar zone (drive via `rt_statusbaritem_set_progress`).
 void *rt_statusbar_add_progress(void *bar, int64_t zone) {
     RT_ASSERT_MAIN_THREAD();
     if (!bar)
@@ -724,6 +765,7 @@ void *rt_statusbar_add_progress(void *bar, int64_t zone) {
     return vg_statusbar_add_progress((vg_statusbar_t *)bar, (vg_statusbar_zone_t)zone);
 }
 
+/// @brief Append a vertical separator line to a status-bar zone.
 void *rt_statusbar_add_separator(void *bar, int64_t zone) {
     RT_ASSERT_MAIN_THREAD();
     if (!bar)
@@ -731,6 +773,7 @@ void *rt_statusbar_add_separator(void *bar, int64_t zone) {
     return vg_statusbar_add_separator((vg_statusbar_t *)bar, (vg_statusbar_zone_t)zone);
 }
 
+/// @brief Append a flexible spacer (consumes free space within the zone).
 void *rt_statusbar_add_spacer(void *bar, int64_t zone) {
     RT_ASSERT_MAIN_THREAD();
     if (!bar)
@@ -910,6 +953,9 @@ void rt_toolbar_destroy(void *toolbar) {
     }
 }
 
+/// @brief Append an icon-only toolbar button.
+///
+/// Loads the icon from `icon_path` and uses `tooltip` for hover text.
 void *rt_toolbar_add_button(void *toolbar, rt_string icon_path, rt_string tooltip) {
     RT_ASSERT_MAIN_THREAD();
     if (!toolbar)
@@ -941,6 +987,11 @@ void *rt_toolbar_add_button(void *toolbar, rt_string icon_path, rt_string toolti
     return item;
 }
 
+/// @brief Append a toolbar button that shows both an icon and a text label.
+///
+/// Forces `show_label = true` on the resulting item — toolbars
+/// default to icon-only display, so this is required for the
+/// label to actually render.
 void *rt_toolbar_add_button_with_text(void *toolbar,
                                       rt_string icon_path,
                                       rt_string text,
@@ -980,6 +1031,7 @@ void *rt_toolbar_add_button_with_text(void *toolbar,
     return item;
 }
 
+/// @brief Append a sticky toggle button (radio/checkbox-style press state).
 void *rt_toolbar_add_toggle(void *toolbar, rt_string icon_path, rt_string tooltip) {
     RT_ASSERT_MAIN_THREAD();
     if (!toolbar)
@@ -1011,6 +1063,7 @@ void *rt_toolbar_add_toggle(void *toolbar, rt_string icon_path, rt_string toolti
     return item;
 }
 
+/// @brief Append a vertical (or horizontal, for vertical toolbars) separator line.
 void *rt_toolbar_add_separator(void *toolbar) {
     RT_ASSERT_MAIN_THREAD();
     if (!toolbar)
@@ -1018,6 +1071,7 @@ void *rt_toolbar_add_separator(void *toolbar) {
     return vg_toolbar_add_separator((vg_toolbar_t *)toolbar);
 }
 
+/// @brief Append a flexible spacer (consumes free space, useful for right-aligning items).
 void *rt_toolbar_add_spacer(void *toolbar) {
     RT_ASSERT_MAIN_THREAD();
     if (!toolbar)
@@ -1025,6 +1079,7 @@ void *rt_toolbar_add_spacer(void *toolbar) {
     return vg_toolbar_add_spacer((vg_toolbar_t *)toolbar);
 }
 
+/// @brief Append a dropdown button — clicking opens an attached menu of choices.
 void *rt_toolbar_add_dropdown(void *toolbar, rt_string tooltip) {
     RT_ASSERT_MAIN_THREAD();
     if (!toolbar)
@@ -1087,6 +1142,7 @@ int64_t rt_toolbar_get_item_count(void *toolbar) {
     return ((vg_toolbar_t *)toolbar)->item_count;
 }
 
+/// @brief Return the `index`-th item in the toolbar (NULL on out-of-range).
 void *rt_toolbar_get_item(void *toolbar, int64_t index) {
     RT_ASSERT_MAIN_THREAD();
     if (!toolbar)
@@ -1237,6 +1293,15 @@ int64_t rt_toolbaritem_was_clicked(void *item) {
 }
 
 #else /* !VIPER_ENABLE_GRAPHICS */
+
+// ===========================================================================
+// Headless stubs — same prototypes as the real implementations above so
+// non-graphical builds (server / CLI / ViperDOS) can link without pulling
+// in the GUI subsystem. Each stub safely no-ops or returns a sentinel
+// (NULL pointer, 0, or empty string) without referencing any GUI state.
+// Doxygen comments are inherited from the real implementations above by
+// virtue of identical names — these stubs intentionally have no extra docs.
+// ===========================================================================
 
 void *rt_menubar_new(void *parent) {
     (void)parent;

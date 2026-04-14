@@ -134,6 +134,8 @@ static int tcp_connection_healthy(void *tcp) {
 // Finalizer
 //=============================================================================
 
+/// @brief GC finalizer: close every pooled TCP connection (releasing each entry's key + tcp ref)
+/// and destroy the pool's mutex.
 static void rt_connpool_finalize(void *obj) {
     if (!obj)
         return;
@@ -148,6 +150,8 @@ static void rt_connpool_finalize(void *obj) {
 // Public API
 //=============================================================================
 
+/// @brief Construct a TCP connection pool. `max_size` is clamped to `[1, POOL_MAX_ENTRIES]`.
+/// Pooled connections are keyed by `host:port`. Returns a GC-managed handle.
 void *rt_connpool_new(int64_t max_size) {
     rt_connpool_impl *pool =
         (rt_connpool_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_connpool_impl));
@@ -162,6 +166,12 @@ void *rt_connpool_new(int64_t max_size) {
     return pool;
 }
 
+/// @brief Acquire a TCP connection to `(host, port)`. Walk-the-pool flow:
+///   1. Evict expired idle entries (`POOL_IDLE_TIMEOUT_SEC` since last_used).
+///   2. Find an idle entry whose key matches; if its TCP is still healthy, reuse it.
+///   3. If unhealthy, close + remove and keep searching.
+///   4. If nothing matches, open a fresh TCP connection.
+/// All steps run under the pool mutex except the actual `rt_tcp_connect` (which can block).
 void *rt_connpool_acquire(void *obj, rt_string host, int64_t port) {
     if (!obj)
         rt_trap("ConnectionPool: NULL pool");

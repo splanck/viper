@@ -63,6 +63,7 @@
 // Tilemap Creation
 //=============================================================================
 
+/// @brief GC finalizer for Tilemap — release the tileset, per-layer tiles, and per-layer tilesets.
 static void tilemap_finalize(void *obj) {
     rt_tilemap_impl *tm = (rt_tilemap_impl *)obj;
     /* Release base tileset */
@@ -77,6 +78,12 @@ static void tilemap_finalize(void *obj) {
     }
 }
 
+/// @brief Create a `width × height` tile grid with cells of `tile_width × tile_height` pixels.
+///
+/// Allocates the tile array inline with the Tilemap struct (single
+/// GC allocation). Layer 0 is the implicit "base" layer; additional
+/// layers are added via `rt_tilemap_add_layer`. All tiles start at 0
+/// (empty). Dimension args are clamped to ≥1 (defaults: tile size 16×16).
 void *rt_tilemap_new(int64_t width, int64_t height, int64_t tile_width, int64_t tile_height) {
     if (width <= 0)
         width = 1;
@@ -136,6 +143,13 @@ void *rt_tilemap_new(int64_t width, int64_t height, int64_t tile_width, int64_t 
 // Tilemap Properties
 //=============================================================================
 
+// ===========================================================================
+// Tilemap property accessors — width/height in tiles, tile size in
+// pixels. Each traps on null tilemap (these are programmer errors,
+// not runtime conditions).
+// ===========================================================================
+
+/// @brief Number of tiles across the map (width). Traps on null.
 int64_t rt_tilemap_get_width(void *tilemap_ptr) {
     if (!tilemap_ptr) {
         rt_trap("Tilemap.Width: null tilemap");
@@ -144,6 +158,7 @@ int64_t rt_tilemap_get_width(void *tilemap_ptr) {
     return ((rt_tilemap_impl *)tilemap_ptr)->width;
 }
 
+/// @brief Number of tiles down the map (height). Traps on null.
 int64_t rt_tilemap_get_height(void *tilemap_ptr) {
     if (!tilemap_ptr) {
         rt_trap("Tilemap.Height: null tilemap");
@@ -152,6 +167,7 @@ int64_t rt_tilemap_get_height(void *tilemap_ptr) {
     return ((rt_tilemap_impl *)tilemap_ptr)->height;
 }
 
+/// @brief Width of a single tile in pixels.
 int64_t rt_tilemap_get_tile_width(void *tilemap_ptr) {
     if (!tilemap_ptr) {
         rt_trap("Tilemap.TileWidth: null tilemap");
@@ -160,6 +176,7 @@ int64_t rt_tilemap_get_tile_width(void *tilemap_ptr) {
     return ((rt_tilemap_impl *)tilemap_ptr)->tile_width;
 }
 
+/// @brief Height of a single tile in pixels.
 int64_t rt_tilemap_get_tile_height(void *tilemap_ptr) {
     if (!tilemap_ptr) {
         rt_trap("Tilemap.TileHeight: null tilemap");
@@ -172,6 +189,11 @@ int64_t rt_tilemap_get_tile_height(void *tilemap_ptr) {
 // Tileset Management
 //=============================================================================
 
+/// @brief Bind the base tileset Pixels — auto-derives `tileset_cols/rows` from its dimensions.
+///
+/// The tileset is laid out as a regular grid of `tile_width × tile_height`
+/// cells. Tile indices are 1-based (0 means "empty"), reading
+/// left-to-right top-to-bottom in the tileset image.
 void rt_tilemap_set_tileset(void *tilemap_ptr, void *pixels) {
     if (!tilemap_ptr) {
         rt_trap("Tilemap.SetTileset: null tilemap");
@@ -209,6 +231,7 @@ void rt_tilemap_set_tileset(void *tilemap_ptr, void *pixels) {
     tilemap->layers[0].tile_count = tilemap->tile_count;
 }
 
+/// @brief Total number of distinct tiles available in the bound tileset (cols × rows).
 int64_t rt_tilemap_get_tile_count(void *tilemap_ptr) {
     if (!tilemap_ptr) {
         rt_trap("Tilemap.TileCount: null tilemap");
@@ -221,6 +244,7 @@ int64_t rt_tilemap_get_tile_count(void *tilemap_ptr) {
 // Tile Access
 //=============================================================================
 
+/// @brief Place tile `tile_index` at grid `(x, y)` on the base layer (silently no-op out of bounds).
 void rt_tilemap_set_tile(void *tilemap_ptr, int64_t x, int64_t y, int64_t tile_index) {
     if (!tilemap_ptr) {
         rt_trap("Tilemap.SetTile: null tilemap");
@@ -234,6 +258,7 @@ void rt_tilemap_set_tile(void *tilemap_ptr, int64_t x, int64_t y, int64_t tile_i
     tilemap->tiles[y * tilemap->width + x] = tile_index;
 }
 
+/// @brief Read the tile index at grid `(x, y)`. Returns 0 (empty) for out-of-bounds.
 int64_t rt_tilemap_get_tile(void *tilemap_ptr, int64_t x, int64_t y) {
     if (!tilemap_ptr) {
         rt_trap("Tilemap.GetTile: null tilemap");
@@ -247,6 +272,7 @@ int64_t rt_tilemap_get_tile(void *tilemap_ptr, int64_t x, int64_t y) {
     return tilemap->tiles[y * tilemap->width + x];
 }
 
+/// @brief Fill the entire base layer with the given tile index.
 void rt_tilemap_fill(void *tilemap_ptr, int64_t tile_index) {
     if (!tilemap_ptr) {
         rt_trap("Tilemap.Fill: null tilemap");
@@ -259,10 +285,12 @@ void rt_tilemap_fill(void *tilemap_ptr, int64_t tile_index) {
         tilemap->tiles[i] = tile_index;
 }
 
+/// @brief Reset every tile on the base layer to 0 (empty).
 void rt_tilemap_clear(void *tilemap_ptr) {
     rt_tilemap_fill(tilemap_ptr, 0);
 }
 
+/// @brief Fill a rectangular region of the base layer with `tile_index`. Bounds-clamped.
 void rt_tilemap_fill_rect(
     void *tilemap_ptr, int64_t x, int64_t y, int64_t w, int64_t h, int64_t tile_index) {
     if (!tilemap_ptr) {
@@ -294,6 +322,11 @@ void rt_tilemap_fill_rect(
 // Rendering
 //=============================================================================
 
+/// @brief Render the entire tilemap (every visible layer) onto a canvas at `(offset_x, offset_y)`.
+///
+/// Walks layers in order; layer 0 (base) draws first, followed by
+/// each added layer's tiles. Per-tile draws blit the source rect
+/// from the tileset. Out-of-canvas tiles are skipped early.
 void rt_tilemap_draw(void *tilemap_ptr, void *canvas_ptr, int64_t offset_x, int64_t offset_y) {
     if (!tilemap_ptr || !canvas_ptr)
         return;
@@ -328,6 +361,11 @@ void rt_tilemap_draw(void *tilemap_ptr, void *canvas_ptr, int64_t offset_x, int6
         tilemap_ptr, canvas_ptr, offset_x, offset_y, first_x, first_y, vis_w, vis_h);
 }
 
+/// @brief Render only a sub-rectangle of the tilemap (camera-clipped draw).
+///
+/// `(view_x, view_y, view_w, view_h)` defines a rectangle in
+/// pixel coordinates within the tilemap. Saves work for large
+/// maps when only a small viewport needs drawing.
 void rt_tilemap_draw_region(void *tilemap_ptr,
                             void *canvas_ptr,
                             int64_t offset_x,
@@ -390,6 +428,14 @@ void rt_tilemap_draw_region(void *tilemap_ptr,
 // Utility
 //=============================================================================
 
+// ===========================================================================
+// Coordinate conversion — convert between pixel space and tile-grid space.
+// Each pair (`*_to_tile_x/y`, `*_to_pixel_x/y`) divides or multiplies by
+// the tile dimensions. Vector versions (`pixel_to_tile`, `tile_to_pixel`)
+// convert both axes in one call.
+// ===========================================================================
+
+/// @brief Convert pixel `(px, py)` to tile-grid coordinates, written to `*tx, *ty`.
 void rt_tilemap_pixel_to_tile(
     void *tilemap_ptr, int64_t pixel_x, int64_t pixel_y, int64_t *tile_x, int64_t *tile_y) {
     if (!tilemap_ptr || !tile_x || !tile_y)
@@ -400,18 +446,22 @@ void rt_tilemap_pixel_to_tile(
     *tile_y = pixel_y / tilemap->tile_height;
 }
 
+/// @brief X-axis: convert pixel coordinate to tile-grid column.
 int64_t rt_tilemap_to_tile_x(void *tilemap_ptr, int64_t pixel_x) {
     if (!tilemap_ptr)
         return 0;
     return pixel_x / ((rt_tilemap_impl *)tilemap_ptr)->tile_width;
 }
 
+/// @brief Y-axis: convert pixel coordinate to tile-grid row.
 int64_t rt_tilemap_to_tile_y(void *tilemap_ptr, int64_t pixel_y) {
     if (!tilemap_ptr)
         return 0;
     return pixel_y / ((rt_tilemap_impl *)tilemap_ptr)->tile_height;
 }
 
+/// @brief Convert (tile_x, tile_y) grid coordinates to top-left pixel coordinates of that cell.
+/// Writes the result into the provided out-parameters; no-ops on null inputs.
 void rt_tilemap_tile_to_pixel(
     void *tilemap_ptr, int64_t tile_x, int64_t tile_y, int64_t *pixel_x, int64_t *pixel_y) {
     if (!tilemap_ptr || !pixel_x || !pixel_y)
@@ -422,12 +472,14 @@ void rt_tilemap_tile_to_pixel(
     *pixel_y = tile_y * tilemap->tile_height;
 }
 
+/// @brief X-axis: convert tile column to pixel coordinate (tile_x * tile_width).
 int64_t rt_tilemap_to_pixel_x(void *tilemap_ptr, int64_t tile_x) {
     if (!tilemap_ptr)
         return 0;
     return tile_x * ((rt_tilemap_impl *)tilemap_ptr)->tile_width;
 }
 
+/// @brief Y-axis: convert tile row to pixel coordinate (tile_y * tile_height).
 int64_t rt_tilemap_to_pixel_y(void *tilemap_ptr, int64_t tile_y) {
     if (!tilemap_ptr)
         return 0;
@@ -438,6 +490,8 @@ int64_t rt_tilemap_to_pixel_y(void *tilemap_ptr, int64_t tile_y) {
 // Tile Collision
 //=============================================================================
 
+/// @brief Tag a tile id with a collision type (e.g. SOLID). Out-of-range ids are silently ignored.
+/// Collision is keyed on the raw tile id, not the layer; one table is shared by every layer.
 void rt_tilemap_set_collision(void *tilemap_ptr, int64_t tile_id, int64_t coll_type) {
     if (!tilemap_ptr) {
         rt_trap("Tilemap.SetCollision: null tilemap");
@@ -449,6 +503,7 @@ void rt_tilemap_set_collision(void *tilemap_ptr, int64_t tile_id, int64_t coll_t
     tilemap->collision[tile_id] = (int8_t)coll_type;
 }
 
+/// @brief Read the collision type previously set for a tile id; 0 (NONE) for unset/out-of-range ids.
 int64_t rt_tilemap_get_collision(void *tilemap_ptr, int64_t tile_id) {
     if (!tilemap_ptr) {
         rt_trap("Tilemap.GetCollision: null tilemap");
@@ -459,6 +514,9 @@ int64_t rt_tilemap_get_collision(void *tilemap_ptr, int64_t tile_id) {
     return ((rt_tilemap_impl *)tilemap_ptr)->collision[tile_id];
 }
 
+/// @brief Sample the designated collision layer at a pixel coordinate; returns 1 if SOLID.
+/// Resolves animation frames via `rt_tilemap_resolve_anim_tile` so animated tiles share collision
+/// with their base id. Out-of-bounds samples and tiles outside MAX_TILE_COLLISION_IDS return 0.
 int8_t rt_tilemap_is_solid_at(void *tilemap_ptr, int64_t pixel_x, int64_t pixel_y) {
     if (!tilemap_ptr)
         return 0;
@@ -593,6 +651,9 @@ int8_t rt_tilemap_collide_body(void *tilemap_ptr, void *body_ptr) {
 // Layer Management
 //=============================================================================
 
+/// @brief Append a new tile layer (allocating its own zeroed grid) and return its index.
+/// Names are truncated to 31 characters; layers default to visible with no per-layer tileset.
+/// Returns -1 on null input, on hitting `TM_MAX_LAYERS`, or on allocation failure.
 int64_t rt_tilemap_add_layer(void *tilemap_ptr, rt_string name) {
     if (!tilemap_ptr)
         return -1;
@@ -634,12 +695,14 @@ int64_t rt_tilemap_add_layer(void *tilemap_ptr, rt_string name) {
     return (int64_t)idx;
 }
 
+/// @brief Number of layers currently present (always >= 1 for a valid tilemap).
 int64_t rt_tilemap_get_layer_count(void *tilemap_ptr) {
     if (!tilemap_ptr)
         return 0;
     return ((rt_tilemap_impl *)tilemap_ptr)->layer_count;
 }
 
+/// @brief Linear lookup of a layer by name (case-sensitive `strcmp`); returns -1 if not found.
 int64_t rt_tilemap_get_layer_by_name(void *tilemap_ptr, rt_string name) {
     if (!tilemap_ptr || !name)
         return -1;
@@ -655,6 +718,9 @@ int64_t rt_tilemap_get_layer_by_name(void *tilemap_ptr, rt_string name) {
     return -1;
 }
 
+/// @brief Remove a non-base layer (index 0 is permanent), shifting subsequent layers down.
+/// Frees the owned tile grid + per-layer tileset, and rebases `collision_layer` so it still points
+/// at a valid layer (resets to 0 if removed, or decrements if it was above the removed slot).
 void rt_tilemap_remove_layer(void *tilemap_ptr, int64_t layer) {
     if (!tilemap_ptr)
         return;
@@ -690,6 +756,7 @@ void rt_tilemap_remove_layer(void *tilemap_ptr, int64_t layer) {
         tilemap->collision_layer--;
 }
 
+/// @brief Toggle a layer's visibility flag (drawing skips invisible layers).
 void rt_tilemap_set_layer_visible(void *tilemap_ptr, int64_t layer, int8_t visible) {
     if (!tilemap_ptr)
         return;
@@ -699,6 +766,7 @@ void rt_tilemap_set_layer_visible(void *tilemap_ptr, int64_t layer, int8_t visib
     tilemap->layers[layer].visible = visible ? 1 : 0;
 }
 
+/// @brief Read a layer's visibility flag (0 = hidden, 1 = visible). Returns 0 for invalid layers.
 int8_t rt_tilemap_get_layer_visible(void *tilemap_ptr, int64_t layer) {
     if (!tilemap_ptr)
         return 0;
@@ -712,6 +780,7 @@ int8_t rt_tilemap_get_layer_visible(void *tilemap_ptr, int64_t layer) {
 // Per-Layer Tile Access
 //=============================================================================
 
+/// @brief Write a tile id at (x, y) on a specific layer. Silently no-ops on out-of-range layer/coords.
 void rt_tilemap_set_tile_layer(
     void *tilemap_ptr, int64_t layer, int64_t x, int64_t y, int64_t tile) {
     if (!tilemap_ptr)
@@ -726,6 +795,7 @@ void rt_tilemap_set_tile_layer(
     tilemap->layers[layer].tiles[y * tilemap->width + x] = tile;
 }
 
+/// @brief Read the tile id at (x, y) on a specific layer; 0 for out-of-range queries or empty cells.
 int64_t rt_tilemap_get_tile_layer(void *tilemap_ptr, int64_t layer, int64_t x, int64_t y) {
     if (!tilemap_ptr)
         return 0;
@@ -739,6 +809,7 @@ int64_t rt_tilemap_get_tile_layer(void *tilemap_ptr, int64_t layer, int64_t x, i
     return tilemap->layers[layer].tiles[y * tilemap->width + x];
 }
 
+/// @brief Fill every cell of a single layer with the given tile id.
 void rt_tilemap_fill_layer(void *tilemap_ptr, int64_t layer, int64_t tile) {
     if (!tilemap_ptr)
         return;
@@ -752,6 +823,7 @@ void rt_tilemap_fill_layer(void *tilemap_ptr, int64_t layer, int64_t tile) {
         tilemap->layers[layer].tiles[i] = tile;
 }
 
+/// @brief Zero every cell of a single layer (`memset` shortcut for `fill_layer(layer, 0)`).
 void rt_tilemap_clear_layer(void *tilemap_ptr, int64_t layer) {
     if (!tilemap_ptr)
         return;
@@ -768,6 +840,10 @@ void rt_tilemap_clear_layer(void *tilemap_ptr, int64_t layer) {
 // Per-Layer Tileset
 //=============================================================================
 
+/// @brief Bind a per-layer tileset (overrides the base tileset when drawing this layer).
+/// Pass `pixels=NULL` to clear and fall back to the tilemap-wide tileset. The image is cloned
+/// (via `rt_pixels_clone`) and retained on the heap; the previous binding is released.
+/// `tile_count` is recomputed from the cloned image's dimensions divided by tile_width/height.
 void rt_tilemap_set_layer_tileset(void *tilemap_ptr, int64_t layer, void *pixels) {
     if (!tilemap_ptr)
         return;
@@ -810,6 +886,11 @@ void rt_tilemap_set_layer_tileset(void *tilemap_ptr, int64_t layer, void *pixels
 // Per-Layer Rendering
 //=============================================================================
 
+/// @brief Render one layer with viewport culling and per-tile animation resolution.
+/// Falls back to the tilemap-wide tileset when no per-layer tileset is bound. Skips invisible
+/// layers, layers without tile storage, and tiles outside the visible rect (camera + canvas size).
+/// Tile id 0 is treated as empty; ids are 1-based into the chosen tileset (so id `n` maps to
+/// `(n-1) % cols, (n-1) / cols`). `cam_x`/`cam_y` are world→screen offsets in pixels.
 void rt_tilemap_draw_layer(
     void *tilemap_ptr, void *canvas_ptr, int64_t layer, int64_t cam_x, int64_t cam_y) {
     if (!tilemap_ptr || !canvas_ptr)
@@ -876,6 +957,7 @@ void rt_tilemap_draw_layer(
 // Collision Layer
 //=============================================================================
 
+/// @brief Designate which layer's tile grid is consulted by `is_solid_at` and `collide_body`.
 void rt_tilemap_set_collision_layer(void *tilemap_ptr, int64_t layer) {
     if (!tilemap_ptr)
         return;
@@ -885,6 +967,7 @@ void rt_tilemap_set_collision_layer(void *tilemap_ptr, int64_t layer) {
     tilemap->collision_layer = (int32_t)layer;
 }
 
+/// @brief Read the index of the layer currently designated as the collision source (default 0).
 int64_t rt_tilemap_get_collision_layer(void *tilemap_ptr) {
     if (!tilemap_ptr)
         return 0;
@@ -895,6 +978,10 @@ int64_t rt_tilemap_get_collision_layer(void *tilemap_ptr) {
 // Tile Animation
 //=============================================================================
 
+/// @brief Register an animation that swaps `base_tile_id` for one of `frame_count` frames over time.
+/// The frame table defaults to sequential ids `(base, base+1, ..., base+frame_count-1)`; override
+/// individual frames with `set_tile_anim_frame`. Caps at `TM_MAX_TILE_ANIMS` registrations and
+/// `TM_MAX_ANIM_FRAMES` per animation; over-cap calls silently no-op.
 void rt_tilemap_set_tile_anim(void *tilemap_ptr,
                               int64_t base_tile_id,
                               int64_t frame_count,
@@ -915,6 +1002,9 @@ void rt_tilemap_set_tile_anim(void *tilemap_ptr,
         anim->frame_tiles[i] = base_tile_id + i;
 }
 
+/// @brief Override one frame in an existing animation (selected by `base_tile_id`).
+/// Useful for non-contiguous tilesets where animation frames don't sit on adjacent indices.
+/// Silently no-ops if the animation is not registered or the frame index is out of range.
 void rt_tilemap_set_tile_anim_frame(void *tilemap_ptr,
                                     int64_t base_tile_id,
                                     int64_t frame_idx,
@@ -931,6 +1021,9 @@ void rt_tilemap_set_tile_anim_frame(void *tilemap_ptr,
     }
 }
 
+/// @brief Advance all registered tile animations by `dt_ms` milliseconds.
+/// Each animation accumulates time and rolls its `current_frame` modulo `frame_count`. The
+/// `while` loop catches large dt values that span multiple frames in one tick.
 void rt_tilemap_update_anims(void *tilemap_ptr, int64_t dt_ms) {
     if (!tilemap_ptr)
         return;
@@ -945,6 +1038,9 @@ void rt_tilemap_update_anims(void *tilemap_ptr, int64_t dt_ms) {
     }
 }
 
+/// @brief Map a tile id through the animation table, returning the current frame's tile id.
+/// If `tile_id` is not the base of any registered animation it is returned unchanged. Called by
+/// `is_solid_at` and `draw_layer` so animation affects both rendering and collision consistently.
 int64_t rt_tilemap_resolve_anim_tile(void *tilemap_ptr, int64_t tile_id) {
     if (!tilemap_ptr)
         return tile_id;

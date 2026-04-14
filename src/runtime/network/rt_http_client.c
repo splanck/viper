@@ -397,6 +397,10 @@ static void *do_request(rt_http_client_impl *c, const char *method, rt_string ur
 // Public API
 //=============================================================================
 
+/// @brief Construct an HTTP client with sensible defaults: 30s timeout, 5 max redirects, redirect
+/// following enabled, empty cookie jar, empty default-headers map. Built on top of `rt_http_req`
+/// from `rt_network_http.c` — adds session state (cookies + defaults) and **per-request redirect
+/// chasing** (rather than the underlying req's all-or-nothing redirect handling).
 void *rt_http_client_new(void) {
     rt_http_client_impl *c =
         (rt_http_client_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_http_client_impl));
@@ -412,24 +416,30 @@ void *rt_http_client_new(void) {
     return c;
 }
 
+/// @brief Send a `GET` to `url`. Applies default headers + cookies; auto-follows redirects up to
+/// `max_redirects`. Returns an HttpRes for the FINAL response after any redirects.
 void *rt_http_client_get(void *obj, rt_string url) {
     if (!obj)
         rt_trap("HttpClient: NULL");
     return do_request((rt_http_client_impl *)obj, "GET", url, NULL);
 }
 
+/// @brief Send a `POST` with a string body. **Redirect semantics:** 301/302 with POST switch to
+/// GET (per common browser behavior); 303 always switches to GET; 307/308 preserve method+body.
 void *rt_http_client_post(void *obj, rt_string url, rt_string body) {
     if (!obj)
         rt_trap("HttpClient: NULL");
     return do_request((rt_http_client_impl *)obj, "POST", url, body);
 }
 
+/// @brief Send a `PUT` with a string body. Redirects preserve method+body for 307/308.
 void *rt_http_client_put(void *obj, rt_string url, rt_string body) {
     if (!obj)
         rt_trap("HttpClient: NULL");
     return do_request((rt_http_client_impl *)obj, "PUT", url, body);
 }
 
+/// @brief Send a `DELETE` (no body). Same redirect handling as `_get`.
 void *rt_http_client_delete(void *obj, rt_string url) {
     if (!obj)
         rt_trap("HttpClient: NULL");
@@ -489,6 +499,8 @@ void rt_http_client_set_cookie(void *obj, rt_string domain, rt_string name, rt_s
     rt_map_set(domain_cookies, name, (void *)value);
 }
 
+/// @brief Return a cloned snapshot of all cookies stored for `domain` (key→value Map). Cloned so
+/// caller mutations don't affect the client's jar; empty Map if no cookies for the domain.
 void *rt_http_client_get_cookies(void *obj, rt_string domain) {
     if (!obj)
         return rt_map_new();

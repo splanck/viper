@@ -287,22 +287,28 @@ void *rt_lrucache_new(int64_t capacity) {
     return cache;
 }
 
+/// @brief Number of entries currently held by the cache (0..cap).
 int64_t rt_lrucache_len(void *obj) {
     if (!obj)
         return 0;
     return (int64_t)((rt_lrucache_impl *)obj)->count;
 }
 
+/// @brief Maximum capacity (set on construction). When `len() == cap()`, a `_put` evicts.
 int64_t rt_lrucache_cap(void *obj) {
     if (!obj)
         return 0;
     return (int64_t)((rt_lrucache_impl *)obj)->max_cap;
 }
 
+/// @brief Returns 1 if the cache holds zero entries.
 int8_t rt_lrucache_is_empty(void *obj) {
     return rt_lrucache_len(obj) == 0;
 }
 
+/// @brief Insert or update `key → value`. Existing keys have their value replaced and are
+/// promoted to MRU. New insertions evict the LRU entry when at capacity. Both old and new
+/// values are reference-counted (old released, new retained). Doubles bucket count when needed.
 void rt_lrucache_put(void *obj, rt_string key, void *value) {
     if (!obj)
         return;
@@ -361,6 +367,8 @@ void rt_lrucache_put(void *obj, rt_string key, void *value) {
     maybe_resize(cache);
 }
 
+/// @brief Look up `key` and promote it to MRU. Returns the borrowed value pointer or NULL if
+/// absent. Caller must NOT keep the pointer past the next cache mutation (it may be evicted).
 void *rt_lrucache_get(void *obj, rt_string key) {
     if (!obj)
         return NULL;
@@ -384,6 +392,8 @@ void *rt_lrucache_get(void *obj, rt_string key) {
     return node->value;
 }
 
+/// @brief Look up `key` *without* changing LRU order. Use for "is this cached?" probes that
+/// shouldn't fight the eviction policy.
 void *rt_lrucache_peek(void *obj, rt_string key) {
     if (!obj)
         return NULL;
@@ -401,6 +411,7 @@ void *rt_lrucache_peek(void *obj, rt_string key) {
     return node ? node->value : NULL;
 }
 
+/// @brief Returns 1 if `key` is currently cached. Does not change LRU order.
 int8_t rt_lrucache_has(void *obj, rt_string key) {
     if (!obj)
         return 0;
@@ -417,6 +428,8 @@ int8_t rt_lrucache_has(void *obj, rt_string key) {
     return bucket_find(cache->buckets[idx], key_data, key_len) ? 1 : 0;
 }
 
+/// @brief Remove an entry by `key`. Releases the value's reference. Returns 1 on success,
+/// 0 if the key wasn't present.
 int8_t rt_lrucache_remove(void *obj, rt_string key) {
     if (!obj)
         return 0;
@@ -441,6 +454,8 @@ int8_t rt_lrucache_remove(void *obj, rt_string key) {
     return 1;
 }
 
+/// @brief Force-evict the least-recently-used entry. Returns 1 if something was removed,
+/// 0 if the cache was already empty.
 int8_t rt_lrucache_remove_oldest(void *obj) {
     if (!obj)
         return 0;
@@ -453,6 +468,8 @@ int8_t rt_lrucache_remove_oldest(void *obj) {
     return 1;
 }
 
+/// @brief Remove every entry, releasing all values. Capacity and bucket count are preserved
+/// — the cache is reusable immediately without reallocation.
 void rt_lrucache_clear(void *obj) {
     if (!obj)
         return;
@@ -475,6 +492,8 @@ void rt_lrucache_clear(void *obj) {
         memset(cache->buckets, 0, cache->bucket_count * sizeof(rt_lru_node *));
 }
 
+/// @brief Return a Seq of all keys in MRU→LRU order. Owned-elements Seq (will release strings
+/// on its own destruction). Snapshot — subsequent cache mutations don't affect the result.
 void *rt_lrucache_keys(void *obj) {
     void *result = rt_seq_new();
     rt_seq_set_owns_elements(result, 1);
@@ -493,6 +512,8 @@ void *rt_lrucache_keys(void *obj) {
     return result;
 }
 
+/// @brief Return a Seq of borrowed value pointers in MRU→LRU order. Pointers go stale on the
+/// next eviction — copy or retain if you need to outlive the cache.
 void *rt_lrucache_values(void *obj) {
     void *result = rt_seq_new();
     if (!obj)

@@ -41,6 +41,8 @@
 // Image Transforms
 //=============================================================================
 
+/// @brief Mirror the pixel buffer horizontally (left↔right) in place. Returns the same
+/// pixels handle for fluent chaining.
 void *rt_pixels_flip_h(void *pixels) {
     if (!pixels) {
         rt_trap("Pixels.FlipH: null pixels");
@@ -62,6 +64,7 @@ void *rt_pixels_flip_h(void *pixels) {
     return pixels; // Return self for chaining
 }
 
+/// @brief Mirror the pixel buffer vertically (top↔bottom) in place. Returns the same handle.
 void *rt_pixels_flip_v(void *pixels) {
     if (!pixels) {
         rt_trap("Pixels.FlipV: null pixels");
@@ -88,6 +91,7 @@ void *rt_pixels_flip_v(void *pixels) {
     return pixels; // Return self for chaining
 }
 
+/// @brief Rotate 90° clockwise. Returns a NEW Pixels (dimensions swap: w×h → h×w).
 void *rt_pixels_rotate_cw(void *pixels) {
     if (!pixels) {
         rt_trap("Pixels.RotateCW: null pixels");
@@ -119,6 +123,7 @@ void *rt_pixels_rotate_cw(void *pixels) {
     return result;
 }
 
+/// @brief Rotate 90° counter-clockwise. Returns a NEW Pixels (dimensions swap).
 void *rt_pixels_rotate_ccw(void *pixels) {
     if (!pixels) {
         rt_trap("Pixels.RotateCCW: null pixels");
@@ -149,6 +154,7 @@ void *rt_pixels_rotate_ccw(void *pixels) {
     return result;
 }
 
+/// @brief Rotate 180° (equivalent to flip-h then flip-v). Returns a NEW Pixels.
 void *rt_pixels_rotate_180(void *pixels) {
     if (!pixels) {
         rt_trap("Pixels.Rotate180: null pixels");
@@ -169,6 +175,9 @@ void *rt_pixels_rotate_180(void *pixels) {
     return result;
 }
 
+/// @brief Rotate by an arbitrary `angle_degrees` (positive = counter-clockwise). Output Pixels
+/// is sized to fit the rotated rectangle; corners outside become transparent. Bilinear sampling
+/// for smooth interpolation. Returns a NEW Pixels.
 void *rt_pixels_rotate(void *pixels, double angle_degrees) {
     if (!pixels) {
         rt_trap("Pixels.Rotate: null pixels");
@@ -324,6 +333,8 @@ void *rt_pixels_rotate(void *pixels, double angle_degrees) {
     return result;
 }
 
+/// @brief Resize via bilinear filtering to (`new_width`, `new_height`). Returns a NEW Pixels.
+/// Use `_resize` for nearest-neighbor (preserves hard pixel edges, ideal for pixel art).
 void *rt_pixels_scale(void *pixels, int64_t new_width, int64_t new_height) {
     if (!pixels) {
         rt_trap("Pixels.Scale: null pixels");
@@ -373,6 +384,8 @@ void *rt_pixels_scale(void *pixels, int64_t new_width, int64_t new_height) {
 // Image Processing
 //=============================================================================
 
+/// @brief Negate every RGB channel (255 - r, 255 - g, 255 - b). Alpha preserved.
+/// Returns a NEW Pixels.
 void *rt_pixels_invert(void *pixels) {
     if (!pixels) {
         rt_trap("Pixels.Invert: null pixels");
@@ -399,6 +412,8 @@ void *rt_pixels_invert(void *pixels) {
     return result;
 }
 
+/// @brief Convert to grayscale using ITU-R BT.601 luma weights (0.299 R + 0.587 G + 0.114 B).
+/// Returns a NEW Pixels with the luma value replicated to R/G/B; alpha preserved.
 void *rt_pixels_grayscale(void *pixels) {
     if (!pixels) {
         rt_trap("Pixels.Grayscale: null pixels");
@@ -428,6 +443,8 @@ void *rt_pixels_grayscale(void *pixels) {
     return result;
 }
 
+/// @brief Multiply each pixel by `color` (per-channel modulation, 8-bit normalized). Useful for
+/// hue shifts, color-coded variants. Alpha multiplied as well. Returns a NEW Pixels.
 void *rt_pixels_tint(void *pixels, int64_t color) {
     if (!pixels) {
         rt_trap("Pixels.Tint: null pixels");
@@ -465,6 +482,8 @@ void *rt_pixels_tint(void *pixels, int64_t color) {
     return result;
 }
 
+/// @brief Box blur with a (2*radius+1)-wide kernel applied separately on X then Y for
+/// O(n*radius) cost. Larger radius = softer image; radius 0 returns a copy. Returns a NEW Pixels.
 void *rt_pixels_blur(void *pixels, int64_t radius) {
     if (!pixels) {
         rt_trap("Pixels.Blur: null pixels");
@@ -540,6 +559,8 @@ void *rt_pixels_blur(void *pixels, int64_t radius) {
     return result;
 }
 
+/// @brief Resize via nearest-neighbor sampling (preserves crisp pixel edges). Use `_scale` for
+/// bilinear smoothing when working with photographic images. Returns a NEW Pixels.
 void *rt_pixels_resize(void *pixels, int64_t new_width, int64_t new_height) {
     if (!pixels) {
         rt_trap("Pixels.Resize: null pixels");

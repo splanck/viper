@@ -13,7 +13,7 @@
 // Key invariants:
 //   - All rt_canvas_* functions guard against NULL canvas_ptr and NULL gfx_win.
 //   - rt_canvas_flip() presents the back-buffer and must be called each frame.
-//   - rt_canvas_poll() drives the event loop; returns 0 when window closes.
+//   - rt_canvas_poll() drives the event loop and returns the last event type processed.
 //   - The rt_canvas struct is GC-managed with a finalizer that destroys gfx_win.
 //
 // Ownership/Lifetime:
@@ -56,6 +56,14 @@ static void rt_canvas_finalize(void *obj) {
         canvas->title = NULL;
     }
     rt_canvas_destroy_window(canvas);
+}
+
+static void rt_canvas_update_mouse_from_physical(vgfx_window_t gfx_win, int32_t x, int32_t y) {
+    float scale = vgfx_window_get_scale(gfx_win);
+    if (scale < 0.001f)
+        scale = 1.0f;
+    rt_mouse_update_pos((int64_t)((double)x / (double)scale),
+                        (int64_t)((double)y / (double)scale));
 }
 
 /// @brief Report that Canvas support is compiled into this runtime.
@@ -317,31 +325,27 @@ int64_t rt_canvas_poll(void *canvas_ptr) {
 
         // Forward mouse events to mouse module (convert physical -> logical)
         if (canvas->last_event.type == VGFX_EVENT_MOUSE_MOVE) {
-            float cs = vgfx_window_get_scale(canvas->gfx_win);
-            if (cs < 0.001f)
-                cs = 1.0f;
-            int64_t emx = (int64_t)(canvas->last_event.data.mouse_move.x / cs);
-            int64_t emy = (int64_t)(canvas->last_event.data.mouse_move.y / cs);
-            rt_mouse_update_pos(emx, emy);
+            rt_canvas_update_mouse_from_physical(
+                canvas->gfx_win,
+                canvas->last_event.data.mouse_move.x,
+                canvas->last_event.data.mouse_move.y);
         } else if (canvas->last_event.type == VGFX_EVENT_MOUSE_DOWN) {
-            float cs = vgfx_window_get_scale(canvas->gfx_win);
-            if (cs < 0.001f)
-                cs = 1.0f;
-            int64_t emx = (int64_t)(canvas->last_event.data.mouse_button.x / cs);
-            int64_t emy = (int64_t)(canvas->last_event.data.mouse_button.y / cs);
-            rt_mouse_update_pos(emx, emy);
+            rt_canvas_update_mouse_from_physical(
+                canvas->gfx_win,
+                canvas->last_event.data.mouse_button.x,
+                canvas->last_event.data.mouse_button.y);
             rt_mouse_button_down((int64_t)canvas->last_event.data.mouse_button.button);
         } else if (canvas->last_event.type == VGFX_EVENT_MOUSE_UP) {
-            float cs = vgfx_window_get_scale(canvas->gfx_win);
-            if (cs < 0.001f)
-                cs = 1.0f;
-            int64_t emx = (int64_t)(canvas->last_event.data.mouse_button.x / cs);
-            int64_t emy = (int64_t)(canvas->last_event.data.mouse_button.y / cs);
-            rt_mouse_update_pos(emx, emy);
+            rt_canvas_update_mouse_from_physical(
+                canvas->gfx_win,
+                canvas->last_event.data.mouse_button.x,
+                canvas->last_event.data.mouse_button.y);
             rt_mouse_button_up((int64_t)canvas->last_event.data.mouse_button.button);
         } else if (canvas->last_event.type == VGFX_EVENT_SCROLL) {
-            rt_mouse_update_wheel((int64_t)canvas->last_event.data.scroll.delta_x,
-                                  (int64_t)canvas->last_event.data.scroll.delta_y);
+            rt_canvas_update_mouse_from_physical(
+                canvas->gfx_win, canvas->last_event.data.scroll.x, canvas->last_event.data.scroll.y);
+            rt_mouse_update_wheel((double)canvas->last_event.data.scroll.delta_x,
+                                  (double)canvas->last_event.data.scroll.delta_y);
         }
     }
 

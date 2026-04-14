@@ -65,6 +65,8 @@ static size_t str_len(rt_string s) {
 // Parse
 // ---------------------------------------------------------------------------
 
+/// @brief Parse INI-format text into a nested Map: top-level keys are section names, values are
+/// inner Maps of key→value strings. Keys outside any section go under the empty-string section.
 void *rt_ini_parse(rt_string text) {
     void *root = rt_map_new();
     if (!text)
@@ -263,6 +265,7 @@ int8_t rt_ini_has_section(void *ini_map, rt_string section) {
     return rt_map_has(ini_map, section);
 }
 
+/// @brief Return a Seq of all section names (top-level keys) in the parsed INI tree.
 void *rt_ini_sections(void *ini_map) {
     if (!ini_map)
         return rt_seq_new();

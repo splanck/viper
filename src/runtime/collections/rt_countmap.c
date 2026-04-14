@@ -129,6 +129,8 @@ static void resize(rt_countmap_impl *cm) {
     cm->capacity = new_cap;
 }
 
+/// @brief Construct an empty count map (string → int64). Designed for tally workloads —
+/// histogram counting, frequency tables, vote totals. Internal storage is a chained hash table.
 void *rt_countmap_new(void) {
     rt_countmap_impl *cm = (rt_countmap_impl *)rt_obj_new_i64(0, sizeof(rt_countmap_impl));
     if (!cm)
@@ -353,6 +355,7 @@ int64_t rt_countmap_total(void *obj) {
     return ((rt_countmap_impl *)obj)->total;
 }
 
+/// @brief Return a Seq of every key currently stored. Snapshot, not a live view.
 void *rt_countmap_keys(void *obj) {
     void *seq = rt_seq_new();
     rt_seq_set_owns_elements(seq, 1);
@@ -381,6 +384,8 @@ static int cmp_entries_desc(const void *a, const void *b) {
     return 0;
 }
 
+/// @brief Return the top-`n` most-frequent keys as a Seq, sorted descending by count. Returns
+/// every key if `n` exceeds the map size. Useful for top-N reports / leaderboards.
 void *rt_countmap_most_common(void *obj, int64_t n) {
     void *seq = rt_seq_new();
     rt_seq_set_owns_elements(seq, 1);

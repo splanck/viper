@@ -57,6 +57,10 @@ typedef struct {
     int8_t shadow_active; /* 1 = shadow map is populated and ready for lookup */
 } sw_context_t;
 
+/// @brief Resize the depth buffer if dimensions changed; idempotent on match.
+///
+/// Reallocates `width × height` floats. Used during resize and on
+/// first frame after context creation. Returns 0 on overflow / OOM.
 static int sw_ensure_zbuf_capacity(sw_context_t *ctx, int32_t width, int32_t height) {
     if (!ctx || width <= 0 || height <= 0)
         return 0;
@@ -81,6 +85,7 @@ static int sw_ensure_zbuf_capacity(sw_context_t *ctx, int32_t width, int32_t hei
  * Matrix helpers
  *=========================================================================*/
 
+/// @brief Row-major 4×4 matrix multiply: `out = a * b`.
 static void mat4f_mul(const float *a, const float *b, float *out) {
     for (int r = 0; r < 4; r++)
         for (int c = 0; c < 4; c++)
@@ -88,6 +93,7 @@ static void mat4f_mul(const float *a, const float *b, float *out) {
                              a[r * 4 + 2] * b[2 * 4 + c] + a[r * 4 + 3] * b[3 * 4 + c];
 }
 
+/// @brief Transform a homogeneous 4-vector by a row-major 4×4 matrix.
 static void mat4f_transform4(const float *m, const float *in, float *out) {
     out[0] = m[0] * in[0] + m[1] * in[1] + m[2] * in[2] + m[3] * in[3];
     out[1] = m[4] * in[0] + m[5] * in[1] + m[6] * in[2] + m[7] * in[3];
@@ -108,6 +114,11 @@ typedef struct {
     float color[4];
 } pipe_vert_t;
 
+/// @brief Cached `VIPER_3D_DEBUG` env-var query for tracing.
+///
+/// Set the env var to anything non-zero to enable per-draw debug
+/// output (vertex counts, shader paths, etc.). Cached on first call
+/// to avoid repeated `getenv` overhead in the hot path.
 static int sw_debug_enabled(void) {
     static int cached = -1;
     if (cached == -1) {
@@ -119,6 +130,11 @@ static int sw_debug_enabled(void) {
 
 #define MAX_CLIP_VERTS 9
 
+/// @brief Linearly interpolate every attribute of two pipeline vertices.
+///
+/// Used during clipping to construct intersection vertices on the
+/// frustum boundary. Interpolates clip pos, world pos, normal,
+/// tangent, UV, and color.
 static void pipe_lerp(const pipe_vert_t *a, const pipe_vert_t *b, float t, pipe_vert_t *out) {
     float s = 1.0f - t;
     for (int i = 0; i < 4; i++)
@@ -166,8 +182,12 @@ static float clip_dist(const pipe_vert_t *v, int plane) {
 }
 
 /// @brief Sutherland-Hodgman: clip a convex polygon against one frustum plane.
-/// Walks each edge (i→j). If i is inside, emit it; if the edge crosses the
-/// plane, emit the intersection. Result is a new convex polygon in @p out.
+///
+/// Walks each edge `i → j`. If `i` is inside, emit it; if the edge
+/// crosses the plane, emit the intersection. Result is a new convex
+/// polygon in `out`. Bounded by `MAX_CLIP_VERTS` (9) — extra
+/// intersections beyond that are dropped (won't happen for one
+/// triangle clipped against six planes).
 static int clip_poly_plane(const pipe_vert_t *in, int in_count, pipe_vert_t *out, int plane) {
     if (in_count < 1)
         return 0;
@@ -223,6 +243,13 @@ static int clip_triangle(const pipe_vert_t *tri, pipe_vert_t *out) {
  * Blinn-Phong per-vertex lighting (Gouraud)
  *=========================================================================*/
 
+/// @brief Per-vertex Blinn-Phong lighting (Gouraud shading).
+///
+/// For each light, computes diffuse + Blinn-Phong specular contribution
+/// and accumulates into the vertex color. Light types: 0=directional,
+/// 1=point, 2=ambient (color-only), 3=spot (with smooth cone falloff).
+/// Shaded color is later interpolated across triangle pixels (Gouraud).
+/// Materials with `unlit` flag bypass lighting entirely.
 static void compute_lighting(pipe_vert_t *v,
                              const float *cam_pos,
                              const vgfx3d_draw_cmd_t *cmd,
@@ -403,6 +430,11 @@ typedef struct {
     uint32_t *data;
 } sw_pixels_view;
 
+/// @brief Cast an `rt_pixels` opaque pointer to a `sw_pixels_view` for sampling.
+///
+/// The underlying struct layout is duplicated locally (matches the
+/// public ABI of `rt_pixels_new`). Returns 1 if the view is sampleable
+/// (non-null + non-empty), 0 otherwise.
 static int setup_pixels_view(const void *pixels_obj, sw_pixels_view *out) {
     if (!pixels_obj)
         return 0;
@@ -411,6 +443,11 @@ static int setup_pixels_view(const void *pixels_obj, sw_pixels_view *out) {
     return (out->width > 0 && out->height > 0 && out->data != NULL);
 }
 
+/// @brief Bilinear texture sampler with REPEAT wrap.
+///
+/// Maps UV → texel center (subtract 0.5), looks up the 4 surrounding
+/// texels with wrap-around indexing, then weights them by the
+/// fractional component. Produces normalized [0,1] RGBA.
 static void sample_texture(
     const sw_pixels_view *tex, float u, float v, float *r, float *g, float *b, float *a) {
     int w = (int)tex->width, h = (int)tex->height;
@@ -477,14 +514,21 @@ typedef struct {
     float tx, ty, tz; /* world tangent (for TBN matrix construction) */
 } screen_vert_t;
 
+// Inline math helpers — used heavily in the per-pixel PBR shading path,
+// inlined for the obvious reason that one indirect call per pixel
+// would dominate the cost.
+
+/// @brief Clamp `x` to `[0, 1]`.
 static inline float clamp01f(float x) {
     return x < 0.0f ? 0.0f : (x > 1.0f ? 1.0f : x);
 }
 
+/// @brief 3-vector dot product (six args, avoids array packing overhead).
 static inline float dot3f(float ax, float ay, float az, float bx, float by, float bz) {
     return ax * bx + ay * by + az * bz;
 }
 
+/// @brief In-place 3-vector normalization (no-op for zero-length vectors).
 static inline void normalize3f(float *x, float *y, float *z) {
     float len = sqrtf((*x) * (*x) + (*y) * (*y) + (*z) * (*z));
     if (len > 1e-7f) {
@@ -494,6 +538,11 @@ static inline void normalize3f(float *x, float *y, float *z) {
     }
 }
 
+/// @brief PBR D term: GGX/Trowbridge-Reitz normal distribution.
+///
+/// `(α² / (π · ((N·H)² · (α² - 1) + 1)²))` with `α = roughness²`.
+/// Standard formula from "Microfacet Models for Refraction" (Walter
+/// et al, 2007). Used in the Cook-Torrance specular term.
 static inline float pbr_distribution_ggx(float ndh, float roughness) {
     const float kPi = 3.14159265358979323846f;
     float a = roughness * roughness;
@@ -502,17 +551,34 @@ static inline float pbr_distribution_ggx(float ndh, float roughness) {
     return a2 / (kPi * denom * denom + 1e-6f);
 }
 
+/// @brief PBR G1 term: Schlick-GGX geometry function for one direction.
+///
+/// `N·V / (N·V · (1 - k) + k)` with k = (roughness+1)²/8 (per-direction
+/// k; pairs with `pbr_geometry_smith` to combine view + light). Models
+/// microfacet self-shadowing/masking.
 static inline float pbr_geometry_schlick_ggx(float ndv, float roughness) {
     float r = roughness + 1.0f;
     float k = (r * r) / 8.0f;
     return ndv / (ndv * (1.0f - k) + k + 1e-6f);
 }
 
+/// @brief PBR G term: Smith geometry — combines view and light G1 contributions.
 static inline float pbr_geometry_smith(float ndv, float ndl, float roughness) {
     return pbr_geometry_schlick_ggx(ndv, roughness) *
            pbr_geometry_schlick_ggx(ndl, roughness);
 }
 
+/// @brief Edge-function triangle rasterizer with PBR + Phong + shadow + fog support.
+///
+/// Centerpiece of the software backend. Steps:
+///   1. Backface cull / winding flip via signed triangle area.
+///   2. Compute screen-space bounding box, clip to viewport.
+///   3. For each pixel: barycentric weights → in-triangle test → Z
+///      compare → texture sample → lighting (Phong or PBR Cook-Torrance)
+///      → shadow lookup → fog blend → alpha blend → write.
+/// Honours every flag on `cmd` (unlit, alpha mode, normal map, etc.).
+/// Optimization: perspective-correct attribute interpolation via
+/// `u/w`, `v/w`, `1/w` vertex attributes.
 static void raster_triangle(uint8_t *pixels,
                             float *zbuf,
                             int32_t fb_w,
@@ -1215,6 +1281,11 @@ static void raster_triangle(uint8_t *pixels,
  * Wireframe — Bresenham line
  *=========================================================================*/
 
+/// @brief Bresenham-style line rasterizer used for wireframe mode.
+///
+/// Walks the longer of dx or dy, stepping the shorter axis via an
+/// error-accumulator. No anti-aliasing — we trade quality for the
+/// software backend's per-pixel speed.
 static void draw_line(uint8_t *pixels,
                       int32_t fb_w,
                       int32_t fb_h,
@@ -1256,6 +1327,10 @@ static void draw_line(uint8_t *pixels,
  *=========================================================================*/
 
 /// @brief Rasterize a single triangle into a depth buffer (no color, no lighting).
+/// @brief Depth-only triangle rasterizer for the shadow map pass.
+///
+/// Slimmer than `raster_triangle` — only writes Z (no color, lighting,
+/// or texturing). Same edge-function approach.
 static void shadow_raster_tri(
     float *depth, int32_t sw, int32_t sh, float *sx, float *sy, float *sz) {
     /* Screen-space area (winding check) */
@@ -1313,6 +1388,11 @@ static void shadow_raster_tri(
     }
 }
 
+/// @brief Backend `shadow_begin` op — allocate / clear the shadow depth buffer.
+///
+/// Caller-provided depth buffer (so the canvas owns the storage and
+/// can resize without consulting the backend). Captures the light VP
+/// matrix that `shadow_draw` will use.
 static void sw_shadow_begin(
     void *ctx_ptr, float *depth_buf, int32_t w, int32_t h, const float *light_vp) {
     sw_context_t *ctx = (sw_context_t *)ctx_ptr;
@@ -1327,6 +1407,12 @@ static void sw_shadow_begin(
         depth_buf[i] = FLT_MAX;
 }
 
+/// @brief Backend `shadow_draw` op — rasterize one mesh into the shadow depth buffer.
+///
+/// Same vertex transform path as `submit_draw` (model matrix + light VP)
+/// but feeds each triangle to `shadow_raster_tri` instead of the full
+/// rasterizer. No clipping needed — out-of-bounds writes are bounds-
+/// checked per-pixel.
 static void sw_shadow_draw(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) {
     sw_context_t *ctx = (sw_context_t *)ctx_ptr;
     if (!ctx || !cmd || !ctx->shadow_depth || cmd->vertex_count == 0 || cmd->index_count == 0)
@@ -1373,6 +1459,7 @@ static void sw_shadow_draw(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) {
     }
 }
 
+/// @brief Backend `shadow_end` op — mark shadow map ready and store the bias.
 static void sw_shadow_end(void *ctx_ptr, float bias) {
     sw_context_t *ctx = (sw_context_t *)ctx_ptr;
     if (!ctx)
@@ -1385,6 +1472,10 @@ static void sw_shadow_end(void *ctx_ptr, float bias) {
  * Backend vtable implementation
  *=========================================================================*/
 
+/// @brief Backend `create_ctx` op — allocate the software-renderer state struct.
+///
+/// Trivial compared to hardware backends — no shaders, no FBOs, no
+/// device. Just a `sw_context_t` with a deferred-allocated zbuffer.
 static void *sw_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
     sw_context_t *ctx = (sw_context_t *)calloc(1, sizeof(sw_context_t));
     if (!ctx)
@@ -1408,6 +1499,7 @@ static void *sw_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
     return ctx;
 }
 
+/// @brief Backend `destroy_ctx` op — free zbuffer + struct.
 static void sw_destroy_ctx(void *ctx_ptr) {
     if (!ctx_ptr)
         return;
@@ -1416,6 +1508,11 @@ static void sw_destroy_ctx(void *ctx_ptr) {
     free(ctx);
 }
 
+/// @brief Backend `clear` op — clear the framebuffer to a solid color and reset Z.
+///
+/// Fills every pixel with `(r, g, b, 1)` packed as 0xAARRGGBB and
+/// sets every Z value to +infinity (well, FLT_MAX) so the next draw's
+/// "less than" depth tests succeed unconditionally.
 static void sw_clear(void *ctx_ptr, vgfx_window_t win, float r, float g, float b) {
     sw_context_t *ctx = (sw_context_t *)ctx_ptr;
     if (!ctx)
@@ -1458,6 +1555,10 @@ static void sw_clear(void *ctx_ptr, vgfx_window_t win, float r, float g, float b
     }
 }
 
+/// @brief Backend `begin_frame` op — capture camera + compute view-projection.
+///
+/// Multiplies projection × view, captures fog state and camera
+/// position. Doesn't touch any pixels — drawing happens in `submit_draw`.
 static void sw_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) {
     sw_context_t *ctx = (sw_context_t *)ctx_ptr;
     if (!ctx)
@@ -1477,6 +1578,16 @@ static void sw_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) {
     ctx->shadow_active = 0;
 }
 
+/// @brief Backend `submit_draw` op — render one indexed mesh in software.
+///
+/// End-to-end pipeline:
+///   1. Resolve framebuffer + ensure zbuffer is sized.
+///   2. Compute world × view × projection matrix.
+///   3. Set up texture views from material maps.
+///   4. For each triangle: transform vertices to clip space, light
+///      (Gouraud), clip against frustum, project to screen, rasterize.
+/// Either runs the wireframe path (3 line draws per triangle) or the
+/// full `raster_triangle` shader.
 static void sw_submit_draw(void *ctx_ptr,
                            vgfx_window_t win,
                            const vgfx3d_draw_cmd_t *cmd,
@@ -1801,10 +1912,12 @@ static void sw_submit_draw(void *ctx_ptr,
     free(pv);
 }
 
+/// @brief Backend `end_frame` op — no-op for software (frames write directly to fb).
 static void sw_end_frame(void *ctx_ptr) {
     (void)ctx_ptr;
 }
 
+/// @brief Backend `resize` op — re-allocate the depth buffer to the new size.
 static void sw_resize(void *ctx_ptr, int32_t w, int32_t h) {
     sw_context_t *ctx = (sw_context_t *)ctx_ptr;
     if (!ctx || ctx->render_target)
@@ -1812,6 +1925,11 @@ static void sw_resize(void *ctx_ptr, int32_t w, int32_t h) {
     sw_ensure_zbuf_capacity(ctx, w, h);
 }
 
+/// @brief Backend `set_render_target` op — bind / unbind a host-memory RTT.
+///
+/// Software backend RTT is just "render directly to the user-supplied
+/// host buffer instead of the swapchain". No GPU resources to manage.
+/// NULL `rt` reverts to swapchain rendering.
 static void sw_set_render_target(void *ctx_ptr, vgfx3d_rendertarget_t *rt) {
     sw_context_t *ctx = (sw_context_t *)ctx_ptr;
     if (ctx)
@@ -1840,6 +1958,12 @@ const vgfx3d_backend_t vgfx3d_software_backend = {
     .hide_gpu_layer = NULL,
 };
 
+/// @brief Public: pick the best 3D backend at startup.
+///
+/// Tries each compiled-in backend in priority order (D3D11 on
+/// Windows, Metal on macOS, OpenGL on Linux), falling back to the
+/// software backend when no GPU backend is available. Called once
+/// at canvas-create time and the choice is cached.
 const vgfx3d_backend_t *vgfx3d_select_backend(void) {
     /* Only honor overrides for backends compiled on this platform. */
     const char *env = getenv("VIPER_3D_BACKEND");

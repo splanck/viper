@@ -67,5 +67,23 @@ int main() {
     rt_args_clear();
     assert(rt_args_count() == 0);
 
+    // Environment variables: missing, set, get, and UTF-8 round-trip.
+    rt_string missing_name = make_str("VIPER_RT_ARGS_MISSING_FOR_TEST");
+    assert(rt_env_has_var(missing_name) == 0);
+    rt_string missing_value = rt_env_get_var(missing_name);
+    assert(std::strcmp(rt_string_cstr(missing_value), "") == 0);
+    rt_string_unref(missing_name);
+    rt_string_unref(missing_value);
+
+    rt_string env_name = make_str("VIPER_RT_ARGS_UTF8_VALUE");
+    rt_string env_value = make_str("caf\xc3\xa9");
+    rt_env_set_var(env_name, env_value);
+    assert(rt_env_has_var(env_name) == 1);
+    rt_string roundtrip = rt_env_get_var(env_name);
+    assert(std::strcmp(rt_string_cstr(roundtrip), "caf\xc3\xa9") == 0);
+    rt_string_unref(env_name);
+    rt_string_unref(env_value);
+    rt_string_unref(roundtrip);
+
     return 0;
 }

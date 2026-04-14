@@ -53,6 +53,9 @@ static void texatlas3d_finalizer(void *obj) {
     a->data = NULL;
 }
 
+/// @brief Construct a 3D texture atlas with `width × height` blank pixels (zero-initialized).
+/// Tracks shelf packing state so subsequent `_add` calls fit textures left-to-right with 1-pixel
+/// padding. Traps if dimensions are outside [16, 8192] or on allocation failure.
 void *rt_texatlas3d_new(int64_t width, int64_t height) {
     if (width < 16 || height < 16 || width > 8192 || height > 8192) {
         rt_trap("TextureAtlas3D.New: dimensions must be 16-8192");
@@ -77,7 +80,10 @@ void *rt_texatlas3d_new(int64_t width, int64_t height) {
     return a;
 }
 
-/// @brief Add an element to the texatlas3d.
+/// @brief Pack a Pixels sub-image into the next free shelf slot. Allocates 1-pixel padding
+/// around the image, advances the shelf cursor, and returns the integer region ID for later
+/// `_get_uv_rect` lookup. Returns -1 if the atlas is full (256 regions) or if the texture
+/// won't fit in the remaining vertical space. Marks the atlas dirty for the next texture rebuild.
 int64_t rt_texatlas3d_add(void *obj, void *pixels) {
     if (!obj || !pixels)
         return -1;
@@ -134,6 +140,9 @@ int64_t rt_texatlas3d_add(void *obj, void *pixels) {
     return a->region_count++;
 }
 
+/// @brief Return the atlas as a Pixels object, lazily rebuilding it from the internal data
+/// buffer when dirty. The returned Pixels is owned by the atlas — do not free or release. Each
+/// call after a `_add` rebuilds; results in stable storage when no changes have been made.
 void *rt_texatlas3d_get_texture(void *obj) {
     if (!obj)
         return NULL;
@@ -157,6 +166,9 @@ void *rt_texatlas3d_get_texture(void *obj) {
     return a->cached_pixels;
 }
 
+/// @brief Output the normalized UV rectangle [0,1] for region `id` into the four out-pointers.
+/// Use these UVs as mesh texture coordinates to sample the packed sub-image. Out-of-range IDs
+/// return the full atlas rect (0..1) so missing textures degrade visibly rather than silently.
 void rt_texatlas3d_get_uv_rect(
     void *obj, int64_t id, double *u0, double *v0, double *u1, double *v1) {
     if (!obj || !u0 || !v0 || !u1 || !v1)

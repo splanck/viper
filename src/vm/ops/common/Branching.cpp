@@ -34,21 +34,20 @@ namespace {
 /// @brief Abort execution when a branch provides an incorrect number of arguments.
 /// @details Formats a descriptive trap message that includes the source and
 ///          destination labels along with the expected/provided counts, then
-///          routes the message through the runtime bridge before exiting.  The
-///          function never returns because the VM treats argument mismatches as
-///          fatal verifier errors.
+///          routes the message through the runtime bridge before exiting. In
+///          test mode the trap observer may return after recording the error.
 /// @param target Destination block referenced by the branch.
 /// @param source Source block issuing the branch (may be null for entry).
 /// @param expected Number of parameters declared by the destination block.
 /// @param provided Number of arguments supplied by the branch.
 /// @param instr Branch instruction that triggered the mismatch.
 /// @param frame Current frame supplying context for diagnostics.
-[[noreturn]] void reportBranchArgMismatch(const il::core::BasicBlock &target,
-                                          const il::core::BasicBlock *source,
-                                          size_t expected,
-                                          size_t provided,
-                                          const il::core::Instr &instr,
-                                          const Frame &frame) {
+void reportBranchArgMismatch(const il::core::BasicBlock &target,
+                             const il::core::BasicBlock *source,
+                             size_t expected,
+                             size_t provided,
+                             const il::core::Instr &instr,
+                             const Frame &frame) {
     const std::string sourceLabel = source ? source->label : std::string{};
     const std::string functionName = frame.func ? frame.func->name : std::string{};
 
@@ -58,6 +57,7 @@ namespace {
         instr.loc,
         functionName,
         sourceLabel);
+    return;
 }
 } // namespace
 

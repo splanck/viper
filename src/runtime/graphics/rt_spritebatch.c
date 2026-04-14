@@ -245,6 +245,9 @@ static void spritebatch_finalize(void *obj) {
     batch->items = NULL;
 }
 
+/// @brief Construct a SpriteBatch with initial command-array capacity. `capacity <= 0` falls
+/// back to 256. The batch starts inactive (default tint 0, alpha 255, depth-sort off). Use
+/// `_begin` / draw calls / `_end` to submit batched draws to a Canvas in one pass.
 void *rt_spritebatch_new(int64_t capacity) {
     spritebatch_impl *batch =
         (spritebatch_impl *)rt_obj_new_i64(0, (int64_t)sizeof(spritebatch_impl));
@@ -352,6 +355,9 @@ void rt_spritebatch_draw_scaled(
     rt_spritebatch_draw_ex(batch_ptr, sprite, x, y, scale, scale, 0);
 }
 
+/// @brief Append a sprite draw command to the batch with custom scale (×100) and rotation
+/// (degrees). Depth defaults to the sprite's own depth so depth-sort keeps Z-order. Silently
+/// no-ops if the batch is not currently `_begin`/`_end`-bracketed.
 void rt_spritebatch_draw_ex(void *batch_ptr,
                             void *sprite,
                             int64_t x,
@@ -401,6 +407,8 @@ void rt_spritebatch_draw_pixels(void *batch_ptr, void *pixels, int64_t x, int64_
     add_item(batch, &item);
 }
 
+/// @brief Append a region (sub-rectangle) draw of `pixels` at (dx, dy) with native size and no
+/// rotation. Convenience for drawing one frame from a sprite-sheet without computing transforms.
 void rt_spritebatch_draw_region(void *batch_ptr,
                                 void *pixels,
                                 int64_t dx,
@@ -412,6 +420,9 @@ void rt_spritebatch_draw_region(void *batch_ptr,
     rt_spritebatch_draw_region_ex(batch_ptr, pixels, dx, dy, sx, sy, sw, sh, 100, 100, 0, 0);
 }
 
+/// @brief Full region-draw command: source rect within `pixels`, destination (dx, dy), per-axis
+/// scale (×100), rotation (degrees), and explicit Z `depth`. The depth-sort pass uses `depth`
+/// when enabled — lower values draw first (behind higher).
 void rt_spritebatch_draw_region_ex(void *batch_ptr,
                                    void *pixels,
                                    int64_t dx,

@@ -110,6 +110,12 @@ typedef struct {
     int bits_in_buf; // Bits available in buffer
 } bit_reader_t;
 
+/// @brief Initialize a bit reader over a byte buffer.
+///
+/// Resets the rolling buffer and bit-position state. The reader holds
+/// `data` by pointer, so the caller must keep the buffer alive for the
+/// reader's lifetime. Bit reads pull from the LSB of `buffer`,
+/// refilled in 8-bit chunks from `data` on demand.
 static void br_init(bit_reader_t *br, const uint8_t *data, size_t len) {
     br->data = data;
     br->len = len;
@@ -182,6 +188,10 @@ typedef struct {
     int bits_in_buf;
 } bit_writer_t;
 
+/// @brief Initialize a bit writer with a starting buffer capacity.
+///
+/// Allocates `initial_cap` bytes (clamped to a 256-byte minimum) and
+/// zeros the bit accumulator. Traps on OOM.
 static void bw_init(bit_writer_t *bw, size_t initial_cap) {
     bw->capacity = initial_cap > 256 ? initial_cap : 256;
     bw->data = (uint8_t *)malloc(bw->capacity);
@@ -192,6 +202,10 @@ static void bw_init(bit_writer_t *bw, size_t initial_cap) {
     bw->bits_in_buf = 0;
 }
 
+/// @brief Grow the bit writer's byte buffer so `need` more bytes will fit.
+///
+/// Doubles the capacity (with overflow guard) or jumps to
+/// `len + need + 256`, whichever is larger. Traps on OOM.
 static void bw_ensure(bit_writer_t *bw, size_t need) {
     if (bw->len + need > bw->capacity) {
         size_t new_cap = (bw->capacity <= SIZE_MAX / 2) ? bw->capacity * 2 : SIZE_MAX;
@@ -234,6 +248,10 @@ static void bw_write_bytes(bit_writer_t *bw, const uint8_t *data, size_t len) {
     bw->len += len;
 }
 
+/// @brief Release the bit writer's heap buffer.
+///
+/// Should be called once the assembled bytes have been copied out
+/// (see `deflate_data`). The struct itself is caller-owned.
 static void bw_free(bit_writer_t *bw) {
     free(bw->data);
     bw->data = NULL;
@@ -346,6 +364,10 @@ static int decode_symbol(huffman_tree_t *tree, bit_reader_t *br) {
     return symbol;
 }
 
+/// @brief Release a Huffman tree's symbol table.
+///
+/// The tree struct itself is caller-owned; only the dynamically
+/// allocated `symbols` buffer is freed.
 static void free_huffman_tree(huffman_tree_t *tree) {
     free(tree->symbols);
     tree->symbols = NULL;
@@ -359,6 +381,14 @@ static huffman_tree_t fixed_lit_tree;
 static huffman_tree_t fixed_dist_tree;
 static int fixed_trees_init = 0;
 
+/// @brief Lazily build the fixed-Huffman literal/distance trees.
+///
+/// RFC 1951 defines a single canonical set of fixed Huffman codes
+/// used by block type 1. Building the lookup tables once and reusing
+/// them across calls saves work but introduces a one-time race the
+/// `fixed_trees_init` flag mitigates (single-threaded init is fine
+/// since runtime startup is serialized — no concurrent inflate calls
+/// can occur before the runtime is up).
 static void init_fixed_trees(void) {
     if (fixed_trees_init)
         return;
@@ -421,6 +451,12 @@ typedef struct {
     size_t capacity;
 } output_buffer_t;
 
+/// @brief Initialize a growable output buffer.
+///
+/// Allocates `initial_cap` bytes (clamped to a 256-byte minimum). Used
+/// to accumulate inflated output, which can be larger than the input
+/// by an arbitrary factor — `out_ensure` enforces a 256MB safety cap
+/// to prevent decompression-bomb attacks. Traps on OOM.
 static void out_init(output_buffer_t *out, size_t initial_cap) {
     out->capacity = initial_cap > 256 ? initial_cap : 256;
     out->data = (uint8_t *)malloc(out->capacity);
@@ -432,6 +468,12 @@ static void out_init(output_buffer_t *out, size_t initial_cap) {
 /* S-20: Maximum decompressed output size (256 MB) to prevent decompression bombs */
 #define INFLATE_MAX_OUTPUT (256u * 1024u * 1024u)
 
+/// @brief Grow the inflate output buffer enforcing the 256MB cap.
+///
+/// If the request would push total size past `INFLATE_MAX_OUTPUT`
+/// (256MB), traps with a "decompression bomb" message — protects
+/// against malicious inputs that inflate to many GB. Otherwise grows
+/// geometrically (capped at the limit) and traps on OOM.
 static void out_ensure(output_buffer_t *out, size_t need) {
     if (out->len + need > INFLATE_MAX_OUTPUT)
         rt_trap("Inflate: decompressed output exceeds 256 MB limit");
@@ -450,11 +492,19 @@ static void out_ensure(output_buffer_t *out, size_t need) {
     }
 }
 
+/// @brief Append a single literal byte to the output buffer.
 static void out_byte(output_buffer_t *out, uint8_t b) {
     out_ensure(out, 1);
     out->data[out->len++] = b;
 }
 
+/// @brief Copy `length` bytes from `distance` back in the output (LZ77 back-ref).
+///
+/// Implements the DEFLATE back-reference primitive: copy a run from
+/// already-decompressed output. Crucially, copies must overlap correctly
+/// when `length > distance` (e.g., RLE-style "AAAAA" expansion), so the
+/// loop must walk byte-by-byte rather than `memcpy`. Caller has already
+/// validated that `distance <= out->len`.
 static void out_copy(output_buffer_t *out, int distance, int length) {
     out_ensure(out, length);
     size_t src = out->len - distance;
@@ -463,6 +513,7 @@ static void out_copy(output_buffer_t *out, int distance, int length) {
     }
 }
 
+/// @brief Release the output buffer's heap allocation.
 static void out_free(output_buffer_t *out) {
     free(out->data);
     out->data = NULL;
@@ -717,6 +768,7 @@ static void lz77_init(lz77_state_t *lz) {
     lz->window_pos = 0;
 }
 
+/// @brief Release LZ77 hash-chain memory (head + prev arrays).
 static void lz77_free(lz77_state_t *lz) {
     free(lz->head);
     free(lz->prev);
@@ -1085,12 +1137,29 @@ static void *gunzip_data(const uint8_t *data, size_t len) {
 // Public API
 //=============================================================================
 
+/// @brief `Compress.Deflate(data)` — RFC 1951 raw DEFLATE at default level (6).
+///
+/// Produces a raw DEFLATE bitstream with no GZIP/zlib wrapper. Use
+/// `Gzip` if you need a `.gz`-compatible output. Traps on NULL input.
+///
+/// @param data Source `rt_bytes`.
+/// @return Owned `rt_bytes` containing the compressed stream.
 void *rt_compress_deflate(void *data) {
     if (!data)
         rt_trap("Compress.Deflate: data is null");
     return deflate_data(bytes_data(data), bytes_len(data), DEFLATE_DEFAULT_LEVEL);
 }
 
+/// @brief `Compress.DeflateLvl(data, level)` — explicit-level DEFLATE.
+///
+/// `level` is 1 (fastest, stored blocks) through 9 (best compression).
+/// Levels 2-9 currently all use the same fixed-Huffman path; the level
+/// only changes the LZ77 hash-chain depth (`max_chain = 4 << level`).
+/// Traps on NULL data or out-of-range level.
+///
+/// @param data  Source `rt_bytes`.
+/// @param level Compression level (1..9).
+/// @return Owned `rt_bytes` containing the compressed stream.
 void *rt_compress_deflate_lvl(void *data, int64_t level) {
     if (!data)
         rt_trap("Compress.DeflateLvl: data is null");
@@ -1099,18 +1168,42 @@ void *rt_compress_deflate_lvl(void *data, int64_t level) {
     return deflate_data(bytes_data(data), bytes_len(data), (int)level);
 }
 
+/// @brief `Compress.Inflate(data)` — decompress a raw DEFLATE stream.
+///
+/// Accepts only the bare RFC 1951 bitstream — see `Gunzip` for
+/// GZIP-wrapped data. Traps on NULL input or any structural error
+/// in the compressed stream.
+///
+/// @param data Compressed `rt_bytes`.
+/// @return Owned `rt_bytes` containing the original payload.
 void *rt_compress_inflate(void *data) {
     if (!data)
         rt_trap("Compress.Inflate: data is null");
     return inflate_data(bytes_data(data), bytes_len(data));
 }
 
+/// @brief `Compress.Gzip(data)` — RFC 1952 GZIP wrap at default level.
+///
+/// Emits a 10-byte GZIP header + DEFLATE payload + 8-byte trailer
+/// (CRC32 + uncompressed size mod 2^32). Suitable for writing `.gz`
+/// files or HTTP `Content-Encoding: gzip`.
+///
+/// @param data Source `rt_bytes`.
+/// @return Owned `rt_bytes` containing the GZIP-wrapped stream.
 void *rt_compress_gzip(void *data) {
     if (!data)
         rt_trap("Compress.Gzip: data is null");
     return gzip_data(bytes_data(data), bytes_len(data), DEFLATE_DEFAULT_LEVEL);
 }
 
+/// @brief `Compress.GzipLvl(data, level)` — explicit-level GZIP wrap.
+///
+/// Like `Gzip` but uses the supplied compression level (1..9) for the
+/// inner DEFLATE pass.
+///
+/// @param data  Source `rt_bytes`.
+/// @param level Compression level (1..9).
+/// @return Owned `rt_bytes` containing the GZIP-wrapped stream.
 void *rt_compress_gzip_lvl(void *data, int64_t level) {
     if (!data)
         rt_trap("Compress.GzipLvl: data is null");
@@ -1119,12 +1212,28 @@ void *rt_compress_gzip_lvl(void *data, int64_t level) {
     return gzip_data(bytes_data(data), bytes_len(data), (int)level);
 }
 
+/// @brief `Compress.Gunzip(data)` — decode a GZIP-wrapped DEFLATE stream.
+///
+/// Validates the magic bytes, optional FEXTRA/FNAME/FCOMMENT/FHCRC
+/// header fields, and the trailing CRC32 + size — both must match the
+/// inflated data or the call traps. Multi-member GZIP streams are not
+/// yet supported.
+///
+/// @param data GZIP-wrapped `rt_bytes`.
+/// @return Owned `rt_bytes` containing the inflated payload.
 void *rt_compress_gunzip(void *data) {
     if (!data)
         rt_trap("Compress.Gunzip: data is null");
     return gunzip_data(bytes_data(data), bytes_len(data));
 }
 
+/// @brief `Compress.DeflateStr(text)` — string convenience wrapper.
+///
+/// Encodes `text` as UTF-8, deflates at the default level, and
+/// returns the bytes. Useful for compressing JSON / log payloads.
+///
+/// @param text Source string.
+/// @return Owned `rt_bytes` of the compressed stream.
 void *rt_compress_deflate_str(rt_string text) {
     if (!text)
         rt_trap("Compress.DeflateStr: text is null");
@@ -1133,6 +1242,13 @@ void *rt_compress_deflate_str(rt_string text) {
     return result;
 }
 
+/// @brief `Compress.InflateStr(data)` — inflate then decode as UTF-8 string.
+///
+/// Use only when the original payload is known to be valid UTF-8;
+/// `rt_bytes_to_str` validates and traps on malformed sequences.
+///
+/// @param data Compressed `rt_bytes`.
+/// @return Owned `rt_string` with the inflated text.
 rt_string rt_compress_inflate_str(void *data) {
     if (!data)
         rt_trap("Compress.InflateStr: data is null");
@@ -1141,6 +1257,10 @@ rt_string rt_compress_inflate_str(void *data) {
     return str;
 }
 
+/// @brief `Compress.GzipStr(text)` — string convenience wrapper around Gzip.
+///
+/// @param text Source string.
+/// @return Owned `rt_bytes` of the GZIP-wrapped stream.
 void *rt_compress_gzip_str(rt_string text) {
     if (!text)
         rt_trap("Compress.GzipStr: text is null");
@@ -1149,6 +1269,10 @@ void *rt_compress_gzip_str(rt_string text) {
     return result;
 }
 
+/// @brief `Compress.GunzipStr(data)` — gunzip and decode as UTF-8 string.
+///
+/// @param data GZIP-wrapped `rt_bytes`.
+/// @return Owned `rt_string` with the inflated text.
 rt_string rt_compress_gunzip_str(void *data) {
     if (!data)
         rt_trap("Compress.GunzipStr: data is null");

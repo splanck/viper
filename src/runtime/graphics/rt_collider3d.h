@@ -31,17 +31,28 @@ extern "C" {
 #define RT_COLLIDER3D_TYPE_COMPOUND 5
 #define RT_COLLIDER3D_TYPE_HEIGHTFIELD 6
 
+/// @brief Create a box collider with half-extents (hx, hy, hz) along each axis.
 void *rt_collider3d_new_box(double hx, double hy, double hz);
+/// @brief Create a sphere collider with the given radius.
 void *rt_collider3d_new_sphere(double radius);
+/// @brief Create a capsule collider (radius + total height including caps).
 void *rt_collider3d_new_capsule(double radius, double height);
+/// @brief Create a convex-hull collider from a mesh's vertex cloud (computes the hull internally).
 void *rt_collider3d_new_convex_hull(void *mesh);
+/// @brief Create a triangle-mesh collider (static only — cannot rotate dynamically).
 void *rt_collider3d_new_mesh(void *mesh);
+/// @brief Create a heightfield collider from a Pixels heightmap with per-axis world-scale.
 void *rt_collider3d_new_heightfield(void *heightmap, double scale_x, double scale_y, double scale_z);
+/// @brief Create an empty compound collider — combine multiple shapes via `_add_child`.
 void *rt_collider3d_new_compound(void);
 
+/// @brief Add a child collider to a compound at @p local_transform (Mat4 in compound's local space).
 void rt_collider3d_add_child(void *compound, void *child, void *local_transform);
+/// @brief Get the collider's type tag (one of RT_COLLIDER3D_TYPE_*).
 int64_t rt_collider3d_get_type(void *collider);
+/// @brief Get the local-space AABB minimum corner as a Vec3.
 void *rt_collider3d_get_local_bounds_min(void *collider);
+/// @brief Get the local-space AABB maximum corner as a Vec3.
 void *rt_collider3d_get_local_bounds_max(void *collider);
 
 /* Internal physics/runtime helpers. */

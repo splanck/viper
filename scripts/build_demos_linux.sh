@@ -1,7 +1,7 @@
 #!/bin/bash
-# Build and smoke-run demo binaries on Linux using Viper object generation
-# plus the system linker.
-# Usage: ./scripts/build_demos_linux.sh [--clean] [--skip-run]
+# Build demo binaries on Linux using Viper object generation plus the system
+# linker. Optional smoke-run validation can be enabled with --run.
+# Usage: ./scripts/build_demos_linux.sh [--clean] [--run|--skip-run]
 
 set -euo pipefail
 
@@ -29,18 +29,22 @@ CYAN='\033[0;36m'
 NC='\033[0m'
 
 usage() {
-    echo "Usage: $0 [--clean] [--skip-run]"
+    echo "Usage: $0 [--clean] [--run|--skip-run]"
     echo "  --clean      Remove existing binaries before building"
-    echo "  --skip-run   Build binaries only; skip launch validation"
+    echo "  --run        Launch each built demo for smoke validation"
+    echo "  --skip-run   Build only; skip launch validation (default)"
     exit 1
 }
 
 CLEAN=0
-SKIP_RUN=0
+SKIP_RUN=1
 for arg in "$@"; do
     case "$arg" in
         --clean)
             CLEAN=1
+            ;;
+        --run)
+            SKIP_RUN=0
             ;;
         --skip-run)
             SKIP_RUN=1

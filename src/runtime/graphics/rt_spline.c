@@ -99,6 +99,8 @@ static void extract_points(void *points, ViperSpline *s) {
 // Constructors
 //=============================================================================
 
+/// @brief Build a Catmull-Rom spline through `points` (a Seq of Vec2). The curve interpolates
+/// every input point with C¹ tangent continuity. Requires ≥ 2 points; traps otherwise.
 void *rt_spline_catmull_rom(void *points) {
     if (!points) {
         rt_trap("Spline.CatmullRom: null points");
@@ -114,6 +116,8 @@ void *rt_spline_catmull_rom(void *points) {
     return s;
 }
 
+/// @brief Build a cubic Bezier curve from four control points (Vec2). The curve passes through
+/// `p0` and `p3` (endpoints) and is pulled toward `p1` and `p2` (handles). Traps on null inputs.
 void *rt_spline_bezier(void *p0, void *p1, void *p2, void *p3) {
     if (!p0 || !p1 || !p2 || !p3) {
         rt_trap("Spline.Bezier: null control point");
@@ -131,6 +135,8 @@ void *rt_spline_bezier(void *p0, void *p1, void *p2, void *p3) {
     return s;
 }
 
+/// @brief Build a polyline from `points` (Seq of Vec2) — straight segments between adjacent
+/// points. Useful as a baseline for spline-using code paths or for level paths. Requires ≥ 2.
 void *rt_spline_linear(void *points) {
     if (!points) {
         rt_trap("Spline.Linear: null points");
@@ -294,6 +300,8 @@ static void tangent_catmull_rom(ViperSpline *s, double t, double *ox, double *oy
 // Public API
 //=============================================================================
 
+/// @brief Evaluate the spline at parameter `t` ∈ [0, 1] (clamped). Returns a freshly allocated
+/// Vec2 at that point along the curve. Dispatches to the per-type evaluator (Catmull/Bezier/Linear).
 void *rt_spline_eval(void *spline, double t) {
     if (!spline) {
         rt_trap("Spline.Eval: null spline");
@@ -315,6 +323,8 @@ void *rt_spline_eval(void *spline, double t) {
     return rt_vec2_new(ox, oy);
 }
 
+/// @brief Approximate the spline's tangent vector at `t` (numerical derivative via finite
+/// differences). Useful for orienting objects following the curve. Returns a fresh Vec2.
 void *rt_spline_tangent(void *spline, double t) {
     if (!spline) {
         rt_trap("Spline.Tangent: null spline");
@@ -345,6 +355,8 @@ int64_t rt_spline_point_count(void *spline) {
     return ((ViperSpline *)spline)->count;
 }
 
+/// @brief Read the i-th control/anchor point from the spline as a fresh Vec2. Useful for
+/// debug visualization or editing tools. Out-of-range index returns origin.
 void *rt_spline_point_at(void *spline, int64_t index) {
     if (!spline) {
         rt_trap("Spline.PointAt: null spline");
@@ -406,6 +418,8 @@ double rt_spline_arc_length(void *spline, double t0, double t1, int64_t steps) {
     return length;
 }
 
+/// @brief Generate a Seq of `count` Vec2 points along the spline, evenly spaced in `t`. Useful
+/// for tessellating the curve for rendering or hit-test acceleration.
 void *rt_spline_sample(void *spline, int64_t count) {
     if (!spline) {
         rt_trap("Spline.Sample: null spline");

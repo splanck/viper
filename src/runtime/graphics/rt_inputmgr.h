@@ -158,6 +158,12 @@ int64_t rt_inputmgr_scroll_y(rt_inputmgr mgr);
 /// @return Scroll amount (positive = scroll right, negative = scroll left).
 int64_t rt_inputmgr_scroll_x(rt_inputmgr mgr);
 
+/// @brief Retrieves the vertical scroll wheel delta for this frame with full precision.
+double rt_inputmgr_scroll_yf(rt_inputmgr mgr);
+
+/// @brief Retrieves the horizontal scroll wheel delta for this frame with full precision.
+double rt_inputmgr_scroll_xf(rt_inputmgr mgr);
+
 //=============================================================================
 // Gamepad - Just Pressed/Released (Edge Detection)
 //=============================================================================

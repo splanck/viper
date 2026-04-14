@@ -208,10 +208,15 @@ static void rt_trap_dispatch(
     vm_trap(msg);
 }
 
+/// @brief Raise a trap with explicit kind/code/line classification.
+/// Captures the return address for IP reporting and routes through the unified
+/// dispatcher so recovery handlers and native EH frames see consistent fields.
 void rt_trap_raise_kind(int32_t kind, int32_t code, int32_t line, const char *msg) {
     rt_trap_dispatch(msg, kind, code, line, rt_capture_return_address());
 }
 
+/// @brief Raise a generic domain-error trap with the supplied message.
+/// Convenience wrapper that defaults kind=RT_TRAP_KIND_DOMAIN_ERROR, code=0, line=-1.
 void rt_trap(const char *msg) {
     rt_trap_raise_kind(RT_TRAP_KIND_DOMAIN_ERROR, 0, -1, msg);
 }
@@ -233,15 +238,21 @@ int rt_trap_get_net_code(void) {
     return rt_trap_net_code_;
 }
 
+/// @brief Allocate a native exception-handling frame for use by codegen.
+/// The returned pointer is opaque to callers; pass it to push/pop/set_site/free.
 void *rt_native_eh_frame_alloc(void) {
     rt_native_eh_frame_t *frame = (rt_native_eh_frame_t *)calloc(1, sizeof(rt_native_eh_frame_t));
     return frame;
 }
 
+/// @brief Release a native EH frame allocated by `rt_native_eh_frame_alloc`.
 void rt_native_eh_frame_free(void *frame_ptr) {
     free(frame_ptr);
 }
 
+/// @brief Push a native EH frame onto the thread-local recovery stack.
+/// Subsequent traps will longjmp to this frame's saved env; callers must call
+/// `rt_native_eh_pop` before the frame's stack lifetime ends.
 void rt_native_eh_push(void *frame_ptr) {
     rt_native_eh_frame_t *frame = (rt_native_eh_frame_t *)frame_ptr;
     if (!frame)
@@ -252,6 +263,8 @@ void rt_native_eh_push(void *frame_ptr) {
     rt_trap_recovery_top_ = &frame->base;
 }
 
+/// @brief Pop a native EH frame off the recovery stack (no-op if it is not on top).
+/// Tolerates double-pop and mismatched ordering by checking identity before unlinking.
 void rt_native_eh_pop(void *frame_ptr) {
     rt_native_eh_frame_t *frame = (rt_native_eh_frame_t *)frame_ptr;
     if (!frame)
@@ -260,6 +273,8 @@ void rt_native_eh_pop(void *frame_ptr) {
         rt_trap_recovery_top_ = frame->base.prev;
 }
 
+/// @brief Tag a native EH frame with a codegen-supplied call-site identifier.
+/// Used by the EH lowering to disambiguate which `try` block was active at the trap.
 void rt_native_eh_set_site(void *frame_ptr, int64_t site_id) {
     rt_native_eh_frame_t *frame = (rt_native_eh_frame_t *)frame_ptr;
     if (!frame)
@@ -267,6 +282,7 @@ void rt_native_eh_set_site(void *frame_ptr, int64_t site_id) {
     frame->site_id = site_id;
 }
 
+/// @brief Read the call-site identifier last stored on the given native EH frame.
 int64_t rt_native_eh_get_site(void *frame_ptr) {
     rt_native_eh_frame_t *frame = (rt_native_eh_frame_t *)frame_ptr;
     return frame ? frame->site_id : 0;

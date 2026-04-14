@@ -56,7 +56,7 @@ TEST(PlatformImportPlanners, MacPlannerMapsFrameworkAndFlatLookupSymbols) {
     MacImportPlan plan;
     std::ostringstream err;
     ASSERT_TRUE(planMacImports({"CFStringCreateWithCString", "_OBJC_CLASS_$_NSApplication",
-                                "dispatch_async"},
+                                "dispatch_async", "fsync"},
                                plan, err));
 
     EXPECT_TRUE(std::any_of(plan.dylibs.begin(), plan.dylibs.end(), [](const DylibImport &import) {
@@ -69,6 +69,8 @@ TEST(PlatformImportPlanners, MacPlannerMapsFrameworkAndFlatLookupSymbols) {
     EXPECT_EQ(0u, plan.symOrdinals["_OBJC_CLASS_$_NSApplication"]);
     ASSERT_TRUE(plan.symOrdinals.count("dispatch_async") != 0);
     EXPECT_EQ(1u, plan.symOrdinals["dispatch_async"]);
+    ASSERT_TRUE(plan.symOrdinals.count("fsync") != 0);
+    EXPECT_EQ(1u, plan.symOrdinals["fsync"]);
 }
 
 TEST(PlatformImportPlanners, WindowsPlannerCreatesGroupedImportsAndThunks) {

@@ -92,6 +92,10 @@ END IF
 Viper.Environment.SetVariable(name, "abc")
 PRINT "Updated value: "; Viper.Environment.GetVariable(name)
 
+' Values round-trip as UTF-8 across platforms.
+Viper.Environment.SetVariable("VIPER_UTF8_SAMPLE", "café")
+PRINT Viper.Environment.GetVariable("VIPER_UTF8_SAMPLE")
+
 ' Process exit
 ' Viper.Environment.EndProgram(7)
 ```

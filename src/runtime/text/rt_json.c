@@ -69,6 +69,13 @@ typedef struct {
     int depth_exceeded; // S-16: set when depth limit hit (unwinds without trap)
 } json_parser;
 
+// ---------------------------------------------------------------------------
+// Parser primitives over a flat byte buffer. Tracks nesting depth
+// so we can fail gracefully on adversarial inputs (S-16) instead of
+// blowing the C stack via recursion.
+// ---------------------------------------------------------------------------
+
+/// @brief Initialise a parser onto fresh input. depth=0, no errors.
 static void parser_init(json_parser *p, const char *input, size_t len) {
     p->input = input;
     p->len = len;
@@ -77,22 +84,26 @@ static void parser_init(json_parser *p, const char *input, size_t len) {
     p->depth_exceeded = 0;
 }
 
+/// @brief True if the cursor has consumed all input bytes.
 static bool parser_eof(json_parser *p) {
     return p->pos >= p->len;
 }
 
+/// @brief Look at the byte under the cursor; returns `\0` at EOF.
 static char parser_peek(json_parser *p) {
     if (p->pos >= p->len)
         return '\0';
     return p->input[p->pos];
 }
 
+/// @brief Consume and return the byte under the cursor.
 static char parser_consume(json_parser *p) {
     if (p->pos >= p->len)
         return '\0';
     return p->input[p->pos++];
 }
 
+/// @brief Skip JSON whitespace (space, tab, newline, CR — RFC 8259 §2).
 static void parser_skip_whitespace(json_parser *p) {
     while (!parser_eof(p)) {
         char c = parser_peek(p);
@@ -103,6 +114,11 @@ static void parser_skip_whitespace(json_parser *p) {
     }
 }
 
+/// @brief Trap with a `Json.Parse: …` diagnostic carrying line/column from `p->pos`.
+///
+/// Computes the location lazily by walking from the start; cheap
+/// for typical-sized JSON inputs and avoids tracking line/col on
+/// every byte advance.
 static void parser_error(json_parser *p, const char *msg) {
     // Calculate line and column for error message
     size_t line = 1;
@@ -125,6 +141,7 @@ static void parser_error(json_parser *p, const char *msg) {
 // Forward Declarations
 //=============================================================================
 
+/// @brief Forward declaration: parse any JSON value (object/array/string/number/literal).
 static void *parse_value(json_parser *p);
 
 //=============================================================================
@@ -364,6 +381,12 @@ static rt_string parse_string(json_parser *p) {
 // Number Parsing
 //=============================================================================
 
+/// @brief Parse a JSON number — returns a boxed Int64 or Float64.
+///
+/// Per RFC 8259 §6: optional `-`, integer part (no leading zeros
+/// except `0` itself), optional `.fraction`, optional
+/// `e[+-]exponent`. If neither `.` nor `e` appears we return a
+/// boxed Int64; otherwise a boxed Float64. Traps on malformed input.
 static void *parse_number(json_parser *p) {
     size_t start = p->pos;
 
@@ -426,6 +449,12 @@ static void *parse_number(json_parser *p) {
 // Array Parsing
 //=============================================================================
 
+/// @brief Parse a JSON array `[…]` into a `Seq[Any]`.
+///
+/// Increments `p->depth` on `[` and decrements on `]`; if the
+/// depth-cap is exceeded the parser sets `depth_exceeded` and
+/// unwinds without trapping (S-16). Comma-separated values; empty
+/// array is allowed; trailing commas are not.
 static void *parse_array(json_parser *p) {
     /* S-16: Reject deeply nested documents */
     if (p->depth >= JSON_MAX_DEPTH) {
@@ -482,6 +511,12 @@ static void *parse_array(json_parser *p) {
 // Object Parsing
 //=============================================================================
 
+/// @brief Parse a JSON object `{…}` into a `Map[String, Any]`.
+///
+/// Each member is `"key" : value`; commas separate members; the
+/// empty object `{}` is allowed. Same depth-tracking story as
+/// `parse_array`. RFC 8259 doesn't require unique keys but we
+/// follow the convention of "last wins".
 static void *parse_object(json_parser *p) {
     /* S-16: Reject deeply nested documents */
     if (p->depth >= JSON_MAX_DEPTH) {
@@ -557,6 +592,14 @@ static void *parse_object(json_parser *p) {
 // Value Parsing
 //=============================================================================
 
+/// @brief Top-level value dispatch — picks the parser by the next non-space character.
+///
+///   - `{` → `parse_object`
+///   - `[` → `parse_array`
+///   - `"` → `parse_string`
+///   - digit, `-` → `parse_number`
+///   - `t`, `f`, `n` → boolean / null literal (must match `true`/`false`/`null`)
+/// Traps on any other character.
 static void *parse_value(json_parser *p) {
     /* S-16: Propagate depth-exceeded without trapping */
     if (p->depth_exceeded)
@@ -624,6 +667,13 @@ typedef struct {
     size_t cap;
 } string_builder;
 
+// ---------------------------------------------------------------------------
+// `string_builder` — a simple growing-buffer used to assemble the
+// JSON output. Doubles capacity on overflow; the final `sb_finish`
+// converts it into an `rt_string` and frees the scratch buffer.
+// ---------------------------------------------------------------------------
+
+/// @brief Initialise an empty string-builder with no allocation.
 static void sb_init(string_builder *sb) {
     sb->cap = 256;
     sb->len = 0;
@@ -633,6 +683,7 @@ static void sb_init(string_builder *sb) {
     sb->buf[0] = '\0';
 }
 
+/// @brief Ensure the builder has room for at least `needed` more bytes; doubles capacity.
 static void sb_grow(string_builder *sb, size_t needed) {
     if (sb->len + needed < sb->cap)
         return;
@@ -648,6 +699,7 @@ static void sb_grow(string_builder *sb, size_t needed) {
     sb->buf = tmp;
 }
 
+/// @brief Append a NUL-terminated C string to the builder.
 static void sb_append(string_builder *sb, const char *s) {
     size_t slen = strlen(s);
     sb_grow(sb, slen + 1);
@@ -656,12 +708,14 @@ static void sb_append(string_builder *sb, const char *s) {
     sb->buf[sb->len] = '\0';
 }
 
+/// @brief Append a single byte to the builder.
 static void sb_append_char(string_builder *sb, char c) {
     sb_grow(sb, 2);
     sb->buf[sb->len++] = c;
     sb->buf[sb->len] = '\0';
 }
 
+/// @brief Append `indent * level` literal spaces (pretty-print indentation).
 static void sb_append_indent(string_builder *sb, int64_t indent, int64_t level) {
     if (indent <= 0)
         return;
@@ -673,6 +727,7 @@ static void sb_append_indent(string_builder *sb, int64_t indent, int64_t level) 
     sb->buf[sb->len] = '\0';
 }
 
+/// @brief Convert the builder's contents to an `rt_string` and free the scratch buffer.
 static rt_string sb_finish(string_builder *sb) {
     rt_string result = rt_string_from_bytes(sb->buf, sb->len);
     free(sb->buf);
@@ -683,6 +738,11 @@ static rt_string sb_finish(string_builder *sb) {
 // JSON String Escaping
 //=============================================================================
 
+/// @brief Emit `s` as a JSON string literal (with quotes and escapes).
+///
+/// Escapes per RFC 8259 §7: `\\`, `\"`, `\b`, `\f`, `\n`, `\r`,
+/// `\t`. Other control characters (0x00-0x1F) become `\u00XX`.
+/// Non-ASCII bytes pass through verbatim — JSON allows raw UTF-8.
 static void format_string(string_builder *sb, rt_string s) {
     sb_append_char(sb, '"');
 
@@ -738,8 +798,13 @@ static void format_string(string_builder *sb, rt_string s) {
 // Value Formatting
 //=============================================================================
 
+/// @brief Forward declaration: serialise any Viper value as JSON.
 static void format_value(string_builder *sb, void *obj, int64_t indent, int64_t level);
 
+/// @brief Emit a Seq as a JSON array, optionally pretty-printed.
+///
+/// `indent == 0` emits compactly (`[1,2,3]`); `indent > 0` puts
+/// each element on its own line at `(level + 1) * indent` spaces.
 static void format_array(string_builder *sb, void *seq, int64_t indent, int64_t level) {
     int64_t len = rt_seq_len(seq);
 
@@ -770,6 +835,11 @@ static void format_array(string_builder *sb, void *seq, int64_t indent, int64_t 
     sb_append_char(sb, ']');
 }
 
+/// @brief Emit a Map as a JSON object, optionally pretty-printed.
+///
+/// Iterates the map in insertion order (Viper Maps preserve it).
+/// Each key is forced to its string form via `format_string`; non-
+/// string keys are silently coerced.
 static void format_object(string_builder *sb, void *map, int64_t indent, int64_t level) {
     int64_t len = rt_map_len(map);
 
@@ -810,6 +880,16 @@ static void format_object(string_builder *sb, void *map, int64_t indent, int64_t
     sb_append_char(sb, '}');
 }
 
+/// @brief Recursive JSON emitter for any Viper value.
+///
+/// Dispatches by type:
+///   - NULL                  → `null`
+///   - boxed bool/int/float  → `true`/`false`/`123`/`1.5`
+///   - rt_string             → quoted JSON string
+///   - Seq[Any]              → JSON array via `format_array`
+///   - Map[Any,Any]          → JSON object via `format_object`
+/// `indent == 0` produces compact output; positive values trigger
+/// pretty printing with `indent` spaces per level.
 static void format_value(string_builder *sb, void *obj, int64_t indent, int64_t level) {
     // null
     if (!obj) {
@@ -1287,6 +1367,12 @@ static int validate_value(json_parser *p) {
     return 0;
 }
 
+/// @brief Quick syntactic check: is `text` parseable as JSON?
+///
+/// Runs the same parser used by `rt_json_parse` but inside a trap
+/// guard, returning a boolean instead of either the value or a
+/// trap. Useful for input validation before committing to a parse.
+/// @return 1 if valid, 0 if any parse error occurs.
 int8_t rt_json_is_valid(rt_string text) {
     const char *input = rt_string_cstr(text);
     if (!input || strlen(input) == 0)

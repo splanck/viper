@@ -115,6 +115,12 @@ static void bigint_finalizer(void *obj) {
     }
 }
 
+/// @brief Drop a temporary owned reference to a BigInt.
+///
+/// Decrements the GC refcount and frees the object via
+/// `rt_obj_free` if the count hits zero. Used by helpers that
+/// allocate intermediate BigInts they don't return to the caller
+/// (e.g. quotient discarded after a remainder calculation).
 static void bigint_release_owned(bigint_t *bi) {
     if (bi && rt_obj_release_check0(bi))
         rt_obj_free(bi);
@@ -647,7 +653,14 @@ int8_t rt_bigint_fits_i64(void *a) {
 // Internal Arithmetic Helpers
 //=============================================================================
 
-// Compare magnitudes (ignoring sign)
+/// @brief Compare absolute values of two BigInts (sign ignored).
+///
+/// Magnitudes are stored little-endian in `digits`, so the
+/// most-significant digit lives at index `len-1`. A length
+/// difference is decisive (no leading zeros after `bigint_normalize`),
+/// otherwise we walk from the top digit downward and stop at the
+/// first inequality.
+/// @return >0 if |a|>|b|, <0 if |a|<|b|, 0 if equal.
 static int bigint_cmp_mag(bigint_t *a, bigint_t *b) {
     if (a->len != b->len)
         return (a->len > b->len) ? 1 : -1;
@@ -659,7 +672,14 @@ static int bigint_cmp_mag(bigint_t *a, bigint_t *b) {
     return 0;
 }
 
-// Add magnitudes (result = |a| + |b|)
+/// @brief Add two BigInt magnitudes: returns a freshly-allocated `|a| + |b|`.
+///
+/// School-book addition over base-2^32 digits: walk both digit
+/// arrays from least- to most-significant, propagating a 64-bit
+/// carry to absorb the overflow of two 32-bit additions plus
+/// carry. Capacity is grown lazily so an addition that produces a
+/// new top digit doesn't require a separate pass.
+/// @return New normalized BigInt with `sign = 0`, or NULL on alloc failure.
 static bigint_t *bigint_add_mag(bigint_t *a, bigint_t *b) {
     int64_t max_len = (a->len > b->len) ? a->len : b->len;
     bigint_t *result = bigint_alloc(max_len + 1);
@@ -687,7 +707,14 @@ static bigint_t *bigint_add_mag(bigint_t *a, bigint_t *b) {
     return result;
 }
 
-// Subtract magnitudes (result = |a| - |b|), assumes |a| >= |b|
+/// @brief Subtract two BigInt magnitudes: returns `|a| - |b|`.
+///
+/// Caller must guarantee `|a| >= |b|` (typically via
+/// `bigint_cmp_mag`); otherwise the borrow overflows on the top
+/// digit and the result is garbage. School-book subtraction with a
+/// 1-bit borrow flag, base 2^32. The result is normalized so any
+/// leading zero digits introduced by cancellation are trimmed.
+/// @return New normalized non-negative BigInt, or NULL on alloc failure.
 static bigint_t *bigint_sub_mag(bigint_t *a, bigint_t *b) {
     bigint_t *result = bigint_alloc(a->len);
     if (!result)

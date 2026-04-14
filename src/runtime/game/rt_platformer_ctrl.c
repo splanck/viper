@@ -63,6 +63,11 @@ struct rt_platformer_ctrl_impl {
     int8_t jump_held_prev;
 };
 
+/// @brief Construct a platformer movement controller pre-tuned for snappy "Celeste-style" feel.
+/// Defaults: 100ms jump buffer, 80ms coyote, ground accel 80, air accel 40, jump force -1500 full
+/// / -600 cut, max speed 525 (788 sprint), gravity 78 with 60% apex bonus when |vy| < 200.
+/// All velocities are in centipixels (×100) per 16ms baseline frame; multiply/divide by `dt/16` to
+/// scale. Returns a GC-managed handle; NULL on allocation failure.
 rt_platformer_ctrl rt_platformer_ctrl_new(void) {
     struct rt_platformer_ctrl_impl *ctrl = (struct rt_platformer_ctrl_impl *)rt_obj_new_i64(
         0, (int64_t)sizeof(struct rt_platformer_ctrl_impl));
@@ -94,22 +99,34 @@ rt_platformer_ctrl rt_platformer_ctrl_new(void) {
     return ctrl;
 }
 
+/// @brief Release the controller; frees the structure when refcount drops to zero.
 void rt_platformer_ctrl_destroy(rt_platformer_ctrl ctrl) {
     if (ctrl && rt_obj_release_check0(ctrl))
         rt_obj_free(ctrl);
 }
 
+// =============================================================================
 // Configuration setters
+// Each tuning knob is a direct write — no validation. Negative or zero values
+// disable the corresponding behavior (e.g., jump_buffer_ms=0 → no buffering).
+// =============================================================================
+
+/// @brief Set the jump-buffer window: pressing jump up to this many ms BEFORE landing still triggers
+/// a jump on touchdown. Default 100ms; set 0 to disable buffering.
 void rt_platformer_ctrl_set_jump_buffer(rt_platformer_ctrl ctrl, int64_t ms) {
     if (ctrl)
         ctrl->jump_buffer_ms = ms;
 }
 
+/// @brief Set the coyote-time window: jumps remain valid up to this many ms AFTER walking off a
+/// ledge. Default 80ms; set 0 to require strictly grounded jumps.
 void rt_platformer_ctrl_set_coyote_time(rt_platformer_ctrl ctrl, int64_t ms) {
     if (ctrl)
         ctrl->coyote_ms = ms;
 }
 
+/// @brief Configure horizontal acceleration: separate values for grounded vs airborne, plus
+/// deceleration applied when no input is held. All in centipixels per 16ms baseline frame.
 void rt_platformer_ctrl_set_acceleration(rt_platformer_ctrl ctrl,
                                          int64_t ground,
                                          int64_t air,
@@ -121,6 +138,9 @@ void rt_platformer_ctrl_set_acceleration(rt_platformer_ctrl ctrl,
     ctrl->decel = decel;
 }
 
+/// @brief Configure vertical jump impulse (negative = upward). `full_force` is applied on takeoff;
+/// `cut_force` is the velocity cap applied when the jump button is released early (variable jump
+/// height). Releasing while `vy < cut_force` snaps `vy` up to `cut_force` for a shorter hop.
 void rt_platformer_ctrl_set_jump_force(rt_platformer_ctrl ctrl,
                                        int64_t full_force,
                                        int64_t cut_force) {
@@ -130,6 +150,8 @@ void rt_platformer_ctrl_set_jump_force(rt_platformer_ctrl ctrl,
     ctrl->jump_force_cut = cut_force;
 }
 
+/// @brief Set the horizontal speed caps for normal walking vs sprinting (centipixels per 16ms).
+/// `update()` chooses between them via the `sprint` input flag each frame.
 void rt_platformer_ctrl_set_max_speed(rt_platformer_ctrl ctrl, int64_t normal, int64_t sprint) {
     if (!ctrl)
         return;
@@ -137,6 +159,7 @@ void rt_platformer_ctrl_set_max_speed(rt_platformer_ctrl ctrl, int64_t normal, i
     ctrl->max_speed_sprint = sprint;
 }
 
+/// @brief Configure gravity acceleration (per 16ms baseline frame) and a terminal `max_fall` cap.
 void rt_platformer_ctrl_set_gravity(rt_platformer_ctrl ctrl, int64_t gravity, int64_t max_fall) {
     if (!ctrl)
         return;
@@ -144,6 +167,9 @@ void rt_platformer_ctrl_set_gravity(rt_platformer_ctrl ctrl, int64_t gravity, in
     ctrl->max_fall = max_fall;
 }
 
+/// @brief Tune the apex-hang bonus: when |vy| < `threshold`, gravity is scaled by
+/// `gravity_mult_pct` percent (e.g. 60 = 60%). Lets the player float briefly at jump apex,
+/// extending air-time near the top of the arc — a hallmark of forgiving platformer feel.
 void rt_platformer_ctrl_set_apex_bonus(rt_platformer_ctrl ctrl,
                                        int64_t threshold,
                                        int64_t gravity_mult_pct) {
@@ -153,6 +179,20 @@ void rt_platformer_ctrl_set_apex_bonus(rt_platformer_ctrl ctrl,
     ctrl->apex_gravity_pct = gravity_mult_pct;
 }
 
+/// @brief Per-frame controller tick. Consumes input flags + ground state, updates internal velocity.
+/// Stages, in order:
+///   1. **Coyote refresh:** while on_ground, hold timer at full; on the falling-from-ledge transition
+///      (was_on_ground && vy>=0 && !on_ground) start the countdown.
+///   2. **Jump-buffer arming:** any `jump_pressed` edge resets the buffer; both timers tick down by `dt`.
+///   3. **Jump resolution:** if the buffer is active AND (grounded OR coyote active), set
+///      `should_jump=1` and consume both timers (caller reads via `should_jump()`).
+///   4. **Variable jump cut:** on the falling edge of `jump_held`, if `vy < jump_force_cut`, snap
+///      `vy` up to `jump_force_cut` for a shorter hop.
+///   5. **Horizontal:** apply ground vs air acceleration in input direction (clamped to walk/sprint
+///      cap); decelerate when neutral.
+///   6. **Gravity:** apply per-frame gravity scaled by `dt/16`, with apex-hang reduction when
+///      |vy| < apex_threshold; cap at `max_fall`.
+/// All scaling uses integer math: `value * dt / 16`. `dt <= 0` early-outs.
 void rt_platformer_ctrl_update(rt_platformer_ctrl ctrl,
                                int64_t dt,
                                int8_t input_left,
@@ -246,15 +286,26 @@ void rt_platformer_ctrl_update(rt_platformer_ctrl ctrl,
     ctrl->was_on_ground = on_ground;
 }
 
+// =============================================================================
 // Output queries
+// Read-only accessors plus a one-shot consume for `should_jump`. The expected
+// caller pattern each frame: update() → read vx/vy → check should_jump() → apply
+// jump_force if needed → integrate position externally.
+// =============================================================================
+
+/// @brief Read horizontal velocity (centipixels per 16ms baseline frame). Divide by 100 for px/frame.
 int64_t rt_platformer_ctrl_get_vx(rt_platformer_ctrl ctrl) {
     return ctrl ? ctrl->vx : 0;
 }
 
+/// @brief Read vertical velocity (centipixels per 16ms baseline frame). Negative = upward.
 int64_t rt_platformer_ctrl_get_vy(rt_platformer_ctrl ctrl) {
     return ctrl ? ctrl->vy : 0;
 }
 
+/// @brief One-shot read of the "jump now" signal. Returns 1 once after a successful jump-resolve in
+/// `update()` (buffer + (ground|coyote)), and **clears the flag on read** so the caller doesn't
+/// double-apply jump force on subsequent queries within the same frame.
 int8_t rt_platformer_ctrl_should_jump(rt_platformer_ctrl ctrl) {
     if (!ctrl)
         return 0;
@@ -263,23 +314,32 @@ int8_t rt_platformer_ctrl_should_jump(rt_platformer_ctrl ctrl) {
     return result;
 }
 
+/// @brief Read the configured full-jump impulse (negative = upward). Caller assigns this to `vy`
+/// when `should_jump()` is true.
 int64_t rt_platformer_ctrl_get_jump_force(rt_platformer_ctrl ctrl) {
     return ctrl ? ctrl->jump_force_full : 0;
 }
 
+/// @brief Read the player's facing direction (+1 = right, -1 = left). Updated only when the player
+/// actively inputs movement; remains sticky during slides/decel.
 int64_t rt_platformer_ctrl_get_facing(rt_platformer_ctrl ctrl) {
     return ctrl ? ctrl->facing : 1;
 }
 
+/// @brief Returns 1 if `vx != 0` (any horizontal motion). Useful for animation-state queries.
 int8_t rt_platformer_ctrl_is_moving(rt_platformer_ctrl ctrl) {
     return ctrl ? (ctrl->vx != 0 ? 1 : 0) : 0;
 }
 
+/// @brief Force-set horizontal velocity (e.g. to apply an external knockback or wall-bounce).
+/// Subsequent `update()` calls will continue from this value (caps still apply).
 void rt_platformer_ctrl_set_vx(rt_platformer_ctrl ctrl, int64_t vx) {
     if (ctrl)
         ctrl->vx = vx;
 }
 
+/// @brief Force-set vertical velocity (typical use: caller writes `jump_force` here when
+/// `should_jump()` returned 1). Negative = upward.
 void rt_platformer_ctrl_set_vy(rt_platformer_ctrl ctrl, int64_t vy) {
     if (ctrl)
         ctrl->vy = vy;

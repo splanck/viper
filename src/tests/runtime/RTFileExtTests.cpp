@@ -90,6 +90,16 @@ static void remove_file(const char *path) {
 #endif
 }
 
+static const char *get_missing_path() {
+    static char buf[512];
+#ifdef _WIN32
+    snprintf(buf, sizeof(buf), "%s\\missing_dir\\missing_file.txt", get_test_base());
+#else
+    snprintf(buf, sizeof(buf), "%s/missing_dir/missing_file.txt", get_test_base());
+#endif
+    return buf;
+}
+
 /// @brief Test rt_io_file_exists.
 static void test_exists() {
     printf("Testing rt_io_file_exists:\n");
@@ -189,6 +199,32 @@ static void test_move() {
     printf("\n");
 }
 
+/// @brief Test rt_file_move overwrites an existing destination.
+static void test_move_overwrite() {
+    printf("Testing rt_file_move overwrite:\n");
+
+    const char *base = get_test_base();
+    char src_path[512], dst_path[512];
+    snprintf(src_path, sizeof(src_path), "%s_move_overwrite_src.txt", base);
+    snprintf(dst_path, sizeof(dst_path), "%s_move_overwrite_dst.txt", base);
+
+    create_test_file(src_path, "new content");
+    create_test_file(dst_path, "old content");
+
+    rt_string src = rt_const_cstr(src_path);
+    rt_string dst = rt_const_cstr(dst_path);
+
+    rt_file_move(src, dst);
+
+    test_result("source removed", rt_io_file_exists(src) == 0);
+    test_result("dest exists", rt_io_file_exists(dst) == 1);
+    test_result("dest replaced", rt_str_eq(rt_io_file_read_all_text(dst), rt_const_cstr("new content")));
+
+    remove_file(dst_path);
+
+    printf("\n");
+}
+
 /// @brief Test rt_file_size.
 static void test_size() {
     printf("Testing rt_file_size:\n");
@@ -206,7 +242,7 @@ static void test_size() {
     test_result("size is 5 bytes", size == 5);
 
     // Non-existent file
-    rt_string nonexist = rt_const_cstr("/nonexistent_file_12345.txt");
+    rt_string nonexist = rt_const_cstr(get_missing_path());
     test_result("non-existent returns -1", rt_file_size(nonexist) == -1);
 
     // Clean up
@@ -348,6 +384,26 @@ static void test_append_line() {
     printf("\n");
 }
 
+/// @brief Test rt_io_file_write_all_text performs a full overwrite.
+static void test_write_all_text() {
+    printf("Testing rt_io_file_write_all_text:\n");
+
+    const char *base = get_test_base();
+    char file_path[512];
+    snprintf(file_path, sizeof(file_path), "%s_write_all_text_test.txt", base);
+
+    rt_string path = rt_const_cstr(file_path);
+    create_test_file(file_path, "old contents that should disappear");
+
+    rt_io_file_write_all_text(path, rt_const_cstr("fresh text"));
+    test_result("text replaced", rt_str_eq(rt_io_file_read_all_text(path), rt_const_cstr("fresh text")));
+    test_result("size matches replacement", rt_file_size(path) == 10);
+
+    remove_file(file_path);
+
+    printf("\n");
+}
+
 /// @brief Test rt_io_file_read_all_bytes / rt_io_file_write_all_bytes.
 static void test_read_write_all_bytes() {
     printf("Testing rt_io_file_read_all_bytes/rt_io_file_write_all_bytes:\n");
@@ -429,7 +485,7 @@ static void test_modified() {
     test_result("mtime is recent", mtime > 0 && (now - mtime) < 60);
 
     // Non-existent file
-    rt_string nonexist = rt_const_cstr("/nonexistent_file_12345.txt");
+    rt_string nonexist = rt_const_cstr(get_missing_path());
     test_result("non-existent returns 0", rt_file_modified(nonexist) == 0);
 
     // Clean up
@@ -512,7 +568,7 @@ static void test_empty_file() {
 static void test_nonexistent() {
     printf("Testing non-existent file operations:\n");
 
-    rt_string path = rt_const_cstr("/nonexistent_file_12345_xyz.txt");
+    rt_string path = rt_const_cstr(get_missing_path());
 
     // Read operations should return empty/default values
     rt_string text = rt_io_file_read_all_text(path);
@@ -532,20 +588,18 @@ static void test_nonexistent() {
 
 /// @brief Entry point for file extension tests.
 int main() {
-#ifdef _WIN32
-    // Skip on Windows: test uses /tmp paths not available on Windows
-    VIPER_PLATFORM_SKIP("POSIX temp paths not available on Windows");
-#endif
     printf("=== RT File Extension Tests ===\n\n");
 
     test_exists();
     test_copy();
     test_move();
+    test_move_overwrite();
     test_size();
     test_read_write_bytes();
     test_read_write_lines();
     test_append();
     test_append_line();
+    test_write_all_text();
     test_read_write_all_bytes();
     test_read_all_lines();
     test_modified();

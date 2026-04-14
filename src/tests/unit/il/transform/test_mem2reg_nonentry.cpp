@@ -232,6 +232,53 @@ Module buildDominatingNonEntryAlloca() {
     return module;
 }
 
+Module buildEntryLoadBeforeStoreAlloca() {
+    Module module;
+    Function fn;
+    fn.name = "entry_default_load";
+    fn.retType = Type(Type::Kind::I64);
+
+    unsigned id = 0;
+
+    BasicBlock entry;
+    entry.label = "entry";
+
+    Instr alloca_;
+    alloca_.result = id++;
+    alloca_.op = Opcode::Alloca;
+    alloca_.type = Type(Type::Kind::Ptr);
+    alloca_.operands.push_back(Value::constInt(8));
+    entry.instructions.push_back(std::move(alloca_));
+
+    Instr load;
+    load.result = id++;
+    load.op = Opcode::Load;
+    load.type = Type(Type::Kind::I64);
+    load.operands.push_back(Value::temp(0));
+    entry.instructions.push_back(std::move(load));
+
+    Instr store;
+    store.op = Opcode::Store;
+    store.type = Type(Type::Kind::I64);
+    store.operands.push_back(Value::temp(0));
+    store.operands.push_back(Value::constInt(7));
+    entry.instructions.push_back(std::move(store));
+
+    Instr ret;
+    ret.op = Opcode::Ret;
+    ret.type = Type(Type::Kind::Void);
+    ret.operands.push_back(Value::temp(1));
+    entry.instructions.push_back(std::move(ret));
+    entry.terminated = true;
+
+    fn.blocks.push_back(std::move(entry));
+    fn.valueNames.resize(id);
+    fn.valueNames[0] = "ptr";
+    fn.valueNames[1] = "val";
+    module.functions.push_back(std::move(fn));
+    return module;
+}
+
 } // namespace
 
 // A single-block alloca in a non-entry block must be promoted.
@@ -271,6 +318,27 @@ TEST(Mem2RegNonEntry, DominatingNonEntryAllocaIsPromoted) {
     unsigned loadsAfter = countOpcodeInFunction(module.functions[0], Opcode::Load);
     EXPECT_EQ(allocasAfter, 0u);
     EXPECT_EQ(loadsAfter, 0u);
+}
+
+TEST(Mem2RegNonEntry, EntryLoadBeforeStorePromotesToDefaultValueWithoutEntryPhi) {
+    Module module = buildEntryLoadBeforeStoreAlloca();
+    ASSERT_FALSE(module.functions.empty());
+
+    viper::passes::Mem2RegStats stats{};
+    viper::passes::mem2reg(module, &stats);
+
+    const Function &fn = module.functions.front();
+    ASSERT_EQ(countOpcodeInFunction(fn, Opcode::Alloca), 0u);
+    ASSERT_EQ(countOpcodeInFunction(fn, Opcode::Load), 0u);
+    ASSERT_FALSE(fn.blocks.empty());
+    EXPECT_TRUE(fn.blocks.front().params.empty());
+
+    const Instr &ret = fn.blocks.front().instructions.back();
+    ASSERT_EQ(ret.op, Opcode::Ret);
+    ASSERT_EQ(ret.operands.size(), 1u);
+    EXPECT_EQ(ret.operands[0].kind, Value::Kind::ConstInt);
+    if (ret.operands[0].kind == Value::Kind::ConstInt)
+        EXPECT_EQ(ret.operands[0].i64, 0);
 }
 
 int main(int argc, char **argv) {

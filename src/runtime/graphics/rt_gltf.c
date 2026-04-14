@@ -80,6 +80,7 @@ typedef struct {
     int32_t node_count;
 } rt_gltf_asset;
 
+/// @brief GC finalizer for an `rt_gltf_asset` — release every owned mesh / material / scene root.
 static void gltf_asset_finalize(void *obj) {
     rt_gltf_asset *a = (rt_gltf_asset *)obj;
     if (a->meshes) {
@@ -108,12 +109,19 @@ static void gltf_asset_finalize(void *obj) {
 // JSON helpers
 //===----------------------------------------------------------------------===//
 
+/// @brief Set the name of a scene node from a C string (no-op for empty / NULL input).
 static void gltf_set_node_name(rt_scene_node3d *node, const char *name) {
     if (!node || !name || name[0] == '\0')
         return;
     rt_scene_node3d_set_name(node, rt_const_cstr(name));
 }
 
+/// @brief Decompose a row-major 4x4 transform matrix into separate position, quaternion, and scale.
+///
+/// glTF nodes can store either a 16-element matrix or explicit
+/// TRS — this helper converts the matrix form so the runtime
+/// always works with TRS internally. Uses Shepperd's method
+/// (largest-trace pivot) for the rotation extraction.
 static void gltf_matrix_to_trs(const double *m, double *pos, double *quat, double *scale) {
     double r00, r01, r02;
     double r10, r11, r12;
@@ -174,6 +182,13 @@ static void gltf_matrix_to_trs(const double *m, double *pos, double *quat, doubl
     }
 }
 
+// ---------------------------------------------------------------------------
+// JSON accessor helpers — adapt the runtime JSON map/array API to
+// the glTF parser's conventions (default values for missing keys,
+// borrowed cstr returns, etc.).
+// ---------------------------------------------------------------------------
+
+/// @brief Look up a JSON object field by key (NULL if absent or `obj` is NULL).
 static void *jget(void *obj, const char *key) {
     if (!obj)
         return NULL;
@@ -181,6 +196,7 @@ static void *jget(void *obj, const char *key) {
     return rt_map_get(obj, k);
 }
 
+/// @brief Read `obj[key]` as a double; returns `def` if absent or wrong type.
 static double jnum(void *obj, const char *key, double def) {
     void *v = jget(obj, key);
     if (!v)
@@ -197,6 +213,7 @@ static double jnum(void *obj, const char *key, double def) {
     }
 }
 
+/// @brief Read `obj[key]` as an int64; returns `def` if absent or wrong type.
 static int64_t jint(void *obj, const char *key, int64_t def) {
     void *v = jget(obj, key);
     if (!v)
@@ -213,20 +230,24 @@ static int64_t jint(void *obj, const char *key, int64_t def) {
     }
 }
 
+/// @brief Read `obj[key]` as a borrowed C string (NULL if absent or non-string).
 static const char *jstr(void *obj, const char *key) {
     void *v = jget(obj, key);
     rt_string s = (rt_string)v;
     return s ? rt_string_cstr(s) : NULL;
 }
 
+/// @brief Read `obj[key]` as an array (alias for `jget` — typed for readability).
 static void *jarr(void *obj, const char *key) {
     return jget(obj, key);
 }
 
+/// @brief Length of a JSON array (0 for NULL).
 static int64_t jarr_len(void *arr) {
     return arr ? rt_seq_len(arr) : 0;
 }
 
+/// @brief Coerce a boxed JSON value to double with default fallback.
 static double jvalue_num(void *value, double def) {
     if (!value)
         return def;
@@ -240,6 +261,7 @@ static double jvalue_num(void *value, double def) {
     }
 }
 
+/// @brief Coerce a boxed JSON value to int64 with default fallback.
 static int64_t jvalue_int(void *value, int64_t def) {
     if (!value)
         return def;
@@ -255,6 +277,7 @@ static int64_t jvalue_int(void *value, int64_t def) {
     }
 }
 
+/// @brief Recursive count — returns 1 for `node` plus the sum of all descendants.
 static int32_t gltf_count_subtree(const rt_scene_node3d *node) {
     int32_t total = 1;
     if (!node)
@@ -276,6 +299,7 @@ typedef struct {
 static const char gltf_base64_chars[] =
     "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
+/// @brief Decode a single base64 character to its 0-63 value (-2 for '=', -1 for invalid).
 static int gltf_base64_digit_value(char c) {
     const char *p = strchr(gltf_base64_chars, c);
     if (p)
@@ -285,6 +309,7 @@ static int gltf_base64_digit_value(char c) {
     return -1;
 }
 
+/// @brief Decode a base64 string of `len` characters into raw bytes (caller `free`s).
 static uint8_t *gltf_base64_decode(const char *data, size_t len, size_t *out_len) {
     if (!data)
         return NULL;
@@ -339,6 +364,12 @@ static uint8_t *gltf_base64_decode(const char *data, size_t len, size_t *out_len
     return output;
 }
 
+/// @brief Parse a `data:[<mediatype>][;base64],<data>` URI inline-embedded in glTF JSON.
+///
+/// Recognises the base64 marker and strips the MIME-type prefix.
+/// Used for inline texture / buffer data so a single .gltf file
+/// can be self-contained without separate .bin sidecars.
+/// @return 0 on success (writes decoded bytes + MIME type), -1 on malformed URI.
 static int gltf_parse_data_uri(
     const char *uri, char *mime_buf, size_t mime_buf_cap, uint8_t **out_data, size_t *out_len) {
     const char *comma;
@@ -386,6 +417,11 @@ static int gltf_parse_data_uri(
     return 1;
 }
 
+/// @brief Resolve a buffer-view index to its `(data, length)` slice into the underlying buffer.
+///
+/// glTF separates buffers (raw bytes) from bufferViews (named
+/// offset+length slices). Most accessors reference data through a
+/// bufferView, so this helper centralises the indirection.
 static const uint8_t *gltf_get_buffer_view_data(
     void *root, int64_t view_idx, gltf_buffer_t *buffers, int buf_count, size_t *out_len) {
     void *views = jarr(root, "bufferViews");
@@ -471,6 +507,7 @@ static const uint8_t *gltf_get_accessor_data(void *root,
     return buffers[buf_idx].data + offset;
 }
 
+/// @brief Refcount-aware free of `*slot`; nulls the pointer afterwards.
 static void gltf_release_ref(void **slot) {
     if (!slot || !*slot)
         return;
@@ -479,11 +516,17 @@ static void gltf_release_ref(void **slot) {
     *slot = NULL;
 }
 
+/// @brief Drop a transient GC reference taken during the load (e.g. parsed JSON map).
 static void gltf_release_local(void *obj) {
     void *tmp = obj;
     gltf_release_ref(&tmp);
 }
 
+/// @brief Combine a glTF document's directory with a relative URI to get an absolute filesystem path.
+///
+/// External buffers and textures in glTF are referenced via paths
+/// relative to the .gltf file itself; this prepends the document's
+/// directory so the loader can open them.
 static void gltf_resolve_relative_path(const char *base_path,
                                        const char *uri,
                                        char *out,
@@ -514,6 +557,8 @@ static void gltf_resolve_relative_path(const char *base_path,
     }
 }
 
+/// @brief Synthesize a name for an embedded resource (e.g. `inline-image-3.png`).
+/// Used by the asset system to give meaningful names to inline base64 buffers.
 static void gltf_build_embedded_name(const char *mime_type,
                                      const char *fallback_ext,
                                      char *out,
@@ -1212,10 +1257,12 @@ void *rt_gltf_get_material(void *obj, int64_t index) {
     return a->materials[index];
 }
 
+/// @brief Number of nodes in the loaded glTF scene tree (0 for NULL).
 int64_t rt_gltf_node_count(void *obj) {
     return obj ? ((rt_gltf_asset *)obj)->node_count : 0;
 }
 
+/// @brief Return the scene-root SceneNode of the loaded asset (NULL if not loaded / NULL).
 void *rt_gltf_get_scene_root(void *obj) {
     return obj ? ((rt_gltf_asset *)obj)->scene_root : NULL;
 }

@@ -51,17 +51,23 @@ typedef struct {
     uint8_t *data;
 } bytes_impl;
 
+/// @brief Reach into a Bytes object's internal storage. Returns NULL for NULL `obj`.
 static inline uint8_t *bytes_data(void *obj) {
     if (!obj)
         return NULL;
     return ((bytes_impl *)obj)->data;
 }
 
+/// @brief True if `host` is an IPv6 literal that needs `[…]` wrapping in a URL/Host header.
+///
+/// Detects bare IPv6 addresses (containing ':' but no leading '[')
+/// per RFC 3986 §3.2.2 — these must be bracketed when embedded in a
+/// URL or `Host:` header.
 static bool host_needs_brackets(const char *host) {
     return host && strchr(host, ':') != NULL && host[0] != '[';
 }
 
-// Forward declaration for Windows WSA init
+/// @brief Lazy WinSock initialiser (no-op on POSIX). Defined in rt_network.c.
 void rt_net_init_wsa(void);
 
 //=============================================================================
@@ -370,6 +376,12 @@ static void free_headers(http_header_t *headers) {
     }
 }
 
+/// @brief GC finalizer for an HttpReq object.
+///
+/// Releases the heap-owned method string, the parsed URL fields,
+/// the linked-list of headers, and the body buffer. Safe on a
+/// partially-built request because every helper either nulls or
+/// initialises its target.
 static void rt_http_req_finalize(void *obj) {
     if (!obj)
         return;
@@ -385,6 +397,10 @@ static void rt_http_req_finalize(void *obj) {
     req->timeout_ms = 0;
 }
 
+/// @brief GC finalizer for an HttpRes object.
+///
+/// Frees the status text, body buffer, and decrements the headers
+/// map's refcount (releasing if it hits zero).
 static void rt_http_res_finalize(void *obj) {
     if (!obj)
         return;
@@ -541,6 +557,14 @@ static char *build_request(rt_http_req_t *req) {
     return request;
 }
 
+/// @brief Public test hook into the otherwise-static URL parser.
+///
+/// Lets unit tests verify URL parsing without going through the
+/// HTTP request path. All output pointers are optional. Strings
+/// returned via `host_out`/`path_out` are heap-allocated and must
+/// be `free()`d by the caller.
+/// @return 1 on success, 0 on parse failure (in which case no
+///         outputs are written and no allocations leak).
 int rt_http_parse_url_for_test(
     const char *url_str, char **host_out, int *port_out, char **path_out, int *use_tls_out) {
     parsed_url_t parsed;
@@ -1159,7 +1183,19 @@ static rt_http_res_t *do_http_request(rt_http_req_t *req, int redirects_remainin
 //=============================================================================
 // Http Static Class Implementation
 //=============================================================================
+//
+// These one-shot helpers (rt_http_get, rt_http_post, …) build an
+// `rt_http_req_t` on the stack, run a single transaction with the
+// default timeout (`HTTP_DEFAULT_TIMEOUT_MS`) and redirect cap
+// (`HTTP_MAX_REDIRECTS`), then return either the body as a string,
+// the body as a Bytes object, or in the case of HEAD, just the
+// response object. They `rt_trap_net` on malformed URLs and
+// transport failures so callers don't need to error-check.
+//=============================================================================
 
+/// @brief HTTP GET that returns the body decoded as a UTF-8 string.
+/// @throws Err_InvalidUrl on empty / unparsable URL,
+///         Err_NetworkError on transport failure.
 rt_string rt_http_get(rt_string url) {
     const char *url_str = rt_string_cstr(url);
     if (!url_str || *url_str == '\0')
@@ -1189,6 +1225,8 @@ rt_string rt_http_get(rt_string url) {
     return result;
 }
 
+/// @brief HTTP GET that returns the raw response body as a Bytes object.
+/// @throws Err_InvalidUrl / Err_NetworkError on failure (see `rt_http_get`).
 void *rt_http_get_bytes(rt_string url) {
     const char *url_str = rt_string_cstr(url);
     if (!url_str || *url_str == '\0')
@@ -1219,6 +1257,11 @@ void *rt_http_get_bytes(rt_string url) {
     return result;
 }
 
+/// @brief HTTP POST with a string body; returns the response body as a string.
+///
+/// Adds `Content-Type: text/plain; charset=utf-8` automatically
+/// when the body is non-empty. The body is copied into a request-
+/// owned buffer so the caller's `rt_string` lifetime is independent.
 rt_string rt_http_post(rt_string url, rt_string body) {
     const char *url_str = rt_string_cstr(url);
     const char *body_str = rt_string_cstr(body);
@@ -1263,6 +1306,11 @@ rt_string rt_http_post(rt_string url, rt_string body) {
     return result;
 }
 
+/// @brief HTTP POST with a Bytes body; returns the response body as Bytes.
+///
+/// Adds `Content-Type: application/octet-stream` automatically when
+/// the body is non-empty. The Bytes object is referenced directly
+/// (not copied), so it must remain alive for the duration of the call.
 void *rt_http_post_bytes(rt_string url, void *body) {
     const char *url_str = rt_string_cstr(url);
 
@@ -1305,6 +1353,14 @@ void *rt_http_post_bytes(rt_string url, void *body) {
     return result;
 }
 
+/// @brief HTTP GET that streams the response body to a file at `dest_path`.
+///
+/// Returns 0 (false) on any failure: bad URL, transport error,
+/// non-2xx status, file-open failure, short write, or `fclose`
+/// error. On a partial write the half-finished file is removed
+/// (RC-14). Does not trap, so callers can branch on the boolean
+/// instead of installing an exception handler.
+/// @return 1 on full successful download, 0 otherwise.
 int8_t rt_http_download(rt_string url, rt_string dest_path) {
     const char *url_str = rt_string_cstr(url);
     const char *path_str = rt_string_cstr(dest_path);
@@ -1360,6 +1416,11 @@ int8_t rt_http_download(rt_string url, rt_string dest_path) {
     return 1;
 }
 
+/// @brief HTTP HEAD request; returns just the response headers map.
+///
+/// Useful for size/type probes (Content-Length, Content-Type) and
+/// existence checks without paying for the body. Throws on
+/// transport failure.
 void *rt_http_head(rt_string url) {
     const char *url_str = rt_string_cstr(url);
     if (!url_str || *url_str == '\0')
@@ -1386,6 +1447,10 @@ void *rt_http_head(rt_string url) {
     return headers;
 }
 
+/// @brief HTTP PATCH with a string body; returns the response body as a string.
+///
+/// Mirrors `rt_http_post` but sends the `PATCH` method
+/// (RFC 5789), used to apply partial updates to a resource.
 rt_string rt_http_patch(rt_string url, rt_string body) {
     const char *url_str = rt_string_cstr(url);
     const char *body_str = rt_string_cstr(body);
@@ -1428,6 +1493,10 @@ rt_string rt_http_patch(rt_string url, rt_string body) {
     return result;
 }
 
+/// @brief HTTP OPTIONS request; returns the response body as a string.
+///
+/// Typically used for CORS preflight discovery — the meaningful
+/// data lives in the response headers (`Allow`, `Access-Control-*`).
 rt_string rt_http_options(rt_string url) {
     const char *url_str = rt_string_cstr(url);
     if (!url_str || *url_str == '\0')
@@ -1455,6 +1524,10 @@ rt_string rt_http_options(rt_string url) {
     return result;
 }
 
+/// @brief HTTP PUT with a string body; returns the response body as a string.
+///
+/// PUT replaces the target resource (RFC 7231 §4.3.4). Body is
+/// copied and tagged `Content-Type: text/plain; charset=utf-8`.
 rt_string rt_http_put(rt_string url, rt_string body) {
     const char *url_str = rt_string_cstr(url);
     const char *body_str = rt_string_cstr(body);
@@ -1497,6 +1570,10 @@ rt_string rt_http_put(rt_string url, rt_string body) {
     return result;
 }
 
+/// @brief HTTP PUT with a Bytes body; returns the response body as Bytes.
+///
+/// As `rt_http_put` but for binary payloads — sets
+/// `Content-Type: application/octet-stream` when the body is non-empty.
 void *rt_http_put_bytes(rt_string url, void *body) {
     const char *url_str = rt_string_cstr(url);
 
@@ -1539,6 +1616,7 @@ void *rt_http_put_bytes(rt_string url, void *body) {
     return result;
 }
 
+/// @brief HTTP DELETE; returns the response body as a string.
 rt_string rt_http_delete(rt_string url) {
     const char *url_str = rt_string_cstr(url);
     if (!url_str || *url_str == '\0')
@@ -1566,6 +1644,7 @@ rt_string rt_http_delete(rt_string url) {
     return result;
 }
 
+/// @brief HTTP DELETE; returns the response body as a Bytes object.
 void *rt_http_delete_bytes(rt_string url) {
     const char *url_str = rt_string_cstr(url);
     if (!url_str || *url_str == '\0')
@@ -1598,8 +1677,19 @@ void *rt_http_delete_bytes(rt_string url) {
 
 //=============================================================================
 // HttpReq Instance Class Implementation
+//
+// The builder-style HttpReq class lets callers configure a request
+// (headers, body, timeout, redirect policy) before sending. Setters
+// return `obj` so they can be chained. All instances are GC-managed
+// and finalized via `rt_http_req_finalize`.
 //=============================================================================
 
+/// @brief Construct a new HTTP request with the given method and URL.
+///
+/// The URL is parsed eagerly so callers see invalid-URL traps at
+/// construction time rather than when sending. Defaults: 30s
+/// timeout, follow redirects with cap `HTTP_MAX_REDIRECTS`.
+/// @throws Err_InvalidUrl on bad URL, generic trap on null method.
 void *rt_http_req_new(rt_string method, rt_string url) {
     const char *method_str = rt_string_cstr(method);
     const char *url_str = rt_string_cstr(url);
@@ -1630,6 +1720,8 @@ void *rt_http_req_new(rt_string method, rt_string url) {
     return req;
 }
 
+/// @brief Append a request header. Silently ignores NULL name/value.
+/// @return `obj` (for fluent chaining).
 void *rt_http_req_set_header(void *obj, rt_string name, rt_string value) {
     if (!obj)
         rt_trap("HTTP: NULL request");
@@ -1644,6 +1736,11 @@ void *rt_http_req_set_header(void *obj, rt_string name, rt_string value) {
     return obj;
 }
 
+/// @brief Replace the request body with a Bytes object (copied).
+///
+/// Frees any previously-set body. The bytes are duplicated into a
+/// request-owned buffer so the caller's Bytes lifetime is independent.
+/// @return `obj` (for fluent chaining).
 void *rt_http_req_set_body(void *obj, void *data) {
     if (!obj)
         rt_trap("HTTP: NULL request");
@@ -1671,6 +1768,8 @@ void *rt_http_req_set_body(void *obj, void *data) {
     return obj;
 }
 
+/// @brief Replace the request body with a string (copied).
+/// @return `obj` (for fluent chaining).
 void *rt_http_req_set_body_str(void *obj, rt_string text) {
     if (!obj)
         rt_trap("HTTP: NULL request");
@@ -1696,6 +1795,8 @@ void *rt_http_req_set_body_str(void *obj, rt_string text) {
     return obj;
 }
 
+/// @brief Set per-request I/O timeout in milliseconds.
+/// @return `obj` (for fluent chaining).
 void *rt_http_req_set_timeout(void *obj, int64_t timeout_ms) {
     if (!obj)
         rt_trap("HTTP: NULL request");
@@ -1706,6 +1807,8 @@ void *rt_http_req_set_timeout(void *obj, int64_t timeout_ms) {
     return obj;
 }
 
+/// @brief Toggle automatic redirect following (3xx Location handling).
+/// @return `obj` (for fluent chaining).
 void *rt_http_req_set_follow_redirects(void *obj, int8_t follow) {
     if (!obj)
         rt_trap("HTTP: NULL request");
@@ -1715,6 +1818,8 @@ void *rt_http_req_set_follow_redirects(void *obj, int8_t follow) {
     return obj;
 }
 
+/// @brief Override the per-request redirect cap (negative values clamp to 0).
+/// @return `obj` (for fluent chaining).
 void *rt_http_req_set_max_redirects(void *obj, int64_t max_redirects) {
     if (!obj)
         rt_trap("HTTP: NULL request");
@@ -1726,6 +1831,14 @@ void *rt_http_req_set_max_redirects(void *obj, int64_t max_redirects) {
     return obj;
 }
 
+/// @brief Execute a configured HttpReq and return the resulting HttpRes.
+///
+/// Auto-tags a non-empty body with
+/// `Content-Type: application/octet-stream` if the caller didn't
+/// already set one. Honours the request's redirect cap (which may
+/// be 0 to disable following).
+/// @return Newly-allocated `rt_http_res_t*` (GC-managed) or NULL on
+///         transport failure (`do_http_request` returns NULL).
 void *rt_http_req_send(void *obj) {
     if (!obj)
         rt_trap("HTTP: NULL request");
@@ -1743,14 +1856,20 @@ void *rt_http_req_send(void *obj) {
 
 //=============================================================================
 // HttpRes Instance Class Implementation
+//
+// Read-only accessors over the response. Header lookups are
+// case-insensitive: the parser stores keys lower-cased so the
+// lookup helper just down-cases the request name.
 //=============================================================================
 
+/// @brief Status code (e.g. 200, 404). Returns 0 if `obj` is NULL.
 int64_t rt_http_res_status(void *obj) {
     if (!obj)
         return 0;
     return ((rt_http_res_t *)obj)->status;
 }
 
+/// @brief Reason phrase from the status line (e.g. "Not Found"). Empty if unset.
 rt_string rt_http_res_status_text(void *obj) {
     if (!obj)
         return rt_string_from_bytes("", 0);
@@ -1762,6 +1881,12 @@ rt_string rt_http_res_status_text(void *obj) {
     return rt_string_from_bytes(res->status_text, strlen(res->status_text));
 }
 
+/// @brief Return a *copy* of the response headers as a fresh Map(String→String).
+///
+/// Copying defends the response's internal map against caller
+/// mutation. Header keys are lower-case (already canonicalised by
+/// the parser). Empty map is returned if `obj` is NULL or the
+/// response has no headers.
 void *rt_http_res_headers(void *obj) {
     if (!obj)
         return rt_map_new();
@@ -1787,6 +1912,7 @@ void *rt_http_res_headers(void *obj) {
     return copy;
 }
 
+/// @brief Return a copy of the raw response body as a Bytes object.
 void *rt_http_res_body(void *obj) {
     if (!obj)
         return rt_bytes_new(0);
@@ -1800,6 +1926,10 @@ void *rt_http_res_body(void *obj) {
     return bytes;
 }
 
+/// @brief Return the response body decoded as a UTF-8 string.
+///
+/// No charset detection — bytes are passed through as if UTF-8.
+/// Empty string for null/empty bodies.
 rt_string rt_http_res_body_str(void *obj) {
     if (!obj)
         return rt_string_from_bytes("", 0);
@@ -1811,6 +1941,10 @@ rt_string rt_http_res_body_str(void *obj) {
     return rt_string_from_bytes((const char *)res->body, res->body_len);
 }
 
+/// @brief Look up a single response header by name (case-insensitive).
+///
+/// Down-cases `name` and probes the parser-canonicalised header
+/// map. Returns an empty string on miss or null arguments.
 rt_string rt_http_res_header(void *obj, rt_string name) {
     if (!obj)
         return rt_string_from_bytes("", 0);
@@ -1851,6 +1985,8 @@ rt_string rt_http_res_header(void *obj, rt_string name) {
     return copy;
 }
 
+/// @brief Convenience predicate: 2xx success status?
+/// @return 1 if `200 <= status < 300`, 0 otherwise (and on NULL).
 int8_t rt_http_res_is_ok(void *obj) {
     if (!obj)
         return 0;

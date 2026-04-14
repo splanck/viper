@@ -113,11 +113,13 @@ int64_t rt_obj_is_null(void *self);
 /// @brief Store a weak reference without incrementing reference count.
 /// @param addr Address of the field to store to.
 /// @param value Object pointer to store (may be NULL).
+/// @details Runtime-managed heap objects are wrapped in a zeroing weak handle;
+///          non-runtime raw pointers are stored as-is for compatibility.
 void rt_weak_store(void **addr, void *value);
 
 /// @brief Load a weak reference.
 /// @param addr Address of the field to load from.
-/// @return The stored pointer value.
+/// @return The live target pointer, or NULL after the target has been freed.
 void *rt_weak_load(void **addr);
 
 #ifdef __cplusplus

@@ -224,6 +224,16 @@ int64_t rt_inputmgr_scroll_x(rt_inputmgr mgr) {
     return rt_mouse_wheel_x();
 }
 
+double rt_inputmgr_scroll_yf(rt_inputmgr mgr) {
+    (void)mgr;
+    return rt_mouse_wheel_yf();
+}
+
+double rt_inputmgr_scroll_xf(rt_inputmgr mgr) {
+    (void)mgr;
+    return rt_mouse_wheel_xf();
+}
+
 //=============================================================================
 // Gamepad
 //=============================================================================

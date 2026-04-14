@@ -91,6 +91,14 @@ typedef struct {
 #endif
 
 #if !defined(_WIN32)
+// ----- Timed-wait scaffolding (POSIX) ---------------------------------------
+// Mirror of `rt_future.c`'s deadline helpers — same `CLOCK_MONOTONIC` preference
+// (so deadlines aren't disturbed by NTP/DST), same macOS fallback to the
+// relative-time API (`pthread_cond_timedwait_relative_np`) because Apple lacks
+// per-cond clock selection. Functions: cq_cond_init, cq_now_clock,
+// cq_deadline_ms_from_now, cq_remaining_ms (Apple), cq_cond_timedwait_deadline.
+// Each performs the obvious operation; see rt_future.c for exhaustive notes on
+// the rationale.
 typedef struct {
     struct timespec deadline;
 } cq_deadline_t;
@@ -184,6 +192,9 @@ static int cq_cond_timedwait_deadline(pthread_cond_t *cond,
 
 // --- Internal helpers ---
 
+/// @brief GC finalizer: drain the queue (releasing each retained value), then destroy the
+/// platform mutex + condvar. Holds the lock during drain to interlock with any in-flight
+/// enqueue (which would otherwise see freed memory).
 static void cq_finalizer(void *obj) {
     rt_concqueue_impl *cq = (rt_concqueue_impl *)obj;
 
@@ -250,6 +261,8 @@ int8_t rt_concqueue_is_empty(void *obj) {
     return rt_concqueue_len(obj) == 0 ? 1 : 0;
 }
 
+/// @brief Returns 1 if `_close` has been called on the queue (no more enqueues allowed; pending
+/// dequeue waiters wake immediately and return NULL once drained).
 int8_t rt_concqueue_get_is_closed(void *obj) {
     if (!obj)
         return 1;
@@ -294,6 +307,9 @@ void rt_concqueue_enqueue(void *obj, void *item) {
     CQ_UNLOCK(cq);
 }
 
+/// @brief Non-blocking dequeue: pop the head if available, otherwise return NULL immediately.
+/// **Ownership transfer:** the returned value carries the retain that `_enqueue` added — caller
+/// must release. The wrapping node struct is freed before returning.
 void *rt_concqueue_try_dequeue(void *obj) {
     if (!obj)
         return NULL;
@@ -317,6 +333,9 @@ void *rt_concqueue_try_dequeue(void *obj) {
     return value;
 }
 
+/// @brief Blocking dequeue: wait indefinitely until an item is enqueued or the queue is closed.
+/// On close-with-empty, returns NULL (graceful end-of-stream signal). Wrapped in a `while` loop
+/// to handle spurious wakeups robustly.
 void *rt_concqueue_dequeue(void *obj) {
     if (!obj)
         return NULL;
@@ -342,6 +361,10 @@ void *rt_concqueue_dequeue(void *obj) {
     return value;
 }
 
+/// @brief Bounded-wait dequeue: same as `_dequeue` but returns NULL after `timeout_ms` if no item
+/// arrives. `timeout_ms <= 0` falls through to non-blocking `_try_dequeue`. Cross-platform via
+/// `SleepConditionVariableCS` (Win32) or `pthread_cond_timedwait` (POSIX) with the same monotonic-
+/// clock preference as the rest of the runtime.
 void *rt_concqueue_dequeue_timeout(void *obj, int64_t timeout_ms) {
     if (!obj)
         return NULL;
@@ -398,6 +421,9 @@ void *rt_concqueue_dequeue_timeout(void *obj, int64_t timeout_ms) {
     return value;
 }
 
+/// @brief Read the head value without removing it. Returns a freshly-retained reference (caller
+/// releases). NULL on empty queue. Distinct from a `_try_dequeue` peek because the value stays in
+/// the queue — useful for "is this the message I want?" inspection patterns.
 void *rt_concqueue_peek(void *obj) {
     if (!obj)
         return NULL;
@@ -432,6 +458,9 @@ void rt_concqueue_clear(void *obj) {
     CQ_UNLOCK(cq);
 }
 
+/// @brief Mark the queue as closed and wake every blocked dequeue waiter. Subsequent enqueues
+/// trap; subsequent dequeues drain remaining items, then return NULL. Idempotent — re-closing
+/// is a no-op. The producer-side "we're done sending" signal for graceful pipeline shutdown.
 void rt_concqueue_close(void *obj) {
     if (!obj)
         return;

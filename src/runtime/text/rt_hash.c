@@ -82,6 +82,21 @@ typedef struct {
         (a) += (b);                                                                                \
     }
 
+// ===========================================================================
+// Three hash families implemented for the user-facing `Hash.MD5/SHA1/SHA256`
+// APIs: MD5 (RFC 1321), SHA-1 (FIPS 180-4), SHA-256 (FIPS 180-4). Each
+// family follows the same shape: `*_init` zeros the state, `*_update`
+// streams bytes through, `*_final` emits the digest. None of these
+// are suitable for new cryptographic uses (use `rt_crypto` instead);
+// they're here for legacy / interoperability reasons (ETags, file
+// integrity, etc.).
+// ===========================================================================
+
+/// @brief Apply one MD5 compression round to a 64-byte block (RFC 1321 §3.4).
+///
+/// The four round functions (F, G, H, I) plus per-round constants
+/// are unrolled into 64 statements at compile time — this is the
+/// canonical "textbook" MD5 implementation.
 static void md5_transform(uint32_t state[4], const uint8_t block[64]) {
     uint32_t a = state[0], b = state[1], c = state[2], d = state[3];
     uint32_t x[16];
@@ -169,6 +184,7 @@ static void md5_transform(uint32_t state[4], const uint8_t block[64]) {
     state[3] += d;
 }
 
+/// @brief Initialise an MD5 context with the standard A/B/C/D IV constants.
 static void md5_init(MD5_CTX *ctx) {
     ctx->count[0] = ctx->count[1] = 0;
     ctx->state[0] = 0x67452301;
@@ -177,6 +193,7 @@ static void md5_init(MD5_CTX *ctx) {
     ctx->state[3] = 0x10325476;
 }
 
+/// @brief Stream `len` bytes through the MD5 context, transforming whenever 64 bytes accumulate.
 static void md5_update(MD5_CTX *ctx, const uint8_t *data, size_t len) {
     size_t i, index, partLen;
 
@@ -203,6 +220,7 @@ static void md5_update(MD5_CTX *ctx, const uint8_t *data, size_t len) {
     memcpy(&ctx->buffer[index], &data[i], len - i);
 }
 
+/// @brief Append MD-strengthening (0x80 + zeros + 64-bit length) and emit the 16-byte digest.
 static void md5_final(uint8_t digest[16], MD5_CTX *ctx) {
     static const uint8_t padding[64] = {0x80, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
                                         0,    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -229,6 +247,7 @@ static void md5_final(uint8_t digest[16], MD5_CTX *ctx) {
     }
 }
 
+/// @brief One-shot MD5: init → update → final. Compute the 16-byte hash of `data`.
 static void compute_md5(const uint8_t *data, size_t len, uint8_t digest[16]) {
     MD5_CTX ctx;
     md5_init(&ctx);
@@ -248,6 +267,10 @@ typedef struct {
 
 #define SHA1_ROL(value, bits) (((value) << (bits)) | ((value) >> (32 - (bits))))
 
+/// @brief SHA-1 compression function — applies one 64-byte block to the state (FIPS 180-4 §6.1).
+///
+/// Expands the 16-word block to 80 words via the message schedule,
+/// then runs the four 20-step rounds with rotating logical functions.
 static void sha1_transform(uint32_t state[5], const uint8_t buffer[64]) {
     uint32_t a, b, c, d, e;
     uint32_t w[80];
@@ -306,6 +329,7 @@ static void sha1_transform(uint32_t state[5], const uint8_t buffer[64]) {
     state[4] += e;
 }
 
+/// @brief Initialise a SHA-1 context with the FIPS 180-4 IV.
 static void sha1_init(SHA1_CTX *ctx) {
     ctx->state[0] = 0x67452301;
     ctx->state[1] = 0xEFCDAB89;
@@ -315,6 +339,7 @@ static void sha1_init(SHA1_CTX *ctx) {
     ctx->count[0] = ctx->count[1] = 0;
 }
 
+/// @brief Stream `len` bytes through the SHA-1 context (transforms whenever 64 bytes accumulate).
 static void sha1_update(SHA1_CTX *ctx, const uint8_t *data, size_t len) {
     size_t i, j;
 
@@ -336,6 +361,7 @@ static void sha1_update(SHA1_CTX *ctx, const uint8_t *data, size_t len) {
     memcpy(&ctx->buffer[j], &data[i], len - i);
 }
 
+/// @brief Pad and emit the 20-byte SHA-1 digest.
 static void sha1_final(uint8_t digest[20], SHA1_CTX *ctx) {
     uint8_t finalcount[8];
     uint8_t c;
@@ -357,6 +383,7 @@ static void sha1_final(uint8_t digest[20], SHA1_CTX *ctx) {
     }
 }
 
+/// @brief One-shot SHA-1: init → update → final.
 static void compute_sha1(const uint8_t *data, size_t len, uint8_t digest[20]) {
     SHA1_CTX ctx;
     sha1_init(&ctx);
@@ -392,6 +419,11 @@ static const uint32_t sha256_k[64] = {
 #define SHA256_SIG0(x) (SHA256_ROTR(x, 7) ^ SHA256_ROTR(x, 18) ^ ((x) >> 3))
 #define SHA256_SIG1(x) (SHA256_ROTR(x, 17) ^ SHA256_ROTR(x, 19) ^ ((x) >> 10))
 
+/// @brief SHA-256 compression function — applies one 64-byte block (FIPS 180-4 §6.2).
+///
+/// Same shape as the SHA-1 transform but with the SHA-256 message
+/// schedule (W[16..63] from sigma0/sigma1 of earlier words) and 64
+/// rounds with K[0..63] constants.
 static void sha256_transform(SHA256_CTX *ctx, const uint8_t data[64]) {
     uint32_t a, b, c, d, e, f, g, h, t1, t2, m[64];
 
@@ -435,6 +467,7 @@ static void sha256_transform(SHA256_CTX *ctx, const uint8_t data[64]) {
     ctx->state[7] += h;
 }
 
+/// @brief Initialise a SHA-256 context with the FIPS 180-4 IV constants.
 static void sha256_init(SHA256_CTX *ctx) {
     ctx->bitcount = 0;
     ctx->state[0] = 0x6a09e667;
@@ -447,6 +480,7 @@ static void sha256_init(SHA256_CTX *ctx) {
     ctx->state[7] = 0x5be0cd19;
 }
 
+/// @brief Stream `len` bytes through the SHA-256 context.
 static void sha256_update(SHA256_CTX *ctx, const uint8_t *data, size_t len) {
     size_t idx = (size_t)(ctx->bitcount / 8 % 64);
     ctx->bitcount += (uint64_t)len * 8;
@@ -468,6 +502,7 @@ static void sha256_update(SHA256_CTX *ctx, const uint8_t *data, size_t len) {
     memcpy(ctx->buffer + idx, data, len);
 }
 
+/// @brief Pad and emit the 32-byte SHA-256 digest.
 static void sha256_final(uint8_t hash[32], SHA256_CTX *ctx) {
     size_t i = ctx->bitcount / 8 % 64;
 
@@ -496,6 +531,7 @@ static void sha256_final(uint8_t hash[32], SHA256_CTX *ctx) {
     }
 }
 
+/// @brief One-shot SHA-256: init → update → final.
 static void compute_sha256(const uint8_t *data, size_t len, uint8_t hash[32]) {
     SHA256_CTX ctx;
     sha256_init(&ctx);

@@ -11,11 +11,12 @@
 //   - Topics are string keys; each topic can have multiple subscribers.
 //   - Subscribers are identified by unique integer IDs returned from rt_msgbus_subscribe.
 //   - rt_msgbus_publish delivers to all current subscribers synchronously before returning.
-//   - Unsubscribing from within a callback is safe (deferred removal).
+//   - Unsubscribing from within a callback is safe for future publishes; the
+//     current publish uses a stable snapshot.
 //
 // Ownership/Lifetime:
-//   - MessageBus objects are heap-allocated; caller owns and must free when done.
-//   - The bus retains subscriber function pointers; callbacks must remain valid while subscribed.
+//   - MessageBus objects are heap-allocated and GC-managed.
+//   - The bus retains subscriber callbacks while subscribed.
 //   - Published data pointers are not retained; callers manage their own lifetime.
 //
 // Links: src/runtime/core/rt_msgbus.c (implementation), src/runtime/core/rt_string.h
@@ -38,7 +39,7 @@ void *rt_msgbus_new(void);
 /// @brief Subscribe to a topic. Returns subscription ID for later unsubscribe.
 /// @param obj MessageBus pointer.
 /// @param topic Topic string.
-/// @param callback Function pointer (receives topic and data).
+/// @param callback Function pointer of shape `void (*)(void *data)`.
 /// @return Unique subscription ID.
 int64_t rt_msgbus_subscribe(void *obj, rt_string topic, void *callback);
 

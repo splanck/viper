@@ -143,12 +143,14 @@ void *rt_bitset_new(int64_t nbits) {
     return bs;
 }
 
+/// @brief Total bit capacity (the highest valid index + 1). Grows automatically on `_set`.
 int64_t rt_bitset_len(void *obj) {
     if (!obj)
         return 0;
     return (int64_t)((rt_bitset_impl *)obj)->bit_count;
 }
 
+/// @brief Population count: number of bits set to 1 across the entire bitset (popcount).
 int64_t rt_bitset_count(void *obj) {
     if (!obj)
         return 0;
@@ -159,10 +161,12 @@ int64_t rt_bitset_count(void *obj) {
     return total;
 }
 
+/// @brief Returns 1 if every bit is 0 (popcount == 0). O(n/64).
 int8_t rt_bitset_is_empty(void *obj) {
     return rt_bitset_count(obj) == 0;
 }
 
+/// @brief Read the bit at `idx`. Returns 0 for out-of-range indices (no growth on read).
 int8_t rt_bitset_get(void *obj, int64_t idx) {
     if (!obj || idx < 0)
         return 0;
@@ -174,6 +178,8 @@ int8_t rt_bitset_get(void *obj, int64_t idx) {
     return (bs->words[w] >> b) & 1;
 }
 
+/// @brief Set the bit at `idx` to 1. Auto-grows the underlying word array if `idx` is past
+/// the current bit_count.
 void rt_bitset_set(void *obj, int64_t idx) {
     if (!obj || idx < 0)
         return;
@@ -186,6 +192,7 @@ void rt_bitset_set(void *obj, int64_t idx) {
         bs->words[w] |= (1ULL << b);
 }
 
+/// @brief Set the bit at `idx` to 0. Out-of-range indices are no-ops (no growth).
 void rt_bitset_clear(void *obj, int64_t idx) {
     if (!obj || idx < 0)
         return;
@@ -197,6 +204,7 @@ void rt_bitset_clear(void *obj, int64_t idx) {
     bs->words[w] &= ~(1ULL << b);
 }
 
+/// @brief Flip the bit at `idx`. Auto-grows like `_set`.
 void rt_bitset_toggle(void *obj, int64_t idx) {
     if (!obj || idx < 0)
         return;
@@ -209,6 +217,8 @@ void rt_bitset_toggle(void *obj, int64_t idx) {
         bs->words[w] ^= (1ULL << b);
 }
 
+/// @brief Set every bit to 1 (within the current bit_count). Excess bits in the trailing word
+/// are masked off so popcount remains exact.
 void rt_bitset_set_all(void *obj) {
     if (!obj)
         return;
@@ -222,6 +232,7 @@ void rt_bitset_set_all(void *obj) {
         bs->words[bs->word_count - 1] &= (1ULL << extra) - 1;
 }
 
+/// @brief Clear every bit to 0. O(n/64) memset; capacity is preserved.
 void rt_bitset_clear_all(void *obj) {
     if (!obj)
         return;
@@ -231,6 +242,8 @@ void rt_bitset_clear_all(void *obj) {
     memset(bs->words, 0, bs->word_count * sizeof(uint64_t));
 }
 
+/// @brief Bitwise AND of two bitsets — returns a fresh bitset where bit i is `a[i] & b[i]`.
+/// Result size is `max(|a|, |b|)`; missing bits in either operand are treated as 0.
 void *rt_bitset_and(void *a, void *b) {
     if (!a || !b)
         return rt_bitset_new(64);
@@ -252,6 +265,7 @@ void *rt_bitset_and(void *a, void *b) {
     return result;
 }
 
+/// @brief Bitwise OR of two bitsets — bit i = `a[i] | b[i]`. Result extends to the longer set.
 void *rt_bitset_or(void *a, void *b) {
     if (!a || !b)
         return rt_bitset_new(64);
@@ -277,6 +291,7 @@ void *rt_bitset_or(void *a, void *b) {
     return result;
 }
 
+/// @brief Bitwise XOR of two bitsets — bit i = `a[i] ^ b[i]`. Useful for symmetric difference.
 void *rt_bitset_xor(void *a, void *b) {
     if (!a || !b)
         return rt_bitset_new(64);
@@ -302,6 +317,8 @@ void *rt_bitset_xor(void *a, void *b) {
     return result;
 }
 
+/// @brief Bitwise complement of `obj`. Result has the same bit_count; trailing word is masked
+/// so excess bits past `bit_count` stay 0.
 void *rt_bitset_not(void *obj) {
     if (!obj)
         return rt_bitset_new(64);
@@ -323,6 +340,9 @@ void *rt_bitset_not(void *obj) {
     return result;
 }
 
+/// @brief Render the bitset as a binary string, MSB-first, leading zeros suppressed (always
+/// at least one digit). Empty/null bitsets produce "0". Useful for debug printing or
+/// hash-friendly serialization.
 rt_string rt_bitset_to_string(void *obj) {
     if (!obj)
         return rt_string_from_bytes("0", 1);

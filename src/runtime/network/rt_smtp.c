@@ -52,6 +52,8 @@ typedef struct {
     int8_t use_tls;
 } rt_smtp_impl;
 
+/// @brief GC finalizer: tear down TLS session (if any), close + release the TCP socket, and free
+/// all heap-owned strings (host, credentials, last error).
 static void rt_smtp_finalize(void *obj) {
     if (!obj)
         return;
@@ -76,11 +78,13 @@ static void rt_smtp_finalize(void *obj) {
 // SMTP Helpers
 //=============================================================================
 
+/// @brief Replace the cached last-error message (frees prior copy, strdups the new one).
 static void set_error(rt_smtp_impl *s, const char *msg) {
     free(s->last_error);
     s->last_error = strdup(msg);
 }
 
+/// @brief Drop the cached last-error so a successful call doesn't leak a stale prior failure.
 static void clear_error(rt_smtp_impl *s) {
     if (!s)
         return;
@@ -88,6 +92,8 @@ static void clear_error(rt_smtp_impl *s) {
     s->last_error = NULL;
 }
 
+/// @brief Tear down whichever transport is active (TLS or plain TCP). Idempotent and ordering-safe:
+/// closes TLS first because a STARTTLS upgrade may have already detached the underlying socket.
 static void smtp_close_transport(rt_smtp_impl *s) {
     if (!s)
         return;
@@ -103,6 +109,8 @@ static void smtp_close_transport(rt_smtp_impl *s) {
     }
 }
 
+/// @brief Apply the same send + recv timeout to whichever transport is active. For TLS, reach
+/// through to the underlying socket fd; for plain TCP, use the rt_tcp_set_*_timeout helpers.
 static void smtp_set_transport_timeouts(rt_smtp_impl *s, int timeout_ms) {
     if (!s)
         return;
@@ -118,6 +126,9 @@ static void smtp_set_transport_timeouts(rt_smtp_impl *s, int timeout_ms) {
     }
 }
 
+/// @brief Loop-write `len` bytes through whichever transport is active. For TLS, retries until
+/// the byte count is fully drained; for plain TCP, delegates to the rt_tcp send-all helper.
+/// Returns 0 on partial write/error, 1 on success.
 static int smtp_transport_send_all(rt_smtp_impl *s, const void *data, size_t len) {
     if (s->tls) {
         size_t total = 0;
@@ -134,6 +145,9 @@ static int smtp_transport_send_all(rt_smtp_impl *s, const void *data, size_t len
     return 1;
 }
 
+/// @brief Read up to `len` bytes from the active transport. For plain TCP this allocates a
+/// `Bytes` chunk via rt_tcp_recv, copies into the caller's buffer, then releases the chunk —
+/// a small extra copy in exchange for letting `smtp_recv_line` work uniformly across transports.
 static long smtp_transport_read(rt_smtp_impl *s, void *buffer, size_t len) {
     if (s->tls)
         return rt_tls_recv(s->tls, buffer, len);
@@ -147,6 +161,10 @@ static long smtp_transport_read(rt_smtp_impl *s, void *buffer, size_t len) {
     return (long)chunk_len;
 }
 
+/// @brief Read a single CRLF-terminated SMTP response line into a freshly-allocated rt_string.
+/// Performs byte-at-a-time `transport_read` (chatty but simpler than buffering across calls),
+/// strips the trailing CR, and grows the line buffer geometrically (×2) if it overflows 256 chars.
+/// Returns NULL on transport error or OOM (with `last_error` populated).
 static rt_string smtp_recv_line(rt_smtp_impl *s) {
     size_t cap = 256;
     size_t len = 0;
@@ -190,6 +208,9 @@ static rt_string smtp_recv_line(rt_smtp_impl *s) {
     return result;
 }
 
+/// @brief **Header-injection guard:** replace any CR/LF in a header value with a space, so a
+/// hostile `Subject:` cannot smuggle additional headers (e.g. `Bcc:`, content-type override) into
+/// the outgoing message. Caller must `free()` the returned copy. NULL input → "" (still strdup'd).
 static char *smtp_sanitize_header_value(const char *value) {
     if (!value)
         return strdup("");
@@ -207,6 +228,10 @@ static char *smtp_sanitize_header_value(const char *value) {
     return copy;
 }
 
+/// @brief **RFC 5321 §4.5.2 dot-stuffing:** double any leading `.` on a line so the SMTP DATA
+/// terminator (a lone `.` line) cannot be triggered by user content. Also normalizes line
+/// endings to CRLF and ensures the message ends with CRLF (required before the `.` terminator).
+/// Returned buffer is heap-owned; caller must `free()`.
 static char *smtp_dot_stuff_body(const char *body) {
     const char *src = body ? body : "";
     size_t src_len = strlen(src);
@@ -298,7 +323,10 @@ static char *smtp_dot_stuff_body(const char *body) {
     return out;
 }
 
-/// @brief Send a command and read the response code.
+/// @brief Send an SMTP command (or just read, if `cmd == NULL`) and return the response code.
+/// Handles **multi-line responses** (lines beginning `XXX-` are intermediate; the final line
+/// uses `XXX `, no dash). When `expected_code > 0`, mismatching codes are turned into a
+/// formatted error in `last_error` and the call returns -1.
 static int smtp_command(rt_smtp_impl *s, const char *cmd, int expected_code) {
     if (cmd) {
         if (!smtp_transport_send_all(s, cmd, strlen(cmd))) {
@@ -344,6 +372,10 @@ static int smtp_command(rt_smtp_impl *s, const char *cmd, int expected_code) {
 // Public API
 //=============================================================================
 
+/// @brief Construct an SMTP client targeting `(host, port)`. Port 465 implicitly enables TLS;
+/// other ports default to plain TCP (call `rt_smtp_set_tls(true)` to upgrade via STARTTLS).
+/// Validates host and port (1–65535) up front and traps via `rt_trap` on bad inputs / OOM.
+/// Returns a GC-managed handle wired to `rt_smtp_finalize`.
 void *rt_smtp_new(rt_string host, int64_t port) {
     const char *h = rt_string_cstr(host);
     if (!h || port < 1 || port > 65535)
@@ -360,6 +392,8 @@ void *rt_smtp_new(rt_string host, int64_t port) {
     return s;
 }
 
+/// @brief Cache username + password for AUTH LOGIN. Strings are duplicated so the caller can
+/// release the originals immediately. Setting either to NULL disables authentication.
 void rt_smtp_set_auth(void *obj, rt_string username, rt_string password) {
     if (!obj)
         return;
@@ -372,12 +406,24 @@ void rt_smtp_set_auth(void *obj, rt_string username, rt_string password) {
     s->password = p ? strdup(p) : NULL;
 }
 
+/// @brief Toggle TLS opportunistically. With `enable=1` and a non-465 port, the next send will
+/// issue STARTTLS after EHLO. With `enable=0`, the connection stays plain (insecure for auth!).
 void rt_smtp_set_tls(void *obj, int8_t enable) {
     if (!obj)
         return;
     ((rt_smtp_impl *)obj)->use_tls = enable;
 }
 
+/// @brief Open the transport and walk the SMTP greeting + (optional) STARTTLS + (optional)
+/// AUTH LOGIN sequence. Sequence:
+///   1. Connect: implicit TLS via `rt_tls_connect` (port 465) or plain `rt_tcp_connect_for`.
+///   2. Read 220 greeting; send `EHLO localhost`, expect 250.
+///   3. If `use_tls && port != 465`: send STARTTLS (220), wrap the existing socket in a TLS
+///      session, detach the underlying TCP handle so it isn't double-closed, and re-issue EHLO.
+///   4. If credentials are set: send AUTH LOGIN (334) → base64(username) (334) → base64(password)
+///      (235). Each base64 step uses `rt_codec_base64_enc`, then `rt_string_unref`s the encoder
+///      output to keep peak memory low.
+/// All steps populate `last_error` on failure and return -1; success returns 0.
 static int smtp_connect_and_handshake(rt_smtp_impl *s) {
     smtp_close_transport(s);
     clear_error(s);
@@ -476,6 +522,11 @@ static int smtp_connect_and_handshake(rt_smtp_impl *s) {
     return 0;
 }
 
+/// @brief Walk the MAIL FROM (250) → RCPT TO (250) → DATA (354) → message body (250) sequence.
+/// Header values are run through `smtp_sanitize_header_value` (CR/LF stripping) before being
+/// formatted into the MIME wrapper; the body is dot-stuffed and a trailing `.\r\n` terminator is
+/// appended in the same `snprintf`. Single-recipient only — multi-recipient support would
+/// require iterating RCPT TO. Returns 0 on success, -1 on any failure (last_error populated).
 static int smtp_send_message(rt_smtp_impl *s,
                              const char *from,
                              const char *to,
@@ -561,6 +612,9 @@ static int smtp_send_message(rt_smtp_impl *s,
     return 0;
 }
 
+/// @brief One-shot send of a `text/plain` UTF-8 email. Connects, handshakes, sends, QUITs (221),
+/// and closes the transport — every call is a fresh SMTP session so there's no state to manage
+/// between sends. Returns 1 on success, 0 on failure (call `rt_smtp_last_error` for details).
 int8_t rt_smtp_send(void *obj, rt_string from, rt_string to, rt_string subject, rt_string body) {
     if (!obj)
         return 0;
@@ -588,6 +642,8 @@ int8_t rt_smtp_send(void *obj, rt_string from, rt_string to, rt_string subject, 
     return result == 0 ? 1 : 0;
 }
 
+/// @brief Identical to `rt_smtp_send` but the body is sent with `Content-Type: text/html`. Caller
+/// is responsible for any HTML escaping; the runtime only sanitizes header values, not body content.
 int8_t rt_smtp_send_html(
     void *obj, rt_string from, rt_string to, rt_string subject, rt_string html_body) {
     if (!obj)
@@ -615,6 +671,8 @@ int8_t rt_smtp_send_html(
     return result == 0 ? 1 : 0;
 }
 
+/// @brief Return the last failure message (cleared on the next successful send). Empty rt_string
+/// when no error has been recorded.
 rt_string rt_smtp_last_error(void *obj) {
     if (!obj)
         return rt_string_from_bytes("", 0);
@@ -623,6 +681,8 @@ rt_string rt_smtp_last_error(void *obj) {
     return rt_string_from_bytes(e, strlen(e));
 }
 
+/// @brief Force-close the active transport (TLS + TCP) without sending QUIT. Useful for cancelling
+/// a stuck send. Subsequent `rt_smtp_send` calls will reconnect transparently.
 void rt_smtp_close(void *obj) {
     if (!obj)
         return;

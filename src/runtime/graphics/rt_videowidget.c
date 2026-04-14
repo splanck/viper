@@ -133,6 +133,10 @@ static void pixels_to_rgba_bytes(const uint32_t *src, uint8_t *dst, int32_t widt
     }
 }
 
+/// @brief Construct a video-playback GUI widget. Opens the file via `rt_videoplayer_open`,
+/// builds a vbox containing an Image widget (for frames) plus an hbox of Play/Pause/Stop buttons
+/// and a position-slider. Pre-allocates an RGBA conversion buffer sized to the video. Returns
+/// NULL if the file can't be opened or the video has zero dimensions.
 void *rt_videowidget_new(void *parent, void *path) {
     if (!parent || !path)
         return NULL;
@@ -221,6 +225,7 @@ void *rt_videowidget_new(void *parent, void *path) {
     return w;
 }
 
+/// @brief Begin or resume video playback. Forwards to the underlying VideoPlayer.
 void rt_videowidget_play(void *obj) {
     if (!obj)
         return;
@@ -228,6 +233,7 @@ void rt_videowidget_play(void *obj) {
     rt_videoplayer_play(w->player);
 }
 
+/// @brief Pause playback (preserves position). Resume with `_play`.
 void rt_videowidget_pause(void *obj) {
     if (!obj)
         return;
@@ -235,6 +241,7 @@ void rt_videowidget_pause(void *obj) {
     rt_videoplayer_pause(w->player);
 }
 
+/// @brief Stop playback and rewind to position 0.
 void rt_videowidget_stop(void *obj) {
     if (!obj)
         return;
@@ -242,6 +249,11 @@ void rt_videowidget_stop(void *obj) {
     rt_videoplayer_stop(w->player);
 }
 
+/// @brief Per-frame tick: handle button clicks (play/pause/stop), advance video by `dt` seconds,
+/// auto-loop when configured (rewind+play on natural end), decode the current frame to RGBA and
+/// blit into the Image widget, and bidirectionally sync the position slider with playback time.
+/// Slider drags cause seeks; playback time updates the slider position. Caller invokes once per
+/// frame from the GUI loop.
 void rt_videowidget_update(void *obj, double dt) {
     if (!obj)
         return;
@@ -298,6 +310,7 @@ void rt_videowidget_update(void *obj, double dt) {
     }
 }
 
+/// @brief Toggle visibility of the play/pause/stop/slider strip (image widget always visible).
 void rt_videowidget_set_show_controls(void *obj, int8_t show) {
     if (!obj)
         return;
@@ -307,12 +320,14 @@ void rt_videowidget_set_show_controls(void *obj, int8_t show) {
         rt_widget_set_visible(w->controls_widget, show != 0);
 }
 
+/// @brief Enable auto-loop. When enabled, the widget restarts playback on natural end-of-video.
 void rt_videowidget_set_loop(void *obj, int8_t loop) {
     if (!obj)
         return;
     ((rt_videowidget *)obj)->looping = loop;
 }
 
+/// @brief Set audio output level [0.0, 1.0]. Clamped via `clamp_volume`. Forwarded to player.
 void rt_videowidget_set_volume(void *obj, double vol) {
     if (!obj)
         return;
@@ -322,18 +337,21 @@ void rt_videowidget_set_volume(void *obj, double vol) {
     rt_videoplayer_set_volume(w->player, vol);
 }
 
+/// @brief Return 1 if the underlying VideoPlayer is currently playing, else 0.
 int64_t rt_videowidget_get_is_playing(void *obj) {
     if (!obj)
         return 0;
     return rt_videoplayer_get_is_playing(((rt_videowidget *)obj)->player);
 }
 
+/// @brief Current playback position in seconds (forwarded from the underlying VideoPlayer).
 double rt_videowidget_get_position(void *obj) {
     if (!obj)
         return 0.0;
     return rt_videoplayer_get_position(((rt_videowidget *)obj)->player);
 }
 
+/// @brief Total video duration in seconds (forwarded from the underlying VideoPlayer).
 double rt_videowidget_get_duration(void *obj) {
     if (!obj)
         return 0.0;

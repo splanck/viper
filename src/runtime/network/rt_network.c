@@ -52,6 +52,7 @@ typedef struct rt_tcp_server {
     bool is_listening; // Server state
 } rt_tcp_server_t;
 
+/// @brief GC finalizer for TCP client — close the socket and free the host string.
 static void rt_tcp_finalize(void *obj) {
     if (!obj)
         return;
@@ -66,6 +67,7 @@ static void rt_tcp_finalize(void *obj) {
     }
 }
 
+/// @brief GC finalizer for TCP server — close the listening socket and free the bound-address string.
 static void rt_tcp_server_finalize(void *obj) {
     if (!obj)
         return;
@@ -87,10 +89,17 @@ static void rt_tcp_server_finalize(void *obj) {
 #ifdef _WIN32
 static volatile LONG wsa_init_state = 0; // 0=uninit, 1=in-progress, 2=done
 
+/// @brief atexit handler — calls `WSACleanup` so Windows releases its socket subsystem.
 static void rt_net_cleanup_wsa(void) {
     WSACleanup();
 }
 
+/// @brief Lazily initialise WinSock 2.2 (Windows only — POSIX is a no-op).
+///
+/// Three-state machine (`uninit/in-progress/done`) makes initialisation
+/// idempotent and thread-safe without a heavyweight mutex. Multiple
+/// threads racing to first-call this function will see exactly one
+/// `WSAStartup`; all others spin briefly until it completes.
 void rt_net_init_wsa(void) {
     // Fast path: already done.
     if (wsa_init_state == 2)
@@ -193,6 +202,7 @@ static int get_local_port(socket_t sock) {
     return 0;
 }
 
+/// @brief Cross-platform check: did the last socket op fail because of a timeout / would-block?
 static bool socket_recv_timed_out(void) {
 #ifdef _WIN32
     int err = WSAGetLastError();
@@ -202,6 +212,14 @@ static bool socket_recv_timed_out(void) {
 #endif
 }
 
+/// @brief Connect to `addr`, optionally with a timeout in `timeout_ms` (0 = blocking).
+///
+/// Implementation: when timed, switches the socket to non-blocking,
+/// calls `connect`, then `select`s for write-readiness. If the
+/// `select` returns ready, peeks `SO_ERROR` to confirm success.
+/// Restores blocking mode at end. Returns false + writes the OS
+/// errno into `*err_out` on any failure (including ETIMEDOUT for the
+/// select-timeout path).
 static bool connect_socket_with_timeout(
     socket_t sock, const struct sockaddr *addr, socklen_t addrlen, int timeout_ms, int *err_out) {
     if (err_out)
@@ -266,11 +284,31 @@ static bool connect_socket_with_timeout(
 // Tcp Client - Connection Creation
 //=============================================================================
 
+// ===========================================================================
+// TCP client public API
+//
+// Each `rt_tcp_*` function operates on a GC-managed `rt_tcp_t`
+// (or NULL). Connect functions return a fresh client; send/recv
+// take a client handle; properties (`host`, `port`, `is_open`)
+// expose state for diagnostics.
+// ===========================================================================
+
+/// @brief Connect to `host:port` with the default 30-second timeout.
+/// @see rt_tcp_connect_for
 void *rt_tcp_connect(rt_string host, int64_t port) {
     // Default 30-second timeout prevents indefinite blocking on unreachable hosts.
     return rt_tcp_connect_for(host, port, 30000);
 }
 
+/// @brief Connect to `host:port` with explicit `timeout_ms`.
+///
+/// Resolves `host` via `getaddrinfo` (AF_UNSPEC — IPv4 and IPv6
+/// candidates), tries each address in turn, and uses
+/// `connect_socket_with_timeout` so a slow / unreachable host fails
+/// in bounded time. Enables `TCP_NODELAY` on success.
+/// @throws Err_HostNotFound on resolution failure,
+///         Err_ConnectionRefused on connect failure,
+///         Err_Timeout on `timeout_ms` expiry.
 void *rt_tcp_connect_for(rt_string host, int64_t port, int64_t timeout_ms) {
     rt_net_init_wsa();
 
@@ -364,6 +402,13 @@ void *rt_tcp_connect_for(rt_string host, int64_t port, int64_t timeout_ms) {
 // Tcp Client - Properties
 //=============================================================================
 
+// ---------------------------------------------------------------------------
+// TCP client property accessors — null-safe getters returning the
+// stored host/port, the local socket port (post-bind), and
+// open/available state. Each is a trivial reach into `rt_tcp_t`.
+// ---------------------------------------------------------------------------
+
+/// @brief Return the host string the connection was opened with (empty for NULL/closed).
 rt_string rt_tcp_host(void *obj) {
     if (!obj)
         rt_trap("Network: NULL connection");
@@ -372,6 +417,7 @@ rt_string rt_tcp_host(void *obj) {
     return rt_const_cstr(tcp->host);
 }
 
+/// @brief Return the remote port of the connection (the one passed to `connect`).
 int64_t rt_tcp_port(void *obj) {
     if (!obj)
         rt_trap("Network: NULL connection");
@@ -380,6 +426,7 @@ int64_t rt_tcp_port(void *obj) {
     return tcp->port;
 }
 
+/// @brief Return the local (ephemeral) port the OS assigned to this socket.
 int64_t rt_tcp_local_port(void *obj) {
     if (!obj)
         rt_trap("Network: NULL connection");
@@ -388,6 +435,7 @@ int64_t rt_tcp_local_port(void *obj) {
     return tcp->local_port;
 }
 
+/// @brief 1 if the underlying socket is still open; 0 if closed (or `obj` is NULL).
 int8_t rt_tcp_is_open(void *obj) {
     if (!obj)
         rt_trap("Network: NULL connection");
@@ -396,6 +444,8 @@ int8_t rt_tcp_is_open(void *obj) {
     return tcp->is_open ? 1 : 0;
 }
 
+/// @brief Number of bytes available for non-blocking read (best-effort `FIONREAD`).
+/// 0 means "unknown" or "nothing pending"; the actual recv may still block briefly.
 int64_t rt_tcp_available(void *obj) {
     if (!obj)
         rt_trap("Network: NULL connection");
@@ -419,6 +469,8 @@ int64_t rt_tcp_available(void *obj) {
 // Tcp Client - Send Methods
 //=============================================================================
 
+/// @brief Send a Bytes payload — may write fewer bytes than requested if the kernel buffer is full.
+/// @return Bytes actually sent, or -1 on error.
 int64_t rt_tcp_send(void *obj, void *data) {
     if (!obj)
         rt_trap("Network: NULL connection");
@@ -446,6 +498,7 @@ int64_t rt_tcp_send(void *obj, void *data) {
     return sent;
 }
 
+/// @brief Send a string payload as UTF-8 bytes. May short-write — see `rt_tcp_send`.
 int64_t rt_tcp_send_str(void *obj, rt_string text) {
     if (!obj)
         rt_trap("Network: NULL connection");
@@ -470,6 +523,8 @@ int64_t rt_tcp_send_str(void *obj, rt_string text) {
     return sent;
 }
 
+/// @brief Send a Bytes payload, looping on partial writes until every byte is delivered.
+/// Traps on send failure (closed peer, broken pipe, etc.).
 void rt_tcp_send_all(void *obj, void *data) {
     if (!obj)
         rt_trap("Network: NULL connection");
@@ -500,6 +555,8 @@ void rt_tcp_send_all(void *obj, void *data) {
     }
 }
 
+/// @brief Internal: send `len` bytes from a raw buffer without looking up Bytes metadata.
+/// Used by HTTP / WebSocket layers that already have raw pointers.
 void rt_tcp_send_all_raw(void *obj, const void *data, int64_t len) {
     if (!obj)
         rt_trap("Network: NULL connection");
@@ -535,6 +592,11 @@ void rt_tcp_send_all_raw(void *obj, const void *data, int64_t len) {
 // Tcp Client - Receive Methods
 //=============================================================================
 
+/// @brief Read up to `max_bytes` from the socket; returns a Bytes object (possibly empty).
+///
+/// Single-call recv — may return fewer bytes than requested. An
+/// empty Bytes signals connection closed by peer; a trap means a
+/// real socket error.
 void *rt_tcp_recv(void *obj, int64_t max_bytes) {
     if (!obj)
         rt_trap("Network: NULL connection");
@@ -584,6 +646,7 @@ void *rt_tcp_recv(void *obj, int64_t max_bytes) {
     return result;
 }
 
+/// @brief Read up to `max_bytes` and decode as a UTF-8 string. Convenience over `rt_tcp_recv`.
 rt_string rt_tcp_recv_str(void *obj, int64_t max_bytes) {
     void *bytes = rt_tcp_recv(obj, max_bytes);
     rt_string str = rt_bytes_to_str(bytes);
@@ -592,6 +655,8 @@ rt_string rt_tcp_recv_str(void *obj, int64_t max_bytes) {
     return str;
 }
 
+/// @brief Receive *exactly* `count` bytes, looping until the buffer fills or the connection drops.
+/// Traps on short read (premature EOF) — use `rt_tcp_recv` if partial reads are acceptable.
 void *rt_tcp_recv_exact(void *obj, int64_t count) {
     if (!obj)
         rt_trap("Network: NULL connection");
@@ -631,6 +696,10 @@ void *rt_tcp_recv_exact(void *obj, int64_t count) {
     return result;
 }
 
+/// @brief Read until `\n` is seen (CR is also stripped) and return the line as a string.
+///
+/// Caps at 64 KB to prevent unbounded growth from a malicious peer.
+/// Returns the empty string on connection close.
 rt_string rt_tcp_recv_line(void *obj) {
     if (!obj)
         rt_trap("Network: NULL connection");
@@ -701,6 +770,7 @@ rt_string rt_tcp_recv_line(void *obj) {
 // Tcp Client - Timeout and Close
 //=============================================================================
 
+/// @brief Apply `SO_RCVTIMEO` to the socket — recv operations fail with timeout after `timeout_ms`.
 void rt_tcp_set_recv_timeout(void *obj, int64_t timeout_ms) {
     if (!obj)
         rt_trap("Network: NULL connection");
@@ -710,6 +780,7 @@ void rt_tcp_set_recv_timeout(void *obj, int64_t timeout_ms) {
     set_socket_timeout(tcp->sock, (int)timeout_ms, true);
 }
 
+/// @brief Apply `SO_SNDTIMEO` to the socket — send operations fail with timeout after `timeout_ms`.
 void rt_tcp_set_send_timeout(void *obj, int64_t timeout_ms) {
     if (!obj)
         rt_trap("Network: NULL connection");
@@ -719,6 +790,7 @@ void rt_tcp_set_send_timeout(void *obj, int64_t timeout_ms) {
     set_socket_timeout(tcp->sock, (int)timeout_ms, false);
 }
 
+/// @brief Close the socket immediately. Subsequent send/recv calls return error.
 void rt_tcp_close(void *obj) {
     if (!obj)
         return;
@@ -730,12 +802,17 @@ void rt_tcp_close(void *obj) {
     }
 }
 
+/// @brief Expose the underlying socket FD — used by `select`/`poll` integration and by TLS bind.
 socket_t rt_tcp_socket_fd(void *obj) {
     if (!obj)
         return INVALID_SOCK;
     return ((rt_tcp_t *)obj)->sock;
 }
 
+/// @brief Forget the socket without closing it — caller takes ownership of the FD.
+///
+/// Used when TLS or a higher-level protocol needs to assume
+/// ownership of the connection (and therefore of socket lifetime).
 void rt_tcp_detach_socket(void *obj) {
     if (!obj)
         return;
@@ -748,6 +825,12 @@ void rt_tcp_detach_socket(void *obj) {
 // TcpServer - Creation
 //=============================================================================
 
+/// @brief Internal listener factory — bind to `address:port`, listen with backlog 128.
+///
+/// Used by both `rt_tcp_server_listen` (binds to all interfaces)
+/// and `rt_tcp_server_listen_at` (binds to a specific interface).
+/// Sets `SO_REUSEADDR` so a hot-restart doesn't fail with
+/// "Address already in use" while the prior socket lingers in TIME_WAIT.
 static void *rt_tcp_server_listen_impl(const char *address, int64_t port) {
     rt_net_init_wsa();
 
@@ -834,10 +917,12 @@ static void *rt_tcp_server_listen_impl(const char *address, int64_t port) {
     return server;
 }
 
+/// @brief Listen on `port` on all local interfaces (`0.0.0.0`).
 void *rt_tcp_server_listen(int64_t port) {
     return rt_tcp_server_listen_impl(NULL, port);
 }
 
+/// @brief Listen on `port` bound to a specific local address (e.g. `"127.0.0.1"` or `"::1"`).
 void *rt_tcp_server_listen_at(rt_string address, int64_t port) {
     const char *addr_ptr = rt_string_cstr(address);
     if (!addr_ptr || *addr_ptr == '\0')
@@ -849,6 +934,7 @@ void *rt_tcp_server_listen_at(rt_string address, int64_t port) {
 // TcpServer - Properties
 //=============================================================================
 
+/// @brief Listening port (useful when the caller passed 0 to ask the OS to pick).
 int64_t rt_tcp_server_port(void *obj) {
     if (!obj)
         rt_trap("Network: NULL server");
@@ -857,6 +943,7 @@ int64_t rt_tcp_server_port(void *obj) {
     return server->port;
 }
 
+/// @brief Bound listen address (e.g. "0.0.0.0", "::1"), or empty string if not listening.
 rt_string rt_tcp_server_address(void *obj) {
     if (!obj)
         rt_trap("Network: NULL server");
@@ -865,6 +952,7 @@ rt_string rt_tcp_server_address(void *obj) {
     return rt_const_cstr(server->address);
 }
 
+/// @brief 1 if the server socket is still in the `listen()` state.
 int8_t rt_tcp_server_is_listening(void *obj) {
     if (!obj)
         rt_trap("Network: NULL server");
@@ -877,10 +965,13 @@ int8_t rt_tcp_server_is_listening(void *obj) {
 // TcpServer - Accept and Close
 //=============================================================================
 
+/// @brief Accept the next pending connection — blocks indefinitely. Returns a connected `rt_tcp_t*`.
 void *rt_tcp_server_accept(void *obj) {
     return rt_tcp_server_accept_for(obj, 0);
 }
 
+/// @brief Accept with a timeout — uses `select` first to wait for readability.
+/// @return A connected client `rt_tcp_t*` on accept, NULL on timeout.
 void *rt_tcp_server_accept_for(void *obj, int64_t timeout_ms) {
     if (!obj)
         rt_trap("Network: NULL server");
@@ -959,6 +1050,7 @@ void *rt_tcp_server_accept_for(void *obj, int64_t timeout_ms) {
     return tcp;
 }
 
+/// @brief Close the listening socket — pending `accept` calls return error.
 void rt_tcp_server_close(void *obj) {
     if (!obj)
         return;

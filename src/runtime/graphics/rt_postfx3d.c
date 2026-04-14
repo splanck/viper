@@ -468,6 +468,9 @@ void *rt_postfx3d_new(void) {
     return fx;
 }
 
+/// @brief Append a Bloom effect: extracts pixels brighter than `threshold`, blurs `blur_passes`
+/// times, then composites back at `intensity` strength. Effect chain caps at 8 entries (silently
+/// dropped past that). Common values: threshold 0.8–1.0, intensity 0.3–1.5, passes 2–6.
 void rt_postfx3d_add_bloom(void *obj, double threshold, double intensity, int64_t blur_passes) {
     if (!obj)
         return;
@@ -482,6 +485,8 @@ void rt_postfx3d_add_bloom(void *obj, double threshold, double intensity, int64_
     e->p.bloom.blur_passes = (int32_t)blur_passes;
 }
 
+/// @brief Append a tone-map (HDR → LDR compression). `mode`: 0 = Reinhard, 1 = ACES filmic,
+/// 2 = Uncharted-2. `exposure` scales the input before mapping (typical 0.5–2.0).
 void rt_postfx3d_add_tonemap(void *obj, int64_t mode, double exposure) {
     if (!obj)
         return;
@@ -495,6 +500,8 @@ void rt_postfx3d_add_tonemap(void *obj, int64_t mode, double exposure) {
     e->p.tonemap.exposure = (float)exposure;
 }
 
+/// @brief Append FXAA (Fast Approximate Anti-Aliasing). Smooths jagged edges by detecting
+/// luminance discontinuities. Defaults to standard edge-threshold 0.166 / min-threshold 0.0833.
 void rt_postfx3d_add_fxaa(void *obj) {
     if (!obj)
         return;
@@ -508,6 +515,8 @@ void rt_postfx3d_add_fxaa(void *obj) {
     e->p.fxaa.min_threshold = 0.0833f;
 }
 
+/// @brief Append a color-grading effect. All three params are multiplicative (1.0 = neutral):
+/// `brightness` adds, `contrast` scales around 0.5, `saturation` interpolates from grayscale.
 void rt_postfx3d_add_color_grade(void *obj, double brightness, double contrast, double saturation) {
     if (!obj)
         return;
@@ -522,6 +531,8 @@ void rt_postfx3d_add_color_grade(void *obj, double brightness, double contrast, 
     e->p.color_grade.saturation = (float)saturation;
 }
 
+/// @brief Append a vignette (radial darkening toward edges). `radius` is the bright-circle
+/// fraction of half-screen-min-axis (typical 0.5–0.8); `softness` controls the falloff width.
 void rt_postfx3d_add_vignette(void *obj, double radius, double softness) {
     if (!obj)
         return;
@@ -535,15 +546,19 @@ void rt_postfx3d_add_vignette(void *obj, double radius, double softness) {
     e->p.vignette.softness = (float)softness;
 }
 
+/// @brief Master enable/disable for the entire effect chain. Disabled = framebuffer passes
+/// through unchanged. Individual effects keep their own configuration.
 void rt_postfx3d_set_enabled(void *obj, int8_t enabled) {
     if (obj)
         ((rt_postfx3d *)obj)->enabled = enabled;
 }
 
+/// @brief Returns 1 if the post-FX chain is currently enabled.
 int8_t rt_postfx3d_get_enabled(void *obj) {
     return obj ? ((rt_postfx3d *)obj)->enabled : 0;
 }
 
+/// @brief Drop every effect in the chain (fresh state). Master enable flag preserved.
 void rt_postfx3d_clear(void *obj) {
     if (!obj)
         return;
@@ -552,6 +567,7 @@ void rt_postfx3d_clear(void *obj) {
     memset(fx->effects, 0, sizeof(fx->effects));
 }
 
+/// @brief Number of effects currently in the chain (0..8).
 int64_t rt_postfx3d_get_effect_count(void *obj) {
     return obj ? ((rt_postfx3d *)obj)->effect_count : 0;
 }
@@ -560,6 +576,8 @@ int64_t rt_postfx3d_get_effect_count(void *obj) {
  * Canvas3D integration
  *=========================================================================*/
 
+/// @brief Attach a PostFX3D chain to a Canvas3D. Pass NULL to detach. The canvas retains a
+/// reference; the previous chain is released. Apply runs automatically on `_flip`.
 void rt_canvas3d_set_post_fx(void *canvas, void *postfx) {
     if (!canvas)
         return;
@@ -573,7 +591,9 @@ void rt_canvas3d_set_post_fx(void *canvas, void *postfx) {
     c->postfx = postfx;
 }
 
-/// @brief Called from rt_canvas3d_flip to apply post-processing effects.
+/// @brief Apply the canvas's attached post-FX chain in place to its framebuffer pixels. Called
+/// from `rt_canvas3d_flip` after rendering completes. No-op if no chain attached / disabled /
+/// the framebuffer is unmapped (e.g., GPU-only window).
 void rt_postfx3d_apply_to_canvas(void *canvas) {
     if (!canvas)
         return;
@@ -591,6 +611,9 @@ void rt_postfx3d_apply_to_canvas(void *canvas) {
     postfx_apply(fx, fb.pixels, fb.width, fb.height, fb.stride);
 }
 
+/// @brief Append SSAO (Screen-Space Ambient Occlusion). `radius` (world units) is the sample
+/// neighborhood; `intensity` is the darkening multiplier; `samples` controls quality (8..64).
+/// Higher `samples` = better quality but slower.
 void rt_postfx3d_add_ssao(void *obj, double radius, double intensity, int64_t samples) {
     if (!obj)
         return;
@@ -605,6 +628,9 @@ void rt_postfx3d_add_ssao(void *obj, double radius, double intensity, int64_t sa
     e->p.ssao.ao_samples = (int32_t)samples;
 }
 
+/// @brief Append depth-of-field. `focus_distance` (world units) is the sharply-focused depth;
+/// `aperture` controls how quickly things outside that depth blur; `max_blur` caps the blur
+/// kernel radius in pixels. Larger aperture = shallower DOF.
 void rt_postfx3d_add_dof(void *obj, double focus_distance, double aperture, double max_blur) {
     if (!obj)
         return;
@@ -619,6 +645,8 @@ void rt_postfx3d_add_dof(void *obj, double focus_distance, double aperture, doub
     e->p.dof.max_blur = (float)max_blur;
 }
 
+/// @brief Append per-pixel motion blur. `intensity` controls the blur length; `samples` is
+/// the per-pixel sample count along the motion vector (more = smoother but slower).
 void rt_postfx3d_add_motion_blur(void *obj, double intensity, int64_t samples) {
     if (!obj)
         return;

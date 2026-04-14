@@ -345,6 +345,10 @@ static void audio3d_source_finalize(void *obj) {
     audio3d_release_ref(&source->bound_node);
 }
 
+/// @brief Per-frame tick: walk every live AudioListener3D and AudioSource3D, and re-resolve
+/// each one's bound scene-node or camera into world position+forward, computing velocity from
+/// the position delta over `dt`. Called by the game loop so spatial audio tracks moving entities
+/// without per-source manual updates.
 void rt_audio3d_sync_bindings(double dt) {
     rt_audiolistener3d *listener = s_listener_head;
     rt_audiosource3d *source = s_source_head;
@@ -358,6 +362,9 @@ void rt_audio3d_sync_bindings(double dt) {
     }
 }
 
+/// @brief Create a 3D audio listener (the "ears" of the scene). Initializes to identity
+/// (origin, forward = -Z, zero velocity). The first listener constructed becomes the active
+/// one automatically; subsequent ones must be activated with `_set_is_active`.
 void *rt_audiolistener3d_new(void) {
     rt_audiolistener3d *listener =
         (rt_audiolistener3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_audiolistener3d));
@@ -372,6 +379,8 @@ void *rt_audiolistener3d_new(void) {
     return listener;
 }
 
+/// @brief Read the listener's world-space position. If the listener is bound to a node/camera,
+/// re-syncs the binding first to ensure the returned value reflects the current transform.
 void *rt_audiolistener3d_get_position(void *obj) {
     rt_audiolistener3d *listener = (rt_audiolistener3d *)obj;
     if (!listener)
@@ -381,6 +390,8 @@ void *rt_audiolistener3d_get_position(void *obj) {
         listener->state.position[0], listener->state.position[1], listener->state.position[2]);
 }
 
+/// @brief Manually set the listener world position. Resets the velocity tracker so the next
+/// sync starts fresh (no spurious large-velocity blip from a teleport).
 void rt_audiolistener3d_set_position(void *obj, void *position) {
     rt_audiolistener3d *listener = (rt_audiolistener3d *)obj;
     double pos[3];
@@ -393,10 +404,13 @@ void rt_audiolistener3d_set_position(void *obj, void *position) {
     audio3d_listener_push_active_state(listener);
 }
 
+/// @brief Convenience overload of `_set_position` taking three doubles instead of a Vec3.
 void rt_audiolistener3d_set_position_vec(void *obj, double x, double y, double z) {
     rt_audiolistener3d_set_position(obj, rt_vec3_new(x, y, z));
 }
 
+/// @brief Read the listener's world-space forward (look-at) vector. Re-syncs binding first
+/// so the result tracks attached nodes/cameras.
 void *rt_audiolistener3d_get_forward(void *obj) {
     rt_audiolistener3d *listener = (rt_audiolistener3d *)obj;
     if (!listener)
@@ -406,6 +420,8 @@ void *rt_audiolistener3d_get_forward(void *obj) {
         listener->state.forward[0], listener->state.forward[1], listener->state.forward[2]);
 }
 
+/// @brief Set the listener's forward vector explicitly (for left/right pan calculations).
+/// The vector is normalized inside the audio core; magnitude is irrelevant.
 void rt_audiolistener3d_set_forward(void *obj, void *forward) {
     rt_audiolistener3d *listener = (rt_audiolistener3d *)obj;
     double fwd[3];
@@ -417,6 +433,7 @@ void rt_audiolistener3d_set_forward(void *obj, void *forward) {
     audio3d_listener_push_active_state(listener);
 }
 
+/// @brief Read the listener's velocity (used for Doppler effects). Auto-synced from binding.
 void *rt_audiolistener3d_get_velocity(void *obj) {
     rt_audiolistener3d *listener = (rt_audiolistener3d *)obj;
     if (!listener)
@@ -426,6 +443,8 @@ void *rt_audiolistener3d_get_velocity(void *obj) {
         listener->state.velocity[0], listener->state.velocity[1], listener->state.velocity[2]);
 }
 
+/// @brief Override the listener's velocity. Useful for non-physical movements (e.g., camera
+/// scripted shake) where the position-delta-based auto-velocity would lie about real motion.
 void rt_audiolistener3d_set_velocity(void *obj, void *velocity) {
     rt_audiolistener3d *listener = (rt_audiolistener3d *)obj;
     if (!listener)
@@ -434,10 +453,15 @@ void rt_audiolistener3d_set_velocity(void *obj, void *velocity) {
     audio3d_listener_push_active_state(listener);
 }
 
+/// @brief Return 1 if this listener is the currently-active one (i.e., the one feeding the
+/// audio core's pan/volume calculations). Only one listener can be active at a time.
 int8_t rt_audiolistener3d_get_is_active(void *obj) {
     return obj ? ((rt_audiolistener3d *)obj)->is_active : 0;
 }
 
+/// @brief Make this listener the active one (deactivating any previously-active listener).
+/// Setting `active=0` deactivates this listener and clears the audio core's listener state,
+/// which makes spatial sources fall back to centered/full-volume output.
 void rt_audiolistener3d_set_is_active(void *obj, int8_t active) {
     rt_audiolistener3d *listener = (rt_audiolistener3d *)obj;
     if (!listener)
@@ -460,6 +484,8 @@ void rt_audiolistener3d_set_is_active(void *obj, int8_t active) {
     }
 }
 
+/// @brief Bind the listener to a SceneNode3D — its position and forward will track the node's
+/// world transform every `_sync_bindings` tick. Replaces any prior node/camera binding.
 void rt_audiolistener3d_bind_node(void *obj, void *node) {
     rt_audiolistener3d *listener = (rt_audiolistener3d *)obj;
     if (!listener)
@@ -473,12 +499,16 @@ void rt_audiolistener3d_bind_node(void *obj, void *node) {
     audio3d_listener_sync_binding(listener, 0.0);
 }
 
+/// @brief Detach the listener from any bound scene node. Subsequent position/forward stay at
+/// the most recent values until manually changed.
 void rt_audiolistener3d_clear_node_binding(void *obj) {
     if (!obj)
         return;
     audio3d_release_ref(&((rt_audiolistener3d *)obj)->bound_node);
 }
 
+/// @brief Bind the listener to a Camera3D — preferred over node binding for FPS-style audio
+/// since the camera's forward already encodes head orientation. Replaces any prior binding.
 void rt_audiolistener3d_bind_camera(void *obj, void *camera) {
     rt_audiolistener3d *listener = (rt_audiolistener3d *)obj;
     if (!listener)
@@ -492,12 +522,16 @@ void rt_audiolistener3d_bind_camera(void *obj, void *camera) {
     audio3d_listener_sync_binding(listener, 0.0);
 }
 
+/// @brief Detach the listener from any bound camera. Position/forward freeze at last sync.
 void rt_audiolistener3d_clear_camera_binding(void *obj) {
     if (!obj)
         return;
     audio3d_release_ref(&((rt_audiolistener3d *)obj)->bound_camera);
 }
 
+/// @brief Create a 3D-positioned audio source playing `sound`. Defaults: max distance 50 world
+/// units, volume 100/100, non-looping, position at origin. Spatial volume/pan are computed
+/// per-frame from the active listener once playback starts via `_play`.
 void *rt_audiosource3d_new(void *sound) {
     rt_audiosource3d *source =
         (rt_audiosource3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_audiosource3d));
@@ -515,6 +549,8 @@ void *rt_audiosource3d_new(void *sound) {
     return source;
 }
 
+/// @brief Read the source's world-space position. Re-syncs binding so the result reflects
+/// the bound node's current world transform.
 void *rt_audiosource3d_get_position(void *obj) {
     rt_audiosource3d *source = (rt_audiosource3d *)obj;
     if (!source)
@@ -523,6 +559,8 @@ void *rt_audiosource3d_get_position(void *obj) {
     return rt_vec3_new(source->position[0], source->position[1], source->position[2]);
 }
 
+/// @brief Manually set the source's world position. Resets the velocity tracker (no jump) and
+/// re-applies spatial volume/pan immediately so playback continues at the new location.
 void rt_audiosource3d_set_position(void *obj, void *position) {
     rt_audiosource3d *source = (rt_audiosource3d *)obj;
     if (!source)
@@ -533,10 +571,12 @@ void rt_audiosource3d_set_position(void *obj, void *position) {
     audio3d_source_apply_spatial(source);
 }
 
+/// @brief Convenience overload of `_set_position` taking three doubles instead of a Vec3.
 void rt_audiosource3d_set_position_vec(void *obj, double x, double y, double z) {
     rt_audiosource3d_set_position(obj, rt_vec3_new(x, y, z));
 }
 
+/// @brief Read the source's velocity (Doppler input). Re-syncs binding before returning.
 void *rt_audiosource3d_get_velocity(void *obj) {
     rt_audiosource3d *source = (rt_audiosource3d *)obj;
     if (!source)
@@ -545,6 +585,8 @@ void *rt_audiosource3d_get_velocity(void *obj) {
     return rt_vec3_new(source->velocity[0], source->velocity[1], source->velocity[2]);
 }
 
+/// @brief Override the source's velocity. Skips the auto-derived position-delta velocity for
+/// the next frame; useful for scripted or non-Newtonian motion.
 void rt_audiosource3d_set_velocity(void *obj, void *velocity) {
     rt_audiosource3d *source = (rt_audiosource3d *)obj;
     if (!source)
@@ -552,10 +594,13 @@ void rt_audiosource3d_set_velocity(void *obj, void *velocity) {
     audio3d_vec_from_obj(velocity, source->velocity);
 }
 
+/// @brief Maximum audible distance in world units. Beyond this the source contributes 0 volume.
 double rt_audiosource3d_get_max_distance(void *obj) {
     return obj ? ((rt_audiosource3d *)obj)->max_distance : 0.0;
 }
 
+/// @brief Set audible-falloff distance (clamped to ≥ 0). Larger = louder for further-away
+/// sources. Spatial volume/pan are recomputed immediately so playback adapts to the new range.
 void rt_audiosource3d_set_max_distance(void *obj, double max_distance) {
     rt_audiosource3d *source = (rt_audiosource3d *)obj;
     if (!source)
@@ -564,10 +609,13 @@ void rt_audiosource3d_set_max_distance(void *obj, double max_distance) {
     audio3d_source_apply_spatial(source);
 }
 
+/// @brief Read the source's nominal volume (0..100). Spatial attenuation is applied separately.
 int64_t rt_audiosource3d_get_volume(void *obj) {
     return obj ? ((rt_audiosource3d *)obj)->volume : 0;
 }
 
+/// @brief Set the source's nominal volume (clamped to 0..100). Re-applies spatial mixing
+/// immediately so an active voice picks up the change next tick.
 void rt_audiosource3d_set_volume(void *obj, int64_t volume) {
     rt_audiosource3d *source = (rt_audiosource3d *)obj;
     if (!source)
@@ -576,20 +624,27 @@ void rt_audiosource3d_set_volume(void *obj, int64_t volume) {
     audio3d_source_apply_spatial(source);
 }
 
+/// @brief Returns 1 if the source plays in a loop (vs. fire-and-forget one-shot).
 int8_t rt_audiosource3d_get_looping(void *obj) {
     return obj ? ((rt_audiosource3d *)obj)->looping : 0;
 }
 
+/// @brief Toggle looping mode. Takes effect on the next `_play` call (does not affect a voice
+/// already in flight; stop and replay to apply mid-stream).
 void rt_audiosource3d_set_looping(void *obj, int8_t looping) {
     if (!obj)
         return;
     ((rt_audiosource3d *)obj)->looping = looping ? 1 : 0;
 }
 
+/// @brief Returns 1 if the underlying voice is still active. Auto-reaps stale voice IDs whose
+/// playback has finished (so subsequent calls return 0 cleanly).
 int8_t rt_audiosource3d_get_is_playing(void *obj) {
     return obj ? audio3d_source_refresh_play_state((rt_audiosource3d *)obj) : 0;
 }
 
+/// @brief Return the underlying voice ID (for low-level voice control). Returns 0 if the
+/// source isn't playing or the voice has finished. Always re-checks live state first.
 int64_t rt_audiosource3d_get_voice_id(void *obj) {
     rt_audiosource3d *source = (rt_audiosource3d *)obj;
     if (!source)
@@ -598,6 +653,9 @@ int64_t rt_audiosource3d_get_voice_id(void *obj) {
     return source->voice_id;
 }
 
+/// @brief Start playback of the bound sound. Computes initial spatial volume/pan against the
+/// active listener, then plays via `rt_sound_play_loop` (looping) or `rt_sound_play_ex` (one-
+/// shot). Stops any prior voice this source owned. Returns the voice ID, or 0 on failure.
 int64_t rt_audiosource3d_play(void *obj) {
     rt_audiosource3d *source = (rt_audiosource3d *)obj;
     rt_audio3d_listener_state listener;
@@ -621,6 +679,7 @@ int64_t rt_audiosource3d_play(void *obj) {
     return source->voice_id;
 }
 
+/// @brief Stop the active voice (if any) and clear the source's voice ID. No-op if not playing.
 void rt_audiosource3d_stop(void *obj) {
     rt_audiosource3d *source = (rt_audiosource3d *)obj;
     if (!source)
@@ -630,6 +689,8 @@ void rt_audiosource3d_stop(void *obj) {
     source->voice_id = 0;
 }
 
+/// @brief Bind the source to a SceneNode3D — the source position will track the node's world
+/// transform every `_sync_bindings` tick. Replaces any prior binding and immediately syncs.
 void rt_audiosource3d_bind_node(void *obj, void *node) {
     rt_audiosource3d *source = (rt_audiosource3d *)obj;
     if (!source)
@@ -642,6 +703,7 @@ void rt_audiosource3d_bind_node(void *obj, void *node) {
     audio3d_source_sync_binding(source, 0.0);
 }
 
+/// @brief Detach the source from any bound node. Position freezes at last sync.
 void rt_audiosource3d_clear_node_binding(void *obj) {
     if (!obj)
         return;

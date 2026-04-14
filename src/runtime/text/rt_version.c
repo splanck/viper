@@ -83,6 +83,9 @@ static int64_t parse_num(const char *str, size_t len, size_t *pos) {
     return val;
 }
 
+/// @brief Parse a SemVer 2.0 string ("1.2.3-rc.1+build.5") into a Version object. Returns NULL
+/// for malformed input. Optional prerelease (after `-`) and build metadata (after `+`) are kept
+/// separate; build metadata is ignored by `_cmp` per SemVer spec.
 void *rt_version_parse(rt_string str) {
     if (!str)
         return NULL;

@@ -213,14 +213,18 @@ MemorySSA computeMemorySSA(Function &F, BasicAA &AA) {
     for (auto &B : F.blocks)
         labelToBlock[B.label] = &B;
 
-    // Build predecessor map for join-point phi insertion.
+    // Build predecessor/successor maps for join-point phi insertion and
+    // forward fixpoint propagation.
     std::unordered_map<Block *, std::vector<Block *>> preds;
+    std::unordered_map<Block *, std::vector<Block *>> succs;
     for (auto &B : F.blocks) {
         if (!B.instructions.empty()) {
             for (const auto &label : B.instructions.back().labels) {
                 auto it = labelToBlock.find(label);
-                if (it != labelToBlock.end())
+                if (it != labelToBlock.end()) {
                     preds[it->second].push_back(&B);
+                    succs[&B].push_back(it->second);
+                }
             }
         }
     }
@@ -242,15 +246,15 @@ MemorySSA computeMemorySSA(Function &F, BasicAA &AA) {
     for (auto &B : F.blocks)
         outDef[&B] = 0;
 
-    // We iterate until stable (may need multiple passes for loops).
-    // A simple two-pass works for acyclic; for loops we need fixpoint.
-    // Run up to |blocks|+1 iterations.
-    const size_t maxIter = F.blocks.size() + 1;
+    std::vector<Block *> worklist = rpo;
+    std::unordered_set<Block *> queued;
+    queued.reserve(rpo.size());
+    for (Block *B : rpo)
+        queued.insert(B);
 
-    for (size_t iter = 0; iter < maxIter; ++iter) {
-        bool changed = false;
-
-        for (Block *B : rpo) {
+    for (std::size_t wi = 0; wi < worklist.size(); ++wi) {
+        Block *B = worklist[wi];
+        queued.erase(B);
             // Determine the incoming def at the start of B.
             uint32_t inDef = 0; // LiveOnEntry default
 
@@ -289,7 +293,6 @@ MemorySSA computeMemorySSA(Function &F, BasicAA &AA) {
                         mssa.accesses_.push_back(MemoryAccess{
                             MemAccessKind::Phi, phiId, B, -1, 0, std::move(incoming), {}});
                         mssa.instrToAccess_[B][static_cast<size_t>(-1)] = phiId;
-                        changed = true;
                     } else {
                         // Update existing Phi's incoming arms.
                         MemoryAccess &phi = mssa.accesses_[phiId];
@@ -297,10 +300,8 @@ MemorySSA computeMemorySSA(Function &F, BasicAA &AA) {
                             uint32_t newArm = outDef[predList[pi]];
                             if (pi >= phi.incoming.size()) {
                                 phi.incoming.push_back(newArm);
-                                changed = true;
                             } else if (phi.incoming[pi] != newArm) {
                                 phi.incoming[pi] = newArm;
-                                changed = true;
                             }
                         }
                     }
@@ -341,14 +342,10 @@ MemorySSA computeMemorySSA(Function &F, BasicAA &AA) {
                             (void)nonEscaping; // noted but not needed for linkage logic
                         }
                         curDef = defId;
-                        changed = true;
                     } else {
                         // Update definingAccess if it changed.
                         MemoryAccess &acc = mssa.accesses_[existingId];
-                        if (acc.definingAccess != curDef) {
-                            acc.definingAccess = curDef;
-                            changed = true;
-                        }
+                        acc.definingAccess = curDef;
                         curDef = existingId;
                     }
                 } else if (I.op == Opcode::Load) {
@@ -363,7 +360,6 @@ MemorySSA computeMemorySSA(Function &F, BasicAA &AA) {
                         if (curDef < mssa.accesses_.size()) {
                             mssa.accesses_[curDef].users.push_back(mssa.instrToAccess_[B][i]);
                         }
-                        changed = true;
                     } else {
                         MemoryAccess &acc = mssa.accesses_[existingId];
                         if (acc.definingAccess != curDef) {
@@ -378,7 +374,6 @@ MemorySSA computeMemorySSA(Function &F, BasicAA &AA) {
                             if (curDef < mssa.accesses_.size()) {
                                 mssa.accesses_[curDef].users.push_back(existingId);
                             }
-                            changed = true;
                         }
                         // curDef unchanged by loads.
                     }
@@ -396,13 +391,9 @@ MemorySSA computeMemorySSA(Function &F, BasicAA &AA) {
                         if (existingId == 0) {
                             uint32_t defId = makeAccess(MemAccessKind::Def, B, (int)i, curDef);
                             curDef = defId;
-                            changed = true;
                         } else {
                             MemoryAccess &acc = mssa.accesses_[existingId];
-                            if (acc.definingAccess != curDef) {
-                                acc.definingAccess = curDef;
-                                changed = true;
-                            }
+                            acc.definingAccess = curDef;
                             curDef = existingId;
                         }
                     }
@@ -416,14 +407,13 @@ MemorySSA computeMemorySSA(Function &F, BasicAA &AA) {
             }
 
             uint32_t newOutDef = curDef;
-            if (outDef[B] != newOutDef) {
-                outDef[B] = newOutDef;
-                changed = true;
+            if (outDef[B] == newOutDef)
+                continue;
+            outDef[B] = newOutDef;
+            for (Block *succ : succs[B]) {
+                if (queued.insert(succ).second)
+                    worklist.push_back(succ);
             }
-        }
-
-        if (!changed)
-            break;
     }
 
     // -----------------------------------------------------------------------
@@ -491,17 +481,17 @@ MemorySSA computeMemorySSA(Function &F, BasicAA &AA) {
 
             // Cross-block BFS — same precision improvement for successor blocks.
             std::unordered_set<std::string> visited;
-            std::vector<std::string> worklist;
+            std::vector<std::string> succWorklist;
             if (!B.instructions.empty()) {
                 for (const auto &label : B.instructions.back().labels)
-                    worklist.push_back(label);
+                    succWorklist.push_back(label);
             }
 
             bool allPathsKillOrExit = true;
 
-            while (!worklist.empty() && allPathsKillOrExit) {
-                std::string label = std::move(worklist.back());
-                worklist.pop_back();
+            while (!succWorklist.empty() && allPathsKillOrExit) {
+                std::string label = std::move(succWorklist.back());
+                succWorklist.pop_back();
 
                 if (visited.count(label))
                     continue;
@@ -549,7 +539,7 @@ MemorySSA computeMemorySSA(Function &F, BasicAA &AA) {
                 if (!succ->instructions.empty()) {
                     for (const auto &succLabel : succ->instructions.back().labels) {
                         if (!visited.count(succLabel))
-                            worklist.push_back(succLabel);
+                            succWorklist.push_back(succLabel);
                     }
                 }
 

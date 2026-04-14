@@ -531,6 +531,59 @@ static inline int vgfx_internal_in_bounds(struct vgfx_window *win, int32_t x, in
     return (win && x >= 0 && x < win->width && y >= 0 && y < win->height);
 }
 
+static inline float vgfx_internal_sanitize_scale(float scale) {
+    return (scale >= 1.0f) ? scale : 1.0f;
+}
+
+static inline int32_t vgfx_internal_round_scaled(float value) {
+    return (int32_t)(value >= 0.0f ? value + 0.5f : value - 0.5f);
+}
+
+static inline float vgfx_internal_coord_scale(const struct vgfx_window *win) {
+    return (win && win->coord_scale >= 1.0f) ? win->coord_scale : 1.0f;
+}
+
+static inline int32_t vgfx_internal_scale_up_i32(int32_t logical, float scale) {
+    return vgfx_internal_round_scaled((float)logical * vgfx_internal_sanitize_scale(scale));
+}
+
+static inline int32_t vgfx_internal_scale_down_i32(int32_t physical, float scale) {
+    return vgfx_internal_round_scaled((float)physical / vgfx_internal_sanitize_scale(scale));
+}
+
+static inline void vgfx_internal_refresh_scale_factor(struct vgfx_window *win, float new_scale) {
+    if (!win)
+        return;
+
+    float old_scale = vgfx_internal_sanitize_scale(win->scale_factor);
+    float old_coord = vgfx_internal_coord_scale(win);
+    float sanitized = vgfx_internal_sanitize_scale(new_scale);
+
+    win->scale_factor = sanitized;
+
+    if (old_coord == old_scale || (old_coord > old_scale - 0.01f && old_coord < old_scale + 0.01f))
+        win->coord_scale = sanitized;
+}
+
+static inline void vgfx_internal_init_resize_event(vgfx_event_t *event,
+                                                   struct vgfx_window *win,
+                                                   int64_t time_ms,
+                                                   int32_t framebuffer_width,
+                                                   int32_t framebuffer_height) {
+    if (!event)
+        return;
+
+    float coord_scale = vgfx_internal_coord_scale(win);
+    event->type = VGFX_EVENT_RESIZE;
+    event->time_ms = time_ms;
+    event->data.resize.width = framebuffer_width;
+    event->data.resize.height = framebuffer_height;
+    event->data.resize.logical_width =
+        vgfx_internal_scale_down_i32(framebuffer_width, coord_scale);
+    event->data.resize.logical_height =
+        vgfx_internal_scale_down_i32(framebuffer_height, coord_scale);
+}
+
 //===----------------------------------------------------------------------===//
 // End of Internal Definitions
 //===----------------------------------------------------------------------===//

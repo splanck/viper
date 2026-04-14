@@ -28,21 +28,35 @@
 extern "C" {
 #endif
 
+/// @brief Create an empty PostFX chain.
 void *rt_postfx3d_new(void);
+/// @brief Append a bloom pass (threshold = brightness cutoff, intensity = mix amount, blur_passes = quality).
 void rt_postfx3d_add_bloom(void *obj, double threshold, double intensity, int64_t blur_passes);
+/// @brief Append a tonemap pass (mode: 0=off, 1=Reinhard, 2=ACES) with exposure stops.
 void rt_postfx3d_add_tonemap(void *obj, int64_t mode, double exposure);
+/// @brief Append an FXAA antialiasing pass.
 void rt_postfx3d_add_fxaa(void *obj);
+/// @brief Append a color-grading pass (brightness, contrast, saturation each centered on 1.0).
 void rt_postfx3d_add_color_grade(void *obj, double brightness, double contrast, double saturation);
+/// @brief Append a vignette pass (radius = circle of full brightness, softness = falloff width).
 void rt_postfx3d_add_vignette(void *obj, double radius, double softness);
+/// @brief Enable or disable the entire chain (without removing effects).
 void rt_postfx3d_set_enabled(void *obj, int8_t enabled);
+/// @brief True if the chain is enabled.
 int8_t rt_postfx3d_get_enabled(void *obj);
+/// @brief Remove all effects from the chain.
 void rt_postfx3d_clear(void *obj);
+/// @brief Number of effects currently in the chain (max 8).
 int64_t rt_postfx3d_get_effect_count(void *obj);
+/// @brief Bind a PostFX chain to a Canvas3D for automatic application during Flip.
 void rt_canvas3d_set_post_fx(void *canvas, void *postfx);
 
 /* Phase F additions */
+/// @brief Append an SSAO (screen-space ambient occlusion) pass with sample radius and intensity.
 void rt_postfx3d_add_ssao(void *obj, double radius, double intensity, int64_t samples);
+/// @brief Append a depth-of-field pass (focus distance in world units, aperture controls bokeh size).
 void rt_postfx3d_add_dof(void *obj, double focus_distance, double aperture, double max_blur);
+/// @brief Append a motion-blur pass (intensity 0..1, sample count for blur quality).
 void rt_postfx3d_add_motion_blur(void *obj, double intensity, int64_t samples);
 
 /* Backend-facing PostFX snapshot (MTL-11): compact effect params for GPU backends.

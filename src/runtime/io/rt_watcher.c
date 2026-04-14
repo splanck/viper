@@ -29,6 +29,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_watcher.h"
+#include "rt_file_path.h"
 #include "rt_internal.h"
 #include "rt_object.h"
 #include "rt_path.h"
@@ -353,6 +354,9 @@ static void watcher_read_windows_events(rt_watcher_impl *w) {
 }
 #endif
 
+/// @brief Construct a filesystem watcher for `path` (file or directory). `stat`'s the path up
+/// front and traps if it doesn't exist. Distinguishes file vs directory mode (different OS
+/// primitives needed). Returns a GC-managed handle; user must call `_start` to begin watching.
 void *rt_watcher_new(rt_string path) {
     if (!path)
         rt_trap("Watcher.New: null path");
@@ -401,6 +405,7 @@ void *rt_watcher_new(rt_string path) {
     return w;
 }
 
+/// @brief Read the path the watcher is configured to monitor (returned freshly retained).
 rt_string rt_watcher_get_path(void *obj) {
     if (!obj)
         return str_from_cstr("");
@@ -410,12 +415,21 @@ rt_string rt_watcher_get_path(void *obj) {
     return w->watch_path ? w->watch_path : str_from_cstr("");
 }
 
+/// @brief Returns 1 between successful `_start` and `_stop`; 0 otherwise.
 int8_t rt_watcher_get_is_watching(void *obj) {
     if (!obj)
         return 0;
     return ((rt_watcher_impl *)obj)->is_watching;
 }
 
+/// @brief Begin watching. Per platform:
+///   - **Linux:** `inotify_init1(IN_NONBLOCK)` + `inotify_add_watch` with mask covering create/
+///     delete/modify/move events.
+///   - **macOS:** `kqueue` + open(O_EVTONLY) + EVFILT_VNODE for delete/write/extend/attrib/rename.
+///   - **Win32:** `CreateFileW(FILE_LIST_DIRECTORY, FILE_FLAG_OVERLAPPED)` + initial
+///     `ReadDirectoryChangesW`. Always watches the parent directory (file-mode filtering happens
+///     at event-decode time via `watch_leaf_name`).
+/// Traps if already watching, on syscall failure, or on unsupported platform.
 void rt_watcher_start(void *obj) {
     if (!obj)
         rt_trap("Watcher.Start: null watcher");
@@ -475,14 +489,18 @@ void rt_watcher_start(void *obj) {
     // For Windows, we need to watch the directory (or parent directory for files)
     const char *watch_dir =
         rt_string_cstr(w->is_directory ? (rt_string)w->watch_path : (rt_string)w->watch_dir_path);
+    wchar_t *wide_watch_dir = rt_file_path_utf8_to_wide(watch_dir);
+    if (!wide_watch_dir)
+        rt_trap("Watcher.Start: invalid watch path");
 
-    w->dir_handle = CreateFileA(watch_dir,
+    w->dir_handle = CreateFileW(wide_watch_dir,
                                 FILE_LIST_DIRECTORY,
                                 FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
                                 NULL,
                                 OPEN_EXISTING,
                                 FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OVERLAPPED,
                                 NULL);
+    free(wide_watch_dir);
     if (w->dir_handle == INVALID_HANDLE_VALUE)
         rt_trap("Watcher.Start: failed to open directory for watching");
 
@@ -514,6 +532,9 @@ void rt_watcher_start(void *obj) {
     w->is_watching = 1;
 }
 
+/// @brief Stop watching: tear down the platform-specific descriptor (inotify_rm_watch + close /
+/// close(kqueue) / CancelIo + CloseHandle). Idempotent — no-op on already-stopped watchers.
+/// Pending events in the queue are NOT drained; they're released via the finalizer.
 void rt_watcher_stop(void *obj) {
     if (!obj)
         return;
@@ -556,10 +577,16 @@ void rt_watcher_stop(void *obj) {
     w->is_watching = 0;
 }
 
+/// @brief Non-blocking poll for the next event. Returns the event-type code (CREATED / MODIFIED /
+/// DELETED / RENAMED) or NONE if no events queued AND the OS reports no new events. The event's
+/// path becomes accessible via `_event_path` immediately after.
 int64_t rt_watcher_poll(void *obj) {
     return rt_watcher_poll_for(obj, 0);
 }
 
+/// @brief Bounded-wait poll: same as `_poll` but waits up to `ms` milliseconds for an event.
+/// `ms < 0` means wait forever; `ms == 0` is non-blocking. First drains the internal queue, then
+/// asks the OS via `poll`/`kqueue`/`WaitForSingleObject`, then drains the queue again.
 int64_t rt_watcher_poll_for(void *obj, int64_t ms) {
     if (!obj)
         return RT_WATCH_EVENT_NONE;
@@ -614,6 +641,8 @@ int64_t rt_watcher_poll_for(void *obj, int64_t ms) {
     return RT_WATCH_EVENT_NONE;
 }
 
+/// @brief Read the absolute path of the most recently polled event. **Traps** if no `_poll` call
+/// has succeeded yet — the contract is "poll then ask"; not safe to call out of order.
 rt_string rt_watcher_event_path(void *obj) {
     if (!obj)
         rt_trap("Watcher.EventPath: null watcher");
@@ -627,6 +656,7 @@ rt_string rt_watcher_event_path(void *obj) {
     return w->last_event_path ? w->last_event_path : str_from_cstr("");
 }
 
+/// @brief Read the type code of the last polled event. Returns NONE if no event has been polled.
 int64_t rt_watcher_event_type(void *obj) {
     if (!obj)
         return RT_WATCH_EVENT_NONE;
@@ -635,26 +665,39 @@ int64_t rt_watcher_event_type(void *obj) {
     return w->has_last_event ? w->last_event_type : RT_WATCH_EVENT_NONE;
 }
 
+// =============================================================================
+// Event-type constant accessors
+// Static methods that return the int64 enum value for each event kind. The
+// `void *self` parameter is unused — these exist so Zia code can write
+// `Watcher.EventCreated()` instead of magic-numbering the constants. Compiles
+// to a single `mov rax, <const>; ret`.
+// =============================================================================
+
+/// @brief Constant: `RT_WATCH_EVENT_NONE` (no event polled).
 int64_t rt_watcher_event_none(void *self) {
     (void)self;
     return RT_WATCH_EVENT_NONE;
 }
 
+/// @brief Constant: `RT_WATCH_EVENT_CREATED` (file/dir was created).
 int64_t rt_watcher_event_created(void *self) {
     (void)self;
     return RT_WATCH_EVENT_CREATED;
 }
 
+/// @brief Constant: `RT_WATCH_EVENT_MODIFIED` (content or attributes changed).
 int64_t rt_watcher_event_modified(void *self) {
     (void)self;
     return RT_WATCH_EVENT_MODIFIED;
 }
 
+/// @brief Constant: `RT_WATCH_EVENT_DELETED` (file/dir removed).
 int64_t rt_watcher_event_deleted(void *self) {
     (void)self;
     return RT_WATCH_EVENT_DELETED;
 }
 
+/// @brief Constant: `RT_WATCH_EVENT_RENAMED` (file/dir was renamed/moved).
 int64_t rt_watcher_event_renamed(void *self) {
     (void)self;
     return RT_WATCH_EVENT_RENAMED;

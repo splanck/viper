@@ -450,6 +450,32 @@ static void test_properties() {
     delete_file(path);
 }
 
+static void test_path_retained_after_caller_release() {
+    printf("Testing Path Lifetime:\n");
+
+    const char *c_path = get_temp_path("test_path_lifetime.zip");
+    delete_file(c_path);
+
+    rt_string owned_path = rt_string_from_bytes(c_path, strlen(c_path));
+    void *ar = rt_archive_create(owned_path);
+    rt_string_unref(owned_path);
+
+    for (int i = 0; i < 64; i++) {
+        rt_string noise = rt_string_from_bytes("path-lifetime-noise", strlen("path-lifetime-noise"));
+        rt_string_unref(noise);
+    }
+
+    rt_archive_add_str(ar, rt_const_cstr("entry.txt"), rt_const_cstr("payload"));
+    rt_archive_finish(ar);
+
+    void *ar2 = rt_archive_open(rt_const_cstr(c_path));
+    rt_string stored_path = rt_archive_path(ar2);
+    test_result("Archive path preserved", rt_str_eq(stored_path, rt_const_cstr(c_path)));
+    rt_string_unref(stored_path);
+
+    delete_file(c_path);
+}
+
 static void test_entry_info() {
     printf("Testing Entry Info:\n");
 
@@ -467,12 +493,25 @@ static void test_entry_info() {
     // Check all expected keys
     test_result("Has size key", rt_map_has(info, rt_const_cstr("size")) == 1);
     test_result("Has compressedSize key", rt_map_has(info, rt_const_cstr("compressedSize")) == 1);
+    test_result("Has crc key", rt_map_has(info, rt_const_cstr("crc")) == 1);
+    test_result("Has method key", rt_map_has(info, rt_const_cstr("method")) == 1);
     test_result("Has modifiedTime key", rt_map_has(info, rt_const_cstr("modifiedTime")) == 1);
+    test_result("Has isDir key", rt_map_has(info, rt_const_cstr("isDir")) == 1);
     test_result("Has isDirectory key", rt_map_has(info, rt_const_cstr("isDirectory")) == 1);
 
     // Verify values
     void *size = rt_map_get(info, rt_const_cstr("size"));
     test_result("Size correct", rt_unbox_i64(size) == get_bytes_len(content));
+
+    void *method = rt_map_get(info, rt_const_cstr("method"));
+    int64_t method_value = rt_unbox_i64(method);
+    test_result("method is supported", method_value == 0 || method_value == 8);
+
+    void *crc = rt_map_get(info, rt_const_cstr("crc"));
+    test_result("CRC is present", rt_unbox_i64(crc) >= 0);
+
+    void *is_dir_short = rt_map_get(info, rt_const_cstr("isDir"));
+    test_result("isDir is false", rt_unbox_i1(is_dir_short) == 0);
 
     void *is_dir = rt_map_get(info, rt_const_cstr("isDirectory"));
     test_result("isDirectory is false", rt_unbox_i1(is_dir) == 0);
@@ -642,10 +681,6 @@ static void test_large_file() {
 //=============================================================================
 
 int main() {
-#ifdef _WIN32
-    // Skip on Windows: test uses /tmp paths not available on Windows
-    VIPER_PLATFORM_SKIP("POSIX temp paths not available on Windows");
-#endif
     printf("=== RT Archive Tests ===\n\n");
 
     // Basic tests
@@ -671,6 +706,8 @@ int main() {
 
     // Property tests
     test_properties();
+    printf("\n");
+    test_path_retained_after_caller_release();
     printf("\n");
     test_entry_info();
     printf("\n");

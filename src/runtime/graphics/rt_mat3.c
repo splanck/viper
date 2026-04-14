@@ -73,6 +73,9 @@ typedef struct mat3_impl {
 // Construction
 //=============================================================================
 
+/// @brief Construct a 3×3 matrix from 9 row-major scalars (m00 = top-left, m22 = bottom-right).
+/// Used for 2D affine transforms (translate/rotate/scale) where the third row provides the
+/// homogeneous coordinate. Returns NULL on allocation failure.
 void *rt_mat3_new(double m00,
                   double m01,
                   double m02,
@@ -99,10 +102,12 @@ void *rt_mat3_new(double m00,
     return mat;
 }
 
+/// @brief Return the 3×3 identity matrix.
 void *rt_mat3_identity(void) {
     return rt_mat3_new(1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0);
 }
 
+/// @brief Return the 3×3 zero matrix.
 void *rt_mat3_zero(void) {
     return rt_mat3_new(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
 }
@@ -111,24 +116,30 @@ void *rt_mat3_zero(void) {
 // 2D Transformation Factories
 //=============================================================================
 
+/// @brief Build a 2D translation matrix that moves points by (tx, ty).
 void *rt_mat3_translate(double tx, double ty) {
     return rt_mat3_new(1.0, 0.0, tx, 0.0, 1.0, ty, 0.0, 0.0, 1.0);
 }
 
+/// @brief Build a 2D non-uniform scaling matrix with axis factors (sx, sy).
 void *rt_mat3_scale(double sx, double sy) {
     return rt_mat3_new(sx, 0.0, 0.0, 0.0, sy, 0.0, 0.0, 0.0, 1.0);
 }
 
+/// @brief Build a 2D uniform scaling matrix (same factor on both axes).
 void *rt_mat3_scale_uniform(double s) {
     return rt_mat3_scale(s, s);
 }
 
+/// @brief Build a 2D rotation matrix (counter-clockwise, angle in radians).
 void *rt_mat3_rotate(double angle) {
     double c = cos(angle);
     double s = sin(angle);
     return rt_mat3_new(c, -s, 0.0, s, c, 0.0, 0.0, 0.0, 1.0);
 }
 
+/// @brief Build a 2D shear matrix: `sx` shears X by Y, `sy` shears Y by X. Useful for slant
+/// effects (italic text, parallelogram skew).
 void *rt_mat3_shear(double sx, double sy) {
     return rt_mat3_new(1.0, sx, 0.0, sy, 1.0, 0.0, 0.0, 0.0, 1.0);
 }
@@ -137,6 +148,8 @@ void *rt_mat3_shear(double sx, double sy) {
 // Element Access
 //=============================================================================
 
+/// @brief Read a single matrix element by (row, col), both in [0, 2]. Returns 0 for null
+/// matrix or out-of-range indices.
 double rt_mat3_get(void *m, int64_t row, int64_t col) {
     if (!m || row < 0 || row > 2 || col < 0 || col > 2)
         return 0.0;
@@ -145,6 +158,7 @@ double rt_mat3_get(void *m, int64_t row, int64_t col) {
     return M(mat, row, col);
 }
 
+/// @brief Extract the i-th row as a fresh Vec3. Returns (0,0,0) for invalid input.
 void *rt_mat3_row(void *m, int64_t row) {
     if (!m || row < 0 || row > 2)
         return rt_vec3_zero();
@@ -153,6 +167,7 @@ void *rt_mat3_row(void *m, int64_t row) {
     return rt_vec3_new(M(mat, row, 0), M(mat, row, 1), M(mat, row, 2));
 }
 
+/// @brief Extract the i-th column as a fresh Vec3. Returns (0,0,0) for invalid input.
 void *rt_mat3_col(void *m, int64_t col) {
     if (!m || col < 0 || col > 2)
         return rt_vec3_zero();
@@ -165,6 +180,7 @@ void *rt_mat3_col(void *m, int64_t col) {
 // Arithmetic
 //=============================================================================
 
+/// @brief Element-wise addition (a + b). Returns identity for NULL inputs.
 void *rt_mat3_add(void *a, void *b) {
     if (!a || !b)
         return rt_mat3_zero();
@@ -183,6 +199,7 @@ void *rt_mat3_add(void *a, void *b) {
                        ma->m[8] + mb->m[8]);
 }
 
+/// @brief Element-wise subtraction (a - b). Returns identity for NULL inputs.
 void *rt_mat3_sub(void *a, void *b) {
     if (!a || !b)
         return rt_mat3_zero();
@@ -201,6 +218,8 @@ void *rt_mat3_sub(void *a, void *b) {
                        ma->m[8] - mb->m[8]);
 }
 
+/// @brief Standard matrix multiplication (a × b). Composes 2D affine transforms left-to-right:
+/// `mul(translate, rotate)` applied to a point first rotates then translates. NULL→identity.
 void *rt_mat3_mul(void *a, void *b) {
     if (!a || !b)
         return rt_mat3_identity();
@@ -220,6 +239,7 @@ void *rt_mat3_mul(void *a, void *b) {
     return rt_mat3_new(r[0], r[1], r[2], r[3], r[4], r[5], r[6], r[7], r[8]);
 }
 
+/// @brief Multiply every entry of `m` by scalar `s`.
 void *rt_mat3_mul_scalar(void *m, double s) {
     if (!m)
         return rt_mat3_zero();
@@ -237,6 +257,8 @@ void *rt_mat3_mul_scalar(void *m, double s) {
                        mat->m[8] * s);
 }
 
+/// @brief Transform a 2D point (x, y) through `m` (treats v as homogeneous (x, y, 1)). The
+/// returned Vec3's third component is the homogeneous w; usually 1 for affine transforms.
 void *rt_mat3_transform_point(void *m, void *v) {
     if (!m || !v)
         return rt_vec2_zero();
@@ -252,6 +274,8 @@ void *rt_mat3_transform_point(void *m, void *v) {
     return rt_vec2_new(rx, ry);
 }
 
+/// @brief Transform a 2D direction through `m` (treats v as homogeneous (x, y, 0) — translation
+/// is ignored). Use for normals/directions, not absolute positions.
 void *rt_mat3_transform_vec(void *m, void *v) {
     if (!m || !v)
         return rt_vec2_zero();
@@ -271,6 +295,7 @@ void *rt_mat3_transform_vec(void *m, void *v) {
 // Matrix Operations
 //=============================================================================
 
+/// @brief Return the transpose of `m` (rows become columns).
 void *rt_mat3_transpose(void *m) {
     if (!m)
         return rt_mat3_identity();
@@ -288,6 +313,7 @@ void *rt_mat3_transpose(void *m) {
                        mat->m[8]);
 }
 
+/// @brief Compute the 3×3 determinant via cofactor expansion. 0 indicates a singular matrix.
 double rt_mat3_det(void *m) {
     if (!m)
         return 0.0;
@@ -300,6 +326,8 @@ double rt_mat3_det(void *m) {
            mat->m[2] * (mat->m[3] * mat->m[7] - mat->m[4] * mat->m[6]);
 }
 
+/// @brief Compute the 3×3 inverse via the cofactor / adjugate formula. Returns identity on
+/// NULL input or singular matrix (det ≈ 0).
 void *rt_mat3_inverse(void *m) {
     if (!m)
         return rt_mat3_identity();
@@ -336,6 +364,7 @@ void *rt_mat3_inverse(void *m) {
                        c22 * invDet);
 }
 
+/// @brief Element-wise negation (-m).
 void *rt_mat3_neg(void *m) {
     if (!m)
         return rt_mat3_zero();
@@ -357,6 +386,7 @@ void *rt_mat3_neg(void *m) {
 // Comparison
 //=============================================================================
 
+/// @brief Returns 1 if every element of `a` and `b` differs by no more than `epsilon`.
 int8_t rt_mat3_eq(void *a, void *b, double epsilon) {
     if (!a || !b)
         return (!a && !b) ? 1 : 0;

@@ -13,8 +13,9 @@
 //                 registries rely on the VM's single-threaded execution model.
 //                 In strict mode, re-registration with a different signature
 //                 returns SignatureMismatch instead of silently overwriting.
-// Ownership/Lifetime: ExternRegistryPtr owns registry storage via custom deleter.
-//                     Per-VM registries must outlive their VM instances.
+// Ownership/Lifetime: ExternRegistryPtr owns an initial registry reference via
+//                     custom deleter. VMs and worker payloads retain additional
+//                     references while they hold raw registry pointers.
 // Links: src/vm/RuntimeBridge.cpp, docs/codemap/vm-runtime.md
 //
 //===----------------------------------------------------------------------===//
@@ -68,6 +69,9 @@ struct ExternRegistryDeleter
 };
 
 /// @brief Owning handle to an extern registry.
+/// @details The pointed-to registry uses intrusive lifetime references so it
+///          can safely be shared across parent/worker VM boundaries even when
+///          only raw pointers are stored internally.
 using ExternRegistryPtr = std::unique_ptr<ExternRegistry, ExternRegistryDeleter>;
 
 /// @brief Create a new empty extern registry.

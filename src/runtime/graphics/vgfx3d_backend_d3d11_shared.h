@@ -78,37 +78,48 @@ typedef struct {
     int8_t overlay_used_this_frame;
 } vgfx3d_d3d11_frame_history_t;
 
+/// @brief Pack scalar array into HLSL float4-aligned slots (one scalar per .x lane, .yzw zeroed).
 void vgfx3d_d3d11_pack_scalar_array4(float (*dst)[4],
                                      int32_t dst_vec_count,
                                      const float *src,
                                      int32_t src_scalar_count);
+/// @brief Copy bone palette into a fixed-size cbuffer slot (zero-pads unused bones).
 void vgfx3d_d3d11_pack_bone_palette(float *dst, const float *src, int32_t bone_count);
+/// @brief Build per-instance cbuffer entries (model + normal + prev_model) for instanced draws.
 void vgfx3d_d3d11_fill_instance_data(vgfx3d_d3d11_instance_data_t *dst,
                                      int32_t instance_count,
                                      const float *instance_matrices,
                                      const float *prev_instance_matrices,
                                      int8_t has_prev_instance_matrices);
+/// @brief Roll per-frame VP/inv-VP/cam-pos history forward by one frame (scene + overlay tracked separately).
 void vgfx3d_d3d11_update_frame_history(vgfx3d_d3d11_frame_history_t *history,
                                        const float *vp,
                                        const float *inv_vp,
                                        const float *cam_pos,
                                        int8_t is_overlay_pass,
                                        int8_t uses_separate_overlay_target);
+/// @brief Reconcile bone-buffer upload outcome into per-object draw flags (clears skinning on failure).
 void vgfx3d_d3d11_resolve_bone_upload_status(vgfx3d_d3d11_per_object_t *object_data,
                                              int current_upload_ok,
                                              int prev_upload_ok);
+/// @brief Reconcile morph-target upload outcome (positions + normals) into draw flags.
 void vgfx3d_d3d11_resolve_morph_upload_status(vgfx3d_d3d11_per_object_t *object_data,
                                               int morph_upload_ok,
                                               int morph_normal_upload_ok);
+/// @brief Number of mipmap levels needed to reach 1×1 from (width × height).
 int32_t vgfx3d_d3d11_compute_mip_count(int32_t width, int32_t height);
+/// @brief Capacity-doubling growth helper (saturates at INT_MAX).
 int32_t vgfx3d_d3d11_next_capacity(int32_t current_capacity,
                                    int32_t needed,
                                    int32_t minimum_capacity);
+/// @brief Pick the right render-target classification (RTT > swapchain > overlay > scene).
 vgfx3d_d3d11_target_kind_t vgfx3d_d3d11_choose_target_kind(int8_t rtt_active,
                                                            int8_t gpu_postfx_enabled,
                                                            int8_t load_existing_color);
+/// @brief Map a draw command to its required blend state (alpha vs opaque).
 vgfx3d_d3d11_blend_mode_t
 vgfx3d_d3d11_choose_blend_mode(const vgfx3d_draw_cmd_t *cmd);
+/// @brief Pick the color format — HDR16F for the scene pass, UNORM8 elsewhere.
 vgfx3d_d3d11_color_format_t
 vgfx3d_d3d11_choose_color_format(vgfx3d_d3d11_target_kind_t target_kind);
 

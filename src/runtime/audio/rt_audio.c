@@ -136,6 +136,15 @@ static void rt_music_finalize(void *obj) {
 // Audio System Management
 //===----------------------------------------------------------------------===//
 
+/// @brief Report whether the Audio runtime is usable in this build.
+///
+/// Mirror of the stub layer's `rt_audio_is_available` (in
+/// `rt_audio_stubs.c`). The graphics-enabled implementation always
+/// returns 1 — Audio doesn't depend on the windowing backend so it's
+/// available wherever ViperAUD is linked. Cheap; safe to call every frame.
+///
+/// @return Always `1` in the real implementation; the stubbed
+///         `audio-disabled` build returns `0`.
 int8_t rt_audio_is_available(void) {
     return 1;
 }
@@ -1103,40 +1112,74 @@ int64_t rt_sound_play_loop_in_group(void *sound, int64_t volume, int64_t pan, in
 // Stub implementations when audio library is not available
 //===----------------------------------------------------------------------===//
 
+/// @brief Raise the canonical "audio support not compiled in" trap.
+///
+/// Mirror of `rt_graphics_unavailable_` in `rt_graphics_stubs.c`.
+/// Shared trap sink used by every Sound / Music entry point in this
+/// `#else` branch so failures from a `VIPER_ENABLE_AUDIO=OFF` build all
+/// surface at the offending call site with a consistent error code.
+///
+/// @param msg Diagnostic string; the convention is
+///            `"<Class>.<Method>: audio support not compiled in"`.
+///
+/// @note Never returns under normal control flow.
 static void rt_audio_unavailable_(const char *msg) {
     rt_trap_raise_kind(RT_TRAP_KIND_INVALID_OPERATION, Err_InvalidOperation, 0, msg);
 }
 
+/// @brief Audio-disabled override of `rt_audio_is_available`.
+/// @return Always `0` in this `#else` branch (audio not compiled in).
 int8_t rt_audio_is_available(void) {
     return 0;
 }
 
+/// @brief Audio-disabled stub for `rt_audio_init` — silent no-op
+///        returning failure so the bootstrap can branch on the result.
+/// @return `0` (init failure).
 int64_t rt_audio_init(void) {
     return 0;
 }
 
+/// @brief Audio-disabled stub for `rt_audio_shutdown` — silent no-op
+///        since there's nothing to shut down.
 void rt_audio_shutdown(void) {}
 
+/// @brief Audio-disabled stub for `Audio.SetMasterVolume`. Silent no-op.
+/// @param volume Ignored.
 void rt_audio_set_master_volume(int64_t volume) {
     (void)volume;
 }
 
+/// @brief Audio-disabled stub for `Audio.MasterVolume`.
+/// @return `0` (silence).
 int64_t rt_audio_get_master_volume(void) {
     return 0;
 }
 
+/// @brief Audio-disabled stub for `Audio.PauseAll`. Silent no-op.
 void rt_audio_pause_all(void) {}
 
+/// @brief Audio-disabled stub for `Audio.ResumeAll`. Silent no-op.
 void rt_audio_resume_all(void) {}
 
+/// @brief Audio-disabled stub for `Audio.StopAllSounds`. Silent no-op.
 void rt_audio_stop_all_sounds(void) {}
 
+/// @brief Audio-disabled stub for `Sound.Load` — traps because callers
+///        always need a usable Sound handle to subsequently `Play`.
+/// @param path Ignored.
+/// @return Never returns normally.
 void *rt_sound_load(rt_string path) {
     (void)path;
     rt_audio_unavailable_("Sound.Load: audio support not compiled in");
     return NULL;
 }
 
+/// @brief Audio-disabled stub for `Sound.LoadMem` — traps for the same
+///        reason as `Sound.Load`.
+/// @param data Ignored.
+/// @param size Ignored.
+/// @return Never returns normally.
 void *rt_sound_load_mem(const void *data, int64_t size) {
     (void)data;
     (void)size;
@@ -1144,16 +1187,30 @@ void *rt_sound_load_mem(const void *data, int64_t size) {
     return NULL;
 }
 
+/// @brief Audio-disabled stub for `Sound.Destroy` — silent no-op (the
+///        handle never existed to begin with).
+/// @param sound Ignored.
 void rt_sound_destroy(void *sound) {
     (void)sound;
 }
 
+/// @brief Audio-disabled stub for `Sound.Play` — traps so the absence
+///        of audio surfaces clearly rather than returning a fake voice
+///        id that callers might pass to `Voice.Stop`.
+/// @param sound Ignored.
+/// @return Never returns normally.
 int64_t rt_sound_play(void *sound) {
     (void)sound;
     rt_audio_unavailable_("Sound.Play: audio support not compiled in");
     return -1;
 }
 
+/// @brief Audio-disabled stub for `Sound.PlayEx` (volume + pan variant
+///        of `Play`). Traps.
+/// @param sound  Ignored.
+/// @param volume Ignored.
+/// @param pan    Ignored.
+/// @return Never returns normally.
 int64_t rt_sound_play_ex(void *sound, int64_t volume, int64_t pan) {
     (void)sound;
     (void)volume;
@@ -1162,6 +1219,12 @@ int64_t rt_sound_play_ex(void *sound, int64_t volume, int64_t pan) {
     return -1;
 }
 
+/// @brief Audio-disabled stub for `Sound.PlayLoop` (looping variant of
+///        `PlayEx`). Traps.
+/// @param sound  Ignored.
+/// @param volume Ignored.
+/// @param pan    Ignored.
+/// @return Never returns normally.
 int64_t rt_sound_play_loop(void *sound, int64_t volume, int64_t pan) {
     (void)sound;
     (void)volume;
@@ -1170,86 +1233,132 @@ int64_t rt_sound_play_loop(void *sound, int64_t volume, int64_t pan) {
     return -1;
 }
 
+/// @brief Audio-disabled stub for `Voice.Stop`. Silent no-op (any voice
+///        id passed in must be from a fake/cached value since `Sound.Play`
+///        traps).
+/// @param voice_id Ignored.
 void rt_voice_stop(int64_t voice_id) {
     (void)voice_id;
 }
 
+/// @brief Audio-disabled stub for `Voice.SetVolume`. Silent no-op.
+/// @param voice_id Ignored.
+/// @param volume   Ignored.
 void rt_voice_set_volume(int64_t voice_id, int64_t volume) {
     (void)voice_id;
     (void)volume;
 }
 
+/// @brief Audio-disabled stub for `Voice.SetPan`. Silent no-op.
+/// @param voice_id Ignored.
+/// @param pan      Ignored.
 void rt_voice_set_pan(int64_t voice_id, int64_t pan) {
     (void)voice_id;
     (void)pan;
 }
 
+/// @brief Audio-disabled stub for `Voice.IsPlaying`.
+/// @param voice_id Ignored.
+/// @return `0` (never playing).
 int64_t rt_voice_is_playing(int64_t voice_id) {
     (void)voice_id;
     return 0;
 }
 
+/// @brief Audio-disabled stub for `Music.Load` — traps because callers
+///        need a usable Music handle for the rest of the API.
+/// @param path Ignored.
+/// @return Never returns normally.
 void *rt_music_load(rt_string path) {
     (void)path;
     rt_audio_unavailable_("Music.Load: audio support not compiled in");
     return NULL;
 }
 
+/// @brief Audio-disabled stub for `Music.Destroy`. Silent no-op.
+/// @param music Ignored.
 void rt_music_destroy(void *music) {
     (void)music;
 }
 
+/// @brief Audio-disabled stub for `Music.Play`. Traps.
+/// @param music Ignored.
+/// @param loop  Ignored.
 void rt_music_play(void *music, int64_t loop) {
     (void)music;
     (void)loop;
     rt_audio_unavailable_("Music.Play: audio support not compiled in");
 }
 
+/// @brief Audio-disabled stub for `Music.Stop`. Traps.
+/// @param music Ignored.
 void rt_music_stop(void *music) {
     (void)music;
     rt_audio_unavailable_("Music.Stop: audio support not compiled in");
 }
 
+/// @brief Audio-disabled stub for `Music.Pause`. Traps.
+/// @param music Ignored.
 void rt_music_pause(void *music) {
     (void)music;
     rt_audio_unavailable_("Music.Pause: audio support not compiled in");
 }
 
+/// @brief Audio-disabled stub for `Music.Resume`. Traps.
+/// @param music Ignored.
 void rt_music_resume(void *music) {
     (void)music;
     rt_audio_unavailable_("Music.Resume: audio support not compiled in");
 }
 
+/// @brief Audio-disabled stub for `Music.SetVolume`. Traps.
+/// @param music  Ignored.
+/// @param volume Ignored.
 void rt_music_set_volume(void *music, int64_t volume) {
     (void)music;
     (void)volume;
     rt_audio_unavailable_("Music.SetVolume: audio support not compiled in");
 }
 
+/// @brief Audio-disabled stub for `Music.Volume`. Traps.
+/// @param music Ignored.
+/// @return Never returns normally.
 int64_t rt_music_get_volume(void *music) {
     (void)music;
     rt_audio_unavailable_("Music.GetVolume: audio support not compiled in");
     return 0;
 }
 
+/// @brief Audio-disabled stub for `Music.IsPlaying`. Traps.
+/// @param music Ignored.
+/// @return Never returns normally.
 int64_t rt_music_is_playing(void *music) {
     (void)music;
     rt_audio_unavailable_("Music.IsPlaying: audio support not compiled in");
     return 0;
 }
 
+/// @brief Audio-disabled stub for `Music.Seek`. Traps.
+/// @param music       Ignored.
+/// @param position_ms Ignored.
 void rt_music_seek(void *music, int64_t position_ms) {
     (void)music;
     (void)position_ms;
     rt_audio_unavailable_("Music.Seek: audio support not compiled in");
 }
 
+/// @brief Audio-disabled stub for `Music.Position`. Traps.
+/// @param music Ignored.
+/// @return Never returns normally.
 int64_t rt_music_get_position(void *music) {
     (void)music;
     rt_audio_unavailable_("Music.GetPosition: audio support not compiled in");
     return 0;
 }
 
+/// @brief Audio-disabled stub for `Music.Duration`. Traps.
+/// @param music Ignored.
+/// @return Never returns normally.
 int64_t rt_music_get_duration(void *music) {
     (void)music;
     rt_audio_unavailable_("Music.GetDuration: audio support not compiled in");
@@ -1257,6 +1366,19 @@ int64_t rt_music_get_duration(void *music) {
 }
 
 // Mix group stubs — these work without audio (just store state)
+
+/// @brief Set the per-mix-group volume even in audio-disabled builds.
+///
+/// Group volumes are pure state (no playback dependency), so the
+/// disabled build keeps them functional. Game code that reads back the
+/// values it sets (e.g. for a settings UI) gets correct round-trips
+/// regardless of whether the mixer is actually mixing anything.
+///
+/// Out-of-range groups are silently ignored; volume is clamped to
+/// `0..100`.
+///
+/// @param group  Mix group index in `0..RT_MIXGROUP_COUNT-1`.
+/// @param volume Volume `0..100`.
 void rt_audio_set_group_volume(int64_t group, int64_t volume) {
     if (group < 0 || group >= RT_MIXGROUP_COUNT)
         return;
@@ -1267,12 +1389,26 @@ void rt_audio_set_group_volume(int64_t group, int64_t volume) {
     g_group_volume[group] = volume;
 }
 
+/// @brief Read the per-mix-group volume in audio-disabled builds.
+///
+/// Counterpart of `rt_audio_set_group_volume`. Returns the in-memory
+/// state, defaulting to `100` (full volume) when the group has not been
+/// explicitly set or when the index is out of range.
+///
+/// @param group Mix group index.
+/// @return Stored volume `0..100`, or `100` for out-of-range / unset.
 int64_t rt_audio_get_group_volume(int64_t group) {
     if (group < 0 || group >= RT_MIXGROUP_COUNT)
         return 100;
     return g_group_volume[group];
 }
 
+/// @brief Audio-disabled stub for `Music.CrossfadeTo`. Traps because
+///        crossfading is a mixer-level operation that has no fallback
+///        without the audio backend.
+/// @param current_music Ignored.
+/// @param new_music     Ignored.
+/// @param duration_ms   Ignored.
 void rt_music_crossfade_to(void *current_music, void *new_music, int64_t duration_ms) {
     (void)current_music;
     (void)new_music;
@@ -1280,14 +1416,22 @@ void rt_music_crossfade_to(void *current_music, void *new_music, int64_t duratio
     rt_audio_unavailable_("Music.CrossfadeTo: audio support not compiled in");
 }
 
+/// @brief Audio-disabled stub for `Music.IsCrossfading`.
+/// @return `0` (never crossfading).
 int8_t rt_music_is_crossfading(void) {
     return 0;
 }
 
+/// @brief Audio-disabled stub for `Music.CrossfadeUpdate`. Silent no-op.
+/// @param dt_ms Ignored.
 void rt_music_crossfade_update(int64_t dt_ms) {
     (void)dt_ms;
 }
 
+/// @brief Audio-disabled stub for `Sound.PlayInGroup`. Traps.
+/// @param sound Ignored.
+/// @param group Ignored.
+/// @return Never returns normally.
 int64_t rt_sound_play_in_group(void *sound, int64_t group) {
     (void)sound;
     (void)group;
@@ -1295,6 +1439,13 @@ int64_t rt_sound_play_in_group(void *sound, int64_t group) {
     return -1;
 }
 
+/// @brief Audio-disabled stub for `Sound.PlayExInGroup` (volume + pan +
+///        mix-group routing variant of `Play`). Traps.
+/// @param sound  Ignored.
+/// @param volume Ignored.
+/// @param pan    Ignored.
+/// @param group  Ignored.
+/// @return Never returns normally.
 int64_t rt_sound_play_ex_in_group(void *sound, int64_t volume, int64_t pan, int64_t group) {
     (void)sound;
     (void)volume;
@@ -1304,6 +1455,13 @@ int64_t rt_sound_play_ex_in_group(void *sound, int64_t volume, int64_t pan, int6
     return -1;
 }
 
+/// @brief Audio-disabled stub for `Sound.PlayLoopInGroup` (looping
+///        variant of `PlayExInGroup`). Traps.
+/// @param sound  Ignored.
+/// @param volume Ignored.
+/// @param pan    Ignored.
+/// @param group  Ignored.
+/// @return Never returns normally.
 int64_t rt_sound_play_loop_in_group(void *sound, int64_t volume, int64_t pan, int64_t group) {
     (void)sound;
     (void)volume;

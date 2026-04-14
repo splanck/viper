@@ -179,7 +179,7 @@ static uint32_t utf8_first_codepoint(const char *bytes, int len) {
 
 static int32_t x11_logical_to_physical(const struct vgfx_window *win, int32_t logical) {
     float scale = (win && win->scale_factor >= 1.0f) ? win->scale_factor : 1.0f;
-    return (int32_t)(logical * scale);
+    return vgfx_internal_scale_up_i32(logical, scale);
 }
 
 static int x11_recreate_ximage(struct vgfx_window *win) {
@@ -670,12 +670,15 @@ int vgfx_platform_process_events(struct vgfx_window *win) {
             case ButtonPress: {
                 int32_t x = event.xbutton.x;
                 int32_t y = event.xbutton.y;
+                win->mouse_x = x;
+                win->mouse_y = y;
 
                 /* X11 mouse button mapping:
                  *   Button1 = Left (1)
                  *   Button2 = Middle (2)
                  *   Button3 = Right (3)
-                 *   Button4/5 = Scroll wheel (ignored in v1)
+                 *   Button4/5 = Vertical scroll wheel
+                 *   Button6/7 = Horizontal scroll wheel
                  */
                 vgfx_mouse_button_t button = VGFX_MOUSE_LEFT;
                 if (event.xbutton.button == Button1) {
@@ -684,13 +687,22 @@ int vgfx_platform_process_events(struct vgfx_window *win) {
                     button = VGFX_MOUSE_MIDDLE;
                 } else if (event.xbutton.button == Button3) {
                     button = VGFX_MOUSE_RIGHT;
-                } else if (event.xbutton.button == Button4 || event.xbutton.button == Button5) {
-                    /* X11 scroll wheel: Button4 = up, Button5 = down */
-                    float dy = (event.xbutton.button == Button4) ? -1.0f : 1.0f;
+                } else if (event.xbutton.button == Button4 || event.xbutton.button == Button5 ||
+                           event.xbutton.button == Button6 || event.xbutton.button == Button7) {
+                    float dx = 0.0f;
+                    float dy = 0.0f;
+                    if (event.xbutton.button == Button4)
+                        dy = -1.0f;
+                    else if (event.xbutton.button == Button5)
+                        dy = 1.0f;
+                    else if (event.xbutton.button == Button6)
+                        dx = -1.0f;
+                    else
+                        dx = 1.0f;
                     vgfx_event_t scroll_event = {
                         .type = VGFX_EVENT_SCROLL,
                         .time_ms = timestamp,
-                        .data.scroll = {.delta_x = 0.0f, .delta_y = dy, .x = x, .y = y}};
+                        .data.scroll = {.delta_x = dx, .delta_y = dy, .x = x, .y = y}};
                     vgfx_internal_enqueue_event(win, &scroll_event);
                     break;
                 } else {
@@ -711,6 +723,8 @@ int vgfx_platform_process_events(struct vgfx_window *win) {
             case ButtonRelease: {
                 int32_t x = event.xbutton.x;
                 int32_t y = event.xbutton.y;
+                win->mouse_x = x;
+                win->mouse_y = y;
 
                 vgfx_mouse_button_t button = VGFX_MOUSE_LEFT;
                 if (event.xbutton.button == Button1) {
@@ -868,10 +882,11 @@ int vgfx_platform_process_events(struct vgfx_window *win) {
                     if (vgfx_internal_resize_framebuffer(
                             win, event.xconfigure.width, event.xconfigure.height) &&
                         x11_recreate_ximage(win)) {
-                        vgfx_event_t vgfx_event = {.type = VGFX_EVENT_RESIZE,
-                                                   .time_ms = timestamp,
-                                                   .data.resize = {.width = event.xconfigure.width,
-                                                                   .height = event.xconfigure.height}};
+                        x11->width = event.xconfigure.width;
+                        x11->height = event.xconfigure.height;
+                        vgfx_event_t vgfx_event = {0};
+                        vgfx_internal_init_resize_event(
+                            &vgfx_event, win, timestamp, event.xconfigure.width, event.xconfigure.height);
                         vgfx_internal_enqueue_event(win, &vgfx_event);
                     }
                 }
@@ -1428,7 +1443,7 @@ void vgfx_platform_warp_cursor(vgfx_window_t window, int32_t x, int32_t y) {
     vgfx_x11_data *x11 = (vgfx_x11_data *)window->platform_data;
     if (!x11->display || !x11->window)
         return;
-    float cs = window->coord_scale > 1.0f ? window->coord_scale : 1.0f;
+    float cs = vgfx_internal_coord_scale(window);
     XWarpPointer(x11->display,
                  None,
                  x11->window,
@@ -1436,8 +1451,8 @@ void vgfx_platform_warp_cursor(vgfx_window_t window, int32_t x, int32_t y) {
                  0,
                  0,
                  0,
-                 (int)(x * cs),
-                 (int)(y * cs));
+                 vgfx_internal_scale_up_i32(x, cs),
+                 vgfx_internal_scale_up_i32(y, cs));
     XFlush(x11->display);
 }
 

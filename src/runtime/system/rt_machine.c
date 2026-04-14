@@ -82,6 +82,8 @@ static rt_string make_str(const char *s) {
 // Operating System
 // ============================================================================
 
+/// @brief Return a lowercase platform identifier ("windows", "macos", "linux", "viperdos",
+/// "unknown"). Compile-time selected from `_WIN32`/`__APPLE__`/`__linux__`/`__viperdos__`.
 rt_string rt_machine_os(void) {
 #if defined(_WIN32)
     return make_str("windows");
@@ -96,6 +98,12 @@ rt_string rt_machine_os(void) {
 #endif
 }
 
+/// @brief Return the OS version string in the platform's native format. Per-OS source:
+///   - **Windows:** `GetVersionExA` → `"major.minor.build"` (deprecated but stable for VPN-style versions).
+///   - **macOS:** `sysctlbyname("kern.osproductversion")` (e.g. "14.5"); falls back to `uname.release`.
+///   - **Linux:** Parses `VERSION_ID=` from `/etc/os-release` (e.g. "22.04"); falls back to `uname.release`.
+///   - **Other Unix / ViperDOS:** `uname.release`.
+/// Returns "unknown" if every probe fails.
 rt_string rt_machine_os_ver(void) {
 #ifdef _WIN32
     // Windows version
@@ -176,6 +184,8 @@ rt_string rt_machine_os_ver(void) {
 // Host and User
 // ============================================================================
 
+/// @brief Return the machine's hostname. Uses `GetComputerNameA` (Win32) or `gethostname` (POSIX).
+/// Truncated to 256 characters and NUL-terminated. "unknown" if the syscall fails.
 rt_string rt_machine_host(void) {
 #ifdef _WIN32
     char buf[256];
@@ -194,6 +204,8 @@ rt_string rt_machine_host(void) {
 #endif
 }
 
+/// @brief Return the current user's login name. Win32 uses `GetUserNameA` (then `%USERNAME%`);
+/// POSIX uses `getpwuid(getuid())` (then `$USER` / `$LOGNAME`). "unknown" if all probes fail.
 rt_string rt_machine_user(void) {
 #ifdef _WIN32
     char buf[256];
@@ -226,6 +238,9 @@ rt_string rt_machine_user(void) {
 // Directories
 // ============================================================================
 
+/// @brief Return the current user's home directory. Win32 prefers `%USERPROFILE%`, falling back
+/// to `HOMEDRIVE+HOMEPATH`. POSIX prefers `$HOME`, falling back to `pw_dir` from the passwd
+/// entry. Empty string if no probe succeeds (rare on a properly configured system).
 rt_string rt_machine_home(void) {
 #ifdef _WIN32
     const char *home = getenv("USERPROFILE");
@@ -253,6 +268,8 @@ rt_string rt_machine_home(void) {
 #endif
 }
 
+/// @brief Return the platform's temp directory. Win32 uses `GetTempPathA` (trailing `\` stripped).
+/// POSIX checks `$TMPDIR` → `$TMP` → `$TEMP` → fixed `/tmp` fallback.
 rt_string rt_machine_temp(void) {
 #ifdef _WIN32
     char buf[512];
@@ -280,6 +297,9 @@ rt_string rt_machine_temp(void) {
 // Hardware Information
 // ============================================================================
 
+/// @brief Return the number of logical CPU cores. Win32: `GetSystemInfo.dwNumberOfProcessors`.
+/// macOS: `sysctlbyname("hw.logicalcpu")` (falls back to `sysconf(_SC_NPROCESSORS_ONLN)`).
+/// Linux/other: `sysconf(_SC_NPROCESSORS_ONLN)`. Returns 1 as the safe minimum on failure.
 int64_t rt_machine_cores(void) {
 #ifdef _WIN32
     SYSTEM_INFO sysinfo;
@@ -309,6 +329,9 @@ int64_t rt_machine_cores(void) {
 #endif
 }
 
+/// @brief Return total physical RAM in bytes. Win32: `GlobalMemoryStatusEx.ullTotalPhys`.
+/// macOS: `sysctlbyname("hw.memsize")`. Linux: `sysinfo.totalram * mem_unit`. Generic POSIX
+/// fallback: `sysconf(_SC_PHYS_PAGES) * _SC_PAGE_SIZE`. Returns 0 if no probe succeeds.
 int64_t rt_machine_mem_total(void) {
 #ifdef _WIN32
     MEMORYSTATUSEX meminfo;
@@ -344,6 +367,13 @@ int64_t rt_machine_mem_total(void) {
 #endif
 }
 
+/// @brief Return free physical RAM in bytes. Per platform:
+///   - Win32: `GlobalMemoryStatusEx.ullAvailPhys`.
+///   - macOS: Mach-port + `host_statistics64(HOST_VM_INFO64)`. Adds `free_count + inactive_count`
+///     pages because inactive pages are reclaimable on macOS (truly idle, not just unmapped).
+///   - Linux: `sysinfo.freeram * mem_unit`.
+///   - Generic POSIX: `sysconf(_SC_AVPHYS_PAGES) * _SC_PAGE_SIZE`.
+/// Mach paths carefully `mach_port_deallocate` on every exit (success or failure).
 int64_t rt_machine_mem_free(void) {
 #ifdef _WIN32
     MEMORYSTATUSEX meminfo;
@@ -400,6 +430,9 @@ int64_t rt_machine_mem_free(void) {
 // Endianness
 // ============================================================================
 
+/// @brief Detect endianness at runtime via the classic "byte-of-an-int" trick:
+/// `union { uint32_t i; char c[4]; } = {0x01020304}` — `c[0]==1` means big-endian (MSB first),
+/// otherwise little-endian. Branchless, no syscalls. Returns "big" or "little".
 rt_string rt_machine_endian(void) {
     // Detect endianness at runtime
     union {

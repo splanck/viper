@@ -111,6 +111,8 @@ static void stream_finalizer(void *obj) {
 // Stream Creation
 //=============================================================================
 
+/// @brief Open a file as a Stream. `mode` follows the same convention as `rt_binfile_open`
+/// ("r"/"w"/"rb"/"wb"/"a"/"r+"). The Stream owns the underlying BinFile and closes it on finalize.
 void *rt_stream_open_file(rt_string path, rt_string mode) {
     void *binfile = rt_binfile_open(path, mode);
     if (!binfile)
@@ -125,6 +127,7 @@ void *rt_stream_open_file(rt_string path, rt_string mode) {
     return s;
 }
 
+/// @brief Open a Stream backed by a fresh in-memory buffer (zero-length, growable).
 void *rt_stream_open_memory(void) {
     void *memstream = rt_memstream_new();
 
@@ -137,6 +140,8 @@ void *rt_stream_open_memory(void) {
     return s;
 }
 
+/// @brief Open a Stream backed by a copy of the provided Bytes (positioned at 0). The Bytes
+/// itself is not retained — subsequent edits to the original don't affect the Stream.
 void *rt_stream_open_bytes(void *bytes) {
     void *memstream = rt_memstream_from_bytes(bytes);
 
@@ -149,6 +154,8 @@ void *rt_stream_open_bytes(void *bytes) {
     return s;
 }
 
+/// @brief Wrap an existing BinFile as a Stream WITHOUT taking ownership. The wrapper survives
+/// independently — caller must keep the BinFile alive for the Stream's lifetime.
 void *rt_stream_from_binfile(void *binfile) {
     if (!binfile) {
         rt_trap("Stream.FromBinFile: binfile is null");
@@ -164,6 +171,8 @@ void *rt_stream_from_binfile(void *binfile) {
     return s;
 }
 
+/// @brief Wrap an existing MemStream as a Stream WITHOUT ownership transfer. Same pattern as
+/// `_from_binfile` — useful for unifying APIs that consume Stream over either backing kind.
 void *rt_stream_from_memstream(void *memstream) {
     if (!memstream) {
         rt_trap("Stream.FromMemStream: memstream is null");
@@ -249,6 +258,8 @@ int8_t rt_stream_is_eof(void *stream) {
 // Stream Operations
 //=============================================================================
 
+/// @brief Read up to `count` bytes from the current position. Returns a Bytes object sized to
+/// the actual count read (which may be smaller than `count` if EOF is hit).
 void *rt_stream_read(void *stream, int64_t count) {
     if (!stream || count <= 0)
         return rt_bytes_new(0);
@@ -263,6 +274,8 @@ void *rt_stream_read(void *stream, int64_t count) {
     }
 }
 
+/// @brief Read every remaining byte from the current position to EOF. Convenience for
+/// "slurp the rest" operations on a partially-consumed stream.
 void *rt_stream_read_all(void *stream) {
     if (!stream)
         return rt_bytes_new(0);
@@ -364,6 +377,8 @@ void rt_stream_close(void *stream) {
 // Conversion
 //=============================================================================
 
+/// @brief Unwrap to the underlying BinFile (if the Stream is file-backed). Returns NULL for
+/// MemStream-backed Streams. The reference is borrowed — caller must NOT release it.
 void *rt_stream_as_binfile(void *stream) {
     if (!stream)
         return NULL;
@@ -375,6 +390,7 @@ void *rt_stream_as_binfile(void *stream) {
     return NULL;
 }
 
+/// @brief Unwrap to the underlying MemStream (if memory-backed). Returns NULL otherwise.
 void *rt_stream_as_memstream(void *stream) {
     if (!stream)
         return NULL;
@@ -386,6 +402,8 @@ void *rt_stream_as_memstream(void *stream) {
     return NULL;
 }
 
+/// @brief Snapshot a MemStream's contents as a Bytes object. NULL for file-backed Streams (use
+/// `_set_pos(0)` then `_read_all` instead).
 void *rt_stream_to_bytes(void *stream) {
     if (!stream)
         return NULL;

@@ -120,6 +120,7 @@ static void check_read(rt_memstream_impl *ms, int64_t count, const char *op) {
 // Constructors
 //=============================================================================
 
+/// @brief Construct an empty in-memory stream. Buffer grows on demand. GC-managed.
 void *rt_memstream_new(void) {
     rt_memstream_impl *ms =
         (rt_memstream_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_memstream_impl));
@@ -137,6 +138,8 @@ void *rt_memstream_new(void) {
     return ms;
 }
 
+/// @brief Construct a stream pre-allocated to `capacity` bytes — useful when the final size is
+/// known up front to avoid mid-write reallocations.
 void *rt_memstream_new_capacity(int64_t capacity) {
     if (capacity < 0)
         capacity = 0;
@@ -160,6 +163,8 @@ void *rt_memstream_new_capacity(int64_t capacity) {
     return ms;
 }
 
+/// @brief Construct a stream initialized with a copy of `bytes`. Position starts at 0; subsequent
+/// reads consume the data, writes append/overwrite. The original Bytes is NOT retained.
 void *rt_memstream_from_bytes(void *bytes) {
     if (!bytes) {
         rt_trap("MemStream.FromBytes: null bytes");
@@ -194,6 +199,7 @@ void *rt_memstream_from_bytes(void *bytes) {
 // Properties
 //=============================================================================
 
+/// @brief Read the current cursor position (0 = start of buffer).
 int64_t rt_memstream_get_pos(void *obj) {
     if (!obj)
         return 0;
@@ -201,6 +207,8 @@ int64_t rt_memstream_get_pos(void *obj) {
     return ms->pos;
 }
 
+/// @brief Move the cursor to `pos`. Negative input traps; positions past the buffer end are
+/// allowed (next write zero-fills the gap).
 void rt_memstream_set_pos(void *obj, int64_t pos) {
     if (!obj) {
         rt_trap("MemStream.set_Pos: null stream");
@@ -214,6 +222,7 @@ void rt_memstream_set_pos(void *obj, int64_t pos) {
     ms->pos = pos;
 }
 
+/// @brief Read the logical length (high-water-mark of writes); distinct from capacity.
 int64_t rt_memstream_get_len(void *obj) {
     if (!obj)
         return 0;
@@ -221,6 +230,7 @@ int64_t rt_memstream_get_len(void *obj) {
     return ms->len;
 }
 
+/// @brief Read the underlying buffer's allocated size (>= length). Doubles on each grow.
 int64_t rt_memstream_get_capacity(void *obj) {
     if (!obj)
         return 0;
@@ -232,6 +242,16 @@ int64_t rt_memstream_get_capacity(void *obj) {
 // Integer Read/Write
 //=============================================================================
 
+// =============================================================================
+// Integer Read/Write — 12 functions in 6 pairs covering i8/u8/i16/u16/i32/u32/i64.
+// All multi-byte reads/writes use **little-endian** byte order (the de-facto
+// network/file convention for the runtime). Reads check bounds via `check_read`
+// (traps with type-specific message on underflow); writes call `prepare_write`
+// (grows buffer + zero-fills any gap from positions past the current length).
+// All 8/16/32/u8/u16/u32 values are returned as int64 to match the IL ABI.
+// =============================================================================
+
+/// @brief Read 1 byte as signed int8 (sign-extended to int64). Advances pos by 1.
 int64_t rt_memstream_read_i8(void *obj) {
     if (!obj) {
         rt_trap("MemStream.ReadI8: null stream");
@@ -427,6 +447,7 @@ void rt_memstream_write_i64(void *obj, int64_t value) {
 // Float Read/Write
 //=============================================================================
 
+/// @brief Read 4 bytes as IEEE-754 float, returned as double. Little-endian.
 double rt_memstream_read_f32(void *obj) {
     if (!obj) {
         rt_trap("MemStream.ReadF32: null stream");
@@ -461,6 +482,7 @@ void rt_memstream_write_f32(void *obj, double value) {
     ms->pos += 4;
 }
 
+/// @brief Read 8 bytes as IEEE-754 double. Little-endian.
 double rt_memstream_read_f64(void *obj) {
     if (!obj) {
         rt_trap("MemStream.ReadF64: null stream");
@@ -506,6 +528,7 @@ void rt_memstream_write_f64(void *obj, double value) {
 // Forward declaration for rt_bytes_new
 extern void *rt_bytes_new(int64_t len);
 
+/// @brief Read `count` raw bytes into a fresh Bytes object. Advances pos by `count`.
 void *rt_memstream_read_bytes(void *obj, int64_t count) {
     if (!obj) {
         rt_trap("MemStream.ReadBytes: null stream");
@@ -530,6 +553,7 @@ void *rt_memstream_read_bytes(void *obj, int64_t count) {
     return bytes;
 }
 
+/// @brief Write all bytes from a Bytes object at the current position. Grows buffer as needed.
 void rt_memstream_write_bytes(void *obj, void *bytes) {
     if (!obj) {
         rt_trap("MemStream.WriteBytes: null stream");
@@ -549,6 +573,8 @@ void rt_memstream_write_bytes(void *obj, void *bytes) {
     }
 }
 
+/// @brief Read `count` bytes as a UTF-8 rt_string. Caller must know the byte count up front
+/// (no length prefix; for self-describing strings, use a `write_i32(len)` + `write_str` pattern).
 rt_string rt_memstream_read_str(void *obj, int64_t count) {
     if (!obj) {
         rt_trap("MemStream.ReadStr: null stream");
@@ -566,6 +592,8 @@ rt_string rt_memstream_read_str(void *obj, int64_t count) {
     return str;
 }
 
+/// @brief Write a UTF-8 string's raw bytes (no length prefix, no terminator). Pair with
+/// `read_str(byte_count)` — caller must track length out-of-band.
 void rt_memstream_write_str(void *obj, rt_string text) {
     if (!obj) {
         rt_trap("MemStream.WriteStr: null stream");
@@ -591,6 +619,8 @@ void rt_memstream_write_str(void *obj, rt_string text) {
 // Stream Operations
 //=============================================================================
 
+/// @brief Snapshot the stream's current contents (positions 0..len-1) as a fresh Bytes object.
+/// Doesn't affect cursor position. Use to extract the result of a build-up sequence of writes.
 void *rt_memstream_to_bytes(void *obj) {
     if (!obj) {
         rt_trap("MemStream.ToBytes: null stream");
@@ -609,6 +639,8 @@ void *rt_memstream_to_bytes(void *obj) {
     return bytes;
 }
 
+/// @brief Reset length and position to 0. Does NOT shrink the buffer (so reuse keeps the
+/// already-allocated capacity for the next batch of writes).
 void rt_memstream_clear(void *obj) {
     if (!obj)
         return;
@@ -618,10 +650,12 @@ void rt_memstream_clear(void *obj) {
     // Keep capacity/buffer for reuse
 }
 
+/// @brief Alias for `set_pos`. Familiar name for stdio-style users.
 void rt_memstream_seek(void *obj, int64_t pos) {
     rt_memstream_set_pos(obj, pos);
 }
 
+/// @brief Advance the cursor by `count` bytes (relative seek). Like `set_pos(pos + count)`.
 void rt_memstream_skip(void *obj, int64_t count) {
     if (!obj) {
         rt_trap("MemStream.Skip: null stream");

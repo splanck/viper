@@ -785,18 +785,27 @@ int64_t rt_gui_app_should_close(void *app_ptr) {
     return app->should_close;
 }
 
-// Forward declarations
+// Forward declarations for the recursive paint walker.
+/// @brief Recursive widget-tree paint pass — emits draw calls for `widget` and its descendants.
 static void render_widget_tree(vgfx_window_t window,
                                vg_widget_t *widget,
                                float parent_abs_x,
                                float parent_abs_y);
+/// @brief Second pass that draws focus rings, drag previews, and tooltips above the main tree.
 static void render_widget_overlay_tree(vgfx_window_t window,
                                        vg_widget_t *widget,
                                        float parent_abs_x,
                                        float parent_abs_y);
+/// @brief Forward declaration; defined below.
 static int rt_gui_widget_accepts_drop_type(vg_widget_t *widget, const char *type);
+/// @brief Forward declaration; defined below.
 static int rt_gui_send_event_to_widget(vg_widget_t *widget, vg_event_t *event);
 
+/// @brief True if `widget` paints its own descendants (e.g. ScrollViews clip their own children).
+///
+/// Such widgets are skipped by the recursive painter — they are
+/// expected to call into their custom paint vtable to handle
+/// child rendering with whatever clipping / scrolling the widget needs.
 static int rt_gui_widget_paints_children_internally(vg_widget_t *widget) {
     if (!widget)
         return 0;
@@ -1380,10 +1389,15 @@ static void render_widget_overlay_tree(vgfx_window_t window,
 
 #else /* !VIPER_ENABLE_GRAPHICS */
 
+// ===========================================================================
+// Headless stubs — match the public-API prototypes above so that
+// non-graphical builds (server / CLI / ViperDOS) link cleanly. Each
+// stub safely no-ops or returns a sentinel (NULL, 0, 1 for "should
+// close"). Doc comments inherit from the real implementations above.
+// ===========================================================================
+
 rt_gui_app_t *s_current_app = NULL;
 
-/// @brief Set the active dialog value.
-/// @param dlg
 void rt_gui_set_active_dialog(void *dlg) {
     (void)dlg;
 }

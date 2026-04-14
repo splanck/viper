@@ -93,8 +93,17 @@ static bool g_pad_initialized = false;
 // Platform-Specific Gamepad Backend
 //=============================================================================
 
-// Forward declarations for platform-specific functions
+// ===========================================================================
+// Each platform (macOS / Linux / Windows / ViperDOS) provides its own
+// `platform_pad_poll` and `platform_pad_vibrate` implementations. The
+// public API in `rt_pad_*` calls the platform variant via these
+// forward declarations; only one definition is compiled in per build.
+// ===========================================================================
+
+/// @brief Platform-specific gamepad poll — refresh button/axis state into `g_pads[]`.
 static void platform_pad_poll(void);
+
+/// @brief Platform-specific rumble — set left/right motor strengths in [0,1].
 static void platform_pad_vibrate(int64_t index, double left, double right);
 
 #if defined(__APPLE__)
@@ -131,6 +140,15 @@ static IOHIDManagerRef g_hid_manager = NULL;
 static mac_pad g_mac_pads[VIPER_PAD_MAX];
 static bool g_mac_initialized = false;
 
+// ---------------------------------------------------------------------------
+// macOS HID helpers — all of the `mac_*` functions wrap CoreFoundation /
+// IOKit ref-counted objects (devices, axis elements, button elements).
+// `mac_clear_pad` is the reverse of `mac_scan_devices`: it walks every
+// retained element on a pad and releases it so we don't leak between
+// device scans.
+// ---------------------------------------------------------------------------
+
+/// @brief Release an axis's HID element ref and zero its calibration min/max.
 static void mac_release_axis(mac_axis *axis) {
     if (axis->element)
         CFRelease(axis->element);
@@ -139,6 +157,8 @@ static void mac_release_axis(mac_axis *axis) {
     axis->max = 0;
 }
 
+/// @brief Drop every IOKit ref retained for one pad slot (device, axes, hat, buttons).
+/// Run before each rescan so re-plugging doesn't leak the prior device.
 static void mac_clear_pad(mac_pad *pad) {
     if (pad->device)
         CFRelease(pad->device);
@@ -161,6 +181,8 @@ static void mac_clear_pad(mac_pad *pad) {
     }
 }
 
+/// @brief Build a HID match dictionary for a given GenericDesktop usage (Joystick / GamePad).
+/// Used to constrain `IOHIDManagerSetDeviceMatchingMultiple` to gamepad-shaped devices only.
 static CFMutableDictionaryRef mac_make_match(uint32_t usage) {
     CFMutableDictionaryRef dict = CFDictionaryCreateMutable(
         kCFAllocatorDefault, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
@@ -174,6 +196,7 @@ static CFMutableDictionaryRef mac_make_match(uint32_t usage) {
     return dict;
 }
 
+/// @brief Capture an axis HID element + its calibration range for later normalisation.
 static void mac_store_axis(mac_axis *axis, IOHIDElementRef element) {
     if (axis->element)
         CFRelease(axis->element);
@@ -183,6 +206,8 @@ static void mac_store_axis(mac_axis *axis, IOHIDElementRef element) {
     axis->max = IOHIDElementGetLogicalMax(element);
 }
 
+/// @brief Map a HID Button usage code (1..11) to a Viper `VIPER_PAD_*` button index.
+/// Returns -1 for usages outside the standard 11-button gamepad layout.
 static int mac_button_index(uint32_t usage) {
     switch (usage) {
         case 1:
@@ -212,6 +237,13 @@ static int mac_button_index(uint32_t usage) {
     }
 }
 
+/// @brief Enumerate matched HID gamepads and bind their elements into `g_mac_pads[]`.
+///
+/// Replaces the previous device list — every reattach event re-runs
+/// this. For each detected device we walk its element list once and
+/// classify each element by its GenericDesktop / Button HID usage:
+/// X/Y → left stick, Rx/Ry → right stick, Z/Rz → triggers, Hatswitch
+/// → D-pad, Slider → fallback trigger, Button N → button table.
 static void mac_scan_devices(void) {
     for (int i = 0; i < VIPER_PAD_MAX; ++i) {
         mac_clear_pad(&g_mac_pads[i]);
@@ -333,6 +365,13 @@ static void mac_scan_devices(void) {
     CFRelease(devices);
 }
 
+/// @brief Lazily create the IOHID manager and register it for the standard gamepad usages.
+///
+/// One-time setup. Sets up a matching dictionary array for both
+/// `Joystick` and `GamePad` GenericDesktop usages so we catch
+/// X-Input controllers (which advertise as `GamePad`) as well as
+/// classic joysticks. After this returns, `mac_scan_devices` can
+/// enumerate the manager's bound device list.
 static void mac_init_manager(void) {
     if (g_mac_initialized)
         return;
@@ -358,6 +397,7 @@ static void mac_init_manager(void) {
     g_mac_initialized = true;
 }
 
+/// @brief Map a raw HID axis reading to the [-1, +1] range using device calibration.
 static double mac_normalize_axis(CFIndex value, CFIndex min, CFIndex max) {
     if (max == min)
         return 0.0;
@@ -365,6 +405,7 @@ static double mac_normalize_axis(CFIndex value, CFIndex min, CFIndex max) {
     return norm * 2.0 - 1.0;
 }
 
+/// @brief Map a raw trigger HID reading to the [0, 1] range (triggers don't go negative).
 static double mac_normalize_trigger(CFIndex value, CFIndex min, CFIndex max) {
     if (max == min)
         return 0.0;
@@ -376,6 +417,9 @@ static double mac_normalize_trigger(CFIndex value, CFIndex min, CFIndex max) {
     return norm;
 }
 
+/// @brief Read the current integer value of one HID element.
+/// Wraps `IOHIDDeviceGetValue` and copies out the integer payload.
+/// @return true on success, false if the element couldn't be read.
 static bool mac_read_value(IOHIDDeviceRef device, IOHIDElementRef element, CFIndex *out) {
     IOHIDValueRef value_ref = NULL;
     if (!element)
@@ -386,6 +430,11 @@ static bool mac_read_value(IOHIDDeviceRef device, IOHIDElementRef element, CFInd
     return true;
 }
 
+/// @brief Translate a HID hat-switch value (0–7, 8=center) into D-pad button bits.
+///
+/// HID hats encode 8 directions clockwise starting from "up = 0".
+/// We unpack each into the corresponding `up/down/left/right` button
+/// flags so callers don't see the raw hat encoding.
 static void mac_apply_hat(rt_pad_state *pad, int hat_value) {
     bool up = false;
     bool down = false;
@@ -518,12 +567,25 @@ typedef struct {
 static linux_pad g_linux_pads[VIPER_PAD_MAX];
 static bool g_linux_initialized = false;
 
+// ---------------------------------------------------------------------------
+// Linux evdev gamepad helpers — read raw events from /dev/input/eventN
+// devices. Each `linux_*` function below is the analogue of the
+// corresponding `mac_*` helper above, but for the Linux input subsystem.
+// ---------------------------------------------------------------------------
+
+/// @brief Test bit `bit` in a Linux ioctl bitset (EVIOCGBIT-shaped buffer).
 static bool linux_test_bit(const unsigned long *bits, int bit) {
     return (bits[bit / (int)(8 * sizeof(unsigned long))] >>
             (bit % (int)(8 * sizeof(unsigned long)))) &
            1UL;
 }
 
+/// @brief Heuristic — does this input device look like a gamepad/joystick?
+///
+/// Requires both EV_KEY (button events) and EV_ABS (axes) capabilities,
+/// plus at least one of the standard gamepad button keys
+/// (BTN_GAMEPAD/BTN_JOYSTICK/BTN_SOUTH/BTN_NORTH). Filters out
+/// keyboards, mice, and touchpads that share the /dev/input namespace.
 static bool linux_is_gamepad(int fd) {
     unsigned long ev_bits[(EV_MAX + 8 * sizeof(unsigned long)) / (8 * sizeof(unsigned long))];
     unsigned long key_bits[(KEY_MAX + 8 * sizeof(unsigned long)) / (8 * sizeof(unsigned long))];
@@ -542,6 +604,7 @@ static bool linux_is_gamepad(int fd) {
            linux_test_bit(key_bits, BTN_SOUTH) || linux_test_bit(key_bits, BTN_NORTH);
 }
 
+/// @brief Close the device fd (if open) and reset the pad's calibration to defaults.
 static void linux_reset_pad(linux_pad *pad) {
     if (pad->fd >= 0)
         close(pad->fd);
@@ -554,6 +617,7 @@ static void linux_reset_pad(linux_pad *pad) {
     }
 }
 
+/// @brief Map a raw evdev axis reading to the [-1, +1] range using its absinfo range.
 static double linux_normalize_axis(int value, int min, int max) {
     if (max == min)
         return 0.0;
@@ -561,6 +625,7 @@ static double linux_normalize_axis(int value, int min, int max) {
     return norm * 2.0 - 1.0;
 }
 
+/// @brief Map a raw evdev trigger reading to [0, 1] (clamped — triggers can't go negative).
 static double linux_normalize_trigger(int value, int min, int max) {
     if (max == min)
         return 0.0;
@@ -572,6 +637,8 @@ static double linux_normalize_trigger(int value, int min, int max) {
     return norm;
 }
 
+/// @brief Translate an evdev D-pad axis (`ABS_HAT0X` or `ABS_HAT0Y`) into directional buttons.
+/// `is_x` selects which axis: true → left/right, false → up/down.
 static void linux_apply_hat(rt_pad_state *pad, int value, bool is_x) {
     if (is_x) {
         pad->buttons[VIPER_PAD_LEFT] = value < 0;
@@ -582,6 +649,12 @@ static void linux_apply_hat(rt_pad_state *pad, int value, bool is_x) {
     }
 }
 
+/// @brief One-time enumeration of `/dev/input/eventN` to bind up to `VIPER_PAD_MAX` gamepads.
+///
+/// Opens each `event*` device, classifies it via `linux_is_gamepad`,
+/// reads its calibration ranges via `EVIOCGABS`, and probes for
+/// force-feedback rumble support. Stays bound for the lifetime of
+/// the process — hot-plugging is not handled here (re-init would be needed).
 static void linux_pad_init(void) {
     if (g_linux_initialized)
         return;
@@ -1243,6 +1316,13 @@ void rt_pad_stop_vibration(int64_t index) {
 // Button Constant Getters
 //=============================================================================
 
+// ===========================================================================
+// Button-constant getters — exposed to the language layer so user code
+// can write `Pad.IsButtonDown(0, Pad.ButtonA)` without hardcoding the
+// internal `VIPER_PAD_*` enum values. Each is a trivial constant return.
+// ===========================================================================
+
+/// @brief Return the integer index for the A (south face) button.
 int64_t rt_pad_button_a(void) {
     return VIPER_PAD_A;
 }

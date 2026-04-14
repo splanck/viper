@@ -114,6 +114,15 @@ static void build_route_response(rt_http_server_impl *server, server_req_t *req,
 static void free_route_entries(rt_http_server_impl *server);
 static void free_handler_bindings(rt_http_server_impl *server);
 
+/// @brief Heap-allocate a NUL-terminated copy of a C string.
+///
+/// Uses plain `malloc` rather than the GC-managed string pool because
+/// the resulting buffer is owned by an internal route / binding entry
+/// whose lifetime is tied to the server (not to a script value). NULL
+/// input returns NULL; allocation failure returns NULL.
+///
+/// @param text Source NUL-terminated string, or NULL.
+/// @return Newly allocated copy that callers must `free()`, or NULL.
 static char *dup_cstr(const char *text) {
     if (!text)
         return NULL;
@@ -125,6 +134,17 @@ static char *dup_cstr(const char *text) {
     return copy;
 }
 
+/// @brief Grow `server->routes` so it can hold at least `needed` entries.
+///
+/// Doubles the capacity geometrically (initial 8, then 16, 32, ...) up
+/// to a hard cap of `INT32_MAX / 2` to avoid wraparound. New tail
+/// entries are zero-initialized so callers can write into them
+/// immediately. No-op when capacity already suffices.
+///
+/// @param server Server impl whose `routes`/`route_cap` is grown.
+/// @param needed Minimum required capacity (`route_count + 1` at call sites).
+/// @return `1` on success (capacity now satisfies `needed`); `0` on
+///         allocation failure or overflow.
 static int ensure_route_capacity(rt_http_server_impl *server, int needed) {
     if (needed <= server->route_cap)
         return 1;
@@ -146,6 +166,15 @@ static int ensure_route_capacity(rt_http_server_impl *server, int needed) {
     return 1;
 }
 
+/// @brief Grow `server->bindings` so it can hold at least `needed` entries.
+///
+/// Mirror of `ensure_route_capacity` for the handler-binding array. Same
+/// geometric-growth strategy with INT32_MAX/2 overflow guard and zeroed
+/// tail.
+///
+/// @param server Server impl whose `bindings`/`binding_cap` is grown.
+/// @param needed Minimum required capacity.
+/// @return `1` on success, `0` on allocation failure or overflow.
 static int ensure_binding_capacity(rt_http_server_impl *server, int needed) {
     if (needed <= server->binding_cap)
         return 1;
@@ -169,6 +198,18 @@ static int ensure_binding_capacity(rt_http_server_impl *server, int needed) {
     return 1;
 }
 
+/// @brief Append a new route entry tagged with `tag` and return a
+///        writable pointer to it.
+///
+/// Reserves capacity via `ensure_route_capacity`, then `dup_cstr`s the
+/// tag into the new slot and increments `route_count`. Caller fills in
+/// the rest of the entry's fields (method, pattern). Returns NULL on
+/// any allocation failure (capacity grow OR tag duplication).
+///
+/// @param server Server impl.
+/// @param tag    Route tag (typically the route's display name); duplicated
+///               into the entry. Lifetime tied to the server.
+/// @return Pointer to the newly-allocated entry, or NULL on failure.
 static route_entry_t *append_route_entry(rt_http_server_impl *server, const char *tag) {
     if (!server || !tag)
         return NULL;
@@ -184,6 +225,15 @@ static route_entry_t *append_route_entry(rt_http_server_impl *server, const char
     return entry;
 }
 
+/// @brief Linear-search the binding array for an entry with matching tag.
+///
+/// Bindings are typically few (one per handler), so a linear scan is
+/// faster than maintaining a hash table for the cache-locality win.
+/// NULL inputs return NULL.
+///
+/// @param server Server impl.
+/// @param tag    Tag to match (case-sensitive `strcmp`).
+/// @return Pointer to the matching entry, or NULL if not found.
 static handler_binding_t *find_handler_binding(rt_http_server_impl *server, const char *tag) {
     if (!server || !tag)
         return NULL;
@@ -196,6 +246,15 @@ static handler_binding_t *find_handler_binding(rt_http_server_impl *server, cons
     return NULL;
 }
 
+/// @brief Release a binding's resources in place (without compacting
+///        the array).
+///
+/// Calls the binding's `cleanup` (if present) on its `ctx` so the
+/// handler implementation can release whatever it allocated, then frees
+/// the heap-owned `tag` string and zeros the slot. Caller is responsible
+/// for any array compaction or count adjustment.
+///
+/// @param binding Binding to release; NULL is a safe no-op.
 static void release_handler_binding(handler_binding_t *binding) {
     if (!binding)
         return;
@@ -205,6 +264,23 @@ static void release_handler_binding(handler_binding_t *binding) {
     memset(binding, 0, sizeof(*binding));
 }
 
+/// @brief Install or replace the handler binding for `tag`.
+///
+/// If a binding already exists with `tag`, its cleanup is invoked
+/// (only when the new context is a different pointer — re-binding the
+/// same context shouldn't double-free) and the dispatch/ctx/cleanup are
+/// overwritten in place. Otherwise a new binding is appended after
+/// growing capacity. Tag is duplicated into the binding so callers can
+/// reuse their tag buffer afterwards.
+///
+/// @param server   Server impl.
+/// @param tag      Identifier for the binding (matched by `strcmp`).
+/// @param dispatch Callback that handles requests; required.
+/// @param ctx      Opaque pointer passed to `dispatch` and `cleanup`.
+/// @param cleanup  Optional callback invoked with `ctx` when the binding
+///                 is released or replaced. NULL when `ctx` doesn't
+///                 require cleanup.
+/// @return `1` on success, `0` on allocation failure or NULL inputs.
 static int set_handler_binding(rt_http_server_impl *server,
                                const char *tag,
                                rt_http_server_handler_dispatch_fn dispatch,
@@ -237,6 +313,14 @@ static int set_handler_binding(rt_http_server_impl *server,
     return 1;
 }
 
+/// @brief Free every route entry and the surrounding array.
+///
+/// Walks `server->routes`, frees each entry's tag string, frees the
+/// array itself, and zeros the count/capacity/pointer triplet so the
+/// server can be safely re-initialized. Idempotent — safe to call when
+/// no routes have been registered.
+///
+/// @param server Server impl.
 static void free_route_entries(rt_http_server_impl *server) {
     if (!server || !server->routes)
         return;
@@ -248,6 +332,13 @@ static void free_route_entries(rt_http_server_impl *server) {
     server->route_cap = 0;
 }
 
+/// @brief Free every handler binding and the surrounding array.
+///
+/// Mirror of `free_route_entries`: invokes per-binding `release_handler_
+/// binding` (which runs `cleanup` callbacks), frees the array, and zeros
+/// the count/capacity/pointer triplet.
+///
+/// @param server Server impl.
 static void free_handler_bindings(rt_http_server_impl *server) {
     if (!server || !server->bindings)
         return;
@@ -259,6 +350,19 @@ static void free_handler_bindings(rt_http_server_impl *server) {
     server->binding_cap = 0;
 }
 
+/// @brief Trampoline that adapts the C-API `rt_http_server_handler_fn`
+///        to the dispatch callback signature.
+///
+/// Bindings can be installed in two flavors: a "native" handler taking
+/// `(req, res)` directly, or a script-bridge dispatch taking
+/// `(ctx, req, res)`. The native path stores its function pointer in
+/// `ctx` and uses this trampoline as the dispatch slot so the call site
+/// is uniform. NULL `ctx` is a safe no-op (skipped, no crash).
+///
+/// @param ctx Native handler function pointer (cast back to `rt_http_
+///            server_handler_fn`).
+/// @param req Request object handle, opaque to this layer.
+/// @param res Response object handle, opaque to this layer.
 static void native_handler_dispatch(void *ctx, void *req, void *res) {
     if (!ctx)
         return;
@@ -269,6 +373,21 @@ static void native_handler_dispatch(void *ctx, void *req, void *res) {
 // Finalizer
 //=============================================================================
 
+/// @brief GC finalizer for `HttpServer` instances.
+///
+/// Called by the GC sweep when the last reference to an `HttpServer`
+/// drops. Tears down every owned resource in the right order:
+///   1. Stop the accept loop / worker pool so no thread can touch the
+///      server's data while we free it.
+///   2. Free the route + binding arrays (releases their cleanup
+///      callbacks, then their tag strings).
+///   3. Release the script-side router and worker_pool object refs (each
+///      one is itself a GC handle; we take its refcount to zero before
+///      calling `rt_obj_free`).
+///
+/// Safe to call with NULL `obj` (no-op) and idempotent if invoked twice.
+///
+/// @param obj `rt_http_server_impl *` cast to `void *`.
 static void rt_http_server_finalize(void *obj) {
     if (!obj)
         return;
@@ -288,6 +407,16 @@ static void rt_http_server_finalize(void *obj) {
 // HTTP Request Parsing
 //=============================================================================
 
+/// @brief Locate the next `\r\n` line terminator within a length-bounded
+///        buffer.
+///
+/// Used to walk request lines and headers without requiring NUL
+/// termination (the receive buffer holds raw network bytes).
+///
+/// @param buf Buffer start.
+/// @param len Buffer length in bytes.
+/// @return Pointer to the first `\r` of a `\r\n` pair, or NULL if no
+///         terminator is present in `[buf, buf+len)`.
 static const char *find_crlf(const char *buf, size_t len) {
     if (len < 2)
         return NULL;
@@ -298,6 +427,16 @@ static const char *find_crlf(const char *buf, size_t len) {
     return NULL;
 }
 
+/// @brief Locate the end of an HTTP request header section (`\r\n\r\n`).
+///
+/// HTTP headers are followed by an empty line; this returns a pointer
+/// to the first byte *after* that empty-line terminator (i.e. where
+/// the body begins, or the end of the buffer for header-only requests).
+///
+/// @param buf Buffer start.
+/// @param len Buffer length in bytes.
+/// @return Pointer one past the `\r\n\r\n` separator, or NULL if not yet
+///         present (caller should keep reading).
 static const char *find_header_end(const char *buf, size_t len) {
     if (len < 4)
         return NULL;
@@ -308,6 +447,16 @@ static const char *find_header_end(const char *buf, size_t len) {
     return NULL;
 }
 
+/// @brief `memchr`-equivalent for length-bounded buffers (single-byte
+///        needle).
+///
+/// Used by header parsing to find spaces, colons, etc. without the
+/// `strchr` requirement of NUL termination.
+///
+/// @param buf    Buffer start.
+/// @param len    Buffer length in bytes.
+/// @param needle Byte to search for.
+/// @return Pointer to first occurrence of `needle`, or NULL if not present.
 static const char *find_char_bounded(const char *buf, size_t len, char needle) {
     for (size_t i = 0; i < len; i++) {
         if (buf[i] == needle)
@@ -316,6 +465,14 @@ static const char *find_char_bounded(const char *buf, size_t len, char needle) {
     return NULL;
 }
 
+/// @brief Detect any CR or LF byte in a NUL-terminated string.
+///
+/// Header injection guard: caller-supplied header values are validated
+/// with this helper before being concatenated into the wire response,
+/// so a malicious value can't smuggle in `\r\nFake-Header: x\r\n`.
+///
+/// @param text Source string. NULL returns false.
+/// @return Non-zero if any CR or LF byte is present.
 static int contains_crlf(const char *text) {
     if (!text)
         return 0;
@@ -326,12 +483,33 @@ static int contains_crlf(const char *text) {
     return 0;
 }
 
+/// @brief Test whether a header name is one the server manages itself.
+///
+/// `Content-Length`, `Connection`, and `Transfer-Encoding` are computed
+/// from the response body and connection state, so user code is not
+/// allowed to set them via `Response.SetHeader`. Comparison is
+/// case-insensitive (HTTP header names are case-insensitive per
+/// RFC 7230 §3.2).
+///
+/// @param name Candidate header name; NULL returns 0.
+/// @return Non-zero when the server owns this header.
 static int is_server_managed_header_name(const char *name) {
     return name &&
            (strcasecmp(name, "Content-Length") == 0 || strcasecmp(name, "Connection") == 0 ||
             strcasecmp(name, "Transfer-Encoding") == 0);
 }
 
+/// @brief Parse a decimal `size_t` from a length-bounded substring.
+///
+/// Used for parsing the `Content-Length` header value. Skips leading
+/// whitespace, accepts trailing whitespace, and rejects non-digit
+/// content. Detects multiplication overflow before it can wrap.
+///
+/// @param text Buffer holding the candidate digits.
+/// @param len  Buffer length.
+/// @param out  Out-param receiving the parsed value on success.
+/// @return `true` on successful parse, `false` on empty input,
+///         non-digit content, or arithmetic overflow.
 static bool parse_size_decimal(const char *text, size_t len, size_t *out) {
     size_t value = 0;
     size_t i = 0;
@@ -365,6 +543,23 @@ static bool parse_size_decimal(const char *text, size_t len, size_t *out) {
     return true;
 }
 
+/// @brief Scan a raw HTTP header block to extract `Content-Length` and
+///        `Transfer-Encoding: chunked` framing hints.
+///
+/// Used during request reception to decide whether more body bytes are
+/// expected and where the body ends. Stops at the empty line marking
+/// the end of headers. Duplicate `Content-Length` headers are rejected
+/// per RFC 7230 §3.3.2 (the spec requires a single value to avoid
+/// request-smuggling ambiguity).
+///
+/// @param headers            Header block start (after the request line).
+/// @param headers_len        Header block length in bytes.
+/// @param content_length_out Out-param receiving parsed content length
+///                           (`0` when absent).
+/// @param chunked_out        Optional out-param set to `true` when
+///                           `Transfer-Encoding: chunked` was seen.
+/// @return `true` on successful parse, `false` on malformed headers
+///         (truncated lines, duplicate Content-Length, bad numeric value).
 static bool parse_content_length_header_block(const char *headers,
                                               size_t headers_len,
                                               size_t *content_length_out,
@@ -548,6 +743,15 @@ fail:
     return false;
 }
 
+/// @brief Free every owned field of a parsed `server_req_t`.
+///
+/// Releases the heap-owned `method`, `path`, `query`, and `body`
+/// strings (allocated during `parse_http_request`), then drops the
+/// refcount on the GC-managed `headers` and `params` Map objects.
+/// Caller is responsible for freeing the `req` storage itself if it
+/// was heap-allocated.
+///
+/// @param req Request struct to release. Members may be NULL (skipped).
 static void free_server_req(server_req_t *req) {
     free(req->method);
     free(req->path);
@@ -559,6 +763,20 @@ static void free_server_req(server_req_t *req) {
         rt_obj_free(req->params);
 }
 
+/// @brief Test-only entry point for the HTTP request parser.
+///
+/// Wraps `parse_http_request` so unit tests can exercise the parser
+/// without needing a real socket. Out-parameters receive freshly
+/// `strdup`'d copies of the parsed fields so the test can call the
+/// req-free path independently. Caller owns each returned string.
+///
+/// @param raw           Raw request bytes (e.g. `"GET / HTTP/1.1\r\n..."`).
+/// @param raw_len       Length of `raw`.
+/// @param method_out    Receives method string (e.g. `"GET"`), or NULL.
+/// @param path_out      Receives path string (e.g. `"/api/users"`), or NULL.
+/// @param body_out      Receives body bytes (NUL-terminated copy), or NULL.
+/// @param body_len_out  Receives body length in bytes, or NULL.
+/// @return `1` on successful parse, `0` on malformed request.
 int rt_http_server_test_parse_request(const char *raw,
                                       size_t raw_len,
                                       char **method_out,
@@ -586,6 +804,15 @@ int rt_http_server_test_parse_request(const char *raw,
 // HTTP Response Building
 //=============================================================================
 
+/// @brief Map an HTTP status code to its canonical reason-phrase.
+///
+/// Covers the codes the HttpServer runtime currently emits (the common
+/// 2xx, 3xx, 4xx, 5xx subset). Falls back to `"Unknown"` for codes the
+/// table doesn't list — the response still goes out, just with a
+/// non-standard reason phrase. Matches RFC 7231 §6.1 wording.
+///
+/// @param code HTTP status code.
+/// @return Pointer to a static string literal with the reason phrase.
 static const char *status_text_for_code(int code) {
     switch (code) {
         case 200:
@@ -718,6 +945,25 @@ static char *build_response(server_res_t *res, size_t *out_len) {
     return buf;
 }
 
+/// @brief Test-only entry point for the HTTP response builder.
+///
+/// Mirror of `rt_http_server_test_parse_request`: lets unit tests
+/// construct a wire-format response from C input arrays without going
+/// through the script-side `Response` object. Builds a temporary
+/// `server_res_t`, populates it with the status code, body, and
+/// headers, then delegates to the shared `build_response` formatter.
+///
+/// @param status_code   HTTP status code (e.g. 200, 404).
+/// @param body          Body bytes (may be NULL when `body_len == 0`).
+/// @param body_len      Body length in bytes.
+/// @param header_names  Array of `header_count` header name strings.
+/// @param header_values Array of `header_count` header value strings,
+///                      paired with `header_names` by index.
+/// @param header_count  Number of header pairs.
+/// @param out_len       Out-param receiving the formatted response
+///                      length in bytes.
+/// @return Newly malloc'd response buffer (caller frees), or NULL on
+///         allocation failure.
 char *rt_http_server_test_build_response(int status_code,
                                          const char *body,
                                          size_t body_len,
@@ -762,6 +1008,23 @@ char *rt_http_server_test_build_response(int status_code,
 // Request Handler
 //=============================================================================
 
+/// @brief Handle a single accepted client connection end-to-end.
+///
+/// Reads the request (with a 30-second receive timeout to bound idle
+/// keepalives), parses headers, validates the framing
+/// (`Content-Length` only — chunked is rejected; oversize bodies are
+/// rejected at `HTTP_REQ_MAX_BODY`), parses the request, dispatches
+/// through the route table via `build_route_response`, formats the
+/// response via `build_response`, sends it on the socket, and closes
+/// the connection. Caller (the accept loop or worker pool) owns the
+/// `tcp` handle's lifetime up to entering this function; we close it
+/// before returning.
+///
+/// On any allocation failure or malformed request, sends a minimal
+/// `400 Bad Request` and closes the connection.
+///
+/// @param server Server impl owning the route table and bindings.
+/// @param tcp    Accepted TCP connection handle (we close it).
 static void handle_connection(rt_http_server_impl *server, void *tcp) {
     // Read request (up to 64KB headers + body)
     size_t buf_cap = 65536;
@@ -883,12 +1146,36 @@ typedef struct {
     void *tcp;
 } http_conn_task_t;
 
+/// @brief Worker-pool task wrapper around `handle_connection`.
+///
+/// The accept loop allocates an `http_conn_task_t` (server + tcp pair)
+/// and submits it to the worker pool; the worker calls this function,
+/// which forwards to `handle_connection` and frees the task struct
+/// afterwards. The TCP handle's lifetime is owned by `handle_connection`,
+/// not the task.
+///
+/// @param arg `http_conn_task_t *` cast to `void *`.
 static void handle_connection_task(void *arg) {
     http_conn_task_t *task = (http_conn_task_t *)arg;
     handle_connection(task->server, task->tcp);
     free(task);
 }
 
+/// @brief Replace the response body with a JSON error object.
+///
+/// Used when the route lookup fails (404) or the handler crashes (500)
+/// to produce a structured error response instead of the bare status
+/// line. The body is `{"error":"<message>"}`; the `Content-Type` header
+/// is set (creating the headers map if needed) so clients see the JSON
+/// MIME type.
+///
+/// Idempotent: clears any pre-existing body before writing the new one.
+/// Allocation failures result in a status-code-only response (no body).
+///
+/// @param res         Response struct to overwrite.
+/// @param status_code HTTP status code to set.
+/// @param message     Human-readable error text; embedded into the JSON
+///                    body literally (no escaping). NULL means no body.
 static void set_json_error_response(server_res_t *res, int status_code, const char *message) {
     if (!res)
         return;
@@ -921,6 +1208,20 @@ static void set_json_error_response(server_res_t *res, int status_code, const ch
     }
 }
 
+/// @brief Dispatch a parsed request to its registered handler and
+///        populate the response.
+///
+/// Looks up the route via `rt_http_router_match` (which also extracts
+/// path parameters), records the params on the request, then resolves
+/// the handler binding via `find_handler_binding` and calls its
+/// dispatch callback. On lookup failure produces a JSON error response
+/// (500 for missing handler, 404 for no matching route).
+///
+/// Defaults the response status to 200 if the handler didn't set one.
+///
+/// @param server Server impl owning the routes/bindings.
+/// @param req    Parsed request; `params` is populated on success.
+/// @param res    Response struct to populate (status, headers, body).
 static void build_route_response(rt_http_server_impl *server,
                                  server_req_t *req,
                                  server_res_t *res) {
@@ -961,6 +1262,21 @@ static void build_route_response(rt_http_server_impl *server,
 // Accept Loop
 //=============================================================================
 
+/// @brief Background thread entry point: accept connections forever
+///        and dispatch each to the worker pool.
+///
+/// Loops on `rt_tcp_server_accept_for` with a 1-second timeout so the
+/// thread can wake periodically to check `server->running` (the stop
+/// signal). For each accepted TCP connection, allocates a small
+/// `http_conn_task_t` and submits `handle_connection_task` to the
+/// worker pool. If allocation or submission fails, the connection is
+/// closed immediately.
+///
+/// The platform-specific signature differs (`DWORD WINAPI` on Windows
+/// vs `void *` on POSIX) but the body is identical.
+///
+/// @param arg `rt_http_server_impl *` cast to `void *`.
+/// @return 0 / NULL on normal shutdown.
 #ifdef _WIN32
 static DWORD WINAPI accept_loop(LPVOID arg)
 #else
@@ -1006,6 +1322,20 @@ static void *accept_loop(void *arg)
 // Public API
 //=============================================================================
 
+/// @brief `HttpServer.New(port)` — create a new HTTP server bound to
+///        the given TCP port.
+///
+/// Allocates a GC-managed server impl, attaches the finalizer (which
+/// will tear down routes / worker pool / accept loop on collection),
+/// constructs the route trie and an 8-thread worker pool, and stores
+/// the requested port for later use by `Start`. The TCP listener is
+/// not actually opened until `Start`; this constructor only validates
+/// inputs and reserves resources.
+///
+/// Traps on invalid port (`<1` or `>65535`) or allocation failure.
+///
+/// @param port TCP port number, 1..65535.
+/// @return GC-managed `HttpServer` handle.
 void *rt_http_server_new(int64_t port) {
     if (port < 1 || port > 65535)
         rt_trap("HttpServer: invalid port");
@@ -1025,6 +1355,20 @@ void *rt_http_server_new(int64_t port) {
     return server;
 }
 
+/// @brief Helper used by every `Get`/`Post`/`Put`/`Delete` registrar.
+///
+/// Forwards `pattern` to the router via the method-specific `adder`
+/// (one of `rt_http_router_{get,post,put,delete}`) and records the
+/// `handler_tag` in the server's route entry so subsequent
+/// `bind_handler` calls can resolve the binding by tag.
+///
+/// Traps on invalid handler tag or route-add failure.
+///
+/// @param obj         Server impl, opaque.
+/// @param pattern     Route URL pattern (e.g. `"/users/:id"`).
+/// @param handler_tag Tag string used to associate the route with a
+///                    handler bound later.
+/// @param adder       Method-specific router-add function pointer.
 static void add_route_binding(void *obj,
                               rt_string pattern,
                               rt_string handler_tag,
@@ -1040,22 +1384,42 @@ static void add_route_binding(void *obj,
         rt_trap("HttpServer: failed to register route");
 }
 
+/// @brief `HttpServer.Get(pattern, handler_tag)` — register a GET route.
+/// @param obj         HttpServer handle.
+/// @param pattern     URL pattern.
+/// @param handler_tag Handler tag string (resolved by `BindHandler`).
 void rt_http_server_get(void *obj, rt_string pattern, rt_string handler_tag) {
     add_route_binding(obj, pattern, handler_tag, rt_http_router_get);
 }
 
+/// @brief `HttpServer.Post(pattern, handler_tag)` — register a POST route.
 void rt_http_server_post(void *obj, rt_string pattern, rt_string handler_tag) {
     add_route_binding(obj, pattern, handler_tag, rt_http_router_post);
 }
 
+/// @brief `HttpServer.Put(pattern, handler_tag)` — register a PUT route.
 void rt_http_server_put(void *obj, rt_string pattern, rt_string handler_tag) {
     add_route_binding(obj, pattern, handler_tag, rt_http_router_put);
 }
 
+/// @brief `HttpServer.Delete(pattern, handler_tag)` — register a DELETE route.
 void rt_http_server_del(void *obj, rt_string pattern, rt_string handler_tag) {
     add_route_binding(obj, pattern, handler_tag, rt_http_router_delete);
 }
 
+/// @brief `HttpServer.BindHandler(tag, native_fn)` — bind a native C
+///        callback to a previously-registered route tag.
+///
+/// `entry` should be a function pointer with signature
+/// `void(rt_http_server_handler_fn)(req, res)`. Stored via the shared
+/// `set_handler_binding` infrastructure with `native_handler_dispatch`
+/// as the trampoline so dispatch can route through the same code path
+/// as script-bridged handlers.
+///
+/// @param obj         HttpServer handle.
+/// @param handler_tag Tag string matching one previously passed to
+///                    `Get`/`Post`/etc.
+/// @param entry       Native handler function pointer cast to `void *`.
 void rt_http_server_bind_handler(void *obj, rt_string handler_tag, void *entry) {
     if (!obj || !entry)
         return;
@@ -1070,6 +1434,20 @@ void rt_http_server_bind_handler(void *obj, rt_string handler_tag, void *entry) 
     }
 }
 
+/// @brief Script-bridge variant of `BindHandler` that takes an explicit
+///        dispatch function, opaque context, and optional cleanup.
+///
+/// Used by Zia/BASIC frontends to install a closure-style handler:
+/// `dispatch` is the trampoline that invokes the script handler;
+/// `ctx` carries the script's environment (closure captures, this-
+/// pointer, etc.); `cleanup` is invoked when the binding is replaced
+/// or the server is finalized.
+///
+/// @param obj         HttpServer handle.
+/// @param handler_tag Handler tag string.
+/// @param dispatch    Dispatch function `void(*)(ctx, req, res)`.
+/// @param ctx         Opaque context passed to dispatch.
+/// @param cleanup     Optional cleanup `void(*)(ctx)`, or NULL.
 void rt_http_server_bind_handler_dispatch(
     void *obj, rt_string handler_tag, void *dispatch, void *ctx, void *cleanup) {
     if (!obj || !dispatch)
@@ -1088,6 +1466,15 @@ void rt_http_server_bind_handler_dispatch(
     }
 }
 
+/// @brief `HttpServer.Start()` — open the listening socket and spin up
+///        the accept loop on a background thread.
+///
+/// Idempotent: re-running on a server that's already running is a
+/// silent no-op. Re-creates the worker pool if it was previously torn
+/// down (e.g. by `Stop`). Traps on NULL receiver. The accept thread
+/// terminates when `running` is cleared by `Stop`.
+///
+/// @param obj HttpServer handle.
 void rt_http_server_start(void *obj) {
     if (!obj)
         rt_trap("HttpServer: NULL server");
@@ -1111,6 +1498,16 @@ void rt_http_server_start(void *obj) {
 #endif
 }
 
+/// @brief `HttpServer.Stop()` — tear down the listener and join the
+///        accept thread.
+///
+/// Clears the running flag, closes the underlying TCP server (which
+/// unblocks any in-progress `accept()` call), then waits up to 5s on
+/// Windows (or unbounded on POSIX) for the accept thread to exit. Drains
+/// any in-flight worker tasks before returning. NULL receiver is a
+/// silent no-op. Safe to call repeatedly.
+///
+/// @param obj HttpServer handle.
 void rt_http_server_stop(void *obj) {
     if (!obj)
         return;
@@ -1136,12 +1533,29 @@ void rt_http_server_stop(void *obj) {
         rt_threadpool_wait(server->worker_pool);
 }
 
+/// @brief `HttpServer.Port` — return the TCP port the server is bound to.
+///
+/// Returns 0 if the receiver is NULL or the server was constructed with
+/// no explicit port and never started. After a successful `Start`, this
+/// reflects the actual kernel-assigned port (useful when the server was
+/// constructed with port 0 to request an ephemeral port).
+///
+/// @param obj HttpServer handle.
+/// @return Bound TCP port, or 0 if not bound / NULL receiver.
 int64_t rt_http_server_port(void *obj) {
     if (!obj)
         return 0;
     return ((rt_http_server_impl *)obj)->port;
 }
 
+/// @brief `HttpServer.IsRunning` — whether the accept loop is active.
+///
+/// Returns the latched `running` flag set by `Start` and cleared by
+/// `Stop`. This is a snapshot — there is a brief window during teardown
+/// where the flag is false but the accept thread is still draining.
+///
+/// @param obj HttpServer handle.
+/// @return 1 if running, 0 if stopped or NULL receiver.
 int8_t rt_http_server_is_running(void *obj) {
     if (!obj)
         return 0;
@@ -1152,6 +1566,14 @@ int8_t rt_http_server_is_running(void *obj) {
 // ServerReq Accessors
 //=============================================================================
 
+/// @brief `ServerReq.Method` — return the HTTP method as a string.
+///
+/// Returns "GET", "POST", "PUT", "DELETE", etc. as parsed from the
+/// request line. Returns "" for NULL receiver or a malformed request.
+/// The result is a fresh string the caller owns.
+///
+/// @param obj ServerReq handle.
+/// @return Owned `rt_string` containing the method, never NULL.
 rt_string rt_server_req_method(void *obj) {
     if (!obj)
         return rt_string_from_bytes("", 0);
@@ -1160,6 +1582,15 @@ rt_string rt_server_req_method(void *obj) {
                        : rt_string_from_bytes("", 0);
 }
 
+/// @brief `ServerReq.Path` — return the request path (without query string).
+///
+/// The query string is stripped during request parsing and stored
+/// separately (accessible via `Query`). Returns "" for NULL receiver
+/// or a request with no path (defensive only — the parser rejects
+/// such inputs upstream).
+///
+/// @param obj ServerReq handle.
+/// @return Owned `rt_string` containing the path, never NULL.
 rt_string rt_server_req_path(void *obj) {
     if (!obj)
         return rt_string_from_bytes("", 0);
@@ -1168,6 +1599,15 @@ rt_string rt_server_req_path(void *obj) {
                      : rt_string_from_bytes("", 0);
 }
 
+/// @brief `ServerReq.Body` — return the raw request body.
+///
+/// The body is exactly what came over the wire after the headers — no
+/// content-decoding, no charset normalization. Length is taken from the
+/// parsed Content-Length, so binary bodies with embedded NULs are
+/// preserved. Returns "" if there is no body or the receiver is NULL.
+///
+/// @param obj ServerReq handle.
+/// @return Owned `rt_string` containing the body bytes, never NULL.
 rt_string rt_server_req_body(void *obj) {
     if (!obj)
         return rt_string_from_bytes("", 0);
@@ -1175,6 +1615,18 @@ rt_string rt_server_req_body(void *obj) {
     return req->body ? rt_string_from_bytes(req->body, req->body_len) : rt_string_from_bytes("", 0);
 }
 
+/// @brief `ServerReq.Header(name)` — case-insensitive header lookup.
+///
+/// HTTP header names are case-insensitive per RFC 7230 §3.2, so the
+/// lookup name is lowercased before consulting the parsed header map
+/// (which stores keys in lowercase form). Allocates a transient lower
+/// buffer for the lookup; returns "" for missing headers, NULL receiver,
+/// NULL name, or allocation failure. The returned string is a fresh
+/// copy so the caller can outlive the request object.
+///
+/// @param obj  ServerReq handle.
+/// @param name Header name (any case).
+/// @return Owned `rt_string` with header value, or "" if not present.
 rt_string rt_server_req_header(void *obj, rt_string name) {
     if (!obj)
         return rt_string_from_bytes("", 0);
@@ -1208,6 +1660,17 @@ rt_string rt_server_req_header(void *obj, rt_string name) {
                        : rt_string_from_bytes("", 0);
 }
 
+/// @brief `ServerReq.Param(name)` — read a captured route parameter.
+///
+/// Route parameters are the placeholders in route patterns like
+/// `/users/:id` — at match time the segment is captured and stored on
+/// the request's `params` table. Returns "" if the parameter wasn't
+/// captured for this request, the receiver is NULL, or the params
+/// table is missing.
+///
+/// @param obj  ServerReq handle.
+/// @param name Parameter name (without the leading `:`).
+/// @return Owned `rt_string` with the captured value, or "" if absent.
 rt_string rt_server_req_param(void *obj, rt_string name) {
     if (!obj)
         return rt_string_from_bytes("", 0);
@@ -1220,6 +1683,17 @@ rt_string rt_server_req_param(void *obj, rt_string name) {
                       : rt_string_from_bytes("", 0);
 }
 
+/// @brief `ServerReq.Query(name)` — read a query-string value.
+///
+/// Linear-scans the raw query string for `name=value` pairs separated
+/// by `&`. The matched value is URL-decoded (percent-escapes and `+`
+/// → space) before being returned. Only the first occurrence of a
+/// duplicated name is returned. Returns "" if the parameter is absent,
+/// the receiver/name is NULL, or no query string was present.
+///
+/// @param obj  ServerReq handle.
+/// @param name Query-parameter name.
+/// @return Owned `rt_string` with the URL-decoded value, or "" if absent.
 rt_string rt_server_req_query(void *obj, rt_string name) {
     if (!obj)
         return rt_string_from_bytes("", 0);
@@ -1255,6 +1729,16 @@ rt_string rt_server_req_query(void *obj, rt_string name) {
 // ServerRes Accessors
 //=============================================================================
 
+/// @brief `ServerRes.Status(code)` — set the HTTP status code.
+///
+/// Stores `code` on the response builder. No range validation: callers
+/// can set non-standard codes (e.g., 418). Returns the receiver to
+/// support chained builder syntax: `res.Status(404).Send("Not Found")`.
+/// NULL receiver is a no-op that returns NULL.
+///
+/// @param obj  ServerRes handle.
+/// @param code HTTP status code (e.g., 200, 404, 500).
+/// @return The same `obj` for chaining.
 void *rt_server_res_status(void *obj, int64_t code) {
     if (!obj)
         return obj;
@@ -1263,6 +1747,20 @@ void *rt_server_res_status(void *obj, int64_t code) {
     return obj;
 }
 
+/// @brief `ServerRes.Header(name, value)` — set a custom response header.
+///
+/// Adds an entry to the response header map (creating it lazily on
+/// first call). Silently rejects:
+///   - NULL or non-c-string name/value (defensive),
+///   - any name or value containing CR or LF (header injection guard),
+///   - "server-managed" header names like Content-Length,
+///     Transfer-Encoding, and Connection that the framework owns.
+/// Returns the receiver for chaining. NULL receiver is a no-op.
+///
+/// @param obj   ServerRes handle.
+/// @param name  Header name.
+/// @param value Header value.
+/// @return The same `obj` for chaining.
 void *rt_server_res_header(void *obj, rt_string name, rt_string value) {
     if (!obj)
         return obj;
@@ -1278,6 +1776,16 @@ void *rt_server_res_header(void *obj, rt_string name, rt_string value) {
     return obj;
 }
 
+/// @brief `ServerRes.Send(body)` — finalize the response with a text body.
+///
+/// Replaces any previously buffered body, captures the new body via
+/// `strdup` (so the response outlives the source string), and marks
+/// the response as `sent` so the dispatch loop knows to flush rather
+/// than fall through to the default 404. NULL receiver is a no-op;
+/// NULL body collapses to a zero-length response.
+///
+/// @param obj  ServerRes handle.
+/// @param body Body bytes to send (may be NULL → empty body).
 void rt_server_res_send(void *obj, rt_string body) {
     if (!obj)
         return;
@@ -1289,6 +1797,15 @@ void rt_server_res_send(void *obj, rt_string body) {
     res->sent = true;
 }
 
+/// @brief `ServerRes.Json(jsonStr)` — finalize as a JSON response.
+///
+/// Convenience wrapper that sets `Content-Type: application/json`
+/// and delegates the body capture to `rt_server_res_send`. Does *not*
+/// validate that `json_str` is well-formed JSON — that's the caller's
+/// responsibility. NULL receiver is a no-op.
+///
+/// @param obj      ServerRes handle.
+/// @param json_str Pre-serialized JSON body.
 void rt_server_res_json(void *obj, rt_string json_str) {
     if (!obj)
         return;
@@ -1301,6 +1818,18 @@ void rt_server_res_json(void *obj, rt_string json_str) {
     rt_server_res_send(obj, json_str);
 }
 
+/// @brief Synchronous router entry-point — parse a raw request string
+///        and return the wire-format response.
+///
+/// Bypasses the socket, accept loop, and worker pool — useful for unit
+/// tests and embedding scenarios where the host owns the I/O. The
+/// pipeline is identical to the live path: parse → route → execute →
+/// build wire response. Returns a 400 response if parsing fails.
+/// Releases all transient header/body/req state before returning.
+///
+/// @param obj         HttpServer handle.
+/// @param raw_request Raw HTTP request (request line + headers + body).
+/// @return Owned `rt_string` containing the full HTTP/1.1 response.
 void *rt_http_server_process_request(void *obj, rt_string raw_request) {
     if (!obj)
         return rt_string_from_bytes("", 0);

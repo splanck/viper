@@ -99,6 +99,45 @@ static int linkToExe(const std::string &asmPath,
     return lrc;
 }
 
+static void collectNativeLinkArchives(const common::LinkContext &ctx,
+                                      std::vector<std::string> &archives) {
+    std::unordered_set<std::string> seenArchives;
+
+    auto appendIfExists = [&](const std::filesystem::path &path) {
+        if (!common::fileExists(path))
+            return;
+        const std::string archivePath = path.lexically_normal().string();
+        if (seenArchives.insert(archivePath).second)
+            archives.push_back(archivePath);
+    };
+
+    auto appendComponent = [&](RtComponent comp) {
+        appendIfExists(common::runtimeArchivePath(ctx.buildDir, archiveNameForComponent(comp)));
+    };
+
+    for (const auto &entry : ctx.requiredArchives)
+        appendIfExists(entry.second);
+
+#if defined(_WIN32)
+    if (common::hasComponent(ctx, RtComponent::Base)) {
+        appendComponent(RtComponent::Oop);
+        appendComponent(RtComponent::Arrays);
+        appendComponent(RtComponent::Collections);
+        appendComponent(RtComponent::Threads);
+        appendComponent(RtComponent::Text);
+        appendComponent(RtComponent::IoFs);
+    }
+#endif
+
+    if (common::hasComponent(ctx, RtComponent::Graphics)) {
+        appendIfExists(common::supportLibraryPath(ctx.buildDir, "vipergui"));
+        appendIfExists(common::supportLibraryPath(ctx.buildDir, "vipergfx"));
+    }
+
+    if (common::hasComponent(ctx, RtComponent::Audio))
+        appendIfExists(common::supportLibraryPath(ctx.buildDir, "viperaud"));
+}
+
 static int linkObjToExe(const std::string &objPath,
                         const std::string &exePath,
                         const LinkContext &ctx,
@@ -118,100 +157,9 @@ static int linkObjToExe(const std::string &objPath,
     linkOpts.entrySymbol = "main";
     linkOpts.stackSize = stackSize;
     linkOpts.extraObjPaths = extraObjects;
-
-    static constexpr RtComponent allComponents[] = {
-        RtComponent::Network,
-        RtComponent::Threads,
-        RtComponent::Audio,
-        RtComponent::Graphics,
-        RtComponent::Game,
-        RtComponent::Exec,
-        RtComponent::IoFs,
-        RtComponent::Text,
-        RtComponent::Collections,
-        RtComponent::Arrays,
-        RtComponent::Oop,
-        RtComponent::Base,
-    };
-    for (auto comp : allComponents) {
-        auto arPath = runtimeArchivePath(ctx.buildDir, archiveNameForComponent(comp));
-        if (fileExists(arPath))
-            linkOpts.archivePaths.push_back(arPath.string());
-    }
-
-    auto addIfExists = [&](const std::filesystem::path &p) {
-        if (fileExists(p))
-            linkOpts.archivePaths.push_back(p.string());
-    };
-    addIfExists(supportLibraryPath(ctx.buildDir, "vipergui"));
-    addIfExists(supportLibraryPath(ctx.buildDir, "vipergfx"));
-    addIfExists(supportLibraryPath(ctx.buildDir, "viperaud"));
+    collectNativeLinkArchives(ctx, linkOpts.archivePaths);
 
     return viper::codegen::linker::nativeLink(linkOpts, out, err);
-}
-
-static void applyDarwinAsmFixups(std::string &asmText, const il::core::Module &mod) {
-    auto replace_all = [](std::string &hay, const std::string &from, const std::string &to) {
-        std::size_t pos = 0;
-        while ((pos = hay.find(from, pos)) != std::string::npos) {
-            hay.replace(pos, from.size(), to);
-            pos += to.size();
-        }
-    };
-
-    replace_all(asmText, "\n.globl main\n", "\n.globl _main\n");
-    replace_all(asmText, "\nmain:\n", "\n_main:\n");
-
-    for (const auto &fn : mod.functions) {
-        const std::string &name = fn.name;
-        if (name == "main")
-            continue;
-        if (name.empty() || name[0] != 'L')
-            continue;
-        replace_all(
-            asmText, std::string(".globl ") + name + "\n", std::string(".globl _") + name + "\n");
-        replace_all(asmText, std::string("\n") + name + ":\n", std::string("\n_") + name + ":\n");
-        replace_all(asmText, std::string(" bl ") + name + "\n", std::string(" bl _") + name + "\n");
-    }
-
-    const char *runtime_funcs[] = {"rt_trap",
-                                   "rt_str_concat",
-                                   "rt_print",
-                                   "rt_input",
-                                   "rt_malloc",
-                                   "rt_free",
-                                   "rt_memcpy",
-                                   "rt_memset",
-                                   "rt_const_cstr",
-                                   "rt_print_str"};
-    for (const char *rtfn : runtime_funcs) {
-        replace_all(asmText, std::string(" bl ") + rtfn + "\n", std::string(" bl _") + rtfn + "\n");
-    }
-
-    for (const auto &ex : mod.externs) {
-        if (ex.name.rfind("rt_", 0) == 0)
-            continue;
-
-        const std::string from = std::string(" bl ") + ex.name + "\n";
-        if (ex.name.rfind("Viper.Console.", 0) == 0) {
-            const std::string suffix = ex.name.substr(std::string("Viper.Console.").size());
-            std::string rt_equiv;
-            if (suffix == "PrintStr")
-                rt_equiv = "rt_print_str";
-            else if (suffix == "PrintI64")
-                rt_equiv = "rt_print_i64";
-            else if (suffix == "PrintF64")
-                rt_equiv = "rt_print_f64";
-            if (!rt_equiv.empty())
-                replace_all(asmText, from, std::string(" bl _") + rt_equiv + "\n");
-            else
-                replace_all(asmText, from, std::string(" bl _") + ex.name + "\n");
-        } else {
-            replace_all(asmText, from, std::string(" bl _") + ex.name + "\n");
-        }
-    }
-
-    replace_all(asmText, " bl rt_", " bl _rt_");
 }
 
 static bool runIlOptimizations(il::core::Module &mod, int optimizeLevel) {
@@ -245,14 +193,6 @@ static bool runIlOptimizations(il::core::Module &mod, int optimizeLevel) {
         return false;
     };
 
-    if (hasEhSensitiveControl(mod)) {
-        // The generic IL optimization pipelines still do not preserve all
-        // handler/resume structural invariants. Keep O1/O2 as the CLI default,
-        // but bypass unsafe IL rewrites for EH-bearing modules and rely on the
-        // backend cleanup passes instead.
-        return true;
-    }
-
     constexpr std::size_t kLargeModuleIlOptThreshold = 100000;
     auto totalInstructionCount = [](const il::core::Module &module) {
         std::size_t totalInstrs = 0;
@@ -263,13 +203,16 @@ static bool runIlOptimizations(il::core::Module &mod, int optimizeLevel) {
     };
 
     il::transform::PassManager ilpm;
+    if (hasEhSensitiveControl(mod)) {
+        ilpm.registerPipeline("codegen-eh-safe", {"eh-opt"});
+        return ilpm.runPipeline(mod, "codegen-eh-safe");
+    }
+
     const std::size_t totalInstrs = totalInstructionCount(mod);
     if (totalInstrs > kLargeModuleIlOptThreshold) {
-        // Huge frontend-built modules such as sqldb spend disproportionate
-        // time in the IL optimizer. Skip IL-level optimization entirely here
-        // and rely on backend codegen cleanup so native demo builds do not
-        // appear hung for minutes.
-        return true;
+        ilpm.registerPipeline("codegen-large",
+                              {"simplify-cfg", "sccp", "constfold", "dce", "simplify-cfg"});
+        return ilpm.runPipeline(mod, "codegen-large");
     }
     if (optimizeLevel >= 2) {
         ilpm.registerPipeline("codegen-O2",
@@ -465,9 +408,6 @@ PipelineResult CodegenPipeline::run() {
         p.replace_extension(".s");
         asmPath = p.string();
     }
-
-    if (ti.abiFormat == ABIFormat::Darwin && (!opts_.output_obj_path.empty() || opts_.run_native))
-        applyDarwinAsmFixups(asmText, mod);
 
     if (opts_.emit_asm) {
         if (!common::writeTextFile(asmPath, asmText, err)) {

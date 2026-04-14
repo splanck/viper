@@ -66,22 +66,33 @@ typedef struct rt_bytes_impl {
     uint8_t *data; ///< Pointer to inline byte storage (immediately follows struct).
 } rt_bytes_impl;
 
+// ---------------------------------------------------------------------------
+// Trap helpers — wrappers that pair each trap kind with its
+// matching error code. Centralizes the boilerplate so individual
+// callers stay terse.
+// ---------------------------------------------------------------------------
+
+/// @brief Raise a generic runtime trap (e.g. allocation failure).
 static void rt_bytes_trap_runtime(const char *msg) {
     rt_trap_raise_kind(RT_TRAP_KIND_RUNTIME_ERROR, Err_RuntimeError, -1, msg);
 }
 
+/// @brief Raise a domain-error trap (e.g. invalid argument).
 static void rt_bytes_trap_domain(const char *msg) {
     rt_trap_raise_kind(RT_TRAP_KIND_DOMAIN_ERROR, Err_DomainError, -1, msg);
 }
 
+/// @brief Raise an invalid-operation trap (e.g. operation on NULL Bytes).
 static void rt_bytes_trap_invalid_operation(const char *msg) {
     rt_trap_raise_kind(RT_TRAP_KIND_INVALID_OPERATION, Err_InvalidOperation, -1, msg);
 }
 
+/// @brief Raise an out-of-bounds trap (offset/index outside the byte array).
 static void rt_bytes_trap_bounds(const char *msg) {
     rt_trap_raise_kind(RT_TRAP_KIND_BOUNDS, Err_Bounds, -1, msg);
 }
 
+/// @brief Raise an overflow trap (e.g. requested size exceeds INT64_MAX).
 static void rt_bytes_trap_overflow(const char *msg) {
     rt_trap_raise_kind(RT_TRAP_KIND_OVERFLOW, Err_Overflow, -1, msg);
 }
@@ -923,6 +934,14 @@ static inline void bytes_check_bounds(rt_bytes_impl *b, int64_t offset, int64_t 
         rt_bytes_trap_bounds("Bytes: binary read/write out of bounds");
 }
 
+// ===========================================================================
+// Endian-aware multi-byte read/write — the standard byte-order pairs for
+// 16/32/64 bit signed integers. Each LE/BE pair handles its own bounds
+// check and traps on overflow. Read functions return values widened to
+// int64; write functions accept int64 and truncate.
+// ===========================================================================
+
+/// @brief Read a little-endian int16 at `offset` (sign-extended to int64).
 int64_t rt_bytes_read_i16le(void *obj, int64_t offset) {
     rt_bytes_impl *b = (rt_bytes_impl *)obj;
     bytes_check_bounds(b, offset, 2);
@@ -930,6 +949,7 @@ int64_t rt_bytes_read_i16le(void *obj, int64_t offset) {
     return (int64_t)((uint16_t)d[0] | ((uint16_t)d[1] << 8));
 }
 
+/// @brief Read a big-endian int16 at `offset` (sign-extended).
 int64_t rt_bytes_read_i16be(void *obj, int64_t offset) {
     rt_bytes_impl *b = (rt_bytes_impl *)obj;
     bytes_check_bounds(b, offset, 2);
@@ -937,6 +957,7 @@ int64_t rt_bytes_read_i16be(void *obj, int64_t offset) {
     return (int64_t)(((uint16_t)d[0] << 8) | (uint16_t)d[1]);
 }
 
+/// @brief Read a little-endian int32 at `offset` (sign-extended).
 int64_t rt_bytes_read_i32le(void *obj, int64_t offset) {
     rt_bytes_impl *b = (rt_bytes_impl *)obj;
     bytes_check_bounds(b, offset, 4);
@@ -945,6 +966,7 @@ int64_t rt_bytes_read_i32le(void *obj, int64_t offset) {
                      ((uint32_t)d[3] << 24));
 }
 
+/// @brief Read a big-endian int32 at `offset` (sign-extended).
 int64_t rt_bytes_read_i32be(void *obj, int64_t offset) {
     rt_bytes_impl *b = (rt_bytes_impl *)obj;
     bytes_check_bounds(b, offset, 4);
@@ -953,6 +975,7 @@ int64_t rt_bytes_read_i32be(void *obj, int64_t offset) {
                      (uint32_t)d[3]);
 }
 
+/// @brief Read a little-endian int64 at `offset`.
 int64_t rt_bytes_read_i64le(void *obj, int64_t offset) {
     rt_bytes_impl *b = (rt_bytes_impl *)obj;
     bytes_check_bounds(b, offset, 8);
@@ -962,6 +985,7 @@ int64_t rt_bytes_read_i64le(void *obj, int64_t offset) {
                      ((uint64_t)d[6] << 48) | ((uint64_t)d[7] << 56));
 }
 
+/// @brief Read a big-endian int64 at `offset`.
 int64_t rt_bytes_read_i64be(void *obj, int64_t offset) {
     rt_bytes_impl *b = (rt_bytes_impl *)obj;
     bytes_check_bounds(b, offset, 8);
@@ -971,6 +995,7 @@ int64_t rt_bytes_read_i64be(void *obj, int64_t offset) {
                      ((uint64_t)d[6] << 8) | (uint64_t)d[7]);
 }
 
+/// @brief Write `value` (truncated to int16) at `offset` in little-endian byte order.
 void rt_bytes_write_i16le(void *obj, int64_t offset, int64_t value) {
     rt_bytes_impl *b = (rt_bytes_impl *)obj;
     bytes_check_bounds(b, offset, 2);
@@ -979,6 +1004,7 @@ void rt_bytes_write_i16le(void *obj, int64_t offset, int64_t value) {
     d[1] = (uint8_t)((value >> 8) & 0xFF);
 }
 
+/// @brief Write `value` (truncated to int16) at `offset` in big-endian byte order.
 void rt_bytes_write_i16be(void *obj, int64_t offset, int64_t value) {
     rt_bytes_impl *b = (rt_bytes_impl *)obj;
     bytes_check_bounds(b, offset, 2);
@@ -987,6 +1013,7 @@ void rt_bytes_write_i16be(void *obj, int64_t offset, int64_t value) {
     d[1] = (uint8_t)(value & 0xFF);
 }
 
+/// @brief Write `value` (truncated to int32) at `offset` in little-endian byte order.
 void rt_bytes_write_i32le(void *obj, int64_t offset, int64_t value) {
     rt_bytes_impl *b = (rt_bytes_impl *)obj;
     bytes_check_bounds(b, offset, 4);
@@ -997,6 +1024,7 @@ void rt_bytes_write_i32le(void *obj, int64_t offset, int64_t value) {
     d[3] = (uint8_t)((value >> 24) & 0xFF);
 }
 
+/// @brief Write `value` (truncated to int32) at `offset` in big-endian byte order.
 void rt_bytes_write_i32be(void *obj, int64_t offset, int64_t value) {
     rt_bytes_impl *b = (rt_bytes_impl *)obj;
     bytes_check_bounds(b, offset, 4);
@@ -1007,6 +1035,7 @@ void rt_bytes_write_i32be(void *obj, int64_t offset, int64_t value) {
     d[3] = (uint8_t)(value & 0xFF);
 }
 
+/// @brief Write a full 64-bit `value` at `offset` in little-endian byte order.
 void rt_bytes_write_i64le(void *obj, int64_t offset, int64_t value) {
     rt_bytes_impl *b = (rt_bytes_impl *)obj;
     bytes_check_bounds(b, offset, 8);
@@ -1021,6 +1050,7 @@ void rt_bytes_write_i64le(void *obj, int64_t offset, int64_t value) {
     d[7] = (uint8_t)((value >> 56) & 0xFF);
 }
 
+/// @brief Write a full 64-bit `value` at `offset` in big-endian byte order.
 void rt_bytes_write_i64be(void *obj, int64_t offset, int64_t value) {
     rt_bytes_impl *b = (rt_bytes_impl *)obj;
     bytes_check_bounds(b, offset, 8);

@@ -28,6 +28,9 @@ static void retry_finalizer(void *obj) {
 
 // --- Public API ---
 
+/// @brief Construct a fixed-delay retry policy: every retry waits exactly `base_delay_ms`.
+/// `max_retries` clamped to >= 0. Returned policy is GC-managed; consume via `_can_retry` /
+/// `_next_delay` in a loop.
 void *rt_retry_new(int64_t max_retries, int64_t base_delay_ms) {
     void *obj = rt_obj_new_i64(0, sizeof(rt_retry_data));
     rt_retry_data *data = (rt_retry_data *)obj;
@@ -40,6 +43,10 @@ void *rt_retry_new(int64_t max_retries, int64_t base_delay_ms) {
     return obj;
 }
 
+/// @brief Construct an exponential-backoff retry policy: delays double each attempt
+/// (`base * 2^attempt`), capped at `max_delay_ms`, with 0–25% additive jitter to avoid
+/// thundering-herd retries from coordinated clients. Uses thread-local xorshift PRNG (no global
+/// state) so jitter is independent across threads.
 void *rt_retry_exponential(int64_t max_retries, int64_t base_delay_ms, int64_t max_delay_ms) {
     void *obj = rt_obj_new_i64(0, sizeof(rt_retry_data));
     rt_retry_data *data = (rt_retry_data *)obj;

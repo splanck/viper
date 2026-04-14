@@ -68,14 +68,20 @@ static ViperQuat *quat_alloc(double x, double y, double z, double w) {
 // Constructors
 //=============================================================================
 
+/// @brief Construct a quaternion from raw components (x, y, z, w). For unit quaternions:
+/// (x, y, z) is the imaginary part, w is the real part. Use `_from_axis_angle` or `_from_euler`
+/// for higher-level construction.
 void *rt_quat_new(double x, double y, double z, double w) {
     return quat_alloc(x, y, z, w);
 }
 
+/// @brief Return the identity quaternion (0, 0, 0, 1) — represents "no rotation".
 void *rt_quat_identity(void) {
     return quat_alloc(0.0, 0.0, 0.0, 1.0);
 }
 
+/// @brief Build a unit quaternion representing a rotation of `angle` radians about `axis`. The
+/// axis is normalized internally; a zero-length axis returns identity.
 void *rt_quat_from_axis_angle(void *axis, double angle) {
     if (!axis) {
         rt_trap("Quat.FromAxisAngle: null axis");
@@ -96,6 +102,8 @@ void *rt_quat_from_axis_angle(void *axis, double angle) {
     return quat_alloc(ax * s, ay * s, az * s, cos(half));
 }
 
+/// @brief Build a unit quaternion from Euler angles (radians). Convention: roll about Z, then
+/// pitch about X, then yaw about Y (intrinsic ZXY). Match against your scene's rotation order.
 void *rt_quat_from_euler(double pitch, double yaw, double roll) {
     double cp = cos(pitch * 0.5);
     double sp = sin(pitch * 0.5);
@@ -155,6 +163,8 @@ double rt_quat_w(void *q) {
 // Operations
 //=============================================================================
 
+/// @brief Hamilton product (a × b) — composes rotations: applying `mul(a, b)` rotates the
+/// vector by b first, then by a. Traps on null input.
 void *rt_quat_mul(void *a, void *b) {
     if (!a || !b) {
         rt_trap("Quat.Mul: null quaternion");
@@ -169,6 +179,8 @@ void *rt_quat_mul(void *a, void *b) {
     return quat_alloc(x, y, z, w);
 }
 
+/// @brief Quaternion conjugate (negates the imaginary part: x, y, z → -x, -y, -z; w stays).
+/// For unit quaternions, conjugate equals inverse and represents the opposite rotation.
 void *rt_quat_conjugate(void *q) {
     if (!q) {
         rt_trap("Quat.Conjugate: null quaternion");
@@ -178,6 +190,8 @@ void *rt_quat_conjugate(void *q) {
     return quat_alloc(-qv->x, -qv->y, -qv->z, qv->w);
 }
 
+/// @brief Quaternion inverse (conjugate / |q|²). For unit quaternions matches `_conjugate`
+/// but is safer for general use. Traps on null or zero-length input.
 void *rt_quat_inverse(void *q) {
     if (!q) {
         rt_trap("Quat.Inverse: null quaternion");
@@ -193,6 +207,9 @@ void *rt_quat_inverse(void *q) {
     return quat_alloc(-qv->x * inv, -qv->y * inv, -qv->z * inv, qv->w * inv);
 }
 
+/// @brief Normalize `q` to unit length. Returns the zero quaternion (0,0,0,0) if `q` is zero
+/// to avoid divide-by-zero. Re-normalize periodically when chaining many multiplies to prevent
+/// drift from accumulated floating-point error.
 void *rt_quat_norm(void *q) {
     if (!q) {
         rt_trap("Quat.Norm: null quaternion");
@@ -241,6 +258,9 @@ double rt_quat_dot(void *a, void *b) {
 // Interpolation
 //=============================================================================
 
+/// @brief Spherical linear interpolation between unit quaternions `a` and `b`. `t` ∈ [0, 1]
+/// (0 = a, 1 = b). Picks the shorter arc by negating one operand if the dot product is < 0.
+/// Falls back to `_lerp` for nearly-aligned inputs to avoid numerical instability.
 void *rt_quat_slerp(void *a, void *b, double t) {
     if (!a || !b) {
         rt_trap("Quat.Slerp: null quaternion");
@@ -280,6 +300,9 @@ void *rt_quat_slerp(void *a, void *b, double t) {
         s0 * qa->x + s1 * bx, s0 * qa->y + s1 * by, s0 * qa->z + s1 * bz, s0 * qa->w + s1 * bw);
 }
 
+/// @brief Linear quaternion interpolation (component-wise) between `a` and `b`. Faster than
+/// slerp but constant angular velocity is not preserved — use only for small angle deltas.
+/// Result is *not* automatically normalized.
 void *rt_quat_lerp(void *a, void *b, double t) {
     if (!a || !b) {
         rt_trap("Quat.Lerp: null quaternion");
@@ -303,6 +326,8 @@ void *rt_quat_lerp(void *a, void *b, double t) {
 // Rotation
 //=============================================================================
 
+/// @brief Apply rotation `q` to vector `v` (returns a new Vec3). Computes `q · v · q*` using
+/// the optimized formula `v + 2 * cross(qxyz, cross(qxyz, v) + qw * v)`.
 void *rt_quat_rotate_vec3(void *q, void *v) {
     if (!q || !v) {
         rt_trap("Quat.RotateVec3: null argument");
@@ -325,6 +350,8 @@ void *rt_quat_rotate_vec3(void *q, void *v) {
     return rt_vec3_new(rx, ry, rz);
 }
 
+/// @brief Convert the quaternion to an equivalent 4×4 rotation matrix (translation = 0,
+/// scale = 1). Useful for shader uniforms that prefer matrix uniforms over quaternion math.
 void *rt_quat_to_mat4(void *q) {
     if (!q) {
         rt_trap("Quat.ToMat4: null quaternion");
@@ -368,6 +395,8 @@ void *rt_quat_to_mat4(void *q) {
                        1.0);
 }
 
+/// @brief Extract the rotation axis from a unit quaternion (the inverse of `_from_axis_angle`).
+/// Returns (1, 0, 0) for an identity-or-degenerate quaternion (no meaningful axis).
 void *rt_quat_axis(void *q) {
     if (!q) {
         rt_trap("Quat.Axis: null quaternion");

@@ -35,6 +35,8 @@
 
 namespace il::vm {
 
+extern "C" void vm_trap(const char *msg);
+
 // NOTE: toString() and trapKindFromValue() are now defined inline in Trap.hpp
 // as constexpr functions for compile-time evaluation
 
@@ -228,7 +230,8 @@ void vm_raise_from_error(const VmError &input) {
             if (bt.size() > 1)
                 activeVm->printBacktrace(bt);
         }
-        rt_abort(message.c_str());
+        vm_trap(message.c_str());
+        return;
     }
 }
 
@@ -285,7 +288,8 @@ void vm_raise(TrapKind kind, int32_t code) {
             if (bt.size() > 1)
                 vm->printBacktrace(bt);
         }
-        rt_abort(message.c_str());
+        vm_trap(message.c_str());
+        return;
     }
 }
 

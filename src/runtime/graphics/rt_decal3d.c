@@ -237,6 +237,9 @@ static void ensure_decal_mesh(rt_decal3d *d) {
     rt_material3d_set_unlit(d->material, 1); /* decals are unlit — they show texture only */
 }
 
+/// @brief Render a decal onto the canvas (no-op for expired decals).
+/// Lazily builds the quad mesh and material on first draw, then re-uses them.
+/// Material alpha is refreshed each frame to reflect the current fade level.
 void rt_canvas3d_draw_decal(void *canvas, void *obj) {
     if (!canvas || !obj)
         return;

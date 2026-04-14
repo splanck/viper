@@ -12,8 +12,9 @@
 //   For each basic block in each MIR function:
 //   1. Partition instructions into non-terminator body + terminators.
 //   2. Build a data-dependency DAG from physical-register def/use chains.
-//      Memory dependencies are handled conservatively: every store depends on
-//      all prior loads/stores; every load depends on all prior stores.
+//      Memory dependencies are tracked by access class when the address is
+//      known (FP/SP/base+imm), so disjoint stack slots and base-address ranges
+//      do not serialize each other unnecessarily.
 //   3. Assign latencies to each dependency edge using a simplified Apple M1
 //      latency model (loads: 4 cycles, multiplies: 3 cycles, FP: 3 cycles,
 //      all other: 1 cycle).
@@ -36,6 +37,7 @@
 #include <algorithm>
 #include <array>
 #include <cstdint>
+#include <optional>
 #include <queue>
 #include <vector>
 
@@ -132,6 +134,72 @@ static bool isStore(MOpcode opc) noexcept {
         default:
             return false;
     }
+}
+
+enum class MemBaseKind : uint8_t { FramePointer, StackPointer, BaseRegister };
+
+struct MemoryAccessClass {
+    MemBaseKind baseKind{MemBaseKind::FramePointer};
+    uint32_t baseReg{0};
+    long long offset{0};
+    unsigned size{0};
+};
+
+struct MemoryHistoryEntry {
+    std::size_t instrIdx{0};
+    bool isLoad{false};
+    bool isStore{false};
+    bool isBarrier{false};
+    std::optional<MemoryAccessClass> accessClass;
+};
+
+static std::optional<MemoryAccessClass> classifyMemoryAccess(const MInstr &mi) noexcept {
+    switch (mi.opc) {
+        case MOpcode::LdrRegFpImm:
+        case MOpcode::StrRegFpImm:
+        case MOpcode::LdrFprFpImm:
+        case MOpcode::StrFprFpImm:
+            if (mi.ops.size() >= 2 && mi.ops[1].kind == MOperand::Kind::Imm)
+                return MemoryAccessClass{MemBaseKind::FramePointer, 0, mi.ops[1].imm, 8};
+            return std::nullopt;
+        case MOpcode::LdpRegFpImm:
+        case MOpcode::StpRegFpImm:
+        case MOpcode::LdpFprFpImm:
+        case MOpcode::StpFprFpImm:
+            if (mi.ops.size() >= 3 && mi.ops[2].kind == MOperand::Kind::Imm)
+                return MemoryAccessClass{MemBaseKind::FramePointer, 0, mi.ops[2].imm, 16};
+            return std::nullopt;
+        case MOpcode::StrRegSpImm:
+        case MOpcode::StrFprSpImm:
+            if (mi.ops.size() >= 2 && mi.ops[1].kind == MOperand::Kind::Imm)
+                return MemoryAccessClass{MemBaseKind::StackPointer, 0, mi.ops[1].imm, 8};
+            return std::nullopt;
+        case MOpcode::LdrRegBaseImm:
+        case MOpcode::StrRegBaseImm:
+        case MOpcode::LdrFprBaseImm:
+        case MOpcode::StrFprBaseImm:
+            if (mi.ops.size() >= 3 && mi.ops[1].kind == MOperand::Kind::Reg &&
+                mi.ops[1].reg.isPhys && mi.ops[2].kind == MOperand::Kind::Imm) {
+                return MemoryAccessClass{
+                    MemBaseKind::BaseRegister, mi.ops[1].reg.idOrPhys, mi.ops[2].imm, 8};
+            }
+            return std::nullopt;
+        default:
+            return std::nullopt;
+    }
+}
+
+static bool mayAliasMemory(const std::optional<MemoryAccessClass> &lhs,
+                           const std::optional<MemoryAccessClass> &rhs) noexcept {
+    if (!lhs || !rhs)
+        return true;
+    if (lhs->baseKind != rhs->baseKind)
+        return false;
+    if (lhs->baseKind == MemBaseKind::BaseRegister && lhs->baseReg != rhs->baseReg)
+        return false;
+    const long long lhsEnd = lhs->offset + static_cast<long long>(lhs->size);
+    const long long rhsEnd = rhs->offset + static_cast<long long>(rhs->size);
+    return !(lhsEnd <= rhs->offset || rhsEnd <= lhs->offset);
 }
 
 static bool isTerminator(MOpcode opc) noexcept {
@@ -324,9 +392,8 @@ static std::vector<MInstr> scheduleBlock(std::vector<MInstr> body) {
     lastDef.fill(kNone);
     std::array<std::vector<std::size_t>, kNumTracked> usesSinceDef;
 
-    // Last instruction indices with memory side-effects.
-    std::size_t lastStore = kNone;
-    std::size_t lastLoad = kNone;
+    std::vector<MemoryHistoryEntry> memoryHistory;
+    memoryHistory.reserve(N);
 
     // Caller-saved registers that Bl/Blr implicitly clobber.
     static const uint32_t callerSaved[] = {
@@ -403,27 +470,30 @@ static std::vector<MInstr> scheduleBlock(std::vector<MInstr> body) {
             lastDef[kIdxSP] = i;
         }
 
-        // --- Conservative memory dependencies ---
-        if (isLoad(mi.opc)) {
-            // Load depends on last store (RAW through memory).
-            if (lastStore != kNone)
-                addDep(i, lastStore, 1);
-            lastLoad = i;
-        } else if (isStore(mi.opc)) {
-            // Store depends on last store (WAW) and last load (WAR).
-            if (lastStore != kNone)
-                addDep(i, lastStore, 1);
-            if (lastLoad != kNone)
-                addDep(i, lastLoad, 1);
-            lastStore = i;
+        // --- Memory dependencies ---
+        const bool memLoad = isLoad(mi.opc);
+        const bool memStore = isStore(mi.opc);
+        const auto memClass = (memLoad || memStore) ? classifyMemoryAccess(mi) : std::nullopt;
+        if (memLoad || memStore) {
+            for (const auto &prev : memoryHistory) {
+                if (prev.isBarrier) {
+                    addDep(i, prev.instrIdx, 1);
+                    continue;
+                }
+                if (!mayAliasMemory(memClass, prev.accessClass))
+                    continue;
+                if (memLoad && prev.isStore)
+                    addDep(i, prev.instrIdx, 1);
+                if (memStore && (prev.isLoad || prev.isStore))
+                    addDep(i, prev.instrIdx, 1);
+            }
+            memoryHistory.push_back(MemoryHistoryEntry{i, memLoad, memStore, false, memClass});
         }
 
         // --- Calls act as full memory barriers ---
         if (isCall(mi.opc)) {
-            if (lastStore != kNone)
-                addDep(i, lastStore, 1);
-            if (lastLoad != kNone)
-                addDep(i, lastLoad, 1);
+            for (const auto &prev : memoryHistory)
+                addDep(i, prev.instrIdx, 1);
             // Call also reads any live registers (conservatively: depend on all
             // recent defs of caller-saved regs so they aren't reordered past call).
             for (uint32_t r : callerSaved) {
@@ -433,6 +503,7 @@ static std::vector<MInstr> scheduleBlock(std::vector<MInstr> body) {
             }
             if (lastDef[kIdxNZCV] != kNone)
                 addDep(i, lastDef[kIdxNZCV], 1);
+            memoryHistory.push_back(MemoryHistoryEntry{i, false, false, true, std::nullopt});
         }
 
         // --- WAW + WAR dependencies, then update DEF map ---
@@ -480,8 +551,6 @@ static std::vector<MInstr> scheduleBlock(std::vector<MInstr> body) {
                 addDep(i, u, 1);
             usesSinceDef[kIdxNZCV].clear();
             lastDef[kIdxNZCV] = i;
-            lastStore = i;
-            lastLoad = i;
         }
     }
 

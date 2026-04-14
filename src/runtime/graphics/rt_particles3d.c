@@ -253,6 +253,8 @@ void *rt_particles3d_new(int64_t max_particles) {
  * Configuration
  *=========================================================================*/
 
+/// @brief Set the emitter origin in world space. New particles spawn at this point (offset by
+/// the emitter shape if non-point).
 void rt_particles3d_set_position(void *o, double x, double y, double z) {
     if (!o)
         return;
@@ -262,6 +264,8 @@ void rt_particles3d_set_position(void *o, double x, double y, double z) {
     p->position[2] = z;
 }
 
+/// @brief Set the average emit direction (normalized internally) and the cone half-angle
+/// `spread` in radians. spread=0 means perfectly aligned, spread=π means full sphere.
 void rt_particles3d_set_direction(void *o, double dx, double dy, double dz, double spread) {
     if (!o)
         return;
@@ -275,6 +279,7 @@ void rt_particles3d_set_direction(void *o, double dx, double dy, double dz, doub
     p->emit_spread = spread;
 }
 
+/// @brief Set the per-particle initial speed range [mn, mx] in world-units/sec (uniform random).
 void rt_particles3d_set_speed(void *o, double mn, double mx) {
     if (!o)
         return;
@@ -283,6 +288,7 @@ void rt_particles3d_set_speed(void *o, double mn, double mx) {
     p->speed_max = mx;
 }
 
+/// @brief Set the per-particle lifetime range [mn, mx] in seconds (uniform random per spawn).
 void rt_particles3d_set_lifetime(void *o, double mn, double mx) {
     if (!o)
         return;
@@ -291,6 +297,7 @@ void rt_particles3d_set_lifetime(void *o, double mn, double mx) {
     p->life_max = mx;
 }
 
+/// @brief Set the start and end size (interpolated by age) for each particle.
 void rt_particles3d_set_size(void *o, double s, double e) {
     if (!o)
         return;
@@ -299,6 +306,7 @@ void rt_particles3d_set_size(void *o, double s, double e) {
     p->size_end = e;
 }
 
+/// @brief Set the constant acceleration applied to every particle each frame (typical: (0,-9.8,0)).
 void rt_particles3d_set_gravity(void *o, double gx, double gy, double gz) {
     if (!o)
         return;
@@ -308,6 +316,8 @@ void rt_particles3d_set_gravity(void *o, double gx, double gy, double gz) {
     p->gravity[2] = gz;
 }
 
+/// @brief Set start (`sc`) and end (`ec`) colors as packed 0xRRGGBBAA. Each particle linearly
+/// interpolates between them based on age ratio. Alpha component is set separately via `_set_alpha`.
 void rt_particles3d_set_color(void *o, int64_t sc, int64_t ec) {
     if (!o)
         return;
@@ -316,6 +326,7 @@ void rt_particles3d_set_color(void *o, int64_t sc, int64_t ec) {
     unpack_color(ec, p->color_end);
 }
 
+/// @brief Set start (`sa`) and end (`ea`) alpha values [0, 1]. Common pattern: 1.0→0.0 for fade-out.
 void rt_particles3d_set_alpha(void *o, double sa, double ea) {
     if (!o)
         return;
@@ -324,30 +335,39 @@ void rt_particles3d_set_alpha(void *o, double sa, double ea) {
     p->alpha_end = ea;
 }
 
+/// @brief Set the spawn rate in particles per second. The accumulator pattern emits whole
+/// particles when ≥1 worth has accumulated, preserving fractional rates across frames.
 void rt_particles3d_set_rate(void *o, double r) {
     if (!o)
         return;
     ((rt_particles3d *)o)->rate = r;
 }
 
+/// @brief Toggle additive blend mode (1 = additive for fire/glow, 0 = alpha blend for smoke).
+/// Additive skips the back-to-front sort since order doesn't affect the result.
 void rt_particles3d_set_additive(void *o, int8_t a) {
     if (!o)
         return;
     ((rt_particles3d *)o)->additive_blend = a;
 }
 
+/// @brief Set the per-particle billboard texture. NULL produces solid color quads.
 void rt_particles3d_set_texture(void *o, void *tex) {
     if (!o)
         return;
     ((rt_particles3d *)o)->texture = tex;
 }
 
+/// @brief Select the emitter volume: 0 = point (default), 1 = sphere (uniform interior),
+/// 2 = box. Combined with `_set_emitter_size` to control the spawn region.
 void rt_particles3d_set_emitter_shape(void *o, int64_t s) {
     if (!o)
         return;
     ((rt_particles3d *)o)->emitter_shape = (int32_t)s;
 }
 
+/// @brief Set the emitter shape's extent. For sphere: only sx is used (radius); for box: full
+/// half-extents per axis. Ignored for point emitter.
 void rt_particles3d_set_emitter_size(void *o, double sx, double sy, double sz) {
     if (!o)
         return;
@@ -361,16 +381,21 @@ void rt_particles3d_set_emitter_size(void *o, double sx, double sy, double sz) {
  * Playback
  *=========================================================================*/
 
+/// @brief Begin emitting (continuous spawn at the configured rate). Existing live particles
+/// continue to update regardless of the emit flag.
 void rt_particles3d_start(void *o) {
     if (o)
         ((rt_particles3d *)o)->emitting = 1;
 }
 
+/// @brief Stop continuous emission. Existing particles run to natural lifetime; for instant
+/// removal use `_clear`.
 void rt_particles3d_stop(void *o) {
     if (o)
         ((rt_particles3d *)o)->emitting = 0;
 }
 
+/// @brief Kill every live particle and reset the spawn accumulator. Doesn't change emit state.
 void rt_particles3d_clear(void *o) {
     if (!o)
         return;
@@ -378,10 +403,12 @@ void rt_particles3d_clear(void *o) {
     ((rt_particles3d *)o)->accumulator = 0.0;
 }
 
+/// @brief Number of particles currently alive.
 int64_t rt_particles3d_get_count(void *o) {
     return o ? ((rt_particles3d *)o)->count : 0;
 }
 
+/// @brief Returns 1 if continuous emission is enabled (`_start` called, no subsequent `_stop`).
 int8_t rt_particles3d_get_emitting(void *o) {
     return o ? ((rt_particles3d *)o)->emitting : 0;
 }
@@ -437,6 +464,8 @@ static void spawn_particle(rt_particles3d *ps) {
     p->color[3] = (float)ps->alpha_start;
 }
 
+/// @brief Spawn `count` particles immediately (in addition to any continuous emission). Useful
+/// for explosions, sparks, one-shot effects.
 void rt_particles3d_burst(void *o, int64_t count) {
     if (!o || count <= 0)
         return;
@@ -449,6 +478,9 @@ void rt_particles3d_burst(void *o, int64_t count) {
  * Update (Euler integration + lifetime + interpolation)
  *=========================================================================*/
 
+/// @brief Per-frame tick. Walks every live particle to apply Euler integration (pos += vel*dt,
+/// vel += gravity*dt), age-interpolate size/color/alpha, and reap dead ones via O(1) swap-with-
+/// last. Then accumulates and emits new particles from the rate while emission is enabled.
 void rt_particles3d_update(void *o, double delta_time) {
     if (!o || delta_time <= 0.0)
         return;
@@ -506,6 +538,9 @@ extern void rt_material3d_set_alpha(void *m, double a);
 extern void rt_material3d_set_texture(void *m, void *tex);
 extern void *rt_mat4_identity(void);
 
+/// @brief Render every live particle as a camera-facing billboard quad. Extracts right/up from
+/// the camera view matrix to build the quads. Sorts back-to-front for alpha blending; skips the
+/// sort when in additive mode (order-independent). Submits as a single batched mesh draw.
 void rt_particles3d_draw(void *o, void *canvas3d, void *camera) {
     if (!o || !canvas3d || !camera)
         return;

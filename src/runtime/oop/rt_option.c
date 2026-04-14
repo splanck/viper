@@ -62,6 +62,9 @@ typedef struct {
 // Option Finalizer
 //=============================================================================
 
+/// @brief GC finalizer: releases the contained reference for SOME variants. PTR variants release
+/// via the generic object path; STR variants use `rt_str_release_maybe` (which handles literal
+/// vs heap strings). I64/F64 variants own no heap memory and need no cleanup.
 static void option_finalizer(void *obj) {
     Option *o = (Option *)obj;
     if (!o || o->variant != OPTION_SOME)
@@ -80,6 +83,8 @@ static void option_finalizer(void *obj) {
 // Option Creation
 //=============================================================================
 
+/// @brief Construct `Some(value)` over a generic pointer payload. Retains `value` via the heap
+/// refcount path (so it survives until the Option is finalized).
 void *rt_option_some(void *value) {
     Option *o = (Option *)rt_obj_new_i64(0, (int64_t)sizeof(Option));
 
@@ -91,6 +96,8 @@ void *rt_option_some(void *value) {
     return o;
 }
 
+/// @brief Construct `Some(string)`. Retains the string via `rt_string_ref` (handles both heap
+/// and literal-pool strings); accepts NULL (stored as NULL).
 void *rt_option_some_str(rt_string value) {
     Option *o = (Option *)rt_obj_new_i64(0, (int64_t)sizeof(Option));
 
@@ -101,6 +108,7 @@ void *rt_option_some_str(rt_string value) {
     return o;
 }
 
+/// @brief Construct `Some(i64)` with the value stored inline in the union (no heap retention).
 void *rt_option_some_i64(int64_t value) {
     Option *o = (Option *)rt_obj_new_i64(0, (int64_t)sizeof(Option));
 
@@ -111,6 +119,7 @@ void *rt_option_some_i64(int64_t value) {
     return o;
 }
 
+/// @brief Construct `Some(f64)` with the value stored inline (no heap retention).
 void *rt_option_some_f64(double value) {
     Option *o = (Option *)rt_obj_new_i64(0, (int64_t)sizeof(Option));
 
@@ -121,6 +130,7 @@ void *rt_option_some_f64(double value) {
     return o;
 }
 
+/// @brief Construct the empty Option (`None`). The variant is OPTION_NONE; payload is unused.
 void *rt_option_none(void) {
     Option *o = (Option *)rt_obj_new_i64(0, (int64_t)sizeof(Option));
 
@@ -157,10 +167,13 @@ int8_t rt_option_is_none(void *obj) {
 
 #include "rt_trap.h"
 
+/// @brief Convenience wrapper around `rt_trap` so the unwrap helpers stay readable.
 static void trap_with_message(const char *msg) {
     rt_trap(msg);
 }
 
+/// @brief Extract the pointer payload from a Some option; **traps** if NULL or None. Use this
+/// when you've already proven (via `is_some`) that the option holds a value.
 void *rt_option_unwrap(void *obj) {
     if (!obj)
         trap_with_message("Unwrap called on NULL Option");
@@ -206,6 +219,8 @@ double rt_option_unwrap_f64(void *obj) {
     return o->value.f64;
 }
 
+/// @brief Return the wrapped pointer if present, otherwise `def`. Never traps. NULL handle treated
+/// as None.
 void *rt_option_unwrap_or(void *obj, void *def) {
     if (!obj)
         return def;
@@ -251,6 +266,8 @@ double rt_option_unwrap_or_f64(void *obj, double def) {
     return o->value.f64;
 }
 
+/// @brief Return the wrapped pointer if Some, NULL otherwise. Like `unwrap` but non-trapping —
+/// the caller must distinguish "stored NULL" from "no value" via `is_some` / `is_none`.
 void *rt_option_value(void *obj) {
     if (!obj)
         return NULL;
@@ -264,10 +281,14 @@ void *rt_option_value(void *obj) {
 // Expect
 //=============================================================================
 
+/// @brief Format the message for `expect()` failures — substitutes "assertion failed" for NULL.
 static const char *rt_option_expect_message(rt_string msg) {
     return msg ? rt_string_cstr(msg) : "assertion failed";
 }
 
+/// @brief Like `unwrap` but with a caller-supplied diagnostic message. Traps with kind
+/// INVALID_OPERATION (more specific than the generic unwrap trap) so callers can catch
+/// expectation violations distinctly. Use when you want a meaningful failure mode.
 void *rt_option_expect(void *obj, rt_string msg) {
     const char *msg_str = rt_option_expect_message(msg);
     char buffer[256];
@@ -287,6 +308,14 @@ void *rt_option_expect(void *obj, rt_string msg) {
 // Transformation
 //=============================================================================
 
+// =============================================================================
+// Transformation combinators — all PTR-variant only. Typed-primitive Options
+// (STR/I64/F64) pass through unchanged because the function signature `void*
+// (*)(void*)` doesn't match the union; callers must unwrap-transform-rewrap.
+// All combinators on NULL/None inputs return a fresh `None`.
+// =============================================================================
+
+/// @brief Apply `fn` to the wrapped value, returning `Some(fn(val))`. None passes through.
 void *rt_option_map(void *obj, void *(*fn)(void *)) {
     if (!obj || !fn)
         return rt_option_none();
@@ -301,6 +330,8 @@ void *rt_option_map(void *obj, void *(*fn)(void *)) {
     return obj;
 }
 
+/// @brief Monadic bind: apply `fn` to the wrapped value where `fn` itself returns an Option,
+/// flattening the result. Used to chain fallible operations without nested Options.
 void *rt_option_and_then(void *obj, void *(*fn)(void *)) {
     if (!obj || !fn)
         return rt_option_none();
@@ -314,6 +345,8 @@ void *rt_option_and_then(void *obj, void *(*fn)(void *)) {
     return obj;
 }
 
+/// @brief If the option is Some, return it unchanged; otherwise call `fn()` to compute a fallback
+/// Option. Used for "try this default lookup if the primary failed" patterns.
 void *rt_option_or_else(void *obj, void *(*fn)(void)) {
     if (!obj)
         return fn ? fn() : rt_option_none();
@@ -323,6 +356,8 @@ void *rt_option_or_else(void *obj, void *(*fn)(void)) {
     return fn ? fn() : rt_option_none();
 }
 
+/// @brief Return the option if Some AND `pred(value)` is true; otherwise None. Cheap way to
+/// turn unconditional Some values into Some-or-None based on a predicate.
 void *rt_option_filter(void *obj, int8_t (*pred)(void *)) {
     if (!obj || !pred)
         return rt_option_none();
@@ -336,18 +371,22 @@ void *rt_option_filter(void *obj, int8_t (*pred)(void *)) {
     return rt_option_none();
 }
 
+/// @brief IL trampoline for `rt_option_map` — re-types the user fn pointer for the typed call.
 void *rt_option_map_wrapper(void *obj, void *fn) {
     return rt_option_map(obj, (void *(*)(void *))fn);
 }
 
+/// @brief IL trampoline for `rt_option_and_then`.
 void *rt_option_and_then_wrapper(void *obj, void *fn) {
     return rt_option_and_then(obj, (void *(*)(void *))fn);
 }
 
+/// @brief IL trampoline for `rt_option_or_else`.
 void *rt_option_or_else_wrapper(void *obj, void *fn) {
     return rt_option_or_else(obj, (void *(*)(void))fn);
 }
 
+/// @brief IL trampoline for `rt_option_filter`.
 void *rt_option_filter_wrapper(void *obj, void *pred) {
     return rt_option_filter(obj, (int8_t (*)(void *))pred);
 }
@@ -356,6 +395,9 @@ void *rt_option_filter_wrapper(void *obj, void *pred) {
 // Conversion
 //=============================================================================
 
+/// @brief Convert Option → Result by supplying an error value: `Some(v) → Ok(v)`, `None → Err(err)`.
+/// Preserves the value-type variant so e.g. `Some(i64) → Ok_i64`. Used to bridge missing-data
+/// failures into the Result error-handling pipeline.
 void *rt_option_ok_or(void *obj, void *err) {
     if (!obj)
         return rt_result_err(err);
@@ -375,6 +417,8 @@ void *rt_option_ok_or(void *obj, void *err) {
     return rt_result_err(err);
 }
 
+/// @brief String-error variant of `ok_or`. None becomes `Err_str(err)` so the resulting Result
+/// holds an rt_string error message rather than an opaque pointer.
 void *rt_option_ok_or_str(void *obj, rt_string err) {
     if (!obj)
         return rt_result_err_str(err);

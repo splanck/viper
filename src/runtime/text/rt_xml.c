@@ -75,11 +75,21 @@ static void *parse_document(const char *input, size_t len);
 
 #include "rt_trap.h"
 
+/// @brief Stash a parse-error message in the thread-local error buffer.
+///
+/// Truncates to fit within the 256-byte buffer with a null terminator.
+/// Subsequent calls overwrite. The error survives until `clear_error`
+/// or the next failed parse on this thread, and is exposed via
+/// `rt_xml_error()`.
 static void set_error(const char *msg) {
     strncpy(xml_last_error, msg, sizeof(xml_last_error) - 1);
     xml_last_error[sizeof(xml_last_error) - 1] = '\0';
 }
 
+/// @brief Reset the thread-local parse-error buffer to empty.
+///
+/// Called at the start of every `parse_document` so success returns
+/// clear `rt_xml_error()` output.
 static void clear_error(void) {
     xml_last_error[0] = '\0';
 }
@@ -88,6 +98,12 @@ static void clear_error(void) {
 // Node Management
 //=============================================================================
 
+/// @brief GC finalizer for XML nodes — cascades release through the tree.
+///
+/// Releases tag, content, attribute map, and (recursively, via the
+/// children seq's own released items) every child. Children are owned
+/// by their parent, so dropping the root cleans up the entire document.
+/// `parent` is a weak pointer and is intentionally not released.
 static void xml_node_finalizer(void *obj) {
     xml_node *node = (xml_node *)obj;
     if (!node)
@@ -128,6 +144,15 @@ static void xml_node_finalizer(void *obj) {
     // Note: parent is a weak reference, don't release
 }
 
+/// @brief Allocate a fresh XML node of the given type.
+///
+/// Hooks `xml_node_finalizer` so the GC takes care of cleanup. Element
+/// and document nodes get an empty children seq; element nodes also
+/// get an empty attribute map. Returns NULL on any allocation failure
+/// (caller decides whether that should trap or be propagated).
+///
+/// @param type Node kind (element / text / comment / cdata / document).
+/// @return Owned node pointer, or NULL on OOM.
 static void *xml_node_new(rt_xml_node_type_t type) {
     xml_node *node = (xml_node *)rt_obj_new_i64(0, sizeof(xml_node));
     if (!node)
@@ -183,6 +208,11 @@ typedef struct {
     int depth; // Current element nesting depth
 } xml_parser;
 
+// The parser is a hand-written recursive descent over a byte buffer.
+// `pos` tracks the cursor, `line`/`col` are kept current for error
+// messages, and `depth` enforces a maximum nesting depth (S-17).
+
+/// @brief Initialize parser state at the beginning of `input`.
 static void parser_init(xml_parser *p, const char *input, size_t len) {
     p->input = input;
     p->len = len;
@@ -192,16 +222,22 @@ static void parser_init(xml_parser *p, const char *input, size_t len) {
     p->depth = 0;
 }
 
+/// @brief True if the cursor is past the end of the input buffer.
 static bool parser_eof(xml_parser *p) {
     return p->pos >= p->len;
 }
 
+/// @brief Return the byte at the cursor without consuming it; '\\0' at EOF.
 static char parser_peek(xml_parser *p) {
     if (p->pos >= p->len)
         return '\0';
     return p->input[p->pos];
 }
 
+/// @brief Consume and return the byte at the cursor, updating line/col.
+///
+/// Returns '\\0' at EOF without advancing. Used by every consuming
+/// helper so the line/column stay accurate for error messages.
 static char parser_advance(xml_parser *p) {
     if (p->pos >= p->len)
         return '\0';
@@ -215,11 +251,17 @@ static char parser_advance(xml_parser *p) {
     return c;
 }
 
+/// @brief Advance past any whitespace at the cursor.
 static void parser_skip_ws(xml_parser *p) {
     while (!parser_eof(p) && isspace((unsigned char)parser_peek(p)))
         parser_advance(p);
 }
 
+/// @brief Consume a literal string if it matches at the cursor; else no-op.
+///
+/// Returns true and advances past `str` on match, false and leaves the
+/// cursor untouched otherwise. The piece-by-piece advance keeps the
+/// line/col counters in sync.
 static bool parser_match(xml_parser *p, const char *str) {
     size_t len = strlen(str);
     if (p->pos + len > p->len)
@@ -231,6 +273,7 @@ static bool parser_match(xml_parser *p, const char *str) {
     return true;
 }
 
+/// @brief Like `parser_match` but does not consume on success.
 static bool parser_lookahead(xml_parser *p, const char *str) {
     size_t len = strlen(str);
     if (p->pos + len > p->len)
@@ -242,15 +285,26 @@ static bool parser_lookahead(xml_parser *p, const char *str) {
 // Parsing Helpers
 //=============================================================================
 
+/// @brief Whether `c` may begin an XML name (letter, '_', or ':').
+///
+/// XML 1.0 allows a much broader set (including most Unicode letters)
+/// but we restrict to ASCII for simplicity — sufficient for typical
+/// configuration / data XML; will be revisited if non-ASCII tags
+/// become a real requirement.
 static bool is_name_start_char(char c) {
     return isalpha((unsigned char)c) || c == '_' || c == ':';
 }
 
+/// @brief Whether `c` may continue an XML name (alnum, '_', ':', '-', '.').
 static bool is_name_char(char c) {
     return isalnum((unsigned char)c) || c == '_' || c == ':' || c == '-' || c == '.';
 }
 
-/// @brief Parse an XML name (tag name, attribute name).
+/// @brief Parse an XML name (tag or attribute) into a fresh `rt_string`.
+///
+/// Reads from `pos` up to the first non-name byte. Returns NULL (and
+/// leaves the cursor untouched) if the first byte isn't a valid name
+/// start. The returned string is caller-owned.
 static rt_string parse_name(xml_parser *p) {
     size_t start = p->pos;
 
@@ -264,7 +318,21 @@ static rt_string parse_name(xml_parser *p) {
     return rt_string_from_bytes(p->input + start, (int64_t)len);
 }
 
-/// @brief Decode a single character reference or entity.
+/// @brief Decode a `&...;` entity reference into UTF-8 bytes.
+///
+/// Handles:
+///   - Numeric: `&#NN;` (decimal) and `&#xHHHH;` (hex), encoded as 1-4 UTF-8 bytes.
+///   - Named: `&lt; &gt; &amp; &quot; &apos;` only (no full HTML entity table).
+/// Returns the number of bytes written to `out` (>=1), with `*consumed`
+/// set to how many input bytes were eaten (including the leading `&`
+/// and trailing `;`). Returns 0 if the input does not form a valid
+/// entity reference, leaving the caller to copy the literal `&`.
+///
+/// @param str      Input cursor, must point at `&`.
+/// @param len      Bytes available from `str`.
+/// @param out      Destination buffer (must hold at least 4 bytes).
+/// @param consumed Out: bytes consumed from `str` on success.
+/// @return Bytes written to `out`, or 0 on parse failure.
 static int decode_entity(const char *str, size_t len, char *out, size_t *consumed) {
     if (len < 2 || str[0] != '&')
         return 0;
@@ -354,7 +422,12 @@ static int decode_entity(const char *str, size_t len, char *out, size_t *consume
     return 0;
 }
 
-/// @brief Parse attribute value (quoted string with entity decoding).
+/// @brief Parse a single quoted attribute value, decoding entities.
+///
+/// Accepts either single or double quotes (the opening quote determines
+/// the closing). Two-pass: first measures the decoded length so we can
+/// allocate exactly, then re-reads to fill the buffer. Returns NULL on
+/// allocation failure or unquoted input.
 static rt_string parse_attr_value(xml_parser *p) {
     char quote = parser_peek(p);
     if (quote != '"' && quote != '\'')
@@ -411,7 +484,11 @@ static rt_string parse_attr_value(xml_parser *p) {
     return result;
 }
 
-/// @brief Parse text content with entity decoding.
+/// @brief Parse element text content (everything up to the next `<`).
+///
+/// Same two-pass approach as `parse_attr_value`. Returns NULL when the
+/// segment is empty (the caller treats that as "no text node here").
+/// Whitespace-only text is filtered out one level up in `parse_node`.
 static rt_string parse_text_content(xml_parser *p) {
     size_t start = p->pos;
 
@@ -469,7 +546,10 @@ static rt_string parse_text_content(xml_parser *p) {
 
 static void *parse_node(xml_parser *p);
 
-/// @brief Parse a comment: <!-- ... -->
+/// @brief Parse a comment node `<!-- ... -->`.
+///
+/// The body is captured verbatim (no entity decoding inside comments
+/// per XML 1.0). Reports an error if the closing `-->` is missing.
 static void *parse_comment(xml_parser *p) {
     if (!parser_match(p, "<!--"))
         return NULL;
@@ -494,7 +574,11 @@ static void *parse_comment(xml_parser *p) {
     return node;
 }
 
-/// @brief Parse a CDATA section: <![CDATA[ ... ]]>
+/// @brief Parse a CDATA section `<![CDATA[ ... ]]>`.
+///
+/// CDATA preserves the body byte-for-byte (no entity decoding) — useful
+/// for embedding raw markup or scripts. Reports an error if the
+/// closing `]]>` is missing.
 static void *parse_cdata(xml_parser *p) {
     if (!parser_match(p, "<![CDATA["))
         return NULL;
@@ -519,7 +603,11 @@ static void *parse_cdata(xml_parser *p) {
     return node;
 }
 
-/// @brief Parse processing instruction: <?target ... ?>
+/// @brief Skip past a processing instruction `<?target ... ?>`.
+///
+/// We don't model PIs as nodes — they're typically just `<?xml ... ?>`
+/// declarations or stylesheet hints, neither of which the public API
+/// exposes. Returns false (after setting the error) on missing `?>`.
 static bool skip_processing_instruction(xml_parser *p) {
     if (!parser_match(p, "<?"))
         return false;
@@ -535,7 +623,11 @@ static bool skip_processing_instruction(xml_parser *p) {
     return true;
 }
 
-/// @brief Parse DOCTYPE declaration (skip it)
+/// @brief Skip past a DOCTYPE declaration `<!DOCTYPE ... >`.
+///
+/// We don't validate against DTDs, so the contents are discarded.
+/// Tracks `<` / `>` nesting (using a depth counter) so internal
+/// subsets like `<!DOCTYPE foo [ ... ]>` are skipped correctly.
 static bool skip_doctype(xml_parser *p) {
     if (!parser_lookahead(p, "<!DOCTYPE"))
         return false;
@@ -555,7 +647,14 @@ static bool skip_doctype(xml_parser *p) {
     return true;
 }
 
-/// @brief Parse an element: <tag attr="value">...</tag>
+/// @brief Parse a complete element, including attributes and children.
+///
+/// Recursive: children are parsed by `parse_node`, which calls back into
+/// `parse_element` for nested tags. `depth` is bumped on entry and
+/// restored on every exit path to enforce the 200-deep limit (S-17:
+/// blocks pathological recursion attacks). Verifies that the closing
+/// `</tag>` matches the opening tag and reports a precise mismatch
+/// error otherwise. Self-closing `<tag/>` is supported.
 static void *parse_element(xml_parser *p) {
     /* S-17: Reject excessively nested documents */
     if (p->depth >= XML_MAX_DEPTH) {
@@ -695,7 +794,14 @@ static void *parse_element(xml_parser *p) {
     return node;
 }
 
-/// @brief Parse any node type.
+/// @brief Dispatch to the appropriate parse routine based on the cursor.
+///
+/// Skips whitespace, then peeks at the upcoming bytes to decide:
+/// comment, CDATA, processing instruction, DOCTYPE (skipped recursively),
+/// element, or text. Drops whitespace-only text nodes so the tree
+/// stays compact. Returns NULL at EOF or when the current segment
+/// produces no node (e.g., whitespace-only text); a real parse error
+/// is signalled via `xml_last_error[0] != 0`.
 static void *parse_node(xml_parser *p) {
     parser_skip_ws(p);
 
@@ -759,7 +865,16 @@ static void *parse_node(xml_parser *p) {
     return NULL;
 }
 
-/// @brief Parse complete document.
+/// @brief Parse a complete XML document into a tree.
+///
+/// Builds a `XML_NODE_DOCUMENT` root and pushes every parsed top-level
+/// node (typically one element plus optional comments / PIs) onto its
+/// children seq. Returns NULL on parse failure, with the cause in
+/// `xml_last_error`.
+///
+/// @param input UTF-8 XML source.
+/// @param len   Length of `input` in bytes.
+/// @return Owned document node, or NULL on failure.
 static void *parse_document(const char *input, size_t len) {
     clear_error();
 
@@ -799,6 +914,14 @@ static void *parse_document(const char *input, size_t len) {
 // Public API - Parsing
 //=============================================================================
 
+/// @brief `Xml.Parse(text)` — parse XML source into a document tree.
+///
+/// Returns NULL on empty input or any parse error; call `Xml.Error()`
+/// to retrieve a human-readable reason. Does not validate against any
+/// schema or DTD.
+///
+/// @param text UTF-8 XML source.
+/// @return Owned document node, or NULL on failure.
 void *rt_xml_parse(rt_string text) {
     if (!text || rt_str_len(text) == 0) {
         set_error("Empty XML input");
@@ -811,10 +934,23 @@ void *rt_xml_parse(rt_string text) {
     return parse_document(cstr, (size_t)len);
 }
 
+/// @brief `Xml.Error()` — return the last parse error message on this thread.
+///
+/// Empty when the most recent parse succeeded. Errors are thread-local
+/// so concurrent parses don't clobber each other's diagnostics.
+///
+/// @return Owned `rt_string` with the error text, or "" if none.
 rt_string rt_xml_error(void) {
     return rt_string_from_bytes(xml_last_error, strlen(xml_last_error));
 }
 
+/// @brief `Xml.IsValid(text)` — boolean parse-success probe.
+///
+/// Internally runs `Parse` and discards the result. Useful for cheap
+/// well-formedness checks without keeping the document around.
+///
+/// @param text Candidate XML.
+/// @return 1 if it parses, 0 otherwise.
 int8_t rt_xml_is_valid(rt_string text) {
     void *doc = rt_xml_parse(text);
     if (doc) {
@@ -829,6 +965,14 @@ int8_t rt_xml_is_valid(rt_string text) {
 // Public API - Node Creation
 //=============================================================================
 
+/// @brief `Xml.Element(tag)` — create a fresh element node.
+///
+/// The element starts with no attributes and no children. The tag
+/// string is retained, so the caller can release its own reference
+/// after the call.
+///
+/// @param tag Element tag name.
+/// @return Owned element node, or NULL on OOM.
 void *rt_xml_element(rt_string tag) {
     if (!tag)
         return NULL;
@@ -843,6 +987,13 @@ void *rt_xml_element(rt_string tag) {
     return node;
 }
 
+/// @brief `Xml.Text(content)` — create a text node.
+///
+/// Used for `<elem>foo</elem>` -style content. Use `Xml.Cdata` instead
+/// if the body should bypass entity escaping during formatting.
+///
+/// @param content Text body (NULL produces an empty text node).
+/// @return Owned text node.
 void *rt_xml_text(rt_string content) {
     void *node = xml_node_new(XML_NODE_TEXT);
     if (!node)
@@ -855,6 +1006,13 @@ void *rt_xml_text(rt_string content) {
     return node;
 }
 
+/// @brief `Xml.Comment(content)` — create a comment node.
+///
+/// Formats as `<!-- content -->`. The body is emitted verbatim;
+/// callers must avoid embedding `--` inside (XML 1.0 forbids it).
+///
+/// @param content Comment text.
+/// @return Owned comment node.
 void *rt_xml_comment(rt_string content) {
     void *node = xml_node_new(XML_NODE_COMMENT);
     if (!node)
@@ -867,6 +1025,14 @@ void *rt_xml_comment(rt_string content) {
     return node;
 }
 
+/// @brief `Xml.Cdata(content)` — create a CDATA section node.
+///
+/// Formats as `<![CDATA[content]]>` with no entity escaping. Useful
+/// for embedding markup, code, or other content that would otherwise
+/// require heavy escaping.
+///
+/// @param content Raw CDATA body.
+/// @return Owned CDATA node.
 void *rt_xml_cdata(rt_string content) {
     void *node = xml_node_new(XML_NODE_CDATA);
     if (!node)
@@ -883,6 +1049,10 @@ void *rt_xml_cdata(rt_string content) {
 // Public API - Node Properties
 //=============================================================================
 
+/// @brief `XmlNode.NodeType` — return the kind enum (element/text/etc).
+///
+/// Values match the `rt_xml_node_type_t` enum (0=element, 1=text,
+/// 2=comment, 3=cdata, 4=document). Returns 0 for NULL.
 int64_t rt_xml_node_type(void *node) {
     if (!node)
         return 0;
@@ -890,6 +1060,10 @@ int64_t rt_xml_node_type(void *node) {
     return (int64_t)n->type;
 }
 
+/// @brief `XmlNode.Tag` — return the element tag name.
+///
+/// Returns "" for non-element nodes (text, comment, CDATA, document).
+/// The returned string is retained and owned by the caller.
 rt_string rt_xml_tag(void *node) {
     if (!node)
         return rt_str_empty();
@@ -900,6 +1074,10 @@ rt_string rt_xml_tag(void *node) {
     return n->tag;
 }
 
+/// @brief `XmlNode.Content` — return the raw `content` string slot.
+///
+/// Populated for text, comment, and CDATA nodes; "" for elements and
+/// documents (use `TextContent` to recursively gather descendant text).
 rt_string rt_xml_content(void *node) {
     if (!node)
         return rt_str_empty();
@@ -910,7 +1088,12 @@ rt_string rt_xml_content(void *node) {
     return n->content;
 }
 
-/* O-04: Helper that appends all text content to a builder, avoiding O(n²) concat */
+/// @brief Walk the tree and append every descendant text/CDATA into `sb`.
+///
+/// Optimization O-04: building one growing builder is O(n) total versus
+/// the O(n²) you'd get with naive `result = result + child.text` chains.
+/// Recurses through element and document nodes; everything else is a
+/// no-op. Borrowed references throughout — children are owned by parents.
 static void collect_text_content(void *node, rt_string_builder *sb) {
     if (!node)
         return;
@@ -940,6 +1123,12 @@ static void collect_text_content(void *node, rt_string_builder *sb) {
     }
 }
 
+/// @brief `XmlNode.TextContent` — concatenated text of this node and descendants.
+///
+/// For text/CDATA nodes returns the content directly. For element /
+/// document nodes, recursively concatenates every descendant text +
+/// CDATA into a single string via the builder helper. Returns "" for
+/// nodes with no textual content.
 rt_string rt_xml_text_content(void *node) {
     if (!node)
         return rt_str_empty();
@@ -974,6 +1163,12 @@ rt_string rt_xml_text_content(void *node) {
 // Public API - Attributes
 //=============================================================================
 
+/// @brief `XmlNode.Attr(name)` — get an attribute value, or "" if missing.
+///
+/// Case-sensitive (XML attributes are). Returns "" for non-element
+/// nodes or unknown attributes; the empty-string return is
+/// indistinguishable from an explicitly empty attribute, so use
+/// `HasAttr` if you need to disambiguate.
 rt_string rt_xml_attr(void *node, rt_string name) {
     if (!node || !name)
         return rt_str_empty();
@@ -990,6 +1185,10 @@ rt_string rt_xml_attr(void *node, rt_string name) {
     return (rt_string)value;
 }
 
+/// @brief `XmlNode.HasAttr(name)` — test whether an attribute is present.
+///
+/// Distinguishes "attribute exists with empty value" from "attribute
+/// absent". Returns 0 for non-element nodes.
 int8_t rt_xml_has_attr(void *node, rt_string name) {
     if (!node || !name)
         return 0;
@@ -1001,6 +1200,10 @@ int8_t rt_xml_has_attr(void *node, rt_string name) {
     return rt_map_has(n->attributes, name);
 }
 
+/// @brief `XmlNode.SetAttr(name, value)` — set / overwrite an attribute.
+///
+/// Silently no-ops on non-element nodes or NULL inputs. Existing
+/// values for the same name are replaced.
 void rt_xml_set_attr(void *node, rt_string name, rt_string value) {
     if (!node || !name)
         return;
@@ -1012,6 +1215,9 @@ void rt_xml_set_attr(void *node, rt_string name, rt_string value) {
     rt_map_set(n->attributes, name, (void *)value);
 }
 
+/// @brief `XmlNode.RemoveAttr(name)` — drop an attribute.
+///
+/// @return 1 if the attribute was present and removed, 0 otherwise.
 int8_t rt_xml_remove_attr(void *node, rt_string name) {
     if (!node || !name)
         return 0;
@@ -1023,6 +1229,11 @@ int8_t rt_xml_remove_attr(void *node, rt_string name) {
     return rt_map_remove(n->attributes, name);
 }
 
+/// @brief `XmlNode.AttrNames` — list the attribute names of an element.
+///
+/// Returns an owned `seq<str>`, always — empty for non-element or
+/// attribute-less nodes. Order is the underlying map's iteration
+/// order (effectively insertion order).
 void *rt_xml_attr_names(void *node) {
     if (!node)
         return rt_seq_new();
@@ -1038,6 +1249,11 @@ void *rt_xml_attr_names(void *node) {
 // Public API - Children
 //=============================================================================
 
+/// @brief `XmlNode.Children` — return a snapshot seq of child nodes.
+///
+/// Returns a *copy* of the internal seq so the caller can iterate or
+/// mutate it without affecting the parent. The contained node refs
+/// are borrowed (parent retains ownership) — do not release them.
 void *rt_xml_children(void *node) {
     if (!node)
         return rt_seq_new();
@@ -1057,6 +1273,7 @@ void *rt_xml_children(void *node) {
     return copy;
 }
 
+/// @brief `XmlNode.ChildCount` — number of direct children.
 int64_t rt_xml_child_count(void *node) {
     if (!node)
         return 0;
@@ -1068,6 +1285,10 @@ int64_t rt_xml_child_count(void *node) {
     return rt_seq_len(n->children);
 }
 
+/// @brief `XmlNode.ChildAt(index)` — borrowed reference to the Nth child.
+///
+/// Returns NULL for negative or out-of-range indices. The reference
+/// is borrowed: the parent retains ownership, do not release.
 void *rt_xml_child_at(void *node, int64_t index) {
     if (!node || index < 0)
         return NULL;
@@ -1079,6 +1300,11 @@ void *rt_xml_child_at(void *node, int64_t index) {
     return rt_seq_get(n->children, index);
 }
 
+/// @brief `XmlNode.Child(tag)` — first direct-child element with that tag.
+///
+/// Linear scan over the children seq, returning the first element
+/// whose tag matches exactly. Returns NULL if no match. Borrowed
+/// reference (do not release).
 void *rt_xml_child(void *node, rt_string tag) {
     if (!node || !tag)
         return NULL;
@@ -1105,6 +1331,10 @@ void *rt_xml_child(void *node, rt_string tag) {
     return NULL;
 }
 
+/// @brief `XmlNode.ChildrenByTag(tag)` — direct children matching `tag`.
+///
+/// Like `Child(tag)` but returns *all* matches in document order. Only
+/// looks one level deep — for recursive search use `FindAll`.
 void *rt_xml_children_by_tag(void *node, rt_string tag) {
     void *result = rt_seq_new();
     if (!node || !tag)
@@ -1133,6 +1363,11 @@ void *rt_xml_children_by_tag(void *node, rt_string tag) {
     return result;
 }
 
+/// @brief `XmlNode.Append(child)` — add `child` to the end of `node.children`.
+///
+/// Sets the child's `parent` weak pointer. Ownership of the child
+/// transfers to the parent — release tracking flows through the
+/// parent's finalizer.
 void rt_xml_append(void *node, void *child) {
     if (!node || !child)
         return;
@@ -1147,6 +1382,10 @@ void rt_xml_append(void *node, void *child) {
     rt_seq_push(n->children, child);
 }
 
+/// @brief `XmlNode.Insert(index, child)` — splice `child` at position `index`.
+///
+/// Indices past the end clamp to "end of list" (effectively `Append`).
+/// Negative indices are rejected (silent no-op).
 void rt_xml_insert(void *node, int64_t index, void *child) {
     if (!node || !child || index < 0)
         return;
@@ -1164,6 +1403,11 @@ void rt_xml_insert(void *node, int64_t index, void *child) {
     rt_seq_insert(n->children, index, child);
 }
 
+/// @brief `XmlNode.Remove(child)` — detach `child` by identity.
+///
+/// Returns 0 if `child` isn't found in `node.children`. On success,
+/// clears the child's `parent` pointer and releases the parent's
+/// reference (the child is freed if there are no other holders).
 int8_t rt_xml_remove(void *node, void *child) {
     if (!node || !child)
         return 0;
@@ -1187,6 +1431,11 @@ int8_t rt_xml_remove(void *node, void *child) {
     return 1;
 }
 
+/// @brief `XmlNode.RemoveAt(index)` — detach the child at `index`.
+///
+/// Silent no-op for out-of-range or negative indices. Same ownership
+/// transfer as `Remove`: the parent's reference is released after the
+/// child has been pulled out of the seq.
 void rt_xml_remove_at(void *node, int64_t index) {
     if (!node || index < 0)
         return;
@@ -1210,6 +1459,12 @@ void rt_xml_remove_at(void *node, int64_t index) {
     }
 }
 
+/// @brief `XmlElement.SetText(text)` — replace all children with one text node.
+///
+/// Drains the element's existing children, then (if `text` is non-empty)
+/// appends a single text node. Useful for `<tag>some-value</tag>`-style
+/// updates where the element should hold only its text. No-op for
+/// non-element receivers.
 void rt_xml_set_text(void *node, rt_string text) {
     if (!node)
         return;
@@ -1245,6 +1500,11 @@ void rt_xml_set_text(void *node, rt_string text) {
 // Public API - Navigation
 //=============================================================================
 
+/// @brief `XmlNode.Parent` — retained reference to the containing node, or NULL.
+///
+/// Returns NULL for detached nodes and the document root. Bumps the
+/// parent's refcount before returning so it survives at least until
+/// the caller releases it.
 void *rt_xml_parent(void *node) {
     if (!node)
         return NULL;
@@ -1257,6 +1517,12 @@ void *rt_xml_parent(void *node) {
     return n->parent;
 }
 
+/// @brief `XmlDocument.Root` — first element child of the document.
+///
+/// XML 1.0 mandates a single root element; this helper finds it
+/// while skipping any leading processing instructions / comments.
+/// Returns NULL if the document is non-document or has no element
+/// children. Borrowed reference (do not release).
 void *rt_xml_root(void *doc) {
     if (!doc)
         return NULL;
@@ -1278,6 +1544,11 @@ void *rt_xml_root(void *doc) {
     return NULL;
 }
 
+/// @brief DFS helper for `FindAll` — push every descendant element matching `tag`.
+///
+/// Each match is retained before being pushed so the result seq holds
+/// strong refs (callers can outlive the source tree). Recursion is
+/// pre-order, so results appear in document order.
 static void find_all_recursive(void *node, const char *tag, void *result) {
     xml_node *n = (xml_node *)node;
 
@@ -1301,6 +1572,12 @@ static void find_all_recursive(void *node, const char *tag, void *result) {
     }
 }
 
+/// @brief `XmlNode.FindAll(tag)` — recursive search returning all matches.
+///
+/// Walks the entire subtree (including the receiver itself) collecting
+/// every element whose tag equals `tag`. Returns an owned seq of
+/// retained node references — safe to keep after the source tree is
+/// dropped.
 void *rt_xml_find_all(void *node, rt_string tag) {
     void *result = rt_seq_new();
     if (!node || !tag)
@@ -1311,6 +1588,10 @@ void *rt_xml_find_all(void *node, rt_string tag) {
     return result;
 }
 
+/// @brief DFS helper for `Find` — return first descendant element matching `tag`.
+///
+/// Pre-order traversal, returns the first hit. Retains the returned
+/// node before propagating up the call stack so the caller owns it.
 static void *find_first_recursive(void *node, const char *tag) {
     xml_node *n = (xml_node *)node;
 
@@ -1338,6 +1619,10 @@ static void *find_first_recursive(void *node, const char *tag) {
     return NULL;
 }
 
+/// @brief `XmlNode.Find(tag)` — first descendant element matching `tag`.
+///
+/// DFS pre-order; returns the receiver itself if it matches. Returns
+/// NULL when no match is found. The returned node is retained.
 void *rt_xml_find(void *node, rt_string tag) {
     if (!node || !tag)
         return NULL;
@@ -1352,6 +1637,10 @@ void *rt_xml_find(void *node, rt_string tag) {
 
 static void format_node(void *node, int indent, int level, char **buf, size_t *cap, size_t *len);
 
+// Format-side scratch helpers — a tiny growable c-string used during
+// `Format` / `FormatPretty`. `*cap` doubles on overflow; OOM traps.
+
+/// @brief Append the c-string `str` to the growing format buffer.
 static void buf_append(char **buf, size_t *cap, size_t *len, const char *str) {
     size_t slen = strlen(str);
     while (*len + slen + 1 > *cap) {
@@ -1367,6 +1656,7 @@ static void buf_append(char **buf, size_t *cap, size_t *len, const char *str) {
     (*buf)[*len] = '\0';
 }
 
+/// @brief Append a single character to the growing format buffer.
 static void buf_append_char(char **buf, size_t *cap, size_t *len, char c) {
     if (*len + 2 > *cap) {
         size_t new_cap = (*cap == 0) ? 256 : (*cap * 2);
@@ -1381,11 +1671,17 @@ static void buf_append_char(char **buf, size_t *cap, size_t *len, char c) {
     (*buf)[*len] = '\0';
 }
 
+/// @brief Append `spaces` blanks to the buffer (used for pretty-printing).
 static void buf_append_indent(char **buf, size_t *cap, size_t *len, int spaces) {
     for (int i = 0; i < spaces; i++)
         buf_append_char(buf, cap, len, ' ');
 }
 
+/// @brief Append `str` with XML special-character escaping.
+///
+/// Always escapes `&`, `<`, `>`. Quotes (`"` and `'`) are escaped only
+/// when `for_attr` is set — text content can carry literal quotes
+/// freely. This matches the recommendations of XML 1.0 §2.4.
 static void buf_append_escaped(
     char **buf, size_t *cap, size_t *len, const char *str, int for_attr) {
     for (size_t i = 0; str[i]; i++) {
@@ -1418,6 +1714,13 @@ static void buf_append_escaped(
     }
 }
 
+/// @brief Emit a single element (opening tag, attrs, children, closing tag).
+///
+/// Self-closes (`<tag/>`) when there are no children. Switches between
+/// inline and indented output: an element with only text/CDATA children
+/// is emitted on one line; mixed/element children get newlines and
+/// indentation when `indent > 0`. `level` is the current depth (used
+/// to compute the leading indent).
 static void format_element(
     xml_node *elem, int indent, int level, char **buf, size_t *cap, size_t *len) {
     // Indentation
@@ -1490,6 +1793,11 @@ static void format_element(
         buf_append_char(buf, cap, len, '\n');
 }
 
+/// @brief Dispatch formatter — emits any node by kind.
+///
+/// Element nodes go to `format_element`; text is escaped; comments
+/// and CDATA are emitted with their delimiters; documents iterate
+/// their children at level 0.
 static void format_node(void *node, int indent, int level, char **buf, size_t *cap, size_t *len) {
     xml_node *n = (xml_node *)node;
 
@@ -1534,6 +1842,13 @@ static void format_node(void *node, int indent, int level, char **buf, size_t *c
     }
 }
 
+/// @brief `Xml.Format(node)` — serialize a node tree to compact XML text.
+///
+/// No added whitespace, no XML declaration. For human-readable output
+/// use `FormatPretty`. Returns "" for NULL.
+///
+/// @param node Node to serialize.
+/// @return Owned `rt_string` containing the XML.
 rt_string rt_xml_format(void *node) {
     if (!node)
         return rt_str_empty();
@@ -1548,6 +1863,17 @@ rt_string rt_xml_format(void *node) {
     return result;
 }
 
+/// @brief `Xml.FormatPretty(node, indent)` — serialize with indentation.
+///
+/// `indent` is the number of spaces per nesting level (clamped to
+/// 0..8). A trailing newline is trimmed for consistency with most
+/// pretty-printers. Mixed-content elements (interleaved text and
+/// element children) are kept inline since reflowing them can change
+/// semantics — see `format_element` for details.
+///
+/// @param node   Node to serialize.
+/// @param indent Spaces per indent level (0..8).
+/// @return Owned `rt_string` containing the indented XML.
 rt_string rt_xml_format_pretty(void *node, int64_t indent) {
     if (!node)
         return rt_str_empty();
@@ -1575,6 +1901,12 @@ rt_string rt_xml_format_pretty(void *node, int64_t indent) {
 // Public API - Utility
 //=============================================================================
 
+/// @brief `Xml.Escape(text)` — apply XML text-content escaping.
+///
+/// Escapes `&`, `<`, `>`. Quotes are *not* escaped (they're safe in
+/// text content); use this on attribute values only when the caller
+/// is also wrapping in quotes manually — `Xml.Format` handles the
+/// quote escaping for attributes automatically.
 rt_string rt_xml_escape(rt_string text) {
     if (!text)
         return rt_str_empty();
@@ -1590,6 +1922,11 @@ rt_string rt_xml_escape(rt_string text) {
     return result;
 }
 
+/// @brief `Xml.Unescape(text)` — decode XML entity references back to characters.
+///
+/// Inverse of `Escape`. Recognises numeric (`&#NN;` / `&#xHH;`) and the
+/// five named XML entities. Unknown entities are left in place
+/// (consistent with `decode_entity`'s 0-return policy).
 rt_string rt_xml_unescape(rt_string text) {
     if (!text)
         return rt_str_empty();

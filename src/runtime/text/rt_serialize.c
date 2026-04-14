@@ -68,6 +68,8 @@ static void clear_error(void) {
 // Unified Parse
 //=============================================================================
 
+/// @brief Parse `text` according to `format` (JSON/YAML/TOML/INI), returning the resulting tree.
+/// Returns NULL on parse error — call `_error()` for the diagnostic message.
 void *rt_serialize_parse(rt_string text, int64_t format) {
     clear_error();
     if (!text) {
@@ -266,6 +268,8 @@ int64_t rt_serialize_detect(rt_string text) {
     return RT_FORMAT_CSV;
 }
 
+/// @brief Detect the format from the text content (via `_detect`) and parse with that format.
+/// Convenience for "load this file, figure out what it is" workflows.
 void *rt_serialize_auto_parse(rt_string text) {
     int64_t format;
     if (!text)

@@ -38,6 +38,11 @@
 
 #include <fcntl.h>
 
+#ifdef _WIN32
+#include <stdlib.h>
+#include <windows.h>
+#endif
+
 #ifndef O_CLOEXEC
 #define O_CLOEXEC 0
 #endif
@@ -173,3 +178,48 @@ size_t rt_file_string_view(const ViperString *s, const uint8_t **data_out) {
         return rt_heap_len(s->data);
     return s->literal_len;
 }
+
+#ifdef _WIN32
+wchar_t *rt_file_path_utf8_to_wide(const char *utf8) {
+    if (!utf8)
+        return NULL;
+
+    int needed = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, utf8, -1, NULL, 0);
+    if (needed <= 0)
+        needed = MultiByteToWideChar(CP_UTF8, 0, utf8, -1, NULL, 0);
+    if (needed <= 0)
+        return NULL;
+
+    wchar_t *wide = (wchar_t *)malloc((size_t)needed * sizeof(wchar_t));
+    if (!wide)
+        return NULL;
+
+    if (MultiByteToWideChar(CP_UTF8, 0, utf8, -1, wide, needed) <= 0) {
+        free(wide);
+        return NULL;
+    }
+    return wide;
+}
+
+rt_string rt_file_path_wide_to_string(const wchar_t *wide) {
+    if (!wide)
+        return rt_str_empty();
+
+    int needed = WideCharToMultiByte(CP_UTF8, 0, wide, -1, NULL, 0, NULL, NULL);
+    if (needed <= 0)
+        return rt_str_empty();
+
+    char *utf8 = (char *)malloc((size_t)needed);
+    if (!utf8)
+        return rt_str_empty();
+
+    if (WideCharToMultiByte(CP_UTF8, 0, wide, -1, utf8, needed, NULL, NULL) <= 0) {
+        free(utf8);
+        return rt_str_empty();
+    }
+
+    rt_string s = rt_string_from_bytes(utf8, strlen(utf8));
+    free(utf8);
+    return s ? s : rt_str_empty();
+}
+#endif

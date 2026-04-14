@@ -9,30 +9,27 @@
  * @brief Adapter between VM execution and the C runtime library.
  *
  * Declares the bridge used to invoke runtime helpers, manage trap diagnostics,
- * and register external functions callable from IL. The bridge provides both a
- * process-global extern registry and hooks for a future per-VM registry.
+ * and register external functions callable from IL. The bridge supports both a
+ * process-global extern registry and optional per-VM registries.
  *
  * @section registry Extern Registry Design
  * The extern registry maps external function names to their descriptors and
  * native implementations, enabling IL code to call host-provided functions.
  *
- * @par Current implementation (process-global)
- * - All VM instances in the process share the same registry
- * - Registration and lookup are protected by a single mutex
- * - Functions registered via `registerExtern()` are visible to all VMs
+ * @par Resolution order
+ * - The active VM's per-VM registry is consulted first when present
+ * - The process-global registry is consulted next
+ * - Built-in runtime descriptors are used only if no extern override matches
  *
- * This design suits the CLI/single-tenant model in which only one VM executes
- * at a time or multiple VMs share identical extern sets.
+ * @par Current implementation
+ * - All process-global registrations are stored in a singleton registry
+ * - A VM may also point at its own `ExternRegistry`
+ * - Registration and lookup are mutex-protected per registry
+ * - Functions registered via `registerExtern()` are visible process-wide unless
+ *   a VM-specific registration with the same name overrides them
  *
- * @par Future consideration (per-VM scoping)
- * For multi-tenant embedding, per-VM extern scoping may be desirable:
- * - Each VM instance would have its own ExternRegistry
- * - Hosts could selectively expose functions per tenant
- * - Improves sandboxing and isolation
- *
- * The `ExternRegistry` abstraction is designed to support such a refactor.
- * Currently, `processGlobalExternRegistry()` returns the singleton; a future
- * version could route via the active VM.
+ * This design supports both shared host integrations and per-VM embedding
+ * scenarios without changing the extern call surface seen by IL code.
  */
 //===----------------------------------------------------------------------===//
 
@@ -44,9 +41,11 @@
 #include "vm/Trap.hpp"
 
 #include <cstddef>
+#include <exception>
 #include <span>
 #include <string>
 #include <string_view>
+#include <utility>
 
 namespace il::runtime {
 struct RuntimeDescriptor;
@@ -66,23 +65,9 @@ union Slot; // defined in VM.hpp
  * @brief Opaque handle to an extern registry.
  *
  * This struct wraps the underlying storage for external function registrations.
- * It is designed as an abstraction layer to facilitate future per-VM scoping
- * without changing the API surface.
- *
- * ## Current Behavior
- *
- * There is a single process-global registry accessed via
- * `processGlobalExternRegistry()`. All VMs in the process share this registry.
- *
- * ## Future Extension
- *
- * To support per-VM extern scoping:
- * 1. Add an `ExternRegistry*` member to the VM class.
- * 2. Modify `currentExternRegistry()` to return the active VM's registry.
- * 3. Provide APIs to create/destroy per-VM registries.
- *
- * @note This struct intentionally hides its implementation details. Use the
- *       free functions below to interact with registries.
+ * Registries may be used process-wide or attached to individual VM instances.
+ * The implementation stays opaque so registry storage, locking, and lifetime
+ * management can evolve without changing the public API surface.
  */
 struct ExternRegistry;
 
@@ -95,12 +80,20 @@ struct ExternRegistry;
 ExternRegistry &processGlobalExternRegistry();
 
 /// @brief Access the extern registry for the current context.
-/// @details Currently returns the process-global registry. In a future
-///          per-VM scoping implementation, this would return the registry
-///          associated with the active VM (if any), falling back to the
-///          process-global registry.
+/// @details Returns the active VM's per-VM registry when one is attached,
+///          otherwise falls back to the process-global registry.
 /// @return Reference to the appropriate extern registry.
 ExternRegistry &currentExternRegistry();
+
+/// @brief Increment the lifetime reference count for @p registry.
+/// @details Registries are shared across VMs and worker payloads. Callers that
+///          store a raw registry pointer beyond the lifetime of an owning
+///          ExternRegistryPtr must retain it explicitly.
+void retainExternRegistry(ExternRegistry *registry);
+
+/// @brief Release a previously retained extern registry reference.
+/// @details Deletes the registry when the final retained reference is released.
+void releaseExternRegistry(ExternRegistry *registry) noexcept;
 
 /// @brief Register an external function in the specified registry.
 /// @param registry Target registry (use `processGlobalExternRegistry()` for global).
@@ -149,6 +142,48 @@ struct RuntimeCallContext {
         nullptr;              ///< Descriptor of active runtime helper.
     Slot *argBegin = nullptr; ///< Pointer to first argument slot for the active call.
     std::size_t argCount = 0; ///< Number of argument slots.
+};
+
+/// @brief Exception used to route runtime traps back into alternate executors.
+/// @details Standard VM execution routes traps through @ref vm_raise. Bytecode
+///          execution can temporarily install a thread-local interceptor so
+///          runtime faults become BytecodeVM traps instead of aborting.
+struct RuntimeTrapSignal : std::exception {
+    TrapKind kind{};
+    int32_t code = 0;
+    std::string message;
+    il::support::SourceLoc loc{};
+    std::string function;
+    std::string block;
+
+    RuntimeTrapSignal(TrapKind trapKind,
+                      int32_t trapCode,
+                      std::string trapMessage,
+                      il::support::SourceLoc trapLoc,
+                      std::string trapFunction,
+                      std::string trapBlock)
+        : kind(trapKind), code(trapCode), message(std::move(trapMessage)), loc(trapLoc),
+          function(std::move(trapFunction)), block(std::move(trapBlock)) {}
+
+    const char *what() const noexcept override {
+        return message.c_str();
+    }
+};
+
+using RuntimeTrapInterceptor = void (*)(const RuntimeTrapSignal &signal, void *userData);
+
+/// @brief RAII helper that installs a thread-local runtime trap interceptor.
+class ScopedRuntimeTrapInterceptor {
+  public:
+    ScopedRuntimeTrapInterceptor(RuntimeTrapInterceptor interceptor, void *userData);
+    ~ScopedRuntimeTrapInterceptor();
+
+    ScopedRuntimeTrapInterceptor(const ScopedRuntimeTrapInterceptor &) = delete;
+    ScopedRuntimeTrapInterceptor &operator=(const ScopedRuntimeTrapInterceptor &) = delete;
+
+  private:
+    RuntimeTrapInterceptor previousInterceptor_ = nullptr;
+    void *previousUserData_ = nullptr;
 };
 
 /**
@@ -206,11 +241,15 @@ class RuntimeBridge {
 
     /// @brief Report a trap with source location @p loc within function @p fn and
     /// block @p block.
-    [[noreturn]] static void trap(TrapKind kind,
-                                  const std::string &msg,
-                                  const il::support::SourceLoc &loc,
-                                  const std::string &fn,
-                                  const std::string &block);
+    /// @details The common path does not return, but tests and embedders may
+    ///          override `vm_trap()` with an observer that records the trap and
+    ///          continues execution.
+    static void trap(TrapKind kind,
+                     const std::string &msg,
+                     const il::support::SourceLoc &loc,
+                     const std::string &fn,
+                     const std::string &block,
+                     int32_t code = 0);
 
     /// @brief Access the runtime call context active on the current thread.
     /// @return Pointer to the call context when a runtime call is executing; nullptr otherwise.

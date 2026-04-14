@@ -46,6 +46,7 @@ using il::runtime::signatures::SigParam;
 struct VmThreadStartPayload {
     const il::core::Module *module = nullptr;
     std::shared_ptr<VM::ProgramState> program;
+    ExternRegistry *externRegistry = nullptr;
     const il::core::Function *entry = nullptr;
     void *arg = nullptr;
 };
@@ -56,6 +57,7 @@ struct VmThreadStartPayload {
 struct VmAsyncRunPayload {
     const il::core::Module *module = nullptr;
     std::shared_ptr<VM::ProgramState> program;
+    ExternRegistry *externRegistry = nullptr;
     const il::core::Function *entry = nullptr;
     void *arg = nullptr;
     void *promise = nullptr;
@@ -69,12 +71,15 @@ struct VmAsyncRunPayload {
 extern "C" void vm_thread_entry_trampoline(void *raw) {
     VmThreadStartPayload *payload = static_cast<VmThreadStartPayload *>(raw);
     if (!payload || !payload->module || !payload->entry) {
+        if (payload)
+            releaseExternRegistry(payload->externRegistry);
         delete payload;
         rt_abort("Thread.Start: invalid entry");
     }
 
     try {
         VM vm(*payload->module, payload->program);
+        vm.setExternRegistry(payload->externRegistry);
 
         il::support::SmallVector<Slot, 2> args;
         if (payload->entry->params.size() == 1) {
@@ -85,9 +90,12 @@ extern "C" void vm_thread_entry_trampoline(void *raw) {
 
         detail::VMAccess::callFunction(vm, *payload->entry, args);
     } catch (...) {
+        releaseExternRegistry(payload->externRegistry);
+        payload->externRegistry = nullptr;
         rt_abort("Thread.Start: unhandled exception");
     }
 
+    releaseExternRegistry(payload->externRegistry);
     delete payload;
 }
 
@@ -172,9 +180,12 @@ static void threads_thread_start_handler(void **args, void *result) {
         rt_trap("Thread.Start: invalid entry");
     validateEntrySignature(*entryFn);
 
-    auto *payload = new VmThreadStartPayload{&module, std::move(program), entryFn, arg};
+    auto *payload = new VmThreadStartPayload{
+        &module, std::move(program), parentVm->externRegistry(), entryFn, arg};
+    retainExternRegistry(payload->externRegistry);
     void *thread = rt_thread_start(reinterpret_cast<void *>(&vm_thread_entry_trampoline), payload);
     if (!thread) {
+        releaseExternRegistry(payload->externRegistry);
         delete payload;
         rt_trap("Thread.Start: failed to create thread");
     }
@@ -190,12 +201,15 @@ static void threads_thread_start_handler(void **args, void *result) {
 extern "C" void vm_thread_safe_entry_trampoline(void *raw) {
     VmThreadStartPayload *payload = static_cast<VmThreadStartPayload *>(raw);
     if (!payload || !payload->module || !payload->entry) {
+        if (payload)
+            releaseExternRegistry(payload->externRegistry);
         delete payload;
         rt_abort("Thread.StartSafe: invalid entry");
     }
 
     try {
         VM vm(*payload->module, payload->program);
+        vm.setExternRegistry(payload->externRegistry);
 
         il::support::SmallVector<Slot, 2> args;
         if (payload->entry->params.size() == 1) {
@@ -209,11 +223,14 @@ extern "C" void vm_thread_safe_entry_trampoline(void *raw) {
         // Trap was intercepted by setjmp in the caller (safe_thread_entry).
         // If not, this is an unexpected exception.  Cannot re-throw from
         // extern "C" linkage (UB / MSVC C4297), so abort.
+        releaseExternRegistry(payload->externRegistry);
+        payload->externRegistry = nullptr;
         delete payload;
         rt_abort("Thread.StartSafe: unhandled exception in thread entry");
         return;
     }
 
+    releaseExternRegistry(payload->externRegistry);
     delete payload;
 }
 
@@ -249,10 +266,13 @@ static void threads_thread_start_safe_handler(void **args, void *result) {
         rt_trap("Thread.StartSafe: invalid entry");
     validateEntrySignature(*entryFn);
 
-    auto *payload = new VmThreadStartPayload{&module, std::move(program), entryFn, arg};
+    auto *payload = new VmThreadStartPayload{
+        &module, std::move(program), parentVm->externRegistry(), entryFn, arg};
+    retainExternRegistry(payload->externRegistry);
     void *thread =
         rt_thread_start_safe(reinterpret_cast<void *>(&vm_thread_safe_entry_trampoline), payload);
     if (!thread) {
+        releaseExternRegistry(payload->externRegistry);
         delete payload;
         rt_trap("Thread.StartSafe: failed to create thread");
     }
@@ -266,12 +286,15 @@ static void threads_thread_start_safe_handler(void **args, void *result) {
 extern "C" void vm_async_run_entry_trampoline(void *raw) {
     VmAsyncRunPayload *payload = static_cast<VmAsyncRunPayload *>(raw);
     if (!payload || !payload->module || !payload->entry || !payload->promise) {
+        if (payload)
+            releaseExternRegistry(payload->externRegistry);
         delete payload;
         rt_abort("Async.Run: invalid entry");
     }
 
     try {
         VM vm(*payload->module, payload->program);
+        vm.setExternRegistry(payload->externRegistry);
 
         il::support::SmallVector<Slot, 2> args;
         Slot argSlot{};
@@ -286,6 +309,7 @@ extern "C" void vm_async_run_entry_trampoline(void *raw) {
 
     if (rt_obj_release_check0(payload->promise))
         rt_obj_free(payload->promise);
+    releaseExternRegistry(payload->externRegistry);
     delete payload;
 }
 
@@ -325,10 +349,13 @@ static void threads_async_run_handler(void **args, void *result) {
     void *promise = rt_promise_new();
     void *future = rt_promise_get_future(promise);
 
-    auto *payload = new VmAsyncRunPayload{&module, std::move(program), entryFn, arg, promise};
+    auto *payload = new VmAsyncRunPayload{
+        &module, std::move(program), parentVm->externRegistry(), entryFn, arg, promise};
+    retainExternRegistry(payload->externRegistry);
     void *thread =
         rt_thread_start(reinterpret_cast<void *>(&vm_async_run_entry_trampoline), payload);
     if (!thread) {
+        releaseExternRegistry(payload->externRegistry);
         delete payload;
         rt_promise_set_error(promise, rt_const_cstr("Async.Run: failed to create thread"));
         if (result)

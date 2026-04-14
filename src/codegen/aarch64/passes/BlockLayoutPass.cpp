@@ -30,6 +30,7 @@
 #include "codegen/aarch64/MachineIR.hpp"
 #include "codegen/common/Diagnostics.hpp"
 
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -37,6 +38,29 @@
 namespace viper::codegen::aarch64::passes {
 
 namespace {
+
+static bool isConditionalBranch(MOpcode opc) {
+    switch (opc) {
+        case MOpcode::BCond:
+        case MOpcode::Cbz:
+        case MOpcode::Cbnz:
+            return true;
+        default:
+            return false;
+    }
+}
+
+static std::optional<std::size_t> lookupUnplacedTarget(
+    const MInstr &instr,
+    const std::unordered_map<std::string, std::size_t> &nameToIdx,
+    const std::vector<bool> &placed) {
+    if (instr.ops.empty() || instr.ops.back().kind != MOperand::Kind::Label)
+        return std::nullopt;
+    auto it = nameToIdx.find(instr.ops.back().label);
+    if (it == nameToIdx.end() || placed[it->second])
+        return std::nullopt;
+    return it->second;
+}
 
 /// @brief Reorder the blocks of a single function using the greedy trace.
 static void layoutFunction(MFunction &fn) {
@@ -66,13 +90,32 @@ static void layoutFunction(MFunction &fn) {
             const MBasicBlock &bb = fn.blocks[cur];
             if (!bb.instrs.empty()) {
                 const MInstr &last = bb.instrs.back();
-                if (last.opc == MOpcode::Br && !last.ops.empty() &&
-                    last.ops[0].kind == MOperand::Kind::Label) {
-                    const std::string &target = last.ops[0].label;
-                    auto it = nameToIdx.find(target);
-                    if (it != nameToIdx.end() && !placed[it->second]) {
-                        cur = it->second;
+                if (last.opc == MOpcode::Br) {
+                    if (auto target = lookupUnplacedTarget(last, nameToIdx, placed)) {
+                        cur = *target;
                         continue; // extend the trace
+                    }
+                }
+
+                if (bb.instrs.size() >= 2 && isConditionalBranch(bb.instrs[bb.instrs.size() - 2].opc) &&
+                    last.opc == MOpcode::Br) {
+                    // Prefer the explicit false-edge target so the trailing
+                    // unconditional branch can collapse into fallthrough.
+                    if (auto fallthrough = lookupUnplacedTarget(last, nameToIdx, placed)) {
+                        cur = *fallthrough;
+                        continue;
+                    }
+                    if (auto taken = lookupUnplacedTarget(
+                            bb.instrs[bb.instrs.size() - 2], nameToIdx, placed)) {
+                        cur = *taken;
+                        continue;
+                    }
+                }
+
+                if (isConditionalBranch(last.opc)) {
+                    if (auto target = lookupUnplacedTarget(last, nameToIdx, placed)) {
+                        cur = *target;
+                        continue;
                     }
                 }
             }

@@ -47,12 +47,20 @@ typedef struct {
     size_t pos; // bit position
 } mp3_bits_t;
 
+// ---------------------------------------------------------------------------
+// MP3 uses an MSB-first bitstream, opposite of Vorbis. The struct
+// tracks position by *bit* offset for cheap arbitrary-bit reads
+// (header field widths from 1..32 bits).
+// ---------------------------------------------------------------------------
+
+/// @brief Reset a bitstream onto a fresh byte buffer; computes bit length from byte length.
 static void mp3_bits_init(mp3_bits_t *b, const uint8_t *data, size_t byte_len) {
     b->data = data;
     b->len = byte_len * 8;
     b->pos = 0;
 }
 
+/// @brief Pull `count` MSB-first bits from the stream as a uint32. Returns 0 at EOF.
 static uint32_t mp3_bits_read(mp3_bits_t *b, int count) {
     if (count <= 0)
         return 0;
@@ -87,6 +95,11 @@ typedef struct {
     int main_data_size;
 } mp3_frame_header_t;
 
+/// @brief Parse the 4-byte MP3 frame header into `out`.
+///
+/// Validates the 11-bit sync word, decodes the version / layer /
+/// bitrate / sample-rate / channel-mode fields per ISO 11172-3,
+/// and computes the frame size. Returns -1 on invalid header.
 static int mp3_parse_header(const uint8_t *hdr, mp3_frame_header_t *out) {
     // Sync word check: 11 bits of 1
     if (hdr[0] != 0xFF || (hdr[1] & 0xE0) != 0xE0)
@@ -175,6 +188,13 @@ typedef struct {
     mp3_granule_info_t granules[MP3_MAX_GRANULES][MP3_MAX_CHANNELS];
 } mp3_side_info_t;
 
+/// @brief Parse the 17- or 32-byte Layer III side-info block (per granule, per channel).
+///
+/// Extracts main-data-begin pointer, scfsi flags, and per-granule
+/// fields (part2_3_length, big-values, global gain, scalefac
+/// compress, window switching flag, table selectors, region counts,
+/// preflag, scalefac_scale, count1table_select). These drive the
+/// Huffman + scalefactor decode for each granule's main data.
 static int mp3_parse_side_info(
     const uint8_t *data, int size, int channels, int mpeg1, mp3_side_info_t *si) {
     mp3_bits_t bits;
@@ -359,6 +379,11 @@ static void mp3_huff_decode_pair(mp3_bits_t *bits, int table_idx, int *x, int *y
 // IMDCT
 //===----------------------------------------------------------------------===//
 
+/// @brief 36-point IMDCT used for "long" blocks (most steady-state samples).
+///
+/// Converts 18 frequency-domain samples back to 36 time-domain
+/// samples, with the standard MDCT windowing folded in. Adjacent
+/// long blocks overlap-add by 18 samples to give continuous output.
 static void mp3_imdct36(const float *in, float *out) {
     // 36-point IMDCT: X[i] = sum_{k=0}^{17} in[k] * cos(pi/36 * (2*i+1+18) * (2*k+1) / 2)
     for (int i = 0; i < 36; i++) {
@@ -370,6 +395,11 @@ static void mp3_imdct36(const float *in, float *out) {
     }
 }
 
+/// @brief 12-point IMDCT used for "short" blocks (transients — three sub-blocks per granule).
+///
+/// Short blocks improve the time-resolution of the codec for
+/// percussive content; the encoder switches to them via the
+/// `block_type` flag in side-info.
 static void mp3_imdct12(const float *in, float *out) {
     // 12-point IMDCT for short blocks
     for (int i = 0; i < 12; i++) {
@@ -385,6 +415,14 @@ static void mp3_imdct12(const float *in, float *out) {
 // Polyphase synthesis filterbank
 //===----------------------------------------------------------------------===//
 
+/// @brief Polyphase synthesis filter — converts subband samples back to PCM.
+///
+/// MP3's final stage: each frame yields 32 subband samples per
+/// channel per "subband sample slot" (32 slots per frame).  This
+/// filter combines the 32 subband values via the standard
+/// pre-baked window matrix and outputs 32 PCM samples per call.
+/// Per-channel state (`v[]` ring buffer) carries across calls for
+/// the windowed overlap-add.
 static void mp3_synth_filter(mp3_decoder_t *dec,
                              int ch,
                              const float subbands[32],
@@ -453,6 +491,12 @@ static size_t mp3_find_sync(const uint8_t *data, size_t len, size_t start) {
     return len; // not found
 }
 
+/// @brief Decode an entire MP3 file in one shot — header sniff → per-frame decode → PCM out.
+///
+/// Walks the container scanning for valid sync words, skipping any
+/// ID3 prefix or junk bytes. Each frame is decoded into a
+/// per-frame PCM block and appended to the output buffer.
+/// @return 0 on success, negative on parse error / OOM.
 int mp3_decode_file(mp3_decoder_t *dec,
                     const uint8_t *data,
                     size_t len,

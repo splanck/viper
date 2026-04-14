@@ -49,7 +49,10 @@
 #include <stdlib.h>
 #include <string.h>
 
-/// Per-instance LCG state for shake offset — avoids global state thread hazard.
+/// @brief Per-instance Linear Congruential Generator returning a 15-bit pseudo-random number.
+/// Uses the classic `glibc` parameters (1103515245, 12345) and discards the low 16 bits to
+/// improve distribution. State is owned by each ScreenFX instance, so concurrent instances on
+/// different threads produce independent sequences without locks.
 static int64_t screenfx_rand(int64_t *state) {
     *state = (*state) * 1103515245 + 12345;
     return ((*state) >> 16) & 0x7FFF;
@@ -76,6 +79,9 @@ struct rt_screenfx_impl {
     int64_t rand_state;    ///< Per-instance LCG state for shake RNG (thread-safe).
 };
 
+/// @brief Construct an empty ScreenFX manager. RNG state is seeded from the object pointer
+/// XOR 0xDEADBEEF so each instance gets a unique deterministic sequence. Returns a GC-managed
+/// handle; NULL on allocation failure.
 rt_screenfx rt_screenfx_new(void) {
     struct rt_screenfx_impl *fx =
         (struct rt_screenfx_impl *)rt_obj_new_i64(0, (int64_t)sizeof(struct rt_screenfx_impl));
@@ -87,12 +93,14 @@ rt_screenfx rt_screenfx_new(void) {
     return fx;
 }
 
+/// @brief Release the ScreenFX manager; frees the inline struct when refcount hits zero.
+/// Provided for API symmetry — GC finalization also reclaims the allocation automatically.
 void rt_screenfx_destroy(rt_screenfx fx) {
     if (fx && rt_obj_release_check0(fx))
         rt_obj_free(fx);
 }
 
-/// Finds a free effect slot.
+/// @brief Linear scan for the first slot whose `type == RT_SCREENFX_NONE`. Returns -1 when full.
 static int find_free_slot(rt_screenfx fx) {
     for (int i = 0; i < RT_SCREENFX_MAX_EFFECTS; i++) {
         if (fx->effects[i].type == RT_SCREENFX_NONE)
@@ -101,7 +109,8 @@ static int find_free_slot(rt_screenfx fx) {
     return -1;
 }
 
-/// Finds an existing effect of given type (to replace).
+/// @brief Locate an existing effect of the given type so it can be reused/restarted (e.g. shake
+/// only ever lives in one slot — re-triggering replaces in place rather than allocating).
 static int find_effect_of_type(rt_screenfx fx, rt_screenfx_type_t type) {
     for (int i = 0; i < RT_SCREENFX_MAX_EFFECTS; i++) {
         if (fx->effects[i].type == type)
@@ -110,6 +119,15 @@ static int find_effect_of_type(rt_screenfx fx, rt_screenfx_type_t type) {
     return -1;
 }
 
+/// @brief Per-frame tick: advance every active effect by `dt` ms and recompute the composited
+/// shake offset + overlay color/alpha. Behavior per type:
+///   - **SHAKE:** decay-modulated random offset accumulated into shake_x/shake_y. Decay model:
+///     `decay <= 0` constant amplitude; `decay >= 1500` quadratic (trauma); else linear.
+///   - **FLASH / FADE_IN:** alpha fades from `base_alpha → 0` over the duration.
+///   - **FADE_OUT:** alpha fades from `0 → base_alpha`.
+///   - **WIPE / CIRCLE_* / DISSOLVE / PIXELATE:** time-only advance; rendering happens in `draw()`.
+/// Multiple overlays use **max-alpha compositing** — the brightest active overlay wins.
+/// Effects whose elapsed time exceeds duration are reclaimed (slot type → NONE).
 void rt_screenfx_update(rt_screenfx fx, int64_t dt) {
     if (!fx)
         return;
@@ -223,6 +241,9 @@ void rt_screenfx_update(rt_screenfx fx, int64_t dt) {
     }
 }
 
+/// @brief Trigger a camera shake: random per-frame offset of magnitude `intensity` (pixels),
+/// damped over `duration` ms by the `decay` model (0 = constant, 1000 = linear, ≥1500 = quadratic).
+/// Replaces any existing shake in place — only one shake runs at a time.
 void rt_screenfx_shake(rt_screenfx fx, int64_t intensity, int64_t duration, int64_t decay) {
     if (!fx || duration <= 0)
         return;
@@ -243,6 +264,9 @@ void rt_screenfx_shake(rt_screenfx fx, int64_t intensity, int64_t duration, int6
     e->color = 0;
 }
 
+/// @brief Trigger a one-shot color flash. `color` is 0xRRGGBBAA (alpha encodes peak intensity);
+/// alpha fades from peak to 0 over `duration` ms. Useful for hit-frames, lightning, screen blasts.
+/// Multiple simultaneous flashes pick the one with the highest current alpha.
 void rt_screenfx_flash(rt_screenfx fx, int64_t color, int64_t duration) {
     if (!fx || duration <= 0)
         return;
@@ -260,6 +284,8 @@ void rt_screenfx_flash(rt_screenfx fx, int64_t color, int64_t duration) {
     e->decay = 0;
 }
 
+/// @brief Fade FROM the color TO clear (alpha goes peak→0). Used at scene-entry — start covered,
+/// reveal underlying gameplay. Cancels any in-flight FADE_IN/FADE_OUT first so fades don't stack.
 void rt_screenfx_fade_in(rt_screenfx fx, int64_t color, int64_t duration) {
     if (!fx || duration <= 0)
         return;
@@ -281,6 +307,8 @@ void rt_screenfx_fade_in(rt_screenfx fx, int64_t color, int64_t duration) {
     e->decay = 0;
 }
 
+/// @brief Fade FROM clear TO the color (alpha goes 0→peak). Used at scene-exit — start clear,
+/// end covered. Cancels any in-flight FADE_IN/FADE_OUT first.
 void rt_screenfx_fade_out(rt_screenfx fx, int64_t color, int64_t duration) {
     if (!fx || duration <= 0)
         return;
@@ -302,6 +330,8 @@ void rt_screenfx_fade_out(rt_screenfx fx, int64_t color, int64_t duration) {
     e->decay = 0;
 }
 
+/// @brief Stop every active effect immediately and zero the composited shake/overlay state.
+/// Use between scene transitions to guarantee a clean slate.
 void rt_screenfx_cancel_all(rt_screenfx fx) {
     if (!fx)
         return;
@@ -315,6 +345,8 @@ void rt_screenfx_cancel_all(rt_screenfx fx) {
     fx->overlay_alpha = 0;
 }
 
+/// @brief Stop every effect of a single type (e.g. cancel all FADE_IN slots before issuing a new one).
+/// Composited state (shake/overlay) is NOT zeroed — they decay naturally on the next `update()`.
 void rt_screenfx_cancel_type(rt_screenfx fx, int64_t type) {
     if (!fx)
         return;
@@ -325,6 +357,7 @@ void rt_screenfx_cancel_type(rt_screenfx fx, int64_t type) {
     }
 }
 
+/// @brief Returns 1 if any effect slot is currently in use.
 int8_t rt_screenfx_is_active(rt_screenfx fx) {
     if (!fx)
         return 0;
@@ -336,6 +369,8 @@ int8_t rt_screenfx_is_active(rt_screenfx fx) {
     return 0;
 }
 
+/// @brief Returns 1 if at least one slot of the given effect type is active. Useful for guarding
+/// "don't restart this effect if it's still running" patterns.
 int8_t rt_screenfx_is_type_active(rt_screenfx fx, int64_t type) {
     if (!fx)
         return 0;
@@ -347,18 +382,25 @@ int8_t rt_screenfx_is_type_active(rt_screenfx fx, int64_t type) {
     return 0;
 }
 
+/// @brief Read the composited X-axis camera-shake offset for the current frame. Caller adds this
+/// to the camera position before drawing the world.
 int64_t rt_screenfx_get_shake_x(rt_screenfx fx) {
     return fx ? fx->shake_x : 0;
 }
 
+/// @brief Read the composited Y-axis camera-shake offset for the current frame.
 int64_t rt_screenfx_get_shake_y(rt_screenfx fx) {
     return fx ? fx->shake_y : 0;
 }
 
+/// @brief Read the current overlay color (RGB packed in upper 24 bits, alpha in low byte = 0).
+/// Use together with `get_overlay_alpha` to render a full-screen tinted box on top of gameplay.
 int64_t rt_screenfx_get_overlay_color(rt_screenfx fx) {
     return fx ? fx->overlay_color : 0;
 }
 
+/// @brief Read the current overlay alpha (0–255). Effects use max-alpha compositing — the
+/// brightest active overlay (FLASH, FADE_IN, FADE_OUT) wins.
 int64_t rt_screenfx_get_overlay_alpha(rt_screenfx fx) {
     return fx ? fx->overlay_alpha : 0;
 }
@@ -367,6 +409,9 @@ int64_t rt_screenfx_get_overlay_alpha(rt_screenfx fx) {
 // Transition Effects
 //=============================================================================
 
+/// @brief Trigger a directional wipe transition. `direction` ∈ {LEFT, RIGHT, UP, DOWN}; out-of-range
+/// values default to LEFT. The colored rectangle grows from one screen edge across the duration,
+/// rendered in `draw()`.
 void rt_screenfx_wipe(rt_screenfx fx, int64_t direction, int64_t color, int64_t duration) {
     if (!fx || duration <= 0)
         return;
@@ -387,6 +432,9 @@ void rt_screenfx_wipe(rt_screenfx fx, int64_t direction, int64_t color, int64_t 
     e->extra = 0;
 }
 
+/// @brief Iris-out / "closing aperture" transition centered at (cx, cy). A colored region grows
+/// inward, leaving a shrinking unobscured circle. Implemented in `draw()` as four rectangles
+/// surrounding the visible circle (cheap; no per-pixel mask required).
 void rt_screenfx_circle_in(
     rt_screenfx fx, int64_t cx, int64_t cy, int64_t color, int64_t duration) {
     if (!fx || duration <= 0)
@@ -406,6 +454,9 @@ void rt_screenfx_circle_in(
     e->extra = cy;
 }
 
+/// @brief Iris-in / "opening aperture" transition centered at (cx, cy). The colored region recedes
+/// from the screen as a growing visible circle reveals the underlying scene. The reverse companion
+/// to `circle_in` — pair them across a scene boundary for a smooth iris transition.
 void rt_screenfx_circle_out(
     rt_screenfx fx, int64_t cx, int64_t cy, int64_t color, int64_t duration) {
     if (!fx || duration <= 0)
@@ -425,6 +476,10 @@ void rt_screenfx_circle_out(
     e->extra = cy;
 }
 
+/// @brief Trigger an ordered-dither dissolve transition. Uses a 4×4 Bayer matrix (Mac-style
+/// dissolve): each pixel's threshold is its `bayer4x4[y%4][x%4]` value, and a global threshold
+/// sweeps 0→255 over the duration. Visually a pleasing "scatter" effect; rendered pixel-by-pixel
+/// in `draw()` (avoid for very high-resolution canvases).
 void rt_screenfx_dissolve(rt_screenfx fx, int64_t color, int64_t duration) {
     if (!fx || duration <= 0)
         return;
@@ -443,6 +498,10 @@ void rt_screenfx_dissolve(rt_screenfx fx, int64_t color, int64_t duration) {
     e->extra = 0;
 }
 
+/// @brief Trigger a "pixelate" transition. Block size grows from 1→`max_block_size` (clamped
+/// minimum 2) over the duration. The runtime cannot read pixels back, so this is approximated
+/// by drawing a darkening grid overlay rather than true block-averaging — the visual hint of
+/// pixelation without the readback cost.
 void rt_screenfx_pixelate(rt_screenfx fx, int64_t max_block_size, int64_t duration) {
     if (!fx || duration <= 0)
         return;
@@ -463,6 +522,8 @@ void rt_screenfx_pixelate(rt_screenfx fx, int64_t max_block_size, int64_t durati
     e->extra = 0;
 }
 
+/// @brief Returns 1 when no slots are active. Useful for chaining transitions ("when fade-out
+/// finishes, load the next scene"). Treats a NULL handle as finished (returns 1).
 int8_t rt_screenfx_is_finished(rt_screenfx fx) {
     if (!fx)
         return 1;
@@ -474,6 +535,9 @@ int8_t rt_screenfx_is_finished(rt_screenfx fx) {
     return 1;
 }
 
+/// @brief Read the progress (0–1000 per mille) of the first active transition effect (WIPE,
+/// CIRCLE_*, DISSOLVE, PIXELATE). Returns 0 when no transition is running, 1000 when complete.
+/// Used to drive scene-load timing — kick off the next scene at progress=500 (mid-transition).
 int64_t rt_screenfx_get_transition_progress(rt_screenfx fx) {
     if (!fx)
         return 0;
@@ -507,6 +571,14 @@ static const uint8_t bayer4x4[4][4] = {
     {240, 112, 208, 80},
 };
 
+/// @brief Render every active transition effect onto the canvas, plus the FLASH/FADE_*-driven
+/// alpha overlay accumulated by `update()`. Per-effect drawing strategies:
+///   - **WIPE:** one growing rectangle from the chosen edge.
+///   - **CIRCLE_IN/OUT:** four edge rectangles around a shrinking/growing visible circle (uses
+///     Manhattan max-radius for cheap full-corner coverage; no isqrt required).
+///   - **DISSOLVE:** per-pixel ordered Bayer dither vs a global 0→255 threshold.
+///   - **PIXELATE:** semi-transparent grid overlay simulating block-pixelation without read-back.
+/// Caller provides the canvas dimensions explicitly so this function never queries the canvas.
 void rt_screenfx_draw(rt_screenfx fx, void *canvas, int64_t screen_w, int64_t screen_h) {
     if (!fx || !canvas || screen_w <= 0 || screen_h <= 0)
         return;

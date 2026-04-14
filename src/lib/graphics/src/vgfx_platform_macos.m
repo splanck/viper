@@ -87,10 +87,74 @@ typedef struct {
     VGFXView *view;               ///< Custom view for framebuffer display
     VGFXWindowDelegate *delegate; ///< Delegate for window events
     int close_requested;          ///< 1 if user clicked close button, 0 otherwise
+    int cursor_type;              ///< Current cursor type for persistent cursor rects
 } vgfx_macos_platform;
 
 static BOOL g_finish_launching_called = NO;
 static NSMenu *g_default_main_menu = nil;
+
+static NSCursor *macos_cursor_for_type(int32_t cursor_type) {
+    switch (cursor_type) {
+        case 1:
+            return [NSCursor pointingHandCursor];
+        case 2:
+            return [NSCursor IBeamCursor];
+        case 3:
+            return [NSCursor resizeLeftRightCursor];
+        case 4:
+            return [NSCursor resizeUpDownCursor];
+        case 5:
+            return [NSCursor arrowCursor];
+        default:
+            return [NSCursor arrowCursor];
+    }
+}
+
+static CGDirectDisplayID macos_display_id_for_screen(NSScreen *screen) {
+    if (!screen)
+        return CGMainDisplayID();
+    NSNumber *screen_number = [[screen deviceDescription] objectForKey:@"NSScreenNumber"];
+    return screen_number ? (CGDirectDisplayID)[screen_number unsignedIntValue] : CGMainDisplayID();
+}
+
+static void macos_sync_window_metrics(struct vgfx_window *win,
+                                      int emit_resize_event,
+                                      int invoke_resize_callback) {
+    if (!win || !win->platform_data)
+        return;
+
+    vgfx_macos_platform *platform = (vgfx_macos_platform *)win->platform_data;
+    if (!platform->window || !platform->view)
+        return;
+
+    CGFloat backing_scale = [platform->window backingScaleFactor];
+    vgfx_internal_refresh_scale_factor(win, (float)backing_scale);
+
+    NSRect content_rect = [platform->view bounds];
+    int32_t new_width = vgfx_internal_round_scaled((float)content_rect.size.width * win->scale_factor);
+    int32_t new_height =
+        vgfx_internal_round_scaled((float)content_rect.size.height * win->scale_factor);
+
+    if (new_width <= 0 || new_height <= 0)
+        return;
+
+    if (new_width == win->width && new_height == win->height)
+        return;
+
+    if (!vgfx_internal_resize_framebuffer(win, new_width, new_height))
+        return;
+
+    if (emit_resize_event) {
+        vgfx_event_t event = {0};
+        vgfx_internal_init_resize_event(&event, win, vgfx_platform_now_ms(), new_width, new_height);
+        vgfx_internal_enqueue_event(win, &event);
+    }
+
+    [platform->view setNeedsDisplay:YES];
+
+    if (invoke_resize_callback && win->on_resize)
+        win->on_resize(win->on_resize_userdata, new_width, new_height);
+}
 
 static NSString *vgfx_macos_app_name(const char *preferred_title) {
     if (preferred_title && preferred_title[0] != '\0') {
@@ -415,6 +479,22 @@ static bool macos_should_check_menu_key_equivalent(vgfx_key_t key, NSEventModifi
     return YES;
 }
 
+- (void)resetCursorRects {
+    [super resetCursorRects];
+    if (!_vgfxWindow || !_vgfxWindow->platform_data)
+        return;
+    vgfx_macos_platform *platform = (vgfx_macos_platform *)_vgfxWindow->platform_data;
+    [self addCursorRect:[self bounds] cursor:macos_cursor_for_type(platform->cursor_type)];
+}
+
+- (void)cursorUpdate:(NSEvent *)event {
+    (void)event;
+    if (!_vgfxWindow || !_vgfxWindow->platform_data)
+        return;
+    vgfx_macos_platform *platform = (vgfx_macos_platform *)_vgfxWindow->platform_data;
+    [macos_cursor_for_type(platform->cursor_type) set];
+}
+
 /// @brief Render the framebuffer to the view.
 /// @details Called by Cocoa when the view needs to be redrawn (triggered by
 ///          setNeedsDisplay:YES in vgfx_platform_present).  Creates a CGImage
@@ -590,43 +670,17 @@ static bool macos_should_check_menu_key_equivalent(vgfx_key_t key, NSEventModifi
 ///          display black (handled in drawRect:).
 - (void)windowDidResize:(NSNotification *)notification {
     (void)notification;
+    macos_sync_window_metrics(_vgfxWindow, 1, 1);
+}
 
-    if (!_vgfxWindow)
-        return;
+- (void)windowDidChangeBackingProperties:(NSNotification *)notification {
+    (void)notification;
+    macos_sync_window_metrics(_vgfxWindow, 1, 0);
+}
 
-    vgfx_macos_platform *platform = (vgfx_macos_platform *)_vgfxWindow->platform_data;
-    if (!platform || !platform->view)
-        return;
-
-    /* Get new view dimensions in logical points, then convert to physical pixels.
-     * The view bounds are always in logical (point) coordinates; multiplying by
-     * scale_factor gives the physical pixel dimensions for the framebuffer. */
-    NSRect contentRect = [platform->view bounds];
-    float sf = _vgfxWindow->scale_factor;
-    int32_t new_width = (int32_t)(contentRect.size.width * sf);
-    int32_t new_height = (int32_t)(contentRect.size.height * sf);
-
-    /* Only handle if size actually changed (avoid redundant reallocation) */
-    if (new_width == _vgfxWindow->width && new_height == _vgfxWindow->height) {
-        return;
-    }
-
-    if (!vgfx_internal_resize_framebuffer(_vgfxWindow, new_width, new_height))
-        return;
-
-    /* Enqueue RESIZE event for the application to handle */
-    vgfx_event_t event = {.type = VGFX_EVENT_RESIZE,
-                          .time_ms = vgfx_platform_now_ms(),
-                          .data.resize = {.width = new_width, .height = new_height}};
-    vgfx_internal_enqueue_event(_vgfxWindow, &event);
-
-    /* Re-render immediately to avoid black window during Cocoa live-resize.
-     * While the user drags the resize handle, Cocoa runs a modal loop that
-     * blocks our main thread.  The registered callback (if any) calls
-     * rt_gui_app_render, keeping the window content visible. */
-    if (_vgfxWindow->on_resize) {
-        _vgfxWindow->on_resize(_vgfxWindow->on_resize_userdata, new_width, new_height);
-    }
+- (void)windowDidChangeScreen:(NSNotification *)notification {
+    (void)notification;
+    macos_sync_window_metrics(_vgfxWindow, 1, 0);
 }
 
 /// @brief Handle window gaining focus.
@@ -973,8 +1027,10 @@ int vgfx_platform_process_events(struct vgfx_window *win) {
                     /* Convert to ViperGFX coordinate system (top-left origin) and
                      * scale logical points to physical pixels for the framebuffer. */
                     float sf = win->scale_factor;
-                    int32_t x = (int32_t)(location.x * sf);
-                    int32_t y = (int32_t)((contentRect.size.height - location.y) * sf) - 1;
+                    int32_t x = vgfx_internal_round_scaled((float)location.x * sf);
+                    int32_t y =
+                        vgfx_internal_round_scaled((float)(contentRect.size.height - location.y) * sf) -
+                        1;
 
                     win->mouse_x = x; /* Update input state */
                     win->mouse_y = y;
@@ -993,8 +1049,10 @@ int vgfx_platform_process_events(struct vgfx_window *win) {
                     NSRect contentRect = [platform->view bounds];
 
                     float sf = win->scale_factor;
-                    int32_t x = (int32_t)(location.x * sf);
-                    int32_t y = (int32_t)((contentRect.size.height - location.y) * sf) - 1;
+                    int32_t x = vgfx_internal_round_scaled((float)location.x * sf);
+                    int32_t y =
+                        vgfx_internal_round_scaled((float)(contentRect.size.height - location.y) * sf) -
+                        1;
 
                     /* Determine which button was pressed */
                     vgfx_mouse_button_t button = VGFX_MOUSE_LEFT;
@@ -1007,6 +1065,8 @@ int vgfx_platform_process_events(struct vgfx_window *win) {
                     if (button < 8) {
                         win->mouse_button_state[button] = 1; /* Update input state */
                     }
+                    win->mouse_x = x;
+                    win->mouse_y = y;
 
                     vgfx_event_t vgfx_event = {
                         .type = VGFX_EVENT_MOUSE_DOWN,
@@ -1023,8 +1083,10 @@ int vgfx_platform_process_events(struct vgfx_window *win) {
                     NSRect contentRect = [platform->view bounds];
 
                     float sf = win->scale_factor;
-                    int32_t x = (int32_t)(location.x * sf);
-                    int32_t y = (int32_t)((contentRect.size.height - location.y) * sf) - 1;
+                    int32_t x = vgfx_internal_round_scaled((float)location.x * sf);
+                    int32_t y =
+                        vgfx_internal_round_scaled((float)(contentRect.size.height - location.y) * sf) -
+                        1;
 
                     /* Determine which button was released */
                     vgfx_mouse_button_t button = VGFX_MOUSE_LEFT;
@@ -1037,6 +1099,8 @@ int vgfx_platform_process_events(struct vgfx_window *win) {
                     if (button < 8) {
                         win->mouse_button_state[button] = 0; /* Update input state */
                     }
+                    win->mouse_x = x;
+                    win->mouse_y = y;
 
                     vgfx_event_t vgfx_event = {
                         .type = VGFX_EVENT_MOUSE_UP,
@@ -1050,8 +1114,12 @@ int vgfx_platform_process_events(struct vgfx_window *win) {
                     NSPoint location = [event locationInWindow];
                     NSRect contentRect = [platform->view bounds];
                     float sf = win->scale_factor;
-                    int32_t x = (int32_t)(location.x * sf);
-                    int32_t y = (int32_t)((contentRect.size.height - location.y) * sf) - 1;
+                    int32_t x = vgfx_internal_round_scaled((float)location.x * sf);
+                    int32_t y =
+                        vgfx_internal_round_scaled((float)(contentRect.size.height - location.y) * sf) -
+                        1;
+                    win->mouse_x = x;
+                    win->mouse_y = y;
 
                     float dx, dy;
                     if ([event hasPreciseScrollingDeltas]) {
@@ -1418,28 +1486,14 @@ void vgfx_platform_set_prevent_close(struct vgfx_window *win, int32_t prevent) {
 }
 
 void vgfx_platform_set_cursor(struct vgfx_window *win, int32_t cursor_type) {
-    (void)win;
     @autoreleasepool {
-        switch (cursor_type) {
-            case 1:
-                [[NSCursor pointingHandCursor] set];
-                break;
-            case 2:
-                [[NSCursor IBeamCursor] set];
-                break;
-            case 3:
-                [[NSCursor resizeLeftRightCursor] set];
-                break;
-            case 4:
-                [[NSCursor resizeUpDownCursor] set];
-                break;
-            case 5:
-                [[NSCursor arrowCursor] set];
-                break; /* no public wait cursor in NSCursor */
-            default:
-                [[NSCursor arrowCursor] set];
-                break;
-        }
+        if (!win || !win->platform_data)
+            return;
+        vgfx_macos_platform *platform = (vgfx_macos_platform *)win->platform_data;
+        platform->cursor_type = (cursor_type >= 0 && cursor_type < 6) ? cursor_type : 0;
+        if (platform->window && platform->view)
+            [platform->window invalidateCursorRectsForView:platform->view];
+        [macos_cursor_for_type(platform->cursor_type) set];
     }
 }
 
@@ -1466,11 +1520,11 @@ void vgfx_platform_get_monitor_size(struct vgfx_window *win, int32_t *out_w, int
         }
         if (!screen)
             screen = [NSScreen mainScreen];
-        NSRect frame = [screen frame];
+        NSRect frame = [screen convertRectToBacking:[screen frame]];
         if (out_w)
-            *out_w = (int32_t)frame.size.width;
+            *out_w = vgfx_internal_round_scaled((float)frame.size.width);
         if (out_h)
-            *out_h = (int32_t)frame.size.height;
+            *out_h = vgfx_internal_round_scaled((float)frame.size.height);
     }
 }
 
@@ -1510,13 +1564,32 @@ void vgfx_platform_warp_cursor(struct vgfx_window *win, int32_t x, int32_t y) {
     if (![platform->window isKeyWindow])
         return;
 
+    NSScreen *screen = [platform->window screen];
+    if (!screen)
+        screen = [NSScreen mainScreen];
+
     NSRect frame = [platform->window frame];
     NSRect content = [platform->window contentRectForFrameRect:frame];
-    CGFloat screen_x = content.origin.x + (CGFloat)x;
-    CGFloat screen_y = (CGFloat)CGDisplayPixelsHigh(CGMainDisplayID()) - content.origin.y -
-                       content.size.height + (CGFloat)y;
+    NSRect screen_frame = [screen frame];
+    CGDirectDisplayID display_id = macos_display_id_for_screen(screen);
 
-    CGWarpMouseCursorPosition(CGPointMake(screen_x, screen_y));
+    CGFloat display_scale = win->scale_factor > 0.0f ? (CGFloat)win->scale_factor : 1.0;
+    CGFloat coord_scale = vgfx_internal_coord_scale(win);
+    CGFloat physical_x = (CGFloat)vgfx_internal_scale_up_i32(x, coord_scale);
+    CGFloat physical_y = (CGFloat)vgfx_internal_scale_up_i32(y, coord_scale);
+    CGFloat point_x = physical_x / display_scale;
+    CGFloat point_y = physical_y / display_scale;
+
+    CGFloat local_x_points = (content.origin.x - screen_frame.origin.x) + point_x;
+    CGFloat local_y_points_from_bottom =
+        (content.origin.y - screen_frame.origin.y) + (content.size.height - point_y);
+
+    CGPoint display_point = CGPointMake(vgfx_internal_round_scaled((float)(local_x_points * display_scale)),
+                                        vgfx_internal_round_scaled((float)((screen_frame.size.height -
+                                                                           local_y_points_from_bottom) *
+                                                                          display_scale)));
+
+    CGDisplayMoveCursorToPoint(display_id, display_point);
     CGAssociateMouseAndMouseCursorPosition(true);
 }
 

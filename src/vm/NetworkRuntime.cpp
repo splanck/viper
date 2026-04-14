@@ -31,11 +31,16 @@ using il::runtime::signatures::SigParam;
 struct VmHttpHandlerPayload {
     const il::core::Module *module = nullptr;
     std::shared_ptr<VM::ProgramState> program;
+    ExternRegistry *externRegistry = nullptr;
     const il::core::Function *entry = nullptr;
 };
 
 extern "C" void vm_http_handler_payload_destroy(void *raw) {
-    delete static_cast<VmHttpHandlerPayload *>(raw);
+    auto *payload = static_cast<VmHttpHandlerPayload *>(raw);
+    if (!payload)
+        return;
+    releaseExternRegistry(payload->externRegistry);
+    delete payload;
 }
 
 extern "C" void vm_http_handler_dispatch(void *raw, void *req, void *res) {
@@ -45,6 +50,7 @@ extern "C" void vm_http_handler_dispatch(void *raw, void *req, void *res) {
 
     try {
         VM vm(*payload->module, payload->program);
+        vm.setExternRegistry(payload->externRegistry);
         il::support::SmallVector<Slot, 2> args;
         Slot reqSlot{};
         reqSlot.ptr = req;
@@ -109,7 +115,9 @@ static void network_http_server_bind_handler_handler(void **args, void *result) 
         rt_trap("HttpServer.BindHandler: invalid entry");
     validateHttpHandlerSignature(*entryFn);
 
-    auto *payload = new VmHttpHandlerPayload{&module, std::move(program), entryFn};
+    auto *payload =
+        new VmHttpHandlerPayload{&module, std::move(program), parentVm->externRegistry(), entryFn};
+    retainExternRegistry(payload->externRegistry);
     rt_http_server_bind_handler_dispatch(
         server,
         tag,

@@ -1152,6 +1152,10 @@ static void d3d11_log_hresult(const char *msg, HRESULT hr);
 static void d3d11_log_shader_error(const char *stage, ID3DBlob *err_blob);
 static void d3d11_present_swapchain(d3d11_context_t *ctx);
 
+/// @brief Multiply two row-major 4×4 matrices: `out = a * b`.
+///
+/// Naive triple loop — fine for the once-per-draw matrix combos this
+/// backend computes. Row-major order matches our HLSL shader convention.
 static void mat4f_mul_d3d(const float *a, const float *b, float *out) {
     for (int r = 0; r < 4; r++) {
         for (int c = 0; c < 4; c++) {
@@ -1161,6 +1165,11 @@ static void mat4f_mul_d3d(const float *a, const float *b, float *out) {
     }
 }
 
+/// @brief Format and emit a D3D11 HRESULT failure to debug output + stderr.
+///
+/// `OutputDebugStringA` so the message shows in the IDE debugger,
+/// `fputs(stderr)` so it's visible from a console-launched process.
+/// Used everywhere a D3D call returns a non-S_OK HRESULT.
 static void d3d11_log_hresult(const char *msg, HRESULT hr) {
     char buffer[256];
     snprintf(
@@ -1169,6 +1178,11 @@ static void d3d11_log_hresult(const char *msg, HRESULT hr) {
     fputs(buffer, stderr);
 }
 
+/// @brief Print HLSL compiler diagnostics extracted from an `ID3DBlob`.
+///
+/// Called when `D3DCompile` returns failure; the err_blob carries the
+/// human-readable line-and-column message that's actually useful for
+/// debugging shader edits.
 static void d3d11_log_shader_error(const char *stage, ID3DBlob *err_blob) {
     if (!err_blob)
         return;
@@ -1185,6 +1199,11 @@ static void d3d11_log_shader_error(const char *stage, ID3DBlob *err_blob) {
     }
 }
 
+/// @brief Present the back buffer with vsync (sync interval = 1).
+///
+/// Logs the HRESULT on failure but doesn't surface the error — present
+/// failures during window resize / device removal are expected and the
+/// next frame typically recovers.
 static void d3d11_present_swapchain(d3d11_context_t *ctx) {
     HRESULT hr;
 
@@ -1195,6 +1214,18 @@ static void d3d11_present_swapchain(d3d11_context_t *ctx) {
         d3d11_log_hresult("IDXGISwapChain::Present", hr);
 }
 
+/// @brief Runtime-compile an HLSL shader entry point to bytecode.
+///
+/// Wraps `D3DCompile` with strict-mode enabled and our standard error
+/// reporting. The bytecode blob is returned via `*out_blob`; caller
+/// owns the release. Used for both vertex and pixel shader stages
+/// (the `target` parameter selects via "vs_5_0" / "ps_5_0" etc).
+///
+/// @param source   Null-terminated HLSL source.
+/// @param entry    Entry-point function name.
+/// @param target   Target profile string.
+/// @param out_blob Out: compiled bytecode blob (caller releases).
+/// @return S_OK on success, HRESULT failure code otherwise.
 static HRESULT d3d11_compile_shader(const char *source,
                                     const char *entry,
                                     const char *target,
@@ -1229,6 +1260,11 @@ static HRESULT d3d11_compile_shader(const char *source,
     return S_OK;
 }
 
+/// @brief Create a rasterizer state with the given fill + cull modes.
+///
+/// Used during context init to build the four rasterizer-state combos
+/// (solid+cull, solid+nocull, wire+cull, wire+nocull). Front-face is
+/// clockwise (matches HLSL convention) and depth clipping is on.
 static HRESULT d3d11_create_rasterizer_state(d3d11_context_t *ctx,
                                              D3D11_FILL_MODE fill_mode,
                                              D3D11_CULL_MODE cull_mode,
@@ -1242,6 +1278,10 @@ static HRESULT d3d11_create_rasterizer_state(d3d11_context_t *ctx,
     return ID3D11Device_CreateRasterizerState(ctx->device, &desc, out_state);
 }
 
+/// @brief Pick the right pre-built rasterizer state for the given draw flags.
+///
+/// Two boolean dimensions × four pre-built states. Cheaper than a
+/// per-draw `Create*State` call on the device.
 static ID3D11RasterizerState *d3d11_choose_rasterizer(d3d11_context_t *ctx,
                                                       int8_t wireframe,
                                                       int8_t backface_cull) {
@@ -1252,15 +1292,25 @@ static ID3D11RasterizerState *d3d11_choose_rasterizer(d3d11_context_t *ctx,
     return backface_cull ? ctx->rs_solid_cull : ctx->rs_solid_no_cull;
 }
 
+/// @brief Round a buffer size up to the 16-byte boundary D3D11 requires for cbuffers.
 static UINT d3d11_constant_buffer_byte_width(size_t size) {
     return (UINT)((size + 15u) & ~15u);
 }
 
+/// @brief Map our color-format class to a DXGI texture format.
+///
+/// HDR16F → R16G16B16A16_FLOAT (linear, 8 bits/channel for HDR);
+/// otherwise R8G8B8A8_UNORM (sRGB-style 8-bit).
 static DXGI_FORMAT d3d11_color_format_to_dxgi(vgfx3d_d3d11_color_format_t format_class) {
     return format_class == VGFX3D_D3D11_COLOR_FORMAT_HDR16F ? DXGI_FORMAT_R16G16B16A16_FLOAT
                                                             : DXGI_FORMAT_R8G8B8A8_UNORM;
 }
 
+/// @brief Map-write-unmap a constant buffer with `data`.
+///
+/// `D3D11_MAP_WRITE_DISCARD` so the driver can hand back a fresh GPU
+/// allocation if the previous one is in flight, avoiding a CPU stall.
+/// Used per-draw for the per-object/per-scene/per-material cbuffers.
 static HRESULT d3d11_update_constant_buffer(d3d11_context_t *ctx,
                                             ID3D11Buffer *buffer,
                                             const void *data,
@@ -1279,6 +1329,12 @@ static HRESULT d3d11_update_constant_buffer(d3d11_context_t *ctx,
     return S_OK;
 }
 
+/// @brief Geometric-growth pattern for dynamic VB/IB resize.
+///
+/// If the current buffer can hold `needed` bytes, no-op. Otherwise
+/// release the old buffer and create a new dynamic buffer at the
+/// next power-of-two ≥ needed. Caller passes `initial_size` for the
+/// first allocation. Traps via `E_OUTOFMEMORY` on size overflow.
 static HRESULT d3d11_ensure_dynamic_buffer(d3d11_context_t *ctx,
                                            ID3D11Buffer **buffer,
                                            size_t *capacity,
@@ -1314,6 +1370,10 @@ static HRESULT d3d11_ensure_dynamic_buffer(d3d11_context_t *ctx,
     return hr;
 }
 
+/// @brief Resize-if-needed plus map-write-unmap for a dynamic buffer.
+///
+/// One-stop helper used by the per-draw vertex / index buffer upload
+/// path. Returns 0 on any failure (logged to the HRESULT logger).
 static int d3d11_upload_dynamic_buffer(d3d11_context_t *ctx,
                                        ID3D11Buffer **buffer,
                                        size_t *capacity,
@@ -1342,6 +1402,10 @@ static int d3d11_upload_dynamic_buffer(d3d11_context_t *ctx,
     return 1;
 }
 
+/// @brief Grow the CPU-side instance-data scratch buffer to fit `instance_count`.
+///
+/// Doubling growth starting at 32 entries. Used by the instanced-draw
+/// path to assemble per-instance matrices before uploading.
 static int d3d11_ensure_instance_upload_capacity(d3d11_context_t *ctx, int32_t instance_count) {
     size_t new_capacity;
     d3d_instance_data_t *new_data;
@@ -1363,6 +1427,12 @@ static int d3d11_ensure_instance_upload_capacity(d3d11_context_t *ctx, int32_t i
     return 1;
 }
 
+// Mesh cache — keyed by `(geometry_key, geometry_revision)`. Static
+// meshes are uploaded once and reused; dynamic meshes go through the
+// dynamic VB/IB instead. Bounded to D3D11_MESH_CACHE_CAPACITY entries
+// with LRU-style eviction.
+
+/// @brief Release the GPU buffers in a single mesh-cache slot.
 static void d3d11_release_mesh_cache_entry(d3d11_mesh_cache_entry_t *entry) {
     if (!entry)
         return;
@@ -1371,6 +1441,7 @@ static void d3d11_release_mesh_cache_entry(d3d11_mesh_cache_entry_t *entry) {
     memset(entry, 0, sizeof(*entry));
 }
 
+/// @brief Release every mesh-cache slot — called during context teardown.
 static void d3d11_release_mesh_cache(d3d11_context_t *ctx) {
     if (!ctx)
         return;
@@ -1378,6 +1449,11 @@ static void d3d11_release_mesh_cache(d3d11_context_t *ctx) {
         d3d11_release_mesh_cache_entry(&ctx->mesh_cache[i]);
 }
 
+/// @brief Create an immutable GPU buffer initialized from `data`.
+///
+/// `D3D11_USAGE_IMMUTABLE` enables driver-side optimizations (no
+/// possibility of CPU writes), preferred for static mesh VB/IB. The
+/// buffer can never be mapped after creation.
 static HRESULT d3d11_create_static_buffer(d3d11_context_t *ctx,
                                           UINT bind_flags,
                                           const void *data,
@@ -1397,6 +1473,15 @@ static HRESULT d3d11_create_static_buffer(d3d11_context_t *ctx,
     return ID3D11Device_CreateBuffer(ctx->device, &desc, &init, out_buffer);
 }
 
+/// @brief Get VB+IB for a draw command, using the cache for static meshes.
+///
+/// Decision tree:
+///   - No `geometry_key` (dynamic mesh): upload to `dynamic_vb/ib`.
+///   - Has key + matching cache slot: return cached buffers (cache hit).
+///   - Has key + no matching slot: upload to oldest cache slot
+///     (LRU-eviction) using immutable buffers and stash for next time.
+/// Caller must NOT release the returned buffers — they're owned by
+/// either the cache or the context-level dynamic buffers.
 static int d3d11_acquire_mesh_buffers(d3d11_context_t *ctx,
                                       const vgfx3d_draw_cmd_t *cmd,
                                       ID3D11Buffer **out_vb,
@@ -1483,6 +1568,11 @@ static int d3d11_acquire_mesh_buffers(d3d11_context_t *ctx,
     }
 }
 
+/// @brief Resize a Buffer + SRV pair to hold `element_count` floats.
+///
+/// Releases the old buffer/SRV and creates new ones at `element_count`
+/// elements. Used for the morph-delta SRV buffers (one for positions,
+/// one for normals).
 static HRESULT d3d11_ensure_float_srv_buffer(d3d11_context_t *ctx,
                                              ID3D11Buffer **buffer,
                                              ID3D11ShaderResourceView **srv,
@@ -1531,6 +1621,9 @@ static HRESULT d3d11_ensure_float_srv_buffer(d3d11_context_t *ctx,
     return S_OK;
 }
 
+/// @brief Resize-if-needed plus upload for a float SRV buffer.
+///
+/// Uses `UpdateSubresource` (default-usage buffer) rather than map.
 static HRESULT d3d11_update_float_srv_buffer(d3d11_context_t *ctx,
                                              ID3D11Buffer **buffer,
                                              ID3D11ShaderResourceView **srv,
@@ -1548,6 +1641,11 @@ static HRESULT d3d11_update_float_srv_buffer(d3d11_context_t *ctx,
     return S_OK;
 }
 
+// Texture and cubemap caches — keyed by `(pixels_ptr, generation)` so
+// re-uploaded textures (Pixels.Set) get fresh GPU resources without
+// leaking the old. Generation is bumped by the source object on edits.
+
+/// @brief Release every entry in the 2D-texture cache (teardown path).
 static void d3d11_release_texture_cache(d3d11_context_t *ctx) {
     if (!ctx)
         return;
@@ -1562,6 +1660,7 @@ static void d3d11_release_texture_cache(d3d11_context_t *ctx) {
     ctx->tex_cache_capacity = 0;
 }
 
+/// @brief Release every entry in the cubemap cache (teardown path).
 static void d3d11_release_cubemap_cache(d3d11_context_t *ctx) {
     if (!ctx)
         return;
@@ -1576,6 +1675,9 @@ static void d3d11_release_cubemap_cache(d3d11_context_t *ctx) {
     ctx->cubemap_cache_capacity = 0;
 }
 
+/// @brief Grow the texture cache table to hold `needed` entries.
+///
+/// Geometric growth via the shared `vgfx3d_d3d11_next_capacity` helper.
 static int d3d11_ensure_tex_cache_capacity(d3d11_context_t *ctx, int32_t needed) {
     int32_t new_capacity;
     d3d_tex_cache_entry_t *new_entries;
@@ -1597,6 +1699,7 @@ static int d3d11_ensure_tex_cache_capacity(d3d11_context_t *ctx, int32_t needed)
     return 1;
 }
 
+/// @brief Grow the cubemap cache table to hold `needed` entries.
 static int d3d11_ensure_cubemap_cache_capacity(d3d11_context_t *ctx, int32_t needed) {
     int32_t new_capacity;
     d3d_cubemap_cache_entry_t *new_entries;
@@ -1618,6 +1721,10 @@ static int d3d11_ensure_cubemap_cache_capacity(d3d11_context_t *ctx, int32_t nee
     return 1;
 }
 
+/// @brief Release the GPU resources in one morph-target cache slot.
+///
+/// Each slot holds two `(buffer, srv)` pairs — one for position deltas
+/// and one for normal deltas. Both are released together.
 static void d3d11_release_morph_cache_entry(d3d11_morph_cache_entry_t *entry) {
     if (!entry)
         return;
@@ -1628,6 +1735,7 @@ static void d3d11_release_morph_cache_entry(d3d11_morph_cache_entry_t *entry) {
     memset(entry, 0, sizeof(*entry));
 }
 
+/// @brief Release every morph-cache slot — called during context teardown.
 static void d3d11_release_morph_cache(d3d11_context_t *ctx) {
     if (!ctx)
         return;
@@ -1635,6 +1743,12 @@ static void d3d11_release_morph_cache(d3d11_context_t *ctx) {
         d3d11_release_morph_cache_entry(&ctx->morph_cache[i]);
 }
 
+/// @brief Release a temporary (non-cached) SRV after the draw consumes it.
+///
+/// Used when the texture cache is full; we still create the resource
+/// for the current draw but don't try to keep it around. Marking
+/// `temporary` lets the per-draw cleanup distinguish it from cached
+/// resources (which must NOT be released here).
 static void d3d11_release_temp_srv(d3d_temp_srv_t *entry) {
     if (!entry || !entry->temporary)
         return;
@@ -1643,6 +1757,13 @@ static void d3d11_release_temp_srv(d3d_temp_srv_t *entry) {
     entry->temporary = 0;
 }
 
+/// @brief Build a Texture2D + SRV from a `Pixels` buffer.
+///
+/// Unpacks the source pixels to RGBA8, allocates a default-usage
+/// texture with a full mipmap chain, uploads the top mip, and asks
+/// D3D to generate the rest. The texture is RTV-bindable (needed by
+/// `GenerateMips`). On failure, both outputs are released and a
+/// diagnostic is logged.
 static HRESULT d3d11_create_texture_srv(d3d11_context_t *ctx,
                                         const void *pixels,
                                         ID3D11Texture2D **out_tex,
@@ -1695,6 +1816,13 @@ static HRESULT d3d11_create_texture_srv(d3d11_context_t *ctx,
     return hr;
 }
 
+/// @brief Cache lookup for textures, with auto-create + temp fallback.
+///
+/// Three-way decision:
+///   1. Hit (pixels_ptr + generation match) → return cached SRV.
+///   2. Pixels match but stale generation → release + recreate in slot.
+///   3. Miss → create new, append to cache if there's room, else hand
+///      back as a temporary that the caller releases post-draw.
 static ID3D11ShaderResourceView *d3d11_get_or_create_srv(d3d11_context_t *ctx,
                                                          const void *pixels,
                                                          d3d_temp_srv_t *out_temp) {
@@ -1745,6 +1873,10 @@ static ID3D11ShaderResourceView *d3d11_get_or_create_srv(d3d11_context_t *ctx,
     return srv;
 }
 
+/// @brief Build a TextureCube + cube-SRV from an `rt_cubemap3d`.
+///
+/// All six faces must have the same square size (validated by
+/// `vgfx3d_unpack_cubemap_faces_rgba`). Mipmaps are auto-generated.
 static HRESULT d3d11_create_cubemap_srv(d3d11_context_t *ctx,
                                         const rt_cubemap3d *cubemap,
                                         ID3D11Texture2D **out_tex,
@@ -1804,6 +1936,10 @@ static HRESULT d3d11_create_cubemap_srv(d3d11_context_t *ctx,
     return hr;
 }
 
+/// @brief Cubemap-cache lookup analogous to `d3d11_get_or_create_srv`.
+///
+/// Same hit/stale/miss flow as the 2D texture cache; falls back to a
+/// temp SRV if the cache table is full.
 static ID3D11ShaderResourceView *d3d11_get_or_create_cubemap_srv(d3d11_context_t *ctx,
                                                                  const rt_cubemap3d *cubemap,
                                                                  d3d_temp_srv_t *out_temp) {
@@ -1855,6 +1991,12 @@ static ID3D11ShaderResourceView *d3d11_get_or_create_cubemap_srv(d3d11_context_t
     return srv;
 }
 
+/// @brief Allocate a render-target color texture (with optional shader-readable SRV).
+///
+/// Defaults to single-sample, MipLevels=1. Format chosen by the
+/// caller-supplied `format_class`. If `out_srv` is non-NULL, also adds
+/// `D3D11_BIND_SHADER_RESOURCE` so post-FX passes can sample the
+/// rendered scene.
 static HRESULT d3d11_create_color_target(d3d11_context_t *ctx,
                                          int32_t width,
                                          int32_t height,
@@ -1911,6 +2053,11 @@ static HRESULT d3d11_create_color_target(d3d11_context_t *ctx,
     return S_OK;
 }
 
+/// @brief Allocate a depth-stencil texture (with optional shader-readable SRV).
+///
+/// Uses TYPELESS storage when `shader_readable` is set so the texture
+/// can be aliased as both DSV (D32_FLOAT) and SRV (R32_FLOAT) — this
+/// pattern lets shadow maps and SSAO read the depth buffer.
 static HRESULT d3d11_create_depth_target(d3d11_context_t *ctx,
                                          int32_t width,
                                          int32_t height,
@@ -1968,6 +2115,10 @@ static HRESULT d3d11_create_depth_target(d3d11_context_t *ctx,
     return S_OK;
 }
 
+/// @brief Allocate a CPU-readable staging texture for `Map(READ)`-based readback.
+///
+/// Used by `d3d11_readback_*` to copy GPU textures to system memory
+/// for screenshot capture, golden-frame tests, etc.
 static HRESULT d3d11_create_staging_texture(d3d11_context_t *ctx,
                                             int32_t width,
                                             int32_t height,
@@ -1990,6 +2141,11 @@ static HRESULT d3d11_create_staging_texture(d3d11_context_t *ctx,
     return ID3D11Device_CreateTexture2D(ctx->device, &desc, NULL, out_tex);
 }
 
+/// @brief Release every offscreen render-target the scene path uses.
+///
+/// Tears down: scene color RTV/SRV, motion-vector RTV/SRV, depth
+/// DSV/SRV, and the overlay color target. Called on resize and
+/// during context destruction.
 static void d3d11_destroy_scene_targets(d3d11_context_t *ctx) {
     if (!ctx)
         return;
@@ -2011,6 +2167,11 @@ static void d3d11_destroy_scene_targets(d3d11_context_t *ctx) {
     ctx->overlay_height = 0;
 }
 
+/// @brief Allocate scene render targets at the requested size, idempotent on size match.
+///
+/// Builds three targets: scene color (HDR-capable), motion vectors
+/// (LDR), and depth (R32). On any failure the partially-built set is
+/// torn back down so the next call can retry from a clean state.
 static HRESULT d3d11_ensure_scene_targets(d3d11_context_t *ctx, int32_t width, int32_t height) {
     HRESULT hr;
 
@@ -2055,6 +2216,10 @@ static HRESULT d3d11_ensure_scene_targets(d3d11_context_t *ctx, int32_t width, i
     return S_OK;
 }
 
+/// @brief Allocate the overlay render target (HUD layer above 3D scene).
+///
+/// Single color target — overlay doesn't need its own depth (it's
+/// drawn 2D on top of the composited scene).
 static HRESULT d3d11_ensure_overlay_target(d3d11_context_t *ctx, int32_t width, int32_t height) {
     HRESULT hr;
 
@@ -2085,6 +2250,10 @@ static HRESULT d3d11_ensure_overlay_target(d3d11_context_t *ctx, int32_t width, 
     return hr;
 }
 
+/// @brief Release every offscreen render-to-texture (RTT) resource.
+///
+/// `rtt_target` is the user-visible RT object — we set it to NULL so
+/// the next bind cycle doesn't think the targets are still live.
 static void d3d11_destroy_rtt_targets(d3d11_context_t *ctx) {
     if (!ctx)
         return;
@@ -2099,6 +2268,10 @@ static void d3d11_destroy_rtt_targets(d3d11_context_t *ctx) {
     ctx->rtt_target = NULL;
 }
 
+/// @brief Allocate RTT color + depth + staging textures sized to `rt`.
+///
+/// Sets `rtt_active` so subsequent bind calls route to the RTT instead
+/// of the swapchain. The staging texture is for CPU readback.
 static HRESULT d3d11_ensure_rtt_targets(d3d11_context_t *ctx, vgfx3d_rendertarget_t *rt) {
     HRESULT hr;
 
@@ -2142,6 +2315,7 @@ static HRESULT d3d11_ensure_rtt_targets(d3d11_context_t *ctx, vgfx3d_rendertarge
     return S_OK;
 }
 
+/// @brief Release shadow-map depth target resources.
 static void d3d11_destroy_shadow_targets(d3d11_context_t *ctx) {
     if (!ctx)
         return;
@@ -2152,6 +2326,9 @@ static void d3d11_destroy_shadow_targets(d3d11_context_t *ctx) {
     ctx->shadow_height = 0;
 }
 
+/// @brief Allocate the shadow-map depth target at the requested size.
+///
+/// Always shader-readable so the main pass can sample shadows.
 static HRESULT d3d11_ensure_shadow_targets(d3d11_context_t *ctx, int32_t width, int32_t height) {
     HRESULT hr;
 
@@ -2170,6 +2347,11 @@ static HRESULT d3d11_ensure_shadow_targets(d3d11_context_t *ctx, int32_t width, 
     return S_OK;
 }
 
+/// @brief Push the currently-selected render target(s) and viewport into the pipeline.
+///
+/// Combines `OMSetRenderTargets` (color RTVs + depth DSV) with a
+/// matching `RSSetViewports`. Called whenever the active target
+/// changes.
 static void d3d11_bind_render_targets(d3d11_context_t *ctx) {
     D3D11_VIEWPORT viewport;
 
@@ -2188,6 +2370,14 @@ static void d3d11_bind_render_targets(d3d11_context_t *ctx) {
     ID3D11DeviceContext_RSSetViewports(ctx->ctx, 1, &viewport);
 }
 
+/// @brief Translate the active target kind into concrete RTV/DSV pointers.
+///
+/// Decision tree:
+///   - RTT mode → user-bound color + depth.
+///   - SCENE mode → scene color + motion + depth (MRT, 2 color targets).
+///   - OVERLAY mode → overlay color (with fallback to scene/swapchain).
+///   - default (SWAPCHAIN) → backbuffer + main depth.
+/// Then pushes everything into the pipeline via `bind_render_targets`.
 static void d3d11_select_current_targets(d3d11_context_t *ctx) {
     if (!ctx)
         return;
@@ -2240,6 +2430,10 @@ static void d3d11_select_current_targets(d3d11_context_t *ctx) {
     d3d11_bind_render_targets(ctx);
 }
 
+/// @brief Force-bind the swapchain backbuffer (skip the kind dispatch).
+///
+/// Used during present / postfx composition where we always want to
+/// write to the swapchain regardless of the active target kind.
 static void d3d11_bind_swapchain_target(d3d11_context_t *ctx) {
     if (!ctx)
         return;
@@ -2253,6 +2447,12 @@ static void d3d11_bind_swapchain_target(d3d11_context_t *ctx) {
     d3d11_bind_render_targets(ctx);
 }
 
+/// @brief Clear color + (optionally) depth on the currently-bound targets.
+///
+/// Overlay targets always clear to transparent black. Scene MRT also
+/// clears the motion-vector target to (0.5, 0.5, 0, 1) — the encoded
+/// "no motion" sentinel. The `load_existing_*` flags let callers
+/// preserve the contents (used by additive overlay passes).
 static void d3d11_clear_current_targets(d3d11_context_t *ctx,
                                         int8_t load_existing_color,
                                         int8_t load_existing_depth) {
@@ -2286,6 +2486,11 @@ static void d3d11_clear_current_targets(d3d11_context_t *ctx,
             ctx->ctx, ctx->current_dsv, D3D11_CLEAR_DEPTH, 1.0f, 0);
 }
 
+/// @brief Bind the three sampler states the pixel shader expects.
+///
+/// Slot 0: linear/wrap (diffuse/normal/specular textures).
+/// Slot 1: comparison sampler for shadow PCF.
+/// Slot 2: linear/clamp (skybox + post-processing).
 static void d3d11_bind_common_state(d3d11_context_t *ctx) {
     if (!ctx)
         return;
@@ -2297,6 +2502,11 @@ static void d3d11_bind_common_state(d3d11_context_t *ctx) {
         ID3D11DeviceContext_PSSetSamplers(ctx->ctx, 2, 1, &ctx->linear_clamp_sampler);
 }
 
+/// @brief Pack draw-command per-object state into the cbuffer struct.
+///
+/// Computes the normal matrix, sets up skinning / morph / instance
+/// flags, and packs morph weights into float4 lanes (HLSL doesn't have
+/// scalar arrays in cbuffers, so we manually pack 4 weights per vec4).
 static void d3d11_prepare_object_data(const vgfx3d_draw_cmd_t *cmd, d3d_per_object_t *object_data) {
     int morph_count = 0;
 
@@ -2340,6 +2550,11 @@ static void d3d11_prepare_object_data(const vgfx3d_draw_cmd_t *cmd, d3d_per_obje
     }
 }
 
+/// @brief Pack per-scene state (camera/lights/shadows/fog) into cbuffer struct.
+///
+/// `lights` parameter is unused at this layer — light data goes into
+/// the dedicated PerLights cbuffer via `prepare_light_data`. This
+/// struct holds the everything-else scene constants.
 static void d3d11_prepare_scene_data(d3d11_context_t *ctx,
                                      const vgfx3d_light_params_t *lights,
                                      int32_t light_count,
@@ -2369,6 +2584,12 @@ static void d3d11_prepare_scene_data(d3d11_context_t *ctx,
     scene_data->shadow_enabled = (ctx->shadow_active && ctx->shadow_srv) ? 1 : 0;
 }
 
+/// @brief Pack material colors, scalars, and texture-availability flags into the cbuffer.
+///
+/// Bundles every per-material constant the pixel shader needs:
+/// PBR scalars (metallic, roughness, AO, emissive intensity), normal-
+/// scale, alpha-cutoff, custom params, and the boolean flags telling
+/// the shader which texture slots are populated.
 static void d3d11_prepare_material_data(const vgfx3d_draw_cmd_t *cmd,
                                         int has_texture,
                                         int has_normal_map,
@@ -2416,6 +2637,11 @@ static void d3d11_prepare_material_data(const vgfx3d_draw_cmd_t *cmd,
         material_data->splat_scales, cmd->splat_layer_scales, sizeof(material_data->splat_scales));
 }
 
+/// @brief Copy up to 8 lights from the scene into the cbuffer Light array.
+///
+/// Each light contributes type, direction, position, color, intensity,
+/// attenuation, and spot-cone parameters. Anything beyond 8 is dropped
+/// silently (the shader's array is fixed-size).
 static void d3d11_prepare_light_data(const vgfx3d_light_params_t *lights,
                                      int32_t light_count,
                                      d3d_light_t *light_data) {
@@ -2438,6 +2664,13 @@ static void d3d11_prepare_light_data(const vgfx3d_light_params_t *lights,
     }
 }
 
+/// @brief Upload bone palettes and morph deltas, with caching.
+///
+/// Bones are cbuffer arrays (current + previous-frame for motion
+/// blur). Morph deltas live in SRV buffers and are cached by
+/// `(morph_key, morph_revision)` so static morph targets aren't
+/// re-uploaded each frame. Returns 1 if the SRVs are bound, 0 if
+/// the draw should fall back to no-morph.
 static int d3d11_prepare_anim_resources(d3d11_context_t *ctx,
                                         const vgfx3d_draw_cmd_t *cmd,
                                         d3d_per_object_t *object_data) {
@@ -2597,6 +2830,12 @@ static int d3d11_prepare_anim_resources(d3d11_context_t *ctx,
     return 1;
 }
 
+/// @brief Bind the main vertex+pixel shader pipeline state for a draw.
+///
+/// Selects rasterizer (wireframe/cull combo), depth-stencil state
+/// (alpha blending = no depth write), blend mode, primitive topology,
+/// the right input layout (instanced vs. non), main shaders, all four
+/// cbuffers, sampler states, and morph SRVs.
 static void d3d11_bind_main_pipeline(d3d11_context_t *ctx,
                                      const vgfx3d_draw_cmd_t *cmd,
                                      int8_t wireframe,
@@ -2640,6 +2879,10 @@ static void d3d11_bind_main_pipeline(d3d11_context_t *ctx,
     ID3D11DeviceContext_VSSetShaderResources(ctx->ctx, 0, 2, vs_srvs);
 }
 
+/// @brief Clear all VS / PS texture bindings (the "untether" call).
+///
+/// Necessary before binding the same resource as an RTV next frame —
+/// D3D11 forbids a texture being bound as both SRV and RTV simultaneously.
 static void d3d11_unbind_draw_resources(d3d11_context_t *ctx) {
     ID3D11ShaderResourceView *null_vs[2] = {NULL, NULL};
     ID3D11ShaderResourceView *null_ps[13] = {
@@ -2650,6 +2893,11 @@ static void d3d11_unbind_draw_resources(d3d11_context_t *ctx) {
     ID3D11DeviceContext_PSSetShaderResources(ctx->ctx, 0, 13, null_ps);
 }
 
+/// @brief Pack rotation-only view matrix and projection for the skybox shader.
+///
+/// Zeroing the translation column of the view matrix gives the
+/// "infinite distance" effect — the skybox tracks rotation but not
+/// translation.
 static void d3d11_prepare_skybox_data(d3d11_context_t *ctx, d3d_skybox_cb_t *skybox_data) {
     memcpy(skybox_data->view_rotation, ctx->view, sizeof(skybox_data->view_rotation));
     memcpy(skybox_data->projection, ctx->projection, sizeof(skybox_data->projection));
@@ -2658,6 +2906,12 @@ static void d3d11_prepare_skybox_data(d3d11_context_t *ctx, d3d_skybox_cb_t *sky
     skybox_data->view_rotation[11] = 0.0f;
 }
 
+/// @brief Pack the post-FX cbuffer with snapshot data + camera + resolution.
+///
+/// Bundles every post-process toggle and parameter the shaders need:
+/// bloom thresholds, tonemap mode/exposure, FXAA, color grading,
+/// vignette, SSAO, depth-of-field, motion blur. NULL snapshot means
+/// "post-FX disabled" (most fields stay at their zero defaults).
 static void d3d11_prepare_postfx_data(d3d11_context_t *ctx,
                                       const vgfx3d_postfx_snapshot_t *snapshot,
                                       d3d_postfx_cb_t *postfx_data) {
@@ -2700,6 +2954,12 @@ static void d3d11_prepare_postfx_data(d3d11_context_t *ctx,
     postfx_data->motion_blur_samples = snapshot->motion_blur_samples;
 }
 
+/// @brief Bind every texture / cubemap SRV the shader expects (PS slots 0..12).
+///
+/// Slots: 0=diffuse, 1=normal, 2=specular, 3=emissive, 4=shadow,
+/// 5=splat-control, 6-9=splat layers, 10=env cube, 11=metallic-rough,
+/// 12=AO. Unbound slots get NULL so the shader's `has*` flags can
+/// gate sampling. Returns whether splat sampling was actually enabled.
 static int d3d11_bind_draw_resources(d3d11_context_t *ctx,
                                      const vgfx3d_draw_cmd_t *cmd,
                                      d3d_draw_resources_t *resources) {
@@ -2747,6 +3007,10 @@ static int d3d11_bind_draw_resources(d3d11_context_t *ctx,
     return resources->has_splat;
 }
 
+/// @brief Release any temp SRVs the per-draw bind path created.
+///
+/// Called at end of each draw to clean up resources that didn't fit in
+/// the texture/cubemap caches. Cached resources are no-ops here.
 static void d3d11_release_temporary_resources(d3d_draw_resources_t *resources) {
     if (!resources)
         return;
@@ -2755,6 +3019,12 @@ static void d3d11_release_temporary_resources(d3d_draw_resources_t *resources) {
     d3d11_release_temp_srv(&resources->cubemap);
 }
 
+/// @brief End-to-end draw for a single non-instanced mesh command.
+///
+/// Composes everything: pack object/scene/light/material data into
+/// cbuffers, prep skinning + morph buffers, bind textures + samplers,
+/// bind pipeline state, get VB/IB (cached or dynamic), set them on
+/// the IA, issue `DrawIndexed`, then release any temp resources.
 static void d3d11_submit_draw(void *ctx_ptr,
                               vgfx_window_t win,
                               const vgfx3d_draw_cmd_t *cmd,
@@ -2837,6 +3107,13 @@ static void d3d11_submit_draw(void *ctx_ptr,
     d3d11_release_temporary_resources(&draw_resources);
 }
 
+/// @brief Instanced version of `d3d11_submit_draw` (one DrawIndexedInstanced).
+///
+/// Same flow as the non-instanced path plus: pack per-instance matrix
+/// data into a CPU scratch buffer, upload to the dynamic instance
+/// vertex buffer, and bind that buffer to slot 1 alongside the mesh
+/// VB at slot 0. The instanced input layout reads instance attributes
+/// from slot 1 with `D3D11_INPUT_PER_INSTANCE_DATA`.
 static void d3d11_submit_draw_instanced(void *ctx_ptr,
                                         vgfx_window_t win,
                                         const vgfx3d_draw_cmd_t *cmd,
@@ -2943,6 +3220,14 @@ static void d3d11_submit_draw_instanced(void *ctx_ptr,
     d3d11_release_temporary_resources(&draw_resources);
 }
 
+/// @brief Allocate and initialize the entire D3D11 backend context.
+///
+/// The big one — creates the device + swap chain, compiles every
+/// shader (main VS/PS, instanced VS, shadow VS, skybox VS/PS, postfx
+/// VS/PS, overlay PS), creates input layouts, depth/blend/sampler
+/// states, all four rasterizer-state combos, all cbuffers, and the
+/// skybox cube vertex buffer. Returns NULL on any device-create
+/// failure (the host falls back to the software backend in that case).
 static void *d3d11_create_ctx(vgfx_window_t win, int32_t width, int32_t height) {
     d3d11_context_t *ctx = NULL;
     HWND hwnd = (HWND)vgfx_get_native_view(win);
@@ -3499,6 +3784,13 @@ fail:
     return NULL;
 }
 
+/// @brief Tear down the D3D11 backend context — releases everything created in `_create_ctx`.
+///
+/// Strict reverse-order release: caches first (so they don't reference
+/// the device after it's gone), then framebuffer + offscreen targets,
+/// then dynamic buffers, cbuffers, input layouts, shaders, sampler
+/// states, rasterizer states, depth-stencil states, blend states,
+/// finally swap chain + device. Frees the wrapper struct last.
 static void d3d11_destroy_ctx(void *ctx_ptr) {
     d3d11_context_t *ctx = (d3d11_context_t *)ctx_ptr;
     if (!ctx)
@@ -3562,6 +3854,11 @@ static void d3d11_destroy_ctx(void *ctx_ptr) {
     free(ctx);
 }
 
+/// @brief Backend `clear` op — stores the clear color for the next BeginFrame.
+///
+/// We don't actually clear the targets here; that happens in
+/// `BeginFrame`'s `clear_current_targets` call so we know which
+/// target to clear (depending on RTT/scene/swapchain selection).
 static void d3d11_clear(void *ctx_ptr, vgfx_window_t win, float r, float g, float b) {
     d3d11_context_t *ctx = (d3d11_context_t *)ctx_ptr;
     (void)win;
@@ -3572,6 +3869,14 @@ static void d3d11_clear(void *ctx_ptr, vgfx_window_t win, float r, float g, floa
     ctx->clear_b = b;
 }
 
+/// @brief Backend `begin_frame` — set up matrices, target selection, and clear.
+///
+/// Increments the frame serial (used by mesh-cache LRU), recomputes
+/// view-projection (and its inverse), captures fog/camera state,
+/// chooses the active target kind based on RTT/postfx/overlay flags,
+/// updates the frame-history (prev VP for motion blur), and calls
+/// `select_current_targets` + `clear_current_targets` to set the
+/// pipeline up for the upcoming draws.
 static void d3d11_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) {
     d3d11_context_t *ctx = (d3d11_context_t *)ctx_ptr;
     HRESULT hr = S_OK;
@@ -3643,6 +3948,11 @@ static void d3d11_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) 
     d3d11_bind_common_state(ctx);
 }
 
+/// @brief Backend `end_frame` — copy RTT pixels to host memory if RTT is active.
+///
+/// CopyResource into the staging texture, then map + memcpy each row
+/// into the user-visible `rt->color_buf`. No-op when not in RTT mode
+/// (the swapchain present happens elsewhere).
 static void d3d11_end_frame(void *ctx_ptr) {
     d3d11_context_t *ctx = (d3d11_context_t *)ctx_ptr;
     D3D11_MAPPED_SUBRESOURCE mapped;
@@ -3672,6 +3982,13 @@ static void d3d11_end_frame(void *ctx_ptr) {
     ID3D11DeviceContext_Unmap(ctx->ctx, (ID3D11Resource *)ctx->rtt_staging, 0);
 }
 
+/// @brief Backend `resize` — handle window-size changes.
+///
+/// Unbinds targets, releases the backbuffer RTV + main depth, calls
+/// `IDXGISwapChain::ResizeBuffers`, gets the new backbuffer, recreates
+/// RTV + depth target. Scene-targets are also destroyed; they get
+/// recreated in the next `BeginFrame` at the new size. No-op if the
+/// dimensions match.
 static void d3d11_resize(void *ctx_ptr, int32_t w, int32_t h) {
     d3d11_context_t *ctx = (d3d11_context_t *)ctx_ptr;
     ID3D11Texture2D *back_buffer = NULL;
@@ -3717,6 +4034,11 @@ static void d3d11_resize(void *ctx_ptr, int32_t w, int32_t h) {
     ctx->height = h;
 }
 
+/// @brief Convert IEEE 754 binary16 to binary32.
+///
+/// Used to decode HDR16F render targets back to single-precision so
+/// they can be tonemapped/quantized to 8-bit RGBA for readback.
+/// Pure bit-twiddling — no math library calls in the hot path.
 static float d3d11_half_to_float(uint16_t bits) {
     uint32_t sign = (uint32_t)(bits & 0x8000u) << 16;
     uint32_t exp = (bits >> 10) & 0x1Fu;
@@ -3746,6 +4068,10 @@ static float d3d11_half_to_float(uint16_t bits) {
     return out;
 }
 
+/// @brief Quantize a float to a 0..255 byte (with simple [0,1] clamp).
+///
+/// Trivial readback helper — no gamma adjustment (the readback path
+/// expects callers to handle linear→sRGB conversion separately).
 static uint8_t d3d11_float_to_unorm8(float value) {
     if (value <= 0.0f)
         return 0;
@@ -3754,6 +4080,11 @@ static uint8_t d3d11_float_to_unorm8(float value) {
     return (uint8_t)(value * 255.0f + 0.5f);
 }
 
+/// @brief Copy a mapped texture's rows to an RGBA8 destination, format-aware.
+///
+/// Direct memcpy for R8G8B8A8_UNORM. For R16G16B16A16_FLOAT, decodes
+/// each half to float then quantizes to 8-bit. Other formats are
+/// silently skipped.
 static void d3d11_copy_mapped_texture_to_rgba8(uint8_t *dst_rgba,
                                                int32_t dst_stride,
                                                int32_t copy_w,
@@ -3784,6 +4115,12 @@ static void d3d11_copy_mapped_texture_to_rgba8(uint8_t *dst_rgba,
     }
 }
 
+/// @brief Read back a Texture2D into a host RGBA8 buffer.
+///
+/// Allocates a transient staging texture matching the source's format
+/// + size, CopyResource into it, Map(READ), copy rows. Caller's
+/// destination doesn't have to match the source size — clipping is
+/// applied. Returns 0 on any failure.
 static int d3d11_readback_texture_rgba(d3d11_context_t *ctx,
                                        ID3D11Texture2D *source_tex,
                                        uint8_t *dst_rgba,
@@ -3831,6 +4168,12 @@ static int d3d11_readback_texture_rgba(d3d11_context_t *ctx,
     return 1;
 }
 
+/// @brief Backend `readback_rgba` op — pick the best source texture to read.
+///
+/// Prefers the offscreen scene color (HDR-aware via `_readback_texture_rgba`)
+/// when scene targets are active or postfx is on. Falls back to the
+/// swapchain backbuffer otherwise. Used by screenshot capture and
+/// golden-frame e2e tests.
 static int d3d11_readback_rgba(
     void *ctx_ptr, uint8_t *dst_rgba, int32_t w, int32_t h, int32_t stride) {
     d3d11_context_t *ctx = (d3d11_context_t *)ctx_ptr;
@@ -3861,6 +4204,15 @@ static int d3d11_readback_rgba(
     }
 }
 
+/// @brief Internal present path — composite scene + post-FX + overlay onto the swapchain.
+///
+/// When postfx is disabled, just calls `Present`. When enabled:
+///   1. Bind swapchain RTV.
+///   2. Upload postfx cbuffer and bind scene color/depth/motion as PS SRVs.
+///   3. Issue a fullscreen-triangle Draw using the postfx VS/PS.
+///   4. If the overlay layer is in use, do a second pass with the
+///      overlay-composite PS and alpha blending.
+///   5. Present the swapchain.
 static void d3d11_present_internal(d3d11_context_t *ctx, const vgfx3d_postfx_snapshot_t *snapshot) {
     d3d_postfx_cb_t postfx_data;
     ID3D11ShaderResourceView *srvs[4];
@@ -3922,14 +4274,20 @@ static void d3d11_present_internal(d3d11_context_t *ctx, const vgfx3d_postfx_sna
     d3d11_present_swapchain(ctx);
 }
 
+/// @brief Backend `present` (no post-FX) — direct swapchain present.
 static void d3d11_present(void *ctx_ptr) {
     d3d11_present_internal((d3d11_context_t *)ctx_ptr, NULL);
 }
 
+/// @brief Backend `present_postfx` — present with a post-FX snapshot applied.
 static void d3d11_present_postfx(void *ctx_ptr, const vgfx3d_postfx_snapshot_t *postfx) {
     d3d11_present_internal((d3d11_context_t *)ctx_ptr, postfx);
 }
 
+/// @brief Backend `set_gpu_postfx_enabled` — toggle the postfx route.
+///
+/// When enabled, frames render to the offscreen scene target so postfx
+/// can read it. When disabled, frames render straight to the swapchain.
 static void d3d11_set_gpu_postfx_enabled(void *ctx_ptr, int8_t enabled) {
     d3d11_context_t *ctx = (d3d11_context_t *)ctx_ptr;
     if (!ctx)
@@ -3937,6 +4295,10 @@ static void d3d11_set_gpu_postfx_enabled(void *ctx_ptr, int8_t enabled) {
     ctx->gpu_postfx_enabled = enabled ? 1 : 0;
 }
 
+/// @brief Backend `set_render_target` — bind / unbind RTT mode.
+///
+/// NULL `rt` tears down RTT and reverts to swapchain rendering.
+/// Non-NULL ensures RTT targets at the requested size and activates them.
 static void d3d11_set_render_target(void *ctx_ptr, vgfx3d_rendertarget_t *rt) {
     d3d11_context_t *ctx = (d3d11_context_t *)ctx_ptr;
     HRESULT hr;
@@ -3955,6 +4317,13 @@ static void d3d11_set_render_target(void *ctx_ptr, vgfx3d_rendertarget_t *rt) {
     }
 }
 
+/// @brief Backend `shadow_begin` — switch the pipeline to shadow-pass mode.
+///
+/// Allocates the shadow depth target if needed, captures the light's
+/// view-projection matrix (used by main pass for shadow sampling),
+/// unbinds the shadow SRV (so we can write to it), binds the shadow
+/// DSV with no color RTV (depth-only pass), clears depth, sets viewport,
+/// and binds the shadow vertex shader with no pixel shader.
 static void d3d11_shadow_begin(
     void *ctx_ptr, float *depth_buf, int32_t width, int32_t height, const float *light_vp) {
     d3d11_context_t *ctx = (d3d11_context_t *)ctx_ptr;
@@ -3990,6 +4359,11 @@ static void d3d11_shadow_begin(
     ID3D11DeviceContext_PSSetShader(ctx->ctx, NULL, NULL, 0);
 }
 
+/// @brief Backend `shadow_draw` — emit a single mesh into the shadow depth buffer.
+///
+/// Slimmer than `submit_draw`: only object/scene cbuffers + bone
+/// palettes + morph SRV (if any) — no material, no lights, no
+/// pixel shader. Uses the light-space VP captured by `shadow_begin`.
 static void d3d11_shadow_draw(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) {
     d3d11_context_t *ctx = (d3d11_context_t *)ctx_ptr;
     d3d_per_object_t object_data;
@@ -4040,6 +4414,12 @@ static void d3d11_shadow_draw(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) {
     }
 }
 
+/// @brief Backend `shadow_end` — exit shadow-pass mode and rebind the main targets.
+///
+/// Marks `shadow_active = 1` so the main pass's PerScene cbuffer
+/// reports `shadowEnabled` to the shader. Stores the bias the shader
+/// uses to bias depth comparisons. Re-selects the active scene/RTT
+/// targets so subsequent draws hit the right buffers.
 static void d3d11_shadow_end(void *ctx_ptr, float bias) {
     d3d11_context_t *ctx = (d3d11_context_t *)ctx_ptr;
     if (!ctx)
@@ -4049,6 +4429,12 @@ static void d3d11_shadow_end(void *ctx_ptr, float bias) {
     d3d11_select_current_targets(ctx);
 }
 
+/// @brief Backend `draw_skybox` — full-cube draw with the cubemap shader.
+///
+/// Sets up skybox VS/PS, the cube VB built at context-creation, the
+/// rotation-only view matrix, and a depth-state that draws "behind"
+/// everything else (`<=` compare with no depth writes). The cubemap
+/// is bound from the cubemap cache or as a temp resource.
 static void d3d11_draw_skybox(void *ctx_ptr, const void *cubemap_ptr) {
     d3d11_context_t *ctx = (d3d11_context_t *)ctx_ptr;
     const rt_cubemap3d *cubemap = (const rt_cubemap3d *)cubemap_ptr;

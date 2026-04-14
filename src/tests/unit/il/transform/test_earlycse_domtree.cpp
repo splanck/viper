@@ -290,6 +290,69 @@ Module buildTextuallyUnsafeCrossBlockCSE() {
     return M;
 }
 
+Module buildSameBlockRepeatedEliminationCSE() {
+    Module M;
+    Function F;
+    F.name = "same_block_repeated_elimination";
+    F.retType = Type(Type::Kind::I64);
+
+    unsigned id = 0;
+    Param a{"a", Type(Type::Kind::I64), id++};
+    Param b{"b", Type(Type::Kind::I64), id++};
+    F.params = {a, b};
+
+    BasicBlock entry;
+    entry.label = "entry";
+    {
+        Instr add0;
+        add0.result = id++;
+        add0.op = Opcode::Add;
+        add0.type = Type(Type::Kind::I64);
+        add0.operands = {Value::temp(a.id), Value::temp(b.id)};
+        const unsigned add0Id = *add0.result;
+        entry.instructions.push_back(std::move(add0));
+
+        Instr add1;
+        add1.result = id++;
+        add1.op = Opcode::Add;
+        add1.type = Type(Type::Kind::I64);
+        add1.operands = {Value::temp(a.id), Value::temp(b.id)};
+        const unsigned add1Id = *add1.result;
+        entry.instructions.push_back(std::move(add1));
+
+        Instr sub;
+        sub.result = id++;
+        sub.op = Opcode::Sub;
+        sub.type = Type(Type::Kind::I64);
+        sub.operands = {Value::temp(add1Id), Value::constInt(1)};
+        entry.instructions.push_back(std::move(sub));
+
+        Instr add2;
+        add2.result = id++;
+        add2.op = Opcode::Add;
+        add2.type = Type(Type::Kind::I64);
+        add2.operands = {Value::temp(a.id), Value::temp(b.id)};
+        const unsigned add2Id = *add2.result;
+        entry.instructions.push_back(std::move(add2));
+
+        Instr ret;
+        ret.op = Opcode::Ret;
+        ret.type = Type(Type::Kind::Void);
+        ret.operands = {Value::temp(add2Id)};
+        entry.instructions.push_back(std::move(ret));
+        entry.terminated = true;
+
+        (void)add0Id;
+    }
+
+    F.blocks.push_back(std::move(entry));
+    F.valueNames.resize(id);
+    F.valueNames[a.id] = "a";
+    F.valueNames[b.id] = "b";
+    M.functions.push_back(std::move(F));
+    return M;
+}
+
 } // namespace
 
 // An Add in the entry block dominates its successor — the commuted duplicate
@@ -359,6 +422,34 @@ TEST(EarlyCSEDomTree, TextuallyLaterDominatorDoesNotCreateUseBeforeDef) {
     EXPECT_EQ(updateBlock.instructions[0].op, Opcode::Add);
     EXPECT_EQ(updateBlock.instructions[1].op, Opcode::Ret);
     EXPECT_EQ(updateBlock.instructions[1].operands[0].id, *updateBlock.instructions[0].result);
+}
+
+TEST(EarlyCSEDomTree, RepeatedSameBlockEliminationKeepsLaterUsesCorrect) {
+    Module M = buildSameBlockRepeatedEliminationCSE();
+    ASSERT_EQ(M.functions.size(), 1u);
+    Function &fn = M.functions.front();
+
+    bool changed = il::transform::runEarlyCSE(M, fn);
+    EXPECT_TRUE(changed);
+
+    const BasicBlock &entry = fn.blocks.front();
+    ASSERT_EQ(entry.instructions.size(), 3u);
+    ASSERT_TRUE(entry.instructions[0].result.has_value());
+    ASSERT_TRUE(entry.instructions[1].result.has_value());
+    EXPECT_EQ(entry.instructions[0].op, Opcode::Add);
+    EXPECT_EQ(entry.instructions[1].op, Opcode::Sub);
+    EXPECT_EQ(entry.instructions[2].op, Opcode::Ret);
+
+    const unsigned addId = *entry.instructions[0].result;
+    const Instr &sub = entry.instructions[1];
+    ASSERT_EQ(sub.operands.size(), 2u);
+    EXPECT_EQ(sub.operands[0].kind, Value::Kind::Temp);
+    EXPECT_EQ(sub.operands[0].id, addId);
+
+    const Instr &ret = entry.instructions[2];
+    ASSERT_EQ(ret.operands.size(), 1u);
+    EXPECT_EQ(ret.operands[0].kind, Value::Kind::Temp);
+    EXPECT_EQ(ret.operands[0].id, addId);
 }
 
 /// @brief Main.

@@ -231,6 +231,7 @@ void BytecodeCompiler::compileBlock(const il::core::BasicBlock &block) {
         auto it = blockParamIds_.find(block.label);
         if (it != blockParamIds_.end()) {
             const auto &paramIds = it->second;
+            pushStack(static_cast<int32_t>(paramIds.size()));
             // Pop in reverse order since stack is LIFO
             for (size_t i = paramIds.size(); i > 0; --i) {
                 uint32_t local = ssaToLocal_.at(paramIds[i - 1]);

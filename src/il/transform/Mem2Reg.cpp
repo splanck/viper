@@ -348,15 +348,30 @@ static Value renameUses(Function &F,
         BS.incomplete.insert(varId);
         return v;
     }
-    // Create a placeholder param BEFORE recursing to break cycles.
-    // This is essential for handling loops correctly.
+    auto preds = analysis::predecessors(ctx, *B);
+    if (preds.empty()) {
+        const Type &ty = VS.type;
+        Value v = ty.kind == Type::Kind::F64 ? Value::constFloat(0.0) : Value::constInt(0);
+        VS.defs[B] = v;
+        return v;
+    }
+    if (preds.size() == 1) {
+        Value v = renameUses(F, preds.front(), varId, vars, blocks, nextId, ctx);
+        VS.defs[B] = v;
+        return v;
+    }
+
+    // Create a placeholder param BEFORE recursing to break cycles in true
+    // join blocks. Entry blocks and single-predecessor blocks are handled
+    // directly above so we do not invent synthetic block params that cannot
+    // be bound by incoming edges.
     unsigned pIdx = ensureParam(B, varId, vars, blocks, nextId);
     Value placeholder = Value::temp(B->params[pIdx].id);
     VS.defs[B] = placeholder;
     Value v = readFromPreds(F, B, varId, vars, blocks, nextId, ctx, nullptr);
-    // The placeholder is the correct value (the block param that will receive
-    // incoming values from predecessors), so we don't need to update VS.defs[B].
-    return placeholder;
+    if (!valueEquals(v, placeholder))
+        VS.defs[B] = v;
+    return VS.defs[B];
 }
 
 /// @brief Finalise a block once all of its predecessors are known.

@@ -103,6 +103,10 @@ static int8_t g_initialized = 0;
 // Internal Helpers
 //=========================================================================
 
+/// @brief Linear-scan the global action list by C-string name.
+///
+/// Returns NULL on miss. Used by the C-string-keyed setter/getter
+/// surface (e.g., loading bindings from a config file).
 static Action *find_action(const char *name) {
     if (!name)
         return NULL;
@@ -115,6 +119,10 @@ static Action *find_action(const char *name) {
     return NULL;
 }
 
+/// @brief Linear-scan the global action list by `rt_string` name.
+///
+/// Specialized to compare lengths first then bytes — avoids a
+/// `strdup` round-trip versus calling `find_action(rt_string_cstr(...))`.
 static Action *find_action_str(rt_string name) {
     if (!name)
         return NULL;
@@ -131,6 +139,10 @@ static Action *find_action_str(rt_string name) {
     return NULL;
 }
 
+/// @brief Heap-allocate a NUL-terminated C string from an `rt_string`.
+///
+/// Returns NULL on empty input or allocation failure. Used to capture
+/// the action's name in our own buffer (the `rt_string` may go away).
 static char *strdup_rt_string(rt_string s) {
     if (!s)
         return NULL;
@@ -145,6 +157,7 @@ static char *strdup_rt_string(rt_string s) {
     return result;
 }
 
+/// @brief Walk and free a singly-linked binding list.
 static void free_bindings(Binding *b) {
     while (b) {
         Binding *next = b->next;
@@ -153,6 +166,7 @@ static void free_bindings(Binding *b) {
     }
 }
 
+/// @brief Free an action's name + bindings + the action node itself.
 static void free_action(Action *a) {
     if (a) {
         free(a->name);
@@ -161,6 +175,10 @@ static void free_action(Action *a) {
     }
 }
 
+/// @brief Allocate a new binding node populated with the given fields.
+///
+/// `chord_keys` and `chord_len` are left zero — chord bindings are
+/// constructed directly by `BindChord` callers, not via this helper.
 static Binding *create_binding(BindingType type, int64_t code, int64_t pad_index, double value) {
     Binding *b = (Binding *)malloc(sizeof(Binding));
     if (!b)
@@ -173,12 +191,21 @@ static Binding *create_binding(BindingType type, int64_t code, int64_t pad_index
     return b;
 }
 
+/// @brief Push a binding onto the head of an action's binding list.
+///
+/// LIFO insert (most-recently-added is matched first by the update
+/// loop). Order doesn't affect correctness — any matching binding
+/// satisfies a button query.
 static void add_binding(Action *action, Binding *binding) {
     binding->next = action->bindings;
     action->bindings = binding;
 }
 
-// Remove a binding matching type/code/pad_index
+/// @brief Remove the first binding matching `(type, code, pad_index)`.
+///
+/// Returns 1 if a binding was removed, 0 if none matched. Doesn't
+/// remove duplicates beyond the first match — callers wanting to
+/// strip all matching bindings need to loop.
 static int8_t remove_binding(Action *action, BindingType type, int64_t code, int64_t pad_index) {
     Binding **pp = &action->bindings;
     while (*pp) {
@@ -193,33 +220,45 @@ static int8_t remove_binding(Action *action, BindingType type, int64_t code, int
     return 0;
 }
 
-// Check if a key is down this frame
+// Per-source query thunks — wrap the `rt_keyboard_*` / `rt_mouse_*` /
+// `rt_pad_*` getters with the thin signatures the binding update loop
+// expects. Pad helpers also implement the `pad_index < 0` "any
+// connected controller" fallback.
+
+/// @brief True if `key` is held down this frame.
 static int8_t key_held(int64_t key) {
     return rt_keyboard_is_down(key);
 }
 
+/// @brief True if `key` was pressed (down-edge) this frame.
 static int8_t key_pressed(int64_t key) {
     return rt_keyboard_was_pressed(key);
 }
 
+/// @brief True if `key` was released (up-edge) this frame.
 static int8_t key_released(int64_t key) {
     return rt_keyboard_was_released(key);
 }
 
-// Check if a mouse button is down
+/// @brief True if mouse `button` is held down this frame.
 static int8_t mouse_held(int64_t button) {
     return rt_mouse_is_down(button);
 }
 
+/// @brief True if mouse `button` was pressed (down-edge) this frame.
 static int8_t mouse_pressed(int64_t button) {
     return rt_mouse_was_pressed(button);
 }
 
+/// @brief True if mouse `button` was released (up-edge) this frame.
 static int8_t mouse_released(int64_t button) {
     return rt_mouse_was_released(button);
 }
 
-// Check if a pad button is down
+/// @brief Pad button held query, with `pad_index < 0` = any connected pad.
+///
+/// Loops over pads 0..3 when `pad_index` is negative, returning true on
+/// the first connected pad with the button held.
 static int8_t pad_held(int64_t pad_index, int64_t button) {
     if (pad_index < 0) {
         // Any controller
@@ -232,6 +271,7 @@ static int8_t pad_held(int64_t pad_index, int64_t button) {
     return rt_pad_is_down(pad_index, button);
 }
 
+/// @brief Pad button down-edge query (any-pad fallback for `pad_index < 0`).
 static int8_t pad_pressed(int64_t pad_index, int64_t button) {
     if (pad_index < 0) {
         for (int64_t i = 0; i < 4; i++) {
@@ -243,6 +283,7 @@ static int8_t pad_pressed(int64_t pad_index, int64_t button) {
     return rt_pad_was_pressed(pad_index, button);
 }
 
+/// @brief Pad button up-edge query (any-pad fallback for `pad_index < 0`).
 static int8_t pad_released(int64_t pad_index, int64_t button) {
     if (pad_index < 0) {
         for (int64_t i = 0; i < 4; i++) {
@@ -254,7 +295,11 @@ static int8_t pad_released(int64_t pad_index, int64_t button) {
     return rt_pad_was_released(pad_index, button);
 }
 
-// Get gamepad axis value
+/// @brief Read a gamepad axis value (-1..1 sticks, 0..1 triggers).
+///
+/// `axis` is one of `VIPER_AXIS_*`. With `pad_index < 0`, returns the
+/// first non-zero value across pads 0..3 — useful when you want
+/// "any controller's left stick" without binding to a specific index.
 static double pad_axis_value(int64_t pad_index, int64_t axis) {
     if (pad_index < 0) {
         // Return value from first connected controller with non-zero input
@@ -309,7 +354,7 @@ static double pad_axis_value(int64_t pad_index, int64_t axis) {
     }
 }
 
-// Clamp value to -1.0 to 1.0
+/// @brief Clamp `value` into `[-1, 1]` for axis output normalization.
 static double clamp_axis(double value) {
     if (value < -1.0)
         return -1.0;
@@ -333,6 +378,11 @@ void rt_action_init(void) {
     g_initialized = 1;
 }
 
+/// @brief Shutdown the action mapping system.
+///
+/// Clears every action and binding via `rt_action_clear`, then marks
+/// the system uninitialized. Safe to call multiple times. Called
+/// during runtime teardown.
 void rt_action_shutdown(void) {
     RT_ASSERT_MAIN_THREAD();
     rt_action_clear();
@@ -397,12 +447,12 @@ void rt_action_update(void) {
 
                 case BIND_SCROLL_X:
                     if (a->is_axis)
-                        a->axis_value += (double)rt_mouse_wheel_x() * b->value;
+                        a->axis_value += rt_mouse_wheel_xf() * b->value;
                     break;
 
                 case BIND_SCROLL_Y:
                     if (a->is_axis)
-                        a->axis_value += (double)rt_mouse_wheel_y() * b->value;
+                        a->axis_value += rt_mouse_wheel_yf() * b->value;
                     break;
 
                 case BIND_PAD_BUTTON:
@@ -462,6 +512,11 @@ void rt_action_update(void) {
     }
 }
 
+/// @brief `Action.Clear` — destroy every action and binding.
+///
+/// Walks the global action list freeing each action (which in turn
+/// frees its bindings). After clear the system is still initialized;
+/// new actions can be defined immediately.
 void rt_action_clear(void) {
     RT_ASSERT_MAIN_THREAD();
     Action *a = g_actions;
@@ -513,6 +568,12 @@ int8_t rt_action_define(rt_string name) {
     return 1;
 }
 
+/// @brief `Action.DefineAxis(name)` — register an axis-style action.
+///
+/// Axis actions accumulate continuous values (-1..1) from analog
+/// sources (sticks, mouse delta) or button bindings (each button
+/// contributes its `value` field). Use `Axis()` to read the latest
+/// frame's accumulated value.
 int8_t rt_action_define_axis(rt_string name) {
     RT_ASSERT_MAIN_THREAD();
     if (!g_initialized)
@@ -544,17 +605,23 @@ int8_t rt_action_define_axis(rt_string name) {
     return 1;
 }
 
+/// @brief `Action.Exists(name)` — true if an action with that name is defined.
 int8_t rt_action_exists(rt_string name) {
     RT_ASSERT_MAIN_THREAD();
     return find_action_str(name) != NULL;
 }
 
+/// @brief `Action.IsAxis(name)` — true if the named action is an axis (vs. button).
 int8_t rt_action_is_axis(rt_string name) {
     RT_ASSERT_MAIN_THREAD();
     Action *a = find_action_str(name);
     return a ? a->is_axis : 0;
 }
 
+/// @brief `Action.Remove(name)` — destroy a single action by name.
+///
+/// Walks the linked list with a back-pointer, unlinks on match, frees
+/// the action + bindings. Returns 1 on success, 0 if not found.
 int8_t rt_action_remove(rt_string name) {
     RT_ASSERT_MAIN_THREAD();
     if (!name)
@@ -581,6 +648,10 @@ int8_t rt_action_remove(rt_string name) {
 // Keyboard Bindings
 //=========================================================================
 
+/// @brief `Action.BindKey(action, key)` — add a button-style key binding.
+///
+/// `key` is a `VIPER_KEY_*` constant. Fails if action doesn't exist,
+/// is an axis action, or allocation fails.
 int8_t rt_action_bind_key(rt_string action, int64_t key) {
     RT_ASSERT_MAIN_THREAD();
     Action *a = find_action_str(action);
@@ -593,6 +664,11 @@ int8_t rt_action_bind_key(rt_string action, int64_t key) {
     return 1;
 }
 
+/// @brief `Action.BindKeyAxis(action, key, value)` — add a key→axis-contribution binding.
+///
+/// When `key` is held, `value` is added to the axis. Use opposite-
+/// signed values for opposite directions (e.g., `Left` → -1.0,
+/// `Right` → +1.0 for a horizontal-axis "MoveX" action).
 int8_t rt_action_bind_key_axis(rt_string action, int64_t key, double value) {
     RT_ASSERT_MAIN_THREAD();
     Action *a = find_action_str(action);
@@ -605,6 +681,7 @@ int8_t rt_action_bind_key_axis(rt_string action, int64_t key, double value) {
     return 1;
 }
 
+/// @brief `Action.UnbindKey(action, key)` — remove a key binding.
 int8_t rt_action_unbind_key(rt_string action, int64_t key) {
     RT_ASSERT_MAIN_THREAD();
     Action *a = find_action_str(action);
@@ -617,6 +694,12 @@ int8_t rt_action_unbind_key(rt_string action, int64_t key) {
 // Key Chord/Combo Bindings
 //=========================================================================
 
+/// @brief `Action.BindChord(action, keys)` — bind a multi-key chord.
+///
+/// `keys` is a `seq<int>` of `VIPER_KEY_*` codes. The action is
+/// "pressed" the frame all keys in the chord are simultaneously held
+/// AND at least one was newly pressed. Caps at `MAX_CHORD_KEYS` (8).
+/// Useful for hotkey-style actions like Ctrl+Shift+S.
 int8_t rt_action_bind_chord(rt_string action, void *keys) {
     RT_ASSERT_MAIN_THREAD();
     int64_t len, i;
@@ -643,6 +726,10 @@ int8_t rt_action_bind_chord(rt_string action, void *keys) {
     return 1;
 }
 
+/// @brief `Action.UnbindChord(action, keys)` — remove a chord binding.
+///
+/// Match is exact: same length, same keys in the same order. Returns
+/// 1 on success, 0 if no chord matches.
 int8_t rt_action_unbind_chord(rt_string action, void *keys) {
     RT_ASSERT_MAIN_THREAD();
     int64_t len, i;
@@ -677,6 +764,7 @@ int8_t rt_action_unbind_chord(rt_string action, void *keys) {
     return 0;
 }
 
+/// @brief `Action.ChordCount(action)` — number of chord bindings on this action.
 int64_t rt_action_chord_count(rt_string action) {
     RT_ASSERT_MAIN_THREAD();
     int64_t count = 0;
@@ -698,6 +786,11 @@ int64_t rt_action_chord_count(rt_string action) {
 // Mouse Bindings
 //=========================================================================
 
+// Mouse-binding API — buttons are button-style only; XY/scroll are
+// axis-only. Each helper validates that the action's kind matches and
+// returns 0 otherwise.
+
+/// @brief `Action.BindMouse(action, button)` — bind a mouse button to a button action.
 int8_t rt_action_bind_mouse(rt_string action, int64_t button) {
     RT_ASSERT_MAIN_THREAD();
     Action *a = find_action_str(action);
@@ -710,6 +803,7 @@ int8_t rt_action_bind_mouse(rt_string action, int64_t button) {
     return 1;
 }
 
+/// @brief `Action.UnbindMouse(action, button)` — remove a mouse-button binding.
 int8_t rt_action_unbind_mouse(rt_string action, int64_t button) {
     RT_ASSERT_MAIN_THREAD();
     Action *a = find_action_str(action);
@@ -718,6 +812,10 @@ int8_t rt_action_unbind_mouse(rt_string action, int64_t button) {
     return remove_binding(a, BIND_MOUSE_BUTTON, button, 0);
 }
 
+/// @brief `Action.BindMouseX(action, sensitivity)` — bind mouse X-delta to an axis.
+///
+/// Per-frame mouse delta (in pixels) is multiplied by `sensitivity`
+/// and added to the axis. Typical mouselook setup uses ~0.001-0.01.
 int8_t rt_action_bind_mouse_x(rt_string action, double sensitivity) {
     RT_ASSERT_MAIN_THREAD();
     Action *a = find_action_str(action);
@@ -730,6 +828,7 @@ int8_t rt_action_bind_mouse_x(rt_string action, double sensitivity) {
     return 1;
 }
 
+/// @brief `Action.BindMouseY(action, sensitivity)` — bind mouse Y-delta to an axis.
 int8_t rt_action_bind_mouse_y(rt_string action, double sensitivity) {
     RT_ASSERT_MAIN_THREAD();
     Action *a = find_action_str(action);
@@ -742,6 +841,7 @@ int8_t rt_action_bind_mouse_y(rt_string action, double sensitivity) {
     return 1;
 }
 
+/// @brief `Action.BindScrollX(action, sensitivity)` — bind horizontal scroll wheel to an axis.
 int8_t rt_action_bind_scroll_x(rt_string action, double sensitivity) {
     RT_ASSERT_MAIN_THREAD();
     Action *a = find_action_str(action);
@@ -754,6 +854,7 @@ int8_t rt_action_bind_scroll_x(rt_string action, double sensitivity) {
     return 1;
 }
 
+/// @brief `Action.BindScrollY(action, sensitivity)` — bind vertical scroll wheel to an axis.
 int8_t rt_action_bind_scroll_y(rt_string action, double sensitivity) {
     RT_ASSERT_MAIN_THREAD();
     Action *a = find_action_str(action);
@@ -770,6 +871,10 @@ int8_t rt_action_bind_scroll_y(rt_string action, double sensitivity) {
 // Gamepad Bindings
 //=========================================================================
 
+// Gamepad-binding API — analogous to mouse/keyboard but with a
+// `pad_index` parameter (use -1 for "any connected controller").
+
+/// @brief `Action.BindPadButton(action, padIndex, button)` — bind a gamepad button to a button action.
 int8_t rt_action_bind_pad_button(rt_string action, int64_t pad_index, int64_t button) {
     RT_ASSERT_MAIN_THREAD();
     Action *a = find_action_str(action);
@@ -782,6 +887,7 @@ int8_t rt_action_bind_pad_button(rt_string action, int64_t pad_index, int64_t bu
     return 1;
 }
 
+/// @brief `Action.UnbindPadButton(action, padIndex, button)` — remove a pad-button binding.
 int8_t rt_action_unbind_pad_button(rt_string action, int64_t pad_index, int64_t button) {
     RT_ASSERT_MAIN_THREAD();
     Action *a = find_action_str(action);
@@ -790,6 +896,10 @@ int8_t rt_action_unbind_pad_button(rt_string action, int64_t pad_index, int64_t 
     return remove_binding(a, BIND_PAD_BUTTON, button, pad_index);
 }
 
+/// @brief `Action.BindPadAxis(action, padIndex, axis, scale)` — bind a gamepad analog axis.
+///
+/// `axis` is `VIPER_AXIS_*`. `scale` multiplies the raw axis value
+/// (typically 1.0 or -1.0 to invert).
 int8_t rt_action_bind_pad_axis(rt_string action, int64_t pad_index, int64_t axis, double scale) {
     RT_ASSERT_MAIN_THREAD();
     Action *a = find_action_str(action);
@@ -802,6 +912,7 @@ int8_t rt_action_bind_pad_axis(rt_string action, int64_t pad_index, int64_t axis
     return 1;
 }
 
+/// @brief `Action.UnbindPadAxis(action, padIndex, axis)` — remove a pad-axis binding.
 int8_t rt_action_unbind_pad_axis(rt_string action, int64_t pad_index, int64_t axis) {
     RT_ASSERT_MAIN_THREAD();
     Action *a = find_action_str(action);
@@ -810,6 +921,10 @@ int8_t rt_action_unbind_pad_axis(rt_string action, int64_t pad_index, int64_t ax
     return remove_binding(a, BIND_PAD_AXIS, axis, pad_index);
 }
 
+/// @brief `Action.BindPadButtonAxis(action, padIndex, button, value)` — bind pad button as axis contribution.
+///
+/// Like `BindKeyAxis` but for gamepad buttons — useful for D-pad
+/// directions on an axis (D-pad-Left → -1.0, D-pad-Right → +1.0).
 int8_t rt_action_bind_pad_button_axis(rt_string action,
                                       int64_t pad_index,
                                       int64_t button,
@@ -905,6 +1020,10 @@ double rt_action_axis_raw(rt_string action) {
 // Binding Introspection
 //=========================================================================
 
+/// @brief `Action.List` — return a `seq<str>` of every defined action's name.
+///
+/// Useful for binding-config UIs and serialization. Order matches
+/// the internal linked-list order (newest-first).
 void *rt_action_list(void) {
     RT_ASSERT_MAIN_THREAD();
     void *seq = rt_seq_new();
@@ -917,6 +1036,11 @@ void *rt_action_list(void) {
     return seq;
 }
 
+/// @brief `Action.BindingsStr(action)` — human-readable description of all bindings.
+///
+/// Comma-separated list like "Space, Mouse Left, Pad A, Ctrl+S".
+/// Useful for "press X to jump"-style on-screen prompts. Capped at
+/// a 1024-byte buffer; bindings beyond that are silently truncated.
 rt_string rt_action_bindings_str(rt_string action) {
     RT_ASSERT_MAIN_THREAD();
     Action *a = find_action_str(action);
@@ -1087,6 +1211,7 @@ rt_string rt_action_bindings_str(rt_string action) {
     return rt_string_from_bytes(buffer, (size_t)pos);
 }
 
+/// @brief `Action.BindingCount(action)` — total number of bindings on this action.
 int64_t rt_action_binding_count(rt_string action) {
     RT_ASSERT_MAIN_THREAD();
     Action *a = find_action_str(action);
@@ -1106,6 +1231,11 @@ int64_t rt_action_binding_count(rt_string action) {
 // Conflict Detection
 //=========================================================================
 
+// Conflict-detection helpers — given a physical input, return the
+// name of the first action bound to it. Useful for binding-config
+// UIs to warn about double-binding.
+
+/// @brief `Action.KeyBoundTo(key)` — name of the first action bound to `key`, or "".
 rt_string rt_action_key_bound_to(int64_t key) {
     RT_ASSERT_MAIN_THREAD();
     Action *a = g_actions;
@@ -1121,6 +1251,7 @@ rt_string rt_action_key_bound_to(int64_t key) {
     return rt_str_empty();
 }
 
+/// @brief `Action.MouseBoundTo(button)` — name of action bound to mouse button, or "".
 rt_string rt_action_mouse_bound_to(int64_t button) {
     RT_ASSERT_MAIN_THREAD();
     Action *a = g_actions;
@@ -1136,6 +1267,10 @@ rt_string rt_action_mouse_bound_to(int64_t button) {
     return rt_str_empty();
 }
 
+/// @brief `Action.PadButtonBoundTo(padIndex, button)` — name of action bound to a pad button.
+///
+/// Matches both regular pad-button bindings and pad-button-axis
+/// bindings. `pad_index = -1` ("any pad") always matches.
 rt_string rt_action_pad_button_bound_to(int64_t pad_index, int64_t button) {
     RT_ASSERT_MAIN_THREAD();
     Action *a = g_actions;
@@ -1156,6 +1291,12 @@ rt_string rt_action_pad_button_bound_to(int64_t pad_index, int64_t button) {
 // Preset Helpers (internal — work with C strings, no rt_string allocation)
 //=========================================================================
 
+// Internal preset helpers — work directly with C strings (no
+// `rt_string` allocation), so the preset loaders below can use string
+// literals and stay compact. Skip silently if an action already exists,
+// so calling multiple presets that share names is safe.
+
+/// @brief Internal: define a button or axis action by C-string name.
 static Action *define_action_cstr(const char *name, int8_t is_axis) {
     if (find_action(name))
         return NULL; /* Already exists — skip silently */
@@ -1178,6 +1319,7 @@ static Action *define_action_cstr(const char *name, int8_t is_axis) {
     return a;
 }
 
+/// @brief Internal: bind a key to a button action by C-string name.
 static void bind_key_to(const char *name, int64_t key) {
     Action *a = find_action(name);
     if (!a || a->is_axis)
@@ -1187,6 +1329,7 @@ static void bind_key_to(const char *name, int64_t key) {
         add_binding(a, b);
 }
 
+/// @brief Internal: bind a key to an axis action with the given contribution.
 static void bind_key_axis_to(const char *name, int64_t key, double value) {
     Action *a = find_action(name);
     if (!a || !a->is_axis)
@@ -1196,6 +1339,7 @@ static void bind_key_axis_to(const char *name, int64_t key, double value) {
         add_binding(a, b);
 }
 
+/// @brief Internal: bind any-pad button to a button action.
 static void bind_pad_to(const char *name, int64_t button) {
     Action *a = find_action(name);
     if (!a || a->is_axis)
@@ -1205,6 +1349,7 @@ static void bind_pad_to(const char *name, int64_t button) {
         add_binding(a, b);
 }
 
+/// @brief Internal: bind any-pad analog axis to an axis action.
 static void bind_pad_axis_to(const char *name, int64_t axis, double scale) {
     Action *a = find_action(name);
     if (!a || !a->is_axis)
@@ -1214,6 +1359,7 @@ static void bind_pad_axis_to(const char *name, int64_t axis, double scale) {
         add_binding(a, b);
 }
 
+/// @brief Internal: bind any-pad button to an axis with a fixed contribution.
 static void bind_pad_button_axis_to(const char *name, int64_t button, double value) {
     Action *a = find_action(name);
     if (!a || !a->is_axis)
@@ -1230,6 +1376,11 @@ static void bind_pad_button_axis_to(const char *name, int64_t button, double val
 //   Keys:   WASD + arrows    Pad: D-pad + left stick
 //=========================================================================
 
+/// @brief Preset: WASD/arrows/D-pad/left-stick → `move_*` actions.
+///
+/// Defines six actions: 4 button (`move_up/down/left/right`) and 2 axis
+/// (`move_x`, `move_y`). Binds the standard physical inputs to all of
+/// them so a script can use whichever style fits its needs.
 static void load_preset_standard_movement(void) {
     /* Button actions */
     define_action_cstr("move_up", 0);
@@ -1286,6 +1437,7 @@ static void load_preset_standard_movement(void) {
 //   Keys:   arrows+WASD, Enter+Space, Escape    Pad: D-pad, A, B
 //=========================================================================
 
+/// @brief Preset: arrow/D-pad navigation + Enter/Space + Esc → `menu_*`/`confirm`/`back`.
 static void load_preset_menu_navigation(void) {
     define_action_cstr("menu_up", 0);
     define_action_cstr("menu_down", 0);
@@ -1330,6 +1482,7 @@ static void load_preset_menu_navigation(void) {
 //   Pad:    D-pad, A, X, Start + left stick
 //=========================================================================
 
+/// @brief Preset: 2D platformer controls — `move_left/right`, `jump`, `shoot`, `pause` + `move_x` axis.
 static void load_preset_platformer(void) {
     define_action_cstr("move_left", 0);
     define_action_cstr("move_right", 0);
@@ -1375,6 +1528,7 @@ static void load_preset_platformer(void) {
 //   Pad:    D-pad + left stick, A, Start
 //=========================================================================
 
+/// @brief Preset: top-down shooter controls — 4-directional movement + `fire`/`pause`.
 static void load_preset_topdown(void) {
     define_action_cstr("move_up", 0);
     define_action_cstr("move_down", 0);
@@ -1435,16 +1589,16 @@ static void load_preset_topdown(void) {
 // Public Preset API
 //=========================================================================
 
-/// @brief Load a pre-configured set of action bindings by name.
-/// @details Defines actions and binds standard keyboard + gamepad inputs in one call.
-///   Available presets:
-///     "standard_movement" — WASD/arrows/D-pad for move, A/Space for fire, Start for pause
-///     "menu_navigation" — arrows/D-pad for menu_up/down, Enter/A for confirm, Escape/B for back
-///     "platformer" — WASD/arrows for move, Space/W/Up/A for jump, Z/X/RB for shoot
-///     "topdown" — WASD/arrows for move, A for fire, Start for pause, plus axis mapping
-///   Presets auto-initialize the action system if not already done.
-/// @param preset_name One of: "standard_movement", "menu_navigation", "platformer", "topdown".
-/// @return 1 if preset loaded successfully, 0 if name not recognized.
+/// @brief `Action.LoadPreset(name)` — apply a pre-configured action set.
+///
+/// Defines actions and binds standard keyboard + gamepad inputs in one
+/// call. Available presets:
+///   - `"standard_movement"` — 4-directional move + axis variant.
+///   - `"menu_navigation"` — menu_up/down/left/right + confirm + back.
+///   - `"platformer"` — left/right + jump + shoot + pause + axis.
+///   - `"topdown"` — 4-directional + fire + pause + axis variant.
+/// Auto-initializes the action system if not already done. Returns
+/// 0 if `name` doesn't match any preset.
 int8_t rt_action_load_preset(rt_string preset_name) {
     RT_ASSERT_MAIN_THREAD();
     if (!g_initialized)
@@ -1480,26 +1634,35 @@ int8_t rt_action_load_preset(rt_string preset_name) {
 // Axis Constant Getters
 //=========================================================================
 
+// Constant getters — expose the `VIPER_AXIS_*` enum values to Zia
+// callers (which can't read C `#define`s directly).
+
+/// @brief `Axis.LeftX` — gamepad left stick X-axis constant.
 int64_t rt_action_axis_left_x(void) {
     return VIPER_AXIS_LEFT_X;
 }
 
+/// @brief `Axis.LeftY` — gamepad left stick Y-axis constant.
 int64_t rt_action_axis_left_y(void) {
     return VIPER_AXIS_LEFT_Y;
 }
 
+/// @brief `Axis.RightX` — gamepad right stick X-axis constant.
 int64_t rt_action_axis_right_x(void) {
     return VIPER_AXIS_RIGHT_X;
 }
 
+/// @brief `Axis.RightY` — gamepad right stick Y-axis constant.
 int64_t rt_action_axis_right_y(void) {
     return VIPER_AXIS_RIGHT_Y;
 }
 
+/// @brief `Axis.LeftTrigger` — gamepad left analog trigger constant.
 int64_t rt_action_axis_left_trigger(void) {
     return VIPER_AXIS_LEFT_TRIGGER;
 }
 
+/// @brief `Axis.RightTrigger` — gamepad right analog trigger constant.
 int64_t rt_action_axis_right_trigger(void) {
     return VIPER_AXIS_RIGHT_TRIGGER;
 }
@@ -1508,6 +1671,7 @@ int64_t rt_action_axis_right_trigger(void) {
 // Persistence (Save/Load)
 //=========================================================================
 
+/// @brief Map a `BindingType` enum to the JSON serialization tag.
 static const char *binding_type_name(BindingType type) {
     switch (type) {
         case BIND_KEY:
@@ -1535,6 +1699,9 @@ static const char *binding_type_name(BindingType type) {
     }
 }
 
+/// @brief Reverse map: JSON tag string → `BindingType` enum.
+///
+/// Returns `BIND_NONE` for unknown tags so the loader can skip them.
 static BindingType binding_type_from_name(const char *name) {
     if (strcmp(name, "key") == 0)
         return BIND_KEY;
@@ -1559,6 +1726,11 @@ static BindingType binding_type_from_name(const char *name) {
     return BIND_NONE;
 }
 
+/// @brief Append a JSON-quoted-string-literal version of `str` to a builder.
+///
+/// Handles the standard JSON escape characters (`"`, `\\`, `\\n`,
+/// `\\r`, `\\t`). Non-ASCII bytes pass through as-is — the persistence
+/// format assumes UTF-8 throughout.
 static void sb_append_json_string(rt_string_builder *sb, const char *str) {
     rt_sb_append_cstr(sb, "\"");
     while (*str) {
@@ -1587,6 +1759,12 @@ static void sb_append_json_string(rt_string_builder *sb, const char *str) {
     rt_sb_append_cstr(sb, "\"");
 }
 
+/// @brief `Action.Save` — serialize all action+binding state to JSON.
+///
+/// Format: `{"actions":[{"name","type","bindings":[{"type","code","pad","value","keys":[...]}]}]}`.
+/// `keys` is only present for chord bindings. The result is a fresh
+/// `rt_string` that can be saved to disk and round-tripped via
+/// `rt_action_load`.
 rt_string rt_action_save(void) {
     RT_ASSERT_MAIN_THREAD();
     rt_string_builder sb;
@@ -1655,6 +1833,13 @@ rt_string rt_action_save(void) {
     }
 }
 
+/// @brief `Action.Load(json)` — restore action+binding state from a JSON string.
+///
+/// Inverse of `Save`. Clears existing actions before loading. Uses
+/// the streaming JSON parser (`rt_json_stream`) so giant configs
+/// don't allocate a parse tree. Returns 0 on any structural error
+/// (existing actions stay cleared in that case — fix the JSON before
+/// calling again).
 int8_t rt_action_load(rt_string json) {
     RT_ASSERT_MAIN_THREAD();
     void *parser;

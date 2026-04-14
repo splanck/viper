@@ -1,7 +1,7 @@
 ---
 status: active
 audience: developers
-last-verified: 2026-04-09
+last-verified: 2026-04-13
 ---
 
 # Threading Model and Global State
@@ -159,16 +159,14 @@ RuntimeBridge::registerExtern(desc);
 // Later, any VM can call "my_extern"
 ```
 
-**Future direction:**
+**Per-VM override:**
 
-The code includes comments about per-VM extern registries:
-
-```cpp
-// FUTURE: Per-VM Extern Registry
-// To support per-VM scoping, the following changes would be needed:
-// 1. Add an `ExternRegistry*` member to the VM class.
-// 2. Modify `currentExternRegistry()` to check for an active VM...
-```
+Viper also supports an optional per-VM extern registry. When present, extern
+resolution checks the active VM's registry first and then falls back to the
+process-global registry. Worker VMs spawned by `Thread.Start`, `Async.Run`, and
+HTTP handler dispatch inherit the parent's per-VM registry and retain its
+lifetime internally, so callback code keeps seeing the same host-provided
+extern surface even if the original owning handle has already been released.
 
 ### BASIC Frontend Options
 

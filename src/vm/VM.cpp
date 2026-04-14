@@ -84,21 +84,23 @@ namespace il::vm {
 // Platform interrupt support
 // =============================================================================
 // A VM-level interrupt is requested when the user presses Ctrl-C (or when the
-// host explicitly calls VM::requestInterrupt()).  The flag is checked at every
-// function-call boundary in the dispatch loop so that long-running programs
-// terminate gracefully with a trap message rather than an abrupt SIGKILL.
+// host explicitly calls VM::requestInterrupt()). The request is published as a
+// monotonically increasing epoch so every running VM instance observes it
+// independently instead of the first VM clearing a process-global flag for the
+// others.
 
-static std::atomic<bool> s_interruptRequested{false};
+static std::atomic<uint64_t> s_interruptEpoch{0};
+static std::atomic<uint64_t> s_interruptClearedEpoch{0};
 
 #if defined(_WIN32)
 static BOOL WINAPI windowsCtrlHandler(DWORD /*ctrlType*/) {
-    s_interruptRequested.store(true, std::memory_order_relaxed);
+    s_interruptEpoch.fetch_add(1, std::memory_order_relaxed);
     return TRUE; // We handled it; do not call the next handler.
 }
 #else
 static void posixSigintHandler(int /*signum*/) {
     // async-signal-safe: std::atomic store is safe here.
-    s_interruptRequested.store(true, std::memory_order_relaxed);
+    s_interruptEpoch.fetch_add(1, std::memory_order_relaxed);
 }
 #endif
 
@@ -440,13 +442,26 @@ int64_t VM::run() {
 /// @brief Request a graceful interrupt of any currently-running VM on this process.
 /// Equivalent to the user pressing Ctrl-C.  Thread-safe.
 void VM::requestInterrupt() noexcept {
-    s_interruptRequested.store(true, std::memory_order_relaxed);
+    s_interruptEpoch.fetch_add(1, std::memory_order_relaxed);
 }
 
-/// @brief Reset the global interrupt flag.  Must be called after handling an
-/// interrupt if the same process will continue running programs.
+/// @brief Clear any pending process-wide interrupt request.
 void VM::clearInterrupt() noexcept {
-    s_interruptRequested.store(false, std::memory_order_relaxed);
+    const uint64_t epoch = s_interruptEpoch.load(std::memory_order_acquire);
+    s_interruptClearedEpoch.store(epoch, std::memory_order_release);
+}
+
+bool VM::consumePendingInterrupt() noexcept {
+    const uint64_t cleared = s_interruptClearedEpoch.load(std::memory_order_acquire);
+    if (lastObservedInterruptEpoch_ < cleared)
+        lastObservedInterruptEpoch_ = cleared;
+
+    const uint64_t epoch = s_interruptEpoch.load(std::memory_order_acquire);
+    if (epoch == 0 || epoch <= cleared || epoch == lastObservedInterruptEpoch_)
+        return false;
+
+    lastObservedInterruptEpoch_ = epoch;
+    return true;
 }
 
 /// @brief Dispatch and execute a single IL instruction.
@@ -663,8 +678,7 @@ Slot VM::runFunctionLoop(ExecState &st) {
         // Check for a pending Ctrl-C / programmatic interrupt.  We test at the
         // top of every iteration (i.e. every function-call boundary) rather than
         // every instruction to keep overhead negligible.
-        if (s_interruptRequested.load(std::memory_order_relaxed)) {
-            s_interruptRequested.store(false, std::memory_order_relaxed);
+        if (consumePendingInterrupt()) {
             RuntimeBridge::trap(TrapKind::Interrupt, "interrupted", {}, "", "");
         }
 
@@ -691,8 +705,7 @@ Slot VM::runFunctionLoop(ExecState &st) {
             // the driver via requestPause).  Without this second check the
             // interrupt would never be observed for programs whose dispatch loop
             // never yields on its own (e.g. tight branch loops).
-            if (s_interruptRequested.load(std::memory_order_relaxed)) {
-                s_interruptRequested.store(false, std::memory_order_relaxed);
+            if (consumePendingInterrupt()) {
                 RuntimeBridge::trap(TrapKind::Interrupt, "interrupted", {}, "", "");
             }
 
@@ -793,6 +806,8 @@ VM::ProgramState::~ProgramState() {
 /// context.
 VM::~VM() {
     inlineLiteralCache.clear();
+    releaseExternRegistry(externRegistry_);
+    externRegistry_ = nullptr;
 }
 
 // =============================================================================

@@ -229,6 +229,12 @@ static int test_collision(const rt_body3d *a,
  * Collision detection helpers
  *=========================================================================*/
 
+/// @brief Compute the world-space AABB of a body, writing min/max into `mn`/`mx`.
+///
+/// If the body has a custom collider, delegates to `rt_collider3d_*` to
+/// compute the bounds in the body's pose. Otherwise falls back to the
+/// cached primitive shape (AABB / sphere / capsule). This is the broad-
+/// phase primitive used by every collision query.
 static void body_aabb(const rt_body3d *b, double *mn, double *mx) {
     if (b->collider) {
         rt_collider_pose pose;
@@ -263,6 +269,11 @@ static void body_aabb(const rt_body3d *b, double *mn, double *mx) {
     }
 }
 
+// Vector / scalar math helpers — internal-only, kept in this TU so the
+// optimizer can inline them aggressively. All `double[3]` arguments are
+// treated as plain xyz triples (no SIMD layout constraints).
+
+/// @brief Clamp `v` into `[lo, hi]`.
 static double clampd(double v, double lo, double hi) {
     if (v < lo)
         return lo;
@@ -271,48 +282,57 @@ static double clampd(double v, double lo, double hi) {
     return v;
 }
 
+/// @brief 3D dot product `a · b`.
 static double vec3_dot(const double *a, const double *b) {
     return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 }
 
+/// @brief Squared length `|v|²` — avoids the sqrt when the magnitude isn't needed.
 static double vec3_len_sq(const double *v) {
     return vec3_dot(v, v);
 }
 
+/// @brief Euclidean length `|v|`.
 static double vec3_len(const double *v) {
     return sqrt(vec3_len_sq(v));
 }
 
+/// @brief Copy `src` xyz into `dst`.
 static void vec3_copy(double *dst, const double *src) {
     dst[0] = src[0];
     dst[1] = src[1];
     dst[2] = src[2];
 }
 
+/// @brief Set `dst` to `(x, y, z)`.
 static void vec3_set(double *dst, double x, double y, double z) {
     dst[0] = x;
     dst[1] = y;
     dst[2] = z;
 }
 
+/// @brief In-place scalar multiply: `dst *= s`.
 static void vec3_scale_in_place(double *dst, double s) {
     dst[0] *= s;
     dst[1] *= s;
     dst[2] *= s;
 }
 
+/// @brief Component subtract: `out = a - b`.
 static void vec3_sub(const double *a, const double *b, double *out) {
     out[0] = a[0] - b[0];
     out[1] = a[1] - b[1];
     out[2] = a[2] - b[2];
 }
 
+/// @brief Negate: `dst = -src`.
 static void vec3_negate(const double *src, double *dst) {
     dst[0] = -src[0];
     dst[1] = -src[1];
     dst[2] = -src[2];
 }
 
+/// @brief Normalize `v` in place. Returns the original length (0 → no-op).
 static double vec3_normalize_in_place(double *v) {
     double len = vec3_len(v);
     if (len > 1e-12) {
@@ -323,6 +343,11 @@ static double vec3_normalize_in_place(double *v) {
     return len;
 }
 
+// Quaternion helpers — store as `(x, y, z, w)` with `w` last (scalar).
+// Used for body orientation and the angular velocity → orientation
+// integration step.
+
+/// @brief Set `q` to the identity quaternion (no rotation).
 static void quat_identity(double *q) {
     q[0] = 0.0;
     q[1] = 0.0;
@@ -330,10 +355,15 @@ static void quat_identity(double *q) {
     q[3] = 1.0;
 }
 
+/// @brief Squared norm `|q|²`.
 static double quat_len_sq(const double *q) {
     return q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3];
 }
 
+/// @brief Normalize `q` in place. Falls back to identity for near-zero quats.
+///
+/// Important for stability: numerical drift over many integration steps
+/// gradually denormalizes orientations, which causes geometry to skew.
 static void quat_normalize(double *q) {
     double len_sq = quat_len_sq(q);
     if (len_sq < 1e-24) {
@@ -347,6 +377,11 @@ static void quat_normalize(double *q) {
     q[3] *= inv_len;
 }
 
+/// @brief Hamilton product `out = a * b` (composes two rotations).
+///
+/// Convention: applying `a*b` to a vector first applies `b` then `a`,
+/// matching the "right-multiply pre-rotation" convention used in
+/// `quat_integrate`.
 static void quat_mul(const double *a, const double *b, double *out) {
     out[0] = a[3] * b[0] + a[0] * b[3] + a[1] * b[2] - a[2] * b[1];
     out[1] = a[3] * b[1] - a[0] * b[2] + a[1] * b[3] + a[2] * b[0];
@@ -354,6 +389,10 @@ static void quat_mul(const double *a, const double *b, double *out) {
     out[3] = a[3] * b[3] - a[0] * b[0] - a[1] * b[1] - a[2] * b[2];
 }
 
+/// @brief Build a unit quaternion from an axis (direction) and angle (radians).
+///
+/// Standard formula: `q = (sin(θ/2) * axis_unit, cos(θ/2))`. Returns
+/// the identity for zero-length axis or zero angle.
 static void quat_from_axis_angle(const double *axis, double angle, double *out) {
     double axis_len = vec3_len(axis);
     if (axis_len < 1e-12 || fabs(angle) < 1e-12) {
@@ -369,6 +408,11 @@ static void quat_from_axis_angle(const double *axis, double angle, double *out) 
     quat_normalize(out);
 }
 
+/// @brief Advance an orientation by the angular velocity over time `dt`.
+///
+/// Uses the discrete update `q ← Δq * q` where `Δq` is built from
+/// `(angular_velocity / |ω|, |ω| * dt)`. Re-normalizes after each step
+/// to prevent drift. Skipped when angular velocity or `dt` is zero.
 static void quat_integrate(double *orientation, const double *angular_velocity, double dt) {
     double speed = vec3_len(angular_velocity);
     if (speed < 1e-12 || dt <= 0.0)
@@ -385,6 +429,7 @@ static void quat_integrate(double *orientation, const double *angular_velocity, 
     quat_normalize(orientation);
 }
 
+/// @brief Conjugate `out = q*` — for unit quaternions equivalent to the inverse.
 static void quat_conjugate(const double *q, double *out) {
     out[0] = -q[0];
     out[1] = -q[1];
@@ -392,6 +437,11 @@ static void quat_conjugate(const double *q, double *out) {
     out[3] = q[3];
 }
 
+/// @brief Rotate vector `v` by quaternion `q`: `out = q * v * q*`.
+///
+/// The classic sandwich formula. Allocates two temporaries on the stack.
+/// For hot inner loops we'd inline a more efficient form, but this is
+/// only called once per pose composition so the cost is irrelevant.
 static void quat_rotate_vec3(const double *q, const double *v, double *out) {
     double qv[4] = {v[0], v[1], v[2], 0.0};
     double q_conj[4];
@@ -404,6 +454,11 @@ static void quat_rotate_vec3(const double *q, const double *v, double *out) {
     out[2] = tmp[2];
 }
 
+// Collider pose helpers — pose = position + orientation + scale, used
+// when nesting compound colliders or transforming local-space query
+// points into world space.
+
+/// @brief Reset a pose to identity (origin, no rotation, unit scale).
 static void collider_pose_identity(rt_collider_pose *pose) {
     if (!pose)
         return;
@@ -412,6 +467,10 @@ static void collider_pose_identity(rt_collider_pose *pose) {
     vec3_set(pose->scale, 1.0, 1.0, 1.0);
 }
 
+/// @brief Initialize a pose from a body's transform (unit scale).
+///
+/// Bodies don't carry a per-body scale; the pose's scale stays at unit.
+/// Per-collider scale is applied during composition (`collider_pose_compose`).
 static void collider_pose_from_body(const rt_body3d *body, rt_collider_pose *pose) {
     collider_pose_identity(pose);
     if (!body || !pose)
@@ -423,6 +482,12 @@ static void collider_pose_from_body(const rt_body3d *body, rt_collider_pose *pos
     pose->rotation[3] = body->orientation[3];
 }
 
+/// @brief Compose a child transform with a parent pose.
+///
+/// Order: scale, rotate, translate (TRS). Multiplies parent and child
+/// scales component-wise, then rotates the child position by the parent
+/// rotation before adding it to the parent position. Child rotation is
+/// pre-multiplied into the parent rotation, then re-normalized.
 static void collider_pose_compose(const rt_collider_pose *parent,
                                   const double *child_position,
                                   const double *child_rotation,
@@ -449,6 +514,10 @@ static void collider_pose_compose(const rt_collider_pose *parent,
     quat_normalize(out->rotation);
 }
 
+/// @brief Transform a local-space point through a pose into world space.
+///
+/// Applies scale → rotation → translation. Used to lift collision
+/// query points (e.g., raycast hits) back into world coordinates.
 static void transform_point_from_pose(const rt_collider_pose *pose,
                                       const double *local_point,
                                       double *world_point) {
@@ -465,6 +534,11 @@ static void transform_point_from_pose(const rt_collider_pose *pose,
     world_point[2] = pose->position[2] + rotated[2];
 }
 
+/// @brief Inverse of `transform_point_from_pose`: world → local.
+///
+/// Applies translation → conjugate rotation → inverse scale. Skips
+/// the divide-by-scale step on near-zero axes to avoid divide-by-zero
+/// when a body has been collapsed along an axis.
 static void transform_point_to_local(const rt_collider_pose *pose,
                                      const double *world_point,
                                      double *local_point) {
@@ -485,6 +559,13 @@ static void transform_point_to_local(const rt_collider_pose *pose,
         local_point[2] /= pose->scale[2];
 }
 
+/// @brief Refresh the body's cached primitive-shape fields from its collider.
+///
+/// Bodies hold a denormalized cache of `(shape, half_extents, radius,
+/// height)` so the inner collision loop doesn't have to virtual-dispatch
+/// on every comparison. This needs to be re-run whenever the collider's
+/// shape parameters change. Falls back to an AABB derived from the
+/// collider's local bounds for any non-primitive shape (mesh, hull, etc.).
 static void body3d_update_shape_cache_from_collider(rt_body3d *body) {
     double local_min[3];
     double local_max[3];
@@ -532,6 +613,15 @@ static void body3d_update_shape_cache_from_collider(rt_body3d *body) {
     }
 }
 
+/// @brief Compute the diagonal inverse inertia tensor from mass + shape.
+///
+/// Uses the standard rigid-body formulas:
+///   - Box: `I_xx = m(h² + d²)/12`, etc.
+///   - Sphere: `I = (2/5) m r²` (uniform on every axis).
+///   - Capsule: cylinder approximation, `I_xx = m(3r² + h²)/12`,
+///              `I_yy = m r²/2`.
+/// Static and kinematic bodies get zero inverse-inertia (they don't
+/// rotate from impulses).
 static void body3d_compute_inv_inertia(rt_body3d *b) {
     if (!b)
         return;
@@ -571,6 +661,12 @@ static void body3d_compute_inv_inertia(rt_body3d *b) {
     }
 }
 
+/// @brief Synchronize derived motion-mode state with `b->motion_mode`.
+///
+/// Sets the `is_static`/`is_kinematic` flags, recomputes `inv_mass`
+/// (zero for static/kinematic), wipes inverse inertia for non-dynamic
+/// bodies, and clears the sleep timer so a mode change doesn't leave a
+/// previously-sleeping body inert in the wrong mode.
 static void body3d_refresh_motion_mode(rt_body3d *b) {
     if (!b)
         return;
@@ -590,6 +686,12 @@ static void body3d_refresh_motion_mode(rt_body3d *b) {
     }
 }
 
+/// @brief Validate that a desired motion mode is compatible with the collider.
+///
+/// Some collider types (e.g., concave triangle meshes) are static-only
+/// because the dynamic-collision math doesn't handle them. Traps with
+/// `api_name` as the trap message when an invalid combination is
+/// requested. Returns 1 when the mode is allowed.
 static int body3d_motion_mode_allowed(const rt_body3d *body,
                                       void *collider,
                                       int32_t desired_mode,
@@ -604,6 +706,11 @@ static int body3d_motion_mode_allowed(const rt_body3d *body,
     return 1;
 }
 
+/// @brief Wake a sleeping dynamic body (no-op for static/kinematic).
+///
+/// Called whenever something happens that should re-enter the sim:
+/// applied force/torque, teleport, manual velocity change, or contact
+/// from a non-sleeping neighbour.
 static void body3d_wake_if_dynamic(rt_body3d *b) {
     if (!b || b->motion_mode != PH3D_MODE_DYNAMIC)
         return;
@@ -611,6 +718,12 @@ static void body3d_wake_if_dynamic(rt_body3d *b) {
     b->sleep_time = 0.0;
 }
 
+/// @brief Per-body distance threshold for triggering CCD substeps.
+///
+/// Returns "half the smallest extent" — a heuristic that matches the
+/// fastest a body can move in one step before tunneling becomes a
+/// risk. CCD substepping uses this to decide whether the displacement
+/// for a step exceeds the body's footprint and needs to be subdivided.
 static double body3d_ccd_threshold(const rt_body3d *b) {
     if (!b)
         return 0.0;
@@ -626,6 +739,11 @@ static double body3d_ccd_threshold(const rt_body3d *b) {
     }
 }
 
+/// @brief Build a stack-allocated dummy sphere body for transient queries.
+///
+/// Used so that overlap / shapecast routines can reuse the body-vs-body
+/// collision functions without needing to register a permanent body.
+/// Only fields the collision routines read are populated.
 static void make_temp_sphere(rt_body3d *out, const double *center, double radius) {
     memset(out, 0, sizeof(*out));
     out->shape = PH3D_SHAPE_SPHERE;
@@ -635,12 +753,22 @@ static void make_temp_sphere(rt_body3d *out, const double *center, double radius
     out->radius = radius;
 }
 
+/// @brief Return the two endpoints of a capsule's axis segment.
+///
+/// Capsules in this engine are Y-aligned with the position at the
+/// center. Endpoints sit `(height/2 - radius)` away on each side; the
+/// hemispherical caps sit beyond those endpoints.
 static void capsule_axis_endpoints(const rt_body3d *b, double *a, double *c) {
     double half_axis = fmax(b->height * 0.5 - b->radius, 0.0);
     vec3_set(a, b->position[0], b->position[1] - half_axis, b->position[2]);
     vec3_set(c, b->position[0], b->position[1] + half_axis, b->position[2]);
 }
 
+/// @brief Project a point onto the capsule's axis segment.
+///
+/// X/Z are clamped to the capsule's column (axis is Y-aligned), Y is
+/// clamped between the segment endpoints. Used as the first step in
+/// capsule-vs-anything distance computations.
 static void closest_point_capsule_axis_to_point(const rt_body3d *cap,
                                                 const double *point,
                                                 double *closest) {
@@ -651,6 +779,12 @@ static void closest_point_capsule_axis_to_point(const rt_body3d *cap,
     closest[2] = cap->position[2];
 }
 
+/// @brief Find the closest point pair on two capsule axes.
+///
+/// Both capsules are Y-aligned in this engine, so the math reduces to
+/// 1D segment-vs-segment along Y: either the segments overlap (use the
+/// midpoint of the overlap) or one is entirely above/below the other
+/// (use the nearest endpoints). X/Z just take each capsule's center.
 static void closest_points_capsule_axes(const rt_body3d *a,
                                         const rt_body3d *b,
                                         double *closest_a,
@@ -679,6 +813,12 @@ static void closest_points_capsule_axes(const rt_body3d *a,
     }
 }
 
+/// @brief Find the point on a capsule's axis closest to a box.
+///
+/// X/Z take the capsule center; Y picks whichever capsule endpoint
+/// overhangs the box (or, if neither does, the projection of the
+/// capsule center clamped into the box-axis-overlap range). Used as
+/// the first step of capsule-vs-AABB collision.
 static void closest_point_capsule_axis_to_aabb(const rt_body3d *cap,
                                                const rt_body3d *box,
                                                double *closest_axis) {
@@ -696,6 +836,12 @@ static void closest_point_capsule_axis_to_aabb(const rt_body3d *cap,
             clampd(cap->position[1], mn[1] > a[1] ? mn[1] : a[1], mx[1] < c[1] ? mx[1] : c[1]);
 }
 
+/// @brief Layer/mask filter for one-sided queries (raycast, overlap).
+///
+/// Bidirectional layer/mask filtering applies for body-vs-body collision
+/// (`bodies_can_collide`); queries are unidirectional, so we just check
+/// the body's layer against the query's mask. A zero mask is treated as
+/// "match anything" for ergonomics.
 static int query_mask_matches_body(const rt_body3d *body, int64_t mask) {
     int64_t effective_mask = mask;
     if (!body)
@@ -705,11 +851,21 @@ static int query_mask_matches_body(const rt_body3d *body, int64_t mask) {
     return (body->collision_layer & effective_mask) != 0;
 }
 
+/// @brief Raw AABB-vs-AABB overlap test (no shape interpretation).
+///
+/// SAT on the axis-aligned axes. Returns true if neither axis fully
+/// separates the two boxes. This is the broad-phase primitive — the
+/// narrow-phase shape tests run only on pairs that pass this check.
 static int aabb_overlap_raw(const double *amn, const double *amx, const double *bmn, const double *bmx) {
     return !(amn[0] > bmx[0] || amx[0] < bmn[0] || amn[1] > bmx[1] || amx[1] < bmn[1] ||
              amn[2] > bmx[2] || amx[2] < bmn[2]);
 }
 
+/// @brief Compute the AABB swept by translating `[start_min, start_max]` by `delta`.
+///
+/// Used by CCD to make a single AABB that bounds an entire integration
+/// step's motion. If this swept box doesn't overlap a candidate body's
+/// AABB, the bodies cannot collide during the step.
 static void swept_aabb_from_points(const double *start_min,
                                    const double *start_max,
                                    const double *delta,
@@ -725,12 +881,18 @@ static void swept_aabb_from_points(const double *start_min,
     swept_max[2] = start_max[2] > end_max[2] ? start_max[2] : end_max[2];
 }
 
+/// @brief Bytewise contact copy. Used to snapshot frame-N contacts for
+///        the frame-N+1 enter/stay/exit event diff.
 static void contact_snapshot_copy(rt_contact3d *dst, const rt_contact3d *src) {
     if (!dst || !src)
         return;
     memcpy(dst, src, sizeof(*dst));
 }
 
+/// @brief Identity test for contacts: same body pair AND same collider pair.
+///
+/// The collider check matters for compound bodies — same body pair but
+/// different child colliders is a different contact.
 static int contact_pair_equals(const rt_contact3d *a, const rt_contact3d *b) {
     if (!a || !b)
         return 0;
@@ -738,6 +900,13 @@ static int contact_pair_equals(const rt_contact3d *a, const rt_contact3d *b) {
            a->collider_a == b->collider_a && a->collider_b == b->collider_b;
 }
 
+/// @brief Compute the support point for a collider in a given direction.
+///
+/// "Support" = farthest point on the shape along `direction`. Closed
+/// form for spheres and capsules; recursive for compound colliders
+/// (pick the child whose support has the largest dot with `direction`);
+/// AABB-based fallback for unrecognized shapes. Used by contact-point
+/// reconstruction after narrow-phase collision detection.
 static void collider_support_point(void *collider,
                                    const rt_collider_pose *pose,
                                    const double *direction,
@@ -812,6 +981,12 @@ static void collider_support_point(void *collider,
     }
 }
 
+/// @brief Estimate a representative contact point given two leaf colliders + a normal.
+///
+/// Takes the support point on each leaf in opposite directions
+/// (`+normal` for A, `-normal` for B), then averages them. Cheap and
+/// stable enough for the impulse solver, which only uses the contact
+/// point for friction torque computation.
 static void compute_contact_point_from_leafs(void *a_leaf,
                                              const rt_collider_pose *a_pose,
                                              void *b_leaf,
@@ -835,6 +1010,12 @@ static void compute_contact_point_from_leafs(void *a_leaf,
     point_out[2] = (point_a[2] + point_b[2]) * 0.5;
 }
 
+/// @brief Bidirectional layer/mask filter for body-vs-body collision.
+///
+/// Both bodies must be on a layer the other body's mask accepts. This
+/// preserves intuitive behavior: e.g., players (layer P, mask=P|E) and
+/// enemies (layer E, mask=P|E) collide; bullets (layer B, mask=E) hit
+/// enemies but not players.
 static int bodies_can_collide(const rt_body3d *a, const rt_body3d *b) {
     if (!a || !b)
         return 0;
@@ -848,6 +1029,10 @@ static int bodies_can_collide(const rt_body3d *a, const rt_body3d *b) {
 /* --- Shape-specific narrow-phase collision tests ---
  * Normal always points A→B (matches impulse convention: a.vel -= j*n). */
 
+/// @brief AABB-vs-AABB narrow phase: returns penetration depth and normal.
+///
+/// SAT picks the axis of minimum overlap as the separation direction.
+/// Normal points from A toward B (impulse convention: `a.vel -= j*n`).
 static int test_aabb_aabb(const rt_body3d *a, const rt_body3d *b, double *normal, double *depth) {
     double amn[3], amx[3], bmn[3], bmx[3];
     body_aabb(a, amn, amx);
@@ -871,6 +1056,11 @@ static int test_aabb_aabb(const rt_body3d *a, const rt_body3d *b, double *normal
     return 1;
 }
 
+/// @brief Sphere-vs-sphere: simple distance vs sum-of-radii test.
+///
+/// Falls back to a +Y push when the centers are exactly coincident
+/// (otherwise the normal would be ill-defined and the impulse step
+/// would NaN out).
 static int test_sphere_sphere(const rt_body3d *a,
                               const rt_body3d *b,
                               double *normal,
@@ -899,6 +1089,11 @@ static int test_sphere_sphere(const rt_body3d *a,
     return 1;
 }
 
+/// @brief AABB-vs-sphere: clamp sphere center into AABB, then sphere-distance test.
+///
+/// If the sphere's center lies inside the AABB, falls back to the
+/// AABB-AABB pushout to avoid a degenerate zero-distance normal. The
+/// returned normal points from AABB to sphere.
 static int test_aabb_sphere(const rt_body3d *aabb,
                             const rt_body3d *sph,
                             double *normal,
@@ -935,11 +1130,18 @@ static int test_aabb_sphere(const rt_body3d *aabb,
     return 1;
 }
 
+/// @brief Whether `type` is one of the primitive shapes the narrow phase handles directly.
 static int collider_type_is_simple(int64_t type) {
     return type == RT_COLLIDER3D_TYPE_BOX || type == RT_COLLIDER3D_TYPE_SPHERE ||
            type == RT_COLLIDER3D_TYPE_CAPSULE;
 }
 
+/// @brief Build a transient `rt_body3d` whose shape mirrors a simple collider.
+///
+/// Used during compound-vs-compound collision: each leaf-pair produces
+/// a transient body so we can reuse the body-level narrow-phase tests.
+/// Applies the pose's scale to extents/radius/height. Returns 0 for
+/// non-simple shapes (the caller falls back to AABB-vs-AABB).
 static int build_simple_proxy(const rt_collider_pose *pose,
                               void *collider,
                               rt_body3d *out) {
@@ -986,6 +1188,16 @@ static int build_simple_proxy(const rt_collider_pose *pose,
     }
 }
 
+/// @brief Narrow-phase dispatcher for primitive-shape body pairs.
+///
+/// Cheap broad-phase (AABB overlap) up front, then routes to:
+///   - sphere/capsule × sphere/capsule via closest-axis sphere test
+///   - AABB × sphere/capsule via clamp-then-distance
+///   - AABB × AABB via SAT
+/// The capsule shape is reduced to a transient sphere at the closest
+/// axis point so the entire matrix collapses to ~3 specialized cases.
+/// Always returns the normal pointing from A to B (so symmetric callers
+/// flip it when needed).
 static int test_simple_collision(const rt_body3d *a,
                                  const rt_body3d *b,
                                  double *normal,
@@ -1071,6 +1283,11 @@ static int test_simple_collision(const rt_body3d *a,
     return test_aabb_aabb(a, b, normal, depth);
 }
 
+/// @brief Generic AABB-vs-AABB overlap with explicit centers (no body required).
+///
+/// Same SAT logic as `test_aabb_aabb` but takes raw extents and centers
+/// so it can be used for compound child colliders that don't have a
+/// backing body.
 static int test_bounds_overlap(const double *amn,
                                const double *amx,
                                const double *a_center,
@@ -1098,6 +1315,11 @@ static int test_bounds_overlap(const double *amn,
     return 1;
 }
 
+/// @brief Project point `p` onto triangle `(a, b, c)`, writing the closest point.
+///
+/// Implements the standard Voronoi-region algorithm from Real-Time
+/// Collision Detection (Ericson §5.1.5): tests whether `p` falls into
+/// the vertex, edge, or interior region and clamps accordingly.
 static void closest_point_on_triangle(const double *p,
                                       const double *a,
                                       const double *b,
@@ -1180,6 +1402,10 @@ static void closest_point_on_triangle(const double *p,
     }
 }
 
+/// @brief Compute a unit normal from three triangle vertices via cross product.
+///
+/// Falls back to +Y when the triangle is degenerate (zero area). The
+/// orientation depends on vertex order — caller may flip if needed.
 static void triangle_normal(const double *a, const double *b, const double *c, double *normal) {
     double ab[3] = {b[0] - a[0], b[1] - a[1], b[2] - a[2]};
     double ac[3] = {c[0] - a[0], c[1] - a[1], c[2] - a[2]};
@@ -1200,6 +1426,14 @@ static void triangle_normal(const double *a, const double *b, const double *c, d
     }
 }
 
+/// @brief Sphere-vs-mesh narrow phase by per-triangle closest-point test.
+///
+/// Iterates every triangle of `mesh`, transforms its vertices into world
+/// space (TODO: this could be cached), and uses
+/// `closest_point_on_triangle` + sphere distance. Picks the deepest
+/// penetration as the contact. O(n) in triangle count — fine for the
+/// kind of low-poly collision meshes typical in games; for higher-poly
+/// meshes a BVH would be a future addition.
 static int test_meshlike_sphere(rt_mesh3d *mesh,
                                 const rt_collider_pose *mesh_pose,
                                 const rt_body3d *sphere,
@@ -1275,6 +1509,12 @@ static int test_meshlike_sphere(rt_mesh3d *mesh,
     return 1;
 }
 
+/// @brief Capsule-vs-mesh narrow phase via 5 sphere samples along the capsule axis.
+///
+/// Fakes capsule support by sampling 5 spheres uniformly along the
+/// capsule's axis segment and running each through `test_meshlike_sphere`.
+/// Picks the deepest penetration. Cheaper than a true capsule-mesh
+/// test and good enough for character collision against level geometry.
 static int test_meshlike_capsule(rt_mesh3d *mesh,
                                  const rt_collider_pose *mesh_pose,
                                  const rt_body3d *capsule,
@@ -1310,6 +1550,13 @@ static int test_meshlike_capsule(rt_mesh3d *mesh,
     return 1;
 }
 
+/// @brief Sphere-vs-heightfield narrow phase.
+///
+/// Transforms the sphere center into local heightfield space, samples
+/// the field at (x, z) to get surface height + local normal, and tests
+/// whether the sphere bottom is below the surface. Skips the cost of
+/// per-cell triangle intersection by using the heightfield's analytical
+/// normal directly.
 static int test_heightfield_sphere(void *heightfield,
                                    const rt_collider_pose *field_pose,
                                    const rt_body3d *sphere,
@@ -1343,6 +1590,12 @@ static int test_heightfield_sphere(void *heightfield,
     return 1;
 }
 
+/// @brief Capsule-vs-heightfield narrow phase.
+///
+/// Only the bottom-end sphere of the capsule's axis is sampled — for
+/// gravity-aligned capsule characters that's the contact point of
+/// interest. A more accurate version would sample multiple points
+/// along the axis as `test_meshlike_capsule` does.
 static int test_heightfield_capsule(void *heightfield,
                                     const rt_collider_pose *field_pose,
                                     const rt_body3d *capsule,
@@ -1359,6 +1612,11 @@ static int test_heightfield_capsule(void *heightfield,
     return test_heightfield_sphere(heightfield, field_pose, &sphere, normal, depth);
 }
 
+/// @brief Box-vs-heightfield narrow phase via 5-sample bottom probe.
+///
+/// Samples the heightfield at the box's four bottom corners and its
+/// center; the deepest penetration wins. Approximate but cheap;
+/// matches the resolution of the heightfield grid in practice.
 static int test_heightfield_box(void *heightfield,
                                 const rt_collider_pose *field_pose,
                                 const rt_body3d *box,
@@ -1409,6 +1667,19 @@ static int test_heightfield_box(void *heightfield,
     return 1;
 }
 
+/// @brief Recursive collider-vs-collider dispatcher with leaf identification.
+///
+/// The "real" collision routine — handles every combination of:
+///   - compound × anything (recurse into children)
+///   - simple × simple (route via `test_simple_collision`)
+///   - convex hull / mesh × simple (route via `test_meshlike_*`)
+///   - heightfield × simple (route via `test_heightfield_*`)
+///   - everything else falls back to AABB-vs-AABB.
+///
+/// Outputs the leaf colliders that actually touched (so the higher-level
+/// contact event can carry the precise child collider, not just the
+/// outer compound). Reverses the normal when it has to swap A and B
+/// for symmetric dispatch.
 static int test_collider_pair(const rt_body3d *a_body,
                               void *a_collider,
                               const rt_collider_pose *a_pose,
@@ -1679,8 +1950,12 @@ static int test_collider_pair(const rt_body3d *a_body,
     return 1;
 }
 
-/// @brief Test collision between two bodies. Returns 1 if colliding.
-/// Sets normal (A→B push direction) and depth.
+/// @brief Top-level body-vs-body collision test, including contact point.
+///
+/// Builds collider poses, delegates to `test_collider_pair` for the
+/// actual recursion, then reconstructs an estimated contact point via
+/// `compute_contact_point_from_leafs`. Outputs the leaf colliders that
+/// touched, so contact events can carry sub-collider identity.
 static int test_collision(const rt_body3d *a,
                           const rt_body3d *b,
                           double *normal,
@@ -1721,6 +1996,14 @@ static int test_collision(const rt_body3d *a,
 }
 
 /// @brief Apply impulse-based collision response between two bodies.
+///
+/// Standard rigid-body impulse: `j = -(1+e)·rv·(1/(m_a+m_b))` along the
+/// contact normal, plus a tangential Coulomb friction impulse capped at
+/// `μ·j_normal`. Then a Baumgarte positional correction (40% of excess
+/// penetration past 1% slop) bleeds drift back to zero. Wakes both
+/// bodies if either impulse component is significant. Returns the
+/// magnitude of the normal impulse (used by `relative_speed_out` and
+/// the impulse-as-event payload).
 static double resolve_collision(rt_body3d *a,
                                 rt_body3d *b,
                                 const double *n,
@@ -1794,6 +2077,12 @@ static double resolve_collision(rt_body3d *a,
     return fabs(j);
 }
 
+// GC finalizers for the boxed query-result objects exposed to Zia.
+// Each releases the retained body / collider references so dropping
+// the result frees the underlying physics objects when no other
+// holder remains.
+
+/// @brief GC finalizer for `PhysicsHit3D` — release referenced body/collider.
 static void physics_hit3d_finalizer(void *obj) {
     rt_physics_hit3d_obj *hit = (rt_physics_hit3d_obj *)obj;
     if (!hit)
@@ -1806,6 +2095,7 @@ static void physics_hit3d_finalizer(void *obj) {
     hit->collider = NULL;
 }
 
+/// @brief GC finalizer for `PhysicsHitList3D` — release each item then the array.
 static void physics_hit_list3d_finalizer(void *obj) {
     rt_physics_hit_list3d_obj *list = (rt_physics_hit_list3d_obj *)obj;
     if (!list)
@@ -1821,6 +2111,7 @@ static void physics_hit_list3d_finalizer(void *obj) {
     list->count = 0;
 }
 
+/// @brief GC finalizer for `CollisionEvent3D` — release both bodies and both colliders.
 static void collision_event3d_finalizer(void *obj) {
     rt_collision_event3d_obj *event = (rt_collision_event3d_obj *)obj;
     if (!event)
@@ -1839,6 +2130,10 @@ static void collision_event3d_finalizer(void *obj) {
     event->collider_b = NULL;
 }
 
+/// @brief Box a transient `rt_query_hit3d` into a GC-managed `PhysicsHit3D`.
+///
+/// Copies all hit fields and retains the body/collider pointers so the
+/// hit object can outlive the originating query call.
 static void *physics_hit3d_new(const rt_query_hit3d *src) {
     rt_physics_hit3d_obj *hit =
         (rt_physics_hit3d_obj *)rt_obj_new_i64(0, (int64_t)sizeof(rt_physics_hit3d_obj));
@@ -1865,6 +2160,12 @@ static void *physics_hit3d_new(const rt_query_hit3d *src) {
     return hit;
 }
 
+/// @brief Build a `PhysicsHitList3D` from a transient hit array.
+///
+/// Allocates an items array of length `count`, boxes each hit via
+/// `physics_hit3d_new`, and returns the GC-managed wrapper. Returns
+/// NULL when `count <= 0` so callers can pass empty results back as
+/// a NULL Zia value.
 static void *physics_hit_list3d_new(const rt_query_hit3d *hits, int32_t count) {
     rt_physics_hit_list3d_obj *list;
     if (count <= 0)
@@ -1888,6 +2189,10 @@ static void *physics_hit_list3d_new(const rt_query_hit3d *hits, int32_t count) {
     return list;
 }
 
+/// @brief Box a contact's geometric data into a `ContactPoint3D` for Zia.
+///
+/// Only point/normal/separation are exposed — `body_*` and impulse
+/// belong to the higher-level `CollisionEvent3D`.
 static void *contact_point3d_new_from_contact(const rt_contact3d *contact) {
     rt_contact_point3d_obj *point;
     if (!contact)
@@ -1904,6 +2209,12 @@ static void *contact_point3d_new_from_contact(const rt_contact3d *contact) {
     return point;
 }
 
+/// @brief Box a contact into a `CollisionEvent3D` for OnEnter/Stay/Exit dispatch.
+///
+/// Includes both bodies, both colliders, contact geometry, relative
+/// speed, and the resolved normal impulse so Zia handlers can branch
+/// on collision strength, identify the colliding parties, etc. Retains
+/// every reference so the event survives past the world step.
 static void *collision_event3d_new_from_contact(const rt_contact3d *contact) {
     rt_collision_event3d_obj *event;
     if (!contact)
@@ -1936,6 +2247,15 @@ static void *collision_event3d_new_from_contact(const rt_contact3d *contact) {
     return event;
 }
 
+/// @brief Diff this frame's contacts against the previous frame to fire enter/stay/exit events.
+///
+/// For each contact that exists this frame:
+///   - in previous → `stay`
+///   - not in previous → `enter`
+/// For each previous contact not present now → `exit`. Then snapshot
+/// this frame's contacts as the new "previous" for the next call. The
+/// 128-event cap silently truncates extreme cases (consistent with the
+/// other PH3D arrays).
 static void world3d_build_event_buffers(rt_world3d *w) {
     if (!w)
         return;
@@ -1981,6 +2301,11 @@ static void world3d_build_event_buffers(rt_world3d *w) {
  * World3D
  *=========================================================================*/
 
+/// @brief GC finalizer for `World3D` — release every body and joint.
+///
+/// Walks the body and joint arrays releasing each owned reference. The
+/// world has strong refs to its bodies/joints so dropping the world
+/// frees the entire simulation state.
 static void world3d_finalizer(void *obj) {
     rt_world3d *w = (rt_world3d *)obj;
     if (!w)
@@ -1999,6 +2324,15 @@ static void world3d_finalizer(void *obj) {
     w->joint_count = 0;
 }
 
+/// @brief `Physics3D.World.New(gx, gy, gz)` — construct an empty world with gravity.
+///
+/// Allocates an `rt_world3d`, initializes the gravity vector, and zeros
+/// every contact / event / joint table. The world has fixed maximum
+/// capacities (256 bodies, 128 joints, 128 contacts). Hooks the GC
+/// finalizer so dropping the world frees the simulation.
+///
+/// @param gx,gy,gz Initial world gravity acceleration (m/s²).
+/// @return Owned `World3D` handle.
 void *rt_world3d_new(double gx, double gy, double gz) {
     rt_world3d *w = (rt_world3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_world3d));
     if (!w) {
@@ -2027,6 +2361,14 @@ void *rt_world3d_new(double gx, double gy, double gz) {
     return w;
 }
 
+/// @brief Decide how many CCD substeps to take this frame.
+///
+/// Walks every CCD-enabled dynamic body, estimates the maximum
+/// distance it will move in `dt` (current speed plus one step of
+/// gravity-plus-applied-force acceleration), and computes the number
+/// of substeps needed to keep each body's per-substep displacement
+/// below its `body3d_ccd_threshold` (≈ half the smallest extent).
+/// Clamped to `[1, PH3D_MAX_CCD_SUBSTEPS]`.
 static int world3d_compute_substeps(const rt_world3d *w, double dt) {
     int substeps = 1;
     if (!w || dt <= 0.0)
@@ -2060,6 +2402,23 @@ static int world3d_compute_substeps(const rt_world3d *w, double dt) {
     return substeps;
 }
 
+/// @brief `World3D.Step(dt)` — advance the simulation by one frame.
+///
+/// Per-substep:
+///   1. **Integration**: forces → velocity (symplectic Euler), apply
+///      gravity + linear/angular damping, then advance position +
+///      orientation. Sleeping bodies skip the step entirely.
+///   2. **Collision detection**: O(n²) broad phase, narrow phase via
+///      `test_collision`, append contacts, run `resolve_collision` for
+///      non-trigger pairs (with a 6-iteration joint solver per substep).
+///   3. **Grounded flag** is set when a contact normal points sufficiently
+///      upward (Y > 0.7 ≈ 45° slope), used by character controllers.
+/// After the substeps, the contact list is diffed against the previous
+/// frame to fire enter/stay/exit events, and per-step forces/torques
+/// are zeroed for the next frame.
+///
+/// @param obj `World3D` handle.
+/// @param dt  Step duration (seconds). No-op for `dt <= 0`.
 void rt_world3d_step(void *obj, double dt) {
     if (!obj || dt <= 0)
         return;
@@ -2210,6 +2569,10 @@ void rt_world3d_step(void *obj, double dt) {
     }
 }
 
+/// @brief `World3D.AddJoint(joint, type)` — register a constraint.
+///
+/// Retains the joint and stores its type tag so `rt_joint3d_solve` can
+/// dispatch correctly. Traps when the 128-joint cap is exceeded.
 void rt_world3d_add_joint(void *obj, void *joint, int64_t joint_type) {
     if (!obj || !joint)
         return;
@@ -2224,6 +2587,10 @@ void rt_world3d_add_joint(void *obj, void *joint, int64_t joint_type) {
     w->joint_count++;
 }
 
+/// @brief `World3D.RemoveJoint(joint)` — unregister a constraint.
+///
+/// Linear scan; on hit, swaps in the last entry to compact the array
+/// and releases the world's reference. Silent no-op when not found.
 void rt_world3d_remove_joint(void *obj, void *joint) {
     if (!obj || !joint)
         return;
@@ -2241,10 +2608,15 @@ void rt_world3d_remove_joint(void *obj, void *joint) {
     }
 }
 
+/// @brief `World3D.JointCount` — number of registered joints (0 for NULL).
 int64_t rt_world3d_joint_count(void *obj) {
     return obj ? ((rt_world3d *)obj)->joint_count : 0;
 }
 
+/// @brief `World3D.Add(body)` — register a body.
+///
+/// Retains the body and stores it in the bodies array. Traps when the
+/// 256-body cap is exceeded.
 void rt_world3d_add(void *obj, void *body) {
     if (!obj || !body)
         return;
@@ -2257,6 +2629,10 @@ void rt_world3d_add(void *obj, void *body) {
     w->bodies[w->body_count++] = (rt_body3d *)body;
 }
 
+/// @brief `World3D.Remove(body)` — unregister a body.
+///
+/// Same swap-with-last compaction as `RemoveJoint`. Releases the world's
+/// reference, which may free the body if no other holder remains.
 void rt_world3d_remove(void *obj, void *body) {
     if (!obj || !body)
         return;
@@ -2273,10 +2649,15 @@ void rt_world3d_remove(void *obj, void *body) {
     }
 }
 
+/// @brief `World3D.BodyCount` — number of registered bodies (0 for NULL).
 int64_t rt_world3d_body_count(void *obj) {
     return obj ? ((rt_world3d *)obj)->body_count : 0;
 }
 
+/// @brief `World3D.SetGravity(gx, gy, gz)` — change the world gravity vector.
+///
+/// Takes effect on the next `Step`. Existing in-flight velocities are
+/// not modified.
 void rt_world3d_set_gravity(void *obj, double gx, double gy, double gz) {
     if (!obj)
         return;
@@ -2290,10 +2671,17 @@ void rt_world3d_set_gravity(void *obj, double gx, double gy, double gz) {
  * Collision event queries
  *=========================================================================*/
 
+// Collision-query accessors — expose the latest frame's contact array
+// to Zia. All return safe defaults (0 / NULL / origin Vec3) for NULL
+// receivers and out-of-range indices so call sites can iterate without
+// extra guards.
+
+/// @brief `World3D.CollisionCount` — number of contacts this frame.
 int64_t rt_world3d_get_collision_count(void *obj) {
     return obj ? ((rt_world3d *)obj)->contact_count : 0;
 }
 
+/// @brief `World3D.CollisionBodyA(i)` — borrowed reference to body A in contact `i`.
 void *rt_world3d_get_collision_body_a(void *obj, int64_t index) {
     if (!obj)
         return NULL;
@@ -2303,6 +2691,7 @@ void *rt_world3d_get_collision_body_a(void *obj, int64_t index) {
     return w->contacts[index].body_a;
 }
 
+/// @brief `World3D.CollisionBodyB(i)` — borrowed reference to body B in contact `i`.
 void *rt_world3d_get_collision_body_b(void *obj, int64_t index) {
     if (!obj)
         return NULL;
@@ -2312,6 +2701,7 @@ void *rt_world3d_get_collision_body_b(void *obj, int64_t index) {
     return w->contacts[index].body_b;
 }
 
+/// @brief `World3D.CollisionNormal(i)` — fresh `Vec3` of the contact normal.
 void *rt_world3d_get_collision_normal(void *obj, int64_t index) {
     if (!obj)
         return rt_vec3_new(0, 0, 0);
@@ -2322,6 +2712,10 @@ void *rt_world3d_get_collision_normal(void *obj, int64_t index) {
         w->contacts[index].normal[0], w->contacts[index].normal[1], w->contacts[index].normal[2]);
 }
 
+/// @brief `World3D.CollisionDepth(i)` — penetration depth of contact `i`.
+///
+/// Returned as a positive value (the internal `separation` is stored
+/// negative; this flips it back).
 double rt_world3d_get_collision_depth(void *obj, int64_t index) {
     if (!obj)
         return 0;
@@ -2331,10 +2725,19 @@ double rt_world3d_get_collision_depth(void *obj, int64_t index) {
     return -w->contacts[index].separation;
 }
 
+/// @brief `World3D.CollisionEventCount` — number of collision events this frame.
+///
+/// Currently aliased to `contact_count` (one event per contact); kept
+/// as a separate accessor in case the engine ever splits "live contacts"
+/// from "events emitted this step".
 int64_t rt_world3d_get_collision_event_count(void *obj) {
     return obj ? ((rt_world3d *)obj)->contact_count : 0;
 }
 
+/// @brief `World3D.CollisionEvent(i)` — boxed `CollisionEvent3D` for contact `i`.
+///
+/// Returns NULL on out-of-range. The returned event is owned by the
+/// caller (unlike the borrowed-reference body accessors).
 void *rt_world3d_get_collision_event(void *obj, int64_t index) {
     rt_world3d *w = (rt_world3d *)obj;
     if (!w || index < 0 || index >= w->contact_count)
@@ -2342,10 +2745,17 @@ void *rt_world3d_get_collision_event(void *obj, int64_t index) {
     return collision_event3d_new_from_contact(&w->contacts[index]);
 }
 
+// Enter/Stay/Exit event accessors — populated by the contact-diff in
+// `world3d_build_event_buffers`. These mirror the "live contacts"
+// accessors above but only fire on transitions (enter, exit) or
+// continuations (stay) — useful for trigger events like OnPlayerEnter.
+
+/// @brief `World3D.EnterEventCount` — contacts that began this frame.
 int64_t rt_world3d_get_enter_event_count(void *obj) {
     return obj ? ((rt_world3d *)obj)->enter_event_count : 0;
 }
 
+/// @brief `World3D.EnterEvent(i)` — boxed event for the i-th new contact.
 void *rt_world3d_get_enter_event(void *obj, int64_t index) {
     rt_world3d *w = (rt_world3d *)obj;
     if (!w || index < 0 || index >= w->enter_event_count)
@@ -2353,10 +2763,12 @@ void *rt_world3d_get_enter_event(void *obj, int64_t index) {
     return collision_event3d_new_from_contact(&w->enter_events[index]);
 }
 
+/// @brief `World3D.StayEventCount` — contacts that persisted from the previous frame.
 int64_t rt_world3d_get_stay_event_count(void *obj) {
     return obj ? ((rt_world3d *)obj)->stay_event_count : 0;
 }
 
+/// @brief `World3D.StayEvent(i)` — boxed event for the i-th continuing contact.
 void *rt_world3d_get_stay_event(void *obj, int64_t index) {
     rt_world3d *w = (rt_world3d *)obj;
     if (!w || index < 0 || index >= w->stay_event_count)
@@ -2364,10 +2776,12 @@ void *rt_world3d_get_stay_event(void *obj, int64_t index) {
     return collision_event3d_new_from_contact(&w->stay_events[index]);
 }
 
+/// @brief `World3D.ExitEventCount` — contacts that ended this frame.
 int64_t rt_world3d_get_exit_event_count(void *obj) {
     return obj ? ((rt_world3d *)obj)->exit_event_count : 0;
 }
 
+/// @brief `World3D.ExitEvent(i)` — boxed event for the i-th newly-ended contact.
 void *rt_world3d_get_exit_event(void *obj, int64_t index) {
     rt_world3d *w = (rt_world3d *)obj;
     if (!w || index < 0 || index >= w->exit_event_count)
@@ -2375,38 +2789,61 @@ void *rt_world3d_get_exit_event(void *obj, int64_t index) {
     return collision_event3d_new_from_contact(&w->exit_events[index]);
 }
 
+// Boxed `CollisionEvent3D` field accessors — exposed to Zia as
+// properties on the event object. Borrowed references for body /
+// collider (the event already holds a retained ref).
+
+/// @brief `CollisionEvent3D.BodyA` — first body in the collision pair.
 void *rt_collision_event3d_get_body_a(void *obj) {
     return obj ? ((rt_collision_event3d_obj *)obj)->body_a : NULL;
 }
 
+/// @brief `CollisionEvent3D.BodyB` — second body in the collision pair.
 void *rt_collision_event3d_get_body_b(void *obj) {
     return obj ? ((rt_collision_event3d_obj *)obj)->body_b : NULL;
 }
 
+/// @brief `CollisionEvent3D.ColliderA` — leaf collider on body A (for compounds).
 void *rt_collision_event3d_get_collider_a(void *obj) {
     return obj ? ((rt_collision_event3d_obj *)obj)->collider_a : NULL;
 }
 
+/// @brief `CollisionEvent3D.ColliderB` — leaf collider on body B (for compounds).
 void *rt_collision_event3d_get_collider_b(void *obj) {
     return obj ? ((rt_collision_event3d_obj *)obj)->collider_b : NULL;
 }
 
+/// @brief `CollisionEvent3D.IsTrigger` — whether either party is a trigger.
 int8_t rt_collision_event3d_get_is_trigger(void *obj) {
     return obj ? ((rt_collision_event3d_obj *)obj)->is_trigger : 0;
 }
 
+/// @brief `CollisionEvent3D.ContactCount` — currently 1 per event (single-point contacts).
+///
+/// Reserved for future multi-point contact manifolds; today every event
+/// carries exactly one representative contact point.
 int64_t rt_collision_event3d_get_contact_count(void *obj) {
     return obj ? 1 : 0;
 }
 
+/// @brief `CollisionEvent3D.RelativeSpeed` — closing speed along the contact normal.
 double rt_collision_event3d_get_relative_speed(void *obj) {
     return obj ? ((rt_collision_event3d_obj *)obj)->relative_speed : 0.0;
 }
 
+/// @brief `CollisionEvent3D.NormalImpulse` — magnitude of the resolved normal impulse.
+///
+/// Useful for damage models or audio: louder/heavier sound on bigger
+/// impulses. Always 0 for trigger events (no impulse is applied).
 double rt_collision_event3d_get_normal_impulse(void *obj) {
     return obj ? ((rt_collision_event3d_obj *)obj)->normal_impulse : 0.0;
 }
 
+/// @brief `CollisionEvent3D.Contact(i)` — boxed contact-point sub-object.
+///
+/// Currently only `i == 0` is valid (single-point contacts). Reconstructs
+/// a transient `rt_contact3d` from the event's stored fields and boxes
+/// it via `contact_point3d_new_from_contact`.
 void *rt_collision_event3d_get_contact(void *obj, int64_t index) {
     rt_collision_event3d_obj *event = (rt_collision_event3d_obj *)obj;
     rt_contact3d contact;
@@ -2423,6 +2860,7 @@ void *rt_collision_event3d_get_contact(void *obj, int64_t index) {
     return contact_point3d_new_from_contact(&contact);
 }
 
+/// @brief `CollisionEvent3D.ContactPoint(i)` — fresh `Vec3` for the contact point.
 void *rt_collision_event3d_get_contact_point(void *obj, int64_t index) {
     rt_collision_event3d_obj *event = (rt_collision_event3d_obj *)obj;
     if (!event || index != 0)
@@ -2430,6 +2868,7 @@ void *rt_collision_event3d_get_contact_point(void *obj, int64_t index) {
     return rt_vec3_new(event->point[0], event->point[1], event->point[2]);
 }
 
+/// @brief `CollisionEvent3D.ContactNormal(i)` — fresh `Vec3` for the contact normal.
 void *rt_collision_event3d_get_contact_normal(void *obj, int64_t index) {
     rt_collision_event3d_obj *event = (rt_collision_event3d_obj *)obj;
     if (!event || index != 0)
@@ -2437,6 +2876,9 @@ void *rt_collision_event3d_get_contact_normal(void *obj, int64_t index) {
     return rt_vec3_new(event->normal[0], event->normal[1], event->normal[2]);
 }
 
+/// @brief `CollisionEvent3D.ContactSeparation(i)` — signed separation distance.
+///
+/// Negative means penetration; zero or positive means touching/just-separated.
 double rt_collision_event3d_get_contact_separation(void *obj, int64_t index) {
     rt_collision_event3d_obj *event = (rt_collision_event3d_obj *)obj;
     if (!event || index != 0)
@@ -2444,6 +2886,7 @@ double rt_collision_event3d_get_contact_separation(void *obj, int64_t index) {
     return event->separation;
 }
 
+/// @brief `ContactPoint3D.Point` — world-space contact location.
 void *rt_contact_point3d_get_point(void *obj) {
     rt_contact_point3d_obj *contact = (rt_contact_point3d_obj *)obj;
     if (!contact)
@@ -2451,6 +2894,7 @@ void *rt_contact_point3d_get_point(void *obj) {
     return rt_vec3_new(contact->point[0], contact->point[1], contact->point[2]);
 }
 
+/// @brief `ContactPoint3D.Normal` — world-space contact normal (A→B).
 void *rt_contact_point3d_get_normal(void *obj) {
     rt_contact_point3d_obj *contact = (rt_contact_point3d_obj *)obj;
     if (!contact)
@@ -2458,22 +2902,30 @@ void *rt_contact_point3d_get_normal(void *obj) {
     return rt_vec3_new(contact->normal[0], contact->normal[1], contact->normal[2]);
 }
 
+/// @brief `ContactPoint3D.Separation` — signed gap (negative = penetrating).
 double rt_contact_point3d_get_separation(void *obj) {
     return obj ? ((rt_contact_point3d_obj *)obj)->separation : 0.0;
 }
 
+// PhysicsHit3D field accessors — exposed as Zia properties on the
+// boxed query result. All borrowed references / safe defaults on NULL.
+
+/// @brief `PhysicsHit3D.Distance` — world-space distance from query origin.
 double rt_physics_hit3d_get_distance(void *obj) {
     return obj ? ((rt_physics_hit3d_obj *)obj)->distance : 0.0;
 }
 
+/// @brief `PhysicsHit3D.Body` — the body that was hit.
 void *rt_physics_hit3d_get_body(void *obj) {
     return obj ? ((rt_physics_hit3d_obj *)obj)->body : NULL;
 }
 
+/// @brief `PhysicsHit3D.Collider` — the leaf collider that was hit.
 void *rt_physics_hit3d_get_collider(void *obj) {
     return obj ? ((rt_physics_hit3d_obj *)obj)->collider : NULL;
 }
 
+/// @brief `PhysicsHit3D.Point` — world-space hit location.
 void *rt_physics_hit3d_get_point(void *obj) {
     rt_physics_hit3d_obj *hit = (rt_physics_hit3d_obj *)obj;
     if (!hit)
@@ -2481,6 +2933,7 @@ void *rt_physics_hit3d_get_point(void *obj) {
     return rt_vec3_new(hit->point[0], hit->point[1], hit->point[2]);
 }
 
+/// @brief `PhysicsHit3D.Normal` — world-space surface normal at the hit.
 void *rt_physics_hit3d_get_normal(void *obj) {
     rt_physics_hit3d_obj *hit = (rt_physics_hit3d_obj *)obj;
     if (!hit)
@@ -2488,22 +2941,27 @@ void *rt_physics_hit3d_get_normal(void *obj) {
     return rt_vec3_new(hit->normal[0], hit->normal[1], hit->normal[2]);
 }
 
+/// @brief `PhysicsHit3D.Fraction` — t along the swept path (0..1).
 double rt_physics_hit3d_get_fraction(void *obj) {
     return obj ? ((rt_physics_hit3d_obj *)obj)->fraction : 0.0;
 }
 
+/// @brief `PhysicsHit3D.StartedPenetrating` — true if the query started inside the collider.
 int8_t rt_physics_hit3d_get_started_penetrating(void *obj) {
     return obj ? ((rt_physics_hit3d_obj *)obj)->started_penetrating : 0;
 }
 
+/// @brief `PhysicsHit3D.IsTrigger` — true if the hit collider belongs to a trigger body.
 int8_t rt_physics_hit3d_get_is_trigger(void *obj) {
     return obj ? ((rt_physics_hit3d_obj *)obj)->is_trigger : 0;
 }
 
+/// @brief `PhysicsHitList3D.Count` — number of hits in the list.
 int64_t rt_physics_hit_list3d_get_count(void *obj) {
     return obj ? ((rt_physics_hit_list3d_obj *)obj)->count : 0;
 }
 
+/// @brief `PhysicsHitList3D[i]` — borrowed `PhysicsHit3D` reference.
 void *rt_physics_hit_list3d_get(void *obj, int64_t index) {
     rt_physics_hit_list3d_obj *list = (rt_physics_hit_list3d_obj *)obj;
     if (!list || index < 0 || index >= list->count)
@@ -2511,6 +2969,10 @@ void *rt_physics_hit_list3d_get(void *obj, int64_t index) {
     return list->items[index];
 }
 
+/// @brief Insert `hit` into a distance-sorted hit array, keeping the order.
+///
+/// O(n) insertion (linear shift). Acceptable because `RaycastAll` /
+/// `OverlapAll` queries are bounded by `PH3D_MAX_QUERY_HITS` (256).
 static int query_hit_insert_sorted(rt_query_hit3d *hits, int32_t count, const rt_query_hit3d *hit) {
     int32_t pos = count;
     if (!hits || !hit)
@@ -2523,6 +2985,11 @@ static int query_hit_insert_sorted(rt_query_hit3d *hits, int32_t count, const rt
     return count + 1;
 }
 
+/// @brief Stack-init a transient body with a collider for use by query helpers.
+///
+/// Static motion mode (so impulse code never touches it), identity
+/// orientation, and the supplied position. `make_temp_sphere` is the
+/// sphere-only variant used elsewhere; this is the general form.
 static void init_temp_query_body(rt_body3d *body, void *collider, const double *position) {
     memset(body, 0, sizeof(*body));
     quat_identity(body->orientation);
@@ -2532,6 +2999,10 @@ static void init_temp_query_body(rt_body3d *body, void *collider, const double *
         vec3_copy(body->position, position);
 }
 
+/// @brief Test a transient query body for overlap against a registered body.
+///
+/// Used by overlap queries — fills `out_hit` with `started_penetrating=1`
+/// since the query body starts already touching the other body.
 static int overlap_query_body_against_body(rt_body3d *query_body,
                                            rt_body3d *other,
                                            rt_query_hit3d *out_hit) {
@@ -2555,6 +3026,14 @@ static int overlap_query_body_against_body(rt_body3d *query_body,
     return 1;
 }
 
+/// @brief Sweep a sphere along `delta` and find first contact with `other`.
+///
+/// First checks initial overlap (early-out for already-penetrating).
+/// Then broad-phases against the swept AABB. Then steps along the sweep
+/// in `radius/4`-sized increments looking for the first overlap, and
+/// refines the impact `t` via 14 iterations of bisection. The sub-step
+/// size is clamped to `[0.02, 0.5]` so very small or huge bodies still
+/// terminate in a reasonable number of iterations.
 static int sweep_sphere_against_body(void *sphere_collider,
                                      const double *start_center,
                                      double radius,
@@ -2656,6 +3135,11 @@ static int sweep_sphere_against_body(void *sphere_collider,
     return 0;
 }
 
+/// @brief Sweep a capsule (axis from `a` to `b`, radius `radius`) along `delta`.
+///
+/// Approximates the capsule sweep as up to 7 sphere-sweeps sampled
+/// along the axis. Picks the closest hit. Cheaper than a true capsule
+/// sweep and works well for character motion against level geometry.
 static int sweep_capsule_against_body(const double *a,
                                       const double *b,
                                       double radius,
@@ -2703,6 +3187,12 @@ static int sweep_capsule_against_body(const double *a,
     return hit;
 }
 
+/// @brief `World3D.OverlapSphere(center, radius, mask)` — list bodies overlapping a sphere.
+///
+/// Builds a transient sphere collider, then tests every world body
+/// (after layer/mask filter) for overlap. Returns up to
+/// `PH3D_MAX_QUERY_HITS` (256) hits as a `PhysicsHitList3D`. The
+/// transient collider is released before returning.
 void *rt_world3d_overlap_sphere(void *obj, void *center_obj, double radius, int64_t mask) {
     rt_world3d *w = (rt_world3d *)obj;
     rt_query_hit3d hits[PH3D_MAX_QUERY_HITS];
@@ -2733,6 +3223,11 @@ void *rt_world3d_overlap_sphere(void *obj, void *center_obj, double radius, int6
     return physics_hit_list3d_new(hits, hit_count);
 }
 
+/// @brief `World3D.OverlapAabb(min, max, mask)` — list bodies overlapping a box.
+///
+/// Same pattern as `OverlapSphere` but uses a transient box collider
+/// sized from the (min, max) corners. The half-extents are derived
+/// from the corner spread; the center is the midpoint.
 void *rt_world3d_overlap_aabb(void *obj, void *min_obj, void *max_obj, int64_t mask) {
     rt_world3d *w = (rt_world3d *)obj;
     rt_query_hit3d hits[PH3D_MAX_QUERY_HITS];
@@ -2772,6 +3267,11 @@ void *rt_world3d_overlap_aabb(void *obj, void *min_obj, void *max_obj, int64_t m
     return physics_hit_list3d_new(hits, hit_count);
 }
 
+/// @brief `World3D.SweepSphere(center, radius, delta, mask)` — first hit along a sphere sweep.
+///
+/// Returns the closest hit as a `PhysicsHit3D`, or NULL if the sweep
+/// reaches `delta` without contact. Used for trajectory predictions
+/// and projectile collision.
 void *rt_world3d_sweep_sphere(void *obj, void *center_obj, double radius, void *delta_obj, int64_t mask) {
     rt_world3d *w = (rt_world3d *)obj;
     rt_query_hit3d best_hit;
@@ -2808,6 +3308,10 @@ void *rt_world3d_sweep_sphere(void *obj, void *center_obj, double radius, void *
     return found ? physics_hit3d_new(&best_hit) : NULL;
 }
 
+/// @brief `World3D.SweepCapsule(a, b, radius, delta, mask)` — first hit along a capsule sweep.
+///
+/// Like `SweepSphere` but for capsule queries — primary use case is
+/// character-controller motion against world geometry.
 void *rt_world3d_sweep_capsule(void *obj,
                                void *a_obj,
                                void *b_obj,
@@ -2846,6 +3350,12 @@ void *rt_world3d_sweep_capsule(void *obj,
     return found ? physics_hit3d_new(&best_hit) : NULL;
 }
 
+/// @brief `World3D.Raycast(origin, direction, maxDistance, mask)` — first hit along a ray.
+///
+/// Implemented as a `SweepSphere` with a 1mm radius — gives reasonable
+/// results for hitscan-style queries (line of sight, click-to-pick)
+/// without needing a separate ray-vs-collider code path. Returns NULL
+/// when the direction is zero or `maxDistance <= 0`.
 void *rt_world3d_raycast(void *obj, void *origin_obj, void *direction_obj, double max_distance, int64_t mask) {
     double dir[3];
     void *delta;
@@ -2862,6 +3372,11 @@ void *rt_world3d_raycast(void *obj, void *origin_obj, void *direction_obj, doubl
     return hit;
 }
 
+/// @brief `World3D.RaycastAll(origin, direction, maxDistance, mask)` — all hits along a ray, sorted.
+///
+/// Like `Raycast` but doesn't stop at the first hit — every body
+/// the ray pierces is recorded. Results come back sorted by distance.
+/// Bounded by `PH3D_MAX_QUERY_HITS` (256).
 void *rt_world3d_raycast_all(void *obj,
                              void *origin_obj,
                              void *direction_obj,
@@ -2905,6 +3420,11 @@ void *rt_world3d_raycast_all(void *obj,
  * Body3D
  *=========================================================================*/
 
+/// @brief GC finalizer for `Body3D` — release the owned collider.
+///
+/// The body holds a strong reference to its collider; this drops it.
+/// World-level body removal (`rt_world3d_remove`) drops the world's
+/// reference, which in most cases is the last one and triggers this.
 static void body3d_finalizer(void *obj) {
     rt_body3d *b = (rt_body3d *)obj;
     if (!b)
@@ -2914,6 +3434,13 @@ static void body3d_finalizer(void *obj) {
     b->collider = NULL;
 }
 
+/// @brief Swap the body's collider, refreshing all derived state.
+///
+/// Validates that the new collider is allowed for the body's current
+/// motion mode (`body3d_motion_mode_allowed`). On success, retains the
+/// new collider, releases the old, refreshes the cached shape and
+/// inverse-mass derivations, and wakes the body if dynamic. No-op
+/// when the same collider is assigned twice.
 static int body3d_assign_collider(rt_body3d *body, void *collider, const char *api_name) {
     if (!body)
         return 0;
@@ -2933,6 +3460,13 @@ static int body3d_assign_collider(rt_body3d *body, void *collider, const char *a
     return 1;
 }
 
+/// @brief Allocate a fresh body with sensible defaults.
+///
+/// Defaults: restitution 0.3 (mostly inelastic), friction 0.5 (typical
+/// rubber/concrete blend), layer 1, mask all (collides with everything),
+/// motion mode = `dynamic` if mass > 0 else `static`, sleeping enabled.
+/// The collider is left NULL for the caller to assign via
+/// `body3d_assign_collider`.
 static void *make_body(double mass) {
     rt_body3d *b = (rt_body3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_body3d));
     if (!b) {
@@ -2954,10 +3488,18 @@ static void *make_body(double mass) {
     return b;
 }
 
+/// @brief `Body3D.New(mass)` — bare body without a collider.
+///
+/// Caller must assign a collider via `SetCollider` before adding to a
+/// world (otherwise body-vs-body tests skip it).
 void *rt_body3d_new(double mass) {
     return make_body(mass);
 }
 
+/// @brief `Body3D.NewAABB(hx, hy, hz, mass)` — body with a fresh box collider.
+///
+/// Half-extents specify the box. The transient collider returned by
+/// `rt_collider3d_new_box` is released after the body retains it.
 void *rt_body3d_new_aabb(double hx, double hy, double hz, double mass) {
     rt_body3d *b = (rt_body3d *)make_body(mass);
     void *collider = rt_collider3d_new_box(hx, hy, hz);
@@ -2974,6 +3516,7 @@ void *rt_body3d_new_aabb(double hx, double hy, double hz, double mass) {
     return b;
 }
 
+/// @brief `Body3D.NewSphere(radius, mass)` — body with a fresh sphere collider.
 void *rt_body3d_new_sphere(double radius, double mass) {
     rt_body3d *b = (rt_body3d *)make_body(mass);
     void *collider = rt_collider3d_new_sphere(radius);
@@ -2990,6 +3533,10 @@ void *rt_body3d_new_sphere(double radius, double mass) {
     return b;
 }
 
+/// @brief `Body3D.NewCapsule(radius, height, mass)` — Y-aligned capsule body.
+///
+/// Total height includes both hemispherical caps. The cylinder portion
+/// has length `max(0, height - 2*radius)`.
 void *rt_body3d_new_capsule(double radius, double height, double mass) {
     rt_body3d *b = (rt_body3d *)make_body(mass);
     void *collider = rt_collider3d_new_capsule(radius, height);
@@ -3006,6 +3553,10 @@ void *rt_body3d_new_capsule(double radius, double height, double mass) {
     return b;
 }
 
+/// @brief `Body3D.SetCollider(collider)` — swap the body's collider.
+///
+/// Traps if the collider requires a static-only body but the body is
+/// dynamic/kinematic (e.g., concave triangle meshes).
 void rt_body3d_set_collider(void *o, void *collider) {
     if (!o)
         return;
@@ -3013,10 +3564,15 @@ void rt_body3d_set_collider(void *o, void *collider) {
         (rt_body3d *)o, collider, "Physics3DBody.SetCollider: collider requires a static body");
 }
 
+/// @brief `Body3D.GetCollider` — borrowed reference to the body's collider.
 void *rt_body3d_get_collider(void *o) {
     return o ? ((rt_body3d *)o)->collider : NULL;
 }
 
+/// @brief `Body3D.SetPosition(x, y, z)` — teleport (also wakes if dynamic).
+///
+/// Bypasses collision response, so use sparingly during simulation
+/// (per-step adjustments are usually better via velocity).
 void rt_body3d_set_position(void *o, double x, double y, double z) {
     if (o) {
         rt_body3d *b = (rt_body3d *)o;
@@ -3027,6 +3583,7 @@ void rt_body3d_set_position(void *o, double x, double y, double z) {
     }
 }
 
+/// @brief `Body3D.GetPosition` — fresh `Vec3` of the body's world position.
 void *rt_body3d_get_position(void *o) {
     if (!o)
         return rt_vec3_new(0, 0, 0);
@@ -3034,6 +3591,10 @@ void *rt_body3d_get_position(void *o) {
     return rt_vec3_new(b->position[0], b->position[1], b->position[2]);
 }
 
+/// @brief `Body3D.SetOrientation(quat)` — set the body's orientation quaternion.
+///
+/// NULL `quat` resets to identity. Always normalizes to defend against
+/// caller-passed unnormalized quaternions.
 void rt_body3d_set_orientation(void *o, void *quat) {
     if (!o)
         return;
@@ -3052,6 +3613,7 @@ void rt_body3d_set_orientation(void *o, void *quat) {
     }
 }
 
+/// @brief `Body3D.GetOrientation` — fresh `Quat` of the body's orientation.
 void *rt_body3d_get_orientation(void *o) {
     if (!o)
         return rt_quat_new(0.0, 0.0, 0.0, 1.0);
@@ -3062,6 +3624,9 @@ void *rt_body3d_get_orientation(void *o) {
     }
 }
 
+/// @brief `Body3D.SetVelocity(x, y, z)` — set linear velocity (m/s).
+///
+/// Wakes the body if dynamic and the new velocity is non-zero.
 void rt_body3d_set_velocity(void *o, double x, double y, double z) {
     if (o) {
         rt_body3d *b = (rt_body3d *)o;
@@ -3073,6 +3638,7 @@ void rt_body3d_set_velocity(void *o, double x, double y, double z) {
     }
 }
 
+/// @brief `Body3D.GetVelocity` — fresh `Vec3` of linear velocity.
 void *rt_body3d_get_velocity(void *o) {
     if (!o)
         return rt_vec3_new(0, 0, 0);
@@ -3080,6 +3646,11 @@ void *rt_body3d_get_velocity(void *o) {
     return rt_vec3_new(b->velocity[0], b->velocity[1], b->velocity[2]);
 }
 
+// Body3D physical-state accessors — set/get pairs for velocity,
+// angular velocity, force, and torque. Setters wake the body if
+// dynamic; getters return safe defaults on NULL.
+
+/// @brief `Body3D.SetAngularVelocity(x, y, z)` — set angular velocity (radians/sec).
 void rt_body3d_set_angular_velocity(void *o, double x, double y, double z) {
     if (o) {
         rt_body3d *b = (rt_body3d *)o;
@@ -3091,6 +3662,7 @@ void rt_body3d_set_angular_velocity(void *o, double x, double y, double z) {
     }
 }
 
+/// @brief `Body3D.GetAngularVelocity` — fresh `Vec3` of angular velocity.
 void *rt_body3d_get_angular_velocity(void *o) {
     if (!o)
         return rt_vec3_new(0, 0, 0);
@@ -3101,6 +3673,11 @@ void *rt_body3d_get_angular_velocity(void *o) {
     }
 }
 
+/// @brief `Body3D.ApplyForce(fx, fy, fz)` — accumulate a continuous force (N).
+///
+/// The force is consumed by the next `World3D.Step` and zeroed at end
+/// of step. Apply once per frame for sustained force, every frame for
+/// sustained acceleration. No-op for non-dynamic bodies.
 void rt_body3d_apply_force(void *o, double fx, double fy, double fz) {
     if (o) {
         rt_body3d *b = (rt_body3d *)o;
@@ -3114,6 +3691,10 @@ void rt_body3d_apply_force(void *o, double fx, double fy, double fz) {
     }
 }
 
+/// @brief `Body3D.ApplyImpulse(ix, iy, iz)` — instantaneous velocity change.
+///
+/// Equivalent to `Δv = impulse / mass`. Applied immediately, not at
+/// step time — use for jumps, hits, explosions. No-op for non-dynamic.
 void rt_body3d_apply_impulse(void *o, double ix, double iy, double iz) {
     if (o) {
         rt_body3d *b = (rt_body3d *)o;
@@ -3127,6 +3708,9 @@ void rt_body3d_apply_impulse(void *o, double ix, double iy, double iz) {
     }
 }
 
+/// @brief `Body3D.ApplyTorque(tx, ty, tz)` — accumulate a continuous torque (N·m).
+///
+/// Same lifecycle as `ApplyForce`: consumed and reset by the next step.
 void rt_body3d_apply_torque(void *o, double tx, double ty, double tz) {
     if (o) {
         rt_body3d *b = (rt_body3d *)o;
@@ -3140,6 +3724,9 @@ void rt_body3d_apply_torque(void *o, double tx, double ty, double tz) {
     }
 }
 
+/// @brief `Body3D.ApplyAngularImpulse(ix, iy, iz)` — instant angular velocity change.
+///
+/// Δω = impulse · I⁻¹ (per axis, since the inertia tensor is diagonal).
 void rt_body3d_apply_angular_impulse(void *o, double ix, double iy, double iz) {
     if (o) {
         rt_body3d *b = (rt_body3d *)o;
@@ -3153,60 +3740,86 @@ void rt_body3d_apply_angular_impulse(void *o, double ix, double iy, double iz) {
     }
 }
 
+// Body3D material/filter property setters and getters — pure assigns
+// with NULL-guards. Damping setters clamp negatives to zero.
+
+/// @brief `Body3D.SetRestitution(r)` — set bounciness (0=no bounce, 1=elastic).
 void rt_body3d_set_restitution(void *o, double r) {
     if (o)
         ((rt_body3d *)o)->restitution = r;
 }
 
+/// @brief `Body3D.GetRestitution` — read bounciness.
 double rt_body3d_get_restitution(void *o) {
     return o ? ((rt_body3d *)o)->restitution : 0;
 }
 
+/// @brief `Body3D.SetFriction(f)` — set friction coefficient.
+///
+/// Pair friction is `sqrt(a.friction * b.friction)` — geometric mean
+/// matches typical material-interaction tables.
 void rt_body3d_set_friction(void *o, double f) {
     if (o)
         ((rt_body3d *)o)->friction = f;
 }
 
+/// @brief `Body3D.GetFriction` — read friction coefficient.
 double rt_body3d_get_friction(void *o) {
     return o ? ((rt_body3d *)o)->friction : 0;
 }
 
+/// @brief `Body3D.SetLinearDamping(d)` — per-second linear velocity decay.
+///
+/// Each step scales velocity by `max(0, 1 - d*dt)`. Useful as a soft
+/// air-resistance proxy. Negative values clamp to 0.
 void rt_body3d_set_linear_damping(void *o, double d) {
     if (o)
         ((rt_body3d *)o)->linear_damping = d > 0.0 ? d : 0.0;
 }
 
+/// @brief `Body3D.GetLinearDamping` — read linear damping coefficient.
 double rt_body3d_get_linear_damping(void *o) {
     return o ? ((rt_body3d *)o)->linear_damping : 0.0;
 }
 
+/// @brief `Body3D.SetAngularDamping(d)` — per-second angular velocity decay.
 void rt_body3d_set_angular_damping(void *o, double d) {
     if (o)
         ((rt_body3d *)o)->angular_damping = d > 0.0 ? d : 0.0;
 }
 
+/// @brief `Body3D.GetAngularDamping` — read angular damping coefficient.
 double rt_body3d_get_angular_damping(void *o) {
     return o ? ((rt_body3d *)o)->angular_damping : 0.0;
 }
 
+/// @brief `Body3D.SetCollisionLayer(l)` — bitmask labeling this body's category.
 void rt_body3d_set_collision_layer(void *o, int64_t l) {
     if (o)
         ((rt_body3d *)o)->collision_layer = l;
 }
 
+/// @brief `Body3D.GetCollisionLayer` — read this body's layer bitmask.
 int64_t rt_body3d_get_collision_layer(void *o) {
     return o ? ((rt_body3d *)o)->collision_layer : 0;
 }
 
+/// @brief `Body3D.SetCollisionMask(m)` — bitmask of layers this body collides with.
 void rt_body3d_set_collision_mask(void *o, int64_t m) {
     if (o)
         ((rt_body3d *)o)->collision_mask = m;
 }
 
+/// @brief `Body3D.GetCollisionMask` — read this body's collision mask.
 int64_t rt_body3d_get_collision_mask(void *o) {
     return o ? ((rt_body3d *)o)->collision_mask : 0;
 }
 
+/// @brief `Body3D.SetStatic(s)` — toggle static motion mode.
+///
+/// Traps if the body's collider is incompatible with the requested
+/// mode (e.g., switching a triangle-mesh-collider body to dynamic).
+/// Refreshes derived state (inv_mass, inv_inertia) on success.
 void rt_body3d_set_static(void *o, int8_t s) {
     if (o) {
         rt_body3d *b = (rt_body3d *)o;
@@ -3222,10 +3835,16 @@ void rt_body3d_set_static(void *o, int8_t s) {
     }
 }
 
+/// @brief `Body3D.IsStatic` — true if the body is in static motion mode.
 int8_t rt_body3d_is_static(void *o) {
     return o ? ((rt_body3d *)o)->is_static : 0;
 }
 
+/// @brief `Body3D.SetKinematic(k)` — toggle kinematic motion mode.
+///
+/// Kinematic bodies move under script control (position/velocity set
+/// directly) but are treated as infinitely massive by the impulse
+/// solver — they push dynamic bodies but aren't pushed in return.
 void rt_body3d_set_kinematic(void *o, int8_t k) {
     if (o) {
         rt_body3d *b = (rt_body3d *)o;
@@ -3241,19 +3860,30 @@ void rt_body3d_set_kinematic(void *o, int8_t k) {
     }
 }
 
+/// @brief `Body3D.IsKinematic` — true if the body is in kinematic motion mode.
 int8_t rt_body3d_is_kinematic(void *o) {
     return o ? ((rt_body3d *)o)->is_kinematic : 0;
 }
 
+/// @brief `Body3D.SetTrigger(t)` — toggle "report contacts but don't physically respond".
+///
+/// Trigger bodies fire collision events but don't apply impulses or
+/// positional correction — useful for damage volumes, pickup zones, etc.
 void rt_body3d_set_trigger(void *o, int8_t t) {
     if (o)
         ((rt_body3d *)o)->is_trigger = t;
 }
 
+/// @brief `Body3D.IsTrigger` — true if the body is in trigger-only mode.
 int8_t rt_body3d_is_trigger(void *o) {
     return o ? ((rt_body3d *)o)->is_trigger : 0;
 }
 
+/// @brief `Body3D.SetCanSleep(canSleep)` — toggle automatic sleep eligibility.
+///
+/// When false, the body never enters sleep mode (always integrated).
+/// Disabling sleep on a quiet body wakes it immediately so the next
+/// step processes it normally.
 void rt_body3d_set_can_sleep(void *o, int8_t can_sleep) {
     if (o) {
         rt_body3d *b = (rt_body3d *)o;
@@ -3265,19 +3895,27 @@ void rt_body3d_set_can_sleep(void *o, int8_t can_sleep) {
     }
 }
 
+/// @brief `Body3D.CanSleep` — read sleep eligibility flag.
 int8_t rt_body3d_can_sleep(void *o) {
     return o ? ((rt_body3d *)o)->can_sleep : 0;
 }
 
+/// @brief `Body3D.IsSleeping` — true when the body is currently quiescent.
 int8_t rt_body3d_is_sleeping(void *o) {
     return o ? ((rt_body3d *)o)->is_sleeping : 0;
 }
 
+/// @brief `Body3D.Wake` — force the body awake (no-op for non-dynamic).
 void rt_body3d_wake(void *o) {
     if (o)
         body3d_wake_if_dynamic((rt_body3d *)o);
 }
 
+/// @brief `Body3D.Sleep` — manually put the body to sleep.
+///
+/// Zeros velocity / angular velocity / accumulated forces. No-op
+/// when the body can't sleep or isn't dynamic. Bypasses the normal
+/// sleep-delay countdown.
 void rt_body3d_sleep(void *o) {
     if (!o)
         return;
@@ -3294,19 +3932,32 @@ void rt_body3d_sleep(void *o) {
     }
 }
 
+/// @brief `Body3D.SetUseCcd(useCcd)` — opt this body into CCD substeps.
+///
+/// CCD subdivides high-speed steps to prevent tunneling through thin
+/// geometry. Enable for fast-moving bodies (bullets, balls); leave off
+/// otherwise to save CPU.
 void rt_body3d_set_use_ccd(void *o, int8_t use_ccd) {
     if (o)
         ((rt_body3d *)o)->use_ccd = use_ccd ? 1 : 0;
 }
 
+/// @brief `Body3D.GetUseCcd` — read CCD opt-in flag.
 int8_t rt_body3d_get_use_ccd(void *o) {
     return o ? ((rt_body3d *)o)->use_ccd : 0;
 }
 
+/// @brief `Body3D.IsGrounded` — true when the body has an upward contact this frame.
+///
+/// "Upward" = contact normal Y > 0.7 (~45° max slope). Set/cleared by
+/// `World3D.Step`; queryable from frame to frame.
 int8_t rt_body3d_is_grounded(void *o) {
     return o ? ((rt_body3d *)o)->is_grounded : 0;
 }
 
+/// @brief `Body3D.GroundNormal` — fresh `Vec3` of the latest ground normal.
+///
+/// Defaults to +Y when not grounded.
 void *rt_body3d_get_ground_normal(void *o) {
     if (!o)
         return rt_vec3_new(0, 1, 0);
@@ -3314,6 +3965,7 @@ void *rt_body3d_get_ground_normal(void *o) {
     return rt_vec3_new(b->ground_normal[0], b->ground_normal[1], b->ground_normal[2]);
 }
 
+/// @brief `Body3D.Mass` — read the body's mass (zero for static).
 double rt_body3d_get_mass(void *o) {
     return o ? ((rt_body3d *)o)->mass : 0;
 }
@@ -3330,6 +3982,14 @@ typedef struct {
     int8_t hit;
 } rt_character_hit3d;
 
+// Character controller — built on top of Body3D with custom motion
+// resolution: kinematic-style sweeps + slide along surfaces, optional
+// step-up over small obstacles, ground probing for "is grounded" state.
+
+/// @brief Update the controller's grounded flag and store the latest ground normal.
+///
+/// Negates the contact normal because the contact normal points from
+/// the body toward the ground; we want the surface normal pointing up.
 static void character3d_set_ground_state(rt_character3d *ctrl,
                                          int8_t grounded,
                                          const double *normal) {
@@ -3348,10 +4008,19 @@ static void character3d_set_ground_state(rt_character3d *ctrl,
     }
 }
 
+/// @brief True if the surface (negated contact normal) is below the slope limit.
+///
+/// `slope_limit_cos = cos(max_slope_angle)`; a "walkable" surface has
+/// `normal_y >= cos(angle)`. Used to gate ground-snapping and step-up.
 static int character3d_normal_is_walkable(const rt_character3d *ctrl, const double *normal) {
     return ctrl && normal && (-normal[1] >= ctrl->slope_limit_cos);
 }
 
+/// @brief Filter for which world bodies the controller should slide against.
+///
+/// Excludes self, triggers, and dynamic bodies (the controller is
+/// kinematic so we don't want it pushing dynamics around as solid
+/// blockers). Honors the standard layer/mask filter.
 static int character3d_candidate_body(const rt_character3d *ctrl, const rt_body3d *other) {
     if (!ctrl || !ctrl->body || !ctrl->world || !other)
         return 0;
@@ -3362,6 +4031,12 @@ static int character3d_candidate_body(const rt_character3d *ctrl, const rt_body3
     return bodies_can_collide(ctrl->body, other);
 }
 
+/// @brief Probe what the controller would collide with at a given position.
+///
+/// Temporarily moves the body to `pos`, runs the standard narrow-phase
+/// against every candidate body, restores the original position, and
+/// returns the deepest contact (if any). Used for both penetration
+/// resolution and binary-searched sweeps.
 static int character3d_test_position(rt_character3d *ctrl,
                                      const double *pos,
                                      rt_character_hit3d *out_hit) {
@@ -3400,6 +4075,12 @@ static int character3d_test_position(rt_character3d *ctrl,
     return best.hit;
 }
 
+/// @brief Push the controller out of any penetration it currently has.
+///
+/// Up to 6 iterations: probe at current position, push along the
+/// deepest normal by `depth + 1e-4` epsilon, repeat. Bails early
+/// when no penetration remains. Bounded so degenerate stuck cases
+/// terminate quickly.
 static void character3d_resolve_penetration(rt_character3d *ctrl) {
     if (!ctrl || !ctrl->body)
         return;
@@ -3414,6 +4095,12 @@ static void character3d_resolve_penetration(rt_character3d *ctrl) {
     }
 }
 
+/// @brief Sweep the controller along `delta`, stopping at the first contact.
+///
+/// Steps in `radius/4`-sized substeps; on the first substep that hits,
+/// 14 iterations of bisection refine the impact `t`. On no-hit, body
+/// is moved to the end position and the function returns 0. Step count
+/// is bounded to 128.
 static int character3d_sweep(rt_character3d *ctrl,
                              const double *delta,
                              rt_character_hit3d *out_hit) {
@@ -3478,6 +4165,11 @@ static int character3d_sweep(rt_character3d *ctrl,
     return 0;
 }
 
+/// @brief Drop the controller 5cm and check for a walkable surface.
+///
+/// Used to detect grounded state when the controller is just barely
+/// above the floor (after a small jump or when sliding down a slight
+/// slope). Updates the body's grounded flag accordingly.
 static int character3d_probe_ground(rt_character3d *ctrl) {
     if (!ctrl || !ctrl->body)
         return 0;
@@ -3493,6 +4185,14 @@ static int character3d_probe_ground(rt_character3d *ctrl) {
     return 0;
 }
 
+/// @brief Attempt to step up over a small obstacle (FPS-style stair climb).
+///
+/// Three-phase test:
+///   1. Sweep up by `step_height`. If blocked, abort.
+///   2. Sweep horizontally by the leftover delta. If blocked, abort.
+///   3. Sweep down (slightly past `step_height`) onto the new surface.
+///      If the new surface is walkable, commit and mark grounded.
+/// On any failure the controller is restored to its original position.
 static int character3d_try_step(rt_character3d *ctrl, const double *horizontal_delta) {
     if (!ctrl || !ctrl->body || ctrl->step_height <= 1e-6 || vec3_len_sq(horizontal_delta) < 1e-12)
         return 0;
@@ -3532,6 +4232,14 @@ static int character3d_try_step(rt_character3d *ctrl, const double *horizontal_d
     return 0;
 }
 
+/// @brief Slide-and-iterate motion solver — the heart of the controller's `Move`.
+///
+/// Up to 4 iterations of: resolve penetration → sweep → if hit,
+/// project leftover motion onto the contact plane (or try step-up
+/// for non-walkable hits) → continue with the leftover motion. This
+/// gives the "slide along walls" feel typical of FPS controllers.
+/// Vertical hits onto walkable surfaces also set the grounded flag
+/// so gravity stops compounding.
 static void character3d_move_axis(rt_character3d *ctrl,
                                   const double *initial_delta,
                                   int allow_step) {
@@ -3577,6 +4285,7 @@ static void character3d_move_axis(rt_character3d *ctrl,
     }
 }
 
+/// @brief GC finalizer for `Character3D` — release the body and the world ref.
 static void character3d_finalizer(void *obj) {
     rt_character3d *c = (rt_character3d *)obj;
     if (!c)
@@ -3589,6 +4298,12 @@ static void character3d_finalizer(void *obj) {
     c->world = NULL;
 }
 
+/// @brief `Physics3D.Character.New(radius, height, mass)` — make a capsule character.
+///
+/// Creates an internally-owned capsule body and wraps it. Defaults:
+/// 30cm step height, 45° max walkable slope. The character is not
+/// added to a world automatically — call `SetWorld` before using
+/// `Move`.
 void *rt_character3d_new(double radius, double height, double mass) {
     rt_character3d *c = (rt_character3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_character3d));
     if (!c) {
@@ -3606,6 +4321,13 @@ void *rt_character3d_new(double radius, double height, double mass) {
     return c;
 }
 
+/// @brief `Character3D.Move(velocity, dt)` — kinematic move with sliding.
+///
+/// Splits the velocity into horizontal (allows step-up) and vertical
+/// (does not), runs `character3d_move_axis` for each, then probes the
+/// ground if not already grounded. Updates the body's velocity to the
+/// actual achieved displacement / dt — useful for animation systems
+/// that read velocity off the controller.
 void rt_character3d_move(void *obj, void *velocity_vec, double dt) {
     if (!obj || !velocity_vec || dt <= 0)
         return;
@@ -3639,20 +4361,30 @@ void rt_character3d_move(void *obj, void *velocity_vec, double dt) {
     }
 }
 
+/// @brief `Character3D.SetStepHeight(h)` — max obstacle height the controller can step over.
 void rt_character3d_set_step_height(void *o, double h) {
     if (o)
         ((rt_character3d *)o)->step_height = h;
 }
 
+/// @brief `Character3D.GetStepHeight` — read the configured step height.
 double rt_character3d_get_step_height(void *o) {
     return o ? ((rt_character3d *)o)->step_height : 0.3;
 }
 
+/// @brief `Character3D.SetSlopeLimit(degrees)` — max walkable slope angle.
+///
+/// Stored as `cos(angle)` to make the per-step "is this surface walkable"
+/// test a single comparison (no trig in the hot path).
 void rt_character3d_set_slope_limit(void *o, double degrees) {
     if (o)
         ((rt_character3d *)o)->slope_limit_cos = cos(degrees * 3.14159265358979323846 / 180.0);
 }
 
+/// @brief `Character3D.SetWorld(world)` — bind the character to a physics world.
+///
+/// Required before `Move` will collide against anything. Releases any
+/// previous world reference and retains the new one. NULL detaches.
 void rt_character3d_set_world(void *o, void *world) {
     if (!o)
         return;
@@ -3666,14 +4398,20 @@ void rt_character3d_set_world(void *o, void *world) {
     ctrl->world = (rt_world3d *)world;
 }
 
+/// @brief `Character3D.GetWorld` — borrowed reference to the bound world.
 void *rt_character3d_get_world(void *o) {
     return o ? ((rt_character3d *)o)->world : NULL;
 }
 
+/// @brief `Character3D.IsGrounded` — true when standing on a walkable surface.
 int8_t rt_character3d_is_grounded(void *o) {
     return o ? ((rt_character3d *)o)->is_grounded : 0;
 }
 
+/// @brief `Character3D.JustLanded` — edge-detect: true on the first frame after landing.
+///
+/// Compares this frame's grounded state to the previous frame's. Useful
+/// for landing animations, fall-damage triggers, dust puffs, etc.
 int8_t rt_character3d_just_landed(void *o) {
     if (!o)
         return 0;
@@ -3681,12 +4419,17 @@ int8_t rt_character3d_just_landed(void *o) {
     return c->is_grounded && !c->was_grounded;
 }
 
+/// @brief `Character3D.GetPosition` — fresh `Vec3` of the body's position.
 void *rt_character3d_get_position(void *o) {
     if (!o)
         return rt_vec3_new(0, 0, 0);
     return rt_body3d_get_position(((rt_character3d *)o)->body);
 }
 
+/// @brief `Character3D.SetPosition(x, y, z)` — teleport the controller.
+///
+/// Direct delegation to the underlying body. Caller is responsible for
+/// avoiding teleports into geometry.
 void rt_character3d_set_position(void *o, double x, double y, double z) {
     if (o)
         rt_body3d_set_position(((rt_character3d *)o)->body, x, y, z);
@@ -3710,10 +4453,20 @@ typedef struct {
     int32_t exit_count;
 } rt_trigger3d;
 
+/// @brief GC finalizer for `Trigger3D` — no-op (tracked-body refs are weak).
+///
+/// Tracked bodies are stored as raw pointers (we don't retain them
+/// because the trigger is only an observer). Weak refs is fine here:
+/// if a tracked body is destroyed the next `Update` will discover the
+/// stale pointer and clean it up.
 static void trigger3d_finalizer(void *obj) {
     (void)obj;
 }
 
+/// @brief `Trigger3D.New(x0, y0, z0, x1, y1, z1)` — make an axis-aligned trigger zone.
+///
+/// Auto-orders the corners so caller can pass them in any order. Up to
+/// 64 bodies are tracked for enter/exit edge detection.
 void *rt_trigger3d_new(double x0, double y0, double z0, double x1, double y1, double z1) {
     rt_trigger3d *t = (rt_trigger3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_trigger3d));
     if (!t) {
@@ -3731,7 +4484,11 @@ void *rt_trigger3d_new(double x0, double y0, double z0, double x1, double y1, do
     return t;
 }
 
-/// @brief Test if a Vec3 point is inside the trigger AABB.
+/// @brief `Trigger3D.Contains(point)` — point-in-AABB test for a `Vec3`.
+///
+/// Synchronous query; doesn't update enter/exit state. Use this for
+/// ad-hoc "is the player in the safe zone" checks; use `Update` +
+/// `EnterCount`/`ExitCount` for transition-based logic.
 int8_t rt_trigger3d_contains(void *obj, void *point) {
     if (!obj || !point)
         return 0;
@@ -3743,7 +4500,10 @@ int8_t rt_trigger3d_contains(void *obj, void *point) {
                : 0;
 }
 
-/// @brief Find or insert a body in the tracked list. Returns index or -1 if full.
+/// @brief Find a tracked body's slot, or claim a new slot if the table has room.
+///
+/// Returns -1 when the 64-slot table is full; the caller skips the
+/// body for this frame in that case.
 static int32_t trigger3d_find_or_add(rt_trigger3d *t, void *body) {
     for (int32_t i = 0; i < t->tracked_count; i++)
         if (t->tracked_bodies[i] == body)
@@ -3757,8 +4517,13 @@ static int32_t trigger3d_find_or_add(rt_trigger3d *t, void *body) {
     return idx;
 }
 
-/// @brief Check all bodies in a Physics3D world against this trigger.
-/// Computes enter/exit counts by comparing current vs. previous frame.
+/// @brief `Trigger3D.Update(world)` — recompute occupancy and edge counts.
+///
+/// Tests every body in `world` for point-in-AABB inclusion (using body
+/// center as the query point). Diffs current frame vs. previous to
+/// produce `enter_count` and `exit_count` totals — no per-body events
+/// are stored, so callers learn "how many entered" but not "which".
+/// Run once per frame after `World3D.Step`.
 void rt_trigger3d_update(void *obj, void *world_obj) {
     if (!obj || !world_obj)
         return;
@@ -3798,14 +4563,21 @@ void rt_trigger3d_update(void *obj, void *world_obj) {
     }
 }
 
+/// @brief `Trigger3D.EnterCount` — bodies that entered this trigger this frame.
 int64_t rt_trigger3d_get_enter_count(void *obj) {
     return obj ? ((rt_trigger3d *)obj)->enter_count : 0;
 }
 
+/// @brief `Trigger3D.ExitCount` — bodies that left this trigger this frame.
 int64_t rt_trigger3d_get_exit_count(void *obj) {
     return obj ? ((rt_trigger3d *)obj)->exit_count : 0;
 }
 
+/// @brief `Trigger3D.SetBounds(x0..z1)` — replace the trigger's AABB.
+///
+/// Auto-orders the corners. Tracked-body state is preserved across the
+/// resize, so a body that was inside the old box and is also inside
+/// the new box remains "in" without firing an enter event.
 void rt_trigger3d_set_bounds(
     void *obj, double x0, double y0, double z0, double x1, double y1, double z1) {
     if (!obj)

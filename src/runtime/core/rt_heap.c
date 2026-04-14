@@ -319,6 +319,8 @@ static void rt_heap_validate_header(const rt_heap_hdr_t *hdr) {
 #define RT_HEAP_VALIDATE(hdr) ((void)0)
 #endif
 
+/// @brief Returns 1 if `payload` is a tracked rt_heap allocation. Looks up the registry under
+/// the heap lock. Used by polymorphic dispatch to distinguish heap-managed pointers from raw.
 int8_t rt_heap_is_payload(void *payload) {
     if (!payload)
         return 0;
@@ -328,6 +330,9 @@ int8_t rt_heap_is_payload(void *payload) {
     return found ? 1 : 0;
 }
 
+/// @brief Validate `payload` and write its `rt_heap_hdr_t *` to `out_hdr`. Returns 1 on
+/// success, 0 if the pointer isn't a tracked heap allocation. Avoids a separate is_payload+
+/// header-cast pair in performance-sensitive call sites.
 int8_t rt_heap_try_get_header(void *payload, rt_heap_hdr_t **out_hdr) {
     if (out_hdr)
         *out_hdr = NULL;
@@ -698,6 +703,9 @@ static inline uint32_t atomic_fetch_or_u32(volatile uint32_t *ptr, uint32_t valu
 #endif
 }
 
+/// @brief Atomically mark the heap allocation as disposed (logical free). Returns 1 if this
+/// call performed the mark, 0 if it was already disposed (idempotent). Useful for one-shot
+/// finalizer guards in collections that own heterogeneous resources.
 int32_t rt_heap_mark_disposed(void *payload) {
     rt_heap_hdr_t *hdr = payload_to_hdr(payload);
     if (!hdr)

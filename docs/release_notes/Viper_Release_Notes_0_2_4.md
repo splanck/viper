@@ -46,6 +46,7 @@ Version 0.2.4 is a game engine, asset system, rendering, 3D physics, PBR materia
 - **VAPS Packaging Overhaul** — InstallerStub rewrite with full Windows .exe generation, WindowsPackageBuilder improvements, ZipWriter enhancements, PkgVerify expansion, symlink safety, dry-run mode, 57+ new tests.
 - **GUI Runtime Hardening** — Theme ownership moved to per-app structs (no more mutating built-in dark/light singletons), modal dialog routing follows the real dialog stack, overlay timing uses wall-clock time, platform text input events (`VGFX_EVENT_TEXT_INPUT`) wired through macOS/Win32/X11 backends replacing ASCII key synthesis, dropdown placeholder ownership fix, notification compaction, and command palette UTF-8 query path.
 - **GUI Widget Tree & Overlay Pass** — Toolkit runtime state now tracks the hovered widget and dispatches `MOUSE_ENTER`/`MOUSE_LEAVE` events across capture, modal, and normal hit-test paths; modal keyboard events fall back to the modal root when no widget is focused; `vg_widget_set_focus(NULL)` properly clears focus and notifies the previously focused widget. Painting splits into normal + overlay tree passes so dropdowns, menubar popups, and `FloatingPanel` overlays render above sibling content; `FloatingPanel` children are now real widget-tree nodes (no more private array) so hit testing, focus, and destruction follow the standard widget machinery. Layout containers (`VBox`, `HBox`, `Flex`) gain full `justify-content` distribution (`CENTER`/`END`/`SPACE_BETWEEN`/`SPACE_AROUND`/`SPACE_EVENLY`) via a polymorphic `vg_container_set_spacing` helper. `ScrollView` measures children before sizing content, applies a `vgfx` clip rect during child rendering, and walks the parent chain in `scroll_to_widget`. `rt_widget_set_position` invalidates layout/paint so manual positioning takes effect immediately.
+- **vgfx Input Subsystem & X11/Win32 Parity** — New `vgfx_pump_events()` separates event polling from frame presentation so input is available before any rendering happens that frame; `VGFX_EVENT_TEXT_INPUT`, `VGFX_EVENT_SCROLL`, and `VGFX_EVENT_FOCUS_GAINED/LOST` documented through `vgfx.h` with consistent payload structs. Linux X11 (~150 LOC) and Win32 (~270 LOC) backends rounded out — scroll-wheel mapping, text-input translation (`XLookupString` / `WM_CHAR` with surrogate handling), focus events, and `ConfigureNotify`/`WM_SIZE`-driven resize — reaching parity with the Cocoa backend. Shared `vgfx_internal_resize_framebuffer()` factored out of macOS into common code so all platforms (and the mock backend) use one allocation/clear path. Mock backend gains `vgfx_mock_inject_text_input`, `vgfx_mock_inject_scroll`, and `vgfx_mock_inject_focus` so backend-agnostic tests can drive every event type. Runtime `Canvas` (2D + 3D) now detaches keyboard/mouse input bindings before destroying the underlying window via new `rt_keyboard_clear_canvas_if_matches` / `rt_mouse_clear_canvas_if_matches` helpers, eliminating dangling-window pointers in the global input state on multi-canvas apps.
 - **IO Runtime Hardening** — SaveData migrated from raw C strings to GC-managed `rt_string` keys/values with versioned JSON format and migration support. Glob pattern matching extended with character classes (`[a-z]`, `[!0-9]`), case-insensitive matching on Windows, `**` recursive directory descent, and correct path separator handling. File watcher debounced event coalescing, single-file watch with directory monitoring, and Windows `OVERLAPPED` handle leak fix. TempFile atomic `O_CREAT|O_EXCL` creation with collision retry. Archive extraction path traversal validation.
 - **HTTP Server Runtime Bindings** — `HttpServer` class wired through bytecode VM and both Zia/BASIC frontends with `Listen`, `Accept`, `Respond`, `Close` methods and request property accessors (`Method`, `Path`, `Header`, `Body`).
 - **Graphics3D Ownership Hardening** — CubeMap3D, Material3D, Decal3D, Sprite3D, InstanceBatch3D, and Water3D now properly retain/release their texture, mesh, and material references. Prevents GC from collecting assets still in use by the renderer.
@@ -72,9 +73,10 @@ Version 0.2.4 is a game engine, asset system, rendering, 3D physics, PBR materia
 
 | Metric | v0.2.3 | v0.2.4 | Delta |
 |--------|--------|--------|-------|
-| Commits | — | 112 | +112 |
+| Commits | — | 116 | +116 |
 | Source files | 2,671 | 2,869 | +198 |
-| Production SLOC | ~348K | ~446K | +98K |
+| Production SLOC | ~348K | ~447K | +99K |
+| Test SLOC | ~165K | ~182K | +17K |
 | Test count | 1,351 | 1,454 | +103 |
 
 ---
@@ -801,6 +803,47 @@ Architectural improvements to the GUI subsystem for correctness and platform fid
 
 #### SplitPane Argument Semantics
 - **`SplitPane.New(parent, horizontal)` boolean** — The runtime constructor now treats the second argument as `horizontal != 0` (1 → horizontal split, 0 → vertical split), aligning with the API audit demos and CSS-style intuition. New `RTGuiRuntimeTests.c` regression covers both directions.
+
+---
+
+### vgfx Input Subsystem & Cross-Platform Parity
+
+ViperGFX input handling promoted from "polled together with `Present`" to a two-phase model where event pumping and frame presentation can be invoked independently, plus the Linux X11 and Windows Win32 backends rounded out so they reach parity with the Cocoa backend that was already complete.
+
+#### Two-Phase Event/Present Model
+- **`vgfx_pump_events(window)`** — Drains the native event queue without flipping the framebuffer. `rt_canvas_poll()` now calls it first so input is available before any rendering happens that frame.
+- **Event payload structs documented through `vgfx.h`** — `VGFX_EVENT_TEXT_INPUT` (with `codepoint`), `VGFX_EVENT_SCROLL` (with `delta_x`/`delta_y`/`x`/`y`), `VGFX_EVENT_FOCUS_GAINED`/`VGFX_EVENT_FOCUS_LOST`. Type tags previously existed only ad-hoc; payloads now have a stable shape across all backends.
+- **`vgfx_set_window_size` semantics clarified** — Logical vs physical dimensions; `VGFX_EVENT_RESIZE` is asynchronous and arrives only after the framebuffer has been reallocated and cleared.
+- **Shared `vgfx_internal_resize_framebuffer()`** — Factored out of the macOS backend; Linux, Win32, and the mock backend now share the same `posix_memalign` allocation + clear path instead of each open-coding it.
+
+#### Linux X11 Backend (~150 LOC added)
+- Scroll-wheel button mapping (`Button4`/`Button5`/`Button6`/`Button7`) → `VGFX_EVENT_SCROLL` with proper delta sign.
+- `XLookupString` translation → `VGFX_EVENT_TEXT_INPUT` with UTF-8 decoded codepoints, replacing US-layout ASCII synthesis.
+- `FocusIn`/`FocusOut` → `VGFX_EVENT_FOCUS_GAINED`/`LOST` with synced `is_focused` state.
+- `ConfigureNotify` drives the shared resize helper.
+- Key-state map maintained alongside the event stream so `vgfx_key_down()` queries return current state.
+
+#### Windows Win32 Backend (~270 LOC added)
+- `WM_MOUSEWHEEL` / `WM_MOUSEHWHEEL` → `VGFX_EVENT_SCROLL` with high-resolution wheel deltas.
+- `WM_CHAR` → `VGFX_EVENT_TEXT_INPUT` with surrogate-pair handling (UTF-16 → codepoint reassembly).
+- `WM_SETFOCUS` / `WM_KILLFOCUS` → focus events with `is_focused` sync.
+- `WM_SIZE` drives the shared resize helper.
+- Raw-input keyboard state tracked for `vgfx_key_down()`.
+
+#### macOS Backend
+- Removed the duplicate inline resize body now that the shared helper owns it.
+- Explicit `is_focused` updates in `windowDidBecomeKey:` / `windowDidResignKey:`.
+
+#### Mock Backend Test Helpers
+- **`vgfx_mock_inject_text_input(win, codepoint)`**, **`vgfx_mock_inject_scroll(win, dx, dy, x, y)`**, **`vgfx_mock_inject_focus(win, focused)`** — backend-agnostic input tests can now drive every event type without a real window.
+
+#### Runtime Input Plumbing
+- **Canvas window destruction now detaches input bindings** — `rt_canvas_destroy_window()` and `rt_canvas3d_detach_input()` call new `rt_keyboard_clear_canvas_if_matches(canvas)` and `rt_mouse_clear_canvas_if_matches(canvas)` helpers before invoking `vgfx_destroy_window()`. Prevents stale dangling-window pointers in the global keyboard/mouse state on multi-canvas applications and during finalize.
+- **`rt_canvas_poll`** routes `VGFX_EVENT_TEXT_INPUT` through `rt_keyboard_text_input()` and `VGFX_EVENT_SCROLL` through `rt_mouse_update_wheel()`. `last_event` is reset to `VGFX_EVENT_NONE` at the top of every frame.
+
+#### New Tests
+- `test_input.c`: T22 pump-events-without-present, T23 text-input event, T24 scroll event, T25 focus state sync (4 new subtests).
+- `RTKeyboardTests.cpp` / `RTMouseTests.cpp`: regression coverage for `rt_keyboard_clear_canvas_if_matches` and `rt_mouse_clear_canvas_if_matches` (binding is dropped only when the destroyed window matches the active canvas).
 
 ---
 

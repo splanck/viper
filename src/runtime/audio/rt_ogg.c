@@ -380,6 +380,9 @@ int ogg_reader_next_packet(ogg_reader_t *r, const uint8_t **out_data, size_t *ou
     return ogg_reader_next_packet_ex(r, out_data, out_len, NULL);
 }
 
+/// @brief Like `_next_packet` but also fills an `ogg_packet_info_t` with stream serial number,
+/// granule position, page sequence, and segment metadata. Useful for muxed streams that need
+/// to filter by stream ID, or for accurate seek-by-time within Vorbis/Theora bitstreams.
 int ogg_reader_next_packet_ex(ogg_reader_t *r,
                               const uint8_t **out_data,
                               size_t *out_len,

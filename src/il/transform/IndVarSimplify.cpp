@@ -376,7 +376,7 @@ PreservedAnalyses IndVarSimplify::run(Function &function, AnalysisManager &analy
     auto &dom = analysis.getFunctionResult<viper::analysis::DomTree>(kAnalysisDominators, function);
     (void)dom;
 
-    // Build use-def chains for O(uses) replacement
+    // Build initial use-count info for safe temp replacement.
     viper::il::UseDefInfo useInfo(function);
 
     bool changed = false;

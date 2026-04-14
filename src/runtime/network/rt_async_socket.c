@@ -57,11 +57,16 @@ static LONG pool_init_state = 0;
 #else
 static pthread_once_t pool_once = PTHREAD_ONCE_INIT;
 
+/// @brief POSIX `pthread_once` initializer for the shared 4-thread pool.
 static void init_default_pool(void) {
     default_pool = rt_threadpool_new(4);
 }
 #endif
 
+/// @brief Lazy-initialize and return the shared async-socket thread pool. POSIX uses
+/// `pthread_once`; Win32 uses a 3-state Interlocked flag (0=uninit, 1=initializing, 2=ready)
+/// with a busy-wait while another thread is initializing. Pool is 4 threads — enough for
+/// concurrent socket operations without overwhelming the system on small machines.
 static void *get_default_pool(void) {
 #ifdef _WIN32
     if (pool_init_state == 2)
@@ -83,11 +88,14 @@ static void *get_default_pool(void) {
 #endif
 }
 
+/// @brief Drop one reference; free if it was the last. Used in worker cleanup and error paths.
 static void async_release_owned(void *obj) {
     if (obj && rt_obj_release_check0(obj))
         rt_obj_free(obj);
 }
 
+/// @brief Resolve `promise` as Err with `message` and release the promise reference.
+/// Used on the unhappy path when the thread pool refuses the work item.
 static void async_fail_submit(void *promise, const char *message) {
     rt_string err = rt_string_from_bytes(message, strlen(message));
     rt_promise_set_error(promise, err);
@@ -105,6 +113,9 @@ typedef struct {
     void *promise;
 } connect_args_t;
 
+/// @brief Pool-thread body for `rt_async_connect`. Performs the blocking `rt_tcp_connect`,
+/// resolves the promise with the resulting TCP handle, releases the promise reference, and frees
+/// the heap-owned host string + args struct.
 static void async_connect_worker(void *arg) {
     connect_args_t *a = (connect_args_t *)arg;
     rt_string host = rt_string_from_bytes(a->host, strlen(a->host));
@@ -155,6 +166,8 @@ typedef struct {
     void *promise;
 } send_args_t;
 
+/// @brief Pool-thread body for `rt_async_send`. Performs the blocking send and resolves the
+/// promise with the byte count (boxed as a pointer-sized integer for the void* ABI).
 static void async_send_worker(void *arg) {
     send_args_t *a = (send_args_t *)arg;
     int64_t sent = rt_tcp_send(a->tcp, a->data);
@@ -201,6 +214,8 @@ typedef struct {
     void *promise;
 } recv_args_t;
 
+/// @brief Pool-thread body for `rt_async_recv`. Performs the blocking recv and resolves the
+/// promise with the resulting Bytes object.
 static void async_recv_worker(void *arg) {
     recv_args_t *a = (recv_args_t *)arg;
     void *data = rt_tcp_recv(a->tcp, a->max_bytes);
@@ -243,6 +258,8 @@ typedef struct {
     void *promise;
 } http_args_t;
 
+/// @brief Pool-thread body for `rt_async_http_get`. Performs the blocking one-shot HTTP GET and
+/// resolves the promise with the response body string.
 static void async_http_get_worker(void *arg) {
     http_args_t *a = (http_args_t *)arg;
     rt_string url = rt_string_from_bytes(a->url, strlen(a->url));
@@ -283,6 +300,8 @@ void *rt_async_http_get(rt_string url) {
     return future;
 }
 
+/// @brief Pool-thread body for `rt_async_http_post`. Performs the blocking POST and resolves the
+/// promise with the response body. Empty body is sent as "" rather than NULL.
 static void async_http_post_worker(void *arg) {
     http_args_t *a = (http_args_t *)arg;
     rt_string url = rt_string_from_bytes(a->url, strlen(a->url));

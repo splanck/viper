@@ -113,6 +113,8 @@ static void rt_set_finalize(void *obj) {
     set->count = 0;
 }
 
+/// @brief Construct an empty mutable set. Internal storage is open-addressed hashed buckets;
+/// resizes when load factor exceeds 0.75. Elements are reference-counted via Box hash/equality.
 void *rt_set_new(void) {
     rt_set_impl *set = (rt_set_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_set_impl));
     if (!set)
@@ -133,6 +135,7 @@ void *rt_set_new(void) {
     return set;
 }
 
+/// @brief Number of elements currently in the set.
 int64_t rt_set_len(void *obj) {
     if (!obj)
         return 0;
@@ -140,6 +143,7 @@ int64_t rt_set_len(void *obj) {
     return (int64_t)set->count;
 }
 
+/// @brief Returns 1 if the set has no elements (or for a NULL handle).
 int8_t rt_set_is_empty(void *obj) {
     if (!obj)
         return 1;
@@ -147,6 +151,8 @@ int8_t rt_set_is_empty(void *obj) {
     return set->count == 0 ? 1 : 0;
 }
 
+/// @brief Insert `elem` into the set. Element is retained on success. Returns 1 if newly added,
+/// 0 if already present (the existing entry keeps its retain count). Triggers resize at high load.
 int8_t rt_set_add(void *obj, void *elem) {
     if (!obj)
         return 0;
@@ -179,6 +185,7 @@ int8_t rt_set_add(void *obj, void *elem) {
     return 1;
 }
 
+/// @brief Remove `elem`. Releases the element. Returns 1 if removed, 0 if not present.
 int8_t rt_set_remove(void *obj, void *elem) {
     if (!obj)
         return 0;
@@ -207,6 +214,7 @@ int8_t rt_set_remove(void *obj, void *elem) {
     return 0;
 }
 
+/// @brief Returns 1 if `elem` is in the set, 0 otherwise. O(1) average.
 int8_t rt_set_has(void *obj, void *elem) {
     if (!obj)
         return 0;
@@ -216,6 +224,7 @@ int8_t rt_set_has(void *obj, void *elem) {
     return find_entry(set->buckets[idx], elem) ? 1 : 0;
 }
 
+/// @brief Remove every element (releases each). Bucket array is preserved for re-use.
 void rt_set_clear(void *obj) {
     if (!obj)
         return;
@@ -235,6 +244,7 @@ void rt_set_clear(void *obj) {
     set->count = 0;
 }
 
+/// @brief Return a Seq containing all elements in bucket-iteration order (not insertion order).
 void *rt_set_items(void *obj) {
     if (!obj)
         return rt_seq_new();
@@ -251,6 +261,7 @@ void *rt_set_items(void *obj) {
     return seq;
 }
 
+/// @brief Return a fresh set containing every element from either operand. Result is mutable.
 void *rt_set_union(void *obj, void *other) {
     void *result = rt_set_new();
     if (!result)
@@ -279,6 +290,7 @@ void *rt_set_union(void *obj, void *other) {
     return result;
 }
 
+/// @brief Return a fresh set containing only elements present in both operands.
 void *rt_set_intersect(void *obj, void *other) {
     void *result = rt_set_new();
     if (!result)
@@ -299,6 +311,7 @@ void *rt_set_intersect(void *obj, void *other) {
     return result;
 }
 
+/// @brief Return a fresh set containing elements in `obj` but not in `other`.
 void *rt_set_diff(void *obj, void *other) {
     void *result = rt_set_new();
     if (!result)
@@ -319,6 +332,7 @@ void *rt_set_diff(void *obj, void *other) {
     return result;
 }
 
+/// @brief Returns 1 if every element of `obj` is also in `other`. Empty set is subset of anything.
 int8_t rt_set_is_subset(void *obj, void *other) {
     if (!obj)
         return 1; // Empty set is subset of everything
@@ -335,10 +349,12 @@ int8_t rt_set_is_subset(void *obj, void *other) {
     return 1;
 }
 
+/// @brief Returns 1 if every element of `other` is also in `obj`. Inverse of `_is_subset`.
 int8_t rt_set_is_superset(void *obj, void *other) {
     return rt_set_is_subset(other, obj);
 }
 
+/// @brief Returns 1 if the two sets share no elements (intersection is empty).
 int8_t rt_set_is_disjoint(void *obj, void *other) {
     if (!obj || !other)
         return 1; // Empty sets are disjoint
@@ -360,6 +376,7 @@ int8_t rt_set_is_disjoint(void *obj, void *other) {
 ///
 /// @param obj Source Set pointer (may be NULL).
 /// @return New Set containing the same elements, or empty set if NULL.
+/// @brief Deep-copy the set's bucket structure (each element is retained, not deep-cloned).
 void *rt_set_clone(void *obj) {
     void *result = rt_set_new();
     if (!obj)

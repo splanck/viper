@@ -263,6 +263,11 @@ static struct {
 
 /* Debug GL error checking — enabled in debug builds only */
 #ifndef NDEBUG
+/// @brief Debug-only `glGetError()` wrapper that prints to stderr on failure.
+///
+/// Wrapped by the `GL_CHECK()` macro at every API call site in debug
+/// builds; compiled out (`((void)0)`) in release. Skips silently if
+/// the GL function-pointer table hasn't been loaded yet.
 static __attribute__((unused)) void gl_check_error(const char *file, int line) {
     if (!gl.GetError)
         return;
@@ -501,12 +506,21 @@ typedef struct {
 
 static int gl_loaded = 0;
 
+/// @brief Row-major to column-major (or vice versa) 4×4 transpose.
+///
+/// Used because GLSL/glUniformMatrix4fv default to column-major while
+/// our matrices are stored row-major. Out-of-place — `src` and `dst`
+/// must not alias.
 static void transpose4x4(const float *src, float *dst) {
     for (int r = 0; r < 4; r++)
         for (int c = 0; c < 4; c++)
             dst[r * 4 + c] = src[c * 4 + r];
 }
 
+/// @brief Row-major 4×4 multiply: `out = a * b`.
+///
+/// Naive triple loop — same shape as `mat4f_mul_d3d`. We keep the
+/// per-backend copy so the optimizer can inline it locally.
 static void mat4f_mul_gl(const float *a, const float *b, float *out) {
     for (int r = 0; r < 4; r++)
         for (int c = 0; c < 4; c++)
@@ -514,6 +528,11 @@ static void mat4f_mul_gl(const float *a, const float *b, float *out) {
                              a[r * 4 + 2] * b[2 * 4 + c] + a[r * 4 + 3] * b[3 * 4 + c];
 }
 
+/// @brief Invert a 4×4 matrix using the cofactor expansion.
+///
+/// Returns 0 on success, -1 if `m` is singular (|det| < 1e-12). Used
+/// to compute `inv_vp` for post-FX shaders that need to reconstruct
+/// world-space positions from depth + screen UVs.
 static int mat4f_inverse_gl(const float *m, float *out) {
     float inv[16];
     inv[0] = m[5] * m[10] * m[15] - m[5] * m[11] * m[14] - m[9] * m[6] * m[15] +
@@ -560,6 +579,16 @@ static int mat4f_inverse_gl(const float *m, float *out) {
     return 0;
 }
 
+/// @brief Resolve every OpenGL + GLX function pointer the backend needs.
+///
+/// Three loading tiers via macros:
+///   - `LOAD(x)`: dlsym on libGL itself for core functions.
+///   - `LOADX(x)`: dlsym for GLX (X11 binding) functions.
+///   - `LOADP(x)`: glXGetProcAddress for everything past GL 1.x — the
+///     standard mechanism for fetching extension entry points.
+/// Returns 0 on success, -1 if any required function couldn't be
+/// resolved (the backend caller falls back to software in that case).
+/// Idempotent — `gl_loaded` flag short-circuits subsequent calls.
 static int load_gl(void) {
     if (gl_loaded)
         return 0;
@@ -1354,6 +1383,12 @@ static const char *const glsl_postfx_fragment_src[] = {
     "}\n",
 };
 
+/// @brief Compile a GLSL shader from one-or-more source strings.
+///
+/// `src_count` allows splicing multiple strings (e.g., a #version
+/// preamble + the body) into a single compile. On compile failure
+/// dumps the GLSL info log to stderr and deletes the shader.
+/// Returns the shader handle, or 0 on failure.
 static GLuint compile_shader_parts(GLenum type, const char *const *src, GLsizei src_count) {
     GLuint shader = gl.CreateShader(type);
     if (!shader)
@@ -1372,11 +1407,17 @@ static GLuint compile_shader_parts(GLenum type, const char *const *src, GLsizei 
     return shader;
 }
 
+/// @brief Single-source convenience wrapper around `compile_shader_parts`.
 static GLuint compile_shader(GLenum type, const char *src) {
     const char *parts[] = {src};
     return compile_shader_parts(type, parts, 1);
 }
 
+/// @brief Link a vertex + fragment shader pair into a program object.
+///
+/// Logs the linker info log to stderr on failure and deletes the
+/// program. Doesn't `glDetachShader` — caller is expected to delete
+/// the shaders separately once linking is done.
 static GLuint link_program(GLuint vs, GLuint fs) {
     GLuint program = gl.CreateProgram();
     if (!program)
@@ -1403,6 +1444,12 @@ static GLuint link_program(GLuint vs, GLuint fs) {
 #define GL_MORPH_CACHE_MAX_RESIDENT 64
 #define GL_MORPH_CACHE_PRUNE_AGE 240u
 
+/// @brief Geometric resize for a streaming GL buffer.
+///
+/// If the buffer is already large enough, no-op. Otherwise binds the
+/// buffer and reallocates with a NULL data pointer to size it without
+/// uploading. Capacity grows via the shared `vgfx3d_opengl_next_capacity`
+/// helper.
 static int ensure_buffer_capacity(GLenum target,
                                   GLuint buffer,
                                   size_t *capacity,
@@ -1426,6 +1473,12 @@ static int ensure_buffer_capacity(GLenum target,
     return 0;
 }
 
+/// @brief "Orphan" a streaming buffer — request a fresh GPU allocation.
+///
+/// Calling `glBufferData(target, capacity, NULL, ...)` tells the driver
+/// the existing storage may be reused for in-flight draws while we
+/// build the next frame's data. Avoids the explicit-fence sync the
+/// driver would otherwise have to insert on `BufferSubData`.
 static void orphan_stream_buffer(GLenum target, GLuint buffer, size_t capacity, GLenum usage) {
     if (!buffer || capacity == 0)
         return;
@@ -1433,6 +1486,11 @@ static void orphan_stream_buffer(GLenum target, GLuint buffer, size_t capacity, 
     gl.BufferData(target, (GLsizeiptr)capacity, NULL, usage);
 }
 
+// Texture / cubemap / morph caches — keyed by `(host pointer, generation)`.
+// Generation lets re-uploaded source data invalidate cleanly without
+// leaking GL objects. LRU pruning bounds residency.
+
+/// @brief Delete every cached 2D texture and reset the count.
 static void texture_cache_clear(gl_context_t *ctx) {
     if (!ctx || !ctx->texture_cache)
         return;
@@ -1443,6 +1501,7 @@ static void texture_cache_clear(gl_context_t *ctx) {
     ctx->texture_cache_count = 0;
 }
 
+/// @brief Delete every cached cubemap and reset the count.
 static void cubemap_cache_clear(gl_context_t *ctx) {
     if (!ctx || !ctx->cubemap_cache)
         return;
@@ -1453,6 +1512,10 @@ static void cubemap_cache_clear(gl_context_t *ctx) {
     ctx->cubemap_cache_count = 0;
 }
 
+/// @brief Delete every cached morph-target buffer/TBO pair.
+///
+/// Each entry holds two `(buffer, TBO)` pairs — one for position
+/// deltas and one for normal deltas. Both are released.
 static void morph_cache_clear(gl_context_t *ctx) {
     if (!ctx || !ctx->morph_cache)
         return;
@@ -1469,6 +1532,7 @@ static void morph_cache_clear(gl_context_t *ctx) {
     ctx->morph_cache_count = 0;
 }
 
+/// @brief Release one morph-cache slot's GL objects and zero the entry.
 static void morph_cache_release_entry(gl_morph_cache_entry_t *entry) {
     if (!entry)
         return;
@@ -1483,6 +1547,12 @@ static void morph_cache_release_entry(gl_morph_cache_entry_t *entry) {
     memset(entry, 0, sizeof(*entry));
 }
 
+/// @brief Drop texture cache entries that exceed the LRU limit.
+///
+/// "Exceed" = total residency above 256 entries AND last-used frame
+/// older than 240 frames ago. In-place compaction (write index < read
+/// index when entries are dropped). Keeps frequently-used textures
+/// regardless of the count cap.
 static void texture_cache_prune(gl_context_t *ctx) {
     int32_t write_index = 0;
 
@@ -1507,6 +1577,7 @@ static void texture_cache_prune(gl_context_t *ctx) {
     ctx->texture_cache_count = write_index;
 }
 
+/// @brief LRU prune for the cubemap cache (limit 64, age 240 frames).
 static void cubemap_cache_prune(gl_context_t *ctx) {
     int32_t write_index = 0;
 
@@ -1531,6 +1602,7 @@ static void cubemap_cache_prune(gl_context_t *ctx) {
     ctx->cubemap_cache_count = write_index;
 }
 
+/// @brief LRU prune for the morph-target cache (limit 64, age 240 frames).
 static void morph_cache_prune(gl_context_t *ctx) {
     int32_t write_index = 0;
 
@@ -1554,6 +1626,10 @@ static void morph_cache_prune(gl_context_t *ctx) {
     ctx->morph_cache_count = write_index;
 }
 
+/// @brief Tear down all three caches and free their backing arrays.
+///
+/// Called during context destruction. Order matters: clear-then-free
+/// each cache so we delete the GL objects before freeing the host array.
 static void texture_cache_destroy(gl_context_t *ctx) {
     if (!ctx)
         return;
@@ -1571,6 +1647,15 @@ static void texture_cache_destroy(gl_context_t *ctx) {
     ctx->morph_cache_capacity = 0;
 }
 
+/// @brief Texture-cache lookup with auto-create.
+///
+/// Three-way:
+///   1. Hit (pixels + generation match) → bump LRU timestamp, return.
+///   2. Pixels match but generation stale → re-upload into the existing
+///      texture object (saves a `glDeleteTextures`/`glGenTextures`
+///      round-trip).
+///   3. Miss → create a new texture, append to cache.
+/// Returns 0 on failure (caller falls back to no texture).
 static GLuint gl_get_cached_texture(gl_context_t *ctx, const void *pixels_ptr) {
     uint64_t generation;
     if (!ctx || !pixels_ptr)
@@ -1638,6 +1723,11 @@ static GLuint gl_get_cached_texture(gl_context_t *ctx, const void *pixels_ptr) {
     return tex;
 }
 
+/// @brief Cubemap-cache lookup with auto-create — analogous to `gl_get_cached_texture`.
+///
+/// Iterates over six faces and uploads each to its `GL_TEXTURE_CUBE_MAP_POSITIVE_X + n`
+/// slot. Mipmaps generated from the top mip of each face. Edge-clamp
+/// to avoid seams at face boundaries.
 static GLuint gl_get_cached_cubemap(gl_context_t *ctx, const rt_cubemap3d *cubemap) {
     uint64_t generation;
     if (!ctx || !cubemap)
@@ -1736,6 +1826,7 @@ static GLuint gl_get_cached_cubemap(gl_context_t *ctx, const rt_cubemap3d *cubem
 static int gl_sync_render_target_color(void *ctx_ptr, vgfx3d_rendertarget_t *rt);
 static void bind_texture_unit(GLint uniform_loc, int unit, GLenum target, GLuint texture);
 
+/// @brief Release the scene FBO and its color/motion/depth attachments.
 static void destroy_scene_targets(gl_context_t *ctx) {
     if (!ctx)
         return;
@@ -1755,6 +1846,10 @@ static void destroy_scene_targets(gl_context_t *ctx) {
     ctx->scene_height = 0;
 }
 
+/// @brief Release the post-FX readback FBO + texture.
+///
+/// The readback target stages tonemapped post-FX output before
+/// `glReadPixels` copies to host memory for screenshot capture.
 static void destroy_postfx_readback_target(gl_context_t *ctx) {
     if (!ctx)
         return;
@@ -1768,6 +1863,14 @@ static void destroy_postfx_readback_target(gl_context_t *ctx) {
     ctx->postfx_readback_height = 0;
 }
 
+/// @brief Build a scene FBO with color (HDR/LDR), motion-vector, and depth attachments.
+///
+/// MRT layout (color attachment 0 = scene color, 1 = motion vectors).
+/// Color format chosen by the platform helper — HDR16F when the
+/// driver supports floating-point render targets, RGBA8 otherwise.
+/// Depth uses the 32-bit float format so post-FX can reconstruct
+/// world position with high precision.
+/// Verifies framebuffer completeness before returning success.
 static int ensure_scene_targets(gl_context_t *ctx, int32_t w, int32_t h) {
     GLint color_format;
     GLenum color_type;
@@ -1832,6 +1935,7 @@ static int ensure_scene_targets(gl_context_t *ctx, int32_t w, int32_t h) {
     return 0;
 }
 
+/// @brief Build a single-attachment LDR FBO for tonemapped post-FX readback.
 static int ensure_postfx_readback_target(gl_context_t *ctx, int32_t w, int32_t h) {
     if (!ctx || w <= 0 || h <= 0)
         return -1;
@@ -1865,6 +1969,11 @@ static int ensure_postfx_readback_target(gl_context_t *ctx, int32_t w, int32_t h
     return 0;
 }
 
+/// @brief Release RTT FBO + color texture + depth renderbuffer.
+///
+/// If the user-visible RT target has dirty pixels, syncs them back to
+/// the RT's host buffer first via `gl_sync_render_target_color`.
+/// Then signals end-of-render to anything waiting (`clear_sync`).
 static void destroy_rtt_targets(gl_context_t *ctx) {
     if (!ctx)
         return;
@@ -1888,6 +1997,12 @@ static void destroy_rtt_targets(gl_context_t *ctx) {
     ctx->rtt_target = NULL;
 }
 
+/// @brief Build / re-bind RTT targets sized to `rt`.
+///
+/// Idempotent on identical size + receiver. Switching to a different
+/// `rt` of the same size syncs the previous RT first. Uses a renderbuffer
+/// (not texture) for depth — RTT users don't need to read depth back
+/// from the shader, so renderbuffer is faster.
 static int ensure_rtt_targets(gl_context_t *ctx, vgfx3d_rendertarget_t *rt) {
     if (!ctx || !rt)
         return -1;
@@ -1946,6 +2061,7 @@ static int ensure_rtt_targets(gl_context_t *ctx, vgfx3d_rendertarget_t *rt) {
     return 0;
 }
 
+/// @brief Release the shadow-map FBO + depth texture.
 static void destroy_shadow_targets(gl_context_t *ctx) {
     if (!ctx)
         return;
@@ -1959,6 +2075,11 @@ static void destroy_shadow_targets(gl_context_t *ctx) {
     ctx->shadow_height = 0;
 }
 
+/// @brief Build a depth-only FBO for shadow-map rendering.
+///
+/// `glDrawBuffer(GL_NONE)` + `glReadBuffer(GL_NONE)` because there are
+/// no color attachments (depth-only). Linear filtering on the depth
+/// texture so the main pass can use hardware PCF when sampling.
 static int ensure_shadow_targets(gl_context_t *ctx, int32_t w, int32_t h) {
     if (!ctx || w <= 0 || h <= 0)
         return -1;
@@ -1993,6 +2114,11 @@ static int ensure_shadow_targets(gl_context_t *ctx, int32_t w, int32_t h) {
     return 0;
 }
 
+/// @brief Bind whichever framebuffer the active target kind says is current.
+///
+/// Three-way dispatch: RTT → user RTT FBO; SCENE → offscreen MRT FBO
+/// with both color attachments enabled; else → swapchain (FBO 0).
+/// Sets the matching viewport dimensions.
 static void bind_main_framebuffer(gl_context_t *ctx) {
     if (ctx->rtt_active) {
         gl.BindFramebuffer(GL_FRAMEBUFFER, ctx->rtt_fbo);
@@ -2012,6 +2138,13 @@ static void bind_main_framebuffer(gl_context_t *ctx) {
     }
 }
 
+/// @brief Per-draw blend / depth / motion-attachment setup.
+///
+/// Picks blend mode (alpha or opaque) + depth-write toggle + motion
+/// attachment count from the draw command. The motion attachment is
+/// only enabled in the SCENE target with the right blend mode — we
+/// don't emit motion vectors for transparent passes since they'd
+/// just overwrite opaque results.
 static void gl_configure_draw_output(gl_context_t *ctx, const vgfx3d_draw_cmd_t *cmd) {
     vgfx3d_opengl_blend_mode_t blend_mode;
     vgfx3d_opengl_motion_attachment_mode_t motion_mode;
@@ -2049,6 +2182,13 @@ static void gl_configure_draw_output(gl_context_t *ctx, const vgfx3d_draw_cmd_t 
     gl.Viewport(0, 0, ctx->width, ctx->height);
 }
 
+/// @brief Push every post-FX uniform from the snapshot into the program.
+///
+/// Each toggle has a paired enable flag + parameter set: bloom,
+/// tonemap, FXAA, color grading, vignette, SSAO, DoF, motion blur.
+/// NULL snapshot zeros every toggle (post-FX disabled). The camera
+/// + inverse VP + previous VP go through unconditionally so motion-
+/// blur and SSAO can do their world-space reconstructions.
 static void gl_apply_postfx_uniforms(gl_context_t *ctx, const vgfx3d_postfx_snapshot_t *snapshot) {
     if (!ctx)
         return;
@@ -2114,6 +2254,12 @@ static void gl_apply_postfx_uniforms(gl_context_t *ctx, const vgfx3d_postfx_snap
     gl.Uniform1i(ctx->postfx_uMotionBlurSamples, snapshot->motion_blur_samples);
 }
 
+/// @brief Composite the offscreen scene texture onto a target FBO via post-FX.
+///
+/// Binds the postfx program + fullscreen-triangle VAO, plus scene
+/// color/depth/motion as samplers, applies post-FX uniforms, draws
+/// 3 vertices (the standard "fullscreen triangle covers the viewport"
+/// trick — cheaper than a 6-vertex quad).
 static void gl_draw_scene_texture_to_target(gl_context_t *ctx,
                                             GLuint framebuffer,
                                             GLenum draw_buffer,
@@ -2142,6 +2288,14 @@ static void gl_draw_scene_texture_to_target(gl_context_t *ctx,
     GL_CHECK();
 }
 
+/// @brief Read back the RTT color buffer into the user's host RGBA buffer.
+///
+/// Allocates a transient buffer matching the RT's stride×height, reads
+/// pixels from `rtt_fbo` color attachment 0, flips the rows (GL's
+/// origin is bottom-left vs. ours top-left), and copies into the
+/// user-visible buffer. Marks `color_dirty = 0` so the next draw
+/// doesn't trigger a redundant readback. No-op if the receiver isn't
+/// the active RTT.
 static int gl_sync_render_target_color(void *ctx_ptr, vgfx3d_rendertarget_t *rt) {
     gl_context_t *ctx = (gl_context_t *)ctx_ptr;
     uint8_t *tmp;
@@ -2171,6 +2325,7 @@ static int gl_sync_render_target_color(void *ctx_ptr, vgfx3d_rendertarget_t *rt)
     return 1;
 }
 
+/// @brief Release every mesh-cache slot's VBO + IBO.
 static void gl_destroy_mesh_cache(gl_context_t *ctx) {
     if (!ctx)
         return;
@@ -2183,6 +2338,12 @@ static void gl_destroy_mesh_cache(gl_context_t *ctx) {
     }
 }
 
+/// @brief Mesh-cache lookup; uploads to a static VBO/IBO on miss.
+///
+/// Static meshes (with `geometry_key`) are cached so subsequent
+/// frames don't re-upload. On miss, finds an empty slot or evicts
+/// the LRU entry. Same key + revision = cache hit. Returns 0 if the
+/// command isn't cacheable (no key or zero revision).
 static int gl_lookup_cached_mesh_buffers(gl_context_t *ctx,
                                          const vgfx3d_draw_cmd_t *cmd,
                                          GLuint *out_vbo,
@@ -2243,6 +2404,11 @@ static int gl_lookup_cached_mesh_buffers(gl_context_t *ctx,
     return 1;
 }
 
+/// @brief Hand back VBO/IBO for the mesh — cached path or stream-upload path.
+///
+/// First tries `gl_lookup_cached_mesh_buffers` (static mesh fast path).
+/// On miss, ensures the dynamic streaming buffers are large enough,
+/// orphans them (avoids stalls), and uploads via `BufferSubData`.
 static void prepare_mesh_buffers(gl_context_t *ctx,
                                  const vgfx3d_draw_cmd_t *cmd,
                                  GLuint *out_vbo,
@@ -2277,6 +2443,13 @@ static void prepare_mesh_buffers(gl_context_t *ctx,
     *out_ibo = ctx->mesh_ibo;
 }
 
+/// @brief Disable instance attribute arrays and supply identity-matrix constants.
+///
+/// When the draw is non-instanced, attribute slots 7..14 (which would
+/// hold the 4×4 instance matrix + previous instance matrix) need
+/// per-vertex constant data so the vertex shader behaves as if the
+/// instance matrix was identity. Calling `glVertexAttrib4f` provides
+/// constants when the attribute array is disabled.
 static void set_identity_instance_constants(void) {
     gl.DisableVertexAttribArray(7);
     gl.DisableVertexAttribArray(8);
@@ -2304,6 +2477,12 @@ static void set_identity_instance_constants(void) {
     gl.VertexAttrib4f(14, 0.0f, 0.0f, 0.0f, 1.0f);
 }
 
+/// @brief Bind the mesh VBO/IBO and wire up the 7 per-vertex attributes.
+///
+/// Attribute slots: 0=pos, 1=normal, 2=uv, 3=color (4f), 4=tangent,
+/// 5=bone indices (4×u8 as int), 6=bone weights (4f). Layout matches
+/// the `vgfx3d_vertex_t` struct's offsets (12, 24, 32, 48, 60, 64).
+/// Also resets instance attributes to identity defaults.
 static void configure_mesh_attributes(gl_context_t *ctx, GLuint mesh_vbo, GLuint mesh_ibo) {
     GLsizei stride = (GLsizei)sizeof(vgfx3d_vertex_t);
     gl.BindVertexArray(ctx->vao);
@@ -2326,6 +2505,14 @@ static void configure_mesh_attributes(gl_context_t *ctx, GLuint mesh_vbo, GLuint
     set_identity_instance_constants();
 }
 
+/// @brief Upload per-instance matrices and bind them to attribute slots 7..14.
+///
+/// 4×4 matrices are unpacked into four vec4 attribute slots each
+/// (HW limit: max attribute size is vec4). `glVertexAttribDivisor(slot, 1)`
+/// makes them advance once per instance instead of per vertex. Previous-
+/// instance matrices (slots 11..14) are uploaded if `prev_instance_matrices`
+/// is non-NULL; otherwise the slots get identity constants for "no
+/// motion this frame" semantics.
 static void configure_instance_attributes(gl_context_t *ctx,
                                           const float *instance_matrices,
                                           const float *prev_instance_matrices,
@@ -2400,6 +2587,12 @@ static void configure_instance_attributes(gl_context_t *ctx,
     }
 }
 
+/// @brief Upload up to 128 bone matrices into a UBO, transposing each.
+///
+/// GLSL's `mat4` UBO layout is column-major; our matrices are row-
+/// major. We transpose during upload so the shader sees the right
+/// layout without per-multiply transposes. Bone counts > 128 are
+/// silently truncated (the shader's array is fixed-size).
 static void upload_bone_palette(gl_context_t *ctx,
                                 GLuint ubo,
                                 const float *bone_palette,
@@ -2421,6 +2614,11 @@ static void upload_bone_palette(gl_context_t *ctx,
     gl.BufferSubData(GL_UNIFORM_BUFFER, 0, (GLsizeiptr)sizeof(upload), upload);
 }
 
+/// @brief Upload current + previous bone palettes and bind to UBO slots 0/1.
+///
+/// If no `prev_bone_palette` is supplied (e.g., first frame of an
+/// animation), the current palette is used for both — motion blur
+/// then sees zero motion for skinned vertices.
 static void upload_active_bone_palettes(gl_context_t *ctx, const vgfx3d_draw_cmd_t *cmd) {
     if (!ctx || !cmd || !cmd->bone_palette || cmd->bone_count <= 0)
         return;
@@ -2435,6 +2633,12 @@ static void upload_active_bone_palettes(gl_context_t *ctx, const vgfx3d_draw_cmd
     }
 }
 
+/// @brief Allocate (if needed) a TBO + buffer pair and upload morph data.
+///
+/// Texture-buffer objects (TBO) let the vertex shader sample large
+/// morph-target arrays via the texture-fetch path — no UBO size limits.
+/// Format is `R32F` so each delta is one float; XYZ triples consume
+/// three texels.
 static int gl_upload_morph_payload_texture(GLuint *buffer,
                                            GLuint *tbo,
                                            const float *payload,
@@ -2454,6 +2658,11 @@ static int gl_upload_morph_payload_texture(GLuint *buffer,
     return 1;
 }
 
+/// @brief Streaming variant of `gl_upload_morph_payload_texture` (orphan-then-update).
+///
+/// Used for non-cached (per-frame-changing) morph payloads. Geometric
+/// resize of the underlying buffer; orphans existing storage so the
+/// driver doesn't stall.
 static int gl_upload_transient_morph_payload(gl_context_t *ctx,
                                              GLuint buffer,
                                              GLuint tbo,
@@ -2472,6 +2681,11 @@ static int gl_upload_transient_morph_payload(gl_context_t *ctx,
     return 1;
 }
 
+/// @brief Find or allocate a morph-cache slot for the given draw command.
+///
+/// Cache hit → bump LRU and return. Miss with room → claim a fresh slot.
+/// Miss without room → evict the LRU entry. Returns NULL when the
+/// command isn't cacheable (no key or zero revision).
 static gl_morph_cache_entry_t *gl_get_cached_morph_entry(gl_context_t *ctx,
                                                          const vgfx3d_draw_cmd_t *cmd,
                                                          int32_t morph_count) {
@@ -2549,6 +2763,13 @@ static gl_morph_cache_entry_t *gl_get_cached_morph_entry(gl_context_t *ctx,
     return slot;
 }
 
+/// @brief Push skinning + morph state into the program.
+///
+/// Bone palette → UBO. Morph weights → uniform float array. Morph
+/// deltas → TBOs bound to texture units 10/11. Cached entries take
+/// the fast path; transient morph data goes through the streaming
+/// path. Uniform values fall back to safe zeros when arrays aren't
+/// available so the shader's `if (morphShapeCount > 0)` short-circuits.
 static void bind_morph_payload(gl_context_t *ctx,
                                const vgfx3d_draw_cmd_t *cmd,
                                GLint uHasSkinning,
@@ -2627,6 +2848,12 @@ static void bind_morph_payload(gl_context_t *ctx,
     gl.ActiveTexture(GL_TEXTURE0);
 }
 
+/// @brief Activate texture unit `unit`, bind `texture`, and tell the program about it.
+///
+/// One-stop helper that handles the GL "select active unit, then
+/// bind, then push the unit number to the sampler uniform" dance.
+/// Skips the uniform write when the location is invalid (-1) — that
+/// happens when the shader doesn't reference the sampler.
 static void bind_texture_unit(GLint uniform_loc, int unit, GLenum target, GLuint texture) {
     gl.ActiveTexture(GL_TEXTURE0 + (GLenum)unit);
     gl.BindTexture(target, texture);
@@ -2634,6 +2861,11 @@ static void bind_texture_unit(GLint uniform_loc, int unit, GLenum target, GLuint
         gl.Uniform1i(uniform_loc, unit);
 }
 
+/// @brief Push up to 8 lights' uniforms to the program.
+///
+/// Uniforms are arrays-of-uniforms (one location per light index)
+/// rather than a UBO — simpler to set up and small enough not to
+/// matter performance-wise.
 static void upload_light_uniforms(gl_context_t *ctx,
                                   const vgfx3d_light_params_t *lights,
                                   int32_t light_count) {
@@ -2657,6 +2889,13 @@ static void upload_light_uniforms(gl_context_t *ctx,
     }
 }
 
+/// @brief Push every per-draw uniform the main program needs.
+///
+/// Bundles: matrices (model + prev model + VP + prev VP + normal +
+/// shadow VP), camera + ambient, all material colors / scalars / flags,
+/// PBR scalars, custom params, fog, shadow toggles, light array, and
+/// the morph + skinning state. Effectively the GL counterpart of the
+/// D3D11 backend's per-object/per-scene/per-material cbuffer fills.
 static void upload_main_uniforms(gl_context_t *ctx,
                                  const vgfx3d_draw_cmd_t *cmd,
                                  const vgfx3d_light_params_t *lights,
@@ -2729,6 +2968,13 @@ static void upload_main_uniforms(gl_context_t *ctx,
                        ctx->uMorphNormalDeltas);
 }
 
+/// @brief Resolve every cmd texture from the cache and bind to its sampler unit.
+///
+/// Slot map: 0=diffuse, 1=normal, 2=specular, 3=emissive, 4=shadow,
+/// 5=splat-control, 6-9=splat layers, 12=env cubemap, 14=metallic-
+/// rough, 15=AO. Slots 10/11 are reserved for morph TBOs (set by
+/// `bind_morph_payload`). Each `has*` uniform tells the shader which
+/// slots are populated.
 static void bind_material_textures(gl_context_t *ctx, const vgfx3d_draw_cmd_t *cmd) {
     GLuint diffuse_tex = cmd->texture ? gl_get_cached_texture(ctx, cmd->texture) : 0;
     GLuint normal_tex = cmd->normal_map ? gl_get_cached_texture(ctx, cmd->normal_map) : 0;
@@ -2782,6 +3028,11 @@ static void bind_material_textures(gl_context_t *ctx, const vgfx3d_draw_cmd_t *c
     gl.ActiveTexture(GL_TEXTURE0);
 }
 
+/// @brief Set up animation uniforms for the depth-only shadow program.
+///
+/// Slimmer than the main pass — shadow depth doesn't need normals or
+/// previous-frame morph weights. Reuses `bind_morph_payload` with -1
+/// for the unused locations so it skips those uniform writes.
 static void bind_shadow_anim(gl_context_t *ctx, const vgfx3d_draw_cmd_t *cmd) {
     gl.Uniform1i(ctx->shadow_uHasSkinning,
                  (cmd->bone_palette && cmd->bone_count > 0 && cmd->bone_count <= 128) ? 1 : 0);
@@ -2806,12 +3057,25 @@ static void bind_shadow_anim(gl_context_t *ctx, const vgfx3d_draw_cmd_t *cmd) {
                        -1);
 }
 
+/// @brief Composite the offscreen scene to the swapchain backbuffer.
+///
+/// Convenience wrapper around `gl_draw_scene_texture_to_target` that
+/// targets FBO 0 (default framebuffer / swapchain).
 static void draw_scene_texture(gl_context_t *ctx, const vgfx3d_postfx_snapshot_t *snapshot) {
     if (!ctx)
         return;
     gl_draw_scene_texture_to_target(ctx, 0, GL_BACK, ctx->width, ctx->height, snapshot);
 }
 
+/// @brief Internal skybox draw — full cube with rotation-only view matrix.
+///
+/// Steps:
+///   1. Resolve cubemap from cache.
+///   2. Strip translation from the view matrix (skybox tracks rotation
+///      only — gives the "infinite distance" effect).
+///   3. Switch to skybox program, depth-LEQUAL with no depth writes,
+///      no culling, draw the 36-vertex cube.
+///   4. Restore main program/state for subsequent draws.
 static void gl_draw_skybox_impl(gl_context_t *ctx, const rt_cubemap3d *cubemap) {
     if (!ctx || !cubemap || !ctx->skybox_program)
         return;
@@ -2851,6 +3115,13 @@ static void gl_draw_skybox_impl(gl_context_t *ctx, const rt_cubemap3d *cubemap) 
         bind_main_framebuffer(ctx);
 }
 
+/// @brief Resolve every uniform location in the main program.
+///
+/// Called once at context-create time. Uses the `U(name)` macro to
+/// keep the boilerplate compact. Per-light array uniforms are queried
+/// individually with `snprintf`-built names like `uLightPos[3]`.
+/// Locations of -1 (uniform doesn't exist or was optimized out) are
+/// fine — the per-frame `glUniform*` calls handle them gracefully.
 static void query_main_uniforms(gl_context_t *ctx) {
 #define U(name) ctx->name = gl.GetUniformLocation(ctx->program, #name)
     U(uModelMatrix);
@@ -2937,6 +3208,7 @@ static void query_main_uniforms(gl_context_t *ctx) {
     }
 }
 
+/// @brief Resolve uniform locations for the depth-only shadow program.
 static void query_shadow_uniforms(gl_context_t *ctx) {
     ctx->shadow_uModelMatrix = gl.GetUniformLocation(ctx->shadow_program, "uModelMatrix");
     ctx->shadow_uViewProjection = gl.GetUniformLocation(ctx->shadow_program, "uViewProjection");
@@ -2947,12 +3219,14 @@ static void query_shadow_uniforms(gl_context_t *ctx) {
     ctx->shadow_uMorphDeltas = gl.GetUniformLocation(ctx->shadow_program, "uMorphDeltas");
 }
 
+/// @brief Resolve uniform locations for the cubemap skybox program.
 static void query_skybox_uniforms(gl_context_t *ctx) {
     ctx->skybox_uProjection = gl.GetUniformLocation(ctx->skybox_program, "uProjection");
     ctx->skybox_uViewRotation = gl.GetUniformLocation(ctx->skybox_program, "uViewRotation");
     ctx->skybox_uSkybox = gl.GetUniformLocation(ctx->skybox_program, "uSkybox");
 }
 
+/// @brief Resolve every uniform in the post-FX shader (bloom, tonemap, FXAA, etc.).
 static void query_postfx_uniforms(gl_context_t *ctx) {
     ctx->postfx_uSceneTex = gl.GetUniformLocation(ctx->postfx_program, "uSceneTex");
     ctx->postfx_uSceneDepthTex = gl.GetUniformLocation(ctx->postfx_program, "uSceneDepthTex");
@@ -2993,6 +3267,16 @@ static void query_postfx_uniforms(gl_context_t *ctx) {
         gl.GetUniformLocation(ctx->postfx_program, "uPrevViewProjection");
 }
 
+/// @brief Allocate and initialize the entire OpenGL backend context.
+///
+/// Creates: GLX context (3.3 core profile preferred, fallback to
+/// any), shader programs (main, shadow, skybox, postfx), VAOs +
+/// VBOs (mesh, instance, fullscreen-triangle, skybox cube), bone
+/// UBOs, morph TBOs. Returns NULL on any failure path; caller falls
+/// back to the software backend.
+///
+/// FBConfig selection picks the first config matching the window's
+/// X visual to avoid drawable-incompatibility errors at MakeCurrent.
 static void *gl_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
     static const float kIdentity4x4[16] = {
         1.0f,
@@ -3276,6 +3560,11 @@ static void *gl_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
     return ctx;
 }
 
+/// @brief Tear down the GL backend context — releases everything from `_create_ctx`.
+///
+/// Order matters: caches first (GL objects depend on the context),
+/// then offscreen targets, then the master VAOs/VBOs/UBOs/programs,
+/// finally the GLX context itself.
 static void gl_destroy_ctx(void *ctx_ptr) {
     gl_context_t *ctx = (gl_context_t *)ctx_ptr;
     if (!ctx)
@@ -3334,6 +3623,10 @@ static void gl_destroy_ctx(void *ctx_ptr) {
     free(ctx);
 }
 
+/// @brief Backend `clear` op — store the clear color for use during `BeginFrame`.
+///
+/// We don't actually issue `glClear` here; that happens in
+/// `BeginFrame` so we know the current target/load-state.
 static void gl_clear(void *ctx_ptr, vgfx_window_t win, float r, float g, float b) {
     (void)win;
     gl_context_t *ctx = (gl_context_t *)ctx_ptr;
@@ -3344,6 +3637,19 @@ static void gl_clear(void *ctx_ptr, vgfx_window_t win, float r, float g, float b
     ctx->clearB = b;
 }
 
+/// @brief Backend `begin_frame` — set up matrices, target, frame-history, and clear.
+///
+/// Per-frame setup steps:
+///   1. Bump frame serial; reset shadow-active flag.
+///   2. Detect overlay pass (skips scene composition).
+///   3. Prune all caches (texture / cubemap / morph) to bound residency.
+///   4. Compute VP + inverse VP from camera, capture fog state.
+///   5. Make GLX context current (multi-window apps may have switched).
+///   6. Roll the frame-history (current VP → previous VP, etc.).
+///   7. If transitioning from scene to overlay, composite scene → backbuffer.
+///   8. Choose active target kind, ensure offscreen targets exist.
+///   9. Clear color/depth based on `load_existing_*` flags.
+///  10. Reset blend / depth / cull / poly-mode state for clean draws.
 static void gl_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) {
     gl_context_t *ctx = (gl_context_t *)ctx_ptr;
     vgfx3d_opengl_frame_history_t history;
@@ -3484,10 +3790,19 @@ static void gl_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) {
     gl.BindVertexArray(ctx->vao);
 }
 
+/// @brief Backend `draw_skybox` op — type-cast wrapper over `gl_draw_skybox_impl`.
 static void gl_draw_skybox(void *ctx_ptr, const void *cubemap_ptr) {
     gl_draw_skybox_impl((gl_context_t *)ctx_ptr, (const rt_cubemap3d *)cubemap_ptr);
 }
 
+/// @brief Backend `submit_draw` — emit a single mesh draw call.
+///
+/// Pipeline: backface cull / wireframe / poly-mode setup → mesh
+/// VBO/IBO acquisition (cached or stream) → vertex attribute layout
+/// → uniform upload (matrices, material, lights, fog, anim) →
+/// texture binding → draw config (blend / depth) → `glDrawElements`.
+/// Mark the RTT color dirty if rendering to RTT (so the next sync
+/// readback knows to copy).
 static void gl_submit_draw(void *ctx_ptr,
                            vgfx_window_t win,
                            const vgfx3d_draw_cmd_t *cmd,
@@ -3518,6 +3833,11 @@ static void gl_submit_draw(void *ctx_ptr,
     GL_CHECK();
 }
 
+/// @brief Backend `end_frame` op — mark RTT color as dirty for next sync.
+///
+/// Doesn't immediately read pixels back to the host RT buffer — that
+/// happens lazily in `gl_sync_render_target_color` when the user
+/// queries pixels. Keeps the GL pipeline async for RTT-heavy workloads.
 static void gl_end_frame(void *ctx_ptr) {
     gl_context_t *ctx = (gl_context_t *)ctx_ptr;
     if (!ctx)
@@ -3529,6 +3849,12 @@ static void gl_end_frame(void *ctx_ptr) {
     }
 }
 
+/// @brief Backend `resize` op — handle window-size changes.
+///
+/// Updates dimensions and tears down the offscreen scene + postfx
+/// readback targets so they get rebuilt at the new size on the next
+/// `BeginFrame`. RTT targets aren't touched (they're sized by the
+/// user-provided RT object, not the window).
 static void gl_resize(void *ctx_ptr, int32_t w, int32_t h) {
     gl_context_t *ctx = (gl_context_t *)ctx_ptr;
     if (!ctx || w <= 0 || h <= 0)
@@ -3543,6 +3869,15 @@ static void gl_resize(void *ctx_ptr, int32_t w, int32_t h) {
     }
 }
 
+/// @brief Backend `readback_rgba` op — copy current screen to a host RGBA buffer.
+///
+/// Two paths:
+///   - Postfx readback: when scene is rendered offscreen with postfx
+///     pending, runs the composite shader into a staging FBO and reads
+///     from it. Gives the user the post-FX'd image even though it
+///     hasn't been presented yet.
+///   - Direct readback: pulls from `GL_BACK` of the swapchain.
+/// Always flips Y because GL has bottom-left origin; ours is top-left.
 static int gl_readback_rgba(
     void *ctx_ptr, uint8_t *dst_rgba, int32_t w, int32_t h, int32_t stride) {
     gl_context_t *ctx = (gl_context_t *)ctx_ptr;
@@ -3601,6 +3936,11 @@ static int gl_readback_rgba(
     return 1;
 }
 
+/// @brief Internal present — composite scene to backbuffer (if needed) then SwapBuffers.
+///
+/// Skips the composite when scene was never rendered offscreen (no
+/// postfx). After present, clears the per-frame state flags so the
+/// next frame starts clean.
 static void gl_present_impl(gl_context_t *ctx, const vgfx3d_postfx_snapshot_t *snapshot) {
     int use_postfx;
 
@@ -3616,14 +3956,20 @@ static void gl_present_impl(gl_context_t *ctx, const vgfx3d_postfx_snapshot_t *s
     ctx->scene_composited_to_backbuffer = 0;
 }
 
+/// @brief Backend `present` (no postfx) — direct SwapBuffers via `gl_present_impl`.
 static void gl_present(void *ctx_ptr) {
     gl_present_impl((gl_context_t *)ctx_ptr, NULL);
 }
 
+/// @brief Backend `present_postfx` — present with a post-FX snapshot composited.
 static void gl_present_postfx(void *ctx_ptr, const vgfx3d_postfx_snapshot_t *postfx) {
     gl_present_impl((gl_context_t *)ctx_ptr, postfx);
 }
 
+/// @brief Backend `set_gpu_postfx_enabled` — toggle the offscreen-scene path.
+///
+/// When disabled, also clears any in-flight postfx state so the next
+/// frame doesn't try to composite stale data.
 static void gl_set_gpu_postfx_enabled(void *ctx_ptr, int8_t enabled) {
     gl_context_t *ctx = (gl_context_t *)ctx_ptr;
     if (!ctx)
@@ -3635,6 +3981,11 @@ static void gl_set_gpu_postfx_enabled(void *ctx_ptr, int8_t enabled) {
     }
 }
 
+/// @brief Backend `set_gpu_postfx_snapshot` — store the current postfx parameters.
+///
+/// NULL clears the snapshot (post-FX with no params = bypass). Used
+/// to capture the current postfx state at the begin/end of an
+/// overlay pass so the composite uses the right parameters.
 static void gl_set_gpu_postfx_snapshot(void *ctx_ptr, const vgfx3d_postfx_snapshot_t *postfx) {
     gl_context_t *ctx = (gl_context_t *)ctx_ptr;
     if (!ctx)
@@ -3648,6 +3999,11 @@ static void gl_set_gpu_postfx_snapshot(void *ctx_ptr, const vgfx3d_postfx_snapsh
     ctx->gpu_postfx_snapshot_valid = 1;
 }
 
+/// @brief Backend `set_render_target` op — bind / unbind RTT.
+///
+/// NULL `rt` tears down RTT and reverts to the swapchain. Non-NULL
+/// allocates / re-binds RTT targets sized for `rt`. Clears any
+/// in-flight scene postfx state since RTT bypasses that path.
 static void gl_set_render_target(void *ctx_ptr, vgfx3d_rendertarget_t *rt) {
     gl_context_t *ctx = (gl_context_t *)ctx_ptr;
     if (!ctx)
@@ -3663,6 +4019,11 @@ static void gl_set_render_target(void *ctx_ptr, vgfx3d_rendertarget_t *rt) {
     ensure_rtt_targets(ctx, rt);
 }
 
+/// @brief Backend `shadow_begin` — switch the pipeline to shadow-pass mode.
+///
+/// Allocates the shadow FBO if needed, captures the light-space VP,
+/// binds the depth-only FBO + viewport, clears depth, switches to
+/// the shadow vertex shader (no PS).
 static void gl_shadow_begin(
     void *ctx_ptr, float *depth_buf, int32_t w, int32_t h, const float *light_vp) {
     (void)depth_buf;
@@ -3683,6 +4044,10 @@ static void gl_shadow_begin(
     gl.BindVertexArray(ctx->vao);
 }
 
+/// @brief Backend `shadow_draw` — emit one mesh into the shadow depth buffer.
+///
+/// Slim version of `submit_draw`: model + light-VP + skinning + morph
+/// only. No materials, no lights, no fog.
 static void gl_shadow_draw(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) {
     gl_context_t *ctx = (gl_context_t *)ctx_ptr;
     GLuint mesh_vbo, mesh_ibo;
@@ -3696,6 +4061,12 @@ static void gl_shadow_draw(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) {
     gl.DrawElements(GL_TRIANGLES, (GLsizei)cmd->index_count, GL_UNSIGNED_INT, NULL);
 }
 
+/// @brief Backend `shadow_end` op — exit shadow-pass mode and switch back to main.
+///
+/// Marks `shadow_active=1` so the main pass's `uShadowEnabled` uniform
+/// turns shadow sampling on. Stores the bias the shader uses for
+/// depth comparison. Re-binds the main FBO and main program for
+/// subsequent draws.
 static void gl_shadow_end(void *ctx_ptr, float bias) {
     gl_context_t *ctx = (gl_context_t *)ctx_ptr;
     if (!ctx)
@@ -3706,6 +4077,12 @@ static void gl_shadow_end(void *ctx_ptr, float bias) {
     gl.UseProgram(ctx->program);
 }
 
+/// @brief Backend `submit_draw_instanced` op — emit one `glDrawElementsInstanced`.
+///
+/// Same flow as `gl_submit_draw` plus per-instance matrix attributes
+/// configured via `configure_instance_attributes`. After the draw,
+/// resets the instance attributes to identity so subsequent non-
+/// instanced draws don't accidentally see leftover instance data.
 static void gl_submit_draw_instanced(void *ctx_ptr,
                                      vgfx_window_t win,
                                      const vgfx3d_draw_cmd_t *cmd,

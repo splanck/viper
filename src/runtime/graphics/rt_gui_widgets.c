@@ -677,6 +677,7 @@ void rt_treeview_set_font(void *tree, void *font, double size) {
     }
 }
 
+/// @brief Currently-selected tree node handle (NULL if none / null tree).
 void *rt_treeview_get_selected(void *tree) {
     RT_ASSERT_MAIN_THREAD();
     if (!tree)
@@ -748,6 +749,13 @@ int64_t rt_treeview_node_is_expanded(void *node) {
 }
 
 #else /* !VIPER_ENABLE_GRAPHICS */
+
+// ===========================================================================
+// Headless stubs — same prototypes as the real implementations above so
+// non-graphical builds (server / CLI / ViperDOS) link without pulling in
+// the GUI subsystem. Each stub no-ops or returns a sentinel; doc comments
+// inherit from the real impls above by virtue of identical names.
+// ===========================================================================
 
 void *rt_font_load(rt_string path) {
     (void)path;

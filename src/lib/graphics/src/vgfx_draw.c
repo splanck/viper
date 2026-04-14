@@ -680,12 +680,12 @@ void vgfx_set_clip(vgfx_window_t window, int32_t x, int32_t y, int32_t w, int32_
         return;
 
     /* Scale clip rect to physical pixels when coord_scale is active */
-    float cs = win->coord_scale;
+    float cs = vgfx_internal_coord_scale(win);
     if (cs > 1.0f) {
-        x = (int32_t)(x * cs);
-        y = (int32_t)(y * cs);
-        w = (int32_t)(w * cs);
-        h = (int32_t)(h * cs);
+        x = vgfx_internal_scale_up_i32(x, cs);
+        y = vgfx_internal_scale_up_i32(y, cs);
+        w = vgfx_internal_scale_up_i32(w, cs);
+        h = vgfx_internal_scale_up_i32(h, cs);
     }
 
     win->clip_x = x;

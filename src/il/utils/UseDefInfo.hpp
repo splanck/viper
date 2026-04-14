@@ -29,29 +29,36 @@ struct Instr;
 
 namespace viper::il {
 
-/// @brief Tracks use locations for SSA temporaries to enable O(1) replacement.
-/// @details Instead of scanning all instructions to replace uses of a temporary,
-///          this class pre-computes the locations of all uses. Replacement then
-///          only visits actual use sites, reducing O(n) scans to O(uses).
+/// @brief Tracks temporary use counts and provides safe value replacement.
+/// @details The original implementation cached raw operand pointers so
+///          replacements could touch only direct use sites. That strategy is
+///          not safe for Viper IL because most optimization passes mutate
+///          `BasicBlock::instructions` vectors in place, invalidating cached
+///          addresses after insert/erase operations. The current implementation
+///          keeps a pointer to the owning function, maintains best-effort use
+///          counts, and performs replacement via a fresh function scan so the
+///          API remains safe under normal optimizer mutation patterns.
 ///
 /// Usage:
 /// @code
-///   UseDefInfo info(F);  // Build use-def chains for function F
-///   info.replaceAllUses(tempId, newValue);  // O(uses) instead of O(instructions)
+///   UseDefInfo info(F);  // Build initial use counts for function F
+///   info.replaceAllUses(tempId, newValue);  // safe on mutable IL
 /// @endcode
 ///
 /// @warning The use-def info becomes stale if instructions are added, removed,
-///          or have their operands modified through other means. Rebuild after
-///          such modifications.
+///          or have their operands modified through other means. The
+///          replacement API rescans the function and rebuilds counts, but
+///          `hasUses()` / `useCount()` only reflect the latest state observed
+///          by this object.
 class UseDefInfo {
   public:
-    /// @brief Construct use-def chains for all temporaries in function @p F.
+    /// @brief Construct initial use counts for all temporaries in function @p F.
     /// @param F Function to analyze.
     explicit UseDefInfo(::il::core::Function &F);
 
     /// @brief Replace all uses of temporary @p tempId with @p replacement.
-    /// @details Only visits actual use sites, providing O(uses) complexity
-    ///          instead of O(instructions) for full function scans.
+    /// @details Performs a safe full-function rewrite and then rebuilds the
+    ///          cached use counts from the mutated function.
     /// @param tempId Temporary identifier to replace.
     /// @param replacement New value to substitute.
     /// @return Number of uses replaced.
@@ -68,13 +75,13 @@ class UseDefInfo {
     [[nodiscard]] std::size_t useCount(unsigned tempId) const;
 
   private:
-    /// @brief Pointer to a Value that can be updated in place.
-    using UsePtr = ::il::core::Value *;
+    /// @brief Owning function whose operands are queried or rewritten.
+    ::il::core::Function *function_{nullptr};
 
-    /// @brief Map from temporary ID to list of use pointers.
-    std::unordered_map<unsigned, std::vector<UsePtr>> uses_;
+    /// @brief Map from temporary ID to observed use count.
+    std::unordered_map<unsigned, std::size_t> useCounts_;
 
-    /// @brief Scan a function and populate the use map.
+    /// @brief Scan a function and populate the use-count map.
     void build(::il::core::Function &F);
 
     /// @brief Record a use if the value is a temporary.

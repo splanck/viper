@@ -24,8 +24,8 @@
 //     via an atomic-checked fast path for zero overhead.
 //
 // Ownership/Lifetime:
-//   - Registered class_info and interface metadata are globally allocated and
-//     never freed (registry lives for the process lifetime).
+//   - Registered metadata lives inside the active runtime context and is
+//     released by rt_type_registry_cleanup().
 //   - Vtable and itable arrays are caller-owned static data; the registry
 //     stores pointers without copying.
 //
@@ -134,6 +134,19 @@ static void tr_wrunlock(RtTypeRegistryState *st) {
 #endif
 }
 
+static int tr_reject_if_sealed_locked(RtTypeRegistryState *st) {
+    if (st && __atomic_load_n(&st->sealed, __ATOMIC_ACQUIRE)) {
+        tr_wrunlock(st);
+        rt_trap("rt_type_registry: cannot register after registry is sealed");
+        return 1;
+    }
+    return 0;
+}
+
+static void tr_free_owned_cstr(const char *text) {
+    free((void *)(uintptr_t)text);
+}
+
 // ============================================================================
 // Internal Data Structures
 // ============================================================================
@@ -150,6 +163,7 @@ typedef struct {
     const rt_class_info *ci; ///< Class metadata (vtable, name, base).
     int base_type_id;        ///< Base class ID, or -1 for root classes.
     int owned_ci;            ///< Non-zero if ci should be freed on cleanup.
+    int owned_qname;         ///< Non-zero if ci->qname should be freed on cleanup.
 } class_entry;
 
 /// @brief Entry in the interface registry tracking one registered interface.
@@ -159,6 +173,7 @@ typedef struct {
 typedef struct {
     int iface_id;     ///< Unique interface identifier.
     rt_iface_reg reg; ///< Interface registration info (name, slot count).
+    int owned_qname;  ///< Non-zero if reg.qname should be freed on cleanup.
 } iface_entry;
 
 /// @brief Entry in the bindings table associating a class with an interface.
@@ -319,7 +334,7 @@ static void **find_binding(int type_id, int iface_id) {
     return NULL;
 }
 
-static void rt_register_class_entry(const rt_class_info *ci, int owned_ci) {
+static void rt_register_class_entry(const rt_class_info *ci, int owned_ci, int owned_qname) {
     if (!ci)
         return;
     size_t *plen = NULL, *pcap = NULL;
@@ -333,7 +348,7 @@ static void rt_register_class_entry(const rt_class_info *ci, int owned_ci) {
     int base_type_id = -1;
     if (ci->base)
         base_type_id = ci->base->type_id;
-    arr[(*plen)++] = (class_entry){ci->type_id, ci, base_type_id, owned_ci};
+    arr[(*plen)++] = (class_entry){ci->type_id, ci, base_type_id, owned_ci, owned_qname};
 }
 
 /// @brief Register a class metadata descriptor with the active VM registry.
@@ -350,37 +365,55 @@ void rt_register_class(const rt_class_info *ci) {
     }
     if (st)
         tr_wrlock(st);
-    rt_register_class_entry(ci, 0);
+    if (tr_reject_if_sealed_locked(st))
+        return;
+    rt_register_class_entry(ci, 0, 0);
     if (st)
         tr_wrunlock(st);
 }
 
 /// @brief Register an interface descriptor with the active VM registry.
 /// @param iface Interface registration record (id, name, slot count).
-void rt_register_interface(const rt_iface_reg *iface) {
+static void rt_register_interface_entry(const rt_iface_reg *iface, int owned_qname) {
     if (!iface)
         return;
     RtTypeRegistryState *st = rt_tr_state();
     if (st && __atomic_load_n(&st->sealed, __ATOMIC_ACQUIRE)) {
+        if (owned_qname && iface->qname)
+            tr_free_owned_cstr(iface->qname);
         rt_trap("rt_type_registry: cannot register after registry is sealed");
         return;
     }
     if (st)
         tr_wrlock(st);
+    if (tr_reject_if_sealed_locked(st)) {
+        if (owned_qname && iface->qname)
+            tr_free_owned_cstr(iface->qname);
+        return;
+    }
     size_t *plen = NULL, *pcap = NULL;
     iface_entry *arr = get_ifaces(&plen, &pcap);
     if (!arr && (!plen || !pcap)) {
         if (st)
             tr_wrunlock(st);
+        if (owned_qname && iface->qname)
+            tr_free_owned_cstr(iface->qname);
         return;
     }
     if (*plen == *pcap) {
         ensure_cap((void **)&arr, pcap, sizeof(iface_entry));
         set_ifaces(arr);
     }
-    arr[(*plen)++] = (iface_entry){iface->iface_id, *iface};
+    arr[(*plen)++] = (iface_entry){iface->iface_id, *iface, owned_qname};
     if (st)
         tr_wrunlock(st);
+}
+
+/// @brief Register an interface descriptor in the global registry. Caller-owned constant
+/// `rt_iface_reg` (typically static in generated code). Required before any class can claim
+/// to implement the interface via `_bind_interface`.
+void rt_register_interface(const rt_iface_reg *iface) {
+    rt_register_interface_entry(iface, 0);
 }
 
 /// @brief Bind an interface method table to a class type id.
@@ -400,6 +433,8 @@ void rt_bind_interface(int type_id, int iface_id, void **itable_slots) {
     }
     if (st)
         tr_wrlock(st);
+    if (tr_reject_if_sealed_locked(st))
+        return;
     (void)find_iface; // suppress unused if not queried
     size_t *plen = NULL, *pcap = NULL;
     binding_entry *arr = get_bindings(&plen, &pcap);
@@ -600,13 +635,14 @@ void rt_register_interface_direct(int iface_id, const char *qname, int slot_coun
     (void)qname;
     (void)slot_count; // stored in reg; currently unused by runtime
     rt_iface_reg r = {iface_id, qname, slot_count};
-    rt_register_interface(&r);
+    rt_register_interface_entry(&r, 0);
 }
 
 /// @brief Runtime-string bridge for @ref rt_register_interface_direct.
 void rt_register_interface_direct_rs(int64_t iface_id, rt_string qname, int64_t slot_count) {
-    const char *name = qname ? rt_string_cstr(qname) : NULL;
-    rt_register_interface_direct((int)iface_id, name, (int)slot_count);
+    const char *name = qname ? strdup(rt_string_cstr(qname)) : NULL;
+    rt_iface_reg r = {(int)iface_id, name, (int)slot_count};
+    rt_register_interface_entry(&r, 1);
 }
 
 /// @brief Resolve a class descriptor from a vtable pointer.
@@ -630,17 +666,35 @@ const rt_class_info *rt_get_class_info_from_vptr(void **vptr) {
 /// @param qname        Qualified class name (borrowed).
 /// @param vslot_count  Number of entries in the vtable.
 /// @param base_type_id Base class id or -1 when none.
-void rt_register_class_with_base(
-    int type_id, void **vtable, const char *qname, int vslot_count, int base_type_id) {
-    if (!vtable)
+static void rt_register_class_with_base_impl(
+    int type_id, void **vtable, const char *qname, int vslot_count, int base_type_id, int owned_qname) {
+    if (!vtable) {
+        if (owned_qname && qname)
+            tr_free_owned_cstr(qname);
         return;
+    }
     RtTypeRegistryState *st = rt_tr_state();
     if (st && __atomic_load_n(&st->sealed, __ATOMIC_ACQUIRE)) {
+        if (owned_qname && qname)
+            tr_free_owned_cstr(qname);
         rt_trap("rt_type_registry: cannot register after registry is sealed");
         return;
     }
+
+    if (st)
+        tr_wrlock(st);
+    if (tr_reject_if_sealed_locked(st)) {
+        if (owned_qname && qname)
+            tr_free_owned_cstr(qname);
+        return;
+    }
+
     rt_class_info *ci = (rt_class_info *)malloc(sizeof(rt_class_info));
     if (!ci) {
+        if (st)
+            tr_wrunlock(st);
+        if (owned_qname && qname)
+            tr_free_owned_cstr(qname);
         rt_trap("rt_type_registry: class meta alloc failed");
         return;
     }
@@ -648,9 +702,6 @@ void rt_register_class_with_base(
     ci->qname = qname;
     ci->vtable = vtable;
     ci->vtable_len = (uint32_t)(vslot_count < 0 ? 0 : vslot_count);
-
-    if (st)
-        tr_wrlock(st);
 
     // Wire base class pointer by looking up base_type_id in the registry.
     // The base class must be registered before derived classes for this to work.
@@ -661,16 +712,24 @@ void rt_register_class_with_base(
             ci->base = base_entry->ci;
     }
 
-    rt_register_class_entry(ci, 1);
+    rt_register_class_entry(ci, 1, owned_qname);
 
     if (st)
         tr_wrunlock(st);
 }
 
+/// @brief Register a class with explicit base-class wiring. `base_type_id == -1` for root
+/// classes. The qname string is borrowed (caller-owned static string); use `_rs` variants for
+/// rt_string-based registration that copies internally.
+void rt_register_class_with_base(
+    int type_id, void **vtable, const char *qname, int vslot_count, int base_type_id) {
+    rt_register_class_with_base_impl(type_id, vtable, qname, vslot_count, base_type_id, 0);
+}
+
 /// @brief Convenience wrapper to register a root class (no base).
 void rt_register_class_direct(int type_id, void **vtable, const char *qname, int vslot_count) {
     // Delegate to the base-aware version with no base class.
-    rt_register_class_with_base(type_id, vtable, qname, vslot_count, -1);
+    rt_register_class_with_base_impl(type_id, vtable, qname, vslot_count, -1, 0);
 }
 
 /// @brief Fetch the vtable pointer array for a registered class id.
@@ -691,7 +750,7 @@ void **rt_get_class_vtable(int type_id) {
 void rt_register_class_direct_rs(int type_id, void **vtable, rt_string qname, int64_t vslot_count) {
     // strdup the name to avoid dangling pointer if the rt_string is freed
     const char *name = qname ? strdup(rt_string_cstr(qname)) : NULL;
-    rt_register_class_direct(type_id, vtable, name, (int)vslot_count);
+    rt_register_class_with_base_impl(type_id, vtable, name, (int)vslot_count, -1, 1);
 }
 
 // Runtime bridge wrapper: accept runtime string for qname with base class
@@ -700,7 +759,7 @@ void rt_register_class_with_base_rs(
     int type_id, void **vtable, rt_string qname, int64_t vslot_count, int64_t base_type_id) {
     // strdup the name to avoid dangling pointer if the rt_string is freed
     const char *name = qname ? strdup(rt_string_cstr(qname)) : NULL;
-    rt_register_class_with_base(type_id, vtable, name, (int)vslot_count, (int)base_type_id);
+    rt_register_class_with_base_impl(type_id, vtable, name, (int)vslot_count, (int)base_type_id, 1);
 }
 
 /// @brief Register an interface implementation for a class (IL-friendly wrapper).
@@ -763,12 +822,16 @@ void rt_type_registry_init(RtContext *ctx) {
 /// - Read operations bypass the rwlock entirely (zero overhead).
 /// - Write operations (registration) will trap with an error.
 ///
-/// @thread-safety Safe to call from any thread; uses atomic release store.
+/// @thread-safety Safe to call from any thread; sealing is performed while the
+///                registry write lock is held so no writer can race the
+///                lock-free read transition.
 void rt_type_registry_seal(void) {
     RtTypeRegistryState *st = rt_tr_state();
     if (!st)
         return;
+    tr_wrlock(st);
     __atomic_store_n(&st->sealed, 1, __ATOMIC_RELEASE);
+    tr_wrunlock(st);
 }
 
 /// @brief Clean up type registry resources for a context.
@@ -796,16 +859,29 @@ void rt_type_registry_cleanup(RtContext *ctx) {
     size_t len = ctx->type_registry.classes_len;
     if (classes) {
         for (size_t i = 0; i < len; ++i) {
+            if (classes[i].owned_qname && classes[i].ci && classes[i].ci->qname)
+                tr_free_owned_cstr(classes[i].ci->qname);
             if (classes[i].owned_ci && classes[i].ci)
                 free((void *)(uintptr_t)classes[i].ci);
             classes[i].ci = NULL;
             classes[i].owned_ci = 0;
+            classes[i].owned_qname = 0;
             classes[i].type_id = 0;
             classes[i].base_type_id = -1;
         }
     }
 
     free(ctx->type_registry.classes);
+    iface_entry *ifaces = (iface_entry *)ctx->type_registry.ifaces;
+    size_t ifaces_len = ctx->type_registry.ifaces_len;
+    if (ifaces) {
+        for (size_t i = 0; i < ifaces_len; ++i) {
+            if (ifaces[i].owned_qname && ifaces[i].reg.qname)
+                tr_free_owned_cstr(ifaces[i].reg.qname);
+            ifaces[i].reg.qname = NULL;
+            ifaces[i].owned_qname = 0;
+        }
+    }
     free(ctx->type_registry.ifaces);
     free(ctx->type_registry.bindings);
 

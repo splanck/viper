@@ -78,6 +78,10 @@ static void navmesh3d_finalizer(void *obj) {
     nm->triangles = NULL;
 }
 
+/// @brief Bake a navigation mesh from a triangle mesh. Filters out triangles whose normal
+/// exceeds the default 45° slope (re-configurable via `_set_max_slope`). Stores agent radius/
+/// height for later edge-pull-in safety. Returns the navmesh handle, or NULL on alloc failure
+/// / degenerate input mesh.
 void *rt_navmesh3d_build(void *mesh_obj, double agent_radius, double agent_height) {
     if (!mesh_obj)
         return NULL;
@@ -313,6 +317,9 @@ static float centroid_dist(const rt_navmesh3d *nm, int32_t a, int32_t b) {
     return sqrtf(dx * dx + dy * dy + dz * dz);
 }
 
+/// @brief Internal: compute the path from `from_v` to `to_v` and copy the waypoints into a
+/// freshly malloc'd `*out_points_xyz` (interleaved x,y,z). Returns the point count, or 0 on
+/// failure. Caller frees `*out_points_xyz`.
 int64_t rt_navmesh3d_copy_path_points(void *obj, void *from_v, void *to_v, double **out_points_xyz) {
     double *points = NULL;
     int64_t point_count = 0;
@@ -498,6 +505,9 @@ int64_t rt_navmesh3d_copy_path_points(void *obj, void *from_v, void *to_v, doubl
     return point_count;
 }
 
+/// @brief Compute a path from `from_v` to `to_v` (both Vec3 world-space points). Returns a
+/// Seq of Vec3 waypoints, including endpoints. Empty Seq if either endpoint is off-mesh or
+/// no connecting path exists.
 void *rt_navmesh3d_find_path(void *obj, void *from_v, void *to_v) {
     double *points = NULL;
     int64_t point_count = rt_navmesh3d_copy_path_points(obj, from_v, to_v, &points);
@@ -517,6 +527,9 @@ void *rt_navmesh3d_find_path(void *obj, void *from_v, void *to_v) {
     return path;
 }
 
+/// @brief Snap `point` (Vec3) onto the nearest navmesh triangle and return the projected
+/// world-space position. Useful for pinning agent positions to walkable surface after
+/// teleports. Returns the input unchanged if no triangle is found nearby.
 void *rt_navmesh3d_sample_position(void *obj, void *point) {
     if (!obj || !point)
         return rt_vec3_new(0, 0, 0);
@@ -545,6 +558,7 @@ void *rt_navmesh3d_sample_position(void *obj, void *point) {
     return rt_vec3_new(c[0], c[1], c[2]);
 }
 
+/// @brief Returns 1 if `point` (Vec3) lies within (or near) any walkable triangle.
 int8_t rt_navmesh3d_is_walkable(void *obj, void *point) {
     if (!obj || !point)
         return 0;
@@ -553,15 +567,21 @@ int8_t rt_navmesh3d_is_walkable(void *obj, void *point) {
     return find_tri(nm, px, py, pz) >= 0 ? 1 : 0;
 }
 
+/// @brief Number of walkable triangles in the baked navmesh.
 int64_t rt_navmesh3d_get_triangle_count(void *obj) {
     return obj ? ((rt_navmesh3d *)obj)->triangle_count : 0;
 }
 
+/// @brief Set the maximum slope angle (in degrees) considered walkable. Steeper triangles are
+/// excluded from path queries. Note: only takes effect on the *next* `_build` (this navmesh's
+/// triangle filter has already been applied).
 void rt_navmesh3d_set_max_slope(void *obj, double degrees) {
     if (obj)
         ((rt_navmesh3d *)obj)->max_slope = degrees;
 }
 
+/// @brief Render the navmesh as wireframe / outlined triangles to a Canvas3D for debugging.
+/// Useful for visualizing what's actually walkable vs. blocked.
 void rt_navmesh3d_debug_draw(void *obj, void *canvas) {
     if (!obj || !canvas)
         return;

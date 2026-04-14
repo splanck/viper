@@ -123,16 +123,27 @@ typedef struct {
     int is_64bit; /* version >= 7500 */
 } fbx_reader_t;
 
+// ---------------------------------------------------------------------------
+// FBX is little-endian; v >= 7500 promotes lengths/offsets to 64-bit
+// (`is_64bit` flag). All reader helpers below silently clamp on
+// short reads (returning zero) so the higher-level parser can keep
+// going and report a single error at the end rather than crashing
+// on the first malformed tag.
+// ---------------------------------------------------------------------------
+
+/// @brief True if the cursor has consumed the entire input.
 static int fbx_eof(const fbx_reader_t *r) {
     return r->pos >= r->len;
 }
 
+/// @brief Read one unsigned byte; returns 0 at EOF.
 static uint8_t fbx_u8(fbx_reader_t *r) {
     if (r->pos + 1 > r->len)
         return 0;
     return r->data[r->pos++];
 }
 
+/// @brief Read a little-endian uint16; 0 at short input.
 static uint16_t fbx_u16(fbx_reader_t *r) {
     if (r->pos + 2 > r->len)
         return 0;
@@ -141,6 +152,7 @@ static uint16_t fbx_u16(fbx_reader_t *r) {
     return v;
 }
 
+/// @brief Read a little-endian uint32; 0 at short input.
 static uint32_t fbx_u32(fbx_reader_t *r) {
     if (r->pos + 4 > r->len)
         return 0;
@@ -150,10 +162,12 @@ static uint32_t fbx_u32(fbx_reader_t *r) {
     return v;
 }
 
+/// @brief Read a little-endian int32; 0 at short input.
 static int32_t fbx_i32(fbx_reader_t *r) {
     return (int32_t)fbx_u32(r);
 }
 
+/// @brief Read a little-endian uint64 (composed of two u32 halves).
 static uint64_t fbx_u64(fbx_reader_t *r) {
     if (r->pos + 8 > r->len)
         return 0;
@@ -162,10 +176,12 @@ static uint64_t fbx_u64(fbx_reader_t *r) {
     return lo | (hi << 32);
 }
 
+/// @brief Read a little-endian int64.
 static int64_t fbx_i64(fbx_reader_t *r) {
     return (int64_t)fbx_u64(r);
 }
 
+/// @brief Read an IEEE 754 single-precision float (memcpy bit-pattern; safe for aliasing).
 static float fbx_f32(fbx_reader_t *r) {
     uint32_t bits = fbx_u32(r);
     float f;
@@ -173,6 +189,7 @@ static float fbx_f32(fbx_reader_t *r) {
     return f;
 }
 
+/// @brief Read an IEEE 754 double-precision float.
 static double fbx_f64(fbx_reader_t *r) {
     uint64_t bits = fbx_u64(r);
     double d;
@@ -180,6 +197,7 @@ static double fbx_f64(fbx_reader_t *r) {
     return d;
 }
 
+/// @brief Advance the cursor by `n` bytes, clamping at end-of-buffer.
 static void fbx_skip(fbx_reader_t *r, size_t n) {
     r->pos += n;
     if (r->pos > r->len)
@@ -235,6 +253,13 @@ typedef struct fbx_node {
  * Array decompression (zlib → raw DEFLATE → rt_compress_inflate)
  *=========================================================================*/
 
+/// @brief Inflate a zlib-wrapped FBX array property to raw bytes.
+///
+/// FBX wraps array data in standard zlib (2-byte CMF/FLG header
+/// + DEFLATE payload + 4-byte adler32). We strip the header,
+/// hand the raw DEFLATE to `rt_compress_inflate`, and validate
+/// the result equals `count * elem_size` bytes.
+/// @return Newly-allocated buffer (caller `free`s) or NULL on failure.
 static void *fbx_decompress_array(const uint8_t *data,
                                   uint32_t comp_len,
                                   uint32_t count,
@@ -277,6 +302,17 @@ static void *fbx_decompress_array(const uint8_t *data,
  * Property parsing
  *=========================================================================*/
 
+/// @brief Parse one FBX node property into `*prop`.
+///
+/// FBX property types are encoded as a single ASCII type-byte:
+///   - Y/I/L/F/D — scalar int16/int32/int64/float/double
+///   - C/b      — bool/raw-byte
+///   - S/R      — string / raw byte array
+///   - lowercase i/l/f/d — array (with optional zlib compression)
+/// Arrays carry a (count, encoding, compressed_len) header before
+/// the data; if `encoding == 1` we hand the bytes to
+/// `fbx_decompress_array`.
+/// @return 1 on success, 0 on malformed property / unknown type.
 static int fbx_parse_property(fbx_reader_t *r, fbx_prop_t *prop) {
     if (fbx_eof(r))
         return -1;
@@ -379,6 +415,7 @@ static int fbx_parse_property(fbx_reader_t *r, fbx_prop_t *prop) {
  * Node parsing (recursive)
  *=========================================================================*/
 
+/// @brief Release any heap allocations owned by a property (string/raw/array buffers).
 static void fbx_free_prop(fbx_prop_t *p) {
     switch (p->type) {
         case 'S':
@@ -399,6 +436,7 @@ static void fbx_free_prop(fbx_prop_t *p) {
     }
 }
 
+/// @brief Recursively free an FBX node tree (props + children).
 static void fbx_free_node(fbx_node_t *n) {
     for (int32_t i = 0; i < n->prop_count; i++)
         fbx_free_prop(&n->props[i]);
@@ -408,6 +446,14 @@ static void fbx_free_node(fbx_node_t *n) {
     free(n->children);
 }
 
+/// @brief Parse one FBX node (header + properties + children) at the cursor.
+///
+/// Each node header carries `end_offset`, `prop_count`,
+/// `prop_list_len`, and a name. After consuming the properties we
+/// recurse on child nodes until we reach the sentinel "null record"
+/// (an all-zero header). The `is_64bit` flag widens the offset
+/// fields from 4 to 8 bytes for FBX 7500+.
+/// @return 1 on success, 0 if the buffer is malformed.
 static int fbx_parse_node(fbx_reader_t *r, fbx_node_t *node) {
     memset(node, 0, sizeof(fbx_node_t));
 
@@ -487,6 +533,8 @@ static int fbx_parse_node(fbx_reader_t *r, fbx_node_t *node) {
  * Node tree query helpers
  *=========================================================================*/
 
+/// @brief Linear-search `parent->children` for the first child named `name`.
+/// FBX node trees are small (few hundred nodes) so the O(n) cost is fine.
 static fbx_node_t *fbx_find_child(fbx_node_t *parent, const char *name) {
     for (int32_t i = 0; i < parent->child_count; i++)
         if (strcmp(parent->children[i].name, name) == 0)
@@ -494,6 +542,7 @@ static fbx_node_t *fbx_find_child(fbx_node_t *parent, const char *name) {
     return NULL;
 }
 
+/// @brief Coerce property `idx` of `node` to int64 (handles Y/I/L variants).
 static int64_t fbx_prop_i64(fbx_node_t *node, int idx) {
     if (!node || idx >= node->prop_count)
         return 0;
@@ -512,6 +561,7 @@ static int64_t fbx_prop_i64(fbx_node_t *node, int idx) {
     }
 }
 
+/// @brief Coerce property `idx` of `node` to double (handles F/D variants).
 static double fbx_prop_f64(fbx_node_t *node, int idx) {
     if (!node || idx >= node->prop_count)
         return 0.0;
@@ -523,6 +573,7 @@ static double fbx_prop_f64(fbx_node_t *node, int idx) {
     return 0.0;
 }
 
+/// @brief Borrowed C-string view of property `idx` (S/R type). NULL otherwise.
 static const char *fbx_prop_str(fbx_node_t *node, int idx) {
     if (!node || idx >= node->prop_count)
         return "";
@@ -548,6 +599,12 @@ typedef struct {
     int32_t capacity;
 } fbx_conn_table_t;
 
+/// @brief Walk the `Connections` block and populate the `(child_id, parent_id)` table.
+///
+/// FBX models use a flat object soup where parent/child relations
+/// are encoded as numeric IDs in a separate connections section.
+/// Pre-collecting them lets later passes look up the parent of any
+/// node in O(n) (linear scan — typical scenes have a few hundred connections).
 static void fbx_parse_connections(fbx_node_t *root, fbx_conn_table_t *ct) {
     fbx_node_t *conns_node = fbx_find_child(root, "Connections");
     if (!conns_node)
@@ -583,6 +640,7 @@ static void fbx_parse_connections(fbx_node_t *root, fbx_conn_table_t *ct) {
     }
 }
 
+/// @brief Return the parent ID of `child_id` from the connection table, or 0 if root/missing.
 static int64_t fbx_find_parent(const fbx_conn_table_t *ct, int64_t child_id) {
     for (int32_t i = 0; i < ct->count; i++)
         if (ct->entries[i].child_id == child_id)
@@ -594,6 +652,11 @@ static int64_t fbx_find_parent(const fbx_conn_table_t *ct, int64_t child_id) {
  * Coordinate system detection + correction
  *=========================================================================*/
 
+/// @brief Read `GlobalSettings.UpAxis` from the FBX header; returns 1 for Z-up, 0 for Y-up.
+///
+/// Most FBX exporters use Y-up but Maya / Blender / 3ds Max can
+/// emit Z-up scenes. The extractors apply a coordinate-system swap
+/// when this returns 1 so the scene is normalised to Viper's Y-up convention.
 static int fbx_is_z_up(fbx_node_t *root) {
     fbx_node_t *gs = fbx_find_child(root, "GlobalSettings");
     if (!gs)
@@ -625,6 +688,15 @@ static void fbx_correct_zup(double *x, double *y, double *z) {
  * Geometry extraction
  *=========================================================================*/
 
+/// @brief Convert an FBX `Geometry` node into a Viper `rt_mesh3d_t`.
+///
+/// Decodes the `Vertices` (positions), `PolygonVertexIndex`
+/// (vertex indices, with the last index of each polygon negated
+/// XOR'd with bit 31 to mark polygon end), `LayerElementNormal`,
+/// `LayerElementUV`, and `LayerElementMaterial`. Triangulates n-gons
+/// using fan-triangulation. If `z_up` is set, applies an axis
+/// swap (positions and normals) to convert to Y-up.
+/// @return A new mesh on success, NULL on missing or malformed geometry.
 static void *fbx_extract_geometry(fbx_node_t *geom_node, int z_up) {
     if (!geom_node)
         return NULL;
@@ -783,6 +855,12 @@ static void *fbx_extract_geometry(fbx_node_t *geom_node, int z_up) {
  * Material extraction
  *=========================================================================*/
 
+/// @brief Convert an FBX `Material` node into a Viper `rt_material3d_t`.
+///
+/// Reads `DiffuseColor` and `Shininess` from the property table.
+/// Other PBR attributes (metallic, roughness, normal/AO maps) are
+/// not surfaced here — FBX stores them in extension blocks that
+/// vary by exporter, so we leave them at the material's defaults.
 static void *fbx_extract_material(fbx_node_t *mat_node) {
     if (!mat_node)
         return NULL;
@@ -817,6 +895,13 @@ static void *fbx_extract_material(fbx_node_t *mat_node) {
  * Skeleton extraction
  *=========================================================================*/
 
+/// @brief Build a `rt_skeleton3d_t` from the FBX `Model` nodes of type LimbNode/Limb/Root.
+///
+/// Walks the connection table to determine each bone's parent
+/// (translating bone-IDs to in-skeleton indices), pulls the
+/// `Lcl Translation/Rotation/Scaling` properties for the bind
+/// pose, and computes inverse-bind matrices for skinning.
+/// `z_up` triggers the same axis-swap normalisation as the geometry pass.
 static void *fbx_extract_skeleton(fbx_node_t *root, const fbx_conn_table_t *ct, int z_up) {
     fbx_node_t *objects = fbx_find_child(root, "Objects");
     if (!objects)
@@ -1066,6 +1151,8 @@ static const double *fbx_get_f64_array(fbx_node_t *node, const char *child_name,
     return NULL;
 }
 
+/// @brief Convenience: locate `node->child_name` and return its float-array data + count.
+/// Returns NULL on missing child or non-float-array property.
 static const float *fbx_get_f32_array(fbx_node_t *node, const char *child_name, uint32_t *count) {
     fbx_node_t *child = fbx_find_child(node, child_name);
     if (!child || child->prop_count < 1)
@@ -1078,6 +1165,14 @@ static const float *fbx_get_f32_array(fbx_node_t *node, const char *child_name, 
     return NULL;
 }
 
+/// @brief Walk `AnimationStack` / `AnimationLayer` / `AnimationCurveNode` nodes and build keyframe tracks.
+///
+/// FBX represents each animatable channel (translation X, rotation Y, …)
+/// as a separate `AnimationCurve` containing parallel
+/// `KeyTime`/`KeyValueFloat` arrays. We resolve the curve →
+/// CurveNode → bone connection chain, group the per-channel curves
+/// into per-bone TRS keyframes, and build a Viper `rt_animation3d_t`
+/// per stack. `z_up` applies the same axis swap as elsewhere.
 static void fbx_extract_animations(fbx_node_t *root,
                                    const fbx_conn_table_t *ct,
                                    void *skeleton,
@@ -1282,6 +1377,7 @@ static void fbx_extract_animations(fbx_node_t *root,
  * Top-level FBX loader
  *=========================================================================*/
 
+/// @brief GC finalizer for `rt_fbx_asset` — release every owned mesh / material / skeleton / animation.
 static void rt_fbx_asset_finalize(void *obj) {
     rt_fbx_asset *fbx = (rt_fbx_asset *)obj;
     free(fbx->meshes);

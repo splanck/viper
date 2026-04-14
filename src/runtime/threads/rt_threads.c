@@ -150,6 +150,14 @@ static RtThread *require_thread_win(void *thread, const char *what) {
     return (RtThread *)thread;
 }
 
+/// @brief Windows backend for `rt_thread_start*`.
+///
+/// Allocates an `RtThread` object, captures the active runtime
+/// context (so the new thread inherits it), starts the OS thread
+/// via `CreateThread`, and stows the handle for `join`. If
+/// `retain_arg` is non-zero we GC-retain `arg` so the thread can
+/// access it past the caller's lifetime.
+/// Traps on null entry or `CreateThread` failure.
 static void *rt_thread_start_impl_win(void *entry, void *arg, int8_t retain_arg) {
     if (!entry)
         rt_trap("Thread.Start: null entry");
@@ -199,14 +207,19 @@ static void *rt_thread_start_impl_win(void *entry, void *arg, int8_t retain_arg)
     return t;
 }
 
+/// @brief Public: `Thread.Start(entry, arg)` — start a thread without retaining `arg`.
+/// The caller is responsible for keeping `arg` alive until the thread reads it.
 void *rt_thread_start(void *entry, void *arg) {
     return rt_thread_start_impl_win(entry, arg, 0);
 }
 
+/// @brief Public: start a thread that owns its argument (GC-retains it for the thread's lifetime).
+/// Use this when the caller's reference to `arg` may go out of scope before the thread runs.
 void *rt_thread_start_owned(void *entry, void *arg) {
     return rt_thread_start_impl_win(entry, arg, 1);
 }
 
+/// @brief Block until `thread` finishes executing. Traps if a thread tries to join itself.
 void rt_thread_join(void *thread) {
     RtThread *t = require_thread_win(thread, "Thread.Join: null thread");
     if (!t)
@@ -223,6 +236,7 @@ void rt_thread_join(void *thread) {
     LeaveCriticalSection(&t->cs);
 }
 
+/// @brief Non-blocking join: returns 1 if the thread already finished, 0 if still running.
 int8_t rt_thread_try_join(void *thread) {
     RtThread *t = require_thread_win(thread, "Thread.TryJoin: null thread");
     if (!t)
@@ -241,6 +255,8 @@ int8_t rt_thread_try_join(void *thread) {
     return 1;
 }
 
+/// @brief Bounded join — wait at most `ms` milliseconds. Returns 1 on join, 0 on timeout.
+/// `ms < 0` waits forever (delegates to `rt_thread_join`); `ms == 0` is a try-join.
 int8_t rt_thread_join_for(void *thread, int64_t ms) {
     RtThread *t = require_thread_win(thread, "Thread.JoinFor: null thread");
     if (!t)
@@ -291,6 +307,7 @@ int8_t rt_thread_join_for(void *thread, int64_t ms) {
     return 1;
 }
 
+/// @brief The thread's monotonically-increasing per-process ID (from `next_thread_id_*`).
 int64_t rt_thread_get_id(void *thread) {
     RtThread *t = require_thread_win(thread, "Thread.get_Id: null thread");
     if (!t)
@@ -298,6 +315,7 @@ int64_t rt_thread_get_id(void *thread) {
     return t->id;
 }
 
+/// @brief True if the thread is still running; false once its entry function has returned.
 int8_t rt_thread_get_is_alive(void *thread) {
     RtThread *t = require_thread_win(thread, "Thread.get_IsAlive: null thread");
     if (!t)
@@ -308,6 +326,7 @@ int8_t rt_thread_get_is_alive(void *thread) {
     return (int8_t)alive;
 }
 
+/// @brief Sleep the calling thread for `ms` milliseconds (clamped to [0, INT32_MAX]).
 void rt_thread_sleep(int64_t ms) {
     if (ms < 0)
         ms = 0;
@@ -316,6 +335,7 @@ void rt_thread_sleep(int64_t ms) {
     rt_sleep_ms((int32_t)ms);
 }
 
+/// @brief Hint to the OS that we're willing to yield the CPU (Win32 `SwitchToThread`).
 void rt_thread_yield(void) {
     SwitchToThread();
 }
@@ -326,6 +346,7 @@ void rt_thread_yield(void) {
 #include <sched.h>
 #include <time.h>
 #if defined(__APPLE__)
+/// @brief macOS-specific relative-time condvar wait (declared here when the SDK header omits it).
 extern int pthread_cond_timedwait_relative_np(pthread_cond_t *cond,
                                               pthread_mutex_t *mutex,
                                               const struct timespec *rel_time);
@@ -396,6 +417,7 @@ static int64_t next_thread_id(void) {
     return (int64_t)__atomic_fetch_add(&g_next_thread_id, 1, __ATOMIC_RELAXED);
 }
 
+/// @brief Drop the GC reference held on `t->arg` (only if `t->owns_arg` was set on start).
 static void rt_thread_release_owned_arg(RtThread *t) {
     if (!t || !t->owns_arg || !t->arg)
         return;
@@ -405,6 +427,12 @@ static void rt_thread_release_owned_arg(RtThread *t) {
     t->owns_arg = 0;
 }
 
+/// @brief Initialise a pthread condvar, preferring `CLOCK_MONOTONIC` if available.
+///
+/// `pthread_cond_timedwait` is normally tied to `CLOCK_REALTIME`,
+/// which can jump around (NTP, manual changes). Setting the
+/// monotonic clock attribute makes timed waits robust to wall-clock changes.
+/// Sets `*uses_monotonic` to 1 if monotonic worked, 0 otherwise.
 static int thread_cond_init(pthread_cond_t *cond, int8_t *uses_monotonic) {
     if (uses_monotonic)
         *uses_monotonic = 0;
@@ -438,6 +466,7 @@ typedef struct {
     struct timespec deadline;
 } thread_deadline_t;
 
+/// @brief Read the current `timespec` from the monotonic or realtime clock based on `use_monotonic`.
 static struct timespec thread_now_clock(int8_t use_monotonic) {
     struct timespec ts;
     memset(&ts, 0, sizeof(ts));
@@ -449,6 +478,7 @@ static struct timespec thread_now_clock(int8_t use_monotonic) {
     return ts;
 }
 
+/// @brief Compute an absolute deadline `ms` milliseconds from now (used by `pthread_cond_timedwait`).
 static thread_deadline_t thread_deadline_from_now(int64_t ms, int8_t use_monotonic) {
     thread_deadline_t d;
     d.deadline = thread_now_clock(use_monotonic);
@@ -469,6 +499,7 @@ static thread_deadline_t thread_deadline_from_now(int64_t ms, int8_t use_monoton
 }
 
 #if defined(__APPLE__)
+/// @brief Milliseconds remaining until `deadline` (negative if already past).
 static int64_t thread_remaining_ms(thread_deadline_t deadline, int8_t use_monotonic) {
     struct timespec now = thread_now_clock(use_monotonic);
     int64_t sec = (int64_t)deadline.deadline.tv_sec - (int64_t)now.tv_sec;
@@ -483,6 +514,12 @@ static int64_t thread_remaining_ms(thread_deadline_t deadline, int8_t use_monoto
 }
 #endif
 
+/// @brief Wait on `cond` (with `mutex` held) until `deadline` or signal.
+///
+/// Picks the right pthread call: `pthread_cond_timedwait` with the
+/// monotonic clock when supported, or
+/// `pthread_cond_timedwait_relative_np` on macOS as a fallback.
+/// @return 0 on signal, ETIMEDOUT on deadline, other errno on failure.
 static int thread_cond_timedwait_deadline(pthread_cond_t *cond,
                                           pthread_mutex_t *mutex,
                                           thread_deadline_t deadline,
@@ -515,6 +552,18 @@ static void rt_thread_finalize(void *obj) {
     (void)pthread_cond_destroy(&t->cv);
 }
 
+/// @brief pthread entry function — installs the inherited runtime context, runs the user entry, then signals join-waiters.
+///
+/// All threads created by `rt_thread_start*` go through this
+/// shim so they automatically:
+///   1. Install the parent's `RtContext` (so the GC, traps, and
+///      thread-local state behave consistently).
+///   2. Catch traps via `rt_trap_set_recovery` so an uncaught
+///      trap in the entry function exits the thread cleanly
+///      rather than crashing the whole process.
+///   3. Mark the `RtThread` as `finished` and broadcast on the
+///      join condvar so blocking `Thread.Join` returns.
+///   4. Drop the self-reference taken in `rt_thread_start_impl`.
 static void *rt_thread_trampoline(void *p) {
     RtThread *t = (RtThread *)p;
     if (t && t->inherited_ctx)
@@ -639,10 +688,12 @@ static void *rt_thread_start_impl(void *entry, void *arg, int8_t retain_arg) {
     return t;
 }
 
+/// @brief POSIX `Thread.Start` — see Win32 version above for semantics.
 void *rt_thread_start(void *entry, void *arg) {
     return rt_thread_start_impl(entry, arg, 0);
 }
 
+/// @brief POSIX `Thread.StartOwned` — see Win32 version above.
 void *rt_thread_start_owned(void *entry, void *arg) {
     return rt_thread_start_impl(entry, arg, 1);
 }
@@ -944,6 +995,7 @@ typedef struct SafeThreadCtx {
     char error[512]; // Captured trap error message
 } SafeThreadCtx;
 
+/// @brief Drop the owned-arg refcount for a SafeThread context.
 static void safe_thread_release_owned_arg(SafeThreadCtx *ctx) {
     if (!ctx || !ctx->owns_arg || !ctx->arg)
         return;
@@ -953,6 +1005,7 @@ static void safe_thread_release_owned_arg(SafeThreadCtx *ctx) {
     ctx->owns_arg = 0;
 }
 
+/// @brief GC finalizer for SafeThread context — releases all owned per-thread state.
 static void safe_thread_finalize(void *obj) {
     SafeThreadCtx *ctx = (SafeThreadCtx *)obj;
     if (!ctx)
@@ -1049,10 +1102,17 @@ static void *rt_thread_start_safe_impl(void *entry, void *arg, int8_t retain_arg
     return ctx;
 }
 
+/// @brief Spawn a "safe" thread — same as `rt_thread_start` but with stronger trap recovery.
+///
+/// Safe threads route uncaught traps through a per-thread recovery
+/// path that returns control to the spawning thread instead of
+/// killing the process. Used by parallel-foreach and friends to
+/// keep one bad worker from taking down the whole pool.
 void *rt_thread_start_safe(void *entry, void *arg) {
     return rt_thread_start_safe_impl(entry, arg, 0);
 }
 
+/// @brief Safe-thread variant that GC-retains `arg` (see `rt_thread_start_owned`).
 void *rt_thread_start_safe_owned(void *entry, void *arg) {
     return rt_thread_start_safe_impl(entry, arg, 1);
 }

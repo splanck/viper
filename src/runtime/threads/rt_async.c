@@ -45,6 +45,15 @@
 
 #include "rt_trap.h"
 
+// =============================================================================
+// Internal helpers — small lifetime-management primitives shared across the
+// async combinators below. Each `release_*` helper handles "drop a reference if
+// it's still alive AND clear the slot" in one call so the caller can't
+// double-release. The `promise_error_*` helpers wrap the most common error path:
+// "format a message, set the promise as an Err, release the temporary string."
+// =============================================================================
+
+/// @brief Release a heap reference and zero the slot pointer (idempotent on null/empty slots).
 static void async_release_ref(void **slot) {
     if (!slot || !*slot)
         return;
@@ -53,6 +62,8 @@ static void async_release_ref(void **slot) {
     *slot = NULL;
 }
 
+/// @brief Release a slot ONLY if its `owned` flag is set; clears both. Used so non-owned args
+/// (caller keeps lifetime) aren't accidentally released when the worker context finalizes.
 static void async_release_owned_arg(void **slot, int8_t *owned) {
     if (!slot || !owned || !*owned)
         return;
@@ -60,10 +71,14 @@ static void async_release_owned_arg(void **slot, int8_t *owned) {
     *owned = 0;
 }
 
+/// @brief Resolve a promise as Err using a C string literal (uses `rt_const_cstr` — no allocation).
+/// Falls back to "Unknown error" if `msg` is NULL.
 static void async_promise_error_cstr(void *promise, const char *msg) {
     rt_promise_set_error(promise, rt_const_cstr(msg ? msg : "Unknown error"));
 }
 
+/// @brief Resolve a promise as Err with a heap-allocated copy of `msg` (or `fallback` if NULL).
+/// Use when the source string's lifetime might end before the future's consumers see the error.
 static void async_promise_error_copy(void *promise, const char *msg, const char *fallback) {
     const char *text = msg ? msg : fallback;
     if (!text) {
@@ -75,10 +90,17 @@ static void async_promise_error_copy(void *promise, const char *msg, const char 
     rt_string_unref(copy);
 }
 
+/// @brief Resolve a promise as Err using the most recent trap message captured by the runtime
+/// (via `rt_trap_get_error`). Used inside `setjmp` recovery branches to forward Zia-side traps
+/// as Future errors instead of crashing the worker.
 static void async_promise_error_from_trap(void *promise, const char *fallback) {
     async_promise_error_copy(promise, rt_trap_get_error(), fallback);
 }
 
+/// @brief Spawn a detached worker thread on `entry(arg)`, releasing the thread handle immediately.
+/// Returns 0 on thread-creation failure (caller should resolve the promise as Err in that case).
+/// "Detached" means the runtime won't await the thread; cleanup happens via the worker's own
+/// finalize path on the context object.
 static int8_t async_start_detached(void *entry, void *arg) {
     void *thread = rt_thread_start(entry, arg);
     if (!thread)
@@ -112,6 +134,11 @@ typedef struct {
     void *promise;
 } async_cancel_ctx;
 
+// Worker context finalizers — release any owned arg + the promise reference. Each
+// context is dual-retained at construction (one for the worker, one for the
+// caller); these finalizers fire when both holders have released.
+
+/// @brief GC finalizer for `Async.Run` worker context: release owned arg and promise.
 static void async_run_ctx_finalize(void *obj) {
     async_run_ctx *ctx = (async_run_ctx *)obj;
     if (!ctx)
@@ -120,6 +147,7 @@ static void async_run_ctx_finalize(void *obj) {
     async_release_ref(&ctx->promise);
 }
 
+/// @brief GC finalizer for `Async.Delay` worker context: release the promise reference.
 static void async_delay_ctx_finalize(void *obj) {
     async_delay_ctx *ctx = (async_delay_ctx *)obj;
     if (!ctx)
@@ -127,6 +155,7 @@ static void async_delay_ctx_finalize(void *obj) {
     async_release_ref(&ctx->promise);
 }
 
+/// @brief GC finalizer for `Async.RunCancellable` worker context: release owned arg, token, promise.
 static void async_cancel_ctx_finalize(void *obj) {
     async_cancel_ctx *ctx = (async_cancel_ctx *)obj;
     if (!ctx)
@@ -136,6 +165,11 @@ static void async_cancel_ctx_finalize(void *obj) {
     async_release_ref(&ctx->promise);
 }
 
+/// @brief Worker thread entry for `Async.Run`. Sets up trap recovery via `setjmp`, invokes the
+/// user callback inside the protected scope, and forwards either the result (resolve) or the
+/// caught trap (reject) to the promise. Always releases the worker's context reference on exit.
+/// **Trap-safety:** any Zia trap inside `callback` longjmps back to the recovery point; the
+/// promise is then resolved as Err with the trap message rather than the worker crashing.
 static void async_run_entry(void *ctx_ptr) {
     async_run_ctx *ctx = (async_run_ctx *)ctx_ptr;
     if (!ctx || !ctx->callback) {
@@ -162,6 +196,8 @@ done:
         rt_obj_free(ctx);
 }
 
+/// @brief Worker thread entry for `Async.Delay`. Sleeps `ms` milliseconds (or skips on `ms<=0`),
+/// then resolves the promise with NULL. No callback to trap-protect.
 static void async_delay_entry(void *ctx_ptr) {
     async_delay_ctx *ctx = (async_delay_ctx *)ctx_ptr;
     if (!ctx || !ctx->promise)
@@ -176,6 +212,10 @@ done:
         rt_obj_free(ctx);
 }
 
+/// @brief Worker thread entry for `Async.RunCancellable`. Same trap-recovery dance as
+/// `async_run_entry` but checks the cancellation token both BEFORE invoking the callback
+/// (early-out) AND AFTER (so a cooperative callback that observes cancellation but returns
+/// normally still resolves as Err "cancelled" rather than Ok).
 static void async_cancel_entry(void *ctx_ptr) {
     async_cancel_ctx *ctx = (async_cancel_ctx *)ctx_ptr;
     if (!ctx || !ctx->callback) {
@@ -249,10 +289,13 @@ static void *rt_async_run_impl(void *callback, void *arg, int8_t retain_arg) {
     return future;
 }
 
+/// @brief Public API: run `callback(arg)` on a background thread. Caller manages `arg` lifetime.
 void *rt_async_run(void *callback, void *arg) {
     return rt_async_run_impl(callback, arg, 0);
 }
 
+/// @brief Public API: run `callback(arg)` on a background thread, retaining `arg` so it survives
+/// until the future resolves. Use when `arg` is a heap object and the caller might drop it.
 void *rt_async_run_owned(void *callback, void *arg) {
     return rt_async_run_impl(callback, arg, 1);
 }
@@ -338,10 +381,13 @@ static void *rt_async_run_cancellable_impl(void *callback,
     return future;
 }
 
+/// @brief Public API: cancellable async run. Caller manages `arg` lifetime; `token` is checked
+/// before and after callback invocation so cooperative tasks can opt into early termination.
 void *rt_async_run_cancellable(void *callback, void *arg, void *token) {
     return rt_async_run_cancellable_impl(callback, arg, token, 0);
 }
 
+/// @brief Public API: cancellable async run that retains `arg` for the worker's lifetime.
 void *rt_async_run_cancellable_owned(void *callback, void *arg, void *token) {
     return rt_async_run_cancellable_impl(callback, arg, token, 1);
 }
@@ -357,6 +403,7 @@ typedef struct {
     void *promise;
 } async_map_state;
 
+/// @brief GC finalizer for `Async.Map` listener state: release owned arg and promise.
 static void async_map_state_finalize(void *obj) {
     async_map_state *state = (async_map_state *)obj;
     if (!state)
@@ -365,6 +412,9 @@ static void async_map_state_finalize(void *obj) {
     async_release_ref(&state->promise);
 }
 
+/// @brief Listener callback fired when the source future completes. Forwards Err transparently;
+/// for Ok runs the mapper inside trap-recovery and resolves the downstream promise with the
+/// mapped value. Releases the listener-side state reference unconditionally on exit.
 static void async_map_complete(void *future, void *ctx) {
     async_map_state *state = (async_map_state *)ctx;
     if (!state || !state->promise)
@@ -433,10 +483,12 @@ static void *rt_async_map_impl(void *future, void *mapper, void *arg, int8_t ret
     return result_future;
 }
 
+/// @brief Public API: chain a mapper onto an existing Future. Caller manages `arg` lifetime.
 void *rt_async_map(void *future, void *mapper, void *arg) {
     return rt_async_map_impl(future, mapper, arg, 0);
 }
 
+/// @brief Public API: chain a mapper, retaining `arg` until the result future resolves.
 void *rt_async_map_owned(void *future, void *mapper, void *arg) {
     return rt_async_map_impl(future, mapper, arg, 1);
 }
@@ -455,6 +507,14 @@ typedef struct {
 
 static void async_any_complete(void *future, void *ctx);
 
+// ----- Any state machine ----------------------------------------------------
+// `Async.Any` registers a completion listener on every input future. The first
+// future to resolve (Ok or Err) wins via the `completed` flag (monitor-guarded
+// to keep concurrent completions race-free). Remaining listeners are then
+// cancelled in-place to avoid spurious callbacks. Each listener takes an extra
+// state retain at registration; the cancel hook drops it.
+
+/// @brief GC finalizer for `Async.Any` state: free the sources array, release monitor + promise.
 static void async_any_state_finalize(void *obj) {
     async_any_state *state = (async_any_state *)obj;
     if (!state)
@@ -465,12 +525,15 @@ static void async_any_state_finalize(void *obj) {
     async_release_ref(&state->promise);
 }
 
+/// @brief Listener-cancel hook for `Async.Any`: drop the per-listener retain on the state.
 static void async_any_listener_cancel(void *ctx) {
     async_any_state *state = (async_any_state *)ctx;
     if (state && rt_obj_release_check0(state))
         rt_obj_free(state);
 }
 
+/// @brief Walk the remaining sources and request listener cancellation on each. Sources whose
+/// listeners cancel successfully are zeroed in the array (so finalize doesn't double-cancel).
 static void async_any_cancel_remaining(async_any_state *state) {
     if (!state || !state->sources)
         return;
@@ -483,6 +546,10 @@ static void async_any_cancel_remaining(async_any_state *state) {
     }
 }
 
+/// @brief Listener fired when any input future resolves. Acquires the monitor to flip `completed`
+/// atomically (only the first arrival wins). On win, forwards Ok value (preserving owned-ness) or
+/// Err to the result promise, then cancels remaining listeners. Always releases the listener-side
+/// state retain on exit.
 static void async_any_complete(void *future, void *ctx) {
     async_any_state *state = (async_any_state *)ctx;
     if (!state || !state->promise || !state->monitor)
@@ -601,6 +668,15 @@ typedef struct async_all_listener_ctx {
 
 static void async_all_complete(void *future, void *ctx);
 
+// ----- All state machine ----------------------------------------------------
+// `Async.All` waits for every input future. Each slot tracks: the source pointer
+// (for cancellation), the per-listener context (so cancel hooks can drop the
+// state retain), and an `owned_slots[i]` byte recording whether the deposited
+// value needs to be released when the result Seq is finalized. The `remaining`
+// counter tracks unfilled slots; reaching zero resolves the result Seq.
+
+/// @brief GC finalizer for `Async.All` state: release any retained per-slot values, free helper
+/// arrays, release monitor + results Seq + promise.
 static void async_all_state_finalize(void *obj) {
     async_all_state *state = (async_all_state *)obj;
     if (!state)
@@ -625,6 +701,8 @@ static void async_all_state_finalize(void *obj) {
     async_release_ref(&state->promise);
 }
 
+/// @brief Listener-cancel hook for `Async.All`: drop the state retain and free the per-listener
+/// context node (the listener is one heap object per source future).
 static void async_all_listener_cancel(void *ctx) {
     async_all_listener_ctx *listener = (async_all_listener_ctx *)ctx;
     async_all_state *state = listener ? listener->state : NULL;
@@ -633,6 +711,8 @@ static void async_all_listener_cancel(void *ctx) {
     free(listener);
 }
 
+/// @brief Cancel listeners on every source except the one at `skip_index` (typically the source
+/// that just resolved). Zeros the listener slot on successful cancel so finalize doesn't double-free.
 static void async_all_cancel_remaining(async_all_state *state, int64_t skip_index) {
     if (!state || !state->sources || !state->listeners)
         return;
@@ -644,6 +724,11 @@ static void async_all_cancel_remaining(async_all_state *state, int64_t skip_inde
     }
 }
 
+/// @brief Listener fired when one of the input futures resolves. **Err short-circuits:** the
+/// first Err propagates to the result and cancels remaining listeners. **Ok accumulates:** value
+/// is deposited at the per-listener index in the result Seq, owned-flag captured for finalize,
+/// and `remaining--`. When `remaining == 0` the result Seq is sent to the promise as Owned (so
+/// the consumer's release frees the inner values too). Frees the listener context unconditionally.
 static void async_all_complete(void *future, void *ctx) {
     async_all_listener_ctx *listener = (async_all_listener_ctx *)ctx;
     async_all_state *state = listener ? listener->state : NULL;

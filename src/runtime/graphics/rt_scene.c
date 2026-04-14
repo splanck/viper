@@ -135,6 +135,8 @@ static void scene_finalize(void *obj) {
 // Scene Node Creation
 //=============================================================================
 
+/// @brief Create an empty 2D scene node positioned at the origin with identity transform.
+/// Scale is stored as a percentage (100 = 1.0x). Children list owns its elements.
 void *rt_scene_node_new(void) {
     scene_node_impl *node = (scene_node_impl *)rt_obj_new_i64(0, (int64_t)sizeof(scene_node_impl));
     if (!node) {
@@ -170,6 +172,7 @@ void *rt_scene_node_new(void) {
     return node;
 }
 
+/// @brief Convenience constructor: create a scene node and attach @p sprite to it.
 void *rt_scene_node_from_sprite(void *sprite) {
     scene_node_impl *node = (scene_node_impl *)rt_scene_node_new();
     if (node && sprite)
@@ -536,6 +539,7 @@ int64_t rt_scene_node_child_count(void *node_ptr) {
     return rt_seq_len(((scene_node_impl *)node_ptr)->children);
 }
 
+/// @brief Get the child at @p index in the node's child list (NULL if out of range).
 void *rt_scene_node_get_child(void *node_ptr, int64_t index) {
     if (!node_ptr)
         return NULL;
@@ -545,12 +549,15 @@ void *rt_scene_node_get_child(void *node_ptr, int64_t index) {
     return rt_seq_get(node->children, index);
 }
 
+/// @brief Return the node's parent in the scene tree (NULL for unparented or root).
 void *rt_scene_node_get_parent(void *node_ptr) {
     if (!node_ptr)
         return NULL;
     return ((scene_node_impl *)node_ptr)->parent;
 }
 
+/// @brief Recursive depth-first search for a node with @p name beneath @p node_ptr.
+/// Returns the first match (including the start node itself). NULL on no match.
 void *rt_scene_node_find(void *node_ptr, rt_string name) {
     if (!node_ptr)
         return NULL;
@@ -709,6 +716,8 @@ void rt_scene_node_set_scale(void *node_ptr, int64_t scale) {
 // Scene (Root Container)
 //=============================================================================
 
+/// @brief Create an empty 2D scene with a single root node named "root".
+/// All user nodes attach beneath this root for global transform inheritance.
 void *rt_scene_new(void) {
     scene_impl *scene = (scene_impl *)rt_obj_new_i64(0, (int64_t)sizeof(scene_impl));
     if (!scene) {
@@ -724,6 +733,7 @@ void *rt_scene_new(void) {
     return scene;
 }
 
+/// @brief Return the implicit root node so callers can attach children directly.
 void *rt_scene_get_root(void *scene_ptr) {
     if (!scene_ptr)
         return NULL;
@@ -750,6 +760,8 @@ void rt_scene_remove(void *scene_ptr, void *node_ptr) {
     rt_scene_node_remove_child(scene->root, node_ptr);
 }
 
+/// @brief Search the scene's node tree for the first node matching @p name.
+/// Returns NULL if no matching node is found.
 void *rt_scene_find(void *scene_ptr, rt_string name) {
     if (!scene_ptr)
         return NULL;

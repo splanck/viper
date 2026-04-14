@@ -21,6 +21,7 @@
 #include <string.h>
 
 #if defined(__APPLE__)
+/// @brief BSD/macOS RNG. Declared here when no system header provides it.
 extern void arc4random_buf(void *buf, size_t nbytes);
 #endif
 
@@ -59,6 +60,11 @@ static const uint32_t sha256_k[64] = {
 #define SIG0(x) (ROTR32(x, 7) ^ ROTR32(x, 18) ^ ((x) >> 3))
 #define SIG1(x) (ROTR32(x, 17) ^ ROTR32(x, 19) ^ ((x) >> 10))
 
+/// @brief Apply one 64-byte block to the SHA-256 compression function.
+///
+/// Implements the FIPS 180-4 §6.2 message schedule plus the 64-round
+/// inner loop. Operates on a private set of working variables and
+/// folds them back into `ctx->state` at the end.
 static void sha256_transform(rt_sha256_ctx *ctx, const uint8_t data[64]) {
     uint32_t a, b, c, d, e, f, g, h, t1, t2, w[64];
 
@@ -102,6 +108,7 @@ static void sha256_transform(rt_sha256_ctx *ctx, const uint8_t data[64]) {
     ctx->state[7] += h;
 }
 
+/// @brief Initialise a SHA-256 context with FIPS 180-4 IV constants.
 void rt_sha256_init(rt_sha256_ctx *ctx) {
     ctx->state[0] = 0x6a09e667;
     ctx->state[1] = 0xbb67ae85;
@@ -114,6 +121,11 @@ void rt_sha256_init(rt_sha256_ctx *ctx) {
     ctx->count = 0;
 }
 
+/// @brief Feed `len` bytes into the rolling SHA-256 state.
+///
+/// Buffers partial blocks; calls `sha256_transform` whenever 64
+/// bytes have accumulated. Tracks the cumulative bit count so the
+/// MD-strengthening step in `final()` can append the correct length.
 void rt_sha256_update(rt_sha256_ctx *ctx, const void *data, size_t len) {
     const uint8_t *ptr = (const uint8_t *)data;
     size_t idx = (ctx->count / 8) % 64;
@@ -136,6 +148,12 @@ void rt_sha256_update(rt_sha256_ctx *ctx, const void *data, size_t len) {
     }
 }
 
+/// @brief Append MD padding + 64-bit length and emit the 32-byte digest.
+///
+/// Padding rule (FIPS 180-4 §5.1.1): single `0x80` byte, zeros to
+/// length ≡ 56 (mod 64), then the message bit-count in big-endian
+/// 64-bit form. The final state words are serialised big-endian
+/// into `digest`.
 void rt_sha256_final(rt_sha256_ctx *ctx, uint8_t digest[32]) {
     uint64_t bits = ctx->count;
     uint8_t pad[64];
@@ -164,6 +182,7 @@ void rt_sha256_final(rt_sha256_ctx *ctx, uint8_t digest[32]) {
     }
 }
 
+/// @brief One-shot SHA-256: init → update → final into a fresh context.
 void rt_sha256(const void *data, size_t len, uint8_t digest[32]) {
     rt_sha256_ctx ctx;
     rt_sha256_init(&ctx);
@@ -175,6 +194,13 @@ void rt_sha256(const void *data, size_t len, uint8_t digest[32]) {
 // HMAC-SHA256
 //=============================================================================
 
+/// @brief HMAC-SHA256 (RFC 2104) with secret key and message → 32-byte MAC.
+///
+/// Pads/truncates the key to one SHA-256 block (64 bytes), forms
+/// the inner pad (XOR 0x36) and outer pad (XOR 0x5C), and computes
+/// `H((K ⊕ opad) || H((K ⊕ ipad) || data))`. All intermediate
+/// key-derived material is cleared before return to discourage
+/// post-call leakage.
 void rt_hmac_sha256(
     const uint8_t *key, size_t key_len, const void *data, size_t data_len, uint8_t mac[32]) {
     uint8_t k[64], ipad[64], opad[64];
@@ -212,6 +238,11 @@ void rt_hmac_sha256(
 // HKDF-SHA256 (RFC 5869)
 //=============================================================================
 
+/// @brief HKDF-Extract step (RFC 5869 §2.2): produce a 32-byte PRK.
+///
+/// PRK = HMAC-SHA256(salt, IKM). When the caller passes a NULL or
+/// empty salt, the spec mandates substituting `HashLen` zero bytes
+/// — TLS 1.3 relies on this for the early-secret derivation.
 void rt_hkdf_extract(
     const uint8_t *salt, size_t salt_len, const uint8_t *ikm, size_t ikm_len, uint8_t prk[32]) {
     if (salt == NULL || salt_len == 0) {
@@ -223,6 +254,14 @@ void rt_hkdf_extract(
     }
 }
 
+/// @brief HKDF-Expand step (RFC 5869 §2.3): stretch a PRK to OKM of `okm_len` bytes.
+///
+/// Iterates `T(n) = HMAC(PRK, T(n-1) || info || n)` for
+/// `n = 1, 2, …` and concatenates the truncated outputs. Each
+/// iteration's intermediate HMAC pads are scrubbed before
+/// returning. The spec caps OKM at `255 * HashLen`; this
+/// implementation enforces `RT_HKDF_MAX_OKM_LEN`.
+/// @return 0 on success, -1 if the requested size exceeds the cap.
 int rt_hkdf_expand(
     const uint8_t prk[32], const uint8_t *info, size_t info_len, uint8_t *okm, size_t okm_len) {
     uint8_t t[32] = {0};
@@ -278,6 +317,13 @@ int rt_hkdf_expand(
     return 0;
 }
 
+/// @brief TLS 1.3 HKDF-Expand-Label (RFC 8446 §7.1).
+///
+/// Wraps `rt_hkdf_expand` with the standardised info-block encoding:
+/// `length(2) || "tls13 " + label(prefixed-1) || context(prefixed-1)`.
+/// All TLS 1.3 traffic key derivations route through this function.
+/// @return 0 on success, -1 if the resulting OKM length would
+///         exceed the HKDF cap.
 int rt_hkdf_expand_label(const uint8_t secret[32],
                          const char *label,
                          const uint8_t *context,
@@ -342,6 +388,11 @@ int rt_hkdf_expand_label(const uint8_t secret[32],
         b = ROTL32(b, 7);                                                                          \
     } while (0)
 
+/// @brief Compute one 64-byte ChaCha20 keystream block from `state` (RFC 8439).
+///
+/// 20 rounds = 10 column-round pairs of `QUARTERROUND`s, then add
+/// the original state back to thwart the trivial inverse, and
+/// serialise little-endian.
 static void chacha20_block(const uint32_t state[16], uint8_t out[64]) {
     uint32_t x[16];
     memcpy(x, state, 64);
@@ -371,6 +422,12 @@ static void chacha20_block(const uint32_t state[16], uint8_t out[64]) {
     }
 }
 
+/// @brief Lay out the ChaCha20 starting state per RFC 8439 §2.3.
+///
+///   words[0..3]  = "expand 32-byte k" sigma constants
+///   words[4..11] = 256-bit key (little-endian)
+///   words[12]    = block counter
+///   words[13..15] = 96-bit nonce (little-endian)
 static void chacha20_init(uint32_t state[16],
                           const uint8_t key[32],
                           const uint8_t nonce[12],
@@ -397,6 +454,11 @@ static void chacha20_init(uint32_t state[16],
     }
 }
 
+/// @brief XOR the ChaCha20 keystream into `in` to produce `out` (encrypt = decrypt).
+///
+/// Generates one 64-byte keystream block per iteration, advancing
+/// the block counter. Aborts the loop if the counter wraps to zero
+/// (256 GiB with the same key+nonce) so we never reuse keystream.
 static void chacha20_crypt(const uint8_t key[32],
                            const uint8_t nonce[12],
                            uint32_t counter,
@@ -434,6 +496,11 @@ typedef struct {
     size_t buffer_len;
 } poly1305_ctx;
 
+/// @brief Initialise a Poly1305 MAC context from a 32-byte one-time key.
+///
+/// Splits the key into the multiplier `r` (clamped per RFC 8439
+/// §2.5.1 to ensure modular arithmetic stays bounded) and the
+/// final additive `pad`. The accumulator `h` starts at zero.
 static void poly1305_init(poly1305_ctx *ctx, const uint8_t key[32]) {
     // r (first 16 bytes, clamped)
     ctx->r[0] = ((uint32_t)key[0] | ((uint32_t)key[1] << 8) | ((uint32_t)key[2] << 16) |
@@ -468,6 +535,13 @@ static void poly1305_init(poly1305_ctx *ctx, const uint8_t key[32]) {
     ctx->buffer_len = 0;
 }
 
+/// @brief Absorb whole 16-byte blocks into the Poly1305 accumulator.
+///
+/// Implements the inner loop `h = (h + m_i) * r mod 2^130 - 5`
+/// using a 26-bit-limb representation that lets us carry with
+/// 64-bit intermediates. The `final` flag suppresses the implicit
+/// 0x01 high bit on the last (padded) block; the public
+/// `poly1305_final` sets `final=1` for the partial tail.
 static void poly1305_blocks(poly1305_ctx *ctx, const uint8_t *data, size_t len, int final) {
     uint32_t r0 = ctx->r[0], r1 = ctx->r[1], r2 = ctx->r[2], r3 = ctx->r[3], r4 = ctx->r[4];
     uint32_t s1 = r1 * 5, s2 = r2 * 5, s3 = r3 * 5, s4 = r4 * 5;
@@ -536,6 +610,7 @@ static void poly1305_blocks(poly1305_ctx *ctx, const uint8_t *data, size_t len, 
     ctx->h[4] = h4;
 }
 
+/// @brief Stream `len` bytes through Poly1305, buffering partial 16-byte blocks.
 static void poly1305_update(poly1305_ctx *ctx, const void *data, size_t len) {
     const uint8_t *ptr = (const uint8_t *)data;
 
@@ -566,6 +641,14 @@ static void poly1305_update(poly1305_ctx *ctx, const void *data, size_t len) {
     }
 }
 
+/// @brief Pad, freeze the modular reduction, add the secret pad, emit a 16-byte tag.
+///
+/// Three-step finalisation per RFC 8439 §2.5:
+///   1. Append `0x01` and zero-pad the partial block, then absorb.
+///   2. Fully reduce `h` mod 2^130 - 5 in constant time using the
+///      "freeze" trick (compute `h - p` and conditionally select).
+///   3. Add `pad` (a one-time 128-bit value derived from the
+///      ChaCha20 keystream) and serialise little-endian.
 static void poly1305_final(poly1305_ctx *ctx, uint8_t tag[16]) {
     // Process remaining bytes
     if (ctx->buffer_len > 0) {
@@ -651,6 +734,12 @@ static void poly1305_final(poly1305_ctx *ctx, uint8_t tag[16]) {
 // ChaCha20-Poly1305 AEAD
 //=============================================================================
 
+/// @brief Absorb zero-padding to bring `len`'s contribution to a 16-byte boundary.
+///
+/// Required by the AEAD MAC construction (RFC 8439 §2.8): each
+/// component (AAD, ciphertext) is padded to a 16-byte multiple
+/// before the next is absorbed so an attacker can't slide bytes
+/// between fields.
 static void pad16(poly1305_ctx *ctx, size_t len) {
     size_t pad = (16 - (len & 15)) & 15;
     uint8_t zeros[16] = {0};
@@ -658,6 +747,15 @@ static void pad16(poly1305_ctx *ctx, size_t len) {
         poly1305_update(ctx, zeros, pad);
 }
 
+/// @brief AEAD encrypt (RFC 8439 §2.8.1) with ChaCha20 + Poly1305.
+///
+/// Generates the one-time Poly1305 key from ChaCha20 block 0,
+/// encrypts the plaintext starting at block 1, then computes a
+/// 16-byte tag over `aad ‖ pad16 ‖ ct ‖ pad16 ‖ aad_len_le64 ‖
+/// ct_len_le64`. The tag is appended to `ciphertext` so the output
+/// length is `plaintext_len + 16`.
+/// @param ciphertext Output buffer; must have room for `plaintext_len + 16` bytes.
+/// @return Total bytes written, or 0 if `plaintext_len` exceeds the safety cap.
 size_t rt_chacha20_poly1305_encrypt(const uint8_t key[32],
                                     const uint8_t nonce[12],
                                     const void *aad,
@@ -706,6 +804,14 @@ size_t rt_chacha20_poly1305_encrypt(const uint8_t key[32],
     return plaintext_len + 16;
 }
 
+/// @brief AEAD decrypt for ChaCha20-Poly1305 (RFC 8439 §2.8.2).
+///
+/// Verifies the trailing 16-byte tag against the recomputed
+/// Poly1305 MAC in constant time. Only on tag match is the
+/// ciphertext stripped of the tag and decrypted into `plaintext`.
+/// On mismatch nothing is written to `plaintext` and -1 is returned.
+/// @param ciphertext_len Includes the 16-byte tag.
+/// @return Plaintext length on success, -1 on tag failure / too-short input.
 long rt_chacha20_poly1305_decrypt(const uint8_t key[32],
                                   const uint8_t nonce[12],
                                   const void *aad,
@@ -982,6 +1088,16 @@ static void ghash_compute(const uint8_t H[16],
     ghash_mult(H, block, tag);
 }
 
+/// @brief AES-128-GCM authenticated encryption (NIST SP 800-38D).
+///
+/// Pre-counter block J0 is `IV ‖ 0x00000001` (we only support
+/// 12-byte IVs, the most common case). Encrypts the plaintext with
+/// AES-CTR starting at `J0+1`, then computes the GHASH over
+/// `aad ‖ pad || ct ‖ pad || aad_len_bits || ct_len_bits` and
+/// XORs it with `AES(J0)` to form the 16-byte tag. The tag is
+/// appended to `ciphertext`.
+/// @param ciphertext Output buffer; must have room for `plaintext_len + 16` bytes.
+/// @return Total bytes written.
 size_t rt_aes128_gcm_encrypt(const uint8_t key[16],
                              const uint8_t nonce[12],
                              const void *aad,
@@ -1040,6 +1156,15 @@ size_t rt_aes128_gcm_encrypt(const uint8_t key[16],
     return plaintext_len + 16;
 }
 
+/// @brief AES-128-GCM authenticated decryption (NIST SP 800-38D).
+///
+/// Recomputes GHASH and `AES(J0)` to derive the expected tag, then
+/// constant-time-compares it against the trailing 16 bytes of
+/// `ciphertext`. On a match, performs CTR-mode decryption into
+/// `plaintext`. On any failure (short input, tag mismatch),
+/// returns -1 and writes nothing.
+/// @param ciphertext_len Includes the 16-byte tag.
+/// @return Plaintext length on success, -1 on failure.
 long rt_aes128_gcm_decrypt(const uint8_t key[16],
                            const uint8_t nonce[12],
                            const void *aad,
@@ -1118,34 +1243,54 @@ long rt_aes128_gcm_decrypt(const uint8_t key[16],
 // X25519 Key Exchange
 //=============================================================================
 
+// ---------------------------------------------------------------------------
+// Curve25519 field elements
+// `fe` is an element of GF(2^255 - 19) stored in 10 mixed-radix
+// limbs (alternating 26 / 25 bits). This representation lets each
+// multiplication / squaring use 64-bit intermediates without
+// overflow. All the `fe_*` helpers below operate on this layout
+// and are the building blocks of `x25519_scalarmult`.
+// ---------------------------------------------------------------------------
+
 typedef int64_t fe[10];
 
+/// @brief `h := f` (10-limb copy).
 static void fe_copy(fe h, const fe f) {
     for (int i = 0; i < 10; i++)
         h[i] = f[i];
 }
 
+/// @brief Set `h` to the field zero.
 static void fe_0(fe h) {
     for (int i = 0; i < 10; i++)
         h[i] = 0;
 }
 
+/// @brief Set `h` to the field identity (1).
 static void fe_1(fe h) {
     h[0] = 1;
     for (int i = 1; i < 10; i++)
         h[i] = 0;
 }
 
+/// @brief `h := f + g` (limb-wise; carries deferred to next multiplication).
 static void fe_add(fe h, const fe f, const fe g) {
     for (int i = 0; i < 10; i++)
         h[i] = f[i] + g[i];
 }
 
+/// @brief `h := f - g` (limb-wise; carries deferred).
 static void fe_sub(fe h, const fe f, const fe g) {
     for (int i = 0; i < 10; i++)
         h[i] = f[i] - g[i];
 }
 
+/// @brief `h := f * g mod 2^255 - 19`.
+///
+/// Implements the textbook 10×10 schoolbook multiply with the
+/// `19·g_i` pre-multipliers absorbing the wrap from the prime
+/// reduction. Carries are propagated in two passes so each output
+/// limb fits the 25/26-bit constraint.
 static void fe_mul(fe h, const fe f, const fe g) {
     int64_t f0 = f[0], f1 = f[1], f2 = f[2], f3 = f[3], f4 = f[4];
     int64_t f5 = f[5], f6 = f[6], f7 = f[7], f8 = f[8], f9 = f[9];
@@ -1228,10 +1373,16 @@ static void fe_mul(fe h, const fe f, const fe g) {
     h[9] = h9;
 }
 
+/// @brief `h := f * f`. Just a convenience wrapper over `fe_mul`.
 static void fe_sq(fe h, const fe f) {
     fe_mul(h, f, f);
 }
 
+/// @brief `out := z^(-1) mod 2^255 - 19` via Fermat's little theorem.
+///
+/// Computes `z^(p-2)` where `p = 2^255 - 19` using the standard
+/// 254-square + 11-multiply addition chain — the inversion you'd
+/// find in any reference Curve25519 implementation. Constant-time.
 static void fe_invert(fe out, const fe z) {
     fe t0, t1, t2, t3;
 
@@ -1276,6 +1427,12 @@ static void fe_invert(fe out, const fe z) {
     fe_mul(out, t1, t0);
 }
 
+/// @brief Decode 32 little-endian bytes into a 10-limb field element.
+///
+/// The top bit of `s[31]` is silently masked off — RFC 7748 §5
+/// requires this for X25519 to make the function tolerate
+/// non-canonical encodings. Each limb extracts a 25- or 26-bit
+/// slice using the alternating mixed-radix layout.
 static void fe_from_bytes(fe h, const uint8_t s[32]) {
     h[0] = ((int64_t)s[0] | ((int64_t)s[1] << 8) | ((int64_t)s[2] << 16) |
             (((int64_t)s[3] & 0x03) << 24)) &
@@ -1309,6 +1466,13 @@ static void fe_from_bytes(fe h, const uint8_t s[32]) {
            0x1ffffff;
 }
 
+/// @brief Serialise a field element to 32 little-endian bytes.
+///
+/// Performs full modular reduction (subtract `q · p` where `q` is
+/// computed from a tentative high-limb propagation, then propagate
+/// carries) so the output is the unique canonical representation
+/// — important so that two different limb shapes for the same
+/// value still produce identical wire bytes.
 static void fe_to_bytes(uint8_t s[32], const fe h) {
     int64_t h0 = h[0], h1 = h[1], h2 = h[2], h3 = h[3], h4 = h[4];
     int64_t h5 = h[5], h6 = h[6], h7 = h[7], h8 = h[8], h9 = h[9];
@@ -1391,6 +1555,13 @@ static void fe_to_bytes(uint8_t s[32], const fe h) {
     s[31] = (uint8_t)(h9 >> 18);
 }
 
+/// @brief Constant-time X25519 scalar multiplication (RFC 7748).
+///
+/// Implements the Montgomery ladder over Curve25519. The scalar is
+/// clamped per RFC 7748 §5 (clear bits 0,1,2 of byte 0; set bit 6
+/// and clear bit 7 of byte 31). The conditional swap uses a XOR
+/// mask derived from `swap = b_prev XOR b_curr` so each iteration
+/// performs the same operations regardless of the secret bit.
 static void x25519_scalarmult(uint8_t out[32], const uint8_t scalar[32], const uint8_t point[32]) {
     fe x1, x2, z2, x3, z3, tmp0, tmp1;
     uint8_t e[32];
@@ -1457,11 +1628,20 @@ static void x25519_scalarmult(uint8_t out[32], const uint8_t scalar[32], const u
 
 static const uint8_t x25519_basepoint[32] = {9};
 
+/// @brief Generate an X25519 keypair: random 32-byte `secret`, derived `public_key`.
+///
+/// The clamping required by RFC 7748 §5 happens inside
+/// `x25519_scalarmult` — callers can therefore pass any 32 random
+/// bytes as the secret without pre-clamping.
 void rt_x25519_keygen(uint8_t secret[32], uint8_t public_key[32]) {
     rt_crypto_random_bytes(secret, 32);
     x25519_scalarmult(public_key, secret, x25519_basepoint);
 }
 
+/// @brief Compute the X25519 shared secret = `peer_public · secret` on Curve25519.
+///
+/// Used by TLS 1.3 (RFC 8446 §7.4.2) and other protocols that need
+/// an ECDH key agreement step.
 void rt_x25519(const uint8_t secret[32], const uint8_t peer_public[32], uint8_t shared[32]) {
     x25519_scalarmult(shared, secret, peer_public);
 }
@@ -1480,6 +1660,13 @@ void rt_x25519(const uint8_t secret[32], const uint8_t peer_public[32], uint8_t 
 #endif
 #include <wincrypt.h>
 
+/// @brief Fill `buf` with `len` cryptographically secure random bytes.
+///
+/// Windows path — uses Wincrypt's CryptGenRandom (still available
+/// on every supported Windows version). On any failure to obtain
+/// real OS entropy we trap rather than fall back to a predictable
+/// generator (S-03): a predictable RNG would silently compromise
+/// every key derived from it.
 void rt_crypto_random_bytes(uint8_t *buf, size_t len) {
     HCRYPTPROV hProv;
     if (CryptAcquireContext(&hProv, NULL, NULL, PROV_RSA_FULL, CRYPT_VERIFYCONTEXT)) {
@@ -1502,6 +1689,15 @@ void rt_crypto_random_bytes(uint8_t *buf, size_t len) {
 #include <fcntl.h>
 #include <unistd.h>
 
+/// @brief Fill `buf` with `len` cryptographically secure random bytes.
+///
+/// POSIX path. Tries the best-quality interface available and
+/// falls back through:
+///   1. macOS: `arc4random_buf` (always succeeds).
+///   2. Linux: `getrandom(2)` (no fd, blocks if pool not seeded).
+///   3. Universal: `/dev/urandom` (best-effort).
+/// Traps on every-source-failed (S-03) so we never silently fall
+/// back to a non-cryptographic source.
 void rt_crypto_random_bytes(uint8_t *buf, size_t len) {
 #if defined(__APPLE__)
     arc4random_buf(buf, len);

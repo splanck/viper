@@ -7,9 +7,19 @@
 //===----------------------------------------------------------------------===//
 
 #include "il/build/IRBuilder.hpp"
+#include "il/runtime/signatures/Registry.hpp"
+#include "vm/RuntimeBridge.hpp"
 #include "vm/VM.hpp"
 
 #include <cassert>
+
+using il::runtime::signatures::make_signature;
+using il::runtime::signatures::SigParam;
+
+static void extern_worker_value(void **args, void *result) {
+    (void)args;
+    *static_cast<int64_t *>(result) = 777;
+}
 
 int main() {
     using namespace il::core;
@@ -18,6 +28,8 @@ int main() {
     il::build::IRBuilder b(m);
 
     b.addGlobal("g", Type(Type::Kind::I64));
+    b.addGlobal("g_thread_ext", Type(Type::Kind::I64));
+    b.addGlobal("g_async_ext", Type(Type::Kind::I64));
 
     // Runtime externs (canonical names).
     b.addExtern("Viper.Threads.Thread.Start",
@@ -28,6 +40,7 @@ int main() {
                 Type(Type::Kind::Ptr),
                 {Type(Type::Kind::Ptr), Type(Type::Kind::Ptr)});
     b.addExtern("Viper.Threads.Future.Get", Type(Type::Kind::Ptr), {Type(Type::Kind::Ptr)});
+    b.addExtern("test.worker.value", Type(Type::Kind::I64), {});
 
     // worker() -> void: g = g + 1
     auto &worker = b.startFunction("worker", Type(Type::Kind::Void), {});
@@ -69,6 +82,32 @@ int main() {
     storeG.operands.push_back(Value::temp(gnextId));
     storeG.loc = {1, 1, 4};
     workerEntry.instructions.push_back(storeG);
+
+    Instr threadExtPtr;
+    threadExtPtr.result = b.reserveTempId();
+    threadExtPtr.op = Opcode::GAddr;
+    threadExtPtr.type = Type(Type::Kind::Ptr);
+    threadExtPtr.operands.push_back(Value::global("g_thread_ext"));
+    threadExtPtr.loc = {1, 1, 4};
+    workerEntry.instructions.push_back(threadExtPtr);
+    const unsigned threadExtPtrId = *threadExtPtr.result;
+
+    Instr threadExtValue;
+    threadExtValue.result = b.reserveTempId();
+    threadExtValue.op = Opcode::Call;
+    threadExtValue.type = Type(Type::Kind::I64);
+    threadExtValue.callee = "test.worker.value";
+    threadExtValue.loc = {1, 1, 4};
+    workerEntry.instructions.push_back(threadExtValue);
+    const unsigned threadExtValueId = *threadExtValue.result;
+
+    Instr storeThreadExt;
+    storeThreadExt.op = Opcode::Store;
+    storeThreadExt.type = Type(Type::Kind::I64);
+    storeThreadExt.operands.push_back(Value::temp(threadExtPtrId));
+    storeThreadExt.operands.push_back(Value::temp(threadExtValueId));
+    storeThreadExt.loc = {1, 1, 4};
+    workerEntry.instructions.push_back(storeThreadExt);
 
     b.emitRet(std::optional<Value>{}, {1, 1, 5});
 
@@ -113,6 +152,32 @@ int main() {
     asyncStoreG.operands.push_back(Value::temp(asyncNextId));
     asyncStoreG.loc = {1, 1, 9};
     workerAsyncEntry.instructions.push_back(asyncStoreG);
+
+    Instr asyncExtPtr;
+    asyncExtPtr.result = b.reserveTempId();
+    asyncExtPtr.op = Opcode::GAddr;
+    asyncExtPtr.type = Type(Type::Kind::Ptr);
+    asyncExtPtr.operands.push_back(Value::global("g_async_ext"));
+    asyncExtPtr.loc = {1, 1, 9};
+    workerAsyncEntry.instructions.push_back(asyncExtPtr);
+    const unsigned asyncExtPtrId = *asyncExtPtr.result;
+
+    Instr asyncExtValue;
+    asyncExtValue.result = b.reserveTempId();
+    asyncExtValue.op = Opcode::Call;
+    asyncExtValue.type = Type(Type::Kind::I64);
+    asyncExtValue.callee = "test.worker.value";
+    asyncExtValue.loc = {1, 1, 9};
+    workerAsyncEntry.instructions.push_back(asyncExtValue);
+    const unsigned asyncExtValueId = *asyncExtValue.result;
+
+    Instr asyncStoreExt;
+    asyncStoreExt.op = Opcode::Store;
+    asyncStoreExt.type = Type(Type::Kind::I64);
+    asyncStoreExt.operands.push_back(Value::temp(asyncExtPtrId));
+    asyncStoreExt.operands.push_back(Value::temp(asyncExtValueId));
+    asyncStoreExt.loc = {1, 1, 9};
+    workerAsyncEntry.instructions.push_back(asyncStoreExt);
 
     Instr asyncNullRet;
     asyncNullRet.result = b.reserveTempId();
@@ -207,10 +272,69 @@ int main() {
     loadFinal.loc = {1, 2, 10};
     mainEntry.instructions.push_back(loadFinal);
 
-    b.emitRet(Value::temp(*loadFinal.result), {1, 2, 11});
+    Instr mainThreadExtPtr;
+    mainThreadExtPtr.result = b.reserveTempId();
+    mainThreadExtPtr.op = Opcode::GAddr;
+    mainThreadExtPtr.type = Type(Type::Kind::Ptr);
+    mainThreadExtPtr.operands.push_back(Value::global("g_thread_ext"));
+    mainThreadExtPtr.loc = {1, 2, 10};
+    mainEntry.instructions.push_back(mainThreadExtPtr);
+
+    Instr loadThreadExt;
+    loadThreadExt.result = b.reserveTempId();
+    loadThreadExt.op = Opcode::Load;
+    loadThreadExt.type = Type(Type::Kind::I64);
+    loadThreadExt.operands.push_back(Value::temp(*mainThreadExtPtr.result));
+    loadThreadExt.loc = {1, 2, 10};
+    mainEntry.instructions.push_back(loadThreadExt);
+
+    Instr mainAsyncExtPtr;
+    mainAsyncExtPtr.result = b.reserveTempId();
+    mainAsyncExtPtr.op = Opcode::GAddr;
+    mainAsyncExtPtr.type = Type(Type::Kind::Ptr);
+    mainAsyncExtPtr.operands.push_back(Value::global("g_async_ext"));
+    mainAsyncExtPtr.loc = {1, 2, 10};
+    mainEntry.instructions.push_back(mainAsyncExtPtr);
+
+    Instr loadAsyncExt;
+    loadAsyncExt.result = b.reserveTempId();
+    loadAsyncExt.op = Opcode::Load;
+    loadAsyncExt.type = Type(Type::Kind::I64);
+    loadAsyncExt.operands.push_back(Value::temp(*mainAsyncExtPtr.result));
+    loadAsyncExt.loc = {1, 2, 10};
+    mainEntry.instructions.push_back(loadAsyncExt);
+
+    Instr sumThread;
+    sumThread.result = b.reserveTempId();
+    sumThread.op = Opcode::Add;
+    sumThread.type = Type(Type::Kind::I64);
+    sumThread.operands.push_back(Value::temp(*loadFinal.result));
+    sumThread.operands.push_back(Value::temp(*loadThreadExt.result));
+    sumThread.loc = {1, 2, 10};
+    mainEntry.instructions.push_back(sumThread);
+
+    Instr sumAll;
+    sumAll.result = b.reserveTempId();
+    sumAll.op = Opcode::Add;
+    sumAll.type = Type(Type::Kind::I64);
+    sumAll.operands.push_back(Value::temp(*sumThread.result));
+    sumAll.operands.push_back(Value::temp(*loadAsyncExt.result));
+    sumAll.loc = {1, 2, 10};
+    mainEntry.instructions.push_back(sumAll);
+
+    b.emitRet(Value::temp(*sumAll.result), {1, 2, 11});
 
     il::vm::VM vm(m);
+    auto reg = il::vm::createExternRegistry();
+    il::vm::ExternDesc desc;
+    desc.name = "test.worker.value";
+    desc.signature = make_signature("test.worker.value", {}, {SigParam::I64});
+    desc.fn = reinterpret_cast<void *>(&extern_worker_value);
+    il::vm::registerExternIn(*reg, desc);
+    vm.setExternRegistry(reg.get());
+    reg.reset();
+
     const int64_t rc = vm.run();
-    assert(rc == 42);
+    assert(rc == (42 + 777 + 777));
     return 0;
 }

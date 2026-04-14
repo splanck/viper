@@ -111,6 +111,7 @@ extern void rt_canvas3d_end(void *obj);
 
 #define NODE_INIT_CHILDREN 4
 
+/// @brief Drop the GC reference in `*slot` and null the pointer (refcount-aware free).
 static void scene3d_release_ref(void **slot) {
     if (!slot || !*slot)
         return;
@@ -167,6 +168,11 @@ static void mat4d_mul(const double *a, const double *b, double *out) {
                              a[r * 4 + 2] * b[2 * 4 + c] + a[r * 4 + 3] * b[3 * 4 + c];
 }
 
+/// @brief Invert a row-major 4x4 matrix using the cofactor expansion.
+///
+/// Returns 0 on success and writes the inverse into `out`. Returns -1
+/// if the matrix is singular (`|det| < 1e-12`); `out` is then untouched.
+/// Used to derive parent-from-world transforms and bind-pose inverses.
 static int mat4d_invert(const double *m, double *out) {
     double inv[16];
     double det;
@@ -214,6 +220,7 @@ static int mat4d_invert(const double *m, double *out) {
     return 0;
 }
 
+/// @brief Transform a 3D point `(x,y,z)` by row-major matrix `m` (treats point as `w=1`).
 static void mat4d_transform_point(const double *m,
                                   double x,
                                   double y,
@@ -228,6 +235,7 @@ static void mat4d_transform_point(const double *m,
     *out_z = m[8] * x + m[9] * y + m[10] * z + m[11];
 }
 
+/// @brief Set `out` to the identity quaternion `(0, 0, 0, 1)` — no rotation.
 static void quat_identity(double *out) {
     if (!out)
         return;
@@ -237,6 +245,7 @@ static void quat_identity(double *out) {
     out[3] = 1.0;
 }
 
+/// @brief Renormalise `q` so |q|=1; defaults to identity if it's degenerate.
 static void quat_normalize_local(double *q) {
     double len_sq;
     double inv_len;
@@ -254,6 +263,7 @@ static void quat_normalize_local(double *q) {
     q[3] *= inv_len;
 }
 
+/// @brief Quaternion conjugate `(-x, -y, -z, w)` — for unit quats, this is the inverse rotation.
 static void quat_conjugate_local(const double *q, double *out) {
     if (!q || !out)
         return;
@@ -263,6 +273,7 @@ static void quat_conjugate_local(const double *q, double *out) {
     out[3] = q[3];
 }
 
+/// @brief Hamilton quaternion product `out = a * b` — composition of rotations (apply `b` then `a`).
 static void quat_mul_local(const double *a, const double *b, double *out) {
     double x;
     double y;
@@ -281,6 +292,11 @@ static void quat_mul_local(const double *a, const double *b, double *out) {
     quat_normalize_local(out);
 }
 
+/// @brief Extract a unit quaternion from the rotation part of a row-major matrix.
+///
+/// Picks the largest of four possible diagonal terms and uses
+/// the corresponding extraction formula — Shepperd's method —
+/// for numerical stability across the full sphere of orientations.
 static void quat_from_matrix_rows(double m00,
                                   double m01,
                                   double m02,
@@ -323,6 +339,11 @@ static void quat_from_matrix_rows(double m00,
     quat_normalize_local(out);
 }
 
+/// @brief Strip translation/scale and call `quat_from_matrix_rows` to recover the rotation quaternion.
+///
+/// Used when reading back world-space orientation after a node's
+/// world matrix has been composed from parent transforms — we need
+/// the rotation back as a quaternion for further composition.
 static void quat_from_world_matrix(const double *m, double *out) {
     double rx;
     double ry;
@@ -400,6 +421,7 @@ static int32_t count_subtree(const rt_scene_node3d *node) {
     return n;
 }
 
+/// @brief Compose `node->world_matrix` from its ancestors and read the translation column.
 static void scene_node_get_world_position(rt_scene_node3d *node, double *x, double *y, double *z) {
     if (!x || !y || !z) {
         return;
@@ -415,6 +437,7 @@ static void scene_node_get_world_position(rt_scene_node3d *node, double *x, doub
     *z = node->world_matrix[11];
 }
 
+/// @brief Read this node's world-space rotation as a quaternion (composing parent rotations).
 static void scene_node_get_world_rotation(rt_scene_node3d *node, double *out_quat) {
     if (!out_quat) {
         return;
@@ -426,6 +449,12 @@ static void scene_node_get_world_rotation(rt_scene_node3d *node, double *out_qua
     quat_from_world_matrix(node->world_matrix, out_quat);
 }
 
+/// @brief Set a node's world-space TRS, working backward through parents to update local TRS.
+///
+/// Inverts the parent chain's world matrix and applies it to the
+/// requested world transform so the resulting local transform
+/// produces the requested world pose. Used by physics → scene
+/// sync to apply rigid-body world poses to scene nodes.
 static void scene_node_set_world_transform(rt_scene_node3d *node,
                                            const double *world_pos,
                                            const double *world_quat) {
@@ -481,6 +510,11 @@ static void scene_node_set_world_transform(rt_scene_node3d *node,
     mark_dirty(node);
 }
 
+/// @brief Move the node by the per-frame "root motion" delta produced by the bound animator.
+///
+/// Animations whose root bone moves (walk cycles, jumps) report the
+/// per-frame translation/rotation as a delta; here we apply it to
+/// the node's local transform so the character actually traverses.
 static void scene_node_apply_root_motion(rt_scene_node3d *node) {
     void *delta;
     if (!node || !node->bound_animator)
@@ -494,6 +528,13 @@ static void scene_node_apply_root_motion(rt_scene_node3d *node) {
     mark_dirty(node);
 }
 
+/// @brief Walk the subtree synchronising node transforms with bound bodies / animators.
+///
+/// Per node, depending on `sync_mode`:
+///   - `BODY_TO_NODE`: copies the rigid body's world pose into the node.
+///   - `NODE_TO_BODY`: pushes the node's transform back into the body.
+///   - root motion: bumps the local TRS by the animator's per-frame delta.
+/// Then recurses into children.
 static void scene_node_sync_recursive(rt_scene_node3d *node) {
     int64_t mode;
     int pull_from_body;
@@ -544,6 +585,8 @@ static void scene_node_sync_recursive(rt_scene_node3d *node) {
         scene_node_sync_recursive(node->children[i]);
 }
 
+/// @brief True if `target` appears anywhere in the subtree rooted at `root`.
+/// Used to prevent cycles when reparenting (don't re-attach a node under one of its descendants).
 static int node_contains(const rt_scene_node3d *root, const rt_scene_node3d *target) {
     if (!root)
         return 0;
@@ -556,6 +599,8 @@ static int node_contains(const rt_scene_node3d *root, const rt_scene_node3d *tar
     return 0;
 }
 
+/// @brief Compute the local-space AABB of `mesh` by min/maxing every vertex position.
+/// Cached on the mesh so subsequent calls are O(1).
 static void scene_mesh_bounds(rt_mesh3d *mesh,
                               float out_min[3],
                               float out_max[3],
@@ -584,6 +629,7 @@ static void scene_mesh_bounds(rt_mesh3d *mesh,
         *out_radius = mesh->bsphere_radius;
 }
 
+/// @brief Multiply a local-space point by the node's world matrix; result lands in `out`.
 static void scene_world_point(const double *world_matrix, const float local[3], float out[3]) {
     if (!world_matrix || !local || !out)
         return;
@@ -598,6 +644,7 @@ static void scene_world_point(const double *world_matrix, const float local[3], 
 /// @brief Recursive depth-first search by name.
 extern const char *rt_string_cstr(rt_string s);
 
+/// @brief Depth-first search for a node whose `name` matches `target` (NULL on miss).
 static rt_scene_node3d *find_by_name(rt_scene_node3d *node, const char *target) {
     if (node->name) {
         const char *s = rt_string_cstr(node->name);
@@ -701,6 +748,7 @@ static void draw_node(rt_scene_node3d *node,
  * SceneNode3D — lifecycle
  *=========================================================================*/
 
+/// @brief GC finalizer for a SceneNode — release mesh/material/animator/body refs and the children array.
 static void rt_scene_node3d_finalize(void *obj) {
     rt_scene_node3d *node = (rt_scene_node3d *)obj;
     if (!node)
@@ -728,6 +776,18 @@ static void rt_scene_node3d_finalize(void *obj) {
     scene3d_release_ref((void **)&node->name);
 }
 
+// ===========================================================================
+// SceneNode public API
+//
+// A SceneNode is one transformable element in the scene graph: it
+// carries a TRS (position / rotation / scale), an optional mesh +
+// material to draw, an optional rigid body to drive physics from,
+// an optional animator, and a list of child nodes. Each accessor
+// is null-safe; setters skip if `obj` is NULL, getters return zero
+// / identity / NULL.
+// ===========================================================================
+
+/// @brief Create an empty SceneNode at the origin (identity rotation, scale 1).
 void *rt_scene_node3d_new(void) {
     rt_scene_node3d *node = (rt_scene_node3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_scene_node3d));
     if (!node) {
@@ -775,6 +835,7 @@ void *rt_scene_node3d_new(void) {
  * SceneNode3D — transform
  *=========================================================================*/
 
+/// @brief Set the local-space position component of the node's TRS.
 void rt_scene_node3d_set_position(void *obj, double x, double y, double z) {
     if (!obj)
         return;
@@ -785,6 +846,7 @@ void rt_scene_node3d_set_position(void *obj, double x, double y, double z) {
     mark_dirty(n);
 }
 
+/// @brief Read the local position as a Vec3 (origin if `obj` is NULL).
 void *rt_scene_node3d_get_position(void *obj) {
     if (!obj)
         return rt_vec3_new(0, 0, 0);
@@ -792,6 +854,7 @@ void *rt_scene_node3d_get_position(void *obj) {
     return rt_vec3_new(n->position[0], n->position[1], n->position[2]);
 }
 
+/// @brief Replace the local rotation with the given Quat (re-normalised on store).
 void rt_scene_node3d_set_rotation(void *obj, void *quat) {
     if (!obj || !quat)
         return;
@@ -803,6 +866,7 @@ void rt_scene_node3d_set_rotation(void *obj, void *quat) {
     mark_dirty(n);
 }
 
+/// @brief Read the local rotation as a Quat (identity if `obj` is NULL).
 void *rt_scene_node3d_get_rotation(void *obj) {
     if (!obj)
         return rt_quat_new(0, 0, 0, 1);
@@ -810,6 +874,7 @@ void *rt_scene_node3d_get_rotation(void *obj) {
     return rt_quat_new(n->rotation[0], n->rotation[1], n->rotation[2], n->rotation[3]);
 }
 
+/// @brief Set the per-axis scale (uniform or non-uniform).
 void rt_scene_node3d_set_scale(void *obj, double x, double y, double z) {
     if (!obj)
         return;
@@ -820,6 +885,7 @@ void rt_scene_node3d_set_scale(void *obj, double x, double y, double z) {
     mark_dirty(n);
 }
 
+/// @brief Read the local scale as a Vec3 (1,1,1 if `obj` is NULL).
 void *rt_scene_node3d_get_scale(void *obj) {
     if (!obj)
         return rt_vec3_new(1, 1, 1);
@@ -827,6 +893,7 @@ void *rt_scene_node3d_get_scale(void *obj) {
     return rt_vec3_new(n->scale_xyz[0], n->scale_xyz[1], n->scale_xyz[2]);
 }
 
+/// @brief Compose this node's local TRS with all ancestors and return the world matrix as a Mat4.
 void *rt_scene_node3d_get_world_matrix(void *obj) {
     if (!obj)
         return NULL;
@@ -855,6 +922,7 @@ void *rt_scene_node3d_get_world_matrix(void *obj) {
  * SceneNode3D — hierarchy
  *=========================================================================*/
 
+/// @brief Reparent `child` under `obj`. Detaches from previous parent first; rejects cycles.
 void rt_scene_node3d_add_child(void *obj, void *child_obj) {
     if (!obj || !child_obj || obj == child_obj)
         return;
@@ -887,6 +955,7 @@ void rt_scene_node3d_add_child(void *obj, void *child_obj) {
     mark_dirty(child);
 }
 
+/// @brief Detach `child` from `obj`. Decrements the GC refcount. No-op if not actually a child.
 void rt_scene_node3d_remove_child(void *obj, void *child_obj) {
     if (!obj || !child_obj)
         return;
@@ -909,10 +978,12 @@ void rt_scene_node3d_remove_child(void *obj, void *child_obj) {
     }
 }
 
+/// @brief Number of immediate (non-recursive) children attached to this node.
 int64_t rt_scene_node3d_child_count(void *obj) {
     return obj ? ((rt_scene_node3d *)obj)->child_count : 0;
 }
 
+/// @brief Return the `index`-th child handle (NULL on out-of-range or NULL `obj`).
 void *rt_scene_node3d_get_child(void *obj, int64_t index) {
     if (!obj)
         return NULL;
@@ -922,10 +993,12 @@ void *rt_scene_node3d_get_child(void *obj, int64_t index) {
     return n->children[index];
 }
 
+/// @brief Parent node handle (NULL for root or detached nodes).
 void *rt_scene_node3d_get_parent(void *obj) {
     return obj ? ((rt_scene_node3d *)obj)->parent : NULL;
 }
 
+/// @brief Recursive depth-first search of the subtree for a node with the given name.
 void *rt_scene_node3d_find(void *obj, rt_string name) {
     if (!obj || !name)
         return NULL;
@@ -939,6 +1012,8 @@ void *rt_scene_node3d_find(void *obj, rt_string name) {
  * SceneNode3D — renderable / visibility / name
  *=========================================================================*/
 
+/// @brief Bind a mesh to this node (replaces previous; null clears).
+/// The mesh is referenced (not copied) so multiple nodes can share it.
 void rt_scene_node3d_set_mesh(void *obj, void *mesh) {
     if (!obj)
         return;
@@ -962,10 +1037,12 @@ void rt_scene_node3d_set_mesh(void *obj, void *mesh) {
     }
 }
 
+/// @brief Currently bound mesh handle (NULL if none).
 void *rt_scene_node3d_get_mesh(void *obj) {
     return obj ? ((rt_scene_node3d *)obj)->mesh : NULL;
 }
 
+/// @brief Bind a material to this node (replaces previous; null clears).
 void rt_scene_node3d_set_material(void *obj, void *material) {
     if (!obj)
         return;
@@ -977,19 +1054,23 @@ void rt_scene_node3d_set_material(void *obj, void *material) {
     node->material = material;
 }
 
+/// @brief Currently bound material handle (NULL if none).
 void *rt_scene_node3d_get_material(void *obj) {
     return obj ? ((rt_scene_node3d *)obj)->material : NULL;
 }
 
+/// @brief Toggle whether this node participates in rendering.
 void rt_scene_node3d_set_visible(void *obj, int8_t visible) {
     if (obj)
         ((rt_scene_node3d *)obj)->visible = visible;
 }
 
+/// @brief Read the visibility flag (0 or 1; 0 if `obj` is NULL).
 int8_t rt_scene_node3d_get_visible(void *obj) {
     return obj ? ((rt_scene_node3d *)obj)->visible : 0;
 }
 
+/// @brief Set the node's identifier name (used by `rt_scene_node3d_find`).
 void rt_scene_node3d_set_name(void *obj, rt_string name) {
     if (!obj)
         return;
@@ -1003,12 +1084,14 @@ void rt_scene_node3d_set_name(void *obj, rt_string name) {
     node->name = name;
 }
 
+/// @brief Read the node's name (empty string if unset or `obj` is NULL).
 rt_string rt_scene_node3d_get_name(void *obj) {
     if (obj && ((rt_scene_node3d *)obj)->name)
         return ((rt_scene_node3d *)obj)->name;
     return rt_const_cstr("");
 }
 
+/// @brief Local-space minimum corner of the bound mesh's AABB (origin if no mesh).
 void *rt_scene_node3d_get_aabb_min(void *obj) {
     if (!obj)
         return rt_vec3_new(0, 0, 0);
@@ -1016,6 +1099,7 @@ void *rt_scene_node3d_get_aabb_min(void *obj) {
     return rt_vec3_new(n->aabb_min[0], n->aabb_min[1], n->aabb_min[2]);
 }
 
+/// @brief Local-space maximum corner of the bound mesh's AABB.
 void *rt_scene_node3d_get_aabb_max(void *obj) {
     if (!obj)
         return rt_vec3_new(0, 0, 0);
@@ -1023,6 +1107,7 @@ void *rt_scene_node3d_get_aabb_max(void *obj) {
     return rt_vec3_new(n->aabb_max[0], n->aabb_max[1], n->aabb_max[2]);
 }
 
+/// @brief Link a physics rigid body to this node so transforms stay in sync (see `set_sync_mode`).
 void rt_scene_node3d_bind_body(void *obj, void *body) {
     rt_scene_node3d *node;
     if (!obj)
@@ -1035,16 +1120,24 @@ void rt_scene_node3d_bind_body(void *obj, void *body) {
     node->bound_body = body;
 }
 
+/// @brief Detach any bound rigid body. Subsequent `sync` calls on this node become no-ops.
 void rt_scene_node3d_clear_body_binding(void *obj) {
     if (!obj)
         return;
     scene3d_release_ref(&((rt_scene_node3d *)obj)->bound_body);
 }
 
+/// @brief Currently bound rigid body handle (NULL if none).
 void *rt_scene_node3d_get_body(void *obj) {
     return obj ? ((rt_scene_node3d *)obj)->bound_body : NULL;
 }
 
+/// @brief Choose how this node and its bound body stay in sync each frame.
+///
+/// Modes: `NODE_FROM_BODY` (default — rigid-body sim drives the node),
+/// `BODY_FROM_NODE` (kinematic — node animates the body),
+/// `NODE_FROM_ANIMATOR_ROOT_MOTION` (root-motion driven), or
+/// `TWO_WAY_KINEMATIC` (sync both directions per frame).
 void rt_scene_node3d_set_sync_mode(void *obj, int64_t sync_mode) {
     rt_scene_node3d *node;
     if (!obj)
@@ -1063,10 +1156,12 @@ void rt_scene_node3d_set_sync_mode(void *obj, int64_t sync_mode) {
     }
 }
 
+/// @brief Current node/body sync mode (`NODE_FROM_BODY` if `obj` is NULL).
 int64_t rt_scene_node3d_get_sync_mode(void *obj) {
     return obj ? ((rt_scene_node3d *)obj)->sync_mode : RT_SCENE_NODE3D_SYNC_NODE_FROM_BODY;
 }
 
+/// @brief Bind an animation controller to drive this node's transform / skeleton.
 void rt_scene_node3d_bind_animator(void *obj, void *controller) {
     rt_scene_node3d *node;
     if (!obj)
@@ -1079,12 +1174,14 @@ void rt_scene_node3d_bind_animator(void *obj, void *controller) {
     node->bound_animator = controller;
 }
 
+/// @brief Detach any bound animator. Subsequent frames stop applying its motion.
 void rt_scene_node3d_clear_animator_binding(void *obj) {
     if (!obj)
         return;
     scene3d_release_ref(&((rt_scene_node3d *)obj)->bound_animator);
 }
 
+/// @brief Currently bound animation controller handle (NULL if none).
 void *rt_scene_node3d_get_animator(void *obj) {
     return obj ? ((rt_scene_node3d *)obj)->bound_animator : NULL;
 }
@@ -1093,6 +1190,7 @@ void *rt_scene_node3d_get_animator(void *obj) {
  * Scene3D
  *=========================================================================*/
 
+/// @brief GC finalizer for a Scene3D — releases the root node and any post-processing context.
 static void rt_scene3d_finalize(void *obj) {
     rt_scene3d *scene = (rt_scene3d *)obj;
     if (!scene)
@@ -1102,6 +1200,7 @@ static void rt_scene3d_finalize(void *obj) {
     scene3d_release_ref((void **)&scene->root);
 }
 
+/// @brief Allocate a fresh Scene3D with an empty root node and no lights or skybox.
 void *rt_scene3d_new(void) {
     rt_scene3d *s = (rt_scene3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_scene3d));
     if (!s) {
@@ -1116,10 +1215,12 @@ void *rt_scene3d_new(void) {
     return s;
 }
 
+/// @brief Return the implicit root node — every other node lives somewhere in its subtree.
 void *rt_scene3d_get_root(void *obj) {
     return obj ? ((rt_scene3d *)obj)->root : NULL;
 }
 
+/// @brief Convenience: add `node` as a direct child of the scene's root node.
 void rt_scene3d_add(void *obj, void *node) {
     if (!obj)
         return;
@@ -1128,6 +1229,7 @@ void rt_scene3d_add(void *obj, void *node) {
     s->node_count = count_subtree(s->root);
 }
 
+/// @brief Convenience: remove `node` from the scene root's children.
 void rt_scene3d_remove(void *obj, void *node) {
     if (!obj || !node)
         return;

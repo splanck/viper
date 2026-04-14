@@ -461,6 +461,9 @@ void *rt_anim_controller3d_new(void *skeleton) {
     return controller;
 }
 
+/// @brief Register a named animation state. `name` is the lookup key (used by `_play`,
+/// `_crossfade`, etc); `animation` is an Animation3D handle. If a state with `name` already
+/// exists, returns its existing index without creating a duplicate. Returns -1 on failure.
 int64_t rt_anim_controller3d_add_state(void *obj, rt_string name, void *animation) {
     rt_anim_controller3d *controller = (rt_anim_controller3d *)obj;
     anim_controller3d_state_t *state;
@@ -487,6 +490,9 @@ int64_t rt_anim_controller3d_add_state(void *obj, rt_string name, void *animatio
     return controller->state_count++;
 }
 
+/// @brief Register a directional transition with a default blend time. When `_play` is later
+/// called with `to_state` while in `from_state`, this blend time is used automatically. If the
+/// transition already exists, its blend time is updated. Returns 1 on success.
 int8_t rt_anim_controller3d_add_transition(
     void *obj, rt_string from_state, rt_string to_state, double blend_seconds) {
     rt_anim_controller3d *controller = (rt_anim_controller3d *)obj;
@@ -519,6 +525,9 @@ int8_t rt_anim_controller3d_add_transition(
     return 1;
 }
 
+/// @brief Play a state on the base layer. If a transition was registered between the current
+/// state and `state_name`, its blend time is used; otherwise the switch is instantaneous.
+/// Returns 1 if the state exists, 0 if not.
 int8_t rt_anim_controller3d_play(void *obj, rt_string state_name) {
     rt_anim_controller3d *controller = (rt_anim_controller3d *)obj;
     int32_t state_index;
@@ -537,6 +546,8 @@ int8_t rt_anim_controller3d_play(void *obj, rt_string state_name) {
     return controller_set_layer_state(controller, 0, state_index, blend_seconds);
 }
 
+/// @brief Cross-fade to `state_name` over `blend_seconds`, regardless of any registered default
+/// transition. Use this for one-off blends with custom timing.
 int8_t rt_anim_controller3d_crossfade(void *obj, rt_string state_name, double blend_seconds) {
     rt_anim_controller3d *controller = (rt_anim_controller3d *)obj;
     int32_t state_index;
@@ -548,6 +559,8 @@ int8_t rt_anim_controller3d_crossfade(void *obj, rt_string state_name, double bl
     return controller_set_layer_state(controller, 0, state_index, blend_seconds);
 }
 
+/// @brief Stop playback on every layer (base + overlays). Does not clear the current_state
+/// indices — calling `_play` again resumes from the same animation. Resets transition timers.
 void rt_anim_controller3d_stop(void *obj) {
     rt_anim_controller3d *controller = (rt_anim_controller3d *)obj;
     if (!controller)
@@ -562,6 +575,10 @@ void rt_anim_controller3d_stop(void *obj) {
     }
 }
 
+/// @brief Per-frame tick for every layer. Advances each player's time by `delta_time`, fires
+/// time-stamped events crossing the previous→current playback window, advances transition
+/// blends, then composites the layered final bone palette. Also accumulates root-motion bone
+/// translation deltas for `_consume_root_motion`. No-op for negative dt or missing skeleton.
 void rt_anim_controller3d_update(void *obj, double delta_time) {
     rt_anim_controller3d *controller = (rt_anim_controller3d *)obj;
     double before_x;
@@ -617,6 +634,7 @@ void rt_anim_controller3d_update(void *obj, double delta_time) {
     controller->root_motion_delta[2] += after_z - before_z;
 }
 
+/// @brief Name of the state currently playing on the base layer (empty string if none/missing).
 rt_string rt_anim_controller3d_get_current_state(void *obj) {
     rt_anim_controller3d *controller = (rt_anim_controller3d *)obj;
     int32_t state_index;
@@ -628,6 +646,8 @@ rt_string rt_anim_controller3d_get_current_state(void *obj) {
     return rt_const_cstr(controller->states[state_index].name);
 }
 
+/// @brief Name of the state on the base layer immediately before the current one. Useful during
+/// transitions to know what the controller is fading *from*. Empty if no prior state.
 rt_string rt_anim_controller3d_get_previous_state(void *obj) {
     rt_anim_controller3d *controller = (rt_anim_controller3d *)obj;
     int32_t state_index;
@@ -639,16 +659,20 @@ rt_string rt_anim_controller3d_get_previous_state(void *obj) {
     return rt_const_cstr(controller->states[state_index].name);
 }
 
+/// @brief Returns 1 if the base layer is mid-blend between two states.
 int8_t rt_anim_controller3d_get_is_transitioning(void *obj) {
     rt_anim_controller3d *controller = (rt_anim_controller3d *)obj;
     return controller ? controller->layers[0].transitioning : 0;
 }
 
+/// @brief Number of states currently registered with the controller.
 int64_t rt_anim_controller3d_get_state_count(void *obj) {
     rt_anim_controller3d *controller = (rt_anim_controller3d *)obj;
     return controller ? controller->state_count : 0;
 }
 
+/// @brief Override the playback speed multiplier for a state. Applied immediately to any
+/// layer currently playing that state. Negative speeds are accepted (reverse playback).
 void rt_anim_controller3d_set_state_speed(void *obj, rt_string state_name, double speed) {
     rt_anim_controller3d *controller = (rt_anim_controller3d *)obj;
     int32_t state_index;
@@ -664,6 +688,8 @@ void rt_anim_controller3d_set_state_speed(void *obj, rt_string state_name, doubl
     }
 }
 
+/// @brief Override whether a state loops (1) or plays once (0). Applied immediately to any
+/// layer currently playing that state via the player's loop_override hook.
 void rt_anim_controller3d_set_state_looping(void *obj, rt_string state_name, int8_t loop) {
     rt_anim_controller3d *controller = (rt_anim_controller3d *)obj;
     int32_t state_index;
@@ -682,6 +708,9 @@ void rt_anim_controller3d_set_state_looping(void *obj, rt_string state_name, int
     }
 }
 
+/// @brief Register a time-stamped event on a state. When `_update` advances playback past
+/// `time_seconds`, `event_name` is enqueued for `_poll_event`. Useful for footstep sounds,
+/// hit-frame triggers, attack windows. Multiple events per state are allowed.
 void rt_anim_controller3d_add_event(
     void *obj, rt_string state_name, double time_seconds, rt_string event_name) {
     rt_anim_controller3d *controller = (rt_anim_controller3d *)obj;
@@ -706,6 +735,8 @@ void rt_anim_controller3d_add_event(
     controller_copy_name(event->name, sizeof(event->name), event_name);
 }
 
+/// @brief Pop the next pending event name from the queue (FIFO). Returns empty string when
+/// the queue is exhausted. Caller typically polls in a loop after each `_update` to drain.
 rt_string rt_anim_controller3d_poll_event(void *obj) {
     rt_anim_controller3d *controller = (rt_anim_controller3d *)obj;
     const char *name;
@@ -718,6 +749,9 @@ rt_string rt_anim_controller3d_poll_event(void *obj) {
     return rt_const_cstr(name);
 }
 
+/// @brief Set which bone supplies root motion (typically the hip/pelvis). Translation deltas
+/// from this bone each frame are accumulated for `_consume_root_motion` so the game can move
+/// the character via the animation rather than fighting with it. Resets the accumulated delta.
 void rt_anim_controller3d_set_root_motion_bone(void *obj, int64_t bone_index) {
     rt_anim_controller3d *controller = (rt_anim_controller3d *)obj;
     if (!controller || !controller->skeleton)
@@ -730,6 +764,8 @@ void rt_anim_controller3d_set_root_motion_bone(void *obj, int64_t bone_index) {
     controller->root_motion_delta[2] = 0.0;
 }
 
+/// @brief Read (without clearing) the accumulated root-motion translation delta as a Vec3.
+/// Use `_consume_root_motion` instead when you want to move the character and reset.
 void *rt_anim_controller3d_get_root_motion_delta(void *obj) {
     rt_anim_controller3d *controller = (rt_anim_controller3d *)obj;
     if (!controller)
@@ -739,6 +775,8 @@ void *rt_anim_controller3d_get_root_motion_delta(void *obj) {
                        controller->root_motion_delta[2]);
 }
 
+/// @brief Atomically read and reset the accumulated root-motion delta. Returns the Vec3 the
+/// character should be moved by this frame to follow the animation's hip translation.
 void *rt_anim_controller3d_consume_root_motion(void *obj) {
     rt_anim_controller3d *controller = (rt_anim_controller3d *)obj;
     void *delta;
@@ -753,6 +791,9 @@ void *rt_anim_controller3d_consume_root_motion(void *obj) {
     return delta;
 }
 
+/// @brief Set the blend weight of an overlay layer (clamped to [0, 1]). Layer 0 is the base
+/// and is always full weight; setting it has no effect. Higher overlays compose additively
+/// over the base, masked to their bone subset.
 void rt_anim_controller3d_set_layer_weight(void *obj, int64_t layer_index, double weight) {
     rt_anim_controller3d *controller = (rt_anim_controller3d *)obj;
     if (!controller || layer_index < 0 || layer_index >= RT_ANIM_CONTROLLER3D_MAX_LAYERS)
@@ -768,6 +809,9 @@ void rt_anim_controller3d_set_layer_weight(void *obj, int64_t layer_index, doubl
     controller->layers[layer_index].weight = (float)weight;
 }
 
+/// @brief Set which bones an overlay layer affects. The layer composites only on `root_bone`
+/// and its descendants in the skeleton hierarchy (typical use: arms-only upper-body overlay).
+/// Layer 0 always covers the full skeleton.
 void rt_anim_controller3d_set_layer_mask(void *obj, int64_t layer_index, int64_t root_bone) {
     rt_anim_controller3d *controller = (rt_anim_controller3d *)obj;
     if (!controller || layer_index < 0 || layer_index >= RT_ANIM_CONTROLLER3D_MAX_LAYERS)
@@ -781,6 +825,8 @@ void rt_anim_controller3d_set_layer_mask(void *obj, int64_t layer_index, int64_t
     controller_rebuild_layer_mask(controller, (int32_t)layer_index);
 }
 
+/// @brief Play a state on a specific overlay layer (layer_index ≥ 1). No transition blend.
+/// Returns 1 on success, 0 if `layer_index` is invalid or `state_name` doesn't exist.
 int8_t rt_anim_controller3d_play_layer(void *obj, int64_t layer_index, rt_string state_name) {
     rt_anim_controller3d *controller = (rt_anim_controller3d *)obj;
     int32_t state_index;
@@ -792,6 +838,8 @@ int8_t rt_anim_controller3d_play_layer(void *obj, int64_t layer_index, rt_string
     return controller_set_layer_state(controller, (int32_t)layer_index, state_index, 0.0);
 }
 
+/// @brief Cross-fade an overlay layer to `state_name` over `blend_seconds`. Mirrors `_crossfade`
+/// but targets a specific layer, leaving the base unaffected.
 int8_t rt_anim_controller3d_crossfade_layer(
     void *obj, int64_t layer_index, rt_string state_name, double blend_seconds) {
     rt_anim_controller3d *controller = (rt_anim_controller3d *)obj;
@@ -804,6 +852,8 @@ int8_t rt_anim_controller3d_crossfade_layer(
     return controller_set_layer_state(controller, (int32_t)layer_index, state_index, blend_seconds);
 }
 
+/// @brief Stop playback on a specific overlay layer. Layer 0 (base) keeps its current_state but
+/// pauses; overlay layers (≥ 1) are also cleared so they no longer composite onto the base.
 void rt_anim_controller3d_stop_layer(void *obj, int64_t layer_index) {
     rt_anim_controller3d *controller = (rt_anim_controller3d *)obj;
     anim_controller3d_layer_t *layer;

@@ -79,10 +79,13 @@ void rt_clipboard_clear(void) {
 // Keyboard Shortcuts (Phase 1)
 //=============================================================================
 
+/// @brief Pick the app whose shortcut table to operate on.
+/// Falls back to the active app if no current-app override is set.
 static rt_gui_app_t *rt_shortcuts_app(void) {
     return s_current_app ? s_current_app : rt_gui_get_active_app();
 }
 
+/// @brief Grow the shortcut table if it's full (doubles capacity, default 16).
 static void rt_shortcuts_ensure_capacity(rt_gui_app_t *app) {
     if (!app || app->shortcut_count < app->shortcut_cap)
         return;
@@ -94,7 +97,13 @@ static void rt_shortcuts_ensure_capacity(rt_gui_app_t *app) {
     app->shortcut_cap = new_cap;
 }
 
-// Parse modifier keys from string like "Ctrl+Shift+S"
+/// @brief Parse a `+`-separated shortcut string (e.g. `"Ctrl+Shift+S"`) into modifier flags + key code.
+///
+/// Recognises `Ctrl`/`Control`, `Shift`, `Alt`, `Cmd`/`Command`
+/// (mapped to Ctrl on non-macOS for cross-platform consistency),
+/// `F1`-`F12`, named keys (`Enter`, `Escape`, arrows, etc.), and
+/// any single character. Case-insensitive.
+/// @return 1 on success, 0 on alloc failure.
 static int parse_shortcut_keys(const char *keys, int *ctrl, int *shift, int *alt, int *key) {
     *ctrl = 0;
     *shift = 0;

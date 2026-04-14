@@ -55,6 +55,11 @@ static inline void rt_net_init_wsa(void) {}
 // Port Checking
 //=============================================================================
 
+/// @brief TCP port-scan probe: returns 1 if `(host, port)` accepts a connection within
+/// `timeout_ms`. Walks every address `getaddrinfo` returns (so IPv6 hosts get IPv6 attempts).
+/// Uses non-blocking connect + `select(write_fds)` for the timeout (cross-platform pattern).
+/// Default timeout 1000 ms if non-positive supplied. Useful for service health-checks and
+/// "wait for port to come up" patterns during testing.
 int8_t rt_netutils_is_port_open(rt_string host, int64_t port, int64_t timeout_ms) {
     rt_net_init_wsa();
 
@@ -128,6 +133,10 @@ int8_t rt_netutils_is_port_open(rt_string host, int64_t port, int64_t timeout_ms
     return 0;
 }
 
+/// @brief Ask the OS for a free ephemeral port: bind a temporary socket to `127.0.0.1:0` (port 0
+/// means "you pick"), read back the assigned port via `getsockname`, then close the socket.
+/// **Race window:** another process can grab the port between this call and the user's actual
+/// bind. Acceptable for tests; not for production servers where you should bind directly to 0.
 int64_t rt_netutils_get_free_port(void) {
     rt_net_init_wsa();
 
@@ -175,6 +184,9 @@ static bool parse_ipv4_addr(const char *str, uint32_t *out) {
     return true;
 }
 
+/// @brief Test whether `ip` falls within `cidr` (e.g. `192.168.1.5` ∈ `192.168.0.0/16`). Parses
+/// the prefix length, builds the mask via `~((1u << (32 - prefix)) - 1)`, and compares masked
+/// halves. Returns 1 for `/0` (match-all). IPv4 only — for IPv6 ranges use a separate path.
 int8_t rt_netutils_match_cidr(rt_string ip, rt_string cidr) {
     const char *ip_str = rt_string_cstr(ip);
     const char *cidr_str = rt_string_cstr(cidr);
@@ -214,6 +226,8 @@ int8_t rt_netutils_match_cidr(rt_string ip, rt_string cidr) {
     return (ip_val & mask) == (net_val & mask) ? 1 : 0;
 }
 
+/// @brief Returns 1 if `ip` is in an RFC 1918 private range (10/8, 172.16/12, 192.168/16) or
+/// loopback (127/8). Used for "should I trust this peer?" checks before processing requests.
 int8_t rt_netutils_is_private_ip(rt_string ip) {
     const char *ip_str = rt_string_cstr(ip);
     if (!ip_str)
@@ -241,6 +255,11 @@ int8_t rt_netutils_is_private_ip(rt_string ip) {
     return 0;
 }
 
+/// @brief Discover the IPv4 address of the interface the OS would route to the public internet.
+/// Trick: open a UDP socket, "connect" it to 8.8.8.8:53 (no actual packets sent — UDP connect is
+/// just a routing table lookup), then `getsockname` to read which local IP the kernel assigned.
+/// Returns "127.0.0.1" if anything fails (e.g. completely offline machine). More accurate than
+/// walking interfaces because it picks the *active* one.
 rt_string rt_netutils_local_ipv4(void) {
     rt_net_init_wsa();
 

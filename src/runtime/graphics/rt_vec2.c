@@ -70,6 +70,14 @@
 static _Thread_local void *vec2_pool_buf_[VEC2_POOL_CAPACITY];
 static _Thread_local int vec2_pool_top_ = 0;
 
+/// @brief Vec2 pool return-on-finalize — resurrects the object instead of freeing it.
+///
+/// Set as the GC finalizer on every Vec2 from the pool. When the
+/// last reference drops, instead of returning the memory to the
+/// general allocator we resurrect the object (refcount 0→1) and
+/// push it back onto the pool, where the next `rt_vec2_new` can
+/// claim it for free. Cap is `VEC2_POOL_CAPACITY` per thread; once
+/// full, excess Vec2s fall through to normal heap free.
 static void vec2_pool_return(void *p) {
     if (vec2_pool_top_ < VEC2_POOL_CAPACITY) {
         rt_obj_resurrect(p);                       // refcount 0 → 1

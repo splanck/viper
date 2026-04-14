@@ -227,10 +227,13 @@ void *rt_material3d_new_pbr(double r, double g, double b) {
     return mat;
 }
 
+/// @brief Deep-copy a material, including all texture references (which are retained).
 void *rt_material3d_clone(void *obj) {
     return material_clone_like(obj);
 }
 
+/// @brief Alias for `_clone` — produce an independent material instance for per-renderable
+/// tweaks without affecting the source. Same texture-retention semantics.
 void *rt_material3d_make_instance(void *obj) {
     return material_clone_like(obj);
 }
@@ -252,6 +255,7 @@ void rt_material3d_set_texture(void *obj, void *pixels) {
     material_assign_ref(&((rt_material3d *)obj)->texture, pixels);
 }
 
+/// @brief Alias for `_set_texture` using PBR-style "albedo" terminology.
 void rt_material3d_set_albedo_map(void *obj, void *pixels) {
     rt_material3d_set_texture(obj, pixels);
 }
@@ -303,6 +307,8 @@ double rt_material3d_get_alpha(void *obj) {
     return ((rt_material3d *)obj)->alpha;
 }
 
+/// @brief Set PBR metallic factor [0, 1]. 0 = dielectric (plastic, wood), 1 = pure metal. Auto-
+/// promotes the material to PBR shading model on first use.
 void rt_material3d_set_metallic(void *obj, double value) {
     rt_material3d *mat;
     if (!obj)
@@ -312,12 +318,14 @@ void rt_material3d_set_metallic(void *obj, double value) {
     mat->metallic = clamp01(value);
 }
 
+/// @brief Read the metallic factor (default 0).
 double rt_material3d_get_metallic(void *obj) {
     if (!obj)
         return 0.0;
     return ((rt_material3d *)obj)->metallic;
 }
 
+/// @brief Set PBR roughness [0, 1]. 0 = mirror smooth, 1 = fully diffuse. Auto-promotes to PBR.
 void rt_material3d_set_roughness(void *obj, double value) {
     rt_material3d *mat;
     if (!obj)
@@ -327,12 +335,15 @@ void rt_material3d_set_roughness(void *obj, double value) {
     mat->roughness = clamp01(value);
 }
 
+/// @brief Read the roughness factor (default 0.5).
 double rt_material3d_get_roughness(void *obj) {
     if (!obj)
         return 0.5;
     return ((rt_material3d *)obj)->roughness;
 }
 
+/// @brief Set ambient-occlusion factor [0, 1]. 1 = no occlusion, 0 = fully shadowed in cavities.
+/// Multiplied into the indirect lighting. Auto-promotes to PBR.
 void rt_material3d_set_ao(void *obj, double value) {
     rt_material3d *mat;
     if (!obj)
@@ -342,18 +353,22 @@ void rt_material3d_set_ao(void *obj, double value) {
     mat->ao = clamp01(value);
 }
 
+/// @brief Read the AO factor (default 1.0 = no occlusion).
 double rt_material3d_get_ao(void *obj) {
     if (!obj)
         return 1.0;
     return ((rt_material3d *)obj)->ao;
 }
 
+/// @brief Multiply the emissive output by `value` (≥ 0). Useful for HDR/bloom: values > 1 push
+/// emissive surfaces past clamping range.
 void rt_material3d_set_emissive_intensity(void *obj, double value) {
     if (!obj)
         return;
     ((rt_material3d *)obj)->emissive_intensity = clamp_min(value, 0.0);
 }
 
+/// @brief Read the emissive intensity multiplier (default 1.0).
 double rt_material3d_get_emissive_intensity(void *obj) {
     if (!obj)
         return 1.0;
@@ -367,6 +382,8 @@ void rt_material3d_set_normal_map(void *obj, void *pixels) {
     material_assign_ref(&((rt_material3d *)obj)->normal_map, pixels);
 }
 
+/// @brief Assign a glTF-style metallic-roughness texture (B = metallic, G = roughness, R/A
+/// unused). Auto-promotes the material to PBR shading.
 void rt_material3d_set_metallic_roughness_map(void *obj, void *pixels) {
     rt_material3d *mat;
     if (!obj)
@@ -376,6 +393,8 @@ void rt_material3d_set_metallic_roughness_map(void *obj, void *pixels) {
     material_assign_ref(&mat->metallic_roughness_map, pixels);
 }
 
+/// @brief Assign an ambient-occlusion texture (R channel). Multiplied into indirect lighting.
+/// Auto-promotes the material to PBR shading.
 void rt_material3d_set_ao_map(void *obj, void *pixels) {
     rt_material3d *mat;
     if (!obj)
@@ -409,18 +428,23 @@ void rt_material3d_set_emissive_color(void *obj, double r, double g, double b) {
     m->emissive[2] = b;
 }
 
+/// @brief Set normal-map intensity (≥ 0). 1.0 = no scaling, > 1 amplifies bumps, < 1 flattens.
 void rt_material3d_set_normal_scale(void *obj, double value) {
     if (!obj)
         return;
     ((rt_material3d *)obj)->normal_scale = clamp_min(value, 0.0);
 }
 
+/// @brief Read the normal-map scale factor (default 1.0).
 double rt_material3d_get_normal_scale(void *obj) {
     if (!obj)
         return 1.0;
     return ((rt_material3d *)obj)->normal_scale;
 }
 
+/// @brief Set the alpha-handling mode (RT_MATERIAL3D_ALPHA_MODE_OPAQUE / MASK / BLEND).
+/// OPAQUE: ignore alpha. MASK: discard fragments below cutoff. BLEND: depth-sorted transparency.
+/// Out-of-range values are clamped to OPAQUE.
 void rt_material3d_set_alpha_mode(void *obj, int64_t mode) {
     if (!obj)
         return;
@@ -429,18 +453,22 @@ void rt_material3d_set_alpha_mode(void *obj, int64_t mode) {
     ((rt_material3d *)obj)->alpha_mode = (int32_t)mode;
 }
 
+/// @brief Read the alpha mode (default OPAQUE).
 int64_t rt_material3d_get_alpha_mode(void *obj) {
     if (!obj)
         return RT_MATERIAL3D_ALPHA_MODE_OPAQUE;
     return ((rt_material3d *)obj)->alpha_mode;
 }
 
+/// @brief Toggle double-sided rendering. Disables backface culling for this material — useful
+/// for foliage, banners, anything that should look correct from both sides. Increases fillrate.
 void rt_material3d_set_double_sided(void *obj, int8_t enabled) {
     if (!obj)
         return;
     ((rt_material3d *)obj)->double_sided = enabled ? 1 : 0;
 }
 
+/// @brief Returns 1 if double-sided rendering is enabled, 0 otherwise.
 int8_t rt_material3d_get_double_sided(void *obj) {
     if (!obj)
         return 0;

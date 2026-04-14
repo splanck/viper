@@ -310,6 +310,13 @@ When a target object is freed, `rt_gc_clear_weak_refs(target)` automatically
 nullifies all weak references pointing to it. This is called from `rt_obj_free()`
 and from the GC collector before freeing cycle garbage.
 
+Object fields can also use the lightweight helpers:
+
+```c
+rt_weak_store(&slot, target);
+void *target = rt_weak_load(&slot); // NULL once the target is freed
+```
+
 Implementation: hash table of per-target weak reference chains (64 buckets),
 protected by the GC mutex.
 

@@ -37,14 +37,28 @@
 #include <stdlib.h>
 #include <string.h>
 
+/// @brief True when the active backend can apply GPU post-FX during present.
+///
+/// Requires the backend to expose `present_postfx` AND the canvas
+/// not be in RTT mode (RTT outputs are read back directly without
+/// post-processing).
 static int canvas3d_backend_uses_gpu_postfx(const rt_canvas3d *c) {
     return c && c->backend && c->backend->present_postfx && c->render_target == NULL;
 }
 
+/// @brief True when the canvas's RTT is owned by a hardware backend.
+///
+/// Software backends fall back to a CPU-side copy for RTT; hardware
+/// backends (D3D11/OpenGL/Metal) keep the texture on the GPU and
+/// only read it back when the user requests `Pixels()`.
 static int canvas3d_backend_owns_gpu_rtt(const rt_canvas3d *c) {
     return c && c->render_target && c->backend && c->backend != &vgfx3d_software_backend;
 }
 
+/// @brief Push the current frame's post-FX enable flag + snapshot to the backend.
+///
+/// Called by `latch_gpu_postfx_state` after capturing a snapshot.
+/// Backends that don't implement these hooks silently no-op.
 static void canvas3d_apply_gpu_postfx_state(rt_canvas3d *c) {
     const vgfx3d_postfx_snapshot_t *snapshot = NULL;
 
@@ -58,6 +72,12 @@ static void canvas3d_apply_gpu_postfx_state(rt_canvas3d *c) {
         c->backend->set_gpu_postfx_snapshot(c->backend_ctx, snapshot);
 }
 
+/// @brief Capture the current post-FX state into a per-frame snapshot.
+///
+/// Snapshotting once per frame ensures the post-FX parameters used
+/// by the present-time composite match what was active at frame start
+/// (avoids tearing if the user toggles a post-FX setting mid-frame).
+/// Skips snapshot capture for RTT canvases or non-postfx backends.
 static void canvas3d_latch_gpu_postfx_state(rt_canvas3d *c) {
     if (!c)
         return;
@@ -71,6 +91,11 @@ static void canvas3d_latch_gpu_postfx_state(rt_canvas3d *c) {
     canvas3d_apply_gpu_postfx_state(c);
 }
 
+/// @brief Apply a window-size change to the canvas + active backend.
+///
+/// Idempotent on identical size. Updates the canvas's cached width
+/// and height, then forwards to the backend's `resize` op so it can
+/// rebuild offscreen targets.
 static void rt_canvas3d_apply_resize(rt_canvas3d *c, int32_t w, int32_t h) {
     if (!c || w <= 0 || h <= 0)
         return;
@@ -82,6 +107,10 @@ static void rt_canvas3d_apply_resize(rt_canvas3d *c, int32_t w, int32_t h) {
         c->backend->resize(c->backend_ctx, w, h);
 }
 
+/// @brief Window-system resize callback — `userdata` is the canvas pointer.
+///
+/// Hooked into the underlying `vgfx_window_t`'s resize event so the
+/// canvas state stays in sync without requiring per-frame polling.
 static void rt_canvas3d_on_resize(void *userdata, int32_t w, int32_t h) {
     rt_canvas3d_apply_resize((rt_canvas3d *)userdata, w, h);
 }
@@ -112,6 +141,10 @@ extern double rt_vec3_z(void *v);
 extern void *rt_pixels_new(int64_t width, int64_t height);
 extern void rt_pixels_set(void *pixels, int64_t x, int64_t y, int64_t color);
 
+/// @brief Drop a GC-managed reference held in a `**slot` and zero the slot.
+///
+/// Idempotent — safe to call on already-NULL slots. Used in the
+/// canvas finalizer to release every owned sub-object cleanly.
 static void canvas3d_release_owned_ref(void **slot) {
     if (!slot || !*slot)
         return;
@@ -120,6 +153,11 @@ static void canvas3d_release_owned_ref(void **slot) {
     *slot = NULL;
 }
 
+/// @brief Tell keyboard + mouse subsystems to forget this window.
+///
+/// Called when the canvas is destroyed. Without this, focus
+/// queries would still return the dead window pointer until the
+/// next focus event arrived.
 static void rt_canvas3d_detach_input(vgfx_window_t gfx_win) {
     if (!gfx_win)
         return;
@@ -167,6 +205,12 @@ typedef struct {
     int8_t has_prev;
 } canvas_motion_history_t;
 
+/// @brief Grow the deferred-draw command buffer to hold `needed` entries.
+///
+/// Geometric growth (cap doubles, starting at 32). Used by the
+/// transparency-sort path to buffer commands until end-of-frame.
+/// Returns 0 on allocation failure (caller falls back to immediate
+/// dispatch in that case).
 static int ensure_deferred_capacity(void **buf, int32_t *capacity, int32_t needed) {
     if (!buf || !capacity || needed <= 0)
         return 0;
@@ -190,6 +234,11 @@ static int ensure_deferred_capacity(void **buf, int32_t *capacity, int32_t neede
     return 1;
 }
 
+/// @brief Grow the canvas's text-rendering vertex + index scratch buffers.
+///
+/// Two-pair geometric growth — vertices and indices have separate
+/// caps because the ratio depends on the glyph layout. Starting
+/// capacities: 256 vertices, 384 indices.
 static int ensure_text_capacity(rt_canvas3d *c, int32_t vertex_count, int32_t index_count) {
     if (!c || vertex_count < 0 || index_count < 0)
         return 0;
@@ -229,7 +278,10 @@ static int ensure_text_capacity(rt_canvas3d *c, int32_t vertex_count, int32_t in
     return 1;
 }
 
-/* Comparison for qsort: back-to-front (descending sort_key) */
+/// @brief `qsort` comparator: back-to-front (largest sort_key first).
+///
+/// Used to sort transparent draws so they composite correctly (back
+/// objects drawn first so front objects blend over them).
 static int cmp_back_to_front(const void *a, const void *b) {
     float ka = ((const deferred_draw_t *)a)->sort_key;
     float kb = ((const deferred_draw_t *)b)->sort_key;
@@ -240,6 +292,10 @@ static int cmp_back_to_front(const void *a, const void *b) {
     return 0;
 }
 
+/// @brief `qsort` comparator: front-to-back (smallest sort_key first).
+///
+/// Used for opaque draws — front-to-back order maximizes early-Z
+/// rejection, dropping pixel-shader work for occluded fragments.
 static int cmp_front_to_back(const void *a, const void *b) {
     float ka = ((const deferred_draw_t *)a)->sort_key;
     float kb = ((const deferred_draw_t *)b)->sort_key;
@@ -254,11 +310,22 @@ static int cmp_front_to_back(const void *a, const void *b) {
  * Helpers
  *=========================================================================*/
 
+/// @brief Convert a 16-element double-precision matrix to single precision.
+///
+/// Zia stores matrices as `Mat4` with double components; the GPU
+/// uniform path takes float — straightforward narrowing conversion.
 static void mat4_d2f(const double *src, float *dst) {
     for (int i = 0; i < 16; i++)
         dst[i] = (float)src[i];
 }
 
+/// @brief Whether a draw command needs alpha blending (transparency).
+///
+/// Two cases trigger blending:
+///   1. Material alpha < 1.0 (legacy / Phong workflow).
+///   2. PBR workflow with explicit `BLEND` alpha mode.
+/// Used to route the command into the deferred transparency-sorted
+/// pass instead of the immediate opaque pass.
 static int canvas3d_cmd_requires_blend(const vgfx3d_draw_cmd_t *cmd) {
     if (!cmd)
         return 0;
@@ -268,12 +335,23 @@ static int canvas3d_cmd_requires_blend(const vgfx3d_draw_cmd_t *cmd) {
             cmd->alpha_mode == RT_MATERIAL3D_ALPHA_MODE_BLEND);
 }
 
+/// @brief Resolve the effective backface-cull flag for a material draw.
+///
+/// AND of canvas-level backface cull AND material isn't `double_sided`.
+/// Materials marked double-sided (e.g., leaves, fabric) override the
+/// canvas setting to disable culling per-draw.
 static int8_t canvas3d_material_backface_cull(const rt_canvas3d *c, const rt_material3d *mat) {
     if (!c)
         return 0;
     return (int8_t)(c->backface_cull && !(mat && mat->double_sided));
 }
 
+/// @brief Translate every material field into the corresponding draw-command field.
+///
+/// Per-vertex draw commands are float-typed (matches GPU expectations),
+/// materials are double-typed (matches Zia's number type). This helper
+/// performs the narrowing conversion plus the material→command name
+/// remapping (e.g., `mat->shininess` → `cmd->shininess`).
 static void canvas3d_fill_material_cmd(const rt_material3d *mat, vgfx3d_draw_cmd_t *cmd) {
     if (!mat || !cmd)
         return;
@@ -313,6 +391,11 @@ static void canvas3d_fill_material_cmd(const rt_material3d *mat, vgfx3d_draw_cmd
         cmd->custom_params[pi] = (float)mat->custom_params[pi];
 }
 
+/// @brief Grow the motion-history table to hold `needed` entries.
+///
+/// Motion history is keyed by mesh-identity pointer and stores the
+/// previous-frame model matrix for motion-blur / TAA. Geometric
+/// growth starting at 32 entries.
 static int ensure_motion_history_capacity(rt_canvas3d *c, int32_t needed) {
     if (!c || needed <= 0)
         return 0;
@@ -336,6 +419,12 @@ static int ensure_motion_history_capacity(rt_canvas3d *c, int32_t needed) {
     return 1;
 }
 
+/// @brief Drop motion-history entries that haven't been touched in over a frame.
+///
+/// In-place compaction. Anything not seen in the current or previous
+/// frame is considered stale (the mesh has stopped being drawn or
+/// has been destroyed). Bounded eviction prevents the table from
+/// growing without bound.
 static void canvas3d_prune_motion_history(rt_canvas3d *c) {
     if (!c || c->motion_history_count <= 0)
         return;
@@ -352,6 +441,16 @@ static void canvas3d_prune_motion_history(rt_canvas3d *c) {
     c->motion_history_count = dst;
 }
 
+/// @brief Look up (and update) the previous-frame model matrix for a mesh.
+///
+/// Three cases:
+///   1. Existing entry, first lookup this frame → roll current→previous,
+///      update current, return previous.
+///   2. Existing entry, repeat lookup this frame → just return the
+///      previous (don't roll twice).
+///   3. New entry → register, return "no previous yet".
+/// Returns through `out_has_prev` whether the previous frame was
+/// available — first-frame draws fall back to current=previous.
 static void canvas3d_resolve_previous_model(rt_canvas3d *c,
                                             const void *motion_key,
                                             const float *current_model,
@@ -398,7 +497,11 @@ static void canvas3d_resolve_previous_model(rt_canvas3d *c,
     entry->last_frame_seen = c->frame_serial;
 }
 
-/* Build light params array from canvas light pointers */
+/// @brief Compact the canvas's slotted light array into a dense param array.
+///
+/// Canvas lights live in a fixed array with NULL-able slots (so removal
+/// doesn't shift indices). This packs the non-NULL slots into a dense
+/// array the backend draw path consumes, returning the count.
 static int32_t build_light_params(const rt_canvas3d *c, vgfx3d_light_params_t *out, int32_t max) {
     int32_t count = 0;
     for (int i = 0; i < VGFX3D_MAX_LIGHTS && count < max; i++) {
@@ -424,6 +527,12 @@ static int32_t build_light_params(const rt_canvas3d *c, vgfx3d_light_params_t *o
     return count;
 }
 
+/// @brief Track a malloc'd buffer for end-of-frame cleanup.
+///
+/// Used when the deferred path needs to allocate a transient instance-
+/// matrix buffer that outlives the calling Zia frame. Geometric
+/// growth (cap doubles, starting at 8). On growth failure, frees
+/// the buffer to avoid a leak.
 static int canvas3d_track_temp_buffer(rt_canvas3d *c, void *buffer) {
     if (!c || !buffer)
         return 0;
@@ -441,6 +550,10 @@ static int canvas3d_track_temp_buffer(rt_canvas3d *c, void *buffer) {
     return 1;
 }
 
+/// @brief Track a GC-managed object for end-of-frame release.
+///
+/// Retains `obj` immediately so it survives at least until the
+/// frame ends, then releases at end-of-frame via `clear_temp_objects`.
 static int canvas3d_track_temp_object(rt_canvas3d *c, void *obj) {
     if (!c || !obj)
         return 0;
@@ -457,6 +570,7 @@ static int canvas3d_track_temp_object(rt_canvas3d *c, void *obj) {
     return 1;
 }
 
+/// @brief Free every tracked transient buffer (called at end of frame).
 static void canvas3d_clear_temp_buffers(rt_canvas3d *c) {
     if (!c)
         return;
@@ -465,6 +579,7 @@ static void canvas3d_clear_temp_buffers(rt_canvas3d *c) {
     c->temp_buf_count = 0;
 }
 
+/// @brief Release every tracked transient GC object (called at end of frame).
 static void canvas3d_clear_temp_objects(rt_canvas3d *c) {
     if (!c)
         return;
@@ -475,6 +590,12 @@ static void canvas3d_clear_temp_objects(rt_canvas3d *c) {
     c->temp_obj_count = 0;
 }
 
+/// @brief Compute a draw's sort key — squared distance from camera to mesh origin.
+///
+/// Squared distance avoids a `sqrtf` per draw — order is preserved
+/// since distance is non-negative. The mesh origin (model_matrix
+/// translation) is the cheapest proxy for "centroid" since exact
+/// centroids would need the bounding box per draw.
 static float canvas3d_compute_sort_key(const rt_canvas3d *c, const float *model_matrix) {
     float cx;
     float cy;
@@ -494,6 +615,11 @@ static float canvas3d_compute_sort_key(const rt_canvas3d *c, const float *model_
     return dx * dx + dy * dy + dz * dz;
 }
 
+/// @brief Build a 2D-overlay camera (orthographic projection in pixels).
+///
+/// Used by `BeginOverlayFrame` so the 2D HUD layer can draw with
+/// pixel coordinates (top-left origin, Y-down). The +2 padding on
+/// each axis avoids edge-clipping at half-pixel coordinates.
 static void canvas3d_build_ortho_camera(const rt_canvas3d *c, vgfx3d_camera_params_t *params) {
     float w;
     float h;
@@ -514,6 +640,13 @@ static void canvas3d_build_ortho_camera(const rt_canvas3d *c, vgfx3d_camera_para
     params->fog_enabled = 0;
 }
 
+/// @brief Internal: begin a 2D overlay pass on top of the 3D scene.
+///
+/// Used by `Canvas3D` to draw HUD elements (text, sprites) on top of
+/// the rendered scene. Switches to an orthographic projection,
+/// preserves the existing color buffer (so the 3D scene stays
+/// visible), and bypasses depth testing. Returns 0 if the canvas is
+/// already in a frame or has no backend window.
 int canvas3d_begin_overlay_frame(rt_canvas3d *c, int8_t preserve_existing_color) {
     vgfx3d_camera_params_t params;
 
@@ -539,6 +672,12 @@ int canvas3d_begin_overlay_frame(rt_canvas3d *c, int8_t preserve_existing_color)
     return 1;
 }
 
+/// @brief Internal: retrieve the active scene view-projection matrix.
+///
+/// Three-way fallback: in a 3D frame → current frame's VP; otherwise
+/// in an overlay frame → last 3D frame's VP (so overlays project
+/// using the camera that drew the scene); otherwise → 2D ortho VP.
+/// Used by 3D-aware overlay drawables (e.g., world-space tooltips).
 const float *canvas3d_active_scene_vp(const rt_canvas3d *c) {
     if (!c)
         return NULL;
@@ -551,6 +690,10 @@ const float *canvas3d_active_scene_vp(const rt_canvas3d *c) {
     return NULL;
 }
 
+/// @brief Forward a draw command to the active backend's `submit_draw` op.
+///
+/// Thin wrapper that exists mostly so call sites read a single noun
+/// ("submit a mesh") instead of a 7-arg backend method call.
 static void canvas3d_submit_mesh(rt_canvas3d *c,
                                  const vgfx3d_draw_cmd_t *cmd,
                                  const vgfx3d_light_params_t *lights,
@@ -564,6 +707,14 @@ static void canvas3d_submit_mesh(rt_canvas3d *c,
         c->backend_ctx, c->gfx_win, cmd, lights, light_count, ambient, wireframe, backface_cull);
 }
 
+/// @brief Decompose an instanced draw into N individual mesh draws.
+///
+/// Backends without `submit_draw_instanced` (e.g., software fallback)
+/// can still render instanced data this way — it's slower but
+/// preserves correctness. Per-instance matrices are unpacked into
+/// individual `model_matrix`/`prev_model_matrix` pairs, with
+/// `has_prev_instance_matrices` translated into per-mesh
+/// `has_prev_model_matrix` flags.
 static void canvas3d_submit_instanced_as_meshes(rt_canvas3d *c,
                                                 const deferred_draw_t *dd,
                                                 int shadow_only) {
@@ -600,6 +751,12 @@ static void canvas3d_submit_instanced_as_meshes(rt_canvas3d *c,
     }
 }
 
+/// @brief Append a draw to the deferred-draw queue (transparency / sort path).
+///
+/// The queue is dispatched at end-of-frame in sorted order. Captures
+/// every parameter the backend needs so the snapshot survives even if
+/// caller-side state (lights, ambient) changes between enqueue and
+/// flush. Returns 0 on capacity-grow failure.
 static int canvas3d_enqueue_draw(rt_canvas3d *c,
                                  const vgfx3d_draw_cmd_t *cmd,
                                  deferred_draw_kind_t kind,
@@ -641,6 +798,11 @@ static int canvas3d_enqueue_draw(rt_canvas3d *c,
     return 1;
 }
 
+/// @brief Dispatch a single deferred draw to the backend.
+///
+/// Routes mesh kind directly to `submit_draw`. Routes instanced kind
+/// to `submit_draw_instanced` if the backend supports it, otherwise
+/// falls back to `canvas3d_submit_instanced_as_meshes`.
 static void canvas3d_submit_deferred(rt_canvas3d *c, const deferred_draw_t *dd) {
     if (!c || !dd)
         return;
@@ -665,6 +827,12 @@ static void canvas3d_submit_deferred(rt_canvas3d *c, const deferred_draw_t *dd) 
         c, &dd->cmd, dd->lights, dd->light_count, dd->ambient, dd->wireframe, dd->backface_cull);
 }
 
+/// @brief Dispatch a deferred draw to the shadow-pass path.
+///
+/// Same dispatch shape as `submit_deferred` but routes through the
+/// backend's depth-only shadow draw entry. Instanced shadow draws
+/// always decompose to per-mesh draws (most backends don't have an
+/// instanced shadow path).
 static void canvas3d_shadow_deferred(rt_canvas3d *c, const deferred_draw_t *dd) {
     if (!c || !dd || !c->backend || !c->backend->shadow_draw)
         return;
@@ -675,6 +843,7 @@ static void canvas3d_shadow_deferred(rt_canvas3d *c, const deferred_draw_t *dd) 
     c->backend->shadow_draw(c->backend_ctx, &dd->cmd);
 }
 
+/// @brief In-place AABB union: `[io_min, io_max] ⊇ [mn, mx]`.
 static void canvas3d_expand_bounds(float *io_min, float *io_max, const float *mn, const float *mx) {
     if (!io_min || !io_max || !mn || !mx)
         return;
@@ -686,6 +855,7 @@ static void canvas3d_expand_bounds(float *io_min, float *io_max, const float *mn
     }
 }
 
+/// @brief Row-major 4×4 matrix multiply: `out = a * b`.
 static void canvas3d_mul_mat4(const float *a, const float *b, float *out) {
     if (!a || !b || !out)
         return;
@@ -697,6 +867,11 @@ static void canvas3d_mul_mat4(const float *a, const float *b, float *out) {
     }
 }
 
+/// @brief Compute world-space AABB for a deferred draw, unioning into `[io_min, io_max]`.
+///
+/// Iterates per-instance for instanced draws (so the shadow VP fits
+/// every instance) or just transforms the single mesh AABB for normal
+/// draws. `io_has_bounds` flips to true on first contribution.
 static void canvas3d_accumulate_deferred_world_bounds(const deferred_draw_t *dd,
                                                       float *io_min,
                                                       float *io_max,
@@ -742,6 +917,17 @@ static void canvas3d_accumulate_deferred_world_bounds(const deferred_draw_t *dd,
     }
 }
 
+/// @brief Build a tight orthographic shadow-map VP that bounds every opaque draw.
+///
+/// Algorithm:
+///   1. Compute world-space AABB of all opaque draws.
+///   2. Pick a light-space view position behind the AABB along the
+///      light direction, looking at the AABB center.
+///   3. Build the view matrix (right-handed, custom up vector).
+///   4. Transform the 8 AABB corners into light space to find the
+///      tight orthographic bounds.
+///   5. Build the orthographic projection from those bounds.
+/// Returns 0 if there are no opaque draws (nothing to shadow).
 static int canvas3d_build_shadow_light_vp(const deferred_draw_t *cmds,
                                           int32_t count,
                                           const vgfx3d_light_params_t *dir_light,
@@ -944,6 +1130,13 @@ static int canvas3d_build_shadow_light_vp(const deferred_draw_t *cmds,
  * Canvas3D lifecycle
  *=========================================================================*/
 
+/// @brief GC finalizer — release the backend context and every owned scratch buffer.
+///
+/// Walks the deferred-command, temp-buffer, temp-object, motion
+/// history, and text-vertex arrays, freeing each. Backend contexts
+/// (D3D11/OpenGL/Software) destroy themselves through their
+/// virtual `destroy_ctx`. Idempotent: nulled pointers prevent
+/// double-free if the GC sweeps the canvas twice during shutdown.
 static void rt_canvas3d_finalize(void *obj) {
     rt_canvas3d *c = (rt_canvas3d *)obj;
     /* Destroy the backend context */
@@ -1141,10 +1334,17 @@ void rt_canvas3d_clear(void *obj, double r, double g, double b) {
     }
 }
 
+/// @brief Decide which deferred pass owns 2D screen-space draws based on canvas mode.
 static deferred_pass_t canvas3d_screen_pass_kind(const rt_canvas3d *c) {
     return (c && c->frame_is_2d) ? DEFERRED_PASS_MAIN : DEFERRED_PASS_SCREEN_OVERLAY;
 }
 
+/// @brief Append a 2D triangle list (positions + UVs + color) to the deferred queue.
+///
+/// Used as the underlying primitive for `canvas3d_queue_screen_rect`
+/// and `canvas3d_queue_screen_line`. Manages the auto-grow of the
+/// command buffer and decides whether the geometry lands in the
+/// pre-3D, post-3D, or HUD pass via `canvas3d_screen_pass_kind`.
 static int canvas3d_queue_screen_geometry(rt_canvas3d *c,
                                           const vgfx3d_vertex_t *vertices,
                                           int32_t vertex_count,
@@ -1202,6 +1402,7 @@ static int canvas3d_queue_screen_geometry(rt_canvas3d *c,
                                  NULL);
 }
 
+/// @brief Convenience wrapper: queue a screen-space rectangle as two triangles.
 int canvas3d_queue_screen_rect(
     rt_canvas3d *c, float x, float y, float w, float h, float r, float g, float b, float a) {
     vgfx3d_vertex_t verts[4];
@@ -1226,6 +1427,11 @@ int canvas3d_queue_screen_rect(
     return canvas3d_queue_screen_geometry(c, verts, 4, indices, 6, r, g, b, a);
 }
 
+/// @brief Queue a screen-space line as a thin quad (tessellated triangles).
+///
+/// Width is in screen pixels. The endpoints define the centerline;
+/// the quad is built by extruding by `width/2` perpendicular to
+/// the segment direction. Properly aligned for sub-pixel positions.
 int canvas3d_queue_screen_line(rt_canvas3d *c,
                                       float x0,
                                       float y0,
@@ -1273,6 +1479,12 @@ int canvas3d_queue_screen_line(rt_canvas3d *c,
     return canvas3d_queue_screen_geometry(c, verts, 4, indices, 6, r, g, b, a);
 }
 
+/// @brief Switch the canvas into 2D-overlay mode for the next batch of draw calls.
+///
+/// All subsequent screen-space draws (rects, lines, sprites, text)
+/// queue into the post-3D HUD pass, which renders after the 3D
+/// scene, postFX, and tonemapping. Pair with `rt_canvas3d_end_2d`
+/// to return to 3D drawing.
 void rt_canvas3d_begin_2d(void *obj) {
     vgfx3d_camera_params_t params;
 
@@ -1537,6 +1749,10 @@ void rt_canvas3d_begin(void *obj, void *camera) {
     c->in_frame = 1;
 }
 
+/// @brief Monotonically-increasing per-frame serial; used for cache invalidation.
+///
+/// Resources keyed off `(canvas, serial)` know they're stale when
+/// their cached serial is older than the canvas's current value.
 int64_t rt_canvas3d_get_frame_serial(void *obj) {
     return obj ? ((rt_canvas3d *)obj)->frame_serial : 0;
 }
@@ -1548,6 +1764,11 @@ extern void rt_canvas3d_draw_mesh_matrix_morphed(void *canvas,
                                                   const void *motion_key,
                                                   void *morph_targets);
 
+/// @brief Queue a 3D mesh draw with a model matrix and a sort key for transparency ordering.
+///
+/// `sort_key` is used by the deferred renderer to depth-sort
+/// translucent draws back-to-front before flushing. Opaque
+/// objects ignore it (the depth buffer handles their order).
 void rt_canvas3d_draw_mesh_matrix_keyed(void *obj,
                                         void *mesh_obj,
                                         const double *model_matrix,
@@ -1649,6 +1870,8 @@ void rt_canvas3d_draw_mesh_matrix_keyed(void *obj,
     }
 }
 
+/// @brief Convenience: queue a mesh draw without an explicit sort key (uses default).
+/// @see rt_canvas3d_draw_mesh_matrix_keyed
 void rt_canvas3d_draw_mesh_matrix(void *obj,
                                   void *mesh_obj,
                                   const double *model_matrix,
@@ -1668,6 +1891,13 @@ void rt_canvas3d_draw_mesh(void *obj, void *mesh_obj, void *transform_obj, void 
         obj, mesh_obj, ((mat4_impl *)transform_obj)->m, material_obj, transform_obj, NULL, NULL);
 }
 
+/// @brief Queue an instanced draw — render `instance_count` copies of `mesh` with per-instance transforms.
+///
+/// One draw call instead of `instance_count` separate calls.
+/// Used for foliage, debris, particle clouds, and any scene with
+/// many copies of the same mesh. The matrix array is owned by the
+/// caller for the duration of the frame; the canvas keeps a
+/// reference until the deferred queue flushes.
 void rt_canvas3d_queue_instanced_batch(void *canvas_obj,
                                        void *mesh_obj,
                                        void *material_obj,
@@ -1786,6 +2016,12 @@ extern void rt_cubemap_sample(const rt_cubemap3d *cm,
                               float *out_b);
 extern void rt_postfx3d_apply_to_canvas(void *canvas);
 
+/// @brief End-of-frame: flush all deferred passes, run postFX, present, and bookkeep.
+///
+/// Pass order: pre-3D HUD → opaque mesh → translucent (sorted) →
+/// postFX (bloom, tonemap, motion blur) → post-3D HUD → present.
+/// Increments `frame_serial`, clears the deferred queues, and
+/// releases per-frame temp objects.
 void rt_canvas3d_end(void *obj) {
     deferred_draw_t *cmds;
     int32_t main_count = 0;
@@ -2071,16 +2307,32 @@ void rt_canvas3d_flip(void *obj) {
 /// @brief Process all pending window events (keyboard, mouse, resize, close).
 /// @details Polls the platform event queue and updates input state for
 ///          Keyboard/Mouse/Pad subsystems. Must be called once per frame.
-/// @return 1 if a close event was received, 0 otherwise.
+/// @return Event type code of the last event processed, or 0 if no events.
 extern void rt_keyboard_on_key_down(int64_t key);
 extern void rt_keyboard_on_key_up(int64_t key);
 extern void rt_mouse_update_pos(int64_t x, int64_t y);
 extern void rt_mouse_force_delta(int64_t dx, int64_t dy);
 extern void rt_mouse_button_down(int64_t button);
 extern void rt_mouse_button_up(int64_t button);
-extern void rt_mouse_update_wheel(int64_t dx, int64_t dy);
+extern void rt_mouse_update_wheel(double dx, double dy);
 extern int8_t rt_mouse_is_captured(void);
 
+/// @brief Translate physical pixel coordinates to logical (HiDPI-scaled) and notify the mouse subsystem.
+static void rt_canvas3d_update_mouse_from_physical(vgfx_window_t gfx_win, int32_t x, int32_t y) {
+    float scale = vgfx_window_get_scale(gfx_win);
+    if (scale < 0.001f)
+        scale = 1.0f;
+    rt_mouse_update_pos((int64_t)((double)x / (double)scale),
+                        (int64_t)((double)y / (double)scale));
+}
+
+/// @brief Pump platform events, advance per-frame input state, and return whether the window is still open.
+///
+/// Called once per game-loop iteration. Drives keyboard/mouse/
+/// gamepad/action input subsystems, updates the wall-clock dt
+/// (capped at `dt_max` to prevent huge jumps after pauses), and
+/// dispatches resize / focus / close events.
+/// @return 1 if the window remains open, 0 if the user requested close.
 int64_t rt_canvas3d_poll(void *obj) {
     if (!obj)
         return 0;
@@ -2118,38 +2370,34 @@ int64_t rt_canvas3d_poll(void *obj) {
 
     /* Process events (keyboard + mouse buttons only — mouse moves handled above) */
     vgfx_event_t evt;
+    int64_t last_event_type = VGFX_EVENT_NONE;
     while (vgfx_poll_event(c->gfx_win, &evt)) {
+        last_event_type = (int64_t)evt.type;
         if (evt.type == VGFX_EVENT_KEY_DOWN)
             rt_keyboard_on_key_down((int64_t)evt.data.key.key);
         else if (evt.type == VGFX_EVENT_KEY_UP)
             rt_keyboard_on_key_up((int64_t)evt.data.key.key);
         else if (evt.type == VGFX_EVENT_TEXT_INPUT)
             rt_keyboard_text_input((int32_t)evt.data.text.codepoint);
+        else if (evt.type == VGFX_EVENT_CLOSE)
+            c->should_close = 1;
         else if (!captured && evt.type == VGFX_EVENT_MOUSE_MOVE) {
-            float cs = vgfx_window_get_scale(c->gfx_win);
-            if (cs < 0.001f)
-                cs = 1.0f;
-            rt_mouse_update_pos((int64_t)(evt.data.mouse_move.x / cs),
-                                (int64_t)(evt.data.mouse_move.y / cs));
+            rt_canvas3d_update_mouse_from_physical(
+                c->gfx_win, evt.data.mouse_move.x, evt.data.mouse_move.y);
         } else if (evt.type == VGFX_EVENT_MOUSE_DOWN) {
-            float cs = vgfx_window_get_scale(c->gfx_win);
-            if (cs < 0.001f)
-                cs = 1.0f;
-            rt_mouse_update_pos((int64_t)(evt.data.mouse_button.x / cs),
-                                (int64_t)(evt.data.mouse_button.y / cs));
+            rt_canvas3d_update_mouse_from_physical(
+                c->gfx_win, evt.data.mouse_button.x, evt.data.mouse_button.y);
             rt_mouse_button_down((int64_t)evt.data.mouse_button.button);
         } else if (evt.type == VGFX_EVENT_MOUSE_UP) {
-            float cs = vgfx_window_get_scale(c->gfx_win);
-            if (cs < 0.001f)
-                cs = 1.0f;
-            rt_mouse_update_pos((int64_t)(evt.data.mouse_button.x / cs),
-                                (int64_t)(evt.data.mouse_button.y / cs));
+            rt_canvas3d_update_mouse_from_physical(
+                c->gfx_win, evt.data.mouse_button.x, evt.data.mouse_button.y);
             rt_mouse_button_up((int64_t)evt.data.mouse_button.button);
         } else if (evt.type == VGFX_EVENT_RESIZE) {
             rt_canvas3d_apply_resize(c, evt.data.resize.width, evt.data.resize.height);
         } else if (evt.type == VGFX_EVENT_SCROLL) {
-            rt_mouse_update_wheel((int64_t)evt.data.scroll.delta_x,
-                                  (int64_t)evt.data.scroll.delta_y);
+            rt_canvas3d_update_mouse_from_physical(c->gfx_win, evt.data.scroll.x, evt.data.scroll.y);
+            rt_mouse_update_wheel((double)evt.data.scroll.delta_x,
+                                  (double)evt.data.scroll.delta_y);
         }
     }
 
@@ -2169,7 +2417,7 @@ int64_t rt_canvas3d_poll(void *obj) {
         vgfx_warp_cursor(c->gfx_win, cw / 2, ch / 2);
     }
 
-    return 0;
+    return last_event_type;
 }
 
 /// @brief Check if the canvas window received a close request.
@@ -2189,12 +2437,22 @@ void rt_canvas3d_set_backface_cull(void *obj, int8_t enabled) {
         ((rt_canvas3d *)obj)->backface_cull = enabled;
 }
 
+/// @brief Park a `malloc`'d buffer for end-of-frame disposal.
+///
+/// Used by skinning / morph-target paths that allocate
+/// per-draw vertex transforms — the canvas owns the lifetime
+/// until after the GPU has consumed the data on `end()`.
 void rt_canvas3d_add_temp_buffer(void *obj, void *buffer) {
     if (!obj || !buffer)
         return;
     (void)canvas3d_track_temp_buffer((rt_canvas3d *)obj, buffer);
 }
 
+/// @brief Park a GC-managed object reference for end-of-frame release.
+///
+/// Lets a draw call reference an object (mesh, material, pixels)
+/// that might otherwise be collected before the deferred queue
+/// flushes. The canvas drops the reference in `rt_canvas3d_end`.
 void rt_canvas3d_add_temp_object(void *obj, void *value) {
     if (!obj || !value)
         return;
@@ -2236,6 +2494,7 @@ int64_t rt_canvas3d_get_delta_time(void *obj) {
     return dt;
 }
 
+/// @brief Cap the per-frame delta-time at `max_ms` milliseconds (prevents huge jumps after pauses).
 void rt_canvas3d_set_dt_max(void *obj, int64_t max_ms) {
     if (obj)
         ((rt_canvas3d *)obj)->dt_max_ms = max_ms;
@@ -2267,6 +2526,11 @@ void rt_canvas3d_set_ambient(void *obj, double r, double g, double b) {
  * Fog — linear distance fog
  *=========================================================================*/
 
+/// @brief Configure the global fog parameters (color, near/far, density).
+///
+/// Applied by the postFX stage as a depth-keyed blend toward
+/// `fog_color`. Setting `fog_density` to 0 disables fog without
+/// changing the queued draws.
 void rt_canvas3d_set_fog(
     void *obj, double near_dist, double far_dist, double r, double g, double b) {
     if (!obj)

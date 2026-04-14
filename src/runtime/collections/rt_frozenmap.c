@@ -172,6 +172,9 @@ static fm_slot *fm_find(rt_frozenmap_impl *fm, rt_string key) {
 
 // --- Public API ---
 
+/// @brief Build an immutable map from parallel `keys` / `values` Seqs (zips them by index).
+/// Truncates to min(len(keys), len(values)). Internal storage is an open-addressed hash table
+/// sized for the entry count. The result cannot be mutated — use `Map` for mutable maps.
 void *rt_frozenmap_from_seqs(void *keys, void *values) {
     if (!keys || !values)
         return (void *)fm_alloc(0);
@@ -191,6 +194,7 @@ void *rt_frozenmap_from_seqs(void *keys, void *values) {
     return (void *)fm;
 }
 
+/// @brief Construct an empty frozen map.
 void *rt_frozenmap_empty(void) {
     return (void *)fm_alloc(0);
 }
@@ -207,6 +211,7 @@ int8_t rt_frozenmap_is_empty(void *obj) {
     return rt_frozenmap_len(obj) == 0 ? 1 : 0;
 }
 
+/// @brief Look up `key`. Returns the borrowed value or NULL if absent. O(1) average via hash.
 void *rt_frozenmap_get(void *obj, rt_string key) {
     if (!obj || !key)
         return NULL;
@@ -222,6 +227,7 @@ int8_t rt_frozenmap_has(void *obj, rt_string key) {
     return fm_find((rt_frozenmap_impl *)obj, key) != NULL ? 1 : 0;
 }
 
+/// @brief Return a Seq of every key in the map (slot-iteration order, not insertion order).
 void *rt_frozenmap_keys(void *obj) {
     void *seq = rt_seq_new();
     if (!obj)
@@ -235,6 +241,7 @@ void *rt_frozenmap_keys(void *obj) {
     return seq;
 }
 
+/// @brief Return a Seq of every value in the map (parallel order to `_keys`).
 void *rt_frozenmap_values(void *obj) {
     void *seq = rt_seq_new();
     if (!obj)
@@ -248,6 +255,8 @@ void *rt_frozenmap_values(void *obj) {
     return seq;
 }
 
+/// @brief Look up `key`, returning `default_value` if absent. Lets callers avoid an explicit
+/// `_has` + `_get` pair.
 void *rt_frozenmap_get_or(void *obj, rt_string key, void *default_value) {
     if (!obj || !key)
         return default_value;
@@ -255,6 +264,9 @@ void *rt_frozenmap_get_or(void *obj, rt_string key, void *default_value) {
     return s ? s->value : default_value;
 }
 
+/// @brief Build a new frozen map that contains every entry from `obj` plus every entry from
+/// `other`. Keys present in both maps take the value from `other` (override semantics). Traps
+/// on count overflow.
 void *rt_frozenmap_merge(void *obj, void *other) {
     int64_t la = rt_frozenmap_len(obj);
     int64_t lb = rt_frozenmap_len(other);
@@ -285,6 +297,7 @@ void *rt_frozenmap_merge(void *obj, void *other) {
 /// @details Two frozen maps are equal when they contain the same key-value
 ///          pairs. Order does not matter since the comparison checks
 ///          membership in both directions.
+/// @brief Returns 1 if both maps have identical key→value sets (order-independent comparison).
 int8_t rt_frozenmap_equals(void *obj, void *other) {
     int64_t la = rt_frozenmap_len(obj);
     int64_t lb = rt_frozenmap_len(other);

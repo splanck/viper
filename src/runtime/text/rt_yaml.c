@@ -77,10 +77,13 @@ typedef struct {
 /// @brief Last parse error message (thread-local to avoid concurrent parse clobbering).
 static _Thread_local char yaml_last_error[256];
 
+/// @brief Record a parse error with line number into the thread-local buffer.
+/// Subsequent reads of `yaml_last_error` from the same thread see this message.
 static void set_error(const char *msg, int line) {
     snprintf(yaml_last_error, sizeof(yaml_last_error), "Line %d: %s", line, msg);
 }
 
+/// @brief Reset the thread-local error message to empty (start-of-parse cleanup).
 static void clear_error(void) {
     yaml_last_error[0] = '\0';
 }
@@ -89,6 +92,14 @@ static void clear_error(void) {
 // Parser Helpers
 //=============================================================================
 
+// ---------------------------------------------------------------------------
+// Cursor + lexer primitives — pure functions over the parser state.
+// All advance through the input one byte at a time, tracking line /
+// column for diagnostics. UTF-8 sequences pass through unchanged
+// since YAML lexing only cares about ASCII control characters.
+// ---------------------------------------------------------------------------
+
+/// @brief Reset a parser onto fresh input. Position 0, line 1, column 1.
 static void parser_init(yaml_parser *p, const char *input, size_t len) {
     p->input = input;
     p->len = len;
@@ -98,22 +109,26 @@ static void parser_init(yaml_parser *p, const char *input, size_t len) {
     p->depth = 0;
 }
 
+/// @brief True if the cursor has consumed every input byte.
 static bool parser_eof(yaml_parser *p) {
     return p->pos >= p->len;
 }
 
+/// @brief Peek at the byte under the cursor; returns `\0` at EOF.
 static char parser_peek(yaml_parser *p) {
     if (p->pos >= p->len)
         return '\0';
     return p->input[p->pos];
 }
 
+/// @brief Peek at `offset` bytes past the cursor; returns `\0` past EOF.
 static char parser_peek_at(yaml_parser *p, size_t offset) {
     if (p->pos + offset >= p->len)
         return '\0';
     return p->input[p->pos + offset];
 }
 
+/// @brief Consume and return the byte under the cursor; updates line/col.
 static char parser_advance(yaml_parser *p) {
     if (p->pos >= p->len)
         return '\0';
@@ -127,21 +142,29 @@ static char parser_advance(yaml_parser *p) {
     return c;
 }
 
+/// @brief Skip horizontal whitespace (space, tab) on the current line.
 static void parser_skip_spaces(yaml_parser *p) {
     while (!parser_eof(p) && (parser_peek(p) == ' ' || parser_peek(p) == '\t'))
         parser_advance(p);
 }
 
+/// @brief Advance to (but not past) the next newline.
 static void parser_skip_to_eol(yaml_parser *p) {
     while (!parser_eof(p) && parser_peek(p) != '\n')
         parser_advance(p);
 }
 
+/// @brief Skip a `#` line comment if one starts at the current position.
 static void parser_skip_comment(yaml_parser *p) {
     if (parser_peek(p) == '#')
         parser_skip_to_eol(p);
 }
 
+/// @brief Advance over runs of empty lines and comment-only lines.
+///
+/// Blank lines (just whitespace + newline) and lines whose first
+/// non-space character is `#` are equally inert in YAML. This loop
+/// chews through them so the caller can land on real content.
 static void parser_skip_blank_lines_and_comments(yaml_parser *p) {
     while (!parser_eof(p)) {
         size_t pos = p->pos;
@@ -165,6 +188,12 @@ static void parser_skip_blank_lines_and_comments(yaml_parser *p) {
     }
 }
 
+/// @brief Count the leading-space indent of the *current* line (peek-only).
+///
+/// YAML uses indentation as block structure (RFC 1.2 §6.1). This
+/// helper reads from `p->pos` without consuming, so block-parsing
+/// loops can decide whether a line still belongs to the current
+/// container.
 static int get_indent(yaml_parser *p) {
     int indent = 0;
     size_t pos = p->pos;
@@ -175,6 +204,10 @@ static int get_indent(yaml_parser *p) {
     return indent;
 }
 
+/// @brief True if (after leading spaces) the current line is exactly `marker` followed by EOL/space/comment.
+///
+/// Used to detect document boundaries (`---`, `...`) without false
+/// positives on lines like `--- something` or `---abc`.
 static bool parser_at_line_marker(yaml_parser *p, const char *marker) {
     size_t pos = p->pos;
     size_t marker_len = strlen(marker);
@@ -190,6 +223,8 @@ static bool parser_at_line_marker(yaml_parser *p, const char *marker) {
     return next == '\0' || next == '\n' || next == ' ' || next == '\t' || next == '#';
 }
 
+/// @brief If the current line starts with `marker`, consume it (and the rest of the line).
+/// @return True if a marker was consumed, false if the line didn't match.
 static bool parser_consume_line_marker(yaml_parser *p, const char *marker) {
     if (!parser_at_line_marker(p, marker))
         return false;
@@ -205,21 +240,28 @@ static bool parser_consume_line_marker(yaml_parser *p, const char *marker) {
     return true;
 }
 
+/// @brief Drop a temporary reference to a parsed-out object (refcount-aware).
 static void yaml_release(void *obj) {
     if (obj && rt_obj_release_check0(obj))
         rt_obj_free(obj);
 }
 
+/// @brief True if `obj` is a boxed primitive (Int/Bool/Float/String wrapper).
+///
+/// YAML scalars become boxed primitives; sequences/mappings stay
+/// as plain GC objects. The class-id check distinguishes the two.
 static bool yaml_is_boxed(void *obj) {
     return obj && !rt_string_is_handle(obj) && rt_box_type(obj) >= 0;
 }
 
+/// @brief True if `obj` is a Viper Sequence (`Seq`) container.
 static bool yaml_is_sequence(void *obj) {
     if (!obj || rt_string_is_handle(obj) || yaml_is_boxed(obj))
         return false;
     return rt_obj_class_id(obj) == RT_SEQ_CLASS_ID;
 }
 
+/// @brief True if `obj` is a Viper Mapping (`Map`) container.
 static bool yaml_is_mapping(void *obj) {
     if (!obj || rt_string_is_handle(obj) || yaml_is_boxed(obj))
         return false;
@@ -230,6 +272,11 @@ static bool yaml_is_mapping(void *obj) {
 // Scalar Parsing
 //=============================================================================
 
+/// @brief Case-insensitive whole-string compare against a YAML keyword.
+///
+/// Used to match the various spellings of YAML's null/true/false
+/// (`null`, `Null`, `NULL`, `~`, `true`, `True`, `TRUE`, `yes`, …)
+/// that the spec considers equivalent.
 static bool is_special_value(const char *str, size_t len, const char *value) {
     size_t vlen = strlen(value);
     if (len != vlen)
@@ -241,6 +288,14 @@ static bool is_special_value(const char *str, size_t len, const char *value) {
     return true;
 }
 
+/// @brief Parse a raw scalar token into its strongest matching Viper type.
+///
+/// Tries, in order: null (special tokens / empty) → bool → integer
+/// (decimal, 0x hex, 0o octal) → float → string. The first
+/// successful conversion wins. This is YAML's "core schema" (1.2)
+/// approximation — quoted strings are handled separately by
+/// `parse_quoted_string` and never reach here.
+/// @return Boxed primitive (Int/Bool/Float) or `rt_string`, or NULL for YAML null.
 static void *parse_scalar(const char *str, size_t len) {
     if (len == 0)
         return NULL; // YAML null
@@ -323,6 +378,13 @@ static void *parse_scalar(const char *str, size_t len) {
     return rt_string_from_bytes(str, (int64_t)len);
 }
 
+/// @brief Parse a single- or double-quoted YAML string with escape processing.
+///
+/// `quote` is `'` (no escapes except `''` for a literal quote) or
+/// `"` (full set of `\\`, `\n`, `\t`, `\u00XX`, etc. per YAML
+/// §5.7). Cursor is positioned on the opening quote and advances
+/// past the matching close. Sets the parser error and returns
+/// NULL on any malformed escape or unterminated string.
 static rt_string parse_quoted_string(yaml_parser *p, char quote) {
     parser_advance(p); // Skip opening quote
 
@@ -393,8 +455,15 @@ static rt_string parse_quoted_string(yaml_parser *p, char quote) {
 // Value Parsing
 //=============================================================================
 
+/// @brief Forward declaration: dispatch for any top-level value (scalar / seq / map).
 static void *parse_value(yaml_parser *p, int base_indent);
 
+/// @brief Parse a block-style sequence (`- item` lines at `base_indent`).
+///
+/// Each iteration consumes one `- ` lead-in, recurses into
+/// `parse_value` for the item, and stops when the next line is
+/// less indented than `base_indent` or no longer starts with `-`.
+/// Returns a freshly-allocated GC-managed `Seq[Any]`.
 static void *parse_block_sequence(yaml_parser *p, int base_indent) {
     /* S-18: Guard against deeply nested documents */
     if (p->depth >= YAML_MAX_DEPTH) {
@@ -460,6 +529,13 @@ static void *parse_block_sequence(yaml_parser *p, int base_indent) {
     return seq;
 }
 
+/// @brief Parse a block-style mapping (`key: value` lines at `base_indent`).
+///
+/// Reads `key:` (the key may itself be quoted or a plain scalar),
+/// optionally consumes a same-line scalar value, then either uses
+/// it directly or recurses into `parse_value` for a nested
+/// block. Stops at the first line below `base_indent`.
+/// Returns a GC-managed `Map[Any, Any]`.
 static void *parse_block_mapping(yaml_parser *p, int base_indent) {
     /* S-18: Guard against deeply nested documents */
     if (p->depth >= YAML_MAX_DEPTH) {
@@ -542,6 +618,16 @@ static void *parse_block_mapping(yaml_parser *p, int base_indent) {
     return map;
 }
 
+/// @brief Top-level value dispatch — picks the right block/flow/scalar parser.
+///
+/// Looks at the first non-space character on the current line:
+///   - `-` followed by space → block sequence
+///   - `[` → flow sequence
+///   - `{` → flow mapping
+///   - quote (`'`, `"`) → quoted string scalar
+///   - anything else → block mapping (if a colon follows the first
+///     token) or plain scalar (if the line ends after one token).
+/// Recurses into the appropriate sub-parser at the correct indent.
 static void *parse_value(yaml_parser *p, int base_indent) {
     parser_skip_blank_lines_and_comments(p);
 
@@ -788,8 +874,17 @@ int8_t rt_yaml_is_valid(rt_string text) {
 // Formatting Helpers
 //=============================================================================
 
+/// @brief Forward declaration: serialise any Viper value as YAML.
 static void format_value(void *obj, int indent, int level, char **buf, size_t *cap, size_t *len);
 
+// ---------------------------------------------------------------------------
+// Output buffer helpers — append to a growing heap buffer that
+// `rt_yaml_dump` returns to the caller. Each helper handles the
+// realloc-on-overflow doubling so the inner formatting code stays
+// terse.
+// ---------------------------------------------------------------------------
+
+/// @brief Append `str` to a growing `*buf`, doubling capacity as needed.
 static void buf_append(char **buf, size_t *cap, size_t *len, const char *str) {
     size_t slen = strlen(str);
     while (*len + slen + 1 > *cap) {
@@ -803,6 +898,7 @@ static void buf_append(char **buf, size_t *cap, size_t *len, const char *str) {
     (*buf)[*len] = '\0';
 }
 
+/// @brief Append a single byte (with realloc as needed).
 static void buf_append_char(char **buf, size_t *cap, size_t *len, char c) {
     if (*len + 2 > *cap) {
         *cap = (*cap == 0) ? 256 : (*cap * 2);
@@ -815,11 +911,19 @@ static void buf_append_char(char **buf, size_t *cap, size_t *len, char c) {
     (*buf)[*len] = '\0';
 }
 
+/// @brief Append `spaces` literal space characters as block indentation.
 static void buf_append_indent(char **buf, size_t *cap, size_t *len, int spaces) {
     for (int i = 0; i < spaces; i++)
         buf_append_char(buf, cap, len, ' ');
 }
 
+/// @brief Decide whether a string needs to be emitted as a quoted YAML scalar.
+///
+/// Plain scalars are ambiguous when they could be parsed as a
+/// number, boolean, null, or special token (e.g. `yes`, `123`,
+/// `~`), or contain reserved indicator characters (`:`, `#`, `[`,
+/// `{`, `&`, `*`, etc.) or leading/trailing whitespace. In any of
+/// those cases we wrap them in double quotes for safe round-tripping.
 static bool needs_quoting(const char *str) {
     if (!str || !*str)
         return true;
@@ -851,6 +955,11 @@ static bool needs_quoting(const char *str) {
     return false;
 }
 
+/// @brief Emit a string as YAML — plain or double-quoted depending on `needs_quoting`.
+///
+/// When quoted, escapes `\\`, `\"`, and the standard control
+/// characters (`\n`, `\t`, etc.) so the output round-trips through
+/// `parse_quoted_string`.
 static void format_string(const char *str, char **buf, size_t *cap, size_t *len) {
     if (!str || !*str) {
         buf_append(buf, cap, len, "''");
@@ -909,6 +1018,17 @@ static void format_string(const char *str, char **buf, size_t *cap, size_t *len)
     buf_append_char(buf, cap, len, '"');
 }
 
+/// @brief Recursive YAML emitter for any Viper value.
+///
+/// Dispatches by runtime type:
+///   - NULL                  → `null`
+///   - boxed bool/int/float  → `true`/`false`/`123`/`1.5`
+///   - rt_string             → plain or quoted scalar
+///   - Seq[Any]              → block sequence (one `- elem` per line)
+///   - Map[Any,Any]          → block mapping (`key: value` lines)
+/// `indent` is the indent step (typically 2); `level` is the
+/// current nesting depth. Blocks emit a leading newline so they
+/// can sit after a `key:` or `-`.
 static void format_value(void *obj, int indent, int level, char **buf, size_t *cap, size_t *len) {
     if (!obj) {
         buf_append(buf, cap, len, "null");

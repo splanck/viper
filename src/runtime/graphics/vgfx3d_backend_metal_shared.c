@@ -1,3 +1,23 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/runtime/graphics/vgfx3d_backend_metal_shared.c
+// Purpose: Metal backend helpers shared with sister backends — bone palette /
+//   instance-buffer packing (with column-major transpose for MSL), frame
+//   history, and policy choices for target/blend/format selection.
+//
+// Key invariants:
+//   - MSL expects column-major matrices, so all model/normal/prev_model
+//     payloads are transposed from Viper's row-major form before upload.
+//
+// Links: vgfx3d_backend_metal_shared.h, vgfx3d_backend_metal.c
+//
+//===----------------------------------------------------------------------===//
+
 #include "vgfx3d_backend_metal_shared.h"
 
 #include "vgfx3d_backend_utils.h"
@@ -11,6 +31,8 @@ static void transpose4x4_local(const float *src, float *dst) {
             dst[c * 4 + r] = src[r * 4 + c];
 }
 
+/// @brief Copy a bone palette into a fixed-size MTLBuffer slot (zero-pads unused bones).
+/// Matches `vgfx3d_d3d11_pack_bone_palette` semantics; bones beyond the cap are dropped.
 void vgfx3d_metal_pack_bone_palette(float *dst, const float *src, int32_t bone_count) {
     size_t copy_count;
 
@@ -27,6 +49,9 @@ void vgfx3d_metal_pack_bone_palette(float *dst, const float *src, int32_t bone_c
     memcpy(dst, src, copy_count * sizeof(float));
 }
 
+/// @brief Build per-instance Metal buffer entries with column-major transpose for MSL.
+/// Computes the normal matrix from each model matrix; absent prev-frame data falls back
+/// to the current model so motion-vector shaders see zero displacement.
 void vgfx3d_metal_fill_instance_data(vgfx3d_metal_instance_data_t *dst,
                                      int32_t instance_count,
                                      const float *instance_matrices,
@@ -50,6 +75,8 @@ void vgfx3d_metal_fill_instance_data(vgfx3d_metal_instance_data_t *dst,
     }
 }
 
+/// @brief Roll the Metal backend's per-frame VP/inv-VP/cam-pos history forward.
+/// Mirrors the D3D11 / OpenGL helpers; see vgfx3d_d3d11_update_frame_history for semantics.
 void vgfx3d_metal_update_frame_history(vgfx3d_metal_frame_history_t *history,
                                        const float *vp,
                                        const float *inv_vp,
@@ -79,6 +106,7 @@ void vgfx3d_metal_update_frame_history(vgfx3d_metal_frame_history_t *history,
     history->overlay_used_this_frame = uses_separate_overlay_target ? 1 : 0;
 }
 
+/// @brief Number of mipmap levels needed to reach 1×1 from (width × height).
 int32_t vgfx3d_metal_compute_mip_count(int32_t width, int32_t height) {
     int32_t mip_count = 1;
 
@@ -94,6 +122,7 @@ int32_t vgfx3d_metal_compute_mip_count(int32_t width, int32_t height) {
     return mip_count;
 }
 
+/// @brief Capacity-doubling growth helper (saturates at INT_MAX).
 int32_t vgfx3d_metal_next_capacity(int32_t current_capacity,
                                    int32_t needed,
                                    int32_t minimum_capacity) {
@@ -112,6 +141,7 @@ int32_t vgfx3d_metal_next_capacity(int32_t current_capacity,
     return next_capacity;
 }
 
+/// @brief Pick the right render-target classification for the Metal backend.
 vgfx3d_metal_target_kind_t vgfx3d_metal_choose_target_kind(int8_t rtt_active,
                                                            int8_t gpu_postfx_enabled,
                                                            int8_t load_existing_color) {
@@ -124,6 +154,9 @@ vgfx3d_metal_target_kind_t vgfx3d_metal_choose_target_kind(int8_t rtt_active,
     return VGFX3D_METAL_TARGET_SCENE;
 }
 
+/// @brief Decide whether the next pass should preserve existing color contents.
+/// Overlay targets only load when this frame already used them; otherwise the
+/// requested-load flag is honored. Used to avoid bandwidth-wasting Clear→Load cycles.
 int8_t vgfx3d_metal_should_load_existing_color(vgfx3d_metal_target_kind_t target_kind,
                                                int8_t requested_load_existing_color,
                                                int8_t overlay_used_this_frame) {
@@ -134,18 +167,23 @@ int8_t vgfx3d_metal_should_load_existing_color(vgfx3d_metal_target_kind_t target
     return overlay_used_this_frame ? 1 : 0;
 }
 
+/// @brief Pick the color format — HDR16F for the scene pass, UNORM8 elsewhere.
 vgfx3d_metal_color_format_t
 vgfx3d_metal_choose_color_format(vgfx3d_metal_target_kind_t target_kind) {
     return target_kind == VGFX3D_METAL_TARGET_SCENE ? VGFX3D_METAL_COLOR_FORMAT_HDR16F
                                                     : VGFX3D_METAL_COLOR_FORMAT_UNORM8;
 }
 
+/// @brief Map a draw command to its required blend state (alpha vs opaque).
 vgfx3d_metal_blend_mode_t
 vgfx3d_metal_choose_blend_mode(const vgfx3d_draw_cmd_t *cmd) {
     return vgfx3d_draw_cmd_uses_alpha_blend(cmd) ? VGFX3D_METAL_BLEND_ALPHA
                                                  : VGFX3D_METAL_BLEND_OPAQUE;
 }
 
+/// @brief Decide whether to attach a motion-vector buffer to the current pass.
+/// Only the scene pass with opaque draws gets a motion attachment; alpha-blended
+/// draws and non-scene targets drop motion (TAA can't disambiguate transparency).
 vgfx3d_metal_motion_attachment_mode_t
 vgfx3d_metal_choose_motion_attachment_mode(vgfx3d_metal_target_kind_t target_kind,
                                            const vgfx3d_draw_cmd_t *cmd) {
@@ -156,11 +194,15 @@ vgfx3d_metal_choose_motion_attachment_mode(vgfx3d_metal_target_kind_t target_kin
                : VGFX3D_METAL_MOTION_ATTACHMENTS_COLOR_AND_MOTION;
 }
 
+/// @brief Decide whether canvas readback should source the backbuffer or postfx target.
 vgfx3d_metal_readback_kind_t vgfx3d_metal_choose_readback_kind(int8_t gpu_postfx_enabled) {
     return gpu_postfx_enabled ? VGFX3D_METAL_READBACK_POSTFX_COMPOSITE
                               : VGFX3D_METAL_READBACK_BACKBUFFER;
 }
 
+/// @brief Decide whether to reuse a cached morph-target Metal buffer.
+/// Returns 1 if the cached payload (key + revision + shape/vertex counts +
+/// normal-deltas flag) still matches the draw command; 0 otherwise.
 int vgfx3d_metal_should_reuse_morph_cache(const void *cached_key,
                                           uint64_t cached_revision,
                                           int32_t cached_shape_count,

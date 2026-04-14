@@ -81,6 +81,10 @@ static bool parse_ipv6(const char *addr) {
     return inet_pton(AF_INET6, addr, &result) == 1;
 }
 
+/// @brief Forward DNS lookup: resolve a hostname to a single IP string. Returns the FIRST address
+/// from getaddrinfo (which may be IPv4 or IPv6 depending on system preference / DNS response order).
+/// For deterministic IPv4 or IPv6 selection, use `_resolve4` / `_resolve6` instead. Traps via
+/// rt_trap_net on lookup failure with kind `Err_DnsError`.
 rt_string rt_dns_resolve(rt_string hostname) {
     rt_net_init_wsa();
 
@@ -116,6 +120,9 @@ rt_string rt_dns_resolve(rt_string hostname) {
     return rt_string_from_bytes(ip_str, strlen(ip_str));
 }
 
+/// @brief Forward DNS lookup returning ALL addresses (both IPv4 and IPv6 mixed). Returns a Seq of
+/// rt_strings (the seq owns its elements via `set_owns_elements(1)`). Useful for happy-eyeballs
+/// connection strategies — try multiple addresses in parallel.
 void *rt_dns_resolve_all(rt_string hostname) {
     rt_net_init_wsa();
 
@@ -160,6 +167,8 @@ void *rt_dns_resolve_all(rt_string hostname) {
     return seq;
 }
 
+/// @brief IPv4-only forward lookup. Sets `ai_family = AF_INET` so getaddrinfo skips IPv6 records.
+/// Use when the protocol layer needs an IPv4 socket specifically.
 rt_string rt_dns_resolve4(rt_string hostname) {
     rt_net_init_wsa();
 
@@ -187,6 +196,7 @@ rt_string rt_dns_resolve4(rt_string hostname) {
     return rt_string_from_bytes(ip_str, strlen(ip_str));
 }
 
+/// @brief IPv6-only forward lookup. Sets `ai_family = AF_INET6`.
 rt_string rt_dns_resolve6(rt_string hostname) {
     rt_net_init_wsa();
 
@@ -214,6 +224,9 @@ rt_string rt_dns_resolve6(rt_string hostname) {
     return rt_string_from_bytes(ip_str, strlen(ip_str));
 }
 
+/// @brief Reverse DNS: turn an IP address back into a hostname via `getnameinfo(NI_NAMEREQD)`.
+/// Auto-detects IPv4 vs IPv6 by trying `inet_pton` for each family. Traps with `Err_InvalidUrl`
+/// for malformed IPs, `Err_DnsError` for lookups that complete but yield no PTR record.
 rt_string rt_dns_reverse(rt_string ip_address) {
     rt_net_init_wsa();
 
@@ -252,6 +265,7 @@ rt_string rt_dns_reverse(rt_string ip_address) {
     return rt_string_from_bytes(host, strlen(host));
 }
 
+/// @brief Returns 1 if `address` parses as a valid IPv4 dotted-quad. Pure parser, no DNS lookup.
 int8_t rt_dns_is_ipv4(rt_string address) {
     const char *addr_ptr = rt_string_cstr(address);
     if (!addr_ptr || *addr_ptr == '\0')
@@ -260,6 +274,7 @@ int8_t rt_dns_is_ipv4(rt_string address) {
     return parse_ipv4(addr_ptr) ? 1 : 0;
 }
 
+/// @brief Returns 1 if `address` parses as a valid IPv6 (delegates to `inet_pton(AF_INET6)`).
 int8_t rt_dns_is_ipv6(rt_string address) {
     const char *addr_ptr = rt_string_cstr(address);
     if (!addr_ptr || *addr_ptr == '\0')
@@ -268,10 +283,13 @@ int8_t rt_dns_is_ipv6(rt_string address) {
     return parse_ipv6(addr_ptr) ? 1 : 0;
 }
 
+/// @brief Returns 1 if `address` parses as either IPv4 or IPv6 (logical OR of the two checks).
 int8_t rt_dns_is_ip(rt_string address) {
     return rt_dns_is_ipv4(address) || rt_dns_is_ipv6(address);
 }
 
+/// @brief Read the local hostname (capped at 256 chars). Same `gethostname` syscall as
+/// `rt_machine_host` but in the network namespace for ergonomic discoverability from network code.
 rt_string rt_dns_local_host(void) {
     rt_net_init_wsa();
 
@@ -283,6 +301,13 @@ rt_string rt_dns_local_host(void) {
     return rt_string_from_bytes(hostname, strlen(hostname));
 }
 
+/// @brief Enumerate every IP address bound to a local network interface. Per platform:
+///   - **Win32:** `GetAdaptersAddresses(AF_UNSPEC)` with skip-anycast/multicast/dns flags. Two-pass
+///     (re-allocates buffer if first call returns ERROR_BUFFER_OVERFLOW).
+///   - **Unix:** `getifaddrs` walking the linked list once.
+///   - **ViperDOS:** returns empty Seq (no `getifaddrs` available).
+/// Returns a Seq of rt_strings; loopback (127.0.0.1, ::1) is included. Useful for "what's my IP?"
+/// queries when the user hasn't specified an interface.
 void *rt_dns_local_addrs(void) {
     rt_net_init_wsa();
 

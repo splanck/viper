@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-09
+last-verified: 2026-04-13
 ---
 
 # Advanced IO
@@ -27,7 +27,7 @@ ZIP archive reader and writer for creating, reading, and extracting ZIP files.
 
 | Property | Type   | Description                                        |
 |----------|--------|----------------------------------------------------|
-| `Path`   | String | Path to the archive file (read-only)               |
+| `Path`   | String | Path to the archive file, or empty for `FromBytes` |
 | `Count`  | Integer| Number of entries in the archive (read-only)       |
 | `Names`  | Seq    | Sequence of entry names in the archive (read-only) |
 
@@ -40,7 +40,7 @@ ZIP archive reader and writer for creating, reading, and extracting ZIP files.
 | `ReadStr(name)`         | String  | Reads entry content as UTF-8 string                       |
 | `Extract(name, path)`   | void    | Extracts a single entry to the specified path             |
 | `ExtractAll(dir)`       | void    | Extracts all entries to the specified directory           |
-| `Info(name)`            | Map     | Returns metadata for an entry (size, compressedSize, crc) |
+| `Info(name)`            | Map     | Returns metadata for an entry, including size, compression, and directory flags |
 
 ### Writing Methods
 
@@ -81,6 +81,7 @@ Invalid names trap with `Archive: invalid entry name`.
 | `crc`            | Integer | CRC32 checksum                        |
 | `method`         | Integer | Compression method (0=stored, 8=deflate) |
 | `isDir`          | Boolean | True if entry is a directory          |
+| `isDirectory`    | Boolean | Back-compat alias for `isDir`         |
 
 ### Zia Example
 
@@ -204,7 +205,7 @@ Archive operations trap on errors:
 - `Open()` traps if file doesn't exist or isn't a valid ZIP
 - `Read()`/`ReadStr()` trap if entry doesn't exist
 - `Extract()` traps if entry doesn't exist or destination is unwritable
-- `Finish()` must be called before the archive file is valid
+- `Finish()` must be called before the archive file is valid; until then the output path is not a complete ZIP
 - Invalid or corrupted entries may trap during reading
 
 ### ZIP Format Support
@@ -213,6 +214,7 @@ Archive operations trap on errors:
 - **Compression methods:** Stored (0), Deflate (8)
 - **Features:** Directory entries, file attributes, CRC32 validation
 - **Limitations:** ZIP64 not supported, encryption not supported
+- Oversize entry counts or file sizes that require ZIP64 trap instead of producing a truncated archive
 
 ### Use Cases
 

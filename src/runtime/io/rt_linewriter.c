@@ -33,12 +33,17 @@
 
 #include "rt_internal.h"
 #include "rt_object.h"
+#include "rt_file_path.h"
 #include "rt_string.h"
 
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#ifdef _WIN32
+#include <wchar.h>
+#endif
 
 /// @brief Platform-specific default newline.
 #ifdef _WIN32
@@ -118,7 +123,27 @@ static void *rt_linewriter_open_mode(rt_string path, const char *mode) {
         return NULL;
     }
 
-    FILE *fp = fopen(path_str, mode);
+    FILE *fp = NULL;
+#ifdef _WIN32
+    wchar_t *wide_path = rt_file_path_utf8_to_wide(path_str);
+    wchar_t wide_mode[4] = {0};
+    if (!wide_path) {
+        rt_trap("LineWriter: invalid path");
+        return NULL;
+    }
+    size_t mode_len = strlen(mode);
+    if (mode_len >= sizeof(wide_mode) / sizeof(wide_mode[0])) {
+        free(wide_path);
+        rt_trap("LineWriter: invalid mode");
+        return NULL;
+    }
+    for (size_t i = 0; i < mode_len; i++)
+        wide_mode[i] = (wchar_t)(unsigned char)mode[i];
+    fp = _wfopen(wide_path, wide_mode);
+    free(wide_path);
+#else
+    fp = fopen(path_str, mode);
+#endif
     if (!fp) {
         // IO-H-7: include filename and OS error for actionable diagnostics
         char msg[512];
@@ -183,7 +208,7 @@ static void *rt_linewriter_open_mode(rt_string path, const char *mode) {
 /// @see rt_linewriter_close For closing the writer
 /// @see rt_linewriter_write_ln For writing lines
 void *rt_linewriter_open(rt_string path) {
-    return rt_linewriter_open_mode(path, "w");
+    return rt_linewriter_open_mode(path, "wb");
 }
 
 /// @brief Opens a file for appending, creating it if it doesn't exist.
@@ -219,7 +244,7 @@ void *rt_linewriter_open(rt_string path) {
 /// @see rt_linewriter_open For creating/truncating files
 /// @see rt_linewriter_close For closing the writer
 void *rt_linewriter_append(rt_string path) {
-    return rt_linewriter_open_mode(path, "a");
+    return rt_linewriter_open_mode(path, "ab");
 }
 
 /// @brief Explicitly closes a LineWriter, flushing and releasing the file.

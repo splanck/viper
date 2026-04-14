@@ -26,16 +26,27 @@
 extern "C" {
 #endif
 
+/// @brief Create a video-playback widget under @p parent that loads the file at @p path.
 void *rt_videowidget_new(void *parent, void *path);
+/// @brief Start or resume playback.
 void rt_videowidget_play(void *vw);
+/// @brief Pause playback (current frame stays displayed).
 void rt_videowidget_pause(void *vw);
+/// @brief Stop playback and rewind to the start.
 void rt_videowidget_stop(void *vw);
+/// @brief Tick the underlying VideoPlayer by @p dt seconds and refresh the display image.
 void rt_videowidget_update(void *vw, double dt);
+/// @brief Show or hide the play/pause/stop transport controls and timeline slider.
 void rt_videowidget_set_show_controls(void *vw, int8_t show);
+/// @brief Toggle automatic restart when the video reaches its end.
 void rt_videowidget_set_loop(void *vw, int8_t loop);
+/// @brief Set audio playback volume (0.0 = mute, 1.0 = full).
 void rt_videowidget_set_volume(void *vw, double vol);
+/// @brief 1 if currently playing, 0 if paused/stopped.
 int64_t rt_videowidget_get_is_playing(void *vw);
+/// @brief Get the current playback position in seconds.
 double rt_videowidget_get_position(void *vw);
+/// @brief Get the total stream duration in seconds.
 double rt_videowidget_get_duration(void *vw);
 
 #ifdef __cplusplus

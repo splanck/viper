@@ -478,6 +478,9 @@ static int ws_server_handshake(void *tcp) {
 // Finalizer
 //=============================================================================
 
+/// @brief GC finalizer: stop the accept thread and close all client connections, then destroy the
+/// platform mutex. Calling `_stop` first is idempotent, so this is safe even if the user already
+/// stopped the server explicitly.
 static void rt_ws_server_finalize(void *obj) {
     if (!obj)
         return;
@@ -546,6 +549,9 @@ static void *ws_accept_loop(void *arg)
 // Public API
 //=============================================================================
 
+/// @brief Construct a WebSocket server bound (lazily) to `port`. Validates port range (1–65535)
+/// up front; allocates the impl with mutex + finalizer, but does NOT bind the TCP socket — that
+/// happens on `_start`. Returns a GC-managed handle.
 void *rt_ws_server_new(int64_t port) {
     if (port < 1 || port > 65535)
         rt_trap("WsServer: invalid port");
@@ -562,6 +568,9 @@ void *rt_ws_server_new(int64_t port) {
     return s;
 }
 
+/// @brief Start listening: bind the TCP server, mark `running=true`, and spawn the accept loop
+/// on a dedicated thread (Win32 `CreateThread` or POSIX `pthread_create`). Idempotent — calling
+/// while already running is a no-op.
 void rt_ws_server_start(void *obj) {
     if (!obj)
         return;
@@ -580,6 +589,9 @@ void rt_ws_server_start(void *obj) {
 #endif
 }
 
+/// @brief Stop the server: set `running=false`, close the TCP listener (which unblocks
+/// `accept_for`), join the accept thread (5s wait on Win32), then close every active client
+/// connection under the mutex. Designed to be safely called from any thread.
 void rt_ws_server_stop(void *obj) {
     if (!obj)
         return;
@@ -613,6 +625,9 @@ void rt_ws_server_stop(void *obj) {
     WS_MUTEX_UNLOCK(&s->lock);
 }
 
+/// @brief Send a TEXT frame to every connected client. Clients whose send fails are marked
+/// inactive and their TCP handles released — handles dead-client cleanup as a side effect.
+/// Holds the client-list mutex during the entire broadcast (caller blocks on long sends).
 void rt_ws_server_broadcast(void *obj, rt_string message) {
     if (!obj)
         return;
@@ -632,6 +647,8 @@ void rt_ws_server_broadcast(void *obj, rt_string message) {
     WS_MUTEX_UNLOCK(&s->lock);
 }
 
+/// @brief Binary-frame variant of `_broadcast`. `data` is interpreted as a `(int64 length, uint8*)`
+/// pair (the runtime's Bytes layout); same dead-client cleanup as the text variant.
 void rt_ws_server_broadcast_bytes(void *obj, void *data) {
     if (!obj || !data)
         return;
@@ -657,6 +674,8 @@ void rt_ws_server_broadcast_bytes(void *obj, void *data) {
     WS_MUTEX_UNLOCK(&s->lock);
 }
 
+/// @brief Count active clients (only counts slots flagged active — slots from disconnected
+/// clients are skipped). Reads under the mutex for a consistent snapshot.
 int64_t rt_ws_server_client_count(void *obj) {
     if (!obj)
         return 0;
@@ -670,18 +689,25 @@ int64_t rt_ws_server_client_count(void *obj) {
     return count;
 }
 
+/// @brief Read the configured port. Always returns the value passed to `_new`, even before
+/// `_start` has bound the socket.
 int64_t rt_ws_server_port(void *obj) {
     if (!obj)
         return 0;
     return ((rt_ws_server_impl *)obj)->port;
 }
 
+/// @brief Returns 1 between successful `_start` and `_stop`; 0 otherwise.
 int8_t rt_ws_server_is_running(void *obj) {
     if (!obj)
         return 0;
     return ((rt_ws_server_impl *)obj)->running ? 1 : 0;
 }
 
+/// @brief **Synchronous** accept (alternative to the background `_start` thread). Blocks until
+/// a client connects, performs the WebSocket handshake, returns the per-client TCP handle.
+/// Returns NULL on accept failure or handshake rejection. Use this when the application owns
+/// the accept loop instead of relying on the background broadcast model.
 void *rt_ws_server_accept(void *obj) {
     if (!obj)
         return NULL;
@@ -701,6 +727,12 @@ void *rt_ws_server_accept(void *obj) {
     return tcp;
 }
 
+/// @brief Receive one complete WebSocket message from a client. Handles **frame fragmentation**
+/// (assembles continuation frames until FIN), **control frames** (auto-PONG to PING, auto-close
+/// echo on CLOSE), and **UTF-8 validation** for text frames. Caps reassembled message size at
+/// 64 MiB (per WebSocket security best practice) — over-cap closes with status 0x03F1
+/// "Message Too Big". Invalid UTF-8 in text frames closes with 0x03EF "Invalid Payload".
+/// Returns the decoded message as rt_string, or empty string on connection close/error.
 rt_string rt_ws_server_client_recv(void *tcp) {
     if (!tcp)
         return rt_string_from_bytes("", 0);
@@ -814,6 +846,8 @@ rt_string rt_ws_server_client_recv(void *tcp) {
     return rt_string_from_bytes("", 0);
 }
 
+/// @brief Send a TEXT frame to a single client. On send failure, closes the connection (caller
+/// can then drop the handle). Companion to `_client_recv` for the per-connection message loop.
 void rt_ws_server_client_send(void *tcp, rt_string message) {
     if (!tcp)
         return;
@@ -823,6 +857,8 @@ void rt_ws_server_client_send(void *tcp, rt_string message) {
         rt_tcp_close(tcp);
 }
 
+/// @brief Send a polite WebSocket CLOSE frame (no payload) and tear down the TCP connection.
+/// Use when terminating a single client without affecting the server's other connections.
 void rt_ws_server_client_close(void *tcp) {
     if (!tcp)
         return;

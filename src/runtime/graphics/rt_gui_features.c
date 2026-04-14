@@ -42,6 +42,11 @@
 
 #ifdef VIPER_ENABLE_GRAPHICS
 
+/// @brief Return the GUI subsystem's monotonic clock in milliseconds.
+///
+/// Wrapper around `rt_gui_now_ms`. The unused `app` parameter
+/// reserves the option to read a per-app clock in the future
+/// (e.g. for paused-game time).
 static uint64_t rt_gui_feature_now_ms(rt_gui_app_t *app) {
     (void)app;
     return rt_gui_now_ms();
@@ -59,6 +64,12 @@ typedef struct {
     int64_t was_selected;
 } rt_commandpalette_data_t;
 
+/// @brief Callback fired by the command palette when the user activates a command.
+///
+/// Captures the selected command's ID into the per-palette data
+/// struct so the next `rt_commandpalette_get_selected_id` call
+/// returns it. Edge-triggered: each invocation overwrites the
+/// previous selection.
 static void rt_commandpalette_on_execute(vg_commandpalette_t *palette,
                                          vg_command_t *cmd,
                                          void *user_data) {
@@ -72,6 +83,14 @@ static void rt_commandpalette_on_execute(vg_commandpalette_t *palette,
     (void)palette;
 }
 
+/// @brief Create a Ctrl+Shift+P-style command palette overlay.
+///
+/// The palette renders as a modal overlay above the active app's
+/// window and supports fuzzy-search across registered commands.
+/// Returns a small wrapper struct (`rt_commandpalette_data_t`)
+/// rather than the bare `vg_commandpalette_t*` so callers can
+/// poll the most recently activated command via
+/// `rt_commandpalette_get_selected_id`.
 void *rt_commandpalette_new(void *parent) {
     RT_ASSERT_MAIN_THREAD();
     rt_gui_app_t *app = rt_gui_app_from_handle(parent);
@@ -148,6 +167,12 @@ void rt_commandpalette_add_command(void *palette,
     free(clabel);
 }
 
+/// @brief Register a command in the palette with an associated keyboard shortcut.
+///
+/// As `rt_commandpalette_add_command` but the shortcut text (e.g.
+/// `"Ctrl+S"`) is shown next to the entry. The shortcut is purely
+/// informational — wiring it up to actually fire is up to the
+/// caller's keyboard handler.
 void rt_commandpalette_add_command_with_shortcut(
     void *palette, rt_string id, rt_string label, rt_string category, rt_string shortcut) {
     RT_ASSERT_MAIN_THREAD();
@@ -421,6 +446,7 @@ typedef struct rt_toast_data {
     char *action_label; ///< Optional action button label (owned, may be NULL)
 } rt_toast_data_t;
 
+/// @brief Toast action-button callback — flips an edge-trigger when the user clicks "Undo" / "Retry" etc.
 static void rt_toast_on_action(uint32_t id, void *user_data) {
     rt_toast_data_t *data = (rt_toast_data_t *)user_data;
     if (!data || data->id != id)
@@ -428,6 +454,11 @@ static void rt_toast_on_action(uint32_t id, void *user_data) {
     data->was_action_clicked = 1;
 }
 
+/// @brief Return (and lazily create) the per-app notification manager.
+///
+/// Notifications stack on the active app's overlay; each app gets
+/// its own manager so background apps don't show toasts on the
+/// foreground window.
 static vg_notification_manager_t *rt_get_notification_manager(rt_gui_app_t *app) {
     if (!app)
         return NULL;
@@ -441,6 +472,8 @@ static vg_notification_manager_t *rt_get_notification_manager(rt_gui_app_t *app)
     return app->notification_manager;
 }
 
+/// @brief Map a public `RT_TOAST_*` enum to the internal `VG_NOTIFICATION_*` enum.
+/// Defaults to INFO for any unknown value.
 static vg_notification_type_t rt_toast_type_to_vg(int64_t type) {
     switch (type) {
         case RT_TOAST_INFO:
@@ -456,6 +489,8 @@ static vg_notification_type_t rt_toast_type_to_vg(int64_t type) {
     }
 }
 
+/// @brief Map a public `RT_TOAST_POSITION_*` enum to the internal `VG_NOTIFICATION_*` corner.
+/// Defaults to TOP_RIGHT for unknown positions.
 static vg_notification_position_t rt_toast_position_to_vg(int64_t position) {
     switch (position) {
         case RT_TOAST_POSITION_TOP_RIGHT:
@@ -555,6 +590,12 @@ void rt_toast_error(rt_string message) {
         free(cmsg);
 }
 
+/// @brief Create a configurable toast and return a handle for action / dismissal polling.
+///
+/// Unlike the `rt_toast_info/success/warning/error` shortcuts which
+/// fire-and-forget, this version returns a wrapper struct that
+/// callers can poll via `rt_toast_was_action_clicked` to detect
+/// user interaction. `duration_ms == 0` means no auto-dismiss.
 void *rt_toast_new(rt_string message, int64_t type, int64_t duration_ms) {
     RT_ASSERT_MAIN_THREAD();
     rt_gui_app_t *app = rt_gui_get_active_app();
@@ -712,7 +753,12 @@ typedef struct rt_breadcrumb_data {
     int64_t was_clicked;
 } rt_breadcrumb_data_t;
 
-// Breadcrumb click callback
+/// @brief Breadcrumb segment click callback — captures index + per-item data for polling.
+///
+/// Each breadcrumb item may carry an opaque user-data string
+/// (e.g. a path component). On click we deep-copy that into the
+/// wrapper so the language layer can read it via
+/// `rt_breadcrumb_get_clicked_data` without lifetime concerns.
 static void rt_breadcrumb_on_click(vg_breadcrumb_t *bc, int index, void *user_data) {
     rt_breadcrumb_data_t *data = (rt_breadcrumb_data_t *)user_data;
     if (!data)
@@ -734,6 +780,10 @@ static void rt_breadcrumb_on_click(vg_breadcrumb_t *bc, int index, void *user_da
     }
 }
 
+/// @brief Create a breadcrumb navigation widget (e.g. `Home > Docs > Project`).
+///
+/// Returns a wrapper struct (`rt_breadcrumb_data_t`) so callers can
+/// poll segment clicks via `rt_breadcrumb_was_item_clicked`.
 void *rt_breadcrumb_new(void *parent) {
     RT_ASSERT_MAIN_THREAD();
     rt_gui_app_t *app = rt_gui_app_from_handle(parent);
@@ -932,6 +982,11 @@ typedef struct rt_minimap_data {
     int64_t width;
 } rt_minimap_data_t;
 
+/// @brief Create a minimap widget — a small scaled-down preview of a larger document.
+///
+/// Used by code editors and large-canvas views. The minimap
+/// observes its target widget (set via `rt_minimap_set_target`)
+/// and reflects the visible viewport as an overlay rectangle.
 void *rt_minimap_new(void *parent) {
     RT_ASSERT_MAIN_THREAD();
     vg_widget_t *parent_widget = rt_gui_widget_parent_from_handle(parent);
@@ -1259,6 +1314,13 @@ void rt_gui_features_cleanup(rt_gui_app_t *app) {
 }
 
 #else /* !VIPER_ENABLE_GRAPHICS */
+
+// ===========================================================================
+// Headless stubs — same prototypes as the real implementations above so
+// non-graphical builds (server / CLI / ViperDOS) link without pulling in
+// the GUI. Each stub no-ops or returns a sentinel; doc comments are
+// inherited from the real functions above by virtue of identical names.
+// ===========================================================================
 
 void *rt_commandpalette_new(void *parent) {
     (void)parent;

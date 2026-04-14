@@ -30,18 +30,31 @@
 extern "C" {
 #endif
 
+/// @brief Open a video file (AVI/MJPEG or OGG/Theora) and return a player handle (NULL on failure).
 void *rt_videoplayer_open(void *path);
+/// @brief Begin or resume playback (decoding advances on each Update).
 void rt_videoplayer_play(void *vp);
+/// @brief Pause playback (decoding halts; current frame remains displayed).
 void rt_videoplayer_pause(void *vp);
+/// @brief Stop playback and rewind to the start.
 void rt_videoplayer_stop(void *vp);
+/// @brief Seek to @p seconds into the stream (clamped to [0, duration]).
 void rt_videoplayer_seek(void *vp, double seconds);
+/// @brief Advance decoding by @p dt seconds (call once per game frame).
 void rt_videoplayer_update(void *vp, double dt);
+/// @brief Set the audio track volume (0.0 = mute, 1.0 = full).
 void rt_videoplayer_set_volume(void *vp, double vol);
+/// @brief Get the video frame width in pixels.
 int64_t rt_videoplayer_get_width(void *vp);
+/// @brief Get the video frame height in pixels.
 int64_t rt_videoplayer_get_height(void *vp);
+/// @brief Get the total stream duration in seconds.
 double rt_videoplayer_get_duration(void *vp);
+/// @brief Get the current playback position in seconds.
 double rt_videoplayer_get_position(void *vp);
+/// @brief 1 if currently playing, 0 if paused/stopped/at-end.
 int64_t rt_videoplayer_get_is_playing(void *vp);
+/// @brief Borrow the current display Pixels frame (NULL before the first decode completes).
 void *rt_videoplayer_get_frame(void *vp);
 
 #ifdef __cplusplus

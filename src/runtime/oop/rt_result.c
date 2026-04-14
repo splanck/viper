@@ -61,6 +61,8 @@ typedef struct {
 // Result Finalizer
 //=============================================================================
 
+/// @brief GC finalizer: release the heap-owned payload (PTR via object refcount, STR via
+/// `rt_str_release_maybe`). I64/F64 variants own no heap memory and need no cleanup.
 static void result_finalizer(void *obj) {
     Result *r = (Result *)obj;
     if (!r)
@@ -79,6 +81,7 @@ static void result_finalizer(void *obj) {
 // Result Creation
 //=============================================================================
 
+/// @brief Construct `Ok(ptr)` over a generic pointer payload. Retains `value` via the heap path.
 void *rt_result_ok(void *value) {
     Result *r = (Result *)rt_obj_new_i64(0, (int64_t)sizeof(Result));
     r->variant = RESULT_OK;
@@ -89,6 +92,7 @@ void *rt_result_ok(void *value) {
     return r;
 }
 
+/// @brief Construct `Ok(string)` — retains the string (heap or literal) via `rt_string_ref`.
 void *rt_result_ok_str(rt_string value) {
     Result *r = (Result *)rt_obj_new_i64(0, (int64_t)sizeof(Result));
     r->variant = RESULT_OK;
@@ -98,6 +102,7 @@ void *rt_result_ok_str(rt_string value) {
     return r;
 }
 
+/// @brief Construct `Ok(i64)` with the value stored inline (no heap allocation for payload).
 void *rt_result_ok_i64(int64_t value) {
     Result *r = (Result *)rt_obj_new_i64(0, (int64_t)sizeof(Result));
     r->variant = RESULT_OK;
@@ -107,6 +112,7 @@ void *rt_result_ok_i64(int64_t value) {
     return r;
 }
 
+/// @brief Construct `Ok(f64)` with the value stored inline.
 void *rt_result_ok_f64(double value) {
     Result *r = (Result *)rt_obj_new_i64(0, (int64_t)sizeof(Result));
     r->variant = RESULT_OK;
@@ -116,6 +122,8 @@ void *rt_result_ok_f64(double value) {
     return r;
 }
 
+/// @brief Construct `Err(ptr)` carrying an arbitrary heap-managed error value (e.g. an exception
+/// object). Retains the error so it survives until the Result is finalized.
 void *rt_result_err(void *error) {
     Result *r = (Result *)rt_obj_new_i64(0, (int64_t)sizeof(Result));
     r->variant = RESULT_ERR;
@@ -126,6 +134,8 @@ void *rt_result_err(void *error) {
     return r;
 }
 
+/// @brief Construct `Err(message)` with a string error description. The most common Err shape —
+/// caller-friendly diagnostic that doesn't require allocating a separate error class.
 void *rt_result_err_str(rt_string message) {
     Result *r = (Result *)rt_obj_new_i64(0, (int64_t)sizeof(Result));
     r->variant = RESULT_ERR;
@@ -161,10 +171,12 @@ int8_t rt_result_is_err(void *obj) {
 
 #include "rt_trap.h"
 
+/// @brief Convenience wrapper around `rt_trap` so unwrap helpers stay readable.
 static void trap_with_message(const char *msg) {
     rt_trap(msg);
 }
 
+/// @brief Extract the Ok pointer payload; **traps** if NULL or Err. Use after `is_ok()` check.
 void *rt_result_unwrap(void *obj) {
     if (!obj)
         trap_with_message("Unwrap called on NULL Result");
@@ -210,6 +222,7 @@ double rt_result_unwrap_f64(void *obj) {
     return r->value.f64;
 }
 
+/// @brief Return the Ok pointer if present, else `def`. Never traps; NULL handle treated as Err.
 void *rt_result_unwrap_or(void *obj, void *def) {
     if (!obj)
         return def;
@@ -255,6 +268,8 @@ double rt_result_unwrap_or_f64(void *obj, double def) {
     return r->value.f64;
 }
 
+/// @brief Extract the Err pointer payload; **traps** if NULL or Ok. Mirror of `unwrap` for the
+/// Err side — used to inspect the error after `is_err()` confirms one is present.
 void *rt_result_unwrap_err(void *obj) {
     if (!obj)
         trap_with_message("UnwrapErr called on NULL Result");
@@ -276,6 +291,8 @@ rt_string rt_result_unwrap_err_str(void *obj) {
     return r->value.str;
 }
 
+/// @brief Return the Ok pointer if Ok, NULL otherwise. Non-trapping accessor — caller must
+/// distinguish "stored NULL" from "this is an Err" via `is_ok` / `is_err`.
 void *rt_result_ok_value(void *obj) {
     if (!obj)
         return NULL;
@@ -285,6 +302,7 @@ void *rt_result_ok_value(void *obj) {
     return r->value.ptr;
 }
 
+/// @brief Return the Err pointer if Err, NULL otherwise. Non-trapping companion to `ok_value`.
 void *rt_result_err_value(void *obj) {
     if (!obj)
         return NULL;
@@ -298,6 +316,9 @@ void *rt_result_err_value(void *obj) {
 // Expect
 //=============================================================================
 
+/// @brief Like `unwrap` with a caller-supplied diagnostic. Traps with INVALID_OPERATION (catchable
+/// distinctly from generic unwrap traps) on Err. Use for "this Result must be Ok at this point"
+/// invariant checks where the message helps debug failures.
 void *rt_result_expect(void *obj, rt_string msg) {
     const char *msg_str = msg ? rt_string_cstr(msg) : "assertion failed";
     char buffer[256];
@@ -313,6 +334,8 @@ void *rt_result_expect(void *obj, rt_string msg) {
     return r->value.ptr;
 }
 
+/// @brief Mirror of `expect` for the Err side: traps with the diagnostic if the Result is Ok.
+/// Useful in tests asserting that a fallible operation must have failed with a specific reason.
 void *rt_result_expect_err(void *obj, rt_string msg) {
     const char *msg_str = msg ? rt_string_cstr(msg) : "assertion failed";
     char buffer[256];
@@ -332,6 +355,14 @@ void *rt_result_expect_err(void *obj, rt_string msg) {
 // Transformation
 //=============================================================================
 
+// =============================================================================
+// Transformation combinators — all PTR-variant only. Typed-primitive Results
+// (STR/I64/F64) pass through unchanged because the function signature
+// `void* (*)(void*)` doesn't match the union's other branches. Pair with the
+// typed unwrap_*/ok_*_t constructors when you need to transform a typed value.
+// =============================================================================
+
+/// @brief Apply `fn` to the Ok value, returning `Ok(fn(val))`. Err passes through unchanged.
 void *rt_result_map(void *obj, void *(*fn)(void *)) {
     if (!obj || !fn)
         return obj;
@@ -348,6 +379,8 @@ void *rt_result_map(void *obj, void *(*fn)(void *)) {
     return obj;
 }
 
+/// @brief Apply `fn` to the Err value, returning `Err(fn(err))`. Ok passes through unchanged.
+/// Useful for translating low-level errors into higher-level error types.
 void *rt_result_map_err(void *obj, void *(*fn)(void *)) {
     if (!obj || !fn)
         return obj;
@@ -362,6 +395,8 @@ void *rt_result_map_err(void *obj, void *(*fn)(void *)) {
     return obj;
 }
 
+/// @brief Monadic bind on the Ok side: apply `fn` (returning a Result) to the Ok value, flattening.
+/// Err short-circuits the chain, propagating unchanged. The cornerstone of error pipelines.
 void *rt_result_and_then(void *obj, void *(*fn)(void *)) {
     if (!obj || !fn)
         return obj;
@@ -375,6 +410,8 @@ void *rt_result_and_then(void *obj, void *(*fn)(void *)) {
     return obj;
 }
 
+/// @brief Monadic bind on the Err side: apply `fn` (returning a Result) to the Err value to
+/// produce a recovery Result. Ok passes through unchanged. Used for "try recovery" patterns.
 void *rt_result_or_else(void *obj, void *(*fn)(void *)) {
     if (!obj || !fn)
         return obj;
@@ -388,18 +425,22 @@ void *rt_result_or_else(void *obj, void *(*fn)(void *)) {
     return obj;
 }
 
+/// @brief IL trampoline for `rt_result_map` — re-types the user fn pointer for the typed call.
 void *rt_result_map_wrapper(void *obj, void *fn) {
     return rt_result_map(obj, (void *(*)(void *))fn);
 }
 
+/// @brief IL trampoline for `rt_result_map_err`.
 void *rt_result_map_err_wrapper(void *obj, void *fn) {
     return rt_result_map_err(obj, (void *(*)(void *))fn);
 }
 
+/// @brief IL trampoline for `rt_result_and_then`.
 void *rt_result_and_then_wrapper(void *obj, void *fn) {
     return rt_result_and_then(obj, (void *(*)(void *))fn);
 }
 
+/// @brief IL trampoline for `rt_result_or_else`.
 void *rt_result_or_else_wrapper(void *obj, void *fn) {
     return rt_result_or_else(obj, (void *(*)(void *))fn);
 }

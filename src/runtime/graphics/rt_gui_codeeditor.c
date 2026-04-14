@@ -47,21 +47,34 @@
 #define SYN_COLOR_COMMENT 0xFF6A9955u // green
 #define SYN_COLOR_NUMBER 0xFFB5CEA8u  // light green
 
-// Fill `n` colors with `color` starting at `colors[pos]`
+/// @brief Set `n` adjacent slots in the per-character `colors` array to `color`.
+///
+/// Used by every tokenizer to paint a span of characters (a keyword,
+/// string literal, comment) the same color in one sweep.
 static void syn_fill(uint32_t *colors, size_t pos, size_t n, uint32_t color) {
     for (size_t i = 0; i < n; i++)
         colors[pos + i] = color;
 }
 
-// Resolve a token color: use per-editor override if set, else theme default.
-// Token type indices: 0=default, 1=keyword, 2=type, 3=string, 4=comment, 5=number
+/// @brief Pick the color for a token kind, honoring per-editor overrides.
+///
+/// Each editor instance can override the default theme colors via
+/// `SetTokenColor`. If no override is set, returns the supplied
+/// `fallback` (which is the VS Code dark-theme default).
+///
+/// Token type indices: 0=default, 1=keyword, 2=type, 3=string,
+/// 4=comment, 5=number.
 static uint32_t syn_color(vg_codeeditor_t *ce, int token_type, uint32_t fallback) {
     if (ce && token_type >= 0 && token_type < 6 && ce->token_colors[token_type])
         return ce->token_colors[token_type];
     return fallback;
 }
 
-// Check if word matches any custom keywords (case-sensitive)
+/// @brief Linear-scan the editor's user-supplied keyword list for an exact match.
+///
+/// Custom keywords let scripts add domain-specific syntax (e.g., your
+/// game's scripting commands) without modifying the built-in tables.
+/// Case-sensitive — matches `SetCustomKeywords`'s contract.
 static int syn_is_custom_keyword(const char *word, size_t wlen, vg_codeeditor_t *ce) {
     if (!ce || !ce->custom_keywords)
         return 0;
@@ -73,17 +86,24 @@ static int syn_is_custom_keyword(const char *word, size_t wlen, vg_codeeditor_t 
     return 0;
 }
 
-// Check if character is an identifier start character
+/// @brief True if `c` may begin an identifier (letter or underscore).
+///
+/// ASCII-only — Unicode identifiers are not yet supported by the
+/// tokenizer (would require a full UTF-8 codepoint classifier).
 static int syn_is_id_start(char c) {
     return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_';
 }
 
-// Check if character is an identifier continuation character
+/// @brief True if `c` may continue an identifier (id-start chars + digits).
 static int syn_is_id_cont(char c) {
     return syn_is_id_start(c) || (c >= '0' && c <= '9');
 }
 
-// Case-insensitive string equality check for a fixed-length word
+/// @brief Compare `len` chars of `a` and `b` ignoring ASCII case.
+///
+/// Folds lowercase letters via the bit-flip trick (`a..z` differ from
+/// `A..Z` by exactly 0x20). Used for BASIC keyword matching, which is
+/// case-insensitive.
 static int syn_word_eq_ci(const char *a, const char *b, size_t len) {
     for (size_t i = 0; i < len; i++) {
         char ca = (a[i] >= 'a' && a[i] <= 'z') ? a[i] - 32 : a[i];
@@ -94,7 +114,10 @@ static int syn_word_eq_ci(const char *a, const char *b, size_t len) {
     return 1;
 }
 
-// Match `word` (length wlen) against a NULL-terminated keyword table (case-sensitive)
+/// @brief Match `word[0..wlen]` against a NULL-terminated keyword table (case-sensitive).
+///
+/// Used for Zia keywords/types — Zia is case-sensitive. Linear scan;
+/// keyword tables are short enough that hashing isn't worth it.
 static int syn_is_keyword(const char *word, size_t wlen, const char *const *table) {
     for (int i = 0; table[i]; i++) {
         size_t klen = strlen(table[i]);
@@ -104,7 +127,7 @@ static int syn_is_keyword(const char *word, size_t wlen, const char *const *tabl
     return 0;
 }
 
-// Match `word` (length wlen) against a NULL-terminated keyword table (case-insensitive)
+/// @brief Case-insensitive variant of `syn_is_keyword` for BASIC.
 static int syn_is_keyword_ci(const char *word, size_t wlen, const char *const *table) {
     for (int i = 0; table[i]; i++) {
         size_t klen = strlen(table[i]);
@@ -134,6 +157,16 @@ static const char *const zia_types[] = {"Integer",
                                         "Queue",
                                         NULL};
 
+/// @brief Tokenize a Zia source line and write per-character color codes.
+///
+/// Walks the line once, classifying each span:
+///   - `// ...` line comment → green
+///   - `"..."` string (with `\\` escape handling) → orange
+///   - `[0-9]+` number → light green
+///   - identifier → keyword/type/custom-keyword/default lookup
+///   - everything else → default color
+/// Per-line tokenization (no multi-line state) — block comments would
+/// need a stateful tokenizer.
 static void rt_zia_syntax_cb(
     vg_widget_t *editor, int line_num, const char *text, uint32_t *colors, void *user_data) {
     (void)line_num;
@@ -210,6 +243,13 @@ static const char *const basic_keywords[] = {
     "RETURN", "PRINT", "INPUT", "GOTO", "SUB",  "END",   "FUNCTION", "CALL",
     "TRUE",   "FALSE", "AND",   "OR",   "NOT",  "MOD",   NULL};
 
+/// @brief Tokenize a Viper BASIC source line.
+///
+/// Differences from Zia:
+///   - Comments use `'` (apostrophe) or the `REM` keyword.
+///   - Keyword matching is case-insensitive (`PRINT`, `print`, `Print`
+///     all highlight).
+///   - No type table — BASIC's type system isn't surfaced as keywords.
 static void rt_basic_syntax_cb(
     vg_widget_t *editor, int line_num, const char *text, uint32_t *colors, void *user_data) {
     (void)line_num;
@@ -281,6 +321,13 @@ static void rt_basic_syntax_cb(
 
 // ─── Public: set language ─────────────────────────────────────────────────
 
+/// @brief `CodeEditor.SetLanguage(language)` — install a syntax-highlight callback.
+///
+/// Recognized values: `"zia"`, `"basic"`. Anything else (including
+/// empty string) installs the no-op highlighter (plain text).
+/// The editor pointer itself is the `user_data` for the callback so
+/// the tokenizer can read the per-editor color overrides + custom
+/// keyword list.
 void rt_codeeditor_set_language(void *editor, rt_string language) {
     if (!editor)
         return;
@@ -301,6 +348,11 @@ void rt_codeeditor_set_language(void *editor, rt_string language) {
     free(clang);
 }
 
+/// @brief `CodeEditor.SetTokenColor(tokenType, color)` — override one theme color.
+///
+/// `tokenType`: 0=default, 1=keyword, 2=type, 3=string, 4=comment,
+/// 5=number. `color`: ARGB 0xAARRGGBB. Out-of-range types are ignored.
+/// Triggers a repaint.
 void rt_codeeditor_set_token_color(void *editor, int64_t token_type, int64_t color) {
     if (!editor)
         return;
@@ -312,6 +364,12 @@ void rt_codeeditor_set_token_color(void *editor, int64_t token_type, int64_t col
     }
 }
 
+/// @brief `CodeEditor.SetCustomKeywords(keywords)` — install a comma-separated keyword list.
+///
+/// The list is parsed into `ce->custom_keywords` (newly allocated copy
+/// of each token, leading/trailing whitespace trimmed). Replaces any
+/// previous list (no append). Empty input clears the list. Doubling
+/// growth from an initial capacity of 8.
 void rt_codeeditor_set_custom_keywords(void *editor, rt_string keywords) {
     if (!editor)
         return;
@@ -365,6 +423,10 @@ void rt_codeeditor_set_custom_keywords(void *editor, rt_string keywords) {
     ce->base.needs_paint = true;
 }
 
+/// @brief `CodeEditor.ClearHighlights()` — remove every custom highlight span.
+///
+/// Highlights are user-defined colored ranges painted on top of the
+/// syntax highlighting (e.g., for diagnostics, find-results, etc.).
 void rt_codeeditor_clear_highlights(void *editor) {
     if (!editor)
         return;
@@ -376,6 +438,11 @@ void rt_codeeditor_clear_highlights(void *editor) {
     ce->base.needs_paint = true;
 }
 
+/// @brief `CodeEditor.AddHighlight(line0, col0, line1, col1, color)` — add a colored range.
+///
+/// Spans are inclusive on start, exclusive on end. Geometric growth
+/// for the spans array (cap doubles, starting at 8). Silently no-ops
+/// on OOM (better than trapping the editor).
 void rt_codeeditor_add_highlight(void *editor,
                                  int64_t start_line,
                                  int64_t start_col,
@@ -402,6 +469,10 @@ void rt_codeeditor_add_highlight(void *editor,
     ce->base.needs_paint = true;
 }
 
+/// @brief `CodeEditor.RefreshHighlights()` — schedule a repaint.
+///
+/// Useful when callers mutate highlight state through other means
+/// and need the editor to redraw on the next frame.
 void rt_codeeditor_refresh_highlights(void *editor) {
     if (!editor)
         return;
@@ -412,6 +483,7 @@ void rt_codeeditor_refresh_highlights(void *editor) {
 // CodeEditor Enhancements - Gutter & Line Numbers (Phase 4)
 //=============================================================================
 
+/// @brief `CodeEditor.SetShowLineNumbers(show)` — toggle the line-number gutter.
 void rt_codeeditor_set_show_line_numbers(void *editor, int64_t show) {
     if (!editor)
         return;
@@ -419,12 +491,19 @@ void rt_codeeditor_set_show_line_numbers(void *editor, int64_t show) {
     ce->show_line_numbers = show != 0;
 }
 
+/// @brief `CodeEditor.GetShowLineNumbers` — read the line-number visibility flag.
+///
+/// Returns 1 (showing) for NULL receiver to match the default.
 int64_t rt_codeeditor_get_show_line_numbers(void *editor) {
     if (!editor)
         return 1; // Default to showing
     return ((vg_codeeditor_t *)editor)->show_line_numbers ? 1 : 0;
 }
 
+/// @brief `CodeEditor.SetLineNumberWidth(width)` — set gutter width in characters.
+///
+/// Internally stored as pixels (`width * char_width`) so layout doesn't
+/// have to keep recomputing it.
 void rt_codeeditor_set_line_number_width(void *editor, int64_t width) {
     if (!editor)
         return;
@@ -432,6 +511,12 @@ void rt_codeeditor_set_line_number_width(void *editor, int64_t width) {
     ce->gutter_width = (float)((int)width) * ce->char_width;
 }
 
+/// @brief Convert an `rt_pixels` ARGB buffer into a `vg_icon_t`.
+///
+/// Repacks the source buffer (top-byte-alpha ARGB stored as uint32)
+/// into the RGBA byte order vg expects. Validates dimensions to
+/// guard against integer overflow (W*H*4 > SIZE_MAX). Traps on
+/// allocation failure.
 static vg_icon_t rt_codeeditor_icon_from_pixels(void *pixels) {
     vg_icon_t icon = {0};
     if (!pixels)
@@ -476,6 +561,13 @@ static vg_icon_t rt_codeeditor_icon_from_pixels(void *pixels) {
     return icon;
 }
 
+/// @brief `CodeEditor.SetGutterIcon(line, pixels, slot)` — paint an icon in the gutter.
+///
+/// `slot` selects an icon "channel" so multiple icons can stack on
+/// the same line: 0=breakpoint, 1=warning, 2=error, 3=info. Setting
+/// the same line+slot replaces the existing icon. Geometric growth
+/// for the icons array. Default per-slot tint colors are red/orange/
+/// red/blue.
 void rt_codeeditor_set_gutter_icon(void *editor, int64_t line, void *pixels, int64_t slot) {
     if (!editor)
         return;
@@ -512,6 +604,9 @@ void rt_codeeditor_set_gutter_icon(void *editor, int64_t line, void *pixels, int
     ce->base.needs_paint = true;
 }
 
+/// @brief `CodeEditor.ClearGutterIcon(line, slot)` — remove one icon entry.
+///
+/// Swap-with-last compaction. No-op if no matching icon exists.
 void rt_codeeditor_clear_gutter_icon(void *editor, int64_t line, int64_t slot) {
     if (!editor)
         return;
@@ -531,6 +626,10 @@ void rt_codeeditor_clear_gutter_icon(void *editor, int64_t line, int64_t slot) {
     }
 }
 
+/// @brief `CodeEditor.ClearAllGutterIcons(slot)` — remove every icon of a given type.
+///
+/// In-place compaction by writing kept entries to `[0..w)` and clearing
+/// the trailing slots. Useful for "clear all breakpoints" type ops.
 void rt_codeeditor_clear_all_gutter_icons(void *editor, int64_t slot) {
     if (!editor)
         return;
@@ -554,6 +653,12 @@ void rt_codeeditor_clear_all_gutter_icons(void *editor, int64_t slot) {
 // Gutter click tracking — per-editor state (not global statics) so
 // multiple CodeEditor instances each track their own gutter clicks.
 
+/// @brief Legacy global setter — currently a no-op, kept for ABI stability.
+///
+/// The vg layer paint callback doesn't pass the editor pointer
+/// through, so we can't route clicks to the right editor here. A
+/// future refactor would pass the editor through; until then, gutter
+/// state is per-editor and updated directly inside the widget code.
 void rt_gui_set_gutter_click(int64_t line, int64_t slot) {
     // Legacy global entry point — forwards to a per-editor setter.
     // The vg layer paint callback doesn't know which editor was clicked,
@@ -563,10 +668,16 @@ void rt_gui_set_gutter_click(int64_t line, int64_t slot) {
     (void)slot;
 }
 
+/// @brief Legacy global clear — currently a no-op (state lives per-editor).
 void rt_gui_clear_gutter_click(void) {
     // No-op: per-editor state is cleared after read in the getter functions.
 }
 
+/// @brief `CodeEditor.WasGutterClicked` — edge-detect: true once per click.
+///
+/// Returns the latched click flag and clears it as a side effect, so
+/// subsequent reads return 0 until the next click. Pair with
+/// `GetGutterClickedLine`/`Slot` for the click coordinates.
 int64_t rt_codeeditor_was_gutter_clicked(void *editor) {
     if (!editor)
         return 0;
@@ -576,18 +687,27 @@ int64_t rt_codeeditor_was_gutter_clicked(void *editor) {
     return result;
 }
 
+/// @brief `CodeEditor.GetGutterClickedLine` — line number of the most recent click.
+///
+/// Returns -1 for NULL receiver or no click. Stale after `WasGutterClicked`
+/// reads/clears the flag.
 int64_t rt_codeeditor_get_gutter_clicked_line(void *editor) {
     if (!editor)
         return -1;
     return ((vg_codeeditor_t *)editor)->gutter_clicked_line;
 }
 
+/// @brief `CodeEditor.GetGutterClickedSlot` — slot index of the most recent click.
 int64_t rt_codeeditor_get_gutter_clicked_slot(void *editor) {
     if (!editor)
         return -1;
     return ((vg_codeeditor_t *)editor)->gutter_clicked_slot;
 }
 
+/// @brief `CodeEditor.SetShowFoldGutter(show)` — toggle the fold-region gutter.
+///
+/// The fold gutter sits next to the line-number gutter and shows
+/// triangle indicators next to foldable regions.
 void rt_codeeditor_set_show_fold_gutter(void *editor, int64_t show) {
     if (!editor)
         return;
@@ -600,6 +720,11 @@ void rt_codeeditor_set_show_fold_gutter(void *editor, int64_t show) {
 // CodeEditor Enhancements - Code Folding (Phase 4)
 //=============================================================================
 
+/// @brief `CodeEditor.AddFoldRegion(startLine, endLine)` — register a foldable region.
+///
+/// Regions can be folded/unfolded individually via `Fold(line)`/`Unfold(line)`
+/// or in bulk via `FoldAll`/`UnfoldAll`. Initial state is unfolded.
+/// No overlap detection — caller is responsible for sane region layout.
 void rt_codeeditor_add_fold_region(void *editor, int64_t start_line, int64_t end_line) {
     if (!editor)
         return;
@@ -619,6 +744,10 @@ void rt_codeeditor_add_fold_region(void *editor, int64_t start_line, int64_t end
     ce->base.needs_paint = true;
 }
 
+/// @brief `CodeEditor.RemoveFoldRegion(startLine)` — drop a fold region.
+///
+/// Identified by the start line. Swap-with-last compaction. No-op if
+/// no region starts at the given line.
 void rt_codeeditor_remove_fold_region(void *editor, int64_t start_line) {
     if (!editor)
         return;
@@ -632,6 +761,7 @@ void rt_codeeditor_remove_fold_region(void *editor, int64_t start_line) {
     }
 }
 
+/// @brief `CodeEditor.ClearFoldRegions` — drop every registered fold region.
 void rt_codeeditor_clear_fold_regions(void *editor) {
     if (!editor)
         return;
@@ -643,6 +773,7 @@ void rt_codeeditor_clear_fold_regions(void *editor) {
     ce->base.needs_paint = true;
 }
 
+/// @brief `CodeEditor.Fold(line)` — collapse the region starting at `line`.
 void rt_codeeditor_fold(void *editor, int64_t line) {
     if (!editor)
         return;
@@ -656,6 +787,7 @@ void rt_codeeditor_fold(void *editor, int64_t line) {
     }
 }
 
+/// @brief `CodeEditor.Unfold(line)` — expand the region starting at `line`.
 void rt_codeeditor_unfold(void *editor, int64_t line) {
     if (!editor)
         return;
@@ -669,6 +801,7 @@ void rt_codeeditor_unfold(void *editor, int64_t line) {
     }
 }
 
+/// @brief `CodeEditor.ToggleFold(line)` — flip the folded state of one region.
 void rt_codeeditor_toggle_fold(void *editor, int64_t line) {
     if (!editor)
         return;
@@ -682,6 +815,7 @@ void rt_codeeditor_toggle_fold(void *editor, int64_t line) {
     }
 }
 
+/// @brief `CodeEditor.IsFolded(line)` — true iff the region starting at `line` is collapsed.
 int64_t rt_codeeditor_is_folded(void *editor, int64_t line) {
     if (!editor)
         return 0;
@@ -693,6 +827,7 @@ int64_t rt_codeeditor_is_folded(void *editor, int64_t line) {
     return 0;
 }
 
+/// @brief `CodeEditor.FoldAll` — collapse every fold region.
 void rt_codeeditor_fold_all(void *editor) {
     if (!editor)
         return;
@@ -702,6 +837,7 @@ void rt_codeeditor_fold_all(void *editor) {
     ce->base.needs_paint = true;
 }
 
+/// @brief `CodeEditor.UnfoldAll` — expand every fold region.
 void rt_codeeditor_unfold_all(void *editor) {
     if (!editor)
         return;
@@ -711,6 +847,13 @@ void rt_codeeditor_unfold_all(void *editor) {
     ce->base.needs_paint = true;
 }
 
+/// @brief `CodeEditor.SetAutoFoldDetection(enable)` — derive fold regions from indentation.
+///
+/// When enabled, immediately walks the buffer looking for places where
+/// the next line is more indented than the current line and registers
+/// a fold region from the start of the indented block to the line where
+/// indentation drops back. Blank lines extend the fold (don't break it).
+/// Replaces any manually-added regions. No effect if the buffer is empty.
 void rt_codeeditor_set_auto_fold_detection(void *editor, int64_t enable) {
     if (!editor)
         return;
@@ -791,6 +934,11 @@ void rt_codeeditor_set_auto_fold_detection(void *editor, int64_t enable) {
 // CodeEditor Enhancements - Multiple Cursors (Phase 4)
 //=============================================================================
 
+/// @brief Clamp a `(line, col)` pair to a valid in-buffer position.
+///
+/// Negative coordinates clamp to 0; out-of-bounds line clamps to the
+/// last line; out-of-bounds column clamps to the line's length. Used
+/// before storing user-supplied cursor positions to avoid OOB reads.
 static void rt_codeeditor_clamp_position(vg_codeeditor_t *ce, int *line, int *col) {
     if (!ce || !line || !col || ce->line_count <= 0)
         return;
@@ -805,6 +953,10 @@ static void rt_codeeditor_clamp_position(vg_codeeditor_t *ce, int *line, int *co
         *col = (int)ce->lines[*line].length;
 }
 
+/// @brief `CodeEditor.GetCursorCount` — number of active cursors (always >= 1).
+///
+/// Always 1 + extras; the primary cursor is always present. Returns 1
+/// for NULL receiver to match the "at least one cursor" invariant.
 int64_t rt_codeeditor_get_cursor_count(void *editor) {
     if (!editor)
         return 1;
@@ -812,6 +964,11 @@ int64_t rt_codeeditor_get_cursor_count(void *editor) {
     return 1 + ce->extra_cursor_count;
 }
 
+/// @brief `CodeEditor.AddCursor(line, col)` — add a secondary cursor.
+///
+/// Index 0 is reserved for the primary cursor; new cursors get
+/// indices 1, 2, … Position is clamped to a valid buffer position.
+/// Geometric growth (cap doubles, starting at 4).
 void rt_codeeditor_add_cursor(void *editor, int64_t line, int64_t col) {
     if (!editor)
         return;
@@ -833,6 +990,11 @@ void rt_codeeditor_add_cursor(void *editor, int64_t line, int64_t col) {
     ce->base.needs_paint = true;
 }
 
+/// @brief `CodeEditor.RemoveCursor(index)` — drop a secondary cursor.
+///
+/// Index 0 (primary) cannot be removed (that cursor is intrinsic to
+/// the editor). Indices 1+ refer to entries in the `extra_cursors`
+/// array. Shifts remaining cursors down to keep the array dense.
 void rt_codeeditor_remove_cursor(void *editor, int64_t index) {
     if (!editor)
         return;
@@ -847,6 +1009,10 @@ void rt_codeeditor_remove_cursor(void *editor, int64_t index) {
     ce->base.needs_paint = true;
 }
 
+/// @brief `CodeEditor.ClearExtraCursors` — remove every secondary cursor.
+///
+/// Primary cursor stays. Useful for "Escape" key handling in
+/// multi-cursor editing modes.
 void rt_codeeditor_clear_extra_cursors(void *editor) {
     if (!editor)
         return;
@@ -858,6 +1024,10 @@ void rt_codeeditor_clear_extra_cursors(void *editor) {
     ce->base.needs_paint = true;
 }
 
+/// @brief `CodeEditor.GetCursorLineAt(index)` — line of the i-th cursor.
+///
+/// Index 0 is the primary cursor; 1+ are extras. Out-of-range
+/// returns 0 (defensive default).
 int64_t rt_codeeditor_get_cursor_line_at(void *editor, int64_t index) {
     if (!editor)
         return 0;
@@ -870,6 +1040,7 @@ int64_t rt_codeeditor_get_cursor_line_at(void *editor, int64_t index) {
     return 0;
 }
 
+/// @brief `CodeEditor.GetCursorColAt(index)` — column of the i-th cursor.
 int64_t rt_codeeditor_get_cursor_col_at(void *editor, int64_t index) {
     if (!editor)
         return 0;
@@ -882,14 +1053,21 @@ int64_t rt_codeeditor_get_cursor_col_at(void *editor, int64_t index) {
     return 0;
 }
 
+/// @brief `CodeEditor.CursorLine` — convenience for the primary cursor's line.
 int64_t rt_codeeditor_get_cursor_line(void *editor) {
     return rt_codeeditor_get_cursor_line_at(editor, 0);
 }
 
+/// @brief `CodeEditor.CursorCol` — convenience for the primary cursor's column.
 int64_t rt_codeeditor_get_cursor_col(void *editor) {
     return rt_codeeditor_get_cursor_col_at(editor, 0);
 }
 
+/// @brief `CodeEditor.SetCursorPositionAt(index, line, col)` — move one cursor.
+///
+/// Index 0 routes to the underlying widget's `set_cursor` (which also
+/// scrolls the viewport). Index 1+ updates the extras directly.
+/// Position is clamped; selection is cleared.
 void rt_codeeditor_set_cursor_position_at(void *editor, int64_t index, int64_t line, int64_t col) {
     if (!editor)
         return;
@@ -909,6 +1087,12 @@ void rt_codeeditor_set_cursor_position_at(void *editor, int64_t index, int64_t l
     ce->base.needs_paint = true;
 }
 
+/// @brief `CodeEditor.SetCursorSelection(index, sLine, sCol, eLine, eCol)` — set a selection.
+///
+/// Both start and end positions are clamped. The cursor for that
+/// index moves to the end of the selection (matching standard
+/// editor behavior where shift+click extends from the existing
+/// cursor to the click position).
 void rt_codeeditor_set_cursor_selection(void *editor,
                                         int64_t index,
                                         int64_t start_line,
@@ -944,6 +1128,10 @@ void rt_codeeditor_set_cursor_selection(void *editor,
     ce->base.needs_paint = true;
 }
 
+/// @brief `CodeEditor.CursorHasSelection(index)` — whether the i-th cursor has a selection.
+///
+/// Index 0 reads the editor's main `has_selection` flag; extras keep
+/// their own per-cursor flag set by `SetCursorSelection`.
 int64_t rt_codeeditor_cursor_has_selection(void *editor, int64_t index) {
     if (!editor)
         return 0;
@@ -956,34 +1144,43 @@ int64_t rt_codeeditor_cursor_has_selection(void *editor, int64_t index) {
     return ce->extra_cursors[extra_idx].has_selection ? 1 : 0;
 }
 
+// Edit-history and clipboard ops — thin wrappers around the underlying
+// `vg_codeeditor_*` widget API. NULL receiver is a no-op (or zero return).
+
+/// @brief `CodeEditor.Undo` — pop one entry from the undo stack.
 void rt_codeeditor_undo(void *editor) {
     if (editor)
         vg_codeeditor_undo((vg_codeeditor_t *)editor);
 }
 
+/// @brief `CodeEditor.Redo` — re-apply one undone entry.
 void rt_codeeditor_redo(void *editor) {
     if (editor)
         vg_codeeditor_redo((vg_codeeditor_t *)editor);
 }
 
+/// @brief `CodeEditor.Copy` — copy selection to the system clipboard. Returns 1 on success.
 int64_t rt_codeeditor_copy(void *editor) {
     if (!editor)
         return 0;
     return vg_codeeditor_copy((vg_codeeditor_t *)editor) ? 1 : 0;
 }
 
+/// @brief `CodeEditor.Cut` — copy selection then delete. Returns 1 on success.
 int64_t rt_codeeditor_cut(void *editor) {
     if (!editor)
         return 0;
     return vg_codeeditor_cut((vg_codeeditor_t *)editor) ? 1 : 0;
 }
 
+/// @brief `CodeEditor.Paste` — insert clipboard text at cursor. Returns 1 on success.
 int64_t rt_codeeditor_paste(void *editor) {
     if (!editor)
         return 0;
     return vg_codeeditor_paste((vg_codeeditor_t *)editor) ? 1 : 0;
 }
 
+/// @brief `CodeEditor.SelectAll` — selection from buffer start to end.
 void rt_codeeditor_select_all(void *editor) {
     if (editor)
         vg_codeeditor_select_all((vg_codeeditor_t *)editor);
@@ -1099,6 +1296,21 @@ rt_string rt_codeeditor_get_line(void *editor, int64_t line_index) {
 
 #else /* !VIPER_ENABLE_GRAPHICS */
 
+//=============================================================================
+// CodeEditor Stubs (graphics disabled)
+//=============================================================================
+//
+// Every public CodeEditor API has a no-op stub below so headless / server
+// builds (without VIPER_ENABLE_GRAPHICS) link cleanly. Each stub:
+//   - swallows its arguments via `(void)` casts to silence unused warnings
+//   - returns a "neutral" value (0/-1/empty string) for getter signatures
+//
+// Callers that try to actually use a CodeEditor in a headless build will
+// see no errors but also no output — matching the silent-stub pattern
+// used elsewhere in the runtime.
+//=============================================================================
+
+/// @brief Stub: `CodeEditor.SetLanguage` is a no-op without graphics.
 void rt_codeeditor_set_language(void *editor, rt_string language) {
     (void)editor;
     (void)language;

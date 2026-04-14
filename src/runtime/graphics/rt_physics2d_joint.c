@@ -84,6 +84,8 @@ static ph_joint *alloc_joint(int32_t type, void *body_a, void *body_b) {
 // Distance Joint
 //=============================================================================
 
+/// @brief Create a distance joint that holds bodies `a` and `b` exactly `length` units apart.
+/// The constraint is solved via positional correction each step (rigid rod, no springiness).
 void *rt_physics2d_distance_joint_new(void *body_a, void *body_b, double length) {
     ph_joint *j = alloc_joint(RT_JOINT_DISTANCE, body_a, body_b);
     if (!j)
@@ -110,6 +112,8 @@ void rt_physics2d_distance_joint_set_length(void *joint, double length) {
 // Spring Joint
 //=============================================================================
 
+/// @brief Create a spring joint between two bodies — applies Hooke's law force proportional to
+/// `stiffness` × displacement from `rest_length`, with `damping` proportional to relative velocity.
 void *rt_physics2d_spring_joint_new(
     void *body_a, void *body_b, double rest_length, double stiffness, double damping) {
     ph_joint *j = alloc_joint(RT_JOINT_SPRING, body_a, body_b);
@@ -153,6 +157,8 @@ void rt_physics2d_spring_joint_set_damping(void *joint, double damping) {
 // Hinge Joint
 //=============================================================================
 
+/// @brief Create a hinge (pin) joint that locks two bodies to share a common world-space anchor
+/// point (anchor_x, anchor_y). Bodies remain free to rotate about the anchor.
 void *rt_physics2d_hinge_joint_new(void *body_a, void *body_b, double anchor_x, double anchor_y) {
     ph_joint *j = alloc_joint(RT_JOINT_HINGE, body_a, body_b);
     if (!j)
@@ -180,6 +186,8 @@ double rt_physics2d_hinge_joint_get_angle(void *joint) {
 // Rope Joint
 //=============================================================================
 
+/// @brief Create a rope joint — distance constraint that's only active when bodies exceed
+/// `max_length` apart. Bodies can be closer freely (chain/rope behavior, not rigid rod).
 void *rt_physics2d_rope_joint_new(void *body_a, void *body_b, double max_length) {
     ph_joint *j = alloc_joint(RT_JOINT_ROPE, body_a, body_b);
     if (!j)
@@ -206,12 +214,14 @@ void rt_physics2d_rope_joint_set_max_length(void *joint, double max_length) {
 // Joint Common
 //=============================================================================
 
+/// @brief Borrow the first body referenced by the joint (caller must NOT release).
 void *rt_physics2d_joint_get_body_a(void *joint) {
     if (!joint)
         return NULL;
     return ((ph_joint *)joint)->body_a;
 }
 
+/// @brief Borrow the second body referenced by the joint (caller must NOT release).
 void *rt_physics2d_joint_get_body_b(void *joint) {
     if (!joint)
         return NULL;
@@ -427,6 +437,8 @@ void rt_physics2d_solve_joints(void *world, double dt) {
 // Circle Bodies
 //=============================================================================
 
+/// @brief Construct a circle-shaped rigid body centered at (cx, cy) with `radius` and `mass`.
+/// Otherwise behaves like `_body_new` (default restitution 0.5, friction 0.3, layer 1, mask 0xFF...).
 void *rt_physics2d_circle_body_new(double cx, double cy, double radius, double mass) {
     if (radius < 1.0)
         radius = 1.0;

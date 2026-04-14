@@ -741,6 +741,8 @@ void rt_uimenulist_move_down(void *ptr) {
         menu->selected++;
 }
 
+/// @brief Set text/selection colors. `text_color` is the unselected entry color, `selected_color`
+/// is the highlighted entry, `highlight_bg` is the row background drawn behind the selection.
 void rt_uimenulist_set_colors(void *ptr,
                               int64_t text_color,
                               int64_t selected_color,
@@ -849,6 +851,9 @@ typedef struct {
     int8_t visible;
 } rt_gamebutton_impl;
 
+/// @brief Construct a styled game button at (x, y) with size (w, h) and label text. Defaults:
+/// dark gray normal, blue selected, light gray text, 1 px border, scale 1, visible. Text is
+/// truncated to 63 bytes.
 void *rt_gamebutton_new(int64_t x, int64_t y, int64_t w, int64_t h, void *text) {
     rt_gamebutton_impl *btn =
         (rt_gamebutton_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_gamebutton_impl));
@@ -877,6 +882,7 @@ void *rt_gamebutton_new(int64_t x, int64_t y, int64_t w, int64_t h, void *text) 
     return btn;
 }
 
+/// @brief Replace the button's label text (truncated to 63 bytes).
 void rt_gamebutton_set_text(void *ptr, void *text) {
     if (!ptr || !text)
         return;
@@ -888,6 +894,7 @@ void rt_gamebutton_set_text(void *ptr, void *text) {
     }
 }
 
+/// @brief Set the box-fill colors for unselected (`normal`) and selected (highlighted) states.
 void rt_gamebutton_set_colors(void *ptr, int64_t normal, int64_t selected) {
     if (!ptr)
         return;
@@ -896,6 +903,7 @@ void rt_gamebutton_set_colors(void *ptr, int64_t normal, int64_t selected) {
     btn->color_selected = selected;
 }
 
+/// @brief Set the text colors for unselected and selected states.
 void rt_gamebutton_set_text_colors(void *ptr, int64_t normal, int64_t selected) {
     if (!ptr)
         return;
@@ -904,6 +912,7 @@ void rt_gamebutton_set_text_colors(void *ptr, int64_t normal, int64_t selected) 
     btn->text_color_selected = selected;
 }
 
+/// @brief Set border outline width (px) and color. Width 0 disables the border.
 void rt_gamebutton_set_border(void *ptr, int64_t width, int64_t color) {
     if (!ptr)
         return;
@@ -912,24 +921,30 @@ void rt_gamebutton_set_border(void *ptr, int64_t width, int64_t color) {
     btn->border_color = color;
 }
 
+/// @brief Read the button's screen X position.
 int64_t rt_gamebutton_get_x(void *ptr) {
     return ptr ? ((rt_gamebutton_impl *)ptr)->x : 0;
 }
 
+/// @brief Read the button's screen Y position.
 int64_t rt_gamebutton_get_y(void *ptr) {
     return ptr ? ((rt_gamebutton_impl *)ptr)->y : 0;
 }
 
+/// @brief Set the button's screen X position.
 void rt_gamebutton_set_x(void *ptr, int64_t v) {
     if (ptr)
         ((rt_gamebutton_impl *)ptr)->x = v;
 }
 
+/// @brief Set the button's screen Y position.
 void rt_gamebutton_set_y(void *ptr, int64_t v) {
     if (ptr)
         ((rt_gamebutton_impl *)ptr)->y = v;
 }
 
+/// @brief Render the button to `canvas`. Picks colors based on `is_selected`, draws box +
+/// optional border + centered label. No-op if button is hidden.
 void rt_gamebutton_draw(void *ptr, void *canvas, int8_t is_selected) {
     if (!ptr || !canvas)
         return;

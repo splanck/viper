@@ -67,7 +67,8 @@ struct rt_pathfollow_impl {
     int64_t *segment_lengths;  ///< Cached segment lengths.
 };
 
-/// Integer square root approximation.
+/// @brief Integer square root via Newton-Heron iteration. Returns floor(sqrt(n)) for n>=0,
+/// or 0 for negative inputs. Used by `distance()` so the runtime stays libm-free.
 static int64_t isqrt(int64_t n) {
     if (n < 0)
         return 0;
@@ -83,7 +84,9 @@ static int64_t isqrt(int64_t n) {
     return x;
 }
 
-/// Calculate distance between two points.
+/// @brief Euclidean distance between two fixed-point points. Pre-scales each delta by 1/100 to
+/// keep `dx*dx + dy*dy` inside i64 range even at large coordinates, then re-scales the isqrt
+/// result by 100. Result is in the same fixed-point units (×1000) as the inputs.
 static int64_t distance(int64_t x1, int64_t y1, int64_t x2, int64_t y2) {
     int64_t dx = x2 - x1;
     int64_t dy = y2 - y1;
@@ -93,7 +96,9 @@ static int64_t distance(int64_t x1, int64_t y1, int64_t x2, int64_t y2) {
     return isqrt(dx_scaled * dx_scaled + dy_scaled * dy_scaled) * 100;
 }
 
-/// Recalculate cached segment lengths.
+/// @brief Rebuild the cached `segment_lengths` array and `total_length` from the waypoint list.
+/// Called after every `add_point`. Frees and re-mallocs the array (no in-place realloc), so the
+/// per-add cost is O(n). For paths with fewer than 2 points the cache is cleared.
 static void recalculate_lengths(rt_pathfollow path) {
     if (!path)
         return;
@@ -120,12 +125,16 @@ static void recalculate_lengths(rt_pathfollow path) {
     }
 }
 
+/// @brief GC finalizer: frees the malloc'd segment-length cache. The waypoint array is inline.
 static void pathfollow_finalize(void *obj) {
     struct rt_pathfollow_impl *path = (struct rt_pathfollow_impl *)obj;
     if (path && path->segment_lengths)
         free(path->segment_lengths);
 }
 
+/// @brief Construct an empty PathFollower with no waypoints, ONCE mode, and a default speed of
+/// 100 world units / second (i.e. 100000 in fixed-point). Caller adds points via `add_point`.
+/// Returns a GC-managed handle wired to `pathfollow_finalize`; NULL on allocation failure.
 rt_pathfollow rt_pathfollow_new(void) {
     struct rt_pathfollow_impl *path =
         (struct rt_pathfollow_impl *)rt_obj_new_i64(0, (int64_t)sizeof(struct rt_pathfollow_impl));
@@ -139,6 +148,8 @@ rt_pathfollow rt_pathfollow_new(void) {
     return path;
 }
 
+/// @brief Release the PathFollower; frees the segment-length cache via the finalizer when the
+/// refcount reaches zero. Documented as a no-op for API symmetry — GC handles cleanup.
 void rt_pathfollow_destroy(rt_pathfollow path) {
     if (!path)
         return;
@@ -147,6 +158,8 @@ void rt_pathfollow_destroy(rt_pathfollow path) {
         rt_obj_free(path);
 }
 
+/// @brief Reset the follower to a blank slate: no waypoints, no progress, inactive, freed cache.
+/// Useful for re-using a PathFollower handle across multiple level loads.
 void rt_pathfollow_clear(rt_pathfollow path) {
     if (!path)
         return;
@@ -167,6 +180,9 @@ void rt_pathfollow_clear(rt_pathfollow path) {
     }
 }
 
+/// @brief Append a waypoint at fixed-point world coords (x, y). The first added point also becomes
+/// the follower's starting position. Returns 0 if the cap (`RT_PATHFOLLOW_MAX_POINTS`) is hit.
+/// Triggers a full `recalculate_lengths` (O(n)) so the segment cache stays in sync.
 int8_t rt_pathfollow_add_point(rt_pathfollow path, int64_t x, int64_t y) {
     if (!path)
         return 0;
@@ -187,10 +203,13 @@ int8_t rt_pathfollow_add_point(rt_pathfollow path, int64_t x, int64_t y) {
     return 1;
 }
 
+/// @brief Number of waypoints currently in the path (0 to RT_PATHFOLLOW_MAX_POINTS).
 int64_t rt_pathfollow_point_count(rt_pathfollow path) {
     return path ? path->point_count : 0;
 }
 
+/// @brief Select traversal mode: ONCE (stops at end), LOOP (wraps to start), PINGPONG (reverses).
+/// Out-of-range values are silently ignored (mode is preserved).
 void rt_pathfollow_set_mode(rt_pathfollow path, int64_t mode) {
     if (!path)
         return;
@@ -198,19 +217,25 @@ void rt_pathfollow_set_mode(rt_pathfollow path, int64_t mode) {
         path->mode = (rt_pathfollow_mode_t)mode;
 }
 
+/// @brief Read the current traversal mode (ONCE/LOOP/PINGPONG as integer constants).
 int64_t rt_pathfollow_get_mode(rt_pathfollow path) {
     return path ? path->mode : 0;
 }
 
+/// @brief Set traversal speed in fixed-point world-units/second (×1000). Non-positive ignored.
+/// Per-frame movement is computed as `(speed * dt_ms) / 1000`.
 void rt_pathfollow_set_speed(rt_pathfollow path, int64_t speed) {
     if (path && speed > 0)
         path->speed = speed;
 }
 
+/// @brief Read the current speed in fixed-point world-units/second.
 int64_t rt_pathfollow_get_speed(rt_pathfollow path) {
     return path ? path->speed : 0;
 }
 
+/// @brief Begin (or resume) following the path. Requires at least 2 waypoints; otherwise no-op.
+/// Clears the `finished` flag so a previously completed ONCE path can be replayed.
 void rt_pathfollow_start(rt_pathfollow path) {
     if (!path || path->point_count < 2)
         return;
@@ -219,11 +244,14 @@ void rt_pathfollow_start(rt_pathfollow path) {
     path->finished = 0;
 }
 
+/// @brief Suspend updates while preserving segment + progress; resume with `start()`.
 void rt_pathfollow_pause(rt_pathfollow path) {
     if (path)
         path->active = 0;
 }
 
+/// @brief Stop and rewind to the first waypoint (segment=0, progress=0). Waypoints are preserved.
+/// Differs from `pause()` (which keeps current position) and `clear()` (which discards waypoints).
 void rt_pathfollow_stop(rt_pathfollow path) {
     if (!path)
         return;
@@ -240,14 +268,21 @@ void rt_pathfollow_stop(rt_pathfollow path) {
     }
 }
 
+/// @brief Returns 1 while the follower is actively advancing each `update()` tick.
 int8_t rt_pathfollow_is_active(rt_pathfollow path) {
     return path ? path->active : 0;
 }
 
+/// @brief Returns 1 once a ONCE-mode path has reached its final waypoint. Always 0 for LOOP/PINGPONG.
 int8_t rt_pathfollow_is_finished(rt_pathfollow path) {
     return path ? path->finished : 0;
 }
 
+/// @brief Advance the follower by `dt` milliseconds. Spends `(speed * dt) / 1000` units of distance,
+/// crossing segment boundaries as needed (a single update can traverse multiple short segments).
+/// At end-of-path: ONCE → mark finished/inactive; LOOP → wrap to first segment; PINGPONG → flip
+/// `reverse` flag and walk back. Recomputes `current_x/y` once at the end via linear interp of
+/// `(segment, segment_progress)`. Inactive/finished/empty paths early-out.
 void rt_pathfollow_update(rt_pathfollow path, int64_t dt) {
     if (!path || !path->active || path->finished || path->point_count < 2)
         return;
@@ -344,14 +379,20 @@ void rt_pathfollow_update(rt_pathfollow path, int64_t dt) {
     path->current_y = y1 + ((y2 - y1) * p) / 1000;
 }
 
+/// @brief Read the follower's current world X position (fixed-point ×1000). Caller divides by
+/// 1000 to recover pixel coordinates.
 int64_t rt_pathfollow_get_x(rt_pathfollow path) {
     return path ? path->current_x : 0;
 }
 
+/// @brief Read the follower's current world Y position (fixed-point ×1000).
 int64_t rt_pathfollow_get_y(rt_pathfollow path) {
     return path ? path->current_y : 0;
 }
 
+/// @brief Compute total path progress as a 0–1000 fraction (per mille). Sums fully-traversed
+/// segment lengths plus the partial distance into the current segment, divides by `total_length`.
+/// Returns 0 for empty/unbuilt paths.
 int64_t rt_pathfollow_get_progress(rt_pathfollow path) {
     if (!path || path->point_count < 2 || path->total_length == 0)
         return 0;
@@ -366,6 +407,9 @@ int64_t rt_pathfollow_get_progress(rt_pathfollow path) {
     return (traveled * 1000) / path->total_length;
 }
 
+/// @brief Teleport the follower to a fractional path position (0–1000 per mille). Walks the
+/// segment cache until the accumulated distance covers `target_dist`, then sets segment +
+/// progress and updates `current_x/y`. Useful for cinematic seeks or save-state restoration.
 void rt_pathfollow_set_progress(rt_pathfollow path, int64_t progress) {
     if (!path || path->point_count < 2 || path->total_length == 0)
         return;
@@ -401,6 +445,7 @@ void rt_pathfollow_set_progress(rt_pathfollow path, int64_t progress) {
         path->points[seg].y + ((path->points[seg + 1].y - path->points[seg].y) * p) / 1000;
 }
 
+/// @brief Read the index of the segment the follower is currently traversing (0..point_count-2).
 int64_t rt_pathfollow_get_segment(rt_pathfollow path) {
     return path ? path->segment : 0;
 }

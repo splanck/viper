@@ -129,6 +129,8 @@ static void rt_trie_finalize(void *obj) {
     trie->count = 0;
 }
 
+/// @brief Construct an empty trie. Each node has a 256-way child array (one slot per byte
+/// value), so memory cost is high per node but lookups are O(key length).
 void *rt_trie_new(void) {
     rt_trie_impl *trie = (rt_trie_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_trie_impl));
     if (!trie)
@@ -140,16 +142,20 @@ void *rt_trie_new(void) {
     return trie;
 }
 
+/// @brief Number of keys (terminal nodes) currently stored in the trie.
 int64_t rt_trie_len(void *obj) {
     if (!obj)
         return 0;
     return (int64_t)((rt_trie_impl *)obj)->count;
 }
 
+/// @brief Returns 1 if the trie has no keys.
 int8_t rt_trie_is_empty(void *obj) {
     return rt_trie_len(obj) == 0;
 }
 
+/// @brief Insert or update `key → value`. Walks the trie one byte at a time, allocating new
+/// nodes for each missing branch. Existing key replaces (and releases) the old value. O(|key|).
 void rt_trie_set(void *obj, rt_string key, void *value) {
     if (!obj)
         return;
@@ -182,6 +188,7 @@ void rt_trie_set(void *obj, rt_string key, void *value) {
         rt_obj_free(old);
 }
 
+/// @brief Look up `key`. Returns the borrowed value or NULL if not present. O(|key|).
 void *rt_trie_get(void *obj, rt_string key) {
     if (!obj)
         return NULL;
@@ -202,6 +209,7 @@ void *rt_trie_get(void *obj, rt_string key) {
     return node->is_terminal ? node->value : NULL;
 }
 
+/// @brief Returns 1 if `key` is exactly stored (terminal). Distinct from `_has_prefix`.
 int8_t rt_trie_has(void *obj, rt_string key) {
     if (!obj)
         return 0;
@@ -222,6 +230,8 @@ int8_t rt_trie_has(void *obj, rt_string key) {
     return node->is_terminal;
 }
 
+/// @brief Returns 1 if any stored key starts with `prefix` (or `prefix` itself is stored).
+/// Useful for autocomplete "any matches?" probes.
 int8_t rt_trie_has_prefix(void *obj, rt_string prefix) {
     if (!obj)
         return 0;
@@ -242,6 +252,8 @@ int8_t rt_trie_has_prefix(void *obj, rt_string prefix) {
     return has_any_key(node) ? 1 : 0;
 }
 
+/// @brief Return a Seq of all stored keys that start with `prefix` (the typical autocomplete
+/// query). Walks the subtrie rooted at the prefix node and reconstructs full keys via DFS.
 void *rt_trie_with_prefix(void *obj, rt_string prefix) {
     void *result = rt_seq_new();
     if (!obj)
@@ -274,6 +286,8 @@ void *rt_trie_with_prefix(void *obj, rt_string prefix) {
     return result;
 }
 
+/// @brief Find the longest stored key that is a prefix of `str`. Useful for tokenizers, IP
+/// routing, and dictionary-based segmentation. Empty result if no prefix matches.
 rt_string rt_trie_longest_prefix(void *obj, rt_string str) {
     if (!obj)
         return rt_string_from_bytes("", 0);
@@ -309,6 +323,8 @@ rt_string rt_trie_longest_prefix(void *obj, rt_string str) {
     return rt_string_from_bytes(cstr, last_match);
 }
 
+/// @brief Remove `key` from the trie (releases its value). Returns 1 if removed, 0 if absent.
+/// Empty branches are NOT pruned for simplicity — the trie keeps its structural memory.
 int8_t rt_trie_remove(void *obj, rt_string key) {
     if (!obj)
         return 0;
@@ -345,6 +361,7 @@ int8_t rt_trie_remove(void *obj, rt_string key) {
     return 1;
 }
 
+/// @brief Free every node and reset the trie to empty. Releases all stored values.
 void rt_trie_clear(void *obj) {
     if (!obj)
         return;
@@ -354,6 +371,8 @@ void rt_trie_clear(void *obj) {
     trie->count = 0;
 }
 
+/// @brief Return a Seq of every stored key in lexicographic order. Owned-element Seq (releases
+/// the strings on its own destruction). Implemented via DFS over the trie.
 void *rt_trie_keys(void *obj) {
     void *result = rt_seq_new();
     rt_seq_set_owns_elements(result, 1);
@@ -389,6 +408,8 @@ static rt_trie_node *clone_node(rt_trie_node *src) {
     return dst;
 }
 
+/// @brief Deep-copy the trie structure (all nodes); values are shared via reference-count
+/// retain. Modifying the clone's structure (insertions/removals) doesn't affect the source.
 void *rt_trie_clone(void *obj) {
     if (!obj)
         return rt_trie_new();

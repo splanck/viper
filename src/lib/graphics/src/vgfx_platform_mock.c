@@ -55,6 +55,7 @@ static int64_t g_mock_time_ms = 0;
 typedef struct {
     int initialized; ///< 1 if successfully initialized, 0 otherwise
     int focused;     ///< Current mock focus state
+    int fullscreen;  ///< Per-window fullscreen state
     int pending_head;
     int pending_tail;
     vgfx_event_t pending_events[VGFX_MOCK_PENDING_QUEUE_SLOTS];
@@ -113,6 +114,10 @@ static void mock_apply_event(struct vgfx_window *win,
                 win->mouse_button_state[event->data.mouse_button.button] = 0;
             win->mouse_x = event->data.mouse_button.x;
             win->mouse_y = event->data.mouse_button.y;
+            break;
+        case VGFX_EVENT_SCROLL:
+            win->mouse_x = event->data.scroll.x;
+            win->mouse_y = event->data.scroll.y;
             break;
         case VGFX_EVENT_RESIZE:
             vgfx_internal_resize_framebuffer(win, event->data.resize.width, event->data.resize.height);
@@ -459,9 +464,8 @@ void vgfx_mock_inject_resize(vgfx_window_t window, int32_t width, int32_t height
         return;
 
     /* Enqueue resize event with current mock time */
-    vgfx_event_t event = {.type = VGFX_EVENT_RESIZE,
-                          .time_ms = g_mock_time_ms,
-                          .data.resize = {.width = width, .height = height}};
+    vgfx_event_t event = {0};
+    vgfx_internal_init_resize_event(&event, win, g_mock_time_ms, width, height);
     mock_pending_enqueue(platform, &event);
 }
 
@@ -546,9 +550,6 @@ void vgfx_mock_inject_scroll(vgfx_window_t window, float dx, float dy, int32_t x
 // Window Title and Fullscreen (Mock)
 //===----------------------------------------------------------------------===//
 
-/// @brief Mock fullscreen state (per-window tracking would be needed for multiple windows)
-static int g_mock_fullscreen = 0;
-
 /// @brief Set the window title (mock version - no-op).
 /// @details The mock backend has no title bar, so this is a no-op.
 ///
@@ -568,8 +569,10 @@ void vgfx_platform_set_title(struct vgfx_window *win, const char *title) {
 /// @param fullscreen 1 for fullscreen, 0 for windowed
 /// @return 1 (always succeeds)
 int vgfx_platform_set_fullscreen(struct vgfx_window *win, int fullscreen) {
-    (void)win;
-    g_mock_fullscreen = fullscreen ? 1 : 0;
+    if (!win || !win->platform_data)
+        return 0;
+    vgfx_mock_platform *platform = (vgfx_mock_platform *)win->platform_data;
+    platform->fullscreen = fullscreen ? 1 : 0;
     return 1;
 }
 
@@ -577,8 +580,10 @@ int vgfx_platform_set_fullscreen(struct vgfx_window *win, int fullscreen) {
 /// @param win Pointer to the window structure (unused)
 /// @return Current mock fullscreen state
 int vgfx_platform_is_fullscreen(struct vgfx_window *win) {
-    (void)win;
-    return g_mock_fullscreen;
+    if (!win || !win->platform_data)
+        return 0;
+    vgfx_mock_platform *platform = (vgfx_mock_platform *)win->platform_data;
+    return platform->fullscreen ? 1 : 0;
 }
 
 //===----------------------------------------------------------------------===//
@@ -659,9 +664,8 @@ void vgfx_platform_set_window_size(struct vgfx_window *win, int32_t w, int32_t h
     if (!win || !win->platform_data)
         return;
     vgfx_mock_platform *platform = (vgfx_mock_platform *)win->platform_data;
-    vgfx_event_t event = {.type = VGFX_EVENT_RESIZE,
-                          .time_ms = g_mock_time_ms,
-                          .data.resize = {.width = w, .height = h}};
+    vgfx_event_t event = {0};
+    vgfx_internal_init_resize_event(&event, win, g_mock_time_ms, w, h);
     mock_pending_enqueue(platform, &event);
 }
 

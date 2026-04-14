@@ -336,6 +336,10 @@ void rt_findbar_focus(void *bar) {
 
 #else /* !VIPER_ENABLE_GRAPHICS */
 
+// Graphics-disabled stubs — every public entry-point returns a benign zero/no-op so callers
+// link cleanly without graphics. Behavioral docs live on the real implementations above.
+
+/// @brief Stub — graphics disabled at build time. Returns NULL.
 void *rt_findbar_new(void *parent) {
     (void)parent;
     return NULL;

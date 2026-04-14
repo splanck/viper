@@ -226,6 +226,8 @@ void rt_canvas_text(void *canvas_ptr, int64_t x, int64_t y, rt_string text, int6
     }
 }
 
+/// @brief Draw text at (x, y) with foreground @p fg and explicit @p bg fill behind each glyph.
+/// Useful for status bars and code editors where the background must be opaque.
 void rt_canvas_text_bg(
     void *canvas_ptr, int64_t x, int64_t y, rt_string text, int64_t fg, int64_t bg) {
     if (!canvas_ptr || !text)
@@ -277,6 +279,8 @@ int64_t rt_canvas_text_height(void) {
 // Scaled Text Rendering
 //=============================================================================
 
+/// @brief Draw text with each pixel of the 8×8 built-in font expanded into a `scale × scale` rect.
+/// Useful for HiDPI/big-pixel UIs without loading a separate larger font.
 void rt_canvas_text_scaled(
     void *canvas_ptr, int64_t x, int64_t y, rt_string text, int64_t scale, int64_t color) {
     if (!canvas_ptr || !text || scale < 1)
@@ -314,6 +318,7 @@ void rt_canvas_text_scaled(
     }
 }
 
+/// @brief Like `_text_scaled` but fills the @p bg color behind each glyph (full per-pixel cell).
 void rt_canvas_text_scaled_bg(
     void *canvas_ptr, int64_t x, int64_t y, rt_string text, int64_t scale, int64_t fg, int64_t bg) {
     if (!canvas_ptr || !text || scale < 1)
@@ -371,6 +376,7 @@ void rt_canvas_text_centered(void *canvas_ptr, int64_t y, rt_string text, int64_
     rt_canvas_text(canvas_ptr, x, y, text, color);
 }
 
+/// @brief Draw text right-aligned to the canvas with @p margin pixels of padding.
 void rt_canvas_text_right(
     void *canvas_ptr, int64_t margin, int64_t y, rt_string text, int64_t color) {
     if (!canvas_ptr || !text)
@@ -381,6 +387,7 @@ void rt_canvas_text_right(
     rt_canvas_text(canvas_ptr, x, y, text, color);
 }
 
+/// @brief Draw scaled text horizontally centered in the canvas at row @p y.
 void rt_canvas_text_centered_scaled(
     void *canvas_ptr, int64_t y, rt_string text, int64_t color, int64_t scale) {
     if (!canvas_ptr || !text || scale < 1)
@@ -395,6 +402,7 @@ void rt_canvas_text_centered_scaled(
 // Alpha-Blended Shapes
 //=============================================================================
 
+/// @brief Fill a rectangle with @p color blended at @p alpha [0..255] over the existing pixels.
 void rt_canvas_box_alpha(
     void *canvas_ptr, int64_t x, int64_t y, int64_t w, int64_t h, int64_t color, int64_t alpha) {
     if (!canvas_ptr || w <= 0 || h <= 0)
@@ -421,6 +429,7 @@ void rt_canvas_box_alpha(
     }
 }
 
+/// @brief Fill a disc with @p color blended at @p alpha [0..255] over the existing pixels.
 void rt_canvas_disc_alpha(
     void *canvas_ptr, int64_t cx, int64_t cy, int64_t radius, int64_t color, int64_t alpha) {
     if (!canvas_ptr || radius <= 0)
@@ -529,6 +538,8 @@ void rt_canvas_blit(void *canvas_ptr, int64_t x, int64_t y, void *pixels_ptr) {
     }
 }
 
+/// @brief Blit a sub-rectangle of @p pixels_ptr onto the canvas at (x, y).
+/// Auto-clipped to source and destination bounds; out-of-range source rects are no-ops.
 void rt_canvas_blit_region(void *canvas_ptr,
                            int64_t dx,
                            int64_t dy,
@@ -790,6 +801,7 @@ void *rt_canvas_copy_rect(void *canvas_ptr, int64_t x, int64_t y, int64_t w, int
 /// @param canvas_ptr
 /// @param path
 /// @return Result value.
+/// @brief Save the canvas contents to a 24-bit BMP file. Returns 1 on success, 0 on failure.
 int64_t rt_canvas_save_bmp(void *canvas_ptr, rt_string path) {
     if (!canvas_ptr || !path)
         return 0;
@@ -819,6 +831,7 @@ int64_t rt_canvas_save_bmp(void *canvas_ptr, rt_string path) {
 /// @param canvas_ptr
 /// @param path
 /// @return Result value.
+/// @brief Save the canvas contents to a PNG file (zlib-compressed). Returns 1 on success.
 int64_t rt_canvas_save_png(void *canvas_ptr, rt_string path) {
     if (!canvas_ptr || !path)
         return 0;

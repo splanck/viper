@@ -131,6 +131,9 @@ static void rt_multimap_finalize(void *obj) {
     mm->capacity = 0;
 }
 
+/// @brief Construct an empty multimap (string → list-of-values). Internal storage is a chained
+/// hash table where each bucket holds a Seq of values per key. Useful when one key maps to
+/// many values (URL params, headers, multiset, etc.).
 void *rt_multimap_new(void) {
     rt_multimap_impl *mm = (rt_multimap_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_multimap_impl));
     if (!mm)
@@ -218,6 +221,8 @@ void rt_multimap_put(void *obj, rt_string key, void *value) {
     maybe_resize(mm);
 }
 
+/// @brief Return all values stored under `key` as a fresh Seq (not a borrowed view). Empty
+/// Seq if key is absent. Useful when caller may mutate the returned list independently.
 void *rt_multimap_get(void *obj, rt_string key) {
     if (!obj)
         return rt_seq_new();
@@ -242,6 +247,8 @@ void *rt_multimap_get(void *obj, rt_string key) {
     return result;
 }
 
+/// @brief Return the first value stored under `key` (most recently inserted is at the tail —
+/// this returns the *first* inserted). NULL if the key is absent or has no values.
 void *rt_multimap_get_first(void *obj, rt_string key) {
     if (!obj)
         return NULL;
@@ -346,6 +353,7 @@ void rt_multimap_clear(void *obj) {
     mm->total_count = 0;
 }
 
+/// @brief Return a Seq of every distinct key in the multimap (bucket-iteration order).
 void *rt_multimap_keys(void *obj) {
     void *result = rt_seq_new();
     rt_seq_set_owns_elements(result, 1);

@@ -566,6 +566,12 @@ typedef struct {
     void *frame_decode;  /* Pixels — scratch for decode (may be reallocated) */
 } rt_videoplayer;
 
+/// @brief Decode a Theora granulepos into a sequential frame index.
+///
+/// Theora packs `(intra_frame_count, interframe_count)` into the
+/// granule using `keyframe_granule_shift` bits. The total frame
+/// number is the sum: keyframe count plus inter-frame distance.
+/// Returns -1 on overflow / invalid shift.
 static int32_t theora_granule_to_frame_index(const theora_decoder_t *dec, int64_t granule_pos) {
     if (!dec || granule_pos < 0)
         return -1;
@@ -580,6 +586,12 @@ static int32_t theora_granule_to_frame_index(const theora_decoder_t *dec, int64_
     return (int32_t)frame;
 }
 
+/// @brief Convert a YCbCr 4:2:0 Theora frame to the player's RGBA display buffer.
+///
+/// Crops the decoded picture using `pic_x/pic_y/pic_width/pic_height`
+/// (Theora encodes a slightly larger frame and stores a crop rect),
+/// then runs the YCbCr→RGBA color conversion into `frame_display`.
+/// @return 1 on success, 0 if the destination buffer is missing or sizes mismatch.
 static int copy_theora_frame_to_display(rt_videoplayer *vp,
                                         const uint8_t *y,
                                         const uint8_t *cb,
@@ -608,6 +620,14 @@ static int copy_theora_frame_to_display(rt_videoplayer *vp,
 }
 
 #ifdef VIPER_ENABLE_AUDIO
+// ---------------------------------------------------------------------------
+// Audio-track helpers — the videoplayer mixes the optional
+// embedded audio stream (Vorbis if present in the Ogg container)
+// through the regular `rt_music_*` audio API. These wrappers
+// guard against missing audio tracks (silent video files).
+// ---------------------------------------------------------------------------
+
+/// @brief Push the player's volume (0.0-1.0) into the underlying audio track (0-100 scale).
 static void videoplayer_set_audio_volume(rt_videoplayer *vp) {
     if (!vp || !vp->audio_track)
         return;
@@ -615,6 +635,7 @@ static void videoplayer_set_audio_volume(rt_videoplayer *vp) {
     rt_music_set_volume(vp->audio_track, vol);
 }
 
+/// @brief Begin or resume audio playback in sync with the current video position.
 static void videoplayer_start_audio(rt_videoplayer *vp) {
     if (!vp || !vp->audio_track)
         return;
@@ -629,6 +650,7 @@ static void videoplayer_start_audio(rt_videoplayer *vp) {
     vp->audio_paused = 0;
 }
 
+/// @brief Pause the audio track if it's currently playing.
 static void videoplayer_pause_audio(rt_videoplayer *vp) {
     if (!vp || !vp->audio_track || !vp->audio_started || vp->audio_paused)
         return;
@@ -636,6 +658,7 @@ static void videoplayer_pause_audio(rt_videoplayer *vp) {
     vp->audio_paused = 1;
 }
 
+/// @brief Stop the audio track and reset the started/paused flags.
 static void videoplayer_stop_audio(rt_videoplayer *vp) {
     if (!vp || !vp->audio_track)
         return;
@@ -644,6 +667,7 @@ static void videoplayer_stop_audio(rt_videoplayer *vp) {
     vp->audio_paused = 0;
 }
 
+/// @brief Seek the audio track to match the player's current video position.
 static void videoplayer_seek_audio(rt_videoplayer *vp) {
     if (!vp || !vp->audio_track || !vp->audio_started)
         return;
@@ -651,6 +675,13 @@ static void videoplayer_seek_audio(rt_videoplayer *vp) {
 }
 #endif
 
+/// @brief Scan the entire Ogg container to find Theora headers and total frame count.
+///
+/// Pre-pass that runs on file open: walks every page, identifies
+/// the Theora stream's serial number, decodes its three header
+/// packets, and records the granule of the last data packet
+/// (which gives us the total frame count + duration).
+/// @return 1 on success, 0 if no Theora stream is found.
 static int ogv_scan_stream(rt_videoplayer *vp) {
     ogg_reader_t *reader = ogg_reader_open_mem(vp->file_data, vp->file_len);
     if (!reader)
@@ -707,6 +738,11 @@ static int ogv_scan_stream(rt_videoplayer *vp) {
     return 1;
 }
 
+/// @brief Reopen the Ogg reader at the beginning of the file in preparation for playback.
+///
+/// Run after `ogv_scan_stream` so the reader is ready to deliver
+/// data packets in order. Required because we don't keep the
+/// scan-pass reader alive (it would just be a wasteful memory hold).
 static int ogv_prepare_playback(rt_videoplayer *vp) {
     if (!vp)
         return 0;
@@ -738,6 +774,8 @@ static int ogv_prepare_playback(rt_videoplayer *vp) {
     return 0;
 }
 
+/// @brief Pull the next Theora data packet, decode it, and copy the result to `frame_display`.
+/// @return 1 on a fresh frame, 0 at EOF or decode failure.
 static int ogv_decode_next_frame(rt_videoplayer *vp) {
     if (!vp || !vp->ogg_reader)
         return 0;
@@ -768,6 +806,11 @@ static int ogv_decode_next_frame(rt_videoplayer *vp) {
     return 0;
 }
 
+/// @brief Fast-decode forward until reaching `target_frame` (used for seeks).
+///
+/// Theora is forward-only — to seek to frame N you must decode
+/// every frame from the previous keyframe. This loop drives that
+/// catch-up decode without rendering intermediate frames.
 static int ogv_decode_until_frame(rt_videoplayer *vp, int32_t target_frame) {
     if (!vp)
         return 0;
@@ -780,6 +823,7 @@ static int ogv_decode_until_frame(rt_videoplayer *vp, int32_t target_frame) {
     return 1;
 }
 
+/// @brief GC finalizer for the videoplayer — releases the ogg reader, decoder, frame buffers, audio track.
 static void videoplayer_finalizer(void *obj) {
     rt_videoplayer *vp = (rt_videoplayer *)obj;
     if (vp->container_type == 0)
@@ -795,6 +839,23 @@ static void videoplayer_finalizer(void *obj) {
     vp->file_data = NULL;
 }
 
+// ===========================================================================
+// VideoPlayer public API
+//
+// Each player wraps an in-memory copy of the source file (so seeking is
+// cheap), an ogg+theora decoder pair, optional audio track, and a pair
+// of pixel buffers (one displayed, one decode-scratch). The runtime
+// drives playback by calling `rt_videoplayer_update(dt)` once per frame
+// — the player advances time, decodes new frames as needed, and exposes
+// the currently visible frame via `rt_videoplayer_get_frame`.
+// ===========================================================================
+
+/// @brief Open a video file from disk and prepare it for playback.
+///
+/// Reads the whole file into memory (so seek is cheap), runs
+/// `ogv_scan_stream` to find the Theora track + duration, then
+/// initialises the decoder. Returns NULL on any failure (file
+/// not found, not an Ogg/Theora file, OOM).
 void *rt_videoplayer_open(void *path) {
     if (!path)
         return NULL;
@@ -922,6 +983,7 @@ void *rt_videoplayer_open(void *path) {
     return vp;
 }
 
+/// @brief Begin (or resume) playback. Subsequent `update` calls advance time.
 void rt_videoplayer_play(void *obj) {
     if (!obj)
         return;
@@ -933,6 +995,7 @@ void rt_videoplayer_play(void *obj) {
 #endif
 }
 
+/// @brief Pause playback at the current frame. `update` becomes a no-op until `play`.
 void rt_videoplayer_pause(void *obj) {
     if (!obj)
         return;
@@ -944,6 +1007,7 @@ void rt_videoplayer_pause(void *obj) {
 #endif
 }
 
+/// @brief Stop playback and rewind to frame 0. The currently displayed frame remains visible.
 void rt_videoplayer_stop(void *obj) {
     if (!obj)
         return;
@@ -959,6 +1023,12 @@ void rt_videoplayer_stop(void *obj) {
 #endif
 }
 
+/// @brief Jump to the frame containing time `seconds`. Decodes catch-up frames silently.
+///
+/// Per Theora's forward-only constraint, seeking backward decodes
+/// from the previous keyframe; seeking forward into a different
+/// keyframe also decodes from that keyframe forward. The audio
+/// track is reseeked to match.
 void rt_videoplayer_seek(void *obj, double seconds) {
     if (!obj)
         return;
@@ -983,6 +1053,11 @@ void rt_videoplayer_seek(void *obj, double seconds) {
     }
 }
 
+/// @brief Advance playback by `dt` seconds, decoding new frames as their timestamps elapse.
+///
+/// Called once per game / UI frame. Skips frames if the host is
+/// running below the video's framerate (drops decode time but
+/// keeps audio in sync). At end-of-stream, sets `playing = 0`.
 void rt_videoplayer_update(void *obj, double dt) {
     if (!obj || dt <= 0.0)
         return;
@@ -1047,6 +1122,7 @@ void rt_videoplayer_update(void *obj, double dt) {
     }
 }
 
+/// @brief Set the audio mix volume in [0.0, 1.0]. Clamped at the bounds.
 void rt_videoplayer_set_volume(void *obj, double vol) {
     if (!obj)
         return;
@@ -1062,18 +1138,22 @@ void rt_videoplayer_set_volume(void *obj, double vol) {
 #endif
 }
 
+/// @brief Pixel width of the video frame (post-crop).
 int64_t rt_videoplayer_get_width(void *obj) {
     return obj ? ((rt_videoplayer *)obj)->width : 0;
 }
 
+/// @brief Pixel height of the video frame (post-crop).
 int64_t rt_videoplayer_get_height(void *obj) {
     return obj ? ((rt_videoplayer *)obj)->height : 0;
 }
 
+/// @brief Total duration of the video in seconds (computed at open time from `last_granule`).
 double rt_videoplayer_get_duration(void *obj) {
     return obj ? ((rt_videoplayer *)obj)->duration : 0.0;
 }
 
+/// @brief Current playback position in seconds.
 double rt_videoplayer_get_position(void *obj) {
     if (!obj)
         return 0.0;
@@ -1087,10 +1167,13 @@ double rt_videoplayer_get_position(void *obj) {
     return vp->position;
 }
 
+/// @brief 1 if currently playing, 0 if paused / stopped / at EOF.
 int64_t rt_videoplayer_get_is_playing(void *obj) {
     return obj ? ((rt_videoplayer *)obj)->playing : 0;
 }
 
+/// @brief Return the currently-displayed Pixels frame (NULL until first frame decodes).
+/// The returned pointer is owned by the player — borrow only, don't free.
 void *rt_videoplayer_get_frame(void *obj) {
     return obj ? ((rt_videoplayer *)obj)->frame_display : NULL;
 }

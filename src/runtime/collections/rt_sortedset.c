@@ -133,6 +133,9 @@ static void sortedset_finalizer(void *obj) {
     set->cap = 0;
 }
 
+/// @brief Construct an empty sorted set. Internally a sorted dynamic array — `_add` is O(log n)
+/// search + O(n) shift; `_has` is O(log n). Use FrozenSet for read-only sets, regular Set for
+/// hash-based unordered storage.
 void *rt_sortedset_new(void) {
     rt_sortedset set = (rt_sortedset)rt_obj_new_i64(0, (int64_t)sizeof(struct rt_sortedset_impl));
     if (set)
@@ -363,6 +366,8 @@ int64_t rt_sortedset_index_of(void *obj, rt_string str) {
 // Range Operations
 //=============================================================================
 
+/// @brief Return the slice of elements with `from ≤ x ≤ to` as a Seq. Both endpoints inclusive;
+/// either may be NULL to mean "open end". Useful for range queries on ordered keys.
 void *rt_sortedset_range(void *obj, rt_string from, rt_string to) {
     rt_sortedset set = (rt_sortedset)obj;
     void *seq = rt_seq_new();
@@ -381,6 +386,8 @@ void *rt_sortedset_range(void *obj, rt_string from, rt_string to) {
     return seq;
 }
 
+/// @brief Return a Seq of every element in sorted ascending order. Snapshot — independent of
+/// future mutations.
 void *rt_sortedset_items(void *obj) {
     rt_sortedset set = (rt_sortedset)obj;
     void *seq = rt_seq_new();
@@ -394,6 +401,7 @@ void *rt_sortedset_items(void *obj) {
     return seq;
 }
 
+/// @brief Return a Seq of the first `n` elements in sorted order (the smallest values).
 void *rt_sortedset_take(void *obj, int64_t n) {
     rt_sortedset set = (rt_sortedset)obj;
     void *seq = rt_seq_new();
@@ -408,6 +416,7 @@ void *rt_sortedset_take(void *obj, int64_t n) {
     return seq;
 }
 
+/// @brief Return a Seq containing all but the first `n` elements (in sorted order).
 void *rt_sortedset_skip(void *obj, int64_t n) {
     rt_sortedset set = (rt_sortedset)obj;
     void *seq = rt_seq_new();
@@ -426,6 +435,7 @@ void *rt_sortedset_skip(void *obj, int64_t n) {
 // Set Operations
 //=============================================================================
 
+/// @brief Return a fresh sorted set containing every element from either operand.
 void *rt_sortedset_union(void *obj, void *other) {
     void *result = rt_sortedset_new();
     rt_sortedset a = (rt_sortedset)obj;
@@ -446,6 +456,8 @@ void *rt_sortedset_union(void *obj, void *other) {
     return result;
 }
 
+/// @brief Return a fresh sorted set containing only elements present in both operands. Uses a
+/// merge-style two-pointer walk over the sorted arrays for O(|a| + |b|) time.
 void *rt_sortedset_intersect(void *obj, void *other) {
     void *result = rt_sortedset_new();
     rt_sortedset a = (rt_sortedset)obj;
@@ -472,6 +484,7 @@ void *rt_sortedset_intersect(void *obj, void *other) {
     return result;
 }
 
+/// @brief Return a fresh sorted set containing elements present in `obj` but not in `other`.
 void *rt_sortedset_diff(void *obj, void *other) {
     void *result = rt_sortedset_new();
     rt_sortedset a = (rt_sortedset)obj;

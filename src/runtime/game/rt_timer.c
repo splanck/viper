@@ -187,6 +187,8 @@ void rt_timer_set_duration(rt_timer timer, int64_t frames) {
 // Millisecond-based timer mode
 // =========================================================================
 
+/// @brief Start a one-shot millisecond-based timer (drive with `_update_ms(dt_ms)`).
+/// Switches the timer into ms mode; subsequent frame-based ops should use the ms variants.
 void rt_timer_start_ms(rt_timer timer, int64_t duration_ms) {
     if (!timer || duration_ms <= 0)
         return;
@@ -197,6 +199,7 @@ void rt_timer_start_ms(rt_timer timer, int64_t duration_ms) {
     timer->ms_mode = 1;
 }
 
+/// @brief Start a repeating millisecond-based timer that fires every @p interval_ms.
 void rt_timer_start_repeating_ms(rt_timer timer, int64_t interval_ms) {
     if (!timer || interval_ms <= 0)
         return;
@@ -207,6 +210,8 @@ void rt_timer_start_repeating_ms(rt_timer timer, int64_t interval_ms) {
     timer->ms_mode = 1;
 }
 
+/// @brief Advance an ms-mode timer by @p dt milliseconds. Returns 1 on the tick it expires.
+/// Repeating timers preserve overshoot (`elapsed -= duration`) for sub-millisecond accuracy.
 int8_t rt_timer_update_ms(rt_timer timer, int64_t dt) {
     if (!timer || !timer->running || dt <= 0)
         return 0;
@@ -229,10 +234,12 @@ int8_t rt_timer_update_ms(rt_timer timer, int64_t dt) {
     return 0;
 }
 
+/// @brief Read the elapsed milliseconds since the timer started.
 int64_t rt_timer_elapsed_ms(rt_timer timer) {
     return timer ? timer->elapsed : 0;
 }
 
+/// @brief Read the milliseconds remaining before an ms-mode timer expires (0 if past).
 int64_t rt_timer_remaining_ms(rt_timer timer) {
     if (!timer || timer->duration == 0)
         return 0;

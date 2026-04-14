@@ -25,17 +25,29 @@
 extern "C" {
 #endif
 
+/// @brief Create a new HTTP client session with empty cookie jar and default settings.
 void *rt_http_client_new(void);
+/// @brief Issue a GET request and return the HttpResponse handle.
 void *rt_http_client_get(void *client, rt_string url);
+/// @brief Issue a POST with the given body (Content-Type defaults to application/octet-stream).
 void *rt_http_client_post(void *client, rt_string url, rt_string body);
+/// @brief Issue a PUT with the given body.
 void *rt_http_client_put(void *client, rt_string url, rt_string body);
+/// @brief Issue a DELETE request.
 void *rt_http_client_delete(void *client, rt_string url);
+/// @brief Set a default header sent on every request from this client.
 void rt_http_client_set_header(void *client, rt_string name, rt_string value);
+/// @brief Set the per-request timeout in milliseconds (0 = no timeout).
 void rt_http_client_set_timeout(void *client, int64_t timeout_ms);
+/// @brief Cap the number of automatic redirects followed (default 5; 0 disables).
 void rt_http_client_set_max_redirects(void *client, int64_t max);
+/// @brief True if the client follows 3xx redirects automatically.
 int8_t rt_http_client_get_follow_redirects(void *client);
+/// @brief Toggle automatic 3xx redirect following.
 void rt_http_client_set_follow_redirects(void *client, int8_t follow);
+/// @brief Manually inject a cookie into the jar for @p domain.
 void rt_http_client_set_cookie(void *client, rt_string domain, rt_string name, rt_string value);
+/// @brief Get all cookies the jar holds for @p domain (returns a Map[string, string]).
 void *rt_http_client_get_cookies(void *client, rt_string domain);
 
 #ifdef __cplusplus

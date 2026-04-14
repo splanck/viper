@@ -204,6 +204,7 @@ static void *match_route(const route_t *route, const char *path) {
 // Finalizers
 //=============================================================================
 
+/// @brief Free a route's heap-owned strings (method, pattern, per-segment values) and zero it.
 static void free_route(route_t *route) {
     free(route->method);
     free(route->pattern);
@@ -212,6 +213,7 @@ static void free_route(route_t *route) {
     memset(route, 0, sizeof(*route));
 }
 
+/// @brief GC finalizer for the router: free every parsed route's heap allocations.
 static void rt_http_router_finalize(void *obj) {
     if (!obj)
         return;
@@ -220,6 +222,7 @@ static void rt_http_router_finalize(void *obj) {
         free_route(&router->routes[i]);
 }
 
+/// @brief GC finalizer for a route-match: free the pattern string and release the params Map.
 static void rt_route_match_finalize(void *obj) {
     if (!obj)
         return;
@@ -235,6 +238,9 @@ static void rt_route_match_finalize(void *obj) {
 // Public API
 //=============================================================================
 
+/// @brief Construct an empty HTTP router. Capacity is fixed at MAX_ROUTES (256); routes are
+/// matched in registration order so register more-specific patterns first. Returns a GC-managed
+/// handle.
 void *rt_http_router_new(void) {
     rt_http_router_impl *router =
         (rt_http_router_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_http_router_impl));
@@ -245,6 +251,9 @@ void *rt_http_router_new(void) {
     return router;
 }
 
+/// @brief Internal: register a `(method, pattern)` route. Parses the pattern into segments
+/// (literal/param/wildcard), allocates per-segment storage, and appends to the routes array.
+/// Traps on null input or pool overflow.
 static void *add_route(void *obj, const char *method, const char *pattern) {
     if (!obj)
         rt_trap("HttpRouter: NULL router");
@@ -262,6 +271,8 @@ static void *add_route(void *obj, const char *method, const char *pattern) {
     return obj;
 }
 
+/// @brief Register a route for an arbitrary HTTP method (e.g. PATCH, OPTIONS, custom verbs).
+/// Returns the router for fluent chaining: `router.add("GET", "/x").add("POST", "/y")`.
 void *rt_http_router_add(void *router, rt_string method, rt_string pattern) {
     const char *m = rt_string_cstr(method);
     const char *p = rt_string_cstr(pattern);
@@ -270,22 +281,30 @@ void *rt_http_router_add(void *router, rt_string method, rt_string pattern) {
     return add_route(router, m, p);
 }
 
+/// @brief Convenience: register a GET route. Equivalent to `_add(router, "GET", pattern)`.
 void *rt_http_router_get(void *router, rt_string pattern) {
     return add_route(router, "GET", rt_string_cstr(pattern));
 }
 
+/// @brief Convenience: register a POST route.
 void *rt_http_router_post(void *router, rt_string pattern) {
     return add_route(router, "POST", rt_string_cstr(pattern));
 }
 
+/// @brief Convenience: register a PUT route.
 void *rt_http_router_put(void *router, rt_string pattern) {
     return add_route(router, "PUT", rt_string_cstr(pattern));
 }
 
+/// @brief Convenience: register a DELETE route.
 void *rt_http_router_delete(void *router, rt_string pattern) {
     return add_route(router, "DELETE", rt_string_cstr(pattern));
 }
 
+/// @brief Find the first registered route that matches `(method, path)` and return a Match
+/// object with extracted params. Method comparison is **case-insensitive** (per RFC 7230).
+/// Walks routes in registration order — earlier wins on ties. Returns NULL if no route matches
+/// (the server can then return 404). The returned Match object is GC-managed; caller releases.
 void *rt_http_router_match(void *obj, rt_string method, rt_string path) {
     if (!obj)
         return NULL;
@@ -326,12 +345,15 @@ void *rt_http_router_match(void *obj, rt_string method, rt_string path) {
     return NULL; // No match
 }
 
+/// @brief Number of routes currently registered (for diagnostics / capacity checks).
 int64_t rt_http_router_count(void *obj) {
     if (!obj)
         return 0;
     return ((rt_http_router_impl *)obj)->route_count;
 }
 
+/// @brief Look up a captured parameter from a Match object (e.g. for `/users/:id` with input
+/// `/users/42`, `_param("id")` returns "42"). Returns empty string if the param wasn't captured.
 rt_string rt_route_match_param(void *obj, rt_string name) {
     if (!obj)
         return rt_string_from_bytes("", 0);
@@ -345,12 +367,15 @@ rt_string rt_route_match_param(void *obj, rt_string name) {
     return (rt_string)val;
 }
 
+/// @brief Index of the route that matched (registration order). -1 for null Match. Useful for
+/// dispatching to a parallel handler array indexed by the same numbers.
 int64_t rt_route_match_index(void *obj) {
     if (!obj)
         return -1;
     return ((rt_route_match_impl *)obj)->route_index;
 }
 
+/// @brief Read the original pattern string of the matched route (for logging / debug output).
 rt_string rt_route_match_pattern(void *obj) {
     if (!obj)
         return rt_string_from_bytes("", 0);

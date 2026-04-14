@@ -81,6 +81,8 @@ static void sse_close_transport(rt_sse_impl *sse) {
     sse->chunk_remaining = 0;
 }
 
+/// @brief GC finalizer: tear down the active transport (TLS/TCP) and free the cached last-event
+/// metadata strings.
 static void rt_sse_finalize(void *obj) {
     if (!obj)
         return;
@@ -94,6 +96,8 @@ static void rt_sse_finalize(void *obj) {
 // Transport Helpers
 //=============================================================================
 
+/// @brief Loop-write `len` bytes through whichever transport is active. Same dual-path pattern
+/// as rt_smtp.c — TLS retries until drained; plain TCP delegates to the rt_tcp send-all helper.
 static int sse_transport_send_all(rt_sse_impl *sse, const void *data, size_t len) {
     if (sse->tls) {
         size_t total = 0;
@@ -109,6 +113,9 @@ static int sse_transport_send_all(rt_sse_impl *sse, const void *data, size_t len
     return 1;
 }
 
+/// @brief Read up to `len` bytes from the active transport. TCP path allocates a temporary Bytes
+/// chunk and copies into the caller's buffer; TLS path reads directly. Same shape as rt_smtp's
+/// version — slight extra copy for TCP in exchange for transport-uniform line-reading code above.
 static long sse_transport_read(rt_sse_impl *sse, void *buffer, size_t len) {
     if (sse->tls)
         return rt_tls_recv(sse->tls, buffer, len);
@@ -640,6 +647,8 @@ rt_string rt_sse_recv_for(void *obj, int64_t timeout_ms) {
 }
 
 /// @brief Check whether the SSE connection is still open and the underlying TCP socket is alive.
+/// @brief Returns 1 if the SSE connection is still open (transport is alive). Becomes 0 once
+/// the server closes or the client calls `_close`.
 int8_t rt_sse_is_open(void *obj) {
     if (!obj)
         return 0;
@@ -652,6 +661,8 @@ int8_t rt_sse_is_open(void *obj) {
 }
 
 /// @brief Close the sse.
+/// @brief Force-close the active SSE connection (TLS + TCP). Idempotent; subsequent `_recv`
+/// returns empty string and `_is_open` returns 0.
 void rt_sse_close(void *obj) {
     if (!obj)
         return;

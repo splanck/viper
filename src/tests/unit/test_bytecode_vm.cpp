@@ -1141,6 +1141,265 @@ static void test_eh_pop() {
     std::cout << "PASSED\n";
 }
 
+/// Test that runtime traps from CALL_NATIVE route into bytecode handlers.
+static void test_runtime_bridge_trap_dispatch() {
+    std::cout << "  test_runtime_bridge_trap_dispatch: ";
+
+    BytecodeModule bcModule;
+    bcModule.magic = kBytecodeModuleMagic;
+    bcModule.version = kBytecodeVersion;
+    bcModule.flags = 0;
+
+    const uint16_t trapIdx =
+        static_cast<uint16_t>(bcModule.addNativeFunc("Viper.Core.Diagnostics.Trap", 1, false));
+    bcModule.stringPool.push_back("boom");
+
+    BytecodeFunction func;
+    func.name = "native_trap";
+    func.numParams = 0;
+    func.numLocals = 2;
+    func.maxStack = 4;
+    func.code.push_back(encodeOp(BCOpcode::EH_PUSH));
+    func.code.push_back(static_cast<uint32_t>(6)); // handler at pc 7, offset word at pc 1
+    func.code.push_back(encodeOp16(BCOpcode::LOAD_STR, 0));
+    func.code.push_back(encodeOp8_16(BCOpcode::CALL_NATIVE, 1, trapIdx));
+    func.code.push_back(encodeOp8(BCOpcode::LOAD_I8, 99));
+    func.code.push_back(encodeOp(BCOpcode::RETURN));
+    func.code.push_back(encodeOp8(BCOpcode::STORE_LOCAL, 1));
+    func.code.push_back(encodeOp8(BCOpcode::STORE_LOCAL, 0));
+    func.code.push_back(encodeOp(BCOpcode::EH_ENTRY));
+    func.code.push_back(encodeOp8(BCOpcode::LOAD_I8, 55));
+    func.code.push_back(encodeOp(BCOpcode::RETURN));
+    func.lineTable.assign(func.code.size(), 0);
+    func.lineTable[3] = 77;
+
+    bcModule.functions.push_back(std::move(func));
+    bcModule.functionIndex["native_trap"] = 0;
+
+    for (bool threaded : {false, true}) {
+        BytecodeVM vm;
+        vm.setRuntimeBridgeEnabled(true);
+        vm.setThreadedDispatch(threaded);
+        vm.load(&bcModule);
+
+        BCSlot result = vm.exec("native_trap", {});
+        assert(vm.state() == VMState::Halted);
+        assert(result.i64 == 55);
+    }
+
+    std::cout << "PASSED\n";
+}
+
+/// Test resume.next and trap metadata after a checked arithmetic trap.
+static void test_resume_next_and_trap_metadata() {
+    std::cout << "  test_resume_next_and_trap_metadata: ";
+
+    BytecodeModule bcModule;
+    bcModule.magic = kBytecodeModuleMagic;
+    bcModule.version = kBytecodeVersion;
+    bcModule.flags = 0;
+
+    BytecodeFunction resumeFunc;
+    resumeFunc.name = "resume_next";
+    resumeFunc.numParams = 0;
+    resumeFunc.numLocals = 2;
+    resumeFunc.maxStack = 4;
+    resumeFunc.code.push_back(encodeOp(BCOpcode::EH_PUSH));
+    resumeFunc.code.push_back(static_cast<uint32_t>(6)); // handler at pc 7
+    resumeFunc.code.push_back(encodeOp8(BCOpcode::LOAD_I8, 10));
+    resumeFunc.code.push_back(encodeOp(BCOpcode::LOAD_ZERO));
+    resumeFunc.code.push_back(encodeOp(BCOpcode::SDIV_I64_CHK));
+    resumeFunc.code.push_back(encodeOp8(BCOpcode::LOAD_I8, 7));
+    resumeFunc.code.push_back(encodeOp(BCOpcode::RETURN));
+    resumeFunc.code.push_back(encodeOp8(BCOpcode::STORE_LOCAL, 1));
+    resumeFunc.code.push_back(encodeOp8(BCOpcode::STORE_LOCAL, 0));
+    resumeFunc.code.push_back(encodeOp(BCOpcode::EH_ENTRY));
+    resumeFunc.code.push_back(encodeOp8(BCOpcode::LOAD_LOCAL, 1));
+    resumeFunc.code.push_back(encodeOp(BCOpcode::RESUME_NEXT));
+    resumeFunc.lineTable.assign(resumeFunc.code.size(), 0);
+    resumeFunc.lineTable[4] = 123;
+
+    BytecodeFunction metaFunc;
+    metaFunc.name = "trap_meta";
+    metaFunc.numParams = 0;
+    metaFunc.numLocals = 2;
+    metaFunc.maxStack = 4;
+    metaFunc.code.push_back(encodeOp(BCOpcode::EH_PUSH));
+    metaFunc.code.push_back(static_cast<uint32_t>(6)); // handler at pc 7
+    metaFunc.code.push_back(encodeOp8(BCOpcode::LOAD_I8, 10));
+    metaFunc.code.push_back(encodeOp(BCOpcode::LOAD_ZERO));
+    metaFunc.code.push_back(encodeOp(BCOpcode::SDIV_I64_CHK));
+    metaFunc.code.push_back(encodeOp8(BCOpcode::LOAD_I8, 0));
+    metaFunc.code.push_back(encodeOp(BCOpcode::RETURN));
+    metaFunc.code.push_back(encodeOp8(BCOpcode::STORE_LOCAL, 1));
+    metaFunc.code.push_back(encodeOp8(BCOpcode::STORE_LOCAL, 0));
+    metaFunc.code.push_back(encodeOp(BCOpcode::EH_ENTRY));
+    metaFunc.code.push_back(encodeOp8(BCOpcode::LOAD_LOCAL, 0));
+    metaFunc.code.push_back(encodeOp(BCOpcode::ERR_GET_IP));
+    metaFunc.code.push_back(encodeOp8(BCOpcode::LOAD_LOCAL, 0));
+    metaFunc.code.push_back(encodeOp(BCOpcode::ERR_GET_LINE));
+    metaFunc.code.push_back(encodeOpI16(BCOpcode::LOAD_I16, 10));
+    metaFunc.code.push_back(encodeOp(BCOpcode::MUL_I64));
+    metaFunc.code.push_back(encodeOp(BCOpcode::ADD_I64));
+    metaFunc.code.push_back(encodeOp(BCOpcode::RETURN));
+    metaFunc.lineTable.assign(metaFunc.code.size(), 0);
+    metaFunc.lineTable[4] = 123;
+
+    bcModule.functions.push_back(std::move(resumeFunc));
+    bcModule.functionIndex["resume_next"] = 0;
+    bcModule.functions.push_back(std::move(metaFunc));
+    bcModule.functionIndex["trap_meta"] = 1;
+
+    for (bool threaded : {false, true}) {
+        BytecodeVM vm;
+        vm.setThreadedDispatch(threaded);
+        vm.load(&bcModule);
+
+        BCSlot resumed = vm.exec("resume_next", {});
+        assert(vm.state() == VMState::Halted);
+        assert(resumed.i64 == 7);
+
+        BCSlot meta = vm.exec("trap_meta", {});
+        assert(vm.state() == VMState::Halted);
+        assert(meta.i64 == 1234); // fault pc 4, source line 123
+    }
+
+    std::cout << "PASSED\n";
+}
+
+/// Test resume.label consumes its resume token and leaves the operand stack balanced.
+static void test_resume_label_consumes_token() {
+    std::cout << "  test_resume_label_consumes_token: ";
+
+    BytecodeModule bcModule;
+    bcModule.magic = kBytecodeModuleMagic;
+    bcModule.version = kBytecodeVersion;
+    bcModule.flags = 0;
+
+    BytecodeFunction fn;
+    fn.name = "resume_label";
+    fn.numParams = 0;
+    fn.numLocals = 3;
+    fn.maxStack = 2;
+    fn.code.push_back(encodeOp(BCOpcode::LOAD_ZERO));
+    fn.code.push_back(encodeOp8(BCOpcode::STORE_LOCAL, 0));
+    fn.code.push_back(encodeOp(BCOpcode::EH_PUSH));
+    fn.code.push_back(static_cast<uint32_t>(9)); // handler at pc 12
+    fn.code.push_back(encodeOp8(BCOpcode::LOAD_I8, 1));
+    fn.code.push_back(encodeOp(BCOpcode::LOAD_ZERO));
+    fn.code.push_back(encodeOp(BCOpcode::SDIV_I64_CHK));
+    fn.code.push_back(encodeOp(BCOpcode::EH_POP));
+    fn.code.push_back(encodeOp8(BCOpcode::LOAD_I8, 99));
+    fn.code.push_back(encodeOp(BCOpcode::RETURN));
+    fn.code.push_back(encodeOp(BCOpcode::NOP));
+    fn.code.push_back(encodeOp(BCOpcode::NOP));
+    fn.code.push_back(encodeOp8(BCOpcode::STORE_LOCAL, 2)); // resume token
+    fn.code.push_back(encodeOp8(BCOpcode::STORE_LOCAL, 1)); // error token
+    fn.code.push_back(encodeOp(BCOpcode::EH_ENTRY));
+    fn.code.push_back(encodeOp(BCOpcode::LOAD_ONE));
+    fn.code.push_back(encodeOp8(BCOpcode::STORE_LOCAL, 0));
+    fn.code.push_back(encodeOp8(BCOpcode::LOAD_LOCAL, 2));
+    fn.code.push_back(encodeOp(BCOpcode::RESUME_LABEL));
+    fn.code.push_back(static_cast<uint32_t>(2)); // jump to pc 21
+    fn.code.push_back(encodeOp(BCOpcode::NOP));
+    fn.code.push_back(encodeOp8(BCOpcode::LOAD_LOCAL, 0));
+    fn.code.push_back(encodeOp(BCOpcode::RETURN));
+    fn.lineTable.assign(fn.code.size(), 0);
+
+    bcModule.functions.push_back(std::move(fn));
+    bcModule.functionIndex["resume_label"] = 0;
+
+    for (bool threaded : {false, true}) {
+        BytecodeVM vm;
+        vm.setThreadedDispatch(threaded);
+        vm.load(&bcModule);
+
+        BCSlot result = vm.exec("resume_label", {});
+        assert(vm.state() == VMState::Halted);
+        assert(result.i64 == 1);
+    }
+
+    std::cout << "PASSED\n";
+}
+
+/// Test that malformed bytecode metadata traps instead of silently continuing.
+static void test_invalid_pool_and_global_indices() {
+    std::cout << "  test_invalid_pool_and_global_indices: ";
+
+    BytecodeModule badConstModule;
+    badConstModule.magic = kBytecodeModuleMagic;
+    badConstModule.version = kBytecodeVersion;
+    badConstModule.flags = 0;
+
+    BytecodeFunction badConst;
+    badConst.name = "bad_const";
+    badConst.numParams = 0;
+    badConst.numLocals = 0;
+    badConst.maxStack = 1;
+    badConst.code.push_back(encodeOp16(BCOpcode::LOAD_I64, 0));
+    badConst.code.push_back(encodeOp(BCOpcode::RETURN));
+    badConstModule.functions.push_back(std::move(badConst));
+    badConstModule.functionIndex["bad_const"] = 0;
+
+    BytecodeModule badGlobalModule;
+    badGlobalModule.magic = kBytecodeModuleMagic;
+    badGlobalModule.version = kBytecodeVersion;
+    badGlobalModule.flags = 0;
+
+    BytecodeFunction badGlobal;
+    badGlobal.name = "bad_global";
+    badGlobal.numParams = 0;
+    badGlobal.numLocals = 0;
+    badGlobal.maxStack = 1;
+    badGlobal.code.push_back(encodeOp16(BCOpcode::LOAD_GLOBAL, 0));
+    badGlobal.code.push_back(encodeOp(BCOpcode::RETURN));
+    badGlobalModule.functions.push_back(std::move(badGlobal));
+    badGlobalModule.functionIndex["bad_global"] = 0;
+
+    BytecodeModule badFrameModule;
+    badFrameModule.magic = kBytecodeModuleMagic;
+    badFrameModule.version = kBytecodeVersion;
+    badFrameModule.flags = 0;
+
+    BytecodeFunction badFrame;
+    badFrame.name = "bad_frame";
+    badFrame.numParams = 1;
+    badFrame.numLocals = 0;
+    badFrame.maxStack = 1;
+    badFrame.code.push_back(encodeOp(BCOpcode::RETURN));
+    badFrameModule.functions.push_back(std::move(badFrame));
+    badFrameModule.functionIndex["bad_frame"] = 0;
+
+    for (bool threaded : {false, true}) {
+        {
+            BytecodeVM vm;
+            vm.setThreadedDispatch(threaded);
+            vm.load(&badConstModule);
+            (void)vm.exec("bad_const", {});
+            assert(vm.state() == VMState::Trapped);
+            assert(vm.trapKind() == TrapKind::InvalidOpcode);
+        }
+        {
+            BytecodeVM vm;
+            vm.setThreadedDispatch(threaded);
+            vm.load(&badGlobalModule);
+            (void)vm.exec("bad_global", {});
+            assert(vm.state() == VMState::Trapped);
+            assert(vm.trapKind() == TrapKind::InvalidOpcode);
+        }
+        {
+            BytecodeVM vm;
+            vm.setThreadedDispatch(threaded);
+            vm.load(&badFrameModule);
+            (void)vm.exec("bad_frame", {BCSlot::fromInt(1)});
+            assert(vm.state() == VMState::Trapped);
+            assert(vm.trapKind() == TrapKind::InvalidOpcode);
+        }
+    }
+
+    std::cout << "PASSED\n";
+}
+
 /// Test debug API (breakpoints, single-step)
 /// Note: Actual breakpoint interception requires debug-enabled execution mode
 static void test_debug_api() {
@@ -1180,6 +1439,156 @@ static void test_debug_api() {
     std::cout << "PASSED\n";
 }
 
+/// Test that function entry arity mismatches trap cleanly.
+static void test_entry_arity_mismatch() {
+    std::cout << "  test_entry_arity_mismatch: ";
+
+    Module ilModule = createAddModule();
+    BytecodeCompiler compiler;
+    BytecodeModule bcModule = compiler.compile(ilModule);
+
+    for (bool threaded : {false, true}) {
+        BytecodeVM vm;
+        vm.setThreadedDispatch(threaded);
+        vm.load(&bcModule);
+
+        (void)vm.exec("add", {BCSlot::fromInt(7)});
+        assert(vm.state() == VMState::Trapped);
+        assert(vm.trapKind() == TrapKind::RuntimeError);
+    }
+
+    std::cout << "PASSED\n";
+}
+
+/// Test that invalid branch targets trap instead of reading past code bounds.
+static void test_invalid_branch_target() {
+    std::cout << "  test_invalid_branch_target: ";
+
+    BytecodeModule bcModule;
+    bcModule.magic = kBytecodeModuleMagic;
+    bcModule.version = kBytecodeVersion;
+    bcModule.flags = 0;
+
+    BytecodeFunction func;
+    func.name = "bad_jump";
+    func.numParams = 0;
+    func.numLocals = 0;
+    func.maxStack = 1;
+    func.code.push_back(encodeOpI16(BCOpcode::JUMP, 10));
+    func.code.push_back(encodeOp8(BCOpcode::LOAD_I8, 1));
+    func.code.push_back(encodeOp(BCOpcode::RETURN));
+
+    bcModule.functions.push_back(std::move(func));
+    bcModule.functionIndex["bad_jump"] = 0;
+
+    for (bool threaded : {false, true}) {
+        BytecodeVM vm;
+        vm.setThreadedDispatch(threaded);
+        vm.load(&bcModule);
+
+        (void)vm.exec("bad_jump", {});
+        assert(vm.state() == VMState::Trapped);
+        assert(vm.trapKind() == TrapKind::InvalidOpcode);
+    }
+
+    std::cout << "PASSED\n";
+}
+
+/// Test that truncated multi-word instructions trap cleanly.
+static void test_truncated_extended_instruction() {
+    std::cout << "  test_truncated_extended_instruction: ";
+
+    BytecodeModule bcModule;
+    bcModule.magic = kBytecodeModuleMagic;
+    bcModule.version = kBytecodeVersion;
+    bcModule.flags = 0;
+
+    BytecodeFunction func;
+    func.name = "truncated_load_i32";
+    func.numParams = 0;
+    func.numLocals = 0;
+    func.maxStack = 1;
+    func.code.push_back(encodeOp(BCOpcode::LOAD_I32));
+
+    bcModule.functions.push_back(std::move(func));
+    bcModule.functionIndex["truncated_load_i32"] = 0;
+
+    for (bool threaded : {false, true}) {
+        BytecodeVM vm;
+        vm.setThreadedDispatch(threaded);
+        vm.load(&bcModule);
+
+        (void)vm.exec("truncated_load_i32", {});
+        assert(vm.state() == VMState::Trapped);
+        assert(vm.trapKind() == TrapKind::InvalidOpcode);
+    }
+
+    std::cout << "PASSED\n";
+}
+
+/// Test that bytecode Thread.StartSafe records worker traps instead of swallowing them.
+static void test_thread_start_safe_reports_bytecode_trap() {
+    std::cout << "  test_thread_start_safe_reports_bytecode_trap: ";
+
+    BytecodeModule bcModule;
+    bcModule.magic = kBytecodeModuleMagic;
+    bcModule.version = kBytecodeVersion;
+    bcModule.flags = 0;
+
+    const uint16_t startSafeIdx =
+        static_cast<uint16_t>(bcModule.addNativeFunc("Viper.Threads.Thread.StartSafe", 2, true));
+    const uint16_t safeJoinIdx =
+        static_cast<uint16_t>(bcModule.addNativeFunc("Viper.Threads.Thread.SafeJoin", 1, false));
+    const uint16_t hasErrorIdx =
+        static_cast<uint16_t>(bcModule.addNativeFunc("Viper.Threads.Thread.get_HasError", 1, true));
+
+    BytecodeFunction worker;
+    worker.name = "worker_trap";
+    worker.numParams = 0;
+    worker.numLocals = 0;
+    worker.maxStack = 1;
+    worker.code.push_back(encodeOp8(BCOpcode::TRAP, static_cast<uint8_t>(TrapKind::RuntimeError)));
+    worker.code.push_back(encodeOp(BCOpcode::RETURN_VOID));
+
+    BytecodeFunction mainFunc;
+    mainFunc.name = "main";
+    mainFunc.numParams = 0;
+    mainFunc.numLocals = 1;
+    mainFunc.maxStack = 2;
+
+    constexpr uint64_t kFuncPtrTag = 0x8000000000000000ULL;
+    bcModule.i64Pool.push_back(static_cast<int64_t>(kFuncPtrTag | 0ULL));
+    const uint16_t workerPtrIdx = static_cast<uint16_t>(bcModule.i64Pool.size() - 1);
+
+    mainFunc.code.push_back(encodeOp16(BCOpcode::LOAD_I64, workerPtrIdx));
+    mainFunc.code.push_back(encodeOp(BCOpcode::LOAD_NULL));
+    mainFunc.code.push_back(encodeOp8_16(BCOpcode::CALL_NATIVE, 2, startSafeIdx));
+    mainFunc.code.push_back(encodeOp8(BCOpcode::STORE_LOCAL, 0));
+    mainFunc.code.push_back(encodeOp8(BCOpcode::LOAD_LOCAL, 0));
+    mainFunc.code.push_back(encodeOp8_16(BCOpcode::CALL_NATIVE, 1, safeJoinIdx));
+    mainFunc.code.push_back(encodeOp8(BCOpcode::LOAD_LOCAL, 0));
+    mainFunc.code.push_back(encodeOp8_16(BCOpcode::CALL_NATIVE, 1, hasErrorIdx));
+    mainFunc.code.push_back(encodeOp(BCOpcode::RETURN));
+
+    bcModule.functions.push_back(std::move(worker));
+    bcModule.functionIndex["worker_trap"] = 0;
+    bcModule.functions.push_back(std::move(mainFunc));
+    bcModule.functionIndex["main"] = 1;
+
+    for (bool threaded : {false, true}) {
+        BytecodeVM vm;
+        vm.setRuntimeBridgeEnabled(true);
+        vm.setThreadedDispatch(threaded);
+        vm.load(&bcModule);
+
+        BCSlot result = vm.exec("main", {});
+        assert(vm.state() == VMState::Halted);
+        assert(result.i64 == 1);
+    }
+
+    std::cout << "PASSED\n";
+}
+
 /// @brief Main.
 int main() {
     VIPER_DISABLE_ABORT_DIALOG();
@@ -1200,7 +1609,15 @@ int main() {
     test_exception_handling();
     test_unhandled_trap();
     test_eh_pop();
+    test_runtime_bridge_trap_dispatch();
+    test_resume_next_and_trap_metadata();
+    test_resume_label_consumes_token();
+    test_invalid_pool_and_global_indices();
     test_debug_api();
+    test_entry_arity_mismatch();
+    test_invalid_branch_target();
+    test_truncated_extended_instruction();
+    test_thread_start_safe_reports_bytecode_trap();
 
     std::cout << "All bytecode VM tests PASSED!\n";
     return 0;

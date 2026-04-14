@@ -55,6 +55,8 @@
 static CRITICAL_SECTION g_pattern_cache_cs;
 static INIT_ONCE g_pattern_cache_cs_once = INIT_ONCE_STATIC_INIT;
 
+/// @brief One-shot initializer for the Win32 critical section guarding
+///        the compiled-pattern cache. Called via `InitOnceExecuteOnce`.
 static BOOL WINAPI init_pattern_cache_cs(PINIT_ONCE o, PVOID p, PVOID *ctx) {
     (void)o;
     (void)p;
@@ -63,11 +65,16 @@ static BOOL WINAPI init_pattern_cache_cs(PINIT_ONCE o, PVOID p, PVOID *ctx) {
     return TRUE;
 }
 
+/// @brief Acquire the pattern-cache mutex (Windows path).
+///
+/// Lazily initializes the critical section on first call. Required
+/// per S-12: concurrent regex calls must not race on the LRU cache.
 static void pattern_cache_lock(void) {
     InitOnceExecuteOnce(&g_pattern_cache_cs_once, init_pattern_cache_cs, NULL, NULL);
     EnterCriticalSection(&g_pattern_cache_cs);
 }
 
+/// @brief Release the pattern-cache mutex (Windows path).
 static void pattern_cache_unlock(void) {
     LeaveCriticalSection(&g_pattern_cache_cs);
 }
@@ -75,10 +82,14 @@ static void pattern_cache_unlock(void) {
 #include <pthread.h>
 static pthread_mutex_t g_pattern_cache_mutex = PTHREAD_MUTEX_INITIALIZER;
 
+/// @brief Acquire the pattern-cache mutex (POSIX path).
+///
+/// Uses a statically-initialized mutex — no init step needed.
 static void pattern_cache_lock(void) {
     pthread_mutex_lock(&g_pattern_cache_mutex);
 }
 
+/// @brief Release the pattern-cache mutex (POSIX path).
 static void pattern_cache_unlock(void) {
     pthread_mutex_unlock(&g_pattern_cache_mutex);
 }
@@ -161,6 +172,11 @@ typedef struct re_compiled_pattern compiled_pattern;
 // Memory Management
 //=============================================================================
 
+/// @brief Allocate a zero-initialized AST node of the given type.
+///
+/// Uses `calloc` so the union starts cleared (important for the
+/// `children` variant where `count`/`capacity` must be 0). Traps on
+/// OOM — there's no recovery path during pattern compile.
 static re_node *node_new(re_node_type type) {
     re_node *n = (re_node *)calloc(1, sizeof(re_node));
     if (!n)
@@ -169,6 +185,11 @@ static re_node *node_new(re_node_type type) {
     return n;
 }
 
+/// @brief Recursively free an AST node and all its descendants.
+///
+/// Walks the tree depth-first: container types (concat/alt/group) free
+/// each child then their `children` array; quantifier nodes free their
+/// single child; leaf types just free themselves. Safe on NULL.
 static void node_free(re_node *n) {
     if (!n)
         return;
@@ -191,6 +212,11 @@ static void node_free(re_node *n) {
     free(n);
 }
 
+/// @brief Append a child node to a container (concat/alt/group).
+///
+/// Geometric resize (cap doubles, starting at 4) so amortized cost is
+/// O(1) per add. Traps on OOM. Caller transfers ownership of `child`
+/// to `n` — the parent's `node_free` will reclaim it.
 static void children_add(re_node *n, re_node *child) {
     if (n->data.children.count >= n->data.children.capacity) {
         int new_cap = n->data.children.capacity == 0 ? 4 : n->data.children.capacity * 2;
@@ -204,6 +230,11 @@ static void children_add(re_node *n, re_node *child) {
     n->data.children.children[n->data.children.count++] = child;
 }
 
+/// @brief Free a compiled pattern and its AST.
+///
+/// Releases the duplicated pattern string, recursively frees the AST
+/// root, then frees the wrapper. Safe on NULL — used both by the
+/// cache eviction path and by error-recovery paths during compile.
 static void pattern_free(compiled_pattern *p) {
     if (!p)
         return;
@@ -212,7 +243,10 @@ static void pattern_free(compiled_pattern *p) {
     free(p);
 }
 
-// Public API for internal header
+/// @brief Public free entry point exposed via `rt_regex_internal.h`.
+///
+/// Thin wrapper around `pattern_free` so external callers (e.g., the
+/// cached-pattern wrapper) don't need to see the static helper.
 void re_free(re_compiled_pattern *cp) {
     pattern_free(cp);
 }
@@ -221,12 +255,22 @@ void re_free(re_compiled_pattern *cp) {
 // Character Class Helpers
 //=============================================================================
 
+/// @brief Set bit `ch` in a character-class bitset (no-op out of range).
+///
+/// The bitset is 256 bits (32 bytes), one per ASCII byte value. Bytes
+/// outside [0, 255] are ignored — matching of multibyte/Unicode chars
+/// happens via the negation flag in `class_test`.
 static void class_set(re_class *c, int ch) {
     if (ch >= 0 && ch < 256) {
         c->bits[ch / 8] |= (1 << (ch % 8));
     }
 }
 
+/// @brief Test whether `ch` is in the class (after applying negation).
+///
+/// Bytes outside [0, 255] match if and only if the class is negated —
+/// preserves the "negated class accepts everything not explicitly listed"
+/// semantics for arbitrary code units.
 static bool class_test(const re_class *c, int ch) {
     if (ch < 0 || ch >= 256)
         return c->negated;
@@ -234,13 +278,18 @@ static bool class_test(const re_class *c, int ch) {
     return c->negated ? !in_class : in_class;
 }
 
+/// @brief Set every bit in the inclusive range `[from, to]`.
 static void class_add_range(re_class *c, int from, int to) {
     for (int ch = from; ch <= to && ch < 256; ch++) {
         class_set(c, ch);
     }
 }
 
-// Add shorthand class chars
+/// @brief Apply a `\\d`/`\\D`/`\\w`/`\\W`/`\\s`/`\\S` shorthand to a class.
+///
+/// Lowercase shorthands set the matching characters; uppercase variants
+/// also flip the `negated` flag so the class matches the complement.
+/// Used both inside `[...]` brackets and as standalone atoms.
 static void class_add_shorthand(re_class *c, char shorthand) {
     switch (shorthand) {
         case 'd': // digits
@@ -293,18 +342,26 @@ typedef struct {
     int len;
 } parser_state;
 
+/// @brief Return the next byte without advancing; '\\0' at EOF.
 static char peek(parser_state *p) {
     return p->pos < p->len ? p->src[p->pos] : '\0';
 }
 
+/// @brief Consume and return the next byte; '\\0' at EOF.
 static char advance(parser_state *p) {
     return p->pos < p->len ? p->src[p->pos++] : '\0';
 }
 
+/// @brief True if the parser cursor is past the end of the pattern.
 static bool at_end(parser_state *p) {
     return p->pos >= p->len;
 }
 
+/// @brief Trap with a contextual parse-error message including the cursor position.
+///
+/// Always traps; never returns. Used by the parser when it encounters
+/// malformed regex syntax (unclosed bracket / group, trailing
+/// backslash, etc.).
 static void parse_error(parser_state *p, const char *msg) {
     char buf[256];
     snprintf(buf, sizeof(buf), "Pattern error at position %d: %s", p->pos, msg);
@@ -317,7 +374,14 @@ static re_node *parse_concat(parser_state *p);
 static re_node *parse_quantified(parser_state *p);
 static re_node *parse_atom(parser_state *p);
 
-/// Parse a character class [...] starting after the [
+/// @brief Parse a `[...]` character class (cursor positioned after the `[`).
+///
+/// Handles:
+///   - Leading `^` for negation.
+///   - Escape sequences (`\\n`, `\\d`, etc.).
+///   - Ranges (`a-z`).
+///   - Literal `-` when at end (`[abc-]`).
+/// Traps via `parse_error` if `]` is missing.
 static re_node *parse_class(parser_state *p) {
     re_node *n = node_new(RE_CLASS);
     memset(n->data.char_class.bits, 0, sizeof(n->data.char_class.bits));
@@ -392,7 +456,12 @@ static re_node *parse_class(parser_state *p) {
     return n;
 }
 
-/// Parse an atom (literal, class, group, escape, anchor)
+/// @brief Parse a single atom: literal char, escape, `.`, anchor, class, or group.
+///
+/// Returns NULL when the cursor is at a quantifier or alternation
+/// boundary (`* + ? | )` or EOF) — the caller treats that as
+/// "no more atoms in this concat". Group atoms recursively invoke
+/// `parse_alternation` for the body.
 static re_node *parse_atom(parser_state *p) {
     char c = peek(p);
 
@@ -471,7 +540,11 @@ static re_node *parse_atom(parser_state *p) {
     }
 }
 
-/// Parse an atom possibly followed by a quantifier
+/// @brief Parse an atom plus optional quantifier (`* + ?` with optional `?` for non-greedy).
+///
+/// Wraps the atom in an `RE_QUANT` node when a quantifier follows;
+/// otherwise returns the bare atom. The trailing `?` after a quantifier
+/// flips it to non-greedy mode.
 static re_node *parse_quantified(parser_state *p) {
     re_node *atom = parse_atom(p);
     if (!atom)
@@ -508,7 +581,11 @@ static re_node *parse_quantified(parser_state *p) {
     return atom;
 }
 
-/// Parse a concatenation of quantified atoms
+/// @brief Parse a sequence of quantified atoms into a concat node.
+///
+/// Stops at `)`, `|`, or EOF. As an optimization, the result is
+/// flattened: empty concat returns NULL, single-child concat returns
+/// just the child (avoids one indirection in the matcher).
 static re_node *parse_concat(parser_state *p) {
     re_node *concat = node_new(RE_CONCAT);
 
@@ -540,7 +617,11 @@ static re_node *parse_concat(parser_state *p) {
     return concat;
 }
 
-/// Parse an alternation (a|b|c)
+/// @brief Parse an alternation `a|b|c` (top of the recursive-descent grammar).
+///
+/// Empty alternatives (e.g., `(|x)`) get an explicit empty `RE_CONCAT`
+/// branch so they can match the empty string. Single-branch
+/// alternations are flattened to just the branch (matcher optimization).
 static re_node *parse_alternation(parser_state *p) {
     re_node *first = parse_concat(p);
 
@@ -577,7 +658,11 @@ static re_node *parse_alternation(parser_state *p) {
     return alt;
 }
 
-/// Count groups in AST
+/// @brief Count `RE_GROUP` nodes in a subtree (excluding the implicit group 0).
+///
+/// Used after parse to populate `cp->group_count` so callers can size
+/// match-result arrays correctly. Recurses through every container
+/// kind so nested groups are tallied.
 static int count_groups(re_node *n) {
     if (!n)
         return 0;
@@ -605,7 +690,12 @@ static int count_groups(re_node *n) {
     return count;
 }
 
-/// Compile a pattern string into AST
+/// @brief Top-level compile: parse `pattern` into a `compiled_pattern`.
+///
+/// Allocates the wrapper, duplicates the pattern source for diagnostics
+/// and cache lookups, runs the parser, and counts capture groups. Traps
+/// on syntax error (via `parse_error`) or OOM. Empty patterns are
+/// represented as an empty concat (matches everywhere with zero width).
 static compiled_pattern *compile_pattern(const char *pattern) {
     if (!pattern)
         rt_trap("Pattern: null pattern");
@@ -640,15 +730,25 @@ static compiled_pattern *compile_pattern(const char *pattern) {
     return cp;
 }
 
-// Public compile API
+/// @brief Public compile entry point — exposed via `rt_regex_internal.h`.
+///
+/// Wraps the static `compile_pattern` so external callers (the cached
+/// pattern wrapper) don't need access to the static helper.
 re_compiled_pattern *re_compile(const char *pattern) {
     return compile_pattern(pattern);
 }
 
+/// @brief Return the source pattern string a compiled pattern was built from.
+///
+/// Returns "" for NULL. Useful for cache lookup and diagnostics.
 const char *re_get_pattern(re_compiled_pattern *cp) {
     return cp ? cp->pattern_str : "";
 }
 
+/// @brief Return the number of capture groups in the compiled pattern.
+///
+/// Counts only explicit `(...)` groups; group 0 (the whole match) is
+/// not included. Returns 0 for NULL.
 int re_group_count(re_compiled_pattern *cp) {
     return cp ? cp->group_count : 0;
 }
@@ -673,9 +773,20 @@ static bool match_node(match_context *ctx, re_node *n, int pos, int *end_pos);
 static bool match_concat_from(
     match_context *ctx, re_node **children, int count, int index, int pos, int *end_pos);
 
-/// Collect all possible end positions for a quantified node.
-/// Returns the number of positions stored in `positions`.
-/// Positions are ordered from fewest to most repetitions.
+/// @brief Enumerate the end positions reachable by repeating a quantifier.
+///
+/// For `<child>{0..max}` (or `{1..max}` for `+`, or `{0..1}` for `?`),
+/// greedily steps the cursor forward, recording each successful end
+/// position. Returns the count. Detects zero-width matches and bails
+/// (otherwise `()*` would loop forever). Used by both `match_quant`
+/// (standalone) and `match_concat_from` (with backtracking).
+///
+/// @param ctx           Match context (text, length, step counter).
+/// @param n             Quantifier node.
+/// @param pos           Starting cursor.
+/// @param positions     Out: array of reachable end positions.
+/// @param max_positions Capacity of `positions`.
+/// @return Number of end positions written.
 static int collect_quant_positions(
     match_context *ctx, re_node *n, int pos, int *positions, int max_positions) {
     re_node *child = n->data.quant.child;
@@ -710,8 +821,12 @@ static int collect_quant_positions(
     return num;
 }
 
-/// Match a quantified node (standalone, no continuation awareness).
-/// Used when the quantifier is NOT inside a concat (e.g., at pattern root).
+/// @brief Match a quantifier node when it has no following continuation.
+///
+/// Picks the longest (greedy) or shortest (lazy) reachable end without
+/// any backtracking — there's no "what comes after" to consult. Used
+/// when the quantifier is the entire pattern or the last child of a
+/// concat. The full backtracking version lives in `match_concat_from`.
 static bool match_quant(match_context *ctx, re_node *n, int pos, int *end_pos) {
     bool greedy = n->data.quant.greedy;
 
@@ -740,7 +855,13 @@ static bool match_quant(match_context *ctx, re_node *n, int pos, int *end_pos) {
     return found;
 }
 
-/// Try to match node at given position, return end position if successful
+/// @brief Match a node against `ctx->text` starting at `pos`.
+///
+/// Returns true on success and writes the post-match cursor to
+/// `*end_pos`. Implements the per-node-kind match logic via switch.
+/// Increments the global step counter on each call and bails (returns
+/// false) when the S-11 ReDoS cap is exceeded — this is what protects
+/// the engine from catastrophic backtracking inputs.
 static bool match_node(match_context *ctx, re_node *n, int pos, int *end_pos) {
     /* S-11: ReDoS guard — abort if step limit exceeded */
     if (ctx->max_steps > 0 && ++ctx->steps > ctx->max_steps) {
@@ -818,10 +939,15 @@ static bool match_node(match_context *ctx, re_node *n, int pos, int *end_pos) {
     return false;
 }
 
-/// Match a concat sequence from `index` onward, with backtracking through
-/// quantifier children. When a quantifier child is encountered, all possible
-/// match lengths are tried (greedy = longest first) and the function recurses
-/// to verify the remaining children can also match.
+/// @brief Match the tail of a concat sequence starting at `children[index]`.
+///
+/// The interesting case is a quantifier child: we enumerate every
+/// reachable end position and try each one in greedy/lazy order,
+/// recursing for the remaining children. This is the backtracking
+/// loop — most patterns terminate quickly, but the S-11 step cap in
+/// `match_node` ensures even pathological cases bail eventually.
+/// Non-quantifier children are matched once; if they succeed we tail
+/// into the next child.
 static bool match_concat_from(
     match_context *ctx, re_node **children, int count, int index, int pos, int *end_pos) {
     if (index >= count) {
@@ -870,7 +996,11 @@ static bool match_concat_from(
     }
 }
 
-/// Find a match anywhere in text, returning start and end positions
+/// @brief Scan the text for the first match starting at or after `start_from`.
+///
+/// Walks the cursor forward one byte at a time, attempting `match_node`
+/// at each position. Caps the per-attempt step count via `RE_MAX_STEPS`
+/// (S-11). Returns true on first hit with start/end set.
 static bool find_match(compiled_pattern *cp,
                        const char *text,
                        int text_len,
@@ -891,7 +1021,10 @@ static bool find_match(compiled_pattern *cp,
     return false;
 }
 
-// Public find_match API
+/// @brief Public `find_match` exposed via `rt_regex_internal.h`.
+///
+/// Wraps the static helper for the cached-pattern API and any other
+/// in-process consumer that holds a compiled pattern directly.
 bool re_find_match(re_compiled_pattern *cp,
                    const char *text,
                    int text_len,
@@ -905,7 +1038,12 @@ bool re_find_match(re_compiled_pattern *cp,
 // Capture Group Support
 //-----------------------------------------------------------------------------
 
-/// Match context with group tracking
+/// @brief Match context augmented with capture-group tracking arrays.
+///
+/// Pairs the standard text/length/start with caller-provided arrays
+/// for group start/end positions. `next_group` is bumped each time a
+/// `RE_GROUP` is entered so groups get the same index they would in
+/// PCRE-style pattern numbering.
 typedef struct {
     const char *text;
     int text_len;
@@ -919,7 +1057,13 @@ typedef struct {
 // Forward declarations for group-capturing versions
 static bool match_node_groups(match_context_groups *ctx, re_node *n, int pos, int *end_pos);
 
-/// Match a quantified node with group tracking
+/// @brief Match a quantifier node carrying capture-group state.
+///
+/// Same logic as `match_quant` but uses the group-aware match recursion
+/// so any captures inside the quantified subexpression are recorded.
+/// Note: this version doesn't backtrack against the continuation —
+/// capture groups inside `+`/`*` are best-effort (last successful match
+/// wins) rather than fully PCRE-compliant.
 static bool match_quant_groups(match_context_groups *ctx, re_node *n, int pos, int *end_pos) {
     re_node *child = n->data.quant.child;
     re_quant_type qtype = n->data.quant.qtype;
@@ -972,7 +1116,14 @@ static bool match_quant_groups(match_context_groups *ctx, re_node *n, int pos, i
     return found;
 }
 
-/// Match node with group tracking
+/// @brief Group-tracking variant of `match_node`.
+///
+/// Same dispatch table as the non-group matcher, but the `RE_GROUP`
+/// branch records `[start, end)` into `ctx->group_starts/ends` on
+/// success. If a group fails to match, the `next_group` counter is
+/// decremented so subsequent groups get the right index. No ReDoS
+/// step counter here — typical group-capturing matches are bounded
+/// in practice by the public API only running once per call.
 static bool match_node_groups(match_context_groups *ctx, re_node *n, int pos, int *end_pos) {
     if (!n) {
         *end_pos = pos;
@@ -1068,7 +1219,12 @@ static bool match_node_groups(match_context_groups *ctx, re_node *n, int pos, in
     return false;
 }
 
-/// Find match with capture groups
+/// @brief Group-tracking version of `find_match`.
+///
+/// Same scan loop, but uses `match_node_groups` so capture-group
+/// positions land in the caller-provided arrays. `*num_groups` is
+/// set to the number of groups actually captured (may be less than
+/// `max_groups` when the pattern doesn't reach all of them).
 static bool find_match_groups(compiled_pattern *cp,
                               const char *text,
                               int text_len,
@@ -1096,7 +1252,11 @@ static bool find_match_groups(compiled_pattern *cp,
     return false;
 }
 
-// Public API for group capturing
+/// @brief Public group-capturing find — exposed via `rt_regex_internal.h`.
+///
+/// Wraps `find_match_groups` for callers that hold a compiled pattern
+/// directly (cached-pattern wrapper, replace-with-references helpers,
+/// etc.).
 bool re_find_match_with_groups(re_compiled_pattern *cp,
                                const char *text,
                                int text_len,
@@ -1133,6 +1293,15 @@ typedef struct cache_entry {
 static cache_entry pattern_cache[PATTERN_CACHE_SIZE];
 static unsigned long access_counter = 0;
 
+/// @brief Look up or compile a pattern, caching the result in the LRU table.
+///
+/// Searches the 16-entry table for an existing compile of the same
+/// source string; on hit, bumps the access counter and returns it.
+/// On miss, compiles the pattern, evicts the least-recently-used slot
+/// (or fills an empty one), and stores the new compile. The lock is
+/// held for the entire duration to keep the cache consistent under
+/// concurrent calls (S-12). The returned pointer is owned by the
+/// cache — callers must not free it.
 static compiled_pattern *get_cached_pattern(const char *pattern_str) {
     /* S-12: Lock cache for concurrent access safety */
     pattern_cache_lock();

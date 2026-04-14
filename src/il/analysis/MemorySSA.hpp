@@ -11,12 +11,11 @@
 //          a MemoryAccess node; stores produce MemoryDefs and loads produce
 //          MemoryUses. MemoryPhis are inserted at control-flow join points.
 //          The primary consumer is DSE, which uses MemorySSA to identify
-//          dead stores with greater precision than a conservative BFS:
-//
-//            - Stores to non-escaping allocas are never read or modified by
-//              external calls; MemorySSA encodes this by not treating calls
-//              as def/use events for non-escaping locations.
-//            - Dead-store detection becomes O(uses) rather than O(blocks × stores).
+//          dead stores with greater precision than a conservative BFS. The
+//          current implementation tracks one coarse reaching-memory version per
+//          block while still treating calls as transparent for non-escaping
+//          allocas, which is enough to improve DSE without pretending to model
+//          fully independent per-location SSA form.
 //
 // Key invariants:
 //   - MemoryAccess IDs are dense, starting at 1 (0 = LiveOnEntry sentinel).
@@ -128,12 +127,11 @@ class MemorySSA {
 /// @details
 /// Construction proceeds in three phases:
 /// 1. **Identify non-escaping allocas**: only allocas whose address does not
-///    flow to a call or get stored elsewhere are eligible for precise tracking.
-///    Stores to escaping allocas conservatively use the global LiveOnEntry def.
-/// 2. **RPO scan**: In reverse-post-order, assign MemoryDef to every store and
-///    MemoryUse to every load, linking each Use to its reaching Def.  Calls are
-///    modelled as global Defs/Uses unless the access target is a non-escaping
-///    alloca, in which case the call is transparent.
+///    flow to a call or get stored elsewhere are eligible for call-transparency.
+/// 2. **Forward dataflow**: In reverse-post-order with worklist convergence,
+///    assign MemoryDef to every store and MemoryUse to every load, linking each
+///    Use to its reaching coarse memory version. Calls are treated as
+///    transparent when operating on non-escaping allocas.
 /// 3. **Dead-store detection**: After all def-use links are built, any MemoryDef
 ///    with no transitive MemoryUse consumers is a dead store.
 ///

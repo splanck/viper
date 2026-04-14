@@ -152,10 +152,14 @@ static void heap_sink(rt_pqueue_impl *h, int64_t k) {
     }
 }
 
+/// @brief Construct a min-heap priority queue (smallest priority extracted first). Default
+/// behavior — call `_new_max` for a max-heap.
 void *rt_pqueue_new(void) {
     return rt_pqueue_new_max(0); // Default to min-heap
 }
 
+/// @brief Construct a priority queue. `is_max=1` makes it a max-heap (largest priority first);
+/// `is_max=0` makes it a min-heap. Internal storage is a binary heap on a dynamic array.
 void *rt_pqueue_new_max(int8_t is_max) {
     rt_pqueue_impl *h = (rt_pqueue_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_pqueue_impl));
     if (!h) {
@@ -177,24 +181,29 @@ void *rt_pqueue_new_max(int8_t is_max) {
     return h;
 }
 
+/// @brief Number of items currently in the queue.
 int64_t rt_pqueue_len(void *obj) {
     if (!obj)
         return 0;
     return ((rt_pqueue_impl *)obj)->len;
 }
 
+/// @brief Returns 1 if the queue has no items.
 int8_t rt_pqueue_is_empty(void *obj) {
     if (!obj)
         return 1;
     return ((rt_pqueue_impl *)obj)->len == 0 ? 1 : 0;
 }
 
+/// @brief Returns 1 if the queue is a max-heap, 0 if min-heap.
 int8_t rt_pqueue_is_max(void *obj) {
     if (!obj)
         return 0;
     return ((rt_pqueue_impl *)obj)->is_max;
 }
 
+/// @brief Insert `val` with the given `priority`. O(log n) — sift-up to restore heap order.
+/// Auto-grows internal storage when capacity is reached.
 void rt_pqueue_push(void *obj, int64_t priority, void *val) {
     if (!obj)
         rt_trap("Heap.Push: null heap");
@@ -214,6 +223,8 @@ void rt_pqueue_push(void *obj, int64_t priority, void *val) {
     heap_swim(h, h->len - 1);
 }
 
+/// @brief Remove and return the highest-priority item. O(log n) — replace root with last
+/// element then sift-down. Traps if the queue is empty (use `_try_pop` for safe variant).
 void *rt_pqueue_pop(void *obj) {
     if (!obj)
         rt_trap("Heap.Pop: null heap");
@@ -236,6 +247,7 @@ void *rt_pqueue_pop(void *obj) {
     return val;
 }
 
+/// @brief Look at the highest-priority item without removing it. Traps on empty queue.
 void *rt_pqueue_peek(void *obj) {
     if (!obj)
         rt_trap("Heap.Peek: null heap");
@@ -249,6 +261,7 @@ void *rt_pqueue_peek(void *obj) {
     return h->items[0].value;
 }
 
+/// @brief Like `_pop` but returns NULL on an empty queue instead of trapping.
 void *rt_pqueue_try_pop(void *obj) {
     if (!obj)
         return NULL;
@@ -269,6 +282,7 @@ void *rt_pqueue_try_pop(void *obj) {
     return val;
 }
 
+/// @brief Like `_peek` but returns NULL on an empty queue instead of trapping.
 void *rt_pqueue_try_peek(void *obj) {
     if (!obj)
         return NULL;
@@ -281,6 +295,7 @@ void *rt_pqueue_try_peek(void *obj) {
     return h->items[0].value;
 }
 
+/// @brief Reset the queue to empty (length 0). Capacity is preserved.
 void rt_pqueue_clear(void *obj) {
     if (!obj)
         return;
@@ -289,6 +304,8 @@ void rt_pqueue_clear(void *obj) {
     h->len = 0;
 }
 
+/// @brief Drain a copy of the queue into a Seq, ordered by priority. The original queue is
+/// preserved (operates on a temporary clone).
 void *rt_pqueue_to_seq(void *obj) {
     if (!obj)
         rt_trap("Heap.ToSeq: null heap");

@@ -43,6 +43,7 @@
 // Extended String Utilities
 //=============================================================================
 
+/// @brief Return a copy of `str` with the first byte uppercased (rest unchanged). ASCII-only.
 rt_string rt_str_capitalize(rt_string str) {
     if (!str)
         return rt_string_from_bytes("", 0);
@@ -59,6 +60,7 @@ rt_string rt_str_capitalize(rt_string str) {
     return result;
 }
 
+/// @brief Title-case: capitalize the first letter of every whitespace-separated word. ASCII-only.
 rt_string rt_str_title(rt_string str) {
     if (!str)
         return rt_string_from_bytes("", 0);
@@ -85,6 +87,8 @@ rt_string rt_str_title(rt_string str) {
     return result;
 }
 
+/// @brief Strip `prefix` from the start of `str` if present. Returns a copy of `str` unchanged
+/// if it doesn't start with `prefix`.
 rt_string rt_str_remove_prefix(rt_string str, rt_string prefix) {
     if (!str)
         return rt_string_from_bytes("", 0);
@@ -102,6 +106,8 @@ rt_string rt_str_remove_prefix(rt_string str, rt_string prefix) {
     return rt_string_from_bytes(str->data, slen);
 }
 
+/// @brief Strip `suffix` from the end of `str` if present. Returns a copy of `str` unchanged
+/// if it doesn't end with `suffix`.
 rt_string rt_str_remove_suffix(rt_string str, rt_string suffix) {
     if (!str)
         return rt_string_from_bytes("", 0);
@@ -119,6 +125,8 @@ rt_string rt_str_remove_suffix(rt_string str, rt_string suffix) {
     return rt_string_from_bytes(str->data, slen);
 }
 
+/// @brief Find the *last* occurrence of `needle` within `haystack`. Returns the 1-based byte
+/// position of the match, or 0 if not found / either operand is empty.
 int64_t rt_str_last_index_of(rt_string haystack, rt_string needle) {
     if (!haystack || !needle)
         return 0;
@@ -134,6 +142,8 @@ int64_t rt_str_last_index_of(rt_string haystack, rt_string needle) {
     return 0;
 }
 
+/// @brief Strip every occurrence of the first byte of `ch` from both ends of `str`. Useful for
+/// quoting/dequoting. Only the first byte of `ch` is examined; pass a single character.
 rt_string rt_str_trim_char(rt_string str, rt_string ch) {
     if (!str)
         return rt_string_from_bytes("", 0);
@@ -158,6 +168,8 @@ rt_string rt_str_trim_char(rt_string str, rt_string ch) {
     return rt_string_from_bytes(str->data + start, end - start);
 }
 
+/// @brief URL-friendly slugification: lowercase ASCII alnums kept as-is, runs of other bytes
+/// collapsed to a single '-'. Trailing '-' trimmed. Useful for filenames and URL paths.
 rt_string rt_str_slug(rt_string str) {
     if (!str)
         return rt_string_from_bytes("", 0);
@@ -193,6 +205,9 @@ rt_string rt_str_slug(rt_string str) {
 // String Similarity / Distance
 // ---------------------------------------------------------------------------
 
+/// @brief Compute the Levenshtein edit distance between two strings — the minimum number of
+/// single-character insertions, deletions, or substitutions to transform `a` into `b`. O(|a|*|b|)
+/// time and O(min(|a|,|b|)) space (uses the rolling-row optimization).
 int64_t rt_str_levenshtein(rt_string a, rt_string b) {
     if (!a && !b)
         return 0;
@@ -247,6 +262,8 @@ int64_t rt_str_levenshtein(rt_string a, rt_string b) {
     return result;
 }
 
+/// @brief Jaro string similarity, [0, 1] (1 = identical, 0 = no common characters within the
+/// matching window). Window size = max(|a|, |b|)/2 - 1. Counts matches and transpositions.
 double rt_str_jaro(rt_string a, rt_string b) {
     if (!a && !b)
         return 1.0;
@@ -316,6 +333,9 @@ double rt_str_jaro(rt_string a, rt_string b) {
            3.0;
 }
 
+/// @brief Jaro-Winkler similarity: Jaro plus a bonus for matching prefixes (up to 4 chars).
+/// Better suited than Jaro for short strings and proper-noun matching where shared prefixes
+/// are highly informative.
 double rt_str_jaro_winkler(rt_string a, rt_string b) {
     double jaro = rt_str_jaro(a, b);
 
@@ -343,6 +363,8 @@ double rt_str_jaro_winkler(rt_string a, rt_string b) {
     return jaro + (double)prefix * p * (1.0 - jaro);
 }
 
+/// @brief Hamming distance: number of byte positions at which `a` and `b` differ. Both strings
+/// must have the same length; returns -1 if they don't.
 int64_t rt_str_hamming(rt_string a, rt_string b) {
     size_t alen = a ? rt_string_len_bytes(a) : 0;
     size_t blen = b ? rt_string_len_bytes(b) : 0;
@@ -419,6 +441,9 @@ static int split_words(
     return wcount;
 }
 
+/// @brief Convert "hello world" / "hello-world" / "hello_world" to "helloWorld". First word
+/// stays lowercase; subsequent words have their first letter capitalized. Word separators
+/// (whitespace, '-', '_') are dropped.
 rt_string rt_str_camel_case(rt_string str) {
     if (!str)
         return rt_string_from_bytes("", 0);
@@ -457,6 +482,7 @@ rt_string rt_str_camel_case(rt_string str) {
     return result;
 }
 
+/// @brief Convert to "HelloWorld" — like camelCase but the first letter is also capitalized.
 rt_string rt_str_pascal_case(rt_string str) {
     if (!str)
         return rt_string_from_bytes("", 0);
@@ -494,6 +520,8 @@ rt_string rt_str_pascal_case(rt_string str) {
     return result;
 }
 
+/// @brief Convert to "hello_world": insert '_' before each capital letter (after the first),
+/// then lowercase. Word separators (whitespace, '-') become '_'.
 rt_string rt_str_snake_case(rt_string str) {
     if (!str)
         return rt_string_from_bytes("", 0);
@@ -528,6 +556,7 @@ rt_string rt_str_snake_case(rt_string str) {
     return result;
 }
 
+/// @brief Convert to "hello-world": like snake_case but with '-' separators.
 rt_string rt_str_kebab_case(rt_string str) {
     if (!str)
         return rt_string_from_bytes("", 0);
@@ -562,6 +591,7 @@ rt_string rt_str_kebab_case(rt_string str) {
     return result;
 }
 
+/// @brief Convert to "HELLO_WORLD": uppercase snake_case (constant-style identifier).
 rt_string rt_str_screaming_snake(rt_string str) {
     if (!str)
         return rt_string_from_bytes("", 0);
@@ -671,6 +701,8 @@ static int8_t like_match(
     return pi == plen ? 1 : 0;
 }
 
+/// @brief SQL LIKE-style pattern match (case-sensitive). `%` matches any byte sequence,
+/// `_` matches a single byte. Returns 1 on match, 0 otherwise.
 int8_t rt_str_like(rt_string text, rt_string pattern) {
     size_t tlen = rt_string_len_bytes(text);
     size_t plen = rt_string_len_bytes(pattern);
@@ -679,6 +711,7 @@ int8_t rt_str_like(rt_string text, rt_string pattern) {
     return like_match(t, tlen, p, plen, 0);
 }
 
+/// @brief Case-insensitive variant of `_like`. ASCII-only for case folding (a-z ↔ A-Z).
 int8_t rt_str_like_ci(rt_string text, rt_string pattern) {
     size_t tlen = rt_string_len_bytes(text);
     size_t plen = rt_string_len_bytes(pattern);

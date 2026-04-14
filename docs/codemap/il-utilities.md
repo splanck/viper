@@ -1,7 +1,7 @@
 ---
 status: active
 audience: contributors
-last-verified: 2026-04-09
+last-verified: 2026-04-13
 ---
 
 # CODEMAP: IL Utilities
@@ -16,7 +16,7 @@ Shared IL helper functions (`src/il/utils/`).
 
 | File             | Purpose                                                 |
 |------------------|---------------------------------------------------------|
-| `UseDefInfo.cpp` | Use-def chain tracking implementation                   |
-| `UseDefInfo.hpp` | Use-def chain tracking for efficient SSA value replacement |
+| `UseDefInfo.cpp` | Temp-use counting and safe SSA value replacement implementation |
+| `UseDefInfo.hpp` | Temp-use counting plus mutation-safe replacement helper |
 | `Utils.cpp`      | IR queries implementation                                                                          |
 | `Utils.hpp`      | IR queries: block membership, terminator classification, value replacement, next temp ID, block find |

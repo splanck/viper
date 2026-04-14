@@ -94,6 +94,10 @@ static void invalidate_all_chunks(rt_terrain3d *t) {
     }
 }
 
+/// @brief Construct a `width × depth` heightmap terrain (heights initially zero). Allocates
+/// chunked mesh caches at three LOD levels plus per-chunk AABB storage. Default scale 1×1×1,
+/// LOD switches at 100/250 world units, 2-unit crack-hiding skirts. Traps if dimensions are
+/// outside [2, 4096] or on allocation failure.
 void *rt_terrain3d_new(int64_t width, int64_t depth) {
     if (width < 2 || depth < 2 || width > 4096 || depth > 4096) {
         rt_trap("Terrain3D.New: dimensions must be 2-4096");
@@ -136,6 +140,9 @@ void *rt_terrain3d_new(int64_t width, int64_t depth) {
 extern double rt_perlin_octave2d(
     void *obj, double x, double y, int64_t octaves, double persistence);
 
+/// @brief Fill heights directly from a Perlin noise object (octave fractal sum), bypassing the
+/// Pixels intermediate. Output values are mapped from [-1, 1] to [0, 1]. `scale` controls the
+/// noise frequency (higher = more detail). Invalidates all cached chunk meshes.
 void rt_terrain3d_generate_perlin(
     void *obj, void *perlin, double scale, int64_t octaves, double persistence) {
     if (!obj || !perlin)
@@ -157,6 +164,9 @@ void rt_terrain3d_generate_perlin(
     invalidate_all_chunks(t);
 }
 
+/// @brief Resample a Pixels heightmap into the terrain's height grid. Reads 16-bit precision per
+/// sample (R = high byte, G = low byte) for smooth gradients without staircasing. Source pixels
+/// are nearest-neighbor sampled to the terrain resolution. Invalidates all cached chunk meshes.
 void rt_terrain3d_set_heightmap(void *obj, void *pixels) {
     if (!obj || !pixels)
         return;
@@ -193,11 +203,17 @@ void rt_terrain3d_set_heightmap(void *obj, void *pixels) {
     invalidate_all_chunks(t);
 }
 
+/// @brief Attach a Material3D used when rendering chunks. Required before draw — the chunks are
+/// rendered with this material, optionally overridden by the splat-bake texture if a splat map
+/// is set. Does not invalidate chunks (the mesh data is independent of the material).
 void rt_terrain3d_set_material(void *obj, void *material) {
     if (obj)
         ((rt_terrain3d *)obj)->material = material;
 }
 
+/// @brief Set per-axis world-space scale: `sx` and `sz` are grid-cell spacing in world units;
+/// `sy` is the height multiplier (heights in [0,1] become world-Y in [0, sy]). Invalidates
+/// cached chunks since vertex world positions change.
 void rt_terrain3d_set_scale(void *obj, double sx, double sy, double sz) {
     if (!obj)
         return;
@@ -208,6 +224,9 @@ void rt_terrain3d_set_scale(void *obj, double sx, double sy, double sz) {
     invalidate_all_chunks(t);
 }
 
+/// @brief Attach a splat-weight Pixels map. Each pixel's RGBA channels are the per-texel weights
+/// (normalized at bake time) for layers 0..3. Invalidates chunks so the next draw triggers a
+/// splat texture rebake.
 void rt_terrain3d_set_splat_map(void *obj, void *pixels) {
     if (!obj)
         return;
@@ -216,6 +235,8 @@ void rt_terrain3d_set_splat_map(void *obj, void *pixels) {
     invalidate_all_chunks(t);
 }
 
+/// @brief Set the texture for a splat layer (0..3). Layer index outside that range is silently
+/// ignored. Invalidates chunks so the next draw rebakes the splat texture with the new layer.
 void rt_terrain3d_set_layer_texture(void *obj, int64_t layer, void *pixels) {
     if (!obj || layer < 0 || layer >= TERRAIN_MAX_SPLAT_LAYERS)
         return;
@@ -224,6 +245,9 @@ void rt_terrain3d_set_layer_texture(void *obj, int64_t layer, void *pixels) {
     invalidate_all_chunks(t);
 }
 
+/// @brief Set UV-tiling scale for splat layer N. Higher values pack the layer texture into
+/// smaller tiles (more repetitions across the terrain). Invalidates chunks so the next draw
+/// rebakes the splat texture with the new tiling.
 void rt_terrain3d_set_layer_scale(void *obj, int64_t layer, double scale) {
     if (!obj || layer < 0 || layer >= TERRAIN_MAX_SPLAT_LAYERS)
         return;
@@ -270,6 +294,9 @@ static float sample_height(const rt_terrain3d *t, int32_t x, int32_t z) {
     return t->heights[z * t->width + x];
 }
 
+/// @brief Bilinearly sample the terrain height at world-space (wx, wz). Coordinates outside the
+/// grid are clamped to the nearest edge cell. Returns 0 for an invalid handle or a degenerate
+/// scale. Result is in world Y units (heights times scale[1]).
 double rt_terrain3d_get_height_at(void *obj, double wx, double wz) {
     if (!obj)
         return 0.0;
@@ -307,6 +334,9 @@ double rt_terrain3d_get_height_at(void *obj, double wx, double wz) {
     return (double)(h * (float)t->scale[1]);
 }
 
+/// @brief Compute the surface normal at world-space (wx, wz) using central-difference of the
+/// height grid. Returns a fresh Vec3 (always points "up-ish"; defaults to (0,1,0) on invalid
+/// input). Normal is normalized; useful for placing props or aligning rotations to slope.
 void *rt_terrain3d_get_normal_at(void *obj, double wx, double wz) {
     if (!obj)
         return rt_vec3_new(0, 1, 0);
@@ -617,6 +647,9 @@ static void *build_chunk(rt_terrain3d *t, int32_t cx, int32_t cz, int32_t step, 
     return mesh;
 }
 
+/// @brief Set chunk LOD switch distances. Within `near_dist` chunks render at full resolution;
+/// between near and far they use step=2 (¼ triangles); beyond `far_dist` they use step=4
+/// (1/16 triangles). Lower distances trade visual quality for triangle count.
 void rt_terrain3d_set_lod_distances(void *obj, double near_dist, double far_dist) {
     if (!obj)
         return;
@@ -625,6 +658,9 @@ void rt_terrain3d_set_lod_distances(void *obj, double near_dist, double far_dist
     t->lod_dist2 = (float)far_dist;
 }
 
+/// @brief Set the depth (world units) of the downward-extruded skirt geometry generated along
+/// LOD>0 chunk edges. Skirts hide T-junction cracks where adjacent chunks render at different
+/// LODs. Set to 0 to disable. Invalidates cached chunks (skirts are baked into the mesh).
 void rt_terrain3d_set_skirt_depth(void *obj, double depth) {
     if (!obj)
         return;
@@ -633,6 +669,10 @@ void rt_terrain3d_set_skirt_depth(void *obj, double depth) {
     invalidate_all_chunks(t);
 }
 
+/// @brief Render the terrain via the Canvas3D. Lazily builds chunk meshes on first draw, bakes
+/// the splat texture if needed, then for each chunk: (Phase A) frustum-cull against the cached
+/// view-projection AABB; (Phase B) pick LOD by distance to camera (XZ); finally enqueue the
+/// chosen mesh with the terrain material. No-op outside a frame or with no material set.
 void rt_canvas3d_draw_terrain(void *canvas_obj, void *terrain_obj) {
     if (!canvas_obj || !terrain_obj)
         return;

@@ -320,6 +320,11 @@ static void model_build_synth_mesh_nodes(rt_model3d *model) {
     }
 }
 
+/// @brief Load a 3D model from disk into a `rt_model3d` template — auto-detects format by file
+/// extension (.vscn, .gltf/.glb, .fbx). Collects meshes, materials, skeletons, animations, and
+/// the scene-node template tree from the source asset, retaining each component for the model's
+/// lifetime. Returns NULL (with a trap message) for invalid path / unsupported extension /
+/// underlying loader failure. Use `_instantiate` to spawn a clone in a live scene.
 void *rt_model3d_load(rt_string path) {
     const char *path_cstr = path ? rt_string_cstr(path) : NULL;
     rt_model3d *model;
@@ -425,22 +430,27 @@ fail:
     return NULL;
 }
 
+/// @brief Number of meshes loaded into this model.
 int64_t rt_model3d_get_mesh_count(void *obj) {
     return obj ? ((rt_model3d *)obj)->mesh_count : 0;
 }
 
+/// @brief Number of materials loaded into this model.
 int64_t rt_model3d_get_material_count(void *obj) {
     return obj ? ((rt_model3d *)obj)->material_count : 0;
 }
 
+/// @brief Number of skeletons (bone hierarchies) loaded into this model.
 int64_t rt_model3d_get_skeleton_count(void *obj) {
     return obj ? ((rt_model3d *)obj)->skeleton_count : 0;
 }
 
+/// @brief Number of animation clips loaded into this model.
 int64_t rt_model3d_get_animation_count(void *obj) {
     return obj ? ((rt_model3d *)obj)->animation_count : 0;
 }
 
+/// @brief Number of scene nodes in the template subtree (excludes the synthetic root).
 int64_t rt_model3d_get_node_count(void *obj) {
     rt_model3d *model = (rt_model3d *)obj;
     if (!model || !model->template_root)
@@ -448,6 +458,7 @@ int64_t rt_model3d_get_node_count(void *obj) {
     return model_count_subtree(model->template_root) - 1;
 }
 
+/// @brief Borrow the i-th Mesh3D (NULL on out-of-range). Caller must NOT release; the model owns it.
 void *rt_model3d_get_mesh(void *obj, int64_t index) {
     rt_model3d *model = (rt_model3d *)obj;
     if (!model || index < 0 || index >= model->mesh_count)
@@ -455,6 +466,7 @@ void *rt_model3d_get_mesh(void *obj, int64_t index) {
     return model->meshes[index];
 }
 
+/// @brief Borrow the i-th Material3D (NULL on out-of-range).
 void *rt_model3d_get_material(void *obj, int64_t index) {
     rt_model3d *model = (rt_model3d *)obj;
     if (!model || index < 0 || index >= model->material_count)
@@ -462,6 +474,7 @@ void *rt_model3d_get_material(void *obj, int64_t index) {
     return model->materials[index];
 }
 
+/// @brief Borrow the i-th Skeleton3D (NULL on out-of-range).
 void *rt_model3d_get_skeleton(void *obj, int64_t index) {
     rt_model3d *model = (rt_model3d *)obj;
     if (!model || index < 0 || index >= model->skeleton_count)
@@ -469,6 +482,7 @@ void *rt_model3d_get_skeleton(void *obj, int64_t index) {
     return model->skeletons[index];
 }
 
+/// @brief Borrow the i-th Animation3D clip (NULL on out-of-range).
 void *rt_model3d_get_animation(void *obj, int64_t index) {
     rt_model3d *model = (rt_model3d *)obj;
     if (!model || index < 0 || index >= model->animation_count)
@@ -476,6 +490,7 @@ void *rt_model3d_get_animation(void *obj, int64_t index) {
     return model->animations[index];
 }
 
+/// @brief Locate a node in the template subtree by exact name match. NULL if not found.
 void *rt_model3d_find_node(void *obj, rt_string name) {
     rt_model3d *model = (rt_model3d *)obj;
     if (!model || !model->template_root)
@@ -483,6 +498,9 @@ void *rt_model3d_find_node(void *obj, rt_string name) {
     return rt_scene_node3d_find(model->template_root, name);
 }
 
+/// @brief Clone the template into an independent SceneNode3D subtree (with synthetic root).
+/// Each instantiation creates a fresh deep-copy of the node hierarchy, suitable for adding to
+/// a live scene without disturbing the template. Underlying meshes/materials are shared.
 void *rt_model3d_instantiate(void *obj) {
     rt_model3d *model = (rt_model3d *)obj;
     if (!model || !model->template_root)
@@ -490,6 +508,8 @@ void *rt_model3d_instantiate(void *obj) {
     return model_clone_node(model->template_root);
 }
 
+/// @brief Build a fresh Scene3D from the template's children, cloning each one. Use when the
+/// caller wants the model exposed as a top-level scene rather than a node subtree.
 void *rt_model3d_instantiate_scene(void *obj) {
     rt_model3d *model = (rt_model3d *)obj;
     rt_scene3d *scene;

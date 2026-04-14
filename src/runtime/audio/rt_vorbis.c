@@ -45,6 +45,14 @@ typedef struct {
     int bit_pos; // 0..7 within current byte
 } vorbis_bits_t;
 
+// ---------------------------------------------------------------------------
+// LSB-first bitstream reader. Vorbis packets store data with the
+// least-significant bit of the first byte coming out first
+// (different from H.264 / JPEG, which read MSB-first). This
+// in-memory reader walks the byte array bit by bit.
+// ---------------------------------------------------------------------------
+
+/// @brief Reset a bitstream onto a fresh byte buffer (`byte_pos = 0`, `bit_pos = 0`).
 static void bits_init(vorbis_bits_t *b, const uint8_t *data, size_t len) {
     b->data = data;
     b->len = len;
@@ -52,6 +60,8 @@ static void bits_init(vorbis_bits_t *b, const uint8_t *data, size_t len) {
     b->bit_pos = 0;
 }
 
+/// @brief Pull `count` bits (LSB-first into `val`) from the bitstream. Returns 0 if EOF.
+/// `count` is clamped to [1, 32]; assembles the bits into a uint32 with bit 0 being the first read.
 static uint32_t bits_read(vorbis_bits_t *b, int count) {
     if (count <= 0 || count > 32)
         return 0;
@@ -70,10 +80,12 @@ static uint32_t bits_read(vorbis_bits_t *b, int count) {
     return val;
 }
 
+/// @brief Convenience: read a single bit and return 0 or 1.
 static int bits_read1(vorbis_bits_t *b) {
     return (int)bits_read(b, 1);
 }
 
+/// @brief True if the cursor has consumed every byte in the bitstream.
 static int bits_eof(const vorbis_bits_t *b) {
     return b->byte_pos >= b->len;
 }
@@ -82,6 +94,8 @@ static int bits_eof(const vorbis_bits_t *b) {
 // ilog — integer log2 (position of highest set bit)
 //===----------------------------------------------------------------------===//
 
+/// @brief Position of the highest set bit + 1 (Vorbis spec's `ilog`). 0 for `v=0`.
+/// Equivalent to `floor(log2(v)) + 1` for v > 0.
 static int ilog(uint32_t v) {
     int r = 0;
     while (v > 0) {
@@ -112,6 +126,10 @@ typedef struct {
     int sorted_count;
 } vorbis_codebook_t;
 
+/// @brief Decode the Vorbis-specific 32-bit float layout (sign + 10-bit exponent + 21-bit mantissa).
+///
+/// Used to unpack scalar lookup-table values from the codebook
+/// section of the setup header.
 static float float32_unpack(uint32_t val) {
     int mantissa = (int)(val & 0x1FFFFF);
     int sign = (int)(val & 0x80000000);
@@ -121,7 +139,13 @@ static float float32_unpack(uint32_t val) {
     return (float)ldexp((double)mantissa, exponent - 788);
 }
 
-// Build sorted codeword table for Huffman decoding
+/// @brief Construct the sorted (code, index) table used by Huffman decoding.
+///
+/// Walks the codebook's per-entry length array, assigning canonical
+/// codewords via the Vorbis spec's marker-array algorithm. Reverses
+/// each codeword to match the LSB-first bitstream reader so the
+/// `codebook_decode_scalar` linear scan can match without further
+/// transformation.
 static void codebook_build_tree(vorbis_codebook_t *cb) {
     // Count valid entries
     int count = 0;
@@ -167,6 +191,11 @@ static void codebook_build_tree(vorbis_codebook_t *cb) {
     }
 }
 
+/// @brief Decode one Huffman symbol from `b` against codebook `cb`.
+///
+/// Linear-scan over the sorted table — fine because Vorbis
+/// codebooks are typically small. Reads bits until a length+value
+/// pair matches; returns the entry index, or -1 on EOF / no-match.
 static int codebook_decode_scalar(vorbis_codebook_t *cb, vorbis_bits_t *b) {
     if (cb->sorted_count == 0)
         return -1;
@@ -191,6 +220,8 @@ static int codebook_decode_scalar(vorbis_codebook_t *cb, vorbis_bits_t *b) {
     return -1;
 }
 
+/// @brief Look up the `entry`-th vector in the codebook's VQ table.
+/// Out-of-range entries write zeros (defensive — should not happen with valid streams).
 static void codebook_decode_vq(vorbis_codebook_t *cb, int entry, float *out) {
     if (cb->vq_table && entry >= 0 && entry < cb->entries) {
         memcpy(out, cb->vq_table + entry * cb->dimensions, (size_t)cb->dimensions * sizeof(float));
@@ -301,6 +332,11 @@ struct vorbis_decoder {
 // Window functions
 //===----------------------------------------------------------------------===//
 
+/// @brief Build the MDCT window of length `n` (half-cosine bell, Vorbis spec §1.3.2).
+///
+/// Lazily computed once per block size and cached. The window
+/// shape is `sin(0.5 * π * sin²(π/(2n) * (i+0.5)))` so adjacent
+/// overlapping frames sum to 1.0 (perfect reconstruction).
 static float *make_window(int n) {
     float *w = (float *)malloc((size_t)n * sizeof(float));
     if (!w)
@@ -457,6 +493,11 @@ void vorbis_decoder_free(vorbis_decoder_t *dec) {
 // Header decoding
 //===----------------------------------------------------------------------===//
 
+/// @brief Parse the Vorbis identification header packet (sample rate, channels, block sizes).
+///
+/// First of three required setup packets per §4.2.2. Validates the
+/// version byte and the two block size hints.
+/// @return 0 on success, -1 on malformed header.
 static int decode_identification(vorbis_decoder_t *dec, const uint8_t *data, size_t len) {
     if (len < 30)
         return -1;
@@ -499,6 +540,7 @@ static int decode_identification(vorbis_decoder_t *dec, const uint8_t *data, siz
     return 0;
 }
 
+/// @brief Skip the comment header packet — we don't surface metadata to the runtime.
 static int decode_comment(vorbis_decoder_t *dec, const uint8_t *data, size_t len) {
     (void)dec;
     // Verify "\x03vorbis"
@@ -508,6 +550,14 @@ static int decode_comment(vorbis_decoder_t *dec, const uint8_t *data, size_t len
     return 0;
 }
 
+/// @brief Parse the Vorbis setup header — codebooks, floor configurations, residue, mappings, modes.
+///
+/// The largest of the three setup packets. Allocates the
+/// codebook array (one per declared codebook), expands each
+/// codebook's VQ table from packed multiplicands, builds the
+/// Huffman lookup, then parses floor / residue / mapping / mode
+/// configurations needed to interpret data packets.
+/// @return 0 on success, -1 on any parse failure.
 static int decode_setup(vorbis_decoder_t *dec, const uint8_t *data, size_t len) {
     if (len < 7 || data[0] != 5 || memcmp(data + 1, "vorbis", 6) != 0)
         return -1;
@@ -783,6 +833,16 @@ int vorbis_decode_header(vorbis_decoder_t *dec, const uint8_t *data, size_t len,
 // Audio packet decoding
 //===----------------------------------------------------------------------===//
 
+/// @brief Decode one audio packet — produces `n/4 .. n/2` PCM samples per channel.
+///
+/// For each packet:
+///   1. Read mode byte and per-channel floor configuration.
+///   2. Decode floor curves and residue vectors.
+///   3. Apply channel coupling / submap demixing.
+///   4. Inverse-MDCT the spectrum to time-domain samples.
+///   5. Multiply by the windowing function and overlap-add with
+///      the previous frame's tail (`overlap_buf`).
+/// @return Number of PCM samples per channel emitted, or -1 on malformed packet.
 int vorbis_decode_packet(
     vorbis_decoder_t *dec, const uint8_t *data, size_t len, int16_t **out_pcm, int *out_samples) {
     if (!dec || !data || dec->headers_done != 7)

@@ -158,7 +158,7 @@ class VMContext {
     /// clear diagnostic message indicating which opcode is missing.
     ///
     /// @param opcode The unimplemented opcode that was encountered.
-    [[noreturn]] void trapUnimplemented(il::core::Opcode opcode) const;
+    void trapUnimplemented(il::core::Opcode opcode) const;
 
     /// @brief Emits trace output for debugging/profiling instruction execution.
     ///

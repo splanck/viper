@@ -51,6 +51,10 @@
 #define AES_STR_HEADER_LEN 36
 #define AES_STR_PBKDF2_ITERATIONS 100000U
 
+/// @brief Zero out `len` bytes at `ptr` in a way that the optimizer can't elide.
+///
+/// `volatile uint8_t*` write defeats dead-store elimination so
+/// transient key material in stack buffers really does get cleared.
 static void aes_secure_zero(void *ptr, size_t len) {
     volatile uint8_t *p = (volatile uint8_t *)ptr;
     while (len-- > 0)
@@ -793,6 +797,12 @@ void *rt_aes_decrypt(void *data, void *key, void *iv) {
 /// For production-grade security, use PBKDF2-HMAC-SHA256 with a random salt.
 #define DERIVE_KEY_ROUNDS 10000
 
+/// @brief Legacy v0/v1 key derivation — single-pass SHA-256 of the password.
+///
+/// Kept for backward-compatibility decryption only; new encryptions
+/// must use `derive_key_pbkdf2`. Insecure (no salt, single iteration)
+/// and only retained to read existing ciphertexts created with the
+/// pre-v2 format.
 static void derive_key_legacy(const char *password, uint8_t key[32]) {
     size_t pass_len = password ? strlen(password) : 0;
 
@@ -830,6 +840,11 @@ static void derive_key_legacy(const char *password, uint8_t key[32]) {
 
 #undef DERIVE_KEY_ROUNDS
 
+/// @brief Modern PBKDF2-HMAC-SHA256 key derivation — used by all v2+ encryptions.
+///
+/// 100,000 iterations (`AES_STR_PBKDF2_ITERATIONS`) of HMAC-SHA256
+/// over `(password, salt)` produce the 32-byte AES key. The high
+/// iteration count makes brute-force attacks cost-prohibitive.
 static void derive_key_pbkdf2(const char *password,
                               const uint8_t *salt,
                               size_t salt_len,
@@ -840,10 +855,16 @@ static void derive_key_pbkdf2(const char *password,
         (const uint8_t *)(password ? password : ""), pass_len, salt, salt_len, iterations, key, 16);
 }
 
+/// @brief Fill `buf` with `len` cryptographically secure random bytes (delegates to the OS RNG).
 static void generate_random_bytes(uint8_t *buf, size_t len) {
     rt_crypto_random_bytes(buf, len);
 }
 
+/// @brief Detect whether a raw byte stream looks like a v2+ GCM-string-format payload.
+///
+/// Checks the 4-byte magic prefix that distinguishes the new
+/// PBKDF2+GCM format from the legacy CBC format, so the decryptor
+/// can dispatch to the right routine.
 static int aes_is_gcm_string_payload(const uint8_t *data, size_t len) {
     return len >= AES_STR_HEADER_LEN && data[0] == AES_STR_MAGIC0 && data[1] == AES_STR_MAGIC1 &&
            data[2] == AES_STR_MAGIC2 && data[3] == AES_STR_MAGIC3;

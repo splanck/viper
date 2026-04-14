@@ -161,6 +161,9 @@ static sa_slot *sa_find(rt_sparse_impl *sa, int64_t key) {
 
 // --- Public API ---
 
+/// @brief Construct a sparse array (int64 → value). Open-addressed hash with linear probing,
+/// capacity grows past 70% load. Suitable when most indices in a logical range are unused
+/// (e.g., entity IDs scattered across a wide ID space).
 void *rt_sparse_new(void) {
     rt_sparse_impl *sa = (rt_sparse_impl *)rt_obj_new_i64(0, sizeof(rt_sparse_impl));
     sa->count = 0;
@@ -181,6 +184,7 @@ int64_t rt_sparse_len(void *obj) {
     return ((rt_sparse_impl *)obj)->count;
 }
 
+/// @brief Read the value stored at `index`, or NULL if absent.
 void *rt_sparse_get(void *obj, int64_t index) {
     if (!obj)
         return NULL;
@@ -262,6 +266,8 @@ int8_t rt_sparse_remove(void *obj, int64_t index) {
     return 1;
 }
 
+/// @brief Return a Seq of every populated index (cast to void* — ints stored as pointers).
+/// Slot-iteration order, not insertion order. Snapshot at call time.
 void *rt_sparse_indices(void *obj) {
     void *seq = rt_seq_new();
     if (!obj)
@@ -274,6 +280,7 @@ void *rt_sparse_indices(void *obj) {
     return seq;
 }
 
+/// @brief Return a Seq of every stored value (parallel to `_indices` order).
 void *rt_sparse_values(void *obj) {
     void *seq = rt_seq_new();
     if (!obj)

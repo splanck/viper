@@ -42,14 +42,19 @@
 // Drawing Primitives  (color format: 0x00RRGGBB — Canvas-compatible)
 //=============================================================================
 
+/// @brief Write an opaque RGB pixel (color in 0x00RRGGBB format, alpha forced to 0xFF).
+/// Out-of-bounds is a silent no-op (delegates to `rt_pixels_set`).
 void rt_pixels_set_rgb(void *pixels, int64_t x, int64_t y, int64_t color) {
     rt_pixels_set(pixels, x, y, (color << 8) | 0xFF);
 }
 
+/// @brief Read an RGB pixel (returns 0x00RRGGBB, dropping the alpha channel).
 int64_t rt_pixels_get_rgb(void *pixels, int64_t x, int64_t y) {
     return rt_pixels_get(pixels, x, y) >> 8;
 }
 
+/// @brief Draw a 1-pixel-wide line between (x1,y1) and (x2,y2) using Bresenham.
+/// Color is 0x00RRGGBB. Out-of-bounds pixels along the line are clipped silently.
 void rt_pixels_draw_line(
     void *pixels, int64_t x1, int64_t y1, int64_t x2, int64_t y2, int64_t color) {
     if (!pixels) {
@@ -88,6 +93,8 @@ void rt_pixels_draw_line(
     }
 }
 
+/// @brief Fill an axis-aligned rectangle with @p color (0x00RRGGBB).
+/// Auto-clipped to buffer bounds; rectangles entirely outside are no-ops.
 void rt_pixels_draw_box(void *pixels, int64_t x, int64_t y, int64_t w, int64_t h, int64_t color) {
     if (!pixels) {
         rt_trap("Pixels.DrawBox: null pixels");
@@ -115,6 +122,8 @@ void rt_pixels_draw_box(void *pixels, int64_t x, int64_t y, int64_t w, int64_t h
             p->data[row * p->width + col] = rgba;
 }
 
+/// @brief Draw a 1-pixel-wide rectangle outline (top/bottom rows + side columns).
+/// Inverse of `_draw_box`. Color is 0x00RRGGBB.
 void rt_pixels_draw_frame(void *pixels, int64_t x, int64_t y, int64_t w, int64_t h, int64_t color) {
     if (!pixels) {
         rt_trap("Pixels.DrawFrame: null pixels");
@@ -140,6 +149,8 @@ void rt_pixels_draw_frame(void *pixels, int64_t x, int64_t y, int64_t w, int64_t
     }
 }
 
+/// @brief Fill a circle of radius @p r centered at (cx,cy) with @p color (0x00RRGGBB).
+/// Uses integer square root for span widths — no floating point.
 void rt_pixels_draw_disc(void *pixels, int64_t cx, int64_t cy, int64_t r, int64_t color) {
     if (!pixels) {
         rt_trap("Pixels.DrawDisc: null pixels");
@@ -160,6 +171,8 @@ void rt_pixels_draw_disc(void *pixels, int64_t cx, int64_t cy, int64_t r, int64_
     }
 }
 
+/// @brief Draw a 1-pixel-wide circle outline (Midpoint algorithm with 8-way symmetry).
+/// Inverse of `_draw_disc`. Color is 0x00RRGGBB.
 void rt_pixels_draw_ring(void *pixels, int64_t cx, int64_t cy, int64_t r, int64_t color) {
     if (!pixels) {
         rt_trap("Pixels.DrawRing: null pixels");
@@ -201,6 +214,8 @@ void rt_pixels_draw_ring(void *pixels, int64_t cx, int64_t cy, int64_t r, int64_
     }
 }
 
+/// @brief Fill an ellipse with X/Y radii (rx, ry) centered at (cx, cy).
+/// Scanline rasterization in pure integer arithmetic.
 void rt_pixels_draw_ellipse(
     void *pixels, int64_t cx, int64_t cy, int64_t rx, int64_t ry, int64_t color) {
     if (!pixels) {
@@ -231,6 +246,7 @@ void rt_pixels_draw_ellipse(
     }
 }
 
+/// @brief Draw a 1-pixel-wide ellipse outline using midpoint algorithm with 4-quadrant symmetry.
 void rt_pixels_draw_ellipse_frame(
     void *pixels, int64_t cx, int64_t cy, int64_t rx, int64_t ry, int64_t color) {
     if (!pixels) {
@@ -295,6 +311,10 @@ void rt_pixels_draw_ellipse_frame(
     }
 }
 
+/// @brief Replace the connected region of pixels matching the seed color with @p color.
+/// Uses an iterative scanline algorithm with a malloc'd worklist (no recursion,
+/// no stack overflow risk on large images). Aborts silently on allocation failure
+/// or capacity overflow rather than partially filling.
 void rt_pixels_flood_fill(void *pixels, int64_t x, int64_t y, int64_t color) {
     if (!pixels) {
         rt_trap("Pixels.FloodFill: null pixels");
@@ -393,6 +413,8 @@ void rt_pixels_flood_fill(void *pixels, int64_t x, int64_t y, int64_t color) {
     free(stack);
 }
 
+/// @brief Draw a line of arbitrary thickness by stamping filled discs along the path.
+/// Falls back to the 1-pixel `_draw_line` when @p thickness <= 1.
 void rt_pixels_draw_thick_line(void *pixels,
                                int64_t x1,
                                int64_t y1,
@@ -438,6 +460,9 @@ void rt_pixels_draw_thick_line(void *pixels,
     }
 }
 
+/// @brief Fill a solid triangle defined by three vertices using scanline rasterization.
+/// Vertices are sorted top-to-bottom internally; degenerate (collinear) triangles
+/// produce no output.
 void rt_pixels_draw_triangle(void *pixels,
                              int64_t x1,
                              int64_t y1,
@@ -516,6 +541,8 @@ void rt_pixels_draw_triangle(void *pixels,
     }
 }
 
+/// @brief Draw a quadratic Bézier curve from (x1,y1) to (x2,y2) via control point.
+/// Step count is adaptive (capped at 10000) using integer de Casteljau evaluation.
 void rt_pixels_draw_bezier(void *pixels,
                            int64_t x1,
                            int64_t y1,
@@ -569,6 +596,8 @@ void rt_pixels_draw_bezier(void *pixels,
     }
 }
 
+/// @brief Composite an RGB pixel onto the buffer using Porter-Duff "over" with @p alpha [0..255].
+/// Fast paths: alpha==0 → no-op, alpha==255 → opaque write. Otherwise blends src over dst.
 void rt_pixels_blend_pixel(void *pixels, int64_t x, int64_t y, int64_t color, int64_t alpha) {
     if (!pixels) {
         rt_trap("Pixels.BlendPixel: null pixels");

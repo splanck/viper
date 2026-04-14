@@ -136,6 +136,8 @@ static void audio3d_set_forward_and_right(rt_audio3d_listener_state *state, cons
     state->right[2] = rz / rlen;
 }
 
+/// @brief Reset a listener-state struct to the canonical identity orientation.
+/// Origin position, zero velocity, forward = -Z, right = +X. Marks the state as valid.
 void rt_audio3d_listener_state_identity(rt_audio3d_listener_state *state) {
     if (!state)
         return;
@@ -149,6 +151,9 @@ void rt_audio3d_listener_state_identity(rt_audio3d_listener_state *state) {
     state->valid = 1;
 }
 
+/// @brief Populate a listener-state struct from explicit position/forward/velocity arrays.
+/// Forward is normalized; the right vector is derived (perpendicular in the XZ plane).
+/// Pass NULL for any component to default it to zero (or -Z forward).
 void rt_audio3d_listener_state_set(rt_audio3d_listener_state *state,
                                    const double *position,
                                    const double *forward,
@@ -161,6 +166,9 @@ void rt_audio3d_listener_state_set(rt_audio3d_listener_state *state,
     state->valid = 1;
 }
 
+/// @brief Read the listener state currently driving spatial audio.
+/// Returns the active AudioListener3D's state if one is bound; otherwise the
+/// fallback listener configured via `rt_audio3d_set_listener`.
 void rt_audio3d_get_effective_listener_state(rt_audio3d_listener_state *out_state) {
     if (!out_state)
         return;
@@ -171,6 +179,8 @@ void rt_audio3d_get_effective_listener_state(rt_audio3d_listener_state *out_stat
     *out_state = s_fallback_listener;
 }
 
+/// @brief Promote a listener-state snapshot to the active spatial-audio listener.
+/// Called by AudioListener3D.Activate. Passing NULL or invalid state clears.
 void rt_audio3d_set_active_listener_state(const rt_audio3d_listener_state *state) {
     if (!state || !state->valid) {
         rt_audio3d_clear_active_listener_state();
@@ -180,6 +190,7 @@ void rt_audio3d_set_active_listener_state(const rt_audio3d_listener_state *state
     s_has_active_listener = 1;
 }
 
+/// @brief Detach any active AudioListener3D and revert to the fallback listener.
 void rt_audio3d_clear_active_listener_state(void) {
     rt_audio3d_listener_state_identity(&s_active_listener);
     s_active_listener.valid = 0;
@@ -225,6 +236,16 @@ static int64_t lookup_voice_base_volume(int64_t voice) {
     return 100;
 }
 
+/// @brief Compute distance-attenuated volume and stereo pan for a 3D source.
+/// @details Linear distance falloff: vol = base * (1 - dist/max_dist), clamped
+/// to [0,100]. Pan = dot(source_direction, listener.right) * 100, clamped to
+/// [-100, 100]. Sources at the listener position receive centered pan.
+/// @param listener Active listener state (NULL → fallback).
+/// @param source_position World-space xyz of the source.
+/// @param max_dist Falloff radius; sources beyond this become silent.
+/// @param base_vol Pre-attenuation volume (0–100).
+/// @param out_vol Receives the attenuated volume.
+/// @param out_pan Receives the stereo pan (-100 left, 0 center, 100 right).
 void rt_audio3d_compute_voice_params(const rt_audio3d_listener_state *listener,
                                      const double *source_position,
                                      double max_dist,

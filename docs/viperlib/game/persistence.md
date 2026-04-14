@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-09
+last-verified: 2026-04-13
 ---
 
 # SaveData — Game Persistence
@@ -95,7 +95,7 @@ func start() {
 
 ### Atomic Writes
 
-`Save()` writes the complete JSON payload to a temporary file in the destination directory and then replaces the live save file. There is no incremental or append mode; each save writes the full state atomically.
+`Save()` writes the complete JSON payload to a temporary file in the destination directory, flushes that file, and then replaces the live save file. On POSIX platforms the parent directory is also synced after replacement so the save is durable across power loss more often than a plain rename-only path. There is no incremental or append mode; each save writes the full state atomically.
 
 ### Last-Write Wins
 

@@ -6,6 +6,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "il/build/IRBuilder.hpp"
+#include "il/runtime/signatures/Registry.hpp"
 #include "rt_http_server.h"
 #include "rt_object.h"
 #include "rt_string.h"
@@ -19,6 +20,14 @@
 #include <string>
 #include <vector>
 
+using il::runtime::signatures::make_signature;
+using il::runtime::signatures::SigParam;
+
+static void extern_http_selector(void **args, void *result) {
+    (void)args;
+    *static_cast<int64_t *>(result) = 1;
+}
+
 int main() {
     using namespace il::core;
 
@@ -28,6 +37,7 @@ int main() {
     b.addExtern("Viper.Network.ServerRes.Send",
                 Type(Type::Kind::Void),
                 {Type(Type::Kind::Ptr), Type(Type::Kind::Str)});
+    b.addExtern("test.http.selector", Type(Type::Kind::I64), {});
 
     auto &handler =
         b.startFunction("handler",
@@ -36,11 +46,19 @@ int main() {
     auto &entry = b.createBlock(handler, "entry", handler.params);
     b.setInsertPoint(entry);
 
+    Instr selectorCall;
+    selectorCall.result = b.reserveTempId();
+    selectorCall.op = Opcode::Call;
+    selectorCall.type = Type(Type::Kind::I64);
+    selectorCall.callee = "test.http.selector";
+    selectorCall.loc = {1, 1, 1};
+    entry.instructions.push_back(selectorCall);
+
     Instr makeStr;
     makeStr.result = b.reserveTempId();
     makeStr.op = Opcode::ConstStr;
     makeStr.type = Type(Type::Kind::Str);
-    makeStr.operands.push_back(Value::constStr("vm-ok"));
+    makeStr.operands.push_back(Value::constStr("per-vm-ok"));
     makeStr.loc = {1, 1, 1};
     entry.instructions.push_back(makeStr);
 
@@ -51,6 +69,14 @@ int main() {
     b.emitRet(std::optional<Value>{}, {1, 1, 3});
 
     il::vm::VM vm(m);
+    auto reg = il::vm::createExternRegistry();
+    il::vm::ExternDesc desc;
+    desc.name = "test.http.selector";
+    desc.signature = make_signature("test.http.selector", {}, {SigParam::I64});
+    desc.fn = reinterpret_cast<void *>(&extern_http_selector);
+    il::vm::registerExternIn(*reg, desc);
+    vm.setExternRegistry(reg.get());
+    reg.reset();
 
     void *server = rt_http_server_new(8080);
     rt_http_server_get(server, rt_const_cstr("/ping"), rt_const_cstr("handler"));
@@ -78,7 +104,7 @@ int main() {
     const char *responseCstr = rt_string_cstr(response);
     assert(responseCstr != nullptr);
     assert(std::strstr(responseCstr, "HTTP/1.1 200 OK\r\n") != nullptr);
-    assert(std::strstr(responseCstr, "\r\n\r\nvm-ok") != nullptr);
+    assert(std::strstr(responseCstr, "\r\n\r\nper-vm-ok") != nullptr);
 
     rt_string_unref(response);
     rt_string_unref(tagArg.str);

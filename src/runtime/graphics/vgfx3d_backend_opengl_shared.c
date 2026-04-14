@@ -1,8 +1,26 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/runtime/graphics/vgfx3d_backend_opengl_shared.c
+// Purpose: OpenGL backend helpers shared with sister backends — frame history,
+//   mip math, capacity growth, and policy choices for render-target,
+//   readback, and morph-cache reuse.
+//
+// Links: vgfx3d_backend_opengl_shared.h, vgfx3d_backend_opengl.c
+//
+//===----------------------------------------------------------------------===//
+
 #include "vgfx3d_backend_opengl_shared.h"
 
 #include <limits.h>
 #include <string.h>
 
+/// @brief Roll the OpenGL backend's per-frame VP/inv-VP/cam-pos history forward by one frame.
+/// Mirrors the D3D11 helper; see vgfx3d_d3d11_update_frame_history for semantics.
 void vgfx3d_opengl_update_frame_history(vgfx3d_opengl_frame_history_t *history,
                                         const float *vp,
                                         const float *inv_vp,
@@ -29,6 +47,7 @@ void vgfx3d_opengl_update_frame_history(vgfx3d_opengl_frame_history_t *history,
     memcpy(history->draw_prev_vp, vp, sizeof(history->draw_prev_vp));
 }
 
+/// @brief Number of mipmap levels needed to reach 1×1 from (width × height).
 int32_t vgfx3d_opengl_compute_mip_count(int32_t width, int32_t height) {
     int32_t mip_count = 1;
 
@@ -44,6 +63,7 @@ int32_t vgfx3d_opengl_compute_mip_count(int32_t width, int32_t height) {
     return mip_count;
 }
 
+/// @brief Capacity-doubling growth helper (saturates at INT_MAX).
 int32_t vgfx3d_opengl_next_capacity(int32_t current_capacity,
                                     int32_t needed,
                                     int32_t minimum_capacity) {
@@ -62,6 +82,8 @@ int32_t vgfx3d_opengl_next_capacity(int32_t current_capacity,
     return next_capacity;
 }
 
+/// @brief Pick the right render-target classification for the OpenGL backend.
+/// See vgfx3d_d3d11_choose_target_kind for the policy semantics.
 vgfx3d_opengl_target_kind_t vgfx3d_opengl_choose_target_kind(int8_t rtt_active,
                                                              int8_t gpu_postfx_enabled) {
     if (rtt_active)
@@ -92,11 +114,15 @@ vgfx3d_opengl_choose_motion_attachment_mode(vgfx3d_opengl_target_kind_t target_k
                : VGFX3D_OPENGL_MOTION_ATTACHMENTS_COLOR_AND_MOTION;
 }
 
+/// @brief Decide whether canvas readback should source the swapchain or a postfx target.
 vgfx3d_opengl_readback_kind_t vgfx3d_opengl_choose_readback_kind(int8_t gpu_postfx_enabled) {
     return gpu_postfx_enabled ? VGFX3D_OPENGL_READBACK_POSTFX_COMPOSITE
                               : VGFX3D_OPENGL_READBACK_BACKBUFFER;
 }
 
+/// @brief Decide whether to reuse a cached morph-target GPU buffer.
+/// Returns 1 if the cached payload is still valid (same key + matching shape/vertex count),
+/// 0 if the buffer must be re-uploaded.
 int vgfx3d_opengl_should_reuse_morph_cache(const void *cached_key,
                                            uint64_t cached_revision,
                                            int32_t cached_shape_count,
@@ -117,6 +143,8 @@ int vgfx3d_opengl_should_reuse_morph_cache(const void *cached_key,
            cached_has_normal_deltas == has_normal_deltas;
 }
 
+/// @brief Decide whether a per-mesh GPU cache entry should be evicted this frame.
+/// Returns 1 when the entry has been unused for more than @p ttl_frames frames.
 int vgfx3d_opengl_should_prune_cache_entry(uint64_t current_frame,
                                            uint64_t last_used_frame,
                                            uint64_t max_age) {

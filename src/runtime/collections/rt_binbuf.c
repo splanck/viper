@@ -190,8 +190,15 @@ void *rt_binbuf_from_bytes(void *bytes_obj) {
 
 //=============================================================================
 // Write Operations
+//
+// Each writer below appends `value` at the current cursor, growing the buffer's
+// capacity as needed, then advances the cursor past the bytes just written.
+// All writers trap on a NULL handle. The little-endian (LE) variants store the
+// least-significant byte first; big-endian (BE) variants store the most-
+// significant byte first. Width matches the function name (i16/i32/i64).
 //=============================================================================
 
+/// @brief Append the low 8 bits of `value` as a single byte.
 void rt_binbuf_write_byte(void *obj, int64_t value) {
     if (!obj)
         rt_trap("BinaryBuffer: null buffer");
@@ -201,6 +208,7 @@ void rt_binbuf_write_byte(void *obj, int64_t value) {
     binbuf_advance_write(buf, 1);
 }
 
+/// @brief Append a 16-bit signed integer in little-endian byte order.
 void rt_binbuf_write_i16le(void *obj, int64_t value) {
     if (!obj)
         rt_trap("BinaryBuffer: null buffer");
@@ -211,6 +219,7 @@ void rt_binbuf_write_i16le(void *obj, int64_t value) {
     binbuf_advance_write(buf, 2);
 }
 
+/// @brief Append a 16-bit signed integer in big-endian byte order.
 void rt_binbuf_write_i16be(void *obj, int64_t value) {
     if (!obj)
         rt_trap("BinaryBuffer: null buffer");
@@ -221,6 +230,7 @@ void rt_binbuf_write_i16be(void *obj, int64_t value) {
     binbuf_advance_write(buf, 2);
 }
 
+/// @brief Append a 32-bit signed integer in little-endian byte order.
 void rt_binbuf_write_i32le(void *obj, int64_t value) {
     if (!obj)
         rt_trap("BinaryBuffer: null buffer");
@@ -233,6 +243,7 @@ void rt_binbuf_write_i32le(void *obj, int64_t value) {
     binbuf_advance_write(buf, 4);
 }
 
+/// @brief Append a 32-bit signed integer in big-endian byte order.
 void rt_binbuf_write_i32be(void *obj, int64_t value) {
     if (!obj)
         rt_trap("BinaryBuffer: null buffer");
@@ -245,6 +256,7 @@ void rt_binbuf_write_i32be(void *obj, int64_t value) {
     binbuf_advance_write(buf, 4);
 }
 
+/// @brief Append a 64-bit signed integer in little-endian byte order.
 void rt_binbuf_write_i64le(void *obj, int64_t value) {
     if (!obj)
         rt_trap("BinaryBuffer: null buffer");
@@ -261,6 +273,7 @@ void rt_binbuf_write_i64le(void *obj, int64_t value) {
     binbuf_advance_write(buf, 8);
 }
 
+/// @brief Append a 64-bit signed integer in big-endian byte order.
 void rt_binbuf_write_i64be(void *obj, int64_t value) {
     if (!obj)
         rt_trap("BinaryBuffer: null buffer");
@@ -277,6 +290,8 @@ void rt_binbuf_write_i64be(void *obj, int64_t value) {
     binbuf_advance_write(buf, 8);
 }
 
+/// @brief Append a UTF-8 string with a 4-byte little-endian length prefix. NULL-equivalent
+/// strings serialize as length 0 with no payload.
 void rt_binbuf_write_str(void *obj, rt_string value) {
     if (!obj)
         rt_trap("BinaryBuffer: null buffer");
@@ -296,6 +311,8 @@ void rt_binbuf_write_str(void *obj, rt_string value) {
     }
 }
 
+/// @brief Append a Bytes blob with a 4-byte little-endian length prefix. NULL data writes
+/// length 0. Faster than per-byte writes — uses a single memcpy after the prefix.
 void rt_binbuf_write_bytes(void *obj, void *data) {
     if (!obj)
         rt_trap("BinaryBuffer: null buffer");
@@ -318,8 +335,15 @@ void rt_binbuf_write_bytes(void *obj, void *data) {
 
 //=============================================================================
 // Read Operations
+//
+// Each reader consumes the appropriate number of bytes at the current cursor
+// and returns the decoded value, advancing the cursor. Endianness and width
+// are encoded in the function name and must match the writer used. All readers
+// trap on a NULL handle or on insufficient remaining bytes (caller must check
+// `rt_binbuf_get_position` against `rt_binbuf_get_len` for control-flow reads).
 //=============================================================================
 
+/// @brief Read a single byte (returned as an int64 in [0, 255]).
 int64_t rt_binbuf_read_byte(void *obj) {
     if (!obj)
         rt_trap("BinaryBuffer: null buffer");
@@ -330,6 +354,7 @@ int64_t rt_binbuf_read_byte(void *obj) {
     return val;
 }
 
+/// @brief Read a 16-bit signed integer in little-endian byte order.
 int64_t rt_binbuf_read_i16le(void *obj) {
     if (!obj)
         rt_trap("BinaryBuffer: null buffer");
@@ -341,6 +366,7 @@ int64_t rt_binbuf_read_i16le(void *obj) {
     return val;
 }
 
+/// @brief Read a 16-bit signed integer in big-endian byte order.
 int64_t rt_binbuf_read_i16be(void *obj) {
     if (!obj)
         rt_trap("BinaryBuffer: null buffer");
@@ -352,6 +378,7 @@ int64_t rt_binbuf_read_i16be(void *obj) {
     return val;
 }
 
+/// @brief Read a 32-bit signed integer in little-endian byte order.
 int64_t rt_binbuf_read_i32le(void *obj) {
     if (!obj)
         rt_trap("BinaryBuffer: null buffer");
@@ -364,6 +391,7 @@ int64_t rt_binbuf_read_i32le(void *obj) {
     return val;
 }
 
+/// @brief Read a 32-bit signed integer in big-endian byte order.
 int64_t rt_binbuf_read_i32be(void *obj) {
     if (!obj)
         rt_trap("BinaryBuffer: null buffer");
@@ -376,6 +404,7 @@ int64_t rt_binbuf_read_i32be(void *obj) {
     return val;
 }
 
+/// @brief Read a 64-bit signed integer in little-endian byte order.
 int64_t rt_binbuf_read_i64le(void *obj) {
     if (!obj)
         rt_trap("BinaryBuffer: null buffer");
@@ -390,6 +419,7 @@ int64_t rt_binbuf_read_i64le(void *obj) {
     return val;
 }
 
+/// @brief Read a 64-bit signed integer in big-endian byte order.
 int64_t rt_binbuf_read_i64be(void *obj) {
     if (!obj)
         rt_trap("BinaryBuffer: null buffer");
@@ -404,6 +434,8 @@ int64_t rt_binbuf_read_i64be(void *obj) {
     return val;
 }
 
+/// @brief Read a length-prefixed UTF-8 string written by `_write_str`. Traps on negative or
+/// out-of-bounds length. Returns a fresh rt_string copy of the bytes.
 rt_string rt_binbuf_read_str(void *obj) {
     if (!obj)
         rt_trap("BinaryBuffer: null buffer");
@@ -422,6 +454,8 @@ rt_string rt_binbuf_read_str(void *obj) {
     return result;
 }
 
+/// @brief Read `count` raw bytes into a fresh Bytes blob (no length prefix — caller owns the
+/// framing). Traps on negative count or under-run.
 void *rt_binbuf_read_bytes(void *obj, int64_t count) {
     if (!obj)
         rt_trap("BinaryBuffer: null buffer");
@@ -444,12 +478,15 @@ void *rt_binbuf_read_bytes(void *obj, int64_t count) {
 // Properties / Control
 //=============================================================================
 
+/// @brief Return the read/write cursor position in bytes from the buffer start. 0 for NULL.
 int64_t rt_binbuf_get_position(void *obj) {
     if (!obj)
         return 0;
     return ((rt_binbuf_impl *)obj)->position;
 }
 
+/// @brief Seek the cursor to a byte offset (clamped to [0, len]). Subsequent reads/writes
+/// happen from this position.
 void rt_binbuf_set_position(void *obj, int64_t pos) {
     if (!obj)
         return;
@@ -461,12 +498,15 @@ void rt_binbuf_set_position(void *obj, int64_t pos) {
     buf->position = pos;
 }
 
+/// @brief Return the total written size in bytes (the high-water mark, not capacity).
 int64_t rt_binbuf_get_len(void *obj) {
     if (!obj)
         return 0;
     return ((rt_binbuf_impl *)obj)->len;
 }
 
+/// @brief Snapshot the buffer's full contents as a fresh Bytes blob (memcpy, not a view).
+/// Returns an empty Bytes for a NULL handle.
 void *rt_binbuf_to_bytes(void *obj) {
     if (!obj)
         return rt_bytes_new(0);
@@ -481,6 +521,8 @@ void *rt_binbuf_to_bytes(void *obj) {
     return result;
 }
 
+/// @brief Reset position and length to 0 (logical truncation). Capacity is not freed; the
+/// backing buffer can be re-used for the next batch without reallocation.
 void rt_binbuf_reset(void *obj) {
     if (!obj)
         return;

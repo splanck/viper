@@ -113,6 +113,10 @@ static uint32_t lcg_next(uint32_t *state) {
     return *state;
 }
 
+/// @brief Construct a Vegetation3D system. Allocates the shared cross-billboard blade mesh and
+/// an unlit textured material (if `blade_texture` is non-NULL — opacity comes from the texture).
+/// Defaults: 0.4×1.2 blades with 30% size variation, wind speed 2.0 / strength 0.15 / turbulence
+/// 0.5, LOD near=40 / far=100 world units. Traps on allocation failure.
 void *rt_vegetation3d_new(void *blade_texture) {
     rt_vegetation3d *v = (rt_vegetation3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_vegetation3d));
     if (!v) {
@@ -152,11 +156,16 @@ void *rt_vegetation3d_new(void *blade_texture) {
     return v;
 }
 
+/// @brief Attach a Pixels density map. During `_populate`, each candidate blade rolls against the
+/// red channel of the corresponding pixel — higher R = denser vegetation. NULL = uniform density.
 void rt_vegetation3d_set_density_map(void *obj, void *pixels) {
     if (obj)
         ((rt_vegetation3d *)obj)->density_map = pixels;
 }
 
+/// @brief Configure wind animation. `speed` scales time, `strength` is the maximum top-of-blade
+/// shear in world units, `turbulence` controls how much the wind phase varies across the field
+/// (higher = more chaotic, less synchronized waving).
 void rt_vegetation3d_set_wind_params(void *obj, double speed, double strength, double turbulence) {
     if (!obj)
         return;
@@ -166,6 +175,9 @@ void rt_vegetation3d_set_wind_params(void *obj, double speed, double strength, d
     v->wind_turbulence = turbulence;
 }
 
+/// @brief Set LOD thresholds. Within `near_dist` all blades render; between near and far they
+/// progressively thin (skip every 1..5 instances based on distance ratio); beyond `far_dist`
+/// blades are hard-culled. Larger near = denser foreground at higher GPU cost.
 void rt_vegetation3d_set_lod_distances(void *obj, double near_dist, double far_dist) {
     if (!obj)
         return;
@@ -174,6 +186,9 @@ void rt_vegetation3d_set_lod_distances(void *obj, double near_dist, double far_d
     v->lod_far = (float)far_dist;
 }
 
+/// @brief Reset blade dimensions and rebuild the shared mesh. `variation` ∈ [0,1] randomizes per-
+/// blade scale at populate time. Already-populated blades retain their previous random scale —
+/// call `_populate` again to apply the new variation factor.
 void rt_vegetation3d_set_blade_size(void *obj, double width, double height, double variation) {
     if (!obj)
         return;
@@ -211,6 +226,10 @@ static void build_transform(float *out, double x, double y, double z, double ang
     out[15] = 1.0f;
 }
 
+/// @brief Scatter up to `count` blade instances across `terrain`. Positions are LCG-randomized
+/// within terrain bounds (2-unit margin), filtered by the density map's R channel if set, and
+/// snapped to terrain height. Each blade gets a random Y rotation and per-blade scale variation
+/// (±size_variation). Reallocates the transform/position buffers and resets `total_count`.
 void rt_vegetation3d_populate(void *obj, void *terrain, int64_t count) {
     if (!obj || !terrain || count <= 0)
         return;
@@ -273,6 +292,10 @@ void rt_vegetation3d_populate(void *obj, void *terrain, int64_t count) {
     }
 }
 
+/// @brief Per-frame tick. Advances wind time by `dt`, then rebuilds the visible-instances buffer
+/// by walking every populated blade: hard-cull beyond `lod_far`, progressively skip between
+/// `lod_near` and `lod_far` (skip stride 1..5), and apply per-blade wind shear to columns 1 and 9
+/// of the transform (bending blade tops). `camY` is unused — culling is XZ-only.
 void rt_vegetation3d_update(void *obj, double dt, double camX, double camY, double camZ) {
     if (!obj || dt <= 0)
         return;
@@ -324,6 +347,9 @@ void rt_vegetation3d_update(void *obj, double dt, double camX, double camY, doub
     }
 }
 
+/// @brief Submit the visible blade batch to the Canvas3D as one instanced draw. Temporarily
+/// disables backface culling (grass renders both sides) and restores the previous state on exit.
+/// No-op when called outside a frame, when the backend is missing, or when nothing is visible.
 void rt_canvas3d_draw_vegetation(void *canvas_obj, void *veg_obj) {
     if (!canvas_obj || !veg_obj)
         return;

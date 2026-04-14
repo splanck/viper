@@ -121,20 +121,31 @@ static rt_iter_impl *make_iter_snapshot(void *snapshot, int64_t len) {
 
 //=============================================================================
 // Factory functions
+//
+// Each `_from_*` builds an iterator over an existing collection. SEQ, LIST,
+// and RING support live (in-place) iteration — the iterator stores the
+// collection by reference. DEQUE, MAP, SET, and STACK are *snapshotted* into
+// a fresh Seq because their underlying storage either isn't GC-managed or
+// doesn't support indexed access; the snapshot freezes the state at iter
+// creation time.
 //=============================================================================
 
+/// @brief Build a live iterator over a Seq. Subsequent mutations of the seq are visible.
 void *rt_iter_from_seq(void *seq) {
     if (!seq)
         return NULL;
     return make_iter(seq, ITER_SEQ, rt_seq_len(seq));
 }
 
+/// @brief Build a live iterator over a List. Subsequent mutations are visible.
 void *rt_iter_from_list(void *list) {
     if (!list)
         return NULL;
     return make_iter(list, ITER_LIST, rt_list_len(list));
 }
 
+/// @brief Snapshot a Deque into an iterator. Deques use plain malloc (not GC), so we copy
+/// every element into a fresh Seq at iter creation. Later mutations of the deque are NOT seen.
 void *rt_iter_from_deque(void *deque) {
     void *snapshot;
     int64_t len, i;
@@ -151,12 +162,14 @@ void *rt_iter_from_deque(void *deque) {
     return make_iter_snapshot(snapshot, len);
 }
 
+/// @brief Build a live iterator over a ring buffer. Subsequent mutations are visible.
 void *rt_iter_from_ring(void *ring) {
     if (!ring)
         return NULL;
     return make_iter(ring, ITER_RING, rt_ring_len(ring));
 }
 
+/// @brief Snapshot the keys of a Map into an iterator (insertion order).
 void *rt_iter_from_map_keys(void *map) {
     void *keys;
     if (!map)
@@ -167,6 +180,7 @@ void *rt_iter_from_map_keys(void *map) {
     return make_iter_snapshot(keys, rt_seq_len(keys));
 }
 
+/// @brief Snapshot the values of a Map into an iterator (insertion order).
 void *rt_iter_from_map_values(void *map) {
     void *values;
     if (!map)
@@ -177,6 +191,8 @@ void *rt_iter_from_map_values(void *map) {
     return make_iter_snapshot(values, rt_seq_len(values));
 }
 
+/// @brief Snapshot a Set into an iterator. Order is the set's internal hashing order — not
+/// guaranteed stable across versions. Mutations of the source set after iter creation are not seen.
 void *rt_iter_from_set(void *set) {
     void *items;
     if (!set)
@@ -187,6 +203,8 @@ void *rt_iter_from_set(void *set) {
     return make_iter_snapshot(items, rt_seq_len(items));
 }
 
+/// @brief Currently returns an empty-snapshot iterator — Stack has no indexed access. Convert
+/// the stack to a Seq first if you need real iteration.
 void *rt_iter_from_stack(void *stack) {
     void *snapshot;
     if (!stack)
@@ -226,6 +244,8 @@ int8_t rt_iter_has_next(void *iter) {
     return (it->pos < it->len) ? 1 : 0;
 }
 
+/// @brief Return the current element and advance the cursor. Returns NULL when exhausted.
+/// Pair with `_has_next` to drive while-loop iteration.
 void *rt_iter_next(void *iter) {
     rt_iter_impl *it;
     void *elem;
@@ -239,6 +259,7 @@ void *rt_iter_next(void *iter) {
     return elem;
 }
 
+/// @brief Look at the current element without advancing the cursor.
 void *rt_iter_peek(void *iter) {
     rt_iter_impl *it;
     if (!iter)
@@ -272,6 +293,7 @@ int64_t rt_iter_count(void *iter) {
     return ((rt_iter_impl *)iter)->len;
 }
 
+/// @brief Drain the remaining iterator elements into a fresh Seq. Advances the cursor to end.
 void *rt_iter_to_seq(void *iter) {
     rt_iter_impl *it;
     void *seq;

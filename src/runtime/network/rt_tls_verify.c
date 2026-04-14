@@ -64,6 +64,12 @@
 // B.2 — TLS 1.3 Certificate message parser
 // ---------------------------------------------------------------------------
 
+/// @brief Advance through one entry of a TLS 1.3 certificate_list.
+///
+/// Each entry is `[3-byte length][DER cert][2-byte ext length][extensions]`.
+/// Updates `*pos` to point past the entry and writes the DER pointer +
+/// length out-parameters. Returns -1 on any structural error (length
+/// underflow, extensions past end of list, etc.).
 static int tls_next_certificate_entry(
     const uint8_t *list, size_t list_len, size_t *pos, const uint8_t **cert_der, size_t *cert_len) {
     if (!list || !pos || !cert_der || !cert_len || *pos + 5 > list_len)
@@ -282,6 +288,12 @@ static void extract_san_from_ext_value(
     }
 }
 
+/// @brief Detect IPv4 / IPv6 literal hostnames and copy into binary form.
+///
+/// Returns 1 if the hostname is an IP literal (with the binary
+/// representation in `ip_out` and its length 4 or 16), 0 otherwise.
+/// Used so SAN matching can compare against `iPAddress` entries
+/// instead of (incorrectly) trying DNS-name matching.
 static int tls_hostname_is_ip_literal(const char *hostname, uint8_t ip_out[16], size_t *ip_len) {
     struct in_addr ipv4;
     struct in6_addr ipv6;
@@ -304,6 +316,11 @@ static int tls_hostname_is_ip_literal(const char *hostname, uint8_t ip_out[16], 
     return 0;
 }
 
+/// @brief Walk a SAN extension value looking for an `iPAddress` entry that matches.
+///
+/// SAN entries are tagged: 0x82 = dNSName, 0x87 = iPAddress. This
+/// helper iterates entries, sets `*saw_ip_san=1` if any IP-typed entry
+/// is present, and returns 1 if any entry's bytes equal `expected_ip`.
 static int san_ext_has_ip_match(const uint8_t *ext_val,
                                 size_t ext_len,
                                 const uint8_t *expected_ip,
@@ -340,6 +357,12 @@ static int san_ext_has_ip_match(const uint8_t *ext_val,
     return 0;
 }
 
+/// @brief Top-level X.509 walker: find the SAN extension and run the IP match.
+///
+/// Drills through Certificate → TBSCertificate → Extensions context-tag
+/// 3 ([3] EXPLICIT) → individual Extension SEQUENCEs → SAN OID match
+/// → SAN value. Uses iterative DER parsing (no recursion) to bound
+/// stack use on adversarial inputs.
 static int tls_cert_has_matching_ip_san(const uint8_t *der,
                                         size_t der_len,
                                         const uint8_t *expected_ip,
@@ -902,6 +925,12 @@ typedef tls_openssl_stack_t *(*tls_openssl_sk_new_null_fn)(void);
 typedef int (*tls_openssl_sk_push_fn)(tls_openssl_stack_t *, const void *);
 typedef void (*tls_openssl_sk_free_fn)(tls_openssl_stack_t *);
 
+/// @brief Try to dlopen OpenSSL's libcrypto, falling back across versions.
+///
+/// Tries `.so.3` (modern), then `.so.1.1` (legacy), then unsuffixed.
+/// Returned handle is the caller's responsibility to `dlclose`.
+/// Returns NULL when no libcrypto is available — the caller falls back
+/// to platform-native crypto (CommonCrypto on macOS, BCrypt on Windows).
 static void *tls_dlopen_libcrypto(void) {
     void *crypto_lib = dlopen("libcrypto.so.3", RTLD_LAZY | RTLD_LOCAL);
     if (!crypto_lib)
@@ -1397,6 +1426,12 @@ static size_t sig_scheme_hash_len(uint16_t sig_scheme) {
 
 #if defined(__APPLE__)
 
+/// @brief macOS path: verify the TLS 1.3 CertificateVerify signature via Security framework.
+///
+/// Builds the 130-byte message, hashes with SHA-256/384/512 per the
+/// signature scheme, reconstructs the SecCertificateRef from stored
+/// DER, then calls `SecKeyVerifySignature`. Returns RT_TLS_OK on
+/// successful verification, RT_TLS_ERROR_* otherwise.
 int tls_verify_cert_verify(rt_tls_session_t *session, const uint8_t *data, size_t len) {
     if (len < 4) {
         session->error = "TLS: CertificateVerify message too short";
@@ -1519,6 +1554,12 @@ int tls_verify_cert_verify(rt_tls_session_t *session, const uint8_t *data, size_
 
 #elif defined(_WIN32)
 
+/// @brief Windows path: verify CertificateVerify via Windows CryptoAPI / NCrypt.
+///
+/// Builds the message, hashes via Windows CryptCreateHash, imports
+/// the cert's public key via `CryptImportPublicKeyInfo`, then calls
+/// `CryptVerifySignature`. Note: signature bytes need byte-reversal
+/// for Windows' little-endian RSA convention vs TLS big-endian.
 int tls_verify_cert_verify(rt_tls_session_t *session, const uint8_t *data, size_t len) {
     if (len < 4) {
         session->error = "TLS: CertificateVerify message too short";
@@ -1967,6 +2008,13 @@ static int tls_verify_signature_dlopen(rt_tls_session_t *session,
     return RT_TLS_OK;
 }
 
+/// @brief Linux path: verify CertificateVerify via native ECDSA + libcrypto fallback.
+///
+/// Builds the message, hashes it (SHA-256 in-tree, SHA-384/512 via
+/// libcrypto), then verifies. ECDSA P-256 uses the in-tree
+/// `rt_ecdsa_p256_verify` (no libcrypto dependency); RSA-PSS / ECDSA
+/// P-384 fall back to `tls_verify_signature_dlopen` which needs
+/// libcrypto. Returns RT_TLS_OK on successful verification.
 int tls_verify_cert_verify(rt_tls_session_t *session, const uint8_t *data, size_t len) {
     if (len < 4) {
         session->error = "TLS: CertificateVerify message too short";

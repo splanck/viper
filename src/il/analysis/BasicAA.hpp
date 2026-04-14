@@ -32,6 +32,7 @@
 #include "il/runtime/signatures/Registry.hpp"
 
 #include <optional>
+#include <queue>
 #include <string_view>
 #include <unordered_map>
 #include <unordered_set>
@@ -157,61 +158,55 @@ inline void BasicAA::collectFunctionInfo(const il::core::Function &function) {
                 allocas_.insert(*instr.result);
         }
 
-    // Escape analysis: determine which allocas have their addresses escape.
-    // An alloca escapes if its temp ID (or a GEP derived from it) appears as:
-    //   1. Any operand in a Call/CallIndirect instruction
-    //   2. The value operand (index 1) of a Store instruction
-    std::unordered_set<unsigned> escapedAllocas;
-    for (unsigned allocaId : allocas_) {
-        bool escaped = false;
-        // Collect all temps derived from this alloca via GEP chains
-        std::unordered_set<unsigned> derived;
-        derived.insert(allocaId);
-        bool changed = true;
-        while (changed) {
-            changed = false;
-            for (const auto &[id, def] : defs_) {
-                if (derived.count(id))
-                    continue;
-                if (def.op == il::core::Opcode::GEP && !def.operands.empty() &&
-                    def.operands[0].kind == il::core::Value::Kind::Temp &&
-                    derived.count(def.operands[0].id)) {
-                    derived.insert(id);
-                    changed = true;
-                }
-            }
+    // Escape analysis: build the reverse GEP graph once, then propagate
+    // escaping uses back to their alloca roots.
+    std::unordered_map<unsigned, std::vector<unsigned>> parents;
+    parents.reserve(defs_.size());
+    for (const auto &[id, def] : defs_) {
+        if (def.op != il::core::Opcode::GEP || def.operands.empty() ||
+            def.operands[0].kind != il::core::Value::Kind::Temp) {
+            continue;
         }
-
-        // Check if any derived temp escapes via call or store
-        for (const auto &block : function.blocks) {
-            if (escaped)
-                break;
-            for (const auto &instr : block.instructions) {
-                if (escaped)
-                    break;
-                if (instr.op == il::core::Opcode::Call ||
-                    instr.op == il::core::Opcode::CallIndirect) {
-                    for (const auto &op : instr.operands)
-                        if (op.kind == il::core::Value::Kind::Temp && derived.count(op.id)) {
-                            escaped = true;
-                            break;
-                        }
-                } else if (instr.op == il::core::Opcode::Store) {
-                    // Store: operand[0] = ptr (destination), operand[1] = value
-                    // The alloca escapes if it's stored AS A VALUE (not stored TO)
-                    if (instr.operands.size() >= 2 &&
-                        instr.operands[1].kind == il::core::Value::Kind::Temp &&
-                        derived.count(instr.operands[1].id)) {
-                        escaped = true;
-                    }
-                }
-            }
-        }
-        if (escaped)
-            escapedAllocas.insert(allocaId);
+        parents[id].push_back(def.operands[0].id);
     }
 
-    // Non-escaping = all allocas minus escaped ones
+    std::queue<unsigned> work;
+    std::unordered_set<unsigned> seenEscapingTemps;
+    auto seedEscape = [&](unsigned tempId) {
+        if (seenEscapingTemps.insert(tempId).second)
+            work.push(tempId);
+    };
+
+    for (const auto &block : function.blocks) {
+        for (const auto &instr : block.instructions) {
+            if (instr.op == il::core::Opcode::Call || instr.op == il::core::Opcode::CallIndirect) {
+                for (const auto &op : instr.operands) {
+                    if (op.kind == il::core::Value::Kind::Temp)
+                        seedEscape(op.id);
+                }
+                continue;
+            }
+            if (instr.op == il::core::Opcode::Store && instr.operands.size() >= 2 &&
+                instr.operands[1].kind == il::core::Value::Kind::Temp) {
+                // operand[1] is the stored value; storing the address itself makes it escape.
+                seedEscape(instr.operands[1].id);
+            }
+        }
+    }
+
+    std::unordered_set<unsigned> escapedAllocas;
+    while (!work.empty()) {
+        unsigned id = work.front();
+        work.pop();
+        if (allocas_.count(id))
+            escapedAllocas.insert(id);
+        auto pit = parents.find(id);
+        if (pit == parents.end())
+            continue;
+        for (unsigned parent : pit->second)
+            seedEscape(parent);
+    }
+
     for (unsigned allocaId : allocas_)
         if (!escapedAllocas.count(allocaId))
             nonEscapingAllocas_.insert(allocaId);

@@ -57,6 +57,9 @@ struct rt_lighting2d_impl {
     struct rt_dyn_light lights[MAX_DYN_LIGHTS_CAP];
 };
 
+/// @brief Construct a Lighting2D system with `max_lights` dynamic-light slots (capped at MAX_DYN_LIGHTS_CAP=128).
+/// Defaults: darkness=0 (off), tint=near-black with blue cast, player radius=180, player color=0x303240.
+/// Returns a GC-managed handle; NULL on allocation failure.
 rt_lighting2d rt_lighting2d_new(int64_t max_lights) {
     struct rt_lighting2d_impl *lit =
         (struct rt_lighting2d_impl *)rt_obj_new_i64(0, (int64_t)sizeof(struct rt_lighting2d_impl));
@@ -75,11 +78,13 @@ rt_lighting2d rt_lighting2d_new(int64_t max_lights) {
     return lit;
 }
 
+/// @brief Release a Lighting2D handle; frees the inline structure when the refcount drops to zero.
 void rt_lighting2d_destroy(rt_lighting2d lit) {
     if (lit && rt_obj_release_check0(lit))
         rt_obj_free(lit);
 }
 
+/// @brief Set the full-screen darkness overlay alpha (0=off, 255=opaque). Clamped to [0,255].
 void rt_lighting2d_set_darkness(rt_lighting2d lit, int64_t alpha) {
     if (!lit)
         return;
@@ -90,19 +95,24 @@ void rt_lighting2d_set_darkness(rt_lighting2d lit, int64_t alpha) {
     lit->darkness = alpha;
 }
 
+/// @brief Read the current darkness overlay alpha; returns 0 for null handles.
 int64_t rt_lighting2d_get_darkness(rt_lighting2d lit) {
     return lit ? lit->darkness : 0;
 }
 
+/// @brief Set the tint color (0xRRGGBB) used by the darkness overlay; alpha is supplied separately.
 void rt_lighting2d_set_tint_color(rt_lighting2d lit, int64_t color) {
     if (lit)
         lit->tint_color = color;
 }
 
+/// @brief Read the darkness overlay tint color (0xRRGGBB).
 int64_t rt_lighting2d_get_tint_color(rt_lighting2d lit) {
     return lit ? lit->tint_color : 0;
 }
 
+/// @brief Configure the always-on player light's base radius and color.
+/// Drawn at the screen-space player position passed to `draw()`; modulated by an internal pulse.
 void rt_lighting2d_set_player_light(rt_lighting2d lit, int64_t radius, int64_t color) {
     if (!lit)
         return;
@@ -110,6 +120,9 @@ void rt_lighting2d_set_player_light(rt_lighting2d lit, int64_t radius, int64_t c
     lit->player_color = color;
 }
 
+/// @brief Spawn a time-limited dynamic light (explosion, bullet, pickup) at world coords (x, y).
+/// `lifetime` is in update ticks; alpha fades linearly to zero over that span. Silently dropped if
+/// the pool (sized at construction, ≤ MAX_DYN_LIGHTS_CAP) is full or `lifetime <= 0`.
 void rt_lighting2d_add_light(
     rt_lighting2d lit, int64_t x, int64_t y, int64_t radius, int64_t color, int64_t lifetime) {
     if (!lit || lifetime <= 0)
@@ -132,6 +145,9 @@ void rt_lighting2d_add_light(
     // Pool full — silently drop
 }
 
+/// @brief Add a per-frame "tile light" (lamp, torch) at screen-space coords. Implemented as a
+/// dynamic light with `lifetime=1`, so the caller must re-add every frame; this keeps tile
+/// lights camera-relative without requiring a separate pool.
 void rt_lighting2d_add_tile_light(
     rt_lighting2d lit, int64_t screen_x, int64_t screen_y, int64_t radius, int64_t color) {
     // Tile lights are immediate-draw, not pooled. Stored temporarily for the
@@ -140,6 +156,7 @@ void rt_lighting2d_add_tile_light(
     rt_lighting2d_add_light(lit, screen_x, screen_y, radius, color, 1);
 }
 
+/// @brief Deactivate every dynamic light slot at once; useful between scenes/levels.
 void rt_lighting2d_clear_lights(rt_lighting2d lit) {
     if (!lit)
         return;
@@ -148,6 +165,8 @@ void rt_lighting2d_clear_lights(rt_lighting2d lit) {
     lit->light_count = 0;
 }
 
+/// @brief Per-frame tick: advance the player-light pulse (mod 120) and decrement every active
+/// dynamic light's lifetime. Lights with `life <= 0` are returned to the pool.
 void rt_lighting2d_update(rt_lighting2d lit) {
     if (!lit)
         return;
@@ -169,6 +188,13 @@ void rt_lighting2d_update(rt_lighting2d lit) {
     }
 }
 
+/// @brief Composite the lighting onto a canvas in three passes:
+///   1. Full-screen tinted darkness overlay at `darkness` alpha.
+///   2. Player light at `(player_sx, player_sy)` — outer glow + 6 concentric rings + bright core,
+///      with radius modulated by an integer triangle wave (±10 px over 120 frames).
+///   3. Dynamic lights, world-space positions converted to screen via `(cam_x, cam_y)`, with
+///      alpha proportional to remaining lifetime so they fade gracefully.
+/// Early-outs when darkness is zero (lighting effectively disabled).
 void rt_lighting2d_draw(rt_lighting2d lit,
                         void *canvas,
                         int64_t cam_x,
@@ -228,6 +254,7 @@ void rt_lighting2d_draw(rt_lighting2d lit,
     }
 }
 
+/// @brief Number of currently active dynamic lights (excludes the always-on player light).
 int64_t rt_lighting2d_get_light_count(rt_lighting2d lit) {
     return lit ? lit->light_count : 0;
 }

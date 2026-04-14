@@ -14,6 +14,7 @@
 #include "rt_internal.h"
 
 #include <cassert>
+#include <cmath>
 #include <cstdio>
 
 extern "C" void vm_trap(const char *msg) {
@@ -198,6 +199,29 @@ static void test_scroll_wheel() {
     printf("test_scroll_wheel: PASSED\n");
 }
 
+static void test_scroll_wheel_precision() {
+    rt_mouse_init();
+    rt_mouse_begin_frame();
+
+    rt_mouse_update_wheel(0.25, 1.5);
+    assert(std::fabs(rt_mouse_wheel_xf() - 0.25) < 1e-9);
+    assert(std::fabs(rt_mouse_wheel_yf() - 1.5) < 1e-9);
+    assert(rt_mouse_wheel_x() == 0);
+    assert(rt_mouse_wheel_y() == 1);
+
+    rt_mouse_update_wheel(0.75, -0.25);
+    assert(std::fabs(rt_mouse_wheel_xf() - 1.0) < 1e-9);
+    assert(std::fabs(rt_mouse_wheel_yf() - 1.25) < 1e-9);
+    assert(rt_mouse_wheel_x() == 1);
+    assert(rt_mouse_wheel_y() == 1);
+
+    rt_mouse_begin_frame();
+    assert(std::fabs(rt_mouse_wheel_xf()) < 1e-9);
+    assert(std::fabs(rt_mouse_wheel_yf()) < 1e-9);
+
+    printf("test_scroll_wheel_precision: PASSED\n");
+}
+
 // ============================================================================
 // Cursor Control
 // ============================================================================
@@ -311,6 +335,7 @@ int main() {
     test_button_state();
     test_click_detection();
     test_scroll_wheel();
+    test_scroll_wheel_precision();
     test_cursor_control();
     test_canvas_detach();
     test_boundary_cases();

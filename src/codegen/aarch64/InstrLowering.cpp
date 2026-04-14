@@ -106,16 +106,8 @@ static const char *condForOpcode(il::core::Opcode op) {
     return lookupCondition(op);
 }
 
-static const il::core::Instr *findProducer(const il::core::BasicBlock &bb, unsigned tempId) {
-    for (const auto &instr : bb.instructions) {
-        if (instr.result && *instr.result == tempId)
-            return &instr;
-    }
-    return nullptr;
-}
-
 static bool resolveFrameAddress(const il::core::Value &value,
-                                const il::core::BasicBlock &bb,
+                                const il::core::Function &fn,
                                 FrameBuilder &fb,
                                 long long &offsetOut) {
     using il::core::Opcode;
@@ -130,7 +122,7 @@ static bool resolveFrameAddress(const il::core::Value &value,
         return true;
     }
 
-    const auto *producer = findProducer(bb, value.id);
+    const auto *producer = findProducerInFunction(fn, value.id);
     if (!producer)
         return false;
 
@@ -138,14 +130,14 @@ static bool resolveFrameAddress(const il::core::Value &value,
         case Opcode::AddrOf:
             if (producer->operands.empty())
                 return false;
-            return resolveFrameAddress(producer->operands[0], bb, fb, offsetOut);
+            return resolveFrameAddress(producer->operands[0], fn, fb, offsetOut);
 
         case Opcode::GEP:
             if (producer->operands.size() < 2 ||
                 producer->operands[1].kind != Value::Kind::ConstInt) {
                 return false;
             }
-            if (!resolveFrameAddress(producer->operands[0], bb, fb, offsetOut))
+            if (!resolveFrameAddress(producer->operands[0], fn, fb, offsetOut))
                 return false;
             offsetOut += producer->operands[1].i64;
             return true;
@@ -1567,7 +1559,7 @@ bool lowerStore(const il::core::Instr &ins,
     if (ins.operands.size() != 2)
         return true;
     long long off = 0;
-    const bool hasFrameAddr = resolveFrameAddress(ins.operands[0], bb, ctx.fb, off);
+    const bool hasFrameAddr = resolveFrameAddress(ins.operands[0], ctx.fn, ctx.fb, off);
     if (hasFrameAddr) {
         // Store to alloca local via FP offset
         uint16_t v = 0;
@@ -1632,7 +1624,7 @@ bool lowerLoad(const il::core::Instr &ins,
     if (!ins.result || ins.operands.empty())
         return true;
     long long off = 0;
-    const bool hasFrameAddr = resolveFrameAddress(ins.operands[0], bb, ctx.fb, off);
+    const bool hasFrameAddr = resolveFrameAddress(ins.operands[0], ctx.fn, ctx.fb, off);
     const bool isFP = (ins.type.kind == il::core::Type::Kind::F64);
     const bool isBool = (ins.type.kind == il::core::Type::Kind::I1);
     if (hasFrameAddr) {

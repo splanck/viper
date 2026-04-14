@@ -38,6 +38,15 @@
 
 #if defined(_WIN32)
 
+// =============================================================================
+// Win32 backend — lock-free via Interlocked* intrinsics.
+// Functionally equivalent to the POSIX monitor-based path below, but uses
+// hardware atomic ops for lower contention overhead. The 64-bit variants
+// (LONG64, *64) ensure correct atomicity on x86 where 64-bit reads/writes
+// are NOT atomic by default (without the LOCK prefix). Each function below
+// has the same contract as its POSIX counterpart — see those for full docs.
+// =============================================================================
+
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 
@@ -45,6 +54,7 @@ typedef struct RtSafeI64Win {
     volatile LONG64 value;
 } RtSafeI64Win;
 
+/// @brief Validate + cast a SafeI64 handle for the Win32 path. Traps with `what` on NULL input.
 static RtSafeI64Win *require_safe_win(void *obj, const char *what) {
     if (!obj) {
         rt_trap(what ? what : "SafeI64: null object");
@@ -53,6 +63,7 @@ static RtSafeI64Win *require_safe_win(void *obj, const char *what) {
     return (RtSafeI64Win *)obj;
 }
 
+/// @brief Win32 SafeI64 constructor — see POSIX `rt_safe_i64_new` for full contract.
 void *rt_safe_i64_new(int64_t initial) {
     RtSafeI64Win *cell =
         (RtSafeI64Win *)rt_obj_new_i64(/*class_id=*/0, (int64_t)sizeof(RtSafeI64Win));
@@ -64,6 +75,8 @@ void *rt_safe_i64_new(int64_t initial) {
     return cell;
 }
 
+/// @brief Win32 SafeI64 read — implemented as `InterlockedCompareExchange64(.,0,0)` so the read
+/// is atomic on 32-bit Windows builds (a plain `MOV` of a 64-bit value isn't atomic on x86).
 int64_t rt_safe_i64_get(void *obj) {
     RtSafeI64Win *cell = require_safe_win(obj, "SafeI64.Get: null object");
     if (!cell)
@@ -72,6 +85,7 @@ int64_t rt_safe_i64_get(void *obj) {
     return (int64_t)InterlockedCompareExchange64(&cell->value, 0, 0);
 }
 
+/// @brief Win32 SafeI64 write — `InterlockedExchange64` for atomicity on 32-bit Windows.
 void rt_safe_i64_set(void *obj, int64_t value) {
     RtSafeI64Win *cell = require_safe_win(obj, "SafeI64.Set: null object");
     if (!cell)
@@ -79,6 +93,8 @@ void rt_safe_i64_set(void *obj, int64_t value) {
     InterlockedExchange64(&cell->value, (LONG64)value);
 }
 
+/// @brief Win32 SafeI64 atomic add — `InterlockedExchangeAdd64` returns the OLD value, so we
+/// add `delta` back to it to match the POSIX path's "return the new value" contract.
 int64_t rt_safe_i64_add(void *obj, int64_t delta) {
     RtSafeI64Win *cell = require_safe_win(obj, "SafeI64.Add: null object");
     if (!cell)
@@ -87,6 +103,9 @@ int64_t rt_safe_i64_add(void *obj, int64_t delta) {
     return (int64_t)InterlockedExchangeAdd64(&cell->value, (LONG64)delta) + delta;
 }
 
+/// @brief Win32 SafeI64 CAS — `InterlockedCompareExchange64` is one machine instruction (LOCK
+/// CMPXCHG8B/CMPXCHG16B). Returns the value as it was BEFORE the swap; caller compares against
+/// `expected` to determine whether the swap actually happened.
 int64_t rt_safe_i64_compare_exchange(void *obj, int64_t expected, int64_t desired) {
     RtSafeI64Win *cell = require_safe_win(obj, "SafeI64.CompareExchange: null object");
     if (!cell)

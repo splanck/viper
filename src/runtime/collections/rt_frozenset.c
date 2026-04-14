@@ -161,6 +161,8 @@ static int8_t fs_contains(rt_frozenset_impl *fs, rt_string key) {
 
 // --- Public API ---
 
+/// @brief Build an immutable set from a Seq of strings (duplicates collapse). Internal storage
+/// is an open-addressed hash table sized for the entry count. Use mutable Set elsewhere.
 void *rt_frozenset_from_seq(void *items) {
     if (!items)
         return (void *)fs_alloc(0);
@@ -176,6 +178,7 @@ void *rt_frozenset_from_seq(void *items) {
     return (void *)fs;
 }
 
+/// @brief Construct an empty frozen set.
 void *rt_frozenset_empty(void) {
     return (void *)fs_alloc(0);
 }
@@ -200,6 +203,7 @@ int8_t rt_frozenset_has(void *obj, rt_string elem) {
     return fs_contains((rt_frozenset_impl *)obj, elem);
 }
 
+/// @brief Return a Seq of every element in the set (slot-iteration order, not insertion order).
 void *rt_frozenset_items(void *obj) {
     void *seq = rt_seq_new();
     if (!obj)
@@ -213,6 +217,8 @@ void *rt_frozenset_items(void *obj) {
     return seq;
 }
 
+/// @brief Return a fresh frozen set containing every element from either operand. Duplicates
+/// (elements present in both) appear once. Implemented by zipping into a Seq then re-freezing.
 void *rt_frozenset_union(void *obj, void *other) {
     // Collect all elements from both sets
     void *seq = rt_seq_new();
@@ -238,6 +244,8 @@ void *rt_frozenset_union(void *obj, void *other) {
     return result;
 }
 
+/// @brief Return a fresh frozen set containing only elements present in both operands.
+/// Returns an empty set if either operand is NULL.
 void *rt_frozenset_intersect(void *obj, void *other) {
     void *seq = rt_seq_new();
     if (!obj || !other) {
@@ -261,6 +269,8 @@ void *rt_frozenset_intersect(void *obj, void *other) {
     return result;
 }
 
+/// @brief Return a fresh frozen set containing elements present in `obj` but not in `other`.
+/// `obj - other` set semantics. NULL `other` returns a copy of `obj`.
 void *rt_frozenset_diff(void *obj, void *other) {
     void *seq = rt_seq_new();
     if (!obj) {

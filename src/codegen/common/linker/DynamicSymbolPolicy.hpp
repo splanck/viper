@@ -262,6 +262,7 @@ inline bool isKnownDynamicSymbol(const std::string &name, LinkPlatform platform)
         "waitpid",
         "wait",
         "fcntl",
+        "fsync",
         "ioctl",
         "kqueue",
         "kevent",

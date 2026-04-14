@@ -77,6 +77,7 @@ typedef struct rt_sprite_impl {
 // Forward declaration for time function
 extern int64_t rt_timer_ms(void);
 
+/// @brief Return the active frame's Pixels object, or NULL if none / out-of-range.
 static void *sprite_get_current_frame_ptr(rt_sprite_impl *sprite) {
     if (!sprite || sprite->frame_count <= 0 || sprite->current_frame < 0 ||
         sprite->current_frame >= sprite->frame_count)
@@ -84,6 +85,11 @@ static void *sprite_get_current_frame_ptr(rt_sprite_impl *sprite) {
     return sprite->frames[sprite->current_frame];
 }
 
+/// @brief Multiply the alpha channel of every pixel in `pixels` by `alpha/255`.
+///
+/// Used by `sprite_prepare_pixels` to apply a per-sprite alpha
+/// without touching the underlying frame. Skips the work entirely
+/// when `alpha >= 255` (fully opaque).
 static void sprite_apply_alpha(void *pixels, int64_t alpha) {
     if (!pixels || alpha >= 255)
         return;
@@ -102,21 +108,39 @@ static void sprite_apply_alpha(void *pixels, int64_t alpha) {
     }
 }
 
+/// @brief Scale a pixel origin by the sprite scale percentage (1..100..n).
 static int64_t sprite_scale_origin(int64_t origin, int64_t scale) {
     return (origin * scale) / 100;
 }
 
+/// @brief Release a transformed-pixels buffer if it isn't the original frame.
+///
+/// `sprite_prepare_pixels` may either return the frame unchanged
+/// (no transform applied) or a freshly-allocated working copy.
+/// This helper drops the temporary without ever releasing the
+/// canonical frame stored in `sprite->frames`.
 static void sprite_release_if_owned(void *pixels, void *frame) {
     if (pixels && pixels != frame)
         rt_heap_release(pixels);
 }
 
+/// @brief Lazily clone a frame the first time we need to mutate it.
+///
+/// If `transformed` already points to a temporary copy we return
+/// it as-is; if it still aliases the original `frame` we make a
+/// fresh clone. Avoids ever destructively editing the frame stored
+/// inside the sprite.
 static void *sprite_clone_for_edit(void *transformed, void *frame) {
     if (!transformed || transformed != frame)
         return transformed;
     return rt_pixels_clone(frame);
 }
 
+/// @brief Swap an intermediate transform result into `*slot`, freeing the prior temp.
+///
+/// Used by the transform pipeline (flip → scale → rotate → tint) to
+/// chain operations: each step replaces the working buffer and the
+/// previous temp gets released — but never the original frame.
 static void *sprite_replace_pixels(void *replacement, void **slot, void *frame) {
     if (!replacement)
         return *slot;
@@ -128,6 +152,14 @@ static void *sprite_replace_pixels(void *replacement, void **slot, void *frame) 
     return *slot;
 }
 
+/// @brief Apply the sprite's flip / scale / rotation / tint / alpha to its current frame.
+///
+/// Returns a Pixels object suitable for blitting. The result is
+/// either the unmodified frame (when no transforms apply) or a
+/// freshly-allocated buffer; in the latter case the caller is
+/// responsible for releasing it via `sprite_release_if_owned`.
+/// Also fills in the post-transform origin and a flag indicating
+/// whether the rotation step expanded the canvas to a centered square.
 static void *sprite_prepare_pixels(rt_sprite_impl *sprite,
                                    int64_t scale_x,
                                    int64_t scale_y,
@@ -228,6 +260,7 @@ static void *sprite_prepare_pixels(rt_sprite_impl *sprite,
     return transformed;
 }
 
+/// @brief GC finalizer — release every owned frame buffer.
 static void sprite_finalize(void *obj) {
     rt_sprite_impl *sprite = (rt_sprite_impl *)obj;
     for (int i = 0; i < MAX_SPRITE_FRAMES; i++) {
@@ -269,6 +302,11 @@ static rt_sprite_impl *sprite_alloc(void) {
 // Sprite Creation
 //=============================================================================
 
+/// @brief Create a sprite from an existing Pixels object as the first frame.
+///
+/// Bumps the Pixels refcount and stows it as `frames[0]`. Position
+/// defaults to (0, 0); scale 100%; full opacity; visible.
+/// @throws Generic trap on null `pixels`.
 void *rt_sprite_new(void *pixels) {
     if (!pixels) {
         rt_trap("Sprite.New: null pixels");
@@ -309,6 +347,11 @@ static int detect_image_format(const char *filepath) {
     return 0;
 }
 
+/// @brief Convenience: load an image file via `rt_pixels_load` and wrap it as a sprite.
+///
+/// Format is autodetected from the path extension. Per-frame
+/// loading for sprite sheets is up to the caller (slice the
+/// returned Pixels with `rt_pixels_subimage` and use `rt_sprite_add_frame`).
 void *rt_sprite_from_file(void *path) {
     if (!path)
         return NULL;
@@ -376,6 +419,17 @@ void *rt_sprite_from_file(void *path) {
 // Sprite Properties
 //=============================================================================
 
+// ---------------------------------------------------------------------------
+// Property accessors — straight getters and setters for the visible
+// state of a sprite. All take a `void *sprite_ptr` (the GC-managed
+// `rt_sprite_impl`) and return / accept an `int64_t` so they can
+// match the runtime calling convention. Each is null-safe; getters
+// on a null sprite return 0 (or false), setters silently no-op.
+// `scale_x`, `scale_y`, `rotation` are stored as integers (percent
+// or degrees); `tint_color` follows the standard 0xRRGGBBAA layout.
+// ---------------------------------------------------------------------------
+
+/// @brief Get the sprite's x-coordinate. 0 for null.
 int64_t rt_sprite_get_x(void *sprite_ptr) {
     if (!sprite_ptr) {
         rt_trap("Sprite.X: null sprite");
@@ -384,6 +438,7 @@ int64_t rt_sprite_get_x(void *sprite_ptr) {
     return ((rt_sprite_impl *)sprite_ptr)->x;
 }
 
+/// @brief Set the sprite's x-coordinate. Traps on null.
 void rt_sprite_set_x(void *sprite_ptr, int64_t x) {
     if (!sprite_ptr) {
         rt_trap("Sprite.X: null sprite");
@@ -392,6 +447,7 @@ void rt_sprite_set_x(void *sprite_ptr, int64_t x) {
     ((rt_sprite_impl *)sprite_ptr)->x = x;
 }
 
+/// @brief Get the sprite's y-coordinate. 0 for null.
 int64_t rt_sprite_get_y(void *sprite_ptr) {
     if (!sprite_ptr) {
         rt_trap("Sprite.Y: null sprite");
@@ -400,6 +456,7 @@ int64_t rt_sprite_get_y(void *sprite_ptr) {
     return ((rt_sprite_impl *)sprite_ptr)->y;
 }
 
+/// @brief Set the sprite's y-coordinate. Traps on null.
 void rt_sprite_set_y(void *sprite_ptr, int64_t y) {
     if (!sprite_ptr) {
         rt_trap("Sprite.Y: null sprite");
@@ -408,6 +465,7 @@ void rt_sprite_set_y(void *sprite_ptr, int64_t y) {
     ((rt_sprite_impl *)sprite_ptr)->y = y;
 }
 
+/// @brief Width in pixels of the current frame (0 if no frames). Traps on null.
 int64_t rt_sprite_get_width(void *sprite_ptr) {
     if (!sprite_ptr) {
         rt_trap("Sprite.Width: null sprite");
@@ -419,6 +477,7 @@ int64_t rt_sprite_get_width(void *sprite_ptr) {
     return rt_pixels_width(sprite->frames[sprite->current_frame]);
 }
 
+/// @brief Height in pixels of the current frame (0 if no frames). Traps on null.
 int64_t rt_sprite_get_height(void *sprite_ptr) {
     if (!sprite_ptr) {
         rt_trap("Sprite.Height: null sprite");
@@ -430,6 +489,7 @@ int64_t rt_sprite_get_height(void *sprite_ptr) {
     return rt_pixels_height(sprite->frames[sprite->current_frame]);
 }
 
+/// @brief Horizontal scale percent (100 = unscaled). Default 100 when null (with trap).
 int64_t rt_sprite_get_scale_x(void *sprite_ptr) {
     if (!sprite_ptr) {
         rt_trap("Sprite.ScaleX: null sprite");
@@ -438,6 +498,7 @@ int64_t rt_sprite_get_scale_x(void *sprite_ptr) {
     return ((rt_sprite_impl *)sprite_ptr)->scale_x;
 }
 
+/// @brief Set horizontal scale percent (100 = unscaled, 200 = 2x wider).
 void rt_sprite_set_scale_x(void *sprite_ptr, int64_t scale) {
     if (!sprite_ptr) {
         rt_trap("Sprite.ScaleX: null sprite");
@@ -446,6 +507,7 @@ void rt_sprite_set_scale_x(void *sprite_ptr, int64_t scale) {
     ((rt_sprite_impl *)sprite_ptr)->scale_x = scale;
 }
 
+/// @brief Vertical scale percent (100 = unscaled). Default 100 when null (with trap).
 int64_t rt_sprite_get_scale_y(void *sprite_ptr) {
     if (!sprite_ptr) {
         rt_trap("Sprite.ScaleY: null sprite");
@@ -454,6 +516,7 @@ int64_t rt_sprite_get_scale_y(void *sprite_ptr) {
     return ((rt_sprite_impl *)sprite_ptr)->scale_y;
 }
 
+/// @brief Set vertical scale percent.
 void rt_sprite_set_scale_y(void *sprite_ptr, int64_t scale) {
     if (!sprite_ptr) {
         rt_trap("Sprite.ScaleY: null sprite");
@@ -462,6 +525,7 @@ void rt_sprite_set_scale_y(void *sprite_ptr, int64_t scale) {
     ((rt_sprite_impl *)sprite_ptr)->scale_y = scale;
 }
 
+/// @brief Rotation in degrees clockwise (0..360 typical, but unconstrained). Traps on null.
 int64_t rt_sprite_get_rotation(void *sprite_ptr) {
     if (!sprite_ptr) {
         rt_trap("Sprite.Rotation: null sprite");
@@ -470,6 +534,7 @@ int64_t rt_sprite_get_rotation(void *sprite_ptr) {
     return ((rt_sprite_impl *)sprite_ptr)->rotation;
 }
 
+/// @brief Set rotation in degrees clockwise.
 void rt_sprite_set_rotation(void *sprite_ptr, int64_t degrees) {
     if (!sprite_ptr) {
         rt_trap("Sprite.Rotation: null sprite");
@@ -478,6 +543,7 @@ void rt_sprite_set_rotation(void *sprite_ptr, int64_t degrees) {
     ((rt_sprite_impl *)sprite_ptr)->rotation = degrees;
 }
 
+/// @brief Z-order depth used for back-to-front rendering (lower = behind). Traps on null.
 int64_t rt_sprite_get_depth(void *sprite_ptr) {
     if (!sprite_ptr) {
         rt_trap("Sprite.Depth: null sprite");
@@ -486,6 +552,7 @@ int64_t rt_sprite_get_depth(void *sprite_ptr) {
     return ((rt_sprite_impl *)sprite_ptr)->depth;
 }
 
+/// @brief Set the Z-order depth for back-to-front rendering.
 void rt_sprite_set_depth(void *sprite_ptr, int64_t depth) {
     if (!sprite_ptr) {
         rt_trap("Sprite.Depth: null sprite");
@@ -494,6 +561,7 @@ void rt_sprite_set_depth(void *sprite_ptr, int64_t depth) {
     ((rt_sprite_impl *)sprite_ptr)->depth = depth;
 }
 
+/// @brief Visibility flag (1 = drawn, 0 = skipped). Traps on null.
 int64_t rt_sprite_get_visible(void *sprite_ptr) {
     if (!sprite_ptr) {
         rt_trap("Sprite.Visible: null sprite");
@@ -502,6 +570,7 @@ int64_t rt_sprite_get_visible(void *sprite_ptr) {
     return ((rt_sprite_impl *)sprite_ptr)->visible;
 }
 
+/// @brief Toggle visibility (any non-zero = visible).
 void rt_sprite_set_visible(void *sprite_ptr, int64_t visible) {
     if (!sprite_ptr) {
         rt_trap("Sprite.Visible: null sprite");
@@ -510,6 +579,7 @@ void rt_sprite_set_visible(void *sprite_ptr, int64_t visible) {
     ((rt_sprite_impl *)sprite_ptr)->visible = visible ? 1 : 0;
 }
 
+/// @brief Index of the currently displayed animation frame.
 int64_t rt_sprite_get_frame(void *sprite_ptr) {
     if (!sprite_ptr) {
         rt_trap("Sprite.Frame: null sprite");
@@ -518,6 +588,8 @@ int64_t rt_sprite_get_frame(void *sprite_ptr) {
     return ((rt_sprite_impl *)sprite_ptr)->current_frame;
 }
 
+/// @brief Jump to the given frame index. Out-of-range indices are silently ignored;
+/// the auto-advance timer is reset so animation continues cleanly from this frame.
 void rt_sprite_set_frame(void *sprite_ptr, int64_t frame) {
     if (!sprite_ptr) {
         rt_trap("Sprite.Frame: null sprite");
@@ -530,6 +602,7 @@ void rt_sprite_set_frame(void *sprite_ptr, int64_t frame) {
     }
 }
 
+/// @brief Total number of frames added via `_add_frame` (0 if uninitialized).
 int64_t rt_sprite_get_frame_count(void *sprite_ptr) {
     if (!sprite_ptr) {
         rt_trap("Sprite.FrameCount: null sprite");
@@ -538,6 +611,7 @@ int64_t rt_sprite_get_frame_count(void *sprite_ptr) {
     return ((rt_sprite_impl *)sprite_ptr)->frame_count;
 }
 
+/// @brief Horizontal flip flag (1 = mirrored, 0 = normal).
 int64_t rt_sprite_get_flip_x(void *sprite_ptr) {
     if (!sprite_ptr) {
         rt_trap("Sprite.FlipX: null sprite");
@@ -546,6 +620,7 @@ int64_t rt_sprite_get_flip_x(void *sprite_ptr) {
     return ((rt_sprite_impl *)sprite_ptr)->flip_x;
 }
 
+/// @brief Toggle horizontal mirror.
 void rt_sprite_set_flip_x(void *sprite_ptr, int64_t flip) {
     if (!sprite_ptr) {
         rt_trap("Sprite.FlipX: null sprite");
@@ -554,6 +629,7 @@ void rt_sprite_set_flip_x(void *sprite_ptr, int64_t flip) {
     ((rt_sprite_impl *)sprite_ptr)->flip_x = flip ? 1 : 0;
 }
 
+/// @brief Vertical flip flag (1 = upside-down, 0 = normal).
 int64_t rt_sprite_get_flip_y(void *sprite_ptr) {
     if (!sprite_ptr) {
         rt_trap("Sprite.FlipY: null sprite");
@@ -562,6 +638,7 @@ int64_t rt_sprite_get_flip_y(void *sprite_ptr) {
     return ((rt_sprite_impl *)sprite_ptr)->flip_y;
 }
 
+/// @brief Toggle vertical flip.
 void rt_sprite_set_flip_y(void *sprite_ptr, int64_t flip) {
     if (!sprite_ptr) {
         rt_trap("Sprite.FlipY: null sprite");
@@ -574,6 +651,13 @@ void rt_sprite_set_flip_y(void *sprite_ptr, int64_t flip) {
 // Sprite Methods
 //=============================================================================
 
+/// @brief Draw the sprite onto a Canvas with explicit transform overrides.
+///
+/// Lets callers temporarily override scale/rotation/tint/alpha
+/// without mutating the sprite's stored properties — useful for
+/// shake effects, hit flashes, or pulsing without tracking
+/// previous values. The internal transform pipeline is the same
+/// as `rt_sprite_draw`; only the inputs differ.
 void rt_sprite_draw_transformed(void *sprite_ptr,
                                 void *canvas_ptr,
                                 int64_t x,
@@ -629,6 +713,8 @@ void rt_sprite_draw_transformed(void *sprite_ptr,
     sprite_release_if_owned(transformed, frame);
 }
 
+/// @brief Draw the sprite onto a Canvas using its current properties.
+/// @see rt_sprite_draw_transformed
 void rt_sprite_draw(void *sprite_ptr, void *canvas_ptr) {
     if (!sprite_ptr)
         return;
@@ -644,6 +730,10 @@ void rt_sprite_draw(void *sprite_ptr, void *canvas_ptr) {
                                255);
 }
 
+/// @brief Set the sprite's transform origin (rotation pivot, position anchor).
+///
+/// Coordinates are in sprite-local pixels at 100% scale and get
+/// scaled by the active scale factor at draw time.
 void rt_sprite_set_origin(void *sprite_ptr, int64_t x, int64_t y) {
     if (!sprite_ptr) {
         rt_trap("Sprite.SetOrigin: null sprite");
@@ -654,6 +744,11 @@ void rt_sprite_set_origin(void *sprite_ptr, int64_t x, int64_t y) {
     sprite->origin_y = y;
 }
 
+/// @brief Append `pixels` as the next animation frame.
+///
+/// Bumps the Pixels refcount. Capped at `MAX_SPRITE_FRAMES`;
+/// frames beyond the cap are silently dropped. Frame indices are
+/// assigned in append order starting at 0.
 void rt_sprite_add_frame(void *sprite_ptr, void *pixels) {
     if (!sprite_ptr || !pixels) {
         rt_trap("Sprite.AddFrame: null argument");
@@ -672,6 +767,7 @@ void rt_sprite_add_frame(void *sprite_ptr, void *pixels) {
     }
 }
 
+/// @brief Set the per-frame display duration in milliseconds (used by `rt_sprite_update`).
 void rt_sprite_set_frame_delay(void *sprite_ptr, int64_t ms) {
     if (!sprite_ptr) {
         rt_trap("Sprite.SetFrameDelay: null sprite");
@@ -682,6 +778,11 @@ void rt_sprite_set_frame_delay(void *sprite_ptr, int64_t ms) {
     ((rt_sprite_impl *)sprite_ptr)->frame_delay_ms = ms;
 }
 
+/// @brief Tick the sprite's animation: advance to the next frame if the delay elapsed.
+///
+/// Reads `rt_timer_ms()` and compares against the last frame
+/// transition. Wraps around at `frame_count`. Multi-frame sprites
+/// only — single-frame sprites no-op.
 void rt_sprite_update(void *sprite_ptr) {
     if (!sprite_ptr)
         return;
@@ -700,6 +801,12 @@ void rt_sprite_update(void *sprite_ptr) {
     }
 }
 
+/// @brief AABB collision test between two sprites' bounding rectangles.
+///
+/// Uses each sprite's current width/height after scale (rotation is
+/// ignored — this is an axis-aligned test, suitable for broad-phase
+/// or simple gameplay collision). Returns 1 if the rectangles
+/// overlap, 0 otherwise.
 int8_t rt_sprite_overlaps(void *sprite_ptr, void *other_ptr) {
     if (!sprite_ptr || !other_ptr)
         return false;
@@ -725,6 +832,7 @@ int8_t rt_sprite_overlaps(void *sprite_ptr, void *other_ptr) {
     return (x1 < x2 + w2 && x1 + w1 > x2 && y1 < y2 + h2 && y1 + h1 > y2);
 }
 
+/// @brief Point-in-AABB test: is `(px, py)` inside the sprite's bounding rectangle?
 int8_t rt_sprite_contains(void *sprite_ptr, int64_t px, int64_t py) {
     if (!sprite_ptr)
         return false;
@@ -741,6 +849,7 @@ int8_t rt_sprite_contains(void *sprite_ptr, int64_t px, int64_t py) {
     return (px >= x && px < x + w && py >= y && py < y + h);
 }
 
+/// @brief Translate the sprite by `(dx, dy)` pixels.
 void rt_sprite_move(void *sprite_ptr, int64_t dx, int64_t dy) {
     if (!sprite_ptr) {
         rt_trap("Sprite.Move: null sprite");
@@ -755,6 +864,16 @@ void rt_sprite_move(void *sprite_ptr, int64_t dx, int64_t dy) {
 // Sprite Animator — Named Animation Clip State Machine
 //=============================================================================
 
+// ---------------------------------------------------------------------------
+// SpriteAnimator — a separately-allocated controller that drives
+// frame transitions on a sprite based on named "clips" (frame
+// ranges + per-clip frame delay). Each animator can hold up to
+// `MAX_ANIM_CLIPS` clips and plays at most one at a time.
+// ---------------------------------------------------------------------------
+
+/// @brief Allocate a fresh animator with no clips and nothing playing.
+/// @brief Create a sprite animator that drives multi-clip frame-based animation.
+/// Bound to a sprite via `_animator_update`. Up to RT_ANIM_MAX_CLIPS named clips.
 rt_sprite_animator_t *rt_sprite_animator_new(void) {
     rt_sprite_animator_t *anim =
         (rt_sprite_animator_t *)rt_obj_new_i64(0, (int64_t)sizeof(rt_sprite_animator_t));
@@ -766,6 +885,7 @@ rt_sprite_animator_t *rt_sprite_animator_new(void) {
     return anim;
 }
 
+/// @brief Free an animator and any clip-name strings it owns.
 void rt_sprite_animator_destroy(rt_sprite_animator_t *animator) {
     if (!animator)
         return;
@@ -773,6 +893,11 @@ void rt_sprite_animator_destroy(rt_sprite_animator_t *animator) {
         rt_obj_free(animator);
 }
 
+/// @brief Register a named animation clip (frame range + per-frame delay + loop flag).
+///
+/// Clip names are matched case-sensitively in `play`. Duplicate
+/// names are not detected — last write wins (in slot order).
+/// @return 1 on success, 0 if the clip table is full or `name` is NULL.
 int rt_sprite_animator_add_clip(rt_sprite_animator_t *animator,
                                 const char *name,
                                 int64_t start_frame,
@@ -799,6 +924,11 @@ int rt_sprite_animator_add_clip(rt_sprite_animator_t *animator,
     return 1;
 }
 
+/// @brief Begin playing the clip with the given name from its first frame.
+///
+/// Resets timing so the next `update` advances based on the clip's
+/// `frame_delay_ms`. If the named clip doesn't exist, returns 0
+/// and leaves the previously-playing clip (if any) running.
 int8_t rt_sprite_animator_play(rt_sprite_animator_t *animator, const char *name) {
     if (!animator || !name)
         return 0;
@@ -830,12 +960,18 @@ int8_t rt_sprite_animator_play(rt_sprite_animator_t *animator, const char *name)
     return 0; /* clip not found */
 }
 
+/// @brief Stop the active clip; subsequent `update` calls become no-ops until `play`.
 void rt_sprite_animator_stop(rt_sprite_animator_t *animator) {
     if (!animator)
         return;
     animator->playing = 0;
 }
 
+/// @brief Tick the animator and write the active clip's current frame to the sprite.
+///
+/// Drives forward by the elapsed wall-clock time since the last
+/// transition. On reaching the end of a non-looping clip, holds
+/// the final frame and stops; looping clips wrap to `start_frame`.
 void rt_sprite_animator_update(rt_sprite_animator_t *animator, void *sprite_ptr) {
     if (!animator || !animator->playing || animator->current_clip < 0 || !sprite_ptr)
         return;
@@ -869,16 +1005,20 @@ void rt_sprite_animator_update(rt_sprite_animator_t *animator, void *sprite_ptr)
     rt_sprite_set_frame(sprite_ptr, abs_frame);
 }
 
+/// @brief True if a clip is currently playing (was started and hasn't reached a non-loop end).
 int8_t rt_sprite_animator_is_playing(rt_sprite_animator_t *animator) {
     return (animator && animator->playing) ? 1 : 0;
 }
 
+/// @brief Name of the active clip, or NULL when nothing is playing.
 const char *rt_sprite_animator_get_current(rt_sprite_animator_t *animator) {
     if (!animator || !animator->playing || animator->current_clip < 0)
         return NULL;
     return animator->clips[animator->current_clip].name;
 }
 
+/// @brief Zia/BASIC bridge: `add_clip` taking a Viper `rt_string` for the name.
+/// @see rt_sprite_animator_add_clip
 int8_t rt_sprite_animator_add_clip_str(void *animator,
                                        rt_string name,
                                        int64_t start_frame,
@@ -895,12 +1035,15 @@ int8_t rt_sprite_animator_add_clip_str(void *animator,
     return ok ? 1 : 0;
 }
 
+/// @brief Zia/BASIC bridge: `play` taking a Viper `rt_string`.
 int8_t rt_sprite_animator_play_str(void *animator, rt_string name) {
     const char *clipName = name ? rt_string_cstr(name) : NULL;
     int8_t ok = rt_sprite_animator_play((rt_sprite_animator_t *)animator, clipName);
     return ok;
 }
 
+/// @brief Zia/BASIC bridge: `get_current` returning the active clip name as `rt_string`.
+/// Returns the empty string when nothing is playing.
 rt_string rt_sprite_animator_get_current_str(void *animator) {
     const char *name = rt_sprite_animator_get_current((rt_sprite_animator_t *)animator);
     if (!name)

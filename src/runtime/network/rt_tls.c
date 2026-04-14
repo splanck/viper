@@ -63,6 +63,11 @@ extern void rt_net_init_wsa(void);
 #define SEND_FLAGS 0
 #endif
 
+/// @brief Stop SIGPIPE from killing the process when writing to a closed socket.
+///
+/// macOS uses the per-socket `SO_NOSIGPIPE` option (set once at
+/// socket creation). Linux uses the per-call `MSG_NOSIGNAL` flag
+/// (see `SEND_FLAGS`). Other platforms have nothing to do here.
 static void suppress_sigpipe(socket_t sock) {
 #if defined(__APPLE__) && defined(SO_NOSIGPIPE)
     int val = 1;
@@ -71,6 +76,14 @@ static void suppress_sigpipe(socket_t sock) {
     (void)sock;
 }
 
+/// @brief Wait for a socket to become readable or writable within `timeout_ms`.
+///
+/// Wraps `select(2)` so the TLS state machine can convert non-blocking
+/// `EAGAIN`/`EWOULDBLOCK` returns into a bounded blocking wait.
+/// @param sock        Socket to wait on.
+/// @param timeout_ms  Maximum wait in milliseconds.
+/// @param for_write   Non-zero waits for write-readiness, zero waits for read-readiness.
+/// @return >0 if ready, 0 on timeout, -1 on error (caller checks `errno`).
 static int tls_wait_socket(socket_t sock, int timeout_ms, int for_write) {
     fd_set fds;
     FD_ZERO(&fds);
@@ -85,6 +98,10 @@ static int tls_wait_socket(socket_t sock, int timeout_ms, int for_write) {
     return select((int)sock + 1, &fds, NULL, NULL, &tv);
 }
 
+/// @brief Toggle a socket between blocking and non-blocking I/O.
+///
+/// Uses `ioctlsocket(FIONBIO)` on Windows and `fcntl(O_NONBLOCK)`
+/// elsewhere. Silently no-ops if `fcntl(F_GETFL)` fails.
 static void tls_set_nonblocking(socket_t sock, int nonblocking) {
 #ifdef _WIN32
     u_long mode = nonblocking ? 1 : 0;
@@ -100,6 +117,10 @@ static void tls_set_nonblocking(socket_t sock, int nonblocking) {
 #endif
 }
 
+/// @brief Apply a recv or send timeout to a socket.
+///
+/// Sets `SO_RCVTIMEO` or `SO_SNDTIMEO` (chosen by `is_recv`).
+/// Windows takes a `DWORD` of milliseconds; POSIX takes a `struct timeval`.
 static void tls_set_socket_timeout(socket_t sock, int timeout_ms, int is_recv) {
 #ifdef _WIN32
     DWORD tv = (DWORD)timeout_ms;
@@ -113,6 +134,12 @@ static void tls_set_socket_timeout(socket_t sock, int timeout_ms, int is_recv) {
 #endif
 }
 
+/// @brief Free heap-allocated handshake scratch space hanging off a session.
+///
+/// Releases the buffered server certificate chain and any
+/// HelloRetryRequest cookie, and resets the application data
+/// reassembly buffer to empty. Safe to call on a half-initialised
+/// session and idempotent — pointers are nulled after free.
 static void tls_release_dynamic_state(rt_tls_session_t *session) {
     if (!session)
         return;
@@ -169,37 +196,55 @@ static const uint8_t TLS_HELLO_RETRY_RANDOM[32] = {
 // Note: TLS_MAX_RECORD_SIZE, TLS_MAX_CIPHERTEXT, tls_state_t, traffic_keys_t,
 // and struct rt_tls_session are defined in rt_tls_internal.h.
 
-// Helper: write big-endian uint16
+// ---------------------------------------------------------------------------
+// Wire-format byte helpers. TLS uses network byte order (big-endian) for all
+// length and version fields. The 24-bit width is required by the handshake
+// header (RFC 8446 §4: `Handshake.length` is a `uint24`).
+// ---------------------------------------------------------------------------
+
+/// @brief Write `v` to `p` as a big-endian unsigned 16-bit integer.
 static void write_u16(uint8_t *p, uint16_t v) {
     p[0] = (v >> 8) & 0xFF;
     p[1] = v & 0xFF;
 }
 
-// Helper: write big-endian uint24
+/// @brief Write the low 24 bits of `v` to `p` as big-endian (`uint24` in TLS).
 static void write_u24(uint8_t *p, uint32_t v) {
     p[0] = (v >> 16) & 0xFF;
     p[1] = (v >> 8) & 0xFF;
     p[2] = v & 0xFF;
 }
 
-// Helper: read big-endian uint16
+/// @brief Read a big-endian unsigned 16-bit integer from `p`.
 static uint16_t read_u16(const uint8_t *p) {
     return ((uint16_t)p[0] << 8) | p[1];
 }
 
-// Helper: read big-endian uint24
+/// @brief Read a big-endian 24-bit value from `p` into the low 24 bits of a `uint32_t`.
 static uint32_t read_u24(const uint8_t *p) {
     return ((uint32_t)p[0] << 16) | ((uint32_t)p[1] << 8) | p[2];
 }
 
-// Update transcript hash.
-// Returns 0 on success, -1 on size overflow.
+/// @brief Reset the transcript hash to the empty-handshake state.
+///
+/// TLS 1.3 keys are derived from a running SHA-256 hash over every
+/// handshake message exchanged so far. This primes the rolling
+/// context and seeds `transcript_hash` with `SHA-256("")` so that
+/// HKDF helpers can be called even before the first message arrives.
 static void transcript_init(rt_tls_session_t *session) {
     session->transcript_len = 0;
     rt_sha256_init(&session->transcript_ctx);
     rt_sha256(NULL, 0, session->transcript_hash);
 }
 
+/// @brief Append `len` bytes of handshake data to the transcript hash.
+///
+/// Maintains a snapshot in `session->transcript_hash` after each
+/// update so callers can derive secrets at any handshake boundary
+/// without finalising the live context. Sets `session->error` and
+/// returns -1 if the cumulative length would overflow `size_t` or
+/// the session is already in an error state.
+/// @return 0 on success, -1 on overflow / pre-existing error.
 static int transcript_update(rt_tls_session_t *session, const uint8_t *data, size_t len) {
     if (session->error)
         return -1; // Already in error state
@@ -216,7 +261,19 @@ static int transcript_update(rt_tls_session_t *session, const uint8_t *data, siz
     return 0;
 }
 
-// Derive handshake traffic keys
+/// @brief Derive TLS 1.3 handshake traffic keys from the ECDHE shared secret.
+///
+/// Implements the HKDF schedule from RFC 8446 §7.1:
+///   early_secret    = HKDF-Extract(0, 0)
+///   derived         = Derive-Secret(early_secret, "derived", "")
+///   handshake_secret= HKDF-Extract(derived, shared_secret)
+///   c_hs_traffic    = Derive-Secret(handshake_secret, "c hs traffic", H(handshake))
+///   s_hs_traffic    = Derive-Secret(handshake_secret, "s hs traffic", H(handshake))
+///
+/// Then expands each traffic secret into an AEAD key (16 bytes for
+/// AES-128-GCM, 32 bytes for ChaCha20-Poly1305) and a 12-byte IV.
+/// The transcript hash must already cover ClientHello + ServerHello
+/// before this function is called.
 static void derive_handshake_keys(rt_tls_session_t *session, const uint8_t shared_secret[32]) {
     uint8_t zero_key[32] = {0};
     uint8_t early_secret[32];
@@ -266,7 +323,19 @@ static void derive_handshake_keys(rt_tls_session_t *session, const uint8_t share
     session->keys_established = 1;
 }
 
-// Derive application traffic keys
+/// @brief Rotate keys from handshake to application traffic secrets.
+///
+/// Continues the RFC 8446 §7.1 schedule:
+///   derived       = Derive-Secret(handshake_secret, "derived", "")
+///   master_secret = HKDF-Extract(derived, 0)
+///   c_ap_traffic  = Derive-Secret(master_secret, "c ap traffic", H(handshake))
+///   s_ap_traffic  = Derive-Secret(master_secret, "s ap traffic", H(handshake))
+///
+/// Replaces the AEAD key/IV pair on both `read_keys` and
+/// `write_keys` and resets the per-direction sequence numbers,
+/// effectively transitioning the record layer from handshake to
+/// application encryption. Must be called after the server's
+/// Finished is verified so the transcript hash covers it.
 static void derive_application_keys(rt_tls_session_t *session) {
     uint8_t derived[32];
     uint8_t zero_key[32] = {0};
@@ -317,7 +386,12 @@ static void derive_application_keys(rt_tls_session_t *session) {
     session->write_keys.seq_num = 0;
 }
 
-// Build nonce from IV and sequence number
+/// @brief Construct the per-record AEAD nonce per RFC 8446 §5.3.
+///
+/// The nonce is the static 12-byte IV XORed with the big-endian
+/// 64-bit sequence number aligned to the rightmost 8 bytes. This
+/// guarantees nonce uniqueness for every record under the same key
+/// without sending an explicit nonce on the wire.
 static void build_nonce(const uint8_t iv[12], uint64_t seq, uint8_t nonce[12]) {
     memcpy(nonce, iv, 12);
     for (int i = 0; i < 8; i++) {
@@ -325,7 +399,23 @@ static void build_nonce(const uint8_t iv[12], uint64_t seq, uint8_t nonce[12]) {
     }
 }
 
-// Send TLS record
+/// @brief Frame, optionally encrypt, and transmit a single TLS record.
+///
+/// Behaviour depends on `session->keys_established`:
+///   - Pre-handshake: writes a plaintext record of `content_type`
+///     with `data` as payload.
+///   - Post-handshake: emits an `application_data` (23) record whose
+///     plaintext is `data || content_type`, AEAD-sealed under the
+///     active write key with a sequence-number-derived nonce. The
+///     5-byte record header serves as the AAD.
+///
+/// Selects AES-128-GCM or ChaCha20-Poly1305 based on the negotiated
+/// cipher suite. Bumps the write sequence number on each encrypted
+/// record and refuses to send when the counter would wrap (RFC 8446
+/// §5.5 nonce-reuse guard). Loops on partial `send()` and treats
+/// `EINTR` as retryable.
+/// @return RT_TLS_OK, RT_TLS_ERROR (encryption / overflow), or
+///         RT_TLS_ERROR_SOCKET (write failure).
 static int send_record(rt_tls_session_t *session,
                        uint8_t content_type,
                        const uint8_t *data,
@@ -398,7 +488,21 @@ static int send_record(rt_tls_session_t *session,
     return RT_TLS_OK;
 }
 
-// Receive TLS record
+/// @brief Read, decrypt, and unframe one TLS record from the wire.
+///
+/// Reads the 5-byte record header, validates the length is within
+/// the spec maximum (`TLS_MAX_CIPHERTEXT`), then drains the
+/// payload. Once keys are established and the record is
+/// `application_data`, AEAD-decrypts under the read key with the
+/// header as AAD, strips the inner content-type byte (RFC 8446
+/// §5.2), and returns the unwrapped type via `*content_type`.
+/// Loops on partial `recv()` and treats `EINTR`/`EAGAIN` as retryable.
+/// Bumps the read sequence number on every successfully decrypted
+/// record and trips an error if it wraps.
+/// @param[out] content_type  Unwrapped TLS content type byte.
+/// @param[out] data          Caller-provided payload buffer.
+/// @param[out] data_len      Bytes written to `data` on success.
+/// @return RT_TLS_OK, RT_TLS_ERROR (decrypt/length), RT_TLS_ERROR_SOCKET, or RT_TLS_ERROR_CLOSED.
 static int recv_record(rt_tls_session_t *session,
                        uint8_t *content_type,
                        uint8_t *data,
@@ -493,7 +597,23 @@ static int recv_record(rt_tls_session_t *session,
     return RT_TLS_OK;
 }
 
-// Build and send ClientHello
+/// @brief Construct and transmit a TLS 1.3 ClientHello message.
+///
+/// Lays out the legacy `client_version` (TLS 1.2 for compatibility),
+/// 32-byte client random, empty session ID, the offered cipher
+/// suites (`AES-128-GCM-SHA256` then `CHACHA20_POLY1305_SHA256`),
+/// the null compression method, and the following extensions:
+///   - `server_name` (when `session->hostname` is set, RFC 6066)
+///   - `supported_versions` (TLS 1.3 only)
+///   - `supported_groups` (X25519 only — see RFC 7748)
+///   - `signature_algorithms` (ECDSA P-256/P-384, RSA-PSS SHA-256/384/512)
+///   - `cookie` (only when echoing back a HelloRetryRequest)
+///   - `key_share` with a freshly generated X25519 public key
+///
+/// Wraps the body in a handshake header, mirrors it into the
+/// transcript, snapshots `client_hello_hash` for HelloRetryRequest
+/// folding, and hands the bytes to `send_record`. Advances the
+/// session state to `TLS_STATE_CLIENT_HELLO_SENT` on success.
 static int send_client_hello(rt_tls_session_t *session) {
     uint8_t msg[1400];
     size_t pos = 0;
@@ -642,7 +762,32 @@ static int send_client_hello(rt_tls_session_t *session) {
     return RT_TLS_OK;
 }
 
-// Process ServerHello or HelloRetryRequest.
+/// @brief Parse a ServerHello (or HelloRetryRequest) and finish key-exchange.
+///
+/// Validates the message body field by field with strict bounds
+/// checks (each advance is guarded so a malformed length cannot
+/// overrun the record). Detects HelloRetryRequest by the magic
+/// `random` value defined in RFC 8446 §4.1.3. Reads the chosen
+/// cipher suite (must be AES-128-GCM-SHA256 or
+/// CHACHA20-POLY1305-SHA256) and walks the extension block to find
+/// `supported_versions` (must be TLS 1.3), `key_share` (X25519
+/// public point), and a `cookie` for HRR.
+///
+/// On a HelloRetryRequest path: substitutes the synthetic
+/// "message_hash" record into the transcript per RFC 8446 §4.4.1,
+/// stashes the cookie, and instructs the caller to resend the
+/// ClientHello.
+///
+/// On a real ServerHello: completes the X25519 ECDHE shared secret
+/// using the client's stored private key, derives handshake traffic
+/// keys via `derive_handshake_keys`, mixes the message into the
+/// transcript, and advances the state machine.
+/// @param data       Pointer to the ServerHello body (after handshake header).
+/// @param len        Length of the body.
+/// @param full_msg   Pointer to the full handshake message including header.
+/// @param full_len   Length of the full message (used for transcript update).
+/// @return RT_TLS_OK, RT_TLS_RETRY (caller should resend ClientHello),
+///         or an error code on malformed / unsupported input.
 static int process_server_hello(rt_tls_session_t *session,
                                 const uint8_t *data,
                                 size_t len,
@@ -804,7 +949,13 @@ static int process_server_hello(rt_tls_session_t *session,
     return RT_TLS_OK;
 }
 
-// Send Finished message
+/// @brief Compute and send the client Finished handshake message.
+///
+/// Derives the per-direction "finished_key" via HKDF-Expand-Label
+/// from the client handshake traffic secret, MACs the current
+/// transcript hash with HMAC-SHA256, and emits a Finished record.
+/// The transcript is updated *before* sending so the application
+/// keys derived afterwards mix in this message (RFC 8446 §4.4.4).
 static int send_finished(rt_tls_session_t *session) {
     uint8_t finished_key[32];
     rt_hkdf_expand_label(
@@ -823,7 +974,13 @@ static int send_finished(rt_tls_session_t *session) {
     return send_record(session, TLS_CONTENT_HANDSHAKE, msg, 36);
 }
 
-// Constant-time memory comparison (H-9 fix: prevent timing attacks on Finished MAC)
+/// @brief Constant-time byte comparison used for MAC and verify_data checks.
+///
+/// Walks all `n` bytes regardless of where they diverge so the
+/// running time leaks no information about the position or count of
+/// matching bytes. Required by H-9 to prevent timing side-channels
+/// against the Finished MAC and any other secret-dependent compare.
+/// @return 0 if `a` and `b` are byte-identical, non-zero otherwise.
 static int ct_memcmp(const uint8_t *a, const uint8_t *b, size_t n) {
     uint8_t diff = 0;
     for (size_t i = 0; i < n; i++)
@@ -831,7 +988,14 @@ static int ct_memcmp(const uint8_t *a, const uint8_t *b, size_t n) {
     return diff != 0; // non-zero means unequal
 }
 
-// Verify server Finished
+/// @brief Validate the server's Finished verify_data against the transcript.
+///
+/// Recomputes HMAC-SHA256(finished_key, transcript_hash) using the
+/// server handshake traffic secret, then compares it to the
+/// received `data` in constant time. A mismatch means the handshake
+/// has been tampered with or the server doesn't share our key
+/// schedule.
+/// @return RT_TLS_OK on match, RT_TLS_ERROR_HANDSHAKE on failure.
 static int verify_finished(rt_tls_session_t *session, const uint8_t *data, size_t len) {
     if (len != 32) {
         session->error = "invalid Finished length";
@@ -860,6 +1024,12 @@ static int verify_finished(rt_tls_session_t *session, const uint8_t *data, size_
 // Public API
 //=============================================================================
 
+/// @brief Initialise a TLS config struct to safe defaults.
+///
+/// Zeros the structure, enables certificate validation
+/// (chain + hostname + CertificateVerify), and sets a 30-second I/O
+/// timeout. Callers may then override fields like `hostname` or
+/// `verify_cert` before passing the config to `rt_tls_new`.
 void rt_tls_config_init(rt_tls_config_t *config) {
     memset(config, 0, sizeof(*config));
     // CS-6 resolved: certificate validation now implemented (CS-1/CS-2/CS-3).
@@ -868,6 +1038,16 @@ void rt_tls_config_init(rt_tls_config_t *config) {
     config->timeout_ms = 30000;
 }
 
+/// @brief Allocate a fresh TLS session bound to an already-connected socket.
+///
+/// The session is heap-allocated through the GC (`rt_obj_new_i64`)
+/// so it participates in the runtime's lifecycle. State is reset to
+/// `TLS_STATE_INITIAL`, the transcript hash is primed for an empty
+/// handshake, and the optional hostname is copied into a
+/// fixed-size buffer for SNI / hostname verification.
+/// @param socket_fd  Underlying TCP socket file descriptor.
+/// @param config     Optional config; if NULL, defaults match `rt_tls_config_init`.
+/// @return Pointer to the new session (never NULL — GC alloc cannot fail-soft).
 rt_tls_session_t *rt_tls_new(int socket_fd, const rt_tls_config_t *config) {
     rt_tls_session_t *session =
         (rt_tls_session_t *)rt_obj_new_i64(0, (int64_t)sizeof(rt_tls_session_t));
@@ -886,6 +1066,20 @@ rt_tls_session_t *rt_tls_new(int socket_fd, const rt_tls_config_t *config) {
     return session;
 }
 
+/// @brief Drive the TLS 1.3 handshake to completion.
+///
+/// Sends ClientHello, then loops reading records and dispatching
+/// each parsed handshake message:
+///   - ServerHello / HelloRetryRequest → key derivation
+///   - EncryptedExtensions             → noted, advance state
+///   - Certificate                     → parse + (optional) chain & hostname checks
+///   - CertificateVerify               → (optional) signature check
+///   - Finished                        → MAC verify, derive app keys, send our Finished
+/// Updates the transcript hash before processing each message
+/// (RFC 8446 §4.4.1) and aborts on transcript overflow. A
+/// post-handshake state of `TLS_STATE_CONNECTED` indicates success.
+/// @return RT_TLS_OK on completed handshake, an `RT_TLS_ERROR_*`
+///         code otherwise; `session->error` carries a human message.
 int rt_tls_handshake(rt_tls_session_t *session) {
     if (!session)
         return RT_TLS_ERROR_INVALID_ARG;
@@ -1011,6 +1205,15 @@ int rt_tls_handshake(rt_tls_session_t *session) {
     return session->state == TLS_STATE_CONNECTED ? RT_TLS_OK : RT_TLS_ERROR_HANDSHAKE;
 }
 
+/// @brief Encrypt and send `len` bytes of application data.
+///
+/// Splits the payload into TLS records of at most
+/// `TLS_MAX_RECORD_SIZE` bytes (16 KiB per RFC 8446 §5.1), each
+/// AEAD-sealed with the active write key. Refuses if the session
+/// is not in the `CONNECTED` state. A `len == 0` call is a no-op
+/// that returns 0 without touching the wire.
+/// @return Number of bytes accepted (always equals `len` on success)
+///         or a negative `RT_TLS_ERROR_*` code on failure.
 long rt_tls_send(rt_tls_session_t *session, const void *data, size_t len) {
     if (!session || session->state != TLS_STATE_CONNECTED)
         return RT_TLS_ERROR;
@@ -1034,6 +1237,16 @@ long rt_tls_send(rt_tls_session_t *session, const void *data, size_t len) {
     return (long)len;
 }
 
+/// @brief Receive up to `len` decrypted application bytes.
+///
+/// First drains any leftover bytes from a previous record (the
+/// per-session `app_buffer`) before pulling a new record off the
+/// wire. Transparently skips post-handshake messages such as
+/// `NewSessionTicket` and `KeyUpdate` (capped at 100 retries to
+/// foil a malicious server that floods them). A received `Alert`
+/// transitions the session to `CLOSED` and returns 0 (EOF).
+/// @return Bytes copied into `buffer` (>0), 0 on clean close,
+///         or a negative `RT_TLS_ERROR_*` code on failure.
 long rt_tls_recv(rt_tls_session_t *session, void *buffer, size_t len) {
     if (!session || session->state != TLS_STATE_CONNECTED)
         return RT_TLS_ERROR;
@@ -1082,6 +1295,16 @@ retry_recv:;
     return (long)copy;
 }
 
+/// @brief Politely shut down a TLS session and release its resources.
+///
+/// If still connected, sends a `close_notify` warning alert and
+/// drains records (capped at 32) until the peer's matching alert
+/// arrives — required by RFC 5246 §7.2.1 to detect truncation
+/// attacks. Then frees per-session scratch state, closes the
+/// underlying socket, marks the session `CLOSED`, and decrements
+/// its GC refcount; if the count hits zero, the session memory is
+/// freed via `rt_obj_free`. Safe to call on NULL or an already
+/// closed session.
 void rt_tls_close(rt_tls_session_t *session) {
     if (!session)
         return;
@@ -1120,24 +1343,43 @@ void rt_tls_close(rt_tls_session_t *session) {
         rt_obj_free(session);
 }
 
+/// @brief Last error message recorded by the session.
+/// @return The most recent error string, "null session" if `session`
+///         is NULL, or "no error" if no error has been recorded.
 const char *rt_tls_get_error(rt_tls_session_t *session) {
     if (!session)
         return "null session";
     return session->error ? session->error : "no error";
 }
 
+/// @brief Test whether `rt_tls_recv` can satisfy a read without going to the wire.
+/// @return 1 if the per-session app buffer holds undelivered bytes, 0 otherwise.
 int rt_tls_has_buffered_data(rt_tls_session_t *session) {
     if (!session)
         return 0;
     return session->app_buffer_pos < session->app_buffer_len ? 1 : 0;
 }
 
+/// @brief Expose the underlying socket descriptor (for select/poll integration).
+/// @return The socket FD, or -1 if `session` is NULL.
 int rt_tls_get_socket(rt_tls_session_t *session) {
     if (!session)
         return -1;
     return (int)session->socket_fd;
 }
 
+/// @brief One-shot TCP connect + TLS handshake to `host:port`.
+///
+/// Resolves `host` via `getaddrinfo` (AF_UNSPEC accepts both IPv4
+/// and IPv6), iterates the candidate addresses connecting to the
+/// first that responds within the configured timeout
+/// (non-blocking + `select`), applies recv/send timeouts to the
+/// socket, then runs the TLS handshake. On any failure the socket
+/// is closed and NULL is returned. Initialises Winsock once on
+/// Windows. The host name is forwarded into the config for SNI and
+/// hostname verification regardless of the caller-provided `hostname`.
+/// @return Connected `rt_tls_session_t*` on success, NULL on
+///         resolution / connect / handshake failure.
 rt_tls_session_t *rt_tls_connect(const char *host, uint16_t port, const rt_tls_config_t *config) {
 #ifdef _WIN32
     // Initialize Winsock

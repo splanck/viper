@@ -63,9 +63,10 @@ static inline uint8_t *file_bytes_data(void *obj) {
 
 #if RT_PLATFORM_WINDOWS
 #include <io.h>
+#include <process.h>
 #include <sys/utime.h>
-#define utime _utime
-#define utimbuf _utimbuf
+#include <windows.h>
+#include <wchar.h>
 #else
 #include <utime.h>
 #endif
@@ -77,6 +78,17 @@ static inline uint8_t *file_bytes_data(void *obj) {
 #else
 #define RT_FILE_O_BINARY 0
 #endif
+
+// =============================================================================
+// Platform shims
+// Each cross-platform helper wraps the OS-specific primitive with a uniform
+// signature: open / stat / unlink / utime work on UTF-8 paths regardless of
+// platform (Win32 detours through `rt_file_path_utf8_to_wide` so emoji in
+// filenames work). All functions below use these shims rather than calling
+// open/stat/etc. directly. The two #if/#else blocks deliberately duplicate
+// rt_fileext_write_all_fd / _make_temp_path / _replace_utf8 — Win32 uses
+// MoveFileExW for atomic-replace; POSIX uses rename(2) which is already atomic.
+// =============================================================================
 
 // On Windows, _read/_write take unsigned int; on POSIX they take size_t.
 // These wrappers suppress C4267 truncation warnings on MSVC.
@@ -93,10 +105,159 @@ static inline ssize_t rt_posix_write(int fd, const void *buf, size_t count) {
 #define rt_posix_write write
 #endif
 
+#if RT_PLATFORM_WINDOWS
+static int rt_fileext_open(const char *path, int flags, int pmode) {
+    wchar_t *wide = rt_file_path_utf8_to_wide(path);
+    if (!wide)
+        return -1;
+    int fd = _wopen(wide, flags, pmode);
+    free(wide);
+    return fd;
+}
+
+static int rt_fileext_stat_path(const char *path, struct stat *st) {
+    wchar_t *wide = rt_file_path_utf8_to_wide(path);
+    if (!wide)
+        return -1;
+    int rc = _wstat(wide, st);
+    free(wide);
+    return rc;
+}
+
+static int rt_fileext_unlink(const char *path) {
+    wchar_t *wide = rt_file_path_utf8_to_wide(path);
+    if (!wide)
+        return -1;
+    int rc = _wunlink(wide);
+    free(wide);
+    return rc;
+}
+
+static int rt_fileext_utime(const char *path, struct _utimbuf *times) {
+    wchar_t *wide = rt_file_path_utf8_to_wide(path);
+    if (!wide)
+        return -1;
+    int rc = _wutime(wide, times);
+    free(wide);
+    return rc;
+}
+
+static int rt_fileext_write_all_fd(int fd, const uint8_t *data, size_t len) {
+    size_t written = 0;
+    while (written < len) {
+        ssize_t n = rt_posix_write(fd, data + written, len - written);
+        if (n < 0) {
+            if (errno == EINTR)
+                continue;
+            return 0;
+        }
+        if (n == 0)
+            return 0;
+        written += (size_t)n;
+    }
+    return 1;
+}
+
+static char *rt_fileext_make_temp_path(const char *path) {
+    size_t path_len = strlen(path);
+    char *tmp = (char *)malloc(path_len + 64);
+    if (!tmp)
+        return NULL;
+    unsigned long pid = (unsigned long)_getpid();
+    snprintf(tmp, path_len + 64, "%s.tmp.%lu.%p", path, pid, (void *)tmp);
+    return tmp;
+}
+
+static int rt_fileext_replace_utf8(const char *src, const char *dst) {
+    wchar_t *wsrc = rt_file_path_utf8_to_wide(src);
+    wchar_t *wdst = rt_file_path_utf8_to_wide(dst);
+    if (!wsrc || !wdst) {
+        free(wsrc);
+        free(wdst);
+        return 0;
+    }
+    BOOL ok = MoveFileExW(wsrc, wdst, MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH);
+    free(wsrc);
+    free(wdst);
+    return ok ? 1 : 0;
+}
+#else
+#define rt_fileext_open open
+#define rt_fileext_stat_path stat
+#define rt_fileext_unlink unlink
+#define rt_fileext_utime utime
+
+static int rt_fileext_write_all_fd(int fd, const uint8_t *data, size_t len) {
+    size_t written = 0;
+    while (written < len) {
+        ssize_t n = rt_posix_write(fd, data + written, len - written);
+        if (n < 0) {
+            if (errno == EINTR)
+                continue;
+            return 0;
+        }
+        if (n == 0)
+            return 0;
+        written += (size_t)n;
+    }
+    return 1;
+}
+
+static char *rt_fileext_make_temp_path(const char *path) {
+    size_t path_len = strlen(path);
+    char *tmp = (char *)malloc(path_len + 64);
+    if (!tmp)
+        return NULL;
+    unsigned long pid = (unsigned long)getpid();
+    snprintf(tmp, path_len + 64, "%s.tmp.%lu.%p", path, pid, (void *)tmp);
+    return tmp;
+}
+
+static int rt_fileext_replace_utf8(const char *src, const char *dst) {
+    return rename(src, dst) == 0 ? 1 : 0;
+}
+#endif
+
+/// @brief **Atomic-write to disk:** write to a unique `.tmp.PID.PTR` sidecar, fsync (POSIX) or
+/// _commit (Win32) to flush kernel buffers, then atomically rename over the destination. If
+/// anything fails, deletes the tempfile so callers don't see partial state. The fsync is
+/// critical — without it, a power loss between rename and commit would leave a zero-byte file.
+static int rt_fileext_write_atomic_utf8(const char *path, const uint8_t *data, size_t len, int binary) {
+    char *tmp = rt_fileext_make_temp_path(path);
+    if (!tmp)
+        return 0;
+
+    int flags = O_WRONLY | O_CREAT | O_TRUNC | (binary ? RT_FILE_O_BINARY : 0);
+    int fd = rt_fileext_open(tmp, flags, 0666);
+    if (fd < 0) {
+        free(tmp);
+        return 0;
+    }
+
+    int ok = rt_fileext_write_all_fd(fd, data, len);
+#if RT_PLATFORM_WINDOWS
+    if (ok && _commit(fd) != 0)
+        ok = 0;
+#else
+    if (ok && fsync(fd) != 0)
+        ok = 0;
+#endif
+    if (close(fd) != 0)
+        ok = 0;
+    if (ok)
+        ok = rt_fileext_replace_utf8(tmp, path);
+    if (!ok)
+        (void)rt_fileext_unlink(tmp);
+    free(tmp);
+    return ok;
+}
+
 /// @brief Convert a runtime string path to a host path; traps on failure.
 /// @param path Runtime string containing the path.
 /// @param context Trap message to use when conversion fails.
 /// @return Null-terminated host path.
+/// @brief Validate a path argument: trap with `context` on NULL/empty input. Used as the first
+/// line of every public file operation to give specific error messages.
 static const char *rt_io_file_require_path(rt_string path, const char *context) {
     const char *cpath = NULL;
     if (!rt_file_path_from_vstr(path, &cpath) || !cpath)
@@ -107,12 +268,13 @@ static const char *rt_io_file_require_path(rt_string path, const char *context) 
 /// What: Return 1 if the file at @p path exists, 0 otherwise.
 /// Why:  Support Viper.IO.File.Exists semantics from the runtime.
 /// How:  Converts @p path to a host path and calls stat().
+/// @brief Returns 1 if `path` exists (file or directory), 0 otherwise. Single `stat` call.
 int64_t rt_io_file_exists(rt_string path) {
     const char *cpath = NULL;
     if (!rt_file_path_from_vstr(path, &cpath) || !cpath)
         return 0;
     struct stat st;
-    if (stat(cpath, &st) == 0) {
+    if (rt_fileext_stat_path(cpath, &st) == 0) {
 #ifdef _WIN32
         return (st.st_mode & _S_IFREG) != 0;
 #else
@@ -125,12 +287,14 @@ int64_t rt_io_file_exists(rt_string path) {
 /// What: Read entire file into a runtime string. Return empty on error.
 /// Why:  Provide a convenience API for small text files in examples/tests.
 /// How:  Opens the file, reads all bytes, returns an rt_string view of them.
+/// @brief Read the entire file as UTF-8 text. Atomically streams the file into a single
+/// rt_string allocation. Traps on NULL path or read failure.
 rt_string rt_io_file_read_all_text(rt_string path) {
     const char *cpath = NULL;
     if (!rt_file_path_from_vstr(path, &cpath) || !cpath)
         return rt_str_empty();
 
-    int fd = open(cpath, O_RDONLY);
+    int fd = rt_fileext_open(cpath, O_RDONLY | RT_FILE_O_BINARY, 0);
     if (fd < 0)
         return rt_str_empty();
 
@@ -176,40 +340,31 @@ rt_string rt_io_file_read_all_text(rt_string path) {
 /// What: Write @p contents to @p path, truncating or creating the file.
 /// Why:  Complement read_all_text with a simple write primitive.
 /// How:  Opens with O_WRONLY|O_CREAT|O_TRUNC and writes all bytes, retrying on EINTR.
+/// @brief Atomically write `contents` (UTF-8) to `path`, replacing any existing file. Uses
+/// `_write_atomic_utf8` so an interrupted write can never corrupt the destination — readers
+/// see either the old file or the new file, never a partial write.
 void rt_io_file_write_all_text(rt_string path, rt_string contents) {
     const char *cpath = NULL;
     if (!rt_file_path_from_vstr(path, &cpath) || !cpath)
         return;
 
-    int fd = open(cpath, O_WRONLY | O_CREAT | O_TRUNC, 0666);
-    if (fd < 0)
-        return;
-
     const uint8_t *data = NULL;
     size_t len = rt_file_string_view(contents, &data);
-    size_t written = 0;
-    while (written < len) {
-        ssize_t n = rt_posix_write(fd, data + written, len - written);
-        if (n < 0) {
-            if (errno == EINTR)
-                continue;
-            break;
-        }
-        if (n == 0)
-            break;
-        written += (size_t)n;
-    }
-    (void)close(fd);
+    if (!rt_fileext_write_atomic_utf8(cpath, data, len, 1))
+        rt_trap("Viper.IO.File.WriteAllText: failed to write file");
 }
 
 /// What: Append @p text and a newline to @p path (creating it when missing).
 /// Why:  Provide a convenient "append line" helper for Viper.IO.File.
 /// How:  Opens with O_APPEND and writes the UTF-8 bytes followed by '\n'.
+/// @brief Append `text` (with auto-added LF) to the end of a file. Open with O_APPEND so
+/// concurrent appends from multiple processes don't interleave (POSIX guarantees atomicity for
+/// writes < PIPE_BUF). Creates the file if it doesn't exist.
 void rt_io_file_append_line(rt_string path, rt_string text) {
     const char *cpath =
         rt_io_file_require_path(path, "Viper.IO.File.AppendLine: invalid file path");
 
-    int fd = open(cpath, O_WRONLY | O_CREAT | O_APPEND | RT_FILE_O_BINARY, 0666);
+    int fd = rt_fileext_open(cpath, O_WRONLY | O_CREAT | O_APPEND | RT_FILE_O_BINARY, 0666);
     if (fd < 0)
         rt_trap("Viper.IO.File.AppendLine: failed to open file");
 
@@ -247,11 +402,13 @@ void rt_io_file_append_line(rt_string path, rt_string text) {
 /// What: Read the entire file at @p path as a Bytes object.
 /// Why:  Provide binary file input for Viper.IO.File.ReadAllBytes.
 /// How:  Reads the file into a temporary buffer and copies it into a new Bytes.
+/// @brief Read the entire file as raw Bytes (no text decoding). Returns a Bytes object sized to
+/// match the actual file length on disk.
 void *rt_io_file_read_all_bytes(rt_string path) {
     const char *cpath =
         rt_io_file_require_path(path, "Viper.IO.File.ReadAllBytes: invalid file path");
 
-    int fd = open(cpath, O_RDONLY | RT_FILE_O_BINARY);
+    int fd = rt_fileext_open(cpath, O_RDONLY | RT_FILE_O_BINARY, 0);
     if (fd < 0)
         rt_trap("Viper.IO.File.ReadAllBytes: failed to open file");
 
@@ -302,6 +459,8 @@ void *rt_io_file_read_all_bytes(rt_string path) {
 /// What: Write an entire Bytes object to @p path, overwriting the file.
 /// Why:  Provide binary file output for Viper.IO.File.WriteAllBytes.
 /// How:  Writes bytes in chunks to avoid per-byte syscalls.
+/// @brief Atomically write raw Bytes to `path`. Same atomic-replace semantics as `_write_all_text`
+/// but skips text encoding conversion.
 void rt_io_file_write_all_bytes(rt_string path, void *bytes) {
     const char *cpath =
         rt_io_file_require_path(path, "Viper.IO.File.WriteAllBytes: invalid file path");
@@ -309,44 +468,25 @@ void rt_io_file_write_all_bytes(rt_string path, void *bytes) {
     if (!bytes)
         rt_trap("Viper.IO.File.WriteAllBytes: null Bytes");
 
-    int fd = open(cpath, O_WRONLY | O_CREAT | O_TRUNC | RT_FILE_O_BINARY, 0666);
-    if (fd < 0)
-        rt_trap("Viper.IO.File.WriteAllBytes: failed to open file");
-
     /* IO-H-1: use raw data pointer instead of per-byte rt_bytes_get() —
        eliminates O(n) function calls in favour of a single write() */
     int64_t len = rt_bytes_len(bytes);
     const uint8_t *src = file_bytes_data(bytes);
-
-    if (src && len > 0) {
-        size_t written = 0;
-        while (written < (size_t)len) {
-            ssize_t n = rt_posix_write(fd, src + written, (size_t)len - written);
-            if (n < 0) {
-                if (errno == EINTR)
-                    continue;
-                (void)close(fd);
-                rt_trap("Viper.IO.File.WriteAllBytes: failed to write file");
-            }
-            if (n == 0) {
-                (void)close(fd);
-                rt_trap("Viper.IO.File.WriteAllBytes: failed to write file");
-            }
-            written += (size_t)n;
-        }
-    }
-
-    (void)close(fd);
+    if (!rt_fileext_write_atomic_utf8(cpath, src, (size_t)len, 1))
+        rt_trap("Viper.IO.File.WriteAllBytes: failed to write file");
 }
 
 /// What: Read a text file and return a Seq of lines.
 /// Why:  Provide convenient line-based file input for Viper.IO.File.ReadAllLines.
 /// How:  Reads the file and splits on '\n' and '\r\n', stripping line terminators.
+/// @brief Read a file, split on LF/CRLF, return a Seq of UTF-8 rt_strings (one per line, no
+/// trailing newline). Empty trailing lines are preserved (a file ending in `\n\n` yields a
+/// trailing empty string).
 void *rt_io_file_read_all_lines(rt_string path) {
     const char *cpath =
         rt_io_file_require_path(path, "Viper.IO.File.ReadAllLines: invalid file path");
 
-    int fd = open(cpath, O_RDONLY | RT_FILE_O_BINARY);
+    int fd = rt_fileext_open(cpath, O_RDONLY | RT_FILE_O_BINARY, 0);
     if (fd < 0)
         rt_trap("Viper.IO.File.ReadAllLines: failed to open file");
 
@@ -415,16 +555,19 @@ void *rt_io_file_read_all_lines(rt_string path) {
 /// What: Delete the file at @p path.
 /// Why:  Allow simple cleanup without surfacing platform-specific APIs.
 /// How:  Converts to host path and calls unlink(); errors are ignored.
+/// @brief Delete a file. Trap if the path is null/empty; silently succeeds if the file is missing.
 void rt_io_file_delete(rt_string path) {
     const char *cpath = NULL;
     if (!rt_file_path_from_vstr(path, &cpath) || !cpath)
         return;
-    (void)unlink(cpath);
+    (void)rt_fileext_unlink(cpath);
 }
 
 /// What: Copy a file from @p src to @p dst.
 /// Why:  Allow file duplication without platform-specific APIs.
 /// How:  Reads src file and writes to dst file.
+/// @brief Copy file `src` to `dst`. Streams in chunks to avoid loading the whole file into RAM
+/// (important for large files). Overwrites the destination if it exists.
 void rt_file_copy(rt_string src, rt_string dst) {
     const char *src_path = NULL;
     const char *dst_path = NULL;
@@ -433,7 +576,7 @@ void rt_file_copy(rt_string src, rt_string dst) {
     if (!rt_file_path_from_vstr(dst, &dst_path) || !dst_path)
         return;
 
-    int src_fd = open(src_path, O_RDONLY | RT_FILE_O_BINARY);
+    int src_fd = rt_fileext_open(src_path, O_RDONLY | RT_FILE_O_BINARY, 0);
     if (src_fd < 0) {
         char msg[512];
         snprintf(
@@ -441,7 +584,7 @@ void rt_file_copy(rt_string src, rt_string dst) {
         rt_trap(msg);
     }
 
-    int dst_fd = open(dst_path, O_WRONLY | O_CREAT | O_TRUNC | RT_FILE_O_BINARY, 0666);
+    int dst_fd = rt_fileext_open(dst_path, O_WRONLY | O_CREAT | O_TRUNC | RT_FILE_O_BINARY, 0666);
     if (dst_fd < 0) {
         // IO-H-4: destination open failure was previously silent — now traps
         close(src_fd);
@@ -487,6 +630,8 @@ void rt_file_copy(rt_string src, rt_string dst) {
 /// What: Move/rename a file from @p src to @p dst.
 /// Why:  Allow file relocation without platform-specific APIs.
 /// How:  Uses rename(); falls back to copy+delete if needed.
+/// @brief Move file `src` to `dst`. Tries `rename` first (atomic, same filesystem); falls back to
+/// copy + delete on EXDEV (cross-filesystem rename failure).
 void rt_file_move(rt_string src, rt_string dst) {
     const char *src_path = NULL;
     const char *dst_path = NULL;
@@ -495,24 +640,34 @@ void rt_file_move(rt_string src, rt_string dst) {
     if (!rt_file_path_from_vstr(dst, &dst_path) || !dst_path)
         return;
 
-    if (rename(src_path, dst_path) == 0)
+    if (rt_fileext_replace_utf8(src_path, dst_path))
         return;
 
-    // Fallback: copy then delete (for cross-filesystem moves)
+#if RT_PLATFORM_WINDOWS
+    DWORD move_err = GetLastError();
+    if (move_err != ERROR_NOT_SAME_DEVICE)
+        rt_trap("File.Move: failed to move file");
+#else
+    if (errno != EXDEV)
+        rt_trap("File.Move: failed to move file");
+#endif
+
     rt_file_copy(src, dst);
-    (void)unlink(src_path);
+    if (rt_fileext_unlink(src_path) != 0)
+        rt_trap("File.Move: failed to remove source after cross-device copy");
 }
 
 /// What: Get the size of a file in bytes.
 /// Why:  Allow querying file size without opening the file.
 /// How:  Uses stat() to get file size.
+/// @brief Return the size of `path` in bytes (via `stat`). 0 on missing path.
 int64_t rt_file_size(rt_string path) {
     const char *cpath = NULL;
     if (!rt_file_path_from_vstr(path, &cpath) || !cpath)
         return -1;
 
     struct stat st;
-    if (stat(cpath, &st) != 0)
+    if (rt_fileext_stat_path(cpath, &st) != 0)
         return -1;
 
     return (int64_t)st.st_size;
@@ -521,12 +676,13 @@ int64_t rt_file_size(rt_string path) {
 /// What: Read entire file as a Bytes object.
 /// Why:  Support binary file reading.
 /// How:  Opens file, reads all bytes, returns Bytes object.
+/// @brief Alias for `rt_io_file_read_all_bytes` — reads the whole file as a Bytes object.
 void *rt_file_read_bytes(rt_string path) {
     const char *cpath = NULL;
     if (!rt_file_path_from_vstr(path, &cpath) || !cpath)
         return rt_bytes_new(0);
 
-    int fd = open(cpath, O_RDONLY | RT_FILE_O_BINARY);
+    int fd = rt_fileext_open(cpath, O_RDONLY | RT_FILE_O_BINARY, 0);
     if (fd < 0)
         return rt_bytes_new(0);
 
@@ -576,6 +732,7 @@ void *rt_file_read_bytes(rt_string path) {
 /// What: Write a Bytes object to a file.
 /// Why:  Support binary file writing.
 /// How:  Opens file, writes all bytes from Bytes object using chunked writes.
+/// @brief Alias for `rt_io_file_write_all_bytes` — atomically write Bytes to disk.
 void rt_file_write_bytes(rt_string path, void *bytes) {
     const char *cpath = NULL;
     if (!rt_file_path_from_vstr(path, &cpath) || !cpath)
@@ -584,7 +741,7 @@ void rt_file_write_bytes(rt_string path, void *bytes) {
     if (!bytes)
         return;
 
-    int fd = open(cpath, O_WRONLY | O_CREAT | O_TRUNC | RT_FILE_O_BINARY, 0666);
+    int fd = rt_fileext_open(cpath, O_WRONLY | O_CREAT | O_TRUNC | RT_FILE_O_BINARY, 0666);
     if (fd < 0)
         return;
 
@@ -613,6 +770,7 @@ void rt_file_write_bytes(rt_string path, void *bytes) {
 /// What: Read entire file as a sequence of lines.
 /// Why:  Support line-by-line text file reading.
 /// How:  Reads file, splits by newlines, returns Seq of strings.
+/// @brief Alias for `rt_io_file_read_all_lines` — read the file split into lines.
 void *rt_file_read_lines(rt_string path) {
     void *seq = rt_seq_new();
 
@@ -648,6 +806,8 @@ void *rt_file_read_lines(rt_string path) {
 /// What: Write a sequence of strings to a file as lines.
 /// Why:  Support line-by-line text file writing.
 /// How:  Writes each string followed by newline.
+/// @brief Atomically write a Seq of strings as lines (joined with LF). Each element becomes one
+/// line; trailing newline is added to the final line so future appends concatenate correctly.
 void rt_file_write_lines(rt_string path, void *lines) {
     const char *cpath = NULL;
     if (!rt_file_path_from_vstr(path, &cpath) || !cpath)
@@ -656,7 +816,7 @@ void rt_file_write_lines(rt_string path, void *lines) {
     if (!lines)
         return;
 
-    int fd = open(cpath, O_WRONLY | O_CREAT | O_TRUNC, 0666);
+    int fd = rt_fileext_open(cpath, O_WRONLY | O_CREAT | O_TRUNC | RT_FILE_O_BINARY, 0666);
     if (fd < 0)
         return;
 
@@ -691,12 +851,14 @@ void rt_file_write_lines(rt_string path, void *lines) {
 /// What: Append text to an existing file.
 /// Why:  Support appending without reading+writing entire file.
 /// How:  Opens file with O_APPEND and writes text.
+/// @brief Append `text` (no newline added) to the end of a file. Like `_append_line` but doesn't
+/// add a trailing LF — useful for binary-style appends.
 void rt_file_append(rt_string path, rt_string text) {
     const char *cpath = NULL;
     if (!rt_file_path_from_vstr(path, &cpath) || !cpath)
         return;
 
-    int fd = open(cpath, O_WRONLY | O_CREAT | O_APPEND, 0666);
+    int fd = rt_fileext_open(cpath, O_WRONLY | O_CREAT | O_APPEND | RT_FILE_O_BINARY, 0666);
     if (fd < 0)
         return;
 
@@ -719,13 +881,14 @@ void rt_file_append(rt_string path, rt_string text) {
 /// What: Get file modification time as Unix timestamp.
 /// Why:  Support querying when a file was last modified.
 /// How:  Uses stat() to get mtime.
+/// @brief Return the file's mtime as Unix epoch seconds (`stat.st_mtime`). 0 if missing.
 int64_t rt_file_modified(rt_string path) {
     const char *cpath = NULL;
     if (!rt_file_path_from_vstr(path, &cpath) || !cpath)
         return 0;
 
     struct stat st;
-    if (stat(cpath, &st) != 0)
+    if (rt_fileext_stat_path(cpath, &st) != 0)
         return 0;
 
     return (int64_t)st.st_mtime;
@@ -734,17 +897,19 @@ int64_t rt_file_modified(rt_string path) {
 /// What: Create file or update modification time.
 /// Why:  Support "touch" semantics from Unix.
 /// How:  Creates file if not exists, updates mtime if exists.
+/// @brief Update the file's mtime+atime to "now" (`utime(NULL)`). Creates an empty file if it
+/// doesn't exist. Mirrors the Unix `touch` command.
 void rt_file_touch(rt_string path) {
     const char *cpath = NULL;
     if (!rt_file_path_from_vstr(path, &cpath) || !cpath)
         return;
 
     // Try to update mtime (works if file exists)
-    if (utime(cpath, NULL) == 0)
+    if (rt_fileext_utime(cpath, NULL) == 0)
         return;
 
     // File doesn't exist, create it
-    int fd = open(cpath, O_WRONLY | O_CREAT, 0666);
+    int fd = rt_fileext_open(cpath, O_WRONLY | O_CREAT | RT_FILE_O_BINARY, 0666);
     if (fd >= 0)
         close(fd);
 }

@@ -33,6 +33,11 @@
 #include <stdlib.h>
 #include <string.h>
 
+/// @brief Heuristic — should we hand bone matrices to the GPU instead of skinning on the CPU?
+///
+/// Metal is GPU-skinned unconditionally; OpenGL and D3D11 only when
+/// the bone count fits in a typical uniform-buffer slot (≤128).
+/// The Software backend always returns 0 (CPU-skin path).
 static int vgfx3d_backend_prefers_gpu_skinning(const char *backend_name, int32_t bone_count) {
     if (!backend_name || bone_count <= 0)
         return 0;
@@ -84,6 +89,7 @@ extern void rt_canvas3d_draw_mesh(void *obj, void *mesh, void *transform, void *
  * Matrix math helpers (float, row-major)
  *=========================================================================*/
 
+/// @brief Multiply two row-major 4×4 float matrices: `out = a * b`.
 static void mat4f_mul_local(const float *a, const float *b, float *out) {
     for (int r = 0; r < 4; r++)
         for (int c = 0; c < 4; c++)
@@ -91,6 +97,7 @@ static void mat4f_mul_local(const float *a, const float *b, float *out) {
                              a[r * 4 + 2] * b[2 * 4 + c] + a[r * 4 + 3] * b[3 * 4 + c];
 }
 
+/// @brief Set `m` to the 4×4 identity matrix.
 static void mat4f_identity(float *m) {
     memset(m, 0, 16 * sizeof(float));
     m[0] = m[5] = m[10] = m[15] = 1.0f;
@@ -203,12 +210,14 @@ static void quat_slerp_float(const float *a, const float *b, float t, float *out
  * Skeleton3D implementation
  *=========================================================================*/
 
+/// @brief GC finalizer for a Skeleton3D — releases the bone array and any name strings.
 static void rt_skeleton3d_finalize(void *obj) {
     rt_skeleton3d *s = (rt_skeleton3d *)obj;
     free(s->bones);
     s->bones = NULL;
 }
 
+/// @brief Allocate an empty Skeleton3D — no bones until `add_bone` is called.
 void *rt_skeleton3d_new(void) {
     rt_skeleton3d *s = (rt_skeleton3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_skeleton3d));
     if (!s) {
@@ -222,6 +231,13 @@ void *rt_skeleton3d_new(void) {
     return s;
 }
 
+/// @brief Append one bone to the skeleton with its bind-pose matrix and parent reference.
+///
+/// `parent_index` of -1 marks a root bone. `bind_mat4` is the
+/// bone-to-model transform in the rest pose; the inverse-bind
+/// (model-to-bone) is computed lazily by
+/// `rt_skeleton3d_compute_inverse_bind`.
+/// @return The newly-assigned bone index (0-based), or -1 on failure.
 int64_t rt_skeleton3d_add_bone(void *obj, rt_string name, int64_t parent_index, void *bind_mat4) {
     if (!obj)
         return -1;
@@ -274,6 +290,11 @@ int64_t rt_skeleton3d_add_bone(void *obj, rt_string name, int64_t parent_index, 
     return idx;
 }
 
+/// @brief Precompute the inverse-bind matrix for every bone (model-space → bone-space).
+///
+/// Skinning multiplies each bone's animated world matrix by its
+/// inverse-bind to displace each vertex from rest space into the
+/// animated pose. Call this once after all bones are added.
 void rt_skeleton3d_compute_inverse_bind(void *obj) {
     if (!obj)
         return;
@@ -298,10 +319,12 @@ void rt_skeleton3d_compute_inverse_bind(void *obj) {
     free(globals);
 }
 
+/// @brief Number of bones in the skeleton (0 for NULL).
 int64_t rt_skeleton3d_get_bone_count(void *obj) {
     return obj ? ((rt_skeleton3d *)obj)->bone_count : 0;
 }
 
+/// @brief Linear search for a bone by name; returns its index or -1 if not found.
 int64_t rt_skeleton3d_find_bone(void *obj, rt_string name) {
     if (!obj || !name)
         return -1;
@@ -315,6 +338,7 @@ int64_t rt_skeleton3d_find_bone(void *obj, rt_string name) {
     return -1;
 }
 
+/// @brief Read the name of bone at `index`. Empty string for out-of-range or NULL.
 rt_string rt_skeleton3d_get_bone_name(void *obj, int64_t index) {
     if (!obj)
         return rt_const_cstr("");
@@ -324,6 +348,7 @@ rt_string rt_skeleton3d_get_bone_name(void *obj, int64_t index) {
     return rt_const_cstr(s->bones[index].name);
 }
 
+/// @brief Read the bind-pose Mat4 of bone at `index` (identity for out-of-range / NULL).
 void *rt_skeleton3d_get_bone_bind_pose(void *obj, int64_t index) {
     if (!obj)
         return NULL;
@@ -353,6 +378,7 @@ void *rt_skeleton3d_get_bone_bind_pose(void *obj, int64_t index) {
  * Animation3D implementation
  *=========================================================================*/
 
+/// @brief GC finalizer for Animation3D — releases all keyframe arrays and the name string.
 static void rt_animation3d_finalize(void *obj) {
     rt_animation3d *a = (rt_animation3d *)obj;
     for (int32_t i = 0; i < a->channel_count; i++)
@@ -361,6 +387,7 @@ static void rt_animation3d_finalize(void *obj) {
     a->channels = NULL;
 }
 
+/// @brief Create a new empty animation clip with the given identifier and duration (seconds).
 void *rt_animation3d_new(rt_string name, double duration) {
     rt_animation3d *a = (rt_animation3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_animation3d));
     if (!a) {
@@ -387,6 +414,10 @@ void *rt_animation3d_new(rt_string name, double duration) {
     return a;
 }
 
+/// @brief Append one keyframe (time, position, rotation, scale) to a bone's track.
+///
+/// Keyframes are sorted by time within a track so the player can
+/// binary-search to find the correct interpolation interval.
 void rt_animation3d_add_keyframe(
     void *obj, int64_t bone_index, double time, void *position, void *rotation, void *scale) {
     if (!obj)
@@ -441,19 +472,23 @@ void rt_animation3d_add_keyframe(
     kf->scale_xyz[2] = scale ? (float)rt_vec3_z(scale) : 1.0f;
 }
 
+/// @brief Mark this clip as looping (wraps back to t=0 at end) or one-shot (stops at end).
 void rt_animation3d_set_looping(void *obj, int8_t loop) {
     if (obj)
         ((rt_animation3d *)obj)->looping = loop;
 }
 
+/// @brief Read the looping flag (0 = one-shot, 1 = loops).
 int8_t rt_animation3d_get_looping(void *obj) {
     return obj ? ((rt_animation3d *)obj)->looping : 0;
 }
 
+/// @brief Total length of the clip in seconds (0.0 for NULL).
 double rt_animation3d_get_duration(void *obj) {
     return obj ? ((rt_animation3d *)obj)->duration : 0.0;
 }
 
+/// @brief The clip's display / lookup name (empty string for NULL).
 rt_string rt_animation3d_get_name(void *obj) {
     return obj ? rt_const_cstr(((rt_animation3d *)obj)->name) : rt_const_cstr("");
 }
@@ -568,6 +603,7 @@ static void sample_channel_trs(
  * AnimPlayer3D implementation
  *=========================================================================*/
 
+/// @brief GC finalizer for AnimPlayer3D — release the bound skeleton/animation refs and the bone palette buffer.
 static void rt_anim_player3d_finalize(void *obj) {
     rt_anim_player3d *p = (rt_anim_player3d *)obj;
     free(p->bone_palette);
@@ -582,6 +618,11 @@ static void rt_anim_player3d_finalize(void *obj) {
     p->globals_buf = NULL;
 }
 
+/// @brief Create an animation player bound to a target skeleton.
+///
+/// The player holds the current playback time, the active and
+/// fading-out clip, and a per-bone palette buffer (3-frame ring
+/// for motion-blur previous-pose lookup).
 void *rt_anim_player3d_new(void *skeleton) {
     if (!skeleton) {
         rt_trap("AnimPlayer3D.New: null skeleton");
@@ -632,6 +673,8 @@ void *rt_anim_player3d_new(void *skeleton) {
     return p;
 }
 
+/// @brief Snap-cut to a new animation clip, resetting playback time to 0.
+/// For smooth transitions, prefer `rt_anim_player3d_crossfade`.
 void rt_anim_player3d_play(void *obj, void *animation) {
     if (!obj)
         return;
@@ -644,6 +687,10 @@ void rt_anim_player3d_play(void *obj, void *animation) {
     p->last_motion_frame = 0;
 }
 
+/// @brief Cross-fade smoothly into a new animation clip over `duration` seconds.
+///
+/// Both clips run in parallel during the fade; per-bone TRS is
+/// linearly blended (lerp + slerp) by the elapsed-fade ratio.
 void rt_anim_player3d_crossfade(void *obj, void *animation, double duration) {
     if (!obj || !animation)
         return;
@@ -659,6 +706,7 @@ void rt_anim_player3d_crossfade(void *obj, void *animation, double duration) {
     p->last_motion_frame = 0;
 }
 
+/// @brief Stop playback — bone palette stays at its current pose, but `update` becomes a no-op.
 void rt_anim_player3d_stop(void *obj) {
     if (!obj)
         return;
@@ -778,6 +826,7 @@ static void compute_bone_palette(rt_anim_player3d *p) {
         mat4f_mul_local(&globals[i * 16], skel->bones[i].inverse_bind, &p->bone_palette[i * 16]);
 }
 
+/// @brief True if the player's currently active clip is set to loop.
 static int8_t anim_player_current_looping(const rt_anim_player3d *p) {
     if (!p || !p->current)
         return 0;
@@ -786,6 +835,11 @@ static int8_t anim_player_current_looping(const rt_anim_player3d *p) {
     return p->current->looping;
 }
 
+/// @brief Advance playback by `delta_time` seconds and refresh the bone palette.
+///
+/// Handles wrap-around for looping clips, fade-in / fade-out for
+/// active cross-fades, and copies the new bone palette into the
+/// motion-blur ring buffer for the next-frame previous-pose lookup.
 void rt_anim_player3d_update(void *obj, double delta_time) {
     if (!obj)
         return;
@@ -817,23 +871,29 @@ void rt_anim_player3d_update(void *obj, double delta_time) {
     compute_bone_palette(p);
 }
 
+/// @brief Time-scale factor applied per `update` call (1.0 = real time, 0.5 = slow-mo, etc.).
 void rt_anim_player3d_set_speed(void *obj, double speed) {
     if (obj)
         ((rt_anim_player3d *)obj)->speed = (float)speed;
 }
 
+/// @brief Current speed multiplier (1.0 if `obj` is NULL).
 double rt_anim_player3d_get_speed(void *obj) {
     return obj ? ((rt_anim_player3d *)obj)->speed : 1.0;
 }
 
+/// @brief True if the player is currently advancing time on `update` calls.
 int8_t rt_anim_player3d_is_playing(void *obj) {
     return obj ? ((rt_anim_player3d *)obj)->playing : 0;
 }
 
+/// @brief Current playback time within the active clip (seconds).
 double rt_anim_player3d_get_time(void *obj) {
     return obj ? ((rt_anim_player3d *)obj)->current_time : 0.0;
 }
 
+/// @brief Seek to an absolute time in the current clip.
+/// Resets the motion-blur previous-pose snapshot so blur doesn't span the discontinuity.
 void rt_anim_player3d_set_time(void *obj, double time) {
     if (obj) {
         rt_anim_player3d *p = (rt_anim_player3d *)obj;
@@ -843,6 +903,12 @@ void rt_anim_player3d_set_time(void *obj, double time) {
     }
 }
 
+/// @brief Promote last frame's pose into the "previous" slot for motion-blur shaders.
+///
+/// Called at the start of each frame's draw — promotes the last
+/// snapshot to `prev_bone_palette` and snapshots the current pose
+/// into `motion_palette_snapshot` for the *next* frame to consume.
+/// Returns the previous palette (or NULL if no prior frame yet).
 static const float *anim_player_prepare_prev_palette(rt_anim_player3d *p, int64_t frame_serial) {
     if (!p || !p->bone_palette)
         return NULL;
@@ -860,6 +926,7 @@ static const float *anim_player_prepare_prev_palette(rt_anim_player3d *p, int64_
     return p->has_prev_motion_palette ? p->prev_bone_palette : NULL;
 }
 
+/// @brief Read the current world matrix for one bone as a Mat4 (NULL on out-of-range).
 void *rt_anim_player3d_get_bone_matrix(void *obj, int64_t bone_index) {
     if (!obj)
         return NULL;
@@ -889,6 +956,7 @@ void *rt_anim_player3d_get_bone_matrix(void *obj, int64_t bone_index) {
  * Mesh3D extensions
  *=========================================================================*/
 
+/// @brief Bind a skeleton to a mesh so its per-vertex `bone_indices/weights` can drive skinning.
 void rt_mesh3d_set_skeleton(void *mesh, void *skeleton) {
     (void)mesh;
     (void)skeleton;
@@ -896,6 +964,11 @@ void rt_mesh3d_set_skeleton(void *mesh, void *skeleton) {
      * the AnimPlayer3D holds the skeleton. This is for future GPU skinning. */
 }
 
+/// @brief Attach the per-vertex bone influence data (4 indices + 4 weights per vertex) to a mesh.
+///
+/// Required for any skinned draw call. The arrays are referenced
+/// (not copied), so the caller must keep them alive for the
+/// lifetime of the mesh.
 void rt_mesh3d_set_bone_weights(void *obj,
                                 int64_t vertex_index,
                                 int64_t b0,
@@ -927,6 +1000,13 @@ void rt_mesh3d_set_bone_weights(void *obj,
  * Canvas3D extension — DrawMeshSkinned (CPU path)
  *=========================================================================*/
 
+/// @brief Draw a skinned mesh — applies the player's bone palette before rasterising.
+///
+/// Picks GPU-skinning when the active backend supports it
+/// (`vgfx3d_backend_prefers_gpu_skinning`); otherwise CPU-skins
+/// the mesh into a transient deformed-vertex buffer (parked on the
+/// canvas via `rt_canvas3d_add_temp_buffer`) and submits the
+/// matrix-form draw.
 void rt_canvas3d_draw_mesh_skinned(
     void *canvas, void *mesh, void *transform, void *material, void *anim_player) {
     if (!canvas || !mesh || !transform || !material || !anim_player)
@@ -987,6 +1067,7 @@ void rt_canvas3d_draw_mesh_skinned(
  * AnimBlend3D — multi-state animation blending
  *=========================================================================*/
 
+/// @brief GC finalizer for AnimBlend3D — releases per-state animation refs and the bone palette.
 static void anim_blend3d_finalizer(void *obj) {
     rt_anim_blend3d *b = (rt_anim_blend3d *)obj;
     free(b->bone_palette);
@@ -998,6 +1079,11 @@ static void anim_blend3d_finalizer(void *obj) {
     b->local_transforms = b->temp_state_local = NULL;
 }
 
+/// @brief Create a multi-clip blender that mixes several animations on the same skeleton.
+///
+/// Useful for blendspaces (e.g. mixing walk + run by speed) and
+/// additive layering. Each registered "state" carries its own
+/// time, speed, and weight.
 void *rt_anim_blend3d_new(void *skel_obj) {
     if (!skel_obj)
         return NULL;
@@ -1038,6 +1124,7 @@ void *rt_anim_blend3d_new(void *skel_obj) {
     return b;
 }
 
+/// @brief Register a new blend state by name and animation; returns its index.
 int64_t rt_anim_blend3d_add_state(void *obj, rt_string name, void *anim_obj) {
     if (!obj || !anim_obj)
         return -1;
@@ -1065,6 +1152,7 @@ int64_t rt_anim_blend3d_add_state(void *obj, rt_string name, void *anim_obj) {
     return b->state_count++;
 }
 
+/// @brief Set state `state`'s blend weight; the blender renormalises across all states each frame.
 void rt_anim_blend3d_set_weight(void *obj, int64_t state, double weight) {
     if (!obj)
         return;
@@ -1074,6 +1162,7 @@ void rt_anim_blend3d_set_weight(void *obj, int64_t state, double weight) {
     b->states[state].weight = (float)weight;
 }
 
+/// @brief Convenience: look the state up by name and call `set_weight`.
 void rt_anim_blend3d_set_weight_by_name(void *obj, rt_string name, double weight) {
     if (!obj || !name)
         return;
@@ -1089,6 +1178,7 @@ void rt_anim_blend3d_set_weight_by_name(void *obj, rt_string name, double weight
     }
 }
 
+/// @brief Read a state's current blend weight (0.0 for out-of-range or NULL).
 double rt_anim_blend3d_get_weight(void *obj, int64_t state) {
     if (!obj)
         return 0.0;
@@ -1098,6 +1188,7 @@ double rt_anim_blend3d_get_weight(void *obj, int64_t state) {
     return (double)b->states[state].weight;
 }
 
+/// @brief Set the per-state time-scale (independent of the others — each clip can run at its own rate).
 void rt_anim_blend3d_set_speed(void *obj, int64_t state, double speed) {
     if (!obj)
         return;
@@ -1107,6 +1198,12 @@ void rt_anim_blend3d_set_speed(void *obj, int64_t state, double speed) {
     b->states[state].speed = (float)speed;
 }
 
+/// @brief Advance every contributing state by `dt` seconds and recompute the blended bone palette.
+///
+/// For each bone, samples per-state TRS at that state's current
+/// time, weights them by the normalised state weights, and lerps
+/// (positions / scales) and slerps (rotations) to produce the
+/// final pose. Output palette is then ready for skinning.
 void rt_anim_blend3d_update(void *obj, double dt) {
     if (!obj || dt <= 0)
         return;
@@ -1178,10 +1275,12 @@ void rt_anim_blend3d_update(void *obj, double dt) {
     free(globals);
 }
 
+/// @brief Number of registered states (0 for NULL).
 int64_t rt_anim_blend3d_state_count(void *obj) {
     return obj ? ((rt_anim_blend3d *)obj)->state_count : 0;
 }
 
+/// @brief Same role as `anim_player_prepare_prev_palette` but for the blender — see that function.
 static const float *anim_blend_prepare_prev_palette(rt_anim_blend3d *b, int64_t frame_serial) {
     if (!b || !b->bone_palette)
         return NULL;

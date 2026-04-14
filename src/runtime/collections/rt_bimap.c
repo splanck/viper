@@ -209,6 +209,9 @@ static void resize_inv(rt_bimap_impl *bm) {
     bm->inv_capacity = new_cap;
 }
 
+/// @brief Construct an empty bidirectional map (string ↔ string). Maintains forward and inverse
+/// hash tables so both `_get_by_key` and `_get_by_value` are O(1) average. Useful for two-way
+/// lookups (e.g., name ↔ id) that would otherwise need two parallel maps.
 void *rt_bimap_new(void) {
     rt_bimap_impl *bm = (rt_bimap_impl *)rt_obj_new_i64(0, sizeof(rt_bimap_impl));
     if (!bm)
@@ -433,6 +436,7 @@ int8_t rt_bimap_remove_by_value(void *obj, rt_string value) {
     return 1;
 }
 
+/// @brief Return a Seq of every key (forward-table iteration order). Snapshot of current state.
 void *rt_bimap_keys(void *obj) {
     void *seq = rt_seq_new();
     rt_seq_set_owns_elements(seq, 1);
@@ -450,6 +454,7 @@ void *rt_bimap_keys(void *obj) {
     return seq;
 }
 
+/// @brief Return a Seq of every value (inverse-table iteration order). Snapshot.
 void *rt_bimap_values(void *obj) {
     void *seq = rt_seq_new();
     rt_seq_set_owns_elements(seq, 1);

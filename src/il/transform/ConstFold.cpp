@@ -378,15 +378,15 @@ static bool foldCall(const Instr &in, Value &out) {
 /// @brief Perform constant folding across a module in-place.
 /// @details Visits every instruction, attempting to fold recognised runtime
 ///          calls, unary casts, and binary arithmetic operations.  Successful
-///          folds update all uses of the temporary via UseDefInfo for O(uses)
-///          replacement instead of O(instructions), then erase the original
-///          instruction, shrinking the IR without altering observable behaviour.
+///          folds update all uses of the temporary via UseDefInfo's safe
+///          replacement API, then erase the original instruction, shrinking the
+///          IR without altering observable behaviour.
 /// @param m Module whose functions are to be folded.
 void constFold(Module &m) {
     // Constant folding must be observationally equivalent to VM; where traps would
     // occur at runtime, folding must not change behavior.
     for (auto &f : m.functions) {
-        // Build use-def chains once per function for O(uses) replacement
+        // Build initial use-count info once per function.
         viper::il::UseDefInfo useInfo(f);
 
         for (auto &b : f.blocks) {

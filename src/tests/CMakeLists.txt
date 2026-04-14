@@ -882,7 +882,7 @@ set_tests_properties(zia_persistence_baseball PROPERTIES
 
 add_test(NAME platform_policy_lint_empty_candidates
         COMMAND /bin/bash "${CMAKE_SOURCE_DIR}/src/tests/e2e/test_platform_policy_lint_empty_candidates.sh"
-                "${CMAKE_SOURCE_DIR}")
+        "${CMAKE_SOURCE_DIR}")
 set_tests_properties(platform_policy_lint_empty_candidates PROPERTIES
         PASS_REGULAR_EXPRESSION "PASS"
         LABELS "tools;smoke;requires_posix_shell"
@@ -891,7 +891,7 @@ set_tests_properties(platform_policy_lint_empty_candidates PROPERTIES
 if (APPLE AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm64|aarch64)$")
     add_test(NAME native_smoke_xenoscape_start_arm64
             COMMAND /bin/bash "${CMAKE_SOURCE_DIR}/src/tests/e2e/test_xenoscape_native_start.sh"
-                    $<TARGET_FILE:viper> "${CMAKE_SOURCE_DIR}")
+            $<TARGET_FILE:viper> "${CMAKE_SOURCE_DIR}")
     set_tests_properties(native_smoke_xenoscape_start_arm64 PROPERTIES
             PASS_REGULAR_EXPRESSION "PASS"
             LABELS "zia;smoke;native-link"
@@ -899,7 +899,7 @@ if (APPLE AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm64|aarch64)$")
 
     add_test(NAME native_smoke_xenoscape_action_names_arm64
             COMMAND /bin/bash "${CMAKE_SOURCE_DIR}/src/tests/e2e/test_xenoscape_native_action_names.sh"
-                    $<TARGET_FILE:viper> "${CMAKE_SOURCE_DIR}")
+            $<TARGET_FILE:viper> "${CMAKE_SOURCE_DIR}")
     set_tests_properties(native_smoke_xenoscape_action_names_arm64 PROPERTIES
             PASS_REGULAR_EXPRESSION "PASS"
             LABELS "zia;smoke;native-link"
