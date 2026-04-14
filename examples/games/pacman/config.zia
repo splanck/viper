@@ -12,11 +12,19 @@ module config;
 // SCREEN & GRID DIMENSIONS
 // =============================================================================
 
-final SCREEN_WIDTH = 672;    // 28 tiles * 24 pixels
-final SCREEN_HEIGHT = 744;   // 31 tiles * 24 pixels
 final TILE_SIZE = 24;
 final GRID_WIDTH = 28;
 final GRID_HEIGHT = 31;
+final PLAYFIELD_WIDTH = 672;
+final PLAYFIELD_HEIGHT = 744;
+
+// Larger presentation shell around the original Pac-Man grid.
+final SCREEN_WIDTH = 800;
+final SCREEN_HEIGHT = 988;
+final PLAYFIELD_X = 64;
+final PLAYFIELD_Y = 168;
+final HUD_HEIGHT = 78;
+final FOOTER_HEIGHT = 42;
 
 // =============================================================================
 // COLORS (0x00RRGGBB format)
@@ -186,4 +194,3 @@ final EXTRA_LIFE_SCORE = 10000;
 final DOT_POINTS = 10;
 final PELLET_POINTS = 50;
 final GHOST_BASE_POINTS = 200;
-

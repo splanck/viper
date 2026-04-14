@@ -1,0 +1,88 @@
+module widgets;
+
+bind Viper.Graphics;
+bind Color = Viper.Graphics.Color;
+bind "./theme";
+bind "./layout";
+
+func drawCard(canvas: Canvas, r: Rect, accent: Integer, raised: Boolean) {
+    var shadowAlpha = 72;
+    if !raised { shadowAlpha = 48; }
+    canvas.BoxAlpha(r.x + 6, r.y + 8, r.w, r.h, 0x000000, shadowAlpha);
+    canvas.GradientV(r.x, r.y, r.w, r.h, theme.CARD_BG, theme.CARD_BG_ALT);
+    canvas.RoundFrame(r.x, r.y, r.w, r.h, 12, theme.CARD_BORDER);
+    canvas.RoundFrame(r.x + 2, r.y + 2, r.w - 4, r.h - 4, 10, theme.CARD_BORDER_SOFT);
+    canvas.Box(r.x + 1, r.y + 1, r.w - 2, 10, Color.Brighten(accent, 20));
+}
+
+func drawSectionTitle(canvas: Canvas, r: Rect, text: String) {
+    theme.drawTextScaled(canvas, r.x, r.y, text, 1, theme.TEXT_MUTED);
+}
+
+func drawButton(canvas: Canvas,
+                r: Rect,
+                label: String,
+                hovered: Boolean,
+                pressed: Boolean,
+                active: Boolean,
+                primary: Boolean,
+                danger: Boolean) {
+    var base = theme.CARD_BG_ALT;
+    var border = theme.CARD_BORDER;
+    var textCol = theme.TEXT_SECONDARY;
+
+    if primary {
+        base = theme.ACCENT_GOLD_SOFT;
+        border = theme.ACCENT_GOLD;
+        textCol = theme.ACCENT_CREAM;
+    }
+    if danger {
+        base = theme.ACCENT_RED;
+        border = theme.brighten(theme.ACCENT_RED, 18);
+        textCol = theme.ACCENT_CREAM;
+    }
+    if active {
+        border = theme.ACCENT_GOLD;
+        textCol = theme.TEXT_PRIMARY;
+        if !primary && !danger {
+            base = theme.darken(theme.ACCENT_GOLD_SOFT, 8);
+        }
+    }
+    if hovered {
+        base = theme.brighten(base, 18);
+        border = theme.brighten(border, 20);
+        textCol = theme.TEXT_PRIMARY;
+    }
+    if pressed {
+        base = theme.darken(base, 20);
+    }
+
+    canvas.BoxAlpha(r.x + 3, r.y + 4, r.w, r.h, 0x000000, 72);
+    canvas.GradientV(r.x, r.y, r.w, r.h, theme.brighten(base, 12), base);
+    canvas.RoundFrame(r.x, r.y, r.w, r.h, 10, border);
+    canvas.RoundFrame(r.x + 1, r.y + 1, r.w - 2, r.h - 2, 9, theme.CARD_BORDER_SOFT);
+    theme.drawTextCentered(canvas, r.x, theme.textYInRect(r.y, r.h, 1), r.w, label, 1, textCol);
+}
+
+func drawSegmentButton(canvas: Canvas,
+                       r: Rect,
+                       label: String,
+                       hovered: Boolean,
+                       active: Boolean) {
+    drawButton(canvas, r, label, hovered, false, active, false, false);
+}
+
+func drawBadge(canvas: Canvas, r: Rect, label: String, color: Integer) {
+    canvas.GradientV(r.x, r.y, r.w, r.h, theme.brighten(color, 18), color);
+    canvas.RoundFrame(r.x, r.y, r.w, r.h, 8, theme.brighten(color, 24));
+    theme.drawTextCentered(canvas, r.x, theme.textYInRect(r.y, r.h, 1), r.w, label, 1, theme.ACCENT_CREAM);
+}
+
+func drawDivider(canvas: Canvas, x: Integer, y: Integer, w: Integer) {
+    canvas.Line(x, y, x + w, y, theme.CARD_BORDER_SOFT);
+}
+
+func drawInset(canvas: Canvas, r: Rect) {
+    canvas.GradientV(r.x, r.y, r.w, r.h, theme.PANEL_BG, theme.CARD_BG);
+    canvas.RoundFrame(r.x, r.y, r.w, r.h, 10, theme.CARD_BORDER_SOFT);
+}

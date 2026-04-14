@@ -13,6 +13,7 @@ bind "../core/moves";
 bind "../core/eval";
 bind "./renderer";
 bind "./pieces";
+bind "./layout";
 bind "../engine/ai";
 
 // Background AI search state. Chess only runs one game instance at a time, so
@@ -118,6 +119,13 @@ class ChessGame {
     hide Integer lastFrom;
     hide Integer lastTo;
     hide Integer checkedKingSq;       // king sq if in check, else -1
+    hide Boolean animActive;
+    hide Integer animFromSq;
+    hide Integer animToSq;
+    hide Integer animPieceType;
+    hide Boolean animPieceWhite;
+    hide Integer animStartMs;
+    hide Integer animDurationMs;
 
     // --- Move history & captures ---
     hide List[String]  sanHistory;
@@ -183,6 +191,13 @@ class ChessGame {
         lastFrom      = -1;
         lastTo        = -1;
         checkedKingSq = -1;
+        animActive    = false;
+        animFromSq    = -1;
+        animToSq      = -1;
+        animPieceType = 0;
+        animPieceWhite = true;
+        animStartMs   = 0;
+        animDurationMs = 180;
 
         sanHistory    = [];
         whiteCaptured = [];
@@ -268,6 +283,12 @@ class ChessGame {
             return;
         }
 
+        if Action.Pressed(ACT_BACK) {
+            cleanupAIWorker();
+            gameState = STATE_MENU;
+            return;
+        }
+
         // Ctrl+Z — undo (SDL_SCANCODE_LCTRL=224, SDL_SCANCODE_Z=29)
         // Works from any non-menu game state including game-over screens.
         var ctrlZ = canvas.KeyHeld(224) != 0 && canvas.KeyHeld(29) != 0;
@@ -284,6 +305,14 @@ class ChessGame {
 
         if gameState == STATE_PROMO {
             handlePromoInput(mx, my);
+            return;
+        }
+
+        if gameState == STATE_PLAYING || gameState == STATE_AI_THINK {
+            if handleHudClick(mx, my) { return; }
+        }
+
+        if animationProgressPermille() >= 0 {
             return;
         }
 
@@ -384,27 +413,26 @@ class ChessGame {
     }
 
     hide func handleMenuInput(mx: Integer, my: Integer) {
+        if Keyboard.WasPressed(KEY_ENTER) {
+            startNewGame();
+            return;
+        }
+
         if !Viper.Input.Mouse.WasClicked(0) { return; }
 
-        var cx = WIN_W / 2;
+        if layout.contains(layout.modeButtonRect(0), mx, my) { gameMode = MODE_PVP; }
+        if layout.contains(layout.modeButtonRect(1), mx, my) { gameMode = MODE_PVC; }
+        if layout.contains(layout.modeButtonRect(2), mx, my) { gameMode = MODE_CVC; }
 
-        // Mode buttons
-        if my >= 230 && my <= 266 {
-            if mx >= cx - 150 && mx <= cx - 60  { gameMode = MODE_PVP; }
-            if mx >= cx - 48  && mx <= cx + 42  { gameMode = MODE_PVC; }
-            if mx >= cx + 54  && mx <= cx + 144 { gameMode = MODE_CVC; }
-        }
+        if layout.contains(layout.sideButtonRect(0), mx, my) { playerIsWhite = true; }
+        if layout.contains(layout.sideButtonRect(1), mx, my) { playerIsWhite = false; }
 
-        // Difficulty buttons
-        if my >= 330 && my <= 362 {
-            if mx >= cx - 200 && mx <= cx - 115 { aiDepth = DIFF_EASY;   }
-            if mx >= cx - 104 && mx <= cx - 19  { aiDepth = DIFF_MEDIUM; }
-            if mx >= cx - 8   && mx <= cx + 77  { aiDepth = DIFF_HARD;   }
-            if mx >= cx + 88  && mx <= cx + 173 { aiDepth = DIFF_EXPERT; }
-        }
+        if layout.contains(layout.difficultyButtonRect(0), mx, my) { aiDepth = DIFF_EASY; }
+        if layout.contains(layout.difficultyButtonRect(1), mx, my) { aiDepth = DIFF_MEDIUM; }
+        if layout.contains(layout.difficultyButtonRect(2), mx, my) { aiDepth = DIFF_HARD; }
+        if layout.contains(layout.difficultyButtonRect(3), mx, my) { aiDepth = DIFF_EXPERT; }
 
-        // Start button
-        if my >= 420 && my <= 468 && mx >= cx - 80 && mx <= cx + 80 {
+        if layout.contains(layout.startButtonRect(), mx, my) {
             startNewGame();
         }
     }
@@ -412,16 +440,12 @@ class ChessGame {
     hide func handleGameOverInput(mx: Integer, my: Integer) {
         if !Viper.Input.Mouse.WasClicked(0) { return; }
 
-        var bx = BOARD_X;
-        var by = BOARD_Y;
-
-        // "New Game" button
-        if mx >= bx + 170 && mx <= bx + 290 && my >= by + 330 && my <= by + 370 {
+        if layout.contains(layout.gameOverNewRect(), mx, my) {
             startNewGame();
         }
 
-        // "Main Menu" button
-        if mx >= bx + 310 && mx <= bx + 430 && my >= by + 330 && my <= by + 370 {
+        if layout.contains(layout.gameOverMenuRect(), mx, my) {
+            cleanupAIWorker();
             gameState = STATE_MENU;
         }
     }
@@ -429,15 +453,50 @@ class ChessGame {
     hide func handlePromoInput(mx: Integer, my: Integer) {
         if !Viper.Input.Mouse.WasClicked(0) { return; }
 
-        // Promotion dialog boxes at x=208,264,320,376 y=280 w=50 h=60
         var pieces = [QUEEN, ROOK, BISHOP, KNIGHT];
         for i in 0..4 {
-            var bx = 208 + i * 56;
-            if mx >= bx && mx <= bx + 50 && my >= 280 && my <= 340 {
+            if layout.contains(layout.promoOptionRect(i), mx, my) {
                 executePromo(pieces.get(i));
                 return;
             }
         }
+    }
+
+    hide func handleHudClick(mx: Integer, my: Integer) -> Boolean {
+        if !Viper.Input.Mouse.WasClicked(0) { return false; }
+
+        if layout.contains(layout.newButtonRect(), mx, my) {
+            startNewGame();
+            return true;
+        }
+
+        if layout.contains(layout.menuButtonRect(), mx, my) {
+            cleanupAIWorker();
+            gameState = STATE_MENU;
+            return true;
+        }
+
+        if layout.contains(layout.drawButtonRect(), mx, my) {
+            cleanupAIWorker();
+            gameState = STATE_DRAW;
+            gameOverReason = "Draw agreed";
+            gameOverWinner = "Draw";
+            return true;
+        }
+
+        if layout.contains(layout.resignButtonRect(), mx, my) {
+            cleanupAIWorker();
+            gameState = STATE_CHECKMATE;
+            gameOverReason = "Resignation";
+            if board.whiteToMove {
+                gameOverWinner = "Black wins!";
+            } else {
+                gameOverWinner = "White wins!";
+            }
+            return true;
+        }
+
+        return false;
     }
 
     // =========================================================================
@@ -496,6 +555,7 @@ class ChessGame {
         selectedSq       = -1;
         movesForSelected = [];
         dragFrom         = -1;
+        stopAnimation();
 
         gameState = STATE_PLAYING;
     }
@@ -545,6 +605,13 @@ class ChessGame {
     }
 
     hide func applyMove(m: Move) {
+        var movingPiece = board.get(m.from);
+        var movingWhite = board.isWhitePiece(movingPiece);
+        var movingType = board.pieceType(movingPiece);
+        if m.promotion {
+            movingType = m.promotePiece;
+        }
+
         // --- Push undo state BEFORE modifying anything ---
         undoPrevFromStack.add(lastFrom);
         undoPrevToStack.add(lastTo);
@@ -582,6 +649,7 @@ class ChessGame {
         sanHistory.add(san);
 
         moveCount = moveCount + 1;
+        startMoveAnimation(m.from, m.to, movingType, movingWhite);
 
         // Check for terminal conditions
         checkGameOver();
@@ -680,6 +748,34 @@ class ChessGame {
         Monitor.Exit(aiWorkerLock);
     }
 
+    hide func startMoveAnimation(fromSq: Integer, toSq: Integer, pieceType: Integer, white: Boolean) {
+        animActive = true;
+        animFromSq = fromSq;
+        animToSq = toSq;
+        animPieceType = pieceType;
+        animPieceWhite = white;
+        animStartMs = Viper.Time.GetTickCount();
+    }
+
+    hide func stopAnimation() {
+        animActive = false;
+        animFromSq = -1;
+        animToSq = -1;
+        animPieceType = 0;
+        animStartMs = 0;
+    }
+
+    hide func animationProgressPermille() -> Integer {
+        if !animActive { return -1; }
+        var elapsed = Viper.Time.GetTickCount() - animStartMs;
+        if elapsed >= animDurationMs {
+            stopAnimation();
+            return -1;
+        }
+        if elapsed <= 0 { return 0; }
+        return elapsed * 1000 / animDurationMs;
+    }
+
     // =========================================================================
     // Game over detection
     // =========================================================================
@@ -754,6 +850,7 @@ class ChessGame {
         lastFrom         = -1;
         lastTo           = -1;
         checkedKingSq    = -1;
+        stopAnimation();
 
         // Clocks count up from 0
         whiteTimeSec = 0;
@@ -799,19 +896,32 @@ class ChessGame {
     // =========================================================================
 
     hide func render() {
-        canvas.Clear(COL_UI_BG);
+        var mx = Viper.Input.Mouse.X();
+        var my = Viper.Input.Mouse.Y();
+        var mouseDown = Viper.Input.Mouse.Left() != 0;
+        var animProgress = animationProgressPermille();
+        var hoverSq = renderer.squareAt(mx, my);
+        if dragFrom >= 0 || animProgress >= 0 {
+            hoverSq = -1;
+        }
 
         if gameState == STATE_MENU {
-            renderer.drawMainMenu(gameMode, aiDepth);
+            renderer.drawMainMenu(gameMode, aiDepth, playerIsWhite, mx, my, mouseDown);
             canvas.Flip();
             return;
         }
 
+        renderer.drawGameBackdrop();
+
         // Draw board and pieces
-        renderer.drawBoard(lastFrom, lastTo);
+        renderer.drawBoard(lastFrom, lastTo, hoverSq);
         renderer.drawCheckHighlight(checkedKingSq);
         renderer.drawHighlights(selectedSq, movesForSelected);
-        renderer.drawPieces(board, dragFrom);
+        var skipSq = -1;
+        if animProgress >= 0 {
+            skipSq = animToSq;
+        }
+        renderer.drawPieces(board, dragFrom, skipSq);
 
         // Draw dragged piece following the cursor
         if dragFrom >= 0 {
@@ -819,27 +929,30 @@ class ChessGame {
             if piece != 0 {
                 renderer.drawDragPiece(board.pieceType(piece), board.isWhitePiece(piece), dragX, dragY);
             }
+        } else if animProgress >= 0 {
+            renderer.drawAnimatedPiece(animPieceType, animPieceWhite, animFromSq, animToSq, animProgress);
         }
 
         // Top and bottom bars
         var turnStr = "White to move";
         if !board.whiteToMove   { turnStr = "Black to move"; }
         if gameState == STATE_AI_THINK { turnStr = "AI thinking..."; }
-        renderer.drawTopBar(turnStr, gameMode);
+        renderer.drawTopBar(turnStr, gameMode, mx, my, mouseDown);
 
-        var statusStr = "Move " + Int(board.fullMoveNumber);
-        renderer.drawBottomBar(statusStr);
+        var statusStr = "Move " + Int(board.fullMoveNumber) + "  Halfmove " + Int(board.halfMoveClock);
+        renderer.drawFooter(statusStr, mx, my, mouseDown);
 
         // Side panel
         renderer.drawPanel(board,
                           whiteTimeSec, blackTimeSec,
                           sanHistory,
                           whiteCaptured, blackCaptured,
-                          gameMode, aiDepth);
+                          gameMode, aiDepth, playerIsWhite,
+                          gameState == STATE_AI_THINK, checkedKingSq);
 
         // Overlays (in order of priority)
         if gameState == STATE_PROMO {
-            renderer.drawPromoDialog(board.whiteToMove);
+            renderer.drawPromoDialog(board.whiteToMove, mx, my, mouseDown);
         }
 
         if gameState == STATE_AI_THINK {
@@ -847,7 +960,7 @@ class ChessGame {
         }
 
         if gameState == STATE_CHECKMATE || gameState == STATE_STALEMATE || gameState == STATE_DRAW {
-            renderer.drawGameOverOverlay(gameOverReason, gameOverWinner);
+            renderer.drawGameOverOverlay(gameOverReason, gameOverWinner, mx, my, mouseDown);
         }
 
         canvas.Flip();

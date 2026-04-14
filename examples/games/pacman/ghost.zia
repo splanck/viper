@@ -15,6 +15,7 @@ bind Viper.Math.Random;
 bind "./config";
 bind "./utils";
 bind "./maze";
+bind "./ui/sprites";
 
 // Ghost type constants
 final GHOST_BLINKY = 0;  // Red - targets Pac-Man directly
@@ -111,6 +112,10 @@ class Ghost {
 
     expose func getMode() -> Integer {
         return mode;
+    }
+
+    expose func getDirection() -> Integer {
+        return direction;
     }
 
     expose func update(theMaze: maze.Maze, pacmanX: Integer, pacmanY: Integer, blinkyX: Integer, blinkyY: Integer) {
@@ -346,45 +351,14 @@ class Ghost {
     }
 
     expose func draw(canvas: Canvas) {
-        var centerX = screenX + config.TILE_SIZE / 2;
-        var centerY = screenY + config.TILE_SIZE / 2;
-        var radius = config.TILE_SIZE / 2 - 2;
-
         // Determine draw color
-        var drawColor = color;
+        var flash = false;
         if mode == config.MODE_FRIGHTENED {
             if frightenedTimer.Remaining < 120 && flashWhite {
-                drawColor = config.COLOR_WHITE;
-            } else {
-                drawColor = config.COLOR_BLUE;
+                flash = true;
             }
         }
-
-        // Ghost body (semicircle + rectangle)
-        canvas.Disc(centerX, centerY - 2, radius, drawColor);
-        canvas.Box(screenX + 2, centerY - 2, config.TILE_SIZE - 4, radius, drawColor);
-
-        // Eyes (not shown when frightened)
-        if mode != config.MODE_FRIGHTENED {
-            var eyeOffset = 4;
-            canvas.Disc(centerX - eyeOffset, centerY - 4, 4, config.COLOR_WHITE);
-            canvas.Disc(centerX + eyeOffset, centerY - 4, 4, config.COLOR_WHITE);
-
-            // Pupils look in movement direction
-            var pupilOffsetX = 0;
-            var pupilOffsetY = 0;
-            if direction == config.DIR_LEFT { pupilOffsetX = -2; }
-            else if direction == config.DIR_RIGHT { pupilOffsetX = 2; }
-            else if direction == config.DIR_UP { pupilOffsetY = -2; }
-            else if direction == config.DIR_DOWN { pupilOffsetY = 2; }
-
-            canvas.Disc(centerX - eyeOffset + pupilOffsetX, centerY - 4 + pupilOffsetY, 2, config.COLOR_BLUE);
-            canvas.Disc(centerX + eyeOffset + pupilOffsetX, centerY - 4 + pupilOffsetY, 2, config.COLOR_BLUE);
-        } else {
-            // Frightened face - simple dots for eyes
-            canvas.Disc(centerX - 4, centerY - 3, 2, config.COLOR_WHITE);
-            canvas.Disc(centerX + 4, centerY - 3, 2, config.COLOR_WHITE);
-        }
+        var spr = sprites.getGhost(color, direction, mode, flash);
+        canvas.BlitAlpha(screenX - 4, screenY - 4, spr);
     }
 }
-

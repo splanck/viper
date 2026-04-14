@@ -14,6 +14,7 @@ bind Viper.Graphics;
 bind "./config";
 bind "./utils";
 bind "./maze";
+bind "./ui/sprites";
 
 // =============================================================================
 // PACMAN ENTITY - The player character
@@ -151,6 +152,10 @@ class PacMan {
         return screenY;
     }
 
+    expose func getDirection() -> Integer {
+        return direction;
+    }
+
     expose func reset(startX: Integer, startY: Integer) {
         gridX = startX;
         gridY = startY;
@@ -163,46 +168,7 @@ class PacMan {
     }
 
     expose func draw(canvas: Canvas) {
-        var centerX = screenX + config.TILE_SIZE / 2;
-        var centerY = screenY + config.TILE_SIZE / 2;
-        var radius = config.TILE_SIZE / 2 - 2;
-
-        // Draw body
-        canvas.Disc(centerX, centerY, radius, config.COLOR_YELLOW);
-
-        // Draw mouth when open
-        if mouthOpen {
-            var mouthX1 = centerX;
-            var mouthY1 = centerY;
-            var mouthX2 = centerX;
-            var mouthY2 = centerY;
-            var mouthX3 = centerX;
-            var mouthY3 = centerY;
-
-            if direction == config.DIR_RIGHT || direction == config.DIR_NONE {
-                mouthX2 = centerX + radius;
-                mouthY2 = centerY - radius / 2;
-                mouthX3 = centerX + radius;
-                mouthY3 = centerY + radius / 2;
-            } else if direction == config.DIR_LEFT {
-                mouthX2 = centerX - radius;
-                mouthY2 = centerY - radius / 2;
-                mouthX3 = centerX - radius;
-                mouthY3 = centerY + radius / 2;
-            } else if direction == config.DIR_UP {
-                mouthX2 = centerX - radius / 2;
-                mouthY2 = centerY - radius;
-                mouthX3 = centerX + radius / 2;
-                mouthY3 = centerY - radius;
-            } else if direction == config.DIR_DOWN {
-                mouthX2 = centerX - radius / 2;
-                mouthY2 = centerY + radius;
-                mouthX3 = centerX + radius / 2;
-                mouthY3 = centerY + radius;
-            }
-
-            canvas.Triangle(mouthX1, mouthY1, mouthX2, mouthY2, mouthX3, mouthY3, config.COLOR_BLACK);
-        }
+        var spr = sprites.getPacman(direction, mouthOpen);
+        canvas.BlitAlpha(screenX - 4, screenY - 4, spr);
     }
 }
-

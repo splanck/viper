@@ -1,0 +1,117 @@
+module layout;
+
+bind "../config";
+
+class Rect {
+    expose Integer x;
+    expose Integer y;
+    expose Integer w;
+    expose Integer h;
+
+    expose func init() {
+        x = 0;
+        y = 0;
+        w = 0;
+        h = 0;
+    }
+
+    expose func setup(px: Integer, py: Integer, pw: Integer, ph: Integer) {
+        x = px;
+        y = py;
+        w = pw;
+        h = ph;
+    }
+}
+
+final OUTER_PAD = 24;
+final CARD_GAP = 16;
+final PLAYFIELD_PAD = 16;
+final MENU_CARD_W = 520;
+final MENU_CARD_H = 432;
+
+func rect(px: Integer, py: Integer, pw: Integer, ph: Integer) -> Rect {
+    var r = new Rect();
+    r.setup(px, py, pw, ph);
+    return r;
+}
+
+func contains(r: Rect, mx: Integer, my: Integer) -> Boolean {
+    return mx >= r.x and mx < r.x + r.w and my >= r.y and my < r.y + r.h;
+}
+
+func marqueeRect() -> Rect {
+    return rect(0, 0, config.SCREEN_WIDTH, 96);
+}
+
+func hudRowRect() -> Rect {
+    return rect(0, marqueeRect().h, config.SCREEN_WIDTH, config.HUD_HEIGHT);
+}
+
+func playfieldRect() -> Rect {
+    return rect(config.PLAYFIELD_X, config.PLAYFIELD_Y, config.PLAYFIELD_WIDTH, config.PLAYFIELD_HEIGHT);
+}
+
+func playfieldFrameRect() -> Rect {
+    var pf = playfieldRect();
+    return rect(pf.x - PLAYFIELD_PAD, pf.y - PLAYFIELD_PAD, pf.w + PLAYFIELD_PAD * 2, pf.h + PLAYFIELD_PAD * 2);
+}
+
+func footerRect() -> Rect {
+    return rect(0, config.SCREEN_HEIGHT - config.FOOTER_HEIGHT, config.SCREEN_WIDTH, config.FOOTER_HEIGHT);
+}
+
+func scoreCardRect() -> Rect {
+    var hud = hudRowRect();
+    return rect(OUTER_PAD, hud.y + 10, 220, hud.h - 20);
+}
+
+func highScoreCardRect() -> Rect {
+    var hud = hudRowRect();
+    return rect((config.SCREEN_WIDTH - 220) / 2, hud.y + 10, 220, hud.h - 20);
+}
+
+func livesCardRect() -> Rect {
+    var hud = hudRowRect();
+    return rect(config.SCREEN_WIDTH - OUTER_PAD - 220, hud.y + 10, 220, hud.h - 20);
+}
+
+func menuCardRect() -> Rect {
+    return rect((config.SCREEN_WIDTH - MENU_CARD_W) / 2, 160, MENU_CARD_W, MENU_CARD_H);
+}
+
+func menuButtonRect(idx: Integer) -> Rect {
+    var card = menuCardRect();
+    return rect(card.x + 52, card.y + 188 + idx * 58, card.w - 104, 44);
+}
+
+func menuInfoRect() -> Rect {
+    var card = menuCardRect();
+    return rect(card.x + 42, card.y + 372, card.w - 84, 42);
+}
+
+func attractLaneRect() -> Rect {
+    var card = menuCardRect();
+    return rect(card.x + 20, card.y + 124, card.w - 40, 52);
+}
+
+func menuShowcaseRect() -> Rect {
+    var card = menuCardRect();
+    return rect((config.SCREEN_WIDTH - 620) / 2, card.y + card.h + 20, 620, 198);
+}
+
+func menuGhostEntryRect(idx: Integer) -> Rect {
+    var show = menuShowcaseRect();
+    var col = idx % 2;
+    var row = idx / 2;
+    var cellW = (show.w - 52) / 2;
+    var cellH = 58;
+    return rect(show.x + 18 + col * (cellW + 16), show.y + 58 + row * 64, cellW, cellH);
+}
+
+func leaderboardCardRect() -> Rect {
+    return rect((config.SCREEN_WIDTH - 420) / 2, 198, 420, 452);
+}
+
+func overlayCardRect() -> Rect {
+    return rect((config.SCREEN_WIDTH - 360) / 2, (config.SCREEN_HEIGHT - 190) / 2, 360, 190);
+}

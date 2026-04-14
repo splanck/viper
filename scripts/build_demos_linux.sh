@@ -115,7 +115,7 @@ ZIA_DEMOS=(
     "paint:${APPS_DIR}/paint"
     "viperide:${APPS_DIR}/viperide"
     "3dbowling:${GAMES_DIR}/3dbowling"
-    "pacman-zia:${GAMES_DIR}/pacman"
+    "crackman:${GAMES_DIR}/pacman"
     "vipersql:${APPS_DIR}/vipersql"
     "chess-zia:${GAMES_DIR}/chess"
     "xenoscape:${GAMES_DIR}/xenoscape"

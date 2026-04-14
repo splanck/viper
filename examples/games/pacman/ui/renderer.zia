@@ -1,0 +1,317 @@
+module renderer;
+
+bind Viper.Graphics;
+bind Color = Viper.Graphics.Color;
+
+bind "../config";
+bind "../utils";
+bind "./theme";
+bind "./layout";
+bind "./widgets";
+bind "./sprites";
+
+hide func drawStarField(canvas: Canvas, tickMs: Integer) {
+    var i = 0;
+    while i < 44 {
+        var sx = 20 + (i * 73) % (config.SCREEN_WIDTH - 40);
+        var sy = 24 + (i * 91) % (config.SCREEN_HEIGHT - 48);
+        var pulse = (tickMs / 20 + i * 7) % 100;
+        var alpha = 16 + pulse;
+        if alpha > 90 { alpha = 180 - alpha; }
+        canvas.DiscAlpha(sx, sy, 1 + (i % 2), theme.BG_STAR, alpha);
+        i = i + 1;
+    }
+}
+
+hide func drawLogoPacman(canvas: Canvas, x: Integer, y: Integer, mouthTick: Integer) {
+    var open = (mouthTick / 8) % 2;
+    var spr = sprites.getPacmanLogo(open != 0);
+    canvas.BlitAlpha(x, y, spr);
+}
+
+hide func drawLogoGhost(canvas: Canvas, x: Integer, y: Integer, color: Integer) {
+    canvas.BlitAlpha(x, y, sprites.getGhostLogo(color));
+}
+
+hide func drawLifeIcon(canvas: Canvas, x: Integer, y: Integer) {
+    canvas.BlitAlpha(x, y, sprites.getLifeIcon());
+}
+
+hide func drawPelletRow(canvas: Canvas, x: Integer, y: Integer, w: Integer, tickMs: Integer) {
+    var count = w / 18;
+    var i = 0;
+    while i < count {
+        var px = x + i * 18;
+        if i == count / 2 {
+            canvas.DiscAlpha(px, y, 9, theme.PELLET_COLOR, 20 + (tickMs / 8) % 40);
+            canvas.Disc(px, y, 5, theme.PELLET_COLOR);
+        } else {
+            canvas.DiscAlpha(px, y, 5, theme.DOT_COLOR, 16);
+            canvas.Disc(px, y, 2, theme.DOT_COLOR);
+        }
+        i = i + 1;
+    }
+}
+
+hide func drawMenuGhostEntry(canvas: Canvas,
+                            idx: Integer,
+                            name: String,
+                            role: String,
+                            color: Integer,
+                            accent: Integer) {
+    var r = menuGhostEntryRect(idx);
+    widgets.drawInset(canvas, r);
+    canvas.BoxAlpha(r.x + 10, r.y + 8, r.w - 20, 10, accent, 18);
+    canvas.BlitAlpha(r.x + 14, r.y + 12, sprites.getGhostLogo(color));
+    theme.drawTextScaled(canvas, r.x + 66, r.y + 16, name, theme.FONT_BODY_SCALE, accent);
+    theme.drawTextScaled(canvas, r.x + 66, r.y + 34, role, theme.FONT_SMALL_SCALE, theme.TEXT_SECONDARY);
+}
+
+hide func drawStackedTitle(canvas: Canvas, x: Integer, y: Integer, w: Integer, tickMs: Integer) {
+    final SCALE = 4;
+    theme.drawTextCentered(canvas, x, y + 7, w, "CRACKMAN", SCALE, 0x12061D);
+    theme.drawTextCentered(canvas, x - 3, y + 3, w, "CRACKMAN", SCALE, theme.ACCENT_CYAN);
+    theme.drawTextCentered(canvas, x + 3, y + 1, w, "CRACKMAN", SCALE, theme.ACCENT_PINK);
+    theme.drawTextCentered(canvas, x, y, w, "CRACKMAN", SCALE,
+                           theme.pulseColor(theme.ACCENT_YELLOW, 24, tickMs, 960));
+}
+
+hide func drawTitleMarquee(canvas: Canvas, tickMs: Integer) {
+    var plaqueX = 106;
+    var plaqueY = 24;
+    var plaqueW = config.SCREEN_WIDTH - 212;
+    var plaqueH = 96;
+
+    canvas.BoxAlpha(plaqueX + 8, plaqueY + 10, plaqueW, plaqueH, 0x000000, 100);
+    canvas.GradientV(plaqueX, plaqueY, plaqueW, plaqueH, 0x1A1538, 0x100E27);
+    canvas.RoundFrame(plaqueX, plaqueY, plaqueW, plaqueH, 20, theme.ACCENT_CYAN);
+    canvas.RoundFrame(plaqueX + 2, plaqueY + 2, plaqueW - 4, plaqueH - 4, 18, theme.ACCENT_PINK);
+
+    canvas.BoxAlpha(plaqueX + 18, plaqueY + 15, plaqueW - 36, 12, theme.ACCENT_CYAN, 22);
+    canvas.BoxAlpha(plaqueX + 18, plaqueY + plaqueH - 27, plaqueW - 36, 12, theme.ACCENT_PINK, 18);
+
+    drawLogoPacman(canvas, plaqueX - 4, plaqueY + 18, tickMs);
+    drawLogoGhost(canvas, plaqueX + plaqueW - 132, plaqueY + 24, config.COLOR_RED);
+    drawLogoGhost(canvas, plaqueX + plaqueW - 88, plaqueY + 24, config.COLOR_PINK);
+    drawLogoGhost(canvas, plaqueX + plaqueW - 44, plaqueY + 24, config.COLOR_CYAN);
+
+    var titleX = plaqueX + 86;
+    var titleW = plaqueW - 232;
+    drawStackedTitle(canvas, titleX, plaqueY + 18, titleW, tickMs);
+    theme.drawTextCentered(canvas, titleX, plaqueY + 66, titleW, "ARCADE DELUXE", theme.FONT_SMALL_SCALE, theme.TEXT_MUTED);
+}
+
+hide func drawGhostHouseBackdrop(canvas: Canvas, tickMs: Integer) {
+    var hx = utils.gridToScreenX(10);
+    var hy = utils.gridToScreenY(11);
+    var hw = config.TILE_SIZE * 8;
+    var hh = config.TILE_SIZE * 6;
+    var pulse = 10 + (tickMs / 28) % 16;
+
+    canvas.BoxAlpha(hx + 10, hy + 14, hw - 20, hh - 18, theme.ACCENT_PINK, 12);
+    canvas.RoundFrame(hx + 16, hy + 24, hw - 32, hh - 32, 10, theme.ACCENT_PINK);
+    canvas.BoxAlpha(hx + 30, hy + 34, hw - 60, hh - 58, theme.ACCENT_BLUE, 12);
+    canvas.BoxAlpha(hx + hw / 2 - 20, hy + 12, 40, 4, theme.ACCENT_PINK, 48);
+    canvas.DiscAlpha(hx + hw / 2, hy + 14, 6 + pulse / 6, theme.ACCENT_PINK, 12 + pulse);
+}
+
+hide func drawTunnelGlow(canvas: Canvas, tickMs: Integer) {
+    var tunnelY = utils.gridToScreenY(14) + config.TILE_SIZE / 2;
+    var leftX = utils.gridToScreenX(0) - 8;
+    var rightX = utils.gridToScreenX(config.GRID_WIDTH - 1) + config.TILE_SIZE + 8;
+    var glowA = 14 + (tickMs / 18) % 18;
+
+    canvas.DiscAlpha(leftX, tunnelY, 18, theme.ACCENT_BLUE, glowA);
+    canvas.DiscAlpha(rightX, tunnelY, 18, theme.ACCENT_BLUE, glowA);
+    canvas.BoxAlpha(leftX - 4, tunnelY - 22, 8, 44, theme.ACCENT_CYAN, glowA / 2);
+    canvas.BoxAlpha(rightX - 4, tunnelY - 22, 8, 44, theme.ACCENT_CYAN, glowA / 2);
+}
+
+hide func drawPlayfieldAtmosphere(canvas: Canvas, tickMs: Integer) {
+    var pf = playfieldRect();
+    canvas.Box(pf.x, pf.y, pf.w, pf.h, 0x040916);
+    canvas.BoxAlpha(pf.x + 10, pf.y + 8, pf.w - 20, 18, theme.ACCENT_BLUE, 12);
+    canvas.BoxAlpha(pf.x + 10, pf.y + pf.h - 26, pf.w - 20, 18, theme.ACCENT_PINK, 10);
+    canvas.BoxAlpha(pf.x + 8, pf.y + pf.h / 2 - 12, pf.w - 16, 24, theme.ACCENT_BLUE, 5);
+
+    var beacon = 0;
+    while beacon < 4 {
+        var bx = pf.x + 18;
+        if beacon == 1 || beacon == 3 { bx = pf.x + pf.w - 18; }
+        var by = pf.y + 18;
+        if beacon >= 2 { by = pf.y + pf.h - 18; }
+        canvas.DiscAlpha(bx, by, 16, theme.ACCENT_CYAN, 10 + (tickMs / 16 + beacon * 6) % 18);
+        beacon = beacon + 1;
+    }
+
+    drawTunnelGlow(canvas, tickMs);
+    drawGhostHouseBackdrop(canvas, tickMs);
+}
+
+expose func drawBackdrop(canvas: Canvas, tickMs: Integer) {
+    canvas.GradientV(0, 0, config.SCREEN_WIDTH, config.SCREEN_HEIGHT, theme.BG_TOP, theme.BG_BOTTOM);
+    canvas.BoxAlpha(36, 36, config.SCREEN_WIDTH - 72, 52, theme.BG_GLOW_BLUE, 18);
+    canvas.BoxAlpha(64, config.SCREEN_HEIGHT - 128, config.SCREEN_WIDTH - 128, 72, theme.BG_GLOW_PINK, 14);
+    drawStarField(canvas, tickMs);
+
+    var y = 0;
+    while y < config.SCREEN_HEIGHT {
+        canvas.BoxAlpha(0, y, config.SCREEN_WIDTH, 1, 0xFFFFFF, 5);
+        y = y + 8;
+    }
+}
+
+expose func drawPlayfieldShell(canvas: Canvas, tickMs: Integer) {
+    drawBackdrop(canvas, tickMs);
+
+    var marquee = marqueeRect();
+    canvas.GradientV(marquee.x, marquee.y, marquee.w, marquee.h, 0x0D1232, 0x0A0F28);
+    canvas.BoxAlpha(marquee.x, marquee.y + marquee.h - 4, marquee.w, 4, theme.ACCENT_BLUE, 90);
+
+    var frame = playfieldFrameRect();
+    canvas.BoxAlpha(frame.x + 8, frame.y + 10, frame.w, frame.h, 0x000000, 100);
+    canvas.GradientV(frame.x, frame.y, frame.w, frame.h, theme.PLAYFIELD_OUTER, theme.PLAYFIELD_INNER);
+    canvas.RoundFrame(frame.x, frame.y, frame.w, frame.h, 18,
+                      theme.pulseColor(theme.PLAYFIELD_BORDER, 18, tickMs, 1200));
+    canvas.RoundFrame(frame.x + 2, frame.y + 2, frame.w - 4, frame.h - 4, 16, theme.PLAYFIELD_GLOW);
+
+    var pf = playfieldRect();
+    canvas.Box(pf.x - 2, pf.y - 2, pf.w + 4, pf.h + 4, 0x040814);
+    drawPlayfieldAtmosphere(canvas, tickMs);
+}
+
+expose func drawMenu(canvas: Canvas, selected: Integer, highScore: Integer, tickMs: Integer) {
+    drawBackdrop(canvas, tickMs);
+    drawTitleMarquee(canvas, tickMs);
+
+    var card = menuCardRect();
+    widgets.drawPanel(canvas, card, theme.ACCENT_CYAN, true);
+
+    var attract = attractLaneRect();
+    widgets.drawInset(canvas, attract);
+    canvas.SetClipRect(attract.x + 4, attract.y + 4, attract.w - 8, attract.h - 8);
+    drawPelletRow(canvas, attract.x + 22, attract.y + attract.h / 2 + 10, attract.w - 44, tickMs);
+    var laneOffset = (tickMs / 4) % (attract.w + 170);
+    var pacX = attract.x + 18 + laneOffset - 170;
+    drawLogoPacman(canvas, pacX, attract.y + 1, tickMs);
+    drawLogoGhost(canvas, pacX + 62, attract.y + 7, config.COLOR_RED);
+    drawLogoGhost(canvas, pacX + 108, attract.y + 7, config.COLOR_PINK);
+    drawLogoGhost(canvas, pacX + 154, attract.y + 7, config.COLOR_CYAN);
+    canvas.ClearClipRect();
+
+    theme.drawTextCentered(canvas, card.x, card.y + 52, card.w, "START AN ARCADE RUN", theme.FONT_BODY_SCALE, theme.TEXT_PRIMARY);
+    theme.drawTextCentered(canvas, card.x, card.y + 76, card.w, "Classic maze chase with an arcade cabinet shell.", theme.FONT_SMALL_SCALE, theme.TEXT_MUTED);
+
+    widgets.drawButton(canvas, menuButtonRect(0), "START GAME", selected == 0, true, false, tickMs);
+    widgets.drawButton(canvas, menuButtonRect(1), "HIGH SCORES", selected == 1, false, false, tickMs);
+    widgets.drawButton(canvas, menuButtonRect(2), "QUIT", selected == 2, false, true, tickMs);
+
+    var info = menuInfoRect();
+    widgets.drawInset(canvas, info);
+    theme.drawTextCentered(canvas, info.x, info.y + 4, info.w, "HIGH SCORE  " + Int(highScore), theme.FONT_BODY_SCALE, theme.ACCENT_CYAN);
+    theme.drawTextCentered(canvas, info.x, info.y + 24, info.w, "MOVE ARROWS/WASD   SELECT ENTER/SPACE   QUIT ESC", theme.FONT_SMALL_SCALE, theme.TEXT_MUTED);
+
+    var show = menuShowcaseRect();
+    widgets.drawPanel(canvas, show, theme.ACCENT_PINK, true);
+    theme.drawTextCentered(canvas, show.x, show.y + 10, show.w, "GHOST ROSTER", theme.FONT_BODY_SCALE, theme.TEXT_PRIMARY);
+    theme.drawTextCentered(canvas, show.x, show.y + 30, show.w, "Each ghost pressures the maze differently. Read the pursuit pattern.", theme.FONT_SMALL_SCALE, theme.TEXT_MUTED);
+
+    drawMenuGhostEntry(canvas, 0, "BLINKY", "STRAIGHT CHASE PRESSURE", config.COLOR_RED, theme.ACCENT_RED);
+    drawMenuGhostEntry(canvas, 1, "PINKY", "JUMPS AHEAD OF YOUR PATH", config.COLOR_PINK, theme.ACCENT_PINK);
+    drawMenuGhostEntry(canvas, 2, "INKY", "WIDE ANGLES AND TRAPS", config.COLOR_CYAN, theme.ACCENT_CYAN);
+    drawMenuGhostEntry(canvas, 3, "CLYDE", "BREAKS OFF AND RESETS", config.COLOR_ORANGE, theme.ACCENT_ORANGE);
+}
+
+expose func drawHighScores(canvas: Canvas, scores: List[Integer], tickMs: Integer) {
+    drawBackdrop(canvas, tickMs);
+    theme.drawTextCentered(canvas, 0, 68, config.SCREEN_WIDTH, "HIGH SCORES", theme.FONT_TITLE_SCALE, theme.ACCENT_YELLOW);
+
+    var card = leaderboardCardRect();
+    widgets.drawPanel(canvas, card, theme.ACCENT_PINK, true);
+
+    var y = card.y + 74;
+    var rank = 1;
+    for i in 0..scores.length() {
+        var r = rect(card.x + 38, y, card.w - 76, 46);
+        widgets.drawInset(canvas, r);
+        var rankCol = theme.TEXT_SECONDARY;
+        if rank == 1 { rankCol = theme.ACCENT_YELLOW; }
+        if rank == 2 { rankCol = theme.ACCENT_CYAN; }
+        if rank == 3 { rankCol = theme.ACCENT_PINK; }
+        theme.drawTextScaled(canvas, r.x + 16, r.y + 12, Int(rank) + ".", theme.FONT_BODY_SCALE, rankCol);
+        theme.drawTextRight(canvas, r.x, r.y + 12, r.w - 18, Int(scores.get(i)), theme.FONT_BODY_SCALE, theme.TEXT_PRIMARY);
+        y = y + 58;
+        rank = rank + 1;
+    }
+
+    theme.drawTextCentered(canvas, card.x, card.y + card.h - 54, card.w,
+                           "PRESS ENTER, SPACE, OR ESC TO RETURN", theme.FONT_SMALL_SCALE, theme.TEXT_MUTED);
+}
+
+expose func drawHud(canvas: Canvas, score: Integer, highScore: Integer, level: Integer, lives: Integer, tickMs: Integer) {
+    var marquee = marqueeRect();
+    drawLogoPacman(canvas, marquee.x + 16, marquee.y + 18, tickMs);
+    theme.drawTextScaled(canvas, marquee.x + 80, marquee.y + 18, "CRACKMAN", theme.FONT_BODY_SCALE, theme.ACCENT_YELLOW);
+    theme.drawTextScaled(canvas, marquee.x + 82, marquee.y + 44, "ARCADE DELUXE", theme.FONT_SMALL_SCALE, theme.TEXT_MUTED);
+    drawPelletRow(canvas, marquee.x + 300, marquee.y + 36, 180, tickMs);
+
+    widgets.drawLabelValue(canvas, scoreCardRect(), "SCORE", Int(score), theme.ACCENT_PINK);
+    widgets.drawLabelValue(canvas, highScoreCardRect(), "HIGH SCORE", Int(highScore), theme.ACCENT_CYAN);
+    widgets.drawLabelValue(canvas, livesCardRect(), "LEVEL", Int(level), theme.ACCENT_BLUE);
+
+    var livesCard = livesCardRect();
+    var lx = livesCard.x + livesCard.w - 84;
+    var i = 0;
+    while i < lives && i < 3 {
+        drawLifeIcon(canvas, lx + i * 20, livesCard.y + 6);
+        i = i + 1;
+    }
+
+    var footer = footerRect();
+    canvas.GradientV(footer.x, footer.y, footer.w, footer.h, 0x0D1232, 0x090C1F);
+    canvas.BoxAlpha(footer.x, footer.y, footer.w, 2, theme.ACCENT_BLUE, 90);
+    theme.drawTextCentered(canvas, footer.x, footer.y + 12, footer.w,
+                           "P PAUSE  •  ESC MENU  •  R RESTART", theme.FONT_SMALL_SCALE, theme.TEXT_MUTED);
+}
+
+expose func drawStateOverlay(canvas: Canvas, state: Integer, readyProgress: Integer, tickMs: Integer) {
+    if state == config.STATE_PLAYING {
+        return;
+    }
+
+    var title = "";
+    var sub = "";
+    var accent = theme.ACCENT_PINK;
+    if state == config.STATE_READY {
+        title = "READY!";
+        sub = "CHASE BEGINS IN A MOMENT";
+        accent = theme.ACCENT_YELLOW;
+    } else if state == config.STATE_PAUSED {
+        title = "PAUSED";
+        sub = "P OR ENTER TO RESUME  •  ESC FOR MENU";
+        accent = theme.ACCENT_CYAN;
+    } else if state == config.STATE_GAME_OVER {
+        title = "GAME OVER";
+        sub = "R TO RESTART  •  ESC FOR MENU";
+        accent = theme.ACCENT_RED;
+    } else if state == config.STATE_WIN {
+        title = "LEVEL CLEAR";
+        sub = "R OR ENTER FOR NEXT LEVEL";
+        accent = theme.ACCENT_GREEN;
+    } else if state == config.STATE_DYING {
+        title = "OUCH";
+        sub = "THE GHOSTS GOT YOU";
+        accent = theme.ACCENT_RED;
+    }
+
+    canvas.BoxAlpha(0, 0, config.SCREEN_WIDTH, config.SCREEN_HEIGHT, theme.SCRIM, 150);
+    var card = overlayCardRect();
+    if state == config.STATE_READY {
+        var slide = 100 - readyProgress;
+        card.y = card.y + slide;
+    }
+    widgets.drawPanel(canvas, card, accent, true);
+    theme.drawTextCentered(canvas, card.x, card.y + 42, card.w, title, theme.FONT_BODY_SCALE,
+                           theme.pulseColor(accent, 18, tickMs, 900));
+    theme.drawTextCentered(canvas, card.x, card.y + 96, card.w, sub, theme.FONT_SMALL_SCALE, theme.TEXT_SECONDARY);
+}

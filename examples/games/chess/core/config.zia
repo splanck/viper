@@ -25,15 +25,15 @@ final VAL_KING   = 20000;
 // ============================================================================
 // Window & Board Layout
 // ============================================================================
-final WIN_W     = 960;
-final WIN_H     = 700;
-final BOARD_X   = 0;
-final BOARD_Y   = 40;
+final WIN_W     = 1280;
+final WIN_H     = 820;
+final BOARD_X   = 0;     // legacy renderer constant; layout is derived in ui/layout.zia
+final BOARD_Y   = 0;     // legacy renderer constant; layout is derived in ui/layout.zia
 final SQ_SIZE   = 80;    // pixels per square
 final PIECE_SZ  = 70;    // piece Pixels buffer size
-final PANEL_X   = 640;   // side panel left edge
-final PANEL_W   = 320;   // side panel width
-final BAR_H     = 40;    // top and bottom bar height
+final PANEL_X   = 0;     // legacy renderer constant; layout is derived in ui/layout.zia
+final PANEL_W   = 0;     // legacy renderer constant; layout is derived in ui/layout.zia
+final BAR_H     = 0;     // legacy renderer constant; layout is derived in ui/layout.zia
 
 // ============================================================================
 // Board Colors

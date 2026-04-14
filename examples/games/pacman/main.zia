@@ -30,36 +30,9 @@
 
 module PacMan;
 
-bind Viper.Terminal;
 bind "./game";
 
 func start() {
-    Say("===========================================");
-    Say("PAC-MAN - A Zia/Viper Game Demo");
-    Say("===========================================");
-    Say("");
-    Say("Demonstrating game development features:");
-    Say("  - Viper.Game.StateMachine (game state FSM)");
-    Say("  - Viper.Game.ButtonGroup (menu navigation)");
-    Say("  - Viper.Input.Action (debounced input)");
-    Say("  - Viper.Game.Grid2D (2D tile storage)");
-    Say("  - Viper.Game.Timer (frame-based timers)");
-    Say("  - Viper.Game.Tween (smooth animations)");
-    Say("");
-    Say("Controls:");
-    Say("  Arrow Keys / WASD - Move");
-    Say("  ENTER / SPACE     - Select");
-    Say("  ESC               - Back/Quit");
-    Say("  P                 - Pause");
-    Say("");
-    Say("Loading...");
-
     var theGame = new game.Game();
-
-    Say("Starting game!");
     theGame.run();
-
-    Say("");
-    Say("Thanks for playing!");
 }
-

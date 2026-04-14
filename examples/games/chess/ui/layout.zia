@@ -1,0 +1,180 @@
+module layout;
+
+bind "../core/config";
+
+class Rect {
+    expose Integer x;
+    expose Integer y;
+    expose Integer w;
+    expose Integer h;
+
+    expose func init() {
+        x = 0;
+        y = 0;
+        w = 0;
+        h = 0;
+    }
+
+    expose func setup(px: Integer, py: Integer, pw: Integer, ph: Integer) {
+        x = px;
+        y = py;
+        w = pw;
+        h = ph;
+    }
+}
+
+final OUTER_PAD = 28;
+final SECTION_GAP = 18;
+final CARD_GAP = 14;
+final TOP_H = 64;
+final FOOT_H = 52;
+final BOARD_SIZE = SQ_SIZE * 8;
+final BOARD_FRAME_PAD = 14;
+final SIDE_PANEL_W = 480;
+
+func rect(px: Integer, py: Integer, pw: Integer, ph: Integer) -> Rect {
+    var r = new Rect();
+    r.setup(px, py, pw, ph);
+    return r;
+}
+
+func contains(r: Rect, mx: Integer, my: Integer) -> Boolean {
+    return mx >= r.x and mx < r.x + r.w and my >= r.y and my < r.y + r.h;
+}
+
+func topBar() -> Rect {
+    return rect(0, 0, WIN_W, TOP_H);
+}
+
+func footerBar() -> Rect {
+    return rect(0, WIN_H - FOOT_H, WIN_W, FOOT_H);
+}
+
+func boardRect() -> Rect {
+    return rect(OUTER_PAD + BOARD_FRAME_PAD,
+                TOP_H + OUTER_PAD + BOARD_FRAME_PAD,
+                BOARD_SIZE,
+                BOARD_SIZE);
+}
+
+func boardFrameRect() -> Rect {
+    var board = boardRect();
+    return rect(board.x - BOARD_FRAME_PAD,
+                board.y - BOARD_FRAME_PAD,
+                board.w + BOARD_FRAME_PAD * 2,
+                board.h + BOARD_FRAME_PAD * 2);
+}
+
+func sidePanelRect() -> Rect {
+    var boardFrame = boardFrameRect();
+    var px = boardFrame.x + boardFrame.w + SECTION_GAP;
+    return rect(px,
+                boardFrame.y,
+                SIDE_PANEL_W,
+                boardFrame.h);
+}
+
+func newButtonRect() -> Rect {
+    var top = topBar();
+    return rect(top.w - 250, top.y + 14, 92, 36);
+}
+
+func menuButtonRect() -> Rect {
+    var top = topBar();
+    return rect(top.w - 146, top.y + 14, 92, 36);
+}
+
+func drawButtonRect() -> Rect {
+    var foot = footerBar();
+    return rect(OUTER_PAD, foot.y + 10, 118, 32);
+}
+
+func resignButtonRect() -> Rect {
+    var foot = footerBar();
+    return rect(OUTER_PAD + 130, foot.y + 10, 118, 32);
+}
+
+func blackCardRect() -> Rect {
+    var p = sidePanelRect();
+    return rect(p.x, p.y, p.w, 116);
+}
+
+func moveCardRect() -> Rect {
+    var top = blackCardRect();
+    var p = sidePanelRect();
+    return rect(p.x, top.y + top.h + CARD_GAP, p.w, 278);
+}
+
+func whiteCardRect() -> Rect {
+    var moves = moveCardRect();
+    var p = sidePanelRect();
+    return rect(p.x, moves.y + moves.h + CARD_GAP, p.w, 116);
+}
+
+func infoCardRect() -> Rect {
+    var white = whiteCardRect();
+    var p = sidePanelRect();
+    return rect(p.x, white.y + white.h + CARD_GAP, p.w, p.y + p.h - (white.y + white.h + CARD_GAP));
+}
+
+func moveListRect() -> Rect {
+    var card = moveCardRect();
+    return rect(card.x + 18, card.y + 56, card.w - 36, card.h - 72);
+}
+
+func menuCardRect() -> Rect {
+    return rect((WIN_W - 640) / 2, 128, 640, 520);
+}
+
+func heroBoardRect() -> Rect {
+    return rect(94, 132, 264, 264);
+}
+
+func modeButtonRect(idx: Integer) -> Rect {
+    var card = menuCardRect();
+    var y = card.y + 176;
+    var x = card.x + 42 + idx * 182;
+    return rect(x, y, 158, 42);
+}
+
+func sideButtonRect(idx: Integer) -> Rect {
+    var card = menuCardRect();
+    var y = card.y + 254;
+    var x = card.x + 42 + idx * 210;
+    return rect(x, y, 186, 42);
+}
+
+func difficultyButtonRect(idx: Integer) -> Rect {
+    var card = menuCardRect();
+    var y = card.y + 332;
+    var x = card.x + 42 + idx * 138;
+    return rect(x, y, 118, 40);
+}
+
+func startButtonRect() -> Rect {
+    var card = menuCardRect();
+    return rect(card.x + 42, card.y + 418, card.w - 84, 56);
+}
+
+func promoDialogRect() -> Rect {
+    return rect((WIN_W - 420) / 2, (WIN_H - 210) / 2, 420, 210);
+}
+
+func promoOptionRect(idx: Integer) -> Rect {
+    var dialog = promoDialogRect();
+    return rect(dialog.x + 22 + idx * 94, dialog.y + 86, 78, 90);
+}
+
+func gameOverDialogRect() -> Rect {
+    return rect((WIN_W - 460) / 2, (WIN_H - 240) / 2, 460, 240);
+}
+
+func gameOverNewRect() -> Rect {
+    var dialog = gameOverDialogRect();
+    return rect(dialog.x + 44, dialog.y + 170, 160, 44);
+}
+
+func gameOverMenuRect() -> Rect {
+    var dialog = gameOverDialogRect();
+    return rect(dialog.x + 256, dialog.y + 170, 160, 44);
+}

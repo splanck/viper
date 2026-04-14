@@ -1,0 +1,132 @@
+module theme;
+
+bind Viper.Graphics;
+bind Color = Viper.Graphics.Color;
+
+var bodyFont_: BitmapFont = null;
+var titleFont_: BitmapFont = null;
+var assetsReady_: Boolean = false;
+
+final BG_TOP           = 0x120E0B;
+final BG_BOTTOM        = 0x231B14;
+final BG_NOISE         = 0x2A2018;
+final BOARD_FRAME_OUT  = 0x2D1E12;
+final BOARD_FRAME_IN   = 0x6D4A28;
+final BOARD_LIGHT      = 0xE7D7B7;
+final BOARD_DARK       = 0x8A5F3C;
+final BOARD_LIGHT_ALT  = 0xF0E2C4;
+final BOARD_DARK_ALT   = 0x785233;
+final BOARD_LABEL      = 0xD9C8A6;
+final BOARD_LABEL_DIM  = 0x9B886A;
+final PANEL_BG         = 0x151110;
+final CARD_BG          = 0x201815;
+final CARD_BG_ALT      = 0x261D19;
+final CARD_BORDER      = 0x5A473A;
+final CARD_BORDER_SOFT = 0x3A2E26;
+final TEXT_PRIMARY     = 0xF3EBDD;
+final TEXT_SECONDARY   = 0xC8BCA9;
+final TEXT_MUTED       = 0x8F8172;
+final ACCENT_GOLD      = 0xD4A44B;
+final ACCENT_GOLD_SOFT = 0x8A6730;
+final ACCENT_RED       = 0xAE473B;
+final ACCENT_GREEN     = 0x4E8A60;
+final ACCENT_BLUE      = 0x4E6C8E;
+final ACCENT_CREAM     = 0xF5E8CB;
+final HILITE_SELECTED  = 0xD9B15C;
+final HILITE_MOVE      = 0x5D8450;
+final HILITE_CAPTURE   = 0xB54A39;
+final HILITE_LAST      = 0xA28D46;
+final HILITE_CHECK     = 0x8D2A26;
+final SCRIM            = 0x090706;
+
+final FONT_BODY_SCALE  = 1;
+final FONT_TITLE_SCALE = 4;
+final FONT_LABEL_SCALE = 2;
+
+func initAssets() {
+    if assetsReady_ { return; }
+    assetsReady_ = true;
+
+    bodyFont_ = BitmapFont.LoadBDF("examples/games/chess/assets/fonts/viper_8x8.bdf");
+    if bodyFont_ == null {
+        bodyFont_ = BitmapFont.LoadBDF("assets/fonts/viper_8x8.bdf");
+    }
+
+    titleFont_ = bodyFont_;
+}
+
+func bodyFont() -> BitmapFont {
+    initAssets();
+    return bodyFont_;
+}
+
+func titleFont() -> BitmapFont {
+    initAssets();
+    return titleFont_;
+}
+
+func textWidth(text: String, scale: Integer) -> Integer {
+    initAssets();
+    if bodyFont_ != null {
+        return bodyFont_!.TextWidth(text) * scale;
+    }
+    return Canvas.TextScaledWidth(text, scale);
+}
+
+func lineHeight(scale: Integer) -> Integer {
+    initAssets();
+    if bodyFont_ != null {
+        return bodyFont_!.TextHeight * scale;
+    }
+    return Canvas.TextHeight() * scale;
+}
+
+func textYInRect(y: Integer, h: Integer, scale: Integer) -> Integer {
+    return y + (h - lineHeight(scale)) / 2;
+}
+
+func drawText(canvas: Canvas, x: Integer, y: Integer, text: String, color: Integer) {
+    initAssets();
+    if bodyFont_ != null {
+        canvas.TextFont(x, y, text, bodyFont_!, color);
+        return;
+    }
+    canvas.Text(x, y, text, color);
+}
+
+func drawTextScaled(canvas: Canvas, x: Integer, y: Integer, text: String, scale: Integer, color: Integer) {
+    initAssets();
+    if bodyFont_ != null {
+        canvas.TextFontScaled(x, y, text, bodyFont_!, scale, color);
+        return;
+    }
+    canvas.TextScaled(x, y, text, scale, color);
+}
+
+func drawTextCentered(canvas: Canvas, x: Integer, y: Integer, w: Integer, text: String, scale: Integer, color: Integer) {
+    var tx = x + (w - textWidth(text, scale)) / 2;
+    drawTextScaled(canvas, tx, y, text, scale, color);
+}
+
+func drawTextRight(canvas: Canvas, x: Integer, y: Integer, w: Integer, text: String, scale: Integer, color: Integer) {
+    var tx = x + w - textWidth(text, scale);
+    drawTextScaled(canvas, tx, y, text, scale, color);
+}
+
+func brighten(color: Integer, amount: Integer) -> Integer {
+    return Color.Brighten(color, amount);
+}
+
+func darken(color: Integer, amount: Integer) -> Integer {
+    return Color.Darken(color, amount);
+}
+
+func pulseColor(base: Integer, bright: Integer, tickMs: Integer, periodMs: Integer) -> Integer {
+    if periodMs <= 0 { return base; }
+    var phase = (tickMs % periodMs) * 255 / periodMs;
+    if phase > 127 {
+        phase = 255 - phase;
+    }
+    var amount = phase * bright / 127;
+    return Color.Brighten(base, amount);
+}

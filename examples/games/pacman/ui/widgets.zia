@@ -1,0 +1,69 @@
+module widgets;
+
+bind Viper.Graphics;
+bind Color = Viper.Graphics.Color;
+bind "./theme";
+bind "./layout";
+
+func drawPanel(canvas: Canvas, r: Rect, accent: Integer, raised: Boolean) {
+    var shadowAlpha = 70;
+    if !raised { shadowAlpha = 45; }
+    canvas.BoxAlpha(r.x + 6, r.y + 8, r.w, r.h, 0x000000, shadowAlpha);
+    canvas.GradientV(r.x, r.y, r.w, r.h, theme.PANEL_BG_ALT, theme.PANEL_BG);
+    canvas.RoundFrame(r.x, r.y, r.w, r.h, 16, accent);
+    canvas.RoundFrame(r.x + 2, r.y + 2, r.w - 4, r.h - 4, 14, theme.PANEL_SOFT);
+    canvas.BoxAlpha(r.x + 2, r.y + 2, r.w - 4, 10, theme.brighten(accent, 16), 60);
+}
+
+func drawInset(canvas: Canvas, r: Rect) {
+    canvas.GradientV(r.x, r.y, r.w, r.h, theme.PLAYFIELD_OUTER, theme.PLAYFIELD_INNER);
+    canvas.RoundFrame(r.x, r.y, r.w, r.h, 14, theme.PANEL_SOFT);
+}
+
+func drawButton(canvas: Canvas,
+                r: Rect,
+                label: String,
+                selected: Boolean,
+                primary: Boolean,
+                danger: Boolean,
+                tickMs: Integer) {
+    var base = theme.PANEL_BG_ALT;
+    var border = theme.PANEL_BORDER;
+    var textCol = theme.TEXT_SECONDARY;
+
+    if primary {
+        base = 0x4C1E5F;
+        border = theme.ACCENT_PINK;
+        textCol = theme.TEXT_PRIMARY;
+    }
+    if danger {
+        base = 0x431523;
+        border = theme.ACCENT_RED;
+        textCol = theme.TEXT_PRIMARY;
+    }
+    if selected {
+        base = theme.pulseColor(base, 18, tickMs, 720);
+        border = theme.pulseColor(border, 28, tickMs, 720);
+        textCol = theme.ACCENT_YELLOW;
+    }
+
+    canvas.BoxAlpha(r.x + 4, r.y + 6, r.w, r.h, 0x000000, 72);
+    canvas.GradientV(r.x, r.y, r.w, r.h, theme.brighten(base, 12), base);
+    canvas.RoundFrame(r.x, r.y, r.w, r.h, 12, border);
+    canvas.RoundFrame(r.x + 1, r.y + 1, r.w - 2, r.h - 2, 11, theme.PANEL_SOFT);
+    theme.drawTextCentered(canvas, r.x, theme.textYInRect(r.y, r.h, theme.FONT_BODY_SCALE),
+                           r.w, label, theme.FONT_BODY_SCALE, textCol);
+}
+
+func drawLabelValue(canvas: Canvas, r: Rect, label: String, value: String, accent: Integer) {
+    drawPanel(canvas, r, accent, true);
+    theme.drawTextScaled(canvas, r.x + 16, r.y + 10, label, theme.FONT_SMALL_SCALE, theme.TEXT_MUTED);
+    theme.drawTextScaled(canvas, r.x + 16, r.y + 28, value, theme.FONT_BODY_SCALE, theme.TEXT_PRIMARY);
+}
+
+func drawPill(canvas: Canvas, r: Rect, label: String, accent: Integer) {
+    canvas.GradientV(r.x, r.y, r.w, r.h, theme.brighten(accent, 18), accent);
+    canvas.RoundFrame(r.x, r.y, r.w, r.h, 10, theme.brighten(accent, 26));
+    theme.drawTextCentered(canvas, r.x, theme.textYInRect(r.y, r.h, theme.FONT_SMALL_SCALE),
+                           r.w, label, theme.FONT_SMALL_SCALE, theme.TEXT_PRIMARY);
+}

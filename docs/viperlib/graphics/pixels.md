@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-09
+last-verified: 2026-04-14
 ---
 
 # Images & Sprites
@@ -134,8 +134,12 @@ func start() {
 format as `Canvas` methods and `Color.RGB()`. This makes it straightforward to share color constants
 between on-screen canvas drawing and off-screen pixel buffer operations.
 
-Use `Viper.Graphics.Color.RGBA()` to create `0xRRGGBBAA` colors for `Set`/`Get`, and
-`Viper.Graphics.Color.RGB()` to create `0x00RRGGBB` colors for drawing primitives.
+Use packed literals like `0xRRGGBBAA` for `Set`/`Get`, and `Viper.Graphics.Color.RGB()` for
+drawing primitives.
+
+> `Viper.Graphics.Color.RGBA()` returns `0xAARRGGBB`, which is suitable for alpha-aware Canvas
+> drawing APIs, but it does **not** match the `0xRRGGBBAA` layout used by `Pixels.Set`/`Pixels.Get`.
+> For opaque pixels, prefer `SetRGB()`; for explicit alpha, pass a packed `0xRRGGBBAA` value.
 
 ### Zia Example
 
@@ -151,13 +155,13 @@ func start() {
     var p = Pixels.New(64, 64);
     Say("Size: " + Fmt.Int(p.get_Width()) + "x" + Fmt.Int(p.get_Height()));
 
-    // Set and get pixels
-    p.Set(0, 0, Color.RGB(255, 0, 0));
+    // Set and get pixels (Pixels.Set uses 0xRRGGBBAA)
+    p.Set(0, 0, 0xFF0000FF);
     var c = p.Get(0, 0);
     Say("Pixel(0,0): " + Fmt.Int(c));
 
     // Fill and clear
-    p.Fill(Color.RGB(0, 255, 0));
+    p.Fill(0x00FF00FF);
     p.Clear();
 
     // Clone
@@ -188,7 +192,7 @@ FOR y = 0 TO 255
         DIM r AS INTEGER = x
         DIM g AS INTEGER = y
         DIM color AS INTEGER = Viper.Graphics.Color.RGB(r, g, 0)
-        pixels.Set(x, y, color)
+        pixels.SetRGB(x, y, color)
     NEXT x
 NEXT y
 
@@ -325,7 +329,7 @@ bind Viper.Fmt as Fmt;
 func start() {
     // Create sprite from pixels
     var px = Pixels.New(32, 32);
-    px.Fill(Color.RGB(255, 0, 0));
+    px.Fill(0xFF0000FF);
     var s = Sprite.New(px);
 
     Say("Size: " + Fmt.Int(s.get_Width()) + "x" + Fmt.Int(s.get_Height()));
@@ -466,7 +470,7 @@ bind Viper.Fmt as Fmt;
 
 func start() {
     var atlas = Pixels.New(128, 128);
-    atlas.Fill(Color.RGB(200, 100, 50));
+    atlas.Fill(0xC86432FF);
 
     var sheet = SpriteSheet.New(atlas);
     Say("Regions: " + Fmt.Int(sheet.RegionCount));  // 0

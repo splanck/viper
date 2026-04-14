@@ -29,6 +29,32 @@ var blackBishop: Pixels;
 var blackQueen:  Pixels;
 var blackKing:   Pixels;
 
+var whitePawnShadow:   Pixels;
+var whiteRookShadow:   Pixels;
+var whiteKnightShadow: Pixels;
+var whiteBishopShadow: Pixels;
+var whiteQueenShadow:  Pixels;
+var whiteKingShadow:   Pixels;
+var blackPawnShadow:   Pixels;
+var blackRookShadow:   Pixels;
+var blackKnightShadow: Pixels;
+var blackBishopShadow: Pixels;
+var blackQueenShadow:  Pixels;
+var blackKingShadow:   Pixels;
+
+var whitePawnMini:   Pixels;
+var whiteRookMini:   Pixels;
+var whiteKnightMini: Pixels;
+var whiteBishopMini: Pixels;
+var whiteQueenMini:  Pixels;
+var whiteKingMini:   Pixels;
+var blackPawnMini:   Pixels;
+var blackRookMini:   Pixels;
+var blackKnightMini: Pixels;
+var blackBishopMini: Pixels;
+var blackQueenMini:  Pixels;
+var blackKingMini:   Pixels;
+
 final SP = PIECE_SZ;           // sprite size (70×70)
 final CX = PIECE_SZ / 2;      // center X
 final CY = PIECE_SZ / 2;      // center Y
@@ -50,6 +76,32 @@ func initSprites() {
     blackBishop = renderBishop(false);
     blackQueen  = renderQueen(false);
     blackKing   = renderKing(false);
+
+    whitePawnShadow   = buildShadow(whitePawn);
+    whiteRookShadow   = buildShadow(whiteRook);
+    whiteKnightShadow = buildShadow(whiteKnight);
+    whiteBishopShadow = buildShadow(whiteBishop);
+    whiteQueenShadow  = buildShadow(whiteQueen);
+    whiteKingShadow   = buildShadow(whiteKing);
+    blackPawnShadow   = buildShadow(blackPawn);
+    blackRookShadow   = buildShadow(blackRook);
+    blackKnightShadow = buildShadow(blackKnight);
+    blackBishopShadow = buildShadow(blackBishop);
+    blackQueenShadow  = buildShadow(blackQueen);
+    blackKingShadow   = buildShadow(blackKing);
+
+    whitePawnMini   = whitePawn.Scale(28, 28);
+    whiteRookMini   = whiteRook.Scale(28, 28);
+    whiteKnightMini = whiteKnight.Scale(28, 28);
+    whiteBishopMini = whiteBishop.Scale(28, 28);
+    whiteQueenMini  = whiteQueen.Scale(28, 28);
+    whiteKingMini   = whiteKing.Scale(28, 28);
+    blackPawnMini   = blackPawn.Scale(28, 28);
+    blackRookMini   = blackRook.Scale(28, 28);
+    blackKnightMini = blackKnight.Scale(28, 28);
+    blackBishopMini = blackBishop.Scale(28, 28);
+    blackQueenMini  = blackQueen.Scale(28, 28);
+    blackKingMini   = blackKing.Scale(28, 28);
 }
 
 func getPiece(pieceType: Integer, isWhite: Boolean) -> Pixels {
@@ -71,23 +123,71 @@ func getPiece(pieceType: Integer, isWhite: Boolean) -> Pixels {
     return null;
 }
 
+func getShadow(pieceType: Integer, isWhite: Boolean) -> Pixels {
+    if isWhite {
+        if pieceType == PAWN   { return whitePawnShadow; }
+        if pieceType == ROOK   { return whiteRookShadow; }
+        if pieceType == KNIGHT { return whiteKnightShadow; }
+        if pieceType == BISHOP { return whiteBishopShadow; }
+        if pieceType == QUEEN  { return whiteQueenShadow; }
+        if pieceType == KING   { return whiteKingShadow; }
+    } else {
+        if pieceType == PAWN   { return blackPawnShadow; }
+        if pieceType == ROOK   { return blackRookShadow; }
+        if pieceType == KNIGHT { return blackKnightShadow; }
+        if pieceType == BISHOP { return blackBishopShadow; }
+        if pieceType == QUEEN  { return blackQueenShadow; }
+        if pieceType == KING   { return blackKingShadow; }
+    }
+    return null;
+}
+
+func getMiniPiece(pieceType: Integer, isWhite: Boolean) -> Pixels {
+    if isWhite {
+        if pieceType == PAWN   { return whitePawnMini; }
+        if pieceType == ROOK   { return whiteRookMini; }
+        if pieceType == KNIGHT { return whiteKnightMini; }
+        if pieceType == BISHOP { return whiteBishopMini; }
+        if pieceType == QUEEN  { return whiteQueenMini; }
+        if pieceType == KING   { return whiteKingMini; }
+    } else {
+        if pieceType == PAWN   { return blackPawnMini; }
+        if pieceType == ROOK   { return blackRookMini; }
+        if pieceType == KNIGHT { return blackKnightMini; }
+        if pieceType == BISHOP { return blackBishopMini; }
+        if pieceType == QUEEN  { return blackQueenMini; }
+        if pieceType == KING   { return blackKingMini; }
+    }
+    return null;
+}
+
 // ============================================================================
 // Color helpers
 // ============================================================================
 
 func fillColor(white: Boolean) -> Integer {
-    if white { return 0xFAF0E6; }   // linen white
-    return 0x2C2C2C;                 // dark charcoal
+    if white { return 0xF6E9CE; }
+    return 0x2E2521;
 }
 
 func outlineColor(white: Boolean) -> Integer {
-    if white { return 0x222222; }    // near black
-    return 0xCCCCCC;                 // light grey
+    if white { return 0x433127; }
+    return 0xD7C5A1;
 }
 
 func accentColor(white: Boolean) -> Integer {
-    if white { return 0xD0C8B8; }    // shadow for white pieces
-    return 0x505050;                  // highlight for dark pieces
+    if white { return 0xD8BD86; }
+    return 0x69564A;
+}
+
+func detailColor(white: Boolean) -> Integer {
+    if white { return 0xFFF9EA; }
+    return 0xB79F85;
+}
+
+func buildShadow(src: Pixels) -> Pixels {
+    var shadow = src.Tint(0x000000);
+    return shadow.Blur(1);
 }
 
 // ============================================================================
@@ -106,6 +206,7 @@ func renderPawn(white: Boolean) -> Pixels {
     var fill = fillColor(white);
     var out = outlineColor(white);
     var acc = accentColor(white);
+    var detail = detailColor(white);
 
     // Base — wide ellipse
     px.DrawEllipse(CX, CY + 22, 20, 8, out);
@@ -122,6 +223,7 @@ func renderPawn(white: Boolean) -> Pixels {
 
     // Subtle shadow line on body
     px.DrawLine(CX - 6, CY + 16, CX + 6, CY + 16, acc);
+    px.DrawLine(CX - 5, CY - 10, CX + 5, CY - 10, detail);
 
     return px;
 }
@@ -131,6 +233,7 @@ func renderRook(white: Boolean) -> Pixels {
     var fill = fillColor(white);
     var out = outlineColor(white);
     var acc = accentColor(white);
+    var detail = detailColor(white);
 
     // Base
     px.DrawEllipse(CX, CY + 22, 21, 8, out);
@@ -154,6 +257,7 @@ func renderRook(white: Boolean) -> Pixels {
 
     // Horizontal accent line across body
     px.DrawLine(CX - 9, CY + 8, CX + 9, CY + 8, acc);
+    px.DrawLine(CX - 8, CY + 2, CX + 8, CY + 2, detail);
 
     return px;
 }
@@ -163,6 +267,7 @@ func renderKnight(white: Boolean) -> Pixels {
     var fill = fillColor(white);
     var out = outlineColor(white);
     var acc = accentColor(white);
+    var detail = detailColor(white);
 
     // Base
     px.DrawEllipse(CX, CY + 22, 20, 8, out);
@@ -189,6 +294,7 @@ func renderKnight(white: Boolean) -> Pixels {
 
     // Nostril mark
     px.DrawDisc(CX + 19, CY - 2, 2, acc);
+    px.DrawLine(CX - 1, CY + 8, CX + 8, CY + 2, detail);
 
     return px;
 }
@@ -198,6 +304,7 @@ func renderBishop(white: Boolean) -> Pixels {
     var fill = fillColor(white);
     var out = outlineColor(white);
     var acc = accentColor(white);
+    var detail = detailColor(white);
 
     // Base
     px.DrawEllipse(CX, CY + 22, 20, 8, out);
@@ -220,6 +327,7 @@ func renderBishop(white: Boolean) -> Pixels {
 
     // Horizontal sash
     px.DrawLine(CX - 8, CY + 6, CX + 8, CY + 6, acc);
+    px.DrawDisc(CX, CY - 18, 3, detail);
 
     return px;
 }
@@ -229,6 +337,7 @@ func renderQueen(white: Boolean) -> Pixels {
     var fill = fillColor(white);
     var out = outlineColor(white);
     var acc = accentColor(white);
+    var detail = detailColor(white);
 
     // Base — slightly wider than other pieces
     px.DrawEllipse(CX, CY + 22, 22, 9, out);
@@ -262,6 +371,7 @@ func renderQueen(white: Boolean) -> Pixels {
     px.DrawLine(CX, CY - 12, CX + 11, CY - 22, acc);
     px.DrawLine(CX + 11, CY - 22, CX + 6, CY - 10, acc);
     px.DrawLine(CX + 6, CY - 10, CX + 20, CY - 15, acc);
+    px.DrawLine(CX - 9, CY + 5, CX + 9, CY + 5, detail);
 
     return px;
 }
@@ -271,6 +381,7 @@ func renderKing(white: Boolean) -> Pixels {
     var fill = fillColor(white);
     var out = outlineColor(white);
     var acc = accentColor(white);
+    var detail = detailColor(white);
 
     // Base — wide
     px.DrawEllipse(CX, CY + 22, 22, 9, out);
@@ -293,6 +404,7 @@ func renderKing(white: Boolean) -> Pixels {
 
     // Small jewel at cross intersection
     px.DrawDisc(CX, CY - 20, 3, acc);
+    px.DrawLine(CX - 9, CY + 4, CX + 9, CY + 4, detail);
 
     return px;
 }

@@ -11,19 +11,27 @@ bind "./config";
 // =============================================================================
 
 func gridToScreenX(gridX: Integer) -> Integer {
-    return gridX * config.TILE_SIZE;
+    return config.PLAYFIELD_X + gridX * config.TILE_SIZE;
 }
 
 func gridToScreenY(gridY: Integer) -> Integer {
-    return gridY * config.TILE_SIZE;
+    return config.PLAYFIELD_Y + gridY * config.TILE_SIZE;
 }
 
 func screenToGridX(screenX: Integer) -> Integer {
-    return screenX / config.TILE_SIZE;
+    return (screenX - config.PLAYFIELD_X) / config.TILE_SIZE;
 }
 
 func screenToGridY(screenY: Integer) -> Integer {
-    return screenY / config.TILE_SIZE;
+    return (screenY - config.PLAYFIELD_Y) / config.TILE_SIZE;
+}
+
+func gridToCenterX(gridX: Integer) -> Integer {
+    return gridToScreenX(gridX) + config.TILE_SIZE / 2;
+}
+
+func gridToCenterY(gridY: Integer) -> Integer {
+    return gridToScreenY(gridY) + config.TILE_SIZE / 2;
 }
 
 // =============================================================================
@@ -119,4 +127,3 @@ func clamp(value: Integer, minVal: Integer, maxVal: Integer) -> Integer {
     if value > maxVal { return maxVal; }
     return value;
 }
-

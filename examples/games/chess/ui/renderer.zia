@@ -1,426 +1,596 @@
 module renderer;
 
 bind Viper.Graphics;
-bind Viper.Fmt;
 bind Viper.Time;
+bind Color = Viper.Graphics.Color;
 bind "../core/config";
 bind "../core/board";
 bind "./pieces";
+bind "./theme";
+bind "./layout";
+bind "./widgets";
 
-// ============================================================================
-// BoardRenderer — handles all visual output for the chess game.
-//
-// Draws the board, pieces, highlights, and all UI panels using only canvas
-// drawing primitives (no external image files required).
-//
-// Coordinate system:
-//   Board top-left: (BOARD_X, BOARD_Y)
-//   Squares: 80×80 px each, rank 0 (black's back rank) at top, rank 7 at bottom
-//   File 0 (a-file) at left, file 7 (h-file) at right
-//   Square index: sq = rank * 8 + file
-// ============================================================================
 class BoardRenderer {
     hide Canvas canvas;
 
     expose func init() {
     }
 
-    // Set the canvas target. Must be called before any drawing methods.
     expose func setCanvas(cv: Canvas) {
         canvas = cv;
+        theme.initAssets();
     }
-
-    // -------------------------------------------------------------------------
-    // Square coordinate helpers
-    // -------------------------------------------------------------------------
 
     expose func squareFile(sq: Integer) -> Integer { return sq % 8; }
     expose func squareRank(sq: Integer) -> Integer { return sq / 8; }
 
-    // Pixel coords for the top-left corner of square sq
     expose func squareX(sq: Integer) -> Integer {
-        return BOARD_X + (sq % 8) * SQ_SIZE;
+        var board = layout.boardRect();
+        return board.x + (sq % 8) * SQ_SIZE;
     }
+
     expose func squareY(sq: Integer) -> Integer {
-        return BOARD_Y + (sq / 8) * SQ_SIZE;
+        var board = layout.boardRect();
+        return board.y + (sq / 8) * SQ_SIZE;
     }
 
-    // Pixel coords for the center of square sq
     expose func squareCenterX(sq: Integer) -> Integer {
-        return BOARD_X + (sq % 8) * SQ_SIZE + SQ_SIZE / 2;
-    }
-    expose func squareCenterY(sq: Integer) -> Integer {
-        return BOARD_Y + (sq / 8) * SQ_SIZE + SQ_SIZE / 2;
+        return squareX(sq) + SQ_SIZE / 2;
     }
 
-    // Convert mouse coords to square index (-1 if outside board)
+    expose func squareCenterY(sq: Integer) -> Integer {
+        return squareY(sq) + SQ_SIZE / 2;
+    }
+
     expose func squareAt(mx: Integer, my: Integer) -> Integer {
-        if mx < BOARD_X { return -1; }
-        if mx >= BOARD_X + 640 { return -1; }
-        if my < BOARD_Y { return -1; }
-        if my >= BOARD_Y + 640 { return -1; }
-        var f = (mx - BOARD_X) / SQ_SIZE;
-        var r = (my - BOARD_Y) / SQ_SIZE;
+        var board = layout.boardRect();
+        if mx < board.x || mx >= board.x + board.w { return -1; }
+        if my < board.y || my >= board.y + board.h { return -1; }
+        var f = (mx - board.x) / SQ_SIZE;
+        var r = (my - board.y) / SQ_SIZE;
         return r * 8 + f;
     }
 
-    // -------------------------------------------------------------------------
-    // Board squares
-    // -------------------------------------------------------------------------
+    expose func drawGameBackdrop() {
+        canvas.GradientV(0, 0, WIN_W, WIN_H, theme.BG_TOP, theme.BG_BOTTOM);
+        canvas.BoxAlpha(0, 0, WIN_W, WIN_H / 2, theme.BG_NOISE, 36);
 
-    expose func drawBoard(lastFrom: Integer, lastTo: Integer) {
+        var boardFrame = layout.boardFrameRect();
+        var panel = layout.sidePanelRect();
+        canvas.EllipseAlpha(boardFrame.x + boardFrame.w / 2, boardFrame.y + boardFrame.h / 2,
+                            360, 270, theme.ACCENT_GOLD_SOFT, 18);
+        canvas.EllipseAlpha(panel.x + panel.w / 2, panel.y + 120,
+                            280, 180, theme.ACCENT_BLUE, 18);
+    }
+
+    expose func drawMenuBackdrop() {
+        canvas.GradientV(0, 0, WIN_W, WIN_H, theme.BG_TOP, theme.BG_BOTTOM);
+
+        var card = layout.menuCardRect();
+        canvas.EllipseAlpha(card.x - 80, card.y + 100, 220, 180, theme.ACCENT_GOLD_SOFT, 26);
+        canvas.EllipseAlpha(card.x + card.w + 50, card.y + 250, 240, 220, theme.ACCENT_BLUE, 24);
+
+        drawMenuPreviewBoard(card.x - 210, card.y + 54);
+    }
+
+    hide func drawMenuPreviewBoard(px: Integer, py: Integer) {
+        var size = 32;
+        for r in 0..8 {
+            for f in 0..8 {
+                var isLight = (r + f) % 2 == 0;
+                var col = theme.BOARD_DARK_ALT;
+                if isLight { col = theme.BOARD_LIGHT_ALT; }
+                canvas.Box(px + f * size, py + r * size, size, size, col);
+            }
+        }
+        canvas.BoxAlpha(px - 8, py - 8, 272, 272, 0x000000, 64);
+        canvas.Frame(px - 6, py - 6, 268, 268, theme.BOARD_FRAME_IN);
+        canvas.BlitAlpha(px + 28, py + 132, pieces.getShadow(KING, true));
+        canvas.BlitAlpha(px + 24, py + 126, pieces.getPiece(KING, true));
+        canvas.BlitAlpha(px + 132, py + 60, pieces.getShadow(QUEEN, false));
+        canvas.BlitAlpha(px + 128, py + 54, pieces.getPiece(QUEEN, false));
+        canvas.BlitAlpha(px + 156, py + 170, pieces.getShadow(BISHOP, false));
+        canvas.BlitAlpha(px + 152, py + 164, pieces.getPiece(BISHOP, false));
+    }
+
+    expose func drawBoard(lastFrom: Integer, lastTo: Integer, hoverSq: Integer) {
+        var frame = layout.boardFrameRect();
+        var board = layout.boardRect();
         var fileLabels = ["a", "b", "c", "d", "e", "f", "g", "h"];
+
+        canvas.BoxAlpha(frame.x + 10, frame.y + 14, frame.w, frame.h, 0x000000, 96);
+        canvas.GradientV(frame.x, frame.y, frame.w, frame.h, theme.BOARD_FRAME_OUT, theme.BOARD_FRAME_IN);
+        canvas.RoundFrame(frame.x, frame.y, frame.w, frame.h, 14, theme.ACCENT_GOLD_SOFT);
+        canvas.RoundFrame(frame.x + 2, frame.y + 2, frame.w - 4, frame.h - 4, 12, theme.BOARD_FRAME_IN);
+
+        canvas.Box(board.x, board.y, board.w, board.h, theme.BOARD_DARK);
         for r in 0..8 {
             for f in 0..8 {
                 var sq = r * 8 + f;
-                var bx = BOARD_X + f * SQ_SIZE;
-                var by = BOARD_Y + r * SQ_SIZE;
-
-                // Determine square base color
+                var bx = board.x + f * SQ_SIZE;
+                var by = board.y + r * SQ_SIZE;
                 var isLight = (r + f) % 2 == 0;
-                var sqCol = COL_DARK;
-                if isLight { sqCol = COL_LIGHT; }
-
-                // Last-move highlight (overrides base color)
-                if sq == lastFrom || sq == lastTo { sqCol = COL_HL_LAST; }
-
-                canvas.Box(bx, by, SQ_SIZE, SQ_SIZE, sqCol);
-
-                // Rank label (1-8) inside file-0 squares, top-left corner
-                if f == 0 {
-                    var rankLabel = Int(8 - r);
-                    var labelCol = COL_DARK;
-                    if isLight { labelCol = COL_DARK; } else { labelCol = COL_LIGHT; }
-                    canvas.Text(bx + 3, by + 3, rankLabel, labelCol);
+                var sqCol = theme.BOARD_DARK;
+                if isLight { sqCol = theme.BOARD_LIGHT; }
+                if (r + f) % 2 == 1 {
+                    sqCol = theme.BOARD_DARK_ALT;
+                } else {
+                    sqCol = theme.BOARD_LIGHT_ALT;
                 }
 
-                // File label (a-h) inside rank-7 squares, bottom-right corner
+                canvas.Box(bx, by, SQ_SIZE, SQ_SIZE, sqCol);
+                canvas.BoxAlpha(bx, by, SQ_SIZE, SQ_SIZE / 2, theme.ACCENT_CREAM, 14);
+
+                if sq == lastFrom || sq == lastTo {
+                    canvas.BoxAlpha(bx, by, SQ_SIZE, SQ_SIZE, theme.HILITE_LAST, 84);
+                }
+                if sq == hoverSq {
+                    canvas.BoxAlpha(bx, by, SQ_SIZE, SQ_SIZE, theme.ACCENT_CREAM, 26);
+                    canvas.RoundFrame(bx + 6, by + 6, SQ_SIZE - 12, SQ_SIZE - 12, 10, theme.ACCENT_GOLD_SOFT);
+                }
+
+                if f == 0 {
+                    var rankLabel = Int(8 - r);
+                    var labelCol = theme.BOARD_LABEL;
+                    if isLight { labelCol = theme.BOARD_LABEL_DIM; }
+                    theme.drawTextScaled(canvas, bx + 6, by + 5, rankLabel, 1, labelCol);
+                }
+
                 if r == 7 {
-                    var labelCol = COL_LIGHT;
-                    if isLight { labelCol = COL_DARK; } else { labelCol = COL_LIGHT; }
-                    canvas.Text(bx + SQ_SIZE - 11, by + SQ_SIZE - 15, fileLabels.get(f), labelCol);
+                    var labelCol = theme.BOARD_LABEL;
+                    if isLight { labelCol = theme.BOARD_LABEL_DIM; }
+                    var label = fileLabels.get(f);
+                    theme.drawTextScaled(canvas,
+                                         bx + SQ_SIZE - theme.textWidth(label, 1) - 6,
+                                         by + SQ_SIZE - theme.lineHeight(1) - 5,
+                                         label,
+                                         1,
+                                         labelCol);
                 }
             }
         }
 
-        // Board border
-        canvas.Frame(BOARD_X, BOARD_Y, 640, 640, 0x111111);
+        canvas.Frame(board.x, board.y, board.w, board.h, theme.BOARD_FRAME_OUT);
+        canvas.Frame(board.x - 1, board.y - 1, board.w + 2, board.h + 2, theme.BOARD_FRAME_IN);
     }
-
-    // -------------------------------------------------------------------------
-    // Highlights: selected square + legal move destinations
-    // -------------------------------------------------------------------------
 
     expose func drawHighlights(selectedSq: Integer, legalMoves: List[Move]) {
         if selectedSq < 0 { return; }
 
-        // Yellow overlay on selected square
         var sx = squareX(selectedSq);
         var sy = squareY(selectedSq);
-        canvas.Box(sx, sy, SQ_SIZE, SQ_SIZE, COL_HL_SEL);
+        canvas.BoxAlpha(sx, sy, SQ_SIZE, SQ_SIZE, theme.HILITE_SELECTED, 120);
+        canvas.RoundFrame(sx + 4, sy + 4, SQ_SIZE - 8, SQ_SIZE - 8, 10, theme.brighten(theme.HILITE_SELECTED, 24));
 
-        // Legal-move destinations: dot for empty squares, ring for captures
         for i in 0..legalMoves.length() {
             var m = legalMoves.get(i);
             if m.from != selectedSq { continue; }
             var tx = squareCenterX(m.to);
             var ty = squareCenterY(m.to);
             if m.captured != 0 || m.enPassant {
-                // Capture ring
-                canvas.Ring(tx, ty, SQ_SIZE / 2 - 4, COL_HL_CAP);
-                canvas.Ring(tx, ty, SQ_SIZE / 2 - 6, COL_HL_CAP);
+                canvas.Ring(tx, ty, SQ_SIZE / 2 - 8, theme.HILITE_CAPTURE);
+                canvas.Ring(tx, ty, SQ_SIZE / 2 - 10, theme.brighten(theme.HILITE_CAPTURE, 16));
             } else {
-                // Move dot
-                canvas.Disc(tx, ty, 12, COL_HL_MOVE);
+                canvas.DiscAlpha(tx, ty, 12, theme.HILITE_MOVE, 210);
+                canvas.DiscAlpha(tx, ty, 6, theme.ACCENT_CREAM, 180);
             }
         }
     }
 
-    // Red overlay on king square when in check
     expose func drawCheckHighlight(kingSq: Integer) {
         if kingSq < 0 { return; }
-        canvas.Box(squareX(kingSq), squareY(kingSq), SQ_SIZE, SQ_SIZE, COL_HL_CHECK);
+        canvas.BoxAlpha(squareX(kingSq), squareY(kingSq), SQ_SIZE, SQ_SIZE, theme.HILITE_CHECK, 120);
+        canvas.RoundFrame(squareX(kingSq) + 4, squareY(kingSq) + 4, SQ_SIZE - 8, SQ_SIZE - 8, 10, theme.brighten(theme.HILITE_CHECK, 16));
     }
 
-    // -------------------------------------------------------------------------
-    // Pieces
-    // -------------------------------------------------------------------------
-
-    expose func drawPieces(b: Board, dragFrom: Integer) {
+    expose func drawPieces(b: Board, dragFrom: Integer, skipSq: Integer) {
         for sq in 0..64 {
             if sq == dragFrom { continue; }
+            if sq == skipSq { continue; }
             var piece = b.get(sq);
             if piece == 0 { continue; }
-            blitPiece(b.pieceType(piece), b.isWhitePiece(piece),
-                      squareCenterX(sq), squareCenterY(sq));
+            blitPieceWithShadow(b.pieceType(piece), b.isWhitePiece(piece),
+                                squareCenterX(sq), squareCenterY(sq));
         }
     }
 
-    // Draw a single piece at arbitrary pixel coordinates (for drag animation)
     expose func drawDragPiece(pieceType: Integer, white: Boolean, x: Integer, y: Integer) {
         if pieceType == 0 { return; }
-        blitPiece(pieceType, white, x, y);
+        var shadow = pieces.getShadow(pieceType, white);
+        if shadow != null {
+            canvas.BlitAlpha(x - PIECE_SZ / 2 + 7, y - PIECE_SZ / 2 + 10, shadow);
+        }
+        blitPiece(pieceType, white, x, y - 4);
     }
 
-    // Stamp a pre-rendered piece sprite centered at (cx, cy)
+    expose func drawAnimatedPiece(pieceType: Integer,
+                                  white: Boolean,
+                                  fromSq: Integer,
+                                  toSq: Integer,
+                                  progressPermille: Integer) {
+        if pieceType == 0 { return; }
+        var fromX = squareCenterX(fromSq);
+        var fromY = squareCenterY(fromSq);
+        var toX = squareCenterX(toSq);
+        var toY = squareCenterY(toSq);
+
+        var cx = fromX + (toX - fromX) * progressPermille / 1000;
+        var cy = fromY + (toY - fromY) * progressPermille / 1000;
+
+        var lift = 0;
+        if progressPermille < 500 {
+            lift = progressPermille * 14 / 500;
+        } else {
+            lift = (1000 - progressPermille) * 14 / 500;
+        }
+
+        var shadow = pieces.getShadow(pieceType, white);
+        if shadow != null {
+            canvas.BlitAlpha(cx - PIECE_SZ / 2 + 8, cy - PIECE_SZ / 2 + 10, shadow);
+        }
+        blitPiece(pieceType, white, cx, cy - lift);
+    }
+
     hide func blitPiece(type_: Integer, white: Boolean, cx: Integer, cy: Integer) {
         var sprite = pieces.getPiece(type_, white);
         if sprite == null { return; }
-        // BlitAlpha expects top-left corner; sprite is PIECE_SZ × PIECE_SZ
         canvas.BlitAlpha(cx - PIECE_SZ / 2, cy - PIECE_SZ / 2, sprite);
     }
 
-    // =========================================================================
-    // Top bar (40px height, full width)
-    // =========================================================================
-
-    expose func drawTopBar(turnText: String, gameMode: Integer) {
-        canvas.Box(0, 0, WIN_W, BAR_H, COL_UI_PANEL2);
-
-        // Title
-        canvas.Text(12, 11, "Viper Chess", COL_UI_TEXT);
-
-        // Turn / status indicator
-        canvas.Text(WIN_W / 2 - 60, 11, turnText, COL_UI_TEXT);
-
-        // Buttons (right side)
-        canvas.RoundBox(WIN_W - 120, 6, 50, 28, 4, COL_UI_PANEL);
-        canvas.Text(WIN_W - 109, 11, "New", COL_UI_TEXT);
-
-        canvas.RoundBox(WIN_W - 64, 6, 54, 28, 4, COL_UI_PANEL);
-        canvas.Text(WIN_W - 53, 11, "Menu", COL_UI_TEXT);
+    hide func blitPieceWithShadow(type_: Integer, white: Boolean, cx: Integer, cy: Integer) {
+        var shadow = pieces.getShadow(type_, white);
+        if shadow != null {
+            canvas.BlitAlpha(cx - PIECE_SZ / 2 + 5, cy - PIECE_SZ / 2 + 8, shadow);
+        }
+        blitPiece(type_, white, cx, cy);
     }
 
-    // =========================================================================
-    // Bottom bar (40px height, full width)
-    // =========================================================================
+    expose func drawTopBar(turnText: String, gameMode: Integer, mx: Integer, my: Integer, mouseDown: Boolean) {
+        var top = layout.topBar();
+        var newBtn = layout.newButtonRect();
+        var menuBtn = layout.menuButtonRect();
+        var turnBadge = layout.rect((WIN_W - 260) / 2, 14, 260, 36);
+        var modeBadge = layout.rect(OUTER_MODE_X(), 14, 120, 36);
 
-    expose func drawBottomBar(statusText: String) {
-        canvas.Box(0, WIN_H - BAR_H, WIN_W, BAR_H, COL_UI_PANEL2);
-        canvas.Text(12, WIN_H - BAR_H + 11, statusText, COL_UI_TEXT);
+        canvas.GradientV(top.x, top.y, top.w, top.h, theme.CARD_BG_ALT, theme.PANEL_BG);
+        canvas.Line(0, top.h - 1, WIN_W, top.h - 1, theme.CARD_BORDER_SOFT);
 
-        // Draw / Resign buttons
-        canvas.RoundBox(WIN_W - 170, WIN_H - BAR_H + 6, 60, 28, 4, COL_UI_PANEL);
-        canvas.Text(WIN_W - 158, WIN_H - BAR_H + 11, "Draw", COL_UI_TEXT);
+        theme.drawTextScaled(canvas, 30, 18, "VIPER CHESS", 2, theme.ACCENT_GOLD);
 
-        canvas.RoundBox(WIN_W - 104, WIN_H - BAR_H + 6, 70, 28, 4, COL_UI_PANEL);
-        canvas.Text(WIN_W - 92, WIN_H - BAR_H + 11, "Resign", COL_UI_TEXT);
+        widgets.drawBadge(canvas, turnBadge, turnText, theme.ACCENT_BLUE);
+        widgets.drawBadge(canvas, modeBadge, modeString(gameMode), theme.ACCENT_GOLD_SOFT);
+
+        widgets.drawButton(canvas, newBtn, "NEW", layout.contains(newBtn, mx, my), mouseDown and layout.contains(newBtn, mx, my), false, false, false);
+        widgets.drawButton(canvas, menuBtn, "MENU", layout.contains(menuBtn, mx, my), mouseDown and layout.contains(menuBtn, mx, my), false, false, false);
     }
 
-    // =========================================================================
-    // Side panel (320×620 px, starting at x=640, y=40)
-    // =========================================================================
+    expose func drawFooter(statusText: String, mx: Integer, my: Integer, mouseDown: Boolean) {
+        var foot = layout.footerBar();
+        var drawBtn = layout.drawButtonRect();
+        var resignBtn = layout.resignButtonRect();
+
+        canvas.GradientV(foot.x, foot.y, foot.w, foot.h, theme.PANEL_BG, theme.CARD_BG);
+        canvas.Line(0, foot.y, WIN_W, foot.y, theme.CARD_BORDER_SOFT);
+
+        widgets.drawButton(canvas, drawBtn, "DRAW", layout.contains(drawBtn, mx, my), mouseDown and layout.contains(drawBtn, mx, my), false, false, false);
+        widgets.drawButton(canvas, resignBtn, "RESIGN", layout.contains(resignBtn, mx, my), mouseDown and layout.contains(resignBtn, mx, my), false, false, true);
+
+        theme.drawTextScaled(canvas, WIN_W - 360, foot.y + 18, statusText, 1, theme.TEXT_SECONDARY);
+        theme.drawTextScaled(canvas, WIN_W - 164, foot.y + 18, "N new  ESC menu", 1, theme.TEXT_MUTED);
+    }
 
     expose func drawPanel(b: Board,
                           whiteTimeSec: Integer, blackTimeSec: Integer,
                           sanHistory: List[String],
                           whiteCaps: List[Integer], blackCaps: List[Integer],
-                          gameMode: Integer, aiDepth: Integer) {
-        var px = PANEL_X;
-        var py = BOARD_Y;
-        var pw = PANEL_W;
+                          gameMode: Integer, aiDepth: Integer, playerIsWhite: Boolean,
+                          aiThinking: Boolean, checkedKingSq: Integer) {
+        var panel = layout.sidePanelRect();
+        var blackCard = layout.blackCardRect();
+        var moveCard = layout.moveCardRect();
+        var whiteCard = layout.whiteCardRect();
+        var infoCard = layout.infoCardRect();
+        var whiteGain = captureMaterialValue(whiteCaps);
+        var blackGain = captureMaterialValue(blackCaps);
 
-        // Panel background
-        canvas.Box(px, py, pw, 620, COL_UI_BG);
-        canvas.Line(px, py, px, py + 620, 0x111111);
+        canvas.BoxAlpha(panel.x + 8, panel.y + 10, panel.w, panel.h, 0x000000, 90);
 
-        // --- BLACK section (top of panel) ---
-        var blackActive = b.whiteToMove == false;
-        drawPlayerSection(px, py, pw, "BLACK", blackTimeSec, blackCaps, blackActive);
+        widgets.drawCard(canvas, blackCard, theme.ACCENT_BLUE, true);
+        drawPlayerCard(blackCard, "BLACK", blackTimeSec, blackCaps, false,
+                       !b.whiteToMove, cardHasHuman(false, gameMode, playerIsWhite),
+                       aiThinking and !b.whiteToMove,
+                       checkedKingSq >= 0 and !b.whiteToMove,
+                       blackGain - whiteGain);
 
-        // --- Move history ---
-        var histY = py + 130;
-        canvas.Box(px, histY, pw, 1, 0x333355);
-        canvas.Text(px + 10, histY + 6, "Move History", COL_UI_DIM);
-        drawMoveHistory(px, histY + 26, pw, sanHistory);
+        widgets.drawCard(canvas, moveCard, theme.ACCENT_GOLD_SOFT, false);
+        drawMoveCard(moveCard, sanHistory);
 
-        // --- WHITE section (bottom of panel) ---
-        drawPlayerSection(px, py + 400, pw, "WHITE", whiteTimeSec, whiteCaps, b.whiteToMove);
+        widgets.drawCard(canvas, whiteCard, theme.ACCENT_GREEN, true);
+        drawPlayerCard(whiteCard, "WHITE", whiteTimeSec, whiteCaps, true,
+                       b.whiteToMove, cardHasHuman(true, gameMode, playerIsWhite),
+                       aiThinking and b.whiteToMove,
+                       checkedKingSq >= 0 and b.whiteToMove,
+                       whiteGain - blackGain);
 
-        // --- Mode / level ---
-        var modeY = py + 540;
-        canvas.Box(px, modeY, pw, 1, 0x333355);
-        var modeStr = "PvP";
-        if gameMode == MODE_PVC { modeStr = "PvC"; }
-        if gameMode == MODE_CVC { modeStr = "CvC"; }
-        canvas.Text(px + 10, modeY + 8, "Mode:  " + modeStr, COL_UI_DIM);
-
-        var levelStr = "Easy";
-        if aiDepth == DIFF_MEDIUM { levelStr = "Medium"; }
-        if aiDepth == DIFF_HARD   { levelStr = "Hard";   }
-        if aiDepth == DIFF_EXPERT { levelStr = "Expert"; }
-        canvas.Text(px + 10, modeY + 26, "Level: " + levelStr, COL_UI_DIM);
+        widgets.drawCard(canvas, infoCard, theme.ACCENT_GOLD_SOFT, false);
+        drawInfoCard(infoCard, gameMode, aiDepth, playerIsWhite);
     }
 
-    // One player section: clock + captured pieces
-    hide func drawPlayerSection(px: Integer, py: Integer, pw: Integer,
-                                 name: String, timeSec: Integer,
-                                 captures: List[Integer], active: Boolean) {
-        // Active player indicator
-        var indicatorCol = COL_UI_DIM;
-        if active { indicatorCol = COL_UI_ACCENT; }
-        canvas.Disc(px + 14, py + 20, 8, indicatorCol);
+    hide func drawPlayerCard(card: Rect,
+                             sideName: String,
+                             timeSec: Integer,
+                             captures: List[Integer],
+                             whiteCard: Boolean,
+                             active: Boolean,
+                             humanSide: Boolean,
+                             thinking: Boolean,
+                             checked: Boolean,
+                             materialLead: Integer) {
+        var statusCol = theme.ACCENT_GOLD_SOFT;
+        if active { statusCol = theme.ACCENT_GOLD; }
+        if checked { statusCol = theme.ACCENT_RED; }
+        if thinking { statusCol = theme.ACCENT_BLUE; }
 
-        // Name
-        canvas.Text(px + 28, py + 13, name, COL_UI_TEXT);
+        var tick = Viper.Time.GetTickCount();
+        var dotCol = statusCol;
+        if active {
+            dotCol = theme.pulseColor(statusCol, 18, tick, 1200);
+        }
 
-        // Clock
-        var mins = timeSec / 60;
-        var secs = timeSec % 60;
-        var secStr = Int(secs);
-        if secs < 10 { secStr = "0" + Int(secs); }
-        var clockStr = Int(mins) + ":" + secStr;
-        canvas.Text(pw - 60, py + 13, clockStr, COL_UI_TEXT);
+        canvas.Disc(card.x + 26, card.y + 28, 8, dotCol);
+        theme.drawTextScaled(canvas, card.x + 44, card.y + 18, sideName, 2, theme.TEXT_PRIMARY);
+        theme.drawTextRight(canvas, card.x + 18, card.y + 18, card.w - 36, formatClock(timeSec), 2, theme.ACCENT_CREAM);
 
-        // Captured pieces (small colored circles)
-        canvas.Text(px + 10, py + 44, "Captures:", COL_UI_DIM);
+        var badge = "";
+        if humanSide { badge = "HUMAN"; } else { badge = "ENGINE"; }
+        if thinking { badge = "THINKING"; }
+        if checked { badge = "CHECK"; }
+
+        var badgeRect = layout.rect(card.x + 18, card.y + 54, 108, 26);
+        widgets.drawBadge(canvas, badgeRect, badge, statusCol);
+
+        if materialLead > 0 {
+            theme.drawTextScaled(canvas, card.x + card.w - 94, card.y + 60, "+" + Int(materialLead / 100), 2, theme.ACCENT_GOLD);
+        }
+
+        widgets.drawDivider(canvas, card.x + 18, card.y + 90, card.w - 36);
+        theme.drawTextScaled(canvas, card.x + 18, card.y + 98, "CAPTURED", 1, theme.TEXT_MUTED);
+        drawCapturedPieces(card.x + 108, card.y + 92, captures, !whiteCard);
+    }
+
+    hide func drawCapturedPieces(x: Integer, y: Integer, captures: List[Integer], capturedAreWhite: Boolean) {
+        var col = 0;
+        var row = 0;
         for i in 0..captures.length() {
-            var capType = captures.get(i);
-            var ccx = px + 90 + i * 14;
-            var ccy = py + 52;
-            canvas.Disc(ccx, ccy, 5, COL_UI_TEXT);
+            var sprite = pieces.getMiniPiece(captures.get(i), capturedAreWhite);
+            if sprite == null { continue; }
+            var px = x + col * 30;
+            var py = y + row * 30;
+            canvas.BlitAlpha(px, py, sprite);
+            col = col + 1;
+            if col >= 9 {
+                col = 0;
+                row = row + 1;
+            }
         }
     }
 
-    // Move history list (last N moves)
-    hide func drawMoveHistory(px: Integer, py: Integer, pw: Integer, history: List[String]) {
-        var visibleRows = 9;      // number of move-pair rows visible
-        var rowH = 18;
-        var total = history.length();
+    hide func drawMoveCard(card: Rect, history: List[String]) {
+        var list = layout.moveListRect();
+        widgets.drawSectionTitle(canvas, layout.rect(card.x + 18, card.y + 18, 0, 0), "MOVE LOG");
+        widgets.drawInset(canvas, list);
 
-        // Compute starting index (show most recent moves)
-        var startMove = total - visibleRows * 2;
-        if startMove < 0 { startMove = 0; }
-        // Round down to even (start of a full move pair)
-        if startMove % 2 != 0 { startMove = startMove - 1; }
+        canvas.SetClipRect(list.x + 8, list.y + 8, list.w - 16, list.h - 16);
+        theme.drawTextScaled(canvas, list.x + 10, list.y + 10, "No.", 1, theme.TEXT_MUTED);
+        theme.drawTextScaled(canvas, list.x + 58, list.y + 10, "White", 1, theme.TEXT_MUTED);
+        theme.drawTextScaled(canvas, list.x + 186, list.y + 10, "Black", 1, theme.TEXT_MUTED);
+
+        var total = history.length();
+        var visibleRows = 10;
+        var rowH = 20;
+        var start = total - visibleRows * 2;
+        if start < 0 { start = 0; }
+        if start % 2 != 0 { start = start - 1; }
 
         var row = 0;
-        var i = startMove;
+        var i = start;
         while i < total && row < visibleRows {
+            var rowY = list.y + 34 + row * rowH;
             var moveNum = i / 2 + 1;
             var whiteMove = history.get(i);
             var blackMove = "";
             if i + 1 < total { blackMove = history.get(i + 1); }
 
-            var rowY = py + row * rowH;
-            canvas.Text(px + 10, rowY, Int(moveNum) + ".", COL_UI_DIM);
-            canvas.Text(px + 42, rowY, whiteMove, COL_UI_TEXT);
-            canvas.Text(px + 140, rowY, blackMove, COL_UI_TEXT);
+            if i + 2 >= total {
+                canvas.BoxAlpha(list.x + 6, rowY - 2, list.w - 12, rowH, theme.ACCENT_GOLD_SOFT, 48);
+            }
+
+            theme.drawTextScaled(canvas, list.x + 10, rowY, Int(moveNum) + ".", 1, theme.TEXT_MUTED);
+            theme.drawTextScaled(canvas, list.x + 58, rowY, whiteMove, 1, theme.TEXT_PRIMARY);
+            theme.drawTextScaled(canvas, list.x + 186, rowY, blackMove, 1, theme.TEXT_PRIMARY);
 
             i = i + 2;
             row = row + 1;
         }
+        canvas.ClearClipRect();
     }
 
-    // =========================================================================
-    // Promotion dialog
-    // =========================================================================
+    hide func drawInfoCard(card: Rect, gameMode: Integer, aiDepth: Integer, playerIsWhite: Boolean) {
+        widgets.drawSectionTitle(canvas, layout.rect(card.x + 18, card.y + 18, 0, 0), "MATCH");
+        theme.drawTextScaled(canvas, card.x + 18, card.y + 46, "MODE", 1, theme.TEXT_MUTED);
+        theme.drawTextScaled(canvas, card.x + 110, card.y + 46, modeVerbose(gameMode), 1, theme.TEXT_PRIMARY);
 
-    expose func drawPromoDialog(white: Boolean) {
-        // Semi-transparent dark overlay
-        canvas.Box(200, 250, 240, 110, 0x111122);
-        canvas.Frame(200, 250, 240, 110, COL_UI_ACCENT);
-        canvas.Text(232, 260, "Promote pawn to:", COL_UI_TEXT);
+        theme.drawTextScaled(canvas, card.x + 18, card.y + 68, "LEVEL", 1, theme.TEXT_MUTED);
+        theme.drawTextScaled(canvas, card.x + 110, card.y + 68, difficultyString(aiDepth), 1, theme.TEXT_PRIMARY);
+
+        if gameMode == MODE_PVC {
+            theme.drawTextScaled(canvas, card.x + 18, card.y + 90, "YOU", 1, theme.TEXT_MUTED);
+            if playerIsWhite {
+                theme.drawTextScaled(canvas, card.x + 110, card.y + 90, "WHITE", 1, theme.TEXT_PRIMARY);
+            } else {
+                theme.drawTextScaled(canvas, card.x + 110, card.y + 90, "BLACK", 1, theme.TEXT_PRIMARY);
+            }
+        }
+
+        widgets.drawDivider(canvas, card.x + 18, card.y + card.h - 42, card.w - 36);
+        theme.drawTextScaled(canvas, card.x + 18, card.y + card.h - 28, "Drag pieces or click source and destination.", 1, theme.TEXT_MUTED);
+    }
+
+    expose func drawPromoDialog(white: Boolean, mx: Integer, my: Integer, mouseDown: Boolean) {
+        canvas.BoxAlpha(0, 0, WIN_W, WIN_H, theme.SCRIM, 165);
+        var dialog = layout.promoDialogRect();
+        widgets.drawCard(canvas, dialog, theme.ACCENT_GOLD, true);
+        theme.drawTextCentered(canvas, dialog.x, dialog.y + 18, dialog.w, "PROMOTE PAWN", 2, theme.ACCENT_GOLD);
+        theme.drawTextCentered(canvas, dialog.x, dialog.y + 52, dialog.w, "Choose a piece", 1, theme.TEXT_SECONDARY);
 
         var promoTypes = [QUEEN, ROOK, BISHOP, KNIGHT];
         for i in 0..4 {
-            var bx = 208 + i * 56;
-            var by = 280;
-            canvas.RoundBox(bx, by, 50, 60, 4, COL_UI_PANEL);
-            canvas.Frame(bx, by, 50, 60, COL_UI_DIM);
-            blitPiece(promoTypes.get(i), white, bx + 25, by + 32);
+            var tile = layout.promoOptionRect(i);
+            widgets.drawButton(canvas, tile, "", layout.contains(tile, mx, my), mouseDown and layout.contains(tile, mx, my), false, false, false);
+            var sprite = pieces.getPiece(promoTypes.get(i), white);
+            if sprite != null {
+                canvas.BlitAlpha(tile.x + (tile.w - PIECE_SZ) / 2, tile.y + 8, sprite);
+            }
+            theme.drawTextCentered(canvas, tile.x, tile.y + 66, tile.w, promoName(promoTypes.get(i)), 1, theme.TEXT_SECONDARY);
         }
     }
 
-    // =========================================================================
-    // Main menu screen
-    // =========================================================================
+    expose func drawMainMenu(gameMode: Integer, aiDepth: Integer, playerIsWhite: Boolean, mx: Integer, my: Integer, mouseDown: Boolean) {
+        drawMenuBackdrop();
 
-    expose func drawMainMenu(gameMode: Integer, aiDepth: Integer) {
-        canvas.Clear(COL_UI_BG);
+        var card = layout.menuCardRect();
+        widgets.drawCard(canvas, card, theme.ACCENT_GOLD, true);
 
-        // Title
-        canvas.Text(WIN_W / 2 - 80, 100, "Viper Chess", COL_UI_ACCENT);
+        theme.drawTextScaled(canvas, card.x + 42, card.y + 30, "VIPER", 2, theme.TEXT_MUTED);
+        theme.drawTextScaled(canvas, card.x + 42, card.y + 56, "CHESS", 4, theme.ACCENT_GOLD);
+        theme.drawTextScaled(canvas, card.x + 42, card.y + 104,
+                             "A cleaner, richer native canvas presentation for the Zia chess demo.",
+                             1,
+                             theme.TEXT_SECONDARY);
 
-        // Mode buttons
-        canvas.Text(WIN_W / 2 - 60, 200, "Game Mode:", COL_UI_TEXT);
+        theme.drawTextScaled(canvas, card.x + 42, card.y + 150, "GAME MODE", 1, theme.TEXT_MUTED);
+        widgets.drawSegmentButton(canvas, layout.modeButtonRect(0), "PVP",
+                                  layout.contains(layout.modeButtonRect(0), mx, my),
+                                  gameMode == MODE_PVP);
+        widgets.drawSegmentButton(canvas, layout.modeButtonRect(1), "PVC",
+                                  layout.contains(layout.modeButtonRect(1), mx, my),
+                                  gameMode == MODE_PVC);
+        widgets.drawSegmentButton(canvas, layout.modeButtonRect(2), "CVC",
+                                  layout.contains(layout.modeButtonRect(2), mx, my),
+                                  gameMode == MODE_CVC);
 
-        var pvpCol = COL_UI_DIM;
-        var pvcCol = COL_UI_DIM;
-        var cvcCol = COL_UI_DIM;
-        if gameMode == MODE_PVP { pvpCol = COL_UI_ACCENT; }
-        if gameMode == MODE_PVC { pvcCol = COL_UI_ACCENT; }
-        if gameMode == MODE_CVC { cvcCol = COL_UI_ACCENT; }
+        theme.drawTextScaled(canvas, card.x + 42, card.y + 228, "PLAY AS", 1, theme.TEXT_MUTED);
+        widgets.drawSegmentButton(canvas, layout.sideButtonRect(0), "WHITE",
+                                  layout.contains(layout.sideButtonRect(0), mx, my),
+                                  playerIsWhite);
+        widgets.drawSegmentButton(canvas, layout.sideButtonRect(1), "BLACK",
+                                  layout.contains(layout.sideButtonRect(1), mx, my),
+                                  !playerIsWhite);
 
-        canvas.RoundBox(WIN_W / 2 - 150, 230, 90, 36, 6, COL_UI_PANEL);
-        canvas.Text(WIN_W / 2 - 132, 241, "PvP", pvpCol);
+        theme.drawTextScaled(canvas, card.x + 42, card.y + 306, "ENGINE LEVEL", 1, theme.TEXT_MUTED);
+        widgets.drawSegmentButton(canvas, layout.difficultyButtonRect(0), "EASY",
+                                  layout.contains(layout.difficultyButtonRect(0), mx, my),
+                                  aiDepth == DIFF_EASY);
+        widgets.drawSegmentButton(canvas, layout.difficultyButtonRect(1), "MEDIUM",
+                                  layout.contains(layout.difficultyButtonRect(1), mx, my),
+                                  aiDepth == DIFF_MEDIUM);
+        widgets.drawSegmentButton(canvas, layout.difficultyButtonRect(2), "HARD",
+                                  layout.contains(layout.difficultyButtonRect(2), mx, my),
+                                  aiDepth == DIFF_HARD);
+        widgets.drawSegmentButton(canvas, layout.difficultyButtonRect(3), "EXPERT",
+                                  layout.contains(layout.difficultyButtonRect(3), mx, my),
+                                  aiDepth == DIFF_EXPERT);
 
-        canvas.RoundBox(WIN_W / 2 - 48,  230, 90, 36, 6, COL_UI_PANEL);
-        canvas.Text(WIN_W / 2 - 30, 241, "PvC", pvcCol);
-
-        canvas.RoundBox(WIN_W / 2 + 54,  230, 90, 36, 6, COL_UI_PANEL);
-        canvas.Text(WIN_W / 2 + 70, 241, "CvC", cvcCol);
-
-        // AI difficulty
-        canvas.Text(WIN_W / 2 - 60, 300, "AI Level:", COL_UI_TEXT);
-
-        var easyCol   = COL_UI_DIM;
-        var medCol    = COL_UI_DIM;
-        var hardCol   = COL_UI_DIM;
-        var expertCol = COL_UI_DIM;
-        if aiDepth == DIFF_EASY   { easyCol   = COL_UI_ACCENT; }
-        if aiDepth == DIFF_MEDIUM { medCol    = COL_UI_ACCENT; }
-        if aiDepth == DIFF_HARD   { hardCol   = COL_UI_ACCENT; }
-        if aiDepth == DIFF_EXPERT { expertCol = COL_UI_ACCENT; }
-
-        canvas.RoundBox(WIN_W / 2 - 200, 330, 85, 32, 5, COL_UI_PANEL);
-        canvas.Text(WIN_W / 2 - 190, 339, "Easy",   easyCol);
-        canvas.RoundBox(WIN_W / 2 - 104, 330, 85, 32, 5, COL_UI_PANEL);
-        canvas.Text(WIN_W / 2 - 94,  339, "Medium", medCol);
-        canvas.RoundBox(WIN_W / 2 - 8,   330, 85, 32, 5, COL_UI_PANEL);
-        canvas.Text(WIN_W / 2 + 2,   339, "Hard",   hardCol);
-        canvas.RoundBox(WIN_W / 2 + 88,  330, 85, 32, 5, COL_UI_PANEL);
-        canvas.Text(WIN_W / 2 + 100, 339, "Expert", expertCol);
-
-        // Start button
-        canvas.RoundBox(WIN_W / 2 - 80, 420, 160, 48, 8, COL_UI_ACCENT);
-        canvas.Text(WIN_W / 2 - 50, 438, "Start Game", COL_UI_BG);
-
-        canvas.Text(WIN_W / 2 - 100, 500, "Click to select, then Start", COL_UI_DIM);
+        widgets.drawButton(canvas, layout.startButtonRect(), "START GAME",
+                           layout.contains(layout.startButtonRect(), mx, my),
+                           mouseDown and layout.contains(layout.startButtonRect(), mx, my),
+                           false,
+                           true,
+                           false);
+        theme.drawTextCentered(canvas, card.x, card.y + 486, card.w, "Drag to move pieces. N starts a new game. ESC returns here.", 1, theme.TEXT_MUTED);
     }
 
-    // =========================================================================
-    // Game-over overlay
-    // =========================================================================
+    expose func drawGameOverOverlay(reason: String, winnerText: String, mx: Integer, my: Integer, mouseDown: Boolean) {
+        canvas.BoxAlpha(0, 0, WIN_W, WIN_H, theme.SCRIM, 180);
+        var dialog = layout.gameOverDialogRect();
+        widgets.drawCard(canvas, dialog, theme.ACCENT_GOLD, true);
 
-    expose func drawGameOverOverlay(reason: String, winnerText: String) {
-        // Dark overlay over board
-        canvas.Box(BOARD_X + 80, BOARD_Y + 200, 480, 200, 0x0A0A1E);
-        canvas.Frame(BOARD_X + 80, BOARD_Y + 200, 480, 200, COL_UI_ACCENT);
+        theme.drawTextCentered(canvas, dialog.x, dialog.y + 26, dialog.w, winnerText, 3, theme.ACCENT_GOLD);
+        theme.drawTextCentered(canvas, dialog.x, dialog.y + 88, dialog.w, reason, 1, theme.TEXT_SECONDARY);
 
-        canvas.Text(BOARD_X + 180, BOARD_Y + 230, winnerText, COL_UI_ACCENT);
-        canvas.Text(BOARD_X + 160, BOARD_Y + 270, reason,     COL_UI_TEXT);
-
-        canvas.RoundBox(BOARD_X + 170, BOARD_Y + 330, 120, 40, 6, COL_UI_PANEL);
-        canvas.Text(BOARD_X + 186, BOARD_Y + 343, "New Game", COL_UI_TEXT);
-
-        canvas.RoundBox(BOARD_X + 310, BOARD_Y + 330, 120, 40, 6, COL_UI_PANEL);
-        canvas.Text(BOARD_X + 330, BOARD_Y + 343, "Main Menu", COL_UI_TEXT);
+        widgets.drawButton(canvas, layout.gameOverNewRect(), "NEW GAME",
+                           layout.contains(layout.gameOverNewRect(), mx, my),
+                           mouseDown and layout.contains(layout.gameOverNewRect(), mx, my),
+                           false, true, false);
+        widgets.drawButton(canvas, layout.gameOverMenuRect(), "MAIN MENU",
+                           layout.contains(layout.gameOverMenuRect(), mx, my),
+                           mouseDown and layout.contains(layout.gameOverMenuRect(), mx, my),
+                           false, false, false);
     }
-
-    // =========================================================================
-    // "AI is thinking..." indicator
-    // =========================================================================
 
     expose func drawThinkingIndicator() {
-        var phase = (Viper.Time.GetTickCount() / 250) % 4;
-        var dots = "";
-        if phase >= 1 { dots = "."; }
-        if phase >= 2 { dots = ".."; }
-        if phase >= 3 { dots = "..."; }
+        var badge = layout.rect(layout.boardFrameRect().x + 420, layout.boardFrameRect().y - 20, 170, 28);
+        widgets.drawBadge(canvas, badge, "ENGINE THINKING", theme.ACCENT_BLUE);
+    }
 
-        canvas.Box(BOARD_X + 200, BOARD_Y + 290, 240, 50, 0x0A0A1E);
-        canvas.Frame(BOARD_X + 200, BOARD_Y + 290, 240, 50, COL_UI_DIM);
-        canvas.Text(BOARD_X + 226, BOARD_Y + 308, "AI is thinking" + dots, COL_UI_TEXT);
+    hide func promoName(pieceType: Integer) -> String {
+        if pieceType == QUEEN  { return "QUEEN"; }
+        if pieceType == ROOK   { return "ROOK"; }
+        if pieceType == BISHOP { return "BISHOP"; }
+        return "KNIGHT";
+    }
+
+    hide func formatClock(timeSec: Integer) -> String {
+        var mins = timeSec / 60;
+        var secs = timeSec % 60;
+        var secStr = Int(secs);
+        if secs < 10 { secStr = "0" + Int(secs); }
+        return Int(mins) + ":" + secStr;
+    }
+
+    hide func modeString(gameMode: Integer) -> String {
+        if gameMode == MODE_PVP { return "PVP"; }
+        if gameMode == MODE_PVC { return "PVC"; }
+        return "CVC";
+    }
+
+    hide func modeVerbose(gameMode: Integer) -> String {
+        if gameMode == MODE_PVP { return "PLAYER VS PLAYER"; }
+        if gameMode == MODE_PVC { return "PLAYER VS COMPUTER"; }
+        return "COMPUTER VS COMPUTER";
+    }
+
+    hide func difficultyString(aiDepth: Integer) -> String {
+        if aiDepth == DIFF_EASY   { return "EASY"; }
+        if aiDepth == DIFF_MEDIUM { return "MEDIUM"; }
+        if aiDepth == DIFF_HARD   { return "HARD"; }
+        return "EXPERT";
+    }
+
+    hide func captureMaterialValue(captures: List[Integer]) -> Integer {
+        var total = 0;
+        for i in 0..captures.length() {
+            total = total + pieceMaterialValue(captures.get(i));
+        }
+        return total;
+    }
+
+    hide func pieceMaterialValue(pieceType: Integer) -> Integer {
+        if pieceType == PAWN   { return VAL_PAWN; }
+        if pieceType == KNIGHT { return VAL_KNIGHT; }
+        if pieceType == BISHOP { return VAL_BISHOP; }
+        if pieceType == ROOK   { return VAL_ROOK; }
+        if pieceType == QUEEN  { return VAL_QUEEN; }
+        return 0;
+    }
+
+    hide func cardHasHuman(cardIsWhite: Boolean, gameMode: Integer, playerIsWhite: Boolean) -> Boolean {
+        if gameMode == MODE_PVP { return true; }
+        if gameMode == MODE_CVC { return false; }
+        return cardIsWhite == playerIsWhite;
+    }
+
+    hide func OUTER_MODE_X() -> Integer {
+        return WIN_W / 2 - 190;
     }
 }

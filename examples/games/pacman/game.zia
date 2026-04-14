@@ -28,6 +28,8 @@ bind "./player";
 bind "./ghost";
 bind "./fruit";
 bind "./particles";
+bind "./sound";
+bind "./ui/renderer";
 
 // =============================================================================
 // GAME ENTITY - Main game controller
@@ -67,12 +69,15 @@ class Game {
 
     // Frame timing
     hide Integer dt;
+    hide Integer uiTick;
+    hide Boolean audioReady;
 
     // High scores list
     hide List[Integer] highScores;
+    hide sound.SoundManager sfx;
 
     expose func init() {
-        canvas = Canvas.New("PAC-MAN", config.SCREEN_WIDTH, config.SCREEN_HEIGHT);
+        canvas = Canvas.New("CRACKMAN", config.SCREEN_WIDTH, config.SCREEN_HEIGHT);
 
         // Setup input actions
         self.setupActions();
@@ -96,6 +101,11 @@ class Game {
         particleSys = new particles.ParticleSystem();
         fx = FX.New();
         dt = 16;
+        uiTick = 0;
+
+        sfx = new sound.SoundManager();
+        audioReady = false;
+
 
         // Initialize timers
         readyTimer = Timer.New();
@@ -200,6 +210,7 @@ class Game {
             dt = canvas.DeltaTime;
             if dt < 1 { dt = 1; }
             if dt > config.DT_MAX { dt = config.DT_MAX; }
+            uiTick = uiTick + dt;
 
             // Update screen effects and particles
             fx.Update(dt);
@@ -240,8 +251,20 @@ class Game {
                 self.render();
             }
 
+            if audioReady == false {
+                sfx.setup();
+                audioReady = true;
+                if sm.IsState(config.STATE_MENU) || sm.IsState(config.STATE_HIGHSCORES) {
+                    sfx.playMenuMusic();
+                } else {
+                    sfx.playGameMusic();
+                }
+            }
+
             Viper.Time.SleepMs(config.FRAME_TIME);
         }
+
+        sfx.shutdown();
     }
 
     // =========================================================================
@@ -249,6 +272,8 @@ class Game {
     // =========================================================================
 
     hide func updateMenu() -> Boolean {
+        var prevSel = menuBtns.Selected;
+
         // Menu navigation via ButtonGroup (auto-wraparound)
         if Action.Pressed(config.ACTION_UP) {
             menuBtns.SelectPrev();
@@ -257,9 +282,14 @@ class Game {
             menuBtns.SelectNext();
         }
 
+        if menuBtns.Selected != prevSel {
+            sfx.playMenuMove();
+        }
+
         // Selection
         if Action.Pressed(config.ACTION_CONFIRM) {
             var sel = menuBtns.Selected;
+            sfx.playMenuSelect();
             if sel == 0 {
                 // Start Game
                 self.resetGame();
@@ -275,6 +305,7 @@ class Game {
 
         // Quick quit
         if Action.Pressed(config.ACTION_CANCEL) {
+            sfx.playMenuSelect();
             return false;
         }
 
@@ -282,38 +313,7 @@ class Game {
     }
 
     hide func renderMenu() {
-        canvas.Clear(config.COLOR_BLACK);
-
-        // Title
-        canvas.Text(config.SCREEN_WIDTH / 2 - 80, 100, "PAC-MAN", config.COLOR_YELLOW);
-
-        // Menu options with highlighting via ButtonGroup
-        var startColor = config.COLOR_WHITE;
-        var scoresColor = config.COLOR_WHITE;
-        var quitColor = config.COLOR_WHITE;
-
-        if menuBtns.IsSelected(0) { startColor = config.COLOR_YELLOW; }
-        if menuBtns.IsSelected(1) { scoresColor = config.COLOR_YELLOW; }
-        if menuBtns.IsSelected(2) { quitColor = config.COLOR_YELLOW; }
-
-        canvas.Text(config.SCREEN_WIDTH / 2 - 60, 250, "START GAME", startColor);
-        canvas.Text(config.SCREEN_WIDTH / 2 - 60, 300, "HIGH SCORES", scoresColor);
-        canvas.Text(config.SCREEN_WIDTH / 2 - 60, 350, "QUIT", quitColor);
-
-        // High score display
-        canvas.Text(config.SCREEN_WIDTH / 2 - 80, 450, "HIGH SCORE: " + Int(highScore), config.COLOR_CYAN);
-
-        // Instructions
-        canvas.Text(config.SCREEN_WIDTH / 2 - 120, 550, "Arrow Keys / WASD / D-Pad", config.COLOR_WHITE);
-        canvas.Text(config.SCREEN_WIDTH / 2 - 100, 580, "ENTER / SPACE / A Button", config.COLOR_WHITE);
-
-        // Decorative characters
-        canvas.Disc(100, 200, 20, config.COLOR_YELLOW);
-        canvas.Disc(config.SCREEN_WIDTH - 100, 200, 20, config.COLOR_RED);
-        canvas.Disc(config.SCREEN_WIDTH - 150, 200, 20, config.COLOR_PINK);
-        canvas.Disc(config.SCREEN_WIDTH - 200, 200, 20, config.COLOR_CYAN);
-        canvas.Disc(config.SCREEN_WIDTH - 250, 200, 20, config.COLOR_ORANGE);
-
+        renderer.drawMenu(canvas, menuBtns.Selected, highScore, uiTick);
         canvas.Flip();
     }
 
@@ -323,30 +323,13 @@ class Game {
 
     hide func updateHighScores() {
         if Action.Pressed(config.ACTION_CONFIRM) || Action.Pressed(config.ACTION_CANCEL) {
+            sfx.playMenuSelect();
             sm.Transition(config.STATE_MENU);
         }
     }
 
     hide func renderHighScores() {
-        canvas.Clear(config.COLOR_BLACK);
-
-        canvas.Text(config.SCREEN_WIDTH / 2 - 80, 100, "HIGH SCORES", config.COLOR_YELLOW);
-
-        var y = 200;
-        var rank = 1;
-        for i in 0..highScores.length() {
-            var scoreVal = highScores.get(i);
-            var rankText = Int(rank) + ". " + Int(scoreVal);
-            var color = config.COLOR_WHITE;
-            if rank == 1 { color = config.COLOR_YELLOW; }
-            if rank == 2 { color = config.COLOR_CYAN; }
-            if rank == 3 { color = config.COLOR_PINK; }
-            canvas.Text(config.SCREEN_WIDTH / 2 - 60, y, rankText, color);
-            y = y + 40;
-            rank = rank + 1;
-        }
-
-        canvas.Text(config.SCREEN_WIDTH / 2 - 100, 500, "Press any key to return", config.COLOR_WHITE);
+        renderer.drawHighScores(canvas, highScores, uiTick);
         canvas.Flip();
     }
 
@@ -375,6 +358,8 @@ class Game {
     hide func startReady() {
         readyTimer.Start(config.READY_DURATION);
         readyTween.StartI64(0, 100, 30, config.EASE_OUT_BOUNCE);
+        sfx.playGameMusic();
+        sfx.playReady();
         sm.Transition(config.STATE_READY);
     }
 
@@ -396,6 +381,7 @@ class Game {
     hide func updatePlaying() {
         // Handle pause
         if Action.Pressed(config.ACTION_PAUSE) {
+            sfx.playPause();
             sm.Transition(config.STATE_PAUSED);
             return;
         }
@@ -440,13 +426,17 @@ class Game {
             dotsEaten = dotsEaten + 1;
 
             // Particle effect for eating
-            var dotPx = pacman.getGridX() * config.TILE_SIZE + config.TILE_SIZE / 2;
-            var dotPy = pacman.getGridY() * config.TILE_SIZE + config.TILE_SIZE / 2;
+            var dotPx = utils.gridToCenterX(pacman.getGridX());
+            var dotPy = utils.gridToCenterY(pacman.getGridY());
             if points == config.PELLET_POINTS {
                 particleSys.burstPellet(dotPx, dotPy);
                 fx.Flash(config.COLOR_BLUE * 256 + 0x44, 80);
+                sfx.playPellet();
             } else {
                 particleSys.burstDotEat(dotPx, dotPy);
+                if (dotsEaten % 2) == 0 {
+                    sfx.playDot();
+                }
             }
 
             // Spawn fruit at 70 and 170 dots
@@ -466,16 +456,18 @@ class Game {
 
         // Check fruit collection
         if theFruit.collidesWithPacman(pacman.getGridX(), pacman.getGridY()) {
-            var fruitPx = pacman.getGridX() * config.TILE_SIZE + config.TILE_SIZE / 2;
-            var fruitPy = pacman.getGridY() * config.TILE_SIZE + config.TILE_SIZE / 2;
+            var fruitPx = utils.gridToCenterX(pacman.getGridX());
+            var fruitPy = utils.gridToCenterY(pacman.getGridY());
             particleSys.burstFruitCollect(fruitPx, fruitPy, config.COLOR_GREEN);
             score = score + theFruit.collect();
+            sfx.playFruit();
         }
 
         // Extra life at 10000 points
         if score >= config.EXTRA_LIFE_SCORE && !extraLifeAwarded {
             lives = lives + 1;
             extraLifeAwarded = true;
+            sfx.playExtraLife();
         }
 
         // Update high score
@@ -501,8 +493,8 @@ class Game {
         for i in 0..ghosts.length() {
             var g = ghosts.get(i);
             if g.collidesWithPacman(pacman.getGridX(), pacman.getGridY()) {
-                var gPx = g.getGridX() * config.TILE_SIZE + config.TILE_SIZE / 2;
-                var gPy = g.getGridY() * config.TILE_SIZE + config.TILE_SIZE / 2;
+                var gPx = utils.gridToCenterX(g.getGridX());
+                var gPy = utils.gridToCenterY(g.getGridY());
                 if g.getMode() == config.MODE_FRIGHTENED {
                     // Eat ghost
                     ghostsEaten = ghostsEaten + 1;
@@ -514,6 +506,7 @@ class Game {
                     score = score + ghostPoints * mult;
                     particleSys.burstGhostEat(gPx, gPy, g.getColor());
                     fx.Shake(4000, 120, 500);
+                    sfx.playGhostEat();
                     g.reset();
                 } else {
                     // Pac-Man dies
@@ -525,17 +518,19 @@ class Game {
 
         // Check win condition
         if theMaze.allDotsEaten() {
+            sfx.playLevelClear();
             sm.Transition(config.STATE_WIN);
         }
     }
 
     hide func pacmanDeath() {
         // Death effects
-        var deathPx = pacman.getGridX() * config.TILE_SIZE + config.TILE_SIZE / 2;
-        var deathPy = pacman.getGridY() * config.TILE_SIZE + config.TILE_SIZE / 2;
+        var deathPx = utils.gridToCenterX(pacman.getGridX());
+        var deathPy = utils.gridToCenterY(pacman.getGridY());
         particleSys.burstDeath(deathPx, deathPy);
         fx.Shake(8000, 200, 500);
         fx.Flash(config.COLOR_RED * 256 + 0xAA, 160);
+        sfx.playDeath();
 
         lives = lives - 1;
 
@@ -570,9 +565,12 @@ class Game {
 
     hide func updatePaused() {
         if Action.Pressed(config.ACTION_PAUSE) || Action.Pressed(config.ACTION_CONFIRM) {
+            sfx.playPause();
             sm.Transition(config.STATE_PLAYING);
         }
         if Action.Pressed(config.ACTION_CANCEL) {
+            sfx.playMenuSelect();
+            sfx.playMenuMusic();
             sm.Transition(config.STATE_MENU);
         }
     }
@@ -583,10 +581,13 @@ class Game {
 
     hide func updateGameOver() {
         if Action.Pressed(config.ACTION_RESTART) || Action.Pressed(config.ACTION_CONFIRM) {
+            sfx.playMenuSelect();
             self.resetGame();
             self.startReady();
         }
         if Action.Pressed(config.ACTION_CANCEL) {
+            sfx.playMenuSelect();
+            sfx.playMenuMusic();
             sm.Transition(config.STATE_MENU);
         }
     }
@@ -597,9 +598,12 @@ class Game {
 
     hide func updateWin() {
         if Action.Pressed(config.ACTION_RESTART) || Action.Pressed(config.ACTION_CONFIRM) {
+            sfx.playMenuSelect();
             self.nextLevel();
         }
         if Action.Pressed(config.ACTION_CANCEL) {
+            sfx.playMenuSelect();
+            sfx.playMenuMusic();
             sm.Transition(config.STATE_MENU);
         }
     }
@@ -649,7 +653,7 @@ class Game {
     // =========================================================================
 
     hide func render() {
-        canvas.Clear(config.COLOR_BLACK);
+        renderer.drawPlayfieldShell(canvas, uiTick);
 
         // Draw game objects
         theMaze.draw(canvas);
@@ -678,39 +682,24 @@ class Game {
             canvas.BoxAlpha(0, 0, config.SCREEN_WIDTH, config.SCREEN_HEIGHT, rgb, a);
         }
 
-        // Draw state overlays
+        var overlayState = config.STATE_PLAYING;
         if sm.IsState(config.STATE_READY) {
-            var tweenProgress = readyTween.Progress;
-            var textY = config.SCREEN_HEIGHT / 2 - 10 + (100 - tweenProgress);
-            canvas.Text(config.SCREEN_WIDTH / 2 - 40, textY, "READY!", config.COLOR_YELLOW);
+            overlayState = config.STATE_READY;
         } else if sm.IsState(config.STATE_PAUSED) {
-            canvas.Text(config.SCREEN_WIDTH / 2 - 40, config.SCREEN_HEIGHT / 2, "PAUSED", config.COLOR_YELLOW);
-            canvas.Text(config.SCREEN_WIDTH / 2 - 70, config.SCREEN_HEIGHT / 2 + 30, "P to continue", config.COLOR_WHITE);
-            canvas.Text(config.SCREEN_WIDTH / 2 - 70, config.SCREEN_HEIGHT / 2 + 60, "ESC for menu", config.COLOR_WHITE);
+            overlayState = config.STATE_PAUSED;
         } else if sm.IsState(config.STATE_GAME_OVER) {
-            canvas.Text(config.SCREEN_WIDTH / 2 - 60, config.SCREEN_HEIGHT / 2, "GAME OVER", config.COLOR_RED);
-            canvas.Text(config.SCREEN_WIDTH / 2 - 70, config.SCREEN_HEIGHT / 2 + 30, "R to restart", config.COLOR_WHITE);
-            canvas.Text(config.SCREEN_WIDTH / 2 - 70, config.SCREEN_HEIGHT / 2 + 60, "ESC for menu", config.COLOR_WHITE);
+            overlayState = config.STATE_GAME_OVER;
         } else if sm.IsState(config.STATE_WIN) {
-            canvas.Text(config.SCREEN_WIDTH / 2 - 80, config.SCREEN_HEIGHT / 2, "LEVEL COMPLETE!", config.COLOR_YELLOW);
-            canvas.Text(config.SCREEN_WIDTH / 2 - 90, config.SCREEN_HEIGHT / 2 + 30, "R for next level", config.COLOR_WHITE);
+            overlayState = config.STATE_WIN;
         } else if sm.IsState(config.STATE_DYING) {
-            canvas.Text(config.SCREEN_WIDTH / 2 - 40, config.SCREEN_HEIGHT / 2, "OUCH!", config.COLOR_RED);
+            overlayState = config.STATE_DYING;
         }
+        renderer.drawStateOverlay(canvas, overlayState, readyTween.Progress, uiTick);
 
         canvas.Flip();
     }
 
     hide func drawUI() {
-        // Use smooth score for display
-        var displayScoreInt = displayScore.ValueI64;
-        var scoreText = "SCORE: " + Int(displayScoreInt);
-        canvas.Text(10, 5, scoreText, config.COLOR_WHITE);
-
-        var levelText = "LEVEL: " + Int(level);
-        canvas.Text(config.SCREEN_WIDTH / 2 - 40, 5, levelText, config.COLOR_WHITE);
-
-        var livesText = "LIVES: " + Int(lives);
-        canvas.Text(config.SCREEN_WIDTH - 100, 5, livesText, config.COLOR_WHITE);
+        renderer.drawHud(canvas, displayScore.ValueI64, highScore, level, lives, uiTick);
     }
 }

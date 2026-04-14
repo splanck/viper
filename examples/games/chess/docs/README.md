@@ -12,7 +12,9 @@ A full chess engine with AI opponent, written entirely in Zia.
 - Chess clocks with per-move timing
 - Captured piece tracking
 - Drag-and-drop piece movement with legal move indicators
-- Pre-rendered piece sprites with alpha blending
+- Polished custom-canvas presentation with themed panels, interactive HUD controls, and modal overlays
+- Bundled bitmap-font rendering for menu, HUD, and panel typography
+- Pre-rendered piece sprites with alpha blending, shadows, and mini capture icons
 - Zobrist hashing for transposition table and draw detection
 
 ## Controls
@@ -30,6 +32,10 @@ A full chess engine with AI opponent, written entirely in Zia.
 chess/
     main.zia                Entry point
 
+    assets/
+        fonts/
+            viper_8x8.bdf   Bundled bitmap font used by the polished UI
+
     core/
         config.zia          Constants, colors, piece values, layout
         board.zia           Board state, Zobrist hashing, make/unmake move
@@ -41,8 +47,11 @@ chess/
 
     ui/
         game.zia            Game loop, input handling, state machine
-        renderer.zia        Board + UI drawing, status panels
-        pieces.zia          Pre-rendered piece sprite cache (Pixels + BlitAlpha)
+        renderer.zia        Board + UI drawing, status panels, overlays
+        theme.zia           Visual system, colors, bitmap fonts, text helpers
+        layout.zia          Named UI regions and hitbox layout helpers
+        widgets.zia         Reusable canvas UI primitives
+        pieces.zia          Pre-rendered piece sprite cache, shadows, mini icons
 ```
 
 ## Design and Polish Planning

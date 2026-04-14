@@ -1,0 +1,141 @@
+module theme;
+
+bind Viper.Graphics;
+bind Color = Viper.Graphics.Color;
+
+var bodyFont_: BitmapFont = null;
+var titleFont_: BitmapFont = null;
+var assetsReady_: Boolean = false;
+
+final BG_TOP            = 0x060814;
+final BG_BOTTOM         = 0x13081F;
+final BG_GLOW_BLUE      = 0x12377A;
+final BG_GLOW_PINK      = 0x5B0F45;
+final BG_STAR           = 0xA7D7FF;
+
+final PLAYFIELD_OUTER   = 0x0B1530;
+final PLAYFIELD_INNER   = 0x0A1030;
+final PLAYFIELD_BORDER  = 0x2CC6FF;
+final PLAYFIELD_GLOW    = 0x1673C4;
+
+final PANEL_BG          = 0x15122A;
+final PANEL_BG_ALT      = 0x21183A;
+final PANEL_BORDER      = 0x4F4177;
+final PANEL_SOFT        = 0x2A2349;
+
+final TEXT_PRIMARY      = 0xFFF6C7;
+final TEXT_SECONDARY    = 0xA9D7FF;
+final TEXT_MUTED        = 0x8A7FBE;
+final TEXT_DANGER       = 0xFF7B7B;
+
+final ACCENT_YELLOW     = 0xFFD93A;
+final ACCENT_PINK       = 0xFF5AD1;
+final ACCENT_CYAN       = 0x4DE8FF;
+final ACCENT_BLUE       = 0x2A7BFF;
+final ACCENT_RED        = 0xFF4A57;
+final ACCENT_GREEN      = 0x6DFF9E;
+final ACCENT_ORANGE     = 0xFF9C3A;
+
+final MAZE_WALL_BASE    = 0x1732A1;
+final MAZE_WALL_MID     = 0x205CFF;
+final MAZE_WALL_GLOW    = 0x4FD7FF;
+final MAZE_GATE         = 0xFF7BB9;
+final DOT_COLOR         = 0xFFD8B3;
+final PELLET_COLOR      = 0xFFE8B8;
+
+final SCRIM             = 0x04040A;
+
+final FONT_BODY_SCALE   = 2;
+final FONT_TITLE_SCALE  = 5;
+final FONT_SMALL_SCALE  = 1;
+
+func initAssets() {
+    if assetsReady_ { return; }
+    assetsReady_ = true;
+
+    bodyFont_ = BitmapFont.LoadBDF("examples/games/pacman/assets/fonts/viper_8x8.bdf");
+    if bodyFont_ == null {
+        bodyFont_ = BitmapFont.LoadBDF("assets/fonts/viper_8x8.bdf");
+    }
+    if bodyFont_ == null {
+        bodyFont_ = BitmapFont.LoadBDF("examples/games/chess/assets/fonts/viper_8x8.bdf");
+    }
+
+    titleFont_ = bodyFont_;
+}
+
+func bodyFont() -> BitmapFont {
+    initAssets();
+    return bodyFont_;
+}
+
+func titleFont() -> BitmapFont {
+    initAssets();
+    return titleFont_;
+}
+
+func textWidth(text: String, scale: Integer) -> Integer {
+    initAssets();
+    if bodyFont_ != null {
+        return bodyFont_!.TextWidth(text) * scale;
+    }
+    return Canvas.TextScaledWidth(text, scale);
+}
+
+func lineHeight(scale: Integer) -> Integer {
+    initAssets();
+    if bodyFont_ != null {
+        return bodyFont_!.TextHeight * scale;
+    }
+    return Canvas.TextHeight() * scale;
+}
+
+func textYInRect(y: Integer, h: Integer, scale: Integer) -> Integer {
+    return y + (h - lineHeight(scale)) / 2;
+}
+
+func drawText(canvas: Canvas, x: Integer, y: Integer, text: String, color: Integer) {
+    initAssets();
+    if bodyFont_ != null {
+        canvas.TextFont(x, y, text, bodyFont_!, color);
+        return;
+    }
+    canvas.Text(x, y, text, color);
+}
+
+func drawTextScaled(canvas: Canvas, x: Integer, y: Integer, text: String, scale: Integer, color: Integer) {
+    initAssets();
+    if bodyFont_ != null {
+        canvas.TextFontScaled(x, y, text, bodyFont_!, scale, color);
+        return;
+    }
+    canvas.TextScaled(x, y, text, scale, color);
+}
+
+func drawTextCentered(canvas: Canvas, x: Integer, y: Integer, w: Integer, text: String, scale: Integer, color: Integer) {
+    var tx = x + (w - textWidth(text, scale)) / 2;
+    drawTextScaled(canvas, tx, y, text, scale, color);
+}
+
+func drawTextRight(canvas: Canvas, x: Integer, y: Integer, w: Integer, text: String, scale: Integer, color: Integer) {
+    var tx = x + w - textWidth(text, scale);
+    drawTextScaled(canvas, tx, y, text, scale, color);
+}
+
+func brighten(color: Integer, amount: Integer) -> Integer {
+    return Color.Brighten(color, amount);
+}
+
+func darken(color: Integer, amount: Integer) -> Integer {
+    return Color.Darken(color, amount);
+}
+
+func pulseColor(base: Integer, bright: Integer, tickMs: Integer, periodMs: Integer) -> Integer {
+    if periodMs <= 0 { return base; }
+    var phase = (tickMs % periodMs) * 255 / periodMs;
+    if phase > 127 {
+        phase = 255 - phase;
+    }
+    var amount = phase * bright / 127;
+    return Color.Brighten(base, amount);
+}

@@ -14,6 +14,8 @@ bind Viper.Fmt;
 
 bind "./config";
 bind "./utils";
+bind "./ui/theme";
+bind "./ui/sprites";
 
 // =============================================================================
 // FRUIT ENTITY - Bonus item that appears in the maze
@@ -110,22 +112,17 @@ class Fruit {
 
     expose func draw(canvas: Canvas) {
         if active {
-            var color = utils.getFruitColor(fruitType);
-            var centerX = screenX + config.TILE_SIZE / 2;
-            var centerY = screenY + config.TILE_SIZE / 2;
-
-            // Draw fruit body
-            canvas.Disc(centerX, centerY, 8, color);
-            // Draw stem
-            canvas.Box(centerX - 1, centerY - 10, 3, 4, 0x00008800);
+            var spr = sprites.getFruit(fruitType);
+            if spr != null {
+                canvas.BlitAlpha(screenX, screenY, spr);
+            }
         }
 
         // Show floating points when collected
         if showingPoints {
             var pointsText = Int(lastPoints);
             var floatOffset = pointsTween.ValueI64;
-            canvas.Text(screenX, screenY - floatOffset, pointsText, config.COLOR_WHITE);
+            theme.drawTextScaled(canvas, screenX - 6, screenY - floatOffset, pointsText, theme.FONT_SMALL_SCALE, theme.TEXT_PRIMARY);
         }
     }
 }
-
