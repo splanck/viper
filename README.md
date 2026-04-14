@@ -19,11 +19,11 @@
 
 ## Download
 
-**Latest Release:** [v0.2.3-dev](https://github.com/splanck/viper/releases/tag/v0.2.3-dev) (3/25/2026)
+**Latest Release:** [v0.2.4-dev](https://github.com/splanck/viper/releases/tag/v0.2.4-dev) (4/13/2026)
 
-- [Source (tar.gz)](https://github.com/splanck/viper/archive/refs/tags/v0.2.3-dev.tar.gz)
-- [Source (zip)](https://github.com/splanck/viper/archive/refs/tags/v0.2.3-dev.zip)
-- [Release Notes](docs/release_notes/Viper_Release_Notes_0_2_3.md)
+- [Source (tar.gz)](https://github.com/splanck/viper/archive/refs/tags/v0.2.4-dev.tar.gz)
+- [Source (zip)](https://github.com/splanck/viper/archive/refs/tags/v0.2.4-dev.zip)
+- [Release Notes](docs/release_notes/Viper_Release_Notes_0_2_4.md)
 
 > **Working with the latest code:** The `master` branch is a live snapshot of current
 > development and may be ahead of any tagged release. To work with the most recent code:
