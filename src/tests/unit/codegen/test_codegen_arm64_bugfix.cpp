@@ -258,6 +258,67 @@ TEST(Arm64Bugfix, CurrentInstructionUseNotEvictedUnderPressure) {
     ASSERT_EQ(rc, 42);
 }
 
+/// Bug #8: post-RA scheduling must preserve aliasing between copied base+imm
+/// addresses that resolve to the same object field. Without that, a reload of
+/// `top` could stay ahead of the preceding store to `top`, reintroducing the
+/// stale `-1` value and tripping array bounds checks.
+TEST(Arm64Bugfix, SchedulerPreservesAliasedBaseRegisterStores) {
+    const std::string in = outPath("arm64_bugfix_scheduler_alias_base.il");
+    const std::string il =
+        "il 0.2.0\n"
+        "extern @rt_obj_new_i64(i64, i64) -> ptr\n"
+        "extern @rt_arr_i64_new(i64) -> ptr\n"
+        "extern @rt_arr_i64_len(ptr) -> i64\n"
+        "extern @rt_arr_i64_get(ptr, i64) -> i64\n"
+        "extern @rt_arr_i64_set(ptr, i64, i64) -> void\n"
+        "extern @rt_arr_oob_panic(i64, i64) -> void\n"
+        "func @main() -> i64 {\n"
+        "entry:\n"
+        "  %slot = alloca 8\n"
+        "  %obj = call @rt_obj_new_i64(0, 24)\n"
+        "  store ptr, %slot, %obj\n"
+        "  %obj0 = load ptr, %slot\n"
+        "  %arr = call @rt_arr_i64_new(21)\n"
+        "  %arrf0 = gep %obj0, 8\n"
+        "  store ptr, %arrf0, %arr\n"
+        "  %obj1 = load ptr, %slot\n"
+        "  %topf0 = gep %obj1, 16\n"
+        "  store i64, %topf0, -1\n"
+        "  %obj2 = load ptr, %slot\n"
+        "  %topf1 = gep %obj2, 16\n"
+        "  %top = load i64, %topf1\n"
+        "  %newtop = iadd.ovf %top, 1\n"
+        "  %obj3 = load ptr, %slot\n"
+        "  %topf2 = gep %obj3, 16\n"
+        "  store i64, %topf2, %newtop\n"
+        "  %obj4 = load ptr, %slot\n"
+        "  %arrf1 = gep %obj4, 8\n"
+        "  %arr1 = load ptr, %arrf1\n"
+        "  %obj5 = load ptr, %slot\n"
+        "  %topf3 = gep %obj5, 16\n"
+        "  %idx = load i64, %topf3\n"
+        "  %len = call @rt_arr_i64_len(%arr1)\n"
+        "  %lt0 = scmp_lt %idx, 0\n"
+        "  %ge = scmp_ge %idx, %len\n"
+        "  %lt0i = zext1 %lt0\n"
+        "  %gei = zext1 %ge\n"
+        "  %bad = or %lt0i, %gei\n"
+        "  %isbad = icmp_ne %bad, 0\n"
+        "  cbr %isbad, oob, ok\n"
+        "ok:\n"
+        "  call @rt_arr_i64_set(%arr1, %idx, 10)\n"
+        "  %ret = call @rt_arr_i64_get(%arr1, 0)\n"
+        "  ret %ret\n"
+        "oob:\n"
+        "  call @rt_arr_oob_panic(%idx, %len)\n"
+        "  trap\n"
+        "}\n";
+    writeFile(in, il);
+    const char *argv[] = {in.c_str(), "-run-native"};
+    const int rc = cmd_codegen_arm64(2, const_cast<char **>(argv));
+    ASSERT_EQ(rc, 10);
+}
+
 int main(int argc, char **argv) {
     viper_test::init(&argc, &argv);
     return viper_test::run_all_tests();

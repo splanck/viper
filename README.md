@@ -109,7 +109,7 @@ Viper is in **early development**. All components are functional but evolving:
 | [BASIC Frontend](docs/basic-reference.md) | Core language + OOP; enums, select-case, namespaces |
 | [Viper IL](docs/il-guide.md) | Stable core; module linker for cross-language interop |
 | [Optimizer](docs/il-passes.md) | 20 passes (SSA opts, loop opts, inlining, peephole, GVN, LICM, DSE) |
-| [VM](docs/vm.md) | Switch, table, and threaded dispatch; SIGINT/SEH trap handling |
+| [VM](docs/vm.md) | Switch, table, and threaded dispatch; SIGINT/SEH trap handling; per-VM extern registries; worker-VM execution-environment snapshots; resumable trap state |
 | [AArch64 Backend](docs/codegen/aarch64.md) | Apple Silicon + Windows ARM64; register coalescer, protected-use eviction, post-RA scheduler |
 | [x86-64 Backend](docs/codegen/x86_64.md) | Windows + Linux; 300+ stress tests, IEEE 754 NaN-safe |
 | [Native Toolchain](docs/codegen/native-assembler.md) | Assembler (ELF/Mach-O/COFF) + linker (dead stripping, ICF, branch trampolines, DWARF v5, code signing, PE/COFF import tables, ELF dynamic linking) |

@@ -14,10 +14,14 @@
 
 #include "codegen/common/LinkerSupport.hpp"
 
+#include "codegen/common/linker/ArchiveReader.hpp"
+#include "codegen/common/linker/NameMangling.hpp"
+#include "codegen/common/linker/ObjFileReader.hpp"
 #include "common/RunProcess.hpp"
 
 #include <cctype>
 #include <fstream>
+#include <set>
 #include <initializer_list>
 #include <sstream>
 #include <vector>
@@ -107,6 +111,150 @@ std::vector<std::filesystem::path> standardInstalledLibDirs() {
     dirs.emplace_back("/usr/local/lib64");
 #endif
     return dirs;
+}
+
+bool componentsEqual(const std::vector<RtComponent> &lhs, const std::vector<RtComponent> &rhs) {
+    return lhs == rhs;
+}
+
+void rebuildRequiredArchives(LinkContext &ctx) {
+    ctx.requiredArchives.clear();
+    for (auto comp : ctx.requiredComponents) {
+        auto name = archiveNameForComponent(comp);
+        ctx.requiredArchives.emplace_back(std::string(name), runtimeArchivePath(ctx.buildDir, name));
+    }
+}
+
+bool ensureRequiredTargetsBuilt(const LinkContext &ctx, std::ostream &out, std::ostream &err) {
+    if (ctx.buildDir.empty())
+        return true;
+
+    std::vector<std::string> missingTargets;
+    for (const auto &[tgt, path] : ctx.requiredArchives) {
+        if (!fileExists(path))
+            missingTargets.push_back(tgt);
+    }
+    if (hasComponent(ctx, RtComponent::Graphics)) {
+        const std::filesystem::path gfxLib = supportLibraryPath(ctx.buildDir, "vipergfx");
+        if (!fileExists(gfxLib))
+            missingTargets.push_back("vipergfx");
+        const std::filesystem::path guiLib = supportLibraryPath(ctx.buildDir, "vipergui");
+        if (!fileExists(guiLib))
+            missingTargets.push_back("vipergui");
+    }
+    if (hasComponent(ctx, RtComponent::Audio)) {
+        const std::filesystem::path audLib = supportLibraryPath(ctx.buildDir, "viperaud");
+        if (!fileExists(audLib))
+            missingTargets.push_back("viperaud");
+    }
+    if (missingTargets.empty())
+        return true;
+
+    std::sort(missingTargets.begin(), missingTargets.end());
+    missingTargets.erase(std::unique(missingTargets.begin(), missingTargets.end()),
+                         missingTargets.end());
+    std::vector<std::string> cmd = {"cmake", "--build", ctx.buildDir.string(), "--target"};
+    cmd.insert(cmd.end(), missingTargets.begin(), missingTargets.end());
+    const RunResult build = run_process(cmd);
+    if (!build.out.empty())
+        out << build.out;
+#if defined(_WIN32)
+    if (!build.err.empty())
+        err << build.err;
+#endif
+    if (build.exit_code != 0) {
+        err << "error: failed to build required runtime libraries in '" << ctx.buildDir.string()
+            << "'\n";
+        return false;
+    }
+    return true;
+}
+
+bool addArchiveClosureSymbols(const LinkContext &ctx,
+                              std::unordered_set<std::string> &symbols,
+                              std::ostream &err) {
+    using namespace viper::codegen::linker;
+
+    std::vector<Archive> archives;
+    archives.reserve(ctx.requiredArchives.size());
+    for (const auto &[name, path] : ctx.requiredArchives) {
+        if (!fileExists(path))
+            continue;
+        Archive ar;
+        if (!readArchive(path.string(), ar, err)) {
+            err << "error: failed to inspect runtime archive '" << name << "' at '"
+                << path.string() << "'\n";
+            return false;
+        }
+        archives.push_back(std::move(ar));
+    }
+
+    std::unordered_set<std::string> resolved;
+    std::unordered_set<std::string> unresolved = symbols;
+    std::unordered_set<std::string> extractedMembers;
+
+    bool changed = true;
+    while (changed) {
+        changed = false;
+        for (const auto &ar : archives) {
+            std::vector<std::string> undefSnapshot(unresolved.begin(), unresolved.end());
+            for (const auto &undef : undefSnapshot) {
+                if (resolved.count(undef) != 0)
+                    continue;
+
+                auto symIt = findWithMachoFallback(ar.symbolIndex, undef);
+                if (symIt == ar.symbolIndex.end())
+                    continue;
+
+                const size_t memberIdx = symIt->second;
+                if (memberIdx >= ar.members.size())
+                    continue;
+
+                const std::string memberKey =
+                    ar.path + "#" + std::to_string(static_cast<unsigned long long>(memberIdx));
+                if (!extractedMembers.insert(memberKey).second)
+                    continue;
+
+                auto memberData = extractMember(ar, ar.members[memberIdx]);
+                if (memberData.empty())
+                    continue;
+
+                ObjFile memberObj;
+                std::ostringstream memberErr;
+                if (!readObjFile(memberData.data(),
+                                 memberData.size(),
+                                 ar.path + "(" + ar.members[memberIdx].name + ")",
+                                 memberObj,
+                                 memberErr)) {
+                    err << memberErr.str();
+                    return false;
+                }
+
+                for (size_t i = 1; i < memberObj.symbols.size(); ++i) {
+                    const auto &sym = memberObj.symbols[i];
+                    if (sym.name.empty())
+                        continue;
+                    if (!componentForRuntimeSymbol(sym.name).has_value())
+                        continue;
+
+                    if (sym.binding == ObjSymbol::Undefined) {
+                        if (resolved.count(sym.name) == 0 && unresolved.insert(sym.name).second)
+                            changed = true;
+                        if (symbols.insert(sym.name).second)
+                            changed = true;
+                        continue;
+                    }
+
+                    resolved.insert(sym.name);
+                    unresolved.erase(sym.name);
+                    if (symbols.insert(sym.name).second)
+                        changed = true;
+                }
+            }
+        }
+    }
+
+    return true;
 }
 
 } // namespace
@@ -377,56 +525,29 @@ static int resolveAndBuildArchives(const std::unordered_set<std::string> &symbol
                                    LinkContext &ctx,
                                    std::ostream &out,
                                    std::ostream &err) {
-    ctx.requiredComponents = resolveRequiredComponents(symbols);
+    std::unordered_set<std::string> closureSymbols = symbols;
 
     const std::optional<std::filesystem::path> buildDirOpt = findBuildDir();
     ctx.buildDir = buildDirOpt.value_or(std::filesystem::path{});
 
-    ctx.requiredArchives.clear();
-    for (auto comp : ctx.requiredComponents) {
-        auto name = archiveNameForComponent(comp);
-        ctx.requiredArchives.emplace_back(std::string(name),
-                                          runtimeArchivePath(ctx.buildDir, name));
-    }
+    while (true) {
+        const auto previousComponents = ctx.requiredComponents;
+        ctx.requiredComponents = resolveRequiredComponents(closureSymbols);
+        rebuildRequiredArchives(ctx);
 
-    // Build missing targets if we have a build directory.
-    std::vector<std::string> missingTargets;
-    if (!ctx.buildDir.empty()) {
-        for (const auto &[tgt, path] : ctx.requiredArchives) {
-            if (!fileExists(path))
-                missingTargets.push_back(tgt);
-        }
-        if (hasComponent(ctx, RtComponent::Graphics)) {
-            const std::filesystem::path gfxLib = supportLibraryPath(ctx.buildDir, "vipergfx");
-            if (!fileExists(gfxLib))
-                missingTargets.push_back("vipergfx");
-            const std::filesystem::path guiLib = supportLibraryPath(ctx.buildDir, "vipergui");
-            if (!fileExists(guiLib))
-                missingTargets.push_back("vipergui");
-        }
-        if (hasComponent(ctx, RtComponent::Audio)) {
-            const std::filesystem::path audLib = supportLibraryPath(ctx.buildDir, "viperaud");
-            if (!fileExists(audLib))
-                missingTargets.push_back("viperaud");
-        }
-        if (!missingTargets.empty()) {
-            std::sort(missingTargets.begin(), missingTargets.end());
-            missingTargets.erase(std::unique(missingTargets.begin(), missingTargets.end()),
-                                 missingTargets.end());
-            std::vector<std::string> cmd = {"cmake", "--build", ctx.buildDir.string(), "--target"};
-            cmd.insert(cmd.end(), missingTargets.begin(), missingTargets.end());
-            const RunResult build = run_process(cmd);
-            if (!build.out.empty())
-                out << build.out;
-#if defined(_WIN32)
-            if (!build.err.empty())
-                err << build.err;
-#endif
-            if (build.exit_code != 0) {
-                err << "error: failed to build required runtime libraries in '"
-                    << ctx.buildDir.string() << "'\n";
+        if (!ensureRequiredTargetsBuilt(ctx, out, err))
+            return 1;
+        if (!addArchiveClosureSymbols(ctx, closureSymbols, err))
+            return 1;
+
+        const auto expandedComponents = resolveRequiredComponents(closureSymbols);
+        if (componentsEqual(previousComponents, expandedComponents) &&
+            componentsEqual(ctx.requiredComponents, expandedComponents)) {
+            ctx.requiredComponents = expandedComponents;
+            rebuildRequiredArchives(ctx);
+            if (!ensureRequiredTargetsBuilt(ctx, out, err))
                 return 1;
-            }
+            break;
         }
     }
 

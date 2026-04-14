@@ -8,9 +8,11 @@
 #include "codegen/common/LinkerSupport.hpp"
 #include "tests/TestHarness.hpp"
 
+#include <algorithm>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <sstream>
 
 using namespace viper::codegen::common;
 
@@ -66,6 +68,11 @@ void writeArchive(const std::filesystem::path &path, const char *contents) {
     std::filesystem::create_directories(path.parent_path());
     std::ofstream out(path, std::ios::binary);
     out << contents;
+}
+
+bool containsComponent(const LinkContext &ctx, viper::codegen::RtComponent component) {
+    return std::find(ctx.requiredComponents.begin(), ctx.requiredComponents.end(), component) !=
+           ctx.requiredComponents.end();
 }
 
 } // namespace
@@ -131,6 +138,43 @@ TEST(LinkerSupport, InstalledLayoutPreferredOverBuildTree) {
               (installedDir / archiveFileName("vipergfx")).lexically_normal());
 
     fs::remove_all(tmpRoot);
+}
+
+TEST(LinkerSupport, ArchiveClosureAddsTextForBaseStringIntern) {
+    LinkContext ctx;
+    std::ostringstream out;
+    std::ostringstream err;
+    ASSERT_EQ(0, prepareLinkContextFromSymbols({"rt_string_intern"}, ctx, out, err));
+    ASSERT_TRUE(err.str().empty());
+
+    EXPECT_TRUE(containsComponent(ctx, viper::codegen::RtComponent::Base));
+    EXPECT_TRUE(containsComponent(ctx, viper::codegen::RtComponent::Text));
+}
+
+TEST(LinkerSupport, ArchiveClosureAddsIoFsForBaseChannelHelpers) {
+    LinkContext ctx;
+    std::ostringstream out;
+    std::ostringstream err;
+    ASSERT_EQ(0, prepareLinkContextFromSymbols({"rt_eof_ch"}, ctx, out, err));
+    ASSERT_TRUE(err.str().empty());
+
+    EXPECT_TRUE(containsComponent(ctx, viper::codegen::RtComponent::Base));
+    EXPECT_TRUE(containsComponent(ctx, viper::codegen::RtComponent::IoFs));
+}
+
+TEST(LinkerSupport, ArchiveClosureAddsTextAndIoFsForGraphicsRuntimeDeps) {
+    LinkContext ctx;
+    std::ostringstream out;
+    std::ostringstream err;
+    ASSERT_EQ(0, prepareLinkContextFromSymbols({"rt_action_load", "rt_pixels_load_png"},
+                                               ctx,
+                                               out,
+                                               err));
+    ASSERT_TRUE(err.str().empty());
+
+    EXPECT_TRUE(containsComponent(ctx, viper::codegen::RtComponent::Graphics));
+    EXPECT_TRUE(containsComponent(ctx, viper::codegen::RtComponent::Text));
+    EXPECT_TRUE(containsComponent(ctx, viper::codegen::RtComponent::IoFs));
 }
 
 int main(int argc, char **argv) {

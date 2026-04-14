@@ -114,8 +114,9 @@ bool hasComponent(const LinkContext &ctx, RtComponent c);
 /// @brief Prepare a complete link context by scanning assembly for runtime symbols.
 /// @details Reads the assembly file at @p asmPath, scans for runtime symbols,
 ///          resolves them to runtime components, locates the build directory,
-///          computes archive paths, and triggers cmake rebuilds for any missing
-///          library targets.
+///          computes archive paths, expands the component set by following
+///          runtime-to-runtime archive references, and triggers cmake rebuilds
+///          for any missing library targets.
 /// @param asmPath Path to the assembly source file to scan for symbols.
 /// @param ctx Output link context to populate with resolved state.
 /// @param out Standard output stream for progress messages.
@@ -128,7 +129,8 @@ int prepareLinkContext(const std::string &asmPath,
 
 /// @brief Prepare a link context from a pre-resolved set of external symbol names.
 /// @details Used by the native assembler path, which already has the symbol table
-///          from the CodeSection. Skips the assembly-scanning step.
+///          from the CodeSection. Skips the assembly-scanning step while still
+///          expanding runtime component closure from the selected archives.
 /// @param symbols Set of external symbol names (e.g., "rt_print_i64").
 /// @param ctx Output link context to populate.
 /// @param out Standard output stream for progress messages.

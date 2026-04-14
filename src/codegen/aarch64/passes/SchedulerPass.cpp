@@ -136,11 +136,23 @@ static bool isStore(MOpcode opc) noexcept {
     }
 }
 
-enum class MemBaseKind : uint8_t { FramePointer, StackPointer, BaseRegister };
+enum class MemBaseKind : uint8_t {
+    FramePointer,
+    StackPointer,
+    BaseRegister,
+    FrameSlotValue,
+    StackSlotValue,
+};
+
+struct AddressValue {
+    MemBaseKind baseKind{MemBaseKind::BaseRegister};
+    long long baseTag{0};
+    long long offset{0};
+};
 
 struct MemoryAccessClass {
     MemBaseKind baseKind{MemBaseKind::FramePointer};
-    uint32_t baseReg{0};
+    long long baseTag{0};
     long long offset{0};
     unsigned size{0};
 };
@@ -153,7 +165,40 @@ struct MemoryHistoryEntry {
     std::optional<MemoryAccessClass> accessClass;
 };
 
-static std::optional<MemoryAccessClass> classifyMemoryAccess(const MInstr &mi) noexcept {
+/// Total number of AArch64 physical registers (X0..X30, SP, V0..V31 = 64).
+static constexpr std::size_t kNumPhysRegs = 64;
+
+/// Flat-array indices for implicit "virtual" registers beyond the physical file.
+static constexpr std::size_t kIdxNZCV = kNumPhysRegs;   // 64
+static constexpr std::size_t kIdxSP = kNumPhysRegs + 1; // 65
+
+/// Total tracked register slots: 64 physical + NZCV + SP.
+static constexpr std::size_t kNumTracked = kNumPhysRegs + 2;
+
+/// Map a physical register ID (or sentinel) to a flat-array index.
+static std::size_t regIdx(uint32_t reg) noexcept {
+    // PhysReg enum values are 0..63, which map to themselves.
+    return static_cast<std::size_t>(reg);
+}
+
+static std::optional<MemoryAccessClass>
+makeResolvedAccessClass(const AddressValue &base, long long accessOffset, unsigned size) noexcept {
+    return MemoryAccessClass{base.baseKind, base.baseTag, base.offset + accessOffset, size};
+}
+
+static std::optional<AddressValue>
+getTrackedAddressValue(const std::array<std::optional<AddressValue>, kNumPhysRegs> &tracked,
+                       uint32_t reg) noexcept {
+    const std::size_t idx = regIdx(reg);
+    if (idx >= kNumPhysRegs)
+        return std::nullopt;
+    return tracked[idx];
+}
+
+static std::optional<MemoryAccessClass>
+classifyMemoryAccess(const MInstr &mi,
+                     const std::array<std::optional<AddressValue>, kNumPhysRegs> &trackedAddrs)
+    noexcept {
     switch (mi.opc) {
         case MOpcode::LdrRegFpImm:
         case MOpcode::StrRegFpImm:
@@ -180,6 +225,10 @@ static std::optional<MemoryAccessClass> classifyMemoryAccess(const MInstr &mi) n
         case MOpcode::StrFprBaseImm:
             if (mi.ops.size() >= 3 && mi.ops[1].kind == MOperand::Kind::Reg &&
                 mi.ops[1].reg.isPhys && mi.ops[2].kind == MOperand::Kind::Imm) {
+                if (const auto tracked =
+                        getTrackedAddressValue(trackedAddrs, mi.ops[1].reg.idOrPhys)) {
+                    return makeResolvedAccessClass(*tracked, mi.ops[2].imm, 8);
+                }
                 return MemoryAccessClass{
                     MemBaseKind::BaseRegister, mi.ops[1].reg.idOrPhys, mi.ops[2].imm, 8};
             }
@@ -195,11 +244,72 @@ static bool mayAliasMemory(const std::optional<MemoryAccessClass> &lhs,
         return true;
     if (lhs->baseKind != rhs->baseKind)
         return false;
-    if (lhs->baseKind == MemBaseKind::BaseRegister && lhs->baseReg != rhs->baseReg)
+    if ((lhs->baseKind == MemBaseKind::BaseRegister ||
+         lhs->baseKind == MemBaseKind::FrameSlotValue ||
+         lhs->baseKind == MemBaseKind::StackSlotValue) &&
+        lhs->baseTag != rhs->baseTag) {
         return false;
+    }
     const long long lhsEnd = lhs->offset + static_cast<long long>(lhs->size);
     const long long rhsEnd = rhs->offset + static_cast<long long>(rhs->size);
     return !(lhsEnd <= rhs->offset || rhsEnd <= lhs->offset);
+}
+
+static std::optional<AddressValue>
+deriveTrackedAddressValue(const MInstr &mi,
+                          const std::array<std::optional<AddressValue>, kNumPhysRegs> &trackedAddrs)
+    noexcept {
+    auto regTracked = [&](std::size_t opIdx) -> std::optional<AddressValue> {
+        if (opIdx >= mi.ops.size() || mi.ops[opIdx].kind != MOperand::Kind::Reg ||
+            !mi.ops[opIdx].reg.isPhys) {
+            return std::nullopt;
+        }
+        return getTrackedAddressValue(trackedAddrs, mi.ops[opIdx].reg.idOrPhys);
+    };
+
+    auto fallbackRoot = [&](std::size_t opIdx) -> std::optional<AddressValue> {
+        if (opIdx >= mi.ops.size() || mi.ops[opIdx].kind != MOperand::Kind::Reg ||
+            !mi.ops[opIdx].reg.isPhys) {
+            return std::nullopt;
+        }
+        return AddressValue{MemBaseKind::BaseRegister, mi.ops[opIdx].reg.idOrPhys, 0};
+    };
+
+    switch (mi.opc) {
+        case MOpcode::MovRR: {
+            auto tracked = regTracked(1);
+            if (tracked)
+                return tracked;
+            return fallbackRoot(1);
+        }
+        case MOpcode::AddRI:
+        case MOpcode::SubRI:
+        case MOpcode::AddsRI:
+        case MOpcode::SubsRI: {
+            if (mi.ops.size() < 3 || mi.ops[2].kind != MOperand::Kind::Imm)
+                return std::nullopt;
+            auto base = regTracked(1);
+            if (!base)
+                base = fallbackRoot(1);
+            if (!base)
+                return std::nullopt;
+            const long long delta = (mi.opc == MOpcode::SubRI || mi.opc == MOpcode::SubsRI)
+                                        ? -mi.ops[2].imm
+                                        : mi.ops[2].imm;
+            base->offset += delta;
+            return base;
+        }
+        case MOpcode::AddFpImm:
+            if (mi.ops.size() >= 2 && mi.ops[1].kind == MOperand::Kind::Imm)
+                return AddressValue{MemBaseKind::FramePointer, 0, mi.ops[1].imm};
+            return std::nullopt;
+        case MOpcode::LdrRegFpImm:
+            if (mi.ops.size() >= 2 && mi.ops[1].kind == MOperand::Kind::Imm)
+                return AddressValue{MemBaseKind::FrameSlotValue, mi.ops[1].imm, 0};
+            return std::nullopt;
+        default:
+            return std::nullopt;
+    }
 }
 
 static bool isTerminator(MOpcode opc) noexcept {
@@ -218,22 +328,6 @@ static bool isTerminator(MOpcode opc) noexcept {
 // ---------------------------------------------------------------------------
 // Flag (NZCV) classification helpers
 // ---------------------------------------------------------------------------
-
-/// Total number of AArch64 physical registers (X0..X30, SP, V0..V31 = 64).
-static constexpr std::size_t kNumPhysRegs = 64;
-
-/// Flat-array indices for implicit "virtual" registers beyond the physical file.
-static constexpr std::size_t kIdxNZCV = kNumPhysRegs;   // 64
-static constexpr std::size_t kIdxSP = kNumPhysRegs + 1; // 65
-
-/// Total tracked register slots: 64 physical + NZCV + SP.
-static constexpr std::size_t kNumTracked = kNumPhysRegs + 2;
-
-/// Map a physical register ID (or sentinel) to a flat-array index.
-static std::size_t regIdx(uint32_t reg) noexcept {
-    // PhysReg enum values are 0..63, which map to themselves.
-    return static_cast<std::size_t>(reg);
-}
 
 /// @brief Returns true if the opcode sets the NZCV condition flags.
 static bool setsFlags(MOpcode opc) noexcept {
@@ -391,6 +485,8 @@ static std::vector<MInstr> scheduleBlock(std::vector<MInstr> body) {
     std::array<std::size_t, kNumTracked> lastDef;
     lastDef.fill(kNone);
     std::array<std::vector<std::size_t>, kNumTracked> usesSinceDef;
+    std::array<std::optional<AddressValue>, kNumPhysRegs> trackedAddrs;
+    trackedAddrs.fill(std::nullopt);
 
     std::vector<MemoryHistoryEntry> memoryHistory;
     memoryHistory.reserve(N);
@@ -473,7 +569,8 @@ static std::vector<MInstr> scheduleBlock(std::vector<MInstr> body) {
         // --- Memory dependencies ---
         const bool memLoad = isLoad(mi.opc);
         const bool memStore = isStore(mi.opc);
-        const auto memClass = (memLoad || memStore) ? classifyMemoryAccess(mi) : std::nullopt;
+        const auto memClass =
+            (memLoad || memStore) ? classifyMemoryAccess(mi, trackedAddrs) : std::nullopt;
         if (memLoad || memStore) {
             for (const auto &prev : memoryHistory) {
                 if (prev.isBarrier) {
@@ -520,7 +617,17 @@ static std::vector<MInstr> scheduleBlock(std::vector<MInstr> body) {
                     addDep(i, u, 1); // WAR dependency
                 usesSinceDef[ri].clear();
                 lastDef[ri] = i;
+                if (ri < kNumPhysRegs && mi.ops[d].reg.cls == RegClass::GPR)
+                    trackedAddrs[ri] = std::nullopt;
             }
+        }
+
+        if (const auto tracked = deriveTrackedAddressValue(mi, trackedAddrs);
+            tracked && !mi.ops.empty() && mi.ops[0].kind == MOperand::Kind::Reg &&
+            mi.ops[0].reg.isPhys && mi.ops[0].reg.cls == RegClass::GPR) {
+            const std::size_t ri = regIdx(mi.ops[0].reg.idOrPhys);
+            if (ri < kNumPhysRegs)
+                trackedAddrs[ri] = tracked;
         }
 
         // Flag definitions — WAW + WAR on flags too.
@@ -544,6 +651,8 @@ static std::vector<MInstr> scheduleBlock(std::vector<MInstr> body) {
                     addDep(i, u, 1); // WAR
                 usesSinceDef[ri].clear();
                 lastDef[ri] = i;
+                if (ri < kNumPhysRegs)
+                    trackedAddrs[ri] = std::nullopt;
             }
             if (lastDef[kIdxNZCV] != kNone)
                 addDep(i, lastDef[kIdxNZCV], 1);
