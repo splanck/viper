@@ -45,6 +45,10 @@ chess/
         pieces.zia          Pre-rendered piece sprite cache (Pixels + BlitAlpha)
 ```
 
+## Design and Polish Planning
+
+- [Polish Plan](polish-plan.md) — large-scale visual and UX overhaul plan for the demo
+
 ## Running
 
 ```bash

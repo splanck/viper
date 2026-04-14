@@ -2,9 +2,7 @@
 
 > **Development Status:** Pre-Alpha. Viper is under active development and not ready for production use.
 
-> **DRAFT** — This document is a preliminary draft for v0.2.4. Content is subject to change before the official release.
-
-## Version 0.2.4 — Pre-Alpha (TBD) — DRAFT
+## Version 0.2.4 — Pre-Alpha (2026-04-13)
 
 ### Overview
 
