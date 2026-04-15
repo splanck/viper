@@ -1,11 +1,90 @@
-// lexer.zia — SQL Lexer
-// Part of ViperSQL
+// =============================================================================
+// lexer.zia — Turn raw SQL text into a stream of `Token`s
+// Part of ViperSQL  (package: parser)
+// =============================================================================
 //
-// Converts a raw SQL string into a stream of tokens for the parser.
-// Handles whitespace/comment skipping, keyword recognition (140+ SQL
-// keywords), numeric literals (integer and real), quoted strings with
-// both backslash and SQL-standard doubled-quote escaping, and all
-// single/multi-character operators. Keywords are case-insensitive.
+// PURPOSE
+// -------
+// The lexer (also called "scanner" or "tokenizer") is the first pass of
+// the parser pipeline.  It consumes SQL source one character at a time
+// and emits `Token` objects whose `kind` is one of the `TK_*` constants
+// defined in `./token`.  The parser proper (`./parser.zia`) never
+// inspects raw characters — it only ever deals with tokens, which
+// dramatically shortens every grammar rule.
+//
+// Responsibilities:
+//   * Skip whitespace and comments (`--` to end-of-line, `/* ... */`
+//     block).
+//   * Recognise numbers (INTEGER and REAL).
+//   * Recognise identifiers and keywords.  Case-insensitive: we
+//     uppercase the word before checking the keyword table.
+//   * Recognise quoted strings with both escape styles: SQL-standard
+//     `''` doubled-quote and C-style `\'` backslash.
+//   * Recognise operators including the two-character forms
+//     (`<=`, `>=`, `<>`, `!=`, `||`, `~*`, `->`, `->>`).
+//   * Track `(line, column)` so error messages are useful.
+//
+// WHERE THIS FITS
+// ---------------
+//     ./token.zia       ──►  TK_* constants, Token class (annotated)
+//         │
+//         ▼
+//     ./lexer.zia       ──►  YOU ARE HERE — char stream → token stream
+//         │
+//         ▼
+//     ./parser.zia      ──►  token stream → AST
+//         │
+//         ▼
+//     engine/executor.zia
+//
+// KEY DESIGN CHOICES
+// ------------------
+//   1. One-character-at-a-time design.  The lexer works by `peek()`,
+//      `peekNext()`, `advance()` rather than regex.  That keeps it
+//      dependency-free (the "zero dependencies" rule from CLAUDE.md)
+//      and predictable on multi-byte boundaries — we never split a
+//      grapheme mid-byte because every keyword and operator is ASCII.
+//
+//   2. Keywords are resolved by a long linear `if` chain in
+//      `lookupKeyword`.  A hash-map lookup would be nicer aesthetically
+//      but `String == String` is already cheap in Zia's runtime and
+//      the cost difference is lost in the noise of the parser proper.
+//      The `if` style also makes adding a new keyword a two-line
+//      change instead of a map mutation.
+//
+//   3. Two-character operators are detected by "advance, peek".  The
+//      dispatch for `-` is the trickiest case — we need to
+//      distinguish `-` (minus), `--` (comment, handled by
+//      `skipWhitespace`), `->` (JSON arrow), and `->>` (JSON text
+//      arrow).  Order matters: the comment is consumed *before* we
+//      reach the operator dispatch.
+//
+//   4. Unterminated strings return a `TK_ERROR` token rather than
+//      trapping.  The parser sees `TK_ERROR`, produces a diagnostic,
+//      and the caller gets a failed `QueryResult` instead of an
+//      unexpected crash.  BUG-ADV-003 in the code comments refers to
+//      an older regression where the lexer would loop on unterminated
+//      strings.
+//
+//   5. `line`/`column` are updated *during* `advance()`, not in a
+//      post-pass.  This means error tokens always know exactly where
+//      they started — the `(startLine, startCol)` captured at the
+//      top of each reader stays accurate through any amount of
+//      internal advancement.
+//
+// HOW TO READ THIS FILE
+// ---------------------
+//   1. Fields — source text, position, line/column cursor.
+//   2. Primitive char helpers: `peek`, `peekNext`, `advance`,
+//      `isAtEnd`.
+//   3. `skipWhitespace` — handles comments too.
+//   4. Character-class predicates: `isDigit`, `isAlpha`, `isAlphaNum`.
+//   5. Sub-readers: `readNumber`, `readString`, `readIdentifier`.
+//   6. `lookupKeyword` — the big keyword table.
+//   7. `nextToken` — the public dispatch that stitches everything
+//      together.
+//
+// =============================================================================
 
 module lexer;
 
@@ -14,16 +93,29 @@ bind Viper.Text.StringBuilder as SB;
 bind "./token";
 
 //=============================================================================
-// LEXER ENTITY
+// LEXER
 //=============================================================================
 
+/// @brief State machine that converts SQL text into tokens.
+///
+/// Hold a lexer, call `nextToken()` in a loop until you get `TK_EOF`
+/// (or a `TK_ERROR`).  The internal cursor (`pos`, `line`, `column`)
+/// advances as you read — never reset or rewound.  One Lexer
+/// instance per SQL statement buffer; the parser creates a fresh one
+/// per `executeSql` call.
 class Lexer {
-    hide String source;
-    hide Integer pos;
-    hide Integer line;
-    hide Integer column;
-    hide Integer length;
+    // All state is `hide` — callers never poke at raw bytes.
+    hide String source;    // full SQL text
+    hide Integer pos;      // byte offset into `source`
+    hide Integer line;     // current line, 1-based
+    hide Integer column;   // current column, 1-based
+    hide Integer length;   // cached `String.Length(source)`
 
+    /// @brief Wire up a lexer for a given SQL source string.
+    ///
+    /// We cache `length` because `String.Length` is O(1) for Zia
+    /// strings but the inner loop still benefits from not re-reading
+    /// a field.
     expose func init(src: String) {
         source = src;
         pos = 0;
@@ -32,20 +124,38 @@ class Lexer {
         length = String.Length(src);
     }
 
+    /// @brief "Have we consumed every character?" — the termination
+    ///        condition of every inner loop in the lexer.
     expose func isAtEnd() -> Boolean {
         return pos >= length;
     }
 
+    /// @brief Current char, or "" at EOF.
+    ///
+    /// Non-advancing.  Every reader peeks first to decide which
+    /// specialised path to take, then calls `advance()` once it has
+    /// committed.
     hide func peek() -> String {
         if (isAtEnd()) { return ""; }
         return String.Substring(source, pos, 1);
     }
 
+    /// @brief Char at position+1 (one-char lookahead), or "" at EOF.
+    ///
+    /// Used for two-character operator detection (`<=`, `->`, `--`
+    /// comment start, `/*` block start, `''` escape).
     hide func peekNext() -> String {
         if (pos + 1 >= length) { return ""; }
         return String.Substring(source, pos + 1, 1);
     }
 
+    /// @brief Return the current char and advance the cursor.
+    ///
+    /// Maintains `(line, column)` — a newline resets the column and
+    /// bumps the line.  This is the only method that changes `line`
+    /// or `column`, which means every reader can capture
+    /// `(startLine, startCol)` once at its top and then call
+    /// advance/peek freely without losing position.
     hide func advance() -> String {
         var ch = peek();
         pos = pos + 1;
@@ -58,15 +168,26 @@ class Lexer {
         return ch;
     }
 
-    // Skip whitespace, single-line comments (-- ...), and block comments (/* ... */)
+    /// @brief Skip whitespace and comments until the next "real" char.
+    ///
+    /// Recognises:
+    ///   * ASCII whitespace (` `, `\t`, `\r`, `\n`)
+    ///   * `-- ... <EOL>` single-line comments (SQL-standard)
+    ///   * `/* ... */` block comments (non-nestable, PG-compatible)
+    ///
+    /// Loops as long as one of these matches, so consecutive
+    /// comments/whitespace are all consumed in one call.  Called from
+    /// `nextToken` at every dispatch step.
     hide func skipWhitespace() {
         while (!isAtEnd()) {
             var ch = peek();
             if (ch == " " || ch == "\t" || ch == "\r" || ch == "\n") {
                 advance();
             } else if (ch == "-" && peekNext() == "-") {
+                // Single-line comment: read to end-of-line.
                 while (!isAtEnd() && peek() != "\n") { advance(); }
             } else if (ch == "/" && peekNext() == "*") {
+                // Block comment: consume opener, then read to `*/`.
                 advance(); advance();
                 while (!isAtEnd()) {
                     if (peek() == "*" && peekNext() == "/") {
@@ -80,23 +201,39 @@ class Lexer {
         }
     }
 
+    /// @brief ASCII digit test.  Uses `String.Asc` for the char code.
     hide func isDigit(ch: String) -> Boolean {
         var code = String.Asc(ch);
-        return code >= 48 && code <= 57;  // '0' = 48, '9' = 57
+        return code >= 48 && code <= 57;  // '0' .. '9'
     }
 
+    /// @brief ASCII letter or underscore — identifier start char.
+    ///
+    /// Note the underscore branch at the end: `_foo` is a legal SQL
+    /// identifier (especially common for internal columns in the
+    /// pg_catalog views).
     hide func isAlpha(ch: String) -> Boolean {
         var code = String.Asc(ch);
-        if (code >= 65 && code <= 90) { return true; }   // 'A' = 65, 'Z' = 90
-        if (code >= 97 && code <= 122) { return true; }  // 'a' = 97, 'z' = 122
+        if (code >= 65 && code <= 90) { return true; }   // 'A'..'Z'
+        if (code >= 97 && code <= 122) { return true; }  // 'a'..'z'
         return ch == "_";
     }
 
+    /// @brief Identifier continuation char — letter, digit, or
+    ///        underscore.  Used by `readIdentifier` to consume the
+    ///        word body after the alpha start.
     hide func isAlphaNum(ch: String) -> Boolean {
         return isAlpha(ch) || isDigit(ch);
     }
 
-    // Read an integer or real number literal (e.g., 42, 3.14)
+    /// @brief Read a numeric literal starting at the current cursor.
+    ///
+    /// Emits `TK_INTEGER` by default.  If the digits are followed by
+    /// `.<digit>`, we consume the decimal point + fractional digits
+    /// and emit `TK_NUMBER` instead.  A trailing `.` with no digit
+    /// behind it is *not* consumed — that is probably the `.`
+    /// operator for qualified names (`schema.table`), so we leave it
+    /// for the next dispatch.
     hide func readNumber() -> Token {
         var startLine = line;
         var startCol = column;
@@ -117,8 +254,21 @@ class Lexer {
         return tok;
     }
 
-    // Read a quoted string literal. Supports both backslash escapes (\')
-    // and SQL-standard doubled quotes ('') for embedding quote characters.
+    /// @brief Read a quoted string literal (either `'...'` or
+    ///        `"..."`).
+    ///
+    /// Supports both escape styles:
+    ///   * SQL standard:   `''`  →  `'`   (doubled quote)
+    ///   * C-style:        `\'`  →  `'`   (backslash escape)
+    ///
+    /// The opening quote is consumed; contents are accumulated in a
+    /// `StringBuilder` (see `result.zia` rationale for why we avoid
+    /// string concatenation in a hot loop).  The matching closing
+    /// quote is consumed before returning.
+    ///
+    /// If we hit EOF without seeing the closing quote, return a
+    /// `TK_ERROR` with a descriptive text — the parser turns that
+    /// into a user-visible error (BUG-ADV-003 reference).
     hide func readString() -> Token {
         var startLine = line;
         var startCol = column;
@@ -129,6 +279,7 @@ class Lexer {
             var ch = peek();
             if ch == quote {
                 if peekNext() == quote {
+                    // SQL doubled-quote escape: `''` inside `'…'`.
                     SB.Append(sb, quote);
                     advance();
                     advance();
@@ -137,6 +288,7 @@ class Lexer {
                 break;
             }
             if ch == "\\" {
+                // C-style escape: copy the next character verbatim.
                 advance();
                 if (!isAtEnd()) {
                     SB.Append(sb, peek());
@@ -148,20 +300,25 @@ class Lexer {
             }
         }
 
-        // BUG-ADV-003: Detect unclosed string literals
+        // EOF-inside-string: report, do not crash.
         if (isAtEnd()) {
             var tok = new Token(TK_ERROR, "Unterminated string literal", startLine, startCol);
             return tok;
         }
 
-        advance();
+        advance();  // consume closing quote
 
         var tok = new Token(TK_STRING, SB.ToString(sb), startLine, startCol);
         return tok;
     }
 
-    // Read an identifier or keyword. The text is uppercased and checked
-    // against the keyword table; unrecognized words become TK_IDENTIFIER.
+    /// @brief Read a word: either a keyword or an identifier.
+    ///
+    /// We consume alpha-num characters until the run ends, then
+    /// uppercase the result and look it up in the keyword table.
+    /// Unrecognised words become `TK_IDENTIFIER`, preserving the
+    /// *original* (pre-uppercase) text so column names like
+    /// `LastName` survive case-preserved.
     hide func readIdentifier() -> Token {
         var startLine = line;
         var startCol = column;
@@ -178,9 +335,14 @@ class Lexer {
         return tok;
     }
 
-    // Map an uppercased word to its TK_* token kind, or TK_IDENTIFIER
-    // if it is not a reserved keyword. This is a linear scan over all
-    // SQL keywords — fast enough for typical query lengths.
+    /// @brief The big keyword switch — "is this word a reserved SQL
+    ///        word, and if so, which `TK_*`?"
+    ///
+    /// A linear series of `if word == "..."` comparisons.  Not a map
+    /// on purpose — see design choice (2) in the header.  Grouped
+    /// loosely by theme (DDL, DML, JOIN, etc.) for reading order; the
+    /// order does *not* affect correctness since the comparisons are
+    /// disjoint.
     hide func lookupKeyword(word: String) -> Integer {
         if (word == "CREATE") { return TK_CREATE; }
         if (word == "TABLE") { return TK_TABLE; }
@@ -304,7 +466,7 @@ class Lexer {
         if (word == "ROW") { return TK_ROW; }
         if (word == "RECURSIVE") { return TK_RECURSIVE; }
         if (word == "TEMPORARY") { return TK_TEMPORARY; }
-        if (word == "TEMP") { return TK_TEMPORARY; }
+        if (word == "TEMP") { return TK_TEMPORARY; }         // alias
         if (word == "USER") { return TK_USER; }
         if (word == "PASSWORD") { return TK_PASSWORD; }
         if (word == "GRANT") { return TK_GRANT; }
@@ -375,9 +537,20 @@ class Lexer {
         return TK_IDENTIFIER;
     }
 
-    // Return the next token from the input. Dispatches to specialized
-    // readers for numbers, identifiers/keywords, and strings, then
-    // handles operators and punctuation inline.
+    /// @brief The public entry point.  Return the next token,
+    ///        advancing the cursor past it.
+    ///
+    /// Dispatch order:
+    ///   1. Skip whitespace/comments.
+    ///   2. EOF? return TK_EOF.
+    ///   3. Digit?      → `readNumber`.
+    ///   4. Letter/_?   → `readIdentifier` (may produce a keyword).
+    ///   5. Quote?      → `readString`.
+    ///   6. Otherwise: single- or two-character operator /
+    ///      punctuation inline.
+    ///
+    /// Unknown single characters become `TK_ERROR` so the parser
+    /// can diagnose them without crashing the lexer.
     expose func nextToken() -> Token {
         skipWhitespace();
 
@@ -396,7 +569,7 @@ class Lexer {
 
         advance();
 
-        // Two-character operators
+        // Two-character operators.  We dispatch by first char + peek.
         if (ch == "<" && peek() == "=") { advance(); return new Token(TK_LE, "<=", startLine, startCol); }
         if (ch == ">" && peek() == "=") { advance(); return new Token(TK_GE, ">=", startLine, startCol); }
         if (ch == "<" && peek() == ">") { advance(); return new Token(TK_NE, "<>", startLine, startCol); }
@@ -405,13 +578,14 @@ class Lexer {
         if (ch == "~" && peek() == "*") { advance(); return new Token(TK_TILDE_STAR, "~*", startLine, startCol); }
         if (ch == "~") { return new Token(TK_TILDE, "~", startLine, startCol); }
 
-        // Single-character operators
+        // `-` vs `->` vs `->>` — order matters because we already
+        // consumed the `-`; the comment form `--` was handled in
+        // `skipWhitespace` and never reaches us.
         if (ch == "+") { return new Token(TK_PLUS, "+", startLine, startCol); }
-        // JSON path operators: -> and ->>  (must check before TK_MINUS)
         if (ch == "-" && peek() == ">") {
-            advance(); // consume >
+            advance();
             if (peek() == ">") {
-                advance(); // consume second >
+                advance();
                 return new Token(TK_ARROW_TEXT, "->>", startLine, startCol);
             }
             return new Token(TK_ARROW, "->", startLine, startCol);
@@ -424,7 +598,7 @@ class Lexer {
         if (ch == "<") { return new Token(TK_LT, "<", startLine, startCol); }
         if (ch == ">") { return new Token(TK_GT, ">", startLine, startCol); }
 
-        // Punctuation
+        // Punctuation.
         if (ch == "(") { return new Token(TK_LPAREN, "(", startLine, startCol); }
         if (ch == ")") { return new Token(TK_RPAREN, ")", startLine, startCol); }
         if (ch == ",") { return new Token(TK_COMMA, ",", startLine, startCol); }
@@ -433,6 +607,7 @@ class Lexer {
         if (ch == "[") { return new Token(TK_LBRACKET, "[", startLine, startCol); }
         if (ch == "]") { return new Token(TK_RBRACKET, "]", startLine, startCol); }
 
+        // Unknown character — not a parser crash, a lexer error.
         return new Token(TK_ERROR, ch, startLine, startCol);
     }
 }

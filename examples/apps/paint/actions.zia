@@ -1,0 +1,104 @@
+// actions.zia - Named input actions for Paint
+module actions;
+
+bind Viper.Input.Action as Action;
+bind Viper.Input.Keyboard as Keyboard;
+
+bind "./config";
+
+final ACT_QUIT = "quit";
+final ACT_NEW = "new";
+final ACT_OPEN = "open";
+final ACT_SAVE = "save";
+final ACT_SAVE_AS = "save_as";
+final ACT_CLEAR = "clear";
+final ACT_UNDO = "undo";
+final ACT_REDO = "redo";
+final ACT_SWAP_COLORS = "swap_colors";
+final ACT_SIZE_UP = "brush_size_up";
+final ACT_SIZE_DOWN = "brush_size_down";
+final ACT_ZOOM_IN = "zoom_in";
+final ACT_ZOOM_OUT = "zoom_out";
+final ACT_ZOOM_RESET = "zoom_reset";
+final ACT_FULLSCREEN = "fullscreen";
+final ACT_DEBUG = "debug";
+final ACT_NEXT_TOOL = "next_tool";
+final ACT_PREV_TOOL = "prev_tool";
+final ACT_TOOL_PENCIL = "tool_pencil";
+final ACT_TOOL_BRUSH = "tool_brush";
+final ACT_TOOL_ERASER = "tool_eraser";
+final ACT_TOOL_LINE = "tool_line";
+final ACT_TOOL_RECT = "tool_rect";
+final ACT_TOOL_ELLIPSE = "tool_ellipse";
+final ACT_TOOL_FILL = "tool_fill";
+final ACT_TOOL_EYEDROPPER = "tool_eyedropper";
+
+class PaintActions {
+    expose func init() {
+        Action.Clear();
+        defineButtons();
+    }
+
+    hide func bindKey(name: String, key: Integer) {
+        Action.Define(name);
+        Action.BindKey(name, key);
+    }
+
+    hide func defineButtons() {
+        bindKey(ACT_QUIT, Keyboard.get_KEY_ESCAPE());
+        Action.BindKey(ACT_QUIT, Keyboard.get_KEY_Q());
+
+        bindKey(ACT_NEW, Keyboard.get_KEY_N());
+        bindKey(ACT_OPEN, config.KEY_O);
+        bindKey(ACT_SAVE, config.KEY_S);
+        bindKey(ACT_SAVE_AS, Keyboard.get_KEY_F12());
+        bindKey(ACT_CLEAR, Keyboard.get_KEY_C());
+        bindKey(ACT_UNDO, config.KEY_Z);
+        bindKey(ACT_REDO, config.KEY_Y);
+        bindKey(ACT_SWAP_COLORS, config.KEY_X);
+        bindKey(ACT_SIZE_UP, config.KEY_RIGHT_BRACKET);
+        Action.BindKey(ACT_SIZE_UP, Keyboard.get_KEY_NUMADD());
+        Action.BindKey(ACT_SIZE_UP, Keyboard.get_KEY_EQUALS());
+        bindKey(ACT_SIZE_DOWN, config.KEY_LEFT_BRACKET);
+        Action.BindKey(ACT_SIZE_DOWN, Keyboard.get_KEY_NUMSUB());
+        Action.BindKey(ACT_SIZE_DOWN, Keyboard.get_KEY_MINUS());
+        bindKey(ACT_ZOOM_IN, Keyboard.get_KEY_PAGEUP());
+        bindKey(ACT_ZOOM_OUT, Keyboard.get_KEY_PAGEDOWN());
+        bindKey(ACT_ZOOM_RESET, Keyboard.get_KEY_HOME());
+        bindKey(ACT_FULLSCREEN, Keyboard.get_KEY_F11());
+        bindKey(ACT_DEBUG, Keyboard.get_KEY_F3());
+        bindKey(ACT_NEXT_TOOL, Keyboard.get_KEY_TAB());
+        bindKey(ACT_PREV_TOOL, Keyboard.get_KEY_BACKSPACE());
+
+        bindKey(ACT_TOOL_PENCIL, Keyboard.get_KEY_1());
+        Action.BindKey(ACT_TOOL_PENCIL, config.KEY_P);
+        bindKey(ACT_TOOL_BRUSH, Keyboard.get_KEY_2());
+        Action.BindKey(ACT_TOOL_BRUSH, config.KEY_B);
+        bindKey(ACT_TOOL_ERASER, Keyboard.get_KEY_3());
+        Action.BindKey(ACT_TOOL_ERASER, config.KEY_E);
+        bindKey(ACT_TOOL_LINE, Keyboard.get_KEY_4());
+        Action.BindKey(ACT_TOOL_LINE, config.KEY_L);
+        bindKey(ACT_TOOL_RECT, Keyboard.get_KEY_5());
+        Action.BindKey(ACT_TOOL_RECT, config.KEY_R);
+        bindKey(ACT_TOOL_ELLIPSE, Keyboard.get_KEY_6());
+        Action.BindKey(ACT_TOOL_ELLIPSE, config.KEY_O);
+        bindKey(ACT_TOOL_FILL, Keyboard.get_KEY_7());
+        Action.BindKey(ACT_TOOL_FILL, config.KEY_F);
+        bindKey(ACT_TOOL_EYEDROPPER, Keyboard.get_KEY_8());
+        Action.BindKey(ACT_TOOL_EYEDROPPER, config.KEY_I);
+    }
+
+    expose func pressed(name: String) -> Integer {
+        if Action.Pressed(name) {
+            return 1;
+        }
+        return 0;
+    }
+
+    expose func held(name: String) -> Integer {
+        if Action.Held(name) {
+            return 1;
+        }
+        return 0;
+    }
+}

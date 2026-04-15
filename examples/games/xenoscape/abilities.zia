@@ -1,13 +1,66 @@
 // =============================================================================
-// Ability System — Metroid-style progression gating
+// abilities.zia — Metroidvania progression: ability bitmask + gating
+// Part of Xenoscape  (the 2D sidescroller platformer demo)
 // =============================================================================
-// Manages player abilities that are acquired throughout the game. Each ability
-// unlocks new traversal/combat options and gates access to later levels.
 //
-// Abilities are stored as a bitmask for efficient checking. The world map and
-// level transitions check this bitmask to determine accessibility.
+// TUTORIAL — HOW METROIDVANIAS LOCK THEIR WORLD
+// ---------------------------------------------
+// The whole point of a metroidvania is that the world itself
+// is the puzzle: you can see rooms you can't yet reach, and
+// progression feels like *earning* your freedom of movement.
 //
-// Viper APIs: Viper.IO.SaveData for persistence
+// That mechanic has two pieces:
+//
+//   1. **Ability acquisition** — the player gains a new power
+//      (double-jump, dash, ground-pound, ...) at specific
+//      boss rooms or secret chambers.
+//   2. **Gating** — level content tagged with "this passage
+//      requires double-jump" opens only to players who have
+//      that ability.
+//
+// This file provides the data model for both.  Abilities are
+// stored as a single integer treated as a bitmask:
+//
+//     ABILITY_WALL_JUMP    = 1    (bit 0)
+//     ABILITY_DOUBLE_JUMP  = 2    (bit 1)
+//     ABILITY_DASH         = 4    (bit 2)
+//     ABILITY_CHARGE_SHOT  = 8    (bit 3)
+//     ABILITY_GROUND_POUND = 16   (bit 4)
+//     ABILITY_GRAPPLE      = 32   (bit 5)
+//
+// "Has ability X?"  →  `(mask & X) != 0`
+// "Grant ability X" →  `mask = mask | X`
+//
+// The bitmask fits in one integer, costs one AND on every
+// gating check, and serialises to a single save-slot key
+// (`slotAbilities` in save.zia).  Scales trivially to dozens
+// of abilities.
+//
+// GATING
+// ------
+// Gates use the *same* bitmask values.  A world-map edge
+// tagged `GATE_DOUBLE_JUMP` opens to any player whose ability
+// mask ANDs non-zero with that flag.  A door in the level
+// can reuse the same constant.  One vocabulary, one check.
+//
+// WHERE THIS FITS
+// ---------------
+//     save.zia     ──►  persists the ability mask per slot.
+//     menu.zia     ──►  title "abilities unlocked" summary.
+//     worldmap.zia ──►  gate edges by ability.
+//     level.zia    ──►  gate doors / breakable walls.
+//     player.zia   ──►  consult before doing dash/double/
+//                       charge/pound.
+//
+// HOW TO READ THIS FILE
+// ---------------------
+//   1. ABILITY_* and GATE_* constants.
+//   2. Name/description helpers for UI.
+//   3. AbilityManager — owns the mask, also owns the
+//      per-ability runtime state (dash timer, charge level,
+//      pound velocity).  Game.zia hands this to Player for
+//      per-frame ability updates.
+//
 // =============================================================================
 
 module abilities;
@@ -33,6 +86,10 @@ final ABILITY_COUNT = 6;
 // =============================================================================
 // Ability names and descriptions (for UI)
 // =============================================================================
+/// @brief Map a single ability flag to its display name.
+///        Used by the HUD, the acquisition popup, and the
+///        save-slot summary.  Unknown flag returns "Unknown"
+///        rather than empty so a UI bug shows up loudly.
 func abilityName(flag: Integer) -> String {
     if flag == ABILITY_WALL_JUMP   { return "Wall Jump"; }
     if flag == ABILITY_DOUBLE_JUMP { return "Double Jump"; }
@@ -43,6 +100,9 @@ func abilityName(flag: Integer) -> String {
     return "Unknown";
 }
 
+/// @brief One-line "what this does" text for the acquisition
+///        popup and the pause-menu ability list.  Empty string
+///        for unknown flags — the popup just shows the name.
 func abilityDescription(flag: Integer) -> String {
     if flag == ABILITY_WALL_JUMP   { return "Jump off walls to reach higher areas."; }
     if flag == ABILITY_DOUBLE_JUMP { return "Jump again in mid-air."; }
@@ -69,7 +129,19 @@ final GATE_GRAPPLE = 32;      // Need grapple (anchor point swings)
 // =============================================================================
 // Ability Manager Entity
 // =============================================================================
+/// @brief Owns the player's ability bitmask plus all
+///        per-ability *runtime* state (dash timers, charge
+///        level, pound speed, grapple target).
+///
+/// One instance lives on `Game`; player.zia consults it
+/// every frame via `has(flag)` to decide whether to enable
+/// the corresponding action.  When a boss/secret grants a
+/// new ability, `grant(flag)` flips the bit AND triggers a
+/// 2-second freeze-frame UI pop-up.
 class AbilityManager {
+    /// @brief Stub.  `initAbilities(palette)` does the real
+    ///        construction; the two-phase pattern matches
+    ///        every other subsystem.
     expose func init() {}
     hide Integer acquired;     // Bitmask of acquired abilities
     hide Integer justGotAbility; // Flag for acquisition animation
@@ -98,6 +170,10 @@ class AbilityManager {
     hide Integer grappleTargetY;
     hide Integer grappleTimer;
 
+    /// @brief Real construction — wires the palette reference
+    ///        and resets every per-ability runtime field.
+    ///        Starts the player with `ABILITY_WALL_JUMP` (the
+    ///        tutorial gives it for free).
     expose func initAbilities(p: Palette) {
         pal = p;
         acquired = ABILITY_WALL_JUMP; // Start with wall jump
@@ -119,12 +195,18 @@ class AbilityManager {
         grappleTimer = 0;
     }
 
-    // Check if player has a specific ability.
+    /// @brief Bit-test on the acquired mask.  Quick `(mask /
+    ///        flag) % 2 == 1` instead of `(mask & flag) != 0`
+    ///        because Zia integers don't expose `&` directly
+    ///        in this code path; same result.
     expose func has(flag: Integer) -> Boolean {
         return (acquired / flag) % 2 == 1;
     }
 
-    // Grant an ability. Triggers acquisition animation.
+    /// @brief Unlock an ability.  Idempotent — re-granting an
+    ///        already-owned ability is a no-op (no extra
+    ///        popup).  Triggers the 2-second acquisition
+    ///        animation by setting `acquireTimer = 120`.
     expose func grant(flag: Integer) {
         if has(flag) { return; } // Already have it
         acquired = acquired + flag;
@@ -133,24 +215,33 @@ class AbilityManager {
         lastAcquired = flag;
     }
 
-    // Check if a gate can be passed.
+    /// @brief "Can the player pass a gate that requires
+    ///        `gateFlag`?"  GATE_NONE always opens; otherwise
+    ///        delegates to `has`.  Used by `worldmap.zia` and
+    ///        by gated doors in `level.zia`.
     expose func canPassGate(gateFlag: Integer) -> Boolean {
         if gateFlag == GATE_NONE { return true; }
         return has(gateFlag);
     }
 
-    // Get the full bitmask (for save system).
+    /// @brief Read the raw mask.  Save system serialises
+    ///        this as one integer per slot.
     expose func getMask() -> Integer {
         return acquired;
     }
 
-    // Restore from save.
+    /// @brief Restore mask from save.  Bypasses the popup
+    ///        animation (we don't want a "Wall Jump
+    ///        unlocked!" pop on every game load).
     expose func setMask(mask: Integer) {
         acquired = mask;
     }
 
     // ─── Dash Ability ──────────────────────────────────────────────
 
+    /// @brief Begin a dash if the ability is unlocked AND no
+    ///        cooldown is active AND not already dashing.
+    ///        ~160 ms duration, ~480 ms cooldown.
     expose func startDash(facingRight: Boolean) {
         if not has(ABILITY_DASH) { return; }
         if isDashing { return; }
@@ -161,6 +252,10 @@ class AbilityManager {
         if facingRight { dashDirX = 1; } else { dashDirX = -1; }
     }
 
+    /// @brief Per-frame dash driver.  Returns the velocity
+    ///        boost to apply (×100 units, signed by direction)
+    ///        while dashing, or 0 when idle.  Decrements
+    ///        cooldown every frame regardless.
     expose func updateDash() -> Integer {
         if dashCooldown > 0 { dashCooldown = dashCooldown - 1; }
         if not isDashing { return 0; }
@@ -173,10 +268,15 @@ class AbilityManager {
         return dashDirX * 2000; // Very fast horizontal burst
     }
 
+    /// @brief "Is the player currently mid-dash?"  Used by
+    ///        renderer to draw the dash trail.
     expose func getDashing() -> Boolean { return isDashing; }
 
     // ─── Charge Shot ───────────────────────────────────────────────
 
+    /// @brief Begin charging.  No-op if the player hasn't
+    ///        unlocked the ability.  Resets timer + level so
+    ///        repeated press-cancels don't accumulate state.
     expose func startCharge() {
         if not has(ABILITY_CHARGE_SHOT) { return; }
         isCharging = true;
@@ -184,6 +284,10 @@ class AbilityManager {
         chargeLevel = 0;
     }
 
+    /// @brief Per-frame: bump the charge timer; promote
+    ///        chargeLevel through 0 → 1 → 2 at 320 ms / 640 ms.
+    ///        Visual feedback (player aura colour) reads
+    ///        chargeLevel each frame.
     expose func updateCharge() {
         if not isCharging { return; }
         chargeTimer = chargeTimer + 1;
@@ -191,6 +295,9 @@ class AbilityManager {
         else { if chargeTimer >= 20 { chargeLevel = 1; } } // Partial at ~320ms
     }
 
+    /// @brief Stop charging and return the charge level reached
+    ///        (0 / 1 / 2).  The shoot path uses the level to
+    ///        scale damage and bullet visuals.
     expose func releaseCharge() -> Integer {
         if not isCharging { return 0; }
         isCharging = false;
@@ -200,19 +307,32 @@ class AbilityManager {
         return level; // 0=no charge, 1=partial (2x damage), 2=full (3x + break walls)
     }
 
+    /// @brief Read current charge level.  Player sprite shows
+    ///        a glow keyed off this value.
     expose func getChargeLevel() -> Integer { return chargeLevel; }
 
     // ─── Ground Pound ──────────────────────────────────────────────
 
+    /// @brief Begin a ground pound (only mid-air, only with
+    ///        ability).  The actual airborne check happens in
+    ///        player.zia; here we just flip the flag and pin
+    ///        the downward velocity.
     expose func startPound() {
         if not has(ABILITY_GROUND_POUND) { return; }
         isPounding = true;
-        poundSpeed = 2500; // Very fast downward (x100)
+        poundSpeed = 2500;
     }
 
+    /// @brief "Currently slamming downward?"  Player.zia
+    ///        forces vy to `poundSpeed` while this is true.
     expose func getPounding() -> Boolean { return isPounding; }
+
+    /// @brief Pound velocity (×100 units, downward positive).
     expose func getPoundSpeed() -> Integer { return poundSpeed; }
 
+    /// @brief Land + end the pound (called from the player's
+    ///        landing branch).  Renderer/particles trigger the
+    ///        shockwave separately.
     expose func endPound() {
         isPounding = false;
         poundSpeed = 0;
@@ -220,6 +340,9 @@ class AbilityManager {
 
     // ─── Acquisition UI ────────────────────────────────────────────
 
+    /// @brief Per-frame: tick down the acquisition popup
+    ///        timer.  When it hits 0, the popup vanishes and
+    ///        gameplay resumes.
     expose func updateUI() {
         if acquireTimer > 0 {
             acquireTimer = acquireTimer - 1;
@@ -229,6 +352,10 @@ class AbilityManager {
         }
     }
 
+    /// @brief Render the freeze-frame "NEW ABILITY" popup
+    ///        when `acquireTimer > 0`.  Three layers: dim
+    ///        backdrop, centred title + name + description,
+    ///        pulsing glow disc.  No-op outside the window.
     expose func drawAcquisitionUI(canvas: Canvas) {
         if acquireTimer <= 0 { return; }
 
@@ -255,7 +382,10 @@ class AbilityManager {
                          Color.RGB(255, 200, 50), 60);
     }
 
-    // Draw ability icons on HUD.
+    /// @brief Render the small ability-icon strip that lives
+    ///        in the top-right of the HUD.  Each unlocked
+    ///        ability draws as a small icon; locked ones show
+    ///        as a dim outline.
     expose func drawHUD(canvas: Canvas) {
         var startX = SCREEN_W - 200;
         var y = 8;

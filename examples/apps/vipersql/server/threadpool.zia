@@ -1,10 +1,56 @@
-// threadpool.zia — SQL Server Thread Pool
-// Part of ViperSQL
+// =============================================================================
+// threadpool.zia — Thread pool for accepting concurrent clients
+// Part of ViperSQL  (package: server)
+// =============================================================================
 //
-// Uses the Viper.Threads.Pool runtime class for connection handling.
-// Worker threads are pre-allocated and pull clients from the pool's
-// internal task queue. Falls back to direct thread spawn when the
-// pool is not initialized (e.g., standalone REPL mode).
+// PURPOSE
+// -------
+// Wraps the Viper runtime's `Viper.Threads.Pool` class so the SQL
+// server can hand every new client to a worker thread without
+// blocking its accept loop.  When the pool is off (the default for
+// standalone-REPL mode), we fall back to spawning a fresh thread
+// per connection — still correct, just less efficient.
+//
+// WHERE THIS FITS
+// ---------------
+//     vipersql.zia / main.zia
+//         │  calls `sql_pool_init(size)` at startup
+//         ▼
+//     server/tcp_server.zia
+//         │  accept loop
+//         ▼
+//     server/threadpool.zia   (YOU ARE HERE — submit to pool)
+//         │
+//         ▼
+//     server/connection.zia   (handleSqlClient / handlePgClient)
+//
+// KEY DESIGN CHOICES
+// ------------------
+//   1. Module-level state.  The pool is a singleton — one
+//      server, one pool.  `pool`, `poolRunning`, `poolSize` are
+//      plain module variables.  No class ceremony for a
+//      genuinely-global resource.
+//
+//   2. Bounded size.  `sql_pool_init` clamps to `[1, 100]`.
+//      Lower bound prevents the "0 workers = hang" footgun,
+//      upper bound is a defensive cap against
+//      `--pool-size=1000000`.
+//
+//   3. Fallback to direct thread spawn.  If the pool was never
+//      initialised, `sql_pool_submit*` still works — it just
+//      runs `Threads.Thread.StartSafe` for every client.  Means
+//      the REPL mode doesn't need to bring up a pool it would
+//      never use.
+//
+// HOW TO READ THIS FILE
+// ---------------------
+//   * Module state at the top.
+//   * `sql_pool_init` — startup.
+//   * `sql_pool_submit` / `sql_pool_submit_pg` — the two submit
+//     paths (text protocol vs PG wire).
+//   * Stats helpers at the bottom for the SHOW STATUS command.
+//
+// =============================================================================
 
 module threadpool;
 
@@ -15,18 +61,29 @@ bind Viper.Threads.Pool as Pool;
 bind "./connection";
 
 //=============================================================================
-// POOL STATE
+// MODULE STATE
 //=============================================================================
 
+// Pool handle.  Valid after `sql_pool_init` returns.
 var pool: Pool;
+
+// Whether `sql_pool_init` ran and set `pool`.  The submit paths
+// branch on this — if false, they spawn threads directly.
 var poolRunning: Boolean;
+
+// Configured worker count.  Captured for the stats line.
 var poolSize: Integer;
 
 //=============================================================================
 // INITIALIZATION
 //=============================================================================
 
-// Initialize the thread pool with the given number of worker threads.
+/// @brief Build the pool with `size` worker threads.
+///
+/// Clamps `size` to [1, 100] for the reasons in design choice 2.
+/// Must be called before `sql_pool_submit*` if pool mode is
+/// desired; otherwise the fallback thread-per-connection path
+/// still works.
 func sql_pool_init(size: Integer) {
     var requestedSize = size;
     if requestedSize < 1 { requestedSize = 1; }
@@ -38,10 +95,12 @@ func sql_pool_init(size: Integer) {
 }
 
 //=============================================================================
-// SUBMIT CLIENT
+// SUBMIT
 //=============================================================================
 
-// Submit a text protocol client connection to the pool.
+/// @brief Run a text-protocol client in the pool (or a fresh
+///        thread if no pool).  `client` is a raw network-handle
+///        pointer the connection handler will unwrap.
 func sql_pool_submit(client: Ptr) {
     if poolRunning {
         Pool.Submit(pool, &handleSqlClient, client);
@@ -50,7 +109,11 @@ func sql_pool_submit(client: Ptr) {
     }
 }
 
-// Submit a PG wire protocol client connection to the pool.
+/// @brief Same as `sql_pool_submit` but dispatches to the PG
+///        wire-protocol handler.  Separate function because the
+///        two protocols have completely different entry points
+///        and we want the pool-submit site to name the right
+///        worker directly.
 func sql_pool_submit_pg(client: Ptr) {
     if poolRunning {
         Pool.Submit(pool, &handlePgClient, client);
@@ -63,6 +126,7 @@ func sql_pool_submit_pg(client: Ptr) {
 // STATISTICS
 //=============================================================================
 
+/// @brief One-line pool status for the SHOW STATUS command.
 func sql_pool_stats() -> String {
     if poolRunning == false { return "Pool: not initialized"; }
     return "Pool: " + Fmt.Int(poolSize) + " workers, " +
@@ -70,10 +134,12 @@ func sql_pool_stats() -> String {
            Fmt.Int(Pool.get_Pending(pool)) + " pending";
 }
 
+/// @brief Configured worker count.
 func sql_pool_size() -> Integer {
     return poolSize;
 }
 
+/// @brief "Has the pool been initialised?"
 func sql_pool_is_running() -> Boolean {
     return poolRunning;
 }

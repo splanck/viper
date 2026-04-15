@@ -275,7 +275,7 @@ game.flash(0xFF000088, 160);        // RGBA color, duration (ms)
 ```zia
 // In a scene's update():
 if playerWon {
-    game.transitionTo(game.victoryScene, 0x00000000, 500);  // Black fade, 500ms
+    game.transitionTo(game.victoryScene, 0x000000FF, 500);  // Black fade, 500ms
 }
 ```
 
@@ -290,10 +290,10 @@ For advanced effects, access ScreenFX directly:
 
 ```zia
 var fx = game.getFX();
-fx.FadeOut(300, 0xFF000080);   // Manual fade control
+fx.FadeOut(0xFF000080, 300);   // Manual fade control
 ```
 
-The overlay is rendered automatically — GameBase handles the `BoxAlpha` rendering each frame.
+The overlay is rendered automatically — GameBase delegates to `ScreenFX.Draw()` each frame.
 
 ---
 

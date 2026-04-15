@@ -1,14 +1,63 @@
 // =============================================================================
-// Achievement System — Track and display player accomplishments
+// achievements.zia — 32 achievements tracked by a runtime AchievementTracker
+// Part of Xenoscape  (the 2D sidescroller platformer demo)
 // =============================================================================
-// 30+ achievements across categories: exploration, combat, bosses, collection,
-// speedrunning, and secret challenges. Uses Viper.Game.AchievementTracker for
-// bitmask unlock tracking, stat counters, and notification popup rendering.
 //
-// Custom screen drawing (achievement grid with categories) is kept locally;
-// the tracker handles unlock logic, stats, and notification animations.
+// TUTORIAL — ACHIEVEMENTS AS A SEPARATE SUBSYSTEM
+// -----------------------------------------------
+// Achievements are a different kind of progression from
+// abilities.  They record *noteworthy events*: "defeated all
+// bosses", "collected every gem", "finished a level in under
+// 2 minutes".  Game code emits events; the achievement
+// subsystem records them and, when certain criteria are met,
+// fires an "unlocked!" popup.
 //
-// Viper APIs: Viper.Game.AchievementTracker, Canvas drawing, Color.RGB
+// The architecture here has three pieces:
+//
+//   1. **Categories** (ACH_CAT_*) — exploration, combat, boss,
+//      collection, speedrun, secret.  Purely organisational;
+//      the menu UI groups achievements by category.
+//
+//   2. **`Viper.Game.AchievementTracker`** — the runtime
+//      class that owns:
+//        - the unlocked-bit bitmask (one bit per achievement),
+//        - stat counters (`enemies_killed`, `coins_total`,
+//          `deaths`, ...),
+//        - the rolling notification popup animation.
+//      It serialises to SaveData so progress survives restarts.
+//
+//   3. **Custom grid UI** — the "view your achievements" menu
+//      is hand-drawn here (grid of icons with
+//      locked/unlocked/secret states).  Not a runtime widget
+//      because the visual style is very game-specific.
+//
+// HOW CODE FIRES ACHIEVEMENTS
+// ---------------------------
+// Event-driven.  Any gameplay file can call:
+//
+//     tracker.Increment("enemies_killed", 1);
+//     tracker.Unlock(ACH_FIRST_BOSS);
+//
+// The tracker does the bookkeeping, decides when a threshold
+// achievement crosses its trigger (e.g. `enemies_killed >=
+// 100` fires ACH_CENTURION), and queues popups.
+//
+// WHERE THIS FITS
+// ---------------
+//     save.zia               ──►  persists achievement state.
+//     enemy.zia, pickups.zia, game.zia
+//                            ──►  fire Increment / Unlock on
+//                                 events.
+//     menu.zia               ──►  renders the grid UI.
+//     game.zia (HUD overlay) ──►  renders notification popups.
+//
+// HOW TO READ THIS FILE
+// ---------------------
+//   1. Category + count constants.
+//   2. ACH_* achievement id list (32 of them).
+//   3. `AchievementManager` — wraps the runtime tracker with
+//      game-specific event handlers and the grid UI renderer.
+//
 // =============================================================================
 
 module achievements;
@@ -44,7 +93,18 @@ final STAT_LONGEST_COMBO = 10;
 final STAT_CURRENT_COMBO = 11;
 final STAT_SPEEDRUN_BEST = 12;
 
+/// @brief The game-side achievement coordinator.  Wraps the
+///        runtime `AchievementTracker`, defines all 32
+///        achievements, exposes one event-handler per
+///        gameplay event, and renders the achievements
+///        screen.
+///
+/// One instance lives on `Game`.  Gameplay subsystems call
+/// the `on*` event hooks; this class translates those into
+/// `tracker.Increment(stat, n)` / `tracker.Unlock(idx)`
+/// calls.  The tracker handles persistence + popups.
 class AchievementSystem {
+    /// @brief Stub.  Real construction is `initAchievements`.
     expose func init() {}
     hide Palette pal;
     hide AchievementTracker tracker;
@@ -53,6 +113,9 @@ class AchievementSystem {
     hide List[String] achNames;      // Cached locally for custom screen rendering
     hide List[String] achDescs;
 
+    /// @brief Allocate a tracker, define the 32 achievements,
+    ///        load any persisted state.  Called once at game
+    ///        boot.
     expose func initAchievements(p: Palette) {
         pal = p;
         tracker = AchievementTracker.New(ACH_COUNT);
@@ -64,6 +127,10 @@ class AchievementSystem {
         defineAchievements();
     }
 
+    /// @brief Register all 32 achievements with the tracker:
+    ///        name, description, category, accent colour.
+    ///        The order here defines the indices used by
+    ///        `tracker.Unlock(N)`.
     hide func defineAchievements() {
         // ─── Exploration (0-5) ────────────────────────────────────────
         addAch("First Steps", "Complete the Crash Site tutorial.", ACH_CAT_EXPLORE, Color.RGB(80, 160, 200));
@@ -110,6 +177,9 @@ class AchievementSystem {
         addAch("True Ending", "Defeat The Architect with all abilities and 100% lore.", ACH_CAT_SECRET, Color.RGB(255, 255, 255));
     }
 
+    /// @brief Add one achievement to the tracker.  The
+    ///        achievement's index becomes its unlock id (used
+    ///        by `tracker.Unlock(idx)`).
     hide func addAch(name: String, desc: String, cat: Integer, color: Integer) {
         var idx = achNames.length();
         tracker.Add(idx, name, desc);
@@ -121,6 +191,23 @@ class AchievementSystem {
 
     // ─── Stat tracking (called from game.zia) ─────────────────────────
 
+    //=========================================================
+    // EVENT HOOKS
+    //=========================================================
+    // Each `on*` method is a single one-liner: bump a stat
+    // counter and/or unlock an achievement.  Gameplay code
+    // calls these on the matching events; the actual
+    // achievement-trigger logic (e.g. "10 enemies killed
+    // unlocks ACH_BUTCHER") lives here, not in the
+    // gameplay code.
+    //
+    // Adding a new achievement is a 3-step:
+    //   1. `addAch(...)` in `defineAchievements` — picks the index.
+    //   2. `tracker.Unlock(idx)` in the appropriate `on*` hook.
+    //   3. Optionally: a new `STAT_*` if the trigger needs a counter.
+
+    /// @brief Enemy killed — bump kill stat, check threshold
+    ///        achievements (BUTCHER, MASS_MURDERER, ...).
     expose func onEnemyKilled() {
         tracker.IncrementStat(STAT_ENEMIES_KILLED, 1);
         tracker.IncrementStat(STAT_CURRENT_COMBO, 1);
@@ -131,50 +218,67 @@ class AchievementSystem {
         checkCombat();
     }
 
+    /// @brief Took damage — counts toward "no-hit" badges.
     expose func onPlayerHit() {
         tracker.SetStat(STAT_CURRENT_COMBO, 0);
     }
 
+    /// @brief Died — bumps death counter; some "I'm bad at
+    ///        this game" badges unlock here.
     expose func onPlayerDeath() {
         tracker.IncrementStat(STAT_DEATHS, 1);
         tracker.SetStat(STAT_CURRENT_COMBO, 0);
         if tracker.GetStat(STAT_DEATHS) == 10 { tracker.Unlock(30); }
     }
 
+    /// @brief Coin pickup.  Triggers HOARDER tier achievements
+    ///        on round numbers.
     expose func onCoinCollected() {
         tracker.IncrementStat(STAT_COINS_COLLECTED, 1);
         checkCollection();
     }
 
+    /// @brief Gem pickup (rarer than coins; unlocks earlier).
     expose func onGemCollected() {
         tracker.IncrementStat(STAT_GEMS_COLLECTED, 1);
         checkCollection();
     }
 
+    /// @brief Bullet fired.  Used by "fire 1000 shots"
+    ///        achievement.
     expose func onBulletFired() {
         tracker.IncrementStat(STAT_BULLETS_SHOT, 1);
         if tracker.GetStat(STAT_BULLETS_SHOT) == 200 { tracker.Unlock(10); }
     }
 
+    /// @brief Dash trigger.  Counts toward DASH MASTER.
     expose func onDashUsed() {
         tracker.IncrementStat(STAT_DASHES_USED, 1);
         if tracker.GetStat(STAT_DASHES_USED) == 50 { tracker.Unlock(12); }
     }
 
+    /// @brief Ground-pound trigger.  Counts toward POUNDER.
     expose func onPoundUsed() {
         tracker.IncrementStat(STAT_POUNDS_USED, 1);
         if tracker.GetStat(STAT_POUNDS_USED) == 25 { tracker.Unlock(13); }
     }
 
+    /// @brief Jump.  Used by JUMP_SPAMMER style achievements.
     expose func onJump() {
         tracker.IncrementStat(STAT_JUMPS, 1);
     }
 
+    /// @brief Lore terminal scanned.  `count` is the new
+    ///        total — passed in so we can unlock both step
+    ///        ("Found 5 lore") and complete ("Found all
+    ///        lore") milestones in one call.
     expose func onLoreFound(count: Integer) {
         tracker.SetStat(STAT_LORE_FOUND, count);
         if count >= 10 { tracker.Unlock(23); }
     }
 
+    /// @brief Player entered a level.  Used by EXPLORER
+    ///        style "reach level N" achievements.
     expose func onLevelReached(levelNum: Integer) {
         if levelNum >= 1 { tracker.Unlock(0); }
         if levelNum >= 2 { tracker.Unlock(1); }
@@ -184,6 +288,8 @@ class AchievementSystem {
         if levelNum >= 10 { tracker.Unlock(5); }
     }
 
+    /// @brief Boss kill.  Each boss has its own achievement;
+    ///        the final one unlocks BOSS RUSH MASTER.
     expose func onBossDefeated(bossType: Integer) {
         tracker.IncrementStat(STAT_BOSSES_DEFEATED, 1);
         if bossType == ENEMY_SPORE_MOTHER { tracker.Unlock(14); }
@@ -193,6 +299,11 @@ class AchievementSystem {
         if tracker.GetStat(STAT_BOSSES_DEFEATED) >= 4 { tracker.Unlock(18); }
     }
 
+    /// @brief Level cleared.  The two parameters enable
+    ///        time-based ("under 2 minutes") and pacifist
+    ///        ("zero damage") achievements without coupling
+    ///        the gameplay code to the achievement
+    ///        thresholds.
     expose func onLevelComplete(timeMs: Integer, damageTaken: Integer) {
         if timeMs < 60000 { tracker.Unlock(25); }
         if timeMs < 30000 { tracker.Unlock(26); }
@@ -202,9 +313,17 @@ class AchievementSystem {
         }
     }
 
+    /// @brief Player has unlocked every ability.  Triggered
+    ///        by `abilities.zia` once its mask covers all bits.
     expose func onAllAbilities() { tracker.Unlock(28); }
+
+    /// @brief All lore terminals scanned.  Triggered by
+    ///        `lore.zia` when the collected mask hits full.
     expose func onAllLore() { tracker.Unlock(24); }
 
+    /// @brief Read combat counters and unlock any
+    ///        threshold-tier kill achievements that just
+    ///        crossed.  Called from `onEnemyKilled`.
     hide func checkCombat() {
         var kills = tracker.GetStat(STAT_ENEMIES_KILLED);
         var combo = tracker.GetStat(STAT_CURRENT_COMBO);
@@ -215,6 +334,9 @@ class AchievementSystem {
         if combo >= 5 { tracker.Unlock(11); }
     }
 
+    /// @brief Read collection counters (coins / gems) and
+    ///        unlock collection-tier achievements.  Called
+    ///        from `onCoinCollected` / `onGemCollected`.
     hide func checkCollection() {
         var coins = tracker.GetStat(STAT_COINS_COLLECTED);
         var gems = tracker.GetStat(STAT_GEMS_COLLECTED);
@@ -226,26 +348,41 @@ class AchievementSystem {
 
     // ─── Query (delegates to tracker) ──────────────────────────────────
 
+    /// @brief "Has this achievement been unlocked?"  Used by
+    ///        the achievements grid UI to dim locked icons.
     expose func isUnlocked(idx: Integer) -> Boolean {
         return tracker.IsUnlocked(idx);
     }
 
+    /// @brief Count of unlocked achievements.  Used by the
+    ///        title screen ("23/32 unlocked").
     expose func getUnlockedCount() -> Integer {
         return tracker.UnlockedCount;
     }
 
     // ─── Update + Draw (delegates to tracker notification system) ────
 
+    /// @brief Per-frame: tick the popup animation.  When an
+    ///        achievement was just unlocked, the tracker
+    ///        runs a slide-in / hold / slide-out animation
+    ///        over ~3 seconds.
     expose func update(dt: Integer) {
         tracker.Update(dt);
     }
 
     // Draw achievement notification popup (rendered by AchievementTracker)
+    /// @brief Draw the in-game notification popup overlay
+    ///        (top-right toast).  Called every frame; no-op
+    ///        when no notification is queued.
     expose func drawNotification(canvas: Canvas) {
         tracker.Draw(canvas);
     }
 
     // Draw full achievements screen
+    /// @brief Draw the full achievements page (pause-menu
+    ///        tab).  Grid of icons grouped by category;
+    ///        `selectedIdx` is highlighted and its description
+    ///        rendered at the bottom.
     expose func drawScreen(canvas: Canvas, selectedIdx: Integer) {
         canvas.BoxAlpha(0, 0, SCREEN_W, SCREEN_H, Color.RGB(0, 0, 10), 200);
 
@@ -326,6 +463,8 @@ class AchievementSystem {
                                   Color.RGB(60, 70, 90), 1);
     }
 
+    /// @brief "EXPLORE" / "COMBAT" / etc. for category
+    ///        section headers on the achievements page.
     hide func getCategoryName(cat: Integer) -> String {
         if cat == ACH_CAT_EXPLORE { return "Explore"; }
         if cat == ACH_CAT_COMBAT { return "Combat"; }
@@ -337,9 +476,22 @@ class AchievementSystem {
     }
 
     // ─── Persistence (save/load via tracker bitmask) ──────────────────
+    /// @brief Read the unlock bitmask.  Save system serialises
+    ///        this as one integer.
     expose func getMask() -> Integer { return tracker.Mask; }
+
+    /// @brief Restore the unlock bitmask from save.  Skips the
+    ///        popup animations on load — same reason as
+    ///        `AbilityManager.setMask`.
     expose func setMask(mask: Integer) { tracker.Mask = mask; }
+
+    /// @brief Lifetime kill counter.  Surfaced on the title
+    ///        screen's stats summary.
     expose func getTotalKills() -> Integer { return tracker.GetStat(STAT_ENEMIES_KILLED); }
+
+    /// @brief Lifetime coin counter.
     expose func getTotalCoins() -> Integer { return tracker.GetStat(STAT_COINS_COLLECTED); }
+
+    /// @brief Lifetime death counter.
     expose func getTotalDeaths() -> Integer { return tracker.GetStat(STAT_DEATHS); }
 }

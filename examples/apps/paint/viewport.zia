@@ -1,0 +1,235 @@
+// viewport.zia - Scrollable/zoomable drawing viewport
+module viewport;
+
+bind Viper.Graphics;
+
+bind "./config";
+
+class CanvasViewport {
+    expose Integer x;
+    expose Integer y;
+    expose Integer width;
+    expose Integer height;
+    expose Integer zoom;      // Percent, 100 = 1:1
+    expose Integer scrollX;   // Canvas-space pixels
+    expose Integer scrollY;
+    hide Pixels? scaledCache;
+    hide Integer scaledRevision;
+    hide Integer scaledZoom;
+    hide Integer scaledW;
+    hide Integer scaledH;
+
+    expose func init() {
+        x = 0;
+        y = 0;
+        width = 0;
+        height = 0;
+        zoom = 100;
+        scrollX = 0;
+        scrollY = 0;
+        scaledCache = null;
+        scaledRevision = -1;
+        scaledZoom = 0;
+        scaledW = 0;
+        scaledH = 0;
+    }
+
+    expose func setup(vx: Integer, vy: Integer, vw: Integer, vh: Integer) {
+        x = vx;
+        y = vy;
+        width = vw;
+        height = vh;
+        clampViewportSize();
+        zoom = 100;
+        scrollX = 0;
+        scrollY = 0;
+        invalidateCache();
+    }
+
+    expose func resize(vx: Integer, vy: Integer, vw: Integer, vh: Integer, contentW: Integer, contentH: Integer) {
+        x = vx;
+        y = vy;
+        width = vw;
+        height = vh;
+        clampViewportSize();
+        clampScroll(contentW, contentH);
+    }
+
+    expose func contains(sx: Integer, sy: Integer) -> Integer {
+        if sx >= x and sx < x + width and sy >= y and sy < y + height {
+            return 1;
+        }
+        return 0;
+    }
+
+    expose func screenToCanvasX(sx: Integer) -> Integer {
+        return ((sx - x) * 100 / zoom) + scrollX;
+    }
+
+    expose func screenToCanvasY(sy: Integer) -> Integer {
+        return ((sy - y) * 100 / zoom) + scrollY;
+    }
+
+    expose func canvasToScreenX(cx: Integer) -> Integer {
+        return x + (cx - scrollX) * zoom / 100;
+    }
+
+    expose func canvasToScreenY(cy: Integer) -> Integer {
+        return y + (cy - scrollY) * zoom / 100;
+    }
+
+    expose func canvasSizeToScreen(size: Integer) -> Integer {
+        var result = size * zoom / 100;
+        if result < 1 {
+            result = 1;
+        }
+        return result;
+    }
+
+    expose func zoomIn(contentW: Integer, contentH: Integer) {
+        if zoom < 400 {
+            if zoom < 100 {
+                zoom = zoom + 25;
+            } else {
+                zoom = zoom + 50;
+            }
+        }
+        clampScroll(contentW, contentH);
+    }
+
+    expose func zoomOut(contentW: Integer, contentH: Integer) {
+        if zoom > 25 {
+            if zoom <= 100 {
+                zoom = zoom - 25;
+            } else {
+                zoom = zoom - 50;
+            }
+        }
+        if zoom < 25 { zoom = 25; }
+        clampScroll(contentW, contentH);
+    }
+
+    expose func resetZoom(contentW: Integer, contentH: Integer) {
+        zoom = 100;
+        scrollX = 0;
+        scrollY = 0;
+        clampScroll(contentW, contentH);
+    }
+
+    expose func panBy(dx: Integer, dy: Integer, contentW: Integer, contentH: Integer) {
+        scrollX = scrollX + dx;
+        scrollY = scrollY + dy;
+        clampScroll(contentW, contentH);
+    }
+
+    expose func applyWheel(wheelX: Integer, wheelY: Integer, contentW: Integer, contentH: Integer, ctrlDown: Integer) {
+        if ctrlDown == 1 {
+            if wheelY > 0 {
+                zoomIn(contentW, contentH);
+            } else if wheelY < 0 {
+                zoomOut(contentW, contentH);
+            }
+            return;
+        }
+
+        if wheelY != 0 {
+            panBy(0, 0 - wheelY * 24, contentW, contentH);
+        }
+        if wheelX != 0 {
+            panBy(0 - wheelX * 24, 0, contentW, contentH);
+        }
+    }
+
+    expose func draw(gfx: Canvas, pixels: Pixels, contentW: Integer, contentH: Integer, contentRevision: Integer) {
+        gfx.Box(x, y, width, height, 0x777777);
+        drawCheckerboard(gfx);
+
+        gfx.SetClipRect(x, y, width, height);
+        if zoom == 100 {
+            gfx.BlitRegion(x, y, pixels, scrollX, scrollY, width, height);
+        } else {
+            var scaled = getScaledPixels(pixels, contentW, contentH, contentRevision);
+            var srcX = scrollX * zoom / 100;
+            var srcY = scrollY * zoom / 100;
+            gfx.BlitRegion(x, y, scaled, srcX, srcY, width, height);
+        }
+        gfx.ClearClipRect();
+
+        gfx.Frame(x - 1, y - 1, width + 2, height + 2, config.UI_BORDER);
+    }
+
+    expose func zoomLabel() -> String {
+        return "" + zoom + "%";
+    }
+
+    hide func visibleCanvasW() -> Integer {
+        return width * 100 / zoom;
+    }
+
+    hide func visibleCanvasH() -> Integer {
+        return height * 100 / zoom;
+    }
+
+    hide func clampScroll(contentW: Integer, contentH: Integer) {
+        var maxX = contentW - visibleCanvasW();
+        var maxY = contentH - visibleCanvasH();
+        if maxX < 0 { maxX = 0; }
+        if maxY < 0 { maxY = 0; }
+        if scrollX < 0 { scrollX = 0; }
+        if scrollY < 0 { scrollY = 0; }
+        if scrollX > maxX { scrollX = maxX; }
+        if scrollY > maxY { scrollY = maxY; }
+    }
+
+    hide func clampViewportSize() {
+        if width < 64 { width = 64; }
+        if height < 64 { height = 64; }
+    }
+
+    hide func invalidateCache() {
+        scaledCache = null;
+        scaledRevision = -1;
+        scaledZoom = 0;
+        scaledW = 0;
+        scaledH = 0;
+    }
+
+    hide func getScaledPixels(pixels: Pixels, contentW: Integer, contentH: Integer, contentRevision: Integer) -> Pixels {
+        var targetW = contentW * zoom / 100;
+        var targetH = contentH * zoom / 100;
+        if targetW < 1 { targetW = 1; }
+        if targetH < 1 { targetH = 1; }
+
+        if scaledCache != null and scaledRevision == contentRevision and scaledZoom == zoom and scaledW == targetW and scaledH == targetH {
+            return scaledCache!;
+        }
+
+        scaledCache = pixels.Scale(targetW, targetH);
+        scaledRevision = contentRevision;
+        scaledZoom = zoom;
+        scaledW = targetW;
+        scaledH = targetH;
+        return scaledCache!;
+    }
+
+    hide func drawCheckerboard(gfx: Canvas) {
+        var cell = 16;
+        var yy = y;
+        var row = 0;
+        while yy < y + height {
+            var xx = x;
+            var col = 0;
+            while xx < x + width {
+                var color = 0x8B8B8B;
+                if (row + col) % 2 == 0 {
+                    color = 0x979797;
+                }
+                gfx.Box(xx, yy, cell, cell, color);
+                xx = xx + cell;
+                col = col + 1;
+            }
+            yy = yy + cell;
+            row = row + 1;
+        }
+    }
+}

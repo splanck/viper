@@ -327,11 +327,7 @@ void rt_spritebatch_end(void *batch_ptr, void *canvas) {
                 if (item->source) {
                     void *draw_src =
                         apply_batch_color(item->source, batch->tint_color, batch->alpha);
-                    if (batch->alpha < 255 || batch->tint_color != 0) {
-                        rt_canvas_blit_alpha(canvas, item->x, item->y, draw_src);
-                    } else {
-                        rt_canvas_blit(canvas, item->x, item->y, draw_src);
-                    }
+                    rt_canvas_blit_alpha(canvas, item->x, item->y, draw_src);
                 }
                 break;
 

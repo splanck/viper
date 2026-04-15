@@ -1,19 +1,87 @@
-// join.zia — Multi-Table JOIN Engine
-// Part of ViperSQL
+// =============================================================================
+// join.zia — The join executor: hash join, nested loop, every SQL join type
+// Part of ViperSQL  (package: engine)
+// =============================================================================
 //
-// Implements SQL JOIN operations using two strategies:
-//   - Hash Join: For INNER JOINs with equi-conditions (t1.col = t2.col).
-//     Uses a build/probe approach with 64-bucket hash table on the right
-//     table. O(n+m) average time vs O(n*m) for nested loop.
-//   - Nested Loop Join: For LEFT/RIGHT/FULL OUTER/CROSS JOINs and
-//     non-equi conditions. Evaluates every (left, right) row pair against
-//     the join condition. Falls back to this for all join types that
-//     cannot use hash join.
+// PURPOSE
+// -------
+// Executes SQL JOINs against pairs of in-memory row streams and
+// produces a combined row stream.  Handles every join flavour
+// the parser can emit:
 //
-// The join engine is invoked by the Executor when a SELECT references
-// multiple tables. Multi-way joins (3+ tables) are executed as a chain
-// of pairwise joins, with the optimizer potentially reordering tables
-// to place smaller tables first (see optimizer/optimizer.zia).
+//     INNER JOIN      (matching rows only)
+//     LEFT  JOIN      (every left row, padded with NULLs)
+//     RIGHT JOIN      (every right row, padded with NULLs)
+//     FULL  OUTER     (left ∪ right, pad missing side with NULLs)
+//     CROSS JOIN      (Cartesian product, no condition)
+//     NATURAL JOIN    (auto-pair on same-name columns)
+//     USING (col,..)  (join on named columns, deduplicated)
+//     LATERAL         (right side can reference left row)
+//
+// Two execution strategies:
+//
+//   * **Hash Join** — chosen automatically for INNER joins with
+//     an equi-condition (`t1.a = t2.b`).  Builds a 64-bucket
+//     hash on the right side, probes with each left row.
+//     O(N + M) average; the common SQL shape.
+//
+//   * **Nested Loop Join** — for everything else (outer joins,
+//     non-equi, LATERAL).  O(N × M) but universal — any
+//     predicate works.
+//
+// For 3+-table queries the executor chains pairwise joins,
+// picking table order via `optimizer/optimizer.zia`.
+//
+// WHERE THIS FITS
+// ---------------
+//     parser/stmt.zia  → SelectStmt with `tableNames[] +
+//                        joinTypes[] + joinConditions[]`
+//         │
+//         ▼
+//     engine/executor.zia   (top-level SELECT driver)
+//         │
+//         ▼
+//     engine/join.zia   (YOU ARE HERE — one join at a time)
+//         │
+//         ▼
+//     engine/result.zia / engine/schema.zia (builds output rows)
+//
+// KEY DESIGN CHOICES
+// ------------------
+//   1. 64-bucket hash.  Pipe-joined string key per row.
+//      `CryptoHash.Fast(key) mod 64` picks a bucket; probing
+//      looks up in its chain.  The "all rows share one bucket"
+//      worst case degrades to O(N+M) scan which is still no
+//      worse than nested loop.
+//
+//   2. Three-valued logic respected in condition evaluation.
+//      A `compare == 2` (SQL UNKNOWN) row is dropped from
+//      INNER, treated as non-match in OUTER (so padded with
+//      NULLs).
+//
+//   3. NATURAL JOIN / USING: column dedup.  When `USING (a)`
+//      is written, the output has one `a` column, not two.
+//      Managed by projecting the join key from the left side
+//      and omitting it from the right in the output builder.
+//
+//   4. LATERAL joins re-parse the right side.  Since a
+//      LATERAL right can reference left columns, we substitute
+//      left values into the right's SQL text per row and
+//      recursively call `executeSql` via the executor — a
+//      rare N² path, accepted for simplicity.
+//
+// HOW TO READ THIS FILE
+// ---------------------
+//   1. Helper: row-key builder (shared with setops.zia's
+//      hash approach).
+//   2. Hash-join path: build phase, probe phase, emit row.
+//   3. Nested-loop path: double loop with condition evaluation,
+//      plus OUTER padding logic.
+//   4. Join dispatch: picks strategy based on (joinType,
+//      condition shape).
+//   5. Auxiliary helpers for NATURAL / USING / LATERAL.
+//
+// =============================================================================
 
 module join;
 

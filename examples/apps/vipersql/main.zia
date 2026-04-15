@@ -1,12 +1,40 @@
-// main.zia — Standalone REPL Mode
+// =============================================================================
+// main.zia — Standalone REPL entry point
 // Part of ViperSQL
+// =============================================================================
 //
-// Interactive SQL shell (REPL) for single-user, in-memory use.
-// Creates an Executor and enters a read-eval-print loop.
-// Supports multi-line input, meta-commands (.tables, .schema,
-// .help, .quit), and prints results in tabular format.
+// PURPOSE
+// -------
+// A one-user, in-memory SQL shell.  Runs a read-eval-print loop
+// around a single `Executor` — no networking, no persistent
+// storage, no authentication.  Useful for quick experimentation
+// and for the test harness.
 //
-// This is the standalone mode. For the database server, use vipersql.zia.
+// Supports multi-line pasted input (any SQL the parser accepts is
+// fair game) and a small set of meta-commands that start with `.`:
+//
+//     .help          show help
+//     .quit / .exit  leave the shell
+//     .tables        list tables (equivalent to SHOW TABLES)
+//     .schema        print CREATE TABLE for every table
+//     .schema <tbl>  print CREATE TABLE for one table
+//
+// For the multi-user server, see `vipersql.zia` (which also has
+// a `--repl` flag wrapping the same meta-command vocabulary).
+//
+// WHERE THIS FITS
+// ---------------
+//     main.zia   (YOU ARE HERE — standalone REPL)
+//         │
+//         ▼
+//     engine/executor.zia  (the only subsystem we touch)
+//
+// HOW TO READ THIS FILE
+// ---------------------
+//   * `main` — the REPL loop.
+//   * `processMetaCommand` — dispatch for the `.xxx` commands.
+//
+// =============================================================================
 
 module main;
 
@@ -18,6 +46,15 @@ bind "./engine/executor";
 // MAIN ENTRY POINT
 //=============================================================================
 
+/// @brief The REPL loop.
+///
+/// Flow per iteration:
+///   1. Print the `sql>` prompt.
+///   2. Read a line.  Null (Ctrl-D / EOF) exits.
+///   3. Empty line: re-prompt.
+///   4. `.`-prefixed line: route to `processMetaCommand`.
+///   5. Anything else: treat as SQL, run through the executor,
+///      print the `QueryResult.toString()` rendering.
 func main() {
     Terminal.Say("ViperSQL - Standalone Mode (in-memory)");
     Terminal.Say("Type SQL commands or 'exit' to quit.");
@@ -47,13 +84,15 @@ func main() {
             continue;
         }
 
-        // Handle meta-commands (starting with .)
+        // Meta-commands start with `.` — the SQLite / psql-flavoured
+        // convention.  We route to `processMetaCommand` for those.
         var trimmed = String.Trim(input);
         if String.StartsWith(trimmed, ".") {
             processMetaCommand(trimmed, exec);
             continue;
         }
 
+        // Normal SQL path: execute, print the result table.
         var result = exec.executeSql(input);
         Terminal.Say(result.toString());
         Terminal.Say("");
@@ -62,6 +101,14 @@ func main() {
     Terminal.Say("Goodbye!");
 }
 
+/// @brief Dispatch table for REPL meta-commands.
+///
+/// Normalises to lower-case once at the top so subsequent
+/// comparisons are case-insensitive.  `.schema <tbl>` is matched
+/// by prefix because it carries an argument; the rest are exact
+/// equality.
+///
+/// Unknown commands print a usage hint — do not crash.
 func processMetaCommand(cmd: String, exec: Executor) {
     var lower = String.ToLower(cmd);
 
@@ -90,7 +137,7 @@ func processMetaCommand(cmd: String, exec: Executor) {
     }
 
     if lower == ".schema" {
-        // Show schema for all tables
+        // No argument: iterate every table, DESCRIBE each.
         var tablesResult = exec.executeSql("SHOW TABLES");
         var ti = 0;
         while ti < tablesResult.rowCount() {
@@ -110,6 +157,9 @@ func processMetaCommand(cmd: String, exec: Executor) {
     }
 
     if String.StartsWith(lower, ".schema ") {
+        // With argument: show the single named table.  We use the
+        // *original* case-preserved `cmd` here so identifier
+        // lookups remain case-sensitive.
         var tableName = String.Substring(cmd, 8, String.Length(cmd) - 8);
         tableName = String.Trim(tableName);
         var result = exec.executeSql("DESCRIBE " + tableName);

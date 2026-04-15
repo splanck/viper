@@ -1,5 +1,86 @@
-// txn.zia - Transaction Manager
-// Part of ViperSQL - Phase 5: ACID Transactions
+// =============================================================================
+// txn.zia — ACID transactions: locks, txn state, commit/abort/undo
+// Part of ViperSQL  (package: storage)
+// =============================================================================
+//
+// PURPOSE
+// -------
+// ViperSQL supports multi-statement transactions with two-phase
+// locking and ARIES-style durability.  This file builds the pieces
+// the executor and WAL coordinate around:
+//
+//   * `TableLockManager` — per-table S/X locks (shared + exclusive).
+//                          Blocking-with-timeout for concurrent
+//                          multi-session workloads.
+//   * `RowLockManager`   — fine-grained per-row locks for SELECT
+//                          FOR UPDATE / FOR SHARE.
+//   * `Transaction`      — one in-flight txn's state: id,
+//                          timestamp, list of modified pages and
+//                          inserted rows, status.
+//   * `Lock` + `LockManager` — a lower-level lock record + registry
+//                          used by the transaction manager.
+//   * `TransactionManager` — the driver: `begin`, `commit`, `abort`,
+//                          plus the DML helpers that log + lock.
+//                          Also does `performUndo` on abort using
+//                          the WAL's before-images.
+//
+// WHERE THIS FITS
+// ---------------
+//     engine/executor.zia / engine/dml.zia
+//         │  calls begin()/commit()/abort() and the lock helpers
+//         │  before every mutation.
+//         ▼
+//     storage/txn.zia  (YOU ARE HERE)
+//         │
+//         ▼
+//     storage/wal.zia        (log records, recovery)
+//     storage/buffer.zia     (dirty page writeback on commit)
+//     storage/data_page.zia  (physical undo applier)
+//
+// LOCK MODES & COMPATIBILITY
+// --------------------------
+//     LOCK_SHARED  (1) — compatible with other shared locks.
+//     LOCK_EXCLUSIVE (2) — incompatible with any other lock.
+//
+//     S+S = OK         S+X = conflict         X+X = conflict
+//
+// Acquisition blocks with a `LOCK_TIMEOUT_MS` cap and a
+// `LOCK_RETRY_INTERVAL_MS` sleep between retries — simple, no
+// deadlock detection.  A victim timeout is treated as an abortable
+// txn failure by the caller.
+//
+// KEY DESIGN CHOICES
+// ------------------
+//   1. Two lock managers, not one.  Table-level locks are grabbed
+//      by almost every statement; row-level locks are reserved for
+//      `SELECT … FOR UPDATE/SHARE`.  Keeping the hot table-lock
+//      path in its own structure means it doesn't pay the price of
+//      row-granular bookkeeping.
+//
+//   2. Busy-wait with timeout.  Lock contention on a database this
+//      size is not going to benefit from a proper futex-style
+//      wait queue; we sleep-poll.  Simplifies implementation
+//      dramatically.
+//
+//   3. Physical undo via WAL before-images.  `abort` walks the
+//      txn's log records in reverse and reinstates each
+//      `beforeImage` via `DataPageManager` + `BufferPool`.  CLRs
+//      are written so a re-crash during undo doesn't re-undo.
+//
+//   4. AutoCommit-mode toggle.  `setAutoCommit(true)` makes each
+//      DML statement its own implicit begin/commit/abort, which is
+//      the PG/psql default mode.
+//
+// HOW TO READ THIS FILE
+// ---------------------
+//   1. `TableLockManager` — acquire/release/tryAcquire.
+//   2. `RowLockManager` — same shape, per-row.
+//   3. `Transaction` — per-txn state record.
+//   4. `Lock` / `LockManager` — lower-level lock API.
+//   5. `TransactionManager` — the driver with begin/commit/abort,
+//      DML helpers, and checkpointing.
+//
+// =============================================================================
 
 module txn;
 
@@ -20,11 +101,13 @@ bind "./buffer";
 final LOCK_TIMEOUT_MS = 5000;
 final LOCK_RETRY_INTERVAL_MS = 10;
 
-// Thread-safe table-level lock manager for concurrent access.
-// Uses parallel lists to track lock ownership (tableName → sessionId → mode).
-// Lock modes: LOCK_SHARED (1) for reads, LOCK_EXCLUSIVE (2) for writes.
-// Compatibility: S+S = OK, S+X = conflict, X+X = conflict.
-// Blocking: spins with SleepMs + timeout on conflict.
+/// @brief Table-level S/X lock manager with blocking acquisition.
+///
+/// Uses three parallel lists to store every live lock:
+/// `lockTableNames[i]` is held by `lockSessionIds[i]` in mode
+/// `lockModes[i]`.  Acquisition busy-waits with a timeout —
+/// simple and adequate for demo concurrency.  S+S compatible,
+/// S+X and X+X incompatible.
 class TableLockManager {
     hide List[String] lockTableNames;
     hide List[Integer] lockSessionIds;
@@ -38,8 +121,13 @@ class TableLockManager {
         monitor = [];
     }
 
-    // Acquire a table lock (blocking with timeout).
-    // Returns true if acquired, false on timeout.
+    /// @brief Blocking acquire.  Polls every
+    ///        `LOCK_RETRY_INTERVAL_MS` until the lock becomes
+    ///        available or `LOCK_TIMEOUT_MS` elapses.  Timeout
+    ///        returns false — caller aborts its txn.
+    ///
+    /// An already-held lock of adequate mode short-circuits true
+    /// (reentrant acquisition is free).
     expose func acquireTableLock(sessionId: Integer, tableName: String, mode: Integer) -> Boolean {
         var waited = 0;
         while waited < LOCK_TIMEOUT_MS {
@@ -94,6 +182,8 @@ class TableLockManager {
     }
 
     // Release all locks held by a session
+    /// @brief Release every lock this session holds.  Called at
+    ///        commit and abort so another waiter can proceed.
     expose func releaseAllLocks(sessionId: Integer) {
         Threads.Monitor.Enter(monitor);
         var newNames: List[String] = [];
@@ -115,6 +205,9 @@ class TableLockManager {
     }
 
     // Release a specific table lock held by a session
+    /// @brief Release one table's lock for this session.  No-op
+    ///        if we never held one.  Used by targeted LOCK TABLE
+    ///        escape paths.
     expose func releaseTableLock(sessionId: Integer, tableName: String) {
         Threads.Monitor.Enter(monitor);
         var newNames: List[String] = [];
@@ -139,7 +232,7 @@ class TableLockManager {
         Threads.Monitor.Exit(monitor);
     }
 
-    // Get total active lock count (for diagnostics)
+    /// @brief Total active table-lock count — diagnostic only.
     expose func lockCount() -> Integer {
         Threads.Monitor.Enter(monitor);
         var count = lockTableNames.count();
@@ -147,7 +240,7 @@ class TableLockManager {
         return count;
     }
 
-    // Get lock count for a specific session
+    /// @brief Per-session table-lock count — diagnostic.
     expose func sessionLockCount(sessionId: Integer) -> Integer {
         Threads.Monitor.Enter(monitor);
         var count = 0;
@@ -164,6 +257,9 @@ class TableLockManager {
 
     // Non-blocking lock attempt. Returns true if lock granted, false if conflict.
     // Does NOT retry or sleep. Useful for testing and try-lock semantics.
+    /// @brief Non-blocking variant.  Returns immediately — true
+    ///        if the lock was granted, false on any conflict.
+    ///        Used by SELECT … NOWAIT.
     expose func tryAcquireTableLock(sessionId: Integer, tableName: String, mode: Integer) -> Boolean {
         Threads.Monitor.Enter(monitor);
 
@@ -212,6 +308,10 @@ final ROW_LOCK_RETRY_MS = 10;
 // Uses parallel lists to track lock ownership (tableName + rowIndex → sessionId → mode).
 // Lock modes: LOCK_SHARED (1) for FOR SHARE, LOCK_EXCLUSIVE (2) for FOR UPDATE.
 // Compatibility: S+S = OK, S+X = conflict, X+X = conflict.
+/// @brief Row-granular lock manager used by SELECT FOR
+///        UPDATE/SHARE.  Same internal structure as the table
+///        manager but keys on (tableName, rowIndex).  More
+///        expensive per-row but avoids whole-table escalation.
 class RowLockManager {
     hide List[String] lockTableNames;
     hide List[Integer] lockRowIndices;
@@ -229,6 +329,8 @@ class RowLockManager {
 
     // Acquire a row lock (blocking with timeout).
     // Returns true if acquired, false on timeout.
+    /// @brief Blocking per-row acquire with timeout.  Symmetric
+    ///        to `TableLockManager.acquireTableLock`.
     expose func acquireRowLock(sessionId: Integer, tableName: String, rowIndex: Integer, mode: Integer) -> Boolean {
         var waited = 0;
         while waited < ROW_LOCK_TIMEOUT_MS {
@@ -284,6 +386,8 @@ class RowLockManager {
     }
 
     // Non-blocking lock attempt. Returns true if lock granted, false if conflict.
+    /// @brief Non-blocking per-row acquire.  Used by SELECT …
+    ///        FOR UPDATE SKIP LOCKED to walk past contested rows.
     expose func tryAcquireRowLock(sessionId: Integer, tableName: String, rowIndex: Integer, mode: Integer) -> Boolean {
         Threads.Monitor.Enter(monitor);
 
@@ -321,6 +425,7 @@ class RowLockManager {
     }
 
     // Release all row locks held by a session
+    /// @brief Drop every row lock held by `sessionId`.
     expose func releaseAllRowLocks(sessionId: Integer) {
         Threads.Monitor.Enter(monitor);
         var newNames: List[String] = [];
@@ -345,6 +450,8 @@ class RowLockManager {
     }
 
     // Release all row locks on a specific table held by a session
+    /// @brief Drop every row lock on `tableName` held by
+    ///        `sessionId`.  Used when DROP TABLE cascades.
     expose func releaseTableRowLocks(sessionId: Integer, tableName: String) {
         Threads.Monitor.Enter(monitor);
         var newNames: List[String] = [];
@@ -373,6 +480,7 @@ class RowLockManager {
     }
 
     // Get total active row lock count (for diagnostics)
+    /// @brief Total live row locks — diagnostic.
     expose func rowLockCount() -> Integer {
         Threads.Monitor.Enter(monitor);
         var count = lockTableNames.count();
@@ -381,6 +489,7 @@ class RowLockManager {
     }
 
     // Get row lock count for a specific session
+    /// @brief Per-session row-lock count — diagnostic.
     expose func sessionRowLockCount(sessionId: Integer) -> Integer {
         Threads.Monitor.Enter(monitor);
         var count = 0;
@@ -420,6 +529,12 @@ final LOCK_EXCLUSIVE = 2;  // Write lock (X)
 // TRANSACTION ENTITY
 //=============================================================================
 
+/// @brief In-flight transaction state.
+///
+/// Carries the txn id, wall-clock timestamp (for MVCC snapshot
+/// ordering), status (active/committed/aborted), and tracking
+/// lists for modified pages + inserted rows so abort can undo
+/// them.  Owned by `TransactionManager.activeTxns`.
 class Transaction {
     expose Integer txnId;
     expose Integer state;
@@ -500,6 +615,9 @@ class Transaction {
 // LOCK ENTITY
 //=============================================================================
 
+/// @brief A single lock record.  Three lock shapes:
+///        table, page, row.  `isCompatible` implements the
+///        lock-compatibility table used by `LockManager`.
 class Lock {
     expose Integer resourceType;   // 0=table, 1=page, 2=row
     expose Integer resourceId;     // ID of the locked resource
@@ -539,6 +657,9 @@ class Lock {
         txnId = tid;
     }
 
+    /// @brief Two-lock compatibility check.  S+S ok, anything
+    ///        with X conflicts.  Locks on different resources
+    ///        never conflict (different table / page / row).
     expose func isCompatible(other: Lock) -> Boolean {
         // Same resource?
         if resourceType != other.resourceType {
@@ -575,6 +696,11 @@ class Lock {
 // LOCK MANAGER
 //=============================================================================
 
+/// @brief Registry of live `Lock` records, with compatibility
+///        checks on acquire.  The lower-level engine used
+///        internally by `TransactionManager`; the public
+///        lock API lives on the TableLockManager/RowLockManager
+///        pair above.
 class LockManager {
     expose List[Lock] activeLocks;
 
@@ -583,6 +709,9 @@ class LockManager {
     }
 
     // Acquire a lock (returns true if successful)
+    /// @brief Non-blocking acquire.  Scans existing locks, checks
+    ///        each for compatibility via `lock.isCompatible`.
+    ///        Returns true on success.
     expose func acquireLock(lock: Lock) -> Boolean {
         // Check for conflicts
         var i = 0;
@@ -602,6 +731,7 @@ class LockManager {
     }
 
     // Release a specific lock
+    /// @brief Remove a matching lock record.
     expose func releaseLock(lock: Lock) {
         var i = 0;
         while i < activeLocks.count() {
@@ -617,6 +747,8 @@ class LockManager {
     }
 
     // Release all locks held by a transaction
+    /// @brief Drop every lock held by `txnId`.  Called at commit
+    ///        and abort.
     expose func releaseAllLocks(txnId: Integer) {
         var newLocks: List[Lock] = [];
         var i = 0;
@@ -630,7 +762,8 @@ class LockManager {
         activeLocks = newLocks;
     }
 
-    // Check if a transaction holds a lock
+    /// @brief "Does txn hold lock on (type, id)?"  Used before
+    ///        reacquiring to short-circuit reentrancy.
     expose func holdsLock(txnId: Integer, resourceType: Integer, resourceId: Integer) -> Boolean {
         var i = 0;
         while i < activeLocks.count() {
@@ -667,6 +800,19 @@ class LockManager {
 // TRANSACTION MANAGER
 //=============================================================================
 
+/// @brief The top-level driver.  Owns the list of in-flight
+///        transactions, the lock manager, the WAL, and (when
+///        enabled) the buffer-pool references needed for undo.
+///
+/// Public API:
+///   * begin/commit/abort          — transaction lifecycle
+///   * lockTable*/lockRow*         — lock-acquisition helpers
+///   * logInsert/logUpdate/logDelete — WAL helpers paired with
+///                                     in-memory bookkeeping
+///   * checkpoint                  — snapshot active txns +
+///                                    flush everything
+///   * setAutoCommit/isAutoCommit  — toggle per-statement implicit
+///                                    transactions
 class TransactionManager {
     expose Integer nextTxnId;
     expose Integer timestampCounter;
@@ -718,6 +864,10 @@ class TransactionManager {
     //=========================================================================
 
     // Begin a new transaction
+    /// @brief Start a new transaction.  Allocates a fresh id and
+    ///        timestamp, emits a BEGIN log record, and adds to
+    ///        `activeTransactions`.  The txn stays "active" until
+    ///        `commit` or `abort`.
     expose func begin() -> Transaction {
         var txn = new Transaction();
         txn.initWithId(nextTxnId, timestampCounter);
@@ -733,6 +883,12 @@ class TransactionManager {
     }
 
     // Commit a transaction
+    /// @brief Finalise a transaction as committed.
+    ///
+    /// Writes COMMIT to the WAL (which forces a flush — durable
+    /// after this returns), releases all locks, removes from
+    /// `activeTransactions`.  Returns false if `txn` isn't
+    /// active.
     expose func commit(txn: Transaction) -> Boolean {
         if txn.state != TXN_ACTIVE {
             return false;
@@ -754,6 +910,12 @@ class TransactionManager {
     }
 
     // Abort/rollback a transaction
+    /// @brief Roll back a transaction.
+    ///
+    /// If undo is enabled (the caller provided a buffer pool via
+    /// `initWithStorage`), calls `performUndo` to reinstate
+    /// before-images.  Then writes ABORT to the WAL, drops locks,
+    /// and removes the txn from the active list.
     expose func abort(txn: Transaction) -> Boolean {
         if txn.state != TXN_ACTIVE {
             return false;
@@ -778,6 +940,13 @@ class TransactionManager {
     }
 
     // Perform undo for a single transaction by scanning WAL backwards
+    /// @brief Walk `txnId`'s log records in reverse and reinstate
+    ///        each before-image.  After each undo, emits a CLR so
+    ///        a re-crash during abort doesn't re-undo.
+    ///
+    /// This is the main cost of ABORT — O(N) in the number of
+    /// records the txn wrote.  For very long-running txns, a
+    /// COMMIT is cheap; an ABORT may take a while.
     hide func performUndo(txnId: Integer) {
         // Flush WAL buffer so we can read all records
         wal.flush();
@@ -837,6 +1006,8 @@ class TransactionManager {
     }
 
     // Helper to remove transaction from active list
+    /// @brief Remove `txnId` from `activeTransactions`.  Shared
+    ///        cleanup used by commit and abort.
     hide func removeFromActive(txnId: Integer) {
         var newActive: List[Transaction] = [];
         var i = 0;
@@ -855,6 +1026,8 @@ class TransactionManager {
     //=========================================================================
 
     // Acquire a shared (read) lock on a table
+    /// @brief Acquire a SHARED table lock on behalf of a txn.
+    ///        Returns false on conflict.
     expose func lockTableShared(txn: Transaction, tableId: Integer) -> Boolean {
         var lock = new Lock();
         lock.initTableLock(tableId, LOCK_SHARED, txn.txnId);
@@ -866,6 +1039,8 @@ class TransactionManager {
     }
 
     // Acquire an exclusive (write) lock on a table
+    /// @brief Acquire an EXCLUSIVE table lock.  Returns false on
+    ///        any pre-existing lock.
     expose func lockTableExclusive(txn: Transaction, tableId: Integer) -> Boolean {
         var lock = new Lock();
         lock.initTableLock(tableId, LOCK_EXCLUSIVE, txn.txnId);
@@ -877,6 +1052,7 @@ class TransactionManager {
     }
 
     // Acquire a shared lock on a row
+    /// @brief Acquire a SHARED row lock.
     expose func lockRowShared(txn: Transaction, tableId: Integer, rowId: Integer) -> Boolean {
         var lock = new Lock();
         lock.initRowLock(tableId, rowId, LOCK_SHARED, txn.txnId);
@@ -888,6 +1064,7 @@ class TransactionManager {
     }
 
     // Acquire an exclusive lock on a row
+    /// @brief Acquire an EXCLUSIVE row lock.
     expose func lockRowExclusive(txn: Transaction, tableId: Integer, rowId: Integer) -> Boolean {
         var lock = new Lock();
         lock.initRowLock(tableId, rowId, LOCK_EXCLUSIVE, txn.txnId);
@@ -903,6 +1080,8 @@ class TransactionManager {
     //=========================================================================
 
     // Log an insert operation
+    /// @brief WAL an INSERT and note the affected page on the
+    ///        transaction.
     expose func logInsert(txn: Transaction, tableId: Integer, pageId: Integer, slotId: Integer, rowData: BinaryBuffer) {
         txn.lastLSN = wal.logInsert(txn.txnId, tableId, pageId, slotId, rowData);
         txn.addModifiedPage(pageId);
@@ -910,12 +1089,16 @@ class TransactionManager {
     }
 
     // Log an update operation
+    /// @brief WAL an UPDATE (both images) and mark the page
+    ///        modified.
     expose func logUpdate(txn: Transaction, tableId: Integer, pageId: Integer, slotId: Integer, before: BinaryBuffer, after: BinaryBuffer) {
         txn.lastLSN = wal.logUpdate(txn.txnId, tableId, pageId, slotId, before, after);
         txn.addModifiedPage(pageId);
     }
 
     // Log a delete operation
+    /// @brief WAL a DELETE carrying the before-image so undo can
+    ///        reinstate it.
     expose func logDelete(txn: Transaction, tableId: Integer, pageId: Integer, slotId: Integer, rowData: BinaryBuffer) {
         txn.lastLSN = wal.logDelete(txn.txnId, tableId, pageId, slotId, rowData);
         txn.addModifiedPage(pageId);
@@ -926,6 +1109,8 @@ class TransactionManager {
     //=========================================================================
 
     // Get transaction by ID
+    /// @brief Look up a live transaction by id.  Null if it has
+    ///        already committed or aborted.
     expose func getTransaction(txnId: Integer) -> Transaction? {
         var i = 0;
         while i < activeTransactions.count() {
@@ -939,11 +1124,16 @@ class TransactionManager {
     }
 
     // Get number of active transactions
+    /// @brief Number of in-flight transactions.
     expose func activeCount() -> Integer {
         return activeTransactions.count();
     }
 
     // Get list of active transaction IDs (for checkpointing)
+    /// @brief Snapshot of in-flight txn ids.  Used by
+    ///        `checkpoint` to record who was alive at the moment
+    ///        of the snapshot, and by MVCC readers to determine
+    ///        which writers are still pending.
     expose func getActiveTxnIds() -> List[Integer] {
         var result: List[Integer] = [];
         var i = 0;
@@ -955,6 +1145,9 @@ class TransactionManager {
     }
 
     // Create a checkpoint
+    /// @brief Emit a CHECKPOINT WAL record containing the current
+    ///        active-txn list.  Returns the LSN.  Recovery uses
+    ///        this to bound how far back it needs to scan.
     expose func checkpoint() -> LSN {
         return wal.checkpoint(getActiveTxnIds());
     }
@@ -964,11 +1157,16 @@ class TransactionManager {
     //=========================================================================
 
     // Set auto-commit mode
+    /// @brief Toggle auto-commit mode.  When true, each DML
+    ///        statement wraps itself in an implicit BEGIN/COMMIT
+    ///        (PG default).  When false, statements stay part of
+    ///        the current txn until the session calls COMMIT.
     expose func setAutoCommit(enabled: Boolean) {
         autoCommit = enabled;
     }
 
     // Get auto-commit mode
+    /// @brief Current auto-commit mode.
     expose func isAutoCommit() -> Boolean {
         return autoCommit;
     }

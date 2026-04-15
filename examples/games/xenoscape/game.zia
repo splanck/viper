@@ -1,5 +1,107 @@
-// game.zia — Main game entity: loop, state machine, orchestration
-// Sets up Viper.Input.Action bindings for all input, wires subsystems.
+// =============================================================================
+// game.zia — The top-level game object: loop, state, orchestration
+// Part of Xenoscape  (the 2D sidescroller platformer demo)
+// =============================================================================
+//
+// TUTORIAL — THE "GAME" OBJECT IS YOUR ROOT
+// -----------------------------------------
+// `main.zia::start()` does two things: `new Game()` and
+// `g.run()`.  That's it.  Everything else in the program is
+// owned by this file's `Game` class.  It's the "root" of the
+// game's object graph.
+//
+// A root class typically holds four kinds of state:
+//
+//   1. **Subsystems** — Player, LevelManager, EnemyManager,
+//      Camera, Renderer, HUD, MenuSystem, SoundManager,
+//      ParticleSystem, Lighting, SaveManager, AchievementManager,
+//      LoreSystem, TransitionManager, WorldMap, AbilityManager,
+//      RuntimeTuning, Palette, SpriteFactory.  Each is a
+//      standalone class; `Game` composes them.
+//
+//   2. **Game state machine** — which top-level screen is
+//      active?  TITLE, LEVEL_SELECT, PLAY, PAUSED, GAME_OVER,
+//      LEVEL_COMPLETE, CREDITS, ...  `Game` owns the current
+//      state and routes update + draw accordingly.
+//
+//   3. **The main loop** — `run()` is a `while running { poll
+//      input; update; render; sleep }` loop.  It's where
+//      `dt` (the per-frame delta in milliseconds) is
+//      computed and passed down to every subsystem.
+//
+//   4. **Shared clocks / counters** — global play-time,
+//      deaths, bosses-defeated mask, current level index.
+//      Things several subsystems read but no one subsystem
+//      owns.
+//
+// WHY ONE BIG ROOT?
+// -----------------
+// Alternatives to a single `Game` class:
+//
+//   * Free-floating globals per subsystem.  Works but makes
+//     testing hard — you can't have two isolated game
+//     instances at once (e.g. a probe + a real game).
+//
+//   * Dependency injection everywhere.  Clean but tedious in
+//     a demo this size.
+//
+// One root class in a 17-KB-SLOC project is a sweet spot:
+// everything is visible in one place, yet tests can still
+// spin up a fresh `Game` whenever they want.
+//
+// INPUT: VIPER.INPUT.ACTION
+// -------------------------
+// `Game.init` registers every gameplay action by name
+// (`ACT_LEFT`, `ACT_JUMP`, `ACT_SHOOT`, ...) and binds it
+// to one or more keys/buttons.  The rest of the code then
+// uses `Action.Held(ACT_LEFT)` instead of
+// `Keyboard.IsDown(KEY_A)`.  Two benefits:
+//
+//   * Platform independent — gamepad input binds to the
+//     same actions as keyboard input; gameplay code doesn't
+//     care.
+//   * Rebindable — a settings menu can ask the runtime to
+//     "next key-press becomes the new jump bind" without
+//     touching any gameplay code.
+//
+// THE FRAME LOOP
+// --------------
+//     run():
+//         while running:
+//             dt = clamp(elapsed_ms_since_last_frame, 1, DT_MAX)
+//             input.poll()
+//             tick(dt)
+//             draw(canvas)
+//             canvas.Flip()
+//
+// `dt` drives frame-rate independence — every physics and
+// animation step scales by `dt / DT_BASE`.  `DT_MAX` caps
+// the dt so one bad lag spike doesn't tunnel the player
+// through walls (see `physics.zia` for why that matters).
+//
+// WHERE THIS FITS
+// ---------------
+//     main.zia  ──►  constructs and runs the Game.
+//     All subsystems are children of this class.
+//     Viper.Input.Action      ──►  named input bindings.
+//     Viper.Graphics          ──►  canvas / window / pixels.
+//     Viper.Game.DebugOverlay ──►  FPS + diagnostics.
+//
+// HOW TO READ THIS FILE
+// ---------------------
+//   1. `Game` fields: subsystems, state, shared counters.
+//   2. `init` — construct every subsystem, bind inputs.
+//   3. `run` — the main frame loop.
+//   4. `tick(dt)` — per-state update dispatch.
+//   5. `draw(canvas)` — per-state render dispatch.
+//   6. Per-state handlers (`tickPlay`, `tickMenu`,
+//      `tickGameOver`, ...).
+//   7. Event hooks: `onPlayerDeath`, `onLevelComplete`,
+//      `onBossDefeated`, `onAbilityAcquired`.
+//   8. Save / load glue (`saveProgress` / `loadFromSlot`).
+//
+// =============================================================================
+
 module game;
 
 bind Viper.Graphics;
@@ -7,6 +109,7 @@ bind Viper.Input;
 bind Viper.Fmt;
 bind Viper.Game;
 bind Viper.Game.DebugOverlay as Debug;
+bind Viper.IO.File as File;
 bind "./config";
 bind "./palette";
 bind "./sprites";
@@ -31,7 +134,21 @@ bind "./lighting";
 bind "./texture";
 bind "./ai";
 bind "./achievements";
+bind "./tuning";
 
+/// @brief The whole game.  Owns every subsystem, the
+///        top-level state, and the main loop.
+///
+/// State machine:
+///     MENU → LEVEL_SELECT → LOADING → PLAYING
+///         ↓                              ↓ pause
+///         OPTIONS / CONTROLS         PAUSED
+///                                       ↓ die
+///                                    GAME_OVER → MENU
+///                                       ↓ clear
+///                                    LEVEL_COMPLETE → next level
+///                                       ↓ all clear
+///                                    VICTORY
 class Game {
     hide Palette pal;
     hide Canvas canvas;
@@ -52,6 +169,8 @@ class Game {
     hide PhysicsHelper phys;
     hide SoundManager sfx;
     hide Debug debugOverlay;
+    hide RuntimeTuning tuning;
+    hide Boolean debugEnabled;
 
     // New subsystems (XENOSCAPE expansion)
     hide AbilityManager abilities;
@@ -108,6 +227,11 @@ class Game {
     // Level intro splash
     hide Integer introTimer;       // ms countdown for level name splash
 
+    /// @brief Construct every subsystem (palette, sprites,
+    ///        sound, level, player, camera, hud, menu,
+    ///        renderer, ...), wire them up, register input
+    ///        actions.  Does NOT run the main loop — that's
+    ///        `run()`.
     expose func init() {
         sm = SceneManager.New();
         sm.Add("menu");
@@ -156,7 +280,15 @@ class Game {
         phys = new PhysicsHelper();
         sfx = new SoundManager();
         sfx.setup("examples/games/xenoscape/");
+        tuning = new RuntimeTuning(resolveTuningPath());
+        debugEnabled = tuning.getBool("debug.enabled", true);
         debugOverlay = Debug.New();
+        if tuning.getBool("debug.showOnStart", false) {
+            debugOverlay.Enable();
+        }
+        currentLevel = tuning.getInt("game.startLevel", 1);
+        if currentLevel < 1 { currentLevel = 1; }
+        if currentLevel > LEVEL_COUNT { currentLevel = LEVEL_COUNT; }
 
         // Setup input actions via presets + custom bindings
         setupActions();
@@ -183,6 +315,10 @@ class Game {
     // Input action setup — binds keyboard keys to named actions
     // =========================================================================
 
+    /// @brief Register every named input action with the
+    ///        Action runtime.  Bindings are loaded from the
+    ///        platformer preset and then individually
+    ///        rebound so we own the mapping.
     hide func setupActions() {
         // Standard presets: defines move_left, move_right, jump, shoot, pause
         // with WASD + arrows + gamepad D-pad/A/X/Start
@@ -206,6 +342,9 @@ class Game {
     // Main game loop
     // =========================================================================
 
+    /// @brief The main loop.  `while running { poll input;
+    ///        compute dt; tick(dt); draw(canvas); flip(); }`.
+    ///        Returns only on quit; teardown runs after.
     expose func run() {
         canvas = Canvas.New("XENOSCAPE: The Descent", SCREEN_W, SCREEN_H);
         canvas.SetFps(60);
@@ -215,7 +354,7 @@ class Game {
             dt = canvas.DeltaTime;
 
             // Debug overlay toggle (F3)
-            if Action.Pressed("debug") {
+            if debugEnabled and Action.Pressed("debug") {
                 debugOverlay.Toggle();
             }
 
@@ -250,19 +389,73 @@ class Game {
             }
             }}}}}}}}
 
-            // Debug overlay (rendered on top of everything)
-            debugOverlay.Update(dt);
-            debugOverlay.Watch("dt", dt);
-            debugOverlay.Draw(canvas);
+            updateDebugOverlay();
 
             canvas.Flip();
         }
+    }
+
+    /// @brief Locate the runtime-tuning JSON file (next to
+    ///        the binary, then ./, then a few fallbacks).
+    hide func resolveTuningPath() -> String {
+        var rootPath = "examples/games/xenoscape/xenoscape.runtime.json";
+        if File.Exists(rootPath) { return rootPath; }
+
+        // Demo binaries are launched from examples/bin by build_demos_mac.sh.
+        var binPath = "../games/xenoscape/xenoscape.runtime.json";
+        if File.Exists(binPath) { return binPath; }
+
+        var localPath = "xenoscape.runtime.json";
+        if File.Exists(localPath) { return localPath; }
+
+        return rootPath;
+    }
+
+    /// @brief Push current game stats (FPS, position, state)
+    ///        into `Viper.Game.DebugOverlay`.  Toggleable in
+    ///        options.
+    hide func updateDebugOverlay() {
+        if debugEnabled == false { return; }
+        debugOverlay.Update(dt);
+        debugOverlay.Watch("dt", dt);
+        debugOverlay.Watch("scene", sceneId());
+        debugOverlay.Watch("level", currentLevel);
+        debugOverlay.Watch("player_state", player.state);
+        debugOverlay.Watch("state_frames", player.stateFrames());
+        debugOverlay.Watch("player_vx", player.vx);
+        debugOverlay.Watch("player_vy", player.vy);
+        debugOverlay.Watch("enemies", enemies.activeCount());
+        debugOverlay.Watch("enemy_bullets", enemies.enemyBulletCount());
+        debugOverlay.Watch("bullets", bullets.activeCount());
+        debugOverlay.Watch("particles", particles.activeCount());
+        debugOverlay.Watch("cam_x", camera.x);
+        debugOverlay.Watch("cam_y", camera.y);
+        debugOverlay.Draw(canvas);
+    }
+
+    /// @brief Cheap "what scene am I in?" id used by the
+    ///        debug overlay.  Maps the high-level state
+    ///        to a small integer.
+    hide func sceneId() -> Integer {
+        if sm.IsScene("menu") { return 0; }
+        if sm.IsScene("playing") { return 1; }
+        if sm.IsScene("paused") { return 2; }
+        if sm.IsScene("gameover") { return 3; }
+        if sm.IsScene("levelcomplete") { return 4; }
+        if sm.IsScene("highscores") { return 5; }
+        if sm.IsScene("controls") { return 6; }
+        if sm.IsScene("victory") { return 7; }
+        if sm.IsScene("levelselect") { return 8; }
+        return -1;
     }
 
     // =========================================================================
     // State: Menu
     // =========================================================================
 
+    /// @brief Per-frame: title / main-menu state.  Routes
+    ///        input through `MenuSystem.updateTitle` and
+    ///        switches state on its return code.
     hide func updateMenu() {
         var result = menus.updateTitle();
         menus.drawTitle(canvas);
@@ -290,6 +483,8 @@ class Game {
         }
     }
 
+    /// @brief Per-frame: level-select state.  Calls
+    ///        `loadLevel` on choice.
     hide func updateLevelSelect() {
         var result = menus.updateLevelSelect();
         menus.drawLevelSelect(canvas);
@@ -305,7 +500,7 @@ class Game {
             deathTimer = 0;
             player.reset();
             loadLevel(currentLevel);
-            introTimer = 1200;
+            introTimer = tuning.getInt("presentation.introSplashMs", 1200);
             sm.Switch("playing");
             sfx.playGameMusic();
         }
@@ -321,6 +516,20 @@ class Game {
     // State: Playing
     // =========================================================================
 
+    /// @brief Per-frame: in-level gameplay update.  THIS IS
+    ///        THE BIG ONE.  Order:
+    ///          1. ability inputs (dash, charge, pound)
+    ///          2. player.update
+    ///          3. enemies.updateAll
+    ///          4. bullets.updateAll
+    ///          5. pickups.updateAll
+    ///          6. particles.updateAll
+    ///          7. lighting.update
+    ///          8. camera.follow
+    ///          9. collision checks (player↔enemy, etc.)
+    ///         10. trigger checks (hazards, checkpoints,
+    ///             save stations, lore)
+    ///         11. level-end + game-over checks
     hide func updatePlaying() {
         // Pause check
         if Action.Pressed(ACT_BACK) {
@@ -488,6 +697,8 @@ class Game {
         }
     }
 
+    /// @brief Brief biome-name banner shown for the first
+    ///        ~2 seconds of a level.
     hide func drawLevelIntro(levelNum: Integer) {
         var levelName = "THE DESCENT";
         if levelNum == 2 { levelName = "FUNGAL CAVERNS"; }
@@ -517,6 +728,9 @@ class Game {
     // Collision: Player vs Enemies
     // =========================================================================
 
+    /// @brief Player vs each live enemy AABB.  Stomp from
+    ///        above kills the enemy; side/below contact
+    ///        damages the player (subject to iframes).
     hide func checkPlayerEnemyCollision() {
         if player.iframes > 0 { return; }
         if player.state == PS_DEAD { return; }
@@ -567,6 +781,9 @@ class Game {
     // Collision: Player vs Pickups
     // =========================================================================
 
+    /// @brief Player vs pickups.  Routes to
+    ///        `Player.collectPowerUp` and the matching SFX +
+    ///        achievement event.
     hide func checkPlayerPickupCollision() {
         var collected = pickups.checkCollection(player.pixelX(), player.pixelY());
 
@@ -592,6 +809,9 @@ class Game {
     // Collision: Bullets vs Enemies
     // =========================================================================
 
+    /// @brief Each player bullet vs each enemy AABB (via
+    ///        the enemy quadtree).  Hit deals damage scaled
+    ///        by the bullet's charge level.
     hide func checkBulletEnemyCollision() {
         var i = 0;
         while i < bullets.getCount() {
@@ -633,6 +853,8 @@ class Game {
     // Collision: Enemy bullets vs Player
     // =========================================================================
 
+    /// @brief Player vs incoming enemy bullets.  Damage on
+    ///        contact (modulo iframes / shield).
     hide func checkPlayerEnemyBullets() {
         if player.iframes > 0 { return; }
         if player.state == PS_DEAD { return; }
@@ -649,6 +871,9 @@ class Game {
     // Hazard check (spikes, lava)
     // =========================================================================
 
+    /// @brief Player vs hazardous tiles (spikes, lava,
+    ///        steam vents).  Triggers damage / launch effect
+    ///        based on hazard id.
     hide func checkHazards() {
         if player.iframes > 0 { return; }
         if player.state == PS_DEAD { return; }
@@ -665,6 +890,8 @@ class Game {
     // Checkpoint
     // =========================================================================
 
+    /// @brief Player vs checkpoint tile.  On first touch,
+    ///        records the spawn point + plays the chime.
     hide func checkCheckpoint() {
         if level.hasCheckpoint == false { return; }
         if reachedCheckpoint { return; }
@@ -692,6 +919,8 @@ class Game {
     // Level end check
     // =========================================================================
 
+    /// @brief Player vs level-exit tile.  Transitions to
+    ///        LEVEL_COMPLETE state.
     hide func checkLevelEnd() {
         var px = player.pixelX();
 
@@ -728,6 +957,9 @@ class Game {
     // Death handling
     // =========================================================================
 
+    /// @brief Player just died.  Decrement lives, fire the
+    ///        death FX, schedule respawn (if lives left) or
+    ///        switch to GAME_OVER.
     hide func handleDeath() {
         if deathTimer == 0 {
             particles.burstDeath(player.centerX(), player.centerY());
@@ -780,6 +1012,7 @@ class Game {
     // State: Paused
     // =========================================================================
 
+    /// @brief Per-frame: paused state input handling.
     hide func updatePaused() {
         var result = menus.updatePause();
 
@@ -804,6 +1037,7 @@ class Game {
     // State: Game Over
     // =========================================================================
 
+    /// @brief Per-frame: game-over state input handling.
     hide func updateGameOver() {
         var result = menus.updateGameOver();
         menus.drawGameOver(canvas, score);
@@ -825,6 +1059,8 @@ class Game {
     // State: Level Complete
     // =========================================================================
 
+    /// @brief Per-frame: level-complete state input.
+    ///        Advances to the next level on continue.
     hide func updateLevelComplete() {
         levelCompleteTimer = levelCompleteTimer + 1;
 
@@ -852,6 +1088,7 @@ class Game {
     // State: Victory
     // =========================================================================
 
+    /// @brief Per-frame: end-credits / victory state input.
     hide func updateVictory() {
         var result = menus.updateVictory();
         menus.drawVictory(canvas, score + timeBonus);
@@ -868,6 +1105,7 @@ class Game {
     // State: High Scores
     // =========================================================================
 
+    /// @brief Per-frame: high-scores state input.
     hide func updateHighScores() {
         var result = menus.updateHighScores();
         menus.drawHighScores(canvas);
@@ -883,6 +1121,7 @@ class Game {
     // State: Controls
     // =========================================================================
 
+    /// @brief Per-frame: controls-screen state input.
     hide func updateControls() {
         var result = menus.updateControls();
         menus.drawControls(canvas);
@@ -898,20 +1137,27 @@ class Game {
     // Game initialization helpers
     // =========================================================================
 
+    /// @brief Reset all run-state (lives, score, abilities)
+    ///        and load level 0.  Called from "New Game".
     hide func startNewGame() {
         score = 0;
         coins = 0;
-        currentLevel = 1;
+        currentLevel = tuning.getInt("game.startLevel", 1);
+        if currentLevel < 1 { currentLevel = 1; }
+        if currentLevel > LEVEL_COUNT { currentLevel = LEVEL_COUNT; }
         levelTimer = 0;
         reachedCheckpoint = false;
         deathTimer = 0;
 
         player.reset();
-        loadLevel(1);
+        loadLevel(currentLevel);
 
         sm.Switch("playing");
     }
 
+    /// @brief Load level `num` — wipes pools, builds the
+    ///        new tilemap + spawn lists, snaps the camera,
+    ///        triggers the intro banner.
     hide func loadLevel(num: Integer) {
         currentLevel = num;
         achSys.onLevelReached(num);
@@ -944,13 +1190,18 @@ class Game {
         levelTimer = 0;
         reachedCheckpoint = false;
         deathTimer = 0;
-        introTimer = 1200;
+        introTimer = tuning.getInt("presentation.introSplashMs", 1200);
     }
 
     // =========================================================================
     // New subsystem integration
     // =========================================================================
 
+    /// @brief Init the "newer" subsystems added later in
+    ///        development (achievements, lore, save-mgr,
+    ///        worldmap, lighting, transitions, abilities).
+    ///        Kept separate so feature additions are easy to
+    ///        track.
     hide func initNewSystems() {
         abilities = new AbilityManager();
         abilities.initAbilities(pal);
@@ -989,6 +1240,8 @@ class Game {
     }
 
     // Update all expansion systems each frame
+    /// @brief Per-frame ticks for the "newer" subsystems
+    ///        listed above.
     hide func updateNewSystems() {
         abilities.updateUI();
         lighting.update();
@@ -1147,6 +1400,10 @@ class Game {
     }
 
     // Draw all expansion system overlays
+    /// @brief Per-frame draws for the "newer" subsystems
+    ///        (lighting overlay, transition fades, lore /
+    ///        achievement popups).  Always last so they
+    ///        composite over gameplay.
     hide func drawNewSystems(canvas: Canvas, camX: Integer, camY: Integer) {
         // Biome ambient particles
         renderObj.drawBiomeAmbient(canvas, camX, camY, level.levelTheme, levelTimer);

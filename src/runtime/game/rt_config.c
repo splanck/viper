@@ -36,7 +36,7 @@ void *rt_config_load(void *path) {
     if (!path)
         return NULL;
     rt_string text = rt_io_file_read_all_text((rt_string)path);
-    if (!text)
+    if (!text || rt_str_len(text) == 0)
         return NULL;
     void *root = rt_json_parse((rt_string)text);
     if (!root)

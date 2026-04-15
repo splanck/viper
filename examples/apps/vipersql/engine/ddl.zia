@@ -1,16 +1,79 @@
-// ddl.zia — DDL Statement Handler
-// Part of ViperSQL
+// =============================================================================
+// ddl.zia — DDL statement handler: CREATE / ALTER / DROP / SHOW
+// Part of ViperSQL  (package: engine)
+// =============================================================================
 //
-// Handles Data Definition Language operations extracted from the Executor:
-//   - CREATE/DROP/ALTER TABLE, INDEX, VIEW, DATABASE
-//   - USE DATABASE, VACUUM, HELP, DESCRIBE
-//   - User management: CREATE/DROP/ALTER USER, SHOW USERS
-//   - EXPLAIN query plan display
-//   - SHOW TABLES, SHOW DATABASES
+// PURPOSE
+// -------
+// `DdlHandler` executes every Data Definition Language statement
+// the parser produces.  It is a fairly large "one class, one
+// handler method per statement kind" file.  The handler carries a
+// back-pointer to its `Executor` so it can reach the shared
+// catalog (`DatabaseServer`, `Database`, `IndexManager`,
+// `StorageEngine`, `SequenceManager`, `TriggerManager`,
+// `FunctionManager`, temporary-table registry) through one
+// object.
 //
-// The DdlHandler holds a back-reference to its owning Executor instance
-// and delegates all state access (db, indexMgr, server, storageEngine,
-// optimizer, tempDb, etc.) through that reference.
+// STATEMENT COVERAGE
+// ------------------
+//   Tables     : CREATE TABLE, DROP TABLE, ALTER TABLE (ADD /
+//                DROP / RENAME / ALTER COLUMN; ADD / DROP
+//                CONSTRAINT), TRUNCATE.
+//   Indexes    : CREATE INDEX, DROP INDEX, REINDEX.
+//   Views      : CREATE VIEW / MATERIALIZED VIEW, DROP VIEW,
+//                REFRESH MATERIALIZED VIEW.
+//   Databases  : CREATE DATABASE, DROP DATABASE, USE DATABASE.
+//   Triggers   : CREATE TRIGGER, DROP TRIGGER.
+//   Sequences  : CREATE SEQUENCE, DROP SEQUENCE, ALTER SEQUENCE.
+//   Functions  : CREATE FUNCTION, DROP FUNCTION.
+//   Users      : CREATE / DROP / ALTER USER, SHOW USERS.
+//   Privileges : GRANT, REVOKE.
+//   Reflection : DESCRIBE, SHOW TABLES/DATABASES/INDEXES,
+//                EXPLAIN.
+//   Maintenance: VACUUM, ANALYZE.
+//
+// WHERE THIS FITS
+// ---------------
+//     parser/parser.zia → DDL AST (CreateTableStmt,
+//                         CreateIndexStmt, ...)
+//         │
+//         ▼
+//     engine/executor.zia — dispatch by statement class
+//         │
+//         ▼
+//     engine/ddl.zia   (YOU ARE HERE)
+//         │  mutates live catalog, optionally persists via
+//         │  StorageEngine, returns a QueryResult.
+//         ▼
+//     storage/engine.zia  (persistence side when enabled)
+//
+// KEY DESIGN CHOICES
+// ------------------
+//   1. All handlers return `QueryResult`.  Uniform contract with
+//      DML: the caller never has to know whether it invoked DDL
+//      or DML to render the outcome.
+//
+//   2. Two-phase on persistent databases.  In-memory catalog
+//      update first (cheap, reversible), then `StorageEngine`
+//      persist.  If persist fails, we roll back the in-memory
+//      change.
+//
+//   3. Temporary tables bypass persistence.  CREATE TEMPORARY
+//      TABLE lives in the session-local `tempDb` — no schema-
+//      page write, no WAL.
+//
+//   4. Trigger / sequence / function managers are per-database.
+//      Looked up through the executor's current-database
+//      pointer.  Simplifies multi-database test scenarios.
+//
+// HOW TO READ THIS FILE
+// ---------------------
+// ~2,200 lines.  Each statement kind has an
+// `execute<Stmt>(stmt)` method.  Helpers live near the handlers
+// that use them.  The class has no fields beyond `exec`;
+// everything else is reached through the executor.
+//
+// =============================================================================
 
 module ddl;
 

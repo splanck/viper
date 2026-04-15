@@ -1,8 +1,63 @@
 // =============================================================================
-// Save System — Multi-slot persistent save at save stations
+// save.zia — Multi-slot save/load of player progress
+// Part of Xenoscape  (the 2D sidescroller platformer demo)
 // =============================================================================
-// Stores player progress using Viper.IO.SaveData for persistence.
-// Format: Each slot stores level, abilities, maxhp, gems as separate keys.
+//
+// TUTORIAL — HOW A PLATFORMER REMEMBERS YOU
+// -----------------------------------------
+// Every platformer past the 80s has some form of save.  The
+// design question is: *how much state to save?*  You have
+// extremes:
+//
+//   * **Checkpoint games** — save only which checkpoint the
+//     player last touched.  Everything else resets.  Cheap,
+//     simple, works for linear levels.
+//
+//   * **Save-anywhere games** — snapshot every enemy, every
+//     pickup, every door state.  Flexible but the save file
+//     can be huge and the code must serialise every entity.
+//
+// Xenoscape uses the sweet spot most metroidvanias adopt: save
+// *slot-wide progress* (level index, abilities unlocked, max HP,
+// gems collected, time played).  Enemies and pickups reset when
+// you re-enter a room, but your permanent progress survives.
+//
+// This file handles that slot-wide progress.  The storage
+// backend is `Viper.IO.SaveData`, a simple key-value persistent
+// store the Viper runtime provides — no need to manage files,
+// schemas, or serialisers by hand.
+//
+// WHY KEY-VALUE INSTEAD OF A BLOB?
+// --------------------------------
+// We could stuff all five fields into one struct and serialise
+// that.  Instead we store each as its own `SaveData` key
+// (`s0lv`, `s0ab`, `s0hp`, ...).  Benefits:
+//
+//   * Forward-compat: adding a new field (e.g. `s0dl` for
+//     "difficulty level") doesn't break old saves — old keys
+//     are unchanged; the new key is missing and
+//     `GetInt(..., default)` returns its default.
+//
+//   * Backward-compat: removing a field just orphans a key;
+//     `SaveData` tolerates unknown keys.
+//
+//   * No schema version: unlike a binary blob, there's no
+//     "save format version mismatch" path to handle.
+//
+// Per-field writes *are* chattier on disk, but `SaveData.Save()`
+// batches them, so the overhead is cosmetic.
+//
+// WHERE THIS FITS
+// ---------------
+//     menu.zia   ──►  title screen lists slots (via `getSlotSummary`);
+//                     "new game" creates a fresh slot, "continue"
+//                     loads one.
+//
+//     game.zia   ──►  holds a SaveManager, calls `saveSlot(...)`
+//                     whenever the player touches a save station.
+//
+//     Viper.IO.SaveData  (runtime key-value store)
+//
 // =============================================================================
 
 module save;
@@ -10,22 +65,41 @@ module save;
 bind Viper.IO;
 bind "./config";
 
+/// @brief Maximum concurrent save slots.  Three is a classic
+///        number (fits most menu layouts on a small screen).
 final MAX_SAVE_SLOTS = 3;
 
+//=============================================================================
+// SAVE MANAGER
+//=============================================================================
+
+/// @brief Owns the SaveData store and a per-slot cache of the
+///        last-known values.  Zero-indexed: slots 0..MAX_SAVE_SLOTS-1.
+///
+/// The cache lets read queries (`getSlotLevel`, `isSlotUsed`,
+/// ...) avoid round-trips through SaveData; writes always
+/// update both the cache and the store, then `Save()` to flush.
 class SaveManager {
+    /// @brief Stub — use `initSave()` for the real setup.  The
+    ///        two-phase init lets Game allocate the field with
+    ///        `= new SaveManager()` then wire it up later.
     expose func init() {}
     hide SaveData store;
-    hide List[Integer] slotLevel;
-    hide List[Integer] slotAbilities;
-    hide List[Integer] slotMaxHp;
-    hide List[Integer] slotGems;
-    hide List[Integer] slotTime;
-    hide List[Integer] slotUsed; // 0=empty, 1=used
 
+    // Per-slot state, parallel lists indexed by slot 0..2.
+    hide List[Integer] slotLevel;      // farthest biome reached
+    hide List[Integer] slotAbilities;  // ability-bitset (see abilities.zia)
+    hide List[Integer] slotMaxHp;      // max HP unlocked
+    hide List[Integer] slotGems;       // currency collected
+    hide List[Integer] slotTime;       // play-time in seconds
+    hide List[Integer] slotUsed;       // 0 = empty, 1 = populated
+
+    /// @brief Open the "xenoscape_saves" store and load every
+    ///        slot into the cache.
     expose func initSave() {
         store = SaveData.New("xenoscape_saves");
         slotLevel = [0, 0, 0];
-        slotAbilities = [1, 1, 1]; // Start with wall jump
+        slotAbilities = [1, 1, 1]; // default: wall-jump unlocked
         slotMaxHp = [5, 5, 5];
         slotGems = [0, 0, 0];
         slotTime = [0, 0, 0];
@@ -33,6 +107,12 @@ class SaveManager {
         loadAll();
     }
 
+    /// @brief Pull every slot's keys from SaveData into the cache.
+    ///
+    /// A slot counts as "used" if either its `lv` or `ab` key has
+    /// a non-default value — that way a brand-new install with
+    /// no keys at all reads as three empty slots, and the first
+    /// save promotes the slot to "used".
     hide func loadAll() {
         store.Load();
         var i = 0;
@@ -54,6 +134,13 @@ class SaveManager {
         }
     }
 
+    /// @brief Write a slot's full state.  Call from the save
+    ///        station on touch.
+    ///
+    /// Updates the cache first, then pushes each field through
+    /// SaveData.  One Save() call flushes the batch.  Out-of-
+    /// range slot ids are ignored silently — the menu shouldn't
+    /// be able to pass one, but defensive is cheap.
     expose func saveSlot(slot: Integer, level: Integer, abilities: Integer,
                          maxHp: Integer, gems: Integer, time: Integer) {
         if slot < 0 or slot >= MAX_SAVE_SLOTS { return; }
@@ -72,36 +159,51 @@ class SaveManager {
         store.Save();
     }
 
+    /// @brief "Has anyone ever saved to this slot?"
     expose func isSlotUsed(slot: Integer) -> Boolean {
         if slot < 0 or slot >= MAX_SAVE_SLOTS { return false; }
         return slotUsed.get(slot) == 1;
     }
 
+    /// @brief Accessor for the slot's level index.  Out-of-range
+    ///        returns 0 (the first level) as a safe default.
     expose func getSlotLevel(slot: Integer) -> Integer {
         if slot < 0 or slot >= MAX_SAVE_SLOTS { return 0; }
         return slotLevel.get(slot);
     }
 
+    /// @brief Ability-bitset accessor.  See `abilities.zia` for
+    ///        the bit layout.  Default `1` means "wall jump
+    ///        unlocked" (every run starts with that).
     expose func getSlotAbilities(slot: Integer) -> Integer {
         if slot < 0 or slot >= MAX_SAVE_SLOTS { return 1; }
         return slotAbilities.get(slot);
     }
 
+    /// @brief Max HP accessor — default 5 matches new-game HP.
     expose func getSlotMaxHp(slot: Integer) -> Integer {
         if slot < 0 or slot >= MAX_SAVE_SLOTS { return 5; }
         return slotMaxHp.get(slot);
     }
 
+    /// @brief Currency accessor.
     expose func getSlotGems(slot: Integer) -> Integer {
         if slot < 0 or slot >= MAX_SAVE_SLOTS { return 0; }
         return slotGems.get(slot);
     }
 
+    /// @brief Play time (seconds) accessor.  Used to render
+    ///        "12m 34s" on the save-select menu.
     expose func getSlotTime(slot: Integer) -> Integer {
         if slot < 0 or slot >= MAX_SAVE_SLOTS { return 0; }
         return slotTime.get(slot);
     }
 
+    /// @brief Clear a slot.  Cache resets to defaults; the
+    ///        store flips `lv`/`ab` to 0 so the next `loadAll`
+    ///        re-reads as empty.  We leave the other keys at
+    ///        their previous values — they become unreachable
+    ///        (gated by `isSlotUsed`), which is fine.
     expose func deleteSlot(slot: Integer) {
         if slot < 0 or slot >= MAX_SAVE_SLOTS { return; }
         slotLevel.set(slot, 0);
@@ -115,6 +217,10 @@ class SaveManager {
         store.Save();
     }
 
+    /// @brief One-line summary for the menu's slot list.
+    ///        "Empty" for unused slots; otherwise
+    ///        "Level N - Mm Ss".  Kept as a single string so
+    ///        the menu can position it with one draw call.
     expose func getSlotSummary(slot: Integer) -> String {
         if not isSlotUsed(slot) { return "Empty"; }
         var lv = slotLevel.get(slot) + 1;

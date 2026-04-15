@@ -1,16 +1,92 @@
-// query.zia — SELECT/Query Processing Engine
-// Part of ViperSQL
+// =============================================================================
+// query.zia — The SELECT engine: scans, joins, groups, sorts, limits
+// Part of ViperSQL  (package: engine)
+// =============================================================================
 //
-// Handles SELECT statement execution, including:
-//   - Single-table queries with WHERE, ORDER BY, GROUP BY, HAVING
-//   - View materialization and derived table (subquery in FROM)
-//   - Aggregate queries (COUNT, SUM, AVG, MIN, MAX)
-//   - DISTINCT, LIMIT/OFFSET
-//   - CTE (Common Table Expressions) with WITH clause
-//   - Result set sorting (quicksort) for ORDER BY
+// PURPOSE
+// -------
+// This is where a SELECT statement becomes a QueryResult.  The
+// `QueryHandler` class implements the full SELECT feature set
+// of the demo, step by step — scan, filter, join, aggregate,
+// order, limit, emit.
 //
-// The QueryHandler holds a back-reference to the Executor for access
-// to shared state (database, indexes, expression evaluation, etc.).
+// STAGES OF A SELECT
+// ------------------
+// A typical query walks through these stages (not every stage
+// runs for every query):
+//
+//     1. Resolve FROM:
+//         * Plain table scan.
+//         * View — re-execute the stored SQL inline.
+//         * Materialized view — read cached `Table`.
+//         * Derived table (`FROM (SELECT ...) AS x`) —
+//           recursive executeSql.
+//         * Table function (e.g. `generate_series`).
+//         * LATERAL subqueries (per-row re-evaluation).
+//     2. Apply joins via `engine/join.zia`.
+//     3. WHERE filter — evaluate predicate per row.
+//     4. GROUP BY / GROUPING SETS / ROLLUP / CUBE aggregation.
+//     5. HAVING filter (post-aggregate predicate).
+//     6. Projection — evaluate each SELECT-list expression,
+//        including window functions via `engine/sql_window.zia`.
+//     7. DISTINCT / DISTINCT ON dedup.
+//     8. ORDER BY — quicksort on the result.
+//     9. LIMIT / OFFSET / FETCH FIRST.
+//    10. SELECT INTO — optional sink to a new table.
+//
+// PLUS the feature toggles: CTEs (recursive and non-recursive),
+// set operations (UNION / EXCEPT / INTERSECT via
+// `engine/setops.zia`), TABLESAMPLE, FOR UPDATE / FOR SHARE row
+// locking (via `storage/txn.zia`), and the PG system-view
+// shortcut.
+//
+// WHERE THIS FITS
+// ---------------
+//     parser/parser.zia → SelectStmt
+//         │
+//         ▼
+//     engine/executor.zia — dispatches by class
+//         │
+//         ▼
+//     engine/query.zia   (YOU ARE HERE)
+//         │
+//         ├──► engine/join.zia       (joins)
+//         ├──► engine/setops.zia     (UNION / EXCEPT / INTERSECT)
+//         ├──► engine/sql_window.zia (window functions)
+//         ├──► engine/sql_functions.zia (scalar + aggregate fns)
+//         ├──► engine/index.zia      (WHERE → index lookup)
+//         ├──► engine/system_views.zia (pg_catalog / info_schema)
+//         └──► storage/txn.zia       (FOR UPDATE / FOR SHARE)
+//
+// KEY DESIGN CHOICES
+// ------------------
+//   1. Row-at-a-time materialisation.  Every stage builds a
+//      full `List[Row]`, then the next stage consumes it.  No
+//      streaming / iterator protocol.  Simple, predictable
+//      memory; adequate for demo workloads.
+//
+//   2. Subqueries re-parse.  A subquery's SQL text is held on
+//      the `Expr` node; when the evaluator hits it, we call
+//      `exec.executeSql(sqltext)` recursively.  Not the
+//      fastest path — a compiled-plan cache would help — but
+//      avoids coupling between the AST layers.
+//
+//   3. Aggregation uses a hash-grouped accumulator.  For GROUP
+//      BY we pipe-join the key values (same trick as
+//      `engine/setops.zia`), accumulate per-key, then emit.
+//
+//   4. Sort is quicksort in-place on the result row list.
+//      Comparators route through `SqlValue.compare` so NULLs
+//      follow `NULLS FIRST` / `NULLS LAST` and three-valued
+//      logic.
+//
+// HOW TO READ THIS FILE
+// ---------------------
+// ~3,400 lines; the largest single SQL logic file after
+// `executor.zia`.  Sections roughly mirror the stage list above.
+// Start at `executeSelect`, follow down into each sub-stage.
+//
+// =============================================================================
 
 module query;
 

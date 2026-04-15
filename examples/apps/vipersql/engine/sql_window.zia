@@ -1,8 +1,67 @@
-// sql_window.zia — Window Function Engine
-// Part of ViperSQL
+// =============================================================================
+// sql_window.zia — Window function engine (OVER, PARTITION BY, frames)
+// Part of ViperSQL  (package: engine)
+// =============================================================================
 //
-// Provides window function computation over result sets.
-// Functions operate on QueryResult data without needing executor state.
+// PURPOSE
+// -------
+// SQL window functions compute a value for each row of a result
+// set, based on a "window" around that row — all rows in its
+// partition, rows before it, rows within N positions, etc.
+// Examples:
+//
+//     SELECT name, salary,
+//            RANK()              OVER (ORDER BY salary DESC),
+//            AVG(salary)         OVER (PARTITION BY department),
+//            SUM(amount)         OVER (ORDER BY ts ROWS BETWEEN 3
+//                                      PRECEDING AND CURRENT ROW)
+//     FROM employees;
+//
+// This file implements those computations over a materialised
+// `QueryResult`.  It runs *after* the executor has produced all
+// rows (window functions cannot stream — they need to see the
+// partition to rank / sum / etc.).
+//
+// Supported functions:
+//   * Aggregation over window: SUM, AVG, MIN, MAX, COUNT.
+//   * Ranking: ROW_NUMBER, RANK, DENSE_RANK, PERCENT_RANK,
+//     CUME_DIST, NTILE.
+//   * Positional: LAG, LEAD, FIRST_VALUE, LAST_VALUE, NTH_VALUE.
+//
+// Supported frame clauses:
+//   * ROWS / RANGE BETWEEN … AND …
+//   * UNBOUNDED PRECEDING / FOLLOWING, CURRENT ROW,
+//     N PRECEDING / FOLLOWING.
+//   * EXCLUDE CURRENT ROW / GROUP / TIES (Phase 72).
+//
+// WHERE THIS FITS
+// ---------------
+//     parser/parser.zia  → EXPR_WINDOW nodes with partition /
+//                          order / frame fields populated.
+//         │
+//         ▼
+//     engine/executor.zia    (produces unordered rows)
+//         │
+//         ▼
+//     engine/sql_window.zia  (YOU ARE HERE)
+//         │  walks the result, computes per-row window values,
+//         │  writes them into the result rows.
+//         ▼
+//     engine/result.zia → rendered as a normal column
+//
+// HOW TO READ THIS FILE
+// ---------------------
+//   1. `resolveWindowExpr` — evaluate a child expression against
+//      a result row (column name → cell).
+//   2. Partitioning: group rows by PARTITION BY key.
+//   3. Ordering: sort rows within a partition by ORDER BY keys.
+//   4. Framing: compute the slice of rows visible to a given
+//      reference row.
+//   5. Per-function dispatch: `computeRank`, `computeSum`,
+//      `computeLag`, etc.
+//   6. The top-level driver called by the executor.
+//
+// =============================================================================
 
 module sql_window;
 

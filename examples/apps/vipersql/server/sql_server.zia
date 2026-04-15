@@ -1,8 +1,47 @@
-// sql_server.zia - SQL Network Server (Core Components)
-// Part of ViperSQL - Phase 6: Network Server
+// =============================================================================
+// sql_server.zia — Text protocol server: session, result, query driver
+// Part of ViperSQL  (package: server)
+// =============================================================================
 //
-// Note: This module provides the core server infrastructure.
-// Actual network listening requires the Viper runtime with TCP support.
+// PURPOSE
+// -------
+// Core in-process components for the text-protocol server.  Does
+// NOT actually listen on TCP — that is `tcp_server.zia` and
+// `threadpool.zia`.  This file defines:
+//
+//   * `ClientSession` — per-connection identity and counters.
+//   * `ServerQueryResult` — a simple columnar result type
+//                           decoupled from the engine's
+//                           `QueryResult`, used for text-wire
+//                           rendering.
+//   * `SqlServer` — owns an `Executor`, counts queries, renders
+//                   results into the text format.
+//   * Message-type byte constants and small helpers
+//     (`stringStartsWith`, `stringContains`) used in protocol
+//     dispatch.
+//
+// WHERE THIS FITS
+// ---------------
+//     server/tcp_server.zia   (TCP accept loop)
+//         │
+//         ▼
+//     server/connection.zia   (per-connection handler dispatch)
+//         │
+//         ▼
+//     server/sql_server.zia  (YOU ARE HERE — text-protocol logic)
+//         │
+//         ▼
+//     engine/executor.zia
+//
+// HOW TO READ THIS FILE
+// ---------------------
+//   1. Port / framing constants + protocol message-type bytes.
+//   2. `stringStartsWith` / `stringContains` helpers.
+//   3. `ClientSession` data class.
+//   4. `ServerQueryResult` — columnar result type.
+//   5. `SqlServer` — execute, format, stats.
+//
+// =============================================================================
 
 module sql_server;
 

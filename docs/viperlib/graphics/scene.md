@@ -463,7 +463,7 @@ Batched sprite rendering for improved performance when drawing many sprites.
 **Type:** Instance (obj)
 **Constructor:** `NEW Viper.Graphics.SpriteBatch(capacity)`
 
-Creates a sprite batch with the given initial capacity (use 0 for default). SpriteBatch records draw calls, optionally sorts them by depth, applies shared tint/alpha state, and flushes them during `End(canvas)`. Use this when drawing many sprites (particles, bullets, tiles) to reduce caller-side draw orchestration.
+Creates a sprite batch with the given initial capacity (use 0 for default). SpriteBatch records draw calls, optionally sorts them by depth, applies shared tint/alpha state, and flushes them during `End(canvas)`. Use `Draw`/`DrawEx` for `Sprite` objects and `DrawPixels`/`DrawRegion` for raw `Pixels` buffers. `DrawPixels` preserves per-pixel alpha, so transparent sprites and overlays blend like `Canvas.BlitAlpha`.
 
 ### Properties
 

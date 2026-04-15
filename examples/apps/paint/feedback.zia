@@ -1,0 +1,53 @@
+// feedback.zia - Status, cursor, and GUI notification helpers
+module feedback;
+
+bind Viper.GUI as GUI;
+
+final CURSOR_ARROW = 0;
+final CURSOR_CROSSHAIR = 3;
+final CURSOR_HAND = 4;
+
+class FeedbackManager {
+    expose String statusMessage;
+
+    expose func init() {
+        statusMessage = "Ready";
+    }
+
+    expose func info(message: String) {
+        statusMessage = message;
+        GUI.Toast.Info(message);
+    }
+
+    expose func success(message: String) {
+        statusMessage = message;
+        GUI.Toast.Success(message);
+    }
+
+    expose func warning(message: String) {
+        statusMessage = message;
+        GUI.Toast.Warning(message);
+    }
+
+    expose func error(message: String) {
+        statusMessage = message;
+        GUI.Toast.Error(message);
+    }
+
+    expose func alert(title: String, message: String) {
+        statusMessage = message;
+        GUI.MessageBox.Info(title, message);
+    }
+
+    expose func setCanvasCursor(inCanvas: Integer) {
+        if inCanvas == 1 {
+            GUI.Cursor.Set(CURSOR_CROSSHAIR);
+        } else {
+            GUI.Cursor.Set(CURSOR_ARROW);
+        }
+    }
+
+    expose func setHandCursor() {
+        GUI.Cursor.Set(CURSOR_HAND);
+    }
+}

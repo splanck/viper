@@ -1,23 +1,48 @@
-// vsql.zia — ViperSQL Interactive Client
+// =============================================================================
+// vsql.zia — `vsql` CLI: psql-flavoured interactive client
+// Part of ViperSQL  (package: client)
+// =============================================================================
 //
-// Connects to a running ViperSQL (or PostgreSQL) server via the PG wire
-// protocol and provides an interactive SQL shell with aligned output,
-// meta-commands, and multi-line input.
+// PURPOSE
+// -------
+// The production interactive client.  Built on top of
+// `client/pg_client.zia` (which owns the PG wire protocol) —
+// this file is the UX layer: prompt, input buffering, output
+// formatting, and meta-command dispatch.
 //
-// Usage:
-//   viper run examples/apps/vipersql/client/vsql.zia
-//   viper run examples/apps/vipersql/client/vsql.zia -- -h localhost -p 5432 -U admin -d main
+// Feature checklist (PG `psql` parity subset):
+//   * Aligned tabular output.
+//   * Multi-line input (`;` terminates, `\` escapes newline).
+//   * `\q`, `\?`, `\dt`, `\d TABLE`, `\l`, `\c DBNAME`,
+//     `\i FILE`, `\timing`, `\x`.
+//   * Query timing.
+//   * Expanded (`\x`) display for wide results.
 //
-// Meta-commands:
-//   \q          Quit
-//   \?          Show help
-//   \dt         List tables
-//   \d TABLE    Describe table
-//   \l          List databases
-//   \c DBNAME   Switch database
-//   \i FILE     Execute SQL from file
-//   \timing     Toggle query timing
-//   \x          Toggle expanded display
+// Invoked via:
+//   viper run examples/apps/vipersql/client/vsql.zia \
+//        -- -h localhost -p 5432 -U admin -d main
+//
+// WHERE THIS FITS
+// ---------------
+//     vsql.zia   (YOU ARE HERE — UX)
+//         │
+//         ▼
+//     client/pg_client.zia   (wire protocol)
+//         │
+//         ▼
+//     server/pg_wire.zia  /  any PostgreSQL server
+//
+// HOW TO READ THIS FILE
+// ---------------------
+//   1. Argument parsing + defaults.
+//   2. The REPL loop: prompt, read, accumulate lines until
+//      terminator, dispatch to meta-command or wire-protocol
+//      executor.
+//   3. Result formatter — column-width calculation + aligned
+//      rendering.
+//   4. `\`-prefixed meta-command handlers.
+//
+// =============================================================================
 
 module vsql;
 

@@ -1,6 +1,8 @@
 module palette_canvas_probe;
 
+bind Viper.Core.Diagnostics as Diag;
 bind Viper.Graphics;
+bind Viper.IO as IO;
 bind Viper.Terminal;
 bind "./colors";
 
@@ -25,11 +27,27 @@ func main() {
         i = i + 1;
     }
 
-    var snap = gfx.Screenshot();
-    SayInt(snap.SaveBmp("/tmp/palette_canvas_probe.bmp"));
+    var snapPath = "/tmp/palette_canvas_probe.bmp";
+    var regionPath = "/tmp/palette_canvas_region_probe.bmp";
+    if IO.File.Exists(snapPath) {
+        IO.File.Delete(snapPath);
+    }
+    if IO.File.Exists(regionPath) {
+        IO.File.Delete(regionPath);
+    }
 
-    SayInt(gfx.GetPixel(20, 20)); // index 0 center
-    SayInt(gfx.GetPixel(42, 20)); // index 1 center
-    SayInt(gfx.GetPixel(20, 42)); // index 4 center
-    SayInt(gfx.GetPixel(86, 174)); // lower palette sample
+    var snap = gfx.Screenshot();
+    Diag.Assert(snap != null, "Canvas.Screenshot returns Pixels");
+    Diag.AssertEq(snap.SaveBmp(snapPath), 1, "Pixels.SaveBmp succeeds after Canvas.Screenshot");
+    Diag.Assert(IO.File.Exists(snapPath), "screenshot BMP was written");
+
+    var region = gfx.CopyRect(10, 10, 40, 40);
+    Diag.Assert(region != null, "Canvas.CopyRect returns Pixels");
+    Diag.AssertEq(region.SaveBmp(regionPath), 1, "Pixels.SaveBmp succeeds after Canvas.CopyRect");
+    Diag.Assert(IO.File.Exists(regionPath), "region BMP was written");
+
+    Diag.AssertEq(gfx.GetPixel(20, 20), 0, "palette index 0 sample");
+    Diag.AssertEq(gfx.GetPixel(42, 20), 0xFFFFFF, "palette index 1 sample");
+
+    Say("RESULT: ok");
 }

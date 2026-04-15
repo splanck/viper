@@ -88,6 +88,11 @@ class EraserTool {
 
     // Draw eraser stamps along a line
     hide func drawEraserLine(x1: Integer, y1: Integer, x2: Integer, y2: Integer, canvas: DrawingCanvas, colors: ColorManager, brushSettings: BrushSettings) {
+        if brushSettings.shape == brush.SHAPE_ROUND {
+            canvas.drawThickLine(x1, y1, x2, y2, brushSettings.size, canvas.backgroundColor);
+            return;
+        }
+
         var dx = x2 - x1;
         var dy = y2 - y1;
         var deltaX = dx;

@@ -1,13 +1,81 @@
-// server.zia — Multi-Database Server
-// Part of ViperSQL
+// =============================================================================
+// server.zia — `DatabaseServer`: the multi-database + users root
+// Part of ViperSQL  (package: engine)
+// =============================================================================
 //
-// The DatabaseServer manages multiple named databases within a single server
-// instance. It provides thread-safe database creation, lookup, and deletion
-// with Monitor-based synchronization for concurrent access. Each database
-// has an optional persistent StorageEngine for disk-backed storage.
+// PURPOSE
+// -------
+// One `DatabaseServer` lives at the top of the engine's object
+// graph and owns *every* piece of shared, cross-session state:
 //
-// Also manages server-wide user authentication (CREATE/DROP USER, password
-// verification) using SHA-256 hashed passwords stored in memory.
+//   * The collection of named databases
+//     (each `Database` holds tables, views, matviews).
+//   * An `IndexManager` per database.
+//   * An optional `StorageEngine` per database (null for
+//     in-memory; non-null for `--data-dir`-persistent DBs).
+//   * The user registry (SHA-256 hashed password store).
+//   * The privilege table (table-level GRANTs per user).
+//   * A "current database" pointer used to implement `USE db;`.
+//
+// Every `Session` (see `engine/session.zia`) holds an
+// `Executor`, and every `Executor` points at the shared
+// `DatabaseServer`.  That is how two concurrent sessions see
+// each other's committed data.
+//
+// Thread-safe: every public method is protected by a Monitor
+// lock, then delegates to an `*Internal` helper that assumes
+// the lock is already held.  The same convention used by
+// `storage/engine.zia`.
+//
+// WHERE THIS FITS
+// ---------------
+//     vipersql.zia / main.zia
+//         │  constructs one instance
+//         ▼
+//     engine/server.zia   (YOU ARE HERE)
+//         │
+//         ├──► List[Database]        (engine/database.zia)
+//         ├──► List[IndexManager]    (engine/index.zia)
+//         ├──► List[StorageEngine?]  (storage/engine.zia)
+//         └──► user + privilege registries
+//
+// KEY DESIGN CHOICES
+// ------------------
+//   1. Parallel lists instead of maps.  Same "no hash map in
+//      Zia" rationale used across the demo.  Lookups are linear
+//      but the database count is small (usually 1-3) so
+//      microsecond costs are irrelevant.
+//
+//   2. Public/internal method pairs.  `foo()` grabs the lock
+//      then calls `fooInternal()`.  Shared helpers call
+//      `*Internal` directly.  Keeps lock discipline obvious.
+//
+//   3. SHA-256 password hashes.  The password store keeps salted
+//      hashes in RAM.  On server restart the users go away unless
+//      persistence is wired (currently only tables persist —
+//      auth rebuild is the responsibility of the startup config).
+//
+//   4. Privilege mask bits.  GRANTs are stored as a per-user
+//      bitmask `(SELECT=1, INSERT=2, UPDATE=4, DELETE=8, ...)`.
+//      Much cheaper than a per-privilege row, and checks become
+//      single `(mask & bit) != 0` tests.
+//
+// HOW TO READ THIS FILE
+// ---------------------
+//   1. Fields + `init`.
+//   2. Database CRUD: `createDatabase`, `createDatabaseWithFile`,
+//      `dropDatabase`, `useDatabase`, `databaseExists`,
+//      `listDatabases`.
+//   3. Accessors: `getDatabase`, `getIndexManager`,
+//      `getStorageEngine`, `currentStorageEngine`,
+//      `currentDatabase`, `currentIndexManager`.
+//   4. Users: `createUser`, `dropUser`, `userExists`,
+//      `verifyPassword`, `changePassword`, `listUsers`.
+//   5. Privileges: `setTableOwner`, `grantPrivilege`,
+//      `revokePrivilege`, `hasPrivilege`, `dropTablePrivileges`,
+//      `dropUserPrivileges`.
+//
+// =============================================================================
 
 module server;
 

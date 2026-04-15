@@ -1,3 +1,35 @@
+// =============================================================================
+// action_name_probe.zia — Verifies named-action bindings agree with their
+//                          string literals
+// Part of Xenoscape  (the 2D sidescroller platformer demo)
+// =============================================================================
+//
+// TUTORIAL — A SUSPICIOUS REGRESSION TURNED INTO A PROBE
+// ------------------------------------------------------
+// At one point during development the `ACT_*` constants
+// (defined in `config.zia` as `final ACT_LEFT = "move_left";`)
+// drifted from the literal strings that
+// `Action.LoadPreset("platformer")` registered.  The bug was
+// silent — input just stopped working — because Action lookups
+// silently return "no binding".
+//
+// This probe ensures it never happens again.  It:
+//
+//   1. Loads the platformer preset.
+//   2. Prints the value and length of each `ACT_*` constant.
+//   3. Asks the runtime whether each is registered (both the
+//      constant and the literal string).
+//   4. Prints the bindings the runtime has for each.
+//   5. Compares the constant against the literal string.
+//
+// Diff this probe's output across builds and any drift
+// jumps out immediately.
+//
+// More broadly: when a hard-to-test bug bites you, write a
+// probe.  Probes are cheap and they keep paying you back.
+//
+// =============================================================================
+
 module action_name_probe;
 
 bind Viper.Terminal as Terminal;

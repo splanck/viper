@@ -1,11 +1,77 @@
-// connection.zia — SQL Connection Handler
-// Part of ViperSQL - Multi-User Foundation (Phase 7) + PG Wire Protocol (Phase 9)
+// =============================================================================
+// connection.zia — Per-TCP-connection handler + protocol dispatch
+// Part of ViperSQL  (package: server)
+// =============================================================================
 //
-// Handles client TCP connections in two modes:
-//   1. PG Wire Protocol (Phase 9) — Binary PostgreSQL v3 protocol for psql/JDBC/ODBC
-//   2. Text Protocol (Phase 7) — Simple text-based protocol for nc/telnet
+// PURPOSE
+// -------
+// When a client connects to the SQL server (either through the
+// thread pool or direct thread spawn), we land in one of two
+// handler functions here:
 //
-// The server auto-detects the protocol based on the first bytes received.
+//   * `handlePgClient(client)`  — PG wire protocol v3: psql,
+//                                 JDBC, ODBC, vsql, pg_client.zia.
+//                                 Binary framed messages.
+//   * `handleSqlClient(client)` — text protocol: `nc`, telnet,
+//                                 sql_client.zia.  Simple
+//                                 `send SQL\n`, receive text,
+//                                 `READY\n` sentinel.
+//
+// Both paths:
+//   1. Build a `Session` (from `engine/session.zia`) bound to
+//      the shared `DatabaseServer`.
+//   2. Run the protocol-specific message loop.
+//   3. Tear down the session and close the socket when the
+//      client disconnects.
+//
+// Authentication, query logging, and counters are handled here
+// before forwarding SQL text into the executor.
+//
+// WHERE THIS FITS
+// ---------------
+//     server/tcp_server.zia OR server/threadpool.zia
+//         │  accepted client
+//         ▼
+//     server/connection.zia   (YOU ARE HERE)
+//         │
+//         ├──► server/pg_wire.zia     (PG wire message framing)
+//         └──► direct text I/O        (text protocol)
+//              │
+//              ▼
+//         engine/session.zia → engine/executor.zia
+//
+// KEY DESIGN CHOICES
+// ------------------
+//   1. Module-level server reference.  `sql_connection_init` is
+//      called once at startup to stash the shared
+//      `DatabaseServer`.  Every accepted client's handler looks
+//      it up from there.  Simpler than threading it through
+//      every call site.
+//
+//   2. Query logging opt-in.  `sql_connection_enable_logging`
+//      flips a module-level flag; when set, every incoming SQL
+//      string is echoed to stdout before execution.
+//
+//   3. No protocol auto-detection inside the handlers.  The two
+//      functions are dispatched *by the caller* — the pool
+//      submits PG clients to `handlePgClient` and text clients
+//      to `handleSqlClient`.  The port determines the
+//      protocol.
+//
+// HOW TO READ THIS FILE
+// ---------------------
+//   1. Module state + `sql_connection_init` /
+//      `sql_connection_enable_logging`.
+//   2. `handlePgClient` — PG wire protocol thread entry.
+//      Delegates framing to `server/pg_wire.zia`, loops over
+//      Query / Parse / Bind / Execute / Sync / Terminate
+//      messages.
+//   3. `handleSqlClient` — text protocol thread entry.  Reads
+//      a line, sends to executor, writes the result plus
+//      `READY\n`.
+//   4. Auth + session-establishment helpers.
+//
+// =============================================================================
 
 module connection;
 

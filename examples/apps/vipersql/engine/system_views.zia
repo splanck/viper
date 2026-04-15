@@ -1,8 +1,63 @@
-// system_views.zia — System Views (INFORMATION_SCHEMA and sys.*)
-// Part of ViperSQL - Phase 8.2
+// =============================================================================
+// system_views.zia — `pg_catalog.*` and `information_schema.*`
+//                    backing data sources
+// Part of ViperSQL  (package: engine, Phase 8.2)
+// =============================================================================
 //
-// Virtual views generated from live server state.
-// Called by the executor when SELECT targets a system view name.
+// PURPOSE
+// -------
+// Every SQL database has a "catalog" — virtual tables that
+// reflect the DB's own schema state.  PostgreSQL puts them
+// under `pg_catalog` (e.g. `pg_class`, `pg_attribute`,
+// `pg_index`, `pg_namespace`, `pg_proc`, `pg_trigger`) and under
+// `information_schema` (`tables`, `columns`, `schemata`).  SQL
+// clients like `psql` routinely query these to build their
+// `\d`, `\dt`, `\l` output — so any PG-compatible engine must
+// serve the same shapes.
+//
+// This file generates those virtual views on-demand from live
+// `DatabaseServer` state.  Nothing is persisted here: each
+// query walks the in-memory catalog and materialises a
+// `QueryResult` with the expected column set.
+//
+// Flow: the executor calls `isSystemView(name)`.  If true, it
+// dispatches to this module's `query<ViewName>` function which
+// builds and returns a `QueryResult`.
+//
+// WHERE THIS FITS
+// ---------------
+//     engine/executor.zia
+//         │  on SELECT … FROM pg_class / information_schema.* / sys.*
+//         ▼
+//     engine/system_views.zia   (YOU ARE HERE)
+//         │
+//         ▼
+//     walks DatabaseServer / Database / IndexManager / TriggerManager
+//     in-memory state and formats `QueryResult`.
+//
+// KEY DESIGN CHOICES
+// ------------------
+//   1. No caching.  Every query regenerates from live state.
+//      Simpler and always-correct — the cost is a linear walk
+//      over tables/columns, which is microseconds on demo
+//      sizes.
+//
+//   2. One function per view.  Adding a new catalog view is
+//      "write `query<View>` + add a dispatch line in
+//      `executeSystemView`".  No registry ceremony.
+//
+//   3. Column shapes match PG closely.  `psql`'s `\d` queries
+//      are hard-coded against particular OIDs and column
+//      orders — we match them where we can so those commands
+//      work out of the box.
+//
+// HOW TO READ THIS FILE
+// ---------------------
+//   * `isSystemView` — dispatch predicate.
+//   * `executeSystemView` — the main router.
+//   * One `query<ViewName>` function per implemented view.
+//
+// =============================================================================
 
 module system_views;
 

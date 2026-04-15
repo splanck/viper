@@ -50,6 +50,7 @@ static void rt_canvas_finalize(void *obj) {
         return;
 
     rt_canvas *canvas = (rt_canvas *)obj;
+    canvas->magic = 0;
     if (canvas->title) {
         free(canvas->title);
         canvas->title = NULL;
@@ -86,6 +87,7 @@ void *rt_canvas_new(rt_string title, int64_t width, int64_t height) {
         return NULL;
 
     canvas->vptr = NULL;
+    canvas->magic = RT_CANVAS_MAGIC;
     canvas->gfx_win = NULL;
     canvas->should_close = 0;
     canvas->title = NULL;
@@ -461,10 +463,9 @@ void rt_canvas_close(void *canvas_ptr) {
 /// @param canvas_ptr Canvas handle. Returns NULL if NULL or no window.
 /// @return New Pixels object with the canvas contents, or NULL on failure.
 void *rt_canvas_screenshot(void *canvas_ptr) {
-    if (!canvas_ptr)
+    rt_canvas *canvas = rt_canvas_checked(canvas_ptr);
+    if (!canvas)
         return NULL;
-
-    rt_canvas *canvas = (rt_canvas *)canvas_ptr;
     if (!canvas->gfx_win)
         return NULL;
 

@@ -1,0 +1,69 @@
+// settings.zia - Runtime-configurable Paint settings
+module settings;
+
+bind Viper.Game.Config as RuntimeConfig;
+
+bind "./config";
+
+class PaintSettings {
+    hide RuntimeConfig? cfg;
+    expose Integer windowWidth;
+    expose Integer windowHeight;
+    expose Integer canvasWidth;
+    expose Integer canvasHeight;
+    expose Integer defaultTool;
+    expose Integer defaultBrushSize;
+    expose Integer defaultOpacity;
+    expose Integer targetFps;
+    expose Integer debugOnStart;
+    expose Integer darkTheme;
+
+    expose func init() {
+        cfg = null;
+        windowWidth = config.WINDOW_WIDTH;
+        windowHeight = config.WINDOW_HEIGHT;
+        canvasWidth = config.DEFAULT_CANVAS_WIDTH;
+        canvasHeight = config.DEFAULT_CANVAS_HEIGHT;
+        defaultTool = config.TOOL_BRUSH;
+        defaultBrushSize = config.DEFAULT_BRUSH_SIZE;
+        defaultOpacity = config.DEFAULT_OPACITY;
+        targetFps = 60;
+        debugOnStart = 0;
+        darkTheme = 1;
+    }
+
+    expose func load(path: String) {
+        cfg = RuntimeConfig.Load(path);
+        if cfg == null {
+            return;
+        }
+
+        windowWidth = cfg!.GetInt("window.width", windowWidth);
+        windowHeight = cfg!.GetInt("window.height", windowHeight);
+        canvasWidth = cfg!.GetInt("canvas.width", canvasWidth);
+        canvasHeight = cfg!.GetInt("canvas.height", canvasHeight);
+        defaultTool = cfg!.GetInt("tools.defaultTool", defaultTool);
+        defaultBrushSize = cfg!.GetInt("brush.size", defaultBrushSize);
+        defaultOpacity = cfg!.GetInt("brush.opacity", defaultOpacity);
+        targetFps = cfg!.GetInt("runtime.targetFps", targetFps);
+        debugOnStart = cfg!.GetInt("debug.showOnStart", debugOnStart);
+        darkTheme = cfg!.GetInt("theme.dark", darkTheme);
+
+        clamp();
+    }
+
+    hide func clamp() {
+        if windowWidth < 800 { windowWidth = 800; }
+        if windowHeight < 600 { windowHeight = 600; }
+        if canvasWidth < 64 { canvasWidth = 64; }
+        if canvasHeight < 64 { canvasHeight = 64; }
+        if defaultTool < config.TOOL_PENCIL { defaultTool = config.TOOL_BRUSH; }
+        if defaultTool > config.TOOL_EYEDROPPER { defaultTool = config.TOOL_BRUSH; }
+        if defaultBrushSize < config.MIN_BRUSH_SIZE { defaultBrushSize = config.MIN_BRUSH_SIZE; }
+        if defaultBrushSize > config.MAX_BRUSH_SIZE { defaultBrushSize = config.MAX_BRUSH_SIZE; }
+        if defaultOpacity < config.MIN_OPACITY { defaultOpacity = config.MIN_OPACITY; }
+        if defaultOpacity > config.MAX_OPACITY { defaultOpacity = config.MAX_OPACITY; }
+        if targetFps < 15 { targetFps = 60; }
+        if targetFps > 240 { targetFps = 240; }
+    }
+}

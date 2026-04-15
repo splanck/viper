@@ -1,23 +1,78 @@
-// sql_client.zia - SQL Network Client
-// Part of ViperSQL - Phase 6: Network Server
+// =============================================================================
+// sql_client.zia — Text-protocol SQL client + interactive driver
+// Part of ViperSQL  (package: server)
+// =============================================================================
+//
+// PURPOSE
+// -------
+// A text-only CLI client that talks to ViperSQL's text protocol
+// server on port 5433.  Simple line-at-a-time request/response —
+// no PG wire framing.  Useful for `nc`-style debugging and for
+// testing that the text server is wired up.
+//
+// Layered on top of `Viper.Network.Tcp`:
+//   * `SqlClient`         — the connection + request/response API.
+//   * `runInteractive`    — REPL loop driving one SqlClient.
+//   * `main`              — default entry that connects to
+//                           localhost:5432.
+//
+// NOTE: the richer PG-wire client lives in
+// `client/pg_client.zia`; `client/vsql.zia` is the production CLI.
+// This file is the simpler "talk to the text port" cousin.
+//
+// WHERE THIS FITS
+// ---------------
+//     sql_client.zia  (YOU ARE HERE — text client)
+//         │
+//         ▼
+//     server/sql_server.zia  (text protocol server — listens on
+//                             port 5433)
+//
+// KEY DESIGN CHOICES
+// ------------------
+//   1. "READY" as the end-of-response marker.  The text server
+//      sends `READY\n` after each result.  The client reads
+//      until it sees that token, then strips it.
+//
+//   2. One TCP recv per turn.  We call `RecvStr(..., 1 MB)` in a
+//      loop until we see `READY`.  No framing byte count — rely
+//      on the sentinel.
+//
+//   3. SEND `QUIT` on disconnect.  Clean shutdown lets the
+//      server free the session without waiting for TCP RST.
+//
+// =============================================================================
 
 module sql_client;
 
 bind Viper.Network as Network;
 bind Viper.Terminal as Terminal;
 bind Viper.String as String;
-bind Viper.Fmt as Fmt;//=============================================================================
+bind Viper.Fmt as Fmt;
+
+//=============================================================================
 // CLIENT CONSTANTS
 //=============================================================================
 
+/// @brief Default server port.  Set to 5432 (PG convention) —
+///        usually overridden since the text server lives on
+///        5433, but defaults are kept consistent with the PG
+///        default so both clients look alike.
 final DEFAULT_PORT = 5432;
-final MAX_RESPONSE_SIZE = 1048576;  // 1MB max response
+
+/// @brief Maximum bytes per `RecvStr` call.  1 MB is plenty for
+///        typical query results; larger ones chunk naturally.
+final MAX_RESPONSE_SIZE = 1048576;
+
+/// @brief Per-recv timeout in milliseconds.
 final RECV_TIMEOUT = 30000;
 
 //=============================================================================
 // SQL CLIENT
 //=============================================================================
 
+/// @brief A text-protocol client.  One `SqlClient` = one active
+///        TCP connection + the last error message (if any).
 class SqlClient {
     expose String host;
     expose Integer port;
@@ -25,6 +80,8 @@ class SqlClient {
     expose Boolean connected;
     expose String lastError;
 
+    /// @brief Default init.  `connect` must be called before
+    ///        sending queries.
     expose func init() {
         host = "localhost";
         port = DEFAULT_PORT;
@@ -32,6 +89,8 @@ class SqlClient {
         lastError = "";
     }
 
+    /// @brief Init with explicit host / port.  Typical path
+    ///        from CLI arguments.
     expose func initWithHostPort(h: String, p: Integer) {
         host = h;
         port = p;
@@ -43,15 +102,16 @@ class SqlClient {
     // CONNECTION
     //=========================================================================
 
-    // Connect to the server
+    /// @brief Dial the server and wait for the initial `READY`
+    ///        greeting.  Returns false if the server does not
+    ///        send `READY` as the first message — caller checks
+    ///        `lastError` for the reason.
     expose func connect() -> Boolean {
         connection = Network.Tcp.Connect(host, port);
         connected = true;
 
-        // Set timeout
         Network.Tcp.SetRecvTimeout(connection, RECV_TIMEOUT);
 
-        // Wait for READY
         var response = Network.Tcp.RecvStr(connection, MAX_RESPONSE_SIZE);
         if String.Contains(response, "READY") == false {
             lastError = "Server did not send READY";
@@ -62,7 +122,8 @@ class SqlClient {
         return true;
     }
 
-    // Disconnect from the server
+    /// @brief Clean disconnect: send `QUIT`, close the socket.
+    ///        Idempotent — second call is a no-op.
     expose func disconnect() {
         if connected {
             Network.Tcp.SendStr(connection, "QUIT\n");
@@ -71,7 +132,7 @@ class SqlClient {
         }
     }
 
-    // Check if connected
+    /// @brief "Is this client connected?"
     expose func isConnected() -> Boolean {
         return connected;
     }
@@ -80,17 +141,22 @@ class SqlClient {
     // QUERY EXECUTION
     //=========================================================================
 
-    // Execute a query and get response
+    /// @brief Send a query, gather the response until `READY`,
+    ///        return the response text minus the sentinel.
+    ///
+    /// Chunks via `RecvStr(..., MAX_RESPONSE_SIZE)` in a loop.
+    /// If the server closes the socket mid-response,
+    /// `RecvStr` returns "" and we terminate — the caller sees
+    /// a partial result, which is the best we can do without
+    /// framing.
     expose func execute(query: String) -> String {
         if connected == false {
             lastError = "Not connected";
             return "";
         }
 
-        // Send query
         Network.Tcp.SendStr(connection, query + "\n");
 
-        // Read response until READY
         var response = "";
         var done = false;
 
@@ -106,7 +172,9 @@ class SqlClient {
             }
         }
 
-        // Remove READY from response
+        // Strip the trailing READY sentinel — everything after
+        // the first occurrence is metadata the caller doesn't
+        // want.
         var readyPos = String.IndexOf(response, "READY");
         if readyPos >= 0 {
             response = String.Substring(response, 0, readyPos);
@@ -115,7 +183,8 @@ class SqlClient {
         return String.Trim(response);
     }
 
-    // Execute and print result
+    /// @brief Execute + print convenience wrapper.  Used by the
+    ///        REPL below.
     expose func executeAndPrint(query: String) {
         var result = execute(query);
         if String.Length(result) > 0 {
@@ -127,6 +196,8 @@ class SqlClient {
     // ERROR HANDLING
     //=========================================================================
 
+    /// @brief Last error from `connect` or `execute`.  Cleared
+    ///        on every new call.
     expose func getLastError() -> String {
         return lastError;
     }
@@ -136,6 +207,10 @@ class SqlClient {
 // INTERACTIVE CLIENT
 //=============================================================================
 
+/// @brief REPL: connect, read-eval-print loop, disconnect.
+///
+/// Exit keywords: `quit`, `exit`, `\q`.  Any other non-empty
+/// input is sent as a query via `executeAndPrint`.
 func runInteractive(host: String, port: Integer) {
     var client = new SqlClient();
     client.initWithHostPort(host, port);
@@ -173,6 +248,8 @@ func runInteractive(host: String, port: Integer) {
 // MAIN
 //=============================================================================
 
+/// @brief Top-level entry — print the banner and start the REPL
+///        against `localhost:DEFAULT_PORT`.
 func main() {
     Terminal.Say("========================================");
     Terminal.Say("  ViperSQL Client");

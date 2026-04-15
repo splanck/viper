@@ -1,8 +1,46 @@
-// main.zia — Entry point for the Xenoscape game
+// =============================================================================
+// main.zia — The whole game in nine lines
+// Part of Xenoscape  (the 2D sidescroller platformer demo)
+// =============================================================================
+//
+// TUTORIAL — A GAME'S ENTRY POINT IS TRIVIAL BY DESIGN
+// ----------------------------------------------------
+// Every Zia program launched as a binary runs the `start()` function
+// in its entry module.  Xenoscape's `viper.project` points at this
+// file, so `start()` is the first thing that runs.
+//
+// A good game entry point does almost nothing: it constructs the
+// top-level object (the one that owns every other subsystem) and
+// hands control to its main loop.  Anything more — command-line
+// parsing, logging setup, asset preloading — belongs inside that
+// object's constructor or its run-loop, not here, because:
+//
+//   * You want a single well-known place where "the game starts".
+//   * Tests / probes (see `smoke_probe.zia`, `start_probe.zia`)
+//     build their own `Game` with their own lifetime, bypassing
+//     this file.
+//   * Factoring setup into `Game.init()` / `Game.run()` keeps the
+//     program's shape uniform: main.zia → Game → subsystems.
+//
+// WHERE THIS FITS
+// ---------------
+//     main.zia  (YOU ARE HERE — 9 lines, on purpose)
+//         │
+//         ▼
+//     game.zia — Game class: state machine, main loop, subsystems.
+//
+// If you are reading Xenoscape for the first time, this file tells
+// you exactly where to go next: `./game.zia`.
+// =============================================================================
+
 module main;
 
 bind "./game";
 
+/// @brief Program entry point.  Construct a Game and run it.
+///
+/// `run()` does not return until the player quits — it's the main
+/// loop plus teardown.  Nothing after it would ever execute.
 func start() {
     var g = new Game();
     g.run();

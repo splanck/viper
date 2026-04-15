@@ -22,9 +22,8 @@
 //   - rt_buttongroup_is_selected() checks the currently selected ID against the
 //     given ID; it returns 1 only when there is an active selection AND it
 //     matches the given ID.
-//   - Removing a button does not automatically deselect it. If the selected
-//     button is removed, selected_index becomes stale. Callers should
-//     rt_buttongroup_deselect() or re-select before calling is_selected().
+//   - Removing the selected button clears the active selection and marks the
+//     selection as changed, so callers never observe a stale selected ID.
 //
 // Ownership/Lifetime:
 //   - ButtonGroup objects are GC-managed (rt_obj_new_i64). The button ID array

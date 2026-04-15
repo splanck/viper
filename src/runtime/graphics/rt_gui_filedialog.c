@@ -66,8 +66,8 @@ rt_string rt_filedialog_open(rt_string title, rt_string default_path, rt_string 
     return rt_str_empty();
 }
 
-/// @brief Open dialog with multi-select. Returns paths as a single newline-separated string
-/// (caller can split on '\n'), or empty on cancel. Useful for batch-import workflows.
+/// @brief Open dialog with multi-select. Returns paths as a single semicolon-separated string
+/// (caller can split on ';'), or empty on cancel. Useful for batch-import workflows.
 rt_string rt_filedialog_open_multiple(rt_string title, rt_string default_path, rt_string filter) {
     char *ctitle = rt_string_to_cstr(title);
     char *cpath = rt_string_to_cstr(default_path);

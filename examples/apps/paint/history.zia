@@ -1,0 +1,69 @@
+// history.zia - Undo/redo history for Paint documents
+module history;
+
+bind Viper.Collections;
+bind Viper.Graphics;
+
+bind "./config";
+
+class HistoryManager {
+    hide List undoStack;
+    hide List redoStack;
+    expose Integer maxLevels;
+
+    expose func init() {
+        undoStack = new List();
+        redoStack = new List();
+        maxLevels = config.MAX_UNDO_LEVELS;
+    }
+
+    expose func clear() {
+        undoStack.Clear();
+        redoStack.Clear();
+    }
+
+    expose func snapshot(current: Pixels) {
+        if current == null {
+            return;
+        }
+        undoStack.Push(current.Clone());
+        redoStack.Clear();
+        trim(undoStack);
+    }
+
+    expose func undo(current: Pixels) -> Pixels? {
+        if undoStack.Length <= 0 {
+            return null;
+        }
+        if current != null {
+            redoStack.Push(current.Clone());
+            trim(redoStack);
+        }
+        return undoStack.Pop();
+    }
+
+    expose func redo(current: Pixels) -> Pixels? {
+        if redoStack.Length <= 0 {
+            return null;
+        }
+        if current != null {
+            undoStack.Push(current.Clone());
+            trim(undoStack);
+        }
+        return redoStack.Pop();
+    }
+
+    expose func undoCount() -> Integer {
+        return undoStack.Length;
+    }
+
+    expose func redoCount() -> Integer {
+        return redoStack.Length;
+    }
+
+    hide func trim(stack: List) {
+        while stack.Length > maxLevels {
+            stack.RemoveAt(0);
+        }
+    }
+}

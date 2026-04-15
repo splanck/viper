@@ -1,5 +1,82 @@
-// btree_node.zia - B-Tree Node Structure
-// Part of ViperSQL - B-Tree Indexes (Phase 3)
+// =============================================================================
+// btree_node.zia — Persistent B-tree node: key + page-slot pointers
+// Part of ViperSQL  (package: storage)
+// =============================================================================
+//
+// PURPOSE
+// -------
+// While `engine/index.zia` implements an in-memory hash index for
+// point lookups, this file implements the disk-backed B-tree node
+// structure used for indexes that need to survive a restart AND
+// support range scans.  Three classes:
+//
+//   * `BTreeKey`              — (SqlValue key, dataPageId, dataSlotId).
+//                               Points at the row in the heap.
+//   * `BTreeNode`             — one B-tree node: `keys[]`, `children[]`
+//                               (only for internal nodes), parent and
+//                               right-sibling pointers.
+//   * `BTreeNodeSerializer`   — `BTreeNode` ↔ 4-KB `Page` bytes.
+//
+// The actual insert/split/lookup algorithms live in `./btree.zia` —
+// this file only provides the shape, the invariants, and the on-disk
+// encoding.
+//
+// WHERE THIS FITS
+// ---------------
+//     storage/btree.zia       (algorithms: insert, split, lookup)
+//         │
+//         ▼
+//     storage/btree_node.zia  (YOU ARE HERE — structure + serde)
+//         │
+//         ▼
+//     storage/serializer.zia  (ValueSerializer)
+//     storage/page.zia        (PAGE_TYPE_INDEX, page layout constants)
+//
+// KEY DESIGN CHOICES
+// ------------------
+//   1. B-tree with minimum degree t = 50.  Each internal node holds
+//      between t-1=49 and 2t-1=99 keys; each has 50..100 children.
+//      Large branching factor = shallow tree = fewer disk reads per
+//      lookup.  99 is sized so a full node (key + value + 12-byte
+//      row pointer) comfortably fits on a 4-KB page.
+//
+//   2. Right-sibling pointer on every node.  This makes range scans
+//      cheap: walk to the leaf, then follow `rightSiblingPageId`
+//      linearly without rewalking the tree.  It also means a
+//      writer must update the right-sibling of the node it splits.
+//
+//   3. Row pointer = (dataPageId, dataSlotId).  The B-tree indexes
+//      into the heap; at the leaf, the (page, slot) pair tells
+//      `data_page.readRow` exactly where to find the full tuple.
+//      Note that `slotId` survives VACUUM because tombstoned slots
+//      stay numbered (`data_page.zia` design choice #2).
+//
+//   4. Parent pointer stored on the node.  Redundant with walking
+//      from the root but avoids a re-traversal when a split
+//      cascades upward.  Must be kept in sync — every `setChild`-
+//      equivalent call in `./btree.zia` writes the parent too.
+//
+//   5. Insert/remove via list-rebuild.  Zia's `List` lacks a
+//      middle-insert primitive, so `insertKeyAt` rebuilds the list.
+//      O(N) per mutation — fine because a node has at most 99
+//      keys.  See the "workaround for no insert method" comments
+//      in the code.
+//
+//   6. Serialization layout matches `page.zia` offsets.  The first
+//      24 bytes are a fixed header; keys and children follow.
+//      Internal nodes have N+1 children for N keys — the
+//      invariant is encoded implicitly by the serializer's loop
+//      condition `i <= keyCount`.
+//
+// HOW TO READ THIS FILE
+// ---------------------
+//   1. The BTREE_MIN_DEGREE constant and the index-page offsets.
+//   2. `BTreeKey` — trivial data class.
+//   3. `BTreeNode` — structural invariants: sort order, max/min
+//      key counts, key/child parallel invariants.
+//   4. `BTreeNodeSerializer` — page encode/decode.
+//
+// =============================================================================
 
 module btree_node;
 
@@ -11,20 +88,23 @@ bind "../engine/types";
 // B-TREE CONSTANTS
 //=============================================================================
 
-// Minimum degree (t) - each node except root has at least t-1 keys
-// Maximum keys per node: 2t - 1
-// Maximum children per node: 2t
-final BTREE_MIN_DEGREE = 50;  // Gives ~99 keys per node
+/// @brief Minimum degree `t` in the standard B-tree sense.
+///
+/// Each node (except root) has at least `t-1 = 49` keys and at most
+/// `2t-1 = 99` keys; internal nodes have `t..2t` = 50..100 children.
+/// A deeper discussion of why 50: 99 keys × ~40 bytes (value tag +
+/// 8-byte int + 8-byte page id + 4-byte slot id + overhead) sits
+/// well inside a 4-KB page with room for the 24-byte header.
+final BTREE_MIN_DEGREE = 50;
 
-// Page layout for B-tree index nodes
-// [0]: Page type (1 byte) = PAGE_TYPE_INDEX
-// [1-4]: Index ID (4 bytes)
-// [5]: Is leaf flag (1 byte)
-// [6-7]: Key count (2 bytes)
-// [8-15]: Parent page ID (8 bytes)
-// [16-23]: Right sibling page ID (8 bytes)
-// [24...]: Keys and child pointers
-
+// Index-page layout offsets.  Layout:
+//     [0]   : PAGE_TYPE_INDEX (1 byte)
+//     [1-4] : index id
+//     [5]   : isLeaf flag
+//     [6-7] : key count (int16)
+//     [8-15]: parent page id (int64)
+//     [16-23]: right sibling page id (int64)
+//     [24..]: keys, then children (for internal nodes)
 final INDEX_PAGE_TYPE_OFFSET = 0;
 final INDEX_ID_OFFSET = 1;
 final INDEX_IS_LEAF_OFFSET = 5;
@@ -34,15 +114,23 @@ final INDEX_RIGHT_SIBLING_OFFSET = 16;
 final INDEX_DATA_OFFSET = 24;
 
 //=============================================================================
-// B-TREE KEY ENTITY
+// KEY
 //=============================================================================
 
-// A key in the B-tree contains the indexed value and a row pointer (page ID + slot)
+/// @brief One entry in a B-tree: the indexed value plus the heap
+///        row pointer.
+///
+/// `keyValue` is a full `SqlValue` (so the tree works for any type
+/// that has a `compare` — every SQL kind, including cross-kind
+/// coercions).  `dataPageId`/`dataSlotId` together locate the
+/// heap row for the leaf case; for internal nodes the pair is
+/// ignored and only `keyValue` is consulted during the descent.
 class BTreeKey {
     expose SqlValue keyValue;
-    expose Integer dataPageId;   // Page where the row is stored
-    expose Integer dataSlotId;   // Slot within the page
+    expose Integer dataPageId;
+    expose Integer dataSlotId;
 
+    /// @brief Zero-state: NULL key pointing nowhere.
     expose func init() {
         keyValue = new SqlValue();
         keyValue.initNull();
@@ -50,23 +138,34 @@ class BTreeKey {
         dataSlotId = -1;
     }
 
+    /// @brief Init with a value and a heap row pointer.
     expose func initWithValue(val: SqlValue, pageId: Integer, slotId: Integer) {
         keyValue = val;
         dataPageId = pageId;
         dataSlotId = slotId;
     }
 
-    // Compare keys
+    /// @brief 3-way compare by value — defers entirely to
+    ///        `SqlValue.compare`, so NULL handling follows the
+    ///        engine-wide three-valued logic (2 on incomparable).
     expose func compareTo(other: BTreeKey) -> Integer {
         return keyValue.compare(other.keyValue);
     }
 }
 
 //=============================================================================
-// B-TREE NODE ENTITY
+// NODE
 //=============================================================================
 
-// Represents a node in the B-tree (corresponds to an index page)
+/// @brief One B-tree node (corresponds 1:1 to an on-disk INDEX
+///        page).
+///
+/// Invariants:
+///   * `keys` is sorted ascending by `keyValue.compare`.
+///   * Internal nodes (`isLeaf = false`) have `children.count() =
+///     keys.count() + 1` — children[i] holds keys < keys[i].
+///   * Leaf nodes have `children.count() = 0`.
+///   * Except the root, `keys.count() ∈ [t-1, 2t-1] = [49, 99]`.
 class BTreeNode {
     expose Integer pageId;
     expose Integer indexId;
@@ -74,14 +173,13 @@ class BTreeNode {
     expose Integer parentPageId;
     expose Integer rightSiblingPageId;
 
-    // Keys stored in this node
+    // Parallel structure: internal nodes have children whose
+    // children[i] holds keys strictly less than keys[i], and
+    // children[keys.count()] holds keys >= keys[keys.count()-1].
     expose List[BTreeKey] keys;
-
-    // Child page IDs (only used for internal nodes)
-    // children[i] contains keys < keys[i]
-    // children[keys.count()] contains keys >= keys[keys.count()-1]
     expose List[Integer] children;
 
+    /// @brief Zero-state init: empty leaf with no parent.
     expose func init() {
         pageId = INVALID_PAGE_ID;
         indexId = 0;
@@ -92,6 +190,8 @@ class BTreeNode {
         children = [];
     }
 
+    /// @brief Init as a leaf attached to a specific page and
+    ///        logical index id.
     expose func initAsLeaf(pid: Integer, idxId: Integer) {
         pageId = pid;
         indexId = idxId;
@@ -102,6 +202,7 @@ class BTreeNode {
         children = [];
     }
 
+    /// @brief Init as an internal (non-leaf) node.
     expose func initAsInternal(pid: Integer, idxId: Integer) {
         pageId = pid;
         indexId = idxId;
@@ -112,22 +213,27 @@ class BTreeNode {
         children = [];
     }
 
-    // Get number of keys
+    /// @brief Number of keys currently stored.
     expose func keyCount() -> Integer {
         return keys.count();
     }
 
-    // Check if node is full (has max keys)
+    /// @brief "Is this node full?" — at `2t-1` keys, next insert
+    ///        triggers a split in `./btree.zia`.
     expose func isFull() -> Boolean {
         return keys.count() >= (2 * BTREE_MIN_DEGREE - 1);
     }
 
-    // Check if node has minimum keys (except for root)
+    /// @brief "Does this node have the minimum required key count?"
+    ///
+    /// Root is exempt — it can hold fewer.  Every other node must
+    /// maintain `t-1` to preserve the B-tree invariants during
+    /// borrow/merge operations.
     expose func hasMinKeys() -> Boolean {
         return keys.count() >= (BTREE_MIN_DEGREE - 1);
     }
 
-    // Get key at index
+    /// @brief Safe key accessor.  Null on out-of-range.
     expose func getKey(index: Integer) -> BTreeKey? {
         if index < 0 || index >= keys.count() {
             return null;
@@ -135,7 +241,10 @@ class BTreeNode {
         return keys.get(index);
     }
 
-    // Get child page ID at index
+    /// @brief Safe child page-id accessor.  Returns
+    ///        INVALID_PAGE_ID for out-of-range instead of the
+    ///        tuple-based null, since callers routinely compare
+    ///        the result against that sentinel anyway.
     expose func getChild(index: Integer) -> Integer {
         if index < 0 || index >= children.count() {
             return INVALID_PAGE_ID;
@@ -143,26 +252,31 @@ class BTreeNode {
         return children.get(index);
     }
 
-    // Insert a key at the correct position (maintains sorted order)
+    /// @brief Insert a key in sorted position.  Returns the index
+    ///        at which it was inserted.
+    ///
+    /// Linear scan for the insertion point (node has ≤99 keys, so
+    /// a linear scan beats binary search on cache-locality).
     expose func insertKey(key: BTreeKey) -> Integer {
-        // Find insertion position
         var pos = 0;
         while pos < keys.count() {
             if key.compareTo(keys.get(pos)) < 0 {
-                // Found position
                 break;
             }
             pos = pos + 1;
         }
 
-        // Insert at position (shift others)
         insertKeyAt(pos, key);
         return pos;
     }
 
-    // Insert key at specific position
+    /// @brief Insert a key at a specified position.
+    ///
+    /// Rebuilds the `keys` list (Zia's List has no middle-insert
+    /// primitive — see design choice 5).  Used by `./btree.zia`
+    /// during split to place the promoted middle key into the
+    /// parent node at a known slot.
     expose func insertKeyAt(pos: Integer, key: BTreeKey) {
-        // Build new list with key at position (workaround for no insert method)
         var newKeys: List[BTreeKey] = [];
         var i = 0;
         while i < keys.count() {
@@ -178,7 +292,8 @@ class BTreeNode {
         keys = newKeys;
     }
 
-    // Remove key at index
+    /// @brief Remove and return the key at a position.  Null on
+    ///        out-of-range.  Used during delete + borrow/merge.
     expose func removeKeyAt(pos: Integer) -> BTreeKey? {
         if pos < 0 || pos >= keys.count() {
             return null;
@@ -186,7 +301,6 @@ class BTreeNode {
 
         var removed = keys.get(pos);
 
-        // Build new list without the key (workaround for no remove method)
         var newKeys: List[BTreeKey] = [];
         var i = 0;
         while i < keys.count() {
@@ -199,7 +313,10 @@ class BTreeNode {
         return removed;
     }
 
-    // Insert child pointer at position
+    /// @brief Insert a child pointer at a position.  Called
+    ///        right after a split — the promoted key goes to
+    ///        `insertKeyAt(pos)` and the new right-hand child goes
+    ///        here at `pos + 1`.
     expose func insertChildAt(pos: Integer, childPageId: Integer) {
         var newChildren: List[Integer] = [];
         var i = 0;
@@ -216,7 +333,8 @@ class BTreeNode {
         children = newChildren;
     }
 
-    // Remove child pointer at position
+    /// @brief Remove and return a child page-id.  Returns
+    ///        INVALID_PAGE_ID on out-of-range.
     expose func removeChildAt(pos: Integer) -> Integer {
         if pos < 0 || pos >= children.count() {
             return INVALID_PAGE_ID;
@@ -236,7 +354,13 @@ class BTreeNode {
         return removed;
     }
 
-    // Find the index of child to search for a given key
+    /// @brief Pick the child slot to descend into when searching
+    ///        for `searchKey`.
+    ///
+    /// Returns the first index i where `searchKey < keys[i]`, or
+    /// `keyCount` if searchKey is ≥ every key (meaning descend
+    /// through the rightmost child).  Matches the B-tree descent
+    /// rule: `children[i]` holds keys < keys[i].
     expose func findChildIndex(searchKey: SqlValue) -> Integer {
         var i = 0;
         while i < keys.count() {
@@ -248,7 +372,12 @@ class BTreeNode {
         return keys.count();
     }
 
-    // Search for exact key match
+    /// @brief Exact-match key search.  Returns the slot index or
+    ///        -1 if not present.
+    ///
+    /// Used during point lookups on leaves, and during delete
+    /// when we need to know whether a key lives in the current
+    /// node or only in a child.
     expose func findKey(searchKey: SqlValue) -> Integer {
         var i = 0;
         while i < keys.count() {
@@ -257,54 +386,68 @@ class BTreeNode {
                 return i;
             }
             if cmp < 0 {
-                return -1;  // Key not found, would be before this position
+                return -1;  // overshoot — key not present
             }
             i = i + 1;
         }
-        return -1;  // Key not found
+        return -1;
     }
 }
 
 //=============================================================================
-// NODE SERIALIZATION
+// NODE SERIALISATION
 //=============================================================================
 
+/// @brief On-disk encoder/decoder for `BTreeNode`.
+///
+/// Uses the cached `ValueSerializer` to encode each key's
+/// `SqlValue`.  Serialised layout:
+///
+///     [0]    : PAGE_TYPE_INDEX
+///     [1..4] : index id
+///     [5]    : isLeaf (0 or 1)
+///     [6..7] : key count
+///     [8..15]: parent page id
+///     [16..23]: right sibling page id
+///     [24..] : keys — each is `<serialised value> | int64 dataPageId
+///                       | int32 dataSlotId`
+///     (internal only) children — `keyCount + 1` int64 page ids
 class BTreeNodeSerializer {
     hide ValueSerializer valSer;
 
+    /// @brief Cache a stateless `ValueSerializer`.  Matches the
+    ///        pattern in `RowSerializer`.
     expose func init() {
         valSer = new ValueSerializer();
         valSer.init();
     }
 
-    // Serialize a B-tree node to a page
+    /// @brief Dump a `BTreeNode` into a 4-KB `Page` buffer.
+    ///
+    /// Also stamps `page.pageType = PAGE_TYPE_INDEX` and marks
+    /// dirty so the pager writes it back on flush.  Caller is
+    /// responsible for ensuring the keys/children fit — the
+    /// B-tree logic in `./btree.zia` triggers splits before the
+    /// node overflows.
     expose func serializeNode(node: BTreeNode, page: Page) {
         page.pageType = PAGE_TYPE_INDEX;
         page.data.seek(0);
 
-        // Write page type
         page.data.writeByte(PAGE_TYPE_INDEX);
-
-        // Write index ID
         page.data.writeInt32(node.indexId);
 
-        // Write is leaf flag
         if node.isLeaf {
             page.data.writeByte(1);
         } else {
             page.data.writeByte(0);
         }
 
-        // Write key count
         page.data.writeInt16(node.keyCount());
-
-        // Write parent page ID
         page.data.writeInt64(node.parentPageId);
-
-        // Write right sibling page ID
         page.data.writeInt64(node.rightSiblingPageId);
 
-        // Write keys
+        // Keys.  Each: serialised value, then 8-byte page id,
+        // 4-byte slot id for the heap pointer.
         var i = 0;
         while i < node.keyCount() {
             var key = node.keys.get(i);
@@ -314,7 +457,9 @@ class BTreeNodeSerializer {
             i = i + 1;
         }
 
-        // Write child pointers (if internal node)
+        // Children — only for internal nodes.  `keyCount + 1`
+        // entries (one more child than keys; see invariants on
+        // the class).
         if node.isLeaf == false {
             i = 0;
             while i < node.children.count() {
@@ -326,7 +471,11 @@ class BTreeNodeSerializer {
         page.markDirty();
     }
 
-    // Deserialize a B-tree node from a page
+    /// @brief Decode a `Page` back into a `BTreeNode`.
+    ///
+    /// The inverse of `serializeNode`.  Reads the fixed 24-byte
+    /// header, then `keyCount` keys, then (for internal nodes)
+    /// `keyCount + 1` child page ids.
     expose func deserializeNode(page: Page) -> BTreeNode {
         var node = new BTreeNode();
         node.init();
@@ -334,25 +483,16 @@ class BTreeNodeSerializer {
 
         page.data.seek(0);
 
-        // Read page type (skip)
-        page.data.readByte();
+        page.data.readByte();  // PAGE_TYPE_INDEX — already know
 
-        // Read index ID
         node.indexId = page.data.readInt32();
-
-        // Read is leaf flag
         node.isLeaf = page.data.readByte() == 1;
 
-        // Read key count
         var keyCount = page.data.readInt16();
 
-        // Read parent page ID
         node.parentPageId = page.data.readInt64();
-
-        // Read right sibling page ID
         node.rightSiblingPageId = page.data.readInt64();
 
-        // Read keys
         var i = 0;
         while i < keyCount {
             var key = new BTreeKey();
@@ -364,10 +504,10 @@ class BTreeNodeSerializer {
             i = i + 1;
         }
 
-        // Read child pointers (if internal node)
         if node.isLeaf == false {
             i = 0;
-            while i <= keyCount {  // n+1 children for n keys
+            // n+1 children for n keys — key invariant from above.
+            while i <= keyCount {
                 var childPageId = page.data.readInt64();
                 node.children.add(childPageId);
                 i = i + 1;

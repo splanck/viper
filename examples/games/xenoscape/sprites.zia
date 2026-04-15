@@ -1,25 +1,100 @@
 // =============================================================================
-// Sprite Factory — Procedural sprite generation for all game entities
+// sprites.zia — Procedural sprite atelier (every sprite is drawn from code)
+// Part of Xenoscape  (the 2D sidescroller platformer demo)
 // =============================================================================
-// Viper APIs demonstrated:
-//   - Viper.Graphics.Pixels: full procedural drawing API (DrawDisc, DrawEllipse,
-//     DrawTriangle, DrawThickLine, DrawBezier, DrawLine, DrawBox, DrawEllipseFrame,
-//     FlipH, Clone, SetRGB, Blur, Tint)
 //
-// Zia best practices:
-//   - Entity with cached sprite lists (generated once, reused every frame)
-//   - hide all sprite data, expose only accessor methods
-//   - Each build function creates one sprite and returns it
-//   - Multi-layer drawing technique: base fill → shadow → highlight → detail
-//     creates a top-left-lit aesthetic for depth without real lighting
+// TUTORIAL — DRAWING SPRITES IN CODE
+// ----------------------------------
+// Most platformers ship sprite sheets — PNG files with rows
+// of frames the engine blits onto the screen.  Xenoscape
+// goes the other way: every sprite (player, every enemy,
+// every tile, every pickup, every UI icon) is drawn at boot
+// from code into a `Viper.Graphics.Pixels` buffer, then
+// cached and re-blitted at draw time.
 //
-// Character sprite density targets:
-//   - Player: ~120 draw calls per frame (36x48 px)
-//   - Slime: ~45 calls per frame (36x30 px)
-//   - Bat: ~55 calls per frame (42x30 px)
-//   - Boss: ~90 calls per frame (84x84 px)
-//   - Turret: ~40 calls (42x42 px)
-//   - Tiles: ~15-25 calls each (48x48 px)
+// Why?
+//
+//   * **Tiny binary.**  No PNG asset payload.
+//   * **Programmable variation.**  An enemy can have N
+//     hand-drawn variants generated from one recipe with
+//     different random seeds.
+//   * **Palette swappable.**  All colours come from
+//     `palette.zia`; re-theme the game by swapping a
+//     palette.
+//   * **Pure Zia.**  Live-reading the build function tells
+//     you exactly what each sprite looks like; no opaque
+//     binary asset to chase.
+//
+// What's the cost?  The author has to think in primitives —
+// "sprite = base disc + two highlight discs + one
+// triangle eye + outline".  That's harder than a paintbrush
+// for some artists; for programmer-artists it's a treat.
+//
+// THIS FILE IS BIG — ~3,100 LINES
+// -------------------------------
+// It's the largest file in Xenoscape because there are *a
+// lot* of sprites: 8+ player frames, ~30 enemy types with
+// 2-6 frames each, every tile variant, every pickup, every
+// UI icon.  Each is one builder function that allocates a
+// `Pixels`, calls a series of draw primitives, and returns it.
+//
+// THE RUNTIME PRIMITIVE PALETTE
+// -----------------------------
+//   Pixels.New(w, h)              — allocate a buffer.
+//   Pixels.SetRGB(x, y, col)      — write one pixel.
+//   Pixels.DrawBox(x, y, w, h, col) — filled rectangle.
+//   Pixels.DrawDisc(cx, cy, r, col) — filled circle.
+//   Pixels.DrawEllipse(...)       — ellipse.
+//   Pixels.DrawTriangle(...)      — filled triangle.
+//   Pixels.DrawLine(x1,y1,x2,y2,col)
+//   Pixels.DrawThickLine(...)     — line with width.
+//   Pixels.DrawBezier(...)        — cubic curve.
+//   Pixels.DrawEllipseFrame(...)  — ring outline.
+//   Pixels.FlipH() / Clone()      — mirror / duplicate.
+//   Pixels.Blur(radius)           — soft-focus.
+//   Pixels.Tint(col, amount)      — recolour.
+//   Pixels.Scale(w, h)            — resample (used here to
+//                                    upsize "original sprite
+//                                    coords" to display res).
+//
+// THE LIGHTING TRICK
+// ------------------
+// Every entity sprite is built in this layer order:
+//
+//     1. base fill (mid-tone of the body colour)
+//     2. shadow (dark-colour areas on bottom-right)
+//     3. highlight (light-colour areas on top-left)
+//     4. detail (eyes, outline, accents)
+//
+// Drawing every sprite this way gives the whole game a
+// consistent "lit from top-left" look without any actual
+// lighting calculations.  It's the single most-impactful
+// trick in this file — your eye reads sprites as 3-D objects
+// because of where the highlight + shadow sit.
+//
+// SCALE TRICK
+// -----------
+// Builders work at "original" pixel sizes (e.g. 36×30 for
+// slime).  After all primitives are drawn, the sprite is
+// `.Scale()`'d up to the display size.  That keeps coords
+// in the builder readable as small whole numbers; the scale
+// pass smooths the edges into the final big sprite.
+//
+// WHERE THIS FITS
+// ---------------
+// Almost everywhere a `draw*` is called:
+//     player, enemy, projectile, pickups, tiles, UI, menu.
+//
+// HOW TO READ THIS FILE
+// ---------------------
+//   1. ORIG_* constants — pre-scale sprite sizes.
+//   2. `SpriteFactory` class — owns lists of cached Pixels.
+//   3. `init` — call every `build*` function and stash
+//      result.
+//   4. Each `build*` function — one sprite recipe.
+//   5. Accessor methods (`getPlayerFrame`, `getSlime`, ...)
+//      that callers use; never the raw Pixels lists.
+//
 // =============================================================================
 
 module sprites;

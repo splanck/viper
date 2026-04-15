@@ -1,23 +1,143 @@
-// executor.zia — SQL Executor (Core)
-// Part of ViperSQL
+// =============================================================================
+// executor.zia — The central SQL executor: dispatch, expression eval,
+//                transactions, index lookups
+// Part of ViperSQL  (package: engine)
+// =============================================================================
 //
-// The Executor is the central query processing engine. It owns per-session
-// state and coordinates statement execution through delegated handlers:
-//   - DdlHandler (ddl.zia): CREATE/DROP/ALTER TABLE, INDEX, VIEW, DATABASE, USER
-//   - DmlHandler (dml.zia): INSERT, UPDATE, DELETE with constraints and cascades
-//   - QueryHandler (query.zia): SELECT, GROUP BY, sorting, subqueries, CTEs
+// PURPOSE
+// -------
+// The `Executor` is the heart of ViperSQL.  Every SQL statement
+// lands here: the outer `executeSql(sql)` method calls the
+// parser, dispatches to a typed handler, and returns a
+// `QueryResult`.  The file is ~6,200 lines because expression
+// evaluation, index lookup planning, and transaction coordination
+// all live here.
 //
-// This file retains:
-//   - Executor entity fields and initialization
-//   - Expression evaluation (evalExpr, evalCondition, evalColumn, etc.)
-//   - Index-based lookups (canUseIndex, indexLookup, indexRangeLookup)
-//   - SQL dispatch (executeSqlDispatch → delegates to handlers)
-//   - Transaction management (BEGIN/COMMIT/ROLLBACK, journal)
-//   - Concurrency control (shared/exclusive locking)
+// COMPONENTS
+// ----------
+// The Executor delegates *big* pieces of work to sibling files
+// but keeps four responsibilities for itself:
 //
-// Each client connection gets its own Executor instance sharing the
-// thread-safe DatabaseServer and StorageEngine. Per-connection state
-// (transaction journal, subquery context, temp tables) is isolated.
+//   1. Expression evaluation (`evalExpr`, `evalCondition`,
+//      `evalColumnValue`, `evalFunctionCall`).  Every SELECT's
+//      WHERE, ORDER BY, CASE, function call, and subquery
+//      evaluates through here.
+//
+//   2. Statement dispatch (`executeSql`, `executeSqlDispatch`).
+//      Parses the text, decides which typed handler to invoke
+//      (DDL / DML / query / transaction / session-level
+//      statement).
+//
+//   3. Transaction coordination (BEGIN / COMMIT / ROLLBACK /
+//      SAVEPOINT / RELEASE).  Owns the txn journal and
+//      delegates durability to `storage/txn.zia`.
+//
+//   4. Index-aware lookup planning (`canUseIndex`,
+//      `indexLookup`, `indexRangeLookup`).  Decides whether a
+//      given WHERE predicate can be served by a hash index
+//      from `engine/index.zia`.
+//
+// DELEGATIONS
+// -----------
+// The heavy lifting for each statement kind lives elsewhere:
+//
+//   * CREATE / DROP / ALTER etc.  → `engine/ddl.zia`
+//   * INSERT / UPDATE / DELETE    → `engine/dml.zia`
+//   * SELECT                      → `engine/query.zia`
+//   * JOINs within SELECT         → `engine/join.zia`
+//   * Set ops (UNION, ...)        → `engine/setops.zia`
+//   * Window functions            → `engine/sql_window.zia`
+//   * Scalar functions            → `engine/sql_functions.zia`
+//   * pg_catalog / info_schema    → `engine/system_views.zia`
+//   * Triggers, sequences,
+//     stored functions            → engine/triggers.zia,
+//                                   engine/sequence.zia,
+//                                   engine/procedures.zia
+//   * Storage / WAL / page I/O    → storage/*.zia
+//   * PG wire protocol            → server/pg_wire.zia
+//
+// Each handler holds a back-pointer to this Executor so it can
+// reach the shared state without being passed every dependency.
+//
+// PER-SESSION STATE
+// -----------------
+// Every client connection gets its own `Executor` (see
+// `engine/session.zia`).  Shared state (the catalog of
+// databases, tables, indexes) lives on `DatabaseServer` which
+// every executor points at.  Per-session state that stays on
+// this object:
+//
+//   * Current database pointer.
+//   * Transaction journal + active txn id.
+//   * Subquery / CTE evaluation context stack.
+//   * Temporary tables created by this session.
+//   * Set-local GUC overrides.
+//
+// WHERE THIS FITS
+// ---------------
+//     server/connection.zia → session → engine/session.zia
+//         │
+//         ▼
+//     engine/executor.zia   (YOU ARE HERE)
+//         │
+//         ├──► engine/ddl.zia   engine/dml.zia   engine/query.zia
+//         ├──► engine/join.zia  engine/setops.zia
+//         ├──► engine/sql_window.zia  engine/sql_functions.zia
+//         ├──► engine/index.zia engine/system_views.zia
+//         ├──► engine/triggers.zia  engine/sequence.zia
+//         ├──► engine/procedures.zia
+//         ├──► parser/parser.zia
+//         ├──► storage/engine.zia  storage/txn.zia
+//         └──► io/persistence.zia  io/csv.zia  io/json.zia
+//
+// KEY DESIGN CHOICES
+// ------------------
+//   1. One big Executor class, composable handlers.  The
+//      Executor itself is 6,200 lines; splitting it further
+//      would scatter shared state.  Instead, DdlHandler /
+//      DmlHandler / QueryHandler peel off the state-free
+//      statement-specific logic.
+//
+//   2. Error semantics via `QueryResult.setError`.  No
+//      exceptions; every failure path returns a `QueryResult`
+//      with `success = false` and a user-facing message.
+//      Matches the wire-protocol layer's needs: an error is
+//      just another message.
+//
+//   3. Subqueries re-parse.  See the rationale in
+//      `parser/expr.zia` — subquery text is stored on the Expr
+//      node and fed back through `executeSql` at eval time.
+//      Simple; avoids an AST cycle.
+//
+//   4. Index selection is greedy.  `canUseIndex` picks the
+//      first covering index (single-column first, composite
+//      leading column second).  No cost-based plan comparison
+//      — the `optimizer/optimizer.zia` cost estimates are
+//      consulted only by EXPLAIN, not by actual dispatch.
+//
+//   5. Transactions are session-local.  `BEGIN` opens a txn on
+//      the shared `TransactionManager`; `COMMIT` / `ROLLBACK`
+//      finalise it.  Concurrent sessions see each other
+//      through MVCC snapshots (see `engine/schema.zia::Row`).
+//
+// HOW TO READ THIS FILE
+// ---------------------
+// This is the biggest file in the project.  Do not try to read
+// it linearly.  Use this table of contents:
+//
+//   1. Fields + `init` / `initWithServer` — state layout.
+//   2. `executeSql(sql)` — public entry.
+//   3. `executeSqlDispatch(stmt)` — class-based dispatch into
+//      DDL / DML / query / transaction / session statements.
+//   4. Expression evaluator: `evalExpr`, `evalCondition`,
+//      `evalColumnValue`, `evalFunctionCall`, `evalSubquery`.
+//   5. Index-lookup planner: `canUseIndex`, `indexLookup`,
+//      `indexRangeLookup`.
+//   6. Transactions: `executeBegin`, `executeCommit`,
+//      `executeRollback`, `executeSavepoint`.
+//   7. Utility: temp tables, VACUUM, EXPLAIN, session GUC.
+//
+// =============================================================================
 
 module executor;
 

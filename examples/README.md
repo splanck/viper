@@ -23,7 +23,7 @@ Full-featured applications built with [Zia](../docs/zia-reference.md).
 |---------|-------------|------------|
 | [ViperSQL](apps/vipersql/) | PostgreSQL-compatible SQL database server | MVCC, WAL, B-tree indexes, PG wire protocol, vsql client, 70K+ lines |
 | [ViperIDE](apps/viperide/) | Integrated development environment | [GUI](../docs/viperlib/gui/README.md) widgets, tabs, IntelliSense, project tree, build system |
-| [Paint](apps/paint/) | Drawing application (MS Paint-style) | 8 tools (brush, pencil, eraser, fill, shapes), color palette, custom widgets |
+| [Paint](apps/paint/) | Drawing application (MS Paint-style) | 8 tools, runtime actions, file dialogs, zoomable canvas, undo/redo, layers |
 | [WebServer](apps/webserver/) | Multi-threaded HTTP server | Routing, static files, JSON API, [thread pool](../docs/viperlib/threads.md) |
 | [Varc](apps/varc/) | Archive utility | DEFLATE compression, AES [encryption](../docs/viperlib/crypto.md), checksums |
 | [Telnet](apps/telnet/) | Telnet client and server | [TCP sockets](../docs/viperlib/network.md), session management, threading |

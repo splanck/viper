@@ -1,14 +1,66 @@
 // =============================================================================
-// Lore System — Scannable lore entries for environmental storytelling
+// lore.zia — Lore terminals + typewriter text reveal
+// Part of Xenoscape  (the 2D sidescroller platformer demo)
 // =============================================================================
-// Lore terminals scattered throughout levels reveal the backstory of XENOSCAPE.
-// Uses Viper.Game.Typewriter for character-by-character text reveal.
 //
-// Story premise:
-//   You are an astronaut from the colony ship XENOSCAPE, which crash-landed
-//   on an uncharted planet. The ship's AI, "The Architect", has gone rogue
-//   and is corrupting the planet's ecosystem. You must traverse diverse biomes,
-//   gain ancient abilities, and reach the ship's core to shut down the AI.
+// TUTORIAL — ENVIRONMENTAL STORYTELLING IN PLATFORMERS
+// ----------------------------------------------------
+// Two ways a platformer tells its story:
+//
+//   1. **Cutscenes** — dedicated "story-only" screens.
+//      Expensive to build, hard to skip respectfully, break
+//      the gameplay flow.
+//
+//   2. **Environmental storytelling** — lore fragments
+//      scattered through levels that the player finds by
+//      exploring.  Each fragment is tiny; together they
+//      reveal the world.  Dark Souls, Hollow Knight, Hyper
+//      Light Drifter all lean on this.
+//
+// Xenoscape uses the second approach.  Lore terminals are
+// special tile types (see `physics.zia::isNearLoreTerminal`)
+// scattered through levels.  When the player approaches and
+// presses interact, this subsystem:
+//
+//   1. Pauses gameplay.
+//   2. Fades in a text panel.
+//   3. Types out the lore entry character-by-character via
+//      `Viper.Game.Typewriter` — faster than a cutscene but
+//      slower than plain text, which draws the player's
+//      eye.
+//   4. Records the entry in a "collected" bitmask (shown in
+//      the pause-menu's lore tab).
+//   5. Resumes gameplay on dismiss.
+//
+// STORY
+// -----
+// You're an astronaut from the colony ship XENOSCAPE,
+// crash-landed on an uncharted world.  The ship's AI — the
+// Architect — has gone rogue and is corrupting the
+// ecosystem.  You explore biomes, earn ancient abilities,
+// and descend to the ship's core to shut it down.  Lore
+// entries in this file fill in the details; the game itself
+// never states the premise.
+//
+// WHERE THIS FITS
+// ---------------
+//     physics.zia ──►  `isNearLoreTerminal` detects contact.
+//     player.zia / game.zia  ──►  on interact button, calls
+//                                 `displayLore(index)`.
+//     menu.zia    ──►  reads `collectedMask` for the lore-
+//                      browser tab.
+//     Viper.Game.Typewriter ──► runtime text-reveal effect.
+//
+// HOW TO READ THIS FILE
+// ---------------------
+//   1. Max-entry cap + bitmask rationale.
+//   2. `LoreSystem` class — title/text lists, collected
+//      bitmask, display state.
+//   3. `initLore` — populate titles + texts (the story data).
+//   4. `displayLore(i)` — begin showing entry i.
+//   5. `update` / `draw` — advance the typewriter, render
+//      the panel.
+//
 // =============================================================================
 
 module lore;
@@ -20,7 +72,17 @@ bind "./palette";
 
 final MAX_LORE_ENTRIES = 32;
 
+/// @brief Owner of all in-game lore data + the typewriter
+///        display state machine + the bestiary entries.
+///        Single instance lives on `Game`.
+///
+/// Two distinct content streams managed here:
+///   * Lore terminals — found in the world; trigger the
+///     typewriter overlay.
+///   * Bestiary — auto-unlocks per enemy first-killed; viewed
+///     from the pause menu.
 class LoreSystem {
+    /// @brief Stub.  Real construction is `initLore(palette)`.
     expose func init() {}
     hide Palette pal;
     hide List[String] loreTitles;
@@ -30,6 +92,9 @@ class LoreSystem {
     hide Integer displayIndex;    // Which entry is showing
     hide Typewriter tw;           // Character-by-character text reveal
 
+    /// @brief Populate the title/text lists with all lore
+    ///        entries (the story content is hard-coded here).
+    ///        Allocates the typewriter, resets display state.
     expose func initLore(p: Palette) {
         pal = p;
         collectedMask = 0;
@@ -105,12 +170,18 @@ class LoreSystem {
             "The Architect's central processing core. It's merged with the ancient machine. Shutting it down will free the planet — and strand me here forever. So be it.");
     }
 
+    /// @brief Append one lore entry to the title/text lists.
+    ///        Index becomes the entry's id (used by
+    ///        `showEntry` and the collected bitmask).
     hide func addEntry(title: String, text: String) {
         loreTitles.add(title);
         loreTexts.add(text);
     }
 
     // Trigger a lore entry display.
+    /// @brief Open the lore overlay on entry `index`.  Pauses
+    ///        gameplay, marks the entry as collected, kicks
+    ///        off the typewriter from char 0.
     expose func showEntry(index: Integer) {
         if index < 0 or index >= loreTitles.length() { return; }
         // Mark as collected
@@ -120,14 +191,20 @@ class LoreSystem {
         tw.Say(loreTexts.get(index), 30); // 30ms per character
     }
 
+    /// @brief "Is a lore entry on screen right now?"  Game
+    ///        suspends regular update + input while true.
     expose func isDisplayActive() -> Boolean { return displayActive; }
 
+    /// @brief Per-frame: advance the typewriter when a lore
+    ///        entry is open.  No-op when idle.
     expose func update(dt: Integer) {
         if not displayActive { return; }
         tw.Update(dt);
     }
 
     // Skip to show all text instantly, or dismiss if already complete.
+    /// @brief Close the lore overlay (player presses
+    ///        accept/cancel).  Resumes gameplay.
     expose func dismiss() {
         if displayActive and not tw.IsComplete {
             tw.Skip();
@@ -137,6 +214,10 @@ class LoreSystem {
         }
     }
 
+    /// @brief Render the lore overlay: dimmed backdrop +
+    ///        framed panel + title + typewriter-revealed body
+    ///        text + "press to continue" hint.  Skipped when
+    ///        idle.
     expose func draw(canvas: Canvas) {
         if not displayActive { return; }
 
@@ -174,6 +255,8 @@ class LoreSystem {
     }
 
     // Get collection stats for HUD
+    /// @brief Number of lore entries the player has scanned.
+    ///        Drives the "12/32 lore" title-screen counter.
     expose func getCollectedCount() -> Integer {
         var count = 0;
         var i = 0;
@@ -184,11 +267,18 @@ class LoreSystem {
         return count;
     }
 
+    /// @brief Total available lore entries.  Reflects the
+    ///        actual list length, so adding a new entry to
+    ///        `initLore` automatically updates the counter.
     expose func getTotalCount() -> Integer {
         return loreTitles.length();
     }
 
+    /// @brief Read collected bitmask (one bit per entry).
+    ///        Persisted via SaveData.
     expose func getCollectedMask() -> Integer { return collectedMask; }
+
+    /// @brief Restore from save.
     expose func setCollectedMask(mask: Integer) { collectedMask = mask; }
 
     // =========================================================================
@@ -200,6 +290,9 @@ class LoreSystem {
     hide Boolean bestiaryActive;
     hide Integer bestiaryIndex;
 
+    /// @brief Populate the bestiary entries (one per enemy
+    ///        type).  Called from `initLore`.  Like the lore
+    ///        list, this is hard-coded content.
     expose func initBestiary() {
         bestiaryNames = [];
         bestiaryDescs = [];
@@ -261,11 +354,16 @@ class LoreSystem {
             "The XENOSCAPE's rogue AI, merged with the ancient machine. Four phases of escalating intensity. Phase 1: teleport and precise shots. Phase 2: summons minions. Phase 3: destroys platforms. Phase 4: all attacks combined. The weakpoint flickers between phases.");
     }
 
+    /// @brief Internal helper: append a bestiary entry.
+    ///        Index becomes the enemy type id used by
+    ///        `unlockBestiaryEntry`.
     hide func addBestiaryEntry(name: String, desc: String) {
         bestiaryNames.add(name);
         bestiaryDescs.add(desc);
     }
 
+    /// @brief Mark an enemy type as "scanned".  Triggered by
+    ///        the first kill of that type.  Idempotent.
     expose func unlockBestiaryEntry(enemyType: Integer) {
         // Map enemy type to bestiary index (simplified)
         if enemyType >= 5 and enemyType <= 30 {
@@ -274,6 +372,9 @@ class LoreSystem {
         }
     }
 
+    /// @brief Draw the bestiary tab — list of enemies + the
+    ///        selected one's description.  Locked entries
+    ///        appear as silhouettes ("?????").
     expose func drawBestiary(canvas: Canvas, selectedIdx: Integer) {
         canvas.BoxAlpha(0, 0, SCREEN_W, SCREEN_H, Color.RGB(0, 0, 10), 200);
 
@@ -332,6 +433,10 @@ class LoreSystem {
     // =========================================================================
     // Crew Logs — additional story entries from the ship's crew
     // =========================================================================
+    /// @brief Append the "crew log" lore entries — diary
+    ///        fragments from the colony ship's crew.  Split
+    ///        out so the crew-log subset can be added /
+    ///        removed independently from the main lore.
     expose func addCrewLogs() {
         addEntry("Crew Log: Captain Torres",
             "Day 1 after crash. Damage assessment: engines destroyed, hull breached in 3 sections. Life support running on backup. The AI — the Architect — isn't responding to shutdown commands.");

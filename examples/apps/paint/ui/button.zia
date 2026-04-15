@@ -2,6 +2,7 @@
 module button;
 
 bind Viper.Graphics;
+bind Viper.Game.UI;
 
 bind "../config";
 
@@ -19,6 +20,7 @@ class Button {
     hide Integer hovered;       // 1 if mouse is over button
     hide Integer pressed;       // 1 if mouse is pressed on button
     hide Integer wasClicked;    // 1 if button was clicked this frame
+    hide GameButton widget;     // Runtime styled button renderer
 
     // Default constructor
     expose func init() {
@@ -33,6 +35,7 @@ class Button {
         hovered = 0;
         pressed = 0;
         wasClicked = 0;
+        widget = null;
     }
 
     expose func setup(bx: Integer, by: Integer, bw: Integer, bh: Integer, txt: String) {
@@ -47,6 +50,8 @@ class Button {
         hovered = 0;
         pressed = 0;
         wasClicked = 0;
+        widget = GameButton.New(x, y, width, height, text);
+        widget.SetBorder(1, config.UI_BORDER);
     }
 
     // Reset click state (call at start of frame)
@@ -116,23 +121,21 @@ class Button {
             bgColor = config.UI_BG_BUTTON_HOVER;
         }
 
-        // Draw button background
-        gfx.Box( x, y, width, height, bgColor);
-
-        // Draw border
-        gfx.Frame( x, y, width, height, config.UI_BORDER);
-
-        // Draw text centered
         var textColor = config.UI_TEXT;
         if enabled == 0 {
             textColor = config.UI_TEXT_DIM;
         }
 
-        // Simple centering (approximate - 8px per char)
-        var textLen = 1;  // Assume single character for tool buttons
-        var textX = x + (width - textLen * 8) / 2;
-        var textY = y + (height - 8) / 2;
-        gfx.Text( textX, textY, text, textColor);
+        if widget == null {
+            widget = GameButton.New(x, y, width, height, text);
+        }
+        widget.set_X(x);
+        widget.set_Y(y);
+        widget.SetText(text);
+        widget.SetColors(bgColor, bgColor);
+        widget.SetTextColors(textColor, textColor);
+        widget.SetBorder(1, config.UI_BORDER);
+        widget.Draw(gfx, false);
     }
 }
 
@@ -149,6 +152,7 @@ class ToolButton {
     hide Integer hovered;
     hide Integer pressed;
     hide Integer wasClicked;
+    hide GameButton widget;
 
     // Default constructor
     expose func init() {
@@ -162,6 +166,7 @@ class ToolButton {
         hovered = 0;
         pressed = 0;
         wasClicked = 0;
+        widget = null;
     }
 
     expose func setup(bx: Integer, by: Integer, sz: Integer, ic: String, tid: Integer) {
@@ -175,6 +180,8 @@ class ToolButton {
         hovered = 0;
         pressed = 0;
         wasClicked = 0;
+        widget = GameButton.New(x, y, size, size, icon);
+        widget.SetBorder(1, config.UI_BORDER);
     }
 
     expose func resetClick() {
@@ -228,12 +235,15 @@ class ToolButton {
             bgColor = config.UI_BG_BUTTON_HOVER;
         }
 
-        gfx.Box( x, y, size, size, bgColor);
-        gfx.Frame( x, y, size, size, config.UI_BORDER);
-
-        // Draw icon centered
-        var textX = x + (size - 8) / 2;
-        var textY = y + (size - 8) / 2;
-        gfx.Text( textX, textY, icon, config.UI_TEXT);
+        if widget == null {
+            widget = GameButton.New(x, y, size, size, icon);
+        }
+        widget.set_X(x);
+        widget.set_Y(y);
+        widget.SetText(icon);
+        widget.SetColors(bgColor, bgColor);
+        widget.SetTextColors(config.UI_TEXT, config.UI_TEXT);
+        widget.SetBorder(1, config.UI_BORDER);
+        widget.Draw(gfx, false);
     }
 }

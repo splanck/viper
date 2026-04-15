@@ -1,9 +1,92 @@
-// sql_functions.zia — SQL Built-in Function Evaluation
-// Part of ViperSQL
+// =============================================================================
+// sql_functions.zia — The built-in SQL scalar function library
+// Part of ViperSQL  (package: engine)
+// =============================================================================
 //
-// Provides standalone functions for evaluating SQL scalar functions.
-// Functions take pre-evaluated SqlValue arguments and return SqlValue results.
-// This module is used by the Executor to delegate function evaluation.
+// PURPOSE
+// -------
+// Every `SELECT UPPER(name)`, `WHERE NOW() - created > INTERVAL …`,
+// `SELECT json_extract(payload, '$.id')`, `SELECT HASH(s)` call
+// in ViperSQL routes through this file.  Functions receive a
+// list of pre-evaluated `SqlValue` arguments and return a
+// `SqlValue`.  The executor's expression evaluator dispatches
+// on function name (`evalFunctionCall`) and hands arguments to
+// the right handler here.
+//
+// Roughly 80+ functions implemented — grouped by family:
+//
+//   String        : LENGTH, UPPER, LOWER, TRIM, LTRIM, RTRIM,
+//                    SUBSTR(ING), LEFT, RIGHT, REPLACE,
+//                    CONCAT, CONCAT_WS, REPEAT, REVERSE,
+//                    LPAD, RPAD, POSITION, OVERLAY,
+//                    INITCAP, FORMAT.
+//   Numeric       : ABS, ROUND, CEIL, FLOOR, TRUNC, POWER,
+//                    SQRT, EXP, LN, LOG, SIGN, MOD, PI,
+//                    RANDOM, RADIANS, DEGREES, SIN/COS/TAN,
+//                    ASIN/ACOS/ATAN/ATAN2.
+//   Date/Time     : NOW, CURRENT_DATE/TIME/TIMESTAMP,
+//                    EXTRACT, DATE_PART, DATE_TRUNC, AGE,
+//                    TO_CHAR, TO_DATE, INTERVAL, JUSTIFY_HOURS.
+//   Type coercion : CAST_<T> (via parser lowering), COALESCE,
+//                    NULLIF, GREATEST, LEAST, IFNULL.
+//   JSON          : JSON_VALID, JSON_TYPE, JSON_EXTRACT,
+//                    JSON_ARRAY_LENGTH, JSON_BUILD_*,
+//                    JSON_OBJECT_KEYS (backed by io/json.zia).
+//   Regex         : REGEX_MATCH (via Viper.Text.Pattern),
+//                    REGEX_REPLACE, SUBSTRING(pattern).
+//   Hash          : MD5, SHA1, SHA256, SHA512 (via
+//                    Viper.Crypto.Hash).
+//   Array         : ARRAY_LENGTH, ARRAY_UPPER, ARRAY_APPEND,
+//                    UNNEST (as a SETOF function).
+//   Sequence      : NEXTVAL, CURRVAL, SETVAL.
+//
+// WHERE THIS FITS
+// ---------------
+//     parser/expr.zia        → EXPR_FUNCTION node with funcName
+//         │                    + arg list.
+//         ▼
+//     engine/executor.zia
+//         │  evalExpr evaluates args, dispatches to
+//         │  sql_functions.evaluateFunction(name, args).
+//         ▼
+//     engine/sql_functions.zia   (YOU ARE HERE)
+//         │  large if-ladder routes name → handler.
+//         ▼
+//     handlers call Viper.String / Math / DateTime / Crypto /
+//     io/json / Pattern as appropriate.
+//
+// KEY DESIGN CHOICES
+// ------------------
+//   1. Big if-ladder dispatch.  A hash-map registry would be
+//      cleaner but we stick with an if-ladder because (a) the
+//      function count is bounded by SQL itself, not by user
+//      plugins, and (b) this style makes the "function catalog"
+//      easy to grep.
+//
+//   2. NULL propagation is per-function.  Most SQL scalars
+//      return NULL when any argument is NULL; each handler
+//      checks that at the top.  Three-valued logic lives in
+//      the caller (`evalExpr`).
+//
+//   3. Sequence functions delegate to `engine/sequence.zia`.
+//      Nextval/Currval/Setval look up the SequenceManager on
+//      the current database, then invoke its methods.  This
+//      file only does the SQL wiring.
+//
+// HOW TO READ THIS FILE
+// ---------------------
+// ~2,000 lines.  Structure:
+//   1. Small string / date / cast helpers at the top.
+//   2. One handler function per SQL function name — ordered by
+//      family (string → numeric → date → json → hash → array →
+//      sequence).
+//   3. `evaluateFunction(name, args)` at the bottom — the
+//      public dispatch routed from the executor.
+//
+// New functions: add a handler, then a case in
+// `evaluateFunction` routing `name → handler`.
+//
+// =============================================================================
 
 module sql_functions;
 

@@ -2,15 +2,24 @@
 module app;
 
 bind Viper.Graphics;
-bind Viper.Time;
 bind Viper.Input;
 bind Viper.Core.Convert;
-bind Viper.Collections;
+bind Viper.GUI as GUI;
+bind Viper.Game;
 
 bind "./config";
+bind "./settings";
+bind "./document";
 bind "./canvas";
 bind "./colors";
 bind "./brush";
+bind "./actions";
+bind "./history";
+bind "./viewport";
+bind "./tool_palette";
+bind "./layer_panel";
+bind "./feedback";
+bind "./file_service";
 bind "./tools/pencil";
 bind "./tools/brush";
 bind "./tools/eraser";
@@ -26,9 +35,13 @@ bind "./ui/slider";
 class PaintApp {
     // Graphics canvas (window)
     hide Canvas gfx;
+    hide Integer appWidth;
+    hide Integer appHeight;
+    hide Integer isFullscreen;
 
     // Drawing canvas (pixel buffer)
     expose canvas.DrawingCanvas canvas;
+    hide document.PaintDocument doc;
 
     // Color and brush settings
     expose colors.ColorManager colors;
@@ -46,6 +59,15 @@ class PaintApp {
 
     // Current tool state
     expose Integer currentTool;  // Tool ID from config
+    hide settings.PaintSettings runtimeSettings;
+    hide actions.PaintActions inputActions;
+    hide history.HistoryManager historyMgr;
+    hide viewport.CanvasViewport view;
+    hide tool_palette.ToolPalette toolPalette;
+    hide layer_panel.LayerPanel layersPanel;
+    hide feedback.FeedbackManager feedbackMgr;
+    hide file_service.PaintFileService fileService;
+    hide DebugOverlay debugOverlay;
 
     // UI elements - Tool buttons
     hide button.ToolButton btnPencil;
@@ -66,6 +88,15 @@ class PaintApp {
     hide button.Button btnOpen;
     hide button.Button btnSave;
     hide button.Button btnClear;
+    hide button.Button btnLayer;
+    hide button.Button btnLayerDup;
+    hide button.Button btnLayerDel;
+    hide button.Button btnLayerUp;
+    hide button.Button btnLayerDown;
+    hide button.Button btnGray;
+    hide button.Button btnInvert;
+    hide button.Button btnFlipH;
+    hide button.Button btnBlur;
 
     // Mouse state
     hide Integer mouseX;
@@ -78,9 +109,6 @@ class PaintApp {
     hide Integer lastMouseRight;
     hide Integer strokeReleaseFrames;
 
-    // Undo stack (List of Pixels snapshots)
-    hide List undoStack;
-
     // Application state
     expose Integer running;
     expose String statusMessage;
@@ -90,16 +118,46 @@ class PaintApp {
     hide Integer canvasOffsetY;
 
     expose func init() {
+        runtimeSettings = new settings.PaintSettings();
+        runtimeSettings.load("examples/apps/paint/paint.runtime.json");
+        appWidth = runtimeSettings.windowWidth;
+        appHeight = runtimeSettings.windowHeight;
+        isFullscreen = 0;
+
+        if runtimeSettings.darkTheme == 1 {
+            GUI.Theme.SetDark();
+        } else {
+            GUI.Theme.SetLight();
+        }
+
         // Create the graphics window
-        gfx = new Canvas(config.WINDOW_TITLE, config.WINDOW_WIDTH, config.WINDOW_HEIGHT);
+        gfx = new Canvas(config.WINDOW_TITLE, appWidth, appHeight);
+        gfx.SetFps(runtimeSettings.targetFps);
+        gfx.SetDTMax(50);
 
         // Initialize drawing canvas
         canvas = new canvas.DrawingCanvas();
-        canvas.initWithSize(1024, 768);
+        canvas.initWithSize(runtimeSettings.canvasWidth, runtimeSettings.canvasHeight);
+        doc = new document.PaintDocument();
+        doc.setupNew(canvas.revision);
 
         // Initialize color and brush (new calls init automatically)
         colors = new colors.ColorManager();
         brushSettings = new brush.BrushSettings();
+        brushSettings.setSize(runtimeSettings.defaultBrushSize);
+        brushSettings.setOpacity(runtimeSettings.defaultOpacity);
+
+        inputActions = new actions.PaintActions();
+        historyMgr = new history.HistoryManager();
+        view = new viewport.CanvasViewport();
+        toolPalette = new tool_palette.ToolPalette();
+        layersPanel = new layer_panel.LayerPanel();
+        feedbackMgr = new feedback.FeedbackManager();
+        fileService = new file_service.PaintFileService();
+        debugOverlay = DebugOverlay.New();
+        if runtimeSettings.debugOnStart == 1 {
+            debugOverlay.Enable();
+        }
 
         // Initialize tools (new calls init automatically)
         pencilTool = new pencil.PencilTool();
@@ -111,18 +169,24 @@ class PaintApp {
         fillTool = new fill.FillTool();
         eyedropperTool = new eyedropper.EyedropperTool();
 
-        currentTool = config.TOOL_BRUSH;  // Start with brush
+        currentTool = runtimeSettings.defaultTool;
+        toolPalette.select(currentTool);
 
         // Calculate canvas offset
         canvasOffsetX = config.TOOL_PANEL_WIDTH + 10;
         canvasOffsetY = config.TOOLBAR_HEIGHT + 10;
+        view.setup(canvasOffsetX,
+                   canvasOffsetY,
+                   appWidth - config.TOOL_PANEL_WIDTH - config.COLOR_PANEL_WIDTH - 20,
+                   appHeight - config.TOOLBAR_HEIGHT - config.STATUS_BAR_HEIGHT - 20);
 
         // Initialize UI
         initUI();
+        syncToolButtons();
 
         // State
         running = 1;
-        statusMessage = "Ready - Click to draw, 1-8: tools, Ctrl+Z: undo, Q: quit";
+        setStatus("Ready - draw, 1-8/P/B/E/L/R/O/F/I tools, Ctrl+S save, Ctrl+Z undo");
         mouseX = 0;
         mouseY = 0;
         lastMouseX = 0;
@@ -132,9 +196,6 @@ class PaintApp {
         mouseRight = 0;
         lastMouseRight = 0;
         strokeReleaseFrames = 0;
-
-        // Undo stack
-        undoStack = new List();
     }
 
     // Initialize UI elements
@@ -209,40 +270,85 @@ class PaintApp {
 
         btnClear = new button.Button();
         btnClear.setup(btnX, btnY, btnW + 10, btnH, "Clear");
+        btnX = btnX + btnW + 16;
+
+        btnLayer = new button.Button();
+        btnLayer.setup(btnX, btnY, btnW + 30, btnH, "+ Layer");
+        btnX = btnX + btnW + 36;
+
+        btnLayerDup = new button.Button();
+        btnLayerDup.setup(btnX, btnY, btnW + 4, btnH, "Dup");
+        btnX = btnX + btnW + 10;
+
+        btnLayerDel = new button.Button();
+        btnLayerDel.setup(btnX, btnY, btnW + 4, btnH, "Del");
+        btnX = btnX + btnW + 10;
+
+        btnLayerUp = new button.Button();
+        btnLayerUp.setup(btnX, btnY, btnW, btnH, "Up");
+        btnX = btnX + btnW + 6;
+
+        btnLayerDown = new button.Button();
+        btnLayerDown.setup(btnX, btnY, btnW, btnH, "Down");
+        btnX = btnX + btnW + 20;
+
+        btnGray = new button.Button();
+        btnGray.setup(btnX, btnY, btnW + 10, btnH, "Gray");
+        btnX = btnX + btnW + 16;
+
+        btnInvert = new button.Button();
+        btnInvert.setup(btnX, btnY, btnW + 10, btnH, "Invert");
+        btnX = btnX + btnW + 16;
+
+        btnFlipH = new button.Button();
+        btnFlipH.setup(btnX, btnY, btnW + 10, btnH, "FlipH");
+        btnX = btnX + btnW + 16;
+
+        btnBlur = new button.Button();
+        btnBlur.setup(btnX, btnY, btnW + 10, btnH, "Blur");
+
+        updateLayerPanelLayout();
     }
 
     // Snapshot current canvas pixels for undo (call before each stroke)
     hide func snapshotForUndo() {
-        undoStack.Push(canvas.getPixels().Clone());
-        while undoStack.Length > config.MAX_UNDO_LEVELS {
-            undoStack.RemoveAt(0);
-        }
+        historyMgr.snapshot(canvas.getActivePixels());
     }
 
     // Main run loop
     expose func run() {
-        while running == 1 {
+        while running == 1 and gfx.BeginFrame() != 0 {
+            updateWindowMetrics();
+
             // Process input
             handleInput();
 
             // Render
             render();
-
-            // Small delay for ~60 FPS
-            Viper.Time.SleepMs(16);
         }
+    }
+
+    hide func updateWindowMetrics() {
+        appWidth = gfx.Width;
+        appHeight = gfx.Height;
+        view.resize(canvasOffsetX,
+                    canvasOffsetY,
+                    appWidth - config.TOOL_PANEL_WIDTH - config.COLOR_PANEL_WIDTH - 20,
+                    appHeight - config.TOOLBAR_HEIGHT - config.STATUS_BAR_HEIGHT - 20,
+                    canvas.width,
+                    canvas.height);
+        updateLayerPanelLayout();
+    }
+
+    hide func updateLayerPanelLayout() {
+        layersPanel.setup(appWidth - config.COLOR_PANEL_WIDTH + 6,
+                          config.TOOLBAR_HEIGHT + 190,
+                          config.COLOR_PANEL_WIDTH - 12,
+                          appHeight - config.TOOLBAR_HEIGHT - config.STATUS_BAR_HEIGHT - 200);
     }
 
     // Handle all input
     hide func handleInput() {
-        gfx.Poll();
-
-        // Check if window should close
-        if gfx.ShouldClose != 0 {
-            running = 0;
-            return;
-        }
-
         // Get mouse state
         lastMouseX = mouseX;
         lastMouseY = mouseY;
@@ -261,39 +367,16 @@ class PaintApp {
             mouseRight = 0;
         }
 
-        // Q key = quit (keycode 81)
-        if gfx.KeyHeld(81) != 0 {
+        view.applyWheel(Viper.Input.Mouse.WheelX(),
+                        Viper.Input.Mouse.WheelY(),
+                        canvas.width,
+                        canvas.height,
+                        boolToInt(Viper.Input.Keyboard.Ctrl()));
+        feedbackMgr.setCanvasCursor(view.contains(mouseX, mouseY));
+
+        if inputActions.pressed(actions.ACT_QUIT) == 1 {
             running = 0;
             return;
-        }
-
-        // Number keys for tool selection (1-8)
-        if gfx.KeyHeld(49) != 0 { selectTool(config.TOOL_PENCIL); }     // 1
-        if gfx.KeyHeld(50) != 0 { selectTool(config.TOOL_BRUSH); }      // 2
-        if gfx.KeyHeld(51) != 0 { selectTool(config.TOOL_ERASER); }     // 3
-        if gfx.KeyHeld(52) != 0 { selectTool(config.TOOL_LINE); }       // 4
-        if gfx.KeyHeld(53) != 0 { selectTool(config.TOOL_RECTANGLE); }  // 5
-        if gfx.KeyHeld(54) != 0 { selectTool(config.TOOL_ELLIPSE); }    // 6
-        if gfx.KeyHeld(55) != 0 { selectTool(config.TOOL_FILL); }       // 7
-        if gfx.KeyHeld(56) != 0 { selectTool(config.TOOL_EYEDROPPER); } // 8
-
-        // C key = clear canvas (keycode 67)
-        if gfx.KeyHeld(67) != 0 {
-            canvas.clear();
-        }
-
-        // +/- keys for brush size (keycodes: + = 61 or 334, - = 45 or 333)
-        if gfx.KeyHeld(61) != 0 or gfx.KeyHeld(334) != 0 {
-            var newSize = brushSettings.size + 1;
-            if newSize > config.MAX_BRUSH_SIZE { newSize = config.MAX_BRUSH_SIZE; }
-            brushSettings.setSize(newSize);
-            sizeSlider.value = newSize;
-        }
-        if gfx.KeyHeld(45) != 0 or gfx.KeyHeld(333) != 0 {
-            var newSize = brushSettings.size - 1;
-            if newSize < config.MIN_BRUSH_SIZE { newSize = config.MIN_BRUSH_SIZE; }
-            brushSettings.setSize(newSize);
-            sizeSlider.value = newSize;
         }
 
         // Reset button click states
@@ -309,6 +392,15 @@ class PaintApp {
         btnOpen.resetClick();
         btnSave.resetClick();
         btnClear.resetClick();
+        btnLayer.resetClick();
+        btnLayerDup.resetClick();
+        btnLayerDel.resetClick();
+        btnLayerUp.resetClick();
+        btnLayerDown.resetClick();
+        btnGray.resetClick();
+        btnInvert.resetClick();
+        btnFlipH.resetClick();
+        btnBlur.resetClick();
 
         // Handle tool button clicks
         if btnPencil.handleMouse(mouseX, mouseY, mouseDown) == 1 {
@@ -344,33 +436,65 @@ class PaintApp {
             brushSettings.setOpacity(opacitySlider.value);
         }
 
+        handleColorPanelInput();
+        var layerMsg = layersPanel.handleMouse(mouseX, mouseY, mouseDown, mouseRight, lastMouseDown, lastMouseRight, canvas);
+        if layerMsg != "" {
+            setStatus(layerMsg);
+        }
+
         // Handle toolbar buttons
         btnNew.handleMouse(mouseX, mouseY, mouseDown);
         btnOpen.handleMouse(mouseX, mouseY, mouseDown);
         btnSave.handleMouse(mouseX, mouseY, mouseDown);
         btnClear.handleMouse(mouseX, mouseY, mouseDown);
+        btnLayer.handleMouse(mouseX, mouseY, mouseDown);
+        btnLayerDup.handleMouse(mouseX, mouseY, mouseDown);
+        btnLayerDel.handleMouse(mouseX, mouseY, mouseDown);
+        btnLayerUp.handleMouse(mouseX, mouseY, mouseDown);
+        btnLayerDown.handleMouse(mouseX, mouseY, mouseDown);
+        btnGray.handleMouse(mouseX, mouseY, mouseDown);
+        btnInvert.handleMouse(mouseX, mouseY, mouseDown);
+        btnFlipH.handleMouse(mouseX, mouseY, mouseDown);
+        btnBlur.handleMouse(mouseX, mouseY, mouseDown);
 
         if btnNew.clicked() == 1 {
-            canvas.clear();
-            statusMessage = "New canvas";
+            newDocument();
         }
         if btnClear.clicked() == 1 {
-            canvas.clear();
-            statusMessage = "Canvas cleared";
+            clearDocument();
+        }
+        if btnLayer.clicked() == 1 {
+            addLayer();
+        }
+        if btnLayerDup.clicked() == 1 {
+            duplicateLayer();
+        }
+        if btnLayerDel.clicked() == 1 {
+            deleteLayer();
+        }
+        if btnLayerUp.clicked() == 1 {
+            moveLayerUp();
+        }
+        if btnLayerDown.clicked() == 1 {
+            moveLayerDown();
+        }
+        if btnGray.clicked() == 1 {
+            applyGrayscale();
+        }
+        if btnInvert.clicked() == 1 {
+            applyInvert();
+        }
+        if btnFlipH.clicked() == 1 {
+            flipLayerH();
+        }
+        if btnBlur.clicked() == 1 {
+            applyBlur();
         }
         if btnSave.clicked() == 1 {
-            if canvas.saveBmp("painting.bmp") == 1 {
-                statusMessage = "Saved to painting.bmp";
-            } else {
-                statusMessage = "Save failed";
-            }
+            saveDocument();
         }
         if btnOpen.clicked() == 1 {
-            if canvas.loadBmp("painting.bmp") == 1 {
-                statusMessage = "Loaded painting.bmp";
-            } else {
-                statusMessage = "Load failed";
-            }
+            openDocument();
         }
 
         // Handle keyboard shortcuts
@@ -378,67 +502,285 @@ class PaintApp {
 
         // Handle drawing on canvas
         handleCanvasInput();
+        syncDocumentState();
     }
 
     // Handle keyboard shortcuts
     hide func handleKeyboard() {
-        // Tool shortcuts
-        if gfx.KeyHeld( config.KEY_P) == 1 {
-            selectTool(config.TOOL_PENCIL);
-        }
-        if gfx.KeyHeld( config.KEY_B) == 1 {
-            selectTool(config.TOOL_BRUSH);
-        }
-        if gfx.KeyHeld( config.KEY_E) == 1 {
-            selectTool(config.TOOL_ERASER);
-        }
-        if gfx.KeyHeld( config.KEY_L) == 1 {
-            selectTool(config.TOOL_LINE);
-        }
-        if gfx.KeyHeld( config.KEY_R) == 1 {
-            selectTool(config.TOOL_RECTANGLE);
-        }
-        if gfx.KeyHeld( config.KEY_O) == 1 {
-            selectTool(config.TOOL_ELLIPSE);
-        }
-        if gfx.KeyHeld( config.KEY_F) == 1 {
-            selectTool(config.TOOL_FILL);
-        }
-        if gfx.KeyHeld( config.KEY_I) == 1 {
-            selectTool(config.TOOL_EYEDROPPER);
-        }
+        var ctrl = boolToInt(Viper.Input.Keyboard.Ctrl());
 
-        // Swap colors with X
-        if gfx.KeyHeld( config.KEY_X) == 1 {
-            colors.swap();
-        }
-
-        // Undo with Ctrl+Z
-        if gfx.KeyHeld( config.KEY_Z) == 1 and Viper.Input.Keyboard.Ctrl() {
-            if undoStack.Length > 0 {
-                var snapshot = undoStack.Pop();
-                canvas.restorePixels(snapshot);
-                statusMessage = "Undo";
+        if ctrl == 1 {
+            if inputActions.pressed(actions.ACT_NEW) == 1 {
+                newDocument();
+                return;
+            }
+            if inputActions.pressed(actions.ACT_OPEN) == 1 {
+                openDocument();
+                return;
+            }
+            if inputActions.pressed(actions.ACT_SAVE) == 1 {
+                if Viper.Input.Keyboard.Shift() {
+                    saveDocumentAs();
+                } else {
+                    saveDocument();
+                }
+                return;
+            }
+            if inputActions.pressed(actions.ACT_SAVE_AS) == 1 {
+                saveDocumentAs();
+                return;
+            }
+            if inputActions.pressed(actions.ACT_UNDO) == 1 {
+                undo();
+                return;
+            }
+            if inputActions.pressed(actions.ACT_REDO) == 1 {
+                redo();
+                return;
             }
         }
 
+        if inputActions.pressed(actions.ACT_SAVE_AS) == 1 {
+            saveDocumentAs();
+            return;
+        }
+
+        // Tool shortcuts
+        if inputActions.pressed(actions.ACT_TOOL_PENCIL) == 1 {
+            selectTool(config.TOOL_PENCIL);
+        }
+        if inputActions.pressed(actions.ACT_TOOL_BRUSH) == 1 {
+            selectTool(config.TOOL_BRUSH);
+        }
+        if inputActions.pressed(actions.ACT_TOOL_ERASER) == 1 {
+            selectTool(config.TOOL_ERASER);
+        }
+        if inputActions.pressed(actions.ACT_TOOL_LINE) == 1 {
+            selectTool(config.TOOL_LINE);
+        }
+        if inputActions.pressed(actions.ACT_TOOL_RECT) == 1 {
+            selectTool(config.TOOL_RECTANGLE);
+        }
+        if inputActions.pressed(actions.ACT_TOOL_ELLIPSE) == 1 {
+            selectTool(config.TOOL_ELLIPSE);
+        }
+        if inputActions.pressed(actions.ACT_TOOL_FILL) == 1 {
+            selectTool(config.TOOL_FILL);
+        }
+        if inputActions.pressed(actions.ACT_TOOL_EYEDROPPER) == 1 {
+            selectTool(config.TOOL_EYEDROPPER);
+        }
+
+        if inputActions.pressed(actions.ACT_NEXT_TOOL) == 1 {
+            selectTool(toolPalette.next());
+        }
+        if inputActions.pressed(actions.ACT_PREV_TOOL) == 1 {
+            selectTool(toolPalette.previous());
+        }
+
+        // Swap colors with X
+        if inputActions.pressed(actions.ACT_SWAP_COLORS) == 1 {
+            colors.swap();
+            setStatus("Foreground/background colors swapped");
+        }
+
+        if inputActions.pressed(actions.ACT_CLEAR) == 1 {
+            clearDocument();
+        }
+
         // Brush size with [ and ]
-        if gfx.KeyHeld( config.KEY_LEFT_BRACKET) == 1 {
+        if inputActions.pressed(actions.ACT_SIZE_DOWN) == 1 {
             brushSettings.decreaseSize();
             sizeSlider.setValue(brushSettings.size);
+            setStatus("Brush size " + brushSettings.size);
         }
-        if gfx.KeyHeld( config.KEY_RIGHT_BRACKET) == 1 {
+        if inputActions.pressed(actions.ACT_SIZE_UP) == 1 {
             brushSettings.increaseSize();
             sizeSlider.setValue(brushSettings.size);
+            setStatus("Brush size " + brushSettings.size);
+        }
+
+        if inputActions.pressed(actions.ACT_ZOOM_IN) == 1 {
+            view.zoomIn(canvas.width, canvas.height);
+            setStatus("Zoom " + view.zoomLabel());
+        }
+        if inputActions.pressed(actions.ACT_ZOOM_OUT) == 1 {
+            view.zoomOut(canvas.width, canvas.height);
+            setStatus("Zoom " + view.zoomLabel());
+        }
+        if inputActions.pressed(actions.ACT_ZOOM_RESET) == 1 {
+            view.resetZoom(canvas.width, canvas.height);
+            setStatus("Zoom reset");
+        }
+        if inputActions.pressed(actions.ACT_FULLSCREEN) == 1 {
+            toggleFullscreen();
+        }
+        if inputActions.pressed(actions.ACT_DEBUG) == 1 {
+            debugOverlay.Toggle();
+        }
+    }
+
+    hide func boolToInt(value: Boolean) -> Integer {
+        if value {
+            return 1;
+        }
+        return 0;
+    }
+
+    hide func setStatus(message: String) {
+        statusMessage = message;
+        feedbackMgr.statusMessage = message;
+    }
+
+    hide func newDocument() {
+        fileService.newDocument(canvas, runtimeSettings.canvasWidth, runtimeSettings.canvasHeight);
+        doc.setupNew(canvas.revision);
+        historyMgr.clear();
+        view.resetZoom(canvas.width, canvas.height);
+        setStatus("New canvas");
+    }
+
+    hide func clearDocument() {
+        snapshotForUndo();
+        canvas.clear();
+        setStatus("Canvas cleared");
+    }
+
+    hide func openDocument() {
+        var result = fileService.openDocument(canvas);
+        if result == 1 {
+            historyMgr.clear();
+            view.resetZoom(canvas.width, canvas.height);
+            doc.markOpened(fileService.currentPath, canvas.revision);
+            setStatus("Opened " + fileService.currentPath);
+        } else if result < 0 {
+            setStatus("Open failed");
+        }
+    }
+
+    hide func saveDocument() {
+        var result = fileService.saveDocument(canvas);
+        if result == 1 {
+            doc.markSaved(fileService.currentPath, canvas.revision);
+            setStatus("Saved " + fileService.currentPath);
+        } else if result < 0 {
+            setStatus("Save failed");
+        }
+    }
+
+    hide func saveDocumentAs() {
+        var result = fileService.saveDocumentAs(canvas);
+        if result == 1 {
+            doc.markSaved(fileService.currentPath, canvas.revision);
+            setStatus("Saved " + fileService.currentPath);
+        } else if result < 0 {
+            setStatus("Save failed");
+        }
+    }
+
+    hide func undo() {
+        var snapshot = historyMgr.undo(canvas.getActivePixels());
+        if snapshot != null {
+            canvas.restorePixels(snapshot);
+            setStatus("Undo");
+        } else {
+            setStatus("Nothing to undo");
+        }
+    }
+
+    hide func redo() {
+        var snapshot = historyMgr.redo(canvas.getActivePixels());
+        if snapshot != null {
+            canvas.restorePixels(snapshot);
+            setStatus("Redo");
+        } else {
+            setStatus("Nothing to redo");
+        }
+    }
+
+    hide func addLayer() {
+        canvas.addLayer("Layer " + (canvas.layerCount() + 1));
+        setStatus("Added " + canvas.activeLayerName());
+    }
+
+    hide func duplicateLayer() {
+        if canvas.duplicateActiveLayer() == 1 {
+            setStatus("Duplicated " + canvas.activeLayerName());
+        } else {
+            setStatus("No layer to duplicate");
+        }
+    }
+
+    hide func deleteLayer() {
+        if canvas.removeActiveLayer() == 1 {
+            setStatus("Deleted layer");
+        } else {
+            setStatus("Paint keeps at least one layer");
+        }
+    }
+
+    hide func moveLayerUp() {
+        if canvas.moveActiveLayerUp() == 1 {
+            setStatus("Moved layer up");
+        } else {
+            setStatus("Layer is already at the top");
+        }
+    }
+
+    hide func moveLayerDown() {
+        if canvas.moveActiveLayerDown() == 1 {
+            setStatus("Moved layer down");
+        } else {
+            setStatus("Layer is already at the bottom");
+        }
+    }
+
+    hide func applyInvert() {
+        snapshotForUndo();
+        canvas.applyInvert();
+        setStatus("Inverted active layer");
+    }
+
+    hide func applyGrayscale() {
+        snapshotForUndo();
+        canvas.applyGrayscale();
+        setStatus("Grayscale active layer");
+    }
+
+    hide func flipLayerH() {
+        snapshotForUndo();
+        canvas.flipActiveH();
+        setStatus("Flipped active layer horizontally");
+    }
+
+    hide func applyBlur() {
+        snapshotForUndo();
+        canvas.applyBlur(2);
+        setStatus("Blurred active layer");
+    }
+
+    hide func syncDocumentState() {
+        doc.observeRevision(canvas.revision);
+    }
+
+    hide func toggleFullscreen() {
+        if isFullscreen == 1 {
+            gfx.Windowed();
+            isFullscreen = 0;
+            setStatus("Windowed");
+        } else {
+            gfx.Fullscreen();
+            isFullscreen = 1;
+            setStatus("Fullscreen");
         }
     }
 
     // Handle drawing on canvas area
     hide func handleCanvasInput() {
-        var rawX = mouseX - canvasOffsetX;
-        var rawY = mouseY - canvasOffsetY;
+        var rawX = view.screenToCanvasX(mouseX);
+        var rawY = view.screenToCanvasY(mouseY);
         var inCanvas = 0;
-        if rawX >= 0 and rawX < canvas.width and rawY >= 0 and rawY < canvas.height {
+        if view.contains(mouseX, mouseY) == 1 and rawX >= 0 and rawX < canvas.width and rawY >= 0 and rawY < canvas.height {
             inCanvas = 1;
         }
 
@@ -452,8 +794,8 @@ class PaintApp {
         if isFreehandTool() == 1 {
             var toolDrawing = activeToolIsDrawing();
             var mouseMoved = 0;
-            var prevX = lastMouseX - canvasOffsetX;
-            var prevY = lastMouseY - canvasOffsetY;
+            var prevX = view.screenToCanvasX(lastMouseX);
+            var prevY = view.screenToCanvasY(lastMouseY);
             var hadPendingRelease = 0;
             if mouseX != lastMouseX or mouseY != lastMouseY {
                 mouseMoved = 1;
@@ -545,7 +887,9 @@ class PaintApp {
 
     // Canvas mouse down handler
     hide func onCanvasMouseDown(x: Integer, y: Integer) {
-        snapshotForUndo();
+        if currentTool != config.TOOL_EYEDROPPER {
+            snapshotForUndo();
+        }
         if currentTool == config.TOOL_PENCIL {
             pencilTool.onMouseDown(x, y, canvas, colors);
         } else if currentTool == config.TOOL_BRUSH {
@@ -601,43 +945,31 @@ class PaintApp {
 
     // Select a tool
     hide func selectTool(toolId: Integer) {
-        currentTool = toolId;
-
-        // Update button states
-        btnPencil.selected = 0;
-        btnBrush.selected = 0;
-        btnEraser.selected = 0;
-        btnLine.selected = 0;
-        btnRect.selected = 0;
-        btnEllipse.selected = 0;
-        btnFill.selected = 0;
-        btnEyedropper.selected = 0;
+        currentTool = toolPalette.select(toolId);
+        syncToolButtons();
 
         if toolId == config.TOOL_PENCIL {
-            btnPencil.selected = 1;
-            statusMessage = "Pencil";
+            setStatus("Pencil");
         } else if toolId == config.TOOL_BRUSH {
-            btnBrush.selected = 1;
-            statusMessage = "Brush";
+            setStatus("Brush");
         } else if toolId == config.TOOL_ERASER {
-            btnEraser.selected = 1;
-            statusMessage = "Eraser";
+            setStatus("Eraser");
         } else if toolId == config.TOOL_LINE {
-            btnLine.selected = 1;
-            statusMessage = "Line";
+            setStatus("Line");
         } else if toolId == config.TOOL_RECTANGLE {
-            btnRect.selected = 1;
-            statusMessage = "Rectangle";
+            setStatus("Rectangle");
         } else if toolId == config.TOOL_ELLIPSE {
-            btnEllipse.selected = 1;
-            statusMessage = "Ellipse";
+            setStatus("Ellipse");
         } else if toolId == config.TOOL_FILL {
-            btnFill.selected = 1;
-            statusMessage = "Fill";
+            setStatus("Fill");
         } else if toolId == config.TOOL_EYEDROPPER {
-            btnEyedropper.selected = 1;
-            statusMessage = "Eyedropper";
+            setStatus("Eyedropper");
         }
+    }
+
+    hide func syncToolButtons() {
+        toolPalette.syncButtons(btnPencil, btnBrush, btnEraser, btnLine,
+                                btnRect, btnEllipse, btnFill, btnEyedropper);
     }
 
     // Render everything
@@ -657,6 +989,8 @@ class PaintApp {
         // Draw tool preview if applicable
         drawToolPreview();
 
+        drawDebugOverlay();
+
         // Present to screen
         gfx.Flip();
     }
@@ -664,21 +998,32 @@ class PaintApp {
     // Draw the top toolbar
     hide func drawToolbar() {
         // Toolbar background
-        gfx.Box( 0, 0, config.WINDOW_WIDTH, config.TOOLBAR_HEIGHT, config.UI_BG_PANEL);
-        gfx.Line( 0, config.TOOLBAR_HEIGHT - 1, config.WINDOW_WIDTH, config.TOOLBAR_HEIGHT - 1, config.UI_BORDER);
+        gfx.Box( 0, 0, appWidth, config.TOOLBAR_HEIGHT, config.UI_BG_PANEL);
+        gfx.Line( 0, config.TOOLBAR_HEIGHT - 1, appWidth, config.TOOLBAR_HEIGHT - 1, config.UI_BORDER);
 
         // Draw buttons
         btnNew.draw(gfx);
         btnOpen.draw(gfx);
         btnSave.draw(gfx);
         btnClear.draw(gfx);
+        btnLayer.draw(gfx);
+        btnLayerDup.draw(gfx);
+        btnLayerDel.draw(gfx);
+        btnLayerUp.draw(gfx);
+        btnLayerDown.draw(gfx);
+        btnGray.draw(gfx);
+        btnInvert.draw(gfx);
+        btnFlipH.draw(gfx);
+        btnBlur.draw(gfx);
+
+        gfx.TextRight(appWidth - 12, 12, doc.displayName(), config.UI_TEXT_DIM);
     }
 
     // Draw the left tool panel
     hide func drawToolPanel() {
         // Panel background
-        gfx.Box( 0, config.TOOLBAR_HEIGHT, config.TOOL_PANEL_WIDTH, config.WINDOW_HEIGHT - config.TOOLBAR_HEIGHT, config.UI_BG_PANEL);
-        gfx.Line( config.TOOL_PANEL_WIDTH - 1, config.TOOLBAR_HEIGHT, config.TOOL_PANEL_WIDTH - 1, config.WINDOW_HEIGHT, config.UI_BORDER);
+        gfx.Box( 0, config.TOOLBAR_HEIGHT, config.TOOL_PANEL_WIDTH, appHeight - config.TOOLBAR_HEIGHT, config.UI_BG_PANEL);
+        gfx.Line( config.TOOL_PANEL_WIDTH - 1, config.TOOLBAR_HEIGHT, config.TOOL_PANEL_WIDTH - 1, appHeight, config.UI_BORDER);
 
         // Draw tool buttons
         btnPencil.draw(gfx);
@@ -697,9 +1042,9 @@ class PaintApp {
 
     // Draw the right color panel
     hide func drawColorPanel() {
-        var panelX = config.WINDOW_WIDTH - config.COLOR_PANEL_WIDTH;
+        var panelX = appWidth - config.COLOR_PANEL_WIDTH;
         var panelY = config.TOOLBAR_HEIGHT;
-        var panelH = config.WINDOW_HEIGHT - config.TOOLBAR_HEIGHT - config.STATUS_BAR_HEIGHT;
+        var panelH = appHeight - config.TOOLBAR_HEIGHT - config.STATUS_BAR_HEIGHT;
 
         // Panel background
         gfx.Box( panelX, panelY, config.COLOR_PANEL_WIDTH, panelH, config.UI_BG_PANEL);
@@ -740,7 +1085,22 @@ class PaintApp {
             i = i + 1;
         }
 
-        // Handle palette left-click (set foreground) and right-click (set background)
+        layersPanel.draw(gfx, canvas);
+
+    }
+
+    hide func handleColorPanelInput() {
+        var panelX = appWidth - config.COLOR_PANEL_WIDTH;
+        var panelY = config.TOOLBAR_HEIGHT;
+        var swatchSize = 24;
+        var swatchY = panelY + 10;
+        var paletteX = panelX + 6;
+        var paletteY = swatchY + swatchSize + 20;
+        var cellSize = config.PALETTE_CELL_SIZE;
+        var cols = config.PALETTE_COLS;
+        var gap = config.PALETTE_MARGIN;
+        var i = 0;
+
         if mouseDown == 1 and lastMouseDown == 0 {
             i = 0;
             while i < colors.paletteCount {
@@ -750,6 +1110,7 @@ class PaintApp {
                 var cy = paletteY + row * (cellSize + gap);
                 if mouseX >= cx and mouseX < cx + cellSize and mouseY >= cy and mouseY < cy + cellSize {
                     colors.setForeground(colors.getPaletteColor(i));
+                    setStatus("Foreground color set");
                 }
                 i = i + 1;
             }
@@ -763,7 +1124,7 @@ class PaintApp {
                 var cy = paletteY + row * (cellSize + gap);
                 if mouseX >= cx and mouseX < cx + cellSize and mouseY >= cy and mouseY < cy + cellSize {
                     colors.setBackground(colors.getPaletteColor(i));
-                    statusMessage = "Background color set";
+                    setStatus("Background color set");
                 }
                 i = i + 1;
             }
@@ -772,47 +1133,92 @@ class PaintApp {
 
     // Draw the bottom status bar
     hide func drawStatusBar() {
-        var barY = config.WINDOW_HEIGHT - config.STATUS_BAR_HEIGHT;
+        var barY = appHeight - config.STATUS_BAR_HEIGHT;
 
-        gfx.Box( 0, barY, config.WINDOW_WIDTH, config.STATUS_BAR_HEIGHT, config.UI_BG_PANEL);
-        gfx.Line( 0, barY, config.WINDOW_WIDTH, barY, config.UI_BORDER);
+        gfx.Box( 0, barY, appWidth, config.STATUS_BAR_HEIGHT, config.UI_BG_PANEL);
+        gfx.Line( 0, barY, appWidth, barY, config.UI_BORDER);
 
         // Status message
         gfx.Text( 10, barY + 8, statusMessage, config.UI_TEXT);
 
         // Canvas coordinates
-        var cx = mouseX - canvasOffsetX;
-        var cy = mouseY - canvasOffsetY;
-        if cx >= 0 and cx < canvas.width and cy >= 0 and cy < canvas.height {
-            var coordStr = "X: " + Viper.Core.Convert.ToString_Int(cx) + " Y: " + Viper.Core.Convert.ToString_Int(cy);
+        var cx = view.screenToCanvasX(mouseX);
+        var cy = view.screenToCanvasY(mouseY);
+        if view.contains(mouseX, mouseY) == 1 and cx >= 0 and cx < canvas.width and cy >= 0 and cy < canvas.height {
+            var coordStr = "X: " + Viper.Core.Convert.ToString_Int(cx) + " Y: " + Viper.Core.Convert.ToString_Int(cy) + "  Zoom: " + view.zoomLabel();
             gfx.Text( 200, barY + 8, coordStr, config.UI_TEXT_DIM);
         }
 
         // Canvas size
-        var sizeStr = Viper.Core.Convert.ToString_Int(canvas.width) + "x" + Viper.Core.Convert.ToString_Int(canvas.height);
-        gfx.Text( config.WINDOW_WIDTH - 100, barY + 8, sizeStr, config.UI_TEXT_DIM);
+        var sizeStr = doc.displayName() + "  " + Viper.Core.Convert.ToString_Int(canvas.width) + "x" + Viper.Core.Convert.ToString_Int(canvas.height) + "  " + canvas.activeLayerName();
+        gfx.TextRight( appWidth - 10, barY + 8, sizeStr, config.UI_TEXT_DIM);
     }
 
     // Draw the canvas area
     hide func drawCanvasArea() {
-        // Draw simple gray background
-        gfx.Box(canvasOffsetX, canvasOffsetY, canvas.width, canvas.height, 0xFF888888);
-
-        // Blit the canvas pixels
-        gfx.Blit(canvasOffsetX, canvasOffsetY, canvas.getPixels());
-
-        // Draw canvas border
-        gfx.Frame(canvasOffsetX - 1, canvasOffsetY - 1, canvas.width + 2, canvas.height + 2, config.UI_BORDER);
+        view.draw(gfx, canvas.getPixels(), canvas.width, canvas.height, canvas.revision);
     }
 
     // Draw tool preview overlay
     hide func drawToolPreview() {
+        gfx.SetClipRect(view.x, view.y, view.width, view.height);
         if currentTool == config.TOOL_LINE and lineTool.isDrawing() == 1 {
-            lineTool.drawPreview(gfx, canvasOffsetX, canvasOffsetY, colors.foreground);
+            gfx.Line(view.canvasToScreenX(lineTool.startX),
+                     view.canvasToScreenY(lineTool.startY),
+                     view.canvasToScreenX(lineTool.endX),
+                     view.canvasToScreenY(lineTool.endY),
+                     colors.foreground);
         } else if currentTool == config.TOOL_RECTANGLE and rectTool.isDrawing() == 1 {
-            rectTool.drawPreview(gfx, canvasOffsetX, canvasOffsetY, colors.foreground);
+            var x1 = rectTool.startX;
+            var y1 = rectTool.startY;
+            var x2 = rectTool.endX;
+            var y2 = rectTool.endY;
+            if x2 < x1 {
+                var tmp = x1;
+                x1 = x2;
+                x2 = tmp;
+            }
+            if y2 < y1 {
+                var tmp = y1;
+                y1 = y2;
+                y2 = tmp;
+            }
+            gfx.Frame(view.canvasToScreenX(x1),
+                      view.canvasToScreenY(y1),
+                      view.canvasSizeToScreen(x2 - x1 + 1),
+                      view.canvasSizeToScreen(y2 - y1 + 1),
+                      colors.foreground);
         } else if currentTool == config.TOOL_ELLIPSE and ellipseTool.isDrawing() == 1 {
-            ellipseTool.drawPreview(gfx, canvasOffsetX, canvasOffsetY, colors.foreground);
+            var x1 = ellipseTool.startX;
+            var y1 = ellipseTool.startY;
+            var x2 = ellipseTool.endX;
+            var y2 = ellipseTool.endY;
+            if x2 < x1 {
+                var tmp = x1;
+                x1 = x2;
+                x2 = tmp;
+            }
+            if y2 < y1 {
+                var tmp = y1;
+                y1 = y2;
+                y2 = tmp;
+            }
+            gfx.Frame(view.canvasToScreenX(x1),
+                      view.canvasToScreenY(y1),
+                      view.canvasSizeToScreen(x2 - x1 + 1),
+                      view.canvasSizeToScreen(y2 - y1 + 1),
+                      colors.foreground);
         }
+        gfx.ClearClipRect();
+    }
+
+    hide func drawDebugOverlay() {
+        debugOverlay.Update(gfx.DeltaTime);
+        debugOverlay.Watch("tool", currentTool);
+        debugOverlay.Watch("brush", brushSettings.size);
+        debugOverlay.Watch("zoom", view.zoom);
+        debugOverlay.Watch("undo", historyMgr.undoCount());
+        debugOverlay.Watch("redo", historyMgr.redoCount());
+        debugOverlay.Draw(gfx);
     }
 }

@@ -105,7 +105,7 @@ class GameBase {
                 if not fx.IsTypeActive(FX_FADE_OUT) {
                     self.setScene(transitionTarget);
                     transitioning = false;
-                    fx.FadeIn(transitionDurationMs, transitionColor);
+                    fx.FadeIn(transitionColor, transitionDurationMs);
                 }
             }
 
@@ -127,16 +127,9 @@ class GameBase {
                 currentScene.draw(canvas);
             }
 
-            // Render ScreenFX overlay (flash/fade effects)
-            var overlayCol = fx.OverlayColor;
-            if overlayCol != 0 {
-                var r = (overlayCol / 0x1000000) % 256;
-                var g = (overlayCol / 0x10000) % 256;
-                var b = (overlayCol / 0x100) % 256;
-                var a = overlayCol % 256;
-                var rgb = RGB(r, g, b);
-                canvas.BoxAlpha(0, 0, canvas.Width, canvas.Height, rgb, a);
-            }
+            // Render ScreenFX overlays and transitions. Delegating to the
+            // runtime keeps black fades and newer transition effects correct.
+            fx.Draw(canvas, canvas.Width, canvas.Height);
 
             // Hook for global overlays (debug info, etc.)
             self.onFrame(dt);
@@ -158,7 +151,7 @@ class GameBase {
         transitionColor = fadeColor;
         transitionDurationMs = durationMs;
         transitioning = true;
-        fx.FadeOut(durationMs, fadeColor);
+        fx.FadeOut(fadeColor, durationMs);
     }
 
     // Access the canvas for drawing operations.

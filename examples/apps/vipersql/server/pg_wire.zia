@@ -1,15 +1,89 @@
-// pg_wire.zia — PostgreSQL Wire Protocol v3 Implementation
-// Part of ViperSQL - Phase 9
+// =============================================================================
+// pg_wire.zia — Server-side PostgreSQL wire protocol v3
+// Part of ViperSQL  (package: server, Phase 9)
+// =============================================================================
 //
-// Implements the PostgreSQL v3 wire protocol for standard client connectivity.
-// Supports: psql, pgAdmin, JDBC, ODBC (via psqlODBC), Python psycopg2, etc.
+// PURPOSE
+// -------
+// Implements the server end of the PostgreSQL v3 wire protocol.
+// Any PG-compatible client — psql, pgAdmin, JDBC, ODBC
+// (psqlODBC), psycopg2, vsql — can connect to a ViperSQL
+// instance and issue queries using it.
 //
-// Protocol Reference: https://www.postgresql.org/docs/current/protocol.html
+// Protocol reference:
+//     https://www.postgresql.org/docs/current/protocol.html
 //
-// Message format:
-//   Backend (server→client): byte1(type) + int32(length_incl_self) + body
-//   Frontend (client→server): byte1(type) + int32(length_incl_self) + body
-//   Startup: int32(length) + int32(protocol_version) + key\0value\0...\0
+// Message framing (everything after the startup packet):
+//
+//     [byte type][int32 length][body]   — length includes itself
+//                                         (4 bytes) but NOT the
+//                                         type byte.
+//
+// Startup packet is the odd one:
+//
+//     [int32 length][int32 protocol_version]
+//       [key\0value\0]...[\0]
+//
+// WHERE THIS FITS
+// ---------------
+//     server/connection.zia::handlePgClient
+//         │  accepts a client, establishes a session
+//         ▼
+//     server/pg_wire.zia   (YOU ARE HERE)
+//         │  message framing + extended query state machine
+//         ▼
+//     engine/session.zia → engine/executor.zia
+//
+// WHAT WE IMPLEMENT
+// -----------------
+//   * Startup handshake (protocol version check, SSL/cancel
+//     rejects, MD5/cleartext auth, parameter status).
+//   * **Simple Query protocol**: Q → results → CommandComplete →
+//     ReadyForQuery.
+//   * **Extended Query protocol**: Parse → Bind → Execute →
+//     Sync, with named and unnamed prepared statements and
+//     portals.
+//   * **Copy protocol**: CopyInResponse / CopyData /
+//     CopyDone / CopyFail for fast bulk loads.
+//   * Error responses with SQLSTATE codes mapped from engine
+//     error messages.
+//
+// KEY DESIGN CHOICES
+// ------------------
+//   1. Message-type bytes as named constants.  Makes the giant
+//      receive-loop switch readable.  Every `PG_*` constant
+//      matches the PG protocol documentation's letter
+//      assignments.
+//
+//   2. Big-endian everywhere.  The PG protocol is network byte
+//      order.  We hand-assemble every multi-byte integer via
+//      a few small helpers (`writeInt32`, `readInt32`).
+//
+//   3. Column type metadata advertised via PG OIDs.  When we
+//      send `RowDescription`, each column carries a PG type
+//      OID (23 = INT4, 25 = TEXT, etc.).  Clients trust these
+//      for client-side typing.
+//
+//   4. Extended-query state lives on the `Session`.  Prepared
+//      statements and portals are per-session (see
+//      `engine/session.zia`); pg_wire only drives the protocol
+//      state machine and consults the session.
+//
+// HOW TO READ THIS FILE
+// ---------------------
+//   1. Protocol constants (startup codes, message types).
+//   2. PG type OID constants for RowDescription.
+//   3. Low-level frame helpers: readMessage, writeMessage,
+//      plus big-endian int readers/writers.
+//   4. Handshake: `processStartup` (version, auth).
+//   5. Simple-query handler: `handleQuery`.
+//   6. Extended-query handlers: `handleParse`, `handleBind`,
+//      `handleExecute`, `handleDescribe`, `handleSync`,
+//      `handleClose`.
+//   7. Copy-protocol handler.
+//   8. `sendError` and error-code mapping.
+//
+// =============================================================================
 
 module pg_wire;
 

@@ -1,0 +1,116 @@
+// layer_panel.zia - Layer list rendering and interaction for Paint
+module layer_panel;
+
+bind Viper.Graphics;
+bind Str = Viper.String;
+
+bind "./canvas";
+bind "./config";
+
+class LayerPanel {
+    expose Integer x;
+    expose Integer y;
+    expose Integer width;
+    expose Integer height;
+    hide Integer rowHeight;
+
+    expose func init() {
+        x = 0;
+        y = 0;
+        width = 0;
+        height = 0;
+        rowHeight = 24;
+    }
+
+    expose func setup(px: Integer, py: Integer, pw: Integer, ph: Integer) {
+        x = px;
+        y = py;
+        width = pw;
+        height = ph;
+        if width < 80 { width = 80; }
+        if height < 80 { height = 80; }
+    }
+
+    expose func draw(gfx: Canvas, doc: canvas.DrawingCanvas) {
+        gfx.RoundBox(x, y, width, height, 6, config.UI_BG_PANEL);
+        gfx.RoundFrame(x, y, width, height, 6, config.UI_BORDER);
+        gfx.Text(x + 8, y + 8, "Layers", config.UI_TEXT);
+
+        var rowY = y + 28;
+        var i = doc.layerCount() - 1;
+        while i >= 0 {
+            drawLayerRow(gfx, doc, i, rowY);
+            rowY = rowY + rowHeight;
+            i = i - 1;
+        }
+
+        var helpY = y + height - 14;
+        gfx.Text(x + 8, helpY, "L: select  R: eye", config.UI_TEXT_DIM);
+    }
+
+    expose func handleMouse(mx: Integer,
+                            my: Integer,
+                            leftDown: Integer,
+                            rightDown: Integer,
+                            lastLeftDown: Integer,
+                            lastRightDown: Integer,
+                            doc: canvas.DrawingCanvas) -> String {
+        if mx < x or mx >= x + width or my < y or my >= y + height {
+            return "";
+        }
+
+        var rowTop = y + 28;
+        var row = (my - rowTop) / rowHeight;
+        if row < 0 {
+            return "";
+        }
+
+        var layerIndex = doc.layerCount() - 1 - row;
+        if layerIndex < 0 or layerIndex >= doc.layerCount() {
+            return "";
+        }
+
+        if leftDown == 1 and lastLeftDown == 0 {
+            doc.selectLayer(layerIndex);
+            return "Selected " + doc.activeLayerName();
+        }
+
+        if rightDown == 1 and lastRightDown == 0 {
+            doc.toggleLayerVisible(layerIndex);
+            if doc.layerVisibleAt(layerIndex) == 1 {
+                return "Layer visible: " + doc.layerNameAt(layerIndex);
+            }
+            return "Layer hidden: " + doc.layerNameAt(layerIndex);
+        }
+
+        return "";
+    }
+
+    hide func drawLayerRow(gfx: Canvas, doc: canvas.DrawingCanvas, layerIndex: Integer, rowY: Integer) {
+        var selected = 0;
+        if layerIndex == doc.activeLayerIndex() {
+            selected = 1;
+        }
+
+        var bg = config.UI_BG_DARK;
+        if selected == 1 {
+            bg = config.UI_BG_BUTTON_ACTIVE;
+        }
+        gfx.Box(x + 4, rowY, width - 8, rowHeight - 2, bg);
+        gfx.Frame(x + 4, rowY, width - 8, rowHeight - 2, config.UI_BORDER);
+
+        var eye = "off";
+        if doc.layerVisibleAt(layerIndex) == 1 {
+            eye = "on";
+        }
+        gfx.Text(x + 8, rowY + 6, eye, config.UI_TEXT_DIM);
+
+        var label = doc.layerNameAt(layerIndex);
+        var maxChars = (width - 54) / 8;
+        if maxChars < 4 { maxChars = 4; }
+        if Str.Length(label) > maxChars {
+            label = Str.Left(label, maxChars - 1) + ".";
+        }
+        gfx.Text(x + 34, rowY + 6, label, config.UI_TEXT);
+    }
+}

@@ -1,19 +1,64 @@
 // =============================================================================
-// Color Palette — All game colors via Color.RGB()
+// palette.zia — The game's colour vocabulary, one name per swatch
+// Part of Xenoscape  (the 2D sidescroller platformer demo)
 // =============================================================================
-// Viper APIs demonstrated:
-//   - Viper.Graphics.Color: RGB(r, g, b) for readable color definitions
 //
-// Zia best practices:
-//   - Entity with expose fields: colors computed once in init(), read everywhere
-//   - Color.RGB() is self-documenting (no hex mental math)
-//   - Centralized palette: change one value to retheme the entire game
+// TUTORIAL — CENTRALISING COLOURS IS WORTH IT
+// -------------------------------------------
+// Scattering `Color.RGB(r,g,b)` calls through renderer.zia,
+// sprites.zia, enemy.zia, menu.zia, hud.zia etc. means that
+// when you want to "make the game darker / warmer / more teal"
+// you are auditing a thousand magic triples.  Don't.
+//
+// Instead: every colour the game draws with is named here.
+// Code that needs "the grass colour" reads `palette.grass`
+// instead of repeating `Color.RGB(107, 184, 54)`.  Benefits:
+//
+//   * One-line retheme: change `grass` in `init()` and every
+//     tile, UI element, particle, and shader-style effect
+//     that reads it picks up the new colour.
+//   * Legibility: `canvas.Box(x, y, w, h, palette.grassDark)`
+//     tells you what you're drawing.  The RGB triple doesn't.
+//   * Biome variants: we can swap whole palette objects per
+//     biome (fungal vs crystal vs frozen) and the draw code
+//     doesn't change at all.
+//
+// WHERE THIS FITS
+// ---------------
+//     All draw-path files hold a `Palette` reference:
+//     renderer, sprites, enemy, menu, hud, particles,
+//     lighting, worldmap, pickups.
+//
+// HOW TO READ THIS FILE
+// ---------------------
+// One class with many `expose Integer` fields.  `init()`
+// populates every field with `Color.RGB(r, g, b)`.  Scroll
+// through the `init()` body to see every colour the game
+// uses, grouped roughly by theme (sky, terrain, vegetation,
+// player, enemies, UI).
+//
+// To re-theme for a new biome, create a new Palette instance
+// and run an alternate init (`initFrozen`, etc.) — not used
+// yet but the structure is ready for it.
+//
 // =============================================================================
 
 module palette;
 
 bind Viper.Graphics.Color;
 
+/// @brief The named-colour vocabulary.  One field per swatch
+///        the game ever draws with.  All fields are populated
+///        from `init()` and never mutated again — treat the
+///        instance as effectively immutable after construction.
+///
+/// Fields are grouped by purpose: `outline` for sprite ink,
+/// `sky*`/`cave*`/`grass*`/`stone*`/`brick*`/`platform*` for
+/// terrain layers, `player*` for the protagonist, `slime/bat/
+/// turret/boss*` for enemy archetypes, `coin*/health/speed/
+/// shield/rapidfire` for pickups, `hud*/menu*/title*` for UI,
+/// plus a handful of effect colours (`shadow`, `dust`,
+/// `spark*`, `bullet*`, ...).
 class Palette {
     expose Integer outline;
     expose Integer skyTop;
@@ -176,6 +221,11 @@ class Palette {
     expose Integer uiText;
     expose Integer uiDim;
 
+    /// @brief Populate every colour field with a hand-picked
+    ///        RGB triple.  Long but straightforward — each line
+    ///        is one named swatch.  Edit any value to retheme
+    ///        the corresponding part of the game; nothing else
+    ///        in the codebase needs to change.
     expose func init() {
         outline = Color.RGB(34, 34, 51);
         skyTop = Color.RGB(68, 136, 255);

@@ -1,21 +1,52 @@
-// tcp_server.zia — ViperSQL TCP Server
-// Part of ViperSQL - Multi-User Foundation (Phase 7) + PG Wire Protocol (Phase 9)
+// =============================================================================
+// tcp_server.zia — Standalone TCP server entry point
+// Part of ViperSQL  (package: server)
+// =============================================================================
 //
-// Main entry point for the multi-user TCP server.
-// Creates a shared DatabaseServer, initializes the thread pool,
-// and runs the accept loop dispatching connections to workers.
+// PURPOSE
+// -------
+// This file provides the standalone `sqlServerStart` entry point
+// used by the demo's `start()` function below.  Today the bigger
+// `vipersql.zia` is the canonical server entry (it also handles
+// argument parsing and thread-pool mode); this module is kept
+// around as a minimal "just bring up the ports" variant useful
+// for tests and for reading.
 //
-// The server accepts PostgreSQL wire protocol v3 connections (psql, JDBC, ODBC).
-// A text protocol server is also available on a separate port for simple clients.
+// Two ports come up:
 //
-// Usage:
-//   viper run examples/apps/vipersql/
+//   * PG wire protocol (port 5432) — spoken by `psql`, JDBC,
+//     ODBC, vsql, and pg_client.zia.  Main accept loop runs
+//     on the calling thread.
 //
-// Connect via psql:
-//   psql -h localhost -p 5432 -U admin -d main
+//   * Text protocol (port 5433) — plain "send SQL, receive
+//     text" transport for `nc`/telnet debugging.  Runs on a
+//     separate thread.
 //
-// Connect via text protocol:
-//   nc localhost 5433
+// Each accepted connection gets its own thread via
+// `Threads.Thread.StartSafe`.  The richer
+// `vipersql.zia::runServer` uses the thread pool in
+// `./threadpool.zia` instead; both paths funnel down to the
+// same handler functions in `./connection.zia`.
+//
+// WHERE THIS FITS
+// ---------------
+//     tcp_server.zia   (YOU ARE HERE — alternate entry)
+//         │
+//         ▼
+//     engine/server.zia (DatabaseServer — shared across sessions)
+//     server/connection.zia (handleSqlClient / handlePgClient)
+//
+// HOW TO READ THIS FILE
+// ---------------------
+//   1. Port constants.
+//   2. `sqlServerStart` — builds the `DatabaseServer`, starts
+//      the text listener thread, runs the PG accept loop on the
+//      calling thread.
+//   3. `textProtocolListener` — the thread body for the text
+//      port's accept loop.
+//   4. `start` — convenience entry that picks default ports.
+//
+// =============================================================================
 
 module tcp_server;
 
@@ -28,36 +59,49 @@ bind "./threadpool";
 bind "./connection";
 
 //=============================================================================
-// SERVER CONFIGURATION
+// PORT CONSTANTS
 //=============================================================================
 
-final PG_PORT = 5432;            // PostgreSQL wire protocol port
-final TEXT_PORT = 5433;          // Text protocol port (for nc/telnet)
+/// @brief PG wire protocol default — matches PostgreSQL itself so
+///        `psql` / JDBC clients "just work" without a port flag.
+final PG_PORT = 5432;
+
+/// @brief Text protocol default — one above PG.  Pick anything
+///        unoccupied with `--text-port` at runtime.
+final TEXT_PORT = 5433;
 
 //=============================================================================
 // SERVER STARTUP
 //=============================================================================
 
-// Start the ViperSQL TCP server with PG wire protocol
+/// @brief Run the dual-listener server until the process exits.
+///
+/// Brings up:
+///   * one `DatabaseServer` shared by every session,
+///   * a background thread for the text protocol listener,
+///   * a foreground accept loop on the PG wire port.
+///
+/// Each accepted client is handed to `Threads.Thread.StartSafe`
+/// — thread-per-connection.  No pool; for pool mode use
+/// `vipersql.zia::runServer` instead.
 func sqlServerStart(pgPort: Integer, textPort: Integer) {
     Terminal.Say("========================================");
     Terminal.Say("  ViperSQL Server v0.2");
     Terminal.Say("  PostgreSQL Wire Protocol v3");
     Terminal.Say("========================================");
 
-    // Create the shared DatabaseServer
+    // Shared DatabaseServer — every accepted session points at it.
     var dbServer = new DatabaseServer();
     dbServer.init();
 
     Terminal.Say("Database server initialized (database: main)");
 
-    // Initialize connection handler with shared server
     sql_connection_init(dbServer);
 
     Terminal.Say("Thread model: thread-per-connection");
     Terminal.Say("");
 
-    // Start text protocol listener on separate thread (if port > 0)
+    // Text protocol listener on a background thread.
     if textPort > 0 {
         var textArgs: List[Integer] = [];
         textArgs.add(textPort);
@@ -65,7 +109,7 @@ func sqlServerStart(pgPort: Integer, textPort: Integer) {
         Terminal.Say("Text protocol listening on port " + Fmt.Int(textPort));
     }
 
-    // Start PG wire protocol listener (main thread)
+    // PG wire listener runs on the calling thread.
     var pgServer = Network.TcpServer.Listen(pgPort);
     Terminal.Say("PG wire protocol listening on port " + Fmt.Int(pgPort));
     Terminal.Say("");
@@ -73,20 +117,26 @@ func sqlServerStart(pgPort: Integer, textPort: Integer) {
     Terminal.Say("Press Ctrl+C to stop.");
     Terminal.Say("");
 
-    // Accept loop — dispatch PG wire connections
+    // Accept loop.  Terminates when `running` is flipped — today
+    // that only happens on process signal, not from within the
+    // program.
     var running = 1;
     while running == 1 {
         var client = Network.TcpServer.Accept(pgServer);
         Threads.Thread.StartSafe(&handlePgClient, client);
     }
 
-    // Shutdown
     Terminal.Say("Shutting down...");
     Network.TcpServer.Close(pgServer);
     Terminal.Say("Server stopped.");
 }
 
-// Text protocol listener — runs on a separate thread
+/// @brief Thread body for the text-protocol listener.
+///
+/// `args` is a `List[Integer]` because `StartSafe`'s one-arg
+/// signature is a list; we unwrap the port in position 0.
+/// Equivalent loop to the main one above, but spins on its own
+/// `TcpServer` handle so the ports don't interfere.
 func textProtocolListener(args: List[Integer]) {
     var port = args.get(0);
     var server = Network.TcpServer.Listen(port);
@@ -101,9 +151,12 @@ func textProtocolListener(args: List[Integer]) {
 }
 
 //=============================================================================
-// MAIN ENTRY POINT
+// ENTRY POINT
 //=============================================================================
 
+/// @brief Invoke `sqlServerStart` with the two default port
+///        constants.  The top-level `start()` function Viper
+///        looks for when running this module directly.
 func start() {
     sqlServerStart(PG_PORT, TEXT_PORT);
 }

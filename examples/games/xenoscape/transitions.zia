@@ -1,14 +1,59 @@
 // =============================================================================
-// Screen Transitions — Choreographed transitions between game states
+// transitions.zia — Screen-wipe, pixelate, dissolve, flash
+// Part of Xenoscape  (the 2D sidescroller platformer demo)
 // =============================================================================
-// Manages smooth visual transitions for:
-//   - Level-to-level: CircleOut → load → CircleIn
-//   - Death: Pixelate → respawn at checkpoint
-//   - Boss intro: Screen darkens, boss name + health bar slides in
-//   - Ability acquired: Freeze frame, ability icon zooms, flash
-//   - Game over: Dissolve to black
 //
-// Viper APIs: Viper.Game.ScreenFX
+// TUTORIAL — GOOD TRANSITIONS HIDE THE SEAMS
+// ------------------------------------------
+// Every time a game changes state — enter a new level, the
+// player dies, a boss appears, you earn an ability — there's a
+// moment of "load + setup" during which the player sees
+// nothing interesting.  Naked, those moments read as bugs or
+// pauses.
+//
+// Covered by a one-second transition animation, the same
+// moments read as *beats*: the world "closes" around the
+// player before opening on something new, the screen darkens
+// reverently when a boss enters the room, a death flash
+// signals "you messed up, try again".
+//
+// This file is Xenoscape's transition choreographer.  It
+// wraps `Viper.Game.ScreenFX` — a runtime effects library
+// that provides:
+//
+//   * CircleOut / CircleIn — iris-close / iris-open wipe.
+//   * Pixelate — blocky dissolve (classic death effect).
+//   * Fade to black / from black.
+//   * Flash — full-screen colour pulse.
+//
+// We combine those primitives into named game events:
+//
+//     TRANS_LEVEL_OUT  →  CircleOut (1 second).
+//     TRANS_LEVEL_IN   →  CircleIn (1 second).
+//     TRANS_DEATH      →  Pixelate → respawn.
+//     TRANS_BOSS_INTRO →  darken + slide boss HP bar in.
+//     TRANS_ABILITY    →  freeze-frame + icon zoom + flash.
+//     TRANS_GAME_OVER  →  dissolve to black, hold.
+//     TRANS_VICTORY    →  final flash, hold on title.
+//
+// WHERE THIS FITS
+// ---------------
+//     game.zia ──►  after setting a new state, triggers the
+//                   matching transition and suspends the
+//                   normal tick loop until the transition
+//                   completes.
+//
+//     renderer.zia ──►  draws the game normally; the
+//                       transition layer composites over top.
+//
+// HOW TO READ THIS FILE
+// ---------------------
+//   1. TRANS_* constants.
+//   2. `TransitionManager` — owns the ScreenFX handle and a
+//      per-transition state machine.  `start(type)` begins a
+//      transition, `update(dt)` advances it, `isDone()`
+//      returns true when game.tick can resume.
+//
 // =============================================================================
 
 module transitions;

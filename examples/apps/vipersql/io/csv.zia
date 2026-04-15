@@ -1,10 +1,63 @@
-// csv.zia — CSV Import/Export Operations
-// Part of ViperSQL
+// =============================================================================
+// csv.zia — CSV import/export
+// Part of ViperSQL  (package: io)
+// =============================================================================
 //
-// Handles IMPORT CSV and EXPORT CSV commands. Import reads a CSV file,
-// auto-creates the target table from the header row, and inserts all
-// data rows with type inference (integer, real, or text). Export writes
-// a table's contents to a CSV file with quoted fields and proper escaping.
+// PURPOSE
+// -------
+// Implements the `IMPORT` and `EXPORT` SQL statements that move
+// table contents to and from CSV files on disk.  The executor
+// parses the DDL, finds the target table, and calls through
+// `CsvHandler.executeImport` / `executeExport` here.
+//
+// Design is intentionally minimal: a one-line CSV header maps
+// to column names; data rows are parsed field-by-field and
+// coerced to each column's SQL type via the helpers in
+// `engine/types.zia`.
+//
+// WHERE THIS FITS
+// ---------------
+//     engine/executor.zia
+//         │  on IMPORT / EXPORT statements
+//         ▼
+//     io/csv.zia   (YOU ARE HERE)
+//         │
+//         ▼
+//     Viper.Text.Csv                (runtime CSV parser)
+//     Viper.IO.File                 (whole-file read/write)
+//     engine/table.zia              (row insertion)
+//
+// KEY DESIGN CHOICES
+// ------------------
+//   1. Header-driven column mapping.  IMPORT requires a header
+//      row; we map header cells to column indices via
+//      `table.findColumnIndex`.  Columns absent from the CSV get
+//      NULL; CSV columns not present in the table are silently
+//      ignored.
+//
+//   2. Type coercion on import.  Each parsed field is routed
+//      through `parseCSVValue` which dispatches on the column's
+//      `typeCode`.  Unknown types fall back to TEXT — matches
+//      SQLite's permissive behaviour.
+//
+//   3. Quote escaping on export.  A cell gets wrapped in
+//      double-quotes if it contains a comma, a newline, a CR,
+//      or a quote itself; internal quotes are doubled (CSV
+//      standard `""` escape).
+//
+//   4. `splitLines` strips trailing `\r` so mixed CRLF/LF files
+//      Just Work.  Defensive against Windows-authored CSVs.
+//
+// HOW TO READ THIS FILE
+// ---------------------
+//   * `CsvHandler` — holds an `Executor` reference so DDL paths
+//     can look up tables.  One instance per IMPORT/EXPORT call.
+//   * `executeExport` — iterate rows, format, write.
+//   * `escapeCSV` — per-cell escape.
+//   * `executeImport` — read, parse, insert.
+//   * `splitLines` / `parseCSVLine` / `parseCSVValue` — helpers.
+//
+// =============================================================================
 
 module csv;
 
@@ -21,17 +74,25 @@ bind "../engine/result";
 bind "../engine/executor";
 
 //=============================================================================
-// CSV HANDLER ENTITY
+// CSV HANDLER
 //=============================================================================
 
+/// @brief CSV import/export driver.  Holds an `Executor` so
+///        table lookups go through the same catalog the rest of
+///        the engine sees.
 class CsvHandler {
     expose Executor exec;
 
+    /// @brief Wire up against a live executor.
     expose func init(executor: Executor) {
         exec = executor;
     }
 
-    // EXPORT command - export table to CSV
+    /// @brief EXPORT: dump the table to a CSV file.
+    ///
+    /// Format: one header line of column names, then one line per
+    /// live (non-tombstoned) row.  Every cell passes through
+    /// `escapeCSV`; NULL cells render as an empty field.
     expose func executeExport(tableName: String, filename: String) -> QueryResult {
         var result = new QueryResult();
         result.init();
@@ -45,7 +106,7 @@ class CsvHandler {
 
         var sb = SB.New();
 
-        // Header row
+        // Header row.
         var ci = 0;
         while ci < table.columnCount() {
             var maybeCol = table.getColumn(ci);
@@ -58,7 +119,7 @@ class CsvHandler {
         }
         SB.Append(sb, "\n");
 
-        // Data rows
+        // Data rows — skip tombstones.
         var ri = 0;
         while ri < table.rowCount() {
             var maybeRow = table.getRow(ri);
@@ -82,6 +143,7 @@ class CsvHandler {
 
         IO.File.WriteAllText(filename, SB.ToString(sb));
 
+        // Count for the "Exported N rows" message.
         var rowCount = 0;
         ri = 0;
         while ri < table.rowCount() {
@@ -99,7 +161,9 @@ class CsvHandler {
         return result;
     }
 
-    // Escape a value for CSV output
+    /// @brief Per-cell CSV escape.  Quote-wraps cells containing
+    ///        `,`, `"`, `\n`, or `\r`; doubles internal quotes.
+    ///        Matches RFC 4180.
     hide func escapeCSV(value: String) -> String {
         var needsQuotes = String.IndexOf(value, ",") > 0
             || String.IndexOf(value, "\"") > 0
@@ -123,7 +187,14 @@ class CsvHandler {
         return value;
     }
 
-    // IMPORT command - import CSV data into table
+    /// @brief IMPORT: read a CSV file and insert every row into
+    ///        the named table.
+    ///
+    /// Header maps CSV field order → column indices in the
+    /// table.  Missing columns (present in CSV, absent in
+    /// table) are mapped to -1 and skipped; extra columns
+    /// (present in table, absent in CSV) get NULL.  Type
+    /// coercion happens per cell via `parseCSVValue`.
     expose func executeImport(tableName: String, filename: String) -> QueryResult {
         var result = new QueryResult();
         result.init();
@@ -152,7 +223,7 @@ class CsvHandler {
             return result;
         }
 
-        // Parse header to get column mapping
+        // Build header → column-index map.
         var headerFields = parseCSVLine(lines.get(0));
         var colIndices: List[Integer] = [];
         var fi = 0;
@@ -163,7 +234,7 @@ class CsvHandler {
             fi = fi + 1;
         }
 
-        // Import data rows
+        // Import data rows.
         var imported = 0;
         var li = 1;
         while li < lines.count() {
@@ -172,12 +243,12 @@ class CsvHandler {
                 var fields = parseCSVLine(line);
                 var values: List[SqlValue] = [];
 
-                // Build row with correct column order
+                // For every table column, find the matching CSV
+                // field (or NULL).
                 var ci = 0;
                 while ci < table.columnCount() {
                     var val = sqlNull();
 
-                    // Find if this column has data in the CSV
                     var csvIdx = -1;
                     var fi2 = 0;
                     while fi2 < colIndices.count() {
@@ -207,16 +278,15 @@ class CsvHandler {
         return result;
     }
 
-    // Split content into lines — delegates to runtime String.Split
+    /// @brief Split file content on `\n`, stripping trailing
+    ///        `\r` so CRLF files parse the same as LF files.
     hide func splitLines(content: String) -> List[String] {
-        // Split on newlines, strip carriage returns
         var lines: List[String] = [];
         var rawSeq = String.Split(content, "\n");
         var count = Seq.get_Length(rawSeq);
         var i = 0;
         while i < count {
             var line = Seq.GetStr(rawSeq, i);
-            // Strip trailing \r
             var lineLen = String.Length(line);
             if lineLen > 0 && String.Substring(line, lineLen - 1, 1) == "\r" {
                 line = String.Substring(line, 0, lineLen - 1);
@@ -229,7 +299,9 @@ class CsvHandler {
         return lines;
     }
 
-    // Parse a CSV line into fields — delegates to runtime Csv.ParseLine
+    /// @brief Parse one CSV line into its fields.  Delegates to
+    ///        `Viper.Text.Csv.ParseLine` which handles the
+    ///        standard quoting rules.
     hide func parseCSVLine(line: String) -> List[String] {
         var seq = Csv.ParseLine(line);
         var count = Seq.get_Length(seq);
@@ -242,7 +314,9 @@ class CsvHandler {
         return fields;
     }
 
-    // Parse a CSV value according to column type
+    /// @brief Coerce a raw CSV cell to a `SqlValue` matching the
+    ///        target column's declared type.  Empty cell → NULL.
+    ///        Unknown type → TEXT.
     hide func parseCSVValue(value: String, table: Table, colIdx: Integer) -> SqlValue {
         var trimmed = String.Trim(value);
         if trimmed == "" {

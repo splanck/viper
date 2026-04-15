@@ -1,14 +1,62 @@
-// pg_client.zia — PostgreSQL Wire Protocol v3 Client Library
-// Part of ViperSQL
+// =============================================================================
+// pg_client.zia — Client-side PostgreSQL wire protocol v3
+// Part of ViperSQL  (package: client)
+// =============================================================================
 //
-// Client-side PG wire protocol implementation. Connects to any
-// PostgreSQL-compatible server (including ViperSQL) and exchanges
-// queries using the Simple Query protocol.
+// PURPOSE
+// -------
+// A client-only PG wire-protocol library.  Can talk to ViperSQL's
+// own server (`server/pg_wire.zia`) or to any stock PostgreSQL
+// server.  The CLI in `client/vsql.zia` is layered on top of this.
 //
-// Message format (same as server/pg_wire.zia):
-//   Backend (server→client): byte1(type) + int32(length_incl_self) + body
-//   Frontend (client→server): byte1(type) + int32(length_incl_self) + body
-//   Startup: int32(length) + int32(protocol_version) + key\0value\0...\0
+// Protocol primer (v3):
+//   * Startup packet: [int32 length][int32 proto][key\0val\0...\0]
+//     — no type byte.  Advertises proto version and connect
+//     params (user, database, application_name).
+//   * Every subsequent message: [byte type][int32 length][body].
+//     Type byte is ASCII ('Q' for query, 'D' for data row, etc.).
+//     Length is inclusive of itself (4 bytes) but NOT of the
+//     type byte — a PG quirk that every PG client has to get
+//     right.
+//
+// We implement the "Simple Query" subset:
+//   * `Query`          'Q'  → full SQL text in one message.
+//   * `RowDescription` 'T'  ← column metadata.
+//   * `DataRow`        'D'  ← one row per message.
+//   * `CommandComplete`'C'  ← tag line ("SELECT 5", etc.).
+//   * `ReadyForQuery`  'Z'  ← "you may send another".
+//   * `ErrorResponse`  'E'  ← structured error.
+//
+// The Extended Query protocol (Parse / Bind / Execute / Sync)
+// is implemented server-side in `server/pg_wire.zia` but not
+// here — Simple Query is all the CLI needs.
+//
+// WHERE THIS FITS
+// ---------------
+//     client/vsql.zia     (interactive CLI)
+//         │
+//         ▼
+//     client/pg_client.zia   (YOU ARE HERE)
+//         │  TCP + wire framing
+//         ▼
+//     server/pg_wire.zia     (ViperSQL server-side protocol)
+//       or any PG-compatible server.
+//
+// KEY DESIGN CHOICES
+// ------------------
+//   1. Byte-by-byte length fields.  Every multi-byte integer is
+//      hand-assembled in big-endian (PG's network byte order).
+//      No dependency on a network-byte-order helper.
+//
+//   2. Message types as `final PG_*` constants.  Keeps the
+//      codebase self-documenting — `readMessage` branches on
+//      `PG_READY`, not the raw `90`.
+//
+//   3. Startup's "length includes self" oddity is handled once
+//      in the send path; after that, every message follows the
+//      uniform `[type][length][body]` form.
+//
+// =============================================================================
 
 module pg_client;
 

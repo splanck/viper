@@ -334,18 +334,16 @@ bind Viper.Game.ScreenFX as FX;
 var fx = FX.New();
 
 // Where the paddle bounce happens:
-fx.Flash(0xffffff, 100);  // white flash for 100ms
+fx.Flash(0xFFFFFFFF, 100);  // white flash for 100ms, 0xRRGGBBAA
 
 // Where the ball resets:
-fx.Shake(6, 300);  // intensity 6, 300ms duration
+fx.Shake(6000, 300, 1000);  // 6px intensity, 300ms duration, linear decay
 
 // In the update section (before drawing):
 fx.Update(canvas.DeltaTime);
 
 // At the end of drawing (before Flip):
-if fx.get_OverlayAlpha() > 0 {
-    canvas.BoxAlpha(0, 0, W, H, fx.get_OverlayColor(), fx.get_OverlayAlpha());
-}
+fx.Draw(canvas, W, H);
 ```
 
 ---

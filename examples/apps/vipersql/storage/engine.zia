@@ -1,13 +1,81 @@
-// engine.zia — Storage Engine
-// Part of ViperSQL
+// =============================================================================
+// engine.zia — The `StorageEngine` facade over the page stack
+// Part of ViperSQL  (package: storage)
+// =============================================================================
 //
-// Bridges the low-level page-based storage (BufferPool, SchemaPage, DataPage)
-// to high-level database operations (create/drop table, insert/update/delete
-// rows, load/save schema). The StorageEngine owns a Pager, BufferPool, and
-// WALManager, coordinating them for persistent database operations.
+// PURPOSE
+// -------
+// Bridges the low-level page stack (`BufferPool`, `Pager`,
+// `DataPageManager`, `SchemaPageManager`, `WALManager`) and the
+// high-level database engine.  The `StorageEngine` class in this
+// file is what `engine/database.zia` and the DDL/DML executors
+// call when they need to read or mutate persistent state:
 //
-// Thread Safety: All public methods are protected by a Monitor lock,
-// allowing concurrent sessions to safely read/write through the engine.
+//     createDatabase / openDatabase / closeDatabase
+//     persistTable   / dropTableStorage / loadAllTables
+//     insertRowStorage / updateRowByLocation / deleteRowByLocation
+//                                  / rewriteTableRows
+//     persistIndex  / dropIndexStorage / loadAllIndexMetas
+//     createBTree   / openBTree       (for future BTree-backed
+//                                      indexes — see `btree.zia`)
+//     enableWal     / performRecovery / flush
+//
+// Every public method is thread-safe via a single Monitor lock,
+// then delegates to an `*Internal` helper that assumes the lock is
+// held.  This lets the engine be called concurrently from many
+// sessions without sprinkling lock state through the
+// implementation.
+//
+// WHERE THIS FITS
+// ---------------
+//     engine/ddl.zia / dml.zia / executor.zia
+//         │  high-level SQL statements
+//         ▼
+//     storage/engine.zia  (YOU ARE HERE)
+//         │  public: tables, rows, indexes, recovery
+//         ▼
+//     buffer.zia → pager.zia
+//     data_page.zia / schema_page.zia / btree.zia / wal.zia
+//
+// KEY DESIGN CHOICES
+// ------------------
+//   1. Public/internal method pairs.  `foo()` takes the lock and
+//      calls `fooInternal()`.  Shared helpers call `fooInternal`
+//      directly.  Keeps the lock discipline obvious at every call
+//      site.
+//
+//   2. Engine-level caches of table and index metadata.  We do
+//      not re-read the schema page on every insert — a slice of
+//      `TableMeta` / `IndexMeta` lives in RAM and gets written
+//      back via `updateMetaInSchema` when DDL changes things.
+//
+//   3. Row-location bookkeeping.  `trackRowLocation`,
+//      `findRowLocation`, `clearRowLocations` expose a
+//      rowIndex → (pageId, slotId) mapping that lets the DML
+//      layer UPDATE and DELETE by row index after a SELECT has
+//      projected one out.  Without this, every write would need
+//      a fresh scan.
+//
+//   4. Optional WAL.  `walEnabled` toggles write-ahead logging.
+//      In-memory-only setups leave it off; persistent DBs flip
+//      it on via `enableWal`.
+//
+// HOW TO READ THIS FILE
+// ---------------------
+//   1. Fields + `init`.
+//   2. File lifecycle: `createDatabase`, `openDatabase`,
+//      `performRecovery`, `closeDatabase`.
+//   3. Table CRUD: `persistTable`, `dropTableStorage`,
+//      `loadAllTables`, `loadTableRows`.
+//   4. Row CRUD: `insertRowStorage`, `rewriteTableRows`,
+//      `deleteRowByLocation`, `updateRowByLocation`.
+//   5. Index CRUD: `persistIndex`, `dropIndexStorage`,
+//      `loadAllIndexMetas`, `createBTree`, `openBTree`.
+//   6. Auxiliaries: `updateAutoIncrement`, `flush`,
+//      `updateRowCountInMeta`, row-location helpers,
+//      `enableWal`.
+//
+// =============================================================================
 
 module engine;
 
@@ -94,6 +162,8 @@ class StorageEngine {
     //=========================================================================
 
     // Create a new persistent database file
+    /// @brief Thread-safe: create a new database file at `fname`.
+    ///        Delegates to `createDatabaseInternal` with the lock.
     expose func createDatabase(fname: String) -> Boolean {
         Threads.Monitor.Enter(lock);
         var result = createDatabaseInternal(fname);
@@ -133,6 +203,8 @@ class StorageEngine {
     }
 
     // Open an existing persistent database file
+    /// @brief Thread-safe: open an existing file.  Reads schema
+    ///        page into cache; returns false on missing/corrupt.
     expose func openDatabase(fname: String) -> Boolean {
         Threads.Monitor.Enter(lock);
         var result = openDatabaseInternal(fname);
@@ -201,6 +273,9 @@ class StorageEngine {
     }
 
     // Perform WAL crash recovery (redo committed transactions)
+    /// @brief Run WAL recovery: Analysis + Redo + Undo.  Called
+    ///        after `openDatabase` on a file whose WAL directory
+    ///        contains uncommitted records.
     expose func performRecovery() -> RecoveryResult {
         Threads.Monitor.Enter(lock);
         var result = performRecoveryInternal();
@@ -402,6 +477,8 @@ class StorageEngine {
     }
 
     // Close the database, flushing all dirty pages and WAL
+    /// @brief Flush everything and close the file.  Safe to call
+    ///        idempotently — a second close is a no-op.
     expose func closeDatabase() {
         Threads.Monitor.Enter(lock);
         if isPersistent {
@@ -423,6 +500,11 @@ class StorageEngine {
 
     // Persist a newly created table's schema to the database file
     // Returns the assigned table ID, or -1 on failure
+    /// @brief Save a `Table`'s schema metadata to the schema
+    ///        page.  Returns the assigned table id.
+    ///
+    /// Does NOT persist rows — call `insertRowStorage` per row
+    /// or `rewriteTableRows` for bulk loads.
     expose func persistTable(table: Table) -> Integer {
         Threads.Monitor.Enter(lock);
         var result = persistTableInternal(table);
@@ -460,6 +542,10 @@ class StorageEngine {
     }
 
     // Remove a table's schema and data pages from storage
+    /// @brief DROP TABLE storage side: delete every data page in
+    ///        the table's linked chain, then remove the table
+    ///        entry from the schema page.  Returns true on
+    ///        successful drop.
     expose func dropTableStorage(tableName: String) -> Boolean {
         Threads.Monitor.Enter(lock);
         var result = dropTableStorageInternal(tableName);
@@ -522,6 +608,9 @@ class StorageEngine {
     //=========================================================================
 
     // Load all tables from schema into in-memory Table entities
+    /// @brief Walk the schema page and reconstruct every `Table`
+    ///        with its column definitions (rows not loaded — see
+    ///        `loadTableRows`).
     expose func loadAllTables() -> List[Table] {
         Threads.Monitor.Enter(lock);
         var result = loadAllTablesInternal();
@@ -557,6 +646,8 @@ class StorageEngine {
 
     // Load all rows for a table by walking its data page chain
     // Also tracks row locations for Phase 5 incremental operations
+    /// @brief Stream every live row for a table (following the
+    ///        next-page chain from `meta.firstDataPage`).
     expose func loadTableRows(meta: TableMeta) -> List[Row] {
         Threads.Monitor.Enter(lock);
         var result = loadTableRowsInternal(meta);
@@ -596,6 +687,10 @@ class StorageEngine {
     //=========================================================================
 
     // Persist a single row insertion for a table
+    /// @brief Append a row to the given table's data-page chain.
+    ///        Allocates a new page if the current head is full.
+    ///        Records `lastInsertPageId`/`lastInsertSlotIdx` so
+    ///        DML can track the new row's RID.
     expose func insertRowStorage(tableName: String, row: Row) -> Boolean {
         Threads.Monitor.Enter(lock);
         var result = insertRowStorageInternal(tableName, row);
@@ -704,6 +799,9 @@ class StorageEngine {
 
     // Rewrite all rows for a table (used after UPDATE/DELETE)
     // Drops all existing data pages and re-inserts the given rows
+    /// @brief Bulk rewrite: drop all existing data pages for the
+    ///        table, allocate fresh ones, re-insert every row.
+    ///        Used by VACUUM and by REFRESH MATERIALIZED VIEW.
     expose func rewriteTableRows(tableName: String, rows: List[Row]) -> Boolean {
         Threads.Monitor.Enter(lock);
         var result = rewriteTableRowsInternal(tableName, rows);
@@ -814,6 +912,9 @@ class StorageEngine {
     //=========================================================================
 
     // Update autoIncrement value for a table
+    /// @brief Persist a table's AUTOINCREMENT counter.  DML
+    ///        calls this after handing out a new id so a restart
+    ///        resumes from the right place.
     expose func updateAutoIncrement(tableName: String, nextVal: Integer) {
         Threads.Monitor.Enter(lock);
         var meta = findMeta(tableName);
@@ -826,6 +927,8 @@ class StorageEngine {
     }
 
     // Flush all dirty pages to disk
+    /// @brief Force every dirty page to disk.  Used by the
+    ///        REPL's explicit SAVE command and by checkpoint.
     expose func flush() {
         Threads.Monitor.Enter(lock);
         if isPersistent {
@@ -862,6 +965,10 @@ class StorageEngine {
     }
 
     // Update row count for a table in persistent metadata
+    /// @brief Keep the cached row-count for a table in step
+    ///        with reality.  Called from DML after every insert
+    ///        / delete; not transactionally precise, good enough
+    ///        for EXPLAIN / statistics.
     expose func updateRowCountInMeta(tableName: String, newCount: Integer) {
         Threads.Monitor.Enter(lock);
         var meta = findMeta(tableName);
@@ -882,6 +989,9 @@ class StorageEngine {
     }
 
     // Enable WAL for crash recovery
+    /// @brief Switch WAL on.  Creates `walDir` if missing; all
+    ///        subsequent mutations go through `wal.logInsert` /
+    ///        `logUpdate` / `logDelete`.
     expose func enableWal(walDir: String) {
         Threads.Monitor.Enter(lock);
         enableWalInternal(walDir);
@@ -900,6 +1010,8 @@ class StorageEngine {
     //=========================================================================
 
     // Persist a new index to the schema page, returning the assigned indexId
+    /// @brief Save an index's metadata to the schema page.
+    ///        Returns the assigned index id.
     expose func persistIndex(indexName: String, tableName: String, columnNames: List[String], isUnique: Boolean, btreeRootPageId: Integer) -> Integer {
         Threads.Monitor.Enter(lock);
         var result = persistIndexInternal(indexName, tableName, columnNames, isUnique, btreeRootPageId);
@@ -933,6 +1045,8 @@ class StorageEngine {
     }
 
     // Remove an index from the schema page
+    /// @brief DROP INDEX storage side: free the B-tree pages (if
+    ///        any) and remove the entry from the schema page.
     expose func dropIndexStorage(indexName: String) -> Boolean {
         Threads.Monitor.Enter(lock);
         var result = dropIndexStorageInternal(indexName);
@@ -969,6 +1083,9 @@ class StorageEngine {
     }
 
     // Load all index metadata from schema page
+    /// @brief Return a snapshot of every persisted index.  Used
+    ///        by the engine/open sequence to rebuild in-memory
+    ///        indexes.
     expose func loadAllIndexMetas() -> List[IndexMeta] {
         Threads.Monitor.Enter(lock);
         var result = loadAllIndexMetasInternal();
@@ -981,6 +1098,9 @@ class StorageEngine {
     }
 
     // Create a new B-tree index using the engine's BufferPool
+    /// @brief Allocate a fresh B-tree rooted at a new page.
+    ///        Returns the `BTree` ready for inserts.  (Used by
+    ///        the future btree-backed-index path.)
     expose func createBTree(indexName: String, tableId: Integer, columnName: String, isUnique: Boolean) -> BTree {
         Threads.Monitor.Enter(lock);
         var result = createBTreeInternal(indexName, tableId, columnName, isUnique);
@@ -996,6 +1116,7 @@ class StorageEngine {
     }
 
     // Open an existing B-tree by its root page ID
+    /// @brief Re-open a B-tree given its root page id.
     expose func openBTree(rootPageId: Integer) -> BTree {
         Threads.Monitor.Enter(lock);
         var result = openBTreeInternal(rootPageId);
@@ -1020,6 +1141,9 @@ class StorageEngine {
     hide List[String] rowTableNames;
 
     // Record a row's storage location after loading or inserting
+    /// @brief Record the on-disk location of a freshly inserted
+    ///        row so the DML layer can UPDATE/DELETE it later
+    ///        without a full scan.
     expose func trackRowLocation(tableName: String, pageId: Integer, slotIdx: Integer) {
         Threads.Monitor.Enter(lock);
         trackRowLocationInternal(tableName, pageId, slotIdx);
@@ -1034,6 +1158,9 @@ class StorageEngine {
     }
 
     // Find a row's location by table name and row index within that table
+    /// @brief Look up the (pageId, slotIdx) for a logical row
+    ///        index in the given table.  Returns empty list if
+    ///        we have no cached location.
     expose func findRowLocation(tableName: String, rowIndex: Integer) -> List[Integer] {
         Threads.Monitor.Enter(lock);
         var result = findRowLocationInternal(tableName, rowIndex);
@@ -1063,6 +1190,9 @@ class StorageEngine {
     }
 
     // Clear row locations for a table (used before rewrite)
+    /// @brief Forget every tracked location for a table.  Called
+    ///        after VACUUM or bulk rewrite since row indices get
+    ///        renumbered.
     expose func clearRowLocations(tableName: String) {
         Threads.Monitor.Enter(lock);
         clearRowLocationsInternal(tableName);
@@ -1089,6 +1219,9 @@ class StorageEngine {
     }
 
     // Delete a specific row by its storage location
+    /// @brief Tombstone a row by its on-disk location (returned
+    ///        earlier by `findRowLocation` or
+    ///        `lastInsertPageId/SlotIdx`).
     expose func deleteRowByLocation(tableName: String, pageId: Integer, slotIdx: Integer) -> Boolean {
         Threads.Monitor.Enter(lock);
         var result = deleteRowByLocationInternal(tableName, pageId, slotIdx);
@@ -1140,6 +1273,9 @@ class StorageEngine {
     }
 
     // Update a specific row by its storage location
+    /// @brief Rewrite a row in place by (pageId, slotIdx).
+    ///        Falls back to delete+insert when the new row is
+    ///        too big for the original slot.
     expose func updateRowByLocation(tableName: String, pageId: Integer, slotIdx: Integer, newRow: Row) -> Boolean {
         Threads.Monitor.Enter(lock);
         var result = updateRowByLocationInternal(tableName, pageId, slotIdx, newRow);

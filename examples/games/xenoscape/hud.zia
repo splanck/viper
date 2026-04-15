@@ -1,27 +1,68 @@
 // =============================================================================
-// HUD — Heads-Up Display using Viper UI Widget APIs
+// hud.zia — The heads-up display: health, score, coins, boss bar
+// Part of Xenoscape  (the 2D sidescroller platformer demo)
 // =============================================================================
-// Viper APIs demonstrated:
-//   - Viper.Game.UI.Bar: health bar with color thresholds, boss health bar
-//   - Viper.Game.UI.Label: positioned text labels for score, coins, level name
-//   - Viper.Game.UI.Panel: semi-transparent HUD backing panel
-//   - Viper.Game.SmoothValue: animated score counter (digits roll toward target)
-//   - Viper.Game.Tween: smooth boss bar lerp on damage
 //
-// Zia best practices:
-//   - Entity composition: HUD is a standalone subsystem, composed into Game
-//   - Two-step init: init() then update()/draw() each frame
-//   - hide internal state, expose only the draw/update interface
-//   - final constants from config.zia for all colors and layout values
-//   - SmoothValue replaces manual interpolation for score display
-//   - Tween replaces manual lerp for boss bar damage feedback
+// TUTORIAL — THE HUD IS A COMPOSITION OF WIDGETS
+// ----------------------------------------------
+// A good HUD is un-fussy.  The player's eyes are on the action
+// 99 % of the time; the HUD needs to communicate instantly
+// without being glanced *at*.  In code, that means:
 //
-// Constructor signatures (from runtime.def):
-//   Panel.New(x, y, w, h, color, alpha)  — 6 i64 args
-//   Bar.New(x, y, w, h, fillColor, emptyColor) — 6 i64 args
-//   Label.New(x, y, text, color) — i64, i64, str, i64
-//   Tween.New() — zero args
-//   SmoothValue.New(initial, smoothing) — f64, f64
+//   * Don't hand-roll graphics for HP bars.  Use the runtime's
+//     widget classes (`Viper.Game.UI.Bar`, `.Label`, `.Panel`).
+//     They know about colour thresholds, alignment, and
+//     re-rendering efficiently.
+//
+//   * Don't make numbers *snap*.  The score should roll toward
+//     its new value over ~10 frames, so a +50 pickup feels
+//     earned instead of just appearing.  `Viper.Game.SmoothValue`
+//     does that out of the box.
+//
+//   * Don't make the boss HP bar jitter.  When the boss takes a
+//     hit, lerp its bar downward over a fraction of a second.
+//     `Viper.Game.Tween` handles lerp + ease curves.
+//
+// This file demonstrates the composition pattern: construct
+// named widget instances in `init`, update them in `update`,
+// let each draw itself in `draw`.  The HUD itself is a thin
+// shell coordinating subordinate widgets.
+//
+// RUNTIME WIDGETS REFERENCED
+// --------------------------
+//   Panel(x, y, w, h, color, alpha)
+//     Semi-transparent rectangle.  Backs the HUD so text is
+//     legible over busy scenes.
+//   Bar(x, y, w, h, fillColor, emptyColor)
+//     Horizontal fill bar with `Bar.Value` in 0..1 range.  Used
+//     for HP and boss health.
+//   Label(x, y, text, color)
+//     Positioned text.  `Label.Text` can be mutated each
+//     frame (for score).
+//   SmoothValue(initial, smoothing)
+//     Scalar that tweens toward its current target.
+//     `.Target = newVal; .Update(dt);` gives you a smoothed
+//     number every frame.
+//   Tween()
+//     Manual keyframe tween object.  Use `.Start(from, to, ms)`
+//     then `.Update(dt)` and `.Value`.
+//
+// WHERE THIS FITS
+// ---------------
+//     game.zia   ──►  owns one HUD instance; calls update + draw.
+//     player.zia ──►  HUD reads hp, maxHp, score, coins from it.
+//     enemy.zia  ──►  boss flags the boss HP bar on visible.
+//
+// HOW TO READ THIS FILE
+// ---------------------
+//   1. Widget handles (Panel/Bar/Label fields).
+//   2. `init` — construct each widget with layout constants
+//      from `config.zia`.
+//   3. `update(...)` — copy game state into widget state;
+//      advance tweens/smoothers by `dt`.
+//   4. `draw(canvas)` — invoke each widget's draw.
+//   5. Ad-hoc helpers for boss bar show/hide.
+//
 // =============================================================================
 
 module hud;
@@ -33,6 +74,14 @@ bind Viper.Game.UI;
 bind "./config";
 bind "./palette";
 
+/// @brief The heads-up display.  Owns one widget per UI
+///        element (HP bar, score label, coin label, boss bar
+///        plus a backing panel) and keeps a SmoothValue +
+///        Tween for animations.
+///
+/// Constructed once at boot.  Per-frame: `update(...)` copies
+/// the latest game state into the widgets and ticks any
+/// tweens, then `drawHUD(...)` blits them.
 class HUD {
     // --- UI Widget instances ---
     hide Palette pal;
@@ -54,6 +103,10 @@ class HUD {
     hide Integer pulseTimer;
     hide Integer displayCoins;
 
+    /// @brief Construct every widget with its initial layout
+    ///        + colour from the palette.  Score smoother
+    ///        starts at 0; boss bar tween is dormant until a
+    ///        boss appears.
     expose func init(p: Palette) {
         pal = p;
         // SmoothValue: smoothing=0.75 means score rolls quickly but visibly
@@ -96,6 +149,11 @@ class HUD {
     }
 
     // Update animated values each frame.
+    /// @brief Per-frame: feed the new (score, coins) targets
+    ///        into the SmoothValue so the displayed digits roll
+    ///        toward them.  `dt` is elapsed ms; the smoother
+    ///        scales by it internally for frame-rate
+    ///        independence.
     expose func update(targetScore: Integer, targetCoins: Integer, dt: Integer) {
         displayScore.set_Target(targetScore + 0.0);
         displayScore.Update();
@@ -111,6 +169,11 @@ class HUD {
     }
 
     // Draw the main HUD. Called every frame during gameplay.
+    /// @brief Render the main HUD: backing panel + HP bar
+    ///        (colour shifts red as HP drops) + score label
+    ///        (smoothed digits) + coin counter + powerup
+    ///        timer bars.  Top-anchored so it doesn't overlap
+    ///        the action.
     expose func drawHUD(canvas: Canvas, hp: Integer, maxHp: Integer,
                         score: Integer, lives: Integer, coins: Integer,
                         levelNum: Integer, speedTimer: Integer,
@@ -177,6 +240,10 @@ class HUD {
         }
     }
 
+    /// @brief Tiny progress bar showing seconds left on a
+    ///        timed pickup (speed boost, rapid fire).  Hidden
+    ///        helper called multiple times by `drawHUD` for
+    ///        each active powerup.
     hide func drawPowerupBar(canvas: Canvas, x: Integer, y: Integer,
                               label: String, col: Integer,
                               remaining: Integer, maxDur: Integer) {
@@ -190,6 +257,10 @@ class HUD {
     }
 
     // Draw boss health bar with Tween-animated damage lerp.
+    /// @brief Render the boss HP bar across the top of the
+    ///        screen.  Lerps via the Tween instance so a
+    ///        damage event slides the bar smoothly instead of
+    ///        snapping.  Skips drawing when no boss is active.
     expose func drawBossBar(canvas: Canvas, bossHp: Integer, bossMaxHpVal: Integer) {
         if bossHp <= 0 { return; }
 
@@ -222,6 +293,10 @@ class HUD {
         canvas.TextScaled(barX + 170, 58, "${bossHp}/${bossMaxHpVal}", 2, pal.white);
     }
 
+    /// @brief Initialise the boss bar for a new fight.  Game
+    ///        calls this when a boss enters the room.  Sets
+    ///        the tween to "full" so the first damage tick
+    ///        animates from 100%.
     expose func resetBossBar(maxHp: Integer) {
         bossBarDisplay = maxHp;
         bossBarTarget = maxHp;
@@ -231,6 +306,10 @@ class HUD {
     // Extended HUD: gems, lore, ability icons, biome name
     // =========================================================================
 
+    /// @brief Optional second-row HUD: ability icons strip,
+    ///        gem counter, lives.  Drawn separately so the
+    ///        baseline HUD can show even on title screens that
+    ///        don't yet need the full strip.
     expose func drawExtendedHud(canvas: Canvas, pal: Palette,
                                  gems: Integer, loreCollected: Integer, loreTotal: Integer,
                                  currentLevel: Integer, biomeName: String) {
@@ -256,6 +335,10 @@ class HUD {
     }
 
     // Mini-map dot (shows player position in level)
+    /// @brief Tiny corner mini-map showing the level outline
+    ///        and the player's position.  Cheap to draw — one
+    ///        rectangle outline + one dot — but huge for
+    ///        navigation in big rooms.
     expose func drawMiniMap(canvas: Canvas, pal: Palette,
                              playerCol: Integer, playerRow: Integer,
                              levelW: Integer, levelH: Integer) {
@@ -279,6 +362,9 @@ class HUD {
     }
 
     // Damage number popup (floating text showing damage dealt)
+    /// @brief Floating "+5" / "-2" damage indicators that pop
+    ///        out of an entity on hit.  World-space input;
+    ///        the caller passes camera-relative coords.
     expose func drawDamageNumber(canvas: Canvas, wx: Integer, wy: Integer,
                                   camX: Integer, camY: Integer,
                                   amount: Integer, timer: Integer) {
@@ -297,6 +383,9 @@ class HUD {
     }
 
     // Power-up timer bars (below health bar)
+    /// @brief Stack of powerup countdown bars in the bottom-
+    ///        right.  Rebuilt every frame from the player's
+    ///        active timer set; no state of its own.
     expose func drawPowerupTimers(canvas: Canvas, pal: Palette,
                                    speedTimer: Integer, rapidTimer: Integer,
                                    shieldActive: Boolean) {

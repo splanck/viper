@@ -1,10 +1,74 @@
-// procedures.zia — Stored Procedures / Functions
-// Part of ViperSQL
+// =============================================================================
+// procedures.zia — Stored SQL functions (PG-style CREATE FUNCTION)
+// Part of ViperSQL  (package: engine)
+// =============================================================================
 //
-// Implements PostgreSQL-style user-defined SQL functions.
-// Syntax: CREATE FUNCTION name(param1 type, ...) RETURNS type AS 'sql_body'
-// Functions can contain a single SQL statement (SELECT, INSERT, UPDATE, DELETE)
-// and can reference parameters by name ($1, $2, ... or named params).
+// PURPOSE
+// -------
+// Users can register SQL-language functions with
+//
+//     CREATE FUNCTION add_one(x INTEGER) RETURNS INTEGER
+//         AS 'SELECT $1 + 1';
+//
+// This file implements the in-memory side of that feature:
+//
+//   * `FuncParam`       — one formal parameter (name + SQL type code).
+//   * `StoredFunction`  — the registered function: name, params,
+//                         return type, raw SQL body, `RETURNS SETOF`
+//                         flag.
+//   * `FunctionManager` — per-database registry; lookup supports both
+//                         (name, arg-count) resolution for simple
+//                         overloading and name-only lookup for the
+//                         common 1-arity case.
+//   * Two helpers (`formatArgForSQL`, `replaceAll`) used when the
+//     executor invokes a function — it replaces `$1`, `$2`, … (and
+//     named params) in the body with the caller's argument values,
+//     then hands the resulting SQL to the executor.
+//
+// WHERE THIS FITS
+// ---------------
+//   engine/ddl.zia         ──► addFunction / dropFunction.
+//   engine/executor.zia    ──► `findFunction` + `substituteParams`
+//                              + recursive `executeSql`.
+//   engine/database.zia    ──► owns one `FunctionManager`.
+//
+// KEY DESIGN CHOICES
+// ------------------
+//   1. Body is raw SQL, not a parsed AST.  Same reasoning as
+//      triggers: re-parsing is cheap enough for demo workloads and
+//      keeps us decoupled from the parser's internal AST evolution.
+//
+//   2. Parameter substitution by textual replace, not bind-variables.
+//      Because the body is re-parsed on every call, we can afford to
+//      substitute argument text.  The trade-off is SQL-injection
+//      risk — `formatArgForSQL` quotes strings and escapes but does
+//      not handle blobs or json as rigorously as a bind parameter
+//      would.  Flag-don't-fix; for untrusted inputs, use a PREPARE /
+//      EXECUTE path instead (server/pg_wire.zia).
+//
+//   3. Overloading by arity only, not by types.  `findFunction(name,
+//      argCount)` is a best-effort resolver; if no exact-arity match
+//      exists we fall back to name-only.  This catches SQL calls
+//      whose arity matches DEFAULTed parameters PG would resolve to.
+//      A real multi-type resolver would need a score function over
+//      implicit coercions.
+//
+//   4. Named parameter replacement is lexical and *not* identifier-
+//      aware.  We call `replaceAll(body, paramName, argStr)` which
+//      will happily rewrite any occurrence of the name — including
+//      inside string literals, column names, and comments.  For the
+//      demo, authors avoid naming params after common keywords.
+//      Flag-don't-fix.
+//
+// HOW TO READ THIS FILE
+// ---------------------
+//   1. `FuncParam` — formal parameter descriptor.
+//   2. `StoredFunction` — the registered function, with the
+//      `substituteParams` textual-binding helper.
+//   3. `formatArgForSQL`, `replaceAll` — tiny helpers used above.
+//   4. `FunctionManager` — the registry.
+//
+// =============================================================================
 
 module procedures;
 
@@ -13,23 +77,33 @@ bind Viper.String as String;
 bind "./types";
 
 //=============================================================================
-// PARAMETER ENTITY
+// PARAMETER
 //=============================================================================
 
+/// @brief One formal parameter of a stored function.
+///
+/// Only a name and SQL type code.  No default value field — PG-style
+/// DEFAULT on parameters is not implemented (the overload resolver
+/// comment above hints at what would need to change).
 class FuncParam {
     expose String name;
-    expose Integer typeCode;    // SQL_INTEGER, SQL_TEXT, SQL_REAL, etc.
+    expose Integer typeCode;    // one of the SQL_* from types.zia
 
+    /// @brief Default: unnamed TEXT parameter.
     expose func init() {
         name = "";
         typeCode = SQL_TEXT;
     }
 
+    /// @brief Construct with name and type; used by DDL.
     expose func initFull(paramName: String, paramType: Integer) {
         name = paramName;
         typeCode = paramType;
     }
 
+    /// @brief "INTEGER", "TEXT", … for rendering in SHOW FUNCTIONS /
+    ///        DESCRIBE-style output.  Unknown types fall back to TEXT
+    ///        because the body is string-substituted anyway.
     expose func typeName() -> String {
         if typeCode == SQL_INTEGER { return "INTEGER"; }
         if typeCode == SQL_REAL { return "REAL"; }
@@ -42,16 +116,24 @@ class FuncParam {
 }
 
 //=============================================================================
-// STORED FUNCTION ENTITY
+// STORED FUNCTION
 //=============================================================================
 
+/// @brief A user-registered SQL function.
+///
+/// The body is raw SQL.  When the executor calls the function, it
+/// invokes `substituteParams` to textually bind the arguments, then
+/// runs the resulting SQL.  `returnsSet = true` marks a SETOF
+/// function: the executor returns every row instead of the single
+/// scalar first one.
 class StoredFunction {
     expose String name;
     expose List[FuncParam] params;
-    expose Integer returnType;     // SQL_INTEGER, SQL_TEXT, SQL_REAL, SQL_VOID, etc.
-    expose String bodySQL;         // SQL statement(s) to execute
-    expose Boolean returnsSet;     // True if RETURNS SETOF (table-valued function)
+    expose Integer returnType;
+    expose String bodySQL;
+    expose Boolean returnsSet;
 
+    /// @brief Blank state init.
     expose func init() {
         name = "";
         params = [];
@@ -60,6 +142,11 @@ class StoredFunction {
         returnsSet = false;
     }
 
+    /// @brief Full init used by CREATE FUNCTION in DDL.
+    ///
+    /// Does not copy the params list — the caller must not mutate
+    /// it after passing in.  DDL builds it fresh each time so this
+    /// aliasing is safe.
     expose func initFull(funcName: String, funcParams: List[FuncParam],
                          retType: Integer, body: String) {
         name = funcName;
@@ -69,17 +156,28 @@ class StoredFunction {
         returnsSet = false;
     }
 
+    /// @brief Number of formal parameters.
     expose func paramCount() -> Integer {
         return params.count();
     }
 
+    /// @brief Positional parameter accessor.  Unchecked — callers
+    ///        must have validated against `paramCount()` already.
     expose func getParam(idx: Integer) -> FuncParam {
         return params.get(idx);
     }
 
-    // Substitute parameters in the SQL body.
-    // Replaces $1, $2, ... with the corresponding argument values.
-    // Also replaces named params if they appear.
+    /// @brief Textually substitute arguments into the body SQL.
+    ///
+    /// Walks the parallel `params`/`args` lists and replaces every
+    /// occurrence of `$N` and every occurrence of the parameter
+    /// *name* with a SQL-literal rendering of the argument.  Returns
+    /// the fully-bound SQL string, which the executor then runs
+    /// through `executeSql` recursively.
+    ///
+    /// See design notes 2 and 4 in the header for the caveats — in
+    /// particular, named-parameter replacement is lexically naive and
+    /// will rewrite the name wherever it appears.
     expose func substituteParams(args: List[SqlValue]) -> String {
         var result = bodySQL;
         var i = 0;
@@ -88,7 +186,8 @@ class StoredFunction {
             var placeholder = "$" + Fmt.Int(paramIdx);
             var argStr = formatArgForSQL(args.get(i));
             result = replaceAll(result, placeholder, argStr);
-            // Also replace named params
+            // Named-param substitution.  Flag-don't-fix: lexical, not
+            // identifier-aware.
             var paramName = params.get(i).name;
             if paramName != "" {
                 result = replaceAll(result, paramName, argStr);
@@ -98,6 +197,7 @@ class StoredFunction {
         return result;
     }
 
+    /// @brief SHOW FUNCTIONS / pg_proc-style signature rendering.
     expose func toString() -> String {
         var result = "FUNCTION " + name + "(";
         var i = 0;
@@ -111,6 +211,8 @@ class StoredFunction {
         return result;
     }
 
+    /// @brief Return-type keyword.  SQL_NULL is rendered as "VOID" so
+    ///        users writing `RETURNS void` see their keyword echoed.
     expose func returnTypeName() -> String {
         if returnType == SQL_INTEGER { return "INTEGER"; }
         if returnType == SQL_REAL { return "REAL"; }
@@ -124,10 +226,21 @@ class StoredFunction {
 }
 
 //=============================================================================
-// HELPER FUNCTIONS
+// HELPERS
 //=============================================================================
 
-// Format a SqlValue for substitution into SQL text
+/// @brief Render a SqlValue as a SQL-literal text fragment.
+///
+/// Different kinds need different escape / quoting rules:
+///   * NULL          → literal "NULL"
+///   * INTEGER       → decimal digits
+///   * REAL          → preserved source text (see SqlValue.toString)
+///   * TEXT          → single-quote-wrapped; **does not double internal
+///                      `'`** (flag-don't-fix: mild injection risk in
+///                      the substitution path; a safer version would
+///                      call String.Replace to double quotes first)
+///   * BOOLEAN       → TRUE / FALSE keywords
+///   * anything else → single-quoted `toString()` output
 func formatArgForSQL(val: SqlValue) -> String {
     if val.kind == SQL_NULL { return "NULL"; }
     if val.kind == SQL_INTEGER { return Fmt.Int(val.intValue); }
@@ -140,7 +253,13 @@ func formatArgForSQL(val: SqlValue) -> String {
     return "'" + val.toString() + "'";
 }
 
-// Replace all occurrences of 'from' with 'to' in a string
+/// @brief Replace every occurrence of `from` with `to` in `str`.
+///
+/// Straightforward char-walk: at each position, if the next
+/// `|from|` bytes equal `from`, emit `to` and skip ahead, otherwise
+/// emit one character and advance by one.  Quadratic in the *output*
+/// size when substitutions vary in length, but function bodies are
+/// small and we do not care.
 func replaceAll(str: String, from: String, to: String) -> String {
     var result = "";
     var i = 0;
@@ -162,16 +281,25 @@ func replaceAll(str: String, from: String, to: String) -> String {
 // FUNCTION MANAGER
 //=============================================================================
 
+/// @brief Per-database registry of stored functions.
+///
+/// Like other managers in this demo, the backing store is just a flat
+/// list.  Supports simple overloading: two functions with the same
+/// name are allowed as long as their parameter counts differ.  The
+/// resolver in `findFunction` prefers an exact-arity match and falls
+/// back to any-arity by name.
 class FunctionManager {
     expose List[StoredFunction] functions;
 
+    /// @brief Empty registry.
     expose func init() {
         functions = [];
     }
 
-    // Add a function. Returns empty string on success, error message on failure.
+    /// @brief Register a function.  Returns empty string on success,
+    ///        duplicate-error message if a function with the same
+    ///        (name, arity) already exists.
     expose func addFunction(fn: StoredFunction) -> String {
-        // Check for duplicate name with same param count (simple overload check)
         var i = 0;
         while i < functions.count() {
             var existing = functions.get(i);
@@ -184,7 +312,16 @@ class FunctionManager {
         return "";
     }
 
-    // Find a function by name and argument count.
+    /// @brief Resolve a call site to a stored function.
+    ///
+    /// Two-phase search:
+    ///   1. First look for an exact (name, argCount) match — this is
+    ///      the PG-like overload-by-arity path.
+    ///   2. If none found, fall back to the first function with the
+    ///      matching name regardless of arity — supports
+    ///      DEFAULT-style "call with fewer args" invocations.  Not
+    ///      semantically accurate for true defaults (we have none),
+    ///      but permissive in a way that matches SQLite habits.
     expose func findFunction(name: String, argCount: Integer) -> StoredFunction? {
         var i = 0;
         while i < functions.count() {
@@ -194,7 +331,7 @@ class FunctionManager {
             }
             i = i + 1;
         }
-        // Try finding by name only (for 0-arg calls to functions with defaults)
+        // Name-only fallback.
         i = 0;
         while i < functions.count() {
             if functions.get(i).name == name {
@@ -205,7 +342,8 @@ class FunctionManager {
         return null;
     }
 
-    // Find a function by name (any parameter count).
+    /// @brief Strict name-only lookup.  Used by DROP FUNCTION, which
+    ///        does not know the arity up front.
     expose func findByName(name: String) -> StoredFunction? {
         var i = 0;
         while i < functions.count() {
@@ -217,7 +355,9 @@ class FunctionManager {
         return null;
     }
 
-    // Drop a function by name. Returns true if found and removed.
+    /// @brief Remove a function by name.  Drops the first match —
+    ///        overload-aware callers must loop if they need to drop
+    ///        every arity.
     expose func dropFunction(name: String) -> Boolean {
         var i = 0;
         while i < functions.count() {
@@ -230,12 +370,13 @@ class FunctionManager {
         return false;
     }
 
-    // List all functions.
+    /// @brief Full list (no filter).  Used by SHOW FUNCTIONS and
+    ///        the pg_proc system view.
     expose func listFunctions() -> List[StoredFunction] {
         return functions;
     }
 
-    // Count of functions.
+    /// @brief Registry size.
     expose func count() -> Integer {
         return functions.count();
     }

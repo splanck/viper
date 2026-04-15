@@ -1,18 +1,77 @@
 // =============================================================================
-// Renderer — Master render pipeline with tile bevels and screen effects
+// renderer.zia — Master render pipeline: draw order + screen effects
+// Part of Xenoscape  (the 2D sidescroller platformer demo)
 // =============================================================================
-// Viper APIs demonstrated:
-//   - Viper.Game.ScreenFX: shake, flash, fade, wipe, circle, dissolve, pixelate
-//   - Canvas drawing: Box, BoxAlpha, Disc, DiscAlpha, Triangle, BlitAlpha,
-//     Line, Frame, TextScaled, GradientV
 //
-// Zia best practices:
-//   - Entity with hide/expose: internal timers hidden, render methods exposed
-//   - Frustum culling: only tiles within camera viewport are drawn
-//   - Render order (back-to-front): background → tiles → ambient → pickups →
-//     player → enemies → projectiles → particles → HUD → screen overlay
-//   - Tile edge bevels: every solid tile gets 1px light top/left + dark
-//     bottom/right edges at draw time for depth without modifying sprites
+// TUTORIAL — LAYER ORDER MATTERS
+// ------------------------------
+// A platformer's render loop is a carefully chosen draw
+// order.  Get it wrong and the player's sprite is behind
+// the tiles, or particles appear on top of the HUD, or the
+// screen-shake overlay flickers under the background.  Get
+// it right and it "just looks correct".
+//
+// Xenoscape's order, back-to-front:
+//
+//     1.  Sky gradient (top colour → bottom colour).
+//     2.  Background parallax layer (scrolls slower than
+//         camera).
+//     3.  Tile layer (the level's solid geometry).
+//     4.  Ambient particles (drifting motes, lava sparks).
+//     5.  Pickups.
+//     6.  Projectiles (player bullets).
+//     7.  Enemies.
+//     8.  Player.
+//     9.  Foreground particles (jump dust, death bursts).
+//     10. Lighting overlay (darkness + punched lights).
+//     11. HUD (health bar, score, boss bar).
+//     12. Screen FX overlay (shake offset, flash, vignette,
+//         wipe, pixelate).
+//
+// The draw *order* is encoded as the sequence of method
+// calls in `Renderer.drawFrame`.  No Z-buffer — everything
+// is just painted on top of whatever is below.  Which is
+// why the order matters.
+//
+// OTHER IMPORTANT PATTERNS
+// ------------------------
+//   * **Frustum culling** — tile rendering only iterates the
+//     tile range visible in the camera window, not the
+//     entire level.  Even a huge level renders in constant
+//     time per frame.
+//
+//   * **Screen-space effects via ScreenFX** —
+//     `Viper.Game.ScreenFX` provides shake, flash, fade,
+//     wipe, circle, dissolve, pixelate.  We just trigger
+//     them from gameplay ("player took damage: FX.Flash()")
+//     and let the runtime do the pixel math.
+//
+//   * **Tile edge bevels** — rather than shipping multiple
+//     variants of every tile sprite (top-only, corner,
+//     edge), we paint a 1-pixel light edge top+left and a
+//     1-pixel dark edge bottom+right on every solid tile at
+//     draw time.  Gives the level instant depth without
+//     more assets.
+//
+// WHERE THIS FITS
+// ---------------
+//     game.zia ──►  per frame, calls `drawFrame(canvas, ...)`.
+//     All other subsystems supply their own `draw*` methods
+//     but it's the renderer that orchestrates *when* each
+//     runs.
+//
+// HOW TO READ THIS FILE
+// ---------------------
+//   1. Fields: ScreenFX handle, one-shot flash timers,
+//      vignette config.
+//   2. `drawFrame(canvas, camera, ..., dt)` — the
+//      orchestration method.  Every other draw method on
+//      the page lives in service of this.
+//   3. Sub-draw methods: `drawSky`, `drawTiles`,
+//      `drawParallax`, `drawBevels`, etc.
+//   4. Effect control: `startShake`, `startFlash`,
+//      `startFade`.
+//
 // =============================================================================
 
 module renderer;
@@ -31,6 +90,10 @@ bind "./particles";
 bind "./hud";
 bind "./sprites";
 
+/// @brief Master draw orchestrator + screen-effects manager.
+///        One instance lives on `Game`; `renderPlaying` is
+///        called once per frame, the `start*` methods queue
+///        post-process effects (shake, flash, fade, wipe).
 class Renderer {
     // Screen effects manager (replaces manual shake/flash/fade)
     hide Palette pal;
@@ -45,13 +108,17 @@ class Renderer {
 
     // Pre-rendered tile bevel overlay (1 BlitAlpha vs 4 BoxAlpha per tile)
     hide Pixels bevelOverlay;
+    hide SpriteBatch tileBatch;
 
+    /// @brief Allocate ScreenFX, store palette, reset all
+    ///        effect timers.
     expose func init(p: Palette) {
         pal = p;
         fx = FX.New();
         // Lava tile animation registered by Level after tilemap creation
         shimmerTimer = 0;
         shimmerIndex = 0;
+        tileBatch = SpriteBatch.New(768);
 
         // Pre-render bevel overlay: 1px light top/left, dark bottom/right
         bevelOverlay = Pixels.New(TILE_SIZE, TILE_SIZE);
@@ -70,6 +137,16 @@ class Renderer {
     }
 
     // Trigger screen shake (convert game frames/intensity to ScreenFX units)
+    //=========================================================
+    // SCREEN-FX TRIGGERS
+    //=========================================================
+    // One method per visual feedback type.  Gameplay code
+    // calls these on events ("boss hit → renderer.shake();
+    // player died → renderer.fadeOut();").  Renderer queues
+    // them and `update`+`drawTransition` apply them.
+
+    /// @brief Camera shake — `intensity` pixels for `duration`
+    ///        ms.  Decays linearly.
     expose func shake(duration: Integer, intensity: Integer) {
         // ScreenFX.Shake(intensity_fp, duration_ms, decay_fp)
         // intensity is in fixed-point (1000 = 1 pixel), duration in ms
@@ -77,6 +154,8 @@ class Renderer {
     }
 
     // Trigger screen flash
+    /// @brief Full-screen colour pulse.  Used for damage,
+    ///        explosions, ability-acquire.
     expose func flash(color: Integer, duration: Integer) {
         // ScreenFX.Flash(color_rgba, duration_ms)
         // Color format is 0xRRGGBBAA — make it opaque
@@ -84,6 +163,8 @@ class Renderer {
     }
 
     // Start fade to black
+    /// @brief Fade screen to black at `speed` units/frame.
+    ///        Used on death and game-over.
     expose func fadeOut(speed: Integer) {
         // Convert frame-based speed to duration: 255/speed frames * 16ms
         var durationMs = 255 * 16 / speed;
@@ -91,11 +172,15 @@ class Renderer {
     }
 
     // Start fade from black
+    /// @brief Fade from black to fully-visible.  Used on
+    ///        level enter and respawn.
     expose func fadeIn(speed: Integer) {
         var durationMs = 255 * 16 / speed;
         fx.FadeIn(0x00000050, durationMs);
     }
 
+    /// @brief "Is a fade in progress?"  Game suspends input
+    ///        while true.
     expose func isFading() -> Boolean {
         return fx.IsTypeActive(4); // SCREENFX_FADE_OUT = 4
     }
@@ -103,35 +188,47 @@ class Renderer {
     // --- Screen transition effects (new ScreenFX API) ---
 
     // Circle-out transition centered on a point (player position)
+    /// @brief Iris-close wipe centred on (cx, cy).  Used at
+    ///        the start of level transitions.
     expose func circleOut(cx: Integer, cy: Integer, durationMs: Integer) {
         fx.CircleOut(cx, cy, 0x000000, durationMs);
     }
 
     // Circle-in transition (reveals from center outward)
+    /// @brief Iris-open inverse of `circleOut`.
     expose func circleIn(cx: Integer, cy: Integer, durationMs: Integer) {
         fx.CircleIn(cx, cy, 0x000000, durationMs);
     }
 
     // Pixelation transition (mosaic effect)
+    /// @brief Pixelate effect — chunk every `blockSize` pixels
+    ///        into its average colour.  Death-animation hook.
     expose func pixelate(blockSize: Integer, durationMs: Integer) {
         fx.Pixelate(blockSize, durationMs);
     }
 
     // Dissolve transition (fade to noise pattern)
+    /// @brief Random-pixel dissolve to black.  Used for the
+    ///        game-over screen.
     expose func dissolve(durationMs: Integer) {
         fx.Dissolve(0x000000, durationMs);
     }
 
     // Check if any transition effect is still active
+    /// @brief "Is any transition effect mid-animation?"
     expose func isTransitioning() -> Boolean {
         return fx.get_IsActive();
     }
 
     // Draw transition overlay (must be called after all other rendering)
+    /// @brief Composite the active transition (fade / wipe /
+    ///        pixelate / dissolve) on top of the scene.
+    ///        Drawn after everything else.
     expose func drawTransition(canvas: Canvas) {
         fx.Draw(canvas, SCREEN_W, SCREEN_H);
     }
 
+    /// @brief Per-frame: tick down every active effect timer.
     expose func update(dt: Integer) {
         // Update all screen effects with actual delta time
         fx.Update(dt);
@@ -151,6 +248,14 @@ class Renderer {
     // Main render pass for gameplay
     // =========================================================================
 
+    /// @brief THE main render pass for in-game.  Layers, in
+    ///        order: sky → parallax → tiles → ambient
+    ///        particles → pickups → projectiles → enemies →
+    ///        player → foreground particles → lighting → HUD
+    ///        → screen FX overlay.
+    ///
+    /// Single point of authority for draw order; every other
+    /// `draw*` is invoked from inside this method.
     expose func renderPlaying(canvas: Canvas, camera: GameCamera,
                                level: Level, player: Player,
                                enemies: EnemyManager, bullets: ProjectilePool,
@@ -217,6 +322,10 @@ class Renderer {
     // Tile rendering — only visible tiles
     // =========================================================================
 
+    /// @brief Iterate the tile grid that intersects the
+    ///        camera viewport (frustum culling) and blit each
+    ///        tile + bevel edges.  The hot path of the
+    ///        renderer; everything else is constant time.
     hide func drawTiles(canvas: Canvas, camX: Integer, camY: Integer,
                         level: Level, sprites: SpriteFactory) {
         var startCol = camX / TILE_SIZE;
@@ -230,6 +339,7 @@ class Renderer {
         if endRow >= level.levelHeight { endRow = level.levelHeight - 1; }
 
         var row = startRow;
+        tileBatch.Begin();
         while row <= endRow {
             var col = startCol;
             while col <= endCol {
@@ -241,9 +351,9 @@ class Renderer {
                     // Draw the sprite (lava frame resolved via tilemap animation)
                     if tile == TILE_LAVA {
                         var lf = level.resolveAnimTile(TILE_LAVA) - TILE_LAVA;
-                        canvas.BlitAlpha(sx, sy, sprites.getLavaTile(lf));
+                        tileBatch.DrawPixels(sprites.getLavaTile(lf), sx, sy);
                     } else {
-                        canvas.BlitAlpha(sx, sy, sprites.getTile(tile));
+                        tileBatch.DrawPixels(sprites.getTile(tile), sx, sy);
                     }
 
                     // Edge bevel overlay: 1px light top/left, dark bottom/right.
@@ -252,19 +362,23 @@ class Renderer {
                     // Skip for non-solid decorative tiles (vines, checkpoints).
                     // Bevel overlay: pre-rendered sprite (1 BlitAlpha vs 4 BoxAlpha)
                     if tile != TILE_VINE and tile != TILE_CHECKPOINT and tile != TILE_LAVA and tile != TILE_CLOUD {
-                        canvas.BlitAlpha(sx, sy, bevelOverlay);
+                        tileBatch.DrawPixels(bevelOverlay, sx, sy);
                     }
                 }
                 col = col + 1;
             }
             row = row + 1;
         }
+        tileBatch.End(canvas);
     }
 
     // =========================================================================
     // Player rendering
     // =========================================================================
 
+    /// @brief Render the player sprite at its world position
+    ///        (camera-relative), with iframe blink, dash
+    ///        trail, charge aura, and pound impact overlays.
     hide func drawPlayer(canvas: Canvas, camX: Integer, camY: Integer,
                          player: Player, sprites: SpriteFactory) {
         if player.state == PS_DEAD {
@@ -320,6 +434,9 @@ class Renderer {
     // Ambient tile effects — lava glow + crystal shimmer
     // =========================================================================
 
+    /// @brief Per-biome drifting ambience (motes, fungal
+    ///        spores, lava sparks, snow).  Scrolls with the
+    ///        camera at parallax speed.
     hide func drawAmbientEffects(canvas: Canvas, camX: Integer, camY: Integer,
                                   level: Level) {
         var startCol = camX / TILE_SIZE;
@@ -431,6 +548,8 @@ class Renderer {
     // Speed trail — translucent afterimage behind the player
     // =========================================================================
 
+    /// @brief Speed-boost streak behind a sprinting player.
+    ///        Cheap fade-trail using a few translucent ovals.
     hide func drawSpeedTrail(canvas: Canvas, camX: Integer, camY: Integer,
                               player: Player, sprites: SpriteFactory) {
         if player.state == PS_DEAD { return; }
@@ -453,6 +572,7 @@ class Renderer {
     // =========================================================================
     // Dash trail — bright horizontal streak during dash
     // =========================================================================
+    /// @brief Bright cyan streak behind the dashing player.
     expose func drawDashTrail(canvas: Canvas, camX: Integer, camY: Integer,
                                player: Player) {
         if not player.isDashing { return; }
@@ -474,6 +594,8 @@ class Renderer {
     // =========================================================================
     // Charge indicator — glowing aura around player when charging
     // =========================================================================
+    /// @brief Pulsing halo around the player while charging
+    ///        a shot.  Colour intensifies with chargeLevel.
     expose func drawChargeAura(canvas: Canvas, camX: Integer, camY: Integer,
                                 player: Player) {
         if not player.isCharging { return; }
@@ -498,6 +620,8 @@ class Renderer {
     // =========================================================================
     // Ground pound impact — shockwave ring when landing
     // =========================================================================
+    /// @brief Expanding shockwave ring on ground-pound
+    ///        landing.
     expose func drawPoundImpact(canvas: Canvas, px: Integer, py: Integer,
                                  camX: Integer, camY: Integer, timer: Integer) {
         if timer <= 0 { return; }
@@ -513,6 +637,9 @@ class Renderer {
     // =========================================================================
     // Freeze effect — ice crystals overlay when frozen
     // =========================================================================
+    /// @brief Translucent ice cube around the player while
+    ///        frozen.  Composited over the player sprite so
+    ///        the player still reads through it.
     expose func drawFreezeOverlay(canvas: Canvas, camX: Integer, camY: Integer,
                                    player: Player) {
         if not player.isFrozen() { return; }
@@ -534,6 +661,8 @@ class Renderer {
     // =========================================================================
     // Environmental hazard indicators
     // =========================================================================
+    /// @brief Greenish full-screen tint while in poison
+    ///        atmosphere.
     expose func drawPoisonOverlay(canvas: Canvas, active: Boolean) {
         if not active { return; }
         // Green vignette when in poison zone
@@ -543,6 +672,7 @@ class Renderer {
         canvas.BoxAlpha(SCREEN_W - 30, 0, 30, SCREEN_H, Color.RGB(30, 100, 20), 40);
     }
 
+    /// @brief Cool-blue tint + edge frost in the frozen biome.
     expose func drawIceOverlay(canvas: Canvas, active: Boolean) {
         if not active { return; }
         // Blue vignette when on ice
@@ -553,6 +683,9 @@ class Renderer {
     // =========================================================================
     // Commercial-quality vignette effect (darkened screen edges)
     // =========================================================================
+    /// @brief Soft dark vignette around screen edges.
+    ///        Focuses attention on the centre during boss
+    ///        fights and lore moments.
     expose func drawVignette(canvas: Canvas, intensity: Integer) {
         if intensity <= 0 { return; }
         // Graduated darkness at screen edges
@@ -591,6 +724,8 @@ class Renderer {
     // =========================================================================
     // Depth fog — horizontal gradient overlay creating distance illusion
     // =========================================================================
+    /// @brief Distance fog tint — used in caverns to suggest
+    ///        depth and hide screen edges.
     expose func drawDepthFog(canvas: Canvas, fogColor: Integer, density: Integer) {
         if density <= 0 { return; }
         // Bottom-up fog gradient
@@ -606,6 +741,8 @@ class Renderer {
     // =========================================================================
     // CRT scanline effect (retro aesthetic option)
     // =========================================================================
+    /// @brief Horizontal CRT-style scanlines.  Optional retro
+    ///        flavour; toggleable in options.
     expose func drawScanlines(canvas: Canvas, intensity: Integer) {
         if intensity <= 0 { return; }
         var y = 0;
@@ -618,6 +755,10 @@ class Renderer {
     // =========================================================================
     // Tile ambient shimmer — animated glow on special tiles
     // =========================================================================
+    /// @brief Per-tile-type animation overlay (water shimmer,
+    ///        crystal sparkle, lava glow).  Called from
+    ///        `drawTiles` for tiles whose type has a shimmer
+    ///        registered.
     expose func drawTileShimmer(canvas: Canvas, tileType: Integer,
                                  sx: Integer, sy: Integer, timer: Integer) {
         // Only shimmer special tiles
@@ -675,6 +816,9 @@ class Renderer {
     // =========================================================================
     // HUD notification popup (for save, pickup, etc.)
     // =========================================================================
+    /// @brief Slide-in toast notification (e.g. "Save
+    ///        Station").  Driven from a per-event timer
+    ///        elsewhere; this just composites the box.
     expose func drawNotification(canvas: Canvas, text: String,
                                   timer: Integer, maxTimer: Integer) {
         if timer <= 0 { return; }
@@ -697,6 +841,10 @@ class Renderer {
     // =========================================================================
     // Biome ambient particles (drawn over tiles, under entities)
     // =========================================================================
+    /// @brief Top-level dispatch for biome-specific ambient
+    ///        layers (calls into `drawAmbientEffects`,
+    ///        `drawIceOverlay`, `drawPoisonOverlay`, etc.
+    ///        depending on the active biome).
     expose func drawBiomeAmbient(canvas: Canvas, camX: Integer, camY: Integer,
                                   theme: Integer, timer: Integer) {
         // Floating particles based on biome theme

@@ -138,14 +138,14 @@ class Slider {
 
         // Draw track background
         var trackColor = config.UI_BG_DARK;
-        gfx.Box( x, trackY, width, trackHeight, trackColor);
-        gfx.Frame( x, trackY, width, trackHeight, config.UI_BORDER);
+        gfx.RoundBox( x, trackY, width, trackHeight, 3, trackColor);
+        gfx.RoundFrame( x, trackY, width, trackHeight, 3, config.UI_BORDER);
 
         // Draw filled portion
         var thumbX = getThumbX();
         var filledWidth = thumbX - x + thumbWidth / 2;
         if filledWidth > 0 {
-            gfx.Box( x + 1, trackY + 1, filledWidth, trackHeight - 2, config.UI_BG_BUTTON_ACTIVE);
+            gfx.RoundBox( x + 1, trackY + 1, filledWidth, trackHeight - 2, 3, config.UI_BG_BUTTON_ACTIVE);
         }
 
         // Draw thumb
@@ -153,8 +153,8 @@ class Slider {
         if dragging == 1 {
             thumbColor = config.UI_BG_BUTTON_ACTIVE;
         }
-        gfx.Box( thumbX, y, thumbWidth, height, thumbColor);
-        gfx.Frame( thumbX, y, thumbWidth, height, config.UI_BORDER);
+        gfx.RoundBox( thumbX, y, thumbWidth, height, 4, thumbColor);
+        gfx.RoundFrame( thumbX, y, thumbWidth, height, 4, config.UI_BORDER);
 
         // Draw label and value
         var textY = y - 12;

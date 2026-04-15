@@ -730,10 +730,9 @@ void rt_canvas_blit_alpha(void *canvas_ptr, int64_t x, int64_t y, void *pixels_p
 /// @param y
 /// @return Result value.
 int64_t rt_canvas_get_pixel(void *canvas_ptr, int64_t x, int64_t y) {
-    if (!canvas_ptr)
+    rt_canvas *canvas = rt_canvas_checked(canvas_ptr);
+    if (!canvas)
         return 0;
-
-    rt_canvas *canvas = (rt_canvas *)canvas_ptr;
     if (!canvas->gfx_win)
         return 0;
 
@@ -745,10 +744,12 @@ int64_t rt_canvas_get_pixel(void *canvas_ptr, int64_t x, int64_t y) {
 }
 
 void *rt_canvas_copy_rect(void *canvas_ptr, int64_t x, int64_t y, int64_t w, int64_t h) {
-    if (!canvas_ptr || w <= 0 || h <= 0)
+    if (w <= 0 || h <= 0)
         return NULL;
 
-    rt_canvas *canvas = (rt_canvas *)canvas_ptr;
+    rt_canvas *canvas = rt_canvas_checked(canvas_ptr);
+    if (!canvas)
+        return NULL;
     if (!canvas->gfx_win)
         return NULL;
 
@@ -803,10 +804,12 @@ void *rt_canvas_copy_rect(void *canvas_ptr, int64_t x, int64_t y, int64_t w, int
 /// @return Result value.
 /// @brief Save the canvas contents to a 24-bit BMP file. Returns 1 on success, 0 on failure.
 int64_t rt_canvas_save_bmp(void *canvas_ptr, rt_string path) {
-    if (!canvas_ptr || !path)
+    if (!path)
         return 0;
 
-    rt_canvas *canvas = (rt_canvas *)canvas_ptr;
+    rt_canvas *canvas = rt_canvas_checked(canvas_ptr);
+    if (!canvas)
+        return 0;
     if (!canvas->gfx_win)
         return 0;
 
@@ -833,10 +836,12 @@ int64_t rt_canvas_save_bmp(void *canvas_ptr, rt_string path) {
 /// @return Result value.
 /// @brief Save the canvas contents to a PNG file (zlib-compressed). Returns 1 on success.
 int64_t rt_canvas_save_png(void *canvas_ptr, rt_string path) {
-    if (!canvas_ptr || !path)
+    if (!path)
         return 0;
 
-    rt_canvas *canvas = (rt_canvas *)canvas_ptr;
+    rt_canvas *canvas = rt_canvas_checked(canvas_ptr);
+    if (!canvas)
+        return 0;
     if (!canvas->gfx_win)
         return 0;
 

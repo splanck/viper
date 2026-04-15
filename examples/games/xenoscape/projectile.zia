@@ -1,87 +1,197 @@
-// projectile.zia — Player bullet/projectile entity pool
-// Uses ObjectPool for slot management with parallel arrays for per-bullet data
+// =============================================================================
+// projectile.zia — Player-bullet pool
+// Part of Xenoscape  (the 2D sidescroller platformer demo)
+// =============================================================================
+//
+// TUTORIAL — OBJECT POOLS AND WHY YOU WANT ONE
+// --------------------------------------------
+// Bullets (and particles, and pickups, and damage numbers, ...)
+// are ideal candidates for the classic **object pool** pattern.
+// Why?
+//
+//   * There are lots of them.  A charge-heavy boss fight can
+//     produce dozens of bullets per second.
+//   * They are short-lived.  A bullet travels for maybe a
+//     second before hitting something or going off-screen.
+//   * Spawn/despawn churn under `new`/GC would be a heap
+//     nightmare.  An object pool amortises that to zero: you
+//     allocate `MAX_BULLETS` slots once, and every "spawn" is
+//     just flipping an in-use flag.
+//
+// Viper provides `Viper.Game.ObjectPool`, which manages a
+// fixed-capacity bitmap of active slots with O(1) acquire /
+// release and an O(capacity) iteration helper
+// (`FirstActive` / `NextActive`).  We layer our per-bullet
+// data (position, velocity, charge level) as *parallel lists*
+// indexed by the pool handle.  That keeps the hot loop cache-
+// friendly: one cold cache miss per active bullet instead of
+// an allocation per frame.
+//
+// PARALLEL-LIST STYLE
+// -------------------
+//     bx[i]       — x position of bullet i (if slot i is active)
+//     by[i]       — y position
+//     bvx[i]      — velocity x (pixels/frame)
+//     bcharge[i]  — 0 (normal), 1 (partial), 2 (full charge)
+//
+// Same idiom used across Xenoscape (and vipersql) — wherever
+// you see a group of `List[Integer]` fields indexed by a
+// pool handle, this is the pattern.
+//
+// SUB-PIXEL / FIXED-POINT
+// -----------------------
+// Speeds in this codebase are stored ×100 (e.g.
+// `BULLET_SPEED = 750` means 7.5 pixels/frame).  We divide
+// by 100 at the point we actually move the bullet.  That
+// gives us sub-pixel precision without introducing floats in
+// the hot path — gameplay code stays in integers.
+//
+// RAYCAST TO PREVENT TUNNELLING
+// -----------------------------
+// A bullet can easily move more than one tile per frame at
+// full charge.  A naive "sample position, check tile under it"
+// test would *skip through walls* at high speed.  We call
+// `Raycast.HasLineOfSight(tilemap, oldX, oldY, nx, oldY)` —
+// which walks the tilemap from the old position to the new
+// one and returns false if any tile along the way is solid.
+// This is the bread-and-butter continuous-collision-detection
+// solution for any fast-moving projectile in a tile world.
+//
+// WHERE THIS FITS
+// ---------------
+//     player.zia    ──►  calls `pool.fire(x, y, dir)` on SHOOT
+//     game.zia      ──►  calls `pool.updateAll` / `drawAll`
+//     level.zia     ──►  supplies `tilemap` and `isSolid`
+//     particles.zia ──►  trail emission
+//
+// =============================================================================
+
 module projectile;
 
 bind Viper.Graphics;
 bind Viper.Game;
+bind Viper.Game.Raycast as Raycast;
 bind "./config";
 bind "./level";
 bind "./sprites";
 bind "./particles";
 
+/// @brief Fixed-capacity pool of player bullets.
+///
+/// Design notes are in the file header; in short: the `ObjectPool`
+/// owns slot lifetime and the four parallel arrays own per-slot
+/// data.
 class ProjectilePool {
     hide ObjectPool pool;
     hide List[Integer] bx;       // position x (pixels)
     hide List[Integer] by;       // position y (pixels)
     hide List[Integer] bvx;      // velocity x (pixels/frame)
-    hide List[Integer] bcharge;  // 0=normal, 1=partial charge, 2=full charge
-    hide Integer trailTimer;    // ms accumulator for trail emission
+    hide List[Integer] bcharge;  // 0 / 1 / 2 = charge level
 
+    /// Timer for trail-particle emission.  Using a runtime
+    /// `Timer` instead of a frame-counter makes the trail
+    /// look identical whether the game runs at 60 or 120 FPS.
+    hide Timer trailClock;
+
+    /// @brief Pre-allocate every slot and fill each parallel
+    ///        array with a zero placeholder.  Critical: we call
+    ///        `.add(0)` `MAX_BULLETS` times so the indices the
+    ///        pool hands out are always valid without an
+    ///        additional "extend" step.
     expose func init() {
         pool = ObjectPool.New(MAX_BULLETS);
         bx = [];
         by = [];
         bvx = [];
         bcharge = [];
-        trailTimer = 0;
+        trailClock = Timer.New();
+        trailClock.StartRepeatingMs(48);
 
-        // Pre-fill parallel arrays to pool capacity
         for i in 0..MAX_BULLETS {
             bx.add(0); by.add(0); bvx.add(0); bcharge.add(0);
         }
     }
 
+    /// @brief Kill every active bullet (e.g. on level transition).
+    ///        Restarting the trail clock keeps the first bullet
+    ///        in the next level from emitting a stale trail.
     expose func reset() {
         pool.Clear();
-        trailTimer = 0;
+        trailClock.Reset();
+        trailClock.StartRepeatingMs(48);
     }
 
+    /// @brief Spawn a normal bullet.  No-op when the pool is
+    ///        full — the game deliberately caps bullet density,
+    ///        the player can't spam their way through a wall
+    ///        by exhausting the pool.
     expose func fire(wx: Integer, wy: Integer, dir: Integer) {
         var handle = pool.Acquire();
         if handle < 0 { return; }
 
-        var speed = BULLET_SPEED / 100;  // Convert x100 to pixels/frame
+        // Convert the ×100 fixed-point speed constant to whole
+        // pixels/frame.
+        var speed = BULLET_SPEED / 100;
         bx.set(handle, wx);
         by.set(handle, wy);
         bvx.set(handle, dir * speed);
         bcharge.set(handle, 0);
     }
 
+    /// @brief Advance every live bullet by `dt` time units.
+    ///
+    /// For each active bullet:
+    ///   1. Move it by `bvx * dt / DT_BASE` — `DT_BASE`-scaled
+    ///      time lets the game run at any FPS and still feel
+    ///      identical.
+    ///   2. Emit a trail particle if the timer ticked.
+    ///   3. Raycast from the old position to the new one — if
+    ///      any tile along the way is solid, kill the bullet.
+    ///      This is the critical path that prevents fast
+    ///      bullets from tunnelling through thin walls.
+    ///   4. Additionally kill bullets that wander off the left
+    ///      or right edge of the map (20-pixel margin).
     expose func updateAll(level: Level, dt: Integer, particles: ParticleSystem) {
-        // Accumulate trail timer
-        trailTimer = trailTimer + dt;
-        var emitTrail = false;
-        if trailTimer >= 48 {
-            trailTimer = trailTimer - 48;
-            emitTrail = true;
-        }
+        var emitTrail = trailClock.UpdateMs(dt);
 
         var i = pool.FirstActive();
         while i >= 0 {
+            // Capture `next` before mutating so Release(i) is
+            // safe during iteration.
             var next = pool.NextActive(i);
-            var nx = bx.get(i) + bvx.get(i) * dt / DT_BASE;
+            var oldX = bx.get(i);
+            var oldY = by.get(i);
+            var nx = oldX + bvx.get(i) * dt / DT_BASE;
             bx.set(i, nx);
 
-            // Emit trail particle
             if emitTrail {
-                particles.burstTrail(nx, by.get(i), COL_BULLET);
+                particles.burstTrail(nx, oldY, COL_BULLET);
             }
 
-            // Deactivate if off level or hitting solid
+            // Kill conditions (any triggers a Release).
             var tileX = nx / TILE_SIZE;
-            var tileY = by.get(i) / TILE_SIZE;
-            if level.isSolid(tileX, tileY) {
+            var tileY = oldY / TILE_SIZE;
+            if not Raycast.HasLineOfSight(level.tilemap, oldX, oldY, nx, oldY) {
+                // Raycast found a solid tile between old→new.
+                pool.Release(i);
+            } else if level.isSolid(tileX, tileY) {
+                // Defensive: if the raycast says clear but the
+                // endpoint tile is solid (can happen on tile
+                // boundaries), kill anyway.
                 pool.Release(i);
             } else if nx < -20 {
-                pool.Release(i);
+                pool.Release(i);   // off the left edge
             } else if nx > level.levelWidth * TILE_SIZE + 20 {
-                pool.Release(i);
+                pool.Release(i);   // off the right edge
             }
 
             i = next;
         }
     }
 
+    /// @brief Draw every live bullet, culling off-screen ones
+    ///        via a cheap two-sided x-range check.  Charged
+    ///        bullets render an extra glow on top.
     expose func drawAll(canvas: Canvas, camX: Integer, camY: Integer, sprites: SpriteFactory) {
         var i = pool.FirstActive();
         while i >= 0 {
@@ -93,7 +203,6 @@ class ProjectilePool {
                     var dir = 1;
                     if bvx.get(i) < 0 { dir = -1; }
                     canvas.BlitAlpha(sx, sy, sprites.getBullet(dir));
-                    // Draw charge effect if charged
                     var cl = bcharge.get(i);
                     if cl > 0 {
                         drawCharged(canvas, i, sx, sy);
@@ -104,21 +213,42 @@ class ProjectilePool {
         }
     }
 
-    // Get bullet position for hit checking
-    expose func getBulletX(i: Integer) -> Integer { return bx.get(i); }
-    expose func getBulletY(i: Integer) -> Integer { return by.get(i); }
-    expose func isActive(i: Integer) -> Integer { if pool.IsActive(i) { return 1; } return 0; }
-    expose func deactivate(i: Integer) { pool.Release(i); }
-    expose func getCount() -> Integer { return MAX_BULLETS; }
+    // -------- Simple accessors used by the hit-test code in game.zia --------
+    //
+    // These are thin wrappers so the game's collision loop
+    // doesn't need to know about the parallel-list layout.
 
-    // =========================================================================
-    // Charge Shot — larger, more powerful bullet
-    // =========================================================================
+    /// @brief x position of bullet `i` (pool handle).
+    expose func getBulletX(i: Integer) -> Integer { return bx.get(i); }
+    /// @brief y position.
+    expose func getBulletY(i: Integer) -> Integer { return by.get(i); }
+    /// @brief "Is slot `i` currently in use?" (1/0 integer — the
+    ///        call sites predate `Boolean` support in some
+    ///        paths).
+    expose func isActive(i: Integer) -> Integer { if pool.IsActive(i) { return 1; } return 0; }
+    /// @brief Force-release a slot (called on bullet-hit).
+    expose func deactivate(i: Integer) { pool.Release(i); }
+    /// @brief Capacity of the pool.  Callers iterate 0..getCount()
+    ///        when they want a full scan.
+    expose func getCount() -> Integer { return MAX_BULLETS; }
+    /// @brief How many bullets are currently live.
+    expose func activeCount() -> Integer { return pool.get_ActiveCount(); }
+
+    //=========================================================================
+    // CHARGE SHOT (unlock-gated, see abilities.zia)
+    //=========================================================================
+
+    /// @brief Spawn a charged bullet.  Charge levels:
+    ///          0 = normal (use `fire` instead)
+    ///          1 = partial — 1.5× speed, small glow
+    ///          2 = full    — 2.0× speed, bright glow + ring
+    ///
+    /// The game's damage calc branches on `getChargeLevel`, so
+    /// this function doesn't need to know about damage itself.
     expose func fireCharged(wx: Integer, wy: Integer, dir: Integer, chargeLevel: Integer) {
         var handle = pool.Acquire();
         if handle < 0 { return; }
 
-        // Charge shot: bigger, faster, more damage
         var speed = BULLET_SPEED / 100;
         if chargeLevel == 1 { speed = speed * 3 / 2; }
         if chargeLevel == 2 { speed = speed * 2; }
@@ -129,24 +259,27 @@ class ProjectilePool {
         bcharge.set(handle, chargeLevel);
     }
 
-    // Get charge level of a bullet (for damage calculation)
+    /// @brief Read the charge level of a live bullet.  Used by
+    ///        the damage calculation on hit.
     expose func getChargeLevel(i: Integer) -> Integer {
         return bcharge.get(i);
     }
 
-    // Draw charged bullets with visual distinction
+    /// @brief Draw the extra visual layer for a charged bullet
+    ///        (cyan glow for partial, gold glow + ring for
+    ///        full).  Called from `drawAll` when `cl > 0`.
     expose func drawCharged(canvas: Canvas, i: Integer, sx: Integer, sy: Integer) {
         var level = bcharge.get(i);
-        if level == 0 { return; } // Normal bullet
+        if level == 0 { return; }
         if level == 1 {
-            // Partial charge: larger cyan glow
+            // Partial: soft cyan outer + bright inner dot.
             canvas.DiscAlpha(sx + BULLET_W / 2, sy + BULLET_H / 2, 8,
                             Color.RGB(68, 238, 255), 180);
             canvas.Disc(sx + BULLET_W / 2, sy + BULLET_H / 2, 4,
                        Color.RGB(200, 255, 255));
         }
         if level == 2 {
-            // Full charge: large bright projectile with ring
+            // Full: larger gold halo + bright core + outline ring.
             canvas.DiscAlpha(sx + BULLET_W / 2, sy + BULLET_H / 2, 14,
                             Color.RGB(255, 200, 50), 120);
             canvas.DiscAlpha(sx + BULLET_W / 2, sy + BULLET_H / 2, 8,
@@ -156,12 +289,17 @@ class ProjectilePool {
         }
     }
 
-    // =========================================================================
-    // Reflected bullet (from mirror slime)
-    // =========================================================================
+    //=========================================================================
+    // ENEMY INTERACTIONS
+    //=========================================================================
+
+    /// @brief Reverse a bullet's direction.  Called by the
+    ///        "mirror slime" enemy type on hit — turns player
+    ///        projectiles back at them.  Negating the velocity
+    ///        is the whole trick; no new slot allocated.
     expose func reflectBullet(i: Integer) {
         if pool.IsActive(i) {
-            bvx.set(i, 0 - bvx.get(i)); // Reverse direction
+            bvx.set(i, 0 - bvx.get(i));
         }
     }
 }

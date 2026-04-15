@@ -1,10 +1,110 @@
-// parser.zia — SQL Parser
-// Part of ViperSQL
+// =============================================================================
+// parser.zia — Recursive-descent SQL parser
+// Part of ViperSQL  (package: parser)
+// =============================================================================
 //
-// Recursive descent parser that converts a stream of SQL tokens (from the
-// Lexer) into typed AST nodes (SelectStmt, InsertStmt, CreateTableStmt, etc.).
-// Supports the full ViperSQL SQL dialect including DDL, DML, transactions,
-// CTEs, window functions, set operations, and user management commands.
+// PURPOSE
+// -------
+// This is the largest file in the parser layer.  It takes the token
+// stream produced by `./lexer.zia` and builds the statement AST
+// classes declared in `./stmt.zia` and `./expr.zia`.  The parser is
+// ordinary recursive descent: one method per grammar production,
+// looking one token ahead (`currentToken`) and calling `advance()`
+// when it consumes.
+//
+// The public entry points are the `parse*Stmt` methods for each SQL
+// statement kind.  They are orchestrated by `engine/executor.zia`,
+// which peeks at the first token of the buffer and calls the right
+// one.  The parser itself does no dispatch across statement kinds —
+// that is the executor's job.
+//
+// WHERE THIS FITS
+// ---------------
+//     lexer.zia
+//         │  Token stream
+//         ▼
+//     parser.zia   (YOU ARE HERE)
+//         │  Statement AST (stmt.zia + expr.zia)
+//         ▼
+//     engine/executor.zia
+//
+// GRAMMAR SHAPE
+// -------------
+// Expressions use a Pratt-like cascade of precedence-climbing helpers:
+//
+//     parseExpr  ─►  parseOrExpr  ─►  parseAndExpr  ─►  parseNotExpr
+//                 ─►  parseCompExpr  ─►  parseAddExpr  ─►  parseMulExpr
+//                 ─►  parseUnaryExpr  ─►  parsePrimaryExpr
+//
+// Each level consumes lower-precedence operators first and then
+// folds higher-precedence ones into the left-associative tree.  This
+// matches SQL's operator precedence (OR < AND < NOT < comparison <
+// additive < multiplicative < unary < primary).
+//
+// Statements each get a dedicated method:
+//     parseCreateTableStmt, parseInsertStmt, parseSelectStmt,
+//     parseUpdateStmt, parseDeleteStmt, parseMergeStmt,
+//     parseCreateIndexStmt, parseDropIndexStmt.
+// Each returns the corresponding class instance from `./stmt.zia`.
+//
+// KEY DESIGN CHOICES
+// ------------------
+//   1. Recursive descent, not a table-driven parser.  Easier to
+//      extend ad-hoc; matches how SQLite, PostgreSQL's gram.y, and
+//      most hand-written SQL parsers are structured.  Trade-off:
+//      left-recursion (a common in formal BNF) has to be encoded
+//      as iteration, which this file does via "while token is
+//      operator { fold into left }" loops.
+//
+//   2. Errors are in-band, not exceptions.  The parser flips
+//      `hasError = true` and leaves `error` set to a human-readable
+//      message; the caller checks before consuming the result.
+//      Individual parse methods return a "reasonable null" (often
+//      an empty AST node or `exprNull()`) so they can still exit
+//      cleanly without leaking through half-parsed state.
+//
+//   3. Subqueries stored as text.  When the parser encounters a
+//      `(SELECT ...)` inside an expression or FROM clause, it
+//      captures the raw SQL text and hands it to the executor to
+//      re-parse on demand.  That cuts a cycle between the parser
+//      and the AST modules.
+//
+//   4. `setError` stops the parser softly.  No throw — we rely on
+//      the outer loop checking `hasError`.  This is consistent with
+//      the "errors are values" philosophy used across the engine
+//      (`QueryResult.setError`, `SequenceManager.addSequence`'s
+//      empty-string-on-success return).
+//
+//   5. Keyword-as-identifier quirks.  Some tokens (`LEFT`, `RIGHT`,
+//      `CURRENT`, `DATE`, `TIMESTAMP`, `JSON`, `REPLACE`) double as
+//      function names.  `parsePrimaryExpr` recognises this and flips
+//      them into EXPR_FUNCTION when followed by `(`.  Without this
+//      special-case, `SELECT LEFT(name, 3)` would fail because
+//      `LEFT` is a reserved token for `LEFT JOIN`.
+//
+// HOW TO READ THIS FILE
+// ---------------------
+//   1. Parser class fields and the low-level token helpers
+//      (`advance`, `matchToken`, `expect`, `setError`, `currentKind`,
+//      `currentText`).
+//   2. Expression parsing (lowest primitives to highest composition):
+//      parsePrimaryExpr, parseUnaryExpr, parseMulExpr, parseAddExpr,
+//      parseQuantifiedSubquery, parseCompExpr (+ parseInList),
+//      parseNotExpr, parseAndExpr, parseOrExpr, parseExpr,
+//      parseWindowOver + parseFrameBound, parseCaseExpr.
+//   3. Column / constraint parsing: parseColumnDef,
+//      parseParenExprSQL, parseForeignKeyActions, parseFkAction.
+//   4. Statement parsers: parseCreateTableStmt +
+//      parsePartitionBounds + parsePartitionLiteral,
+//      parseReturningList, parseInsertStmt, parseSelectStmt,
+//      parseUpdateStmt, parseDeleteStmt, parseMergeStmt,
+//      parseCreateIndexStmt, parseDropIndexStmt.
+//
+// NOTE: `parseSelectStmt` alone is ~1,000 lines — it handles joins,
+// set operations, window clauses, grouping sets, LATERAL, DISTINCT
+// ON, LIMIT/OFFSET/FETCH, and TABLESAMPLE.  Read it in sections.
+//
+// =============================================================================
 
 module parser;
 
@@ -27,6 +127,13 @@ class Parser {
     expose String error;
     expose Boolean hasError;
 
+    /// @brief Wire up a parser over a SQL source string.
+    ///
+    /// Creates a fresh `Lexer` (see `./lexer.zia`) and pre-fetches
+    /// the first token.  All subsequent parsing methods assume
+    /// `currentToken` is valid — we maintain that invariant by
+    /// always calling `advance()` inside consumers, never peeking
+    /// without a corresponding consume.
     expose func init(sql: String) {
         lexer = new Lexer(sql);
         currentToken = lexer.nextToken();
@@ -34,6 +141,13 @@ class Parser {
         hasError = false;
     }
 
+    /// @brief Advance the cursor to the next token.
+    ///
+    /// Also propagates lexer errors.  `TK_ERROR` tokens carry a
+    /// descriptive message in `text`, produced by the lexer (e.g.
+    /// "Unterminated string literal") — we copy it into the parser's
+    /// `error` so the caller gets one coherent "parse failed"
+    /// message instead of two layers of diagnostics.
     expose func advance() {
         currentToken = lexer.nextToken();
         // BUG-ADV-003: Propagate lexer errors (e.g. unterminated strings)
@@ -43,6 +157,12 @@ class Parser {
         }
     }
 
+    /// @brief Non-fatal consume: if the current token matches
+    ///        `kind`, advance past it and return true; otherwise
+    ///        leave the cursor alone and return false.
+    ///
+    /// Used for optional grammar pieces ("consume a semicolon if
+    /// present") where a missing token is fine.
     expose func matchToken(kind: Integer) -> Boolean {
         if currentToken.kind == kind {
             advance();
@@ -51,6 +171,15 @@ class Parser {
         return false;
     }
 
+    /// @brief Fatal consume: the current token **must** be `kind`.
+    ///        If it is, advance and return true.  Otherwise set
+    ///        `hasError` with a generic diagnostic and return false.
+    ///
+    /// Used wherever the grammar has no alternative — e.g. after
+    /// seeing `FROM` in a SELECT, we `expect(TK_IDENTIFIER)` for
+    /// the table name.  The diagnostic is deliberately low-quality
+    /// (just token kinds as integers) because richer messages come
+    /// from specialised paths that know what they were looking for.
     expose func expect(kind: Integer) -> Boolean {
         if currentToken.kind == kind {
             advance();
@@ -61,15 +190,23 @@ class Parser {
         return false;
     }
 
+    /// @brief Record a user-friendly parse error.  Does not throw
+    ///        — the parser continues to make forward progress but
+    ///        most call sites check `hasError` and bail.
     expose func setError(msg: String) {
         hasError = true;
         error = msg;
     }
 
+    /// @brief Current token kind.  Shortcut for the common case of
+    ///        peeking a kind without caring about text.
     expose func currentKind() -> Integer {
         return currentToken.kind;
     }
 
+    /// @brief Current token's source text.  Used by identifier /
+    ///        keyword paths that need the actual string (e.g. a
+    ///        table or column name).
     expose func currentText() -> String {
         return currentToken.text;
     }
@@ -78,6 +215,21 @@ class Parser {
     // EXPRESSION PARSING
     //=========================================================================
 
+    /// @brief Lowest-precedence primary expression parser.
+    ///
+    /// Handles every "leaf" form that can appear in a SQL
+    /// expression: literals (INTEGER, NUMBER, STRING, NULL, TRUE,
+    /// FALSE), CASE, CAST, ARRAY[...] constructor, the keyword-as-
+    /// function special cases (LEFT, RIGHT, CURRENT_*, DATE,
+    /// TIMESTAMP, JSON, REPLACE), `*` wildcards inside COUNT(*),
+    /// parenthesised sub-expressions and scalar subqueries, EXISTS,
+    /// identifier/column references and function calls, NOT
+    /// (unary fallback), and `-expr`/`+expr` sign prefixes.
+    ///
+    /// Almost all expression parsing funnels through here at the
+    /// bottom of the precedence ladder.  The tree-building methods
+    /// (parseUnaryExpr / parseMulExpr / parseAddExpr / ...) wrap
+    /// calls to this and fold in operators of their level.
     expose func parsePrimaryExpr() -> Expr {
         var kind = currentToken.kind;
 
@@ -529,6 +681,9 @@ class Parser {
         return exprNull();
     }
 
+    /// @brief Unary operator layer: `-`, `+`, `NOT`, or fall through
+    ///        to `parsePrimaryExpr`.  The second-highest precedence
+    ///        in the expression ladder (primary is higher).
     expose func parseUnaryExpr() -> Expr {
         if currentToken.kind == TK_MINUS {
             advance();
@@ -550,6 +705,9 @@ class Parser {
         return result;
     }
 
+    /// @brief Multiplicative level: `*`, `/`, `%`.  Left-associative
+    ///        — we loop folding the right-hand `parseUnaryExpr`
+    ///        into the growing left tree.
     expose func parseMulExpr() -> Expr {
         var left = parseUnaryExpr();
         while currentToken.kind == TK_STAR || currentToken.kind == TK_SLASH || currentToken.kind == TK_PERCENT {
@@ -567,6 +725,9 @@ class Parser {
         return left;
     }
 
+    /// @brief Additive level: `+`, `-`, and the SQL `||` (CONCAT).
+    ///        Lower precedence than multiplicative; folds
+    ///        `parseMulExpr` right-hand sides into a left tree.
     expose func parseAddExpr() -> Expr {
         var left = parseMulExpr();
         while currentToken.kind == TK_PLUS || currentToken.kind == TK_MINUS || currentToken.kind == TK_CONCAT {
@@ -585,6 +746,12 @@ class Parser {
     }
 
     // Phase 71: Parse ANY/ALL/SOME (subquery) after a comparison operator
+    /// @brief Handle `<expr> <cmp-op> ANY|ALL|SOME (<subquery>)`.
+    ///
+    /// Called from the comparison layer after we see a comparison
+    /// operator followed by a quantifier keyword.  Captures the
+    /// subquery as raw SQL and wraps the whole thing in an
+    /// EXPR_QUANTIFIED (see `expr.zia`).
     hide func parseQuantifiedSubquery(compOp: Integer, left: Expr) -> Expr {
         var quantifier = String.ToUpper(currentToken.text);
         if quantifier == "SOME" { quantifier = "ANY"; }
@@ -625,6 +792,9 @@ class Parser {
     }
 
     // Phase 71: Check if current token is ANY, ALL, or SOME
+    /// @brief "Is the next identifier the word ANY, ALL, or SOME?"
+    ///        Peek-only helper used by parseCompExpr to decide
+    ///        whether to route through parseQuantifiedSubquery.
     hide func isQuantifier() -> Boolean {
         if currentToken.kind == TK_ALL { return true; }
         if currentToken.kind == TK_IDENTIFIER {
@@ -634,6 +804,18 @@ class Parser {
         return false;
     }
 
+    /// @brief Comparison level — the widest case in the ladder.
+    ///
+    /// Handles `=`, `<>`, `<`, `<=`, `>`, `>=`, `LIKE`, `ILIKE`,
+    /// `NOT LIKE`, `NOT ILIKE`, `IN`/`NOT IN` (including subquery
+    /// form via `parseInList`), `BETWEEN`/`NOT BETWEEN`, `IS NULL`,
+    /// `IS NOT NULL`, `IS DISTINCT FROM`, `IS NOT DISTINCT FROM`,
+    /// `SIMILAR TO`, and the `~`/`~*` POSIX regex operators.  Also
+    /// routes to `parseQuantifiedSubquery` when a comparison is
+    /// followed by `ANY`/`ALL`/`SOME`.
+    ///
+    /// Roughly 220 lines long — read in clauses, each `if
+    /// currentToken.kind == TK_X` block is one operator.
     expose func parseCompExpr() -> Expr {
         var left = parseAddExpr();
         var kind = currentToken.kind;
@@ -856,6 +1038,12 @@ class Parser {
     }
 
     // Parse IN value list or subquery after '(' has been consumed
+    /// @brief Parse the `(...)` after IN or NOT IN.
+    ///
+    /// Two forms: `IN (subquery)` — captured as raw SQL; or
+    /// `IN (expr, expr, ...)` — built as a function-call node
+    /// named `IN` with the candidate list as its args.  The
+    /// executor recognises both shapes at evaluation time.
     hide func parseInList(left: Expr) -> Expr {
         // Check for subquery
         if currentToken.kind == TK_SELECT {
@@ -904,6 +1092,8 @@ class Parser {
         return exprBinary(OP_IN, left, listExpr);
     }
 
+    /// @brief `NOT <expr>` wrapper — the ladder's "logical NOT"
+    ///        level, between comparison and AND.
     expose func parseNotExpr() -> Expr {
         if currentToken.kind == TK_NOT {
             advance();
@@ -913,6 +1103,8 @@ class Parser {
         return parseCompExpr();
     }
 
+    /// @brief `AND` level — left-associative.  Higher precedence
+    ///        than OR.
     expose func parseAndExpr() -> Expr {
         var left = parseNotExpr();
         while currentToken.kind == TK_AND {
@@ -923,6 +1115,8 @@ class Parser {
         return left;
     }
 
+    /// @brief `OR` level — the lowest-precedence logical op.  This
+    ///        is what `parseExpr` falls into.
     expose func parseOrExpr() -> Expr {
         var left = parseAndExpr();
         while currentToken.kind == TK_OR {
@@ -933,12 +1127,25 @@ class Parser {
         return left;
     }
 
+    /// @brief Public entry point for expression parsing.  Enters at
+    ///        the lowest-precedence `OR` level so any legal SQL
+    ///        expression is accepted.
     expose func parseExpr() -> Expr {
         return parseOrExpr();
     }
 
     // Parse OVER (...) clause for window functions
     // Converts a function expression into a window expression
+    /// @brief Parse a window function's `OVER (...)` clause.
+    ///
+    /// The caller has already parsed the function name and its
+    /// arguments into `funcExpr`; we consume the OVER keyword and
+    /// the following parenthesised spec: optional PARTITION BY,
+    /// optional ORDER BY (with per-key ASC/DESC and NULLS), and
+    /// optional frame (ROWS/RANGE).  Also supports the named form
+    /// `OVER w` where `w` is declared in a WINDOW clause.  Handles
+    /// Phase 72's EXCLUDE options.  Flips `funcExpr` to kind
+    /// EXPR_WINDOW before returning.
     hide func parseWindowOver(funcExpr: Expr) -> Expr {
         // Skip OVER
         advance();
@@ -1088,6 +1295,13 @@ class Parser {
 
     // Parse a single frame bound: UNBOUNDED PRECEDING, N PRECEDING, CURRENT ROW,
     // N FOLLOWING, UNBOUNDED FOLLOWING
+    /// @brief Parse one window-frame bound.
+    ///
+    /// A frame has a start and an end; this helper handles either
+    /// via the `isStart` flag, populating
+    /// `frameStartKind`/`frameStartN` or `frameEndKind`/`frameEndN`
+    /// on `winExpr`.  Recognises UNBOUNDED PRECEDING/FOLLOWING,
+    /// CURRENT ROW, and the `N PRECEDING` / `N FOLLOWING` forms.
     hide func parseFrameBound(winExpr: Expr, isStart: Boolean) {
         if currentToken.kind == TK_UNBOUNDED {
             advance();
@@ -1129,6 +1343,13 @@ class Parser {
     }
 
     // Parse CASE WHEN ... THEN ... ELSE ... END expression
+    /// @brief Parse `CASE WHEN … THEN … [WHEN …]* [ELSE …] END`.
+    ///
+    /// Called after the caller has already consumed `CASE`.  Each
+    /// WHEN/THEN pair is appended via `addCaseWhen`; an optional
+    /// ELSE sets `caseElse`.  The simple `CASE <expr> WHEN <val>
+    /// THEN …` form is expanded at evaluation time into the
+    /// searched form — we produce the same AST for both.
     expose func parseCaseExpr() -> Expr {
         var expr = new Expr();
         expr.init();
@@ -1171,6 +1392,16 @@ class Parser {
     // COLUMN DEFINITION PARSING
     //=========================================================================
 
+    /// @brief Parse one column definition inside a CREATE TABLE
+    ///        column list.
+    ///
+    /// The largest non-statement parser in the file (~270 lines).
+    /// Handles: name + type, PRIMARY KEY, AUTOINCREMENT, NOT NULL,
+    /// UNIQUE, DEFAULT, CHECK, REFERENCES (with ON DELETE/UPDATE
+    /// actions), GENERATED ALWAYS AS ... STORED, named constraints
+    /// (CONSTRAINT <name>), and array-typed columns
+    /// (`INTEGER[]`).  Returns a populated `Column` from
+    /// `engine/schema.zia`.
     expose func parseColumnDef() -> Column {
         var col = new Column();
         col.init();
@@ -1443,6 +1674,12 @@ class Parser {
 
     // Phase 68: Parse parenthesized expression as raw SQL text
     // Expects current token is '(' — consumes until matching ')'
+    /// @brief Capture a `(...)` block as raw SQL text.
+    ///
+    /// Used for CHECK constraint bodies and DEFAULT sub-expressions
+    /// where the parser wants to defer parsing until evaluation (or
+    /// re-parse later).  Tracks paren nesting to handle
+    /// `CHECK ((a+b) > 0)` correctly.
     hide func parseParenExprSQL() -> String {
         if currentToken.kind != TK_LPAREN {
             setError("Expected '(' for expression");
@@ -1477,6 +1714,10 @@ class Parser {
     }
 
     // Parse optional ON DELETE / ON UPDATE actions for foreign keys
+    /// @brief Parse `ON DELETE <action>` and `ON UPDATE <action>`
+    ///        clauses on a foreign-key column, in either order.
+    ///        Writes the resulting `FK_*` codes into
+    ///        `col.onDeleteAction` / `col.onUpdateAction`.
     hide func parseForeignKeyActions(col: Column) {
         // Look for ON DELETE or ON UPDATE (can have both in any order)
         var maxActions = 2;
@@ -1497,6 +1738,9 @@ class Parser {
     }
 
     // Parse a single FK action keyword: CASCADE, RESTRICT, SET NULL, NO ACTION
+    /// @brief Parse one FK action keyword — CASCADE, SET NULL,
+    ///        RESTRICT, or NO ACTION — and map to the `FK_*` code
+    ///        defined in `engine/schema.zia`.
     hide func parseFkAction() -> Integer {
         if currentToken.kind == TK_CASCADE {
             advance();
@@ -1530,6 +1774,13 @@ class Parser {
     // STATEMENT PARSING
     //=========================================================================
 
+    /// @brief Parse a CREATE TABLE statement.
+    ///
+    /// Entry point used by the executor's DDL dispatcher.  Supports:
+    /// TEMPORARY / IF NOT EXISTS / the column list (via
+    /// parseColumnDef) / composite PRIMARY KEY / table-level CHECK
+    /// constraints / INHERITS / PARTITION BY / PARTITION OF.
+    /// Returns a populated `CreateTableStmt` (`./stmt.zia`).
     expose func parseCreateTableStmt() -> CreateTableStmt {
         var stmt = new CreateTableStmt();
         stmt.init();
@@ -1775,6 +2026,12 @@ class Parser {
 
     // Parse FOR VALUES FROM (x) TO (y), FOR VALUES IN (a, b, c), or
     // FOR VALUES WITH (MODULUS n, REMAINDER r)
+    /// @brief Parse the partition-bound clause on a child partition
+    ///        table creation (`CREATE TABLE child PARTITION OF
+    ///        parent FOR VALUES …`).
+    ///
+    /// Populates `partRangeFrom/To`, `partListValues`, or
+    /// `partHashModulus/Remainder` depending on the partition type.
     hide func parsePartitionBounds(stmt: CreateTableStmt) {
         if currentToken.kind != TK_FOR {
             setError("Expected FOR VALUES after PARTITION OF parent");
@@ -1875,6 +2132,12 @@ class Parser {
         setError("Expected FROM, IN, or WITH after FOR VALUES");
     }
 
+    /// @brief Parse a single literal inside a partition-bound
+    ///        clause, preserving its source text.
+    ///
+    /// Literals are kept as strings (rather than parsed values)
+    /// because partition bounds compare with the key column's own
+    /// type — the engine re-parses at route time.
     hide func parsePartitionLiteral() -> String {
         var val = "";
         if currentToken.kind == TK_INTEGER || currentToken.kind == TK_NUMBER {
@@ -1897,6 +2160,11 @@ class Parser {
     }
 
     // Parse RETURNING expr [AS alias], expr [AS alias], ...
+    /// @brief Parse a `RETURNING <expr> [AS alias], ...` clause.
+    ///
+    /// Shared between INSERT / UPDATE / DELETE because all three
+    /// can have one.  Appends into the parallel `exprs` / `aliases`
+    /// lists passed in by the caller.
     hide func parseReturningList(exprs: List[Expr], aliases: List[String]) {
         while hasError == false {
             if currentToken.kind == TK_STAR {
@@ -1931,6 +2199,11 @@ class Parser {
         }
     }
 
+    /// @brief Parse an INSERT statement.
+    ///
+    /// Handles: the optional column list, VALUES rows,
+    /// INSERT…SELECT (SELECT captured as raw SQL), DEFAULT VALUES,
+    /// RETURNING, and ON CONFLICT (DO NOTHING or DO UPDATE SET …).
     expose func parseInsertStmt() -> InsertStmt {
         var stmt = new InsertStmt();
         stmt.init();
@@ -2126,6 +2399,19 @@ class Parser {
         return stmt;
     }
 
+    /// @brief Parse a SELECT statement.
+    ///
+    /// The longest method in the file (~1,000 lines).  Handles
+    /// *every* SELECT feature ViperSQL supports.  Major blocks, in
+    /// order: DISTINCT / DISTINCT ON / ALL; the projection list
+    /// (with aliases and the `*` wildcard); FROM with joins
+    /// (INNER / LEFT / RIGHT / FULL / CROSS / NATURAL / USING /
+    /// LATERAL); derived-table subqueries in FROM; table functions;
+    /// ONLY-parent inheritance scope; WHERE; GROUP BY plus
+    /// GROUPING SETS / ROLLUP / CUBE; HAVING; WINDOW definitions;
+    /// ORDER BY with NULLS FIRST/LAST; LIMIT (including PERCENT) /
+    /// OFFSET / FETCH; TABLESAMPLE; FOR SHARE / FOR UPDATE row
+    /// locking with NOWAIT / SKIP LOCKED; and SELECT INTO.
     expose func parseSelectStmt() -> SelectStmt {
         var stmt = new SelectStmt();
         stmt.init();
@@ -3171,6 +3457,11 @@ class Parser {
         return stmt;
     }
 
+    /// @brief Parse an UPDATE statement.
+    ///
+    /// Populates `setColumns` / `setValues` from the `SET …` clause,
+    /// optional `FROM` (PG extension for cross-table updates),
+    /// WHERE, and RETURNING.
     expose func parseUpdateStmt() -> UpdateStmt {
         var stmt = new UpdateStmt();
         stmt.init();
@@ -3250,6 +3541,10 @@ class Parser {
         return stmt;
     }
 
+    /// @brief Parse a DELETE statement.
+    ///
+    /// Supports optional `USING` (PG extension symmetric to
+    /// UPDATE…FROM), WHERE, and RETURNING.
     expose func parseDeleteStmt() -> DeleteStmt {
         var stmt = new DeleteStmt();
         stmt.init();
@@ -3306,6 +3601,12 @@ class Parser {
     }
 
     // Phase 73: MERGE INTO target USING source ON condition WHEN ...
+    /// @brief Parse a MERGE INTO statement (Phase 73).
+    ///
+    /// `MERGE INTO target USING source ON cond WHEN MATCHED THEN
+    /// UPDATE|DELETE WHEN NOT MATCHED THEN INSERT`.  Supports
+    /// exactly one arm of each kind; the full SQL-2003 grammar with
+    /// multiple conditional arms is deferred.
     expose func parseMergeStmt() -> MergeStmt {
         var stmt = new MergeStmt();
         stmt.init();
@@ -3474,6 +3775,12 @@ class Parser {
         return stmt;
     }
 
+    /// @brief Parse a CREATE INDEX statement.
+    ///
+    /// Supports UNIQUE, IF NOT EXISTS, multi-column composites,
+    /// expression indexes (`ON tbl (LOWER(name))`), and partial
+    /// indexes (`WHERE …`).  Produces a `CreateIndexStmt` for the
+    /// DDL executor to realise.
     expose func parseCreateIndexStmt() -> CreateIndexStmt {
         var stmt = new CreateIndexStmt();
         stmt.init();
@@ -3576,6 +3883,8 @@ class Parser {
         return stmt;
     }
 
+    /// @brief Parse `DROP INDEX <name>`.  Trivial — reads the
+    ///        name and nothing else.
     expose func parseDropIndexStmt() -> DropIndexStmt {
         var stmt = new DropIndexStmt();
         stmt.init();

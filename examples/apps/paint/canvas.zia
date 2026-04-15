@@ -2,21 +2,26 @@
 module canvas;
 
 bind Viper.Graphics;
+bind Str = Viper.String;
 
 bind "./config";
+bind "./layers";
 
 // DrawingCanvas entity - manages the pixel buffer for drawing
 class DrawingCanvas {
     expose Integer width;           // Canvas width in pixels
     expose Integer height;          // Canvas height in pixels
     expose Integer backgroundColor; // Background color (for clear/eraser)
-    hide Pixels pixels;             // Pixel buffer
+    expose Integer revision;        // Increments whenever visible pixels change
+    hide layers.LayerStack layerStack;
 
     // Default constructor (required for new Entity() pattern)
     expose func init() {
         width = 0;
         height = 0;
         backgroundColor = config.COLOR_WHITE;
+        revision = 0;
+        layerStack = new layers.LayerStack();
     }
 
     // Initialize canvas with given dimensions
@@ -24,8 +29,8 @@ class DrawingCanvas {
         width = w;
         height = h;
         backgroundColor = config.COLOR_WHITE;
-        pixels = Pixels.New(w, h);
-        clear();
+        layerStack.setup(w, h, backgroundColor);
+        markChanged();
     }
 
     // Initialize with default dimensions
@@ -35,91 +40,249 @@ class DrawingCanvas {
 
     // Clear canvas to background color (0x00RRGGBB format)
     expose func clear() {
-        pixels.DrawBox(0, 0, width, height, backgroundColor);
+        layerStack.getActivePixels().DrawBox(0, 0, width, height, backgroundColor);
+        markChanged();
     }
 
     // Get pixel color at position (returns 0x00RRGGBB format)
     expose func getPixel(x: Integer, y: Integer) -> Integer {
-        return pixels.GetRGB(x, y);
+        return layerStack.getActivePixels().GetRGB(x, y);
     }
 
     // Set pixel color at position (expects 0x00RRGGBB format)
     expose func setPixel(x: Integer, y: Integer, color: Integer) {
-        pixels.SetRGB(x, y, color);
+        layerStack.getActivePixels().SetRGB(x, y, color);
+        markChanged();
     }
 
     // Set pixel with opacity blending (expects 0x00RRGGBB format, opacity 0-100)
     expose func setPixelBlend(x: Integer, y: Integer, color: Integer, opacity: Integer) {
         if opacity >= 100 {
-            pixels.SetRGB(x, y, color);
+            layerStack.getActivePixels().SetRGB(x, y, color);
+            markChanged();
         } else if opacity > 0 {
-            var existing = pixels.GetRGB(x, y);
-            pixels.SetRGB(x, y, Color.Lerp(existing, color, opacity));
+            layerStack.getActivePixels().BlendPixel(x, y, color, opacity * 255 / 100);
+            markChanged();
         }
     }
 
     // Draw a line (Bresenham, 0x00RRGGBB color)
     expose func drawLine(x1: Integer, y1: Integer, x2: Integer, y2: Integer, color: Integer) {
-        pixels.DrawLine(x1, y1, x2, y2, color);
+        layerStack.getActivePixels().DrawLine(x1, y1, x2, y2, color);
+        markChanged();
+    }
+
+    // Draw a thick line using the runtime primitive.
+    expose func drawThickLine(x1: Integer, y1: Integer, x2: Integer, y2: Integer, thickness: Integer, color: Integer) {
+        layerStack.getActivePixels().DrawThickLine(x1, y1, x2, y2, thickness, color);
+        markChanged();
     }
 
     // Draw rectangle (filled)
     expose func drawRectFill(x: Integer, y: Integer, w: Integer, h: Integer, color: Integer) {
-        pixels.DrawBox(x, y, w, h, color);
+        layerStack.getActivePixels().DrawBox(x, y, w, h, color);
+        markChanged();
     }
 
     // Draw rectangle (outline)
     expose func drawRect(x: Integer, y: Integer, w: Integer, h: Integer, color: Integer) {
-        pixels.DrawFrame(x, y, w, h, color);
+        layerStack.getActivePixels().DrawFrame(x, y, w, h, color);
+        markChanged();
     }
 
     // Draw circle (filled)
     expose func drawDiscFill(cx: Integer, cy: Integer, radius: Integer, color: Integer) {
-        pixels.DrawDisc(cx, cy, radius, color);
+        layerStack.getActivePixels().DrawDisc(cx, cy, radius, color);
+        markChanged();
     }
 
     // Draw circle (outline)
     expose func drawCircle(cx: Integer, cy: Integer, radius: Integer, color: Integer) {
-        pixels.DrawRing(cx, cy, radius, color);
+        layerStack.getActivePixels().DrawRing(cx, cy, radius, color);
+        markChanged();
     }
 
     // Draw ellipse (filled)
     expose func drawEllipseFill(cx: Integer, cy: Integer, rx: Integer, ry: Integer, color: Integer) {
-        pixels.DrawEllipse(cx, cy, rx, ry, color);
+        layerStack.getActivePixels().DrawEllipse(cx, cy, rx, ry, color);
+        markChanged();
     }
 
     // Draw ellipse (outline)
     expose func drawEllipse(cx: Integer, cy: Integer, rx: Integer, ry: Integer, color: Integer) {
-        pixels.DrawEllipseFrame(cx, cy, rx, ry, color);
+        layerStack.getActivePixels().DrawEllipseFrame(cx, cy, rx, ry, color);
+        markChanged();
     }
 
     // Flood fill (iterative — no depth limit, works on any canvas size)
     expose func floodFill(startX: Integer, startY: Integer, newColor: Integer) {
-        pixels.FloodFill(startX, startY, newColor);
+        layerStack.getActivePixels().FloodFill(startX, startY, newColor);
+        markChanged();
     }
 
-    // Get the raw pixels object for blitting
+    // Get the composited pixels object for blitting/export.
     expose func getPixels() -> Pixels {
-        return pixels;
+        return layerStack.compositePixels();
+    }
+
+    expose func getActivePixels() -> Pixels {
+        return layerStack.getActivePixels();
     }
 
     // Restore pixels from an undo snapshot
     expose func restorePixels(snapshot: Pixels) {
-        pixels = snapshot;
+        layerStack.replaceActivePixels(snapshot);
+        width = snapshot.Width;
+        height = snapshot.Height;
+        markChanged();
     }
 
     // Save to BMP file
     expose func saveBmp(filename: String) -> Integer {
-        return pixels.SaveBmp(filename);
+        return getPixels().SaveBmp(filename);
     }
 
     // Load from BMP file
     expose func loadBmp(filename: String) -> Integer {
         var loaded = Pixels.LoadBmp(filename);
         if loaded != null {
-            pixels = loaded;
+            layerStack.resetToPixels(loaded, backgroundColor);
+            width = loaded.Width;
+            height = loaded.Height;
+            markChanged();
             return 1;
         }
         return 0;
+    }
+
+    // Save to PNG/BMP based on file extension. Defaults to PNG.
+    expose func save(filename: String) -> Integer {
+        var lower = Str.ToLower(filename);
+        if Str.EndsWith(lower, ".bmp") {
+            return getPixels().SaveBmp(filename);
+        }
+        return getPixels().SavePng(filename);
+    }
+
+    // Load any image format supported by Viper.Graphics.Pixels.Load.
+    expose func load(filename: String) -> Integer {
+        var loaded = Pixels.Load(filename);
+        if loaded != null {
+            layerStack.resetToPixels(loaded, backgroundColor);
+            width = loaded.Width;
+            height = loaded.Height;
+            markChanged();
+            return 1;
+        }
+        return 0;
+    }
+
+    expose func addLayer(name: String) {
+        layerStack.addLayer(name);
+        markChanged();
+    }
+
+    expose func layerCount() -> Integer {
+        return layerStack.layerCount();
+    }
+
+    expose func activeLayerName() -> String {
+        return layerStack.getLayerName(layerStack.activeIndex);
+    }
+
+    expose func activeLayerIndex() -> Integer {
+        return layerStack.activeIndex;
+    }
+
+    expose func selectLayer(index: Integer) {
+        layerStack.setActive(index);
+    }
+
+    expose func layerNameAt(index: Integer) -> String {
+        return layerStack.getLayerName(index);
+    }
+
+    expose func layerVisibleAt(index: Integer) -> Integer {
+        return layerStack.isVisible(index);
+    }
+
+    expose func layerOpacityAt(index: Integer) -> Integer {
+        return layerStack.getOpacity(index);
+    }
+
+    expose func toggleLayerVisible(index: Integer) {
+        if layerStack.isVisible(index) == 1 {
+            layerStack.setVisible(index, 0);
+        } else {
+            layerStack.setVisible(index, 1);
+        }
+        markChanged();
+    }
+
+    expose func setActiveLayerOpacity(opacity: Integer) {
+        layerStack.setOpacity(layerStack.activeIndex, opacity);
+        markChanged();
+    }
+
+    expose func removeActiveLayer() -> Integer {
+        var changed = layerStack.removeActiveLayer();
+        if changed == 1 {
+            markChanged();
+        }
+        return changed;
+    }
+
+    expose func duplicateActiveLayer() -> Integer {
+        var changed = layerStack.duplicateActiveLayer();
+        if changed == 1 {
+            markChanged();
+        }
+        return changed;
+    }
+
+    expose func moveActiveLayerUp() -> Integer {
+        var changed = layerStack.moveActiveUp();
+        if changed == 1 {
+            markChanged();
+        }
+        return changed;
+    }
+
+    expose func moveActiveLayerDown() -> Integer {
+        var changed = layerStack.moveActiveDown();
+        if changed == 1 {
+            markChanged();
+        }
+        return changed;
+    }
+
+    expose func applyInvert() {
+        layerStack.replaceActivePixels(layerStack.getActivePixels().Invert());
+        markChanged();
+    }
+
+    expose func applyGrayscale() {
+        layerStack.replaceActivePixels(layerStack.getActivePixels().Grayscale());
+        markChanged();
+    }
+
+    expose func applyBlur(radius: Integer) {
+        layerStack.replaceActivePixels(layerStack.getActivePixels().Blur(radius));
+        markChanged();
+    }
+
+    expose func flipActiveH() {
+        layerStack.replaceActivePixels(layerStack.getActivePixels().FlipH());
+        markChanged();
+    }
+
+    expose func flipActiveV() {
+        layerStack.replaceActivePixels(layerStack.getActivePixels().FlipV());
+        markChanged();
+    }
+
+    hide func markChanged() {
+        revision = revision + 1;
+        layerStack.markDirty();
     }
 }

@@ -1,6 +1,82 @@
-// player.zia — Player entity: physics, states, input, shooting
-// Uses Viper.Input.Action for named input bindings instead of raw key codes.
-// All positions/velocities use x100 scale for sub-pixel precision.
+// =============================================================================
+// player.zia — The player entity: state, input, jump physics, abilities
+// Part of Xenoscape  (the 2D sidescroller platformer demo)
+// =============================================================================
+//
+// TUTORIAL — A GOOD PLATFORMER CHARACTER
+// --------------------------------------
+// "Making the character feel good to control" is 80% of a
+// platformer's work.  This file is where every design rule that
+// shapes that feel gets concrete:
+//
+//   * **Named states, not booleans.**  A player can be in
+//     exactly one of: IDLE, RUN, JUMP, FALL, DJUMP, WALLSLIDE,
+//     HURT, DEAD.  We store `state` as a numeric enum and route
+//     through `Viper.Game.StateMachine` so the
+//     animation/sound/AI layers can cheaply ask "what are you
+//     doing right now?" without decoding a pile of booleans.
+//
+//   * **Viper's PlatformerController does the boring math.**
+//     Instead of implementing jump buffers, coyote time,
+//     variable jump height, apex hang, acceleration curves
+//     from scratch, we delegate to `Viper.Game.PlatformerController`.
+//     Tuning `SetJumpForce(full, cut)`, `SetJumpBuffer(ms)`,
+//     `SetCoyoteTime(ms)`, `SetApexBonus(threshold, pct)` gives
+//     us PlatformerController's behaviour — all the tricks
+//     Nintendo, Sega, and Team Cherry invented baked into one
+//     runtime class.
+//
+//     We STILL own gameplay-specific logic: wall jumps, double
+//     jump, dash, charge shot, ground pound — because the
+//     controller doesn't know about our ability system.
+//
+//   * **Named input actions, not raw keys.**  `Action.Held(
+//     ACT_LEFT)` vs `Keyboard.IsDown(KEY_A)`.  Binds are
+//     data-driven (configurable per player) and platform
+//     independent (same code reads a gamepad and a keyboard).
+//
+//   * **Iframes on damage.**  Taking damage grants ~16 frames
+//     of invulnerability.  Without this the player can be
+//     one-shot by brushing a chain of enemies.
+//
+//   * **Fixed-point velocity.**  Same ×100 system as
+//     `physics.zia` (read that first — it explains why).
+//
+// WHERE THIS FITS
+// ---------------
+//     game.zia              ──►  owns the Player, calls
+//                                `update(level, dt)` every
+//                                tick.
+//     physics.zia           ──►  moveAndCollide + ground/wall
+//                                checks.
+//     Viper.Game.PlatformerController
+//                           ──►  acceleration, gravity, jump
+//                                buffer / coyote / apex.
+//     Viper.Game.StateMachine
+//                           ──►  tracks PS_* states, gives us
+//                                "frames in this state" for free.
+//     Viper.Input.Action     ──► named input bindings.
+//     projectile.zia / abilities.zia
+//                           ──►  read the player's ability
+//                                flags at fire time.
+//
+// HOW TO READ THIS FILE
+// ---------------------
+//   1. Fields — position, velocity, state, health, powerups,
+//      ability timers.
+//   2. `init` / `reset` / `spawn` — three different entry
+//      points for the same object, used at construction, room
+//      transitions, and checkpoint respawn.
+//   3. `update` — the per-frame driver that decrements timers,
+//      runs input, physics, animation.
+//   4. `handleInput` — PlatformerController hand-off + wall /
+//      double jump overrides.
+//   5. `applyPhysics` — collision resolve + state transition.
+//   6. Ability blocks: dash, charge shot, ground pound, freeze.
+//   7. Rendering helpers: `getSpriteFrame`, `pixelX`/`pixelY`.
+//
+// =============================================================================
+
 module player;
 
 bind Viper.Graphics;
@@ -11,75 +87,113 @@ bind "./config";
 bind "./level";
 bind "./physics";
 
+/// @brief The player character.  Owns all of the character's
+///        position, physics state, health, inventory, and
+///        ability state.  Updated once per frame by `Game.tick`.
 class Player {
-    // Position/velocity (x100 scale)
+    // ---- Position + velocity (×100 centipixels) ----
     expose Integer x;
     expose Integer y;
     expose Integer vx;
     expose Integer vy;
 
-    // State
-    expose Integer state;
-    expose Integer facing;    // 1=right, -1=left
-    expose Boolean onGround;
-    expose Boolean onWall;
-    expose Integer wallDir;   // which wall (-1 or 1)
+    // ---- Logical state ----
+    expose Integer state;     // one of PS_* (see config.zia)
+    expose Integer facing;    // sprite-facing direction: 1=right, -1=left
+    expose Boolean onGround;  // set by physics after collide
+    expose Boolean onWall;    // touching a wall (for wall-slide / wall-jump)
+    expose Integer wallDir;   // -1 if wall is on left, +1 if on right
 
-    // Health
+    // ---- Health ----
     expose Integer hp;
     expose Integer maxHp;
     expose Integer lives;
-    expose Integer iframes;
+    expose Integer iframes;   // remaining invulnerability (ms)
 
-    // Jump mechanics
+    // ---- Jump mechanics ----
+    /// "Has the air-jump been spent since last ground contact?"
+    /// Reset on landing.  Wall jumps also reset it, giving a
+    /// wall-jump-then-double-jump combo.
     expose Boolean canDoubleJump;
 
-    // Platformer controller (handles acceleration, gravity, jump buffer, coyote time)
+    // The runtime's platformer controller does the heavy lifting
+    // for acceleration curves, gravity, jump buffer, coyote time,
+    // apex bonus, variable jump height.  See the design notes.
     hide PlatformerController ctrl;
 
-    // Animation
+    // Formal state machine tracking PS_* states.  Its
+    // `FramesInState` is useful for animation timing that
+    // doesn't interfere with our own `animTimer`.
+    hide StateMachine stateMachine;
+
+    // ---- Animation ----
     expose Integer animFrame;
     hide Integer animTimer;
 
-    // Power-ups
-    expose Integer speedTimer;
-    expose Integer shieldHits;
-    expose Integer rapidFireTimer;
+    // ---- Power-ups (timers count down in ms) ----
+    expose Integer speedTimer;     // temporary sprint
+    expose Integer shieldHits;     // absorb N hits then vanish
+    expose Integer rapidFireTimer; // halved shoot cooldown
 
-    // Shooting
-    expose Integer shootCooldown;
+    // ---- Shooting ----
+    expose Integer shootCooldown;  // ms until next shot allowed
 
-    // Ability states
+    // ---- Ability state ----
     expose Boolean isDashing;
     expose Integer dashTimer;
     expose Integer dashVx;
     expose Boolean isPounding;
     expose Integer poundVy;
-    expose Integer chargeLevel;
+    expose Integer chargeLevel;    // 0 / 1 / 2 charge-shot level
     expose Integer chargeTimer;
     expose Boolean isCharging;
     expose Integer dashCooldown;
-    expose Integer freezeTimer;     // Frozen by ice wraith
+    expose Integer freezeTimer;    // locked out by ice wraith
 
-    // Physics helper (shared)
+    // Physics helper — one instance shared across this
+    // player's lifetime.
     hide PhysicsHelper phys;
 
+    /// @brief First-time setup: allocate the controller with
+    ///        tuning constants, register every state with the
+    ///        state machine, then reset to start values.
+    ///
+    /// Tunables come from `config.zia` so a single source
+    /// controls the character's feel.
     expose func init() {
         phys = new PhysicsHelper();
 
-        // Configure platformer controller with game physics constants
+        // Feed tuning constants to the runtime controller.  Each
+        // Set*() is a one-shot configuration call — these are
+        // fixed for the character's lifetime.
         ctrl = PlatformerController.New();
         ctrl.SetAcceleration(PLAYER_ACCEL, PLAYER_AIR_ACCEL, PLAYER_DECEL);
-        ctrl.SetJumpForce(PLAYER_JUMP, PLAYER_JUMP / 2);
-        ctrl.SetMaxSpeed(PLAYER_SPEED, PLAYER_SPEED * 3 / 2);
+        ctrl.SetJumpForce(PLAYER_JUMP, PLAYER_JUMP / 2);  // full & cut (variable jump)
+        ctrl.SetMaxSpeed(PLAYER_SPEED, PLAYER_SPEED * 3 / 2);  // walk vs sprint
         ctrl.SetGravity(GRAVITY, MAX_FALL);
-        ctrl.SetJumpBuffer(JUMP_BUFFER_MS);
-        ctrl.SetCoyoteTime(COYOTE_MS);
-        ctrl.SetApexBonus(200, 60);
+        ctrl.SetJumpBuffer(JUMP_BUFFER_MS);                // input forgiveness
+        ctrl.SetCoyoteTime(COYOTE_MS);                     // "ran off ledge" grace
+        ctrl.SetApexBonus(200, 60);                        // apex-hang curve
+
+        // Every PS_* state registered so the state machine can
+        // report "frames in state" correctly.
+        stateMachine = StateMachine.New();
+        stateMachine.AddState(PS_IDLE);
+        stateMachine.AddState(PS_RUN);
+        stateMachine.AddState(PS_JUMP);
+        stateMachine.AddState(PS_FALL);
+        stateMachine.AddState(PS_DJUMP);
+        stateMachine.AddState(PS_WALLSLIDE);
+        stateMachine.AddState(PS_HURT);
+        stateMachine.AddState(PS_DEAD);
+        stateMachine.SetInitial(PS_IDLE);
 
         reset();
     }
 
+    /// @brief Back-to-start-of-run state.  Called after death
+    ///        and after major transitions.  Does NOT move the
+    ///        player — `spawn(x, y)` does that.
     expose func reset() {
         x = 0;
         y = 0;
@@ -111,11 +225,18 @@ class Player {
         isCharging = false;
         dashCooldown = 0;
         freezeTimer = 0;
-        // Reset controller velocity
         ctrl.VX = 0;
         ctrl.VY = 0;
+        stateMachine.SetInitial(PS_IDLE);
     }
 
+    /// @brief Place the player at a tile-grid position.
+    ///        Grants a brief iframe window so spawn-collision
+    ///        with enemies doesn't immediately hurt us.
+    ///
+    /// `sx`/`sy` are tile coords; we multiply by 100 (not
+    /// TILE_SIZE * 100) because the caller passes already-
+    /// converted pixel positions.
     expose func spawn(sx: Integer, sy: Integer) {
         x = sx * 100;
         y = sy * 100;
@@ -128,13 +249,25 @@ class Player {
         ctrl.VY = 0;
     }
 
-    // dt = delta time in milliseconds (clamped by caller)
+    /// @brief Per-frame driver.  `dt` is elapsed ms (the caller
+    ///        clamps to a sensible maximum so a lag spike can't
+    ///        tunnel us through walls).
+    ///
+    /// Order of operations matters:
+    ///   1. Decrement ms timers (iframes, powerups, cooldown).
+    ///   2. Read input → velocity.
+    ///   3. Apply velocity → collide → new position.
+    ///   4. Advance animation frame.
+    ///
+    /// `state == PS_DEAD` short-circuits — we don't want input
+    /// or physics moving a dead player; the death animation is
+    /// driven elsewhere.
     expose func update(level: Level, dt: Integer) {
         if state == PS_DEAD {
             return;
         }
 
-        // Decrement ms-based timers (coyote/jump buffer now handled by controller)
+        // Tick each ms timer down, clamped at 0.
         if iframes > 0 { iframes = iframes - dt; if iframes < 0 { iframes = 0; } }
         if speedTimer > 0 { speedTimer = speedTimer - dt; if speedTimer < 0 { speedTimer = 0; } }
         if rapidFireTimer > 0 { rapidFireTimer = rapidFireTimer - dt; if rapidFireTimer < 0 { rapidFireTimer = 0; } }
@@ -145,6 +278,22 @@ class Player {
         updateAnimation(dt);
     }
 
+    /// @brief Sample input, feed the PlatformerController, then
+    ///        apply game-specific jump overrides (wall jump,
+    ///        double jump).
+    ///
+    /// The controller handles:
+    ///   * acceleration / deceleration curves
+    ///   * gravity + apex hang
+    ///   * jump buffer (press before landing → jump on landing)
+    ///   * coyote time (press after walking off edge → still jump)
+    ///   * variable-height jump (release early → small jump)
+    ///
+    /// We layer on:
+    ///   * wall jump: push off the wall
+    ///   * double jump: second airborne impulse if unused
+    ///   * wall slide: cap fall speed while hugging a wall
+    ///   * shoot cooldown scheduling
     hide func handleInput(dt: Integer) {
         var inputLeft = Action.Held(ACT_LEFT);
         var inputRight = Action.Held(ACT_RIGHT);
@@ -152,35 +301,38 @@ class Player {
         var jumpHeld = Action.Held(ACT_JUMP);
         var sprint = (speedTimer > 0);
 
-        // Feed input to the PlatformerController — handles horizontal acceleration,
-        // gravity, apex bonus, jump buffer, coyote time, and variable jump height.
+        // Let the controller apply acceleration, gravity, etc.
         ctrl.Update(dt, inputLeft, inputRight, jumpPressed, jumpHeld, onGround, sprint);
 
-        // Read processed velocity from controller
+        // Pull processed velocity back out of the controller so
+        // the rest of this file can read/override vx/vy.
         vx = ctrl.VX;
         vy = ctrl.VY;
         if ctrl.IsMoving { facing = ctrl.Facing; }
 
-        // Check if controller signals a ground/coyote jump should happen
         if ctrl.ShouldJump {
-            // Apply jump force (controller signals when, we decide velocity)
+            // Controller says "jump now" (ground or coyote).
             vy = PLAYER_JUMP;
             ctrl.VY = vy;
             onGround = false;
             canDoubleJump = true;
             state = PS_JUMP;
         } else if jumpPressed {
-            // Controller didn't trigger a jump — try wall jump or double jump
+            // Controller declined — try our game-specific
+            // alternates.
             if onWall {
+                // Wall jump: angle-away + vertical impulse.
                 vy = WALL_JUMP_VY;
                 vx = 0 - wallDir * WALL_JUMP_VX;
-                facing = 0 - wallDir;
+                facing = 0 - wallDir;        // flip to face away
                 ctrl.VX = vx;
                 ctrl.VY = vy;
                 onWall = false;
-                canDoubleJump = true;
+                canDoubleJump = true;        // refund the air jump
                 state = PS_JUMP;
             } else if canDoubleJump and not onGround {
+                // Double jump: smaller impulse, spent once per
+                // airtime.
                 vy = PLAYER_DJUMP;
                 ctrl.VY = vy;
                 canDoubleJump = false;
@@ -188,13 +340,15 @@ class Player {
             }
         }
 
-        // Wall slide — cap fall speed when touching wall in air
+        // Wall-slide cap: falling against a wall reads as
+        // slowly-sliding rather than plummeting.
         if onWall and vy > WALL_SLIDE_SPEED {
             vy = WALL_SLIDE_SPEED;
             ctrl.VY = vy;
         }
 
-        // Shoot input via Action
+        // Schedule the next bullet.  `wantsToShoot()` is the
+        // "just fired" observer the game loop reads later.
         if Action.Pressed(ACT_SHOOT) {
             if shootCooldown <= 0 {
                 shootCooldown = SHOOT_COOLDOWN_MS;
@@ -205,33 +359,45 @@ class Player {
         }
     }
 
+    /// @brief Apply vx/vy to (x, y), resolve tile collisions,
+    ///        and transition PS_* state based on outcome.
+    ///
+    /// Displacement is scaled `vx * dt / DT_BASE` so we step a
+    /// 16ms frame by one "unit" of velocity and a 32ms lag-
+    /// spike frame by two units — frame-rate independent.
+    ///
+    /// After collide:
+    ///   * Zero vx/vy on the axis that hit (and sync back to
+    ///     the controller — otherwise it thinks the character
+    ///     is still moving into the wall).
+    ///   * Compute onGround / onWall / wallDir from the result.
+    ///   * Choose PS_* state from (onGround, onWall, vy sign)
+    ///     unless we're in HURT.
+    ///   * Falling off the bottom of the level kills.
     hide func applyPhysics(level: Level, dt: Integer) {
-        // Gravity, acceleration, and wall-slide capping are handled by the
-        // PlatformerController in handleInput(). We just resolve collisions here.
-
-        // Compute displacement scaled by dt
         var dispX = vx * dt / DT_BASE;
         var dispY = vy * dt / DT_BASE;
 
-        // Move and collide — returns struct with resolved position + collision flags
         var result = phys.moveAndCollide(x, y, dispX, dispY, PLAYER_W, PLAYER_H, level);
 
         x = result.x;
         y = result.y;
-        // Zero persistent velocity on collision and sync back to controller
+        // Cancel velocity on any hit, and mirror into the
+        // controller so it doesn't re-accelerate into the wall
+        // next frame.
         if result.hitLeft { vx = 0; ctrl.VX = 0; }
         if result.hitRight { vx = 0; ctrl.VX = 0; }
         if result.hitFloor { vy = 0; ctrl.VY = 0; }
         if result.hitCeiling { vy = 0; ctrl.VY = 0; }
 
-        // Detect floor contact
         onGround = result.hitFloor;
 
+        // Landing: restore the double jump.
         if onGround {
             canDoubleJump = true;
         }
 
-        // Detect wall contact
+        // Wall detection — only meaningful while airborne.
         onWall = false;
         wallDir = 0;
         if onGround == false {
@@ -245,7 +411,7 @@ class Player {
             }
         }
 
-        // Update state based on movement
+        // Decide state.  HURT is exclusive until iframes expire.
         if state != PS_HURT and iframes <= 0 {
             if onGround {
                 if vx == 0 {
@@ -258,6 +424,9 @@ class Player {
                     state = PS_WALLSLIDE;
                 } else {
                     if vy < 0 {
+                        // Only switch to PS_JUMP if we weren't
+                        // already in PS_DJUMP (so the double-
+                        // jump animation plays out).
                         if state != PS_DJUMP {
                             state = PS_JUMP;
                         }
@@ -267,17 +436,25 @@ class Player {
                 }
             }
         }
+        stateMachine.Transition(state);
+        stateMachine.Update();
 
-        // Fall off bottom of level = death
+        // Bottomless-pit death.
         if y > levelHeight() * TILE_SIZE * 100 {
             die();
         }
     }
 
+    /// @brief Shortcut for the level's tile height.  Kept as a
+    ///        method so future multi-level rooms can override
+    ///        it without touching the fall-out check above.
     hide func levelHeight() -> Integer {
         return LEVEL_HEIGHT;
     }
 
+    /// @brief Advance the sprite-frame timer.  IDLE alternates
+    ///        2 frames; RUN cycles 4.  Other states use a
+    ///        single fixed frame and don't need timing.
     hide func updateAnimation(dt: Integer) {
         animTimer = animTimer + dt;
         if state == PS_IDLE {
@@ -295,7 +472,14 @@ class Player {
         }
     }
 
-    // Return true if player just fired (caller should spawn bullet)
+    /// @brief "Did the player fire this frame?"  Read by
+    ///        `game.tick` to decide whether to call
+    ///        `ProjectilePool.fire`.
+    ///
+    /// We flip true the *exact* frame the cooldown was just
+    /// reset to its full value — on rapid-fire the half-value
+    /// is the fire frame.  Later frames read false until the
+    /// next shot.
     expose func wantsToShoot() -> Boolean {
         if shootCooldown == SHOOT_COOLDOWN_MS {
             return true;
@@ -308,13 +492,18 @@ class Player {
         return false;
     }
 
+    /// @brief Apply damage.  Shield absorbs before HP drops;
+    ///        iframes prevent rapid chip-damage.
+    ///
+    /// Also nudges the player upward (`vy = -450`) so they
+    /// "bounce" off the hurter — classic Mario-style knockback.
     expose func takeDamage(amount: Integer) {
         if iframes > 0 { return; }
         if state == PS_DEAD { return; }
 
         if shieldHits > 0 {
             shieldHits = shieldHits - 1;
-            iframes = 480;  // 30 frames * 16ms
+            iframes = 480;  // half-second of protection after absorbing
             return;
         }
 
@@ -329,6 +518,9 @@ class Player {
         }
     }
 
+    /// @brief Enter the death state — a little upward pop plus
+    ///        zero horizontal motion.  Game.tick watches for
+    ///        PS_DEAD and handles the respawn logic.
     hide func die() {
         state = PS_DEAD;
         hp = 0;
@@ -338,6 +530,9 @@ class Player {
         ctrl.VY = vy;
     }
 
+    /// @brief Apply a pickup's effect.  See `pickups.zia` for
+    ///        the enum, but in short: health restore, speed
+    ///        boost, one-hit shield, or rapid-fire window.
     expose func collectPowerUp(ptype: Integer) {
         if ptype == PICKUP_HEALTH {
             hp = hp + 1;
@@ -354,8 +549,17 @@ class Player {
         }
     }
 
+    /// @brief Pick the sprite-sheet frame index for the current
+    ///        (state, animFrame).  12-frame sheet layout:
+    ///          0-1   idle
+    ///          2-5   run (4 frames)
+    ///          6     jump
+    ///          7     fall
+    ///          8     double-jump
+    ///          9     wall-slide
+    ///          10    hurt
+    ///          11    dead
     expose func getSpriteFrame() -> Integer {
-        // 12-frame layout: 0-1 idle, 2-5 run(4), 6 jump, 7 fall, 8 djump, 9 wallslide, 10 hurt, 11 dead
         if state == PS_IDLE { return animFrame; }
         if state == PS_RUN { return 2 + animFrame; }
         if state == PS_JUMP { return 6; }
@@ -367,33 +571,50 @@ class Player {
         return 0;
     }
 
-    // Sync player velocity to the PlatformerController (call after external vy/vx changes)
+    /// @brief Push our current vx/vy into the controller.
+    ///        Call this after any game-event that mutates
+    ///        velocity (e.g. knockback), otherwise the
+    ///        controller's internal state drifts.
     expose func syncVelocity() {
         ctrl.VX = vx;
         ctrl.VY = vy;
     }
 
-    // Pixel position (from x100)
+    // -------- Pixel accessors for drawing and collision --------
+    /// @brief x in whole pixels (for canvas.Blit).
     expose func pixelX() -> Integer { return x / 100; }
+    /// @brief y in whole pixels.
     expose func pixelY() -> Integer { return y / 100; }
-
-    // Center position for camera/collision
+    /// @brief Horizontal centre in pixels (camera follow).
     expose func centerX() -> Integer { return x / 100 + PLAYER_W / 2; }
+    /// @brief Vertical centre in pixels.
     expose func centerY() -> Integer { return y / 100 + PLAYER_H / 2; }
 
-    // =========================================================================
-    // Ability: Dash — quick horizontal burst with invincibility
-    // =========================================================================
+    //=========================================================================
+    // ABILITY: DASH
+    //=========================================================================
+    //
+    // A ~160ms horizontal burst.  Grants iframes for its
+    // duration so the dash doubles as a panic button.
+    // Cooldown prevents spam; players quickly learn to
+    // *save* the dash for moments that matter.
+
+    /// @brief Begin a dash in the facing direction.  No-op if
+    ///        already dashing or on cooldown.
     expose func startDash() {
         if isDashing { return; }
         if dashCooldown > 0 { return; }
         isDashing = true;
-        dashTimer = 160; // ~10 frames at 60fps
-        dashCooldown = 480; // ~30 frames cooldown
-        dashVx = facing * 2000; // Very fast (x100)
-        iframes = 160; // Invincible during dash
+        dashTimer = 160;
+        dashCooldown = 480;
+        dashVx = facing * 2000;
+        iframes = 160;
     }
 
+    /// @brief Per-frame dash driver.  While `isDashing`, we
+    ///        force vx to the dash velocity and vy to 0 so the
+    ///        dash is a flat horizontal line regardless of
+    ///        falling momentum.
     expose func updateDash(dt: Integer) {
         if dashCooldown > 0 { dashCooldown = dashCooldown - dt; }
         if not isDashing { return; }
@@ -402,66 +623,94 @@ class Player {
             isDashing = false;
             dashVx = 0;
         } else {
-            // Override velocity during dash
             vx = dashVx;
-            vy = 0; // No vertical movement during dash
+            vy = 0;
             ctrl.VX = vx;
             ctrl.VY = vy;
         }
     }
 
-    // =========================================================================
-    // Ability: Charge Shot — hold to charge, release for power
-    // =========================================================================
+    //=========================================================================
+    // ABILITY: CHARGE SHOT
+    //=========================================================================
+    //
+    // Hold the shoot button to charge, release for a bigger
+    // bullet.  Two tiers: partial (320 ms) and full (640 ms).
+    // The projectile layer reads `chargeLevel` via
+    // `fireCharged` and scales speed + damage + visuals.
+
+    /// @brief Start charging — called when shoot is first held.
     expose func startCharge() {
         isCharging = true;
         chargeTimer = 0;
         chargeLevel = 0;
     }
 
+    /// @brief Advance charge timer.  Thresholds are hand-tuned:
+    ///        320 ms feels like "a beat" to a player, 640 ms
+    ///        like "twice a beat" — comfortable thumb input.
     expose func updateCharge(dt: Integer) {
         if not isCharging { return; }
         chargeTimer = chargeTimer + dt;
-        if chargeTimer >= 640 { chargeLevel = 2; }      // Full charge
-        else if chargeTimer >= 320 { chargeLevel = 1; }  // Partial charge
+        if chargeTimer >= 640 { chargeLevel = 2; }
+        else if chargeTimer >= 320 { chargeLevel = 1; }
     }
 
+    /// @brief Release the charge, return the level (0/1/2) to
+    ///        the caller so projectile.zia can spawn the right
+    ///        bullet.
     expose func releaseCharge() -> Integer {
         if not isCharging { return 0; }
         isCharging = false;
         var level = chargeLevel;
         chargeTimer = 0;
         chargeLevel = 0;
-        return level; // 0=normal, 1=double damage, 2=triple + wall break
+        return level;
     }
 
-    // =========================================================================
-    // Ability: Ground Pound — slam down from air
-    // =========================================================================
+    //=========================================================================
+    // ABILITY: GROUND POUND
+    //=========================================================================
+    //
+    // Slam downward from the air, stopping horizontal motion.
+    // Landing produces a shockwave (handled elsewhere — we
+    // just clear the flag).
+
+    /// @brief Kick off a pound.  Invalid on the ground or in
+    ///        HURT / DEAD states.  Forces vx to 0 so the pound
+    ///        is always straight down.
     expose func startPound() {
         if onGround { return; }
         if state == PS_DEAD { return; }
         if state == PS_HURT { return; }
         isPounding = true;
-        poundVy = 2500; // Very fast downward (x100)
-        vx = 0; // Stop horizontal movement
+        poundVy = 2500;
+        vx = 0;
         ctrl.VX = 0;
     }
 
+    /// @brief Per-frame driver: stay at pound velocity until
+    ///        we land, then clear the flag.
     expose func updatePound(dt: Integer) {
         if not isPounding { return; }
         vy = poundVy;
         ctrl.VY = vy;
         if onGround {
-            // Landed — create shockwave effect
             isPounding = false;
             poundVy = 0;
         }
     }
 
-    // =========================================================================
-    // Frozen state (from ice wraith)
-    // =========================================================================
+    //=========================================================================
+    // STATUS: FROZEN
+    //=========================================================================
+    //
+    // Ice-wraith enemies can freeze the player for a short
+    // window.  While frozen, vx is pinned to 0 and input is
+    // ignored (callers check `isFrozen()` to skip input).
+
+    /// @brief Begin freeze.  Wipes velocity so the player
+    ///        doesn't slide while frozen.
     expose func freeze(durationMs: Integer) {
         freezeTimer = durationMs;
         vx = 0;
@@ -470,13 +719,22 @@ class Player {
         ctrl.VY = 0;
     }
 
+    /// @brief Per-frame freeze-timer decrement.  Returns true
+    ///        while still frozen so callers can early-exit.
     expose func updateFreeze(dt: Integer) -> Boolean {
         if freezeTimer <= 0 { return false; }
         freezeTimer = freezeTimer - dt;
-        vx = 0; // Can't move while frozen
+        vx = 0;
         ctrl.VX = 0;
         return true;
     }
 
+    /// @brief Is the player currently locked by ice?
     expose func isFrozen() -> Boolean { return freezeTimer > 0; }
+
+    /// @brief Frames spent in the current state — routed from
+    ///        the StateMachine.  Useful for state-gated
+    ///        animation tweaks (e.g. "eye-blink after 3s of
+    ///        PS_IDLE").
+    expose func stateFrames() -> Integer { return stateMachine.get_FramesInState(); }
 }

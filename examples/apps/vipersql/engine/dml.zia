@@ -1,13 +1,96 @@
-// dml.zia — DML (INSERT/UPDATE/DELETE) Handler
-// Part of ViperSQL
+// =============================================================================
+// dml.zia — DML executor: INSERT / UPDATE / DELETE / MERGE
+// Part of ViperSQL  (package: engine)
+// =============================================================================
 //
-// Implements SQL DML operations: INSERT, UPDATE, DELETE including
-// multi-table variants (INSERT...SELECT, UPDATE...FROM, DELETE...USING),
-// constraint validation, index maintenance, and foreign key cascades.
+// PURPOSE
+// -------
+// The `DmlHandler` in this file is responsible for *writing*
+// rows (the `DdlHandler` handles schema; the executor's SELECT
+// path reads).  All mutations funnel through here:
 //
-// The DmlHandler is invoked by the Executor for all data modification
-// statements. It holds a back-reference to the Executor for access to
-// shared state (database, indexes, storage engine, transaction journal).
+//   INSERT  INTO t VALUES (...), (...), (...);
+//   INSERT  INTO t SELECT ...;
+//   INSERT  INTO t DEFAULT VALUES;
+//   INSERT  INTO t ... ON CONFLICT DO NOTHING | DO UPDATE SET;
+//   UPDATE  t SET ... [FROM other] [WHERE ...];
+//   DELETE  FROM t [USING other] [WHERE ...];
+//   MERGE   INTO target USING source ON ... WHEN MATCHED ...
+//                                     WHEN NOT MATCHED ...;
+//
+// For each write path, the handler:
+//
+//   1. Evaluates defaults, generated columns, and sequence
+//      `nextval`s where needed.
+//   2. Checks every constraint (NOT NULL, UNIQUE, PRIMARY KEY,
+//      CHECK, FOREIGN KEY).  On violation, fails the entire
+//      statement (atomic: nothing is left half-committed).
+//   3. Fires BEFORE triggers, applies the row change, fires
+//      AFTER triggers.
+//   4. Maintains every affected index (insert/update/delete
+//      index entries in lockstep with the row changes).
+//   5. Cascades foreign-key ON DELETE / ON UPDATE actions.
+//   6. Persists via the `StorageEngine` (when enabled) and
+//      writes WAL records via the `TransactionManager`.
+//   7. Populates RETURNING rows if asked.
+//   8. Returns a `QueryResult` with `rowsAffected` set.
+//
+// WHERE THIS FITS
+// ---------------
+//     parser/parser.zia → InsertStmt / UpdateStmt / DeleteStmt /
+//                         MergeStmt
+//         │
+//         ▼
+//     engine/executor.zia — dispatches by class
+//         │
+//         ▼
+//     engine/dml.zia   (YOU ARE HERE)
+//         │
+//         ├──► engine/index.zia   (index maintenance)
+//         ├──► engine/triggers.zia (fire triggers)
+//         ├──► storage/engine.zia (persist + WAL)
+//         └──► engine/sql_functions.zia (evaluate DEFAULT / GEN)
+//
+// KEY DESIGN CHOICES
+// ------------------
+//   1. Row-at-a-time with pre-check.  We validate every
+//      constraint *before* any row is inserted/updated so a
+//      failure midway through a multi-row statement leaves the
+//      table untouched.  Simpler than a rollback journal.
+//
+//   2. Trigger depth counter.  Recursive trigger fires are
+//      allowed up to `MAX_TRIGGER_DEPTH` (see
+//      `engine/triggers.zia`); beyond that we raise a
+//      "trigger recursion exceeded" error.
+//
+//   3. Index maintenance is inline.  No batched index updates;
+//      every row write immediately updates its hash/btree
+//      index entries.  Correct by construction but slower on
+//      bulk loads — the trade-off is worth it for a demo
+//      engine.
+//
+//   4. ON CONFLICT uses a pre-insert lookup.  We hash the
+//      conflict-key columns and probe the existing UNIQUE
+//      index before attempting the insert.  Fires
+//      DO NOTHING or DO UPDATE SET based on the AST.
+//
+// HOW TO READ THIS FILE
+// ---------------------
+// ~2,200 lines.  Structure:
+//   1. `DmlHandler` class + fields.
+//   2. `executeInsert` — handles VALUES / SELECT / DEFAULT
+//      VALUES, + ON CONFLICT.
+//   3. `executeUpdate` — WHERE loop with constraint recheck,
+//      index update.
+//   4. `executeDelete` — WHERE loop with cascade / trigger
+//      fire.
+//   5. `executeMerge` — pairs source rows against target,
+//      dispatches to the correct arm.
+//   6. Helpers: default application, generated-column eval,
+//      constraint checkers, trigger firing, RETURNING list
+//      building.
+//
+// =============================================================================
 
 module dml;
 

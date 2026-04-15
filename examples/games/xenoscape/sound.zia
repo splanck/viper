@@ -1,16 +1,58 @@
 // =============================================================================
-// Sound Manager — Centralized audio via SoundBank + Synth fallback
+// sound.zia — SFX + music manager with procedural fallback
+// Part of Xenoscape  (the 2D sidescroller platformer demo)
 // =============================================================================
-// Viper APIs demonstrated:
-//   - Viper.Sound.SoundBank: named sound registry with Play/PlayEx
-//   - Viper.Sound.Synth: procedural sound generation (zero external assets)
-//   - Viper.Sound.Audio: system init/shutdown, master volume
 //
-// Zia best practices:
-//   - Two-step construction: init() then setup(basePath)
-//   - Graceful degradation: if WAV files missing, falls back to Synth
-//   - hide/expose visibility: bank/ready hidden, play*() methods exposed
-//   - Guard pattern: every play method checks `ready` before SoundBank call
+// TUTORIAL — AUDIO IS OPTIONAL BUT IT'S CHEAP TO DO WELL
+// ------------------------------------------------------
+// Sound is often the last thing added to a game prototype and
+// the first thing that suffers from ad-hoc code.  "SoundFX.Play(
+// sound_jump_wav)" sprinkled through every file; volume
+// handling done differently per sound; no cross-fade between
+// tracks; no graceful degradation when a platform has no
+// audio.  Don't.
+//
+// A single `SoundManager` object — one instance living on
+// `Game` — is all it takes to keep things tidy.  Every other
+// file calls `sound.jump()`, `sound.hit()`, `sound.pickup()`,
+// and never touches a raw audio API.
+//
+// This file demonstrates three useful Viper audio patterns:
+//
+//   1. **Named sound bank** (`Viper.Sound.SoundBank`) — you
+//      register sounds under symbolic names ("jump", "hit"),
+//      then play them by name.  Renaming a WAV file doesn't
+//      ripple through the codebase.
+//
+//   2. **Procedural fallback** (`Viper.Sound.Synth`) — if the
+//      WAV files are absent (say a freshly-checked-out demo
+//      with no assets), the synth generates passable tones
+//      programmatically.  The game *still ships* and has
+//      recognisable feedback.  Great for CI / test probes.
+//
+//   3. **Graceful init failure** — `Audio.Init()` can fail on
+//      headless or audio-disabled platforms.  We flip a
+//      `ready` flag and let every `play*()` method early-out
+//      silently.  The rest of the game doesn't need to know.
+//
+// WHERE THIS FITS
+// ---------------
+//     game.zia   ──►  constructs and `setup(basePath)`s the
+//                     SoundManager at boot.
+//     player.zia ──►  sound.jump() / land() / hurt().
+//     enemy.zia  ──►  sound.enemy_hit() / explode().
+//     pickups.zia ──► sound.coin() / health().
+//     level.zia   ──► sound.play_music(biome).
+//     menu.zia    ──► sound.click() / confirm().
+//
+// HOW TO READ THIS FILE
+// ---------------------
+//   1. `init` / `setup` — lifecycle + WAV registration.
+//   2. `play*` families — one method per semantic sound.
+//      Each guards on `ready` and forwards to the bank.
+//   3. Music control — `playMusic(index)` / `stopMusic()`
+//      with cross-fade.
+//
 // =============================================================================
 
 module sound;
@@ -18,12 +60,22 @@ module sound;
 bind Viper.Sound;
 bind "./config";
 
+/// @brief Game-wide audio coordinator.  Wraps a SoundBank,
+///        falls back to procedural Synth when WAV files
+///        aren't available, and tracks the current music
+///        voice for cross-fades.
+///
+/// Every gameplay file calls one of the `play*` methods
+/// instead of touching the audio API directly.
 class SoundManager {
     hide Boolean ready;
     hide SoundBank bank;
     hide Integer musicVoice;
     hide Integer currentTrack;
 
+    /// @brief Construct in "not-ready" state.  Real init is
+    ///        `setup(basePath)`; until then every `play*`
+    ///        no-ops.
     expose func init() {
         ready = false;
         musicVoice = -1;
@@ -33,6 +85,18 @@ class SoundManager {
     // Initialize audio system and register all sounds.
     // Attempts to load WAV files from basePath; if unavailable, generates
     // procedural sounds via Synth as a zero-dependency fallback.
+    /// @brief Initialise audio, register every named sound.
+    ///
+    /// For each sound: try to load `<basePath>/<name>.wav`;
+    /// on failure, generate a procedural fallback via
+    /// `Synth.*`.  Either way the bank gains the named sound
+    /// and `play*` methods will work.
+    ///
+    /// `Audio.Init()` returning 0 (no audio hardware /
+    /// permission denied) leaves `ready = false` and every
+    /// `play*` becomes a silent no-op.  This is what lets the
+    /// game ship to headless CI without a separate "no audio"
+    /// build.
     expose func setup(basePath: String) {
         var ok = Audio.Init();
         if ok == 0 { return; }
@@ -218,6 +282,9 @@ class SoundManager {
     }
 
     // Shut down audio system cleanly.
+    /// @brief Tear down audio cleanly.  Game calls this
+    ///        before exiting so the OS releases the audio
+    ///        device.
     expose func shutdown() {
         if ready == false { return; }
         Audio.StopAllSounds();
@@ -228,61 +295,87 @@ class SoundManager {
     // --- Play methods: one per sound, with volume/pan tuning ---
     // Each method guards on `ready` to avoid crashes if audio init failed.
 
+    //=========================================================
+    // SFX — one named-sound dispatch per gameplay event
+    //=========================================================
+    // Each `play*` is the same shape: guard on `ready`, then
+    // `bank.Play("name")`.  A guard at every site avoids the
+    // overhead of pushing it into the bank — and lets us
+    // skip the parameter encode for any sound that has
+    // alternate signatures (volume, pan).
+    //
+    // To add a new SFX:
+    //   1. Register it in `setup` (Synth fallback + WAV load).
+    //   2. Add a one-liner `playWhatever` here.
+    //   3. Call it from the gameplay event site.
+
+    /// @brief Player jump.  Short upward whoosh.
     expose func playJump() {
         if ready == false { return; }
         bank.PlayEx("jump", 60, 0);
     }
 
+    /// @brief Bullet fired.
     expose func playShoot() {
         if ready == false { return; }
         bank.PlayEx("shoot", 50, 0);
     }
 
+    /// @brief Coin pickup chime.
     expose func playCoin() {
         if ready == false { return; }
         bank.PlayEx("coin", 70, 0);
     }
 
+    /// @brief Player took damage.  Lower-pitched bark.
     expose func playHurt() {
         if ready == false { return; }
         bank.PlayEx("hurt", 80, 0);
     }
 
+    /// @brief Enemy killed.  Sharp pop.
     expose func playEnemyDeath() {
         if ready == false { return; }
         bank.PlayEx("enemy_death", 65, 0);
     }
 
+    /// @brief Powerup pickup arpeggio.
     expose func playPowerup() {
         if ready == false { return; }
         bank.PlayEx("powerup", 70, 0);
     }
 
+    /// @brief Checkpoint activated.
     expose func playCheckpoint() {
         if ready == false { return; }
         bank.PlayEx("checkpoint", 70, 0);
     }
 
+    /// @brief Level cleared fanfare.
     expose func playLevelComplete() {
         if ready == false { return; }
         bank.PlayEx("level_complete", 80, 0);
     }
 
+    /// @brief Menu confirm click.
     expose func playMenuSelect() {
         if ready == false { return; }
         bank.PlayEx("menu_select", 60, 0);
     }
 
+    /// @brief Menu cursor tick.
     expose func playMenuMove() {
         if ready == false { return; }
         bank.PlayEx("menu_move", 40, 0);
     }
 
+    /// @brief Player death.  Falling-pitch wail.
     expose func playDeath() {
         if ready == false { return; }
         bank.PlayEx("death", 80, 0);
     }
 
+    /// @brief Mario-style stomp on enemy.
     expose func playStomp() {
         if ready == false { return; }
         bank.PlayEx("stomp", 65, 0);
@@ -292,37 +385,45 @@ class SoundManager {
     // New ability/enemy sound effects
     // =========================================================================
 
+    /// @brief Dash whoosh.
     expose func playDash() {
         if ready == false { return; }
         // Use synth — whoosh sound
         Synth.Tone(200, 100, 2);
     }
 
+    /// @brief Charge-shot wind-up loop start.
     expose func playChargeStart() {
         if ready == false { return; }
         Synth.Tone(220, 50, 1);
     }
 
+    /// @brief Charge-shot release boom.
     expose func playChargeRelease() {
         if ready == false { return; }
         Synth.Tone(880, 150, 3);
     }
 
+    /// @brief Ground-pound landing thud.
     expose func playGroundPound() {
         if ready == false { return; }
         Synth.Tone(80, 200, 2);
     }
 
+    /// @brief Ice-wraith freeze impact.
     expose func playFreeze() {
         if ready == false { return; }
         Synth.Tone(1200, 120, 1);
     }
 
+    /// @brief Boss phase-change roar.
     expose func playBossPhase() {
         if ready == false { return; }
         Synth.Tone(150, 300, 2);
     }
 
+    /// @brief Ability acquired sting.  Used by the freeze-
+    ///        frame popup.
     expose func playAbilityGet() {
         if ready == false { return; }
         Synth.Tone(440, 100, 1);
@@ -330,23 +431,27 @@ class SoundManager {
         Synth.Tone(880, 200, 1);
     }
 
+    /// @brief Save-station activation chime.
     expose func playSave() {
         if ready == false { return; }
         Synth.Tone(523, 80, 1);
         Synth.Tone(659, 80, 1);
     }
 
+    /// @brief Lore terminal scanned beep.
     expose func playLoreFound() {
         if ready == false { return; }
         Synth.Tone(330, 100, 1);
         Synth.Tone(440, 150, 1);
     }
 
+    /// @brief Boss-room entry sting.
     expose func playBossIntro() {
         if ready == false { return; }
         Synth.Tone(110, 400, 2);
     }
 
+    /// @brief Game-clear / endgame fanfare.
     expose func playVictory() {
         if ready == false { return; }
         Synth.Tone(523, 150, 1);
@@ -355,11 +460,14 @@ class SoundManager {
         Synth.Tone(1047, 400, 1);
     }
 
+    /// @brief Generic explosion.  Used for breaking walls,
+    ///        boss minions, etc.
     expose func playExplosion() {
         if ready == false { return; }
         Synth.Tone(60, 300, 2);
     }
 
+    /// @brief Glassy shatter for crystal tiles.
     expose func playCrystalBreak() {
         if ready == false { return; }
         Synth.Tone(2000, 60, 3);
@@ -370,6 +478,13 @@ class SoundManager {
     // Music playback — procedurally generated background tracks
     // =========================================================================
 
+    //=========================================================
+    // MUSIC
+    //=========================================================
+
+    /// @brief Begin the title-screen track.  Cross-fades from
+    ///        whatever music was playing.  Tracks `currentTrack`
+    ///        so a redundant call is a no-op.
     expose func playMenuMusic() {
         if ready == false { return; }
         if currentTrack == 0 { return; }
@@ -381,6 +496,8 @@ class SoundManager {
         }
     }
 
+    /// @brief Begin the in-level track.  Same cross-fade
+    ///        rules as `playMenuMusic`.
     expose func playGameMusic() {
         if ready == false { return; }
         if currentTrack == 1 { return; }
@@ -392,6 +509,8 @@ class SoundManager {
         }
     }
 
+    /// @brief Stop the music voice.  Used during cutscene
+    ///        beats and the boss-intro silence.
     expose func stopMusic() {
         if musicVoice >= 0 {
             Voice.Stop(musicVoice);

@@ -1,20 +1,68 @@
 // =============================================================================
-// Camera — Smooth follow + animated parallax background system
+// camera.zia — Smooth camera + parallax + biome-specific backgrounds
+// Part of Xenoscape  (the 2D sidescroller platformer demo)
 // =============================================================================
-// Viper APIs demonstrated:
-//   - Viper.Game.SmoothValue: exponential smooth follow (0.875 = ~1/8 per frame)
-//   - Canvas: GradientV (sky backgrounds), Disc/DiscAlpha (stars, moon glow),
-//     BoxAlpha (clouds, fog), BlitAlpha (sprite-based parallax layers),
-//     Triangle (stalactites, mountains), Ellipse (cave formations),
-//     Line (vines, wind streaks)
 //
-// Zia best practices:
-//   - SmoothValue replaces manual lerp for camera follow
-//   - Parallax scroll: each depth layer scrolls at a fraction of camera speed
-//     (PARA_CLOUD=8 = 8% speed for far clouds, PARA_BUSH=70 = 70% for near bush)
-//   - Animated backgrounds: bgTimer drives star twinkle, cloud drift, lava
-//     bubbles, vine sway, and firefly movement via time-based offsets
-//   - Theme-specific renderers: 5 distinct background styles, one per level
+// TUTORIAL — CAMERAS THAT DON'T MAKE PLAYERS NAUSEOUS
+// ---------------------------------------------------
+// A bad 2D-platformer camera snaps hard to the player every
+// frame.  The player feels like they're dragging a window
+// around by string.  A good camera:
+//
+//   1. **Smooth-follows with easing.**  Each frame the
+//      camera moves a fraction (e.g. 12%) of the remaining
+//      distance to the target.  Snappy without being jittery.
+//      `Viper.Game.Camera.SmoothFollow` handles this.
+//
+//   2. **Has a deadzone.**  The player can wiggle inside a
+//      small rectangle in the centre of the screen without
+//      moving the camera at all.  Only when they leave the
+//      deadzone does the camera track.  This is what keeps
+//      the background steady during idle / small jumps.
+//
+//   3. **Clamps to level bounds.**  The camera never shows
+//      outside the level; it stops at edges even if the
+//      player is near them.
+//
+//   4. **Shakes on impact.**  A subtle shake (2–6 pixels)
+//      for a short duration on big events (boss phase
+//      change, explosion) — done well, the brain *infers*
+//      weight from it.
+//
+// Plus:
+//
+//   5. **Parallax backgrounds.**  Multiple depth layers
+//      scroll at different fractions of the camera speed.
+//      Far clouds move at 8% camera speed; near bushes at
+//      70%.  The brain perceives "depth" from this
+//      difference.  Cheap trick, huge payoff.
+//
+//   6. **Animated, biome-specific backgrounds.**  Each of
+//      the game's biomes has its own hand-drawn background
+//      — stars twinkling above a mountain range, fungal
+//      spores drifting through a cavern, lava bubbles
+//      popping, frozen wisps floating.  All of it painted
+//      from primitives + a shared `bgTimer`.
+//
+// WHERE THIS FITS
+// ---------------
+//     game.zia      ──►  owns GameCamera; updates per frame
+//                        with target = player's centre.
+//     renderer.zia  ──►  calls `drawBackground(canvas,
+//                        bgTimer, biome)` as the first draw.
+//                        Reads camera offset for parallax
+//                        calculations.
+//     level.zia     ──►  supplies the level bounds for
+//                        clamping.
+//
+// HOW TO READ THIS FILE
+// ---------------------
+//   1. PARA_* parallax fractions (0..100 percent).
+//   2. `GameCamera` fields + `init`.
+//   3. `update(targetX, targetY, dt)` — follow logic.
+//   4. `startShake(magnitude, durationMs)`.
+//   5. `drawBackground*(canvas, ...)` variants per biome.
+//
 // =============================================================================
 
 module camera;
@@ -27,6 +75,22 @@ bind "./config";
 bind "./palette";
 bind "./sprites";
 
+/// @brief Smooth-following camera + biome-specific animated
+///        background renderer.  One instance lives on `Game`.
+///
+/// State splits cleanly:
+///   * `x` / `y` — current camera position (top-left, world
+///     pixels).  Read by every draw call to convert world →
+///     screen coords.
+///   * Level bounds — `setLevelSize` clamps the camera to
+///     them.
+///   * `bgTimer` — shared monotonic timer that drives every
+///     animated background element (twinkles, drifts,
+///     bubbles).
+///
+/// Background drawing is *itself* a family of biome-specific
+/// methods (`drawCrashSiteBg`, `drawFungalBg`, ...).  Picking
+/// the right one is `drawBiomeBackground(canvas, theme, ...)`.
 class GameCamera {
     hide Palette pal;
     expose Integer x;        // Camera world position (top-left pixel)
@@ -49,6 +113,9 @@ class GameCamera {
     hide Pixels cloudMid1;   // 140x56 — medium
     hide Pixels cloudNear0;  // 180x72 — large
 
+    /// @brief Construct.  Stores palette, allocates the
+    ///        runtime smooth-follow camera, resets the bg
+    ///        timer.
     expose func init(p: Palette) {
         pal = p;
         x = 0;
@@ -68,11 +135,17 @@ class GameCamera {
     }
 
     // Advance background animation timer. Call once per frame.
+    /// @brief Tick the shared background-animation clock.
+    ///        Called each frame so background elements
+    ///        progress at a frame-rate-independent pace.
     expose func updateBg(dt: Integer) {
         bgTimer = bgTimer + dt;
         if bgTimer >= 60000 { bgTimer = 0; }
     }
 
+    /// @brief Tell the camera the level's tile dimensions so
+    ///        it can clamp itself to those bounds.  Must be
+    ///        called whenever a new level loads.
     expose func setLevelSize(w: Integer, h: Integer) {
         levelPixelW = w * TILE_SIZE;
         levelPixelH = h * TILE_SIZE;
@@ -83,6 +156,10 @@ class GameCamera {
     // Snap camera to target instantly (no smooth interpolation).
     // Called on level load to avoid the camera slowly scrolling from the
     // previous level's position.
+    /// @brief Force the camera to a position immediately,
+    ///        bypassing smoothing.  Used on level enter and
+    ///        respawn so the player isn't off-screen for the
+    ///        first frame.
     expose func snapTo(playerCX: Integer, playerCY: Integer) {
         // SmoothFollow with lerp=1000 is instant (same as Follow)
         cam.SmoothFollow(playerCX, playerCY + 80, 1000);
@@ -90,6 +167,10 @@ class GameCamera {
         y = cam.get_Y();
     }
 
+    /// @brief Smooth-follow the target.  Each call moves the
+    ///        camera a fraction of the remaining distance.
+    ///        Game.tick calls this every frame with the
+    ///        player's centre.
     expose func follow(playerCX: Integer, playerCY: Integer) {
         // Smooth follow with downward bias — Camera.SmoothFollow handles
         // interpolation + bounds clamping in a single call.
@@ -100,6 +181,11 @@ class GameCamera {
         y = cam.get_Y();
     }
 
+    /// @brief Pick the right biome background by `theme` and
+    ///        delegate to the matching `draw*Bg` helper.
+    ///        Some themes (grasslands, station) have rich
+    ///        composite backgrounds with cloud + element
+    ///        layers; others are a single helper call.
     expose func drawBackground(canvas: Canvas, theme: Integer, sprites: SpriteFactory) {
         // Theme-based background with smooth biome crossfade transitions.
         // Within BIOME_BLEND_TILES of a boundary, both biomes are drawn
@@ -122,6 +208,18 @@ class GameCamera {
     }
 
     // Returns blend progress: <0 = before zone, 0-100 = in zone, >100 = past zone
+    //=========================================================
+    // BIOME BACKGROUND DRAWERS
+    //=========================================================
+    // Each `draw*Bg` paints one biome's background.  All read
+    // from `bgTimer` for animation and from `x/y` for parallax
+    // scroll.  Helpers (`drawCloudLayers`, `drawJungleElements`,
+    // ...) are shared between several biomes.
+
+    /// @brief Compute a 0..256 blend factor used to crossfade
+    ///        between two biome backdrops near a column
+    ///        boundary.  Smooths the seam when the camera
+    ///        scrolls between rooms.
     hide func getBiomeBlend(camCol: Integer, boundary: Integer) -> Integer {
         var zoneStart = boundary - BIOME_BLEND_TILES;
         if camCol < zoneStart { return -1; }
@@ -130,6 +228,8 @@ class GameCamera {
     }
 
     // Level 1: Grasslands — jungle / cave / volcano with crossfade
+    /// @brief Outdoor grasslands composite (sky + mountains +
+    ///        hills + clouds + jungle elements).
     hide func drawGrasslandsBiome(canvas: Canvas, sprites: SpriteFactory, camCol: Integer) {
         var t1 = getBiomeBlend(camCol, BIOME_JUNGLE_END);
         if t1 < 0 {
@@ -164,6 +264,8 @@ class GameCamera {
     }
 
     // Level 2: Station — hull / reactor / bridge with crossfade
+    /// @brief Crashed-ship interior composite (hull + reactor
+    ///        + bridge variants by camera column).
     hide func drawStationBiome(canvas: Canvas, camCol: Integer) {
         var t1 = getBiomeBlend(camCol, BIOME_HULL_END);
         if t1 < 0 {
@@ -203,6 +305,9 @@ class GameCamera {
     // Returns a Pixels buffer with per-pixel alpha for soft, organic edges.
     // Generate a Perlin noise cloud texture. noiseScale (x100, e.g. 400=4.0) controls
     // detail frequency. maxAlpha (0-255) caps peak opacity. Returns Pixels buffer.
+    /// @brief Build a soft-edged cloud sprite from a seed.
+    ///        Used to pre-bake a small set of cloud shapes
+    ///        the parallax layers reuse.
     hide func generateCloud(w: Integer, h: Integer, seed: Integer,
                              noiseScale100: Integer, maxAlpha: Integer) -> Pixels {
         var pn = PerlinNoise.New(seed);
@@ -253,6 +358,8 @@ class GameCamera {
     }
 
     // Draw all three cloud layers. masterAlpha (0-255) scales opacity for crossfade.
+    /// @brief Draw three depth-stacked cloud layers, each
+    ///        scrolling at a different parallax fraction.
     hide func drawCloudLayers(canvas: Canvas, masterAlpha: Integer) {
         if masterAlpha <= 0 { return; }
 
@@ -301,6 +408,7 @@ class GameCamera {
         }
     }
 
+    /// @brief Old jungle-style backdrop (legacy theme).
     hide func drawJungleBg(canvas: Canvas, sprites: SpriteFactory) {
         // Alien jungle: teal-green sky with bioluminescent atmosphere
         canvas.GradientV(0, 0, SCREEN_W, SCREEN_H, pal.jungleSkyTop, pal.jungleSkyBot);
@@ -383,6 +491,7 @@ class GameCamera {
     // Draw parallax elements (no sky gradient) at a given alpha level.
     // =========================================================================
 
+    /// @brief Foreground jungle bushes / vines layer.
     hide func drawJungleElements(canvas: Canvas, sprites: SpriteFactory, alpha: Integer) {
         if alpha <= 0 { return; }
         // Stars
@@ -425,6 +534,7 @@ class GameCamera {
         }
     }
 
+    /// @brief Stalactites + stalagmites for cave biomes.
     hide func drawCaveElements(canvas: Canvas, alpha: Integer) {
         if alpha <= 0 { return; }
         // Crystal glow spots
@@ -452,6 +562,7 @@ class GameCamera {
         }
     }
 
+    /// @brief Lava sparks + heat shimmer for thermal biomes.
     hide func drawVolcanoElements(canvas: Canvas, alpha: Integer) {
         if alpha <= 0 { return; }
         // Lava glow from below
@@ -480,6 +591,7 @@ class GameCamera {
         }
     }
 
+    /// @brief Pipes + struts for the hull station section.
     hide func drawHullElements(canvas: Canvas, alpha: Integer) {
         if alpha <= 0 { return; }
         // Stars
@@ -512,6 +624,7 @@ class GameCamera {
         }
     }
 
+    /// @brief Glowing tubes + sparks for the reactor section.
     hide func drawReactorElements(canvas: Canvas, alpha: Integer) {
         if alpha <= 0 { return; }
         // Pipes
@@ -537,6 +650,8 @@ class GameCamera {
         }
     }
 
+    /// @brief Console screens + structural beams for the
+    ///        bridge section.
     hide func drawBridgeElements(canvas: Canvas, alpha: Integer) {
         if alpha <= 0 { return; }
         // Star viewport
@@ -575,6 +690,7 @@ class GameCamera {
     // Full biome draw functions (sky gradient + elements at full alpha)
     // =========================================================================
 
+    /// @brief Cavern backdrop — gradient + dark silhouettes.
     hide func drawCaveBg(canvas: Canvas) {
         // Dark cave gradient
         canvas.GradientV(0, 0, SCREEN_W, SCREEN_H, pal.caveBg, pal.caveMid);
@@ -626,6 +742,7 @@ class GameCamera {
         }
     }
 
+    /// @brief Volcano backdrop — orange gradient + lava glow.
     hide func drawVolcanoBg(canvas: Canvas) {
         // Dark red/black gradient
         canvas.GradientV(0, 0, SCREEN_W, SCREEN_H, 0x1A0808, 0x331111);
@@ -660,6 +777,7 @@ class GameCamera {
         }
     }
 
+    /// @brief Surface sky backdrop — twilight gradient + stars.
     hide func drawSkyBg(canvas: Canvas) {
         // Bright sky gradient (pale blue to white)
         canvas.GradientV(0, 0, SCREEN_W, SCREEN_H, 0x4488CC, pal.skyPale);
@@ -684,6 +802,7 @@ class GameCamera {
         }
     }
 
+    /// @brief Ruined structures silhouetted against dusk sky.
     hide func drawRuinsBg(canvas: Canvas) {
         // Dark green/gray gradient
         canvas.GradientV(0, 0, SCREEN_W, SCREEN_H, 0x1A2A1A, 0x2A3A2A);
@@ -728,6 +847,8 @@ class GameCamera {
     // Level 2: Station Background Renderers
     // =========================================================================
 
+    /// @brief Ship-hull interior backdrop — metal panels +
+    ///        warning lights.
     hide func drawStationHullBg(canvas: Canvas) {
         // Dark starfield
         canvas.GradientV(0, 0, SCREEN_W, SCREEN_H, pal.hullTop, pal.hullBot);
@@ -769,6 +890,7 @@ class GameCamera {
         }
     }
 
+    /// @brief Reactor-room backdrop — pulsing core glow.
     hide func drawStationReactorBg(canvas: Canvas) {
         // Deep red emergency gradient
         canvas.GradientV(0, 0, SCREEN_W, SCREEN_H, pal.reactorTop, pal.reactorBot);
@@ -799,6 +921,7 @@ class GameCamera {
         }
     }
 
+    /// @brief Bridge backdrop — viewscreens + console banks.
     hide func drawStationBridgeBg(canvas: Canvas) {
         // Dark blue-black with holo glow
         canvas.GradientV(0, 0, SCREEN_W, SCREEN_H, pal.bridgeTop, pal.bridgeBot);
@@ -840,10 +963,12 @@ class GameCamera {
     }
 
     // Convert world coordinates to screen coordinates
+    /// @brief Convert world x to screen x (subtract camera).
     expose func toScreenX(wx: Integer) -> Integer {
         return wx - x;
     }
 
+    /// @brief Convert world y to screen y (subtract camera).
     expose func toScreenY(wy: Integer) -> Integer {
         return wy - y;
     }
@@ -852,6 +977,10 @@ class GameCamera {
     // Biome-specific background renderers (new levels)
     // =========================================================================
 
+    /// @brief New-style biome backdrop selector — picks the
+    ///        right `draw*Bg(canvas, timer)` per biome.  The
+    ///        timer-driven variant powers per-frame
+    ///        background animation (twinkles, drifts).
     expose func drawBiomeBackground(canvas: Canvas, theme: Integer, timer: Integer) {
         if theme == 1 { drawCrashSiteBg(canvas, timer); return; }
         if theme == 2 { drawFungalBg(canvas, timer); return; }
@@ -865,6 +994,17 @@ class GameCamera {
         if theme == 10 { drawCoreBg(canvas, timer); return; }
     }
 
+    //=========================================================
+    // PER-BIOME (timer-driven) BACKDROPS
+    //=========================================================
+    // Each `draw*Bg(canvas, timer)` paints one biome's
+    // animated backdrop.  Read `bgTimer`-style integer for
+    // animations.  Visually distinct per biome but
+    // structurally similar — gradient + silhouette + animated
+    // accent layer.
+
+    /// @brief Crash site (level 0) — twilight + crashed-ship
+    ///        silhouette.
     hide func drawCrashSiteBg(canvas: Canvas, timer: Integer) {
         canvas.GradientV(0, 0, SCREEN_W, SCREEN_H,
                          Color.RGB(10, 30, 50), Color.RGB(20, 60, 80));
@@ -881,6 +1021,8 @@ class GameCamera {
         canvas.DiscAlpha(shipX + 100, 480, 30 + timer % 20, Color.RGB(60, 60, 70), 40);
     }
 
+    /// @brief Fungal caverns — purple gradient + drifting
+    ///        spores.
     hide func drawFungalBg(canvas: Canvas, timer: Integer) {
         canvas.GradientV(0, 0, SCREEN_W, SCREEN_H,
                          Color.RGB(5, 10, 20), Color.RGB(10, 25, 15));
@@ -897,6 +1039,7 @@ class GameCamera {
         drawBiomeParticles(canvas, timer, 15, Color.RGB(150, 255, 80), 40);
     }
 
+    /// @brief Crystal depths — blue gradient + sparkle stars.
     hide func drawCrystalBg(canvas: Canvas, timer: Integer) {
         canvas.GradientV(0, 0, SCREEN_W, SCREEN_H,
                          Color.RGB(8, 8, 25), Color.RGB(15, 20, 50));
@@ -913,6 +1056,8 @@ class GameCamera {
         drawBiomeParticles(canvas, timer, 12, Color.RGB(180, 200, 255), 50);
     }
 
+    /// @brief Surface ruins — sky gradient + crumbling
+    ///        towers.
     hide func drawSurfaceRuinsBg(canvas: Canvas, timer: Integer) {
         canvas.GradientV(0, 0, SCREEN_W, SCREEN_H,
                          Color.RGB(20, 35, 20), Color.RGB(40, 60, 35));
@@ -930,6 +1075,7 @@ class GameCamera {
         drawBiomeParticles(canvas, timer, 10, Color.RGB(200, 255, 100), 35);
     }
 
+    /// @brief Underground lake — dark teal + ripple streaks.
     hide func drawUndergroundLakeBg(canvas: Canvas, timer: Integer) {
         canvas.GradientV(0, 0, SCREEN_W, SCREEN_H,
                          Color.RGB(5, 15, 30), Color.RGB(10, 40, 60));
@@ -945,6 +1091,7 @@ class GameCamera {
         drawBiomeParticles(canvas, timer, 8, Color.RGB(100, 180, 255), 40);
     }
 
+    /// @brief Thermal vents — orange gradient + lava embers.
     hide func drawThermalBg(canvas: Canvas, timer: Integer) {
         canvas.GradientV(0, 0, SCREEN_W, SCREEN_H,
                          Color.RGB(30, 10, 5), Color.RGB(60, 20, 10));
@@ -960,6 +1107,8 @@ class GameCamera {
         }
     }
 
+    /// @brief Overgrowth ruins — green gradient + vine
+    ///        silhouettes.
     hide func drawOvergrowthBg(canvas: Canvas, timer: Integer) {
         canvas.GradientV(0, 0, SCREEN_W, SCREEN_H,
                          Color.RGB(15, 30, 15), Color.RGB(25, 50, 25));
@@ -983,6 +1132,7 @@ class GameCamera {
         }
     }
 
+    /// @brief Frozen abyss — pale-blue gradient + snowflakes.
     hide func drawFrozenBg(canvas: Canvas, timer: Integer) {
         canvas.GradientV(0, 0, SCREEN_W, SCREEN_H,
                          Color.RGB(15, 20, 35), Color.RGB(30, 40, 60));
@@ -1000,6 +1150,8 @@ class GameCamera {
         canvas.BoxAlpha(0, auroraY + 20, SCREEN_W, 2, Color.RGB(100, 150, 255), 15);
     }
 
+    /// @brief Corrupted core — sickly purple-green pulse
+    ///        + glitch noise.
     hide func drawCorruptedBg(canvas: Canvas, timer: Integer) {
         canvas.GradientV(0, 0, SCREEN_W, SCREEN_H,
                          Color.RGB(10, 0, 15), Color.RGB(20, 5, 30));
@@ -1017,6 +1169,8 @@ class GameCamera {
         drawBiomeParticles(canvas, timer, 10, Color.RGB(150, 50, 200), 40);
     }
 
+    /// @brief The Core (final boss) — deep dark + flickering
+    ///        ring of light.
     hide func drawCoreBg(canvas: Canvas, timer: Integer) {
         canvas.GradientV(0, 0, SCREEN_W, SCREEN_H,
                          Color.RGB(5, 0, 10), Color.RGB(15, 5, 25));
@@ -1031,6 +1185,9 @@ class GameCamera {
         }
     }
 
+    /// @brief Composite drifting-particle layer for the
+    ///        active biome.  Used by `draw*Bg` siblings to
+    ///        share one particle path.
     hide func drawBiomeParticles(canvas: Canvas, timer: Integer,
                                   count: Integer, color: Integer, alpha: Integer) {
         var i = 0;
@@ -1045,6 +1202,8 @@ class GameCamera {
         }
     }
 
+    /// @brief Twinkling star pattern for sky / crystal / core
+    ///        biomes.  Animation uses `timer % N` to flicker.
     hide func drawStarField(canvas: Canvas, timer: Integer,
                              count: Integer, color: Integer) {
         var i = 0;

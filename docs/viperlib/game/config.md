@@ -5,7 +5,7 @@ Typed config loader wrapping JSON with dotted path access and default values.
 ## API
 
 ### Config.Load(path) -> Config?
-Load and parse a JSON config file.
+Load and parse a JSON config file. Returns `null` when the path is missing, unreadable, or empty, so callers can keep defaults without a JSON parser trap.
 
 ### Config.FromString(jsonStr) -> Config?
 Parse an inline JSON string.

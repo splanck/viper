@@ -366,20 +366,50 @@ Native file dialog boxes (static methods).
 
 | Method                                          | Signature                        | Description                              |
 |-------------------------------------------------|----------------------------------|------------------------------------------|
-| `Viper.GUI.FileDialog.Open(title, filter, dir)` | `String(String,String,String)`  | Open file dialog; returns path           |
-| `Viper.GUI.FileDialog.OpenMultiple(title, filter, dir)` | `Object(String,String,String)` | Open multi-file dialog; returns seq |
-| `Viper.GUI.FileDialog.Save(title, filter, dir, defaultName)` | `String(Str,Str,Str,Str)` | Save file dialog; returns path     |
+| `Viper.GUI.FileDialog.Open(title, defaultPath, filter)` | `String(String,String,String)`  | Open file dialog; returns path           |
+| `Viper.GUI.FileDialog.OpenMultiple(title, defaultPath, filter)` | `String(String,String,String)` | Open multi-file dialog; returns semicolon-separated paths |
+| `Viper.GUI.FileDialog.Save(title, defaultPath, filter, defaultName)` | `String(Str,Str,Str,Str)` | Save file dialog; returns path     |
 | `Viper.GUI.FileDialog.SelectFolder(title, dir)` | `String(String, String)`       | Folder selection dialog                  |
+
+Object-style dialogs are also available when an app needs multiple named
+filters, a default filename, or multiple selected paths:
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `Viper.GUI.FileDialog.NewOpen()` | `Object()` | Create an open-file dialog object |
+| `Viper.GUI.FileDialog.NewSave()` | `Object()` | Create a save-file dialog object |
+| `Viper.GUI.FileDialog.NewFolder()` | `Object()` | Create a select-folder dialog object |
+| `dialog.SetTitle(title)` | `Void(String)` | Set dialog title |
+| `dialog.SetPath(path)` | `Void(String)` | Set starting path |
+| `dialog.SetFilter(label, pattern)` | `Void(String,String)` | Replace filters with one named filter |
+| `dialog.AddFilter(label, pattern)` | `Void(String,String)` | Add another named filter |
+| `dialog.SetDefaultName(name)` | `Void(String)` | Set default filename for save dialogs |
+| `dialog.SetMultiple(enabled)` | `Void(Integer)` | Enable multiple selection for open dialogs |
+| `dialog.Show()` | `Integer()` | Show the dialog; returns 1 on accept |
+| `dialog.GetPath()` | `String()` | Return the first selected path |
+| `dialog.PathCount` | `Integer` | Number of selected paths |
+| `dialog.GetPathAt(index)` | `String(Integer)` | Return selected path by index |
+| `dialog.Destroy()` | `Void()` | Destroy the dialog object |
 
 ### Example
 
 ```rust
 // Zia
-var path = FileDialog.Open("Open File", "*.txt;*.zia", "/home");
+var path = FileDialog.Open("Open File", "/home", "*.txt;*.zia");
 if path != "" { /* open file at path */ }
 
-var savePath = FileDialog.Save("Save As", "*.txt", "/home", "untitled.txt");
+var savePath = FileDialog.Save("Save As", "/home", "*.txt", "untitled.txt");
 var folder = FileDialog.SelectFolder("Choose Folder", "/home");
+
+var dlg = FileDialog.NewSave();
+dlg.SetTitle("Export Image");
+dlg.SetDefaultName("painting.png");
+dlg.AddFilter("PNG image", "*.png");
+dlg.AddFilter("BMP image", "*.bmp");
+if dlg.Show() == 1 {
+    var exportPath = dlg.GetPath();
+}
+dlg.Destroy();
 ```
 
 ---

@@ -1,0 +1,46 @@
+// runtime_features_probe.zia - Non-GUI smoke coverage for Paint runtime helpers
+module runtime_features_probe;
+
+bind Viper.Core.Diagnostics as Diag;
+bind Viper.Terminal;
+
+bind "./canvas";
+bind "./history";
+
+func main() {
+    var doc = new canvas.DrawingCanvas();
+    doc.initWithSize(8, 8);
+    Diag.AssertEq(doc.getPixel(0, 0), 0xFFFFFF, "new document background");
+
+    var hist = new history.HistoryManager();
+    hist.snapshot(doc.getActivePixels());
+    doc.setPixel(1, 1, 0xFF0000);
+
+    var snapshot = hist.undo(doc.getActivePixels());
+    Diag.Assert(snapshot != null, "undo should return a snapshot");
+    doc.restorePixels(snapshot!);
+    Diag.AssertEq(doc.getPixel(1, 1), 0xFFFFFF, "undo restores active pixels");
+
+    doc.addLayer("Ink");
+    doc.setPixel(1, 1, 0x0000FF);
+    Diag.AssertEq(doc.layerCount(), 2, "layer count after add");
+    Diag.AssertEq(doc.getPixels().GetRGB(1, 1), 0x0000FF, "composite includes active layer");
+
+    doc.toggleLayerVisible(doc.activeLayerIndex());
+    Diag.AssertEq(doc.getPixels().GetRGB(1, 1), 0xFFFFFF, "hidden layer is excluded from composite");
+    doc.toggleLayerVisible(doc.activeLayerIndex());
+
+    var revBeforeInvert = doc.revision;
+    doc.applyInvert();
+    Diag.Assert(doc.revision > revBeforeInvert, "image operation increments revision");
+    Diag.AssertEq(doc.getPixel(1, 1), 0xFFFF00, "invert active layer uses Pixels.Invert");
+
+    Diag.Assert(doc.duplicateActiveLayer() == 1, "duplicate active layer");
+    Diag.AssertEq(doc.layerCount(), 3, "layer count after duplicate");
+    Diag.Assert(doc.moveActiveLayerDown() == 1, "move duplicate layer down");
+    Diag.Assert(doc.moveActiveLayerUp() == 1, "move duplicate layer up");
+    Diag.Assert(doc.removeActiveLayer() == 1, "remove active layer");
+    Diag.AssertEq(doc.layerCount(), 2, "layer count after remove");
+
+    Say("RESULT: ok");
+}

@@ -1,0 +1,26 @@
+{
+  "window": {
+    "width": 1300,
+    "height": 900
+  },
+  "canvas": {
+    "width": 1024,
+    "height": 768
+  },
+  "tools": {
+    "defaultTool": 1
+  },
+  "brush": {
+    "size": 8,
+    "opacity": 100
+  },
+  "runtime": {
+    "targetFps": 60
+  },
+  "debug": {
+    "showOnStart": 0
+  },
+  "theme": {
+    "dark": 1
+  }
+}

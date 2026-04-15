@@ -1,0 +1,68 @@
+// tool_palette.zia - Runtime ButtonGroup-backed Paint tool selection
+module tool_palette;
+
+bind Viper.Game.ButtonGroup as ButtonGroup;
+
+bind "./config";
+bind "./ui/button";
+
+class ToolPalette {
+    hide ButtonGroup group;
+
+    expose func init() {
+        group = ButtonGroup.New();
+        group.Add(config.TOOL_PENCIL);
+        group.Add(config.TOOL_BRUSH);
+        group.Add(config.TOOL_ERASER);
+        group.Add(config.TOOL_LINE);
+        group.Add(config.TOOL_RECTANGLE);
+        group.Add(config.TOOL_ELLIPSE);
+        group.Add(config.TOOL_FILL);
+        group.Add(config.TOOL_EYEDROPPER);
+        group.Select(config.TOOL_BRUSH);
+    }
+
+    expose func select(toolId: Integer) -> Integer {
+        if group.Select(toolId) {
+            return group.Selected;
+        }
+        return group.Selected;
+    }
+
+    expose func next() -> Integer {
+        return group.SelectNext();
+    }
+
+    expose func previous() -> Integer {
+        return group.SelectPrev();
+    }
+
+    expose func selected() -> Integer {
+        return group.Selected;
+    }
+
+    expose func isSelected(toolId: Integer) -> Integer {
+        if group.IsSelected(toolId) {
+            return 1;
+        }
+        return 0;
+    }
+
+    expose func syncButtons(btnPencil: button.ToolButton,
+                            btnBrush: button.ToolButton,
+                            btnEraser: button.ToolButton,
+                            btnLine: button.ToolButton,
+                            btnRect: button.ToolButton,
+                            btnEllipse: button.ToolButton,
+                            btnFill: button.ToolButton,
+                            btnEyedropper: button.ToolButton) {
+        btnPencil.selected = isSelected(config.TOOL_PENCIL);
+        btnBrush.selected = isSelected(config.TOOL_BRUSH);
+        btnEraser.selected = isSelected(config.TOOL_ERASER);
+        btnLine.selected = isSelected(config.TOOL_LINE);
+        btnRect.selected = isSelected(config.TOOL_RECTANGLE);
+        btnEllipse.selected = isSelected(config.TOOL_ELLIPSE);
+        btnFill.selected = isSelected(config.TOOL_FILL);
+        btnEyedropper.selected = isSelected(config.TOOL_EYEDROPPER);
+    }
+}

@@ -1,13 +1,101 @@
-// index.zia — Index Entities
-// Part of ViperSQL
+// =============================================================================
+// index.zia — In-memory indexes: hash-bucketed, composite-aware, partial-
+//             predicate, expression-aware
+// Part of ViperSQL  (package: engine)
+// =============================================================================
 //
-// Hash-based in-memory index for accelerating WHERE clause lookups on
-// indexed columns. Each HashIndex maps column values to lists of row
-// indices using a configurable number of buckets with chaining. The
-// IndexManager tracks all indexes per database and provides lookup,
-// creation, and maintenance (insert/delete/rebuild) operations.
-// Indexes are created via CREATE INDEX and used automatically by the
-// executor when a WHERE clause filters on an indexed column.
+// PURPOSE
+// -------
+// Indexes accelerate WHERE-clause lookups.  Without one, `SELECT * FROM
+// users WHERE id = 5` is a full-table scan; with an index on `id`, it is
+// a single hash lookup.  This file implements ViperSQL's indexes:
+//
+//   * `IndexEntry`  — one (keyHash, keyString, rowIndex) triple.  Every
+//                     hashed key becomes one of these.
+//   * `SqlIndex`    — one index object: configuration
+//                     (name/table/columns/unique/partial/expression)
+//                     plus data (flat `entries` list *and* a parallel
+//                     `buckets` array for O(1) point lookup).
+//   * `IndexManager` — the per-database registry; finds an index that
+//                     covers a given column or a column prefix so the
+//                     executor can convert a full scan into an index
+//                     probe.
+//
+// What this file is **not**: a disk-backed B-tree.  The real B-tree
+// implementation lives in `storage/btree.zia` (for persistent,
+// balanced, range-scan-friendly indexes).  The indexes here are simpler
+// and faster for point lookups and the demo uses them for most query
+// paths.
+//
+// WHERE THIS FITS
+// ---------------
+//     engine/ddl.zia
+//         │  CREATE INDEX → IndexManager.addIndex; the executor calls
+//         │  rebuild() immediately to populate from existing rows.
+//         ▼
+//     engine/index.zia  (YOU ARE HERE)
+//         │  holds the in-memory index structure.
+//         ▼
+//     engine/executor.zia  /  engine/query.zia
+//         │  on every SELECT, consults IndexManager.findIndexForColumn
+//         │  to see if a WHERE predicate can be accelerated.
+//         ▼
+//     engine/dml.zia
+//         │  on every INSERT/UPDATE/DELETE, calls addEntry/removeEntry
+//         │  to keep indexes consistent.
+//
+// KEY DESIGN CHOICES
+// ------------------
+//   1. Two views of the same data: `entries` (flat list) + `buckets`
+//      (128-ish hash buckets for point lookup, here default 64).  Point
+//      lookups go through `buckets`; range scans and prefix scans go
+//      through `entries`.  Keeping both lists requires disciplined
+//      insert/delete, but saves a linear scan on the hot WHERE path.
+//
+//   2. Composite key = pipe-joined strings.  Same encoding as
+//      `setops.rowKey` — uniform treatment of every SQL type via
+//      `toString()`.  This lets us point-lookup a (col1, col2, col3)
+//      composite in one hash step and prefix-lookup by column position
+//      in a linear scan of the flat list.
+//
+//   3. Prefix lookup checks the boundary carefully.  The sub-string
+//      comparison `prefix == ks[0..prefixLen]` is not enough — a
+//      partial-character match on the last pipe-segment would false-
+//      positive.  We additionally require that the character after the
+//      prefix is either end-of-string or `|`, so `"ab|c"` never matches
+//      prefix `"a"`.
+//
+//   4. Range scan is a full entries walk.  `lookupRange` iterates every
+//      entry and consults `checkRangeMatch`.  Hash buckets cannot
+//      accelerate range queries — a real B-tree would; adding one is
+//      tracked by the existing `storage/btree.zia` module and the
+//      `storage/btree_node.zia` pair.
+//
+//   5. Partial indexes run a mini-evaluator.  The WHERE clause of a
+//      partial index (`CREATE INDEX … WHERE active = 1`) is stored as
+//      a pre-parsed `Expr`.  Evaluating the full executor's expression
+//      engine here would create a dependency cycle, so we carry a
+//      cut-down evaluator in `evalPartialExpr` that handles the
+//      common subset (comparisons, IS [NOT] NULL, AND, OR, NOT, unary
+//      negation).  If an author writes something exotic, the partial
+//      predicate simply fails-closed and the row is excluded.
+//
+// HOW TO READ THIS FILE
+// ---------------------
+//   1. `IndexEntry` — trivially small data class.
+//   2. `SqlIndex` — the whole file's main character.  Read:
+//        init → addColumn/hashString/buildKeyString
+//            → addEntry / removeEntry           (write path)
+//            → lookupSingle / lookupComposite / lookupPrefix
+//                                               (read path)
+//            → lookupRange + checkRangeMatch
+//            → matchesWhere + evalPartialExpr   (partial indexes)
+//            → rebuild                          (after ALTER/DDL)
+//   3. `makeIndex` factory.
+//   4. `IndexManager` — discovery: find an index by name, by column,
+//      by column prefix.
+//
+// =============================================================================
 
 module index;
 
@@ -22,18 +110,27 @@ bind "../parser/expr";
 // INDEX ENTRY
 //=============================================================================
 
-// Index entry - maps a key value to a row index
+/// @brief One (hashed) key → rowIndex mapping.
+///
+/// We store *both* the raw hash and the stringified key.  The hash
+/// picks a bucket in O(1); the string confirms equality after a hash
+/// match.  `rowIndex` is the positional index into the owning
+/// `Table.rows` list — so an entry remains valid as long as nothing
+/// physically reshuffles the table, which happens only at VACUUM.
 class IndexEntry {
-    expose Integer keyHash;      // Hash of the key value(s)
-    expose String keyString;     // String representation of key for comparison
-    expose Integer rowIndex;     // Index into table rows
+    expose Integer keyHash;
+    expose String keyString;
+    expose Integer rowIndex;
 
+    /// @brief Zero-state init.
     expose func init() {
         keyHash = 0;
         keyString = "";
         rowIndex = 0;
     }
 
+    /// @brief Usual constructor.  Inserts go through this so the hash
+    ///        and string are always consistent.
     expose func initWith(hash: Integer, keyStr: String, rowIdx: Integer) {
         keyHash = hash;
         keyString = keyStr;
@@ -45,22 +142,36 @@ class IndexEntry {
 // SQL INDEX
 //=============================================================================
 
-// SqlIndex - Hash-based index on one or more columns (with bucket acceleration)
+/// @brief One in-memory index.
+///
+/// Carries both the metadata (name, table, columns, unique, partial,
+/// expression) and the data (flat entries list + parallel bucket
+/// array).  A single instance covers one index definition on one
+/// table; composite indexes store one entry per row with a
+/// pipe-joined key.
 class SqlIndex {
     expose String name;
     expose String tableName;
     expose List[String] columnNames;
     expose Boolean isUnique;
-    expose List[IndexEntry] entries;
-    expose List[List[IndexEntry]] buckets;
+    expose List[IndexEntry] entries;              // flat list
+    expose List[List[IndexEntry]] buckets;        // hash-bucketed view
     expose Integer bucketCount;
-    expose Expr? whereExpr;      // Phase 74: partial index predicate
-    expose Boolean isPartial;    // Phase 74: true if WHERE clause present
-    expose Boolean isExpression;       // Expression index (e.g., LOWER(name))
-    expose String expressionSQL;       // Raw SQL text of expression
-    expose String expressionFuncName;  // Function name (e.g., "LOWER")
-    expose String expressionColumnName; // Column arg (e.g., "name")
+    // Phase 74: partial indexes (CREATE INDEX ... WHERE <predicate>).
+    // `whereExpr` holds a pre-parsed expression; `isPartial` is the
+    // fast toggle used on the hot path.
+    expose Expr? whereExpr;
+    expose Boolean isPartial;
+    // Expression indexes (CREATE INDEX ... ON tbl ( LOWER(name) ) ).
+    // We only store a tiny description — the executor uses it to know
+    // it must evaluate the function at lookup time rather than comparing
+    // raw column values.
+    expose Boolean isExpression;
+    expose String expressionSQL;
+    expose String expressionFuncName;
+    expose String expressionColumnName;
 
+    /// @brief Zero-state init, with 64 buckets allocated.
     expose func init() {
         name = "";
         tableName = "";
@@ -78,6 +189,7 @@ class SqlIndex {
         initBuckets();
     }
 
+    /// @brief Named init — used by `makeIndex`.
     expose func initWithNames(idxName: String, tblName: String) {
         name = idxName;
         tableName = tblName;
@@ -91,7 +203,10 @@ class SqlIndex {
         initBuckets();
     }
 
-    // Initialize empty bucket lists
+    /// @brief Allocate `bucketCount` empty buckets.
+    ///
+    /// Called on construction and again on `rebuild` — the bucket
+    /// structure must be freshly empty before we re-insert every row.
     expose func initBuckets() {
         buckets = [];
         var i = 0;
@@ -101,14 +216,19 @@ class SqlIndex {
         }
     }
 
+    /// @brief Append a column to the indexed-column list.  Called once
+    ///        per column during CREATE INDEX.
     expose func addColumn(colName: String) {
         columnNames.add(colName);
     }
 
+    /// @brief Number of columns this index covers.
     expose func columnCount() -> Integer {
         return columnNames.count();
     }
 
+    /// @brief Column name at position — bounds-checked; returns ""
+    ///        outside range.
     expose func getColumnName(index: Integer) -> String {
         if index >= 0 && index < columnNames.count() {
             return columnNames.get(index);
@@ -116,14 +236,22 @@ class SqlIndex {
         return "";
     }
 
-    // Compute a hash for a string (FNV-1a via runtime)
+    /// @brief Non-negative hash of a string.  `CryptoHash.Fast` can
+    ///        return negative values (signed Integer); we flip sign
+    ///        so modulo is always non-negative.
     expose func hashString(s: String) -> Integer {
         var h = Viper.Crypto.Hash.Fast(s);
         if h < 0 { return 0 - h; }
         return h;
     }
 
-    // Build key string from row values for indexed columns
+    /// @brief Build the composite key string for a row.
+    ///
+    /// Walks `columnNames`, resolves each to a column index in `tbl`,
+    /// and pipes together the cell `toString()`s.  Unknown columns
+    /// are silently skipped — the DDL layer rejects CREATE INDEX on a
+    /// missing column, so in practice this skip never fires on a well-
+    /// formed index.
     expose func buildKeyString(row: Row, tbl: Table) -> String {
         var result = "";
         var i = 0;
@@ -142,25 +270,29 @@ class SqlIndex {
         return result;
     }
 
-    // Add an entry to the index
+    /// @brief Insert one row's key into the index.
+    ///
+    /// Two side effects: append to `entries` (flat list) AND append to
+    /// the appropriate bucket.  If the index is UNIQUE, we search the
+    /// bucket first and return false on duplicate — the caller
+    /// (`engine/dml.zia`) turns that into a "unique constraint
+    /// violation" error.
     expose func addEntry(row: Row, rowIdx: Integer, tbl: Table) -> Boolean {
         var keyStr = buildKeyString(row, tbl);
         var hash = hashString(keyStr);
         var bIdx = hash % bucketCount;
         var bucket = buckets.get(bIdx);
 
-        // Check for unique constraint violation (search only in bucket)
         if isUnique {
             var i = 0;
             while i < bucket.count() {
                 if bucket.get(i).keyString == keyStr {
-                    return false;  // Duplicate found
+                    return false;
                 }
                 i = i + 1;
             }
         }
 
-        // Add new entry to both flat list and bucket
         var entry = new IndexEntry();
         entry.init();
         entry.initWith(hash, keyStr, rowIdx);
@@ -169,12 +301,16 @@ class SqlIndex {
         return true;
     }
 
-    // Remove an entry from the index (for DELETE operations)
+    /// @brief Remove every entry pointing at `rowIdx`.
+    ///
+    /// A single row can only be in the index once today (even for
+    /// composite indexes, one row → one key), so there is at most one
+    /// match, but the loop bails out defensively on the first hit.
+    /// The `j = bucket.count()` trick is Zia's idiomatic early-exit.
     expose func removeEntry(rowIdx: Integer) {
         var i = 0;
         while i < entries.count() {
             if entries.get(i).rowIndex == rowIdx {
-                // Also remove from bucket
                 var hash = entries.get(i).keyHash;
                 var bIdx = hash % bucketCount;
                 var bucket = buckets.get(bIdx);
@@ -193,11 +329,14 @@ class SqlIndex {
         }
     }
 
-    // Lookup entries matching a composite key (multiple column values)
-    // Builds composite key string from values and looks up via hash bucket
+    /// @brief Composite point lookup: one key per column in
+    ///        `keyValues`, concatenated pipe-joined, hashed, bucket-
+    ///        scanned.
+    ///
+    /// Returns **all** matching row indices — duplicates are expected
+    /// on non-UNIQUE indexes.
     expose func lookupComposite(keyValues: List[SqlValue]) -> List[Integer] {
         var results: List[Integer] = [];
-        // Build composite key string using same separator as buildKeyString
         var keyStr = "";
         var i = 0;
         while i < keyValues.count() {
@@ -214,6 +353,8 @@ class SqlIndex {
         i = 0;
         while i < bucket.count() {
             var entry = bucket.get(i);
+            // Hash equality is necessary but not sufficient; confirm
+            // via full keyString equality before reporting a hit.
             if entry.keyHash == hash && entry.keyString == keyStr {
                 results.add(entry.rowIndex);
             }
@@ -222,11 +363,15 @@ class SqlIndex {
         return results;
     }
 
-    // Lookup entries matching a prefix of the composite key
-    // For an index on (a, b, c), you can search just by a, or by a+b
+    /// @brief Prefix lookup.  For a composite index on (a, b, c) we
+    ///        can look up just by `a` or by (a, b).
+    ///
+    /// Cannot use the hash — the hash of "a|b" is unrelated to the
+    /// hash of "a".  Scans the flat `entries` list and tests each key
+    /// against the prefix.  The boundary check (`== prefixLen` or
+    /// next char is `|`) is what prevents "a" from matching "abc".
     expose func lookupPrefix(keyValues: List[SqlValue]) -> List[Integer] {
         var results: List[Integer] = [];
-        // Build prefix key string
         var prefix = "";
         var i = 0;
         while i < keyValues.count() {
@@ -238,7 +383,6 @@ class SqlIndex {
         }
         var prefixLen = Viper.String.Length(prefix);
 
-        // Scan all entries for prefix match (can't use hash for prefix)
         i = 0;
         while i < entries.count() {
             var entry = entries.get(i);
@@ -246,8 +390,7 @@ class SqlIndex {
             if Viper.String.Length(ks) >= prefixLen {
                 var sub = Viper.String.Substring(ks, 0, prefixLen);
                 if sub == prefix {
-                    // Verify it's a complete prefix match (not partial value)
-                    // Must end at string boundary or be followed by |
+                    // Full-segment boundary check.
                     if Viper.String.Length(ks) == prefixLen || Viper.String.Substring(ks, prefixLen, 1) == "|" {
                         results.add(entry.rowIndex);
                     }
@@ -258,7 +401,11 @@ class SqlIndex {
         return results;
     }
 
-    // Lookup entries matching a single key value (bucket-accelerated)
+    /// @brief Single-column point lookup (degenerate composite).
+    ///
+    /// Skips the pipe-concatenation; hashes the value's `toString()`
+    /// directly.  Used by the hot WHERE = path via
+    /// `IndexManager.findIndexForColumn`.
     expose func lookupSingle(keyVal: SqlValue, tbl: Table) -> List[Integer] {
         var results: List[Integer] = [];
         var keyStr = keyVal.toString();
@@ -266,12 +413,10 @@ class SqlIndex {
         var bIdx = hash % bucketCount;
         var bucket = buckets.get(bIdx);
 
-        // Search only within the matching bucket
         var i = 0;
         while i < bucket.count() {
             var entry = bucket.get(i);
             if entry.keyHash == hash {
-                // Verify key matches (hash collision check)
                 if entry.keyString == keyStr {
                     results.add(entry.rowIndex);
                 }
@@ -282,9 +427,20 @@ class SqlIndex {
         return results;
     }
 
-    // Range lookup: find all row indices where the indexed column satisfies a range predicate
-    // rangeType: 1=GT(>), 2=GE(>=), 3=LT(<), 4=LE(<=), 5=BETWEEN
-    // For BETWEEN, both boundVal and upperVal are used
+    /// @brief Range lookup: every row satisfying `<op> boundVal`
+    ///        (possibly `BETWEEN boundVal AND upperVal`).
+    ///
+    /// `rangeType` codes:
+    ///     1 = `>  bound`        2 = `>= bound`
+    ///     3 = `<  bound`        4 = `<= bound`
+    ///     5 = `BETWEEN bound AND upper`
+    ///
+    /// Hash buckets give nothing for range queries, so we scan
+    /// `entries` and resolve each back to its actual row (cheap index
+    /// access), then compare via `SqlValue.compare` which honours SQL
+    /// three-valued logic.  Deleted rows are excluded — we cannot
+    /// rely on the entries being purged because UPDATE-then-DELETE
+    /// paths may have left a stale entry.
     expose func lookupRange(boundVal: SqlValue, upperVal: SqlValue, rangeType: Integer, tbl: Table) -> List[Integer] {
         var results: List[Integer] = [];
         var i = 0;
@@ -311,7 +467,11 @@ class SqlIndex {
         return results;
     }
 
-    // Check if a value matches a range predicate
+    /// @brief Range predicate.  Hidden from outside callers — the
+    ///        public interface is `lookupRange`.  Returns false on
+    ///        incomparable pairs (compare result 2 = NULL/UNKNOWN)
+    ///        so the row is correctly excluded under three-valued
+    ///        logic.
     hide func checkRangeMatch(val: SqlValue, boundVal: SqlValue, upperVal: SqlValue, rangeType: Integer) -> Boolean {
         var cmp = val.compare(boundVal);
         if cmp == 2 { return false; }
@@ -328,7 +488,12 @@ class SqlIndex {
         return false;
     }
 
-    // Rebuild the entire index from table data
+    /// @brief Rebuild the entire index from the owning table.
+    ///
+    /// Called after ALTER TABLE, after persistence-layer restore, and
+    /// after VACUUM (which reshuffles row indices so prior `entries`
+    /// are invalid).  Walks every live row, skips partial-predicate
+    /// mismatches, and re-inserts.
     expose func rebuild(tbl: Table) {
         entries = [];
         initBuckets();
@@ -336,10 +501,11 @@ class SqlIndex {
         while i < tbl.rowCount() {
             var row = tbl.getRow(i);
             if row != null {
-                // Workaround: copy to local var for deleted check
+                // Workaround for Zia's optional-narrowing: copy to a
+                // local variable so the `.deleted` dereference is
+                // type-checked.
                 var r = row;
                 if r.deleted == false {
-                    // Phase 74: Skip rows that don't match partial index predicate
                     if isPartial && matchesWhere(r, tbl) == false {
                         i = i + 1;
                         continue;
@@ -351,17 +517,33 @@ class SqlIndex {
         }
     }
 
-    // Phase 74: Evaluate partial index WHERE predicate against a row.
-    // Handles common patterns: comparisons, IS NOT NULL, AND/OR, NOT.
+    /// @brief Partial-index predicate test — does this row qualify?
+    ///
+    /// Quick path: a non-partial index always says yes.  For partial
+    /// indexes we unwrap the optional and defer to `evalPartialExpr`,
+    /// treating 0 as false and any non-zero as true.
     expose func matchesWhere(row: Row, tbl: Table) -> Boolean {
         if whereExpr == null { return true; }
         var e = whereExpr;
         return evalPartialExpr(e!, row, tbl) != 0;
     }
 
-    // Simple expression evaluator for partial index predicates.
-    // Returns integer: 0 = false, nonzero = true, for logical ops.
-    // For comparisons, returns the value itself (integer representation).
+    /// @brief Mini expression evaluator used only for partial-index
+    ///        predicates.
+    ///
+    /// Not a complete SQL evaluator — that is `engine/executor.zia`'s
+    /// job, and importing it here would create a cycle.  This handles
+    /// the subset of predicates DDL is likely to accept:
+    ///
+    ///   * Literals and column references (returns their int value;
+    ///     0 for NULL → falsy).
+    ///   * Unary NOT, NEG.
+    ///   * Binary AND / OR / IS NULL / comparisons (=, !=, <, <=, >,
+    ///     >=).
+    ///
+    /// Anything outside this subset returns 0 (falsy), so the row is
+    /// excluded from the partial index.  That is a conservative
+    /// failure — slower queries, but never a wrong row.
     hide func evalPartialExpr(expr: Expr, row: Row, tbl: Table) -> Integer {
         if expr.kind == EXPR_LITERAL {
             if expr.literalValue.kind == SQL_NULL { return 0; }
@@ -385,35 +567,37 @@ class SqlIndex {
             }
         }
         if expr.kind == EXPR_BINARY {
-            // IS / IS NOT NULL
+            // `x IS NULL` — the parser encodes the right-side NULL as
+            // a literal, so we just test kind equality.  `IS NOT NULL`
+            // is wrapped in a unary NOT by the parser, so the OP_IS
+            // case below is only reached for the bare form.
             if expr.op == OP_IS {
                 var leftVal = getColumnValue(expr.args.get(0), row, tbl);
                 var rightExpr = expr.args.get(1);
-                // Check for IS NULL and IS NOT NULL patterns
                 if rightExpr.kind == EXPR_LITERAL && rightExpr.literalValue.kind == SQL_NULL {
                     if leftVal.kind == SQL_NULL { return 1; }
                     return 0;
                 }
-                // IS NOT NULL: parser encodes NOT IS NULL as UNARY NOT around IS
                 return 0;
             }
-            // AND / OR
+            // AND — short-circuit left.
             if expr.op == OP_AND {
                 var left = evalPartialExpr(expr.args.get(0), row, tbl);
                 if left == 0 { return 0; }
                 return evalPartialExpr(expr.args.get(1), row, tbl);
             }
+            // OR — short-circuit left.
             if expr.op == OP_OR {
                 var left = evalPartialExpr(expr.args.get(0), row, tbl);
                 if left != 0 { return 1; }
                 return evalPartialExpr(expr.args.get(1), row, tbl);
             }
-            // Comparison operators
+            // Comparison operators.
             var leftVal = getColumnValue(expr.args.get(0), row, tbl);
             var rightVal = getColumnValue(expr.args.get(1), row, tbl);
             if leftVal.kind == SQL_NULL || rightVal.kind == SQL_NULL { return 0; }
             var cmp = leftVal.compare(rightVal);
-            if cmp == 2 { return 0; } // incomparable
+            if cmp == 2 { return 0; }
             if expr.op == OP_EQ { if cmp == 0 { return 1; } return 0; }
             if expr.op == OP_NE { if cmp != 0 { return 1; } return 0; }
             if expr.op == OP_LT { if cmp < 0 { return 1; } return 0; }
@@ -424,7 +608,9 @@ class SqlIndex {
         return 0;
     }
 
-    // Get SqlValue for an expression (literal or column reference)
+    /// @brief Resolve a leaf expression to a SqlValue (for the
+    ///        mini evaluator).  Literals return their value; column
+    ///        references look up by name.
     hide func getColumnValue(expr: Expr, row: Row, tbl: Table) -> SqlValue {
         if expr.kind == EXPR_LITERAL { return expr.literalValue; }
         if expr.kind == EXPR_COLUMN {
@@ -434,10 +620,13 @@ class SqlIndex {
         return sqlNull();
     }
 
+    /// @brief Number of entries in the index.
     expose func entryCount() -> Integer {
         return entries.count();
     }
 
+    /// @brief "UNIQUE INDEX foo ON t (a, b) [3 entries] WHERE (partial)"
+    ///        — used for SHOW INDEXES and pg_indexes.
     expose func toString() -> String {
         var result = "";
         if isUnique {
@@ -460,7 +649,7 @@ class SqlIndex {
     }
 }
 
-// Factory function for creating indexes
+/// @brief Factory: construct and name an index in one line.
 func makeIndex(idxName: String, tblName: String) -> SqlIndex {
     var idx = new SqlIndex();
     idx.initWithNames(idxName, tblName);
@@ -471,17 +660,23 @@ func makeIndex(idxName: String, tblName: String) -> SqlIndex {
 // INDEX MANAGER
 //=============================================================================
 
-// Index Manager - Stores all indexes for the database
+/// @brief Per-database index registry.
+///
+/// Stores two parallel lists (`indexes`, `indexNames`) for the same
+/// cheap-lookup reason used elsewhere: names are strings, so `equals`
+/// on them is fast; carrying the names out of the `SqlIndex` avoids
+/// indirection on the hot lookup path.
 class IndexManager {
     expose List[SqlIndex] indexes;
-    expose List[String] indexNames;  // Parallel list of index names
+    expose List[String] indexNames;
 
+    /// @brief Empty registry.
     expose func init() {
         indexes = [];
         indexNames = [];
     }
 
-    // Find an index by name
+    /// @brief Linear lookup by index name.
     expose func findIndex(idxName: String) -> SqlIndex? {
         var i = 0;
         while i < indexNames.count() {
@@ -493,10 +688,17 @@ class IndexManager {
         return null;
     }
 
-    // Find an index for a specific table and column combination
-    // Matches single-column indexes or the leading column of composite indexes
+    /// @brief Find any index on `(tblName, colName)`.
+    ///
+    /// Preference order (matches PG's planner heuristics):
+    ///   1. Exact single-column index.
+    ///   2. Composite index whose *leading* column is `colName` — the
+    ///      leftmost-column prefix rule lets the executor still use it
+    ///      as a point index on that column.
+    ///
+    /// Returns null if neither exists.
     expose func findIndexForColumn(tblName: String, colName: String) -> SqlIndex? {
-        // First, prefer an exact single-column index
+        // Prefer single-column exact.
         var i = 0;
         while i < indexes.count() {
             var idx = indexes.get(i);
@@ -507,7 +709,7 @@ class IndexManager {
             }
             i = i + 1;
         }
-        // Fallback: leading column of a composite index
+        // Fall back to leading-column of composite.
         i = 0;
         while i < indexes.count() {
             var idx = indexes.get(i);
@@ -521,20 +723,23 @@ class IndexManager {
         return null;
     }
 
-    // Find a composite index matching a set of column names (order matters)
-    // The provided columns must match a prefix of the index columns
+    /// @brief Find a composite index whose columns match the *prefix*
+    ///        of `colNames` exactly.
+    ///
+    /// Used by the executor for multi-column WHEREs: if WHERE touches
+    /// (a, b) and an index exists on (a, b, c), we can use it.  Order
+    /// matters — (b, a) against (a, b, c) does not match.
     expose func findIndexForColumns(tblName: String, colNames: List[String]) -> SqlIndex? {
         var i = 0;
         while i < indexes.count() {
             var idx = indexes.get(i);
             if idx.tableName == tblName && idx.columnCount() >= colNames.count() {
-                // Check if colNames matches a prefix of idx.columnNames
                 var isMatch = true;
                 var j = 0;
                 while j < colNames.count() {
                     if idx.columnNames.get(j) != colNames.get(j) {
                         isMatch = false;
-                        j = colNames.count();  // break
+                        j = colNames.count();
                     }
                     j = j + 1;
                 }
@@ -547,13 +752,15 @@ class IndexManager {
         return null;
     }
 
-    // Add an index
+    /// @brief Register an index.  DDL takes responsibility for
+    ///        duplicate detection before calling this.
     expose func addIndex(idx: SqlIndex) {
         indexes.add(idx);
         indexNames.add(idx.name);
     }
 
-    // Drop an index by name
+    /// @brief DROP INDEX.  Returns true on removal, false on "no such
+    ///        index" — DROP INDEX IF EXISTS treats that as success.
     expose func dropIndex(idxName: String) -> Boolean {
         var i = 0;
         var count = indexNames.count();
@@ -569,7 +776,8 @@ class IndexManager {
         return false;
     }
 
-    // Phase 66: list all indexes for a specific table
+    /// @brief All indexes belonging to a given table.  Used by SHOW
+    ///        INDEXES <tbl> and by pg_indexes's system-view backend.
     expose func listIndexesForTable(tableName: String) -> List[SqlIndex] {
         var result: List[SqlIndex] = [];
         var i = 0;
@@ -583,10 +791,13 @@ class IndexManager {
         return result;
     }
 
+    /// @brief Total index count across all tables.
     expose func indexCount() -> Integer {
         return indexes.count();
     }
 
+    /// @brief Positional accessor — used by the pg_catalog walker.
+    ///        Null on out-of-range.
     expose func getIndex(index: Integer) -> SqlIndex? {
         if index >= 0 && index < indexes.count() {
             return indexes.get(index);

@@ -1,0 +1,312 @@
+// layers.zia - Layer-backed document storage for Paint
+module layers;
+
+bind Viper.Collections;
+bind Viper.Graphics;
+
+bind "./config";
+
+class PaintLayer {
+    expose String name;
+    expose Integer visible;
+    expose Integer opacity;
+    hide Pixels pixels;
+
+    expose func init() {
+        name = "Layer";
+        visible = 1;
+        opacity = 100;
+        pixels = null;
+    }
+
+    expose func setup(layerName: String, w: Integer, h: Integer, fillColor: Integer) {
+        name = layerName;
+        visible = 1;
+        opacity = 100;
+        pixels = Pixels.New(w, h);
+        pixels.DrawBox(0, 0, w, h, fillColor);
+    }
+
+    expose func setPixels(p: Pixels) {
+        pixels = p;
+    }
+
+    expose func getPixels() -> Pixels {
+        return pixels;
+    }
+}
+
+class LayerStack {
+    hide List[PaintLayer] layerList;
+    hide Pixels? cachedComposite;
+    hide Integer compositeDirty;
+    expose Integer width;
+    expose Integer height;
+    expose Integer activeIndex;
+    expose Integer backgroundColor;
+
+    expose func init() {
+        layerList = [];
+        cachedComposite = null;
+        compositeDirty = 1;
+        width = 0;
+        height = 0;
+        activeIndex = 0;
+        backgroundColor = config.COLOR_WHITE;
+    }
+
+    expose func setup(w: Integer, h: Integer, bg: Integer) {
+        width = w;
+        height = h;
+        backgroundColor = bg;
+        layerList.clear();
+        cachedComposite = null;
+        compositeDirty = 1;
+        activeIndex = 0;
+
+        var base = new PaintLayer();
+        base.setup("Background", w, h, bg);
+        layerList.add(base);
+    }
+
+    expose func resetToPixels(p: Pixels, bg: Integer) {
+        if p == null {
+            return;
+        }
+        width = p.Width;
+        height = p.Height;
+        backgroundColor = bg;
+        layerList.clear();
+        cachedComposite = null;
+        compositeDirty = 1;
+        activeIndex = 0;
+
+        var base = new PaintLayer();
+        base.name = "Background";
+        base.visible = 1;
+        base.opacity = 100;
+        base.setPixels(p);
+        layerList.add(base);
+    }
+
+    expose func addLayer(layerName: String) {
+        var layer = new PaintLayer();
+        layer.setup(layerName, width, height, 0x000000);
+        layer.getPixels().Clear();
+        layer.opacity = 100;
+        layerList.add(layer);
+        activeIndex = layerList.count() - 1;
+        markDirty();
+    }
+
+    expose func layerCount() -> Integer {
+        return layerList.count();
+    }
+
+    expose func getActivePixels() -> Pixels {
+        var layer = getActiveLayer();
+        if layer == null {
+            return null;
+        }
+        return layer.getPixels();
+    }
+
+    expose func replaceActivePixels(p: Pixels) {
+        var layer = getActiveLayer();
+        if layer == null {
+            return;
+        }
+        layer.setPixels(p);
+        width = p.Width;
+        height = p.Height;
+        markDirty();
+    }
+
+    expose func getLayerName(index: Integer) -> String {
+        if index < 0 or index >= layerList.count() {
+            return "";
+        }
+        var layer = layerList.get(index);
+        if layer == null {
+            return "";
+        }
+        return layer.name;
+    }
+
+    expose func setActive(index: Integer) {
+        if index >= 0 and index < layerList.count() {
+            activeIndex = index;
+        }
+    }
+
+    expose func setVisible(index: Integer, visible: Integer) {
+        if index < 0 or index >= layerList.count() {
+            return;
+        }
+        var layer = layerList.get(index);
+        if layer != null {
+            layer.visible = visible;
+            markDirty();
+        }
+    }
+
+    expose func isVisible(index: Integer) -> Integer {
+        if index < 0 or index >= layerList.count() {
+            return 0;
+        }
+        var layer = layerList.get(index);
+        if layer == null {
+            return 0;
+        }
+        return layer.visible;
+    }
+
+    expose func getOpacity(index: Integer) -> Integer {
+        if index < 0 or index >= layerList.count() {
+            return 0;
+        }
+        var layer = layerList.get(index);
+        if layer == null {
+            return 0;
+        }
+        return layer.opacity;
+    }
+
+    expose func setOpacity(index: Integer, opacity: Integer) {
+        if index < 0 or index >= layerList.count() {
+            return;
+        }
+        var newOpacity = opacity;
+        if newOpacity < 0 { newOpacity = 0; }
+        if newOpacity > 100 { newOpacity = 100; }
+        var layer = layerList.get(index);
+        if layer != null {
+            layer.opacity = newOpacity;
+            markDirty();
+        }
+    }
+
+    expose func renameLayer(index: Integer, name: String) {
+        if index < 0 or index >= layerList.count() {
+            return;
+        }
+        var layer = layerList.get(index);
+        if layer != null {
+            layer.name = name;
+        }
+    }
+
+    expose func removeActiveLayer() -> Integer {
+        if layerList.count() <= 1 {
+            return 0;
+        }
+        if activeIndex < 0 or activeIndex >= layerList.count() {
+            return 0;
+        }
+        layerList.removeAt(activeIndex);
+        if activeIndex >= layerList.count() {
+            activeIndex = layerList.count() - 1;
+        }
+        markDirty();
+        return 1;
+    }
+
+    expose func duplicateActiveLayer() -> Integer {
+        var active = getActiveLayer();
+        if active == null {
+            return 0;
+        }
+        var dup = new PaintLayer();
+        dup.name = active.name + " Copy";
+        dup.visible = active.visible;
+        dup.opacity = active.opacity;
+        dup.setPixels(active.getPixels().Clone());
+        layerList.add(dup);
+        activeIndex = layerList.count() - 1;
+        markDirty();
+        return 1;
+    }
+
+    expose func moveActiveUp() -> Integer {
+        if activeIndex < 0 or activeIndex >= layerList.count() - 1 {
+            return 0;
+        }
+        var layer = layerList.get(activeIndex);
+        layerList.removeAt(activeIndex);
+        activeIndex = activeIndex + 1;
+        layerList.insert(activeIndex, layer);
+        markDirty();
+        return 1;
+    }
+
+    expose func moveActiveDown() -> Integer {
+        if activeIndex <= 0 or activeIndex >= layerList.count() {
+            return 0;
+        }
+        var layer = layerList.get(activeIndex);
+        layerList.removeAt(activeIndex);
+        activeIndex = activeIndex - 1;
+        layerList.insert(activeIndex, layer);
+        markDirty();
+        return 1;
+    }
+
+    expose func markDirty() {
+        compositeDirty = 1;
+    }
+
+    expose func compositePixels() -> Pixels {
+        if layerList.count() == 1 {
+            return getActivePixels();
+        }
+
+        if compositeDirty == 0 and cachedComposite != null {
+            return cachedComposite!;
+        }
+
+        var out = Pixels.New(width, height);
+        out.DrawBox(0, 0, width, height, backgroundColor);
+
+        var i = 0;
+        while i < layerList.count() {
+            var layer = layerList.get(i);
+            if layer != null and layer.visible == 1 {
+                if i == 0 and layer.opacity >= 100 {
+                    out.Copy(0, 0, layer.getPixels(), 0, 0, width, height);
+                } else {
+                    blendLayer(out, layer);
+                }
+            }
+            i = i + 1;
+        }
+        cachedComposite = out;
+        compositeDirty = 0;
+        return out;
+    }
+
+    hide func blendLayer(out: Pixels, layer: PaintLayer) {
+        var src = layer.getPixels();
+        var y = 0;
+        while y < height {
+            var x = 0;
+            while x < width {
+                var raw = src.Get(x, y);
+                var alpha = raw % 256;
+                if alpha > 0 {
+                    alpha = alpha * layer.opacity / 100;
+                    var rgb = raw / 256;
+                    out.BlendPixel(x, y, rgb, alpha);
+                }
+                x = x + 1;
+            }
+            y = y + 1;
+        }
+    }
+
+    hide func getActiveLayer() -> PaintLayer? {
+        if activeIndex < 0 or activeIndex >= layerList.count() {
+            return null;
+        }
+        return layerList.get(activeIndex);
+    }
+}

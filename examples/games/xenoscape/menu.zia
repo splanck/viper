@@ -1,5 +1,64 @@
-// menu.zia — Title screen, pause, game over, level complete, high scores, controls
-// Uses SaveData for persistent high scores, TextCenteredScaled for centered headers.
+// =============================================================================
+// menu.zia — Title, pause, game-over, level-select, high scores, controls
+// Part of Xenoscape  (the 2D sidescroller platformer demo)
+// =============================================================================
+//
+// TUTORIAL — MENUS ARE A GAME WITHIN THE GAME
+// -------------------------------------------
+// The menu system is sometimes treated as an afterthought —
+// "the boring code between the title screen and the fun
+// part".  But a platformer's menus are the player's first
+// impression, the place they return on death, and the
+// surface through which they configure controls and save
+// slots.  Doing them well pays off in polish.
+//
+// Xenoscape's menu is a collection of *states* the game can
+// be in when it isn't running gameplay:
+//
+//     Title → Level Select → gameplay → Pause → Game Over
+//             ↓
+//           Options
+//             ↓
+//           Controls
+//             ↓
+//           High Scores
+//
+// Each state is its own screen drawn here; `Game` tracks
+// which state is active and forwards input to the matching
+// handler.
+//
+// WIDGETS USED
+// ------------
+//   * `Viper.Game.UI.ButtonGroup` — a set of buttons with
+//     cursor / keyboard / gamepad focus traversal built in.
+//   * `Viper.Game.UI.MenuList` — vertical menu with
+//     highlight, wrap, and accept/cancel events.
+//   * `Viper.IO.SaveData` — persistent high-score table.
+//
+// Each menu screen is one `ButtonGroup` + one `MenuList`.
+// Input is piped in via `Viper.Input.Action.Pressed(...)`;
+// the widget raises an "activated" event and this file
+// dispatches to the next state.
+//
+// WHERE THIS FITS
+// ---------------
+//     game.zia  ──►  on boot, lands on `MENU_TITLE` and
+//                    delegates update + draw to this file.
+//     save.zia  ──►  supplies per-slot summaries for the
+//                    level-select screen.
+//     Viper.Game.UI.* ──► widget runtime.
+//     Viper.Input.Action ──► named-input bindings.
+//
+// HOW TO READ THIS FILE
+// ---------------------
+//   1. State constants (MENU_TITLE, MENU_LEVEL_SELECT, ...).
+//   2. `MenuSystem` class — widget handles for each screen,
+//      the current state, and the highscore table.
+//   3. Per-screen `update*` / `draw*` methods.
+//   4. Option-setter callbacks (volume, fullscreen, binds).
+//
+// =============================================================================
+
 module menu;
 
 bind Viper.Graphics;
@@ -7,15 +66,29 @@ bind Viper.Input;
 bind Viper.Fmt;
 bind Viper.IO;
 bind Viper.Game;
+bind Viper.Game.UI;
 bind "./config";
 bind "./palette";
 bind "./sprites";
 
+/// @brief All non-gameplay screens: title, level select,
+///        pause, game over, level complete, victory, high
+///        scores, controls, save slots, settings, ability
+///        viewer, loading.
+///
+/// One instance lives on `Game`; per-screen `update*` methods
+/// run input + return a "next state" code, and per-screen
+/// `draw*` methods render.  Game routes both to the
+/// matching pair based on its current top-level state.
 class MenuSystem {
     hide ButtonGroup titleBG;
     hide ButtonGroup pauseBG;
     hide ButtonGroup gameOverBG;
     hide ButtonGroup levelSelectBG;
+    hide MenuList titleList;
+    hide MenuList levelList;
+    hide MenuList pauseList;
+    hide MenuList gameOverList;
     hide Palette pal;
     hide Integer titleTimer;     // for title animation
     hide Integer bgScroll;       // background scroll
@@ -24,6 +97,9 @@ class MenuSystem {
     hide List[String] highNames;
     hide SaveData save;          // cross-platform persistent storage
 
+    /// @brief Construct every ButtonGroup + MenuList needed
+    ///        across every screen.  Loads persisted high
+    ///        scores from SaveData.
     expose func init(p: Palette) {
         pal = p;
         // Title menu: Play, Level Select, High Scores, Controls, Quit
@@ -34,13 +110,24 @@ class MenuSystem {
         titleBG.Add(MENU_CONTROLS);
         titleBG.Add(MENU_QUIT);
         titleBG.Select(MENU_PLAY);
+        titleList = MenuList.New(520, 260, 44);
+        titleList.AddItem("PLAY");
+        titleList.AddItem("LEVEL SELECT");
+        titleList.AddItem("HIGH SCORES");
+        titleList.AddItem("CONTROLS");
+        titleList.AddItem("QUIT");
+        titleList.SetColors(pal.menuText, pal.white, pal.menuHighlight);
 
-        // Level select menu (1-4)
+        // Level select menu mirrors LEVEL_COUNT for runtime test access.
         levelSelectBG = ButtonGroup.New();
-        levelSelectBG.Add(1);
-        levelSelectBG.Add(2);
-        levelSelectBG.Add(3);
-        levelSelectBG.Add(4);
+        levelList = MenuList.New(380, 150, 34);
+        var lv = 1;
+        while lv <= LEVEL_COUNT {
+            levelSelectBG.Add(lv);
+            levelList.AddItem(Int(lv) + ": " + getBiomeName(lv));
+            lv = lv + 1;
+        }
+        levelList.SetColors(pal.menuText, pal.white, pal.menuHighlight);
         levelSelectBG.Select(1);
         selectedLevel = 1;
 
@@ -49,12 +136,20 @@ class MenuSystem {
         pauseBG.Add(0);
         pauseBG.Add(1);
         pauseBG.Select(0);
+        pauseList = MenuList.New(520, 292, 50);
+        pauseList.AddItem("RESUME");
+        pauseList.AddItem("QUIT TO MENU");
+        pauseList.SetColors(pal.menuText, pal.white, pal.menuHighlight);
 
         // Game over menu: Try Again (0), Main Menu (1)
         gameOverBG = ButtonGroup.New();
         gameOverBG.Add(0);
         gameOverBG.Add(1);
         gameOverBG.Select(0);
+        gameOverList = MenuList.New(510, 348, 50);
+        gameOverList.AddItem("TRY AGAIN");
+        gameOverList.AddItem("MAIN MENU");
+        gameOverList.SetColors(pal.menuText, pal.white, pal.menuHighlight);
 
         titleTimer = 0;
         bgScroll = 0;
@@ -75,42 +170,65 @@ class MenuSystem {
     // Title Screen — returns game state to transition to, or -1 for none
     // =========================================================================
 
+    //=========================================================
+    // PER-SCREEN UPDATE/DRAW PAIRS
+    //=========================================================
+    // Each screen has an `update*` (handles input, returns the
+    // game's next top-level state) and a `draw*` (renders).
+    // Game.tick dispatches to the pair matching its current
+    // state.
+
+    /// @brief Title screen input.  Returns the menu choice
+    ///        (start, continue, options, quit) as a state code.
     expose func updateTitle() -> Integer {
         titleTimer = titleTimer + 1;
         bgScroll = bgScroll + 1;
 
-        // Navigation via Action + ButtonGroup (auto-wrapping)
-        if Action.Pressed(ACT_UP) {
-            titleBG.SelectPrev();
-        }
-        if Action.Pressed(ACT_DOWN) {
-            titleBG.SelectNext();
-        }
+        var chosen = titleList.HandleInput(Action.Pressed(ACT_UP),
+                                           Action.Pressed(ACT_DOWN),
+                                           Action.Pressed(ACT_CONFIRM));
+        syncTitleSelection();
 
         // Selection
-        if Action.Pressed(ACT_CONFIRM) {
-            if titleBG.IsSelected(MENU_PLAY) {
+        if chosen >= 0 {
+            if chosen == 0 {
                 selectedLevel = 1;
                 return STATE_PLAYING;
             }
-            if titleBG.IsSelected(MENU_LEVELSELECT) { return STATE_LEVELSELECT; }
-            if titleBG.IsSelected(MENU_HIGHSCORES) { return STATE_HIGHSCORES; }
-            if titleBG.IsSelected(MENU_CONTROLS) { return STATE_CONTROLS; }
-            if titleBG.IsSelected(MENU_QUIT) { return -2; }
+            if chosen == 1 { return STATE_LEVELSELECT; }
+            if chosen == 2 { return STATE_HIGHSCORES; }
+            if chosen == 3 { return STATE_CONTROLS; }
+            if chosen == 4 { return -2; }
         }
 
         return -1;
     }
 
+    /// @brief Mirror title-screen ButtonGroup focus into the
+    ///        corresponding MenuList highlight (and back).
+    hide func syncTitleSelection() {
+        var selected = titleList.get_Selected();
+        if selected == 0 { titleBG.Select(MENU_PLAY); }
+        if selected == 1 { titleBG.Select(MENU_LEVELSELECT); }
+        if selected == 2 { titleBG.Select(MENU_HIGHSCORES); }
+        if selected == 3 { titleBG.Select(MENU_CONTROLS); }
+        if selected == 4 { titleBG.Select(MENU_QUIT); }
+    }
+
     // Level select screen — pick starting level for testing
+    /// @brief Level-select input.  Stashes the chosen level
+    ///        in `selectedLevel` and returns the play state.
     expose func updateLevelSelect() -> Integer {
         titleTimer = titleTimer + 1;
 
-        if Action.Pressed(ACT_UP) { levelSelectBG.SelectPrev(); }
-        if Action.Pressed(ACT_DOWN) { levelSelectBG.SelectNext(); }
+        var chosen = levelList.HandleInput(Action.Pressed(ACT_UP),
+                                           Action.Pressed(ACT_DOWN),
+                                           Action.Pressed(ACT_CONFIRM));
+        selectedLevel = levelList.get_Selected() + 1;
+        levelSelectBG.Select(selectedLevel);
 
-        if Action.Pressed(ACT_CONFIRM) {
-            selectedLevel = levelSelectBG.get_Selected();
+        if chosen >= 0 {
+            selectedLevel = chosen + 1;
             return STATE_PLAYING;
         }
         if Action.Pressed(ACT_BACK) { return STATE_MENU; }
@@ -118,21 +236,25 @@ class MenuSystem {
         return STATE_LEVELSELECT;
     }
 
+    /// @brief Render the level-select grid.
     expose func drawLevelSelect(canvas: Canvas) {
         canvas.Box(0, 0, SCREEN_W, SCREEN_H, pal.menuBg);
         drawStarfield(canvas);
 
         canvas.TextCenteredScaled(60, "SELECT LEVEL", pal.titleOrange, 4);
 
-        var y = 180;
-        drawLevelOption(canvas, "1: THE DESCENT", 1, y);
-        drawLevelOption(canvas, "2: SALVAGE", 2, y + 60);
-        drawLevelOption(canvas, "3: FROZEN ABYSS", 3, y + 120);
-        drawLevelOption(canvas, "4: OVERGROWTH", 4, y + 180);
+        var y = 140;
+        var levelNum = 1;
+        while levelNum <= LEVEL_COUNT {
+            drawLevelOption(canvas, Int(levelNum) + ": " + getBiomeName(levelNum),
+                            levelNum, y + (levelNum - 1) * 42);
+            levelNum = levelNum + 1;
+        }
 
         canvas.TextCenteredScaled(SCREEN_H - 40, "Press ENTER to start, ESC to go back", pal.hudGray, 2);
     }
 
+    /// @brief Draw one row of the level-select list.
     hide func drawLevelOption(canvas: Canvas, label: String, levelNum: Integer, y: Integer) {
         var x = 440;
         var col = pal.menuText;
@@ -146,6 +268,8 @@ class MenuSystem {
         canvas.TextScaled(x, y + 2, label, 3, col);
     }
 
+    /// @brief Title screen — animated logo + main menu list +
+    ///        scrolling starfield.
     expose func drawTitle(canvas: Canvas) {
         // Gradient background (night sky)
         canvas.GradientV(0, 0, SCREEN_W, SCREEN_H, pal.skyTop, pal.menuBg);
@@ -216,6 +340,8 @@ class MenuSystem {
         canvas.TextCenteredScaled(SCREEN_H - 30, "Made with Viper + Zia", pal.hudGray, 2);
     }
 
+    /// @brief Draw one menu list entry with selected/unselected
+    ///        styling.
     hide func drawMenuOption(canvas: Canvas, label: String, index: Integer,
                               y: Integer, bg: ButtonGroup) {
         var x = 520;
@@ -230,6 +356,7 @@ class MenuSystem {
         canvas.TextScaled(x, y, label, 3, col);
     }
 
+    /// @brief Animated star backdrop used by the title screen.
     hide func drawStarfield(canvas: Canvas) {
         var i = 0;
         while i < 80 {
@@ -246,26 +373,26 @@ class MenuSystem {
     // Pause Screen
     // =========================================================================
 
+    /// @brief Pause-menu input.
     expose func updatePause() -> Integer {
         if Action.Pressed(ACT_BACK) {
             return STATE_PLAYING;
         }
 
-        if Action.Pressed(ACT_UP) {
-            pauseBG.SelectPrev();
-        }
-        if Action.Pressed(ACT_DOWN) {
-            pauseBG.SelectNext();
-        }
+        var chosen = pauseList.HandleInput(Action.Pressed(ACT_UP),
+                                           Action.Pressed(ACT_DOWN),
+                                           Action.Pressed(ACT_CONFIRM));
+        pauseBG.Select(pauseList.get_Selected());
 
-        if Action.Pressed(ACT_CONFIRM) {
-            if pauseBG.IsSelected(0) { return STATE_PLAYING; }
-            if pauseBG.IsSelected(1) { return STATE_MENU; }
+        if chosen >= 0 {
+            if chosen == 0 { return STATE_PLAYING; }
+            if chosen == 1 { return STATE_MENU; }
         }
 
         return STATE_PAUSED;
     }
 
+    /// @brief Pause overlay — dim backdrop + simple menu.
     expose func drawPause(canvas: Canvas) {
         canvas.BoxAlpha(0, 0, SCREEN_W, SCREEN_H, pal.black, 150);
         canvas.TextCenteredScaled(240, "PAUSED", pal.white, 4);
@@ -279,22 +406,22 @@ class MenuSystem {
     // Game Over
     // =========================================================================
 
+    /// @brief Game-over input — retry / quit choice.
     expose func updateGameOver() -> Integer {
-        if Action.Pressed(ACT_UP) {
-            gameOverBG.SelectPrev();
-        }
-        if Action.Pressed(ACT_DOWN) {
-            gameOverBG.SelectNext();
-        }
+        var chosen = gameOverList.HandleInput(Action.Pressed(ACT_UP),
+                                              Action.Pressed(ACT_DOWN),
+                                              Action.Pressed(ACT_CONFIRM));
+        gameOverBG.Select(gameOverList.get_Selected());
 
-        if Action.Pressed(ACT_CONFIRM) {
-            if gameOverBG.IsSelected(0) { return STATE_PLAYING; }
-            if gameOverBG.IsSelected(1) { return STATE_MENU; }
+        if chosen >= 0 {
+            if chosen == 0 { return STATE_PLAYING; }
+            if chosen == 1 { return STATE_MENU; }
         }
 
         return STATE_GAMEOVER;
     }
 
+    /// @brief Render the game-over screen with final score.
     expose func drawGameOver(canvas: Canvas, score: Integer) {
         canvas.BoxAlpha(0, 0, SCREEN_W, SCREEN_H, pal.black, 180);
 
@@ -313,6 +440,7 @@ class MenuSystem {
     // Level Complete
     // =========================================================================
 
+    /// @brief Level-complete input — next-level / map / quit.
     expose func updateLevelComplete() -> Integer {
         titleTimer = titleTimer + 1;
 
@@ -323,6 +451,7 @@ class MenuSystem {
         return STATE_LEVELCOMPLETE;
     }
 
+    /// @brief Level-complete screen — score breakdown.
     expose func drawLevelComplete(canvas: Canvas, score: Integer,
                                    timeBonus: Integer, levelNum: Integer) {
         canvas.BoxAlpha(0, 0, SCREEN_W, SCREEN_H, pal.black, 150);
@@ -365,6 +494,7 @@ class MenuSystem {
     // Victory (after beating boss)
     // =========================================================================
 
+    /// @brief Victory-screen input.
     expose func updateVictory() -> Integer {
         titleTimer = titleTimer + 1;
 
@@ -375,6 +505,8 @@ class MenuSystem {
         return STATE_VICTORY;
     }
 
+    /// @brief Simple end-credits/victory screen.  Used as the
+    ///        fallback; richer one is `drawVictoryScreen`.
     expose func drawVictory(canvas: Canvas, score: Integer) {
         canvas.BoxAlpha(0, 0, SCREEN_W, SCREEN_H, pal.black, 180);
 
@@ -400,6 +532,7 @@ class MenuSystem {
     // High Scores
     // =========================================================================
 
+    /// @brief High-scores screen input — exit only.
     expose func updateHighScores() -> Integer {
         if Action.Pressed(ACT_BACK) {
             return STATE_MENU;
@@ -410,6 +543,7 @@ class MenuSystem {
         return STATE_HIGHSCORES;
     }
 
+    /// @brief Render the top-N high-scores table.
     expose func drawHighScores(canvas: Canvas) {
         canvas.Box(0, 0, SCREEN_W, SCREEN_H, pal.menuBg);
         drawStarfield(canvas);
@@ -437,6 +571,8 @@ class MenuSystem {
         canvas.TextCenteredScaled(SCREEN_H - 40, "Press ENTER to return", pal.hudGray, 2);
     }
 
+    /// @brief Insert a new high score, evict the lowest if
+    ///        the table is full, then `saveHighScores()`.
     expose func addHighScore(score: Integer, name: String) {
         var i = 0;
         while i < 10 {
@@ -455,11 +591,14 @@ class MenuSystem {
         }
     }
 
+    /// @brief "Would this score make the table?"  Game.tick
+    ///        asks before the post-game name-entry screen.
     expose func isHighScore(score: Integer) -> Boolean {
         return score > highScores.get(9);
     }
 
     // Persistent high scores via SaveData (cross-platform JSON)
+    /// @brief Pull the high-score table from SaveData.
     expose func loadHighScores() {
         save.Load();
         var i = 0;
@@ -470,6 +609,7 @@ class MenuSystem {
         }
     }
 
+    /// @brief Persist the high-score table to SaveData.
     expose func saveHighScores() {
         var i = 0;
         while i < 10 {
@@ -484,6 +624,7 @@ class MenuSystem {
     // Controls Screen
     // =========================================================================
 
+    /// @brief Controls / how-to-play screen input — exit only.
     expose func updateControls() -> Integer {
         if Action.Pressed(ACT_BACK) {
             return STATE_MENU;
@@ -494,6 +635,7 @@ class MenuSystem {
         return STATE_CONTROLS;
     }
 
+    /// @brief Render the input bindings cheat-sheet.
     expose func drawControls(canvas: Canvas) {
         canvas.Box(0, 0, SCREEN_W, SCREEN_H, pal.menuBg);
 
@@ -522,16 +664,24 @@ class MenuSystem {
         canvas.TextCenteredScaled(SCREEN_H - 40, "Press ENTER to return", pal.hudGray, 2);
     }
 
+    /// @brief One label/binding row on the controls screen.
     hide func drawControlRow(canvas: Canvas, y: Integer,
                               action: String, keys: String) {
         canvas.TextScaled(360, y, action, 2, pal.hudGray);
         canvas.TextScaled(620, y, keys, 2, pal.white);
     }
 
+    /// @brief Reset every screen's cursor focus to the first
+    ///        item.  Called on screen entry.
     expose func resetSelection() {
         titleBG.Select(MENU_PLAY);
+        titleList.set_Selected(0);
         pauseBG.Select(0);
+        pauseList.set_Selected(0);
         gameOverBG.Select(0);
+        gameOverList.set_Selected(0);
+        levelSelectBG.Select(selectedLevel);
+        levelList.set_Selected(selectedLevel - 1);
         titleTimer = 0;
     }
 
@@ -539,6 +689,8 @@ class MenuSystem {
     // Save Slot Selection Screen
     // =========================================================================
 
+    /// @brief Save-slot picker — three rows from `SaveManager`
+    ///        with summary text and a delete option.
     expose func drawSaveSlotScreen(canvas: Canvas, selectedSlot: Integer,
                                     slot1: String, slot2: String, slot3: String) {
         canvas.Box(0, 0, SCREEN_W, SCREEN_H, pal.menuBg);
@@ -587,6 +739,8 @@ class MenuSystem {
     // Victory Screen (game complete)
     // =========================================================================
 
+    /// @brief Rich victory-screen variant — total time +
+    ///        per-level rank breakdown.
     expose func drawVictoryScreen(canvas: Canvas, totalTime: Integer,
                                    totalGems: Integer, lorePercent: Integer) {
         canvas.Box(0, 0, SCREEN_W, SCREEN_H, Color.RGB(5, 5, 15));
@@ -627,6 +781,7 @@ class MenuSystem {
     }
 
     // Biome name lookup for HUD
+    /// @brief Map level index → biome display name.
     expose func getBiomeName(levelNum: Integer) -> String {
         if levelNum == 1 { return "Crash Site"; }
         if levelNum == 2 { return "Fungal Caverns"; }
@@ -644,6 +799,8 @@ class MenuSystem {
     // =========================================================================
     // Enhanced Pause Menu — commercial quality with semi-transparent panel
     // =========================================================================
+    /// @brief Richer pause-menu variant — current biome,
+    ///        play-time, ability summary, world map shortcut.
     expose func drawEnhancedPause(canvas: Canvas, pal: Palette,
                                    currentLevel: Integer, playTime: Integer,
                                    gems: Integer, hp: Integer, maxHp: Integer,
@@ -747,6 +904,7 @@ class MenuSystem {
     }
 
     // Get biome indicator color for the pause menu
+    /// @brief Map level index → biome accent colour.
     hide func getBiomeColor(levelNum: Integer) -> Integer {
         if levelNum == 1 { return Color.RGB(80, 160, 200); } // Crash: teal
         if levelNum == 2 { return Color.RGB(80, 200, 60); }  // Fungal: green
@@ -764,6 +922,8 @@ class MenuSystem {
     // =========================================================================
     // Level Complete Screen — enhanced with stats breakdown
     // =========================================================================
+    /// @brief Rich level-complete screen — score, time,
+    ///        deaths, rank letter, ability unlock notice.
     expose func drawEnhancedLevelComplete(canvas: Canvas, pal: Palette,
                                           levelNum: Integer, timeMs: Integer,
                                           enemiesKilled: Integer, coinsCollected: Integer,
@@ -825,18 +985,23 @@ class MenuSystem {
                                   Color.RGB(100, 100, 130), 1);
     }
 
+    /// @brief One label/value stat row on enhanced
+    ///        complete/victory screens.
     hide func drawStatRow(canvas: Canvas, labelX: Integer, y: Integer,
                            label: String, value: String, color: Integer) {
         canvas.TextScaled(labelX, y, label, Color.RGB(140, 150, 170), 2);
         canvas.TextScaled(labelX + 400, y, value, color, 2);
     }
 
+    /// @brief "M:SS" formatter for play-time displays.
     hide func formatTime(ms: Integer) -> String {
         var mins = ms / 60000;
         var secs = (ms / 1000) % 60;
         return Int(mins) + ":" + Int(secs);
     }
 
+    /// @brief Map rank letter ("S"/"A"/"B"/...) to the
+    ///        accent colour used on the complete screen.
     hide func getRankColor(rank: String) -> Integer {
         if rank == "S" { return Color.RGB(255, 221, 34); }
         if rank == "A" { return Color.RGB(100, 255, 150); }
@@ -848,6 +1013,8 @@ class MenuSystem {
     // =========================================================================
     // Loading Screen — shown during level transitions
     // =========================================================================
+    /// @brief Loading screen between levels — biome flavour
+    ///        text + progress bar.
     expose func drawLoadingScreen(canvas: Canvas, levelNum: Integer, progress: Integer) {
         canvas.Box(0, 0, SCREEN_W, SCREEN_H, Color.RGB(5, 5, 15));
 
@@ -885,6 +1052,7 @@ class MenuSystem {
         canvas.TextCenteredScaled(SCREEN_H / 2 + 100, flavor, Color.RGB(60, 70, 90), 1);
     }
 
+    /// @brief Loading-screen flavour text per biome.
     hide func getBiomeFlavor(levelNum: Integer) -> String {
         if levelNum == 1 { return "The ship is lost. Find shelter."; }
         if levelNum == 2 { return "Something glows in the dark below..."; }
@@ -902,6 +1070,8 @@ class MenuSystem {
     // =========================================================================
     // Settings Menu (Volume, Display)
     // =========================================================================
+    /// @brief Settings screen — volume sliders, fullscreen
+    ///        toggle, scanlines, etc.
     expose func drawSettings(canvas: Canvas, pal: Palette,
                               masterVolume: Integer, sfxVolume: Integer,
                               fullscreen: Boolean, selectedOption: Integer) {
@@ -941,6 +1111,7 @@ class MenuSystem {
                                   Color.RGB(60, 70, 90), 1);
     }
 
+    /// @brief Render one labelled slider row in settings.
     hide func drawSliderRow(canvas: Canvas, sx: Integer, sy: Integer,
                              label: String, value: Integer, maxVal: Integer,
                              selected: Boolean) {
@@ -968,6 +1139,8 @@ class MenuSystem {
     // =========================================================================
     // Ability Screen (pause menu → abilities view)
     // =========================================================================
+    /// @brief Pause-menu "abilities" tab — list of every
+    ///        ability with locked / unlocked indicators.
     expose func drawAbilityScreen(canvas: Canvas, pal: Palette,
                                    abilityMask: Integer) {
         canvas.BoxAlpha(0, 0, SCREEN_W, SCREEN_H, Color.RGB(0, 0, 10), 180);

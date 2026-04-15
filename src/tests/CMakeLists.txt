@@ -768,6 +768,22 @@ set_tests_properties(zia_smoke_paint PROPERTIES
         LABELS "zia;smoke"
         TIMEOUT 30)
 
+add_test(NAME zia_smoke_paint_runtime_features
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/apps/paint/runtime_features_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/apps/paint")
+set_tests_properties(zia_smoke_paint_runtime_features PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;smoke"
+        TIMEOUT 30)
+
+add_test(NAME zia_smoke_paint_canvas_capture
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/apps/paint/palette_canvas_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/apps/paint")
+set_tests_properties(zia_smoke_paint_canvas_capture PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;smoke;requires_display"
+        TIMEOUT 30)
+
 add_test(NAME zia_smoke_viperide
         COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/apps/viperide/smoke_probe.zia"
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/apps/viperide")

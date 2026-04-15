@@ -1,19 +1,52 @@
-// vipersql.zia — ViperSQL Database Server Entry Point
+// =============================================================================
+// vipersql.zia — Full-featured server entry point (argument parsing,
+//                dual-protocol listeners, thread pool, optional REPL)
+// Part of ViperSQL
+// =============================================================================
 //
-// Primary entry point for the ViperSQL database server.
-// Starts a PostgreSQL wire protocol-compatible server that accepts
-// connections from psql, JDBC, ODBC, and the vsql client tool.
+// PURPOSE
+// -------
+// The canonical entry point for launching ViperSQL in server mode.
+// Responsibilities:
 //
-// Usage:
-//   viper run examples/apps/vipersql/
-//   viper run examples/apps/vipersql/ -- --port 5432
-//   viper run examples/apps/vipersql/ -- --repl
+//   * parse CLI arguments (`--port`, `--max-connections`,
+//     `--pool-size`, `--data-dir`, `--log-queries`, `--repl`, ...)
+//   * construct a shared `DatabaseServer`
+//   * initialise the connection handler and thread pool
+//   * start the text protocol listener on a background thread
+//   * run the PG wire protocol accept loop on the main thread
+//   * OR, if `--repl` is given, enter standalone in-memory REPL
+//     mode (same meta-commands as `main.zia`, but backed by this
+//     file's own `Executor`).
 //
-// Connect via vsql:
-//   viper run examples/apps/vipersql/client/vsql.zia
+// This file is structurally the "thick" entry — `main.zia` and
+// `server/tcp_server.zia` are simpler variants that share code
+// through `server/connection.zia` + `server/threadpool.zia` +
+// `engine/server.zia`.
 //
-// Connect via psql:
-//   psql -h localhost -p 5432 -U admin -d main
+// WHERE THIS FITS
+// ---------------
+//     vipersql.zia   (YOU ARE HERE — `start()`)
+//         │
+//         ├─► runRepl()     → engine/executor.zia
+//         │
+//         └─► runServer()   → engine/server.zia (DatabaseServer)
+//                           → server/threadpool.zia
+//                           → server/connection.zia
+//                           → PG wire accept loop on main thread
+//                           → text protocol on a background thread
+//
+// HOW TO READ THIS FILE
+// ---------------------
+//   1. Default-value constants.
+//   2. `ServerConfig` — the struct populated from CLI args.
+//   3. `parseArgs` + `printUsage` — CLI parsing.
+//   4. `runServer` — the real server entry.
+//   5. `textProtocolListener` — background thread body.
+//   6. `runRepl` + `processReplCommand` — REPL mode.
+//   7. `start` — the executable's top-level.
+//
+// =============================================================================
 
 module vipersql;
 
@@ -33,8 +66,8 @@ bind "./engine/executor";
 // DEFAULT CONFIGURATION
 //=============================================================================
 
-final DEFAULT_PG_PORT = 5432;
-final DEFAULT_TEXT_PORT = 5433;
+final DEFAULT_PG_PORT = 5432;          // PG wire default — matches psql
+final DEFAULT_TEXT_PORT = 5433;        // Text protocol default
 final DEFAULT_MAX_CONNECTIONS = 100;
 final VERSION = "0.2.0";
 
@@ -42,15 +75,18 @@ final VERSION = "0.2.0";
 // CONFIGURATION
 //=============================================================================
 
+/// @brief Struct of runtime config populated from CLI arguments.
+///        Defaults set in `init()`; overridden by `parseArgs`.
 class ServerConfig {
     expose Integer pgPort;
-    expose Integer textPort;
+    expose Integer textPort;         // 0 disables the text listener
     expose Integer maxConnections;
     expose Boolean logQueries;
     expose Boolean replMode;
     expose String dataDir;
     expose Integer poolSize;
 
+    /// @brief Load sensible defaults.
     expose func init() {
         pgPort = DEFAULT_PG_PORT;
         textPort = DEFAULT_TEXT_PORT;
@@ -62,6 +98,12 @@ class ServerConfig {
     }
 }
 
+/// @brief Parse argv into a populated `ServerConfig`.
+///
+/// Iterates arguments, consuming one or two per switch as
+/// appropriate.  Unknown flags are silently ignored — simpler
+/// than erroring out for a demo-grade CLI.  Falls back to the
+/// help text on `--help` / `-h`.
 func parseArgs() -> ServerConfig {
     var config = new ServerConfig();
     config.init();
@@ -119,6 +161,9 @@ func parseArgs() -> ServerConfig {
     return config;
 }
 
+/// @brief Print the help text for `--help` / `-h`.  Kept as
+///        literal strings so the output stays identical across
+///        releases.
 func printUsage() {
     Terminal.Say("ViperSQL v" + VERSION + " — SQL Database Server");
     Terminal.Say("");
@@ -140,6 +185,19 @@ func printUsage() {
 // SERVER MODE
 //=============================================================================
 
+/// @brief Run as a multi-user server until the process exits.
+///
+/// Concrete sequence:
+///   1. Construct a shared `DatabaseServer`.
+///   2. Initialise the connection handler + thread pool.
+///   3. (Optional) enable query logging.
+///   4. Spawn the text-protocol listener on a background thread
+///      (unless disabled via `--no-text`).
+///   5. Open the PG-wire listener on the main thread and run
+///      its accept loop, submitting each client to the pool.
+///
+/// Graceful shutdown is not yet wired — the loop terminates on
+/// process signal only.
 func runServer(config: ServerConfig) {
     Terminal.Say("================================================");
     Terminal.Say("  ViperSQL v" + VERSION);
@@ -147,16 +205,13 @@ func runServer(config: ServerConfig) {
     Terminal.Say("================================================");
     Terminal.Say("");
 
-    // Create the shared DatabaseServer
     var dbServer = new DatabaseServer();
     dbServer.init();
     Terminal.Say("Database server initialized (database: main)");
     Terminal.Say("Default user: admin / admin");
 
-    // Initialize connection handler
     sql_connection_init(dbServer);
 
-    // Initialize thread pool
     sql_pool_init(config.poolSize);
 
     Terminal.Say("Thread model: pool (" + Fmt.Int(config.poolSize) + " workers, max " + Fmt.Int(config.maxConnections) + " connections)");
@@ -166,7 +221,6 @@ func runServer(config: ServerConfig) {
     }
     Terminal.Say("");
 
-    // Start text protocol listener on separate thread
     if config.textPort > 0 {
         var textArgs: List[Integer] = [];
         textArgs.add(config.textPort);
@@ -174,7 +228,6 @@ func runServer(config: ServerConfig) {
         Terminal.Say("Text protocol listening on port " + Fmt.Int(config.textPort));
     }
 
-    // Start PG wire protocol listener (main thread)
     var pgServer = Network.TcpServer.Listen(config.pgPort);
     Terminal.Say("PG wire protocol listening on port " + Fmt.Int(config.pgPort));
     Terminal.Say("");
@@ -182,7 +235,6 @@ func runServer(config: ServerConfig) {
     Terminal.Say("         or: vsql -h localhost -p " + Fmt.Int(config.pgPort) + " -U admin");
     Terminal.Say("");
 
-    // Accept loop — submit clients to thread pool
     var running = 1;
     var activeConns = 0;
     while running == 1 {
@@ -195,7 +247,9 @@ func runServer(config: ServerConfig) {
     Terminal.Say("Server stopped.");
 }
 
-// Text protocol listener — runs on a separate thread
+/// @brief Thread body for the text protocol listener.  Mirrors
+///        the PG accept loop but targets the text-protocol
+///        handler in `server/connection.zia`.
 func textProtocolListener(args: List[Integer]) {
     var port = args.get(0);
     var server = Network.TcpServer.Listen(port);
@@ -210,9 +264,13 @@ func textProtocolListener(args: List[Integer]) {
 }
 
 //=============================================================================
-// REPL MODE (standalone, in-memory)
+// REPL MODE
 //=============================================================================
 
+/// @brief Standalone REPL.  Same meta-commands as `main.zia`,
+///        but shares the `vipersql` version string and banner.
+///        Backed by its own private `Executor` — no shared
+///        `DatabaseServer`, no network.
 func runRepl() {
     Terminal.Say("ViperSQL v" + VERSION + " — Standalone REPL (in-memory)");
     Terminal.Say("Type SQL commands or 'exit' to quit. Type .help for commands.");
@@ -254,6 +312,9 @@ func runRepl() {
     Terminal.Say("Goodbye!");
 }
 
+/// @brief REPL meta-command dispatch.  Identical semantics to
+///        `main.zia::processMetaCommand`; kept as a separate
+///        copy here so the two entry modes stay independent.
 func processReplCommand(cmd: String, exec: Executor) {
     var lower = String.ToLower(cmd);
 
@@ -318,6 +379,8 @@ func processReplCommand(cmd: String, exec: Executor) {
 // ENTRY POINT
 //=============================================================================
 
+/// @brief Top-level entry: parse CLI args, route to REPL or
+///        server mode based on `--repl`.
 func start() {
     var config = parseArgs();
 

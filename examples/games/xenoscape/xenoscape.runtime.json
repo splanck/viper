@@ -1,0 +1,13 @@
+{
+  "debug": {
+    "enabled": true,
+    "showOnStart": false
+  },
+  "game": {
+    "startLevel": 1
+  },
+  "presentation": {
+    "sceneTransitionMs": 0,
+    "introSplashMs": 1200
+  }
+}

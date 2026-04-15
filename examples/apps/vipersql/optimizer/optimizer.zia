@@ -1,16 +1,70 @@
-// optimizer.zia — Cost-Based Query Optimizer
-// Part of ViperSQL
+// =============================================================================
+// optimizer.zia — A very small cost-based query optimizer
+// Part of ViperSQL  (package: optimizer)
+// =============================================================================
 //
-// Provides basic cost-based query optimization including:
-//   - Table statistics collection (row counts, column cardinality)
-//   - Cost estimation for different access paths (table scan vs index seek)
-//   - Access path selection: chooses index scan when selectivity is favorable
-//   - Multi-table join ordering: reorders INNER JOINs by table size (smallest
-//     first) for 3+ table queries to minimize intermediate result sizes
+// PURPOSE
+// -------
+// Between parse and execute, the optimizer picks:
+//   * access path per table (scan vs. index seek)
+//   * join order for multi-table queries
+//   * join type (nested-loop vs. hash)
 //
-// The optimizer runs after parsing and before execution, annotating the
-// AST with access path hints that the Executor and JoinEngine use to
-// choose between table scan, index lookup, nested loop, and hash join.
+// It consults a per-table statistics cache (`StatsManager`) that
+// the executor refreshes on every DML.  Selectivities and costs
+// are heuristics — rough enough for demo workloads, simple enough
+// to read end-to-end.
+//
+// WHERE THIS FITS
+// ---------------
+//     parser/parser.zia  →  SelectStmt AST
+//         │
+//         ▼
+//     optimizer/optimizer.zia   (YOU ARE HERE)
+//         │  produces a `QueryPlan` with chosen access paths and
+//         │  join ordering.
+//         ▼
+//     engine/executor.zia / engine/join.zia
+//
+// KEY DESIGN CHOICES
+// ------------------
+//   1. Costs scaled × 100 for integer arithmetic.  Zia supports
+//      floats but the integer math is trivially deterministic
+//      and avoids any round-to-nearest drama between platforms.
+//      `getCostDisplay` renders back with one-decimal precision.
+//
+//   2. Selectivity heuristics.  Equality predicates → 1 % match
+//      or `100 / distinctValues` (whichever is higher); range
+//      predicates → 30 %; default → 10 %.  No histograms, no
+//      sampling — just enough to prefer an index when the
+//      distinct-values estimate says it will win.
+//
+//   3. Distinct-value estimate = `sqrt(rowCount)`.  Classic
+//      ballpark rule in the absence of column statistics.
+//      Pays for itself on small tables without a histogram
+//      module.
+//
+//   4. Join order by smallest-first.  For 2-table joins we
+//      swap if the right side is smaller; for 3+ we topologically
+//      sort by row count (ascending).  Keeps intermediate results
+//      small, which is usually what matters.
+//
+//   5. Join type pick: NESTED_LOOP below 1,000 total rows,
+//      HASH above.  The hash join has overhead that small inputs
+//      can't amortise.
+//
+// HOW TO READ THIS FILE
+// ---------------------
+//   1. Cost / selectivity constants at the top.
+//   2. `TableStats`   — per-table row count + distinct estimate.
+//   3. `AccessPath`   — one chosen access method for one table.
+//   4. `QueryPlan`    — the final choice the executor consumes.
+//   5. `StatsManager` — per-database stats registry (2 parallel
+//                        lists: name, rowCount).
+//   6. `QueryOptimizer` — the driver: creates plans, estimates
+//                        cost + selectivity.
+//
+// =============================================================================
 
 module optimizer;
 

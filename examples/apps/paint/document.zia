@@ -1,0 +1,73 @@
+// document.zia - Paint document metadata independent of pixel storage
+module document;
+
+bind Path = Viper.IO.Path;
+
+class PaintDocument {
+    expose String filePath;
+    expose String fileName;
+    expose Integer isNew;
+    expose Integer isModified;
+    expose Integer savedRevision;
+    expose Integer lastSeenRevision;
+
+    expose func init() {
+        filePath = "";
+        fileName = "Untitled";
+        isNew = 1;
+        isModified = 0;
+        savedRevision = 0;
+        lastSeenRevision = 0;
+    }
+
+    expose func setupNew(revision: Integer) {
+        filePath = "";
+        fileName = "Untitled";
+        isNew = 1;
+        isModified = 0;
+        savedRevision = revision;
+        lastSeenRevision = revision;
+    }
+
+    expose func markOpened(path: String, revision: Integer) {
+        filePath = path;
+        fileName = Path.Name(path);
+        if fileName == "" {
+            fileName = "Untitled";
+        }
+        isNew = 0;
+        isModified = 0;
+        savedRevision = revision;
+        lastSeenRevision = revision;
+    }
+
+    expose func markSaved(path: String, revision: Integer) {
+        if path != "" {
+            filePath = path;
+            fileName = Path.Name(path);
+        }
+        if fileName == "" {
+            fileName = "Untitled";
+        }
+        isNew = 0;
+        isModified = 0;
+        savedRevision = revision;
+        lastSeenRevision = revision;
+    }
+
+    expose func observeRevision(revision: Integer) {
+        if revision != lastSeenRevision {
+            lastSeenRevision = revision;
+            if revision != savedRevision {
+                isModified = 1;
+            }
+        }
+    }
+
+    expose func displayName() -> String {
+        if isModified == 1 {
+            return fileName + "*";
+        }
+        return fileName;
+    }
+}

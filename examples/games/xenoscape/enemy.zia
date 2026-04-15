@@ -1,16 +1,111 @@
-// enemy.zia — Enemy types: slime (walker), bat (flyer), turret (shooter), boss
-// Uses ObjectPool for slot management with parallel arrays for per-enemy data
+// =============================================================================
+// enemy.zia — Every enemy archetype + boss in one big pool
+// Part of Xenoscape  (the 2D sidescroller platformer demo)
+// =============================================================================
+//
+// TUTORIAL — ONE POOL, MANY ENEMY TYPES
+// -------------------------------------
+// A 2D platformer often has 10–30 enemy types: walking
+// grunts, flying scouts, stationary turrets, charging
+// chargers, jumping spiders, ground-burrowers, mini-bosses,
+// big bosses with multiple phases, ...
+//
+// One temptingly clean approach: a base class plus a subclass
+// per enemy.  In a small game you can get away with that.
+// In Xenoscape's case we have *many* enemies on screen at
+// once and they pop in / out per room — the polymorphic
+// virtual-dispatch + per-enemy heap allocation cost adds up
+// fast.
+//
+// The technique used here is the same pool-with-parallel-
+// arrays pattern from `projectile.zia` and `pickups.zia`,
+// scaled up to support many type variants:
+//
+//     pool       — ObjectPool of MAX_ENEMIES slots.
+//     etype[i]   — which kind of enemy lives in slot i
+//                  (ENEMY_SLIME / BAT / TURRET / WORM / ...
+//                  / BOSS_MAGMA, etc.).
+//     ex[i] ey[i] evx[i] evy[i]   — position + velocity (×100)
+//     ehp[i] estate[i] edir[i]    — health + state + facing
+//     eframe[i] etimer[i] etimer2[i]  — anim frame + two
+//                  generic per-enemy timers (used differently
+//                  by each type).
+//     plus more parallel arrays for type-specific state
+//     (boss phase, charge build-up, projectile cooldown, ...).
+//
+// Updating an enemy is then "switch on `etype[i]`, run that
+// type's update logic on the parallel-array slots".  No
+// allocation, no virtual dispatch, fully cache-local.
+//
+// QUADTREE FOR COLLISION QUERIES
+// ------------------------------
+// "Is the player overlapping any enemy?" naively walks every
+// enemy.  At a few dozen enemies that's fine; for a swarm
+// fight it gets expensive.  We maintain a `Viper.Game.Quadtree`
+// that re-bins enemies each frame; queries become O(log N).
+// Worth it for the boss rooms with 30+ adds.
+//
+// PER-ENEMY UPDATE: COMPOSING ai.zia BUILDING BLOCKS
+// --------------------------------------------------
+// Every type's update method is mostly composition of
+// helpers in `ai.zia`:
+//
+//     SLIME:    patrol within bounds + shouldAggro → chaseHorizontal
+//     BAT:      hover + shouldAggro → chaseHorizontal + slight gravity-immune dive
+//     TURRET:   stationary; aimAt + shoot when shouldAggro
+//     CHARGER:  patrol + shouldAggro → AI_SPECIAL (charge dash)
+//     BOSS:     own multi-phase state machine; references
+//               the shared helpers as primitives.
+//
+// WHERE THIS FITS
+// ---------------
+//     level.zia       ──► supplies enemy spawn data on load.
+//     game.zia        ──► owns one EnemyManager; drives
+//                         updateAll / drawAll / hit checks.
+//     player.zia      ──► takes damage on enemy contact.
+//     projectile.zia  ──► hits enemies via the quadtree.
+//     particles.zia   ──► death bursts, hit sparks.
+//     sound.zia       ──► hit / death audio.
+//
+// HOW TO READ THIS FILE
+// ---------------------
+//   1. EnemyManager fields — pool + parallel arrays + quadtree.
+//   2. `init` — preallocate all arrays.
+//   3. `spawnEnemy(type, x, y)` — pick a slot, set defaults.
+//   4. `updateAll(level, dt, player, ...)` — switch on type,
+//      run the matching update function.
+//   5. `drawAll(canvas, camera, sprites)` — visible-cull + blit.
+//   6. Per-type update functions: `updateSlime`, `updateBat`,
+//      `updateTurret`, ...
+//   7. Boss-specific machinery: phase transitions, attack
+//      patterns.
+//   8. Hit-detection helpers used by player & projectile.
+//
+// =============================================================================
+
 module enemy;
 
 bind Viper.Graphics;
 bind Viper.Math;
 bind Viper.Game;
+bind Viper.Game.Raycast as Raycast;
 bind "./config";
 bind "./level";
 bind "./physics";
 bind "./sprites";
 bind "./particles";
 
+/// @brief One ObjectPool of MAX_ENEMIES slots holding every
+///        enemy archetype + boss in the world.
+///
+/// Per-slot data lives in parallel arrays (etype, ex, ey,
+/// evx, evy, ehp, estate, edir, eframe, etimer, etimer2, ...).
+/// The per-frame update switches on `etype[i]` to dispatch to
+/// the matching `updateXxx` method.
+///
+/// Collisions go through a Quadtree rebuilt each frame so
+/// "find every enemy near (x, y)" stays O(log N) even with
+/// crowded boss rooms.
 class EnemyManager {
     // ObjectPool manages active/inactive slots; parallel arrays hold per-enemy data
     hide ObjectPool pool;
@@ -27,9 +122,13 @@ class EnemyManager {
     hide List[Integer] eframe;   // animation frame
     hide List[Integer] etimer;   // generic timer (AI, animation, cooldown)
     hide List[Integer] etimer2;  // secondary timer (shoot cooldown, etc.)
+    hide List[Entity] ebody;     // persistent runtime Entity per pool slot
+    hide List[Behavior] ebhv;    // persistent runtime Behavior per pool slot
 
     // Physics helper
     hide PhysicsHelper phys;
+    hide Pathfinder nav;
+    hide Boolean navReady;
 
     // (MoveResult struct replaces old out-parameter Lists)
 
@@ -45,8 +144,10 @@ class EnemyManager {
     hide List[Integer] ebvy;
     hide List[Integer] ebactive;
     hide Integer ebCount;
-    hide Integer ebTrailTimer;  // ms accumulator for enemy bullet trails
+    hide Timer ebTrailClock;  // runtime ms timer for enemy bullet trails
 
+    /// @brief Allocate the pool and pre-fill every parallel
+    ///        array.  Allocate the quadtree.
     expose func init() {
         pool = ObjectPool.New(MAX_ENEMIES);
         // Quadtree covers max possible level (150 tiles * 64px = 9600px, 17 * 64 = 1088px)
@@ -62,6 +163,8 @@ class EnemyManager {
         eframe = [];
         etimer = [];
         etimer2 = [];
+        ebody = [];
+        ebhv = [];
 
         // Pre-fill parallel arrays to pool capacity (indexed by handle)
         for i in 0..MAX_ENEMIES {
@@ -69,9 +172,13 @@ class EnemyManager {
             evx.add(0); evy.add(0); ehp.add(0);
             estate.add(0); edir.add(1); eframe.add(0);
             etimer.add(0); etimer2.add(0);
+            ebody.add(Entity.New(0, 0, 1, 1));
+            ebhv.add(Behavior.New());
         }
 
         phys = new PhysicsHelper();
+        nav = Pathfinder.New(1, 1);
+        navReady = false;
         // (MoveResult struct replaces old out-parameter Lists)
 
         bossIndex = -1;
@@ -84,9 +191,12 @@ class EnemyManager {
         ebvy = [];
         ebactive = [];
         ebCount = 0;
-        ebTrailTimer = 0;
+        ebTrailClock = Timer.New();
+        ebTrailClock.StartRepeatingMs(64);
     }
 
+    /// @brief Despawn every active enemy + bullet.  Called
+    ///        on level transition.
     expose func reset() {
         pool.Clear();
         bossIndex = -1;
@@ -98,9 +208,13 @@ class EnemyManager {
         ebvx = [];
         ebvy = [];
         ebactive = [];
-        ebTrailTimer = 0;
+        ebTrailClock.Reset();
+        ebTrailClock.StartRepeatingMs(64);
     }
 
+    /// @brief Acquire a slot, set type + position + per-type
+    ///        defaults (HP, speed, behaviour timers).  No-op
+    ///        if the pool is full.
     expose func spawnEnemy(t: Integer, wx: Integer, wy: Integer) {
         var handle = pool.Acquire();
         if handle < 0 { return; }
@@ -148,9 +262,72 @@ class EnemyManager {
         else if t == ENEMY_PATROL_DRONE { ehp.set(handle, PATROL_DRONE_HP); }
         else if t == ENEMY_BOMB_CARRIER { ehp.set(handle, BOMB_CARRIER_HP); evx.set(handle, BOMB_CARRIER_SPEED); }
         else { ehp.set(handle, 1); } // Fallback
+
+        resetRuntimeBody(handle);
+        resetRuntimeBehavior(handle);
     }
 
+    /// @brief Reset the runtime physics body for slot `i`
+    ///        (used during type changes / dehydration).
+    hide func resetRuntimeBody(i: Integer) {
+        var w = getEnemyW(etype.get(i));
+        var h = getEnemyH(etype.get(i));
+        var ent = Entity.New(ex.get(i), ey.get(i), w, h);
+        ent.set_VX(evx.get(i));
+        ent.set_VY(evy.get(i));
+        ent.set_Dir(edir.get(i));
+        ent.set_HP(ehp.get(i));
+        ent.set_MaxHP(ehp.get(i));
+        ent.set_Type(etype.get(i));
+        ent.set_Active(true);
+        ebody.set(i, ent);
+    }
+
+    /// @brief Reset the AI / behaviour state for slot `i`.
+    hide func resetRuntimeBehavior(i: Integer) {
+        var t = etype.get(i);
+        var bhv = Behavior.New();
+        if t == ENEMY_SLIME {
+            bhv.AddPatrol(SLIME_SPEED);
+            bhv.AddGravity(GRAVITY, MAX_FALL);
+            bhv.AddWallReverse();
+            bhv.AddEdgeReverse();
+            bhv.AddAnimLoop(4, SLIME_ANIM_MS);
+        } else if t == ENEMY_SPOREWALKER {
+            bhv.AddPatrol(SPOREWALKER_SPEED);
+            bhv.AddGravity(GRAVITY, MAX_FALL);
+            bhv.AddWallReverse();
+            bhv.AddEdgeReverse();
+            bhv.AddAnimLoop(4, SLIME_ANIM_MS);
+        } else if t == ENEMY_MIRROR_SLIME {
+            bhv.AddPatrol(MIRROR_SLIME_SPEED);
+            bhv.AddGravity(GRAVITY, MAX_FALL);
+            bhv.AddWallReverse();
+            bhv.AddEdgeReverse();
+            bhv.AddAnimLoop(4, SLIME_ANIM_MS);
+        } else if t == ENEMY_MAGMA_SLUG {
+            bhv.AddPatrol(MAGMA_SLUG_SPEED);
+            bhv.AddGravity(GRAVITY, MAX_FALL);
+            bhv.AddWallReverse();
+            bhv.AddEdgeReverse();
+            bhv.AddAnimLoop(2, 300);
+        } else if t == ENEMY_TURRET {
+            bhv.AddShoot(TURRET_FIRE_RATE_MS);
+        } else if t == ENEMY_FUNGAL_TURRET {
+            bhv.AddShoot(FUNGAL_TURRET_FIRE_MS);
+        } else if t == ENEMY_BOMB_CARRIER {
+            bhv.AddChase(BOMB_CARRIER_SPEED, 900);
+            bhv.AddGravity(GRAVITY, MAX_FALL);
+            bhv.AddAnimLoop(2, 240);
+        }
+        ebhv.set(i, bhv);
+    }
+
+    /// @brief Drain the level's parallel spawn lists
+    ///        (`enemyTypes/X/Y`) into `spawnEnemy` calls.
+    ///        Called once per level load.
     expose func spawnFromLevel(level: Level) {
+        rebuildNavigation(level);
         var i = 0;
         while i < level.enemyTypes.length() {
             spawnEnemy(level.enemyTypes.get(i),
@@ -164,6 +341,41 @@ class EnemyManager {
         }
     }
 
+    /// @brief Re-bake any cached navigation data after the
+    ///        level changed.
+    hide func rebuildNavigation(level: Level) {
+        nav = Pathfinder.New(level.levelWidth, level.levelHeight);
+        var y = 0;
+        while y < level.levelHeight {
+            var x = 0;
+            while x < level.levelWidth {
+                nav.SetWalkable(x, y, not level.isSolid(x, y));
+                x = x + 1;
+            }
+            y = y + 1;
+        }
+        navReady = true;
+    }
+
+    /// @brief "Is there a clear navigation path from
+    ///        (px, py) to (target)?"  Used by chase AI to
+    ///        give up if the player is unreachable.
+    hide func hasPathToPlayer(px: Integer, py: Integer, targetPx: Integer, targetPy: Integer) -> Boolean {
+        if navReady == false { return true; }
+        var sx = px / TILE_SIZE;
+        var sy = py / TILE_SIZE;
+        var tx = targetPx / TILE_SIZE;
+        var ty = targetPy / TILE_SIZE;
+        var len = nav.FindPathLength(sx, sy, tx, ty);
+        if len < 0 { return false; }
+        return len <= 40;
+    }
+
+    /// @brief Per-frame: walk every active enemy slot.
+    ///        Switch on `etype[i]` and dispatch to the
+    ///        matching `updateXxx` method.  Refresh the
+    ///        quadtree at the end so the next frame's
+    ///        collision queries see current positions.
     expose func updateAll(level: Level, playerPx: Integer, playerPy: Integer, dt: Integer, particles: ParticleSystem) {
         var i = pool.FirstActive();
         while i >= 0 {
@@ -182,7 +394,7 @@ class EnemyManager {
 
                 if t == ENEMY_SLIME { updateSlime(i, level, dt); }
                 if t == ENEMY_BAT { updateBat(i, playerPx, playerPy, dt); }
-                if t == ENEMY_TURRET { updateTurret(i, playerPx, playerPy, dt); }
+                if t == ENEMY_TURRET { updateTurret(i, level, playerPx, playerPy, dt); }
                 if t == ENEMY_BOSS { updateBoss(i, level, playerPx, playerPy, dt); }
                 if t == ENEMY_SPOREWALKER { updateSporewalker(i, level, dt); }
                 if t == ENEMY_GLOWMOTH { updateGlowmoth(i, playerPx, playerPy, dt); }
@@ -207,7 +419,7 @@ class EnemyManager {
                 if t == ENEMY_SHADOW_CLONE { updateShadowClone(i, playerPx, playerPy, dt); }
                 if t == ENEMY_CORRUPTION { updateCorruption(i, playerPx, playerPy, dt); }
                 if t == ENEMY_ARCHITECT { updateArchitect(i, level, playerPx, playerPy, dt); }
-                if t == ENEMY_PATROL_DRONE { updatePatrolDrone(i, playerPx, playerPy, dt); }
+                if t == ENEMY_PATROL_DRONE { updatePatrolDrone(i, level, playerPx, playerPy, dt); }
                 if t == ENEMY_BOMB_CARRIER { updateBombCarrier(i, level, playerPx, playerPy, dt); }
 
             i = nextHandle;
@@ -232,25 +444,54 @@ class EnemyManager {
     }
 
     // =========================================================================
-    // Entity physics helper — replaces 13-line gravity+collide+response pattern
-    // Creates a temporary Entity, runs physics, writes results back to arrays.
+    // Entity physics helper — keeps one runtime Entity per enemy slot and
+    // writes its results back to legacy parallel arrays for existing callers.
     // =========================================================================
 
+    /// @brief Apply the cached vx/vy to slot `i`'s position
+    ///        and resolve tile collisions through the shared
+    ///        PhysicsHelper.
     hide func applyPhysics(i: Integer, w: Integer, h: Integer,
                            level: Level, dt: Integer) -> Entity {
-        var ent = Entity.New(ex.get(i), ey.get(i), w, h);
+        var ent = ebody.get(i);
         ent.set_VX(evx.get(i));
         ent.set_VY(evy.get(i));
         ent.set_Dir(edir.get(i));
+        ent.set_X(ex.get(i));
+        ent.set_Y(ey.get(i));
         ent.UpdatePhysics(level.tilemap, GRAVITY, MAX_FALL, dt);
         ex.set(i, ent.get_X());
         ey.set(i, ent.get_Y());
         evx.set(i, ent.get_VX());
         evy.set(i, ent.get_VY());
+        edir.set(i, ent.get_Dir());
         return ent;
     }
 
+    /// @brief Generic ground-walker behaviour shared by
+    ///        many enemy types — gravity + patrol + edge
+    ///        + wall reverse.
+    hide func updateRuntimeWalker(i: Integer, level: Level, dt: Integer) {
+        var ent = ebody.get(i);
+        ent.set_X(ex.get(i));
+        ent.set_Y(ey.get(i));
+        ent.set_VX(evx.get(i));
+        ent.set_VY(evy.get(i));
+        ent.set_Dir(edir.get(i));
+        ebhv.get(i).Update(ent, level.tilemap, 0, 0, dt);
+        ex.set(i, ent.get_X());
+        ey.set(i, ent.get_Y());
+        evx.set(i, ent.get_VX());
+        evy.set(i, ent.get_VY());
+        edir.set(i, ent.get_Dir());
+        if estate.get(i) != 1 {
+            eframe.set(i, ebhv.get(i).get_AnimFrame());
+        }
+    }
+
     // Animation helper — 4-frame loop (ms-based)
+    /// @brief Tick the per-slot animation timer, wrapping
+    ///        the frame index modulo `frameCount`.
     hide func updateAnim(i: Integer, frameCount: Integer, ms: Integer, dt: Integer) {
         var tm = etimer.get(i) + dt;
         if tm >= ms {
@@ -263,6 +504,8 @@ class EnemyManager {
     }
 
     // Edge-reverse helper — reverse at platform edges
+    /// @brief Smart-walker turn-around at ledge.  Uses
+    ///        `ai.atLedge`.
     hide func checkEdgeReverse(i: Integer, w: Integer, h: Integer,
                                speed: Integer, level: Level, ent: Entity) {
         if ent.get_OnGround() {
@@ -275,6 +518,8 @@ class EnemyManager {
     }
 
     // Wall-reverse helper — reverse on wall hit
+    /// @brief Walker turn-around when the physics result
+    ///        flagged a wall hit.
     hide func checkWallReverse(i: Integer, speed: Integer, ent: Entity) {
         if ent.get_HitLeft() {
             evx.set(i, speed);
@@ -290,24 +535,25 @@ class EnemyManager {
     // Slime AI — patrol on ground, reverse at edges/walls
     // =========================================================================
 
+    //=========================================================
+    // PER-ENEMY-TYPE UPDATES
+    //=========================================================
+    // Each `updateXxx(i, level, [...], dt)` is one enemy
+    // archetype's per-frame tick.  All read from / write to
+    // the parallel arrays for slot `i`.  Most compose helpers
+    // from `ai.zia` (patrol, chase, aim, atLedge).
+
+    /// @brief Slime: ground walker that patrols and reverses
+    ///        at edges.
     hide func updateSlime(i: Integer, level: Level, dt: Integer) {
-        // Animation (skip when hurt)
-        if estate.get(i) != 1 {
-            updateAnim(i, 4, SLIME_ANIM_MS, dt);
-        }
-
-        // Physics: gravity + move + collide (replaces 30+ lines)
-        var ent = applyPhysics(i, SLIME_W, SLIME_H, level, dt);
-
-        // Reverse on wall hit + platform edges
-        checkWallReverse(i, SLIME_SPEED, ent);
-        checkEdgeReverse(i, SLIME_W, SLIME_H, SLIME_SPEED, level, ent);
+        updateRuntimeWalker(i, level, dt);
     }
 
     // =========================================================================
     // Bat AI — sine wave patrol, chase player when nearby
     // =========================================================================
 
+    /// @brief Bat: hover + dive at player when in aggro range.
     hide func updateBat(i: Integer, playerPx: Integer, playerPy: Integer, dt: Integer) {
         // Animation — wing flap (ms-based)
         var tm = etimer.get(i) + dt;
@@ -371,7 +617,9 @@ class EnemyManager {
     // Turret AI — static, shoots at player periodically when in range
     // =========================================================================
 
-    hide func updateTurret(i: Integer, playerPx: Integer, playerPy: Integer, dt: Integer) {
+    /// @brief Turret: stationary; aims and fires bullets when
+    ///        player has line-of-sight.
+    hide func updateTurret(i: Integer, level: Level, playerPx: Integer, playerPy: Integer, dt: Integer) {
         // Skip fire logic during hurt state (etimer is shared with hurt handler)
         if estate.get(i) == 1 { return; }
 
@@ -389,19 +637,18 @@ class EnemyManager {
         if dx > 0 { edir.set(i, 1); }
         if dx < 0 { edir.set(i, -1); }
 
-        // Shoot timer (ms-based accumulator)
-        var tm = etimer.get(i) + dt;
-        etimer.set(i, tm);
+        ebhv.get(i).Update(ebody.get(i), level.tilemap, playerPx, playerPy, dt);
 
         if adx < TURRET_RANGE {
             if ady < TURRET_RANGE / 2 {
-                if tm >= TURRET_FIRE_RATE_MS {
-                    etimer.set(i, 0);
+                if Raycast.HasLineOfSight(level.tilemap, cx + TURRET_W / 2, cy + TURRET_H / 2, playerPx, playerPy) {
+                if ebhv.get(i).get_ShootReady() {
                     // Fire bullet
                     var bdir = edir.get(i);
                     var bx2 = cx + TURRET_W / 2;
                     var by2 = cy + TURRET_H / 2 - 3;
                     spawnEnemyBullet(bx2, by2, bdir * 4, 0);
+                }
                 }
             }
         }
@@ -416,6 +663,11 @@ class EnemyManager {
     // Boss AI — 3 phases with different attack patterns
     // =========================================================================
 
+    /// @brief Generic boss: multi-phase state machine using
+    ///        `etimer` / `etimer2`.  Most early-level bosses
+    ///        run through this; late bosses have their own
+    ///        update methods (Architect, MagmaCoreBoss,
+    ///        CrystalWyrm, SporeMother).
     hide func updateBoss(i: Integer, level: Level, playerPx: Integer, playerPy: Integer, dt: Integer) {
         // Skip AI logic during hurt state (etimer is shared with hurt handler)
         if estate.get(i) == 1 {
@@ -564,16 +816,15 @@ class EnemyManager {
     // =========================================================================
     // Sporewalker — slow ground patrol, poison cloud on death
     // =========================================================================
+    /// @brief Sporewalker: ground walker; fungal biome.
     hide func updateSporewalker(i: Integer, level: Level, dt: Integer) {
-        if estate.get(i) != 1 { updateAnim(i, 4, SLIME_ANIM_MS, dt); }
-        var ent = applyPhysics(i, SPOREWALKER_W, SPOREWALKER_H, level, dt);
-        checkWallReverse(i, SPOREWALKER_SPEED, ent);
-        checkEdgeReverse(i, SPOREWALKER_W, SPOREWALKER_H, SPOREWALKER_SPEED, level, ent);
+        updateRuntimeWalker(i, level, dt);
     }
 
     // =========================================================================
     // Glowmoth — erratic flying, dives at player when close
     // =========================================================================
+    /// @brief Glowmoth: gentle hover with random drift.
     hide func updateGlowmoth(i: Integer, playerPx: Integer, playerPy: Integer, dt: Integer) {
         var tm = etimer.get(i) + dt;
         if tm >= BAT_ANIM_MS { tm = 0; eframe.set(i, (eframe.get(i) + 1) % 3); }
@@ -609,6 +860,7 @@ class EnemyManager {
     // =========================================================================
     // Fungal Turret — arcing spore shots, vulnerable when cap opens
     // =========================================================================
+    /// @brief Fungal turret: stationary; fires spore clouds.
     hide func updateFungalTurret(i: Integer, playerPx: Integer, playerPy: Integer, dt: Integer) {
         if estate.get(i) == 1 { return; }
         var cx = ex.get(i) / 100; var cy = ey.get(i) / 100;
@@ -633,6 +885,7 @@ class EnemyManager {
     // =========================================================================
     // Mycelium Crawler — ceiling mount, drops + horizontal dash
     // =========================================================================
+    /// @brief Mycelium: tendril whip from a fixed root.
     hide func updateMycelium(i: Integer, playerPx: Integer, playerPy: Integer, dt: Integer) {
         var state = etimer2.get(i); // 0=ceiling, 1=dropping, 2=dashing
         var cx = ex.get(i) / 100; var cy = ey.get(i) / 100;
@@ -674,6 +927,8 @@ class EnemyManager {
     // =========================================================================
     // Crystal Golem — slow, frontal shield, must hit from behind
     // =========================================================================
+    /// @brief Crystal golem: heavy ground walker that
+    ///        charges when it spots the player.
     hide func updateCrystalGolem(i: Integer, level: Level, playerPx: Integer, playerPy: Integer, dt: Integer) {
         var curVy = evy.get(i) + GRAVITY * dt / DT_BASE;
         if curVy > MAX_FALL { curVy = MAX_FALL; }
@@ -702,6 +957,7 @@ class EnemyManager {
     // =========================================================================
     // Shard Bat — bat variant that fires crystal shards on dive
     // =========================================================================
+    /// @brief Shard bat: divebomber variant.
     hide func updateShardBat(i: Integer, playerPx: Integer, playerPy: Integer, dt: Integer) {
         var tm = etimer.get(i) + dt;
         if tm >= BAT_ANIM_MS { tm = 0; eframe.set(i, (eframe.get(i) + 1) % 3); }
@@ -737,6 +993,7 @@ class EnemyManager {
     // =========================================================================
     // Resonance Orb — expanding push ring, vulnerable only when open
     // =========================================================================
+    /// @brief Resonance orb: floats + emits damaging pulses.
     hide func updateResonanceOrb(i: Integer, playerPx: Integer, playerPy: Integer, dt: Integer) {
         var tm = etimer.get(i) + dt;
         etimer.set(i, tm);
@@ -756,26 +1013,24 @@ class EnemyManager {
     // =========================================================================
     // Mirror Slime — reflects player bullets, must stomp
     // =========================================================================
+    /// @brief Mirror slime: reflects player bullets back.
     hide func updateMirrorSlime(i: Integer, level: Level, dt: Integer) {
-        if estate.get(i) != 1 { updateAnim(i, 4, SLIME_ANIM_MS, dt); }
-        var ent = applyPhysics(i, MIRROR_SLIME_W, MIRROR_SLIME_H, level, dt);
-        checkWallReverse(i, MIRROR_SLIME_SPEED, ent);
-        checkEdgeReverse(i, MIRROR_SLIME_W, MIRROR_SLIME_H, MIRROR_SLIME_SPEED, level, ent);
+        updateRuntimeWalker(i, level, dt);
     }
 
     // =========================================================================
     // Magma Slug — slow patrol, leaves lava trail
     // =========================================================================
+    /// @brief Magma slug: ground walker with a lava trail.
     hide func updateMagmaSlug(i: Integer, level: Level, dt: Integer) {
-        if estate.get(i) != 1 { updateAnim(i, 2, 300, dt); }
-        var ent = applyPhysics(i, MAGMA_SLUG_W, MAGMA_SLUG_H, level, dt);
-        checkWallReverse(i, MAGMA_SLUG_SPEED, ent);
-        checkEdgeReverse(i, MAGMA_SLUG_W, MAGMA_SLUG_H, MAGMA_SLUG_SPEED, level, ent);
+        updateRuntimeWalker(i, level, dt);
     }
 
     // =========================================================================
     // Ember Wasp — fast, aggressive, swarm behavior
     // =========================================================================
+    /// @brief Ember wasp: fast aerial chaser that throws
+    ///        ember projectiles.
     hide func updateEmberWasp(i: Integer, playerPx: Integer, playerPy: Integer, dt: Integer) {
         var tm = etimer.get(i) + dt;
         if tm >= 100 { tm = 0; eframe.set(i, (eframe.get(i) + 1) % 2); }
@@ -804,6 +1059,8 @@ class EnemyManager {
     // =========================================================================
     // Forge Sentinel — charge at player, stagger on wall hit
     // =========================================================================
+    /// @brief Forge sentinel: heavy turret that aims at
+    ///        the player and fires charged shots.
     hide func updateForgeSentinel(i: Integer, level: Level, playerPx: Integer, playerPy: Integer, dt: Integer) {
         var state = etimer2.get(i); // 0=patrol, 1=charging, 2=staggered
         var curVy = evy.get(i) + GRAVITY * dt / DT_BASE;
@@ -861,6 +1118,8 @@ class EnemyManager {
     // =========================================================================
     // Frost Beetle — patrol, curl and roll toward player
     // =========================================================================
+    /// @brief Frost beetle: ground walker; spawns ice
+    ///        patches on death.
     hide func updateFrostBeetle(i: Integer, level: Level, playerPx: Integer, playerPy: Integer, dt: Integer) {
         var state = etimer2.get(i); // 0=patrol, 1=rolling
         var curVy = evy.get(i) + GRAVITY * dt / DT_BASE;
@@ -907,6 +1166,8 @@ class EnemyManager {
     // =========================================================================
     // Ice Wraith — phases through walls, freeze attack
     // =========================================================================
+    /// @brief Ice wraith: chases the player; on hit, freezes
+    ///        them via `Player.freeze`.
     hide func updateIceWraith(i: Integer, playerPx: Integer, playerPy: Integer, dt: Integer) {
         var tm = etimer.get(i) + dt;
         if tm >= 200 { tm = 0; eframe.set(i, (eframe.get(i) + 1) % 3); }
@@ -933,6 +1194,8 @@ class EnemyManager {
     // =========================================================================
     // Stalactite Bat — hangs from ceiling, drops on player below
     // =========================================================================
+    /// @brief Stalactite bat: hangs upside down, drops on
+    ///        the player when they walk under.
     hide func updateStalactiteBat(i: Integer, playerPx: Integer, playerPy: Integer, dt: Integer) {
         var state = etimer2.get(i); // 0=hanging, 1=dropping, 2=respawn wait
         var cx = ex.get(i) / 100;
@@ -967,6 +1230,8 @@ class EnemyManager {
     // =========================================================================
     // Vine Whip — sweeps horizontally from wall, root weak point
     // =========================================================================
+    /// @brief Vine whip: stationary; periodically lashes a
+    ///        damaging tendril.
     hide func updateVineWhip(i: Integer, dt: Integer) {
         var tm = etimer.get(i) + dt;
         etimer.set(i, tm);
@@ -981,6 +1246,8 @@ class EnemyManager {
     // =========================================================================
     // Moss Golem — slow, regenerates HP
     // =========================================================================
+    /// @brief Moss golem: heavy walker; melee swing on
+    ///        contact.
     hide func updateMossGolem(i: Integer, level: Level, playerPx: Integer, playerPy: Integer, dt: Integer) {
         var curVy = evy.get(i) + GRAVITY * dt / DT_BASE;
         if curVy > MAX_FALL { curVy = MAX_FALL; }
@@ -1014,6 +1281,8 @@ class EnemyManager {
     // =========================================================================
     // Ruin Guardian — ground pound shockwave, attack tells
     // =========================================================================
+    /// @brief Ruin guardian: shielded turret; only the back
+    ///        is vulnerable.
     hide func updateRuinGuardian(i: Integer, level: Level, playerPx: Integer, playerPy: Integer, dt: Integer) {
         var state = etimer2.get(i); // 0=idle, 1=windup, 2=pound, 3=recover
         var curVy = evy.get(i) + GRAVITY * dt / DT_BASE;
@@ -1062,6 +1331,8 @@ class EnemyManager {
     // =========================================================================
     // Shadow Clone — mirrors player movement with 2s delay
     // =========================================================================
+    /// @brief Shadow clone: chases by mirroring the player's
+    ///        recent path.
     hide func updateShadowClone(i: Integer, playerPx: Integer, playerPy: Integer, dt: Integer) {
         // Simple: drift toward where player was 2 seconds ago
         // We approximate by slowly moving toward current player position
@@ -1081,6 +1352,8 @@ class EnemyManager {
     // =========================================================================
     // Corruption Tendril — rises from ground, grab attack
     // =========================================================================
+    /// @brief Corruption mass: drifts toward player; AOE
+    ///        damage on contact.
     hide func updateCorruption(i: Integer, playerPx: Integer, playerPy: Integer, dt: Integer) {
         var state = etimer2.get(i); // 0=hidden, 1=rising, 2=grabbing, 3=retracting
         var cx = ex.get(i) / 100;
@@ -1109,7 +1382,9 @@ class EnemyManager {
     // =========================================================================
     // Patrol Drone — follows set path, fires when player in LOS
     // =========================================================================
-    hide func updatePatrolDrone(i: Integer, playerPx: Integer, playerPy: Integer, dt: Integer) {
+    /// @brief Patrol drone: flies a fixed path; alerts on
+    ///        sight + opens fire.
+    hide func updatePatrolDrone(i: Integer, level: Level, playerPx: Integer, playerPy: Integer, dt: Integer) {
         var tm = etimer.get(i) + dt;
         if tm >= 150 { tm = 0; eframe.set(i, (eframe.get(i) + 1) % 2); }
         etimer.set(i, tm);
@@ -1125,10 +1400,12 @@ class EnemyManager {
         var dx = playerPx - cx; var adx = dx; if adx < 0 { adx = 0 - adx; }
         var dy = playerPy - cy; var ady = dy; if ady < 0 { ady = 0 - ady; }
         if adx < PATROL_DRONE_RANGE and ady < 100 {
+            if Raycast.HasLineOfSight(level.tilemap, cx, cy, playerPx, playerPy) {
             var shoot = wave % PATROL_DRONE_FIRE_MS;
             if shoot < dt {
                 var bdir = edir.get(i);
                 spawnEnemyBullet(cx + PATROL_DRONE_W / 2, cy + PATROL_DRONE_H / 2, bdir * 5, 0);
+            }
             }
         }
     }
@@ -1136,6 +1413,8 @@ class EnemyManager {
     // =========================================================================
     // Bomb Carrier — walks toward player, explodes on contact or death
     // =========================================================================
+    /// @brief Bomb carrier: rushes the player, explodes on
+    ///        contact (or when shot).
     hide func updateBombCarrier(i: Integer, level: Level, playerPx: Integer, playerPy: Integer, dt: Integer) {
         var curVy = evy.get(i) + GRAVITY * dt / DT_BASE;
         if curVy > MAX_FALL { curVy = MAX_FALL; }
@@ -1143,8 +1422,12 @@ class EnemyManager {
         // Walk toward player
         var cx = ex.get(i) / 100;
         var dx = playerPx - cx;
-        if dx > 0 { evx.set(i, BOMB_CARRIER_SPEED); edir.set(i, 1); }
-        else { evx.set(i, 0 - BOMB_CARRIER_SPEED); edir.set(i, -1); }
+        if hasPathToPlayer(cx, ey.get(i) / 100, playerPx, playerPy) {
+            if dx > 0 { evx.set(i, BOMB_CARRIER_SPEED); edir.set(i, 1); }
+            else { evx.set(i, 0 - BOMB_CARRIER_SPEED); edir.set(i, -1); }
+        } else {
+            evx.set(i, 0);
+        }
         var dispX = evx.get(i) * dt / DT_BASE;
         var dispY = curVy * dt / DT_BASE;
         var result = phys.moveAndCollide(ex.get(i), ey.get(i), dispX, dispY, BOMB_CARRIER_W, BOMB_CARRIER_H, level);
@@ -1163,6 +1446,13 @@ class EnemyManager {
     // =========================================================================
     // Spore Mother — Mini-boss: 3 phases (spawn, rain, core)
     // =========================================================================
+    //=========================================================
+    // BOSS UPDATES (multi-phase)
+    //=========================================================
+
+    /// @brief Spore Mother boss: spawns minions + arc spore
+    ///        attacks.  Drops the double-jump ability on
+    ///        defeat.
     hide func updateSporeMother(i: Integer, level: Level, playerPx: Integer, playerPy: Integer, dt: Integer) {
         if estate.get(i) == 1 {
             var curVy = evy.get(i) + GRAVITY * dt / DT_BASE;
@@ -1222,6 +1512,9 @@ class EnemyManager {
     // =========================================================================
     // Crystal Wyrm — Mini-boss: burrow/emerge cycle
     // =========================================================================
+    /// @brief Crystal Wyrm boss: charges in straight lines
+    ///        and breaks crystal walls.  Drops the dash
+    ///        ability on defeat.
     hide func updateCrystalWyrm(i: Integer, level: Level, playerPx: Integer, playerPy: Integer, dt: Integer) {
         if estate.get(i) == 1 {
             var curVy = evy.get(i) + GRAVITY * dt / DT_BASE;
@@ -1293,6 +1586,9 @@ class EnemyManager {
     // =========================================================================
     // Magma Core — Major boss: lava waves, stalactite drops, eye
     // =========================================================================
+    /// @brief Magma Core boss: stationary; emits lava bursts
+    ///        + falling embers.  Drops ground-pound on
+    ///        defeat.
     hide func updateMagmaCoreBoss(i: Integer, level: Level, playerPx: Integer, playerPy: Integer, dt: Integer) {
         if estate.get(i) == 1 { return; } // Stationary boss, no gravity during hurt
         var hp = ehp.get(i);
@@ -1335,6 +1631,10 @@ class EnemyManager {
     // =========================================================================
     // The Architect — Final boss: 4 phases
     // =========================================================================
+    /// @brief The Architect (final boss): three phases —
+    ///        bullet hell, melee dive, environment hazards.
+    ///        Long, intricate state machine; the climax of
+    ///        the game.
     hide func updateArchitect(i: Integer, level: Level, playerPx: Integer, playerPy: Integer, dt: Integer) {
         if estate.get(i) == 1 {
             var curVy = evy.get(i) + GRAVITY * dt / DT_BASE;
@@ -1418,6 +1718,12 @@ class EnemyManager {
     // Enemy bullets
     // =========================================================================
 
+    //=========================================================
+    // ENEMY BULLETS (separate pool from player bullets)
+    //=========================================================
+
+    /// @brief Spawn an enemy bullet at (bx2, by2) with the
+    ///        given velocity.  Used by every shooter type.
     hide func spawnEnemyBullet(bx2: Integer, by2: Integer, vx2: Integer, vy2: Integer) {
         // Reuse inactive slot
         var i = 0;
@@ -1442,20 +1748,19 @@ class EnemyManager {
         ebCount = ebCount + 1;
     }
 
+    /// @brief Per-frame: advance every enemy bullet, despawn
+    ///        on tile collision or off-screen.  Same raycast
+    ///        anti-tunnel trick as `projectile.zia`.
     hide func updateEnemyBullets(level: Level, dt: Integer, particles: ParticleSystem) {
-        // Trail timer for enemy bullets
-        ebTrailTimer = ebTrailTimer + dt;
-        var emitTrail = false;
-        if ebTrailTimer >= 48 {
-            ebTrailTimer = ebTrailTimer - 48;
-            emitTrail = true;
-        }
+        var emitTrail = ebTrailClock.UpdateMs(dt);
 
         var i = 0;
         while i < ebCount {
             if ebactive.get(i) == 1 {
-                var bx2 = ebx.get(i) + ebvx.get(i) * dt / DT_BASE;
-                var by2 = eby.get(i) + ebvy.get(i) * dt / DT_BASE;
+                var oldX = ebx.get(i);
+                var oldY = eby.get(i);
+                var bx2 = oldX + ebvx.get(i) * dt / DT_BASE;
+                var by2 = oldY + ebvy.get(i) * dt / DT_BASE;
                 ebx.set(i, bx2);
                 eby.set(i, by2);
 
@@ -1467,7 +1772,9 @@ class EnemyManager {
                 // Deactivate if off screen or hitting solid
                 var tileX = bx2 / TILE_SIZE;
                 var tileY = by2 / TILE_SIZE;
-                if level.isSolid(tileX, tileY) {
+                if not Raycast.HasLineOfSight(level.tilemap, oldX, oldY, bx2, by2) {
+                    ebactive.set(i, 0);
+                } else if level.isSolid(tileX, tileY) {
                     ebactive.set(i, 0);
                 }
                 if bx2 < -20 { ebactive.set(i, 0); }
@@ -1487,6 +1794,13 @@ class EnemyManager {
     // Damage / collision
     // =========================================================================
 
+    //=========================================================
+    // PUBLIC DAMAGE / QUERY API
+    //=========================================================
+
+    /// @brief Apply damage to slot `i`.  Drops HP, possibly
+    ///        triggers the death state (which fires the
+    ///        appropriate FX + particles + score grant).
     expose func damageEnemy(i: Integer, amount: Integer) {
         if i < 0 { return; }
         if pool.IsActive(i) == false { return; }
@@ -1507,17 +1821,21 @@ class EnemyManager {
 
         var hp = ehp.get(i) - amount;
         ehp.set(i, hp);
+        ebody.get(i).set_HP(hp);
         estate.set(i, 1);
         etimer.set(i, HURT_TIMER_MS);
 
         if hp <= 0 {
             pool.Release(i);
+            ebody.get(i).set_Active(false);
             estate.set(i, 2);
             clearBulletsNear(ex.get(i) / 100, ey.get(i) / 100);
         }
     }
 
     // Get the death effect type for a killed enemy (for particle dispatching)
+    /// @brief What death FX preset to fire for this enemy
+    ///        type — used by particles / sound dispatch.
     expose func getDeathEffectType(i: Integer) -> Integer {
         if i < 0 or pool.IsActive(i) == false { return 0; }
         var t = etype.get(i);
@@ -1542,6 +1860,7 @@ class EnemyManager {
     }
 
     // Get the score value for killing an enemy
+    /// @brief Score points awarded for killing this enemy.
     expose func getEnemyScore(i: Integer) -> Integer {
         if i < 0 or pool.IsActive(i) == false { return ENEMY_SCORE; }
         var t = etype.get(i);
@@ -1580,6 +1899,8 @@ class EnemyManager {
     }
 
     // Check if this enemy type is a boss
+    /// @brief "Is this slot a boss type?"  Used to gate
+    ///        boss-bar visibility and special death sequence.
     expose func isEnemyBoss(i: Integer) -> Boolean {
         if i < 0 or pool.IsActive(i) == false { return false; }
         var t = etype.get(i);
@@ -1592,6 +1913,7 @@ class EnemyManager {
     }
 
     // Get enemy contact damage amount
+    /// @brief How much HP a player loses on contact.
     expose func getContactDamage(i: Integer) -> Integer {
         if i < 0 or pool.IsActive(i) == false { return 1; }
         var t = etype.get(i);
@@ -1607,6 +1929,8 @@ class EnemyManager {
     }
 
     // Is this enemy immune to projectiles? (must stomp or use environment)
+    /// @brief "Does this enemy ignore player bullets?"  E.g.
+    ///        the mirror slime, which reflects them instead.
     expose func isProjectileImmune(i: Integer) -> Boolean {
         if i < 0 or pool.IsActive(i) == false { return false; }
         var t = etype.get(i);
@@ -1616,10 +1940,12 @@ class EnemyManager {
     }
 
     // Get position of enemy (for particle effects, death handling)
+    /// @brief Enemy pixel x (centipixel → pixel).
     expose func getEnemyPixelX(i: Integer) -> Integer {
         if i < 0 or pool.IsActive(i) == false { return 0; }
         return ex.get(i) / 100;
     }
+    /// @brief Enemy pixel y.
     expose func getEnemyPixelY(i: Integer) -> Integer {
         if i < 0 or pool.IsActive(i) == false { return 0; }
         return ey.get(i) / 100;
@@ -1860,6 +2186,16 @@ class EnemyManager {
     expose func getEnemyType(i: Integer) -> Integer { return etype.get(i); }
     expose func isActive(i: Integer) -> Integer { if pool.IsActive(i) { return 1; } return 0; }
     expose func getEnemyHp(i: Integer) -> Integer { return ehp.get(i); }
+    expose func activeCount() -> Integer { return pool.get_ActiveCount(); }
+    expose func enemyBulletCount() -> Integer {
+        var count = 0;
+        var i = 0;
+        while i < ebCount {
+            if ebactive.get(i) == 1 { count = count + 1; }
+            i = i + 1;
+        }
+        return count;
+    }
     expose func isBossAlive() -> Boolean {
         if bossIndex < 0 { return false; }
         return pool.IsActive(bossIndex);

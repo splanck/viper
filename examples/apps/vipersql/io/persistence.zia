@@ -1,12 +1,51 @@
-// persistence.zia — Database Save/Open/Close Operations
-// Part of ViperSQL
+// =============================================================================
+// persistence.zia — SAVE / OPEN / CLOSE: SQL-dump-based persistence
+// Part of ViperSQL  (package: io)
+// =============================================================================
 //
-// Implements the SAVE, OPEN, and CLOSE SQL commands for text-based
-// database persistence. SAVE serializes tables to a .sql dump file
-// (CREATE TABLE + INSERT statements). OPEN reads and executes a dump
-// file to restore the database. This is the simple persistence path;
-// the StorageEngine (storage/engine.zia) provides page-based binary
-// persistence with WAL crash recovery for production use.
+// PURPOSE
+// -------
+// ViperSQL supports two persistence strategies:
+//
+//   * **SQL dump** (this file): `SAVE 'file.sql'` writes every
+//     CREATE TABLE + INSERT as text; `OPEN 'file.sql'` re-
+//     executes the dump.  Portable, human-readable, friendly to
+//     version control.  The old-school SQLite-style approach.
+//
+//   * **Page-based binary** (`storage/engine.zia`): durable
+//     4-KB pages + WAL recovery.  Production path.  Handles
+//     crash recovery and is the backing for `--data-dir`.
+//
+// The `PersistenceManager` in this file drives the SQL-dump
+// path.  The `OPEN` command is smart: if the file looks like a
+// page-based binary database, we dispatch to the StorageEngine
+// instead.
+//
+// WHERE THIS FITS
+// ---------------
+//     engine/executor.zia
+//         │  on SAVE / OPEN / CLOSE statements
+//         ▼
+//     io/persistence.zia   (YOU ARE HERE)
+//         │
+//         ├──► SQL dump path: text file read/write + re-parse
+//         │
+//         └──► Binary page path: delegates to
+//              storage/engine.zia::openDatabase
+//
+// HOW TO READ THIS FILE
+// ---------------------
+//   1. Fields and init.
+//   2. `executeSave` — iterate tables, emit CREATE + INSERT.
+//   3. `generateCreateTable` / `generateInsert` /
+//      `generateCreateIndex` — rendering helpers.
+//   4. `executeOpen` — reads the file, either re-parses as SQL
+//      or dispatches to the storage engine.
+//   5. `executeOpenPersistent` — the binary-format branch.
+//   6. `executeClose` — flush + forget the backing file.
+//   7. `splitStatements` — splits a dump file on `;`.
+//
+// =============================================================================
 
 module persistence;
 
@@ -37,14 +76,23 @@ bind "../engine/executor";
 // PERSISTENCE MANAGER ENTITY
 //=============================================================================
 
+/// @brief Driver for SAVE / OPEN / CLOSE.  Holds a back-pointer
+///        to the `Executor` so table lookups + re-execution go
+///        through the same catalog.
 class PersistenceManager {
     expose Executor exec;
 
+    /// @brief Wire to a live executor.
     expose func init(executor: Executor) {
         exec = executor;
     }
 
-    // SAVE command - save database to file as SQL dump
+    /// @brief SAVE: dump every table (schema + rows) and every
+    ///        index to a `.sql` file.
+    ///
+    /// Order matters: tables first (CREATE TABLE + their INSERTs),
+    /// then indexes (CREATE INDEX).  A later OPEN replays in
+    /// the same order, so indexes see fully-populated tables.
     expose func executeSave(filename: String) -> QueryResult {
         var result = new QueryResult();
         result.init();
@@ -106,6 +154,9 @@ class PersistenceManager {
     }
 
     // Generate CREATE TABLE statement for a table
+    /// @brief Render a `CREATE TABLE` statement for one table,
+    ///        with all column constraints inline.  Round-trippable
+    ///        through the parser.
     hide func generateCreateTable(table: Table) -> String {
         var sql = "CREATE TABLE " + table.name + " (\n";
         var ci = 0;
@@ -143,6 +194,9 @@ class PersistenceManager {
     }
 
     // Generate INSERT statement for a row
+    /// @brief Render one `INSERT INTO … VALUES (…)` line for a
+    ///        row.  Uses `SqlValue.toSqlString()` for proper
+    ///        quote escaping.
     hide func generateInsert(tableName: String, row: Row) -> String {
         var sb = SB.New();
         SB.Append(sb, "INSERT INTO ");
@@ -164,6 +218,7 @@ class PersistenceManager {
     }
 
     // Generate CREATE INDEX statement
+    /// @brief Render a `CREATE [UNIQUE] INDEX` statement.
     hide func generateCreateIndex(idx: SqlIndex) -> String {
         var sql = "CREATE ";
         if idx.isUnique {
@@ -183,6 +238,13 @@ class PersistenceManager {
     }
 
     // OPEN command - load database from SQL dump file or persistent .vdb file
+    /// @brief OPEN: restore a database from a file.
+    ///
+    /// Detects format by reading the first bytes: if they match
+    /// the VIPERSQL magic, we delegate to
+    /// `executeOpenPersistent` (binary page path).  Otherwise we
+    /// treat the file as a SQL dump and replay it through the
+    /// executor.
     expose func executeOpen(filename: String) -> QueryResult {
         var result = new QueryResult();
         result.init();
@@ -231,6 +293,10 @@ class PersistenceManager {
     }
 
     // Open a persistent binary database (.vdb file)
+    /// @brief Binary-format OPEN path.  Opens the file via the
+    ///        StorageEngine, runs WAL recovery if needed, then
+    ///        rehydrates table + index metadata into the
+    ///        executor's live catalog.
     hide func executeOpenPersistent(filename: String) -> QueryResult {
         var result = new QueryResult();
         result.init();
@@ -323,6 +389,9 @@ class PersistenceManager {
     }
 
     // CLOSE command - flush and close persistent storage
+    /// @brief CLOSE: flush and detach the current binary-format
+    ///        backing file.  No-op if none is open.  The
+    ///        in-memory catalog stays populated.
     expose func executeClose() -> QueryResult {
         var result = new QueryResult();
         result.init();
@@ -340,6 +409,11 @@ class PersistenceManager {
     }
 
     // Split SQL content into individual statements
+    /// @brief Split a SQL dump on `;` statement terminators,
+    ///        respecting `'`-quoted strings (so a semicolon
+    ///        inside a VALUES literal doesn't terminate).
+    ///        Not a full SQL splitter — good enough for the
+    ///        dumps we produce ourselves.
     hide func splitStatements(content: String) -> List[String] {
         var statements: List[String] = [];
         var current = "";

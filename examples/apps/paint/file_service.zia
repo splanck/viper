@@ -1,0 +1,71 @@
+// file_service.zia - Paint file dialogs and image IO
+module file_service;
+
+bind Viper.GUI as GUI;
+bind Viper.Graphics;
+bind Str = Viper.String;
+
+bind "./canvas";
+
+final IMAGE_FILTER = "*.png;*.bmp;*.jpg;*.jpeg;*.gif";
+final SAVE_FILTER = "*.png;*.bmp";
+
+class PaintFileService {
+    expose String currentPath;
+
+    expose func init() {
+        currentPath = "";
+    }
+
+    expose func newDocument(doc: canvas.DrawingCanvas, w: Integer, h: Integer) {
+        doc.initWithSize(w, h);
+        currentPath = "";
+    }
+
+    expose func openDocument(doc: canvas.DrawingCanvas) -> Integer {
+        var path = GUI.FileDialog.Open("Open Image", "", IMAGE_FILTER);
+        if path == "" {
+            return 0;
+        }
+        if doc.load(path) == 1 {
+            currentPath = path;
+            return 1;
+        }
+        GUI.MessageBox.Error("Open Failed", "Could not open image:\n" + path);
+        return -1;
+    }
+
+    expose func saveDocument(doc: canvas.DrawingCanvas) -> Integer {
+        if currentPath == "" {
+            return saveDocumentAs(doc);
+        }
+        if doc.save(currentPath) == 1 {
+            return 1;
+        }
+        GUI.MessageBox.Error("Save Failed", "Could not save image:\n" + currentPath);
+        return -1;
+    }
+
+    expose func saveDocumentAs(doc: canvas.DrawingCanvas) -> Integer {
+        var path = GUI.FileDialog.Save("Save Image", "", SAVE_FILTER, "painting.png");
+        if path == "" {
+            return 0;
+        }
+        if ensureKnownExtension(path) == 0 {
+            path = path + ".png";
+        }
+        if doc.save(path) == 1 {
+            currentPath = path;
+            return 1;
+        }
+        GUI.MessageBox.Error("Save Failed", "Could not save image:\n" + path);
+        return -1;
+    }
+
+    hide func ensureKnownExtension(path: String) -> Integer {
+        var lower = Str.ToLower(path);
+        if Str.EndsWith(lower, ".png") { return 1; }
+        if Str.EndsWith(lower, ".bmp") { return 1; }
+        return 0;
+    }
+}

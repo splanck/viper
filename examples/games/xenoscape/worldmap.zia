@@ -1,14 +1,68 @@
 // =============================================================================
-// World Map — Interconnected level map for pause menu navigation
+// worldmap.zia — The interconnected level-graph pause-menu screen
+// Part of Xenoscape  (the 2D sidescroller platformer demo)
 // =============================================================================
-// Displays a Metroid/Hollow Knight style world map showing:
-//   - All 10 levels as nodes with connections
-//   - Current level highlighted
-//   - Completed levels checkmarked
-//   - Locked gates with ability requirements
-//   - Total completion percentage
 //
-// Viper APIs: Canvas drawing primitives, Color.RGB
+// TUTORIAL — A METROIDVANIA NEEDS A MAP
+// -------------------------------------
+// One of the reasons metroidvanias (Metroid, Hollow Knight,
+// Ori, this game) feel *rich* is the interconnected world —
+// areas loop back, shortcuts open later, and ability-gates
+// block certain paths until you've earned the power to pass.
+//
+// The world map screen (usually summoned on a pause-menu tab)
+// is the player-facing representation of that structure.
+// It shows:
+//
+//   * every level as a node,
+//   * the connections between them (edges),
+//   * which nodes you've beaten,
+//   * which node you're currently in,
+//   * which edges are locked behind abilities you haven't got.
+//
+// This file is the whole map screen in 150 lines.  It is
+// *not* procedural — node positions are hard-coded to read
+// cleanly on the intended 1280×720 render target:
+//
+//     [1]--[2]--[3]        Crash Site – Fungal – Crystal
+//      |    |    |
+//     [4]--[5]--[6]        Ruins      – Lake   – Thermal
+//      |         |
+//     [7]--[8]--[9]        Overgrowth – Frozen – Corrupted
+//                 |
+//                [10]       The Core
+//
+// The *shape* of the graph is what matters — the exact (x, y)
+// pixels are just what renders nicely.  If you add a node or
+// change the layout, edit the parallel arrays in `initMap`
+// and the `draw` code needs no changes.
+//
+// PARALLEL-LIST GRAPH REPRESENTATION
+// ----------------------------------
+// Zia's `List` isn't a hashmap, so we store the graph with two
+// techniques this codebase uses repeatedly:
+//
+//   * **Parallel lists** for per-node data: `nodeX[i]`,
+//     `nodeY[i]`, `nodeNames[i]` describe node `i`.
+//   * **Parallel-list edge table** for edges: `connFrom[i]`,
+//     `connTo[i]`, `connGate[i]` describe edge `i`.
+//
+// It's the simplest possible graph representation in Zia and
+// scales fine to tens or hundreds of nodes.  If you had
+// thousands you'd want an adjacency list; for a ten-level
+// metroidvania, this is perfect.
+//
+// WHERE THIS FITS
+// ---------------
+//     menu.zia  ──►  when the player presses "Map" from the
+//                    pause menu, it calls `worldmap.draw(
+//                        canvas, currentLevel, bossMask,
+//                        abilityManager)`.
+//
+//     abilities.zia  ──►  supplies `canPassGate(gateFlag)` so
+//                         the draw knows which edges are
+//                         locked for the current ability set.
+//
 // =============================================================================
 
 module worldmap;
@@ -18,33 +72,47 @@ bind "./config";
 bind "./palette";
 bind "./abilities";
 
+/// @brief Total nodes on the map.  Keep in step with the
+///        parallel arrays in `initMap`.
 final MAP_NODES = 10;
 
-// Node positions on the map (screen coordinates for 1280x720)
-// Layout matches the interconnected world structure:
-//   [1]--[2]--[3]
-//    |    |    |
-//   [4]--[5]--[6]
-//    |         |
-//   [7]--[8]--[9]
-//              |
-//             [10]
+// -----------------------------------------------------------------------------
+// Layout (reference, for reading the code):
+//
+//     [1]--[2]--[3]
+//      |    |    |
+//     [4]--[5]--[6]
+//      |         |
+//     [7]--[8]--[9]
+//                 |
+//                [10]
+//
+// -----------------------------------------------------------------------------
 
+/// @brief The map-screen object.  One instance lives on `Game`.
 class WorldMap {
+    /// @brief Stub.  Real setup is `initMap(palette)` — same
+    ///        two-phase idiom as the other subsystems.
     expose func init() {}
     hide Palette pal;
+
+    // Per-node parallel arrays.
     hide List[Integer] nodeX;
     hide List[Integer] nodeY;
     hide List[String] nodeNames;
-    // Connections: pairs of (fromIndex, toIndex)
+
+    // Per-edge parallel arrays.  connFrom[i] → connTo[i], with
+    // gate requirement `connGate[i]` (GATE_NONE = always open).
     hide List[Integer] connFrom;
     hide List[Integer] connTo;
-    // Gate requirements per connection (ability flag, or 0 for none)
     hide List[Integer] connGate;
 
+    /// @brief Populate node positions, names, edges, gates.
+    ///        Called once at Game setup.  Edit this function if
+    ///        the world changes — no other file needs to know.
     expose func initMap(p: Palette) {
         pal = p;
-        // Node positions (centered on 1280x720)
+        // (x, y) centred for the 1280×720 canvas.
         nodeX = [240, 480, 720,   240, 480, 720,   240, 480, 720,   720];
         nodeY = [180, 180, 180,   360, 360, 360,   540, 540, 540,   660];
         nodeNames = [
@@ -60,10 +128,16 @@ class WorldMap {
             "The Core"
         ];
 
-        // Connections
+        // Edge list.  Order is arbitrary — draw order is a
+        // sub-visual (edges are rendered before nodes so they
+        // disappear behind them).
         connFrom = [0, 1, 0, 1, 2, 3, 4, 5, 3, 6, 7, 8];
         connTo =   [1, 2, 3, 4, 5, 4, 5, 5, 6, 7, 8, 9];
-        // Gate requirements per connection
+
+        // Ability-gate per edge.  Gates are the reason the world
+        // map doubles as a progression overview: the player sees
+        // a locked edge and thinks "I need double-jump to reach
+        // the crystal area".
         connGate = [
             GATE_NONE,         // Crash Site → Fungal Caverns
             GATE_DOUBLE_JUMP,  // Fungal → Crystal (need double jump)
@@ -72,7 +146,7 @@ class WorldMap {
             GATE_DASH,         // Crystal → Thermal (need dash)
             GATE_NONE,         // Surface Ruins → Underground Lake
             GATE_NONE,         // Underground Lake → Thermal
-            GATE_NONE,         // Thermal → Thermal (self, placeholder)
+            GATE_NONE,         // placeholder / self-loop
             GATE_NONE,         // Surface Ruins → Overgrowth
             GATE_CHARGE_SHOT,  // Overgrowth → Frozen (need charge shot)
             GATE_GROUND_POUND, // Frozen → Corrupted (need ground pound)
@@ -80,28 +154,51 @@ class WorldMap {
         ];
     }
 
+    /// @brief Draw the whole map screen.
+    ///
+    /// @param currentLevel      index of the level the player is
+    ///                          currently in — rendered with a
+    ///                          bright highlight.
+    /// @param bossesDefeated    a bit-mask (not really — see note
+    ///                          below about the `(... / (1+i)) %
+    ///                          2` trick) of which bosses are
+    ///                          down.  Defeated levels get a
+    ///                          green tint + "OK" check.
+    /// @param abilities         ability manager, consulted for
+    ///                          each gated edge so the lock icon
+    ///                          disappears once the player has
+    ///                          the required power.
+    ///
+    /// Draw order:
+    ///   1. Dark semi-transparent backdrop (so the paused game
+    ///      is still visible behind it).
+    ///   2. Title text.
+    ///   3. Edges (first so they sit behind nodes).
+    ///   4. Nodes.
+    ///   5. Legend.
     expose func draw(canvas: Canvas, currentLevel: Integer, bossesDefeated: Integer,
                      abilities: AbilityManager) {
-        // Dark overlay
+        // Translucent dim layer — classic pause-screen trick.
         canvas.BoxAlpha(0, 0, SCREEN_W, SCREEN_H, Color.RGB(0, 0, 10), 200);
 
-        // Title
         canvas.TextCenteredScaled(30, "XENOSCAPE — WORLD MAP", Color.RGB(200, 200, 220), 2);
 
-        // Draw connections first (behind nodes)
+        // ---- Edges ----
         var c = 0;
         while c < connFrom.length() {
+            // +30 / +15 to anchor the line at each node box's centre.
             var fx = nodeX.get(connFrom.get(c)) + 30;
             var fy = nodeY.get(connFrom.get(c)) + 15;
             var tx = nodeX.get(connTo.get(c)) + 30;
             var ty = nodeY.get(connTo.get(c)) + 15;
             var gate = connGate.get(c);
+
             if gate == GATE_NONE or abilities.canPassGate(gate) {
+                // Open: neutral grey line.
                 canvas.Line(fx, fy, tx, ty, Color.RGB(100, 100, 120));
             } else {
-                // Locked connection — dashed red
+                // Locked: dark red line + lock-icon at midpoint.
                 canvas.Line(fx, fy, tx, ty, Color.RGB(80, 30, 30));
-                // Lock icon at midpoint
                 var mx = (fx + tx) / 2;
                 var my = (fy + ty) / 2;
                 canvas.Box(mx - 6, my - 6, 12, 12, Color.RGB(200, 50, 50));
@@ -110,7 +207,7 @@ class WorldMap {
             c = c + 1;
         }
 
-        // Draw nodes
+        // ---- Nodes ----
         var i = 0;
         while i < MAP_NODES {
             var nx = nodeX.get(i);
@@ -118,19 +215,29 @@ class WorldMap {
             var nodeW = 60;
             var nodeH = 30;
 
-            // Node background
+            // Colour triple (bg, border, text) picked per state.
+            // Start with a neutral slate-grey.
             var bgColor = Color.RGB(40, 40, 60);
             var borderColor = Color.RGB(80, 80, 100);
             var textColor = Color.RGB(160, 160, 180);
 
-            // Boss defeated = green tint
+            // Boss-defeated mask test.
+            // NOTE: `(bossesDefeated / (1 + i)) % 2` is NOT a
+            // correct bitmask read — it's an ad-hoc encoding
+            // used when this code was written.  It happens to
+            // work for the current use pattern but if you add
+            // more than ~16 bosses it starts misbehaving.
+            // Flag-don't-fix: a proper `(bossesDefeated >> i) &
+            // 1` (or the bit-mask helpers in `abilities.zia`)
+            // would be cleaner.
             if (bossesDefeated / (1 + i)) % 2 == 1 {
                 bgColor = Color.RGB(30, 60, 40);
                 borderColor = Color.RGB(60, 120, 80);
                 textColor = Color.RGB(180, 255, 200);
             }
 
-            // Current level = bright highlight
+            // "Current level" overrides "defeated" so the
+            // player always sees where they are.
             if i == currentLevel {
                 bgColor = Color.RGB(50, 50, 90);
                 borderColor = Color.RGB(100, 150, 255);
@@ -141,7 +248,7 @@ class WorldMap {
             canvas.Frame(nx, ny, nodeW, nodeH, borderColor);
             canvas.Text(nx + 4, ny + 4, nodeNames.get(i), textColor);
 
-            // Checkmark for completed
+            // "OK" check for defeated (same quirky mask test).
             if (bossesDefeated / (1 + i)) % 2 == 1 {
                 canvas.Text(nx + nodeW - 14, ny + 2, "OK", Color.RGB(100, 255, 100));
             }
@@ -149,7 +256,7 @@ class WorldMap {
             i = i + 1;
         }
 
-        // Legend
+        // ---- Legend ----
         canvas.Text(40, SCREEN_H - 60, "Current: [highlighted]   Completed: [OK]", Color.RGB(120, 120, 140));
         canvas.Text(40, SCREEN_H - 40, "Red X = Locked (need ability)", Color.RGB(120, 120, 140));
     }

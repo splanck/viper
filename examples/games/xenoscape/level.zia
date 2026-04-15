@@ -1,5 +1,86 @@
-// level.zia — Level data, tile map builder, level loading
-// All levels are built procedurally in code (no external data files)
+// =============================================================================
+// level.zia — Tilemaps, room layouts, enemy + pickup spawn lists
+// Part of Xenoscape  (the 2D sidescroller platformer demo)
+// =============================================================================
+//
+// TUTORIAL — STORING A 2D LEVEL
+// -----------------------------
+// At its core a level in a tile-based platformer is:
+//
+//   * A 2D grid of tile IDs (the "tilemap" — what each
+//     square of the world looks like).
+//   * A list of (entity-type, x, y) spawn records
+//     (enemies, pickups, save stations, lore terminals,
+//     boss).
+//   * A few singleton positions (player start, checkpoint,
+//     boss-room entry, level-exit door).
+//   * Some metadata (theme/biome, music track, darkness
+//     level).
+//
+// That's it.  Everything else — physics, AI, camera — works
+// off these four pieces.  This file is the *data* layer: it
+// holds the structures and the loader.  None of the gameplay
+// systems modify it; they just read from it.
+//
+// PROCEDURAL VS DATA-DRIVEN LEVELS
+// --------------------------------
+// Two ways to ship levels:
+//
+//   1. **External data files** (Tiled `.tmx`, JSON, your own
+//      format).  Designers iterate without touching code; the
+//      game ships the parser.  The grown-up choice.
+//
+//   2. **Procedural in code** — every tile and spawn is
+//      written in Zia by `buildLevel0()`, `buildLevel1()`,
+//      etc.  No parser, no asset pipeline; binary stays
+//      tiny; iterating means recompiling.
+//
+// Xenoscape ships **(2)** because (a) the demo binary must
+// be self-contained, and (b) the maintainer is also the
+// designer.  In a bigger team option (1) is what you want.
+//
+// `Tilemap` IS A RUNTIME CLASS
+// ----------------------------
+// `Viper.Game.Tilemap` is the runtime's tile-grid structure
+// with `Get(x, y)` / `Set(x, y, id)` / bounds checks.  It
+// also serves as the input to
+// `Viper.Game.Raycast.HasLineOfSight` (used by AI and
+// projectiles), so there's no per-game tile-grid type to
+// reinvent.
+//
+// LEVEL LOADING FLOW
+// ------------------
+//     game.zia → level.loadLevel(index)
+//         │
+//         ▼
+//     buildLevelN(this)        ← writes tilemap + spawn lists
+//         │
+//         ▼
+//     game.zia spawns enemies / pickups from the lists
+//
+// WHERE THIS FITS
+// ---------------
+//     game.zia       ──► loads the level on level transition.
+//     physics.zia    ──► reads tilemap for collision.
+//     ai.zia         ──► reads tilemap for line-of-sight.
+//     renderer.zia   ──► iterates visible tiles to draw.
+//     enemy.zia, pickups.zia ──► spawn from this level's
+//                                 spawn lists.
+//
+// HOW TO READ THIS FILE
+// ---------------------
+//   1. Level class fields — tilemap + spawn lists +
+//      singletons + metadata.
+//   2. `init` / `clear` — lifecycle.
+//   3. `loadLevel(index)` — dispatcher to per-level builders.
+//   4. `buildLevel0()` ... `buildLevelN()` — one big
+//      procedural builder per level.  Look at one to see
+//      how a room is "drawn" by code.
+//   5. Tile-property accessors (`isSolid`, `isHazard`,
+//      `getTilePropertyAt`) used by physics + AI.
+//
+// =============================================================================
+
 module level;
 
 bind Viper.Graphics;
@@ -97,12 +178,7 @@ class Level {
         if col >= levelWidth { return false; }
         if row >= levelHeight { return false; }
         var t = tilemap.GetTile(col, row);
-        if t == TILE_SPIKE { return true; }
-        if t == TILE_LAVA { return true; }
-        if t == TILE_THORN { return true; }
-        if t == TILE_ELECTRIC { return true; }
-        if t == TILE_COOLANT { return true; }
-        return false;
+        return tilemap.GetTileProperty(t, "hazard", 0) != 0;
     }
 
     expose func getTile(col: Integer, row: Integer) -> Integer {
@@ -111,6 +187,15 @@ class Level {
         if col >= levelWidth { return TILE_EMPTY; }
         if row >= levelHeight { return TILE_EMPTY; }
         return tilemap.GetTile(col, row);
+    }
+
+    expose func getTilePropertyAt(col: Integer, row: Integer,
+                                  key: String, defaultValue: Integer) -> Integer {
+        if col < 0 { return defaultValue; }
+        if row < 0 { return defaultValue; }
+        if col >= levelWidth { return defaultValue; }
+        if row >= levelHeight { return defaultValue; }
+        return tilemap.GetTileProperty(tilemap.GetTile(col, row), key, defaultValue);
     }
 
     // Update tile animations (call once per frame from game loop)
@@ -169,6 +254,26 @@ class Level {
         tilemap.SetCollision(TILE_DESTRUCTIBLE, 1);
         tilemap.SetCollision(TILE_SAVE_STATION, 1);
         tilemap.SetCollision(TILE_LORE_TERMINAL, 1);
+        registerTileProperties();
+    }
+
+    // Register semantic tile metadata once per Tilemap. Physics and interaction
+    // code query these properties instead of hard-coding tile ID lists.
+    hide func registerTileProperties() {
+        tilemap.SetTileProperty(TILE_SPIKE, "hazard", TILE_SPIKE);
+        tilemap.SetTileProperty(TILE_LAVA, "hazard", TILE_LAVA);
+        tilemap.SetTileProperty(TILE_THORN, "hazard", TILE_THORN);
+        tilemap.SetTileProperty(TILE_ELECTRIC, "hazard", TILE_ELECTRIC);
+        tilemap.SetTileProperty(TILE_COOLANT, "hazard", TILE_COOLANT);
+        tilemap.SetTileProperty(TILE_POISON_POOL, "hazard", TILE_POISON_POOL);
+
+        tilemap.SetTileProperty(TILE_ICE_FLOOR, "surface", 1);
+        tilemap.SetTileProperty(TILE_CONVEYOR_L, "conveyor", -1);
+        tilemap.SetTileProperty(TILE_CONVEYOR_R, "conveyor", 1);
+        tilemap.SetTileProperty(TILE_STEAM_VENT, "steam", 1);
+        tilemap.SetTileProperty(TILE_SAVE_STATION, "save", 1);
+        tilemap.SetTileProperty(TILE_LORE_TERMINAL, "lore", 1);
+        tilemap.SetTileProperty(TILE_CRUMBLE, "crumble", 1);
     }
 
     // Add enemy spawn

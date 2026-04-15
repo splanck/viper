@@ -196,10 +196,15 @@ static inline void rtg_hsl_to_rgb(
 void rt_keyboard_clear_canvas_if_matches(void *canvas);
 void rt_mouse_clear_canvas_if_matches(void *canvas);
 
+/// @brief Magic value used to reject accidental calls with non-Canvas objects.
+#define RT_CANVAS_MAGIC 0x564950455243414eLL /* "VIPERCAN" */
+
 /// @brief Internal canvas wrapper structure.
-/// @details Contains the vptr (for future OOP support) and the vgfx window handle.
+/// @details Contains the vptr (for future OOP support), a runtime magic guard,
+///   and the vgfx window handle.
 typedef struct {
     void *vptr;              ///< VTable pointer (reserved for future use)
+    int64_t magic;           ///< RT_CANVAS_MAGIC while this object is a live Canvas
     vgfx_window_t gfx_win;   ///< ViperGFX window handle
     int64_t should_close;    ///< Close request flag
     vgfx_event_t last_event; ///< Last polled event for retrieval
@@ -208,6 +213,13 @@ typedef struct {
     int64_t delta_time_ms;   ///< Milliseconds elapsed between the last two Flip() calls
     int64_t dt_max_ms;       ///< Maximum delta time clamp (0 = no clamping)
 } rt_canvas;
+
+static inline rt_canvas *rt_canvas_checked(void *canvas_ptr) {
+    if (!canvas_ptr)
+        return NULL;
+    rt_canvas *canvas = (rt_canvas *)canvas_ptr;
+    return canvas->magic == RT_CANVAS_MAGIC ? canvas : NULL;
+}
 
 /// @brief Forward declaration for pixels internal access.
 typedef struct rt_pixels_impl {

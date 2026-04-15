@@ -1,11 +1,79 @@
-// setops.zia — SQL Set Operations (UNION, EXCEPT, INTERSECT)
-// Part of ViperSQL
+// =============================================================================
+// setops.zia — SQL set operations: UNION, UNION ALL, EXCEPT, INTERSECT,
+//              and their ALL variants
+// Part of ViperSQL  (package: engine)
+// =============================================================================
 //
-// Implements SQL set operations that combine results from two SELECT
-// queries. UNION returns all rows from both (UNION ALL keeps duplicates).
-// EXCEPT returns rows in the first result but not the second. INTERSECT
-// returns rows present in both. Duplicate detection uses string-based
-// row comparison with hash bucketing for efficient lookups.
+// PURPOSE
+// -------
+// SQL lets you combine two result sets:
+//
+//     SELECT a, b FROM x UNION     SELECT a, b FROM y;
+//     SELECT a, b FROM x UNION ALL SELECT a, b FROM y;
+//     SELECT a, b FROM x EXCEPT    SELECT a, b FROM y;
+//     SELECT a, b FROM x INTERSECT SELECT a, b FROM y;
+//     SELECT a, b FROM x EXCEPT ALL SELECT a, b FROM y;
+//     SELECT a, b FROM x INTERSECT ALL SELECT a, b FROM y;
+//
+// After the executor has materialised each side into a `QueryResult`
+// (see already-annotated `result.zia`), the functions in this file
+// mechanically combine them.  Dedup-style operations (UNION, EXCEPT,
+// INTERSECT) are implemented on top of a tiny 128-bucket hash set
+// keyed by a stringified row.  The `ALL` variants preserve multiplicity
+// and use a linear-scan "consume-on-match" strategy.
+//
+// WHERE THIS FITS
+// ---------------
+//   engine/query.zia  ──►  lowers `SELECT … UNION …` into left and
+//                          right sub-queries, each executed
+//                          independently.
+//        │
+//        ▼
+//   engine/setops.zia  (YOU ARE HERE)  ──►  combines two
+//                          `QueryResult`s into one.
+//
+// KEY DESIGN CHOICES
+// ------------------
+//   1. String-keyed dedup.  A `Row` is reduced to a pipe-separated
+//      concatenation of its cell `toString()` values.  Pros: uniform
+//      treatment of every type, dirt-simple code, cheap equality.
+//      Cons: two distinct cells that happen to stringify the same
+//      would dedup incorrectly — e.g. `1` (INTEGER) and `'1'` (TEXT)
+//      both produce "1".  In practice the executor enforces column
+//      alignment (UNION requires matching types on both sides), so
+//      this is safe.
+//
+//   2. 128-bucket open hash.  `CryptoHash.Fast(key) mod 128` picks a
+//      bucket; membership scans the bucket linearly.  128 is enough
+//      for typical set-op cardinalities (< a few thousand rows
+//      across both sides).  For extreme cases, the dedup path
+//      degrades to O(N²/128) rather than O(N²), which is acceptable
+//      for the demo.
+//
+//   3. EXCEPT ALL / INTERSECT ALL use an O(N·M) "consume" strategy.
+//      For each row in the left side, we look for an unused equal
+//      row in the right side.  This mimics the standard SQL
+//      multiplicity rules (max(N-M,0) and min(N,M)) without needing
+//      a multi-set hash — `secondUsed: List[Integer]` flags track
+//      which right-side rows have been consumed.  Adequate for demo
+//      cardinalities; a production engine would hash.
+//
+//   4. No column-arity check here.  It is the caller's responsibility
+//      to ensure both sides expose compatible column lists — `query`
+//      rejects shape mismatches upstream.
+//
+// HOW TO READ THIS FILE
+// ---------------------
+//   1. UNION / UNION ALL — `executeUnion` with a boolean dispatch.
+//   2. EXCEPT, INTERSECT — their dedup variants (hash-set based).
+//   3. `rowKey`, `buildRowKeySet`, `rowKeyInSet`, `addRowKeyToSet` —
+//      the 128-bucket hash set API.
+//   4. Two lower-level helpers: `isDuplicateRow`, `rowsEqual`,
+//      `isRowInResult` — O(N) fallbacks used by callers outside
+//      set-ops.
+//   5. EXCEPT ALL / INTERSECT ALL — the multi-set variants.
+//
+// =============================================================================
 
 module setops;
 
@@ -16,15 +84,22 @@ bind "./types";
 bind "./result";
 
 //=============================================================================
-// SET OPERATIONS
+// SET OPERATIONS (ENTRY POINTS)
 //=============================================================================
 
-// Execute UNION or UNION ALL
+/// @brief UNION or UNION ALL of two result sets.
+///
+/// The column-name list is copied from the first side — PG semantics
+/// require that the left query's column names prevail.  In UNION ALL
+/// mode we append each side's rows verbatim.  In UNION mode we feed
+/// every row through a shared hash set, skipping anything we have
+/// seen.  Note that both sides go through the same `seen` set — that
+/// is what dedupes across the join, not just within each side.
 func executeUnion(first: QueryResult, second: QueryResult, unionAll: Boolean) -> QueryResult {
     var result = new QueryResult();
     result.init();
 
-    // Copy column names from first result
+    // Left side provides column-name identity (SQL-standard).
     var ci = 0;
     while ci < first.columnNames.count() {
         result.addColumnName(first.columnNames.get(ci));
@@ -32,7 +107,7 @@ func executeUnion(first: QueryResult, second: QueryResult, unionAll: Boolean) ->
     }
 
     if unionAll {
-        // UNION ALL: add all rows from both without dedup
+        // Straight concatenation; no dedup.
         var ri = 0;
         while ri < first.rowCount() {
             var row = first.getRow(ri);
@@ -46,9 +121,8 @@ func executeUnion(first: QueryResult, second: QueryResult, unionAll: Boolean) ->
             ri = ri + 1;
         }
     } else {
-        // UNION: dedup using hash set
-        var seen = buildRowKeySet(new QueryResult());
-        // Preallocate empty set
+        // UNION: dedup across both sides with one shared hash set.
+        var seen = buildRowKeySet(new QueryResult());  // preallocate empty buckets
         var ri = 0;
         while ri < first.rowCount() {
             var row = first.getRow(ri);
@@ -80,7 +154,13 @@ func executeUnion(first: QueryResult, second: QueryResult, unionAll: Boolean) ->
     return result;
 }
 
-// Execute EXCEPT - returns rows in first that are not in second
+/// @brief EXCEPT (set-difference, dedupd): left rows not present in
+///        the right side.
+///
+/// Pre-builds a hash set of the right side once, then filters the
+/// left.  A second `seen` set prevents us from emitting duplicates
+/// *within* the left side (EXCEPT — not EXCEPT ALL — produces a
+/// distinct result).
 func executeExcept(first: QueryResult, second: QueryResult) -> QueryResult {
     var result = new QueryResult();
     result.init();
@@ -91,9 +171,8 @@ func executeExcept(first: QueryResult, second: QueryResult) -> QueryResult {
         ci = ci + 1;
     }
 
-    // Build hash set of second result for O(1) membership test
-    var secondSet = buildRowKeySet(second);
-    var seen = buildRowKeySet(new QueryResult());
+    var secondSet = buildRowKeySet(second);     // everything to exclude
+    var seen = buildRowKeySet(new QueryResult());  // left-side dedup guard
 
     var ri = 0;
     while ri < first.rowCount() {
@@ -112,7 +191,11 @@ func executeExcept(first: QueryResult, second: QueryResult) -> QueryResult {
     return result;
 }
 
-// Execute INTERSECT - returns rows that exist in both results
+/// @brief INTERSECT: left rows that also appear in the right side.
+///
+/// Same structure as `executeExcept`, but the membership test flips.
+/// Again, the `seen` set dedupes within the left — two identical
+/// rows on the left only emit once.
 func executeIntersect(first: QueryResult, second: QueryResult) -> QueryResult {
     var result = new QueryResult();
     result.init();
@@ -123,7 +206,6 @@ func executeIntersect(first: QueryResult, second: QueryResult) -> QueryResult {
         ci = ci + 1;
     }
 
-    // Build hash set of second result for O(1) membership test
     var secondSet = buildRowKeySet(second);
     var seen = buildRowKeySet(new QueryResult());
 
@@ -144,7 +226,19 @@ func executeIntersect(first: QueryResult, second: QueryResult) -> QueryResult {
     return result;
 }
 
-// Build a string key from all column values for hash-based dedup
+//=============================================================================
+// ROW-KEY HELPERS (128-bucket hash set over stringified rows)
+//=============================================================================
+
+/// @brief Reduce a row to a canonical string key for hash dedup.
+///
+/// Cells are rendered via `SqlValue.toString()` and joined with the
+/// pipe character `|`.  The pipe is a legal text character so a
+/// malicious row can manufacture collisions (`"a|b"` vs two-cell
+/// `"a"`, `"b"`), but this is only a dedup correctness concern, not
+/// a security one: UNION producing one row instead of two is the
+/// worst case, and it requires that both interpretations agree on
+/// type and position, which the executor rejects before getting here.
 func rowKey(row: Row) -> String {
     var key = "";
     var ci = 0;
@@ -156,8 +250,14 @@ func rowKey(row: Row) -> String {
     return key;
 }
 
-// Build a hash set of row keys from a result set (128-bucket)
-// Returns the bucket array for O(1) membership testing
+/// @brief Build a fresh 128-bucket hash set pre-populated with every
+///        row of `result`.  Pass an empty `QueryResult` to get an
+///        empty set.
+///
+/// The return type is `List[List[String]]` — a list of 128 buckets,
+/// each a list of keys that hashed into that bucket.  `CryptoHash.Fast`
+/// may return negative values (Zia's `Integer` is signed); we flip
+/// the sign before modding so the bucket index is always valid.
 func buildRowKeySet(result: QueryResult) -> List[List[String]] {
     var buckets: List[List[String]] = [];
     var bi = 0;
@@ -181,7 +281,7 @@ func buildRowKeySet(result: QueryResult) -> List[List[String]] {
     return buckets;
 }
 
-// Check if a row key exists in a hash set
+/// @brief Hash-set membership test.  O(N/128) average.
 func rowKeyInSet(buckets: List[List[String]], key: String) -> Boolean {
     var h = CryptoHash.Fast(key);
     if h < 0 { h = 0 - h; }
@@ -194,14 +294,26 @@ func rowKeyInSet(buckets: List[List[String]], key: String) -> Boolean {
     return false;
 }
 
-// Add a row key to a hash set
+/// @brief Hash-set insertion.  Does **not** dedupe within a bucket —
+///        callers pair it with `rowKeyInSet` for that.  Splitting
+///        test-and-insert into two calls lets the dedup loop in the
+///        entry-point functions decide whether to also emit the row.
 func addRowKeyToSet(buckets: List[List[String]], key: String) {
     var h = CryptoHash.Fast(key);
     if h < 0 { h = 0 - h; }
     buckets.get(h % 128).add(key);
 }
 
-// Check if a row is a duplicate of any existing row in result (hash-accelerated)
+//=============================================================================
+// GENERIC ROW-EQUALITY HELPERS (used outside the hash path)
+//=============================================================================
+
+/// @brief O(N) "is this row already in this result?" used by the
+///        INSERT path to deduplicate when inserting into a UNIQUE
+///        column without an index.
+///
+/// When the caller already has a hash set, prefer `rowKeyInSet`.
+/// This is the fallback for one-shot checks.
 func isDuplicateRow(result: QueryResult, row: Row) -> Boolean {
     var key = rowKey(row);
     var ri = 0;
@@ -216,12 +328,17 @@ func isDuplicateRow(result: QueryResult, row: Row) -> Boolean {
     return false;
 }
 
-// Check if two rows are equal
+/// @brief Row-wise equality via `rowKey`.  Used by the `ALL`
+///        variants where we need to match rows one-by-one without
+///        building a hash.
 func rowsEqual(row1: Row, row2: Row) -> Boolean {
     return rowKey(row1) == rowKey(row2);
 }
 
-// Check if a row exists in a result set
+/// @brief O(N) membership test — same shape as `isDuplicateRow` but
+///        the callsite intent is "does this row match anything?"
+///        rather than "is this row a duplicate?".  Separated to keep
+///        callsites self-documenting.
 func isRowInResult(result: QueryResult, row: Row) -> Boolean {
     var key = rowKey(row);
     var ri = 0;
@@ -238,8 +355,22 @@ func isRowInResult(result: QueryResult, row: Row) -> Boolean {
     return false;
 }
 
-// Execute EXCEPT ALL - like EXCEPT but preserves duplicates
-// If a row appears N times in first and M times in second, result has max(N-M, 0) copies
+//=============================================================================
+// MULTI-SET VARIANTS (EXCEPT ALL, INTERSECT ALL)
+//=============================================================================
+
+/// @brief EXCEPT ALL: if a row appears N times on the left and M
+///        times on the right, emit max(N − M, 0) copies.
+///
+/// The algorithm maintains a `secondUsed` 0/1 flag list over the
+/// right-side rows — each time we find a matching pair, we mark the
+/// right-side row "used" so it cannot match a later left-side copy.
+/// Runs in O(N·M); fine for the demo's cardinalities.
+///
+/// NOTE: setting `si = second.rowCount()` is the file's idiomatic
+/// "break" — Zia does not have an early-exit `break`, so the loop
+/// terminates naturally on the next iteration.  Same technique in
+/// `executeIntersectAll`.
 func executeExceptAll(first: QueryResult, second: QueryResult) -> QueryResult {
     var result = new QueryResult();
     result.init();
@@ -250,7 +381,6 @@ func executeExceptAll(first: QueryResult, second: QueryResult) -> QueryResult {
         ci = ci + 1;
     }
 
-    // Track which rows in second have been "used" to cancel out first rows
     var secondUsed = new List[Integer]();
     var si = 0;
     while si < second.rowCount() {
@@ -258,7 +388,6 @@ func executeExceptAll(first: QueryResult, second: QueryResult) -> QueryResult {
         si = si + 1;
     }
 
-    // For each row in first, try to find an unused match in second
     var ri = 0;
     while ri < first.rowCount() {
         var row = first.getRow(ri);
@@ -274,7 +403,7 @@ func executeExceptAll(first: QueryResult, second: QueryResult) -> QueryResult {
                         if rowsEqual(r, sr) {
                             secondUsed.set(si, 1);
                             consumed = true;
-                            si = second.rowCount();  // break
+                            si = second.rowCount();  // idiomatic break
                         }
                     }
                 }
@@ -290,8 +419,12 @@ func executeExceptAll(first: QueryResult, second: QueryResult) -> QueryResult {
     return result;
 }
 
-// Execute INTERSECT ALL - like INTERSECT but preserves duplicates
-// If a row appears N times in first and M times in second, result has min(N, M) copies
+/// @brief INTERSECT ALL: emit min(N, M) copies where N is the left
+///        multiplicity and M is the right.
+///
+/// Same consume-on-match bookkeeping as `executeExceptAll`; we emit
+/// the left-side row on every successful pairing.  Unpaired left
+/// rows are dropped (this is the intersection, not the union).
 func executeIntersectAll(first: QueryResult, second: QueryResult) -> QueryResult {
     var result = new QueryResult();
     result.init();
@@ -302,7 +435,6 @@ func executeIntersectAll(first: QueryResult, second: QueryResult) -> QueryResult
         ci = ci + 1;
     }
 
-    // Track which rows in second have been "used" for matching
     var secondUsed = new List[Integer]();
     var si = 0;
     while si < second.rowCount() {
@@ -310,7 +442,6 @@ func executeIntersectAll(first: QueryResult, second: QueryResult) -> QueryResult
         si = si + 1;
     }
 
-    // For each row in first, try to find an unused match in second
     var ri = 0;
     while ri < first.rowCount() {
         var row = first.getRow(ri);
@@ -325,7 +456,7 @@ func executeIntersectAll(first: QueryResult, second: QueryResult) -> QueryResult
                         if rowsEqual(r, sr) {
                             secondUsed.set(si, 1);
                             result.addRow(r);
-                            si = second.rowCount();  // break
+                            si = second.rowCount();  // idiomatic break
                         }
                     }
                 }

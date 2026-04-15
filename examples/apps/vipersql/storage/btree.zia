@@ -1,22 +1,82 @@
-// btree.zia — B-Tree Index Implementation
-// Part of ViperSQL
+// =============================================================================
+// btree.zia — Disk-backed B-tree: insert/search/delete algorithms
+// Part of ViperSQL  (package: storage)
+// =============================================================================
 //
-// Implements a disk-based B-tree index structure for ordered key lookups.
-// Each B-tree node is stored in a single 4KB page via the BufferPool.
+// PURPOSE
+// -------
+// `./btree_node.zia` defines the *shape* of a B-tree node (keys,
+// children, serialisation).  This file implements the *algorithms*
+// on top of that shape: initial tree creation, point and range
+// lookup, insert with full-node splitting, and delete with
+// predecessor substitution.  Each node lives on a single 4-KB
+// `Page` fetched through the shared `BufferPool`.
 //
-// Key design decisions:
-//   - Order (max keys per node) is determined by page capacity
-//   - Keys are stored as string values (serialized from SqlValue)
-//   - Leaf nodes store (key, rowId) pairs pointing to data pages
-//   - Internal nodes store keys and child page IDs
-//   - Node splits propagate upward; root splits create a new root
+// WHERE THIS FITS
+// ---------------
+//     engine/index.zia        (in-memory hash indexes for most
+//                              SELECT paths — see note below)
+//         ───(currently disjoint)───
+//     storage/btree.zia      (YOU ARE HERE — disk-backed range-
+//                              capable index)
+//         │  insert/search/delete
+//         ▼
+//     storage/btree_node.zia  (node layout + serde)
+//         │
+//         ▼
+//     storage/buffer.zia → pager.zia
 //
-// Search: Binary search within each node, O(log n) tree traversal.
-// Insert: Search to leaf, insert key, split if overflow, propagate up.
+// NOTE: this B-tree is not yet hooked to the SQL `CREATE INDEX`
+// path; that currently builds `SqlIndex` hash indexes in memory
+// (`engine/index.zia`).  The B-tree code is tested in isolation
+// and ready for integration — a future phase will swap it in when
+// the engine needs persistent range scans on very large tables.
 //
-// Note: This B-tree is not yet integrated with the SQL CREATE INDEX
-// command. Currently, SQL indexes use in-memory hash tables (index.zia).
-// B-tree integration is planned for a future release.
+// KEY DESIGN CHOICES
+// ------------------
+//   1. "Proactive split" insert, textbook B-tree style.  Before
+//      descending into a full child, split it first.  This keeps
+//      the algorithm single-pass on the descent — we never need
+//      to split upward after placing the key.
+//
+//   2. Root-split creates a new root.  When the current root is
+//      full on insert, we allocate a new empty internal node,
+//      make the old root its single child, split that, then
+//      install the new root.  This is the only way the tree
+//      height grows.
+//
+//   3. Right-sibling pointers maintained on split.  Each split
+//      threads `newNode.rightSibling = child.rightSibling` and
+//      `child.rightSibling = newNode`, preserving the left-to-
+//      right leaf chain used by range scans.
+//
+//   4. Delete uses predecessor-swap on internal hits.  When the
+//      key to delete lives on an internal node, we swap it with
+//      its in-order predecessor (rightmost key of the left
+//      subtree) and recursively delete from the leaf — which is
+//      the only safe place for a B-tree delete.
+//
+//   5. Uniqueness enforced at insert.  `isUnique` flips a
+//      `search` pre-check before `insert`; no cleverer structural
+//      invariant is used.  A non-unique index can hold many
+//      entries for the same key.
+//
+//   6. Pin/unpin discipline via `BufferPool`.  Every `fetchPage`
+//      must be paired with `unpinPage`.  This code is careful
+//      about that; callers must be too.
+//
+// HOW TO READ THIS FILE
+// ---------------------
+//   1. Fields + init/setBufferPool.
+//   2. `create` — wires up an empty leaf root on a fresh page.
+//   3. Search: `search` + `searchInNode`; range variant
+//      `rangeSearch` + `rangeSearchInNode`.
+//   4. Insert: `insert` (root full case), `insertNonFull`
+//      (recursive descent), `splitChild` (the heavy lifter).
+//   5. Delete: `delete`, `deleteFromNode`, `findPredecessor`.
+//   6. Diagnostics: `height`, `countKeys`, `countKeysInNode`.
+//
+// =============================================================================
 
 module btree;
 
@@ -43,6 +103,9 @@ class BTree {
     hide BufferPool pool;
     hide BTreeNodeSerializer nodeSer;
 
+    /// @brief Zero-state init.  The pool is left unset — you
+    ///        must call `setBufferPool` or use `initWithPool`
+    ///        before any operation that touches a page.
     expose func init() {
         indexId = 0;
         indexName = "";
@@ -54,6 +117,8 @@ class BTree {
         nodeSer.init();
     }
 
+    /// @brief Init with a buffer-pool reference.  Preferred form —
+    ///        the B-tree needs the pool for every page op.
     expose func initWithPool(bufferPool: BufferPool) {
         indexId = 0;
         indexName = "";
@@ -66,6 +131,8 @@ class BTree {
         nodeSer.init();
     }
 
+    /// @brief Late-bind the buffer pool — for callers that
+    ///        initialised the tree before the pool existed.
     expose func setBufferPool(bufferPool: BufferPool) {
         pool = bufferPool;
     }
@@ -74,7 +141,12 @@ class BTree {
     // TREE CREATION
     //=========================================================================
 
-    // Create a new empty B-tree
+    /// @brief Allocate the root page and populate the tree's
+    ///        metadata.  Must be called once before any
+    ///        insert/search.
+    ///
+    /// The root starts as an empty leaf.  Height grows only when
+    /// the root is full and `insert` triggers a root-split.
     expose func create(name: String, tblId: Integer, colName: String, unique: Boolean) {
         indexName = name;
         tableId = tblId;
@@ -96,7 +168,8 @@ class BTree {
     // SEARCH OPERATIONS
     //=========================================================================
 
-    // Search for a key and return its row location
+    /// @brief Point lookup — return the `BTreeKey` (value + heap
+    ///        row pointer) for `searchKey` if present, else null.
     expose func search(searchKey: SqlValue) -> BTreeKey? {
         if rootPageId == INVALID_PAGE_ID {
             return null;
@@ -105,7 +178,12 @@ class BTree {
         return searchInNode(rootPageId, searchKey);
     }
 
-    // Recursive search in a node
+    /// @brief Recursive descent helper for `search`.
+    ///
+    /// Fetches the page, unpins immediately after deserialising
+    /// (we hold no live page ref across the recursion), checks for
+    /// exact match in the current node, then either returns or
+    /// picks the child via `findChildIndex`.
     hide func searchInNode(nodePageId: Integer, searchKey: SqlValue) -> BTreeKey? {
         var maybePage = pool.fetchPage(nodePageId);
         if maybePage == null {
@@ -137,7 +215,12 @@ class BTree {
         return searchInNode(childPageId, searchKey);
     }
 
-    // Range search: find all keys in [minKey, maxKey]
+    /// @brief Inclusive range lookup — return every key in
+    ///        `[minKey, maxKey]`.
+    ///
+    /// Output order: the natural in-order traversal of the tree
+    /// (ascending by key).  Used for SQL `BETWEEN`, `>=`, `<=`
+    /// predicates when / if the B-tree is wired up to the planner.
     expose func rangeSearch(minKey: SqlValue, maxKey: SqlValue) -> List[BTreeKey] {
         var results: List[BTreeKey] = [];
         if rootPageId == INVALID_PAGE_ID {
@@ -148,7 +231,13 @@ class BTree {
         return results;
     }
 
-    // Recursive range search
+    /// @brief Recursive helper for `rangeSearch`.
+    ///
+    /// In-order walk with two pruning tricks:
+    ///   (a) skip the left subtree of a key when `minKey >
+    ///       key.keyValue` — nothing left of here can be in range;
+    ///   (b) short-circuit when a key exceeds `maxKey` — nothing
+    ///       to the right of here can either.
     hide func rangeSearchInNode(nodePageId: Integer, minKey: SqlValue, maxKey: SqlValue, results: List[BTreeKey]) {
         var maybePage = pool.fetchPage(nodePageId);
         if maybePage == null {
@@ -198,7 +287,14 @@ class BTree {
     // INSERT OPERATIONS
     //=========================================================================
 
-    // Insert a key into the B-tree
+    /// @brief Public insert.  Returns false on unique-constraint
+    ///        violation; true on successful insert.
+    ///
+    /// Handles two cases:
+    ///   (a) root non-full → recurse straight into `insertNonFull`;
+    ///   (b) root full → allocate a new root, wire the old root as
+    ///       its only child, split that child, then descend.  This
+    ///       is the only code path that grows the tree's height.
     expose func insert(key: BTreeKey) -> Boolean {
         if rootPageId == INVALID_PAGE_ID {
             return false;
@@ -258,7 +354,16 @@ class BTree {
         }
     }
 
-    // Insert into a non-full node
+    /// @brief Descend into a guaranteed-non-full node and insert.
+    ///
+    /// If the node is a leaf, just insert.  Otherwise look at the
+    /// child we would descend into; if full, split it first (which
+    /// may change which child we descend to, because the promoted
+    /// middle key lands in this node).  Then recurse.
+    ///
+    /// This is the textbook "proactive split" idea — it guarantees
+    /// every recursive call sees a non-full target, so splits
+    /// never cascade upward.
     hide func insertNonFull(nodePageId: Integer, key: BTreeKey) -> Boolean {
         var maybePage = pool.fetchPage(nodePageId);
         if maybePage == null {
@@ -308,7 +413,20 @@ class BTree {
         return insertNonFull(childPageId, key);
     }
 
-    // Split a full child node
+    /// @brief Split a full child into two nodes; promote the
+    ///        middle key into the parent.
+    ///
+    /// Standard B-tree split:
+    ///   1. Allocate a fresh page for the right half (`newNode`).
+    ///   2. Move `child.keys[t..]` (and, for internal nodes,
+    ///      `child.children[t..]`) into `newNode`.
+    ///   3. The middle key `child.keys[t-1]` becomes the "promoted"
+    ///      key the parent will own.
+    ///   4. Truncate `child` to the left half.
+    ///   5. Rewire right-sibling pointers so the leaf-chain stays
+    ///      intact.
+    ///   6. Insert the promoted key and the new right-child pointer
+    ///      into `parent` at `childIdx` / `childIdx+1`.
     hide func splitChild(parent: BTreeNode, childIdx: Integer, child: BTreeNode) {
         // Create new node (right sibling)
         var newPage = pool.newPage(PAGE_TYPE_INDEX);
@@ -386,7 +504,18 @@ class BTree {
     // DELETE OPERATIONS
     //=========================================================================
 
-    // Delete a key from the B-tree
+    /// @brief Delete `searchKey` from the tree.  Returns false on
+    ///        "not found".
+    ///
+    /// NOTE: the delete path here is the simpler "predecessor
+    /// swap" variant — it handles leaf deletes directly, and for
+    /// internal-node hits it swaps with the in-order predecessor
+    /// and re-deletes from the leaf.  It does not yet handle the
+    /// cascading borrow/merge that a full B-tree implementation
+    /// would do to maintain `t-1` minimum keys on every node.
+    /// Under heavy deletes this can leave under-full nodes — fine
+    /// for correctness, less good for space efficiency.  Flag-
+    /// don't-fix.
     expose func delete(searchKey: SqlValue) -> Boolean {
         if rootPageId == INVALID_PAGE_ID {
             return false;
@@ -395,7 +524,15 @@ class BTree {
         return deleteFromNode(rootPageId, searchKey);
     }
 
-    // Delete from a node
+    /// @brief Recursive descent for `delete`.
+    ///
+    /// Three cases at each node:
+    ///   (a) key found in a leaf → remove and done;
+    ///   (b) key found in an internal node → swap with in-order
+    ///       predecessor, then recurse into the left subtree to
+    ///       remove the predecessor from its (leaf) home;
+    ///   (c) key not in this node → recurse into the appropriate
+    ///       child or report "not found" if already at a leaf.
     hide func deleteFromNode(nodePageId: Integer, searchKey: SqlValue) -> Boolean {
         var maybePage = pool.fetchPage(nodePageId);
         if maybePage == null {
@@ -446,7 +583,9 @@ class BTree {
         return deleteFromNode(childPageId, searchKey);
     }
 
-    // Find predecessor (rightmost key in left subtree)
+    /// @brief Walk to the rightmost leaf of the left subtree and
+    ///        return its rightmost key — the in-order predecessor
+    ///        of `node.keys[keyIdx]`.
     hide func findPredecessor(node: BTreeNode, keyIdx: Integer) -> BTreeKey? {
         var childPageId = node.getChild(keyIdx);
         if childPageId == INVALID_PAGE_ID {
@@ -484,7 +623,9 @@ class BTree {
     // UTILITY FUNCTIONS
     //=========================================================================
 
-    // Get the height of the tree
+    /// @brief Tree height (root counts as 1).  Walks down via
+    ///        `children[0]` until a leaf, counting hops.  Used
+    ///        by EXPLAIN output and as a sanity check in tests.
     expose func height() -> Integer {
         if rootPageId == INVALID_PAGE_ID {
             return 0;
@@ -514,7 +655,8 @@ class BTree {
         return h;
     }
 
-    // Count total keys in the tree
+    /// @brief Total number of keys — full tree scan.  Expensive
+    ///        on big trees; mostly for diagnostics and tests.
     expose func countKeys() -> Integer {
         if rootPageId == INVALID_PAGE_ID {
             return 0;
@@ -523,6 +665,8 @@ class BTree {
         return countKeysInNode(rootPageId);
     }
 
+    /// @brief Recursive helper for `countKeys` — sum of this
+    ///        node's key count plus all children's.
     hide func countKeysInNode(nodePageId: Integer) -> Integer {
         var maybePage = pool.fetchPage(nodePageId);
         if maybePage == null {

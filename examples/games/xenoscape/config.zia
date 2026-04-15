@@ -1,4 +1,77 @@
-// config.zia — All game constants, colors, tile IDs, entity IDs, physics params
+// =============================================================================
+// config.zia — Every `final` constant the game reads
+// Part of Xenoscape  (the 2D sidescroller platformer demo)
+// =============================================================================
+//
+// TUTORIAL — ONE FILE TO RULE THE CONSTANTS
+// -----------------------------------------
+// In any game, dozens of numeric constants end up sprinkled
+// across the codebase: gravity, jump force, tile size, max
+// enemies, colour codes, input-action ids, state machine
+// enums, biome tags, animation durations, screen dimensions,
+// ...
+//
+// Put them in one file named after what they are — `config`.
+//
+// Benefits:
+//
+//   * **Tuning is fast.**  Want jumps to feel floatier?
+//     Edit `GRAVITY` here; every physics path picks it up.
+//     The file is the "dashboard" of the game.
+//
+//   * **Cross-file agreement is free.**  Every file `bind`s
+//     `./config`, so `PLAYER_W` means the same integer
+//     everywhere.  No "oh, that file was using 32 but this
+//     one was using 30" bugs.
+//
+//   * **Compile-time constants.**  Zia's `final` is a
+//     module-scope constant that the codegen can inline.
+//     A few hundred of these cost zero runtime lookup.
+//
+// GUIDELINES FOR WHAT GOES HERE vs ELSEWHERE
+// ------------------------------------------
+//   * **Yes**: numbers that never change at runtime, or ids
+//     that must agree across files (tile types, input
+//     actions, entity states).
+//
+//   * **No**: colours (those live on `Palette`),
+//     JSON-tunable parameters (those live in
+//     `xenoscape.runtime.json` and flow through
+//     `RuntimeTuning`), level data (that belongs in
+//     `level.zia`).
+//
+// The game runs with three "constant stores":
+//
+//     config.zia        — compile-time invariants.
+//     palette.zia       — named colours (still "constants" but
+//                         scoped so we can re-theme).
+//     tuning.zia / .json — runtime knobs you can tweak
+//                         without a rebuild.
+//
+// This file is ~750 lines — scroll through to see the shape
+// of the game at a glance.  Sections (by banner):
+//
+//     Screen & Window
+//     Physics (x100 fixed-point)
+//     Player dimensions & stats
+//     Input actions (named)
+//     Tile type IDs
+//     Entity IDs
+//     State machines (PS_*, BS_*, etc.)
+//     Pickup types
+//     Animation timings
+//     Enemy archetypes
+//     Audio voice ids
+//     Boss tuning
+//     Biome + level tags
+//
+// WHERE THIS FITS
+// ---------------
+// Everywhere.  Literally every other module in the project
+// `bind`s this file.
+//
+// =============================================================================
+
 module config;
 
 // =============================================================================

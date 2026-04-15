@@ -1,10 +1,42 @@
-// json.zia — JSON Parser and Functions
-// Part of ViperSQL — Phase 25
+// =============================================================================
+// json.zia — JSON parser + JSON_* SQL function backing code
+// Part of ViperSQL  (package: io, Phase 25)
+// =============================================================================
 //
-// Provides a pure-Zia JSON parser for validation, type detection,
-// value extraction, and construction. Used by sql_functions.zia
-// for JSON_VALID, JSON_TYPE, JSON_EXTRACT, JSON_ARRAY_LENGTH,
-// JSON_BUILD_OBJECT, JSON_BUILD_ARRAY, JSON_OBJECT_KEYS, etc.
+// PURPOSE
+// -------
+// ViperSQL surfaces the PostgreSQL-style JSON feature set:
+// `JSON` and `JSONB` column types, path expressions with `->`
+// and `->>`, and a pile of scalar functions (`JSON_VALID`,
+// `JSON_TYPE`, `JSON_EXTRACT`, `JSON_ARRAY_LENGTH`,
+// `JSON_BUILD_OBJECT`, `JSON_BUILD_ARRAY`, `JSON_OBJECT_KEYS`,
+// ...).  This file provides the parsing / introspection /
+// construction primitives those features are built on.
+//
+// Internally we delegate the heavy lifting to the Viper runtime's
+// `Viper.Text.Json` + `Viper.Text.JsonPath` — those are C-level
+// fast parsers.  `JsonParser` in this file is a thin Zia wrapper
+// that layers SQL semantics (NULL on parse failure, type-code
+// mapping, ...) on top.
+//
+// WHERE THIS FITS
+// ---------------
+//     engine/sql_functions.zia  — calls JSON_* handlers here
+//         │
+//         ▼
+//     io/json.zia      (YOU ARE HERE)
+//         │
+//         ▼
+//     Viper.Text.Json / Viper.Text.JsonPath   (runtime core)
+//
+// HOW TO READ THIS FILE
+// ---------------------
+//   * `JsonParser` — the lightweight validator / type-sniffer.
+//   * `JSON_*` backing functions — exported for
+//     `sql_functions.zia` to map SQL-function calls onto.
+//   * Builder helpers for JSON_BUILD_OBJECT / JSON_BUILD_ARRAY.
+//
+// =============================================================================
 
 module json;
 
