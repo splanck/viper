@@ -42,6 +42,7 @@
 #include "rt_platform.h"
 #include "rt_seq.h"
 #include "rt_string.h"
+#include "rt_time.h"
 
 #if RT_PLATFORM_WINDOWS
 #include <windows.h>
@@ -1289,8 +1290,6 @@ static void *g_mouse_canvas = NULL;
 
 // Initialization flag
 static bool g_mouse_initialized = false;
-
-extern int64_t rt_clock_ticks_us(void);
 
 /// @brief Read the runtime monotonic clock in milliseconds.
 ///

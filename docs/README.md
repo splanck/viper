@@ -108,6 +108,7 @@ Documentation for the Viper compiler toolchain: two language frontends ([Zia](zi
 - [REPL](repl.md) — Interactive Zia/BASIC environment
 - [Debugging Guide](debugging.md) — VM tracing, breakpoints, and diagnostics
 - [Testing Guide](testing.md) — Unit, golden, e2e, and performance tests
+- [Review Readiness](review-readiness.md) — Pre-review validation checklist and platform-claim rules
 
 ---
 
@@ -133,7 +134,7 @@ Documentation for the Viper compiler toolchain: two language frontends ([Zia](zi
 
 **Frontends** — [Zia](codemap/front-end-zia.md) · [BASIC](codemap/front-end-basic.md) · [Common](codemap/front-end-common.md)
 
-**Other** — [Codegen](codemap/codegen.md) · [Graphics](codemap/graphics.md) · [VM/Runtime](codemap/vm-runtime.md) · [Support](codemap/support.md) · [Tools](codemap/tools.md) · [TUI](codemap/tui.md) · [Zia Server](codemap/zia-server.md) · [Docs](codemap/docs.md)
+**Other** — [Bytecode VM](codemap/bytecode-vm.md) · [Codegen](codemap/codegen.md) · [Graphics](codemap/graphics.md) · [Graphics Stubs](codemap/runtime-graphics-stubs.md) · [VM/Runtime](codemap/vm-runtime.md) · [Support](codemap/support.md) · [Tools](codemap/tools.md) · [TUI](codemap/tui.md) · [Zia Server](codemap/zia-server.md) · [Docs](codemap/docs.md)
 
 ---
 

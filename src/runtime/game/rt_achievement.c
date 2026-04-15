@@ -14,30 +14,23 @@
 //   - Draw() renders notification popup at top-right of canvas.
 //
 // Ownership/Lifetime:
-//   - GC-managed via rt_obj_new_i64. Names/descriptions are strdup'd.
+//   - GC-managed via rt_obj_new_i64. Names/descriptions retain runtime strings.
 //
 // Links: src/runtime/game/rt_achievement.h
 //
 //===----------------------------------------------------------------------===//
 
 #include "rt_achievement.h"
+#include "rt_graphics.h"
 #include "rt_object.h"
-#include <stdlib.h>
 #include <string.h>
-
-// Forward declarations for canvas draw functions
-extern void rt_canvas_box_alpha(
-    void *canvas, int64_t x, int64_t y, int64_t w, int64_t h, int64_t color, int64_t alpha);
-extern void rt_canvas_text_scaled(
-    void *canvas, int64_t x, int64_t y, const char *text, int64_t scale, int64_t color);
-extern int64_t rt_canvas_width(void *canvas);
 
 #define MAX_ACH 64
 #define MAX_STATS 32
 
 struct rt_ach_entry {
-    char *name;
-    char *description;
+    rt_string name;
+    rt_string description;
     int8_t defined;
 };
 
@@ -95,25 +88,25 @@ void rt_achievement_destroy(rt_achievement ach) {
         return;
     for (int i = 0; i < MAX_ACH; i++) {
         if (ach->entries[i].name)
-            free(ach->entries[i].name);
+            rt_string_unref(ach->entries[i].name);
         if (ach->entries[i].description)
-            free(ach->entries[i].description);
+            rt_string_unref(ach->entries[i].description);
     }
     if (rt_obj_release_check0(ach))
         rt_obj_free(ach);
 }
 
 /// @brief Define an achievement by ID with a display name and description.
-void rt_achievement_add(rt_achievement ach, int64_t id, const char *name, const char *description) {
+void rt_achievement_add(rt_achievement ach, int64_t id, rt_string name, rt_string description) {
     if (!ach || id < 0 || id >= ach->capacity)
         return;
     if (ach->entries[id].name)
-        free(ach->entries[id].name);
+        rt_string_unref(ach->entries[id].name);
     if (ach->entries[id].description)
-        free(ach->entries[id].description);
+        rt_string_unref(ach->entries[id].description);
 
-    ach->entries[id].name = name ? strdup(name) : NULL;
-    ach->entries[id].description = description ? strdup(description) : NULL;
+    ach->entries[id].name = name ? rt_string_ref(name) : NULL;
+    ach->entries[id].description = description ? rt_string_ref(description) : NULL;
     if (!ach->entries[id].defined) {
         ach->entries[id].defined = 1;
         ach->total_defined++;
@@ -226,6 +219,7 @@ void rt_achievement_update(rt_achievement ach, int64_t dt) {
 
 /// @brief Draw the achievement notification banner (slides in from the right edge).
 void rt_achievement_draw(rt_achievement ach, void *canvas) {
+    rt_string title;
     if (!ach || !canvas || ach->notify_id < 0)
         return;
 
@@ -243,7 +237,9 @@ void rt_achievement_draw(rt_achievement ach, void *canvas) {
     rt_canvas_box_alpha(canvas, box_x, box_y, box_w, box_h, 0x111122, 220);
 
     // Title "ACHIEVEMENT UNLOCKED"
-    rt_canvas_text_scaled(canvas, box_x + 8, box_y + 6, "ACHIEVEMENT UNLOCKED", 1, 0xFFDD22);
+    title = rt_const_cstr("ACHIEVEMENT UNLOCKED");
+    rt_canvas_text_scaled(canvas, box_x + 8, box_y + 6, title, 1, 0xFFDD22);
+    rt_string_unref(title);
 
     // Achievement name
     if (ach->entries[id].name) {

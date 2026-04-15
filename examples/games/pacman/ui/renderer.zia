@@ -185,8 +185,11 @@ expose func drawPlayfieldShell(canvas: Canvas, tickMs: Integer) {
 expose func drawMenu(canvas: Canvas,
                      selected: Integer,
                      highScore: Integer,
+                     rank: Integer,
+                     rankTitle: String,
                      unlockedAchievements: Integer,
                      totalAchievements: Integer,
+                     profile: progression.Progression,
                      tickMs: Integer) {
     drawBackdrop(canvas, tickMs);
     drawTitleMarquee(canvas, tickMs);
@@ -226,19 +229,31 @@ expose func drawMenu(canvas: Canvas,
     widgets.drawInset(canvas, info);
     theme.drawTextCentered(canvas, info.x, info.y + 4, info.w, "HIGH SCORE  " + Int(highScore), theme.FONT_BODY_SCALE, theme.ACCENT_CYAN);
     theme.drawTextCentered(canvas, info.x, info.y + 22, info.w,
-                           "UNLOCKED  " + Int(unlockedAchievements) + " / " + Int(totalAchievements) +
-                           "   MOVE ARROWS/WASD   SELECT ENTER/SPACE",
+                           "RANK " + Int(rank) + "  " + rankTitle + "   UNLOCKED  " +
+                           Int(unlockedAchievements) + " / " + Int(totalAchievements),
                            theme.FONT_SMALL_SCALE, theme.TEXT_MUTED);
 
     var show = menuShowcaseRect();
     widgets.drawPanel(canvas, show, theme.ACCENT_PINK, true);
-    theme.drawTextCentered(canvas, show.x, show.y + 10, show.w, "GHOST ROSTER", theme.FONT_BODY_SCALE, theme.TEXT_PRIMARY);
-    theme.drawTextCentered(canvas, show.x, show.y + 30, show.w, "Each ghost pressures the maze differently. Read the pursuit pattern.", theme.FONT_SMALL_SCALE, theme.TEXT_MUTED);
+    theme.drawTextCentered(canvas, show.x, show.y + 10, show.w, "TONIGHT'S CONTRACTS", theme.FONT_BODY_SCALE, theme.TEXT_PRIMARY);
+    theme.drawTextCentered(canvas, show.x, show.y + 30, show.w,
+                           "Finish contracts for bonus XP and faster rank growth.",
+                           theme.FONT_SMALL_SCALE, theme.TEXT_MUTED);
 
-    drawMenuGhostEntry(canvas, 0, "BLINKY", "STRAIGHT CHASE PRESSURE", config.COLOR_RED, theme.ACCENT_RED);
-    drawMenuGhostEntry(canvas, 1, "PINKY", "JUMPS AHEAD OF YOUR PATH", config.COLOR_PINK, theme.ACCENT_PINK);
-    drawMenuGhostEntry(canvas, 2, "INKY", "WIDE ANGLES AND TRAPS", config.COLOR_CYAN, theme.ACCENT_CYAN);
-    drawMenuGhostEntry(canvas, 3, "CLYDE", "BREAKS OFF AND RESETS", config.COLOR_ORANGE, theme.ACCENT_ORANGE);
+    var cy = show.y + 56;
+    var accent = theme.ACCENT_YELLOW;
+    for i in 0..profile.getActiveContractCount() {
+        if i == 1 { accent = theme.ACCENT_CYAN; }
+        if i == 2 { accent = theme.ACCENT_PINK; }
+        var row = rect(show.x + 24, cy, show.w - 48, 34);
+        widgets.drawContractRow(canvas, row, profile.getActiveContractName(i), profile.getActiveContractDesc(i),
+                                profile.getActiveContractReward(i), accent, false);
+        cy = cy + 42;
+    }
+
+    theme.drawTextCentered(canvas, show.x, show.y + show.h - 24, show.w,
+                           "MOVE ARROWS/WASD   SELECT ENTER/SPACE   BACK ESC",
+                           theme.FONT_SMALL_SCALE, theme.TEXT_MUTED);
 }
 
 expose func drawOptions(canvas: Canvas,
@@ -317,13 +332,13 @@ expose func drawProfile(canvas: Canvas, profile: progression.Progression, select
     widgets.drawPanel(canvas, stats, theme.ACCENT_PINK, false);
     theme.drawTextCentered(canvas, stats.x, stats.y + 10, stats.w, "CAREER", theme.FONT_BODY_SCALE, theme.TEXT_PRIMARY);
     widgets.drawLabelValue(canvas, profileStatRowRect(0), "BEST SCORE", Int(profile.getBestScore()), theme.ACCENT_YELLOW);
-    widgets.drawLabelValue(canvas, profileStatRowRect(1), "BEST LEVEL", Int(profile.getBestLevel()), theme.ACCENT_CYAN);
-    widgets.drawLabelValue(canvas, profileStatRowRect(2), "RUNS PLAYED", Int(profile.getTotalRuns()), theme.ACCENT_PINK);
-    widgets.drawLabelValue(canvas, profileStatRowRect(3), "MAZES CLEARED", Int(profile.getTotalBoardsCleared()), theme.ACCENT_GREEN);
-    widgets.drawLabelValue(canvas, profileStatRowRect(4), "DOTS EATEN", Int(profile.getTotalDots()), theme.ACCENT_YELLOW);
-    widgets.drawLabelValue(canvas, profileStatRowRect(5), "GHOSTS EATEN", Int(profile.getTotalGhosts()), theme.ACCENT_CYAN);
-    widgets.drawLabelValue(canvas, profileStatRowRect(6), "FRUIT COLLECTED", Int(profile.getTotalFruit()), theme.ACCENT_ORANGE);
-    widgets.drawLabelValue(canvas, profileStatRowRect(7), "TOTAL SCORE", Int(profile.getTotalScore()), theme.ACCENT_PINK);
+    widgets.drawLabelValue(canvas, profileStatRowRect(1), "RANK", Int(profile.getRank()) + "  " + profile.getRankTitle(), theme.ACCENT_CYAN);
+    widgets.drawLabelValue(canvas, profileStatRowRect(2), "TOTAL XP", Int(profile.getTotalXp()), theme.ACCENT_PINK);
+    widgets.drawLabelValue(canvas, profileStatRowRect(3), "BEST LEVEL", Int(profile.getBestLevel()), theme.ACCENT_GREEN);
+    widgets.drawLabelValue(canvas, profileStatRowRect(4), "RUNS PLAYED", Int(profile.getTotalRuns()), theme.ACCENT_YELLOW);
+    widgets.drawLabelValue(canvas, profileStatRowRect(5), "MAZES CLEARED", Int(profile.getTotalBoardsCleared()), theme.ACCENT_CYAN);
+    widgets.drawLabelValue(canvas, profileStatRowRect(6), "DOTS EATEN", Int(profile.getTotalDots()), theme.ACCENT_ORANGE);
+    widgets.drawLabelValue(canvas, profileStatRowRect(7), "GHOSTS EATEN", Int(profile.getTotalGhosts()), theme.ACCENT_PINK);
 
     var ach = profileAchievementsRect();
     widgets.drawPanel(canvas, ach, theme.ACCENT_CYAN, false);
@@ -392,8 +407,12 @@ expose func drawRunSummary(canvas: Canvas, profile: progression.Progression, sel
         subtitle = "NEW PERSONAL RECORDS HIT THIS RUN.";
     } else if profile.getLastRunUnlockCount() > 0 {
         subtitle = "NEW ACHIEVEMENTS UNLOCKED.";
+    } else if profile.didLastRunRankUp() {
+        subtitle = "RANK UP. THE NIGHT GOT LOUDER.";
     }
-    theme.drawTextCentered(canvas, header.x, header.y + 34, header.w, subtitle, theme.FONT_SMALL_SCALE, theme.TEXT_MUTED);
+    theme.drawTextCentered(canvas, header.x, header.y + 34, header.w,
+                           subtitle + "   GRADE " + profile.getLastRunGrade(),
+                           theme.FONT_SMALL_SCALE, theme.TEXT_MUTED);
 
     widgets.drawLabelValue(canvas, summaryStatRect(0), "SCORE", Int(profile.getLastRunScore()), theme.ACCENT_YELLOW);
     widgets.drawLabelValue(canvas, summaryStatRect(1), "LEVEL", Int(profile.getLastRunLevel()), theme.ACCENT_CYAN);
@@ -403,32 +422,47 @@ expose func drawRunSummary(canvas: Canvas, profile: progression.Progression, sel
     widgets.drawLabelValue(canvas, summaryStatRect(3), "GHOSTS / MAX CHAIN",
                            Int(profile.getLastRunGhosts()) + " / " + Int(profile.getLastRunMaxChain()),
                            theme.ACCENT_CYAN);
-    widgets.drawLabelValue(canvas, summaryStatRect(4), "FRUIT / DEATHS",
-                           Int(profile.getLastRunFruit()) + " / " + Int(profile.getLastRunDeaths()),
+    widgets.drawLabelValue(canvas, summaryStatRect(4), "XP EARNED",
+                           Int(profile.getLastRunXpEarned()) + " (" + Int(profile.getLastRunBonusXp()) + " BONUS)",
                            theme.ACCENT_ORANGE);
-    widgets.drawLabelValue(canvas, summaryStatRect(5), "BOARDS CLEARED",
-                           Int(profile.getLastRunBoardsCleared()), theme.ACCENT_GREEN);
+    widgets.drawLabelValue(canvas, summaryStatRect(5), "FRUIT / BOARDS",
+                           Int(profile.getLastRunFruit()) + " / " + Int(profile.getLastRunBoardsCleared()),
+                           theme.ACCENT_GREEN);
 
     var unlocks = summaryUnlocksRect();
     widgets.drawPanel(canvas, unlocks, theme.ACCENT_PINK, false);
     theme.drawTextCentered(canvas, unlocks.x, unlocks.y + 10, unlocks.w, "RUN REWARDS", theme.FONT_BODY_SCALE, theme.TEXT_PRIMARY);
 
-    if profile.getLastRunUnlockCount() == 0 {
-        theme.drawTextCentered(canvas, unlocks.x, unlocks.y + 42, unlocks.w,
-                               "No new achievements this run. Keep pushing deeper.",
-                               theme.FONT_SMALL_SCALE, theme.TEXT_MUTED);
-    } else {
-        var uy = unlocks.y + 34;
+    var uy = unlocks.y + 34;
+    if profile.getLastRunContractCount() > 0 {
         var j = 0;
-        while j < profile.getLastRunUnlockCount() && j < 3 {
-            var pill = rect(unlocks.x + 28, uy, unlocks.w - 56, 22);
-            widgets.drawPill(canvas, pill, profile.getLastRunUnlockName(j), theme.ACCENT_YELLOW);
-            uy = uy + 26;
+        while j < profile.getLastRunContractCount() && j < 2 {
+            var row = rect(unlocks.x + 22, uy, unlocks.w - 44, 24);
+            widgets.drawPill(canvas, row, "CONTRACT CLEARED  " + profile.getLastRunContractName(j), theme.ACCENT_CYAN);
+            uy = uy + 28;
             j = j + 1;
+        }
+    } else {
+        theme.drawTextCentered(canvas, unlocks.x, uy + 6, unlocks.w,
+                               "No contract clears this run.",
+                               theme.FONT_SMALL_SCALE, theme.TEXT_MUTED);
+        uy = uy + 28;
+    }
+
+    if profile.getLastRunUnlockCount() > 0 {
+        var k = 0;
+        while k < profile.getLastRunUnlockCount() && k < 2 {
+            var pill = rect(unlocks.x + 22, uy, unlocks.w - 44, 24);
+            widgets.drawPill(canvas, pill, "ACHIEVEMENT  " + profile.getLastRunUnlockName(k), theme.ACCENT_YELLOW);
+            uy = uy + 28;
+            k = k + 1;
         }
     }
 
-    if profile.isLastRunNewBestScore() {
+    if profile.didLastRunRankUp() {
+        theme.drawTextCentered(canvas, unlocks.x, unlocks.y + unlocks.h - 34, unlocks.w,
+                               "RANK UP  " + profile.getRankTitle(), theme.FONT_SMALL_SCALE, theme.ACCENT_CYAN);
+    } else if profile.isLastRunNewBestScore() {
         theme.drawTextCentered(canvas, unlocks.x, unlocks.y + unlocks.h - 34, unlocks.w,
                                "NEW BEST SCORE", theme.FONT_SMALL_SCALE, theme.ACCENT_CYAN);
     } else if profile.isLastRunNewBestLevel() {

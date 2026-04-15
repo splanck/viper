@@ -897,6 +897,14 @@ set_tests_properties(platform_policy_lint_empty_candidates PROPERTIES
         TIMEOUT 30)
 
 if (APPLE AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm64|aarch64)$")
+    add_test(NAME native_smoke_achievement_draw_arm64
+            COMMAND /bin/bash "${CMAKE_SOURCE_DIR}/src/tests/e2e/test_achievement_draw_native.sh"
+            $<TARGET_FILE:viper> "${CMAKE_SOURCE_DIR}")
+    set_tests_properties(native_smoke_achievement_draw_arm64 PROPERTIES
+            PASS_REGULAR_EXPRESSION "PASS"
+            LABELS "zia;smoke;native-link;requires_display"
+            TIMEOUT 60)
+
     add_test(NAME native_smoke_xenoscape_start_arm64
             COMMAND /bin/bash "${CMAKE_SOURCE_DIR}/src/tests/e2e/test_xenoscape_native_start.sh"
             $<TARGET_FILE:viper> "${CMAKE_SOURCE_DIR}")

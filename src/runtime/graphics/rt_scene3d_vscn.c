@@ -12,41 +12,24 @@
 
 #ifdef VIPER_ENABLE_GRAPHICS
 
-#include "rt_scene3d_internal.h"
+#include "rt_box.h"
+#include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
+#include "rt_json.h"
+#include "rt_map.h"
+#include "rt_object.h"
+#include "rt_pixels.h"
 #include "rt_pixels_internal.h"
+#include "rt_scene3d.h"
+#include "rt_scene3d_internal.h"
+#include "rt_seq.h"
+#include "rt_string.h"
 
 #include <stdarg.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-extern int rt_obj_release_check0(void *obj);
-extern void rt_obj_free(void *obj);
-extern void *rt_pixels_new(int64_t width, int64_t height);
-extern rt_string rt_const_cstr(const char *s);
-extern rt_string rt_string_from_bytes(const char *data, size_t len);
-extern void *rt_json_parse_object(rt_string text);
-extern void *rt_map_get(void *map, rt_string key);
-extern int64_t rt_seq_len(void *seq);
-extern void *rt_seq_get(void *seq, int64_t index);
-extern int64_t rt_box_type(void *box);
-extern int64_t rt_unbox_i64(void *boxed);
-extern double rt_unbox_f64(void *boxed);
-extern int64_t rt_unbox_i1(void *boxed);
-extern rt_string rt_unbox_str(void *boxed);
-extern void *rt_material3d_new(void);
-extern void rt_material3d_set_texture(void *obj, void *pixels);
-extern void rt_material3d_set_normal_map(void *obj, void *pixels);
-extern void rt_material3d_set_metallic_roughness_map(void *obj, void *pixels);
-extern void rt_material3d_set_ao_map(void *obj, void *pixels);
-extern void rt_material3d_set_specular_map(void *obj, void *pixels);
-extern void rt_material3d_set_emissive_map(void *obj, void *pixels);
-extern void rt_material3d_set_env_map(void *obj, void *cubemap);
-extern void *rt_cubemap3d_new(void *px, void *nx, void *py, void *ny, void *pz, void *nz);
-extern void *rt_mesh3d_new(void);
-extern void *rt_scene3d_new(void);
 
 /// @brief Release the GC reference held in `*slot` and null the pointer.
 ///

@@ -143,3 +143,22 @@ func drawMeter(canvas: Canvas,
     theme.drawTextScaled(canvas, r.x + 10, r.y + 5, label, theme.FONT_SMALL_SCALE, theme.TEXT_MUTED);
     theme.drawTextRight(canvas, r.x, r.y + 5, r.w - 10, valueText, theme.FONT_SMALL_SCALE, theme.TEXT_PRIMARY);
 }
+
+func drawContractRow(canvas: Canvas,
+                     r: Rect,
+                     title: String,
+                     desc: String,
+                     rewardXp: Integer,
+                     accent: Integer,
+                     selected: Boolean) {
+    drawInset(canvas, r);
+    var border = theme.PANEL_SOFT;
+    if selected {
+        border = accent;
+        canvas.BoxAlpha(r.x + 2, r.y + 2, r.w - 4, r.h - 4, accent, 12);
+    }
+    canvas.RoundFrame(r.x, r.y, r.w, r.h, 12, border);
+    theme.drawTextScaled(canvas, r.x + 14, r.y + 8, title, theme.FONT_SMALL_SCALE, theme.TEXT_PRIMARY);
+    theme.drawTextScaled(canvas, r.x + 14, r.y + 24, desc, theme.FONT_SMALL_SCALE, theme.TEXT_MUTED);
+    theme.drawTextRight(canvas, r.x, r.y + 14, r.w - 14, Int(rewardXp) + " XP", theme.FONT_SMALL_SCALE, accent);
+}

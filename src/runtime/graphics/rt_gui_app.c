@@ -42,14 +42,13 @@
 #include "fonts/embedded_font.h"
 #include "rt_gui_internal.h"
 #include "rt_platform.h"
+#include "rt_time.h"
 
 #ifdef VIPER_ENABLE_GRAPHICS
 
 // Global pointer to the app currently bound to the runtime-facing constructors.
 rt_gui_app_t *s_current_app = NULL;
 static rt_gui_app_t *s_active_app = NULL;
-
-extern int64_t rt_clock_ticks_us(void);
 
 /// @brief Return the current wall-clock time in milliseconds.
 /// @details Converts the microsecond-precision platform clock to milliseconds.

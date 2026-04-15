@@ -17,28 +17,18 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_leveldata.h"
+#include "rt_box.h"
+#include "rt_file_ext.h"
+#include "rt_json.h"
+#include "rt_jsonpath.h"
+#include "rt_map.h"
 #include "rt_object.h"
+#include "rt_seq.h"
 #include "rt_string.h"
+#include "rt_tilemap.h"
 
 #include <stdlib.h>
 #include <string.h>
-
-// JSON and file I/O externs
-extern void *rt_json_parse(rt_string text);
-extern rt_string rt_io_file_read_all_text(rt_string path);
-extern void *rt_jsonpath_get(void *root, rt_string path);
-extern rt_string rt_jsonpath_get_str(void *root, rt_string path);
-extern int64_t rt_jsonpath_get_int(void *root, rt_string path);
-extern rt_string rt_const_cstr(const char *s);
-extern rt_string rt_string_from_bytes(const char *data, size_t len);
-
-// Map/Seq accessors
-extern void *rt_map_get(void *map, void *key);
-extern int64_t rt_seq_len(void *seq);
-extern void *rt_seq_get(void *seq, int64_t idx);
-extern int64_t rt_unbox_i64(void *obj);
-extern double rt_unbox_f64(void *obj);
-extern int64_t rt_box_type(void *obj);
 
 // Safe integer extraction from JSON value (may be boxed as i64 or f64)
 static int64_t json_val_to_i64(void *val) {
@@ -51,10 +41,6 @@ static int64_t json_val_to_i64(void *val) {
         return (int64_t)rt_unbox_f64(val); // RT_BOX_F64 = 1
     return 0;
 }
-
-// Tilemap creation
-extern void *rt_tilemap_new(int64_t w, int64_t h, int64_t tw, int64_t th);
-extern void rt_tilemap_set_tile(void *tm, int64_t x, int64_t y, int64_t tile);
 
 #define LEVEL_MAX_OBJECTS 512
 

@@ -22,6 +22,7 @@
 #pragma once
 
 #include <stdint.h>
+#include "rt_string.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -36,7 +37,9 @@ void rt_achievement_destroy(rt_achievement ach);
 
 // Define achievements
 /// @brief Define an achievement with a unique @p id (0..max_achievements-1) and display strings.
-void rt_achievement_add(rt_achievement ach, int64_t id, const char *name, const char *description);
+/// @details The tracker retains the provided runtime strings and releases them on replacement or
+/// destruction.
+void rt_achievement_add(rt_achievement ach, int64_t id, rt_string name, rt_string description);
 
 // Unlock / query
 /// @brief Unlock the achievement with @p id. Returns 1 if newly unlocked, 0 if already unlocked.

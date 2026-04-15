@@ -11,7 +11,7 @@ The demo now has a stronger presentation foundation on top of the original gamep
 - tile maze logic with runtime pathfinding and batched maze rendering
 - ghosts, frightened mode, fruit, score progression, and particles
 - combo/reward feedback and stronger HUD progression telemetry
-- persistent profile data with saved leaderboard, run summaries, and achievement unlocks
+- persistent profile data with saved leaderboard, run summaries, achievement unlocks, rank, XP, and rotating contracts
 - procedural audio via `Viper.Sound`, split into music-track and SFX builders
 - saved options for fullscreen, master volume, music volume, SFX volume, and mute
 - custom canvas UI/theme/layout modules for the ongoing visual overhaul
@@ -30,7 +30,7 @@ crackman/
     game.zia            Top-level app orchestration and state handoff
     session.zia         Gameplay session state, update logic, and in-game rendering
     frontend.zia        Menu/profile/options/summary controller and UI flow
-    progression.zia     Persistent profile, leaderboard, and achievements
+    progression.zia     Persistent profile, leaderboard, achievements, rank, XP, and contracts
     settings.zia        Saved display/audio settings persistence
     config.zia          Constants and gameplay configuration
     sound.zia           Audio orchestration and mix control

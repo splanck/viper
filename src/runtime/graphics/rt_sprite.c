@@ -46,12 +46,12 @@
 #include "rt_pixels.h"
 #include "rt_pixels_internal.h"
 #include "rt_string.h"
+#include "rt_time.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-// Maximum number of animation frames
 #define MAX_SPRITE_FRAMES 64
 
 /// @brief Sprite implementation structure.
@@ -73,9 +73,6 @@ typedef struct rt_sprite_impl {
     int64_t flip_y;                  ///< Vertical flip flag
     void *frames[MAX_SPRITE_FRAMES]; ///< Frame pixel buffers
 } rt_sprite_impl;
-
-// Forward declaration for time function
-extern int64_t rt_timer_ms(void);
 
 /// @brief Return the active frame's Pixels object, or NULL if none / out-of-range.
 static void *sprite_get_current_frame_ptr(rt_sprite_impl *sprite) {

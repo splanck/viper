@@ -26,8 +26,16 @@
 
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
+#include "rt_action.h"
+#include "rt_graphics_internal.h"
+#include "rt_input.h"
 #include "rt_morphtarget3d.h"
+#include "rt_object.h"
+#include "rt_pixels.h"
 #include "rt_string.h"
+#include "rt_time.h"
+#include "rt_trap.h"
+#include "rt_vec3.h"
 #include "vgfx3d_backend.h"
 #include "vgfx3d_backend_utils.h"
 
@@ -114,32 +122,6 @@ static void rt_canvas3d_apply_resize(rt_canvas3d *c, int32_t w, int32_t h) {
 static void rt_canvas3d_on_resize(void *userdata, int32_t w, int32_t h) {
     rt_canvas3d_apply_resize((rt_canvas3d *)userdata, w, h);
 }
-
-extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
-extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
-extern void rt_obj_retain_maybe(void *obj);
-extern int rt_obj_release_check0(void *obj);
-extern void rt_obj_free(void *obj);
-#include "rt_trap.h"
-extern int64_t rt_clock_ticks_us(void);
-extern void rt_keyboard_set_canvas(vgfx_window_t win);
-extern void rt_keyboard_clear_canvas_if_matches(void *canvas);
-extern void rt_keyboard_begin_frame(void);
-extern void rt_keyboard_text_input(int32_t ch);
-extern void rt_mouse_set_canvas(vgfx_window_t win);
-extern void rt_mouse_clear_canvas_if_matches(void *canvas);
-extern void rt_mouse_begin_frame(void);
-extern void rt_pad_init(void);
-extern void rt_pad_begin_frame(void);
-extern void rt_pad_poll(void);
-extern void rt_action_update(void);
-extern rt_string rt_const_cstr(const char *s);
-extern void *rt_vec3_new(double x, double y, double z);
-extern double rt_vec3_x(void *v);
-extern double rt_vec3_y(void *v);
-extern double rt_vec3_z(void *v);
-extern void *rt_pixels_new(int64_t width, int64_t height);
-extern void rt_pixels_set(void *pixels, int64_t x, int64_t y, int64_t color);
 
 /// @brief Drop a GC-managed reference held in a `**slot` and zero the slot.
 ///
@@ -1757,13 +1739,6 @@ int64_t rt_canvas3d_get_frame_serial(void *obj) {
     return obj ? ((rt_canvas3d *)obj)->frame_serial : 0;
 }
 
-extern void rt_canvas3d_draw_mesh_matrix_morphed(void *canvas,
-                                                  void *mesh,
-                                                  const double *model_matrix,
-                                                  void *material,
-                                                  const void *motion_key,
-                                                  void *morph_targets);
-
 /// @brief Queue a 3D mesh draw with a model matrix and a sort key for transparency ordering.
 ///
 /// `sort_key` is used by the deferred renderer to depth-sort
@@ -2007,15 +1982,6 @@ void rt_canvas3d_queue_instanced_batch(void *canvas_obj,
 ///          4. Dispatches each draw through the backend's submit_draw vtable.
 ///          5. Applies shadow mapping and post-processing if enabled.
 ///          Must be called after all DrawMesh calls and before Flip.
-extern void rt_cubemap_sample(const rt_cubemap3d *cm,
-                              float dx,
-                              float dy,
-                              float dz,
-                              float *out_r,
-                              float *out_g,
-                              float *out_b);
-extern void rt_postfx3d_apply_to_canvas(void *canvas);
-
 /// @brief End-of-frame: flush all deferred passes, run postFX, present, and bookkeep.
 ///
 /// Pass order: pre-3D HUD → opaque mesh → translucent (sorted) →
@@ -2308,15 +2274,6 @@ void rt_canvas3d_flip(void *obj) {
 /// @details Polls the platform event queue and updates input state for
 ///          Keyboard/Mouse/Pad subsystems. Must be called once per frame.
 /// @return Event type code of the last event processed, or 0 if no events.
-extern void rt_keyboard_on_key_down(int64_t key);
-extern void rt_keyboard_on_key_up(int64_t key);
-extern void rt_mouse_update_pos(int64_t x, int64_t y);
-extern void rt_mouse_force_delta(int64_t dx, int64_t dy);
-extern void rt_mouse_button_down(int64_t button);
-extern void rt_mouse_button_up(int64_t button);
-extern void rt_mouse_update_wheel(double dx, double dy);
-extern int8_t rt_mouse_is_captured(void);
-
 /// @brief Translate physical pixel coordinates to logical (HiDPI-scaled) and notify the mouse subsystem.
 static void rt_canvas3d_update_mouse_from_physical(vgfx_window_t gfx_win, int32_t x, int32_t y) {
     float scale = vgfx_window_get_scale(gfx_win);

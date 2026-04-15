@@ -14,6 +14,7 @@
 // - Viper.Game.AchievementTracker: Persistent unlocks and in-run notifications
 // - Viper.Graphics.SpriteBatch: Batched maze and collectible rendering
 // - Viper.Game.Timer/Tween/SmoothValue: Session timing, overlays, and score motion
+// - Viper.IO.SaveData: Persistent profile, settings, contracts, and records
 //
 // LANGUAGE FEATURES:
 // - for-in range syntax:   `for i in 0..10 { ... }`

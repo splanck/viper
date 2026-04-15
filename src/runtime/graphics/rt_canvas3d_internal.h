@@ -373,6 +373,27 @@ void rt_canvas3d_draw_mesh_matrix_keyed(void *obj,
                                         const void *motion_key,
                                         const float *prev_bone_palette,
                                         const float *prev_morph_weights);
+/// @brief Internal: submit a mesh draw after applying morph targets.
+void rt_canvas3d_draw_mesh_matrix_morphed(void *canvas,
+                                          void *mesh,
+                                          const double *model_matrix,
+                                          void *material,
+                                          const void *motion_key,
+                                          void *morph_targets);
+/// @brief Internal: retain a GC-managed object until the current frame is fully submitted.
+void rt_canvas3d_add_temp_object(void *obj, void *value);
+/// @brief Internal: sample a cubemap direction into linear RGB components.
+void rt_cubemap_sample(const rt_cubemap3d *cm,
+                       float dx,
+                       float dy,
+                       float dz,
+                       float *out_r,
+                       float *out_g,
+                       float *out_b);
+/// @brief Internal: apply a canvas's active post-processing chain.
+void rt_postfx3d_apply_to_canvas(void *canvas);
+/// @brief Internal: inject a mouse delta without changing absolute position.
+void rt_mouse_force_delta(int64_t dx, int64_t dy);
 /// @brief Internal: queue an instanced batch (one draw call rendering many transforms of @p mesh).
 void rt_canvas3d_queue_instanced_batch(void *canvas_obj,
                                        void *mesh_obj,

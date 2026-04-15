@@ -16,23 +16,17 @@
 
 #include "rt_fbx_loader.h"
 #include "rt_gltf.h"
+#include "rt_object.h"
 #include "rt_scene3d.h"
 #include "rt_scene3d_internal.h"
+#include "rt_string.h"
+#include "rt_trap.h"
 
 #include <ctype.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
-extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
-extern void rt_obj_retain_maybe(void *obj);
-extern int rt_obj_release_check0(void *obj);
-extern void rt_obj_free(void *obj);
-extern rt_string rt_const_cstr(const char *s);
-extern const char *rt_string_cstr(rt_string s);
-#include "rt_trap.h"
 
 typedef struct {
     void *vptr;

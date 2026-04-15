@@ -21,13 +21,29 @@ final ACH_MAZE_FIEND = 10;
 final ACH_LATE_NIGHT_LEGEND = 11;
 final ACH_COUNT = 12;
 
+final CONTRACT_WARM_UP = 0;
+final CONTRACT_POWER_LOOP = 1;
+final CONTRACT_SPIRIT_HUNTER = 2;
+final CONTRACT_FRUIT_ROUTE = 3;
+final CONTRACT_CLEAN_HANDS = 4;
+final CONTRACT_DOUBLE_SHIFT = 5;
+final CONTRACT_BIG_SCORE = 6;
+final CONTRACT_CHAIN_REACTION = 7;
+final CONTRACT_DEEP_RUN = 8;
+final CONTRACT_COUNT = 9;
+
 class Progression {
     hide SaveData store;
     hide AchievementTracker tracker;
     hide List[String] achievementNames;
     hide List[String] achievementDescs;
+    hide List[String] contractNames;
+    hide List[String] contractDescs;
+    hide List[Integer] contractRewards;
     hide List[Integer] leaderboard;
     hide List[Integer] lastRunUnlockIds;
+    hide List[Integer] activeContractIds;
+    hide List[Integer] lastRunContractIds;
 
     hide Integer totalRuns;
     hide Integer totalDots;
@@ -39,6 +55,8 @@ class Progression {
     hide Integer totalScore;
     hide Integer bestScore;
     hide Integer bestLevel;
+    hide Integer totalXp;
+    hide Integer contractCycle;
 
     hide Integer runDots;
     hide Integer runPellets;
@@ -50,8 +68,13 @@ class Progression {
     hide Integer lastRunScore;
     hide Integer lastRunLevel;
     hide Integer lastRunUnlockCount;
+    hide Integer lastRunXpEarned;
+    hide Integer lastRunBaseXp;
+    hide Integer lastRunBonusXp;
+    hide Integer lastRunGradeScore;
     hide Boolean lastRunNewBestScore;
     hide Boolean lastRunNewBestLevel;
+    hide Boolean lastRunRankUp;
     hide Boolean runActive;
 
     expose func init(saveKey: String) {
@@ -61,10 +84,16 @@ class Progression {
 
         achievementNames = [];
         achievementDescs = [];
+        contractNames = [];
+        contractDescs = [];
+        contractRewards = [];
         leaderboard = [];
         lastRunUnlockIds = [];
+        activeContractIds = [];
+        lastRunContractIds = [];
 
         self.defineAchievements();
+        self.defineContracts();
         self.resetDefaults();
     }
 
@@ -82,11 +111,19 @@ class Progression {
         totalScore = store.GetInt("total_score", totalScore);
         bestScore = store.GetInt("best_score", bestScore);
         bestLevel = store.GetInt("best_level", bestLevel);
+        totalXp = store.GetInt("total_xp", totalXp);
+        contractCycle = store.GetInt("contract_cycle", contractCycle);
         tracker.Mask = store.GetInt("achievement_mask", 0);
 
         for i in 0..leaderboard.length() {
             leaderboard.set(i, store.GetInt("leaderboard_" + Int(i), leaderboard.get(i)));
         }
+
+        activeContractIds.clear();
+        for i in 0..3 {
+            activeContractIds.add(store.GetInt("contract_" + Int(i), -1));
+        }
+        self.ensureContracts();
 
         if leaderboard.get(0) > bestScore {
             bestScore = leaderboard.get(0);
@@ -104,10 +141,15 @@ class Progression {
         store.SetInt("total_score", totalScore);
         store.SetInt("best_score", bestScore);
         store.SetInt("best_level", bestLevel);
+        store.SetInt("total_xp", totalXp);
+        store.SetInt("contract_cycle", contractCycle);
         store.SetInt("achievement_mask", tracker.Mask);
 
         for i in 0..leaderboard.length() {
             store.SetInt("leaderboard_" + Int(i), leaderboard.get(i));
+        }
+        for i in 0..activeContractIds.length() {
+            store.SetInt("contract_" + Int(i), activeContractIds.get(i));
         }
         store.Save();
     }
@@ -123,9 +165,15 @@ class Progression {
         lastRunScore = 0;
         lastRunLevel = 1;
         lastRunUnlockCount = 0;
+        lastRunXpEarned = 0;
+        lastRunBaseXp = 0;
+        lastRunBonusXp = 0;
+        lastRunGradeScore = 0;
         lastRunNewBestScore = false;
         lastRunNewBestLevel = false;
+        lastRunRankUp = false;
         lastRunUnlockIds.clear();
+        lastRunContractIds.clear();
         runActive = true;
 
         totalRuns = totalRuns + 1;
@@ -208,9 +256,19 @@ class Progression {
         lastRunLevel = finalLevel;
         lastRunUnlockCount = lastRunUnlockIds.length();
         totalScore = totalScore + finalScore;
+        lastRunContractIds.clear();
 
         self.noteScore(finalScore);
         self.noteLevelReached(finalLevel);
+
+        lastRunBaseXp = self.computeBaseXp(finalScore, finalLevel);
+        lastRunBonusXp = self.resolveContracts();
+        lastRunXpEarned = lastRunBaseXp + lastRunBonusXp;
+        lastRunGradeScore = self.computeGradeScore(finalScore, finalLevel);
+
+        var prevRank = self.getRank();
+        totalXp = totalXp + lastRunXpEarned;
+        lastRunRankUp = self.getRank() > prevRank;
 
         if finalScore > bestScore {
             bestScore = finalScore;
@@ -270,6 +328,9 @@ class Progression {
     expose func getTotalScore() -> Integer { return totalScore; }
     expose func getBestScore() -> Integer { return bestScore; }
     expose func getBestLevel() -> Integer { return bestLevel; }
+    expose func getTotalXp() -> Integer { return totalXp; }
+    expose func getRank() -> Integer { return 1 + totalXp / 300; }
+    expose func getRankTitle() -> String { return self.rankTitle(self.getRank()); }
 
     expose func getLastRunScore() -> Integer { return lastRunScore; }
     expose func getLastRunLevel() -> Integer { return lastRunLevel; }
@@ -281,8 +342,13 @@ class Progression {
     expose func getLastRunBoardsCleared() -> Integer { return runBoardsCleared; }
     expose func getLastRunMaxChain() -> Integer { return runMaxChain; }
     expose func getLastRunUnlockCount() -> Integer { return lastRunUnlockCount; }
+    expose func getLastRunXpEarned() -> Integer { return lastRunXpEarned; }
+    expose func getLastRunBaseXp() -> Integer { return lastRunBaseXp; }
+    expose func getLastRunBonusXp() -> Integer { return lastRunBonusXp; }
     expose func isLastRunNewBestScore() -> Boolean { return lastRunNewBestScore; }
     expose func isLastRunNewBestLevel() -> Boolean { return lastRunNewBestLevel; }
+    expose func didLastRunRankUp() -> Boolean { return lastRunRankUp; }
+    expose func getLastRunGrade() -> String { return self.gradeFromScore(lastRunGradeScore); }
 
     expose func getLastRunUnlockName(idx: Integer) -> String {
         if idx < 0 || idx >= lastRunUnlockIds.length() {
@@ -291,12 +357,44 @@ class Progression {
         return achievementNames.get(lastRunUnlockIds.get(idx));
     }
 
-    expose func getLastRunUnlockIds() -> List[Integer] {
-        return lastRunUnlockIds;
+    expose func getLastRunContractCount() -> Integer {
+        return lastRunContractIds.length();
+    }
+
+    expose func getLastRunContractName(idx: Integer) -> String {
+        if idx < 0 || idx >= lastRunContractIds.length() {
+            return "";
+        }
+        return contractNames.get(lastRunContractIds.get(idx));
+    }
+
+    expose func getActiveContractCount() -> Integer {
+        return activeContractIds.length();
+    }
+
+    expose func getActiveContractName(idx: Integer) -> String {
+        if idx < 0 || idx >= activeContractIds.length() {
+            return "";
+        }
+        return contractNames.get(activeContractIds.get(idx));
+    }
+
+    expose func getActiveContractDesc(idx: Integer) -> String {
+        if idx < 0 || idx >= activeContractIds.length() {
+            return "";
+        }
+        return contractDescs.get(activeContractIds.get(idx));
+    }
+
+    expose func getActiveContractReward(idx: Integer) -> Integer {
+        if idx < 0 || idx >= activeContractIds.length() {
+            return 0;
+        }
+        return contractRewards.get(activeContractIds.get(idx));
     }
 
     expose func hasLastRunSummary() -> Boolean {
-        return lastRunScore > 0 || runDots > 0 || runFruit > 0 || runGhosts > 0;
+        return lastRunScore > 0 || runDots > 0 || runFruit > 0 || runGhosts > 0 || lastRunXpEarned > 0;
     }
 
     hide func resetDefaults() {
@@ -310,6 +408,8 @@ class Progression {
         totalScore = 0;
         bestScore = 10000;
         bestLevel = 1;
+        totalXp = 0;
+        contractCycle = 0;
         runDots = 0;
         runPellets = 0;
         runGhosts = 0;
@@ -320,10 +420,16 @@ class Progression {
         lastRunScore = 0;
         lastRunLevel = 1;
         lastRunUnlockCount = 0;
+        lastRunXpEarned = 0;
+        lastRunBaseXp = 0;
+        lastRunBonusXp = 0;
+        lastRunGradeScore = 0;
         lastRunNewBestScore = false;
         lastRunNewBestLevel = false;
+        lastRunRankUp = false;
         runActive = false;
         lastRunUnlockIds.clear();
+        lastRunContractIds.clear();
 
         leaderboard.clear();
         leaderboard.add(10000);
@@ -333,6 +439,8 @@ class Progression {
         leaderboard.add(2000);
 
         tracker.Mask = 0;
+        activeContractIds.clear();
+        self.ensureContracts();
     }
 
     hide func defineAchievements() {
@@ -357,6 +465,24 @@ class Progression {
         tracker.Add(idx, name, desc);
     }
 
+    hide func defineContracts() {
+        self.addContract("WARM-UP LAP", "Eat 80 dots in one run.", 80);
+        self.addContract("POWER LOOP", "Eat 3 power pellets in one run.", 110);
+        self.addContract("SPIRIT HUNTER", "Eat 4 ghosts in one run.", 140);
+        self.addContract("FRUIT ROUTE", "Collect 1 fruit in one run.", 90);
+        self.addContract("CLEAN HANDS", "Reach level 2 without dying.", 180);
+        self.addContract("DOUBLE SHIFT", "Clear 2 mazes in one run.", 220);
+        self.addContract("BIG SCORE", "Score 6000 in one run.", 130);
+        self.addContract("CHAIN REACTION", "Hit a x4 ghost chain.", 170);
+        self.addContract("DEEP RUN", "Reach level 4.", 240);
+    }
+
+    hide func addContract(name: String, desc: String, reward: Integer) {
+        contractNames.add(name);
+        contractDescs.add(desc);
+        contractRewards.add(reward);
+    }
+
     hide func noteScore(score: Integer) {
         if score >= 10000 {
             self.unlock(ACH_SCORE_HUNTER);
@@ -367,6 +493,117 @@ class Progression {
         if tracker.Unlock(id) && runActive {
             lastRunUnlockIds.add(id);
         }
+    }
+
+    hide func ensureContracts() {
+        while activeContractIds.length() < 3 {
+            activeContractIds.add(-1);
+        }
+        for i in 0..activeContractIds.length() {
+            var id = activeContractIds.get(i);
+            if id < 0 || id >= CONTRACT_COUNT || self.contractSlotDuplicate(i, id) {
+                activeContractIds.set(i, self.nextContractId());
+            }
+        }
+    }
+
+    hide func contractSlotDuplicate(slotIdx: Integer, id: Integer) -> Boolean {
+        for i in 0..activeContractIds.length() {
+            if i != slotIdx && activeContractIds.get(i) == id {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    hide func nextContractId() -> Integer {
+        var tries = 0;
+        while tries < CONTRACT_COUNT * 2 {
+            var id = contractCycle % CONTRACT_COUNT;
+            contractCycle = contractCycle + 1;
+            if !self.contractInActiveList(id) {
+                return id;
+            }
+            tries = tries + 1;
+        }
+        return contractCycle % CONTRACT_COUNT;
+    }
+
+    hide func contractInActiveList(id: Integer) -> Boolean {
+        for i in 0..activeContractIds.length() {
+            if activeContractIds.get(i) == id {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    hide func resolveContracts() -> Integer {
+        var xp = 0;
+        for i in 0..activeContractIds.length() {
+            var id = activeContractIds.get(i);
+            if self.isContractComplete(id) {
+                xp = xp + contractRewards.get(id);
+                lastRunContractIds.add(id);
+                activeContractIds.set(i, self.nextContractId());
+            }
+        }
+        return xp;
+    }
+
+    hide func isContractComplete(id: Integer) -> Boolean {
+        if id == CONTRACT_WARM_UP { return runDots >= 80; }
+        if id == CONTRACT_POWER_LOOP { return runPellets >= 3; }
+        if id == CONTRACT_SPIRIT_HUNTER { return runGhosts >= 4; }
+        if id == CONTRACT_FRUIT_ROUTE { return runFruit >= 1; }
+        if id == CONTRACT_CLEAN_HANDS { return runDeaths == 0 && lastRunLevel >= 2; }
+        if id == CONTRACT_DOUBLE_SHIFT { return runBoardsCleared >= 2; }
+        if id == CONTRACT_BIG_SCORE { return lastRunScore >= 6000; }
+        if id == CONTRACT_CHAIN_REACTION { return runMaxChain >= 4; }
+        if id == CONTRACT_DEEP_RUN { return lastRunLevel >= 4; }
+        return false;
+    }
+
+    hide func computeBaseXp(finalScore: Integer, finalLevel: Integer) -> Integer {
+        var xp = 30;
+        xp = xp + finalLevel * 18;
+        xp = xp + runBoardsCleared * 40;
+        xp = xp + runGhosts * 8;
+        xp = xp + runFruit * 14;
+        xp = xp + finalScore / 250;
+        if runDeaths == 0 {
+            xp = xp + 35;
+        }
+        return xp;
+    }
+
+    hide func computeGradeScore(finalScore: Integer, finalLevel: Integer) -> Integer {
+        var g = finalScore / 250;
+        g = g + finalLevel * 10;
+        g = g + runBoardsCleared * 20;
+        g = g + runGhosts * 6;
+        g = g + runFruit * 8;
+        g = g - runDeaths * 12;
+        if g < 0 { g = 0; }
+        return g;
+    }
+
+    hide func gradeFromScore(g: Integer) -> String {
+        if g >= 170 { return "SS"; }
+        if g >= 135 { return "S"; }
+        if g >= 100 { return "A"; }
+        if g >= 72 { return "B"; }
+        if g >= 48 { return "C"; }
+        return "D";
+    }
+
+    hide func rankTitle(rank: Integer) -> String {
+        if rank >= 20 { return "CABINET ROYALTY"; }
+        if rank >= 15 { return "MAZE FIEND"; }
+        if rank >= 10 { return "NIGHT OWL"; }
+        if rank >= 6 { return "GHOST JUGGLER"; }
+        if rank >= 3 { return "ARCADE REGULAR"; }
+        return "ROOKIE";
     }
 
     hide func insertLeaderboard(score: Integer) {

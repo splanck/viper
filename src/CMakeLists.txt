@@ -10,6 +10,9 @@ target_compile_features(rtgen PRIVATE cxx_std_17)
 # Generate runtime registry files
 set(RTGEN_OUTPUT_DIR "${CMAKE_BINARY_DIR}/generated/il/runtime")
 set(RTGEN_INPUT "${CMAKE_CURRENT_SOURCE_DIR}/il/runtime/runtime.def")
+file(GLOB_RECURSE RTGEN_HEADER_DEPS CONFIGURE_DEPENDS
+        "${CMAKE_CURRENT_SOURCE_DIR}/runtime/*.h"
+        "${CMAKE_CURRENT_SOURCE_DIR}/il/runtime/RuntimeSurfacePolicy.inc")
 set(RTGEN_OUTPUTS
         "${RTGEN_OUTPUT_DIR}/RuntimeNameMap.inc"
         "${RTGEN_OUTPUT_DIR}/RuntimeClasses.inc"
@@ -22,7 +25,7 @@ add_custom_command(
         OUTPUT ${RTGEN_OUTPUTS}
         COMMAND ${CMAKE_COMMAND} -E make_directory "${RTGEN_OUTPUT_DIR}"
         COMMAND rtgen "${RTGEN_INPUT}" "${RTGEN_OUTPUT_DIR}"
-        DEPENDS rtgen "${RTGEN_INPUT}"
+        DEPENDS rtgen "${RTGEN_INPUT}" ${RTGEN_HEADER_DEPS}
         COMMENT "Generating runtime registry files from runtime.def"
         VERBATIM
 )

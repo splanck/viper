@@ -11,21 +11,15 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_config.h"
+#include "rt_file_ext.h"
+#include "rt_json.h"
+#include "rt_jsonpath.h"
 #include "rt_object.h"
 #include "rt_string.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-// JSON parse and path query externs
-extern void *rt_json_parse(rt_string text);
-extern void *rt_jsonpath_get(void *root, rt_string path);
-extern void *rt_jsonpath_get_str(void *root, rt_string path);
-extern int64_t rt_jsonpath_get_int(void *root, rt_string path);
-extern rt_string rt_const_cstr(const char *s);
-extern rt_string rt_string_from_bytes(const char *data, size_t len);
-extern rt_string rt_io_file_read_all_text(rt_string path);
 
 typedef struct {
     void *json_root;

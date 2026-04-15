@@ -106,8 +106,8 @@ class FrontendController {
     }
 
     expose func renderMenu(uiTick: Integer) {
-        renderer.drawMenu(canvas, menuBtns.Selected, self.getHighScore(), profile.getAchievementsUnlocked(),
-                          profile.getAchievementCount(), uiTick);
+        renderer.drawMenu(canvas, menuBtns.Selected, self.getHighScore(), profile.getRank(), profile.getRankTitle(),
+                          profile.getAchievementsUnlocked(), profile.getAchievementCount(), profile, uiTick);
     }
 
     expose func updateOptions() -> Integer {

@@ -16,15 +16,10 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_raycast2d.h"
+#include "rt_tilemap.h"
 
 #include <math.h>
 #include <stdlib.h>
-
-extern int64_t rt_tilemap_get_tile_width(void *tm);
-extern int64_t rt_tilemap_get_tile_height(void *tm);
-extern int64_t rt_tilemap_get_width(void *tm);
-extern int64_t rt_tilemap_get_height(void *tm);
-extern int8_t rt_tilemap_is_solid_at(void *tm, int64_t px, int64_t py);
 
 //=============================================================================
 // Line-Rect intersection (Liang-Barsky)

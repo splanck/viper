@@ -359,8 +359,13 @@ instead of the registered canonical O1/O2 pipelines:
 
 | Level | Old (custom) | New (canonical) |
 |-------|-------------|-----------------|
-| O1 | 4 passes (simplify-cfg, mem2reg, peephole, dce) | 10 passes including SCCP, LICM |
-| O2 | 9 passes (missing SCCP, loop passes, inline, check-opt) | 20+ passes — full registered pipeline |
+| O1 | 4 passes (simplify-cfg, mem2reg, peephole, dce) | Conservative registered O1: SimplifyCFG, SCCP, ConstFold, DCE, Inline |
+| O2 | 9 passes (missing SCCP, loop passes, inline, check-opt) | Conservative registered O2: loop shaping, SCCP, CheckOpt, EHOpt, DCE, SiblingRecursion, Inline, GVN, Reassociate, EarlyCSE, DSE, LateCleanup |
+
+`mem2reg`, IL `peephole`, and `LICM` are intentionally excluded from the
+canonical O1/O2 presets. They are still available as explicit passes and via
+rehab pipelines, but they are not production defaults because real workloads
+have exposed correctness issues that are still being validated.
 
 The BASIC frontend (`src/tools/viper/cmd_run.cpp`) only ran `SimplifyCFG` on verification failure; it now
 applies the canonical O0/O1/O2 pipeline unconditionally.
@@ -370,6 +375,19 @@ the canonically registered pipelines, ensuring VM-interpreted programs receive t
 natively compiled ones.
 
 **Test**: `test_il_canonical_pipeline` — verifies O1/O2 contain expected passes and that SCCP runs.
+
+### Rehab Pipelines
+
+The pass manager also registers targeted rehab pipelines for disabled passes:
+
+| Pipeline | Passes | Purpose |
+|----------|--------|---------|
+| `rehab-mem2reg` | `simplify-cfg, mem2reg, dce` | Isolate SSA promotion behavior while loop and join cases are validated |
+| `rehab-peephole` | `peephole, dce` | Exercise IL peephole rewrites without silently promoting them to O1/O2 |
+| `rehab-licm` | `loop-simplify, licm, simplify-cfg, dce` | Validate loop-invariant code motion independently from the broader optimizer |
+
+Promotion criteria for any rehab pass should include verifier-clean IR,
+native-vs-VM equivalence, and representative demo/application workload runs.
 
 ## Optimization Review Test Coverage
 

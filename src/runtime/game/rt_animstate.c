@@ -33,7 +33,6 @@
 #include <string.h>
 
 #include "rt_trap.h"
-extern rt_string rt_const_cstr(const char *s);
 
 //=============================================================================
 // Internal Types

@@ -7,6 +7,8 @@ last-verified: 2026-04-09
 # CODEMAP: Virtual Machine
 
 The Virtual Machine (`src/vm/`) interprets Viper IL with configurable dispatch strategies.
+For the separate bytecode interpreter in `src/bytecode/`, see
+[CODEMAP: Bytecode VM](bytecode-vm.md).
 
 ## Overview
 

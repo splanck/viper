@@ -25,74 +25,25 @@
 #ifdef VIPER_ENABLE_GRAPHICS
 
 #include "rt_fbx_loader.h"
+#include "rt_bytes.h"
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
+#include "rt_compress.h"
+#include "rt_mat4.h"
 #include "rt_morphtarget3d.h"
+#include "rt_object.h"
 #include "rt_pixels.h"
+#include "rt_quat.h"
 #include "rt_skeleton3d.h"
 #include "rt_string.h"
+#include "rt_trap.h"
+#include "rt_vec3.h"
 
 #include <math.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
-extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
-#include "rt_trap.h"
-extern rt_string rt_const_cstr(const char *s);
-extern const char *rt_string_cstr(rt_string s);
-
-/* Bytes/compress interface for zlib decompression */
-extern void *rt_bytes_new(int64_t len);
-extern void *rt_compress_inflate(void *data);
-
-/* Mesh/Material/Skeleton/Animation constructors */
-extern void *rt_mesh3d_new(void);
-extern void rt_mesh3d_add_vertex(
-    void *m, double x, double y, double z, double nx, double ny, double nz, double u, double v);
-extern void rt_mesh3d_add_triangle(void *m, int64_t v0, int64_t v1, int64_t v2);
-extern void rt_mesh3d_set_bone_weights(void *m,
-                                       int64_t vi,
-                                       int64_t b0,
-                                       double w0,
-                                       int64_t b1,
-                                       double w1,
-                                       int64_t b2,
-                                       double w2,
-                                       int64_t b3,
-                                       double w3);
-extern void *rt_material3d_new(void);
-extern void rt_material3d_set_color(void *m, double r, double g, double b);
-extern void rt_material3d_set_shininess(void *m, double s);
-extern void *rt_skeleton3d_new(void);
-extern int64_t rt_skeleton3d_add_bone(void *skel, rt_string name, int64_t parent, void *bind_mat4);
-extern void rt_skeleton3d_compute_inverse_bind(void *skel);
-extern int64_t rt_skeleton3d_get_bone_count(void *skel);
-extern rt_string rt_skeleton3d_get_bone_name(void *skel, int64_t index);
-extern void *rt_animation3d_new(rt_string name, double duration);
-extern void rt_animation3d_add_keyframe(
-    void *anim, int64_t bone, double time, void *pos, void *rot, void *scl);
-extern void rt_animation3d_set_looping(void *anim, int8_t loop);
-extern void *rt_vec3_new(double x, double y, double z);
-extern void *rt_quat_new(double x, double y, double z, double w);
-extern void *rt_mat4_new(double m0,
-                         double m1,
-                         double m2,
-                         double m3,
-                         double m4,
-                         double m5,
-                         double m6,
-                         double m7,
-                         double m8,
-                         double m9,
-                         double m10,
-                         double m11,
-                         double m12,
-                         double m13,
-                         double m14,
-                         double m15);
 
 /*==========================================================================
  * FBX asset container
@@ -1853,7 +1804,6 @@ rt_string rt_fbx_get_animation_name(void *obj, int64_t index) {
     void *anim = rt_fbx_get_animation(obj, index);
     if (!anim)
         return rt_const_cstr("");
-    extern rt_string rt_animation3d_get_name(void *);
     return rt_animation3d_get_name(anim);
 }
 

@@ -186,7 +186,7 @@ viper il-opt <in.il> -o <out.il> [flags]
 | Flag              | Description                        |
 |-------------------|------------------------------------|
 | `--passes a,b,c`  | Override the pass list             |
-| `--no-mem2reg`    | Drop mem2reg from default pipeline |
+| `--no-mem2reg`    | Drop mem2reg from selected legacy/custom pipelines when present |
 | `--mem2reg-stats` | Print counts of promoted variables |
 
 Default pipeline: O1 (`simplify-cfg, sccp, constfold, dce, simplify-cfg, sccp, inline, dce, simplify-cfg`)

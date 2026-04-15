@@ -12,7 +12,7 @@ last-verified: 2026-04-09
 
 ---
 
-The Viper Game Engine is a comprehensive game development platform built into the Viper runtime. Every system — from PNG decoding and MP3 playback to OpenGL rendering and A* pathfinding — is implemented from scratch in pure C with **zero external dependencies**. The engine runs on macOS, Windows, and Linux with full feature parity across all platforms.
+The Viper Game Engine is a comprehensive game development platform built into the Viper runtime. Every system — from PNG decoding and MP3 playback to OpenGL rendering and A* pathfinding — is implemented from scratch in pure C with **zero external dependencies**. The engine targets macOS, Windows, and Linux through platform-specific backends plus documented fallbacks; platform parity claims should be backed by current test output for each host.
 
 Two language frontends are supported: **Zia** (modern, expressive) and **BASIC** (classic, beginner-friendly). Both compile to the same IL and have access to the full engine API.
 

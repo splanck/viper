@@ -312,6 +312,7 @@ Last updated: 2026-04-05
 | `rt_font.h`         | Font declarations                    |
 | `rt_graphics.c`     | 2D graphics rendering                |
 | `rt_graphics.h`     | Graphics declarations                |
+| `rt_graphics_stubs.c` | Graphics-disabled runtime surface; traps unavailable stateful APIs while keeping backend-free helpers usable |
 | `rt_pixels.c`       | Pixel buffer operations              |
 | `rt_pixels.h`       | Pixel buffer declarations            |
 | `rt_sprite.c`       | Sprite rendering and animation       |
@@ -580,6 +581,11 @@ Last updated: 2026-04-05
 | `rt_achievement.h`  | AchievementTracker declarations                        |
 | `rt_typewriter.c`   | Character-by-character text reveal effect               |
 | `rt_typewriter.h`   | Typewriter declarations                                |
+
+Runtime game code should include the owning runtime headers for cross-module
+calls rather than declaring local `extern rt_*` prototypes. Runtime signatures
+must stay aligned across `runtime.def`, headers, implementations, and the
+generated registry.
 
 ## Utilities
 

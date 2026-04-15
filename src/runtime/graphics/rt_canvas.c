@@ -26,10 +26,9 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_graphics_internal.h"
+#include "rt_time.h"
 
 #ifdef VIPER_ENABLE_GRAPHICS
-
-extern int64_t rt_clock_ticks_us(void);
 
 static void rt_canvas_detach_input(vgfx_window_t gfx_win) {
     if (!gfx_win)

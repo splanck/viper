@@ -1,0 +1,26 @@
+module achievement_draw_native_probe;
+
+bind Viper.Game;
+bind Viper.Graphics;
+bind Viper.Terminal as Terminal;
+
+func start() {
+    var achievements = AchievementTracker.New(2);
+    achievements.NotifyDuration = 250;
+    achievements.Add(0, "FIRST LIGHT", "Draw notification with runtime strings");
+
+    if !achievements.Unlock(0) {
+        Terminal.Say("RESULT: fail unlock");
+        return;
+    }
+
+    var canvas = Canvas.New("achievement-draw-native-probe", 320, 120);
+    canvas.SetFps(60);
+    canvas.Clear(0x101018);
+    achievements.Update(16);
+    achievements.Draw(canvas);
+    canvas.Flip();
+    canvas.Close();
+
+    Terminal.Say("RESULT: ok");
+}

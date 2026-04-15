@@ -14,17 +14,13 @@
 
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
+#include "rt_pixels.h"
+#include "rt_string.h"
+#include "rt_vec3.h"
 #include "vgfx3d_backend.h"
 
 #include <math.h>
 #include <stdlib.h>
-
-extern rt_string rt_const_cstr(const char *s);
-extern void *rt_vec3_new(double x, double y, double z);
-extern double rt_vec3_x(void *v);
-extern double rt_vec3_y(void *v);
-extern double rt_vec3_z(void *v);
-extern void *rt_pixels_new(int64_t width, int64_t height);
 
 /* Helper: project 3D point to screen using the active or most recent scene VP. */
 static int world_to_screen(

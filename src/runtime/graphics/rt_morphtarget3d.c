@@ -25,6 +25,9 @@
 #include "rt_morphtarget3d.h"
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
+#include "rt_object.h"
+#include "rt_string.h"
+#include "rt_trap.h"
 #include "vgfx3d_backend.h"
 #include "vgfx3d_backend_d3d11_shared.h"
 
@@ -32,21 +35,6 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
-
-extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
-extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
-#include "rt_trap.h"
-extern rt_string rt_const_cstr(const char *s);
-extern const char *rt_string_cstr(rt_string s);
-extern void rt_canvas3d_add_temp_buffer(void *canvas, void *buffer);
-extern void rt_canvas3d_add_temp_object(void *canvas, void *value);
-extern void rt_canvas3d_draw_mesh_matrix_keyed(void *obj,
-                                               void *mesh,
-                                               const double *model_matrix,
-                                               void *material,
-                                               const void *motion_key,
-                                               const float *prev_bone_palette,
-                                               const float *prev_morph_weights);
 
 typedef struct {
     char name[64];

@@ -26,19 +26,12 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_debugoverlay.h"
+#include "rt_graphics.h"
 #include "rt_internal.h"
 #include "rt_object.h"
 #include "rt_string.h"
 
 #include <string.h>
-
-// Forward declarations for canvas functions used by Draw.
-// These avoid pulling in rt_graphics.h (which may include platform headers).
-extern void rt_canvas_box_alpha(
-    void *canvas, int64_t x, int64_t y, int64_t w, int64_t h, int64_t color, int64_t alpha);
-extern void rt_canvas_text_scaled(
-    void *canvas, int64_t x, int64_t y, rt_string text, int64_t scale, int64_t color);
-extern int64_t rt_canvas_width(void *canvas);
 
 // Helper: create a runtime string from a C string
 static rt_string make_string(const char *s) {

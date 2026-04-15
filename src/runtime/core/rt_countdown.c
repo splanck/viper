@@ -36,6 +36,7 @@
 
 #include "rt_internal.h"
 #include "rt_object.h"
+#include "rt_time.h"
 
 #include <errno.h>
 #include <stdbool.h>
@@ -71,8 +72,6 @@ static int64_t get_timestamp_ms(void) {
     QueryPerformanceCounter(&counter);
     return (int64_t)((counter.QuadPart * 1000LL) / freq.QuadPart);
 #elif defined(__viperdos__)
-    // ViperDOS: Use rt_timer_ms from rt_time.c
-    extern int64_t rt_timer_ms(void);
     return rt_timer_ms();
 #else
     struct timespec ts;
@@ -111,8 +110,6 @@ static void sleep_ms(int64_t ms) {
 #if defined(_WIN32)
     Sleep((DWORD)ms);
 #elif defined(__viperdos__)
-    // ViperDOS: Use rt_sleep_ms from rt_time.c
-    extern void rt_sleep_ms(int32_t ms);
     rt_sleep_ms((int32_t)ms);
 #else
     struct timespec ts;

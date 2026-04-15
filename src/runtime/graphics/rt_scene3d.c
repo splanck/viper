@@ -26,10 +26,20 @@
 #include "rt_scene3d_internal.h"
 #include "rt_audio3d.h"
 #include "rt_animcontroller3d.h"
+#include "rt_box.h"
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
+#include "rt_json.h"
+#include "rt_map.h"
+#include "rt_mat4.h"
+#include "rt_object.h"
 #include "rt_pixels_internal.h"
 #include "rt_physics3d.h"
+#include "rt_quat.h"
+#include "rt_seq.h"
+#include "rt_string.h"
+#include "rt_trap.h"
+#include "rt_vec3.h"
 #include "vgfx3d_frustum.h"
 
 #include <math.h>
@@ -38,76 +48,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
-extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
-extern void rt_obj_retain_maybe(void *obj);
-extern int rt_obj_release_check0(void *obj);
-extern void rt_obj_free(void *obj);
-#include "rt_trap.h"
-extern void *rt_vec3_new(double x, double y, double z);
-extern double rt_vec3_x(void *v);
-extern double rt_vec3_y(void *v);
-extern double rt_vec3_z(void *v);
-extern void *rt_quat_new(double x, double y, double z, double w);
-extern double rt_quat_x(void *q);
-extern double rt_quat_y(void *q);
-extern double rt_quat_z(void *q);
-extern double rt_quat_w(void *q);
-extern void *rt_mat4_new(double m0,
-                         double m1,
-                         double m2,
-                         double m3,
-                         double m4,
-                         double m5,
-                         double m6,
-                         double m7,
-                         double m8,
-                         double m9,
-                         double m10,
-                         double m11,
-                         double m12,
-                         double m13,
-                         double m14,
-                         double m15);
-extern rt_string rt_const_cstr(const char *s);
-extern rt_string rt_string_from_bytes(const char *data, size_t len);
-extern void *rt_json_parse_object(rt_string text);
-extern void *rt_map_get(void *map, rt_string key);
-extern int64_t rt_seq_len(void *seq);
-extern void *rt_seq_get(void *seq, int64_t index);
-extern int64_t rt_box_type(void *box);
-extern int64_t rt_unbox_i64(void *boxed);
-extern double rt_unbox_f64(void *boxed);
-extern int64_t rt_unbox_i1(void *boxed);
-extern rt_string rt_unbox_str(void *boxed);
-extern void *rt_material3d_new(void);
-extern void rt_material3d_set_color(void *obj, double r, double g, double b);
-extern void rt_material3d_set_texture(void *obj, void *pixels);
-extern void rt_material3d_set_shininess(void *obj, double s);
-extern void rt_material3d_set_unlit(void *obj, int8_t unlit);
-extern void rt_material3d_set_shading_model(void *obj, int64_t model);
-extern void rt_material3d_set_custom_param(void *obj, int64_t index, double value);
-extern void rt_material3d_set_alpha(void *obj, double alpha);
-extern void rt_material3d_set_normal_map(void *obj, void *pixels);
-extern void rt_material3d_set_specular_map(void *obj, void *pixels);
-extern void rt_material3d_set_emissive_map(void *obj, void *pixels);
-extern void rt_material3d_set_emissive_color(void *obj, double r, double g, double b);
-extern void rt_material3d_set_env_map(void *obj, void *cubemap);
-extern void rt_material3d_set_reflectivity(void *obj, double r);
-extern void *rt_cubemap3d_new(void *px, void *nx, void *py, void *ny, void *pz, void *nz);
-
-/* Forward declarations for Canvas3D draw functions */
-extern void rt_canvas3d_begin(void *obj, void *camera);
-extern void rt_canvas3d_draw_mesh(void *obj, void *mesh, void *transform, void *material);
-extern void rt_canvas3d_draw_mesh_matrix_keyed(void *obj,
-                                               void *mesh,
-                                               const double *model_matrix,
-                                               void *material,
-                                               const void *motion_key,
-                                               const float *prev_bone_palette,
-                                               const float *prev_morph_weights);
-extern void rt_canvas3d_end(void *obj);
 
 #define NODE_INIT_CHILDREN 4
 
@@ -640,9 +580,6 @@ static void scene_world_point(const double *world_matrix, const float local[3], 
     out[2] = (float)(world_matrix[8] * (double)local[0] + world_matrix[9] * (double)local[1] +
                      world_matrix[10] * (double)local[2] + world_matrix[11]);
 }
-
-/// @brief Recursive depth-first search by name.
-extern const char *rt_string_cstr(rt_string s);
 
 /// @brief Depth-first search for a node whose `name` matches `target` (NULL on miss).
 static rt_scene_node3d *find_by_name(rt_scene_node3d *node, const char *target) {

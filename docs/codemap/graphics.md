@@ -33,6 +33,9 @@ The Viper.Graphics.* namespace is implemented by these C runtime files:
 | `rt_tilemap.h`      | Tilemap class declaration                                                 |
 | `rt_tilemap.c`      | Tile-based map rendering with tileset support; viewport culling renders only the tiles intersecting the current camera bounds |
 
+Graphics-disabled builds use `src/runtime/graphics/rt_graphics_stubs.c`; see
+[Runtime Graphics Stubs](runtime-graphics-stubs.md) for the required trap/no-op/helper policy.
+
 ## Low-Level C Library
 
 The underlying ViperGFX library provides platform-specific window management and drawing.

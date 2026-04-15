@@ -214,12 +214,12 @@ For details, see [3D Graphics Architecture](../graphics3d-architecture.md).
 
 ## Cross-Platform Strategy
 
-The engine achieves full cross-platform parity through:
+The engine targets cross-platform parity through:
 
 1. **Platform abstraction in C** — `#ifdef` blocks isolate platform-specific code to a few files (`rt_platform.c`, `vgfx_window_*.c`)
 2. **POSIX-first APIs** — file I/O, threading, and networking use POSIX with Win32 shims
 3. **No external dependencies** — nothing to install, configure, or version-match per platform
-4. **CI on all three platforms** — every commit builds and tests on macOS, Linux, and Windows
+4. **Host-capability smoke tests** — `scripts/run_cross_platform_smoke.sh` runs the checks available on the current host; full parity claims require current macOS, Linux, and Windows results
 
 See [Cross-Platform](cross-platform.md) for platform-specific details.
 

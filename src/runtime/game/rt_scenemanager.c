@@ -16,8 +16,6 @@
 
 #include <string.h>
 
-extern rt_string rt_const_cstr(const char *s);
-
 #define SM_MAX_SCENES 16
 
 typedef struct {

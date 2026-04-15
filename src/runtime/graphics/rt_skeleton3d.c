@@ -22,9 +22,15 @@
 #ifdef VIPER_ENABLE_GRAPHICS
 
 #include "rt_skeleton3d.h"
-#include "rt_skeleton3d_internal.h"
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
+#include "rt_mat4.h"
+#include "rt_object.h"
+#include "rt_quat.h"
+#include "rt_skeleton3d_internal.h"
+#include "rt_string.h"
+#include "rt_trap.h"
+#include "rt_vec3.h"
 #include "vgfx3d_backend.h"
 #include "vgfx3d_skinning.h"
 
@@ -49,41 +55,6 @@ static int vgfx3d_backend_prefers_gpu_skinning(const char *backend_name, int32_t
         return bone_count <= 128;
     return 0;
 }
-
-extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
-extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
-#include "rt_trap.h"
-extern void *rt_vec3_new(double x, double y, double z);
-extern double rt_vec3_x(void *v);
-extern double rt_vec3_y(void *v);
-extern double rt_vec3_z(void *v);
-extern void *rt_quat_new(double x, double y, double z, double w);
-extern double rt_quat_x(void *q);
-extern double rt_quat_y(void *q);
-extern double rt_quat_z(void *q);
-extern double rt_quat_w(void *q);
-extern double rt_mat4_get(void *m, int64_t row, int64_t col);
-extern void *rt_mat4_new(double m0,
-                         double m1,
-                         double m2,
-                         double m3,
-                         double m4,
-                         double m5,
-                         double m6,
-                         double m7,
-                         double m8,
-                         double m9,
-                         double m10,
-                         double m11,
-                         double m12,
-                         double m13,
-                         double m14,
-                         double m15);
-extern rt_string rt_const_cstr(const char *s);
-extern const char *rt_string_cstr(rt_string s);
-
-/* Canvas3D draw function (for skinned draw) */
-extern void rt_canvas3d_draw_mesh(void *obj, void *mesh, void *transform, void *material);
 
 /*==========================================================================
  * Matrix math helpers (float, row-major)
@@ -1051,7 +1022,6 @@ void rt_canvas3d_draw_mesh_skinned(
     /* Register skinned buffer for cleanup at end of frame.
      * rt_canvas3d_draw_mesh stores a pointer to vertices in the deferred
      * draw queue, so we can't free until End() has processed the draw. */
-    extern void rt_canvas3d_add_temp_buffer(void *canvas, void *buffer);
     rt_canvas3d_add_temp_buffer(canvas, skinned);
 
     /* Stash bone palette info on the mesh for draw command population.
@@ -1348,7 +1318,6 @@ void rt_canvas3d_draw_mesh_blended(
     tmp.index_count = mesh->index_count;
     tmp.index_capacity = mesh->index_count;
 
-    extern void rt_canvas3d_add_temp_buffer(void *canvas, void *buffer);
     rt_canvas3d_add_temp_buffer(canvas, skinned);
 
     rt_canvas3d_draw_mesh(canvas, &tmp, transform, material);

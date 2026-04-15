@@ -23,17 +23,10 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_lighting2d.h"
+#include "rt_graphics.h"
 #include "rt_object.h"
 #include <stdlib.h>
 #include <string.h>
-
-// Forward declarations for canvas draw functions
-extern void rt_canvas_box_alpha(
-    void *canvas, int64_t x, int64_t y, int64_t w, int64_t h, int64_t color, int64_t alpha);
-extern void rt_canvas_disc_alpha(
-    void *canvas, int64_t cx, int64_t cy, int64_t radius, int64_t color, int64_t alpha);
-extern int64_t rt_canvas_width(void *canvas);
-extern int64_t rt_canvas_height(void *canvas);
 
 #define MAX_DYN_LIGHTS_CAP 128
 

@@ -15,39 +15,17 @@
 
 #include "rt_animcontroller3d.h"
 
+#include "rt_mat4.h"
+#include "rt_object.h"
 #include "rt_skeleton3d.h"
 #include "rt_skeleton3d_internal.h"
+#include "rt_string.h"
+#include "rt_trap.h"
+#include "rt_vec3.h"
 
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
-
-extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
-extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
-extern void rt_obj_retain_maybe(void *obj);
-extern int rt_obj_release_check0(void *obj);
-extern void rt_obj_free(void *obj);
-extern rt_string rt_const_cstr(const char *s);
-extern const char *rt_string_cstr(rt_string s);
-extern void *rt_vec3_new(double x, double y, double z);
-extern void *rt_mat4_new(double m0,
-                         double m1,
-                         double m2,
-                         double m3,
-                         double m4,
-                         double m5,
-                         double m6,
-                         double m7,
-                         double m8,
-                         double m9,
-                         double m10,
-                         double m11,
-                         double m12,
-                         double m13,
-                         double m14,
-                         double m15);
-
-#include "rt_trap.h"
 
 #define RT_ANIM_CONTROLLER3D_MAX_LAYERS 4
 #define RT_ANIM_CONTROLLER3D_EVENT_NAME_MAX 64

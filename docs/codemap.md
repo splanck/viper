@@ -75,6 +75,7 @@ For architecture and layering, see [architecture.md](architecture.md).
 
 | Component                                | Description                               |
 |------------------------------------------|-------------------------------------------|
+| [Bytecode VM](codemap/bytecode-vm.md)    | Bytecode compiler, module format, interpreter risk map |
 | [Codegen](codemap/codegen.md)            | x86_64 and AArch64 native code generation |
 | [Virtual Machine](codemap/vm-runtime.md) | IL VM, opcode handlers, debug, bridge     |
 
@@ -91,6 +92,7 @@ For architecture and layering, see [architecture.md](architecture.md).
 |---------------------------------|----------------------------------------------------------|
 | [Docs](codemap/docs.md)        | Documentation subsystem                                  |
 | [Graphics](codemap/graphics.md) | ViperGFX 2D graphics library                             |
+| [Graphics Stubs](codemap/runtime-graphics-stubs.md) | Graphics-disabled runtime surface policy       |
 | [Tools](codemap/tools.md)       | CLI tools (viper, vbasic, zia, ilrun, il-verify, il-dis) |
 | [Zia Server](codemap/zia-server.md) | Language server: MCP + LSP protocol handlers         |
 | [TUI](codemap/tui.md)           | Terminal UI library + tests                              |

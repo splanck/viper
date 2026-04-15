@@ -85,10 +85,24 @@ func start() {
     }
 
     var profile = new progression.Progression("crackman_smoke_probe");
+    if profile.getActiveContractCount() != 3 {
+        fail("active contracts init");
+        return;
+    }
     profile.beginRun();
-    profile.noteDot(config.DOT_POINTS, 10);
-    profile.noteDot(config.PELLET_POINTS, 60);
-    profile.noteGhostEaten(4, 1660);
+    var score = 0;
+    for i in 0..80 {
+        score = score + config.DOT_POINTS;
+        profile.noteDot(config.DOT_POINTS, score);
+    }
+    for i in 0..3 {
+        score = score + config.PELLET_POINTS;
+        profile.noteDot(config.PELLET_POINTS, score);
+    }
+    for i in 0..4 {
+        score = score + config.GHOST_BASE_POINTS;
+        profile.noteGhostEaten(i + 1, score);
+    }
     profile.noteFruitCollect(1960);
     profile.noteBoardClear(1);
     profile.finishRun(12000, 6);
@@ -103,6 +117,14 @@ func start() {
     }
     if profile.getLastRunUnlockCount() <= 0 {
         fail("progression run summary unlocks");
+        return;
+    }
+    if profile.getLastRunXpEarned() <= 0 || profile.getRank() < 1 {
+        fail("progression xp rank");
+        return;
+    }
+    if profile.getLastRunContractCount() <= 0 {
+        fail("progression contracts");
         return;
     }
 
