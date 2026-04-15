@@ -69,7 +69,7 @@ ilrun program.il
 
 - `/examples/games/frogger/` - Full Frogger game in Zia demonstrating modules and game architecture
 - `/examples/games/centipede/` - Centipede game in Zia
-- `/examples/games/pacman/` - Pac-Man game in Zia
+- `/examples/games/pacman/` - Crackman maze-chase game in Zia
 - `/examples/games/xenoscape/` - Side-scroller game in Zia using ten game-engine helpers
 - `/examples/games/vtris/` - Full Tetris game demonstrating OOP, graphics, and game loop patterns (BASIC)
 - `/examples/games/chess-basic/` - Chess game in BASIC

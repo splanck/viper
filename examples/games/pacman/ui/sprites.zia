@@ -1,52 +1,32 @@
 module sprites;
 
 bind Viper.Graphics;
-bind Color = Viper.Graphics.Color;
 
 bind "../config";
 bind "./theme";
+bind "./sprite_support";
+bind "./sprite_entities";
+bind "./sprite_items";
+bind "./sprite_maze";
 
 var storageReady_: Boolean = false;
 var wallTiles_: List[Pixels];
 var pacmanSprites_: List[Pixels];
 var ghostSprites_: List[Pixels];
+var eatenSprites_: List[Pixels];
 var frightenedSprites_: List[Pixels];
 var frightenedFlashSprites_: List[Pixels];
 var fruitSprites_: List[Pixels];
 var lifeIcon_: Pixels;
+var dotSprite_: Pixels;
+var pelletSprite_: Pixels;
+var gateSprite_: Pixels;
 var logoPacOpen_: Pixels;
 var logoPacClosed_: Pixels;
 var logoGhostRed_: Pixels;
 var logoGhostPink_: Pixels;
 var logoGhostCyan_: Pixels;
 var logoGhostOrange_: Pixels;
-
-hide func rgba(rgb: Integer, a: Integer) -> Integer {
-    return Color.RGBA(Color.GetR(rgb), Color.GetG(rgb), Color.GetB(rgb), a);
-}
-
-hide func pixelsRgba(rgb: Integer, a: Integer) -> Integer {
-    return ((rgb & 0xFFFFFF) * 256) + (a & 255);
-}
-
-hide func absi(v: Integer) -> Integer {
-    if v < 0 { return 0 - v; }
-    return v;
-}
-
-hide func dirIndex(dir: Integer) -> Integer {
-    if dir == config.DIR_LEFT { return 1; }
-    if dir == config.DIR_UP { return 2; }
-    if dir == config.DIR_DOWN { return 3; }
-    return 0;
-}
-
-hide func colorIndex(color: Integer) -> Integer {
-    if color == config.COLOR_PINK { return 1; }
-    if color == config.COLOR_CYAN { return 2; }
-    if color == config.COLOR_ORANGE { return 3; }
-    return 0;
-}
 
 hide func ensureStorage() {
     if storageReady_ { return; }
@@ -67,6 +47,11 @@ hide func ensureStorage() {
         ghostSprites_.add(null);
     }
 
+    eatenSprites_ = [];
+    for i in 0..4 {
+        eatenSprites_.add(null);
+    }
+
     frightenedSprites_ = [];
     frightenedFlashSprites_ = [];
     for i in 0..4 {
@@ -80,267 +65,24 @@ hide func ensureStorage() {
     }
 }
 
-hide func buildPacmanSprite(size: Integer, dir: Integer, mouthOpen: Boolean) -> Pixels {
-    var px = Pixels.New(size, size);
-    var cx = size / 2;
-    var cy = size / 2;
-    var radius = size / 2 - 4;
-    var shadowY = cy + radius - 1;
-    var shadowX = cx;
-    var body = 0xFFE84A;
-    var highlight = 0xFFF5B0;
-    var clear = 0;
-
-    var sy = shadowY - 3;
-    while sy <= shadowY + 3 {
-        var sx = shadowX - radius + 4;
-        while sx <= shadowX + radius - 4 {
-            var dxs = sx - shadowX;
-            var dys = sy - shadowY;
-            if dxs * dxs * 100 / ((radius - 4) * (radius - 4)) + dys * dys * 100 / 9 <= 100 {
-                px.BlendPixel(sx, sy, 0x000000, 56);
-            }
-            sx = sx + 1;
-        }
-        sy = sy + 1;
-    }
-
-    px.DrawDisc(cx, cy, radius, body);
-
-    for y in 0..size {
-        for x in 0..size {
-            var dx = x - cx;
-            var dy = y - cy;
-            var dist2 = dx * dx + dy * dy;
-            if dist2 <= radius * radius {
-                var front = dx;
-                var side = dy;
-                if dir == config.DIR_LEFT {
-                    front = 0 - dx;
-                    side = dy;
-                } else if dir == config.DIR_UP {
-                    front = 0 - dy;
-                    side = dx;
-                } else if dir == config.DIR_DOWN {
-                    front = dy;
-                    side = dx;
-                }
-
-                var cut = false;
-                if mouthOpen {
-                    if front > 0 && absi(side) * 2 <= front {
-                        cut = true;
-                    }
-                } else {
-                    if front > radius / 2 && absi(side) * 5 <= front {
-                        cut = true;
-                    }
-                }
-
-                if cut {
-                    px.Set(x, y, clear);
-                }
-            }
-        }
-    }
-
-    for y in 0..size {
-        for x in 0..size {
-            var hx = x - (cx - radius / 3);
-            var hy = y - (cy - radius / 3);
-            if hx * hx + hy * hy <= (radius / 2) * (radius / 2) {
-                px.BlendPixel(x, y, highlight, 40);
-            }
-        }
-    }
-
-    var eyeX = cx;
-    var eyeY = cy - radius / 2;
-    if dir == config.DIR_LEFT {
-        eyeX = cx - radius / 4;
-    } else if dir == config.DIR_RIGHT {
-        eyeX = cx + radius / 6;
-    } else if dir == config.DIR_UP {
-        eyeX = cx - radius / 8;
-    } else if dir == config.DIR_DOWN {
-        eyeX = cx + radius / 8;
-        eyeY = cy - radius / 4;
-    }
-    px.DrawDisc(eyeX, eyeY, 2, theme.BG_TOP);
-    return px;
-}
-
-hide func carveDisc(px: Pixels, cx: Integer, cy: Integer, radius: Integer) {
-    var clear = Color.RGBA(0, 0, 0, 0);
-    for y in cy - radius..cy + radius + 1 {
-        for x in cx - radius..cx + radius + 1 {
-            var dx = x - cx;
-            var dy = y - cy;
-            if dx * dx + dy * dy <= radius * radius {
-                if x >= 0 and x < px.Width and y >= 0 and y < px.Height {
-                    px.Set(x, y, clear);
-                }
-            }
-        }
-    }
-}
-
-hide func buildGhostSprite(size: Integer, bodyColor: Integer, dir: Integer, frightened: Boolean, flash: Boolean) -> Pixels {
-    var px = Pixels.New(size, size);
-    var cx = size / 2;
-    var cy = size / 2;
-    var radius = size / 2 - 6;
-    var baseY = cy + radius - 2;
-    var shadow = rgba(0x000000, 72);
-    var body = rgba(bodyColor, 255);
-    var glow = rgba(bodyColor, 34);
-    var eyeWhite = rgba(0xFFFFFF, 255);
-    var pupil = rgba(theme.ACCENT_BLUE, 255);
-    var face = rgba(theme.TEXT_PRIMARY, 255);
-
-    px.DrawEllipse(cx, baseY + 5, radius - 1, 4, shadow);
-    px.DrawDisc(cx, cy - 1, radius + 3, glow);
-    px.DrawDisc(cx, cy - 1, radius, body);
-    px.DrawBox(cx - radius, cy - 2, radius * 2, radius + 5, body);
-
-    carveDisc(px, cx - radius + 4, baseY + 2, 4);
-    carveDisc(px, cx - radius + 12, baseY + 5, 4);
-    carveDisc(px, cx - radius + 20, baseY + 2, 4);
-    carveDisc(px, cx - radius + 28, baseY + 5, 4);
-
-    px.DrawDisc(cx - 5, cy - 9, 6, rgba(0xFFFFFF, 36));
-
-    if !frightened {
-        px.DrawDisc(cx - 6, cy - 4, 5, eyeWhite);
-        px.DrawDisc(cx + 6, cy - 4, 5, eyeWhite);
-
-        var pxOff = 0;
-        var pyOff = 0;
-        if dir == config.DIR_LEFT { pxOff = -2; }
-        if dir == config.DIR_RIGHT { pxOff = 2; }
-        if dir == config.DIR_UP { pyOff = -2; }
-        if dir == config.DIR_DOWN { pyOff = 2; }
-        px.DrawDisc(cx - 6 + pxOff, cy - 3 + pyOff, 2, pupil);
-        px.DrawDisc(cx + 6 + pxOff, cy - 3 + pyOff, 2, pupil);
-    } else {
-        px.DrawDisc(cx - 5, cy - 4, 2, face);
-        px.DrawDisc(cx + 5, cy - 4, 2, face);
-        px.DrawThickLine(cx - 8, cy + 5, cx - 4, cy + 8, face, 2);
-        px.DrawThickLine(cx - 4, cy + 8, cx, cy + 5, face, 2);
-        px.DrawThickLine(cx, cy + 5, cx + 4, cy + 8, face, 2);
-        px.DrawThickLine(cx + 4, cy + 8, cx + 8, cy + 5, face, 2);
-        if flash {
-            px.DrawDisc(cx, cy - 1, radius + 1, rgba(0xFFFFFF, 22));
-        }
-    }
-
-    return px;
-}
-
-hide func buildFruitSprite(kind: Integer) -> Pixels {
-    var px = Pixels.New(24, 24);
-    var cx = 12;
-    var cy = 13;
-    var stem = rgba(0x6F4B1F, 255);
-    var leaf = rgba(theme.ACCENT_GREEN, 255);
-
-    if kind == config.FRUIT_CHERRY {
-        px.DrawDisc(cx - 4, cy, 5, rgba(config.COLOR_CHERRY, 255));
-        px.DrawDisc(cx + 4, cy, 5, rgba(config.COLOR_CHERRY, 255));
-        px.DrawLine(cx - 2, cy - 4, cx, cy - 10, stem);
-        px.DrawLine(cx + 2, cy - 4, cx, cy - 10, stem);
-        px.DrawEllipse(cx + 5, cy - 10, 3, 2, leaf);
-    } else if kind == config.FRUIT_STRAWBERRY {
-        px.DrawTriangle(cx, cy - 6, cx - 7, cy + 6, cx + 7, cy + 6, rgba(config.COLOR_STRAWBERRY, 255));
-        px.DrawEllipse(cx, cy - 6, 7, 3, leaf);
-        px.DrawDisc(cx - 3, cy + 1, 1, rgba(0xFFF5C0, 255));
-        px.DrawDisc(cx + 2, cy + 2, 1, rgba(0xFFF5C0, 255));
-        px.DrawDisc(cx, cy - 1, 1, rgba(0xFFF5C0, 255));
-    } else if kind == config.FRUIT_ORANGE {
-        px.DrawDisc(cx, cy, 7, rgba(config.COLOR_ORANGE_FRUIT, 255));
-        px.DrawDisc(cx - 2, cy - 2, 3, rgba(0xFFFFFF, 24));
-        px.DrawEllipse(cx + 4, cy - 7, 3, 2, leaf);
-    } else if kind == config.FRUIT_APPLE {
-        px.DrawDisc(cx - 2, cy, 6, rgba(config.COLOR_APPLE, 255));
-        px.DrawDisc(cx + 3, cy, 6, rgba(config.COLOR_APPLE, 255));
-        px.DrawLine(cx, cy - 6, cx + 1, cy - 11, stem);
-        px.DrawEllipse(cx + 5, cy - 8, 3, 2, leaf);
-    } else if kind == config.FRUIT_MELON {
-        px.DrawEllipse(cx, cy, 8, 6, rgba(config.COLOR_MELON, 255));
-        px.DrawEllipse(cx, cy, 6, 4, rgba(0xD3FFB7, 255));
-        px.DrawLine(cx, cy - 5, cx, cy + 5, rgba(0x85C961, 255));
-    } else if kind == config.FRUIT_GALAXIAN {
-        px.DrawTriangle(cx, cy - 8, cx - 8, cy + 6, cx + 8, cy + 6, rgba(config.COLOR_GALAXIAN, 255));
-        px.DrawBox(cx - 2, cy - 2, 4, 8, rgba(theme.ACCENT_RED, 255));
-        px.DrawDisc(cx, cy - 4, 2, rgba(theme.ACCENT_CYAN, 255));
-    } else if kind == config.FRUIT_BELL {
-        px.DrawEllipse(cx, cy + 1, 7, 6, rgba(config.COLOR_BELL, 255));
-        px.DrawBox(cx - 7, cy - 1, 14, 6, rgba(config.COLOR_BELL, 255));
-        px.DrawDisc(cx, cy + 7, 2, rgba(0xFFFFFF, 255));
-    } else if kind == config.FRUIT_KEY {
-        px.DrawRing(cx - 2, cy - 2, 4, rgba(config.COLOR_KEY, 255));
-        px.DrawBox(cx + 1, cy - 3, 8, 3, rgba(config.COLOR_KEY, 255));
-        px.DrawBox(cx + 6, cy - 3, 2, 7, rgba(config.COLOR_KEY, 255));
-        px.DrawBox(cx + 3, cy + 1, 2, 3, rgba(config.COLOR_KEY, 255));
-    }
-
-    return px;
-}
-
-hide func buildWallTile(mask: Integer) -> Pixels {
-    var px = Pixels.New(config.TILE_SIZE, config.TILE_SIZE);
-    var c = config.TILE_SIZE / 2;
-    var glow = rgba(theme.MAZE_WALL_GLOW, 42);
-    var core = rgba(theme.MAZE_WALL_MID, 255);
-    var inner = rgba(0xB8F4FF, 120);
-
-    px.DrawBox(c - 7, c - 7, 14, 14, glow);
-    px.DrawBox(c - 5, c - 5, 10, 10, core);
-    px.DrawBox(c - 2, c - 2, 4, 4, inner);
-
-    if (mask & 1) != 0 {
-        px.DrawBox(c - 7, 0, 14, c + 1, glow);
-        px.DrawBox(c - 5, 0, 10, c + 1, core);
-        px.DrawBox(c - 1, 0, 2, c + 1, inner);
-    }
-    if (mask & 2) != 0 {
-        px.DrawBox(c, c - 7, config.TILE_SIZE - c, 14, glow);
-        px.DrawBox(c, c - 5, config.TILE_SIZE - c, 10, core);
-        px.DrawBox(c, c - 1, config.TILE_SIZE - c, 2, inner);
-    }
-    if (mask & 4) != 0 {
-        px.DrawBox(c - 7, c, 14, config.TILE_SIZE - c, glow);
-        px.DrawBox(c - 5, c, 10, config.TILE_SIZE - c, core);
-        px.DrawBox(c - 1, c, 2, config.TILE_SIZE - c, inner);
-    }
-    if (mask & 8) != 0 {
-        px.DrawBox(0, c - 7, c + 1, 14, glow);
-        px.DrawBox(0, c - 5, c + 1, 10, core);
-        px.DrawBox(0, c - 1, c + 1, 2, inner);
-    }
-
-    px.DrawRing(c, c, 9, rgba(theme.MAZE_WALL_GLOW, 20));
-    return px;
-}
-
 expose func prewarmGameplayAssets() {
     ensureStorage();
 
     for i in 0..16 {
         if wallTiles_.get(i) == null {
-            wallTiles_.set(i, buildWallTile(i));
+            wallTiles_.set(i, sprite_maze.buildWallTile(i));
         }
     }
 
     var dirs = [config.DIR_RIGHT, config.DIR_LEFT, config.DIR_UP, config.DIR_DOWN];
     for i in 0..4 {
         var dir = dirs.get(i);
-        var base = dirIndex(dir) * 2;
+        var base = sprite_support.dirIndex(dir) * 2;
         if pacmanSprites_.get(base) == null {
-            pacmanSprites_.set(base, buildPacmanSprite(32, dir, true));
+            pacmanSprites_.set(base, sprite_entities.buildPacmanSprite(32, dir, true));
         }
         if pacmanSprites_.get(base + 1) == null {
-            pacmanSprites_.set(base + 1, buildPacmanSprite(32, dir, false));
+            pacmanSprites_.set(base + 1, sprite_entities.buildPacmanSprite(32, dir, false));
         }
     }
 
@@ -351,23 +93,35 @@ expose func prewarmGameplayAssets() {
             var dir2 = dirs.get(di);
             var idx = ci * 4 + di;
             if ghostSprites_.get(idx) == null {
-                ghostSprites_.set(idx, buildGhostSprite(32, color, dir2, false, false));
+                ghostSprites_.set(idx, sprite_entities.buildGhostSprite(32, color, dir2, false, false));
             }
         }
     }
 
     for di in 0..4 {
         var dir3 = dirs.get(di);
+        if eatenSprites_.get(di) == null {
+            eatenSprites_.set(di, sprite_entities.buildEatenGhostSprite(32, dir3));
+        }
         if frightenedSprites_.get(di) == null {
-            frightenedSprites_.set(di, buildGhostSprite(32, theme.ACCENT_BLUE, dir3, true, false));
+            frightenedSprites_.set(di, sprite_entities.buildGhostSprite(32, theme.ACCENT_BLUE, dir3, true, false));
         }
         if frightenedFlashSprites_.get(di) == null {
-            frightenedFlashSprites_.set(di, buildGhostSprite(32, theme.TEXT_PRIMARY, dir3, true, true));
+            frightenedFlashSprites_.set(di, sprite_entities.buildGhostSprite(32, theme.TEXT_PRIMARY, dir3, true, true));
         }
     }
 
+    if dotSprite_ == null {
+        dotSprite_ = sprite_items.buildDotSprite();
+    }
+    if pelletSprite_ == null {
+        pelletSprite_ = sprite_items.buildPelletSprite();
+    }
+    if gateSprite_ == null {
+        gateSprite_ = sprite_items.buildGateSprite();
+    }
     if lifeIcon_ == null {
-        lifeIcon_ = buildPacmanSprite(20, config.DIR_RIGHT, true);
+        lifeIcon_ = sprite_entities.buildPacmanSprite(20, config.DIR_RIGHT, true);
     }
 }
 
@@ -379,7 +133,7 @@ expose func getWallTile(mask: Integer) -> Pixels {
     }
     var px = wallTiles_.get(idx);
     if px == null {
-        px = buildWallTile(idx);
+        px = sprite_maze.buildWallTile(idx);
         wallTiles_.set(idx, px);
     }
     return px;
@@ -387,11 +141,11 @@ expose func getWallTile(mask: Integer) -> Pixels {
 
 expose func getPacman(direction: Integer, mouthOpen: Boolean) -> Pixels {
     ensureStorage();
-    var idx = dirIndex(direction) * 2;
+    var idx = sprite_support.dirIndex(direction) * 2;
     if !mouthOpen { idx = idx + 1; }
     var px = pacmanSprites_.get(idx);
     if px == null {
-        px = buildPacmanSprite(32, direction, mouthOpen);
+        px = sprite_entities.buildPacmanSprite(32, direction, mouthOpen);
         pacmanSprites_.set(idx, px);
     }
     return px;
@@ -401,12 +155,12 @@ expose func getPacmanLogo(mouthOpen: Boolean) -> Pixels {
     ensureStorage();
     if mouthOpen {
         if logoPacOpen_ == null {
-            logoPacOpen_ = buildPacmanSprite(56, config.DIR_RIGHT, true);
+            logoPacOpen_ = sprite_entities.buildPacmanSprite(56, config.DIR_RIGHT, true);
         }
         return logoPacOpen_;
     }
     if logoPacClosed_ == null {
-        logoPacClosed_ = buildPacmanSprite(56, config.DIR_RIGHT, false);
+        logoPacClosed_ = sprite_entities.buildPacmanSprite(56, config.DIR_RIGHT, false);
     }
     return logoPacClosed_;
 }
@@ -414,34 +168,42 @@ expose func getPacmanLogo(mouthOpen: Boolean) -> Pixels {
 expose func getLifeIcon() -> Pixels {
     ensureStorage();
     if lifeIcon_ == null {
-        lifeIcon_ = buildPacmanSprite(20, config.DIR_RIGHT, true);
+        lifeIcon_ = sprite_entities.buildPacmanSprite(20, config.DIR_RIGHT, true);
     }
     return lifeIcon_;
 }
 
 expose func getGhost(color: Integer, direction: Integer, mode: Integer, flash: Boolean) -> Pixels {
     ensureStorage();
-    var d = dirIndex(direction);
+    var d = sprite_support.dirIndex(direction);
+    if mode == config.MODE_EATEN {
+        var eatenPx = eatenSprites_.get(d);
+        if eatenPx == null {
+            eatenPx = sprite_entities.buildEatenGhostSprite(32, direction);
+            eatenSprites_.set(d, eatenPx);
+        }
+        return eatenPx;
+    }
     if mode == config.MODE_FRIGHTENED {
         if flash {
             var flashPx = frightenedFlashSprites_.get(d);
             if flashPx == null {
-                flashPx = buildGhostSprite(32, theme.TEXT_PRIMARY, direction, true, true);
+                flashPx = sprite_entities.buildGhostSprite(32, theme.TEXT_PRIMARY, direction, true, true);
                 frightenedFlashSprites_.set(d, flashPx);
             }
             return flashPx;
         }
         var frightPx = frightenedSprites_.get(d);
         if frightPx == null {
-            frightPx = buildGhostSprite(32, theme.ACCENT_BLUE, direction, true, false);
+            frightPx = sprite_entities.buildGhostSprite(32, theme.ACCENT_BLUE, direction, true, false);
             frightenedSprites_.set(d, frightPx);
         }
         return frightPx;
     }
-    var idx = colorIndex(color) * 4 + d;
+    var idx = sprite_support.colorIndex(color) * 4 + d;
     var px = ghostSprites_.get(idx);
     if px == null {
-        px = buildGhostSprite(32, color, direction, false, false);
+        px = sprite_entities.buildGhostSprite(32, color, direction, false, false);
         ghostSprites_.set(idx, px);
     }
     return px;
@@ -451,24 +213,24 @@ expose func getGhostLogo(color: Integer) -> Pixels {
     ensureStorage();
     if color == config.COLOR_PINK {
         if logoGhostPink_ == null {
-            logoGhostPink_ = buildGhostSprite(44, config.COLOR_PINK, config.DIR_LEFT, false, false);
+            logoGhostPink_ = sprite_entities.buildGhostSprite(44, config.COLOR_PINK, config.DIR_LEFT, false, false);
         }
         return logoGhostPink_;
     }
     if color == config.COLOR_CYAN {
         if logoGhostCyan_ == null {
-            logoGhostCyan_ = buildGhostSprite(44, config.COLOR_CYAN, config.DIR_LEFT, false, false);
+            logoGhostCyan_ = sprite_entities.buildGhostSprite(44, config.COLOR_CYAN, config.DIR_LEFT, false, false);
         }
         return logoGhostCyan_;
     }
     if color == config.COLOR_ORANGE {
         if logoGhostOrange_ == null {
-            logoGhostOrange_ = buildGhostSprite(44, config.COLOR_ORANGE, config.DIR_LEFT, false, false);
+            logoGhostOrange_ = sprite_entities.buildGhostSprite(44, config.COLOR_ORANGE, config.DIR_LEFT, false, false);
         }
         return logoGhostOrange_;
     }
     if logoGhostRed_ == null {
-        logoGhostRed_ = buildGhostSprite(44, config.COLOR_RED, config.DIR_LEFT, false, false);
+        logoGhostRed_ = sprite_entities.buildGhostSprite(44, config.COLOR_RED, config.DIR_LEFT, false, false);
     }
     return logoGhostRed_;
 }
@@ -480,8 +242,32 @@ expose func getFruit(kind: Integer) -> Pixels {
     }
     var px = fruitSprites_.get(kind);
     if px == null {
-        px = buildFruitSprite(kind);
+        px = sprite_items.buildFruitSprite(kind);
         fruitSprites_.set(kind, px);
     }
     return px;
+}
+
+expose func getDot() -> Pixels {
+    ensureStorage();
+    if dotSprite_ == null {
+        dotSprite_ = sprite_items.buildDotSprite();
+    }
+    return dotSprite_;
+}
+
+expose func getPellet() -> Pixels {
+    ensureStorage();
+    if pelletSprite_ == null {
+        pelletSprite_ = sprite_items.buildPelletSprite();
+    }
+    return pelletSprite_;
+}
+
+expose func getGate() -> Pixels {
+    ensureStorage();
+    if gateSprite_ == null {
+        gateSprite_ = sprite_items.buildGateSprite();
+    }
+    return gateSprite_;
 }

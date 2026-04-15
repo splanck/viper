@@ -1,0 +1,43 @@
+module sprite_maze;
+
+bind Viper.Graphics;
+
+bind "../config";
+bind "./theme";
+bind "./sprite_support";
+
+expose func buildWallTile(mask: Integer) -> Pixels {
+    var px = Pixels.New(config.TILE_SIZE, config.TILE_SIZE);
+    var c = config.TILE_SIZE / 2;
+    var glow = sprite_support.rgba(theme.MAZE_WALL_GLOW, 42);
+    var core = sprite_support.rgba(theme.MAZE_WALL_MID, 255);
+    var inner = sprite_support.rgba(0xB8F4FF, 120);
+
+    px.DrawBox(c - 7, c - 7, 14, 14, glow);
+    px.DrawBox(c - 5, c - 5, 10, 10, core);
+    px.DrawBox(c - 2, c - 2, 4, 4, inner);
+
+    if (mask & 1) != 0 {
+        px.DrawBox(c - 7, 0, 14, c + 1, glow);
+        px.DrawBox(c - 5, 0, 10, c + 1, core);
+        px.DrawBox(c - 1, 0, 2, c + 1, inner);
+    }
+    if (mask & 2) != 0 {
+        px.DrawBox(c, c - 7, config.TILE_SIZE - c, 14, glow);
+        px.DrawBox(c, c - 5, config.TILE_SIZE - c, 10, core);
+        px.DrawBox(c, c - 1, config.TILE_SIZE - c, 2, inner);
+    }
+    if (mask & 4) != 0 {
+        px.DrawBox(c - 7, c, 14, config.TILE_SIZE - c, glow);
+        px.DrawBox(c - 5, c, 10, config.TILE_SIZE - c, core);
+        px.DrawBox(c - 1, c, 2, config.TILE_SIZE - c, inner);
+    }
+    if (mask & 8) != 0 {
+        px.DrawBox(0, c - 7, c + 1, 14, glow);
+        px.DrawBox(0, c - 5, c + 1, 10, core);
+        px.DrawBox(0, c - 1, c + 1, 2, inner);
+    }
+
+    px.DrawRing(c, c, 9, sprite_support.rgba(theme.MAZE_WALL_GLOW, 20));
+    return px;
+}

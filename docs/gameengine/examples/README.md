@@ -59,11 +59,11 @@ Centipede clone with 6 enemy types (centipede segments, spider, flea, scorpion),
 
 ---
 
-#### Pac-Man
+#### Crackman
 
 **Genre:** Arcade | **Language:** Zia | **LOC:** 2,230 across 9 files
 
-Pac-Man with smart ghost AI (scatter/chase/frightened modes), dot collection, power pellets, fruit bonuses, and multiple game modes.
+Crackman maze chase with smart ghost AI (scatter/chase/frightened modes), dot collection, power pellets, fruit bonuses, and multiple game modes.
 
 **Engine features:** Canvas, StateMachine, ButtonGroup, Action, Grid2D, Timer, Tween, SmoothValue, ScreenFX, ParticleEmitter
 
@@ -119,7 +119,7 @@ These games use Viper BASIC and render with ANSI terminal graphics (no Canvas). 
 | [Frogger BASIC](../../../examples/games/frogger-basic/) | 1,320 | 4 | Frogger clone. Stress test for object lifetime and nested references (Frog contains Position). |
 | [Chess BASIC](../../../examples/games/chess-basic/) | 1,100+ | 5 | Chess with board representation, move validation, and basic AI evaluation. |
 | [Monopoly](../../../examples/games/monopoly/) | 600 | 4 | Monopoly with turn-based mechanics, property trading, multiple players. |
-| [Pac-Man BASIC](../../../examples/games/pacman-basic/) | 450 | 5 | Pac-Man with ghost pathfinding and ANSI color maze rendering. |
+| [Pac-Man BASIC](../../../examples/games/pacman-basic/) | 450 | 5 | Pac-Man-style maze chase with ghost pathfinding and ANSI color maze rendering. |
 | [Centipede BASIC](../../../examples/games/centipede-basic/) | 450 | 5 | Centipede clone with class-based entity architecture. |
 
 ---
@@ -128,7 +128,7 @@ These games use Viper BASIC and render with ANSI terminal graphics (no Canvas). 
 
 Which example games demonstrate which engine systems:
 
-| Feature | XENOSCAPE | Centipede | Pac-Man | Chess | Graphics Show |
+| Feature | XENOSCAPE | Centipede | Crackman | Chess | Graphics Show |
 |---------|:---------:|:---------:|:-------:|:-----:|:------------:|
 | Canvas | x | x | x | x | x |
 | Entity/Behavior | x | | | | |

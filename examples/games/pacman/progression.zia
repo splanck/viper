@@ -1,0 +1,385 @@
+module progression;
+
+bind Viper.IO;
+bind Viper.Game;
+bind Viper.Graphics;
+bind Viper.Fmt;
+
+bind "./config";
+
+final ACH_FIRST_CRUMB = 0;
+final ACH_POWER_HUNGRY = 1;
+final ACH_GHOST_CHASER = 2;
+final ACH_CLEAN_SWEEP = 3;
+final ACH_FRUIT_BREAK = 4;
+final ACH_NIGHT_SHIFT = 5;
+final ACH_SCORE_HUNTER = 6;
+final ACH_CHAIN_GANG = 7;
+final ACH_COMEBACK_KID = 8;
+final ACH_CRACKED_VETERAN = 9;
+final ACH_MAZE_FIEND = 10;
+final ACH_LATE_NIGHT_LEGEND = 11;
+final ACH_COUNT = 12;
+
+class Progression {
+    hide SaveData store;
+    hide AchievementTracker tracker;
+    hide List[String] achievementNames;
+    hide List[String] achievementDescs;
+    hide List[Integer] leaderboard;
+    hide List[Integer] lastRunUnlockIds;
+
+    hide Integer totalRuns;
+    hide Integer totalDots;
+    hide Integer totalPellets;
+    hide Integer totalGhosts;
+    hide Integer totalFruit;
+    hide Integer totalDeaths;
+    hide Integer totalBoardsCleared;
+    hide Integer totalScore;
+    hide Integer bestScore;
+    hide Integer bestLevel;
+
+    hide Integer runDots;
+    hide Integer runPellets;
+    hide Integer runGhosts;
+    hide Integer runFruit;
+    hide Integer runDeaths;
+    hide Integer runBoardsCleared;
+    hide Integer runMaxChain;
+    hide Integer lastRunScore;
+    hide Integer lastRunLevel;
+    hide Integer lastRunUnlockCount;
+    hide Boolean lastRunNewBestScore;
+    hide Boolean lastRunNewBestLevel;
+    hide Boolean runActive;
+
+    expose func init(saveKey: String) {
+        store = SaveData.New(saveKey);
+        tracker = AchievementTracker.New(ACH_COUNT);
+        tracker.NotifyDuration = 2400;
+
+        achievementNames = [];
+        achievementDescs = [];
+        leaderboard = [];
+        lastRunUnlockIds = [];
+
+        self.defineAchievements();
+        self.resetDefaults();
+    }
+
+    expose func load() {
+        self.resetDefaults();
+        store.Load();
+
+        totalRuns = store.GetInt("total_runs", totalRuns);
+        totalDots = store.GetInt("total_dots", totalDots);
+        totalPellets = store.GetInt("total_pellets", totalPellets);
+        totalGhosts = store.GetInt("total_ghosts", totalGhosts);
+        totalFruit = store.GetInt("total_fruit", totalFruit);
+        totalDeaths = store.GetInt("total_deaths", totalDeaths);
+        totalBoardsCleared = store.GetInt("total_boards_cleared", totalBoardsCleared);
+        totalScore = store.GetInt("total_score", totalScore);
+        bestScore = store.GetInt("best_score", bestScore);
+        bestLevel = store.GetInt("best_level", bestLevel);
+        tracker.Mask = store.GetInt("achievement_mask", 0);
+
+        for i in 0..leaderboard.length() {
+            leaderboard.set(i, store.GetInt("leaderboard_" + Int(i), leaderboard.get(i)));
+        }
+
+        if leaderboard.get(0) > bestScore {
+            bestScore = leaderboard.get(0);
+        }
+    }
+
+    expose func save() {
+        store.SetInt("total_runs", totalRuns);
+        store.SetInt("total_dots", totalDots);
+        store.SetInt("total_pellets", totalPellets);
+        store.SetInt("total_ghosts", totalGhosts);
+        store.SetInt("total_fruit", totalFruit);
+        store.SetInt("total_deaths", totalDeaths);
+        store.SetInt("total_boards_cleared", totalBoardsCleared);
+        store.SetInt("total_score", totalScore);
+        store.SetInt("best_score", bestScore);
+        store.SetInt("best_level", bestLevel);
+        store.SetInt("achievement_mask", tracker.Mask);
+
+        for i in 0..leaderboard.length() {
+            store.SetInt("leaderboard_" + Int(i), leaderboard.get(i));
+        }
+        store.Save();
+    }
+
+    expose func beginRun() {
+        runDots = 0;
+        runPellets = 0;
+        runGhosts = 0;
+        runFruit = 0;
+        runDeaths = 0;
+        runBoardsCleared = 0;
+        runMaxChain = 0;
+        lastRunScore = 0;
+        lastRunLevel = 1;
+        lastRunUnlockCount = 0;
+        lastRunNewBestScore = false;
+        lastRunNewBestLevel = false;
+        lastRunUnlockIds.clear();
+        runActive = true;
+
+        totalRuns = totalRuns + 1;
+        if totalRuns >= 10 {
+            self.unlock(ACH_CRACKED_VETERAN);
+        }
+    }
+
+    expose func noteLevelReached(level: Integer) {
+        if level >= 3 {
+            self.unlock(ACH_NIGHT_SHIFT);
+        }
+        if level >= 6 {
+            self.unlock(ACH_LATE_NIGHT_LEGEND);
+        }
+    }
+
+    expose func noteDot(points: Integer, currentScore: Integer) {
+        totalDots = totalDots + 1;
+        runDots = runDots + 1;
+        if totalDots >= 1 {
+            self.unlock(ACH_FIRST_CRUMB);
+        }
+
+        if points == config.PELLET_POINTS {
+            totalPellets = totalPellets + 1;
+            runPellets = runPellets + 1;
+            if totalPellets >= 10 {
+                self.unlock(ACH_POWER_HUNGRY);
+            }
+        }
+
+        self.noteScore(currentScore);
+    }
+
+    expose func noteGhostEaten(chainCount: Integer, currentScore: Integer) {
+        totalGhosts = totalGhosts + 1;
+        runGhosts = runGhosts + 1;
+        if chainCount > runMaxChain {
+            runMaxChain = chainCount;
+        }
+
+        self.unlock(ACH_GHOST_CHASER);
+        if chainCount >= 4 {
+            self.unlock(ACH_CHAIN_GANG);
+        }
+        self.noteScore(currentScore);
+    }
+
+    expose func noteFruitCollect(currentScore: Integer) {
+        totalFruit = totalFruit + 1;
+        runFruit = runFruit + 1;
+        if totalFruit >= 5 {
+            self.unlock(ACH_FRUIT_BREAK);
+        }
+        self.noteScore(currentScore);
+    }
+
+    expose func noteDeath() {
+        totalDeaths = totalDeaths + 1;
+        runDeaths = runDeaths + 1;
+        if totalDeaths >= 10 {
+            self.unlock(ACH_COMEBACK_KID);
+        }
+    }
+
+    expose func noteBoardClear(level: Integer) {
+        totalBoardsCleared = totalBoardsCleared + 1;
+        runBoardsCleared = runBoardsCleared + 1;
+        self.unlock(ACH_CLEAN_SWEEP);
+        if totalBoardsCleared >= 10 {
+            self.unlock(ACH_MAZE_FIEND);
+        }
+        self.noteLevelReached(level + 1);
+    }
+
+    expose func finishRun(finalScore: Integer, finalLevel: Integer) {
+        runActive = false;
+        lastRunScore = finalScore;
+        lastRunLevel = finalLevel;
+        lastRunUnlockCount = lastRunUnlockIds.length();
+        totalScore = totalScore + finalScore;
+
+        self.noteScore(finalScore);
+        self.noteLevelReached(finalLevel);
+
+        if finalScore > bestScore {
+            bestScore = finalScore;
+            lastRunNewBestScore = true;
+        }
+        if finalLevel > bestLevel {
+            bestLevel = finalLevel;
+            lastRunNewBestLevel = true;
+        }
+
+        self.insertLeaderboard(finalScore);
+    }
+
+    expose func update(dt: Integer) {
+        tracker.Update(dt);
+    }
+
+    expose func drawNotification(canvas: Canvas) {
+        tracker.Draw(canvas);
+    }
+
+    expose func getHighScore() -> Integer {
+        return leaderboard.get(0);
+    }
+
+    expose func getLeaderboard() -> List[Integer] {
+        return leaderboard;
+    }
+
+    expose func getAchievementsUnlocked() -> Integer {
+        return tracker.UnlockedCount;
+    }
+
+    expose func getAchievementCount() -> Integer {
+        return tracker.TotalCount;
+    }
+
+    expose func getAchievementName(idx: Integer) -> String {
+        return achievementNames.get(idx);
+    }
+
+    expose func getAchievementDesc(idx: Integer) -> String {
+        return achievementDescs.get(idx);
+    }
+
+    expose func isAchievementUnlocked(idx: Integer) -> Boolean {
+        return tracker.IsUnlocked(idx);
+    }
+
+    expose func getTotalRuns() -> Integer { return totalRuns; }
+    expose func getTotalDots() -> Integer { return totalDots; }
+    expose func getTotalPellets() -> Integer { return totalPellets; }
+    expose func getTotalGhosts() -> Integer { return totalGhosts; }
+    expose func getTotalFruit() -> Integer { return totalFruit; }
+    expose func getTotalDeaths() -> Integer { return totalDeaths; }
+    expose func getTotalBoardsCleared() -> Integer { return totalBoardsCleared; }
+    expose func getTotalScore() -> Integer { return totalScore; }
+    expose func getBestScore() -> Integer { return bestScore; }
+    expose func getBestLevel() -> Integer { return bestLevel; }
+
+    expose func getLastRunScore() -> Integer { return lastRunScore; }
+    expose func getLastRunLevel() -> Integer { return lastRunLevel; }
+    expose func getLastRunDots() -> Integer { return runDots; }
+    expose func getLastRunPellets() -> Integer { return runPellets; }
+    expose func getLastRunGhosts() -> Integer { return runGhosts; }
+    expose func getLastRunFruit() -> Integer { return runFruit; }
+    expose func getLastRunDeaths() -> Integer { return runDeaths; }
+    expose func getLastRunBoardsCleared() -> Integer { return runBoardsCleared; }
+    expose func getLastRunMaxChain() -> Integer { return runMaxChain; }
+    expose func getLastRunUnlockCount() -> Integer { return lastRunUnlockCount; }
+    expose func isLastRunNewBestScore() -> Boolean { return lastRunNewBestScore; }
+    expose func isLastRunNewBestLevel() -> Boolean { return lastRunNewBestLevel; }
+
+    expose func getLastRunUnlockName(idx: Integer) -> String {
+        if idx < 0 || idx >= lastRunUnlockIds.length() {
+            return "";
+        }
+        return achievementNames.get(lastRunUnlockIds.get(idx));
+    }
+
+    expose func getLastRunUnlockIds() -> List[Integer] {
+        return lastRunUnlockIds;
+    }
+
+    expose func hasLastRunSummary() -> Boolean {
+        return lastRunScore > 0 || runDots > 0 || runFruit > 0 || runGhosts > 0;
+    }
+
+    hide func resetDefaults() {
+        totalRuns = 0;
+        totalDots = 0;
+        totalPellets = 0;
+        totalGhosts = 0;
+        totalFruit = 0;
+        totalDeaths = 0;
+        totalBoardsCleared = 0;
+        totalScore = 0;
+        bestScore = 10000;
+        bestLevel = 1;
+        runDots = 0;
+        runPellets = 0;
+        runGhosts = 0;
+        runFruit = 0;
+        runDeaths = 0;
+        runBoardsCleared = 0;
+        runMaxChain = 0;
+        lastRunScore = 0;
+        lastRunLevel = 1;
+        lastRunUnlockCount = 0;
+        lastRunNewBestScore = false;
+        lastRunNewBestLevel = false;
+        runActive = false;
+        lastRunUnlockIds.clear();
+
+        leaderboard.clear();
+        leaderboard.add(10000);
+        leaderboard.add(8000);
+        leaderboard.add(6000);
+        leaderboard.add(4000);
+        leaderboard.add(2000);
+
+        tracker.Mask = 0;
+    }
+
+    hide func defineAchievements() {
+        self.addAchievement("FIRST CRUMB", "Eat your first dot.");
+        self.addAchievement("POWER HUNGRY", "Eat 10 power pellets total.");
+        self.addAchievement("GHOST CHASER", "Eat your first blue ghost.");
+        self.addAchievement("CLEAN SWEEP", "Clear your first maze.");
+        self.addAchievement("FRUIT BREAK", "Collect 5 fruits.");
+        self.addAchievement("NIGHT SHIFT", "Reach level 3.");
+        self.addAchievement("SCORE HUNTER", "Score 10000 in one run.");
+        self.addAchievement("CHAIN GANG", "Eat 4 ghosts on one power pellet.");
+        self.addAchievement("COMEBACK KID", "Lose 10 lives across all runs.");
+        self.addAchievement("CRACKED VETERAN", "Play 10 runs.");
+        self.addAchievement("MAZE FIEND", "Clear 10 mazes.");
+        self.addAchievement("LATE NIGHT LEGEND", "Reach level 6.");
+    }
+
+    hide func addAchievement(name: String, desc: String) {
+        var idx = achievementNames.length();
+        achievementNames.add(name);
+        achievementDescs.add(desc);
+        tracker.Add(idx, name, desc);
+    }
+
+    hide func noteScore(score: Integer) {
+        if score >= 10000 {
+            self.unlock(ACH_SCORE_HUNTER);
+        }
+    }
+
+    hide func unlock(id: Integer) {
+        if tracker.Unlock(id) && runActive {
+            lastRunUnlockIds.add(id);
+        }
+    }
+
+    hide func insertLeaderboard(score: Integer) {
+        for i in 0..leaderboard.length() {
+            if score > leaderboard.get(i) {
+                var j = leaderboard.length() - 1;
+                while j > i {
+                    leaderboard.set(j, leaderboard.get(j - 1));
+                    j = j - 1;
+                }
+                leaderboard.set(i, score);
+                return;
+            }
+        }
+    }
+}

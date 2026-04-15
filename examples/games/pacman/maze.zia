@@ -1,8 +1,9 @@
 // =============================================================================
-// PAC-MAN - Maze Entity
+// CRACKMAN - Maze Entity
 // =============================================================================
 // Uses new Viper runtime features:
 // - Grid2D for 2D tile storage with bounds checking
+// - SpriteBatch for cleaner batched tile and collectible rendering
 // - Timer for pellet blink animation
 // - for-in range syntax for cleaner iteration
 // =============================================================================
@@ -24,6 +25,8 @@ bind "./ui/sprites";
 
 class Maze {
     hide Grid2D tiles;
+    hide Pathfinder ghostPathfinder;
+    hide SpriteBatch drawBatch;
     hide Integer totalDots;
     hide Integer dotsRemaining;
 
@@ -34,6 +37,7 @@ class Maze {
     expose func init() {
         // Create Grid2D with dimensions and default value
         tiles = Grid2D.New(config.GRID_WIDTH, config.GRID_HEIGHT, config.TILE_EMPTY);
+        drawBatch = SpriteBatch.New(1024);
         totalDots = 0;
         dotsRemaining = 0;
 
@@ -46,7 +50,7 @@ class Maze {
     }
 
     hide func initializeMaze() {
-        // Classic Pac-Man maze layout (28x31)
+        // Classic maze layout (28x31)
         // 0=empty, 1=wall, 2=dot, 3=pellet, 4=gate
         self.setRow(0,  "1111111111111111111111111111");
         self.setRow(1,  "1222222222222112222222222221");
@@ -81,6 +85,7 @@ class Maze {
         self.setRow(30, "1111111111111111111111111111");
 
         self.countDots();
+        self.rebuildGhostPathfinder();
     }
 
     hide func setRow(row: Integer, pattern: String) {
@@ -110,6 +115,37 @@ class Maze {
         dotsRemaining = totalDots;
     }
 
+    hide func rebuildGhostPathfinder() {
+        ghostPathfinder = Pathfinder.New(config.GRID_WIDTH, config.GRID_HEIGHT);
+        ghostPathfinder.Diagonal = false;
+
+        for y in 0..config.GRID_HEIGHT {
+            for x in 0..config.GRID_WIDTH {
+                ghostPathfinder.SetWalkable(x, y, self.isWalkableForGhost(x, y));
+            }
+        }
+    }
+
+    hide func stepToDirection(startX: Integer, startY: Integer, nextX: Integer, nextY: Integer, fallbackDir: Integer) -> Integer {
+        if nextY == startY {
+            if nextX == utils.wrapGridX(startX - 1) && nextX != startX {
+                return config.DIR_LEFT;
+            }
+            if nextX == utils.wrapGridX(startX + 1) && nextX != startX {
+                return config.DIR_RIGHT;
+            }
+        }
+        if nextX == startX {
+            if nextY == startY - 1 {
+                return config.DIR_UP;
+            }
+            if nextY == startY + 1 {
+                return config.DIR_DOWN;
+            }
+        }
+        return fallbackDir;
+    }
+
     expose func getTile(x: Integer, y: Integer) -> Integer {
         if !tiles.InBounds(x, y) {
             return config.TILE_WALL;
@@ -136,6 +172,37 @@ class Maze {
         return tile != config.TILE_WALL;
     }
 
+    expose func getGhostPathDirection(startX: Integer, startY: Integer, targetX: Integer, targetY: Integer, fallbackDir: Integer) -> Integer {
+        if startX == targetX && startY == targetY {
+            return config.DIR_NONE;
+        }
+        var dirs = [config.DIR_UP, config.DIR_LEFT, config.DIR_DOWN, config.DIR_RIGHT];
+        var bestDir = fallbackDir;
+        var bestCost = 2147483647;
+
+        for i in 0..4 {
+            var testDir = dirs.get(i);
+            var nextX = utils.wrapGridX(startX + utils.getDirX(testDir));
+            var nextY = startY + utils.getDirY(testDir);
+
+            if !self.isWalkableForGhost(nextX, nextY) {
+                continue;
+            }
+
+            var cost = ghostPathfinder.FindPathLength(nextX, nextY, targetX, targetY);
+            if nextX == targetX && nextY == targetY {
+                cost = 0;
+            }
+
+            if cost >= 0 && cost < bestCost {
+                bestCost = cost;
+                bestDir = self.stepToDirection(startX, startY, nextX, nextY, testDir);
+            }
+        }
+
+        return bestDir;
+    }
+
     expose func eatDot(x: Integer, y: Integer) -> Integer {
         var tile = self.getTile(x, y);
         if tile == config.TILE_DOT {
@@ -154,6 +221,10 @@ class Maze {
         return dotsRemaining;
     }
 
+    expose func getTotalDots() -> Integer {
+        return totalDots;
+    }
+
     expose func allDotsEaten() -> Boolean {
         return dotsRemaining <= 0;
     }
@@ -169,13 +240,12 @@ class Maze {
             pelletVisible = !pelletVisible;
         }
 
+        drawBatch.Begin();
         for y in 0..config.GRID_HEIGHT {
             for x in 0..config.GRID_WIDTH {
                 var tile = tiles.Get(x, y);
                 var screenX = utils.gridToScreenX(x);
                 var screenY = utils.gridToScreenY(y);
-                var centerX = screenX + config.TILE_SIZE / 2;
-                var centerY = screenY + config.TILE_SIZE / 2;
 
                 if tile == config.TILE_WALL {
                     var mask = 0;
@@ -183,24 +253,18 @@ class Maze {
                     if self.isWall(x + 1, y) { mask = mask + 2; }
                     if self.isWall(x, y + 1) { mask = mask + 4; }
                     if self.isWall(x - 1, y) { mask = mask + 8; }
-                    canvas.BlitAlpha(screenX, screenY, sprites.getWallTile(mask));
+                    drawBatch.DrawPixels(sprites.getWallTile(mask), screenX, screenY);
                 } else if tile == config.TILE_DOT {
-                    canvas.DiscAlpha(centerX, centerY, 6, theme.DOT_COLOR, 24);
-                    canvas.Disc(centerX, centerY, 3, theme.DOT_COLOR);
+                    drawBatch.DrawPixels(sprites.getDot(), screenX, screenY);
                 } else if tile == config.TILE_PELLET {
-                    // Power pellets blink using Timer
                     if pelletVisible {
-                        canvas.DiscAlpha(centerX, centerY, 13, theme.PELLET_COLOR, 28);
-                        canvas.DiscAlpha(centerX, centerY, 10, theme.PELLET_COLOR, 36);
-                        canvas.Disc(centerX, centerY, 7, theme.PELLET_COLOR);
+                        drawBatch.DrawPixels(sprites.getPellet(), screenX, screenY);
                     }
                 } else if tile == config.TILE_GATE {
-                    canvas.BoxAlpha(screenX, screenY + config.TILE_SIZE / 3, config.TILE_SIZE, config.TILE_SIZE / 3,
-                                    theme.MAZE_GATE, 64);
-                    canvas.Box(screenX + 2, screenY + config.TILE_SIZE / 3 + 2,
-                               config.TILE_SIZE - 4, config.TILE_SIZE / 3 - 4, theme.MAZE_GATE);
+                    drawBatch.DrawPixels(sprites.getGate(), screenX, screenY);
                 }
             }
         }
+        drawBatch.End(canvas);
     }
 }

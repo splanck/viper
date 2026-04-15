@@ -1,15 +1,13 @@
 // =============================================================================
-// PAC-MAN - Game Controller Entity
+// CRACKMAN - Game Controller
 // =============================================================================
 // Uses Viper runtime features:
-// - StateMachine for game state transitions (menu, playing, paused, etc.)
-// - ButtonGroup for menu selection with auto-wraparound
+// - StateMachine for app-level state transitions
 // - Action for device-agnostic input (keyboard + gamepad)
-// - Timer for game timing (ready state, death, mode switching)
-// - Tween for animations (ready text bounce)
-// - SmoothValue for score counter animation
-// - ScreenFX for screen shake/flash on impacts
-// - ParticleEmitter for visual effects
+// - Canvas.BeginFrame / SetDTMax for stable frame pacing
+// - FrontendController for menu/profile/options/summary flow
+// - Session for gameplay state, rendering, and per-run events
+// - Progression for persistent leaderboard, achievements, and run summaries
 // =============================================================================
 
 module game;
@@ -17,140 +15,74 @@ module game;
 bind Viper.Graphics;
 bind Viper.Input;
 bind Viper.Game;
-bind Viper.Game.ScreenFX as FX;
-bind Viper.Time;
-bind Viper.Fmt;
 
 bind "./config";
-bind "./utils";
-bind "./maze";
-bind "./player";
-bind "./ghost";
-bind "./fruit";
-bind "./particles";
 bind "./sound";
-bind "./ui/renderer";
+bind "./settings";
+bind "./frontend";
+bind "./session";
+bind "./progression";
 
 // =============================================================================
-// GAME ENTITY - Main game controller
+// GAME ENTITY - Top-level app orchestration
 // =============================================================================
 
 class Game {
     hide Canvas canvas;
-    hide maze.Maze theMaze;
-    hide player.PacMan pacman;
-    hide List[ghost.Ghost] ghosts;
-    hide fruit.Fruit theFruit;
-    hide particles.ParticleSystem particleSys;
-
-    // Game state
-    hide Integer score;
-    hide Integer lives;
-    hide Integer level;
-    hide Integer highScore;
-    hide Integer dotsEaten;
-    hide Integer ghostsEaten;
-    hide Boolean extraLifeAwarded;
+    hide session.Session playSession;
+    hide frontend.FrontendController front;
     hide StateMachine sm;
-    hide ButtonGroup menuBtns;
-
-    // Use Timers instead of manual counters
-    hide Timer readyTimer;
-    hide Timer deathTimer;
-    hide Timer modeTimer;
-    hide Boolean chaseMode;
-
-    // Animations
-    hide Tween readyTween;
-    hide SmoothValue displayScore;
-
-    // Screen effects
-    hide FX fx;
 
     // Frame timing
     hide Integer dt;
     hide Integer uiTick;
     hide Boolean audioReady;
 
-    // High scores list
-    hide List[Integer] highScores;
     hide sound.SoundManager sfx;
+    hide settings.Settings userSettings;
+    hide progression.Progression profile;
 
     expose func init() {
+        userSettings = new settings.Settings("crackman");
+        userSettings.load();
+
         canvas = Canvas.New("CRACKMAN", config.SCREEN_WIDTH, config.SCREEN_HEIGHT);
+        canvas.SetFps(60);
+        canvas.SetDTMax(config.DT_MAX);
+        if userSettings.isFullscreen() {
+            canvas.Fullscreen();
+        }
 
         // Setup input actions
         self.setupActions();
 
-        // Initialize game objects
-        theMaze = new maze.Maze();
-        theMaze.init();
-
-        pacman = new player.PacMan(14, 23);
-
-        ghosts = [];
-        ghosts.add(new ghost.Ghost(0, 14, 11, config.COLOR_RED));    // Blinky
-        ghosts.add(new ghost.Ghost(1, 13, 14, config.COLOR_PINK));   // Pinky
-        ghosts.add(new ghost.Ghost(2, 14, 14, config.COLOR_CYAN));   // Inky
-        ghosts.add(new ghost.Ghost(3, 15, 14, config.COLOR_ORANGE)); // Clyde
-
-        theFruit = new fruit.Fruit();
-        theFruit.init();
-
-        // Initialize particles and screen effects
-        particleSys = new particles.ParticleSystem();
-        fx = FX.New();
+        playSession = new session.Session();
         dt = 16;
         uiTick = 0;
 
         sfx = new sound.SoundManager();
+        profile = new progression.Progression("crackman_profile");
+        profile.load();
+        front = new frontend.FrontendController(canvas, sfx, userSettings, profile);
         audioReady = false;
 
-
-        // Initialize timers
-        readyTimer = Timer.New();
-        deathTimer = Timer.New();
-        modeTimer = Timer.New();
-
-        // Initialize animations
-        readyTween = Tween.New();
-        displayScore = SmoothValue.New(0.0, 900.0);
-
-        // Initialize high scores
-        highScores = [];
-        highScores.add(10000);
-        highScores.add(8000);
-        highScores.add(6000);
-        highScores.add(4000);
-        highScores.add(2000);
-        highScore = 10000;
+        playSession.attachProgression(profile);
+        playSession.setHighScore(profile.getHighScore());
 
         // Initialize state machine with all game states
         sm = StateMachine.New();
         sm.AddState(config.STATE_MENU);
         sm.AddState(config.STATE_PLAYING);
         sm.AddState(config.STATE_PAUSED);
-        sm.AddState(config.STATE_GAME_OVER);
         sm.AddState(config.STATE_WIN);
         sm.AddState(config.STATE_READY);
         sm.AddState(config.STATE_DYING);
         sm.AddState(config.STATE_HIGHSCORES);
+        sm.AddState(config.STATE_OPTIONS);
+        sm.AddState(config.STATE_PROFILE);
+        sm.AddState(config.STATE_SUMMARY);
         sm.SetInitial(config.STATE_MENU);
 
-        // Initialize menu button group (0=Start, 1=Scores, 2=Quit)
-        menuBtns = ButtonGroup.New();
-        menuBtns.Add(0);
-        menuBtns.Add(1);
-        menuBtns.Add(2);
-        menuBtns.Select(0);
-
-        score = 0;
-        lives = 3;
-        level = 1;
-        dotsEaten = 0;
-        ghostsEaten = 0;
-        extraLifeAwarded = false;
-        chaseMode = false;
     }
 
     // =========================================================================
@@ -203,22 +135,11 @@ class Game {
     expose func run() {
         var running = true;
 
-        while running {
-            canvas.Poll();
-
-            // Frame-rate-independent timing
+        while running && canvas.BeginFrame() != 0 {
             dt = canvas.DeltaTime;
-            if dt < 1 { dt = 1; }
-            if dt > config.DT_MAX { dt = config.DT_MAX; }
             uiTick = uiTick + dt;
-
-            // Update screen effects and particles
-            fx.Update(dt);
-            particleSys.update();
-
-            // Update smooth score display
-            displayScore.Target = score * 1.0;
-            displayScore.Update();
+            playSession.updateFrame(dt);
+            profile.update(dt);
 
             // Advance frame counter and clear edge flags
             sm.Update();
@@ -228,9 +149,18 @@ class Game {
             if sm.IsState(config.STATE_MENU) {
                 running = self.updateMenu();
                 self.renderMenu();
+            } else if sm.IsState(config.STATE_OPTIONS) {
+                self.updateOptions();
+                self.renderOptions();
             } else if sm.IsState(config.STATE_HIGHSCORES) {
                 self.updateHighScores();
                 self.renderHighScores();
+            } else if sm.IsState(config.STATE_PROFILE) {
+                self.updateProfile();
+                self.renderProfile();
+            } else if sm.IsState(config.STATE_SUMMARY) {
+                self.updateSummary();
+                self.renderSummary();
             } else if sm.IsState(config.STATE_READY) {
                 self.updateReady();
                 self.render();
@@ -243,28 +173,28 @@ class Game {
             } else if sm.IsState(config.STATE_DYING) {
                 self.updateDying();
                 self.render();
-            } else if sm.IsState(config.STATE_GAME_OVER) {
-                self.updateGameOver();
-                self.render();
             } else if sm.IsState(config.STATE_WIN) {
                 self.updateWin();
                 self.render();
             }
 
-            if audioReady == false {
-                sfx.setup();
-                audioReady = true;
-                if sm.IsState(config.STATE_MENU) || sm.IsState(config.STATE_HIGHSCORES) {
-                    sfx.playMenuMusic();
-                } else {
-                    sfx.playGameMusic();
-                }
-            }
-
-            Viper.Time.SleepMs(config.FRAME_TIME);
+            self.ensureAudioReady();
         }
 
         sfx.shutdown();
+    }
+
+    hide func ensureAudioReady() {
+        if audioReady { return; }
+
+        sfx.setup();
+        audioReady = true;
+
+        if sm.IsState(config.STATE_MENU) || sm.IsState(config.STATE_HIGHSCORES) || sm.IsState(config.STATE_OPTIONS) {
+            sfx.playMenuMusic();
+        } else {
+            sfx.playGameMusic();
+        }
     }
 
     // =========================================================================
@@ -272,48 +202,48 @@ class Game {
     // =========================================================================
 
     hide func updateMenu() -> Boolean {
-        var prevSel = menuBtns.Selected;
-
-        // Menu navigation via ButtonGroup (auto-wraparound)
-        if Action.Pressed(config.ACTION_UP) {
-            menuBtns.SelectPrev();
-        }
-        if Action.Pressed(config.ACTION_DOWN) {
-            menuBtns.SelectNext();
-        }
-
-        if menuBtns.Selected != prevSel {
-            sfx.playMenuMove();
-        }
-
-        // Selection
-        if Action.Pressed(config.ACTION_CONFIRM) {
-            var sel = menuBtns.Selected;
-            sfx.playMenuSelect();
-            if sel == 0 {
-                // Start Game
-                self.resetGame();
-                self.startReady();
-            } else if sel == 1 {
-                // High Scores
-                sm.Transition(config.STATE_HIGHSCORES);
-            } else {
-                // Quit
-                return false;
-            }
-        }
-
-        // Quick quit
-        if Action.Pressed(config.ACTION_CANCEL) {
-            sfx.playMenuSelect();
+        var event = front.updateMenu();
+        if event == frontend.FRONTEND_EVENT_QUIT {
             return false;
+        }
+        if event == frontend.FRONTEND_EVENT_START_GAME {
+            profile.beginRun();
+            profile.save();
+            playSession.setHighScore(profile.getHighScore());
+            playSession.resetGame();
+            playSession.startReady(sfx);
+            profile.noteLevelReached(playSession.getLevel());
+            sm.Transition(config.STATE_READY);
+        } else if event == frontend.FRONTEND_EVENT_OPEN_PROFILE {
+            sm.Transition(config.STATE_PROFILE);
+        } else if event == frontend.FRONTEND_EVENT_OPEN_OPTIONS {
+            sm.Transition(config.STATE_OPTIONS);
+        } else if event == frontend.FRONTEND_EVENT_OPEN_HIGHSCORES {
+            sm.Transition(config.STATE_HIGHSCORES);
         }
 
         return true;
     }
 
     hide func renderMenu() {
-        renderer.drawMenu(canvas, menuBtns.Selected, highScore, uiTick);
+        front.renderMenu(uiTick);
+        profile.drawNotification(canvas);
+        canvas.Flip();
+    }
+
+    // =========================================================================
+    // OPTIONS STATE
+    // =========================================================================
+
+    hide func updateOptions() {
+        if front.updateOptions() == frontend.FRONTEND_EVENT_BACK_TO_MENU {
+            sm.Transition(config.STATE_MENU);
+        }
+    }
+
+    hide func renderOptions() {
+        front.renderOptions(uiTick);
+        profile.drawNotification(canvas);
         canvas.Flip();
     }
 
@@ -322,54 +252,55 @@ class Game {
     // =========================================================================
 
     hide func updateHighScores() {
-        if Action.Pressed(config.ACTION_CONFIRM) || Action.Pressed(config.ACTION_CANCEL) {
-            sfx.playMenuSelect();
+        if front.updateHighScores() == frontend.FRONTEND_EVENT_BACK_TO_MENU {
             sm.Transition(config.STATE_MENU);
         }
     }
 
     hide func renderHighScores() {
-        renderer.drawHighScores(canvas, highScores, uiTick);
+        front.renderHighScores(uiTick);
+        profile.drawNotification(canvas);
         canvas.Flip();
     }
 
-    hide func updateHighScoresList() {
-        for i in 0..highScores.length() {
-            if score > highScores.get(i) {
-                // Shift scores down
-                var j = highScores.length() - 1;
-                while j > i {
-                    highScores.set(j, highScores.get(j - 1));
-                    j = j - 1;
-                }
-                highScores.set(i, score);
-                if i == 0 {
-                    highScore = score;
-                }
-                return;
-            }
+    hide func updateProfile() {
+        if front.updateProfile() == frontend.FRONTEND_EVENT_BACK_TO_MENU {
+            sm.Transition(config.STATE_MENU);
         }
     }
 
-    // =========================================================================
-    // READY STATE
-    // =========================================================================
+    hide func renderProfile() {
+        front.renderProfile(uiTick);
+        profile.drawNotification(canvas);
+        canvas.Flip();
+    }
 
-    hide func startReady() {
-        readyTimer.Start(config.READY_DURATION);
-        readyTween.StartI64(0, 100, 30, config.EASE_OUT_BOUNCE);
-        sfx.playGameMusic();
-        sfx.playReady();
-        sm.Transition(config.STATE_READY);
+    hide func updateSummary() {
+        var event = front.updateSummary();
+        if event == frontend.FRONTEND_EVENT_START_GAME {
+            profile.beginRun();
+            profile.save();
+            playSession.setHighScore(profile.getHighScore());
+            playSession.resetGame();
+            playSession.startReady(sfx);
+            profile.noteLevelReached(playSession.getLevel());
+            sm.Transition(config.STATE_READY);
+        } else if event == frontend.FRONTEND_EVENT_OPEN_PROFILE {
+            sm.Transition(config.STATE_PROFILE);
+        } else if event == frontend.FRONTEND_EVENT_BACK_TO_MENU {
+            sfx.playMenuMusic();
+            sm.Transition(config.STATE_MENU);
+        }
+    }
+
+    hide func renderSummary() {
+        front.renderSummary(uiTick);
+        profile.drawNotification(canvas);
+        canvas.Flip();
     }
 
     hide func updateReady() {
-        readyTimer.Update();
-        readyTween.Update();
-
-        if readyTimer.IsExpired {
-            modeTimer.Start(config.MODE_SWITCH_TIME);
-            chaseMode = false;
+        if playSession.updateReady() == session.EVENT_READY_COMPLETE {
             sm.Transition(config.STATE_PLAYING);
         }
     }
@@ -379,167 +310,26 @@ class Game {
     // =========================================================================
 
     hide func updatePlaying() {
-        // Handle pause
-        if Action.Pressed(config.ACTION_PAUSE) {
-            sfx.playPause();
+        var event = playSession.updatePlaying(sfx);
+        if event == session.EVENT_PAUSE {
             sm.Transition(config.STATE_PAUSED);
             return;
         }
-
-        // Handle movement input
-        if Action.Held(config.ACTION_UP) {
-            pacman.setNextDirection(config.DIR_UP);
-        } else if Action.Held(config.ACTION_DOWN) {
-            pacman.setNextDirection(config.DIR_DOWN);
-        } else if Action.Held(config.ACTION_LEFT) {
-            pacman.setNextDirection(config.DIR_LEFT);
-        } else if Action.Held(config.ACTION_RIGHT) {
-            pacman.setNextDirection(config.DIR_RIGHT);
-        }
-
-        // Update ghost mode timer
-        if modeTimer.Update() {
-            chaseMode = !chaseMode;
-            modeTimer.Start(config.MODE_SWITCH_TIME);
-
-            // Update ghost modes
-            for i in 0..ghosts.length() {
-                var g = ghosts.get(i);
-                if g.getMode() != config.MODE_FRIGHTENED {
-                    if chaseMode {
-                        g.setMode(config.MODE_CHASE);
-                    } else {
-                        g.setMode(config.MODE_SCATTER);
-                    }
-                }
-            }
-        }
-
-        // Update game objects
-        pacman.update(theMaze);
-        theFruit.update();
-
-        // Check for dot eating
-        var points = theMaze.eatDot(pacman.getGridX(), pacman.getGridY());
-        if points > 0 {
-            score = score + points;
-            dotsEaten = dotsEaten + 1;
-
-            // Particle effect for eating
-            var dotPx = utils.gridToCenterX(pacman.getGridX());
-            var dotPy = utils.gridToCenterY(pacman.getGridY());
-            if points == config.PELLET_POINTS {
-                particleSys.burstPellet(dotPx, dotPy);
-                fx.Flash(config.COLOR_BLUE * 256 + 0x44, 80);
-                sfx.playPellet();
-            } else {
-                particleSys.burstDotEat(dotPx, dotPy);
-                if (dotsEaten % 2) == 0 {
-                    sfx.playDot();
-                }
-            }
-
-            // Spawn fruit at 70 and 170 dots
-            if dotsEaten == 70 || dotsEaten == 170 {
-                theFruit.spawn(level);
-            }
-
-            // Power pellet - frighten ghosts
-            if points == config.PELLET_POINTS {
-                ghostsEaten = 0;
-                for i in 0..ghosts.length() {
-                    var g = ghosts.get(i);
-                    g.setMode(config.MODE_FRIGHTENED);
-                }
-            }
-        }
-
-        // Check fruit collection
-        if theFruit.collidesWithPacman(pacman.getGridX(), pacman.getGridY()) {
-            var fruitPx = utils.gridToCenterX(pacman.getGridX());
-            var fruitPy = utils.gridToCenterY(pacman.getGridY());
-            particleSys.burstFruitCollect(fruitPx, fruitPy, config.COLOR_GREEN);
-            score = score + theFruit.collect();
-            sfx.playFruit();
-        }
-
-        // Extra life at 10000 points
-        if score >= config.EXTRA_LIFE_SCORE && !extraLifeAwarded {
-            lives = lives + 1;
-            extraLifeAwarded = true;
-            sfx.playExtraLife();
-        }
-
-        // Update high score
-        if score > highScore {
-            highScore = score;
-        }
-
-        // Update ghosts
-        var blinkyX = 0;
-        var blinkyY = 0;
-        if ghosts.length() > 0 {
-            var blinky = ghosts.get(0);
-            blinkyX = blinky.getGridX();
-            blinkyY = blinky.getGridY();
-        }
-
-        for i in 0..ghosts.length() {
-            var g = ghosts.get(i);
-            g.update(theMaze, pacman.getGridX(), pacman.getGridY(), blinkyX, blinkyY);
-        }
-
-        // Check ghost collisions
-        for i in 0..ghosts.length() {
-            var g = ghosts.get(i);
-            if g.collidesWithPacman(pacman.getGridX(), pacman.getGridY()) {
-                var gPx = utils.gridToCenterX(g.getGridX());
-                var gPy = utils.gridToCenterY(g.getGridY());
-                if g.getMode() == config.MODE_FRIGHTENED {
-                    // Eat ghost
-                    ghostsEaten = ghostsEaten + 1;
-                    var ghostPoints = config.GHOST_BASE_POINTS;
-                    var mult = 1;
-                    for j in 1..ghostsEaten {
-                        mult = mult * 2;
-                    }
-                    score = score + ghostPoints * mult;
-                    particleSys.burstGhostEat(gPx, gPy, g.getColor());
-                    fx.Shake(4000, 120, 500);
-                    sfx.playGhostEat();
-                    g.reset();
-                } else {
-                    // Pac-Man dies
-                    self.pacmanDeath();
-                    return;
-                }
-            }
-        }
-
-        // Check win condition
-        if theMaze.allDotsEaten() {
-            sfx.playLevelClear();
-            sm.Transition(config.STATE_WIN);
-        }
-    }
-
-    hide func pacmanDeath() {
-        // Death effects
-        var deathPx = utils.gridToCenterX(pacman.getGridX());
-        var deathPy = utils.gridToCenterY(pacman.getGridY());
-        particleSys.burstDeath(deathPx, deathPy);
-        fx.Shake(8000, 200, 500);
-        fx.Flash(config.COLOR_RED * 256 + 0xAA, 160);
-        sfx.playDeath();
-
-        lives = lives - 1;
-
-        if lives <= 0 {
-            self.updateHighScoresList();
-            sm.Transition(config.STATE_GAME_OVER);
-        } else {
-            deathTimer.Start(config.DEATH_DURATION);
+        if event == session.EVENT_DYING {
             sm.Transition(config.STATE_DYING);
+            return;
+        }
+        if event == session.EVENT_GAME_OVER {
+            profile.finishRun(playSession.getScore(), playSession.getLevel());
+            profile.save();
+            playSession.setHighScore(profile.getHighScore());
+            sfx.playMenuMusic();
+            sm.Transition(config.STATE_SUMMARY);
+            return;
+        }
+        if event == session.EVENT_WIN {
+            sm.Transition(config.STATE_WIN);
+            return;
         }
     }
 
@@ -548,14 +338,10 @@ class Game {
     // =========================================================================
 
     hide func updateDying() {
-        deathTimer.Update();
-        if deathTimer.IsExpired {
-            pacman.reset(14, 23);
-            for i in 0..ghosts.length() {
-                var g = ghosts.get(i);
-                g.reset();
-            }
-            self.startReady();
+        if playSession.updateDying() == session.EVENT_DYING_COMPLETE {
+            playSession.startReady(sfx);
+            profile.noteLevelReached(playSession.getLevel());
+            sm.Transition(config.STATE_READY);
         }
     }
 
@@ -571,24 +357,10 @@ class Game {
         if Action.Pressed(config.ACTION_CANCEL) {
             sfx.playMenuSelect();
             sfx.playMenuMusic();
-            sm.Transition(config.STATE_MENU);
-        }
-    }
-
-    // =========================================================================
-    // GAME OVER STATE
-    // =========================================================================
-
-    hide func updateGameOver() {
-        if Action.Pressed(config.ACTION_RESTART) || Action.Pressed(config.ACTION_CONFIRM) {
-            sfx.playMenuSelect();
-            self.resetGame();
-            self.startReady();
-        }
-        if Action.Pressed(config.ACTION_CANCEL) {
-            sfx.playMenuSelect();
-            sfx.playMenuMusic();
-            sm.Transition(config.STATE_MENU);
+            profile.finishRun(playSession.getScore(), playSession.getLevel());
+            profile.save();
+            playSession.setHighScore(profile.getHighScore());
+            sm.Transition(config.STATE_SUMMARY);
         }
     }
 
@@ -599,7 +371,10 @@ class Game {
     hide func updateWin() {
         if Action.Pressed(config.ACTION_RESTART) || Action.Pressed(config.ACTION_CONFIRM) {
             sfx.playMenuSelect();
-            self.nextLevel();
+            playSession.nextLevel();
+            playSession.startReady(sfx);
+            profile.noteLevelReached(playSession.getLevel());
+            sm.Transition(config.STATE_READY);
         }
         if Action.Pressed(config.ACTION_CANCEL) {
             sfx.playMenuSelect();
@@ -609,97 +384,23 @@ class Game {
     }
 
     // =========================================================================
-    // GAME RESET
-    // =========================================================================
-
-    hide func resetGame() {
-        score = 0;
-        lives = 3;
-        level = 1;
-        dotsEaten = 0;
-        extraLifeAwarded = false;
-        chaseMode = false;
-
-        theMaze.reset();
-        pacman.reset(14, 23);
-        for i in 0..ghosts.length() {
-            var g = ghosts.get(i);
-            g.reset();
-        }
-        theFruit.reset();
-        particleSys.reset();
-
-        displayScore.SetImmediate(0.0);
-    }
-
-    hide func nextLevel() {
-        level = level + 1;
-        dotsEaten = 0;
-        chaseMode = false;
-
-        theMaze.reset();
-        pacman.reset(14, 23);
-        for i in 0..ghosts.length() {
-            var g = ghosts.get(i);
-            g.reset();
-        }
-        theFruit.reset();
-
-        self.startReady();
-    }
-
-    // =========================================================================
     // RENDERING
     // =========================================================================
 
     hide func render() {
-        renderer.drawPlayfieldShell(canvas, uiTick);
-
-        // Draw game objects
-        theMaze.draw(canvas);
-        theFruit.draw(canvas);
-        pacman.draw(canvas);
-
-        for i in 0..ghosts.length() {
-            var g = ghosts.get(i);
-            g.draw(canvas);
-        }
-
-        // Draw particles
-        particleSys.draw(canvas);
-
-        // Draw UI
-        self.drawUI();
-
-        // Draw screen effects overlay (flash/fade)
-        var overlayCol = fx.get_OverlayColor();
-        if overlayCol != 0 {
-            var r = (overlayCol / 0x1000000) % 256;
-            var g2 = (overlayCol / 0x10000) % 256;
-            var b = (overlayCol / 0x100) % 256;
-            var a = overlayCol % 256;
-            var rgb = r * 0x10000 + g2 * 0x100 + b;
-            canvas.BoxAlpha(0, 0, config.SCREEN_WIDTH, config.SCREEN_HEIGHT, rgb, a);
-        }
-
         var overlayState = config.STATE_PLAYING;
         if sm.IsState(config.STATE_READY) {
             overlayState = config.STATE_READY;
         } else if sm.IsState(config.STATE_PAUSED) {
             overlayState = config.STATE_PAUSED;
-        } else if sm.IsState(config.STATE_GAME_OVER) {
-            overlayState = config.STATE_GAME_OVER;
         } else if sm.IsState(config.STATE_WIN) {
             overlayState = config.STATE_WIN;
         } else if sm.IsState(config.STATE_DYING) {
             overlayState = config.STATE_DYING;
         }
-        renderer.drawStateOverlay(canvas, overlayState, readyTween.Progress, uiTick);
+        playSession.render(canvas, overlayState, uiTick);
+        profile.drawNotification(canvas);
 
         canvas.Flip();
-    }
-
-    hide func drawUI() {
-        renderer.drawHud(canvas, displayScore.ValueI64, highScore, level, lives, uiTick);
     }
 }

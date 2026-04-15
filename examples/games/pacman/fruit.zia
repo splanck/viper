@@ -1,5 +1,5 @@
 // =============================================================================
-// PAC-MAN - Fruit Entity
+// CRACKMAN - Fruit Entity
 // =============================================================================
 // Uses new Viper runtime features:
 // - Timer for fruit visibility and points display duration

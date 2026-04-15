@@ -1,5 +1,5 @@
 // =============================================================================
-// PAC-MAN - Configuration and Constants
+// CRACKMAN - Configuration and Constants
 // =============================================================================
 // Rewritten to use new Viper runtime features:
 // - Action mapping constants for device-agnostic input
@@ -18,7 +18,7 @@ final GRID_HEIGHT = 31;
 final PLAYFIELD_WIDTH = 672;
 final PLAYFIELD_HEIGHT = 744;
 
-// Larger presentation shell around the original Pac-Man grid.
+// Larger presentation shell around the original maze grid.
 final SCREEN_WIDTH = 800;
 final SCREEN_HEIGHT = 988;
 final PLAYFIELD_X = 64;
@@ -112,6 +112,9 @@ final STATE_WIN = 4;
 final STATE_READY = 5;
 final STATE_DYING = 6;
 final STATE_HIGHSCORES = 7;
+final STATE_OPTIONS = 8;
+final STATE_PROFILE = 9;
+final STATE_SUMMARY = 10;
 
 // =============================================================================
 // DIRECTION CONSTANTS

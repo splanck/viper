@@ -1,5 +1,5 @@
 // =============================================================================
-// PAC-MAN - Utility Functions
+// CRACKMAN - Utility Functions
 // =============================================================================
 
 module utils;
@@ -56,6 +56,39 @@ func getDirY(dir: Integer) -> Integer {
     if dir == config.DIR_UP { return -1; }
     if dir == config.DIR_DOWN { return 1; }
     return 0;
+}
+
+func wrapGridX(x: Integer) -> Integer {
+    if x < 0 {
+        return config.GRID_WIDTH - 1;
+    } else if x >= config.GRID_WIDTH {
+        return 0;
+    }
+    return x;
+}
+
+func isAtTileCenter(gridX: Integer, gridY: Integer, screenX: Integer, screenY: Integer) -> Boolean {
+    return screenX == gridToScreenX(gridX) && screenY == gridToScreenY(gridY);
+}
+
+func isHorizontalTunnelWrap(gridX: Integer, dirX: Integer) -> Boolean {
+    return dirX != 0 && ((gridX == 0 && dirX < 0) || (gridX == config.GRID_WIDTH - 1 && dirX > 0));
+}
+
+func moveToward(current: Integer, target: Integer, speed: Integer) -> Integer {
+    var result = current;
+    if result < target {
+        result = result + speed;
+        if result > target {
+            result = target;
+        }
+    } else if result > target {
+        result = result - speed;
+        if result < target {
+            result = target;
+        }
+    }
+    return result;
 }
 
 // =============================================================================

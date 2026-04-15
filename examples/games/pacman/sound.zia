@@ -1,152 +1,40 @@
 module sound;
 
 bind Viper.Sound;
+bind "./audio/sfx_bank";
+bind "./audio/music_tracks";
 
 class SoundManager {
     hide Boolean ready;
     hide SoundBank bank;
     hide Integer musicVoice;
     hide Integer currentTrack;
+    hide Integer masterVolume;
+    hide Integer musicVolume;
+    hide Integer sfxVolume;
+    hide Boolean muted;
 
     expose func init() {
         ready = false;
         musicVoice = -1;
         currentTrack = -1;
+        masterVolume = 76;
+        musicVolume = 32;
+        sfxVolume = 100;
+        muted = false;
     }
 
     expose func setup() {
         if Audio.IsAvailable() == false { return; }
         var ok = Audio.Init();
         if ok == 0 { return; }
-
-        Audio.SetMasterVolume(76);
         bank = SoundBank.New();
 
-        bank.RegisterSound("menu_move", Synth.Tone(560, 60, 1));
-        bank.RegisterSound("menu_select", Synth.Tone(880, 90, 1));
-        bank.RegisterSound("dot", Synth.Tone(1040, 28, 1));
-        bank.RegisterSound("pellet", Synth.Sfx(4));
-        bank.RegisterSound("fruit", Synth.Tone(1320, 90, 3));
-        bank.RegisterSound("ghost_eat", Synth.Sfx(5));
-        bank.RegisterSound("death", Synth.Sfx(3));
-        bank.RegisterSound("extra_life", Synth.Tone(523, 90, 1));
-        bank.RegisterSound("ready", Synth.Tone(659, 120, 3));
-        bank.RegisterSound("pause", Synth.Tone(320, 80, 1));
-        bank.RegisterSound("level_clear", Synth.Tone(988, 180, 1));
+        sfx_bank.registerSfx(bank);
+        music_tracks.registerTracks(bank);
 
         ready = true;
-    }
-
-    hide func buildMenuMusic() {
-        var song = MusicGen.New(112);
-        var lead = song.AddChannel(1);
-        var bass = song.AddChannel(3);
-        var pad = song.AddChannel(0);
-
-        song.SetEnvelope(lead, 6, 50, 58, 70);
-        song.SetDuty(lead, 25);
-        song.SetVibrato(lead, 10, 500);
-        song.SetPan(lead, 18);
-
-        song.SetEnvelope(bass, 4, 40, 80, 50);
-        song.SetPan(bass, -12);
-
-        song.SetEnvelope(pad, 100, 120, 48, 180);
-        song.SetPan(pad, -24);
-
-        song.AddNote(pad, 0, 67, 400);
-        song.AddNote(pad, 400, 64, 400);
-        song.AddNote(pad, 800, 60, 400);
-        song.AddNote(pad, 1200, 62, 400);
-
-        song.AddNote(lead, 0, 79, 100);
-        song.AddNote(lead, 100, 76, 100);
-        song.AddNote(lead, 200, 72, 100);
-        song.AddNote(lead, 300, 76, 100);
-        song.AddNote(lead, 400, 79, 100);
-        song.AddNote(lead, 500, 84, 100);
-        song.AddNote(lead, 600, 79, 100);
-        song.AddNote(lead, 700, 76, 100);
-        song.AddNote(lead, 800, 72, 100);
-        song.AddNote(lead, 900, 76, 100);
-        song.AddNote(lead, 1000, 79, 100);
-        song.AddNote(lead, 1100, 83, 100);
-        song.AddNote(lead, 1200, 81, 100);
-        song.AddNote(lead, 1300, 79, 100);
-        song.AddNote(lead, 1400, 76, 100);
-        song.AddNote(lead, 1500, 72, 100);
-
-        song.AddNote(bass, 0, 43, 200);
-        song.AddNote(bass, 200, 43, 200);
-        song.AddNote(bass, 400, 40, 200);
-        song.AddNote(bass, 600, 40, 200);
-        song.AddNote(bass, 800, 36, 200);
-        song.AddNote(bass, 1000, 36, 200);
-        song.AddNote(bass, 1200, 38, 200);
-        song.AddNote(bass, 1400, 38, 200);
-
-        song.SetLength(1600);
-        song.SetLoopable(1);
-
-        var built = song.Build();
-        if built != null {
-            bank.RegisterSound("music_menu", built);
-        }
-    }
-
-    hide func buildGameMusic() {
-        var song = MusicGen.New(148);
-        var lead = song.AddChannel(1);
-        var bass = song.AddChannel(2);
-        var drums = song.AddChannel(4);
-
-        song.SetEnvelope(lead, 4, 35, 60, 40);
-        song.SetDuty(lead, 50);
-        song.SetVibrato(lead, 8, 800);
-        song.SetPan(lead, -8);
-
-        song.SetEnvelope(bass, 4, 30, 86, 30);
-        song.SetPan(bass, 8);
-
-        song.SetEnvelope(drums, 1, 16, 0, 20);
-
-        song.AddNote(lead, 0, 79, 50);
-        song.AddNote(lead, 50, 83, 50);
-        song.AddNote(lead, 100, 86, 50);
-        song.AddNote(lead, 150, 83, 50);
-        song.AddNote(lead, 200, 79, 50);
-        song.AddNote(lead, 250, 76, 50);
-        song.AddNote(lead, 300, 72, 50);
-        song.AddNote(lead, 350, 76, 50);
-        song.AddNote(lead, 400, 79, 50);
-        song.AddNote(lead, 450, 83, 50);
-        song.AddNote(lead, 500, 86, 50);
-        song.AddNote(lead, 550, 91, 50);
-        song.AddNote(lead, 600, 86, 50);
-        song.AddNote(lead, 650, 83, 50);
-        song.AddNote(lead, 700, 79, 50);
-        song.AddNote(lead, 750, 76, 50);
-
-        song.AddNote(bass, 0, 36, 200);
-        song.AddNote(bass, 200, 43, 200);
-        song.AddNote(bass, 400, 41, 200);
-        song.AddNote(bass, 600, 38, 200);
-
-        var beat = 0;
-        while beat < 800 {
-            song.AddNote(drums, beat, 2, 16);
-            song.AddNote(drums, beat + 100, 8, 20);
-            song.AddNote(drums, beat + 150, 12, 12);
-            beat = beat + 200;
-        }
-
-        song.SetLength(800);
-        song.SetLoopable(1);
-
-        var built = song.Build();
-        if built != null {
-            bank.RegisterSound("music_game", built);
-        }
+        self.applyMixState();
     }
 
     expose func shutdown() {
@@ -157,59 +45,72 @@ class SoundManager {
         ready = false;
     }
 
+    expose func configure(masterVol: Integer, musicVol: Integer, sfxVol: Integer, isMuted: Boolean) {
+        masterVolume = clampVol(masterVol);
+        musicVolume = clampVol(musicVol);
+        sfxVolume = clampVol(sfxVol);
+        muted = isMuted;
+        self.applyMixState();
+    }
+
+    expose func getMasterVolume() -> Integer {
+        return masterVolume;
+    }
+
+    expose func getMusicVolume() -> Integer {
+        return musicVolume;
+    }
+
+    expose func getSfxVolume() -> Integer {
+        return sfxVolume;
+    }
+
+    expose func isMuted() -> Boolean {
+        return muted;
+    }
+
     expose func playMenuMove() {
-        if ready == false { return; }
-        bank.PlayEx("menu_move", 34, 0);
+        self.playSfx("menu_move", 34);
     }
 
     expose func playMenuSelect() {
-        if ready == false { return; }
-        bank.PlayEx("menu_select", 56, 0);
+        self.playSfx("menu_select", 56);
     }
 
     expose func playDot() {
-        if ready == false { return; }
-        bank.PlayEx("dot", 24, 0);
+        self.playSfx("dot", 24);
     }
 
     expose func playPellet() {
-        if ready == false { return; }
-        bank.PlayEx("pellet", 60, 0);
+        self.playSfx("pellet", 60);
     }
 
     expose func playFruit() {
-        if ready == false { return; }
-        bank.PlayEx("fruit", 62, 0);
+        self.playSfx("fruit", 62);
     }
 
     expose func playGhostEat() {
-        if ready == false { return; }
-        bank.PlayEx("ghost_eat", 60, 0);
+        self.playSfx("ghost_eat", 60);
     }
 
     expose func playDeath() {
-        if ready == false { return; }
-        bank.PlayEx("death", 74, 0);
+        self.playSfx("death", 74);
     }
 
     expose func playExtraLife() {
-        if ready == false { return; }
-        bank.PlayEx("extra_life", 62, 0);
+        self.playSfx("extra_life", 62);
     }
 
     expose func playReady() {
-        if ready == false { return; }
-        bank.PlayEx("ready", 48, 0);
+        self.playSfx("ready", 48);
     }
 
     expose func playPause() {
-        if ready == false { return; }
-        bank.PlayEx("pause", 45, 0);
+        self.playSfx("pause", 45);
     }
 
     expose func playLevelClear() {
-        if ready == false { return; }
-        bank.PlayEx("level_clear", 72, 0);
+        self.playSfx("level_clear", 72);
     }
 
     expose func playMenuMusic() {
@@ -218,7 +119,7 @@ class SoundManager {
         self.stopMusic();
         if bank.Has("music_menu") {
             var snd = bank.Get("music_menu");
-            musicVoice = snd.PlayLoop(32, 0);
+            musicVoice = snd.PlayLoopGroup(100, 0, 0);
             currentTrack = 0;
         }
     }
@@ -229,7 +130,7 @@ class SoundManager {
         self.stopMusic();
         if bank.Has("music_game") {
             var snd = bank.Get("music_game");
-            musicVoice = snd.PlayLoop(26, 0);
+            musicVoice = snd.PlayLoopGroup(100, 0, 0);
             currentTrack = 1;
         }
     }
@@ -241,4 +142,32 @@ class SoundManager {
             currentTrack = -1;
         }
     }
+
+    hide func playSfx(name: String, volume: Integer) {
+        if ready == false { return; }
+        if bank.Has(name) {
+            bank.Get(name).PlayExGroup(volume, 0, 1);
+        }
+    }
+
+    hide func applyMixState() {
+        if ready == false { return; }
+        var masterOut = masterVolume;
+        var musicOut = musicVolume;
+        var sfxOut = sfxVolume;
+        if muted {
+            masterOut = 0;
+            musicOut = 0;
+            sfxOut = 0;
+        }
+        Audio.SetMasterVolume(masterOut);
+        Audio.SetGroupVolume(0, musicOut);
+        Audio.SetGroupVolume(1, sfxOut);
+    }
+}
+
+func clampVol(v: Integer) -> Integer {
+    if v < 0 { return 0; }
+    if v > 100 { return 100; }
+    return v;
 }

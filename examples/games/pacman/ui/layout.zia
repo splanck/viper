@@ -27,7 +27,13 @@ final OUTER_PAD = 24;
 final CARD_GAP = 16;
 final PLAYFIELD_PAD = 16;
 final MENU_CARD_W = 520;
-final MENU_CARD_H = 432;
+final MENU_CARD_H = 536;
+final OPTIONS_CARD_W = 580;
+final OPTIONS_CARD_H = 454;
+final PROFILE_CARD_W = 680;
+final PROFILE_CARD_H = 662;
+final SUMMARY_CARD_W = 620;
+final SUMMARY_CARD_H = 540;
 
 func rect(px: Integer, py: Integer, pw: Integer, ph: Integer) -> Rect {
     var r = new Rect();
@@ -76,17 +82,17 @@ func livesCardRect() -> Rect {
 }
 
 func menuCardRect() -> Rect {
-    return rect((config.SCREEN_WIDTH - MENU_CARD_W) / 2, 160, MENU_CARD_W, MENU_CARD_H);
+    return rect((config.SCREEN_WIDTH - MENU_CARD_W) / 2, 150, MENU_CARD_W, MENU_CARD_H);
 }
 
 func menuButtonRect(idx: Integer) -> Rect {
     var card = menuCardRect();
-    return rect(card.x + 52, card.y + 188 + idx * 58, card.w - 104, 44);
+    return rect(card.x + 52, card.y + 188 + idx * 52, card.w - 104, 40);
 }
 
 func menuInfoRect() -> Rect {
     var card = menuCardRect();
-    return rect(card.x + 42, card.y + 372, card.w - 84, 42);
+    return rect(card.x + 42, card.y + 456, card.w - 84, 48);
 }
 
 func attractLaneRect() -> Rect {
@@ -96,7 +102,7 @@ func attractLaneRect() -> Rect {
 
 func menuShowcaseRect() -> Rect {
     var card = menuCardRect();
-    return rect((config.SCREEN_WIDTH - 620) / 2, card.y + card.h + 20, 620, 198);
+    return rect((config.SCREEN_WIDTH - 620) / 2, card.y + card.h + 14, 620, 198);
 }
 
 func menuGhostEntryRect(idx: Integer) -> Rect {
@@ -114,4 +120,74 @@ func leaderboardCardRect() -> Rect {
 
 func overlayCardRect() -> Rect {
     return rect((config.SCREEN_WIDTH - 360) / 2, (config.SCREEN_HEIGHT - 190) / 2, 360, 190);
+}
+
+func optionsCardRect() -> Rect {
+    return rect((config.SCREEN_WIDTH - OPTIONS_CARD_W) / 2, 190, OPTIONS_CARD_W, OPTIONS_CARD_H);
+}
+
+func optionsRowRect(idx: Integer) -> Rect {
+    var card = optionsCardRect();
+    return rect(card.x + 32, card.y + 100 + idx * 54, card.w - 64, 42);
+}
+
+func optionsHintRect() -> Rect {
+    var card = optionsCardRect();
+    return rect(card.x + 36, card.y + card.h - 62, card.w - 72, 32);
+}
+
+func profileCardRect() -> Rect {
+    return rect((config.SCREEN_WIDTH - PROFILE_CARD_W) / 2, 146, PROFILE_CARD_W, PROFILE_CARD_H);
+}
+
+func profileStatsRect() -> Rect {
+    var card = profileCardRect();
+    return rect(card.x + 26, card.y + 92, 236, card.h - 154);
+}
+
+func profileStatRowRect(idx: Integer) -> Rect {
+    var box = profileStatsRect();
+    return rect(box.x + 10, box.y + 18 + idx * 62, box.w - 20, 50);
+}
+
+func profileAchievementsRect() -> Rect {
+    var card = profileCardRect();
+    return rect(card.x + 280, card.y + 92, card.w - 306, card.h - 154);
+}
+
+func profileAchievementRowRect(idx: Integer, startIdx: Integer) -> Rect {
+    var list = profileAchievementsRect();
+    var row = idx - startIdx;
+    return rect(list.x + 12, list.y + 16 + row * 48, list.w - 24, 42);
+}
+
+func profileFooterRect() -> Rect {
+    var card = profileCardRect();
+    return rect(card.x + 28, card.y + card.h - 48, card.w - 56, 26);
+}
+
+func summaryCardRect() -> Rect {
+    return rect((config.SCREEN_WIDTH - SUMMARY_CARD_W) / 2, 190, SUMMARY_CARD_W, SUMMARY_CARD_H);
+}
+
+func summaryHeaderRect() -> Rect {
+    var card = summaryCardRect();
+    return rect(card.x + 26, card.y + 24, card.w - 52, 64);
+}
+
+func summaryStatRect(idx: Integer) -> Rect {
+    var card = summaryCardRect();
+    var col = idx % 2;
+    var row = idx / 2;
+    return rect(card.x + 34 + col * 276, card.y + 112 + row * 68, 242, 54);
+}
+
+func summaryUnlocksRect() -> Rect {
+    var card = summaryCardRect();
+    return rect(card.x + 34, card.y + 320, card.w - 68, 104);
+}
+
+func summaryButtonRect(idx: Integer) -> Rect {
+    var card = summaryCardRect();
+    return rect(card.x + 40 + idx * 182, card.y + card.h - 68, 160, 40);
 }

@@ -1,0 +1,98 @@
+module settings;
+
+bind Viper.IO;
+
+class Settings {
+    hide SaveData store;
+    hide Integer masterVolume;
+    hide Integer musicVolume;
+    hide Integer sfxVolume;
+    hide Boolean muted;
+    hide Boolean fullscreen;
+
+    expose func init(saveKey: String) {
+        store = SaveData.New(saveKey);
+        self.resetDefaults();
+    }
+
+    expose func resetDefaults() {
+        masterVolume = 76;
+        musicVolume = 32;
+        sfxVolume = 100;
+        muted = false;
+        fullscreen = false;
+    }
+
+    expose func load() {
+        self.resetDefaults();
+        store.Load();
+        masterVolume = self.clampVolume(store.GetInt("master_volume", masterVolume));
+        musicVolume = self.clampVolume(store.GetInt("music_volume", musicVolume));
+        sfxVolume = self.clampVolume(store.GetInt("sfx_volume", sfxVolume));
+        muted = store.GetInt("muted", 0) != 0;
+        fullscreen = store.GetInt("fullscreen", 0) != 0;
+    }
+
+    expose func save() {
+        store.SetInt("master_volume", masterVolume);
+        store.SetInt("music_volume", musicVolume);
+        store.SetInt("sfx_volume", sfxVolume);
+        if muted {
+            store.SetInt("muted", 1);
+        } else {
+            store.SetInt("muted", 0);
+        }
+        if fullscreen {
+            store.SetInt("fullscreen", 1);
+        } else {
+            store.SetInt("fullscreen", 0);
+        }
+        store.Save();
+    }
+
+    expose func getMasterVolume() -> Integer {
+        return masterVolume;
+    }
+
+    expose func getMusicVolume() -> Integer {
+        return musicVolume;
+    }
+
+    expose func getSfxVolume() -> Integer {
+        return sfxVolume;
+    }
+
+    expose func isMuted() -> Boolean {
+        return muted;
+    }
+
+    expose func isFullscreen() -> Boolean {
+        return fullscreen;
+    }
+
+    expose func adjustMasterVolume(delta: Integer) {
+        masterVolume = self.clampVolume(masterVolume + delta);
+    }
+
+    expose func adjustMusicVolume(delta: Integer) {
+        musicVolume = self.clampVolume(musicVolume + delta);
+    }
+
+    expose func adjustSfxVolume(delta: Integer) {
+        sfxVolume = self.clampVolume(sfxVolume + delta);
+    }
+
+    expose func toggleMuted() {
+        muted = !muted;
+    }
+
+    expose func toggleFullscreen() {
+        fullscreen = !fullscreen;
+    }
+
+    hide func clampVolume(v: Integer) -> Integer {
+        if v < 0 { return 0; }
+        if v > 100 { return 100; }
+        return v;
+    }
+}

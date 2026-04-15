@@ -1,18 +1,19 @@
 // =============================================================================
-// PAC-MAN CLONE - Demonstrating New Viper Game Development Features
+// CRACKMAN - Demonstrating New Viper Game Development Features
 // =============================================================================
 //
-// A feature-complete Pac-Man clone showcasing the new Viper runtime
+// A feature-complete Crackman maze-chase demo showcasing the new Viper runtime
 // game development abstractions:
 //
 // NEW FEATURES DEMONSTRATED:
-// - Viper.Game.StateMachine:    Game state transitions (menu, playing, paused, etc.)
-// - Viper.Game.ButtonGroup:     Menu selection with auto-wraparound
-// - Viper.Input.Action:         Edge detection and debounced input for menus
+// - Viper.Game.StateMachine:    App-level and gameplay state transitions
+// - Viper.Game.ButtonGroup:     Menu selection with wraparound
+// - Viper.Input.Action:         Edge detection and debounced input
 // - Viper.Game.Grid2D:          2D tile storage with bounds checking
-// - Viper.Game.Timer:           Frame-based timers (repeating, countdown)
-// - Viper.Game.Tween:           Smooth animations (ready text bounce)
-// - Viper.Game.SmoothValue:     Animated score counter
+// - Viper.Game.Pathfinder:      Ghost return-home routing
+// - Viper.Game.AchievementTracker: Persistent unlocks and in-run notifications
+// - Viper.Graphics.SpriteBatch: Batched maze and collectible rendering
+// - Viper.Game.Timer/Tween/SmoothValue: Session timing, overlays, and score motion
 //
 // LANGUAGE FEATURES:
 // - for-in range syntax:   `for i in 0..10 { ... }`
@@ -20,7 +21,7 @@
 // - Entity types:          Reference semantics with methods
 //
 // CONTROLS:
-//   Arrow Keys / WASD - Move Pac-Man
+//   Arrow Keys / WASD - Move Crackman
 //   ENTER / SPACE     - Confirm / Select
 //   ESC               - Back / Quit
 //   P                 - Pause
@@ -28,7 +29,7 @@
 //
 // =============================================================================
 
-module PacMan;
+module Crackman;
 
 bind "./game";
 

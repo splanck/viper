@@ -1,0 +1,17 @@
+module sfx_bank;
+
+bind Viper.Sound;
+
+expose func registerSfx(bank: SoundBank) {
+    bank.RegisterSound("menu_move", Synth.Tone(720, 34, 1));
+    bank.RegisterSound("menu_select", Synth.Sweep(720, 1080, 72, 1));
+    bank.RegisterSound("dot", Synth.Tone(1260, 16, 1));
+    bank.RegisterSound("pellet", Synth.Sweep(540, 1120, 120, 1));
+    bank.RegisterSound("fruit", Synth.Sweep(860, 1480, 96, 0));
+    bank.RegisterSound("ghost_eat", Synth.Sweep(1600, 420, 150, 1));
+    bank.RegisterSound("death", Synth.Sweep(680, 70, 420, 2));
+    bank.RegisterSound("extra_life", Synth.Sweep(520, 1240, 180, 1));
+    bank.RegisterSound("ready", Synth.Tone(659, 130, 1));
+    bank.RegisterSound("pause", Synth.Tone(300, 70, 3));
+    bank.RegisterSound("level_clear", Synth.Sweep(780, 1560, 220, 1));
+}

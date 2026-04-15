@@ -1,0 +1,29 @@
+module sprite_support;
+
+bind Viper.Graphics;
+bind Color = Viper.Graphics.Color;
+
+bind "../config";
+
+expose func rgba(rgb: Integer, a: Integer) -> Integer {
+    return Color.RGBA(Color.GetR(rgb), Color.GetG(rgb), Color.GetB(rgb), a);
+}
+
+expose func absi(v: Integer) -> Integer {
+    if v < 0 { return 0 - v; }
+    return v;
+}
+
+expose func dirIndex(dir: Integer) -> Integer {
+    if dir == config.DIR_LEFT { return 1; }
+    if dir == config.DIR_UP { return 2; }
+    if dir == config.DIR_DOWN { return 3; }
+    return 0;
+}
+
+expose func colorIndex(color: Integer) -> Integer {
+    if color == config.COLOR_PINK { return 1; }
+    if color == config.COLOR_CYAN { return 2; }
+    if color == config.COLOR_ORANGE { return 3; }
+    return 0;
+}

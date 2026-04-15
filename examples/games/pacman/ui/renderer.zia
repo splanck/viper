@@ -2,8 +2,10 @@ module renderer;
 
 bind Viper.Graphics;
 bind Color = Viper.Graphics.Color;
+bind Viper.Fmt;
 
 bind "../config";
+bind "../progression";
 bind "../utils";
 bind "./theme";
 bind "./layout";
@@ -180,7 +182,12 @@ expose func drawPlayfieldShell(canvas: Canvas, tickMs: Integer) {
     drawPlayfieldAtmosphere(canvas, tickMs);
 }
 
-expose func drawMenu(canvas: Canvas, selected: Integer, highScore: Integer, tickMs: Integer) {
+expose func drawMenu(canvas: Canvas,
+                     selected: Integer,
+                     highScore: Integer,
+                     unlockedAchievements: Integer,
+                     totalAchievements: Integer,
+                     tickMs: Integer) {
     drawBackdrop(canvas, tickMs);
     drawTitleMarquee(canvas, tickMs);
 
@@ -189,10 +196,17 @@ expose func drawMenu(canvas: Canvas, selected: Integer, highScore: Integer, tick
 
     var attract = attractLaneRect();
     widgets.drawInset(canvas, attract);
-    canvas.SetClipRect(attract.x + 4, attract.y + 4, attract.w - 8, attract.h - 8);
+    var laneX = attract.x + 4;
+    var laneY = attract.y + 4;
+    var laneW = attract.w - 8;
+    var laneH = attract.h - 8;
+    final TRAIN_W = 198;
+    final TRAIN_MARGIN = 180;
+
+    canvas.SetClipRect(laneX, laneY, laneW, laneH);
     drawPelletRow(canvas, attract.x + 22, attract.y + attract.h / 2 + 10, attract.w - 44, tickMs);
-    var laneOffset = (tickMs / 4) % (attract.w + 170);
-    var pacX = attract.x + 18 + laneOffset - 170;
+    var laneOffset = (tickMs / 4) % (laneW + TRAIN_W + TRAIN_MARGIN * 2);
+    var pacX = laneX - TRAIN_W - TRAIN_MARGIN + laneOffset;
     drawLogoPacman(canvas, pacX, attract.y + 1, tickMs);
     drawLogoGhost(canvas, pacX + 62, attract.y + 7, config.COLOR_RED);
     drawLogoGhost(canvas, pacX + 108, attract.y + 7, config.COLOR_PINK);
@@ -203,13 +217,18 @@ expose func drawMenu(canvas: Canvas, selected: Integer, highScore: Integer, tick
     theme.drawTextCentered(canvas, card.x, card.y + 76, card.w, "Classic maze chase with an arcade cabinet shell.", theme.FONT_SMALL_SCALE, theme.TEXT_MUTED);
 
     widgets.drawButton(canvas, menuButtonRect(0), "START GAME", selected == 0, true, false, tickMs);
-    widgets.drawButton(canvas, menuButtonRect(1), "HIGH SCORES", selected == 1, false, false, tickMs);
-    widgets.drawButton(canvas, menuButtonRect(2), "QUIT", selected == 2, false, true, tickMs);
+    widgets.drawButton(canvas, menuButtonRect(1), "PROFILE", selected == 1, false, false, tickMs);
+    widgets.drawButton(canvas, menuButtonRect(2), "OPTIONS", selected == 2, false, false, tickMs);
+    widgets.drawButton(canvas, menuButtonRect(3), "HIGH SCORES", selected == 3, false, false, tickMs);
+    widgets.drawButton(canvas, menuButtonRect(4), "QUIT", selected == 4, false, true, tickMs);
 
     var info = menuInfoRect();
     widgets.drawInset(canvas, info);
     theme.drawTextCentered(canvas, info.x, info.y + 4, info.w, "HIGH SCORE  " + Int(highScore), theme.FONT_BODY_SCALE, theme.ACCENT_CYAN);
-    theme.drawTextCentered(canvas, info.x, info.y + 24, info.w, "MOVE ARROWS/WASD   SELECT ENTER/SPACE   QUIT ESC", theme.FONT_SMALL_SCALE, theme.TEXT_MUTED);
+    theme.drawTextCentered(canvas, info.x, info.y + 22, info.w,
+                           "UNLOCKED  " + Int(unlockedAchievements) + " / " + Int(totalAchievements) +
+                           "   MOVE ARROWS/WASD   SELECT ENTER/SPACE",
+                           theme.FONT_SMALL_SCALE, theme.TEXT_MUTED);
 
     var show = menuShowcaseRect();
     widgets.drawPanel(canvas, show, theme.ACCENT_PINK, true);
@@ -220,6 +239,41 @@ expose func drawMenu(canvas: Canvas, selected: Integer, highScore: Integer, tick
     drawMenuGhostEntry(canvas, 1, "PINKY", "JUMPS AHEAD OF YOUR PATH", config.COLOR_PINK, theme.ACCENT_PINK);
     drawMenuGhostEntry(canvas, 2, "INKY", "WIDE ANGLES AND TRAPS", config.COLOR_CYAN, theme.ACCENT_CYAN);
     drawMenuGhostEntry(canvas, 3, "CLYDE", "BREAKS OFF AND RESETS", config.COLOR_ORANGE, theme.ACCENT_ORANGE);
+}
+
+expose func drawOptions(canvas: Canvas,
+                        selected: Integer,
+                        masterVolume: Integer,
+                        musicVolume: Integer,
+                        sfxVolume: Integer,
+                        muted: Boolean,
+                        fullscreen: Boolean,
+                        tickMs: Integer) {
+    drawBackdrop(canvas, tickMs);
+    drawTitleMarquee(canvas, tickMs);
+
+    var card = optionsCardRect();
+    widgets.drawPanel(canvas, card, theme.ACCENT_CYAN, true);
+    theme.drawTextCentered(canvas, card.x, card.y + 28, card.w, "OPTIONS", theme.FONT_BODY_SCALE, theme.TEXT_PRIMARY);
+    theme.drawTextCentered(canvas, card.x, card.y + 54, card.w, "TUNE DISPLAY AND AUDIO LIVE", theme.FONT_SMALL_SCALE, theme.TEXT_MUTED);
+
+    var fsText = "WINDOWED";
+    if fullscreen { fsText = "FULLSCREEN"; }
+    widgets.drawOptionRow(canvas, optionsRowRect(0), "DISPLAY MODE", fsText, selected == 0, theme.ACCENT_CYAN);
+    widgets.drawSliderRow(canvas, optionsRowRect(1), "MASTER VOLUME", masterVolume, selected == 1, theme.ACCENT_YELLOW);
+    widgets.drawSliderRow(canvas, optionsRowRect(2), "MUSIC VOLUME", musicVolume, selected == 2, theme.ACCENT_CYAN);
+    widgets.drawSliderRow(canvas, optionsRowRect(3), "SFX VOLUME", sfxVolume, selected == 3, theme.ACCENT_PINK);
+
+    var muteText = "OFF";
+    if muted { muteText = "ON"; }
+    widgets.drawOptionRow(canvas, optionsRowRect(4), "MUTE", muteText, selected == 4, theme.ACCENT_RED);
+    widgets.drawOptionRow(canvas, optionsRowRect(5), "BACK", "RETURN TO MENU", selected == 5, theme.ACCENT_ORANGE);
+
+    var hint = optionsHintRect();
+    widgets.drawInset(canvas, hint);
+    theme.drawTextCentered(canvas, hint.x, hint.y + 8, hint.w,
+                           "UP/DOWN SELECT   LEFT/RIGHT ADJUST   ENTER TO TOGGLE   ESC BACK",
+                           theme.FONT_SMALL_SCALE, theme.TEXT_MUTED);
 }
 
 expose func drawHighScores(canvas: Canvas, scores: List[Integer], tickMs: Integer) {
@@ -248,7 +302,155 @@ expose func drawHighScores(canvas: Canvas, scores: List[Integer], tickMs: Intege
                            "PRESS ENTER, SPACE, OR ESC TO RETURN", theme.FONT_SMALL_SCALE, theme.TEXT_MUTED);
 }
 
-expose func drawHud(canvas: Canvas, score: Integer, highScore: Integer, level: Integer, lives: Integer, tickMs: Integer) {
+expose func drawProfile(canvas: Canvas, profile: progression.Progression, selectedIdx: Integer, tickMs: Integer) {
+    drawBackdrop(canvas, tickMs);
+    drawTitleMarquee(canvas, tickMs);
+
+    var card = profileCardRect();
+    widgets.drawPanel(canvas, card, theme.ACCENT_CYAN, true);
+    theme.drawTextCentered(canvas, card.x, card.y + 28, card.w, "PLAYER PROFILE", theme.FONT_BODY_SCALE, theme.TEXT_PRIMARY);
+    theme.drawTextCentered(canvas, card.x, card.y + 54, card.w,
+                           "Persistent stats, unlocks, and long-run Crackman damage.",
+                           theme.FONT_SMALL_SCALE, theme.TEXT_MUTED);
+
+    var stats = profileStatsRect();
+    widgets.drawPanel(canvas, stats, theme.ACCENT_PINK, false);
+    theme.drawTextCentered(canvas, stats.x, stats.y + 10, stats.w, "CAREER", theme.FONT_BODY_SCALE, theme.TEXT_PRIMARY);
+    widgets.drawLabelValue(canvas, profileStatRowRect(0), "BEST SCORE", Int(profile.getBestScore()), theme.ACCENT_YELLOW);
+    widgets.drawLabelValue(canvas, profileStatRowRect(1), "BEST LEVEL", Int(profile.getBestLevel()), theme.ACCENT_CYAN);
+    widgets.drawLabelValue(canvas, profileStatRowRect(2), "RUNS PLAYED", Int(profile.getTotalRuns()), theme.ACCENT_PINK);
+    widgets.drawLabelValue(canvas, profileStatRowRect(3), "MAZES CLEARED", Int(profile.getTotalBoardsCleared()), theme.ACCENT_GREEN);
+    widgets.drawLabelValue(canvas, profileStatRowRect(4), "DOTS EATEN", Int(profile.getTotalDots()), theme.ACCENT_YELLOW);
+    widgets.drawLabelValue(canvas, profileStatRowRect(5), "GHOSTS EATEN", Int(profile.getTotalGhosts()), theme.ACCENT_CYAN);
+    widgets.drawLabelValue(canvas, profileStatRowRect(6), "FRUIT COLLECTED", Int(profile.getTotalFruit()), theme.ACCENT_ORANGE);
+    widgets.drawLabelValue(canvas, profileStatRowRect(7), "TOTAL SCORE", Int(profile.getTotalScore()), theme.ACCENT_PINK);
+
+    var ach = profileAchievementsRect();
+    widgets.drawPanel(canvas, ach, theme.ACCENT_CYAN, false);
+    theme.drawTextCentered(canvas, ach.x, ach.y + 10, ach.w,
+                           "ACHIEVEMENTS  " + Int(profile.getAchievementsUnlocked()) + " / " + Int(profile.getAchievementCount()),
+                           theme.FONT_BODY_SCALE, theme.TEXT_PRIMARY);
+
+    var startIdx = 0;
+    if selectedIdx > 8 {
+        startIdx = selectedIdx - 8;
+    }
+
+    var i = startIdx;
+    while i < profile.getAchievementCount() && i < startIdx + 10 {
+        var row = profileAchievementRowRect(i, startIdx);
+        var unlocked = profile.isAchievementUnlocked(i);
+        var selected = i == selectedIdx;
+        if selected {
+            canvas.BoxAlpha(row.x + 2, row.y + 2, row.w - 4, row.h - 4, theme.ACCENT_CYAN, 12);
+        }
+        widgets.drawInset(canvas, row);
+        var border = theme.PANEL_SOFT;
+        if selected {
+            border = theme.ACCENT_CYAN;
+        }
+        canvas.RoundFrame(row.x, row.y, row.w, row.h, 12, border);
+
+        var iconCol = theme.PANEL_SOFT;
+        var nameCol = theme.TEXT_SECONDARY;
+        var descCol = theme.TEXT_MUTED;
+        var status = "LOCKED";
+        if unlocked {
+            iconCol = theme.ACCENT_YELLOW;
+            nameCol = theme.TEXT_PRIMARY;
+            descCol = theme.TEXT_SECONDARY;
+            status = "DONE";
+        }
+
+        canvas.Disc(row.x + 18, row.y + 21, 8, iconCol);
+        theme.drawTextScaled(canvas, row.x + 34, row.y + 8, profile.getAchievementName(i), theme.FONT_SMALL_SCALE, nameCol);
+        theme.drawTextScaled(canvas, row.x + 34, row.y + 24, profile.getAchievementDesc(i), theme.FONT_SMALL_SCALE, descCol);
+        theme.drawTextRight(canvas, row.x, row.y + 14, row.w - 14, status, theme.FONT_SMALL_SCALE, iconCol);
+        i = i + 1;
+    }
+
+    var footer = profileFooterRect();
+    widgets.drawInset(canvas, footer);
+    theme.drawTextCentered(canvas, footer.x, footer.y + 6, footer.w,
+                           "UP/DOWN BROWSE   ENTER OR ESC BACK",
+                           theme.FONT_SMALL_SCALE, theme.TEXT_MUTED);
+}
+
+expose func drawRunSummary(canvas: Canvas, profile: progression.Progression, selected: Integer, tickMs: Integer) {
+    drawBackdrop(canvas, tickMs);
+    drawTitleMarquee(canvas, tickMs);
+
+    var card = summaryCardRect();
+    widgets.drawPanel(canvas, card, theme.ACCENT_YELLOW, true);
+
+    var header = summaryHeaderRect();
+    widgets.drawInset(canvas, header);
+    theme.drawTextCentered(canvas, header.x, header.y + 10, header.w, "RUN SUMMARY", theme.FONT_BODY_SCALE, theme.TEXT_PRIMARY);
+
+    var subtitle = "SOLID SHIFT. TUNE THE NEXT RUN.";
+    if profile.isLastRunNewBestScore() || profile.isLastRunNewBestLevel() {
+        subtitle = "NEW PERSONAL RECORDS HIT THIS RUN.";
+    } else if profile.getLastRunUnlockCount() > 0 {
+        subtitle = "NEW ACHIEVEMENTS UNLOCKED.";
+    }
+    theme.drawTextCentered(canvas, header.x, header.y + 34, header.w, subtitle, theme.FONT_SMALL_SCALE, theme.TEXT_MUTED);
+
+    widgets.drawLabelValue(canvas, summaryStatRect(0), "SCORE", Int(profile.getLastRunScore()), theme.ACCENT_YELLOW);
+    widgets.drawLabelValue(canvas, summaryStatRect(1), "LEVEL", Int(profile.getLastRunLevel()), theme.ACCENT_CYAN);
+    widgets.drawLabelValue(canvas, summaryStatRect(2), "DOTS / PELLETS",
+                           Int(profile.getLastRunDots()) + " / " + Int(profile.getLastRunPellets()),
+                           theme.ACCENT_PINK);
+    widgets.drawLabelValue(canvas, summaryStatRect(3), "GHOSTS / MAX CHAIN",
+                           Int(profile.getLastRunGhosts()) + " / " + Int(profile.getLastRunMaxChain()),
+                           theme.ACCENT_CYAN);
+    widgets.drawLabelValue(canvas, summaryStatRect(4), "FRUIT / DEATHS",
+                           Int(profile.getLastRunFruit()) + " / " + Int(profile.getLastRunDeaths()),
+                           theme.ACCENT_ORANGE);
+    widgets.drawLabelValue(canvas, summaryStatRect(5), "BOARDS CLEARED",
+                           Int(profile.getLastRunBoardsCleared()), theme.ACCENT_GREEN);
+
+    var unlocks = summaryUnlocksRect();
+    widgets.drawPanel(canvas, unlocks, theme.ACCENT_PINK, false);
+    theme.drawTextCentered(canvas, unlocks.x, unlocks.y + 10, unlocks.w, "RUN REWARDS", theme.FONT_BODY_SCALE, theme.TEXT_PRIMARY);
+
+    if profile.getLastRunUnlockCount() == 0 {
+        theme.drawTextCentered(canvas, unlocks.x, unlocks.y + 42, unlocks.w,
+                               "No new achievements this run. Keep pushing deeper.",
+                               theme.FONT_SMALL_SCALE, theme.TEXT_MUTED);
+    } else {
+        var uy = unlocks.y + 34;
+        var j = 0;
+        while j < profile.getLastRunUnlockCount() && j < 3 {
+            var pill = rect(unlocks.x + 28, uy, unlocks.w - 56, 22);
+            widgets.drawPill(canvas, pill, profile.getLastRunUnlockName(j), theme.ACCENT_YELLOW);
+            uy = uy + 26;
+            j = j + 1;
+        }
+    }
+
+    if profile.isLastRunNewBestScore() {
+        theme.drawTextCentered(canvas, unlocks.x, unlocks.y + unlocks.h - 34, unlocks.w,
+                               "NEW BEST SCORE", theme.FONT_SMALL_SCALE, theme.ACCENT_CYAN);
+    } else if profile.isLastRunNewBestLevel() {
+        theme.drawTextCentered(canvas, unlocks.x, unlocks.y + unlocks.h - 34, unlocks.w,
+                               "NEW BEST LEVEL", theme.FONT_SMALL_SCALE, theme.ACCENT_CYAN);
+    }
+
+    widgets.drawButton(canvas, summaryButtonRect(0), "PLAY AGAIN", selected == 0, true, false, tickMs);
+    widgets.drawButton(canvas, summaryButtonRect(1), "PROFILE", selected == 1, false, false, tickMs);
+    widgets.drawButton(canvas, summaryButtonRect(2), "MENU", selected == 2, false, false, tickMs);
+}
+
+expose func drawHud(canvas: Canvas,
+                    score: Integer,
+                    highScore: Integer,
+                    level: Integer,
+                    lives: Integer,
+                    dotsRemaining: Integer,
+                    totalDots: Integer,
+                    frightenedRemaining: Integer,
+                    frightenedDuration: Integer,
+                    tickMs: Integer) {
     var marquee = marqueeRect();
     drawLogoPacman(canvas, marquee.x + 16, marquee.y + 18, tickMs);
     theme.drawTextScaled(canvas, marquee.x + 80, marquee.y + 18, "CRACKMAN", theme.FONT_BODY_SCALE, theme.ACCENT_YELLOW);
@@ -270,8 +472,46 @@ expose func drawHud(canvas: Canvas, score: Integer, highScore: Integer, level: I
     var footer = footerRect();
     canvas.GradientV(footer.x, footer.y, footer.w, footer.h, 0x0D1232, 0x090C1F);
     canvas.BoxAlpha(footer.x, footer.y, footer.w, 2, theme.ACCENT_BLUE, 90);
-    theme.drawTextCentered(canvas, footer.x, footer.y + 12, footer.w,
-                           "P PAUSE  •  ESC MENU  •  R RESTART", theme.FONT_SMALL_SCALE, theme.TEXT_MUTED);
+
+    var cleared = totalDots - dotsRemaining;
+    if cleared < 0 { cleared = 0; }
+    var clearPct = 0;
+    if totalDots > 0 {
+        clearPct = cleared * 100 / totalDots;
+    }
+    var mazeMeter = rect(footer.x + 18, footer.y + 8, 170, 24);
+    widgets.drawMeter(canvas, mazeMeter, "MAZE CLEAR", cleared, totalDots, theme.ACCENT_YELLOW,
+                      Int(clearPct) + "%");
+
+    var frightMeter = rect(footer.x + footer.w - 188, footer.y + 8, 170, 24);
+    if frightenedRemaining > 0 {
+        widgets.drawMeter(canvas, frightMeter, "POWER", frightenedRemaining, frightenedDuration,
+                          theme.ACCENT_BLUE, Int(frightenedRemaining / 60) + "S");
+    } else {
+        widgets.drawMeter(canvas, frightMeter, "POWER", 0, 100, theme.PANEL_SOFT, "READY");
+    }
+
+    theme.drawTextCentered(canvas, footer.x + 200, footer.y + 12, footer.w - 400,
+                           "P PAUSE   ESC MENU   R RESTART", theme.FONT_SMALL_SCALE, theme.TEXT_MUTED);
+}
+
+expose func drawComboToast(canvas: Canvas, comboScore: Integer, comboCount: Integer, rise: Integer, tickMs: Integer) {
+    var w = 220;
+    var h = 58;
+    var x = (config.SCREEN_WIDTH - w) / 2;
+    var y = 120 - rise;
+    var accent = theme.ACCENT_CYAN;
+    if comboCount >= 4 {
+        accent = theme.ACCENT_YELLOW;
+    } else if comboCount >= 3 {
+        accent = theme.ACCENT_PINK;
+    }
+
+    var r = rect(x, y, w, h);
+    widgets.drawPanel(canvas, r, accent, true);
+    theme.drawTextCentered(canvas, r.x, r.y + 10, r.w, "GHOST CHAIN x" + Int(comboCount), theme.FONT_SMALL_SCALE,
+                           theme.pulseColor(accent, 18, tickMs, 600));
+    theme.drawTextCentered(canvas, r.x, r.y + 28, r.w, Int(comboScore), theme.FONT_BODY_SCALE, theme.TEXT_PRIMARY);
 }
 
 expose func drawStateOverlay(canvas: Canvas, state: Integer, readyProgress: Integer, tickMs: Integer) {
@@ -288,12 +528,8 @@ expose func drawStateOverlay(canvas: Canvas, state: Integer, readyProgress: Inte
         accent = theme.ACCENT_YELLOW;
     } else if state == config.STATE_PAUSED {
         title = "PAUSED";
-        sub = "P OR ENTER TO RESUME  •  ESC FOR MENU";
+        sub = "P OR ENTER TO RESUME   ESC FOR MENU";
         accent = theme.ACCENT_CYAN;
-    } else if state == config.STATE_GAME_OVER {
-        title = "GAME OVER";
-        sub = "R TO RESTART  •  ESC FOR MENU";
-        accent = theme.ACCENT_RED;
     } else if state == config.STATE_WIN {
         title = "LEVEL CLEAR";
         sub = "R OR ENTER FOR NEXT LEVEL";

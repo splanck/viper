@@ -576,7 +576,7 @@ func getNextGuess() -> Integer {
 For more complete examples, see the `examples/games/` directory:
 - `frogger/` — Full Frogger game with classes and collision detection
 - `centipede/` — Centipede arcade game with classes and game loop
-- `pacman/` — Pac-Man game demonstrating movement and collision
+- `pacman/` — Crackman maze-chase game demonstrating movement and collision
 
 ---
 
@@ -591,7 +591,7 @@ For more complete examples, see the `examples/games/` directory:
 
 - `examples/games/frogger/` — Complete Frogger game example
 - `examples/games/centipede/` — Centipede arcade game
-- `examples/games/pacman/` — Pac-Man game
+- `examples/games/pacman/` — Crackman game
 
 **Interactive:**
 

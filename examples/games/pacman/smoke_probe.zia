@@ -1,0 +1,110 @@
+module smoke_probe;
+
+bind Viper.Terminal as Terminal;
+bind "./ui/sprites";
+bind "./config";
+bind "./ghost";
+bind "./maze";
+bind "./progression";
+
+func fail(msg: String) {
+    Terminal.Say("RESULT: fail " + msg);
+}
+
+func start() {
+    var dirs = [config.DIR_RIGHT, config.DIR_LEFT, config.DIR_UP, config.DIR_DOWN];
+
+    for i in 0..4 {
+        var dir = dirs.get(i);
+        var pac = sprites.getPacman(dir, true);
+        if pac == null || pac.Width <= 0 || pac.Height <= 0 {
+            fail("pacman sprite build");
+            return;
+        }
+
+        var ghostNormal = sprites.getGhost(config.COLOR_RED, dir, config.MODE_CHASE, false);
+        if ghostNormal == null || ghostNormal.Width <= 0 || ghostNormal.Height <= 0 {
+            fail("normal ghost sprite build");
+            return;
+        }
+
+        var ghostFright = sprites.getGhost(config.COLOR_RED, dir, config.MODE_FRIGHTENED, false);
+        if ghostFright == null || ghostFright.Width <= 0 || ghostFright.Height <= 0 {
+            fail("frightened ghost sprite build");
+            return;
+        }
+
+        var ghostFlash = sprites.getGhost(config.COLOR_RED, dir, config.MODE_FRIGHTENED, true);
+        if ghostFlash == null || ghostFlash.Width <= 0 || ghostFlash.Height <= 0 {
+            fail("frightened flash sprite build");
+            return;
+        }
+
+        var ghostEaten = sprites.getGhost(config.COLOR_RED, dir, config.MODE_EATEN, false);
+        if ghostEaten == null || ghostEaten.Width <= 0 || ghostEaten.Height <= 0 {
+            fail("eaten ghost sprite build");
+            return;
+        }
+    }
+
+    var theMaze = new maze.Maze();
+    theMaze.init();
+    var returningGhost = new ghost.Ghost(0, 1, 1, config.COLOR_RED);
+    returningGhost.setMode(config.MODE_EATEN);
+    returningGhost.update(theMaze, 14, 23, 14, 11);
+    if returningGhost.getMode() != config.MODE_EATEN {
+        fail("eaten ghost reset immediately");
+        return;
+    }
+
+    var steps = 0;
+    while steps < 400 && returningGhost.getMode() == config.MODE_EATEN {
+        returningGhost.update(theMaze, 14, 23, 14, 11);
+        steps = steps + 1;
+    }
+
+    if returningGhost.getMode() == config.MODE_EATEN {
+        fail("eaten ghost never returned home from maze");
+        return;
+    }
+
+    if returningGhost.getGridX() != 14 || returningGhost.getGridY() != 14 {
+        fail("eaten ghost revived outside house center");
+        return;
+    }
+
+    var hold = 0;
+    while hold < 20 {
+        returningGhost.update(theMaze, 14, 23, 14, 11);
+        hold = hold + 1;
+    }
+
+    if returningGhost.getGridX() != 14 || returningGhost.getGridY() != 14 {
+        fail("eaten ghost left house immediately");
+        return;
+    }
+
+    var profile = new progression.Progression("crackman_smoke_probe");
+    profile.beginRun();
+    profile.noteDot(config.DOT_POINTS, 10);
+    profile.noteDot(config.PELLET_POINTS, 60);
+    profile.noteGhostEaten(4, 1660);
+    profile.noteFruitCollect(1960);
+    profile.noteBoardClear(1);
+    profile.finishRun(12000, 6);
+
+    if profile.getHighScore() < 12000 {
+        fail("progression leaderboard update");
+        return;
+    }
+    if profile.getAchievementsUnlocked() <= 0 {
+        fail("progression achievements unlock");
+        return;
+    }
+    if profile.getLastRunUnlockCount() <= 0 {
+        fail("progression run summary unlocks");
+        return;
+    }
+
+    Terminal.Say("RESULT: ok");
+}

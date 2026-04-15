@@ -1,0 +1,436 @@
+module session;
+
+bind Viper.Graphics;
+bind Viper.Input;
+bind Viper.Game;
+bind Viper.Game.ScreenFX as FX;
+
+bind "./config";
+bind "./utils";
+bind "./maze";
+bind "./player";
+bind "./ghost";
+bind "./fruit";
+bind "./particles";
+bind "./sound";
+bind "./progression";
+bind "./ui/renderer";
+
+final EVENT_NONE = 0;
+final EVENT_PAUSE = 1;
+final EVENT_DYING = 2;
+final EVENT_GAME_OVER = 3;
+final EVENT_WIN = 4;
+final EVENT_READY_COMPLETE = 5;
+final EVENT_DYING_COMPLETE = 6;
+
+class Session {
+    hide maze.Maze theMaze;
+    hide player.PacMan pacman;
+    hide List[ghost.Ghost] ghosts;
+    hide fruit.Fruit theFruit;
+    hide particles.ParticleSystem particleSys;
+    hide progression.Progression profile;
+
+    hide Integer score;
+    hide Integer lives;
+    hide Integer level;
+    hide Integer highScore;
+    hide Integer dotsEaten;
+    hide Integer ghostsEaten;
+    hide Boolean extraLifeAwarded;
+
+    hide Timer readyTimer;
+    hide Timer deathTimer;
+    hide Timer modeTimer;
+    hide Boolean chaseMode;
+
+    hide Tween readyTween;
+    hide SmoothValue displayScore;
+    hide Timer comboTimer;
+    hide Tween comboTween;
+    hide Integer comboScore;
+    hide Integer comboCount;
+    hide FX fx;
+
+    expose func init() {
+        theMaze = new maze.Maze();
+        theMaze.init();
+
+        pacman = new player.PacMan(14, 23);
+
+        ghosts = [];
+        ghosts.add(new ghost.Ghost(0, 14, 11, config.COLOR_RED));
+        ghosts.add(new ghost.Ghost(1, 13, 14, config.COLOR_PINK));
+        ghosts.add(new ghost.Ghost(2, 14, 14, config.COLOR_CYAN));
+        ghosts.add(new ghost.Ghost(3, 15, 14, config.COLOR_ORANGE));
+
+        theFruit = new fruit.Fruit();
+        theFruit.init();
+
+        particleSys = new particles.ParticleSystem();
+        fx = FX.New();
+
+        readyTimer = Timer.New();
+        deathTimer = Timer.New();
+        modeTimer = Timer.New();
+
+        readyTween = Tween.New();
+        displayScore = SmoothValue.New(0.0, 900.0);
+        comboTimer = Timer.New();
+        comboTween = Tween.New();
+        comboTimer.Stop();
+        comboScore = 0;
+        comboCount = 0;
+
+        score = 0;
+        lives = 3;
+        level = 1;
+        highScore = 10000;
+        dotsEaten = 0;
+        ghostsEaten = 0;
+        extraLifeAwarded = false;
+        chaseMode = false;
+    }
+
+    expose func attachProgression(theProfile: progression.Progression) {
+        profile = theProfile;
+    }
+
+    expose func updateFrame(dt: Integer) {
+        fx.Update(dt);
+        particleSys.update();
+        displayScore.Target = score * 1.0;
+        displayScore.Update();
+        comboTimer.Update();
+        comboTween.Update();
+    }
+
+    expose func startReady(sfx: sound.SoundManager) {
+        readyTimer.Start(config.READY_DURATION);
+        readyTween.StartI64(0, 100, 30, config.EASE_OUT_BOUNCE);
+        sfx.playGameMusic();
+        sfx.playReady();
+    }
+
+    expose func updateReady() -> Integer {
+        readyTimer.Update();
+        readyTween.Update();
+
+        if readyTimer.IsExpired {
+            modeTimer.Start(config.MODE_SWITCH_TIME);
+            chaseMode = false;
+            return EVENT_READY_COMPLETE;
+        }
+        return EVENT_NONE;
+    }
+
+    expose func updatePlaying(sfx: sound.SoundManager) -> Integer {
+        if Action.Pressed(config.ACTION_PAUSE) {
+            sfx.playPause();
+            return EVENT_PAUSE;
+        }
+
+        self.handleMovementInput();
+        self.updateGhostModeTimer();
+
+        pacman.update(theMaze);
+        theFruit.update();
+
+        self.handleDotEating(sfx);
+        self.handleFruitCollect(sfx);
+        self.handleExtraLife(sfx);
+        self.updateHighScore();
+        self.updateGhosts();
+
+        var collisionEvent = self.handleGhostCollisions(sfx);
+        if collisionEvent != EVENT_NONE {
+            return collisionEvent;
+        }
+
+        if theMaze.allDotsEaten() {
+            if profile != null {
+                profile.noteBoardClear(level);
+            }
+            sfx.playLevelClear();
+            return EVENT_WIN;
+        }
+
+        return EVENT_NONE;
+    }
+
+    expose func updateDying() -> Integer {
+        deathTimer.Update();
+        if deathTimer.IsExpired {
+            self.resetActors();
+            return EVENT_DYING_COMPLETE;
+        }
+        return EVENT_NONE;
+    }
+
+    expose func resetGame() {
+        score = 0;
+        lives = 3;
+        level = 1;
+        dotsEaten = 0;
+        extraLifeAwarded = false;
+        chaseMode = false;
+
+        theMaze.reset();
+        self.resetActors();
+        theFruit.reset();
+        particleSys.reset();
+        displayScore.SetImmediate(0.0);
+        comboTimer.Stop();
+        comboScore = 0;
+        comboCount = 0;
+    }
+
+    expose func nextLevel() {
+        level = level + 1;
+        dotsEaten = 0;
+        chaseMode = false;
+
+        theMaze.reset();
+        self.resetActors();
+        theFruit.reset();
+        comboTimer.Stop();
+        comboScore = 0;
+        comboCount = 0;
+    }
+
+    expose func render(canvas: Canvas, overlayState: Integer, uiTick: Integer) {
+        renderer.drawPlayfieldShell(canvas, uiTick);
+
+        theMaze.draw(canvas);
+        theFruit.draw(canvas);
+        pacman.draw(canvas);
+
+        for i in 0..ghosts.length() {
+            ghosts.get(i).draw(canvas);
+        }
+
+        particleSys.draw(canvas);
+        renderer.drawHud(canvas, displayScore.ValueI64, highScore, level, lives,
+                         theMaze.getDotsRemaining(), theMaze.getTotalDots(),
+                         self.getMaxFrightenedRemaining(), config.FRIGHTENED_DURATION, uiTick);
+
+        if !comboTimer.IsExpired && comboCount > 0 {
+            renderer.drawComboToast(canvas, comboScore, comboCount, comboTween.ValueI64, uiTick);
+        }
+
+        var overlayCol = fx.get_OverlayColor();
+        if overlayCol != 0 {
+            var r = (overlayCol / 0x1000000) % 256;
+            var g = (overlayCol / 0x10000) % 256;
+            var b = (overlayCol / 0x100) % 256;
+            var a = overlayCol % 256;
+            var rgb = r * 0x10000 + g * 0x100 + b;
+            canvas.BoxAlpha(0, 0, config.SCREEN_WIDTH, config.SCREEN_HEIGHT, rgb, a);
+        }
+
+        renderer.drawStateOverlay(canvas, overlayState, readyTween.Progress, uiTick);
+    }
+
+    expose func getScore() -> Integer {
+        return score;
+    }
+
+    expose func getHighScore() -> Integer {
+        return highScore;
+    }
+
+    expose func getLevel() -> Integer {
+        return level;
+    }
+
+    expose func setHighScore(value: Integer) {
+        highScore = value;
+    }
+
+    hide func handleMovementInput() {
+        if Action.Held(config.ACTION_UP) {
+            pacman.setNextDirection(config.DIR_UP);
+        } else if Action.Held(config.ACTION_DOWN) {
+            pacman.setNextDirection(config.DIR_DOWN);
+        } else if Action.Held(config.ACTION_LEFT) {
+            pacman.setNextDirection(config.DIR_LEFT);
+        } else if Action.Held(config.ACTION_RIGHT) {
+            pacman.setNextDirection(config.DIR_RIGHT);
+        }
+    }
+
+    hide func updateGhostModeTimer() {
+        if modeTimer.Update() {
+            chaseMode = !chaseMode;
+            modeTimer.Start(config.MODE_SWITCH_TIME);
+
+            for i in 0..ghosts.length() {
+                var g = ghosts.get(i);
+                if g.getMode() != config.MODE_FRIGHTENED {
+                    if chaseMode {
+                        g.setMode(config.MODE_CHASE);
+                    } else {
+                        g.setMode(config.MODE_SCATTER);
+                    }
+                }
+            }
+        }
+    }
+
+    hide func handleDotEating(sfx: sound.SoundManager) {
+        var points = theMaze.eatDot(pacman.getGridX(), pacman.getGridY());
+        if points <= 0 {
+            return;
+        }
+
+        score = score + points;
+        dotsEaten = dotsEaten + 1;
+        if profile != null {
+            profile.noteDot(points, score);
+        }
+
+        var dotPx = utils.gridToCenterX(pacman.getGridX());
+        var dotPy = utils.gridToCenterY(pacman.getGridY());
+        if points == config.PELLET_POINTS {
+            particleSys.burstPellet(dotPx, dotPy);
+            fx.Flash(config.COLOR_BLUE * 256 + 0x44, 80);
+            sfx.playPellet();
+        } else {
+            particleSys.burstDotEat(dotPx, dotPy);
+            if (dotsEaten % 2) == 0 {
+                sfx.playDot();
+            }
+        }
+
+        if dotsEaten == 70 || dotsEaten == 170 {
+            theFruit.spawn(level);
+        }
+
+        if points == config.PELLET_POINTS {
+            ghostsEaten = 0;
+            for i in 0..ghosts.length() {
+                ghosts.get(i).setMode(config.MODE_FRIGHTENED);
+            }
+        }
+    }
+
+    hide func handleFruitCollect(sfx: sound.SoundManager) {
+        if !theFruit.collidesWithPacman(pacman.getGridX(), pacman.getGridY()) {
+            return;
+        }
+
+        var fruitPx = utils.gridToCenterX(pacman.getGridX());
+        var fruitPy = utils.gridToCenterY(pacman.getGridY());
+        particleSys.burstFruitCollect(fruitPx, fruitPy, config.COLOR_GREEN);
+        score = score + theFruit.collect();
+        if profile != null {
+            profile.noteFruitCollect(score);
+        }
+        sfx.playFruit();
+    }
+
+    hide func handleExtraLife(sfx: sound.SoundManager) {
+        if score >= config.EXTRA_LIFE_SCORE && !extraLifeAwarded {
+            lives = lives + 1;
+            extraLifeAwarded = true;
+            sfx.playExtraLife();
+        }
+    }
+
+    hide func updateHighScore() {
+        if score > highScore {
+            highScore = score;
+        }
+    }
+
+    hide func updateGhosts() {
+        var blinkyX = 0;
+        var blinkyY = 0;
+        if ghosts.length() > 0 {
+            var blinky = ghosts.get(0);
+            blinkyX = blinky.getGridX();
+            blinkyY = blinky.getGridY();
+        }
+
+        for i in 0..ghosts.length() {
+            ghosts.get(i).update(theMaze, pacman.getGridX(), pacman.getGridY(), blinkyX, blinkyY);
+        }
+    }
+
+    hide func getMaxFrightenedRemaining() -> Integer {
+        var best = 0;
+        for i in 0..ghosts.length() {
+            var remaining = ghosts.get(i).getFrightenedRemaining();
+            if remaining > best {
+                best = remaining;
+            }
+        }
+        return best;
+    }
+
+    hide func handleGhostCollisions(sfx: sound.SoundManager) -> Integer {
+        for i in 0..ghosts.length() {
+            var g = ghosts.get(i);
+            if !g.collidesWithPacman(pacman.getGridX(), pacman.getGridY()) {
+                continue;
+            }
+
+            var gPx = utils.gridToCenterX(g.getGridX());
+            var gPy = utils.gridToCenterY(g.getGridY());
+            if g.getMode() == config.MODE_FRIGHTENED {
+                ghostsEaten = ghostsEaten + 1;
+                var ghostPoints = config.GHOST_BASE_POINTS;
+                var mult = 1;
+                var n = 1;
+                while n < ghostsEaten {
+                    mult = mult * 2;
+                    n = n + 1;
+                }
+                score = score + ghostPoints * mult;
+                comboScore = ghostPoints * mult;
+                comboCount = ghostsEaten;
+                comboTimer.Start(90);
+                comboTween.StartI64(0, 26, 90, config.EASE_OUT_QUAD);
+                particleSys.burstGhostEat(gPx, gPy, g.getColor());
+                fx.Shake(4000, 120, 500);
+                sfx.playGhostEat();
+                if profile != null {
+                    profile.noteGhostEaten(ghostsEaten, score);
+                }
+                g.setMode(config.MODE_EATEN);
+            } else if g.getMode() != config.MODE_EATEN {
+                self.crackmanDeath(sfx);
+                if lives <= 0 {
+                    return EVENT_GAME_OVER;
+                }
+                return EVENT_DYING;
+            }
+        }
+
+        return EVENT_NONE;
+    }
+
+    hide func crackmanDeath(sfx: sound.SoundManager) {
+        var deathPx = utils.gridToCenterX(pacman.getGridX());
+        var deathPy = utils.gridToCenterY(pacman.getGridY());
+        particleSys.burstDeath(deathPx, deathPy);
+        fx.Shake(8000, 200, 500);
+        fx.Flash(config.COLOR_RED * 256 + 0xAA, 160);
+        sfx.playDeath();
+        lives = lives - 1;
+        if profile != null {
+            profile.noteDeath();
+        }
+        if lives > 0 {
+            deathTimer.Start(config.DEATH_DURATION);
+        }
+    }
+
+    hide func resetActors() {
+        pacman.reset(14, 23);
+        for i in 0..ghosts.length() {
+            ghosts.get(i).reset();
+        }
+    }
+}

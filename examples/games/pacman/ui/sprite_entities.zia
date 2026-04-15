@@ -1,0 +1,214 @@
+module sprite_entities;
+
+bind Viper.Graphics;
+bind Color = Viper.Graphics.Color;
+
+bind "../config";
+bind "./theme";
+bind "./sprite_support";
+
+hide func carveDisc(px: Pixels, cx: Integer, cy: Integer, radius: Integer) {
+    var clear = Color.RGBA(0, 0, 0, 0);
+    for y in cy - radius..cy + radius + 1 {
+        for x in cx - radius..cx + radius + 1 {
+            var dx = x - cx;
+            var dy = y - cy;
+            if dx * dx + dy * dy <= radius * radius {
+                if x >= 0 and x < px.Width and y >= 0 and y < px.Height {
+                    px.Set(x, y, clear);
+                }
+            }
+        }
+    }
+}
+
+expose func buildPacmanSprite(size: Integer, dir: Integer, mouthOpen: Boolean) -> Pixels {
+    var px = Pixels.New(size, size);
+    var cx = size / 2;
+    var cy = size / 2;
+    var radius = size / 2 - 4;
+    var shadowY = cy + radius - 1;
+    var shadowX = cx;
+    var body = 0xFFE84A;
+    var highlight = 0xFFF5B0;
+    var crack = 0xB88400;
+    var eyelid = 0xC9971B;
+    var eyeWhite = 0xFFF2D0;
+    var eyeBag = 0x8B5D7A;
+    var pupil = 0x170C10;
+    var clear = 0;
+
+    var sy = shadowY - 3;
+    while sy <= shadowY + 3 {
+        var sx = shadowX - radius + 4;
+        while sx <= shadowX + radius - 4 {
+            var dxs = sx - shadowX;
+            var dys = sy - shadowY;
+            if dxs * dxs * 100 / ((radius - 4) * (radius - 4)) + dys * dys * 100 / 9 <= 100 {
+                px.BlendPixel(sx, sy, 0x000000, 56);
+            }
+            sx = sx + 1;
+        }
+        sy = sy + 1;
+    }
+
+    px.DrawDisc(cx, cy, radius, body);
+
+    for y in 0..size {
+        for x in 0..size {
+            var dx = x - cx;
+            var dy = y - cy;
+            var dist2 = dx * dx + dy * dy;
+            if dist2 <= radius * radius {
+                var front = dx;
+                var side = dy;
+                if dir == config.DIR_LEFT {
+                    front = 0 - dx;
+                    side = dy;
+                } else if dir == config.DIR_UP {
+                    front = 0 - dy;
+                    side = dx;
+                } else if dir == config.DIR_DOWN {
+                    front = dy;
+                    side = dx;
+                }
+
+                var cut = false;
+                if mouthOpen {
+                    if front > 0 && sprite_support.absi(side) * 2 <= front {
+                        cut = true;
+                    }
+                } else {
+                    if front > radius / 2 && sprite_support.absi(side) * 5 <= front {
+                        cut = true;
+                    }
+                }
+
+                if cut {
+                    px.Set(x, y, clear);
+                }
+            }
+        }
+    }
+
+    for y in 0..size {
+        for x in 0..size {
+            var hx = x - (cx - radius / 3);
+            var hy = y - (cy - radius / 3);
+            if hx * hx + hy * hy <= (radius / 2) * (radius / 2) {
+                px.BlendPixel(x, y, highlight, 40);
+            }
+        }
+    }
+
+    var crackTall = radius / 2;
+    if crackTall < 2 { crackTall = 2; }
+    var crackWide = radius / 3;
+    if crackWide < 2 { crackWide = 2; }
+    px.DrawBox(cx - radius / 4, cy - 1, 1, crackTall, crack);
+    px.DrawBox(cx - radius / 4 - 2, cy + 2, crackWide + 2, 1, crack);
+    px.DrawBox(cx + radius / 6, cy - radius / 4, 1, crackWide + 1, crack);
+    px.DrawBox(cx + radius / 6, cy - radius / 4 + 2, crackWide + 2, 1, crack);
+    px.DrawBox(cx - radius / 2 + 2, cy + radius / 5, crackWide, 1, crack);
+
+    var eyeX = cx;
+    var eyeY = cy - radius / 2;
+    if dir == config.DIR_LEFT {
+        eyeX = cx - radius / 4;
+    } else if dir == config.DIR_RIGHT {
+        eyeX = cx + radius / 6;
+    } else if dir == config.DIR_UP {
+        eyeX = cx - radius / 8;
+    } else if dir == config.DIR_DOWN {
+        eyeX = cx + radius / 8;
+        eyeY = cy - radius / 4;
+    }
+    var eyeR = radius / 4;
+    if eyeR < 2 { eyeR = 2; }
+    var pupilX = eyeX + 1;
+    var pupilY = eyeY;
+    if dir == config.DIR_LEFT { pupilX = eyeX - 1; }
+    if dir == config.DIR_UP { pupilY = eyeY - 1; }
+    if dir == config.DIR_DOWN { pupilY = eyeY + 1; }
+
+    px.DrawDisc(eyeX, eyeY, eyeR, eyeWhite);
+    px.DrawBox(eyeX - eyeR - 1, eyeY - eyeR, eyeR * 2 + 2, 2, eyelid);
+    px.DrawBox(eyeX - eyeR, eyeY + eyeR, eyeR * 2, 1, eyeBag);
+    px.DrawDisc(pupilX, pupilY, 1, pupil);
+    return px;
+}
+
+expose func buildGhostSprite(size: Integer, bodyColor: Integer, dir: Integer, frightened: Boolean, flash: Boolean) -> Pixels {
+    var px = Pixels.New(size, size);
+    var cx = size / 2;
+    var cy = size / 2;
+    var radius = size / 2 - 6;
+    var baseY = cy + radius - 2;
+    var shadow = sprite_support.rgba(0x000000, 72);
+    var body = sprite_support.rgba(bodyColor, 255);
+    var glow = sprite_support.rgba(bodyColor, 34);
+    var eyeWhite = sprite_support.rgba(0xFFFFFF, 255);
+    var pupil = sprite_support.rgba(theme.ACCENT_BLUE, 255);
+    var face = sprite_support.rgba(theme.TEXT_PRIMARY, 255);
+
+    px.DrawEllipse(cx, baseY + 5, radius - 1, 4, shadow);
+    px.DrawDisc(cx, cy - 1, radius + 3, glow);
+    px.DrawDisc(cx, cy - 1, radius, body);
+    px.DrawBox(cx - radius, cy - 2, radius * 2, radius + 5, body);
+
+    carveDisc(px, cx - radius + 4, baseY + 2, 4);
+    carveDisc(px, cx - radius + 12, baseY + 5, 4);
+    carveDisc(px, cx - radius + 20, baseY + 2, 4);
+    carveDisc(px, cx - radius + 28, baseY + 5, 4);
+
+    px.DrawDisc(cx - 5, cy - 9, 6, sprite_support.rgba(0xFFFFFF, 36));
+
+    if !frightened {
+        px.DrawDisc(cx - 6, cy - 4, 5, eyeWhite);
+        px.DrawDisc(cx + 6, cy - 4, 5, eyeWhite);
+
+        var pxOff = 0;
+        var pyOff = 0;
+        if dir == config.DIR_LEFT { pxOff = -2; }
+        if dir == config.DIR_RIGHT { pxOff = 2; }
+        if dir == config.DIR_UP { pyOff = -2; }
+        if dir == config.DIR_DOWN { pyOff = 2; }
+        px.DrawDisc(cx - 6 + pxOff, cy - 3 + pyOff, 2, pupil);
+        px.DrawDisc(cx + 6 + pxOff, cy - 3 + pyOff, 2, pupil);
+    } else {
+        px.DrawDisc(cx - 5, cy - 4, 2, face);
+        px.DrawDisc(cx + 5, cy - 4, 2, face);
+        px.DrawBox(cx - 8, cy + 5, 4, 2, face);
+        px.DrawBox(cx - 4, cy + 7, 4, 2, face);
+        px.DrawBox(cx, cy + 5, 4, 2, face);
+        px.DrawBox(cx + 4, cy + 7, 4, 2, face);
+        if flash {
+            px.DrawDisc(cx, cy - 1, radius + 1, sprite_support.rgba(0xFFFFFF, 22));
+        }
+    }
+
+    return px;
+}
+
+expose func buildEatenGhostSprite(size: Integer, dir: Integer) -> Pixels {
+    var px = Pixels.New(size, size);
+    var cx = size / 2;
+    var cy = size / 2;
+    var eyeWhite = sprite_support.rgba(0xFFFFFF, 255);
+    var pupil = sprite_support.rgba(theme.ACCENT_BLUE, 255);
+
+    px.DrawEllipse(cx, cy + 7, 8, 3, sprite_support.rgba(0x000000, 48));
+    px.DrawDisc(cx - 6, cy - 4, 5, eyeWhite);
+    px.DrawDisc(cx + 6, cy - 4, 5, eyeWhite);
+
+    var pxOff = 0;
+    var pyOff = 0;
+    if dir == config.DIR_LEFT { pxOff = -2; }
+    if dir == config.DIR_RIGHT { pxOff = 2; }
+    if dir == config.DIR_UP { pyOff = -2; }
+    if dir == config.DIR_DOWN { pyOff = 2; }
+    px.DrawDisc(cx - 6 + pxOff, cy - 3 + pyOff, 2, pupil);
+    px.DrawDisc(cx + 6 + pxOff, cy - 3 + pyOff, 2, pupil);
+
+    return px;
+}

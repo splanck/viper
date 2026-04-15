@@ -151,7 +151,7 @@ Viper ships with 14 example games demonstrating the engine at every scale:
 | [Graphics Show](../../examples/games/graphics-show/) | 8,000+ | Demo collection | Canvas primitives, particles, physics, fractals (10 sub-demos) |
 | [Chess](../../examples/games/chess/) | 2,937 | Board game | Canvas rendering, AI evaluation, StateMachine |
 | [Centipede](../../examples/games/centipede/) | 2,553 | Arcade shooter | Grid2D, Timer, ScreenFX, ParticleEmitter, ObjectPool |
-| [Pac-Man](../../examples/games/pacman/) | 2,230 | Arcade | Ghost AI, StateMachine, ButtonGroup, Tween, SmoothValue |
+| [Crackman](../../examples/games/pacman/) | 2,230 | Arcade | Ghost AI, StateMachine, ButtonGroup, Tween, SmoothValue |
 | [Frogger](../../examples/games/frogger/) | ~1,500 | Arcade | Entity, grid movement, collision, AI traffic |
 | [VTris](../../examples/games/vtris/) | 1,132 | Puzzle (BASIC) | Terminal rendering, OOP classes, matrix rotation |
 | [Frogger BASIC](../../examples/games/frogger-basic/) | 1,320 | Arcade (BASIC) | OOP stress test, nested objects, collision |

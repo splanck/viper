@@ -376,7 +376,7 @@ if sm.IsState(0) {
 }
 ```
 
-**Reference implementation:** [Pac-Man](../../examples/games/pacman/game.zia) — uses StateMachine for 8 game states.
+**Reference implementation:** [Crackman](../../examples/games/pacman/game.zia) — uses StateMachine for app flow across gameplay, profile, and summary states.
 
 ### Current Limits
 
@@ -557,7 +557,7 @@ can be selected at a time. Traps if the button limit is exceeded.
 |---|---|---|
 | `RT_BUTTONGROUP_MAX` | 256 | Maximum buttons per group. Traps if exceeded |
 
-**Reference implementation:** [Pac-Man](../../examples/games/pacman/game.zia) — uses ButtonGroup for menu navigation with `SelectNext()`/`SelectPrev()` wraparound.
+**Reference implementation:** [Crackman](../../examples/games/pacman/game.zia) — uses ButtonGroup for menu navigation with `SelectNext()`/`SelectPrev()` wraparound.
 
 ---
 

@@ -1,12 +1,12 @@
 // =============================================================================
-// PAC-MAN CLONE - Main Entry Point (Modular Version)
+// CRACKMAN - Main Entry Point (Modular Version)
 // =============================================================================
 //
-// A comprehensive Pac-Man clone built in Zia demonstrating OOP principles
+// A comprehensive Crackman maze-chase demo built in Zia demonstrating OOP principles
 // and modular multi-file architecture.
 //
 // Controls:
-//   Arrow Keys - Move Pac-Man
+//   Arrow Keys - Move Crackman
 //   P          - Pause game
 //   R          - Restart (after game over)
 //   ESC        - Quit

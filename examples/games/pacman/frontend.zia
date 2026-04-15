@@ -1,0 +1,276 @@
+module frontend;
+
+bind Viper.Graphics;
+bind Viper.Input;
+bind Viper.Game;
+
+bind "./config";
+bind "./settings";
+bind "./sound";
+bind "./progression";
+bind "./ui/renderer";
+
+final FRONTEND_EVENT_NONE = 0;
+final FRONTEND_EVENT_QUIT = 1;
+final FRONTEND_EVENT_START_GAME = 2;
+final FRONTEND_EVENT_OPEN_OPTIONS = 3;
+final FRONTEND_EVENT_OPEN_HIGHSCORES = 4;
+final FRONTEND_EVENT_BACK_TO_MENU = 5;
+final FRONTEND_EVENT_OPEN_PROFILE = 6;
+
+class FrontendController {
+    hide Canvas canvas;
+    hide sound.SoundManager sfx;
+    hide settings.Settings userSettings;
+    hide progression.Progression profile;
+    hide ButtonGroup menuBtns;
+    hide ButtonGroup optionsBtns;
+    hide ButtonGroup summaryBtns;
+    hide Integer achievementSel;
+
+    expose func init(theCanvas: Canvas,
+                     theSfx: sound.SoundManager,
+                     theSettings: settings.Settings,
+                     theProfile: progression.Progression) {
+        canvas = theCanvas;
+        sfx = theSfx;
+        userSettings = theSettings;
+        profile = theProfile;
+
+        menuBtns = ButtonGroup.New();
+        menuBtns.Add(0);
+        menuBtns.Add(1);
+        menuBtns.Add(2);
+        menuBtns.Add(3);
+        menuBtns.Add(4);
+        menuBtns.Select(0);
+
+        optionsBtns = ButtonGroup.New();
+        optionsBtns.Add(0);
+        optionsBtns.Add(1);
+        optionsBtns.Add(2);
+        optionsBtns.Add(3);
+        optionsBtns.Add(4);
+        optionsBtns.Add(5);
+        optionsBtns.Select(0);
+
+        summaryBtns = ButtonGroup.New();
+        summaryBtns.Add(0);
+        summaryBtns.Add(1);
+        summaryBtns.Add(2);
+        summaryBtns.Select(0);
+
+        achievementSel = 0;
+
+        self.applySettings();
+    }
+
+    expose func getHighScore() -> Integer {
+        return profile.getHighScore();
+    }
+
+    expose func updateMenu() -> Integer {
+        var prevSel = menuBtns.Selected;
+
+        if Action.Pressed(config.ACTION_UP) {
+            menuBtns.SelectPrev();
+        }
+        if Action.Pressed(config.ACTION_DOWN) {
+            menuBtns.SelectNext();
+        }
+
+        if menuBtns.Selected != prevSel {
+            sfx.playMenuMove();
+        }
+
+        if Action.Pressed(config.ACTION_CONFIRM) {
+            sfx.playMenuSelect();
+            if menuBtns.Selected == 0 {
+                return FRONTEND_EVENT_START_GAME;
+            } else if menuBtns.Selected == 1 {
+                return FRONTEND_EVENT_OPEN_PROFILE;
+            } else if menuBtns.Selected == 2 {
+                return FRONTEND_EVENT_OPEN_OPTIONS;
+            } else if menuBtns.Selected == 3 {
+                return FRONTEND_EVENT_OPEN_HIGHSCORES;
+            }
+            return FRONTEND_EVENT_QUIT;
+        }
+
+        if Action.Pressed(config.ACTION_CANCEL) {
+            sfx.playMenuSelect();
+            return FRONTEND_EVENT_QUIT;
+        }
+
+        return FRONTEND_EVENT_NONE;
+    }
+
+    expose func renderMenu(uiTick: Integer) {
+        renderer.drawMenu(canvas, menuBtns.Selected, self.getHighScore(), profile.getAchievementsUnlocked(),
+                          profile.getAchievementCount(), uiTick);
+    }
+
+    expose func updateOptions() -> Integer {
+        var prevSel = optionsBtns.Selected;
+
+        if Action.Pressed(config.ACTION_UP) {
+            optionsBtns.SelectPrev();
+        }
+        if Action.Pressed(config.ACTION_DOWN) {
+            optionsBtns.SelectNext();
+        }
+        if optionsBtns.Selected != prevSel {
+            sfx.playMenuMove();
+        }
+
+        var sel = optionsBtns.Selected;
+        var changed = false;
+
+        if sel == 0 {
+            if Action.Pressed(config.ACTION_LEFT) || Action.Pressed(config.ACTION_RIGHT) || Action.Pressed(config.ACTION_CONFIRM) {
+                sfx.playMenuSelect();
+                self.toggleFullscreen();
+            }
+        } else if sel == 1 {
+            if Action.Pressed(config.ACTION_LEFT) {
+                userSettings.adjustMasterVolume(-5);
+                changed = true;
+            }
+            if Action.Pressed(config.ACTION_RIGHT) {
+                userSettings.adjustMasterVolume(5);
+                changed = true;
+            }
+        } else if sel == 2 {
+            if Action.Pressed(config.ACTION_LEFT) {
+                userSettings.adjustMusicVolume(-5);
+                changed = true;
+            }
+            if Action.Pressed(config.ACTION_RIGHT) {
+                userSettings.adjustMusicVolume(5);
+                changed = true;
+            }
+        } else if sel == 3 {
+            if Action.Pressed(config.ACTION_LEFT) {
+                userSettings.adjustSfxVolume(-5);
+                changed = true;
+            }
+            if Action.Pressed(config.ACTION_RIGHT) {
+                userSettings.adjustSfxVolume(5);
+                changed = true;
+            }
+        } else if sel == 4 {
+            if Action.Pressed(config.ACTION_LEFT) || Action.Pressed(config.ACTION_RIGHT) || Action.Pressed(config.ACTION_CONFIRM) {
+                userSettings.toggleMuted();
+                changed = true;
+            }
+        } else if sel == 5 {
+            if Action.Pressed(config.ACTION_CONFIRM) {
+                sfx.playMenuSelect();
+                userSettings.save();
+                return FRONTEND_EVENT_BACK_TO_MENU;
+            }
+        }
+
+        if changed {
+            self.applySettings();
+            userSettings.save();
+            sfx.playMenuMove();
+        }
+
+        if Action.Pressed(config.ACTION_CANCEL) {
+            sfx.playMenuSelect();
+            userSettings.save();
+            return FRONTEND_EVENT_BACK_TO_MENU;
+        }
+
+        return FRONTEND_EVENT_NONE;
+    }
+
+    expose func renderOptions(uiTick: Integer) {
+        renderer.drawOptions(canvas, optionsBtns.Selected, userSettings.getMasterVolume(), userSettings.getMusicVolume(),
+                             userSettings.getSfxVolume(), userSettings.isMuted(), userSettings.isFullscreen(), uiTick);
+    }
+
+    expose func updateHighScores() -> Integer {
+        if Action.Pressed(config.ACTION_CONFIRM) || Action.Pressed(config.ACTION_CANCEL) {
+            sfx.playMenuSelect();
+            return FRONTEND_EVENT_BACK_TO_MENU;
+        }
+        return FRONTEND_EVENT_NONE;
+    }
+
+    expose func renderHighScores(uiTick: Integer) {
+        renderer.drawHighScores(canvas, profile.getLeaderboard(), uiTick);
+    }
+
+    expose func updateProfile() -> Integer {
+        if Action.Pressed(config.ACTION_UP) && achievementSel > 0 {
+            achievementSel = achievementSel - 1;
+            sfx.playMenuMove();
+        }
+        if Action.Pressed(config.ACTION_DOWN) && achievementSel < profile.getAchievementCount() - 1 {
+            achievementSel = achievementSel + 1;
+            sfx.playMenuMove();
+        }
+        if Action.Pressed(config.ACTION_CONFIRM) || Action.Pressed(config.ACTION_CANCEL) {
+            sfx.playMenuSelect();
+            return FRONTEND_EVENT_BACK_TO_MENU;
+        }
+        return FRONTEND_EVENT_NONE;
+    }
+
+    expose func renderProfile(uiTick: Integer) {
+        renderer.drawProfile(canvas, profile, achievementSel, uiTick);
+    }
+
+    expose func updateSummary() -> Integer {
+        var prevSel = summaryBtns.Selected;
+        if Action.Pressed(config.ACTION_LEFT) {
+            summaryBtns.SelectPrev();
+        }
+        if Action.Pressed(config.ACTION_RIGHT) {
+            summaryBtns.SelectNext();
+        }
+        if summaryBtns.Selected != prevSel {
+            sfx.playMenuMove();
+        }
+
+        if Action.Pressed(config.ACTION_CONFIRM) {
+            sfx.playMenuSelect();
+            if summaryBtns.Selected == 0 {
+                return FRONTEND_EVENT_START_GAME;
+            }
+            if summaryBtns.Selected == 1 {
+                return FRONTEND_EVENT_OPEN_PROFILE;
+            }
+            return FRONTEND_EVENT_BACK_TO_MENU;
+        }
+
+        if Action.Pressed(config.ACTION_CANCEL) {
+            sfx.playMenuSelect();
+            return FRONTEND_EVENT_BACK_TO_MENU;
+        }
+        return FRONTEND_EVENT_NONE;
+    }
+
+    expose func renderSummary(uiTick: Integer) {
+        renderer.drawRunSummary(canvas, profile, summaryBtns.Selected, uiTick);
+    }
+
+    hide func applySettings() {
+        sfx.configure(userSettings.getMasterVolume(),
+                      userSettings.getMusicVolume(),
+                      userSettings.getSfxVolume(),
+                      userSettings.isMuted());
+    }
+
+    hide func toggleFullscreen() {
+        userSettings.toggleFullscreen();
+        if userSettings.isFullscreen() {
+            canvas.Fullscreen();
+        } else {
+            canvas.Windowed();
+        }
+        userSettings.save();
+    }
+}

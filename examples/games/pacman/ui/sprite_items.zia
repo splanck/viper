@@ -1,0 +1,81 @@
+module sprite_items;
+
+bind Viper.Graphics;
+
+bind "../config";
+bind "./theme";
+bind "./sprite_support";
+
+expose func buildDotSprite() -> Pixels {
+    var px = Pixels.New(config.TILE_SIZE, config.TILE_SIZE);
+    var c = config.TILE_SIZE / 2;
+    px.DrawDisc(c, c, 6, sprite_support.rgba(theme.DOT_COLOR, 24));
+    px.DrawDisc(c, c, 3, sprite_support.rgba(theme.DOT_COLOR, 255));
+    return px;
+}
+
+expose func buildPelletSprite() -> Pixels {
+    var px = Pixels.New(config.TILE_SIZE, config.TILE_SIZE);
+    var c = config.TILE_SIZE / 2;
+    px.DrawDisc(c, c, 13, sprite_support.rgba(theme.PELLET_COLOR, 28));
+    px.DrawDisc(c, c, 10, sprite_support.rgba(theme.PELLET_COLOR, 36));
+    px.DrawDisc(c, c, 7, sprite_support.rgba(theme.PELLET_COLOR, 255));
+    return px;
+}
+
+expose func buildGateSprite() -> Pixels {
+    var px = Pixels.New(config.TILE_SIZE, config.TILE_SIZE);
+    px.DrawBox(0, config.TILE_SIZE / 3, config.TILE_SIZE, config.TILE_SIZE / 3, sprite_support.rgba(theme.MAZE_GATE, 64));
+    px.DrawBox(2, config.TILE_SIZE / 3 + 2, config.TILE_SIZE - 4, config.TILE_SIZE / 3 - 4, sprite_support.rgba(theme.MAZE_GATE, 255));
+    return px;
+}
+
+expose func buildFruitSprite(kind: Integer) -> Pixels {
+    var px = Pixels.New(24, 24);
+    var cx = 12;
+    var cy = 13;
+    var stem = sprite_support.rgba(0x6F4B1F, 255);
+    var leaf = sprite_support.rgba(theme.ACCENT_GREEN, 255);
+
+    if kind == config.FRUIT_CHERRY {
+        px.DrawDisc(cx - 4, cy, 5, sprite_support.rgba(config.COLOR_CHERRY, 255));
+        px.DrawDisc(cx + 4, cy, 5, sprite_support.rgba(config.COLOR_CHERRY, 255));
+        px.DrawLine(cx - 2, cy - 4, cx, cy - 10, stem);
+        px.DrawLine(cx + 2, cy - 4, cx, cy - 10, stem);
+        px.DrawEllipse(cx + 5, cy - 10, 3, 2, leaf);
+    } else if kind == config.FRUIT_STRAWBERRY {
+        px.DrawTriangle(cx, cy - 6, cx - 7, cy + 6, cx + 7, cy + 6, sprite_support.rgba(config.COLOR_STRAWBERRY, 255));
+        px.DrawEllipse(cx, cy - 6, 7, 3, leaf);
+        px.DrawDisc(cx - 3, cy + 1, 1, sprite_support.rgba(0xFFF5C0, 255));
+        px.DrawDisc(cx + 2, cy + 2, 1, sprite_support.rgba(0xFFF5C0, 255));
+        px.DrawDisc(cx, cy - 1, 1, sprite_support.rgba(0xFFF5C0, 255));
+    } else if kind == config.FRUIT_ORANGE {
+        px.DrawDisc(cx, cy, 7, sprite_support.rgba(config.COLOR_ORANGE_FRUIT, 255));
+        px.DrawDisc(cx - 2, cy - 2, 3, sprite_support.rgba(0xFFFFFF, 24));
+        px.DrawEllipse(cx + 4, cy - 7, 3, 2, leaf);
+    } else if kind == config.FRUIT_APPLE {
+        px.DrawDisc(cx - 2, cy, 6, sprite_support.rgba(config.COLOR_APPLE, 255));
+        px.DrawDisc(cx + 3, cy, 6, sprite_support.rgba(config.COLOR_APPLE, 255));
+        px.DrawLine(cx, cy - 6, cx + 1, cy - 11, stem);
+        px.DrawEllipse(cx + 5, cy - 8, 3, 2, leaf);
+    } else if kind == config.FRUIT_MELON {
+        px.DrawEllipse(cx, cy, 8, 6, sprite_support.rgba(config.COLOR_MELON, 255));
+        px.DrawEllipse(cx, cy, 6, 4, sprite_support.rgba(0xD3FFB7, 255));
+        px.DrawLine(cx, cy - 5, cx, cy + 5, sprite_support.rgba(0x85C961, 255));
+    } else if kind == config.FRUIT_GALAXIAN {
+        px.DrawTriangle(cx, cy - 8, cx - 8, cy + 6, cx + 8, cy + 6, sprite_support.rgba(config.COLOR_GALAXIAN, 255));
+        px.DrawBox(cx - 2, cy - 2, 4, 8, sprite_support.rgba(theme.ACCENT_RED, 255));
+        px.DrawDisc(cx, cy - 4, 2, sprite_support.rgba(theme.ACCENT_CYAN, 255));
+    } else if kind == config.FRUIT_BELL {
+        px.DrawEllipse(cx, cy + 1, 7, 6, sprite_support.rgba(config.COLOR_BELL, 255));
+        px.DrawBox(cx - 7, cy - 1, 14, 6, sprite_support.rgba(config.COLOR_BELL, 255));
+        px.DrawDisc(cx, cy + 7, 2, sprite_support.rgba(0xFFFFFF, 255));
+    } else if kind == config.FRUIT_KEY {
+        px.DrawRing(cx - 2, cy - 2, 4, sprite_support.rgba(config.COLOR_KEY, 255));
+        px.DrawBox(cx + 1, cy - 3, 8, 3, sprite_support.rgba(config.COLOR_KEY, 255));
+        px.DrawBox(cx + 6, cy - 3, 2, 7, sprite_support.rgba(config.COLOR_KEY, 255));
+        px.DrawBox(cx + 3, cy + 1, 2, 3, sprite_support.rgba(config.COLOR_KEY, 255));
+    }
+
+    return px;
+}

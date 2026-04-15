@@ -2,6 +2,7 @@ module widgets;
 
 bind Viper.Graphics;
 bind Color = Viper.Graphics.Color;
+bind Viper.Fmt;
 bind "./theme";
 bind "./layout";
 
@@ -66,4 +67,79 @@ func drawPill(canvas: Canvas, r: Rect, label: String, accent: Integer) {
     canvas.RoundFrame(r.x, r.y, r.w, r.h, 10, theme.brighten(accent, 26));
     theme.drawTextCentered(canvas, r.x, theme.textYInRect(r.y, r.h, theme.FONT_SMALL_SCALE),
                            r.w, label, theme.FONT_SMALL_SCALE, theme.TEXT_PRIMARY);
+}
+
+func drawOptionRow(canvas: Canvas,
+                   r: Rect,
+                   label: String,
+                   value: String,
+                   selected: Boolean,
+                   accent: Integer) {
+    var border = theme.PANEL_SOFT;
+    var textCol = theme.TEXT_SECONDARY;
+    if selected {
+        border = accent;
+        textCol = theme.TEXT_PRIMARY;
+        canvas.BoxAlpha(r.x + 2, r.y + 2, r.w - 4, r.h - 4, accent, 14);
+    }
+    drawInset(canvas, r);
+    canvas.RoundFrame(r.x, r.y, r.w, r.h, 14, border);
+    theme.drawTextScaled(canvas, r.x + 16, theme.textYInRect(r.y, r.h, theme.FONT_BODY_SCALE),
+                         label, theme.FONT_BODY_SCALE, textCol);
+    theme.drawTextRight(canvas, r.x, theme.textYInRect(r.y, r.h, theme.FONT_BODY_SCALE),
+                        r.w - 16, value, theme.FONT_BODY_SCALE, accent);
+}
+
+func drawSliderRow(canvas: Canvas,
+                   r: Rect,
+                   label: String,
+                   value: Integer,
+                   selected: Boolean,
+                   accent: Integer) {
+    var border = theme.PANEL_SOFT;
+    var textCol = theme.TEXT_SECONDARY;
+    if selected {
+        border = accent;
+        textCol = theme.TEXT_PRIMARY;
+        canvas.BoxAlpha(r.x + 2, r.y + 2, r.w - 4, r.h - 4, accent, 14);
+    }
+    drawInset(canvas, r);
+    canvas.RoundFrame(r.x, r.y, r.w, r.h, 14, border);
+    theme.drawTextScaled(canvas, r.x + 16, r.y + 10, label, theme.FONT_BODY_SCALE, textCol);
+
+    var barX = r.x + r.w - 194;
+    var barY = r.y + 15;
+    var barW = 126;
+    var barH = 12;
+    var fillW = value * barW / 100;
+
+    canvas.Box(barX, barY, barW, barH, theme.PANEL_BG);
+    canvas.Box(barX, barY, fillW, barH, accent);
+    canvas.RoundFrame(barX - 1, barY - 1, barW + 2, barH + 2, 8, theme.PANEL_SOFT);
+    canvas.Disc(barX + fillW, barY + barH / 2, 6, theme.TEXT_PRIMARY);
+    theme.drawTextRight(canvas, r.x, r.y + 10, r.w - 16, Int(value) + "%", theme.FONT_BODY_SCALE, accent);
+}
+
+func drawMeter(canvas: Canvas,
+               r: Rect,
+               label: String,
+               value: Integer,
+               maxValue: Integer,
+               accent: Integer,
+               valueText: String) {
+    var fillW = 0;
+    if maxValue > 0 {
+        fillW = value * (r.w - 2) / maxValue;
+    }
+    if fillW < 0 { fillW = 0; }
+    if fillW > r.w - 2 { fillW = r.w - 2; }
+
+    canvas.GradientV(r.x, r.y, r.w, r.h, theme.PANEL_BG_ALT, theme.PANEL_BG);
+    canvas.RoundFrame(r.x, r.y, r.w, r.h, 10, theme.PANEL_SOFT);
+    if fillW > 0 {
+        canvas.BoxAlpha(r.x + 1, r.y + 1, fillW, r.h - 2, accent, 64);
+        canvas.Box(r.x + 1, r.y + 1, fillW, r.h - 2, accent);
+    }
+    theme.drawTextScaled(canvas, r.x + 10, r.y + 5, label, theme.FONT_SMALL_SCALE, theme.TEXT_MUTED);
+    theme.drawTextRight(canvas, r.x, r.y + 5, r.w - 10, valueText, theme.FONT_SMALL_SCALE, theme.TEXT_PRIMARY);
 }

@@ -1,5 +1,5 @@
 // =============================================================================
-// PAC-MAN - Ghost Entity
+// CRACKMAN - Ghost Entity
 // =============================================================================
 // Uses new Viper runtime features:
 // - Timer for frightened mode countdown and flash animation
@@ -18,10 +18,10 @@ bind "./maze";
 bind "./ui/sprites";
 
 // Ghost type constants
-final GHOST_BLINKY = 0;  // Red - targets Pac-Man directly
-final GHOST_PINKY = 1;   // Pink - targets 4 tiles ahead of Pac-Man
+final GHOST_BLINKY = 0;  // Red - targets Crackman directly
+final GHOST_PINKY = 1;   // Pink - targets 4 tiles ahead of Crackman
 final GHOST_INKY = 2;    // Cyan - complex targeting using Blinky position
-final GHOST_CLYDE = 3;   // Orange - targets Pac-Man when far, scatter when close
+final GHOST_CLYDE = 3;   // Orange - targets Crackman when far, scatter when close
 
 // =============================================================================
 // GHOST ENTITY - Enemy characters with AI
@@ -38,8 +38,13 @@ class Ghost {
     hide Integer ghostType;
     hide Integer homeX;
     hide Integer homeY;
+    hide Integer returnX;
+    hide Integer returnY;
+    hide Integer houseExitX;
+    hide Integer houseExitY;
     hide Integer scatterX;
     hide Integer scatterY;
+    hide Integer normalMode;
     hide Boolean atTileCenter;
     hide Boolean inHouse;  // True if ghost is still in the ghost house
 
@@ -60,6 +65,11 @@ class Ghost {
         mode = config.MODE_SCATTER;
         homeX = startX;
         homeY = startY;
+        returnX = 14;
+        returnY = 14;
+        houseExitX = 14;
+        houseExitY = 11;
+        normalMode = config.MODE_SCATTER;
         atTileCenter = true;
 
         // Blinky starts outside, others start in the ghost house
@@ -100,18 +110,43 @@ class Ghost {
     }
 
     expose func setMode(newMode: Integer) {
+        if newMode == config.MODE_CHASE || newMode == config.MODE_SCATTER {
+            normalMode = newMode;
+            if mode != config.MODE_FRIGHTENED && mode != config.MODE_EATEN {
+                mode = newMode;
+            }
+            return;
+        }
+
         if newMode == config.MODE_FRIGHTENED {
+            if mode == config.MODE_EATEN { return; }
             frightenedTimer.Start(config.FRIGHTENED_DURATION);
             direction = utils.getOppositeDirection(direction);
             flashWhite = false;
-        } else {
-            frightenedTimer.Stop();
+            mode = config.MODE_FRIGHTENED;
+            return;
         }
+
+        if newMode == config.MODE_EATEN {
+            frightenedTimer.Stop();
+            flashWhite = false;
+            inHouse = false;
+            mode = config.MODE_EATEN;
+            return;
+        }
+
         mode = newMode;
     }
 
     expose func getMode() -> Integer {
         return mode;
+    }
+
+    expose func getFrightenedRemaining() -> Integer {
+        if mode != config.MODE_FRIGHTENED {
+            return 0;
+        }
+        return frightenedTimer.Remaining;
     }
 
     expose func getDirection() -> Integer {
@@ -136,54 +171,67 @@ class Ghost {
             }
 
             if frightenedTimer.IsExpired {
-                mode = config.MODE_CHASE;
+                mode = normalMode;
             }
         }
 
         // Check if at tile center
-        var tileScreenX = utils.gridToScreenX(gridX);
-        var tileScreenY = utils.gridToScreenY(gridY);
-        atTileCenter = (screenX == tileScreenX) && (screenY == tileScreenY);
+        atTileCenter = utils.isAtTileCenter(gridX, gridY, screenX, screenY);
 
-        // Check if ghost has exited the house (reached row 11 or above)
-        if inHouse && gridY <= 11 {
+        // Only clear the house flag once the ghost is actively leaving through the exit.
+        if inHouse && exitTimer.IsExpired && gridX == houseExitX && gridY <= houseExitY {
             inHouse = false;
         }
 
         // Choose direction at tile centers
         if atTileCenter {
+            if mode == config.MODE_EATEN && gridX == returnX && gridY == returnY {
+                inHouse = true;
+                mode = normalMode;
+                flashWhite = false;
+                direction = config.DIR_NONE;
+                exitTimer.Start(60);
+                return;
+            }
+
+            // Ghosts waiting inside the house should stay put until their exit timer expires.
+            if inHouse && !exitTimer.IsExpired {
+                direction = config.DIR_NONE;
+                return;
+            }
+
             var targetX = scatterX;
             var targetY = scatterY;
 
-            // If in house and timer expired, target the exit
-            if inHouse {
+            if mode == config.MODE_EATEN {
+                direction = theMaze.getGhostPathDirection(gridX, gridY, returnX, returnY, direction);
+                self.move(theMaze);
+                return;
+            } else if inHouse {
+                // If in house and timer expired, target the exit
                 if exitTimer.IsExpired {
                     // Target exit point (above the gate)
-                    targetX = 14;
-                    targetY = 11;
-                } else {
-                    // Stay in place or bob up and down
-                    targetX = gridX;
-                    targetY = gridY;
+                    targetX = houseExitX;
+                    targetY = houseExitY;
                 }
             } else if mode == config.MODE_CHASE {
                 if ghostType == GHOST_BLINKY {
-                    // Blinky targets Pac-Man directly
+                    // Blinky targets Crackman directly
                     targetX = pacmanX;
                     targetY = pacmanY;
                 } else if ghostType == GHOST_PINKY {
-                    // Pinky targets 4 tiles ahead of Pac-Man
+                    // Pinky targets 4 tiles ahead of Crackman
                     targetX = pacmanX;
                     targetY = pacmanY - 4;
                     if targetY < 0 { targetY = 0; }
                 } else if ghostType == GHOST_INKY {
-                    // Inky uses vector from Blinky through 2 tiles ahead of Pac-Man
+                    // Inky uses vector from Blinky through 2 tiles ahead of Crackman
                     var aheadX = pacmanX;
                     var aheadY = pacmanY - 2;
                     targetX = aheadX + (aheadX - blinkyX);
                     targetY = aheadY + (aheadY - blinkyY);
                 } else {
-                    // Clyde targets Pac-Man when far, scatter corner when close
+                    // Clyde targets Crackman when far, scatter corner when close
                     var dist = utils.manhattanDistance(gridX, gridY, pacmanX, pacmanY);
                     if dist > 8 {
                         targetX = pacmanX;
@@ -214,13 +262,13 @@ class Ghost {
             var testDir = dirs.get(i);
 
             // Can't reverse direction (unless in house)
-            if testDir == oppositeDir && !inHouse {
+            if testDir == oppositeDir && !inHouse && mode != config.MODE_EATEN {
                 continue;
             }
 
             var dirX = utils.getDirX(testDir);
             var dirY = utils.getDirY(testDir);
-            var nextX = self.wrapX(gridX + dirX);
+            var nextX = utils.wrapGridX(gridX + dirX);
             var nextY = gridY + dirY;
 
             // Ghosts can walk through gates
@@ -237,7 +285,7 @@ class Ghost {
         if bestDist == 999999 {
             var dirX = utils.getDirX(oppositeDir);
             var dirY = utils.getDirY(oppositeDir);
-            var nextX = self.wrapX(gridX + dirX);
+            var nextX = utils.wrapGridX(gridX + dirX);
             var nextY = gridY + dirY;
             if theMaze.isWalkableForGhost(nextX, nextY) {
                 bestDir = oppositeDir;
@@ -250,11 +298,15 @@ class Ghost {
     hide func move(theMaze: maze.Maze) {
         var moveX = utils.getDirX(direction);
         var moveY = utils.getDirY(direction);
-        var nextGridX = self.wrapX(gridX + moveX);
+        var nextGridX = utils.wrapGridX(gridX + moveX);
         var nextGridY = gridY + moveY;
+        var speed = config.GHOST_SPEED;
+        if mode == config.MODE_EATEN {
+            speed = config.GHOST_SPEED + 2;
+        }
 
         // Handle tunnel wrap
-        if moveX != 0 && ((gridX == 0 && moveX < 0) || (gridX == config.GRID_WIDTH - 1 && moveX > 0)) {
+        if utils.isHorizontalTunnelWrap(gridX, moveX) {
             gridX = nextGridX;
             screenX = utils.gridToScreenX(nextGridX);
             return;
@@ -265,43 +317,16 @@ class Ghost {
             var targetScreenX = utils.gridToScreenX(nextGridX);
             var targetScreenY = utils.gridToScreenY(nextGridY);
 
-            if screenX < targetScreenX {
-                screenX = screenX + config.GHOST_SPEED;
-                if screenX >= targetScreenX {
-                    screenX = targetScreenX;
-                    gridX = nextGridX;
-                }
-            } else if screenX > targetScreenX {
-                screenX = screenX - config.GHOST_SPEED;
-                if screenX <= targetScreenX {
-                    screenX = targetScreenX;
-                    gridX = nextGridX;
-                }
+            screenX = utils.moveToward(screenX, targetScreenX, speed);
+            if screenX == targetScreenX {
+                gridX = nextGridX;
             }
 
-            if screenY < targetScreenY {
-                screenY = screenY + config.GHOST_SPEED;
-                if screenY >= targetScreenY {
-                    screenY = targetScreenY;
-                    gridY = nextGridY;
-                }
-            } else if screenY > targetScreenY {
-                screenY = screenY - config.GHOST_SPEED;
-                if screenY <= targetScreenY {
-                    screenY = targetScreenY;
-                    gridY = nextGridY;
-                }
+            screenY = utils.moveToward(screenY, targetScreenY, speed);
+            if screenY == targetScreenY {
+                gridY = nextGridY;
             }
         }
-    }
-
-    hide func wrapX(x: Integer) -> Integer {
-        if x < 0 {
-            return config.GRID_WIDTH - 1;
-        } else if x >= config.GRID_WIDTH {
-            return 0;
-        }
-        return x;
     }
 
     expose func getGridX() -> Integer {
@@ -335,6 +360,7 @@ class Ghost {
         screenY = utils.gridToScreenY(homeY);
         direction = config.DIR_UP;
         mode = config.MODE_SCATTER;
+        normalMode = config.MODE_SCATTER;
         atTileCenter = true;
         frightenedTimer.Stop();
         flashWhite = false;

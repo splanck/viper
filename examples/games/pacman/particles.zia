@@ -1,5 +1,5 @@
 // =============================================================================
-// PAC-MAN - Particle System (using Viper.Game.ParticleEmitter)
+// CRACKMAN - Particle System (using Viper.Game.ParticleEmitter)
 // =============================================================================
 // Visual effects for dot eating, ghost eating, fruit collection, death.
 // =============================================================================
