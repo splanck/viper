@@ -595,20 +595,39 @@ void rt_canvas3d_set_post_fx(void *canvas, void *postfx) {
 /// from `rt_canvas3d_flip` after rendering completes. No-op if no chain attached / disabled /
 /// the framebuffer is unmapped (e.g., GPU-only window).
 void rt_postfx3d_apply_to_canvas(void *canvas) {
+    uint8_t *pixels = NULL;
+    int32_t width = 0;
+    int32_t height = 0;
+    int32_t stride = 0;
+
     if (!canvas)
         return;
     rt_canvas3d *c = (rt_canvas3d *)canvas;
     rt_postfx3d *fx = (rt_postfx3d *)c->postfx;
     if (!fx || !fx->enabled || fx->effect_count == 0)
         return;
-    if (!c->gfx_win)
-        return;
+    if (c->render_target) {
+        if (!vgfx3d_rendertarget_sync_color_if_needed(c->render_target))
+            return;
+        pixels = c->render_target->color_buf;
+        width = c->render_target->width;
+        height = c->render_target->height;
+        stride = c->render_target->stride;
+    } else {
+        vgfx_framebuffer_t fb;
+        if (!c->gfx_win)
+            return;
+        if (!vgfx_get_framebuffer(c->gfx_win, &fb) || !fb.pixels)
+            return;
+        pixels = fb.pixels;
+        width = fb.width;
+        height = fb.height;
+        stride = fb.stride;
+    }
 
-    vgfx_framebuffer_t fb;
-    if (!vgfx_get_framebuffer(c->gfx_win, &fb) || !fb.pixels)
+    if (!pixels || width <= 0 || height <= 0 || stride <= 0)
         return;
-
-    postfx_apply(fx, fb.pixels, fb.width, fb.height, fb.stride);
+    postfx_apply(fx, pixels, width, height, stride);
 }
 
 /// @brief Append SSAO (Screen-Space Ambient Occlusion). `radius` (world units) is the sample

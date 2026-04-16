@@ -48,7 +48,7 @@ int8_t rt_postfx3d_get_enabled(void *obj);
 void rt_postfx3d_clear(void *obj);
 /// @brief Number of effects currently in the chain (max 8).
 int64_t rt_postfx3d_get_effect_count(void *obj);
-/// @brief Bind a PostFX chain to a Canvas3D for automatic application during Flip.
+/// @brief Bind a PostFX chain to a Canvas3D for automatic application during Flip to the active output.
 void rt_canvas3d_set_post_fx(void *canvas, void *postfx);
 
 /* Phase F additions */

@@ -12,7 +12,7 @@
 // Key invariants:
 //   - These structs are internal to the runtime; never exposed in public headers.
 //   - All object pointers received from user code must be cast to these types.
-//   - vgfx3d_vertex_t is 80 bytes, defined upfront for all phases.
+//   - vgfx3d_vertex_t is 84 bytes, defined upfront for all phases.
 //
 // Links: rt_canvas3d.h, plans/3d/01-software-renderer.md
 //
@@ -29,7 +29,7 @@
 #include <stdint.h>
 
 //=============================================================================
-// Vertex format (80 bytes — final layout for all phases)
+// Vertex format (84 bytes — final layout for all phases)
 //=============================================================================
 
 typedef struct {
@@ -37,10 +37,10 @@ typedef struct {
     float normal[3];         /* vertex normal */
     float uv[2];             /* texture coordinates */
     float color[4];          /* RGBA vertex color */
-    float tangent[3];        /* tangent vector (Phase 9) */
+    float tangent[4];        /* tangent.xyz + handedness sign in tangent.w */
     uint8_t bone_indices[4]; /* bone palette indices (Phase 14) */
     float bone_weights[4];   /* blend weights (Phase 14) */
-} vgfx3d_vertex_t;           /* 80 bytes */
+} vgfx3d_vertex_t;           /* 84 bytes */
 
 //=============================================================================
 // Mesh3D

@@ -211,7 +211,7 @@ static NSString *metal_shader_source =
      "    float3 normal   [[attribute(1)]];\n"
      "    float2 uv       [[attribute(2)]];\n"
      "    float4 color    [[attribute(3)]];\n"
-     "    float3 tangent  [[attribute(4)]];\n"
+     "    float4 tangent  [[attribute(4)]];\n"
      "    uchar4 boneIdx  [[attribute(5)]];\n"
      "    float4 boneWt   [[attribute(6)]];\n"
      "};\n"
@@ -226,7 +226,7 @@ static NSString *metal_shader_source =
      "    float4 position [[position]];\n"
      "    float3 worldPos;\n"
      "    float3 normal;\n"
-     "    float3 tangent;\n"
+     "    float4 tangent;\n"
      "    float2 uv;\n"
      "    float4 color;\n"
      "    float4 currClip;\n"
@@ -367,7 +367,7 @@ static NSString *metal_shader_source =
      "VertexOut buildVertex(float3 currPos,\n"
      "                      float3 prevPos,\n"
      "                      float3 currNormal,\n"
-     "                      float3 currTangent,\n"
+     "                      float4 currTangent,\n"
      "                      float2 uv,\n"
      "                      float4 color,\n"
      "                      float4x4 modelMatrix,\n"
@@ -385,7 +385,7 @@ static NSString *metal_shader_source =
      "    out.position.z = out.position.z * 0.5 + out.position.w * 0.5;\n"
      "    out.worldPos = worldPos.xyz;\n"
      "    out.normal = (normalMatrix * float4(currNormal, 0.0)).xyz;\n"
-     "    out.tangent = (modelMatrix * float4(currTangent, 0.0)).xyz;\n"
+     "    out.tangent = float4((modelMatrix * float4(currTangent.xyz, 0.0)).xyz, currTangent.w);\n"
      "    out.uv = uv;\n"
      "    out.color = color;\n"
      "    out.currClip = currClip;\n"
@@ -413,18 +413,18 @@ static NSString *metal_shader_source =
      "                                       vid);\n"
      "    float3 currNormal = applyMorphNormal(in.normal, obj, morphNormalDeltas, morphWeights, "
      "vid);\n"
-     "    float3 currTangent = in.tangent;\n"
+     "    float4 currTangent = in.tangent;\n"
      "    float4 skinnedPos = skinPosition(float4(pos, 1.0), in, bonePalette, obj.flags0.x);\n"
      "    float4 prevSkinnedPos = skinPosition(float4(prevPos, 1.0),\n"
      "                                         in,\n"
      "                                         prevBonePalette,\n"
      "                                         obj.flags0.y);\n"
      "    float3 skinnedNormal = skinVector(currNormal, in, bonePalette, obj.flags0.x);\n"
-     "    float3 skinnedTangent = skinVector(currTangent, in, bonePalette, obj.flags0.x);\n"
+     "    float3 skinnedTangent = skinVector(currTangent.xyz, in, bonePalette, obj.flags0.x);\n"
      "    if (obj.flags0.x == 0) {\n"
      "        skinnedPos = float4(pos, 1.0);\n"
      "        skinnedNormal = currNormal;\n"
-     "        skinnedTangent = currTangent;\n"
+     "        skinnedTangent = currTangent.xyz;\n"
      "    }\n"
      "    if (obj.flags0.y == 0)\n"
      "        prevSkinnedPos = float4(prevPos, 1.0);\n"
@@ -434,7 +434,7 @@ static NSString *metal_shader_source =
      "    return buildVertex(skinnedPos.xyz,\n"
      "                       prevSkinnedPos.xyz,\n"
      "                       normalize(skinnedNormal),\n"
-     "                       normalize(skinnedTangent),\n"
+     "                       float4(normalize(skinnedTangent), currTangent.w),\n"
      "                       in.uv,\n"
      "                       in.color,\n"
      "                       obj.modelMatrix,\n"
@@ -467,18 +467,18 @@ static NSString *metal_shader_source =
      "                                       vid);\n"
      "    float3 currNormal = applyMorphNormal(in.normal, obj, morphNormalDeltas, morphWeights, "
      "vid);\n"
-     "    float3 currTangent = in.tangent;\n"
+     "    float4 currTangent = in.tangent;\n"
      "    float4 skinnedPos = skinPosition(float4(pos, 1.0), in, bonePalette, obj.flags0.x);\n"
      "    float4 prevSkinnedPos = skinPosition(float4(prevPos, 1.0),\n"
      "                                         in,\n"
      "                                         prevBonePalette,\n"
      "                                         obj.flags0.y);\n"
      "    float3 skinnedNormal = skinVector(currNormal, in, bonePalette, obj.flags0.x);\n"
-     "    float3 skinnedTangent = skinVector(currTangent, in, bonePalette, obj.flags0.x);\n"
+     "    float3 skinnedTangent = skinVector(currTangent.xyz, in, bonePalette, obj.flags0.x);\n"
      "    if (obj.flags0.x == 0) {\n"
      "        skinnedPos = float4(pos, 1.0);\n"
      "        skinnedNormal = currNormal;\n"
-     "        skinnedTangent = currTangent;\n"
+     "        skinnedTangent = currTangent.xyz;\n"
      "    }\n"
      "    if (obj.flags0.y == 0)\n"
      "        prevSkinnedPos = float4(prevPos, 1.0);\n"
@@ -488,7 +488,7 @@ static NSString *metal_shader_source =
      "    return buildVertex(skinnedPos.xyz,\n"
      "                       prevSkinnedPos.xyz,\n"
      "                       normalize(skinnedNormal),\n"
-     "                       normalize(skinnedTangent),\n"
+     "                       float4(normalize(skinnedTangent), currTangent.w),\n"
      "                       in.uv,\n"
      "                       in.color,\n"
      "                       inst.modelMatrix,\n"
@@ -593,11 +593,11 @@ static NSString *metal_shader_source =
      "    float3 N = normalize(in.normal);\n"
      "    float3 V = normalize(scene.cameraPosition.xyz - in.worldPos);\n"
      "    if (material.flags0.z != 0) {\n"
-     "        float3 T = normalize(in.tangent);\n"
+     "        float3 T = normalize(in.tangent.xyz);\n"
      "        T = normalize(T - N * dot(T, N));\n"
      "        float lenT = length(T);\n"
      "        if (lenT > 0.001) {\n"
-     "            float3 B = cross(N, T);\n"
+     "            float3 B = cross(N, T) * (in.tangent.w < 0.0 ? -1.0 : 1.0);\n"
      "            float3 mapN = normalTex.sample(texSampler, in.uv).rgb * 2.0 - 1.0;\n"
      "            mapN.xy *= material.pbrScalars1.x;\n"
      "            N = normalize(T * mapN.x + B * mapN.y + N * mapN.z);\n"
@@ -608,14 +608,12 @@ static NSString *metal_shader_source =
      "        emissive *= emissiveTex.sample(texSampler, in.uv).rgb;\n"
      "    }\n"
      "    float finalAlpha = materialAlpha * texAlpha;\n"
-     "    if (material.pbrFlags.x != 0) {\n"
-     "        if (material.pbrFlags.y == 1) {\n"
-     "            if (finalAlpha < material.pbrScalars1.y)\n"
-     "                discard_fragment();\n"
-     "            finalAlpha = materialAlpha;\n"
-     "        } else if (material.pbrFlags.y == 0) {\n"
-     "            finalAlpha = materialAlpha;\n"
-     "        }\n"
+     "    if (material.pbrFlags.y == 1) {\n"
+     "        if (finalAlpha < material.pbrScalars1.y)\n"
+     "            discard_fragment();\n"
+     "        finalAlpha = materialAlpha;\n"
+     "    } else if (material.pbrFlags.x != 0 && material.pbrFlags.y == 0) {\n"
+     "        finalAlpha = materialAlpha;\n"
      "    }\n"
      "    if (material.flags0.y != 0) {\n"
      "        float3 unlitColor = baseColor + emissive;\n"
@@ -1500,7 +1498,7 @@ static id<MTLTexture> metal_active_readback_texture(VGFXMetalContext *ctx) {
 }
 
 //=============================================================================
-// Vertex descriptor (80-byte vgfx3d_vertex_t)
+// Vertex descriptor (84-byte vgfx3d_vertex_t)
 //=============================================================================
 
 static MTLVertexDescriptor *create_vertex_descriptor(void) {
@@ -1517,16 +1515,16 @@ static MTLVertexDescriptor *create_vertex_descriptor(void) {
     d.attributes[3].format = MTLVertexFormatFloat4;
     d.attributes[3].offset = 32;
     d.attributes[3].bufferIndex = 0;
-    d.attributes[4].format = MTLVertexFormatFloat3;
+    d.attributes[4].format = MTLVertexFormatFloat4;
     d.attributes[4].offset = 48;
     d.attributes[4].bufferIndex = 0;
     d.attributes[5].format = MTLVertexFormatUChar4;
-    d.attributes[5].offset = 60;
+    d.attributes[5].offset = 64;
     d.attributes[5].bufferIndex = 0;
     d.attributes[6].format = MTLVertexFormatFloat4;
-    d.attributes[6].offset = 64;
+    d.attributes[6].offset = 68;
     d.attributes[6].bufferIndex = 0;
-    d.layouts[0].stride = 80;
+    d.layouts[0].stride = 84;
     d.layouts[0].stepRate = 1;
     d.layouts[0].stepFunction = MTLVertexStepFunctionPerVertex;
     return d;

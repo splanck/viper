@@ -714,7 +714,7 @@ static const char *const glsl_vertex_src[] = {
     "layout(location=1) in vec3 aNormal;\n"
     "layout(location=2) in vec2 aUV;\n"
     "layout(location=3) in vec4 aColor;\n"
-    "layout(location=4) in vec3 aTangent;\n"
+    "layout(location=4) in vec4 aTangent;\n"
     "layout(location=5) in uvec4 aBoneIdx;\n"
     "layout(location=6) in vec4 aBoneWt;\n"
     "layout(location=7) in vec4 aInstanceRow0;\n"
@@ -747,7 +747,7 @@ static const char *const glsl_vertex_src[] = {
     "uniform int uHasPrevMorphWeights;\n"
     "out vec3 vWorldPos;\n"
     "out vec3 vNormal;\n"
-    "out vec3 vTangent;\n"
+    "out vec4 vTangent;\n"
     "out vec2 vUV;\n"
     "out vec4 vColor;\n"
     "out vec4 vCurrClip;\n"
@@ -825,7 +825,7 @@ static const char *const glsl_vertex_src[] = {
     "    gl_Position = uViewProjection * wp;\n"
     "    vWorldPos = wp.xyz;\n"
     "    vNormal = normalMatrix * localNormal;\n"
-    "    vTangent = mat3(model) * aTangent;\n"
+    "    vTangent = vec4(mat3(model) * aTangent.xyz, aTangent.w);\n"
     "    vUV = aUV;\n"
     "    vColor = aColor;\n"
     "    vCurrClip = gl_Position;\n"
@@ -840,7 +840,7 @@ static const char *const glsl_fragment_src[] = {
     "#version 330 core\n"
     "in vec3 vWorldPos;\n"
     "in vec3 vNormal;\n"
-    "in vec3 vTangent;\n"
+    "in vec4 vTangent;\n"
     "in vec2 vUV;\n"
     "in vec4 vColor;\n"
     "in vec4 vCurrClip;\n"
@@ -960,21 +960,19 @@ static const char *const glsl_fragment_src[] = {
     "    if (uHasNormalMap != 0) {\n"
     "        vec3 mapN = texture(uNormalTex, vUV).xyz * 2.0 - 1.0;\n"
     "        mapN.xy *= uPbrScalars1.x;\n"
-    "        vec3 T = normalize(vTangent - N * dot(vTangent, N));\n"
-    "        vec3 B = normalize(cross(N, T));\n"
+    "        vec3 T = normalize(vTangent.xyz - N * dot(vTangent.xyz, N));\n"
+    "        vec3 B = normalize(cross(N, T)) * (vTangent.w < 0.0 ? -1.0 : 1.0);\n"
     "        N = normalize(mat3(T, B, N) * mapN);\n"
     "    }\n"
     "    vec3 emissive = uEmissiveColor * uPbrScalars0.w;\n"
     "    if (uHasEmissiveMap != 0) emissive *= texture(uEmissiveTex, vUV).rgb;\n"
     "    vec3 V = normalize(uCameraPos - vWorldPos);\n"
     "    float finalAlpha = materialAlpha * texAlpha;\n"
-    "    if (uWorkflow != 0) {\n"
-    "        if (uAlphaMode == 1) {\n"
-    "            if (finalAlpha < uPbrScalars1.y) discard;\n"
-    "            finalAlpha = materialAlpha;\n"
-    "        } else if (uAlphaMode == 0) {\n"
-    "            finalAlpha = materialAlpha;\n"
-    "        }\n"
+    "    if (uAlphaMode == 1) {\n"
+    "        if (finalAlpha < uPbrScalars1.y) discard;\n"
+    "        finalAlpha = materialAlpha;\n"
+    "    } else if (uWorkflow != 0 && uAlphaMode == 0) {\n"
+    "        finalAlpha = materialAlpha;\n"
     "    }\n"
     "    if (uUnlit != 0) {\n"
     "        vec3 unlitColor = baseColor + emissive;\n"
@@ -2481,7 +2479,7 @@ static void set_identity_instance_constants(void) {
 ///
 /// Attribute slots: 0=pos, 1=normal, 2=uv, 3=color (4f), 4=tangent,
 /// 5=bone indices (4×u8 as int), 6=bone weights (4f). Layout matches
-/// the `vgfx3d_vertex_t` struct's offsets (12, 24, 32, 48, 60, 64).
+/// the `vgfx3d_vertex_t` struct's offsets (12, 24, 32, 48, 64, 68).
 /// Also resets instance attributes to identity defaults.
 static void configure_mesh_attributes(gl_context_t *ctx, GLuint mesh_vbo, GLuint mesh_ibo) {
     GLsizei stride = (GLsizei)sizeof(vgfx3d_vertex_t);
@@ -2496,11 +2494,11 @@ static void configure_mesh_attributes(gl_context_t *ctx, GLuint mesh_vbo, GLuint
     gl.EnableVertexAttribArray(2);
     gl.VertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, stride, (void *)32);
     gl.EnableVertexAttribArray(3);
-    gl.VertexAttribPointer(4, 3, GL_FLOAT, GL_FALSE, stride, (void *)48);
+    gl.VertexAttribPointer(4, 4, GL_FLOAT, GL_FALSE, stride, (void *)48);
     gl.EnableVertexAttribArray(4);
-    gl.VertexAttribIPointer(5, 4, GL_UNSIGNED_BYTE, stride, (void *)60);
+    gl.VertexAttribIPointer(5, 4, GL_UNSIGNED_BYTE, stride, (void *)64);
     gl.EnableVertexAttribArray(5);
-    gl.VertexAttribPointer(6, 4, GL_FLOAT, GL_FALSE, stride, (void *)64);
+    gl.VertexAttribPointer(6, 4, GL_FLOAT, GL_FALSE, stride, (void *)68);
     gl.EnableVertexAttribArray(6);
     set_identity_instance_constants();
 }

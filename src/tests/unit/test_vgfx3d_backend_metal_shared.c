@@ -184,6 +184,16 @@ static void test_target_kind_blend_motion_and_readback_helpers(void) {
                     VGFX3D_METAL_MOTION_ATTACHMENTS_COLOR_ONLY,
                 "Swapchain draws never target a scene-motion attachment");
 
+    memset(&cmd, 0, sizeof(cmd));
+    cmd.workflow = RT_MATERIAL3D_WORKFLOW_LEGACY;
+    cmd.alpha_mode = RT_MATERIAL3D_ALPHA_MODE_BLEND;
+    EXPECT_TRUE(vgfx3d_metal_choose_blend_mode(&cmd) == VGFX3D_METAL_BLEND_ALPHA,
+                "Legacy explicit blend materials use alpha blending");
+    cmd.alpha = 0.25f;
+    cmd.alpha_mode = RT_MATERIAL3D_ALPHA_MODE_MASK;
+    EXPECT_TRUE(vgfx3d_metal_choose_blend_mode(&cmd) == VGFX3D_METAL_BLEND_OPAQUE,
+                "Legacy masked materials stay on the opaque render path");
+
     EXPECT_TRUE(vgfx3d_metal_choose_readback_kind(0) == VGFX3D_METAL_READBACK_BACKBUFFER,
                 "Direct rendering reads back the backbuffer");
     EXPECT_TRUE(vgfx3d_metal_choose_readback_kind(1) ==

@@ -373,12 +373,19 @@ void rt_mesh3d_set_morph_targets(void *mesh, void *morph_targets) {
         return;
     rt_mesh3d *m = (rt_mesh3d *)mesh;
     if (!morph_targets) {
+        if (m->morph_targets_ref && rt_obj_release_check0(m->morph_targets_ref))
+            rt_obj_free(m->morph_targets_ref);
         m->morph_targets_ref = NULL;
         return;
     }
     rt_morphtarget3d *mt = (rt_morphtarget3d *)morph_targets;
     if ((int32_t)m->vertex_count != mt->vertex_count)
         return;
+    if (m->morph_targets_ref == morph_targets)
+        return;
+    rt_obj_retain_maybe(morph_targets);
+    if (m->morph_targets_ref && rt_obj_release_check0(m->morph_targets_ref))
+        rt_obj_free(m->morph_targets_ref);
     m->morph_targets_ref = morph_targets;
 }
 
@@ -405,6 +412,12 @@ static void morphtarget_draw_mesh_matrix(void *canvas,
 
     rt_canvas3d *c = (rt_canvas3d *)canvas;
     if (c && c->backend && vgfx3d_backend_prefers_gpu_morph(c->backend->name)) {
+        void *saved_ref;
+        const float *saved_deltas;
+        const float *saved_normal_deltas;
+        const float *saved_weights;
+        const float *saved_prev_weights;
+        int32_t saved_shape_count;
         const float *prev_weights =
             morphtarget_prepare_prev_weights(mt, rt_canvas3d_get_frame_serial(canvas));
         const float *packed_deltas = rt_morphtarget3d_get_packed_deltas(mt);
@@ -413,15 +426,26 @@ static void morphtarget_draw_mesh_matrix(void *canvas,
             return;
         rt_canvas3d_add_temp_object(canvas, mt);
 
-        rt_mesh3d tmp = *m;
-        tmp.morph_targets_ref = morph_targets;
-        tmp.morph_deltas = packed_deltas;
-        tmp.morph_normal_deltas = packed_normal_deltas;
-        tmp.morph_weights = mt->weights;
-        tmp.prev_morph_weights = prev_weights;
-        tmp.morph_shape_count = mt->shape_count;
-        rt_canvas3d_draw_mesh_matrix_keyed(
-            canvas, &tmp, model_matrix, material, motion_key, NULL, prev_weights);
+        saved_ref = m->morph_targets_ref;
+        saved_deltas = m->morph_deltas;
+        saved_normal_deltas = m->morph_normal_deltas;
+        saved_weights = m->morph_weights;
+        saved_prev_weights = m->prev_morph_weights;
+        saved_shape_count = m->morph_shape_count;
+
+        m->morph_targets_ref = morph_targets;
+        m->morph_deltas = packed_deltas;
+        m->morph_normal_deltas = packed_normal_deltas;
+        m->morph_weights = mt->weights;
+        m->prev_morph_weights = prev_weights;
+        m->morph_shape_count = mt->shape_count;
+        rt_canvas3d_draw_mesh_matrix_keyed(canvas, mesh, model_matrix, material, motion_key, NULL, prev_weights);
+        m->morph_targets_ref = saved_ref;
+        m->morph_deltas = saved_deltas;
+        m->morph_normal_deltas = saved_normal_deltas;
+        m->morph_weights = saved_weights;
+        m->prev_morph_weights = saved_prev_weights;
+        m->morph_shape_count = saved_shape_count;
         return;
     }
 

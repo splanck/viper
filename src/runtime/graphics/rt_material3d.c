@@ -297,7 +297,7 @@ void rt_material3d_set_custom_param(void *obj, int64_t index, double value) {
 void rt_material3d_set_alpha(void *obj, double alpha) {
     if (!obj)
         return;
-    ((rt_material3d *)obj)->alpha = alpha;
+    ((rt_material3d *)obj)->alpha = clamp01(alpha);
 }
 
 /// @brief Get the current transparency level of the material.

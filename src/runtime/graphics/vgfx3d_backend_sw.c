@@ -109,7 +109,7 @@ typedef struct {
     float clip[4];
     float world[3];
     float normal[3];
-    float tangent[3];
+    float tangent[4];
     float uv[2];
     float color[4];
 } pipe_vert_t;
@@ -143,7 +143,7 @@ static void pipe_lerp(const pipe_vert_t *a, const pipe_vert_t *b, float t, pipe_
         out->world[i] = s * a->world[i] + t * b->world[i];
     for (int i = 0; i < 3; i++)
         out->normal[i] = s * a->normal[i] + t * b->normal[i];
-    for (int i = 0; i < 3; i++)
+    for (int i = 0; i < 4; i++)
         out->tangent[i] = s * a->tangent[i] + t * b->tangent[i];
     for (int i = 0; i < 2; i++)
         out->uv[i] = s * a->uv[i] + t * b->uv[i];
@@ -511,7 +511,7 @@ typedef struct {
     float u_over_w, v_over_w, inv_w;
     float wx, wy, wz; /* world position (for fog distance computation) */
     float nx, ny, nz; /* world normal (for per-pixel lighting with normal maps) */
-    float tx, ty, tz; /* world tangent (for TBN matrix construction) */
+    float tx, ty, tz, tw; /* world tangent plus handedness sign (for TBN construction) */
 } screen_vert_t;
 
 // Inline math helpers — used heavily in the per-pixel PBR shading path,
@@ -799,6 +799,7 @@ static void raster_triangle(uint8_t *pixels,
                             float ptx = b0 * v0->tx + b1 * v1->tx + b2 * v2->tx;
                             float pty = b0 * v0->ty + b1 * v1->ty + b2 * v2->ty;
                             float ptz = b0 * v0->tz + b1 * v1->tz + b2 * v2->tz;
+                            float ptw = b0 * v0->tw + b1 * v1->tw + b2 * v2->tw;
                             float tlen = sqrtf(ptx * ptx + pty * pty + ptz * ptz);
 
                             if (normal_map && tlen > 1e-7f) {
@@ -824,10 +825,11 @@ static void raster_triangle(uint8_t *pixels,
                                 float map_y = (tng * 2.0f - 1.0f) * cmd->normal_scale;
                                 float map_z = tnb * 2.0f - 1.0f;
 
-                                /* Bitangent = N × T */
-                                float bbx = pny * ptz - pnz * pty;
-                                float bby = pnz * ptx - pnx * ptz;
-                                float bbz = pnx * pty - pny * ptx;
+                                /* Bitangent = sign * (N × T) */
+                                float tangent_sign = ptw < 0.0f ? -1.0f : 1.0f;
+                                float bbx = (pny * ptz - pnz * pty) * tangent_sign;
+                                float bby = (pnz * ptx - pnx * ptz) * tangent_sign;
+                                float bbz = (pnx * pty - pny * ptx) * tangent_sign;
 
                                 /* TBN transform: tangent-space → world-space */
                                 float wn_x = ptx * map_x + bbx * map_y + pnx * map_z;
@@ -1202,14 +1204,13 @@ static void raster_triangle(uint8_t *pixels,
                     float material_alpha = b0 * v0->a + b1 * v1->a + b2 * v2->a;
                     float fa = material_alpha * tex_alpha;
                     int discard_fragment = 0;
-                    if (cmd && cmd->workflow == RT_MATERIAL3D_WORKFLOW_PBR) {
-                        if (cmd->alpha_mode == RT_MATERIAL3D_ALPHA_MODE_MASK) {
-                            if (fa < cmd->alpha_cutoff)
-                                discard_fragment = 1;
-                            fa = material_alpha;
-                        } else if (cmd->alpha_mode == RT_MATERIAL3D_ALPHA_MODE_OPAQUE) {
-                            fa = material_alpha;
-                        }
+                    if (cmd && cmd->alpha_mode == RT_MATERIAL3D_ALPHA_MODE_MASK) {
+                        if (fa < cmd->alpha_cutoff)
+                            discard_fragment = 1;
+                        fa = material_alpha;
+                    } else if (cmd && cmd->workflow == RT_MATERIAL3D_WORKFLOW_PBR &&
+                               cmd->alpha_mode == RT_MATERIAL3D_ALPHA_MODE_OPAQUE) {
+                        fa = material_alpha;
                     }
                     if (cmd && (cmd->workflow == RT_MATERIAL3D_WORKFLOW_PBR || normal_map) &&
                         cmd->shading_model == 4) {
@@ -1712,6 +1713,7 @@ static void sw_submit_draw(void *ctx_ptr,
         dst->tangent[0] = wtan4[0];
         dst->tangent[1] = wtan4[1];
         dst->tangent[2] = wtan4[2];
+        dst->tangent[3] = src->tangent[3];
 
         /* Clip-space */
         float clip[4];
@@ -1842,6 +1844,7 @@ static void sw_submit_draw(void *ctx_ptr,
                 sv[vi].tx = p->tangent[0];
                 sv[vi].ty = p->tangent[1];
                 sv[vi].tz = p->tangent[2];
+                sv[vi].tw = p->tangent[3];
             }
             if (!ok)
                 continue;

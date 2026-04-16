@@ -465,6 +465,8 @@ static void scene_node_apply_root_motion(rt_scene_node3d *node) {
     node->position[0] += rt_vec3_x(delta);
     node->position[1] += rt_vec3_y(delta);
     node->position[2] += rt_vec3_z(delta);
+    if (rt_obj_release_check0(delta))
+        rt_obj_free(delta);
     mark_dirty(node);
 }
 
@@ -642,12 +644,19 @@ static void draw_node(rt_scene_node3d *node,
 
     /* Frustum cull: test world-space AABB if the node has a mesh */
     if (frustum && draw_mesh && draw_radius > 0.0f) {
-        float world_min[3], world_max[3];
-        vgfx3d_transform_aabb(draw_min, draw_max, node->world_matrix, world_min, world_max);
-        if (vgfx3d_frustum_test_aabb(frustum, world_min, world_max) == 0) {
-            draw_self = 0;
-            if (culled)
-                (*culled)++;
+        rt_mesh3d *draw_mesh_impl = (rt_mesh3d *)draw_mesh;
+        int has_dynamic_deformation =
+            (node->bound_animator != NULL || draw_mesh_impl->morph_targets_ref != NULL ||
+             draw_mesh_impl->morph_deltas != NULL || draw_mesh_impl->morph_weights != NULL ||
+             draw_mesh_impl->morph_shape_count > 0);
+        if (!has_dynamic_deformation) {
+            float world_min[3], world_max[3];
+            vgfx3d_transform_aabb(draw_min, draw_max, node->world_matrix, world_min, world_max);
+            if (vgfx3d_frustum_test_aabb(frustum, world_min, world_max) == 0) {
+                draw_self = 0;
+                if (culled)
+                    (*culled)++;
+            }
         }
     }
 
@@ -1253,7 +1262,11 @@ void rt_scene3d_sync_bindings(void *obj, double dt) {
 }
 
 int64_t rt_scene3d_get_node_count(void *obj) {
-    return obj ? ((rt_scene3d *)obj)->node_count : 0;
+    if (!obj)
+        return 0;
+    rt_scene3d *scene = (rt_scene3d *)obj;
+    scene->node_count = count_subtree(scene->root);
+    return scene->node_count;
 }
 
 int64_t rt_scene3d_get_culled_count(void *obj) {

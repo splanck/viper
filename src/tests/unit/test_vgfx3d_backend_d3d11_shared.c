@@ -209,8 +209,17 @@ static void test_target_kind_blend_and_color_format_helpers(void) {
                 "PBR mask materials keep opaque render-target writes");
     cmd.workflow = 0;
     cmd.alpha = 0.5f;
+    cmd.alpha_mode = RT_MATERIAL3D_ALPHA_MODE_OPAQUE;
     EXPECT_TRUE(vgfx3d_d3d11_choose_blend_mode(&cmd) == VGFX3D_D3D11_BLEND_ALPHA,
                 "Legacy translucent materials use alpha blending");
+    cmd.alpha = 1.0f;
+    cmd.alpha_mode = RT_MATERIAL3D_ALPHA_MODE_BLEND;
+    EXPECT_TRUE(vgfx3d_d3d11_choose_blend_mode(&cmd) == VGFX3D_D3D11_BLEND_ALPHA,
+                "Legacy explicit blend materials use alpha blending");
+    cmd.alpha = 0.25f;
+    cmd.alpha_mode = RT_MATERIAL3D_ALPHA_MODE_MASK;
+    EXPECT_TRUE(vgfx3d_d3d11_choose_blend_mode(&cmd) == VGFX3D_D3D11_BLEND_OPAQUE,
+                "Legacy masked materials stay on the opaque render path");
 
     EXPECT_TRUE(vgfx3d_d3d11_choose_color_format(VGFX3D_D3D11_TARGET_SCENE) ==
                     VGFX3D_D3D11_COLOR_FORMAT_HDR16F,

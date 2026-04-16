@@ -72,11 +72,11 @@ int64_t rt_canvas3d_get_width(void *obj);
 int64_t rt_canvas3d_get_height(void *obj);
 /// @brief Get the rolling-average FPS measured over recent frames.
 int64_t rt_canvas3d_get_fps(void *obj);
-/// @brief Get the wall-clock milliseconds since the previous Flip.
+/// @brief Get the wall-clock milliseconds since the previous Flip (first frame returns 0).
 int64_t rt_canvas3d_get_delta_time(void *obj);
 /// @brief Cap the per-frame delta time (smooths spikes after pause/breakpoint).
 void rt_canvas3d_set_dt_max(void *obj, int64_t max_ms);
-/// @brief Bind a Light3D to slot @p index (overwrites any existing light there).
+/// @brief Bind or clear a Light3D slot; the canvas retains the assigned light until replaced.
 void rt_canvas3d_set_light(void *obj, int64_t index, void *light);
 /// @brief Set the ambient light color applied to all lit materials.
 void rt_canvas3d_set_ambient(void *obj, double r, double g, double b);
@@ -174,7 +174,7 @@ void *rt_camera3d_new_ortho(double size, double aspect, double near_val, double 
 int8_t rt_camera3d_is_ortho(void *cam);
 /// @brief Aim the camera at a target point with an explicit up direction.
 void rt_camera3d_look_at(void *obj, void *eye, void *target, void *up);
-/// @brief Position the camera on a sphere around @p target at the given yaw/pitch (radians).
+/// @brief Position the camera on a sphere around @p target at the given yaw/pitch in degrees.
 void rt_camera3d_orbit(void *obj, void *target, double distance, double yaw, double pitch);
 /// @brief Get the field of view in degrees (perspective cameras only).
 double rt_camera3d_get_fov(void *obj);
@@ -284,7 +284,7 @@ void *rt_light3d_new_directional(void *direction, double r, double g, double b);
 void *rt_light3d_new_point(void *position, double r, double g, double b, double attenuation);
 /// @brief Create an ambient light contribution (illuminates all surfaces equally).
 void *rt_light3d_new_ambient(double r, double g, double b);
-/// @brief Create a spot light with inner/outer cone angles in radians (smooth edge between).
+/// @brief Create a spot light with inner/outer cone angles in degrees (smooth edge between).
 void *rt_light3d_new_spot(void *position,
                           void *direction,
                           double r,
@@ -368,13 +368,13 @@ void rt_camera3d_fps_update(void *cam,
                             double move_up,
                             double speed,
                             double dt);
-/// @brief Read the current FPS-camera yaw in radians.
+/// @brief Read the current FPS-camera yaw in degrees.
 double rt_camera3d_get_yaw(void *cam);
-/// @brief Read the current FPS-camera pitch in radians.
+/// @brief Read the current FPS-camera pitch in degrees.
 double rt_camera3d_get_pitch(void *cam);
-/// @brief Set the FPS-camera yaw in radians.
+/// @brief Set the FPS-camera yaw in degrees and rebuild the view immediately.
 void rt_camera3d_set_yaw(void *cam, double yaw);
-/// @brief Set the FPS-camera pitch in radians (typically clamped to ±π/2).
+/// @brief Set the FPS-camera pitch in degrees (clamped internally to +/-89) and rebuild the view.
 void rt_camera3d_set_pitch(void *cam, double pitch);
 
 #ifdef __cplusplus

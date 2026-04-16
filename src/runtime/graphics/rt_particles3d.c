@@ -37,6 +37,9 @@
 
 extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
 extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
+extern void rt_obj_retain_maybe(void *obj);
+extern int rt_obj_release_check0(void *obj);
+extern void rt_obj_free(void *obj);
 #include "rt_trap.h"
 extern void rt_canvas3d_add_temp_buffer(void *canvas, void *buffer);
 
@@ -191,6 +194,12 @@ static void rt_particles3d_finalize(void *obj) {
     rt_particles3d *ps = (rt_particles3d *)obj;
     free(ps->particles);
     ps->particles = NULL;
+    if (ps->texture && rt_obj_release_check0(ps->texture))
+        rt_obj_free(ps->texture);
+    ps->texture = NULL;
+    if (ps->cached_material && rt_obj_release_check0(ps->cached_material))
+        rt_obj_free(ps->cached_material);
+    ps->cached_material = NULL;
 }
 
 void *rt_particles3d_new(int64_t max_particles) {
@@ -340,7 +349,7 @@ void rt_particles3d_set_alpha(void *o, double sa, double ea) {
 void rt_particles3d_set_rate(void *o, double r) {
     if (!o)
         return;
-    ((rt_particles3d *)o)->rate = r;
+    ((rt_particles3d *)o)->rate = r > 0.0 ? r : 0.0;
 }
 
 /// @brief Toggle additive blend mode (1 = additive for fire/glow, 0 = alpha blend for smoke).
@@ -355,7 +364,13 @@ void rt_particles3d_set_additive(void *o, int8_t a) {
 void rt_particles3d_set_texture(void *o, void *tex) {
     if (!o)
         return;
-    ((rt_particles3d *)o)->texture = tex;
+    rt_particles3d *ps = (rt_particles3d *)o;
+    if (ps->texture == tex)
+        return;
+    rt_obj_retain_maybe(tex);
+    if (ps->texture && rt_obj_release_check0(ps->texture))
+        rt_obj_free(ps->texture);
+    ps->texture = tex;
 }
 
 /// @brief Select the emitter volume: 0 = point (default), 1 = sphere (uniform interior),
@@ -518,17 +533,11 @@ void rt_particles3d_update(void *o, double delta_time) {
 
     /* Spawn new particles */
     if (ps->emitting && ps->rate > 0.0) {
-        /* Clamp the catchup budget. A frame hiccup (e.g. dt = 1.0 s) with a
-         * high rate previously spawned thousands of particles in one frame,
-         * causing temporary freezes and in the worst case OOM. Cap catchup
-         * at ~4 frames' worth of spawning; dropped particles are intentional
-         * — the engine prefers a steady frame to a perfect spawn count. */
-        double eff_dt = delta_time;
-        const double max_catchup = 4.0 / 60.0; /* ~4 frames @ 60 fps */
-        if (eff_dt > max_catchup)
-            eff_dt = max_catchup;
-        ps->accumulator += ps->rate * eff_dt;
-        while (ps->accumulator >= 1.0) {
+        double max_budget = (double)(ps->max_particles - ps->count) + 0.999999;
+        ps->accumulator += ps->rate * delta_time;
+        if (ps->accumulator > max_budget)
+            ps->accumulator = max_budget;
+        while (ps->accumulator >= 1.0 && ps->count < ps->max_particles) {
             spawn_particle(ps);
             ps->accumulator -= 1.0;
         }
@@ -669,8 +678,7 @@ void rt_particles3d_draw(void *o, void *canvas3d, void *camera) {
         avg_alpha += ps->particles[i].color[3];
     avg_alpha /= (float)ps->count;
     rt_material3d_set_alpha(mat, (double)avg_alpha);
-    if (ps->texture)
-        rt_material3d_set_texture(mat, ps->texture);
+    rt_material3d_set_texture(mat, ps->texture);
 
     /* Register buffers for end-of-frame cleanup */
     rt_canvas3d_add_temp_buffer(canvas3d, verts);

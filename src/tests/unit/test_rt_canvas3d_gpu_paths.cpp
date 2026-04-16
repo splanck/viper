@@ -4,6 +4,7 @@
 
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
+#include "rt_heap.h"
 #include "rt_instbatch3d.h"
 #include "rt_morphtarget3d.h"
 #include "rt_postfx3d.h"
@@ -401,7 +402,9 @@ static void test_gpu_morph_payload_for_opengl(void) {
     EXPECT_TRUE(canvas.draw_count == 1, "OpenGL morphed draw enqueues one draw");
     EXPECT_TRUE(canvas.temp_buf_count == 0,
                 "OpenGL morphed draw avoids transient packed payload buffers");
-    EXPECT_TRUE(canvas.temp_obj_count == 1,
+    EXPECT_TRUE(canvas.temp_obj_count == 3,
+                "OpenGL morphed draw retains mesh, material, and morph state until frame end");
+    EXPECT_TRUE(rt_heap_hdr(morph)->refcnt == 2,
                 "OpenGL morphed draw retains the morph object until frame end");
     EXPECT_TRUE(draws[0].cmd.vertices == mesh_view->vertices,
                 "OpenGL morphed draw keeps original mesh vertices for GPU morphing");
@@ -446,7 +449,9 @@ static void test_gpu_morph_payload_for_d3d11(void) {
     EXPECT_TRUE(canvas.draw_count == 1, "D3D11 morphed draw enqueues one draw");
     EXPECT_TRUE(canvas.temp_buf_count == 0,
                 "D3D11 morphed draw avoids transient packed payload buffers");
-    EXPECT_TRUE(canvas.temp_obj_count == 1,
+    EXPECT_TRUE(canvas.temp_obj_count == 3,
+                "D3D11 morphed draw retains mesh, material, and morph state until frame end");
+    EXPECT_TRUE(rt_heap_hdr(morph)->refcnt == 2,
                 "D3D11 morphed draw retains the morph object until frame end");
     EXPECT_TRUE(draws[0].cmd.vertices == mesh_view->vertices,
                 "D3D11 morphed draw keeps original mesh vertices for GPU morphing");
@@ -482,7 +487,9 @@ static void test_gpu_morph_payload_for_metal(void) {
     EXPECT_TRUE(canvas.draw_count == 1, "Metal morphed draw enqueues one draw");
     EXPECT_TRUE(canvas.temp_buf_count == 0,
                 "Metal morphed draw avoids transient packed payload buffers");
-    EXPECT_TRUE(canvas.temp_obj_count == 1,
+    EXPECT_TRUE(canvas.temp_obj_count == 3,
+                "Metal morphed draw retains mesh, material, and morph state until frame end");
+    EXPECT_TRUE(rt_heap_hdr(morph)->refcnt == 2,
                 "Metal morphed draw retains the morph object until frame end");
     EXPECT_TRUE(draws[0].cmd.vertices == mesh_view->vertices,
                 "Metal morphed draw keeps original mesh vertices for GPU morphing");
@@ -518,7 +525,9 @@ static void test_gpu_morph_normal_payload_for_d3d11(void) {
     EXPECT_TRUE(canvas.draw_count == 1, "D3D11 morphed-normal draw enqueues one draw");
     EXPECT_TRUE(canvas.temp_buf_count == 0,
                 "D3D11 morphed-normal draw avoids transient packed payload buffers");
-    EXPECT_TRUE(canvas.temp_obj_count == 1,
+    EXPECT_TRUE(canvas.temp_obj_count == 3,
+                "D3D11 morphed-normal draw retains mesh, material, and morph state until frame end");
+    EXPECT_TRUE(rt_heap_hdr(morph)->refcnt == 2,
                 "D3D11 morphed-normal draw retains the morph object until frame end");
     EXPECT_TRUE(draws[0].cmd.morph_normal_deltas != nullptr,
                 "D3D11 morphed-normal draw forwards packed morph normal deltas");
@@ -551,7 +560,9 @@ static void test_gpu_morph_normal_payload_for_opengl(void) {
     EXPECT_TRUE(canvas.draw_count == 1, "OpenGL morphed-normal draw enqueues one draw");
     EXPECT_TRUE(canvas.temp_buf_count == 0,
                 "OpenGL morphed-normal draw avoids transient packed payload buffers");
-    EXPECT_TRUE(canvas.temp_obj_count == 1,
+    EXPECT_TRUE(canvas.temp_obj_count == 3,
+                "OpenGL morphed-normal draw retains mesh, material, and morph state until frame end");
+    EXPECT_TRUE(rt_heap_hdr(morph)->refcnt == 2,
                 "OpenGL morphed-normal draw retains the morph object until frame end");
     EXPECT_TRUE(draws[0].cmd.morph_normal_deltas != nullptr,
                 "OpenGL morphed-normal draw forwards packed morph normal deltas");
@@ -584,7 +595,9 @@ static void test_gpu_morph_normal_payload_for_metal(void) {
     EXPECT_TRUE(canvas.draw_count == 1, "Metal morphed-normal draw enqueues one draw");
     EXPECT_TRUE(canvas.temp_buf_count == 0,
                 "Metal morphed-normal draw avoids transient packed payload buffers");
-    EXPECT_TRUE(canvas.temp_obj_count == 1,
+    EXPECT_TRUE(canvas.temp_obj_count == 3,
+                "Metal morphed-normal draw retains mesh, material, and morph state until frame end");
+    EXPECT_TRUE(rt_heap_hdr(morph)->refcnt == 2,
                 "Metal morphed-normal draw retains the morph object until frame end");
     EXPECT_TRUE(draws[0].cmd.morph_normal_deltas != nullptr,
                 "Metal morphed-normal draw forwards packed morph normal deltas");
@@ -617,7 +630,9 @@ static void test_attached_morph_targets_route_through_draw_mesh(void) {
     EXPECT_TRUE(canvas.draw_count == 1, "Attached morph targets still enqueue one draw");
     EXPECT_TRUE(canvas.temp_buf_count == 0,
                 "Attached morph targets avoid transient GPU morph payload buffers");
-    EXPECT_TRUE(canvas.temp_obj_count == 1,
+    EXPECT_TRUE(canvas.temp_obj_count == 3,
+                "Attached morph targets retain mesh, material, and morph state until frame end");
+    EXPECT_TRUE(rt_heap_hdr(morph)->refcnt == 3,
                 "Attached morph targets retain the morph object until frame end");
     EXPECT_TRUE(draws[0].cmd.morph_deltas != nullptr,
                 "Attached morph targets route DrawMesh through the morph payload path");
@@ -718,6 +733,36 @@ static void test_static_mesh_geometry_identity_forwarded(void) {
                 "Static mesh draw forwards a stable geometry identity for backend caches");
     EXPECT_TRUE(draws[0].cmd.geometry_revision == mesh_view->geometry_revision,
                 "Static mesh draw forwards the current geometry revision");
+
+    cleanup_fake_canvas(&canvas);
+}
+
+static void test_deferred_draw_retains_mesh_and_material_until_end(void) {
+    rt_canvas3d canvas;
+    init_fake_canvas(&canvas, &kOpenGLBackend);
+
+    void *mesh = make_test_mesh();
+    void *material = rt_material3d_new();
+    void *transform = rt_mat4_identity();
+
+    EXPECT_TRUE(rt_heap_hdr(mesh)->refcnt == 1,
+                "Fresh mesh starts with a single owned reference");
+    EXPECT_TRUE(rt_heap_hdr(material)->refcnt == 1,
+                "Fresh material starts with a single owned reference");
+
+    rt_canvas3d_draw_mesh(&canvas, mesh, transform, material);
+
+    EXPECT_TRUE(canvas.temp_obj_count == 2,
+                "Deferred mesh draw tracks both mesh and material until frame end");
+    EXPECT_TRUE(rt_heap_hdr(mesh)->refcnt == 2,
+                "Deferred mesh draw retains the mesh until the queue flushes");
+    EXPECT_TRUE(rt_heap_hdr(material)->refcnt == 2,
+                "Deferred mesh draw retains the material until the queue flushes");
+
+    if (rt_obj_release_check0(mesh))
+        rt_obj_free(mesh);
+    if (rt_obj_release_check0(material))
+        rt_obj_free(material);
 
     cleanup_fake_canvas(&canvas);
 }
@@ -1190,6 +1235,7 @@ int main() {
     test_env_map_payload_forwarded();
     test_backend_skybox_hook_used();
     test_static_mesh_geometry_identity_forwarded();
+    test_deferred_draw_retains_mesh_and_material_until_end();
     test_rect2d_queues_overlay_pass();
     test_transform_history_forwarded_for_motion_blur();
     test_morph_weight_history_forwarded();

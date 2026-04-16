@@ -274,6 +274,23 @@ static void test_reparenting() {
     EXPECT_TRUE(rt_scene_node3d_child_count(b) == 1, "B has 1 child after reparent");
 }
 
+static void test_node_count_tracks_nested_hierarchy_edits() {
+    void *scene = rt_scene3d_new();
+    void *parent = rt_scene_node3d_new();
+    void *child = rt_scene_node3d_new();
+
+    rt_scene3d_add(scene, parent);
+    EXPECT_TRUE(rt_scene3d_get_node_count(scene) == 2, "Scene count includes root and parent");
+
+    rt_scene_node3d_add_child(parent, child);
+    EXPECT_TRUE(rt_scene3d_get_node_count(scene) == 3,
+                "Scene count reflects nested children added outside Scene3D.Add");
+
+    rt_scene_node3d_remove_child(parent, child);
+    EXPECT_TRUE(rt_scene3d_get_node_count(scene) == 2,
+                "Scene count reflects nested children removed outside Scene3D.Remove");
+}
+
 static void test_prevent_cycle() {
     void *a = rt_scene_node3d_new();
     void *b = rt_scene_node3d_new();
@@ -812,6 +829,7 @@ int main() {
     test_dirty_flag();
     test_find_by_name();
     test_reparenting();
+    test_node_count_tracks_nested_hierarchy_edits();
     test_prevent_cycle();
     test_visibility();
     test_clear();

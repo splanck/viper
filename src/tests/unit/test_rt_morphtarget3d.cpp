@@ -27,6 +27,11 @@
 extern "C" {
 extern rt_string rt_const_cstr(const char *s);
 extern void *rt_mesh3d_new_box(double w, double h, double d);
+extern void *rt_mesh3d_clone(void *obj);
+extern void rt_mesh3d_clear(void *obj);
+extern int rt_obj_release_check0(void *obj);
+extern void rt_obj_free(void *obj);
+extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
 }
 
 static int tests_passed = 0;
@@ -183,6 +188,44 @@ static void test_packed_payload_exports_positions_and_normals() {
     }
 }
 
+namespace {
+static int g_morph_release_count = 0;
+} // namespace
+
+extern "C" void tracked_morph_finalizer(void *obj) {
+    (void)obj;
+    g_morph_release_count++;
+}
+
+static void test_mesh_clone_and_clear_manage_morph_target_lifetime() {
+    void *mesh = rt_mesh3d_new_box(1.0, 1.0, 1.0);
+    void *mt = rt_morphtarget3d_new(24);
+    void *clone;
+    assert(mesh != nullptr && mt != nullptr);
+
+    rt_morphtarget3d_add_shape(mt, rt_const_cstr("raise"));
+    g_morph_release_count = 0;
+    rt_obj_set_finalizer(mt, tracked_morph_finalizer);
+
+    rt_mesh3d_set_morph_targets(mesh, mt);
+    clone = rt_mesh3d_clone(mesh);
+    EXPECT_TRUE(clone != nullptr, "Mesh3D.Clone succeeds with attached morph targets");
+
+    if (rt_obj_release_check0(mt))
+        rt_obj_free(mt);
+    EXPECT_TRUE(g_morph_release_count == 0,
+                "Mesh3D retains attached morph targets across user-side releases");
+
+    rt_mesh3d_clear(mesh);
+    EXPECT_TRUE(g_morph_release_count == 0,
+                "Clearing one mesh does not release morph targets still owned by a clone");
+
+    if (rt_obj_release_check0(clone))
+        rt_obj_free(clone);
+    EXPECT_TRUE(g_morph_release_count == 1,
+                "Destroying the last attached mesh releases the shared morph targets");
+}
+
 int main() {
     test_create();
     test_add_shape();
@@ -195,6 +238,7 @@ int main() {
     test_null_safety();
     test_packed_payload_generation_tracks_delta_edits_only();
     test_packed_payload_exports_positions_and_normals();
+    test_mesh_clone_and_clear_manage_morph_target_lifetime();
 
     printf("MorphTarget3D tests: %d/%d passed\n", tests_passed, tests_run);
     return tests_passed == tests_run ? 0 : 1;

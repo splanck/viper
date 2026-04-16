@@ -34,6 +34,27 @@ extern double rt_vec3_x(void *v);
 extern double rt_vec3_y(void *v);
 extern double rt_vec3_z(void *v);
 
+static double clamp_min0(double value) {
+    return value < 0.0 ? 0.0 : value;
+}
+
+static void normalize_light_direction(double *x, double *y, double *z) {
+    double len;
+
+    if (!x || !y || !z)
+        return;
+    len = sqrt((*x) * (*x) + (*y) * (*y) + (*z) * (*z));
+    if (len <= 1e-8) {
+        *x = 0.0;
+        *y = -1.0;
+        *z = 0.0;
+        return;
+    }
+    *x /= len;
+    *y /= len;
+    *z /= len;
+}
+
 /// @brief Create a directional light (e.g., sun or moon).
 /// @details Directional lights have no position — only a direction vector.
 ///          All surfaces in the scene receive parallel rays along this direction,
@@ -59,6 +80,7 @@ void *rt_light3d_new_directional(void *direction, double r, double g, double b) 
     light->direction[0] = rt_vec3_x(direction);
     light->direction[1] = rt_vec3_y(direction);
     light->direction[2] = rt_vec3_z(direction);
+    normalize_light_direction(&light->direction[0], &light->direction[1], &light->direction[2]);
     light->position[0] = light->position[1] = light->position[2] = 0.0;
     light->color[0] = r;
     light->color[1] = g;
@@ -98,7 +120,7 @@ void *rt_light3d_new_point(void *position, double r, double g, double b, double 
     light->color[1] = g;
     light->color[2] = b;
     light->intensity = 1.0;
-    light->attenuation = attenuation;
+    light->attenuation = clamp_min0(attenuation);
     return light;
 }
 
@@ -165,6 +187,7 @@ void *rt_light3d_new_spot(void *position,
     light->direction[0] = rt_vec3_x(direction);
     light->direction[1] = rt_vec3_y(direction);
     light->direction[2] = rt_vec3_z(direction);
+    normalize_light_direction(&light->direction[0], &light->direction[1], &light->direction[2]);
     light->position[0] = rt_vec3_x(position);
     light->position[1] = rt_vec3_y(position);
     light->position[2] = rt_vec3_z(position);
@@ -172,9 +195,19 @@ void *rt_light3d_new_spot(void *position,
     light->color[1] = g;
     light->color[2] = b;
     light->intensity = 1.0;
-    light->attenuation = attenuation;
+    light->attenuation = clamp_min0(attenuation);
     /* Convert angles (degrees) to cosines for shader comparison */
     double pi = 3.14159265358979323846;
+    if (inner_angle < 0.0)
+        inner_angle = 0.0;
+    if (outer_angle < 0.0)
+        outer_angle = 0.0;
+    if (inner_angle > 89.0)
+        inner_angle = 89.0;
+    if (outer_angle > 89.0)
+        outer_angle = 89.0;
+    if (outer_angle < inner_angle)
+        outer_angle = inner_angle;
     light->inner_cos = cos(inner_angle * pi / 180.0);
     light->outer_cos = cos(outer_angle * pi / 180.0);
     return light;
@@ -189,7 +222,7 @@ void *rt_light3d_new_spot(void *position,
 void rt_light3d_set_intensity(void *obj, double intensity) {
     if (!obj)
         return;
-    ((rt_light3d *)obj)->intensity = intensity;
+    ((rt_light3d *)obj)->intensity = clamp_min0(intensity);
 }
 
 /// @brief Change the RGB color of a light after creation.

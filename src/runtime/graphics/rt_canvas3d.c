@@ -28,6 +28,7 @@
 #include "rt_canvas3d_internal.h"
 #include "rt_action.h"
 #include "rt_graphics_internal.h"
+#include "rt_heap.h"
 #include "rt_input.h"
 #include "rt_morphtarget3d.h"
 #include "rt_object.h"
@@ -133,6 +134,14 @@ static void canvas3d_release_owned_ref(void **slot) {
     if (rt_obj_release_check0(*slot))
         rt_obj_free(*slot);
     *slot = NULL;
+}
+
+static void canvas3d_assign_owned_ref(void **slot, void *value) {
+    if (!slot || *slot == value)
+        return;
+    rt_obj_retain_maybe(value);
+    canvas3d_release_owned_ref(slot);
+    *slot = value;
 }
 
 /// @brief Tell keyboard + mouse subsystems to forget this window.
@@ -311,10 +320,13 @@ static void mat4_d2f(const double *src, float *dst) {
 static int canvas3d_cmd_requires_blend(const vgfx3d_draw_cmd_t *cmd) {
     if (!cmd)
         return 0;
+    if (cmd->alpha_mode == RT_MATERIAL3D_ALPHA_MODE_BLEND)
+        return 1;
+    if (cmd->alpha_mode == RT_MATERIAL3D_ALPHA_MODE_MASK)
+        return 0;
     if (cmd->alpha < 0.999f)
         return 1;
-    return (cmd->workflow == RT_MATERIAL3D_WORKFLOW_PBR &&
-            cmd->alpha_mode == RT_MATERIAL3D_ALPHA_MODE_BLEND);
+    return 0;
 }
 
 /// @brief Resolve the effective backface-cull flag for a material draw.
@@ -1169,6 +1181,8 @@ static void rt_canvas3d_finalize(void *obj) {
     canvas3d_release_owned_ref(&c->postfx);
     canvas3d_release_owned_ref((void **)&c->render_target_owner);
     c->render_target = NULL;
+    for (int32_t i = 0; i < VGFX3D_MAX_LIGHTS; i++)
+        canvas3d_release_owned_ref((void **)&c->lights[i]);
 
     if (c->gfx_win) {
         rt_canvas3d_detach_input(c->gfx_win);
@@ -1785,6 +1799,11 @@ void rt_canvas3d_draw_mesh_matrix_keyed(void *obj,
         return;
     rt_mesh3d_refresh_bounds(mesh);
 
+    if (!canvas3d_track_temp_object(c, mesh_obj))
+        return;
+    if (!canvas3d_track_temp_object(c, material_obj))
+        return;
+
     /* Ensure draw command buffer has space */
     if (!ensure_deferred_capacity(&c->draw_cmds, &c->draw_capacity, c->draw_count + 1))
         return;
@@ -1799,7 +1818,7 @@ void rt_canvas3d_draw_mesh_matrix_keyed(void *obj,
     dd->cmd.vertex_count = mesh->vertex_count;
     dd->cmd.indices = mesh->indices;
     dd->cmd.index_count = mesh->index_count;
-    dd->cmd.geometry_key = mesh;
+    dd->cmd.geometry_key = rt_heap_is_payload(mesh_obj) ? mesh_obj : NULL;
     dd->cmd.geometry_revision = mesh->geometry_revision;
     mat4_d2f(model_matrix, dd->cmd.model_matrix);
     canvas3d_resolve_previous_model(c,
@@ -1906,6 +1925,10 @@ void rt_canvas3d_queue_instanced_batch(void *canvas_obj,
     mat = (rt_material3d *)material_obj;
     if (!c->in_frame || !c->backend || mesh->vertex_count == 0 || mesh->index_count == 0)
         return;
+    if (!canvas3d_track_temp_object(c, mesh_obj))
+        return;
+    if (!canvas3d_track_temp_object(c, material_obj))
+        return;
 
     rt_mesh3d_refresh_bounds(mesh);
     memset(&base_cmd, 0, sizeof(base_cmd));
@@ -1913,7 +1936,7 @@ void rt_canvas3d_queue_instanced_batch(void *canvas_obj,
     base_cmd.vertex_count = mesh->vertex_count;
     base_cmd.indices = mesh->indices;
     base_cmd.index_count = mesh->index_count;
-    base_cmd.geometry_key = mesh;
+    base_cmd.geometry_key = rt_heap_is_payload(mesh_obj) ? mesh_obj : NULL;
     base_cmd.geometry_revision = mesh->geometry_revision;
     base_cmd.model_matrix[0] = base_cmd.model_matrix[5] = base_cmd.model_matrix[10] =
         base_cmd.model_matrix[15] = 1.0f;
@@ -2457,8 +2480,8 @@ int64_t rt_canvas3d_get_delta_time(void *obj) {
     rt_canvas3d *c = (rt_canvas3d *)obj;
     int64_t dt = c->delta_time_ms;
     if (c->dt_max_ms > 0) {
-        if (dt < 1)
-            dt = 1;
+        if (dt <= 0)
+            return 0;
         if (dt > c->dt_max_ms)
             dt = c->dt_max_ms;
     }
@@ -2476,7 +2499,7 @@ void rt_canvas3d_set_dt_max(void *obj, int64_t max_ms) {
 void rt_canvas3d_set_light(void *obj, int64_t index, void *light) {
     if (!obj || index < 0 || index >= VGFX3D_MAX_LIGHTS)
         return;
-    ((rt_canvas3d *)obj)->lights[index] = (rt_light3d *)light;
+    canvas3d_assign_owned_ref((void **)&((rt_canvas3d *)obj)->lights[index], light);
 }
 
 /// @brief Set the global ambient light color for the canvas (applied to all surfaces).

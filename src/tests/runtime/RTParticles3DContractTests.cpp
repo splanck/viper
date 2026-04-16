@@ -28,6 +28,16 @@ extern "C" void *rt_obj_new_i64(int64_t, int64_t byte_size) {
 
 extern "C" void rt_obj_set_finalizer(void *, void (*)(void *)) {}
 
+extern "C" void rt_obj_retain_maybe(void *) {}
+
+extern "C" int32_t rt_obj_release_check0(void *) {
+    return 1;
+}
+
+extern "C" void rt_obj_free(void *obj) {
+    std::free(obj);
+}
+
 extern "C" void rt_canvas3d_add_temp_buffer(void *, void *) {}
 
 extern "C" void *rt_material3d_new(void) {

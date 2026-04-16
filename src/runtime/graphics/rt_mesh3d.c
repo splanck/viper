@@ -10,7 +10,7 @@
 //   with programmatic construction and procedural generators.
 //
 // Key invariants:
-//   - Vertices stored as vgfx3d_vertex_t (80 bytes, float internally)
+//   - Vertices stored as vgfx3d_vertex_t (84 bytes, float internally)
 //   - Indices are uint32_t (max 16M vertices per mesh)
 //   - CCW winding is front-facing
 //   - GC finalizer frees vertex/index arrays
@@ -26,6 +26,7 @@
 
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
+#include "rt_object.h"
 #include "rt_pixels.h"
 #include "rt_string.h"
 #include "vgfx3d_backend_utils.h"
@@ -41,13 +42,27 @@
 
 extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
 extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
-extern int rt_obj_release_check0(void *obj);
-extern void rt_obj_free(void *obj);
 #include "rt_trap.h"
 extern const char *rt_string_cstr(rt_string s);
 
 #define MESH_INIT_VERTS 64
 #define MESH_INIT_IDXS 128
+
+static void mesh_release_ref(void **slot) {
+    if (!slot || !*slot)
+        return;
+    if (rt_obj_release_check0(*slot))
+        rt_obj_free(*slot);
+    *slot = NULL;
+}
+
+static void mesh_assign_ref(void **slot, void *value) {
+    if (!slot || *slot == value)
+        return;
+    rt_obj_retain_maybe(value);
+    mesh_release_ref(slot);
+    *slot = value;
+}
 
 /// @brief GC finalizer for Mesh3D — releases the owned vertex and index buffers.
 static void rt_mesh3d_finalize(void *obj) {
@@ -56,11 +71,12 @@ static void rt_mesh3d_finalize(void *obj) {
     m->vertices = NULL;
     free(m->indices);
     m->indices = NULL;
+    mesh_release_ref(&m->morph_targets_ref);
 }
 
 /// @brief Create a new empty 3D mesh for programmatic construction.
 /// @details Allocates vertex and index arrays with initial capacity. Vertices are
-///          stored as vgfx3d_vertex_t (80 bytes each, float internally) and indices
+///          stored as vgfx3d_vertex_t (84 bytes each, float internally) and indices
 ///          as uint32_t. The mesh supports up to 16M vertices. Geometry is built
 ///          by calling add_vertex/add_triangle, or by using the procedural generators
 ///          (new_box, new_sphere, new_plane, new_cylinder). GC finalizer frees arrays.
@@ -107,7 +123,15 @@ void rt_mesh3d_clear(void *obj) {
     rt_mesh3d *m = (rt_mesh3d *)obj;
     m->vertex_count = 0;
     m->index_count = 0;
-    m->morph_targets_ref = NULL;
+    m->bone_palette = NULL;
+    m->prev_bone_palette = NULL;
+    m->bone_count = 0;
+    m->morph_deltas = NULL;
+    m->morph_normal_deltas = NULL;
+    m->morph_weights = NULL;
+    m->prev_morph_weights = NULL;
+    m->morph_shape_count = 0;
+    mesh_release_ref(&m->morph_targets_ref);
     rt_mesh3d_touch_geometry(m);
     rt_mesh3d_reset_bounds(m);
 }
@@ -124,9 +148,12 @@ void rt_mesh3d_add_vertex(
     rt_mesh3d *m = (rt_mesh3d *)obj;
 
     if (m->vertex_count >= m->vertex_capacity) {
-        uint32_t new_cap = m->vertex_capacity * 2;
+        uint32_t new_cap;
+        if (m->vertex_capacity > UINT32_MAX / 2u)
+            return;
+        new_cap = m->vertex_capacity * 2u;
         vgfx3d_vertex_t *nv =
-            (vgfx3d_vertex_t *)realloc(m->vertices, new_cap * sizeof(vgfx3d_vertex_t));
+            (vgfx3d_vertex_t *)realloc(m->vertices, (size_t)new_cap * sizeof(vgfx3d_vertex_t));
         if (!nv)
             return;
         m->vertices = nv;
@@ -147,6 +174,7 @@ void rt_mesh3d_add_vertex(
     vt->color[1] = 1.0f;
     vt->color[2] = 1.0f;
     vt->color[3] = 1.0f;
+    vt->tangent[3] = 1.0f;
     rt_mesh3d_touch_geometry(m);
 }
 
@@ -163,8 +191,11 @@ void rt_mesh3d_add_triangle(void *obj, int64_t v0, int64_t v1, int64_t v2) {
         return;
 
     if (m->index_count + 3 > m->index_capacity) {
-        uint32_t new_cap = m->index_capacity * 2;
-        uint32_t *ni = (uint32_t *)realloc(m->indices, new_cap * sizeof(uint32_t));
+        uint32_t new_cap;
+        if (m->index_capacity > UINT32_MAX / 2u)
+            return;
+        new_cap = m->index_capacity * 2u;
+        uint32_t *ni = (uint32_t *)realloc(m->indices, (size_t)new_cap * sizeof(uint32_t));
         if (!ni)
             return;
         m->indices = ni;
@@ -265,12 +296,10 @@ void *rt_mesh3d_clone(void *obj) {
 
     if (!dst->vertices || !dst->indices) {
         free(dst->vertices);
-        dst->vertices = NULL;
         free(dst->indices);
-        dst->indices = NULL;
-        dst->vertex_count = 0;
-        dst->index_count = 0;
-        return dst;
+        if (rt_obj_release_check0(dst))
+            rt_obj_free(dst);
+        return NULL;
     }
 
     dst->vertex_count = src->vertex_count;
@@ -285,7 +314,10 @@ void *rt_mesh3d_clone(void *obj) {
     dst->morph_deltas = NULL;
     dst->morph_weights = NULL;
     dst->morph_shape_count = 0;
-    dst->morph_targets_ref = src->morph_targets_ref;
+    dst->morph_normal_deltas = NULL;
+    dst->prev_morph_weights = NULL;
+    dst->prev_bone_palette = NULL;
+    mesh_assign_ref(&dst->morph_targets_ref, src->morph_targets_ref);
     dst->geometry_revision = src->geometry_revision;
     dst->aabb_min[0] = src->aabb_min[0];
     dst->aabb_min[1] = src->aabb_min[1];
@@ -599,14 +631,15 @@ void rt_mesh3d_calc_tangents(void *obj) {
     if (m->vertex_count == 0 || m->index_count == 0)
         return;
 
-    /* Zero all tangents */
-    for (uint32_t i = 0; i < m->vertex_count; i++) {
-        m->vertices[i].tangent[0] = 0.0f;
-        m->vertices[i].tangent[1] = 0.0f;
-        m->vertices[i].tangent[2] = 0.0f;
+    float *tan1 = (float *)calloc((size_t)m->vertex_count * 3u, sizeof(float));
+    float *tan2 = (float *)calloc((size_t)m->vertex_count * 3u, sizeof(float));
+    if (!tan1 || !tan2) {
+        free(tan1);
+        free(tan2);
+        return;
     }
 
-    /* Accumulate tangents per triangle (Lengyel's method) */
+    /* Accumulate tangents and bitangents per triangle (Lengyel's method). */
     for (uint32_t i = 0; i + 2 < m->index_count; i += 3) {
         uint32_t i0 = m->indices[i], i1 = m->indices[i + 1], i2 = m->indices[i + 2];
         if (i0 >= m->vertex_count || i1 >= m->vertex_count || i2 >= m->vertex_count)
@@ -629,31 +662,46 @@ void rt_mesh3d_calc_tangents(void *obj) {
             continue; /* degenerate UV */
         float inv_det = 1.0f / det;
 
-        float tx = (edge1[0] * duv2[1] - edge2[0] * duv1[1]) * inv_det;
-        float ty = (edge1[1] * duv2[1] - edge2[1] * duv1[1]) * inv_det;
-        float tz = (edge1[2] * duv2[1] - edge2[2] * duv1[1]) * inv_det;
+        float sdir[3] = {(edge1[0] * duv2[1] - edge2[0] * duv1[1]) * inv_det,
+                         (edge1[1] * duv2[1] - edge2[1] * duv1[1]) * inv_det,
+                         (edge1[2] * duv2[1] - edge2[2] * duv1[1]) * inv_det};
+        float tdir[3] = {(edge2[0] * duv1[0] - edge1[0] * duv2[0]) * inv_det,
+                         (edge2[1] * duv1[0] - edge1[1] * duv2[0]) * inv_det,
+                         (edge2[2] * duv1[0] - edge1[2] * duv2[0]) * inv_det};
 
-        m->vertices[i0].tangent[0] += tx;
-        m->vertices[i0].tangent[1] += ty;
-        m->vertices[i0].tangent[2] += tz;
-        m->vertices[i1].tangent[0] += tx;
-        m->vertices[i1].tangent[1] += ty;
-        m->vertices[i1].tangent[2] += tz;
-        m->vertices[i2].tangent[0] += tx;
-        m->vertices[i2].tangent[1] += ty;
-        m->vertices[i2].tangent[2] += tz;
+        tan1[i0 * 3u + 0] += sdir[0];
+        tan1[i0 * 3u + 1] += sdir[1];
+        tan1[i0 * 3u + 2] += sdir[2];
+        tan1[i1 * 3u + 0] += sdir[0];
+        tan1[i1 * 3u + 1] += sdir[1];
+        tan1[i1 * 3u + 2] += sdir[2];
+        tan1[i2 * 3u + 0] += sdir[0];
+        tan1[i2 * 3u + 1] += sdir[1];
+        tan1[i2 * 3u + 2] += sdir[2];
+
+        tan2[i0 * 3u + 0] += tdir[0];
+        tan2[i0 * 3u + 1] += tdir[1];
+        tan2[i0 * 3u + 2] += tdir[2];
+        tan2[i1 * 3u + 0] += tdir[0];
+        tan2[i1 * 3u + 1] += tdir[1];
+        tan2[i1 * 3u + 2] += tdir[2];
+        tan2[i2 * 3u + 0] += tdir[0];
+        tan2[i2 * 3u + 1] += tdir[1];
+        tan2[i2 * 3u + 2] += tdir[2];
     }
 
-    /* Normalize and Gram-Schmidt orthogonalize against normal */
+    /* Normalize, orthogonalize against the normal, and store handedness in tangent.w. */
     for (uint32_t i = 0; i < m->vertex_count; i++) {
         float *t = m->vertices[i].tangent;
         float *n = m->vertices[i].normal;
+        float *tan = &tan1[i * 3u];
+        float *bitan = &tan2[i * 3u];
 
         /* Gram-Schmidt: T = T - N * dot(N, T) */
-        float dot = n[0] * t[0] + n[1] * t[1] + n[2] * t[2];
-        t[0] -= n[0] * dot;
-        t[1] -= n[1] * dot;
-        t[2] -= n[2] * dot;
+        float dot = n[0] * tan[0] + n[1] * tan[1] + n[2] * tan[2];
+        t[0] = tan[0] - n[0] * dot;
+        t[1] = tan[1] - n[1] * dot;
+        t[2] = tan[2] - n[2] * dot;
 
         /* Normalize */
         float len = sqrtf(t[0] * t[0] + t[1] * t[1] + t[2] * t[2]);
@@ -661,13 +709,25 @@ void rt_mesh3d_calc_tangents(void *obj) {
             t[0] /= len;
             t[1] /= len;
             t[2] /= len;
+            {
+                float cross_nt[3] = {n[1] * t[2] - n[2] * t[1],
+                                     n[2] * t[0] - n[0] * t[2],
+                                     n[0] * t[1] - n[1] * t[0]};
+                t[3] = (cross_nt[0] * bitan[0] + cross_nt[1] * bitan[1] +
+                        cross_nt[2] * bitan[2]) < 0.0f
+                           ? -1.0f
+                           : 1.0f;
+            }
         } else {
             /* Default tangent for degenerate UVs */
             t[0] = 1.0f;
             t[1] = 0.0f;
             t[2] = 0.0f;
+            t[3] = 1.0f;
         }
     }
+    free(tan1);
+    free(tan2);
     rt_mesh3d_touch_geometry(m);
 }
 
@@ -699,6 +759,7 @@ void *rt_mesh3d_from_obj(rt_string path) {
     /* Temporary arrays for positions, normals, UVs */
     int cap_p = 256, cap_n = 256, cap_t = 256;
     int cnt_p = 0, cnt_n = 0, cnt_t = 0;
+    int parse_failed = 0;
     float *positions = (float *)malloc((size_t)cap_p * 3 * sizeof(float));
     float *normals = (float *)malloc((size_t)cap_n * 3 * sizeof(float));
     float *texcoords = (float *)malloc((size_t)cap_t * 2 * sizeof(float));
@@ -709,7 +770,9 @@ void *rt_mesh3d_from_obj(rt_string path) {
         free(positions);
         free(normals);
         free(texcoords);
-        return mesh;
+        if (mesh && rt_obj_release_check0(mesh))
+            rt_obj_free(mesh);
+        return NULL;
     }
 
     char line[4096];
@@ -727,8 +790,10 @@ void *rt_mesh3d_from_obj(rt_string path) {
             if (cnt_p >= cap_p) {
                 cap_p *= 2;
                 float *tmp = (float *)realloc(positions, (size_t)cap_p * 3 * sizeof(float));
-                if (!tmp)
+                if (!tmp) {
+                    parse_failed = 1;
                     break;
+                }
                 positions = tmp;
             }
             positions[cnt_p * 3 + 0] = (float)obj_parse_double(&p);
@@ -741,8 +806,10 @@ void *rt_mesh3d_from_obj(rt_string path) {
             if (cnt_n >= cap_n) {
                 cap_n *= 2;
                 float *tmp = (float *)realloc(normals, (size_t)cap_n * 3 * sizeof(float));
-                if (!tmp)
+                if (!tmp) {
+                    parse_failed = 1;
                     break;
+                }
                 normals = tmp;
             }
             normals[cnt_n * 3 + 0] = (float)obj_parse_double(&p);
@@ -755,8 +822,10 @@ void *rt_mesh3d_from_obj(rt_string path) {
             if (cnt_t >= cap_t) {
                 cap_t *= 2;
                 float *tmp = (float *)realloc(texcoords, (size_t)cap_t * 2 * sizeof(float));
-                if (!tmp)
+                if (!tmp) {
+                    parse_failed = 1;
                     break;
+                }
                 texcoords = tmp;
             }
             texcoords[cnt_t * 2 + 0] = (float)obj_parse_double(&p);
@@ -838,6 +907,12 @@ void *rt_mesh3d_from_obj(rt_string path) {
     free(positions);
     free(normals);
     free(texcoords);
+
+    if (parse_failed) {
+        if (rt_obj_release_check0(mesh))
+            rt_obj_free(mesh);
+        return NULL;
+    }
 
     /* If no normals were in the file, auto-compute them */
     if (cnt_n == 0 && ((rt_mesh3d *)mesh)->vertex_count > 0)

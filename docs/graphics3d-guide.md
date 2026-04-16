@@ -162,7 +162,7 @@ The rendering surface. Creates a window and manages the render loop.
 | `Width` | Integer | read | Canvas width in pixels |
 | `Height` | Integer | read | Canvas height in pixels |
 | `Fps` | Integer | read | Frames per second |
-| `DeltaTime` | Integer | read | Milliseconds since last Flip |
+| `DeltaTime` | Integer | read | Milliseconds since last Flip (first frame = 0) |
 | `Backend` | String | read | Active renderer: "software", "metal", "d3d11", "opengl" |
 | `Wireframe` | Boolean | write | Toggle wireframe rendering (default: off) |
 
@@ -202,7 +202,7 @@ The rendering surface. Creates a window and manages the render loop.
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| `SetLight(index, light)` | `void(i64, obj)` | Bind a Light3D to slot (0-7) |
+| `SetLight(index, light)` | `void(i64, obj)` | Bind or clear a retained Light3D slot (0-7) |
 | `SetAmbient(r, g, b)` | `void(f64, f64, f64)` | Set ambient light color |
 | `SetSkybox(cubemap)` | `void(obj)` | Set CubeMap3D skybox |
 | `ClearSkybox()` | `void()` | Remove skybox |
@@ -220,7 +220,7 @@ The rendering surface. Creates a window and manages the render loop.
 | `SetDTMax(ms)` | `void(i64)` | Cap DeltaTime to prevent spiral-of-death |
 | `SetRenderTarget(target)` | `void(obj)` | Redirect rendering to offscreen RenderTarget3D |
 | `ResetRenderTarget()` | `void()` | Return to window rendering |
-| `SetPostFX(fx)` | `void(obj)` | Set PostFX3D chain (applied in Flip) |
+| `SetPostFX(fx)` | `void(obj)` | Set PostFX3D chain (applied in Flip to the window or active render target) |
 | `SetOcclusionCulling(enabled)` | `void(i1)` | Toggle occlusion culling |
 
 ### Debug Drawing
@@ -409,6 +409,8 @@ Perspective or orthographic camera with view and projection matrices.
 | `SmoothLookAt(target, speed, dt)` | `void(obj, f64, f64)` | Smoothly rotate toward a Vec3 target |
 | `FPSInit()` | `void()` | Extract yaw/pitch from current view matrix |
 | `FPSUpdate(mdx, mdy, fwd, right, up, speed, dt)` | `void(f64, f64, f64, f64, f64, f64, f64)` | FPS mouse look + WASD movement |
+
+`Yaw`, `Pitch`, `Orbit`, and `Light3D.NewSpot` all use degrees. Writing `Yaw` or `Pitch` updates the camera view immediately.
 
 ### Zia Example
 
@@ -604,6 +606,8 @@ func start() {
 }
 ```
 
+`Canvas3D.SetLight()` retains the assigned light until you replace that slot or clear it with `null`.
+
 **Lighting model:** Blinn-Phong with per-vertex (software) or per-pixel (GPU) shading. Includes diffuse and specular components.
 
 ## RenderTarget3D
@@ -668,6 +672,7 @@ func start() {
 ```
 
 **Note:** `AsPixels()` returns a fresh copy each call. The render target's buffers are independent from the window framebuffer.
+**PostFX:** If a render target is active when you call `Flip()`, the canvas applies the current `PostFX3D` chain to that render target instead of the window backbuffer.
 
 ## CubeMap3D
 
@@ -1348,7 +1353,7 @@ func start() {
 
 ## PostFX3D
 
-Full-screen post-processing effect chain applied automatically in `Canvas3D.Flip()`.
+Full-screen post-processing effect chain applied automatically in `Canvas3D.Flip()` to the active canvas output.
 
 ### Constructor
 
@@ -1538,7 +1543,7 @@ func start() {
 
 - `FPSInit` decomposes the current view matrix to extract yaw/pitch
 - `FPSUpdate(mdx, mdy, fwd, right, up, speed, dt)` accumulates yaw/pitch, clamps pitch to +/-89 degrees, applies WASD movement
-- `Yaw`/`Pitch` properties allow reading/writing the current angles
+- `Yaw`/`Pitch` properties allow reading/writing the current angles and rebuild the view immediately
 - Use `Mouse.Capture()` to hide cursor and enable warp-to-center mouse tracking
 
 ## Audio3D

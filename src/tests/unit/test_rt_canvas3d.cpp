@@ -26,7 +26,6 @@
 
 #include "rt.hpp"
 #include "rt_canvas3d.h"
-#include "rt_canvas3d_internal.h"
 #include "rt_internal.h"
 #include "rt_sprite3d.h"
 #include "rt_string.h"
@@ -41,6 +40,7 @@
 #include <string>
 
 extern "C" {
+#include "rt_canvas3d_internal.h"
 #include "vgfx3d_backend.h"
 }
 
@@ -91,6 +91,14 @@ static int tests_total = 0;
         }                                                                                          \
     } while (0)
 
+#define EXPECT_TRUE(cond, msg)                                                                     \
+    do {                                                                                           \
+        if (!(cond)) {                                                                             \
+            printf("FAIL: %s\n", msg);                                                             \
+            return;                                                                                \
+        }                                                                                          \
+    } while (0)
+
 extern "C" double rt_vec3_x(void *v);
 extern "C" double rt_vec3_y(void *v);
 extern "C" double rt_vec3_z(void *v);
@@ -104,6 +112,8 @@ extern "C" void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
 extern "C" void *rt_postfx3d_new(void);
 extern "C" void rt_canvas3d_set_post_fx(void *canvas, void *postfx);
 extern "C" void *rt_canvas3d_screenshot(void *canvas);
+extern "C" void rt_postfx3d_set_enabled(void *obj, int8_t enabled);
+extern "C" void rt_postfx3d_add_vignette(void *obj, double radius, double softness);
 
 //=============================================================================
 // Mesh3D tests
@@ -141,6 +151,25 @@ static void test_mesh_reject_invalid_triangle_indices() {
     EXPECT_EQ(rt_mesh3d_get_triangle_count(m), 0);
     rt_mesh3d_add_triangle(m, 0, 1, 2);
     EXPECT_EQ(rt_mesh3d_get_triangle_count(m), 1);
+    PASS();
+}
+
+static void test_mesh_calc_tangents_tracks_mirrored_uv_handedness() {
+    TEST("Mesh3D.CalcTangents stores mirrored UV handedness");
+    rt_mesh3d *m = (rt_mesh3d *)rt_mesh3d_new();
+    assert(m);
+    rt_mesh3d_add_vertex(m, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0);
+    rt_mesh3d_add_vertex(m, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0);
+    rt_mesh3d_add_vertex(m, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 1.0, 0.0);
+    rt_mesh3d_add_triangle(m, 0, 1, 2);
+
+    rt_mesh3d_calc_tangents(m);
+
+    EXPECT_NEAR(m->vertices[0].tangent[0], 0.0, 0.001);
+    EXPECT_NEAR(m->vertices[0].tangent[1], 1.0, 0.001);
+    EXPECT_NEAR(m->vertices[0].tangent[2], 0.0, 0.001);
+    EXPECT_TRUE(m->vertices[0].tangent[3] < 0.0f,
+                "Mirrored UVs record a negative tangent handedness");
     PASS();
 }
 
@@ -639,6 +668,69 @@ static void test_camera_screen_to_ray_corners() {
     PASS();
 }
 
+static void test_camera_set_position_rebuilds_view() {
+    TEST("Camera3D.SetPosition rebuilds the view state");
+    void *cam = rt_camera3d_new(60.0, 1.333, 0.1, 100.0);
+    void *eye = rt_vec3_new(0.0, 0.0, 5.0);
+    void *target = rt_vec3_new(0.0, 0.0, 0.0);
+    void *up = rt_vec3_new(0.0, 1.0, 0.0);
+    void *moved = rt_vec3_new(1.0, 2.0, 5.0);
+
+    rt_camera3d_look_at(cam, eye, target, up);
+    rt_camera3d_set_position(cam, moved);
+
+    void *ray = rt_camera3d_screen_to_ray(cam, 320, 240, 640, 480);
+    assert(ray);
+    EXPECT_NEAR(rt_vec3_x(ray), 0.0, 0.15);
+    EXPECT_NEAR(rt_vec3_y(ray), 0.0, 0.15);
+    EXPECT_NEAR(rt_vec3_z(ray), -1.0, 0.15);
+    PASS();
+}
+
+static void test_camera_set_yaw_pitch_rebuilds_view() {
+    TEST("Camera3D.SetYaw/SetPitch rebuild the FPS view");
+    void *cam = rt_camera3d_new(60.0, 1.0, 0.1, 100.0);
+
+    rt_camera3d_set_yaw(cam, 90.0);
+    void *yaw_fwd = rt_camera3d_get_forward(cam);
+    assert(yaw_fwd);
+    EXPECT_NEAR(rt_vec3_x(yaw_fwd), 1.0, 0.1);
+    EXPECT_NEAR(rt_vec3_z(yaw_fwd), 0.0, 0.15);
+
+    rt_camera3d_set_pitch(cam, 45.0);
+    void *pitch_fwd = rt_camera3d_get_forward(cam);
+    assert(pitch_fwd);
+    EXPECT_TRUE(rt_vec3_y(pitch_fwd) > 0.6, "Pitch tilts the camera upward immediately");
+    PASS();
+}
+
+static void test_camera_look_at_coincident_eye_preserves_translation() {
+    TEST("Camera3D.LookAt keeps eye translation when eye equals target");
+    void *cam = rt_camera3d_new(60.0, 1.0, 0.1, 100.0);
+    void *eye = rt_vec3_new(3.0, 4.0, 5.0);
+    void *up = rt_vec3_new(0.0, 1.0, 0.0);
+
+    rt_camera3d_look_at(cam, eye, eye, up);
+
+    rt_camera3d *impl = (rt_camera3d *)cam;
+    EXPECT_TRUE(std::fabs(impl->view[3]) + std::fabs(impl->view[7]) + std::fabs(impl->view[11]) > 0.1,
+                "Coincident LookAt preserves a translated view matrix");
+    PASS();
+}
+
+static void test_camera_ortho_set_fov_preserves_projection() {
+    TEST("Camera3D.SetFov leaves orthographic projections unchanged");
+    rt_camera3d *cam = (rt_camera3d *)rt_camera3d_new_ortho(10.0, 16.0 / 9.0, 0.1, 100.0);
+    double before[16];
+    std::memcpy(before, cam->projection, sizeof(before));
+
+    rt_camera3d_set_fov(cam, 45.0);
+
+    EXPECT_TRUE(std::memcmp(before, cam->projection, sizeof(before)) == 0,
+                "Orthographic projection matrix stays intact after SetFov");
+    PASS();
+}
+
 //=============================================================================
 // Material3D — additional tests
 //=============================================================================
@@ -701,6 +793,34 @@ static void test_light_spot_intensity() {
     void *dir = rt_vec3_new(0, -1, 0);
     void *light = rt_light3d_new_spot(pos, dir, 1.0, 1.0, 1.0, 0.1, 30.0, 45.0);
     rt_light3d_set_intensity(light, 2.5);
+    PASS();
+}
+
+static void test_light_validation_and_clamping() {
+    TEST("Light3D normalizes directions and clamps invalid inputs");
+    rt_light3d *dir = (rt_light3d *)rt_light3d_new_directional(rt_vec3_new(0.0, -10.0, 0.0),
+                                                               1.0,
+                                                               1.0,
+                                                               1.0);
+    rt_light3d *point =
+        (rt_light3d *)rt_light3d_new_point(rt_vec3_new(0.0, 1.0, 0.0), 1.0, 1.0, 1.0, -4.0);
+    rt_light3d *spot = (rt_light3d *)rt_light3d_new_spot(rt_vec3_new(0.0, 5.0, 0.0),
+                                                         rt_vec3_new(0.0, -2.0, 0.0),
+                                                         1.0,
+                                                         1.0,
+                                                         1.0,
+                                                         -2.0,
+                                                         45.0,
+                                                         10.0);
+    assert(dir != NULL && point != NULL && spot != NULL);
+    EXPECT_NEAR(dir->direction[0], 0.0, 0.001);
+    EXPECT_NEAR(dir->direction[1], -1.0, 0.001);
+    EXPECT_NEAR(dir->direction[2], 0.0, 0.001);
+    EXPECT_NEAR(point->attenuation, 0.0, 0.001);
+    EXPECT_TRUE(spot->inner_cos >= spot->outer_cos,
+                "Spot lights reorder inner/outer cones into a valid range");
+    rt_light3d_set_intensity(spot, -5.0);
+    EXPECT_NEAR(spot->intensity, 0.0, 0.001);
     PASS();
 }
 
@@ -784,7 +904,9 @@ static void test_material_alpha() {
     EXPECT_NEAR(rt_material3d_get_alpha(m), 1.0, 0.001);
     rt_material3d_set_alpha(m, 0.5);
     EXPECT_NEAR(rt_material3d_get_alpha(m), 0.5, 0.001);
-    rt_material3d_set_alpha(m, 0.0);
+    rt_material3d_set_alpha(m, 2.0);
+    EXPECT_NEAR(rt_material3d_get_alpha(m), 1.0, 0.001);
+    rt_material3d_set_alpha(m, -1.0);
     EXPECT_NEAR(rt_material3d_get_alpha(m), 0.0, 0.001);
     /* Null safety */
     rt_material3d_set_alpha(NULL, 0.5);
@@ -978,6 +1100,7 @@ static void test_rendertarget_null_safety() {
 namespace {
 static int g_postfx_release_count = 0;
 static int g_render_target_release_count = 0;
+static int g_light_release_count = 0;
 static int g_render_target_sync_calls = 0;
 static uint8_t g_render_target_sync_rgba[4] = {0};
 } // namespace
@@ -1013,6 +1136,11 @@ extern "C" void tracked_render_target_finalizer(void *obj) {
         free(rtd->target);
         rtd->target = nullptr;
     }
+}
+
+extern "C" void tracked_light_finalizer(void *obj) {
+    (void)obj;
+    g_light_release_count++;
 }
 
 static void test_canvas_postfx_retains_owned_reference() {
@@ -1067,6 +1195,31 @@ static void test_canvas_render_target_retains_owned_reference() {
     rt_canvas3d_reset_render_target(&canvas);
     if (g_render_target_release_count != 1) {
         FAIL("Canvas3D did not release RenderTarget3D on reset");
+        return;
+    }
+    PASS();
+}
+
+static void test_canvas_light_retains_owned_reference() {
+    TEST("Canvas3D.SetLight retains owned reference");
+    rt_canvas3d canvas;
+    memset(&canvas, 0, sizeof(canvas));
+    void *light = rt_light3d_new_ambient(0.1, 0.2, 0.3);
+    assert(light != NULL);
+    g_light_release_count = 0;
+    rt_obj_set_finalizer(light, tracked_light_finalizer);
+
+    rt_canvas3d_set_light(&canvas, 0, light);
+    if (rt_obj_release_check0(light))
+        rt_obj_free(light);
+    if (g_light_release_count != 0) {
+        FAIL("Canvas3D did not retain Light3D");
+        return;
+    }
+
+    rt_canvas3d_set_light(&canvas, 0, NULL);
+    if (g_light_release_count != 1) {
+        FAIL("Canvas3D did not release Light3D when clearing the slot");
         return;
     }
     PASS();
@@ -1138,6 +1291,48 @@ static void test_canvas_screenshot_syncs_render_target_on_demand() {
         FAIL("Canvas3D.Screenshot did not copy the synced render-target RGBA bytes");
         return;
     }
+    PASS();
+}
+
+static void test_canvas_postfx_uses_render_target_pixels() {
+    TEST("Canvas3D postfx applies to render targets via sync/readback");
+    rt_canvas3d canvas;
+    rt_rendertarget3d *rt = (rt_rendertarget3d *)rt_rendertarget3d_new(1, 1);
+    void *fx = rt_postfx3d_new();
+    assert(rt != NULL && rt->target != NULL && fx != NULL);
+
+    memset(&canvas, 0, sizeof(canvas));
+    canvas.render_target = rt->target;
+    canvas.postfx = fx;
+
+    rt_postfx3d_add_vignette(fx, 0.5, 0.25);
+    rt_postfx3d_set_enabled(fx, 1);
+
+    g_render_target_sync_calls = 0;
+    g_render_target_sync_rgba[0] = 0x80;
+    g_render_target_sync_rgba[1] = 0x60;
+    g_render_target_sync_rgba[2] = 0x40;
+    g_render_target_sync_rgba[3] = 0x20;
+    rt->target->color_dirty = 1;
+    rt->target->sync_color = tracked_render_target_sync;
+    rt->target->sync_color_userdata = NULL;
+
+    rt_postfx3d_apply_to_canvas(&canvas);
+
+    if (g_render_target_sync_calls != 1) {
+        FAIL("Canvas3D postfx did not sync render-target pixels");
+        return;
+    }
+    PASS();
+}
+
+static void test_canvas_delta_time_preserves_first_zero() {
+    TEST("Canvas3D.GetDeltaTime preserves the first zero frame");
+    rt_canvas3d canvas;
+    memset(&canvas, 0, sizeof(canvas));
+    canvas.dt_max_ms = 16;
+    canvas.delta_time_ms = 0;
+    EXPECT_EQ(rt_canvas3d_get_delta_time(&canvas), 0);
     PASS();
 }
 
@@ -1460,6 +1655,7 @@ int main() {
     test_mesh_empty();
     test_mesh_add_vertex_triangle();
     test_mesh_reject_invalid_triangle_indices();
+    test_mesh_calc_tangents_tracks_mirrored_uv_handedness();
     test_mesh_box();
     test_mesh_sphere();
     test_mesh_plane();
@@ -1493,6 +1689,10 @@ int main() {
     test_camera_orbit_yaw();
     test_camera_orbit_pitch();
     test_camera_screen_to_ray_corners();
+    test_camera_set_position_rebuilds_view();
+    test_camera_set_yaw_pitch_rebuilds_view();
+    test_camera_look_at_coincident_eye_preserves_translation();
+    test_camera_ortho_set_fov_preserves_projection();
 
     /* Material3D */
     test_material_new();
@@ -1512,6 +1712,7 @@ int main() {
     test_light_null_safety();
     test_light_spot();
     test_light_spot_intensity();
+    test_light_validation_and_clamping();
     test_camera_ortho();
     test_camera_ortho_look_at();
     test_camera_perspective_not_ortho();
@@ -1549,8 +1750,11 @@ int main() {
     test_rendertarget_null_safety();
     test_rendertarget_as_pixels_syncs_gpu_color_on_demand();
     test_canvas_screenshot_syncs_render_target_on_demand();
+    test_canvas_postfx_uses_render_target_pixels();
     test_canvas_postfx_retains_owned_reference();
     test_canvas_render_target_retains_owned_reference();
+    test_canvas_light_retains_owned_reference();
+    test_canvas_delta_time_preserves_first_zero();
 
     /* Terrain3D splat */
     test_terrain_create();

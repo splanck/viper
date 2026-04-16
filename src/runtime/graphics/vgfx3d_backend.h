@@ -94,8 +94,10 @@ typedef struct {
 static inline int vgfx3d_draw_cmd_uses_alpha_blend(const vgfx3d_draw_cmd_t *cmd) {
     if (!cmd)
         return 0;
-    if (cmd->workflow == RT_MATERIAL3D_WORKFLOW_PBR)
+    if (cmd->alpha_mode == RT_MATERIAL3D_ALPHA_MODE_BLEND)
         return cmd->alpha_mode == RT_MATERIAL3D_ALPHA_MODE_BLEND;
+    if (cmd->alpha_mode == RT_MATERIAL3D_ALPHA_MODE_MASK)
+        return 0;
     return cmd->alpha < 1.0f;
 }
 

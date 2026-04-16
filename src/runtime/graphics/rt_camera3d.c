@@ -39,6 +39,39 @@ extern double rt_vec3_x(void *v);
 extern double rt_vec3_y(void *v);
 extern double rt_vec3_z(void *v);
 
+static void build_ortho(double *m,
+                        double left,
+                        double right,
+                        double bottom,
+                        double top,
+                        double near_val,
+                        double far_val);
+
+static double sanitize_aspect(double aspect) {
+    return aspect > 1e-6 ? aspect : 1.0;
+}
+
+static void sanitize_clip_planes(double *near_val, double *far_val) {
+    if (!near_val || !far_val)
+        return;
+    if (*near_val <= 1e-4)
+        *near_val = 0.1;
+    if (*far_val <= *near_val + 1e-4)
+        *far_val = *near_val + 1000.0;
+}
+
+static double sanitize_fov(double fov_deg) {
+    if (fov_deg < 1.0)
+        return 1.0;
+    if (fov_deg > 179.0)
+        return 179.0;
+    return fov_deg;
+}
+
+static double sanitize_ortho_size(double size) {
+    return size > 1e-6 ? size : 1.0;
+}
+
 /* Build perspective projection matrix (matches rt_mat4_perspective) */
 static void build_perspective(double *m, double fov_deg, double aspect, double near, double far) {
     memset(m, 0, 16 * sizeof(double));
@@ -57,33 +90,44 @@ static void build_perspective(double *m, double fov_deg, double aspect, double n
 /* Build view matrix (matches rt_mat4_look_at) */
 static void build_look_at(double *m, const double *eye, const double *target, const double *up) {
     /* Forward = normalize(eye - target) — right-handed.
-     * If eye == target (flen ≈ 0), return identity matrix to avoid
-     * producing a degenerate view matrix with NaN/zero rows. */
+     * If eye == target (flen ≈ 0), fall back to the default forward axis
+     * while preserving the camera translation. */
     double fx = eye[0] - target[0];
     double fy = eye[1] - target[1];
     double fz = eye[2] - target[2];
     double flen = sqrt(fx * fx + fy * fy + fz * fz);
     if (flen < 1e-12) {
-        /* eye == target: produce identity view matrix */
-        memset(m, 0, 16 * sizeof(double));
-        m[0] = m[5] = m[10] = m[15] = 1.0;
-        return;
+        fx = 0.0;
+        fy = 0.0;
+        fz = 1.0;
+        flen = 1.0;
     }
-    {
-        fx /= flen;
-        fy /= flen;
-        fz /= flen;
-    }
+    fx /= flen;
+    fy /= flen;
+    fz /= flen;
 
     /* Right = normalize(cross(up, forward)) */
     double rx = up[1] * fz - up[2] * fy;
     double ry = up[2] * fx - up[0] * fz;
     double rz = up[0] * fy - up[1] * fx;
     double rlen = sqrt(rx * rx + ry * ry + rz * rz);
+    if (rlen <= 1e-12) {
+        const double fallback_up[3] = {fabs(fy) > 0.99 ? 0.0 : 0.0,
+                                       fabs(fy) > 0.99 ? 0.0 : 1.0,
+                                       fabs(fy) > 0.99 ? 1.0 : 0.0};
+        rx = fallback_up[1] * fz - fallback_up[2] * fy;
+        ry = fallback_up[2] * fx - fallback_up[0] * fz;
+        rz = fallback_up[0] * fy - fallback_up[1] * fx;
+        rlen = sqrt(rx * rx + ry * ry + rz * rz);
+    }
     if (rlen > 1e-12) {
         rx /= rlen;
         ry /= rlen;
         rz /= rlen;
+    } else {
+        rx = 1.0;
+        ry = 0.0;
+        rz = 0.0;
     }
 
     /* True up = cross(forward, right) */
@@ -107,6 +151,58 @@ static void build_look_at(double *m, const double *eye, const double *target, co
     m[15] = 1.0;
 }
 
+static void rebuild_projection(rt_camera3d *cam) {
+    if (!cam)
+        return;
+    cam->aspect = sanitize_aspect(cam->aspect);
+    sanitize_clip_planes(&cam->near_plane, &cam->far_plane);
+    if (cam->is_ortho) {
+        double half_h = sanitize_ortho_size(cam->ortho_size);
+        double half_w = half_h * cam->aspect;
+        cam->ortho_size = half_h;
+        build_ortho(cam->projection, -half_w, half_w, -half_h, half_h, cam->near_plane, cam->far_plane);
+    } else {
+        cam->fov = sanitize_fov(cam->fov);
+        build_perspective(cam->projection, cam->fov, cam->aspect, cam->near_plane, cam->far_plane);
+    }
+}
+
+static void camera_sync_fps_angles_from_view(rt_camera3d *cam) {
+    double fx;
+    double fy;
+    double fz;
+
+    if (!cam)
+        return;
+    fx = -cam->view[8];
+    fy = -cam->view[9];
+    fz = -cam->view[10];
+    cam->fps_yaw = atan2(fx, -fz) * (180.0 / M_PI);
+    cam->fps_pitch = asin(fmax(-1.0, fmin(1.0, fy))) * (180.0 / M_PI);
+    if (cam->fps_pitch > 89.0)
+        cam->fps_pitch = 89.0;
+    if (cam->fps_pitch < -89.0)
+        cam->fps_pitch = -89.0;
+}
+
+static void camera_rebuild_fps_view(rt_camera3d *cam) {
+    double yaw_rad;
+    double pitch_rad;
+    double cp;
+    double target[3];
+    double up[3] = {0.0, 1.0, 0.0};
+
+    if (!cam)
+        return;
+    yaw_rad = cam->fps_yaw * (M_PI / 180.0);
+    pitch_rad = cam->fps_pitch * (M_PI / 180.0);
+    cp = cos(pitch_rad);
+    target[0] = cam->eye[0] + sin(yaw_rad) * cp;
+    target[1] = cam->eye[1] + sin(pitch_rad);
+    target[2] = cam->eye[2] - cos(yaw_rad) * cp;
+    build_look_at(cam->view, cam->eye, target, up);
+}
+
 /// @brief Create a perspective camera with the given field of view and clipping planes.
 /// @details Uses a right-handed coordinate system (+X right, +Y up, +Z toward viewer)
 ///          with OpenGL NDC convention (Z in [-1, 1]). The camera starts at the
@@ -124,12 +220,10 @@ void *rt_camera3d_new(double fov, double aspect, double near_val, double far_val
         return NULL;
     }
     cam->vptr = NULL;
-    cam->fov = fov;
-    cam->aspect = aspect;
+    cam->fov = sanitize_fov(fov);
+    cam->aspect = sanitize_aspect(aspect);
     cam->near_plane = near_val;
     cam->far_plane = far_val;
-
-    build_perspective(cam->projection, fov, aspect, near_val, far_val);
 
     /* Default identity view (camera at origin looking along -Z) */
     memset(cam->view, 0, 16 * sizeof(double));
@@ -144,6 +238,7 @@ void *rt_camera3d_new(double fov, double aspect, double near_val, double far_val
     cam->shake_seed = 0x12345678;
     cam->is_ortho = 0;
     cam->ortho_size = 10.0;
+    rebuild_projection(cam);
 
     return cam;
 }
@@ -187,15 +282,11 @@ void *rt_camera3d_new_ortho(double size, double aspect, double near_val, double 
     }
     cam->vptr = NULL;
     cam->fov = 0;
-    cam->aspect = aspect;
+    cam->aspect = sanitize_aspect(aspect);
     cam->near_plane = near_val;
     cam->far_plane = far_val;
     cam->is_ortho = 1;
-    cam->ortho_size = size;
-
-    double half_w = size * aspect;
-    double half_h = size;
-    build_ortho(cam->projection, -half_w, half_w, -half_h, half_h, near_val, far_val);
+    cam->ortho_size = sanitize_ortho_size(size);
 
     /* Default identity view */
     memset(cam->view, 0, 16 * sizeof(double));
@@ -208,6 +299,7 @@ void *rt_camera3d_new_ortho(double size, double aspect, double near_val, double 
     cam->shake_decay = 5.0;
     cam->shake_offset[0] = cam->shake_offset[1] = cam->shake_offset[2] = 0.0;
     cam->shake_seed = 0x12345678;
+    rebuild_projection(cam);
 
     return cam;
 }
@@ -234,6 +326,7 @@ void rt_camera3d_look_at(void *obj, void *eye_v, void *target_v, void *up_v) {
     cam->eye[2] = eye[2];
 
     build_look_at(cam->view, eye, target, up);
+    camera_sync_fps_angles_from_view(cam);
 }
 
 /// @brief Position the camera on a spherical orbit around a target point.
@@ -273,6 +366,8 @@ void rt_camera3d_orbit(void *obj, void *target_v, double distance, double yaw, d
     cam->eye[2] = eye[2];
 
     build_look_at(cam->view, eye, target, up);
+    cam->fps_yaw = yaw;
+    cam->fps_pitch = pitch;
 }
 
 /// @brief Get the vertical field of view in degrees.
@@ -287,8 +382,10 @@ void rt_camera3d_set_fov(void *obj, double fov) {
     if (!obj)
         return;
     rt_camera3d *cam = (rt_camera3d *)obj;
-    cam->fov = fov;
-    build_perspective(cam->projection, fov, cam->aspect, cam->near_plane, cam->far_plane);
+    if (cam->is_ortho)
+        return;
+    cam->fov = sanitize_fov(fov);
+    rebuild_projection(cam);
 }
 
 void *rt_camera3d_get_position(void *obj) {
@@ -300,12 +397,26 @@ void *rt_camera3d_get_position(void *obj) {
 
 /// @brief Set the camera's eye position and rebuild the view matrix.
 void rt_camera3d_set_position(void *obj, void *pos) {
+    double forward[3];
+    double up[3];
+    double target[3];
+
     if (!obj || !pos)
         return;
     rt_camera3d *cam = (rt_camera3d *)obj;
+    forward[0] = -cam->view[8];
+    forward[1] = -cam->view[9];
+    forward[2] = -cam->view[10];
+    up[0] = cam->view[4];
+    up[1] = cam->view[5];
+    up[2] = cam->view[6];
     cam->eye[0] = rt_vec3_x(pos);
     cam->eye[1] = rt_vec3_y(pos);
     cam->eye[2] = rt_vec3_z(pos);
+    target[0] = cam->eye[0] + forward[0];
+    target[1] = cam->eye[1] + forward[1];
+    target[2] = cam->eye[2] + forward[2];
+    build_look_at(cam->view, cam->eye, target, up);
 }
 
 void *rt_camera3d_get_forward(void *obj) {
@@ -433,18 +544,7 @@ void *rt_camera3d_screen_to_ray(void *obj, int64_t sx, int64_t sy, int64_t sw, i
 void rt_camera3d_fps_init(void *obj) {
     if (!obj)
         return;
-    rt_camera3d *cam = (rt_camera3d *)obj;
-    /* Extract yaw/pitch from current view matrix forward direction.
-     * Forward = -row2 of view matrix (negated because view Z points away). */
-    double fx = -cam->view[8];
-    double fy = -cam->view[9];
-    double fz = -cam->view[10];
-    cam->fps_yaw = atan2(fx, -fz) * (180.0 / M_PI);
-    cam->fps_pitch = asin(fmax(-1.0, fmin(1.0, fy))) * (180.0 / M_PI);
-    if (cam->fps_pitch > 89.0)
-        cam->fps_pitch = 89.0;
-    if (cam->fps_pitch < -89.0)
-        cam->fps_pitch = -89.0;
+    camera_sync_fps_angles_from_view((rt_camera3d *)obj);
 }
 
 /// @brief Update FPS camera from mouse look (dx/dy) and WASD movement (fwd/right/up).
@@ -505,8 +605,10 @@ double rt_camera3d_get_pitch(void *obj) {
 }
 
 void rt_camera3d_set_yaw(void *obj, double yaw) {
-    if (obj)
-        ((rt_camera3d *)obj)->fps_yaw = yaw;
+    if (!obj)
+        return;
+    ((rt_camera3d *)obj)->fps_yaw = yaw;
+    camera_rebuild_fps_view((rt_camera3d *)obj);
 }
 
 void rt_camera3d_set_pitch(void *obj, double pitch) {
@@ -518,6 +620,7 @@ void rt_camera3d_set_pitch(void *obj, double pitch) {
         cam->fps_pitch = 89.0;
     if (cam->fps_pitch < -89.0)
         cam->fps_pitch = -89.0;
+    camera_rebuild_fps_view(cam);
 }
 
 /*==========================================================================
