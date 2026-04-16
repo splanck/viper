@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-09
+last-verified: 2026-04-16
 ---
 
 # Scene Graph
@@ -308,6 +308,7 @@ arm.Detach()
 ## Viper.Graphics.Scene
 
 Root container for a scene graph. Manages rendering order and provides scene-level operations.
+Scene draws are depth-sorted, and nodes with equal depth preserve traversal order.
 
 **Type:** Instance (obj)
 **Constructor:** `NEW Viper.Graphics.Scene()`
@@ -325,8 +326,8 @@ Root container for a scene graph. Manages rendering order and provides scene-lev
 |----------------------------------|--------------------------------|------------------------------------------------|
 | `Add(node)`                      | `Void(SceneNode)`              | Add a root-level node to the scene             |
 | `Clear()`                        | `Void()`                       | Remove all nodes                               |
-| `Draw(canvas)`                   | `Void(Canvas)`                 | Render all visible nodes to canvas             |
-| `DrawWithCamera(canvas, camera)` | `Void(Canvas, Camera)`         | Render all visible nodes with camera transform |
+| `Draw(canvas)`                   | `Void(Canvas)`                 | Render all visible nodes to canvas (depth-sorted; equal depths stay stable) |
+| `DrawWithCamera(canvas, camera)` | `Void(Canvas, Camera)`         | Render all visible nodes with camera transform (depth-sorted; equal depths stay stable) |
 | `Find(name)`                     | `SceneNode(String)`            | Find a node by name                            |
 | `Remove(node)`                   | `Void(SceneNode)`              | Remove a node from the scene                   |
 | `Update()`                       | `Void()`                       | Update all nodes (advances animations)         |
@@ -463,7 +464,7 @@ Batched sprite rendering for improved performance when drawing many sprites.
 **Type:** Instance (obj)
 **Constructor:** `NEW Viper.Graphics.SpriteBatch(capacity)`
 
-Creates a sprite batch with the given initial capacity (use 0 for default). SpriteBatch records draw calls, optionally sorts them by depth, applies shared tint/alpha state, and flushes them during `End(canvas)`. Use `Draw`/`DrawEx` for `Sprite` objects and `DrawPixels`/`DrawRegion` for raw `Pixels` buffers. `DrawPixels` preserves per-pixel alpha, so transparent sprites and overlays blend like `Canvas.BlitAlpha`.
+Creates a sprite batch with the given initial capacity (use 0 for default). SpriteBatch records draw calls, optionally sorts them by depth, applies shared tint/alpha state, and flushes them during `End(canvas)`. `End(canvas)` also clears the recorded batch so the same instance can be reused next frame. Use `Draw`/`DrawEx` for `Sprite` objects and `DrawPixels`/`DrawRegion` for raw `Pixels` buffers. `DrawPixels` preserves per-pixel alpha, so transparent sprites and overlays blend like `Canvas.BlitAlpha`.
 
 ### Properties
 
@@ -483,7 +484,7 @@ Creates a sprite batch with the given initial capacity (use 0 for default). Spri
 | `DrawPixels(pixels, x, y)`                      | `Void(Pixels, Integer, Integer)`                       | Draw pixels buffer at position                 |
 | `DrawRegion(pixels, dx, dy, sx, sy, sw, sh)`    | `Void(Pixels, Integer...)`                             | Draw a sub-region of a Pixels buffer           |
 | `DrawScaled(sprite, x, y, scale)`               | `Void(Sprite, Integer, Integer, Integer)`              | Draw sprite with uniform scale (100 = 100%)    |
-| `End(canvas)`                                   | `Void(Canvas)`                                         | End batch and flush recorded draws to the canvas |
+| `End(canvas)`                                   | `Void(Canvas)`                                         | End batch, flush recorded draws to the canvas, and clear the batch |
 | `ResetSettings()`                               | `Void()`                                               | Clear all settings to defaults                 |
 | `SetAlpha(alpha)`                               | `Void(Integer)`                                        | Set global alpha (0-255) for all sprites       |
 | `SetSortByDepth(enabled)`                       | `Void(Integer)`                                        | Enable/disable depth sorting (1=on, 0=off)     |

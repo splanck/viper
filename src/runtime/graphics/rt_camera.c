@@ -141,6 +141,123 @@ static void camera_apply_inverse_transform(const rt_camera_impl *camera,
         *world_y = ry + camera_center_y(camera);
 }
 
+static int64_t camera_floor_div(int64_t value, int64_t divisor) {
+    int64_t q = value / divisor;
+    int64_t r = value % divisor;
+    if (r != 0 && ((r < 0) != (divisor < 0)))
+        q--;
+    return q;
+}
+
+static int64_t camera_draw_parallax_transformed(const rt_camera_impl *camera,
+                                                const rt_parallax_layer *layer,
+                                                void *canvas) {
+    rt_camera_impl layer_camera = *camera;
+    layer_camera.x = camera->x * layer->scroll_factor_x / 100;
+    layer_camera.y = camera->y * layer->scroll_factor_y / 100 + layer->offset_y;
+    layer_camera.has_bounds = 0;
+
+    int64_t pw = rt_pixels_width(layer->pixels);
+    int64_t ph = rt_pixels_height(layer->pixels);
+    if (pw <= 0 || ph <= 0)
+        return 0;
+
+    void *tile_pixels = layer->pixels;
+    void *scaled = NULL;
+    void *rotated = NULL;
+
+    if (camera->zoom != 100) {
+        int64_t scaled_w = (int64_t)llround((double)pw * (double)camera->zoom / 100.0);
+        int64_t scaled_h = (int64_t)llround((double)ph * (double)camera->zoom / 100.0);
+        if (scaled_w < 1)
+            scaled_w = 1;
+        if (scaled_h < 1)
+            scaled_h = 1;
+        scaled = rt_pixels_scale(layer->pixels, scaled_w, scaled_h);
+        if (!scaled)
+            return 0;
+        tile_pixels = scaled;
+    }
+
+    if (camera->rotation != 0) {
+        rotated = rt_pixels_rotate(tile_pixels, -(double)camera->rotation);
+        if (!rotated) {
+            camera_release_ref(&scaled);
+            return 0;
+        }
+        tile_pixels = rotated;
+    }
+
+    int64_t draw_w = rt_pixels_width(tile_pixels);
+    int64_t draw_h = rt_pixels_height(tile_pixels);
+    double world_x = 0.0;
+    double world_y = 0.0;
+    double min_world_x = 0.0;
+    double max_world_x = 0.0;
+    double min_world_y = 0.0;
+    double max_world_y = 0.0;
+
+    camera_apply_inverse_transform(&layer_camera, 0.0, 0.0, &min_world_x, &min_world_y);
+    max_world_x = min_world_x;
+    max_world_y = min_world_y;
+
+    camera_apply_inverse_transform(&layer_camera, (double)camera->width, 0.0, &world_x, &world_y);
+    if (world_x < min_world_x)
+        min_world_x = world_x;
+    if (world_x > max_world_x)
+        max_world_x = world_x;
+    if (world_y < min_world_y)
+        min_world_y = world_y;
+    if (world_y > max_world_y)
+        max_world_y = world_y;
+
+    camera_apply_inverse_transform(&layer_camera, 0.0, (double)camera->height, &world_x, &world_y);
+    if (world_x < min_world_x)
+        min_world_x = world_x;
+    if (world_x > max_world_x)
+        max_world_x = world_x;
+    if (world_y < min_world_y)
+        min_world_y = world_y;
+    if (world_y > max_world_y)
+        max_world_y = world_y;
+
+    camera_apply_inverse_transform(
+        &layer_camera, (double)camera->width, (double)camera->height, &world_x, &world_y);
+    if (world_x < min_world_x)
+        min_world_x = world_x;
+    if (world_x > max_world_x)
+        max_world_x = world_x;
+    if (world_y < min_world_y)
+        min_world_y = world_y;
+    if (world_y > max_world_y)
+        max_world_y = world_y;
+
+    int64_t first_tile_x = camera_floor_div((int64_t)floor(min_world_x) - pw, pw);
+    int64_t last_tile_x = camera_floor_div((int64_t)floor(max_world_x) + pw, pw);
+    int64_t first_tile_y = camera_floor_div((int64_t)floor(min_world_y) - ph, ph);
+    int64_t last_tile_y = camera_floor_div((int64_t)floor(max_world_y) + ph, ph);
+
+    for (int64_t ty = first_tile_y; ty <= last_tile_y; ty++) {
+        for (int64_t tx = first_tile_x; tx <= last_tile_x; tx++) {
+            double screen_x = 0.0;
+            double screen_y = 0.0;
+            camera_apply_transform(&layer_camera,
+                                   (double)(tx * pw) + (double)pw * 0.5,
+                                   (double)(ty * ph) + (double)ph * 0.5,
+                                   &screen_x,
+                                   &screen_y);
+            rt_canvas_blit_alpha(canvas,
+                                 (int64_t)llround(screen_x - (double)draw_w * 0.5),
+                                 (int64_t)llround(screen_y - (double)draw_h * 0.5),
+                                 tile_pixels);
+        }
+    }
+
+    camera_release_ref(&rotated);
+    camera_release_ref(&scaled);
+    return 1;
+}
+
 static void camera_release_parallax_layer(rt_parallax_layer *layer) {
     if (!layer || !layer->active)
         return;
@@ -646,6 +763,11 @@ int64_t rt_camera_draw_parallax(void *camera_ptr, void *canvas) {
 
         if (pw <= 0 || ph <= 0)
             continue;
+
+        if (camera->zoom != 100 || camera->rotation != 0) {
+            layers_drawn += camera_draw_parallax_transformed(camera, layer, canvas);
+            continue;
+        }
 
         /* Compute the parallax scroll offset */
         int64_t scroll_x = camera->x * layer->scroll_factor_x / 100;

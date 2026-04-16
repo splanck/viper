@@ -215,7 +215,7 @@ void *rt_pixels_tint(void *pixels, int64_t color);
 
 /// @brief Apply a box blur to the image.
 /// @param pixels Pixels object.
-/// @param radius Blur radius (1-10).
+/// @param radius Blur radius (0 returns an exact copy; positive values are clamped to 10).
 /// @return New blurred Pixels object.
 void *rt_pixels_blur(void *pixels, int64_t radius);
 

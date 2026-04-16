@@ -852,6 +852,26 @@ static void test_blur_rgba_channel_order() {
     printf("test_blur_rgba_channel_order: PASSED\n");
 }
 
+static void test_blur_zero_returns_exact_copy() {
+    void *p = rt_pixels_new(2, 2);
+    rt_pixels_set(p, 0, 0, 0x11223344);
+    rt_pixels_set(p, 1, 0, 0x55667788);
+    rt_pixels_set(p, 0, 1, 0x99AABBCC);
+    rt_pixels_set(p, 1, 1, 0xDDEEFF00);
+
+    void *blurred = rt_pixels_blur(p, 0);
+    assert(blurred != nullptr);
+    assert(blurred != p);
+    assert(rt_pixels_width(blurred) == 2);
+    assert(rt_pixels_height(blurred) == 2);
+    assert(rt_pixels_get(blurred, 0, 0) == 0x11223344);
+    assert(rt_pixels_get(blurred, 1, 0) == 0x55667788);
+    assert(rt_pixels_get(blurred, 0, 1) == (int64_t)0x99AABBCC);
+    assert(rt_pixels_get(blurred, 1, 1) == (int64_t)0xDDEEFF00);
+
+    printf("test_blur_zero_returns_exact_copy: PASSED\n");
+}
+
 static void test_resize_rgba_channel_order() {
     void *p = rt_pixels_new(2, 2);
     int64_t p00 = 0x10305070;
@@ -974,6 +994,7 @@ int main() {
     test_rotate_180();
     test_scale_up();
     test_scale_down();
+    test_blur_zero_returns_exact_copy();
     test_blur_rgba_channel_order();
     test_resize_rgba_channel_order();
 

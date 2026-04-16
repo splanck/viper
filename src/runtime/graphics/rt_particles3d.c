@@ -518,7 +518,16 @@ void rt_particles3d_update(void *o, double delta_time) {
 
     /* Spawn new particles */
     if (ps->emitting && ps->rate > 0.0) {
-        ps->accumulator += ps->rate * delta_time;
+        /* Clamp the catchup budget. A frame hiccup (e.g. dt = 1.0 s) with a
+         * high rate previously spawned thousands of particles in one frame,
+         * causing temporary freezes and in the worst case OOM. Cap catchup
+         * at ~4 frames' worth of spawning; dropped particles are intentional
+         * — the engine prefers a steady frame to a perfect spawn count. */
+        double eff_dt = delta_time;
+        const double max_catchup = 4.0 / 60.0; /* ~4 frames @ 60 fps */
+        if (eff_dt > max_catchup)
+            eff_dt = max_catchup;
+        ps->accumulator += ps->rate * eff_dt;
         while (ps->accumulator >= 1.0) {
             spawn_particle(ps);
             ps->accumulator -= 1.0;

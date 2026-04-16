@@ -157,7 +157,8 @@ void rt_canvas_text_bg(void *canvas, int64_t x, int64_t y, rt_string text, int64
 
 /// @brief Get the width of rendered text in pixels.
 /// @param text Text string to measure.
-/// @return Width in pixels (8 pixels per character).
+/// @return Width in pixels (8 pixels per decoded codepoint; unsupported
+///         built-in glyphs still consume one character cell).
 int64_t rt_canvas_text_width(rt_string text);
 
 /// @brief Get the height of rendered text in pixels.
@@ -188,7 +189,7 @@ void rt_canvas_text_scaled_bg(
 /// @brief Get the width of scaled text in pixels.
 /// @param text Text string to measure.
 /// @param scale Integer scale factor.
-/// @return Width in pixels (8 * scale * character count).
+/// @return Width in pixels (8 * scale per decoded codepoint).
 int64_t rt_canvas_text_scaled_width(rt_string text, int64_t scale);
 
 /// @brief Draw text horizontally centered on the canvas.
@@ -693,11 +694,13 @@ int64_t rt_canvas_get_fps(void *canvas);
 void rt_canvas_set_fps(void *canvas, int64_t fps);
 
 /// @brief Get milliseconds elapsed since the last Flip() call.
-/// If SetDTMax was called, result is clamped to [1, max].
+/// If SetDTMax was called, result is clamped to [1, max] after startup while
+/// preserving an exact 0 ms first frame.
 int64_t rt_canvas_get_delta_time(void *canvas);
 
-/// @brief Set the maximum delta time clamp. When set, DeltaTime is clamped to [1, max].
-/// Pass 0 to disable clamping (default).
+/// @brief Set the maximum delta time clamp.
+/// When set, DeltaTime is clamped to [1, max] after the first frame. Pass 0 to
+/// disable clamping (default).
 void rt_canvas_set_dt_max(void *canvas, int64_t max_ms);
 
 /// @brief Poll events and check if the window should remain open.

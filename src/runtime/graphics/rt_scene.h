@@ -286,13 +286,14 @@ void *rt_scene_find(void *scene, rt_string name);
 /// @brief Draw all nodes in the scene (depth-sorted).
 /// @param scene The Scene object.
 /// @param canvas The canvas to draw all visible nodes onto, sorted
-///               by depth.
+///               by depth. Equal depths preserve traversal order.
 void rt_scene_draw(void *scene, void *canvas);
 
 /// @brief Draw scene with camera transform (depth-sorted).
 /// @param scene The Scene object.
 /// @param canvas The canvas to draw onto.
-/// @param camera The camera providing the world-to-screen transform.
+/// @param camera The camera providing the world-to-screen transform. Equal
+///               depths preserve traversal order.
 void rt_scene_draw_with_camera(void *scene, void *canvas, void *camera);
 
 /// @brief Update all nodes in the scene.

@@ -10,7 +10,8 @@
 //   BeginFrame(). Validates null safety, delta-time clamping logic, and
 //   the combined poll+close-check of BeginFrame.
 // Key invariants:
-//   - SetDTMax(0) disables clamping; SetDTMax(N>0) clamps DeltaTime to [1,N].
+//   - SetDTMax(0) disables clamping; SetDTMax(N>0) clamps DeltaTime to [1,N]
+//     after the first frame, while preserving an exact 0 ms first-frame delta.
 //   - BeginFrame() returns 0 on NULL canvas or when ShouldClose is set.
 //   - All functions are null-safe (no crash on NULL canvas_ptr).
 // Ownership/Lifetime:
@@ -111,7 +112,7 @@ static void test_dt_clamping_lower_bound() {
 
     rt_canvas_set_dt_max(c, 50);
     int64_t dt = rt_canvas_get_delta_time(c);
-    assert(dt == 1); // clamped to minimum of 1
+    assert(dt == 0); // first frame stays 0 even when clamping is enabled
 
     free(c);
     printf("  test_dt_clamping_lower_bound: PASSED\n");

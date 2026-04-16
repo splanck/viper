@@ -64,9 +64,12 @@ static void test_canvas_availability_flag() {
 
 static void test_canvas_text_metrics_are_backend_free() {
     rt_string text = rt_const_cstr("abc");
+    rt_string cafe = rt_const_cstr("caf\xc3\xa9");
     assert(rt_canvas_text_width(text) == 24);
     assert(rt_canvas_text_height() == 8);
     assert(rt_canvas_text_scaled_width(text, 3) == 72);
+    assert(rt_canvas_text_width(cafe) == 32);
+    assert(rt_canvas_text_scaled_width(cafe, 2) == 64);
 }
 
 /// On a non-graphics build, rt_canvas_new must trap with InvalidOperation.

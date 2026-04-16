@@ -353,9 +353,16 @@ void *rt_terrain3d_get_normal_at(void *obj, double wx, double wz) {
     float hD = sample_height(t, ix, iz - 1);
     float hU = sample_height(t, ix, iz + 1);
 
-    double nx = (double)(hL - hR) * t->scale[1];
-    double nz = (double)(hD - hU) * t->scale[1];
-    double ny = 2.0 * t->scale[0];
+    // Finite-difference normal on a heightfield. Correct formula for
+    // horizontal spacing (scale[0], scale[2]) and vertical scale[1]:
+    //   nx ∝ -(hR - hL) · scale[1] · scale[2]    (normal tilts against dy/dx)
+    //   nz ∝ -(hU - hD) · scale[1] · scale[0]
+    //   ny ∝  2 · scale[0] · scale[2]
+    // Previously ny omitted the scale[2] factor, so non-uniform terrain
+    // scales produced wrong lighting/collision normals.
+    double nx = (double)(hL - hR) * t->scale[1] * t->scale[2];
+    double nz = (double)(hD - hU) * t->scale[1] * t->scale[0];
+    double ny = 2.0 * t->scale[0] * t->scale[2];
     double len = sqrt(nx * nx + ny * ny + nz * nz);
     if (len > 1e-8) {
         nx /= len;
@@ -470,9 +477,11 @@ static void terrain_vertex(rt_terrain3d *t,
     float hR = sample_height(t, ix + 1, iz);
     float hD = sample_height(t, ix, iz - 1);
     float hU = sample_height(t, ix, iz + 1);
-    *nx = (double)(hL - hR) * t->scale[1];
-    *nz_n = (double)(hD - hU) * t->scale[1];
-    *ny = 2.0 * t->scale[0];
+    // See rt_terrain3d_get_normal_at for the derivation. ny must carry both
+    // horizontal scales; nx/nz carry the perpendicular horizontal scale.
+    *nx = (double)(hL - hR) * t->scale[1] * t->scale[2];
+    *nz_n = (double)(hD - hU) * t->scale[1] * t->scale[0];
+    *ny = 2.0 * t->scale[0] * t->scale[2];
     double nlen = sqrt(*nx * *nx + *ny * *ny + *nz_n * *nz_n);
     if (nlen > 1e-8) {
         *nx /= nlen;

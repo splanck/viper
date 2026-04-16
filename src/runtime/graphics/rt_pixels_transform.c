@@ -490,8 +490,8 @@ void *rt_pixels_blur(void *pixels, int64_t radius) {
         return NULL;
     }
 
-    if (radius < 1)
-        radius = 1;
+    if (radius <= 0)
+        return rt_pixels_clone(pixels);
     if (radius > 10)
         radius = 10;
 

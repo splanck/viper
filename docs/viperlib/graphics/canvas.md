@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-09
+last-verified: 2026-04-16
 ---
 
 # Canvas & Color
@@ -22,7 +22,7 @@ last-verified: 2026-04-09
 
 | Property      | Type    | Description                                        |
 |---------------|---------|----------------------------------------------------|
-| `DeltaTime`   | Integer | Milliseconds elapsed between last two `Flip()` calls |
+| `DeltaTime`   | Integer | Milliseconds elapsed between last two `Flip()` calls (first frame may be `0`) |
 | `Height`      | Integer | Canvas height in pixels                            |
 | `ShouldClose` | Integer | Non-zero if the user requested to close the canvas |
 | `Width`       | Integer | Canvas width in pixels                             |
@@ -76,7 +76,7 @@ last-verified: 2026-04-09
 | `SavePng(path)`                       | `Integer(String)`                     | Saves canvas to PNG file (returns 1 on success)            |
 | `Screenshot()`                        | `Pixels()`                            | Captures entire canvas contents to a Pixels buffer         |
 | `SetClipRect(x, y, w, h)`             | `Void(Integer...)`                    | Sets clipping rectangle; all drawing is constrained to it  |
-| `SetDTMax(max)`                        | `Void(Integer)`                       | Set maximum DeltaTime clamp in ms. DeltaTime getter auto-clamps to [1, max] |
+| `SetDTMax(max)`                        | `Void(Integer)`                       | Set maximum DeltaTime clamp in ms. After startup, `DeltaTime` auto-clamps to `[1, max]` |
 | `SetFps(fps)`                         | `Void(Integer)`                       | Set the target frame rate (-1 = unlimited)                 |
 | `SetTitle(title)`                     | `Void(String)`                        | Changes the window title at runtime                        |
 | `Text(x, y, text, color)`             | `Void(Integer, Integer, String, Integer)` | Draws text at (x, y) with the specified color          |
@@ -85,7 +85,7 @@ last-verified: 2026-04-09
 | `TextCenteredScaled(y, text, scale, color)` | `Void(Integer, String, Integer, Integer)` | Draw scaled text horizontally centered               |
 | `TextHeight()`                        | `Integer()`                           | Returns the height of rendered text in pixels (always 8)   |
 | `TextRight(margin, y, text, color)`    | `Void(Integer, Integer, String, Integer)` | Draw text right-aligned with margin from right edge    |
-| `TextWidth(text)`                     | `Integer(String)`                     | Returns the width of rendered text in pixels (8 per char)  |
+| `TextWidth(text)`                     | `Integer(String)`                     | Returns the width of rendered text in pixels (8 per decoded codepoint) |
 | `ThickLine(x1, y1, x2, y2, thickness, color)` | `Void(Integer...)`            | Draws a line with specified thickness (parallelogram body + rounded endcap circles) |
 | `Triangle(x1, y1, x2, y2, x3, y3, color)` | `Void(Integer...)`                 | Draws a filled triangle                                    |
 | `TriangleFrame(x1, y1, x2, y2, x3, y3, color)` | `Void(Integer...)`            | Draws a triangle outline                                   |
@@ -179,10 +179,11 @@ The canvas includes a built-in 8x8 pixel bitmap font for rendering text:
 
 - **Font size:** 8x8 pixels per character
 - **Character set:** ASCII 32-126 (printable characters)
+- UTF-8 text is measured by decoded codepoint count; unsupported glyphs render as `?`
 - Characters are drawn pixel-by-pixel to the canvas
 - Use `Text` for text with a transparent background
 - Use `TextBg` for text with a solid background (useful for HUDs/overlays)
-- Use `TextWidth(text)` to measure text width in pixels (8 per character)
+- Use `TextWidth(text)` to measure text width in pixels (8 per decoded codepoint)
 - Use `TextHeight()` to get font height in pixels (always 8)
 - Use `TextCentered(y, text, color)` to draw text horizontally centered on the canvas
 - Use `TextRight(margin, y, text, color)` to draw text right-aligned with a margin
@@ -400,7 +401,7 @@ func start() {
     c.SetDTMax(50);
 
     while c.BeginFrame() != 0 {
-        var dt = c.DeltaTime;  // Already clamped to [1, 50]
+        var dt = c.DeltaTime;  // First frame may be 0; later frames are clamped to [1, 50]
 
         // Game logic using dt for frame-independent movement
         c.Clear(Color.RGB(0, 0, 0));
@@ -412,7 +413,7 @@ func start() {
 
 **Notes:**
 - `BeginFrame()` calls `Poll()` internally, then returns 0 if `ShouldClose` is set, otherwise 1
-- `SetDTMax(max)` sets the upper clamp for `DeltaTime` in milliseconds; the `DeltaTime` property auto-clamps to `[1, max]`
+- `SetDTMax(max)` sets the upper clamp for `DeltaTime` in milliseconds; after the first frame, `DeltaTime` auto-clamps to `[1, max]`
 - A typical max of 50 ms (20 FPS equivalent) prevents large time steps that can break physics or animation
 
 ---
@@ -548,7 +549,7 @@ The `Viper.Graphics.Camera` class supports up to 8 parallax scrolling layers for
 | `AddParallax(pixels, scrollX, scrollY)` | `Integer(Pixels, Integer, Integer)` | Add a parallax layer; returns index (0-7) or -1 if full |
 | `RemoveParallax(index)`               | `Void(Integer)`                  | Remove parallax layer by index               |
 | `ClearParallax()`                     | `Void()`                         | Remove all parallax layers                   |
-| `DrawParallax(canvas)`                | `Integer(Canvas)`                | Draw all parallax layers to canvas; returns count drawn |
+| `DrawParallax(canvas)`                | `Integer(Canvas)`                | Draw all parallax layers to canvas; returns count drawn. Camera zoom and rotation are applied too |
 
 ### Scroll Factors
 
@@ -562,6 +563,9 @@ The scroll factor controls how fast a layer scrolls relative to the camera:
 | 0      | Static (fixed backdrop)                      |
 
 Each layer's Pixels buffer is tiled horizontally and vertically to fill the viewport.
+Camera zoom and rotation are applied to those tiles during `DrawParallax`, so the
+background stays visually aligned with the current view transform instead of only
+tracking camera translation.
 
 ### Parallax Example
 

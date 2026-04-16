@@ -196,7 +196,13 @@ void *rt_navmesh3d_build(void *mesh_obj, double agent_radius, double agent_heigh
                 int32_t vb = nm->triangles[i].v[(e + 1) % 3];
                 int32_t lo = va < vb ? va : vb;
                 int32_t hi = va < vb ? vb : va;
-                int64_t key = (int64_t)lo * 1000000LL + hi;
+                // Bit-packed edge key: upper 32 bits hold `lo`, lower 32 hold
+                // `hi`. This is a perfect hash for any 32-bit index pair.
+                // The previous formula `lo * 1000000 + hi` collided for large
+                // meshes (e.g. (1, 2000000) and (2, 1000000) both → 3000000),
+                // falsely marking unrelated triangles adjacent and silently
+                // breaking pathfinding.
+                int64_t key = ((int64_t)(uint32_t)lo << 32) | (uint32_t)hi;
 
                 /* Open-addressing linear probe */
                 uint32_t slot = (uint32_t)(key & 0x7FFFFFFF) % (uint32_t)map_cap;

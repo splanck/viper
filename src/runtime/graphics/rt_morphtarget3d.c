@@ -266,12 +266,21 @@ void rt_morphtarget3d_set_normal_delta(
  *=========================================================================*/
 
 /// @brief Set the blend weight for a shape by index (0.0 = off, 1.0 = full).
+///
+/// Clamped to [-1, 1]. Values outside that range silently over-extruded
+/// vertices past the target mesh and produced z-fighting / self-intersection
+/// in extreme cases. Negative weights are kept (they invert the morph delta)
+/// but bounded so the combined deformation stays well-defined.
 void rt_morphtarget3d_set_weight(void *obj, int64_t shape, double weight) {
     if (!obj)
         return;
     rt_morphtarget3d *mt = (rt_morphtarget3d *)obj;
     if (shape < 0 || shape >= mt->shape_count)
         return;
+    if (weight < -1.0)
+        weight = -1.0;
+    else if (weight > 1.0)
+        weight = 1.0;
     mt->weights[shape] = (float)weight;
 }
 

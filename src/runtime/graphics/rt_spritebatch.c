@@ -39,6 +39,7 @@
 
 #include "rt_spritebatch.h"
 #include "rt_graphics.h"
+#include "rt_heap.h"
 #include "rt_object.h"
 #include "rt_pixels.h"
 #include "rt_sprite.h"
@@ -104,9 +105,52 @@ static int compare_depth(const void *a, const void *b) {
     return 0;
 }
 
-static void ensure_capacity(spritebatch_impl *batch, int64_t needed) {
-    if (batch->count + needed <= batch->capacity)
+static void spritebatch_release_object(void *obj) {
+    if (!obj || !rt_heap_is_payload(obj))
         return;
+    if (rt_obj_release_check0(obj))
+        rt_obj_free(obj);
+}
+
+static void spritebatch_retain_object(void *obj) {
+    if (!obj || !rt_heap_is_payload(obj))
+        return;
+    rt_obj_retain_maybe(obj);
+}
+
+static void spritebatch_release_temp(void **slot, void *original) {
+    if (!slot || !*slot || *slot == original)
+        return;
+    spritebatch_release_object(*slot);
+    *slot = original;
+}
+
+static void spritebatch_replace_temp(void **slot, void *replacement, void *original) {
+    if (!slot || !replacement || replacement == *slot)
+        return;
+    if (*slot && *slot != original)
+        spritebatch_release_object(*slot);
+    *slot = replacement;
+}
+
+static void spritebatch_release_item(batch_item *item) {
+    if (!item)
+        return;
+    spritebatch_release_object(item->source);
+    memset(item, 0, sizeof(*item));
+}
+
+static void spritebatch_clear_items(spritebatch_impl *batch) {
+    if (!batch)
+        return;
+    for (int64_t i = 0; i < batch->count; ++i)
+        spritebatch_release_item(&batch->items[i]);
+    batch->count = 0;
+}
+
+static int8_t ensure_capacity(spritebatch_impl *batch, int64_t needed) {
+    if (batch->count + needed <= batch->capacity)
+        return 1;
 
     int64_t new_capacity = batch->capacity * GROWTH_FACTOR;
     if (new_capacity < batch->count + needed)
@@ -116,14 +160,17 @@ static void ensure_capacity(spritebatch_impl *batch, int64_t needed) {
         (batch_item *)realloc(batch->items, (size_t)new_capacity * sizeof(batch_item));
     if (!new_items) {
         rt_trap("SpriteBatch: memory allocation failed");
-        return;
+        return 0;
     }
     batch->items = new_items;
     batch->capacity = new_capacity;
+    return 1;
 }
 
 static void add_item(spritebatch_impl *batch, batch_item *item) {
-    ensure_capacity(batch, 1);
+    if (!ensure_capacity(batch, 1))
+        return;
+    spritebatch_retain_object(item->source);
     batch->items[batch->count] = *item;
     batch->count++;
 }
@@ -204,8 +251,7 @@ static void draw_region_item(spritebatch_impl *batch, void *canvas, const batch_
         if (new_h < 1)
             new_h = 1;
         void *scaled = rt_pixels_scale(transformed, new_w, new_h);
-        if (scaled)
-            transformed = scaled;
+        spritebatch_replace_temp(&transformed, scaled, item->source);
     }
 
     if (item->rotation != 0) {
@@ -216,11 +262,10 @@ static void draw_region_item(spritebatch_impl *batch, void *canvas, const batch_
         void *padded = rt_pixels_new(half_w * 2, half_h * 2);
         if (padded) {
             rt_pixels_copy(padded, half_w, half_h, transformed, 0, 0, src_w, src_h);
-            transformed = padded;
+            spritebatch_replace_temp(&transformed, padded, item->source);
         }
         void *rotated = rt_pixels_rotate(transformed, (double)item->rotation);
-        if (rotated)
-            transformed = rotated;
+        spritebatch_replace_temp(&transformed, rotated, item->source);
     }
 
     transformed = apply_batch_color(transformed, batch->tint_color, batch->alpha);
@@ -233,6 +278,7 @@ static void draw_region_item(spritebatch_impl *batch, void *canvas, const batch_
     }
 
     rt_canvas_blit_alpha(canvas, blit_x, blit_y, transformed);
+    spritebatch_release_temp(&transformed, item->source);
 }
 
 //=============================================================================
@@ -241,6 +287,7 @@ static void draw_region_item(spritebatch_impl *batch, void *canvas, const batch_
 
 static void spritebatch_finalize(void *obj) {
     spritebatch_impl *batch = (spritebatch_impl *)obj;
+    spritebatch_clear_items(batch);
     free(batch->items);
     batch->items = NULL;
 }
@@ -251,6 +298,8 @@ static void spritebatch_finalize(void *obj) {
 void *rt_spritebatch_new(int64_t capacity) {
     spritebatch_impl *batch =
         (spritebatch_impl *)rt_obj_new_i64(0, (int64_t)sizeof(spritebatch_impl));
+    if (!batch)
+        return NULL;
     memset(batch, 0, sizeof(spritebatch_impl));
 
     if (capacity <= 0)
@@ -282,7 +331,7 @@ void rt_spritebatch_begin(void *batch_ptr) {
         return;
 
     spritebatch_impl *batch = (spritebatch_impl *)batch_ptr;
-    batch->count = 0;
+    spritebatch_clear_items(batch);
     batch->active = 1;
 }
 
@@ -295,6 +344,7 @@ void rt_spritebatch_end(void *batch_ptr, void *canvas) {
     if (!batch->active)
         return;
     if (!canvas) {
+        spritebatch_clear_items(batch);
         batch->active = 0;
         return;
     }
@@ -328,6 +378,7 @@ void rt_spritebatch_end(void *batch_ptr, void *canvas) {
                     void *draw_src =
                         apply_batch_color(item->source, batch->tint_color, batch->alpha);
                     rt_canvas_blit_alpha(canvas, item->x, item->y, draw_src);
+                    spritebatch_release_temp(&draw_src, item->source);
                 }
                 break;
 
@@ -337,6 +388,7 @@ void rt_spritebatch_end(void *batch_ptr, void *canvas) {
         }
     }
 
+    spritebatch_clear_items(batch);
     batch->active = 0;
 }
 

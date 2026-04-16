@@ -85,6 +85,60 @@ static const rt_glyph *bf_get_glyph(const rt_bitmapfont_impl *font, int codepoin
     return NULL;
 }
 
+static int bf_next_codepoint(const char *str, size_t byte_len, size_t *index, int *codepoint_out) {
+    if (!str || !index || !codepoint_out || *index >= byte_len)
+        return 0;
+
+    size_t i = *index;
+    unsigned char c0 = (unsigned char)str[i];
+    uint32_t cp = '?';
+    size_t advance = 1;
+
+    if (c0 < 0x80) {
+        cp = c0;
+    } else if ((c0 & 0xE0u) == 0xC0u && i + 1 < byte_len) {
+        unsigned char c1 = (unsigned char)str[i + 1];
+        if ((c1 & 0xC0u) == 0x80u) {
+            cp = ((uint32_t)(c0 & 0x1Fu) << 6) | (uint32_t)(c1 & 0x3Fu);
+            advance = 2;
+            if (cp < 0x80u)
+                cp = '?';
+        }
+    } else if ((c0 & 0xF0u) == 0xE0u && i + 2 < byte_len) {
+        unsigned char c1 = (unsigned char)str[i + 1];
+        unsigned char c2 = (unsigned char)str[i + 2];
+        if ((c1 & 0xC0u) == 0x80u && (c2 & 0xC0u) == 0x80u) {
+            cp = ((uint32_t)(c0 & 0x0Fu) << 12) | ((uint32_t)(c1 & 0x3Fu) << 6) |
+                 (uint32_t)(c2 & 0x3Fu);
+            advance = 3;
+            if (cp < 0x800u || (cp >= 0xD800u && cp <= 0xDFFFu))
+                cp = '?';
+        }
+    } else if ((c0 & 0xF8u) == 0xF0u && i + 3 < byte_len) {
+        unsigned char c1 = (unsigned char)str[i + 1];
+        unsigned char c2 = (unsigned char)str[i + 2];
+        unsigned char c3 = (unsigned char)str[i + 3];
+        if ((c1 & 0xC0u) == 0x80u && (c2 & 0xC0u) == 0x80u && (c3 & 0xC0u) == 0x80u) {
+            cp = ((uint32_t)(c0 & 0x07u) << 18) | ((uint32_t)(c1 & 0x3Fu) << 12) |
+                 ((uint32_t)(c2 & 0x3Fu) << 6) | (uint32_t)(c3 & 0x3Fu);
+            advance = 4;
+            if (cp < 0x10000u || cp > 0x10FFFFu)
+                cp = '?';
+        }
+    }
+
+    *index = i + advance;
+    *codepoint_out = (int)cp;
+    return 1;
+}
+
+static void bf_release_font(rt_bitmapfont_impl *font) {
+    if (!font)
+        return;
+    if (rt_obj_release_check0(font))
+        rt_obj_free(font);
+}
+
 //=============================================================================
 // BDF Parser
 //=============================================================================
@@ -113,8 +167,8 @@ static int bf_hex_byte(const char *s) {
 
 /// @brief Load a font from a BDF (Glyph Bitmap Distribution Format) file.
 /// Parses ENCODING, BBX, DWIDTH, BITMAP entries and reconstructs per-glyph 1-bit
-/// bitmaps. Supports up to 256 codepoints; oversized glyphs (>4096 px or >1MB)
-/// are skipped silently. Returns NULL on file/parse failure or empty font.
+/// bitmaps. Supports up to 256 codepoints and fails closed on malformed or
+/// truncated files. Returns NULL on file/parse failure or empty font.
 void *rt_bitmapfont_load_bdf(rt_string path) {
     if (!path)
         return NULL;
@@ -147,6 +201,8 @@ void *rt_bitmapfont_load_bdf(rt_string path) {
     int first_advance = -1;
     int all_same_advance = 1;
     int dwidth = 0;
+    int saw_endfont = 0;
+    int parse_failed = 0;
 
     while (fgets(line, sizeof(line), f)) {
         // Strip trailing whitespace
@@ -157,7 +213,9 @@ void *rt_bitmapfont_load_bdf(rt_string path) {
         if (in_bitmap) {
             if (strncmp(line, "ENDCHAR", 7) == 0) {
                 // Store glyph
-                if (encoding >= 0 && encoding < BF_MAX_GLYPHS && cur_bitmap) {
+                if (bitmap_row != bbx_h) {
+                    parse_failed = 1;
+                } else if (encoding >= 0 && encoding < BF_MAX_GLYPHS && cur_bitmap) {
                     rt_glyph *g = &font->glyphs[encoding];
                     g->bitmap = cur_bitmap;
                     g->width = (int16_t)bbx_w;
@@ -188,12 +246,20 @@ void *rt_bitmapfont_load_bdf(rt_string path) {
                     int rb = bf_row_bytes(bbx_w);
                     for (int b = 0; b < rb && line[b * 2] != '\0' && line[b * 2 + 1] != '\0'; b++) {
                         int val = bf_hex_byte(&line[b * 2]);
-                        if (val >= 0)
+                        if (val >= 0) {
                             cur_bitmap[bitmap_row * rb + b] = (uint8_t)val;
+                        } else {
+                            parse_failed = 1;
+                            break;
+                        }
                     }
                     bitmap_row++;
+                } else {
+                    parse_failed = 1;
                 }
             }
+            if (parse_failed)
+                break;
             continue;
         }
 
@@ -220,25 +286,31 @@ void *rt_bitmapfont_load_bdf(rt_string path) {
             if (bbx_h <= 0)
                 bbx_h = default_bbx_h;
 
-            if (bbx_w > 4096 || bbx_h > 4096)
-                continue;
+            if (bbx_w <= 0 || bbx_h <= 0 || bbx_w > 4096 || bbx_h > 4096) {
+                parse_failed = 1;
+                break;
+            }
             int rb = bf_row_bytes(bbx_w);
             int64_t alloc_size = (int64_t)rb * bbx_h;
             if (alloc_size > 0 && alloc_size <= 1024 * 1024) {
                 cur_bitmap = (uint8_t *)calloc(1, (size_t)alloc_size);
             } else {
-                cur_bitmap = NULL;
+                parse_failed = 1;
+                break;
             }
             bitmap_row = 0;
             in_bitmap = 1;
+        } else if (strncmp(line, "ENDFONT", 7) == 0) {
+            saw_endfont = 1;
         }
     }
 
     fclose(f);
     free(cur_bitmap); /* Free any partial glyph from truncated file */
 
-    if (font->glyph_count == 0) {
+    if (parse_failed || in_bitmap || !saw_endfont || font->glyph_count == 0) {
         // No glyphs loaded — invalid file
+        bf_release_font(font);
         return NULL;
     }
 
@@ -267,8 +339,8 @@ void *rt_bitmapfont_load_bdf(rt_string path) {
 
 /// @brief Load a font from a PSF (PC Screen Font) v1 or v2 file.
 /// Auto-detects version via magic bytes. Glyphs are always monospace; v1 is
-/// fixed at 8 pixels wide, v2 reads width from the header. Always-NULL on
-/// magic mismatch or truncated header.
+/// fixed at 8 pixels wide, v2 reads width from the header. Returns NULL on
+/// magic mismatch or truncated/corrupt input.
 void *rt_bitmapfont_load_psf(rt_string path) {
     if (!path)
         return NULL;
@@ -293,6 +365,7 @@ void *rt_bitmapfont_load_psf(rt_string path) {
     int glyph_width = 0;
     int glyph_byte_size = 0;
     long data_offset = 0;
+    int parse_failed = 0;
 
     if (magic[0] == PSF1_MAGIC0 && magic[1] == PSF1_MAGIC1) {
         // PSF v1: 4-byte header (magic[2] = mode, magic[3] = charsize)
@@ -339,6 +412,11 @@ void *rt_bitmapfont_load_psf(rt_string path) {
         return NULL;
     }
 
+    if (glyph_byte_size < bf_row_bytes(glyph_width) * glyph_height) {
+        fclose(f);
+        return NULL;
+    }
+
     // Clamp to our max
     if (glyph_count > BF_MAX_GLYPHS)
         glyph_count = BF_MAX_GLYPHS;
@@ -352,17 +430,24 @@ void *rt_bitmapfont_load_psf(rt_string path) {
     memset(font, 0, sizeof(rt_bitmapfont_impl));
     rt_obj_set_finalizer(font, rt_bitmapfont_destroy);
 
-    fseek(f, data_offset, SEEK_SET);
+    if (fseek(f, data_offset, SEEK_SET) != 0) {
+        fclose(f);
+        bf_release_font(font);
+        return NULL;
+    }
 
     int rb = bf_row_bytes(glyph_width);
 
     for (int i = 0; i < glyph_count; i++) {
         uint8_t *raw = (uint8_t *)malloc((size_t)glyph_byte_size);
-        if (!raw)
+        if (!raw) {
+            parse_failed = 1;
             break;
+        }
 
         if (fread(raw, 1, (size_t)glyph_byte_size, f) != (size_t)glyph_byte_size) {
             free(raw);
+            parse_failed = 1;
             break;
         }
 
@@ -371,11 +456,13 @@ void *rt_bitmapfont_load_psf(rt_string path) {
         int64_t alloc_size = (int64_t)rb * glyph_height;
         if (alloc_size <= 0 || alloc_size > 1024 * 1024) {
             free(raw);
+            parse_failed = 1;
             break;
         }
         uint8_t *bitmap = (uint8_t *)calloc(1, (size_t)alloc_size);
         if (!bitmap) {
             free(raw);
+            parse_failed = 1;
             break;
         }
 
@@ -402,8 +489,10 @@ void *rt_bitmapfont_load_psf(rt_string path) {
 
     fclose(f);
 
-    if (font->glyph_count == 0)
+    if (parse_failed || font->glyph_count == 0 || font->glyph_count != glyph_count) {
+        bf_release_font(font);
         return NULL;
+    }
 
     font->line_height = (int16_t)glyph_height;
     font->max_width = (int16_t)glyph_width;
@@ -479,9 +568,11 @@ int64_t rt_bitmapfont_text_width(void *font_ptr, rt_string text) {
         return 0;
 
     int64_t width = 0;
-    for (size_t i = 0; str[i] != '\0'; i++) {
-        int c = (unsigned char)str[i];
-        const rt_glyph *g = bf_get_glyph(font, c);
+    size_t len = rt_str_len(text);
+    size_t index = 0;
+    int codepoint = 0;
+    while (bf_next_codepoint(str, len, &index, &codepoint)) {
+        const rt_glyph *g = bf_get_glyph(font, codepoint);
         if (g)
             width += g->advance;
         else
@@ -617,10 +708,12 @@ void rt_canvas_text_font(
 
     vgfx_color_t col = (vgfx_color_t)color;
     int64_t cx = x;
+    size_t len = rt_str_len(text);
+    size_t index = 0;
+    int codepoint = 0;
 
-    for (size_t i = 0; str[i] != '\0'; i++) {
-        int c = (unsigned char)str[i];
-        const rt_glyph *g = bf_get_glyph(font, c);
+    while (bf_next_codepoint(str, len, &index, &codepoint)) {
+        const rt_glyph *g = bf_get_glyph(font, codepoint);
         if (g) {
             bf_draw_glyph(canvas->gfx_win, g, cx, y, font->ascent, col);
             cx += g->advance;
@@ -654,10 +747,12 @@ void rt_canvas_text_font_bg(void *canvas_ptr,
     vgfx_color_t fg = (vgfx_color_t)fg_color;
     vgfx_color_t bg = (vgfx_color_t)bg_color;
     int64_t cx = x;
+    size_t len = rt_str_len(text);
+    size_t index = 0;
+    int codepoint = 0;
 
-    for (size_t i = 0; str[i] != '\0'; i++) {
-        int c = (unsigned char)str[i];
-        const rt_glyph *g = bf_get_glyph(font, c);
+    while (bf_next_codepoint(str, len, &index, &codepoint)) {
+        const rt_glyph *g = bf_get_glyph(font, codepoint);
         if (g) {
             bf_draw_glyph_bg(canvas->gfx_win, g, cx, y, font->ascent, font->line_height, fg, bg);
             cx += g->advance;
@@ -696,10 +791,12 @@ void rt_canvas_text_font_scaled(void *canvas_ptr,
 
     vgfx_color_t col = (vgfx_color_t)color;
     int64_t cx = x;
+    size_t len = rt_str_len(text);
+    size_t index = 0;
+    int codepoint = 0;
 
-    for (size_t i = 0; str[i] != '\0'; i++) {
-        int c = (unsigned char)str[i];
-        const rt_glyph *g = bf_get_glyph(font, c);
+    while (bf_next_codepoint(str, len, &index, &codepoint)) {
+        const rt_glyph *g = bf_get_glyph(font, codepoint);
         if (g) {
             bf_draw_glyph_scaled(canvas->gfx_win, g, cx, y, font->ascent, scale, col);
             cx += g->advance * scale;

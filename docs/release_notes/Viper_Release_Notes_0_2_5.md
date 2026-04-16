@@ -20,9 +20,9 @@ v0.2.5 continues the post-v0.2.4 cycle with five focused themes:
 
 | Metric | v0.2.4 | v0.2.5 | Delta |
 |---|---|---|---|
-| Commits | — | 8 | +8 |
+| Commits | — | 9 | +9 |
 | Source files | 2,869 | 2,877 | +8 |
-| Production SLOC | ~450K | ~455K | ~+5K |
+| Production SLOC | ~450K | ~457K | ~+7K |
 | Test SLOC | ~183K | ~184K | ~+1K |
 | Demo SLOC | ~177K | ~184K | +~7K |
 
@@ -133,6 +133,18 @@ A focused review of the GUI subsystem surfaced 13 verified bugs spanning crashes
 - *P2 — Flex non-stretch sizing.* `vg_layout` only subtracts margins from cross-axis size in `VG_ALIGN_STRETCH` mode; non-stretch alignments preserve the child's measured cross size, fixing a few-pixel clip on descenders/icons.
 - *P2 — TextInput password mask buffer.* Password-mode mask render allocates dynamically (256-byte stack buffer for short input, `malloc` beyond) so long pasted secrets are no longer silently capped at 1023 asterisks.
 
+**Round 2 — critical regressions + follow-on audit fixes**
+
+Two user-reported regressions that appeared during the v0.2.5 polish cycle, plus five additional audit findings, all guarded by new cases in `test_vg_audit_fixes.c`.
+
+- *Regression — macOS plain arrow keys emitted Page Up / Page Down.* The Fn+arrow translation block in `vgfx_platform_macos.m` gated on `NSEventModifierFlagFunction`, but Cocoa sets that flag on every arrow press because arrow keys are themselves classified as function keys. Bare Up/Down/Left/Right therefore emitted `VGFX_KEY_PAGE_UP`/`PAGE_DOWN`/`HOME`/`END`, breaking both editor navigation and game input (xenoscape). The redundant block was removed — macOS already translates real Fn+arrow to `NSPageUpFunctionKey` etc. through the `chars` argument, and the second character switch handles that correctly.
+- *Regression — mouse-wheel delta destroyed by coordinate localizer.* `vg_event_t`'s `mouse` and `wheel` payloads share an anonymous union; `mouse.x` overlaps `wheel.delta_x` at byte 0 and `mouse.y` overlaps `wheel.delta_y` at byte 4. Any path that called `event_localize_mouse_to_widget` on a `VG_EVENT_MOUSE_WHEEL` wrote `mouse.x = screen_x - sx`, silently zeroing the scroll delta before the widget's wheel handler consumed it. Fixed by removing `VG_EVENT_MOUSE_WHEEL` from `event_has_widget_local_mouse_coords` in `vg_event.c` and from the mirror list in `rt_gui_send_event_to_widget`. Wheel events carry `screen_x/y` for hit-test routing but never need widget-local coordinates, so this is semantically clean.
+- *P1 — Dropdown panel clipped at the bottom of the window.* New `dropdown_resolve_panel_rect` helper shared by `dropdown_panel_hit` and `dropdown_paint_overlay` flips the panel above the trigger when it would overflow below and there's more vertical room up than down; hit-testing and paint agree on the final rect.
+- *P2 — ScrollView gutter heuristic disabled hit-testing on narrow widgets.* The 16-px scrollbar-gutter exclusion now only applies when the scrollview dimension exceeds 32 px, and the clip is clamped non-negative. Color-picker channels, completion popups, and other small embedded scrollviews get their children back.
+- *P0 — Tooltip text wrap could spin forever on whitespace-only input.* Added a progress guard that forces at least one byte of advance per outer-loop iteration, breaking on end-of-string. Previously `"   "` (three spaces) through the wrap path would hang the UI.
+- *P2 — TreeView kept stale `scroll_y` after collapsing a node.* `vg_treeview_collapse` now re-clamps `scroll_y` against the new visible-row count so the view doesn't sit past the last row, leaving blank space at the bottom.
+- *P2 — Notification fade math divided by zero when `fade_duration_ms == 0`.* Both fade-in and fade-out branches now guard `fade_duration_ms > 0` and snap to 0/1 respectively when no fade is configured, replacing the NaN opacity that silently hid notifications.
+
 **Per-widget tick (animation hook)**
 
 - New `rt_gui_tick_widget_tree` walks the widget tree from `rt_gui_app_render` once per frame with a clamped `dt`, dispatching `vg_textinput_tick` (cursor blink), `vg_progressbar_tick` (animation), and `vg_codeeditor_tick`. Visible command palettes are also ticked. This replaces the previous per-widget time tracking with a single clock domain.
@@ -196,7 +208,7 @@ A focused review of the GUI subsystem surfaced 13 verified bugs spanning crashes
 - Three new GUI tests in `test_vg_tier2_fixes.c`: `tabbar_metrics_follow_theme_scale` (HiDPI scaling), `tab_tooltip_can_be_replaced`, `native_menubar_measures_to_zero_height`.
 - Extended GUI tier coverage with regression cases for TabBar close-index lifetime/full-rect hit testing, toolbar/statusbar local hit testing, VBox/HBox flex margin budgeting, SplitPane tiny-resize clamping, ScrollView cross-axis auto-hide, ListBox virtual clipping, Toolbar overflow popup activation, `ToolbarItem.SetText()` invalidation, fold-gutter click toggling, silent `TextInput.SetText`, and CodeEditor line-slot metadata reuse during `SetText` / deletion compaction.
 - Added focused GUI regressions for hidden-widget focus/capture cleanup, tab-tooltip hover propagation, ScrollView and CodeEditor scrollbar drag capture, CodeEditor wrap-aware runtime pixel helpers, folded-line pixel mapping, line-number-width font tracking, live FindBar text/no-op replace semantics, menu/toolbar pixel-icon contracts, and `TabBar.WasChanged()` edge triggering.
-- New `test_vg_audit_fixes` regression suite — 13 tests, one per audit fix (dialog re-entry guard, two-slot user_data routing, tooltip dangling-pointer cleanup, notification lazy timestamp, find/replace UTF-8 advance, tabbar scroll clamp, contextmenu independence from `impl_data`, codeeditor cursor clamp, scrollbar finite scroll, splitpane proportional clamp, scrollview hit-test gutter, flex non-stretch sizing, password-mask long content). Registered under the `tui` label, runs in 0.01 s.
+- New `test_vg_audit_fixes` regression suite — 19 tests covering the original 13 audit fixes (dialog re-entry guard, two-slot user_data routing, tooltip dangling-pointer cleanup, notification lazy timestamp, find/replace UTF-8 advance, tabbar scroll clamp, contextmenu independence from `impl_data`, codeeditor cursor clamp, scrollbar finite scroll, splitpane proportional clamp, scrollview hit-test gutter, flex non-stretch sizing, password-mask long content) plus six Round-2 cases (`wheel_delta_survives_localize_call`, `dropdown_flip_above_without_window_is_noop`, `scrollview_narrow_still_hit_tests_children`, `tooltip_wrap_terminates_on_whitespace_only_text`, `treeview_collapse_reclamps_scroll`, `notification_zero_fade_duration_snaps_cleanly`). Registered under the `tui` label, runs in 0.02 s.
 - Extended `RTGuiRuntimeTests.c` coverage with CodeEditor tab-size clamping, word-wrap toggle, `CanUndo`/`CanRedo`, folded-line pixel helpers, line-number-width tracking, live FindBar text/no-op replace checks, menu/toolbar pixel-icon checks, and `test_tabbar_close_click_index_survives_auto_close`.
 - Extended `RTVideoWidgetContractTests.cpp` with explicit destroy coverage for widget-tree teardown and owned-player release.
 - New `tests/zia_runtime/41_runtime_reference_types.zia` exercising `Viper.Network.Url.Parse`, property access (`Host`, `Path`), `Url.Clone()` returning `Url?`, and `!` unwrap on the optional.
@@ -216,5 +228,6 @@ A focused review of the GUI subsystem surfaced 13 verified bugs spanning crashes
 | `d54e03b9d` | 2026-04-16 | `feat(viperide,zia,gui)`: per-file IntelliSense, pixel-position hover, lowerer refactor, custom fonts |
 | `2fe3b9a1e` | 2026-04-16 | `chore(demos,gui)`: tutorial-comment sweep across 8 demos, GUI widget correctness pass, Widget.Focus runtime API |
 | `6c600dbd9` | 2026-04-16 | `chore(gui,runtime,zia)`: GUI in-depth audit fixes (13 bugs + regression suite), per-widget tick, FileDialog/Spinner/Image expansion, lowerer refactor |
+| `deccd1978` | 2026-04-16 | `chore(gui,runtime,docs)`: round-2 GUI audit regressions (macOS arrow keys, wheel-scroll union-aliasing) + 5 follow-on fixes, widget polish sweep, release-notes refresh |
 
 <!-- END DRAFT -->

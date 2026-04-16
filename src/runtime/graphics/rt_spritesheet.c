@@ -150,6 +150,17 @@ void *rt_spritesheet_new(void *atlas_pixels) {
     ss->regions = (ss_region *)calloc((size_t)SS_INITIAL_CAP, sizeof(ss_region));
     ss->names = (char **)calloc((size_t)SS_INITIAL_CAP, sizeof(char *));
     if (!ss->regions || !ss->names) {
+        free(ss->regions);
+        free(ss->names);
+        ss->regions = NULL;
+        ss->names = NULL;
+        if (ss->atlas) {
+            if (rt_obj_release_check0(ss->atlas))
+                rt_obj_free(ss->atlas);
+            ss->atlas = NULL;
+        }
+        if (rt_obj_release_check0(ss))
+            rt_obj_free(ss);
         rt_trap("SpriteSheet: memory allocation failed");
         return NULL;
     }

@@ -98,6 +98,22 @@ static void test_negative_weight() {
     EXPECT_NEAR(rt_morphtarget3d_get_weight(mt, 0), -0.5, 0.001, "Negative weight = -0.5");
 }
 
+/* Audit fix #9 — set_weight clamps to [-1, 1] so over-range values don't
+ * silently over-extrude geometry past the target mesh. */
+static void test_weight_clamped_to_unit_range() {
+    void *mt = rt_morphtarget3d_new(4);
+    rt_morphtarget3d_add_shape(mt, rt_const_cstr("test"));
+
+    rt_morphtarget3d_set_weight(mt, 0, 2.5);
+    EXPECT_NEAR(rt_morphtarget3d_get_weight(mt, 0), 1.0, 0.001, "Weight > 1.0 clamps to 1.0");
+
+    rt_morphtarget3d_set_weight(mt, 0, -3.0);
+    EXPECT_NEAR(rt_morphtarget3d_get_weight(mt, 0), -1.0, 0.001, "Weight < -1.0 clamps to -1.0");
+
+    rt_morphtarget3d_set_weight(mt, 0, 0.5);
+    EXPECT_NEAR(rt_morphtarget3d_get_weight(mt, 0), 0.5, 0.001, "In-range weight unchanged");
+}
+
 static void test_bounds_checks() {
     void *mt = rt_morphtarget3d_new(4);
     rt_morphtarget3d_add_shape(mt, rt_const_cstr("test"));
@@ -174,6 +190,7 @@ int main() {
     test_weight_set_get();
     test_weight_by_name();
     test_negative_weight();
+    test_weight_clamped_to_unit_range();
     test_bounds_checks();
     test_null_safety();
     test_packed_payload_generation_tracks_delta_edits_only();

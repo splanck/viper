@@ -760,11 +760,16 @@ int8_t rt_collider3d_sample_heightfield_raw(void *collider,
     if (height_out)
         *height_out = h * shape->heightfield_scale[1];
 
+    // Finite-difference heightfield normal. The Y component must carry both
+    // horizontal scales; the X/Z components each carry the perpendicular
+    // horizontal scale so the normal is correct under non-uniform scaling.
+    // Previously normal[1] used only heightfield_scale[0], which produced
+    // wrong slope responses for stretched heightfields.
     dx = ((h10 - h00) * (1.0 - tz) + (h11 - h01) * tz) * shape->heightfield_scale[1];
     dz = ((h01 - h00) * (1.0 - tx) + (h11 - h10) * tx) * shape->heightfield_scale[1];
-    normal[0] = -dx;
-    normal[1] = shape->heightfield_scale[0];
-    normal[2] = -dz;
+    normal[0] = -dx * shape->heightfield_scale[2];
+    normal[1] = shape->heightfield_scale[0] * shape->heightfield_scale[2];
+    normal[2] = -dz * shape->heightfield_scale[0];
     normal_len = sqrt(normal[0] * normal[0] + normal[1] * normal[1] + normal[2] * normal[2]);
     if (normal_len > 1e-12) {
         normal[0] /= normal_len;

@@ -7,6 +7,7 @@
 #include "rt_pixels.h"
 #include <cassert>
 #include <cstdint>
+#include <cstdlib>
 #include <cstdio>
 
 static int tests_passed = 0;
@@ -228,6 +229,39 @@ TEST(parallax_null_safety) {
     ASSERT(rt_camera_draw_parallax(NULL, (void *)0x1) == 0);
 }
 
+struct FakeCanvas {
+    void *vptr;
+    int64_t magic;
+    void *gfx_win;
+};
+
+static FakeCanvas *make_fake_canvas() {
+    FakeCanvas *c = (FakeCanvas *)std::calloc(1, sizeof(FakeCanvas));
+    assert(c != NULL);
+    c->vptr = NULL;
+    c->gfx_win = NULL;
+    return c;
+}
+
+TEST(parallax_draw_transformed_path) {
+    void *cam = rt_camera_new(320, 240);
+    ASSERT(cam != NULL);
+
+    void *pixels = rt_pixels_new(16, 12);
+    ASSERT(pixels != NULL);
+    ASSERT(rt_camera_add_parallax(cam, pixels, 40, 60) == 0);
+
+    rt_camera_set_x(cam, 75);
+    rt_camera_set_y(cam, 30);
+    rt_camera_set_zoom(cam, 150);
+    rt_camera_set_rotation(cam, 25);
+
+    FakeCanvas *canvas = make_fake_canvas();
+    ASSERT(rt_camera_draw_parallax(cam, canvas) == 1);
+
+    std::free(canvas);
+}
+
 /// @brief Main.
 int main() {
     printf("RTCameraTests:\n");
@@ -245,6 +279,7 @@ int main() {
     RUN_TEST(parallax_add_remove);
     RUN_TEST(parallax_max_layers);
     RUN_TEST(parallax_null_safety);
+    RUN_TEST(parallax_draw_transformed_path);
 
     printf("\n%d tests passed, %d tests failed\n", tests_passed, tests_failed);
     return tests_failed > 0 ? 1 : 0;

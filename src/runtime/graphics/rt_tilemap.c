@@ -59,6 +59,16 @@
 #define TILE_COLLISION_SOLID RT_TILE_COLLISION_SOLID
 #define TILE_COLLISION_ONE_WAY RT_TILE_COLLISION_ONE_WAY_UP
 
+static int64_t tilemap_floor_div(int64_t value, int64_t divisor) {
+    if (divisor == 0)
+        return 0;
+    int64_t quot = value / divisor;
+    int64_t rem = value % divisor;
+    if (rem != 0 && ((rem < 0) != (divisor < 0)))
+        quot--;
+    return quot;
+}
+
 //=============================================================================
 // Tilemap Creation
 //=============================================================================
@@ -336,8 +346,8 @@ void rt_tilemap_draw(void *tilemap_ptr, void *canvas_ptr, int64_t offset_x, int6
     int64_t th = tilemap->tile_height > 0 ? tilemap->tile_height : 1;
 
     /* Compute the first tile that is visible (partially or fully) on screen */
-    int64_t first_x = (-offset_x) / tw;
-    int64_t first_y = (-offset_y) / th;
+    int64_t first_x = tilemap_floor_div(-offset_x, tw);
+    int64_t first_y = tilemap_floor_div(-offset_y, th);
     if (first_x < 0)
         first_x = 0;
     if (first_y < 0)
@@ -442,22 +452,22 @@ void rt_tilemap_pixel_to_tile(
         return;
 
     rt_tilemap_impl *tilemap = (rt_tilemap_impl *)tilemap_ptr;
-    *tile_x = pixel_x / tilemap->tile_width;
-    *tile_y = pixel_y / tilemap->tile_height;
+    *tile_x = tilemap_floor_div(pixel_x, tilemap->tile_width);
+    *tile_y = tilemap_floor_div(pixel_y, tilemap->tile_height);
 }
 
 /// @brief X-axis: convert pixel coordinate to tile-grid column.
 int64_t rt_tilemap_to_tile_x(void *tilemap_ptr, int64_t pixel_x) {
     if (!tilemap_ptr)
         return 0;
-    return pixel_x / ((rt_tilemap_impl *)tilemap_ptr)->tile_width;
+    return tilemap_floor_div(pixel_x, ((rt_tilemap_impl *)tilemap_ptr)->tile_width);
 }
 
 /// @brief Y-axis: convert pixel coordinate to tile-grid row.
 int64_t rt_tilemap_to_tile_y(void *tilemap_ptr, int64_t pixel_y) {
     if (!tilemap_ptr)
         return 0;
-    return pixel_y / ((rt_tilemap_impl *)tilemap_ptr)->tile_height;
+    return tilemap_floor_div(pixel_y, ((rt_tilemap_impl *)tilemap_ptr)->tile_height);
 }
 
 /// @brief Convert (tile_x, tile_y) grid coordinates to top-left pixel coordinates of that cell.
@@ -521,8 +531,8 @@ int8_t rt_tilemap_is_solid_at(void *tilemap_ptr, int64_t pixel_x, int64_t pixel_
     if (!tilemap_ptr)
         return 0;
     rt_tilemap_impl *tilemap = (rt_tilemap_impl *)tilemap_ptr;
-    int64_t tx = pixel_x / tilemap->tile_width;
-    int64_t ty = pixel_y / tilemap->tile_height;
+    int64_t tx = tilemap_floor_div(pixel_x, tilemap->tile_width);
+    int64_t ty = tilemap_floor_div(pixel_y, tilemap->tile_height);
     if (tx < 0 || tx >= tilemap->width || ty < 0 || ty >= tilemap->height)
         return 0;
     int32_t cl = tilemap->collision_layer;
@@ -562,10 +572,10 @@ int8_t rt_tilemap_collide_body(void *tilemap_ptr, void *body_ptr) {
     double bvy = rt_physics2d_body_vy(body_ptr);
 
     // Determine the range of tiles the body overlaps
-    int64_t left = (int64_t)bx / tw;
-    int64_t right = (int64_t)(bx + bw - 1) / tw;
-    int64_t top = (int64_t)by / th;
-    int64_t bottom = (int64_t)(by + bh - 1) / th;
+    int64_t left = tilemap_floor_div((int64_t)bx, tw);
+    int64_t right = tilemap_floor_div((int64_t)(bx + bw - 1), tw);
+    int64_t top = tilemap_floor_div((int64_t)by, th);
+    int64_t bottom = tilemap_floor_div((int64_t)(by + bh - 1), th);
 
     // Clamp to tilemap bounds
     if (left < 0)
@@ -916,8 +926,8 @@ void rt_tilemap_draw_layer(
     int64_t th = tilemap->tile_height > 0 ? tilemap->tile_height : 1;
 
     // Viewport culling
-    int64_t first_x = (-cam_x) / tw;
-    int64_t first_y = (-cam_y) / th;
+    int64_t first_x = tilemap_floor_div(-cam_x, tw);
+    int64_t first_y = tilemap_floor_div(-cam_y, th);
     if (first_x < 0)
         first_x = 0;
     if (first_y < 0)

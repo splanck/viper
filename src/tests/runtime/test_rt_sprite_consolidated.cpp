@@ -13,6 +13,7 @@
 #include "rt_object.h"
 #include "rt_pixels.h"
 #include "rt_seq.h"
+#include "rt_sprite.h"
 #include "rt_spritebatch.h"
 #include "rt_spritesheet.h"
 #include "rt_string.h"
@@ -97,6 +98,7 @@ TEST(RTSprite, SpritebatchEndNullCanvasDeactivates) {
 
     rt_spritebatch_end(batch, nullptr);
     ASSERT_TRUE(rt_spritebatch_is_active(batch) == 0);
+    ASSERT_TRUE(rt_spritebatch_count(batch) == 0);
 
     rt_spritebatch_begin(batch);
     ASSERT_TRUE(rt_spritebatch_count(batch) == 0);
@@ -287,6 +289,46 @@ TEST(RTSprite, SpritebatchDrawAtlasVariantsIncrementCount) {
     rt_obj_release_check0(batch);
     rt_obj_release_check0(atlas);
     rt_obj_release_check0(pixels);
+}
+
+TEST(RTSprite, SpriteContainsUsesScaledOrigin) {
+    void *pixels = rt_pixels_new(10, 10);
+    ASSERT_TRUE(pixels != nullptr);
+
+    void *sprite = rt_sprite_new(pixels);
+    ASSERT_TRUE(sprite != nullptr);
+
+    rt_sprite_set_x(sprite, 100);
+    rt_sprite_set_y(sprite, 100);
+    rt_sprite_set_origin(sprite, 5, 5);
+    rt_sprite_set_scale_x(sprite, 200);
+    rt_sprite_set_scale_y(sprite, 200);
+
+    ASSERT_TRUE(rt_sprite_contains(sprite, 92, 92) == 1);
+    ASSERT_TRUE(rt_sprite_contains(sprite, 89, 89) == 0);
+}
+
+TEST(RTSprite, SpriteOverlapsUsesScaledOrigin) {
+    void *big_pixels = rt_pixels_new(10, 10);
+    void *small_pixels = rt_pixels_new(4, 4);
+    ASSERT_TRUE(big_pixels != nullptr);
+    ASSERT_TRUE(small_pixels != nullptr);
+
+    void *scaled = rt_sprite_new(big_pixels);
+    void *probe = rt_sprite_new(small_pixels);
+    ASSERT_TRUE(scaled != nullptr);
+    ASSERT_TRUE(probe != nullptr);
+
+    rt_sprite_set_x(scaled, 100);
+    rt_sprite_set_y(scaled, 100);
+    rt_sprite_set_origin(scaled, 5, 5);
+    rt_sprite_set_scale_x(scaled, 200);
+    rt_sprite_set_scale_y(scaled, 200);
+
+    rt_sprite_set_x(probe, 88);
+    rt_sprite_set_y(probe, 88);
+
+    ASSERT_TRUE(rt_sprite_overlaps(scaled, probe) == 1);
 }
 
 // ============================================================================

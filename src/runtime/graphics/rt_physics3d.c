@@ -758,7 +758,20 @@ static void make_temp_sphere(rt_body3d *out, const double *center, double radius
 /// Capsules in this engine are Y-aligned with the position at the
 /// center. Endpoints sit `(height/2 - radius)` away on each side; the
 /// hemispherical caps sit beyond those endpoints.
+///
+/// DESIGN LIMITATION: this routine ignores `b->orientation`. Rotating a
+/// capsule away from vertical produces wrong collision geometry. When
+/// `RT_PHYSICS3D_STRICT_CAPSULE_AXIS` is defined at build time we trap on
+/// non-identity orientations so the limitation is visible rather than
+/// silently corrupting results. Identity quaternion = (x=0,y=0,z=0,w=1).
 static void capsule_axis_endpoints(const rt_body3d *b, double *a, double *c) {
+#ifdef RT_PHYSICS3D_STRICT_CAPSULE_AXIS
+    const double eps = 1e-5;
+    if (fabs(b->orientation[0]) > eps || fabs(b->orientation[1]) > eps ||
+        fabs(b->orientation[2]) > eps || fabs(b->orientation[3] - 1.0) > eps) {
+        rt_trap("Physics3D: capsule axis is Y-aligned; rotating the body has no effect");
+    }
+#endif
     double half_axis = fmax(b->height * 0.5 - b->radius, 0.0);
     vec3_set(a, b->position[0], b->position[1] - half_axis, b->position[2]);
     vec3_set(c, b->position[0], b->position[1] + half_axis, b->position[2]);

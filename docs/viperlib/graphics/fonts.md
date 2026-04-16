@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-09
+last-verified: 2026-04-16
 ---
 
 # Fonts
@@ -23,14 +23,17 @@ last-verified: 2026-04-09
 
 Load variable-size bitmap fonts from BDF (Bitmap Distribution Format) or PSF (PC Screen Font) files. Provides text measurement and integrates with Canvas for rendering.
 
+Input strings are decoded as UTF-8 for measurement and drawing. The loaded glyph table still spans
+codepoints `0-255`, so missing glyphs fall back to `?` (or space if `?` is unavailable).
+
 **Type:** Static (no instance constructor — use `LoadBDF` or `LoadPSF`)
 
 ### Static Methods
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| `LoadBDF(path)` | `BitmapFont(String)` | Load a BDF font file. Returns `null` on failure |
-| `LoadPSF(path)` | `BitmapFont(String)` | Load a PSF v1/v2 font file. Returns `null` on failure |
+| `LoadBDF(path)` | `BitmapFont(String)` | Load a BDF font file. Returns `null` on missing, truncated, or malformed input |
+| `LoadPSF(path)` | `BitmapFont(String)` | Load a PSF v1/v2 font file. Returns `null` on missing, truncated, or malformed input |
 
 ### Properties
 
@@ -46,7 +49,7 @@ Load variable-size bitmap fonts from BDF (Bitmap Distribution Format) or PSF (PC
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| `TextWidth(text)` | `Integer(String)` | Measure pixel width of a string in this font |
+| `TextWidth(text)` | `Integer(String)` | Measure pixel width of a UTF-8 string in this font |
 
 ---
 

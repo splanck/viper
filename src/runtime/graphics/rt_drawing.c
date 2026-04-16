@@ -37,6 +37,73 @@ static int rt_trace_canvas_box_enabled(void) {
     return cached;
 }
 
+static int rt_canvas_next_codepoint(const char *str,
+                                    size_t byte_len,
+                                    size_t *index,
+                                    int *codepoint_out) {
+    if (!str || !index || !codepoint_out || *index >= byte_len)
+        return 0;
+
+    size_t i = *index;
+    unsigned char c0 = (unsigned char)str[i];
+    uint32_t cp = '?';
+    size_t advance = 1;
+
+    if (c0 < 0x80) {
+        cp = c0;
+    } else if ((c0 & 0xE0u) == 0xC0u && i + 1 < byte_len) {
+        unsigned char c1 = (unsigned char)str[i + 1];
+        if ((c1 & 0xC0u) == 0x80u) {
+            cp = ((uint32_t)(c0 & 0x1Fu) << 6) | (uint32_t)(c1 & 0x3Fu);
+            advance = 2;
+            if (cp < 0x80u)
+                cp = '?';
+        }
+    } else if ((c0 & 0xF0u) == 0xE0u && i + 2 < byte_len) {
+        unsigned char c1 = (unsigned char)str[i + 1];
+        unsigned char c2 = (unsigned char)str[i + 2];
+        if ((c1 & 0xC0u) == 0x80u && (c2 & 0xC0u) == 0x80u) {
+            cp = ((uint32_t)(c0 & 0x0Fu) << 12) | ((uint32_t)(c1 & 0x3Fu) << 6) |
+                 (uint32_t)(c2 & 0x3Fu);
+            advance = 3;
+            if (cp < 0x800u || (cp >= 0xD800u && cp <= 0xDFFFu))
+                cp = '?';
+        }
+    } else if ((c0 & 0xF8u) == 0xF0u && i + 3 < byte_len) {
+        unsigned char c1 = (unsigned char)str[i + 1];
+        unsigned char c2 = (unsigned char)str[i + 2];
+        unsigned char c3 = (unsigned char)str[i + 3];
+        if ((c1 & 0xC0u) == 0x80u && (c2 & 0xC0u) == 0x80u && (c3 & 0xC0u) == 0x80u) {
+            cp = ((uint32_t)(c0 & 0x07u) << 18) | ((uint32_t)(c1 & 0x3Fu) << 12) |
+                 ((uint32_t)(c2 & 0x3Fu) << 6) | (uint32_t)(c3 & 0x3Fu);
+            advance = 4;
+            if (cp < 0x10000u || cp > 0x10FFFFu)
+                cp = '?';
+        }
+    }
+
+    *index = i + advance;
+    *codepoint_out = (int)cp;
+    return 1;
+}
+
+static int64_t rt_canvas_text_codepoint_width(rt_string text, int64_t scale) {
+    if (!text || scale < 1)
+        return 0;
+
+    const char *str = rt_string_cstr(text);
+    if (!str)
+        return 0;
+
+    size_t byte_len = (size_t)rt_str_len(text);
+    size_t index = 0;
+    int64_t count = 0;
+    int codepoint = 0;
+    while (rt_canvas_next_codepoint(str, byte_len, &index, &codepoint))
+        count++;
+    return count * 8 * scale;
+}
+
 /// @brief Draw a line between two points on the canvas.
 void rt_canvas_line(
     void *canvas_ptr, int64_t x1, int64_t y1, int64_t x2, int64_t y2, int64_t color) {
@@ -208,10 +275,13 @@ void rt_canvas_text(void *canvas_ptr, int64_t x, int64_t y, rt_string text, int6
 
     int64_t cx = x;
     vgfx_color_t col = (vgfx_color_t)color;
+    size_t byte_len = (size_t)rt_str_len(text);
+    size_t index = 0;
+    int codepoint = 0;
 
-    for (size_t i = 0; str[i] != '\0'; i++) {
-        int c = (unsigned char)str[i];
-        const uint8_t *glyph = rt_font_get_glyph(c);
+    while (rt_canvas_next_codepoint(str, byte_len, &index, &codepoint)) {
+        int glyph_cp = (codepoint >= 32 && codepoint <= 126) ? codepoint : '?';
+        const uint8_t *glyph = rt_font_get_glyph(glyph_cp);
 
         // Draw 8x8 glyph
         for (int row = 0; row < 8; row++) {
@@ -244,10 +314,13 @@ void rt_canvas_text_bg(
     int64_t cx = x;
     vgfx_color_t fg_col = (vgfx_color_t)fg;
     vgfx_color_t bg_col = (vgfx_color_t)bg;
+    size_t byte_len = (size_t)rt_str_len(text);
+    size_t index = 0;
+    int codepoint = 0;
 
-    for (size_t i = 0; str[i] != '\0'; i++) {
-        int c = (unsigned char)str[i];
-        const uint8_t *glyph = rt_font_get_glyph(c);
+    while (rt_canvas_next_codepoint(str, byte_len, &index, &codepoint)) {
+        int glyph_cp = (codepoint >= 32 && codepoint <= 126) ? codepoint : '?';
+        const uint8_t *glyph = rt_font_get_glyph(glyph_cp);
 
         // Draw 8x8 glyph with background
         for (int row = 0; row < 8; row++) {
@@ -265,9 +338,7 @@ void rt_canvas_text_bg(
 
 /// @brief Width the text.
 int64_t rt_canvas_text_width(rt_string text) {
-    if (!text)
-        return 0;
-    return rt_str_len(text) * 8;
+    return rt_canvas_text_codepoint_width(text, 1);
 }
 
 /// @brief Height the text.
@@ -296,10 +367,13 @@ void rt_canvas_text_scaled(
 
     int64_t cx = x;
     vgfx_color_t col = (vgfx_color_t)color;
+    size_t byte_len = (size_t)rt_str_len(text);
+    size_t index = 0;
+    int codepoint = 0;
 
-    for (size_t i = 0; str[i] != '\0'; i++) {
-        int c = (unsigned char)str[i];
-        const uint8_t *glyph = rt_font_get_glyph(c);
+    while (rt_canvas_next_codepoint(str, byte_len, &index, &codepoint)) {
+        int glyph_cp = (codepoint >= 32 && codepoint <= 126) ? codepoint : '?';
+        const uint8_t *glyph = rt_font_get_glyph(glyph_cp);
 
         for (int row = 0; row < 8; row++) {
             uint8_t bits = glyph[row];
@@ -335,10 +409,13 @@ void rt_canvas_text_scaled_bg(
     int64_t cx = x;
     vgfx_color_t fg_col = (vgfx_color_t)fg;
     vgfx_color_t bg_col = (vgfx_color_t)bg;
+    size_t byte_len = (size_t)rt_str_len(text);
+    size_t index = 0;
+    int codepoint = 0;
 
-    for (size_t i = 0; str[i] != '\0'; i++) {
-        int c = (unsigned char)str[i];
-        const uint8_t *glyph = rt_font_get_glyph(c);
+    while (rt_canvas_next_codepoint(str, byte_len, &index, &codepoint)) {
+        int glyph_cp = (codepoint >= 32 && codepoint <= 126) ? codepoint : '?';
+        const uint8_t *glyph = rt_font_get_glyph(glyph_cp);
 
         for (int row = 0; row < 8; row++) {
             uint8_t bits = glyph[row];
@@ -357,9 +434,7 @@ void rt_canvas_text_scaled_bg(
 
 /// @brief Scaled the width of the text.
 int64_t rt_canvas_text_scaled_width(rt_string text, int64_t scale) {
-    if (!text || scale < 1)
-        return 0;
-    return rt_str_len(text) * 8 * scale;
+    return rt_canvas_text_codepoint_width(text, scale);
 }
 
 //=============================================================================
@@ -371,7 +446,7 @@ void rt_canvas_text_centered(void *canvas_ptr, int64_t y, rt_string text, int64_
     if (!canvas_ptr || !text)
         return;
     int64_t w = rt_canvas_width(canvas_ptr);
-    int64_t tw = rt_str_len(text) * 8;
+    int64_t tw = rt_canvas_text_width(text);
     int64_t x = (w - tw) / 2;
     rt_canvas_text(canvas_ptr, x, y, text, color);
 }
@@ -382,7 +457,7 @@ void rt_canvas_text_right(
     if (!canvas_ptr || !text)
         return;
     int64_t w = rt_canvas_width(canvas_ptr);
-    int64_t tw = rt_str_len(text) * 8;
+    int64_t tw = rt_canvas_text_width(text);
     int64_t x = w - tw - margin;
     rt_canvas_text(canvas_ptr, x, y, text, color);
 }
@@ -393,7 +468,7 @@ void rt_canvas_text_centered_scaled(
     if (!canvas_ptr || !text || scale < 1)
         return;
     int64_t w = rt_canvas_width(canvas_ptr);
-    int64_t tw = rt_str_len(text) * 8 * scale;
+    int64_t tw = rt_canvas_text_scaled_width(text, scale);
     int64_t x = (w - tw) / 2;
     rt_canvas_text_scaled(canvas_ptr, x, y, text, scale, color);
 }
@@ -790,8 +865,9 @@ void *rt_canvas_copy_rect(void *canvas_ptr, int64_t x, int64_t y, int64_t w, int
             uint8_t r = src_row[(size_t)(src_x * 4 + 0)];
             uint8_t g = src_row[(size_t)(src_x * 4 + 1)];
             uint8_t b = src_row[(size_t)(src_x * 4 + 2)];
-            // Force full alpha, matching original vgfx_point-based behaviour.
-            dst_row[px] = ((uint32_t)r << 24) | ((uint32_t)g << 16) | ((uint32_t)b << 8) | 0xFF;
+            uint8_t a = src_row[(size_t)(src_x * 4 + 3)];
+            dst_row[px] = ((uint32_t)r << 24) | ((uint32_t)g << 16) | ((uint32_t)b << 8) |
+                          (uint32_t)a;
         }
     }
 

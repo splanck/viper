@@ -12,7 +12,9 @@
 // Key invariants:
 //   - BitmapFont objects are GC-managed via rt_obj_new_i64.
 //   - Glyph bitmaps are heap-allocated; freed in the GC finalizer.
-//   - Supports ASCII 0-255 (Latin-1). Out-of-range chars use fallback glyph.
+//   - Glyph tables cover codepoints 0-255 (Latin-1). UTF-8 text is decoded to
+//     codepoints during measurement/rendering, and missing glyphs use the
+//     fallback glyph.
 //   - All Canvas drawing functions are no-ops when canvas or font is NULL.
 //
 // Ownership/Lifetime:
@@ -40,12 +42,12 @@ extern "C" {
 
 /// @brief Load a BDF (Bitmap Distribution Format) font file.
 /// @param path Path to the .bdf file.
-/// @return BitmapFont handle, or NULL on failure.
+/// @return BitmapFont handle, or NULL on missing, truncated, or malformed input.
 void *rt_bitmapfont_load_bdf(rt_string path);
 
 /// @brief Load a PSF (PC Screen Font) v1 or v2 file.
 /// @param path Path to the .psf file.
-/// @return BitmapFont handle, or NULL on failure.
+/// @return BitmapFont handle, or NULL on missing, truncated, or malformed input.
 void *rt_bitmapfont_load_psf(rt_string path);
 
 /// @brief GC finalizer — free glyph bitmap data.
@@ -71,7 +73,7 @@ int8_t rt_bitmapfont_is_monospace(void *font);
 // Text Measurement
 //=========================================================================
 
-/// @brief Measure the pixel width of a string rendered with this font.
+/// @brief Measure the pixel width of a UTF-8 string rendered with this font.
 int64_t rt_bitmapfont_text_width(void *font, rt_string text);
 
 /// @brief Get the text height (same as line height).

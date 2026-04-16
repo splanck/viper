@@ -11,7 +11,7 @@
 //   width computation, and that layout functions execute without crashing
 //   on canvases with no backing window.
 // Key invariants:
-//   - TextScaledWidth returns strlen(text) * 8 * scale (pure math).
+//   - TextScaledWidth returns 8 * scale per decoded codepoint (pure math).
 //   - All layout functions are null-safe.
 //   - Layout functions don't crash on canvases with NULL gfx_win.
 // Ownership/Lifetime:
@@ -110,6 +110,17 @@ static void test_text_scaled_width_scaled() {
     printf("  test_text_scaled_width_scaled: PASSED\n");
 }
 
+static void test_text_scaled_width_utf8_codepoints() {
+    rt_string cafe = S("caf\xc3\xa9");
+    rt_string omega = S("\xce\xa9");
+
+    assert(rt_canvas_text_scaled_width(cafe, 1) == 32);
+    assert(rt_canvas_text_scaled_width(cafe, 2) == 64);
+    assert(rt_canvas_text_scaled_width(omega, 3) == 24);
+
+    printf("  test_text_scaled_width_utf8_codepoints: PASSED\n");
+}
+
 static void test_text_scaled_width_empty() {
     // Empty string → 0
     assert(rt_canvas_text_scaled_width(S(""), 1) == 0);
@@ -195,6 +206,7 @@ int main() {
     printf("\n--- TextScaledWidth ---\n");
     test_text_scaled_width_basic();
     test_text_scaled_width_scaled();
+    test_text_scaled_width_utf8_codepoints();
     test_text_scaled_width_empty();
     test_text_scaled_width_null();
 

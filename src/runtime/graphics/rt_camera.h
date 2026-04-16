@@ -202,7 +202,9 @@ int64_t rt_camera_parallax_count(void *camera);
 /// @brief Render all parallax layers to a canvas.
 /// Layers are drawn in slot order (0-7). Each layer's Pixels buffer is tiled
 /// horizontally and vertically to fill the viewport, scrolled by the camera
-/// position multiplied by the layer's scroll factor.
+/// position multiplied by the layer's scroll factor. Camera zoom and rotation
+/// are applied to the parallax tiles so backgrounds stay visually locked to the
+/// current view transform.
 /// @return Number of layers drawn.
 int64_t rt_camera_draw_parallax(void *camera, void *canvas);
 

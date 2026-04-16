@@ -258,6 +258,8 @@ int64_t rt_canvas_get_delta_time(void *canvas_ptr) {
     rt_canvas *canvas = (rt_canvas *)canvas_ptr;
     int64_t dt = canvas->delta_time_ms;
     if (canvas->dt_max_ms > 0) {
+        if (dt == 0)
+            return 0;
         if (dt < 1)
             dt = 1;
         if (dt > canvas->dt_max_ms)

@@ -23,9 +23,8 @@
 //   - Nodes are reference-counted. A node destroyed while still attached to
 //     a parent is detached first (its parent pointer is cleared) before the
 //     reference count reaches zero.
-//   - Draw order follows insertion order within each parent. There is no
-//     automatic Z-sort; callers must manage insertion order or use SpriteBatch
-//     with depth sorting for Z-ordered rendering.
+//   - Scene draws are depth-sorted globally. Nodes with equal depth preserve
+//     traversal order so sibling/insertion order remains stable for ties.
 //
 // Ownership/Lifetime:
 //   - Scene (root) objects are GC-managed (rt_obj_new_i64). Nodes are
@@ -776,6 +775,7 @@ void *rt_scene_find(void *scene_ptr, rt_string name) {
 typedef struct {
     scene_node_impl *node;
     int64_t effective_depth;
+    int64_t traversal_order;
 } node_sort_entry;
 
 static void collect_visible_nodes(scene_node_impl *node, void *list) {
@@ -795,12 +795,16 @@ static void collect_visible_nodes(scene_node_impl *node, void *list) {
 }
 
 static int compare_depth(const void *a, const void *b) {
-    scene_node_impl *na = *(scene_node_impl *const *)a;
-    scene_node_impl *nb = *(scene_node_impl *const *)b;
+    const node_sort_entry *na = (const node_sort_entry *)a;
+    const node_sort_entry *nb = (const node_sort_entry *)b;
 
-    if (na->depth < nb->depth)
+    if (na->effective_depth < nb->effective_depth)
         return -1;
-    if (na->depth > nb->depth)
+    if (na->effective_depth > nb->effective_depth)
+        return 1;
+    if (na->traversal_order < nb->traversal_order)
+        return -1;
+    if (na->traversal_order > nb->traversal_order)
         return 1;
     return 0;
 }
@@ -825,8 +829,8 @@ void rt_scene_draw(void *scene_ptr, void *canvas) {
         return;
     }
 
-    // Sort by depth
-    scene_node_impl **arr = (scene_node_impl **)malloc(count * sizeof(scene_node_impl *));
+    // Sort by depth, preserving traversal order among equal-depth nodes.
+    node_sort_entry *arr = (node_sort_entry *)malloc((size_t)count * sizeof(node_sort_entry));
     if (!arr) {
         if (rt_obj_release_check0(nodes))
             rt_obj_free(nodes);
@@ -834,14 +838,16 @@ void rt_scene_draw(void *scene_ptr, void *canvas) {
     }
 
     for (int64_t i = 0; i < count; i++) {
-        arr[i] = (scene_node_impl *)rt_seq_get(nodes, i);
+        arr[i].node = (scene_node_impl *)rt_seq_get(nodes, i);
+        arr[i].effective_depth = arr[i].node ? arr[i].node->depth : 0;
+        arr[i].traversal_order = i;
     }
 
-    qsort(arr, (size_t)count, sizeof(scene_node_impl *), compare_depth);
+    qsort(arr, (size_t)count, sizeof(node_sort_entry), compare_depth);
 
     // Draw in depth order
     for (int64_t i = 0; i < count; i++) {
-        scene_node_impl *node = arr[i];
+        scene_node_impl *node = arr[i].node;
         update_world_transform(node);
 
         if (node->sprite)
@@ -882,8 +888,8 @@ void rt_scene_draw_with_camera(void *scene_ptr, void *canvas, void *camera) {
         return;
     }
 
-    // Sort by depth
-    scene_node_impl **arr = (scene_node_impl **)malloc(count * sizeof(scene_node_impl *));
+    // Sort by depth, preserving traversal order among equal-depth nodes.
+    node_sort_entry *arr = (node_sort_entry *)malloc((size_t)count * sizeof(node_sort_entry));
     if (!arr) {
         if (rt_obj_release_check0(nodes))
             rt_obj_free(nodes);
@@ -891,14 +897,16 @@ void rt_scene_draw_with_camera(void *scene_ptr, void *canvas, void *camera) {
     }
 
     for (int64_t i = 0; i < count; i++) {
-        arr[i] = (scene_node_impl *)rt_seq_get(nodes, i);
+        arr[i].node = (scene_node_impl *)rt_seq_get(nodes, i);
+        arr[i].effective_depth = arr[i].node ? arr[i].node->depth : 0;
+        arr[i].traversal_order = i;
     }
 
-    qsort(arr, (size_t)count, sizeof(scene_node_impl *), compare_depth);
+    qsort(arr, (size_t)count, sizeof(node_sort_entry), compare_depth);
 
     // Draw in depth order
     for (int64_t i = 0; i < count; i++) {
-        scene_node_impl *node = arr[i];
+        scene_node_impl *node = arr[i].node;
         update_world_transform(node);
 
         if (node->sprite) {

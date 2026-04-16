@@ -1489,7 +1489,21 @@ void rt_canvas3d_begin_2d(void *obj) {
     c->cached_cam_pos[2] = 1.0f;
     c->draw_count = 0;
     c->frame_is_2d = 1;
-    memcpy(c->cached_vp, params.projection, sizeof(c->cached_vp));
+    // Cache the full VP product so cached_vp has consistent semantics between
+    // Begin2D and Begin3D. Previously 2D mode stored only the projection —
+    // overlay code that unprojected via cached_vp got inconsistent results
+    // across modes. For an identity view this still equals projection, but
+    // the shape of the math is now the same as Begin3D. (params.view and
+    // params.projection are already float[16], so no conversion needed.)
+    {
+        const float *vf = params.view;
+        const float *pf = params.projection;
+        for (int r = 0; r < 4; r++)
+            for (int col = 0; col < 4; col++)
+                c->cached_vp[r * 4 + col] =
+                    pf[r * 4 + 0] * vf[0 * 4 + col] + pf[r * 4 + 1] * vf[1 * 4 + col] +
+                    pf[r * 4 + 2] * vf[2 * 4 + col] + pf[r * 4 + 3] * vf[3 * 4 + col];
+    }
 
     canvas3d_latch_gpu_postfx_state(c);
     c->backend->begin_frame(c->backend_ctx, &params);

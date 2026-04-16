@@ -9,7 +9,7 @@
 //
 // Key invariants:
 //   - Begin must be called before any draw calls; End flushes the batch.
-//   - Draw calls are sorted by texture to minimize state changes.
+//   - Draw calls preserve submission order unless depth sorting is enabled.
 //   - Batch size is bounded by RT_SPRITEBATCH_MAX_SPRITES per begin/end pair.
 //   - Nested Begin/End pairs are not supported.
 //
@@ -49,7 +49,8 @@ void rt_spritebatch_begin(void *batch);
 /// @brief End the batch and draw all sprites to the canvas.
 /// @param batch SpriteBatch object.
 /// @param canvas Canvas to draw on.
-/// @note Sprites are drawn in the order they were added.
+/// @note Sprites are drawn in submission order unless depth sorting is enabled.
+///       Pending draw commands are cleared whether or not a canvas is provided.
 void rt_spritebatch_end(void *batch, void *canvas);
 
 /// @brief Draw a sprite at the given position.

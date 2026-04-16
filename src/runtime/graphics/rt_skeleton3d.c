@@ -217,8 +217,13 @@ int64_t rt_skeleton3d_add_bone(void *obj, rt_string name, int64_t parent_index, 
         rt_trap("Skeleton3D.AddBone: max 128 bones exceeded");
         return -1;
     }
-    if (parent_index >= s->bone_count) {
-        rt_trap("Skeleton3D.AddBone: parent_index must be less than bone count");
+    // parent_index == -1 denotes a root bone. Any other negative value is
+    // invalid — previously only the upper bound was checked, so callers could
+    // pass -2, -100, etc. which survived validation and corrupted the
+    // hierarchy in downstream code.
+    if (parent_index < -1 || parent_index >= s->bone_count) {
+        rt_trap(
+            "Skeleton3D.AddBone: parent_index must be -1 (root) or a valid bone index");
         return -1;
     }
 
@@ -743,17 +748,58 @@ static void compute_bone_palette(rt_anim_player3d *p) {
                 }
             }
             if (!found_to) {
-                /* No current channel for this bone — use bind pose TRS.
-                 * Extract from bind pose matrix (diagonal = scale, last col = pos). */
+                /* No current channel for this bone — decompose bind pose TRS.
+                 * A row/column-major 4x4 laid out with the basis vectors in
+                 * columns 0..2 and translation in column 3 decomposes as:
+                 *   scale_i = length of column i
+                 *   rotation basis = column_i / scale_i
+                 *   translation = column 3
+                 * Previously this fell back to (identity rot, unit scale),
+                 * which collapsed any non-trivial bind pose toward the origin
+                 * mid-crossfade. */
                 const float *bp = skel->bones[bone].bind_pose_local;
                 to_pos[0] = bp[12];
                 to_pos[1] = bp[13];
                 to_pos[2] = bp[14];
-                to_rot[0] = 0;
-                to_rot[1] = 0;
-                to_rot[2] = 0;
-                to_rot[3] = 1; /* identity rotation */
-                to_scl[0] = to_scl[1] = to_scl[2] = 1.0f;
+                float sx = sqrtf(bp[0] * bp[0] + bp[1] * bp[1] + bp[2] * bp[2]);
+                float sy = sqrtf(bp[4] * bp[4] + bp[5] * bp[5] + bp[6] * bp[6]);
+                float sz = sqrtf(bp[8] * bp[8] + bp[9] * bp[9] + bp[10] * bp[10]);
+                to_scl[0] = sx > 1e-6f ? sx : 1.0f;
+                to_scl[1] = sy > 1e-6f ? sy : 1.0f;
+                to_scl[2] = sz > 1e-6f ? sz : 1.0f;
+                float inv_sx = 1.0f / to_scl[0];
+                float inv_sy = 1.0f / to_scl[1];
+                float inv_sz = 1.0f / to_scl[2];
+                float r00 = bp[0] * inv_sx, r01 = bp[1] * inv_sx, r02 = bp[2] * inv_sx;
+                float r10 = bp[4] * inv_sy, r11 = bp[5] * inv_sy, r12 = bp[6] * inv_sy;
+                float r20 = bp[8] * inv_sz, r21 = bp[9] * inv_sz, r22 = bp[10] * inv_sz;
+                /* Rotation matrix → quaternion (Shepperd's method) */
+                float tr = r00 + r11 + r22;
+                if (tr > 0.0f) {
+                    float s = sqrtf(tr + 1.0f) * 2.0f;
+                    to_rot[3] = 0.25f * s;
+                    to_rot[0] = (r21 - r12) / s;
+                    to_rot[1] = (r02 - r20) / s;
+                    to_rot[2] = (r10 - r01) / s;
+                } else if (r00 > r11 && r00 > r22) {
+                    float s = sqrtf(1.0f + r00 - r11 - r22) * 2.0f;
+                    to_rot[3] = (r21 - r12) / s;
+                    to_rot[0] = 0.25f * s;
+                    to_rot[1] = (r01 + r10) / s;
+                    to_rot[2] = (r02 + r20) / s;
+                } else if (r11 > r22) {
+                    float s = sqrtf(1.0f + r11 - r00 - r22) * 2.0f;
+                    to_rot[3] = (r02 - r20) / s;
+                    to_rot[0] = (r01 + r10) / s;
+                    to_rot[1] = 0.25f * s;
+                    to_rot[2] = (r12 + r21) / s;
+                } else {
+                    float s = sqrtf(1.0f + r22 - r00 - r11) * 2.0f;
+                    to_rot[3] = (r10 - r01) / s;
+                    to_rot[0] = (r02 + r20) / s;
+                    to_rot[1] = (r12 + r21) / s;
+                    to_rot[2] = 0.25f * s;
+                }
             }
 
             /* Blend TRS components: lerp position/scale, SLERP rotation */
@@ -956,15 +1002,23 @@ void rt_mesh3d_set_bone_weights(void *obj,
     if (vertex_index < 0 || vertex_index >= m->vertex_count)
         return;
 
+    // Bone indices are stored as uint8_t (VGFX3D_MAX_BONES == 128). A raw
+    // int64 → uint8 cast silently wraps values outside [0, 127] to bogus
+    // valid-looking indices, then the skinning palette applies the wrong
+    // transform. Validate each influence: any out-of-range index drops that
+    // influence (weight forced to 0) instead of silently deforming the mesh.
+    int64_t idx[4] = {b0, b1, b2, b3};
+    double wt[4] = {w0, w1, w2, w3};
     vgfx3d_vertex_t *v = &m->vertices[vertex_index];
-    v->bone_indices[0] = (uint8_t)b0;
-    v->bone_indices[1] = (uint8_t)b1;
-    v->bone_indices[2] = (uint8_t)b2;
-    v->bone_indices[3] = (uint8_t)b3;
-    v->bone_weights[0] = (float)w0;
-    v->bone_weights[1] = (float)w1;
-    v->bone_weights[2] = (float)w2;
-    v->bone_weights[3] = (float)w3;
+    for (int i = 0; i < 4; i++) {
+        if (idx[i] < 0 || idx[i] >= VGFX3D_MAX_BONES) {
+            v->bone_indices[i] = 0;
+            v->bone_weights[i] = 0.0f;
+        } else {
+            v->bone_indices[i] = (uint8_t)idx[i];
+            v->bone_weights[i] = (float)wt[i];
+        }
+    }
 }
 
 /*==========================================================================

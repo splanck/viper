@@ -30,6 +30,7 @@
 
 #include "rt.hpp"
 #include "rt_internal.h"
+#include "rt_physics2d.h"
 #include "rt_string.h"
 #include "rt_tilemap.h"
 #include <cassert>
@@ -191,6 +192,60 @@ static void test_collision_layer_designation(void) {
 
     // Layer 0 at same position has no tile — if collision layer were 0, it would not be solid
     assert(rt_tilemap_get_tile_layer(tm, 0, 5, 9) == 0);
+    PASS();
+}
+
+static void test_negative_pixel_to_tile_rounds_down(void) {
+    TEST("Negative pixel-to-tile conversion rounds down");
+    void *tm = rt_tilemap_new(10, 10, 16, 16);
+    assert(tm != NULL);
+
+    int64_t tx = 0;
+    int64_t ty = 0;
+    rt_tilemap_pixel_to_tile(tm, -1, -1, &tx, &ty);
+    assert(tx == -1);
+    assert(ty == -1);
+
+    rt_tilemap_pixel_to_tile(tm, -17, -33, &tx, &ty);
+    assert(tx == -2);
+    assert(ty == -3);
+
+    assert(rt_tilemap_to_tile_x(tm, -1) == -1);
+    assert(rt_tilemap_to_tile_x(tm, -17) == -2);
+    assert(rt_tilemap_to_tile_y(tm, -1) == -1);
+    assert(rt_tilemap_to_tile_y(tm, -33) == -3);
+    PASS();
+}
+
+static void test_negative_pixels_do_not_hit_tile_zero(void) {
+    TEST("Negative pixel samples stay outside tile 0");
+    void *tm = rt_tilemap_new(4, 4, 16, 16);
+    assert(tm != NULL);
+
+    rt_tilemap_set_tile(tm, 0, 0, 1);
+    rt_tilemap_set_collision(tm, 1, 1);
+
+    assert(rt_tilemap_is_solid_at(tm, 1, 1) == 1);
+    assert(rt_tilemap_is_solid_at(tm, -1, 1) == 0);
+    assert(rt_tilemap_is_solid_at(tm, 1, -1) == 0);
+    assert(rt_tilemap_is_solid_at(tm, -1, -1) == 0);
+    PASS();
+}
+
+static void test_negative_body_does_not_false_collide(void) {
+    TEST("Body outside left edge does not false-collide");
+    void *tm = rt_tilemap_new(4, 4, 16, 16);
+    assert(tm != NULL);
+
+    rt_tilemap_set_tile(tm, 0, 0, 1);
+    rt_tilemap_set_collision(tm, 1, 1);
+
+    void *body = rt_physics2d_body_new(-15.5, 1.0, 15.0, 8.0, 1.0);
+    assert(body != NULL);
+
+    assert(rt_tilemap_collide_body(tm, body) == 0);
+    assert(rt_physics2d_body_x(body) == -15.5);
+    assert(rt_physics2d_body_y(body) == 1.0);
     PASS();
 }
 
@@ -359,6 +414,9 @@ int main() {
     test_fill_and_clear_layer();
     test_layer_visibility();
     test_collision_layer_designation();
+    test_negative_pixel_to_tile_rounds_down();
+    test_negative_pixels_do_not_hit_tile_zero();
+    test_negative_body_does_not_false_collide();
     test_backwards_compatibility();
     test_remove_layer();
     test_cannot_remove_base_layer();

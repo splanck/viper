@@ -183,6 +183,57 @@ static const char *create_test_psf(void) {
     return path;
 }
 
+static const char *create_truncated_bdf(void) {
+    static char path[256];
+    snprintf(path, sizeof(path), "%s", "/tmp/viper_test_font_truncated.bdf");
+    FILE *f = fopen(path, "w");
+    if (!f)
+        return NULL;
+    fputs("STARTFONT 2.1\n"
+          "FONTBOUNDINGBOX 8 8 0 0\n"
+          "FONT_ASCENT 7\n"
+          "FONT_DESCENT 1\n"
+          "CHARS 1\n"
+          "STARTCHAR A\n"
+          "ENCODING 65\n"
+          "DWIDTH 8 0\n"
+          "BBX 8 8 0 0\n"
+          "BITMAP\n"
+          "38\n"
+          "6C\n"
+          "C6\n",
+          f);
+    fclose(f);
+    return path;
+}
+
+static const char *create_truncated_psf(void) {
+    static char path[256];
+    snprintf(path, sizeof(path), "%s", "/tmp/viper_test_font_truncated.psf");
+    FILE *f = fopen(path, "wb");
+    if (!f)
+        return NULL;
+
+    uint8_t hdr[32];
+    memset(hdr, 0, sizeof(hdr));
+    hdr[0] = 0x72;
+    hdr[1] = 0xB5;
+    hdr[2] = 0x4A;
+    hdr[3] = 0x86;
+    hdr[8] = 32; // header size
+    hdr[16] = 4; // glyph count
+    hdr[20] = 8; // bytes per glyph
+    hdr[24] = 8; // height
+    hdr[28] = 8; // width
+    fwrite(hdr, 1, sizeof(hdr), f);
+
+    // Write only one glyph even though the header claims four.
+    uint8_t glyph[8] = {0x18, 0x18, 0x18, 0x18, 0x18, 0x18, 0x18, 0x18};
+    fwrite(glyph, 1, sizeof(glyph), f);
+    fclose(f);
+    return path;
+}
+
 //=============================================================================
 // Tests
 //=============================================================================
@@ -260,10 +311,33 @@ static void test_bdf_text_height(void) {
     PASS();
 }
 
+static void test_bdf_text_width_utf8_fallback(void) {
+    TEST("BDF text width decodes UTF-8 codepoints");
+    const char *path = create_test_bdf();
+    rt_string rpath = rt_const_cstr(path);
+    void *font = rt_bitmapfont_load_bdf(rpath);
+    assert(font);
+
+    rt_string text = rt_const_cstr("A\xc3\xa9");
+    assert(rt_bitmapfont_text_width(font, text) == 16);
+    PASS();
+}
+
 static void test_bdf_load_invalid(void) {
     TEST("BDF load nonexistent file returns NULL");
     rt_string bad_path = rt_const_cstr("/tmp/nonexistent_font_abc123.bdf");
     void *font = rt_bitmapfont_load_bdf(bad_path);
+    assert(font == NULL);
+    PASS();
+}
+
+static void test_bdf_truncated_file_returns_null(void) {
+    TEST("BDF truncated file returns NULL");
+    const char *path = create_truncated_bdf();
+    assert(path);
+
+    rt_string rpath = rt_const_cstr(path);
+    void *font = rt_bitmapfont_load_bdf(rpath);
     assert(font == NULL);
     PASS();
 }
@@ -329,6 +403,17 @@ static void test_psf_load_bad_magic(void) {
     PASS();
 }
 
+static void test_psf_truncated_file_returns_null(void) {
+    TEST("PSF truncated file returns NULL");
+    const char *path = create_truncated_psf();
+    assert(path);
+
+    rt_string rpath = rt_const_cstr(path);
+    void *font = rt_bitmapfont_load_psf(rpath);
+    assert(font == NULL);
+    PASS();
+}
+
 static void test_fallback_glyph(void) {
     TEST("Text width with unmapped codepoints uses fallback");
     const char *path = create_test_bdf();
@@ -362,11 +447,14 @@ int main() {
     test_bdf_load_valid();
     test_bdf_text_width();
     test_bdf_text_height();
+    test_bdf_text_width_utf8_fallback();
     test_bdf_load_invalid();
+    test_bdf_truncated_file_returns_null();
     test_bdf_null_input();
     test_psf_load_valid();
     test_psf_load_invalid();
     test_psf_load_bad_magic();
+    test_psf_truncated_file_returns_null();
     test_fallback_glyph();
     test_destroy_safety();
 

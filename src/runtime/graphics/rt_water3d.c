@@ -281,19 +281,23 @@ void rt_water3d_update(void *obj, double dt) {
             double dydx = 0.0, dydz = 0.0;
 
             if (w->wave_count > 0) {
-                /* Gerstner multi-wave sum */
+                /* Gerstner multi-wave sum. Standard form is A·sin(k·x − ω·t):
+                 * the minus sign on the time term makes crests propagate in
+                 * +direction of `dir`. Previously this used `+ time*speed`,
+                 * so waves visually travelled opposite the user-specified
+                 * direction. */
                 for (int32_t wi = 0; wi < w->wave_count; wi++) {
                     water_wave_t *wv = &w->waves[wi];
                     double dot = wv->dir[0] * x + wv->dir[1] * z;
-                    double phase = wv->frequency * dot + w->time * wv->speed;
+                    double phase = wv->frequency * dot - w->time * wv->speed;
                     y += wv->amplitude * sin(phase);
                     double dc = wv->amplitude * wv->frequency * cos(phase);
                     dydx += dc * wv->dir[0];
                     dydz += dc * wv->dir[1];
                 }
             } else {
-                /* Legacy single sine wave */
-                double phase = w->wave_frequency * (x + z) + w->time * w->wave_speed;
+                /* Legacy single sine wave — keep same sign convention as above. */
+                double phase = w->wave_frequency * (x + z) - w->time * w->wave_speed;
                 y += w->wave_amplitude * sin(phase);
                 double dc = w->wave_amplitude * w->wave_frequency * cos(phase);
                 dydx = dc;

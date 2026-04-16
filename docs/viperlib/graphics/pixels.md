@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-14
+last-verified: 2026-04-16
 ---
 
 # Images & Sprites
@@ -33,7 +33,7 @@ Creates a new pixel buffer initialized to transparent black (0x00000000).
 
 | Method                            | Signature                                                            | Description                                                                       |
 |-----------------------------------|----------------------------------------------------------------------|-----------------------------------------------------------------------------------|
-| `Blur(radius)`                    | `Pixels(Integer)`                                                    | Return a box-blurred copy (radius 1-10, separable horizontal+vertical passes)     |
+| `Blur(radius)`                    | `Pixels(Integer)`                                                    | Return a box-blurred copy (`0` = exact copy, positive radii use separable horizontal+vertical passes) |
 | `Clear()`                         | `Void()`                                                             | Clear buffer to transparent black (0x00000000)                                    |
 | `Clone()`                         | `Pixels()`                                                           | Create a deep copy of this buffer                                                 |
 | `Copy(dx, dy, src, sx, sy, w, h)` | `Void(Integer, Integer, Pixels, Integer, Integer, Integer, Integer)` | Copy a rectangle from source to this buffer                                       |

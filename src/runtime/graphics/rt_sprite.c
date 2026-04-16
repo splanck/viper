@@ -121,6 +121,21 @@ static void sprite_release_if_owned(void *pixels, void *frame) {
         rt_heap_release(pixels);
 }
 
+static void sprite_release_object(void *obj) {
+    if (!obj)
+        return;
+    if (rt_obj_release_check0(obj))
+        rt_obj_free(obj);
+}
+
+static void sprite_release_gif_frames(gif_frame_t *frames, int count) {
+    if (!frames)
+        return;
+    for (int i = 0; i < count; ++i)
+        sprite_release_object(frames[i].pixels);
+    free(frames);
+}
+
 /// @brief Lazily clone a frame the first time we need to mutate it.
 ///
 /// If `transformed` already points to a temporary copy we return
@@ -368,18 +383,18 @@ void *rt_sprite_from_file(void *path) {
 
         rt_sprite_impl *sprite = sprite_alloc();
         if (!sprite) {
-            free(gif_frames);
+            sprite_release_gif_frames(gif_frames, gif_count);
             return NULL;
         }
         int n = gif_count < MAX_SPRITE_FRAMES ? gif_count : MAX_SPRITE_FRAMES;
         for (int i = 0; i < n; i++) {
             sprite->frames[i] = gif_frames[i].pixels;
-            rt_heap_retain(gif_frames[i].pixels);
+            gif_frames[i].pixels = NULL; // Transfer ownership from the decoder result array.
         }
         sprite->frame_count = n;
         if (gif_count > 0 && gif_frames[0].delay_ms > 0)
             sprite->frame_delay_ms = gif_frames[0].delay_ms;
-        free(gif_frames);
+        sprite_release_gif_frames(gif_frames, gif_count);
         return sprite;
     }
 
@@ -402,12 +417,13 @@ void *rt_sprite_from_file(void *path) {
         return NULL;
 
     rt_sprite_impl *sprite = sprite_alloc();
-    if (!sprite)
+    if (!sprite) {
+        sprite_release_object(pixels);
         return NULL;
+    }
 
     sprite->frames[0] = pixels;
     sprite->frame_count = 1;
-    rt_heap_retain(pixels);
 
     return sprite;
 }
@@ -760,7 +776,6 @@ void rt_sprite_add_frame(void *sprite_ptr, void *pixels) {
     if (cloned) {
         sprite->frames[sprite->frame_count] = cloned;
         sprite->frame_count++;
-        rt_heap_retain(cloned);
     }
 }
 
@@ -792,9 +807,13 @@ void rt_sprite_update(void *sprite_ptr) {
     if (sprite->last_frame_time == 0)
         sprite->last_frame_time = now;
 
-    if (now - sprite->last_frame_time >= sprite->frame_delay_ms) {
-        sprite->current_frame = (sprite->current_frame + 1) % sprite->frame_count;
-        sprite->last_frame_time = now;
+    int64_t elapsed = now - sprite->last_frame_time;
+    if (elapsed >= sprite->frame_delay_ms) {
+        int64_t steps = elapsed / sprite->frame_delay_ms;
+        if (steps < 1)
+            steps = 1;
+        sprite->current_frame = (sprite->current_frame + steps) % sprite->frame_count;
+        sprite->last_frame_time += steps * sprite->frame_delay_ms;
     }
 }
 
@@ -820,10 +839,10 @@ int8_t rt_sprite_overlaps(void *sprite_ptr, void *other_ptr) {
     int64_t w2 = rt_sprite_get_width(other_ptr) * s2->scale_x / 100;
     int64_t h2 = rt_sprite_get_height(other_ptr) * s2->scale_y / 100;
 
-    int64_t x1 = s1->x - s1->origin_x;
-    int64_t y1 = s1->y - s1->origin_y;
-    int64_t x2 = s2->x - s2->origin_x;
-    int64_t y2 = s2->y - s2->origin_y;
+    int64_t x1 = s1->x - sprite_scale_origin(s1->origin_x, s1->scale_x);
+    int64_t y1 = s1->y - sprite_scale_origin(s1->origin_y, s1->scale_y);
+    int64_t x2 = s2->x - sprite_scale_origin(s2->origin_x, s2->scale_x);
+    int64_t y2 = s2->y - sprite_scale_origin(s2->origin_y, s2->scale_y);
 
     // AABB collision test
     return (x1 < x2 + w2 && x1 + w1 > x2 && y1 < y2 + h2 && y1 + h1 > y2);
@@ -840,8 +859,8 @@ int8_t rt_sprite_contains(void *sprite_ptr, int64_t px, int64_t py) {
 
     int64_t w = rt_sprite_get_width(sprite_ptr) * sprite->scale_x / 100;
     int64_t h = rt_sprite_get_height(sprite_ptr) * sprite->scale_y / 100;
-    int64_t x = sprite->x - sprite->origin_x;
-    int64_t y = sprite->y - sprite->origin_y;
+    int64_t x = sprite->x - sprite_scale_origin(sprite->origin_x, sprite->scale_x);
+    int64_t y = sprite->y - sprite_scale_origin(sprite->origin_y, sprite->scale_y);
 
     return (px >= x && px < x + w && py >= y && py < y + h);
 }
