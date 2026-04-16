@@ -2873,10 +2873,23 @@ editor.LineCount -> Integer           // Read-only: number of lines
 editor.SetText(text: String) -> void
 editor.SetCursor(line: Integer, col: Integer) -> void
 editor.ScrollToLine(line: Integer) -> void
+editor.SetShowLineNumbers(show: Integer) -> void
+editor.SetLineNumberWidth(width: Integer) -> void   // Width in character cells
+editor.SetShowFoldGutter(show: Integer) -> void
+editor.AddFoldRegion(startLine: Integer, endLine: Integer) -> void
+editor.Fold(line: Integer) -> void
+editor.Unfold(line: Integer) -> void
+editor.ToggleFold(line: Integer) -> void
+editor.GetLineAtPixel(y: Integer) -> Integer
+editor.GetColAtPixel(x: Integer, y: Integer) -> Integer
+editor.CanUndo() -> Boolean
+editor.CanRedo() -> Boolean
 editor.IsModified() -> Boolean
 editor.ClearModified() -> void
 editor.SetFont(font: Font, size: Number) -> void
 ```
+
+Line-number width tracks the active font metrics, and folded lines are excluded from cursor movement, scrolling, and pixel-position helpers until the region is unfolded again.
 
 ---
 

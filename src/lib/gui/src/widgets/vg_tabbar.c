@@ -33,6 +33,8 @@ static void tabbar_paint(vg_widget_t *widget, void *canvas);
 static bool tabbar_handle_event(vg_widget_t *widget, vg_event_t *event);
 static float get_tab_width(vg_tabbar_t *tabbar, vg_tab_t *tab);
 static bool tab_close_button_hit(vg_tabbar_t *tabbar, vg_tab_t *tab, float local_x, float local_y);
+static void tabbar_sync_hover_tooltip(vg_tabbar_t *tabbar);
+static char *make_tab_title(const vg_tab_t *tab);
 
 //=============================================================================
 // TabBar VTable
@@ -55,8 +57,10 @@ static float get_tab_width(vg_tabbar_t *tabbar, vg_tab_t *tab) {
         return tabbar->max_tab_width > 0.0f ? tabbar->max_tab_width : 100.0f;
     }
 
+    char *title = make_tab_title(tab);
     vg_text_metrics_t metrics;
-    vg_font_measure_text(tabbar->font, tabbar->font_size, tab->title, &metrics);
+    vg_font_measure_text(tabbar->font, tabbar->font_size, title ? title : "", &metrics);
+    free(title);
 
     float width = metrics.width + tabbar->tab_padding * 2;
 
@@ -239,6 +243,35 @@ static bool tab_close_button_hit(vg_tabbar_t *tabbar, vg_tab_t *tab, float local
            local_y < close_y + close_h;
 }
 
+static void tabbar_sync_hover_tooltip(vg_tabbar_t *tabbar) {
+    if (!tabbar)
+        return;
+
+    const char *hover_tooltip =
+        (tabbar->hovered_tab && tabbar->hovered_tab->tooltip) ? tabbar->hovered_tab->tooltip : NULL;
+
+    if (hover_tooltip) {
+        if (!tabbar->hover_tooltip_active) {
+            free(tabbar->saved_tooltip_text);
+            tabbar->saved_tooltip_text =
+                tabbar->base.tooltip_text ? strdup(tabbar->base.tooltip_text) : NULL;
+            tabbar->hover_tooltip_active = true;
+        }
+        if ((!tabbar->base.tooltip_text && hover_tooltip) ||
+            (tabbar->base.tooltip_text && strcmp(tabbar->base.tooltip_text, hover_tooltip) != 0)) {
+            vg_widget_set_tooltip_text(&tabbar->base, hover_tooltip);
+        }
+        return;
+    }
+
+    if (tabbar->hover_tooltip_active) {
+        vg_widget_set_tooltip_text(&tabbar->base, tabbar->saved_tooltip_text);
+        free(tabbar->saved_tooltip_text);
+        tabbar->saved_tooltip_text = NULL;
+        tabbar->hover_tooltip_active = false;
+    }
+}
+
 //=============================================================================
 // TabBar Implementation
 //=============================================================================
@@ -297,6 +330,10 @@ vg_tabbar_t *vg_tabbar_create(vg_widget_t *parent) {
     tabbar->prev_active_tab = NULL;
     tabbar->close_clicked_index = -1;
     tabbar->auto_close = true;
+    tabbar->active_change_version = 0;
+    tabbar->reported_active_change_version = 0;
+    tabbar->saved_tooltip_text = NULL;
+    tabbar->hover_tooltip_active = false;
 
     // Set size
     tabbar->base.constraints.min_height = tabbar->tab_height;
@@ -327,6 +364,7 @@ static void tabbar_destroy(vg_widget_t *widget) {
         free(tab);
         tab = next;
     }
+    free(tabbar->saved_tooltip_text);
 }
 
 static void tabbar_measure(vg_widget_t *widget, float available_width, float available_height) {
@@ -457,6 +495,7 @@ static bool tabbar_handle_event(vg_widget_t *widget, vg_event_t *event) {
             // Check if hovering close button
             tabbar->close_button_hovered =
                 tab_close_button_hit(tabbar, tabbar->hovered_tab, local_x, event->mouse.y);
+            tabbar_sync_hover_tooltip(tabbar);
 
             if (old_hover != tabbar->hovered_tab || old_close_hover != tabbar->close_button_hovered) {
                 widget->needs_paint = true;
@@ -480,6 +519,7 @@ static bool tabbar_handle_event(vg_widget_t *widget, vg_event_t *event) {
         case VG_EVENT_MOUSE_LEAVE:
             tabbar->hovered_tab = NULL;
             tabbar->close_button_hovered = false;
+            tabbar_sync_hover_tooltip(tabbar);
             widget->needs_paint = true;
             return false;
 
@@ -577,6 +617,7 @@ vg_tab_t *vg_tabbar_add_tab(vg_tabbar_t *tabbar, const char *title, bool closabl
     // Set as active if first tab
     if (!tabbar->active_tab) {
         tabbar->active_tab = tab;
+        tabbar->prev_active_tab = tab;
     }
 
     tabbar->base.needs_layout = true;
@@ -591,6 +632,7 @@ void vg_tabbar_remove_tab(vg_tabbar_t *tabbar, vg_tab_t *tab) {
         return;
 
     // Update active tab if needed
+    bool active_changed = false;
     if (tabbar->active_tab == tab) {
         if (tab->next) {
             tabbar->active_tab = tab->next;
@@ -599,11 +641,13 @@ void vg_tabbar_remove_tab(vg_tabbar_t *tabbar, vg_tab_t *tab) {
         } else {
             tabbar->active_tab = NULL;
         }
+        active_changed = true;
     }
 
     // Update hover if needed
     if (tabbar->hovered_tab == tab) {
         tabbar->hovered_tab = NULL;
+        tabbar_sync_hover_tooltip(tabbar);
     }
     if (tabbar->drag_tab == tab) {
         tabbar->drag_tab = NULL;
@@ -632,6 +676,11 @@ void vg_tabbar_remove_tab(vg_tabbar_t *tabbar, vg_tab_t *tab) {
         free((void *)tab->tooltip);
     free(tab);
 
+    if (active_changed) {
+        tabbar->active_change_version++;
+        tabbar->prev_active_tab = tabbar->active_tab;
+    }
+
     tabbar->base.needs_layout = true;
     tabbar->base.needs_paint = true;
 }
@@ -642,6 +691,8 @@ void vg_tabbar_set_active(vg_tabbar_t *tabbar, vg_tab_t *tab) {
         return;
 
     tabbar->active_tab = tab;
+    tabbar->active_change_version++;
+    tabbar->prev_active_tab = tab;
     tabbar->base.needs_paint = true;
 
     if (tabbar->on_select && tab) {
@@ -704,6 +755,8 @@ void vg_tab_set_title(vg_tab_t *tab, const char *title) {
         tab->tooltip = tab->title ? strdup(tab->title) : NULL;
     }
     if (tab->owner) {
+        if (tab->owner->hovered_tab == tab)
+            tabbar_sync_hover_tooltip(tab->owner);
         tab->owner->base.needs_layout = true;
         tab->owner->base.needs_paint = true;
     }
@@ -713,8 +766,10 @@ void vg_tab_set_title(vg_tab_t *tab, const char *title) {
 void vg_tab_set_modified(vg_tab_t *tab, bool modified) {
     if (tab) {
         tab->modified = modified;
-        if (tab->owner)
+        if (tab->owner) {
+            tab->owner->base.needs_layout = true;
             tab->owner->base.needs_paint = true;
+        }
     }
 }
 
@@ -726,8 +781,11 @@ void vg_tab_set_tooltip(vg_tab_t *tab, const char *tooltip) {
     if (tab->tooltip)
         free((void *)tab->tooltip);
     tab->tooltip = tooltip ? strdup(tooltip) : NULL;
-    if (tab->owner)
+    if (tab->owner) {
+        if (tab->owner->hovered_tab == tab)
+            tabbar_sync_hover_tooltip(tab->owner);
         tab->owner->base.needs_paint = true;
+    }
 }
 
 /// @brief Tab set data.

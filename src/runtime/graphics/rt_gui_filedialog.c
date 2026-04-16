@@ -124,10 +124,6 @@ rt_string rt_filedialog_open_multiple(rt_string title, rt_string default_path, r
             result = rt_string_from_bytes(joined, off);
             free(joined);
         }
-        for (size_t i = 0; i < count; i++) {
-            free(paths[i]);
-        }
-        free(paths);
     }
 
     vg_filedialog_destroy(dlg);
@@ -204,17 +200,55 @@ typedef struct {
     int64_t result;
 } rt_filedialog_data_t;
 
+static void rt_filedialog_clear_selected_paths(rt_filedialog_data_t *data) {
+    if (!data || !data->selected_paths)
+        return;
+    for (size_t i = 0; i < data->selected_count; i++) {
+        free(data->selected_paths[i]);
+    }
+    free(data->selected_paths);
+    data->selected_paths = NULL;
+    data->selected_count = 0;
+}
+
+static int rt_filedialog_copy_selected_paths(rt_filedialog_data_t *data) {
+    if (!data || !data->dialog)
+        return 0;
+
+    size_t count = 0;
+    char **paths = vg_filedialog_get_selected_paths(data->dialog, &count);
+    if (!paths || count == 0) {
+        rt_filedialog_clear_selected_paths(data);
+        return 0;
+    }
+
+    char **copy = (char **)calloc(count, sizeof(char *));
+    if (!copy)
+        return 0;
+
+    size_t copied = 0;
+    for (; copied < count; copied++) {
+        copy[copied] = strdup(paths[copied] ? paths[copied] : "");
+        if (!copy[copied])
+            break;
+    }
+    if (copied != count) {
+        for (size_t i = 0; i < copied; i++)
+            free(copy[i]);
+        free(copy);
+        return 0;
+    }
+
+    rt_filedialog_clear_selected_paths(data);
+    data->selected_paths = copy;
+    data->selected_count = count;
+    return 1;
+}
+
 static void rt_filedialog_dispose(rt_filedialog_data_t *data) {
     if (!data)
         return;
-    if (data->selected_paths) {
-        for (size_t i = 0; i < data->selected_count; i++) {
-            free(data->selected_paths[i]);
-        }
-        free(data->selected_paths);
-        data->selected_paths = NULL;
-        data->selected_count = 0;
-    }
+    rt_filedialog_clear_selected_paths(data);
     if (data->dialog) {
         vg_filedialog_destroy(data->dialog);
         data->dialog = NULL;
@@ -364,15 +398,8 @@ int64_t rt_filedialog_show(void *dialog) {
     vg_filedialog_show(data->dialog);
 
     // Replace any previous selection snapshot with the latest dialog result.
-    if (data->selected_paths) {
-        for (size_t i = 0; i < data->selected_count; i++) {
-            free(data->selected_paths[i]);
-        }
-        free(data->selected_paths);
-        data->selected_paths = NULL;
-        data->selected_count = 0;
-    }
-    data->selected_paths = vg_filedialog_get_selected_paths(data->dialog, &data->selected_count);
+    rt_filedialog_clear_selected_paths(data);
+    rt_filedialog_copy_selected_paths(data);
     data->result = (data->selected_count > 0) ? 1 : 0;
 
     return data->result;

@@ -627,6 +627,18 @@ void vg_treeview_collapse(vg_treeview_t *tree, vg_tree_node_t *node) {
         tree->base.needs_layout = true;
         tree->base.needs_paint = true;
 
+        // Re-clamp scroll_y against the new (smaller) content. Without this
+        // the view can sit past the last visible row, leaving blank space at
+        // the bottom and desynchronizing arrow-key navigation.
+        int visible = count_visible_nodes(tree->root);
+        float max_scroll = (float)visible * tree->row_height - tree->base.height;
+        if (max_scroll < 0.0f)
+            max_scroll = 0.0f;
+        if (tree->scroll_y > max_scroll)
+            tree->scroll_y = max_scroll;
+        if (tree->scroll_y < 0.0f)
+            tree->scroll_y = 0.0f;
+
         if (tree->on_expand) {
             tree->on_expand(&tree->base, node, false, tree->on_expand_data);
         }

@@ -41,6 +41,7 @@ extern int64_t rt_pixels_height(void *pixels);
 extern void *rt_image_new(void *parent);
 extern void rt_image_set_pixels(void *image, void *pixels, int64_t w, int64_t h);
 extern void rt_image_set_scale_mode(void *image, int64_t mode);
+extern void rt_widget_destroy(void *widget);
 extern void rt_widget_set_size(void *widget, int64_t w, int64_t h);
 extern void rt_widget_set_flex(void *widget, double flex);
 extern void rt_widget_set_visible(void *widget, int64_t visible);
@@ -101,16 +102,41 @@ typedef struct {
     int32_t rgba_buf_size;
 } rt_videowidget;
 
+static void videowidget_dispose(rt_videowidget *w, int destroy_widget_tree);
+
 static void videowidget_finalizer(void *obj) {
-    rt_videowidget *vw = (rt_videowidget *)obj;
-    free(vw->rgba_buf);
-    vw->rgba_buf = NULL;
-    /* player, panel, image_widget, slider are GC-managed */
+    videowidget_dispose((rt_videowidget *)obj, 0);
 }
 
 static void release_gc_object(void *obj) {
     if (obj && rt_obj_release_check0(obj))
         rt_obj_free(obj);
+}
+
+static void videowidget_dispose(rt_videowidget *w, int destroy_widget_tree) {
+    if (!w)
+        return;
+
+    if (destroy_widget_tree && w->root_widget) {
+        rt_widget_destroy(w->root_widget);
+    }
+
+    w->root_widget = NULL;
+    w->image_widget = NULL;
+    w->controls_widget = NULL;
+    w->play_button = NULL;
+    w->pause_button = NULL;
+    w->stop_button = NULL;
+    w->position_slider = NULL;
+
+    free(w->rgba_buf);
+    w->rgba_buf = NULL;
+    w->rgba_buf_size = 0;
+
+    if (w->player) {
+        release_gc_object(w->player);
+        w->player = NULL;
+    }
 }
 
 static double clamp_volume(double vol) {
@@ -170,7 +196,7 @@ void *rt_videowidget_new(void *parent, void *path) {
 
     w->root_widget = rt_vbox_new();
     if (!w->root_widget) {
-        release_gc_object(player);
+        videowidget_dispose(w, 0);
         release_gc_object(w);
         return NULL;
     }
@@ -179,8 +205,7 @@ void *rt_videowidget_new(void *parent, void *path) {
     /* Create image widget for video display */
     w->image_widget = rt_image_new(w->root_widget);
     if (!w->image_widget) {
-        release_gc_object(player);
-        release_gc_object(w->root_widget);
+        videowidget_dispose(w, 1);
         release_gc_object(w);
         return NULL;
     }
@@ -208,8 +233,7 @@ void *rt_videowidget_new(void *parent, void *path) {
     w->rgba_buf_size = vw * vh * 4;
     w->rgba_buf = (uint8_t *)malloc((size_t)w->rgba_buf_size);
     if (!w->rgba_buf) {
-        release_gc_object(player);
-        release_gc_object(w->root_widget);
+        videowidget_dispose(w, 1);
         release_gc_object(w);
         return NULL;
     }
@@ -225,11 +249,20 @@ void *rt_videowidget_new(void *parent, void *path) {
     return w;
 }
 
+/// @brief Destroy the video widget subtree and release the owned VideoPlayer.
+void rt_videowidget_destroy(void *obj) {
+    if (!obj)
+        return;
+    videowidget_dispose((rt_videowidget *)obj, 1);
+}
+
 /// @brief Begin or resume video playback. Forwards to the underlying VideoPlayer.
 void rt_videowidget_play(void *obj) {
     if (!obj)
         return;
     rt_videowidget *w = (rt_videowidget *)obj;
+    if (!w->player)
+        return;
     rt_videoplayer_play(w->player);
 }
 
@@ -238,6 +271,8 @@ void rt_videowidget_pause(void *obj) {
     if (!obj)
         return;
     rt_videowidget *w = (rt_videowidget *)obj;
+    if (!w->player)
+        return;
     rt_videoplayer_pause(w->player);
 }
 
@@ -246,6 +281,8 @@ void rt_videowidget_stop(void *obj) {
     if (!obj)
         return;
     rt_videowidget *w = (rt_videowidget *)obj;
+    if (!w->player)
+        return;
     rt_videoplayer_stop(w->player);
 }
 
@@ -258,6 +295,8 @@ void rt_videowidget_update(void *obj, double dt) {
     if (!obj)
         return;
     rt_videowidget *w = (rt_videowidget *)obj;
+    if (!w->player)
+        return;
 
     if (w->play_button && rt_widget_was_clicked(w->play_button))
         rt_videoplayer_play(w->player);
@@ -334,28 +373,32 @@ void rt_videowidget_set_volume(void *obj, double vol) {
     rt_videowidget *w = (rt_videowidget *)obj;
     vol = clamp_volume(vol);
     w->volume = vol;
-    rt_videoplayer_set_volume(w->player, vol);
+    if (w->player)
+        rt_videoplayer_set_volume(w->player, vol);
 }
 
 /// @brief Return 1 if the underlying VideoPlayer is currently playing, else 0.
 int64_t rt_videowidget_get_is_playing(void *obj) {
     if (!obj)
         return 0;
-    return rt_videoplayer_get_is_playing(((rt_videowidget *)obj)->player);
+    rt_videowidget *w = (rt_videowidget *)obj;
+    return w->player ? rt_videoplayer_get_is_playing(w->player) : 0;
 }
 
 /// @brief Current playback position in seconds (forwarded from the underlying VideoPlayer).
 double rt_videowidget_get_position(void *obj) {
     if (!obj)
         return 0.0;
-    return rt_videoplayer_get_position(((rt_videowidget *)obj)->player);
+    rt_videowidget *w = (rt_videowidget *)obj;
+    return w->player ? rt_videoplayer_get_position(w->player) : 0.0;
 }
 
 /// @brief Total video duration in seconds (forwarded from the underlying VideoPlayer).
 double rt_videowidget_get_duration(void *obj) {
     if (!obj)
         return 0.0;
-    return rt_videoplayer_get_duration(((rt_videowidget *)obj)->player);
+    rt_videowidget *w = (rt_videowidget *)obj;
+    return w->player ? rt_videoplayer_get_duration(w->player) : 0.0;
 }
 
 #else

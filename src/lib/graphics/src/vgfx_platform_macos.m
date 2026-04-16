@@ -371,23 +371,15 @@ void vgfx_platform_macos_ensure_default_main_menu(const char *preferred_title) {
 static vgfx_key_t translate_keycode(unsigned short keycode,
                                     NSString *chars,
                                     NSEventModifierFlags flags) {
-    /* On compact Apple keyboards, PageUp/PageDown/Home/End are emitted as
-       fn+arrow rather than dedicated keys. Translate those combinations
-       before the normal arrow handling so editor navigation works. */
-    if (flags & NSEventModifierFlagFunction) {
-        switch (keycode) {
-            case 0x7E:
-                return VGFX_KEY_PAGE_UP; /* fn + up */
-            case 0x7D:
-                return VGFX_KEY_PAGE_DOWN; /* fn + down */
-            case 0x7B:
-                return VGFX_KEY_HOME; /* fn + left */
-            case 0x7C:
-                return VGFX_KEY_END; /* fn + right */
-            default:
-                break;
-        }
-    }
+    (void)flags;
+    /* NOTE: Do NOT branch on NSEventModifierFlagFunction here. Cocoa sets
+       this flag on every arrow-key press because the arrow keys are
+       themselves classified as function keys in macOS's modifier scheme.
+       A previous Fn+arrow→PageUp/PageDown translation that gated on this
+       flag intercepted plain arrow keys and broke editor navigation +
+       game input. Real Fn+arrow is handled below via the macOS-translated
+       NSPageUpFunctionKey / NSHomeFunctionKey unichar values, which the
+       OS emits when the user actually holds Fn on a compact keyboard. */
 
     /* Try to use character first. macOS sends function-key Unicode values for
        Fn+arrow and some compact keyboards, so handle those before ASCII. */

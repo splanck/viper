@@ -18,6 +18,7 @@ last-verified: 2026-04-16
 Scrollable container for content larger than the viewport.
 
 Direct children are arranged as vertically stacked content items inside the scroll region. For more complex nested layouts, place a `VBox`, `HBox`, or other container inside the `ScrollView` and add content there.
+Scrollbar thumb drags keep pointer capture until mouse-up, even if the cursor leaves the widget while dragging.
 
 **Constructor:** `NEW Viper.GUI.ScrollView(parent)`
 
@@ -109,7 +110,7 @@ panel.AddChild(btn);
 
 Tab strip for switching between views.
 
-Tabs can be reordered by dragging, and close-button hit testing stays confined to the close glyph instead of the whole tab tail.
+Tabs can be reordered by dragging, close-button hit testing stays confined to the close glyph instead of the whole tab tail, and `WasChanged()` only reports real post-construction active-tab transitions. Hovering a tab surfaces that tab's tooltip through the standard widget tooltip system.
 
 **Constructor:** `NEW Viper.GUI.TabBar(parent)`
 
@@ -142,7 +143,7 @@ Tab handles returned by `AddTab()` support these methods:
 |---------------------------|--------------------|--------------------------------|
 | `tab.SetTitle(title)`     | `Void(String)`     | Set tab title; the default tooltip follows the title until explicitly overridden |
 | `tab.SetTooltip(text)`    | `Void(String)`     | Set hover tooltip text         |
-| `tab.SetModified(flag)`   | `Void(Integer)`    | Set modified indicator         |
+| `tab.SetModified(flag)`   | `Void(Integer)`    | Set modified indicator (`" *"` participates in tab-width measurement) |
 
 ```basic
 DIM tabs AS Viper.GUI.TabBar
@@ -257,6 +258,8 @@ tree.Expand(rootNode)
 Full-featured code editor with syntax highlighting.
 
 The focused caret blink is advanced automatically during the app render loop, matching the existing `TextInput` caret behavior.
+When word wrap is enabled, the editor uses wrapped visual rows for painting, cursor up/down movement, pixel hit-testing, scrollbar math, and `ScrollToLine`; only the stored document text remains unchanged.
+Hiding line numbers fully collapses the line-number gutter. `SetLineNumberWidth(width)` is measured in character cells, so the gutter scales with the active font metrics instead of staying pinned to stale pixels. Fold regions now render in the gutter and hide folded body lines from cursor movement, scrolling, and pixel-position helpers.
 
 **Constructor:** `NEW Viper.GUI.CodeEditor(parent)`
 
@@ -266,7 +269,7 @@ The focused caret blink is advanced automatically during the app render loop, ma
 | `LineCount`  | Integer | Read   | Number of lines                                                |
 | `CursorLine` | Integer | Read   | Current cursor line                                            |
 | `CursorCol`  | Integer | Read   | Current cursor column                                          |
-| `WordWrap`   | Boolean | R/W    | Enable visual word-wrap — long lines are split at the viewport edge (display-only; does not affect underlying text) |
+| `WordWrap`   | Boolean | R/W    | Enable visual word-wrap — long lines are split at the viewport edge without changing the underlying text buffer |
 
 | Method                                     | Signature                        | Description                              |
 |--------------------------------------------|----------------------------------|------------------------------------------|
@@ -274,6 +277,7 @@ The focused caret blink is advanced automatically during the app render loop, ma
 | `AddFoldRegion(startLine, endLine)`        | `Void(Integer, Integer)`         | Add a foldable region                    |
 | `AddHighlight(startLine, startCol, endLine, endCol, color)` | `Void(Int, Int, Int, Int, Int)` | Add colored text highlight region |
 | `ClearCursors()`                           | `Void()`                         | Remove extra cursors (keep primary)      |
+| `ClearFoldRegions()`                       | `Void()`                         | Remove all fold regions                  |
 | `ClearGutterIcons(type)`                   | `Void(Integer)`                  | Clear gutter icons of given type         |
 | `ClearHighlights()`                        | `Void()`                         | Remove all highlights                    |
 | `ClearModified()`                          | `Void()`                         | Clear modified flag                      |
@@ -281,23 +285,32 @@ The focused caret blink is advanced automatically during the app render loop, ma
 | `CursorHasSelection(cursorIdx)`            | `Integer(Integer)`               | Check if cursor has selection            |
 | `Cut()`                                    | `Integer()`                      | Cut selection to clipboard               |
 | `Fold(line)`                               | `Void(Integer)`                  | Fold region at line                      |
+| `FoldAll()`                                | `Void()`                         | Fold all registered regions              |
 | `GetCursorCount()`                         | `Integer()`                      | Get number of cursors (multi-cursor)     |
+| `GetColAtPixel(x, y)`                     | `Integer(Integer, Integer)`      | Map a screen-space pixel to a logical column using the current wrap/scroll geometry |
 | `GetGutterClickLine()`                     | `Integer()`                      | Get line of gutter click                 |
+| `GetLineAtPixel(y)`                       | `Integer(Integer)`               | Map a screen-space pixel to a logical line using the current wrap/scroll geometry |
 | `GetSelectedText()`                        | `String()`                       | Get currently selected text (empty string if no selection) |
 | `IsFolded(line)`                           | `Integer(Integer)`               | Check if line is folded                  |
 | `IsModified()`                             | `Boolean()`                      | Check if modified                        |
 | `Paste()`                                  | `Integer()`                      | Paste from clipboard                     |
 | `Redo()`                                   | `Void()`                         | Redo last undone edit                    |
+| `RemoveFoldRegion(startLine)`              | `Void(Integer)`                  | Remove the fold region starting on a line |
 | `ScrollToLine(line)`                       | `Void(Integer)`                  | Scroll to line                           |
+| `SetAutoFoldDetection(enabled)`            | `Void(Integer)`                  | Enable or disable automatic fold detection |
 | `SelectAll()`                              | `Void()`                         | Select all text                          |
 | `SetCursor(line, col)`                     | `Void(Integer, Integer)`         | Set cursor position                      |
 | `SetFont(font, size)`                      | `Void(Font, Double)`             | Set monospace font                       |
 | `SetGutterIcon(line, icon, type)`          | `Void(Integer, Object, Integer)` | Set gutter icon on a line                |
 | `SetLanguage(name)`                        | `Void(String)`                   | Set syntax highlighting language         |
+| `SetLineNumberWidth(width)`                | `Void(Integer)`                  | Set line-number gutter width in character cells |
+| `SetShowFoldGutter(show)`                  | `Void(Integer)`                  | Show or hide fold markers in the gutter  |
 | `SetShowLineNumbers(show)`                 | `Void(Integer)`                  | Show/hide line numbers                   |
 | `SetText(text)`                            | `Void(String)`                   | Set editor content                       |
 | `SetTokenColor(tokenType, color)`          | `Void(Integer, Integer)`         | Set color for a token type               |
+| `ToggleFold(line)`                         | `Void(Integer)`                  | Toggle fold state at line                |
 | `Unfold(line)`                             | `Void(Integer)`                  | Unfold region at line                    |
+| `UnfoldAll()`                              | `Void()`                         | Unfold all registered regions            |
 | `Undo()`                                   | `Void()`                         | Undo last edit                           |
 | `WasGutterClicked()`                       | `Integer()`                      | 1 if gutter was clicked                  |
 

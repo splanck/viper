@@ -153,8 +153,8 @@ int64_t rt_tabbar_was_changed(void *tabbar) {
     if (!tabbar)
         return 0;
     vg_tabbar_t *tb = (vg_tabbar_t *)tabbar;
-    if (tb->active_tab != tb->prev_active_tab) {
-        tb->prev_active_tab = tb->active_tab;
+    if (tb->reported_active_change_version != tb->active_change_version) {
+        tb->reported_active_change_version = tb->active_change_version;
         return 1;
     }
     return 0;

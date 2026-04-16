@@ -47,6 +47,28 @@ typedef struct {
     int64_t replace_mode;
 } rt_findbar_data_t;
 
+static void rt_findbar_dispose(rt_findbar_data_t *data) {
+    if (!data)
+        return;
+    if (data->bar) {
+        vg_findreplacebar_destroy(data->bar);
+        data->bar = NULL;
+    }
+    if (data->find_text) {
+        free(data->find_text);
+        data->find_text = NULL;
+    }
+    if (data->replace_text) {
+        free(data->replace_text);
+        data->replace_text = NULL;
+    }
+    data->bound_editor = NULL;
+}
+
+static void rt_findbar_finalize(void *bar) {
+    rt_findbar_dispose((rt_findbar_data_t *)bar);
+}
+
 /// @brief Create a new find/replace bar widget.
 /// @details Allocates a GC-managed rt_findbar_data_t wrapper around a
 ///          vg_findreplacebar_t. The bar must be bound to a CodeEditor via
@@ -76,12 +98,13 @@ void *rt_findbar_new(void *parent) {
     data->whole_word = 0;
     data->regex = 0;
     data->replace_mode = 0;
+    rt_obj_set_finalizer(data, rt_findbar_finalize);
     if (parent_widget) {
         vg_widget_add_child(parent_widget, &bar->base);
     }
-    if (app && app->default_font) {
-        vg_findreplacebar_set_font(bar, app->default_font, app->default_font_size);
-    }
+    if (app)
+        rt_gui_activate_app(app);
+    rt_gui_apply_default_font(&bar->base);
     return data;
 }
 
@@ -90,14 +113,7 @@ void *rt_findbar_new(void *parent) {
 void rt_findbar_destroy(void *bar) {
     if (!bar)
         return;
-    rt_findbar_data_t *data = (rt_findbar_data_t *)bar;
-    if (data->bar) {
-        vg_findreplacebar_destroy(data->bar);
-    }
-    if (data->find_text)
-        free(data->find_text);
-    if (data->replace_text)
-        free(data->replace_text);
+    rt_findbar_dispose((rt_findbar_data_t *)bar);
 }
 
 /// @brief Bind the find bar to a code editor for search/replace operations.
@@ -156,9 +172,13 @@ rt_string rt_findbar_get_find_text(void *bar) {
     if (!bar)
         return rt_str_empty();
     rt_findbar_data_t *data = (rt_findbar_data_t *)bar;
-    if (data->find_text) {
-        return rt_string_from_bytes(data->find_text, strlen(data->find_text));
+    if (data->bar && data->bar->find_input) {
+        const char *text = vg_textinput_get_text((vg_textinput_t *)data->bar->find_input);
+        if (text)
+            return rt_string_from_bytes(text, strlen(text));
     }
+    if (data->find_text)
+        return rt_string_from_bytes(data->find_text, strlen(data->find_text));
     return rt_str_empty();
 }
 
@@ -183,9 +203,13 @@ rt_string rt_findbar_get_replace_text(void *bar) {
     if (!bar)
         return rt_str_empty();
     rt_findbar_data_t *data = (rt_findbar_data_t *)bar;
-    if (data->replace_text) {
-        return rt_string_from_bytes(data->replace_text, strlen(data->replace_text));
+    if (data->bar && data->bar->replace_input) {
+        const char *text = vg_textinput_get_text((vg_textinput_t *)data->bar->replace_input);
+        if (text)
+            return rt_string_from_bytes(text, strlen(text));
     }
+    if (data->replace_text)
+        return rt_string_from_bytes(data->replace_text, strlen(data->replace_text));
     return rt_str_empty();
 }
 
@@ -278,8 +302,11 @@ int64_t rt_findbar_replace(void *bar) {
     if (!bar)
         return 0;
     rt_findbar_data_t *data = (rt_findbar_data_t *)bar;
+    size_t count_before = vg_findreplacebar_get_match_count(data->bar);
+    if (!data->bar || !data->bound_editor || count_before == 0)
+        return 0;
     vg_findreplacebar_replace_current(data->bar);
-    return 1; // Assume success
+    return 1;
 }
 
 /// @brief Replace all matches in the bound editor with the replacement text.
@@ -315,7 +342,7 @@ void rt_findbar_set_visible(void *bar, int64_t visible) {
         return;
     rt_findbar_data_t *data = (rt_findbar_data_t *)bar;
     if (data->bar)
-        data->bar->base.visible = visible != 0;
+        vg_widget_set_visible(&data->bar->base, visible != 0);
 }
 
 /// @brief Check whether the find bar is currently visible.

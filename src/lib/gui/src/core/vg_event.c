@@ -17,9 +17,16 @@
 #include <string.h>
 
 static bool event_has_widget_local_mouse_coords(vg_event_type_t type) {
+    // NOTE: VG_EVENT_MOUSE_WHEEL is intentionally excluded. In vg_event_t, the
+    // `mouse` and `wheel` payload structs share a union, so mouse.x/y alias
+    // wheel.delta_x/y. If we localized wheel events, the widget-local writes
+    // would destroy the scroll deltas before the widget's wheel handler could
+    // read them — causing wheel scrolling to silently do nothing. Wheel events
+    // carry screen_x/y for hit-test routing but do not need widget-local
+    // coordinates, so we leave mouse.x/y untouched (== wheel deltas).
     return type == VG_EVENT_MOUSE_MOVE || type == VG_EVENT_MOUSE_DOWN ||
            type == VG_EVENT_MOUSE_UP || type == VG_EVENT_CLICK ||
-           type == VG_EVENT_DOUBLE_CLICK || type == VG_EVENT_MOUSE_WHEEL;
+           type == VG_EVENT_DOUBLE_CLICK;
 }
 
 static void event_localize_mouse_to_widget(vg_widget_t *widget, vg_event_t *event) {
@@ -318,8 +325,11 @@ bool vg_event_dispatch(vg_widget_t *root, vg_event_t *event) {
         }
         if (target) {
             event->target = target;
-            event_localize_mouse_to_widget(target, event);
-
+            // Don't localize here — vg_event_send is the single owner of the
+            // screen→widget-relative transform. Calling event_localize_mouse_to_widget
+            // both here and inside vg_event_send caused mouse coordinates to be
+            // offset by (widget_screen_x, widget_screen_y) twice, breaking
+            // bounds-check-based mouse handlers like vg_codeeditor's wheel scroll.
             return vg_event_send(target, event);
         }
         return false;

@@ -192,8 +192,8 @@ vg_scrollview_t *vg_scrollview_create(vg_widget_t *parent) {
 }
 
 static void scrollview_destroy(vg_widget_t *widget) {
-    // No special cleanup needed
-    (void)widget;
+    if (vg_widget_get_input_capture() == widget)
+        vg_widget_release_input_capture();
 }
 
 static void scrollview_measure(vg_widget_t *widget, float available_width, float available_height) {
@@ -487,8 +487,38 @@ static bool scrollview_handle_event(vg_widget_t *widget, vg_event_t *event) {
         if (scroll->show_v_scrollbar &&
             event->mouse.x >= content_area_width && event->mouse.x < widget->width &&
             event->mouse.y >= 0.0f && event->mouse.y < content_area_height) {
-            scroll->v_scrollbar_dragging = true;
-            scroll->drag_offset = event->mouse.y;
+            float track_height = content_area_height;
+            float visible_ratio =
+                scroll->content_height > 0.0f ? (content_area_height / scroll->content_height) : 1.0f;
+            if (visible_ratio > 1.0f)
+                visible_ratio = 1.0f;
+            float thumb_height = track_height * visible_ratio;
+            if (thumb_height < vg_theme_get_current()->scrollbar.min_thumb_size) {
+                thumb_height = vg_theme_get_current()->scrollbar.min_thumb_size;
+            }
+            if (thumb_height > track_height)
+                thumb_height = track_height;
+            float scroll_range = scroll->content_height - content_area_height;
+            float scroll_ratio = (scroll_range > 0.0f) ? (scroll->scroll_y / scroll_range) : 0.0f;
+            float thumb_y = scroll_ratio * (track_height - thumb_height);
+
+            if (event->mouse.y >= thumb_y && event->mouse.y < thumb_y + thumb_height) {
+                scroll->v_scrollbar_dragging = true;
+                scroll->drag_offset = event->mouse.y;
+                vg_widget_set_input_capture(widget);
+            } else if (scroll_range > 0.0f) {
+                float denom = track_height - thumb_height;
+                float target = event->mouse.y - thumb_height * 0.5f;
+                float ratio = (denom > 0.0f) ? (target / denom) : 0.0f;
+                if (ratio < 0.0f)
+                    ratio = 0.0f;
+                if (ratio > 1.0f)
+                    ratio = 1.0f;
+                scroll->scroll_y = ratio * scroll_range;
+                clamp_scroll(scroll);
+                widget->needs_layout = true;
+                widget->needs_paint = true;
+            }
             return true;
         }
 
@@ -496,8 +526,38 @@ static bool scrollview_handle_event(vg_widget_t *widget, vg_event_t *event) {
         if (scroll->show_h_scrollbar &&
             event->mouse.y >= content_area_height && event->mouse.y < widget->height &&
             event->mouse.x >= 0.0f && event->mouse.x < content_area_width) {
-            scroll->h_scrollbar_dragging = true;
-            scroll->drag_offset = event->mouse.x;
+            float track_width = content_area_width;
+            float visible_ratio =
+                scroll->content_width > 0.0f ? (content_area_width / scroll->content_width) : 1.0f;
+            if (visible_ratio > 1.0f)
+                visible_ratio = 1.0f;
+            float thumb_width = track_width * visible_ratio;
+            if (thumb_width < vg_theme_get_current()->scrollbar.min_thumb_size) {
+                thumb_width = vg_theme_get_current()->scrollbar.min_thumb_size;
+            }
+            if (thumb_width > track_width)
+                thumb_width = track_width;
+            float scroll_range = scroll->content_width - content_area_width;
+            float scroll_ratio = (scroll_range > 0.0f) ? (scroll->scroll_x / scroll_range) : 0.0f;
+            float thumb_x = scroll_ratio * (track_width - thumb_width);
+
+            if (event->mouse.x >= thumb_x && event->mouse.x < thumb_x + thumb_width) {
+                scroll->h_scrollbar_dragging = true;
+                scroll->drag_offset = event->mouse.x;
+                vg_widget_set_input_capture(widget);
+            } else if (scroll_range > 0.0f) {
+                float denom = track_width - thumb_width;
+                float target = event->mouse.x - thumb_width * 0.5f;
+                float ratio = (denom > 0.0f) ? (target / denom) : 0.0f;
+                if (ratio < 0.0f)
+                    ratio = 0.0f;
+                if (ratio > 1.0f)
+                    ratio = 1.0f;
+                scroll->scroll_x = ratio * scroll_range;
+                clamp_scroll(scroll);
+                widget->needs_layout = true;
+                widget->needs_paint = true;
+            }
             return true;
         }
 
@@ -506,8 +566,12 @@ static bool scrollview_handle_event(vg_widget_t *widget, vg_event_t *event) {
     }
 
     if (event->type == VG_EVENT_MOUSE_UP) {
+        bool handled = scroll->v_scrollbar_dragging || scroll->h_scrollbar_dragging;
         scroll->v_scrollbar_dragging = false;
         scroll->h_scrollbar_dragging = false;
+        if (vg_widget_get_input_capture() == widget)
+            vg_widget_release_input_capture();
+        return handled;
     }
 
     if (event->type == VG_EVENT_MOUSE_MOVE) {
@@ -520,7 +584,7 @@ static bool scrollview_handle_event(vg_widget_t *widget, vg_event_t *event) {
             float delta = event->mouse.y - scroll->drag_offset;
             float track_height = content_area_height;
             float scroll_range = scroll->content_height - content_area_height;
-            if (scroll_range > 0) {
+            if (scroll_range > 0 && track_height > 0.0f) {
                 scroll->scroll_y += delta * (scroll_range / track_height);
                 clamp_scroll(scroll);
                 scroll->drag_offset = event->mouse.y;
@@ -534,7 +598,7 @@ static bool scrollview_handle_event(vg_widget_t *widget, vg_event_t *event) {
             float delta = event->mouse.x - scroll->drag_offset;
             float track_width = content_area_width;
             float scroll_range = scroll->content_width - content_area_width;
-            if (scroll_range > 0) {
+            if (scroll_range > 0 && track_width > 0.0f) {
                 scroll->scroll_x += delta * (scroll_range / track_width);
                 clamp_scroll(scroll);
                 scroll->drag_offset = event->mouse.x;

@@ -11,6 +11,8 @@
 // vg_widget.c - Widget base class implementation
 #include "../../include/vg_widget.h"
 #include "../../include/vg_event.h"
+#include "../../include/vg_ide_widgets.h"
+#include "../../include/vg_widgets.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -19,6 +21,7 @@
 // widget core. Defined in vg_tooltip.c — clears tooltip-manager pointers when
 // a widget is destroyed (fixes dangling-pointer dereference).
 extern void vg_tooltip_manager_widget_destroyed(vg_widget_t *widget);
+extern void vg_tooltip_manager_widget_hidden(vg_widget_t *widget);
 
 //=============================================================================
 // Global State
@@ -180,6 +183,131 @@ static bool widget_is_ancestor(const vg_widget_t *ancestor, const vg_widget_t *w
             return true;
     }
     return false;
+}
+
+static void clear_interactive_state_recursive(vg_widget_t *widget) {
+    if (!widget)
+        return;
+
+    widget->state &= ~(VG_STATE_HOVERED | VG_STATE_PRESSED | VG_STATE_FOCUSED);
+    switch (widget->type) {
+        case VG_WIDGET_SCROLLVIEW: {
+            vg_scrollview_t *scroll = (vg_scrollview_t *)widget;
+            scroll->h_scrollbar_hovered = false;
+            scroll->v_scrollbar_hovered = false;
+            scroll->h_scrollbar_dragging = false;
+            scroll->v_scrollbar_dragging = false;
+            break;
+        }
+        case VG_WIDGET_TABBAR: {
+            vg_tabbar_t *tabbar = (vg_tabbar_t *)widget;
+            tabbar->hovered_tab = NULL;
+            tabbar->close_button_hovered = false;
+            tabbar->dragging = false;
+            tabbar->drag_tab = NULL;
+            break;
+        }
+        case VG_WIDGET_SPLITPANE: {
+            vg_splitpane_t *split = (vg_splitpane_t *)widget;
+            split->splitter_hovered = false;
+            split->dragging = false;
+            break;
+        }
+        case VG_WIDGET_MENUBAR: {
+            vg_menubar_t *menubar = (vg_menubar_t *)widget;
+            if (menubar->open_menu)
+                menubar->open_menu->open = false;
+            menubar->open_menu = NULL;
+            menubar->highlighted = NULL;
+            menubar->menu_active = false;
+            break;
+        }
+        case VG_WIDGET_TOOLBAR: {
+            vg_toolbar_t *toolbar = (vg_toolbar_t *)widget;
+            toolbar->pressed_item = NULL;
+            break;
+        }
+        case VG_WIDGET_DIALOG:
+            ((vg_dialog_t *)widget)->is_dragging = false;
+            break;
+        case VG_WIDGET_CODEEDITOR:
+            ((vg_codeeditor_t *)widget)->scrollbar_dragging = false;
+            break;
+        default:
+            break;
+    }
+    VG_FOREACH_CHILD(widget, child) {
+        clear_interactive_state_recursive(child);
+    }
+}
+
+static bool point_in_rect(float x, float y, float rx, float ry, float rw, float rh) {
+    if (rw <= 0.0f || rh <= 0.0f)
+        return false;
+    return x >= rx && x < rx + rw && y >= ry && y < ry + rh;
+}
+
+static void scrollview_get_viewport_screen_bounds(const vg_scrollview_t *scroll,
+                                                  float *x,
+                                                  float *y,
+                                                  float *width,
+                                                  float *height) {
+    if (!scroll) {
+        if (x)
+            *x = 0.0f;
+        if (y)
+            *y = 0.0f;
+        if (width)
+            *width = 0.0f;
+        if (height)
+            *height = 0.0f;
+        return;
+    }
+
+    float sx = 0.0f;
+    float sy = 0.0f;
+    float sw = 0.0f;
+    float sh = 0.0f;
+    vg_widget_get_screen_bounds((vg_widget_t *)&scroll->base, &sx, &sy, &sw, &sh);
+    if (scroll->show_v_scrollbar)
+        sw -= scroll->scrollbar_width;
+    if (scroll->show_h_scrollbar)
+        sh -= scroll->scrollbar_width;
+    if (sw < 0.0f)
+        sw = 0.0f;
+    if (sh < 0.0f)
+        sh = 0.0f;
+
+    if (x)
+        *x = sx;
+    if (y)
+        *y = sy;
+    if (width)
+        *width = sw;
+    if (height)
+        *height = sh;
+}
+
+static bool widget_point_within_ancestor_clips(const vg_widget_t *widget, float x, float y) {
+    for (const vg_widget_t *ancestor = widget ? widget->parent : NULL; ancestor;
+         ancestor = ancestor->parent) {
+        float sx = 0.0f;
+        float sy = 0.0f;
+        float sw = 0.0f;
+        float sh = 0.0f;
+        if (ancestor->type == VG_WIDGET_SCROLLVIEW) {
+            scrollview_get_viewport_screen_bounds((const vg_scrollview_t *)ancestor,
+                                                  &sx,
+                                                  &sy,
+                                                  &sw,
+                                                  &sh);
+        } else {
+            vg_widget_get_screen_bounds((vg_widget_t *)ancestor, &sx, &sy, &sw, &sh);
+        }
+        if (!point_in_rect(x, y, sx, sy, sw, sh))
+            return false;
+    }
+    return true;
 }
 
 //=============================================================================
@@ -618,6 +746,20 @@ void vg_widget_set_enabled(vg_widget_t *widget, bool enabled) {
         widget->state &= ~VG_STATE_DISABLED;
     } else {
         widget->state |= VG_STATE_DISABLED;
+        if (g_focused_widget && widget_is_ancestor(widget, g_focused_widget)) {
+            vg_widget_set_focus(NULL);
+        }
+        if (g_input_capture_widget && widget_is_ancestor(widget, g_input_capture_widget)) {
+            g_input_capture_widget = NULL;
+        }
+        if (g_hovered_widget && widget_is_ancestor(widget, g_hovered_widget)) {
+            g_hovered_widget = NULL;
+        }
+        if (g_modal_root && widget_is_ancestor(widget, g_modal_root)) {
+            g_modal_root = NULL;
+        }
+        vg_tooltip_manager_widget_hidden(widget);
+        clear_interactive_state_recursive(widget);
     }
     widget->needs_paint = true;
 }
@@ -630,7 +772,26 @@ bool vg_widget_is_enabled(vg_widget_t *widget) {
 void vg_widget_set_visible(vg_widget_t *widget, bool visible) {
     if (!widget)
         return;
+    if (widget->visible == visible)
+        return;
+
     widget->visible = visible;
+    if (!visible) {
+        if (g_focused_widget && widget_is_ancestor(widget, g_focused_widget)) {
+            vg_widget_set_focus(NULL);
+        }
+        if (g_input_capture_widget && widget_is_ancestor(widget, g_input_capture_widget)) {
+            g_input_capture_widget = NULL;
+        }
+        if (g_hovered_widget && widget_is_ancestor(widget, g_hovered_widget)) {
+            g_hovered_widget = NULL;
+        }
+        if (g_modal_root && widget_is_ancestor(widget, g_modal_root)) {
+            g_modal_root = NULL;
+        }
+        vg_tooltip_manager_widget_hidden(widget);
+        clear_interactive_state_recursive(widget);
+    }
     if (widget->parent)
         widget->parent->needs_layout = true;
     widget->needs_paint = true;
@@ -766,7 +927,7 @@ vg_widget_t *vg_widget_hit_test(vg_widget_t *root, float x, float y) {
     vg_widget_get_screen_bounds(root, &sx, &sy, &sw, &sh);
 
     // Check if point is inside
-    if (x < sx || x >= sx + sw || y < sy || y >= sy + sh) {
+    if (!point_in_rect(x, y, sx, sy, sw, sh) || !widget_point_within_ancestor_clips(root, x, y)) {
         return NULL;
     }
 
@@ -783,13 +944,20 @@ vg_widget_t *vg_widget_hit_test(vg_widget_t *root, float x, float y) {
         // The scrollbar gutter sits at the right and bottom edges. We can't
         // reach scrollview-specific fields from here without a circular
         // include, so use a conservative slack heuristic: most scrollbars are
-        // 12-16 px wide. Children are still hit-tested over the gutter only
-        // when no other handler claims it.
+        // 12-16 px wide. Only apply the exclusion when the scrollview is
+        // large enough that a gutter is meaningful — narrow embedded
+        // scrollviews (color-picker channels, completion popups) would
+        // otherwise have their entire child-area hit-testing disabled.
         const float kScrollbarGutter = 16.0f;
-        if (child_clip_w > kScrollbarGutter)
+        const float kMinDimForGutter = 32.0f;
+        if (child_clip_w > kMinDimForGutter)
             child_clip_w -= kScrollbarGutter;
-        if (child_clip_h > kScrollbarGutter)
+        if (child_clip_h > kMinDimForGutter)
             child_clip_h -= kScrollbarGutter;
+        if (child_clip_w < 0.0f)
+            child_clip_w = 0.0f;
+        if (child_clip_h < 0.0f)
+            child_clip_h = 0.0f;
     }
     bool descend = (x >= child_clip_x && x < child_clip_x + child_clip_w &&
                     y >= child_clip_y && y < child_clip_y + child_clip_h);
@@ -813,7 +981,7 @@ bool vg_widget_contains_point(vg_widget_t *widget, float x, float y) {
     float sx, sy, sw, sh;
     vg_widget_get_screen_bounds(widget, &sx, &sy, &sw, &sh);
 
-    return x >= sx && x < sx + sw && y >= sy && y < sy + sh;
+    return point_in_rect(x, y, sx, sy, sw, sh) && widget_point_within_ancestor_clips(widget, x, y);
 }
 
 //=============================================================================

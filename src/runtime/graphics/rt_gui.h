@@ -1241,7 +1241,7 @@ rt_string rt_menuitem_get_shortcut(void *item);
 
 /// @brief Set menu item icon.
 /// @param item MenuItem handle.
-/// @param pixels Pixel data handle.
+/// @param pixels Pixel data handle rendered as an image icon.
 void rt_menuitem_set_icon(void *item, void *pixels);
 
 /// @brief Set whether menu item is checkable.
@@ -1609,7 +1609,7 @@ void rt_toolbaritem_set_icon(void *item, rt_string icon_path);
 
 /// @brief Set toolbar item icon from pixels.
 /// @param item ToolbarItem handle.
-/// @param pixels Pixels handle.
+/// @param pixels Pixels handle rendered as an image icon.
 void rt_toolbaritem_set_icon_pixels(void *item, void *pixels);
 
 /// @brief Set toolbar item text.
@@ -2183,7 +2183,7 @@ void rt_findbar_set_find_text(void *bar, rt_string text);
 
 /// @brief Get the current search text.
 /// @param bar FindBar handle.
-/// @return Current search text.
+/// @return Current live search text from the input widget.
 rt_string rt_findbar_get_find_text(void *bar);
 
 /// @brief Set the replacement text.
@@ -2193,7 +2193,7 @@ void rt_findbar_set_replace_text(void *bar, rt_string text);
 
 /// @brief Get the current replacement text.
 /// @param bar FindBar handle.
-/// @return Current replacement text.
+/// @return Current live replacement text from the input widget.
 rt_string rt_findbar_get_replace_text(void *bar);
 
 /// @brief Enable/disable case-sensitive search.
@@ -2238,7 +2238,7 @@ int64_t rt_findbar_find_previous(void *bar);
 
 /// @brief Replace current match.
 /// @param bar FindBar handle.
-/// @return 1 if replaced, 0 if nothing to replace.
+/// @return 1 if replaced, 0 if no current match or no bound editor.
 int64_t rt_findbar_replace(void *bar);
 
 /// @brief Replace all matches.

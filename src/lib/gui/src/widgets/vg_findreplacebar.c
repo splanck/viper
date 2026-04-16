@@ -256,6 +256,17 @@ static void update_result_text(vg_findreplacebar_t *bar) {
     }
 }
 
+static void findreplacebar_apply_replace_visibility(vg_findreplacebar_t *bar) {
+    if (!bar)
+        return;
+    if (bar->replace_input)
+        vg_widget_set_visible((vg_widget_t *)bar->replace_input, bar->show_replace);
+    if (bar->replace_btn)
+        vg_widget_set_visible((vg_widget_t *)bar->replace_btn, bar->show_replace);
+    if (bar->replace_all_btn)
+        vg_widget_set_visible((vg_widget_t *)bar->replace_all_btn, bar->show_replace);
+}
+
 static void highlight_current_match(vg_findreplacebar_t *bar) {
     if (bar->match_count == 0 || !bar->target_editor)
         return;
@@ -530,16 +541,7 @@ static void findreplacebar_arrange(
         }
     }
 
-    // Hide replace widgets when not in replace mode
-    if (bar->replace_input) {
-        ((vg_widget_t *)bar->replace_input)->visible = bar->show_replace;
-    }
-    if (bar->replace_btn) {
-        ((vg_widget_t *)bar->replace_btn)->visible = bar->show_replace;
-    }
-    if (bar->replace_all_btn) {
-        ((vg_widget_t *)bar->replace_all_btn)->visible = bar->show_replace;
-    }
+    findreplacebar_apply_replace_visibility(bar);
 }
 
 static void findreplacebar_paint(vg_widget_t *widget, void *canvas) {
@@ -571,7 +573,7 @@ static bool findreplacebar_handle_event(vg_widget_t *widget, vg_event_t *event) 
 
         // Escape: close
         if (event->key.key == VG_KEY_ESCAPE) {
-            bar->base.visible = false;
+            vg_widget_set_visible(&bar->base, false);
             if (bar->on_close) {
                 bar->on_close(bar, bar->user_data);
             }
@@ -592,6 +594,7 @@ static bool findreplacebar_handle_event(vg_widget_t *widget, vg_event_t *event) 
         bool has_ctrl = (mods & VG_MOD_CTRL) != 0 || (mods & VG_MOD_SUPER) != 0;
         if (has_ctrl && event->key.key == VG_KEY_H) {
             bar->show_replace = !bar->show_replace;
+            findreplacebar_apply_replace_visibility(bar);
             vg_widget_invalidate(widget);
             return true;
         }
@@ -636,6 +639,7 @@ void vg_findreplacebar_set_show_replace(vg_findreplacebar_t *bar, bool show) {
     if (!bar)
         return;
     bar->show_replace = show;
+    findreplacebar_apply_replace_visibility(bar);
     vg_widget_invalidate(&bar->base);
 }
 

@@ -17,6 +17,8 @@ last-verified: 2026-04-16
 
 Application menu bar widget.
 
+Desktop menu dropdowns size themselves to the longest visible item/shortcut row, and a click outside the open dropdown closes it without activating the highlighted item.
+
 **Constructor:** `NEW Viper.GUI.MenuBar(parent)`
 
 | Method                | Signature          | Description                    |
@@ -27,11 +29,15 @@ Application menu bar widget.
 
 Dropdown menu (returned by `MenuBar.AddMenu()`).
 
+Disabled top-level menus render in the disabled state and ignore mouse and keyboard open requests.
+
 | Method                  | Signature          | Description                    |
 |-------------------------|--------------------|--------------------------------|
 | `AddItem(text)`         | `Object(String)`   | Add item, returns item handle  |
 | `AddSeparator()`        | `Object()`         | Add separator                  |
 | `AddSubmenu(title)`     | `Object(String)`   | Add submenu, returns menu      |
+| `IsEnabled()`           | `Integer()`        | Check if menu is enabled       |
+| `SetEnabled(enabled)`   | `Void(Integer)`    | Enable/disable the menu title  |
 
 ### MenuItem
 
@@ -43,6 +49,7 @@ Menu item (returned by `Menu.AddItem()`).
 | `IsEnabled()`           | `Integer()`     | Check if enabled               |
 | `SetChecked(checked)`   | `Void(Integer)` | Set check mark                 |
 | `SetEnabled(enabled)`   | `Void(Integer)` | Enable/disable item            |
+| `SetIcon(pixels)`       | `Void(Object)`  | Set image icon from a `Pixels` handle |
 | `SetShortcut(shortcut)` | `Void(String)`  | Set keyboard shortcut display  |
 | `SetText(text)`         | `Void(String)`  | Set item text                  |
 | `WasClicked()`          | `Integer()`     | 1 if item was clicked          |
@@ -71,6 +78,7 @@ Application toolbar widget.
 
 When the toolbar is narrower than its contents, hidden items are exposed through an automatic overflow popup rather than becoming inaccessible.
 Flexible spacer items now consume the remaining strip width, and dropdown toolbar items open their attached menus directly.
+Runtime text and icon changes invalidate layout and overflow measurement immediately, so the strip repacks without waiting for an unrelated refresh.
 
 **Constructor:** `NEW Viper.GUI.Toolbar(parent)`
 
@@ -92,6 +100,8 @@ Toolbar button (returned by `Toolbar.AddButton()`).
 | `IsEnabled()`         | `Integer()`     | Check if enabled               |
 | `SetEnabled(enabled)` | `Void(Integer)` | Enable/disable button          |
 | `SetIcon(icon)`       | `Void(String)`  | Change icon                    |
+| `SetIconPixels(pixels)` | `Void(Object)` | Change icon from a `Pixels` handle |
+| `SetText(text)`       | `Void(String)`  | Change button label            |
 | `SetTooltip(text)`    | `Void(String)`  | Set tooltip text               |
 | `WasClicked()`        | `Integer()`     | 1 if button was clicked        |
 
@@ -188,6 +198,8 @@ if copyItem.WasClicked() == 1 { /* copy */ }
 
 Find and replace bar for text searching.
 
+`GetFindText()` and `GetReplaceText()` read the live text currently shown in the inputs, and `Replace()` now returns `0` when there is no active editor or no current match to replace.
+
 **Constructor:** `NEW Viper.GUI.FindBar(parent)`
 
 | Method                      | Signature       | Description                              |
@@ -204,7 +216,7 @@ Find and replace bar for text searching.
 | `IsReplaceMode()`           | `Integer()`     | Check if replace mode                    |
 | `IsVisible()`               | `Integer()`     | Check if visible                         |
 | `IsWholeWord()`             | `Integer()`     | Check if whole word mode                 |
-| `Replace()`                 | `Integer()`     | Replace current match                    |
+| `Replace()`                 | `Integer()`     | Replace current match; returns 0 when nothing was replaced |
 | `ReplaceAll()`              | `Integer()`     | Replace all matches; returns count       |
 | `SetCaseSensitive(enabled)` | `Void(Integer)` | Enable/disable case sensitivity          |
 | `SetFindText(text)`         | `Void(String)`  | Set search text                          |
@@ -373,6 +385,7 @@ if answer == 1 { /* user said yes */ }
 Native file dialog boxes (static methods).
 
 Save dialogs honor the default filename field, append the configured default extension when needed, and keep buttons/bookmarks/file-list hit-testing correct after the window is repositioned.
+Object-style dialogs snapshot their accepted path list on each `Show()`, so repeated `Show()` / `Destroy()` cycles and multi-select accessors stay valid.
 
 | Method                                          | Signature                        | Description                              |
 |-------------------------------------------------|----------------------------------|------------------------------------------|
@@ -472,6 +485,8 @@ if t.WasActionClicked() == 1 { /* undo action */ }
 ### Tooltip
 
 Tooltip display system (static methods).
+
+Widget tooltips now wrap long text, draw an opaque panel/background, and automatically disappear when the hovered or anchored widget is hidden, disabled, or destroyed.
 
 | Method                                          | Signature                | Description                    |
 |-------------------------------------------------|--------------------------|--------------------------------|

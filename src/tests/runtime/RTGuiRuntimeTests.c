@@ -12,12 +12,24 @@
 
 #include "../../runtime/graphics/rt_gui_internal.h"
 #include "rt_gui.h"
+#include "rt_pixels.h"
 
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
 
 extern void rt_gui_set_clicked_statusbar_item(void *item);
+
+typedef struct {
+    vg_findreplacebar_t *bar;
+    void *bound_editor;
+    char *find_text;
+    char *replace_text;
+    int64_t case_sensitive;
+    int64_t whole_word;
+    int64_t regex;
+    int64_t replace_mode;
+} rt_findbar_data_view_t;
 
 void vm_trap(const char *msg) {
     (void)msg;
@@ -316,6 +328,147 @@ static void test_codeeditor_runtime_supports_multicursor_editing(void) {
     printf("test_codeeditor_runtime_supports_multicursor_editing: PASSED\n");
 }
 
+static void test_codeeditor_runtime_pixel_helpers_follow_scroll_and_wrap(void) {
+    vg_codeeditor_t *editor = vg_codeeditor_create(NULL);
+    assert(editor);
+
+    vg_codeeditor_set_text(editor, "abcdefghi\nabcdef");
+    editor->base.x = 100.0f;
+    editor->base.y = 50.0f;
+    editor->base.width = 70.0f;
+    editor->base.height = 20.0f;
+    editor->char_width = 10.0f;
+    editor->line_height = 10.0f;
+    editor->gutter_width = 20.0f;
+
+    editor->cursor_line = 1;
+    editor->cursor_col = 4;
+    editor->scroll_x = 15.0f;
+    editor->scroll_y = 5.0f;
+    assert(rt_codeeditor_get_cursor_pixel_x(editor) == 145);
+    assert(rt_codeeditor_get_cursor_pixel_y(editor) == 55);
+    assert(rt_codeeditor_get_line_at_pixel(editor, 55) == 1);
+    assert(rt_codeeditor_get_col_at_pixel(editor, 145, 55) == 4);
+
+    rt_codeeditor_set_word_wrap(editor, 1);
+    editor->scroll_y = 10.0f;
+    editor->cursor_line = 0;
+    editor->cursor_col = 6;
+    assert(rt_codeeditor_get_cursor_pixel_x(editor) == 120);
+    assert(rt_codeeditor_get_cursor_pixel_y(editor) == 60);
+    assert(rt_codeeditor_get_line_at_pixel(editor, 60) == 0);
+    assert(rt_codeeditor_get_line_at_pixel(editor, 70) == 1);
+    assert(rt_codeeditor_get_col_at_pixel(editor, 140, 60) == 8);
+
+    vg_widget_destroy(&editor->base);
+    printf("test_codeeditor_runtime_pixel_helpers_follow_scroll_and_wrap: PASSED\n");
+}
+
+static void test_codeeditor_runtime_fold_helpers_skip_hidden_lines(void) {
+    vg_codeeditor_t *editor = vg_codeeditor_create(NULL);
+    assert(editor);
+
+    vg_codeeditor_set_text(editor, "one\ntwo\nthree\nfour");
+    editor->base.x = 100.0f;
+    editor->base.y = 50.0f;
+    editor->base.width = 120.0f;
+    editor->base.height = 40.0f;
+    editor->char_width = 8.0f;
+    editor->line_height = 10.0f;
+
+    rt_codeeditor_set_show_line_numbers(editor, 0);
+    rt_codeeditor_set_show_fold_gutter(editor, 1);
+    rt_codeeditor_add_fold_region(editor, 0, 2);
+    rt_codeeditor_fold(editor, 0);
+
+    assert(editor->gutter_width > 0.0f);
+    assert(rt_codeeditor_get_line_at_pixel(editor, 55) == 0);
+    assert(rt_codeeditor_get_line_at_pixel(editor, 65) == 3);
+
+    vg_codeeditor_set_cursor(editor, 2, 2);
+    assert(editor->cursor_line == 0);
+
+    vg_widget_destroy(&editor->base);
+    printf("test_codeeditor_runtime_fold_helpers_skip_hidden_lines: PASSED\n");
+}
+
+static void test_codeeditor_line_number_width_override_tracks_character_width(void) {
+    vg_codeeditor_t *editor = vg_codeeditor_create(NULL);
+    assert(editor);
+
+    editor->char_width = 8.0f;
+    rt_codeeditor_set_line_number_width(editor, 4);
+    assert(editor->gutter_width == 32.0f);
+
+    editor->char_width = 12.0f;
+    vg_codeeditor_refresh_layout_state(editor);
+    assert(editor->gutter_width == 48.0f);
+
+    vg_widget_destroy(&editor->base);
+    printf("test_codeeditor_line_number_width_override_tracks_character_width: PASSED\n");
+}
+
+static void test_findbar_runtime_reads_live_text_and_reports_noop_replace(void) {
+    rt_gui_app_t app;
+    reset_fake_app(&app);
+    app.root = vg_widget_create(VG_WIDGET_CONTAINER);
+    app.root->user_data = &app;
+    rt_gui_activate_app(&app);
+
+    void *editor = rt_codeeditor_new(app.root);
+    void *bar = rt_findbar_new(app.root);
+    assert(editor);
+    assert(bar);
+
+    rt_codeeditor_set_text(editor, rt_const_cstr("alpha beta"));
+    rt_findbar_bind_editor(bar, editor);
+    rt_findbar_set_find_text(bar, rt_const_cstr("alpha"));
+    rt_findbar_set_replace_text(bar, rt_const_cstr("omega"));
+
+    rt_findbar_data_view_t *view = (rt_findbar_data_view_t *)bar;
+    vg_textinput_set_text((vg_textinput_t *)view->bar->find_input, "beta");
+    vg_textinput_set_text((vg_textinput_t *)view->bar->replace_input, "theta");
+
+    assert(strcmp(rt_string_cstr(rt_findbar_get_find_text(bar)), "beta") == 0);
+    assert(strcmp(rt_string_cstr(rt_findbar_get_replace_text(bar)), "theta") == 0);
+
+    rt_findbar_set_find_text(bar, rt_const_cstr("missing"));
+    assert(rt_findbar_find_next(bar) == 0);
+    assert(rt_findbar_replace(bar) == 0);
+
+    cleanup_fake_app(&app);
+    printf("test_findbar_runtime_reads_live_text_and_reports_noop_replace: PASSED\n");
+}
+
+static void test_menu_and_toolbar_pixel_icons_become_image_icons(void) {
+    void *pixels = rt_pixels_new(1, 1);
+    assert(pixels);
+    rt_pixels_fill(pixels, 0x11223344);
+
+    vg_menubar_t *menubar = vg_menubar_create(NULL);
+    assert(menubar);
+    vg_menu_t *menu = vg_menubar_add_menu(menubar, "File");
+    assert(menu);
+    vg_menu_item_t *item = vg_menu_add_item(menu, "Open", NULL, NULL, NULL);
+    assert(item);
+
+    rt_menuitem_set_icon(item, pixels);
+    assert(item->icon.type == VG_ICON_IMAGE);
+
+    vg_toolbar_t *toolbar = vg_toolbar_create(NULL, VG_TOOLBAR_HORIZONTAL);
+    assert(toolbar);
+    vg_toolbar_item_t *tool_item =
+        vg_toolbar_add_button(toolbar, "open", NULL, vg_icon_from_glyph('O'), NULL, NULL);
+    assert(tool_item);
+
+    rt_toolbaritem_set_icon_pixels(tool_item, pixels);
+    assert(tool_item->icon.type == VG_ICON_IMAGE);
+
+    vg_widget_destroy(&toolbar->base);
+    vg_widget_destroy(&menubar->base);
+    printf("test_menu_and_toolbar_pixel_icons_become_image_icons: PASSED\n");
+}
+
 static void test_splitpane_runtime_boolean_matches_horizontal_semantics(void) {
     vg_splitpane_t *horizontal = (vg_splitpane_t *)rt_splitpane_new(NULL, 1);
     vg_splitpane_t *vertical = (vg_splitpane_t *)rt_splitpane_new(NULL, 0);
@@ -328,6 +481,29 @@ static void test_splitpane_runtime_boolean_matches_horizontal_semantics(void) {
     vg_widget_destroy(&horizontal->base);
     vg_widget_destroy(&vertical->base);
     printf("test_splitpane_runtime_boolean_matches_horizontal_semantics: PASSED\n");
+}
+
+static void test_tabbar_was_changed_tracks_real_active_tab_transitions(void) {
+    vg_tabbar_t *tabbar = vg_tabbar_create(NULL);
+    assert(tabbar);
+
+    vg_tab_t *first = vg_tabbar_add_tab(tabbar, "first.zia", true);
+    vg_tab_t *second = vg_tabbar_add_tab(tabbar, "second.zia", true);
+    assert(first);
+    assert(second);
+
+    assert(rt_tabbar_was_changed(tabbar) == 0);
+    rt_tabbar_set_active(tabbar, second);
+    assert(rt_tabbar_was_changed(tabbar) == 1);
+    assert(rt_tabbar_was_changed(tabbar) == 0);
+
+    rt_tabbar_remove_tab(tabbar, second);
+    assert(rt_tabbar_get_active(tabbar) == first);
+    assert(rt_tabbar_was_changed(tabbar) == 1);
+    assert(rt_tabbar_was_changed(tabbar) == 0);
+
+    vg_widget_destroy(&tabbar->base);
+    printf("test_tabbar_was_changed_tracks_real_active_tab_transitions: PASSED\n");
 }
 
 static void test_widget_set_position_marks_widget_dirty(void) {
@@ -389,9 +565,15 @@ int main(void) {
     test_platform_text_events_translate_to_gui_text();
     test_app_handles_resolve_to_root_widgets_for_overlays();
     test_codeeditor_runtime_supports_multicursor_editing();
+    test_codeeditor_runtime_pixel_helpers_follow_scroll_and_wrap();
+    test_codeeditor_runtime_fold_helpers_skip_hidden_lines();
+    test_codeeditor_line_number_width_override_tracks_character_width();
     test_splitpane_runtime_boolean_matches_horizontal_semantics();
+    test_tabbar_was_changed_tracks_real_active_tab_transitions();
     test_widget_set_position_marks_widget_dirty();
     test_tabbar_close_click_index_survives_auto_close();
+    test_findbar_runtime_reads_live_text_and_reports_noop_replace();
+    test_menu_and_toolbar_pixel_icons_become_image_icons();
 
     printf("\nAll GUI runtime regression tests passed!\n");
     return 0;

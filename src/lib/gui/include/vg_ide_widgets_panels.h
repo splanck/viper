@@ -92,6 +92,10 @@ typedef struct vg_tabbar {
     vg_tab_t *prev_active_tab; ///< Previous active tab (for change detection)
     int close_clicked_index;   ///< Index whose close button was clicked (cleared on read, -1 = none)
     bool auto_close;           ///< Auto-remove tab on close click (default true)
+    uint64_t active_change_version;          ///< Monotonic counter for active-tab changes
+    uint64_t reported_active_change_version; ///< Last active-change version observed by runtime
+    char *saved_tooltip_text;                ///< Preserved widget tooltip while a tab tooltip is active
+    bool hover_tooltip_active;               ///< True while widget tooltip is overridden by hovered tab
 } vg_tabbar_t;
 
 /// @brief Create a new tab bar widget

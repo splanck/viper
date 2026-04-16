@@ -278,6 +278,9 @@ void vg_toolbar_item_set_checked(vg_toolbar_item_t *item, bool checked);
 /// @brief Set item tooltip
 void vg_toolbar_item_set_tooltip(vg_toolbar_item_t *item, const char *tooltip);
 
+/// @brief Set item label text
+void vg_toolbar_item_set_text(vg_toolbar_item_t *item, const char *text);
+
 /// @brief Set item icon
 void vg_toolbar_item_set_icon(vg_toolbar_item_t *item, vg_icon_t icon);
 
@@ -391,6 +394,12 @@ void vg_tooltip_manager_on_leave(vg_tooltip_manager_t *mgr);
 /// hover/leave callbacks do not dereference freed memory. Safe to call from
 /// vg_widget_destroy. Operates on the global manager singleton.
 void vg_tooltip_manager_widget_destroyed(vg_widget_t *widget);
+
+/// @brief Notify manager that a widget (or one of its descendants) became hidden/disabled.
+///
+/// Hides the active tooltip when its hovered widget or anchor lives inside the
+/// subtree being hidden. Safe to call from visibility/enabled-state setters.
+void vg_tooltip_manager_widget_hidden(vg_widget_t *widget);
 
 /// @brief Set tooltip for a widget
 void vg_widget_set_tooltip_text(vg_widget_t *widget, const char *text);

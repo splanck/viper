@@ -1478,6 +1478,20 @@ void vg_toolbar_item_set_tooltip(vg_toolbar_item_t *item, const char *tooltip) {
     }
 }
 
+/// @brief Toolbar item set text.
+void vg_toolbar_item_set_text(vg_toolbar_item_t *item, const char *text) {
+    if (!item)
+        return;
+    if (item->label)
+        free(item->label);
+    item->label = text ? strdup(text) : NULL;
+    if (item->owner) {
+        item->owner->overflow_popup_dirty = true;
+        item->owner->base.needs_layout = true;
+        item->owner->base.needs_paint = true;
+    }
+}
+
 /// @brief Toolbar item set icon.
 void vg_toolbar_item_set_icon(vg_toolbar_item_t *item, vg_icon_t icon) {
     if (!item)

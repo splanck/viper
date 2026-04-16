@@ -35,7 +35,7 @@
 
 ---
 
-## 🚀 Quickstart
+## Quickstart
 
 Build and test:
 
@@ -75,7 +75,7 @@ zia> Say(Fmt.Int(2 + 3))
 
 ---
 
-## 🧩 Components
+## Components
 
 | Component | Description |
 |-----------|-------------|
@@ -99,7 +99,7 @@ zia> Say(Fmt.Int(2 + 3))
 
 ---
 
-## 📊 Project Status
+## Project Status
 
 Viper is in **early development**. All components are functional but evolving:
 
@@ -124,7 +124,7 @@ Expect breaking changes. The IL specification, APIs, and tool interfaces are not
 
 ---
 
-## 🎮 Demos
+## Demos
 
 | Demo | Description |
 |------|-------------|
@@ -140,7 +140,7 @@ Expect breaking changes. The IL specification, APIs, and tool interfaces are not
 
 ---
 
-## 🏗️ Architecture
+## Architecture
 
 ```
 ┌─────────────────────────────────────────┐
@@ -178,7 +178,7 @@ Expect breaking changes. The IL specification, APIs, and tool interfaces are not
 
 ---
 
-## 💡 IL at a Glance
+## IL at a Glance
 
 Frontends lower to a typed [IL](docs/il-guide.md) that is compact, explicit, and inspectable.
 
@@ -227,7 +227,7 @@ entry_0:
 
 ---
 
-## 📚 Runtime Library
+## Runtime Library
 
 All frontends share the **[Viper Runtime](docs/viperlib/README.md)** — 300 classes across 22 modules:
 
@@ -257,7 +257,7 @@ All frontends share the **[Viper Runtime](docs/viperlib/README.md)** — 300 cla
 
 ---
 
-## 🔧 Tools
+## Tools
 
 | Tool | Purpose |
 |------|---------|
@@ -281,7 +281,7 @@ viper repl                     # Interactive REPL
 
 ---
 
-## 🔨 Building
+## Building
 
 ### Requirements
 
@@ -308,7 +308,7 @@ This configures, builds, tests, and installs Viper in one step.
 
 ---
 
-## 📖 Documentation
+## Documentation
 
 **Getting Started** — [Setup Guide](docs/getting-started.md) · [REPL Guide](docs/repl.md) · [Zia Tutorial](docs/zia-getting-started.md) · [The Viper Bible](docs/bible/README.md)
 

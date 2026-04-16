@@ -32,6 +32,8 @@
 #define INITIAL_TEXT_CAPACITY 256
 #define LINE_CAPACITY_GROWTH 2
 #define CURSOR_BLINK_RATE 0.5f
+#define CODEEDITOR_SCROLLBAR_WIDTH 12.0f
+#define CODEEDITOR_FOLD_GUTTER_MIN_WIDTH 14.0f
 
 //=============================================================================
 // Forward Declarations
@@ -49,6 +51,7 @@ static bool ensure_text_capacity(vg_code_line_t *line, size_t needed);
 static void insert_text_at_internal(vg_codeeditor_t *editor, int line, int col, const char *text);
 static void delete_text_range_internal(
     vg_codeeditor_t *editor, int start_line, int start_col, int end_line, int end_col);
+static void codeeditor_adjust_hidden_cursors(vg_codeeditor_t *editor);
 
 //=============================================================================
 // CodeEditor VTable
@@ -153,18 +156,464 @@ static void highlight_line(vg_codeeditor_t *editor, size_t line_idx) {
         (vg_widget_t *)editor, (int)line_idx, line->text, line->colors, editor->syntax_data);
 }
 
+static float codeeditor_auto_line_number_gutter_width(const vg_codeeditor_t *editor) {
+    if (!editor || !editor->show_line_numbers)
+        return 0.0f;
+
+    char buf[32];
+    snprintf(buf, sizeof(buf), "%d", editor->line_count > 0 ? editor->line_count : 1);
+    if (editor->font) {
+        vg_text_metrics_t metrics = {0};
+        vg_font_measure_text(editor->font, editor->font_size, buf, &metrics);
+        return metrics.width + 20.0f;
+    }
+    return (float)strlen(buf) * editor->char_width + 20.0f;
+}
+
+static float codeeditor_fold_gutter_width(const vg_codeeditor_t *editor) {
+    if (!editor || !editor->show_fold_gutter)
+        return 0.0f;
+    float width = editor->line_height > 0.0f ? editor->line_height : CODEEDITOR_FOLD_GUTTER_MIN_WIDTH;
+    return width < CODEEDITOR_FOLD_GUTTER_MIN_WIDTH ? CODEEDITOR_FOLD_GUTTER_MIN_WIDTH : width;
+}
+
+static float codeeditor_line_number_gutter_width(const vg_codeeditor_t *editor) {
+    if (!editor || !editor->show_line_numbers)
+        return 0.0f;
+    if (editor->line_number_width_override > 0.0f)
+        return editor->line_number_width_override * editor->char_width;
+    return codeeditor_auto_line_number_gutter_width(editor);
+}
+
+static const struct vg_fold_region *codeeditor_fold_region_starting_at(const vg_codeeditor_t *editor,
+                                                                       int line) {
+    if (!editor)
+        return NULL;
+    for (int i = 0; i < editor->fold_region_count; i++) {
+        if (editor->fold_regions[i].start_line == line)
+            return &editor->fold_regions[i];
+    }
+    return NULL;
+}
+
+static struct vg_fold_region *codeeditor_fold_region_starting_at_mut(vg_codeeditor_t *editor, int line) {
+    if (!editor)
+        return NULL;
+    for (int i = 0; i < editor->fold_region_count; i++) {
+        if (editor->fold_regions[i].start_line == line)
+            return &editor->fold_regions[i];
+    }
+    return NULL;
+}
+
+static bool codeeditor_line_is_hidden(const vg_codeeditor_t *editor, int line) {
+    if (!editor)
+        return false;
+    for (int i = 0; i < editor->fold_region_count; i++) {
+        const struct vg_fold_region *region = &editor->fold_regions[i];
+        if (region->folded && line > region->start_line && line <= region->end_line)
+            return true;
+    }
+    return false;
+}
+
+static int codeeditor_visible_anchor_line(const vg_codeeditor_t *editor, int line) {
+    if (!editor || editor->line_count <= 0)
+        return 0;
+    if (line < 0)
+        line = 0;
+    if (line >= editor->line_count)
+        line = editor->line_count - 1;
+    if (!codeeditor_line_is_hidden(editor, line))
+        return line;
+
+    int best_start = line;
+    bool found = false;
+    for (int i = 0; i < editor->fold_region_count; i++) {
+        const struct vg_fold_region *region = &editor->fold_regions[i];
+        if (region->folded && line > region->start_line && line <= region->end_line) {
+            if (!found || region->start_line < best_start) {
+                best_start = region->start_line;
+                found = true;
+            }
+        }
+    }
+    return found ? best_start : line;
+}
+
+static int codeeditor_next_visible_line(const vg_codeeditor_t *editor, int line) {
+    if (!editor || editor->line_count <= 0)
+        return -1;
+    for (int next = line + 1; next < editor->line_count; next++) {
+        if (!codeeditor_line_is_hidden(editor, next))
+            return next;
+    }
+    return editor->line_count;
+}
+
+VG_UNUSED static int codeeditor_prev_visible_line(const vg_codeeditor_t *editor, int line) {
+    if (!editor || editor->line_count <= 0)
+        return -1;
+    for (int prev = line - 1; prev >= 0; prev--) {
+        if (!codeeditor_line_is_hidden(editor, prev))
+            return prev;
+    }
+    return -1;
+}
+
 static void update_gutter_width(vg_codeeditor_t *editor) {
-    if (!editor->show_line_numbers || !editor->font) {
-        editor->gutter_width = 0;
+    if (!editor) {
+        return;
+    }
+    editor->gutter_width =
+        codeeditor_line_number_gutter_width(editor) + codeeditor_fold_gutter_width(editor);
+}
+
+static int codeeditor_chars_per_row(const vg_codeeditor_t *editor, float content_width) {
+    if (!editor || !editor->word_wrap || editor->char_width <= 0.0f || content_width <= 0.0f)
+        return 0;
+    int chars = (int)(content_width / editor->char_width);
+    return chars > 0 ? chars : 1;
+}
+
+static int codeeditor_wrapped_rows_for_line(const vg_codeeditor_t *editor,
+                                            int line,
+                                            float content_width) {
+    if (!editor || line < 0 || line >= editor->line_count)
+        return 1;
+    int chars_per_row = codeeditor_chars_per_row(editor, content_width);
+    if (chars_per_row <= 0)
+        return 1;
+    size_t len = editor->lines[line].length;
+    if (len == 0)
+        return 1;
+    return (int)((len + (size_t)chars_per_row - 1) / (size_t)chars_per_row);
+}
+
+static int codeeditor_visual_rows_for_line(const vg_codeeditor_t *editor,
+                                           int line,
+                                           float content_width) {
+    if (!editor || line < 0 || line >= editor->line_count || codeeditor_line_is_hidden(editor, line))
+        return 0;
+    if (!editor->word_wrap)
+        return 1;
+    return codeeditor_wrapped_rows_for_line(editor, line, content_width);
+}
+
+static float codeeditor_total_content_height_for_width(const vg_codeeditor_t *editor,
+                                                       float content_width) {
+    if (!editor)
+        return 0.0f;
+
+    float total_rows = 0.0f;
+    for (int i = 0; i < editor->line_count; i++) {
+        total_rows += (float)codeeditor_visual_rows_for_line(editor, i, content_width);
+    }
+    return total_rows * editor->line_height;
+}
+
+static float codeeditor_content_draw_width(const vg_codeeditor_t *editor, const vg_widget_t *widget) {
+    if (!editor || !widget)
+        return 0.0f;
+
+    float base_width = widget->width - editor->gutter_width;
+    if (base_width < 0.0f)
+        base_width = 0.0f;
+    if (!editor->word_wrap)
+        return base_width;
+
+    float content_width = base_width;
+    for (int pass = 0; pass < 3; pass++) {
+        float total_height = codeeditor_total_content_height_for_width(editor, content_width);
+        float next_width =
+            base_width - ((total_height > widget->height) ? CODEEDITOR_SCROLLBAR_WIDTH : 0.0f);
+        if (next_width < 0.0f)
+            next_width = 0.0f;
+        if (next_width == content_width)
+            break;
+        content_width = next_width;
+    }
+    return content_width;
+}
+
+static float codeeditor_total_content_height(const vg_codeeditor_t *editor, const vg_widget_t *widget) {
+    return codeeditor_total_content_height_for_width(editor, codeeditor_content_draw_width(editor, widget));
+}
+
+static int codeeditor_total_visual_rows_for_width(const vg_codeeditor_t *editor, float content_width) {
+    if (!editor)
+        return 0;
+
+    int total_rows = 0;
+    for (int i = 0; i < editor->line_count; i++) {
+        total_rows += codeeditor_visual_rows_for_line(editor, i, content_width);
+    }
+    return total_rows;
+}
+
+static float codeeditor_max_scroll_y(const vg_codeeditor_t *editor, const vg_widget_t *widget) {
+    if (!editor || !widget)
+        return 0.0f;
+    float max_scroll = codeeditor_total_content_height(editor, widget) - widget->height;
+    return max_scroll > 0.0f ? max_scroll : 0.0f;
+}
+
+static void codeeditor_visual_offset_for_position(const vg_codeeditor_t *editor,
+                                                  float content_width,
+                                                  int line,
+                                                  int col,
+                                                  int *out_row_index,
+                                                  int *out_col_in_row) {
+    if (out_row_index)
+        *out_row_index = 0;
+    if (out_col_in_row)
+        *out_col_in_row = 0;
+    if (!editor || line < 0 || line >= editor->line_count)
+        return;
+    line = codeeditor_visible_anchor_line(editor, line);
+
+    int chars_per_row = codeeditor_chars_per_row(editor, content_width);
+    int row_index = 0;
+    int col_in_row = col;
+    if (chars_per_row > 0) {
+        size_t len = editor->lines[line].length;
+        row_index = col / chars_per_row;
+        if (col > 0 && (size_t)col == len && len > 0 && (len % (size_t)chars_per_row) == 0) {
+            row_index = (int)((len - 1) / (size_t)chars_per_row);
+        }
+        col_in_row = col - row_index * chars_per_row;
+        if (col_in_row < 0)
+            col_in_row = 0;
+    }
+
+    if (out_row_index)
+        *out_row_index = row_index;
+    if (out_col_in_row)
+        *out_col_in_row = col_in_row;
+}
+
+static int codeeditor_visual_row_for_position(const vg_codeeditor_t *editor,
+                                              float content_width,
+                                              int line,
+                                              int col) {
+    if (!editor)
+        return 0;
+    if (line < 0)
+        line = 0;
+    if (line >= editor->line_count)
+        line = editor->line_count - 1;
+    line = codeeditor_visible_anchor_line(editor, line);
+
+    int visual_row = 0;
+    for (int i = 0; i < line; i++) {
+        visual_row += codeeditor_visual_rows_for_line(editor, i, content_width);
+    }
+
+    int wrapped_row = 0;
+    codeeditor_visual_offset_for_position(editor, content_width, line, col, &wrapped_row, NULL);
+    visual_row += wrapped_row;
+    return visual_row;
+}
+
+static void codeeditor_locate_visual_row(const vg_codeeditor_t *editor,
+                                         float content_width,
+                                         int visual_row,
+                                         int *out_line,
+                                         int *out_row_in_line) {
+    if (out_line)
+        *out_line = 0;
+    if (out_row_in_line)
+        *out_row_in_line = 0;
+    if (!editor || editor->line_count <= 0)
+        return;
+
+    if (visual_row < 0)
+        visual_row = 0;
+
+    int accumulated = 0;
+    for (int line = 0; line < editor->line_count; line++) {
+        int row_count = codeeditor_visual_rows_for_line(editor, line, content_width);
+        if (row_count == 0)
+            continue;
+        if (visual_row < accumulated + row_count) {
+            if (out_line)
+                *out_line = line;
+            if (out_row_in_line)
+                *out_row_in_line = visual_row - accumulated;
+            return;
+        }
+        accumulated += row_count;
+    }
+
+    if (out_line)
+        *out_line = codeeditor_visible_anchor_line(editor, editor->line_count - 1);
+    if (out_row_in_line) {
+        int last_rows = codeeditor_visual_rows_for_line(
+            editor, codeeditor_visible_anchor_line(editor, editor->line_count - 1), content_width);
+        *out_row_in_line = last_rows > 0 ? last_rows - 1 : 0;
+    }
+}
+
+static void codeeditor_clamp_scroll(vg_codeeditor_t *editor, const vg_widget_t *widget) {
+    if (!editor || !widget)
+        return;
+    if (editor->word_wrap)
+        editor->scroll_x = 0.0f;
+    if (editor->scroll_y < 0.0f)
+        editor->scroll_y = 0.0f;
+    float max_scroll = codeeditor_max_scroll_y(editor, widget);
+    if (editor->scroll_y > max_scroll)
+        editor->scroll_y = max_scroll;
+}
+
+static bool codeeditor_get_scrollbar_metrics(const vg_codeeditor_t *editor,
+                                             const vg_widget_t *widget,
+                                             float *out_track_x,
+                                             float *out_thumb_y,
+                                             float *out_thumb_height,
+                                             float *out_max_scroll,
+                                             float *out_thumb_travel) {
+    if (out_track_x)
+        *out_track_x = 0.0f;
+    if (out_thumb_y)
+        *out_thumb_y = 0.0f;
+    if (out_thumb_height)
+        *out_thumb_height = 0.0f;
+    if (out_max_scroll)
+        *out_max_scroll = 0.0f;
+    if (out_thumb_travel)
+        *out_thumb_travel = 0.0f;
+    if (!editor || !widget || widget->height <= 0.0f)
+        return false;
+
+    float total_content_height = codeeditor_total_content_height(editor, widget);
+    float visible_height = widget->height;
+    if (total_content_height <= visible_height)
+        return false;
+
+    float thumb_ratio = visible_height / total_content_height;
+    if (thumb_ratio > 1.0f)
+        thumb_ratio = 1.0f;
+    float thumb_height = visible_height * thumb_ratio;
+    if (thumb_height < 20.0f)
+        thumb_height = 20.0f;
+    if (thumb_height > visible_height)
+        thumb_height = visible_height;
+
+    float max_scroll = total_content_height - visible_height;
+    float thumb_travel = visible_height - thumb_height;
+    float scroll_ratio = max_scroll > 0.0f ? editor->scroll_y / max_scroll : 0.0f;
+    if (scroll_ratio < 0.0f)
+        scroll_ratio = 0.0f;
+    if (scroll_ratio > 1.0f)
+        scroll_ratio = 1.0f;
+
+    if (out_track_x)
+        *out_track_x = widget->width - CODEEDITOR_SCROLLBAR_WIDTH;
+    if (out_thumb_y)
+        *out_thumb_y = scroll_ratio * thumb_travel;
+    if (out_thumb_height)
+        *out_thumb_height = thumb_height;
+    if (out_max_scroll)
+        *out_max_scroll = max_scroll;
+    if (out_thumb_travel)
+        *out_thumb_travel = thumb_travel;
+    return true;
+}
+
+static void codeeditor_local_point_to_position(const vg_codeeditor_t *editor,
+                                               const vg_widget_t *widget,
+                                               float local_x,
+                                               float local_y,
+                                               int *out_line,
+                                               int *out_col) {
+    if (out_line)
+        *out_line = 0;
+    if (out_col)
+        *out_col = 0;
+    if (!editor || !widget || editor->line_count <= 0)
+        return;
+
+    if (editor->word_wrap) {
+        float content_width = codeeditor_content_draw_width(editor, widget);
+        int chars_per_row = codeeditor_chars_per_row(editor, content_width);
+        float doc_y = local_y + editor->scroll_y;
+        int visual_row =
+            editor->line_height > 0.0f ? (int)(doc_y / editor->line_height) : 0;
+        int line = 0;
+        int row_in_line = 0;
+        codeeditor_locate_visual_row(editor, content_width, visual_row, &line, &row_in_line);
+
+        float content_local_x = local_x - editor->gutter_width;
+        if (content_local_x < 0.0f)
+            content_local_x = 0.0f;
+        int col_in_row = editor->char_width > 0.0f
+                             ? (int)(content_local_x / editor->char_width + 0.5f)
+                             : 0;
+        if (col_in_row < 0)
+            col_in_row = 0;
+        int col = row_in_line * chars_per_row + col_in_row;
+        if (col > (int)editor->lines[line].length)
+            col = (int)editor->lines[line].length;
+        if (out_line)
+            *out_line = line;
+        if (out_col)
+            *out_col = col;
         return;
     }
 
-    // Calculate width needed for line numbers
-    char buf[32];
-    snprintf(buf, sizeof(buf), "%d", editor->line_count);
-    vg_text_metrics_t metrics;
-    vg_font_measure_text(editor->font, editor->font_size, buf, &metrics);
-    editor->gutter_width = metrics.width + 20.0f; // Add padding
+    float content_local_x = local_x - editor->gutter_width + editor->scroll_x;
+    float doc_y = local_y + editor->scroll_y;
+    int visual_row = editor->line_height > 0.0f ? (int)(doc_y / editor->line_height) : 0;
+    int line = 0;
+    codeeditor_locate_visual_row(editor, codeeditor_content_draw_width(editor, widget), visual_row, &line, NULL);
+
+    int col = editor->char_width > 0.0f ? (int)(content_local_x / editor->char_width + 0.5f) : 0;
+    if (col < 0)
+        col = 0;
+    if (col > (int)editor->lines[line].length)
+        col = (int)editor->lines[line].length;
+    if (out_line)
+        *out_line = line;
+    if (out_col)
+        *out_col = col;
+}
+
+static void codeeditor_move_cursor_vertical(vg_codeeditor_t *editor,
+                                            const vg_widget_t *widget,
+                                            int visual_rows) {
+    if (!editor || !widget || visual_rows == 0 || editor->line_count <= 0)
+        return;
+
+    float content_width = codeeditor_content_draw_width(editor, widget);
+    int row_index = 0;
+    int col_in_row = 0;
+    codeeditor_visual_offset_for_position(
+        editor, content_width, editor->cursor_line, editor->cursor_col, &row_index, &col_in_row);
+
+    int visual_row =
+        codeeditor_visual_row_for_position(editor, content_width, editor->cursor_line, editor->cursor_col);
+    int target_visual_row = visual_row + visual_rows;
+    int total_visual_rows = codeeditor_total_visual_rows_for_width(editor, content_width);
+    if (total_visual_rows <= 0)
+        return;
+    if (target_visual_row < 0)
+        target_visual_row = 0;
+    if (target_visual_row >= total_visual_rows)
+        target_visual_row = total_visual_rows - 1;
+
+    int target_line = 0;
+    int target_row_in_line = 0;
+    codeeditor_locate_visual_row(
+        editor, content_width, target_visual_row, &target_line, &target_row_in_line);
+
+    int chars_per_row = codeeditor_chars_per_row(editor, content_width);
+    int target_col = target_row_in_line * chars_per_row + col_in_row;
+    if (target_col > (int)editor->lines[target_line].length)
+        target_col = (int)editor->lines[target_line].length;
+
+    editor->cursor_line = target_line;
+    editor->cursor_col = target_col;
 }
 
 // Ensure the cursor line is visible by adjusting scroll position
@@ -173,7 +622,10 @@ static void ensure_cursor_visible(vg_codeeditor_t *editor) {
         return;
 
     float visible_height = editor->base.height;
-    float cursor_y = editor->cursor_line * editor->line_height;
+    float content_width = codeeditor_content_draw_width(editor, &editor->base);
+    int cursor_visual_row =
+        codeeditor_visual_row_for_position(editor, content_width, editor->cursor_line, editor->cursor_col);
+    float cursor_y = (float)cursor_visual_row * editor->line_height;
 
     // Scroll up if cursor is above visible area
     if (cursor_y < editor->scroll_y) {
@@ -188,11 +640,19 @@ static void ensure_cursor_visible(vg_codeeditor_t *editor) {
     if (editor->scroll_y < 0)
         editor->scroll_y = 0;
 
-    float max_scroll = (editor->line_count - 1) * editor->line_height;
-    if (max_scroll < 0)
-        max_scroll = 0;
+    float max_scroll = codeeditor_max_scroll_y(editor, &editor->base);
     if (editor->scroll_y > max_scroll)
         editor->scroll_y = max_scroll;
+}
+
+void vg_codeeditor_refresh_layout_state(vg_codeeditor_t *editor) {
+    if (!editor)
+        return;
+    update_gutter_width(editor);
+    codeeditor_adjust_hidden_cursors(editor);
+    codeeditor_clamp_scroll(editor, &editor->base);
+    editor->base.needs_layout = true;
+    editor->base.needs_paint = true;
 }
 
 //=============================================================================
@@ -470,6 +930,25 @@ static void clamp_editor_position(vg_codeeditor_t *editor, int *line, int *col) 
     clamp_editor_col(editor, *line, col);
 }
 
+static void codeeditor_clamp_cursor_to_visible(vg_codeeditor_t *editor, int *line, int *col) {
+    if (!editor || !line || !col || editor->line_count <= 0)
+        return;
+    clamp_editor_position(editor, line, col);
+    *line = codeeditor_visible_anchor_line(editor, *line);
+    clamp_editor_col(editor, *line, col);
+}
+
+static void codeeditor_adjust_hidden_cursors(vg_codeeditor_t *editor) {
+    if (!editor || editor->line_count <= 0)
+        return;
+
+    codeeditor_clamp_cursor_to_visible(editor, &editor->cursor_line, &editor->cursor_col);
+    for (int i = 0; i < editor->extra_cursor_count; i++) {
+        codeeditor_clamp_cursor_to_visible(
+            editor, &editor->extra_cursors[i].line, &editor->extra_cursors[i].col);
+    }
+}
+
 static int compare_positions(int lhs_line, int lhs_col, int rhs_line, int rhs_col) {
     if (lhs_line != rhs_line)
         return (lhs_line < rhs_line) ? -1 : 1;
@@ -691,7 +1170,7 @@ static void apply_edit_targets(vg_codeeditor_t *editor,
     free(new_lines);
     free(new_cols);
     editor->modified = true;
-    update_gutter_width(editor);
+    vg_codeeditor_refresh_layout_state(editor);
     ensure_cursor_visible(editor);
     editor->base.needs_paint = true;
 }
@@ -752,6 +1231,7 @@ vg_codeeditor_t *vg_codeeditor_create(vg_widget_t *parent) {
     // Gutter
     editor->show_line_numbers = true;
     editor->gutter_width = 50.0f;
+    editor->line_number_width_override = 0.0f;
     editor->gutter_bg = theme->colors.bg_secondary;
     editor->line_number_color = theme->colors.fg_tertiary;
 
@@ -920,18 +1400,59 @@ static void codeeditor_draw_gutter_icon_image(vgfx_window_t canvas,
     }
 }
 
+static void codeeditor_draw_fold_marker(vg_codeeditor_t *editor,
+                                        void *canvas,
+                                        float fold_gutter_x,
+                                        float fold_gutter_width,
+                                        float line_y,
+                                        const vg_font_metrics_t *font_metrics,
+                                        int line) {
+    const struct vg_fold_region *region = codeeditor_fold_region_starting_at(editor, line);
+    if (!editor || !region || fold_gutter_width <= 0.0f || !font_metrics)
+        return;
+
+    char marker[2] = {region->folded ? '+' : '-', '\0'};
+    vg_text_metrics_t marker_metrics = {0};
+    vg_font_measure_text(editor->font, editor->font_size, marker, &marker_metrics);
+    float marker_x = fold_gutter_x + (fold_gutter_width - marker_metrics.width) * 0.5f;
+    float marker_y = line_y + font_metrics->ascent;
+    vg_font_draw_text(
+        canvas, editor->font, editor->font_size, marker_x, marker_y, marker, editor->line_number_color);
+}
+
+static void codeeditor_draw_fold_ellipsis(vg_codeeditor_t *editor,
+                                          void *canvas,
+                                          float content_x,
+                                          float baseline_y,
+                                          int line,
+                                          int start_col) {
+    const struct vg_fold_region *region = codeeditor_fold_region_starting_at(editor, line);
+    if (!editor || !region || !region->folded)
+        return;
+
+    float ellipsis_x = content_x + (float)start_col * editor->char_width + 4.0f;
+    vg_font_draw_text(
+        canvas, editor->font, editor->font_size, ellipsis_x, baseline_y, "...", editor->line_number_color);
+}
+
 static void codeeditor_paint(vg_widget_t *widget, void *canvas) {
     vg_codeeditor_t *editor = (vg_codeeditor_t *)widget;
 
     if (!editor->font)
         return;
 
-    // Calculate visible lines
-    editor->visible_first_line = (int)(editor->scroll_y / editor->line_height);
-    editor->visible_line_count = (int)(widget->height / editor->line_height) + 2;
-
     float content_x = widget->x + editor->gutter_width;
-    float content_width = widget->width - editor->gutter_width;
+    float content_width = codeeditor_content_draw_width(editor, widget);
+    float total_content_height = codeeditor_total_content_height_for_width(editor, content_width);
+    float visible_height = widget->height;
+    float scrollbar_width = CODEEDITOR_SCROLLBAR_WIDTH;
+    float line_number_gutter_width = codeeditor_line_number_gutter_width(editor);
+    float fold_gutter_width = codeeditor_fold_gutter_width(editor);
+    codeeditor_clamp_scroll(editor, widget);
+
+    int first_visual_row = (int)(editor->scroll_y / editor->line_height);
+    codeeditor_locate_visual_row(editor, content_width, first_visual_row, &editor->visible_first_line, NULL);
+    editor->visible_line_count = (int)(widget->height / editor->line_height) + 2;
 
     // Draw background
     vgfx_fill_rect((vgfx_window_t)canvas,
@@ -942,7 +1463,7 @@ static void codeeditor_paint(vg_widget_t *widget, void *canvas) {
                    editor->bg_color);
 
     // Draw gutter background
-    if (editor->show_line_numbers) {
+    if (editor->gutter_width > 0.0f) {
         vgfx_fill_rect((vgfx_window_t)canvas,
                        (int32_t)widget->x,
                        (int32_t)widget->y,
@@ -953,207 +1474,102 @@ static void codeeditor_paint(vg_widget_t *widget, void *canvas) {
 
     vg_font_metrics_t font_metrics;
     vg_font_get_metrics(editor->font, editor->font_size, &font_metrics);
+    int32_t clip_x = (int32_t)content_x;
+    int32_t clip_y = (int32_t)widget->y;
+    int32_t clip_w = (int32_t)content_width;
+    int32_t clip_h = (int32_t)widget->height;
 
-    // Draw visible lines
-    for (int i = editor->visible_first_line;
-         i < editor->line_count && i < editor->visible_first_line + editor->visible_line_count;
-         i++) {
-        float line_y = widget->y + (i - editor->visible_first_line) * editor->line_height -
-                       (editor->scroll_y - editor->visible_first_line * editor->line_height);
+    if (clip_w > 0 && clip_h > 0) {
+        vgfx_set_clip((vgfx_window_t)canvas, clip_x, clip_y, clip_w, clip_h);
+    }
 
-        // Draw current line highlight
-        if (i == editor->cursor_line && (widget->state & VG_STATE_FOCUSED)) {
-            vgfx_fill_rect((vgfx_window_t)canvas,
-                           (int32_t)content_x,
-                           (int32_t)line_y,
-                           (int32_t)content_width,
-                           (int32_t)editor->line_height,
-                           editor->current_line_bg);
-        }
-
-        // PARTIAL-002: Draw highlight spans on this line (search results, diagnostics)
-        for (int s = 0; s < editor->highlight_span_count; s++) {
-            struct vg_highlight_span *span = &editor->highlight_spans[s];
-            if (i < span->start_line || i > span->end_line)
+    if (!editor->word_wrap) {
+        float row_offset = editor->scroll_y - (float)first_visual_row * editor->line_height;
+        float line_y = widget->y - row_offset;
+        for (int i = editor->visible_first_line;
+             i >= 0 && i < editor->line_count && line_y < widget->y + widget->height;
+             i = codeeditor_next_visible_line(editor, i)) {
+            if (codeeditor_line_is_hidden(editor, i))
                 continue;
-            int col_start = (i == span->start_line) ? span->start_col : 0;
-            int col_end = (i == span->end_line) ? span->end_col : (int)editor->lines[i].length;
-            if (col_end <= col_start)
-                col_end = col_start + 1; /* highlight at least one char width */
-            float span_x = content_x + col_start * editor->char_width - editor->scroll_x;
-            float span_w = (col_end - col_start) * editor->char_width;
-            vgfx_fill_rect((vgfx_window_t)canvas,
-                           (int32_t)span_x,
-                           (int32_t)line_y,
-                           (int32_t)span_w,
-                           (int32_t)editor->line_height,
-                           (vgfx_color_t)span->color);
-        }
 
-        // Draw line number
-        if (editor->show_line_numbers) {
-            char line_num[16];
-            snprintf(line_num, sizeof(line_num), "%d", i + 1);
-            vg_text_metrics_t num_metrics;
-            vg_font_measure_text(editor->font, editor->font_size, line_num, &num_metrics);
-
-            float num_x = widget->x + editor->gutter_width - num_metrics.width - 8.0f;
-            float num_y = line_y + font_metrics.ascent;
-
-            vg_font_draw_text(canvas,
-                              editor->font,
-                              editor->font_size,
-                              num_x,
-                              num_y,
-                              line_num,
-                              editor->line_number_color);
-
-            // PARTIAL-001: Draw gutter icon for this line (breakpoints, errors, etc.)
-            for (int g = 0; g < editor->gutter_icon_count; g++) {
-                struct vg_gutter_icon *icon = &editor->gutter_icons[g];
-                if (icon->line != i)
-                    continue;
-                int32_t icon_box = (int32_t)editor->line_height - 4;
-                if (icon_box < 8)
-                    icon_box = 8;
-                int32_t icon_x = (int32_t)widget->x + 2;
-                int32_t icon_y = (int32_t)line_y + ((int32_t)editor->line_height - icon_box) / 2;
-                if (icon->image.type == VG_ICON_IMAGE && icon->image.data.image.pixels) {
-                    codeeditor_draw_gutter_icon_image(
-                        (vgfx_window_t)canvas, icon, icon_x, icon_y, icon_box, icon_box);
-                } else {
-                    int32_t icon_r = icon_box / 2;
-                    int32_t icon_cx = icon_x + icon_r;
-                    int32_t icon_cy = icon_y + icon_r;
-                    vgfx_fill_circle(
-                        (vgfx_window_t)canvas, icon_cx, icon_cy, icon_r, (vgfx_color_t)icon->color);
-                }
-                break; /* one icon per line */
-            }
-        }
-
-        // Draw selection on this line
-        if (editor->has_selection && (widget->state & VG_STATE_FOCUSED)) {
-            int sel_start_line = editor->selection.start_line;
-            int sel_start_col = editor->selection.start_col;
-            int sel_end_line = editor->selection.end_line;
-            int sel_end_col = editor->selection.end_col;
-
-            // Normalize selection
-            if (sel_start_line > sel_end_line ||
-                (sel_start_line == sel_end_line && sel_start_col > sel_end_col)) {
-                int tmp = sel_start_line;
-                sel_start_line = sel_end_line;
-                sel_end_line = tmp;
-                tmp = sel_start_col;
-                sel_start_col = sel_end_col;
-                sel_end_col = tmp;
-            }
-
-            if (i >= sel_start_line && i <= sel_end_line) {
-                int col_start = (i == sel_start_line) ? sel_start_col : 0;
-                int col_end = (i == sel_end_line) ? sel_end_col : (int)editor->lines[i].length;
-
-                float sel_x = content_x + col_start * editor->char_width - editor->scroll_x;
-                float sel_width = (col_end - col_start) * editor->char_width;
-
-                // Draw selection rectangle
+            if (i == editor->cursor_line && (widget->state & VG_STATE_FOCUSED)) {
                 vgfx_fill_rect((vgfx_window_t)canvas,
-                               (int32_t)sel_x,
+                               (int32_t)content_x,
                                (int32_t)line_y,
-                               (int32_t)sel_width,
+                               (int32_t)content_width,
                                (int32_t)editor->line_height,
-                               editor->selection_color);
+                               editor->current_line_bg);
             }
-        }
 
-        if (widget->state & VG_STATE_FOCUSED) {
-            for (int c = 0; c < editor->extra_cursor_count; c++) {
-                if (!editor->extra_cursors[c].has_selection)
+            for (int s = 0; s < editor->highlight_span_count; s++) {
+                struct vg_highlight_span *span = &editor->highlight_spans[s];
+                if (i < span->start_line || i > span->end_line)
                     continue;
+                int col_start = (i == span->start_line) ? span->start_col : 0;
+                int col_end = (i == span->end_line) ? span->end_col : (int)editor->lines[i].length;
+                if (col_end <= col_start)
+                    col_end = col_start + 1;
+                float span_x = content_x + col_start * editor->char_width - editor->scroll_x;
+                float span_w = (col_end - col_start) * editor->char_width;
+                vgfx_fill_rect((vgfx_window_t)canvas,
+                               (int32_t)span_x,
+                               (int32_t)line_y,
+                               (int32_t)span_w,
+                               (int32_t)editor->line_height,
+                               (vgfx_color_t)span->color);
+            }
 
-                int sel_start_line = editor->extra_cursors[c].selection.start_line;
-                int sel_start_col = editor->extra_cursors[c].selection.start_col;
-                int sel_end_line = editor->extra_cursors[c].selection.end_line;
-                int sel_end_col = editor->extra_cursors[c].selection.end_col;
+            if (editor->has_selection && (widget->state & VG_STATE_FOCUSED)) {
+                int sel_start_line = editor->selection.start_line;
+                int sel_start_col = editor->selection.start_col;
+                int sel_end_line = editor->selection.end_line;
+                int sel_end_col = editor->selection.end_col;
                 normalize_selection_range(
                     &sel_start_line, &sel_start_col, &sel_end_line, &sel_end_col);
-
-                if (i < sel_start_line || i > sel_end_line)
-                    continue;
-
-                int col_start = (i == sel_start_line) ? sel_start_col : 0;
-                int col_end = (i == sel_end_line) ? sel_end_col : (int)editor->lines[i].length;
-                float sel_x = content_x + col_start * editor->char_width - editor->scroll_x;
-                float sel_width = (col_end - col_start) * editor->char_width;
-
-                vgfx_fill_rect((vgfx_window_t)canvas,
-                               (int32_t)sel_x,
-                               (int32_t)line_y,
-                               (int32_t)sel_width,
-                               (int32_t)editor->line_height,
-                               editor->selection_color);
-            }
-        }
-
-        // Draw line text
-        if (editor->lines[i].text && editor->lines[i].length > 0) {
-            float text_y = line_y + font_metrics.ascent;
-
-            // Run syntax highlighter (no-op if none registered or colors up-to-date)
-            highlight_line(editor, i);
-
-            if (editor->word_wrap && editor->char_width > 0.0f && content_width > 0.0f) {
-                /* Word-wrap rendering: break the line into visual sub-rows of
-                 * chars_per_row characters each.  Scroll is disabled on the X axis
-                 * in wrap mode (horizontal scroll doesn't make sense when lines wrap).
-                 * Cursor position and scrolling are not adjusted; this is a display-
-                 * only feature. */
-                int chars_per_row = (int)(content_width / editor->char_width);
-                if (chars_per_row < 1)
-                    chars_per_row = 1;
-                size_t len = editor->lines[i].length;
-                size_t offset = 0;
-                float sub_y = text_y;
-                while (offset < len) {
-                    size_t seg_len = (len - offset < (size_t)chars_per_row) ? (len - offset)
-                                                                            : (size_t)chars_per_row;
-                    if (editor->lines[i].colors) {
-                        for (size_t c = 0; c < seg_len; c++) {
-                            size_t gi = offset + c;
-                            uint32_t col = (gi < editor->lines[i].colors_capacity)
-                                               ? editor->lines[i].colors[gi]
-                                               : editor->text_color;
-                            char ch[2] = {editor->lines[i].text[gi], '\0'};
-                            vg_font_draw_text(canvas,
-                                              editor->font,
-                                              editor->font_size,
-                                              content_x + c * editor->char_width,
-                                              sub_y,
-                                              ch,
-                                              col);
-                        }
-                    } else {
-                        char seg_buf[256];
-                        size_t copy_len =
-                            seg_len < sizeof(seg_buf) - 1 ? seg_len : sizeof(seg_buf) - 1;
-                        memcpy(seg_buf, editor->lines[i].text + offset, copy_len);
-                        seg_buf[copy_len] = '\0';
-                        vg_font_draw_text(canvas,
-                                          editor->font,
-                                          editor->font_size,
-                                          content_x,
-                                          sub_y,
-                                          seg_buf,
-                                          editor->text_color);
-                    }
-                    offset += seg_len;
-                    sub_y += editor->line_height;
+                if (i >= sel_start_line && i <= sel_end_line) {
+                    int col_start = (i == sel_start_line) ? sel_start_col : 0;
+                    int col_end = (i == sel_end_line) ? sel_end_col : (int)editor->lines[i].length;
+                    float sel_x = content_x + col_start * editor->char_width - editor->scroll_x;
+                    float sel_width = (col_end - col_start) * editor->char_width;
+                    vgfx_fill_rect((vgfx_window_t)canvas,
+                                   (int32_t)sel_x,
+                                   (int32_t)line_y,
+                                   (int32_t)sel_width,
+                                   (int32_t)editor->line_height,
+                                   editor->selection_color);
                 }
-            } else {
+            }
+
+            if (widget->state & VG_STATE_FOCUSED) {
+                for (int c = 0; c < editor->extra_cursor_count; c++) {
+                    if (!editor->extra_cursors[c].has_selection)
+                        continue;
+                    int sel_start_line = editor->extra_cursors[c].selection.start_line;
+                    int sel_start_col = editor->extra_cursors[c].selection.start_col;
+                    int sel_end_line = editor->extra_cursors[c].selection.end_line;
+                    int sel_end_col = editor->extra_cursors[c].selection.end_col;
+                    normalize_selection_range(
+                        &sel_start_line, &sel_start_col, &sel_end_line, &sel_end_col);
+                    if (i < sel_start_line || i > sel_end_line)
+                        continue;
+                    int col_start = (i == sel_start_line) ? sel_start_col : 0;
+                    int col_end = (i == sel_end_line) ? sel_end_col : (int)editor->lines[i].length;
+                    float sel_x = content_x + col_start * editor->char_width - editor->scroll_x;
+                    float sel_width = (col_end - col_start) * editor->char_width;
+                    vgfx_fill_rect((vgfx_window_t)canvas,
+                                   (int32_t)sel_x,
+                                   (int32_t)line_y,
+                                   (int32_t)sel_width,
+                                   (int32_t)editor->line_height,
+                                   editor->selection_color);
+                }
+            }
+
+            if (editor->lines[i].text && editor->lines[i].length > 0) {
+                float text_y = line_y + font_metrics.ascent;
+                highlight_line(editor, i);
                 float text_x = content_x - editor->scroll_x;
                 if (editor->lines[i].colors) {
-                    // Draw character by character with colors
                     for (size_t c = 0; c < editor->lines[i].length; c++) {
                         uint32_t col = (c < editor->lines[i].colors_capacity)
                                            ? editor->lines[i].colors[c]
@@ -1168,7 +1584,6 @@ static void codeeditor_paint(vg_widget_t *widget, void *canvas) {
                                           col);
                     }
                 } else {
-                    // Draw entire line
                     vg_font_draw_text(canvas,
                                       editor->font,
                                       editor->font_size,
@@ -1177,52 +1592,411 @@ static void codeeditor_paint(vg_widget_t *widget, void *canvas) {
                                       editor->lines[i].text,
                                       editor->text_color);
                 }
+                codeeditor_draw_fold_ellipsis(
+                    editor, canvas, content_x - editor->scroll_x, text_y, i, (int)editor->lines[i].length);
+            }
+
+            line_y += editor->line_height;
+        }
+
+        if ((widget->state & VG_STATE_FOCUSED) && editor->cursor_visible && !editor->read_only) {
+            int visible_cursor_line =
+                codeeditor_visual_row_for_position(editor, content_width, editor->cursor_line, editor->cursor_col);
+            float cursor_y = widget->y + (float)visible_cursor_line * editor->line_height - editor->scroll_y;
+            if (cursor_y + editor->line_height > widget->y && cursor_y < widget->y + widget->height) {
+                float cursor_x =
+                    content_x + editor->cursor_col * editor->char_width - editor->scroll_x;
+                vgfx_fill_rect((vgfx_window_t)canvas,
+                               (int32_t)cursor_x,
+                               (int32_t)cursor_y,
+                               2,
+                               (int32_t)editor->line_height,
+                               editor->cursor_color);
+            }
+
+            for (int c = 0; c < editor->extra_cursor_count; c++) {
+                int visible_extra_line = codeeditor_visual_row_for_position(
+                    editor, content_width, editor->extra_cursors[c].line, editor->extra_cursors[c].col);
+                float cursor_x = content_x +
+                                 editor->extra_cursors[c].col * editor->char_width - editor->scroll_x;
+                float cursor_y =
+                    widget->y + (float)visible_extra_line * editor->line_height - editor->scroll_y;
+                if (cursor_y + editor->line_height <= widget->y || cursor_y >= widget->y + widget->height)
+                    continue;
+                vgfx_fill_rect((vgfx_window_t)canvas,
+                               (int32_t)cursor_x,
+                               (int32_t)cursor_y,
+                               2,
+                               (int32_t)editor->line_height,
+                               editor->cursor_color);
+            }
+        }
+    } else {
+        int chars_per_row = codeeditor_chars_per_row(editor, content_width);
+        int first_visual_row = (int)(editor->scroll_y / editor->line_height);
+        float row_offset = editor->scroll_y - (float)first_visual_row * editor->line_height;
+        int line = 0;
+        int row_in_line = 0;
+        codeeditor_locate_visual_row(editor, content_width, first_visual_row, &line, &row_in_line);
+
+        float row_y = widget->y - row_offset;
+        while (line < editor->line_count && row_y < widget->y + widget->height) {
+            if (line >= 0 && line < editor->line_count) {
+                size_t line_len = editor->lines[line].length;
+                int row_count = codeeditor_visual_rows_for_line(editor, line, content_width);
+                if (row_count == 0) {
+                    line = codeeditor_next_visible_line(editor, line);
+                    row_in_line = 0;
+                    continue;
+                }
+                int seg_start = chars_per_row > 0 ? row_in_line * chars_per_row : 0;
+                size_t remaining = line_len > (size_t)seg_start ? line_len - (size_t)seg_start : 0;
+                int seg_len = chars_per_row > 0
+                                  ? (int)((remaining < (size_t)chars_per_row) ? remaining
+                                                                              : (size_t)chars_per_row)
+                                  : (int)line_len;
+
+                if (line == editor->cursor_line && (widget->state & VG_STATE_FOCUSED)) {
+                    vgfx_fill_rect((vgfx_window_t)canvas,
+                                   (int32_t)content_x,
+                                   (int32_t)row_y,
+                                   (int32_t)content_width,
+                                   (int32_t)editor->line_height,
+                                   editor->current_line_bg);
+                }
+
+                for (int s = 0; s < editor->highlight_span_count; s++) {
+                    struct vg_highlight_span *span = &editor->highlight_spans[s];
+                    if (line < span->start_line || line > span->end_line)
+                        continue;
+                    int span_start = (line == span->start_line) ? span->start_col : 0;
+                    int span_end = (line == span->end_line) ? span->end_col : (int)line_len;
+                    if (span_end <= span_start)
+                        span_end = span_start + 1;
+                    int overlap_start = span_start > seg_start ? span_start : seg_start;
+                    int overlap_end = span_end < seg_start + seg_len ? span_end : seg_start + seg_len;
+                    if (overlap_end <= overlap_start)
+                        continue;
+                    float span_x =
+                        content_x + (float)(overlap_start - seg_start) * editor->char_width;
+                    float span_w = (float)(overlap_end - overlap_start) * editor->char_width;
+                    vgfx_fill_rect((vgfx_window_t)canvas,
+                                   (int32_t)span_x,
+                                   (int32_t)row_y,
+                                   (int32_t)span_w,
+                                   (int32_t)editor->line_height,
+                                   (vgfx_color_t)span->color);
+                }
+
+                if (editor->has_selection && (widget->state & VG_STATE_FOCUSED)) {
+                    int sel_start_line = editor->selection.start_line;
+                    int sel_start_col = editor->selection.start_col;
+                    int sel_end_line = editor->selection.end_line;
+                    int sel_end_col = editor->selection.end_col;
+                    normalize_selection_range(
+                        &sel_start_line, &sel_start_col, &sel_end_line, &sel_end_col);
+                    if (line >= sel_start_line && line <= sel_end_line) {
+                        int sel_start = (line == sel_start_line) ? sel_start_col : 0;
+                        int sel_end = (line == sel_end_line) ? sel_end_col : (int)line_len;
+                        int overlap_start = sel_start > seg_start ? sel_start : seg_start;
+                        int overlap_end = sel_end < seg_start + seg_len ? sel_end : seg_start + seg_len;
+                        if (overlap_end > overlap_start) {
+                            float sel_x =
+                                content_x + (float)(overlap_start - seg_start) * editor->char_width;
+                            float sel_w = (float)(overlap_end - overlap_start) * editor->char_width;
+                            vgfx_fill_rect((vgfx_window_t)canvas,
+                                           (int32_t)sel_x,
+                                           (int32_t)row_y,
+                                           (int32_t)sel_w,
+                                           (int32_t)editor->line_height,
+                                           editor->selection_color);
+                        }
+                    }
+                }
+
+                if (widget->state & VG_STATE_FOCUSED) {
+                    for (int c = 0; c < editor->extra_cursor_count; c++) {
+                        if (!editor->extra_cursors[c].has_selection)
+                            continue;
+                        int sel_start_line = editor->extra_cursors[c].selection.start_line;
+                        int sel_start_col = editor->extra_cursors[c].selection.start_col;
+                        int sel_end_line = editor->extra_cursors[c].selection.end_line;
+                        int sel_end_col = editor->extra_cursors[c].selection.end_col;
+                        normalize_selection_range(
+                            &sel_start_line, &sel_start_col, &sel_end_line, &sel_end_col);
+                        if (line < sel_start_line || line > sel_end_line)
+                            continue;
+                        int sel_start = (line == sel_start_line) ? sel_start_col : 0;
+                        int sel_end = (line == sel_end_line) ? sel_end_col : (int)line_len;
+                        int overlap_start = sel_start > seg_start ? sel_start : seg_start;
+                        int overlap_end = sel_end < seg_start + seg_len ? sel_end : seg_start + seg_len;
+                        if (overlap_end > overlap_start) {
+                            float sel_x =
+                                content_x + (float)(overlap_start - seg_start) * editor->char_width;
+                            float sel_w = (float)(overlap_end - overlap_start) * editor->char_width;
+                            vgfx_fill_rect((vgfx_window_t)canvas,
+                                           (int32_t)sel_x,
+                                           (int32_t)row_y,
+                                           (int32_t)sel_w,
+                                           (int32_t)editor->line_height,
+                                           editor->selection_color);
+                        }
+                    }
+                }
+
+                highlight_line(editor, line);
+                if (editor->lines[line].text && line_len > 0 && seg_len > 0) {
+                    float text_y = row_y + font_metrics.ascent;
+                    if (editor->lines[line].colors) {
+                        for (int c = 0; c < seg_len; c++) {
+                            size_t gi = (size_t)seg_start + (size_t)c;
+                            uint32_t col = (gi < editor->lines[line].colors_capacity)
+                                               ? editor->lines[line].colors[gi]
+                                               : editor->text_color;
+                            char ch[2] = {editor->lines[line].text[gi], '\0'};
+                            vg_font_draw_text(canvas,
+                                              editor->font,
+                                              editor->font_size,
+                                              content_x + (float)c * editor->char_width,
+                                              text_y,
+                                              ch,
+                                              col);
+                        }
+                    } else {
+                        char stack_buf[256];
+                        char *seg_buf = stack_buf;
+                        size_t copy_len = (size_t)seg_len;
+                        if (copy_len >= sizeof(stack_buf)) {
+                            seg_buf = (char *)malloc(copy_len + 1);
+                            if (!seg_buf)
+                                seg_buf = stack_buf;
+                        }
+                        if (seg_buf) {
+                            if (seg_buf == stack_buf && copy_len >= sizeof(stack_buf)) {
+                                copy_len = sizeof(stack_buf) - 1;
+                            }
+                            memcpy(seg_buf, editor->lines[line].text + seg_start, copy_len);
+                            seg_buf[copy_len] = '\0';
+                            vg_font_draw_text(canvas,
+                                              editor->font,
+                                              editor->font_size,
+                                              content_x,
+                                              text_y,
+                                              seg_buf,
+                                              editor->text_color);
+                            if (seg_buf != stack_buf)
+                                free(seg_buf);
+                        }
+                    }
+                }
+                if (row_in_line == 0) {
+                    codeeditor_draw_fold_ellipsis(
+                        editor, canvas, content_x, row_y + font_metrics.ascent, line, seg_len);
+                }
+
+                row_in_line++;
+                if (row_in_line >= row_count) {
+                    line = codeeditor_next_visible_line(editor, line);
+                    row_in_line = 0;
+                }
+            } else {
+                line = codeeditor_next_visible_line(editor, line);
+                row_in_line = 0;
+            }
+            row_y += editor->line_height;
+        }
+
+        if ((widget->state & VG_STATE_FOCUSED) && editor->cursor_visible && !editor->read_only) {
+            int cursor_visual_row =
+                codeeditor_visual_row_for_position(editor, content_width, editor->cursor_line, editor->cursor_col);
+            float cursor_y = widget->y + (float)cursor_visual_row * editor->line_height - editor->scroll_y;
+            int col_in_row = editor->cursor_col;
+            codeeditor_visual_offset_for_position(
+                editor, content_width, editor->cursor_line, editor->cursor_col, NULL, &col_in_row);
+            float cursor_x = content_x + (float)col_in_row * editor->char_width;
+            vgfx_fill_rect((vgfx_window_t)canvas,
+                           (int32_t)cursor_x,
+                           (int32_t)cursor_y,
+                           2,
+                           (int32_t)editor->line_height,
+                           editor->cursor_color);
+
+            for (int c = 0; c < editor->extra_cursor_count; c++) {
+                int extra_visual_row = codeeditor_visual_row_for_position(
+                    editor, content_width, editor->extra_cursors[c].line, editor->extra_cursors[c].col);
+                float extra_y =
+                    widget->y + (float)extra_visual_row * editor->line_height - editor->scroll_y;
+                int extra_col_in_row = editor->extra_cursors[c].col;
+                codeeditor_visual_offset_for_position(editor,
+                                                      content_width,
+                                                      editor->extra_cursors[c].line,
+                                                      editor->extra_cursors[c].col,
+                                                      NULL,
+                                                      &extra_col_in_row);
+                float extra_x = content_x + (float)extra_col_in_row * editor->char_width;
+                vgfx_fill_rect((vgfx_window_t)canvas,
+                               (int32_t)extra_x,
+                               (int32_t)extra_y,
+                               2,
+                               (int32_t)editor->line_height,
+                               editor->cursor_color);
             }
         }
     }
 
-    // Draw cursor
-    if ((widget->state & VG_STATE_FOCUSED) && editor->cursor_visible && !editor->read_only) {
-        int visible_cursor_line = editor->cursor_line - editor->visible_first_line;
-        if (visible_cursor_line >= 0 && visible_cursor_line < editor->visible_line_count) {
-            float cursor_x = content_x + editor->cursor_col * editor->char_width - editor->scroll_x;
-            float cursor_y = widget->y + visible_cursor_line * editor->line_height -
-                             (editor->scroll_y - editor->visible_first_line * editor->line_height);
+    if (clip_w > 0 && clip_h > 0) {
+        vgfx_clear_clip((vgfx_window_t)canvas);
+    }
 
-            // Draw cursor as a 2px-wide vertical line
-            vgfx_fill_rect((vgfx_window_t)canvas,
-                           (int32_t)cursor_x,
-                           (int32_t)cursor_y,
-                           2,
-                           (int32_t)editor->line_height,
-                           editor->cursor_color);
-        }
+    if (editor->gutter_width > 0.0f) {
+        float fold_gutter_x = widget->x + line_number_gutter_width;
+        if (!editor->word_wrap) {
+            float row_offset = editor->scroll_y - (float)first_visual_row * editor->line_height;
+            float line_y = widget->y - row_offset;
+            for (int i = editor->visible_first_line;
+                 i >= 0 && i < editor->line_count && line_y < widget->y + widget->height;
+                 i = codeeditor_next_visible_line(editor, i)) {
+                if (codeeditor_line_is_hidden(editor, i))
+                    continue;
 
-        for (int c = 0; c < editor->extra_cursor_count; c++) {
-            int visible_extra_line = editor->extra_cursors[c].line - editor->visible_first_line;
-            if (visible_extra_line < 0 || visible_extra_line >= editor->visible_line_count)
-                continue;
-            float cursor_x =
-                content_x + editor->extra_cursors[c].col * editor->char_width - editor->scroll_x;
-            float cursor_y = widget->y + visible_extra_line * editor->line_height -
-                             (editor->scroll_y - editor->visible_first_line * editor->line_height);
-            vgfx_fill_rect((vgfx_window_t)canvas,
-                           (int32_t)cursor_x,
-                           (int32_t)cursor_y,
-                           2,
-                           (int32_t)editor->line_height,
-                           editor->cursor_color);
+                if (editor->show_line_numbers) {
+                    char line_num[16];
+                    snprintf(line_num, sizeof(line_num), "%d", i + 1);
+                    vg_text_metrics_t num_metrics = {0};
+                    vg_font_measure_text(editor->font, editor->font_size, line_num, &num_metrics);
+                    float num_x = widget->x + line_number_gutter_width - num_metrics.width - 8.0f;
+                    float num_y = line_y + font_metrics.ascent;
+                    vg_font_draw_text(canvas,
+                                      editor->font,
+                                      editor->font_size,
+                                      num_x,
+                                      num_y,
+                                      line_num,
+                                      editor->line_number_color);
+                }
+
+                for (int g = 0; g < editor->gutter_icon_count; g++) {
+                    struct vg_gutter_icon *icon = &editor->gutter_icons[g];
+                    if (icon->line != i)
+                        continue;
+                    int32_t icon_box = (int32_t)editor->line_height - 4;
+                    if (icon_box < 8)
+                        icon_box = 8;
+                    int32_t icon_x = (int32_t)widget->x + 2;
+                    int32_t icon_y = (int32_t)line_y + ((int32_t)editor->line_height - icon_box) / 2;
+                    if (icon->image.type == VG_ICON_IMAGE && icon->image.data.image.pixels) {
+                        codeeditor_draw_gutter_icon_image(
+                            (vgfx_window_t)canvas, icon, icon_x, icon_y, icon_box, icon_box);
+                    } else {
+                        int32_t icon_r = icon_box / 2;
+                        int32_t icon_cx = icon_x + icon_r;
+                        int32_t icon_cy = icon_y + icon_r;
+                        vgfx_fill_circle((vgfx_window_t)canvas,
+                                         icon_cx,
+                                         icon_cy,
+                                         icon_r,
+                                         (vgfx_color_t)icon->color);
+                    }
+                    break;
+                }
+
+                if (editor->show_fold_gutter) {
+                    codeeditor_draw_fold_marker(editor,
+                                                canvas,
+                                                fold_gutter_x,
+                                                fold_gutter_width,
+                                                line_y,
+                                                &font_metrics,
+                                                i);
+                }
+
+                line_y += editor->line_height;
+            }
+        } else {
+            float row_offset = editor->scroll_y - (float)first_visual_row * editor->line_height;
+            int line = 0;
+            int row_in_line = 0;
+            codeeditor_locate_visual_row(editor, content_width, first_visual_row, &line, &row_in_line);
+            float row_y = widget->y - row_offset;
+            while (line < editor->line_count && row_y < widget->y + widget->height) {
+                int row_count = codeeditor_visual_rows_for_line(editor, line, content_width);
+                if (row_count == 0) {
+                    line = codeeditor_next_visible_line(editor, line);
+                    row_in_line = 0;
+                    continue;
+                }
+                if (row_in_line == 0) {
+                    if (editor->show_line_numbers) {
+                        char line_num[16];
+                        snprintf(line_num, sizeof(line_num), "%d", line + 1);
+                        vg_text_metrics_t num_metrics = {0};
+                        vg_font_measure_text(editor->font, editor->font_size, line_num, &num_metrics);
+                        float num_x = widget->x + line_number_gutter_width - num_metrics.width - 8.0f;
+                        float num_y = row_y + font_metrics.ascent;
+                        vg_font_draw_text(canvas,
+                                          editor->font,
+                                          editor->font_size,
+                                          num_x,
+                                          num_y,
+                                          line_num,
+                                          editor->line_number_color);
+                    }
+
+                    for (int g = 0; g < editor->gutter_icon_count; g++) {
+                        struct vg_gutter_icon *icon = &editor->gutter_icons[g];
+                        if (icon->line != line)
+                            continue;
+                        int32_t icon_box = (int32_t)editor->line_height - 4;
+                        if (icon_box < 8)
+                            icon_box = 8;
+                        int32_t icon_x = (int32_t)widget->x + 2;
+                        int32_t icon_y = (int32_t)row_y + ((int32_t)editor->line_height - icon_box) / 2;
+                        if (icon->image.type == VG_ICON_IMAGE && icon->image.data.image.pixels) {
+                            codeeditor_draw_gutter_icon_image(
+                                (vgfx_window_t)canvas, icon, icon_x, icon_y, icon_box, icon_box);
+                        } else {
+                            int32_t icon_r = icon_box / 2;
+                            int32_t icon_cx = icon_x + icon_r;
+                            int32_t icon_cy = icon_y + icon_r;
+                            vgfx_fill_circle((vgfx_window_t)canvas,
+                                             icon_cx,
+                                             icon_cy,
+                                             icon_r,
+                                             (vgfx_color_t)icon->color);
+                        }
+                        break;
+                    }
+
+                    if (editor->show_fold_gutter) {
+                        codeeditor_draw_fold_marker(editor,
+                                                    canvas,
+                                                    fold_gutter_x,
+                                                    fold_gutter_width,
+                                                    row_y,
+                                                    &font_metrics,
+                                                    line);
+                    }
+                }
+
+                row_in_line++;
+                if (row_in_line >= row_count) {
+                    line = codeeditor_next_visible_line(editor, line);
+                    row_in_line = 0;
+                }
+                row_y += editor->line_height;
+            }
         }
     }
 
-    // Draw vertical scrollbar
-    float scrollbar_width = 12.0f;
-    float total_content_height = editor->line_count * editor->line_height;
-    float visible_height = widget->height;
-
     if (total_content_height > visible_height) {
         // Scrollbar track background
-        float track_x = widget->x + widget->width - scrollbar_width;
+        float track_x_local = 0.0f;
+        float thumb_y_local = 0.0f;
+        float thumb_height = 0.0f;
+        if (!codeeditor_get_scrollbar_metrics(
+                editor, widget, &track_x_local, &thumb_y_local, &thumb_height, NULL, NULL))
+            return;
+        float track_x = widget->x + track_x_local;
         uint32_t track_color = 0xFF3C3C3C; // Dark gray
         vgfx_fill_rect((vgfx_window_t)canvas,
                        (int32_t)track_x,
@@ -1230,25 +2004,7 @@ static void codeeditor_paint(vg_widget_t *widget, void *canvas) {
                        (int32_t)scrollbar_width,
                        (int32_t)visible_height,
                        track_color);
-
-        // Calculate thumb size and position
-        float thumb_ratio = visible_height / total_content_height;
-        if (thumb_ratio > 1.0f)
-            thumb_ratio = 1.0f;
-        float thumb_height = visible_height * thumb_ratio;
-        if (thumb_height < 20.0f)
-            thumb_height = 20.0f; // Minimum thumb size
-
-        // Guard against exact-fit content (range == 0). Without this the divisor
-        // is 0 and the scroll_ratio becomes NaN; > and < comparisons against NaN
-        // both fail, leaving NaN to feed the int cast (undefined behavior).
-        float scroll_range = total_content_height - visible_height;
-        float scroll_ratio = scroll_range > 0.0f ? editor->scroll_y / scroll_range : 0.0f;
-        if (scroll_ratio < 0.0f)
-            scroll_ratio = 0.0f;
-        if (scroll_ratio > 1.0f)
-            scroll_ratio = 1.0f;
-        float thumb_y = widget->y + scroll_ratio * (visible_height - thumb_height);
+        float thumb_y = widget->y + thumb_y_local;
 
         // Scrollbar thumb
         uint32_t thumb_color = 0xFF6C6C6C; // Medium gray
@@ -1372,7 +2128,7 @@ VG_UNUSED static void insert_newline(vg_codeeditor_t *editor) {
     editor->modified = true;
     next->modified = true;
 
-    update_gutter_width(editor);
+    vg_codeeditor_refresh_layout_state(editor);
 }
 
 VG_UNUSED static void delete_char_backward(vg_codeeditor_t *editor) {
@@ -1416,7 +2172,7 @@ VG_UNUSED static void delete_char_backward(vg_codeeditor_t *editor) {
         editor->modified = true;
         prev->modified = true;
 
-        update_gutter_width(editor);
+        vg_codeeditor_refresh_layout_state(editor);
     }
 }
 
@@ -1513,6 +2269,8 @@ static bool codeeditor_handle_event(vg_widget_t *widget, vg_event_t *event) {
         case VG_EVENT_MOUSE_UP:
             if (editor->scrollbar_dragging) {
                 editor->scrollbar_dragging = false;
+                if (vg_widget_get_input_capture() == widget)
+                    vg_widget_release_input_capture();
                 widget->needs_paint = true;
                 return true;
             }
@@ -1520,76 +2278,75 @@ static bool codeeditor_handle_event(vg_widget_t *widget, vg_event_t *event) {
 
         case VG_EVENT_MOUSE_MOVE:
             if (editor->scrollbar_dragging) {
-                float delta = event->mouse.y - editor->scrollbar_drag_offset;
-                float total_ch = editor->line_count * editor->line_height;
-                float vis_h = widget->height;
-                float scroll_range = total_ch - vis_h;
-                float thumb_h = vis_h * (vis_h / total_ch);
-                if (thumb_h < 20.0f)
-                    thumb_h = 20.0f;
-                float thumb_travel = vis_h - thumb_h;
-                if (thumb_travel > 0.0f && scroll_range > 0.0f) {
-                    editor->scroll_y =
-                        editor->scrollbar_drag_start_scroll + delta * (scroll_range / thumb_travel);
+                float thumb_y = 0.0f;
+                float thumb_height = 0.0f;
+                float max_scroll = 0.0f;
+                float thumb_travel = 0.0f;
+                if (codeeditor_get_scrollbar_metrics(
+                        editor, widget, NULL, &thumb_y, &thumb_height, &max_scroll, &thumb_travel) &&
+                    thumb_travel > 0.0f && max_scroll > 0.0f) {
+                    float target_thumb_y = event->mouse.y - editor->scrollbar_drag_offset;
+                    if (target_thumb_y < 0.0f)
+                        target_thumb_y = 0.0f;
+                    if (target_thumb_y > thumb_travel)
+                        target_thumb_y = thumb_travel;
+                    editor->scroll_y = (target_thumb_y / thumb_travel) * max_scroll;
                 }
-                if (editor->scroll_y < 0.0f)
-                    editor->scroll_y = 0.0f;
-                float max_s = (editor->line_count - 1) * editor->line_height;
-                if (editor->scroll_y > max_s)
-                    editor->scroll_y = max_s;
+                codeeditor_clamp_scroll(editor, widget);
                 widget->needs_paint = true;
                 return true;
             }
             break;
 
         case VG_EVENT_MOUSE_DOWN: {
-            float scrollbar_width = 12.0f;
-            float total_content_height = editor->line_count * editor->line_height;
-            float visible_height = widget->height;
+            float scrollbar_width = CODEEDITOR_SCROLLBAR_WIDTH;
 
             // Check if click is on scrollbar
-            if (total_content_height > visible_height &&
-                event->mouse.x >= widget->width - scrollbar_width) {
-                // Calculate thumb position (matches paint code in codeeditor_paint)
-                float thumb_ratio = visible_height / total_content_height;
-                if (thumb_ratio > 1.0f)
-                    thumb_ratio = 1.0f;
-                float thumb_height = visible_height * thumb_ratio;
-                if (thumb_height < 20.0f)
-                    thumb_height = 20.0f;
-                float max_scroll = total_content_height - visible_height;
-                float scroll_ratio = (max_scroll > 0.0f) ? editor->scroll_y / max_scroll : 0.0f;
-                if (scroll_ratio < 0.0f)
-                    scroll_ratio = 0.0f;
-                if (scroll_ratio > 1.0f)
-                    scroll_ratio = 1.0f;
-                float thumb_y = scroll_ratio * (visible_height - thumb_height);
-
+            float track_x = 0.0f;
+            float thumb_y = 0.0f;
+            float thumb_height = 0.0f;
+            float max_scroll = 0.0f;
+            float thumb_travel = 0.0f;
+            if (codeeditor_get_scrollbar_metrics(
+                    editor, widget, &track_x, &thumb_y, &thumb_height, &max_scroll, &thumb_travel) &&
+                event->mouse.x >= track_x && event->mouse.x < track_x + scrollbar_width &&
+                event->mouse.y >= 0.0f && event->mouse.y < widget->height) {
                 if (event->mouse.y >= thumb_y && event->mouse.y <= thumb_y + thumb_height) {
                     // Click on thumb — start drag
                     editor->scrollbar_dragging = true;
-                    editor->scrollbar_drag_offset = event->mouse.y;
+                    editor->scrollbar_drag_offset = event->mouse.y - thumb_y;
                     editor->scrollbar_drag_start_scroll = editor->scroll_y;
+                    vg_widget_set_input_capture(widget);
                 } else {
                     // Click on track — jump to position
-                    float click_ratio = event->mouse.y / visible_height;
-                    editor->scroll_y = click_ratio * max_scroll;
-                    if (editor->scroll_y < 0)
-                        editor->scroll_y = 0;
-                    if (editor->scroll_y > max_scroll)
-                        editor->scroll_y = max_scroll;
+                    float target_thumb_y = event->mouse.y - thumb_height * 0.5f;
+                    if (target_thumb_y < 0.0f)
+                        target_thumb_y = 0.0f;
+                    if (target_thumb_y > thumb_travel)
+                        target_thumb_y = thumb_travel;
+                    editor->scroll_y =
+                        thumb_travel > 0.0f ? (target_thumb_y / thumb_travel) * max_scroll : 0.0f;
+                    codeeditor_clamp_scroll(editor, widget);
                 }
                 widget->needs_paint = true;
                 return true;
             }
 
-            if (editor->show_line_numbers && event->mouse.x < editor->gutter_width) {
-                float local_y = event->mouse.y + editor->scroll_y;
-                int line = (int)(local_y / editor->line_height);
-                if (line < 0)
-                    line = 0;
-                if (line >= editor->line_count)
-                    line = editor->line_count - 1;
+            if (editor->gutter_width > 0.0f && event->mouse.x < editor->gutter_width) {
+                int line = 0;
+                codeeditor_local_point_to_position(editor, widget, event->mouse.x, event->mouse.y, &line, NULL);
+                float line_number_gutter_width = codeeditor_line_number_gutter_width(editor);
+                float fold_gutter_width = codeeditor_fold_gutter_width(editor);
+
+                if (editor->show_fold_gutter && fold_gutter_width > 0.0f &&
+                    event->mouse.x >= line_number_gutter_width) {
+                    struct vg_fold_region *region = codeeditor_fold_region_starting_at_mut(editor, line);
+                    if (region) {
+                        region->folded = !region->folded;
+                        vg_codeeditor_refresh_layout_state(editor);
+                        return true;
+                    }
+                }
 
                 int slot = -1;
                 for (int i = 0; i < editor->gutter_icon_count; i++) {
@@ -1605,23 +2362,9 @@ static bool codeeditor_handle_event(vg_widget_t *widget, vg_event_t *event) {
                 return true;
             }
 
-            float content_x = editor->gutter_width;
-            float local_x = event->mouse.x - content_x + editor->scroll_x;
-            float local_y = event->mouse.y + editor->scroll_y;
-
-            // Calculate clicked line and column
-            int line = (int)(local_y / editor->line_height);
-            if (line < 0)
-                line = 0;
-            if (line >= editor->line_count)
-                line = editor->line_count - 1;
-
-            int col = (int)(local_x / editor->char_width + 0.5f);
-            if (col < 0)
-                col = 0;
-            if (col > (int)editor->lines[line].length)
-                col = (int)editor->lines[line].length;
-
+            int line = 0;
+            int col = 0;
+            codeeditor_local_point_to_position(editor, widget, event->mouse.x, event->mouse.y, &line, &col);
             editor->cursor_line = line;
             editor->cursor_col = col;
             editor->has_selection = false;
@@ -1684,12 +2427,10 @@ static bool codeeditor_handle_event(vg_widget_t *widget, vg_event_t *event) {
                 // Navigation only
                 switch (event->key.key) {
                     case VG_KEY_UP:
-                        if (editor->cursor_line > 0)
-                            editor->cursor_line--;
+                        codeeditor_move_cursor_vertical(editor, widget, -1);
                         break;
                     case VG_KEY_DOWN:
-                        if (editor->cursor_line < editor->line_count - 1)
-                            editor->cursor_line++;
+                        codeeditor_move_cursor_vertical(editor, widget, 1);
                         break;
                     case VG_KEY_LEFT:
                         if (editor->cursor_col > 0)
@@ -1701,16 +2442,16 @@ static bool codeeditor_handle_event(vg_widget_t *widget, vg_event_t *event) {
                         break;
                     case VG_KEY_PAGE_UP: {
                         int visible_lines = (int)(widget->height / editor->line_height);
-                        editor->cursor_line -= visible_lines;
-                        if (editor->cursor_line < 0)
-                            editor->cursor_line = 0;
+                        if (visible_lines < 1)
+                            visible_lines = 1;
+                        codeeditor_move_cursor_vertical(editor, widget, -visible_lines);
                         break;
                     }
                     case VG_KEY_PAGE_DOWN: {
                         int visible_lines = (int)(widget->height / editor->line_height);
-                        editor->cursor_line += visible_lines;
-                        if (editor->cursor_line >= editor->line_count)
-                            editor->cursor_line = editor->line_count - 1;
+                        if (visible_lines < 1)
+                            visible_lines = 1;
+                        codeeditor_move_cursor_vertical(editor, widget, visible_lines);
                         break;
                     }
                     default:
@@ -1723,20 +2464,10 @@ static bool codeeditor_handle_event(vg_widget_t *widget, vg_event_t *event) {
 
             switch (event->key.key) {
                 case VG_KEY_UP:
-                    if (editor->cursor_line > 0) {
-                        editor->cursor_line--;
-                        if (editor->cursor_col > (int)editor->lines[editor->cursor_line].length) {
-                            editor->cursor_col = (int)editor->lines[editor->cursor_line].length;
-                        }
-                    }
+                    codeeditor_move_cursor_vertical(editor, widget, -1);
                     break;
                 case VG_KEY_DOWN:
-                    if (editor->cursor_line < editor->line_count - 1) {
-                        editor->cursor_line++;
-                        if (editor->cursor_col > (int)editor->lines[editor->cursor_line].length) {
-                            editor->cursor_col = (int)editor->lines[editor->cursor_line].length;
-                        }
-                    }
+                    codeeditor_move_cursor_vertical(editor, widget, 1);
                     break;
                 case VG_KEY_LEFT:
                     if (editor->cursor_col > 0) {
@@ -1762,20 +2493,16 @@ static bool codeeditor_handle_event(vg_widget_t *widget, vg_event_t *event) {
                     break;
                 case VG_KEY_PAGE_UP: {
                     int visible_lines = (int)(widget->height / editor->line_height);
-                    editor->cursor_line -= visible_lines;
-                    if (editor->cursor_line < 0)
-                        editor->cursor_line = 0;
-                    if (editor->cursor_col > (int)editor->lines[editor->cursor_line].length)
-                        editor->cursor_col = (int)editor->lines[editor->cursor_line].length;
+                    if (visible_lines < 1)
+                        visible_lines = 1;
+                    codeeditor_move_cursor_vertical(editor, widget, -visible_lines);
                     break;
                 }
                 case VG_KEY_PAGE_DOWN: {
                     int visible_lines = (int)(widget->height / editor->line_height);
-                    editor->cursor_line += visible_lines;
-                    if (editor->cursor_line >= editor->line_count)
-                        editor->cursor_line = editor->line_count - 1;
-                    if (editor->cursor_col > (int)editor->lines[editor->cursor_line].length)
-                        editor->cursor_col = (int)editor->lines[editor->cursor_line].length;
+                    if (visible_lines < 1)
+                        visible_lines = 1;
+                    codeeditor_move_cursor_vertical(editor, widget, visible_lines);
                     break;
                 }
                 case VG_KEY_BACKSPACE:
@@ -1837,11 +2564,7 @@ static bool codeeditor_handle_event(vg_widget_t *widget, vg_event_t *event) {
 
         case VG_EVENT_MOUSE_WHEEL:
             editor->scroll_y -= event->wheel.delta_y * editor->line_height * 3;
-            if (editor->scroll_y < 0)
-                editor->scroll_y = 0;
-            float max_scroll = (editor->line_count - 1) * editor->line_height;
-            if (editor->scroll_y > max_scroll)
-                editor->scroll_y = max_scroll;
+            codeeditor_clamp_scroll(editor, widget);
             widget->needs_paint = true;
             return true;
 
@@ -1960,7 +2683,7 @@ void vg_codeeditor_set_text(vg_codeeditor_t *editor, const char *text) {
     editor->scroll_y = 0;
     editor->modified = false;
 
-    update_gutter_width(editor);
+    vg_codeeditor_refresh_layout_state(editor);
     editor->base.needs_paint = true;
 }
 
@@ -2007,7 +2730,7 @@ void vg_codeeditor_set_cursor(vg_codeeditor_t *editor, int line, int col) {
     if (!editor)
         return;
 
-    clamp_editor_position(editor, &line, &col);
+    codeeditor_clamp_cursor_to_visible(editor, &line, &col);
 
     editor->cursor_line = line;
     editor->cursor_col = col;
@@ -2157,7 +2880,15 @@ void vg_codeeditor_scroll_to_line(vg_codeeditor_t *editor, int line) {
     if (!editor)
         return;
 
-    float target_y = line * editor->line_height;
+    if (line < 0)
+        line = 0;
+    if (line >= editor->line_count)
+        line = editor->line_count - 1;
+    line = codeeditor_visible_anchor_line(editor, line);
+
+    float content_width = codeeditor_content_draw_width(editor, &editor->base);
+    int target_visual_row = codeeditor_visual_row_for_position(editor, content_width, line, 0);
+    float target_y = (float)target_visual_row * editor->line_height;
     float visible_height = editor->base.height;
 
     if (target_y < editor->scroll_y) {
@@ -2166,6 +2897,7 @@ void vg_codeeditor_scroll_to_line(vg_codeeditor_t *editor, int line) {
         editor->scroll_y = target_y + editor->line_height - visible_height;
     }
 
+    codeeditor_clamp_scroll(editor, &editor->base);
     editor->base.needs_paint = true;
 }
 
@@ -2253,7 +2985,7 @@ static void insert_text_at_internal(vg_codeeditor_t *editor, int line, int col, 
     editor->cursor_line = cur_line;
     editor->cursor_col = cur_col;
     editor->modified = true;
-    update_gutter_width(editor);
+    vg_codeeditor_refresh_layout_state(editor);
 }
 
 // Internal helper: delete text range without recording to history
@@ -2303,7 +3035,7 @@ static void delete_text_range_internal(
                    0,
                    (size_t)(old_line_count - editor->line_count) * sizeof(vg_code_line_t));
         }
-        update_gutter_width(editor);
+        vg_codeeditor_refresh_layout_state(editor);
     }
 
     editor->cursor_line = start_line;
@@ -2608,9 +3340,7 @@ void vg_codeeditor_set_font(vg_codeeditor_t *editor, vg_font_t *font, float size
         editor->line_height = font_metrics.line_height;
     }
 
-    update_gutter_width(editor);
-    editor->base.needs_layout = true;
-    editor->base.needs_paint = true;
+    vg_codeeditor_refresh_layout_state(editor);
 }
 
 /// @brief Codeeditor get line count.

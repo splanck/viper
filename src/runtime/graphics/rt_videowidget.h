@@ -28,6 +28,9 @@ extern "C" {
 
 /// @brief Create a video-playback widget under @p parent that loads the file at @p path.
 void *rt_videowidget_new(void *parent, void *path);
+/// @brief Destroy the widget subtree and release the owned VideoPlayer immediately.
+/// Safe to call multiple times; later calls are no-ops.
+void rt_videowidget_destroy(void *vw);
 /// @brief Start or resume playback.
 void rt_videowidget_play(void *vw);
 /// @brief Pause playback (current frame stays displayed).

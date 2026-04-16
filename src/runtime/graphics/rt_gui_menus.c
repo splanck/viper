@@ -37,6 +37,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_gui_internal.h"
+#include "rt_pixels.h"
 #include "rt_platform.h"
 
 #ifdef VIPER_ENABLE_GRAPHICS
@@ -62,6 +63,40 @@ static vg_menubar_t *rt_gui_menu_owner_from_item(const vg_menu_item_t *item) {
 /// sync with the in-process model.
 static void rt_gui_menu_sync_menubar(vg_menubar_t *menubar) {
     rt_gui_macos_menu_sync_for_menubar(menubar);
+}
+
+static vg_icon_t rt_gui_icon_from_pixels(void *pixels) {
+    vg_icon_t icon = {0};
+    if (!pixels)
+        return icon;
+
+    int64_t width = rt_pixels_width(pixels);
+    int64_t height = rt_pixels_height(pixels);
+    const uint32_t *raw = rt_pixels_raw_buffer(pixels);
+    if (width <= 0 || height <= 0 || !raw)
+        return icon;
+
+    size_t pixel_count = (size_t)width * (size_t)height;
+    if (pixel_count / (size_t)width != (size_t)height)
+        return icon;
+    if (width > UINT32_MAX || height > UINT32_MAX || pixel_count > SIZE_MAX / 4)
+        return icon;
+
+    uint8_t *rgba = (uint8_t *)malloc(pixel_count * 4);
+    if (!rgba)
+        return icon;
+
+    for (size_t i = 0; i < pixel_count; i++) {
+        uint32_t px = raw[i];
+        rgba[i * 4 + 0] = (uint8_t)((px >> 24) & 0xFF);
+        rgba[i * 4 + 1] = (uint8_t)((px >> 16) & 0xFF);
+        rgba[i * 4 + 2] = (uint8_t)((px >> 8) & 0xFF);
+        rgba[i * 4 + 3] = (uint8_t)(px & 0xFF);
+    }
+
+    icon = vg_icon_from_pixels(rgba, (uint32_t)width, (uint32_t)height);
+    free(rgba);
+    return icon;
 }
 
 /// @brief Create a new menu bar widget at the top of the window.
@@ -365,13 +400,8 @@ void rt_menuitem_set_icon(void *item, void *pixels) {
     if (!item)
         return;
     vg_menu_item_t *mi = (vg_menu_item_t *)item;
-    if (pixels) {
-        // Store as a glyph icon (pixels pointer used as codepoint for icon text)
-        mi->icon.type = VG_ICON_GLYPH;
-        mi->icon.data.glyph = (uint32_t)(uintptr_t)pixels;
-    } else {
-        mi->icon.type = VG_ICON_NONE;
-    }
+    vg_icon_destroy(&mi->icon);
+    mi->icon = rt_gui_icon_from_pixels(pixels);
     rt_gui_menu_sync_menubar(rt_gui_menu_owner_from_item(mi));
 }
 
@@ -1199,14 +1229,9 @@ void rt_toolbaritem_set_icon(void *item, rt_string icon_path) {
 /// @brief Set the icon pixels of the toolbaritem.
 void rt_toolbaritem_set_icon_pixels(void *item, void *pixels) {
     RT_ASSERT_MAIN_THREAD();
-    if (!item || !pixels)
+    if (!item)
         return;
-    // Treat the pixels pointer as an opaque icon handle — store as glyph codepoint.
-    // Full pixel-buffer icon support would require width/height parameters.
-    vg_icon_t icon = {0};
-    icon.type = VG_ICON_GLYPH;
-    icon.data.glyph = (uint32_t)(uintptr_t)pixels;
-    vg_toolbar_item_set_icon((vg_toolbar_item_t *)item, icon);
+    vg_toolbar_item_set_icon((vg_toolbar_item_t *)item, rt_gui_icon_from_pixels(pixels));
 }
 
 /// @brief Set the text of the toolbaritem.
@@ -1214,9 +1239,9 @@ void rt_toolbaritem_set_text(void *item, rt_string text) {
     RT_ASSERT_MAIN_THREAD();
     if (!item)
         return;
-    vg_toolbar_item_t *ti = (vg_toolbar_item_t *)item;
-    free(ti->label);
-    ti->label = rt_string_to_cstr(text);
+    char *ctext = rt_string_to_cstr(text);
+    vg_toolbar_item_set_text((vg_toolbar_item_t *)item, ctext);
+    free(ctext);
 }
 
 /// @brief Set the tooltip of the toolbaritem.

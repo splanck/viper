@@ -400,9 +400,15 @@ void vg_notification_manager_update(vg_notification_manager_t *mgr, uint64_t now
         if (notif->duration_ms > 0 && !notif->dismissed) {
             uint64_t elapsed = now_ms - notif->created_at;
             if (elapsed >= notif->duration_ms) {
-                // Start fade out
-                float fade_elapsed = (float)(elapsed - notif->duration_ms);
-                notif->opacity = 1.0f - (fade_elapsed / mgr->fade_duration_ms);
+                // Start fade out. Guard fade_duration_ms > 0 so callers that
+                // disable fades (set fade_duration_ms = 0) don't trigger
+                // division by zero → NaN opacity.
+                if (mgr->fade_duration_ms > 0) {
+                    float fade_elapsed = (float)(elapsed - notif->duration_ms);
+                    notif->opacity = 1.0f - (fade_elapsed / (float)mgr->fade_duration_ms);
+                } else {
+                    notif->opacity = 0.0f;
+                }
                 if (notif->opacity <= 0) {
                     notif->opacity = 0;
                     notif->dismissed = true;
@@ -411,11 +417,11 @@ void vg_notification_manager_update(vg_notification_manager_t *mgr, uint64_t now
             }
         }
 
-        // Fade in newly added notifications
+        // Fade in newly added notifications. Same guard — no fade means snap.
         if (!notif->dismissed && notif->opacity < 1.0f) {
             float elapsed = (float)(now_ms - notif->created_at);
-            if (elapsed < mgr->fade_duration_ms) {
-                notif->opacity = elapsed / mgr->fade_duration_ms;
+            if (mgr->fade_duration_ms > 0 && elapsed < (float)mgr->fade_duration_ms) {
+                notif->opacity = elapsed / (float)mgr->fade_duration_ms;
                 mgr->base.needs_paint = true;
             } else {
                 notif->opacity = 1.0f;

@@ -79,12 +79,14 @@ bool g_open_should_fail = false;
 int64_t g_open_width = 64;
 int64_t g_open_height = 32;
 int g_release_count = 0;
+int g_widget_destroy_count = 0;
 
 void reset_open_state() {
     g_open_should_fail = false;
     g_open_width = 64;
     g_open_height = 32;
     g_release_count = 0;
+    g_widget_destroy_count = 0;
 }
 
 } // namespace
@@ -141,6 +143,11 @@ extern "C" void rt_widget_set_flex(void *widget, double flex) {
 
 extern "C" void rt_widget_set_visible(void *widget, int64_t visible) {
     static_cast<StubWidget *>(widget)->visible = visible ? 1 : 0;
+}
+
+extern "C" void rt_widget_destroy(void *widget) {
+    g_widget_destroy_count++;
+    std::free(widget);
 }
 
 extern "C" int64_t rt_widget_was_clicked(void *widget) {
@@ -373,12 +380,39 @@ static void test_visibility_and_volume_are_clamped() {
     assert(player->volume == 1.0);
 }
 
+static void test_destroy_releases_player_and_widget_tree() {
+    StubWidget parent{};
+    reset_open_state();
+
+    auto *widget = static_cast<rt_videowidget_view *>(
+        rt_videowidget_new(&parent, reinterpret_cast<void *>(1)));
+    assert(widget != nullptr);
+    assert(widget->player != nullptr);
+    assert(widget->root_widget != nullptr);
+    assert(widget->rgba_buf != nullptr);
+
+    rt_videowidget_destroy(widget);
+
+    assert(widget->player == nullptr);
+    assert(widget->root_widget == nullptr);
+    assert(widget->image_widget == nullptr);
+    assert(widget->controls_widget == nullptr);
+    assert(widget->rgba_buf == nullptr);
+    assert(widget->rgba_buf_size == 0);
+    assert(g_release_count > 0);
+    assert(g_widget_destroy_count == 1);
+
+    rt_videowidget_destroy(widget);
+    assert(g_widget_destroy_count == 1);
+}
+
 int main() {
     test_constructor_validates_inputs();
     test_successful_construction_sets_up_widgets();
     test_controls_drive_player_state();
     test_slider_seek_and_looping();
     test_visibility_and_volume_are_clamped();
+    test_destroy_releases_player_and_widget_tree();
     std::printf("RTVideoWidgetContractTests passed.\n");
     return 0;
 }

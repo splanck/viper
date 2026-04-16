@@ -771,6 +771,37 @@ TEST(tabbar_title_updates_default_tooltip) {
     vg_widget_destroy((vg_widget_t *)tabbar);
 }
 
+TEST(tabbar_hover_promotes_tab_tooltip_to_widget_tooltip) {
+    vg_tabbar_t *tabbar = vg_tabbar_create(NULL);
+    ASSERT_NOT_NULL(tabbar);
+
+    vg_tab_t *tab = vg_tabbar_add_tab(tabbar, "main.zia", true);
+    ASSERT_NOT_NULL(tab);
+    vg_tab_set_tooltip(tab, "/tmp/project/main.zia");
+
+    vg_widget_arrange(&tabbar->base, 0.0f, 0.0f, 200.0f, tabbar->tab_height);
+
+    vg_event_t move = {0};
+    move.type = VG_EVENT_MOUSE_MOVE;
+    move.mouse.x = 10.0f;
+    move.mouse.y = tabbar->tab_height * 0.5f;
+    move.mouse.screen_x = 10.0f;
+    move.mouse.screen_y = move.mouse.y;
+    (void)vg_event_send(&tabbar->base, &move);
+
+    ASSERT_EQ(tabbar->hovered_tab, tab);
+    ASSERT_NOT_NULL(tabbar->base.tooltip_text);
+    ASSERT_TRUE(strcmp(tabbar->base.tooltip_text, "/tmp/project/main.zia") == 0);
+
+    vg_event_t leave = {0};
+    leave.type = VG_EVENT_MOUSE_LEAVE;
+    (void)vg_event_send(&tabbar->base, &leave);
+    ASSERT_NULL(tabbar->hovered_tab);
+    ASSERT_NULL(tabbar->base.tooltip_text);
+
+    vg_widget_destroy((vg_widget_t *)tabbar);
+}
+
 TEST(tabbar_close_button_requires_full_rect) {
     vg_tabbar_t *tabbar = vg_tabbar_create(NULL);
     ASSERT_NOT_NULL(tabbar);
@@ -1082,6 +1113,50 @@ TEST(widget_set_focus_null_clears_focus) {
     vg_widget_destroy(&probe->base);
 }
 
+TEST(widget_hide_and_disable_clear_focus_and_capture) {
+    vg_widget_t *root = vg_widget_create(VG_WIDGET_CONTAINER);
+    ASSERT_NOT_NULL(root);
+    root->visible = true;
+    root->enabled = true;
+    root->width = 400.0f;
+    root->height = 200.0f;
+
+    vg_codeeditor_t *editor = vg_codeeditor_create(root);
+    ASSERT_NOT_NULL(editor);
+    editor->base.visible = true;
+    editor->base.enabled = true;
+    vg_widget_arrange(&editor->base, 0.0f, 0.0f, 180.0f, 80.0f);
+
+    vg_widget_set_focus(&editor->base);
+    ASSERT_EQ(vg_widget_get_focused(root), &editor->base);
+    vg_widget_set_visible(&editor->base, false);
+    ASSERT_NULL(vg_widget_get_focused(root));
+
+    vg_splitpane_t *split = vg_splitpane_create(root, VG_SPLIT_HORIZONTAL);
+    ASSERT_NOT_NULL(split);
+    vg_widget_arrange(&split->base, 20.0f, 100.0f, 200.0f, 60.0f);
+
+    vg_widget_t *first = split->base.first_child;
+    ASSERT_NOT_NULL(first);
+    float splitter_x = split->base.x + first->width + split->splitter_size * 0.5f;
+    float splitter_y = split->base.y + 10.0f;
+
+    vg_event_t hover = vg_event_mouse(VG_EVENT_MOUSE_MOVE, splitter_x, splitter_y, VG_MOUSE_LEFT, 0);
+    ASSERT_FALSE(vg_event_dispatch(root, &hover));
+    ASSERT_TRUE(split->splitter_hovered);
+
+    vg_event_t down = vg_event_mouse(VG_EVENT_MOUSE_DOWN, splitter_x, splitter_y, VG_MOUSE_LEFT, 0);
+    ASSERT_TRUE(vg_event_dispatch(root, &down));
+    ASSERT_EQ(vg_widget_get_input_capture(), &split->base);
+    ASSERT_TRUE(split->dragging);
+
+    vg_widget_set_enabled(&split->base, false);
+    ASSERT_NULL(vg_widget_get_input_capture());
+    ASSERT_FALSE(split->dragging);
+
+    vg_widget_destroy(root);
+}
+
 TEST(splitpane_arrange_clamps_negative_sizes) {
     vg_splitpane_t *split = vg_splitpane_create(NULL, VG_SPLIT_HORIZONTAL);
     ASSERT_NOT_NULL(split);
@@ -1135,6 +1210,75 @@ TEST(splitpane_drag_captures_pointer_until_mouse_up) {
         vg_event_mouse(VG_EVENT_MOUSE_UP, split->base.x + split->base.width + 40.0f, splitter_y, VG_MOUSE_LEFT, 0);
     ASSERT_TRUE(vg_event_dispatch(root, &up));
     ASSERT_NULL(vg_widget_get_input_capture());
+
+    vg_widget_destroy(root);
+}
+
+TEST(scrollview_scrollbar_drag_captures_until_release_outside_widget) {
+    vg_widget_t *root = vg_widget_create(VG_WIDGET_CONTAINER);
+    ASSERT_NOT_NULL(root);
+    root->visible = true;
+    root->enabled = true;
+    root->width = 200.0f;
+    root->height = 160.0f;
+
+    vg_scrollview_t *sv = vg_scrollview_create(root);
+    ASSERT_NOT_NULL(sv);
+    vg_scrollview_set_content_size(sv, 100.0f, 220.0f);
+    vg_widget_arrange(&sv->base, 10.0f, 10.0f, 100.0f, 60.0f);
+
+    float thumb_x = sv->base.x + sv->base.width - sv->scrollbar_width * 0.5f;
+    float thumb_y = sv->base.y + 10.0f;
+
+    vg_event_t down = vg_event_mouse(VG_EVENT_MOUSE_DOWN, thumb_x, thumb_y, VG_MOUSE_LEFT, 0);
+    ASSERT_TRUE(vg_event_dispatch(root, &down));
+    ASSERT_EQ(vg_widget_get_input_capture(), &sv->base);
+    ASSERT_TRUE(sv->v_scrollbar_dragging);
+
+    vg_event_t move = vg_event_mouse(VG_EVENT_MOUSE_MOVE, thumb_x, sv->base.y + sv->base.height + 40.0f, VG_MOUSE_LEFT, 0);
+    ASSERT_TRUE(vg_event_dispatch(root, &move));
+    ASSERT_TRUE(sv->scroll_y > 0.0f);
+
+    vg_event_t up = vg_event_mouse(VG_EVENT_MOUSE_UP, thumb_x, sv->base.y + sv->base.height + 40.0f, VG_MOUSE_LEFT, 0);
+    ASSERT_TRUE(vg_event_dispatch(root, &up));
+    ASSERT_NULL(vg_widget_get_input_capture());
+    ASSERT_FALSE(sv->v_scrollbar_dragging);
+
+    vg_widget_destroy(root);
+}
+
+TEST(codeeditor_scrollbar_drag_captures_until_release_outside_widget) {
+    vg_widget_t *root = vg_widget_create(VG_WIDGET_CONTAINER);
+    ASSERT_NOT_NULL(root);
+    root->visible = true;
+    root->enabled = true;
+    root->width = 220.0f;
+    root->height = 180.0f;
+
+    vg_codeeditor_t *editor = vg_codeeditor_create(root);
+    ASSERT_NOT_NULL(editor);
+    vg_widget_arrange(&editor->base, 10.0f, 10.0f, 140.0f, 60.0f);
+    vg_codeeditor_set_text(editor,
+                           "line 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\nline 8\nline 9\nline 10");
+
+    float thumb_x = editor->base.x + editor->base.width - 6.0f;
+    float thumb_y = editor->base.y + 10.0f;
+
+    vg_event_t down = vg_event_mouse(VG_EVENT_MOUSE_DOWN, thumb_x, thumb_y, VG_MOUSE_LEFT, 0);
+    ASSERT_TRUE(vg_event_dispatch(root, &down));
+    ASSERT_EQ(vg_widget_get_input_capture(), &editor->base);
+    ASSERT_TRUE(editor->scrollbar_dragging);
+
+    vg_event_t move = vg_event_mouse(
+        VG_EVENT_MOUSE_MOVE, thumb_x, editor->base.y + editor->base.height + 40.0f, VG_MOUSE_LEFT, 0);
+    ASSERT_TRUE(vg_event_dispatch(root, &move));
+    ASSERT_TRUE(editor->scroll_y > 0.0f);
+
+    vg_event_t up = vg_event_mouse(
+        VG_EVENT_MOUSE_UP, thumb_x, editor->base.y + editor->base.height + 40.0f, VG_MOUSE_LEFT, 0);
+    ASSERT_TRUE(vg_event_dispatch(root, &up));
+    ASSERT_NULL(vg_widget_get_input_capture());
+    ASSERT_FALSE(editor->scrollbar_dragging);
 
     vg_widget_destroy(root);
 }
@@ -1278,6 +1422,29 @@ TEST(toolbar_dropdown_opens_menu_popup_and_triggers_menu_item) {
 
     vg_widget_destroy(root);
     vg_widget_destroy(&menubar->base);
+}
+
+TEST(toolbar_item_text_change_marks_owner_dirty) {
+    vg_toolbar_t *tb = vg_toolbar_create(NULL, VG_TOOLBAR_HORIZONTAL);
+    ASSERT_NOT_NULL(tb);
+
+    vg_toolbar_item_t *item =
+        vg_toolbar_add_button(tb, "run", "Run", (vg_icon_t){0}, NULL, NULL);
+    ASSERT_NOT_NULL(item);
+
+    tb->base.needs_layout = false;
+    tb->base.needs_paint = false;
+    tb->overflow_popup_dirty = false;
+
+    vg_toolbar_item_set_text(item, "Run Tests");
+
+    ASSERT_TRUE(tb->base.needs_layout);
+    ASSERT_TRUE(tb->base.needs_paint);
+    ASSERT_TRUE(tb->overflow_popup_dirty);
+    ASSERT_NOT_NULL(item->label);
+    ASSERT_EQ(strcmp(item->label, "Run Tests"), 0);
+
+    vg_widget_destroy(&tb->base);
 }
 
 TEST(statusbar_hit_testing_uses_local_coords) {
@@ -1445,6 +1612,42 @@ TEST(listbox_measure_uses_small_item_count) {
     vg_widget_destroy(&lb->base);
 }
 
+TEST(codeeditor_fold_gutter_click_toggles_region) {
+    vg_codeeditor_t *editor = vg_codeeditor_create(NULL);
+    ASSERT_NOT_NULL(editor);
+
+    vg_codeeditor_set_text(editor, "one\ntwo\nthree\nfour");
+    editor->char_width = 8.0f;
+    editor->line_height = 20.0f;
+    editor->show_line_numbers = false;
+    editor->show_fold_gutter = true;
+
+    editor->fold_regions = (struct vg_fold_region *)calloc(1, sizeof(*editor->fold_regions));
+    ASSERT_NOT_NULL(editor->fold_regions);
+    editor->fold_region_count = 1;
+    editor->fold_region_cap = 1;
+    editor->fold_regions[0].start_line = 0;
+    editor->fold_regions[0].end_line = 2;
+    editor->fold_regions[0].folded = false;
+
+    vg_widget_arrange(&editor->base, 0.0f, 0.0f, 320.0f, 160.0f);
+    vg_codeeditor_refresh_layout_state(editor);
+    ASSERT_TRUE(editor->gutter_width > 0.0f);
+    ASSERT_FALSE(editor->fold_regions[0].folded);
+
+    vg_event_t event = {0};
+    event.type = VG_EVENT_MOUSE_DOWN;
+    event.mouse.x = 6.0f;
+    event.mouse.y = 10.0f;
+    event.mouse.screen_x = event.mouse.x;
+    event.mouse.screen_y = event.mouse.y;
+
+    ASSERT_TRUE(vg_event_send(&editor->base, &event));
+    ASSERT_TRUE(editor->fold_regions[0].folded);
+
+    vg_widget_destroy(&editor->base);
+}
+
 //=============================================================================
 // Main
 //=============================================================================
@@ -1496,6 +1699,7 @@ int main(void) {
     RUN(tabbar_metrics_follow_theme_scale);
     RUN(tab_tooltip_can_be_replaced);
     RUN(tabbar_title_updates_default_tooltip);
+    RUN(tabbar_hover_promotes_tab_tooltip_to_widget_tooltip);
     RUN(tabbar_close_button_requires_full_rect);
     RUN(native_menubar_measures_to_zero_height);
     RUN(widget_destroy_child_detaches_from_parent);
@@ -1511,18 +1715,23 @@ int main(void) {
     RUN(treeview_remove_node_clears_descendant_state);
     RUN(widget_paint_runs_overlay_second_pass);
     RUN(widget_set_focus_null_clears_focus);
+    RUN(widget_hide_and_disable_clear_focus_and_capture);
     RUN(splitpane_arrange_clamps_negative_sizes);
     RUN(splitpane_drag_captures_pointer_until_mouse_up);
+    RUN(scrollview_scrollbar_drag_captures_until_release_outside_widget);
+    RUN(codeeditor_scrollbar_drag_captures_until_release_outside_widget);
     RUN(toolbar_hit_testing_uses_local_coords);
     RUN(toolbar_spacer_pushes_trailing_button_to_edge);
     RUN(toolbar_overflow_popup_exposes_hidden_items);
     RUN(toolbar_dropdown_opens_menu_popup_and_triggers_menu_item);
+    RUN(toolbar_item_text_change_marks_owner_dirty);
     RUN(statusbar_hit_testing_uses_local_coords);
     RUN(statusbar_item_mutators_invalidate_owner);
     RUN(dropdown_mutators_invalidate_and_adjust_indices);
     RUN(tabbar_drag_reorders_tabs_and_fires_callback);
     RUN(listbox_virtual_paint_clips_to_viewport);
     RUN(listbox_measure_uses_small_item_count);
+    RUN(codeeditor_fold_gutter_click_toggles_region);
 
     printf("\n%d passed, %d failed\n", g_passed, g_failed);
     return g_failed ? 1 : 0;

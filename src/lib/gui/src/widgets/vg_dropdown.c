@@ -67,18 +67,54 @@ static float dropdown_item_height(vg_dropdown_t *dd) {
     return dd->font_size > 0 ? (dd->font_size * 1.6f) : 24.0f;
 }
 
+// Shared geometry helper: resolves panel top (absolute) plus flip-above decision
+// when the panel would clip the bottom of the window. Used by both hit-testing
+// and paint so clicks always match the rendered position.
+static void dropdown_resolve_panel_rect(vg_dropdown_t *dd,
+                                        float abs_widget_x,
+                                        float abs_widget_y,
+                                        float *out_panel_top,
+                                        float *out_panel_h) {
+    float ih = dropdown_item_height(dd);
+    float panel_h = ih * dd->item_count;
+    if (panel_h > dd->dropdown_height)
+        panel_h = dd->dropdown_height;
+
+    float below_top = abs_widget_y + dd->base.height;
+    float panel_top = below_top;
+
+    // If we can resolve a window, check whether the panel would overflow the
+    // bottom. If so, flip above — but only if there's more room up than down.
+    vgfx_window_t win = (vgfx_window_t)dd->base.impl_data;
+    int32_t win_w = 0, win_h = 0;
+    if (win && vgfx_get_size(win, &win_w, &win_h) == 0) {
+        float space_below = (float)win_h - below_top;
+        float space_above = abs_widget_y;
+        if (space_below < panel_h && space_above > space_below) {
+            panel_top = abs_widget_y - panel_h;
+            if (panel_top < 0.0f)
+                panel_top = 0.0f;
+        }
+    }
+
+    (void)abs_widget_x;
+    if (out_panel_top)
+        *out_panel_top = panel_top;
+    if (out_panel_h)
+        *out_panel_h = panel_h;
+}
+
 static bool dropdown_panel_hit(vg_dropdown_t *dd, float screen_x, float screen_y, int *index) {
     float sx = 0.0f;
     float sy = 0.0f;
     vg_widget_get_screen_bounds(&dd->base, &sx, &sy, NULL, NULL);
 
     float ih = dropdown_item_height(dd);
-    float panel_h = ih * dd->item_count;
-    if (panel_h > dd->dropdown_height)
-        panel_h = dd->dropdown_height;
+    float panel_top = 0.0f;
+    float panel_h = 0.0f;
+    dropdown_resolve_panel_rect(dd, sx, sy, &panel_top, &panel_h);
 
     float panel_left = sx;
-    float panel_top = sy + dd->base.height;
     float panel_right = panel_left + dd->base.width;
     float panel_bottom = panel_top + panel_h;
     if (screen_x < panel_left || screen_x >= panel_right || screen_y < panel_top ||
@@ -160,12 +196,14 @@ static void dropdown_paint_overlay(vg_widget_t *widget, void *canvas) {
         return;
 
     float ih = dropdown_item_height(dd);
-    float panel_h = ih * dd->item_count;
-    if (panel_h > dd->dropdown_height)
-        panel_h = dd->dropdown_height;
+    float panel_top_abs = 0.0f;
+    float panel_h = 0.0f;
+    dropdown_resolve_panel_rect(dd, widget->x, widget->y, &panel_top_abs, &panel_h);
 
     int32_t px = (int32_t)widget->x;
-    int32_t py = (int32_t)(widget->y + widget->height);
+    // paint works in widget-coordinates via canvas; translate the absolute
+    // panel_top back into the same coordinate space the rest of paint uses.
+    int32_t py = (int32_t)panel_top_abs;
     int32_t pw = (int32_t)widget->width;
     int32_t ph = (int32_t)panel_h;
 

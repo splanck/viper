@@ -849,8 +849,10 @@ static int rt_gui_widget_paints_children_internally(vg_widget_t *widget) {
 static int rt_gui_widget_accepts_drop_type(vg_widget_t *widget, const char *type) {
     if (!widget || !widget->is_drop_target)
         return 0;
-    if (!widget->accepted_drop_types || !widget->accepted_drop_types[0] || !type || !type[0])
+    if (!widget->accepted_drop_types || !widget->accepted_drop_types[0])
         return 1;
+    if (!type || !type[0])
+        return 0;
 
     const char *p = widget->accepted_drop_types;
     while (*p) {
@@ -881,15 +883,42 @@ static int rt_gui_send_event_to_widget(vg_widget_t *widget, vg_event_t *event) {
     if (!widget || !event)
         return 0;
     event->target = widget;
+    // NOTE: VG_EVENT_MOUSE_WHEEL intentionally omitted. event.mouse and
+    // event.wheel share a union, so writing mouse.x/y would overwrite
+    // wheel.delta_x/y and silently destroy the scroll delta before the
+    // widget's wheel handler could consume it.
     if (event->type == VG_EVENT_MOUSE_MOVE || event->type == VG_EVENT_MOUSE_DOWN ||
         event->type == VG_EVENT_MOUSE_UP || event->type == VG_EVENT_CLICK ||
-        event->type == VG_EVENT_DOUBLE_CLICK || event->type == VG_EVENT_MOUSE_WHEEL) {
+        event->type == VG_EVENT_DOUBLE_CLICK) {
         float sx = 0.0f, sy = 0.0f;
         vg_widget_get_screen_bounds(widget, &sx, &sy, NULL, NULL);
         event->mouse.x = event->mouse.screen_x - sx;
         event->mouse.y = event->mouse.screen_y - sy;
     }
     return vg_event_send(widget, event) ? 1 : 0;
+}
+
+static void rt_gui_update_drag_over_target(rt_gui_app_t *app, vg_widget_t *event_root) {
+    if (!app)
+        return;
+
+    vg_widget_t *next = NULL;
+    if (app->drag_source && event_root) {
+        vg_widget_t *hit =
+            vg_widget_hit_test(event_root, (float)app->mouse_x, (float)app->mouse_y);
+        if (hit && hit != app->drag_source &&
+            rt_gui_widget_accepts_drop_type(hit, app->drag_source->drag_type)) {
+            next = hit;
+        }
+    }
+
+    if (app->drag_over_widget && app->drag_over_widget != next) {
+        app->drag_over_widget->_is_drag_over = false;
+    }
+    if (next) {
+        next->_is_drag_over = true;
+    }
+    app->drag_over_widget = next;
 }
 
 /// @brief Return the effective event-dispatch root for hit testing.
@@ -962,11 +991,6 @@ void rt_gui_app_poll(void *app_ptr) {
     app->last_toolbar_clicked = NULL;
     rt_gui_set_last_clicked(NULL);
 
-    if (app->drag_over_widget) {
-        app->drag_over_widget->_is_drag_over = false;
-        app->drag_over_widget = NULL;
-    }
-
     // Clear shortcut triggered flags from previous frame
     rt_shortcuts_clear_triggered(app);
 
@@ -998,6 +1022,7 @@ void rt_gui_app_poll(void *app_ptr) {
                 vgfx_get_size(app->window, &win_w, &win_h);
                 rt_gui_layout_command_palette(app, top_palette, win_w, win_h);
             }
+            rt_gui_update_drag_over_target(app, event_root);
 
             // Track mouse position from events
             if (event.type == VGFX_EVENT_MOUSE_MOVE) {
@@ -1005,21 +1030,7 @@ void rt_gui_app_poll(void *app_ptr) {
                 app->mouse_y = event.data.mouse_move.y;
 
                 // Drag-and-drop: update drag-over state during drag
-                if (app->drag_source) {
-                    vg_widget_t *hit =
-                        vg_widget_hit_test(event_root, (float)app->mouse_x, (float)app->mouse_y);
-                    // Clear previous drag-over
-                    if (app->drag_over_widget && app->drag_over_widget != hit)
-                        app->drag_over_widget->_is_drag_over = false;
-                    // Set new drag-over if target accepts drops
-                    if (hit && hit != app->drag_source &&
-                        rt_gui_widget_accepts_drop_type(hit, app->drag_source->drag_type)) {
-                        hit->_is_drag_over = true;
-                        app->drag_over_widget = hit;
-                    } else {
-                        app->drag_over_widget = NULL;
-                    }
-                }
+                rt_gui_update_drag_over_target(app, event_root);
 
                 if (top_palette) {
                     vg_tooltip_manager_on_leave(vg_tooltip_manager_get());
@@ -1036,12 +1047,14 @@ void rt_gui_app_poll(void *app_ptr) {
             }
 
             // Drag-and-drop: start drag on mouse-down over draggable widget
-            if (event.type == VGFX_EVENT_MOUSE_DOWN && !app->drag_source) {
+            if (event.type == VGFX_EVENT_MOUSE_DOWN && !app->drag_source &&
+                event.data.mouse_button.button == VGFX_MOUSE_LEFT) {
                 vg_widget_t *hit =
                     vg_widget_hit_test(event_root, (float)app->mouse_x, (float)app->mouse_y);
                 if (hit && hit->draggable) {
                     app->drag_source = hit;
                     hit->_is_being_dragged = true;
+                    rt_gui_update_drag_over_target(app, event_root);
                 }
             }
 
@@ -1073,7 +1086,7 @@ void rt_gui_app_poll(void *app_ptr) {
                         hit->_is_drag_over = false;
                     }
                     app->drag_source = NULL;
-                    app->drag_over_widget = NULL;
+                    rt_gui_update_drag_over_target(app, event_root);
                 }
             }
 

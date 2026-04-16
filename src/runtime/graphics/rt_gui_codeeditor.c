@@ -489,6 +489,7 @@ void rt_codeeditor_set_show_line_numbers(void *editor, int64_t show) {
         return;
     vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
     ce->show_line_numbers = show != 0;
+    vg_codeeditor_refresh_layout_state(ce);
 }
 
 /// @brief `CodeEditor.GetShowLineNumbers` — read the line-number visibility flag.
@@ -508,7 +509,8 @@ void rt_codeeditor_set_line_number_width(void *editor, int64_t width) {
     if (!editor)
         return;
     vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
-    ce->gutter_width = (float)((int)width) * ce->char_width;
+    ce->line_number_width_override = width > 0 ? (float)((int)width) : 0.0f;
+    vg_codeeditor_refresh_layout_state(ce);
 }
 
 /// @brief Convert an `rt_pixels` ARGB buffer into a `vg_icon_t`.
@@ -713,7 +715,7 @@ void rt_codeeditor_set_show_fold_gutter(void *editor, int64_t show) {
         return;
     vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
     ce->show_fold_gutter = show != 0;
-    ce->base.needs_paint = true;
+    vg_codeeditor_refresh_layout_state(ce);
 }
 
 //=============================================================================
@@ -729,6 +731,20 @@ void rt_codeeditor_add_fold_region(void *editor, int64_t start_line, int64_t end
     if (!editor)
         return;
     vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
+    if (start_line < 0)
+        start_line = 0;
+    if (end_line >= ce->line_count)
+        end_line = ce->line_count - 1;
+    if (end_line <= start_line)
+        return;
+    for (int i = 0; i < ce->fold_region_count; i++) {
+        if (ce->fold_regions[i].start_line == (int)start_line) {
+            ce->fold_regions[i].end_line = (int)end_line;
+            ce->fold_regions[i].folded = false;
+            vg_codeeditor_refresh_layout_state(ce);
+            return;
+        }
+    }
     if (ce->fold_region_count >= ce->fold_region_cap) {
         int new_cap = ce->fold_region_cap ? ce->fold_region_cap * 2 : 8;
         void *p = realloc(ce->fold_regions, (size_t)new_cap * sizeof(*ce->fold_regions));
@@ -741,7 +757,7 @@ void rt_codeeditor_add_fold_region(void *editor, int64_t start_line, int64_t end
     r->start_line = (int)start_line;
     r->end_line = (int)end_line;
     r->folded = false;
-    ce->base.needs_paint = true;
+    vg_codeeditor_refresh_layout_state(ce);
 }
 
 /// @brief `CodeEditor.RemoveFoldRegion(startLine)` — drop a fold region.
@@ -755,7 +771,7 @@ void rt_codeeditor_remove_fold_region(void *editor, int64_t start_line) {
     for (int i = 0; i < ce->fold_region_count; i++) {
         if (ce->fold_regions[i].start_line == (int)start_line) {
             ce->fold_regions[i] = ce->fold_regions[--ce->fold_region_count];
-            ce->base.needs_paint = true;
+            vg_codeeditor_refresh_layout_state(ce);
             return;
         }
     }
@@ -770,7 +786,7 @@ void rt_codeeditor_clear_fold_regions(void *editor) {
     ce->fold_regions = NULL;
     ce->fold_region_count = 0;
     ce->fold_region_cap = 0;
-    ce->base.needs_paint = true;
+    vg_codeeditor_refresh_layout_state(ce);
 }
 
 /// @brief `CodeEditor.Fold(line)` — collapse the region starting at `line`.
@@ -781,7 +797,7 @@ void rt_codeeditor_fold(void *editor, int64_t line) {
     for (int i = 0; i < ce->fold_region_count; i++) {
         if (ce->fold_regions[i].start_line == (int)line) {
             ce->fold_regions[i].folded = true;
-            ce->base.needs_paint = true;
+            vg_codeeditor_refresh_layout_state(ce);
             return;
         }
     }
@@ -795,7 +811,7 @@ void rt_codeeditor_unfold(void *editor, int64_t line) {
     for (int i = 0; i < ce->fold_region_count; i++) {
         if (ce->fold_regions[i].start_line == (int)line) {
             ce->fold_regions[i].folded = false;
-            ce->base.needs_paint = true;
+            vg_codeeditor_refresh_layout_state(ce);
             return;
         }
     }
@@ -809,7 +825,7 @@ void rt_codeeditor_toggle_fold(void *editor, int64_t line) {
     for (int i = 0; i < ce->fold_region_count; i++) {
         if (ce->fold_regions[i].start_line == (int)line) {
             ce->fold_regions[i].folded = !ce->fold_regions[i].folded;
-            ce->base.needs_paint = true;
+            vg_codeeditor_refresh_layout_state(ce);
             return;
         }
     }
@@ -834,7 +850,7 @@ void rt_codeeditor_fold_all(void *editor) {
     vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
     for (int i = 0; i < ce->fold_region_count; i++)
         ce->fold_regions[i].folded = true;
-    ce->base.needs_paint = true;
+    vg_codeeditor_refresh_layout_state(ce);
 }
 
 /// @brief `CodeEditor.UnfoldAll` — expand every fold region.
@@ -844,7 +860,7 @@ void rt_codeeditor_unfold_all(void *editor) {
     vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
     for (int i = 0; i < ce->fold_region_count; i++)
         ce->fold_regions[i].folded = false;
-    ce->base.needs_paint = true;
+    vg_codeeditor_refresh_layout_state(ce);
 }
 
 /// @brief `CodeEditor.SetAutoFoldDetection(enable)` — derive fold regions from indentation.
@@ -926,8 +942,8 @@ void rt_codeeditor_set_auto_fold_detection(void *editor, int64_t enable) {
                 }
             }
         }
-        ce->base.needs_paint = true;
     }
+    vg_codeeditor_refresh_layout_state(ce);
 }
 
 //=============================================================================
@@ -1245,6 +1261,197 @@ int64_t rt_codeeditor_get_word_wrap(void *editor) {
 // CodeEditor Completion Helpers
 //=============================================================================
 
+#define RT_CODEEDITOR_SCROLLBAR_WIDTH 12.0f
+
+static int rt_codeeditor_line_is_hidden(const vg_codeeditor_t *ce, int line) {
+    if (!ce)
+        return 0;
+    for (int i = 0; i < ce->fold_region_count; i++) {
+        const struct vg_fold_region *region = &ce->fold_regions[i];
+        if (region->folded && line > region->start_line && line <= region->end_line)
+            return 1;
+    }
+    return 0;
+}
+
+static int rt_codeeditor_visible_anchor_line(const vg_codeeditor_t *ce, int line) {
+    if (!ce || ce->line_count <= 0)
+        return 0;
+    if (line < 0)
+        line = 0;
+    if (line >= ce->line_count)
+        line = ce->line_count - 1;
+    if (!rt_codeeditor_line_is_hidden(ce, line))
+        return line;
+
+    int best_start = line;
+    int found = 0;
+    for (int i = 0; i < ce->fold_region_count; i++) {
+        const struct vg_fold_region *region = &ce->fold_regions[i];
+        if (region->folded && line > region->start_line && line <= region->end_line) {
+            if (!found || region->start_line < best_start) {
+                best_start = region->start_line;
+                found = 1;
+            }
+        }
+    }
+    return found ? best_start : line;
+}
+
+static int rt_codeeditor_chars_per_row(const vg_codeeditor_t *ce, float content_width) {
+    if (!ce || !ce->word_wrap || ce->char_width <= 0.0f || content_width <= 0.0f)
+        return 0;
+    int chars = (int)(content_width / ce->char_width);
+    return chars > 0 ? chars : 1;
+}
+
+static int rt_codeeditor_wrapped_rows_for_line(const vg_codeeditor_t *ce,
+                                               int line,
+                                               float content_width) {
+    if (!ce || line < 0 || line >= ce->line_count)
+        return 1;
+    int chars_per_row = rt_codeeditor_chars_per_row(ce, content_width);
+    if (chars_per_row <= 0)
+        return 1;
+    size_t len = ce->lines[line].length;
+    if (len == 0)
+        return 1;
+    return (int)((len + (size_t)chars_per_row - 1) / (size_t)chars_per_row);
+}
+
+static int rt_codeeditor_visual_rows_for_line(const vg_codeeditor_t *ce,
+                                              int line,
+                                              float content_width) {
+    if (!ce || line < 0 || line >= ce->line_count || rt_codeeditor_line_is_hidden(ce, line))
+        return 0;
+    if (!ce->word_wrap)
+        return 1;
+    return rt_codeeditor_wrapped_rows_for_line(ce, line, content_width);
+}
+
+static float rt_codeeditor_content_draw_width(const vg_codeeditor_t *ce) {
+    if (!ce)
+        return 0.0f;
+
+    float base_width = ce->base.width - ce->gutter_width;
+    if (base_width < 0.0f)
+        base_width = 0.0f;
+    if (!ce->word_wrap)
+        return base_width;
+
+    float content_width = base_width;
+    for (int pass = 0; pass < 3; pass++) {
+        int total_rows = 0;
+        for (int i = 0; i < ce->line_count; i++) {
+            total_rows += rt_codeeditor_visual_rows_for_line(ce, i, content_width);
+        }
+        float total_height = (float)total_rows * ce->line_height;
+        float next_width =
+            base_width - ((total_height > ce->base.height) ? RT_CODEEDITOR_SCROLLBAR_WIDTH : 0.0f);
+        if (next_width < 0.0f)
+            next_width = 0.0f;
+        if (next_width == content_width)
+            break;
+        content_width = next_width;
+    }
+    return content_width;
+}
+
+static void rt_codeeditor_visual_offset_for_position(const vg_codeeditor_t *ce,
+                                                     float content_width,
+                                                     int line,
+                                                     int col,
+                                                     int *out_row_index,
+                                                     int *out_col_in_row) {
+    if (out_row_index)
+        *out_row_index = 0;
+    if (out_col_in_row)
+        *out_col_in_row = 0;
+    if (!ce || line < 0 || line >= ce->line_count)
+        return;
+    line = rt_codeeditor_visible_anchor_line(ce, line);
+
+    int chars_per_row = rt_codeeditor_chars_per_row(ce, content_width);
+    int row_index = 0;
+    int col_in_row = col;
+    if (chars_per_row > 0) {
+        size_t len = ce->lines[line].length;
+        row_index = col / chars_per_row;
+        if (col > 0 && (size_t)col == len && len > 0 && (len % (size_t)chars_per_row) == 0) {
+            row_index = (int)((len - 1) / (size_t)chars_per_row);
+        }
+        col_in_row = col - row_index * chars_per_row;
+        if (col_in_row < 0)
+            col_in_row = 0;
+    }
+
+    if (out_row_index)
+        *out_row_index = row_index;
+    if (out_col_in_row)
+        *out_col_in_row = col_in_row;
+}
+
+static int rt_codeeditor_visual_row_for_position(const vg_codeeditor_t *ce,
+                                                 float content_width,
+                                                 int line,
+                                                 int col) {
+    if (!ce || ce->line_count <= 0)
+        return 0;
+    if (line < 0)
+        line = 0;
+    if (line >= ce->line_count)
+        line = ce->line_count - 1;
+    line = rt_codeeditor_visible_anchor_line(ce, line);
+
+    int visual_row = 0;
+    for (int i = 0; i < line; i++) {
+        visual_row += rt_codeeditor_visual_rows_for_line(ce, i, content_width);
+    }
+
+    int row_index = 0;
+    rt_codeeditor_visual_offset_for_position(ce, content_width, line, col, &row_index, NULL);
+    return visual_row + row_index;
+}
+
+static void rt_codeeditor_locate_visual_row(const vg_codeeditor_t *ce,
+                                            float content_width,
+                                            int visual_row,
+                                            int *out_line,
+                                            int *out_row_in_line) {
+    if (out_line)
+        *out_line = 0;
+    if (out_row_in_line)
+        *out_row_in_line = 0;
+    if (!ce || ce->line_count <= 0)
+        return;
+
+    if (visual_row < 0)
+        visual_row = 0;
+
+    int accumulated = 0;
+    for (int line = 0; line < ce->line_count; line++) {
+        int row_count = rt_codeeditor_visual_rows_for_line(ce, line, content_width);
+        if (row_count == 0)
+            continue;
+        if (visual_row < accumulated + row_count) {
+            if (out_line)
+                *out_line = line;
+            if (out_row_in_line)
+                *out_row_in_line = visual_row - accumulated;
+            return;
+        }
+        accumulated += row_count;
+    }
+
+    if (out_line)
+        *out_line = rt_codeeditor_visible_anchor_line(ce, ce->line_count - 1);
+    if (out_row_in_line) {
+        int last_rows = rt_codeeditor_visual_rows_for_line(
+            ce, rt_codeeditor_visible_anchor_line(ce, ce->line_count - 1), content_width);
+        *out_row_in_line = last_rows > 0 ? last_rows - 1 : 0;
+    }
+}
+
 /// @brief Get the screen-absolute X pixel coordinate of the primary cursor.
 /// @details Combines the widget's screen-space origin, gutter width, and
 ///          cursor column × character width.
@@ -1254,7 +1461,17 @@ int64_t rt_codeeditor_get_cursor_pixel_x(void *editor) {
     vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
     float ax = 0, ay = 0;
     vg_widget_get_screen_bounds(&ce->base, &ax, &ay, NULL, NULL);
-    float px = ax + ce->gutter_width + (float)(ce->cursor_col) * ce->char_width;
+    (void)ay;
+    float px = ax + ce->gutter_width;
+    if (ce->word_wrap) {
+        float content_width = rt_codeeditor_content_draw_width(ce);
+        int col_in_row = ce->cursor_col;
+        rt_codeeditor_visual_offset_for_position(
+            ce, content_width, ce->cursor_line, ce->cursor_col, NULL, &col_in_row);
+        px += (float)col_in_row * ce->char_width;
+    } else {
+        px += (float)(ce->cursor_col) * ce->char_width - ce->scroll_x;
+    }
     return (int64_t)px;
 }
 
@@ -1267,7 +1484,12 @@ int64_t rt_codeeditor_get_cursor_pixel_y(void *editor) {
     vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
     float ax = 0, ay = 0;
     vg_widget_get_screen_bounds(&ce->base, &ax, &ay, NULL, NULL);
-    float py = ay + (float)(ce->cursor_line - ce->visible_first_line) * ce->line_height;
+    (void)ax;
+    float py = ay;
+    float content_width = rt_codeeditor_content_draw_width(ce);
+    int visual_row =
+        rt_codeeditor_visual_row_for_position(ce, content_width, ce->cursor_line, ce->cursor_col);
+    py += (float)visual_row * ce->line_height - ce->scroll_y;
     return (int64_t)py;
 }
 
@@ -1284,7 +1506,10 @@ int64_t rt_codeeditor_get_line_at_pixel(void *editor, int64_t y) {
     (void)ax;
 
     float local_y = (float)y - ay + ce->scroll_y;
-    int line = (int)(local_y / ce->line_height);
+    float content_width = rt_codeeditor_content_draw_width(ce);
+    int visual_row = ce->line_height > 0.0f ? (int)(local_y / ce->line_height) : 0;
+    int line = 0;
+    rt_codeeditor_locate_visual_row(ce, content_width, visual_row, &line, NULL);
     if (line < 0)
         line = 0;
     if (line >= ce->line_count)
@@ -1309,8 +1534,23 @@ int64_t rt_codeeditor_get_col_at_pixel(void *editor, int64_t x, int64_t y) {
     vg_widget_get_screen_bounds(&ce->base, &ax, &ay, NULL, NULL);
     (void)ay;
 
-    float local_x = (float)x - ax - ce->gutter_width + ce->scroll_x;
-    int col = (int)(local_x / ce->char_width + 0.5f);
+    float local_x = (float)x - ax - ce->gutter_width;
+    int col = 0;
+    if (ce->word_wrap) {
+        float content_width = rt_codeeditor_content_draw_width(ce);
+        int chars_per_row = rt_codeeditor_chars_per_row(ce, content_width);
+        int visual_row =
+            ce->line_height > 0.0f ? (int)(((float)y - ay + ce->scroll_y) / ce->line_height) : 0;
+        int row_in_line = 0;
+        rt_codeeditor_locate_visual_row(ce, content_width, visual_row, NULL, &row_in_line);
+        int col_in_row = ce->char_width > 0.0f ? (int)(local_x / ce->char_width + 0.5f) : 0;
+        if (col_in_row < 0)
+            col_in_row = 0;
+        col = row_in_line * chars_per_row + col_in_row;
+    } else {
+        local_x += ce->scroll_x;
+        col = (int)(local_x / ce->char_width + 0.5f);
+    }
     if (col < 0)
         col = 0;
     if (col > (int)ce->lines[line].length)

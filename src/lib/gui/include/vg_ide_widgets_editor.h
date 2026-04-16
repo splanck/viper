@@ -122,6 +122,7 @@ typedef struct vg_codeeditor {
     // Gutter
     bool show_line_numbers;     ///< Show line number gutter
     float gutter_width;         ///< Gutter width
+    float line_number_width_override; ///< Explicit line-number gutter width in character units (0 = auto)
     uint32_t gutter_bg;         ///< Gutter background color
     uint32_t line_number_color; ///< Line number color
 
@@ -287,6 +288,9 @@ bool vg_codeeditor_is_modified(vg_codeeditor_t *editor);
 
 /// @brief Clear modified flag
 void vg_codeeditor_clear_modified(vg_codeeditor_t *editor);
+
+/// @brief Recompute gutter/layout state after runtime-side visual option changes.
+void vg_codeeditor_refresh_layout_state(vg_codeeditor_t *editor);
 
 //=============================================================================
 // FindReplaceBar Widget
