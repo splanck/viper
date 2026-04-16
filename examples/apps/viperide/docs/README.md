@@ -5,7 +5,7 @@ A full-featured IDE for Zia and Viper BASIC, built entirely in Zia using the `Vi
 ## Features
 
 - **Code Editor** with syntax highlighting, line numbers, undo/redo, and minimap
-- **IntelliSense** code completion via the Zia CompletionEngine
+- **IntelliSense** code completion via the Zia CompletionEngine, using the active file path for relative `bind` resolution
 - **Live Diagnostics** — errors and warnings appear as you type (debounced 500ms)
 - **Hover Tooltips** — type and signature info on mouse dwell over identifiers
 - **File Explorer** with recursive tree view and context menus
@@ -13,7 +13,7 @@ A full-featured IDE for Zia and Viper BASIC, built entirely in Zia using the `Vi
 - **Find/Replace** bar with match count and navigation
 - **Build Integration** — compile and run Zia/BASIC files with error diagnostics
 - **Command Palette** (Ctrl+Shift+P) for keyboard-driven workflow
-- **Persistent Settings** — font size, theme, minimap visibility saved to `~/.viperide/settings.ini`
+- **Persistent Settings** — font size, optional font path, theme, minimap visibility, diagnostics, folding, and tab width saved to `~/.viperide/settings.ini`
 - **File Watcher** — detects external changes and prompts for reload
 - **Themes** — dark and light theme switching
 
@@ -80,6 +80,7 @@ viper run .
 | Ctrl+Shift+T | Toggle Theme |
 | F11 | Fullscreen |
 | Ctrl+Space | Trigger Completion |
+| Ctrl+, | Settings / font preferences |
 
 ## Architecture
 

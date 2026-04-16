@@ -115,6 +115,10 @@
 
 namespace il::frontends::zia {
 
+class BinaryOperatorLowerer;
+class CallArgumentLowerer;
+class CollectionLowerer;
+
 //===----------------------------------------------------------------------===//
 /// @name Result Type
 /// @brief Type alias for expression lowering results.
@@ -206,6 +210,10 @@ class Lowerer {
     }
 
   private:
+    friend class BinaryOperatorLowerer;
+    friend class CallArgumentLowerer;
+    friend class CollectionLowerer;
+
     //=========================================================================
     /// @name State
     /// @brief Internal state maintained during lowering.

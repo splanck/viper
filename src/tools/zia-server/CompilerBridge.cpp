@@ -95,7 +95,7 @@ struct HoverResult {
     std::string name;
     std::string
         kind; ///< "variable","parameter","function","method","field","type","module","runtime-class"
-    std::string type;      ///< ViperType::toString()
+    std::string type;      ///< developer-facing semantic type string
     std::string signature; ///< Full signature for functions/methods
     std::string ownerName; ///< Parent type name for members
     bool isFinal{false};
@@ -113,13 +113,13 @@ static std::string buildSignatureFromDecl(const std::vector<Param> &params,
             sig += ", ";
         sig += params[i].name + ": ";
         if (i < paramTys.size() && paramTys[i])
-            sig += paramTys[i]->toString();
+            sig += paramTys[i]->toDisplayString();
         else
             sig += "?";
     }
     sig += ")";
     if (retTy && retTy->kind != TypeKindSem::Unit && retTy->kind != TypeKindSem::Void)
-        sig += " -> " + retTy->toString();
+        sig += " -> " + retTy->toDisplayString();
     return sig;
 }
 
@@ -133,11 +133,11 @@ static std::string buildSignatureFromType(const TypeRef &funcType) {
     for (size_t i = 0; i < paramTys.size(); ++i) {
         if (i > 0)
             sig += ", ";
-        sig += paramTys[i] ? paramTys[i]->toString() : "?";
+        sig += paramTys[i] ? paramTys[i]->toDisplayString() : "?";
     }
     sig += ")";
     if (retTy && retTy->kind != TypeKindSem::Unit && retTy->kind != TypeKindSem::Void)
-        sig += " -> " + retTy->toString();
+        sig += " -> " + retTy->toDisplayString();
     return sig;
 }
 
@@ -267,7 +267,7 @@ static HoverResult resolveHoverTarget(
             if (mem.name == ctx.identifier) {
                 result.name = mem.name;
                 result.kind = symbolKindStr(mem.kind);
-                result.type = mem.type ? mem.type->toString() : "";
+                result.type = mem.type ? mem.type->toDisplayString() : "";
                 result.ownerName = ownerName;
                 result.isFinal = mem.isFinal;
                 result.isExtern = mem.isExtern;
@@ -295,7 +295,7 @@ static HoverResult resolveHoverTarget(
         if (scoped) {
             result.name = scoped->symbol.name;
             result.kind = symbolKindStr(scoped->symbol.kind);
-            result.type = scoped->symbol.type ? scoped->symbol.type->toString() : "";
+            result.type = scoped->symbol.type ? scoped->symbol.type->toDisplayString() : "";
             result.isFinal = scoped->symbol.isFinal;
             result.isExtern = scoped->symbol.isExtern;
             result.ownerName = scoped->ownerType;
@@ -320,7 +320,7 @@ static HoverResult resolveHoverTarget(
         if (sym.name == ctx.identifier) {
             result.name = sym.name;
             result.kind = symbolKindStr(sym.kind);
-            result.type = sym.type ? sym.type->toString() : "";
+            result.type = sym.type ? sym.type->toDisplayString() : "";
             result.isFinal = sym.isFinal;
             result.isExtern = sym.isExtern;
             if (sym.type && sym.type->kind == TypeKindSem::Function) {
@@ -477,7 +477,7 @@ std::vector<SymbolInfo> CompilerBridge::symbols(const std::string &source,
             continue;
         out.push_back({sym.name,
                        symbolKindStr(sym.kind),
-                       sym.type ? sym.type->toString() : "unknown",
+                       sym.type ? sym.type->toDisplayString() : "unknown",
                        sym.isFinal,
                        sym.isExtern});
     }

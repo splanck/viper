@@ -153,8 +153,8 @@ TypeRef Sema::analyzeField(FieldExpr *expr) {
     if (baseType && baseType->kind == TypeKindSem::Optional && baseType->innerType()) {
         warn(WarningCode::W016_OptionalWithoutCheck,
              expr->loc,
-             "Accessing member '" + expr->field + "' on Optional type '" + baseType->toString() +
-                 "' without null check");
+             "Accessing member '" + expr->field + "' on Optional type '" +
+                 baseType->toDisplayString() + "' without null check");
         baseType = baseType->innerType();
     }
 
@@ -351,7 +351,8 @@ TypeRef Sema::analyzeField(FieldExpr *expr) {
     if (baseType &&
         (baseType->kind == TypeKindSem::Integer || baseType->kind == TypeKindSem::Number ||
          baseType->kind == TypeKindSem::Boolean || baseType->kind == TypeKindSem::Byte)) {
-        error(expr->loc, "Type '" + baseType->toString() + "' has no member '" + expr->field + "'");
+        error(expr->loc,
+              "Type '" + baseType->toDisplayString() + "' has no member '" + expr->field + "'");
         return types::unknown();
     }
 
@@ -415,7 +416,7 @@ TypeRef Sema::analyzeForceUnwrap(ForceUnwrapExpr *expr) {
 
         error(expr->loc,
               "Force-unwrap '!' requires an optional type, got " +
-                  (operandType ? operandType->toString() : "unknown"));
+                  (operandType ? operandType->toDisplayString() : "unknown"));
         return operandType ? operandType : types::unknown();
     }
 
@@ -537,7 +538,8 @@ TypeRef Sema::analyzeAs(AsExpr *expr) {
         return targetType;
 
     error(expr->loc,
-          "Cannot cast '" + sourceType->toString() + "' to '" + targetType->toString() + "'");
+          "Cannot cast '" + sourceType->toDisplayString() + "' to '" +
+              targetType->toDisplayString() + "'");
     return targetType;
 }
 
@@ -602,9 +604,9 @@ bool Sema::analyzeMatchPattern(const MatchArm::Pattern &pattern,
                 TypeRef litType = analyzeExpr(pattern.literal.get());
                 if (scrutineeType && !scrutineeType->isAssignableFrom(*litType)) {
                     error(pattern.literal->loc,
-                          "Pattern literal type '" + litType->toString() +
+                          "Pattern literal type '" + litType->toDisplayString() +
                               "' is not compatible with scrutinee type '" +
-                              scrutineeType->toString() + "'");
+                              scrutineeType->toDisplayString() + "'");
                 }
 
                 if (pattern.literal->kind == ExprKind::IntLiteral) {
@@ -1088,14 +1090,15 @@ TypeRef Sema::analyzeTupleIndex(TupleIndexExpr *expr) {
 
     if (!tupleType->isTuple()) {
         error(expr->loc,
-              "tuple index access requires a tuple type, got '" + tupleType->toString() + "'");
+              "tuple index access requires a tuple type, got '" +
+                  tupleType->toDisplayString() + "'");
         return types::unknown();
     }
 
     if (expr->index >= tupleType->tupleElementTypes().size()) {
         error(expr->loc,
               "tuple index " + std::to_string(expr->index) + " is out of bounds for " +
-                  tupleType->toString());
+                  tupleType->toDisplayString());
         return types::unknown();
     }
 

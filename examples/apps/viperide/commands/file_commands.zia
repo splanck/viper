@@ -31,7 +31,7 @@ func handleNew(shell: app_shell.AppShell,
     tabs.SetActive(docMgr.activeIndex);
     engine.LoadDocument(newDoc);
 
-    shell.breadcrumb.SetPath("", "/");
+    shell.SetBreadcrumbPath("");
     shell.SetStatusLeft("New file created");
     shell.SetStatusRight(DocStatusLabel(newDoc));
 }
@@ -71,7 +71,7 @@ func handleSave(shell: app_shell.AppShell,
                 tabs.SetTooltip(docMgr.activeIndex, saveDoc.filePath);
                 tabs.SetModified(docMgr.activeIndex, false);
                 engine.ClearModified();
-                shell.breadcrumb.SetPath(saveDoc.filePath, "/");
+                shell.SetBreadcrumbPath(saveDoc.filePath);
                 shell.SetStatusLeft("Saved: " + saveDoc.fileName);
                 shell.SetStatusRight(DocStatusLabel(saveDoc));
                 GUI.Toast.Success("Saved: " + saveDoc.fileName);
@@ -101,7 +101,7 @@ func handleSaveAs(shell: app_shell.AppShell,
             tabs.SetTooltip(docMgr.activeIndex, saveAsDoc.filePath);
             tabs.SetModified(docMgr.activeIndex, false);
             engine.ClearModified();
-            shell.breadcrumb.SetPath(saveAsDoc.filePath, "/");
+            shell.SetBreadcrumbPath(saveAsDoc.filePath);
             shell.SetStatusLeft("Saved as: " + saveAsDoc.fileName);
             shell.SetStatusRight(DocStatusLabel(saveAsDoc));
         }
@@ -170,12 +170,12 @@ func handleClose(shell: app_shell.AppShell,
     if nextDoc != null {
         tabs.SetActive(docMgr.activeIndex);
         engine.LoadDocument(nextDoc);
-        shell.breadcrumb.SetPath(nextDoc.filePath, "/");
+        shell.SetBreadcrumbPath(nextDoc.filePath);
         shell.SetStatusRight(DocStatusLabel(nextDoc));
     } else {
         engine.SetText("");
         engine.ClearModified();
-        shell.breadcrumb.SetPath("", "/");
+        shell.SetBreadcrumbPath("");
         shell.SetStatusRight("No file");
     }
     shell.SetStatusLeft("File closed");
@@ -207,7 +207,7 @@ func OpenFileAtPath(shell: app_shell.AppShell,
     tabs.SetActive(docMgr.activeIndex);
     engine.LoadDocument(openDoc);
 
-    shell.breadcrumb.SetPath(openDoc.filePath, "/");
+    shell.SetBreadcrumbPath(openDoc.filePath);
     shell.SetStatusLeft("Opened: " + openDoc.fileName);
     shell.SetStatusRight(DocStatusLabel(openDoc));
 }

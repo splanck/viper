@@ -25,6 +25,7 @@ static void outputpane_destroy(vg_widget_t *widget);
 static void outputpane_measure(vg_widget_t *widget, float available_width, float available_height);
 static void outputpane_paint(vg_widget_t *widget, void *canvas);
 static bool outputpane_handle_event(vg_widget_t *widget, vg_event_t *event);
+static void outputpane_set_font_widget(vg_widget_t *widget, void *font, float size);
 
 //=============================================================================
 // OutputPane VTable
@@ -36,7 +37,8 @@ static vg_widget_vtable_t g_outputpane_vtable = {.destroy = outputpane_destroy,
                                                  .paint = outputpane_paint,
                                                  .handle_event = outputpane_handle_event,
                                                  .can_focus = NULL,
-                                                 .on_focus = NULL};
+                                                 .on_focus = NULL,
+                                                 .set_font = outputpane_set_font_widget};
 
 //=============================================================================
 // ANSI Color Tables
@@ -71,6 +73,12 @@ static uint32_t ansi_code_to_color(int code) {
         return g_ansi_bright_colors[code - 90];
     }
     return 0xFFCCCCCC; // Default
+}
+
+static void outputpane_set_font_widget(vg_widget_t *widget, void *font, float size) {
+    if (!widget || !font)
+        return;
+    vg_outputpane_set_font((vg_outputpane_t *)widget, (vg_font_t *)font, size);
 }
 
 //=============================================================================

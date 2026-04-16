@@ -34,12 +34,24 @@ class LiveDiagnostics {
     expose Integer lastEditMs;       // tick of last detected edit
     expose Boolean pending;          // true if a check is scheduled
     expose String  lastCheckedSource; // avoid rechecking unchanged source
+    expose String  sourcePath;
+    expose String  lastCheckedPath;
 
     expose func init() {
         enabled = true;
         lastEditMs = 0;
         pending = false;
         lastCheckedSource = "";
+        sourcePath = "";
+        lastCheckedPath = "";
+    }
+
+    expose func setSourcePath(path: String) {
+        if path != sourcePath {
+            sourcePath = path;
+            lastCheckedPath = "";
+            pending = false;
+        }
     }
 
     // Call once per frame from the main loop.
@@ -51,7 +63,7 @@ class LiveDiagnostics {
         if engine == null or engine.editor == null { return 0; }
 
         var source = engine.GetText();
-        if source == lastCheckedSource { return 0; }
+        if source == lastCheckedSource and sourcePath == lastCheckedPath { return 0; }
 
         // Detect edit: source changed since last check
         var now = Viper.Time.GetTickCount();
@@ -69,8 +81,9 @@ class LiveDiagnostics {
         // Run check
         pending = false;
         lastCheckedSource = source;
+        lastCheckedPath = sourcePath;
 
-        var raw = ZiaCompletion.Check(source);
+        var raw = ZiaCompletion.CheckForFile(source, sourcePath);
         if raw == "" {
             // Clean — clear all markers and highlights
             shell.diagListBox.Clear();

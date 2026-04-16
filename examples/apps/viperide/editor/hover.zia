@@ -25,6 +25,7 @@ class HoverController {
     expose Number lastMouseX;
     expose Number lastMouseY;
     expose Boolean waiting;
+    expose String sourcePath;
 
     expose func init() {
         isVisible = false;
@@ -32,6 +33,7 @@ class HoverController {
         lastMouseX = -1.0;
         lastMouseY = -1.0;
         waiting = false;
+        sourcePath = "";
     }
 
     expose func setup(appRoot: GUI.App) {
@@ -44,12 +46,21 @@ class HoverController {
         tooltip.AddChild(tooltipLabel);
     }
 
+    expose func setSourcePath(path: String) {
+        sourcePath = path;
+    }
+
     // Call once per frame from the main loop.
     expose func update(engine: editor_engine.EditorEngine) {
         if engine == null or engine.editor == null { return; }
 
         var mx = Viper.Input.Mouse.X();
         var my = Viper.Input.Mouse.Y();
+
+        if engine.editor.IsHovered() == 0 {
+            hideTooltip();
+            return;
+        }
 
         // Mouse moved — reset dwell timer
         if mx != lastMouseX or my != lastMouseY {
@@ -75,10 +86,14 @@ class HoverController {
         waiting = false;
 
         var source = engine.GetText();
-        var curLine = engine.editor.CursorLine + 1;  // 1-based
-        var curCol  = engine.editor.CursorCol;        // 0-based
+        var hoverLine = engine.editor.GetLineAtPixel(my);
+        var hoverCol = engine.editor.GetColAtPixel(mx, my);
+        if hoverLine < 0 or hoverCol < 0 { return; }
 
-        var info = ZiaCompletion.Hover(source, curLine, curCol);
+        var curLine = hoverLine + 1;  // 1-based
+        var curCol  = hoverCol;       // 0-based
+
+        var info = ZiaCompletion.HoverForFile(source, sourcePath, curLine, curCol);
         if info == "" { return; }
 
         // Show tooltip

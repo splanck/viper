@@ -20,6 +20,8 @@ func main() {
     shell.minimap = GUI.Minimap.New(shell.editorRow);
     shell.minimap.SetWidth(80);
     shell.minimap.BindEditor(engine.editor);
+    shell.minimap.SetVisible(0);
+    shell.minimap.SetVisible(1);
 
     tabs.Setup(shell.tabBar);
 

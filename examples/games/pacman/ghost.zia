@@ -302,7 +302,7 @@ class Ghost {
         var nextGridY = gridY + moveY;
         var speed = config.GHOST_SPEED;
         if mode == config.MODE_EATEN {
-            speed = config.GHOST_SPEED + 2;
+            speed = config.GHOST_EATEN_SPEED;
         }
 
         // Handle tunnel wrap

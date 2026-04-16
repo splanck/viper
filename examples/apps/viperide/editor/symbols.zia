@@ -22,10 +22,14 @@ bind Convert = Viper.Core.Convert;
 class SymbolOutline {
     expose GUI.ListBox symbolList;
     expose String lastSource;
+    expose String sourcePath;
+    expose String lastPath;
     expose Boolean visible;
 
     expose func init() {
         lastSource = "";
+        sourcePath = "";
+        lastPath = "";
         visible = false;
     }
 
@@ -33,6 +37,13 @@ class SymbolOutline {
         symbolList = GUI.ListBox.New(parent);
         symbolList.SetSize(0, 200);
         symbolList.SetVisible(0);
+    }
+
+    expose func setSourcePath(path: String) {
+        if path != sourcePath {
+            sourcePath = path;
+            lastPath = "";
+        }
     }
 
     expose func toggle() {
@@ -51,12 +62,13 @@ class SymbolOutline {
         if engine == null or engine.editor == null { return; }
 
         var source = engine.GetText();
-        if source == lastSource { return; }
+        if source == lastSource and sourcePath == lastPath { return; }
         lastSource = source;
+        lastPath = sourcePath;
 
         symbolList.Clear();
 
-        var raw = ZiaCompletion.Symbols(source);
+        var raw = ZiaCompletion.SymbolsForFile(source, sourcePath);
         if raw == "" { return; }
 
         var lines = Str.Split(raw, "\n");

@@ -1271,6 +1271,53 @@ int64_t rt_codeeditor_get_cursor_pixel_y(void *editor) {
     return (int64_t)py;
 }
 
+/// @brief Return the 0-based editor line at a screen-absolute Y coordinate.
+int64_t rt_codeeditor_get_line_at_pixel(void *editor, int64_t y) {
+    if (!editor)
+        return -1;
+    vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
+    if (ce->line_count <= 0 || ce->line_height <= 0.0f)
+        return -1;
+
+    float ax = 0, ay = 0;
+    vg_widget_get_screen_bounds(&ce->base, &ax, &ay, NULL, NULL);
+    (void)ax;
+
+    float local_y = (float)y - ay + ce->scroll_y;
+    int line = (int)(local_y / ce->line_height);
+    if (line < 0)
+        line = 0;
+    if (line >= ce->line_count)
+        line = ce->line_count - 1;
+    return line;
+}
+
+/// @brief Return the 0-based editor column at a screen-absolute X/Y coordinate.
+int64_t rt_codeeditor_get_col_at_pixel(void *editor, int64_t x, int64_t y) {
+    if (!editor)
+        return -1;
+    vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
+    if (ce->line_count <= 0 || ce->char_width <= 0.0f)
+        return -1;
+
+    int64_t line64 = rt_codeeditor_get_line_at_pixel(editor, y);
+    if (line64 < 0)
+        return -1;
+    int line = (int)line64;
+
+    float ax = 0, ay = 0;
+    vg_widget_get_screen_bounds(&ce->base, &ax, &ay, NULL, NULL);
+    (void)ay;
+
+    float local_x = (float)x - ax - ce->gutter_width + ce->scroll_x;
+    int col = (int)(local_x / ce->char_width + 0.5f);
+    if (col < 0)
+        col = 0;
+    if (col > (int)ce->lines[line].length)
+        col = (int)ce->lines[line].length;
+    return col;
+}
+
 /// @brief Insert text at the primary cursor position.
 void rt_codeeditor_insert_at_cursor(void *editor, rt_string text) {
     if (!editor || !text)
@@ -1647,6 +1694,19 @@ int64_t rt_codeeditor_get_cursor_pixel_x(void *editor) {
 int64_t rt_codeeditor_get_cursor_pixel_y(void *editor) {
     (void)editor;
     return 0;
+}
+
+int64_t rt_codeeditor_get_line_at_pixel(void *editor, int64_t y) {
+    (void)editor;
+    (void)y;
+    return -1;
+}
+
+int64_t rt_codeeditor_get_col_at_pixel(void *editor, int64_t x, int64_t y) {
+    (void)editor;
+    (void)x;
+    (void)y;
+    return -1;
 }
 
 void rt_codeeditor_insert_at_cursor(void *editor, rt_string text) {

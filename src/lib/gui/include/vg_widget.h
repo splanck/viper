@@ -240,6 +240,12 @@ typedef struct vg_widget_vtable {
     /// @param self   The widget whose focus state changed.
     /// @param gained true if focus was gained, false if lost.
     void (*on_focus)(vg_widget_t *self, bool gained);
+
+    /// @brief Optional font application hook for custom widgets.
+    /// @param self The widget receiving the font update.
+    /// @param font Font handle to apply.
+    /// @param size Font size in physical pixels.
+    void (*set_font)(vg_widget_t *self, void *font, float size);
 } vg_widget_vtable_t;
 
 //=============================================================================

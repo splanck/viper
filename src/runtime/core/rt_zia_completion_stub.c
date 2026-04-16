@@ -51,9 +51,29 @@ RT_WEAK rt_string rt_zia_complete(rt_string source, int64_t line, int64_t col) {
     return rt_str_empty();
 }
 
+/// @brief Weak stub: returns an empty string.
+/// Overridden by rt_zia_completion.cpp when fe_zia is linked.
+RT_WEAK rt_string rt_zia_complete_for_file(rt_string source,
+                                           rt_string file_path,
+                                           int64_t line,
+                                           int64_t col) {
+    (void)source;
+    (void)file_path;
+    (void)line;
+    (void)col;
+    return rt_str_empty();
+}
+
 /// @brief Weak stub: returns an empty diagnostic payload.
 RT_WEAK rt_string rt_zia_check(rt_string source) {
     (void)source;
+    return rt_str_empty();
+}
+
+/// @brief Weak stub: returns an empty diagnostic payload.
+RT_WEAK rt_string rt_zia_check_for_file(rt_string source, rt_string file_path) {
+    (void)source;
+    (void)file_path;
     return rt_str_empty();
 }
 
@@ -65,9 +85,28 @@ RT_WEAK rt_string rt_zia_hover(rt_string source, int64_t line, int64_t col) {
     return rt_str_empty();
 }
 
+/// @brief Weak stub: returns an empty hover payload.
+RT_WEAK rt_string rt_zia_hover_for_file(rt_string source,
+                                        rt_string file_path,
+                                        int64_t line,
+                                        int64_t col) {
+    (void)source;
+    (void)file_path;
+    (void)line;
+    (void)col;
+    return rt_str_empty();
+}
+
 /// @brief Weak stub: returns an empty symbol payload.
 RT_WEAK rt_string rt_zia_symbols(rt_string source) {
     (void)source;
+    return rt_str_empty();
+}
+
+/// @brief Weak stub: returns an empty symbol payload.
+RT_WEAK rt_string rt_zia_symbols_for_file(rt_string source, rt_string file_path) {
+    (void)source;
+    (void)file_path;
     return rt_str_empty();
 }
 

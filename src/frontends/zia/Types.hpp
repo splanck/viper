@@ -632,8 +632,14 @@ struct ViperType {
 
     /// @brief Get a human-readable string representation of this type.
     /// @return String like "Integer", "List[String]", "Map[String, Integer]".
-    /// @details Used for error messages and debugging output.
+    /// @details Used for stable internal/debug output. Named runtime handles
+    ///          preserve the legacy opaque `Ptr` spelling here.
     std::string toString() const;
+
+    /// @brief Get a developer-facing string representation of this type.
+    /// @return String like "Integer", "GUI.Font", "Map[String, Integer]".
+    /// @details Used for diagnostics, completion, hover, and editor tooling.
+    std::string toDisplayString() const;
 
     /// @}
 };

@@ -37,6 +37,9 @@ set(ZIA_SOURCES
         Lowerer_Expr_Call.cpp
         Lowerer_Expr_Method.cpp
         Lowerer_Expr_Collections.cpp
+        LowererBinaryOperatorLowerer.cpp
+        LowererCallArgumentLowerer.cpp
+        LowererCollectionLowerer.cpp
         Lowerer_Expr_Match.cpp
         Lowerer_Dispatch.cpp
         Lowerer_Emit.cpp

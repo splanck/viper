@@ -19,6 +19,7 @@ final DEFAULT_FONT_SIZE = 14;
 
 class SettingsManager {
     expose Integer fontSize;
+    expose String  fontPath;
     expose String  theme;
     expose Boolean minimapVisible;
     expose Boolean autoCheckOnSave;
@@ -29,6 +30,7 @@ class SettingsManager {
 
     expose func init() {
         fontSize       = DEFAULT_FONT_SIZE;
+        fontPath       = "";
         theme          = "dark";
         minimapVisible = true;
         autoCheckOnSave = true;
@@ -74,6 +76,8 @@ class SettingsManager {
             theme = "dark";
         }
 
+        fontPath = Ini.Get(ini, "settings", "fontPath");
+
         var mmStr = Ini.Get(ini, "settings", "minimap");
         if mmStr != "" {
             minimapVisible = mmStr == "1";
@@ -105,6 +109,7 @@ class SettingsManager {
 
         var ini = Ini.Parse("");
         Ini.Set(ini, "settings", "fontSize", "" + fontSize);
+        Ini.Set(ini, "settings", "fontPath", fontPath);
         Ini.Set(ini, "settings", "theme", theme);
         if minimapVisible {
             Ini.Set(ini, "settings", "minimap", "1");

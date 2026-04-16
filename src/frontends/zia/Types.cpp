@@ -47,6 +47,168 @@ using InterfaceSet = std::unordered_set<std::string>;
 std::unordered_map<std::string, InterfaceSet> g_interface_impls;
 // BUG-VL-007 fix: Track class inheritance (child -> parent)
 std::unordered_map<std::string, std::string> g_class_parents;
+
+void appendTypeString(std::ostringstream &ss, const ViperType &type, bool developerFacing) {
+    auto appendArgs = [&](const std::vector<TypeRef> &args) {
+        ss << "[";
+        for (size_t i = 0; i < args.size(); ++i) {
+            if (i > 0)
+                ss << ", ";
+            if (args[i]) {
+                appendTypeString(ss, *args[i], developerFacing);
+            } else {
+                ss << "?";
+            }
+        }
+        ss << "]";
+    };
+
+    switch (type.kind) {
+        case TypeKindSem::Integer:
+            ss << "Integer";
+            return;
+        case TypeKindSem::Number:
+            ss << "Number";
+            return;
+        case TypeKindSem::Boolean:
+            ss << "Boolean";
+            return;
+        case TypeKindSem::String:
+            ss << "String";
+            return;
+        case TypeKindSem::Byte:
+            ss << "Byte";
+            return;
+        case TypeKindSem::Unit:
+            ss << "Unit";
+            return;
+        case TypeKindSem::Void:
+            ss << "Void";
+            return;
+        case TypeKindSem::Error:
+            ss << "Error";
+            return;
+        case TypeKindSem::Ptr:
+            if (developerFacing && !type.name.empty()) {
+                ss << type.name;
+                if (!type.typeArgs.empty())
+                    appendArgs(type.typeArgs);
+                return;
+            }
+            ss << "Ptr";
+            return;
+        case TypeKindSem::Unknown:
+            ss << "?";
+            return;
+        case TypeKindSem::Never:
+            ss << "Never";
+            return;
+        case TypeKindSem::Any:
+            ss << "Any";
+            return;
+        case TypeKindSem::Optional:
+            if (developerFacing && !type.typeArgs.empty() && type.typeArgs[0] &&
+                type.typeArgs[0]->kind == TypeKindSem::Unknown) {
+                ss << "null";
+                return;
+            }
+            if (!type.typeArgs.empty() && type.typeArgs[0]) {
+                appendTypeString(ss, *type.typeArgs[0], developerFacing);
+                ss << "?";
+            } else {
+                ss << "?";
+            }
+            return;
+        case TypeKindSem::Result:
+            ss << "Result[";
+            if (!type.typeArgs.empty() && type.typeArgs[0])
+                appendTypeString(ss, *type.typeArgs[0], developerFacing);
+            ss << "]";
+            return;
+        case TypeKindSem::List:
+            ss << "List[";
+            if (!type.typeArgs.empty() && type.typeArgs[0])
+                appendTypeString(ss, *type.typeArgs[0], developerFacing);
+            ss << "]";
+            return;
+        case TypeKindSem::Set:
+            ss << "Set[";
+            if (!type.typeArgs.empty() && type.typeArgs[0])
+                appendTypeString(ss, *type.typeArgs[0], developerFacing);
+            ss << "]";
+            return;
+        case TypeKindSem::Map:
+            ss << "Map[";
+            if (type.typeArgs.size() >= 2) {
+                if (type.typeArgs[0])
+                    appendTypeString(ss, *type.typeArgs[0], developerFacing);
+                else
+                    ss << "?";
+                ss << ", ";
+                if (type.typeArgs[1])
+                    appendTypeString(ss, *type.typeArgs[1], developerFacing);
+                else
+                    ss << "?";
+            }
+            ss << "]";
+            return;
+        case TypeKindSem::Function:
+            ss << "(";
+            for (size_t i = 0; i + 1 < type.typeArgs.size(); ++i) {
+                if (i > 0)
+                    ss << ", ";
+                if (type.typeArgs[i]) {
+                    appendTypeString(ss, *type.typeArgs[i], developerFacing);
+                } else {
+                    ss << "?";
+                }
+            }
+            ss << ") -> ";
+            if (!type.typeArgs.empty() && type.typeArgs.back()) {
+                appendTypeString(ss, *type.typeArgs.back(), developerFacing);
+            } else {
+                ss << "Void";
+            }
+            return;
+        case TypeKindSem::Tuple:
+            ss << "(";
+            for (size_t i = 0; i < type.typeArgs.size(); ++i) {
+                if (i > 0)
+                    ss << ", ";
+                if (type.typeArgs[i]) {
+                    appendTypeString(ss, *type.typeArgs[i], developerFacing);
+                } else {
+                    ss << "?";
+                }
+            }
+            ss << ")";
+            return;
+        case TypeKindSem::Struct:
+        case TypeKindSem::Class:
+        case TypeKindSem::Interface:
+        case TypeKindSem::Enum:
+            ss << type.name;
+            if (!type.typeArgs.empty())
+                appendArgs(type.typeArgs);
+            return;
+        case TypeKindSem::TypeParam:
+            ss << type.name;
+            return;
+        case TypeKindSem::Module:
+            ss << (type.name.empty() ? "Module" : type.name);
+            return;
+        case TypeKindSem::FixedArray:
+            if (!type.typeArgs.empty() && type.typeArgs[0]) {
+                appendTypeString(ss, *type.typeArgs[0], developerFacing);
+            } else {
+                ss << "?";
+            }
+            ss << "[" << type.elementCount << "]";
+            return;
+    }
+
+    ss << "?";
+}
 } // namespace
 
 //=============================================================================
@@ -190,121 +352,14 @@ bool ViperType::isConvertibleTo(const ViperType &target) const {
 
 std::string ViperType::toString() const {
     std::ostringstream ss;
+    appendTypeString(ss, *this, false);
+    return ss.str();
+}
 
-    switch (kind) {
-        case TypeKindSem::Integer:
-            return "Integer";
-        case TypeKindSem::Number:
-            return "Number";
-        case TypeKindSem::Boolean:
-            return "Boolean";
-        case TypeKindSem::String:
-            return "String";
-        case TypeKindSem::Byte:
-            return "Byte";
-        case TypeKindSem::Unit:
-            return "Unit";
-        case TypeKindSem::Void:
-            return "Void";
-        case TypeKindSem::Error:
-            return "Error";
-        case TypeKindSem::Ptr:
-            return "Ptr";
-        case TypeKindSem::Unknown:
-            return "?";
-        case TypeKindSem::Never:
-            return "Never";
-        case TypeKindSem::Any:
-            return "Any";
-
-        case TypeKindSem::Optional:
-            if (!typeArgs.empty())
-                ss << typeArgs[0]->toString() << "?";
-            else
-                ss << "?";
-            return ss.str();
-
-        case TypeKindSem::Result:
-            ss << "Result[";
-            if (!typeArgs.empty())
-                ss << typeArgs[0]->toString();
-            ss << "]";
-            return ss.str();
-
-        case TypeKindSem::List:
-            ss << "List[";
-            if (!typeArgs.empty())
-                ss << typeArgs[0]->toString();
-            ss << "]";
-            return ss.str();
-
-        case TypeKindSem::Set:
-            ss << "Set[";
-            if (!typeArgs.empty())
-                ss << typeArgs[0]->toString();
-            ss << "]";
-            return ss.str();
-
-        case TypeKindSem::Map:
-            ss << "Map[";
-            if (typeArgs.size() >= 2)
-                ss << typeArgs[0]->toString() << ", " << typeArgs[1]->toString();
-            ss << "]";
-            return ss.str();
-
-        case TypeKindSem::Function:
-            ss << "(";
-            for (size_t i = 0; i + 1 < typeArgs.size(); ++i) {
-                if (i > 0)
-                    ss << ", ";
-                ss << typeArgs[i]->toString();
-            }
-            ss << ") -> ";
-            if (!typeArgs.empty())
-                ss << typeArgs.back()->toString();
-            else
-                ss << "Void";
-            return ss.str();
-
-        case TypeKindSem::Tuple:
-            ss << "(";
-            for (size_t i = 0; i < typeArgs.size(); ++i) {
-                if (i > 0)
-                    ss << ", ";
-                ss << typeArgs[i]->toString();
-            }
-            ss << ")";
-            return ss.str();
-
-        case TypeKindSem::Struct:
-        case TypeKindSem::Class:
-        case TypeKindSem::Interface:
-        case TypeKindSem::Enum:
-            ss << name;
-            if (!typeArgs.empty()) {
-                ss << "[";
-                for (size_t i = 0; i < typeArgs.size(); ++i) {
-                    if (i > 0)
-                        ss << ", ";
-                    ss << typeArgs[i]->toString();
-                }
-                ss << "]";
-            }
-            return ss.str();
-
-        case TypeKindSem::TypeParam:
-            return name;
-
-        case TypeKindSem::Module:
-            return name.empty() ? "Module" : name;
-
-        case TypeKindSem::FixedArray:
-            ss << (typeArgs.empty() ? "?" : typeArgs[0]->toString());
-            ss << "[" << elementCount << "]";
-            return ss.str();
-    }
-
-    return "?";
+std::string ViperType::toDisplayString() const {
+    std::ostringstream ss;
+    appendTypeString(ss, *this, true);
+    return ss.str();
 }
 
 //=============================================================================

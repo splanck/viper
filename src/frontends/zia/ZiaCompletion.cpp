@@ -55,7 +55,7 @@ static CompletionKind kindFromSymbol(const Symbol &sym) {
 static std::string typeDetail(const TypeRef &type) {
     if (!type)
         return {};
-    return type->name.empty() ? type->toString() : type->name;
+    return type->toDisplayString();
 }
 
 /// @brief Convert a CompletionItem to its tab-delimited serialized form.

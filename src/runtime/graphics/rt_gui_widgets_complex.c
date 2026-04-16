@@ -359,7 +359,11 @@ void rt_codeeditor_clear_modified(void *editor) {
 void rt_codeeditor_set_font(void *editor, void *font, double size) {
     RT_ASSERT_MAIN_THREAD();
     if (editor) {
-        vg_codeeditor_set_font((vg_codeeditor_t *)editor, (vg_font_t *)font, (float)size);
+        rt_gui_app_t *app = rt_gui_app_from_widget((vg_widget_t *)editor);
+        float _s = (app && app->window) ? vgfx_window_get_scale(app->window) : 1.0f;
+        if (_s <= 0.0f)
+            _s = 1.0f;
+        vg_codeeditor_set_font((vg_codeeditor_t *)editor, (vg_font_t *)font, (float)size * _s);
     }
 }
 
@@ -389,9 +393,7 @@ void rt_codeeditor_set_font_size(void *editor, double size) {
         float _s = (app && app->window) ? vgfx_window_get_scale(app->window) : 1.0f;
         if (_s <= 0.0f)
             _s = 1.0f;
-        ed->font_size = (float)size * _s;
-        ed->line_height = ed->font_size * 1.4f; /* keep line spacing proportional to font */
-        ((vg_widget_t *)ed)->needs_paint = true;
+        vg_codeeditor_set_font(ed, ed->font, (float)size * _s);
     }
 }
 

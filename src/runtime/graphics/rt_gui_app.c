@@ -544,6 +544,8 @@ static void rt_gui_apply_font_to_widget(vg_widget_t *widget, vg_font_t *font, fl
             break;
         }
         default:
+            if (widget->vtable && widget->vtable->set_font)
+                widget->vtable->set_font(widget, font, size);
             break;
     }
     widget->needs_layout = true;
@@ -1270,8 +1272,8 @@ void *rt_gui_app_get_root(void *app_ptr) {
 ///          current frame.
 /// @param app_ptr Pointer to the app.
 /// @param font    New font to use (vg_font_t*).
-/// @param size    Font size in points (will be stored as-is; HiDPI scaling is
-///                handled by the font loader).
+/// @param size    Font size in logical points; stored as physical pixels after
+///                applying the window scale factor.
 void rt_gui_app_set_font(void *app_ptr, void *font, double size) {
     RT_ASSERT_MAIN_THREAD();
     if (!app_ptr)
@@ -1280,8 +1282,11 @@ void rt_gui_app_set_font(void *app_ptr, void *font, double size) {
     rt_gui_activate_app(app);
     vg_font_t *old_font = app->default_font;
     int old_owned = app->default_font_owned;
+    float _scale = app->window ? vgfx_window_get_scale(app->window) : 1.0f;
+    if (_scale <= 0.0f)
+        _scale = 1.0f;
     app->default_font = (vg_font_t *)font;
-    app->default_font_size = (float)size;
+    app->default_font_size = (float)size * _scale;
     app->default_font_owned = 0;
 
     if (app->root && app->default_font) {

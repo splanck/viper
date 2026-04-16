@@ -23,6 +23,7 @@ static void breadcrumb_destroy(vg_widget_t *widget);
 static void breadcrumb_measure(vg_widget_t *widget, float available_width, float available_height);
 static void breadcrumb_paint(vg_widget_t *widget, void *canvas);
 static bool breadcrumb_handle_event(vg_widget_t *widget, vg_event_t *event);
+static void breadcrumb_set_font_widget(vg_widget_t *widget, void *font, float size);
 
 //=============================================================================
 // Breadcrumb VTable
@@ -34,7 +35,8 @@ static vg_widget_vtable_t g_breadcrumb_vtable = {.destroy = breadcrumb_destroy,
                                                  .paint = breadcrumb_paint,
                                                  .handle_event = breadcrumb_handle_event,
                                                  .can_focus = NULL,
-                                                 .on_focus = NULL};
+                                                 .on_focus = NULL,
+                                                 .set_font = breadcrumb_set_font_widget};
 
 //=============================================================================
 // Breadcrumb Item Management
@@ -265,6 +267,12 @@ static bool breadcrumb_handle_event(vg_widget_t *widget, vg_event_t *event) {
     }
 
     return false;
+}
+
+static void breadcrumb_set_font_widget(vg_widget_t *widget, void *font, float size) {
+    if (!widget || !font)
+        return;
+    vg_breadcrumb_set_font((vg_breadcrumb_t *)widget, (vg_font_t *)font, size);
 }
 
 /// @brief Breadcrumb push.

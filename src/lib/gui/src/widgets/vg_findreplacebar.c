@@ -41,6 +41,7 @@ static void findreplacebar_arrange(
     vg_widget_t *widget, float x, float y, float width, float height);
 static void findreplacebar_paint(vg_widget_t *widget, void *canvas);
 static bool findreplacebar_handle_event(vg_widget_t *widget, vg_event_t *event);
+static void findreplacebar_set_font_widget(vg_widget_t *widget, void *font, float size);
 
 static void perform_search(vg_findreplacebar_t *bar);
 static void clear_matches(vg_findreplacebar_t *bar);
@@ -71,7 +72,8 @@ static vg_widget_vtable_t g_findreplacebar_vtable = {.destroy = findreplacebar_d
                                                      .paint = findreplacebar_paint,
                                                      .handle_event = findreplacebar_handle_event,
                                                      .can_focus = NULL,
-                                                     .on_focus = NULL};
+                                                     .on_focus = NULL,
+                                                     .set_font = findreplacebar_set_font_widget};
 
 //=============================================================================
 // Helper Functions - Case Insensitive String Search
@@ -94,6 +96,12 @@ static const char *strcasestr_custom(const char *haystack, const char *needle) {
             return haystack;
     }
     return NULL;
+}
+
+static void findreplacebar_set_font_widget(vg_widget_t *widget, void *font, float size) {
+    if (!widget || !font)
+        return;
+    vg_findreplacebar_set_font((vg_findreplacebar_t *)widget, (vg_font_t *)font, size);
 }
 
 static bool is_word_boundary(char c) {

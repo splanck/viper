@@ -203,7 +203,9 @@ typedef enum {
     VGFX_KEY_DELETE = 263,
     VGFX_KEY_TAB = 264,
     VGFX_KEY_HOME = 265,
-    VGFX_KEY_END = 266
+    VGFX_KEY_END = 266,
+    VGFX_KEY_PAGE_UP = 267,
+    VGFX_KEY_PAGE_DOWN = 268
 } vgfx_key_t;
 
 /// @brief Keyboard modifier flags

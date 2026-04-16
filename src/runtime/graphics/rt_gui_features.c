@@ -807,6 +807,9 @@ void *rt_breadcrumb_new(void *parent) {
     if (parent_widget) {
         vg_widget_add_child(parent_widget, &bc->base);
     }
+    if (app)
+        rt_gui_activate_app(app);
+    rt_gui_ensure_default_font();
     if (app && app->default_font) {
         vg_breadcrumb_set_font(bc, app->default_font, app->default_font_size);
     }
@@ -972,6 +975,28 @@ void rt_breadcrumb_set_max_items(void *crumb, int64_t max) {
     vg_breadcrumb_set_max_items(data->breadcrumb, (int)max);
 }
 
+/// @brief Show or hide the breadcrumb widget.
+void rt_breadcrumb_set_visible(void *crumb, int64_t visible) {
+    RT_ASSERT_MAIN_THREAD();
+    if (!crumb)
+        return;
+    rt_breadcrumb_data_t *data = (rt_breadcrumb_data_t *)crumb;
+    if (!data->breadcrumb)
+        return;
+    vg_widget_set_visible(&data->breadcrumb->base, visible != 0);
+}
+
+/// @brief Check whether the breadcrumb widget is visible.
+int64_t rt_breadcrumb_is_visible(void *crumb) {
+    RT_ASSERT_MAIN_THREAD();
+    if (!crumb)
+        return 0;
+    rt_breadcrumb_data_t *data = (rt_breadcrumb_data_t *)crumb;
+    if (!data->breadcrumb)
+        return 0;
+    return data->breadcrumb->base.visible ? 1 : 0;
+}
+
 //=============================================================================
 // Phase 8: Minimap Implementation
 //=============================================================================
@@ -1045,6 +1070,28 @@ void rt_minimap_set_width(void *minimap, int64_t width) {
     rt_minimap_data_t *data = (rt_minimap_data_t *)minimap;
     data->width = width;
     data->minimap->base.width = (float)width;
+}
+
+/// @brief Show or hide the minimap widget.
+void rt_minimap_set_visible(void *minimap, int64_t visible) {
+    RT_ASSERT_MAIN_THREAD();
+    if (!minimap)
+        return;
+    rt_minimap_data_t *data = (rt_minimap_data_t *)minimap;
+    if (!data->minimap)
+        return;
+    vg_widget_set_visible(&data->minimap->base, visible != 0);
+}
+
+/// @brief Check whether the minimap widget is visible.
+int64_t rt_minimap_is_visible(void *minimap) {
+    RT_ASSERT_MAIN_THREAD();
+    if (!minimap)
+        return 0;
+    rt_minimap_data_t *data = (rt_minimap_data_t *)minimap;
+    if (!data->minimap)
+        return 0;
+    return data->minimap->base.visible ? 1 : 0;
 }
 
 /// @brief Get the width of the minimap.
@@ -1566,6 +1613,18 @@ void rt_breadcrumb_set_max_items(void *crumb, int64_t max) {
     (void)max;
 }
 
+/// @brief Show or hide the breadcrumb widget.
+void rt_breadcrumb_set_visible(void *crumb, int64_t visible) {
+    (void)crumb;
+    (void)visible;
+}
+
+/// @brief Check whether the breadcrumb widget is visible.
+int64_t rt_breadcrumb_is_visible(void *crumb) {
+    (void)crumb;
+    return 0;
+}
+
 void *rt_minimap_new(void *parent) {
     (void)parent;
     return NULL;
@@ -1591,6 +1650,18 @@ void rt_minimap_unbind_editor(void *minimap) {
 void rt_minimap_set_width(void *minimap, int64_t width) {
     (void)minimap;
     (void)width;
+}
+
+/// @brief Show or hide the minimap widget.
+void rt_minimap_set_visible(void *minimap, int64_t visible) {
+    (void)minimap;
+    (void)visible;
+}
+
+/// @brief Check whether the minimap widget is visible.
+int64_t rt_minimap_is_visible(void *minimap) {
+    (void)minimap;
+    return 0;
 }
 
 /// @brief Get the width of the minimap.

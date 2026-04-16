@@ -159,6 +159,10 @@ static int parse_shortcut_keys(const char *keys, int *ctrl, int *shift, int *alt
             *key = VG_KEY_HOME;
         else if (strcasecmp(token, "End") == 0)
             *key = VG_KEY_END;
+        else if (strcasecmp(token, "PageUp") == 0 || strcasecmp(token, "PgUp") == 0)
+            *key = VG_KEY_PAGE_UP;
+        else if (strcasecmp(token, "PageDown") == 0 || strcasecmp(token, "PgDn") == 0)
+            *key = VG_KEY_PAGE_DOWN;
         else if (strcasecmp(token, "Left") == 0)
             *key = VG_KEY_LEFT;
         else if (strcasecmp(token, "Right") == 0)

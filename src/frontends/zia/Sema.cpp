@@ -1719,7 +1719,9 @@ void Sema::errorUndefined(SourceLoc loc, const std::string &name) {
 
 /// @brief Report a type mismatch error showing expected vs actual types.
 void Sema::errorTypeMismatch(SourceLoc loc, TypeRef expected, TypeRef actual) {
-    error(loc, "Type mismatch: expected " + expected->toString() + ", got " + actual->toString());
+    std::string expectedStr = expected ? expected->toDisplayString() : "unknown";
+    std::string actualStr = actual ? actual->toDisplayString() : "unknown";
+    error(loc, "Type mismatch: expected " + expectedStr + ", got " + actualStr);
 }
 
 //=============================================================================

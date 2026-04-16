@@ -92,6 +92,8 @@ static void splitpane_destroy(vg_widget_t *widget) {
 }
 
 static void splitpane_measure(vg_widget_t *widget, float available_width, float available_height) {
+    vg_splitpane_t *split = (vg_splitpane_t *)widget;
+
     // SplitPane fills available space
     widget->measured_width = available_width > 0 ? available_width : 400;
     widget->measured_height = available_height > 0 ? available_height : 300;
@@ -108,6 +110,45 @@ static void splitpane_measure(vg_widget_t *widget, float available_width, float 
     }
     if (widget->measured_height < widget->constraints.min_height) {
         widget->measured_height = widget->constraints.min_height;
+    }
+
+    vg_widget_t *first = widget->first_child;
+    vg_widget_t *second = first ? first->next_sibling : NULL;
+    if (!first || !second)
+        return;
+
+    if (split->direction == VG_SPLIT_HORIZONTAL) {
+        float available = widget->measured_width - split->splitter_size;
+        if (available < 0.0f)
+            available = 0.0f;
+        float first_width = available * split->split_position;
+        if (first_width < split->min_first_size)
+            first_width = split->min_first_size;
+        if (available - first_width < split->min_second_size)
+            first_width = available - split->min_second_size;
+        if (first_width < 0.0f)
+            first_width = 0.0f;
+        float second_width = available - first_width;
+        if (second_width < 0.0f)
+            second_width = 0.0f;
+        vg_widget_measure(first, first_width, widget->measured_height);
+        vg_widget_measure(second, second_width, widget->measured_height);
+    } else {
+        float available = widget->measured_height - split->splitter_size;
+        if (available < 0.0f)
+            available = 0.0f;
+        float first_height = available * split->split_position;
+        if (first_height < split->min_first_size)
+            first_height = split->min_first_size;
+        if (available - first_height < split->min_second_size)
+            first_height = available - split->min_second_size;
+        if (first_height < 0.0f)
+            first_height = 0.0f;
+        float second_height = available - first_height;
+        if (second_height < 0.0f)
+            second_height = 0.0f;
+        vg_widget_measure(first, widget->measured_width, first_height);
+        vg_widget_measure(second, widget->measured_width, second_height);
     }
 }
 

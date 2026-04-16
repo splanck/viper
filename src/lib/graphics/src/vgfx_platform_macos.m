@@ -288,6 +288,9 @@ static NSMenu *vgfx_macos_build_default_main_menu(const char *preferred_title) {
 void vgfx_platform_macos_finish_launching_if_needed(void) {
     @autoreleasepool {
         [NSApplication sharedApplication];
+        if ([NSWindow respondsToSelector:@selector(setAllowsAutomaticWindowTabbing:)]) {
+            [NSWindow setAllowsAutomaticWindowTabbing:NO];
+        }
         if (!g_finish_launching_called) {
             [NSApp finishLaunching];
             g_finish_launching_called = YES;
@@ -361,12 +364,35 @@ void vgfx_platform_macos_ensure_default_main_menu(const char *preferred_title) {
 ///            - A-Z: Mapped to vgfx_key_t enum values (uppercase)
 ///            - 0-9: Mapped to vgfx_key_t enum values
 ///            - Space: VGFX_KEY_SPACE
-///            - Arrows: VGFX_KEY_LEFT/RIGHT/UP/DOWN
+///            - Arrows/page navigation: VGFX_KEY_LEFT/RIGHT/UP/DOWN/HOME/END/PAGE_UP/PAGE_DOWN
 ///            - Enter: VGFX_KEY_ENTER (both main and numpad)
 ///            - Escape: VGFX_KEY_ESCAPE
 static vgfx_key_t translate_keycode(unsigned short keycode, NSString *chars) {
-    /* Try to use character first (handles A-Z, 0-9, SPACE) */
+    /* Try to use character first. macOS sends function-key Unicode values for
+       Fn+arrow and some compact keyboards, so handle those before ASCII. */
     if (chars && [chars length] > 0) {
+        unichar raw = [chars characterAtIndex:0];
+        switch (raw) {
+            case NSHomeFunctionKey:
+                return VGFX_KEY_HOME;
+            case NSEndFunctionKey:
+                return VGFX_KEY_END;
+            case NSPageUpFunctionKey:
+                return VGFX_KEY_PAGE_UP;
+            case NSPageDownFunctionKey:
+                return VGFX_KEY_PAGE_DOWN;
+            case NSLeftArrowFunctionKey:
+                return VGFX_KEY_LEFT;
+            case NSRightArrowFunctionKey:
+                return VGFX_KEY_RIGHT;
+            case NSUpArrowFunctionKey:
+                return VGFX_KEY_UP;
+            case NSDownArrowFunctionKey:
+                return VGFX_KEY_DOWN;
+            default:
+                break;
+        }
+
         unichar c = [[chars uppercaseString] characterAtIndex:0];
         if (c >= 'A' && c <= 'Z')
             return (vgfx_key_t)c;
@@ -394,6 +420,10 @@ static vgfx_key_t translate_keycode(unsigned short keycode, NSString *chars) {
             return VGFX_KEY_HOME; /* Home key */
         case 0x77:
             return VGFX_KEY_END; /* End key */
+        case 0x74:
+            return VGFX_KEY_PAGE_UP; /* Page Up key */
+        case 0x79:
+            return VGFX_KEY_PAGE_DOWN; /* Page Down key */
         case 0x7B:
             return VGFX_KEY_LEFT; /* Left arrow */
         case 0x7C:
@@ -419,6 +449,8 @@ static bool macos_should_check_menu_key_equivalent(vgfx_key_t key, NSEventModifi
         case VGFX_KEY_TAB:
         case VGFX_KEY_HOME:
         case VGFX_KEY_END:
+        case VGFX_KEY_PAGE_UP:
+        case VGFX_KEY_PAGE_DOWN:
         case VGFX_KEY_BACKSPACE:
         case VGFX_KEY_DELETE:
             return false;
@@ -816,6 +848,9 @@ int vgfx_platform_init_window(struct vgfx_window *win, const vgfx_window_params_
 
         /* Set window title */
         [platform->window setTitle:[NSString stringWithUTF8String:params->title]];
+        if ([platform->window respondsToSelector:@selector(setTabbingMode:)]) {
+            [platform->window setTabbingMode:NSWindowTabbingModeDisallowed];
+        }
 
         /* Create custom view for framebuffer display */
         platform->view = [[VGFXView alloc] initWithFrame:contentRect];

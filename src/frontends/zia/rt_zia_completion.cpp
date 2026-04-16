@@ -33,16 +33,39 @@ namespace {
 // entry LRU parse cache keyed by source hash, so repeated calls for the same
 // file content do not re-parse.
 CompletionEngine s_engine;
+
+std::string toStdString(rt_string value) {
+    const char *cstr = value ? rt_string_cstr(value) : "";
+    size_t len = value ? (size_t)rt_str_len(value) : 0;
+    return std::string(cstr ? cstr : "", len);
+}
+
+std::string editorPathOrDefault(rt_string filePath) {
+    std::string path = toStdString(filePath);
+    return path.empty() ? std::string("<editor>") : path;
+}
 } // namespace
 
 extern "C" {
-rt_string rt_zia_complete(rt_string source, int64_t line, int64_t col) {
-    const char *src_cstr = source ? rt_string_cstr(source) : "";
-    size_t src_len = source ? (size_t)rt_str_len(source) : 0;
+rt_string rt_zia_complete_for_file(rt_string source, rt_string file_path, int64_t line, int64_t col);
+rt_string rt_zia_check_for_file(rt_string source, rt_string file_path);
+rt_string rt_zia_hover_for_file(rt_string source, rt_string file_path, int64_t line, int64_t col);
+rt_string rt_zia_symbols_for_file(rt_string source, rt_string file_path);
 
-    std::string sourceStr(src_cstr ? src_cstr : "", src_len);
+rt_string rt_zia_complete(rt_string source, int64_t line, int64_t col) {
+    std::string sourceStr = toStdString(source);
 
     auto items = s_engine.complete(sourceStr, (int)line, (int)col);
+    std::string result = serialize(items);
+
+    return rt_string_from_bytes(result.c_str(), result.size());
+}
+
+rt_string rt_zia_complete_for_file(rt_string source, rt_string file_path, int64_t line, int64_t col) {
+    std::string sourceStr = toStdString(source);
+    std::string pathStr = editorPathOrDefault(file_path);
+
+    auto items = s_engine.complete(sourceStr, (int)line, (int)col, pathStr);
     std::string result = serialize(items);
 
     return rt_string_from_bytes(result.c_str(), result.size());
@@ -58,12 +81,15 @@ void rt_zia_completion_clear_cache(void) {
 // severity: 0=error, 1=warning, 2=note
 // =========================================================================
 rt_string rt_zia_check(rt_string source) {
-    const char *src_cstr = source ? rt_string_cstr(source) : "";
-    size_t src_len = source ? (size_t)rt_str_len(source) : 0;
-    std::string sourceStr(src_cstr ? src_cstr : "", src_len);
+    return rt_zia_check_for_file(source, nullptr);
+}
+
+rt_string rt_zia_check_for_file(rt_string source, rt_string file_path) {
+    std::string sourceStr = toStdString(source);
+    std::string pathStr = editorPathOrDefault(file_path);
 
     il::support::SourceManager sm;
-    CompilerInput input{.source = sourceStr, .path = "<editor>"};
+    CompilerInput input{.source = sourceStr, .path = pathStr};
     CompilerOptions opts{};
 
     auto result = parseAndAnalyze(input, opts, sm);
@@ -90,9 +116,12 @@ rt_string rt_zia_check(rt_string source) {
 // string with the symbol kind and type.
 // =========================================================================
 rt_string rt_zia_hover(rt_string source, int64_t line, int64_t col) {
-    const char *src_cstr = source ? rt_string_cstr(source) : "";
-    size_t src_len = source ? (size_t)rt_str_len(source) : 0;
-    std::string sourceStr(src_cstr ? src_cstr : "", src_len);
+    return rt_zia_hover_for_file(source, nullptr, line, col);
+}
+
+rt_string rt_zia_hover_for_file(rt_string source, rt_string file_path, int64_t line, int64_t col) {
+    std::string sourceStr = toStdString(source);
+    std::string pathStr = editorPathOrDefault(file_path);
 
     // Extract identifier at cursor (simple backward scan)
     int lineIdx = (int)line - 1; // 0-based
@@ -123,7 +152,7 @@ rt_string rt_zia_hover(rt_string source, int64_t line, int64_t col) {
 
     // Parse and analyze
     il::support::SourceManager sm;
-    CompilerInput input{.source = sourceStr, .path = "<editor>"};
+    CompilerInput input{.source = sourceStr, .path = pathStr};
     CompilerOptions opts{};
 
     auto result = parseAndAnalyze(input, opts, sm);
@@ -168,7 +197,7 @@ rt_string rt_zia_hover(rt_string source, int64_t line, int64_t col) {
             break;
     }
 
-    std::string typeStr = sym.type ? sym.type->toString() : "unknown";
+    std::string typeStr = sym.type ? sym.type->toDisplayString() : "unknown";
     std::string hover = kindStr + " " + ident + ": " + typeStr;
     if (sym.isFinal)
         hover += " (final)";
@@ -181,14 +210,17 @@ rt_string rt_zia_hover(rt_string source, int64_t line, int64_t col) {
 // Format: name\tkind\ttype\tline\n  (one per symbol)
 // =========================================================================
 rt_string rt_zia_symbols(rt_string source) {
-    const char *src_cstr = source ? rt_string_cstr(source) : "";
-    size_t src_len = source ? (size_t)rt_str_len(source) : 0;
-    std::string sourceStr(src_cstr ? src_cstr : "", src_len);
+    return rt_zia_symbols_for_file(source, nullptr);
+}
+
+rt_string rt_zia_symbols_for_file(rt_string source, rt_string file_path) {
+    std::string sourceStr = toStdString(source);
+    std::string pathStr = editorPathOrDefault(file_path);
 
     il::support::SourceManager sm;
-    CompilerInput input{.source = sourceStr, .path = "<editor>"};
+    CompilerInput input{.source = sourceStr, .path = pathStr};
     CompilerOptions opts{};
-    uint32_t fileId = sm.addFile("<editor>");
+    uint32_t fileId = sm.addFile(pathStr);
     input.fileId = fileId;
 
     auto result = parseAndAnalyze(input, opts, sm);
@@ -216,7 +248,7 @@ rt_string rt_zia_symbols(rt_string source) {
                 kindStr = "symbol";
                 break;
         }
-        std::string typeStr = sym.type ? sym.type->toString() : "";
+        std::string typeStr = sym.type ? sym.type->toDisplayString() : "";
         int symLine = sym.decl ? (int)sym.decl->loc.line : 0;
         out << sym.name << '\t' << kindStr << '\t' << typeStr << '\t' << symLine << '\n';
     }

@@ -17,6 +17,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "frontends/zia/Lowerer.hpp"
+#include "frontends/zia/LowererCallArgumentLowerer.hpp"
 #include "frontends/zia/RuntimeNames.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
 
@@ -129,109 +130,31 @@ std::string httpHandlerTargetName(Sema &sema, const std::string &tag) {
 //=============================================================================
 
 std::vector<LowerResult> Lowerer::lowerSourceArgs(const std::vector<CallArg> &args) {
-    std::vector<LowerResult> lowered;
-    lowered.reserve(args.size());
-    for (const auto &arg : args)
-        lowered.push_back(lowerExpr(arg.value.get()));
-    return lowered;
+    return CallArgumentLowerer(*this).lowerSourceArgs(args);
 }
 
 std::vector<int> Lowerer::orderedArgSources(const std::vector<CallArg> &args,
                                             const Sema::CallArgBinding *binding) const {
-    std::vector<int> order;
-    if (!binding || binding->fixedParamSources.empty()) {
-        order.reserve(args.size());
-        for (size_t i = 0; i < args.size(); ++i)
-            order.push_back(static_cast<int>(i));
-        return order;
-    }
-
-    order.reserve(binding->fixedParamSources.size() + binding->variadicSources.size());
-    for (int sourceIndex : binding->fixedParamSources) {
-        if (sourceIndex >= 0)
-            order.push_back(sourceIndex);
-    }
-    for (int sourceIndex : binding->variadicSources)
-        order.push_back(sourceIndex);
-    return order;
+    return CallArgumentLowerer::orderedArgSources(args, binding);
 }
 
 std::vector<Lowerer::Value> Lowerer::lowerResolvedArgs(const std::vector<CallArg> &args,
                                                        const std::vector<TypeRef> &paramTypes,
                                                        const std::vector<Param> *params,
                                                        const Sema::CallArgBinding *binding) {
-    auto lowered = lowerSourceArgs(args);
-
-    if (!binding) {
-        std::vector<Value> fallback;
-        fallback.reserve(args.size());
-        for (size_t i = 0; i < args.size(); ++i) {
-            TypeRef argType = sema_.typeOf(args[i].value.get());
-            TypeRef paramType = i < paramTypes.size() ? paramTypes[i] : nullptr;
-            auto coerced = coerceValueToType(lowered[i].value, lowered[i].type, argType, paramType);
-            fallback.push_back(coerced.value);
-        }
-        return fallback;
-    }
-
-    const bool hasVariadic = params && !params->empty() && params->back().isVariadic;
-    const size_t fixedCount = hasVariadic ? paramTypes.size() - 1 : paramTypes.size();
-
-    std::vector<Value> finalArgs;
-    finalArgs.reserve(paramTypes.size());
-
-    for (size_t i = 0; i < fixedCount; ++i) {
-        int sourceIndex =
-            i < binding->fixedParamSources.size() ? binding->fixedParamSources[i] : -1;
-        if (sourceIndex >= 0) {
-            size_t idx = static_cast<size_t>(sourceIndex);
-            TypeRef argType = sema_.typeOf(args[idx].value.get());
-            auto coerced =
-                coerceValueToType(lowered[idx].value, lowered[idx].type, argType, paramTypes[i]);
-            finalArgs.push_back(coerced.value);
-            continue;
-        }
-
-        if (params && i < params->size() && (*params)[i].defaultValue) {
-            auto defaultResult = lowerExpr((*params)[i].defaultValue.get());
-            TypeRef defaultType = sema_.typeOf((*params)[i].defaultValue.get());
-            auto coerced = coerceValueToType(
-                defaultResult.value, defaultResult.type, defaultType, paramTypes[i]);
-            finalArgs.push_back(coerced.value);
-        }
-    }
-
-    if (hasVariadic && !paramTypes.empty()) {
-        Value list = emitCallRet(Type(Type::Kind::Ptr), kListNew, {});
-        TypeRef listType = paramTypes.back();
-        TypeRef elemType = listType ? listType->elementType() : nullptr;
-        Type elemIlType = elemType ? mapType(elemType) : Type(Type::Kind::I64);
-
-        for (int sourceIndex : binding->variadicSources) {
-            size_t idx = static_cast<size_t>(sourceIndex);
-            TypeRef argType = sema_.typeOf(args[idx].value.get());
-            auto coerced =
-                coerceValueToType(lowered[idx].value, lowered[idx].type, argType, elemType);
-            Value boxed = emitBoxValue(coerced.value, elemIlType, elemType ? elemType : argType);
-            emitCall(kListAdd, {list, boxed});
-        }
-
-        finalArgs.push_back(list);
-    }
-
-    return finalArgs;
+    return CallArgumentLowerer(*this).lowerResolvedArgs(args, paramTypes, params, binding);
 }
 
 std::vector<Lowerer::Value> Lowerer::lowerResolvedCallArgs(CallExpr *expr,
                                                            const std::vector<TypeRef> &paramTypes,
                                                            const std::vector<Param> *params) {
-    return lowerResolvedArgs(expr->args, paramTypes, params, sema_.callArgBinding(expr));
+    return CallArgumentLowerer(*this).lowerResolvedCallArgs(expr, paramTypes, params);
 }
 
 std::vector<Lowerer::Value> Lowerer::lowerResolvedNewArgs(NewExpr *expr,
                                                           const std::vector<TypeRef> &paramTypes,
                                                           const std::vector<Param> *params) {
-    return lowerResolvedArgs(expr->args, paramTypes, params, sema_.newArgBinding(expr));
+    return CallArgumentLowerer(*this).lowerResolvedNewArgs(expr, paramTypes, params);
 }
 
 //=============================================================================

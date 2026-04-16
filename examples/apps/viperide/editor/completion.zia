@@ -20,6 +20,7 @@ class CompletionController {
     expose Boolean isVisible;
     expose Integer selectedIndex;
     expose Integer itemCount;
+    expose String sourcePath;
 
     // Track cursor position to detect line changes (auto-dismiss)
     expose Integer lastLine;
@@ -32,6 +33,7 @@ class CompletionController {
         isVisible      = false;
         selectedIndex  = 0;
         itemCount      = 0;
+        sourcePath     = "";
         lastLine       = -1;
         lastCol        = -1;
         insertTexts    = new List();
@@ -57,6 +59,10 @@ class CompletionController {
         popup.SetVisible(0);
     }
 
+    expose func SetSourcePath(path: String) {
+        sourcePath = path;
+    }
+
     // ------------------------------------------------------------------
     // TriggerCompletion — query the engine and show the popup.
     // ------------------------------------------------------------------
@@ -71,7 +77,7 @@ class CompletionController {
         var curCol  = editor.CursorCol;       // 0-based column
 
         // Ask the Zia completion engine (returns "" on failure/empty)
-        var result = ZiaCompletion.Complete(text, curLine, curCol);
+        var result = ZiaCompletion.CompleteForFile(text, sourcePath, curLine, curCol);
         if result == "" {
             Hide();
             return;

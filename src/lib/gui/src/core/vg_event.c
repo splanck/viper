@@ -101,8 +101,9 @@ static vg_key_t translate_vgfx_key(int vgfx_key) {
 
     // Special keys need translation (vgfx codes -> vg codes)
     // VGFX: ESCAPE=256, ENTER=257, LEFT=258, RIGHT=259, UP=260, DOWN=261, BACKSPACE=262,
-    // DELETE=263, TAB=264, HOME=265, END=266 VG:   ESCAPE=256, ENTER=257, TAB=258, BACKSPACE=259,
-    // DELETE=261, RIGHT=262, LEFT=263, DOWN=264, UP=265, HOME=268, END=269
+    // DELETE=263, TAB=264, HOME=265, END=266, PAGE_UP=267, PAGE_DOWN=268.
+    // VG:   ESCAPE=256, ENTER=257, TAB=258, BACKSPACE=259, DELETE=261, RIGHT=262,
+    // LEFT=263, DOWN=264, UP=265, PAGE_UP=266, PAGE_DOWN=267, HOME=268, END=269.
     switch (vgfx_key) {
         case 256:
             return VG_KEY_ESCAPE; // VGFX_KEY_ESCAPE
@@ -126,6 +127,10 @@ static vg_key_t translate_vgfx_key(int vgfx_key) {
             return VG_KEY_HOME; // VGFX_KEY_HOME
         case 266:
             return VG_KEY_END; // VGFX_KEY_END
+        case 267:
+            return VG_KEY_PAGE_UP; // VGFX_KEY_PAGE_UP
+        case 268:
+            return VG_KEY_PAGE_DOWN; // VGFX_KEY_PAGE_DOWN
         default:
             return (vg_key_t)vgfx_key;
     }

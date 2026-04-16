@@ -191,8 +191,11 @@ final DT_MAX = 50;
 // Gamepad
 final PAD_IDX = 0;
 
-final PACMAN_SPEED = 4;
-final GHOST_SPEED = 3;
+// Actor movement is pixels per 60 FPS frame on a 24 px tile. Keep values that
+// divide TILE_SIZE cleanly so turns and tile-center AI decisions stay stable.
+final PACMAN_SPEED = 3;       // 8 frames per tile
+final GHOST_SPEED = 2;        // 12 frames per tile
+final GHOST_EATEN_SPEED = 4;  // 6 frames per tile while returning home
 final EXTRA_LIFE_SCORE = 10000;
 final DOT_POINTS = 10;
 final PELLET_POINTS = 50;

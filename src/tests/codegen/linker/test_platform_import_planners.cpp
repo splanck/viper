@@ -73,6 +73,22 @@ TEST(PlatformImportPlanners, MacPlannerMapsFrameworkAndFlatLookupSymbols) {
     EXPECT_EQ(1u, plan.symOrdinals["fsync"]);
 }
 
+TEST(PlatformImportPlanners, MacPlannerMapsMachineAndHostSyscallsToLibSystem) {
+    MacImportPlan plan;
+    std::ostringstream err;
+    ASSERT_TRUE(planMacImports({"gethostname", "sysctlbyname", "uname"}, plan, err));
+
+    EXPECT_TRUE(std::any_of(plan.dylibs.begin(), plan.dylibs.end(), [](const DylibImport &import) {
+        return import.path == "/usr/lib/libSystem.B.dylib";
+    }));
+    ASSERT_TRUE(plan.symOrdinals.count("gethostname") != 0);
+    EXPECT_EQ(1u, plan.symOrdinals["gethostname"]);
+    ASSERT_TRUE(plan.symOrdinals.count("sysctlbyname") != 0);
+    EXPECT_EQ(1u, plan.symOrdinals["sysctlbyname"]);
+    ASSERT_TRUE(plan.symOrdinals.count("uname") != 0);
+    EXPECT_EQ(1u, plan.symOrdinals["uname"]);
+}
+
 TEST(PlatformImportPlanners, WindowsPlannerCreatesGroupedImportsAndThunks) {
     WindowsImportPlan plan;
     std::ostringstream err;

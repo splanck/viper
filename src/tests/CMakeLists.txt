@@ -715,6 +715,7 @@ set(ZIA_LANG_TESTS
         38_deinit_bindings
         39_named_arguments
         40_variadic_functions
+        41_runtime_reference_types
 )
 
 foreach (test_name IN LISTS ZIA_LANG_TESTS)

@@ -242,7 +242,18 @@ void Sema::analyzeVarStmt(VarStmt *stmt) {
     } else if (declaredType) {
         varType = declaredType;
     } else if (initType) {
-        varType = initType;
+        bool inferredFromNullLiteral =
+            stmt->initializer && stmt->initializer->kind == ExprKind::NullLiteral && initType &&
+            initType->kind == TypeKindSem::Optional && initType->innerType() &&
+            initType->innerType()->kind == TypeKindSem::Unknown;
+        if (inferredFromNullLiteral) {
+            error(stmt->loc,
+                  "Cannot infer type from null initializer; add an explicit type annotation "
+                  "such as 'String?', 'MyType', or 'GUI.Font'");
+            varType = types::unknown();
+        } else {
+            varType = initType;
+        }
     } else {
         error(stmt->loc, "Cannot infer type without initializer");
         varType = types::unknown();

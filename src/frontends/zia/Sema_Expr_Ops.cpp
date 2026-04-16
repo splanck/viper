@@ -285,7 +285,9 @@ TypeRef Sema::analyzeBinary(BinaryExpr *expr) {
                         assignTarget = resolvedIt->second;
                     }
                 }
-                if (!rightType->isConvertibleTo(*assignTarget)) {
+                if (assignTarget && rightType && assignTarget->kind != TypeKindSem::Unknown &&
+                    rightType->kind != TypeKindSem::Unknown &&
+                    !rightType->isConvertibleTo(*assignTarget)) {
                     errorTypeMismatch(expr->loc, assignTarget, rightType);
                 }
             }

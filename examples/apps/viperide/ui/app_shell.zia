@@ -228,7 +228,7 @@ class AppShell {
         // ====================================================================
         splitPane = GUI.SplitPane.New(mainVBox, 1);
         splitPane.SetFlex(1.0);
-        splitPane.SetPosition(0.20);
+        splitPane.SetPosition(0.24);
 
         // Sidebar — TreeView in left panel
         var leftPanel: GUI.Widget = splitPane.First;
@@ -239,6 +239,7 @@ class AppShell {
         editorArea = GUI.VBox.New();
         editorArea.SetSpacing(0.0);
         editorArea.SetPadding(0.0);
+        editorArea.SetFlex(1.0);
         rightPanel.AddChild(editorArea);
 
         // Tab bar inside editor area
@@ -247,6 +248,7 @@ class AppShell {
         // Breadcrumb (file path, shown below the tab bar)
         breadcrumb = GUI.Breadcrumb.New(editorArea);
         breadcrumb.SetSeparator("/");
+        breadcrumb.SetVisible(0);
 
         // Find bar inside editor area (hidden until Ctrl+F)
         findBar = GUI.FindBar.New(editorArea);
@@ -328,6 +330,16 @@ class AppShell {
     // Update the status bar right text.
     expose func SetStatusRight(text: String) {
         statusBar.SetRightText(text);
+    }
+
+    expose func SetBreadcrumbPath(path: String) {
+        if path == "" {
+            breadcrumb.SetPath("", "/");
+            breadcrumb.SetVisible(0);
+            return;
+        }
+        breadcrumb.SetPath(path, "/");
+        breadcrumb.SetVisible(1);
     }
 
     // Populate the build output panel with lines of compiler output.

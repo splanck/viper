@@ -2508,6 +2508,16 @@ void rt_breadcrumb_set_separator(void *crumb, rt_string sep);
 /// @param max Maximum visible items.
 void rt_breadcrumb_set_max_items(void *crumb, int64_t max);
 
+/// @brief Show or hide the breadcrumb widget.
+/// @param crumb Breadcrumb handle.
+/// @param visible Non-zero to show, zero to hide.
+void rt_breadcrumb_set_visible(void *crumb, int64_t visible);
+
+/// @brief Check whether the breadcrumb widget is visible.
+/// @param crumb Breadcrumb handle.
+/// @return 1 if visible, 0 otherwise.
+int64_t rt_breadcrumb_is_visible(void *crumb);
+
 //=========================================================================
 // Phase 8: Minimap
 //=========================================================================
@@ -2534,6 +2544,16 @@ void rt_minimap_unbind_editor(void *minimap);
 /// @param minimap Minimap handle.
 /// @param width Width in pixels.
 void rt_minimap_set_width(void *minimap, int64_t width);
+
+/// @brief Show or hide the minimap widget.
+/// @param minimap Minimap handle.
+/// @param visible 1 to show, 0 to hide.
+void rt_minimap_set_visible(void *minimap, int64_t visible);
+
+/// @brief Check whether the minimap widget is visible.
+/// @param minimap Minimap handle.
+/// @return 1 when visible, 0 when hidden.
+int64_t rt_minimap_is_visible(void *minimap);
 
 /// @brief Get the minimap width.
 /// @param minimap Minimap handle.
@@ -2654,6 +2674,19 @@ int64_t rt_codeeditor_get_cursor_pixel_x(void *editor);
 /// @return Y pixel coordinate (top-left of caret).
 int64_t rt_codeeditor_get_cursor_pixel_y(void *editor);
 
+/// @brief Return the 0-based editor line at a screen-absolute Y coordinate.
+/// @param editor CodeEditor handle.
+/// @param y Screen-absolute Y coordinate.
+/// @return 0-based line index, or -1 when unavailable.
+int64_t rt_codeeditor_get_line_at_pixel(void *editor, int64_t y);
+
+/// @brief Return the 0-based editor column at a screen-absolute X/Y coordinate.
+/// @param editor CodeEditor handle.
+/// @param x Screen-absolute X coordinate.
+/// @param y Screen-absolute Y coordinate, used to clamp to the hovered line length.
+/// @return 0-based column index, or -1 when unavailable.
+int64_t rt_codeeditor_get_col_at_pixel(void *editor, int64_t x, int64_t y);
+
 /// @brief Insert text at the primary cursor position.
 /// @param editor CodeEditor handle.
 /// @param text Text to insert.
@@ -2689,14 +2722,26 @@ rt_string rt_codeeditor_get_line(void *editor, int64_t line_index);
 /// @return Serialised completion items, or an empty string on failure.
 rt_string rt_zia_complete(rt_string source, int64_t line, int64_t col);
 
+/// @brief Run Zia code completion with a source path for relative bind resolution.
+rt_string rt_zia_complete_for_file(rt_string source, rt_string file_path, int64_t line, int64_t col);
+
 /// @brief Run semantic analysis and return serialized diagnostics for editor tooling.
 rt_string rt_zia_check(rt_string source);
+
+/// @brief Run semantic analysis with a source path for relative bind resolution.
+rt_string rt_zia_check_for_file(rt_string source, rt_string file_path);
 
 /// @brief Return hover information for the identifier at the given source position.
 rt_string rt_zia_hover(rt_string source, int64_t line, int64_t col);
 
+/// @brief Return hover information with a source path for relative bind resolution.
+rt_string rt_zia_hover_for_file(rt_string source, rt_string file_path, int64_t line, int64_t col);
+
 /// @brief Return serialized document symbols for the supplied source.
 rt_string rt_zia_symbols(rt_string source);
+
+/// @brief Return document symbols with a source path for relative bind resolution.
+rt_string rt_zia_symbols_for_file(rt_string source, rt_string file_path);
 
 /// @brief Flush the cached parse result, forcing a fresh parse on the next call.
 void rt_zia_completion_clear_cache(void);

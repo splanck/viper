@@ -141,10 +141,11 @@ vg_treeview_t *vg_treeview_create(vg_widget_t *parent) {
     tree->font_size = theme->typography.size_normal;
 
     // Appearance
-    tree->row_height = 22.0f;
-    tree->indent_size = 16.0f;
-    tree->icon_size = 16.0f;
-    tree->icon_gap = 4.0f;
+    float s = theme->ui_scale > 0.0f ? theme->ui_scale : 1.0f;
+    tree->row_height = 22.0f * s;
+    tree->indent_size = 16.0f * s;
+    tree->icon_size = 16.0f * s;
+    tree->icon_gap = 4.0f * s;
     tree->text_color = theme->colors.fg_primary;
     tree->selected_bg = theme->colors.bg_selected;
     tree->hover_bg = theme->colors.bg_hover;

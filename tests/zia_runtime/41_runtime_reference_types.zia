@@ -1,0 +1,32 @@
+module RuntimeTest41;
+
+bind Viper.Terminal as Terminal;
+bind Viper.Network.Url as Url;
+
+func start() {
+    var parsed: Url = null;
+    parsed = Url.Parse("https://example.com:8080/path/to?q=1");
+    if parsed == null {
+        Terminal.Say("FAIL: parsed_null");
+        return;
+    }
+
+    if parsed.Host != "example.com" {
+        Terminal.Say("FAIL: host");
+        return;
+    }
+
+    var maybeClone: Url? = null;
+    maybeClone = parsed.Clone();
+    if maybeClone == null {
+        Terminal.Say("FAIL: clone_null");
+        return;
+    }
+
+    if maybeClone!.Path != "/path/to" {
+        Terminal.Say("FAIL: path");
+        return;
+    }
+
+    Terminal.Say("RESULT: ok");
+}
