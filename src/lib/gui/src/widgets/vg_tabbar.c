@@ -17,6 +17,12 @@
 #include <stdlib.h>
 #include <string.h>
 
+#define TABBAR_DEFAULT_HEIGHT 35.0f
+#define TABBAR_DEFAULT_PADDING 12.0f
+#define TABBAR_DEFAULT_CLOSE_SIZE 14.0f
+#define TABBAR_DEFAULT_MAX_WIDTH 200.0f
+#define TABBAR_CLOSE_GAP 4.0f
+
 //=============================================================================
 // Forward Declarations
 //=============================================================================
@@ -45,7 +51,7 @@ static vg_widget_vtable_t g_tabbar_vtable = {.destroy = tabbar_destroy,
 
 static float get_tab_width(vg_tabbar_t *tabbar, vg_tab_t *tab) {
     if (!tabbar->font || !tab->title) {
-        return 100.0f;
+        return tabbar->max_tab_width > 0.0f ? tabbar->max_tab_width : 100.0f;
     }
 
     vg_text_metrics_t metrics;
@@ -55,7 +61,9 @@ static float get_tab_width(vg_tabbar_t *tabbar, vg_tab_t *tab) {
 
     // Add close button width if closable
     if (tab->closable) {
-        width += tabbar->close_button_size + 4.0f;
+        float close_gap =
+            (tabbar->close_button_size / TABBAR_DEFAULT_CLOSE_SIZE) * TABBAR_CLOSE_GAP;
+        width += tabbar->close_button_size + close_gap;
     }
 
     // Clamp to max
@@ -64,6 +72,58 @@ static float get_tab_width(vg_tabbar_t *tabbar, vg_tab_t *tab) {
     }
 
     return width;
+}
+
+static char *make_tab_title(const vg_tab_t *tab) {
+    if (!tab || !tab->title)
+        return strdup("");
+
+    if (!tab->modified)
+        return strdup(tab->title);
+
+    size_t len = strlen(tab->title);
+    char *title = (char *)malloc(len + 3); /* " *\0" */
+    if (!title)
+        return NULL;
+    memcpy(title, tab->title, len);
+    title[len] = ' ';
+    title[len + 1] = '*';
+    title[len + 2] = '\0';
+    return title;
+}
+
+static char *fit_tab_title(vg_tabbar_t *tabbar, const char *title, float max_width) {
+    if (!title)
+        return strdup("");
+    if (!tabbar->font || max_width <= 0.0f)
+        return strdup("");
+
+    vg_text_metrics_t metrics;
+    vg_font_measure_text(tabbar->font, tabbar->font_size, title, &metrics);
+    if (metrics.width <= max_width)
+        return strdup(title);
+
+    vg_text_metrics_t ellipsis_metrics;
+    vg_font_measure_text(tabbar->font, tabbar->font_size, "...", &ellipsis_metrics);
+    if (ellipsis_metrics.width > max_width)
+        return strdup("");
+
+    size_t len = strlen(title);
+    char *buf = (char *)malloc(len + 4); /* original text + "...\0" */
+    if (!buf)
+        return NULL;
+
+    while (len > 0) {
+        memcpy(buf, title, len);
+        memcpy(buf + len, "...", 4);
+        vg_font_measure_text(tabbar->font, tabbar->font_size, buf, &metrics);
+        if (metrics.width <= max_width)
+            return buf;
+        len--;
+    }
+
+    memcpy(buf, "...", 4);
+    return buf;
 }
 
 static vg_tab_t *find_tab_at_x(vg_tabbar_t *tabbar, float x) {
@@ -112,10 +172,11 @@ vg_tabbar_t *vg_tabbar_create(vg_widget_t *parent) {
     tabbar->font_size = theme->typography.size_normal;
 
     // Appearance
-    tabbar->tab_height = 35.0f;
-    tabbar->tab_padding = 12.0f;
-    tabbar->close_button_size = 14.0f;
-    tabbar->max_tab_width = 200.0f;
+    float s = theme->ui_scale > 0.0f ? theme->ui_scale : 1.0f;
+    tabbar->tab_height = TABBAR_DEFAULT_HEIGHT * s;
+    tabbar->tab_padding = TABBAR_DEFAULT_PADDING * s;
+    tabbar->close_button_size = TABBAR_DEFAULT_CLOSE_SIZE * s;
+    tabbar->max_tab_width = TABBAR_DEFAULT_MAX_WIDTH * s;
     tabbar->active_bg = theme->colors.bg_primary;
     tabbar->inactive_bg = theme->colors.bg_secondary;
     tabbar->text_color = theme->colors.fg_primary;
@@ -232,25 +293,26 @@ static void tabbar_paint(vg_widget_t *widget, void *canvas) {
             float text_y =
                 widget->y + (widget->height + font_metrics.ascent + font_metrics.descent) / 2.0f;
 
-            // Add modified indicator — allocate dynamically so long titles are
-            // never truncated silently.
-            const char *title = tab->title;
-            char *modified_title = NULL;
-            if (tab->modified && tab->title) {
-                size_t tlen = strlen(tab->title);
-                modified_title = (char *)malloc(tlen + 3); /* " *\0" */
-                if (modified_title) {
-                    memcpy(modified_title, tab->title, tlen);
-                    modified_title[tlen] = ' ';
-                    modified_title[tlen + 1] = '*';
-                    modified_title[tlen + 2] = '\0';
-                    title = modified_title;
-                }
+            float text_max_width = width - tabbar->tab_padding * 2.0f;
+            if (tab->closable) {
+                float close_gap =
+                    (tabbar->close_button_size / TABBAR_DEFAULT_CLOSE_SIZE) * TABBAR_CLOSE_GAP;
+                text_max_width -= tabbar->close_button_size + close_gap;
             }
 
-            vg_font_draw_text(
-                canvas, tabbar->font, tabbar->font_size, text_x, text_y, title, tabbar->text_color);
-            free(modified_title);
+            char *title = make_tab_title(tab);
+            char *fitted_title = fit_tab_title(tabbar, title ? title : "", text_max_width);
+            if (fitted_title && fitted_title[0] != '\0') {
+                vg_font_draw_text(canvas,
+                                  tabbar->font,
+                                  tabbar->font_size,
+                                  text_x,
+                                  text_y,
+                                  fitted_title,
+                                  tabbar->text_color);
+            }
+            free(fitted_title);
+            free(title);
         }
 
         // Draw close button if closable
@@ -392,7 +454,7 @@ vg_tab_t *vg_tabbar_add_tab(vg_tabbar_t *tabbar, const char *title, bool closabl
         return NULL;
 
     tab->title = title ? strdup(title) : strdup("Untitled");
-    tab->tooltip = NULL;
+    tab->tooltip = tab->title ? strdup(tab->title) : NULL;
     tab->user_data = NULL;
     tab->closable = closable;
     tab->modified = false;
@@ -522,6 +584,16 @@ void vg_tab_set_modified(vg_tab_t *tab, bool modified) {
     if (tab) {
         tab->modified = modified;
     }
+}
+
+/// @brief Tab set tooltip.
+void vg_tab_set_tooltip(vg_tab_t *tab, const char *tooltip) {
+    if (!tab)
+        return;
+
+    if (tab->tooltip)
+        free((void *)tab->tooltip);
+    tab->tooltip = tooltip ? strdup(tooltip) : NULL;
 }
 
 /// @brief Tab set data.

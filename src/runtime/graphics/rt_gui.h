@@ -435,6 +435,11 @@ void rt_tabbar_set_active(void *tabbar, void *tab);
 /// @param title New title.
 void rt_tab_set_title(void *tab, rt_string title);
 
+/// @brief Set tab tooltip.
+/// @param tab Tab handle.
+/// @param tooltip New tooltip text.
+void rt_tab_set_tooltip(void *tab, rt_string tooltip);
+
 /// @brief Set tab modified state.
 /// @param tab Tab handle.
 /// @param modified 1 for modified, 0 for not modified.
@@ -1886,6 +1891,16 @@ void rt_codeeditor_undo(void *editor);
 /// @param editor CodeEditor handle.
 void rt_codeeditor_redo(void *editor);
 
+/// @brief Check whether undo is currently available.
+/// @param editor CodeEditor handle.
+/// @return 1 if undo is available, 0 otherwise.
+int64_t rt_codeeditor_can_undo(void *editor);
+
+/// @brief Check whether redo is currently available.
+/// @param editor CodeEditor handle.
+/// @return 1 if redo is available, 0 otherwise.
+int64_t rt_codeeditor_can_redo(void *editor);
+
 /// @brief Copy selected text to clipboard.
 /// @param editor CodeEditor handle.
 /// @return 1 if text was copied, 0 otherwise.
@@ -1904,6 +1919,26 @@ int64_t rt_codeeditor_paste(void *editor);
 /// @brief Select all text in the editor.
 /// @param editor CodeEditor handle.
 void rt_codeeditor_select_all(void *editor);
+
+/// @brief Set tab width in spaces.
+/// @param editor CodeEditor handle.
+/// @param size Tab width, clamped to a sane editor range.
+void rt_codeeditor_set_tab_size(void *editor, int64_t size);
+
+/// @brief Get tab width in spaces.
+/// @param editor CodeEditor handle.
+/// @return Tab width in spaces.
+int64_t rt_codeeditor_get_tab_size(void *editor);
+
+/// @brief Enable or disable display-only word wrapping.
+/// @param editor CodeEditor handle.
+/// @param enabled Non-zero to enable.
+void rt_codeeditor_set_word_wrap(void *editor, int64_t enabled);
+
+/// @brief Check whether display-only word wrapping is enabled.
+/// @param editor CodeEditor handle.
+/// @return 1 if enabled, 0 otherwise.
+int64_t rt_codeeditor_get_word_wrap(void *editor);
 
 //=========================================================================
 // Phase 5: MessageBox Dialog

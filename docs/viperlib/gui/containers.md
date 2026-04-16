@@ -139,6 +139,7 @@ Tab handles returned by `AddTab()` support these methods:
 | Method                    | Signature          | Description                    |
 |---------------------------|--------------------|--------------------------------|
 | `tab.SetTitle(title)`     | `Void(String)`     | Set tab title                  |
+| `tab.SetTooltip(text)`    | `Void(String)`     | Set hover tooltip text         |
 | `tab.SetModified(flag)`   | `Void(Integer)`    | Set modified indicator         |
 
 ```basic
@@ -265,7 +266,7 @@ Full-featured code editor with syntax highlighting.
 |--------------------------------------------|----------------------------------|------------------------------------------|
 | `AddCursor(line, col)`                     | `Void(Integer, Integer)`         | Add an additional cursor                 |
 | `AddFoldRegion(startLine, endLine)`        | `Void(Integer, Integer)`         | Add a foldable region                    |
-| `AddHighlight(line, col, endLine, endCol)` | `Void(Int, Int, Int, Int)`       | Add text highlight region                |
+| `AddHighlight(startLine, startCol, endLine, endCol, color)` | `Void(Int, Int, Int, Int, Int)` | Add colored text highlight region |
 | `ClearCursors()`                           | `Void()`                         | Remove extra cursors (keep primary)      |
 | `ClearGutterIcons(type)`                   | `Void(Integer)`                  | Clear gutter icons of given type         |
 | `ClearHighlights()`                        | `Void()`                         | Remove all highlights                    |

@@ -60,7 +60,7 @@ func start() {
     Say("--- StatusBar ---");
     Say("New(parent), SetLeftText(s), SetCenterText(s), SetRightText(s), SetVisible(v), IsVisible, AddText(text,align)");
     Say("--- Toolbar ---");
-    Say("New(parent), AddButton(icon,id), AddButtonWithText(icon,id,text), AddSeparator(), SetIconSize(sz), SetStyle(s), GetItemCount, SetVisible(v), IsVisible");
+    Say("New(parent), AddButton(icon,tooltip), AddButtonWithText(icon,text,tooltip), AddSeparator(), SetIconSize(sz), SetStyle(s), GetItemCount, SetVisible(v), IsVisible");
     Say("--- Toast ---");
     Say("Info(msg), Success(msg), Warning(msg), Error(msg), New(msg,type,duration), SetAction(text), WasActionClicked, WasDismissed, Dismiss(), SetPosition(pos), SetMaxVisible(n), DismissAll()");
     Say("--- Breadcrumb ---");

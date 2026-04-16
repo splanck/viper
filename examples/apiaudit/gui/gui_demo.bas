@@ -57,7 +57,7 @@ PRINT "New(), AddItem(name), AddItemWithShortcut(name,keys), AddSeparator(), Sho
 PRINT "--- StatusBar ---"
 PRINT "New(parent), SetLeftText(s), SetCenterText(s), SetRightText(s), SetVisible(v), IsVisible, AddText(text,align)"
 PRINT "--- Toolbar ---"
-PRINT "New(parent), AddButton(icon,id), AddButtonWithText(icon,id,text), AddSeparator(), SetIconSize(sz), SetStyle(s), GetItemCount, SetVisible(v), IsVisible"
+PRINT "New(parent), AddButton(icon,tooltip), AddButtonWithText(icon,text,tooltip), AddSeparator(), SetIconSize(sz), SetStyle(s), GetItemCount, SetVisible(v), IsVisible"
 PRINT "--- Toast ---"
 PRINT "Info(msg), Success(msg), Warning(msg), Error(msg), New(msg,type,duration), SetAction(text), WasActionClicked, WasDismissed, Dismiss(), SetPosition(pos), SetMaxVisible(n), DismissAll()"
 PRINT "--- Breadcrumb ---"

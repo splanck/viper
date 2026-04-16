@@ -120,6 +120,9 @@ void vg_tab_set_title(vg_tab_t *tab, const char *title);
 /// @brief Set tab modified state
 void vg_tab_set_modified(vg_tab_t *tab, bool modified);
 
+/// @brief Set tab tooltip
+void vg_tab_set_tooltip(vg_tab_t *tab, const char *tooltip);
+
 /// @brief Set tab user data
 void vg_tab_set_data(vg_tab_t *tab, void *data);
 

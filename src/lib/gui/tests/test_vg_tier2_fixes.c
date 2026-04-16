@@ -25,6 +25,7 @@
 #include "vg_event.h"
 #include "vg_ide_widgets.h"
 #include "vg_layout.h"
+#include "vg_theme.h"
 #include "vg_widget.h"
 #include "vg_widgets.h"
 #include <assert.h>
@@ -503,6 +504,62 @@ TEST(codeeditor_get_selection_with_selection_returns_text) {
     vg_widget_destroy((vg_widget_t *)editor);
 }
 
+//=============================================================================
+// TabBar / MenuBar layout regressions
+//=============================================================================
+
+TEST(tabbar_metrics_follow_theme_scale) {
+    vg_theme_t *previous = vg_theme_get_current();
+    vg_theme_t *scaled = vg_theme_create("tier2-scaled", previous);
+    ASSERT_NOT_NULL(scaled);
+
+    scaled->ui_scale = 2.0f;
+    vg_theme_set_current(scaled);
+    vg_tabbar_t *tabbar = vg_tabbar_create(NULL);
+
+    bool ok = tabbar != NULL && tabbar->tab_height > 69.0f && tabbar->tab_height < 71.0f &&
+              tabbar->tab_padding > 23.0f && tabbar->tab_padding < 25.0f &&
+              tabbar->close_button_size > 27.0f && tabbar->close_button_size < 29.0f &&
+              tabbar->max_tab_width > 399.0f && tabbar->max_tab_width < 401.0f;
+
+    if (tabbar)
+        vg_widget_destroy((vg_widget_t *)tabbar);
+    vg_theme_set_current(previous);
+    vg_theme_destroy(scaled);
+
+    ASSERT_TRUE(ok);
+}
+
+TEST(tab_tooltip_can_be_replaced) {
+    vg_tabbar_t *tabbar = vg_tabbar_create(NULL);
+    ASSERT_NOT_NULL(tabbar);
+
+    vg_tab_t *tab = vg_tabbar_add_tab(tabbar, "short.zia", true);
+    ASSERT_NOT_NULL(tab);
+    ASSERT_NOT_NULL(tab->tooltip);
+    ASSERT_TRUE(strcmp(tab->tooltip, "short.zia") == 0);
+
+    vg_tab_set_tooltip(tab, "/tmp/project/short.zia");
+    ASSERT_NOT_NULL(tab->tooltip);
+    ASSERT_TRUE(strcmp(tab->tooltip, "/tmp/project/short.zia") == 0);
+
+    vg_widget_destroy((vg_widget_t *)tabbar);
+}
+
+TEST(native_menubar_measures_to_zero_height) {
+    vg_menubar_t *menubar = vg_menubar_create(NULL);
+    ASSERT_NOT_NULL(menubar);
+
+    menubar->native_main_menu = true;
+    vg_widget_measure((vg_widget_t *)menubar, 800.0f, 600.0f);
+
+    ASSERT_EQ((int)menubar->base.measured_height, 0);
+    ASSERT_EQ((int)menubar->base.constraints.min_height, 0);
+    ASSERT_EQ((int)menubar->base.constraints.preferred_height, 0);
+
+    vg_widget_destroy((vg_widget_t *)menubar);
+}
+
 TEST(widget_destroy_child_detaches_from_parent) {
     vg_widget_t *parent = vg_widget_create(VG_WIDGET_CONTAINER);
     vg_widget_t *child = vg_widget_create(VG_WIDGET_CONTAINER);
@@ -691,6 +748,9 @@ int main(void) {
     // PARTIAL-007: GetSelectedText
     RUN(codeeditor_get_selection_without_selection_is_null);
     RUN(codeeditor_get_selection_with_selection_returns_text);
+    RUN(tabbar_metrics_follow_theme_scale);
+    RUN(tab_tooltip_can_be_replaced);
+    RUN(native_menubar_measures_to_zero_height);
     RUN(widget_destroy_child_detaches_from_parent);
     RUN(widget_add_child_rejects_cycles);
     RUN(event_bubble_honors_parent_return_value);

@@ -73,8 +73,8 @@ Application toolbar widget.
 
 | Method                              | Signature                      | Description                              |
 |-------------------------------------|--------------------------------|------------------------------------------|
-| `AddButton(id, icon)`               | `Object(String, String)`       | Add icon button, returns item handle     |
-| `AddButtonWithText(id, icon, text)` | `Object(String,String,String)` | Add button with text and icon            |
+| `AddButton(icon, tooltip)`          | `Object(String, String)`       | Add icon button, returns item handle     |
+| `AddButtonWithText(icon, text, tooltip)` | `Object(String,String,String)` | Add button with text and optional icon   |
 | `AddSeparator()`                    | `Object()`                     | Add separator                            |
 | `SetIconSize(size)`                 | `Void(Integer)`                | Set icon size in pixels                  |
 | `SetStyle(style)`                   | `Void(Integer)`                | Set toolbar style                        |
@@ -98,11 +98,10 @@ Toolbar button (returned by `Toolbar.AddButton()`).
 // Zia
 var toolbar = Toolbar.New(root);
 toolbar.SetIconSize(24);
-var newBtn = toolbar.AddButton("new", "📄");
-var saveBtn = toolbar.AddButtonWithText("save", "💾", "Save");
+var newBtn = toolbar.AddButton("assets/new.png", "New File");
+var saveBtn = toolbar.AddButtonWithText("assets/save.png", "Save", "Save current file");
 toolbar.AddSeparator();
 
-newBtn.SetTooltip("New File");
 if saveBtn.WasClicked() == 1 { /* save */ }
 ```
 

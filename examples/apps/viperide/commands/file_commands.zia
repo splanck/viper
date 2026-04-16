@@ -27,6 +27,7 @@ func handleNew(shell: app_shell.AppShell,
 
     var newDoc = docMgr.NewDocument();
     tabs.AddTab(newDoc.fileName, 1);
+    tabs.SetTooltip(docMgr.activeIndex, newDoc.fileName);
     tabs.SetActive(docMgr.activeIndex);
     engine.LoadDocument(newDoc);
 
@@ -39,7 +40,7 @@ func handleOpen(shell: app_shell.AppShell,
                 docMgr: document_manager.DocumentManager,
                 engine: editor_engine.EditorEngine,
                 tabs: editor_tabs.EditorTabs) {
-    var path = FileDialog.Open("Open File", "*.zia;*.bas;*.txt", "");
+    var path = FileDialog.Open("Open File", "", "*.zia;*.bas;*.txt");
     if path != "" {
         OpenFileAtPath(shell, docMgr, engine, tabs, path);
     }
@@ -63,10 +64,11 @@ func handleSave(shell: app_shell.AppShell,
     if saveDoc != null {
         if saveDoc.isNew {
             var savePath = FileDialog.Save(
-                "Save File", "*.zia", saveDoc.fileName, "");
+                "Save File", "", "*.zia", saveDoc.fileName);
             if savePath != "" {
                 docMgr.SaveAs(savePath);
                 tabs.SetTitle(docMgr.activeIndex, saveDoc.fileName);
+                tabs.SetTooltip(docMgr.activeIndex, saveDoc.filePath);
                 tabs.SetModified(docMgr.activeIndex, false);
                 engine.ClearModified();
                 shell.breadcrumb.SetPath(saveDoc.filePath, "/");
@@ -92,10 +94,11 @@ func handleSaveAs(shell: app_shell.AppShell,
     var saveAsDoc = docMgr.GetActive();
     if saveAsDoc != null {
         var saveAsPath = FileDialog.Save(
-            "Save As", "*.zia", saveAsDoc.fileName, "");
+            "Save As", "", "*.zia", saveAsDoc.fileName);
         if saveAsPath != "" {
             docMgr.SaveAs(saveAsPath);
             tabs.SetTitle(docMgr.activeIndex, saveAsDoc.fileName);
+            tabs.SetTooltip(docMgr.activeIndex, saveAsDoc.filePath);
             tabs.SetModified(docMgr.activeIndex, false);
             engine.ClearModified();
             shell.breadcrumb.SetPath(saveAsDoc.filePath, "/");
@@ -199,6 +202,7 @@ func OpenFileAtPath(shell: app_shell.AppShell,
 
     if docMgr.GetCount() > prevCount {
         tabs.AddTab(openDoc.fileName, 1);
+        tabs.SetTooltip(docMgr.activeIndex, openDoc.filePath);
     }
     tabs.SetActive(docMgr.activeIndex);
     engine.LoadDocument(openDoc);

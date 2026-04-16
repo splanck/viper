@@ -8,10 +8,23 @@
 
 ### Overview
 
-v0.2.5 opens the post-v0.2.4 cycle with a focused pass on runtime-surface hygiene and a top-to-bottom overhaul of the flagship 2D game demo. Themes so far:
+v0.2.5 continues the post-v0.2.4 cycle with three focused themes:
 
-- **Runtime surface hardening** — `rtgen` now depends on runtime headers and `RuntimeSurfacePolicy`; ad-hoc local `extern rt_*` forward declarations are replaced with the owning runtime headers across game and graphics runtime files; `AchievementTracker` uses `rt_string` handles end-to-end with consistent retain/release and real graphics-string ABI draw calls.
-- **Review-readiness documentation** — new codemaps for the bytecode VM and the graphics-disabled runtime stubs, plus clarifications to the optimizer rehab status, `--no-mem2reg` behavior, graphics-stub policy, and cross-platform validation language so docs no longer overclaim parity beyond available evidence.
+- **Runtime surface hardening** — owner-header discipline on the C runtime, typed IL return descriptors for Canvas accessors that produce `Pixels`, a magic-value guard on the `Canvas` object for defensive validation, and a small correctness fix to the `ButtonGroup` selection state.
+- **Demo breadth and polish** — Pac-Man demo renamed and rebuilt as Crackman, Paint app gains layers and undo/redo, ViperSQL and Xenoscape annotated as learnable tutorials.
+- **Review-readiness documentation** — new codemaps for the bytecode VM and graphics-disabled runtime stubs, plus clarifications to the optimizer rehab status, `--no-mem2reg` behavior, graphics-stub policy, and cross-platform validation language.
+
+#### By the Numbers
+
+| Metric | v0.2.4 | v0.2.5 | Delta |
+|---|---|---|---|
+| Commits | — | 4 | +4 |
+| Source files | 2,869 | 2,870 | +1 |
+| Production SLOC | ~450K | ~450K | ~0 |
+| Test SLOC | ~183K | ~184K | ~+0K |
+| Demo SLOC | ~177K | ~184K | +~7K |
+
+Counts produced by `scripts/count_sloc.sh` (`Production SLOC` = `src/` minus `src/tests/`). v0.2.5 is a small focused cycle: most growth is on the demo side (Crackman modularization + Paint feature pass), with surgical edits on the runtime/IL side.
 
 ---
 
@@ -29,17 +42,26 @@ v0.2.5 opens the post-v0.2.4 cycle with a focused pass on runtime-surface hygien
 - Canvas3D internal helper declarations moved out of ad-hoc local externs and into a new owning `rt_canvas3d_internal.h`. Callers (`rt_canvas3d.c`, `rt_canvas3d_overlay.c`, `rt_model3d.c`, `rt_scene3d.c`, `rt_scene3d_vscn.c`, `rt_fbx_loader.c`, `rt_skeleton3d.c`, `rt_morphtarget3d.c`, `rt_animcontroller3d.c`) include the owning header instead of redeclaring prototypes locally.
 - Stray `extern rt_*` forward declarations across `rt_canvas.c`, `rt_countdown.c`, `rt_gui_app.c`, `rt_input.c`, `rt_sprite.c`, and the game runtime (`rt_config.c`, `rt_debugoverlay.c`, `rt_entity.c`, `rt_leveldata.c`, `rt_lighting2d.c`, `rt_raycast2d.c`, `rt_scenemanager.c`, `rt_animstate.c`) replaced with includes of the owning runtime headers.
 
-These two moves together close a long-standing layering smell: runtime callers no longer advertise their own C ABI for functions they don't own, and `rtgen` can no longer drift silently when the runtime surface changes.
+**Canvas object guard + typed `Pixels` returns**
+
+- `rt_canvas` gains an `RT_CANVAS_MAGIC` guard field and an `rt_canvas_checked()` helper in `src/runtime/graphics/rt_graphics_internal.h`. The Canvas `GetPixel` / `CopyRect` / `SaveBmp` / `SavePng` paths in `rt_drawing.c` route every incoming `void *` through this validator so a caller passing a non-Canvas object fails safely (returns 0 / NULL) instead of reinterpret-casting arbitrary memory. Paired edits to `rt_canvas.c`, `rt_gui_filedialog.c`, `rt_gui_system.c`, `rt_spritebatch.c` pick up the same validator where applicable.
+- `src/il/runtime/runtime.def` now types `Canvas.CopyRect` and `Canvas.Screenshot` as `obj<Viper.Graphics.Pixels>` in both the `RT_FUNC` and `RT_METHOD` rows. The IL type system now carries the `Pixels` return type through to callers, eliminating the previous `obj` erasure.
+
+**ButtonGroup selection correctness**
+
+- `rt_buttongroup`: removing the currently selected button now clears the active selection and marks the selection as changed. Previously `selected_index` could stay stale and `is_selected()` could return `true` for an already-removed id. Header comment updated to document the new invariant.
+
+These moves together close a long-standing layering smell (runtime callers no longer advertise their own C ABI for functions they don't own) and extend the runtime-object safety net from "pointer non-null" to "pointer is actually the object type we expect."
 
 ---
 
 ### Demos
 
-- **Crackman** (`examples/games/pacman/` → binary `crackman`): the former Pac-Man demo was renamed, split from a monolithic `game.zia` into `session` / `progression` / `frontend` / `settings` modules with per-concern sprite files (`sprite_maze`, `sprite_items`, `sprite_entities`, `sprite_support`), declarative audio banks (`audio/music_tracks.zia`, `audio/sfx_bank.zia`), a deterministic headless `smoke_probe.zia` run by the new `zia_smoke_crackman` ctest, a shared `viper_8x8.bdf` bitmap font, responsive layout/theme/widgets modules, persistent XP/rank `SaveData`, rotating contracts with rewards, run grades, and richer profile/run-summary rendering. Chess picks up the same UI decomposition (`ui/layout.zia`, `ui/theme.zia`, `ui/widgets.zia`) and the shared bitmap font. Built binaries are renamed `pacman-zia` → `crackman` across `build_demos_{linux,mac,o2}.sh` and `build_demos_win.cmd`.
+- The Pac-Man demo is renamed **Crackman** (binary `pacman-zia` → `crackman`) and reorganized into session/progression/frontend modules with persistent XP, contracts, and a headless smoke probe; Chess picks up matching UI decomposition; Paint gains layers, undo/redo, viewport zoom/pan, a layer panel, and a file-service open/save flow; ViperSQL and Xenoscape get tutorial-style comments on every production `.zia` file (no behavioural change).
 
 ### Documentation
 
-- New `docs/codemap/bytecode-vm.md` and `docs/codemap/runtime-graphics-stubs.md`; `docs/review-readiness.md` clarifies optimizer rehab status, `--no-mem2reg` behavior, graphics-stub policy, and cross-platform validation language; `docs/viperlib/graphics/pixels.md` documents that `Viper.Graphics.Color.RGBA()` returns `0xAARRGGBB` (Canvas-friendly) which does **not** match `Pixels.Set`/`Pixels.Get`'s `0xRRGGBBAA` layout, and recommends `SetRGB()` for opaque pixels or packed `0xRRGGBBAA` literals for explicit alpha; minor updates to `docs/faq.md`, `docs/gameengine/**`, `docs/il-passes.md`, `docs/tools.md`, and `docs/zia-getting-started.md` for the Pac-Man → Crackman rename and review-readiness wording.
+- New `docs/codemap/bytecode-vm.md` and `docs/codemap/runtime-graphics-stubs.md`; `docs/review-readiness.md` clarifies optimizer rehab status, `--no-mem2reg` behavior, graphics-stub policy, and cross-platform validation language; `docs/viperlib/graphics/pixels.md` documents that `Viper.Graphics.Color.RGBA()` returns `0xAARRGGBB` (Canvas-friendly) which does **not** match `Pixels.Set`/`Pixels.Get`'s `0xRRGGBBAA` layout, and recommends `SetRGB()` for opaque pixels or packed `0xRRGGBBAA` literals for explicit alpha; minor updates to `docs/faq.md`, `docs/gameengine/getting-started.md`, `docs/gameengine/**`, `docs/il-passes.md`, `docs/tools.md`, `docs/zia-getting-started.md`, `docs/viperlib/game/config.md`, `docs/viperlib/game/gameloop.md`, `docs/viperlib/graphics/scene.md`, `docs/viperlib/gui/application.md`, and `examples/README.md` for the Pac-Man → Crackman rename, review-readiness wording, and Paint-app surface.
 
 ---
 
@@ -54,6 +76,7 @@ These two moves together close a long-standing layering smell: runtime callers n
 - `zia_smoke_crackman` — runs `examples/games/pacman/smoke_probe.zia`, expects `RESULT: ok`, 30 s timeout, labels `zia;smoke`.
 - `test_achievement_draw_native` — AArch64 native smoke probe exercising the runtime-string-handle draw path for achievement notifications.
 - Extended `RTAchievementTests.cpp` contract coverage for the `rt_string` retain/release lifecycle.
+- New `src/tests/unit/runtime/TestConfig.cpp` covering the `Viper.Game.Config` runtime class, wired into `src/tests/CMakeLists.txt` + `src/tests/unit/CMakeLists.txt`.
 
 ---
 
@@ -64,5 +87,6 @@ These two moves together close a long-standing layering smell: runtime callers n
 | `d58df4f98` | 2026-04-14 | `chore(demos,build,docs)`: pacman → crackman binary rename, chess + crackman UI polish, VERSION → 0.2.5-snapshot |
 | `74f4ec4c7` | 2026-04-14 | `feat(crackman)`: rename Pac-Man demo to Crackman, split into session/progression/frontend, add smoke probe and audio banks |
 | `8126432f6` | 2026-04-15 | Harden runtime surface and Crackman progression |
+| `a34c3d555` | 2026-04-15 | `chore`: annotate vipersql/xenoscape demos, expand paint app, runtime polish |
 
 <!-- END DRAFT -->

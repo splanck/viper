@@ -157,6 +157,7 @@ func main() {
     var welcomeDoc = docMgr.NewDocument();
     welcomeDoc.content = welcomeText;
     tabs.AddTab(welcomeDoc.fileName, 1);
+    tabs.SetTooltip(0, welcomeDoc.fileName);
     tabs.SetActive(0);
     engine.LoadDocument(welcomeDoc);
 
@@ -173,6 +174,13 @@ func main() {
     appSettings.Load();
     shell.app.SetFontSize(appSettings.fontSize);
     engine.editor.SetFontSize(appSettings.fontSize);
+    engine.editor.SetTabSize(appSettings.tabWidth);
+    if appSettings.codeFolding {
+        engine.editor.SetAutoFoldDetection(1);
+    } else {
+        engine.editor.SetAutoFoldDetection(0);
+    }
+    liveDiag.enabled = appSettings.autoCheckOnSave;
     appSettings.ApplyTheme();
     if appSettings.minimapVisible == false {
         shell.minimap.SetVisible(0);

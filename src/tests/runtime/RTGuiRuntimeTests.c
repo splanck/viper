@@ -279,6 +279,15 @@ static void test_codeeditor_runtime_supports_multicursor_editing(void) {
     void *editor = rt_codeeditor_new(app.root);
     assert(editor);
 
+    assert(rt_codeeditor_get_tab_size(editor) == 4);
+    rt_codeeditor_set_tab_size(editor, 12);
+    assert(rt_codeeditor_get_tab_size(editor) == 12);
+    rt_codeeditor_set_tab_size(editor, 99);
+    assert(rt_codeeditor_get_tab_size(editor) == 16);
+    assert(rt_codeeditor_get_word_wrap(editor) == 0);
+    rt_codeeditor_set_word_wrap(editor, 1);
+    assert(rt_codeeditor_get_word_wrap(editor) == 1);
+
     rt_codeeditor_set_text(editor, rt_const_cstr("abc\nabc"));
     rt_codeeditor_add_cursor(editor, 99, 99);
     assert(rt_codeeditor_get_cursor_count(editor) == 2);
@@ -293,10 +302,13 @@ static void test_codeeditor_runtime_supports_multicursor_editing(void) {
     assert(rt_codeeditor_cursor_has_selection(editor, 1) == 0);
 
     rt_codeeditor_insert_at_cursor(editor, rt_const_cstr("X"));
+    assert(rt_codeeditor_can_undo(editor) == 1);
+    assert(rt_codeeditor_can_redo(editor) == 0);
     rt_string text = rt_codeeditor_get_text(editor);
     assert(strcmp(rt_string_cstr(text), "aXbc\naXbc") == 0);
 
     rt_codeeditor_undo(editor);
+    assert(rt_codeeditor_can_redo(editor) == 1);
     text = rt_codeeditor_get_text(editor);
     assert(strcmp(rt_string_cstr(text), "abc\nabc") == 0);
 

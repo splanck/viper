@@ -1159,6 +1159,22 @@ void rt_codeeditor_redo(void *editor) {
         vg_codeeditor_redo((vg_codeeditor_t *)editor);
 }
 
+/// @brief `CodeEditor.CanUndo` — true when the undo stack has an available entry.
+int64_t rt_codeeditor_can_undo(void *editor) {
+    if (!editor)
+        return 0;
+    vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
+    return (ce->history && ce->history->current_index > 0) ? 1 : 0;
+}
+
+/// @brief `CodeEditor.CanRedo` — true when the redo stack has an available entry.
+int64_t rt_codeeditor_can_redo(void *editor) {
+    if (!editor)
+        return 0;
+    vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
+    return (ce->history && ce->history->current_index < ce->history->count) ? 1 : 0;
+}
+
 /// @brief `CodeEditor.Copy` — copy selection to the system clipboard. Returns 1 on success.
 int64_t rt_codeeditor_copy(void *editor) {
     if (!editor)
@@ -1184,6 +1200,45 @@ int64_t rt_codeeditor_paste(void *editor) {
 void rt_codeeditor_select_all(void *editor) {
     if (editor)
         vg_codeeditor_select_all((vg_codeeditor_t *)editor);
+}
+
+/// @brief `CodeEditor.SetTabSize` — set tab width in spaces.
+void rt_codeeditor_set_tab_size(void *editor, int64_t size) {
+    if (!editor)
+        return;
+    if (size < 1)
+        size = 1;
+    if (size > 16)
+        size = 16;
+    vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
+    ce->tab_width = (int)size;
+    ce->base.needs_paint = true;
+}
+
+/// @brief `CodeEditor.GetTabSize` — return tab width in spaces.
+int64_t rt_codeeditor_get_tab_size(void *editor) {
+    if (!editor)
+        return 0;
+    return ((vg_codeeditor_t *)editor)->tab_width;
+}
+
+/// @brief `CodeEditor.SetWordWrap` — toggle display-only word wrapping.
+void rt_codeeditor_set_word_wrap(void *editor, int64_t enabled) {
+    if (!editor)
+        return;
+    vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
+    ce->word_wrap = enabled != 0;
+    if (ce->word_wrap)
+        ce->scroll_x = 0.0f;
+    ce->base.needs_layout = true;
+    ce->base.needs_paint = true;
+}
+
+/// @brief `CodeEditor.GetWordWrap` — return display-only word wrapping state.
+int64_t rt_codeeditor_get_word_wrap(void *editor) {
+    if (!editor)
+        return 0;
+    return ((vg_codeeditor_t *)editor)->word_wrap ? 1 : 0;
 }
 
 //=============================================================================
@@ -1535,6 +1590,16 @@ void rt_codeeditor_redo(void *editor) {
     (void)editor;
 }
 
+int64_t rt_codeeditor_can_undo(void *editor) {
+    (void)editor;
+    return 0;
+}
+
+int64_t rt_codeeditor_can_redo(void *editor) {
+    (void)editor;
+    return 0;
+}
+
 int64_t rt_codeeditor_copy(void *editor) {
     (void)editor;
     return 0;
@@ -1552,6 +1617,26 @@ int64_t rt_codeeditor_paste(void *editor) {
 
 void rt_codeeditor_select_all(void *editor) {
     (void)editor;
+}
+
+void rt_codeeditor_set_tab_size(void *editor, int64_t size) {
+    (void)editor;
+    (void)size;
+}
+
+int64_t rt_codeeditor_get_tab_size(void *editor) {
+    (void)editor;
+    return 0;
+}
+
+void rt_codeeditor_set_word_wrap(void *editor, int64_t enabled) {
+    (void)editor;
+    (void)enabled;
+}
+
+int64_t rt_codeeditor_get_word_wrap(void *editor) {
+    (void)editor;
+    return 0;
 }
 
 int64_t rt_codeeditor_get_cursor_pixel_x(void *editor) {

@@ -119,13 +119,24 @@ static uint32_t get_icon_pixels(vg_toolbar_icon_size_t size) {
     }
 }
 
+static float toolbar_ui_scale(void) {
+    vg_theme_t *theme = vg_theme_get_current();
+    float scale = theme ? theme->ui_scale : 1.0f;
+    return scale > 0.0f ? scale : 1.0f;
+}
+
+static float get_scaled_icon_pixels(vg_toolbar_t *tb) {
+    return (float)get_icon_pixels(tb->icon_size) * toolbar_ui_scale();
+}
+
 static float get_item_width(vg_toolbar_t *tb, vg_toolbar_item_t *item) {
-    uint32_t icon_px = get_icon_pixels(tb->icon_size);
+    float icon_px = get_scaled_icon_pixels(tb);
     float padding = (float)tb->item_padding;
+    float spacing = (float)tb->item_spacing;
 
     switch (item->type) {
         case VG_TOOLBAR_ITEM_SEPARATOR:
-            return 1.0f + tb->item_spacing * 2;
+            return toolbar_ui_scale() + spacing * 2.0f;
 
         case VG_TOOLBAR_ITEM_SPACER:
             return 0; // Spacers expand
@@ -133,14 +144,20 @@ static float get_item_width(vg_toolbar_t *tb, vg_toolbar_item_t *item) {
         case VG_TOOLBAR_ITEM_BUTTON:
         case VG_TOOLBAR_ITEM_TOGGLE:
         case VG_TOOLBAR_ITEM_DROPDOWN: {
-            float width = (float)icon_px + padding * 2;
+            float width = padding * 2.0f;
+            if (item->icon.type != VG_ICON_NONE) {
+                width += icon_px;
+            }
             if (item->show_label && item->label && tb->font) {
                 vg_text_metrics_t metrics;
                 vg_font_measure_text(tb->font, tb->font_size, item->label, &metrics);
-                width += metrics.width + padding;
+                if (item->icon.type != VG_ICON_NONE) {
+                    width += padding;
+                }
+                width += metrics.width;
             }
             if (item->type == VG_TOOLBAR_ITEM_DROPDOWN) {
-                width += 12; // Arrow indicator
+                width += 12.0f * toolbar_ui_scale(); // Arrow indicator
             }
             return width;
         }
@@ -157,20 +174,31 @@ static float get_item_width(vg_toolbar_t *tb, vg_toolbar_item_t *item) {
 }
 
 static float get_item_height(vg_toolbar_t *tb, vg_toolbar_item_t *item) {
-    uint32_t icon_px = get_icon_pixels(tb->icon_size);
+    float icon_px = get_scaled_icon_pixels(tb);
     float padding = (float)tb->item_padding;
 
     switch (item->type) {
         case VG_TOOLBAR_ITEM_SEPARATOR:
-            return (float)icon_px + padding * 2;
+            return icon_px + padding * 2.0f;
 
         case VG_TOOLBAR_ITEM_SPACER:
             return 0;
 
         case VG_TOOLBAR_ITEM_BUTTON:
         case VG_TOOLBAR_ITEM_TOGGLE:
-        case VG_TOOLBAR_ITEM_DROPDOWN:
-            return (float)icon_px + padding * 2;
+        case VG_TOOLBAR_ITEM_DROPDOWN: {
+            float content_height = item->icon.type != VG_ICON_NONE ? icon_px : 0.0f;
+            if (item->show_label && item->label && tb->font) {
+                vg_font_metrics_t metrics;
+                vg_font_get_metrics(tb->font, tb->font_size, &metrics);
+                float text_height = metrics.ascent - metrics.descent;
+                if (text_height > content_height)
+                    content_height = text_height;
+            }
+            if (content_height <= 0.0f)
+                content_height = icon_px;
+            return content_height + padding * 2.0f;
+        }
 
         case VG_TOOLBAR_ITEM_WIDGET:
             if (item->custom_widget) {
@@ -208,7 +236,7 @@ vg_toolbar_t *vg_toolbar_create(vg_widget_t *parent, vg_toolbar_orientation_t or
     tb->orientation = orientation;
     tb->icon_size = VG_TOOLBAR_ICONS_MEDIUM;
     tb->item_padding = (int)(TOOLBAR_DEFAULT_PADDING * s);
-    tb->item_spacing = TOOLBAR_DEFAULT_SPACING;
+    tb->item_spacing = (int)(TOOLBAR_DEFAULT_SPACING * s);
     tb->show_labels = false;
     tb->overflow_menu = true;
 
@@ -248,13 +276,9 @@ static void toolbar_destroy(vg_widget_t *widget) {
 static void toolbar_measure(vg_widget_t *widget, float available_width, float available_height) {
     vg_toolbar_t *tb = (vg_toolbar_t *)widget;
 
-    // Scale icon_px by the current ui_scale so the bar fills the correct visual
-    // height on HiDPI displays (item_padding was already scaled at creation time).
-    float _ms = vg_theme_get_current()->ui_scale;
-    if (_ms <= 0.0f)
-        _ms = 1.0f;
-    uint32_t icon_px = (uint32_t)((float)get_icon_pixels(tb->icon_size) * _ms);
-    float bar_thickness = (float)icon_px + (float)tb->item_padding * 2 + 4.0f * _ms;
+    float scale = toolbar_ui_scale();
+    float icon_px = get_scaled_icon_pixels(tb);
+    float bar_thickness = icon_px + (float)tb->item_padding * 2.0f + 4.0f * scale;
 
     if (tb->orientation == VG_TOOLBAR_HORIZONTAL) {
         // Calculate total width of items
@@ -349,13 +373,7 @@ static void toolbar_paint(vg_widget_t *widget, void *canvas) {
                    (int32_t)widget->height,
                    tb->bg_color);
 
-    // Scale icon_px by ui_scale so paint matches toolbar_measure (which already
-    // applies the scale).  Without this, items are measured at 48px on 2× Retina
-    // but painted with a 24px icon reference, misaligning icon/label positions.
-    float _ps = vg_theme_get_current()->ui_scale;
-    if (_ps <= 0.0f)
-        _ps = 1.0f;
-    uint32_t icon_px = (uint32_t)((float)get_icon_pixels(tb->icon_size) * _ps);
+    float icon_px = get_scaled_icon_pixels(tb);
 
     float pos = 0;
     int max_index = tb->overflow_start_index >= 0 ? tb->overflow_start_index : (int)tb->item_count;
@@ -459,7 +477,7 @@ static void toolbar_paint(vg_widget_t *widget, void *canvas) {
                             }
                             vg_font_draw_text(canvas,
                                               tb->font,
-                                              (float)icon_px,
+                                              icon_px,
                                               icon_x,
                                               icon_y + icon_px * 0.8f,
                                               buf,
@@ -480,7 +498,10 @@ static void toolbar_paint(vg_widget_t *widget, void *canvas) {
                     float label_x = (item->icon.type == VG_ICON_NONE)
                                         ? item_x + tb->item_padding
                                         : icon_x + icon_px + tb->item_padding;
-                    float label_y = item_y + item_height / 2 + (tb->font_size * _ps) / 2;
+                    vg_font_metrics_t font_metrics;
+                    vg_font_get_metrics(tb->font, tb->font_size, &font_metrics);
+                    float label_y =
+                        item_y + (item_height + font_metrics.ascent + font_metrics.descent) / 2.0f;
                     vg_font_draw_text(
                         canvas, tb->font, tb->font_size, label_x, label_y, item->label, txt_color);
                 }

@@ -1,7 +1,9 @@
 module editor_tabs;
 
 bind "../core/document";
-bind Viper.GUI as GUI;// ============================================================================
+bind Viper.GUI as GUI;
+
+// ============================================================================
 // EditorTabs — manages the tab bar and document-to-tab synchronization
 // ============================================================================
 // Uses TabBar.GetTabAt(index) to look up tabs by index rather than
@@ -54,6 +56,15 @@ class EditorTabs {
         }
         var tab: GUI.Tab = tabBar.GetTabAt(index);
         tab.SetTitle(title);
+    }
+
+    // Update the tab tooltip, typically with the full path for truncated tabs.
+    expose func SetTooltip(index: Integer, tooltip: String) {
+        if index < 0 or index >= tabBar.TabCount {
+            return;
+        }
+        var tab: GUI.Tab = tabBar.GetTabAt(index);
+        tab.SetTooltip(tooltip);
     }
 
     // Update the modified indicator on a tab.

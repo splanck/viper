@@ -882,7 +882,7 @@ void rt_codeeditor_set_custom_keywords(void* editor, rt_string keywords); // Com
 // Manual highlighting (for custom languages)
 void rt_codeeditor_clear_highlights(void* editor);
 void rt_codeeditor_add_highlight(void* editor, int64_t start_line, int64_t start_col,
-                                  int64_t end_line, int64_t end_col, int64_t token_type);
+                                  int64_t end_line, int64_t end_col, int64_t color);
 void rt_codeeditor_refresh_highlights(void* editor);
 ```
 
@@ -893,7 +893,7 @@ Viper.GUI.CodeEditor (additions)
 ├── SetTokenColor(tokenType: Integer, color: Integer)
 ├── SetCustomKeywords(keywords: String)
 ├── ClearHighlights()
-├── AddHighlight(startLine: Integer, startCol: Integer, endLine: Integer, endCol: Integer, tokenType: Integer)
+├── AddHighlight(startLine: Integer, startCol: Integer, endLine: Integer, endCol: Integer, color: Integer)
 └── RefreshHighlights()
 ```
 

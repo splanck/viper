@@ -114,6 +114,16 @@ void rt_tab_set_title(void *tab, rt_string title) {
     free(ctitle);
 }
 
+/// @brief Update the tooltip text of a tab.
+void rt_tab_set_tooltip(void *tab, rt_string tooltip) {
+    RT_ASSERT_MAIN_THREAD();
+    if (!tab)
+        return;
+    char *ctooltip = rt_string_to_cstr(tooltip);
+    vg_tab_set_tooltip((vg_tab_t *)tab, ctooltip);
+    free(ctooltip);
+}
+
 /// @brief Mark a tab as modified (shows an unsaved-changes indicator).
 void rt_tab_set_modified(void *tab, int64_t modified) {
     RT_ASSERT_MAIN_THREAD();
@@ -1104,6 +1114,12 @@ void rt_tabbar_set_active(void *tabbar, void *tab) {
 void rt_tab_set_title(void *tab, rt_string title) {
     (void)tab;
     (void)title;
+}
+
+/// @brief Update the tooltip text of a tab.
+void rt_tab_set_tooltip(void *tab, rt_string tooltip) {
+    (void)tab;
+    (void)tooltip;
 }
 
 /// @brief Mark a tab as modified (shows an unsaved-changes indicator).

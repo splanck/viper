@@ -82,6 +82,11 @@ void *rt_menubar_new(void *parent) {
         if (app && app->default_font)
             vg_menubar_set_font(mb, app->default_font, app->default_font_size);
         mb->native_main_menu = rt_gui_macos_menu_register_menubar(mb);
+        if (mb->native_main_menu) {
+            mb->base.constraints.min_height = 0.0f;
+            mb->base.constraints.preferred_height = 0.0f;
+            mb->base.measured_height = 0.0f;
+        }
         rt_gui_menu_sync_menubar(mb);
     }
     return mb;
