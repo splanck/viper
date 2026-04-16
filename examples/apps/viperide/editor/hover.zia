@@ -7,15 +7,38 @@ bind Viper.GUI;
 bind Str = Viper.String;
 
 // ============================================================================
-// HoverController — shows type/signature tooltips on mouse hover.
+// MODULE: hover
+// PURPOSE: Mouse-hover tooltips that show type / signature info for the
+//          symbol under the cursor. The IDE equivalent of "wait, what
+//          type is this?".
 //
-// When the mouse dwells over an identifier for >300ms, calls
-// Viper.Zia.Completion.Hover(source, line, col) and displays the result
-// in a FloatingPanel tooltip near the cursor.
+// WHERE-THIS-FITS: Editor controller invoked once per frame from
+//          main.zia. Reads the editor's `IsHovered`, the mouse pixel
+//          coords, and uses `GetLineAtPixel` / `GetColAtPixel` to find
+//          the text position under the mouse. Queries
+//          `Viper.Zia.Completion.HoverForFile` for the type info.
+//
+// KEY-DESIGN-CHOICES:
+//   * MOUSE-POSITION HOVER, NOT CURSOR HOVER. Earlier versions used
+//     `editor.CursorLine/Col` which only hovers at the caret. The
+//     pixel-based version follows the mouse independently of the
+//     caret — much more like a real IDE.
+//   * DWELL TIMER. The mouse must sit still for `HOVER_DELAY_MS` (300
+//     ms) before the tooltip appears. Without this, tooltips would
+//     fire on every mouse-move, which feels spammy. Dwell is reset
+//     whenever the mouse moves; tooltip hides on first move.
+//   * 4-STATE MACHINE. (lastMouseX/Y, waiting, isVisible) interlock to
+//     give: "mouse moved -> hide + start waiting" -> "mouse still &
+//     waiting & dwell elapsed -> query + show" -> "mouse moved while
+//     visible -> hide + restart". Mouse-leaves-editor (`IsHovered ==
+//     0`) takes the express path to hideTooltip.
+//   * PATH-AWARE QUERY. HoverForFile (not Hover) so relative bind paths
+//     resolve against the active file's directory.
 // ============================================================================
 
 final HOVER_DELAY_MS = 300;    // ms to dwell before showing tooltip
 
+/// @brief Mouse-position hover tooltip controller.
 class HoverController {
     expose GUI.FloatingPanel tooltip;
     expose GUI.Label tooltipLabel;
@@ -27,6 +50,7 @@ class HoverController {
     expose Boolean waiting;
     expose String sourcePath;
 
+    /// @brief Initialize as hidden, with no dwell in progress.
     expose func init() {
         isVisible = false;
         hoverStartMs = 0;
@@ -36,6 +60,10 @@ class HoverController {
         sourcePath = "";
     }
 
+    /// @brief Build the FloatingPanel + Label that render the tooltip.
+    /// @note Panel attaches to appRoot (must be top-level for floating
+    ///       z-order); Label is created unattached and reparented into
+    ///       the panel via AddChild.
     expose func setup(appRoot: GUI.App) {
         tooltip = GUI.FloatingPanel.New(appRoot);
         tooltip.SetSize(400.0, 30.0);
@@ -46,11 +74,12 @@ class HoverController {
         tooltip.AddChild(tooltipLabel);
     }
 
+    /// @brief Set the active file's path for HoverForFile lookups.
     expose func setSourcePath(path: String) {
         sourcePath = path;
     }
 
-    // Call once per frame from the main loop.
+    /// @brief Per-frame mouse-hover state machine (see module header).
     expose func update(engine: editor_engine.EditorEngine) {
         if engine == null or engine.editor == null { return; }
 
@@ -103,6 +132,7 @@ class HoverController {
         isVisible = true;
     }
 
+    /// @brief Hide the tooltip and reset the dwell state.
     expose func hideTooltip() {
         if isVisible {
             tooltip.SetVisible(0);

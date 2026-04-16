@@ -1,3 +1,26 @@
+// ============================================================================
+// MODULE: utils
+// PURPOSE: Pure helper functions — coordinate conversion between grid
+//          and screen space, direction inversion, tile-center tests,
+//          tunnel-wrap detection, fruit/level lookups, integer math
+//          helpers.
+//
+// KEY-DESIGN-CHOICES:
+//   * GRID <-> SCREEN BIJECTION. gridToScreenX/Y converts logical tile
+//     coords to pixel coords using TILE_SIZE + PLAYFIELD_X/Y offsets;
+//     screenToGridX/Y is the inverse. Every movement/positioning bug
+//     in a Pac-Man clone traces back to mixing these spaces.
+//   * TUNNEL WRAP. isHorizontalTunnelWrap detects Pac-Man crossing the
+//     left or right edge so the game can teleport them to the other
+//     side — the iconic side-tunnel mechanic.
+//   * TILE-CENTER DECISIONS. isAtTileCenter returns true only at the
+//     exact pixel where an actor's screen pos matches its grid tile's
+//     top-left corner. This is where ghost AI makes direction choices
+//     — off-center actors commit to finishing their current move.
+//   * FRUIT-BY-LEVEL. getFruitForLevel maps the level number to one
+//     of 8 fruit types, mirroring the arcade progression.
+// ============================================================================
+
 // =============================================================================
 // CRACKMAN - Utility Functions
 // =============================================================================

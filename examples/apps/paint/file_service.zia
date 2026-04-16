@@ -1,3 +1,19 @@
+// ============================================================================
+// MODULE: file_service (PaintFileService)
+// PURPOSE: Paint's file open / save / save-as orchestration. Wraps
+//          GUI.FileDialog and routes to DrawingCanvas load/save.
+//
+// KEY-DESIGN-CHOICES:
+//   * CURRENT PATH MEMORY. After a successful open/save we remember
+//     the path so plain Save re-uses it; untitled docs route to
+//     Save As on first save.
+//   * EXTENSION AUTO-APPEND. On Save As, if the chosen path doesn't
+//     end in .png or .bmp, we append .png. Prevents "I saved but
+//     can't find the file" confusion.
+//   * TRISTATE RETURN. Methods return 1 (success), 0 (cancelled), -1
+//     (error). The app switches on these to update UI accordingly.
+// ============================================================================
+
 // file_service.zia - Paint file dialogs and image IO
 module file_service;
 
@@ -10,6 +26,7 @@ bind "./canvas";
 final IMAGE_FILTER = "*.png;*.bmp;*.jpg;*.jpeg;*.gif";
 final SAVE_FILTER = "*.png;*.bmp";
 
+/// @brief File-dialog + image-IO orchestrator.
 class PaintFileService {
     expose String currentPath;
 

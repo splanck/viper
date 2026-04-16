@@ -1,3 +1,25 @@
+// ============================================================================
+// MODULE: viewport (CanvasViewport)
+// PURPOSE: Scrollable + zoomable window onto the canvas. Owns zoom
+//          (percent), scroll offsets (canvas-space pixels), and a
+//          cache of the scaled Pixels buffer used when zoom != 100.
+//
+// KEY-DESIGN-CHOICES:
+//   * COORD SPACES. Two: screen (window pixels) and canvas (document
+//     pixels). screenToCanvasX/Y / canvasToScreenX/Y convert between
+//     them; tools always receive canvas coords after translation.
+//   * SCALED PIXEL CACHE. When zoom != 100, Pixels.Scale is expensive
+//     — we cache the result keyed by (revision, zoom, targetW,
+//     targetH) so repeated redraws at unchanged settings are free.
+//   * CHECKERBOARD BACKDROP. Shows through transparent canvas
+//     regions so the user can tell what's empty vs. painted white.
+//   * NON-LINEAR ZOOM. Zoom-in steps by 25 below 100% and 50 above,
+//     matching how users perceive zoom increments. Clamped at 25
+//     min, 400 max.
+//   * WHEEL CTRL = ZOOM, ELSE PAN. applyWheel is the central
+//     scroll/zoom entry point used by the main app's wheel handler.
+// ============================================================================
+
 // viewport.zia - Scrollable/zoomable drawing viewport
 module viewport;
 
@@ -5,6 +27,7 @@ bind Viper.Graphics;
 
 bind "./config";
 
+/// @brief Scrollable + zoomable view of the document canvas.
 class CanvasViewport {
     expose Integer x;
     expose Integer y;

@@ -1,3 +1,13 @@
+// ============================================================================
+// MODULE: simple_entity (bring-up test)
+// PURPOSE: Smallest-possible OOP test — a Point class with init/set/
+//          distFromOrigin. Used during early native codegen bring-up
+//          to verify classes instantiate and dispatch correctly.
+//
+// WHERE-THIS-FITS: Not part of the main app. Lives alongside it so the
+//          build scripts compile it under the same dependency graph.
+// ============================================================================
+
 module simple_entity;
 
 class Point {

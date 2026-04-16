@@ -69,6 +69,8 @@ if newItem.WasClicked() == 1 { /* new file */ }
 
 Application toolbar widget.
 
+When the toolbar is narrower than its contents, hidden items are exposed through an automatic overflow popup rather than becoming inaccessible.
+
 **Constructor:** `NEW Viper.GUI.Toolbar(parent)`
 
 | Method                              | Signature                      | Description                              |

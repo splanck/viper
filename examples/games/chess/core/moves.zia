@@ -4,11 +4,45 @@ bind "./config";
 bind "./board";
 
 // ============================================================================
-// MoveGen — Legal move generator for all piece types
+// MODULE: moves
+// PURPOSE: Legal move generator. Produces all moves a side can make
+//          from a given board, including special moves (en passant,
+//          castling, promotion).
 //
-// Strategy: generate pseudo-legal moves, then filter those that leave the
-// moving side's king in check. Simple, readable, and sufficient for depth 4-5.
+// WHERE-THIS-FITS: Called by ChessAI on every search node and by the UI
+//          when a piece is selected (to highlight legal destinations).
+//
+// KEY-DESIGN-CHOICES:
+//   * PSEUDO-LEGAL THEN FILTER. Generate moves that LOOK legal
+//     (correct geometry, correct capture targets), then make/unmake
+//     each one and reject any that leave our king in check. This is
+//     the standard "lazy legality" approach — simpler than
+//     pre-computing pin information at the cost of a make/unmake per
+//     candidate. Fine for the demo's search depth.
+//   * CACHED DIRECTION TABLES. `knR_`/`knF_` (knight offsets), the
+//     four diagonal vectors, four straight vectors, and eight king
+//     vectors are stored as instance fields rather than re-allocated
+//     each call. Saves a fair amount of allocation churn during AI
+//     search.
+//   * MOVE CONSTRUCTORS. `qMove` (quiet), `cMove` (capture), `epMove`
+//     (en passant), `ckMove` / `cqMove` (castles), `promoMove`. They
+//     wrap `new Move(...)` for legibility.
+//   * SLIDING PIECES SHARE slidingDir. Bishop/rook/queen all use the
+//     same per-direction loop; bishop calls it with the four
+//     diagonals, rook with the four orthogonals, queen with all
+//     eight.
+//   * isAttacked DOESN'T USE legalMoves. To answer "is this square
+//     attacked?", we radiate outward from the square in pawn / knight
+//     / sliding / king patterns and check if the corresponding piece
+//     of the attacking side is at the destination. Much faster than
+//     generating every move and testing for capture overlap.
+//
+// HOW-TO-READ: Cached tables -> Move constructors -> public API
+//   (legalMoves / isInCheck / isAttacked / perft) -> per-piece
+//   pseudo-legal generators -> castling -> isLegal filter.
 // ============================================================================
+
+/// @brief Generates all legal moves and answers attacked-square queries.
 class MoveGen {
 
     // Direction tables cached as entity fields (avoids per-call list allocation)
@@ -24,6 +58,7 @@ class MoveGen {
     // -----------------------------------------------------------------------
     // Initialization: pre-build direction tables shared across all calls
     // -----------------------------------------------------------------------
+    /// @brief Pre-build the eight cached direction tables.
     expose func init() {
         knR_    = [-2, -2, -1, -1, 1, 1, 2, 2];
         knF_    = [-1,  1, -2,  2, -2, 2, -1, 1];
@@ -66,6 +101,8 @@ class MoveGen {
     // Public API
     // -----------------------------------------------------------------------
 
+    /// @brief All legal moves for the side to move.
+    /// @details Generates pseudo-legal then filters via isLegal.
     expose func legalMoves(b: Board) -> List[Move] {
         var pseudo = self.pseudoLegal(b, b.whiteToMove);
         var legal = [];
@@ -78,13 +115,17 @@ class MoveGen {
         return legal;
     }
 
+    /// @brief True if the given side's king is in check.
     expose func isInCheck(b: Board, white: Boolean) -> Boolean {
         var kSq = b.kingSquare(white);
         if kSq < 0 { return false; }
         return self.isAttacked(b, kSq, !white);
     }
 
-    // Is square sq attacked by any piece of the given side?
+    /// @brief Is square `sq` attacked by any piece of side `byWhite`?
+    /// @details Radiates outward from `sq` in pawn / knight / sliding /
+    ///          king patterns and checks for the corresponding piece at
+    ///          the destination. Faster than generating all enemy moves.
     expose func isAttacked(b: Board, sq: Integer, byWhite: Boolean) -> Boolean {
         var sqR = sq / 8;
         var sqF = sq % 8;
@@ -163,7 +204,9 @@ class MoveGen {
         return false;
     }
 
-    // Perft — counts leaf nodes at given depth; validates move generation
+    /// @brief Performance test: count leaf nodes at the given depth.
+    /// @details Standard chess-engine validation. Comparing perft(d)
+    ///          against published values catches move-generation bugs.
     expose func perft(b: Board, depth: Integer) -> Integer {
         if depth == 0 { return 1; }
         var legal = self.legalMoves(b);
@@ -389,6 +432,7 @@ class MoveGen {
     // -----------------------------------------------------------------------
     // Utility: does the given side have any legal moves?
     // -----------------------------------------------------------------------
+    /// @brief Quick check used by checkmate / stalemate detection.
     expose func hasLegalMoves(b: Board, white: Boolean) -> Boolean {
         var pseudo = self.pseudoLegal(b, white);
         for i in 0..pseudo.length() {

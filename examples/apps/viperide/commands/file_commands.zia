@@ -16,9 +16,36 @@ bind Exec = Viper.Exec;
 bind Str = Viper.String;
 
 // ============================================================================
-// File commands — New, Open, Save, SaveAs, SaveAll, Close, Reload, Exit
+// MODULE: file_commands
+// PURPOSE: File-management command handlers (New, Open, Save, Save As,
+//          Save All, Close, Reload, Exit) plus Open Folder for projects.
+//          Coordinates DocumentManager, EditorTabs, EditorEngine, and
+//          AppShell so a single user action updates every relevant
+//          surface (tab title, breadcrumb, status bar, modified marker,
+//          tooltip).
+//
+// WHERE-THIS-FITS: Wired into main.zia's command dispatcher. Most
+//          handlers take the same four arguments (shell, docMgr,
+//          engine, tabs) — that's the "active document context."
+//
+// KEY-DESIGN-CHOICES:
+//   * SaveEditorState BEFORE EVERY MUTATION. Every handler starts by
+//     copying the editor's current cursor / scroll / text into the
+//     active Document so subsequent operations work against fresh
+//     state. This is the IDE equivalent of "flush the write buffer
+//     before fsync."
+//   * SAVE OF UNTITLED -> SAVE AS PROMPT. handleSave detects
+//     `doc.isNew` and routes to a SaveAs dialog rather than failing.
+//   * MODIFIED-PROMPT ON CLOSE. handleClose pops a confirmation if the
+//     document is dirty so accidental Ctrl+W doesn't lose work.
+//   * BREADCRUMB AUTO-HIDE. SetBreadcrumbPath("") hides the breadcrumb
+//     when no path is meaningful (after closing the last document).
+//   * STATUS LABEL HELPER. DocStatusLabel renders "Zia | LF" / "Basic |
+//     CRLF" — the tiny right-aligned label in the status bar. Reused
+//     by every handler that lands on a different document.
 // ============================================================================
 
+/// @brief Create a new untitled document and activate its tab.
 func handleNew(shell: app_shell.AppShell,
                docMgr: document_manager.DocumentManager,
                engine: editor_engine.EditorEngine,
@@ -36,6 +63,7 @@ func handleNew(shell: app_shell.AppShell,
     shell.SetStatusRight(DocStatusLabel(newDoc));
 }
 
+/// @brief File-open dialog -> OpenFileAtPath if a file was picked.
 func handleOpen(shell: app_shell.AppShell,
                 docMgr: document_manager.DocumentManager,
                 engine: editor_engine.EditorEngine,
@@ -46,6 +74,8 @@ func handleOpen(shell: app_shell.AppShell,
     }
 }
 
+/// @brief Folder-picker dialog -> ProjectManager.OpenFolder for the
+///        chosen path. Updates the file-tree sidebar.
 func handleOpenFolder(shell: app_shell.AppShell,
                       projMgr: project_manager.ProjectManager) {
     var folderPath = FileDialog.SelectFolder("Open Folder", "");
@@ -55,6 +85,7 @@ func handleOpenFolder(shell: app_shell.AppShell,
     }
 }
 
+/// @brief Save active document. Untitled docs route to a Save As prompt.
 func handleSave(shell: app_shell.AppShell,
                 docMgr: document_manager.DocumentManager,
                 engine: editor_engine.EditorEngine,
@@ -86,6 +117,7 @@ func handleSave(shell: app_shell.AppShell,
     }
 }
 
+/// @brief Always prompts for path; saves and updates tab title/tooltip.
 func handleSaveAs(shell: app_shell.AppShell,
                   docMgr: document_manager.DocumentManager,
                   engine: editor_engine.EditorEngine,
@@ -108,6 +140,7 @@ func handleSaveAs(shell: app_shell.AppShell,
     }
 }
 
+/// @brief Save every modified non-untitled doc; clear their tab markers.
 func handleSaveAll(shell: app_shell.AppShell,
                    docMgr: document_manager.DocumentManager,
                    engine: editor_engine.EditorEngine,
@@ -126,6 +159,7 @@ func handleSaveAll(shell: app_shell.AppShell,
     shell.SetStatusLeft("Saved " + savedCount + " files");
 }
 
+/// @brief Re-read the active file from disk, discarding in-memory edits.
 func handleReload(shell: app_shell.AppShell,
                   docMgr: document_manager.DocumentManager,
                   engine: editor_engine.EditorEngine,
@@ -141,7 +175,8 @@ func handleReload(shell: app_shell.AppShell,
     }
 }
 
-// Returns true if the close was performed (caller should clear pendingReload).
+/// @brief Close the document at index; prompts to confirm if dirty.
+/// @return true if closed (caller should clear any pending-reload flag).
 func handleClose(shell: app_shell.AppShell,
                  docMgr: document_manager.DocumentManager,
                  engine: editor_engine.EditorEngine,
@@ -182,6 +217,8 @@ func handleClose(shell: app_shell.AppShell,
     return true;
 }
 
+/// @brief Tear down the AppShell — the main loop's `WindowOpen` check
+///        then exits.
 func handleExit(shell: app_shell.AppShell) {
     shell.Destroy();
 }
@@ -190,6 +227,9 @@ func handleExit(shell: app_shell.AppShell) {
 // Shared helpers
 // ============================================================================
 
+/// @brief Open `path` (deduping if already open), wire up the tab,
+///        breadcrumb, and status bar. Used by handleOpen and the file
+///        tree click handler.
 func OpenFileAtPath(shell: app_shell.AppShell,
                     docMgr: document_manager.DocumentManager,
                     engine: editor_engine.EditorEngine,
@@ -212,6 +252,9 @@ func OpenFileAtPath(shell: app_shell.AppShell,
     shell.SetStatusRight(DocStatusLabel(openDoc));
 }
 
+/// @brief Flush editor state (cursor, scroll, text) into the active
+///        Document. Called at the start of every command to keep the
+///        document model in sync with what the user sees.
 func SaveEditorState(docMgr: document_manager.DocumentManager,
                      engine: editor_engine.EditorEngine) {
     if docMgr == null or engine == null {
@@ -223,6 +266,8 @@ func SaveEditorState(docMgr: document_manager.DocumentManager,
     }
 }
 
+/// @brief Build the right-aligned status-bar label "Lang | EOL".
+/// @details Detects EOL by searching for "\r\n"; presence => CRLF, else LF.
 func DocStatusLabel(doc: document.Document) -> String {
     var lang = "Text";
     if doc.language == "zia"   { lang = "Zia"; }

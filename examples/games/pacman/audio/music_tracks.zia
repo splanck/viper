@@ -1,7 +1,29 @@
+// ============================================================================
+// MODULE: music_tracks
+// PURPOSE: Procedurally synthesizes the menu and in-game background
+//          music via Viper.Sound.MusicGen. Four or five channels each
+//          with their own envelope, volume, pan, and note schedule.
+//
+// KEY-DESIGN-CHOICES:
+//   * NO AUDIO FILES. Everything is generated in code — envelope
+//     shapes, duty cycles, vibrato, portamento — producing the chip-
+//     tune vibe without shipping .wav files.
+//   * MULTI-CHANNEL COMPOSITION. Menu song: pad + sparkle arp + bass
+//     + bell lead. Game song: lead + counter + bass + pad + drums.
+//     Each channel is built with `AddChannel(waveShape)`, tuned with
+//     ADSR + volume + pan, then populated with a note schedule in
+//     tick time.
+//   * LOOPABLE. SetLoopable(1) makes both tracks seamlessly loop
+//     during gameplay and menu.
+//   * registerTracks IS THE PUBLIC API. The rest of the game only
+//     sees SoundBank entries named "music_menu" and "music_game".
+// ============================================================================
+
 module music_tracks;
 
 bind Viper.Sound;
 
+/// @brief Build the menu-screen pad+arp+bass+bell loop.
 hide func buildMenuSong() -> Sound {
     var song = MusicGen.New(98);
     var pad = song.AddChannel(0);
@@ -100,6 +122,7 @@ hide func buildMenuSong() -> Sound {
     return song.Build();
 }
 
+/// @brief Build the in-game 5-channel chase loop.
 hide func buildGameSong() -> Sound {
     var song = MusicGen.New(136);
     var lead = song.AddChannel(1);
@@ -206,6 +229,7 @@ hide func buildGameSong() -> Sound {
     return song.Build();
 }
 
+/// @brief Register menu + game songs into the shared SoundBank.
 expose func registerTracks(bank: SoundBank) {
     var menuSound = buildMenuSong();
     if menuSound != null {

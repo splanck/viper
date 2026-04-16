@@ -1,6 +1,13 @@
+// ============================================================================
+// MODULE: minimal_test (native OOP bring-up)
+// PURPOSE: Counter class with increment + getter. Smaller than
+//          simple_class.zia — used to bisect OOP regressions without
+//          any graphics dependencies.
+// ============================================================================
+
 module minimal_test;
 
-// Minimal entity to test OOP in native
+/// @brief Minimal counter class for OOP bring-up testing.
 class Counter {
     expose Integer value;
 

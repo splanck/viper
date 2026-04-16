@@ -10,6 +10,19 @@ bind "./lane/lane";
 bind "./lane/pins";
 bind "./lane/ball";
 
+// ============================================================================
+// MODULE: smoke_probe
+// PURPOSE: Headless smoke test for the 3D Bowling scene. Builds the
+//          renderer + scene, renders one frame, saves a PNG
+//          screenshot for inspection, prints RESULT: ok on success.
+//
+// WHERE-THIS-FITS: Run by CI (`zia_smoke_3dbowling` ctest target) to
+//          catch construction-time regressions without needing a
+//          display. Screenshot ends up in /tmp/3dbowling_smoke.png
+//          for the human reviewer.
+// ============================================================================
+
+/// @brief Smoke-probe entry point. Success prints RESULT: ok.
 func main() {
     var render = new Renderer();
     render.initRenderer(config.QUALITY_CINEMATIC);

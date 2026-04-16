@@ -10,6 +10,16 @@ bind "./lane/lane";
 bind "./lane/pins";
 bind "./lane/ball";
 
+// ============================================================================
+// MODULE: overlay_smoke_probe
+// PURPOSE: Regression test for "2D overlay bleeds into next frame".
+//          Paints a full-screen magenta rect on frame 1, then a tiny
+//          white rect on frame 2. If the per-frame buffer clear is
+//          broken, a screenshot of frame 2 will show magenta at the
+//          centre — the probe catches that.
+// ============================================================================
+
+/// @brief Composite a 3D scene + 2D sub-rect into one frame for the probe.
 func drawFrame(render: Renderer, laneObj: LaneBuilder, pinMgr: PinManager, ballObj: Ball) {
     render.beginFrame();
     laneObj.draw(render.getCanvas());
@@ -18,6 +28,8 @@ func drawFrame(render: Renderer, laneObj: LaneBuilder, pinMgr: PinManager, ballO
     render.endFrame();
 }
 
+/// @brief Regression entry: frame-1 magenta bloom, frame-2 white pixel,
+///        screenshot, pixel-check the centre, RESULT: ok/fail.
 func main() {
     var render = new Renderer();
     render.initRenderer(config.QUALITY_CINEMATIC);

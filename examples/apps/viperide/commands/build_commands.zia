@@ -11,12 +11,37 @@ bind Viper.GUI;
 bind Convert = Viper.Core.Convert;
 
 // ============================================================================
-// Build commands — Build, BuildAndRun, Run
+// MODULE: build_commands
+// PURPOSE: Build / BuildAndRun / Run command handlers. Saves the active
+//          document, invokes the BuildSystem, and routes the resulting
+//          diagnostics to the diagnostics panel + minimap markers +
+//          status bar.
+//
+// WHERE-THIS-FITS: Command handlers wired into main.zia's command
+//          dispatcher. Each handler receives the AppShell, document
+//          manager, editor engine, and BuildSystem so it can update
+//          every relevant surface.
+//
+// KEY-DESIGN-CHOICES:
+//   * SAVE-BEFORE-BUILD. Every handler calls SaveEditorState +
+//     docMgr.SaveActive so the on-disk file matches what the user sees.
+//     Untitled documents bail with "Save file before building" — we
+//     don't want to silently invent a filename.
+//   * TOAST + STATUS BAR. Every result reports through both the toast
+//     popup AND the status bar. Toast is for ephemeral notification;
+//     the status bar persists so the user can re-read the result later.
+//   * RUN == BUILDANDRUN (FOR NOW). Zia compiles and runs in one step,
+//     so handleRun delegates. Kept as a distinct entry point so future
+//     "build native binary, then run separately" workflows can diverge.
+//   * UpdateDiagnostics IS SHARED. Both Build and BuildAndRun call it
+//     to refresh the panel/minimap/output. Keeping it in one place
+//     prevents drift between the two paths.
 // ============================================================================
 
-final ERROR_MARKER_COLOR = 16711680;     // red (0xFF0000)
+final ERROR_MARKER_COLOR = 16711680;     // red    (0xFF0000)
 final WARNING_MARKER_COLOR = 16776960;   // yellow (0xFFFF00)
 
+/// @brief Build the active file, refresh diagnostics, report status.
 func handleBuild(shell: app_shell.AppShell,
                  docMgr: document_manager.DocumentManager,
                  engine: editor_engine.EditorEngine,
@@ -43,6 +68,7 @@ func handleBuild(shell: app_shell.AppShell,
     }
 }
 
+/// @brief Build and run in one step; refresh diagnostics; report status.
 func handleBuildAndRun(shell: app_shell.AppShell,
                        docMgr: document_manager.DocumentManager,
                        engine: editor_engine.EditorEngine,
@@ -69,8 +95,10 @@ func handleBuildAndRun(shell: app_shell.AppShell,
     }
 }
 
-// Note: Zia compiles and runs in one step, so this is equivalent to
-// BuildAndRun. The distinction exists for future native-binary workflows.
+/// @brief Run the active file. Currently equivalent to BuildAndRun
+///        because Zia compiles + runs in one step. Kept as a distinct
+///        entry point so a future "build native binary then run"
+///        workflow can diverge without renaming call sites.
 func handleRun(shell: app_shell.AppShell,
                docMgr: document_manager.DocumentManager,
                engine: editor_engine.EditorEngine,
@@ -78,7 +106,10 @@ func handleRun(shell: app_shell.AppShell,
     handleBuildAndRun(shell, docMgr, engine, buildSys);
 }
 
-// Refresh the diagnostics panel, minimap markers, and build output after a build.
+/// @brief Repopulate the diagnostics listbox + minimap markers + build
+///        output panel from the most recent BuildSystem run.
+/// @note Hides the diagnostics panel entirely when there are zero
+///       diagnostics so it doesn't waste vertical space.
 func UpdateDiagnostics(shell: app_shell.AppShell,
                        buildSys: build_system.BuildSystem,
                        engine: editor_engine.EditorEngine) {

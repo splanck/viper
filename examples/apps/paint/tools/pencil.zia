@@ -1,3 +1,24 @@
+// ============================================================================
+// MODULE: pencil (PencilTool)
+// PURPOSE: Single-pixel line drawing tool. The "test case" for the
+//          tool interface — the simplest possible implementation of the
+//          onMouseDown / onMouseMove / onMouseUp contract.
+//
+// TOOL CONTRACT: Every tool exposes init, getName, getIcon, getShortcut,
+//          isDrawing, plus onMouseDown/Move/Up. Some tools also expose
+//          drawPreview for WYSIWYG shape tools. The main app polls
+//          isDrawing to know if a preview should render over the canvas.
+//
+// KEY-DESIGN-CHOICES:
+//   * BRESENHAM VIA drawLine. Mouse-move interpolates between
+//     consecutive sample points so fast swipes produce continuous
+//     strokes rather than dots. canvas.drawLine handles the Bresenham
+//     rasterization.
+//   * LAST-POINT TRACKING. Each onMouseMove draws from lastX/Y to the
+//     new position, then updates lastX/Y. The single-pixel variant
+//     doesn't need sub-pixel work (drawLine handles Bresenham).
+// ============================================================================
+
 // pencil.viper - Pencil tool for Viper Paint
 module pencil;
 
@@ -5,7 +26,7 @@ bind "../config";
 bind "../canvas";
 bind "../colors";
 
-// PencilTool - draws single pixel lines
+/// @brief Single-pixel-wide line tool.
 class PencilTool {
     hide Integer drawing;       // 1 if currently drawing
     hide Integer lastX;         // Last mouse X

@@ -4,14 +4,52 @@ bind Viper.GUI as GUI;
 bind Viper.String as Str;
 bind Viper.Collections.Seq as Seq;
 bind Viper.Core.Object as Obj;
-bind Viper.Zia.Completion as ZiaCompletion;// ============================================================================
-// CompletionController — IntelliSense-style code completion for ViperIDE
+bind Viper.Zia.Completion as ZiaCompletion;
+
 // ============================================================================
-// Triggered by Ctrl+Space (explicit) or '.' typed (member access).
-// Shows a FloatingPanel overlay with a ListBox of ranked completion items.
-// Arrow keys navigate; Tab accepts; Escape dismisses.
+// MODULE: completion
+// PURPOSE: IntelliSense-style code completion for ViperIDE. Owns the
+//          floating popup panel + listbox, queries the Zia completion
+//          engine for ranked candidates, and inserts the selected item
+//          at the cursor.
+//
+// WHERE-THIS-FITS: Editor-side controller. Wired into main.zia which
+//          calls Update() each frame, TriggerCompletion() on Ctrl+Space
+//          or '.' input, and the navigation methods on arrow / Tab / Escape.
+//
+// KEY-DESIGN-CHOICES:
+//   * PATH-AWARE QUERIES. Calls `ZiaCompletion.CompleteForFile(text,
+//     sourcePath, line, col)` rather than the path-less `Complete`. The
+//     extra `sourcePath` lets the engine resolve relative `bind` paths
+//     against the active file's directory — without it, completion
+//     loses accuracy whenever the editor opens a file outside the IDE's
+//     working directory.
+//   * SERIALIZED RESULT FORMAT. The engine returns one item per line,
+//     fields tab-separated:  `label \t insertText \t kind \t detail`
+//     We split, trim, and stuff the parts into the listbox plus a
+//     parallel `insertTexts` list for reverse lookup at accept time.
+//   * 1-BASED LINE / 0-BASED COL. The engine takes `line` 1-based and
+//     `col` 0-based, mirroring the convention in the rest of the editor
+//     stack. Don't change one without the other.
+//   * PARALLEL insertTexts LIST. The listbox stores the DISPLAY string
+//     (with kind tag and detail); the actual insertion uses a separate
+//     unadorned text. We keep two parallel lists to avoid having to
+//     reparse the display string when the user accepts.
+//   * AUTO-DISMISS ON LINE CHANGE. If the user moves to a different
+//     line while the popup is showing, the candidates are no longer
+//     valid — Hide() and let the next trigger re-query.
+//   * KIND TAGS. Single-letter brackets (e.g., "[fn]") give the user a
+//     visual cue for variable / method / function / keyword distinction
+//     at a glance.
+//
+// HOW-TO-READ: init -> Setup (creates popup) -> SetSourcePath (per-file
+//   wiring) -> TriggerCompletion (the meat: query + populate + show) ->
+//   AcceptSelected (insert the picked text) -> NavigateUp/Down (arrow
+//   keys) -> Show/Hide (visibility) -> Update (auto-dismiss check) ->
+//   kindLabel (helper).
 // ============================================================================
 
+/// @brief IntelliSense popup controller. One per editor.
 class CompletionController {
     expose GUI.CodeEditor editor;
     expose GUI.FloatingPanel popup;
@@ -29,6 +67,7 @@ class CompletionController {
     // Parallel list of insertTexts (one entry per listbox item)
     expose List insertTexts;
 
+    /// @brief Initialize an empty/hidden controller.
     expose func init() {
         isVisible      = false;
         selectedIndex  = 0;
@@ -39,11 +78,13 @@ class CompletionController {
         insertTexts    = new List();
     }
 
-    // ------------------------------------------------------------------
-    // Setup — call once after creating the editor and app shell.
-    // ed: the CodeEditor widget
-    // appRoot: the top-level GUI.App widget (FloatingPanel must attach here)
-    // ------------------------------------------------------------------
+    /// @brief Construct the popup panel and embed a ListBox.
+    /// @param ed Editor whose cursor we'll trigger / position against.
+    /// @param appRoot Top-level App widget — FloatingPanels must attach
+    ///                to the app root (not the editor) so they can render
+    ///                above other widgets.
+    /// @note ListBox is constructed unattached then reparented via
+    ///       AddChild so it lives inside the FloatingPanel.
     expose func Setup(ed: GUI.CodeEditor, appRoot: GUI.App) {
         editor = ed;
 
@@ -59,13 +100,18 @@ class CompletionController {
         popup.SetVisible(0);
     }
 
+    /// @brief Set the active file's path so CompleteForFile can resolve
+    ///        relative `bind` paths correctly.
     expose func SetSourcePath(path: String) {
         sourcePath = path;
     }
 
-    // ------------------------------------------------------------------
-    // TriggerCompletion — query the engine and show the popup.
-    // ------------------------------------------------------------------
+    /// @brief Query the engine and show the popup.
+    /// @note Reads cursor coords from `editor`, sends them through
+    ///       `CompleteForFile` (path-aware), parses the tab-separated
+    ///       result format, populates the listbox, positions the popup
+    ///       under the caret, and focuses the listbox so arrow keys
+    ///       navigate. Hides immediately if the engine returns empty.
     expose func TriggerCompletion() {
         if editor == null {
             return;
@@ -149,25 +195,30 @@ class CompletionController {
         lastCol   = editor.CursorCol;
         isVisible = true;
         popup.SetVisible(1);
+        listbox.Focus();
     }
 
-    // ------------------------------------------------------------------
-    // AcceptSelected — insert the selected item at the cursor.
-    // ------------------------------------------------------------------
+    /// @brief Insert the currently-selected item at the cursor.
+    /// @note Looks up the parallel `insertTexts[index]` (the unadorned
+    ///       text), then calls `editor.ReplaceWordAtCursor` which
+    ///       overwrites the partial token under the cursor.
     expose func AcceptSelected() {
         if isVisible == false or itemCount == 0 {
             return;
         }
-        if selectedIndex >= 0 and selectedIndex < itemCount {
-            var ins = Obj.ToString(insertTexts.get(selectedIndex));
+        var activeIndex = listbox.SelectedIndex;
+        if activeIndex < 0 {
+            activeIndex = selectedIndex;
+        }
+        selectedIndex = activeIndex;
+        if activeIndex >= 0 and activeIndex < itemCount {
+            var ins = Obj.ToString(insertTexts.get(activeIndex));
             editor.ReplaceWordAtCursor(ins);
         }
         Hide();
     }
 
-    // ------------------------------------------------------------------
-    // Keyboard navigation
-    // ------------------------------------------------------------------
+    /// @brief Move selection one item down (no-op past the last item).
     expose func NavigateDown() {
         if isVisible == false {
             return;
@@ -179,6 +230,7 @@ class CompletionController {
         }
     }
 
+    /// @brief Move selection one item up (no-op at the first item).
     expose func NavigateUp() {
         if isVisible == false {
             return;
@@ -189,23 +241,26 @@ class CompletionController {
         }
     }
 
-    // ------------------------------------------------------------------
-    // Show / Hide
-    // ------------------------------------------------------------------
+    /// @brief Show the popup and focus the listbox.
     expose func Show() {
         isVisible = true;
         popup.SetVisible(1);
+        listbox.Focus();
     }
 
+    /// @brief Hide the popup and return focus to the editor.
     expose func Hide() {
         isVisible = false;
         popup.SetVisible(0);
+        if editor != null {
+            editor.Focus();
+        }
     }
 
-    // ------------------------------------------------------------------
-    // Update — call once per frame.  Returns true if an event was consumed.
-    // Auto-dismisses when cursor moves to a different line.
-    // ------------------------------------------------------------------
+    /// @brief Per-frame update. Auto-dismisses when the cursor moves
+    ///        to a different line (the candidates would be stale).
+    /// @return true if an event was consumed (currently always false —
+    ///         reserved for future use).
     expose func Update() -> Boolean {
         if isVisible == false {
             return false;
@@ -218,14 +273,22 @@ class CompletionController {
             return false;
         }
 
+        var curSel = listbox.SelectedIndex;
+        if curSel >= 0 {
+            selectedIndex = curSel;
+        }
+
         return false;
     }
 }
 
-// Map CompletionKind integer to a short tag for display.
-// Kind values: Keyword=0 Snippet=1 Variable=2 Parameter=3 Field=4
-// Method=5 Function=6 Entity=7 Value=8 Interface=9 Module=10
-// RuntimeClass=11 Property=12
+/// @brief Map a CompletionKind integer to a short bracketed tag.
+/// @details The engine emits an integer kind code; we render it as a
+///          1-3 letter tag so the user can quickly distinguish methods
+///          from variables from keywords. Kind enum values:
+///          Keyword=0 Snippet=1 Variable=2 Parameter=3 Field=4
+///          Method=5 Function=6 Entity=7 Value=8 Interface=9 Module=10
+///          RuntimeClass=11 Property=12.
 func kindLabel(k: Integer) -> String {
     if k == 0  { return "[K]"; }   // Keyword
     if k == 1  { return "[S]"; }   // Snippet

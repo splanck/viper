@@ -1,3 +1,43 @@
+// ============================================================================
+// MODULE: pins (PinManager)
+// PURPOSE: Owns the ten bowling pins: their physics bodies, knock-down
+//          state machine (upright → tilting → sweep), the sweep bar
+//          animation, and the full-rack reset drop.
+//
+// WHERE-THIS-FITS: Constructed by BowlingGame.init(). Updated each
+//          physics step via updateKnockdowns; sweep/reset transitions
+//          driven by game.zia at end of frame.
+//
+// KEY-DESIGN-CHOICES:
+//   * SPHERE PHYSICS, CYLINDER VISUALS. The pin body is a SPHERE in the
+//     physics world (cheaper than a capsule, stable enough at this
+//     size) but renders as a cylinder + neck cylinder. The visual
+//     offset PIN_DRAW_Y_OFFSET reconciles the sphere's centre with
+//     the cylinder's base.
+//   * HYBRID KNOCKDOWN. A pin is "knocked" when EITHER its
+//     displacement from home exceeds PIN_KNOCKDOWN_DISPLACEMENT, OR
+//     its speed exceeds PIN_KNOCKDOWN_SPEED with a smaller
+//     displacement threshold. This catches both "shoved sideways"
+//     and "tapped lightly but knocked off-axis" cases.
+//   * TILT ANIMATION. Once knocked, the pin tilts about an axis
+//     perpendicular to its displacement from home, building up to
+//     PIN_TILT_MAX (~90°). The visual cylinder's rotate matrix
+//     reflects this — a falling pin without needing per-frame physics
+//     work.
+//   * STANDING SNAP. Pins close to home with low speed get their
+//     position SNAPPED back to home and velocity zeroed. This stops
+//     micro-jitter from making "good rack" pins look unsteady.
+//   * SAVE / RESTORE STATE. After roll 1 we save the current standing
+//     pin positions; before roll 2 we knock down the just-fallen pins
+//     for good (drop them off the playing field) and restore the
+//     others. This avoids the "double-fall" bug where pins toppled by
+//     ricochet in roll 1 get re-knocked in roll 2.
+//   * SWEEP + RESET. Sweep brings the bar down across the deck and
+//     drops all knocked pins below the deck. Full reset (after a strike
+//     or end of frame 2) drops all pins from RESET_DROP_HEIGHT —
+//     visible "rack reset" effect.
+// ============================================================================
+
 // pins.zia — Pin manager: capsule collisions, hybrid knockdown model, sweep/reset visuals
 module pins;
 
@@ -5,6 +45,7 @@ bind Viper.Graphics3D;
 bind Viper.Math;
 bind "../config";
 
+/// @brief Owns the 10 pin bodies and their knock-down state machine.
 class PinManager {
     hide List[Physics3DBody] bodies;
     hide Physics3DWorld world;
@@ -33,6 +74,8 @@ class PinManager {
     hide Material3D pinMat;
     hide Material3D pinNeckMat;
 
+    /// @brief Build the 10-pin rack: meshes, materials, physics bodies,
+    ///        home positions in the standard equilateral-triangle layout.
     expose func initPins(physWorld: Physics3DWorld) {
         world = physWorld;
         bodies = [];
@@ -87,6 +130,9 @@ class PinManager {
         }
     }
 
+    /// @brief Per-pin X coordinate for the standard 1/2/3/4 row layout.
+    /// @details Pin 0 = head pin (centre); 1+2 = row 2; 3+4+5 = row 3
+    ///          (centre pin "5" plus two outer); 6..9 = back row.
     hide func computePinX(index: Integer) -> Float {
         if (index == 0) { return 0.0; }
         if (index == 1) { return -config.PIN_SPACING / 2.0; }
@@ -101,6 +147,8 @@ class PinManager {
         return 0.0;
     }
 
+    /// @brief Per-pin Z coordinate. Each row sits PIN_SPACING * sin(60°)
+    ///        further back than the previous (equilateral triangle).
     hide func computePinZ(index: Integer) -> Float {
         var row: Integer = 0;
         if (index >= 1) { row = 1; }
@@ -109,6 +157,10 @@ class PinManager {
         return config.PIN_Z_OFFSET + (row + 0.0) * config.PIN_SPACING * 0.866;
     }
 
+    /// @brief Per-physics-step knock-down detection + tilt animation.
+    /// @details Hybrid threshold: knocked if displacement large OR
+    ///          (high speed AND smaller displacement). Standing pins
+    ///          near home with low speed get snapped back.
     expose func updateKnockdowns(dt: Float) {
         for (var i: Integer = 0; i < config.PIN_COUNT; i = i + 1) {
             var body = bodies.get(i);
@@ -157,6 +209,7 @@ class PinManager {
         }
     }
 
+    /// @brief Pins knocked since the last savePinState call (= this roll's pin count).
     expose func countNewlyKnocked() -> Integer {
         var count = 0;
         for (var i: Integer = 0; i < config.PIN_COUNT; i = i + 1) {
@@ -167,6 +220,7 @@ class PinManager {
         return count;
     }
 
+    /// @brief Total pins down across the current frame (both rolls).
     expose func countTotalKnocked() -> Integer {
         var count = 0;
         for (var i: Integer = 0; i < config.PIN_COUNT; i = i + 1) {
@@ -175,6 +229,8 @@ class PinManager {
         return count;
     }
 
+    /// @brief Snapshot the standing pins (positions) and which were knocked.
+    /// @note Called after a settled roll so the next roll can restore.
     expose func savePinState() {
         for (var i: Integer = 0; i < config.PIN_COUNT; i = i + 1) {
             previousKnocked.set(i, knocked.get(i));
@@ -191,6 +247,8 @@ class PinManager {
         }
     }
 
+    /// @brief Restore standing pins to their saved positions; knocked pins
+    ///        get pushed below the deck (Y = -10).
     expose func restoreSavedPinState() {
         for (var i: Integer = 0; i < config.PIN_COUNT; i = i + 1) {
             knocked.set(i, previousKnocked.get(i));
@@ -200,6 +258,7 @@ class PinManager {
         }
     }
 
+    /// @brief True when every pin has come to rest (or fallen below the deck).
     expose func allSettled() -> Boolean {
         for (var i: Integer = 0; i < config.PIN_COUNT; i = i + 1) {
             var pos = Physics3DBody.get_Position(bodies.get(i));
@@ -214,12 +273,14 @@ class PinManager {
         return true;
     }
 
+    /// @brief Begin the sweep-bar animation.
     expose func startSweep() {
         sweeping = true;
         sweepY = config.SWEEP_Y_START;
         sweepTimer = config.SWEEP_DURATION;
     }
 
+    /// @brief Per-frame sweep advance. @return true when sweep finishes.
     expose func updateSweep(dt: Float) -> Boolean {
         if (sweeping == false) { return true; }
 
@@ -242,14 +303,17 @@ class PinManager {
         return false;
     }
 
+    /// @brief True while the sweep animation is mid-flight.
     expose func isSweeping() -> Boolean {
         return sweeping;
     }
 
+    /// @brief Current sweep-bar Y for rendering.
     expose func getSweepY() -> Float {
         return sweepY;
     }
 
+    /// @brief Begin the full-rack reset (10 fresh pins drop in).
     expose func startFullReset() {
         resetting = true;
         resetTimer = config.RESET_DURATION;
@@ -265,6 +329,9 @@ class PinManager {
         }
     }
 
+    /// @brief Prepare for roll 2 of a frame: drop knocked pins below
+    ///        the deck (out of physics), zero standing-pin velocities,
+    ///        snapshot the new state.
     expose func prepareSecondRoll() {
         for (var i: Integer = 0; i < config.PIN_COUNT; i = i + 1) {
             if (knocked.get(i)) {
@@ -280,6 +347,9 @@ class PinManager {
         savePinState();
     }
 
+    /// @brief Per-frame full-reset advance. @return true when reset finishes.
+    /// @details Pins linearly interpolate from RESET_DROP_HEIGHT down
+    ///          to PIN_BODY_CENTER_Y over RESET_DURATION seconds.
     expose func updateReset(dt: Float) -> Boolean {
         if (resetting == false) { return true; }
 
@@ -307,10 +377,12 @@ class PinManager {
         return false;
     }
 
+    /// @brief True while the full-reset drop animation is in progress.
     expose func isResetting() -> Boolean {
         return resetting;
     }
 
+    /// @brief Wire up env-map reflections on the pin materials.
     expose func applyEnvironment(env: CubeMap3D) {
         Material3D.SetEnvMap(pinMat, env);
         Material3D.set_Reflectivity(pinMat, config.PIN_REFLECTIVITY);
@@ -318,6 +390,8 @@ class PinManager {
         Material3D.set_Reflectivity(pinNeckMat, config.PIN_NECK_REFLECTIVITY);
     }
 
+    /// @brief Render every pin. Knocked pins draw with their tilt
+    ///        rotation; standing pins also draw the red neck mesh.
     expose func draw(canvas: Canvas3D) {
         for (var i: Integer = 0; i < config.PIN_COUNT; i = i + 1) {
             var pos = Physics3DBody.get_Position(bodies.get(i));
@@ -340,10 +414,12 @@ class PinManager {
         }
     }
 
+    /// @brief World position of a specific pin (for trigger callbacks etc.).
     expose func getPinPosition(index: Integer) -> Vec3 {
         return Physics3DBody.get_Position(bodies.get(index));
     }
 
+    /// @brief Knock-down state for a specific pin.
     expose func isKnocked(index: Integer) -> Boolean {
         return knocked.get(index);
     }

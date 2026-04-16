@@ -32,6 +32,7 @@ static void tabbar_measure(vg_widget_t *widget, float available_width, float ava
 static void tabbar_paint(vg_widget_t *widget, void *canvas);
 static bool tabbar_handle_event(vg_widget_t *widget, vg_event_t *event);
 static float get_tab_width(vg_tabbar_t *tabbar, vg_tab_t *tab);
+static bool tab_close_button_hit(vg_tabbar_t *tabbar, vg_tab_t *tab, float local_x, float local_y);
 
 //=============================================================================
 // TabBar VTable
@@ -147,6 +148,21 @@ static float get_tab_x(vg_tabbar_t *tabbar, vg_tab_t *target) {
     return x;
 }
 
+static bool tab_close_button_hit(vg_tabbar_t *tabbar, vg_tab_t *tab, float local_x, float local_y) {
+    if (!tabbar || !tab || !tab->closable)
+        return false;
+
+    float tab_x = get_tab_x(tabbar, tab) - tabbar->scroll_x;
+    float width = get_tab_width(tabbar, tab);
+    float close_x = tab_x + width - tabbar->tab_padding - tabbar->close_button_size;
+    float close_y = (tabbar->tab_height - tabbar->close_button_size) / 2.0f;
+    float close_w = tabbar->close_button_size;
+    float close_h = tabbar->close_button_size;
+
+    return local_x >= close_x && local_x < close_x + close_w && local_y >= close_y &&
+           local_y < close_y + close_h;
+}
+
 //=============================================================================
 // TabBar Implementation
 //=============================================================================
@@ -203,7 +219,7 @@ vg_tabbar_t *vg_tabbar_create(vg_widget_t *parent) {
 
     // Per-frame tracking
     tabbar->prev_active_tab = NULL;
-    tabbar->close_clicked_tab = NULL;
+    tabbar->close_clicked_index = -1;
     tabbar->auto_close = true;
 
     // Set size
@@ -348,15 +364,8 @@ static bool tabbar_handle_event(vg_widget_t *widget, vg_event_t *event) {
             tabbar->hovered_tab = find_tab_at_x(tabbar, local_x);
 
             // Check if hovering close button
-            if (tabbar->hovered_tab && tabbar->hovered_tab->closable) {
-                float tab_x = get_tab_x(tabbar, tabbar->hovered_tab) - tabbar->scroll_x;
-                float width = get_tab_width(tabbar, tabbar->hovered_tab);
-                float close_x = tab_x + width - tabbar->tab_padding - tabbar->close_button_size;
-
-                tabbar->close_button_hovered = local_x >= close_x;
-            } else {
-                tabbar->close_button_hovered = false;
-            }
+            tabbar->close_button_hovered =
+                tab_close_button_hit(tabbar, tabbar->hovered_tab, local_x, event->mouse.y);
 
             if (old_hover != tabbar->hovered_tab) {
                 widget->needs_paint = true;
@@ -383,25 +392,19 @@ static bool tabbar_handle_event(vg_widget_t *widget, vg_event_t *event) {
 
             if (clicked) {
                 // Check if clicking close button
-                if (clicked->closable) {
-                    float tab_x = get_tab_x(tabbar, clicked) - tabbar->scroll_x;
-                    float width = get_tab_width(tabbar, clicked);
-                    float close_x = tab_x + width - tabbar->tab_padding - tabbar->close_button_size;
+                if (tab_close_button_hit(tabbar, clicked, local_x, event->mouse.y)) {
+                    // Record close-clicked tab for runtime polling before any mutation.
+                    tabbar->close_clicked_index = vg_tabbar_get_tab_index(tabbar, clicked);
 
-                    if (local_x >= close_x) {
-                        // Record close-clicked tab for runtime polling
-                        tabbar->close_clicked_tab = clicked;
-
-                        // Close tab
-                        bool allow_close = true;
-                        if (tabbar->on_close) {
-                            allow_close = tabbar->on_close(widget, clicked, tabbar->on_close_data);
-                        }
-                        if (allow_close && tabbar->auto_close) {
-                            vg_tabbar_remove_tab(tabbar, clicked);
-                        }
-                        return true;
+                    // Close tab
+                    bool allow_close = true;
+                    if (tabbar->on_close) {
+                        allow_close = tabbar->on_close(widget, clicked, tabbar->on_close_data);
                     }
+                    if (allow_close && tabbar->auto_close) {
+                        vg_tabbar_remove_tab(tabbar, clicked);
+                    }
+                    return true;
                 }
 
                 // Start potential drag
@@ -573,10 +576,26 @@ void vg_tab_set_title(vg_tab_t *tab, const char *title) {
     if (!tab)
         return;
 
+    bool tooltip_tracks_title = false;
+    if (!tab->tooltip) {
+        tooltip_tracks_title = true;
+    } else if (!tab->title) {
+        tooltip_tracks_title = false;
+    } else if (strcmp(tab->tooltip, tab->title) == 0) {
+        tooltip_tracks_title = true;
+    }
+
     if (tab->title) {
         free((void *)tab->title);
     }
     tab->title = title ? strdup(title) : strdup("Untitled");
+
+    if (tooltip_tracks_title) {
+        if (tab->tooltip) {
+            free((void *)tab->tooltip);
+        }
+        tab->tooltip = tab->title ? strdup(tab->title) : NULL;
+    }
 }
 
 /// @brief Tab set modified.

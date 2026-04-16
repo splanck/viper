@@ -1,3 +1,18 @@
+// ============================================================================
+// MODULE: fruit (Fruit)
+// PURPOSE: Bonus collectible that appears periodically in the maze.
+//          The fruit type + point value ramps with level (cherry → key,
+//          100 → 5000 pts) per the arcade progression in utils.zia.
+//
+// KEY-DESIGN-CHOICES:
+//   * TIMER-DRIVEN LIFECYCLE. Fruit appears for a fixed window, then
+//     vanishes if uncollected. A second Timer controls the points
+//     popup ("500!") animation after collection.
+//   * TWEEN FOR FLOATING POINTS. Uses Viper.Game.Tween to animate the
+//     points text upward + fading after collection, giving the classic
+//     arcade "score pop" feedback.
+// ============================================================================
+
 // =============================================================================
 // CRACKMAN - Fruit Entity
 // =============================================================================
@@ -21,6 +36,7 @@ bind "./ui/sprites";
 // FRUIT ENTITY - Bonus item that appears in the maze
 // =============================================================================
 
+/// @brief Level-scaled bonus fruit with timer-driven lifecycle.
 class Fruit {
     hide Integer fruitType;
     hide Integer gridX;

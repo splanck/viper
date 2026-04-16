@@ -1,3 +1,33 @@
+// ============================================================================
+// MODULE: config
+// PURPOSE: Centralised constants for the 3D Bowling demo. Every tuning
+//          knob lives here: window dimensions, camera params, lane
+//          geometry, pin layout, ball physics, throw mechanics, lighting,
+//          materials, HUD colours, particle counts, action names, save
+//          keys, sound IDs.
+//
+// WHERE-THIS-FITS: Imported by every other module. No state besides
+//          `var` definitions (mutable but treated as constants — Zia
+//          doesn't yet have const-at-module-scope for compound types).
+//
+// KEY-DESIGN-CHOICES:
+//   * EVERY MAGIC NUMBER NAMED. The renderer, physics setup, and AI
+//     should never contain literal numbers; they reference these. This
+//     means tuning the demo (faster ball, oilier lane, brighter HUD)
+//     happens in one place.
+//   * GROUPED BY SUBSYSTEM. Banner comments mark camera / lane / pin /
+//     ball / physics / lighting / material / HUD / particles /
+//     celebrations / input action names / save / sound. Easy to find
+//     the constant you want.
+//   * ENUM-LIKE GROUPS. SCREEN_*, STATE_*, MODE_*, QUALITY_*, OIL_*,
+//     BALL_LIGHT/MEDIUM/HEAVY etc. are integer ID groups. The naming
+//     convention (UPPER_SNAKE prefix) makes them stand out as enum
+//     values rather than tuneables.
+//   * UNITS COMMENTED INLINE WHERE NON-OBVIOUS. PHYSICS_DT in seconds,
+//     SHAKE_PIN_DURATION in seconds, METER_THRESHOLD_MID is fraction
+//     0..1.
+// ============================================================================
+
 // config.zia — All game constants for 3D Bowling
 module config;
 

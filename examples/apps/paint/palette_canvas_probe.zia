@@ -1,3 +1,11 @@
+// ============================================================================
+// MODULE: palette_canvas_probe
+// PURPOSE: Renders the 64-colour palette onto a real Canvas window, then
+//          screenshots it to /tmp/*.bmp and spot-checks two pixel values.
+//          Catches regressions in the Canvas.Box / Canvas.Screenshot /
+//          Pixels.SaveBmp / Canvas.CopyRect pipeline.
+// ============================================================================
+
 module palette_canvas_probe;
 
 bind Viper.Core.Diagnostics as Diag;
@@ -6,6 +14,7 @@ bind Viper.IO as IO;
 bind Viper.Terminal;
 bind "./colors";
 
+/// @brief Draw palette grid; screenshot; assert BMP write + pixel values.
 func main() {
     var gfx = new Canvas("Palette Probe", 220, 220);
     var cm = new ColorManager();

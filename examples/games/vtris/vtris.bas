@@ -1,7 +1,57 @@
-' ╔══════════════════════════════════════════════════════════╗
-' ║  vTRIS - Advanced Tetris Demo for Viper BASIC          ║
-' ║  Featuring: Levels, High Scores, Colorful Graphics     ║
-' ╚══════════════════════════════════════════════════════════╝
+' ============================================================================
+' MODULE: vtris.bas
+' PURPOSE: vTRIS — a Tetris demo for Viper BASIC. This is the program entry
+'          point and the orchestrator for the menu, game loop, and
+'          game-over screen. All gameplay logic lives in `pieces.bas`,
+'          `board.bas`, and `scoreboard.bas`; this file wires them
+'          together and owns the per-frame game state.
+'
+' WHERE-THIS-FITS: Top of the dependency tree. Reads `Piece`, `Board`, and
+'          `Scoreboard` classes via `AddFile` and uses them as a small
+'          composition layer. The "main program" at the bottom of the file
+'          drives a single state machine: menu -> game -> game-over -> menu.
+'
+' KEY-DESIGN-CHOICES:
+'   * GLOBAL GAME STATE. `GameBoard`, `CurrentPiece`, `NextPiece`,
+'     `GameScore`, etc. are file-scope `Dim`s. This is the conventional
+'     BASIC pattern for small games — passing them through every Sub would
+'     add noise without buying encapsulation. Each Sub treats the globals
+'     as both input and output.
+'   * QUADRATIC LINE-CLEAR SCORING. `LockPiece` awards
+'     `lines * lines * 100` points: 100 / 400 / 900 / 1600 for 1 / 2 / 3 /
+'     4 lines. This is a beginner-friendly variant of the classic Tetris
+'     scoring (which uses 40, 100, 300, 1200 multiplied by level + 1) —
+'     the quadratic curve still rewards multi-line clears strongly without
+'     needing a level-multiplier lookup table.
+'   * TICK-BASED GRAVITY. The game loop ticks every `Sleep 50` (~20 Hz).
+'     `DropCounter` increments every tick, and the piece falls one cell
+'     when `DropCounter >= DropSpeed`. `DropSpeed` decreases as the level
+'     rises (`30 - GameLevel * 2`, floored at 5), which is how levels
+'     translate into difficulty.
+'   * NO WALL-KICKS. Rotation is rejected entirely if the new orientation
+'     overlaps something. We undo by rotating three more times (since 4
+'     CW rotations is the identity). A real Tetris would try a small set
+'     of offsets ("wall-kick table") before giving up. The simpler version
+'     here is intentional — it keeps the rotation code in `pieces.bas`
+'     readable without giving up the player's ability to rotate at all.
+'   * HARD DROP IS A TIGHT WHILE LOOP. `If k = " "` walks `MoveDown` until
+'     `CanPlace` returns 0, then backs off one cell and locks. There is no
+'     animation — this is intentional in classic Tetris (the "thunk" is
+'     supposed to feel instant).
+'
+' HOW-TO-READ: Skip the menu/instructions/help subs (pure rendering) and
+'   read in this order:
+'     1. `Sub InitGame` — initial state setup (you'll see what the globals
+'        mean).
+'     2. `Sub SpawnPiece` — turning the "next" piece into the "current"
+'        piece, with game-over detection.
+'     3. `Sub LockPiece` — the "piece can't fall any further" path:
+'        commit, score, spawn next.
+'     4. `Sub UpdateLevel` — how scoring drives speed.
+'     5. `Sub GameLoop` — the per-tick state machine. Note how each input
+'        is "try, then undo if illegal" rather than "look ahead, then act".
+'     6. The main program at the bottom — the menu state machine.
+' ============================================================================
 
 AddFile "pieces.bas"
 AddFile "board.bas"
@@ -20,6 +70,15 @@ Dim DropCounter As Integer
 Dim DropSpeed As Integer
 
 ' === MAIN MENU ===
+
+' --------------------------------------------------------------------
+' Sub ShowMainMenu()
+'   Pure rendering — paints the title banner, the menu options, and the
+'   prompt "Select option:". Does NOT consume input; the main program
+'   loop reads the keypress after this Sub returns. This separation lets
+'   the same render function be reused if we ever want to refresh the
+'   menu without re-reading input (e.g., after a window resize).
+' --------------------------------------------------------------------
 Sub ShowMainMenu()
     ' Set background color and clear screen
     COLOR 7, 0
@@ -109,6 +168,13 @@ Sub ShowMainMenu()
     COLOR 15, 0
 End Sub
 
+' --------------------------------------------------------------------
+' Sub ShowInstructions()
+'   Static "how to play" screen with controls, scoring table, and level
+'   progression note. Blocks on `Inkey$()` until a key is pressed, then
+'   returns to the main menu loop. The blank-string init + `While k = ""`
+'   is BASIC's idiomatic "wait for any key" pattern.
+' --------------------------------------------------------------------
 Sub ShowInstructions()
     COLOR 7, 0
     CLS
@@ -192,6 +258,13 @@ Sub ShowInstructions()
     Wend
 End Sub
 
+' --------------------------------------------------------------------
+' Sub ShowHighScores()
+'   Renders the top-10 panel via `ScoreBoard.DrawScoreboard(3)` (anchored
+'   at terminal row 3) and waits for a key. The scoreboard data was
+'   already loaded by the global `ScoreBoard = New Scoreboard()` at the
+'   bottom of the file, so this Sub is purely a viewer.
+' --------------------------------------------------------------------
 Sub ShowHighScores()
     COLOR 7, 0
     CLS
@@ -210,6 +283,21 @@ Sub ShowHighScores()
 End Sub
 
 ' === GAME INITIALIZATION ===
+
+' --------------------------------------------------------------------
+' Sub InitGame()
+'   Reset every per-game piece of state to its starting value:
+'     * Fresh empty Board (the constructor sets up the sentinel walls).
+'     * Score / lines / level zeroed; level starts at 1.
+'     * `DropSpeed = 30` — the piece falls one cell every 30 ticks (~1.5s
+'       at 20 Hz) at level 1. `UpdateLevel` later decreases this.
+'     * `CurrentPiece` and `NextPiece` are both spawned with random
+'       types. `CurrentPiece` is positioned at column 4 (visual centre)
+'       to override the constructor's default of column 3.
+'   This is called once each time the player picks "NEW GAME" from the
+'   menu. Notice that `ScoreBoard` is NOT reset here — it persists
+'   across games as a session-wide best-of leaderboard.
+' --------------------------------------------------------------------
 Sub InitGame()
     GameBoard = New Board()
     GameScore = 0
@@ -230,6 +318,19 @@ Sub InitGame()
     NextPiece = New Piece(pieceType)
 End Sub
 
+' --------------------------------------------------------------------
+' Sub SpawnPiece()
+'   Promote the queued `NextPiece` into `CurrentPiece` (positioned at
+'   spawn coords 4, 0), then generate a fresh random `NextPiece` for the
+'   preview. Detects game-over by asking the board whether the just-
+'   spawned piece can occupy its starting position — if not, the well is
+'   too full to accept new pieces.
+'
+'   This is the standard "block out" loss condition in Tetris.
+'   "Top out" (a piece locking with cells above the visible playfield)
+'   would require additional bookkeeping; vTRIS uses the simpler
+'   block-out check.
+' --------------------------------------------------------------------
 Sub SpawnPiece()
     ' Create new piece based on next piece type
     Dim pieceType As Integer
@@ -248,6 +349,24 @@ Sub SpawnPiece()
     NextPiece = New Piece(pieceType)
 End Sub
 
+' --------------------------------------------------------------------
+' Sub DrawUI()
+'   Renders the right-side info panel: score, lines cleared, level, the
+'   "next piece" preview, and the controls cheat sheet.
+'
+'   Positioning notes:
+'     * The board occupies columns 1..22 (left border, 10 cells x 2 chars,
+'       right border). The UI panel starts at column 26 to leave a gap.
+'     * Each numeric value is followed by trailing spaces (e.g.,
+'       "Print GameScore; '            ';") so that a smaller number
+'       overwrites the digits left over from a larger previous value.
+'       This is the BASIC equivalent of "clear to end of field" — without
+'       it, dropping from a 5-digit score back to a 4-digit one would
+'       leave a stale digit on screen.
+'     * The next-piece preview reads `NextPiece.Shape` directly and
+'       paints filled cells in the piece's colour. This is the same
+'       4x4 rendering convention used by `Board.DrawPiece`.
+' --------------------------------------------------------------------
 Sub DrawUI()
     ' Right side panel
     LOCATE 2, 26
@@ -394,6 +513,21 @@ Sub DrawUI()
     COLOR 7, 0
 End Sub
 
+' --------------------------------------------------------------------
+' Sub UpdateLevel()
+'   Recomputes `GameLevel` from `GameLines` and, if it has gone up,
+'   reduces `DropSpeed` to make the piece fall faster.
+'
+'   Formula:
+'     newLevel = floor(GameLines / 10) + 1
+'     DropSpeed = 30 - GameLevel * 2   (clamped at floor of 5)
+'
+'   Reading those backwards: at level 1 the piece falls every 28 ticks
+'   (~1.4 s); by level 12 the floor of 5 ticks (~250 ms) is hit and the
+'   game stops getting faster. This is a deliberate ceiling — beyond
+'   that point the player would rely on hard-drops anyway, so increasing
+'   the auto-drop rate further wouldn't change the experience.
+' --------------------------------------------------------------------
 Sub UpdateLevel()
     ' Increase level every 10 lines
     Dim newLevel As Integer
@@ -410,6 +544,26 @@ Sub UpdateLevel()
     End If
 End Sub
 
+' --------------------------------------------------------------------
+' Sub LockPiece()
+'   The "piece can no longer fall" path. Three steps:
+'     1. Commit the piece's cells to the board (`PlacePiece`).
+'     2. Check for completed lines and apply the quadratic score bonus
+'        (`linesCleared * linesCleared * 100`).
+'     3. Spawn the next piece via `SpawnPiece`, which also handles the
+'        game-over check.
+'
+'   The quadratic score curve is the educational substitute for the
+'   classic Tetris BPS-table scoring. The values land at:
+'     1 line  ->  100
+'     2 lines ->  400  (4x)
+'     3 lines ->  900  (9x)
+'     4 lines -> 1600 (16x — a "Tetris")
+'   The 4x and 9x jumps already match real Tetris's "single < double <
+'   triple" intuition; the 16x for a Tetris is roughly half what classic
+'   Tetris gives but still a big enough reward to make the strategy
+'   visible.
+' --------------------------------------------------------------------
 Sub LockPiece()
     Dim linesCleared As Integer
 
@@ -427,6 +581,33 @@ Sub LockPiece()
 End Sub
 
 ' === MAIN GAME LOOP ===
+
+' --------------------------------------------------------------------
+' Sub GameLoop()
+'   The per-tick state machine. Each iteration:
+'     1. Read one keypress (non-blocking — `Inkey$()` returns "" if no
+'        key is queued).
+'     2. Apply the corresponding action (move, rotate, soft-drop,
+'        hard-drop, or quit).
+'     3. Increment `DropCounter`; when it crosses `DropSpeed`, auto-drop.
+'     4. Redraw the board, the active piece, and the UI panel.
+'     5. Sleep 50 ms — caps the loop at ~20 Hz.
+'
+'   The "try then undo" pattern shows up everywhere here:
+'     CurrentPiece.MoveLeft()
+'     If GameBoard.CanPlace(CurrentPiece) = 0 Then CurrentPiece.MoveRight()
+'   This is simpler than "look ahead and decide" — the piece is the
+'   source of truth; the board is a validator. If validation fails, undo
+'   is always a single inverse operation.
+'
+'   The rotation undo is the same idea applied four-cyclically: rotating
+'   3 more times returns to the original (4 CW = identity). This is
+'   cheaper than storing a snapshot of `Shape` and copying it back.
+'
+'   Hard-drop is a tight `While CanPlace = 1: MoveDown` loop. Notice that
+'   we then `PosY = PosY - 1` to back off the last (illegal) step before
+'   locking — a subtle off-by-one that catches beginners every time.
+' --------------------------------------------------------------------
 Sub GameLoop()
     Dim k As String
 
@@ -504,6 +685,18 @@ Sub GameLoop()
     Wend
 End Sub
 
+' --------------------------------------------------------------------
+' Sub GameOverScreen()
+'   Displays the final stats (score, lines, level) and, if the score
+'   qualifies, congratulates the player and inserts the entry into the
+'   `ScoreBoard`. Player name is hardcoded to "YOU" for the demo — a
+'   real implementation would call a 3-letter input routine here, but
+'   that adds parsing complexity that distracts from the gameplay
+'   tutorial.
+'
+'   Like the other static screens, this blocks on `Inkey$()` until the
+'   player acknowledges, then returns to the main menu loop.
+' --------------------------------------------------------------------
 Sub GameOverScreen()
     COLOR 7, 0
     CLS
@@ -572,7 +765,24 @@ Sub GameOverScreen()
     Wend
 End Sub
 
-' === MAIN PROGRAM ===
+' ============================================================================
+' MAIN PROGRAM
+' ----------------------------------------------------------------------------
+' The classic "menu state machine" idiom: an outer `While running = 1`
+' loop displays the menu, reads a single key, and dispatches to one of
+' four handlers (new game / high scores / instructions / quit). When
+' the game ends, control naturally returns to the top of the loop and
+' redraws the menu.
+'
+' `Randomize` seeds the RNG once at startup. `ScoreBoard` is built once
+' (so high scores survive across multiple plays in a single session).
+' Game state (`GameBoard`, `CurrentPiece`, etc.) is rebuilt each game
+' inside `InitGame`.
+'
+' On exit, the screen is cleared and a "thanks for playing" banner is
+' printed before the program returns to the OS.
+' ============================================================================
+
 Randomize
 
 ' Initialize scoreboard (needs to persist across games)

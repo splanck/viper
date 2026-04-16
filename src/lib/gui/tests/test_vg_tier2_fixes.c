@@ -28,6 +28,7 @@
 #include "vg_theme.h"
 #include "vg_widget.h"
 #include "vg_widgets.h"
+#include "vgfx.h"
 #include <assert.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -156,6 +157,16 @@ static test_probe_widget_t *make_probe_widget(const vg_widget_vtable_t *vtable) 
     probe->base.width = 10.0f;
     probe->base.height = 10.0f;
     return probe;
+}
+
+static void toolbar_click_counter(vg_toolbar_item_t *item, void *user_data) {
+    (void)item;
+    (*(int *)user_data)++;
+}
+
+static void statusbar_click_counter(vg_statusbar_item_t *item, void *user_data) {
+    (void)item;
+    (*(int *)user_data)++;
 }
 
 //=============================================================================
@@ -452,6 +463,54 @@ TEST(flex_justify_space_between_adds_gap) {
     vg_widget_destroy(flex);
 }
 
+TEST(vbox_flex_margins_are_budgeted) {
+    vg_widget_t *vbox = vg_vbox_create(0.0f);
+    vg_widget_t *flex = vg_widget_create(VG_WIDGET_CONTAINER);
+    vg_widget_t *fixed = vg_widget_create(VG_WIDGET_CONTAINER);
+    ASSERT_NOT_NULL(vbox);
+    ASSERT_NOT_NULL(flex);
+    ASSERT_NOT_NULL(fixed);
+
+    vg_widget_set_flex(flex, 1.0f);
+    flex->layout.margin_top = 10.0f;
+    flex->layout.margin_bottom = 10.0f;
+    vg_widget_set_fixed_size(fixed, 40.0f, 20.0f);
+
+    vg_widget_add_child(vbox, flex);
+    vg_widget_add_child(vbox, fixed);
+    vg_widget_measure(vbox, 100.0f, 100.0f);
+    vg_widget_arrange(vbox, 0.0f, 0.0f, 100.0f, 100.0f);
+
+    ASSERT_TRUE(flex->height > 59.0f && flex->height < 61.0f);
+    ASSERT_TRUE(fixed->y + fixed->height <= 100.1f);
+
+    vg_widget_destroy(vbox);
+}
+
+TEST(hbox_flex_margins_are_budgeted) {
+    vg_widget_t *hbox = vg_hbox_create(0.0f);
+    vg_widget_t *flex = vg_widget_create(VG_WIDGET_CONTAINER);
+    vg_widget_t *fixed = vg_widget_create(VG_WIDGET_CONTAINER);
+    ASSERT_NOT_NULL(hbox);
+    ASSERT_NOT_NULL(flex);
+    ASSERT_NOT_NULL(fixed);
+
+    vg_widget_set_flex(flex, 1.0f);
+    flex->layout.margin_left = 10.0f;
+    flex->layout.margin_right = 10.0f;
+    vg_widget_set_fixed_size(fixed, 20.0f, 40.0f);
+
+    vg_widget_add_child(hbox, flex);
+    vg_widget_add_child(hbox, fixed);
+    vg_widget_measure(hbox, 100.0f, 100.0f);
+    vg_widget_arrange(hbox, 0.0f, 0.0f, 100.0f, 100.0f);
+
+    ASSERT_TRUE(flex->width > 59.0f && flex->width < 61.0f);
+    ASSERT_TRUE(fixed->x + fixed->width <= 100.1f);
+
+    vg_widget_destroy(hbox);
+}
+
 //=============================================================================
 // PARTIAL-001/002: CodeEditor gutter icon / highlight span arrays
 //
@@ -542,6 +601,52 @@ TEST(tab_tooltip_can_be_replaced) {
     vg_tab_set_tooltip(tab, "/tmp/project/short.zia");
     ASSERT_NOT_NULL(tab->tooltip);
     ASSERT_TRUE(strcmp(tab->tooltip, "/tmp/project/short.zia") == 0);
+
+    vg_widget_destroy((vg_widget_t *)tabbar);
+}
+
+TEST(tabbar_title_updates_default_tooltip) {
+    vg_tabbar_t *tabbar = vg_tabbar_create(NULL);
+    ASSERT_NOT_NULL(tabbar);
+
+    vg_tab_t *tab = vg_tabbar_add_tab(tabbar, "old.zia", true);
+    ASSERT_NOT_NULL(tab);
+    ASSERT_NOT_NULL(tab->tooltip);
+    ASSERT_TRUE(strcmp(tab->tooltip, "old.zia") == 0);
+
+    vg_tab_set_title(tab, "new.zia");
+    ASSERT_NOT_NULL(tab->tooltip);
+    ASSERT_TRUE(strcmp(tab->tooltip, "new.zia") == 0);
+
+    vg_tab_set_tooltip(tab, "/tmp/custom.zia");
+    vg_tab_set_title(tab, "newer.zia");
+    ASSERT_TRUE(strcmp(tab->tooltip, "/tmp/custom.zia") == 0);
+
+    vg_widget_destroy((vg_widget_t *)tabbar);
+}
+
+TEST(tabbar_close_button_requires_full_rect) {
+    vg_tabbar_t *tabbar = vg_tabbar_create(NULL);
+    ASSERT_NOT_NULL(tabbar);
+
+    vg_tab_t *tab = vg_tabbar_add_tab(tabbar, "tab.zia", true);
+    ASSERT_NOT_NULL(tab);
+
+    tabbar->base.x = 0.0f;
+    tabbar->base.y = 0.0f;
+    tabbar->base.width = 200.0f;
+    tabbar->base.height = tabbar->tab_height;
+
+    vg_event_t down = {0};
+    down.type = VG_EVENT_MOUSE_DOWN;
+    down.mouse.x = 199.0f;
+    down.mouse.y = 1.0f;
+    down.mouse.screen_x = 199.0f;
+    down.mouse.screen_y = 1.0f;
+
+    (void)vg_event_send(&tabbar->base, &down);
+    ASSERT_EQ(tabbar->tab_count, 1);
+    ASSERT_EQ(tabbar->close_clicked_index, -1);
 
     vg_widget_destroy((vg_widget_t *)tabbar);
 }
@@ -654,6 +759,19 @@ TEST(scrollview_auto_content_size_uses_measured_children) {
     vg_widget_destroy(&sv->base);
 }
 
+TEST(scrollview_auto_hide_rechecks_cross_axis) {
+    vg_scrollview_t *sv = vg_scrollview_create(NULL);
+    ASSERT_NOT_NULL(sv);
+
+    vg_scrollview_set_content_size(sv, 95.0f, 200.0f);
+    vg_widget_arrange(&sv->base, 0.0f, 0.0f, 100.0f, 100.0f);
+
+    ASSERT_TRUE(sv->show_v_scrollbar);
+    ASSERT_TRUE(sv->show_h_scrollbar);
+
+    vg_widget_destroy(&sv->base);
+}
+
 TEST(scrollview_scroll_to_nested_descendant_uses_full_offset) {
     vg_scrollview_t *sv = vg_scrollview_create(NULL);
     vg_widget_t *container = vg_widget_create(VG_WIDGET_CONTAINER);
@@ -706,6 +824,136 @@ TEST(widget_set_focus_null_clears_focus) {
     vg_widget_destroy(&probe->base);
 }
 
+TEST(splitpane_arrange_clamps_negative_sizes) {
+    vg_splitpane_t *split = vg_splitpane_create(NULL, VG_SPLIT_HORIZONTAL);
+    ASSERT_NOT_NULL(split);
+
+    vg_splitpane_set_min_sizes(split, 50.0f, 50.0f);
+    vg_widget_arrange(&split->base, 0.0f, 0.0f, 3.0f, 40.0f);
+
+    vg_widget_t *first = split->base.first_child;
+    vg_widget_t *second = first ? first->next_sibling : NULL;
+    ASSERT_NOT_NULL(first);
+    ASSERT_NOT_NULL(second);
+    ASSERT_TRUE(first->width >= 0.0f);
+    ASSERT_TRUE(second->width >= 0.0f);
+
+    vg_widget_destroy(&split->base);
+}
+
+TEST(toolbar_hit_testing_uses_local_coords) {
+    int click_count = 0;
+    vg_toolbar_t *tb = vg_toolbar_create(NULL, VG_TOOLBAR_HORIZONTAL);
+    ASSERT_NOT_NULL(tb);
+
+    vg_toolbar_item_t *item = vg_toolbar_add_button(
+        tb, "open", NULL, vg_icon_from_glyph('O'), toolbar_click_counter, &click_count);
+    ASSERT_NOT_NULL(item);
+    vg_widget_arrange(&tb->base, 100.0f, 50.0f, 80.0f, 32.0f);
+
+    vg_event_t down = {0};
+    down.type = VG_EVENT_MOUSE_DOWN;
+    down.mouse.x = 10.0f;
+    down.mouse.y = 10.0f;
+    down.mouse.screen_x = 110.0f;
+    down.mouse.screen_y = 60.0f;
+    ASSERT_TRUE(vg_event_send(&tb->base, &down));
+    ASSERT_EQ(tb->pressed_item, item);
+
+    vg_event_t up = down;
+    up.type = VG_EVENT_MOUSE_UP;
+    ASSERT_TRUE(vg_event_send(&tb->base, &up));
+    ASSERT_EQ(click_count, 1);
+
+    vg_widget_destroy(&tb->base);
+}
+
+TEST(toolbar_overflow_popup_exposes_hidden_items) {
+    int hidden_clicks = 0;
+    vg_widget_t *root = vg_widget_create(VG_WIDGET_CONTAINER);
+    ASSERT_NOT_NULL(root);
+    root->width = 320.0f;
+    root->height = 240.0f;
+
+    vg_toolbar_t *tb = vg_toolbar_create(root, VG_TOOLBAR_HORIZONTAL);
+    ASSERT_NOT_NULL(tb);
+    ASSERT_NOT_NULL(vg_toolbar_add_button(
+        tb, "a", NULL, vg_icon_from_glyph('A'), toolbar_click_counter, &hidden_clicks));
+    ASSERT_NOT_NULL(vg_toolbar_add_button(
+        tb, "b", NULL, vg_icon_from_glyph('B'), toolbar_click_counter, &hidden_clicks));
+    ASSERT_NOT_NULL(vg_toolbar_add_button(
+        tb, "c", NULL, vg_icon_from_glyph('C'), toolbar_click_counter, &hidden_clicks));
+
+    vg_widget_arrange(&tb->base, 0.0f, 0.0f, 80.0f, 32.0f);
+    ASSERT_TRUE(tb->overflow_start_index >= 0);
+
+    vg_event_t click_overflow =
+        vg_event_mouse(VG_EVENT_MOUSE_DOWN, 75.0f, 10.0f, VG_MOUSE_LEFT, 0);
+    ASSERT_TRUE(vg_event_dispatch(root, &click_overflow));
+    ASSERT_NOT_NULL(tb->overflow_popup);
+    ASSERT_TRUE(tb->overflow_popup->is_visible);
+
+    vg_event_t click_popup = vg_event_mouse(VG_EVENT_MOUSE_DOWN,
+                                            tb->overflow_popup->base.x + 5.0f,
+                                            tb->overflow_popup->base.y + 10.0f,
+                                            VG_MOUSE_LEFT,
+                                            0);
+    ASSERT_TRUE(vg_event_dispatch(root, &click_popup));
+    ASSERT_EQ(hidden_clicks, 1);
+    ASSERT_FALSE(tb->overflow_popup->is_visible);
+
+    vg_widget_destroy(root);
+}
+
+TEST(statusbar_hit_testing_uses_local_coords) {
+    int click_count = 0;
+    vg_statusbar_t *sb = vg_statusbar_create(NULL);
+    ASSERT_NOT_NULL(sb);
+    ASSERT_NOT_NULL(
+        vg_statusbar_add_button(sb, VG_STATUSBAR_ZONE_LEFT, "Build", statusbar_click_counter, &click_count));
+    vg_widget_arrange(&sb->base, 200.0f, 50.0f, 240.0f, (float)sb->height);
+
+    vg_event_t click = {0};
+    click.type = VG_EVENT_CLICK;
+    click.mouse.x = sb->item_padding + 5.0f;
+    click.mouse.y = 5.0f;
+    click.mouse.screen_x = sb->base.x + click.mouse.x;
+    click.mouse.screen_y = sb->base.y + click.mouse.y;
+    ASSERT_TRUE(vg_event_send(&sb->base, &click));
+    ASSERT_EQ(click_count, 1);
+
+    vg_widget_destroy(&sb->base);
+}
+
+TEST(listbox_virtual_paint_clips_to_viewport) {
+    vgfx_window_params_t params = {
+        .width = 100, .height = 100, .title = "listbox", .fps = 0, .resizable = 0};
+    vgfx_window_t win = vgfx_create_window(&params);
+    ASSERT_NOT_NULL(win);
+    vgfx_cls(win, VGFX_BLACK);
+
+    vg_listbox_t *lb = vg_listbox_create(NULL);
+    ASSERT_NOT_NULL(lb);
+    lb->bg_color = VGFX_BLACK;
+    lb->item_bg = 0xFF0000;
+    lb->selected_bg = 0x00FF00;
+    lb->hover_bg = 0x0000FF;
+    vg_listbox_set_virtual_mode(lb, true, 10, 20.0f);
+    lb->scroll_y = 10.0f;
+    vg_widget_arrange(&lb->base, 20.0f, 20.0f, 50.0f, 50.0f);
+
+    vg_widget_paint(&lb->base, win);
+
+    vgfx_color_t color = 0;
+    ASSERT_TRUE(vgfx_point(win, 25, 15, &color) == 1);
+    ASSERT_EQ(color, VGFX_BLACK);
+    ASSERT_TRUE(vgfx_point(win, 25, 25, &color) == 1);
+    ASSERT_EQ(color, 0xFF0000);
+
+    vg_widget_destroy(&lb->base);
+    vgfx_destroy_window(win);
+}
+
 //=============================================================================
 // Main
 //=============================================================================
@@ -740,6 +988,8 @@ int main(void) {
     RUN(vbox_justify_center_offsets_child);
     RUN(hbox_justify_end_offsets_child);
     RUN(flex_justify_space_between_adds_gap);
+    RUN(vbox_flex_margins_are_budgeted);
+    RUN(hbox_flex_margins_are_budgeted);
 
     // PARTIAL-001/002: CodeEditor arrays zero on create
     RUN(codeeditor_gutter_icon_count_zero_on_create);
@@ -750,15 +1000,23 @@ int main(void) {
     RUN(codeeditor_get_selection_with_selection_returns_text);
     RUN(tabbar_metrics_follow_theme_scale);
     RUN(tab_tooltip_can_be_replaced);
+    RUN(tabbar_title_updates_default_tooltip);
+    RUN(tabbar_close_button_requires_full_rect);
     RUN(native_menubar_measures_to_zero_height);
     RUN(widget_destroy_child_detaches_from_parent);
     RUN(widget_add_child_rejects_cycles);
     RUN(event_bubble_honors_parent_return_value);
     RUN(floatingpanel_destroy_no_double_free);
     RUN(scrollview_auto_content_size_uses_measured_children);
+    RUN(scrollview_auto_hide_rechecks_cross_axis);
     RUN(scrollview_scroll_to_nested_descendant_uses_full_offset);
     RUN(widget_paint_runs_overlay_second_pass);
     RUN(widget_set_focus_null_clears_focus);
+    RUN(splitpane_arrange_clamps_negative_sizes);
+    RUN(toolbar_hit_testing_uses_local_coords);
+    RUN(toolbar_overflow_popup_exposes_hidden_items);
+    RUN(statusbar_hit_testing_uses_local_coords);
+    RUN(listbox_virtual_paint_clips_to_viewport);
 
     printf("\n%d passed, %d failed\n", g_passed, g_failed);
     return g_failed ? 1 : 0;

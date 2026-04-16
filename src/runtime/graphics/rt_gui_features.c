@@ -1026,7 +1026,10 @@ void *rt_minimap_new(void *parent) {
         return NULL;
     }
     data->minimap = minimap;
-    data->width = 80; // Default width
+    data->width = 100;
+    minimap->base.constraints.min_width = (float)data->width;
+    minimap->base.constraints.preferred_width = (float)data->width;
+    minimap->base.constraints.max_width = (float)data->width;
     if (parent_widget) {
         vg_widget_add_child(parent_widget, &minimap->base);
     }
@@ -1051,6 +1054,7 @@ void rt_minimap_bind_editor(void *minimap, void *editor) {
         return;
     rt_minimap_data_t *data = (rt_minimap_data_t *)minimap;
     vg_minimap_set_editor(data->minimap, (vg_codeeditor_t *)editor);
+    vg_widget_invalidate(&data->minimap->base);
 }
 
 /// @brief Unbind the editor of the minimap.
@@ -1060,6 +1064,7 @@ void rt_minimap_unbind_editor(void *minimap) {
         return;
     rt_minimap_data_t *data = (rt_minimap_data_t *)minimap;
     vg_minimap_set_editor(data->minimap, NULL);
+    vg_widget_invalidate(&data->minimap->base);
 }
 
 /// @brief Set the width of the minimap.
@@ -1068,8 +1073,14 @@ void rt_minimap_set_width(void *minimap, int64_t width) {
     if (!minimap)
         return;
     rt_minimap_data_t *data = (rt_minimap_data_t *)minimap;
+    if (width < 64)
+        width = 64;
     data->width = width;
-    data->minimap->base.width = (float)width;
+    data->minimap->base.constraints.min_width = (float)width;
+    data->minimap->base.constraints.preferred_width = (float)width;
+    data->minimap->base.constraints.max_width = (float)width;
+    vg_widget_invalidate_layout(&data->minimap->base);
+    vg_widget_invalidate(&data->minimap->base);
 }
 
 /// @brief Show or hide the minimap widget.
@@ -1081,6 +1092,8 @@ void rt_minimap_set_visible(void *minimap, int64_t visible) {
     if (!data->minimap)
         return;
     vg_widget_set_visible(&data->minimap->base, visible != 0);
+    vg_widget_invalidate_layout(&data->minimap->base);
+    vg_widget_invalidate(&data->minimap->base);
 }
 
 /// @brief Check whether the minimap widget is visible.
@@ -1110,6 +1123,7 @@ void rt_minimap_set_scale(void *minimap, double scale) {
         return;
     rt_minimap_data_t *data = (rt_minimap_data_t *)minimap;
     vg_minimap_set_scale(data->minimap, (float)scale);
+    vg_widget_invalidate(&data->minimap->base);
 }
 
 /// @brief Set the show slider of the minimap.
@@ -1119,6 +1133,7 @@ void rt_minimap_set_show_slider(void *minimap, int64_t show) {
         return;
     rt_minimap_data_t *data = (rt_minimap_data_t *)minimap;
     vg_minimap_set_show_viewport(data->minimap, show != 0);
+    vg_widget_invalidate(&data->minimap->base);
 }
 
 /// @brief Add a highlighted marker region to the minimap.

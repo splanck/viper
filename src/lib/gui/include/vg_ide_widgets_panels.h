@@ -88,9 +88,9 @@ typedef struct vg_tabbar {
     float drag_x;              ///< Drag position
 
     // Per-frame tracking for Zia runtime
-    vg_tab_t *prev_active_tab;   ///< Previous active tab (for change detection)
-    vg_tab_t *close_clicked_tab; ///< Tab whose close button was clicked (cleared on read)
-    bool auto_close;             ///< Auto-remove tab on close click (default true)
+    vg_tab_t *prev_active_tab; ///< Previous active tab (for change detection)
+    int close_clicked_index;   ///< Index whose close button was clicked (cleared on read, -1 = none)
+    bool auto_close;           ///< Auto-remove tab on close click (default true)
 } vg_tabbar_t;
 
 /// @brief Create a new tab bar widget

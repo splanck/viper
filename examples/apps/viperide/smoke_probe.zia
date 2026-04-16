@@ -8,6 +8,32 @@ bind "editor/editor_tabs";
 bind Viper.GUI as GUI;
 bind Viper.Terminal as Terminal;
 
+// ============================================================================
+// MODULE: smoke_probe
+// PURPOSE: Headless smoke test for the IDE shell. Builds the window,
+//          sets up the editor + minimap + tab, loads a synthetic
+//          document, polls + renders ONE frame, then tears down and
+//          prints "RESULT: ok".
+//
+// WHERE-THIS-FITS: Run by the ctest target `zia_smoke_viperide` in CI
+//          to catch construction-time regressions (a misnamed widget,
+//          missing runtime binding, etc.) without needing a display.
+//          Exits cleanly so the test harness can detect failure as a
+//          non-zero exit code.
+//
+// KEY-DESIGN-CHOICES:
+//   * SINGLE FRAME. We only Poll + Render once. The goal is "did
+//     construction work?", not "does interaction work?". An interactive
+//     test would be too long for CI.
+//   * MINIMAP TOGGLE. The Off-then-On dance exercises the minimap's
+//     SetVisible runtime which was a source of regressions during the
+//     visibility-API rollout.
+//   * RESULT MARKER. The test harness greps stdout for "RESULT: ok"
+//     to confirm success — exit code alone wouldn't distinguish "ran
+//     to completion" from "crashed during teardown after work."
+// ============================================================================
+
+/// @brief Smoke-probe entry point. Builds, ticks one frame, exits ok.
 func main() {
     var shell = new app_shell.AppShell();
     var docMgr = new document_manager.DocumentManager();

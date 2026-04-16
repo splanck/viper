@@ -31,16 +31,48 @@ bind Convert = Viper.Core.Convert;
 bind Str = Viper.String;
 
 // ============================================================================
-// ViperIDE — main entry point
-// ============================================================================
-// Creates the UI shell, sets up components, and runs the event loop.
-// Action handlers live in commands/*.zia for readability and reuse.
+// MODULE: viperide (main entry point)
+// PURPOSE: Bootstraps every subsystem and runs the per-frame event loop.
+//          The loop polls input, dispatches commands via menu items +
+//          shortcuts + command palette, ticks completion / diagnostics /
+//          hover / symbols, syncs document <-> tab state, and renders.
+//
+// WHERE-THIS-FITS: Top of the dependency tree. Owns the lifecycle of
+//          every controller; everyone else is constructed here.
+//
+// KEY-DESIGN-CHOICES:
+//   * SINGLE FRAME LOOP, MANY POLLS. Rather than callbacks, the IDE
+//     uses a frame-driven design: each frame, every controller is
+//     polled. Commands are dispatched by checking which menu item /
+//     toolbar item / shortcut / palette command was hit this frame.
+//   * COMMAND DISPATCH PATTERN. The `triggered(name, menuItem,
+//     toolbarItem, paletteSelection)` helper checks all three input
+//     sources for a single command name and returns true if any of
+//     them fired. This unifies "user clicked menu" / "user clicked
+//     toolbar" / "user pressed shortcut" / "user picked from
+//     palette" without duplicating handler dispatch.
+//   * PER-DOCUMENT INTELLISENSE. Every controller (completion /
+//     diagnostics / hover / symbols) has its source path set to the
+//     active document's path each frame. This is what enables the
+//     path-aware `*ForFile` completion APIs to resolve relative bind
+//     paths against the right directory.
+//   * STARTUP ORDER MATTERS. Shell construction first (so widgets
+//     exist), then engine setup (which adds the editor widget into
+//     the shell), then minimap binding, then settings load and
+//     theme apply. Mixing this ordering generally explodes because
+//     widget parents must exist before children.
+//
+// HOW-TO-READ: Constants -> main() top-of-function (component
+//   construction) -> shortcut registration -> command palette
+//   population -> welcome doc / settings load -> the giant while
+//   loop with per-frame work.
 // ============================================================================
 
 final WIN_WIDTH = 1280;
 final WIN_HEIGHT = 800;
-final WINDOW_SIZE_PERCENT = 80;
+final WINDOW_SIZE_PERCENT = 80;  // % of monitor size on first launch.
 
+/// @brief Program entry point. Constructs the IDE and runs the main loop.
 func main() {
     // ========================================================================
     // Initialize components
@@ -57,6 +89,7 @@ func main() {
     shell.CenterAndSize(WINDOW_SIZE_PERCENT);
 
     engine.Setup(shell.editorRow);
+    engine.editor.Focus();
 
     var completer = new completion.CompletionController();
     completer.Setup(engine.editor, shell.app);
@@ -108,10 +141,6 @@ func main() {
     Shortcuts.Register("minimap",     "Ctrl+Shift+M", "Toggle Minimap");
     Shortcuts.Register("settings",    "Ctrl+,",       "Settings");
     Shortcuts.Register("completion_trigger",  "Ctrl+Space", "Trigger Completion");
-    Shortcuts.Register("completion_accept",   "Tab",        "Accept Completion");
-    Shortcuts.Register("completion_dismiss",  "Escape",     "Dismiss Completion");
-    Shortcuts.Register("completion_down",     "Down",       "Next Completion Item");
-    Shortcuts.Register("completion_up",       "Up",         "Prev Completion Item");
 
     // ========================================================================
     // Register command palette commands
@@ -222,14 +251,12 @@ func main() {
         symbolOutline.update(engine);
         symbolOutline.handleClicks(engine);
         if completer.isVisible {
-            if Shortcuts.WasTriggered("completion_accept") != 0 {
+            if Input.Keyboard.WasPressed(Input.Keyboard.get_KEY_TAB()) {
                 completer.AcceptSelected();
-            } else if Shortcuts.WasTriggered("completion_dismiss") != 0 {
+            } else if Input.Keyboard.WasPressed(Input.Keyboard.get_KEY_ENTER()) {
+                completer.AcceptSelected();
+            } else if Input.Keyboard.WasPressed(Input.Keyboard.get_KEY_ESCAPE()) {
                 completer.Hide();
-            } else if Shortcuts.WasTriggered("completion_down") != 0 {
-                completer.NavigateDown();
-            } else if Shortcuts.WasTriggered("completion_up") != 0 {
-                completer.NavigateUp();
             }
         }
         if Shortcuts.WasTriggered("completion_trigger") != 0 {

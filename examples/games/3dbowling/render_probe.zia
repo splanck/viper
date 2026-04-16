@@ -9,6 +9,14 @@ bind "./lane/lane";
 bind "./lane/pins";
 bind "./lane/ball";
 
+// ============================================================================
+// MODULE: render_probe
+// PURPOSE: Render one frame of the full lane + pins + ball scene,
+//          write a PNG to /tmp, and exit. Used to capture "golden"
+//          images for diffing against visual regressions.
+// ============================================================================
+
+/// @brief Build the scene, render one frame, save to /tmp/3dbowling_probe.png.
 func main() {
     var render = new Renderer();
     render.initRenderer(config.QUALITY_CINEMATIC);

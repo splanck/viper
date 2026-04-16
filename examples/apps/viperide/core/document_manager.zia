@@ -7,21 +7,63 @@ bind IO = Viper.IO;
 bind Path = Viper.IO.Path;
 
 // ============================================================================
-// DocumentManager — manages all open documents and tab synchronization
+// MODULE: document_manager
+// PURPOSE: Owns the IDE's set of open documents and the index of the
+//          currently active one. Provides the file-management API
+//          (new / open / save / save-as / save-all / close) plus
+//          lookup helpers (active getter, find-by-path).
+//
+// WHERE-THIS-FITS: Mid-tier coordinator. Sits between the file commands
+//          (commands/file_commands.zia) and the underlying
+//          `document.Document` records. The editor and editor_tabs
+//          modules read from here to know what to display.
+//
+// KEY-DESIGN-CHOICES:
+//   * SINGLE LIST + INDEX. `documents` is a flat List ordered by tab
+//     position; `activeIndex` is the offset of the currently visible
+//     document. `-1` means no document is active (used briefly between
+//     close-last and open-new). Tab order in the UI mirrors list order
+//     so users see "what they expect."
+//   * UNTITLED COUNTER. `untitledCount` increments forever — never
+//     resets. So opening N new tabs gives them "Untitled 1" through
+//     "Untitled N" even after closes/reopens. This matches VS Code's
+//     behaviour and avoids confusing the user with reused names.
+//   * OpenFile DEDUPES. If a file is already open, OpenFile activates
+//     the existing tab rather than creating a duplicate. Prevents the
+//     "I have three tabs of foo.zia" anti-pattern.
+//   * SaveAll RETURNS COUNT. Lets the caller render "Saved N files" in
+//     the status bar without re-counting.
+//   * CloseDocument FIXES UP activeIndex. If you close the active tab,
+//     the manager picks a sensible new active (the previous tab if one
+//     existed, else -1). The caller doesn't have to manage this.
+//   * lastModifiedOnDisk SET ON SAVE TOO. So the file watcher doesn't
+//     see our own write as an external change.
+//
+// HOW-TO-READ: NewDocument (untitled spawn) -> OpenFile (open + dedupe)
+//   -> SaveActive (save-in-place) / SaveAs (save-with-rename) -> SaveAll
+//   (batch save) -> CloseDocument (with active-fixup) -> GetActive /
+//   SetActive / FindByPath / GetCount.
 // ============================================================================
 
+/// @brief Owns the open-document list and the active-tab index.
 class DocumentManager {
-    expose List[document.Document] documents;  // All open documents
-    expose Integer activeIndex;                // Index of active document (-1 = none)
-    expose Integer untitledCount;             // Counter for "Untitled N" naming
+    expose List[document.Document] documents;  // All open documents, in tab order.
+    expose Integer activeIndex;                // Index of active document (-1 = none).
+    expose Integer untitledCount;              // Monotonic counter for "Untitled N" naming.
 
+    /// @brief Initialize with no open documents.
     expose func init() {
         documents = [];
         activeIndex = -1;
         untitledCount = 0;
     }
 
-    // Create a new untitled document.
+    /// @brief Create a new untitled document and activate it.
+    /// @return The freshly created Document (also added to `documents`).
+    /// @note Increments `untitledCount`; the new tab is named
+    ///       "Untitled N" where N is the new counter value. Language
+    ///       defaults to "zia" since untitled files are most often used
+    ///       to draft new Zia code.
     expose func NewDocument() -> document.Document {
         untitledCount = untitledCount + 1;
         var doc = new document.Document();
@@ -34,7 +76,11 @@ class DocumentManager {
         return doc;
     }
 
-    // Open a file from disk. If already open, activate that document.
+    /// @brief Open a file from disk, or activate it if already open.
+    /// @param path Absolute file path.
+    /// @return The Document (existing or freshly loaded).
+    /// @note Dedupes by path: identical paths share a Document so edits
+    ///       in one place don't fork the buffer.
     expose func OpenFile(path: String) -> document.Document {
         var existing = FindByPath(path);
         if existing >= 0 {
@@ -58,7 +104,9 @@ class DocumentManager {
         return doc;
     }
 
-    // Save the active document.
+    /// @brief Save the active document to its existing path.
+    /// @return false if no active document or it's untitled (no path
+    ///         to save to — caller should fall back to SaveAs).
     expose func SaveActive() -> Boolean {
         if activeIndex < 0 { return false; }
         var doc = documents.get(activeIndex);
@@ -69,7 +117,11 @@ class DocumentManager {
         return true;
     }
 
-    // Save a document to a specific path.
+    /// @brief Save the active document to a specific path (Save As).
+    /// @param path Destination path; the document's filePath/fileName
+    ///        update to match. Language is re-detected from the new
+    ///        extension.
+    /// @return false if no active document.
     expose func SaveAs(path: String) -> Boolean {
         if activeIndex < 0 { return false; }
         var doc = documents.get(activeIndex);
@@ -83,7 +135,9 @@ class DocumentManager {
         return true;
     }
 
-    // Save all modified documents. Returns the number saved.
+    /// @brief Save every modified, non-untitled document.
+    /// @return Number of documents actually saved (lets the caller
+    ///         render "Saved N files" without re-counting).
     expose func SaveAll() -> Integer {
         var count = 0;
         var i = 0;
@@ -100,7 +154,11 @@ class DocumentManager {
         return count;
     }
 
-    // Close the document at the given index.
+    /// @brief Close the document at the given index.
+    /// @param index 0-based index into `documents`.
+    /// @return true if closed, false if index was out of range.
+    /// @note If the closed document was active, picks a new active:
+    ///       the next tab to the left, or -1 if none remain.
     expose func CloseDocument(index: Integer) -> Boolean {
         if index < 0 or index >= documents.count() { return false; }
         documents.removeAt(index);
@@ -112,20 +170,21 @@ class DocumentManager {
         return true;
     }
 
-    // Get the active document, or null if none.
+    /// @brief Get the active document or null if there is none.
     expose func GetActive() -> document.Document? {
         if activeIndex < 0 or activeIndex >= documents.count() { return null; }
         return documents.get(activeIndex);
     }
 
-    // Set the active document by index.
+    /// @brief Set the active document by index. Out-of-range is a no-op.
     expose func SetActive(index: Integer) {
         if index >= 0 and index < documents.count() {
             activeIndex = index;
         }
     }
 
-    // Find a document by file path. Returns index or -1 if not found.
+    /// @brief Linear search for a document by filePath.
+    /// @return Index, or -1 if not found.
     expose func FindByPath(path: String) -> Integer {
         var i = 0;
         while i < documents.count() {
@@ -136,7 +195,7 @@ class DocumentManager {
         return -1;
     }
 
-    // Get the number of open documents.
+    /// @brief Number of open documents.
     expose func GetCount() -> Integer {
         return documents.count();
     }

@@ -3,11 +3,34 @@ module file_utils;
 bind Path = Viper.IO.Path;
 
 // ============================================================================
-// File utility — language detection from file extension
+// MODULE: file_utils
+// PURPOSE: Single-function helper for mapping a file path to a language tag
+//          ("zia", "basic", "text"). Used by the editor and document
+//          manager to drive syntax highlighting, completion, and the
+//          "language: X" status indicator.
+//
+// WHERE-THIS-FITS: Leaf utility module. Imported by `document_manager` and
+//          `editor_engine` whenever a file is opened or its name changes.
+//          No state — purely a pure function.
+//
+// KEY-DESIGN-CHOICES:
+//   * EXTENSION-ONLY DETECTION. We don't sniff the file contents. This
+//     keeps the function O(1) and keeps the IDE responsive when opening
+//     large files. The trade-off is we mis-classify files with non-
+//     standard extensions; that's acceptable because the editor's
+//     language picker can override.
+//   * DEFAULT-TO-TEXT. Unknown extensions render as plain text rather
+//     than refusing to open. The editor degrades gracefully — no syntax
+//     highlighting, no completion, but you can still view and edit.
+//   * VB ALIASED TO BASIC. `.vb` files map to "basic" for Visual-Basic-
+//     style content. The dialects diverge but the syntax-highlighter
+//     handles both with the same tokenizer.
 // ============================================================================
 
-// Detect language from file extension.
-// Returns "zia", "basic", or "text".
+/// @brief Map a file path to a language identifier ("zia" / "basic" / "text").
+/// @param path Filesystem path; only the extension is examined.
+/// @return Language tag suitable for `Document.language` and the
+///         editor's `SetLanguage` call.
 func DetectLanguage(path: String) -> String {
     var ext = Path.Ext(path);
     if ext == ".zia"  { return "zia"; }

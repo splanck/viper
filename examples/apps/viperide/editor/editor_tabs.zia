@@ -4,33 +4,55 @@ bind "../core/document";
 bind Viper.GUI as GUI;
 
 // ============================================================================
-// EditorTabs — manages the tab bar and document-to-tab synchronization
-// ============================================================================
-// Uses TabBar.GetTabAt(index) to look up tabs by index rather than
-// maintaining a parallel list (C-allocated Tab handles cannot be stored
-// in Zia runtime Lists due to heap header validation).
+// MODULE: editor_tabs
+// PURPOSE: Manages the tab bar widget and the per-tab title / tooltip /
+//          modified-marker state. Operations are indexed by tab position
+//          to match the parallel ordering used by `DocumentManager`.
+//
+// WHERE-THIS-FITS: Bridge between DocumentManager (model) and the
+//          GUI.TabBar widget (view). Owned by main.zia. Operates by
+//          looking up tabs through `tabBar.GetTabAt(index)`.
+//
+// KEY-DESIGN-CHOICES:
+//   * NO PARALLEL TAB LIST. We don't keep our own `List[Tab]` mirroring
+//     the tab bar. C-allocated Tab handles can't be safely stored in
+//     Zia runtime Lists (heap-header validation rejects them), so we
+//     re-fetch them each operation via `GetTabAt`. The trade-off is one
+//     extra runtime call per operation; the benefit is no double-free
+//     hazard on tab close.
+//   * AUTO-CLOSE DISABLED. `tabBar.SetAutoClose(0)` disables the
+//     widget's built-in close-on-click handling so the IDE can route
+//     close requests through `DocumentManager.CloseDocument` (which
+//     handles dirty-buffer prompts).
+//   * INDEX-BASED API. Every method takes a tab index. This keeps the
+//     calling code symmetric with DocumentManager which also uses
+//     indices. Out-of-range indices silently no-op.
 // ============================================================================
 
+/// @brief Tab bar wrapper with index-addressable tab operations.
 class EditorTabs {
-    expose GUI.TabBar tabBar;  // TabBar widget handle
-    expose Integer lastActiveIndex;  // For detecting tab switches
+    expose GUI.TabBar tabBar;        // TabBar widget handle.
+    expose Integer lastActiveIndex;  // Cache for detecting tab switches in the main loop.
 
     expose func init() {
         lastActiveIndex = -1;
     }
 
-    // Set up the tab bar widget reference.
+    /// @brief Inject the TabBar widget and disable auto-close.
+    /// @note Auto-close is disabled because the IDE intercepts close to
+    ///       prompt for unsaved changes.
     expose func Setup(tabBarWidget: GUI.TabBar) {
         tabBar = tabBarWidget;
         tabBar.SetAutoClose(0);
     }
 
-    // Add a tab for a new document.
+    /// @brief Append a new tab.
+    /// @param closeable 1 to show the close button, 0 to hide it.
     expose func AddTab(name: String, closeable: Integer) {
         tabBar.AddTab(name, closeable);
     }
 
-    // Remove a tab at the given index.
+    /// @brief Remove the tab at `index`. Out-of-range no-ops.
     expose func RemoveTab(index: Integer) {
         if index < 0 or index >= tabBar.TabCount {
             return;
@@ -39,7 +61,7 @@ class EditorTabs {
         tabBar.RemoveTab(tab);
     }
 
-    // Activate a tab by index.
+    /// @brief Activate the tab at `index`. Updates `lastActiveIndex`.
     expose func SetActive(index: Integer) {
         if index < 0 or index >= tabBar.TabCount {
             return;
@@ -49,7 +71,7 @@ class EditorTabs {
         lastActiveIndex = index;
     }
 
-    // Update the tab title (e.g., after save or rename).
+    /// @brief Update tab title (e.g., after Save As renames the file).
     expose func SetTitle(index: Integer, title: String) {
         if index < 0 or index >= tabBar.TabCount {
             return;
@@ -58,7 +80,8 @@ class EditorTabs {
         tab.SetTitle(title);
     }
 
-    // Update the tab tooltip, typically with the full path for truncated tabs.
+    /// @brief Update tab tooltip — usually the full file path so a
+    ///        truncated tab title is still discoverable.
     expose func SetTooltip(index: Integer, tooltip: String) {
         if index < 0 or index >= tabBar.TabCount {
             return;
@@ -67,7 +90,7 @@ class EditorTabs {
         tab.SetTooltip(tooltip);
     }
 
-    // Update the modified indicator on a tab.
+    /// @brief Show or clear the modified-indicator dot on a tab.
     expose func SetModified(index: Integer, modified: Boolean) {
         if index < 0 or index >= tabBar.TabCount {
             return;
@@ -80,7 +103,7 @@ class EditorTabs {
         }
     }
 
-    // Get the number of tabs.
+    /// @brief Number of open tabs.
     expose func GetCount() -> Integer {
         return tabBar.TabCount;
     }

@@ -1,3 +1,28 @@
+// ============================================================================
+// MODULE: progression (Progression)
+// PURPOSE: Persistent player profile — XP, rank, achievements (12 of
+//          them), rotating contracts (objectives that reward XP), high-
+//          score leaderboard, per-run summary stats. Backed by
+//          Viper.IO.SaveData so everything survives across sessions.
+//
+// KEY-DESIGN-CHOICES:
+//   * ENUMERATED ACHIEVEMENTS + CONTRACTS. ACH_* and CONTRACT_*
+//     constants name each ID. The tracker maintains unlock state
+//     per-ID persistently.
+//   * CONTRACTS ROTATE. 3 active at any time, drawn from the full
+//     CONTRACT_* set. Completed contracts are replaced with a new
+//     random pick. Gives long-running players something to pursue
+//     beyond just high score.
+//   * XP/RANK LADDER. Each gameplay event awards XP; accumulated XP
+//     advances the player through ranks. Lets casual runs still
+//     feel like progress even when the top leaderboard is
+//     unreachable.
+//   * RUN SUMMARY. Captures per-run facts (new unlocks, contracts
+//     completed, XP gained, personal-best stats) so the post-run
+//     card can celebrate specific achievements rather than just a
+//     final score.
+// ============================================================================
+
 module progression;
 
 bind Viper.IO;

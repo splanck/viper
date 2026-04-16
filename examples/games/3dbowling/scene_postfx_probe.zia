@@ -9,6 +9,14 @@ bind "./lane/lane";
 bind "./lane/pins";
 bind "./lane/ball";
 
+// ============================================================================
+// MODULE: scene_postfx_probe
+// PURPOSE: Interactive scene preview with the full CINEMATIC post-FX
+//          chain ON (tonemap + bloom + FXAA + colour-grade + vignette).
+//          Paired with scene_nopostfx_probe for A/B visual comparison.
+// ============================================================================
+
+/// @brief Loop the full scene with cinematic post-FX until window closes.
 func main() {
     var render = new Renderer();
     render.initRenderer(config.QUALITY_CINEMATIC);

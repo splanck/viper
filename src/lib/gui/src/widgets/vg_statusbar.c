@@ -350,9 +350,12 @@ static void statusbar_paint(vg_widget_t *widget, void *canvas) {
     }
 }
 
-static vg_statusbar_item_t *find_item_at(vg_statusbar_t *sb, float mouse_x) {
-    float left_x = sb->base.x + sb->item_padding;
-    float right_x = sb->base.x + sb->base.width - sb->item_padding;
+static vg_statusbar_item_t *find_item_at(vg_statusbar_t *sb, float mouse_x, float mouse_y) {
+    if (mouse_y < 0.0f || mouse_y >= sb->base.height)
+        return NULL;
+
+    float left_x = sb->item_padding;
+    float right_x = sb->base.width - sb->item_padding;
 
     // Check left zone
     float x = left_x;
@@ -393,7 +396,7 @@ static vg_statusbar_item_t *find_item_at(vg_statusbar_t *sb, float mouse_x) {
             center_width += measure_item_width(sb, sb->center_items[i]);
         }
     }
-    x = sb->base.x + sb->base.width / 2 - center_width / 2;
+    x = sb->base.width / 2.0f - center_width / 2.0f;
     for (size_t i = 0; i < sb->center_count; i++) {
         vg_statusbar_item_t *item = sb->center_items[i];
         if (!item->visible || item->type == VG_STATUSBAR_ITEM_SPACER)
@@ -416,7 +419,7 @@ static bool statusbar_handle_event(vg_widget_t *widget, vg_event_t *event) {
 
     switch (event->type) {
         case VG_EVENT_MOUSE_MOVE: {
-            vg_statusbar_item_t *item = find_item_at(sb, event->mouse.x);
+            vg_statusbar_item_t *item = find_item_at(sb, event->mouse.x, event->mouse.y);
             if (item != sb->hovered_item) {
                 sb->hovered_item = item;
                 widget->needs_paint = true;
@@ -432,7 +435,7 @@ static bool statusbar_handle_event(vg_widget_t *widget, vg_event_t *event) {
             return false;
 
         case VG_EVENT_CLICK: {
-            vg_statusbar_item_t *item = find_item_at(sb, event->mouse.x);
+            vg_statusbar_item_t *item = find_item_at(sb, event->mouse.x, event->mouse.y);
             if (item && item->on_click) {
                 item->on_click(item, item->user_data);
                 return true;

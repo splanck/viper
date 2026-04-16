@@ -358,6 +358,7 @@ void vgfx_platform_macos_ensure_default_main_menu(const char *preferred_title) {
 ///
 /// @param keycode macOS virtual key code from NSEvent
 /// @param chars   Character string from NSEvent (used for alphanumeric keys)
+/// @param flags   Modifier flags from NSEvent (used for fn+arrow navigation)
 /// @return Corresponding vgfx_key_t, or VGFX_KEY_UNKNOWN if not recognized
 ///
 /// @details Key mapping:
@@ -367,7 +368,27 @@ void vgfx_platform_macos_ensure_default_main_menu(const char *preferred_title) {
 ///            - Arrows/page navigation: VGFX_KEY_LEFT/RIGHT/UP/DOWN/HOME/END/PAGE_UP/PAGE_DOWN
 ///            - Enter: VGFX_KEY_ENTER (both main and numpad)
 ///            - Escape: VGFX_KEY_ESCAPE
-static vgfx_key_t translate_keycode(unsigned short keycode, NSString *chars) {
+static vgfx_key_t translate_keycode(unsigned short keycode,
+                                    NSString *chars,
+                                    NSEventModifierFlags flags) {
+    /* On compact Apple keyboards, PageUp/PageDown/Home/End are emitted as
+       fn+arrow rather than dedicated keys. Translate those combinations
+       before the normal arrow handling so editor navigation works. */
+    if (flags & NSEventModifierFlagFunction) {
+        switch (keycode) {
+            case 0x7E:
+                return VGFX_KEY_PAGE_UP; /* fn + up */
+            case 0x7D:
+                return VGFX_KEY_PAGE_DOWN; /* fn + down */
+            case 0x7B:
+                return VGFX_KEY_HOME; /* fn + left */
+            case 0x7C:
+                return VGFX_KEY_END; /* fn + right */
+            default:
+                break;
+        }
+    }
+
     /* Try to use character first. macOS sends function-key Unicode values for
        Fn+arrow and some compact keyboards, so handle those before ASCII. */
     if (chars && [chars length] > 0) {
@@ -986,7 +1007,8 @@ int vgfx_platform_process_events(struct vgfx_window *win) {
                    reach the game/runtime input path. */
                 NSEventModifierFlags flags = [event modifierFlags];
                 vgfx_key_t key =
-                    translate_keycode([event keyCode], [event charactersIgnoringModifiers]);
+                    translate_keycode(
+                        [event keyCode], [event charactersIgnoringModifiers], flags);
                 NSMenu *mainMenu = [NSApp mainMenu];
                 if (mainMenu && macos_should_check_menu_key_equivalent(key, flags) &&
                     [mainMenu performKeyEquivalent:event]) {
@@ -1007,7 +1029,8 @@ int vgfx_platform_process_events(struct vgfx_window *win) {
                 case NSEventTypeKeyDown: {
                     NSEventModifierFlags flags = [event modifierFlags];
                     vgfx_key_t key =
-                        translate_keycode([event keyCode], [event charactersIgnoringModifiers]);
+                        translate_keycode(
+                            [event keyCode], [event charactersIgnoringModifiers], flags);
                     if (key != VGFX_KEY_UNKNOWN && key < 512) {
                         win->key_state[key] = 1; /* Update input state */
 
@@ -1036,8 +1059,10 @@ int vgfx_platform_process_events(struct vgfx_window *win) {
                 }
 
                 case NSEventTypeKeyUp: {
+                    NSEventModifierFlags flags = [event modifierFlags];
                     vgfx_key_t key =
-                        translate_keycode([event keyCode], [event charactersIgnoringModifiers]);
+                        translate_keycode(
+                            [event keyCode], [event charactersIgnoringModifiers], flags);
                     if (key != VGFX_KEY_UNKNOWN && key < 512) {
                         win->key_state[key] = 0; /* Update input state */
 

@@ -124,7 +124,7 @@ Tab strip for switching between views.
 | `AddTab(title, closable)` | `Object(String, Integer)` | Add tab, returns tab handle             |
 | `GetActive()`            | `Object()`                | Get active tab handle                    |
 | `GetActiveIndex()`       | `Integer()`               | Get active tab index                     |
-| `GetCloseClickedIndex()` | `Integer()`               | Index of tab whose close was clicked     |
+| `GetCloseClickedIndex()` | `Integer()`               | Index of tab whose close was clicked, even when auto-close removes it immediately |
 | `GetTabAt(index)`        | `Object(Integer)`         | Get tab handle by index                  |
 | `RemoveTab(tab)`         | `Void(Object)`            | Remove a tab                             |
 | `SetActive(tab)`         | `Void(Object)`            | Set active tab                           |
@@ -138,7 +138,7 @@ Tab handles returned by `AddTab()` support these methods:
 
 | Method                    | Signature          | Description                    |
 |---------------------------|--------------------|--------------------------------|
-| `tab.SetTitle(title)`     | `Void(String)`     | Set tab title                  |
+| `tab.SetTitle(title)`     | `Void(String)`     | Set tab title; the default tooltip follows the title until explicitly overridden |
 | `tab.SetTooltip(text)`    | `Void(String)`     | Set hover tooltip text         |
 | `tab.SetModified(flag)`   | `Void(Integer)`    | Set modified indicator         |
 

@@ -3,8 +3,41 @@ module board;
 bind "./config";
 
 // ============================================================================
-// Move — represents a single chess move
+// MODULE: board
+// PURPOSE: Chess board state, plus the Move and UndoInfo records that
+//          drive make/unmake-move. Maintains an incremental Zobrist hash
+//          for transposition-table lookup and threefold-repetition
+//          detection.
+//
+// WHERE-THIS-FITS: Foundation of the chess engine. MoveGen, Evaluator,
+//          and ChessAI all operate on Board instances. The UI calls
+//          `makeMove` to apply user moves; the AI calls
+//          `makeMove`/`unmakeMove` repeatedly during search.
+//
+// KEY-DESIGN-CHOICES:
+//   * SQUARE ENCODING: sq = rank * 8 + file. Rank 0 is the BLACK back
+//     rank (top of display); rank 7 is WHITE back rank (bottom). File 0
+//     is a-file. So a1 = rank 7 file 0 = sq 56. This matches the
+//     "raster scan from top-left" convention used by most chess
+//     visualisers.
+//   * INCREMENTAL ZOBRIST. Every set/unset XORs into `hashVal`. This
+//     gives O(1) hash maintenance for makeMove and lets the AI use the
+//     hash as a transposition-table key. unmakeMove recomputes from
+//     scratch (simpler than reverse-XORing every change).
+//   * UNDOINFO PATTERN. `makeMove` returns an UndoInfo capturing the
+//     pre-move state (en-passant file, castle rights, half-move
+//     counter, captured-square). `unmakeMove` consumes the UndoInfo to
+//     restore. This is the standard "make/unmake" pattern for
+//     branch-and-bound search engines — avoids cloning the board per
+//     node.
+//   * EN PASSANT SQUARE STORED AS FILE. `enPassantFile` is -1 (none)
+//     or 0..7 (the file of the just-double-pushed pawn). The rank is
+//     implicit (rank 3 if it was a black pawn, rank 4 if white).
+//   * VALUE-TYPE Move/UndoInfo. Both are `struct` (Zia value types) so
+//     they live on the call stack — no allocation per move generated.
 // ============================================================================
+
+/// @brief One chess move with all the metadata needed to make/unmake it.
 struct Move {
     expose Integer from;
     expose Integer to;
@@ -29,9 +62,8 @@ struct Move {
     }
 }
 
-// ============================================================================
-// UndoInfo — state captured before makeMove, needed to restore after unmakeMove
-// ============================================================================
+/// @brief Pre-move state snapshot for unmakeMove. Captures everything
+///        the move could have changed besides the squares it touched.
 struct UndoInfo {
     expose Integer enPassantFile;
     expose Boolean castleWK;
@@ -54,17 +86,7 @@ struct UndoInfo {
     }
 }
 
-// ============================================================================
-// Board — the chess board state
-//
-// Square encoding: sq = rank * 8 + file
-//   rank 0 = row 8 (black back rank, top of display)
-//   rank 7 = row 1 (white back rank, bottom of display)
-//   file 0 = a-file (left), file 7 = h-file (right)
-//
-// Piece encoding: positive = white, negative = black, 0 = empty
-//   abs(piece) gives piece type (PAWN=1..KING=6)
-// ============================================================================
+/// @brief The chess board state plus incrementally-maintained Zobrist hash.
 class Board {
     expose Boolean whiteToMove;
     expose Integer enPassantFile;   // -1 = no en passant, 0-7 = file
@@ -84,6 +106,7 @@ class Board {
     hide List[Integer] zkCastle;    // [0..3] CR_WK/WQ/BK/BQ
     hide List[Integer] zkEP;        // [0..7] en passant file
 
+    /// @brief Initialize Zobrist keys then deal the starting position.
     expose func init() {
         self.initZobrist();
         self.setupStartPosition();
@@ -96,10 +119,13 @@ class Board {
     // -----------------------------------------------------------------------
     hide List[Integer] sq;
 
+    /// @brief Read the piece at square index 0..63 (or 0 for empty).
     expose func get(index: Integer) -> Integer {
         return self.sq.get(index);
     }
 
+    /// @brief Set the piece at index. Maintains Zobrist hash by XORing
+    ///        out the old piece's key and XORing in the new one.
     expose func set(index: Integer, piece: Integer) {
         var old = self.sq.get(index);
         if old != 0 {
@@ -111,6 +137,8 @@ class Board {
         }
     }
 
+    /// @brief Map a signed piece value to its 0..11 Zobrist key slot.
+    /// @details 0..5 = white PAWN..KING; 6..11 = black PAWN..KING.
     hide func pieceSlot(piece: Integer) -> Integer {
         // Returns 0-5 for white pieces (type 1-6), 6-11 for black pieces
         if piece > 0 {
@@ -122,6 +150,10 @@ class Board {
     // -----------------------------------------------------------------------
     // Zobrist hash initialization
     // -----------------------------------------------------------------------
+    /// @brief Build the Zobrist key tables with a deterministic LCG.
+    /// @details 768 piece keys (64 squares × 12 piece slots) + 1 side
+    ///          key + 4 castle keys + 8 en-passant keys. Deterministic
+    ///          seed makes hashes comparable across runs.
     hide func initZobrist() {
         self.zkPieces = [];
         self.zkSide = [];
@@ -149,6 +181,8 @@ class Board {
     // -----------------------------------------------------------------------
     // Starting position setup
     // -----------------------------------------------------------------------
+    /// @brief Reset to the standard chess starting position.
+    /// @note Both castle rights ON for both sides; white to move.
     expose func setupStartPosition() {
         self.sq = [];
         for i in 0..64 {
@@ -192,6 +226,7 @@ class Board {
     // -----------------------------------------------------------------------
     // Hash accessors — used by transposition table and repetition detection
     // -----------------------------------------------------------------------
+    /// @brief Current Zobrist hash. Used as a TT key + repetition signature.
     expose func getHash() -> Integer {
         return self.hashVal;
     }
@@ -199,6 +234,15 @@ class Board {
     // -----------------------------------------------------------------------
     // Apply a move and return undo info
     // -----------------------------------------------------------------------
+    /// @brief Apply a move and return UndoInfo for unmakeMove.
+    /// @details Six concerns are handled in sequence:
+    ///   1. Snapshot pre-move state into UndoInfo.
+    ///   2. XOR out the old en-passant + castle hash bits.
+    ///   3. Move the piece (handling promotion + en-passant capture).
+    ///   4. Move the rook for castling.
+    ///   5. Set new en-passant file on a double pawn push.
+    ///   6. Update castle rights, half-move clock, full-move counter,
+    ///      flip side-to-move, and re-XOR the new hash bits.
     expose func makeMove(move: Move) -> UndoInfo {
         var undo = new UndoInfo(self.enPassantFile, self.castleWK, self.castleWQ,
                                self.castleBK, self.castleBQ, self.halfMoveClock, move.to);
@@ -298,6 +342,9 @@ class Board {
     // -----------------------------------------------------------------------
     // Undo a move using saved UndoInfo
     // -----------------------------------------------------------------------
+    /// @brief Reverse a move using its UndoInfo. Restores all per-move
+    ///        state and the Zobrist hash (recomputed from scratch for
+    ///        simplicity).
     expose func unmakeMove(move: Move, undo: UndoInfo) {
         // Flip side back
         self.whiteToMove = !self.whiteToMove;
@@ -353,6 +400,10 @@ class Board {
     // Recompute Zobrist hash from current board state
     // Used after unmakeMove for correctness
     // -----------------------------------------------------------------------
+    /// @brief Rebuild Zobrist hash from current board state.
+    /// @note Called by unmakeMove instead of trying to reverse-XOR
+    ///       every change. O(64) but simpler — and unmake is far less
+    ///       hot than make.
     hide func recomputeHash() {
         self.hashVal = 0;
         for i in 0..64 {
@@ -374,11 +425,13 @@ class Board {
     // -----------------------------------------------------------------------
     // Helper: extract piece type (always positive)
     // -----------------------------------------------------------------------
+    /// @brief Strip the colour sign from a piece value (always 1..6).
     expose func pieceType(piece: Integer) -> Integer {
         if piece > 0 { return piece; }
         return -piece;
     }
 
+    /// @brief True if `piece` is a white piece (positive value).
     expose func isWhitePiece(piece: Integer) -> Boolean {
         return piece > 0;
     }
@@ -386,6 +439,7 @@ class Board {
     // -----------------------------------------------------------------------
     // Find a king's square
     // -----------------------------------------------------------------------
+    /// @brief Linear search for the king of the given side, or -1 if none.
     expose func kingSquare(white: Boolean) -> Integer {
         var target = config.KING;
         if !white { target = -config.KING; }
@@ -398,6 +452,9 @@ class Board {
     // -----------------------------------------------------------------------
     // Copy the board (deep copy for AI search)
     // -----------------------------------------------------------------------
+    /// @brief Deep copy. Used for AI search positions, side-by-side
+    ///        comparisons, etc. Zobrist key tables are SHARED (same
+    ///        reference) — they're immutable after construction.
     expose func copy() -> Board {
         var b = new Board();
         b.sq = [];

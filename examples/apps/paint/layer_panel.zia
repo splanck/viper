@@ -1,3 +1,22 @@
+// ============================================================================
+// MODULE: layer_panel (LayerPanel)
+// PURPOSE: Rendered list of document layers with selection + visibility
+//          toggling. Top-down visual order (top layer drawn first) so
+//          it matches what the user sees composited on the canvas.
+//
+// KEY-DESIGN-CHOICES:
+//   * TOP-DOWN RENDER. Panel draws layers from (count-1) down to 0
+//     — the topmost visible layer appears at the top of the panel.
+//     This matches user mental model: "top of the panel = top of
+//     the stack = drawn last".
+//   * LEFT-CLICK = SELECT, RIGHT-CLICK = TOGGLE VISIBILITY. Keeps
+//     both primary interactions in one panel without a hover menu.
+//   * ELLIPSIS LABEL TRUNCATION. Layer names that don't fit in the
+//     available width get truncated with "." Math clamps the
+//     maxChars count down to 4 so extremely narrow panels don't
+//     crash with negative lengths.
+// ============================================================================
+
 // layer_panel.zia - Layer list rendering and interaction for Paint
 module layer_panel;
 
@@ -7,6 +26,7 @@ bind Str = Viper.String;
 bind "./canvas";
 bind "./config";
 
+/// @brief Layer-list sidebar with click-to-select + right-click-visibility.
 class LayerPanel {
     expose Integer x;
     expose Integer y;

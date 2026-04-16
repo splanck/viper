@@ -85,7 +85,7 @@ Single-line text input field.
 
 | Method                       | Signature          | Description              |
 |------------------------------|--------------------|--------------------------|
-| `SetText(text)`              | `Void(String)`     | Set input text           |
+| `SetText(text)`              | `Void(String)`     | Set input text without firing the user-edit change callback |
 | `SetPlaceholder(text)`       | `Void(String)`     | Set placeholder text     |
 | `SetFont(font, size)`        | `Void(Font, Double)`| Set font and size       |
 

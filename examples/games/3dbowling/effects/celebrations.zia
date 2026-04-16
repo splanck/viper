@@ -1,3 +1,28 @@
+// ============================================================================
+// MODULE: celebrations (CelebrationManager)
+// PURPOSE: Owns post-roll celebration overlay state: pick a type
+//          (strike / spare / turkey / gutter / perfect), pulse a screen
+//          flash, paint a centred message with shadow, time it out.
+//
+// WHERE-THIS-FITS: BowlingGame triggers a celebration after each roll
+//          (onStrike / onSpare / etc.) based on the scoring outcome.
+//          update() ticks the timer; draw() paints the overlay each
+//          frame.
+//
+// KEY-DESIGN-CHOICES:
+//   * STRIKE STREAK. consecutive strikes promote STRIKE → TURKEY at
+//     count 3+. Other rolls reset the streak.
+//   * FLASH + MESSAGE. flashTimer pulses a translucent rectangle
+//     across the top + bottom of the screen for the first 0.3 s of
+//     the celebration; the message itself stays for the full
+//     duration.
+//   * PERFECT GAME OVERRIDE. onPerfectGame fires regardless of streak;
+//     it's the rarest celebration so it gets the longest duration
+//     (CELEBRATE_PERFECT_DURATION).
+//   * SUB-MESSAGES. Turkey shows the streak count; perfect adds
+//     "Flawless Victory!" — extra context without extra state.
+// ============================================================================
+
 // celebrations.zia — Strike/spare/turkey/gutter/perfect celebrations
 // Screen flash, message sequences, timed state machine
 module celebrations;
@@ -13,6 +38,7 @@ var TURKEY: Integer = 3;
 var GUTTER: Integer = 4;
 var PERFECT: Integer = 5;
 
+/// @brief Strike / spare / turkey / gutter / perfect overlay state machine.
 class CelebrationManager {
     hide Integer activeType;
     hide Float timer;
@@ -23,6 +49,7 @@ class CelebrationManager {
     // Streak tracking
     hide Integer strikeStreak;
 
+    /// @brief Initialize with no active celebration.
     expose func initCelebrations() {
         activeType = NONE;
         timer = 0.0;
@@ -34,6 +61,7 @@ class CelebrationManager {
 
     // ─── Trigger Celebrations ───
 
+    /// @brief Strike just rolled. Bumps streak, picks STRIKE or TURKEY.
     expose func onStrike() {
         strikeStreak = strikeStreak + 1;
 
@@ -44,24 +72,29 @@ class CelebrationManager {
         }
     }
 
+    /// @brief Spare just rolled. Resets streak.
     expose func onSpare() {
         strikeStreak = 0;
         triggerCelebration(SPARE, "SPARE!", config.HUD_COLOR_GREEN, config.CELEBRATE_SPARE_DURATION);
     }
 
+    /// @brief Gutter ball. Resets streak.
     expose func onGutter() {
         strikeStreak = 0;
         triggerCelebration(GUTTER, "GUTTER BALL", config.HUD_COLOR_GRAY, config.CELEBRATE_GUTTER_DURATION);
     }
 
+    /// @brief Perfect 300 game — longest celebration (5 s by default).
     expose func onPerfectGame() {
         triggerCelebration(PERFECT, "PERFECT GAME! 300!", config.HUD_COLOR_GOLD, config.CELEBRATE_PERFECT_DURATION);
     }
 
+    /// @brief Frame closed open (no spare/strike). Resets streak.
     expose func onOpenFrame() {
         strikeStreak = 0;
     }
 
+    /// @brief Activate a celebration with the given type/message/colour/duration.
     hide func triggerCelebration(ctype: Integer, msg: String, color: Integer, duration: Float) {
         activeType = ctype;
         timer = duration;
@@ -72,6 +105,7 @@ class CelebrationManager {
 
     // ─── Update ───
 
+    /// @brief Per-frame timer tick. @return true when celebration ends.
     expose func update(dt: Float) -> Boolean {
         if (active == false) { return true; }
 
@@ -90,10 +124,12 @@ class CelebrationManager {
 
     // ─── Queries ───
 
+    /// @brief True while a celebration is in progress.
     expose func isActive() -> Boolean {
         return active;
     }
 
+    /// @brief Display string for the active celebration type.
     expose func getMessage() -> String {
         if (activeType == STRIKE) { return "STRIKE!"; }
         if (activeType == SPARE) { return "SPARE!"; }
@@ -103,28 +139,34 @@ class CelebrationManager {
         return "";
     }
 
+    /// @brief Active message colour.
     expose func getMessageColor() -> Integer {
         return messageColor;
     }
 
+    /// @brief Active celebration type ID.
     expose func getType() -> Integer {
         return activeType;
     }
 
+    /// @brief True during the screen-flash phase.
     expose func isFlashing() -> Boolean {
         return flashTimer > 0.0;
     }
 
+    /// @brief Current flash overlay alpha (decays to 0 over flashTimer).
     expose func getFlashAlpha() -> Float {
         if (flashTimer <= 0.0) { return 0.0; }
         return config.CELEBRATE_FLASH_ALPHA * (flashTimer / config.CELEBRATE_FLASH_DURATION);
     }
 
+    /// @brief Current consecutive-strike count.
     expose func getStrikeStreak() -> Integer {
         return strikeStreak;
     }
 
-    // Draw celebration overlay (called after End, before Flip)
+    /// @brief Render flash bands + center message + sub-message.
+    /// @note Called between Canvas3D.End and Canvas3D.Flip.
     expose func draw(canvas: Canvas3D, screenW: Integer, screenH: Integer) {
         if (active == false) { return; }
 

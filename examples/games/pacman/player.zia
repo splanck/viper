@@ -1,3 +1,25 @@
+// ============================================================================
+// MODULE: player (PacMan)
+// PURPOSE: The player avatar. Owns grid coords, sub-tile screen coords,
+//          current and queued directions, life count, mouth animation
+//          timer. Moves one pixel per frame times actor speed; at tile
+//          centers it commits the queued direction if legal.
+//
+// KEY-DESIGN-CHOICES:
+//   * TWO DIRECTIONS. `direction` is the current travel vector;
+//     `nextDirection` is what the player has most recently pressed.
+//     At each tile center we try to commit nextDirection; if the
+//     chosen tile is wall, we keep the existing direction. This is
+//     the "cornering" behaviour that lets players queue a turn
+//     before reaching the intersection.
+//   * PIXEL MOVEMENT AT 8 FRAMES/TILE. PACMAN_SPEED = 3 px/frame on
+//     a 24 px tile = 8 frames to cross one tile. Tile-center
+//     detection via isAtTileCenter() from utils.
+//   * ANIMATION. Mouth-open/closed sprite cycles driven by a Timer
+//     at a constant tick rate — separate from movement so animation
+//     speed doesn't change with actor speed.
+// ============================================================================
+
 // =============================================================================
 // CRACKMAN - Player Entity
 // =============================================================================
@@ -20,6 +42,7 @@ bind "./ui/sprites";
 // CRACKMAN ENTITY - The player character
 // =============================================================================
 
+/// @brief Player character. Tile-aligned movement + mouth animation.
 class PacMan {
     hide Integer gridX;
     hide Integer gridY;

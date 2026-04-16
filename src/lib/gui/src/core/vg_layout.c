@@ -203,11 +203,11 @@ static void vbox_arrange(vg_widget_t *self, float x, float y, float width, float
     int visible_count = 0;
 
     VG_FOREACH_VISIBLE_CHILD(self, child) {
+        total_fixed += child->layout.margin_top + child->layout.margin_bottom;
         if (child->layout.flex > 0) {
             total_flex += child->layout.flex;
         } else {
-            total_fixed +=
-                child->measured_height + child->layout.margin_top + child->layout.margin_bottom;
+            total_fixed += child->measured_height;
         }
         visible_count++;
     }
@@ -380,11 +380,11 @@ static void hbox_arrange(vg_widget_t *self, float x, float y, float width, float
     int visible_count = 0;
 
     VG_FOREACH_VISIBLE_CHILD(self, child) {
+        total_fixed += child->layout.margin_left + child->layout.margin_right;
         if (child->layout.flex > 0) {
             total_flex += child->layout.flex;
         } else {
-            total_fixed +=
-                child->measured_width + child->layout.margin_left + child->layout.margin_right;
+            total_fixed += child->measured_width;
         }
         visible_count++;
     }

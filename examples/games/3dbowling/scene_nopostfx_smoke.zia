@@ -10,6 +10,14 @@ bind "./lane/lane";
 bind "./lane/pins";
 bind "./lane/ball";
 
+// ============================================================================
+// MODULE: scene_nopostfx_smoke
+// PURPOSE: Headless "render a scene without post-FX, save a PNG,
+//          exit" variant of smoke_probe. Used to regression-test
+//          the bare scene output independent of the post-FX chain.
+// ============================================================================
+
+/// @brief Capture one post-FX-disabled screenshot; print RESULT: ok.
 func main() {
     var render = new Renderer();
     render.initRenderer(config.QUALITY_CINEMATIC);

@@ -1,3 +1,10 @@
+// ============================================================================
+// MODULE: ui/sprite_entities
+// PURPOSE: Build the four-way directional sprites for the player
+//          (Pac-Man open/closed-mouth animations) and ghosts (chase /
+//          frightened / flashing / eaten eye-only variants).
+// ============================================================================
+
 module sprite_entities;
 
 bind Viper.Graphics;
@@ -7,6 +14,8 @@ bind "../config";
 bind "./theme";
 bind "./sprite_support";
 
+/// @brief Punch a transparent disc into `px` (used to sculpt the
+///        Pac-Man mouth wedge).
 hide func carveDisc(px: Pixels, cx: Integer, cy: Integer, radius: Integer) {
     var clear = Color.RGBA(0, 0, 0, 0);
     for y in cy - radius..cy + radius + 1 {

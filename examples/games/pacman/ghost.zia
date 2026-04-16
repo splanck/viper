@@ -1,3 +1,27 @@
+// ============================================================================
+// MODULE: ghost (Ghost)
+// PURPOSE: Enemy AI with the classic four-ghost target personalities.
+//          Owns a mode (chase/scatter/frightened/eaten), targeting
+//          strategy, frightened-mode countdown + flash timer,
+//          scatter-corner target.
+//
+// KEY-DESIGN-CHOICES:
+//   * FOUR GHOST AI. Blinky targets the player directly; Pinky targets
+//     4 tiles ahead; Inky uses Blinky's position as a reference point
+//     (most complex); Clyde targets the player when far, scatter
+//     corner when close. This is the canonical Pac-Man ghost
+//     behaviour set.
+//   * MODE STATE MACHINE. CHASE ↔ SCATTER on a timer (the "chase/
+//     scatter cycle"); CHASE → FRIGHTENED when the player eats a
+//     power pellet; FRIGHTENED → EATEN when the player eats a
+//     frightened ghost; EATEN → CHASE after the ghost pathfinds back
+//     to the ghost house and respawns.
+//   * TARGET-TILE LOOKUP. At each tile center, the ghost picks the
+//     neighbour tile closest (manhattan) to its target — but can't
+//     reverse direction unless forced. This is what produces the
+//     arcade's distinctive "ghost never backtracks" behaviour.
+// ============================================================================
+
 // =============================================================================
 // CRACKMAN - Ghost Entity
 // =============================================================================
@@ -27,6 +51,7 @@ final GHOST_CLYDE = 3;   // Orange - targets Crackman when far, scatter when clo
 // GHOST ENTITY - Enemy characters with AI
 // =============================================================================
 
+/// @brief Enemy ghost with classic four-personality AI.
 class Ghost {
     hide Integer gridX;
     hide Integer gridY;

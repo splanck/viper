@@ -1,3 +1,15 @@
+// ============================================================================
+// MODULE: ui/renderer
+// PURPOSE: All rendering for the Crackman UI: background star field,
+//          maze tiles + collectibles, player / ghost sprites, HUD
+//          (score, level, lives, fruit ribbon), side panel (XP/rank/
+//          contracts), menu, pause overlay, game-over card, results
+//          summary.
+//
+// WHERE-THIS-FITS: Called each frame from game.zia with the current
+//          game state. Stateless besides tick-based animation phase.
+// ============================================================================
+
 module renderer;
 
 bind Viper.Graphics;

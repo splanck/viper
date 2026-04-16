@@ -1,3 +1,12 @@
+// ============================================================================
+// MODULE: handle_canvas_probe
+// PURPOSE: Scripted tool-dispatch probe. Builds a ProbeApp with the real
+//          PencilTool + BrushTool, simulates pseudo-mouse events
+//          (press, move, release) directly, and asserts the canvas
+//          ends up with the expected amount of ink. Exercises the
+//          exact code path the main app uses — without a real mouse.
+// ============================================================================
+
 module handle_canvas_probe;
 
 bind Viper.Terminal;
@@ -8,6 +17,7 @@ bind "./brush";
 bind "./tools/pencil";
 bind "./tools/brush";
 
+/// @brief Count non-white pixels (same helper as other probes).
 func countInk(dc: DrawingCanvas) -> Integer {
     var count = 0;
     var y = 0;
@@ -24,6 +34,7 @@ func countInk(dc: DrawingCanvas) -> Integer {
     return count;
 }
 
+/// @brief Scripted probe app — same subsystems as PaintApp but no window.
 class ProbeApp {
     hide DrawingCanvas canvas;
     hide ColorManager colors;

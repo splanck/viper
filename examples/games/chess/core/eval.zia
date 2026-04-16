@@ -4,15 +4,37 @@ bind "./config";
 bind "./board";
 
 // ============================================================================
-// Evaluator — material balance + piece-square tables.
+// MODULE: eval
+// PURPOSE: Static board evaluation. Combines material balance (centipawn
+//          values) with piece-square tables (PSTs) that nudge pieces
+//          toward strategically good squares.
 //
-// Score is from White's perspective (positive = White winning).
-// Each piece earns its material value plus a positional bonus from PST tables.
+// WHERE-THIS-FITS: Called by ChessAI from leaf nodes of the negamax
+//          search and from the quiescence search's stand-pat. Pure
+//          function — no internal state.
 //
-// PSTs use standard values from well-known chess engine literature.
-// White piece ranks are mirrored: index = (7 - rank) * 8 + file for white,
-// index = rank * 8 + file for black.
+// KEY-DESIGN-CHOICES:
+//   * SCORE FROM WHITE'S PERSPECTIVE. `evaluate` returns positive when
+//     White has the edge. The AI flips sign for negamax when needed
+//     (`staticEval` in ai.zia).
+//   * PIECE-SQUARE TABLES. Each piece type has a 64-entry table giving
+//     a positional bonus for being on that square. Values are taken
+//     from standard chess engine literature (e.g., the canonical
+//     "centipede" engine). The tables encode classic principles: pawns
+//     advance toward promotion, knights avoid the rim, bishops want
+//     diagonals, rooks want open files / 7th rank, kings hide behind
+//     pawns in the middlegame and become active in the endgame.
+//   * MIRRORED INDEXING. The PSTs are written from Black's perspective
+//     (rank 0 at the top). For a white piece on square `sq`, we mirror
+//     the rank: `pstIdx = (7 - rank) * 8 + file`. This lets a single
+//     table serve both colours.
+//   * SEPARATE KING MIDDLE / ENDGAME PSTS. `pstKingMid` rewards
+//     hiding; `pstKingEnd` rewards centralising. The current
+//     `pstBonus` only consults `pstKingMid` — switching dynamically
+//     based on remaining material is left as a learning exercise.
 // ============================================================================
+
+/// @brief Material + PST evaluator. Score in centipawns, White-positive.
 class Evaluator {
     // Piece-square tables (64 integers each, in display order: rank 0 = top)
     hide List[Integer] pstPawn;
@@ -23,6 +45,7 @@ class Evaluator {
     hide List[Integer] pstKingMid;
     hide List[Integer] pstKingEnd;
 
+    /// @brief Initialize the PST tables. One-time cost at construction.
     expose func init() {
         initPSTs();
     }
@@ -31,6 +54,10 @@ class Evaluator {
     // Main evaluation entry point.
     // Returns score in centipawns from White's perspective.
     // -------------------------------------------------------------------------
+    /// @brief Score the position in centipawns from White's perspective.
+    /// @details Walks every square; for each occupied square, adds the
+    ///          piece's material value plus its PST bonus. White
+    ///          contributes positively; black contributes negatively.
     expose func evaluate(b: Board) -> Integer {
         var score = 0;
         for sq in 0..64 {
@@ -62,6 +89,7 @@ class Evaluator {
         return score;
     }
 
+    /// @brief Centipawn value of a piece type (PAWN..KING).
     expose func materialValue(type_: Integer) -> Integer {
         if type_ == PAWN   { return VAL_PAWN;   }
         if type_ == KNIGHT { return VAL_KNIGHT; }
@@ -72,6 +100,7 @@ class Evaluator {
         return 0;
     }
 
+    /// @brief PST positional bonus for a piece type at a mirrored index.
     hide func pstBonus(type_: Integer, idx: Integer) -> Integer {
         if type_ == PAWN   { return pstPawn.get(idx);   }
         if type_ == KNIGHT { return pstKnight.get(idx); }
@@ -88,6 +117,11 @@ class Evaluator {
     // Values in centipawns added to (or subtracted from) material score.
     // Positive = square is good for that piece color.
     // -------------------------------------------------------------------------
+    /// @brief Populate the seven 64-entry piece-square tables.
+    /// @details Values are in centipawns. The `pstKingEnd` table is
+    ///          allocated but not currently consulted — extending
+    ///          `pstBonus` to switch on remaining material is a great
+    ///          next step for anyone learning chess engines.
     hide func initPSTs() {
         // --- PAWN ---
         // Encourage center pawns to advance; penalize edge pawns.

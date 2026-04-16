@@ -346,6 +346,35 @@ static void test_widget_set_position_marks_widget_dirty(void) {
     printf("test_widget_set_position_marks_widget_dirty: PASSED\n");
 }
 
+static void test_tabbar_close_click_index_survives_auto_close(void) {
+    vg_tabbar_t *tabbar = vg_tabbar_create(NULL);
+    assert(tabbar);
+
+    vg_tab_t *tab = vg_tabbar_add_tab(tabbar, "main.zia", true);
+    assert(tab);
+    tabbar->base.x = 0.0f;
+    tabbar->base.y = 0.0f;
+    tabbar->base.width = 200.0f;
+    tabbar->base.height = tabbar->tab_height;
+
+    vg_event_t click = {0};
+    click.type = VG_EVENT_MOUSE_DOWN;
+    click.mouse.x = 180.0f;
+    click.mouse.y = tabbar->tab_height / 2.0f;
+    click.mouse.screen_x = click.mouse.x;
+    click.mouse.screen_y = click.mouse.y;
+    assert(vg_event_send(&tabbar->base, &click));
+
+    assert(tabbar->tab_count == 0);
+    assert(rt_tabbar_was_close_clicked(tabbar) == 1);
+    assert(rt_tabbar_get_close_clicked_index(tabbar) == 0);
+    assert(rt_tabbar_was_close_clicked(tabbar) == 0);
+    assert(rt_tabbar_get_close_clicked_index(tabbar) == -1);
+
+    vg_widget_destroy(&tabbar->base);
+    printf("test_tabbar_close_click_index_survives_auto_close: PASSED\n");
+}
+
 int main(void) {
     printf("=== GUI Runtime Regression Tests ===\n\n");
 
@@ -362,6 +391,7 @@ int main(void) {
     test_codeeditor_runtime_supports_multicursor_editing();
     test_splitpane_runtime_boolean_matches_horizontal_semantics();
     test_widget_set_position_marks_widget_dirty();
+    test_tabbar_close_click_index_survives_auto_close();
 
     printf("\nAll GUI runtime regression tests passed!\n");
     return 0;

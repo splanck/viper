@@ -1,3 +1,10 @@
+// ============================================================================
+// MODULE: ui/sprite_items
+// PURPOSE: Build the collectible-item sprites: dots, power pellets,
+//          fruits, gates, life icons. Each is a tiny Pixels buffer
+//          drawn with Discs + Boxes from the Graphics API.
+// ============================================================================
+
 module sprite_items;
 
 bind Viper.Graphics;
@@ -6,6 +13,7 @@ bind "../config";
 bind "./theme";
 bind "./sprite_support";
 
+/// @brief Build the standard dot pickup sprite (small glowing disc).
 expose func buildDotSprite() -> Pixels {
     var px = Pixels.New(config.TILE_SIZE, config.TILE_SIZE);
     var c = config.TILE_SIZE / 2;

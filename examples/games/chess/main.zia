@@ -2,9 +2,16 @@ module main;
 
 bind "./ui/game";
 
-// Entry point for the Viper Chess game.
-// Creates the ChessGame entity and starts the game loop.
+// ============================================================================
+// MODULE: main
+// PURPOSE: Program entry point. Constructs ChessGame and starts its loop.
+//
+// WHERE-THIS-FITS: Top of the dependency tree. Imported by the binary
+//          target. ChessGame.run() does not return until the user closes
+//          the window.
+// ============================================================================
 
+/// @brief Entry point. Build the ChessGame and run its main loop.
 func start() {
     var g = new ChessGame();
     g.run();

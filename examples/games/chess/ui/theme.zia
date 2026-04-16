@@ -3,6 +3,34 @@ module theme;
 bind Viper.Graphics;
 bind Color = Viper.Graphics.Color;
 
+// ============================================================================
+// MODULE: theme
+// PURPOSE: Color palette + bitmap-font loading + text rendering helpers
+//          for the chess UI. Centralises every visual constant so the
+//          look-and-feel can be tuned in one place.
+//
+// WHERE-THIS-FITS: Imported by every renderer / widget module. No state
+//          besides the lazily-loaded bitmap font cache (`bodyFont_`,
+//          `titleFont_`, `assetsReady_`).
+//
+// KEY-DESIGN-CHOICES:
+//   * NAMED COLOR CONSTANTS. Every hex value used by the renderer has a
+//     semantic name (BG_TOP, ACCENT_GOLD, HILITE_CHECK, etc.). Lets a
+//     dark-mode/light-mode switch happen by replacing this module.
+//   * LAZY FONT LOAD. `initAssets` is idempotent; called from every text
+//     helper before first use. The font lives in
+//     `examples/games/chess/assets/fonts/viper_8x8.bdf` and falls back
+//     to a path relative to the working dir for headless test runs.
+//   * SCALE FACTORS. FONT_BODY/TITLE/LABEL_SCALE control the bitmap
+//     font's integer-multiply rendering. Title text is drawn at 4×;
+//     labels at 2×; body at 1×. This gives crisp pixel-perfect text at
+//     every scale.
+//   * pulseColor. Sinusoidal-ish color pulse for "active player"
+//     indicators. Phase derived from `tickMs % periodMs` then triangle-
+//     wave normalised.
+// ============================================================================
+
+// Lazily-loaded bitmap fonts and their ready flag.
 var bodyFont_: BitmapFont = null;
 var titleFont_: BitmapFont = null;
 var assetsReady_: Boolean = false;
@@ -43,6 +71,8 @@ final FONT_BODY_SCALE  = 1;
 final FONT_TITLE_SCALE = 4;
 final FONT_LABEL_SCALE = 2;
 
+/// @brief Lazy-load the bitmap font. Idempotent — safe to call from any
+///        text helper as a precondition guard.
 func initAssets() {
     if assetsReady_ { return; }
     assetsReady_ = true;
@@ -55,16 +85,19 @@ func initAssets() {
     titleFont_ = bodyFont_;
 }
 
+/// @brief The 8×8 body font (loaded on first call).
 func bodyFont() -> BitmapFont {
     initAssets();
     return bodyFont_;
 }
 
+/// @brief Title font — same as body for now; kept distinct for future swap.
 func titleFont() -> BitmapFont {
     initAssets();
     return titleFont_;
 }
 
+/// @brief Pixel width of `text` rendered at `scale` (in body-font cells).
 func textWidth(text: String, scale: Integer) -> Integer {
     initAssets();
     if bodyFont_ != null {
@@ -73,6 +106,7 @@ func textWidth(text: String, scale: Integer) -> Integer {
     return Canvas.TextScaledWidth(text, scale);
 }
 
+/// @brief Pixel height of one line of body-font text at `scale`.
 func lineHeight(scale: Integer) -> Integer {
     initAssets();
     if bodyFont_ != null {
@@ -81,10 +115,13 @@ func lineHeight(scale: Integer) -> Integer {
     return Canvas.TextHeight() * scale;
 }
 
+/// @brief Vertically centre a single line of text in a `h`-tall rect at `y`.
 func textYInRect(y: Integer, h: Integer, scale: Integer) -> Integer {
     return y + (h - lineHeight(scale)) / 2;
 }
 
+/// @brief Draw plain (1×) text. Routes through the bitmap font if loaded,
+///        else the canvas's built-in text renderer.
 func drawText(canvas: Canvas, x: Integer, y: Integer, text: String, color: Integer) {
     initAssets();
     if bodyFont_ != null {
@@ -94,6 +131,7 @@ func drawText(canvas: Canvas, x: Integer, y: Integer, text: String, color: Integ
     canvas.Text(x, y, text, color);
 }
 
+/// @brief Draw text with integer scaling (1 = native, 2 = 2×, etc.).
 func drawTextScaled(canvas: Canvas, x: Integer, y: Integer, text: String, scale: Integer, color: Integer) {
     initAssets();
     if bodyFont_ != null {
@@ -103,24 +141,33 @@ func drawTextScaled(canvas: Canvas, x: Integer, y: Integer, text: String, scale:
     canvas.TextScaled(x, y, text, scale, color);
 }
 
+/// @brief Draw `text` horizontally centred in the (x, w) span.
 func drawTextCentered(canvas: Canvas, x: Integer, y: Integer, w: Integer, text: String, scale: Integer, color: Integer) {
     var tx = x + (w - textWidth(text, scale)) / 2;
     drawTextScaled(canvas, tx, y, text, scale, color);
 }
 
+/// @brief Draw `text` right-aligned within the (x, w) span.
 func drawTextRight(canvas: Canvas, x: Integer, y: Integer, w: Integer, text: String, scale: Integer, color: Integer) {
     var tx = x + w - textWidth(text, scale);
     drawTextScaled(canvas, tx, y, text, scale, color);
 }
 
+/// @brief Lighten an RGB color by `amount` (0..255).
 func brighten(color: Integer, amount: Integer) -> Integer {
     return Color.Brighten(color, amount);
 }
 
+/// @brief Darken an RGB color by `amount` (0..255).
 func darken(color: Integer, amount: Integer) -> Integer {
     return Color.Darken(color, amount);
 }
 
+/// @brief Triangle-wave color pulse for "active" indicators.
+/// @details Maps `tickMs` to a triangle wave with period `periodMs`,
+///          then brightens `base` by up to `bright` units. Phase is
+///          unsynchronised across players so independent indicators
+///          don't pulse in lockstep.
 func pulseColor(base: Integer, bright: Integer, tickMs: Integer, periodMs: Integer) -> Integer {
     if periodMs <= 0 { return base; }
     var phase = (tickMs % periodMs) * 255 / periodMs;

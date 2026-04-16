@@ -1,3 +1,11 @@
+// ============================================================================
+// MODULE: runtime_features_probe
+// PURPOSE: Non-GUI regression test for the DrawingCanvas + HistoryManager
+//          + layer API. Validates undo/redo snapshots, layer add/remove/
+//          duplicate, visibility toggling, layer move, and the applyInvert
+//          image operation — all without a window.
+// ============================================================================
+
 // runtime_features_probe.zia - Non-GUI smoke coverage for Paint runtime helpers
 module runtime_features_probe;
 
@@ -7,6 +15,7 @@ bind Viper.Terminal;
 bind "./canvas";
 bind "./history";
 
+/// @brief Probe entry point. Exercises canvas + history + layers.
 func main() {
     var doc = new canvas.DrawingCanvas();
     doc.initWithSize(8, 8);

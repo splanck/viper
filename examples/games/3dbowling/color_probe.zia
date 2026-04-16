@@ -3,6 +3,20 @@ module color_probe;
 bind Viper.Graphics3D;
 bind Viper.Terminal as Terminal;
 
+// ============================================================================
+// MODULE: color_probe
+// PURPOSE: Quickest-possible Canvas3D test. Paints an 8-swatch 2D grid
+//          (R / G / B / cyan / magenta / yellow / white / gray) and
+//          polls until the window closes. Used to verify the 3D
+//          backend's 2D-draw primitive produces the expected
+//          colors.
+//
+// WHERE-THIS-FITS: Bring-up tool — not part of the main game. If the
+//          game renders wrong, running this first bisects "is the
+//          backend OK?" from "is the game's scene setup wrong?".
+// ============================================================================
+
+/// @brief Paint 8 color swatches; loop until window close.
 func main() {
     var canvas = Canvas3D.New("Color Probe", 800, 600);
 

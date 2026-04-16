@@ -1,8 +1,15 @@
+// ============================================================================
+// MODULE: gfx_test (minimum graphics test)
+// PURPOSE: Smallest-possible graphics check: just create a Canvas and
+//          let the program exit. Catches "does window creation work at
+//          all?" before touching anything else.
+// ============================================================================
+
 module gfx_test;
 
 bind Viper.Graphics;
 
-// Very minimal graphics test - just create and destroy a canvas
+/// @brief Open a window, exit immediately.
 func main() {
     var canvas = Canvas.New("Test", 100, 100);
     // Just create and immediately exit

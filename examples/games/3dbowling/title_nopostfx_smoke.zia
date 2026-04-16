@@ -11,6 +11,14 @@ bind "./lane/lane";
 bind "./lane/pins";
 bind "./lane/ball";
 
+// ============================================================================
+// MODULE: title_nopostfx_smoke
+// PURPOSE: Headless "render title screen without post-FX, save a
+//          PNG, exit" variant. CI uses it to regression-test the
+//          bare title output.
+// ============================================================================
+
+/// @brief Capture one title-screen screenshot (no post-FX); print RESULT: ok.
 func main() {
     var render = new Renderer();
     render.initRenderer(config.QUALITY_CINEMATIC);

@@ -10,6 +10,14 @@ bind "./lane/lane";
 bind "./lane/pins";
 bind "./lane/ball";
 
+// ============================================================================
+// MODULE: title_nopostfx_probe
+// PURPOSE: Interactive title-screen preview with post-FX OFF. Scene
+//          rendered behind the title card so the menu's backdrop is
+//          visually verifiable independent of post-FX quirks.
+// ============================================================================
+
+/// @brief Loop the title screen with post-FX off until window closes.
 func main() {
     var render = new Renderer();
     render.initRenderer(config.QUALITY_CINEMATIC);

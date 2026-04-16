@@ -1,3 +1,17 @@
+// ============================================================================
+// MODULE: fill (FillTool)
+// PURPOSE: Single-click flood fill. Not a drag tool — onMouseDown fires
+//          canvas.floodFill and the tool is instantly done.
+//
+// KEY-DESIGN-CHOICES:
+//   * INSTANT (not drag). isDrawing always returns 0; there's no
+//     preview phase. A flood fill is a one-shot operation that
+//     completes before onMouseUp fires.
+//   * ALL THE WORK IS IN canvas.floodFill. The tool is a thin
+//     dispatch layer; the actual scanline-fill algorithm lives in
+//     DrawingCanvas.
+// ============================================================================
+
 // fill.viper - Fill (flood fill) tool for Viper Paint
 module fill;
 
@@ -5,7 +19,7 @@ bind "../config";
 bind "../canvas";
 bind "../colors";
 
-// FillTool - flood fills an area with the foreground color
+/// @brief Instant flood-fill tool (click to fill connected region).
 class FillTool {
     expose func init() {
         // No state needed

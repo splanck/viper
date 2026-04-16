@@ -1,8 +1,16 @@
+// ============================================================================
+// MODULE: palette_probe
+// PURPOSE: Asserts ColorManager's 64-entry palette initializes correctly.
+//          Prints counts + first/last colors + checksum for CI to diff
+//          against a golden value.
+// ============================================================================
+
 module palette_probe;
 
 bind Viper.Terminal;
 bind "./colors";
 
+/// @brief Print palette summary (count, non-zero cells, a few samples, sum).
 func main() {
     var cm = new ColorManager();
     var i = 0;

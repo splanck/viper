@@ -1,3 +1,23 @@
+// ============================================================================
+// MODULE: frontend (FrontendController)
+// PURPOSE: Owns all non-gameplay screens: main menu, options, high-
+//          scores, profile (achievements + rank), post-run summary.
+//          Returns FRONTEND_EVENT_* codes to Game so the top-level
+//          state machine can dispatch.
+//
+// KEY-DESIGN-CHOICES:
+//   * VIPER.GAME.BUTTONGROUP. Each menu screen uses a ButtonGroup
+//     for exclusive-selection + wraparound navigation. The group
+//     handles arrow / D-pad input; the controller just maps the
+//     selected index to a FRONTEND_EVENT_*.
+//   * SHARED BACKING. The frontend shares the same SoundManager,
+//     Settings, and Progression with Session so music/stats stay
+//     live across mode transitions.
+//   * EVENT-RETURN ARCHITECTURE. Same pattern as Session —
+//     update() returns a FRONTEND_EVENT_* to request a screen
+//     change, keeping the state machine explicit.
+// ============================================================================
+
 module frontend;
 
 bind Viper.Graphics;
@@ -18,6 +38,7 @@ final FRONTEND_EVENT_OPEN_HIGHSCORES = 4;
 final FRONTEND_EVENT_BACK_TO_MENU = 5;
 final FRONTEND_EVENT_OPEN_PROFILE = 6;
 
+/// @brief Non-gameplay screens (menu / options / high scores / profile).
 class FrontendController {
     hide Canvas canvas;
     hide sound.SoundManager sfx;

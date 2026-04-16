@@ -1,3 +1,28 @@
+// ============================================================================
+// MODULE: ui/sprites
+// PURPOSE: Central sprite cache. Delegates actual rendering to four sub-
+//          modules (sprite_maze / sprite_items / sprite_entities /
+//          sprite_support) and caches the generated Pixels buffers so
+//          the renderer blits them repeatedly without re-rasterizing.
+//
+// WHERE-THIS-FITS: UI sub-tree. The renderer calls getPacman /
+//          getGhost / getFruit / getDot / etc.; builds happen lazily
+//          on first request via ensureStorage().
+//
+// KEY-DESIGN-CHOICES:
+//   * PRE-RENDER THEN BLIT. Sprites are procedurally generated into
+//     Pixels buffers once. Each frame the renderer calls
+//     Canvas.BlitAlpha — dramatically faster than re-running the draw
+//     calls per frame.
+//   * FOUR-WAY SPRITE SETS. Players and ghosts have 4 direction
+//     variants stored as an indexed list keyed by DIR_RIGHT / LEFT /
+//     UP / DOWN. Ghost sets further split by mode (chase /
+//     frightened / frightened-flash / eaten).
+//   * LAZY STORAGE. storageReady_ guard + ensureStorage() lets the
+//     module be imported cheaply; actual sprite generation only
+//     fires on first use.
+// ============================================================================
+
 module sprites;
 
 bind Viper.Graphics;

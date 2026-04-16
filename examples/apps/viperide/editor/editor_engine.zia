@@ -1,21 +1,51 @@
 module editor_engine;
 
 bind "../core/document";
-bind Viper.GUI as GUI;// ============================================================================
-// EditorEngine — wraps the GUI.CodeEditor widget with IDE-level features
+bind Viper.GUI as GUI;
+
+// ============================================================================
+// MODULE: editor_engine
+// PURPOSE: Thin wrapper around `Viper.GUI.CodeEditor` that exposes the
+//          subset of editor operations the IDE needs and adapts cursor
+//          coordinates between the widget's 0-based convention and the
+//          1-based convention used everywhere else in the IDE.
+//
+// WHERE-THIS-FITS: One layer above the raw GUI widget. Owned by main.zia.
+//          Document load/save passes through here so cursor and scroll
+//          state can be persisted alongside the buffer.
+//
+// KEY-DESIGN-CHOICES:
+//   * 0-BASED WIDGET, 1-BASED IDE. The CodeEditor widget reports
+//     CursorLine/CursorCol as 0-based. The IDE talks 1-based everywhere
+//     (status bar, "go to line", document state). The accessor methods
+//     here add 1 on the way out so the widget detail doesn't leak.
+//   * LANGUAGE SET FROM document.language. Syntax highlighting is driven
+//     by `editor.SetLanguage(...)`. Documents store the canonical name
+//     ("zia"/"basic"/"text"); we map only the highlightable subset.
+//   * CURSOR/SCROLL RESTORE ON LoadDocument. Switching tabs reapplies
+//     the saved cursor and scroll position so the user lands where they
+//     left. SaveToDocument captures the inverse: writes editor state
+//     back to the Document record.
+//   * NULL-SAFE GETTERS. Every accessor checks `editor == null` before
+//     touching the widget. This lets the controller exist before Setup
+//     has been called (e.g., during construction order).
 // ============================================================================
 
+/// @brief Wraps a CodeEditor widget with IDE-level helpers.
 class EditorEngine {
-    expose GUI.CodeEditor editor;   // CodeEditor widget handle
-    expose Integer lastCursorLine;        // For detecting cursor changes
+    expose GUI.CodeEditor editor;   // Underlying CodeEditor widget.
+    expose Integer lastCursorLine;  // For detecting cursor changes between frames.
     expose Integer lastCursorCol;
 
+    /// @brief Initialize with no widget yet. Call Setup to attach.
     expose func init() {
         lastCursorLine = 1;
         lastCursorCol = 1;
     }
 
-    // Create the CodeEditor widget inside a parent container.
+    /// @brief Construct the CodeEditor inside `parent` and configure it.
+    /// @note Enables line numbers, fold gutter, and Flex(1.0) so the
+    ///       editor expands to fill its parent.
     expose func Setup(parent: GUI.HBox) {
         editor = GUI.CodeEditor.New(parent);
         editor.SetShowLineNumbers(1);
@@ -23,7 +53,10 @@ class EditorEngine {
         editor.SetFlex(1.0);
     }
 
-    // Load a document's content into the editor widget.
+    /// @brief Load `doc.content` into the editor and restore its cursor.
+    /// @note Maps `doc.language` to the widget's syntax-highlighting
+    ///       language tag (only "zia" and "basic" are highlighted —
+    ///       "text" leaves the widget on its default unhighlighted mode).
     expose func LoadDocument(doc: document.Document) {
         if doc == null {
             return;
@@ -31,14 +64,12 @@ class EditorEngine {
         editor.SetText(doc.content);
         editor.ClearModified();
 
-        // Set language for syntax highlighting
         if doc.language == "zia" {
             editor.SetLanguage("zia");
         } else if doc.language == "basic" {
             editor.SetLanguage("basic");
         }
 
-        // Restore cursor position
         if doc.cursorLine > 0 {
             editor.SetCursor(doc.cursorLine, doc.cursorCol);
         }
@@ -47,7 +78,10 @@ class EditorEngine {
         }
     }
 
-    // Save the editor's current state back to the document.
+    /// @brief Capture editor state into `doc` for later restore.
+    /// @note Stores the LAST KNOWN cursor coords (updated each frame by
+    ///       the main loop), not the live cursor — the live cursor would
+    ///       fight with focus changes mid-frame.
     expose func SaveToDocument(doc: document.Document) {
         if doc == null {
             return;
@@ -57,13 +91,13 @@ class EditorEngine {
         doc.cursorCol = lastCursorCol;
     }
 
-    // Navigate to a specific line.
+    /// @brief Move cursor and scroll to the given 1-based line.
     expose func GoToLine(line: Integer) {
         editor.SetCursor(line, 1);
         editor.ScrollToLine(line);
     }
 
-    // Check if the editor content has been modified.
+    /// @brief True if the editor has unsaved changes since last clear.
     expose func IsModified() -> Boolean {
         if editor == null {
             return false;
@@ -71,7 +105,7 @@ class EditorEngine {
         return editor.IsModified() != 0;
     }
 
-    // Clear the modified flag.
+    /// @brief Clear the editor's modified flag (call after save).
     expose func ClearModified() {
         if editor == null {
             return;
@@ -79,7 +113,7 @@ class EditorEngine {
         editor.ClearModified();
     }
 
-    // Get the current line count.
+    /// @brief Number of lines in the buffer.
     expose func GetLineCount() -> Integer {
         if editor == null {
             return 0;
@@ -87,7 +121,7 @@ class EditorEngine {
         return editor.LineCount;
     }
 
-    // Get the current text content.
+    /// @brief Full text of the buffer.
     expose func GetText() -> String {
         if editor == null {
             return "";
@@ -95,7 +129,7 @@ class EditorEngine {
         return editor.Text;
     }
 
-    // Set the text content.
+    /// @brief Replace the buffer contents.
     expose func SetText(text: String) {
         if editor == null {
             return;
@@ -103,12 +137,12 @@ class EditorEngine {
         editor.SetText(text);
     }
 
-    // Set the editor size.
+    /// @brief Resize the editor widget to (w, h) pixels.
     expose func SetSize(w: Integer, h: Integer) {
         editor.SetSize(w, h);
     }
 
-    // Get the current cursor line (1-based for display).
+    /// @brief Current cursor line (1-based for display in the status bar).
     expose func GetCursorLine() -> Integer {
         if editor == null {
             return 1;
@@ -116,7 +150,7 @@ class EditorEngine {
         return editor.CursorLine + 1;
     }
 
-    // Get the current cursor column (1-based for display).
+    /// @brief Current cursor column (1-based for display).
     expose func GetCursorCol() -> Integer {
         if editor == null {
             return 1;

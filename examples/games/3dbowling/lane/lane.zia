@@ -1,3 +1,38 @@
+// ============================================================================
+// MODULE: lane (LaneBuilder)
+// PURPOSE: Build and own every static element of the lane scene: the
+//          lane surface, oil pattern, pin deck, gutters, walls, room
+//          floor + side panels + ceiling, foul line, sweep bar, arrow /
+//          dot lane markers, ceiling lights, plus the matching physics
+//          bodies and trigger zones for gutter / pin-deck detection.
+//
+// WHERE-THIS-FITS: Constructed once by BowlingGame.init(). Drawn each
+//          frame via draw(). The friction model (getFrictionAt) is
+//          consulted by ball.updateMotion every physics step.
+//
+// KEY-DESIGN-CHOICES:
+//   * STATIC EVERYTHING. Every body is set_Static(true) so the physics
+//     engine treats them as immovable. The ball and pins collide with
+//     them but never push them.
+//   * INSTANCED SCENE ITEMS. Lane arrows, dots, and ceiling lights
+//     repeat with regular spacing — we batch them into
+//     InstanceBatch3D so the GPU draws all instances of each mesh in
+//     one DrawInstanced call.
+//   * THREE OIL PATTERNS. HOUSE / SPORT / DRY differ in oil length
+//     (oilEndZ) and the friction-vs-board curve. House: long oil
+//     down the centre, dry edges → easy hook. Sport: short oil, less
+//     edge differential → punishes off-line shots. Dry: minimal oil
+//     → straight-ball play.
+//   * FRICTION MODEL. getFrictionAt(x, z) computes a 2D friction value:
+//     base oiled friction along the central oiled corridor, blended
+//     to dry friction toward the edges (`boardPct² edge weighting`)
+//     and toward the back of the lane (`backend` after oilEndZ).
+//     This is what makes the hook physics feel realistic.
+//   * THREE TRIGGER VOLUMES. leftGutter/rightGutter/pinDeck sense
+//     when the ball enters those regions; BowlingGame's trigger
+//     callback flags the ball's state accordingly.
+// ============================================================================
+
 // lane.zia — Lane geometry, batching, physics surfaces, oil model, trigger zones
 module lane;
 
@@ -5,6 +40,7 @@ bind Viper.Graphics3D;
 bind Viper.Math;
 bind "../config";
 
+/// @brief Builds and owns every static lane mesh / body / trigger.
 class LaneBuilder {
     hide Mesh3D laneMesh;
     hide Mesh3D oilMesh;
@@ -83,6 +119,8 @@ class LaneBuilder {
     hide Trigger3D rightGutterTrigger;
     hide Trigger3D pinDeckTrigger;
 
+    /// @brief Build all meshes / transforms / batches / physics / triggers.
+    /// @param pattern OIL_HOUSE / OIL_SPORT / OIL_DRY (sets oilEndZ).
     expose func initLane(world: Physics3DWorld, pattern: Integer) {
         oilPattern = pattern;
         if (pattern == config.OIL_SPORT) {
@@ -101,6 +139,7 @@ class LaneBuilder {
         buildTriggers();
     }
 
+    /// @brief Build every Mesh3D + Material3D pair for the static scene.
     hide func buildMeshes() {
         var totalLen = config.LANE_LENGTH + config.LANE_APPROACH;
 
@@ -174,6 +213,7 @@ class LaneBuilder {
         Material3D.SetEmissiveColor(lightMat, 0.25, 0.23, 0.18);
     }
 
+    /// @brief Pre-compute Mat4 transforms for every static mesh.
     hide func buildTransforms() {
         var totalLen = config.LANE_LENGTH + config.LANE_APPROACH;
         laneXform = Mat4.Translate(0.0, -0.025, laneCenterZ);
@@ -209,6 +249,7 @@ class LaneBuilder {
         foulLineXform = Mat4.Translate(0.0, 0.0, 0.0);
     }
 
+    /// @brief Build instance batches for the repeating arrows / dots / lights.
     hide func buildBatches() {
         arrowBatch = InstanceBatch3D.New(arrowMesh, arrowMat);
         dotBatch = InstanceBatch3D.New(dotMesh, dotMat);
@@ -233,6 +274,7 @@ class LaneBuilder {
         }
     }
 
+    /// @brief Spawn static physics bodies for floor / gutters / walls / back.
     hide func buildPhysics(world: Physics3DWorld) {
         var totalLenHalf = (config.LANE_LENGTH + config.LANE_APPROACH) / 2.0;
         laneFloorBody = Physics3DBody.NewAABB(config.LANE_WIDTH / 2.0, 0.06, totalLenHalf, 0.0);
@@ -281,6 +323,7 @@ class LaneBuilder {
         Physics3DWorld.Add(world, backWallBody);
     }
 
+    /// @brief Spawn the three Trigger3D volumes (left/right gutter + pin deck).
     hide func buildTriggers() {
         var laneHalf = config.LANE_WIDTH / 2.0;
         var gutterInner = laneHalf - config.BALL_RADIUS * 0.55;
@@ -297,6 +340,9 @@ class LaneBuilder {
             1.2, 1.2, config.PIN_Z_OFFSET + 1.8);
     }
 
+    /// @brief Draw every static lane element in z-order (room → lane →
+    ///        oil → deck → gutters → walls → ceiling → panels →
+    ///        back wall → pinsetter → approach → foul line → batches).
     expose func draw(canvas: Canvas3D) {
         Canvas3D.DrawMesh(canvas, roomFloorMesh, roomFloorXform, roomFloorMat);
         Canvas3D.DrawMesh(canvas, sideLaneMesh, sideLaneLeftXform, sideLaneMat);
@@ -322,11 +368,13 @@ class LaneBuilder {
         Canvas3D.DrawInstanced(canvas, lightBatch);
     }
 
+    /// @brief Draw the moving sweep bar at the given Y position.
     expose func drawSweepBar(canvas: Canvas3D, sweepY: Float) {
         Canvas3D.DrawMesh(canvas, sweepBarMesh,
             Mat4.Translate(0.0, sweepY, config.PIN_Z_OFFSET + 0.25), sweepBarMat);
     }
 
+    /// @brief Wire up cube-map reflections on every shiny surface.
     expose func applyEnvironment(env: CubeMap3D) {
         Material3D.SetEnvMap(laneMat, env);
         Material3D.set_Reflectivity(laneMat, config.LANE_REFLECTIVITY);
@@ -362,6 +410,11 @@ class LaneBuilder {
         Material3D.set_Reflectivity(foulLineMat, 0.18);
     }
 
+    /// @brief Sample friction at a 2D lane position.
+    /// @details Combines z-axis blend (oiled vs blend vs dry depending
+    ///          on whether we're in the oil corridor / past oilEndZ)
+    ///          with x-axis edge weighting (boards near the gutter
+    ///          are dry). The exact curve depends on oilPattern.
     expose func getFrictionAt(x: Float, z: Float) -> Float {
         if (z < config.OIL_START_Z) { return config.OIL_FRICTION_DRY; }
         if (z > config.LANE_LENGTH) { return config.OIL_FRICTION_DRY; }
@@ -401,28 +454,34 @@ class LaneBuilder {
         return friction;
     }
 
+    /// @brief Active oil pattern code.
     expose func getOilPattern() -> Integer {
         return oilPattern;
     }
 
+    /// @brief Z coordinate where the oil ends (start of dry backend).
     expose func getOilEndZ() -> Float {
         return oilEndZ;
     }
 
+    /// @brief Display name for the oil pattern.
     expose func getOilPatternName() -> String {
         if (oilPattern == config.OIL_SPORT) { return "Sport"; }
         if (oilPattern == config.OIL_DRY) { return "Dry"; }
         return "House";
     }
 
+    /// @brief Left-gutter trigger volume (for ball entry detection).
     expose func getLeftGutterTrigger() -> Trigger3D {
         return leftGutterTrigger;
     }
 
+    /// @brief Right-gutter trigger volume.
     expose func getRightGutterTrigger() -> Trigger3D {
         return rightGutterTrigger;
     }
 
+    /// @brief Pin-deck trigger (used to apply the deck-impact damping).
     expose func getPinDeckTrigger() -> Trigger3D {
         return pinDeckTrigger;
     }

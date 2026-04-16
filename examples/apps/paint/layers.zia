@@ -1,3 +1,33 @@
+// ============================================================================
+// MODULE: layers (PaintLayer + LayerStack)
+// PURPOSE: Layer-backed pixel storage. LayerStack owns an ordered
+//          array of PaintLayer; the stack composites into a cached
+//          Pixels buffer on demand. Tools draw into the active layer;
+//          the composite feeds the viewport renderer.
+//
+// WHERE-THIS-FITS: Owned by PaintApp. Tools call `getActivePixels()`
+//          and draw into it; the viewport calls `compositePixels()`
+//          for display.
+//
+// KEY-DESIGN-CHOICES:
+//   * CACHED COMPOSITE. Every mutation that might affect rendering
+//     calls `markDirty()`; `compositePixels` recomputes only when
+//     dirty. Avoids blending every frame for an N-layer stack.
+//   * SINGLE-LAYER FAST-PATH. If only one layer exists, return its
+//     pixels directly — no blend work.
+//   * ACTIVE INDEX. One "current" layer receives all tool strokes.
+//     Add / duplicate operations promote the new layer to active;
+//     removing the active layer falls back to the next slot.
+//   * LAYER 0 IS BACKGROUND. Setup always creates a "Background"
+//     layer filled with the current background colour. Bottom-up
+//     composition means Background is drawn first, transparent
+//     layers on top.
+//   * BLEND FORMULA. For non-bottom / partial-opacity layers, the
+//     composite walks every pixel: `alpha = src.alpha *
+//     layer.opacity / 100`; `out.BlendPixel(x, y, src.rgb, alpha)`.
+//     Naive O(W×H) but fine for 1024×768 canvases.
+// ============================================================================
+
 // layers.zia - Layer-backed document storage for Paint
 module layers;
 
@@ -6,6 +36,7 @@ bind Viper.Graphics;
 
 bind "./config";
 
+/// @brief One layer (name + visibility + opacity + pixel buffer).
 class PaintLayer {
     expose String name;
     expose Integer visible;
@@ -36,6 +67,7 @@ class PaintLayer {
     }
 }
 
+/// @brief Ordered list of PaintLayers with a cached composite Pixels.
 class LayerStack {
     hide List[PaintLayer] layerList;
     hide Pixels? cachedComposite;

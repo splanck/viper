@@ -1,3 +1,19 @@
+// ============================================================================
+// MODULE: rectangle (RectangleTool)
+// PURPOSE: Same drag-preview shape contract as LineTool, but
+//          rectangle-shaped. Supports filled and outline variants
+//          via toggleFilled().
+//
+// KEY-DESIGN-CHOICES:
+//   * NORMALISE ON COMMIT. Mouse-down establishes startX/Y; drag
+//     updates endX/Y. Commit-time logic swaps them if needed so the
+//     shape draws correctly regardless of drag direction.
+//   * ALWAYS-OUTLINE PREVIEW. The on-screen preview is always drawn
+//     as an outline, even when filled mode is selected. This keeps
+//     the underlying document visible through the rubber-band so
+//     the user can aim precisely.
+// ============================================================================
+
 // rectangle.viper - Rectangle tool for Viper Paint
 module rectangle;
 
@@ -7,7 +23,7 @@ bind "../config";
 bind "../canvas";
 bind "../colors";
 
-// RectangleTool - draws rectangles (filled or outline)
+/// @brief Filled / outline rectangle shape tool.
 class RectangleTool {
     hide Integer drawing;       // 1 if currently drawing
     expose Integer startX;      // Start corner X

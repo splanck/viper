@@ -1,3 +1,22 @@
+// ============================================================================
+// MODULE: ui/slider (Slider)
+// PURPOSE: Horizontal numeric slider with label, thumb, filled track,
+//          and click-or-drag input. Used for brush size and opacity.
+//
+// KEY-DESIGN-CHOICES:
+//   * CLICK-TO-JUMP + DRAG. handleMouse both jumps the value on
+//     click (inside == 1 and mouseDown) and continues to track on
+//     drag (dragging == 1). Release commits; the per-frame handleMouse
+//     returns true the frame the value changes so the caller can
+//     react (e.g., update brush size).
+//   * VALUE COMPUTED FROM relX. Mouse X minus slider X (and centered
+//     on thumb width) times range divided by trackWidth. Clamped at
+//     both ends; scalar math only — no matrix gymnastics.
+//   * FILLED TRACK VISUAL. The left portion of the track is rendered
+//     in the "active" colour up to the thumb, giving a visual
+//     progress-bar cue alongside the actual thumb marker.
+// ============================================================================
+
 // slider.viper - Slider UI control for Viper Paint
 module slider;
 
@@ -6,7 +25,7 @@ bind Viper.Core.Convert;
 
 bind "../config";
 
-// Slider entity - horizontal slider for numeric values
+/// @brief Horizontal numeric slider widget.
 class Slider {
     expose Integer x;           // X position
     expose Integer y;           // Y position

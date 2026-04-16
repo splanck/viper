@@ -10,6 +10,14 @@ bind "./lane/lane";
 bind "./lane/pins";
 bind "./lane/ball";
 
+// ============================================================================
+// MODULE: title_postfx_probe
+// PURPOSE: Interactive title-screen preview with the full CINEMATIC
+//          post-FX chain. Paired with title_nopostfx_probe for A/B
+//          comparison of menu legibility under post-FX.
+// ============================================================================
+
+/// @brief Loop the title screen with cinematic post-FX until window closes.
 func main() {
     var render = new Renderer();
     render.initRenderer(config.QUALITY_CINEMATIC);

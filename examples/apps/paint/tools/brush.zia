@@ -1,3 +1,25 @@
+// ============================================================================
+// MODULE: brush_tool (BrushTool)
+// PURPOSE: Variable-size, variable-opacity brush. Like pencil but
+//          consults BrushSettings for size / opacity / shape (round or
+//          square) and uses alpha-blended per-pixel stamps for softer
+//          strokes.
+//
+// KEY-DESIGN-CHOICES:
+//   * STAMP + INTERPOLATE. drawBrushLine interpolates the stamp
+//     position along the mouse path (using the longer of |dx|/|dy|
+//     as the step count) so fast motion still produces continuous
+//     coverage. Endpoint is always stamped even if integer division
+//     truncates the last step.
+//   * FAST PATH. When opacity is 100 and shape is round, defer to
+//     canvas.drawThickLine (the graphics runtime's optimised
+//     thick-line). Slower path handles partial-opacity + square
+//     brushes cell-by-cell.
+//   * BLENDED PIXEL WRITE. setPixelBlend composites the foreground
+//     colour with the existing pixel at the given alpha. This
+//     supports "soft paint" stacking on overlapping strokes.
+// ============================================================================
+
 // brush.viper - Brush tool for Viper Paint
 module brush_tool;
 
@@ -6,7 +28,7 @@ bind "../canvas";
 bind "../colors";
 bind "../brush";
 
-// BrushTool - draws with variable size and opacity
+/// @brief Variable-size brush with round/square shapes and opacity.
 class BrushTool {
     hide Integer drawing;       // 1 if currently drawing
     hide Integer lastX;         // Last mouse X

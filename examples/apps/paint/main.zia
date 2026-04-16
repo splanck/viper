@@ -1,3 +1,12 @@
+// ============================================================================
+// MODULE: main
+// PURPOSE: Program entry point. Constructs PaintApp and runs the loop.
+//
+// WHERE-THIS-FITS: Top of the dependency tree. Imports every tool +
+//          canvas + UI subsystem so a single `viper run` links the full
+//          app.
+// ============================================================================
+
 // main.viper - Entry point for Viper Paint
 // A full-featured paint application showcasing Viper's capabilities
 module main;
@@ -18,10 +27,8 @@ bind "./ui/button";
 bind "./ui/slider";
 bind "./app";
 
+/// @brief Entry point. Construct PaintApp; its run() has the main loop.
 func main() {
-    // Create the paint application (new calls init automatically)
     var app = new PaintApp();
-
-    // Run the main application loop
     app.run();
 }

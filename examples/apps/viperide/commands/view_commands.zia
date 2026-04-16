@@ -9,15 +9,53 @@ bind Convert = Viper.Core.Convert;
 bind Machine = Viper.Machine;
 
 // ============================================================================
-// View commands — Sidebar, StatusBar, Zoom, Theme, Fullscreen, Minimap, Settings
+// MODULE: view_commands
+// PURPOSE: View / appearance command handlers — toggle sidebar / status
+//          bar / minimap / theme / fullscreen, zoom in/out/reset, and
+//          the font/settings prompt. Also owns the cross-platform
+//          font-fallback chains.
+//
+// WHERE-THIS-FITS: Command handlers wired into main.zia's command
+//          dispatcher. The font helpers (applyShellFont,
+//          applyEditorFont) are also called once at startup so the
+//          shell's chrome and editor pick up consistent fonts.
+//
+// KEY-DESIGN-CHOICES:
+//   * OS-SPECIFIC FONT FALLBACKS. `Machine.OS` returns "macos" /
+//     "windows" / "linux"; we try the platform-conventional UI font
+//     first, then progressively more conservative fallbacks. Matches
+//     real IDEs that "just work" on a fresh OS install.
+//   * TWO FONT CHAINS. Shell chrome uses the proportional-UI chain
+//     (SF / Helvetica, Segoe UI / Arial, DejaVu Sans); the editor uses
+//     the monospace chain (SF Mono / Menlo / Monaco, Consolas /
+//     Courier, DejaVu Sans Mono). Loaded independently because the
+//     chrome-vs-code distinction matters for legibility.
+//   * USER OVERRIDE. `appSettings.fontPath` short-circuits the editor
+//     fallback chain so power users can supply their own .ttf/.ttc.
+//     If the override fails to load, the user is toast-warned and we
+//     fall back to the OS chain (so a typo doesn't leave the editor
+//     unusable).
+//   * CLAMP ON ZOOM. clampFontSize keeps font size in [6, 72]. Outside
+//     that range the editor would be unreadable or rendered in a
+//     single glyph.
+//   * SETTINGS DIALOG IS DOCS + PROMPTS. handleSettings prints a
+//     keyboard-shortcut cheat sheet via MessageBox.Info, then prompts
+//     for new font size and font path. Two prompts is uglier than a
+//     single dialog with multiple fields, but the runtime doesn't
+//     have multi-field dialogs yet.
 // ============================================================================
 
+/// @brief Clamp font size to the editor's usable range [6, 72].
 func clampFontSize(size: Integer) -> Integer {
     if size < 6 { return 6; }
     if size > 72 { return 72; }
     return size;
 }
 
+/// @brief Set the shell's chrome font from the OS-conventional UI font.
+/// @details Tries SFNS / HelveticaNeue / Helvetica on macOS, Segoe UI /
+///          Arial on Windows, DejaVu Sans on Linux. Falls back to
+///          `SetFontSize(14)` on the default if every load fails.
 func applyShellFont(shell: app_shell.AppShell) {
     var font: GUI.Font = null;
     var os = Machine.OS;
@@ -42,6 +80,11 @@ func applyShellFont(shell: app_shell.AppShell) {
     shell.app.SetFontSize(14);
 }
 
+/// @brief Set the editor's monospace font from settings + OS fallback.
+/// @details If `appSettings.fontPath` is set, tries that first (toasts
+///          a warning if it fails). Otherwise walks the OS-conventional
+///          monospace chain (SF Mono / Menlo / Monaco, Consolas /
+///          Courier, DejaVu Sans Mono).
 func applyEditorFont(shell: app_shell.AppShell,
                      engine: editor_engine.EditorEngine,
                      appSettings: settings.SettingsManager) {
@@ -78,10 +121,12 @@ func applyEditorFont(shell: app_shell.AppShell,
     engine.editor.SetFontSize(appSettings.fontSize);
 }
 
+/// @brief Toggle the file-tree sidebar visibility.
 func handleToggleSidebar(shell: app_shell.AppShell) {
     shell.ToggleSidebar();
 }
 
+/// @brief Toggle status bar visibility.
 func handleToggleStatusBar(shell: app_shell.AppShell) {
     if shell.statusBar.IsVisible() != 0 {
         shell.statusBar.SetVisible(0);
@@ -90,6 +135,7 @@ func handleToggleStatusBar(shell: app_shell.AppShell) {
     }
 }
 
+/// @brief Increase editor font size by 1pt; persist setting.
 func handleZoomIn(shell: app_shell.AppShell,
                   engine: editor_engine.EditorEngine,
                   appSettings: settings.SettingsManager) {
@@ -99,6 +145,7 @@ func handleZoomIn(shell: app_shell.AppShell,
     shell.SetStatusLeft("Font size: " + appSettings.fontSize);
 }
 
+/// @brief Decrease editor font size by 1pt; persist setting.
 func handleZoomOut(shell: app_shell.AppShell,
                    engine: editor_engine.EditorEngine,
                    appSettings: settings.SettingsManager) {
@@ -108,6 +155,7 @@ func handleZoomOut(shell: app_shell.AppShell,
     shell.SetStatusLeft("Font size: " + appSettings.fontSize);
 }
 
+/// @brief Reset editor font to DEFAULT_FONT_SIZE; persist setting.
 func handleZoomReset(shell: app_shell.AppShell,
                      engine: editor_engine.EditorEngine,
                      appSettings: settings.SettingsManager) {
@@ -117,6 +165,7 @@ func handleZoomReset(shell: app_shell.AppShell,
     shell.SetStatusLeft("Font size reset to " + settings.DEFAULT_FONT_SIZE);
 }
 
+/// @brief Switch between dark and light themes; persist setting.
 func handleToggleTheme(appSettings: settings.SettingsManager) {
     if appSettings.theme == "dark" {
         GUI.Theme.SetLight();
@@ -130,6 +179,7 @@ func handleToggleTheme(appSettings: settings.SettingsManager) {
     appSettings.Save();
 }
 
+/// @brief Toggle fullscreen window state.
 func handleFullscreen(shell: app_shell.AppShell) {
     if shell.app.IsFullscreen() {
         shell.app.SetFullscreen(false);
@@ -138,6 +188,7 @@ func handleFullscreen(shell: app_shell.AppShell) {
     }
 }
 
+/// @brief Toggle minimap visibility; persist; return new visibility.
 func handleToggleMinimap(shell: app_shell.AppShell,
                          appSettings: settings.SettingsManager) -> Boolean {
     var nowVisible = appSettings.minimapVisible == false;
@@ -151,6 +202,10 @@ func handleToggleMinimap(shell: app_shell.AppShell,
     return nowVisible;
 }
 
+/// @brief Show settings cheat sheet; prompt for new font size and path.
+/// @details Three-panel UX: info dialog with current values + keyboard
+///          shortcuts, then prompt for font size (validated 6..72), then
+///          prompt for font path ("default" resets to OS fallback).
 func handleSettings(shell: app_shell.AppShell,
                     engine: editor_engine.EditorEngine,
                     appSettings: settings.SettingsManager) {
@@ -200,6 +255,7 @@ func handleSettings(shell: app_shell.AppShell,
     }
 }
 
+/// @brief "About ViperIDE" message box.
 func handleAbout() {
     GUI.MessageBox.Info("About ViperIDE",
         "ViperIDE — IDE for Zia and Viper Basic\nPowered by the Viper Runtime.");

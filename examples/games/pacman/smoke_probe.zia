@@ -1,3 +1,19 @@
+// ============================================================================
+// MODULE: smoke_probe
+// PURPOSE: Headless end-to-end regression test for Crackman's core
+//          systems without a window:
+//            1. Every player/ghost sprite for every direction/mode
+//               builds successfully.
+//            2. An eaten ghost uses the pathfinder to return to the
+//               ghost house within 400 steps, then holds in the house.
+//            3. Progression (contracts, XP, rank, achievements, high
+//               score, run summary) responds correctly to a simulated
+//               high-scoring run.
+//
+// WHERE-THIS-FITS: Run by CI (`zia_smoke_crackman`). Prints RESULT: ok /
+//          RESULT: fail <reason> for the harness to grep.
+// ============================================================================
+
 module smoke_probe;
 
 bind Viper.Terminal as Terminal;
@@ -7,10 +23,12 @@ bind "./ghost";
 bind "./maze";
 bind "./progression";
 
+/// @brief Print RESULT: fail + message for CI to catch.
 func fail(msg: String) {
     Terminal.Say("RESULT: fail " + msg);
 }
 
+/// @brief Smoke-probe entry. Runs all three regression scenarios.
 func start() {
     var dirs = [config.DIR_RIGHT, config.DIR_LEFT, config.DIR_UP, config.DIR_DOWN];
 

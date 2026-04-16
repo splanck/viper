@@ -1,3 +1,11 @@
+// ============================================================================
+// MODULE: ui/sprite_maze
+// PURPOSE: Build the 16 bitmask-indexed wall tile sprites for the
+//          procedurally-drawn maze. The mask encodes which neighbours
+//          are walls (bit 0 = right, 1 = down, etc.) so each tile
+//          renders with the correct corner curves and connections.
+// ============================================================================
+
 module sprite_maze;
 
 bind Viper.Graphics;
@@ -6,6 +14,7 @@ bind "../config";
 bind "./theme";
 bind "./sprite_support";
 
+/// @brief Build one wall tile sprite for the given neighbour mask.
 expose func buildWallTile(mask: Integer) -> Pixels {
     var px = Pixels.New(config.TILE_SIZE, config.TILE_SIZE);
     var c = config.TILE_SIZE / 2;

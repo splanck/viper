@@ -1,3 +1,27 @@
+// ============================================================================
+// MODULE: session (Session)
+// PURPOSE: One play-through of the game. Owns the maze, player, ghosts,
+//          fruit, particles, sound, scoring, collision resolution,
+//          level progression, ready/dying/game-over transitions,
+//          ScreenFX overlays.
+//
+// WHERE-THIS-FITS: Constructed by Game when a run starts; torn down
+//          when the player returns to the frontend. The per-frame
+//          update() returns an EVENT_* enum code to Game so the
+//          top-level state machine can react (pause, game-over,
+//          victory, etc.).
+//
+// KEY-DESIGN-CHOICES:
+//   * EVENT ENUM RETURN. update() returns an EVENT_* code indicating
+//     what happened this frame. Game.zia switches on it to drive
+//     screen transitions. Cleaner than nested callbacks.
+//   * SCREENFX OVERLAYS. FX module provides flashes, fades, and
+//     freeze effects layered on top of the rendered scene.
+//   * ONE CLASS OWNS EVERYTHING GAMEPLAY-RELATED. The Session is a
+//     "big bag of state" deliberately; small games benefit more from
+//     readability than from fine-grained decoupling.
+// ============================================================================
+
 module session;
 
 bind Viper.Graphics;
@@ -24,6 +48,7 @@ final EVENT_WIN = 4;
 final EVENT_READY_COMPLETE = 5;
 final EVENT_DYING_COMPLETE = 6;
 
+/// @brief One play-through — owns everything gameplay-related.
 class Session {
     hide maze.Maze theMaze;
     hide player.PacMan pacman;

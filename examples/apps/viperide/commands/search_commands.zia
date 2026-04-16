@@ -15,9 +15,27 @@ bind Obj = Viper.Core.Object;
 bind Glob = Viper.IO.Glob;
 
 // ============================================================================
-// Project-wide search (Ctrl+Shift+F)
+// MODULE: search_commands
+// PURPOSE: Project-wide text search (Ctrl+Shift+F). Scans every .zia and
+//          .bas file under the project root for substring matches and
+//          populates the output panel with `path:line: snippet` rows.
+//
+// WHERE-THIS-FITS: Wired into main.zia's command dispatcher. Only
+//          enabled when a project is open (otherwise toasts a warning).
+//
+// KEY-DESIGN-CHOICES:
+//   * GLOB-BASED FILE DISCOVERY. `Viper.IO.Glob.Files(root, "**/*.zia")`
+//     walks the tree once. Two passes (zia then bas) is simpler than
+//     extending Glob to handle multi-pattern queries.
+//   * SUBSTRING MATCH ONLY. No regex, no whole-word, no case-insensitive
+//     today. Keeps the search predictable and avoids surfacing the
+//     complexity of a query syntax in the UI.
+//   * RESULT ROWS CARRY DATA. Each output-panel item stores
+//     "path:line" via `ItemSetData` so a future click handler can jump
+//     to the match. (Not yet wired — that's a future enhancement.)
 // ============================================================================
 
+/// @brief Prompt for a query, scan the project, populate the output panel.
 func handleProjectSearch(shell: app_shell.AppShell,
                          projMgr: project_manager.ProjectManager,
                          docMgr: document_manager.DocumentManager,
@@ -54,6 +72,8 @@ func handleProjectSearch(shell: app_shell.AppShell,
     }
 }
 
+/// @brief Substring-search every file in `files` for `query`.
+/// @return Match count (rows added to the output panel).
 func searchFiles(shell: app_shell.AppShell, files: Ptr, query: String) -> Integer {
     var count = 0;
     var fileIdx = 0;

@@ -1,3 +1,33 @@
+// ============================================================================
+// MODULE: scoring (ScoreKeeper)
+// PURPOSE: Full 10-frame bowling score engine. Records each roll, builds
+//          the per-frame display strings (X / / digits), and computes
+//          running totals incorporating strike + spare bonuses.
+//
+// WHERE-THIS-FITS: Used by game.zia after every settled throw. The 3D
+//          physics determines how many pins fell; that count is fed
+//          into recordRoll, which updates the scoreboard.
+//
+// KEY-DESIGN-CHOICES:
+//   * 10-FRAME RULES. Frames 1-9: at most 2 rolls (strike completes the
+//     frame in 1). Frame 10: up to 3 rolls — bonus rolls awarded after
+//     a strike or spare so the player can earn a "perfect" 30 in the
+//     final frame.
+//   * STRIKE = 10 + NEXT 2 ROLLS. Spare = 10 + NEXT 1 ROLL. Open frame
+//     = pins down. recalcTotals walks all frames each call and computes
+//     totals lazily — a frame's total stays -1 ("pending") until the
+//     bonus rolls land.
+//   * TURKEY TRACKING. consecutiveStrikes counts back-to-back strikes
+//     for "turkey" celebrations (3+ strikes in a row). Reset on any
+//     non-strike roll.
+//   * DISPLAY STRINGS PRECOMPUTED. frameRoll1/2/3 hold the rendered
+//     strings ("X", "/", "-", or pin count) so the HUD renderer just
+//     prints them — no formatting in the hot draw path.
+//   * CLAMP DEFENSIVE. recordRoll clamps `pinsDown` to [0, pinsStanding]
+//     so the physics layer can pass a noisy count without breaking
+//     the scoreboard's invariants.
+// ============================================================================
+
 // scoring.zia — Full 10-frame bowling scoring engine
 // Handles strikes, spares, 10th frame bonus rolls, and running totals.
 module scoring;
@@ -5,6 +35,7 @@ module scoring;
 bind Viper.Terminal;
 bind "../config";
 
+/// @brief Bowling 10-frame score engine.
 class ScoreKeeper {
     // Each roll records pins knocked down (0-10).
     // Up to 21 rolls possible (9 frames × 2 + 10th frame × 3).
@@ -24,6 +55,7 @@ class ScoreKeeper {
     hide Integer consecutiveStrikes;     // For turkey tracking
     hide Boolean gameComplete;
 
+    /// @brief Initialize an empty scoreboard; pre-allocate 10 frame slots.
     expose func init() {
         rolls = [];
         rollCount = 0;
@@ -45,7 +77,10 @@ class ScoreKeeper {
         }
     }
 
-    // Record a roll result. Returns true if the frame is complete.
+    /// @brief Record a roll result. @return true when the frame closes.
+    /// @details Branches on whether we're in frames 1-9 (≤ 2 rolls) vs
+    ///          frame 10 (≤ 3 rolls with bonus rules). See module
+    ///          header for the bonus formulas.
     expose func recordRoll(pinsDown: Integer) -> Boolean {
         if (gameComplete) { return true; }
         var clampedPinsDown = pinsDown;
@@ -181,8 +216,10 @@ class ScoreKeeper {
         return frameComplete;
     }
 
-    // Recalculate running totals for all frames.
-    // Strike = 10 + next 2 rolls. Spare = 10 + next 1 roll.
+    /// @brief Recompute every frame's running total.
+    /// @details Strike scores 10 + next 2 rolls; spare scores 10 + next
+    ///          1 roll; open frame scores roll1 + roll2. A frame whose
+    ///          bonus rolls haven't landed yet stays at -1 ("pending").
     hide func recalcTotals() {
         var runningTotal: Integer = 0;
         var rollIdx: Integer = 0;
@@ -251,22 +288,27 @@ class ScoreKeeper {
 
     // ─── Query Methods ───
 
+    /// @brief Current frame number (1-based).
     expose func getFrame() -> Integer {
         return currentFrame;
     }
 
+    /// @brief Which roll within the current frame (1, 2, or 3 in 10th).
     expose func getRollInFrame() -> Integer {
         return currentRollInFrame;
     }
 
+    /// @brief Pins still standing on the deck.
     expose func getPinsStanding() -> Integer {
         return pinsStanding;
     }
 
+    /// @brief True after the 10th frame's last roll lands.
     expose func isGameOver() -> Boolean {
         return gameComplete;
     }
 
+    /// @brief Latest computed total score (last non-pending frame total).
     expose func getTotalScore() -> Integer {
         // Return last valid frame total
         for (var i: Integer = config.FRAMES_PER_GAME - 1; i >= 0; i = i - 1) {
@@ -277,36 +319,42 @@ class ScoreKeeper {
         return 0;
     }
 
+    /// @brief Running total at end of frame (-1 if not yet known).
     expose func getFrameTotal(frame: Integer) -> Integer {
         if (frame < 0 || frame >= config.FRAMES_PER_GAME) { return -1; }
         return frameTotals.get(frame);
     }
 
+    /// @brief Display string for roll 1 of the given frame ("X", digit, etc.).
     expose func getFrameRoll1(frame: Integer) -> String {
         if (frame < 0 || frame >= config.FRAMES_PER_GAME) { return ""; }
         return frameRoll1.get(frame);
     }
 
+    /// @brief Display string for roll 2 ("/" for spare, etc.).
     expose func getFrameRoll2(frame: Integer) -> String {
         if (frame < 0 || frame >= config.FRAMES_PER_GAME) { return ""; }
         return frameRoll2.get(frame);
     }
 
+    /// @brief Display string for roll 3 (10th-frame bonus only).
     expose func getFrameRoll3(frame: Integer) -> String {
         if (frame < 0 || frame >= config.FRAMES_PER_GAME) { return ""; }
         return frameRoll3.get(frame);
     }
 
+    /// @brief Streak length for "turkey" / "four-bagger" celebrations.
     expose func getConsecutiveStrikes() -> Integer {
         return consecutiveStrikes;
     }
 
-    // Check if the current roll needs a full pin reset (10th frame after strike/spare)
+    /// @brief True when the next roll begins on a fresh rack (10th-frame
+    ///        strike/spare bonus).
     expose func needsFullReset() -> Boolean {
         return pinsStanding == 10;
     }
 
-    // Was the last recorded roll a strike?
+    /// @brief True if the most recently recorded roll was a strike (10 down).
     expose func wasStrike() -> Boolean {
         if (rollCount == 0) { return false; }
         var lastRoll: Integer = rolls.get(rollCount - 1);
@@ -314,7 +362,8 @@ class ScoreKeeper {
         return lastRoll == 10;
     }
 
-    // Was the last recorded roll a spare?
+    /// @brief True if the last roll closed a spare (frame total = 10
+    ///        without being a strike).
     expose func wasSpare() -> Boolean {
         if (rollCount < 2) { return false; }
         // Check if we just completed a spare (not a strike)
@@ -324,13 +373,13 @@ class ScoreKeeper {
         return prevRoll + lastRoll == 10;
     }
 
-    // Was the last roll a gutter ball?
+    /// @brief True if the last roll was a gutter ball (0 pins down).
     expose func wasGutter() -> Boolean {
         if (rollCount == 0) { return false; }
         return rolls.get(rollCount - 1) == 0;
     }
 
-    // Reset for a new game
+    /// @brief Reset all per-game state for a new round.
     expose func reset() {
         rolls = [];
         rollCount = 0;

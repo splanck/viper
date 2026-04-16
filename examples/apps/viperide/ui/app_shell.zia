@@ -6,12 +6,46 @@ bind Obj = Viper.Core.Object;
 bind Str = Viper.String;
 
 // ============================================================================
-// AppShell — top-level UI layout for ViperIDE
-// ============================================================================
-// Professional IDE layout: MenuBar → Toolbar → SplitPane(sidebar|editor) → StatusBar
-// All widget handles are exposed for the main event loop to poll.
+// MODULE: app_shell
+// PURPOSE: Top-level UI layout for ViperIDE. Owns the GUI.App window and
+//          every widget that lives in the persistent chrome (menu bar,
+//          toolbar, sidebar, tab bar, breadcrumb, find bar, editor row,
+//          minimap, diagnostics panel, build-output panel, status bar,
+//          context menu, command palette).
+//
+// WHERE-THIS-FITS: Constructed once by main.zia. The main loop polls
+//          this shell each frame for input events; command handlers in
+//          commands/* receive a reference to it so they can update any
+//          surface.
+//
+// KEY-DESIGN-CHOICES:
+//   * EVERY WIDGET IS expose. The main loop needs to poll menu items,
+//     toolbar buttons, etc. for click events. Rather than hide the
+//     widgets and expose a callback API, we expose the handles and let
+//     the loop pull state. This trades encapsulation for testability —
+//     the loop is one big readable dispatcher.
+//   * VBox(menu / toolbar / split / status). Main vertical layout with
+//     a SplitPane filling the middle. The SplitPane is horizontal (1)
+//     with the sidebar on the left and the editor area on the right.
+//   * EDITOR ROW IS HBOX. The editor itself + the minimap sit
+//     side-by-side in `editorRow`. The editor is added later (by
+//     `engine.Setup` in main.zia) because the EditorEngine owns the
+//     widget construction.
+//   * KEYBOARD SHORTCUTS WIRED INTO MENU ITEMS. Every menu item with a
+//     shortcut calls `SetShortcut(...)` so the runtime can dispatch
+//     accelerators to that menu item without the IDE needing to
+//     intercept raw key events.
+//   * THEME APPLIED IN BUILD. SetDark() is the default; settings.Load()
+//     later flips to light if needed.
+//
+// HOW-TO-READ: Field declarations (a panorama of every widget) ->
+//   init -> Build (the giant constructor — read top-to-bottom for the
+//   layout) -> ShouldClose / Poll / Render / Destroy (lifecycle) ->
+//   SetStatusLeft / SetStatusCenter / SetStatusRight / SetBreadcrumbPath
+//   (status helpers) -> SetBuildOutput / ToggleSidebar / CenterAndSize.
 // ============================================================================
 
+/// @brief Owns the IDE's window and every persistent widget in it.
 class AppShell {
     // Application
     expose GUI.App app;
@@ -114,11 +148,18 @@ class AppShell {
     // State
     expose Boolean sidebarVisible;
 
+    /// @brief Initialize with sidebar visible. Build() must be called next.
     expose func init() {
         sidebarVisible = true;
     }
 
-    // Build the complete UI shell. Call once at startup.
+    /// @brief Construct the full IDE window and every chrome widget.
+    /// @param title  Window title.
+    /// @param width  Initial window width in logical pixels.
+    /// @param height Initial window height in logical pixels.
+    /// @details Read top-to-bottom — each section corresponds to one
+    ///          band of the IDE chrome (menu bar, toolbar, split pane,
+    ///          status bar, command palette).
     expose func Build(title: String, width: Integer, height: Integer) {
         // Create application window
         app = GUI.App.New(title, width, height);
@@ -297,41 +338,44 @@ class AppShell {
         commandPalette.SetPlaceholder("Type a command...");
     }
 
-    // Check if the window should close.
+    /// @brief True if the user requested window close (clicked the X).
     expose func ShouldClose() -> Boolean {
         return app.ShouldClose != 0;
     }
 
-    // Poll for events.
+    /// @brief Pump the event queue. Call once per frame before reading
+    ///        widget state.
     expose func Poll() {
         app.Poll();
     }
 
-    // Render the frame.
+    /// @brief Paint the current frame. Call once per frame after all
+    ///        state mutations.
     expose func Render() {
         app.Render();
     }
 
-    // Destroy the application window.
+    /// @brief Tear down the window. Triggered by the Exit command.
     expose func Destroy() {
         app.Destroy();
     }
 
-    // Update the status bar left text.
+    /// @brief Set the status bar's left text (status messages).
     expose func SetStatusLeft(text: String) {
         statusBar.SetLeftText(text);
     }
 
-    // Update the cursor position item (center zone).
+    /// @brief Set the status bar's center text (cursor position).
     expose func SetStatusCenter(text: String) {
         cursorItem.SetText(text);
     }
 
-    // Update the status bar right text.
+    /// @brief Set the status bar's right text (language / EOL indicator).
     expose func SetStatusRight(text: String) {
         statusBar.SetRightText(text);
     }
 
+    /// @brief Set the breadcrumb path; auto-hides when path is empty.
     expose func SetBreadcrumbPath(path: String) {
         if path == "" {
             breadcrumb.SetPath("", "/");
@@ -342,8 +386,8 @@ class AppShell {
         breadcrumb.SetVisible(1);
     }
 
-    // Populate the build output panel with lines of compiler output.
-    // Pass an empty string to clear and hide the panel.
+    /// @brief Populate the build-output panel with one row per line of
+    ///        compiler stdout/stderr. Empty string clears + hides.
     expose func SetBuildOutput(output: String) {
         outputListBox.Clear();
         if output == "" {
@@ -363,7 +407,7 @@ class AppShell {
         outputListBox.SetVisible(1);
     }
 
-    // Toggle the sidebar visibility.
+    /// @brief Toggle the sidebar by collapsing the SplitPane to 0% width.
     expose func ToggleSidebar() {
         if sidebarVisible {
             sidebarVisible = false;
@@ -374,7 +418,9 @@ class AppShell {
         }
     }
 
-    // Resize the window to scalePct% of the monitor size and center it.
+    /// @brief Resize to scalePct% of the monitor and center on screen.
+    /// @details Uses the runtime's monitor dimensions for the math —
+    ///          works on any screen resolution including HiDPI.
     expose func CenterAndSize(scalePct: Integer) {
         var mw = app.GetMonitorWidth();
         var mh = app.GetMonitorHeight();

@@ -1,3 +1,30 @@
+// ============================================================================
+// MODULE: camera (CameraController)
+// PURPOSE: Camera state machine for the bowling demo. Five modes: title
+//          (slow orbit on the menu), aim (over-the-shoulder behind the
+//          ball), follow (tracks the ball after release), overhead
+//          (bird's-eye review), cinematic (Bezier swoop on a strike).
+//
+// WHERE-THIS-FITS: One per BowlingGame. Game state transitions
+//          (aiming → throwing → settling → celebrating) call setAimMode
+//          / setFollowMode / startCinematic etc. and the camera takes
+//          care of the smooth interpolation.
+//
+// KEY-DESIGN-CHOICES:
+//   * EYE + TARGET LERPED. Each mode stores eye and target coordinates;
+//     update* methods lerp them toward new positions per frame for
+//     smooth motion. CAM_FOLLOW_SMOOTH controls the lerp rate.
+//   * TITLE ORBIT. updateTitle revolves the camera around a centre
+//     using Sin/Cos of titleAngle, giving a slow drifting orbit.
+//   * CINEMATIC PATH. startCinematic builds a 4-point Path3D Bezier
+//     curve and updateCinematic samples it via t ∈ [0, 1] over
+//     CAM_CINE_DURATION seconds. The camera's eye position glides
+//     along the curve while focus stays on the pin centre.
+//   * SHAKE. Camera3D.Shake handles intensity + duration + decay; we
+//     just forward the call so other systems can request shakes
+//     without holding the camera reference.
+// ============================================================================
+
 // camera.zia — Camera controller with title, aim, follow, overhead, and cinematic modes
 module camera;
 
@@ -11,6 +38,7 @@ var MODE_FOLLOW: Integer = 2;
 var MODE_OVERHEAD: Integer = 3;
 var MODE_CINEMATIC: Integer = 4;
 
+/// @brief Camera mode-switching controller with smooth interpolation.
 class CameraController {
     hide Camera3D cam;
     hide Integer mode;
@@ -28,6 +56,7 @@ class CameraController {
     hide Path3D cinePath;
     hide Vec3 cineFocus;
 
+    /// @brief Inject the Camera3D handle and start in title mode.
     expose func initCamera(camera: Camera3D) {
         cam = camera;
         titleAngle = 0.0;
@@ -37,6 +66,7 @@ class CameraController {
         setTitleMode();
     }
 
+    /// @brief Switch to the title-screen orbiting camera.
     expose func setTitleMode() {
         mode = MODE_TITLE;
         titleAngle = 0.0;
@@ -49,6 +79,7 @@ class CameraController {
         applyLookAt();
     }
 
+    /// @brief Switch to over-the-shoulder aim camera at the given X.
     expose func setAimMode(aimX: Float) {
         mode = MODE_AIM;
         eyeX = aimX + 0.28;
@@ -60,10 +91,12 @@ class CameraController {
         applyLookAt();
     }
 
+    /// @brief Switch to ball-following camera (positions update via updateFollow).
     expose func setFollowMode() {
         mode = MODE_FOLLOW;
     }
 
+    /// @brief Switch to overhead bird's-eye review camera.
     expose func setOverheadMode() {
         mode = MODE_OVERHEAD;
         eyeX = 0.0;
@@ -75,6 +108,7 @@ class CameraController {
         applyLookAt();
     }
 
+    /// @brief Begin a 4-point Bezier swoop centered on (centerX, centerZ).
     expose func startCinematic(centerX: Float, centerZ: Float) {
         mode = MODE_CINEMATIC;
         cineTimer = config.CAM_CINE_DURATION;
@@ -86,6 +120,7 @@ class CameraController {
         cineFocus = new Vec3(centerX, config.CAM_CINE_LOOK_Y, centerZ);
     }
 
+    /// @brief Per-frame title-orbit rotation update.
     expose func updateTitle(dt: Float) {
         if (mode != MODE_TITLE) { return; }
 
@@ -99,6 +134,7 @@ class CameraController {
         applyLookAt();
     }
 
+    /// @brief Per-frame aim-camera lerp toward the new aimX.
     expose func updateAim(aimX: Float, dt: Float) {
         if (mode != MODE_AIM) { return; }
 
@@ -109,6 +145,7 @@ class CameraController {
         applyLookAt();
     }
 
+    /// @brief Per-frame follow-camera lerp tracking the ball.
     expose func updateFollow(ballX: Float, ballZ: Float, dt: Float) {
         if (mode != MODE_FOLLOW) { return; }
 
@@ -121,6 +158,7 @@ class CameraController {
         applyLookAt();
     }
 
+    /// @brief Per-frame cinematic Bezier-path sampling. @return true when finished.
     expose func updateCinematic(dt: Float) -> Boolean {
         if (mode != MODE_CINEMATIC) { return true; }
 
@@ -141,18 +179,22 @@ class CameraController {
         return false;
     }
 
+    /// @brief Add a transient camera shake (intensity decays over duration).
     expose func shake(intensity: Float, duration: Float) {
         Camera3D.Shake(cam, intensity, duration, 6.0);
     }
 
+    /// @brief Underlying Camera3D handle.
     expose func getCamera() -> Camera3D {
         return cam;
     }
 
+    /// @brief Active mode (TITLE / AIM / FOLLOW / OVERHEAD / CINEMATIC).
     expose func getMode() -> Integer {
         return mode;
     }
 
+    /// @brief Push (eye, target, up) into the Camera3D as a LookAt matrix.
     hide func applyLookAt() {
         var eye = new Vec3(eyeX, eyeY, eyeZ);
         var target = new Vec3(targetX, targetY, targetZ);
@@ -161,6 +203,7 @@ class CameraController {
     }
 }
 
+/// @brief Linear interpolation with t clamped to [0, 1].
 func lerp(a: Float, b: Float, t: Float) -> Float {
     var clampedT = t;
     if (clampedT < 0.0) { clampedT = 0.0; }

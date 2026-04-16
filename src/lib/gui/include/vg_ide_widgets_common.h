@@ -30,6 +30,7 @@ extern "C" {
 // Forward declarations used across IDE widget headers
 typedef struct vg_menu_item vg_menu_item_t;
 typedef struct vg_menu vg_menu_t;
+typedef struct vg_contextmenu vg_contextmenu_t;
 struct vg_treeview;
 struct vg_codeeditor;
 struct vg_textinput;

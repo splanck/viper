@@ -10,38 +10,87 @@ bind "./theme";
 bind "./layout";
 bind "./widgets";
 
+// ============================================================================
+// MODULE: renderer
+// PURPOSE: All board / panel / dialog rendering. Owns no game state —
+//          every method takes the data it needs as arguments.
+//
+// WHERE-THIS-FITS: Bridge between game logic (in `game.zia`) and the
+//          underlying canvas/widgets/theme/pieces/layout modules.
+//          ChessGame.render orchestrates calls into here in z-order
+//          (background -> board -> highlights -> pieces -> bars ->
+//          panel -> overlays).
+//
+// KEY-DESIGN-CHOICES:
+//   * SQUARE COORDINATES BASED ON LAYOUT. squareX/squareY consult
+//     `layout.boardRect()` rather than hard-coding offsets so the
+//     entire board can be moved by editing one function.
+//   * ALTERNATING SQUARE COLORS. We use BOARD_LIGHT_ALT /
+//     BOARD_DARK_ALT (slightly tinted) instead of pure light/dark to
+//     give the board a more textured look.
+//   * HIGHLIGHTS ARE OVERLAYS. lastFrom/lastTo, hover, selected, legal
+//     moves, capture circles, check king — all paint translucent
+//     overlays on top of the squares. This keeps the base board paint
+//     deterministic and the highlight logic localized.
+//   * ANIMATION WITH LIFT. drawAnimatedPiece interpolates between
+//     squares AND adds a small parabolic lift (rises 14px at midpoint)
+//     so moves feel like the piece is being placed rather than
+//     sliding flat.
+//   * PANEL CARDS ARE COMPOSITIONAL. drawPanel calls drawPlayerCard /
+//     drawMoveCard / drawInfoCard for each section. Each card is
+//     framed by widgets.drawCard then filled with section-specific
+//     content (status dot, name, time, captures).
+//
+// HOW-TO-READ: setCanvas / square coord helpers / squareAt -> backdrop
+//   / menu-backdrop -> drawBoard -> highlights / check / pieces /
+//   drag piece / animated piece -> top bar / footer / panel ->
+//   sub-renderers (player card / captures / move log / info card /
+//   promo dialog / main menu / game-over overlay / thinking
+//   indicator) -> formatting helpers.
+// ============================================================================
+
+/// @brief Stateless renderer for the chess scene. setCanvas before use.
 class BoardRenderer {
     hide Canvas canvas;
 
+    /// @brief No-op constructor; canvas attaches via setCanvas later.
     expose func init() {
     }
 
+    /// @brief Attach the drawing canvas and warm the theme assets.
     expose func setCanvas(cv: Canvas) {
         canvas = cv;
         theme.initAssets();
     }
 
+    /// @brief File (column) of a square index.
     expose func squareFile(sq: Integer) -> Integer { return sq % 8; }
+    /// @brief Rank (row) of a square index.
     expose func squareRank(sq: Integer) -> Integer { return sq / 8; }
 
+    /// @brief Pixel X of square's top-left corner.
     expose func squareX(sq: Integer) -> Integer {
         var board = layout.boardRect();
         return board.x + (sq % 8) * SQ_SIZE;
     }
 
+    /// @brief Pixel Y of square's top-left corner.
     expose func squareY(sq: Integer) -> Integer {
         var board = layout.boardRect();
         return board.y + (sq / 8) * SQ_SIZE;
     }
 
+    /// @brief Pixel X of square's centre.
     expose func squareCenterX(sq: Integer) -> Integer {
         return squareX(sq) + SQ_SIZE / 2;
     }
 
+    /// @brief Pixel Y of square's centre.
     expose func squareCenterY(sq: Integer) -> Integer {
         return squareY(sq) + SQ_SIZE / 2;
     }
 
+    /// @brief Reverse-map mouse pixels to a square index, or -1 if outside.
     expose func squareAt(mx: Integer, my: Integer) -> Integer {
         var board = layout.boardRect();
         if mx < board.x || mx >= board.x + board.w { return -1; }
@@ -51,6 +100,7 @@ class BoardRenderer {
         return r * 8 + f;
     }
 
+    /// @brief Vertical-gradient background plus subtle radial accents.
     expose func drawGameBackdrop() {
         canvas.GradientV(0, 0, WIN_W, WIN_H, theme.BG_TOP, theme.BG_BOTTOM);
         canvas.BoxAlpha(0, 0, WIN_W, WIN_H / 2, theme.BG_NOISE, 36);
@@ -63,6 +113,8 @@ class BoardRenderer {
                             280, 180, theme.ACCENT_BLUE, 18);
     }
 
+    /// @brief Background for the main menu — gradient + accent ellipses
+    ///        + a small chess-board preview off to the left of the card.
     expose func drawMenuBackdrop() {
         canvas.GradientV(0, 0, WIN_W, WIN_H, theme.BG_TOP, theme.BG_BOTTOM);
 
@@ -93,6 +145,8 @@ class BoardRenderer {
         canvas.BlitAlpha(px + 152, py + 164, pieces.getPiece(BISHOP, false));
     }
 
+    /// @brief Draw the 8×8 board, file/rank labels, and last-move /
+    ///        hover overlays. Frame and double border drawn first.
     expose func drawBoard(lastFrom: Integer, lastTo: Integer, hoverSq: Integer) {
         var frame = layout.boardFrameRect();
         var board = layout.boardRect();
@@ -154,6 +208,8 @@ class BoardRenderer {
         canvas.Frame(board.x - 1, board.y - 1, board.w + 2, board.h + 2, theme.BOARD_FRAME_IN);
     }
 
+    /// @brief Highlight the selected square and overlay legal-move
+    ///        markers (dot for quiet move, ring for capture).
     expose func drawHighlights(selectedSq: Integer, legalMoves: List[Move]) {
         if selectedSq < 0 { return; }
 
@@ -177,12 +233,15 @@ class BoardRenderer {
         }
     }
 
+    /// @brief Tint the king's square red when it's in check.
     expose func drawCheckHighlight(kingSq: Integer) {
         if kingSq < 0 { return; }
         canvas.BoxAlpha(squareX(kingSq), squareY(kingSq), SQ_SIZE, SQ_SIZE, theme.HILITE_CHECK, 120);
         canvas.RoundFrame(squareX(kingSq) + 4, squareY(kingSq) + 4, SQ_SIZE - 8, SQ_SIZE - 8, 10, theme.brighten(theme.HILITE_CHECK, 16));
     }
 
+    /// @brief Render every static piece (skipping the drag-source and
+    ///        the animation-destination squares).
     expose func drawPieces(b: Board, dragFrom: Integer, skipSq: Integer) {
         for sq in 0..64 {
             if sq == dragFrom { continue; }
@@ -194,6 +253,7 @@ class BoardRenderer {
         }
     }
 
+    /// @brief Render the piece currently being dragged, centered at (x,y).
     expose func drawDragPiece(pieceType: Integer, white: Boolean, x: Integer, y: Integer) {
         if pieceType == 0 { return; }
         var shadow = pieces.getShadow(pieceType, white);
@@ -203,6 +263,11 @@ class BoardRenderer {
         blitPiece(pieceType, white, x, y - 4);
     }
 
+    /// @brief Render an in-flight piece animation between two squares.
+    /// @param progressPermille Animation progress in 0..1000 (per-mille).
+    /// @details Linear interpolation in (x, y) plus a triangular lift
+    ///          (peaks 14px above the path at midpoint) so the piece
+    ///          appears to be lifted, carried, and set down.
     expose func drawAnimatedPiece(pieceType: Integer,
                                   white: Boolean,
                                   fromSq: Integer,
@@ -245,6 +310,7 @@ class BoardRenderer {
         blitPiece(type_, white, cx, cy);
     }
 
+    /// @brief Top toolbar: title, turn badge, mode badge, NEW + MENU buttons.
     expose func drawTopBar(turnText: String, gameMode: Integer, mx: Integer, my: Integer, mouseDown: Boolean) {
         var top = layout.topBar();
         var newBtn = layout.newButtonRect();
@@ -264,6 +330,7 @@ class BoardRenderer {
         widgets.drawButton(canvas, menuBtn, "MENU", layout.contains(menuBtn, mx, my), mouseDown and layout.contains(menuBtn, mx, my), false, false, false);
     }
 
+    /// @brief Bottom footer: DRAW + RESIGN buttons, status text, key hints.
     expose func drawFooter(statusText: String, mx: Integer, my: Integer, mouseDown: Boolean) {
         var foot = layout.footerBar();
         var drawBtn = layout.drawButtonRect();
@@ -279,6 +346,7 @@ class BoardRenderer {
         theme.drawTextScaled(canvas, WIN_W - 164, foot.y + 18, "N new  ESC menu", 1, theme.TEXT_MUTED);
     }
 
+    /// @brief Right-side info panel: black card / move log / white card / info card.
     expose func drawPanel(b: Board,
                           whiteTimeSec: Integer, blackTimeSec: Integer,
                           sanHistory: List[String],
@@ -436,6 +504,7 @@ class BoardRenderer {
         theme.drawTextScaled(canvas, card.x + 18, card.y + card.h - 28, "Drag pieces or click source and destination.", 1, theme.TEXT_MUTED);
     }
 
+    /// @brief Modal pawn-promotion dialog with four piece choices.
     expose func drawPromoDialog(white: Boolean, mx: Integer, my: Integer, mouseDown: Boolean) {
         canvas.BoxAlpha(0, 0, WIN_W, WIN_H, theme.SCRIM, 165);
         var dialog = layout.promoDialogRect();
@@ -455,6 +524,8 @@ class BoardRenderer {
         }
     }
 
+    /// @brief Main-menu screen: title card, mode/side/difficulty pickers,
+    ///        START GAME button.
     expose func drawMainMenu(gameMode: Integer, aiDepth: Integer, playerIsWhite: Boolean, mx: Integer, my: Integer, mouseDown: Boolean) {
         drawMenuBackdrop();
 
@@ -510,6 +581,7 @@ class BoardRenderer {
         theme.drawTextCentered(canvas, card.x, card.y + 486, card.w, "Drag to move pieces. N starts a new game. ESC returns here.", 1, theme.TEXT_MUTED);
     }
 
+    /// @brief Modal game-over overlay with reason + winner + NEW/MENU.
     expose func drawGameOverOverlay(reason: String, winnerText: String, mx: Integer, my: Integer, mouseDown: Boolean) {
         canvas.BoxAlpha(0, 0, WIN_W, WIN_H, theme.SCRIM, 180);
         var dialog = layout.gameOverDialogRect();
@@ -528,6 +600,7 @@ class BoardRenderer {
                            false, false, false);
     }
 
+    /// @brief Small "ENGINE THINKING" badge above the board.
     expose func drawThinkingIndicator() {
         var badge = layout.rect(layout.boardFrameRect().x + 420, layout.boardFrameRect().y - 20, 170, 28);
         widgets.drawBadge(canvas, badge, "ENGINE THINKING", theme.ACCENT_BLUE);

@@ -16,6 +16,59 @@ bind "./pieces";
 bind "./layout";
 bind "../engine/ai";
 
+// ============================================================================
+// MODULE: game (ChessGame)
+// PURPOSE: The chess demo's main controller. Owns the game state machine,
+//          input handling, AI threading, animation, undo stacks, clock,
+//          and per-frame rendering orchestration.
+//
+// WHERE-THIS-FITS: Top of the chess UI tree. Constructed by main.zia;
+//          its `run()` method is the program's main loop.
+//
+// KEY-DESIGN-CHOICES:
+//   * STATE MACHINE. `gameState` is one of STATE_MENU / PLAYING / PROMO
+//     / AI_THINK / CHECKMATE / STALEMATE / DRAW. Input handling and
+//     rendering branch on it. Transitions happen in startNewGame /
+//     applyMove / checkGameOver / handleHudClick.
+//   * AI ON A WORKER THREAD. The search would freeze the UI if run on
+//     the render thread. We start a background thread, copy the board
+//     to it, and poll for completion in pollAITurn. Module-level locks
+//     and result fields (aiWorkerLock, aiWorkerHasResult, aiMoveFrom
+//     etc.) shuttle the result back across the thread boundary.
+//     Module-level rather than instance-level because chess only ever
+//     runs one game at a time.
+//   * UNDO STACKS. Five parallel arrays (undoMoveStack / undoInfoStack
+//     / undoPrevFromStack / undoPrevToStack / undoCaptureColorStack)
+//     capture every piece of state needed to walk back. PvC undoes
+//     TWO moves at once so the human gets to retry their own move,
+//     not the AI's reply.
+//   * INPUT MODEL: CLICK OR DRAG. handleMousePress / handleMouseRelease
+//     support both "click source then click destination" and
+//     "drag-and-drop." Dragging requires no special state — we just
+//     track `dragFrom` and update `dragX/dragY` while the mouse is
+//     held.
+//   * LEGAL MOVES CACHE. `cachedLegalMoves_` + `legalMovesValid_`
+//     avoid recomputing on every input event. Invalidated whenever
+//     the board changes (applyMove / unmake).
+//   * MOVE ANIMATION + LIFT. Pieces animate over `animDurationMs`
+//     (180 ms). The renderer's drawAnimatedPiece adds a triangular
+//     vertical lift so the piece appears to be carried, not slid.
+//   * THREEFOLD-REPETITION DETECTION. positionHashes records the
+//     Zobrist hash before each move; checkGameOver counts repeats and
+//     flags STATE_DRAW after the third occurrence.
+//
+// HOW-TO-READ: Module-level AI worker state -> nullMove /
+//   clearAIWorkerResult / storeAIWorkerResult / loadAIWorkerResult /
+//   aiSearchWorker (thread side) -> ChessGame fields -> init / setupActions
+//   -> run (main loop) -> handleInput / handleMousePress / handleMouseRelease
+//   / handleMenuInput / handleGameOverInput / handlePromoInput /
+//   handleHudClick -> handleUndo / undoLastMove -> tryMove / executePromo
+//   / findLegalMove / applyMove -> AI turn (isAITurn / startAITurn /
+//   pollAITurn / cleanupAIWorker) -> animation -> game-over detection
+//   -> startNewGame -> updateClocks -> render -> getLegalMoves /
+//   invalidateLegalMoves / legalMovesFrom / buildSAN.
+// ============================================================================
+
 // Background AI search state. Chess only runs one game instance at a time, so
 // a single module-level worker slot is enough and keeps the UI thread isolated
 // from the search board copy.
@@ -33,10 +86,12 @@ var aiMoveCastleQueen: Boolean = false;
 var aiMovePromotion: Boolean = false;
 var aiMovePromotePiece: Integer = 0;
 
+/// @brief Sentinel "no move" used when the AI returns nothing.
 func nullMove() -> Move {
     return new Move(-1, -1, 0, false, false, false, false, 0);
 }
 
+/// @brief Wipe the worker-result fields. Call inside the lock.
 func clearAIWorkerResult() {
     aiMoveFrom = -1;
     aiMoveTo = -1;
@@ -48,6 +103,7 @@ func clearAIWorkerResult() {
     aiMovePromotePiece = 0;
 }
 
+/// @brief Pack a Move into the cross-thread result fields. Call inside lock.
 func storeAIWorkerResult(m: Move) {
     aiMoveFrom = m.from;
     aiMoveTo = m.to;
@@ -59,12 +115,16 @@ func storeAIWorkerResult(m: Move) {
     aiMovePromotePiece = m.promotePiece;
 }
 
+/// @brief Unpack the result fields back into a Move. Call inside lock.
 func loadAIWorkerResult() -> Move {
     return new Move(aiMoveFrom, aiMoveTo, aiMoveCaptured,
                     aiMoveEnPassant, aiMoveCastleKing, aiMoveCastleQueen,
                     aiMovePromotion, aiMovePromotePiece);
 }
 
+/// @brief Worker-thread entry point. Runs the AI search, stores the
+///        result, and returns. Reads `aiWorkerBoard` / `aiWorkerDepth`
+///        which were set by startAITurn before this thread was started.
 func aiSearchWorker() {
     if aiWorkerBoard == null { return; }
 
@@ -78,24 +138,7 @@ func aiSearchWorker() {
     Monitor.Exit(aiWorkerLock);
 }
 
-// ============================================================================
-// ChessGame — main game entity.
-//
-// Manages the game state machine, input handling, AI turns, and the render loop.
-//
-// States:
-//   STATE_MENU      — main menu (mode/difficulty selection)
-//   STATE_PLAYING   — active game (human or AI turn)
-//   STATE_PROMO     — awaiting promotion piece selection
-//   STATE_AI_THINK  — AI is computing (runs synchronously; frame loop continues)
-//   STATE_CHECKMATE — game over (checkmate)
-//   STATE_STALEMATE — game over (stalemate)
-//   STATE_DRAW      — game over (50-move rule / threefold repetition)
-//
-// Keyboard shortcuts (SDL scancodes, active during PLAYING state):
-//   N (scancode 17)              — start new game
-//   Ctrl+Z (scancodes 224+29)   — undo last move (2 in PvC: AI + human)
-// ============================================================================
+/// @brief Main chess controller. Wraps board + ai + renderer + state machine.
 class ChessGame {
     hide Canvas        canvas;
     hide Board         board;
@@ -166,6 +209,8 @@ class ChessGame {
     hide List[Move] cachedLegalMoves_;
     hide Boolean    legalMovesValid_;
 
+    /// @brief Build the canvas, board, move generator, renderer; pre-render
+    ///        sprites; reset all state to MENU defaults.
     expose func init() {
         canvas   = Canvas.New("Viper Chess", WIN_W, WIN_H);
         board    = new Board();
@@ -234,6 +279,7 @@ class ChessGame {
         legalMovesValid_  = false;
     }
 
+    /// @brief Define keyboard / gamepad action bindings (N = new, ESC = back).
     hide func setupActions() {
         Action.Define(ACT_NEW_GAME);
         Action.BindKey(ACT_NEW_GAME, KEY_N);
@@ -250,6 +296,9 @@ class ChessGame {
     // Main game loop
     // =========================================================================
 
+    /// @brief Main loop. ~120 FPS cap (sleep 8ms). Handles input, ticks
+    ///        clocks, polls the AI worker, and renders every frame
+    ///        until the window closes.
     expose func run() {
         lastTickMs = Viper.Time.GetTickCount();
 
@@ -274,6 +323,9 @@ class ChessGame {
     // Input handling
     // =========================================================================
 
+    /// @brief Top-level input dispatcher. Routes by gameState to the
+    ///        appropriate handler; also handles the global Ctrl+Z undo
+    ///        and ESC-to-menu shortcuts.
     hide func handleInput() {
         var mx = Viper.Input.Mouse.X();
         var my = Viper.Input.Mouse.Y();
@@ -343,6 +395,8 @@ class ChessGame {
         }
     }
 
+    /// @brief Mouse-down handler: select a piece (start of click-or-drag)
+    ///        or commit a click-to-move if a piece is already selected.
     hide func handleMousePress(mx: Integer, my: Integer) {
         var sq = renderer.squareAt(mx, my);
 
@@ -383,6 +437,8 @@ class ChessGame {
         }
     }
 
+    /// @brief Mouse-up handler: commit drag-and-drop move, or toggle
+    ///        selection if dropped back on origin.
     hide func handleMouseRelease(mx: Integer, my: Integer) {
         if dragFrom < 0 { return; }
 
@@ -412,6 +468,8 @@ class ChessGame {
         dragFrom = -1;
     }
 
+    /// @brief Main-menu click + ENTER handling. Selects mode/side/diff
+    ///        or starts the game on START / ENTER.
     hide func handleMenuInput(mx: Integer, my: Integer) {
         if Keyboard.WasPressed(KEY_ENTER) {
             startNewGame();
@@ -437,6 +495,7 @@ class ChessGame {
         }
     }
 
+    /// @brief Game-over overlay click handler (NEW GAME / MAIN MENU).
     hide func handleGameOverInput(mx: Integer, my: Integer) {
         if !Viper.Input.Mouse.WasClicked(0) { return; }
 
@@ -450,6 +509,7 @@ class ChessGame {
         }
     }
 
+    /// @brief Promotion-dialog click handler (Q / R / B / N choice).
     hide func handlePromoInput(mx: Integer, my: Integer) {
         if !Viper.Input.Mouse.WasClicked(0) { return; }
 
@@ -462,6 +522,8 @@ class ChessGame {
         }
     }
 
+    /// @brief Top/footer chrome click handler (NEW / MENU / DRAW / RESIGN).
+    /// @return true if a chrome button was clicked (caller stops further handling).
     hide func handleHudClick(mx: Integer, my: Integer) -> Boolean {
         if !Viper.Input.Mouse.WasClicked(0) { return false; }
 
@@ -503,6 +565,8 @@ class ChessGame {
     // Undo handling
     // =========================================================================
 
+    /// @brief Ctrl+Z undo. PvC undoes TWO plies so the human gets to
+    ///        replay their own move rather than the AI's reply.
     hide func handleUndo() {
         if gameState == STATE_AI_THINK { return; }   // unsafe while AI is mid-search
         if undoMoveStack.length() == 0 { return; }
@@ -518,6 +582,7 @@ class ChessGame {
 
     }
 
+    /// @brief Pop one ply from every undo stack and restore board + UI.
     hide func undoLastMove() {
         if undoMoveStack.length() == 0 { return; }
 
@@ -564,7 +629,9 @@ class ChessGame {
     // Move execution
     // =========================================================================
 
-    // Returns true if a legal move from→to was found and executed (or queued for promo).
+    /// @brief Try a (from, to) move. Promotions queue the promo dialog;
+    ///        non-promotions apply immediately.
+    /// @return true if a legal move was found and applied (or queued).
     hide func tryMove(fromSq: Integer, toSq: Integer) -> Boolean {
         var m = findLegalMove(fromSq, toSq, 0);
         if m.from == -1 { return false; }
@@ -581,6 +648,7 @@ class ChessGame {
         return true;
     }
 
+    /// @brief Apply the queued promotion move with the chosen piece type.
     hide func executePromo(pieceType: Integer) {
         var m = findLegalMove(promoFrom, promoTo, pieceType);
         if m.from >= 0 {
@@ -589,8 +657,9 @@ class ChessGame {
         gameState = STATE_PLAYING;
     }
 
-    // Find a legal move from→to with optional promotion piece constraint.
-    // Returns a move with from=-1 if not found.
+    /// @brief Lookup a legal move matching (from, to, promoPiece).
+    /// @param promoPiece 0 to match any promotion (caller will dialog).
+    /// @return The matching Move, or sentinel `from=-1` Move if none.
     hide func findLegalMove(fromSq: Integer, toSq: Integer, promoPiece: Integer) -> Move {
         var all = getLegalMoves();
         for i in 0..all.length() {
@@ -604,6 +673,10 @@ class ChessGame {
         return new Move(-1, -1, 0, false, false, false, false, 0);
     }
 
+    /// @brief Commit a move: push undo state, track captures, update
+    ///        last-move highlight, snapshot hash for repetition,
+    ///        invoke board.makeMove, build SAN, animate, check
+    ///        terminal conditions, and queue the AI if it's its turn.
     hide func applyMove(m: Move) {
         var movingPiece = board.get(m.from);
         var movingWhite = board.isWhitePiece(movingPiece);
@@ -666,12 +739,14 @@ class ChessGame {
     // AI turn
     // =========================================================================
 
+    /// @brief Is it the AI's turn to move? CvC always; PvC when not the human's side.
     hide func isAITurn() -> Boolean {
         if gameMode == MODE_CVC { return true; }
         if gameMode == MODE_PVC && board.whiteToMove != playerIsWhite { return true; }
         return false;
     }
 
+    /// @brief Spawn the AI worker thread on a copy of the current board.
     hide func startAITurn() {
         cleanupAIWorker();
 
@@ -688,6 +763,10 @@ class ChessGame {
         aiThinkStartMs = Viper.Time.GetTickCount();
     }
 
+    /// @brief Per-frame check on the AI worker. If the worker finished,
+    ///        unpack the result, apply the move, and (in CvC) enforce
+    ///        a minimum CVC_DELAY_MS between moves so the game is
+    ///        watchable.
     hide func pollAITurn() {
         if aiWorkerThread == null { return; }
         if aiWorkerThread!.SafeIsAlive() { return; }
@@ -736,6 +815,7 @@ class ChessGame {
         applyMove(m);
     }
 
+    /// @brief Join any in-flight AI thread + clear its result. Idempotent.
     hide func cleanupAIWorker() {
         if aiWorkerThread != null {
             aiWorkerThread!.SafeJoin();
@@ -748,6 +828,7 @@ class ChessGame {
         Monitor.Exit(aiWorkerLock);
     }
 
+    /// @brief Begin a 180-ms slide+lift animation between two squares.
     hide func startMoveAnimation(fromSq: Integer, toSq: Integer, pieceType: Integer, white: Boolean) {
         animActive = true;
         animFromSq = fromSq;
@@ -757,6 +838,7 @@ class ChessGame {
         animStartMs = Viper.Time.GetTickCount();
     }
 
+    /// @brief Cancel any in-flight animation.
     hide func stopAnimation() {
         animActive = false;
         animFromSq = -1;
@@ -765,6 +847,8 @@ class ChessGame {
         animStartMs = 0;
     }
 
+    /// @brief Return current animation progress in 0..1000 per-mille,
+    ///        or -1 if no animation. Auto-stops when complete.
     hide func animationProgressPermille() -> Integer {
         if !animActive { return -1; }
         var elapsed = Viper.Time.GetTickCount() - animStartMs;
@@ -780,6 +864,8 @@ class ChessGame {
     // Game over detection
     // =========================================================================
 
+    /// @brief Check for terminal conditions: checkmate, stalemate, 50-move
+    ///        rule, threefold repetition. Updates `gameState` accordingly.
     hide func checkGameOver() {
         var legal   = getLegalMoves();
         var inCheck = moveGen.isInCheck(board, board.whiteToMove);
@@ -832,6 +918,8 @@ class ChessGame {
     // Game management
     // =========================================================================
 
+    /// @brief Reset to STATE_PLAYING with a fresh starting position and
+    ///        empty undo / clock / capture / animation state.
     hide func startNewGame() {
         cleanupAIWorker();
 
@@ -875,6 +963,7 @@ class ChessGame {
     // Clock update (count-up: increment the active player's clock each second)
     // =========================================================================
 
+    /// @brief Tick the active player's count-up clock once per second.
     hide func updateClocks() {
         if gameState != STATE_PLAYING { return; }
 
@@ -895,6 +984,9 @@ class ChessGame {
     // Rendering
     // =========================================================================
 
+    /// @brief Per-frame paint. Z-order: backdrop -> board -> highlights ->
+    ///        pieces -> drag/animation overlay -> top bar -> footer ->
+    ///        side panel -> promo / thinking / game-over overlays.
     hide func render() {
         var mx = Viper.Input.Mouse.X();
         var my = Viper.Input.Mouse.Y();
@@ -970,6 +1062,7 @@ class ChessGame {
     // Helpers
     // =========================================================================
 
+    /// @brief Cached legal-move list for the current position.
     hide func getLegalMoves() -> List[Move] {
         if !legalMovesValid_ {
             cachedLegalMoves_ = moveGen.legalMoves(board);
@@ -978,10 +1071,12 @@ class ChessGame {
         return cachedLegalMoves_;
     }
 
+    /// @brief Invalidate the legal-move cache. Call after every board change.
     hide func invalidateLegalMoves() {
         legalMovesValid_ = false;
     }
 
+    /// @brief Filter the legal-move list to those originating at `sq`.
     hide func legalMovesFrom(sq: Integer) -> List[Move] {
         var all    = getLegalMoves();
         var result = [];
@@ -992,13 +1087,12 @@ class ChessGame {
         return result;
     }
 
-    // Build simplified algebraic notation for move m.
-    // Precondition: m has already been applied to the board (board reflects post-move state).
-    //
-    // Promotion fix: when m.promotion is true, the moving piece was a pawn.
-    // Reading board.get(m.to) after promotion returns the promoted piece (e.g. QUEEN),
-    // which would incorrectly produce "Qd8=Q". We use type_ = PAWN in that case,
-    // suppressing the piece-letter prefix as per SAN rules.
+    /// @brief Build simplified Standard Algebraic Notation for move `m`.
+    /// @details Precondition: `m` has been applied to the board.
+    ///   Promotion handling: when `m.promotion` is true, the mover was
+    ///   a pawn — reading board.get(m.to) would return the PROMOTED
+    ///   piece (e.g. QUEEN) and produce "Qd8=Q". We force type_ = PAWN
+    ///   so the prefix letter is suppressed per SAN rules.
     hide func buildSAN(m: Move) -> String {
         var files    = ["a", "b", "c", "d", "e", "f", "g", "h"];
         var fromFile = m.from % 8;

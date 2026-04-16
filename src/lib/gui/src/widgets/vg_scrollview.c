@@ -33,6 +33,11 @@ static void scrollview_render_overlay_subtree(vg_widget_t *widget,
                                               void *canvas,
                                               float parent_abs_x,
                                               float parent_abs_y);
+static void scrollview_recompute_content_size(vg_scrollview_t *scroll,
+                                              float available_width,
+                                              float available_height,
+                                              float explicit_content_width,
+                                              float explicit_content_height);
 
 //=============================================================================
 // ScrollView VTable
@@ -121,6 +126,20 @@ static void clamp_scroll(vg_scrollview_t *scroll) {
         scroll->scroll_y = max_scroll_y;
 }
 
+static void scrollview_recompute_content_size(vg_scrollview_t *scroll,
+                                              float available_width,
+                                              float available_height,
+                                              float explicit_content_width,
+                                              float explicit_content_height) {
+    if (!scroll)
+        return;
+    if (explicit_content_width <= 0.0f)
+        scroll->content_width = 0.0f;
+    if (explicit_content_height <= 0.0f)
+        scroll->content_height = 0.0f;
+    calculate_content_size(scroll, available_width, available_height);
+}
+
 //=============================================================================
 // ScrollView Implementation
 //=============================================================================
@@ -207,31 +226,50 @@ static void scrollview_arrange(vg_widget_t *widget, float x, float y, float widt
     float content_area_width = width;
     float content_area_height = height;
 
-    if (explicit_content_width <= 0)
-        scroll->content_width = 0.0f;
-    if (explicit_content_height <= 0)
-        scroll->content_height = 0.0f;
-
-    calculate_content_size(scroll, content_area_width, content_area_height);
+    scrollview_recompute_content_size(
+        scroll, content_area_width, content_area_height, explicit_content_width, explicit_content_height);
 
     // Determine if scrollbars are needed
-    bool needs_h = (scroll->direction & VG_SCROLL_HORIZONTAL) && scroll->content_width > width;
-    bool needs_v = (scroll->direction & VG_SCROLL_VERTICAL) && scroll->content_height > height;
+    bool needs_h = false;
+    bool needs_v = false;
 
     if (scroll->auto_hide_scrollbars) {
+        for (int pass = 0; pass < 3; pass++) {
+            float pass_width = width - (needs_v ? scroll->scrollbar_width : 0.0f);
+            float pass_height = height - (needs_h ? scroll->scrollbar_width : 0.0f);
+            if (pass_width < 0.0f)
+                pass_width = 0.0f;
+            if (pass_height < 0.0f)
+                pass_height = 0.0f;
+
+            scrollview_recompute_content_size(
+                scroll, pass_width, pass_height, explicit_content_width, explicit_content_height);
+
+            bool new_h =
+                (scroll->direction & VG_SCROLL_HORIZONTAL) && scroll->content_width > pass_width;
+            bool new_v =
+                (scroll->direction & VG_SCROLL_VERTICAL) && scroll->content_height > pass_height;
+            if (new_h == needs_h && new_v == needs_v)
+                break;
+            needs_h = new_h;
+            needs_v = new_v;
+        }
         scroll->show_h_scrollbar = needs_h;
         scroll->show_v_scrollbar = needs_v;
+    } else {
+        needs_h = scroll->show_h_scrollbar;
+        needs_v = scroll->show_v_scrollbar;
     }
 
     content_area_width = width - (scroll->show_v_scrollbar ? scroll->scrollbar_width : 0.0f);
     content_area_height = height - (scroll->show_h_scrollbar ? scroll->scrollbar_width : 0.0f);
+    if (content_area_width < 0.0f)
+        content_area_width = 0.0f;
+    if (content_area_height < 0.0f)
+        content_area_height = 0.0f;
 
-    if (explicit_content_width <= 0)
-        scroll->content_width = 0.0f;
-    if (explicit_content_height <= 0)
-        scroll->content_height = 0.0f;
-
-    calculate_content_size(scroll, content_area_width, content_area_height);
+    scrollview_recompute_content_size(
+        scroll, content_area_width, content_area_height, explicit_content_width, explicit_content_height);
 
     // Clamp scroll position
     clamp_scroll(scroll);
@@ -442,7 +480,9 @@ static bool scrollview_handle_event(vg_widget_t *widget, vg_event_t *event) {
             widget->height - (scroll->show_h_scrollbar ? scroll->scrollbar_width : 0);
 
         // Vertical scrollbar area
-        if (scroll->show_v_scrollbar && event->mouse.x >= widget->width - scroll->scrollbar_width) {
+        if (scroll->show_v_scrollbar &&
+            event->mouse.x >= content_area_width && event->mouse.x < widget->width &&
+            event->mouse.y >= 0.0f && event->mouse.y < content_area_height) {
             scroll->v_scrollbar_dragging = true;
             scroll->drag_offset = event->mouse.y;
             return true;
@@ -450,7 +490,8 @@ static bool scrollview_handle_event(vg_widget_t *widget, vg_event_t *event) {
 
         // Horizontal scrollbar area
         if (scroll->show_h_scrollbar &&
-            event->mouse.y >= widget->height - scroll->scrollbar_width) {
+            event->mouse.y >= content_area_height && event->mouse.y < widget->height &&
+            event->mouse.x >= 0.0f && event->mouse.x < content_area_width) {
             scroll->h_scrollbar_dragging = true;
             scroll->drag_offset = event->mouse.x;
             return true;
@@ -504,9 +545,13 @@ static bool scrollview_handle_event(vg_widget_t *widget, vg_event_t *event) {
         bool was_v_hover = scroll->v_scrollbar_hovered;
 
         scroll->v_scrollbar_hovered =
-            scroll->show_v_scrollbar && event->mouse.x >= widget->width - scroll->scrollbar_width;
+            scroll->show_v_scrollbar && event->mouse.x >= content_area_width &&
+            event->mouse.x < widget->width && event->mouse.y >= 0.0f &&
+            event->mouse.y < content_area_height;
         scroll->h_scrollbar_hovered =
-            scroll->show_h_scrollbar && event->mouse.y >= widget->height - scroll->scrollbar_width;
+            scroll->show_h_scrollbar && event->mouse.y >= content_area_height &&
+            event->mouse.y < widget->height && event->mouse.x >= 0.0f &&
+            event->mouse.x < content_area_width;
 
         if (was_h_hover != scroll->h_scrollbar_hovered ||
             was_v_hover != scroll->v_scrollbar_hovered) {

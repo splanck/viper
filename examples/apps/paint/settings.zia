@@ -1,3 +1,23 @@
+// ============================================================================
+// MODULE: settings (PaintSettings)
+// PURPOSE: Runtime-tunable defaults loaded from a JSON/INI config file
+//          via Viper.Game.Config. Everything the user might want to
+//          override — window size, canvas size, default tool / brush
+//          size / opacity, target FPS, theme — lives here.
+//
+// WHERE-THIS-FITS: Loaded by PaintApp at startup (paint.runtime.json
+//          is the default path). Missing keys fall back to the code-
+//          level constants in config.zia. `clamp()` enforces safe
+//          ranges on every load.
+//
+// KEY-DESIGN-CHOICES:
+//   * TWO-LAYER CONFIG. Build-time constants (config.zia) are
+//     fallbacks; runtime JSON overrides are optional. This is the
+//     "opinionated defaults + escape hatch" pattern.
+//   * CLAMP ON LOAD. A typo in the config (e.g., fontSize: -5)
+//     falls back to a sane default rather than crashing the app.
+// ============================================================================
+
 // settings.zia - Runtime-configurable Paint settings
 module settings;
 
@@ -5,6 +25,7 @@ bind Viper.Game.Config as RuntimeConfig;
 
 bind "./config";
 
+/// @brief Runtime-tunable settings loaded from Viper.Game.Config JSON.
 class PaintSettings {
     hide RuntimeConfig? cfg;
     expose Integer windowWidth;

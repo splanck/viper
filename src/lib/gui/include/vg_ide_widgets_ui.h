@@ -221,6 +221,9 @@ typedef struct vg_toolbar {
     vg_toolbar_item_t *hovered_item; ///< Currently hovered item
     vg_toolbar_item_t *pressed_item; ///< Currently pressed item
     int overflow_start_index;        ///< First item in overflow (-1 if none)
+    bool overflow_button_hovered;    ///< Hover state for overflow button
+    vg_contextmenu_t *overflow_popup; ///< Popup for overflowed items
+    bool overflow_popup_dirty;        ///< Rebuild popup contents before next show
 } vg_toolbar_t;
 
 /// @brief Create a new toolbar widget

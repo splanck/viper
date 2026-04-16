@@ -9,25 +9,61 @@ bind Viper.Core.Convert as Convert;
 bind Viper.GUI;
 
 // ============================================================================
-// SettingsManager — persistent IDE settings stored in ~/.viperide/settings.ini
-// ============================================================================
-// Uses Viper.Text.Ini for robust parsing and formatting.
-// Call Load() once at startup and Save() whenever settings change.
+// MODULE: settings
+// PURPOSE: Persistent IDE settings stored in `~/.viperide/settings.ini`.
+//          Wraps `Viper.Text.Ini` for key-value persistence and
+//          `Viper.GUI.Theme` for theme application.
+//
+// WHERE-THIS-FITS: Loaded once by main.zia after the AppShell exists, so
+//          values like font size and theme can be applied to the editor
+//          before the first frame. Saved on demand from the
+//          view_commands settings prompt.
+//
+// KEY-DESIGN-CHOICES:
+//   * INI FORMAT. INI is human-editable, diff-friendly, and the
+//     `Viper.Text.Ini` wrapper handles parsing edge cases. JSON would
+//     also work but adds whitespace noise for a flat key-value file.
+//   * SECTION = "settings". A single section keeps the file tidy. New
+//     subsystems can add their own sections later (e.g., "[colors]")
+//     without colliding.
+//   * MISSING KEY -> KEEP DEFAULT. `Load` only overwrites a field if the
+//     key is present and parseable. So adding a new settings field
+//     doesn't break existing settings files — older files just use the
+//     coded default.
+//   * VALIDATION ON LOAD. Numeric ranges (fontSize >= 6, tabWidth in
+//     2..8) are enforced when parsing. Out-of-range values keep the
+//     current value rather than producing a broken state.
+//   * SetupPath() RESOLVES HOME LATE. Path computation happens lazily on
+//     first Load/Save rather than at construction so the manager can be
+//     instantiated before the runtime environment is available.
+//   * Save() ALWAYS WRITES ALL FIELDS. We don't read-modify-write — the
+//     file is the projection of the in-memory state. This means
+//     manually editing settings.ini outside the IDE WILL be overwritten
+//     the next time the IDE saves. Documented behaviour.
+//
+// HOW-TO-READ: init (defaults) -> SetupPath (~/.viperide/settings.ini) ->
+//   Load (parse + validate) -> Save (serialise + persist) -> ApplyTheme
+//   (route to GUI.Theme).
 // ============================================================================
 
+/// @brief Default font size (in points). Used both at construction and as
+///        the reset target for the "Reset font size" command.
 final DEFAULT_FONT_SIZE = 14;
 
+/// @brief Settings store with INI-backed persistence.
 class SettingsManager {
-    expose Integer fontSize;
-    expose String  fontPath;
-    expose String  theme;
-    expose Boolean minimapVisible;
-    expose Boolean autoCheckOnSave;
-    expose Boolean codeFolding;
-    expose Integer tabWidth;
-    expose String  settingsDir;
-    expose String  settingsPath;
+    expose Integer fontSize;       // Editor font size in points.
+    expose String  fontPath;       // Optional custom .ttf/.ttc path; "" = default fallback chain.
+    expose String  theme;          // "dark" or "light".
+    expose Boolean minimapVisible; // Whether the minimap panel is shown.
+    expose Boolean autoCheckOnSave;// Whether live diagnostics run on edit.
+    expose Boolean codeFolding;    // Whether the editor offers code-folding regions.
+    expose Integer tabWidth;       // Tab width in spaces (2..8).
+    expose String  settingsDir;    // ~/.viperide (resolved at SetupPath).
+    expose String  settingsPath;   // settingsDir/settings.ini.
 
+    /// @brief Initialize with defaults. Call SetupPath then Load to
+    ///        populate from disk.
     expose func init() {
         fontSize       = DEFAULT_FONT_SIZE;
         fontPath       = "";
@@ -40,7 +76,9 @@ class SettingsManager {
         settingsPath   = "";
     }
 
-    // Resolve the settings file path from the user's HOME directory.
+    /// @brief Resolve `settingsDir` and `settingsPath` from $HOME.
+    /// @note Falls back to "." if HOME is unset (rare; happens in some
+    ///       containerised environments). Idempotent.
     expose func SetupPath() {
         var home = Env.GetVariable("HOME");
         if home == "" {
@@ -50,7 +88,10 @@ class SettingsManager {
         settingsPath = Path.Join(settingsDir, "settings.ini");
     }
 
-    // Load settings from disk. Missing or unrecognised keys keep their defaults.
+    /// @brief Load settings from disk. Missing or invalid values keep
+    ///        their current (default) values.
+    /// @note Idempotent — calling Load twice without changes leaves
+    ///       state unchanged.
     expose func Load() {
         if settingsPath == "" {
             SetupPath();
@@ -61,6 +102,7 @@ class SettingsManager {
         var content = IO.File.ReadAllText(settingsPath);
         var ini = Ini.Parse(content);
 
+        // fontSize: must be at least 6 to be useful.
         var sizeStr = Ini.Get(ini, "settings", "fontSize");
         if sizeStr != "" {
             var sz = Convert.ToInt(sizeStr);
@@ -69,6 +111,7 @@ class SettingsManager {
             }
         }
 
+        // theme: only "light" and "dark" are valid; anything else keeps the default.
         var themeStr = Ini.Get(ini, "settings", "theme");
         if themeStr == "light" {
             theme = "light";
@@ -78,6 +121,7 @@ class SettingsManager {
 
         fontPath = Ini.Get(ini, "settings", "fontPath");
 
+        // Booleans are persisted as "1" / "0".
         var mmStr = Ini.Get(ini, "settings", "minimap");
         if mmStr != "" {
             minimapVisible = mmStr == "1";
@@ -100,7 +144,10 @@ class SettingsManager {
         }
     }
 
-    // Persist settings to disk. Creates ~/.viperide/ if it does not exist.
+    /// @brief Persist settings to disk. Creates `~/.viperide/` if needed.
+    /// @note ALWAYS writes every field — no read-modify-write. Manual
+    ///       edits to settings.ini outside the IDE will be lost on the
+    ///       next save.
     expose func Save() {
         if settingsPath == "" {
             SetupPath();
@@ -131,7 +178,7 @@ class SettingsManager {
         IO.File.WriteAllText(settingsPath, content);
     }
 
-    // Apply the loaded theme setting.
+    /// @brief Apply the loaded theme via Viper.GUI.Theme.SetDark/SetLight.
     expose func ApplyTheme() {
         if theme == "light" {
             GUI.Theme.SetLight();

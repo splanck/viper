@@ -1,8 +1,30 @@
+// ============================================================================
+// MODULE: document (PaintDocument)
+// PURPOSE: Metadata for the currently-open paint document — path, name,
+//          "new" / "modified" flags, and revision tracking for
+//          undo-vs-saved drift detection.
+//
+// WHERE-THIS-FITS: Owned by PaintApp. Separate from LayerStack (which
+//          owns pixel storage) so path / filename concerns don't
+//          leak into the drawing code.
+//
+// KEY-DESIGN-CHOICES:
+//   * REVISION COUNTER. `savedRevision` is the revision number at
+//     the last save; `lastSeenRevision` tracks the most recent
+//     revision we've observed. `isModified` flips when they diverge.
+//     This lets the app detect "dirty" after any edit without
+//     eagerly scanning pixels.
+//   * FILENAME DERIVED FROM PATH. fileName is Path.Name(filePath);
+//     fall-back "Untitled" if empty. displayName() appends "*" when
+//     dirty.
+// ============================================================================
+
 // document.zia - Paint document metadata independent of pixel storage
 module document;
 
 bind Path = Viper.IO.Path;
 
+/// @brief Document metadata (path, name, dirty/new flags, revision).
 class PaintDocument {
     expose String filePath;
     expose String fileName;

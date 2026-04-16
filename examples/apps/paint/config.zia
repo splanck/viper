@@ -1,7 +1,25 @@
 module config;
 
 // ============================================================================
-// VIPER PAINT - Configuration and Constants
+// MODULE: config
+// PURPOSE: All tuning constants for Viper Paint in one place: window
+//          dimensions, canvas defaults, UI panel sizes, palette grid,
+//          brush limits, history depth, named colour hex values, tool
+//          IDs, keyboard scancodes.
+//
+// WHERE-THIS-FITS: Leaf module — imported by everyone. Pure constants.
+//
+// KEY-DESIGN-CHOICES:
+//   * TOOL IDS AS FINALS. TOOL_PENCIL=0, TOOL_BRUSH=1, ... etc. Every
+//     tool module uses these for routing. Keeping them as numeric
+//     finals (not enum) is a Zia idiom that keeps the switch-less
+//     dispatch straightforward.
+//   * 0xRRGGBB COLOURS. 24-bit integers packed as 0xRRGGBB; this matches
+//     the Canvas/Pixels drawing API.
+//   * KEY SCANCODES. ASCII-style codes (KEY_P=80, KEY_Z=90) for tool
+//     shortcuts. The actions.zia module binds them to named actions.
+//   * PALETTE SHAPE. 8 columns × 8 rows = 64 cells; each cell is a
+//     fixed PALETTE_CELL_SIZE × PALETTE_CELL_SIZE pixel rect.
 // ============================================================================
 
 // Window dimensions

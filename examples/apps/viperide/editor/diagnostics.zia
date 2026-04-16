@@ -12,23 +12,45 @@ bind Convert = Viper.Core.Convert;
 bind Viper.GUI;
 
 // ============================================================================
-// LiveDiagnostics — real-time error checking as-you-type.
+// MODULE: diagnostics
+// PURPOSE: Real-time error/warning checking as the user types. Drives
+//          the editor's inline highlight underlines, the minimap
+//          markers, and the bottom diagnostics panel.
 //
-// Calls Viper.Zia.Completion.Check(source) on a debounce timer after edits.
-// Parses the serialized diagnostics and updates:
-//   - Editor highlight spans (red underlines for errors, yellow for warnings)
-//   - Minimap markers
-//   - Diagnostics panel (listbox)
-//   - Status bar error count
+// WHERE-THIS-FITS: Editor controller invoked once per frame from
+//          main.zia. Reads the editor's text and consults
+//          `Viper.Zia.Completion.CheckForFile` for diagnostics.
 //
-// Check format: severity\tline\tcol\tcode\tmessage\n per diagnostic
-//   severity: 0=error, 1=warning, 2=note
+// KEY-DESIGN-CHOICES:
+//   * DEBOUNCED. Re-running the type-checker on every keystroke would
+//     thrash. We defer the check by `DEBOUNCE_MS` ms after the last
+//     edit so a burst of typing produces a single check at the end.
+//     The two-call dance (first call sets `pending = true` and starts
+//     the timer; subsequent calls wait for the debounce window) means
+//     the timer arms itself on first detection of change.
+//   * SOURCE + PATH CACHE. Skip the check if both the buffer text AND
+//     the active file path haven't changed since last run. The path
+//     cache matters because a path change (tab switch) needs to
+//     re-check even if the new tab's text matches the previous run.
+//   * PATH-AWARE CheckForFile. Same reason as completion — relative
+//     `bind` paths need the active file's directory for accurate
+//     resolution.
+//   * SERIALIZED FORMAT. The engine returns one diagnostic per line:
+//         severity \t line \t col \t code \t message
+//     severity: 0 = error, 1 = warning, 2 = note. We parse each line
+//     into the diagnostic listbox, the minimap marker, and an inline
+//     editor highlight span that underlines the error location.
+//   * THREE OUTPUT SURFACES IN LOCKSTEP. Diagnostics panel listbox,
+//     minimap markers, and editor inline highlights are all cleared
+//     and re-emitted together. They're conceptually one view of the
+//     diagnostic set.
 // ============================================================================
 
 final DEBOUNCE_MS = 500;       // ms to wait after last edit before checking
-final ERROR_COLOR = 16711680;  // red
-final WARN_COLOR  = 16776960;  // yellow
+final ERROR_COLOR = 16711680;  // red    (0xFF0000)
+final WARN_COLOR  = 16776960;  // yellow (0xFFFF00)
 
+/// @brief Live error/warning checker for the active document.
 class LiveDiagnostics {
     expose Boolean enabled;
     expose Integer lastEditMs;       // tick of last detected edit
@@ -37,6 +59,7 @@ class LiveDiagnostics {
     expose String  sourcePath;
     expose String  lastCheckedPath;
 
+    /// @brief Initialize as enabled, with no pending work and empty caches.
     expose func init() {
         enabled = true;
         lastEditMs = 0;
@@ -46,6 +69,9 @@ class LiveDiagnostics {
         lastCheckedPath = "";
     }
 
+    /// @brief Set the active file's path; invalidates the path cache so
+    ///        the next `update` will re-check even if the source text
+    ///        matches.
     expose func setSourcePath(path: String) {
         if path != sourcePath {
             sourcePath = path;
@@ -54,9 +80,14 @@ class LiveDiagnostics {
         }
     }
 
-    // Call once per frame from the main loop.
-    // Returns the number of errors found (0 if no check was performed).
-    // Also updates editor highlight spans for inline error underlines.
+    /// @brief Per-frame diagnostic check (debounced).
+    /// @param engine Editor whose text we're checking.
+    /// @param shell  AppShell — provides diagListBox + minimap.
+    /// @return Number of error-severity diagnostics found, or 0 if no
+    ///         check was performed this frame (debounce timer not yet
+    ///         elapsed, or source unchanged since last check).
+    /// @note On a clean check, all three output surfaces (listbox,
+    ///       minimap, editor highlights) are cleared.
     expose func update(engine: editor_engine.EditorEngine,
                        shell: app_shell.AppShell) -> Integer {
         if enabled == false { return 0; }
@@ -142,7 +173,8 @@ class LiveDiagnostics {
         return errorCount;
     }
 
-    // Force an immediate recheck (e.g., after save or reload).
+    /// @brief Force an immediate recheck on the next `update` call.
+    /// @note Use after save / reload / any explicit "rerun checks" gesture.
     expose func invalidate() {
         lastCheckedSource = "";
         pending = false;

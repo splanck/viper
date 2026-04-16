@@ -1,7 +1,15 @@
+// ============================================================================
+// MODULE: ui/layout
+// PURPOSE: Layout math — Rect type plus every named rect in the HUD,
+//          side panel, menu, and footer. Central source for all screen
+//          positions; `contains(rect, mx, my)` provides hit-testing.
+// ============================================================================
+
 module layout;
 
 bind "../config";
 
+/// @brief Axis-aligned rectangle with mutable position/size.
 class Rect {
     expose Integer x;
     expose Integer y;

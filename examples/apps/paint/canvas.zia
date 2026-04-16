@@ -1,3 +1,25 @@
+// ============================================================================
+// MODULE: canvas (DrawingCanvas)
+// PURPOSE: The document's pixel-manipulation API. Wraps the LayerStack
+//          and exposes drawing primitives (setPixel / setPixelBlend /
+//          drawLine / drawRect / drawRectFill / drawEllipse / flood
+//          fill, etc.) that tools call.
+//
+// WHERE-THIS-FITS: Owned by PaintApp. Every tool consumes it; the
+//          viewport reads its composited Pixels each frame.
+//
+// KEY-DESIGN-CHOICES:
+//   * REVISION COUNTER. Incremented on every change via markChanged().
+//     The viewport's scaled-pixel cache keys on this, so unchanged
+//     frames cost zero scale work.
+//   * LAYERED. All drawing hits the active layer; composition happens
+//     in the LayerStack. This class is the abstraction bridge that
+//     keeps tools from having to know about layers.
+//   * CLASSIC RASTER PRIMITIVES. drawLine (Bresenham via runtime),
+//     drawRect/Fill, drawEllipse/Fill, floodFill. Each wraps the
+//     corresponding Pixels operation.
+// ============================================================================
+
 // canvas.viper - Drawing canvas for Viper Paint
 module canvas;
 
@@ -7,7 +29,7 @@ bind Str = Viper.String;
 bind "./config";
 bind "./layers";
 
-// DrawingCanvas entity - manages the pixel buffer for drawing
+/// @brief Document pixel-buffer manager (wraps LayerStack).
 class DrawingCanvas {
     expose Integer width;           // Canvas width in pixels
     expose Integer height;          // Canvas height in pixels

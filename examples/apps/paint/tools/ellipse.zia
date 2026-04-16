@@ -1,3 +1,18 @@
+// ============================================================================
+// MODULE: ellipse (EllipseTool)
+// PURPOSE: Same drag-preview shape contract, ellipse bounded by the
+//          drag rectangle. (Hold-Shift-to-constrain-to-circle is
+//          left as a future enhancement.)
+//
+// KEY-DESIGN-CHOICES:
+//   * BOUNDING-BOX INPUT. The drag defines a bounding box; the
+//     ellipse is inscribed in it. center = bbox centre;
+//     rx = bbox.width/2; ry = bbox.height/2. canvas.drawEllipseFill /
+//     drawEllipse handle the rasterization.
+//   * ZERO-RADIUS GUARD. rx > 0 && ry > 0 check prevents a
+//     degenerate single-pixel drag from producing a malformed shape.
+// ============================================================================
+
 // ellipse.viper - Ellipse tool for Viper Paint
 module ellipse;
 
@@ -7,7 +22,7 @@ bind "../config";
 bind "../canvas";
 bind "../colors";
 
-// EllipseTool - draws ellipses/circles (filled or outline)
+/// @brief Filled / outline ellipse shape tool (bbox-inscribed).
 class EllipseTool {
     hide Integer drawing;       // 1 if currently drawing
     expose Integer startX;      // Start corner X (bounding box)

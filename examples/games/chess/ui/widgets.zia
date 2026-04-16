@@ -5,6 +5,32 @@ bind Color = Viper.Graphics.Color;
 bind "./theme";
 bind "./layout";
 
+// ============================================================================
+// MODULE: widgets
+// PURPOSE: Reusable visual primitives composed from theme colours and the
+//          canvas drawing API: card frames, buttons (regular / segmented
+//          / hover / active / primary / danger), badges, dividers,
+//          insets, and section titles.
+//
+// WHERE-THIS-FITS: Bridge between theme + layout (input) and renderer
+//          (consumer). The renderer composes scenes by calling these.
+//
+// KEY-DESIGN-CHOICES:
+//   * NO STATE. Every widget is a pure rendering function — takes the
+//     canvas, the rect, and any styling args. This makes them trivial
+//     to compose and test.
+//   * STATE FLAGS LAYER ON. drawButton takes hovered / pressed / active
+//     / primary / danger as separate booleans. Each modifies the
+//     base/border/text colours additively, with later flags overriding
+//     earlier ones. The order of the modifiers in the function matches
+//     visual priority (active > hover > press).
+//   * SHADOWS VIA OFFSET ALPHA-BOXES. Cards and buttons get a soft
+//     shadow by drawing a translucent black box offset down/right
+//     before the main shape. Cheap and looks decent.
+// ============================================================================
+
+/// @brief Draw a panel card with shadow, gradient fill, double border,
+///        and a thin accent strip across the top.
 func drawCard(canvas: Canvas, r: Rect, accent: Integer, raised: Boolean) {
     var shadowAlpha = 72;
     if !raised { shadowAlpha = 48; }
@@ -15,10 +41,13 @@ func drawCard(canvas: Canvas, r: Rect, accent: Integer, raised: Boolean) {
     canvas.Box(r.x + 1, r.y + 1, r.w - 2, 10, Color.Brighten(accent, 20));
 }
 
+/// @brief Small muted-text section header (e.g., "MOVE LOG").
 func drawSectionTitle(canvas: Canvas, r: Rect, text: String) {
     theme.drawTextScaled(canvas, r.x, r.y, text, 1, theme.TEXT_MUTED);
 }
 
+/// @brief Generic button with state flags. See module header for the
+///        layering rules.
 func drawButton(canvas: Canvas,
                 r: Rect,
                 label: String,
@@ -64,6 +93,8 @@ func drawButton(canvas: Canvas,
     theme.drawTextCentered(canvas, r.x, theme.textYInRect(r.y, r.h, 1), r.w, label, 1, textCol);
 }
 
+/// @brief Tab-style toggle button (no press visual). Used in menu mode/
+///        side/difficulty pickers.
 func drawSegmentButton(canvas: Canvas,
                        r: Rect,
                        label: String,
@@ -72,16 +103,19 @@ func drawSegmentButton(canvas: Canvas,
     drawButton(canvas, r, label, hovered, false, active, false, false);
 }
 
+/// @brief Pill-shaped status badge (e.g., "WHITE", "ENGINE", "CHECK").
 func drawBadge(canvas: Canvas, r: Rect, label: String, color: Integer) {
     canvas.GradientV(r.x, r.y, r.w, r.h, theme.brighten(color, 18), color);
     canvas.RoundFrame(r.x, r.y, r.w, r.h, 8, theme.brighten(color, 24));
     theme.drawTextCentered(canvas, r.x, theme.textYInRect(r.y, r.h, 1), r.w, label, 1, theme.ACCENT_CREAM);
 }
 
+/// @brief Horizontal hairline in the soft border colour.
 func drawDivider(canvas: Canvas, x: Integer, y: Integer, w: Integer) {
     canvas.Line(x, y, x + w, y, theme.CARD_BORDER_SOFT);
 }
 
+/// @brief Recessed inset rect — used to frame the move log.
 func drawInset(canvas: Canvas, r: Rect) {
     canvas.GradientV(r.x, r.y, r.w, r.h, theme.PANEL_BG, theme.CARD_BG);
     canvas.RoundFrame(r.x, r.y, r.w, r.h, 10, theme.CARD_BORDER_SOFT);

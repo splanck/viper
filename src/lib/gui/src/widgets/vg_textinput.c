@@ -810,10 +810,6 @@ void vg_textinput_set_text(vg_textinput_t *input, const char *text) {
     textinput_set_cursor_internal(input, textinput_char_count(input));
 
     input->base.needs_paint = true;
-
-    if (input->on_change) {
-        input->on_change(&input->base, input->text, input->on_change_data);
-    }
 }
 
 const char *vg_textinput_get_text(vg_textinput_t *input) {

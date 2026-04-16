@@ -1,3 +1,18 @@
+// ============================================================================
+// MODULE: feedback (FeedbackManager)
+// PURPOSE: Tiny wrapper for status messages, toast notifications, and
+//          cursor changes. Centralizes the GUI.Toast / MessageBox /
+//          Cursor calls so the rest of the app doesn't need to know
+//          about the runtime API.
+//
+// KEY-DESIGN-CHOICES:
+//   * FOUR SEVERITIES. info / success / warning / error each route
+//     to the corresponding GUI.Toast colour and each update the
+//     statusMessage for the status bar.
+//   * CURSOR HELPERS. setCanvasCursor flips crosshair vs arrow so
+//     the canvas vs chrome areas are visually distinct.
+// ============================================================================
+
 // feedback.zia - Status, cursor, and GUI notification helpers
 module feedback;
 
@@ -7,6 +22,7 @@ final CURSOR_ARROW = 0;
 final CURSOR_CROSSHAIR = 3;
 final CURSOR_HAND = 4;
 
+/// @brief Toast + status-bar + cursor helper.
 class FeedbackManager {
     expose String statusMessage;
 

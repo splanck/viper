@@ -1,3 +1,42 @@
+// ============================================================================
+// MODULE: ball
+// PURPOSE: Bowling ball entity. Owns its 3D physics body + mesh +
+//          material, the per-weight stats (mass / max speed / hook
+//          multiplier / colour), spin state, gutter tracking, and the
+//          throw release model.
+//
+// WHERE-THIS-FITS: Owned by BowlingGame. Updated each physics step via
+//          updateMotion (applies hook + drag + spin decay) and rendered
+//          each frame via draw.
+//
+// KEY-DESIGN-CHOICES:
+//   * THREE WEIGHTS, ONE BALL TYPE. BALL_LIGHT/MEDIUM/HEAVY each carry
+//     mass, max throw speed, hook strength, and colour. Selecting a
+//     weight (selectBall / cycleBall) recreates the physics body and
+//     repaints the material — no aliasing of stats.
+//   * HOOK MODEL. The ball curves toward the pins as it travels: spin
+//     creates a sideways force `hookForce = spin * multiplier *
+//     (early + backend)` scaled by friction. Oiled portion gives
+//     little hook; the ball "wakes up" on the dry backend (after
+//     oilEndZ) and curves more aggressively. This mirrors real
+//     bowling-ball physics.
+//   * RELEASE GEOMETRY. doThrow computes a release position (close
+//     to the centre line, scaled by aim), a target position (further
+//     out, augmented by spin), and converts the (releaseX, targetX,
+//     travelZ) triangle into (sideSpeed, forwardSpeed) so the throw
+//     animates as a straight initial trajectory before the hook
+//     kicks in.
+//   * GUTTER LOCK. markGutter clamps the ball's X to the gutter
+//     centre and reduces its collision mask so it can no longer
+//     interact with pins. The ball still slides forward until it
+//     exits at GUTTER_EXIT_Z.
+//   * VISUAL SPIN VS PHYSICS SPIN. visualSpinAngle is purely cosmetic
+//     (drives the rotation matrix in draw); spinAmount is the
+//     physical hook coefficient. They evolve independently —
+//     visualSpinAngle accumulates with speed, spinAmount decays with
+//     friction.
+// ============================================================================
+
 // ball.zia — Ball entity: weight selection, release shaping, hook model, gutter state
 module ball;
 
@@ -7,6 +46,7 @@ bind Viper.Terminal;
 bind Viper.Core.Convert as Convert;
 bind "../config";
 
+/// @brief Bowling ball entity with hook physics and weight-class stats.
 class Ball {
     hide Physics3DBody body;
     hide Physics3DWorld world;
@@ -29,6 +69,7 @@ class Ball {
     hide Boolean isInGutter;
     hide Boolean hasBeenThrown;
 
+    /// @brief One-time setup: physics body + mesh + material; defaults to MEDIUM weight.
     expose func initBall(physWorld: Physics3DWorld) {
         world = physWorld;
         inWorld = false;
@@ -48,6 +89,8 @@ class Ball {
         recreateBody();
     }
 
+    /// @brief Copy weight-class stats (mass, max speed, hook, colour)
+    ///        into the live `mass`/`maxSpeed`/etc. fields.
     hide func applyBallStats() {
         if (ballType == config.BALL_LIGHT) {
             mass = config.BALL_MASS_LIGHT;
@@ -73,6 +116,9 @@ class Ball {
         }
     }
 
+    /// @brief Tear down + rebuild the physics body. Called on weight
+    ///        change and on resetBall — the body's mass is baked in
+    ///        at construction so we have to recreate it.
     hide func recreateBody() {
         if (inWorld) {
             Physics3DWorld.Remove(world, body);
@@ -88,6 +134,7 @@ class Ball {
         inWorld = false;
     }
 
+    /// @brief Switch to a specific weight (LIGHT/MEDIUM/HEAVY).
     expose func selectBall(btype: Integer) {
         ballType = btype;
         applyBallStats();
@@ -95,6 +142,7 @@ class Ball {
         recreateBody();
     }
 
+    /// @brief Cycle through the three weights; wraps at boundaries.
     expose func cycleBall(dir: Integer) {
         var nextType = ballType + dir;
         if (nextType < config.BALL_LIGHT) { nextType = config.BALL_HEAVY; }
@@ -102,16 +150,25 @@ class Ball {
         selectBall(nextType);
     }
 
+    /// @brief Set spin amount, clamped to ±SPIN_MAX. Positive = right-curve.
     expose func setSpin(amount: Float) {
         spinAmount = amount;
         if (spinAmount > config.SPIN_MAX) { spinAmount = config.SPIN_MAX; }
         if (spinAmount < -config.SPIN_MAX) { spinAmount = -config.SPIN_MAX; }
     }
 
+    /// @brief Current spin amount.
     expose func getSpin() -> Float {
         return spinAmount;
     }
 
+    /// @brief Release the ball with the given aim and power.
+    /// @param aimX Player's aim offset; clamped to ±AIM_MAX.
+    /// @param power 0..1 fraction of weight-class max speed.
+    /// @details Computes a release+target geometry to derive
+    ///          (sideSpeed, forwardSpeed) such that the ball travels
+    ///          in a straight line until the hook (in updateMotion)
+    ///          curves it.
     expose func doThrow(aimX: Float, power: Float) {
         var throwSpeed = config.THROW_SPEED_MIN + power * (maxSpeed - config.THROW_SPEED_MIN);
         var clampedAimX = aimX;
@@ -157,6 +214,10 @@ class Ball {
             + "%  Shape: " + toString(Convert.NumToInt(spinAmount * 100.0)));
     }
 
+    /// @brief Per-physics-step in-flight update.
+    /// @details Applies hook force (spin × multiplier × early/backend ×
+    ///          friction), side drag, and decays spin based on
+    ///          current friction (oiled ≪ dry).
     expose func updateMotion(dt: Float, laneFriction: Float, oilEndZ: Float) {
         if (hasBeenThrown == false || isInGutter) { return; }
 
@@ -200,6 +261,8 @@ class Ball {
         }
     }
 
+    /// @brief Apply a slight slowdown when the ball enters the pin deck
+    ///        so collision energy looks "absorbed" rather than elastic.
     expose func dampForPinDeckImpact(depth: Float) {
         if (hasBeenThrown == false || isInGutter) { return; }
 
@@ -215,6 +278,8 @@ class Ball {
         Physics3DBody.SetVelocity(body, vx, Vec3.get_Y(vel), vz);
     }
 
+    /// @brief Lock the ball into the gutter (clamp X, reduce collision mask
+    ///        so it can't hit pins). Continues sliding forward until exit.
     expose func markGutter(side: Integer) {
         isInGutter = true;
         var gutterSign = 1.0;
@@ -229,22 +294,27 @@ class Ball {
         Physics3DBody.set_CollisionMask(body, config.LAYER_STATIC);
     }
 
+    /// @brief Release the gutter lock (reset only).
     expose func clearGutter() {
         isInGutter = false;
     }
 
+    /// @brief Underlying physics body (for trigger callbacks).
     expose func getBody() -> Physics3DBody {
         return body;
     }
 
+    /// @brief Current world position.
     expose func getPosition() -> Vec3 {
         return Physics3DBody.get_Position(body);
     }
 
+    /// @brief Current world velocity.
     expose func getVelocity() -> Vec3 {
         return Physics3DBody.get_Velocity(body);
     }
 
+    /// @brief Speed magnitude (sqrt of vx² + vy² + vz²).
     expose func getSpeed() -> Float {
         var vel = Physics3DBody.get_Velocity(body);
         var vx = Vec3.get_X(vel);
@@ -253,39 +323,48 @@ class Ball {
         return Sqrt(vx * vx + vy * vy + vz * vz);
     }
 
+    /// @brief Current X coordinate.
     expose func getPosX() -> Float {
         return Vec3.get_X(Physics3DBody.get_Position(body));
     }
 
+    /// @brief Current Z coordinate.
     expose func getPosZ() -> Float {
         return Vec3.get_Z(Physics3DBody.get_Position(body));
     }
 
+    /// @brief True once the ball has crossed past the pin deck.
     expose func hasPastPins() -> Boolean {
         return getPosZ() > config.PIN_Z_OFFSET + 1.8;
     }
 
+    /// @brief True when the ball has nearly stopped (settling check).
     expose func isSlow() -> Boolean {
         return getSpeed() < 0.45;
     }
 
+    /// @brief True when the ball is locked in a gutter.
     expose func gutterBall() -> Boolean {
         return isInGutter;
     }
 
+    /// @brief True after the first doThrow of a delivery cycle.
     expose func thrown() -> Boolean {
         return hasBeenThrown;
     }
 
+    /// @brief Current ball weight (BALL_LIGHT/MEDIUM/HEAVY).
     expose func getBallType() -> Integer {
         return ballType;
     }
 
+    /// @brief Wire up env-map reflections on the ball material.
     expose func applyEnvironment(env: CubeMap3D) {
         Material3D.SetEnvMap(ballMat, env);
         Material3D.set_Reflectivity(ballMat, config.BALL_REFLECTIVITY);
     }
 
+    /// @brief Snap back to the spawn position; clear all per-throw state.
     expose func resetBall() {
         if (inWorld) {
             Physics3DWorld.Remove(world, body);
@@ -298,6 +377,7 @@ class Ball {
         launchAngle = 0.0;
     }
 
+    /// @brief Move the ball along the foul line for aim preview (pre-throw).
     expose func setAimPosition(aimX: Float) {
         var clampedAimX = aimX;
         if (clampedAimX < -config.AIM_MAX) { clampedAimX = -config.AIM_MAX; }
@@ -310,6 +390,7 @@ class Ball {
             releaseX, config.BALL_RADIUS + config.BALL_START_Y_OFFSET, config.BALL_START_Z);
     }
 
+    /// @brief Render the ball with translation + yaw + spin rotation.
     expose func draw(canvas: Canvas3D) {
         var pos = Physics3DBody.get_Position(body);
         var bx = Vec3.get_X(pos);

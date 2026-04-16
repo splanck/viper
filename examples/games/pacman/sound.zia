@@ -1,9 +1,27 @@
+// ============================================================================
+// MODULE: sound (SoundManager)
+// PURPOSE: Wraps Viper.Sound + SoundBank with named-channel mixing,
+//          master/music/SFX volume, mute toggle, and graceful fall-
+//          through when audio isn't available.
+//
+// KEY-DESIGN-CHOICES:
+//   * 2-BANK ARCHITECTURE. SFX + music share one SoundBank but use
+//     different voices. Music gets a long-lived voice; SFX are
+//     fire-and-forget.
+//   * THREE VOLUME KNOBS. Master × music (or SFX) yields final
+//     level. Each is 0-100; mute is a separate hard-off.
+//   * NO-AUDIO FALLBACK. If Audio.IsAvailable() is false, ready
+//     stays false and every Play/Stop becomes a no-op. Lets the
+//     game run headlessly in CI.
+// ============================================================================
+
 module sound;
 
 bind Viper.Sound;
 bind "./audio/sfx_bank";
 bind "./audio/music_tracks";
 
+/// @brief Named-channel sound/music mixer wrapping Viper.Sound.SoundBank.
 class SoundManager {
     hide Boolean ready;
     hide SoundBank bank;

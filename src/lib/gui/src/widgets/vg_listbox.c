@@ -209,6 +209,9 @@ static void listbox_paint(vg_widget_t *widget, void *canvas) {
 
     /* Background */
     vgfx_fill_rect(win, x, y, w, h, lb->bg_color);
+    if (w <= 0 || h <= 0)
+        return;
+    vgfx_set_clip(win, x, y, w, h);
 
     /* Draw items */
     float item_y = widget->y - lb->scroll_y;
@@ -219,6 +222,14 @@ static void listbox_paint(vg_widget_t *widget, void *canvas) {
         item_y = widget->y + (float)lb->visible_start * ih - lb->scroll_y;
         for (size_t i = 0; i < lb->visible_count; i++) {
             size_t index = lb->visible_start + i;
+            float item_bottom = item_y + ih;
+            if (item_bottom <= widget->y) {
+                item_y += ih;
+                continue;
+            }
+            if (item_y >= widget->y + widget->height)
+                break;
+
             uint32_t bg = lb->item_bg;
             if (index == lb->selected_index)
                 bg = lb->selected_bg;
@@ -278,6 +289,8 @@ static void listbox_paint(vg_widget_t *widget, void *canvas) {
             item_y += ih;
         }
     }
+
+    vgfx_clear_clip(win);
 
     /* Border: use focus color when the listbox has keyboard focus */
     uint32_t border = (widget->state & VG_STATE_FOCUSED)

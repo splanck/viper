@@ -2,12 +2,37 @@ module layout;
 
 bind "../core/config";
 
+// ============================================================================
+// MODULE: layout
+// PURPOSE: Pure layout math — every named region of the chess UI gets a
+//          function that returns a Rect. The renderer consults these
+//          functions for positioning, and the input handler uses
+//          `contains(rect, mx, my)` for hit testing.
+//
+// WHERE-THIS-FITS: Foundation of the UI. No state — every function is
+//          pure given the WIN_W / WIN_H constants from config.
+//
+// KEY-DESIGN-CHOICES:
+//   * SINGLE SOURCE OF TRUTH. Buttons, badges, the move log, the
+//     promotion dialog — every rect lives here, not duplicated between
+//     renderer and input. Move a button by editing one function and both
+//     drawing and clicking adjust automatically.
+//   * COMPOSITION. Most rects derive from larger anchor rects (e.g.,
+//     `infoCardRect` is positioned relative to `whiteCardRect` which is
+//     positioned relative to `moveCardRect`). Changing the side panel
+//     width cascades through.
+//   * PADDING / GAP CONSTANTS. OUTER_PAD, SECTION_GAP, CARD_GAP, and
+//     BOARD_FRAME_PAD let visual breathing room be tuned in one place.
+// ============================================================================
+
+/// @brief Axis-aligned rectangle with mutable position/size.
 class Rect {
     expose Integer x;
     expose Integer y;
     expose Integer w;
     expose Integer h;
 
+    /// @brief Initialize as (0, 0, 0, 0).
     expose func init() {
         x = 0;
         y = 0;
@@ -15,6 +40,7 @@ class Rect {
         h = 0;
     }
 
+    /// @brief Set all four fields. Convenience for builders.
     expose func setup(px: Integer, py: Integer, pw: Integer, ph: Integer) {
         x = px;
         y = py;
@@ -32,12 +58,16 @@ final BOARD_SIZE = SQ_SIZE * 8;
 final BOARD_FRAME_PAD = 14;
 final SIDE_PANEL_W = 480;
 
+/// @brief Construct a Rect inline. Used by every layout function.
 func rect(px: Integer, py: Integer, pw: Integer, ph: Integer) -> Rect {
     var r = new Rect();
     r.setup(px, py, pw, ph);
     return r;
 }
 
+/// @brief Hit test: is point (mx, my) inside `r`? Half-open: right and
+///        bottom edges are exclusive, matching the typical pixel-grid
+///        convention.
 func contains(r: Rect, mx: Integer, my: Integer) -> Boolean {
     return mx >= r.x and mx < r.x + r.w and my >= r.y and my < r.y + r.h;
 }

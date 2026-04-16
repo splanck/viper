@@ -1,3 +1,9 @@
+// ============================================================================
+// MODULE: ui/sprite_support
+// PURPOSE: Shared helpers used by every sprite_* module — rgba
+//          packer, abs helper, and small pixel-manipulation routines.
+// ============================================================================
+
 module sprite_support;
 
 bind Viper.Graphics;
@@ -5,10 +11,12 @@ bind Color = Viper.Graphics.Color;
 
 bind "../config";
 
+/// @brief Pack an RGB (0xRRGGBB) with a separate alpha (0..255).
 expose func rgba(rgb: Integer, a: Integer) -> Integer {
     return Color.RGBA(Color.GetR(rgb), Color.GetG(rgb), Color.GetB(rgb), a);
 }
 
+/// @brief Integer absolute value helper.
 expose func absi(v: Integer) -> Integer {
     if v < 0 { return 0 - v; }
     return v;

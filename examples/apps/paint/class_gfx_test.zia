@@ -1,7 +1,15 @@
+// ============================================================================
+// MODULE: entity_gfx_test (class + graphics bring-up)
+// PURPOSE: Combines OOP (a class) with a graphics call (Canvas.New).
+//          Used to test that class fields can hold graphics handles —
+//          a combination that broke during native codegen bring-up.
+// ============================================================================
+
 module entity_gfx_test;
 
 bind Viper.Graphics;
 
+/// @brief Class that owns a Canvas handle — the regression target.
 class TestEntity {
     expose Integer value;
     expose ptr canvas;

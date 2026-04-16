@@ -1,7 +1,24 @@
+// ============================================================================
+// MODULE: sfx_bank
+// PURPOSE: Register every sound effect into the shared SoundBank.
+//          Each effect is a one-liner built from Synth.Tone (pure tone)
+//          or Synth.Sweep (frequency ramp) with a duration + waveform
+//          shape.
+//
+// KEY-DESIGN-CHOICES:
+//   * TONE vs SWEEP. Tone is a fixed pitch for `ms` ms; Sweep
+//     interpolates between start and end frequencies. The third
+//     arg is duration; the fourth is waveshape (0 = triangle,
+//     1 = square, 2 = sine, 3 = noise — approximately).
+//   * NAMED SFX. Callers Play("dot") / Play("ghost_eat") via the
+//     SoundBank interface. No raw Sound references escape this file.
+// ============================================================================
+
 module sfx_bank;
 
 bind Viper.Sound;
 
+/// @brief Register every named sound effect into the given SoundBank.
 expose func registerSfx(bank: SoundBank) {
     bank.RegisterSound("menu_move", Synth.Tone(720, 34, 1));
     bank.RegisterSound("menu_select", Synth.Sweep(720, 1080, 72, 1));

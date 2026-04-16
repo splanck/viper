@@ -1,3 +1,17 @@
+// ============================================================================
+// MODULE: ui/widgets
+// PURPOSE: Reusable visual primitives composed from theme colours and the
+//          canvas drawing API: panel cards, inset frames, buttons with
+//          selected/primary/danger states, menu rows.
+//
+// KEY-DESIGN-CHOICES:
+//   * STATELESS. Every function is a pure render call — takes the
+//     canvas, a rect, and styling args. No fields, no lifecycle.
+//   * ACCENT + GLOW. drawPanel paints a soft shadow, a vertical
+//     gradient fill, a double border, and a thin accent strip across
+//     the top. Same layering trick as the Chess UI.
+// ============================================================================
+
 module widgets;
 
 bind Viper.Graphics;
@@ -6,6 +20,7 @@ bind Viper.Fmt;
 bind "./theme";
 bind "./layout";
 
+/// @brief Render a panel card (shadow + gradient + double border + accent).
 func drawPanel(canvas: Canvas, r: Rect, accent: Integer, raised: Boolean) {
     var shadowAlpha = 70;
     if !raised { shadowAlpha = 45; }

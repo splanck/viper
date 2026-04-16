@@ -1,3 +1,20 @@
+// ============================================================================
+// MODULE: line (LineTool)
+// PURPOSE: Shape tool — click to anchor, drag to preview, release to
+//          commit. The drag shows a live rubber-band preview; the
+//          actual canvas edit happens only on release.
+//
+// KEY-DESIGN-CHOICES:
+//   * PREVIEW VIA drawPreview. The tool exposes start/end coords so
+//     the main app can call drawPreview on the on-screen overlay
+//     canvas WITHOUT touching the document canvas. This is what
+//     makes WYSIWYG shape tools work: the document state only
+//     updates on mouse-up.
+//   * COMMIT-ON-RELEASE. onMouseUp calls canvas.drawLine on the
+//     document canvas — a single atomic edit that history can
+//     snapshot as one step.
+// ============================================================================
+
 // line.viper - Line tool for Viper Paint
 module line;
 
@@ -7,7 +24,7 @@ bind "../config";
 bind "../canvas";
 bind "../colors";
 
-// LineTool - draws straight lines from start to end
+/// @brief Straight line shape tool with drag-preview.
 class LineTool {
     hide Integer drawing;       // 1 if currently drawing
     expose Integer startX;      // Start X (expose for preview)

@@ -1,3 +1,26 @@
+// ============================================================================
+// MODULE: colors (ColorManager)
+// PURPOSE: Owns the current foreground / background colours, the fixed
+//          64-entry colour palette, and a running "most recent 8" list.
+//          Tools consult `foreground` for primary stroke colour and
+//          `background` for eraser/clear fill.
+//
+// WHERE-THIS-FITS: Owned by PaintApp. Tools call `getForeground()` /
+//          `setForeground()`; palette widgets consult the palette grid.
+//
+// KEY-DESIGN-CHOICES:
+//   * SWAP. foreground / background can be swapped (X key) for
+//     quick-switch between primary + secondary colours.
+//   * PALETTE FIXED. 64 carefully-chosen colours spanning greys,
+//     reds, oranges, yellows, greens, blues, purples. Ordered so
+//     adjacent cells relate visually.
+//   * RECENT CAP 8. New colour picks prepend; duplicates are ignored
+//     (if the new colour already matches slot 0, no change). Excess
+//     entries at the end are dropped.
+//   * 0xRRGGBB. Colour values are 24-bit packed. setRGB takes R, G, B
+//     0..255 and packs them; Color.Lerp handles blending.
+// ============================================================================
+
 // colors.viper - Color management for Viper Paint
 module colors;
 
@@ -6,7 +29,7 @@ bind Viper.Collections;
 
 bind "./config";
 
-// ColorManager entity - manages foreground, background, palette, and recent colors
+/// @brief Foreground/background + palette + recent-colour registry.
 class ColorManager {
     expose Integer foreground;      // Current foreground color (0x00RRGGBB)
     expose Integer background;      // Current background color (0x00RRGGBB)

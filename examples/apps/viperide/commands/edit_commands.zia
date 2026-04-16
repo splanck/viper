@@ -11,45 +11,72 @@ bind Seq = Viper.Collections.Seq;
 bind Obj = Viper.Core.Object;
 
 // ============================================================================
-// Edit commands — Undo, Redo, Cut, Copy, Paste, SelectAll, Find, GoTo
+// MODULE: edit_commands
+// PURPOSE: Standard editor commands (undo/redo/cut/copy/paste/select-all)
+//          plus a find-bar toggle, go-to-line jump, and go-to-definition
+//          via the Zia completion engine's hover info.
+//
+// WHERE-THIS-FITS: Command handlers wired into main.zia's command
+//          dispatcher. Each handler is a thin wrapper over the
+//          underlying editor / engine / GUI primitive.
+//
+// KEY-DESIGN-CHOICES:
+//   * NULL-SAFE WRAPPERS. Every handler tests `engine != null and
+//     engine.editor != null` before dispatching. Lets the IDE survive
+//     bringing up commands before the editor is fully wired.
+//   * GO-TO-DEFINITION VIA HOVER + SYMBOLS. There's no dedicated
+//     "definition" API — we use Hover to extract the symbol name at
+//     the cursor, then scan the Symbols result for a matching name and
+//     jump to its line. Imperfect (it won't find symbols in other
+//     files), but enough for in-file navigation.
+//   * FIND TOGGLE. handleFind shows the find bar if hidden, hides it
+//     otherwise. The bar focuses itself on show so the user can start
+//     typing immediately.
 // ============================================================================
 
+/// @brief Undo last edit. Routes to CodeEditor.Undo.
 func handleUndo(engine: editor_engine.EditorEngine) {
     if engine != null and engine.editor != null {
         engine.editor.Undo();
     }
 }
 
+/// @brief Redo last undone edit.
 func handleRedo(engine: editor_engine.EditorEngine) {
     if engine != null and engine.editor != null {
         engine.editor.Redo();
     }
 }
 
+/// @brief Cut selection to clipboard.
 func handleCut(engine: editor_engine.EditorEngine) {
     if engine != null and engine.editor != null {
         engine.editor.Cut();
     }
 }
 
+/// @brief Copy selection to clipboard.
 func handleCopy(engine: editor_engine.EditorEngine) {
     if engine != null and engine.editor != null {
         engine.editor.Copy();
     }
 }
 
+/// @brief Paste clipboard at cursor.
 func handlePaste(engine: editor_engine.EditorEngine) {
     if engine != null and engine.editor != null {
         engine.editor.Paste();
     }
 }
 
+/// @brief Select entire buffer.
 func handleSelectAll(engine: editor_engine.EditorEngine) {
     if engine != null and engine.editor != null {
         engine.editor.SelectAll();
     }
 }
 
+/// @brief Toggle the find bar; auto-focuses when shown.
 func handleFind(shell: app_shell.AppShell) {
     if shell.findBar.IsVisible() != 0 {
         shell.findBar.SetVisible(0);
@@ -59,6 +86,7 @@ func handleFind(shell: app_shell.AppShell) {
     }
 }
 
+/// @brief Prompt for a line number and jump the editor there.
 func handleGoToLine(shell: app_shell.AppShell,
                     engine: editor_engine.EditorEngine) {
     var lineStr = GUI.MessageBox.Prompt("Go To Line", "Enter line number:");
@@ -71,6 +99,11 @@ func handleGoToLine(shell: app_shell.AppShell,
     }
 }
 
+/// @brief Jump to the definition of the symbol at the cursor.
+/// @details Uses Hover to extract the symbol NAME at the cursor, then
+///          scans the Symbols result for that name and jumps to its
+///          line. In-file only — multi-file definition lookup would
+///          need a project-wide symbol index.
 func handleGoToDefinition(shell: app_shell.AppShell,
                           engine: editor_engine.EditorEngine) {
     if engine == null or engine.editor == null { return; }

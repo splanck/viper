@@ -1,3 +1,34 @@
+// ============================================================================
+// MODULE: app (PaintApp)
+// PURPOSE: Top-level Viper Paint controller. Owns every subsystem —
+//          canvas, document, colors, brush, tools, history, viewport,
+//          tool palette, layer panel, feedback, file service, UI
+//          widgets — and runs the per-frame loop.
+//
+// WHERE-THIS-FITS: Constructed by main.zia. run() contains the main
+//          loop and only returns when the user quits.
+//
+// KEY-DESIGN-CHOICES:
+//   * FAT CONTROLLER. Paint follows the "god class" pattern
+//     deliberately: one PaintApp holds references to every
+//     subsystem, and the main loop's dispatcher is a long
+//     straight-line sequence of polls/updates/renders. This is
+//     easier to read for a demo app than a messaging/event-bus
+//     architecture would be.
+//   * COMPOSITION OVER INHERITANCE. The eight tools each implement
+//     the same informal interface (init / get* / isDrawing /
+//     onMouseDown/Move/Up) but there's no `Tool` base class — Zia
+//     doesn't need one and ad-hoc polymorphism via `currentTool`
+//     dispatch is simpler.
+//   * HISTORY SNAPSHOTS AROUND EVERY EDIT. Before any tool
+//     mutates the canvas, the app takes a Pixels snapshot. Gives
+//     undo/redo at atomic-stroke granularity.
+//   * GRAPHICS CANVAS vs DOCUMENT CANVAS. `gfx` is the on-screen
+//     drawing API; `canvas` is the document pixel buffer. Tools
+//     write to `canvas`; the viewport blits `canvas` composited
+//     pixels to `gfx`.
+// ============================================================================
+
 // app.viper - Main application controller for Viper Paint
 module app;
 
@@ -31,7 +62,7 @@ bind "./tools/eyedropper";
 bind "./ui/button";
 bind "./ui/slider";
 
-// PaintApp entity - main application controller
+/// @brief Top-level controller. Owns every subsystem + the main loop.
 class PaintApp {
     // Graphics canvas (window)
     hide Canvas gfx;

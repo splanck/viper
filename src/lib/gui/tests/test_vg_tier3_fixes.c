@@ -186,6 +186,12 @@ static vg_event_t make_char_event(uint32_t codepoint) {
     return ev;
 }
 
+static void count_text_changes(vg_widget_t *widget, const char *text, void *user_data) {
+    (void)widget;
+    (void)text;
+    (*(int *)user_data)++;
+}
+
 TEST(textinput_undo_restores_previous_text) {
     vg_textinput_t *ti = vg_textinput_create(NULL);
     ASSERT_NOT_NULL(ti);
@@ -298,6 +304,19 @@ TEST(textinput_new_edit_clears_redo) {
     ASSERT_EQ(0, strcmp(ti->text, "ac"));
 
     vg_widget_destroy(w);
+}
+
+TEST(textinput_set_text_is_silent) {
+    int change_count = 0;
+    vg_textinput_t *ti = vg_textinput_create(NULL);
+    ASSERT_NOT_NULL(ti);
+
+    vg_textinput_set_on_change(ti, count_text_changes, &change_count);
+    vg_textinput_set_text(ti, "programmatic");
+    ASSERT_EQ(change_count, 0);
+    ASSERT_EQ(strcmp(vg_textinput_get_text(ti), "programmatic"), 0);
+
+    vg_widget_destroy(&ti->base);
 }
 
 //=============================================================================
@@ -563,6 +582,7 @@ int main(void) {
     RUN(textinput_undo_at_beginning_is_noop);
     RUN(textinput_redo_reapplies_undone_edit);
     RUN(textinput_new_edit_clears_redo);
+    RUN(textinput_set_text_is_silent);
 
     printf("\nBUG-GUI-002: Dialog Modal Event Blocking\n");
     RUN(modal_blocks_mouse_behind_dialog);

@@ -13,6 +13,12 @@
 //
 // =============================================================================
 
+// ============================================================================
+// MODULE: main (modular variant)
+// PURPOSE: Alternate entry point identical in effect to main.zia — used
+//          during the demo's modular-architecture bring-up.
+// ============================================================================
+
 module main;
 
 // Only need to bind direct dependencies - transitive bindings are now resolved

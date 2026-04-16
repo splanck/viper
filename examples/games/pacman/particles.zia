@@ -1,8 +1,18 @@
-// =============================================================================
-// CRACKMAN - Particle System (using Viper.Game.ParticleEmitter)
-// =============================================================================
-// Visual effects for dot eating, ghost eating, fruit collection, death.
-// =============================================================================
+// ============================================================================
+// MODULE: particles (ParticleSystem)
+// PURPOSE: Visual-effects bursts — dot-eating sparkle, ghost-eating
+//          starburst, fruit-collect shimmer, death scatter. Each uses
+//          a different colour / velocity / lifetime profile on the
+//          shared ParticleEmitter.
+//
+// KEY-DESIGN-CHOICES:
+//   * SINGLE EMITTER, MANY PRESETS. One Viper.Game.ParticleEmitter
+//     with capacity 128. Each burst* method reconfigures the
+//     emitter's position / color / velocity / lifetime / size before
+//     firing — avoids allocating a new emitter per effect type.
+//   * FADE-OUT + SHRINK. Enabled globally so particles fade and
+//     shrink naturally over their lifetime, giving soft endings.
+// ============================================================================
 
 module particles;
 
@@ -11,6 +21,7 @@ bind "./config";
 bind Viper.Graphics;
 bind Viper.Game.ParticleEmitter as PE;
 
+/// @brief Shared ParticleEmitter + per-effect preset helpers.
 class ParticleSystem {
     hide PE emitter;
 

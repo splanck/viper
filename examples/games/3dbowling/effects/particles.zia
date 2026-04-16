@@ -1,3 +1,30 @@
+// ============================================================================
+// MODULE: particles (ParticleManager)
+// PURPOSE: All particle and decal effects: crash sparks (ball-pin
+//          impact), lane dust (continuous trail under the rolling
+//          ball), three colour fireworks (strike celebration), gutter
+//          splash, plus persistent skid-mark and impact-mark decals
+//          stamped onto the lane.
+//
+// WHERE-THIS-FITS: Constructed by BowlingGame.init(); update() each
+//          frame; draw() during the 3D scene.
+//
+// KEY-DESIGN-CHOICES:
+//   * Particles3D ENGINE. The runtime provides a particle system; we
+//     just configure it (direction / speed / lifetime / size /
+//     gravity / color / alpha / emitter shape / rate / additive) and
+//     trigger Burst or Start as needed.
+//   * THREE FIREWORK COLORS. Three independent emitters fire on a
+//     strike for a multi-coloured starburst. Each is centered at a
+//     slight offset from the pin centre.
+//   * PROCEDURAL DECAL TEXTURES. createSkidTexture builds a circular
+//     gradient with elongated horizontal squash, alpha-faded toward
+//     the edges. No external textures needed.
+//   * RING-BUFFER DECALS. The decal list caps at DECAL_MAX (48). Once
+//     full, addDecal pops the oldest. Per-decal lifetime also
+//     auto-expires. This keeps long matches from leaking memory.
+// ============================================================================
+
 // particles.zia — Particle effects plus skid / impact decals
 module particles;
 
@@ -7,6 +34,7 @@ bind Viper.Math;
 bind Viper.Core.Convert as Convert;
 bind "../config";
 
+/// @brief Owns every particle emitter and persistent decal.
 class ParticleManager {
     hide Particles3D crashSparks;
     hide Particles3D laneDust;
@@ -23,6 +51,7 @@ class ParticleManager {
         return (((r * 256) + g) * 256 + b) * 256 + a;
     }
 
+    /// @brief Build all emitters + decal textures + decal list.
     expose func initParticles() {
         crashSparks = Particles3D.New(100);
         Particles3D.SetDirection(crashSparks, 0.0, 1.0, 0.0, 0.9);
@@ -112,25 +141,30 @@ class ParticleManager {
         }
     }
 
+    /// @brief Burst of sparks at a ball-pin impact point.
     expose func spawnCrashSparks(x: Float, y: Float, z: Float) {
         Particles3D.SetPosition(crashSparks, x, y, z);
         Particles3D.Burst(crashSparks, config.SPARK_COUNT);
         spawnImpactMark(x, y, z);
     }
 
+    /// @brief Begin emitting continuous dust under the rolling ball.
     expose func startLaneDust(x: Float, z: Float) {
         Particles3D.SetPosition(laneDust, x, 0.05, z);
         Particles3D.Start(laneDust);
     }
 
+    /// @brief Move the lane-dust emitter to track the ball.
     expose func updateLaneDust(x: Float, z: Float) {
         Particles3D.SetPosition(laneDust, x, 0.05, z);
     }
 
+    /// @brief Stop the lane-dust trail (ball settled / gutter / off-deck).
     expose func stopLaneDust() {
         Particles3D.Stop(laneDust);
     }
 
+    /// @brief Trigger the three-colour firework starburst at the pin centre.
     expose func spawnFireworks() {
         var cx = 0.0;
         var cy = 1.0;
@@ -143,11 +177,13 @@ class ParticleManager {
         Particles3D.Burst(fireworks3, config.FIREWORK_COUNT);
     }
 
+    /// @brief Burst when the ball drops into a gutter.
     expose func spawnGutterSplash(x: Float, z: Float) {
         Particles3D.SetPosition(gutterSplash, x, 0.05, z);
         Particles3D.Burst(gutterSplash, 20);
     }
 
+    /// @brief Stamp a fading dark skid-mark decal onto the lane.
     expose func spawnSkidMark(x: Float, z: Float) {
         var pos = new Vec3(x, 0.004, z);
         var normal = new Vec3(0.0, 1.0, 0.0);
@@ -156,6 +192,7 @@ class ParticleManager {
         addDecal(decal);
     }
 
+    /// @brief Stamp a fading scuff at a ball-pin impact point.
     expose func spawnImpactMark(x: Float, y: Float, z: Float) {
         var pos = new Vec3(x, y + 0.01, z);
         var normal = new Vec3(0.0, 1.0, 0.0);
@@ -164,6 +201,7 @@ class ParticleManager {
         addDecal(decal);
     }
 
+    /// @brief Per-frame tick for every emitter + decal expiration sweep.
     expose func update(dt: Float) {
         Particles3D.Update(crashSparks, dt);
         Particles3D.Update(laneDust, dt);
@@ -183,6 +221,7 @@ class ParticleManager {
         }
     }
 
+    /// @brief Render every emitter + decal each frame.
     expose func draw(canvas: Canvas3D, camera: Camera3D) {
         Particles3D.Draw(crashSparks, canvas, camera);
         Particles3D.Draw(laneDust, canvas, camera);

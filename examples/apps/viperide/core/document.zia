@@ -1,21 +1,54 @@
 module document;
 
 // ============================================================================
-// Document — represents a single open file in the editor
+// MODULE: document
+// PURPOSE: Plain-data record representing a single open file in the IDE.
+//          One Document per editor tab. Owns the buffer text, file
+//          metadata, last-known cursor/scroll position, and a disk
+//          modification timestamp for external-change detection.
+//
+// WHERE-THIS-FITS: Leaf data type. Owned by `document_manager.DocumentManager`,
+//          which holds a `List[Document]` and synchronises tab state with
+//          the editor widget. Consumed read-only by the editor / hover /
+//          diagnostics / completion modules through `DocumentManager.GetActive`.
+//
+// KEY-DESIGN-CHOICES:
+//   * VALUE RECORD WITH PUBLIC FIELDS. All fields are `expose` so callers
+//     mutate them directly rather than going through setters. This is
+//     intentional: a Document is essentially a struct, and adding setters
+//     would be ceremony with no behavioural payoff. Invariants are
+//     maintained by the DocumentManager (e.g., `isModified` is set by the
+//     editor when text changes).
+//   * EMPTY filePath SIGNALS UNTITLED. `filePath == ""` is the canonical
+//     "this document has never been saved" marker. Combined with `isNew`
+//     it covers the full state space:
+//         filePath="", isNew=true   -> brand-new untitled
+//         filePath="", isNew=false  -> impossible (would be a bug)
+//         filePath=X,  isNew=true   -> impossible (would be a bug)
+//         filePath=X,  isNew=false  -> opened from disk
+//   * lastModifiedOnDisk FOR EXTERNAL CHANGE DETECTION. Stored as the
+//     timestamp returned by `Viper.IO.File.Modified` at load/save time.
+//     The IDE polls and compares: if the on-disk timestamp drifts ahead,
+//     the file changed externally and the user is prompted to reload.
+//   * REMEMBERED CURSOR. `cursorLine`, `cursorCol`, `scrollLine` let the
+//     editor restore the user's view when switching back to a tab. Saved
+//     when leaving a tab; restored when activating it.
 // ============================================================================
 
+/// @brief Single open file in the editor. One per tab.
 class Document {
-    expose String filePath;            // Absolute path ("" for untitled)
-    expose String fileName;            // Display name
-    expose String content;             // Full text content
-    expose String language;            // "zia", "basic", "text"
-    expose Boolean isModified;         // Has unsaved changes
-    expose Boolean isNew;              // Never been saved to disk
-    expose Integer cursorLine;         // Last known cursor line
-    expose Integer cursorCol;          // Last known cursor column
-    expose Integer scrollLine;         // Last known scroll position
-    expose Integer lastModifiedOnDisk; // Timestamp from Viper.IO.File.Modified
+    expose String filePath;            // Absolute path; "" for untitled.
+    expose String fileName;            // Display name in the tab.
+    expose String content;             // Full text buffer.
+    expose String language;            // "zia", "basic", "text".
+    expose Boolean isModified;         // Has unsaved changes.
+    expose Boolean isNew;              // Never saved to disk.
+    expose Integer cursorLine;         // Last known cursor line (1-based).
+    expose Integer cursorCol;          // Last known cursor column (1-based).
+    expose Integer scrollLine;         // Last known top-of-viewport line.
+    expose Integer lastModifiedOnDisk; // Timestamp from Viper.IO.File.Modified.
 
+    /// @brief Initialize as an untitled, empty, plain-text document.
     expose func init() {
         filePath = "";
         fileName = "Untitled";

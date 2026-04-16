@@ -117,7 +117,7 @@ elseif (MSVC)
 endif ()
 
 # Tests
-if (BUILD_TESTING)
+if (VIPER_BUILD_TESTING)
     add_executable(test_vg_font tests/test_font.c)
     target_link_libraries(test_vg_font vipergui)
     target_include_directories(test_vg_font PRIVATE

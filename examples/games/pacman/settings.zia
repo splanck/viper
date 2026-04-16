@@ -1,7 +1,22 @@
+// ============================================================================
+// MODULE: settings (Settings)
+// PURPOSE: Persistent user preferences — master/music/SFX volume, mute,
+//          fullscreen. Backed by Viper.IO.SaveData so settings survive
+//          across sessions.
+//
+// KEY-DESIGN-CHOICES:
+//   * SAVEDATA WRAPPER. Same storage the progression uses (different
+//     key). Each setter calls store.Save immediately so a crash
+//     doesn't lose the user's preferences.
+//   * CLAMPED VOLUMES. Each volume getter/setter clamps to [0, 100];
+//     defensive against corrupt save files.
+// ============================================================================
+
 module settings;
 
 bind Viper.IO;
 
+/// @brief Persistent user-preferences struct.
 class Settings {
     hide SaveData store;
     hide Integer masterVolume;

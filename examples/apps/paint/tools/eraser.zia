@@ -1,3 +1,19 @@
+// ============================================================================
+// MODULE: eraser (EraserTool)
+// PURPOSE: Same stamp+interpolate machinery as BrushTool, but the
+//          colour is always `canvas.backgroundColor` and writes are
+//          opaque (setPixel, not setPixelBlend). The result is a
+//          destructive "erase to background" behaviour.
+//
+// KEY-DESIGN-CHOICES:
+//   * DESTRUCTIVE OPAQUE WRITES. Erasing is NOT a transparency op —
+//     the strokes literally overwrite the canvas with the background
+//     colour. A "true" alpha eraser would require layers with
+//     transparent channels, which the MVP doesn't model.
+//   * FAST PATH FOR ROUND BRUSH. Same optimisation as BrushTool —
+//     defer to canvas.drawThickLine for round-brush strokes.
+// ============================================================================
+
 // eraser.viper - Eraser tool for Viper Paint
 module eraser;
 
@@ -6,7 +22,7 @@ bind "../canvas";
 bind "../colors";
 bind "../brush";
 
-// EraserTool - erases to background color with variable size
+/// @brief Opaque eraser — paints over canvas with background colour.
 class EraserTool {
     hide Integer drawing;       // 1 if currently drawing
     hide Integer lastX;         // Last mouse X

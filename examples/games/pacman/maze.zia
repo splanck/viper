@@ -1,3 +1,25 @@
+// ============================================================================
+// MODULE: maze (Maze)
+// PURPOSE: Owns the 28×31 tile grid, the Pathfinder used for ghost
+//          return-to-house routing, the SpriteBatch for batched tile
+//          rendering, and the Timer for power-pellet blink animation.
+//          Knows which tiles are walls, dots, power pellets, gates,
+//          tunnels, and the ghost house.
+//
+// WHERE-THIS-FITS: Called by Session each frame. Consulted by Ghost
+//          AI for navigation and wall queries.
+//
+// KEY-DESIGN-CHOICES:
+//   * Viper.Game.Grid2D. A 2D integer grid with bounds-safe get/set
+//     — saves us from reimplementing a tile map from scratch.
+//   * Viper.Game.Pathfinder. Shared across ghosts for "eaten" mode
+//     routing back to the ghost house. A single A* instance is
+//     cheaper than per-ghost pathfinders.
+//   * Viper.Graphics.SpriteBatch. Wall tiles + dots + pellets all
+//     batch through one SpriteBatch so the draw call count stays
+//     tiny even on a 28×31 maze.
+// ============================================================================
+
 // =============================================================================
 // CRACKMAN - Maze Entity
 // =============================================================================
@@ -23,6 +45,7 @@ bind "./ui/sprites";
 // MAZE ENTITY - The game board with walls, dots, and power pellets
 // =============================================================================
 
+/// @brief Owns the 28×31 tile grid + pathfinder + sprite batch + dot state.
 class Maze {
     hide Grid2D tiles;
     hide Pathfinder ghostPathfinder;

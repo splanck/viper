@@ -4,15 +4,39 @@ bind Viper.Graphics;
 bind "../core/config";
 
 // ============================================================================
-// PieceSprites — pre-rendered piece images for high-quality rendering.
+// MODULE: pieces (PieceSprites)
+// PURPOSE: Pre-render the twelve piece sprites + drop-shadows + miniature
+//          versions at startup, then provide getPiece / getShadow /
+//          getMiniPiece accessors that the renderer blits each frame.
 //
-// Each piece is drawn once into a Pixels buffer at startup using the richer
-// Pixels.Draw* APIs (Bezier curves, thick lines, triangles, anti-aliased
-// ellipses). The sprites are then stamped onto the canvas each frame via
-// Canvas.BlitAlpha, which respects the alpha channel for smooth edges.
+// WHERE-THIS-FITS: Imported by renderer.zia. The chess game's main
+//          init flow: ChessGame.init -> pieces.initSprites() -> first
+//          frame can render.
 //
-// Call initSprites() once at startup, then getPiece(type, isWhite) to
-// retrieve the cached Pixels buffer for any piece.
+// KEY-DESIGN-CHOICES:
+//   * RENDER ONCE, BLIT MANY. Each piece is drawn into a 70×70 Pixels
+//     buffer using the rich Pixels.Draw* API (anti-aliased ellipses,
+//     thick lines, triangles, Bezier curves). The sprite is then
+//     stamped on the canvas each frame via Canvas.BlitAlpha, which is
+//     dramatically faster than re-running the draw calls per frame.
+//   * THREE SIZES PER PIECE. Full sprite (70×70), tinted-and-blurred
+//     shadow (same size, dropped behind the piece for depth), and
+//     mini (28×28, shown in the captured-pieces row of the side
+//     panel).
+//   * LAYERED DRAWING TECHNIQUE. Each piece draws an outline layer
+//     first (slightly larger shapes in outline color), then a fill
+//     layer (slightly smaller in fill color). The visible difference
+//     between the layers IS the outline. This is the same trick used
+//     by old console-game sprite editors.
+//   * COLOR PALETTE BY SIDE. White pieces use a warm cream fill
+//     (`0xF6E9CE`) with a dark brown outline; black uses a deep brown
+//     fill with a cream outline. The colour pairing keeps both colours
+//     legible against either light or dark squares.
+//
+// HOW-TO-READ: Sprite-cache field declarations -> Public API
+//   (initSprites / getPiece / getShadow / getMiniPiece) -> color
+//   helpers (fillColor / outlineColor / accentColor / detailColor) ->
+//   buildShadow -> per-piece renderers (renderPawn, renderRook, etc.).
 // ============================================================================
 
 // 12 pre-rendered sprites: 6 piece types × 2 colors
@@ -63,6 +87,9 @@ final CY = PIECE_SZ / 2;      // center Y
 // Public API
 // ============================================================================
 
+/// @brief Pre-render every piece sprite + shadow + mini at 70×70 / 28×28.
+/// @note Call once at game startup. Subsequent calls re-render — the
+///       function is idempotent in effect but not free in time.
 func initSprites() {
     whitePawn   = renderPawn(true);
     whiteRook   = renderRook(true);
@@ -104,6 +131,7 @@ func initSprites() {
     blackKingMini   = blackKing.Scale(28, 28);
 }
 
+/// @brief Look up the full-size sprite for a piece. Null on invalid type.
 func getPiece(pieceType: Integer, isWhite: Boolean) -> Pixels {
     if isWhite {
         if pieceType == PAWN   { return whitePawn; }
@@ -123,6 +151,7 @@ func getPiece(pieceType: Integer, isWhite: Boolean) -> Pixels {
     return null;
 }
 
+/// @brief Look up the drop-shadow Pixels for a piece. Null on invalid type.
 func getShadow(pieceType: Integer, isWhite: Boolean) -> Pixels {
     if isWhite {
         if pieceType == PAWN   { return whitePawnShadow; }
@@ -142,6 +171,7 @@ func getShadow(pieceType: Integer, isWhite: Boolean) -> Pixels {
     return null;
 }
 
+/// @brief Look up the 28×28 mini sprite for the captures display.
 func getMiniPiece(pieceType: Integer, isWhite: Boolean) -> Pixels {
     if isWhite {
         if pieceType == PAWN   { return whitePawnMini; }
@@ -185,6 +215,10 @@ func detailColor(white: Boolean) -> Integer {
     return 0xB79F85;
 }
 
+/// @brief Build a soft drop shadow from a sprite by tinting black + blur.
+/// @details Tint preserves alpha so the shadow's silhouette matches the
+///          sprite's; Blur(1) softens edges so the shadow doesn't look
+///          like a hard offset duplicate.
 func buildShadow(src: Pixels) -> Pixels {
     var shadow = src.Tint(0x000000);
     return shadow.Blur(1);
@@ -201,6 +235,9 @@ func buildShadow(src: Pixels) -> Pixels {
 // All coordinates relative to center (CX, CY) of the sprite buffer.
 // ============================================================================
 
+/// @brief Render a pawn into a fresh 70×70 Pixels buffer.
+/// @details Base ellipse + body trapezoid (overlapping ellipse + box) +
+///          round head. Outline-then-fill layering creates the border.
 func renderPawn(white: Boolean) -> Pixels {
     var px = Pixels.New(SP, SP);
     var fill = fillColor(white);
@@ -228,6 +265,9 @@ func renderPawn(white: Boolean) -> Pixels {
     return px;
 }
 
+/// @brief Render a rook (castle tower) into a fresh 70×70 Pixels buffer.
+/// @details Base + body column + top platform + three crenellations
+///          (the alternating box pattern at the top).
 func renderRook(white: Boolean) -> Pixels {
     var px = Pixels.New(SP, SP);
     var fill = fillColor(white);
@@ -262,6 +302,9 @@ func renderRook(white: Boolean) -> Pixels {
     return px;
 }
 
+/// @brief Render a knight (horse profile, facing right) into a 70×70 buffer.
+/// @details The asymmetry — head offset right, ear pointing forward — is
+///          what gives the knight its distinctive silhouette.
 func renderKnight(white: Boolean) -> Pixels {
     var px = Pixels.New(SP, SP);
     var fill = fillColor(white);
@@ -299,6 +342,9 @@ func renderKnight(white: Boolean) -> Pixels {
     return px;
 }
 
+/// @brief Render a bishop into a 70×70 buffer.
+/// @details Tapered tall ellipse + ball + pointed tip + the
+///          characteristic diagonal slash mark.
 func renderBishop(white: Boolean) -> Pixels {
     var px = Pixels.New(SP, SP);
     var fill = fillColor(white);
@@ -332,6 +378,9 @@ func renderBishop(white: Boolean) -> Pixels {
     return px;
 }
 
+/// @brief Render a queen with the classic 5-point crown.
+/// @details Body ellipse + 5 discs in a curved arc for the crown +
+///          connecting V lines between adjacent crown points.
 func renderQueen(white: Boolean) -> Pixels {
     var px = Pixels.New(SP, SP);
     var fill = fillColor(white);
@@ -376,6 +425,8 @@ func renderQueen(white: Boolean) -> Pixels {
     return px;
 }
 
+/// @brief Render a king (body + cross at the top).
+/// @details Body ellipse + horizontal + vertical bars forming the cross.
 func renderKing(white: Boolean) -> Pixels {
     var px = Pixels.New(SP, SP);
     var fill = fillColor(white);

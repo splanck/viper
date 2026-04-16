@@ -1,3 +1,26 @@
+// ============================================================================
+// MODULE: game (Game)
+// PURPOSE: Top-level Crackman controller. Instantiates canvas, sound,
+//          settings, frontend, session, progression. Runs the main
+//          loop and switches between FrontendController and Session
+//          based on user events.
+//
+// KEY-DESIGN-CHOICES:
+//   * STATE MACHINE. Viper.Game.StateMachine drives the app-level
+//     transitions (MENU → PLAYING → RESULTS → MENU) in response to
+//     the FRONTEND_EVENT_* and Session EVENT_* returns.
+//   * DEVICE-AGNOSTIC INPUT. Viper.Input.Action names actions
+//     independent of keyboard vs gamepad; the main loop queries by
+//     name (Action.Pressed("move_up")) and the runtime dispatches.
+//   * STABLE FRAME PACING. Canvas.BeginFrame + SetDTMax cap the
+//     per-frame delta so a long frame doesn't produce a giant tick
+//     (would tunnel the ghost through walls).
+//   * SINGLE LOOP FOR BOTH SCREENS. Both FrontendController and
+//     Session live inside the one `while !closed` loop; only the
+//     update/render calls switch. Keeps the main-loop pacing + input
+//     handling unified.
+// ============================================================================
+
 // =============================================================================
 // CRACKMAN - Game Controller
 // =============================================================================
@@ -27,6 +50,7 @@ bind "./progression";
 // GAME ENTITY - Top-level app orchestration
 // =============================================================================
 
+/// @brief Top-level Crackman controller — owns every subsystem.
 class Game {
     hide Canvas canvas;
     hide session.Session playSession;

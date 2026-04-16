@@ -172,6 +172,10 @@ int64_t rt_widget_is_pressed(void *widget);
 /// @return 1 if focused, 0 otherwise.
 int64_t rt_widget_is_focused(void *widget);
 
+/// @brief Move keyboard focus to the specified widget.
+/// @param widget Widget handle.
+void rt_widget_focus(void *widget);
+
 /// @brief Check if widget was clicked this frame.
 /// @param widget Widget handle.
 /// @return 1 if clicked, 0 otherwise.

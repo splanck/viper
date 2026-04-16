@@ -4,46 +4,79 @@ bind "project";
 bind Viper.GUI as GUI;
 bind Viper.IO.Path as Path;
 bind Viper.IO.Dir as Dir;
-bind Viper.String as Str;// ============================================================================
-// ProjectManager — manages the file tree and project state
+bind Viper.String as Str;
+
 // ============================================================================
-// Handles opening folders, populating the TreeView, and tracking selection.
-// Uses the polling pattern: call HandleTreeClicks() each frame to detect
-// when the user selects a file.
+// MODULE: project_manager
+// PURPOSE: Owns the file-tree sidebar and the open Project. Translates
+//          GUI tree clicks into "this file path was selected" events for
+//          the main loop to consume.
+//
+// WHERE-THIS-FITS: Sits between the GUI TreeView widget (a `Viper.GUI.TreeView`
+//          provided by app_shell) and the project model (`project.Project`).
+//          The main loop in main.zia calls `HandleTreeClicks` each frame to
+//          poll for selection changes.
+//
+// KEY-DESIGN-CHOICES:
+//   * POLLING NOT EVENTS. The TreeView exposes a "was selection changed"
+//     boolean that the IDE polls each frame. This matches the rest of
+//     the IDE's frame-driven model and avoids needing a callback
+//     dispatcher.
+//   * NODE DATA = ABSOLUTE PATH. Each tree node stores its absolute
+//     path via `TreeView.Node.SetData`. The label is decorative
+//     ("[D] folder" or "    file"); the path is the source of truth.
+//   * LABEL-PREFIX FILE DETECTION. File nodes use a 4-space label
+//     prefix; directory nodes use "[D] "; the project root uses the
+//     bare project name. `HandleTreeClicks` distinguishes these by
+//     looking at `Str.Left(label, 4) == "    "`. A future refactor
+//     could use a typed-node enum, but the prefix trick keeps the
+//     callback-free design simple.
+//   * EXCLUDE PATTERNS. `ShouldExclude` and `ShouldExcludeFile` skip
+//     hidden entries (starting with ".") and common build artifacts
+//     ("build", "node_modules", "__pycache__"). Hardcoded — a real IDE
+//     would read .gitignore.
+//   * RECURSIVE TREE BUILD. `BuildTree` is depth-first: directories
+//     first (so they sort to the top), then files. No lazy expansion —
+//     the entire tree is built at open time. Fine for projects
+//     totalling thousands of files.
+//
+// HOW-TO-READ: Setup (wire up the widget) -> OpenFolder (entry point) ->
+//   PopulateTree -> BuildTree (recursion) -> HandleTreeClicks (poll
+//   for selection) -> ShouldExclude / ShouldExcludeFile (filters).
 // ============================================================================
 
+/// @brief Sidebar TreeView controller plus the open Project.
 class ProjectManager {
-    // The current project
+    /// The currently open project (always non-null after Setup).
     expose project.Project project;
-
-    // Reference to the sidebar TreeView widget
+    /// The TreeView widget injected at Setup time.
     expose GUI.TreeView treeView;
-
-    // Currently selected file path (empty if none)
+    /// Path of the most recently selected file (empty if none yet).
     expose String selectedFilePath;
-
-    // Flag indicating a file was just selected
+    /// True for one frame after a file was clicked.
     expose Boolean fileWasSelected;
 
+    /// @brief Initialize with no selection. Call `Setup` next.
     expose func init() {
         selectedFilePath = "";
         fileWasSelected = false;
     }
 
-    // Initialize with the TreeView widget from AppShell.
+    /// @brief Inject the TreeView widget and construct the empty Project.
+    /// @param tree Sidebar TreeView from AppShell.
     expose func Setup(tree: GUI.TreeView) {
         treeView = tree;
         project = new project.Project();
     }
 
-    // Open a folder as a project.
+    /// @brief Open a folder as a project. Closes any previously-open project.
+    /// @param path Absolute folder path.
     expose func OpenFolder(path: String) {
-        // Guard against uninitialized state
+        // Defensive: ensure project exists even if Setup wasn't called.
         if project == null {
             project = new project.Project();
         }
 
-        // Close any existing project
         if project.isOpen {
             CloseProject();
         }
@@ -52,14 +85,16 @@ class ProjectManager {
         PopulateTree();
     }
 
-    // Close the current project.
+    /// @brief Close the current project and clear the tree.
     expose func CloseProject() {
         project.Close();
         treeView.Clear();
         selectedFilePath = "";
     }
 
-    // Populate the TreeView with the project's files and folders.
+    /// @brief Wipe the tree and rebuild it from `project.rootPath`.
+    /// @note Adds a root node labelled with the project name, builds the
+    ///       directory tree under it, then expands the root.
     expose func PopulateTree() {
         treeView.Clear();
 
@@ -67,36 +102,35 @@ class ProjectManager {
             return;
         }
 
-        // Add root node for project
         var rootNode = treeView.AddNode(null, project.name);
         GUI.TreeView.Node.SetData(rootNode, project.rootPath);
 
-        // Build tree recursively from the root path
         BuildTree(project.rootPath, rootNode);
 
-        // Expand the root node
         treeView.Expand(rootNode);
     }
 
-    // Build tree recursively for a directory.
+    /// @brief Recursively populate `parentNode` with `dirPath`'s children.
+    /// @details Directories first (so they sort to the top of each
+    ///          level), then files. Each child node is given an
+    ///          absolute path via `SetData` so click handling can read
+    ///          the full path back without re-walking the tree.
     func BuildTree(dirPath: String, parentNode: GUI.TreeNode) {
-        // First add directories
+        // Directories: prefix with "[D] " for visual contrast.
         for dirName in Dir.DirsSeq(dirPath) {
-            // Skip hidden directories and common excludes
             if ShouldExclude(dirName) == false {
                 var fullPath = Path.Join(dirPath, dirName);
                 var folderLabel = "[D] " + dirName;
                 var folderNode = treeView.AddNode(parentNode, folderLabel);
                 GUI.TreeView.Node.SetData(folderNode, fullPath);
 
-                // Recurse into subdirectory
                 BuildTree(fullPath, folderNode);
             }
         }
 
-        // Then add files
+        // Files: prefix with 4 spaces. The prefix is what
+        // HandleTreeClicks uses to identify file nodes vs directories.
         for fileName in Dir.FilesSeq(dirPath) {
-            // Skip hidden files
             if ShouldExcludeFile(fileName) == false {
                 var fullPath = Path.Join(dirPath, fileName);
                 var fileLabel = "    " + fileName;
@@ -106,13 +140,16 @@ class ProjectManager {
         }
     }
 
-    // Check if the selection changed and a file was selected.
-    // Call this every frame from the main loop.
-    // Returns the selected file path, or empty string if no selection change.
+    /// @brief Per-frame selection-change poll.
+    /// @return Selected file path if the user just clicked a file node,
+    ///         else empty string. Sets `fileWasSelected` accordingly.
+    /// @note Distinguishes file from directory nodes by the 4-space
+    ///       label prefix (see BuildTree). Directory nodes and the
+    ///       root node return "" — the main loop uses this to decide
+    ///       whether to OpenFile.
     expose func HandleTreeClicks() -> String {
         fileWasSelected = false;
 
-        // Guard against uninitialized state
         if treeView == null {
             return "";
         }
@@ -123,9 +160,6 @@ class ProjectManager {
                 var path = GUI.TreeView.Node.GetData(selected);
                 var label = GUI.TreeView.Node.GetText(selected);
 
-                // Check if it's a file: file nodes always have a 4-space prefix.
-                // This correctly ignores both directory nodes ("[D] ...") and
-                // the root project node (label = project name, no prefix).
                 if Str.Left(label, 4) == "    " {
                     selectedFilePath = path;
                     fileWasSelected = true;
@@ -137,14 +171,15 @@ class ProjectManager {
         return "";
     }
 
-    // Check if a directory name should be excluded from the tree.
+    /// @brief Directory-name exclusion filter.
+    /// @return true to skip the directory; false to include it.
+    /// @note Skips hidden directories (starting with ".") and common
+    ///       build/cache directories.
     func ShouldExclude(name: String) -> Boolean {
-        // Hidden directories
         if Str.Left(name, 1) == "." {
             return true;
         }
 
-        // Common exclude patterns
         if name == "build" or name == "node_modules" or name == "__pycache__" {
             return true;
         }
@@ -152,9 +187,8 @@ class ProjectManager {
         return false;
     }
 
-    // Check if a file should be excluded from the tree.
+    /// @brief File-name exclusion filter. Skips hidden files (".X").
     func ShouldExcludeFile(name: String) -> Boolean {
-        // Hidden files
         if Str.Left(name, 1) == "." {
             return true;
         }
@@ -162,7 +196,9 @@ class ProjectManager {
         return false;
     }
 
-    // Refresh the tree from disk.
+    /// @brief Re-read the disk and rebuild the tree.
+    /// @note Called by the user (or after an external file watcher fires)
+    ///       to pick up new files added outside the IDE.
     expose func RefreshTree() {
         if project.isOpen {
             PopulateTree();

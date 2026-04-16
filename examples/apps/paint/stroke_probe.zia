@@ -1,3 +1,11 @@
+// ============================================================================
+// MODULE: stroke_probe
+// PURPOSE: Bring-up diagnostic. Prints ink counts at each tool stage
+//          with numeric breadcrumbs (101/102/103/104) so a crash during
+//          brush execution leaves a partial trail identifying the step.
+//          Less strict than smoke_probe — no assertions, just numbers.
+// ============================================================================
+
 module stroke_probe;
 
 bind Viper.Terminal;
@@ -7,6 +15,7 @@ bind "./brush";
 bind "./tools/pencil";
 bind "./tools/brush";
 
+/// @brief Count non-white pixels (same helper as smoke_probe).
 func countInk(dc: DrawingCanvas) -> Integer {
     var count = 0;
     var y = 0;
@@ -23,6 +32,7 @@ func countInk(dc: DrawingCanvas) -> Integer {
     return count;
 }
 
+/// @brief Run pencil + brush strokes, print stage markers + ink counts.
 func main() {
     var dc = new DrawingCanvas();
     dc.initWithSize(32, 32);

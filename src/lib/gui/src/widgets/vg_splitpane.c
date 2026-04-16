@@ -170,6 +170,8 @@ static void splitpane_arrange(vg_widget_t *widget, float x, float y, float width
     if (split->direction == VG_SPLIT_HORIZONTAL) {
         // Left/Right split
         float available = width - split->splitter_size;
+        if (available < 0.0f)
+            available = 0.0f;
         float first_width = available * split->split_position;
 
         // Clamp to minimum sizes
@@ -179,8 +181,12 @@ static void splitpane_arrange(vg_widget_t *widget, float x, float y, float width
         if (available - first_width < split->min_second_size) {
             first_width = available - split->min_second_size;
         }
+        if (first_width < 0.0f)
+            first_width = 0.0f;
 
         float second_width = available - first_width;
+        if (second_width < 0.0f)
+            second_width = 0.0f;
 
         // Arrange first pane
         if (first->vtable && first->vtable->arrange) {
@@ -205,6 +211,8 @@ static void splitpane_arrange(vg_widget_t *widget, float x, float y, float width
     } else {
         // Top/Bottom split
         float available = height - split->splitter_size;
+        if (available < 0.0f)
+            available = 0.0f;
         float first_height = available * split->split_position;
 
         // Clamp to minimum sizes
@@ -214,8 +222,12 @@ static void splitpane_arrange(vg_widget_t *widget, float x, float y, float width
         if (available - first_height < split->min_second_size) {
             first_height = available - split->min_second_size;
         }
+        if (first_height < 0.0f)
+            first_height = 0.0f;
 
         float second_height = available - first_height;
+        if (second_height < 0.0f)
+            second_height = 0.0f;
 
         // Arrange first pane
         if (first->vtable && first->vtable->arrange) {

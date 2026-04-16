@@ -4,10 +4,34 @@ bind Viper.Terminal as Terminal;
 bind "./core/board";
 bind "./core/moves";
 
+// ============================================================================
+// MODULE: smoke_probe
+// PURPOSE: Headless smoke test for the chess core. Validates move
+//          generation, perft counts, and make/unmake symmetry without
+//          opening any window.
+//
+// WHERE-THIS-FITS: Run by the `zia_smoke_chess` ctest target in CI.
+//          Catches regressions in board.zia / moves.zia.
+//
+// KEY-DESIGN-CHOICES:
+//   * SUITE OF KNOWN-VALUE CHECKS. Starting position has exactly 20
+//     legal moves; perft(2) is exactly 400. Both are well-known
+//     results from chess-programming literature; deviations
+//     immediately localize the bug.
+//   * MAKE/UNMAKE PROOF. Apply e2e4, ensure replies exist, then
+//     unmake and verify the board returned to its original state.
+//     This catches bugs in UndoInfo capture and unmakeMove restoration.
+//   * RESULT: ok / RESULT: fail X. The CI harness greps stdout for
+//     these markers — exit code alone wouldn't tell us WHICH check
+//     failed.
+// ============================================================================
+
+/// @brief Print "RESULT: fail <msg>" and bail. Used by every check.
 func fail(msg: String) {
     Terminal.Say("RESULT: fail " + msg);
 }
 
+/// @brief Linear search for a (from, to) move in a move list.
 func findMove(moves: List[Move], fromSq: Integer, toSq: Integer) -> Move? {
     for i in 0..moves.length() {
         var move = moves.get(i);
@@ -18,6 +42,7 @@ func findMove(moves: List[Move], fromSq: Integer, toSq: Integer) -> Move? {
     return null;
 }
 
+/// @brief Field-by-field equality check for a Move in a list.
 func hasMove(moves: List[Move], target: Move) -> Boolean {
     for i in 0..moves.length() {
         var move = moves.get(i);
@@ -35,6 +60,7 @@ func hasMove(moves: List[Move], target: Move) -> Boolean {
     return false;
 }
 
+/// @brief Smoke-probe entry point. Runs all checks; prints RESULT: ok on success.
 func main() {
     var board = new Board();
     var moveGen = new MoveGen();

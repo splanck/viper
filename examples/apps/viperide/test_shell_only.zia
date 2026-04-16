@@ -1,6 +1,23 @@
 module test_shell_only;
 bind "app_shell";
 
+// ============================================================================
+// MODULE: test_shell_only
+// PURPOSE: Bench test that exercises the FULL `app_shell.AppShell.Build`
+//          path without any documents, command handlers, or completion
+//          plumbing. Lets you visually verify the complete chrome (menu,
+//          toolbar, sidebar, tabs, find bar, editor area, diagnostics
+//          panel, status bar, command palette) in isolation from the
+//          IDE's interaction layer.
+//
+// WHERE-THIS-FITS: Bench test. The IDE itself runs main.zia which calls
+//          AppShell.Build PLUS sets up engine / docMgr / commands /
+//          completion / etc. This file strips away everything except
+//          the chrome to bisect "is the chrome busted?" vs "is the
+//          interaction layer busted?".
+// ============================================================================
+
+/// @brief Construct the full AppShell chrome and run a passive event loop.
 func main() {
     var shell = new app_shell.AppShell();
     shell.Build("ShellTest", 1280, 800);

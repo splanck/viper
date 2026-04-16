@@ -1,3 +1,27 @@
+// ============================================================================
+// MODULE: actions (PaintActions)
+// PURPOSE: Named input-action definitions and keyboard bindings. Rather
+//          than scattering raw keycode checks throughout the app, the
+//          main loop queries semantic action names ("save", "undo",
+//          "tool_brush") and this module owns the binding layer.
+//
+// WHERE-THIS-FITS: Initialized once at PaintApp startup. The app's per-
+//          frame handler uses `pressed("save")` / `held("tool_brush")`
+//          to decide what to do.
+//
+// KEY-DESIGN-CHOICES:
+//   * MULTIPLE BINDINGS PER ACTION. "size up" binds to ], =, and +.
+//     "Tool pencil" binds to both 1 and P. This is done by calling
+//     `Action.Define(name)` once then `Action.BindKey(name, key)` for
+//     each additional key.
+//   * NAMED CONSTANTS. ACT_SAVE, ACT_TOOL_BRUSH etc. are string finals
+//     so typos fail at compile time rather than silently-no-op at
+//     runtime.
+//   * CENTRAL RE-BIND. `Action.Clear` wipes all previous bindings so
+//     the module can be re-initialized (e.g., after a settings
+//     change) without duplicating bindings.
+// ============================================================================
+
 // actions.zia - Named input actions for Paint
 module actions;
 
@@ -33,7 +57,9 @@ final ACT_TOOL_ELLIPSE = "tool_ellipse";
 final ACT_TOOL_FILL = "tool_fill";
 final ACT_TOOL_EYEDROPPER = "tool_eyedropper";
 
+/// @brief Keyboard-binding layer with semantic action-name query.
 class PaintActions {
+    /// @brief Clear previous bindings and re-register all actions.
     expose func init() {
         Action.Clear();
         defineButtons();
@@ -88,6 +114,7 @@ class PaintActions {
         Action.BindKey(ACT_TOOL_EYEDROPPER, config.KEY_I);
     }
 
+    /// @brief True once when the action fires (edge-triggered).
     expose func pressed(name: String) -> Integer {
         if Action.Pressed(name) {
             return 1;
@@ -95,6 +122,7 @@ class PaintActions {
         return 0;
     }
 
+    /// @brief True while the action is held (level-triggered).
     expose func held(name: String) -> Integer {
         if Action.Held(name) {
             return 1;

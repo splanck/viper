@@ -1,3 +1,24 @@
+// ============================================================================
+// MODULE: ui/button (Button + ToolButton)
+// PURPOSE: Two button widgets: a generic text Button and a fixed-size
+//          square ToolButton for the tool palette. Both wrap the
+//          runtime's GameButton for actual rendering.
+//
+// KEY-DESIGN-CHOICES:
+//   * CLASSIC HOVER/PRESSED/CLICKED STATE MACHINE. handleMouse tracks
+//     in/out of the rect + mouseDown state, flipping `pressed` and
+//     committing a click only when mouse is released while still
+//     inside. `wasClicked` is a one-frame latch that the main loop
+//     clears each frame via resetClick().
+//   * DEFERRED WIDGET INIT. GameButton construction happens inside
+//     setup() (and lazily on first draw if setup wasn't called) —
+//     avoids needing a non-null widget in the default constructor.
+//   * SEPARATE ToolButton. Looks like a small specialisation of
+//     Button but keeps its own per-state colour logic (no disabled
+//     state, no text — just an icon glyph). Makes the tool-palette
+//     row rendering trivial.
+// ============================================================================
+
 // button.viper - Button UI control for Viper Paint
 module button;
 
@@ -6,7 +27,7 @@ bind Viper.Game.UI;
 
 bind "../config";
 
-// Button entity - clickable button with text
+/// @brief Text button with hover/pressed/selected states.
 class Button {
     expose Integer x;           // X position
     expose Integer y;           // Y position
@@ -139,7 +160,7 @@ class Button {
     }
 }
 
-// ToolButton - specialized button for tool selection
+/// @brief Square tool-palette button — icon glyph instead of text.
 class ToolButton {
     expose Integer x;
     expose Integer y;

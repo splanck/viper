@@ -1,3 +1,16 @@
+// ============================================================================
+// MODULE: smoke_probe
+// PURPOSE: Headless stroke test — draws with pencil + brush tools on a
+//          32x32 canvas and asserts pixel-count constraints:
+//          (1) a pencil stroke produces at least 8 dark pixels;
+//          (2) a same-length brush stroke produces MORE pixels than the
+//          pencil (because brushes stamp with radius > 0.5). Prints
+//          RESULT: ok on success.
+//
+// WHERE-THIS-FITS: Run by CI (`zia_smoke_paint`) to catch tool-
+//          rendering regressions without needing a display.
+// ============================================================================
+
 module smoke_probe;
 
 bind Viper.Terminal as Terminal;
@@ -7,6 +20,7 @@ bind "./brush";
 bind "./tools/pencil";
 bind "./tools/brush";
 
+/// @brief Count non-white pixels — a proxy for "how much ink on canvas".
 func countInk(dc: DrawingCanvas) -> Integer {
     var count = 0;
     var y = 0;
@@ -23,10 +37,12 @@ func countInk(dc: DrawingCanvas) -> Integer {
     return count;
 }
 
+/// @brief Print RESULT: fail + message for CI to catch.
 func fail(msg: String) {
     Terminal.Say("RESULT: fail " + msg);
 }
 
+/// @brief Probe entry point. Exercise pencil + brush; assert pixel counts.
 func main() {
     var dc = new DrawingCanvas();
     dc.initWithSize(32, 32);

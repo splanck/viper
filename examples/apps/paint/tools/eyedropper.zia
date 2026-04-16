@@ -1,3 +1,16 @@
+// ============================================================================
+// MODULE: eyedropper (EyedropperTool)
+// PURPOSE: Click to sample a pixel's colour into the foreground.
+//          "Instant" tool like FillTool — no drag, no preview.
+//
+// KEY-DESIGN-CHOICES:
+//   * ZERO GUARD. If the picked colour is 0 (fully transparent +
+//     black) we skip the setForeground — that's usually the
+//     background of an empty layer, not a colour the user meant to
+//     pick. A more correct implementation would sniff alpha
+//     separately, but this heuristic is fine for the demo.
+// ============================================================================
+
 // eyedropper.viper - Eyedropper (color picker) tool for Viper Paint
 module eyedropper;
 
@@ -5,7 +18,7 @@ bind "../config";
 bind "../canvas";
 bind "../colors";
 
-// EyedropperTool - picks a color from the canvas
+/// @brief Click-to-sample colour picker.
 class EyedropperTool {
     expose Integer lastPickedColor;  // Last color that was picked
 

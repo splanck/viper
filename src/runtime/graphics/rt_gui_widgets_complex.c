@@ -171,7 +171,7 @@ int64_t rt_tabbar_was_close_clicked(void *tabbar) {
     RT_ASSERT_MAIN_THREAD();
     if (!tabbar)
         return 0;
-    return ((vg_tabbar_t *)tabbar)->close_clicked_tab ? 1 : 0;
+    return ((vg_tabbar_t *)tabbar)->close_clicked_index >= 0 ? 1 : 0;
 }
 
 /// @brief Get the index of the tab whose close button was clicked (clears after read).
@@ -180,10 +180,10 @@ int64_t rt_tabbar_get_close_clicked_index(void *tabbar) {
     if (!tabbar)
         return -1;
     vg_tabbar_t *tb = (vg_tabbar_t *)tabbar;
-    if (!tb->close_clicked_tab)
+    if (tb->close_clicked_index < 0)
         return -1;
-    int index = vg_tabbar_get_tab_index(tb, tb->close_clicked_tab);
-    tb->close_clicked_tab = NULL;
+    int index = tb->close_clicked_index;
+    tb->close_clicked_index = -1;
     return index;
 }
 
@@ -501,6 +501,12 @@ int64_t rt_widget_is_focused(void *widget) {
     if (!widget)
         return 0;
     return (((vg_widget_t *)widget)->state & VG_STATE_FOCUSED) ? 1 : 0;
+}
+
+/// @brief Move keyboard focus to a widget that participates in the tab order.
+void rt_widget_focus(void *widget) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_widget_set_focus((vg_widget_t *)widget);
 }
 
 /// @brief Set the last clicked value.
@@ -1324,6 +1330,11 @@ int64_t rt_widget_is_pressed(void *widget) {
 int64_t rt_widget_is_focused(void *widget) {
     (void)widget;
     return 0;
+}
+
+/// @brief Move keyboard focus to a widget.
+void rt_widget_focus(void *widget) {
+    (void)widget;
 }
 
 /// @brief Set the last clicked value.

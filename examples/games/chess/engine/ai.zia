@@ -6,17 +6,56 @@ bind "../core/moves";
 bind "../core/eval";
 
 // ============================================================================
-// ChessAI — iterative-deepening minimax with alpha-beta pruning.
+// MODULE: ai
+// PURPOSE: The chess engine's brain. Searches for the best move using
+//          iterative-deepening alpha-beta with move ordering, killer
+//          heuristics, transposition table, and quiescence search.
 //
-// Algorithm:
-//   1. Iterative deepening: search depth 1..maxDepth
-//   2. Negamax alpha-beta with move ordering
-//   3. Quiescence search to avoid horizon-effect blunders
-//   4. Transposition table (Zobrist-keyed) for repeated positions
-//   5. Move ordering: captures by MVV-LVA first, then quiet moves
+// WHERE-THIS-FITS: Sits above board / moves / eval. The UI calls
+//          `findBestMove(board)` when it's the AI's turn; the AI
+//          returns a chosen Move.
 //
-// The score is always from the perspective of the side to move (negamax convention).
+// KEY-DESIGN-CHOICES:
+//   * NEGAMAX. Single recursion that always returns "best score for
+//     the side to move." The convention `-search(opponent)` flips
+//     perspective at each ply, eliminating the boilerplate of
+//     classical min/max with two functions.
+//   * ITERATIVE DEEPENING. Search depths 1, 2, ..., maxDepth in
+//     sequence. Lets us return a "good enough" move at any depth and
+//     gives move-ordering benefits (the previous depth's best move
+//     is searched first at the next depth).
+//   * ALPHA-BETA PRUNING. Standard fail-soft alpha-beta cutoff: if
+//     `score >= beta`, the opponent would never enter this subtree,
+//     so we can stop searching and return beta.
+//   * MOVE ORDERING. Captures first (sorted by MVV-LVA — Most
+//     Valuable Victim, Least Valuable Attacker), then killer moves
+//     (quiet moves that caused beta cutoffs at this ply earlier),
+//     then everything else. Good ordering is what makes alpha-beta
+//     efficient.
+//   * KILLER HEURISTIC. Two killer slots per ply (`killerA`,
+//     `killerB`). When a quiet move causes a cutoff, we remember it
+//     so future searches at the same ply try it early. Cheap and
+//     effective.
+//   * TRANSPOSITION TABLE. Direct-mapped hash table keyed by Zobrist
+//     hash; stores score, depth, and a flag (EXACT / ALPHA / BETA)
+//     so we can reuse results from previously-searched positions even
+//     when alpha/beta windows differ.
+//   * QUIESCENCE SEARCH. At depth 0, we don't just call `evaluate` —
+//     we keep extending captures only until the position is "quiet."
+//     This prevents the horizon effect ("Hey, I'm up a queen!" —
+//     because the engine stopped before noticing the recapture).
+//   * MATE-DISTANCE SCORE. `MATE_SCORE - ply` makes the engine prefer
+//     faster mates. Returning early when `bestScore >= MATE_SCORE -
+//     50` aborts further iterative deepening once a forced mate is
+//     found.
+//
+// HOW-TO-READ: Field declarations -> init / setDepth / resetTables ->
+//   findBestMove (iterative deepening loop) -> negamax (the recursive
+//   search) -> quiescence -> staticEval -> orderMoves / orderCaptures
+//   / mvvLva -> probeTable / storeTable -> storeKiller -> absInt.
 // ============================================================================
+
+/// @brief Iterative-deepening alpha-beta chess search engine.
 class ChessAI {
     hide MoveGen moveGen;
     hide Evaluator evaluator;
@@ -38,6 +77,7 @@ class ChessAI {
     // Statistics
     hide Integer nodesSearched;
 
+    /// @brief Initialize with default depth = HARD; call setDepth to override.
     expose func init() {
         moveGen   = new MoveGen();
         evaluator = new Evaluator();
@@ -50,12 +90,13 @@ class ChessAI {
         resetTables();
     }
 
-    // Call this to configure the search depth (and reset the TT).
+    /// @brief Configure the search depth and reset the TT/killers.
     expose func setDepth(depth: Integer) {
         maxDepth = depth;
         resetTables();
     }
 
+    /// @brief Wipe the transposition table, killer slots, and node counter.
     hide func resetTables() {
         ttHash  = [];
         ttScore = [];
@@ -82,6 +123,9 @@ class ChessAI {
     // Find the best move for the current position.
     // Returns the chosen Move (or a null-safe sentinel move if no moves).
     // -------------------------------------------------------------------------
+    /// @brief Pick a move via iterative-deepening alpha-beta.
+    /// @return Chosen Move, or a sentinel `from = -1` Move if no legal
+    ///         moves exist (caller treats as game-over).
     expose func findBestMove(b: Board) -> Move {
         nodesSearched = 0;
         // Reset killer table for clean search
@@ -136,6 +180,10 @@ class ChessAI {
     // Negamax alpha-beta search (recursive).
     // Returns score from the perspective of the side to move.
     // -------------------------------------------------------------------------
+    /// @brief Recursive negamax with alpha-beta pruning + TT + killers.
+    /// @param depth Remaining search depth (decremented each ply).
+    /// @param ply Distance from root (used for killer-table indexing
+    ///        and mate-distance scoring).
     hide func negamax(b: Board, depth: Integer, ply: Integer,
                       alpha: Integer, beta: Integer) -> Integer {
         nodesSearched = nodesSearched + 1;
@@ -196,6 +244,10 @@ class ChessAI {
     // Quiescence search — only examine captures until position is "quiet".
     // Prevents horizon-effect blunders at leaf nodes.
     // -------------------------------------------------------------------------
+    /// @brief Capture-only search to dampen the horizon effect.
+    /// @details "Stand-pat" baseline (= static eval) is the lower
+    ///          bound — we can always choose NOT to capture. Each
+    ///          recursion explores one capture and updates the bound.
     hide func quiescence(b: Board, ply: Integer, alpha: Integer, beta: Integer) -> Integer {
         nodesSearched = nodesSearched + 1;
         var alphaBound = alpha;
@@ -226,6 +278,7 @@ class ChessAI {
     // -------------------------------------------------------------------------
     // Static evaluation from the side-to-move's perspective.
     // -------------------------------------------------------------------------
+    /// @brief Static eval flipped to side-to-move's perspective for negamax.
     hide func staticEval(b: Board) -> Integer {
         var score = evaluator.evaluate(b);
         if !b.whiteToMove { score = -score; }
@@ -238,6 +291,10 @@ class ChessAI {
     //   2. Killer moves (non-captures that caused cutoffs at this ply)
     //   3. All other quiet moves
     // -------------------------------------------------------------------------
+    /// @brief Reorder moves for alpha-beta efficiency.
+    /// @details Captures (MVV-LVA) -> killers -> quiet. Putting likely-
+    ///          best moves first maximises beta cutoffs, which is what
+    ///          makes alpha-beta dramatically faster than plain minimax.
     hide func orderMoves(moves: List[Move], b: Board, ply: Integer) -> List[Move] {
         var captures = [];
         var killers  = [];
@@ -268,7 +325,8 @@ class ChessAI {
         return ordered;
     }
 
-    // Sort captures by MVV-LVA: most valuable victim first, least valuable attacker first
+    /// @brief Sort captures by MVV-LVA score (best capture first).
+    /// @details O(n^2) insertion sort is fine — capture lists are short.
     hide func orderCaptures(captures: List[Move], b: Board) -> List[Move] {
         // Simple insertion sort (small lists in practice)
         var n = captures.length();
@@ -287,7 +345,7 @@ class ChessAI {
         return captures;
     }
 
-    // MVV-LVA score: victim value * 10 - attacker value (higher = search first)
+    /// @brief MVV-LVA score: victim*10 - attacker. Higher = search first.
     hide func mvvLva(m: Move, b: Board) -> Integer {
         var victim   = m.captured;
         var attacker = b.pieceType(b.get(m.from));
@@ -295,7 +353,7 @@ class ChessAI {
         return evaluator.materialValue(victim) * 10 - evaluator.materialValue(attacker);
     }
 
-    // Collect only captures from the full legal-move list
+    /// @brief Filter the full legal-move list down to captures only.
     hide func captureMovesOnly(b: Board) -> List[Move] {
         var all = moveGen.legalMoves(b);
         var caps = [];
@@ -310,6 +368,9 @@ class ChessAI {
     // Transposition table (simple direct-mapped hash table)
     // -------------------------------------------------------------------------
 
+    /// @brief Look up a TT entry. Returns the stored score if usable
+    ///        (matching hash + sufficient depth + flag-compatible
+    ///        bounds), or sentinel `INF + 1` for cache miss / unusable.
     hide func probeTable(hash: Integer, depth: Integer, alpha: Integer, beta: Integer) -> Integer {
         var idx   = absInt(hash) % ttSize;
         var entry = ttHash.get(idx);
@@ -328,6 +389,7 @@ class ChessAI {
         return INF + 1;  // not usable
     }
 
+    /// @brief Write a TT entry, overwriting any previous slot occupant.
     hide func storeTable(hash: Integer, score: Integer, depth: Integer, flag: Integer) {
         var idx = absInt(hash) % ttSize;
         ttHash.set(idx, hash);
@@ -339,6 +401,8 @@ class ChessAI {
     // -------------------------------------------------------------------------
     // Killer move heuristic
     // -------------------------------------------------------------------------
+    /// @brief Record a quiet move that caused a beta cutoff at this ply.
+    /// @details Two slots; new killer pushes old killer to slot B.
     hide func storeKiller(m: Move, ply: Integer) {
         if m.captured != 0 { return; }  // only quiet moves
         if ply >= maxPly { return; }
@@ -351,11 +415,13 @@ class ChessAI {
     }
 
     // -------------------------------------------------------------------------
-    // Utility: integer absolute value (runtime only provides f64 Math.Abs)
+    /// @brief Integer absolute value. Local helper because the runtime
+    ///        only provides f64 Math.Abs.
     hide func absInt(x: Integer) -> Integer {
         if x < 0 { return -x; }
         return x;
     }
 
+    /// @brief Statistics: total nodes searched in the most recent findBestMove.
     expose func getNodesSearched() -> Integer { return nodesSearched; }
 }

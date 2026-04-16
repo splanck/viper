@@ -1,3 +1,26 @@
+// ============================================================================
+// MODULE: config
+// PURPOSE: All tuning constants and enum-like IDs for Crackman in one
+//          place: grid dimensions, screen layout, colour palette, key
+//          scancodes, gamepad bindings, actor speeds, ghost IDs,
+//          game-state constants, contract IDs, XP/rank thresholds.
+//
+// WHERE-THIS-FITS: Leaf module — imported by everyone.
+//
+// KEY-DESIGN-CHOICES:
+//   * 24 PX TILE. The canonical Pac-Man grid is 28×31 cells; Crackman
+//     uses 24 pixels per tile to hit a 672×744 playfield comfortably
+//     centered inside an 800×988 window (room for a richer HUD and
+//     footer than the arcade original).
+//   * TILE-ALIGNED SPEEDS. PACMAN_SPEED / GHOST_SPEED / GHOST_EATEN_SPEED
+//     are pixels-per-frame values chosen to DIVIDE TILE_SIZE cleanly
+//     (3 → 8 frames/tile, 2 → 12 frames/tile, 4 → 6 frames/tile).
+//     Non-divisor speeds would desync tile-center AI decisions.
+//   * 0x00RRGGBB COLORS. 32-bit ints with an extra high byte that
+//     the renderer ignores but the runtime expects. Matches the
+//     ghost-palette convention.
+// ============================================================================
+
 // =============================================================================
 // CRACKMAN - Configuration and Constants
 // =============================================================================

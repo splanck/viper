@@ -35,7 +35,10 @@ static void toolbar_destroy(vg_widget_t *widget);
 static void toolbar_measure(vg_widget_t *widget, float available_width, float available_height);
 static void toolbar_arrange(vg_widget_t *widget, float x, float y, float width, float height);
 static void toolbar_paint(vg_widget_t *widget, void *canvas);
+static void toolbar_paint_overlay(vg_widget_t *widget, void *canvas);
 static bool toolbar_handle_event(vg_widget_t *widget, vg_event_t *event);
+static float get_item_width(vg_toolbar_t *tb, vg_toolbar_item_t *item);
+static float get_item_height(vg_toolbar_t *tb, vg_toolbar_item_t *item);
 
 //=============================================================================
 // Toolbar VTable
@@ -45,6 +48,7 @@ static vg_widget_vtable_t g_toolbar_vtable = {.destroy = toolbar_destroy,
                                               .measure = toolbar_measure,
                                               .arrange = toolbar_arrange,
                                               .paint = toolbar_paint,
+                                              .paint_overlay = toolbar_paint_overlay,
                                               .handle_event = toolbar_handle_event,
                                               .can_focus = NULL,
                                               .on_focus = NULL};
@@ -127,6 +131,293 @@ static float toolbar_ui_scale(void) {
 
 static float get_scaled_icon_pixels(vg_toolbar_t *tb) {
     return (float)get_icon_pixels(tb->icon_size) * toolbar_ui_scale();
+}
+
+static float get_overflow_button_extent(vg_toolbar_t *tb) {
+    float icon_px = get_scaled_icon_pixels(tb);
+    float extent = icon_px + (float)tb->item_padding * 2.0f;
+    return extent > 18.0f ? extent : 18.0f;
+}
+
+static float get_item_extent(vg_toolbar_t *tb, vg_toolbar_item_t *item) {
+    return tb->orientation == VG_TOOLBAR_HORIZONTAL ? get_item_width(tb, item) : get_item_height(tb, item);
+}
+
+static void measure_toolbar_item_widget(vg_toolbar_t *tb,
+                                        vg_toolbar_item_t *item,
+                                        float available_width,
+                                        float available_height) {
+    if (!item || item->type != VG_TOOLBAR_ITEM_WIDGET || !item->custom_widget)
+        return;
+    vg_widget_measure(item->custom_widget, available_width, available_height);
+    (void)tb;
+}
+
+static void toolbar_compute_overflow(vg_toolbar_t *tb, float available_primary) {
+    tb->overflow_start_index = -1;
+    if (!tb->overflow_menu)
+        return;
+
+    float total_extent = 0.0f;
+    for (size_t i = 0; i < tb->item_count; i++) {
+        float item_extent = get_item_extent(tb, tb->items[i]);
+        if (item_extent <= 0.0f)
+            continue;
+        total_extent += item_extent;
+        if (i + 1 < tb->item_count)
+            total_extent += (float)tb->item_spacing;
+    }
+
+    if (total_extent <= available_primary)
+        return;
+
+    float limit = available_primary - get_overflow_button_extent(tb);
+    if (limit < 0.0f)
+        limit = 0.0f;
+
+    float pos = 0.0f;
+    for (size_t i = 0; i < tb->item_count; i++) {
+        float item_extent = get_item_extent(tb, tb->items[i]);
+        if (item_extent <= 0.0f)
+            continue;
+        if (pos + item_extent > limit) {
+            tb->overflow_start_index = (int)i;
+            return;
+        }
+        pos += item_extent + (float)tb->item_spacing;
+    }
+}
+
+static void toolbar_get_overflow_button_rect(vg_toolbar_t *tb,
+                                             float *out_x,
+                                             float *out_y,
+                                             float *out_w,
+                                             float *out_h) {
+    float extent = get_overflow_button_extent(tb);
+    float x = 0.0f;
+    float y = 0.0f;
+    float w = 0.0f;
+    float h = 0.0f;
+
+    if (tb->orientation == VG_TOOLBAR_HORIZONTAL) {
+        w = extent;
+        h = tb->base.height - 4.0f;
+        if (h < 0.0f)
+            h = 0.0f;
+        x = tb->base.width - w;
+        y = 2.0f;
+    } else {
+        w = tb->base.width - 4.0f;
+        if (w < 0.0f)
+            w = 0.0f;
+        h = extent;
+        x = 2.0f;
+        y = tb->base.height - h;
+    }
+
+    if (out_x)
+        *out_x = x;
+    if (out_y)
+        *out_y = y;
+    if (out_w)
+        *out_w = w;
+    if (out_h)
+        *out_h = h;
+}
+
+static bool point_in_rect(float px, float py, float x, float y, float w, float h) {
+    return px >= x && px < x + w && py >= y && py < y + h;
+}
+
+static bool toolbar_overflow_button_hit(vg_toolbar_t *tb, float px, float py) {
+    if (!tb || tb->overflow_start_index < 0)
+        return false;
+
+    float x = 0.0f;
+    float y = 0.0f;
+    float w = 0.0f;
+    float h = 0.0f;
+    toolbar_get_overflow_button_rect(tb, &x, &y, &w, &h);
+    return point_in_rect(px, py, x, y, w, h);
+}
+
+static const char *toolbar_item_menu_label(vg_toolbar_item_t *item) {
+    if (!item)
+        return "Item";
+    if (item->label && item->label[0] != '\0')
+        return item->label;
+    if (item->tooltip && item->tooltip[0] != '\0')
+        return item->tooltip;
+    if (item->id && item->id[0] != '\0')
+        return item->id;
+    switch (item->type) {
+        case VG_TOOLBAR_ITEM_BUTTON:
+            return "Button";
+        case VG_TOOLBAR_ITEM_TOGGLE:
+            return "Toggle";
+        case VG_TOOLBAR_ITEM_DROPDOWN:
+            return "Menu";
+        default:
+            return "Item";
+    }
+}
+
+static void toolbar_activate_item(vg_toolbar_t *tb, vg_toolbar_item_t *item) {
+    if (!tb || !item || !item->enabled)
+        return;
+
+    item->was_clicked = true;
+    switch (item->type) {
+        case VG_TOOLBAR_ITEM_BUTTON:
+            if (item->on_click)
+                item->on_click(item, item->user_data);
+            break;
+        case VG_TOOLBAR_ITEM_TOGGLE:
+            item->checked = !item->checked;
+            if (item->on_toggle)
+                item->on_toggle(item, item->checked, item->user_data);
+            break;
+        case VG_TOOLBAR_ITEM_DROPDOWN:
+            if (item->on_click)
+                item->on_click(item, item->user_data);
+            break;
+        default:
+            break;
+    }
+
+    tb->base.needs_paint = true;
+}
+
+static void toolbar_overflow_on_select(vg_contextmenu_t *menu,
+                                       vg_menu_item_t *menu_item,
+                                       void *user_data) {
+    (void)menu;
+    vg_toolbar_t *tb = (vg_toolbar_t *)user_data;
+    vg_toolbar_item_t *item = menu_item ? (vg_toolbar_item_t *)menu_item->action_data : NULL;
+    toolbar_activate_item(tb, item);
+}
+
+static void toolbar_ensure_overflow_popup(vg_toolbar_t *tb) {
+    if (!tb || tb->overflow_popup)
+        return;
+
+    tb->overflow_popup = vg_contextmenu_create();
+    if (!tb->overflow_popup)
+        return;
+    vg_contextmenu_set_on_select(tb->overflow_popup, toolbar_overflow_on_select, tb);
+    vg_contextmenu_set_font(tb->overflow_popup, tb->font, tb->font_size);
+    tb->overflow_popup_dirty = true;
+}
+
+static void toolbar_rebuild_overflow_popup(vg_toolbar_t *tb) {
+    toolbar_ensure_overflow_popup(tb);
+    if (!tb || !tb->overflow_popup)
+        return;
+
+    vg_contextmenu_clear(tb->overflow_popup);
+    vg_contextmenu_set_font(tb->overflow_popup, tb->font, tb->font_size);
+    if (tb->overflow_start_index < 0) {
+        tb->overflow_popup_dirty = false;
+        return;
+    }
+
+    bool added_item = false;
+    bool pending_separator = false;
+    for (size_t i = (size_t)tb->overflow_start_index; i < tb->item_count; i++) {
+        vg_toolbar_item_t *item = tb->items[i];
+        if (!item)
+            continue;
+
+        if (item->type == VG_TOOLBAR_ITEM_SEPARATOR) {
+            if (added_item)
+                pending_separator = true;
+            continue;
+        }
+        if (item->type == VG_TOOLBAR_ITEM_SPACER || item->type == VG_TOOLBAR_ITEM_WIDGET)
+            continue;
+
+        if (pending_separator) {
+            vg_contextmenu_add_separator(tb->overflow_popup);
+            pending_separator = false;
+        }
+
+        vg_menu_item_t *menu_item = vg_contextmenu_add_item(
+            tb->overflow_popup, toolbar_item_menu_label(item), NULL, NULL, item);
+        if (!menu_item)
+            continue;
+        menu_item->action_data = item;
+        vg_contextmenu_item_set_enabled(menu_item, item->enabled);
+        if (item->type == VG_TOOLBAR_ITEM_TOGGLE)
+            vg_contextmenu_item_set_checked(menu_item, item->checked);
+        if (item->icon.type != VG_ICON_NONE)
+            vg_contextmenu_item_set_icon(menu_item, item->icon);
+        added_item = true;
+    }
+
+    tb->overflow_popup_dirty = false;
+}
+
+static void toolbar_sync_popup_capture(vg_toolbar_t *tb) {
+    if (!tb || !tb->overflow_popup || tb->overflow_popup->is_visible)
+        return;
+    if (vg_widget_get_input_capture() == &tb->base)
+        vg_widget_release_input_capture();
+}
+
+static void toolbar_dismiss_overflow_popup(vg_toolbar_t *tb) {
+    if (!tb || !tb->overflow_popup || !tb->overflow_popup->is_visible)
+        return;
+    vg_contextmenu_dismiss(tb->overflow_popup);
+    toolbar_sync_popup_capture(tb);
+    tb->base.needs_paint = true;
+}
+
+static void toolbar_show_overflow_popup(vg_toolbar_t *tb) {
+    if (!tb || tb->overflow_start_index < 0)
+        return;
+    if (tb->overflow_popup_dirty || !tb->overflow_popup)
+        toolbar_rebuild_overflow_popup(tb);
+    if (!tb->overflow_popup || tb->overflow_popup->item_count == 0)
+        return;
+
+    float button_x = 0.0f;
+    float button_y = 0.0f;
+    float button_w = 0.0f;
+    float button_h = 0.0f;
+    toolbar_get_overflow_button_rect(tb, &button_x, &button_y, &button_w, &button_h);
+
+    int popup_x = (int)(tb->base.x + button_x);
+    int popup_y = (int)(tb->base.y + button_y + button_h);
+    if (tb->orientation == VG_TOOLBAR_VERTICAL) {
+        popup_x = (int)(tb->base.x + button_x + button_w);
+        popup_y = (int)(tb->base.y + button_y);
+    }
+
+    vg_contextmenu_show_at(tb->overflow_popup, popup_x, popup_y);
+    vg_widget_set_input_capture(&tb->base);
+    tb->base.needs_paint = true;
+}
+
+static bool toolbar_forward_popup_event(vg_toolbar_t *tb, vg_event_t *event) {
+    if (!tb || !tb->overflow_popup || !tb->overflow_popup->is_visible || !event)
+        return false;
+    if (!(event->type == VG_EVENT_MOUSE_MOVE || event->type == VG_EVENT_MOUSE_DOWN ||
+          event->type == VG_EVENT_MOUSE_UP || event->type == VG_EVENT_CLICK ||
+          event->type == VG_EVENT_KEY_DOWN || event->type == VG_EVENT_KEY_UP))
+        return false;
+
+    vg_event_t translated = *event;
+    if (event->type == VG_EVENT_MOUSE_MOVE || event->type == VG_EVENT_MOUSE_DOWN ||
+        event->type == VG_EVENT_MOUSE_UP || event->type == VG_EVENT_CLICK) {
+        translated.mouse.x = event->mouse.screen_x;
+        translated.mouse.y = event->mouse.screen_y;
+        translated.mouse.screen_x = event->mouse.screen_x;
+        translated.mouse.screen_y = event->mouse.screen_y;
+    }
+
+    if (!tb->overflow_popup->base.vtable || !tb->overflow_popup->base.vtable->handle_event)
+        return false;
+    return tb->overflow_popup->base.vtable->handle_event(&tb->overflow_popup->base, &translated);
 }
 
 static float get_item_width(vg_toolbar_t *tb, vg_toolbar_item_t *item) {
@@ -267,6 +558,13 @@ vg_toolbar_t *vg_toolbar_create(vg_widget_t *parent, vg_toolbar_orientation_t or
 static void toolbar_destroy(vg_widget_t *widget) {
     vg_toolbar_t *tb = (vg_toolbar_t *)widget;
 
+    if (vg_widget_get_input_capture() == widget)
+        vg_widget_release_input_capture();
+    if (tb->overflow_popup) {
+        vg_contextmenu_destroy(tb->overflow_popup);
+        tb->overflow_popup = NULL;
+    }
+
     for (size_t i = 0; i < tb->item_count; i++) {
         free_item(tb->items[i]);
     }
@@ -275,6 +573,8 @@ static void toolbar_destroy(vg_widget_t *widget) {
 
 static void toolbar_measure(vg_widget_t *widget, float available_width, float available_height) {
     vg_toolbar_t *tb = (vg_toolbar_t *)widget;
+    for (size_t i = 0; i < tb->item_count; i++)
+        measure_toolbar_item_widget(tb, tb->items[i], available_width, available_height);
 
     float scale = toolbar_ui_scale();
     float icon_px = get_scaled_icon_pixels(tb);
@@ -314,23 +614,20 @@ static void toolbar_arrange(vg_widget_t *widget, float x, float y, float width, 
     widget->width = width;
     widget->height = height;
 
-    // Reset overflow tracking
-    tb->overflow_start_index = -1;
+    for (size_t i = 0; i < tb->item_count; i++)
+        measure_toolbar_item_widget(tb, tb->items[i], width, height);
+
+    toolbar_compute_overflow(
+        tb, tb->orientation == VG_TOOLBAR_HORIZONTAL ? width : height);
 
     // Arrange custom widgets within toolbar items
     float pos = 0;
-    for (size_t i = 0; i < tb->item_count; i++) {
+    int max_index = tb->overflow_start_index >= 0 ? tb->overflow_start_index : (int)tb->item_count;
+    for (int i = 0; i < max_index; i++) {
         vg_toolbar_item_t *item = tb->items[i];
 
         if (tb->orientation == VG_TOOLBAR_HORIZONTAL) {
             float item_width = get_item_width(tb, item);
-            if (pos + item_width > width && tb->overflow_menu) {
-                // This item overflows
-                if (tb->overflow_start_index < 0) {
-                    tb->overflow_start_index = (int)i;
-                }
-            }
-
             if (item->type == VG_TOOLBAR_ITEM_WIDGET && item->custom_widget) {
                 float iw = item->custom_widget->measured_width;
                 float ih = item->custom_widget->measured_height;
@@ -342,12 +639,6 @@ static void toolbar_arrange(vg_widget_t *widget, float x, float y, float width, 
             pos += item_width + tb->item_spacing;
         } else {
             float item_height = get_item_height(tb, item);
-            if (pos + item_height > height && tb->overflow_menu) {
-                if (tb->overflow_start_index < 0) {
-                    tb->overflow_start_index = (int)i;
-                }
-            }
-
             if (item->type == VG_TOOLBAR_ITEM_WIDGET && item->custom_widget) {
                 float iw = item->custom_widget->measured_width;
                 float ih = item->custom_widget->measured_height;
@@ -359,6 +650,9 @@ static void toolbar_arrange(vg_widget_t *widget, float x, float y, float width, 
             pos += item_height + tb->item_spacing;
         }
     }
+
+    if (tb->overflow_popup_dirty && tb->overflow_popup && tb->overflow_popup->is_visible)
+        toolbar_rebuild_overflow_popup(tb);
 }
 
 static void toolbar_paint(vg_widget_t *widget, void *canvas) {
@@ -536,13 +830,48 @@ static void toolbar_paint(vg_widget_t *widget, void *canvas) {
 
     // Draw overflow button if needed
     if (tb->overflow_start_index >= 0) {
-        // Draw "..." indicator at end
-        float ov_x = widget->x + widget->width - 20;
-        float ov_y = widget->y + widget->height / 2;
-        vgfx_fill_rect(win, (int32_t)ov_x, (int32_t)ov_y, 2, 2, tb->text_color);
-        vgfx_fill_rect(win, (int32_t)(ov_x + 5), (int32_t)ov_y, 2, 2, tb->text_color);
-        vgfx_fill_rect(win, (int32_t)(ov_x + 10), (int32_t)ov_y, 2, 2, tb->text_color);
+        float ov_x = 0.0f;
+        float ov_y = 0.0f;
+        float ov_w = 0.0f;
+        float ov_h = 0.0f;
+        toolbar_get_overflow_button_rect(tb, &ov_x, &ov_y, &ov_w, &ov_h);
+
+        uint32_t ov_bg = 0;
+        if (tb->overflow_popup && tb->overflow_popup->is_visible)
+            ov_bg = tb->active_color;
+        else if (tb->overflow_button_hovered)
+            ov_bg = tb->hover_color;
+        if (ov_bg != 0) {
+            vgfx_fill_rect(win,
+                           (int32_t)(widget->x + ov_x),
+                           (int32_t)(widget->y + ov_y),
+                           (int32_t)ov_w,
+                           (int32_t)ov_h,
+                           ov_bg);
+        }
+
+        float dot_y = widget->y + ov_y + ov_h / 2.0f;
+        if (tb->orientation == VG_TOOLBAR_HORIZONTAL) {
+            float center_x = widget->x + ov_x + ov_w / 2.0f;
+            vgfx_fill_rect(win, (int32_t)(center_x - 6.0f), (int32_t)dot_y, 2, 2, tb->text_color);
+            vgfx_fill_rect(win, (int32_t)(center_x - 1.0f), (int32_t)dot_y, 2, 2, tb->text_color);
+            vgfx_fill_rect(win, (int32_t)(center_x + 4.0f), (int32_t)dot_y, 2, 2, tb->text_color);
+        } else {
+            float center_x = widget->x + ov_x + ov_w / 2.0f;
+            float center_y = widget->y + ov_y + ov_h / 2.0f;
+            vgfx_fill_rect(win, (int32_t)center_x, (int32_t)(center_y - 6.0f), 2, 2, tb->text_color);
+            vgfx_fill_rect(win, (int32_t)center_x, (int32_t)(center_y - 1.0f), 2, 2, tb->text_color);
+            vgfx_fill_rect(win, (int32_t)center_x, (int32_t)(center_y + 4.0f), 2, 2, tb->text_color);
+        }
     }
+}
+
+static void toolbar_paint_overlay(vg_widget_t *widget, void *canvas) {
+    vg_toolbar_t *tb = (vg_toolbar_t *)widget;
+    if (!tb->overflow_popup || !tb->overflow_popup->is_visible)
+        return;
+    if (tb->overflow_popup->base.vtable && tb->overflow_popup->base.vtable->paint)
+        tb->overflow_popup->base.vtable->paint(&tb->overflow_popup->base, canvas);
 }
 
 static vg_toolbar_item_t *find_item_at(vg_toolbar_t *tb, float px, float py) {
@@ -557,14 +886,18 @@ static vg_toolbar_item_t *find_item_at(vg_toolbar_t *tb, float px, float py) {
 
         if (tb->orientation == VG_TOOLBAR_HORIZONTAL) {
             item_width = get_item_width(tb, item);
-            item_height = tb->base.height;
-            item_x = tb->base.x + pos;
-            item_y = tb->base.y;
+            item_height = tb->base.height - 4.0f;
+            if (item_height < 0.0f)
+                item_height = 0.0f;
+            item_x = pos;
+            item_y = 2.0f;
         } else {
-            item_width = tb->base.width;
+            item_width = tb->base.width - 4.0f;
+            if (item_width < 0.0f)
+                item_width = 0.0f;
             item_height = get_item_height(tb, item);
-            item_x = tb->base.x;
-            item_y = tb->base.y + pos;
+            item_x = 2.0f;
+            item_y = pos;
         }
 
         if (px >= item_x && px < item_x + item_width && py >= item_y && py < item_y + item_height) {
@@ -585,12 +918,29 @@ static vg_toolbar_item_t *find_item_at(vg_toolbar_t *tb, float px, float py) {
 
 static bool toolbar_handle_event(vg_widget_t *widget, vg_event_t *event) {
     vg_toolbar_t *tb = (vg_toolbar_t *)widget;
+    bool popup_was_visible = tb->overflow_popup && tb->overflow_popup->is_visible;
+
+    if (popup_was_visible) {
+        bool popup_handled = toolbar_forward_popup_event(tb, event);
+        toolbar_sync_popup_capture(tb);
+        if (popup_handled) {
+            widget->needs_paint = true;
+            return true;
+        }
+        if (event->type == VG_EVENT_MOUSE_DOWN &&
+            toolbar_overflow_button_hit(tb, event->mouse.x, event->mouse.y)) {
+            widget->needs_paint = true;
+            return true;
+        }
+    }
 
     switch (event->type) {
         case VG_EVENT_MOUSE_MOVE: {
             vg_toolbar_item_t *item = find_item_at(tb, event->mouse.x, event->mouse.y);
-            if (item != tb->hovered_item) {
+            bool overflow_hovered = toolbar_overflow_button_hit(tb, event->mouse.x, event->mouse.y);
+            if (item != tb->hovered_item || overflow_hovered != tb->overflow_button_hovered) {
                 tb->hovered_item = item;
+                tb->overflow_button_hovered = overflow_hovered;
                 widget->needs_paint = true;
             }
             return false;
@@ -601,6 +951,10 @@ static bool toolbar_handle_event(vg_widget_t *widget, vg_event_t *event) {
                 tb->hovered_item = NULL;
                 widget->needs_paint = true;
             }
+            if (tb->overflow_button_hovered) {
+                tb->overflow_button_hovered = false;
+                widget->needs_paint = true;
+            }
             if (tb->pressed_item) {
                 tb->pressed_item = NULL;
                 widget->needs_paint = true;
@@ -608,8 +962,19 @@ static bool toolbar_handle_event(vg_widget_t *widget, vg_event_t *event) {
             return false;
 
         case VG_EVENT_MOUSE_DOWN: {
+            if (toolbar_overflow_button_hit(tb, event->mouse.x, event->mouse.y)) {
+                if (tb->overflow_popup && tb->overflow_popup->is_visible)
+                    toolbar_dismiss_overflow_popup(tb);
+                else
+                    toolbar_show_overflow_popup(tb);
+                tb->pressed_item = NULL;
+                return true;
+            }
+
             vg_toolbar_item_t *item = find_item_at(tb, event->mouse.x, event->mouse.y);
             if (item && item->enabled) {
+                if (tb->overflow_popup && tb->overflow_popup->is_visible)
+                    toolbar_dismiss_overflow_popup(tb);
                 tb->pressed_item = item;
                 widget->needs_paint = true;
                 return true;
@@ -618,37 +983,13 @@ static bool toolbar_handle_event(vg_widget_t *widget, vg_event_t *event) {
         }
 
         case VG_EVENT_MOUSE_UP: {
+            if (toolbar_overflow_button_hit(tb, event->mouse.x, event->mouse.y)) {
+                tb->pressed_item = NULL;
+                return true;
+            }
             vg_toolbar_item_t *item = find_item_at(tb, event->mouse.x, event->mouse.y);
             if (item && item == tb->pressed_item && item->enabled) {
-                // Set polling flag for runtime API
-                item->was_clicked = true;
-
-                // Trigger action
-                switch (item->type) {
-                    case VG_TOOLBAR_ITEM_BUTTON:
-                        if (item->on_click) {
-                            item->on_click(item, item->user_data);
-                        }
-                        break;
-
-                    case VG_TOOLBAR_ITEM_TOGGLE:
-                        item->checked = !item->checked;
-                        if (item->on_toggle) {
-                            item->on_toggle(item, item->checked, item->user_data);
-                        }
-                        break;
-
-                    case VG_TOOLBAR_ITEM_DROPDOWN:
-                        // Show dropdown menu
-                        // (placeholder - needs menu integration)
-                        if (item->on_click) {
-                            item->on_click(item, item->user_data);
-                        }
-                        break;
-
-                    default:
-                        break;
-                }
+                toolbar_activate_item(tb, item);
             }
             tb->pressed_item = NULL;
             widget->needs_paint = true;
@@ -687,6 +1028,7 @@ vg_toolbar_item_t *vg_toolbar_add_button(vg_toolbar_t *tb,
 
     tb->items[tb->item_count++] = item;
     tb->base.needs_layout = true;
+    tb->overflow_popup_dirty = true;
     return item;
 }
 
@@ -715,6 +1057,7 @@ vg_toolbar_item_t *vg_toolbar_add_toggle(vg_toolbar_t *tb,
 
     tb->items[tb->item_count++] = item;
     tb->base.needs_layout = true;
+    tb->overflow_popup_dirty = true;
     return item;
 }
 
@@ -736,6 +1079,7 @@ vg_toolbar_item_t *vg_toolbar_add_dropdown(
 
     tb->items[tb->item_count++] = item;
     tb->base.needs_layout = true;
+    tb->overflow_popup_dirty = true;
     return item;
 }
 
@@ -751,6 +1095,7 @@ vg_toolbar_item_t *vg_toolbar_add_separator(vg_toolbar_t *tb) {
 
     tb->items[tb->item_count++] = item;
     tb->base.needs_layout = true;
+    tb->overflow_popup_dirty = true;
     return item;
 }
 
@@ -766,6 +1111,7 @@ vg_toolbar_item_t *vg_toolbar_add_spacer(vg_toolbar_t *tb) {
 
     tb->items[tb->item_count++] = item;
     tb->base.needs_layout = true;
+    tb->overflow_popup_dirty = true;
     return item;
 }
 
@@ -783,6 +1129,7 @@ vg_toolbar_item_t *vg_toolbar_add_widget(vg_toolbar_t *tb, const char *id, vg_wi
 
     tb->items[tb->item_count++] = item;
     tb->base.needs_layout = true;
+    tb->overflow_popup_dirty = true;
     return item;
 }
 
@@ -793,12 +1140,18 @@ void vg_toolbar_remove_item(vg_toolbar_t *tb, const char *id) {
 
     for (size_t i = 0; i < tb->item_count; i++) {
         if (tb->items[i]->id && strcmp(tb->items[i]->id, id) == 0) {
+            if (tb->hovered_item == tb->items[i])
+                tb->hovered_item = NULL;
+            if (tb->pressed_item == tb->items[i])
+                tb->pressed_item = NULL;
             free_item(tb->items[i]);
             memmove(&tb->items[i],
                     &tb->items[i + 1],
                     (tb->item_count - i - 1) * sizeof(vg_toolbar_item_t *));
             tb->item_count--;
             tb->base.needs_layout = true;
+            tb->overflow_popup_dirty = true;
+            toolbar_dismiss_overflow_popup(tb);
             return;
         }
     }
@@ -853,6 +1206,7 @@ void vg_toolbar_set_icon_size(vg_toolbar_t *tb, vg_toolbar_icon_size_t size) {
         return;
     tb->icon_size = size;
     tb->base.needs_layout = true;
+    tb->overflow_popup_dirty = true;
 }
 
 /// @brief Toolbar set show labels.
@@ -864,6 +1218,7 @@ void vg_toolbar_set_show_labels(vg_toolbar_t *tb, bool show) {
         tb->items[i]->show_label = show;
     }
     tb->base.needs_layout = true;
+    tb->overflow_popup_dirty = true;
 }
 
 /// @brief Toolbar set font.
@@ -873,6 +1228,9 @@ void vg_toolbar_set_font(vg_toolbar_t *tb, vg_font_t *font, float size) {
     tb->font = font;
     tb->font_size = size > 0 ? size : vg_theme_get_current()->typography.size_small;
     tb->base.needs_layout = true;
+    tb->overflow_popup_dirty = true;
+    if (tb->overflow_popup)
+        vg_contextmenu_set_font(tb->overflow_popup, tb->font, tb->font_size);
 }
 
 //=============================================================================

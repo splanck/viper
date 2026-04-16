@@ -11,14 +11,37 @@ bind Obj = Viper.Core.Object;
 bind Convert = Viper.Core.Convert;
 
 // ============================================================================
-// SymbolOutline — document symbol navigator.
+// MODULE: symbols
+// PURPOSE: Document-symbol navigator. Lists every top-level symbol
+//          (class / function / module-level value) of the active file
+//          in a sidebar listbox. Clicking jumps to the symbol's line.
 //
-// Queries Viper.Zia.Completion.Symbols(source) and populates a ListBox
-// with all top-level symbols. Clicking a symbol navigates to its line.
+// WHERE-THIS-FITS: Editor controller invoked once per frame from
+//          main.zia. Toggleable via the symbol-outline command. Queries
+//          `Viper.Zia.Completion.SymbolsForFile` for the symbol list.
 //
-// Call update() each frame; it only re-queries when the source changes.
+// KEY-DESIGN-CHOICES:
+//   * SOURCE + PATH CACHE. Like diagnostics, only re-queries when
+//     either the buffer text OR the active file path changes. Keeps
+//     per-frame work zero when the user is just typing within a
+//     symbol's body.
+//   * RUNTIME-SYMBOL FILTER. The completion engine returns symbols from
+//     dependent runtimes too (line == 0 marker). We skip those — the
+//     outline should only list symbols defined IN the file the user is
+//     editing.
+//   * TOGGLE VISIBILITY + FORCE REFRESH. `toggle` flips visibility and
+//     blanks the cache so the next update re-queries even if the
+//     source matches what was cached when the panel was last hidden.
+//   * NAVIGATION VIA NODE-DATA. We stash the symbol's line number on
+//     each listbox item via `ItemSetData` / `ItemGetData`, so clicking
+//     a row reads back the line and calls `engine.GoToLine`.
+//
+// HOW-TO-READ: init -> setup (creates listbox) -> setSourcePath ->
+//   toggle (visibility) -> update (re-query and populate when source
+//   changes) -> handleClicks (click-to-navigate).
 // ============================================================================
 
+/// @brief Sidebar listbox of the file's top-level symbols.
 class SymbolOutline {
     expose GUI.ListBox symbolList;
     expose String lastSource;
@@ -26,6 +49,7 @@ class SymbolOutline {
     expose String lastPath;
     expose Boolean visible;
 
+    /// @brief Initialize hidden with empty caches.
     expose func init() {
         lastSource = "";
         sourcePath = "";
@@ -33,12 +57,15 @@ class SymbolOutline {
         visible = false;
     }
 
+    /// @brief Construct the listbox inside `parent`. Hidden by default.
     expose func setup(parent: GUI.VBox) {
         symbolList = GUI.ListBox.New(parent);
         symbolList.SetSize(0, 200);
         symbolList.SetVisible(0);
     }
 
+    /// @brief Set the active file's path; invalidates path cache so the
+    ///        next `update` re-queries.
     expose func setSourcePath(path: String) {
         if path != sourcePath {
             sourcePath = path;
@@ -46,6 +73,8 @@ class SymbolOutline {
         }
     }
 
+    /// @brief Toggle visibility. When showing, force a refresh so the
+    ///        list reflects the current buffer.
     expose func toggle() {
         visible = visible == false;
         if visible {
@@ -56,7 +85,8 @@ class SymbolOutline {
         }
     }
 
-    // Call once per frame. Re-queries symbols when source changes.
+    /// @brief Per-frame refresh. Re-queries `SymbolsForFile` when the
+    ///        buffer text or active path changes; otherwise no-op.
     expose func update(engine: editor_engine.EditorEngine) {
         if visible == false { return; }
         if engine == null or engine.editor == null { return; }
@@ -94,7 +124,9 @@ class SymbolOutline {
         }
     }
 
-    // Handle click-to-navigate. Call from main loop.
+    /// @brief Per-frame click handler. If the user picked a row,
+    ///        reads its line number from the item data and jumps the
+    ///        editor caret/scroll there.
     expose func handleClicks(engine: editor_engine.EditorEngine) {
         if visible == false { return; }
         if symbolList.WasSelectionChanged() != 0 {

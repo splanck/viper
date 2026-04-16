@@ -1,3 +1,20 @@
+// ============================================================================
+// MODULE: tool_palette (ToolPalette)
+// PURPOSE: Exclusive-selection group for the 8 paint tools. Wraps
+//          Viper.Game.ButtonGroup so the radio-button semantics
+//          ("only one selected at a time") come for free.
+//
+// KEY-DESIGN-CHOICES:
+//   * BUTTONGROUP-BACKED. The runtime's ButtonGroup provides
+//     Add/Select/SelectNext/SelectPrev/IsSelected already; this
+//     class is a thin adapter that names the tool IDs and syncs
+//     visual `selected` flags on the rendered ToolButton widgets.
+//   * syncButtons PROPAGATION. After a selection change (via
+//     keyboard, shortcut, or click), the app calls syncButtons to
+//     mirror the group's state onto every individual button's
+//     `selected` flag so they render in the right style.
+// ============================================================================
+
 // tool_palette.zia - Runtime ButtonGroup-backed Paint tool selection
 module tool_palette;
 
@@ -6,6 +23,7 @@ bind Viper.Game.ButtonGroup as ButtonGroup;
 bind "./config";
 bind "./ui/button";
 
+/// @brief Exclusive-selection tool group with visual-sync helper.
 class ToolPalette {
     hide ButtonGroup group;
 

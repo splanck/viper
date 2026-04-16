@@ -1,3 +1,32 @@
+// ============================================================================
+// MODULE: menu (BowlingMenu)
+// PURPOSE: Owns the four menu screens (title / pause / options / results)
+//          and the SaveData persistence for user preferences (oil
+//          pattern, quality, last mode) plus stats (best score, games
+//          played).
+//
+// WHERE-THIS-FITS: Constructed by BowlingGame. update*() methods are
+//          called from BowlingGame's per-screen handlers and return
+//          CMD_* commands the game switches on.
+//
+// KEY-DESIGN-CHOICES:
+//   * COMMAND ENUMS, NOT CALLBACKS. Each updateX returns one of the
+//     CMD_* integers; the BowlingGame switches and acts. This keeps
+//     menu state self-contained and the game's state machine
+//     readable in one place.
+//   * SAVEDATA. Viper.Game.UI.SaveData persists settings to disk
+//     under SAVE_NAME. Each preference change immediately calls
+//     savePreferences() so a crash can't lose the user's last
+//     selection.
+//   * SETTINGS VERSIONING. SAVE_KEY_SETTINGS_VERSION lets a future
+//     migration force-upgrade old saves (the example here forces
+//     PERFORMANCE-quality saves to CINEMATIC on first load of v2 —
+//     a "we made the cinematic mode default" UX nudge).
+//   * MENU LIST WIDGET. Viper.Game.UI.MenuList handles arrow / D-pad
+//     navigation and returns the picked index. We provide the
+//     labels and act on the index.
+// ============================================================================
+
 // menu.zia — Title/pause/options/results flow and persistence
 module menu;
 
@@ -19,6 +48,7 @@ var CMD_MAIN_MENU: Integer = 6;
 var CMD_PLAY_AGAIN: Integer = 7;
 var CMD_BACK: Integer = 8;
 
+/// @brief Owns title/pause/options/results menu state + persistence.
 class BowlingMenu {
     hide MenuList titleMenu;
     hide MenuList pauseMenu;
@@ -38,6 +68,7 @@ class BowlingMenu {
     hide Integer preferredMode;
     hide Integer titlePulse;
 
+    /// @brief Build the four MenuList widgets, label arrays, and load saved prefs.
     expose func init() {
         titleMenu = MenuList.New(0, 0, 44);
         pauseMenu = MenuList.New(0, 0, 40);
@@ -80,6 +111,7 @@ class BowlingMenu {
         load();
     }
 
+    /// @brief Stuff a label list into a MenuList and apply theme colours.
     hide func populateMenu(menuRef: MenuList, labels: List[String]) {
         menuRef.Clear();
         for (var i: Integer = 0; i < labels.count(); i = i + 1) {
@@ -89,6 +121,7 @@ class BowlingMenu {
         menuRef.set_Selected(0);
     }
 
+    /// @brief Load preferences from SaveData; apply settings-version migration.
     expose func load() {
         save.Load();
         var settingsVersion = save.GetInt(config.SAVE_KEY_SETTINGS_VERSION, 0);
@@ -103,6 +136,7 @@ class BowlingMenu {
         }
     }
 
+    /// @brief Persist all preferences + stats to disk.
     expose func savePreferences() {
         save.SetInt(config.SAVE_KEY_SETTINGS_VERSION, config.SAVE_VERSION);
         save.SetInt(config.SAVE_KEY_BEST_SCORE, bestScore);
@@ -113,6 +147,7 @@ class BowlingMenu {
         save.Save();
     }
 
+    /// @brief Update best score / games played at end of game.
     expose func recordFinishedMatch(score: Integer, mode: Integer) {
         gamesPlayed = gamesPlayed + 1;
         if (mode == config.MODE_SINGLE && score > bestScore) {
@@ -122,6 +157,7 @@ class BowlingMenu {
         savePreferences();
     }
 
+    /// @brief Title-screen input handler. @return CMD_*.
     expose func updateTitle() -> Integer {
         titlePulse = titlePulse + 1;
         var choice = titleMenu.HandleInput(
@@ -145,6 +181,7 @@ class BowlingMenu {
         return CMD_NONE;
     }
 
+    /// @brief Pause-screen input handler. @return CMD_*.
     expose func updatePause() -> Integer {
         var choice = pauseMenu.HandleInput(
             Action.Pressed(config.ACT_MENU_UP),
@@ -158,6 +195,7 @@ class BowlingMenu {
         return CMD_NONE;
     }
 
+    /// @brief Results-screen input handler. @return CMD_*.
     expose func updateResults() -> Integer {
         var choice = resultsMenu.HandleInput(
             Action.Pressed(config.ACT_MENU_UP),
@@ -170,6 +208,8 @@ class BowlingMenu {
         return CMD_NONE;
     }
 
+    /// @brief Options-screen input handler. Cycles values on confirm.
+    /// @return CMD_BACK to leave; CMD_NONE while in-menu.
     expose func updateOptions() -> Integer {
         var choice = optionsMenu.HandleInput(
             Action.Pressed(config.ACT_MENU_UP),
@@ -220,6 +260,7 @@ class BowlingMenu {
         return gamesPlayed;
     }
 
+    /// @brief Render the title-screen card + best-score / settings banner.
     expose func drawTitle(canvas: Canvas3D, screenW: Integer, screenH: Integer) {
         var pulse = 180 + (titlePulse % 60);
         var titleColor = (pulse << 16) + (220 << 8) + 140;
@@ -243,6 +284,7 @@ class BowlingMenu {
             "During play: hold Space / A to charge, A-D to aim, Q-E to shape", config.HUD_COLOR_GRAY);
     }
 
+    /// @brief Render the pause modal (resume / restart / main menu).
     expose func drawPause(canvas: Canvas3D, screenW: Integer, screenH: Integer) {
         Canvas3D.DrawRect2D(canvas, screenW / 2 - 188, 108, 376, 232, config.HUD_COLOR_MENU_BG);
         Canvas3D.DrawRect2D(canvas, screenW / 2 - 188, 108, 376, 34, config.HUD_COLOR_MENU_CARD);
@@ -251,6 +293,7 @@ class BowlingMenu {
         drawMenuList(canvas, pauseItems, pauseMenu.get_Selected(), screenW / 2 - 110, 196, 220, 40);
     }
 
+    /// @brief Render the options modal with current oil/quality values.
     expose func drawOptions(canvas: Canvas3D, screenW: Integer, screenH: Integer) {
         Canvas3D.DrawRect2D(canvas, screenW / 2 - 220, 96, 440, 254, config.HUD_COLOR_MENU_BG);
         Canvas3D.DrawRect2D(canvas, screenW / 2 - 220, 96, 440, 34, config.HUD_COLOR_MENU_CARD);
@@ -267,6 +310,7 @@ class BowlingMenu {
             "Confirm cycles values. Escape / B returns to the title.", config.HUD_COLOR_GRAY);
     }
 
+    /// @brief Render the end-of-game results card (headline / subtitle / detail).
     expose func drawResults(canvas: Canvas3D, screenW: Integer, screenH: Integer,
                             headline: String, subtitle: String, detail: String) {
         Canvas3D.DrawRect2D(canvas, screenW / 2 - 220, 92, 440, 278, config.HUD_COLOR_MENU_BG);
@@ -277,6 +321,7 @@ class BowlingMenu {
         drawMenuList(canvas, resultsItems, resultsMenu.get_Selected(), screenW / 2 - 110, 246, 220, 40);
     }
 
+    /// @brief Generic menu-row painter used by all four modal screens.
     hide func drawMenuList(canvas: Canvas3D, labels: List[String], selected: Integer,
                            x: Integer, y: Integer, width: Integer, rowH: Integer) {
         for (var i: Integer = 0; i < labels.count(); i = i + 1) {

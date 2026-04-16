@@ -9,6 +9,15 @@ bind "./lane/lane";
 bind "./lane/pins";
 bind "./lane/ball";
 
+// ============================================================================
+// MODULE: scene_nopostfx_probe
+// PURPOSE: Interactive scene preview with the post-FX chain disabled
+//          (Canvas3D.SetPostFX(null)). Used to visually check the raw
+//          scene output — any bloom/tonemap/FXAA oddities must be
+//          downstream of what this probe shows.
+// ============================================================================
+
+/// @brief Loop the full scene with post-FX off until window closes.
 func main() {
     var render = new Renderer();
     render.initRenderer(config.QUALITY_CINEMATIC);

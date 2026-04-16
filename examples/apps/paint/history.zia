@@ -1,3 +1,25 @@
+// ============================================================================
+// MODULE: history (HistoryManager)
+// PURPOSE: Bounded undo/redo over Pixels snapshots. Tools call
+//          `snapshot(pixels)` before each mutation; the user can then
+//          undo/redo the edits.
+//
+// WHERE-THIS-FITS: Owned by PaintApp; consulted by every tool before
+//          committing a stroke.
+//
+// KEY-DESIGN-CHOICES:
+//   * SNAPSHOT = Pixels.Clone(). Simplest undo model — store a full
+//     copy of the pre-mutation buffer. Expensive in RAM but trivial
+//     to reason about, and the bounded history (`MAX_UNDO_LEVELS = 20`)
+//     caps the worst case.
+//   * TWO STACKS. undoStack + redoStack. `snapshot` pushes to undo
+//     and clears redo (a new edit invalidates the redo chain — the
+//     classic undo-tree vs flat-history trade-off).
+//   * AUTO-TRIM. `trim(stack)` drops the oldest entries once the
+//     stack exceeds maxLevels. Preserves recent history at the cost
+//     of far-back history.
+// ============================================================================
+
 // history.zia - Undo/redo history for Paint documents
 module history;
 
@@ -6,6 +28,7 @@ bind Viper.Graphics;
 
 bind "./config";
 
+/// @brief Bounded undo/redo over Pixels snapshots.
 class HistoryManager {
     hide List undoStack;
     hide List redoStack;

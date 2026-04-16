@@ -1,8 +1,27 @@
+// ============================================================================
+// MODULE: ui/theme
+// PURPOSE: Color palette + bitmap-font loading + text rendering helpers
+//          for the Crackman UI. Same pattern as chess/ui/theme: named
+//          colour constants, lazy font init, scaled text primitives,
+//          pulseColor for animated UI.
+//
+// KEY-DESIGN-CHOICES:
+//   * DEEP-SPACE AESTHETIC. BG_TOP/BOTTOM navy → purple gradient with
+//     hot magenta/blue accent glows and cream/cyan text. Distinct
+//     from the arcade original's black-on-black, designed to read
+//     well against the procedural sprite art.
+//   * LAZY FONT LOAD. initAssets is idempotent; every text helper
+//     calls it as a precondition guard. Font loaded once from
+//     viper_8x8.bdf (the shared bitmap font used across Crackman +
+//     Chess).
+// ============================================================================
+
 module theme;
 
 bind Viper.Graphics;
 bind Color = Viper.Graphics.Color;
 
+// Lazily-loaded bitmap fonts and their ready flag.
 var bodyFont_: BitmapFont = null;
 var titleFont_: BitmapFont = null;
 var assetsReady_: Boolean = false;

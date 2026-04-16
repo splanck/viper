@@ -7,29 +7,60 @@ bind Seq = Viper.Collections.Seq;
 bind Obj = Viper.Core.Object;
 
 // ============================================================================
-// Project — represents an open workspace/folder
-// ============================================================================
-// Stores the root path and project metadata from viper.project (if present).
-// Managed by ProjectManager which handles file tree operations.
+// MODULE: project
+// PURPOSE: Models an open workspace folder. Holds the root path, derived
+//          display name, and (optionally) metadata parsed from a
+//          `viper.project` file at the root.
+//
+// WHERE-THIS-FITS: Owned by `project_manager.ProjectManager`, which
+//          handles file-tree population and selection. The project type
+//          itself just holds metadata and the open/close lifecycle.
+//
+// KEY-DESIGN-CHOICES:
+//   * SINGLE-PROJECT MODEL. The IDE has at most one open project at a
+//     time. Multi-project workspaces are deferred — most Zia projects
+//     are small enough that a single root suffices.
+//   * VIPER.PROJECT IS OPTIONAL. If the file is absent the project is
+//     still "open" with the folder name as its display name and
+//     defaults for entryFile/lang/version. `hasProjectFile` is the
+//     canonical flag for "did we find one"; the rest of the fields
+//     just reflect the parsed contents (or defaults).
+//   * SIMPLE KEY-VALUE PARSER. `parseProjectFile` does line-by-line
+//     "first whitespace splits key from value" parsing. Handles `#`
+//     comments, trims whitespace, strips wrapping double-quotes from
+//     values. No JSON / TOML — keeps the format diff-friendly and the
+//     parser one screen of code.
+//   * package-name OVERRIDES name. If `package-name` is set in
+//     viper.project, it's used as the display name in preference to
+//     the folder name. This is the "I want my project shown as
+//     'Crackman' but it lives in a folder called 'pacman'" affordance.
+//
+// HOW-TO-READ: init (defaults) -> Open (from a folder, parses
+//   metadata) -> Close (resets to defaults) -> parseProjectFile
+//   (the key-value parser).
 // ============================================================================
 
+/// @brief An open workspace/folder with optional viper.project metadata.
 class Project {
-    // Absolute path to project root directory
+    /// Absolute path to the project root directory.
     expose String rootPath;
-
-    // Display name (folder name or from viper.project)
+    /// Display name (folder name, or package-name from viper.project).
     expose String name;
-
-    // Whether a project is currently open
+    /// Whether a project is currently open.
     expose Boolean isOpen;
 
-    // Metadata from viper.project (if found)
-    expose String  entryFile;       // entry point file
-    expose String  lang;            // "zia" or "basic"
-    expose String  version;         // project version
-    expose String  packageName;     // display name from package-name
-    expose Boolean hasProjectFile;  // true if viper.project was found
+    /// Entry-point file name (defaults to "main.zia").
+    expose String  entryFile;
+    /// Project language ("zia" or "basic").
+    expose String  lang;
+    /// Project version string.
+    expose String  version;
+    /// Display name from package-name (takes precedence over folder name).
+    expose String  packageName;
+    /// True if a viper.project file was found and parsed.
+    expose Boolean hasProjectFile;
 
+    /// @brief Initialize as a closed project with sensible defaults.
     expose func init() {
         rootPath = "";
         name = "";
@@ -41,10 +72,14 @@ class Project {
         hasProjectFile = false;
     }
 
-    // Open a project from a folder path.
+    /// @brief Open a project from a folder path.
+    /// @param path Absolute path to the workspace root.
+    /// @note Derives the display name from the folder name; if there's
+    ///       a viper.project file at the root, parses it and lets
+    ///       `package-name` override the display name.
     expose func Open(path: String) {
         rootPath = path;
-        // Extract folder name from path
+        // Folder name from path; handle trailing-slash by trimming first.
         name = Path.Name(path);
         if name == "" {
             var trimmed = Str.Left(path, Str.Length(path) - 1);
@@ -52,14 +87,14 @@ class Project {
         }
         isOpen = true;
 
-        // Try to parse viper.project
+        // viper.project is optional. If present, parse and override.
         var projFile = Path.Join(path, "viper.project");
         if IO.File.Exists(projFile) {
             parseProjectFile(projFile);
         }
     }
 
-    // Close the project.
+    /// @brief Close the project; reset every field to its default.
     expose func Close() {
         rootPath = "";
         name = "";
@@ -71,7 +106,15 @@ class Project {
         hasProjectFile = false;
     }
 
-    // Parse a viper.project file for project metadata.
+    /// @brief Parse a viper.project file (line-oriented key value pairs).
+    /// @details Format:
+    ///     # comment lines start with hash
+    ///     key value with spaces
+    ///     key "quoted value"
+    /// First whitespace separates the key from the value; the value is
+    /// trimmed and unquoted. Recognised keys: project, entry, lang,
+    /// version, package-name. Anything else is silently ignored so the
+    /// format can grow without breaking older parsers.
     hide func parseProjectFile(path: String) {
         var content = IO.File.ReadAllText(path);
         var lines = Str.Split(content, "\n");
@@ -80,18 +123,18 @@ class Project {
             var line = Str.Trim(Obj.ToString(Seq.Get(lines, i)));
             i = i + 1;
 
-            // Skip empty lines and comments
+            // Blank lines and # comments are skipped.
             if Str.Length(line) == 0 { continue; }
             if Str.Left(line, 1) == "#" { continue; }
 
-            // Parse "key value" format (space-separated, first word is key)
+            // Split on first space: key | value.
             var spaceIdx = Str.IndexOf(line, " ");
             if spaceIdx == 0 { continue; }
 
             var key = Str.Left(line, spaceIdx - 1);
             var value = Str.Trim(Str.Mid(line, spaceIdx + 1));
 
-            // Strip quotes from value
+            // Unquote double-quoted values.
             if Str.Left(value, 1) == "\"" and Str.Right(value, 1) == "\"" {
                 value = Str.MidLen(value, 2, Str.Length(value) - 2);
             }
@@ -103,6 +146,7 @@ class Project {
             if key == "package-name"  { packageName = value; }
         }
         hasProjectFile = true;
+        // package-name takes precedence over the folder-derived name.
         if packageName != "" {
             name = packageName;
         }

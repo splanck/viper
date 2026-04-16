@@ -30,10 +30,16 @@
 //
 // =============================================================================
 
+// ============================================================================
+// MODULE: Crackman (main entry)
+// PURPOSE: Program entry. Constructs game.Game and runs its main loop.
+// ============================================================================
+
 module Crackman;
 
 bind "./game";
 
+/// @brief Entry point. Construct Game; its run() has the main loop.
 func start() {
     var theGame = new game.Game();
     theGame.run();

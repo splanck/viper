@@ -1,3 +1,22 @@
+// ============================================================================
+// MODULE: brush (BrushSettings)
+// PURPOSE: Brush state (size, opacity, shape) plus the "is point in
+//          brush?" predicate that tools use for stroke rasterization.
+//
+// WHERE-THIS-FITS: Used by every drawing tool (pencil, brush, eraser,
+//          fill) for per-stroke parameters.
+//
+// KEY-DESIGN-CHOICES:
+//   * NON-LINEAR RESIZE. increaseSize/decreaseSize step by 1 for small
+//     sizes, by 2 for medium, by 4 for large — matches how human
+//     users perceive brush-size changes. A linear +1 would feel
+//     slow at large sizes.
+//   * ROUND vs SQUARE. Round brush is a Euclidean-distance disc;
+//     square brush is a Chebyshev-distance square. Both share the
+//     same size parameter (size = diameter for round, edge length
+//     for square) so the ±1 resize helpers work uniformly.
+// ============================================================================
+
 // brush.viper - Brush settings for Viper Paint
 module brush;
 
@@ -7,7 +26,7 @@ bind "./config";
 final SHAPE_ROUND = 0;
 final SHAPE_SQUARE = 1;
 
-// BrushSettings entity - manages brush size, opacity, and shape
+/// @brief Per-brush state (size / opacity / shape) + hit-test helper.
 class BrushSettings {
     expose Integer size;        // Brush size in pixels (1-64)
     expose Integer opacity;     // Opacity percentage (0-100)

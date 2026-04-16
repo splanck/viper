@@ -24,6 +24,10 @@ static void minimap_destroy(vg_widget_t *widget);
 static void minimap_measure(vg_widget_t *widget, float available_width, float available_height);
 static void minimap_paint(vg_widget_t *widget, void *canvas);
 static bool minimap_handle_event(vg_widget_t *widget, vg_event_t *event);
+static int minimap_document_line_count(const vg_minimap_t *minimap);
+static int minimap_line_from_local_y(vg_minimap_t *minimap, float local_y);
+static void minimap_scroll_editor_to_line(vg_minimap_t *minimap, int line);
+static int minimap_trimmed_line_bounds(const char *text, int *out_first, int *out_last);
 
 //=============================================================================
 // Minimap VTable
@@ -48,17 +52,14 @@ vg_minimap_t *vg_minimap_create(vg_codeeditor_t *editor) {
 
     vg_widget_init(&minimap->base, VG_WIDGET_CUSTOM, &g_minimap_vtable);
 
-    // Defaults
     minimap->editor = editor;
     minimap->char_width = 1;
     minimap->line_height = 2;
     minimap->show_viewport = true;
     minimap->scale = 0.1f;
-
-    minimap->viewport_color = 0x40FFFFFF; // Semi-transparent white
-    minimap->bg_color = 0xFF1E1E1E;
-    minimap->text_color = 0xFF808080;
-
+    minimap->viewport_color = 0xFF78D6FF;
+    minimap->bg_color = 0xFF111827;
+    minimap->text_color = 0xFF3B82F6;
     minimap->buffer_dirty = true;
 
     return minimap;
@@ -66,8 +67,8 @@ vg_minimap_t *vg_minimap_create(vg_codeeditor_t *editor) {
 
 static void minimap_destroy(vg_widget_t *widget) {
     vg_minimap_t *minimap = (vg_minimap_t *)widget;
-
     free(minimap->render_buffer);
+    free(minimap->markers);
 }
 
 /// @brief Minimap destroy.
@@ -79,144 +80,216 @@ void vg_minimap_destroy(vg_minimap_t *minimap) {
 
 static void minimap_measure(vg_widget_t *widget, float available_width, float available_height) {
     (void)available_width;
-    (void)available_height;
 
-    // Minimap typically has a fixed width
-    widget->measured_width = 80; // Default minimap width
-    widget->measured_height = available_height;
+    float width = widget->constraints.preferred_width > 0.0f ? widget->constraints.preferred_width
+                                                              : 96.0f;
+    if (widget->constraints.min_width > 0.0f && width < widget->constraints.min_width)
+        width = widget->constraints.min_width;
+    if (widget->constraints.max_width > 0.0f && width > widget->constraints.max_width)
+        width = widget->constraints.max_width;
+
+    widget->measured_width = width;
+    widget->measured_height = available_height > 0.0f ? available_height : 160.0f;
+    if (widget->constraints.min_height > 0.0f &&
+        widget->measured_height < widget->constraints.min_height) {
+        widget->measured_height = widget->constraints.min_height;
+    }
 }
 
 static void render_minimap_buffer(vg_minimap_t *minimap) {
-    if (!minimap->editor)
+    if (!minimap)
+        return;
+    minimap->buffer_dirty = false;
+}
+
+static int minimap_document_line_count(const vg_minimap_t *minimap) {
+    if (!minimap || !minimap->editor || minimap->editor->line_count <= 0)
+        return 1;
+    return minimap->editor->line_count;
+}
+
+static int minimap_line_from_local_y(vg_minimap_t *minimap, float local_y) {
+    if (!minimap || !minimap->editor)
+        return 0;
+
+    float inner_top = 6.0f;
+    float inner_height = minimap->base.height - 12.0f;
+    if (inner_height <= 1.0f)
+        return 0;
+
+    if (local_y < inner_top)
+        local_y = inner_top;
+    if (local_y > inner_top + inner_height)
+        local_y = inner_top + inner_height;
+
+    int line_count = minimap_document_line_count(minimap);
+    float t = (local_y - inner_top) / inner_height;
+    int line = (int)(t * (float)line_count);
+    if (line < 0)
+        line = 0;
+    if (line >= line_count)
+        line = line_count - 1;
+    return line;
+}
+
+static void minimap_scroll_editor_to_line(vg_minimap_t *minimap, int line) {
+    if (!minimap || !minimap->editor)
         return;
 
-    // Calculate buffer dimensions
-    uint32_t width = (uint32_t)minimap->base.width;
-    uint32_t height = (uint32_t)minimap->base.height;
+    vg_codeeditor_t *editor = minimap->editor;
+    int line_count = editor->line_count > 0 ? editor->line_count : 1;
+    int visible_lines = editor->visible_line_count > 0 ? editor->visible_line_count : 1;
+    int target = line - visible_lines / 2;
+    int max_first = line_count - visible_lines;
 
-    if (width == 0 || height == 0)
-        return;
+    if (target < 0)
+        target = 0;
+    if (max_first < 0)
+        max_first = 0;
+    if (target > max_first)
+        target = max_first;
 
-    // Reallocate buffer if needed
-    if (width != minimap->buffer_width || height != minimap->buffer_height) {
-        free(minimap->render_buffer);
-        minimap->render_buffer = calloc(width * height, 4); // RGBA
-        minimap->buffer_width = width;
-        minimap->buffer_height = height;
+    vg_codeeditor_scroll_to_line(editor, target);
+    minimap->base.needs_paint = true;
+}
+
+static int minimap_trimmed_line_bounds(const char *text, int *out_first, int *out_last) {
+    int first = -1;
+    int last = -1;
+
+    if (!text) {
+        if (out_first)
+            *out_first = -1;
+        if (out_last)
+            *out_last = -1;
+        return 0;
     }
 
-    if (!minimap->render_buffer)
-        return;
-
-    // Clear buffer with background color
-    uint8_t bg_r = (minimap->bg_color >> 16) & 0xFF;
-    uint8_t bg_g = (minimap->bg_color >> 8) & 0xFF;
-    uint8_t bg_b = minimap->bg_color & 0xFF;
-
-    for (uint32_t i = 0; i < width * height; i++) {
-        minimap->render_buffer[i * 4 + 0] = bg_r;
-        minimap->render_buffer[i * 4 + 1] = bg_g;
-        minimap->render_buffer[i * 4 + 2] = bg_b;
-        minimap->render_buffer[i * 4 + 3] = 255;
-    }
-
-    // Render lines
-    vg_codeeditor_t *ed = minimap->editor;
-    uint8_t text_r = (minimap->text_color >> 16) & 0xFF;
-    uint8_t text_g = (minimap->text_color >> 8) & 0xFF;
-    uint8_t text_b = minimap->text_color & 0xFF;
-
-    for (int line = 0; line < ed->line_count; line++) {
-        uint32_t y = (uint32_t)(line * minimap->line_height);
-        if (y >= height)
-            break;
-
-        const char *text = ed->lines[line].text;
-        if (!text)
-            continue;
-
-        uint32_t x = 0;
-        for (const char *p = text; *p && x < width; p++) {
-            if (*p != ' ' && *p != '\t') {
-                // Draw a pixel for this character
-                uint32_t idx = (y * width + x) * 4;
-                minimap->render_buffer[idx + 0] = text_r;
-                minimap->render_buffer[idx + 1] = text_g;
-                minimap->render_buffer[idx + 2] = text_b;
-                minimap->render_buffer[idx + 3] = 255;
-            }
-            x += minimap->char_width;
+    for (int i = 0; text[i]; i++) {
+        if (text[i] != ' ' && text[i] != '\t') {
+            if (first < 0)
+                first = i;
+            last = i;
         }
     }
 
-    minimap->buffer_dirty = false;
+    if (out_first)
+        *out_first = first;
+    if (out_last)
+        *out_last = last;
+    return first >= 0 && last >= first;
 }
 
 static void minimap_paint(vg_widget_t *widget, void *canvas) {
     vg_minimap_t *minimap = (vg_minimap_t *)widget;
-
     if (!minimap->editor)
         return;
 
-    vgfx_window_t win = (vgfx_window_t)canvas;
-
-    // Render buffer if dirty
-    if (minimap->buffer_dirty) {
+    if (minimap->buffer_dirty)
         render_minimap_buffer(minimap);
+
+    vgfx_window_t win = (vgfx_window_t)canvas;
+    int32_t panel_x = (int32_t)widget->x;
+    int32_t panel_y = (int32_t)widget->y;
+    int32_t panel_w = (int32_t)widget->width;
+    int32_t panel_h = (int32_t)widget->height;
+    if (panel_w <= 0 || panel_h <= 0)
+        return;
+
+    vgfx_fill_rect(win, panel_x, panel_y, panel_w, panel_h, minimap->bg_color);
+    vgfx_rect(win, panel_x, panel_y, panel_w, panel_h, 0xFF243244);
+
+    int32_t inner_x = panel_x + 6;
+    int32_t inner_y = panel_y + 6;
+    int32_t inner_w = panel_w - 12;
+    int32_t inner_h = panel_h - 12;
+    if (inner_w <= 2 || inner_h <= 2)
+        return;
+
+    vgfx_fill_rect(win, inner_x, inner_y, inner_w, inner_h, 0xFF0B1220);
+
+    vg_codeeditor_t *editor = minimap->editor;
+    int line_count = minimap_document_line_count(minimap);
+    float scale = minimap->scale;
+    if (scale < 0.05f)
+        scale = 0.05f;
+    if (scale > 0.5f)
+        scale = 0.5f;
+
+    float visible_columns = 120.0f * (0.1f / scale);
+    if (visible_columns < 24.0f)
+        visible_columns = 24.0f;
+
+    for (int line = 0; line < editor->line_count; line++) {
+        int32_t y0 = inner_y + (line * inner_h) / line_count;
+        int32_t y1 = inner_y + ((line + 1) * inner_h) / line_count;
+        int32_t bar_h = y1 - y0;
+        if (bar_h < 1)
+            bar_h = 1;
+
+        int first = -1;
+        int last = -1;
+        if (!minimap_trimmed_line_bounds(editor->lines[line].text, &first, &last))
+            continue;
+
+        float start_ratio = (float)first / visible_columns;
+        float end_ratio = (float)(last + 1) / visible_columns;
+        if (start_ratio > 1.0f)
+            start_ratio = 1.0f;
+        if (end_ratio > 1.0f)
+            end_ratio = 1.0f;
+        if (end_ratio < start_ratio)
+            end_ratio = start_ratio;
+
+        int32_t x0 = inner_x + 2 + (int32_t)(start_ratio * (float)(inner_w - 4));
+        int32_t x1 = inner_x + 2 + (int32_t)(end_ratio * (float)(inner_w - 4));
+        int32_t bar_w = x1 - x0;
+        if (bar_w < 2)
+            bar_w = 2;
+        if (x0 + bar_w > inner_x + inner_w - 2)
+            bar_w = (inner_x + inner_w - 2) - x0;
+        if (bar_w > 0)
+            vgfx_fill_rect(win, x0, y0, bar_w, bar_h, minimap->text_color);
     }
 
-    // Blit render_buffer pixel-by-pixel (RGBA bytes → 0x00RRGGBB)
-    if (minimap->render_buffer && minimap->buffer_width > 0 && minimap->buffer_height > 0) {
-        uint32_t bw = minimap->buffer_width;
-        uint32_t bh = minimap->buffer_height;
-        for (uint32_t py = 0; py < bh; py++) {
-            for (uint32_t px = 0; px < bw; px++) {
-                uint32_t idx = (py * bw + px) * 4;
-                uint32_t color = ((uint32_t)minimap->render_buffer[idx + 0] << 16) |
-                                 ((uint32_t)minimap->render_buffer[idx + 1] << 8) |
-                                 (uint32_t)minimap->render_buffer[idx + 2];
-                vgfx_pset(win, (int32_t)(widget->x + px), (int32_t)(widget->y + py), color);
+    for (int i = 0; i < minimap->marker_count; i++) {
+        int line = minimap->markers[i].line;
+        if (line < 0 || line >= line_count)
+            continue;
+        int32_t y = inner_y + (line * inner_h) / line_count;
+        vgfx_fill_rect(win, inner_x, y, inner_w, 2, minimap->markers[i].color);
+    }
+
+    if (minimap->show_viewport) {
+        int visible_first = editor->visible_first_line;
+        int visible_count = editor->visible_line_count > 0 ? editor->visible_line_count : 1;
+        int32_t viewport_y = inner_y + (visible_first * inner_h) / line_count;
+        int32_t viewport_end = inner_y + ((visible_first + visible_count) * inner_h) / line_count;
+        int32_t viewport_h = viewport_end - viewport_y;
+        if (viewport_h < 6)
+            viewport_h = 6;
+        if (viewport_y + viewport_h > inner_y + inner_h)
+            viewport_h = (inner_y + inner_h) - viewport_y;
+        if (viewport_h > 0) {
+            if (visible_count < line_count) {
+                vgfx_fill_rect(win, inner_x, viewport_y, inner_w, viewport_h, 0xFF132235);
             }
+            vgfx_rect(win, inner_x, viewport_y, inner_w, viewport_h, minimap->viewport_color);
         }
-    }
-
-    // Draw viewport indicator overlay
-    if (minimap->show_viewport && minimap->editor) {
-        vg_codeeditor_t *ed = minimap->editor;
-
-        // Map editor line coordinates to minimap pixel rows
-        int32_t start_y = (int32_t)(widget->y + ed->visible_first_line * minimap->line_height);
-        int32_t end_y = (int32_t)(widget->y + (ed->visible_first_line + ed->visible_line_count) *
-                                                  minimap->line_height);
-        int32_t h = end_y - start_y;
-        if (h < 2)
-            h = 2;
-
-        // Draw viewport highlight rectangle
-        uint32_t vc = minimap->viewport_color & 0x00FFFFFF; // strip alpha for vgfx
-        vgfx_rect(win, (int32_t)widget->x, start_y, (int32_t)minimap->buffer_width, h, vc);
     }
 }
 
 static bool minimap_handle_event(vg_widget_t *widget, vg_event_t *event) {
     vg_minimap_t *minimap = (vg_minimap_t *)widget;
-
     if (!minimap->editor)
         return false;
 
     switch (event->type) {
-        case VG_EVENT_MOUSE_DOWN: {
-            // Start dragging viewport
+        case VG_EVENT_MOUSE_DOWN:
             minimap->dragging = true;
             minimap->drag_start_y = (int)event->mouse.y;
-
-            // Jump to clicked line
-            int clicked_line = (int)(event->mouse.y / minimap->line_height);
-            if (clicked_line >= 0 && clicked_line < minimap->editor->line_count) {
-                vg_codeeditor_scroll_to_line(minimap->editor, clicked_line);
-            }
+            minimap_scroll_editor_to_line(minimap, minimap_line_from_local_y(minimap, event->mouse.y));
             return true;
-        }
 
         case VG_EVENT_MOUSE_UP:
             minimap->dragging = false;
@@ -224,20 +297,9 @@ static bool minimap_handle_event(vg_widget_t *widget, vg_event_t *event) {
 
         case VG_EVENT_MOUSE_MOVE:
             if (minimap->dragging) {
-                // Drag to scroll
-                int delta_y = (int)event->mouse.y - minimap->drag_start_y;
-                int delta_lines = delta_y / (int)minimap->line_height;
                 minimap->drag_start_y = (int)event->mouse.y;
-
-                if (delta_lines != 0) {
-                    int new_line = minimap->editor->visible_first_line + delta_lines;
-                    if (new_line < 0)
-                        new_line = 0;
-                    if (new_line >= minimap->editor->line_count) {
-                        new_line = minimap->editor->line_count - 1;
-                    }
-                    vg_codeeditor_scroll_to_line(minimap->editor, new_line);
-                }
+                minimap_scroll_editor_to_line(
+                    minimap, minimap_line_from_local_y(minimap, event->mouse.y));
                 return true;
             }
             break;

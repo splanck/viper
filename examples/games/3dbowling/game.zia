@@ -1,3 +1,41 @@
+// ============================================================================
+// MODULE: game (BowlingGame)
+// PURPOSE: Top-level controller for 3D Bowling. Owns every subsystem
+//          (renderer / camera / hud / menu / lane / pins / ball /
+//          particles / celebrations / scoring / physics world / sound)
+//          and runs the per-frame state machine.
+//
+// WHERE-THIS-FITS: Constructed by main.zia. run() contains the main
+//          loop and only returns when the user quits.
+//
+// KEY-DESIGN-CHOICES:
+//   * TWO-LEVEL STATE MACHINE. Outer state is `screenState`
+//     (SCREEN_TITLE / PLAYING / PAUSED / OPTIONS / RESULTS). Inner
+//     state is `gameState` (STATE_AIMING / ROLLING / SETTLING /
+//     SCORING / SWEEPING / RESETTING / CELEBRATING). Each frame
+//     branches on screenState first, then gameState.
+//   * FIXED-STEP PHYSICS. PHYSICS_DT (16 ms) is the simulation tick;
+//     accumulator gathers real time, MAX_FIXED_STEPS (6) caps the
+//     number of catch-up steps per frame so a hitch doesn't trigger
+//     30 physics ticks in one frame.
+//   * SETTLE DETECTION. After ROLLING transitions to SETTLING, we
+//     wait until `pinMgr.allSettled() && ball.isSlow()` for SETTLE_TIME
+//     seconds before counting the pins. This prevents premature
+//     scoring of a ball that's still nudging pins.
+//   * VERSUS MODE. playerCount = 2 when in MODE_VERSUS; activePlayer
+//     toggles 0/1 between rolls. Each player has their own
+//     ScoreKeeper.
+//   * PENDING FLAGS. pendingFrameAdvance / pendingPlayerSwitch /
+//     pendingResults defer state transitions to the right "edge"
+//     of the per-frame loop, avoiding mid-frame state mutations
+//     during physics or rendering.
+//
+// HOW-TO-READ: Field declarations -> init -> run -> initSubsystems ->
+//   gameLoop (the heart of the program) -> per-state input/update
+//   handlers -> physics step -> collision callbacks -> celebration
+//   triggers -> rendering.
+// ============================================================================
+
 // game.zia — Main game loop, menus, input, fixed-step simulation, and match flow
 module game;
 
@@ -17,6 +55,7 @@ bind "./effects/particles";
 bind "./effects/celebrations";
 bind "./scoring/scoring";
 
+/// @brief Top-level controller. Owns subsystems + game state machine.
 class BowlingGame {
     hide Renderer render;
     hide CameraController camCtrl;
@@ -70,6 +109,7 @@ class BowlingGame {
     hide Integer resultsWinner;
     hide Boolean resultsNewHigh;
 
+    /// @brief Reset every per-game variable to TITLE-screen defaults.
     expose func init() {
         screenState = config.SCREEN_TITLE;
         gameState = config.STATE_AIMING;
@@ -102,6 +142,7 @@ class BowlingGame {
         resultsNewHigh = false;
     }
 
+    /// @brief Main entry. Print banner, initialize, enter loop, exit cleanly.
     expose func run() {
         printBanner();
         initSubsystems();
@@ -109,6 +150,7 @@ class BowlingGame {
         Say("Thanks for playing 3D Bowling!");
     }
 
+    /// @brief Boxed splash text printed to the terminal at startup.
     hide func printBanner() {
         Say("╔══════════════════════════════════════╗");
         Say("║         3D BOWLING                   ║");
@@ -117,6 +159,7 @@ class BowlingGame {
         Say("");
     }
 
+    /// @brief Construct every subsystem in dependency order; show title.
     hide func initSubsystems() {
         menuObj = new BowlingMenu();
         menuObj.init();
@@ -138,6 +181,7 @@ class BowlingGame {
         showTitleScreen();
     }
 
+    /// @brief Bind every named action to keys + gamepad inputs.
     hide func setupActions() {
         Action.Clear();
         Action.LoadPreset("menu_navigation");
@@ -193,6 +237,8 @@ class BowlingGame {
         Action.BindPadButton(config.ACT_CAMERA, -1, Pad.get_PAD_Y());
     }
 
+    /// @brief Initialize the audio system and load the SFX bank.
+    /// @note Gracefully degrades on systems without audio.
     hide func initSound() {
         var ok = Audio.Init();
         if (ok == 0) {
@@ -211,23 +257,28 @@ class BowlingGame {
         soundReady = true;
     }
 
+    /// @brief Play a 2D SFX. No-op if audio failed to initialize.
     hide func playSound(name: String) {
         if (soundReady) {
             soundBank.Play(name);
         }
     }
 
+    /// @brief Play a 3D positional SFX with distance falloff.
     hide func playSpatialSound(name: String, pos: Vec3, maxDistance: Float, volume: Integer) {
         if (soundReady == false) { return; }
         Audio3D.PlayAt(soundBank.Get(name), pos, maxDistance, volume);
     }
 
+    /// @brief Sync the 3D audio listener to the camera each frame.
     hide func updateAudioListener() {
         if (soundReady == false) { return; }
         Audio3D.SetListener(Camera3D.get_Position(render.getCamera()),
             Camera3D.get_Forward(render.getCamera()));
     }
 
+    /// @brief Build a fresh physics world plus lane / pins / ball /
+    ///        particle / celebration managers; wire up env reflections.
     hide func createGameplayWorld() {
         physWorld = Physics3DWorld.New(0.0, config.GRAVITY_Y, 0.0);
 
@@ -253,6 +304,7 @@ class BowlingGame {
         ballObj.applyEnvironment(env);
     }
 
+    /// @brief Allocate fresh ScoreKeepers for both players.
     hide func initScoreKeepers() {
         scoreKeeperOne = new ScoreKeeper();
         scoreKeeperOne.init();
@@ -260,12 +312,14 @@ class BowlingGame {
         scoreKeeperTwo.init();
     }
 
+    /// @brief Pull oilPattern / qualityMode from the menu and apply.
     hide func applyMenuSettings() {
         oilPattern = menuObj.getOilPattern();
         qualityMode = menuObj.getQualityMode();
         render.applyQuality(qualityMode);
     }
 
+    /// @brief Reset to TITLE-screen state with a fresh demo gameplay world.
     hide func showTitleScreen() {
         applyMenuSettings();
         createGameplayWorld();
@@ -282,6 +336,7 @@ class BowlingGame {
         hudObj.showMessage("Select a mode and bowl.", config.HUD_COLOR_WHITE, config.MSG_DURATION_LONG);
     }
 
+    /// @brief Begin a new match (single or versus). Resets scoring + state.
     hide func startNewMatch(mode: Integer) {
         applyMenuSettings();
         createGameplayWorld();
@@ -320,10 +375,13 @@ class BowlingGame {
         }
     }
 
+    /// @brief Re-call startNewMatch with the current mode.
     hide func restartCurrentMatch() {
         startNewMatch(currentMode);
     }
 
+    /// @brief The main per-frame loop. Branches on screenState then
+    ///        gameState; runs fixed-step physics; renders.
     hide func gameLoop() {
         while (render.shouldClose() == false && quitRequested == false) {
             render.poll();
@@ -367,6 +425,7 @@ class BowlingGame {
         }
     }
 
+    /// @brief Title-screen menu dispatch.
     hide func handleTitleInput() {
         var cmd = menuObj.updateTitle();
         if (cmd == menu.CMD_START_SINGLE) {
@@ -380,6 +439,7 @@ class BowlingGame {
         }
     }
 
+    /// @brief Options-screen menu dispatch.
     hide func handleOptionsInput() {
         var cmd = menuObj.updateOptions();
         applyMenuSettings();
@@ -388,6 +448,7 @@ class BowlingGame {
         }
     }
 
+    /// @brief Pause-screen menu dispatch (resume / restart / main menu).
     hide func handlePauseInput() {
         var cmd = menuObj.updatePause();
         if (cmd == menu.CMD_RESUME) {
@@ -399,6 +460,7 @@ class BowlingGame {
         }
     }
 
+    /// @brief Results-screen menu dispatch (play again / main menu).
     hide func handleResultsInput() {
         var cmd = menuObj.updateResults();
         if (cmd == menu.CMD_PLAY_AGAIN) {
@@ -408,6 +470,7 @@ class BowlingGame {
         }
     }
 
+    /// @brief In-game input handler (aim / spin / throw / camera / pause).
     hide func handlePlayingInput(dt: Float) {
         if (Action.Pressed(config.ACT_PAUSE) || Action.Pressed(config.ACT_BACK)) {
             screenState = config.SCREEN_PAUSED;
@@ -438,6 +501,7 @@ class BowlingGame {
         }
     }
 
+    /// @brief Run one fixed-step physics tick (PHYSICS_DT seconds).
     hide func runFixedStep(dt: Float, rolling: Boolean) {
         accumulator = accumulator + dt;
         var steps = 0;
@@ -452,6 +516,7 @@ class BowlingGame {
         }
     }
 
+    /// @brief STATE_AIMING update: aim/spin axis input + power charge + throw.
     hide func updateAiming(dt: Float) {
         aimX = aimX + Action.Axis(config.ACT_AIM_X) * config.AIM_SPEED * dt;
         if (aimX < -config.AIM_MAX) { aimX = -config.AIM_MAX; }
@@ -496,6 +561,7 @@ class BowlingGame {
         camCtrl.updateAim(aimX, dt);
     }
 
+    /// @brief STATE_ROLLING per-step update: ball motion + dust + skids.
     hide func updateRollingStep(dt: Float) {
         impactCooldown = impactCooldown - dt;
         skidMarkTimer = skidMarkTimer - dt;
@@ -524,6 +590,7 @@ class BowlingGame {
         }
     }
 
+    /// @brief STATE_SETTLING per-step update: wait for pins/ball to come to rest.
     hide func updateSettlingStep(dt: Float) {
         impactCooldown = impactCooldown - dt;
         Physics3DWorld.Step(physWorld, dt);
@@ -541,6 +608,7 @@ class BowlingGame {
         }
     }
 
+    /// @brief Poll the gutter + pin-deck triggers; update ball state accordingly.
     hide func updateTriggerZones() {
         if (ballObj.thrown() == false) { return; }
 
@@ -580,6 +648,7 @@ class BowlingGame {
         }
     }
 
+    /// @brief Spawn sparks + sounds + camera shake on each pin-pin / ball-pin impact.
     hide func handlePinImpacts() {
         var collisionCount = Physics3DWorld.get_CollisionCount(physWorld);
         var bestDepth = 0.0;
@@ -637,6 +706,7 @@ class BowlingGame {
         }
     }
 
+    /// @brief STATE_SCORING handler: count pins, fire celebrations, advance state.
     hide func updateScoring() {
         var current = getActiveScoreKeeper();
         var newlyKnocked = pinMgr.countNewlyKnocked();
@@ -682,6 +752,7 @@ class BowlingGame {
         gameState = config.STATE_SWEEPING;
     }
 
+    /// @brief STATE_SWEEPING update: advance sweep bar, transition when done.
     hide func updateSweeping(dt: Float) {
         if (pinMgr.updateSweep(dt)) {
             if (pendingFrameAdvance) {
@@ -694,12 +765,14 @@ class BowlingGame {
         }
     }
 
+    /// @brief STATE_RESETTING update: rack-drop animation.
     hide func updateResetting(dt: Float) {
         if (pinMgr.updateReset(dt)) {
             gameState = config.STATE_CELEBRATING;
         }
     }
 
+    /// @brief STATE_CELEBRATING update: tick celebration manager + cinematic camera.
     hide func updateCelebrating(dt: Float) {
         if (celebMgr.isActive()) {
             var ctype = celebMgr.getType();
@@ -728,6 +801,7 @@ class BowlingGame {
         }
     }
 
+    /// @brief Reset ball + camera + per-throw flags for the next roll.
     hide func prepareNextTurn() {
         ballObj.resetBall();
         aimX = 0.0;
@@ -749,6 +823,7 @@ class BowlingGame {
             + "  Roll " + toString(current.getRollInFrame()), config.HUD_COLOR_WHITE, config.MSG_DURATION_SHORT);
     }
 
+    /// @brief Versus-mode handover: switch active player; check for results.
     hide func advanceToNextPlayer() {
         if (playerCount <= 1) {
             activePlayer = 0;
@@ -766,6 +841,7 @@ class BowlingGame {
         }
     }
 
+    /// @brief True when every active player has completed all 10 frames.
     hide func allPlayersFinished() -> Boolean {
         if (playerCount <= 1) {
             return scoreKeeperOne.isGameOver();
@@ -773,6 +849,7 @@ class BowlingGame {
         return scoreKeeperOne.isGameOver() && scoreKeeperTwo.isGameOver();
     }
 
+    /// @brief Compute final results, persist stats, transition to results screen.
     hide func openResultsScreen() {
         var p1 = scoreKeeperOne.getTotalScore();
         var p2 = scoreKeeperTwo.getTotalScore();
@@ -799,6 +876,7 @@ class BowlingGame {
         hudObj.showMessage(resultsToast, config.HUD_COLOR_GOLD, config.MSG_DURATION_RESULTS);
     }
 
+    /// @brief Cycle through aim/follow/overhead camera presets.
     hide func cycleCameraMode() {
         if (gameState == config.STATE_AIMING) {
             if (camCtrl.getMode() == camera.MODE_OVERHEAD) {
@@ -822,11 +900,13 @@ class BowlingGame {
         }
     }
 
+    /// @brief True if a position is inside the pin-deck Z range.
     hide func isImpactBodyInPinDeck(pos: Vec3) -> Boolean {
         var z = Vec3.get_Z(pos);
         return z > config.PIN_Z_OFFSET - 1.0 && z < config.PIN_Z_OFFSET + 3.0;
     }
 
+    /// @brief 3D pass: draw lane / pins / sweep bar / ball / particles.
     hide func drawScene() {
         laneObj.draw(render.getCanvas());
         if (pinMgr.isSweeping()) {
@@ -837,6 +917,7 @@ class BowlingGame {
         particleMgr.draw(render.getCanvas(), render.getCamera());
     }
 
+    /// @brief 2D pass: HUD + active menu + celebration overlay.
     hide func drawOverlays() {
         var canvas = render.getCanvas();
         var cw = render.getWidth();
@@ -879,11 +960,13 @@ class BowlingGame {
         }
     }
 
+    /// @brief ScoreKeeper for the player currently on the lane.
     hide func getActiveScoreKeeper() -> ScoreKeeper {
         if (activePlayer == 1) { return scoreKeeperTwo; }
         return scoreKeeperOne;
     }
 
+    /// @brief Display label ("P1" / "P2") for an index.
     hide func getPlayerLabel(index: Integer) -> String {
         if (playerCount <= 1) { return "Player"; }
         if (index == 1) { return "Player 2"; }

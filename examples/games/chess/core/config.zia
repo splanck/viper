@@ -1,8 +1,39 @@
 module config;
 
 // ============================================================================
+// MODULE: config
+// PURPOSE: Centralised constants for the chess demo: piece encoding, piece
+//          values (centipawns), window/board layout, color palette, game
+//          state and mode tags, AI search depth, transposition-table
+//          flags, key codes, and gamepad button indices.
+//
+// WHERE-THIS-FITS: Leaf module imported by every other chess file. Pure
+//          constants — no functions, no state.
+//
+// KEY-DESIGN-CHOICES:
+//   * SIGNED PIECE ENCODING. White pieces are 1..6 (PAWN..KING); black
+//     pieces are -1..-6. Empty is 0. `abs(piece)` gives type; `piece >
+//     0` gives colour. This squashes (type, colour) into a single
+//     integer board cell, which is the standard compact representation
+//     for didactic chess engines.
+//   * CENTIPAWN VALUES. The Evaluator uses VAL_PAWN=100 etc. so PST
+//     adjustments and material balance share a unit. King value is
+//     20000 (sentinel — used only to make material-only evaluations
+//     refuse to "trade" the king).
+//   * COLOR HEX LITERALS. Square / UI colors are 24-bit RGB ints. Using
+//     `0xRRGGBB` keeps the source readable; the renderer packs them
+//     into the runtime's pixel format.
+//   * SEARCH DEPTH BY DIFFICULTY. DIFF_EASY=2, DIFF_MEDIUM=3, etc. Used
+//     by the AI's iterative-deepening loop. Each depth bump roughly
+//     8x's the search time at typical branching factor 35.
+//   * STANDARD INITIAL CASTLE-RIGHTS INDEXING. CR_WK / CR_WQ / CR_BK /
+//     CR_BQ are 0..3 indices into the Zobrist castle-key array.
+// ============================================================================
+
+// ============================================================================
 // Piece IDs
 // Positive = White, Negative = Black, 0 = Empty
+// abs(piece) gives type; piece > 0 gives colour.
 // ============================================================================
 final EMPTY  = 0;
 final PAWN   = 1;

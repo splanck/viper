@@ -1,3 +1,34 @@
+// ============================================================================
+// MODULE: renderer (Renderer)
+// PURPOSE: Wraps Canvas3D + Camera3D setup, the procedurally-generated
+//          alley skybox, the five-light setup (sun, fill, pin spot,
+//          lane glow, deck fill), and the PostFX3D effect chain.
+//          Provides a Performance / Cinematic quality toggle.
+//
+// WHERE-THIS-FITS: Constructed first by BowlingGame.init(); every other
+//          renderable subsystem (lane / pins / ball / particles)
+//          consults getCanvas() and getCamera().
+//
+// KEY-DESIGN-CHOICES:
+//   * FIVE LIGHTS. Directional sun + directional fill (key + bounce
+//     simulation), spot light over the pins (CAM_SPOT_*), point lane
+//     glow (warm tone over the foul line), point deck fill (cool
+//     tone behind the pins). The combination is what gives the
+//     "bowling alley" mood.
+//   * PROCEDURAL SKYBOX. createAlleySkybox builds 6 24×24 Pixels
+//     buffers in code (gradients + ceiling tile pattern + floor
+//     stripe pattern), then assembles them as a CubeMap3D. No
+//     external textures needed; the skybox subtly reflects in the
+//     ball + lane oil for depth.
+//   * QUALITY MODE. Cinematic adds tonemap + bloom + FXAA + colour
+//     grade + vignette. Performance trims to a lighter pipeline.
+//     applyQuality clears + rebuilds the chain on the fly so the
+//     player can switch from the options menu mid-game.
+//   * DT CLAMP. getDeltaTime clamps to DT_CLAMP (50 ms) so a hitch
+//     doesn't produce a giant physics step that tunnels the ball
+//     through pins.
+// ============================================================================
+
 // renderer.zia — Canvas3D setup, lighting, post-processing, shadows
 module renderer;
 
@@ -7,6 +38,7 @@ bind Viper.Terminal;
 bind Viper.Core.Convert as Convert;
 bind "../config";
 
+/// @brief Canvas + camera + lighting + post-FX wrapper for 3D Bowling.
 class Renderer {
     hide Canvas3D canvas;
     hide Camera3D cam;
@@ -19,10 +51,12 @@ class Renderer {
     hide Light3D deckFill;
     hide Integer qualityMode;
 
+    /// @brief Pack 0..255 RGBA into a single 32-bit pixel int.
     hide func packPixel(r: Integer, g: Integer, b: Integer, a: Integer) -> Integer {
         return (((r * 256) + g) * 256 + b) * 256 + a;
     }
 
+    /// @brief One-time setup: window, camera, lights, skybox, post-FX.
     expose func initRenderer(startQuality: Integer) {
         canvas = Canvas3D.New(config.WINDOW_TITLE, config.WINDOW_WIDTH, config.WINDOW_HEIGHT);
         Canvas3D.SetDTMax(canvas, 50);
@@ -74,6 +108,8 @@ class Renderer {
         applyQuality(startQuality);
     }
 
+    /// @brief Rebuild the post-FX chain for QUALITY_PERFORMANCE or
+    ///        QUALITY_CINEMATIC. Safe to call mid-game.
     expose func applyQuality(mode: Integer) {
         qualityMode = mode;
         PostFX3D.Clear(postfx);
@@ -94,66 +130,82 @@ class Renderer {
         Canvas3D.SetPostFX(canvas, postfx);
     }
 
+    /// @brief Active quality mode.
     expose func getQualityMode() -> Integer {
         return qualityMode;
     }
 
+    /// @brief 3D drawing canvas.
     expose func getCanvas() -> Canvas3D {
         return canvas;
     }
 
+    /// @brief Active camera (managed by CameraController).
     expose func getCamera() -> Camera3D {
         return cam;
     }
 
+    /// @brief Procedurally-generated alley skybox (for cubemap reflections).
     expose func getSkybox() -> CubeMap3D {
         return alleySkybox;
     }
 
+    /// @brief Pump window events.
     expose func poll() {
         Canvas3D.Poll(canvas);
     }
 
+    /// @brief Clear back buffer + Begin scene with the active camera.
     expose func beginFrame() {
         Canvas3D.Clear(canvas, config.CLEAR_R, config.CLEAR_G, config.CLEAR_B);
         Canvas3D.Begin(canvas, cam);
     }
 
+    /// @brief End scene (post-FX, etc.).
     expose func endFrame() {
         Canvas3D.End(canvas);
     }
 
+    /// @brief Swap to front buffer.
     expose func flip() {
         Canvas3D.Flip(canvas);
     }
 
+    /// @brief True if the user closed the window.
     expose func shouldClose() -> Boolean {
         return Canvas3D.get_ShouldClose(canvas) != 0;
     }
 
+    /// @brief Frame delta in seconds, clamped to DT_CLAMP to prevent
+    ///        physics tunneling on hitches.
     expose func getDeltaTime() -> Float {
         var raw: Float = (Canvas3D.get_DeltaTime(canvas) + 0.0) / 1000.0;
         if (raw > config.DT_CLAMP) { raw = config.DT_CLAMP; }
         return raw;
     }
 
+    /// @brief Recent frame rate for HUD display.
     expose func getFps() -> Integer {
         return Canvas3D.get_Fps(canvas);
     }
 
+    /// @brief Window pixel width.
     expose func getWidth() -> Integer {
         return Canvas3D.get_Width(canvas);
     }
 
+    /// @brief Window pixel height.
     expose func getHeight() -> Integer {
         return Canvas3D.get_Height(canvas);
     }
 
+    /// @brief Bump the pin spotlight intensity (used for strike celebrations).
     expose func flashPinLight(intensity: Float) {
         Light3D.SetIntensity(pinSpot, intensity);
         Canvas3D.SetLight(canvas, 2, pinSpot);
     }
 
+    /// @brief Restore pin spotlight to default intensity.
     expose func resetPinLight() {
         Light3D.SetIntensity(pinSpot, 2.35);
         Canvas3D.SetLight(canvas, 2, pinSpot);

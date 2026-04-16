@@ -1,14 +1,54 @@
-REM ====================================================================
-REM CLASSIC FROGGER - Enhanced ANSI Version
-REM ====================================================================
-REM Features:
-REM - Roads with cars and trucks
-REM - River with logs and turtles to ride
-REM - 5 homes to fill at the top
-REM - Lives system and scoring
-REM - Win condition when all homes filled
-REM ====================================================================
+' ============================================================================
+' MODULE: frogger.bas
+' PURPOSE: Program entry point and main game loop for the Frogger demo.
+'          Owns the playfield layout, the global game state, the menu
+'          state machine, and the per-frame orchestration.
+'
+' WHERE-THIS-FITS: Top of the dependency tree. Loads frogger_ansi.bas
+'          (terminal helpers), frogger_classes.bas (game entities), and
+'          frogger_scores.bas (high scores). Instantiates the Frog,
+'          ten Vehicles, ten Platforms, and five Homes, then ticks them
+'          each frame.
+'
+' KEY-DESIGN-CHOICES:
+'   * PLAYFIELD LAYOUT IS ROW-BAND-BASED. The screen is vertically
+'     divided into named bands:
+'         HOME_ROW     (row 2)   - the five goal slots
+'         RIVER_START..RIVER_END (rows 4-8)  - the water
+'         MEDIAN_ROW   (row 10)  - safe zone between river and road
+'         ROAD_START..ROAD_END   (rows 12-16) - the traffic
+'         START_ROW    (row 18)  - the frog's spawn row
+'     Collision logic branches on which band the frog is in. This is
+'     cleaner than per-row collision tables and matches the arcade
+'     original's structure.
+'   * WATER = DEATH UNLESS ON A PLATFORM. `IsInRiver` flags a row as
+'     water; if the frog is there, we search for a platform it's
+'     riding. No platform match -> drown. This is the core Frogger
+'     mechanic inverted from the road: in the river you MUST be on a
+'     moving object; on the road you must NOT be.
+'   * TICK ORDER. Draw -> HandleInput -> UpdateGame -> sleep. Input
+'     before update means the frog responds to the current frame's
+'     keypress but the world ticks afterwards, giving "snappy" controls
+'     that feel synchronous. Reversed order would feel sluggish.
+'   * WIN CONDITION. `homesFilledCount = 5` clears `gameRunning` and
+'     exits the loop with `frog.IsAlive() = 1`, which the game-over
+'     screen detects to show "CONGRATULATIONS!" instead of "GAME OVER".
+'   * FLICKER SUPPRESSION. Every draw cell goes through `BufferColorAt`
+'     / `BufferAt` from frogger_ansi.bas. Under ALTSCREEN batch mode
+'     those writes coalesce into a single flush at frame end — no
+'     partial-paint tearing. The "Clear gap rows" loop at the top of
+'     `DrawBoard` wipes the narrow no-obstacles rows that would
+'     otherwise retain trail pixels from the frog passing through them.
+'
+' HOW-TO-READ: Constants / layout bands -> InitGame (entity layout) ->
+'   DrawBoard (per-frame paint) -> IsInRiver (tiny helper) ->
+'   UpdateGame (collision resolution: river drown, road splat, home
+'   fill, bounds) -> HandleInput -> GameLoop -> pause / menu /
+'   instructions -> main program.
+' ============================================================================
 
+' Load helper modules BEFORE any DIM references their classes. Order:
+' ansi (terminal primitives) -> classes (game objects) -> scores (table).
 AddFile "frogger_ansi.bas"
 AddFile "frogger_classes.bas"
 AddFile "frogger_scores.bas"
@@ -52,9 +92,26 @@ DIM level AS INTEGER
 DIM gameRunning AS INTEGER
 DIM homesFilledCount AS INTEGER
 
-REM ====================================================================
-REM Initialize Game
-REM ====================================================================
+' ====================================================================
+' Initialize Game
+' --------------------------------------------------------------------
+' Build every per-game entity from scratch. Five blocks:
+'   1. Score / level / game-flag / homes-filled counter reset.
+'   2. Frog constructed at the bottom-centre spawn (row 18, col 35).
+'   3. Five Home slots laid out across the top at cols 8/20/32/44/56.
+'   4. Ten road vehicles arranged in five lanes (rows 12-16) with
+'      alternating direction and a mix of car/truck widths. The
+'      pattern — slow right, slow left, faster right, slow left, fast
+'      right — mirrors the classic arcade traffic feel.
+'   5. Ten river platforms arranged in five rows (rows 4-8) with
+'      logs ("=") going right and turtles ("O") going left. Long
+'      logs on row 6 give the player breathing room; shorter turtle
+'      clusters on rows 5 and 7 force more careful timing.
+'
+' All entities are constructed with NEW; the array slots hold
+' references. This is the only place the game allocates — the main
+' loop re-uses these instances for the entire session.
+' ====================================================================
 SUB InitGame()
     DIM i AS INTEGER
 
@@ -142,9 +199,31 @@ SUB InitGame()
     platforms(9).Init(8, 48, 2, 1, "=", 7)
 END SUB
 
-REM ====================================================================
-REM Draw Game Board
-REM ====================================================================
+' ====================================================================
+' Draw Game Board
+' --------------------------------------------------------------------
+' Full-frame paint. Bands painted bottom-up in the game world (top-
+' down on screen):
+'   1. Clear the four gap rows (3, 9, 11, 17) — these are the
+'      borderless transitions between bands. The frog leaves "trail"
+'      artifacts in these rows when it moves so we wipe them fresh.
+'   2. Title / lives / score on row 1.
+'   3. Home row: baseline of blue water, then each home slot as
+'      either "[F]" (filled) or "[ ]" (empty).
+'   4. River: fill the RIVER_START..RIVER_END band with blue "~".
+'   5. Platforms: draw logs (yellow "=") and turtles (green "O") on
+'      top of the river. Platform draws override the water below.
+'   6. Median: solid green "-" row with "SAFE ZONE" label.
+'   7. Road: white "." filler.
+'   8. Vehicles: red glyphs on top of the road.
+'   9. Start row: green "-" strip with "START" label.
+'  10. Frog: green "@" at its current row/col.
+'  11. Bottom-of-screen instructions banner.
+'
+' The entire frame is batch-mode under ALTSCREEN, so none of these
+' writes actually flush until `FlushFrame` — keeping the paint
+' atomic and flicker-free.
+' ====================================================================
 SUB DrawBoard()
     DIM i AS INTEGER
     DIM j AS INTEGER
@@ -269,9 +348,9 @@ SUB DrawBoard()
     FlushFrame()
 END SUB
 
-REM ====================================================================
-REM Check if frog is in river
-REM ====================================================================
+' Boolean predicate: is the given row inside the river band? Used by
+' UpdateGame to decide whether "no platform overlap" means drown or
+' just continue.
 FUNCTION IsInRiver(row AS INTEGER) AS INTEGER
     IF row >= RIVER_START AND row <= RIVER_END THEN
         IsInRiver = 1
@@ -280,9 +359,27 @@ FUNCTION IsInRiver(row AS INTEGER) AS INTEGER
     END IF
 END FUNCTION
 
-REM ====================================================================
-REM Update Game State
-REM ====================================================================
+' ====================================================================
+' Update Game State
+' --------------------------------------------------------------------
+' Per-tick simulation. Runs after HandleInput has applied the
+' player's move. Order of operations:
+'   1. Tick every vehicle (horizontal movement + wraparound).
+'   2. Tick every platform (same shape as vehicles).
+'   3. If the frog is in the river band, scan platforms to see if
+'      it's riding one. If yes, drift with the platform; if no,
+'      drown (Die + "SPLASH!" banner).
+'   4. If the frog is in the road band, test every vehicle for
+'      overlap. Any hit -> Die + "SPLAT!" banner.
+'   5. If the frog reached HOME_ROW, test each of the five home
+'      slots. Overlap with an empty slot -> fill + +200 + reset;
+'      overlap with a filled slot OR no overlap -> Die. Filling
+'      all five triggers win-condition (exit loop with alive=1).
+'   6. Off-screen horizontally -> Die.
+'
+' The SLEEP 800 after a death is the "feedback beat" — the player
+' sees what killed them before the respawn.
+' ====================================================================
 SUB UpdateGame()
     DIM i AS INTEGER
     DIM frogRow AS INTEGER
@@ -389,9 +486,9 @@ SUB UpdateGame()
     END IF
 END SUB
 
-REM ====================================================================
-REM Handle Player Input
-REM ====================================================================
+' Non-blocking input dispatch. Reads ONE queued keypress (returns ""
+' if the queue is empty) and maps WASD to frog movement, Q to quit,
+' P to pause. Called once per frame before UpdateGame.
 SUB HandleInput()
     DIM key AS STRING
     key = INKEY$()
@@ -423,9 +520,26 @@ SUB HandleInput()
     END IF
 END SUB
 
-REM ====================================================================
-REM Main Game Loop
-REM ====================================================================
+' ====================================================================
+' Main Game Loop
+' --------------------------------------------------------------------
+' Clears screen once, hides the cursor, then iterates
+' DrawBoard/HandleInput/UpdateGame/SLEEP 100 until either the
+' gameRunning flag is cleared (win condition or quit) or the frog
+' runs out of lives. After the loop:
+'   * Re-show cursor and print the appropriate end screen:
+'       - homesFilledCount == 5 -> WIN
+'       - frog.IsAlive() == 0   -> GAME OVER
+'       - else (quit)           -> "Thanks for playing!"
+'   * Print final score + homes-filled stat.
+'   * If the score qualifies for the high-score table, prompt for
+'     name and insert via `AddHighScore`.
+'   * Block on ANY key before returning to the menu.
+'
+' ~100 ms per tick gives roughly 10 Hz gameplay, which matches the
+' arcade Frogger's pace. Tighten SLEEP to speed the game up at
+' higher levels if a level system is added.
+' ====================================================================
 SUB GameLoop()
     REM Initial screen setup - clear once at start
     ClearScreen()
@@ -480,9 +594,14 @@ SUB GameLoop()
     WEND
 END SUB
 
-REM ====================================================================
-REM Handle Pause
-REM ====================================================================
+' ====================================================================
+' Handle Pause
+' --------------------------------------------------------------------
+' Paint a "PAUSED" overlay on top of the current frame and spin
+' waiting for P to be pressed again. All other keys are ignored.
+' The overlay overwrites two rows of the playfield — when the pause
+' releases, the next DrawBoard repaints those cells cleanly.
+' ====================================================================
 SUB HandlePause()
     DIM key AS STRING
 
@@ -500,9 +619,21 @@ SUB HandlePause()
     WEND
 END SUB
 
-REM ====================================================================
-REM Main Menu
-REM ====================================================================
+' ====================================================================
+' Main Menu
+' --------------------------------------------------------------------
+' W/S-driven vertical menu. Four choices cycle around (choice 1 goes
+' to choice 4 if W is pressed at the top; vice versa at the bottom).
+' ENTER commits. The ENTER branch SLEEPs 200ms after the action to
+' debounce — otherwise a held ENTER from the game-over screen would
+' instantly start a new game.
+'
+' The flow from here:
+'   [1] -> InitGame() -> "press any key" -> GameLoop() -> back here
+'   [2] -> DisplayHighScores -> wait for key -> back here
+'   [3] -> ShowInstructions -> back here
+'   [4] -> EXIT WHILE -> exit program
+' ====================================================================
 SUB ShowMainMenu()
     DIM choice AS INTEGER
     DIM key AS STRING
@@ -619,9 +750,12 @@ SUB ShowMainMenu()
     WEND
 END SUB
 
-REM ====================================================================
-REM Show Instructions
-REM ====================================================================
+' ====================================================================
+' Show Instructions
+' --------------------------------------------------------------------
+' Static help screen: objective, controls, gameplay tips. Blocks on
+' any key before returning to the menu.
+' ====================================================================
 SUB ShowInstructions()
     ClearScreen()
     PRINT ""
@@ -656,9 +790,21 @@ SUB ShowInstructions()
     WEND
 END SUB
 
-REM ====================================================================
-REM Main Program Entry Point
-REM ====================================================================
+' ============================================================================
+' Main Program Entry Point
+' ----------------------------------------------------------------------------
+' Bootstrap sequence:
+'   1. InitHighScores() — zero the in-memory table with "---" placeholders.
+'   2. SaveHighScores() — writes the placeholders to disk if no file
+'      exists yet. If a file already exists this is destructive, so the
+'      follow-up LoadHighScores reloads the real data. This pair-dance is
+'      the dialect's "touch + read" pattern.
+'   3. LoadHighScores() — read the authoritative table from disk.
+'   4. ShowMainMenu() — enter the menu state machine, which only returns
+'      when the player chooses QUIT.
+' After the menu exits: clear screen, print goodbye message, return.
+' ============================================================================
+
 InitHighScores()
 SaveHighScores()
 LoadHighScores()
