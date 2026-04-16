@@ -78,18 +78,21 @@ static void calculate_content_size(vg_scrollview_t *scroll,
     vg_widget_t *base = &scroll->base;
     float auto_width = 0.0f;
     float auto_height = 0.0f;
+    float flow_y = 0.0f;
 
     scrollview_measure_children(scroll, available_width, available_height);
 
     VG_FOREACH_VISIBLE_CHILD(base, child) {
         float right = child->layout.margin_left + child->measured_width + child->layout.margin_right;
-        float bottom =
-            child->layout.margin_top + child->measured_height + child->layout.margin_bottom;
+        float top = flow_y + child->layout.margin_top;
+        float bottom = top + child->measured_height + child->layout.margin_bottom;
 
         if (right > auto_width)
             auto_width = right;
         if (bottom > auto_height)
             auto_height = bottom;
+
+        flow_y = bottom;
     }
 
     if (scroll->content_width <= 0)
@@ -274,14 +277,15 @@ static void scrollview_arrange(vg_widget_t *widget, float x, float y, float widt
     // Clamp scroll position
     clamp_scroll(scroll);
 
-    // Arrange children at their positions minus scroll offset
+    // Arrange direct children as stacked content items inside the scroll area.
+    float flow_y = 0.0f;
     VG_FOREACH_VISIBLE_CHILD(widget, child) {
-        // Position child with scroll offset
         float child_x = child->layout.margin_left - scroll->scroll_x;
-        float child_y = child->layout.margin_top - scroll->scroll_y;
+        float child_y = flow_y + child->layout.margin_top - scroll->scroll_y;
         float child_w = child->measured_width;
         float child_h = child->measured_height;
         vg_widget_arrange(child, child_x, child_y, child_w, child_h);
+        flow_y += child->layout.margin_top + child_h + child->layout.margin_bottom;
     }
 }
 

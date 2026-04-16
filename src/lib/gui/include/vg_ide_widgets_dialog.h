@@ -121,9 +121,12 @@ typedef struct vg_dialog {
     int drag_offset_x;         ///< Drag offset X
     int drag_offset_y;         ///< Drag offset Y
     int hovered_button;        ///< Currently hovered button (-1 = none)
+    bool closing_in_progress;  ///< Re-entrancy guard for vg_dialog_close
 
     // Callbacks
-    void *user_data;                                                   ///< User data
+    void *user_data;                                                   ///< Legacy user data (= on_result_user_data; kept for ABI)
+    void *on_result_user_data;                                         ///< User data passed to on_result
+    void *on_close_user_data;                                          ///< User data passed to on_close
     void (*on_result)(struct vg_dialog *, vg_dialog_result_t, void *); ///< Result callback
     void (*on_close)(struct vg_dialog *, void *);                      ///< Close callback
 } vg_dialog_t;
@@ -284,6 +287,7 @@ typedef struct vg_filedialog {
     void *filename_input;  ///< Filename input (save mode)
     void *filter_dropdown; ///< Filter selector
     void *bookmark_list;   ///< Sidebar bookmarks
+    bool filename_active;  ///< True when the inline save-name field has focus
 
     // Result
     char **selected_files;      ///< Result: array of selected paths

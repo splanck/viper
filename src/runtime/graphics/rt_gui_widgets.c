@@ -719,12 +719,13 @@ void rt_treeview_node_set_data(void *node, rt_string data) {
     if (!node)
         return;
     vg_tree_node_t *n = (vg_tree_node_t *)node;
-    // Free old data if it exists
-    if (n->user_data)
+    // Free old data if it exists and is owned by the runtime string wrapper.
+    if (n->owns_user_data && n->user_data)
         free(n->user_data);
     // Store a copy of the string as user_data
     const char *cstr = rt_string_cstr(data);
     n->user_data = cstr ? strdup(cstr) : NULL;
+    n->owns_user_data = n->user_data != NULL;
 }
 
 /// @brief Retrieve the string data previously attached to a tree node.

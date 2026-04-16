@@ -568,6 +568,8 @@ TEST(listbox_virtual_mouse_selects_index) {
     lb->base.height = 60.0f;
 
     vg_event_t ev = make_mouse_down(5.0f, 55.0f);
+    ev.mouse.x = 5.0f;
+    ev.mouse.y = 45.0f;
     bool handled = lb->base.vtable->handle_event(&lb->base, &ev);
     ASSERT_TRUE(handled);
     ASSERT_EQ((int)vg_listbox_get_selected_index(lb), 2);

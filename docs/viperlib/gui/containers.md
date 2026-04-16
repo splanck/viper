@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-09
+last-verified: 2026-04-16
 ---
 
 # Containers & Advanced
@@ -16,6 +16,8 @@ last-verified: 2026-04-09
 ### ScrollView
 
 Scrollable container for content larger than the viewport.
+
+Direct children are arranged as vertically stacked content items inside the scroll region. For more complex nested layouts, place a `VBox`, `HBox`, or other container inside the `ScrollView` and add content there.
 
 **Constructor:** `NEW Viper.GUI.ScrollView(parent)`
 
@@ -41,6 +43,8 @@ scroll.SetScroll(0.0, 0.0);
 ### SplitPane
 
 Two-pane split view with draggable divider.
+
+Once a divider drag starts, the split keeps tracking until mouse-up even if the pointer leaves the splitter strip.
 
 **Constructor:** `NEW Viper.GUI.SplitPane(parent, horizontal)`
 
@@ -77,30 +81,26 @@ var rightPane = split.get_Second();
 
 ### FloatingPanel
 
-A floating overlay panel that appears above all other content. Unlike regular widgets, FloatingPanels are not part of the widget tree and are rendered last, making them suitable for popups, tooltips, and floating toolbars.
+A floating overlay panel that appears above normal content. Floating panels are still regular widgets in the tree, so their children participate in hit testing and destruction normally, but the panel itself paints during the overlay pass. Clicking the panel background lets the user drag it to a new position.
 
-**Constructor:** `NEW Viper.GUI.FloatingPanel()`
+**Constructor:** `NEW Viper.GUI.FloatingPanel(root)`
 
 | Method                  | Signature                  | Description                                |
 |-------------------------|----------------------------|--------------------------------------------|
-| `SetTitle(text)`        | `Void(String)`             | Set the panel title bar text               |
 | `SetPosition(x, y)`     | `Void(Integer, Integer)`   | Set panel position in window coordinates   |
 | `SetSize(w, h)`         | `Void(Integer, Integer)`   | Set panel dimensions                       |
-| `Show()`                | `Void()`                   | Make the panel visible                     |
-| `Hide()`                | `Void()`                   | Hide the panel                             |
-| `IsVisible()`           | `Integer()`                | 1 if the panel is visible                  |
-| `Add(widget)`           | `Void(Object)`             | Add a child widget to the panel            |
-| `Remove(widget)`        | `Void(Object)`             | Remove a child widget from the panel       |
+| `SetVisible(flag)`      | `Void(Integer)`            | Show or hide the panel                     |
+| `AddChild(widget)`      | `Void(Object)`             | Add a child widget to the panel            |
 
 ```rust
 // Zia
-var panel = FloatingPanel.New();
-panel.SetTitle("Tools");
+var panel = FloatingPanel.New(root);
 panel.SetPosition(100, 100);
 panel.SetSize(200, 300);
-panel.Show();
+panel.SetVisible(1);
 
-var btn = Button.New(panel, "Action");
+var btn = Button.New(null, "Action");
+panel.AddChild(btn);
 ```
 
 ---
@@ -108,6 +108,8 @@ var btn = Button.New(panel, "Action");
 ### TabBar
 
 Tab strip for switching between views.
+
+Tabs can be reordered by dragging, and close-button hit testing stays confined to the close glyph instead of the whole tab tail.
 
 **Constructor:** `NEW Viper.GUI.TabBar(parent)`
 
@@ -185,6 +187,8 @@ if tabs.WasCloseClicked() == 1 {
 
 Hierarchical tree view with expandable nodes.
 
+Mouse hit testing is widget-local, so nested trees continue to select the correct row after layout shifts. Removing a node also clears any selected or hovered state inside the removed subtree.
+
 **Constructor:** `NEW Viper.GUI.TreeView(parent)`
 
 ### Methods
@@ -251,6 +255,8 @@ tree.Expand(rootNode)
 ### CodeEditor
 
 Full-featured code editor with syntax highlighting.
+
+The focused caret blink is advanced automatically during the app render loop, matching the existing `TextInput` caret behavior.
 
 **Constructor:** `NEW Viper.GUI.CodeEditor(parent)`
 

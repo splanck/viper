@@ -13,14 +13,14 @@ v0.2.5 continues the post-v0.2.4 cycle with five focused themes:
 - **Runtime surface hardening** — owner-header discipline on the C runtime, typed IL return descriptors for Canvas accessors that produce `Pixels`, a magic-value guard on the `Canvas` object for defensive validation, a small correctness fix to the `ButtonGroup` selection state, and three new dynamic linker known-symbols (`uname`, `gethostname`, `sysctlbyname`) so `Viper.Machine.OS`/`Hostname` link cleanly.
 - **GUI runtime expansion** — tab tooltips and title ellipsis, six new CodeEditor APIs (CanUndo/CanRedo, TabSize, WordWrap), pixel-position hit-testing (`GetLineAtPixel`/`GetColAtPixel`), `Widget.IsHovered` on the base widget, `SetVisible`/`IsVisible` for `Breadcrumb` and `Minimap`, HiDPI-aware tabbar and toolbar scaling, and a native-menubar zero-height layout fix.
 - **Zia frontend & tooling** — four path-aware `Viper.Zia.Completion` APIs (`CompleteForFile`, `CheckForFile`, `HoverForFile`, `SymbolsForFile`) so completion resolves relative `bind` paths against the active file, and a Lowerer modularization that extracts binary-operator, call-argument, and collection lowering into three dedicated helper classes.
-- **Demo breadth and polish** — Pac-Man demo renamed and rebuilt as Crackman, Paint app gains layers and undo/redo, ViperIDE wires up new GUI APIs, ViperSQL and Xenoscape annotated as learnable tutorials.
+- **Demo breadth and polish** — Pac-Man demo renamed and rebuilt as Crackman, Paint app gains layers and undo/redo, ViperIDE wires up new GUI APIs, and all 10 demos built by `build_demos_mac.sh` now carry tutorial-style annotations.
 - **Review-readiness documentation** — new codemaps for the bytecode VM and graphics-disabled runtime stubs, plus clarifications to the optimizer rehab status, `--no-mem2reg` behavior, graphics-stub policy, and cross-platform validation language.
 
 #### By the Numbers
 
 | Metric | v0.2.4 | v0.2.5 | Delta |
 |---|---|---|---|
-| Commits | — | 6 | +6 |
+| Commits | — | 7 | +7 |
 | Source files | 2,869 | 2,876 | +7 |
 | Production SLOC | ~450K | ~451K | ~+1K |
 | Test SLOC | ~183K | ~184K | ~+1K |
@@ -93,6 +93,10 @@ These moves together close a long-standing layering smell (runtime callers no lo
 
 - `Viper.GUI.Breadcrumb.SetVisible` / `IsVisible` and `Viper.GUI.Minimap.SetVisible` / `IsVisible` added so apps can hide chrome elements when there's no relevant content (e.g., the breadcrumb when no file is open).
 
+**Widget.Focus**
+
+- `Viper.GUI.Widget.Focus()` promoted to the base widget runtime class (and mirrored on `CodeEditor`), so Zia code can call `editor.Focus()` directly to move keyboard focus. Previously every widget needed bespoke focus plumbing.
+
 **Widget correctness pass**
 
 - `TabBar`: close-click polling now stores a stable tab index instead of a tab pointer, so `GetCloseClickedIndex()` remains valid even when `auto_close` destroys the tab during the same click. Close-button hit testing now uses the full close-rect bounds, and default tooltips continue to mirror renamed titles until explicitly overridden.
@@ -102,6 +106,9 @@ These moves together close a long-standing layering smell (runtime callers no lo
 - `ScrollView`: auto-hide scrollbar selection now iterates until horizontal/vertical visibility stabilizes, covering the cross-axis case where one scrollbar forces the other.
 - `ListBox`: virtual-mode painting now clips to the viewport before drawing overscanned cached rows.
 - `TextInput.SetText`: programmatic text assignment no longer fires the user-edit `on_change` callback.
+- `CodeEditor`: line-slot reuse now clears stale per-line syntax-color metadata during `SetText` and multi-line compaction. This fixes a ViperIDE crash on file open / language switch where `SetLanguage` could free a recycled `line->colors` pointer from a previous document shape.
+- `Minimap`: click-to-scroll reworked. New internal helpers (`minimap_document_line_count`, `minimap_line_from_local_y`, `minimap_scroll_editor_to_line`, `minimap_trimmed_line_bounds`) resolve a click's local-Y to a document line and scroll the bound editor there, handling blank-line trimming so the minimap maps to visible content rather than the raw buffer.
+- `Toolbar` (overflow popup expansion): the overflow now uses the full `ContextMenu` plumbing — `toolbar_ensure_overflow_popup` / `rebuild_overflow_popup` / `sync_popup_capture` / `dismiss_overflow_popup` / `show_overflow_popup` / `forward_popup_event` — with input capture, overlay painting, and proper hover/click forwarding so hidden toolbar items behave identically to primary items.
 
 ---
 
@@ -121,11 +128,23 @@ These moves together close a long-standing layering smell (runtime callers no lo
   - `CollectionLowerer` — list/set/map literals, tuples, index access.
 - The `Lowerer` class befriends each helper and exposes the necessary state hooks; the entry-point methods now delegate. No behavioural change, but expression-lowering surface area is now navigable in three discrete files instead of one ~1200-LOC file.
 
+**Types display-string unification**
+
+- `Types.cpp` / `Types.hpp` consolidate scattered type-to-string formatters into one recursive `appendTypeString(ss, type, developerFacing)` helper that handles every `TypeKindSem` case (Integer / Number / Boolean / String / Byte / Unit / Void / Error / Ptr / Optional / generic type args) and renders type arguments via `[T1, T2, ...]`. A new `toDisplayString()` accessor is the user-facing entry point.
+- The `developerFacing` flag lets diagnostic messages show terser user-grade names (e.g., `String?`) while internal debug output can still request the fully-qualified form. Removes the drift between error-message formatting and debug-dump formatting.
+
+**Sema error-message fixes**
+
+- Every Sema error that names a type (type mismatch, member-access on Optional without null check, missing member, cast failure, pattern-literal vs scrutinee mismatch, tuple index on non-tuple) now renders through `toDisplayString()`, so users see `String?` instead of `Optional<String>` and `List[Integer]` instead of the internal representation.
+- New check for inference-from-`null`: `var x = null;` without an explicit type annotation now fails with "Cannot infer type from null initializer; add an explicit type annotation such as 'String?', 'MyType', or 'GUI.Font'". Previously this silently produced `Optional<Unknown>` and downstream errors were confusing.
+- Optional member access (`opt.field` instead of `opt?.field` or `opt!.field`) produces a targeted error naming the Optional type rather than a generic "has no member" message.
+- Tighter assignment type-conversion check: mixed Unknown-type operands no longer bypass the convertibility assertion.
+
 ---
 
 ### Demos
 
-- Pac-Man demo renamed **Crackman** with modular layout, persistent XP, and tile-aligned actor speeds; Chess gains matching UI decomposition; Paint gains layers, undo/redo, and zoom; ViperIDE gains per-file IntelliSense, mouse-position hover, and custom-font support; ViperSQL and Xenoscape annotated as learnable tutorials.
+- Pac-Man demo renamed **Crackman** with modular layout, persistent XP, and tile-aligned actor speeds; Chess gains matching UI decomposition; Paint gains layers, undo/redo, and zoom; ViperIDE gains per-file IntelliSense, mouse-position hover, and custom-font support; every demo built by `build_demos_mac.sh` (vtris, centipede, frogger, viperide, chess, 3dbowling, paint, crackman, vipersql, xenoscape) now carries tutorial-style comments on every file — banded headers plus per-function docs — so the demos read as a built-in curriculum.
 
 ### Documentation
 
@@ -147,7 +166,7 @@ These moves together close a long-standing layering smell (runtime callers no lo
 - Extended `RTAchievementTests.cpp` contract coverage for the `rt_string` retain/release lifecycle.
 - New `src/tests/unit/runtime/TestConfig.cpp` covering the `Viper.Game.Config` runtime class, wired into `src/tests/CMakeLists.txt` + `src/tests/unit/CMakeLists.txt`.
 - Three new GUI tests in `test_vg_tier2_fixes.c`: `tabbar_metrics_follow_theme_scale` (HiDPI scaling), `tab_tooltip_can_be_replaced`, `native_menubar_measures_to_zero_height`.
-- Extended GUI tier coverage with regression cases for TabBar close-index lifetime/full-rect hit testing, toolbar/statusbar local hit testing, VBox/HBox flex margin budgeting, SplitPane tiny-resize clamping, ScrollView cross-axis auto-hide, ListBox virtual clipping, Toolbar overflow popup activation, and silent `TextInput.SetText`.
+- Extended GUI tier coverage with regression cases for TabBar close-index lifetime/full-rect hit testing, toolbar/statusbar local hit testing, VBox/HBox flex margin budgeting, SplitPane tiny-resize clamping, ScrollView cross-axis auto-hide, ListBox virtual clipping, Toolbar overflow popup activation, silent `TextInput.SetText`, and CodeEditor line-slot metadata reuse during `SetText` / deletion compaction.
 - Extended `RTGuiRuntimeTests.c` CodeEditor multicursor test with tab-size clamping, word-wrap toggle, and `CanUndo`/`CanRedo` assertions.
 - Added `test_tabbar_close_click_index_survives_auto_close` to `RTGuiRuntimeTests.c`.
 - New `tests/zia_runtime/41_runtime_reference_types.zia` exercising `Viper.Network.Url.Parse`, property access (`Host`, `Path`), `Url.Clone()` returning `Url?`, and `!` unwrap on the optional.
@@ -165,5 +184,6 @@ These moves together close a long-standing layering smell (runtime callers no lo
 | `a34c3d555` | 2026-04-15 | `chore`: annotate vipersql/xenoscape demos, expand paint app, runtime polish |
 | `06c33c339` | 2026-04-15 | `feat(gui)`: tab tooltips, CodeEditor APIs, HiDPI toolbar/tabbar polish |
 | `d54e03b9d` | 2026-04-16 | `feat(viperide,zia,gui)`: per-file IntelliSense, pixel-position hover, lowerer refactor, custom fonts |
+| `2fe3b9a1e` | 2026-04-16 | `chore(demos,gui)`: tutorial-comment sweep across 8 demos, GUI widget correctness pass, Widget.Focus runtime API |
 
 <!-- END DRAFT -->

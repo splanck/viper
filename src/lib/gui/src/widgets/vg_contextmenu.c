@@ -246,12 +246,29 @@ static void contextmenu_paint(vg_widget_t *widget, void *canvas) {
     if (!menu->is_visible)
         return;
 
+    vgfx_window_t win = (vgfx_window_t)canvas;
+
+    // Clamp menu position to keep it on-screen. show_at runs without a window
+    // pointer, so we resolve and apply the clamp here on every paint — it also
+    // adjusts correctly if the window is resized while the menu is open.
+    int32_t win_w = 0, win_h = 0;
+    if (win && vgfx_get_size(win, &win_w, &win_h) == 0) {
+        float mw = widget->width;
+        float mh = widget->height;
+        if (widget->x + mw > (float)win_w)
+            widget->x = (float)win_w - mw;
+        if (widget->y + mh > (float)win_h)
+            widget->y = (float)win_h - mh;
+        if (widget->x < 0.0f)
+            widget->x = 0.0f;
+        if (widget->y < 0.0f)
+            widget->y = 0.0f;
+    }
+
     float x = widget->x;
     float y = widget->y;
     float w = widget->width;
     float h = widget->height;
-
-    vgfx_window_t win = (vgfx_window_t)canvas;
 
     // Draw shadow (layered offset dark rectangles, approximating drop shadow)
     for (int i = 1; i <= 3; i++) {
@@ -667,27 +684,12 @@ void vg_contextmenu_show_at(vg_contextmenu_t *menu, int x, int y) {
     // Calculate size
     contextmenu_measure(&menu->base, 0, 0);
 
-    // Position menu
+    // Position menu (clamp-to-window happens in contextmenu_paint where the
+    // window handle is reliably available via the canvas argument).
     menu->base.x = (float)x;
     menu->base.y = (float)y;
     menu->base.width = menu->base.measured_width;
     menu->base.height = menu->base.measured_height;
-
-    // Clamp position so menu stays within window bounds
-    vgfx_window_t win = (vgfx_window_t)menu->base.impl_data;
-    int32_t win_w = 0, win_h = 0;
-    if (win && vgfx_get_size(win, &win_w, &win_h) == 0) {
-        float mw = menu->base.measured_width;
-        float mh = menu->base.measured_height;
-        if (menu->base.x + mw > (float)win_w)
-            menu->base.x = (float)win_w - mw;
-        if (menu->base.y + mh > (float)win_h)
-            menu->base.y = (float)win_h - mh;
-        if (menu->base.x < 0.0f)
-            menu->base.x = 0.0f;
-        if (menu->base.y < 0.0f)
-            menu->base.y = 0.0f;
-    }
 
     menu->base.visible = true;
     menu->base.needs_paint = true;

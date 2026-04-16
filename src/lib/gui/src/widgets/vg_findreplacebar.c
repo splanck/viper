@@ -218,7 +218,10 @@ static void perform_search(vg_findreplacebar_t *bar) {
             uint32_t start_col = (uint32_t)(pos - text);
             uint32_t end_col = start_col + (uint32_t)match_len;
             add_match(bar, (uint32_t)line, start_col, end_col);
-            pos++;
+            // Advance past the entire match (non-overlapping). This also keeps
+            // the cursor on a UTF-8 codepoint boundary; the previous pos++ could
+            // land mid-character when the match contained multi-byte codepoints.
+            pos += match_len > 0 ? match_len : 1;
         }
     }
 

@@ -42,6 +42,8 @@ static vg_widget_vtable_t g_dropdown_vtable = {.destroy = dropdown_destroy,
 
 static void dropdown_destroy(vg_widget_t *widget) {
     vg_dropdown_t *dd = (vg_dropdown_t *)widget;
+    if (vg_widget_get_input_capture() == widget)
+        vg_widget_release_input_capture();
     for (int i = 0; i < dd->item_count; i++)
         free(dd->items[i]);
     free(dd->items);
@@ -63,6 +65,36 @@ static void dropdown_measure(vg_widget_t *widget, float avail_w, float avail_h) 
 // Height of one item row in the dropdown panel
 static float dropdown_item_height(vg_dropdown_t *dd) {
     return dd->font_size > 0 ? (dd->font_size * 1.6f) : 24.0f;
+}
+
+static bool dropdown_panel_hit(vg_dropdown_t *dd, float screen_x, float screen_y, int *index) {
+    float sx = 0.0f;
+    float sy = 0.0f;
+    vg_widget_get_screen_bounds(&dd->base, &sx, &sy, NULL, NULL);
+
+    float ih = dropdown_item_height(dd);
+    float panel_h = ih * dd->item_count;
+    if (panel_h > dd->dropdown_height)
+        panel_h = dd->dropdown_height;
+
+    float panel_left = sx;
+    float panel_top = sy + dd->base.height;
+    float panel_right = panel_left + dd->base.width;
+    float panel_bottom = panel_top + panel_h;
+    if (screen_x < panel_left || screen_x >= panel_right || screen_y < panel_top ||
+        screen_y >= panel_bottom) {
+        if (index)
+            *index = -1;
+        return false;
+    }
+
+    float rel_y = screen_y - panel_top + dd->scroll_y;
+    int hit = rel_y >= 0.0f ? (int)(rel_y / ih) : -1;
+    if (hit < 0 || hit >= dd->item_count)
+        hit = -1;
+    if (index)
+        *index = hit;
+    return true;
 }
 
 static void dropdown_paint(vg_widget_t *widget, void *canvas) {
@@ -177,17 +209,10 @@ static bool dropdown_handle_event(vg_widget_t *widget, vg_event_t *event) {
                 dd->hovered_index = dd->selected_index;
                 vg_widget_set_input_capture(widget);
             } else {
-                // Check if click is inside the panel
-                float ih = dropdown_item_height(dd);
-                float sy = 0.0f;
-                vg_widget_get_screen_bounds(widget, NULL, &sy, NULL, NULL);
-                float panel_top = sy + widget->height;
-                float rel_y = event->mouse.screen_y - panel_top + dd->scroll_y;
-                if (rel_y >= 0) {
-                    int idx = (int)(rel_y / ih);
-                    if (idx >= 0 && idx < dd->item_count) {
-                        vg_dropdown_set_selected(dd, idx);
-                    }
+                int idx = -1;
+                if (dropdown_panel_hit(dd, event->mouse.screen_x, event->mouse.screen_y, &idx) &&
+                    idx >= 0) {
+                    vg_dropdown_set_selected(dd, idx);
                 }
                 dd->open = false;
                 dd->hovered_index = -1;
@@ -200,15 +225,13 @@ static bool dropdown_handle_event(vg_widget_t *widget, vg_event_t *event) {
 
         case VG_EVENT_MOUSE_MOVE:
             if (dd->open) {
-                float ih = dropdown_item_height(dd);
-                float sy = 0.0f;
-                vg_widget_get_screen_bounds(widget, NULL, &sy, NULL, NULL);
-                float panel_top = sy + widget->height;
-                float rel_y = event->mouse.screen_y - panel_top + dd->scroll_y;
-                dd->hovered_index = (rel_y >= 0) ? (int)(rel_y / ih) : -1;
-                if (dd->hovered_index >= dd->item_count)
+                int old_hover = dd->hovered_index;
+                if (!dropdown_panel_hit(
+                        dd, event->mouse.screen_x, event->mouse.screen_y, &dd->hovered_index)) {
                     dd->hovered_index = -1;
-                widget->needs_paint = true;
+                }
+                if (old_hover != dd->hovered_index)
+                    widget->needs_paint = true;
                 return true;
             }
             return false;
@@ -302,6 +325,8 @@ int vg_dropdown_add_item(vg_dropdown_t *dropdown, const char *text) {
     }
 
     dropdown->items[dropdown->item_count] = strdup(text);
+    dropdown->base.needs_layout = true;
+    dropdown->base.needs_paint = true;
     return dropdown->item_count++;
 }
 
@@ -324,6 +349,13 @@ void vg_dropdown_remove_item(vg_dropdown_t *dropdown, int index) {
     } else if (dropdown->selected_index > index) {
         dropdown->selected_index--;
     }
+    if (dropdown->hovered_index == index) {
+        dropdown->hovered_index = -1;
+    } else if (dropdown->hovered_index > index) {
+        dropdown->hovered_index--;
+    }
+    dropdown->base.needs_layout = true;
+    dropdown->base.needs_paint = true;
 }
 
 /// @brief Dropdown clear.
@@ -336,6 +368,10 @@ void vg_dropdown_clear(vg_dropdown_t *dropdown) {
     }
     dropdown->item_count = 0;
     dropdown->selected_index = -1;
+    dropdown->hovered_index = -1;
+    dropdown->scroll_y = 0.0f;
+    dropdown->base.needs_layout = true;
+    dropdown->base.needs_paint = true;
 }
 
 /// @brief Dropdown set selected.
@@ -356,6 +392,7 @@ void vg_dropdown_set_selected(vg_dropdown_t *dropdown, int index) {
                             vg_dropdown_get_selected_text(dropdown),
                             dropdown->on_change_data);
     }
+    dropdown->base.needs_paint = true;
 }
 
 /// @brief Dropdown get selected.
@@ -386,6 +423,8 @@ void vg_dropdown_set_font(vg_dropdown_t *dropdown, vg_font_t *font, float size) 
         return;
     dropdown->font = font;
     dropdown->font_size = size;
+    dropdown->base.needs_layout = true;
+    dropdown->base.needs_paint = true;
 }
 
 /// @brief Dropdown set on change.

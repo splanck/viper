@@ -86,6 +86,7 @@ static vg_statusbar_item_t *create_item(vg_statusbar_item_type_t type, const cha
         return NULL;
 
     item->type = type;
+    item->owner = NULL;
     item->text = text ? strdup(text) : NULL;
     item->tooltip = NULL;
     item->min_width = 0;
@@ -486,7 +487,9 @@ static vg_statusbar_item_t *add_item_to_zone(vg_statusbar_t *sb,
 
     (*items)[*count] = item;
     (*count)++;
+    item->owner = sb;
 
+    sb->base.needs_layout = true;
     sb->base.needs_paint = true;
     return item;
 }
@@ -571,9 +574,12 @@ void vg_statusbar_remove_item(vg_statusbar_t *sb, vg_statusbar_item_t *item) {
 
         for (size_t i = 0; i < count; i++) {
             if (items[i] == item) {
+                if (sb->hovered_item == item)
+                    sb->hovered_item = NULL;
                 free_item(item);
                 memmove(&items[i], &items[i + 1], (count - i - 1) * sizeof(vg_statusbar_item_t *));
                 (*counts[z])--;
+                sb->base.needs_layout = true;
                 sb->base.needs_paint = true;
                 return;
             }
@@ -607,9 +613,12 @@ void vg_statusbar_clear_zone(vg_statusbar_t *sb, vg_statusbar_zone_t zone) {
     }
 
     for (size_t i = 0; i < *count; i++) {
+        if (sb->hovered_item == (*items)[i])
+            sb->hovered_item = NULL;
         free_item((*items)[i]);
     }
     *count = 0;
+    sb->base.needs_layout = true;
     sb->base.needs_paint = true;
 }
 
@@ -621,6 +630,8 @@ void vg_statusbar_item_set_text(vg_statusbar_item_t *item, const char *text) {
     if (item->text)
         free(item->text);
     item->text = text ? strdup(text) : NULL;
+    if (item->owner)
+        vg_widget_invalidate_layout(&item->owner->base);
 }
 
 /// @brief Statusbar item set tooltip.
@@ -631,6 +642,8 @@ void vg_statusbar_item_set_tooltip(vg_statusbar_item_t *item, const char *toolti
     if (item->tooltip)
         free(item->tooltip);
     item->tooltip = tooltip ? strdup(tooltip) : NULL;
+    if (item->owner)
+        item->owner->base.needs_paint = true;
 }
 
 /// @brief Statusbar item set progress.
@@ -643,6 +656,8 @@ void vg_statusbar_item_set_progress(vg_statusbar_item_t *item, float progress) {
     if (progress > 1.0f)
         progress = 1.0f;
     item->progress = progress;
+    if (item->owner)
+        item->owner->base.needs_paint = true;
 }
 
 /// @brief Statusbar item set visible.
@@ -650,6 +665,8 @@ void vg_statusbar_item_set_visible(vg_statusbar_item_t *item, bool visible) {
     if (!item)
         return;
     item->visible = visible;
+    if (item->owner)
+        vg_widget_invalidate_layout(&item->owner->base);
 }
 
 /// @brief Statusbar set font.

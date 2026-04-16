@@ -279,6 +279,28 @@ void vg_tooltip_manager_on_leave(vg_tooltip_manager_t *mgr) {
     mgr->pending_show = false;
 }
 
+/// @brief Tooltip manager widget destroyed.
+///
+/// Operates on the global manager and any active tooltip's anchor pointer so
+/// destroying a hovered or anchored widget does not leave a dangling pointer.
+void vg_tooltip_manager_widget_destroyed(vg_widget_t *widget) {
+    if (!widget)
+        return;
+
+    vg_tooltip_manager_t *mgr = &g_tooltip_manager;
+    if (mgr->hovered_widget == widget) {
+        if (mgr->active_tooltip) {
+            vg_tooltip_hide(mgr->active_tooltip);
+        }
+        mgr->hovered_widget = NULL;
+        mgr->pending_show = false;
+    }
+    if (mgr->active_tooltip && mgr->active_tooltip->anchor_widget == widget) {
+        mgr->active_tooltip->anchor_widget = NULL;
+        vg_tooltip_hide(mgr->active_tooltip);
+    }
+}
+
 /// @brief Widget set tooltip text.
 void vg_widget_set_tooltip_text(vg_widget_t *widget, const char *text) {
     if (!widget)

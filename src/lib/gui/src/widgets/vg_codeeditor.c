@@ -436,18 +436,38 @@ static void clear_extra_cursor_selections(vg_codeeditor_t *editor) {
         editor->extra_cursors[i].has_selection = false;
 }
 
-static void clamp_editor_position(vg_codeeditor_t *editor, int *line, int *col) {
-    if (!editor || !line || !col || editor->line_count <= 0)
+// Clamp a single line index to [0, line_count). Use when the caller wants the
+// column to stay untouched (e.g. extending an existing selection's anchor).
+static void clamp_editor_line(vg_codeeditor_t *editor, int *line) {
+    if (!editor || !line || editor->line_count <= 0)
         return;
-
     if (*line < 0)
         *line = 0;
     if (*line >= editor->line_count)
         *line = editor->line_count - 1;
+}
+
+// Clamp a column to [0, lines[line].length] for an already-clamped line index.
+static void clamp_editor_col(vg_codeeditor_t *editor, int line, int *col) {
+    if (!editor || !col || editor->line_count <= 0)
+        return;
+    if (line < 0 || line >= editor->line_count)
+        return;
     if (*col < 0)
         *col = 0;
-    if (*col > (int)editor->lines[*line].length)
-        *col = (int)editor->lines[*line].length;
+    if (*col > (int)editor->lines[line].length)
+        *col = (int)editor->lines[line].length;
+}
+
+// Atomic clamp of both axes. Note that clamping the line index can implicitly
+// shift the column (when the new line is shorter than the requested column).
+// Callers that maintain an independent column on a selection anchor should use
+// clamp_editor_line / clamp_editor_col directly so they control the order.
+static void clamp_editor_position(vg_codeeditor_t *editor, int *line, int *col) {
+    if (!editor || !line || !col || editor->line_count <= 0)
+        return;
+    clamp_editor_line(editor, line);
+    clamp_editor_col(editor, *line, col);
 }
 
 static int compare_positions(int lhs_line, int lhs_col, int rhs_line, int rhs_col) {
@@ -1219,7 +1239,11 @@ static void codeeditor_paint(vg_widget_t *widget, void *canvas) {
         if (thumb_height < 20.0f)
             thumb_height = 20.0f; // Minimum thumb size
 
-        float scroll_ratio = editor->scroll_y / (total_content_height - visible_height);
+        // Guard against exact-fit content (range == 0). Without this the divisor
+        // is 0 and the scroll_ratio becomes NaN; > and < comparisons against NaN
+        // both fail, leaving NaN to feed the int cast (undefined behavior).
+        float scroll_range = total_content_height - visible_height;
+        float scroll_ratio = scroll_range > 0.0f ? editor->scroll_y / scroll_range : 0.0f;
         if (scroll_ratio < 0.0f)
             scroll_ratio = 0.0f;
         if (scroll_ratio > 1.0f)
@@ -1365,6 +1389,7 @@ VG_UNUSED static void delete_char_backward(vg_codeeditor_t *editor) {
         // Join with previous line
         vg_code_line_t *current = &editor->lines[editor->cursor_line];
         vg_code_line_t *prev = &editor->lines[editor->cursor_line - 1];
+        int old_line_count = editor->line_count;
 
         size_t new_col = prev->length;
 
@@ -1383,6 +1408,9 @@ VG_UNUSED static void delete_char_backward(vg_codeeditor_t *editor) {
                 (editor->line_count - editor->cursor_line - 1) * sizeof(vg_code_line_t));
 
         editor->line_count--;
+        if (old_line_count > editor->line_count) {
+            memset(&editor->lines[editor->line_count], 0, sizeof(vg_code_line_t));
+        }
         editor->cursor_line--;
         editor->cursor_col = (int)new_col;
         editor->modified = true;
@@ -1833,12 +1861,25 @@ static void codeeditor_on_focus(vg_widget_t *widget, bool gained) {
     if (gained) {
         editor->cursor_visible = true;
         editor->cursor_blink_time = 0;
+        widget->needs_paint = true;
     }
 }
 
 //=============================================================================
 // CodeEditor API
 //=============================================================================
+
+void vg_codeeditor_tick(vg_codeeditor_t *editor, float dt) {
+    if (!editor || !(editor->base.state & VG_STATE_FOCUSED))
+        return;
+
+    editor->cursor_blink_time += dt;
+    if (editor->cursor_blink_time >= CURSOR_BLINK_RATE) {
+        editor->cursor_blink_time -= CURSOR_BLINK_RATE;
+        editor->cursor_visible = !editor->cursor_visible;
+        editor->base.needs_paint = true;
+    }
+}
 
 void vg_codeeditor_set_text(vg_codeeditor_t *editor, const char *text) {
     if (!editor)
@@ -1850,10 +1891,18 @@ void vg_codeeditor_set_text(vg_codeeditor_t *editor, const char *text) {
     }
     editor->line_count = 0;
 
+    // Compaction paths can leave stale structs past line_count. Clear the full
+    // slot array before reusing line entries so old colors/text metadata cannot
+    // bleed into a new document load or syntax pass.
+    if (editor->lines && editor->line_capacity > 0) {
+        memset(editor->lines, 0, (size_t)editor->line_capacity * sizeof(vg_code_line_t));
+    }
+
     if (!text || !text[0]) {
         // Create empty line
         if (!ensure_line_capacity(editor, 1))
             return;
+        memset(&editor->lines[0], 0, sizeof(vg_code_line_t));
         editor->lines[0].text = malloc(1);
         if (editor->lines[0].text) {
             editor->lines[0].text[0] = '\0';
@@ -1872,6 +1921,7 @@ void vg_codeeditor_set_text(vg_codeeditor_t *editor, const char *text) {
                 break;
 
             vg_code_line_t *line = &editor->lines[editor->line_count];
+            memset(line, 0, sizeof(*line));
             line->text = malloc(len + 1);
             if (line->text) {
                 memcpy(line->text, start, len);
@@ -1889,6 +1939,7 @@ void vg_codeeditor_set_text(vg_codeeditor_t *editor, const char *text) {
         // Ensure at least one line
         if (editor->line_count == 0) {
             if (ensure_line_capacity(editor, 1)) {
+                memset(&editor->lines[0], 0, sizeof(vg_code_line_t));
                 editor->lines[0].text = malloc(1);
                 if (editor->lines[0].text) {
                     editor->lines[0].text[0] = '\0';
@@ -2227,6 +2278,7 @@ static void delete_text_range_internal(
         // Multi-line deletion
         vg_code_line_t *first = &editor->lines[start_line];
         vg_code_line_t *last = &editor->lines[end_line];
+        int old_line_count = editor->line_count;
 
         size_t new_len = start_col + (last->length - end_col);
         if (!ensure_text_capacity(first, new_len + 1))
@@ -2246,6 +2298,11 @@ static void delete_text_range_internal(
                     (editor->line_count - end_line - 1) * sizeof(vg_code_line_t));
         }
         editor->line_count -= lines_removed;
+        if (old_line_count > editor->line_count) {
+            memset(&editor->lines[editor->line_count],
+                   0,
+                   (size_t)(old_line_count - editor->line_count) * sizeof(vg_code_line_t));
+        }
         update_gutter_width(editor);
     }
 

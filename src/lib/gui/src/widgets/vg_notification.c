@@ -389,6 +389,13 @@ void vg_notification_manager_update(vg_notification_manager_t *mgr, uint64_t now
         if (!notif)
             continue;
 
+        // Lazy timestamp: show() runs outside the update tick, so the manager
+        // stamps each notification with the first now_ms it observes. This keeps
+        // both timestamps in the same monotonic clock domain.
+        if (notif->created_at == 0) {
+            notif->created_at = now_ms ? now_ms : 1;
+        }
+
         // Check for auto-dismiss
         if (notif->duration_ms > 0 && !notif->dismissed) {
             uint64_t elapsed = now_ms - notif->created_at;
@@ -457,7 +464,7 @@ uint32_t vg_notification_show_with_action(vg_notification_manager_t *mgr,
     notif->title = title ? strdup(title) : NULL;
     notif->message = message ? strdup(message) : NULL;
     notif->duration_ms = duration_ms;
-    notif->created_at = 0; // Should be set by caller
+    notif->created_at = 0; // Sentinel — populated on first manager_update tick.
     notif->action_label = action_label ? strdup(action_label) : NULL;
     notif->action_callback = action_callback;
     notif->action_user_data = user_data;

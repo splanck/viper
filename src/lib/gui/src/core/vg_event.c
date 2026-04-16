@@ -16,6 +16,23 @@
 #include "vgfx.h"
 #include <string.h>
 
+static bool event_has_widget_local_mouse_coords(vg_event_type_t type) {
+    return type == VG_EVENT_MOUSE_MOVE || type == VG_EVENT_MOUSE_DOWN ||
+           type == VG_EVENT_MOUSE_UP || type == VG_EVENT_CLICK ||
+           type == VG_EVENT_DOUBLE_CLICK || type == VG_EVENT_MOUSE_WHEEL;
+}
+
+static void event_localize_mouse_to_widget(vg_widget_t *widget, vg_event_t *event) {
+    if (!widget || !event || !event_has_widget_local_mouse_coords(event->type))
+        return;
+
+    float sx = 0.0f;
+    float sy = 0.0f;
+    vg_widget_get_screen_bounds(widget, &sx, &sy, NULL, NULL);
+    event->mouse.x = event->mouse.screen_x - sx;
+    event->mouse.y = event->mouse.screen_y - sy;
+}
+
 static vg_widget_t *get_hovered_widget(void) {
     vg_widget_runtime_state_t state = {0};
     vg_widget_get_runtime_state(&state);
@@ -252,39 +269,20 @@ bool vg_event_dispatch(vg_widget_t *root, vg_event_t *event) {
         if (capture) {
             update_hovered_widget(capture);
             event->target = capture;
-
-            // Convert to capture-widget-relative coordinates
-            float sx, sy, sw, sh;
-            vg_widget_get_screen_bounds(capture, &sx, &sy, &sw, &sh);
-            event->mouse.x = event->mouse.screen_x - sx;
-            event->mouse.y = event->mouse.screen_y - sy;
+            event_localize_mouse_to_widget(capture, event);
 
             // For MOUSE_UP, we need to synthesize a CLICK event because
             // vg_event_send()'s CLICK generation depends on contains_point(),
             // which fails for dropdown clicks outside the widget bounds.
             if (event->type == VG_EVENT_MOUSE_UP) {
-                // Send MOUSE_UP first
-                if (capture->vtable && capture->vtable->handle_event)
-                    capture->vtable->handle_event(capture, event);
-
-                // Synthesize and send CLICK
-                vg_event_t click_event = *event;
-                click_event.type = VG_EVENT_CLICK;
-                if (capture->vtable && capture->vtable->handle_event)
-                    capture->vtable->handle_event(capture, &click_event);
-                if (vg_widget_get_input_capture() != capture) {
-                    vg_widget_t *modal = vg_widget_get_modal_root();
-                    vg_widget_t *hit_root = (modal && modal->visible) ? modal : root;
-                    vg_widget_t *target =
-                        vg_widget_hit_test(hit_root, event->mouse.screen_x, event->mouse.screen_y);
-                    update_hovered_widget(target);
+                bool handled = vg_event_send(capture, event);
+                if (!vg_widget_contains_point(
+                        capture, event->mouse.screen_x, event->mouse.screen_y)) {
+                    vg_event_t click_event = *event;
+                    click_event.type = VG_EVENT_CLICK;
+                    event_localize_mouse_to_widget(capture, &click_event);
+                    handled |= vg_event_send(capture, &click_event);
                 }
-                return true;
-            }
-
-            // For other mouse events, call handle_event directly
-            if (capture->vtable && capture->vtable->handle_event) {
-                bool handled = capture->vtable->handle_event(capture, event);
                 if (vg_widget_get_input_capture() != capture) {
                     vg_widget_t *modal = vg_widget_get_modal_root();
                     vg_widget_t *hit_root = (modal && modal->visible) ? modal : root;
@@ -294,7 +292,16 @@ bool vg_event_dispatch(vg_widget_t *root, vg_event_t *event) {
                 }
                 return handled;
             }
-            return false;
+
+            bool handled = vg_event_send(capture, event);
+            if (vg_widget_get_input_capture() != capture) {
+                vg_widget_t *modal = vg_widget_get_modal_root();
+                vg_widget_t *hit_root = (modal && modal->visible) ? modal : root;
+                vg_widget_t *target =
+                    vg_widget_hit_test(hit_root, event->mouse.screen_x, event->mouse.screen_y);
+                update_hovered_widget(target);
+            }
+            return handled;
         }
 
         // When a modal root is active, restrict hit-testing to its subtree so
@@ -311,12 +318,7 @@ bool vg_event_dispatch(vg_widget_t *root, vg_event_t *event) {
         }
         if (target) {
             event->target = target;
-
-            // Convert to target-relative coordinates
-            float sx, sy, sw, sh;
-            vg_widget_get_screen_bounds(target, &sx, &sy, &sw, &sh);
-            event->mouse.x = event->mouse.screen_x - sx;
-            event->mouse.y = event->mouse.screen_y - sy;
+            event_localize_mouse_to_widget(target, event);
 
             return vg_event_send(target, event);
         }
@@ -377,6 +379,13 @@ bool vg_event_send(vg_widget_t *widget, vg_event_t *event) {
     if (!widget || !event)
         return false;
 
+    const bool restore_mouse =
+        event_has_widget_local_mouse_coords(event->type) && event->target != NULL;
+    const float target_mouse_x = event->mouse.x;
+    const float target_mouse_y = event->mouse.y;
+
+    event_localize_mouse_to_widget(widget, event);
+
     // Handle common state changes for mouse events
     if (event->type == VG_EVENT_MOUSE_ENTER) {
         widget->state |= VG_STATE_HOVERED;
@@ -409,6 +418,10 @@ bool vg_event_send(vg_widget_t *widget, vg_event_t *event) {
     if (widget->vtable && widget->vtable->handle_event) {
         if (widget->vtable->handle_event(widget, event)) {
             event->handled = true;
+            if (restore_mouse) {
+                event->mouse.x = target_mouse_x;
+                event->mouse.y = target_mouse_y;
+            }
             return true;
         }
     }
@@ -416,13 +429,23 @@ bool vg_event_send(vg_widget_t *widget, vg_event_t *event) {
     // Bubble up the parent chain iteratively (avoids stack overflow on deep trees)
     vg_widget_t *current = widget->parent;
     while (!event->handled && current) {
+        event_localize_mouse_to_widget(current, event);
         if (current->vtable && current->vtable->handle_event) {
             if (current->vtable->handle_event(current, event)) {
                 event->handled = true;
+                if (restore_mouse) {
+                    event->mouse.x = target_mouse_x;
+                    event->mouse.y = target_mouse_y;
+                }
                 return true;
             }
         }
         current = current->parent;
+    }
+
+    if (restore_mouse) {
+        event->mouse.x = target_mouse_x;
+        event->mouse.y = target_mouse_y;
     }
 
     return event->handled;

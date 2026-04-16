@@ -143,6 +143,40 @@ static void textinput_set_cursor_internal(vg_textinput_t *input, size_t pos) {
     input->selection_end = clamped;
 }
 
+static void textinput_ensure_cursor_visible(vg_textinput_t *input) {
+    if (!input || !input->font || input->multiline)
+        return;
+
+    float padding = vg_theme_get_current()->input.padding_h;
+    float viewport = input->base.width - padding * 2.0f;
+    if (viewport <= 0.0f) {
+        input->scroll_x = 0.0f;
+        return;
+    }
+
+    float cursor_x =
+        vg_font_get_cursor_x(input->font, input->font_size, input->text, (int)input->cursor_pos);
+    if (cursor_x < input->scroll_x) {
+        input->scroll_x = cursor_x;
+    } else if (cursor_x > input->scroll_x + viewport) {
+        input->scroll_x = cursor_x - viewport;
+    }
+
+    float text_width = 0.0f;
+    if (input->text_len > 0) {
+        vg_text_metrics_t metrics;
+        vg_font_measure_text(input->font, input->font_size, input->text, &metrics);
+        text_width = metrics.width;
+    }
+    float max_scroll = text_width - viewport;
+    if (max_scroll < 0.0f)
+        max_scroll = 0.0f;
+    if (input->scroll_x < 0.0f)
+        input->scroll_x = 0.0f;
+    if (input->scroll_x > max_scroll)
+        input->scroll_x = max_scroll;
+}
+
 //=============================================================================
 // TextInput Implementation
 //=============================================================================
@@ -277,6 +311,7 @@ static void textinput_measure(vg_widget_t *widget, float available_width, float 
 static void textinput_paint(vg_widget_t *widget, void *canvas) {
     vg_textinput_t *input = (vg_textinput_t *)widget;
     vg_theme_t *theme = vg_theme_get_current();
+    vgfx_window_t win = (vgfx_window_t)canvas;
 
     // Determine colors based on state
     uint32_t text_color = input->text_color;
@@ -288,13 +323,13 @@ static void textinput_paint(vg_widget_t *widget, void *canvas) {
     // Draw background and border
     uint32_t border_color = (widget->state & VG_STATE_FOCUSED) ? theme->colors.border_focus
                                                                : theme->colors.border_primary;
-    vgfx_fill_rect((vgfx_window_t)canvas,
+    vgfx_fill_rect(win,
                    (int32_t)widget->x,
                    (int32_t)widget->y,
                    (int32_t)widget->width,
                    (int32_t)widget->height,
                    input->bg_color);
-    vgfx_rect((vgfx_window_t)canvas,
+    vgfx_rect(win,
               (int32_t)widget->x,
               (int32_t)widget->y,
               (int32_t)widget->width,
@@ -305,6 +340,10 @@ static void textinput_paint(vg_widget_t *widget, void *canvas) {
     float padding = theme->input.padding_h;
     float text_x = widget->x + padding - input->scroll_x;
     float text_y = widget->y;
+    int32_t clip_x = (int32_t)(widget->x + 1.0f);
+    int32_t clip_y = (int32_t)(widget->y + 1.0f);
+    int32_t clip_w = (int32_t)(widget->width - 2.0f);
+    int32_t clip_h = (int32_t)(widget->height - 2.0f);
 
     // Draw text or placeholder
     if (!input->font)
@@ -321,6 +360,9 @@ static void textinput_paint(vg_widget_t *widget, void *canvas) {
         display_text = input->placeholder;
         display_color = input->placeholder_color;
     }
+
+    if (clip_w > 0 && clip_h > 0)
+        vgfx_set_clip(win, clip_x, clip_y, clip_w, clip_h);
 
     // Draw selection highlight if focused
     if ((widget->state & VG_STATE_FOCUSED) && input->selection_start != input->selection_end) {
@@ -339,7 +381,7 @@ static void textinput_paint(vg_widget_t *widget, void *canvas) {
         float padding = theme->input.padding_h;
         float sel_abs_x = widget->x + padding + start_x - input->scroll_x;
         float sel_w = end_x - start_x;
-        vgfx_fill_rect((vgfx_window_t)canvas,
+        vgfx_fill_rect(win,
                        (int32_t)sel_abs_x,
                        (int32_t)widget->y,
                        (int32_t)sel_w,
@@ -349,15 +391,23 @@ static void textinput_paint(vg_widget_t *widget, void *canvas) {
 
     // Draw text (with password masking if needed)
     if (input->password_mode && input->text_len > 0) {
-        // Mask text with asterisks
-        char masked[1024];
+        // Mask each codepoint with one asterisk. The previous implementation
+        // used a fixed-size 1024-byte buffer that silently truncated long
+        // password content — users had no way to tell their password was
+        // longer than the visible asterisks. Allocate exactly what is needed.
         size_t char_count = textinput_char_count(input);
-        size_t n = char_count < sizeof(masked) - 1 ? char_count : sizeof(masked) - 1;
-        for (size_t m = 0; m < n; m++)
-            masked[m] = '*';
-        masked[n] = '\0';
-        vg_font_draw_text(
-            canvas, input->font, input->font_size, text_x, text_y, masked, display_color);
+        char stack_buf[256];
+        char *masked = (char_count + 1 <= sizeof(stack_buf)) ? stack_buf
+                                                              : (char *)malloc(char_count + 1);
+        if (masked) {
+            for (size_t m = 0; m < char_count; m++)
+                masked[m] = '*';
+            masked[char_count] = '\0';
+            vg_font_draw_text(
+                canvas, input->font, input->font_size, text_x, text_y, masked, display_color);
+            if (masked != stack_buf)
+                free(masked);
+        }
     } else {
         vg_font_draw_text(
             canvas, input->font, input->font_size, text_x, text_y, display_text, display_color);
@@ -369,13 +419,16 @@ static void textinput_paint(vg_widget_t *widget, void *canvas) {
             text_x + vg_font_get_cursor_x(
                          input->font, input->font_size, input->text, (int)input->cursor_pos);
         // Draw cursor line
-        vgfx_line((vgfx_window_t)canvas,
+        vgfx_line(win,
                   (int32_t)cursor_x,
                   (int32_t)widget->y + 2,
                   (int32_t)cursor_x,
                   (int32_t)(widget->y + widget->height - 2),
                   text_color);
     }
+
+    if (clip_w > 0 && clip_h > 0)
+        vgfx_clear_clip(win);
 }
 
 //=============================================================================
@@ -450,6 +503,7 @@ static void textinput_undo(vg_textinput_t *input) {
 
     size_t cur = input->undo_cursors[input->undo_pos];
     textinput_set_cursor_internal(input, cur);
+    textinput_ensure_cursor_visible(input);
     input->base.needs_paint = true;
 }
 
@@ -471,6 +525,7 @@ static void textinput_redo(vg_textinput_t *input) {
 
     size_t cur = input->undo_cursors[input->undo_pos];
     textinput_set_cursor_internal(input, cur);
+    textinput_ensure_cursor_visible(input);
     input->base.needs_paint = true;
 }
 
@@ -496,6 +551,7 @@ static bool textinput_handle_event(vg_widget_t *widget, vg_event_t *event) {
                 }
                 input->selection_start = input->cursor_pos;
                 input->selection_end = input->cursor_pos;
+                textinput_ensure_cursor_visible(input);
             }
             return true;
 
@@ -593,6 +649,7 @@ static bool textinput_handle_event(vg_widget_t *widget, vg_event_t *event) {
                     default:
                         break;
                 }
+                textinput_ensure_cursor_visible(input);
                 widget->needs_paint = true;
                 return true;
             }
@@ -617,6 +674,7 @@ static bool textinput_handle_event(vg_widget_t *widget, vg_event_t *event) {
                             input->selection_start = input->selection_end = pos;
                         }
                         input->cursor_pos = pos;
+                        textinput_ensure_cursor_visible(input);
                         widget->needs_paint = true;
                         return true;
                     }
@@ -636,6 +694,7 @@ static bool textinput_handle_event(vg_widget_t *widget, vg_event_t *event) {
                             input->selection_start = input->selection_end = pos;
                         }
                         input->cursor_pos = pos;
+                        textinput_ensure_cursor_visible(input);
                         widget->needs_paint = true;
                         return true;
                     }
@@ -656,6 +715,7 @@ static bool textinput_handle_event(vg_widget_t *widget, vg_event_t *event) {
                         memmove(input->text + start, input->text + end, input->text_len - end + 1);
                         input->cursor_pos--;
                         input->text_len -= (end - start);
+                        textinput_ensure_cursor_visible(input);
                         textinput_push_undo(input);
                         if (input->on_change) {
                             input->on_change(widget, input->text, input->on_change_data);
@@ -672,11 +732,13 @@ static bool textinput_handle_event(vg_widget_t *widget, vg_event_t *event) {
                         size_t end = textinput_byte_offset(input, input->cursor_pos + 1);
                         memmove(input->text + start, input->text + end, input->text_len - end + 1);
                         input->text_len -= (end - start);
+                        textinput_ensure_cursor_visible(input);
                         textinput_push_undo(input);
                         if (input->on_change) {
                             input->on_change(widget, input->text, input->on_change_data);
                         }
                     }
+                    textinput_ensure_cursor_visible(input);
                     break;
 
                 case VG_KEY_LEFT:
@@ -693,6 +755,7 @@ static bool textinput_handle_event(vg_widget_t *widget, vg_event_t *event) {
                             input->cursor_pos--;
                         input->selection_start = input->selection_end = input->cursor_pos;
                     }
+                    textinput_ensure_cursor_visible(input);
                     break;
 
                 case VG_KEY_RIGHT:
@@ -707,6 +770,7 @@ static bool textinput_handle_event(vg_widget_t *widget, vg_event_t *event) {
                             input->cursor_pos++;
                         input->selection_start = input->selection_end = input->cursor_pos;
                     }
+                    textinput_ensure_cursor_visible(input);
                     break;
 
                 case VG_KEY_HOME:
@@ -717,6 +781,7 @@ static bool textinput_handle_event(vg_widget_t *widget, vg_event_t *event) {
                         input->cursor_pos = 0;
                         input->selection_start = input->selection_end = 0;
                     }
+                    textinput_ensure_cursor_visible(input);
                     break;
 
                 case VG_KEY_END:
@@ -808,6 +873,9 @@ void vg_textinput_set_text(vg_textinput_t *input, const char *text) {
     }
     input->text_len = len;
     textinput_set_cursor_internal(input, textinput_char_count(input));
+    input->scroll_x = 0.0f;
+    input->scroll_y = 0.0f;
+    textinput_ensure_cursor_visible(input);
 
     input->base.needs_paint = true;
 }
@@ -856,6 +924,7 @@ void vg_textinput_set_cursor(vg_textinput_t *input, size_t pos) {
         return;
 
     textinput_set_cursor_internal(input, pos);
+    textinput_ensure_cursor_visible(input);
     input->base.needs_paint = true;
 }
 
@@ -867,6 +936,7 @@ void vg_textinput_select(vg_textinput_t *input, size_t start, size_t end) {
     input->selection_start = textinput_clamp_char_pos(input, start);
     input->selection_end = textinput_clamp_char_pos(input, end);
     input->cursor_pos = input->selection_end;
+    textinput_ensure_cursor_visible(input);
     input->base.needs_paint = true;
 }
 
@@ -878,6 +948,7 @@ void vg_textinput_select_all(vg_textinput_t *input) {
     input->selection_start = 0;
     input->selection_end = textinput_char_count(input);
     input->cursor_pos = input->selection_end;
+    textinput_ensure_cursor_visible(input);
     input->base.needs_paint = true;
 }
 
@@ -918,6 +989,7 @@ void vg_textinput_insert(vg_textinput_t *input, const char *text) {
     input->text_len = new_len;
     input->cursor_pos += textinput_codepoint_count_in_prefix(text, insert_len);
     input->selection_start = input->selection_end = input->cursor_pos;
+    textinput_ensure_cursor_visible(input);
 
     input->base.needs_paint = true;
 
@@ -946,6 +1018,7 @@ void vg_textinput_delete_selection(vg_textinput_t *input) {
     input->cursor_pos = start;
     input->selection_start = start;
     input->selection_end = start;
+    textinput_ensure_cursor_visible(input);
 
     input->base.needs_paint = true;
 
@@ -986,6 +1059,7 @@ void vg_textinput_set_font(vg_textinput_t *input, vg_font_t *font, float size) {
 
     input->font = font;
     input->font_size = size > 0 ? size : vg_theme_get_current()->typography.size_normal;
+    textinput_ensure_cursor_visible(input);
     input->base.needs_layout = true;
     input->base.needs_paint = true;
 }

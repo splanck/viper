@@ -462,6 +462,7 @@ vg_widget_t *vg_flex_create(void) {
     layout->direction = VG_DIRECTION_ROW;
     layout->align_items = VG_ALIGN_STRETCH;
     layout->justify_content = VG_JUSTIFY_START;
+    layout->align_content = VG_ALIGN_START;
     layout->gap = 0;
     layout->wrap = false;
     widget->impl_data = layout;
@@ -526,6 +527,115 @@ void vg_flex_set_wrap(vg_widget_t *flex, bool wrap) {
     flex->needs_layout = true;
 }
 
+typedef struct flex_line {
+    vg_widget_t **children;
+    int count;
+    float main_outer;
+    float cross_outer;
+    float total_flex;
+} flex_line_t;
+
+static float flex_child_main_size(vg_widget_t *child, bool is_row) {
+    if (!child)
+        return 0.0f;
+    return is_row ? child->measured_width : child->measured_height;
+}
+
+static float flex_child_cross_size(vg_widget_t *child, bool is_row) {
+    if (!child)
+        return 0.0f;
+    return is_row ? child->measured_height : child->measured_width;
+}
+
+static float flex_child_main_outer(vg_widget_t *child, bool is_row) {
+    if (!child)
+        return 0.0f;
+    return flex_child_main_size(child, is_row) +
+           (is_row ? child->layout.margin_left + child->layout.margin_right
+                   : child->layout.margin_top + child->layout.margin_bottom);
+}
+
+static float flex_child_cross_outer(vg_widget_t *child, bool is_row) {
+    if (!child)
+        return 0.0f;
+    return flex_child_cross_size(child, is_row) +
+           (is_row ? child->layout.margin_top + child->layout.margin_bottom
+                   : child->layout.margin_left + child->layout.margin_right);
+}
+
+static int flex_collect_visible_children(vg_widget_t *self, vg_widget_t ***out_children) {
+    int count = 0;
+    VG_FOREACH_VISIBLE_CHILD(self, child) {
+        count++;
+    }
+
+    if (!out_children)
+        return count;
+    *out_children = NULL;
+    if (count <= 0)
+        return 0;
+
+    vg_widget_t **children = malloc((size_t)count * sizeof(vg_widget_t *));
+    if (!children)
+        return 0;
+
+    int index = 0;
+    VG_FOREACH_VISIBLE_CHILD(self, child) {
+        children[index++] = child;
+    }
+    *out_children = children;
+    return count;
+}
+
+static int flex_build_lines(vg_widget_t *self,
+                            vg_flex_layout_t *layout,
+                            bool is_row,
+                            float main_limit,
+                            vg_widget_t **children,
+                            int child_count,
+                            flex_line_t **out_lines) {
+    if (!out_lines) {
+        return 0;
+    }
+    *out_lines = NULL;
+    if (!children || child_count <= 0)
+        return 0;
+
+    flex_line_t *lines = calloc((size_t)child_count, sizeof(flex_line_t));
+    if (!lines)
+        return 0;
+
+    int line_count = 0;
+    for (int i = 0; i < child_count; i++) {
+        vg_widget_t *child = children[i];
+        float child_main_outer = flex_child_main_outer(child, is_row);
+        float child_cross_outer = flex_child_cross_outer(child, is_row);
+
+        if (line_count == 0)
+            line_count = 1;
+        flex_line_t *line = &lines[line_count - 1];
+        bool wraps = layout->wrap && line->count > 0 && main_limit > 0.0f &&
+                     (line->main_outer + layout->gap + child_main_outer) > main_limit;
+        if (wraps) {
+            line_count++;
+            line = &lines[line_count - 1];
+        }
+
+        if (!line->children)
+            line->children = children + i;
+        if (line->count > 0)
+            line->main_outer += layout->gap;
+        line->count++;
+        line->main_outer += child_main_outer;
+        if (child_cross_outer > line->cross_outer)
+            line->cross_outer = child_cross_outer;
+        line->total_flex += child->layout.flex;
+    }
+
+    *out_lines = lines;
+    return line_count;
+}
+
 static void flex_measure(vg_widget_t *self, float available_width, float available_height) {
     if (!self || !self->impl_data)
         return;
@@ -554,21 +664,58 @@ static void flex_measure(vg_widget_t *self, float available_width, float availab
 
         main_size += child_main;
         if (child_cross > cross_size)
-            cross_size = child_cross;
+        cross_size = child_cross;
         visible_count++;
     }
 
-    if (visible_count > 1) {
+    if (layout->wrap) {
+        vg_widget_t **children = NULL;
+        int child_count = flex_collect_visible_children(self, &children);
+        float available_main = is_row ? available_width - padding_h : available_height - padding_v;
+        if (available_main < 0.0f)
+            available_main = 0.0f;
+        flex_line_t *lines = NULL;
+        int line_count =
+            flex_build_lines(self, layout, is_row, available_main, children, child_count, &lines);
+
+        float measured_main = 0.0f;
+        float measured_cross = 0.0f;
+        for (int i = 0; i < line_count; i++) {
+            if (lines[i].main_outer > measured_main)
+                measured_main = lines[i].main_outer;
+            measured_cross += lines[i].cross_outer;
+            if (i + 1 < line_count)
+                measured_cross += layout->gap;
+        }
+
+        if (is_row) {
+            self->measured_width = measured_main + padding_h;
+            self->measured_height = measured_cross + padding_v;
+        } else {
+            self->measured_width = measured_cross + padding_h;
+            self->measured_height = measured_main + padding_v;
+        }
+
+        free(lines);
+        free(children);
+    } else {
+        if (visible_count > 1) {
         main_size += layout->gap * (visible_count - 1);
+        }
+
+        if (is_row) {
+            self->measured_width = main_size + padding_h;
+            self->measured_height = cross_size + padding_v;
+        } else {
+            self->measured_width = cross_size + padding_h;
+            self->measured_height = main_size + padding_v;
+        }
     }
 
-    if (is_row) {
-        self->measured_width = main_size + padding_h;
-        self->measured_height = cross_size + padding_v;
-    } else {
-        self->measured_width = cross_size + padding_h;
-        self->measured_height = main_size + padding_v;
-    }
+    if (self->constraints.min_width > 0 && self->measured_width < self->constraints.min_width)
+        self->measured_width = self->constraints.min_width;
+    if (self->constraints.min_height > 0 && self->measured_height < self->constraints.min_height)
+        self->measured_height = self->constraints.min_height;
 }
 
 static void flex_arrange(vg_widget_t *self, float x, float y, float width, float height) {
@@ -593,6 +740,161 @@ static void flex_arrange(vg_widget_t *self, float x, float y, float width, float
 
     float main_size = is_row ? content_width : content_height;
     float cross_size = is_row ? content_height : content_width;
+
+    if (layout->wrap) {
+        vg_widget_t **children = NULL;
+        int child_count = flex_collect_visible_children(self, &children);
+        flex_line_t *lines = NULL;
+        int line_count =
+            flex_build_lines(self, layout, is_row, main_size, children, child_count, &lines);
+        if (line_count > 0 && lines) {
+            float total_cross = 0.0f;
+            for (int i = 0; i < line_count; i++) {
+                total_cross += lines[i].cross_outer;
+                if (i + 1 < line_count)
+                    total_cross += layout->gap;
+            }
+
+            float extra_cross = cross_size - total_cross;
+            if (extra_cross < 0.0f)
+                extra_cross = 0.0f;
+            float line_cross_extra = 0.0f;
+            float line_cross_offset = 0.0f;
+            switch (layout->align_content) {
+                case VG_ALIGN_CENTER:
+                    line_cross_offset = extra_cross * 0.5f;
+                    break;
+                case VG_ALIGN_END:
+                    line_cross_offset = extra_cross;
+                    break;
+                case VG_ALIGN_STRETCH:
+                    if (line_count > 0)
+                        line_cross_extra = extra_cross / (float)line_count;
+                    break;
+                case VG_ALIGN_START:
+                default:
+                    break;
+            }
+
+            float cross_pos = line_cross_offset;
+            for (int line_index = 0; line_index < line_count; line_index++) {
+                flex_line_t *line = &lines[line_index];
+                float line_cross_size = line->cross_outer + line_cross_extra;
+                float available_main = main_size - line->main_outer;
+                if (available_main < 0.0f)
+                    available_main = 0.0f;
+                float flex_unit =
+                    (line->total_flex > 0.0f && available_main > 0.0f) ? available_main / line->total_flex
+                                                                        : 0.0f;
+                float used_main = line->main_outer + flex_unit * line->total_flex;
+                float extra_main = main_size - used_main;
+                float justify_offset = 0.0f;
+                float justify_gap_add = 0.0f;
+                compute_justify_distribution(layout->justify_content,
+                                             line->count,
+                                             extra_main,
+                                             &justify_offset,
+                                             &justify_gap_add);
+
+                float main_pos = is_reverse ? (main_size - justify_offset) : justify_offset;
+                for (int child_index = 0; child_index < line->count; child_index++) {
+                    vg_widget_t *child = line->children[child_index];
+                    float child_main_size = flex_child_main_size(child, is_row);
+                    if (child->layout.flex > 0.0f)
+                        child_main_size += flex_unit * child->layout.flex;
+
+                    float child_cross_size =
+                        layout->align_items == VG_ALIGN_STRETCH
+                            ? line_cross_size - (is_row ? child->layout.margin_top + child->layout.margin_bottom
+                                                        : child->layout.margin_left + child->layout.margin_right)
+                            : flex_child_cross_size(child, is_row);
+                    if (child_cross_size < 0.0f)
+                        child_cross_size = 0.0f;
+
+                    float child_x = content_x;
+                    float child_y = content_y;
+                    float child_w = 0.0f;
+                    float child_h = 0.0f;
+
+                    if (is_row) {
+                        child_w = child_main_size;
+                        child_h = child_cross_size;
+
+                        if (is_reverse) {
+                            main_pos -= child_main_size + child->layout.margin_right;
+                            child_x = content_x + main_pos;
+                            main_pos -= child->layout.margin_left + layout->gap + justify_gap_add;
+                        } else {
+                            child_x = content_x + main_pos + child->layout.margin_left;
+                            main_pos += child_main_size + child->layout.margin_left +
+                                        child->layout.margin_right + layout->gap + justify_gap_add;
+                        }
+
+                        float cross_inner = line_cross_size - child->layout.margin_top -
+                                            child->layout.margin_bottom - child_h;
+                        if (cross_inner < 0.0f)
+                            cross_inner = 0.0f;
+                        switch (layout->align_items) {
+                            case VG_ALIGN_CENTER:
+                                child_y = content_y + cross_pos + child->layout.margin_top +
+                                          cross_inner * 0.5f;
+                                break;
+                            case VG_ALIGN_END:
+                                child_y = content_y + cross_pos + line_cross_size -
+                                          child->layout.margin_bottom - child_h;
+                                break;
+                            case VG_ALIGN_START:
+                            case VG_ALIGN_STRETCH:
+                            default:
+                                child_y = content_y + cross_pos + child->layout.margin_top;
+                                break;
+                        }
+                    } else {
+                        child_h = child_main_size;
+                        child_w = child_cross_size;
+
+                        if (is_reverse) {
+                            main_pos -= child_main_size + child->layout.margin_bottom;
+                            child_y = content_y + main_pos;
+                            main_pos -= child->layout.margin_top + layout->gap + justify_gap_add;
+                        } else {
+                            child_y = content_y + main_pos + child->layout.margin_top;
+                            main_pos += child_main_size + child->layout.margin_top +
+                                        child->layout.margin_bottom + layout->gap + justify_gap_add;
+                        }
+
+                        float cross_inner = line_cross_size - child->layout.margin_left -
+                                            child->layout.margin_right - child_w;
+                        if (cross_inner < 0.0f)
+                            cross_inner = 0.0f;
+                        switch (layout->align_items) {
+                            case VG_ALIGN_CENTER:
+                                child_x = content_x + cross_pos + child->layout.margin_left +
+                                          cross_inner * 0.5f;
+                                break;
+                            case VG_ALIGN_END:
+                                child_x = content_x + cross_pos + line_cross_size -
+                                          child->layout.margin_right - child_w;
+                                break;
+                            case VG_ALIGN_START:
+                            case VG_ALIGN_STRETCH:
+                            default:
+                                child_x = content_x + cross_pos + child->layout.margin_left;
+                                break;
+                        }
+                    }
+
+                    vg_widget_arrange(child, child_x, child_y, child_w, child_h);
+                }
+
+                cross_pos += line_cross_size + layout->gap;
+            }
+        }
+
+        free(lines);
+        free(children);
+        return;
+    }
 
     // Calculate total fixed and flex
     float total_fixed = 0;
@@ -647,7 +949,15 @@ static void flex_arrange(vg_widget_t *self, float x, float y, float width, float
 
         if (is_row) {
             child_w = child_main_size;
-            child_h = child_cross_size - child->layout.margin_top - child->layout.margin_bottom;
+            // In STRETCH mode, child_cross_size is the full cross axis — subtract
+            // margins so the child fills the inset rect. In other modes,
+            // child_cross_size is the child's own measured size and must not be
+            // shrunk further (the previous behavior clipped descenders/icons by
+            // a few pixels when margins were nonzero).
+            if (layout->align_items == VG_ALIGN_STRETCH)
+                child_h = child_cross_size - child->layout.margin_top - child->layout.margin_bottom;
+            else
+                child_h = child_cross_size;
 
             if (is_reverse) {
                 main_pos -= child_main_size + child->layout.margin_right;
@@ -664,7 +974,10 @@ static void flex_arrange(vg_widget_t *self, float x, float y, float width, float
                     child_y = content_y + child->layout.margin_top;
                     break;
                 case VG_ALIGN_CENTER:
-                    child_y = content_y + (cross_size - child_h) / 2;
+                    child_y = content_y + child->layout.margin_top +
+                              (cross_size - child->layout.margin_top -
+                               child->layout.margin_bottom - child_h) /
+                                  2.0f;
                     break;
                 case VG_ALIGN_END:
                     child_y = content_y + cross_size - child_h - child->layout.margin_bottom;
@@ -675,7 +988,10 @@ static void flex_arrange(vg_widget_t *self, float x, float y, float width, float
             }
         } else {
             child_h = child_main_size;
-            child_w = child_cross_size - child->layout.margin_left - child->layout.margin_right;
+            if (layout->align_items == VG_ALIGN_STRETCH)
+                child_w = child_cross_size - child->layout.margin_left - child->layout.margin_right;
+            else
+                child_w = child_cross_size;
 
             if (is_reverse) {
                 main_pos -= child_main_size + child->layout.margin_bottom;
@@ -692,7 +1008,10 @@ static void flex_arrange(vg_widget_t *self, float x, float y, float width, float
                     child_x = content_x + child->layout.margin_left;
                     break;
                 case VG_ALIGN_CENTER:
-                    child_x = content_x + (cross_size - child_w) / 2;
+                    child_x = content_x + child->layout.margin_left +
+                              (cross_size - child->layout.margin_left -
+                               child->layout.margin_right - child_w) /
+                                  2.0f;
                     break;
                 case VG_ALIGN_END:
                     child_x = content_x + cross_size - child_w - child->layout.margin_right;
@@ -742,6 +1061,23 @@ static grid_placement_t *grid_find_placement(grid_impl_t *g, vg_widget_t *child)
             return &g->placements[i];
     }
     return NULL;
+}
+
+static bool grid_resize_track_array(float **tracks, int old_count, int new_count) {
+    if (!tracks || new_count <= 0)
+        return false;
+    if (!*tracks) {
+        *tracks = calloc((size_t)new_count, sizeof(float));
+        return *tracks != NULL;
+    }
+    float *resized = realloc(*tracks, (size_t)new_count * sizeof(float));
+    if (!resized)
+        return false;
+    if (new_count > old_count) {
+        memset(resized + old_count, 0, (size_t)(new_count - old_count) * sizeof(float));
+    }
+    *tracks = resized;
+    return true;
 }
 
 static void grid_measure(vg_widget_t *self, float available_width, float available_height) {
@@ -968,14 +1304,22 @@ vg_widget_t *vg_grid_create(int columns, int rows) {
 void vg_grid_set_columns(vg_widget_t *grid, int columns) {
     if (!grid || !grid->impl_data || columns < 1)
         return;
-    ((grid_impl_t *)grid->impl_data)->layout.columns = columns;
+    grid_impl_t *g = (grid_impl_t *)grid->impl_data;
+    int old_columns = g->layout.columns;
+    g->layout.columns = columns;
+    if (g->layout.column_widths)
+        (void)grid_resize_track_array(&g->layout.column_widths, old_columns, columns);
     grid->needs_layout = true;
 }
 
 void vg_grid_set_rows(vg_widget_t *grid, int rows) {
     if (!grid || !grid->impl_data || rows < 1)
         return;
-    ((grid_impl_t *)grid->impl_data)->layout.rows = rows;
+    grid_impl_t *g = (grid_impl_t *)grid->impl_data;
+    int old_rows = g->layout.rows;
+    g->layout.rows = rows;
+    if (g->layout.row_heights)
+        (void)grid_resize_track_array(&g->layout.row_heights, old_rows, rows);
     grid->needs_layout = true;
 }
 
@@ -995,11 +1339,8 @@ void vg_grid_set_column_width(vg_widget_t *grid, int column, float width) {
     int cols = g->layout.columns;
     if (column >= cols)
         return;
-    if (!g->layout.column_widths) {
-        g->layout.column_widths = calloc(cols, sizeof(float));
-        if (!g->layout.column_widths)
-            return;
-    }
+    if (!g->layout.column_widths && !grid_resize_track_array(&g->layout.column_widths, 0, cols))
+        return;
     g->layout.column_widths[column] = width;
     grid->needs_layout = true;
 }
@@ -1011,11 +1352,8 @@ void vg_grid_set_row_height(vg_widget_t *grid, int row, float height) {
     int rows = g->layout.rows;
     if (row >= rows)
         return;
-    if (!g->layout.row_heights) {
-        g->layout.row_heights = calloc(rows, sizeof(float));
-        if (!g->layout.row_heights)
-            return;
-    }
+    if (!g->layout.row_heights && !grid_resize_track_array(&g->layout.row_heights, 0, rows))
+        return;
     g->layout.row_heights[row] = height;
     grid->needs_layout = true;
 }

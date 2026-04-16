@@ -108,6 +108,29 @@ static const vg_theme_t *rt_gui_theme_base(rt_gui_theme_kind_t kind) {
     return (kind == RT_GUI_THEME_LIGHT) ? vg_theme_light() : vg_theme_dark();
 }
 
+static void rt_gui_tick_widget_tree(vg_widget_t *widget, float dt) {
+    if (!widget || !widget->visible || dt <= 0.0f)
+        return;
+
+    switch (widget->type) {
+        case VG_WIDGET_TEXTINPUT:
+            vg_textinput_tick((vg_textinput_t *)widget, dt);
+            break;
+        case VG_WIDGET_PROGRESS:
+            vg_progressbar_tick((vg_progressbar_t *)widget, dt);
+            break;
+        case VG_WIDGET_CODEEDITOR:
+            vg_codeeditor_tick((vg_codeeditor_t *)widget, dt);
+            break;
+        default:
+            break;
+    }
+
+    VG_FOREACH_CHILD(widget, child) {
+        rt_gui_tick_widget_tree(child, dt);
+    }
+}
+
 /// @brief Apply a HiDPI scale factor to all size-sensitive theme fields.
 /// @details Multiplies typography sizes, spacing constants, button/input
 ///          heights, padding, and scrollbar width by the given scale. This
@@ -1144,11 +1167,20 @@ void rt_gui_app_render(void *app_ptr) {
     // Cache window dimensions once — reused for layout and dialog centering.
     int32_t win_w = 0, win_h = 0;
     vgfx_get_size(app->window, &win_w, &win_h);
+    uint64_t now_ms = rt_gui_now_ms();
+    float dt = 0.0f;
+    if (app->last_render_time_ms > 0 && now_ms > app->last_render_time_ms) {
+        dt = (float)(now_ms - app->last_render_time_ms) / 1000.0f;
+        if (dt > 0.25f)
+            dt = 0.25f;
+    }
+    app->last_render_time_ms = now_ms;
 
     // Perform layout using the GUI library's proper layout system.
     // This handles VBox/HBox flex, padding, spacing, and widget constraints.
     if (app->root) {
         vg_widget_layout(app->root, (float)win_w, (float)win_h);
+        rt_gui_tick_widget_tree(app->root, dt);
     }
 
     // Clear with theme background
@@ -1174,6 +1206,7 @@ void rt_gui_app_render(void *app_ptr) {
         vg_commandpalette_t *palette = app->command_palettes[i];
         if (!palette || !palette->is_visible)
             continue;
+        rt_gui_tick_widget_tree(&palette->base, dt);
         rt_gui_layout_command_palette(app, palette, win_w, win_h);
         if (palette->base.vtable && palette->base.vtable->paint) {
             palette->base.vtable->paint(&palette->base, (void *)app->window);
@@ -1184,6 +1217,7 @@ void rt_gui_app_render(void *app_ptr) {
         vg_dialog_t *dlg = app->dialog_stack[i];
         if (!dlg || !dlg->is_open)
             continue;
+        rt_gui_tick_widget_tree(&dlg->base, dt);
         if (app->default_font) {
             vg_dialog_set_font(dlg, app->default_font, app->default_font_size);
         }
@@ -1205,8 +1239,6 @@ void rt_gui_app_render(void *app_ptr) {
             dlg->base.vtable->paint(&dlg->base, (void *)app->window);
         }
     }
-
-    uint64_t now_ms = rt_gui_now_ms();
 
     if (app->notification_manager) {
         app->notification_manager->base.x = 0.0f;

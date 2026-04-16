@@ -219,6 +219,9 @@ typedef struct vg_codeeditor {
     int extra_cursor_cap;   ///< Allocated capacity
 } vg_codeeditor_t;
 
+/// @brief Advance caret blink state for a code editor.
+void vg_codeeditor_tick(vg_codeeditor_t *editor, float dt);
+
 /// @brief Create a new code editor widget
 vg_codeeditor_t *vg_codeeditor_create(vg_widget_t *parent);
 

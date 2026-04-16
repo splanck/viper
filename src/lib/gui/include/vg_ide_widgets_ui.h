@@ -49,6 +49,7 @@ typedef enum vg_statusbar_zone {
 /// @brief StatusBar item structure
 typedef struct vg_statusbar_item {
     vg_statusbar_item_type_t type; ///< Item type
+    struct vg_statusbar *owner;    ///< Owning status bar for invalidation
     char *text;                    ///< Item text (owned)
     char *tooltip;                 ///< Tooltip text (owned)
     float min_width;               ///< Minimum width (0 = auto)
@@ -173,6 +174,7 @@ typedef enum vg_toolbar_icon_size {
 /// @brief Toolbar item structure
 typedef struct vg_toolbar_item {
     vg_toolbar_item_type_t type; ///< Item type
+    struct vg_toolbar *owner;    ///< Owning toolbar for invalidation/popup handling
     char *id;                    ///< Unique identifier
     char *label;                 ///< Text label (optional)
     char *tooltip;               ///< Hover tooltip
@@ -224,6 +226,8 @@ typedef struct vg_toolbar {
     bool overflow_button_hovered;    ///< Hover state for overflow button
     vg_contextmenu_t *overflow_popup; ///< Popup for overflowed items
     bool overflow_popup_dirty;        ///< Rebuild popup contents before next show
+    vg_contextmenu_t *dropdown_popup; ///< Popup sourced from a dropdown menu item
+    vg_toolbar_item_t *dropdown_item; ///< Dropdown item currently showing a popup
 } vg_toolbar_t;
 
 /// @brief Create a new toolbar widget
@@ -380,6 +384,13 @@ void vg_tooltip_manager_on_hover(vg_tooltip_manager_t *mgr, vg_widget_t *widget,
 
 /// @brief Notify manager of leave
 void vg_tooltip_manager_on_leave(vg_tooltip_manager_t *mgr);
+
+/// @brief Notify manager that a widget is being destroyed.
+///
+/// Clears any references the manager holds to the widget so subsequent
+/// hover/leave callbacks do not dereference freed memory. Safe to call from
+/// vg_widget_destroy. Operates on the global manager singleton.
+void vg_tooltip_manager_widget_destroyed(vg_widget_t *widget);
 
 /// @brief Set tooltip for a widget
 void vg_widget_set_tooltip_text(vg_widget_t *widget, const char *text);
@@ -634,6 +645,10 @@ typedef struct vg_floatingpanel {
     uint32_t bg_color;     ///< Background fill color (0xAARRGGBB).
     uint32_t border_color; ///< Border color (0xAARRGGBB).
     float border_width;    ///< Border width in pixels (0 = no border).
+
+    bool dragging;       ///< True while the panel is being dragged.
+    float drag_offset_x; ///< Pointer X offset from panel origin during drag.
+    float drag_offset_y; ///< Pointer Y offset from panel origin during drag.
 } vg_floatingpanel_t;
 
 /// @brief Create a floating panel connected to @p root.

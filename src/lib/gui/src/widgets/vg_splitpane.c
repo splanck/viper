@@ -87,6 +87,8 @@ vg_splitpane_t *vg_splitpane_create(vg_widget_t *parent, vg_split_direction_t di
 }
 
 static void splitpane_destroy(vg_widget_t *widget) {
+    if (vg_widget_get_input_capture() == widget)
+        vg_widget_release_input_capture();
     // Children are destroyed by base widget cleanup
     (void)widget;
 }
@@ -152,6 +154,34 @@ static void splitpane_measure(vg_widget_t *widget, float available_width, float 
     }
 }
 
+// Resolve first-pane size honouring both minimums. When min_first + min_second
+// exceeds the available space the two minimums cannot both be satisfied;
+// distributing proportionally avoids the bug where one pane silently collapses
+// to zero and the other gets the entire space.
+static float resolve_first_size(float available,
+                                float requested_first,
+                                float min_first,
+                                float min_second) {
+    if (available <= 0.0f)
+        return 0.0f;
+    if (min_first + min_second > available) {
+        float total_min = min_first + min_second;
+        if (total_min <= 0.0f)
+            return available * 0.5f;
+        return available * (min_first / total_min);
+    }
+    float first = requested_first;
+    if (first < min_first)
+        first = min_first;
+    if (available - first < min_second)
+        first = available - min_second;
+    if (first < 0.0f)
+        first = 0.0f;
+    if (first > available)
+        first = available;
+    return first;
+}
+
 static void splitpane_arrange(vg_widget_t *widget, float x, float y, float width, float height) {
     vg_splitpane_t *split = (vg_splitpane_t *)widget;
 
@@ -172,18 +202,10 @@ static void splitpane_arrange(vg_widget_t *widget, float x, float y, float width
         float available = width - split->splitter_size;
         if (available < 0.0f)
             available = 0.0f;
-        float first_width = available * split->split_position;
-
-        // Clamp to minimum sizes
-        if (first_width < split->min_first_size) {
-            first_width = split->min_first_size;
-        }
-        if (available - first_width < split->min_second_size) {
-            first_width = available - split->min_second_size;
-        }
-        if (first_width < 0.0f)
-            first_width = 0.0f;
-
+        float first_width = resolve_first_size(available,
+                                               available * split->split_position,
+                                               split->min_first_size,
+                                               split->min_second_size);
         float second_width = available - first_width;
         if (second_width < 0.0f)
             second_width = 0.0f;
@@ -213,18 +235,10 @@ static void splitpane_arrange(vg_widget_t *widget, float x, float y, float width
         float available = height - split->splitter_size;
         if (available < 0.0f)
             available = 0.0f;
-        float first_height = available * split->split_position;
-
-        // Clamp to minimum sizes
-        if (first_height < split->min_first_size) {
-            first_height = split->min_first_size;
-        }
-        if (available - first_height < split->min_second_size) {
-            first_height = available - split->min_second_size;
-        }
-        if (first_height < 0.0f)
-            first_height = 0.0f;
-
+        float first_height = resolve_first_size(available,
+                                                available * split->split_position,
+                                                split->min_first_size,
+                                                split->min_second_size);
         float second_height = available - first_height;
         if (second_height < 0.0f)
             second_height = 0.0f;
@@ -303,12 +317,32 @@ static bool splitpane_handle_event(vg_widget_t *widget, vg_event_t *event) {
                 float pos;
                 if (split->direction == VG_SPLIT_HORIZONTAL) {
                     float available = widget->width - split->splitter_size;
+                    if (available <= 0.0f)
+                        available = 1.0f;
                     pos = (local_x - split->drag_start + split->drag_start_split * available) /
                           available;
+                    float min_pos = split->min_first_size / available;
+                    float max_pos = 1.0f - (split->min_second_size / available);
+                    if (min_pos > max_pos)
+                        min_pos = max_pos = split->drag_start_split;
+                    if (pos < min_pos)
+                        pos = min_pos;
+                    if (pos > max_pos)
+                        pos = max_pos;
                 } else {
                     float available = widget->height - split->splitter_size;
+                    if (available <= 0.0f)
+                        available = 1.0f;
                     pos = (local_y - split->drag_start + split->drag_start_split * available) /
                           available;
+                    float min_pos = split->min_first_size / available;
+                    float max_pos = 1.0f - (split->min_second_size / available);
+                    if (min_pos > max_pos)
+                        min_pos = max_pos = split->drag_start_split;
+                    if (pos < min_pos)
+                        pos = min_pos;
+                    if (pos > max_pos)
+                        pos = max_pos;
                 }
 
                 // Clamp position
@@ -356,6 +390,7 @@ static bool splitpane_handle_event(vg_widget_t *widget, vg_event_t *event) {
                 } else {
                     split->drag_start = event->mouse.y;
                 }
+                vg_widget_set_input_capture(widget);
                 return true;
             }
             return false;
@@ -363,6 +398,8 @@ static bool splitpane_handle_event(vg_widget_t *widget, vg_event_t *event) {
         case VG_EVENT_MOUSE_UP:
             if (split->dragging) {
                 split->dragging = false;
+                if (vg_widget_get_input_capture() == widget)
+                    vg_widget_release_input_capture();
                 return true;
             }
             return false;

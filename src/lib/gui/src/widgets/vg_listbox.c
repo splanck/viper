@@ -141,12 +141,12 @@ static void listbox_sync_virtual_cache(vg_listbox_t *lb, float viewport_height) 
 
 static bool listbox_item_at_y(vg_listbox_t *lb,
                               vg_widget_t *widget,
-                              float screen_y,
+                              float local_y,
                               size_t *index) {
     if (!lb || !widget || !index || lb->item_height <= 0.0f)
         return false;
 
-    float ry = screen_y - widget->y + lb->scroll_y;
+    float ry = local_y + lb->scroll_y;
     if (ry < 0.0f)
         return false;
 
@@ -189,7 +189,7 @@ static void listbox_measure(vg_widget_t *widget, float avail_w, float avail_h) {
     (void)avail_w;
     (void)avail_h;
     int count = lb->virtual_mode ? (int)lb->total_item_count : lb->item_count;
-    int visible = count > 5 ? count : 5;
+    int visible = count > 0 ? (count < 5 ? count : 5) : 5;
     widget->measured_width = 200.0f;
     widget->measured_height = (float)(visible * (int)lb->item_height);
 }
@@ -306,7 +306,7 @@ static bool listbox_handle_event(vg_widget_t *widget, vg_event_t *event) {
         case VG_EVENT_MOUSE_DOWN: {
             size_t idx = 0;
             if (lb->virtual_mode) {
-                if (listbox_item_at_y(lb, widget, event->mouse.screen_y, &idx)) {
+                if (listbox_item_at_y(lb, widget, event->mouse.y, &idx)) {
                     listbox_select_virtual_index(lb, idx);
                     if (lb->on_select)
                         lb->on_select(widget, NULL, lb->on_select_data);
@@ -316,7 +316,7 @@ static bool listbox_handle_event(vg_widget_t *widget, vg_event_t *event) {
                 }
             } else {
                 /* Find which item was clicked */
-                float ry = event->mouse.screen_y - widget->y + lb->scroll_y;
+                float ry = event->mouse.y + lb->scroll_y;
                 int idx32 = (lb->item_height > 0) ? (int)(ry / lb->item_height) : -1;
                 if (idx32 >= 0 && idx32 < lb->item_count) {
                     vg_listbox_item_t *item = lb->first_item;
@@ -335,12 +335,16 @@ static bool listbox_handle_event(vg_widget_t *widget, vg_event_t *event) {
         case VG_EVENT_MOUSE_MOVE: {
             if (lb->virtual_mode) {
                 size_t idx = 0;
+                size_t old_hover = lb->hovered_index;
                 lb->hovered_index = SIZE_MAX;
-                if (listbox_item_at_y(lb, widget, event->mouse.screen_y, &idx))
+                if (listbox_item_at_y(lb, widget, event->mouse.y, &idx))
                     lb->hovered_index = idx;
+                if (old_hover != lb->hovered_index)
+                    widget->needs_paint = true;
             } else {
-                float ry = event->mouse.screen_y - widget->y + lb->scroll_y;
+                float ry = event->mouse.y + lb->scroll_y;
                 int idx = (lb->item_height > 0) ? (int)(ry / lb->item_height) : -1;
+                vg_listbox_item_t *old_hover = lb->hovered;
                 vg_listbox_item_t *hovered = NULL;
                 if (idx >= 0 && idx < lb->item_count) {
                     hovered = lb->first_item;
@@ -348,13 +352,18 @@ static bool listbox_handle_event(vg_widget_t *widget, vg_event_t *event) {
                         hovered = hovered->next;
                 }
                 lb->hovered = hovered;
+                if (old_hover != lb->hovered)
+                    widget->needs_paint = true;
             }
             break;
         }
 
         case VG_EVENT_MOUSE_LEAVE: {
+            bool changed = lb->hovered != NULL || lb->hovered_index != SIZE_MAX;
             lb->hovered = NULL;
             lb->hovered_index = SIZE_MAX;
+            if (changed)
+                widget->needs_paint = true;
             break;
         }
 

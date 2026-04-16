@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-09
+last-verified: 2026-04-16
 ---
 
 # Application Components
@@ -70,6 +70,7 @@ if newItem.WasClicked() == 1 { /* new file */ }
 Application toolbar widget.
 
 When the toolbar is narrower than its contents, hidden items are exposed through an automatic overflow popup rather than becoming inaccessible.
+Flexible spacer items now consume the remaining strip width, and dropdown toolbar items open their attached menus directly.
 
 **Constructor:** `NEW Viper.GUI.Toolbar(parent)`
 
@@ -112,6 +113,8 @@ if saveBtn.WasClicked() == 1 { /* save */ }
 ### StatusBar
 
 Application status bar widget.
+
+Text, visibility, progress, and tooltip updates invalidate the owning bar immediately, so layout and paint stay in sync with runtime changes.
 
 **Constructor:** `NEW Viper.GUI.StatusBar(parent)`
 
@@ -232,6 +235,8 @@ SayInt(findbar.GetMatchCount());
 
 Command palette for searchable command execution.
 
+The palette renders a full panel background, row highlight, and right-aligned shortcuts so the current selection is always visible.
+
 **Constructor:** `NEW Viper.GUI.CommandPalette(parent)`
 
 | Method                                          | Signature                    | Description                              |
@@ -335,6 +340,8 @@ minimap.AddMarker(10, 0xFFFF0000, 1);  // Error marker
 
 > **Modal constraint:** Only one dialog may be active at a time. Calling a second dialog while the first is still open is a no-op — the first dialog remains active. Dismiss the active dialog before showing another.
 
+Dialog hit-testing is local to the dialog surface, so button clicks, close clicks, drags, and centered placement continue to work after the dialog is moved or shown relative to nested widgets.
+
 ### MessageBox
 
 System message dialog boxes (static methods).
@@ -364,6 +371,8 @@ if answer == 1 { /* user said yes */ }
 ### FileDialog
 
 Native file dialog boxes (static methods).
+
+Save dialogs honor the default filename field, append the configured default extension when needed, and keep buttons/bookmarks/file-list hit-testing correct after the window is repositioned.
 
 | Method                                          | Signature                        | Description                              |
 |-------------------------------------------------|----------------------------------|------------------------------------------|

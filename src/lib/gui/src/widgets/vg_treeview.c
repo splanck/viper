@@ -30,6 +30,7 @@ static void free_node(vg_tree_node_t *node);
 static int count_visible_nodes(vg_tree_node_t *node);
 static vg_tree_node_t *get_node_at_index(vg_tree_node_t *root, int index, int *current);
 static int get_node_index(vg_tree_node_t *root, vg_tree_node_t *target, int *current);
+static bool node_in_subtree(const vg_tree_node_t *root, const vg_tree_node_t *candidate);
 
 //=============================================================================
 // TreeView VTable
@@ -61,6 +62,10 @@ static void free_node(vg_tree_node_t *node) {
 
     if (node->text) {
         free((void *)node->text);
+    }
+    if (node->owns_user_data && node->user_data) {
+        free(node->user_data);
+        node->user_data = NULL;
     }
     free(node);
 }
@@ -109,6 +114,17 @@ static int get_node_index(vg_tree_node_t *root, vg_tree_node_t *target, int *cur
         }
     }
     return -1;
+}
+
+static bool node_in_subtree(const vg_tree_node_t *root, const vg_tree_node_t *candidate) {
+    if (!root || !candidate)
+        return false;
+
+    for (const vg_tree_node_t *node = candidate; node; node = node->parent) {
+        if (node == root)
+            return true;
+    }
+    return false;
 }
 
 //=============================================================================
@@ -220,7 +236,7 @@ static void paint_node(
         if (row_y + tree->row_height >= tree->scroll_y &&
             row_y < tree->scroll_y + tree->base.height) {
             float display_y = tree->base.y + row_y - tree->scroll_y;
-            float indent = x + child->depth * tree->indent_size;
+            float indent = x + (child->depth + 1) * tree->indent_size;
 
             // Draw background for selected/hovered
             if (child == tree->selected) {
@@ -262,7 +278,7 @@ static void paint_node(
                 vg_font_metrics_t font_metrics;
                 vg_font_get_metrics(tree->font, tree->font_size, &font_metrics);
 
-                float text_x = indent + tree->icon_size + tree->icon_gap;
+                float text_x = indent + tree->icon_gap;
                 float text_y =
                     display_y +
                     (tree->row_height + font_metrics.ascent - font_metrics.descent) / 2.0f;
@@ -346,7 +362,7 @@ static bool treeview_handle_event(vg_widget_t *widget, vg_event_t *event) {
     switch (event->type) {
         case VG_EVENT_MOUSE_MOVE: {
             // Find node at position
-            float y = event->mouse.y - widget->y + tree->scroll_y;
+            float y = event->mouse.y + tree->scroll_y;
             float current_y = 0;
             vg_tree_node_t *old_hover = tree->hovered;
             tree->hovered = find_node_at_y(tree, tree->root, y, &current_y);
@@ -364,7 +380,7 @@ static bool treeview_handle_event(vg_widget_t *widget, vg_event_t *event) {
             return false;
 
         case VG_EVENT_CLICK: {
-            float y = event->mouse.y - widget->y + tree->scroll_y;
+            float y = event->mouse.y + tree->scroll_y;
             float current_y = 0;
             vg_tree_node_t *clicked = find_node_at_y(tree, tree->root, y, &current_y);
 
@@ -523,10 +539,10 @@ void vg_treeview_remove_node(vg_treeview_t *tree, vg_tree_node_t *node) {
         return;
 
     // Update selection if needed
-    if (tree->selected == node) {
+    if (node_in_subtree(node, tree->selected)) {
         tree->selected = NULL;
     }
-    if (tree->hovered == node) {
+    if (node_in_subtree(node, tree->hovered)) {
         tree->hovered = NULL;
     }
 
@@ -675,9 +691,14 @@ void vg_treeview_scroll_to(vg_treeview_t *tree, vg_tree_node_t *node) {
 
 /// @brief Tree node set data.
 void vg_tree_node_set_data(vg_tree_node_t *node, void *data) {
-    if (node) {
-        node->user_data = data;
+    if (!node)
+        return;
+
+    if (node->owns_user_data && node->user_data) {
+        free(node->user_data);
     }
+    node->user_data = data;
+    node->owns_user_data = false;
 }
 
 /// @brief Treeview set font.

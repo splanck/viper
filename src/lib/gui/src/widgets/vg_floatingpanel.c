@@ -33,6 +33,7 @@ static void floatingpanel_measure(vg_widget_t *widget,
 static void floatingpanel_arrange(vg_widget_t *widget, float x, float y, float width, float height);
 static void floatingpanel_paint(vg_widget_t *widget, void *canvas);
 static void floatingpanel_paint_overlay(vg_widget_t *widget, void *canvas);
+static bool floatingpanel_handle_event(vg_widget_t *widget, vg_event_t *event);
 static void floatingpanel_render_normal_subtree(vg_widget_t *widget,
                                                 void *canvas,
                                                 float parent_abs_x,
@@ -52,7 +53,7 @@ static vg_widget_vtable_t g_floatingpanel_vtable = {
     .arrange = floatingpanel_arrange,
     .paint = floatingpanel_paint,
     .paint_overlay = floatingpanel_paint_overlay,
-    .handle_event = NULL,
+    .handle_event = floatingpanel_handle_event,
     .can_focus = NULL,
     .on_focus = NULL,
 };
@@ -84,7 +85,8 @@ vg_floatingpanel_t *vg_floatingpanel_create(vg_widget_t *root) {
 }
 
 static void floatingpanel_destroy(vg_widget_t *widget) {
-    (void)widget;
+    if (vg_widget_get_input_capture() == widget)
+        vg_widget_release_input_capture();
 }
 
 /// @brief Floatingpanel destroy.
@@ -179,6 +181,46 @@ static void floatingpanel_paint_overlay(vg_widget_t *widget, void *canvas) {
             vgfx_set_clip(win, px, py, pw, ph);
         }
         vgfx_clear_clip(win);
+    }
+}
+
+static bool floatingpanel_handle_event(vg_widget_t *widget, vg_event_t *event) {
+    vg_floatingpanel_t *panel = (vg_floatingpanel_t *)widget;
+    if (!widget->visible)
+        return false;
+
+    switch (event->type) {
+        case VG_EVENT_MOUSE_DOWN:
+            if (event->target == widget) {
+                panel->dragging = true;
+                panel->drag_offset_x = event->mouse.x;
+                panel->drag_offset_y = event->mouse.y;
+                vg_widget_set_input_capture(widget);
+                widget->needs_paint = true;
+                return true;
+            }
+            return false;
+
+        case VG_EVENT_MOUSE_MOVE:
+            if (panel->dragging) {
+                vg_floatingpanel_set_position(
+                    panel, event->mouse.screen_x - panel->drag_offset_x, event->mouse.screen_y - panel->drag_offset_y);
+                return true;
+            }
+            return false;
+
+        case VG_EVENT_MOUSE_UP:
+            if (panel->dragging) {
+                panel->dragging = false;
+                if (vg_widget_get_input_capture() == widget)
+                    vg_widget_release_input_capture();
+                widget->needs_paint = true;
+                return true;
+            }
+            return false;
+
+        default:
+            return false;
     }
 }
 

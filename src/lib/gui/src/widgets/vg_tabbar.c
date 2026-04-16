@@ -148,6 +148,82 @@ static float get_tab_x(vg_tabbar_t *tabbar, vg_tab_t *target) {
     return x;
 }
 
+static int tabbar_target_index_from_x(vg_tabbar_t *tabbar, float local_x) {
+    if (!tabbar || tabbar->tab_count <= 1)
+        return 0;
+
+    float tab_x = -tabbar->scroll_x;
+    int index = 0;
+    for (vg_tab_t *tab = tabbar->first_tab; tab; tab = tab->next, index++) {
+        float width = get_tab_width(tabbar, tab);
+        if (local_x < tab_x + width * 0.5f)
+            return index;
+        tab_x += width;
+    }
+    return tabbar->tab_count - 1;
+}
+
+static bool tabbar_move_tab_to_index(vg_tabbar_t *tabbar, vg_tab_t *tab, int new_index) {
+    if (!tabbar || !tab || tabbar->tab_count < 2)
+        return false;
+
+    int current_index = vg_tabbar_get_tab_index(tabbar, tab);
+    if (current_index < 0)
+        return false;
+    if (new_index < 0)
+        new_index = 0;
+    if (new_index >= tabbar->tab_count)
+        new_index = tabbar->tab_count - 1;
+    if (new_index == current_index)
+        return false;
+
+    if (tab->prev) {
+        tab->prev->next = tab->next;
+    } else {
+        tabbar->first_tab = tab->next;
+    }
+    if (tab->next) {
+        tab->next->prev = tab->prev;
+    } else {
+        tabbar->last_tab = tab->prev;
+    }
+
+    tab->prev = NULL;
+    tab->next = NULL;
+
+    if (new_index <= 0 || !tabbar->first_tab) {
+        tab->next = tabbar->first_tab;
+        if (tabbar->first_tab)
+            tabbar->first_tab->prev = tab;
+        tabbar->first_tab = tab;
+        if (!tabbar->last_tab)
+            tabbar->last_tab = tab;
+    } else {
+        vg_tab_t *insert_before = vg_tabbar_get_tab_at(tabbar, new_index);
+        if (!insert_before) {
+            tab->prev = tabbar->last_tab;
+            if (tabbar->last_tab)
+                tabbar->last_tab->next = tab;
+            tabbar->last_tab = tab;
+            if (!tabbar->first_tab)
+                tabbar->first_tab = tab;
+        } else {
+            tab->next = insert_before;
+            tab->prev = insert_before->prev;
+            if (insert_before->prev) {
+                insert_before->prev->next = tab;
+            } else {
+                tabbar->first_tab = tab;
+            }
+            insert_before->prev = tab;
+        }
+    }
+
+    tabbar->base.needs_layout = true;
+    tabbar->base.needs_paint = true;
+    return true;
+}
+
 static bool tab_close_button_hit(vg_tabbar_t *tabbar, vg_tab_t *tab, float local_x, float local_y) {
     if (!tabbar || !tab || !tab->closable)
         return false;
@@ -237,6 +313,9 @@ vg_tabbar_t *vg_tabbar_create(vg_widget_t *parent) {
 static void tabbar_destroy(vg_widget_t *widget) {
     vg_tabbar_t *tabbar = (vg_tabbar_t *)widget;
 
+    if (vg_widget_get_input_capture() == widget)
+        vg_widget_release_input_capture();
+
     // Free all tabs
     vg_tab_t *tab = tabbar->first_tab;
     while (tab) {
@@ -263,6 +342,17 @@ static void tabbar_measure(vg_widget_t *widget, float available_width, float ava
 
     widget->measured_width = available_width > 0 ? available_width : total;
     widget->measured_height = tabbar->tab_height;
+
+    // Re-clamp scroll_x against the new total. When tabs are removed, the old
+    // scroll_x can exceed the new max and the paint loop culls every tab.
+    float visible_width = widget->measured_width;
+    float max_scroll = total - visible_width;
+    if (max_scroll < 0.0f)
+        max_scroll = 0.0f;
+    if (tabbar->scroll_x > max_scroll)
+        tabbar->scroll_x = max_scroll;
+    if (tabbar->scroll_x < 0.0f)
+        tabbar->scroll_x = 0.0f;
 }
 
 static void tabbar_paint(vg_widget_t *widget, void *canvas) {
@@ -360,6 +450,7 @@ static bool tabbar_handle_event(vg_widget_t *widget, vg_event_t *event) {
         case VG_EVENT_MOUSE_MOVE: {
             float local_x = event->mouse.x;
             vg_tab_t *old_hover = tabbar->hovered_tab;
+            bool old_close_hover = tabbar->close_button_hovered;
 
             tabbar->hovered_tab = find_tab_at_x(tabbar, local_x);
 
@@ -367,13 +458,19 @@ static bool tabbar_handle_event(vg_widget_t *widget, vg_event_t *event) {
             tabbar->close_button_hovered =
                 tab_close_button_hit(tabbar, tabbar->hovered_tab, local_x, event->mouse.y);
 
-            if (old_hover != tabbar->hovered_tab) {
+            if (old_hover != tabbar->hovered_tab || old_close_hover != tabbar->close_button_hovered) {
                 widget->needs_paint = true;
             }
 
             // Handle dragging
             if (tabbar->dragging && tabbar->drag_tab) {
                 tabbar->drag_x = local_x;
+                int new_index = tabbar_target_index_from_x(tabbar, local_x);
+                if (tabbar_move_tab_to_index(tabbar, tabbar->drag_tab, new_index) &&
+                    tabbar->on_reorder) {
+                    tabbar->on_reorder(
+                        widget, tabbar->drag_tab, new_index, tabbar->on_reorder_data);
+                }
                 widget->needs_paint = true;
             }
 
@@ -411,6 +508,7 @@ static bool tabbar_handle_event(vg_widget_t *widget, vg_event_t *event) {
                 tabbar->dragging = true;
                 tabbar->drag_tab = clicked;
                 tabbar->drag_x = local_x;
+                vg_widget_set_input_capture(widget);
 
                 // Activate tab
                 vg_tabbar_set_active(tabbar, clicked);
@@ -422,6 +520,8 @@ static bool tabbar_handle_event(vg_widget_t *widget, vg_event_t *event) {
         case VG_EVENT_MOUSE_UP:
             tabbar->dragging = false;
             tabbar->drag_tab = NULL;
+            if (vg_widget_get_input_capture() == widget)
+                vg_widget_release_input_capture();
             return false;
 
         case VG_EVENT_MOUSE_WHEEL:
@@ -456,6 +556,7 @@ vg_tab_t *vg_tabbar_add_tab(vg_tabbar_t *tabbar, const char *title, bool closabl
     if (!tab)
         return NULL;
 
+    tab->owner = tabbar;
     tab->title = title ? strdup(title) : strdup("Untitled");
     tab->tooltip = tab->title ? strdup(tab->title) : NULL;
     tab->user_data = NULL;
@@ -503,6 +604,12 @@ void vg_tabbar_remove_tab(vg_tabbar_t *tabbar, vg_tab_t *tab) {
     // Update hover if needed
     if (tabbar->hovered_tab == tab) {
         tabbar->hovered_tab = NULL;
+    }
+    if (tabbar->drag_tab == tab) {
+        tabbar->drag_tab = NULL;
+        tabbar->dragging = false;
+        if (vg_widget_get_input_capture() == &tabbar->base)
+            vg_widget_release_input_capture();
     }
 
     // Remove from list
@@ -596,12 +703,18 @@ void vg_tab_set_title(vg_tab_t *tab, const char *title) {
         }
         tab->tooltip = tab->title ? strdup(tab->title) : NULL;
     }
+    if (tab->owner) {
+        tab->owner->base.needs_layout = true;
+        tab->owner->base.needs_paint = true;
+    }
 }
 
 /// @brief Tab set modified.
 void vg_tab_set_modified(vg_tab_t *tab, bool modified) {
     if (tab) {
         tab->modified = modified;
+        if (tab->owner)
+            tab->owner->base.needs_paint = true;
     }
 }
 
@@ -613,6 +726,8 @@ void vg_tab_set_tooltip(vg_tab_t *tab, const char *tooltip) {
     if (tab->tooltip)
         free((void *)tab->tooltip);
     tab->tooltip = tooltip ? strdup(tooltip) : NULL;
+    if (tab->owner)
+        tab->owner->base.needs_paint = true;
 }
 
 /// @brief Tab set data.

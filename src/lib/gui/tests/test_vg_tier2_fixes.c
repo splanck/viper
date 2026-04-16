@@ -18,6 +18,8 @@
 //   BINDING-006: SplitPane GetPosition via vg_splitpane_get_position
 //   PARTIAL-001: CodeEditor gutter_icon_count initially zero, array writable
 //   PARTIAL-002: CodeEditor highlight_span_count initially zero, array writable
+//   CODEEDITOR-OWN-001: SetText clears stale per-line color metadata before reuse
+//   CODEEDITOR-OWN-002: delete compaction clears vacated line slots
 //   PARTIAL-007: vg_codeeditor_get_selection() returns NULL without selection,
 //                non-NULL after vg_codeeditor_set_selection
 //   API-005:     vg_widget_set_margin() writes to layout params
@@ -72,6 +74,9 @@ static int g_failed = 0;
 typedef struct {
     vg_widget_t base;
     int handled_count;
+    float last_mouse_x;
+    float last_mouse_y;
+    vg_event_type_t last_type;
 } test_bubble_widget_t;
 
 typedef struct {
@@ -84,8 +89,11 @@ typedef struct {
 } test_probe_widget_t;
 
 static bool test_bubble_handle(vg_widget_t *widget, vg_event_t *event) {
-    (void)event;
-    ((test_bubble_widget_t *)widget)->handled_count++;
+    test_bubble_widget_t *bubble = (test_bubble_widget_t *)widget;
+    bubble->handled_count++;
+    bubble->last_type = event->type;
+    bubble->last_mouse_x = event->mouse.x;
+    bubble->last_mouse_y = event->mouse.y;
     return true;
 }
 
@@ -167,6 +175,38 @@ static void toolbar_click_counter(vg_toolbar_item_t *item, void *user_data) {
 static void statusbar_click_counter(vg_statusbar_item_t *item, void *user_data) {
     (void)item;
     (*(int *)user_data)++;
+}
+
+static void toolbar_menu_action_counter(void *user_data) {
+    (*(int *)user_data)++;
+}
+
+typedef struct {
+    int count;
+    int last_index;
+    vg_tab_t *last_tab;
+} tabbar_reorder_state_t;
+
+static void tabbar_reorder_counter(vg_widget_t *tabbar,
+                                   vg_tab_t *tab,
+                                   int new_index,
+                                   void *user_data) {
+    (void)tabbar;
+    tabbar_reorder_state_t *state = (tabbar_reorder_state_t *)user_data;
+    state->count++;
+    state->last_index = new_index;
+    state->last_tab = tab;
+}
+
+static void test_codeeditor_syntax_fill(
+    vg_widget_t *widget, int line_num, const char *text, uint32_t *colors, void *user_data) {
+    (void)widget;
+    (void)line_num;
+    (void)user_data;
+    size_t len = strlen(text);
+    for (size_t i = 0; i < len; i++) {
+        colors[i] = 0xFF00FF00u;
+    }
 }
 
 //=============================================================================
@@ -511,6 +551,59 @@ TEST(hbox_flex_margins_are_budgeted) {
     vg_widget_destroy(hbox);
 }
 
+TEST(flex_wrap_moves_overflow_to_next_line) {
+    vg_widget_t *flex = vg_flex_create();
+    vg_widget_t *first = vg_widget_create(VG_WIDGET_CONTAINER);
+    vg_widget_t *second = vg_widget_create(VG_WIDGET_CONTAINER);
+    vg_widget_t *third = vg_widget_create(VG_WIDGET_CONTAINER);
+    ASSERT_NOT_NULL(flex);
+    ASSERT_NOT_NULL(first);
+    ASSERT_NOT_NULL(second);
+    ASSERT_NOT_NULL(third);
+
+    vg_widget_set_fixed_size(first, 60.0f, 20.0f);
+    vg_widget_set_fixed_size(second, 60.0f, 20.0f);
+    vg_widget_set_fixed_size(third, 60.0f, 20.0f);
+    vg_widget_add_child(flex, first);
+    vg_widget_add_child(flex, second);
+    vg_widget_add_child(flex, third);
+    vg_flex_set_direction(flex, VG_DIRECTION_ROW);
+    vg_flex_set_wrap(flex, true);
+
+    vg_widget_measure(flex, 120.0f, 100.0f);
+    vg_widget_arrange(flex, 0.0f, 0.0f, 120.0f, 100.0f);
+
+    ASSERT_TRUE(second->y < 0.1f);
+    ASSERT_TRUE(third->y > first->y + 0.1f);
+
+    vg_widget_destroy(flex);
+}
+
+TEST(grid_explicit_tracks_survive_dimension_growth) {
+    vg_widget_t *grid = vg_grid_create(1, 1);
+    vg_widget_t *child = vg_widget_create(VG_WIDGET_CONTAINER);
+    ASSERT_NOT_NULL(grid);
+    ASSERT_NOT_NULL(child);
+
+    vg_widget_set_fixed_size(child, 10.0f, 10.0f);
+    vg_widget_add_child(grid, child);
+    vg_grid_set_column_width(grid, 0, 30.0f);
+    vg_grid_set_row_height(grid, 0, 20.0f);
+    vg_grid_set_columns(grid, 2);
+    vg_grid_set_rows(grid, 2);
+    vg_grid_place(grid, child, 1, 1, 1, 1);
+
+    vg_widget_measure(grid, 100.0f, 80.0f);
+    vg_widget_arrange(grid, 0.0f, 0.0f, 100.0f, 80.0f);
+
+    ASSERT_TRUE(child->x >= 29.9f);
+    ASSERT_TRUE(child->y >= 19.9f);
+    ASSERT_TRUE(child->x + child->width <= 100.1f);
+    ASSERT_TRUE(child->y + child->height <= 80.1f);
+
+    vg_widget_destroy(grid);
+}
+
 //=============================================================================
 // PARTIAL-001/002: CodeEditor gutter icon / highlight span arrays
 //
@@ -560,6 +653,59 @@ TEST(codeeditor_get_selection_with_selection_returns_text) {
     ASSERT_NOT_NULL(sel);
     ASSERT_EQ(strncmp(sel, "hello", 5), 0);
     free(sel);
+    vg_widget_destroy((vg_widget_t *)editor);
+}
+
+TEST(codeeditor_set_text_clears_reused_line_color_metadata) {
+    vg_codeeditor_t *editor = vg_codeeditor_create(NULL);
+    ASSERT_NOT_NULL(editor);
+
+    uint32_t *stale_colors = malloc(4 * sizeof(uint32_t));
+    ASSERT_NOT_NULL(stale_colors);
+
+    editor->lines[1].colors = stale_colors;
+    editor->lines[1].colors_capacity = 4;
+    editor->lines[1].modified = true;
+
+    vg_codeeditor_set_text(editor, "alpha\nbeta");
+
+    ASSERT_EQ(editor->line_count, 2);
+    ASSERT_NULL(editor->lines[0].colors);
+    ASSERT_EQ(editor->lines[0].colors_capacity, 0);
+    ASSERT_NULL(editor->lines[1].colors);
+    ASSERT_EQ(editor->lines[1].colors_capacity, 0);
+    ASSERT_FALSE(editor->lines[1].modified);
+
+    vg_codeeditor_set_syntax(editor, test_codeeditor_syntax_fill, editor);
+    free(stale_colors);
+    vg_widget_destroy((vg_widget_t *)editor);
+}
+
+TEST(codeeditor_delete_selection_clears_vacated_line_slots) {
+    vg_codeeditor_t *editor = vg_codeeditor_create(NULL);
+    ASSERT_NOT_NULL(editor);
+
+    vg_codeeditor_set_text(editor, "one\ntwo\nthree");
+
+    editor->lines[1].colors = malloc(4 * sizeof(uint32_t));
+    editor->lines[1].colors_capacity = 4;
+    editor->lines[2].colors = malloc(6 * sizeof(uint32_t));
+    editor->lines[2].colors_capacity = 6;
+    ASSERT_NOT_NULL(editor->lines[1].colors);
+    ASSERT_NOT_NULL(editor->lines[2].colors);
+
+    vg_codeeditor_set_selection(editor, 0, 0, 1, 0);
+    vg_codeeditor_delete_selection(editor);
+
+    ASSERT_EQ(editor->line_count, 2);
+    ASSERT_NULL(editor->lines[2].text);
+    ASSERT_EQ(editor->lines[2].length, 0u);
+    ASSERT_EQ(editor->lines[2].capacity, 0u);
+    ASSERT_NULL(editor->lines[2].colors);
+    ASSERT_EQ(editor->lines[2].colors_capacity, 0u);
+
+    vg_codeeditor_set_text(editor, "left\nright\nagain");
+    vg_codeeditor_set_syntax(editor, test_codeeditor_syntax_fill, editor);
     vg_widget_destroy((vg_widget_t *)editor);
 }
 
@@ -722,6 +868,41 @@ TEST(event_bubble_honors_parent_return_value) {
     vg_widget_destroy(&parent->base);
 }
 
+TEST(event_bubble_localizes_parent_mouse_coords) {
+    test_bubble_widget_t *parent = calloc(1, sizeof(test_bubble_widget_t));
+    test_bubble_widget_t *child = calloc(1, sizeof(test_bubble_widget_t));
+    ASSERT_NOT_NULL(parent);
+    ASSERT_NOT_NULL(child);
+
+    vg_widget_init(&parent->base, VG_WIDGET_CONTAINER, &g_bubble_vtable);
+    vg_widget_init(&child->base, VG_WIDGET_CONTAINER, NULL);
+    parent->base.x = 20.0f;
+    parent->base.y = 30.0f;
+    parent->base.width = 100.0f;
+    parent->base.height = 100.0f;
+    child->base.x = 5.0f;
+    child->base.y = 7.0f;
+    child->base.width = 20.0f;
+    child->base.height = 20.0f;
+    vg_widget_add_child(&parent->base, &child->base);
+
+    vg_event_t ev;
+    memset(&ev, 0, sizeof(ev));
+    ev.type = VG_EVENT_CLICK;
+    ev.target = &child->base;
+    ev.mouse.x = 5.0f;
+    ev.mouse.y = 5.0f;
+    ev.mouse.screen_x = 30.0f;
+    ev.mouse.screen_y = 42.0f;
+
+    ASSERT_TRUE(vg_event_send(&child->base, &ev));
+    ASSERT_EQ(parent->handled_count, 1);
+    ASSERT_TRUE(parent->last_mouse_x > 9.9f && parent->last_mouse_x < 10.1f);
+    ASSERT_TRUE(parent->last_mouse_y > 11.9f && parent->last_mouse_y < 12.1f);
+
+    vg_widget_destroy(&parent->base);
+}
+
 TEST(floatingpanel_destroy_no_double_free) {
     vg_widget_t *root = vg_widget_create(VG_WIDGET_CONTAINER);
     ASSERT_NOT_NULL(root);
@@ -741,6 +922,42 @@ TEST(floatingpanel_destroy_no_double_free) {
     vg_widget_destroy(root);
 }
 
+TEST(floatingpanel_drag_moves_overlay_and_releases_capture) {
+    vg_widget_t *root = vg_widget_create(VG_WIDGET_CONTAINER);
+    ASSERT_NOT_NULL(root);
+
+    vg_floatingpanel_t *panel = vg_floatingpanel_create(root);
+    ASSERT_NOT_NULL(panel);
+    vg_floatingpanel_set_visible(panel, 1);
+    vg_floatingpanel_set_position(panel, 40.0f, 50.0f);
+    vg_floatingpanel_set_size(panel, 80.0f, 60.0f);
+
+    vg_widget_layout(root, 300.0f, 200.0f);
+
+    vg_event_t down = {0};
+    down.type = VG_EVENT_MOUSE_DOWN;
+    down.mouse.screen_x = 60.0f;
+    down.mouse.screen_y = 70.0f;
+    ASSERT_TRUE(vg_event_dispatch(root, &down));
+    ASSERT_EQ(vg_widget_get_input_capture(), &panel->base);
+
+    vg_event_t move = down;
+    move.type = VG_EVENT_MOUSE_MOVE;
+    move.mouse.screen_x = 120.0f;
+    move.mouse.screen_y = 150.0f;
+    ASSERT_TRUE(vg_event_dispatch(root, &move));
+    ASSERT_TRUE(panel->abs_x > 99.9f && panel->abs_x < 100.1f);
+    ASSERT_TRUE(panel->abs_y > 129.9f && panel->abs_y < 130.1f);
+
+    vg_event_t up = move;
+    up.type = VG_EVENT_MOUSE_UP;
+    ASSERT_TRUE(vg_event_dispatch(root, &up));
+    ASSERT_NULL(vg_widget_get_input_capture());
+    ASSERT_FALSE(panel->dragging);
+
+    vg_widget_destroy(root);
+}
+
 TEST(scrollview_auto_content_size_uses_measured_children) {
     vg_scrollview_t *sv = vg_scrollview_create(NULL);
     vg_widget_t *child = vg_widget_create(VG_WIDGET_CONTAINER);
@@ -755,6 +972,27 @@ TEST(scrollview_auto_content_size_uses_measured_children) {
     vg_widget_arrange(&sv->base, 0.0f, 0.0f, 100.0f, 100.0f);
     ASSERT_TRUE(sv->content_width > 71.9f && sv->content_width < 72.1f);
     ASSERT_TRUE(sv->content_height > 27.9f && sv->content_height < 28.1f);
+
+    vg_widget_destroy(&sv->base);
+}
+
+TEST(scrollview_direct_children_stack_vertically) {
+    vg_scrollview_t *sv = vg_scrollview_create(NULL);
+    vg_widget_t *first = vg_widget_create(VG_WIDGET_CONTAINER);
+    vg_widget_t *second = vg_widget_create(VG_WIDGET_CONTAINER);
+    ASSERT_NOT_NULL(sv);
+    ASSERT_NOT_NULL(first);
+    ASSERT_NOT_NULL(second);
+
+    vg_widget_set_fixed_size(first, 60.0f, 20.0f);
+    vg_widget_set_fixed_size(second, 60.0f, 20.0f);
+    second->layout.margin_top = 4.0f;
+    vg_widget_add_child(&sv->base, first);
+    vg_widget_add_child(&sv->base, second);
+
+    vg_widget_arrange(&sv->base, 0.0f, 0.0f, 120.0f, 120.0f);
+
+    ASSERT_TRUE(second->y >= first->y + first->height + 3.9f);
 
     vg_widget_destroy(&sv->base);
 }
@@ -795,6 +1033,26 @@ TEST(scrollview_scroll_to_nested_descendant_uses_full_offset) {
     ASSERT_TRUE(sv->scroll_x > 49.9f && sv->scroll_x < 50.1f);
 
     vg_widget_destroy(&sv->base);
+}
+
+TEST(treeview_remove_node_clears_descendant_state) {
+    vg_treeview_t *tree = vg_treeview_create(NULL);
+    ASSERT_NOT_NULL(tree);
+
+    vg_tree_node_t *parent = vg_treeview_add_node(tree, NULL, "parent");
+    vg_tree_node_t *child = vg_treeview_add_node(tree, parent, "child");
+    ASSERT_NOT_NULL(parent);
+    ASSERT_NOT_NULL(child);
+
+    vg_treeview_select(tree, child);
+    tree->hovered = child;
+
+    vg_treeview_remove_node(tree, parent);
+
+    ASSERT_NULL(tree->selected);
+    ASSERT_NULL(tree->hovered);
+
+    vg_widget_destroy(&tree->base);
 }
 
 TEST(widget_paint_runs_overlay_second_pass) {
@@ -841,6 +1099,46 @@ TEST(splitpane_arrange_clamps_negative_sizes) {
     vg_widget_destroy(&split->base);
 }
 
+TEST(splitpane_drag_captures_pointer_until_mouse_up) {
+    vg_widget_t *root = vg_widget_create(VG_WIDGET_CONTAINER);
+    ASSERT_NOT_NULL(root);
+    root->visible = true;
+    root->enabled = true;
+    root->width = 400.0f;
+    root->height = 200.0f;
+
+    vg_splitpane_t *split = vg_splitpane_create(root, VG_SPLIT_HORIZONTAL);
+    ASSERT_NOT_NULL(split);
+    vg_widget_arrange(&split->base, 20.0f, 20.0f, 200.0f, 60.0f);
+
+    vg_widget_t *first = split->base.first_child;
+    ASSERT_NOT_NULL(first);
+
+    float splitter_x = split->base.x + first->width + split->splitter_size * 0.5f;
+    float splitter_y = split->base.y + 10.0f;
+
+    vg_event_t move = vg_event_mouse(VG_EVENT_MOUSE_MOVE, splitter_x, splitter_y, VG_MOUSE_LEFT, 0);
+    ASSERT_FALSE(vg_event_dispatch(root, &move));
+    ASSERT_TRUE(split->splitter_hovered);
+
+    vg_event_t down = vg_event_mouse(VG_EVENT_MOUSE_DOWN, splitter_x, splitter_y, VG_MOUSE_LEFT, 0);
+    ASSERT_TRUE(vg_event_dispatch(root, &down));
+    ASSERT_EQ(vg_widget_get_input_capture(), &split->base);
+
+    float old_pos = split->split_position;
+    vg_event_t drag =
+        vg_event_mouse(VG_EVENT_MOUSE_MOVE, split->base.x + split->base.width + 40.0f, splitter_y, VG_MOUSE_LEFT, 0);
+    ASSERT_TRUE(vg_event_dispatch(root, &drag));
+    ASSERT_TRUE(split->split_position > old_pos);
+
+    vg_event_t up =
+        vg_event_mouse(VG_EVENT_MOUSE_UP, split->base.x + split->base.width + 40.0f, splitter_y, VG_MOUSE_LEFT, 0);
+    ASSERT_TRUE(vg_event_dispatch(root, &up));
+    ASSERT_NULL(vg_widget_get_input_capture());
+
+    vg_widget_destroy(root);
+}
+
 TEST(toolbar_hit_testing_uses_local_coords) {
     int click_count = 0;
     vg_toolbar_t *tb = vg_toolbar_create(NULL, VG_TOOLBAR_HORIZONTAL);
@@ -864,6 +1162,36 @@ TEST(toolbar_hit_testing_uses_local_coords) {
     up.type = VG_EVENT_MOUSE_UP;
     ASSERT_TRUE(vg_event_send(&tb->base, &up));
     ASSERT_EQ(click_count, 1);
+
+    vg_widget_destroy(&tb->base);
+}
+
+TEST(toolbar_spacer_pushes_trailing_button_to_edge) {
+    int left_clicks = 0;
+    int right_clicks = 0;
+    vg_toolbar_t *tb = vg_toolbar_create(NULL, VG_TOOLBAR_HORIZONTAL);
+    ASSERT_NOT_NULL(tb);
+    ASSERT_NOT_NULL(vg_toolbar_add_button(
+        tb, "left", NULL, vg_icon_from_glyph('L'), toolbar_click_counter, &left_clicks));
+    ASSERT_NOT_NULL(vg_toolbar_add_spacer(tb));
+    ASSERT_NOT_NULL(vg_toolbar_add_button(
+        tb, "right", NULL, vg_icon_from_glyph('R'), toolbar_click_counter, &right_clicks));
+
+    vg_widget_arrange(&tb->base, 0.0f, 0.0f, 260.0f, 32.0f);
+
+    vg_event_t down = {0};
+    down.type = VG_EVENT_MOUSE_DOWN;
+    down.mouse.x = 230.0f;
+    down.mouse.y = 10.0f;
+    down.mouse.screen_x = 230.0f;
+    down.mouse.screen_y = 10.0f;
+    ASSERT_TRUE(vg_event_send(&tb->base, &down));
+
+    vg_event_t up = down;
+    up.type = VG_EVENT_MOUSE_UP;
+    ASSERT_TRUE(vg_event_send(&tb->base, &up));
+    ASSERT_EQ(left_clicks, 0);
+    ASSERT_EQ(right_clicks, 1);
 
     vg_widget_destroy(&tb->base);
 }
@@ -905,6 +1233,53 @@ TEST(toolbar_overflow_popup_exposes_hidden_items) {
     vg_widget_destroy(root);
 }
 
+TEST(toolbar_dropdown_opens_menu_popup_and_triggers_menu_item) {
+    int action_count = 0;
+    vg_widget_t *root = vg_widget_create(VG_WIDGET_CONTAINER);
+    ASSERT_NOT_NULL(root);
+    root->visible = true;
+    root->enabled = true;
+    root->width = 320.0f;
+    root->height = 240.0f;
+
+    vg_menubar_t *menubar = vg_menubar_create(NULL);
+    ASSERT_NOT_NULL(menubar);
+    vg_menu_t *menu = vg_menubar_add_menu(menubar, "File");
+    ASSERT_NOT_NULL(menu);
+    vg_menu_item_t *menu_item =
+        vg_menu_add_item(menu, "Export", NULL, toolbar_menu_action_counter, &action_count);
+    ASSERT_NOT_NULL(menu_item);
+
+    vg_toolbar_t *tb = vg_toolbar_create(root, VG_TOOLBAR_HORIZONTAL);
+    ASSERT_NOT_NULL(tb);
+    ASSERT_NOT_NULL(vg_toolbar_add_dropdown(
+        tb, "file", "File", vg_icon_from_glyph('F'), menu));
+    vg_widget_arrange(&tb->base, 20.0f, 20.0f, 140.0f, 32.0f);
+
+    vg_event_t down = vg_event_mouse(VG_EVENT_MOUSE_DOWN, 30.0f, 30.0f, VG_MOUSE_LEFT, 0);
+    ASSERT_TRUE(vg_event_dispatch(root, &down));
+    vg_event_t up = vg_event_mouse(VG_EVENT_MOUSE_UP, 30.0f, 30.0f, VG_MOUSE_LEFT, 0);
+    ASSERT_TRUE(vg_event_dispatch(root, &up));
+
+    ASSERT_NOT_NULL(tb->dropdown_popup);
+    ASSERT_TRUE(tb->dropdown_popup->is_visible);
+    ASSERT_EQ(vg_widget_get_input_capture(), &tb->base);
+
+    vg_event_t popup_click = vg_event_mouse(VG_EVENT_MOUSE_DOWN,
+                                            tb->dropdown_popup->base.x + 10.0f,
+                                            tb->dropdown_popup->base.y + 10.0f,
+                                            VG_MOUSE_LEFT,
+                                            0);
+    ASSERT_TRUE(vg_event_dispatch(root, &popup_click));
+    ASSERT_EQ(action_count, 1);
+    ASSERT_TRUE(menu_item->was_clicked);
+    ASSERT_TRUE(tb->dropdown_popup == NULL || !tb->dropdown_popup->is_visible);
+    ASSERT_NULL(vg_widget_get_input_capture());
+
+    vg_widget_destroy(root);
+    vg_widget_destroy(&menubar->base);
+}
+
 TEST(statusbar_hit_testing_uses_local_coords) {
     int click_count = 0;
     vg_statusbar_t *sb = vg_statusbar_create(NULL);
@@ -923,6 +1298,109 @@ TEST(statusbar_hit_testing_uses_local_coords) {
     ASSERT_EQ(click_count, 1);
 
     vg_widget_destroy(&sb->base);
+}
+
+TEST(statusbar_item_mutators_invalidate_owner) {
+    vg_statusbar_t *sb = vg_statusbar_create(NULL);
+    ASSERT_NOT_NULL(sb);
+    vg_statusbar_item_t *item = vg_statusbar_add_text(sb, VG_STATUSBAR_ZONE_LEFT, "Idle");
+    ASSERT_NOT_NULL(item);
+    ASSERT_EQ(item->owner, sb);
+
+    sb->base.needs_layout = false;
+    sb->base.needs_paint = false;
+    vg_statusbar_item_set_text(item, "Building");
+    ASSERT_TRUE(sb->base.needs_layout);
+    ASSERT_TRUE(sb->base.needs_paint);
+
+    sb->base.needs_layout = false;
+    sb->base.needs_paint = false;
+    vg_statusbar_item_set_progress(item, 0.5f);
+    ASSERT_FALSE(sb->base.needs_layout);
+    ASSERT_TRUE(sb->base.needs_paint);
+
+    sb->base.needs_layout = false;
+    sb->base.needs_paint = false;
+    vg_statusbar_item_set_visible(item, false);
+    ASSERT_TRUE(sb->base.needs_layout);
+    ASSERT_TRUE(sb->base.needs_paint);
+
+    vg_widget_destroy(&sb->base);
+}
+
+TEST(dropdown_mutators_invalidate_and_adjust_indices) {
+    vg_dropdown_t *dd = vg_dropdown_create(NULL);
+    ASSERT_NOT_NULL(dd);
+
+    dd->base.needs_layout = false;
+    dd->base.needs_paint = false;
+    ASSERT_EQ(vg_dropdown_add_item(dd, "One"), 0);
+    ASSERT_TRUE(dd->base.needs_layout);
+    ASSERT_TRUE(dd->base.needs_paint);
+
+    ASSERT_EQ(vg_dropdown_add_item(dd, "Two"), 1);
+    vg_dropdown_set_selected(dd, 1);
+    ASSERT_EQ(dd->selected_index, 1);
+    ASSERT_TRUE(dd->base.needs_paint);
+
+    dd->base.needs_layout = false;
+    dd->base.needs_paint = false;
+    vg_dropdown_remove_item(dd, 0);
+    ASSERT_EQ(dd->item_count, 1);
+    ASSERT_EQ(dd->selected_index, 0);
+    ASSERT_TRUE(dd->base.needs_layout);
+    ASSERT_TRUE(dd->base.needs_paint);
+
+    dd->base.needs_layout = false;
+    dd->base.needs_paint = false;
+    vg_dropdown_set_font(dd, NULL, 18.0f);
+    ASSERT_TRUE(dd->base.needs_layout);
+    ASSERT_TRUE(dd->base.needs_paint);
+
+    vg_widget_destroy(&dd->base);
+}
+
+TEST(tabbar_drag_reorders_tabs_and_fires_callback) {
+    tabbar_reorder_state_t state = {0};
+    vg_tabbar_t *tabbar = vg_tabbar_create(NULL);
+    ASSERT_NOT_NULL(tabbar);
+
+    vg_tab_t *first = vg_tabbar_add_tab(tabbar, "a.zia", false);
+    vg_tab_t *second = vg_tabbar_add_tab(tabbar, "b.zia", false);
+    vg_tab_t *third = vg_tabbar_add_tab(tabbar, "c.zia", false);
+    ASSERT_NOT_NULL(first);
+    ASSERT_NOT_NULL(second);
+    ASSERT_NOT_NULL(third);
+    vg_tabbar_set_on_reorder(tabbar, tabbar_reorder_counter, &state);
+
+    vg_widget_arrange(&tabbar->base, 0.0f, 0.0f, 600.0f, tabbar->tab_height);
+
+    vg_event_t down = {0};
+    down.type = VG_EVENT_MOUSE_DOWN;
+    down.mouse.x = 50.0f;
+    down.mouse.y = tabbar->tab_height * 0.5f;
+    down.mouse.screen_x = down.mouse.x;
+    down.mouse.screen_y = down.mouse.y;
+    ASSERT_TRUE(vg_event_send(&tabbar->base, &down));
+    ASSERT_EQ(vg_widget_get_input_capture(), &tabbar->base);
+
+    vg_event_t move = down;
+    move.type = VG_EVENT_MOUSE_MOVE;
+    move.mouse.x = 450.0f;
+    move.mouse.screen_x = 450.0f;
+    ASSERT_TRUE(vg_event_send(&tabbar->base, &move));
+
+    vg_event_t up = move;
+    up.type = VG_EVENT_MOUSE_UP;
+    ASSERT_TRUE(vg_event_send(&tabbar->base, &up));
+
+    ASSERT_EQ(vg_tabbar_get_tab_index(tabbar, first), 2);
+    ASSERT_TRUE(state.count >= 1);
+    ASSERT_EQ(state.last_index, 2);
+    ASSERT_EQ(state.last_tab, first);
+    ASSERT_NULL(vg_widget_get_input_capture());
+
+    vg_widget_destroy(&tabbar->base);
 }
 
 TEST(listbox_virtual_paint_clips_to_viewport) {
@@ -952,6 +1430,19 @@ TEST(listbox_virtual_paint_clips_to_viewport) {
 
     vg_widget_destroy(&lb->base);
     vgfx_destroy_window(win);
+}
+
+TEST(listbox_measure_uses_small_item_count) {
+    vg_listbox_t *lb = vg_listbox_create(NULL);
+    ASSERT_NOT_NULL(lb);
+    ASSERT_NOT_NULL(vg_listbox_add_item(lb, "only", NULL));
+
+    vg_widget_measure(&lb->base, 0.0f, 0.0f);
+
+    ASSERT_TRUE(lb->base.measured_height > lb->item_height - 0.1f);
+    ASSERT_TRUE(lb->base.measured_height < lb->item_height + 0.1f);
+
+    vg_widget_destroy(&lb->base);
 }
 
 //=============================================================================
@@ -990,6 +1481,8 @@ int main(void) {
     RUN(flex_justify_space_between_adds_gap);
     RUN(vbox_flex_margins_are_budgeted);
     RUN(hbox_flex_margins_are_budgeted);
+    RUN(flex_wrap_moves_overflow_to_next_line);
+    RUN(grid_explicit_tracks_survive_dimension_growth);
 
     // PARTIAL-001/002: CodeEditor arrays zero on create
     RUN(codeeditor_gutter_icon_count_zero_on_create);
@@ -998,6 +1491,8 @@ int main(void) {
     // PARTIAL-007: GetSelectedText
     RUN(codeeditor_get_selection_without_selection_is_null);
     RUN(codeeditor_get_selection_with_selection_returns_text);
+    RUN(codeeditor_set_text_clears_reused_line_color_metadata);
+    RUN(codeeditor_delete_selection_clears_vacated_line_slots);
     RUN(tabbar_metrics_follow_theme_scale);
     RUN(tab_tooltip_can_be_replaced);
     RUN(tabbar_title_updates_default_tooltip);
@@ -1006,17 +1501,28 @@ int main(void) {
     RUN(widget_destroy_child_detaches_from_parent);
     RUN(widget_add_child_rejects_cycles);
     RUN(event_bubble_honors_parent_return_value);
+    RUN(event_bubble_localizes_parent_mouse_coords);
     RUN(floatingpanel_destroy_no_double_free);
+    RUN(floatingpanel_drag_moves_overlay_and_releases_capture);
     RUN(scrollview_auto_content_size_uses_measured_children);
+    RUN(scrollview_direct_children_stack_vertically);
     RUN(scrollview_auto_hide_rechecks_cross_axis);
     RUN(scrollview_scroll_to_nested_descendant_uses_full_offset);
+    RUN(treeview_remove_node_clears_descendant_state);
     RUN(widget_paint_runs_overlay_second_pass);
     RUN(widget_set_focus_null_clears_focus);
     RUN(splitpane_arrange_clamps_negative_sizes);
+    RUN(splitpane_drag_captures_pointer_until_mouse_up);
     RUN(toolbar_hit_testing_uses_local_coords);
+    RUN(toolbar_spacer_pushes_trailing_button_to_edge);
     RUN(toolbar_overflow_popup_exposes_hidden_items);
+    RUN(toolbar_dropdown_opens_menu_popup_and_triggers_menu_item);
     RUN(statusbar_hit_testing_uses_local_coords);
+    RUN(statusbar_item_mutators_invalidate_owner);
+    RUN(dropdown_mutators_invalidate_and_adjust_indices);
+    RUN(tabbar_drag_reorders_tabs_and_fires_callback);
     RUN(listbox_virtual_paint_clips_to_viewport);
+    RUN(listbox_measure_uses_small_item_count);
 
     printf("\n%d passed, %d failed\n", g_passed, g_failed);
     return g_failed ? 1 : 0;

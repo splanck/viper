@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-09
+last-verified: 2026-04-16
 ---
 
 # Layout Widgets
@@ -24,6 +24,8 @@ Vertical box layout - arranges children top to bottom.
 Horizontal box layout - arranges children left to right.
 
 **Constructor:** `NEW Viper.GUI.HBox()`
+
+HBox and VBox spacing/alignment account for child margins when centering or end-aligning content.
 
 ### Layout Methods
 
@@ -69,7 +71,7 @@ var l3 = Label.New(vbox, "Third");
 
 ---
 
-> **Note:** For grid-like layouts, nest HBox and VBox containers.
+> **Note:** For grid-like layouts, nest HBox and VBox containers. In the native GUI layer, wrapped flex layouts and dynamically resized grids are also supported when you need lower-level control.
 
 
 ## See Also

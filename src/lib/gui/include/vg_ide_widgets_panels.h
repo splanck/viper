@@ -29,6 +29,7 @@ extern "C" {
 
 /// @brief Tab structure
 typedef struct vg_tab {
+    struct vg_tabbar *owner; ///< Owning tab bar for invalidation/reorder
     const char *title;   ///< Tab title (owned)
     const char *tooltip; ///< Tab tooltip (owned)
     void *user_data;     ///< User data

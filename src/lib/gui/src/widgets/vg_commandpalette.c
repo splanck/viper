@@ -9,6 +9,7 @@
 //
 //===----------------------------------------------------------------------===//
 // vg_commandpalette.c - Command Palette widget implementation
+#include "../../../graphics/include/vgfx.h"
 #include "../../include/vg_event.h"
 #include "../../include/vg_ide_widgets.h"
 #include "../../include/vg_theme.h"
@@ -276,16 +277,22 @@ static void commandpalette_measure(vg_widget_t *widget,
 
 static void commandpalette_paint(vg_widget_t *widget, void *canvas) {
     vg_commandpalette_t *palette = (vg_commandpalette_t *)widget;
-    (void)canvas;
+    vgfx_window_t win = (vgfx_window_t)canvas;
 
     if (!palette->is_visible)
         return;
 
-    // Draw background (placeholder - actual drawing via vgfx)
-    (void)palette->bg_color;
+    float search_height = 36.0f;
+    float x = widget->x;
+    float y = widget->y;
+    float w = widget->width > 0.0f ? widget->width : palette->width;
+    float h = widget->height;
 
-    // Draw search input area
-    float search_height = 36;
+    vgfx_fill_rect(win, (int32_t)x, (int32_t)y, (int32_t)w, (int32_t)h, palette->bg_color);
+    vgfx_rect(win, (int32_t)x, (int32_t)y, (int32_t)w, (int32_t)h, 0xFF3C3C3C);
+    vgfx_fill_rect(
+        win, (int32_t)x, (int32_t)(y + search_height - 1.0f), (int32_t)w, 1, 0xFF3C3C3C);
+
     if (palette->font) {
         const char *query =
             (palette->current_query && palette->current_query[0])
@@ -297,14 +304,14 @@ static void commandpalette_paint(vg_widget_t *widget, void *canvas) {
         vg_font_draw_text(canvas,
                           palette->font,
                           palette->font_size,
-                          widget->x + 12,
-                          widget->y + 8,
+                          x + 12.0f,
+                          y + 24.0f,
                           query,
                           query_color);
     }
 
     // Draw filtered results
-    float y = widget->y + search_height;
+    float item_y = widget->y + search_height;
     size_t visible = palette->filtered_count;
     if (visible > palette->max_visible)
         visible = palette->max_visible;
@@ -316,7 +323,12 @@ static void commandpalette_paint(vg_widget_t *widget, void *canvas) {
 
         // Draw item background
         if ((int)i == palette->selected_index) {
-            (void)palette->selected_bg;
+            vgfx_fill_rect(win,
+                           (int32_t)(x + 1.0f),
+                           (int32_t)item_y,
+                           (int32_t)(w - 2.0f),
+                           (int32_t)palette->item_height,
+                           palette->selected_bg);
         }
 
         // Draw label and shortcut
@@ -324,24 +336,26 @@ static void commandpalette_paint(vg_widget_t *widget, void *canvas) {
             vg_font_draw_text(canvas,
                               palette->font,
                               palette->font_size,
-                              widget->x + 12,
-                              y + 8,
+                              x + 12.0f,
+                              item_y + 22.0f,
                               cmd->label,
                               palette->text_color);
 
             if (cmd->shortcut) {
-                // Draw shortcut right-aligned
+                vg_text_metrics_t shortcut_metrics;
+                vg_font_measure_text(
+                    palette->font, palette->font_size, cmd->shortcut, &shortcut_metrics);
                 vg_font_draw_text(canvas,
                                   palette->font,
                                   palette->font_size,
-                                  widget->x + palette->width - 100,
-                                  y + 8,
+                                  x + w - 16.0f - shortcut_metrics.width,
+                                  item_y + 22.0f,
                                   cmd->shortcut,
                                   palette->shortcut_color);
             }
         }
 
-        y += palette->item_height;
+        item_y += palette->item_height;
     }
 }
 

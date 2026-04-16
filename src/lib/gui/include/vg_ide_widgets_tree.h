@@ -148,6 +148,7 @@ void vg_contextmenu_set_font(vg_contextmenu_t *menu, vg_font_t *font, float size
 typedef struct vg_tree_node {
     const char *text;            ///< Node text (owned)
     void *user_data;             ///< User data associated with node
+    bool owns_user_data;         ///< True when user_data is owned and should be freed
     bool expanded;               ///< Is node expanded
     bool selected;               ///< Is node selected
     bool has_children;           ///< Does node have children (for lazy loading)

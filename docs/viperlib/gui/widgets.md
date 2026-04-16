@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-09
+last-verified: 2026-04-16
 ---
 
 # Basic Widgets
@@ -76,6 +76,8 @@ if saveBtn.WasClicked() == 1 { SaveDocument(); }
 ### TextInput
 
 Single-line text input field.
+
+Long single-line values stay clipped to the field bounds, the caret auto-scrolls horizontally as the cursor moves, and the caret blink is advanced automatically while the field is focused.
 
 **Constructor:** `NEW Viper.GUI.TextInput(parent)`
 
@@ -222,6 +224,8 @@ volume.SetSize(200, 20);
 
 Numeric input with increment/decrement buttons.
 
+The spinner now behaves as a real interactive widget: the up/down buttons repaint correctly, `Up` / `Down` keys adjust the value while focused, and the mouse wheel steps the value when hovered.
+
 **Constructor:** `NEW Viper.GUI.Spinner(parent)`
 
 | Property | Type   | Access | Description            |
@@ -259,6 +263,8 @@ quantity.SetValue(1.0);
 
 Progress indicator bar.
 
+Indeterminate progress bars created through the underlying C GUI layer now advance their animation during the normal app render loop.
+
 **Constructor:** `NEW Viper.GUI.ProgressBar(parent)`
 
 | Property | Type   | Access | Description                  |
@@ -294,6 +300,8 @@ progress.SetValue(0.75);  // 75%
 ### Dropdown
 
 Dropdown selection list.
+
+Item additions, removals, selection changes, and font changes invalidate the widget immediately. Popup hit-testing is screen-correct even when the control is nested or repositioned.
 
 **Constructor:** `NEW Viper.GUI.Dropdown(parent)`
 
@@ -340,6 +348,8 @@ END IF
 ### ListBox
 
 Scrollable list of selectable items with enhanced item management.
+
+Hit-testing uses widget-local coordinates, so nested list boxes select the correct row. Measured height also follows the actual item count for short lists instead of reserving five rows unconditionally.
 
 **Constructor:** `NEW Viper.GUI.ListBox(parent)`
 
@@ -464,12 +474,14 @@ if fileList.WasSelectionChanged() == 1 {
 
 Image display widget.
 
+`SetScaleMode()` and `SetOpacity()` affect the rendered output directly. If you do not call `SetSize()`, the widget measures to the image's natural pixel dimensions once pixels have been assigned.
+
 **Constructor:** `NEW Viper.GUI.Image(parent)`
 
 | Method                         | Signature                              | Description                    |
 |--------------------------------|----------------------------------------|--------------------------------|
 | `SetPixels(pixels, w, h)`      | `Void(Pixels, Integer, Integer)`       | Set image from Pixels buffer   |
-| `LoadFile(path)`               | `Integer(String)`                      | Load BMP/PNG file directly (1=ok, 0=fail) |
+| `LoadFile(path)`               | `Integer(String)`                      | Load PNG, BMP, JPEG, or GIF file directly (1=ok, 0=fail) |
 | `Clear()`                      | `Void()`                               | Clear image                    |
 | `SetScaleMode(mode)`           | `Void(Integer)`                        | 0=none, 1=fit, 2=fill, 3=stretch |
 | `SetOpacity(opacity)`          | `Void(Double)`                         | Set opacity (0.0-1.0)          |

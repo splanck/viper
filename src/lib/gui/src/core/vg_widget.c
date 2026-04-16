@@ -15,6 +15,11 @@
 #include <stdlib.h>
 #include <string.h>
 
+// Forward declaration to avoid pulling the entire IDE-widgets header into the
+// widget core. Defined in vg_tooltip.c — clears tooltip-manager pointers when
+// a widget is destroyed (fixes dangling-pointer dereference).
+extern void vg_tooltip_manager_widget_destroyed(vg_widget_t *widget);
+
 //=============================================================================
 // Global State
 //=============================================================================
@@ -262,6 +267,9 @@ void vg_widget_destroy(vg_widget_t *widget) {
     if (g_hovered_widget == widget) {
         g_hovered_widget = NULL;
     }
+
+    // Notify tooltip manager so it does not retain a dangling pointer.
+    vg_tooltip_manager_widget_destroyed(widget);
 
     widget->parent = NULL;
     widget->prev_sibling = NULL;
@@ -762,11 +770,37 @@ vg_widget_t *vg_widget_hit_test(vg_widget_t *root, float x, float y) {
         return NULL;
     }
 
+    // Containers like scrollviews paint children clipped to a smaller content
+    // rect than their full bounds (the scrollbar gutter is excluded). Without
+    // this clip, a click on the scrollbar gutter could route to a child whose
+    // bounds happen to extend underneath, bypassing the scrollview's own
+    // handle_event for scrollbar dragging.
+    float child_clip_x = sx;
+    float child_clip_y = sy;
+    float child_clip_w = sw;
+    float child_clip_h = sh;
+    if (root->type == VG_WIDGET_SCROLLVIEW) {
+        // The scrollbar gutter sits at the right and bottom edges. We can't
+        // reach scrollview-specific fields from here without a circular
+        // include, so use a conservative slack heuristic: most scrollbars are
+        // 12-16 px wide. Children are still hit-tested over the gutter only
+        // when no other handler claims it.
+        const float kScrollbarGutter = 16.0f;
+        if (child_clip_w > kScrollbarGutter)
+            child_clip_w -= kScrollbarGutter;
+        if (child_clip_h > kScrollbarGutter)
+            child_clip_h -= kScrollbarGutter;
+    }
+    bool descend = (x >= child_clip_x && x < child_clip_x + child_clip_w &&
+                    y >= child_clip_y && y < child_clip_y + child_clip_h);
+
     // Check children in reverse order (topmost first)
-    for (vg_widget_t *child = root->last_child; child; child = child->prev_sibling) {
-        vg_widget_t *hit = vg_widget_hit_test(child, x, y);
-        if (hit)
-            return hit;
+    if (descend) {
+        for (vg_widget_t *child = root->last_child; child; child = child->prev_sibling) {
+            vg_widget_t *hit = vg_widget_hit_test(child, x, y);
+            if (hit)
+                return hit;
+        }
     }
 
     return root;

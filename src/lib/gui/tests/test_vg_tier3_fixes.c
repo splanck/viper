@@ -26,6 +26,7 @@
 //                stores icon_pos; Destroy frees icon_text cleanly
 //
 #include "vg_event.h"
+#include "vg_ide_widgets.h"
 #include "vg_widget.h"
 #include "vg_widgets.h"
 // Include the private font cache header for PERF-002 white-box tests
@@ -190,6 +191,18 @@ static void count_text_changes(vg_widget_t *widget, const char *text, void *user
     (void)widget;
     (void)text;
     (*(int *)user_data)++;
+}
+
+static bool text_has_suffix(const char *text, const char *suffix) {
+    if (!text || !suffix)
+        return false;
+
+    size_t text_len = strlen(text);
+    size_t suffix_len = strlen(suffix);
+    if (text_len < suffix_len)
+        return false;
+
+    return strcmp(text + text_len - suffix_len, suffix) == 0;
 }
 
 TEST(textinput_undo_restores_previous_text) {
@@ -425,6 +438,113 @@ TEST(modal_blocks_mouse_behind_dialog) {
     vg_widget_destroy(root);
 }
 
+TEST(dialog_button_hit_testing_uses_local_coords) {
+    vg_widget_t *root = vg_widget_create(VG_WIDGET_CONTAINER);
+    ASSERT_NOT_NULL(root);
+    root->x = 0.0f;
+    root->y = 0.0f;
+    root->width = 640.0f;
+    root->height = 480.0f;
+    root->visible = true;
+    root->enabled = true;
+
+    vg_dialog_t *dialog = vg_dialog_create("Confirm");
+    ASSERT_NOT_NULL(dialog);
+    vg_widget_add_child(root, &dialog->base);
+    vg_dialog_set_buttons(dialog, VG_DIALOG_BUTTONS_OK_CANCEL);
+    vg_dialog_show(dialog);
+    vg_widget_arrange(&dialog->base, 120.0f, 80.0f, 320.0f, 180.0f);
+
+    vg_event_t click = vg_event_mouse(VG_EVENT_MOUSE_DOWN,
+                                      dialog->base.x + dialog->base.width - 40.0f,
+                                      dialog->base.y + dialog->base.height - 24.0f,
+                                      VG_MOUSE_LEFT,
+                                      0);
+    ASSERT_TRUE(vg_event_dispatch(root, &click));
+    ASSERT_FALSE(vg_dialog_is_open(dialog));
+    ASSERT_EQ(vg_dialog_get_result(dialog), VG_DIALOG_RESULT_CANCEL);
+
+    vg_widget_destroy(root);
+}
+
+TEST(dialog_show_centered_uses_nested_screen_bounds) {
+    vg_widget_t *root = vg_widget_create(VG_WIDGET_CONTAINER);
+    ASSERT_NOT_NULL(root);
+    root->visible = true;
+    root->enabled = true;
+    root->width = 800.0f;
+    root->height = 600.0f;
+
+    vg_widget_t *outer = vg_widget_create(VG_WIDGET_CONTAINER);
+    vg_widget_t *middle = vg_widget_create(VG_WIDGET_CONTAINER);
+    vg_widget_t *target = vg_widget_create(VG_WIDGET_CONTAINER);
+    ASSERT_NOT_NULL(outer);
+    ASSERT_NOT_NULL(middle);
+    ASSERT_NOT_NULL(target);
+
+    vg_widget_add_child(root, outer);
+    vg_widget_add_child(outer, middle);
+    vg_widget_add_child(middle, target);
+    outer->x = 40.0f;
+    outer->y = 30.0f;
+    middle->x = 60.0f;
+    middle->y = 50.0f;
+    target->x = 25.0f;
+    target->y = 15.0f;
+    target->width = 100.0f;
+    target->height = 40.0f;
+
+    vg_dialog_t *dialog = vg_dialog_create("Centered");
+    ASSERT_NOT_NULL(dialog);
+    vg_widget_add_child(outer, &dialog->base);
+
+    vg_dialog_show_centered(dialog, target);
+
+    float expected_x = middle->x + target->x + target->width * 0.5f - dialog->base.width * 0.5f;
+    float expected_y =
+        middle->y + target->y + target->height * 0.5f - dialog->base.height * 0.5f;
+    ASSERT_TRUE(dialog->base.x > expected_x - 0.1f && dialog->base.x < expected_x + 0.1f);
+    ASSERT_TRUE(dialog->base.y > expected_y - 0.1f && dialog->base.y < expected_y + 0.1f);
+
+    vg_widget_destroy(root);
+}
+
+TEST(filedialog_save_confirm_uses_local_coords_and_default_extension) {
+    vg_widget_t *root = vg_widget_create(VG_WIDGET_CONTAINER);
+    ASSERT_NOT_NULL(root);
+    root->visible = true;
+    root->enabled = true;
+    root->width = 800.0f;
+    root->height = 600.0f;
+
+    vg_filedialog_t *dialog = vg_filedialog_create(VG_FILEDIALOG_SAVE);
+    ASSERT_NOT_NULL(dialog);
+    vg_widget_add_child(root, &dialog->base.base);
+
+    free(dialog->current_path);
+    dialog->current_path = strdup("/virtual");
+    vg_filedialog_set_filename(dialog, "report");
+    vg_filedialog_set_default_extension(dialog, "txt");
+    dialog->base.is_open = true;
+    dialog->base.base.visible = true;
+    dialog->filename_active = true;
+
+    vg_widget_arrange(&dialog->base.base, 140.0f, 90.0f, 600.0f, 400.0f);
+
+    vg_event_t click = vg_event_mouse(VG_EVENT_MOUSE_DOWN,
+                                      dialog->base.base.x + dialog->base.base.width - 40.0f,
+                                      dialog->base.base.y + dialog->base.base.height - 24.0f,
+                                      VG_MOUSE_LEFT,
+                                      0);
+    ASSERT_TRUE(vg_event_dispatch(root, &click));
+    ASSERT_FALSE(dialog->base.is_open);
+    ASSERT_EQ(dialog->selected_file_count, 1);
+    ASSERT_NOT_NULL(dialog->selected_files);
+    ASSERT_TRUE(text_has_suffix(dialog->selected_files[0], "report.txt"));
+
+    vg_widget_destroy(root);
+}
+
 //=============================================================================
 // FEAT-006: Tab Order via tab_index
 //=============================================================================
@@ -586,6 +706,9 @@ int main(void) {
 
     printf("\nBUG-GUI-002: Dialog Modal Event Blocking\n");
     RUN(modal_blocks_mouse_behind_dialog);
+    RUN(dialog_button_hit_testing_uses_local_coords);
+    RUN(dialog_show_centered_uses_nested_screen_bounds);
+    RUN(filedialog_save_confirm_uses_local_coords_and_default_extension);
 
     printf("\nFEAT-006: Tab Order\n");
     RUN(focus_next_respects_tab_index_order);

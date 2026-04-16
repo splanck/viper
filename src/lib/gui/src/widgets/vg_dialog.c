@@ -144,6 +144,18 @@ static const char *get_icon_glyph(vg_dialog_icon_t icon) {
     }
 }
 
+static void get_parent_screen_origin(vg_widget_t *widget, float *x, float *y) {
+    float sx = 0.0f;
+    float sy = 0.0f;
+    if (widget && widget->parent) {
+        vg_widget_get_screen_bounds(widget->parent, &sx, &sy, NULL, NULL);
+    }
+    if (x)
+        *x = sx;
+    if (y)
+        *y = sy;
+}
+
 //=============================================================================
 // Dialog Implementation
 //=============================================================================
@@ -207,9 +219,12 @@ vg_dialog_t *vg_dialog_create(const char *title) {
     dlg->drag_offset_x = 0;
     dlg->drag_offset_y = 0;
     dlg->hovered_button = -1;
+    dlg->closing_in_progress = false;
 
     // Callbacks
     dlg->user_data = NULL;
+    dlg->on_result_user_data = NULL;
+    dlg->on_close_user_data = NULL;
     dlg->on_result = NULL;
     dlg->on_close = NULL;
 
@@ -222,6 +237,11 @@ vg_dialog_t *vg_dialog_create(const char *title) {
 
 static void dialog_destroy(vg_widget_t *widget) {
     vg_dialog_t *dlg = (vg_dialog_t *)widget;
+
+    if (vg_widget_get_input_capture() == widget)
+        vg_widget_release_input_capture();
+    if (vg_widget_get_modal_root() == widget)
+        vg_widget_set_modal_root(NULL);
 
     free(dlg->title);
     free(dlg->message);
@@ -506,19 +526,17 @@ static void dialog_paint(vg_widget_t *widget, void *canvas) {
 }
 
 static int find_button_at(vg_dialog_t *dlg, float px, float py) {
-    float x = dlg->base.x;
-    float y = dlg->base.y;
     float w = dlg->base.width;
     float h = dlg->base.height;
 
     // Check if in button bar area
-    float button_bar_y = y + h - DIALOG_BUTTON_BAR_HEIGHT;
-    if (py < button_bar_y || py > y + h)
+    float button_bar_y = h - DIALOG_BUTTON_BAR_HEIGHT;
+    if (py < button_bar_y || py > h)
         return -1;
 
     // Calculate button positions right-to-left
     float button_y = button_bar_y + (DIALOG_BUTTON_BAR_HEIGHT - DIALOG_BUTTON_HEIGHT) / 2;
-    float button_x = x + w - DIALOG_CONTENT_PADDING;
+    float button_x = w - DIALOG_CONTENT_PADDING;
 
     const preset_button_t *buttons;
     size_t button_count;
@@ -554,19 +572,15 @@ static int find_button_at(vg_dialog_t *dlg, float px, float py) {
 }
 
 static bool is_in_title_bar(vg_dialog_t *dlg, float px, float py) {
-    float x = dlg->base.x;
-    float y = dlg->base.y;
-    float w = dlg->base.width;
-
-    return px >= x && px < x + w && py >= y && py < y + DIALOG_TITLE_BAR_HEIGHT;
+    return px >= 0.0f && px < dlg->base.width && py >= 0.0f && py < DIALOG_TITLE_BAR_HEIGHT;
 }
 
 static bool is_on_close_button(vg_dialog_t *dlg, float px, float py) {
     if (!dlg->show_close_button)
         return false;
 
-    float x = dlg->base.x + dlg->base.width - DIALOG_CLOSE_BUTTON_SIZE - 4;
-    float y = dlg->base.y + (DIALOG_TITLE_BAR_HEIGHT - DIALOG_CLOSE_BUTTON_SIZE) / 2;
+    float x = dlg->base.width - DIALOG_CLOSE_BUTTON_SIZE - 4.0f;
+    float y = (DIALOG_TITLE_BAR_HEIGHT - DIALOG_CLOSE_BUTTON_SIZE) / 2.0f;
 
     return px >= x && px < x + DIALOG_CLOSE_BUTTON_SIZE && py >= y &&
            py < y + DIALOG_CLOSE_BUTTON_SIZE;
@@ -606,9 +620,13 @@ static bool dialog_handle_event(vg_widget_t *widget, vg_event_t *event) {
 
             // Handle dragging
             if (dlg->is_dragging) {
-                widget->x = px - dlg->drag_offset_x;
-                widget->y = py - dlg->drag_offset_y;
+                float parent_sx = 0.0f;
+                float parent_sy = 0.0f;
+                get_parent_screen_origin(widget, &parent_sx, &parent_sy);
+                widget->x = event->mouse.screen_x - parent_sx - (float)dlg->drag_offset_x;
+                widget->y = event->mouse.screen_y - parent_sy - (float)dlg->drag_offset_y;
                 widget->needs_paint = true;
+                widget->needs_layout = true;
                 return true;
             }
 
@@ -642,8 +660,12 @@ static bool dialog_handle_event(vg_widget_t *widget, vg_event_t *event) {
             // Start dragging
             if (dlg->draggable && is_in_title_bar(dlg, px, py)) {
                 dlg->is_dragging = true;
-                dlg->drag_offset_x = (int)(px - widget->x);
-                dlg->drag_offset_y = (int)(py - widget->y);
+                float widget_sx = 0.0f;
+                float widget_sy = 0.0f;
+                vg_widget_get_screen_bounds(widget, &widget_sx, &widget_sy, NULL, NULL);
+                dlg->drag_offset_x = (int)(event->mouse.screen_x - widget_sx);
+                dlg->drag_offset_y = (int)(event->mouse.screen_y - widget_sy);
+                vg_widget_set_input_capture(widget);
                 return true;
             }
 
@@ -652,6 +674,8 @@ static bool dialog_handle_event(vg_widget_t *widget, vg_event_t *event) {
 
         case VG_EVENT_MOUSE_UP:
             dlg->is_dragging = false;
+            if (vg_widget_get_input_capture() == widget)
+                vg_widget_release_input_capture();
             return dlg->modal;
 
         case VG_EVENT_KEY_DOWN:
@@ -861,16 +885,22 @@ void vg_dialog_show_centered(vg_dialog_t *dialog, vg_widget_t *relative_to) {
     // Center on relative widget
     float center_x, center_y;
     if (relative_to) {
-        center_x = relative_to->x + relative_to->width / 2;
-        center_y = relative_to->y + relative_to->height / 2;
+        float sx = 0.0f;
+        float sy = 0.0f;
+        vg_widget_get_screen_bounds(relative_to, &sx, &sy, NULL, NULL);
+        center_x = sx + relative_to->width / 2.0f;
+        center_y = sy + relative_to->height / 2.0f;
     } else {
         // Center on screen (assume 800x600 default)
-        center_x = 400;
-        center_y = 300;
+        center_x = 400.0f;
+        center_y = 300.0f;
     }
 
-    dialog->base.x = center_x - dialog->base.measured_width / 2;
-    dialog->base.y = center_y - dialog->base.measured_height / 2;
+    float parent_sx = 0.0f;
+    float parent_sy = 0.0f;
+    get_parent_screen_origin(&dialog->base, &parent_sx, &parent_sy);
+    dialog->base.x = center_x - parent_sx - dialog->base.measured_width / 2.0f;
+    dialog->base.y = center_y - parent_sy - dialog->base.measured_height / 2.0f;
 
     vg_widget_arrange(&dialog->base,
                       dialog->base.x,
@@ -884,6 +914,9 @@ void vg_dialog_hide(vg_dialog_t *dialog) {
     if (!dialog)
         return;
     dialog->is_open = false;
+    dialog->is_dragging = false;
+    if (vg_widget_get_input_capture() == &dialog->base)
+        vg_widget_release_input_capture();
 
     // Release modal lock if this dialog owned it
     if (dialog->modal && vg_widget_get_modal_root() == &dialog->base)
@@ -891,24 +924,44 @@ void vg_dialog_hide(vg_dialog_t *dialog) {
 }
 
 /// @brief Dialog close.
+///
+/// Re-entrancy: closing_in_progress prevents a callback that calls vg_dialog_close
+/// again from re-firing the result/close handlers. Callbacks are snapshotted into
+/// locals so a re-entrant set_on_close cannot swap the close handler mid-fire.
+///
+/// Lifetime contract: callbacks MUST NOT free the dialog. To release the dialog,
+/// schedule destruction after the close routine returns. Freeing inside on_result
+/// would cause use-after-free when on_close fires.
 void vg_dialog_close(vg_dialog_t *dialog, vg_dialog_result_t result) {
-    if (!dialog)
+    if (!dialog || dialog->closing_in_progress)
         return;
+    dialog->closing_in_progress = true;
 
     dialog->result = result;
     dialog->is_open = false;
+    dialog->is_dragging = false;
+    if (vg_widget_get_input_capture() == &dialog->base)
+        vg_widget_release_input_capture();
 
     // Release modal lock if this dialog owned it
     if (dialog->modal && vg_widget_get_modal_root() == &dialog->base)
         vg_widget_set_modal_root(NULL);
 
-    if (dialog->on_result) {
-        dialog->on_result(dialog, result, dialog->user_data);
+    // Snapshot callbacks to defend against re-entrant set_on_result/set_on_close.
+    void (*on_result_cb)(vg_dialog_t *, vg_dialog_result_t, void *) = dialog->on_result;
+    void *on_result_ud = dialog->on_result_user_data;
+    void (*on_close_cb)(vg_dialog_t *, void *) = dialog->on_close;
+    void *on_close_ud = dialog->on_close_user_data;
+
+    if (on_result_cb) {
+        on_result_cb(dialog, result, on_result_ud);
     }
 
-    if (dialog->on_close) {
-        dialog->on_close(dialog, dialog->user_data);
+    if (on_close_cb) {
+        on_close_cb(dialog, on_close_ud);
     }
+
+    dialog->closing_in_progress = false;
 }
 
 vg_dialog_result_t vg_dialog_get_result(vg_dialog_t *dialog) {
@@ -930,7 +983,8 @@ void vg_dialog_set_on_result(vg_dialog_t *dialog,
     if (!dialog)
         return;
     dialog->on_result = callback;
-    dialog->user_data = user_data;
+    dialog->on_result_user_data = user_data;
+    dialog->user_data = user_data; // legacy alias
 }
 
 /// @brief Dialog set on close.
@@ -940,7 +994,10 @@ void vg_dialog_set_on_close(vg_dialog_t *dialog,
     if (!dialog)
         return;
     dialog->on_close = callback;
+    dialog->on_close_user_data = user_data;
     if (!dialog->on_result) {
+        // Preserve historical behavior: when no result handler is set, on_close's
+        // user_data also populates the legacy combined slot.
         dialog->user_data = user_data;
     }
 }

@@ -15,8 +15,10 @@
 // breadcrumb max_items, commandpalette clear, menu management,
 // and codeeditor data fields.
 #include "vg_ide_widgets.h"
+#include "vg_event.h"
 #include "vg_widget.h"
 #include "vg_widgets.h"
+#include "vgfx.h"
 #include <assert.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -168,6 +170,131 @@ TEST(progressbar_style_change) {
     vg_progressbar_set_style(pb, VG_PROGRESS_BAR);
     ASSERT_EQ(pb->style, VG_PROGRESS_BAR);
     vg_widget_destroy(&pb->base);
+}
+
+TEST(progressbar_tick_advances_indeterminate_phase) {
+    vg_progressbar_t *pb = vg_progressbar_create(NULL);
+    ASSERT_NOT_NULL(pb);
+    vg_progressbar_set_style(pb, VG_PROGRESS_INDETERMINATE);
+    vg_progressbar_tick(pb, 0.5f);
+    ASSERT(pb->animation_phase > 0.34f && pb->animation_phase < 0.36f);
+    ASSERT(pb->base.needs_paint);
+    vg_widget_destroy(&pb->base);
+}
+
+//=============================================================================
+// Group E2b — Spinner
+//=============================================================================
+
+TEST(spinner_create_vtable_set) {
+    vg_spinner_t *spinner = vg_spinner_create(NULL);
+    ASSERT_NOT_NULL(spinner);
+    ASSERT_NEQ(spinner->base.vtable, NULL);
+    vg_widget_destroy(&spinner->base);
+}
+
+TEST(spinner_arrow_keys_adjust_value) {
+    vg_spinner_t *spinner = vg_spinner_create(NULL);
+    ASSERT_NOT_NULL(spinner);
+    vg_spinner_set_range(spinner, 0.0, 10.0);
+    vg_spinner_set_step(spinner, 2.0);
+
+    vg_event_t up = {0};
+    up.type = VG_EVENT_KEY_DOWN;
+    up.key.key = VG_KEY_UP;
+    ASSERT(spinner->base.vtable->handle_event(&spinner->base, &up));
+    ASSERT_EQ(vg_spinner_get_value(spinner), 2.0);
+
+    vg_event_t down = up;
+    down.key.key = VG_KEY_DOWN;
+    ASSERT(spinner->base.vtable->handle_event(&spinner->base, &down));
+    ASSERT_EQ(vg_spinner_get_value(spinner), 0.0);
+
+    vg_widget_destroy(&spinner->base);
+}
+
+TEST(spinner_mouse_buttons_adjust_value) {
+    vg_spinner_t *spinner = vg_spinner_create(NULL);
+    ASSERT_NOT_NULL(spinner);
+    spinner->base.width = 80.0f;
+    spinner->base.height = 28.0f;
+    vg_spinner_set_range(spinner, 0.0, 10.0);
+    vg_spinner_set_step(spinner, 1.0);
+
+    vg_event_t down = {0};
+    down.type = VG_EVENT_MOUSE_DOWN;
+    down.mouse.x = 70.0f;
+    down.mouse.y = 5.0f;
+    ASSERT(spinner->base.vtable->handle_event(&spinner->base, &down));
+    ASSERT_EQ(vg_spinner_get_value(spinner), 1.0);
+
+    vg_event_t up = down;
+    up.type = VG_EVENT_MOUSE_UP;
+    ASSERT(spinner->base.vtable->handle_event(&spinner->base, &up));
+
+    down.mouse.y = 24.0f;
+    ASSERT(spinner->base.vtable->handle_event(&spinner->base, &down));
+    ASSERT_EQ(vg_spinner_get_value(spinner), 0.0);
+
+    vg_widget_destroy(&spinner->base);
+}
+
+//=============================================================================
+// Group E2c — Image
+//=============================================================================
+
+TEST(image_scale_none_preserves_original_size) {
+    vgfx_window_params_t params = {
+        .width = 8, .height = 8, .title = "image", .fps = 0, .resizable = 0};
+    vgfx_window_t win = vgfx_create_window(&params);
+    ASSERT_NOT_NULL(win);
+
+    vg_image_t *image = vg_image_create(NULL);
+    ASSERT_NOT_NULL(image);
+
+    const uint8_t pixel[4] = {255, 0, 0, 255};
+    vg_image_set_pixels(image, pixel, 1, 1);
+    vg_image_set_scale_mode(image, VG_IMAGE_SCALE_NONE);
+    image->bg_color = 0x000000;
+    vg_widget_arrange(&image->base, 0.0f, 0.0f, 3.0f, 3.0f);
+
+    vgfx_cls(win, VGFX_BLACK);
+    vg_widget_paint(&image->base, win);
+
+    vgfx_color_t color = 0;
+    ASSERT_EQ(vgfx_point(win, 0, 0, &color), 1);
+    ASSERT_EQ(color, 0xFF0000);
+    ASSERT_EQ(vgfx_point(win, 2, 2, &color), 1);
+    ASSERT_EQ(color, 0x000000);
+
+    vg_widget_destroy(&image->base);
+    vgfx_destroy_window(win);
+}
+
+TEST(image_opacity_and_stretch_affect_framebuffer) {
+    vgfx_window_params_t params = {
+        .width = 8, .height = 8, .title = "image", .fps = 0, .resizable = 0};
+    vgfx_window_t win = vgfx_create_window(&params);
+    ASSERT_NOT_NULL(win);
+
+    vg_image_t *image = vg_image_create(NULL);
+    ASSERT_NOT_NULL(image);
+
+    const uint8_t pixel[4] = {255, 0, 0, 255};
+    vg_image_set_pixels(image, pixel, 1, 1);
+    vg_image_set_scale_mode(image, VG_IMAGE_SCALE_STRETCH);
+    vg_image_set_opacity(image, 0.5f);
+    vg_widget_arrange(&image->base, 0.0f, 0.0f, 2.0f, 2.0f);
+
+    vgfx_cls(win, VGFX_BLACK);
+    vg_widget_paint(&image->base, win);
+
+    vgfx_color_t color = 0;
+    ASSERT_EQ(vgfx_point(win, 1, 1, &color), 1);
+    ASSERT(color == 0x800000 || color == 0x7F0000);
+
+    vg_widget_destroy(&image->base);
+    vgfx_destroy_window(win);
 }
 
 //=============================================================================
@@ -464,6 +591,17 @@ TEST(codeeditor_extra_cursors_init_zero) {
     vg_widget_destroy(&ed->base);
 }
 
+TEST(codeeditor_tick_toggles_cursor_visibility) {
+    vg_codeeditor_t *ed = vg_codeeditor_create(NULL);
+    ASSERT_NOT_NULL(ed);
+    ed->base.state |= VG_STATE_FOCUSED;
+    ed->cursor_visible = true;
+    vg_codeeditor_tick(ed, 0.6f);
+    ASSERT(ed->cursor_visible == false);
+    ASSERT(ed->base.needs_paint);
+    vg_widget_destroy(&ed->base);
+}
+
 //=============================================================================
 // Entry Point
 //=============================================================================
@@ -486,6 +624,16 @@ int main(void) {
     RUN(progressbar_clamp_below_zero);
     RUN(progressbar_clamp_above_one);
     RUN(progressbar_style_change);
+    RUN(progressbar_tick_advances_indeterminate_phase);
+
+    printf("\nGroup E2b — Spinner:\n");
+    RUN(spinner_create_vtable_set);
+    RUN(spinner_arrow_keys_adjust_value);
+    RUN(spinner_mouse_buttons_adjust_value);
+
+    printf("\nGroup E2c — Image:\n");
+    RUN(image_scale_none_preserves_original_size);
+    RUN(image_opacity_and_stretch_affect_framebuffer);
 
     printf("\nGroup E3 — ListBox vtable:\n");
     RUN(listbox_create_vtable_set);
@@ -520,6 +668,7 @@ int main(void) {
     RUN(codeeditor_gutter_icons_init_zero);
     RUN(codeeditor_fold_regions_init_zero);
     RUN(codeeditor_extra_cursors_init_zero);
+    RUN(codeeditor_tick_toggles_cursor_visibility);
 
     printf("\n=== %d passed, %d failed ===\n", g_passed, g_failed);
     return g_failed > 0 ? 1 : 0;
