@@ -1137,7 +1137,10 @@ vaud_music_t vaud_load_music_mp3(vaud_context_t ctx, const char *path) {
     music->frame_count =
         vaud_resample_output_frames(mp3_stream_total_samples(stream), music->source_sample_rate, VAUD_SAMPLE_RATE);
 
-    vaud_music_seek_output_frame(music, 0);
+    if (!vaud_music_seek_output_frame(music, 0)) {
+        vaud_free_music(music);
+        return NULL;
+    }
     return music;
 }
 

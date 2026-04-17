@@ -177,6 +177,7 @@ int64_t rt_music_is_playing(void *music);
 /// @brief Seek to a position in the music.
 /// @param music Music handle.
 /// @param position_ms Time offset in milliseconds from the beginning.
+/// @details Repositions only this stream; does not stop unrelated music.
 void rt_music_seek(void *music, int64_t position_ms);
 
 /// @brief Get the current playback position.
@@ -190,10 +191,12 @@ int64_t rt_music_get_position(void *music);
 int64_t rt_music_get_duration(void *music);
 
 /// @brief Pause a music stream and any active crossfade companion tied to it.
+/// @details Pauses the companion streams and freezes the shared crossfade clock.
 /// @param music Music handle.
 void rt_music_pause_related(void *music);
 
 /// @brief Resume a music stream and any active crossfade companion tied to it.
+/// @details Restores playback and foreground ownership for the related stream(s).
 /// @param music Music handle.
 void rt_music_resume_related(void *music);
 

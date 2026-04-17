@@ -14,8 +14,8 @@
 //   - Maximum playlist capacity is fixed at compile time.
 //
 // Ownership/Lifetime:
-//   - Caller owns the playlist handle; destroy with rt_playlist_destroy.
-//   - Track strings added to the playlist are copied; caller retains ownership of inputs.
+//   - Playlist objects are GC-managed runtime objects; they are freed when their refcount drops to 0.
+//   - Track strings are retained by the underlying sequence; callers keep ownership of their inputs too.
 //
 // Links: src/runtime/audio/rt_playlist.c (implementation), src/runtime/audio/rt_audio.h
 //
@@ -51,7 +51,7 @@ void rt_playlist_add(void *playlist, rt_string path);
 
 /// @brief Insert a music file at a specific position.
 /// @param playlist Playlist object.
-/// @param index Position to insert (0 = first).
+/// @param index Position to insert (clamped into the valid range, 0 = first).
 /// @param path Path to music file.
 void rt_playlist_insert(void *playlist, int64_t index, rt_string path);
 

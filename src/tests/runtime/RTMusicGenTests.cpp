@@ -385,6 +385,44 @@ static void test_zero_duration_note() {
         printf("  test_zero_duration_note: PASSED (audio unavailable)\n");
 }
 
+static void test_short_note_release_from_attack() {
+    void *song = rt_musicgen_new(120);
+    int64_t ch = rt_musicgen_add_channel(song, 1);
+    rt_musicgen_set_envelope(song, ch, 300, 100, 25, 200);
+    rt_musicgen_set_length(song, 200);
+    rt_musicgen_add_note(song, ch, 0, 72, 10);
+
+    void *sound = rt_musicgen_build(song);
+    if (sound)
+        printf("  test_short_note_release_from_attack: PASSED (sound created)\n");
+    else
+        printf("  test_short_note_release_from_attack: PASSED (audio unavailable)\n");
+}
+
+static void test_silent_placeholder_channels_do_not_change_buildability() {
+    void *baseline = rt_musicgen_new(120);
+    int64_t lead = rt_musicgen_add_channel(baseline, 1);
+    rt_musicgen_set_length(baseline, 200);
+    rt_musicgen_add_note(baseline, lead, 0, 69, 100);
+
+    void *with_placeholders = rt_musicgen_new(120);
+    lead = rt_musicgen_add_channel(with_placeholders, 1);
+    int64_t silent = rt_musicgen_add_channel(with_placeholders, 2);
+    rt_musicgen_set_channel_vol(with_placeholders, silent, 0);
+    rt_musicgen_set_length(with_placeholders, 200);
+    rt_musicgen_add_note(with_placeholders, lead, 0, 69, 100);
+    rt_musicgen_add_note(with_placeholders, silent, 0, 45, 100);
+
+    void *sound_a = rt_musicgen_build(baseline);
+    void *sound_b = rt_musicgen_build(with_placeholders);
+    assert((sound_a != nullptr) == (sound_b != nullptr));
+
+    if (sound_b)
+        printf("  test_silent_placeholder_channels_do_not_change_buildability: PASSED (sound created)\n");
+    else
+        printf("  test_silent_placeholder_channels_do_not_change_buildability: PASSED (audio unavailable)\n");
+}
+
 static void test_song_properties() {
     void *song = rt_musicgen_new(120);
 
@@ -424,6 +462,8 @@ int main() {
     test_build_all_effects();
     test_overlapping_notes();
     test_zero_duration_note();
+    test_short_note_release_from_attack();
+    test_silent_placeholder_channels_do_not_change_buildability();
     test_song_properties();
 
     printf("RTMusicGenTests: ALL PASSED\n");

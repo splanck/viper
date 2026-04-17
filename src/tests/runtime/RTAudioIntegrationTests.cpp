@@ -18,9 +18,11 @@
 extern "C" {
 #include "rt_audio.h"
 #include "rt_internal.h"
+#include "rt_mixgroup.h"
 #include "rt_object.h"
 #include "rt_playlist.h"
 #include "rt_string.h"
+#include "rt_time.h"
 
 /// @brief Vm_trap.
 void vm_trap(const char *msg) {
@@ -176,6 +178,19 @@ static void test_playlist_insert() {
     if (got) {
         ASSERT(strcmp(rt_string_cstr(got), "b.wav") == 0, "inserted at position 1");
     }
+}
+
+static void test_playlist_insert_clamps_indices() {
+    void *pl = rt_playlist_new();
+    rt_playlist_add(pl, make_str("b.wav"));
+    rt_playlist_insert(pl, -10, make_str("a.wav"));
+    rt_playlist_insert(pl, 99, make_str("c.wav"));
+
+    ASSERT(rt_playlist_len(pl) == 3, "clamped inserts still add tracks");
+    ASSERT(strcmp(rt_string_cstr(rt_playlist_get(pl, 0)), "a.wav") == 0,
+           "negative insert clamps to front");
+    ASSERT(strcmp(rt_string_cstr(rt_playlist_get(pl, 2)), "c.wav") == 0,
+           "oversized insert clamps to end");
 }
 
 static void test_playlist_clear() {
@@ -637,6 +652,221 @@ static void test_playlist_remove_current_failed_replacement_clears_state() {
     remove(valid_path);
 }
 
+static void test_music_seek_does_not_stop_other_music() {
+    const char *path1 = "/tmp/viper_test_music_seek_other_1.wav";
+    const char *path2 = "/tmp/viper_test_music_seek_other_2.wav";
+    if (!write_test_wav_frames(path1, 44100, 44100) || !write_test_wav_frames(path2, 44100, 44100)) {
+        ASSERT(1, "could not write temp WAV files (skip seek-other test)");
+        return;
+    }
+
+    void *music_a = rt_music_load(make_str(path1));
+    void *music_b = rt_music_load(make_str(path2));
+    if (!music_a || !music_b) {
+        ASSERT(1, "music load unavailable in environment (skip seek-other test)");
+        rt_music_destroy(music_a);
+        rt_music_destroy(music_b);
+        remove(path1);
+        remove(path2);
+        return;
+    }
+
+    rt_music_play(music_a, 1);
+    if (!rt_music_is_playing(music_a)) {
+        ASSERT(1, "music playback unavailable in environment (skip seek-other test)");
+        rt_music_destroy(music_a);
+        rt_music_destroy(music_b);
+        remove(path1);
+        remove(path2);
+        return;
+    }
+
+    rt_music_seek(music_b, 500);
+    ASSERT(rt_music_is_playing(music_a) == 1, "seeking an idle track does not stop foreground music");
+
+    rt_music_stop(music_a);
+    rt_music_destroy(music_a);
+    rt_music_destroy(music_b);
+    remove(path1);
+    remove(path2);
+}
+
+static void test_music_resume_reclaims_foreground() {
+    const char *path1 = "/tmp/viper_test_music_resume_fg_1.wav";
+    const char *path2 = "/tmp/viper_test_music_resume_fg_2.wav";
+    if (!write_test_wav_frames(path1, 44100, 44100) || !write_test_wav_frames(path2, 44100, 44100)) {
+        ASSERT(1, "could not write temp WAV files (skip resume-foreground test)");
+        return;
+    }
+
+    void *music_a = rt_music_load(make_str(path1));
+    void *music_b = rt_music_load(make_str(path2));
+    if (!music_a || !music_b) {
+        ASSERT(1, "music load unavailable in environment (skip resume-foreground test)");
+        rt_music_destroy(music_a);
+        rt_music_destroy(music_b);
+        remove(path1);
+        remove(path2);
+        return;
+    }
+
+    rt_music_play(music_a, 1);
+    if (!rt_music_is_playing(music_a)) {
+        ASSERT(1, "music playback unavailable in environment (skip resume-foreground test)");
+        rt_music_destroy(music_a);
+        rt_music_destroy(music_b);
+        remove(path1);
+        remove(path2);
+        return;
+    }
+
+    rt_music_pause(music_a);
+    rt_music_play(music_b, 1);
+    ASSERT(rt_music_is_playing(music_b) == 1, "second track is foreground before resume");
+
+    rt_music_resume(music_a);
+    ASSERT(rt_music_is_playing(music_a) == 1, "resume restarts the paused foreground track");
+    ASSERT(rt_music_is_playing(music_b) == 0, "resume stops newer unrelated foreground music");
+
+    rt_music_stop(music_a);
+    rt_music_destroy(music_a);
+    rt_music_destroy(music_b);
+    remove(path1);
+    remove(path2);
+}
+
+static void test_crossfade_pause_resume_holds_progress() {
+    const char *path1 = "/tmp/viper_test_crossfade_pause_1.wav";
+    const char *path2 = "/tmp/viper_test_crossfade_pause_2.wav";
+    if (!write_test_wav_frames(path1, 44100, 44100) || !write_test_wav_frames(path2, 44100, 44100)) {
+        ASSERT(1, "could not write temp WAV files (skip crossfade-pause test)");
+        return;
+    }
+
+    void *music_a = rt_music_load(make_str(path1));
+    void *music_b = rt_music_load(make_str(path2));
+    if (!music_a || !music_b) {
+        ASSERT(1, "music load unavailable in environment (skip crossfade-pause test)");
+        rt_music_destroy(music_a);
+        rt_music_destroy(music_b);
+        remove(path1);
+        remove(path2);
+        return;
+    }
+
+    rt_music_play(music_a, 1);
+    if (!rt_music_is_playing(music_a)) {
+        ASSERT(1, "music playback unavailable in environment (skip crossfade-pause test)");
+        rt_music_destroy(music_a);
+        rt_music_destroy(music_b);
+        remove(path1);
+        remove(path2);
+        return;
+    }
+
+    rt_music_crossfade_to(music_a, music_b, 200);
+    ASSERT(rt_music_is_crossfading() == 1, "crossfade starts");
+
+    rt_music_pause_related(music_a);
+    rt_music_crossfade_update(250);
+    ASSERT(rt_music_is_crossfading() == 1, "paused crossfade does not finish during manual update");
+
+    rt_music_resume_related(music_a);
+    rt_music_crossfade_update(250);
+    ASSERT(rt_music_is_crossfading() == 0, "resumed crossfade can complete");
+
+    rt_music_stop(music_b);
+    rt_music_destroy(music_a);
+    rt_music_destroy(music_b);
+    remove(path1);
+    remove(path2);
+}
+
+static void test_crossfade_preserves_destination_loop() {
+    const char *path1 = "/tmp/viper_test_crossfade_loop_1.wav";
+    const char *path2 = "/tmp/viper_test_crossfade_loop_2.wav";
+    if (!write_test_wav_frames(path1, 44100, 4410) || !write_test_wav_frames(path2, 44100, 4410)) {
+        ASSERT(1, "could not write temp WAV files (skip crossfade-loop test)");
+        return;
+    }
+
+    void *music_a = rt_music_load(make_str(path1));
+    void *music_b = rt_music_load(make_str(path2));
+    if (!music_a || !music_b) {
+        ASSERT(1, "music load unavailable in environment (skip crossfade-loop test)");
+        rt_music_destroy(music_a);
+        rt_music_destroy(music_b);
+        remove(path1);
+        remove(path2);
+        return;
+    }
+
+    rt_music_play(music_a, 1);
+    if (!rt_music_is_playing(music_a)) {
+        ASSERT(1, "music playback unavailable in environment (skip crossfade-loop test)");
+        rt_music_destroy(music_a);
+        rt_music_destroy(music_b);
+        remove(path1);
+        remove(path2);
+        return;
+    }
+
+    rt_music_set_loop(music_b, 1);
+    rt_music_crossfade_to(music_a, music_b, 20);
+    rt_music_crossfade_update(25);
+    ASSERT(rt_music_is_crossfading() == 0, "crossfade into looped destination completes");
+
+    rt_sleep_ms(250);
+    ASSERT(rt_music_is_playing(music_b) == 1, "crossfade preserves destination loop flag");
+
+    rt_music_stop(music_b);
+    rt_music_destroy(music_a);
+    rt_music_destroy(music_b);
+    remove(path1);
+    remove(path2);
+}
+
+static void test_crossfade_completion_after_external_destroy() {
+    const char *path1 = "/tmp/viper_test_crossfade_release_1.wav";
+    const char *path2 = "/tmp/viper_test_crossfade_release_2.wav";
+    if (!write_test_wav_frames(path1, 44100, 44100) || !write_test_wav_frames(path2, 44100, 44100)) {
+        ASSERT(1, "could not write temp WAV files (skip crossfade-release test)");
+        return;
+    }
+
+    void *music_a = rt_music_load(make_str(path1));
+    void *music_b = rt_music_load(make_str(path2));
+    if (!music_a || !music_b) {
+        ASSERT(1, "music load unavailable in environment (skip crossfade-release test)");
+        rt_music_destroy(music_a);
+        rt_music_destroy(music_b);
+        remove(path1);
+        remove(path2);
+        return;
+    }
+
+    rt_music_play(music_a, 1);
+    if (!rt_music_is_playing(music_a)) {
+        ASSERT(1, "music playback unavailable in environment (skip crossfade-release test)");
+        rt_music_destroy(music_a);
+        rt_music_destroy(music_b);
+        remove(path1);
+        remove(path2);
+        return;
+    }
+
+    rt_music_crossfade_to(music_a, music_b, 100);
+    ASSERT(rt_music_is_crossfading() == 1, "crossfade starts before destroying caller refs");
+
+    rt_music_destroy(music_a);
+    rt_music_destroy(music_b);
+    rt_music_crossfade_update(150);
+    ASSERT(rt_music_is_crossfading() == 0, "crossfade completes after external refs are released");
+
+    remove(path1);
+    remove(path2);
+}
+
 /// @brief Main.
 int main() {
     // Audio system (headless-safe)
@@ -651,6 +881,7 @@ int main() {
     test_playlist_new();
     test_playlist_add_remove();
     test_playlist_insert();
+    test_playlist_insert_clamps_indices();
     test_playlist_clear();
     test_playlist_volume();
     test_playlist_shuffle_repeat();
@@ -672,6 +903,11 @@ int main() {
     test_wav_extreme_sample_rate();
     test_wav_valid_sample_rate();
     test_music_seek_resampled_wav();
+    test_music_seek_does_not_stop_other_music();
+    test_music_resume_reclaims_foreground();
+    test_crossfade_pause_resume_holds_progress();
+    test_crossfade_preserves_destination_loop();
+    test_crossfade_completion_after_external_destroy();
     test_playlist_play_after_paused_jump_starts_new_track();
     test_playlist_remove_current_failed_replacement_clears_state();
 

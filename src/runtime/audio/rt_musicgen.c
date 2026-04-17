@@ -404,36 +404,39 @@ static double mg_waveform(double phase, int64_t waveform, int64_t duty) {
 /// @param sample_offset Samples since note-on.
 /// @param note_dur_samples Note duration in samples (before release).
 /// @return Amplitude multiplier in [0.0, 1.0].
-static double mg_adsr(const mg_envelope_t *env, int32_t sample_offset, int32_t note_dur_samples) {
-    double t_s = (double)sample_offset / (double)MG_SAMPLE_RATE;
+static double mg_adsr_note_level_at(const mg_envelope_t *env, double t_s) {
     double atk_s = (double)env->attack_ms / 1000.0;
     double dec_s = (double)env->decay_ms / 1000.0;
     double sus = (double)env->sustain_pct / 100.0;
-    double rel_s = (double)env->release_ms / 1000.0;
-    double note_dur_s = (double)note_dur_samples / (double)MG_SAMPLE_RATE;
 
-    /* Attack phase */
     if (t_s < atk_s)
         return (atk_s > 0.0) ? (t_s / atk_s) : 1.0;
 
-    double after_atk = t_s - atk_s;
-
-    /* Decay phase */
-    if (after_atk < dec_s) {
-        double decay_t = (dec_s > 0.0) ? (after_atk / dec_s) : 1.0;
+    t_s -= atk_s;
+    if (t_s < dec_s) {
+        double decay_t = (dec_s > 0.0) ? (t_s / dec_s) : 1.0;
         return 1.0 - (1.0 - sus) * decay_t;
     }
 
+    return sus;
+}
+
+static double mg_adsr(const mg_envelope_t *env, int32_t sample_offset, int32_t note_dur_samples) {
+    double t_s = (double)sample_offset / (double)MG_SAMPLE_RATE;
+    double rel_s = (double)env->release_ms / 1000.0;
+    double note_dur_s = (double)note_dur_samples / (double)MG_SAMPLE_RATE;
+
     /* Sustain phase — hold until note-off */
     if (t_s < note_dur_s)
-        return sus;
+        return mg_adsr_note_level_at(env, t_s);
 
     /* Release phase */
     double rel_t = t_s - note_dur_s;
     if (rel_t >= rel_s)
         return 0.0;
 
-    return (rel_s > 0.0) ? (sus * (1.0 - rel_t / rel_s)) : 0.0;
+    double release_start = mg_adsr_note_level_at(env, note_dur_s);
+    return (rel_s > 0.0) ? (release_start * (1.0 - rel_t / rel_s)) : 0.0;
 }
 
 //===----------------------------------------------------------------------===//
@@ -1018,9 +1021,20 @@ void *rt_musicgen_build(void *song_ptr) {
         }
     }
 
+    int32_t active_channel_count = 0;
+    for (int32_t ch = 0; ch < song->channel_count; ch++) {
+        mg_channel_t *chan = &song->channels[ch];
+        if (chan->note_count > 0 && mg_clamp(chan->volume, 0, 100) > 0)
+            active_channel_count++;
+    }
+    if (active_channel_count <= 0)
+        active_channel_count = 1;
+
     /* Render all channels and notes */
     for (int32_t ch = 0; ch < song->channel_count; ch++) {
         mg_channel_t *chan = &song->channels[ch];
+        if (chan->note_count <= 0 || mg_clamp(chan->volume, 0, 100) <= 0)
+            continue;
         mg_render_state_t state;
         state.prev_freq = 0.0;
 
@@ -1032,7 +1046,7 @@ void *rt_musicgen_build(void *song_ptr) {
                            samples_per_beat,
                            song->swing,
                            &state,
-                           song->channel_count);
+                           active_channel_count);
         }
     }
 

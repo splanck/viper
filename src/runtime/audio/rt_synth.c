@@ -185,6 +185,29 @@ static int64_t clamp_i64(int64_t v, int64_t lo, int64_t hi) {
     return v;
 }
 
+static double synth_edge_envelope(int32_t sample_index, int32_t num_samples, int32_t fade_samples) {
+    if (num_samples <= 1)
+        return 0.0;
+    if (fade_samples <= 0)
+        return 1.0;
+
+    if (fade_samples > num_samples - 1)
+        fade_samples = num_samples - 1;
+
+    double env = 1.0;
+    if (sample_index < fade_samples)
+        env = (double)sample_index / (double)fade_samples;
+    if (sample_index >= num_samples - fade_samples) {
+        double tail = (double)(num_samples - 1 - sample_index) / (double)fade_samples;
+        if (tail < env)
+            env = tail;
+    }
+
+    if (env < 0.0)
+        env = 0.0;
+    return env;
+}
+
 //===----------------------------------------------------------------------===//
 // Public API
 //===----------------------------------------------------------------------===//
@@ -214,11 +237,7 @@ void *rt_synth_tone(int64_t freq_hz, int64_t duration_ms, int64_t waveform) {
 
         /* Apply a short fade-in/fade-out to avoid clicks (10ms each) */
         int32_t fade_samples = SYNTH_SAMPLE_RATE / 100; /* 10ms */
-        double env = 1.0;
-        if (i < fade_samples)
-            env = (double)i / (double)fade_samples;
-        else if (i > num_samples - fade_samples)
-            env = (double)(num_samples - i) / (double)fade_samples;
+        double env = synth_edge_envelope(i, num_samples, fade_samples);
 
         samples[i] = (int16_t)(val * env * SYNTH_MAX_AMP);
         phase += phase_inc;
@@ -258,11 +277,7 @@ void *rt_synth_sweep(int64_t start_hz, int64_t end_hz, int64_t duration_ms, int6
 
         /* Fade envelope */
         int32_t fade_samples = SYNTH_SAMPLE_RATE / 100;
-        double env = 1.0;
-        if (i < fade_samples)
-            env = (double)i / (double)fade_samples;
-        else if (i > num_samples - fade_samples)
-            env = (double)(num_samples - i) / (double)fade_samples;
+        double env = synth_edge_envelope(i, num_samples, fade_samples);
 
         samples[i] = (int16_t)(val * env * SYNTH_MAX_AMP);
         phase += phase_inc;
@@ -299,6 +314,7 @@ void *rt_synth_noise(int64_t duration_ms, int64_t volume) {
         double t = (double)i / (double)num_samples;
         double env = 1.0 - t; /* Linear decay */
         env = env * env;      /* Quadratic decay for more natural sound */
+        env *= synth_edge_envelope(i, num_samples, SYNTH_SAMPLE_RATE / 200);
 
         samples[i] = (int16_t)((double)noise_val * env * vol_scale);
     }
@@ -338,10 +354,7 @@ static void *sfx_coin(void) {
         double env = 0.6;
         /* Quick fade at boundaries */
         int32_t fade = SYNTH_SAMPLE_RATE / 200; /* 5ms */
-        if (i < fade)
-            env = 0.6 * (double)i / (double)fade;
-        else if (i > num_samples - fade)
-            env = 0.6 * (double)(num_samples - i) / (double)fade;
+        env *= synth_edge_envelope(i, num_samples, fade);
 
         samples[i] = (int16_t)(val * env * SYNTH_MAX_AMP);
         phase += phase_inc;

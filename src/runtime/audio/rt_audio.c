@@ -66,6 +66,7 @@ typedef struct {
     int64_t vol_out;     ///< Target logical volume of the fade-out track.
     int64_t vol_in;      ///< Target logical volume of the fade-in track.
     int64_t last_tick_ms; ///< Last monotonic tick used to advance the fade.
+    int8_t paused;       ///< 1 while the crossfade is locally paused.
     int8_t active;       ///< 1 if crossfade in progress.
 } rt_music_crossfade_state;
 
@@ -122,6 +123,11 @@ typedef struct {
 
 static rt_tracked_voice g_tracked_voices[VAUD_MAX_VOICES];
 static int32_t g_tracked_voice_count = 0;
+
+typedef struct {
+    void *objs[VAUD_MAX_MUSIC * 2];
+    int32_t count;
+} rt_deferred_release_list;
 
 //===----------------------------------------------------------------------===//
 // Sound Wrapper Structure
@@ -186,6 +192,8 @@ typedef struct rt_music {
     void *vptr;            ///< VTable pointer (reserved for future use)
     vaud_music_t music;    ///< ViperAUD music handle
     int64_t logical_volume; ///< User-facing 0-100 volume before mix-group scaling
+    int8_t logical_loop;   ///< User-facing loop preference preserved across crossfades
+    int8_t paused;         ///< Runtime pause state used by Resume() arbitration
     struct rt_music *prev; ///< Registry linkage
     struct rt_music *next; ///< Registry linkage
 } rt_music;
@@ -376,6 +384,27 @@ static int32_t rt_audio_find_crossfade_by_music_locked(const void *music) {
     return -1;
 }
 
+static void rt_audio_queue_release(rt_deferred_release_list *releases, void *obj) {
+    if (!obj)
+        return;
+    if (!releases) {
+        rt_obj_free(obj);
+        return;
+    }
+    if (releases->count < (int32_t)(sizeof(releases->objs) / sizeof(releases->objs[0])))
+        releases->objs[releases->count++] = obj;
+}
+
+static void rt_audio_drain_releases(rt_deferred_release_list *releases) {
+    if (!releases)
+        return;
+    for (int32_t i = 0; i < releases->count; i++) {
+        if (releases->objs[i])
+            rt_obj_free(releases->objs[i]);
+    }
+    releases->count = 0;
+}
+
 static void rt_audio_apply_music_volume_value(rt_music *mus, int64_t logical_volume) {
     if (!mus || !mus->music)
         return;
@@ -387,16 +416,19 @@ static void rt_audio_apply_music_volume(rt_music *mus) {
     rt_audio_apply_music_volume_value(mus, mus ? mus->logical_volume : 0);
 }
 
-static void rt_audio_release_crossfade_refs_locked(rt_music_crossfade_state *xf) {
+static void rt_audio_release_crossfade_refs_locked(rt_music_crossfade_state *xf,
+                                                   rt_deferred_release_list *releases) {
     if (!xf)
         return;
     if (xf->fade_out) {
+        ((rt_music *)xf->fade_out)->paused = 0;
         if (rt_obj_release_check0(xf->fade_out))
-            rt_obj_free(xf->fade_out);
+            rt_audio_queue_release(releases, xf->fade_out);
     }
     if (xf->fade_in) {
+        ((rt_music *)xf->fade_in)->paused = 0;
         if (rt_obj_release_check0(xf->fade_in))
-            rt_obj_free(xf->fade_in);
+            rt_audio_queue_release(releases, xf->fade_in);
     }
     xf->fade_out = NULL;
     xf->fade_in = NULL;
@@ -405,6 +437,7 @@ static void rt_audio_release_crossfade_refs_locked(rt_music_crossfade_state *xf)
     xf->vol_out = 100;
     xf->vol_in = 100;
     xf->last_tick_ms = 0;
+    xf->paused = 0;
     xf->active = 0;
 }
 
@@ -478,7 +511,8 @@ static void rt_audio_invalidate_wrappers_for_shutdown(void) {
 static void rt_audio_crossfade_cancel_entry_locked(rt_music_crossfade_state *xf,
                                                    int stop_fade_out,
                                                    int stop_fade_in,
-                                                   int restore_volumes) {
+                                                   int restore_volumes,
+                                                   rt_deferred_release_list *releases) {
     if (!xf || !xf->active)
         return;
 
@@ -490,6 +524,7 @@ static void rt_audio_crossfade_cancel_entry_locked(rt_music_crossfade_state *xf,
         } else if (restore_volumes) {
             rt_audio_apply_music_volume_value(fade_out, fade_out->logical_volume);
         }
+        fade_out->paused = 0;
     }
 
     if (xf->fade_in) {
@@ -500,18 +535,47 @@ static void rt_audio_crossfade_cancel_entry_locked(rt_music_crossfade_state *xf,
         } else if (restore_volumes) {
             rt_audio_apply_music_volume_value(fade_in, fade_in->logical_volume);
         }
+        fade_in->paused = 0;
     }
 
-    rt_audio_release_crossfade_refs_locked(xf);
+    rt_audio_release_crossfade_refs_locked(xf, releases);
 }
 
-static void rt_audio_crossfade_cancel_all_locked(int stop_fade_out, int stop_fade_in) {
+static void rt_audio_crossfade_cancel_all_locked(int stop_fade_out,
+                                                 int stop_fade_in,
+                                                 rt_deferred_release_list *releases) {
     for (int32_t i = 0; i < VAUD_MAX_MUSIC; i++)
         rt_audio_crossfade_cancel_entry_locked(
-            &g_crossfades[i], stop_fade_out, stop_fade_in, 0);
+            &g_crossfades[i], stop_fade_out, stop_fade_in, 0, releases);
 }
 
-static void rt_audio_prepare_music_for_foreground_locked(void *music) {
+static void rt_audio_stop_unrelated_music_locked(void *keep_a,
+                                                 void *keep_b,
+                                                 rt_deferred_release_list *releases) {
+    for (int32_t i = 0; i < VAUD_MAX_MUSIC; i++) {
+        rt_music_crossfade_state *xf = &g_crossfades[i];
+        if (!xf->active)
+            continue;
+        if (xf->fade_out == keep_a || xf->fade_out == keep_b || xf->fade_in == keep_a ||
+            xf->fade_in == keep_b)
+            continue;
+        if (xf->paused)
+            continue;
+        rt_audio_crossfade_cancel_entry_locked(xf, 1, 1, 0, releases);
+    }
+
+    for (rt_music *mus = g_music_wrappers; mus; mus = mus->next) {
+        if (!mus->music || mus == (rt_music *)keep_a || mus == (rt_music *)keep_b)
+            continue;
+        if (mus->paused)
+            continue;
+        mus->paused = 0;
+        vaud_music_stop(mus->music);
+    }
+}
+
+static void rt_audio_prepare_music_for_foreground_locked(void *music,
+                                                         rt_deferred_release_list *releases) {
     for (int32_t i = 0; i < VAUD_MAX_MUSIC; i++) {
         rt_music_crossfade_state *xf = &g_crossfades[i];
         if (!xf->active)
@@ -521,20 +585,27 @@ static void rt_audio_prepare_music_for_foreground_locked(void *music) {
             int stop_fade_out = (xf->fade_out != music);
             int stop_fade_in = (xf->fade_in != music);
             rt_audio_crossfade_cancel_entry_locked(
-                xf, stop_fade_out, stop_fade_in, !stop_fade_out || !stop_fade_in);
+                xf, stop_fade_out, stop_fade_in, !stop_fade_out || !stop_fade_in, releases);
+        } else if (xf->paused) {
+            continue;
         } else {
-            rt_audio_crossfade_cancel_entry_locked(xf, 1, 1, 0);
+            rt_audio_crossfade_cancel_entry_locked(xf, 1, 1, 0, releases);
         }
     }
 
     for (rt_music *mus = g_music_wrappers; mus; mus = mus->next) {
         if (!mus->music || mus == (rt_music *)music)
             continue;
+        if (mus->paused)
+            continue;
+        mus->paused = 0;
         vaud_music_stop(mus->music);
     }
 }
 
-static void rt_audio_update_crossfade_entry_locked(rt_music_crossfade_state *xf, int64_t dt_ms);
+static void rt_audio_update_crossfade_entry_locked(rt_music_crossfade_state *xf,
+                                                   int64_t dt_ms,
+                                                   rt_deferred_release_list *releases);
 
 /// @brief Explicitly initialize the audio system. Returns 1 on success, 0 on failure.
 /// @details Normally called lazily on first sound/music operation. This function
@@ -547,14 +618,16 @@ int64_t rt_audio_init(void) {
 /// @details Thread-safe via spinlock. Resets the initialization state so the
 ///          system can be re-initialized later if needed.
 void rt_audio_shutdown(void) {
+    rt_deferred_release_list releases = {0};
+
     audio_state_lock();
 
     if (g_audio_ctx) {
-        rt_audio_crossfade_cancel_all_locked(0, 0);
+        rt_audio_crossfade_cancel_all_locked(0, 0, &releases);
         rt_audio_invalidate_wrappers_for_shutdown();
         vaud_destroy(g_audio_ctx);
-    g_audio_ctx = NULL;
-    g_audio_paused = 0;
+        g_audio_ctx = NULL;
+        g_audio_paused = 0;
     }
 
     // Reset state to allow re-initialization
@@ -565,6 +638,7 @@ void rt_audio_shutdown(void) {
 #endif
 
     audio_state_unlock();
+    rt_audio_drain_releases(&releases);
 }
 
 /// @brief Set the global master volume (0 = mute, 100 = full volume).
@@ -610,6 +684,8 @@ void rt_audio_resume_all(void) {
 
 /// @brief Advance time-based audio state using the monotonic clock.
 void rt_audio_update(void) {
+    rt_deferred_release_list releases = {0};
+
     audio_state_lock();
     int8_t any_active = 0;
     for (int32_t i = 0; i < VAUD_MAX_MUSIC; i++) {
@@ -620,34 +696,33 @@ void rt_audio_update(void) {
     }
     if (any_active) {
         int64_t now_ms = rt_timer_ms();
-        int paused = g_audio_paused;
-
-        if (paused) {
-            for (int32_t i = 0; i < VAUD_MAX_MUSIC; i++) {
-                if (g_crossfades[i].active)
-                    g_crossfades[i].last_tick_ms = now_ms;
+        for (int32_t i = 0; i < VAUD_MAX_MUSIC; i++) {
+            if (!g_crossfades[i].active)
+                continue;
+            if (g_audio_paused || g_crossfades[i].paused) {
+                g_crossfades[i].last_tick_ms = now_ms;
+                continue;
             }
-        } else {
-            for (int32_t i = 0; i < VAUD_MAX_MUSIC; i++) {
-                if (!g_crossfades[i].active)
-                    continue;
-                if (g_crossfades[i].last_tick_ms <= 0)
-                    g_crossfades[i].last_tick_ms = now_ms;
-                int64_t dt_ms = now_ms - g_crossfades[i].last_tick_ms;
-                if (dt_ms > 0) {
-                    g_crossfades[i].last_tick_ms = now_ms;
-                    rt_audio_update_crossfade_entry_locked(&g_crossfades[i], dt_ms);
-                }
+            if (g_crossfades[i].last_tick_ms <= 0)
+                g_crossfades[i].last_tick_ms = now_ms;
+            int64_t dt_ms = now_ms - g_crossfades[i].last_tick_ms;
+            if (dt_ms > 0) {
+                g_crossfades[i].last_tick_ms = now_ms;
+                rt_audio_update_crossfade_entry_locked(&g_crossfades[i], dt_ms, &releases);
             }
         }
     }
     audio_state_unlock();
+    rt_audio_drain_releases(&releases);
 }
 
 /// @brief Stop all currently playing sound effects (music is unaffected).
 void rt_audio_stop_all_sounds(void) {
     if (g_audio_ctx)
         vaud_stop_all_sounds(g_audio_ctx);
+    audio_state_lock();
+    g_tracked_voice_count = 0;
+    audio_state_unlock();
 }
 
 //===----------------------------------------------------------------------===//
@@ -1176,6 +1251,8 @@ void *rt_music_load(rt_string path) {
     wrapper->vptr = NULL;
     wrapper->music = mus;
     wrapper->logical_volume = 100;
+    wrapper->logical_loop = 0;
+    wrapper->paused = 0;
     wrapper->prev = NULL;
     wrapper->next = NULL;
     rt_obj_set_finalizer(wrapper, rt_music_finalize);
@@ -1205,12 +1282,17 @@ void rt_music_play(void *music, int64_t loop) {
     if (!mus->music)
         return;
 
+    rt_deferred_release_list releases = {0};
+    mus->logical_loop = loop ? 1 : 0;
+    mus->paused = 0;
+
     audio_state_lock();
-    rt_audio_prepare_music_for_foreground_locked(mus);
-    vaud_music_set_loop(mus->music, loop ? 1 : 0);
-    vaud_music_play(mus->music, loop ? 1 : 0);
+    rt_audio_prepare_music_for_foreground_locked(mus, &releases);
+    vaud_music_set_loop(mus->music, mus->logical_loop);
+    vaud_music_play(mus->music, mus->logical_loop);
     rt_audio_apply_music_volume(mus);
     audio_state_unlock();
+    rt_audio_drain_releases(&releases);
 }
 
 /// @brief Stop music playback and reset the position to the beginning.
@@ -1233,8 +1315,9 @@ void rt_music_set_loop(void *music, int64_t loop) {
         return;
 
     rt_music *mus = (rt_music *)music;
+    mus->logical_loop = loop ? 1 : 0;
     if (mus->music)
-        vaud_music_set_loop(mus->music, loop ? 1 : 0);
+        vaud_music_set_loop(mus->music, mus->logical_loop);
 }
 
 /// @brief Set the music playback volume (0–100).
@@ -1300,9 +1383,12 @@ void rt_music_seek(void *music, int64_t position_ms) {
     float seconds = (float)position_ms / 1000.0f;
 
     audio_state_lock();
-    rt_audio_prepare_music_for_foreground_locked(mus);
     vaud_music_seek(mus->music, seconds);
-    rt_audio_apply_music_volume(mus);
+    int32_t xf_idx = rt_audio_find_crossfade_by_music_locked(mus);
+    if (xf_idx >= 0)
+        rt_audio_reapply_crossfade_locked(&g_crossfades[xf_idx]);
+    else
+        rt_audio_apply_music_volume(mus);
     audio_state_unlock();
 }
 
@@ -1344,12 +1430,21 @@ void rt_music_pause_related(void *music) {
     int32_t xf_idx = rt_audio_find_crossfade_by_music_locked(mus);
     if (xf_idx >= 0) {
         rt_music_crossfade_state *xf = &g_crossfades[xf_idx];
+        xf->paused = 1;
+        xf->last_tick_ms = rt_timer_ms();
         if (xf->fade_out && ((rt_music *)xf->fade_out)->music)
             vaud_music_pause(((rt_music *)xf->fade_out)->music);
         if (xf->fade_in && ((rt_music *)xf->fade_in)->music)
             vaud_music_pause(((rt_music *)xf->fade_in)->music);
+        if (xf->fade_out)
+            ((rt_music *)xf->fade_out)->paused = 1;
+        if (xf->fade_in)
+            ((rt_music *)xf->fade_in)->paused = 1;
     } else {
+        int was_playing = vaud_music_is_playing(mus->music);
         vaud_music_pause(mus->music);
+        if (was_playing || mus->paused)
+            mus->paused = 1;
     }
     audio_state_unlock();
 }
@@ -1362,18 +1457,34 @@ void rt_music_resume_related(void *music) {
     if (!mus->music)
         return;
 
+    rt_deferred_release_list releases = {0};
+
     audio_state_lock();
     int32_t xf_idx = rt_audio_find_crossfade_by_music_locked(mus);
     if (xf_idx >= 0) {
         rt_music_crossfade_state *xf = &g_crossfades[xf_idx];
-        if (xf->fade_out && ((rt_music *)xf->fade_out)->music)
-            vaud_music_resume(((rt_music *)xf->fade_out)->music);
-        if (xf->fade_in && ((rt_music *)xf->fade_in)->music)
-            vaud_music_resume(((rt_music *)xf->fade_in)->music);
+        if (xf->paused) {
+            rt_audio_stop_unrelated_music_locked(xf->fade_out, xf->fade_in, &releases);
+            xf->paused = 0;
+            xf->last_tick_ms = rt_timer_ms();
+            if (xf->fade_out && ((rt_music *)xf->fade_out)->music) {
+                ((rt_music *)xf->fade_out)->paused = 0;
+                vaud_music_resume(((rt_music *)xf->fade_out)->music);
+            }
+            if (xf->fade_in && ((rt_music *)xf->fade_in)->music) {
+                ((rt_music *)xf->fade_in)->paused = 0;
+                vaud_music_resume(((rt_music *)xf->fade_in)->music);
+            }
+        }
     } else {
-        vaud_music_resume(mus->music);
+        if (mus->paused) {
+            rt_audio_prepare_music_for_foreground_locked(mus, &releases);
+            mus->paused = 0;
+            vaud_music_resume(mus->music);
+        }
     }
     audio_state_unlock();
+    rt_audio_drain_releases(&releases);
 }
 
 void rt_music_stop_related(void *music) {
@@ -1384,14 +1495,18 @@ void rt_music_stop_related(void *music) {
     if (!mus->music)
         return;
 
+    rt_deferred_release_list releases = {0};
+
     audio_state_lock();
     int32_t xf_idx = rt_audio_find_crossfade_by_music_locked(mus);
     if (xf_idx >= 0) {
-        rt_audio_crossfade_cancel_entry_locked(&g_crossfades[xf_idx], 1, 1, 0);
+        rt_audio_crossfade_cancel_entry_locked(&g_crossfades[xf_idx], 1, 1, 0, &releases);
     } else {
+        mus->paused = 0;
         vaud_music_stop(mus->music);
     }
     audio_state_unlock();
+    rt_audio_drain_releases(&releases);
 }
 
 void rt_music_set_crossfade_pair_volume(void *music, int64_t volume) {
@@ -1457,6 +1572,8 @@ int64_t rt_audio_get_group_volume(int64_t group) {
 /// @details Fades out the current track while fading in the new track simultaneously.
 ///          Both tracks are retained for the duration of the crossfade.
 void rt_music_crossfade_to(void *current_music, void *new_music, int64_t duration_ms) {
+    rt_deferred_release_list releases = {0};
+
     audio_state_lock();
 
     if ((!current_music && !new_music) || current_music == new_music) {
@@ -1474,18 +1591,23 @@ void rt_music_crossfade_to(void *current_music, void *new_music, int64_t duratio
         if (!keep_fade_out && !keep_fade_in)
             continue;
         rt_audio_crossfade_cancel_entry_locked(
-            xf, !keep_fade_out, !keep_fade_in, keep_fade_out || keep_fade_in);
+            xf, !keep_fade_out, !keep_fade_in, keep_fade_out || keep_fade_in, &releases);
     }
 
     if (duration_ms <= 0) {
-        if (current_music && ((rt_music *)current_music)->music)
+        if (current_music && ((rt_music *)current_music)->music) {
+            ((rt_music *)current_music)->paused = 0;
             vaud_music_stop(((rt_music *)current_music)->music);
+        }
         if (new_music && ((rt_music *)new_music)->music) {
-            vaud_music_set_loop(((rt_music *)new_music)->music, 0);
-            vaud_music_play(((rt_music *)new_music)->music, 0);
+            ((rt_music *)new_music)->paused = 0;
+            vaud_music_set_loop(
+                ((rt_music *)new_music)->music, ((rt_music *)new_music)->logical_loop);
+            vaud_music_play(((rt_music *)new_music)->music, ((rt_music *)new_music)->logical_loop);
             rt_audio_apply_music_volume((rt_music *)new_music);
         }
         audio_state_unlock();
+        rt_audio_drain_releases(&releases);
         return;
     }
 
@@ -1497,14 +1619,19 @@ void rt_music_crossfade_to(void *current_music, void *new_music, int64_t duratio
         }
     }
     if (slot < 0) {
-        if (current_music && ((rt_music *)current_music)->music)
+        if (current_music && ((rt_music *)current_music)->music) {
+            ((rt_music *)current_music)->paused = 0;
             vaud_music_stop(((rt_music *)current_music)->music);
+        }
         if (new_music && ((rt_music *)new_music)->music) {
-            vaud_music_set_loop(((rt_music *)new_music)->music, 0);
-            vaud_music_play(((rt_music *)new_music)->music, 0);
+            ((rt_music *)new_music)->paused = 0;
+            vaud_music_set_loop(
+                ((rt_music *)new_music)->music, ((rt_music *)new_music)->logical_loop);
+            vaud_music_play(((rt_music *)new_music)->music, ((rt_music *)new_music)->logical_loop);
             rt_audio_apply_music_volume((rt_music *)new_music);
         }
         audio_state_unlock();
+        rt_audio_drain_releases(&releases);
         return;
     }
 
@@ -1519,20 +1646,24 @@ void rt_music_crossfade_to(void *current_music, void *new_music, int64_t duratio
     xf->duration = duration_ms;
     xf->elapsed = 0;
     xf->active = 1;
+    xf->paused = 0;
     xf->last_tick_ms = rt_timer_ms();
     xf->vol_out = current_music ? ((rt_music *)current_music)->logical_volume : 100;
     xf->vol_in = new_music ? ((rt_music *)new_music)->logical_volume : 100;
 
     if (current_music && ((rt_music *)current_music)->music) {
+        ((rt_music *)current_music)->paused = 0;
         vaud_music_set_loop(((rt_music *)current_music)->music, 0);
         rt_audio_reapply_crossfade_locked(xf);
     }
     if (new_music && ((rt_music *)new_music)->music) {
+        ((rt_music *)new_music)->paused = 0;
         rt_audio_apply_music_volume_value((rt_music *)new_music, 0);
-        vaud_music_set_loop(((rt_music *)new_music)->music, 0);
-        vaud_music_play(((rt_music *)new_music)->music, 0);
+        vaud_music_set_loop(((rt_music *)new_music)->music, ((rt_music *)new_music)->logical_loop);
+        vaud_music_play(((rt_music *)new_music)->music, ((rt_music *)new_music)->logical_loop);
     }
     audio_state_unlock();
+    rt_audio_drain_releases(&releases);
 }
 
 /// @brief Check whether a music crossfade is currently in progress.
@@ -1552,19 +1683,28 @@ int8_t rt_music_is_crossfading(void) {
 
 /// @brief Advance the crossfade by dt_ms milliseconds (call each frame during a crossfade).
 void rt_music_crossfade_update(int64_t dt_ms) {
+    rt_deferred_release_list releases = {0};
+
     audio_state_lock();
     for (int32_t i = 0; i < VAUD_MAX_MUSIC; i++) {
         if (!g_crossfades[i].active)
             continue;
+        if (g_audio_paused || g_crossfades[i].paused) {
+            g_crossfades[i].last_tick_ms = rt_timer_ms();
+            continue;
+        }
         if (dt_ms > 0) {
             g_crossfades[i].last_tick_ms = rt_timer_ms();
-            rt_audio_update_crossfade_entry_locked(&g_crossfades[i], dt_ms);
+            rt_audio_update_crossfade_entry_locked(&g_crossfades[i], dt_ms, &releases);
         }
     }
     audio_state_unlock();
+    rt_audio_drain_releases(&releases);
 }
 
-static void rt_audio_update_crossfade_entry_locked(rt_music_crossfade_state *xf, int64_t dt_ms) {
+static void rt_audio_update_crossfade_entry_locked(rt_music_crossfade_state *xf,
+                                                   int64_t dt_ms,
+                                                   rt_deferred_release_list *releases) {
     if (!xf || !xf->active)
         return;
     if (dt_ms <= 0)
@@ -1577,11 +1717,14 @@ static void rt_audio_update_crossfade_entry_locked(rt_music_crossfade_state *xf,
             rt_music *fade_out = (rt_music *)xf->fade_out;
             if (fade_out->music)
                 vaud_music_stop(fade_out->music);
+            fade_out->paused = 0;
             rt_audio_apply_music_volume(fade_out);
         }
-        if (xf->fade_in)
+        if (xf->fade_in) {
+            ((rt_music *)xf->fade_in)->paused = 0;
             rt_audio_apply_music_volume((rt_music *)xf->fade_in);
-        rt_audio_release_crossfade_refs_locked(xf);
+        }
+        rt_audio_release_crossfade_refs_locked(xf, releases);
         return;
     }
 

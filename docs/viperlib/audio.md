@@ -163,11 +163,14 @@ Buffered music class for longer audio tracks. Playback uses incremental decode a
 | Method         | Signature           | Description                              |
 |----------------|---------------------|------------------------------------------|
 | `IsPlaying()`  | `Integer()`         | Returns 1 if currently playing, 0 if not |
-| `Pause()`      | `Void()`            | Pause playback                           |
+| `Pause()`      | `Void()`            | Pause playback; also freezes an active crossfade involving this track |
 | `Play(loop)`   | `Void(Integer)`     | Start playback (1 = loop, 0 = one-shot)  |
-| `Resume()`     | `Void()`            | Resume paused playback                   |
-| `Seek(ms)`     | `Void(Integer)`     | Seek to position in milliseconds         |
+| `Resume()`     | `Void()`            | Resume paused playback and reclaim foreground ownership |
+| `Seek(ms)`     | `Void(Integer)`     | Seek to position in milliseconds without stopping unrelated music |
 | `Stop()`       | `Void()`            | Stop playback                            |
+
+> **Seek behavior:** `Music.Seek(ms)` only repositions that stream. It does not cancel
+> unrelated music or active playlist playback.
 
 ### Zia Example
 
@@ -712,11 +715,14 @@ Smooth transitions between music tracks — the old track fades out while the ne
 
 Unrelated playlist or direct-music crossfades can run independently; starting one transition no longer cancels another unrelated fade.
 
+Pausing a track or playlist that owns a crossfade now pauses the fade clock too; `Audio.Update()`
+and `Playlist.Update()` do not advance a paused transition.
+
 ### Music Methods (Crossfade)
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| `Music.CrossfadeTo(newMusic, duration)` | `void(Music, Integer)` | Crossfade to new track over duration ms |
+| `Music.CrossfadeTo(newMusic, duration)` | `void(Music, Integer)` | Crossfade to new track over duration ms, preserving the destination track's loop flag |
 
 ### Audio Properties (Crossfade)
 
@@ -728,7 +734,7 @@ Unrelated playlist or direct-music crossfades can run independently; starting on
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| `Audio.Update()` | `void()` | Advance active crossfades; call once per frame when using `Music.CrossfadeTo` directly |
+| `Audio.Update()` | `void()` | Advance active crossfades; call once per frame when using `Music.CrossfadeTo` directly (paused crossfades stay frozen) |
 
 ### Playlist Properties (Crossfade)
 
@@ -803,6 +809,10 @@ auto-detected from file magic bytes — no extension matching required.
 | Max MusicGen channels | **8** | Per song builder instance |
 | Max MusicGen notes/channel | **4,096** | `AddNote()` returns 0 when full |
 | Max MusicGen duration | **5 min** | `Build()` caps at 5 minutes |
+
+Behavior notes:
+`Playlist.Insert(index, path)` clamps out-of-range indices to the valid `[0, Count]` insertion range.
+`Music.CrossfadeTo` keeps the destination track's current loop setting instead of forcing one-shot playback.
 
 ---
 

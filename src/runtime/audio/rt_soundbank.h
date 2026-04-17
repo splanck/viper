@@ -12,7 +12,7 @@
 //
 // Key invariants:
 //   - Maximum 64 named entries per bank.
-//   - Name strings are copied into fixed-size buffers (31 chars max).
+//   - Name keys are retained as full runtime strings; long names are not truncated.
 //   - Sound references are retained (refcount incremented) while in the bank.
 //   - Thread safety: NOT thread-safe; call from main thread only.
 //
@@ -39,14 +39,14 @@ void *rt_soundbank_new(void);
 
 /// @brief Register a sound from a WAV file under a name.
 /// @param bank Sound bank handle.
-/// @param name Name to register under (max 31 chars).
+/// @param name Name to register under.
 /// @param path Path to WAV file.
 /// @return 1 on success, 0 on failure.
 int64_t rt_soundbank_register(void *bank, rt_string name, rt_string path);
 
 /// @brief Register an existing sound object under a name.
 /// @param bank Sound bank handle.
-/// @param name Name to register under (max 31 chars).
+/// @param name Name to register under.
 /// @param sound Sound object (from Sound.Load or Synth).
 /// @return 1 on success, 0 on failure.
 int64_t rt_soundbank_register_sound(void *bank, rt_string name, void *sound);

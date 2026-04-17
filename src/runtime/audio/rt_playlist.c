@@ -195,8 +195,8 @@ static void playlist_replace_music(playlist_impl *pl, void *new_music, int8_t pl
 
     if (play_now && new_music) {
         if (pl->crossfade_ms > 0 && old_music && pl->playing) {
-            rt_music_crossfade_to(old_music, new_music, pl->crossfade_ms);
             rt_music_set_loop(new_music, loop);
+            rt_music_crossfade_to(old_music, new_music, pl->crossfade_ms);
         } else {
             if (old_music)
                 rt_music_stop_related(old_music);
@@ -317,6 +317,12 @@ void rt_playlist_insert(void *obj, int64_t index, rt_string path) {
         return;
     playlist_impl *pl = (playlist_impl *)obj;
     int64_t current_actual = playlist_current_actual_index(pl);
+    int64_t count = rt_seq_len(pl->tracks);
+
+    if (index < 0)
+        index = 0;
+    if (index > count)
+        index = count;
 
     rt_seq_insert(pl->tracks, index, (void *)(path ? path : rt_const_cstr("")));
 
