@@ -340,10 +340,21 @@ void rt_mesh3d_transform(void *obj, void *mat4_obj) {
     mat4_impl *xform = (mat4_impl *)mat4_obj;
     float model_matrix[16];
     float normal_matrix[16];
+    float handedness_sign = 1.0f;
 
     for (int i = 0; i < 16; i++)
         model_matrix[i] = (float)xform->m[i];
     vgfx3d_compute_normal_matrix4(model_matrix, normal_matrix);
+    {
+        float det = model_matrix[0] * (model_matrix[5] * model_matrix[10] -
+                                       model_matrix[6] * model_matrix[9]) -
+                    model_matrix[1] * (model_matrix[4] * model_matrix[10] -
+                                       model_matrix[6] * model_matrix[8]) +
+                    model_matrix[2] * (model_matrix[4] * model_matrix[9] -
+                                       model_matrix[5] * model_matrix[8]);
+        if (det < 0.0f)
+            handedness_sign = -1.0f;
+    }
 
     for (uint32_t i = 0; i < m->vertex_count; i++) {
         float *p = m->vertices[i].pos;
@@ -382,7 +393,7 @@ void rt_mesh3d_transform(void *obj, void *mat4_obj) {
             t[1] /= len;
             t[2] /= len;
         }
-        t[3] = handedness == 0.0f ? 1.0f : handedness;
+        t[3] = (handedness == 0.0f ? 1.0f : handedness) * handedness_sign;
     }
     rt_mesh3d_touch_geometry(m);
     rt_mesh3d_refresh_bounds(m);

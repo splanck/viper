@@ -1200,17 +1200,16 @@ static void raster_triangle(uint8_t *pixels,
                         fb_c = fb_c * (1.0f - fog_f) + fog_ctx->fog_color[2] * fog_f;
                     }
 
-                    /* Interpolate alpha, respecting PBR alpha modes. */
+                    /* Interpolate alpha, respecting material alpha modes. */
                     float material_alpha = b0 * v0->a + b1 * v1->a + b2 * v2->a;
                     float fa = material_alpha * tex_alpha;
                     int discard_fragment = 0;
                     if (cmd && cmd->alpha_mode == RT_MATERIAL3D_ALPHA_MODE_MASK) {
                         if (fa < cmd->alpha_cutoff)
                             discard_fragment = 1;
-                        fa = material_alpha;
-                    } else if (cmd && cmd->workflow == RT_MATERIAL3D_WORKFLOW_PBR &&
-                               cmd->alpha_mode == RT_MATERIAL3D_ALPHA_MODE_OPAQUE) {
-                        fa = material_alpha;
+                        fa = 1.0f;
+                    } else if (cmd && cmd->alpha_mode == RT_MATERIAL3D_ALPHA_MODE_OPAQUE) {
+                        fa = 1.0f;
                     }
                     if (cmd && (cmd->workflow == RT_MATERIAL3D_WORKFLOW_PBR || normal_map) &&
                         cmd->shading_model == 4) {
@@ -1231,12 +1230,24 @@ static void raster_triangle(uint8_t *pixels,
                         dst[3] = 0xFF;
                         pixels_written++;
                     } else if (!discard_fragment && fa > 0.0f) {
-                        /* Transparent: alpha blend (src*a + dst*(1-a)).
-                         * No Z-buffer write — transparent fragments don't occlude. */
-                        float inv_a = 1.0f - fa;
-                        dst[0] = (uint8_t)(clamp01f(fr) * 255.0f * fa + (float)dst[0] * inv_a);
-                        dst[1] = (uint8_t)(clamp01f(fg) * 255.0f * fa + (float)dst[1] * inv_a);
-                        dst[2] = (uint8_t)(clamp01f(fb_c) * 255.0f * fa + (float)dst[2] * inv_a);
+                        /* Transparent: additive keeps the destination, alpha uses source-over.
+                         * Both skip Z writes so they don't occlude later transparent draws. */
+                        if (cmd && cmd->additive_blend) {
+                            dst[0] = (uint8_t)fminf(
+                                255.0f, clamp01f(fr) * 255.0f * fa + (float)dst[0]);
+                            dst[1] = (uint8_t)fminf(
+                                255.0f, clamp01f(fg) * 255.0f * fa + (float)dst[1]);
+                            dst[2] = (uint8_t)fminf(
+                                255.0f, clamp01f(fb_c) * 255.0f * fa + (float)dst[2]);
+                        } else {
+                            float inv_a = 1.0f - fa;
+                            dst[0] =
+                                (uint8_t)(clamp01f(fr) * 255.0f * fa + (float)dst[0] * inv_a);
+                            dst[1] =
+                                (uint8_t)(clamp01f(fg) * 255.0f * fa + (float)dst[1] * inv_a);
+                            dst[2] =
+                                (uint8_t)(clamp01f(fb_c) * 255.0f * fa + (float)dst[2] * inv_a);
+                        }
                         dst[3] = 0xFF;
                         pixels_written++;
                     }
@@ -1419,7 +1430,7 @@ static void sw_shadow_draw(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) {
     if (!ctx || !cmd || !ctx->shadow_depth || cmd->vertex_count == 0 || cmd->index_count == 0)
         return;
     /* Skip transparent objects */
-    if (cmd->alpha < 1.0f)
+    if (cmd->additive_blend || vgfx3d_draw_cmd_uses_alpha_blend(cmd))
         return;
 
     /* Build light MVP = shadow_vp * model */

@@ -100,6 +100,8 @@ vgfx3d_opengl_choose_color_format(vgfx3d_opengl_target_kind_t target_kind) {
 
 vgfx3d_opengl_blend_mode_t
 vgfx3d_opengl_choose_blend_mode(const vgfx3d_draw_cmd_t *cmd) {
+    if (cmd && cmd->additive_blend)
+        return VGFX3D_OPENGL_BLEND_ADDITIVE;
     return vgfx3d_draw_cmd_uses_alpha_blend(cmd) ? VGFX3D_OPENGL_BLEND_ALPHA
                                                  : VGFX3D_OPENGL_BLEND_OPAQUE;
 }
@@ -109,9 +111,9 @@ vgfx3d_opengl_choose_motion_attachment_mode(vgfx3d_opengl_target_kind_t target_k
                                             const vgfx3d_draw_cmd_t *cmd) {
     if (target_kind != VGFX3D_OPENGL_TARGET_SCENE)
         return VGFX3D_OPENGL_MOTION_ATTACHMENTS_COLOR_ONLY;
-    return vgfx3d_opengl_choose_blend_mode(cmd) == VGFX3D_OPENGL_BLEND_ALPHA
-               ? VGFX3D_OPENGL_MOTION_ATTACHMENTS_COLOR_ONLY
-               : VGFX3D_OPENGL_MOTION_ATTACHMENTS_COLOR_AND_MOTION;
+    return vgfx3d_opengl_choose_blend_mode(cmd) == VGFX3D_OPENGL_BLEND_OPAQUE
+               ? VGFX3D_OPENGL_MOTION_ATTACHMENTS_COLOR_AND_MOTION
+               : VGFX3D_OPENGL_MOTION_ATTACHMENTS_COLOR_ONLY;
 }
 
 /// @brief Decide whether canvas readback should source the swapchain or a postfx target.

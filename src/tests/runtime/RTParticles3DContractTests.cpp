@@ -23,18 +23,47 @@ namespace {
 std::jmp_buf g_env;
 const char *g_last_trap = nullptr;
 bool g_expect_trap = false;
+constexpr int kAlphaModeOpaque = 0;
+constexpr int kAlphaModeBlend = 2;
 int g_draw_mesh_calls = 0;
 int g_draw_mesh_matrix_keyed_calls = 0;
 int g_last_mesh_vertex_count = 0;
 int g_last_mesh_index_count = 0;
 double g_keyed_draw_z[16] = {0.0};
 double g_keyed_draw_alpha[16] = {0.0};
+int g_keyed_draw_additive[16] = {0};
+double g_last_draw_alpha = 0.0;
+int g_last_draw_additive = 0;
+int g_last_draw_alpha_mode = 0;
 
 struct StubMaterial {
-    double color[3] = {0.0, 0.0, 0.0};
-    double alpha = 1.0;
-    int8_t unlit = 0;
+    void *vptr = nullptr;
+    double diffuse[4] = {0.0, 0.0, 0.0, 1.0};
+    double specular[3] = {0.0, 0.0, 0.0};
+    double shininess = 0.0;
+    int32_t workflow = 0;
     void *texture = nullptr;
+    void *normal_map = nullptr;
+    void *specular_map = nullptr;
+    void *emissive_map = nullptr;
+    void *metallic_roughness_map = nullptr;
+    void *ao_map = nullptr;
+    double emissive[3] = {0.0, 0.0, 0.0};
+    double metallic = 0.0;
+    double roughness = 0.0;
+    double ao = 0.0;
+    double emissive_intensity = 0.0;
+    double normal_scale = 1.0;
+    double alpha = 1.0;
+    double alpha_cutoff = 0.5;
+    void *env_map = nullptr;
+    double reflectivity = 0.0;
+    int8_t unlit = 0;
+    int8_t double_sided = 0;
+    int8_t additive_blend = 0;
+    int32_t alpha_mode = kAlphaModeOpaque;
+    int32_t shading_model = 0;
+    double custom_params[8] = {0.0};
 };
 
 } // namespace
@@ -63,9 +92,10 @@ extern "C" void *rt_material3d_new(void) {
 
 extern "C" void rt_material3d_set_color(void *m, double r, double g, double b) {
     StubMaterial *mat = static_cast<StubMaterial *>(m);
-    mat->color[0] = r;
-    mat->color[1] = g;
-    mat->color[2] = b;
+    mat->diffuse[0] = r;
+    mat->diffuse[1] = g;
+    mat->diffuse[2] = b;
+    mat->diffuse[3] = mat->alpha;
 }
 
 extern "C" void rt_material3d_set_unlit(void *m, int8_t enabled) {
@@ -74,6 +104,10 @@ extern "C" void rt_material3d_set_unlit(void *m, int8_t enabled) {
 
 extern "C" void rt_material3d_set_alpha(void *m, double a) {
     static_cast<StubMaterial *>(m)->alpha = a;
+}
+
+extern "C" void rt_material3d_set_alpha_mode(void *m, int64_t mode) {
+    static_cast<StubMaterial *>(m)->alpha_mode = static_cast<int32_t>(mode);
 }
 
 extern "C" void rt_material3d_set_texture(void *m, void *tex) {
@@ -86,11 +120,21 @@ extern "C" void *rt_mat4_identity(void) {
     return identity;
 }
 
-extern "C" void rt_canvas3d_draw_mesh(void *, void *mesh, void *, void *) {
+extern "C" void rt_canvas3d_draw_mesh(void *, void *mesh, void *, void *material) {
     rt_mesh3d *m = static_cast<rt_mesh3d *>(mesh);
     g_draw_mesh_calls++;
     g_last_mesh_vertex_count = m ? (int)m->vertex_count : 0;
     g_last_mesh_index_count = m ? (int)m->index_count : 0;
+    g_last_draw_alpha = material ? static_cast<StubMaterial *>(material)->alpha : 0.0;
+    g_last_draw_additive = material ? static_cast<StubMaterial *>(material)->additive_blend : 0;
+    g_last_draw_alpha_mode = material ? static_cast<StubMaterial *>(material)->alpha_mode : 0;
+}
+
+extern "C" void rt_canvas3d_draw_mesh_matrix(void *canvas,
+                                             void *mesh,
+                                             const double *,
+                                             void *material) {
+    rt_canvas3d_draw_mesh(canvas, mesh, nullptr, material);
 }
 
 extern "C" void rt_canvas3d_draw_mesh_matrix_keyed(void *,
@@ -103,8 +147,9 @@ extern "C" void rt_canvas3d_draw_mesh_matrix_keyed(void *,
     int draw_index = g_draw_mesh_matrix_keyed_calls++;
     if (draw_index < (int)(sizeof(g_keyed_draw_z) / sizeof(g_keyed_draw_z[0]))) {
         g_keyed_draw_z[draw_index] = model_matrix ? model_matrix[11] : 0.0;
-        g_keyed_draw_alpha[draw_index] =
-            material ? static_cast<StubMaterial *>(material)->alpha : 0.0;
+        g_keyed_draw_alpha[draw_index] = material ? static_cast<StubMaterial *>(material)->alpha : 0.0;
+        g_keyed_draw_additive[draw_index] =
+            material ? static_cast<StubMaterial *>(material)->additive_blend : 0;
     }
 }
 
@@ -174,8 +219,12 @@ static void reset_draw_records() {
     g_draw_mesh_matrix_keyed_calls = 0;
     g_last_mesh_vertex_count = 0;
     g_last_mesh_index_count = 0;
+    g_last_draw_alpha = 0.0;
+    g_last_draw_additive = 0;
+    g_last_draw_alpha_mode = 0;
     std::memset(g_keyed_draw_z, 0, sizeof(g_keyed_draw_z));
     std::memset(g_keyed_draw_alpha, 0, sizeof(g_keyed_draw_alpha));
+    std::memset(g_keyed_draw_additive, 0, sizeof(g_keyed_draw_additive));
 }
 
 static rt_camera3d make_test_camera() {
@@ -214,6 +263,9 @@ static void test_draw_additive_batches_and_alpha_splits_per_particle() {
     assert(g_draw_mesh_matrix_keyed_calls == 0);
     assert(g_last_mesh_vertex_count == 12);
     assert(g_last_mesh_index_count == 18);
+    assert(std::fabs(g_last_draw_alpha - 1.0) < 1e-6);
+    assert(g_last_draw_additive == 1);
+    assert(g_last_draw_alpha_mode == kAlphaModeBlend);
 
     rt_particles3d_set_additive(ps, 0);
     reset_draw_records();
@@ -224,6 +276,7 @@ static void test_draw_additive_batches_and_alpha_splits_per_particle() {
     assert(std::fabs(g_keyed_draw_z[1] - 3.0) < 1e-6);
     assert(std::fabs(g_keyed_draw_z[2] - 1.0) < 1e-6);
     assert(std::fabs(g_keyed_draw_alpha[0] - 1.0) < 1e-6);
+    assert(g_keyed_draw_additive[0] == 0);
 }
 
 int main() {

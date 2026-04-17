@@ -403,7 +403,7 @@ Perspective or orthographic camera with view and projection matrices.
 |--------|-----------|-------------|
 | `LookAt(eye, target, up)` | `void(obj, obj, obj)` | Point camera from eye toward target (Vec3 args) |
 | `Orbit(target, distance, yaw, pitch)` | `void(obj, f64, f64, f64)` | Orbit around target (angles in degrees) |
-| `ScreenToRay(sx, sy, sw, sh)` | `obj(i64, i64, i64, i64)` | Unproject screen point to world-space ray (returns Vec3) |
+| `ScreenToRay(sx, sy, sw, sh)` | `obj(i64, i64, i64, i64)` | Return a normalized world-space pick direction (Vec3). For perspective cameras, combine it with `GetPosition()`. Orthographic cameras return their forward direction. During active `Shake`, the ray matches the shaken render pose. |
 | `Shake(intensity, duration, decay)` | `void(f64, f64, f64)` | Apply camera shake effect |
 | `SmoothFollow(target, speed, height, distance, dt)` | `void(obj, f64, f64, f64, f64)` | Smoothly follow a Vec3 target position |
 | `SmoothLookAt(target, speed, dt)` | `void(obj, f64, f64)` | Smoothly rotate toward a Vec3 target |
@@ -411,6 +411,7 @@ Perspective or orthographic camera with view and projection matrices.
 | `FPSUpdate(mdx, mdy, fwd, right, up, speed, dt)` | `void(f64, f64, f64, f64, f64, f64, f64)` | FPS mouse look + WASD movement |
 
 `Yaw`, `Pitch`, `Orbit`, and `Light3D.NewSpot` all use degrees. Writing `Yaw` or `Pitch` updates the camera view immediately.
+`Canvas3D.Begin(canvas, camera)` automatically syncs the camera projection aspect to the active output (window or bound `RenderTarget3D`), so perspective remains correct across resizes and RTT passes.
 
 ### Zia Example
 
@@ -466,7 +467,7 @@ Surface appearance for meshes, models, decals, and other 3D drawables.
 
 | Property | Type | Access | Description |
 |----------|------|--------|-------------|
-| `Alpha` | Float | read/write | Opacity [0.0=invisible, 1.0=opaque]. Default 1.0. Transparent objects sorted back-to-front |
+| `Alpha` | Float | read/write | Opacity [0.0=invisible, 1.0=opaque]. Default 1.0. `AlphaMode=Blend` uses it for transparency; `AlphaMode=Opaque` ignores it for blending/depth classification. |
 | `Metallic` | Float | read/write | PBR metallic factor [0.0=dielectric, 1.0=metal]. Default 0.0 |
 | `Roughness` | Float | read/write | PBR roughness [0.0=smooth, 1.0=rough]. Default 0.5 |
 | `AO` | Float | read/write | Ambient-occlusion multiplier. Default 1.0 |
@@ -508,9 +509,9 @@ Surface appearance for meshes, models, decals, and other 3D drawables.
 - Calling `SetMetallic`, `SetRoughness`, `SetAO`, `SetMetallicRoughnessMap`, or `SetAOMap` on a legacy material promotes it into the PBR workflow.
 - `Clone()` and `MakeInstance()` both return independent material objects. They eagerly copy scalar state and share the currently referenced texture/cubemap objects by pointer. After cloning, either material can replace its maps independently.
 - `AlphaMode` changes how texture alpha is interpreted for PBR materials:
-  - `0`: opaque, texture alpha does not drive blending
-  - `1`: masked, fragments below the cutoff are discarded
-  - `2`: blended, texture alpha participates in transparency
+  - `0`: opaque. Texture/material alpha does not enable blending, and surviving fragments write depth as opaque.
+  - `1`: masked. Fragments below the cutoff are discarded; surviving fragments render as opaque coverage.
+  - `2`: blended. Texture/material alpha participates in transparency and transparent sorting.
 - `SetShadingModel` and `SetCustomParam` remain available as advanced escape hatches. They are not the main PBR API.
 
 **Shading models:** `SetShadingModel` selects how the surface is shaded on the legacy path and can post-process the PBR result:
@@ -673,6 +674,7 @@ func start() {
 
 **Note:** `AsPixels()` returns a fresh copy each call. The render target's buffers are independent from the window framebuffer.
 When a render target is bound, `Canvas3D.Width`, `Canvas3D.Height`, `Begin2D()`, debug overlays, and `Screenshot()` all operate in that target's pixel space instead of the window's.
+`Canvas3D.Begin()` also uses the target's aspect ratio for the camera projection while the render target is bound, so switching between the window and RTT views does not stretch perspective.
 **PostFX:** If a render target is active when you call `Flip()`, the canvas applies the current `PostFX3D` chain to that render target instead of the window backbuffer.
 
 ## CubeMap3D
@@ -686,6 +688,7 @@ Six-face cube texture for skyboxes and environment reflections.
 | `New(right, left, top, bottom, front, back)` | `obj(obj, obj, obj, obj, obj, obj)` | Create cubemap from 6 Pixels faces |
 
 CubeMap3D has no methods or properties — it is a data object used by `Canvas3D.SetSkybox` and `Material3D.SetEnvMap`.
+CubeMap faces use the same top-left pixel origin as `Pixels`; the GPU backends normalize upload orientation so skyboxes and reflections sample consistently across backends.
 
 ### Zia Example
 
@@ -861,7 +864,7 @@ Transform order: `world = parent_world * Translate * Rotate * Scale`. Dirty flag
 
 - `0` = `NodeFromBody`: pull the bound `Physics3DBody` world pose into the node.
 - `1` = `BodyFromNode`: push the node world pose into the bound body.
-- `2` = `NodeFromAnimatorRootMotion`: consume root motion from the bound `AnimController3D` into the node's local position.
+- `2` = `NodeFromAnimatorRootMotion`: consume root motion from the bound `AnimController3D` into the node's local transform (translation plus rotation).
 - `3` = `TwoWayKinematic`: push node-to-body while the body is kinematic, otherwise pull body-to-node.
 
 Recommended frame order:
@@ -869,6 +872,8 @@ Recommended frame order:
 1. Step physics and update animation controllers.
 2. Call `Scene3D.SyncBindings(dt)`.
 3. Call `Scene3D.Draw(canvas, camera)`.
+
+When `NodeFromAnimatorRootMotion` is active, `Scene3D.SyncBindings(dt)` consumes both translation and rotation deltas from the controller's configured root-motion bone once per controller update.
 
 Current scope:
 
@@ -1284,7 +1289,7 @@ Emitter-based 3D particle effects with physics, lifetime, and billboard renderin
 |----------|------|--------|-------------|
 | `Count` | Integer | read | Number of active particles |
 | `Emitting` | Boolean | read | Whether emitter is active |
-| `Additive` | Boolean | write | Additive blending mode (fire, sparks). Default: false |
+| `Additive` | Boolean | write | Additive particle blending mode (fire, sparks). Default: false. Preserves each particle's own alpha/intensity. |
 
 ### Methods
 
@@ -1350,7 +1355,7 @@ func start() {
 ```
 
 - Particles are billboarded (camera-facing)
-- Additive mode stays fully batched in one draw call
+- Additive mode uses true additive blending and stays fully batched in one draw call
 - Alpha blend mode sorts particles back-to-front and submits per-particle keyed draws so blending stays correct against the rest of the scene
 
 ## PostFX3D
@@ -2338,7 +2343,7 @@ func start() {
 1. **Zia-only:** Use `PerlinNoise.Octave2D()` to fill a `Pixels` buffer, then call `SetHeightmap()`. The heightmap uses 16-bit precision via R (high byte) + G (low byte) channels in `0xRRGGBBAA` pixel format.
 2. **Native fast path:** Call `GeneratePerlin(noise, scale, octaves, persistence)` with a `PerlinNoise` object. This writes directly to the internal float heightmap, bypassing the Pixels intermediate for better performance on large terrains. The `noise` parameter is a `PerlinNoise` object, `scale` controls coordinate frequency, `octaves` sets detail layers (typically 4-8), and `persistence` controls amplitude decay (typically 0.4-0.6).
 
-**Texture splatting:** When a splat map is set, the terrain blends 4 layer textures per-pixel during rasterization, weighted by the splat map RGBA channels. Each layer can have its own UV tiling scale for detail repetition. The software, Metal, OpenGL, and D3D11 backends all perform per-pixel splat sampling.
+**Texture splatting:** When a splat map is set, the terrain blends 4 layer textures per-pixel during rasterization, weighted by the splat map RGBA channels. Each layer can have its own UV tiling scale for detail repetition. The software, Metal, OpenGL, and D3D11 backends all perform per-pixel splat sampling. A `1x1` splat map is valid and acts as uniform coverage for the whole terrain.
 
 **LOD (Level of Detail):** Terrain chunks use 3 resolution levels based on distance from the camera:
 - LOD 0 (full): 16x16 quads per chunk (nearest chunks)

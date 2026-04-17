@@ -17,12 +17,14 @@
 
 #include "rt_mat4.h"
 #include "rt_object.h"
+#include "rt_quat.h"
 #include "rt_skeleton3d.h"
 #include "rt_skeleton3d_internal.h"
 #include "rt_string.h"
 #include "rt_trap.h"
 #include "rt_vec3.h"
 
+#include <math.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -85,6 +87,7 @@ typedef struct {
     float *prev_final_palette;
     int8_t has_prev_final_palette;
     double root_motion_delta[3];
+    double root_motion_rotation[4];
     int32_t root_motion_bone;
 
     char event_queue[RT_ANIM_CONTROLLER3D_EVENT_QUEUE_MAX][RT_ANIM_CONTROLLER3D_EVENT_NAME_MAX];
@@ -371,6 +374,137 @@ static void controller_get_layer_translation(const anim_controller3d_layer_t *la
     *z = (double)m[11];
 }
 
+static void controller_quat_identity(double *out) {
+    if (!out)
+        return;
+    out[0] = 0.0;
+    out[1] = 0.0;
+    out[2] = 0.0;
+    out[3] = 1.0;
+}
+
+static void controller_quat_normalize(double *q) {
+    double len_sq;
+    double inv_len;
+    if (!q)
+        return;
+    len_sq = q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3];
+    if (len_sq < 1e-20) {
+        controller_quat_identity(q);
+        return;
+    }
+    inv_len = 1.0 / sqrt(len_sq);
+    q[0] *= inv_len;
+    q[1] *= inv_len;
+    q[2] *= inv_len;
+    q[3] *= inv_len;
+}
+
+static void controller_quat_from_matrix_rows(double m00,
+                                             double m01,
+                                             double m02,
+                                             double m10,
+                                             double m11,
+                                             double m12,
+                                             double m20,
+                                             double m21,
+                                             double m22,
+                                             double *out) {
+    double trace;
+    if (!out)
+        return;
+    trace = m00 + m11 + m22;
+    if (trace > 0.0) {
+        double s = sqrt(trace + 1.0) * 2.0;
+        out[3] = 0.25 * s;
+        out[0] = (m21 - m12) / s;
+        out[1] = (m02 - m20) / s;
+        out[2] = (m10 - m01) / s;
+    } else if (m00 > m11 && m00 > m22) {
+        double s = sqrt(1.0 + m00 - m11 - m22) * 2.0;
+        out[3] = (m21 - m12) / s;
+        out[0] = 0.25 * s;
+        out[1] = (m01 + m10) / s;
+        out[2] = (m02 + m20) / s;
+    } else if (m11 > m22) {
+        double s = sqrt(1.0 + m11 - m00 - m22) * 2.0;
+        out[3] = (m02 - m20) / s;
+        out[0] = (m01 + m10) / s;
+        out[1] = 0.25 * s;
+        out[2] = (m12 + m21) / s;
+    } else {
+        double s = sqrt(1.0 + m22 - m00 - m11) * 2.0;
+        out[3] = (m10 - m01) / s;
+        out[0] = (m02 + m20) / s;
+        out[1] = (m12 + m21) / s;
+        out[2] = 0.25 * s;
+    }
+    controller_quat_normalize(out);
+}
+
+static void controller_get_layer_rotation(
+    const anim_controller3d_layer_t *layer, int32_t bone_index, double *out_quat) {
+    const float *m;
+    double sx;
+    double sy;
+    double sz;
+    double inv_sx;
+    double inv_sy;
+    double inv_sz;
+
+    controller_quat_identity(out_quat);
+    if (!layer || !layer->player || !layer->player->bone_palette || !layer->player->skeleton)
+        return;
+    if (bone_index < 0 || bone_index >= layer->player->skeleton->bone_count)
+        return;
+    m = &layer->player->bone_palette[bone_index * 16];
+    sx = sqrt((double)m[0] * (double)m[0] + (double)m[4] * (double)m[4] + (double)m[8] * (double)m[8]);
+    sy = sqrt((double)m[1] * (double)m[1] + (double)m[5] * (double)m[5] + (double)m[9] * (double)m[9]);
+    sz = sqrt((double)m[2] * (double)m[2] + (double)m[6] * (double)m[6] + (double)m[10] * (double)m[10]);
+    if (sx < 1e-8 || sy < 1e-8 || sz < 1e-8)
+        return;
+    inv_sx = 1.0 / sx;
+    inv_sy = 1.0 / sy;
+    inv_sz = 1.0 / sz;
+    controller_quat_from_matrix_rows((double)m[0] * inv_sx,
+                                     (double)m[1] * inv_sy,
+                                     (double)m[2] * inv_sz,
+                                     (double)m[4] * inv_sx,
+                                     (double)m[5] * inv_sy,
+                                     (double)m[6] * inv_sz,
+                                     (double)m[8] * inv_sx,
+                                     (double)m[9] * inv_sy,
+                                     (double)m[10] * inv_sz,
+                                     out_quat);
+}
+
+static void controller_quat_conjugate(const double *q, double *out) {
+    if (!q || !out)
+        return;
+    out[0] = -q[0];
+    out[1] = -q[1];
+    out[2] = -q[2];
+    out[3] = q[3];
+}
+
+static void controller_quat_mul(const double *a, const double *b, double *out) {
+    double x;
+    double y;
+    double z;
+    double w;
+    if (!a || !b || !out)
+        return;
+    w = a[3] * b[3] - a[0] * b[0] - a[1] * b[1] - a[2] * b[2];
+    x = a[3] * b[0] + a[0] * b[3] + a[1] * b[2] - a[2] * b[1];
+    y = a[3] * b[1] - a[0] * b[2] + a[1] * b[3] + a[2] * b[0];
+    z = a[3] * b[2] + a[0] * b[1] - a[1] * b[0] + a[2] * b[3];
+    out[0] = x;
+    out[1] = y;
+    out[2] = z;
+    out[3] = w;
+    controller_quat_normalize(out);
+}
+
 static void controller_finalize(void *obj) {
     rt_anim_controller3d *controller = (rt_anim_controller3d *)obj;
     if (!controller)
@@ -410,6 +544,7 @@ void *rt_anim_controller3d_new(void *skeleton) {
     controller->skeleton = skel;
     rt_obj_retain_maybe(controller->skeleton);
     controller->root_motion_bone = 0;
+    controller_quat_identity(controller->root_motion_rotation);
 
     if (skel->bone_count > 0) {
         size_t palette_size = (size_t)skel->bone_count * 16 * sizeof(float);
@@ -562,9 +697,14 @@ void rt_anim_controller3d_update(void *obj, double delta_time) {
     double before_x;
     double before_y;
     double before_z;
+    double before_rot[4];
     double after_x;
     double after_y;
     double after_z;
+    double after_rot[4];
+    double inv_before_rot[4];
+    double delta_rot[4];
+    double accumulated_rot[4];
     if (!controller || !controller->skeleton || delta_time < 0.0)
         return;
 
@@ -578,6 +718,7 @@ void rt_anim_controller3d_update(void *obj, double delta_time) {
 
     controller_get_layer_translation(
         &controller->layers[0], controller->root_motion_bone, &before_x, &before_y, &before_z);
+    controller_get_layer_rotation(&controller->layers[0], controller->root_motion_bone, before_rot);
 
     for (int32_t layer_index = 0; layer_index < RT_ANIM_CONTROLLER3D_MAX_LAYERS; layer_index++) {
         anim_controller3d_layer_t *layer = &controller->layers[layer_index];
@@ -607,9 +748,14 @@ void rt_anim_controller3d_update(void *obj, double delta_time) {
     controller_compute_final_palette(controller);
     controller_get_layer_translation(
         &controller->layers[0], controller->root_motion_bone, &after_x, &after_y, &after_z);
+    controller_get_layer_rotation(&controller->layers[0], controller->root_motion_bone, after_rot);
     controller->root_motion_delta[0] += after_x - before_x;
     controller->root_motion_delta[1] += after_y - before_y;
     controller->root_motion_delta[2] += after_z - before_z;
+    controller_quat_conjugate(before_rot, inv_before_rot);
+    controller_quat_mul(after_rot, inv_before_rot, delta_rot);
+    controller_quat_mul(controller->root_motion_rotation, delta_rot, accumulated_rot);
+    memcpy(controller->root_motion_rotation, accumulated_rot, sizeof(accumulated_rot));
 }
 
 /// @brief Name of the state currently playing on the base layer (empty string if none/missing).
@@ -740,6 +886,7 @@ void rt_anim_controller3d_set_root_motion_bone(void *obj, int64_t bone_index) {
     controller->root_motion_delta[0] = 0.0;
     controller->root_motion_delta[1] = 0.0;
     controller->root_motion_delta[2] = 0.0;
+    controller_quat_identity(controller->root_motion_rotation);
 }
 
 /// @brief Read (without clearing) the accumulated root-motion translation delta as a Vec3.
@@ -767,6 +914,19 @@ void *rt_anim_controller3d_consume_root_motion(void *obj) {
     controller->root_motion_delta[1] = 0.0;
     controller->root_motion_delta[2] = 0.0;
     return delta;
+}
+
+void *rt_anim_controller3d_consume_root_motion_rotation(void *obj) {
+    rt_anim_controller3d *controller = (rt_anim_controller3d *)obj;
+    void *rotation;
+    if (!controller)
+        return rt_quat_new(0.0, 0.0, 0.0, 1.0);
+    rotation = rt_quat_new(controller->root_motion_rotation[0],
+                           controller->root_motion_rotation[1],
+                           controller->root_motion_rotation[2],
+                           controller->root_motion_rotation[3]);
+    controller_quat_identity(controller->root_motion_rotation);
+    return rotation;
 }
 
 /// @brief Set the blend weight of an overlay layer (clamped to [0, 1]). Layer 0 is the base

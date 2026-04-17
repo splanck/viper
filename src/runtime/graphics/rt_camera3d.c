@@ -167,6 +167,19 @@ static void rebuild_projection(rt_camera3d *cam) {
     }
 }
 
+void rt_camera3d_sync_render_aspect(void *obj, double aspect) {
+    rt_camera3d *cam = (rt_camera3d *)obj;
+    double sanitized_aspect;
+
+    if (!cam)
+        return;
+    sanitized_aspect = sanitize_aspect(aspect);
+    if (fabs(cam->aspect - sanitized_aspect) <= 1e-9)
+        return;
+    cam->aspect = sanitized_aspect;
+    rebuild_projection(cam);
+}
+
 static void camera_sync_fps_angles_from_view(rt_camera3d *cam) {
     double fx;
     double fy;
@@ -201,6 +214,27 @@ static void camera_rebuild_fps_view(rt_camera3d *cam) {
     target[1] = cam->eye[1] + sin(pitch_rad);
     target[2] = cam->eye[2] - cos(yaw_rad) * cp;
     build_look_at(cam->view, cam->eye, target, up);
+}
+
+static void camera_apply_shake_to_view(rt_camera3d *cam) {
+    double forward[3];
+    double eye[3];
+    double target[3];
+    double up[3] = {0.0, 1.0, 0.0};
+
+    if (!cam)
+        return;
+
+    forward[0] = -cam->view[8];
+    forward[1] = -cam->view[9];
+    forward[2] = -cam->view[10];
+    eye[0] = cam->eye[0] + cam->shake_offset[0];
+    eye[1] = cam->eye[1] + cam->shake_offset[1];
+    eye[2] = cam->eye[2] + cam->shake_offset[2];
+    target[0] = eye[0] + forward[0];
+    target[1] = eye[1] + forward[1];
+    target[2] = eye[2] + forward[2];
+    build_look_at(cam->view, eye, target, up);
 }
 
 /// @brief Create a perspective camera with the given field of view and clipping planes.
@@ -327,6 +361,7 @@ void rt_camera3d_look_at(void *obj, void *eye_v, void *target_v, void *up_v) {
 
     build_look_at(cam->view, eye, target, up);
     camera_sync_fps_angles_from_view(cam);
+    camera_apply_shake_to_view(cam);
 }
 
 /// @brief Position the camera on a spherical orbit around a target point.
@@ -368,6 +403,7 @@ void rt_camera3d_orbit(void *obj, void *target_v, double distance, double yaw, d
     build_look_at(cam->view, eye, target, up);
     cam->fps_yaw = yaw;
     cam->fps_pitch = pitch;
+    camera_apply_shake_to_view(cam);
 }
 
 /// @brief Get the vertical field of view in degrees.
@@ -417,6 +453,7 @@ void rt_camera3d_set_position(void *obj, void *pos) {
     target[1] = cam->eye[1] + forward[1];
     target[2] = cam->eye[2] + forward[2];
     build_look_at(cam->view, cam->eye, target, up);
+    camera_apply_shake_to_view(cam);
 }
 
 void *rt_camera3d_get_forward(void *obj) {
@@ -491,6 +528,16 @@ void *rt_camera3d_screen_to_ray(void *obj, int64_t sx, int64_t sy, int64_t sw, i
 
     rt_camera3d *cam = (rt_camera3d *)obj;
 
+    if (cam->is_ortho) {
+        double fx = -cam->view[8];
+        double fy = -cam->view[9];
+        double fz = -cam->view[10];
+        double len = sqrt(fx * fx + fy * fy + fz * fz);
+        if (len > 1e-12)
+            return rt_vec3_new(fx / len, fy / len, fz / len);
+        return rt_vec3_new(0.0, 0.0, -1.0);
+    }
+
     /* Screen → NDC */
     double ndc_x = (2.0 * (double)sx / (double)sw) - 1.0;
     double ndc_y = 1.0 - (2.0 * (double)sy / (double)sh); /* Y-flip */
@@ -522,10 +569,13 @@ void *rt_camera3d_screen_to_ray(void *obj, int64_t sx, int64_t sy, int64_t sw, i
         world[2] /= world[3];
     }
 
-    /* Ray direction = normalize(worldPoint - eye) */
-    double dx = world[0] - cam->eye[0];
-    double dy = world[1] - cam->eye[1];
-    double dz = world[2] - cam->eye[2];
+    /* Ray direction = normalize(worldPoint - rendered eye) */
+    double origin_x = cam->eye[0] + cam->shake_offset[0];
+    double origin_y = cam->eye[1] + cam->shake_offset[1];
+    double origin_z = cam->eye[2] + cam->shake_offset[2];
+    double dx = world[0] - origin_x;
+    double dy = world[1] - origin_y;
+    double dz = world[2] - origin_z;
     double len = sqrt(dx * dx + dy * dy + dz * dz);
     if (len > 1e-12) {
         dx /= len;
@@ -594,6 +644,7 @@ void rt_camera3d_fps_update(void *obj,
     double target[3] = {cam->eye[0] + fwd_x, cam->eye[1] + fwd_y, cam->eye[2] + fwd_z};
     double up[3] = {0.0, 1.0, 0.0};
     build_look_at(cam->view, cam->eye, target, up);
+    camera_apply_shake_to_view(cam);
 }
 
 double rt_camera3d_get_yaw(void *obj) {
@@ -609,6 +660,7 @@ void rt_camera3d_set_yaw(void *obj, double yaw) {
         return;
     ((rt_camera3d *)obj)->fps_yaw = yaw;
     camera_rebuild_fps_view((rt_camera3d *)obj);
+    camera_apply_shake_to_view((rt_camera3d *)obj);
 }
 
 void rt_camera3d_set_pitch(void *obj, double pitch) {
@@ -621,6 +673,7 @@ void rt_camera3d_set_pitch(void *obj, double pitch) {
     if (cam->fps_pitch < -89.0)
         cam->fps_pitch = -89.0;
     camera_rebuild_fps_view(cam);
+    camera_apply_shake_to_view(cam);
 }
 
 /*==========================================================================
@@ -650,6 +703,15 @@ static void apply_shake(rt_camera3d *cam, double dt) {
     cam->shake_offset[2] = (r1 * r2) * cam->shake_intensity * 0.3;
 }
 
+void rt_camera3d_update_shake_for_frame(void *obj, double dt) {
+    rt_camera3d *cam = (rt_camera3d *)obj;
+
+    if (!cam)
+        return;
+    apply_shake(cam, dt);
+    camera_apply_shake_to_view(cam);
+}
+
 /// @brief Trigger a camera shake effect (exponentially decaying random offset).
 /// @details The shake applies random XY offsets that decay over the given duration.
 ///          Used for explosions, impacts, and other feedback effects.
@@ -660,6 +722,8 @@ void rt_camera3d_shake(void *obj, double intensity, double duration, double deca
     cam->shake_intensity = intensity;
     cam->shake_duration = duration;
     cam->shake_decay = decay > 0.0 ? decay : 5.0;
+    apply_shake(cam, 0.0);
+    camera_apply_shake_to_view(cam);
 }
 
 /*==========================================================================
@@ -689,14 +753,10 @@ void rt_camera3d_smooth_follow(
     cam->eye[1] += (desired[1] - cam->eye[1]) * t;
     cam->eye[2] += (desired[2] - cam->eye[2]) * t;
 
-    apply_shake(cam, dt);
-    cam->eye[0] += cam->shake_offset[0];
-    cam->eye[1] += cam->shake_offset[1];
-    cam->eye[2] += cam->shake_offset[2];
-
     double look_at[3] = {tx, ty - height * 0.3, tz};
     double up[3] = {0, 1, 0};
     build_look_at(cam->view, cam->eye, look_at, up);
+    camera_apply_shake_to_view(cam);
 }
 
 /*==========================================================================
@@ -738,6 +798,7 @@ void rt_camera3d_smooth_look_at(void *obj, void *target, double speed, double dt
     double look[3] = {cam->eye[0] + new_fwd[0], cam->eye[1] + new_fwd[1], cam->eye[2] + new_fwd[2]};
     double up[3] = {0, 1, 0};
     build_look_at(cam->view, cam->eye, look, up);
+    camera_apply_shake_to_view(cam);
 }
 
 #else

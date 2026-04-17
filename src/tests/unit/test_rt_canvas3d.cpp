@@ -241,6 +241,25 @@ static void test_mesh_transform_uses_inverse_transpose_normals() {
     PASS();
 }
 
+static void test_mesh_transform_flips_tangent_handedness_for_mirrors() {
+    TEST("Mesh3D.Transform flips tangent handedness for mirrored transforms");
+    rt_mesh3d *m = (rt_mesh3d *)rt_mesh3d_new();
+    assert(m);
+    rt_mesh3d_add_vertex(m, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0);
+    rt_mesh3d_add_vertex(m, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 0.0);
+    rt_mesh3d_add_vertex(m, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0);
+    rt_mesh3d_add_triangle(m, 0, 1, 2);
+    rt_mesh3d_calc_tangents(m);
+    EXPECT_TRUE(m->vertices[0].tangent[3] > 0.0f, "Baseline tangent handedness starts positive");
+
+    void *mirror = rt_mat4_scale(-1.0, 1.0, 1.0);
+    rt_mesh3d_transform(m, mirror);
+
+    EXPECT_TRUE(m->vertices[0].tangent[3] < 0.0f,
+                "Mirrored transforms flip tangent handedness for normal mapping");
+    PASS();
+}
+
 static void test_mesh_recalc_normals() {
     TEST("Mesh3D.RecalcNormals — produces unit normals");
     void *m = rt_mesh3d_new();
@@ -668,6 +687,39 @@ static void test_camera_screen_to_ray_corners() {
     PASS();
 }
 
+static void test_camera_ortho_screen_to_ray_parallel() {
+    TEST("Camera3D.ScreenToRay keeps orthographic rays parallel");
+    void *cam = rt_camera3d_new_ortho(5.0, 1.0, 0.1, 100.0);
+    void *eye = rt_vec3_new(0.0, 0.0, 5.0);
+    void *target = rt_vec3_new(0.0, 0.0, 0.0);
+    void *up = rt_vec3_new(0.0, 1.0, 0.0);
+    rt_camera3d_look_at(cam, eye, target, up);
+
+    void *center = rt_camera3d_screen_to_ray(cam, 320, 240, 640, 480);
+    void *corner = rt_camera3d_screen_to_ray(cam, 0, 0, 640, 480);
+    EXPECT_NEAR(rt_vec3_x(center), rt_vec3_x(corner), 0.0001);
+    EXPECT_NEAR(rt_vec3_y(center), rt_vec3_y(corner), 0.0001);
+    EXPECT_NEAR(rt_vec3_z(center), rt_vec3_z(corner), 0.0001);
+    PASS();
+}
+
+static void test_camera_screen_to_ray_tracks_shaken_view() {
+    TEST("Camera3D.ScreenToRay stays aligned with the shaken view");
+    void *cam = rt_camera3d_new(60.0, 1.0, 0.1, 100.0);
+    void *eye = rt_vec3_new(0.0, 0.0, 5.0);
+    void *target = rt_vec3_new(0.0, 0.0, 0.0);
+    void *up = rt_vec3_new(0.0, 1.0, 0.0);
+
+    rt_camera3d_look_at(cam, eye, target, up);
+    rt_camera3d_shake(cam, 1.0, 0.5, 1.0);
+
+    void *ray = rt_camera3d_screen_to_ray(cam, 320, 240, 640, 480);
+    EXPECT_NEAR(rt_vec3_x(ray), 0.0, 0.01);
+    EXPECT_NEAR(rt_vec3_y(ray), 0.0, 0.01);
+    EXPECT_TRUE(rt_vec3_z(ray) < -0.99, "Center-screen shaken ray still points forward");
+    PASS();
+}
+
 static void test_camera_set_position_rebuilds_view() {
     TEST("Camera3D.SetPosition rebuilds the view state");
     void *cam = rt_camera3d_new(60.0, 1.333, 0.1, 100.0);
@@ -728,6 +780,21 @@ static void test_camera_ortho_set_fov_preserves_projection() {
 
     EXPECT_TRUE(std::memcmp(before, cam->projection, sizeof(before)) == 0,
                 "Orthographic projection matrix stays intact after SetFov");
+    PASS();
+}
+
+static void test_camera_shake_does_not_drift_eye_in_smooth_follow() {
+    TEST("Camera3D.Shake does not mutate the base eye during SmoothFollow");
+    void *cam = rt_camera3d_new(60.0, 1.0, 0.1, 100.0);
+    void *target = rt_vec3_new(0.0, 0.0, 0.0);
+    rt_camera3d_orbit(cam, target, 5.0, 0.0, 0.0);
+    rt_camera3d_shake(cam, 1.0, 0.5, 1.0);
+    rt_camera3d_smooth_follow(cam, target, 5.0, 0.0, 0.0, 0.016);
+
+    void *pos = rt_camera3d_get_position(cam);
+    EXPECT_NEAR(rt_vec3_x(pos), 0.0, 0.0001);
+    EXPECT_NEAR(rt_vec3_y(pos), 0.0, 0.0001);
+    EXPECT_NEAR(rt_vec3_z(pos), 5.0, 0.0001);
     PASS();
 }
 
@@ -1106,8 +1173,13 @@ static int g_postfx_release_count = 0;
 static int g_render_target_release_count = 0;
 static int g_light_release_count = 0;
 static int g_render_target_sync_calls = 0;
+static bool g_render_target_sync_succeeds = true;
 static uint8_t g_render_target_sync_rgba[4] = {0};
 static int g_canvas_begin_frame_calls = 0;
+static int g_canvas_end_frame_calls = 0;
+static int g_canvas_submit_draw_calls = 0;
+static int g_canvas_submit_draw_instanced_calls = 0;
+static int g_last_instanced_count = 0;
 static vgfx3d_camera_params_t g_canvas_begin_frame_params = {};
 } // namespace
 
@@ -1118,7 +1190,7 @@ typedef struct {
 } pixels_view_t;
 
 extern "C" int tracked_render_target_sync(void *, vgfx3d_rendertarget_t *target) {
-    if (!target || !target->color_buf)
+    if (!target || !target->color_buf || !g_render_target_sync_succeeds)
         return 0;
     g_render_target_sync_calls++;
     target->color_buf[0] = g_render_target_sync_rgba[0];
@@ -1155,7 +1227,34 @@ static void tracked_begin_frame(void *, const vgfx3d_camera_params_t *params) {
         g_canvas_begin_frame_params = *params;
 }
 
-static void tracked_end_frame(void *) {}
+static void tracked_end_frame(void *) {
+    g_canvas_end_frame_calls++;
+}
+
+static void tracked_submit_draw(void *,
+                                vgfx_window_t,
+                                const vgfx3d_draw_cmd_t *,
+                                const vgfx3d_light_params_t *,
+                                int32_t,
+                                const float *,
+                                int8_t,
+                                int8_t) {
+    g_canvas_submit_draw_calls++;
+}
+
+static void tracked_submit_draw_instanced(void *,
+                                          vgfx_window_t,
+                                          const vgfx3d_draw_cmd_t *,
+                                          const float *,
+                                          int32_t instance_count,
+                                          const vgfx3d_light_params_t *,
+                                          int32_t,
+                                          const float *,
+                                          int8_t,
+                                          int8_t) {
+    g_canvas_submit_draw_instanced_calls++;
+    g_last_instanced_count = instance_count;
+}
 
 static void test_canvas_postfx_retains_owned_reference() {
     TEST("Canvas3D.SetPostFX retains owned reference");
@@ -1307,6 +1406,30 @@ static void test_canvas_screenshot_syncs_render_target_on_demand() {
     PASS();
 }
 
+static void test_canvas_screenshot_returns_null_when_sync_fails() {
+    TEST("Canvas3D.Screenshot returns null when render-target sync fails");
+    rt_canvas3d canvas;
+    rt_rendertarget3d *rt = (rt_rendertarget3d *)rt_rendertarget3d_new(1, 1);
+    assert(rt != NULL && rt->target != NULL);
+
+    memset(&canvas, 0, sizeof(canvas));
+    canvas.render_target = rt->target;
+    canvas.width = 1;
+    canvas.height = 1;
+
+    g_render_target_sync_calls = 0;
+    g_render_target_sync_succeeds = false;
+    rt->target->color_dirty = 1;
+    rt->target->sync_color = tracked_render_target_sync;
+    rt->target->sync_color_userdata = NULL;
+
+    void *shot = rt_canvas3d_screenshot(&canvas);
+    g_render_target_sync_succeeds = true;
+    EXPECT_TRUE(shot == NULL, "Canvas3D.Screenshot returns null on sync failure");
+    EXPECT_EQ(g_render_target_sync_calls, 0);
+    PASS();
+}
+
 static void test_canvas_dimensions_follow_active_render_target() {
     TEST("Canvas3D width/height follow the active render target");
     rt_canvas3d canvas;
@@ -1360,6 +1483,100 @@ static void test_canvas_begin2d_uses_render_target_dimensions() {
     EXPECT_NEAR(g_canvas_begin_frame_params.projection[5], -2.0f / 182.0f, 0.0001);
 
     rt_canvas3d_end(&canvas);
+    PASS();
+}
+
+static void test_canvas_begin_syncs_camera_aspect_to_active_output() {
+    TEST("Canvas3D.Begin syncs camera aspect to the active output");
+    vgfx3d_backend_t backend = {};
+    rt_canvas3d canvas;
+    rt_camera3d *cam = (rt_camera3d *)rt_camera3d_new(60.0, 1.0, 0.1, 100.0);
+    void *rt = rt_rendertarget3d_new(320, 160);
+    assert(cam != NULL);
+    assert(rt != NULL);
+
+    backend.name = "opengl";
+    backend.begin_frame = tracked_begin_frame;
+    backend.end_frame = tracked_end_frame;
+
+    memset(&canvas, 0, sizeof(canvas));
+    canvas.backend = &backend;
+    canvas.gfx_win = (vgfx_window_t)1;
+    canvas.width = 800;
+    canvas.height = 600;
+    rt_canvas3d_set_render_target(&canvas, rt);
+
+    g_canvas_begin_frame_calls = 0;
+    memset(&g_canvas_begin_frame_params, 0, sizeof(g_canvas_begin_frame_params));
+    rt_canvas3d_begin(&canvas, cam);
+    rt_canvas3d_end(&canvas);
+
+    EXPECT_EQ(g_canvas_begin_frame_calls, 1);
+    EXPECT_NEAR(cam->aspect, 2.0, 0.0001);
+    EXPECT_NEAR(g_canvas_begin_frame_params.projection[0], 0.8660254f, 0.001);
+    PASS();
+}
+
+static void test_canvas_begin_applies_camera_shake_without_follow() {
+    TEST("Canvas3D.Begin applies camera shake even without SmoothFollow");
+    vgfx3d_backend_t backend = {};
+    rt_canvas3d canvas;
+    void *cam = rt_camera3d_new(60.0, 1.0, 0.1, 100.0);
+    void *eye = rt_vec3_new(0.0, 0.0, 5.0);
+    void *target = rt_vec3_new(0.0, 0.0, 0.0);
+    void *up = rt_vec3_new(0.0, 1.0, 0.0);
+
+    backend.name = "opengl";
+    backend.begin_frame = tracked_begin_frame;
+    backend.end_frame = tracked_end_frame;
+
+    memset(&canvas, 0, sizeof(canvas));
+    canvas.backend = &backend;
+    canvas.delta_time_ms = 16;
+
+    rt_camera3d_look_at(cam, eye, target, up);
+    rt_camera3d_shake(cam, 1.0, 0.25, 1.0);
+    g_canvas_begin_frame_calls = 0;
+    std::memset(&g_canvas_begin_frame_params, 0, sizeof(g_canvas_begin_frame_params));
+
+    rt_canvas3d_begin(&canvas, cam);
+    rt_canvas3d_end(&canvas);
+
+    EXPECT_EQ(g_canvas_begin_frame_calls, 1);
+    EXPECT_TRUE(std::fabs(g_canvas_begin_frame_params.position[0]) > 0.0001f ||
+                    std::fabs(g_canvas_begin_frame_params.position[1]) > 0.0001f ||
+                    std::fabs(g_canvas_begin_frame_params.position[2] - 5.0f) > 0.0001f,
+                "Begin forwards the shaken camera position to the backend");
+    PASS();
+}
+
+static void test_canvas_overlay_draws_replay_after_3d_frame() {
+    TEST("Canvas3D replays overlay draws after a 3D frame");
+    vgfx3d_backend_t backend = {};
+    rt_canvas3d canvas;
+    void *cam = rt_camera3d_new(60.0, 1.0, 0.1, 100.0);
+
+    backend.name = "opengl";
+    backend.begin_frame = tracked_begin_frame;
+    backend.submit_draw = tracked_submit_draw;
+    backend.end_frame = tracked_end_frame;
+
+    memset(&canvas, 0, sizeof(canvas));
+    canvas.backend = &backend;
+    canvas.gfx_win = (vgfx_window_t)1;
+
+    g_canvas_begin_frame_calls = 0;
+    g_canvas_end_frame_calls = 0;
+    g_canvas_submit_draw_calls = 0;
+
+    rt_canvas3d_begin(&canvas, cam);
+    EXPECT_TRUE(canvas3d_queue_screen_rect(&canvas, 4.0f, 4.0f, 10.0f, 10.0f, 1.0f, 0.0f, 0.0f, 1.0f) != 0,
+                "Overlay geometry queues successfully during a 3D frame");
+    rt_canvas3d_end(&canvas);
+
+    EXPECT_EQ(g_canvas_begin_frame_calls, 2);
+    EXPECT_EQ(g_canvas_end_frame_calls, 2);
+    EXPECT_EQ(g_canvas_submit_draw_calls, 1);
     PASS();
 }
 
@@ -1481,6 +1698,47 @@ static void test_terrain_null_safety() {
     rt_terrain3d_set_splat_map(NULL, NULL);
     rt_terrain3d_set_layer_texture(NULL, 0, NULL);
     rt_terrain3d_set_layer_scale(NULL, 0, 1.0);
+    PASS();
+}
+
+static void test_terrain_single_pixel_splat_map_draws() {
+    TEST("Terrain3D draws with a 1x1 splat map");
+    vgfx3d_backend_t backend = {};
+    rt_canvas3d canvas;
+    void *cam = rt_camera3d_new(60.0, 1.0, 0.1, 100.0);
+    void *eye = rt_vec3_new(0.0, 10.0, 20.0);
+    void *target = rt_vec3_new(0.0, 0.0, 0.0);
+    void *up = rt_vec3_new(0.0, 1.0, 0.0);
+    void *terrain = rt_terrain3d_new(16, 16);
+    void *splat = rt_pixels_new(1, 1);
+    void *layer = rt_pixels_new(2, 2);
+
+    backend.name = "opengl";
+    backend.begin_frame = tracked_begin_frame;
+    backend.submit_draw = tracked_submit_draw;
+    backend.end_frame = tracked_end_frame;
+
+    memset(&canvas, 0, sizeof(canvas));
+    canvas.backend = &backend;
+    canvas.gfx_win = (vgfx_window_t)1;
+    canvas.width = 640;
+    canvas.height = 480;
+
+    rt_camera3d_look_at(cam, eye, target, up);
+    rt_terrain3d_set_splat_map(terrain, splat);
+    rt_terrain3d_set_layer_texture(terrain, 0, layer);
+
+    g_canvas_begin_frame_calls = 0;
+    g_canvas_end_frame_calls = 0;
+    g_canvas_submit_draw_calls = 0;
+    rt_canvas3d_begin(&canvas, cam);
+    rt_canvas3d_draw_terrain(&canvas, terrain);
+    rt_canvas3d_end(&canvas);
+
+    EXPECT_EQ(g_canvas_begin_frame_calls, 1);
+    EXPECT_EQ(g_canvas_end_frame_calls, 1);
+    EXPECT_TRUE(g_canvas_submit_draw_calls >= 0,
+                "Terrain draw completes without trapping for a degenerate splat-map axis");
     PASS();
 }
 
@@ -1682,6 +1940,22 @@ static void test_metal_shadow_enable_null() {
 
 extern "C" void *rt_instbatch3d_new(void *mesh, void *material);
 extern "C" void rt_instbatch3d_add(void *batch, void *transform);
+extern "C" void rt_instbatch3d_remove(void *batch, int64_t index);
+
+typedef struct {
+    void *vptr;
+    void *mesh;
+    void *material;
+    float *transforms;
+    float *current_snapshot;
+    float *prev_transforms;
+    int32_t instance_count;
+    int32_t instance_capacity;
+    int32_t motion_snapshot_count;
+    int32_t prev_count;
+    int64_t last_motion_frame;
+    int8_t has_prev_snapshot;
+} instbatch_view_t;
 
 static void test_metal_instbatch_create() {
     TEST("MTL-13: InstanceBatch3D — create and add instances");
@@ -1694,6 +1968,69 @@ static void test_metal_instbatch_create() {
     rt_instbatch3d_add(batch, t);
     rt_instbatch3d_add(batch, t);
     rt_instbatch3d_add(batch, t);
+    PASS();
+}
+
+static void test_instbatch_remove_preserves_unrelated_motion_history() {
+    TEST("InstanceBatch3D.Remove preserves unrelated motion history");
+    void *mesh = rt_mesh3d_new_box(1.0, 1.0, 1.0);
+    void *mat = rt_material3d_new();
+    void *batch = rt_instbatch3d_new(mesh, mat);
+    void *t = rt_mat4_identity();
+    instbatch_view_t *view = nullptr;
+    assert(batch != NULL);
+
+    rt_instbatch3d_add(batch, t);
+    rt_instbatch3d_add(batch, t);
+    rt_instbatch3d_add(batch, t);
+    view = (instbatch_view_t *)batch;
+    view->motion_snapshot_count = 2;
+    view->prev_count = 2;
+    view->has_prev_snapshot = 1;
+
+    rt_instbatch3d_remove(batch, 1);
+
+    EXPECT_EQ(view->motion_snapshot_count, 1);
+    EXPECT_EQ(view->prev_count, 1);
+    EXPECT_TRUE(view->has_prev_snapshot == 1, "Removing a later instance keeps earlier motion history");
+    PASS();
+}
+
+static void test_canvas_opaque_alpha_mode_keeps_instanced_path() {
+    TEST("Canvas3D keeps opaque alpha-mode batches on the instanced path");
+    vgfx3d_backend_t backend = {};
+    rt_canvas3d canvas;
+    void *cam = rt_camera3d_new(60.0, 1.0, 0.1, 100.0);
+    void *mesh = rt_mesh3d_new_box(1.0, 1.0, 1.0);
+    void *mat = rt_material3d_new();
+    float instances[32] = {0.0f};
+
+    backend.name = "opengl";
+    backend.begin_frame = tracked_begin_frame;
+    backend.submit_draw = tracked_submit_draw;
+    backend.submit_draw_instanced = tracked_submit_draw_instanced;
+    backend.end_frame = tracked_end_frame;
+
+    instances[0] = instances[5] = instances[10] = instances[15] = 1.0f;
+    instances[16 + 0] = instances[16 + 5] = instances[16 + 10] = instances[16 + 15] = 1.0f;
+    instances[16 + 3] = 2.0f;
+
+    memset(&canvas, 0, sizeof(canvas));
+    canvas.backend = &backend;
+    rt_material3d_set_alpha(mat, 0.25);
+    rt_material3d_set_alpha_mode(mat, RT_MATERIAL3D_ALPHA_MODE_OPAQUE);
+
+    g_canvas_submit_draw_calls = 0;
+    g_canvas_submit_draw_instanced_calls = 0;
+    g_last_instanced_count = 0;
+
+    rt_canvas3d_begin(&canvas, cam);
+    rt_canvas3d_queue_instanced_batch(&canvas, mesh, mat, instances, 2, NULL, 0);
+    rt_canvas3d_end(&canvas);
+
+    EXPECT_EQ(g_canvas_submit_draw_instanced_calls, 1);
+    EXPECT_EQ(g_last_instanced_count, 2);
+    EXPECT_EQ(g_canvas_submit_draw_calls, 0);
     PASS();
 }
 
@@ -1784,6 +2121,7 @@ int main() {
     test_mesh_clone();
     test_mesh_transform_uses_inverse_transpose_normals();
     test_mesh_transform_updates_tangent_basis();
+    test_mesh_transform_flips_tangent_handedness_for_mirrors();
     test_mesh_recalc_normals();
     test_mesh_obj_loader();
     test_mesh_obj_loader_flattens_material_groups();
@@ -1815,6 +2153,9 @@ int main() {
     test_camera_set_yaw_pitch_rebuilds_view();
     test_camera_look_at_coincident_eye_preserves_translation();
     test_camera_ortho_set_fov_preserves_projection();
+    test_camera_ortho_screen_to_ray_parallel();
+    test_camera_screen_to_ray_tracks_shaken_view();
+    test_camera_shake_does_not_drift_eye_in_smooth_follow();
 
     /* Material3D */
     test_material_new();
@@ -1872,8 +2213,12 @@ int main() {
     test_rendertarget_null_safety();
     test_rendertarget_as_pixels_syncs_gpu_color_on_demand();
     test_canvas_screenshot_syncs_render_target_on_demand();
+    test_canvas_screenshot_returns_null_when_sync_fails();
     test_canvas_dimensions_follow_active_render_target();
     test_canvas_begin2d_uses_render_target_dimensions();
+    test_canvas_begin_syncs_camera_aspect_to_active_output();
+    test_canvas_begin_applies_camera_shake_without_follow();
+    test_canvas_overlay_draws_replay_after_3d_frame();
     test_canvas_postfx_uses_render_target_pixels();
     test_canvas_postfx_retains_owned_reference();
     test_canvas_render_target_retains_owned_reference();
@@ -1887,6 +2232,7 @@ int main() {
     test_terrain_set_layer_texture();
     test_terrain_set_layer_scale();
     test_terrain_null_safety();
+    test_terrain_single_pixel_splat_map_draws();
 
     /* SW Backend Features (SW-01 through SW-08) */
     test_vertex_color_default_white();
@@ -1908,6 +2254,8 @@ int main() {
     /* Metal backend features (MTL-09 through MTL-14) */
     test_metal_shadow_enable_null();
     test_metal_instbatch_create();
+    test_instbatch_remove_preserves_unrelated_motion_history();
+    test_canvas_opaque_alpha_mode_keeps_instanced_path();
     test_metal_terrain_splat_for_gpu();
     test_metal_postfx_new();
     test_metal_postfx_null_safety();

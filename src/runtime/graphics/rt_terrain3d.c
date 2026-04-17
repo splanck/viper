@@ -44,8 +44,9 @@ extern void *rt_mesh3d_new(void);
 extern void rt_mesh3d_add_vertex(
     void *m, double x, double y, double z, double nx, double ny, double nz, double u, double v);
 extern void rt_mesh3d_add_triangle(void *m, int64_t v0, int64_t v1, int64_t v2);
-extern void *rt_mat4_identity(void);
 extern void rt_canvas3d_draw_mesh(void *canvas, void *mesh, void *transform, void *material);
+extern void rt_canvas3d_draw_mesh_matrix(
+    void *canvas, void *mesh, const double *transform, void *material);
 extern void rt_material3d_set_texture(void *material, void *pixels);
 
 #define TERRAIN_CHUNK_SIZE 16
@@ -488,8 +489,8 @@ static void bake_splat_texture(rt_terrain3d *t) {
 
     for (int32_t y = 0; y < th; y++) {
         for (int32_t x = 0; x < tw; x++) {
-            double u = (double)x / (double)(tw - 1);
-            double v = (double)y / (double)(th - 1);
+            double u = tw > 1 ? (double)x / (double)(tw - 1) : 0.0;
+            double v = th > 1 ? (double)y / (double)(th - 1) : 0.0;
 
             /* Sample splat weights (RGBA → 4 layer weights) */
             uint32_t sp = splat->data[y * tw + x];
@@ -798,7 +799,10 @@ void rt_canvas3d_draw_terrain(void *canvas_obj, void *terrain_obj) {
     vgfx3d_frustum_t frustum;
     vgfx3d_frustum_extract(&frustum, c->cached_vp);
 
-    void *identity = rt_mat4_identity();
+    static const double identity[16] = {
+        1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0,
+        0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+    };
 
     for (int32_t cz = 0; cz < t->chunks_z; cz++) {
         for (int32_t cx = 0; cx < t->chunks_x; cx++) {
@@ -846,7 +850,7 @@ void rt_canvas3d_draw_terrain(void *canvas_obj, void *terrain_obj) {
                         c->pending_splat_layer_scales[si] = (float)t->layer_scales[si];
                     }
                 }
-                rt_canvas3d_draw_mesh(canvas_obj, draw_mesh, identity, t->material);
+                rt_canvas3d_draw_mesh_matrix(canvas_obj, draw_mesh, identity, t->material);
             }
         }
     }

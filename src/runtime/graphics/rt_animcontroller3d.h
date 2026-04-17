@@ -84,6 +84,8 @@ void *rt_anim_controller3d_get_bone_matrix(void *controller, int64_t bone_index)
 const float *rt_anim_controller3d_get_final_palette_data(void *controller, int32_t *bone_count);
 /// @brief Borrow the previous frame's bone palette (used for motion vectors / TAA).
 const float *rt_anim_controller3d_get_previous_palette_data(void *controller, int32_t *bone_count);
+/// @brief Internal runtime helper: consume the accumulated root-motion rotation delta and reset it.
+void *rt_anim_controller3d_consume_root_motion_rotation(void *controller);
 
 #ifdef __cplusplus
 }

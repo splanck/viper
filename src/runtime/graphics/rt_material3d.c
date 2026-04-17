@@ -112,6 +112,7 @@ static void material_init_defaults(rt_material3d *mat) {
     mat->reflectivity = 0.0;
     mat->unlit = 0;
     mat->double_sided = 0;
+    mat->additive_blend = 0;
     mat->shading_model = 0;
     memset(mat->custom_params, 0, sizeof(mat->custom_params));
 }
@@ -154,6 +155,7 @@ static void *material_clone_like(void *obj) {
     dst->reflectivity = src->reflectivity;
     dst->unlit = src->unlit;
     dst->double_sided = src->double_sided;
+    dst->additive_blend = src->additive_blend;
     dst->shading_model = src->shading_model;
     memcpy(dst->custom_params, src->custom_params, sizeof(dst->custom_params));
 
@@ -292,8 +294,8 @@ void rt_material3d_set_custom_param(void *obj, int64_t index, double value) {
 }
 
 /// @brief Set the transparency level (0.0 = invisible, 1.0 = fully opaque).
-/// @details Materials with alpha < 1.0 are drawn in the transparency pass,
-///          sorted back-to-front by distance from camera to prevent rendering artifacts.
+/// @details Alpha only affects coverage when `AlphaMode` is `MASK` or `BLEND`.
+///          `OPAQUE` ignores the alpha scalar entirely.
 void rt_material3d_set_alpha(void *obj, double alpha) {
     if (!obj)
         return;

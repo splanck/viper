@@ -59,6 +59,7 @@ typedef struct {
     float ao;                    /* [0,1] ambient occlusion multiplier */
     float emissive_intensity;    /* scalar multiplier applied after emissive color/map */
     float normal_scale;          /* scales tangent-space XY perturbation */
+    int8_t additive_blend;       /* use additive blending instead of standard alpha */
     int32_t workflow;            /* RT_MATERIAL3D_WORKFLOW_* */
     int32_t alpha_mode;          /* RT_MATERIAL3D_ALPHA_MODE_* */
     float alpha_cutoff;          /* alpha-mask cutoff */
@@ -94,11 +95,19 @@ typedef struct {
 static inline int vgfx3d_draw_cmd_uses_alpha_blend(const vgfx3d_draw_cmd_t *cmd) {
     if (!cmd)
         return 0;
+    if (cmd->additive_blend)
+        return 0;
     if (cmd->alpha_mode == RT_MATERIAL3D_ALPHA_MODE_BLEND)
-        return cmd->alpha_mode == RT_MATERIAL3D_ALPHA_MODE_BLEND;
+        return 1;
     if (cmd->alpha_mode == RT_MATERIAL3D_ALPHA_MODE_MASK)
         return 0;
-    return cmd->alpha < 1.0f;
+    return 0;
+}
+
+static inline int vgfx3d_draw_cmd_uses_transparent_blend(const vgfx3d_draw_cmd_t *cmd) {
+    if (!cmd)
+        return 0;
+    return cmd->additive_blend || vgfx3d_draw_cmd_uses_alpha_blend(cmd);
 }
 
 /*==========================================================================

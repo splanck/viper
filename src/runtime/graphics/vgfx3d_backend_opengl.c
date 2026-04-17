@@ -90,6 +90,7 @@ typedef unsigned int GLbitfield;
 #define GL_LINEAR_MIPMAP_LINEAR 0x2703
 #define GL_NEAREST 0x2600
 #define GL_CLAMP_TO_EDGE 0x812F
+#define GL_ONE 1
 #define GL_SRC_ALPHA 0x0302
 #define GL_ONE_MINUS_SRC_ALPHA 0x0303
 #define GL_FRAMEBUFFER 0x8D40
@@ -970,9 +971,9 @@ static const char *const glsl_fragment_src[] = {
     "    float finalAlpha = materialAlpha * texAlpha;\n"
     "    if (uAlphaMode == 1) {\n"
     "        if (finalAlpha < uPbrScalars1.y) discard;\n"
-    "        finalAlpha = materialAlpha;\n"
-    "    } else if (uWorkflow != 0 && uAlphaMode == 0) {\n"
-    "        finalAlpha = materialAlpha;\n"
+    "        finalAlpha = 1.0;\n"
+    "    } else if (uAlphaMode == 0) {\n"
+    "        finalAlpha = 1.0;\n"
     "    }\n"
     "    if (uUnlit != 0) {\n"
     "        vec3 unlitColor = baseColor + emissive;\n"
@@ -1674,6 +1675,7 @@ static GLuint gl_get_cached_texture(gl_context_t *ctx, const void *pixels_ptr) {
             uint8_t *rgba = NULL;
             if (vgfx3d_unpack_pixels_rgba(pixels_ptr, &w, &h, &rgba) != 0)
                 return 0;
+            vgfx3d_flip_rgba_rows(rgba, w, h);
             gl.BindTexture(GL_TEXTURE_2D, ctx->texture_cache[i].tex);
             gl.TexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, rgba);
             gl.GenerateMipmap(GL_TEXTURE_2D);
@@ -1688,6 +1690,7 @@ static GLuint gl_get_cached_texture(gl_context_t *ctx, const void *pixels_ptr) {
     uint8_t *rgba = NULL;
     if (vgfx3d_unpack_pixels_rgba(pixels_ptr, &w, &h, &rgba) != 0)
         return 0;
+    vgfx3d_flip_rgba_rows(rgba, w, h);
 
     GLuint tex = 0;
     gl.GenTextures(1, &tex);
@@ -1751,6 +1754,7 @@ static GLuint gl_get_cached_cubemap(gl_context_t *ctx, const rt_cubemap3d *cubem
                         free(rgba);
                     return 0;
                 }
+                vgfx3d_flip_rgba_rows(rgba, w, h);
                 gl.TexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + (GLenum)face,
                               0,
                               GL_RGBA8,
@@ -1787,6 +1791,7 @@ static GLuint gl_get_cached_cubemap(gl_context_t *ctx, const rt_cubemap3d *cubem
             gl.DeleteTextures(1, &tex);
             return 0;
         }
+        vgfx3d_flip_rgba_rows(rgba, w, h);
         gl.TexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + (GLenum)face,
                       0,
                       GL_RGBA8,
@@ -2152,11 +2157,16 @@ static void gl_configure_draw_output(gl_context_t *ctx, const vgfx3d_draw_cmd_t 
     blend_mode = vgfx3d_opengl_choose_blend_mode(cmd);
     motion_mode = vgfx3d_opengl_choose_motion_attachment_mode(ctx->active_target_kind, cmd);
 
-    if (blend_mode == VGFX3D_OPENGL_BLEND_ALPHA)
+    if (blend_mode == VGFX3D_OPENGL_BLEND_ALPHA ||
+        blend_mode == VGFX3D_OPENGL_BLEND_ADDITIVE)
         gl.Enable(GL_BLEND);
     else
         gl.Disable(GL_BLEND);
-    gl.DepthMask(blend_mode == VGFX3D_OPENGL_BLEND_ALPHA ? GL_FALSE : GL_TRUE);
+    if (blend_mode == VGFX3D_OPENGL_BLEND_ADDITIVE)
+        gl.BlendFunc(GL_SRC_ALPHA, GL_ONE);
+    else
+        gl.BlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    gl.DepthMask(blend_mode == VGFX3D_OPENGL_BLEND_OPAQUE ? GL_TRUE : GL_FALSE);
 
     if (ctx->active_target_kind == VGFX3D_OPENGL_TARGET_SCENE) {
         gl.BindFramebuffer(GL_FRAMEBUFFER, ctx->scene_fbo);

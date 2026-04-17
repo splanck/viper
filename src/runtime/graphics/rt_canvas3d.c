@@ -345,13 +345,7 @@ static void mat4_d2f(const double *src, float *dst) {
 static int canvas3d_cmd_requires_blend(const vgfx3d_draw_cmd_t *cmd) {
     if (!cmd)
         return 0;
-    if (cmd->alpha_mode == RT_MATERIAL3D_ALPHA_MODE_BLEND)
-        return 1;
-    if (cmd->alpha_mode == RT_MATERIAL3D_ALPHA_MODE_MASK)
-        return 0;
-    if (cmd->alpha < 0.999f)
-        return 1;
-    return 0;
+    return vgfx3d_draw_cmd_uses_transparent_blend(cmd);
 }
 
 /// @brief Resolve the effective backface-cull flag for a material draw.
@@ -399,6 +393,7 @@ static void canvas3d_fill_material_cmd(const rt_material3d *mat, vgfx3d_draw_cmd
     cmd->ao = (float)mat->ao;
     cmd->emissive_intensity = (float)mat->emissive_intensity;
     cmd->normal_scale = (float)mat->normal_scale;
+    cmd->additive_blend = mat->additive_blend ? 1 : 0;
     cmd->workflow = mat->workflow;
     cmd->alpha_mode = mat->alpha_mode;
     cmd->alpha_cutoff = (float)mat->alpha_cutoff;
@@ -1289,6 +1284,8 @@ void *rt_canvas3d_new(rt_string title, int64_t w, int64_t h) {
         c->backend = &vgfx3d_software_backend;
         c->backend_ctx = c->backend->create_ctx(c->gfx_win, initial_width, initial_height);
         if (!c->backend_ctx) {
+            if (rt_obj_release_check0(c))
+                rt_obj_free(c);
             rt_trap("Canvas3D.New: backend initialization failed");
             return NULL;
         }
@@ -1737,6 +1734,8 @@ void rt_canvas3d_draw_text_3d(void *obj, int64_t x, int64_t y, rt_string text, i
 /// @param camera Camera3D handle providing view and projection matrices.
 void rt_canvas3d_begin(void *obj, void *camera) {
     vgfx3d_camera_params_t params;
+    int32_t output_w = 0;
+    int32_t output_h = 0;
 
     if (!obj || !camera)
         return;
@@ -1753,11 +1752,18 @@ void rt_canvas3d_begin(void *obj, void *camera) {
     if (c->backend->show_gpu_layer)
         c->backend->show_gpu_layer(c->backend_ctx);
 
+    canvas3d_active_output_size(c, &output_w, &output_h);
+    if (output_w > 0 && output_h > 0)
+        rt_camera3d_sync_render_aspect(cam, (double)output_w / (double)output_h);
+
+    if (c->delta_time_ms > 0)
+        rt_camera3d_update_shake_for_frame(cam, (double)c->delta_time_ms / 1000.0);
+
     mat4_d2f(cam->view, params.view);
     mat4_d2f(cam->projection, params.projection);
-    params.position[0] = (float)cam->eye[0];
-    params.position[1] = (float)cam->eye[1];
-    params.position[2] = (float)cam->eye[2];
+    params.position[0] = (float)(cam->eye[0] + cam->shake_offset[0]);
+    params.position[1] = (float)(cam->eye[1] + cam->shake_offset[1]);
+    params.position[2] = (float)(cam->eye[2] + cam->shake_offset[2]);
     params.fog_enabled = c->fog_enabled;
     params.fog_near = c->fog_near;
     params.fog_far = c->fog_far;
@@ -2067,6 +2073,7 @@ void rt_canvas3d_queue_instanced_batch(void *canvas_obj,
 /// releases per-frame temp objects.
 void rt_canvas3d_end(void *obj) {
     deferred_draw_t *cmds;
+    int32_t queued_draw_count;
     int32_t main_count = 0;
     int32_t overlay_count = 0;
 
@@ -2085,6 +2092,7 @@ void rt_canvas3d_end(void *obj) {
     }
 
     cmds = (deferred_draw_t *)c->draw_cmds;
+    queued_draw_count = c->draw_count;
 
     if (!c->frame_is_2d && c->skybox) {
         uint8_t *out_pixels = NULL;
@@ -2275,7 +2283,7 @@ void rt_canvas3d_end(void *obj) {
 
     if (!c->frame_is_2d && overlay_count > 0) {
         if (canvas3d_begin_overlay_frame(c, 1)) {
-            for (int32_t i = 0; i < c->draw_count; i++) {
+            for (int32_t i = 0; i < queued_draw_count; i++) {
                 if (cmds[i].pass_kind != DEFERRED_PASS_SCREEN_OVERLAY)
                     continue;
                 canvas3d_submit_deferred(c, &cmds[i]);

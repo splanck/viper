@@ -221,6 +221,8 @@ vgfx3d_d3d11_target_kind_t vgfx3d_d3d11_choose_target_kind(int8_t rtt_active,
 /// @brief Map a draw command to its required blend state (alpha vs opaque).
 vgfx3d_d3d11_blend_mode_t
 vgfx3d_d3d11_choose_blend_mode(const vgfx3d_draw_cmd_t *cmd) {
+    if (cmd && cmd->additive_blend)
+        return VGFX3D_D3D11_BLEND_ADDITIVE;
     return vgfx3d_draw_cmd_uses_alpha_blend(cmd) ? VGFX3D_D3D11_BLEND_ALPHA
                                                  : VGFX3D_D3D11_BLEND_OPAQUE;
 }

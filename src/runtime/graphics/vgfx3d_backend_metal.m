@@ -57,12 +57,16 @@
 @property(nonatomic, strong) id<MTLCommandQueue> commandQueue;
 @property(nonatomic, strong) id<MTLRenderPipelineState> pipelineState;
 @property(nonatomic, strong) id<MTLRenderPipelineState> pipelineStateAlpha;
+@property(nonatomic, strong) id<MTLRenderPipelineState> pipelineStateAdditive;
 @property(nonatomic, strong) id<MTLRenderPipelineState> pipelineStateColorOnly;
 @property(nonatomic, strong) id<MTLRenderPipelineState> pipelineStateColorOnlyAlpha;
+@property(nonatomic, strong) id<MTLRenderPipelineState> pipelineStateColorOnlyAdditive;
 @property(nonatomic, strong) id<MTLRenderPipelineState> instancedPipelineState;
 @property(nonatomic, strong) id<MTLRenderPipelineState> instancedPipelineStateAlpha;
+@property(nonatomic, strong) id<MTLRenderPipelineState> instancedPipelineStateAdditive;
 @property(nonatomic, strong) id<MTLRenderPipelineState> instancedPipelineStateColorOnly;
 @property(nonatomic, strong) id<MTLRenderPipelineState> instancedPipelineStateColorOnlyAlpha;
+@property(nonatomic, strong) id<MTLRenderPipelineState> instancedPipelineStateColorOnlyAdditive;
 @property(nonatomic, strong) id<MTLDepthStencilState> depthState;
 @property(nonatomic, strong) id<MTLDepthStencilState> depthStateNoWrite;
 @property(nonatomic, strong) CAMetalLayer *metalLayer;
@@ -611,9 +615,9 @@ static NSString *metal_shader_source =
      "    if (material.pbrFlags.y == 1) {\n"
      "        if (finalAlpha < material.pbrScalars1.y)\n"
      "            discard_fragment();\n"
-     "        finalAlpha = materialAlpha;\n"
-     "    } else if (material.pbrFlags.x != 0 && material.pbrFlags.y == 0) {\n"
-     "        finalAlpha = materialAlpha;\n"
+     "        finalAlpha = 1.0;\n"
+     "    } else if (material.pbrFlags.y == 0) {\n"
+     "        finalAlpha = 1.0;\n"
      "    }\n"
      "    if (material.flags0.y != 0) {\n"
      "        float3 unlitColor = baseColor + emissive;\n"
@@ -1531,10 +1535,17 @@ static MTLVertexDescriptor *create_vertex_descriptor(void) {
 }
 
 static void metal_configure_blend_state(MTLRenderPipelineColorAttachmentDescriptor *attachment,
-                                        BOOL enabled) {
+                                        vgfx3d_metal_blend_mode_t blend_mode) {
     if (!attachment)
         return;
-    attachment.blendingEnabled = enabled;
+    attachment.blendingEnabled = blend_mode != VGFX3D_METAL_BLEND_OPAQUE;
+    if (blend_mode == VGFX3D_METAL_BLEND_ADDITIVE) {
+        attachment.sourceRGBBlendFactor = MTLBlendFactorSourceAlpha;
+        attachment.destinationRGBBlendFactor = MTLBlendFactorOne;
+        attachment.sourceAlphaBlendFactor = MTLBlendFactorOne;
+        attachment.destinationAlphaBlendFactor = MTLBlendFactorOne;
+        return;
+    }
     attachment.sourceRGBBlendFactor = MTLBlendFactorSourceAlpha;
     attachment.destinationRGBBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
     attachment.sourceAlphaBlendFactor = MTLBlendFactorOne;
@@ -1547,7 +1558,7 @@ metal_create_pipeline_state(id<MTLDevice> device,
                             id<MTLFunction> fragment_function,
                             MTLVertexDescriptor *vertex_descriptor,
                             MTLPixelFormat color0_format,
-                            BOOL alpha_blend,
+                            vgfx3d_metal_blend_mode_t blend_mode,
                             BOOL disable_motion_writes,
                             NSError **error) {
     MTLRenderPipelineDescriptor *descriptor;
@@ -1562,7 +1573,7 @@ metal_create_pipeline_state(id<MTLDevice> device,
     descriptor.colorAttachments[0].pixelFormat = color0_format;
     descriptor.colorAttachments[1].pixelFormat = MTLPixelFormatBGRA8Unorm;
     descriptor.depthAttachmentPixelFormat = MTLPixelFormatDepth32Float;
-    metal_configure_blend_state(descriptor.colorAttachments[0], alpha_blend);
+    metal_configure_blend_state(descriptor.colorAttachments[0], blend_mode);
     descriptor.colorAttachments[1].writeMask =
         disable_motion_writes ? MTLColorWriteMaskNone : MTLColorWriteMaskAll;
     return [device newRenderPipelineStateWithDescriptor:descriptor error:error];
@@ -1599,16 +1610,27 @@ metal_select_pipeline_state(VGFXMetalContext *ctx, const vgfx3d_draw_cmd_t *cmd,
     blend_mode = vgfx3d_metal_choose_blend_mode(cmd);
     if (ctx.currentTargetKind == VGFX3D_METAL_TARGET_SCENE) {
         if (instanced)
-            return blend_mode == VGFX3D_METAL_BLEND_ALPHA ? ctx.instancedPipelineStateAlpha
-                                                          : ctx.instancedPipelineState;
-        return blend_mode == VGFX3D_METAL_BLEND_ALPHA ? ctx.pipelineStateAlpha : ctx.pipelineState;
+            return blend_mode == VGFX3D_METAL_BLEND_ALPHA
+                       ? ctx.instancedPipelineStateAlpha
+                       : (blend_mode == VGFX3D_METAL_BLEND_ADDITIVE
+                              ? ctx.instancedPipelineStateAdditive
+                              : ctx.instancedPipelineState);
+        return blend_mode == VGFX3D_METAL_BLEND_ALPHA
+                   ? ctx.pipelineStateAlpha
+                   : (blend_mode == VGFX3D_METAL_BLEND_ADDITIVE ? ctx.pipelineStateAdditive
+                                                                : ctx.pipelineState);
     }
 
     if (instanced)
-        return blend_mode == VGFX3D_METAL_BLEND_ALPHA ? ctx.instancedPipelineStateColorOnlyAlpha
-                                                      : ctx.instancedPipelineStateColorOnly;
-    return blend_mode == VGFX3D_METAL_BLEND_ALPHA ? ctx.pipelineStateColorOnlyAlpha
-                                                  : ctx.pipelineStateColorOnly;
+        return blend_mode == VGFX3D_METAL_BLEND_ALPHA
+                   ? ctx.instancedPipelineStateColorOnlyAlpha
+                   : (blend_mode == VGFX3D_METAL_BLEND_ADDITIVE
+                          ? ctx.instancedPipelineStateColorOnlyAdditive
+                          : ctx.instancedPipelineStateColorOnly);
+    return blend_mode == VGFX3D_METAL_BLEND_ALPHA
+               ? ctx.pipelineStateColorOnlyAlpha
+               : (blend_mode == VGFX3D_METAL_BLEND_ADDITIVE ? ctx.pipelineStateColorOnlyAdditive
+                                                            : ctx.pipelineStateColorOnly);
 }
 
 //=============================================================================
@@ -1691,7 +1713,7 @@ static void *metal_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
                                                         ff,
                                                         create_vertex_descriptor(),
                                                         MTLPixelFormatRGBA16Float,
-                                                        NO,
+                                                        VGFX3D_METAL_BLEND_OPAQUE,
                                                         NO,
                                                         &error);
         ctx.pipelineStateAlpha = metal_create_pipeline_state(device,
@@ -1699,15 +1721,23 @@ static void *metal_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
                                                              ff,
                                                              create_vertex_descriptor(),
                                                              MTLPixelFormatRGBA16Float,
-                                                             YES,
+                                                             VGFX3D_METAL_BLEND_ALPHA,
                                                              YES,
                                                              &error);
+        ctx.pipelineStateAdditive = metal_create_pipeline_state(device,
+                                                                vf,
+                                                                ff,
+                                                                create_vertex_descriptor(),
+                                                                MTLPixelFormatRGBA16Float,
+                                                                VGFX3D_METAL_BLEND_ADDITIVE,
+                                                                YES,
+                                                                &error);
         ctx.pipelineStateColorOnly = metal_create_pipeline_state(device,
                                                                  vf,
                                                                  ff,
                                                                  create_vertex_descriptor(),
                                                                  MTLPixelFormatBGRA8Unorm,
-                                                                 NO,
+                                                                 VGFX3D_METAL_BLEND_OPAQUE,
                                                                  NO,
                                                                  &error);
         ctx.pipelineStateColorOnlyAlpha =
@@ -1716,7 +1746,16 @@ static void *metal_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
                                         ff,
                                         create_vertex_descriptor(),
                                         MTLPixelFormatBGRA8Unorm,
+                                        VGFX3D_METAL_BLEND_ALPHA,
                                         YES,
+                                        &error);
+        ctx.pipelineStateColorOnlyAdditive =
+            metal_create_pipeline_state(device,
+                                        vf,
+                                        ff,
+                                        create_vertex_descriptor(),
+                                        MTLPixelFormatBGRA8Unorm,
+                                        VGFX3D_METAL_BLEND_ADDITIVE,
                                         YES,
                                         &error);
         ctx.instancedPipelineState = metal_create_pipeline_state(device,
@@ -1724,7 +1763,7 @@ static void *metal_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
                                                                  ff,
                                                                  create_vertex_descriptor(),
                                                                  MTLPixelFormatRGBA16Float,
-                                                                 NO,
+                                                                 VGFX3D_METAL_BLEND_OPAQUE,
                                                                  NO,
                                                                  &error);
         ctx.instancedPipelineStateAlpha =
@@ -1733,7 +1772,16 @@ static void *metal_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
                                         ff,
                                         create_vertex_descriptor(),
                                         MTLPixelFormatRGBA16Float,
+                                        VGFX3D_METAL_BLEND_ALPHA,
                                         YES,
+                                        &error);
+        ctx.instancedPipelineStateAdditive =
+            metal_create_pipeline_state(device,
+                                        vfInstanced,
+                                        ff,
+                                        create_vertex_descriptor(),
+                                        MTLPixelFormatRGBA16Float,
+                                        VGFX3D_METAL_BLEND_ADDITIVE,
                                         YES,
                                         &error);
         ctx.instancedPipelineStateColorOnly =
@@ -1742,22 +1790,33 @@ static void *metal_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
                                         ff,
                                         create_vertex_descriptor(),
                                         MTLPixelFormatBGRA8Unorm,
-                                        NO,
-                                        NO,
-                                        &error);
+                                        VGFX3D_METAL_BLEND_OPAQUE,
+                                                                 NO,
+                                                                 &error);
         ctx.instancedPipelineStateColorOnlyAlpha =
             metal_create_pipeline_state(device,
                                         vfInstanced,
                                         ff,
                                         create_vertex_descriptor(),
                                         MTLPixelFormatBGRA8Unorm,
-                                        YES,
+                                        VGFX3D_METAL_BLEND_ALPHA,
                                         YES,
                                         &error);
-        if (!ctx.pipelineState || !ctx.pipelineStateAlpha || !ctx.pipelineStateColorOnly ||
-            !ctx.pipelineStateColorOnlyAlpha || !ctx.instancedPipelineState ||
-            !ctx.instancedPipelineStateAlpha || !ctx.instancedPipelineStateColorOnly ||
-            !ctx.instancedPipelineStateColorOnlyAlpha) {
+        ctx.instancedPipelineStateColorOnlyAdditive =
+            metal_create_pipeline_state(device,
+                                        vfInstanced,
+                                        ff,
+                                        create_vertex_descriptor(),
+                                        MTLPixelFormatBGRA8Unorm,
+                                        VGFX3D_METAL_BLEND_ADDITIVE,
+                                        YES,
+                                        &error);
+        if (!ctx.pipelineState || !ctx.pipelineStateAlpha || !ctx.pipelineStateAdditive ||
+            !ctx.pipelineStateColorOnly || !ctx.pipelineStateColorOnlyAlpha ||
+            !ctx.pipelineStateColorOnlyAdditive || !ctx.instancedPipelineState ||
+            !ctx.instancedPipelineStateAlpha || !ctx.instancedPipelineStateAdditive ||
+            !ctx.instancedPipelineStateColorOnly || !ctx.instancedPipelineStateColorOnlyAlpha ||
+            !ctx.instancedPipelineStateColorOnlyAdditive) {
             NSLog(@ "Metal pipeline error: %@", error);
             return NULL;
         }
@@ -2502,7 +2561,7 @@ static void metal_submit_draw(void *ctx_ptr,
             setTriangleFillMode:wireframe ? MTLTriangleFillModeLines : MTLTriangleFillModeFill];
 
         /* Switch depth state: no Z-write for transparent draws */
-        if (blend_mode == VGFX3D_METAL_BLEND_ALPHA)
+        if (blend_mode != VGFX3D_METAL_BLEND_OPAQUE)
             [ctx.encoder setDepthStencilState:ctx.depthStateNoWrite];
         else
             [ctx.encoder setDepthStencilState:ctx.depthState];
@@ -3017,7 +3076,7 @@ static void metal_submit_draw_instanced(void *ctx_ptr,
         [ctx.encoder setCullMode:backface_cull ? MTLCullModeBack : MTLCullModeNone];
         [ctx.encoder
             setTriangleFillMode:wireframe ? MTLTriangleFillModeLines : MTLTriangleFillModeFill];
-        if (blend_mode == VGFX3D_METAL_BLEND_ALPHA)
+        if (blend_mode != VGFX3D_METAL_BLEND_OPAQUE)
             [ctx.encoder setDepthStencilState:ctx.depthStateNoWrite];
         else
             [ctx.encoder setDepthStencilState:ctx.depthState];

@@ -11,6 +11,7 @@ extern "C" {
 typedef enum {
     VGFX3D_OPENGL_BLEND_OPAQUE = 0,
     VGFX3D_OPENGL_BLEND_ALPHA = 1,
+    VGFX3D_OPENGL_BLEND_ADDITIVE = 2,
 } vgfx3d_opengl_blend_mode_t;
 
 typedef enum {

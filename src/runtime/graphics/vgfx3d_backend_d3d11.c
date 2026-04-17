@@ -475,9 +475,9 @@ static const char *d3d11_shader_source =
     "    if (pbrFlags.y == 1) {\n"
     "        if (finalAlpha < pbrScalars1.y)\n"
     "            discard;\n"
-    "        finalAlpha = materialAlpha;\n"
-    "    } else if (pbrFlags.x != 0 && pbrFlags.y == 0) {\n"
-    "        finalAlpha = materialAlpha;\n"
+    "        finalAlpha = 1.0;\n"
+    "    } else if (pbrFlags.y == 0) {\n"
+    "        finalAlpha = 1.0;\n"
     "    }\n"
     "    float3 result = ambientColor.rgb * baseColor;\n"
     "    if (flags0.y != 0) {\n"
@@ -1001,6 +1001,7 @@ typedef struct {
 
     ID3D11BlendState *blend_state_opaque;
     ID3D11BlendState *blend_state_alpha;
+    ID3D11BlendState *blend_state_additive;
     ID3D11DepthStencilState *depth_state;
     ID3D11DepthStencilState *depth_state_no_write;
     ID3D11DepthStencilState *depth_state_readonly_lequal;
@@ -2848,13 +2849,15 @@ static void d3d11_bind_main_pipeline(d3d11_context_t *ctx,
     if (rasterizer)
         ID3D11DeviceContext_RSSetState(ctx->ctx, rasterizer);
     ID3D11DeviceContext_OMSetDepthStencilState(
-        ctx->ctx, blend_mode == VGFX3D_D3D11_BLEND_ALPHA ? ctx->depth_state_no_write
-                                                         : ctx->depth_state,
+        ctx->ctx, blend_mode == VGFX3D_D3D11_BLEND_OPAQUE ? ctx->depth_state
+                                                          : ctx->depth_state_no_write,
         0);
     ID3D11DeviceContext_OMSetBlendState(ctx->ctx,
                                         blend_mode == VGFX3D_D3D11_BLEND_ALPHA
                                             ? ctx->blend_state_alpha
-                                            : ctx->blend_state_opaque,
+                                            : (blend_mode == VGFX3D_D3D11_BLEND_ADDITIVE
+                                                   ? ctx->blend_state_additive
+                                                   : ctx->blend_state_opaque),
                                         blend_factor,
                                         0xFFFFFFFF);
     ID3D11DeviceContext_IASetPrimitiveTopology(ctx->ctx, D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
@@ -3385,6 +3388,23 @@ static void *d3d11_create_ctx(vgfx_window_t win, int32_t width, int32_t height) 
         d3d11_log_hresult("CreateBlendState(alpha)", hr);
         goto fail;
     }
+    memset(&blend_desc, 0, sizeof(blend_desc));
+    blend_desc.IndependentBlendEnable = TRUE;
+    blend_desc.RenderTarget[0].BlendEnable = TRUE;
+    blend_desc.RenderTarget[0].SrcBlend = D3D11_BLEND_SRC_ALPHA;
+    blend_desc.RenderTarget[0].DestBlend = D3D11_BLEND_ONE;
+    blend_desc.RenderTarget[0].BlendOp = D3D11_BLEND_OP_ADD;
+    blend_desc.RenderTarget[0].SrcBlendAlpha = D3D11_BLEND_ONE;
+    blend_desc.RenderTarget[0].DestBlendAlpha = D3D11_BLEND_ONE;
+    blend_desc.RenderTarget[0].BlendOpAlpha = D3D11_BLEND_OP_ADD;
+    blend_desc.RenderTarget[0].RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
+    blend_desc.RenderTarget[1].BlendEnable = FALSE;
+    blend_desc.RenderTarget[1].RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
+    hr = ID3D11Device_CreateBlendState(ctx->device, &blend_desc, &ctx->blend_state_additive);
+    if (FAILED(hr)) {
+        d3d11_log_hresult("CreateBlendState(additive)", hr);
+        goto fail;
+    }
 
     hr = d3d11_create_rasterizer_state(ctx, D3D11_FILL_SOLID, D3D11_CULL_BACK, &ctx->rs_solid_cull);
     if (FAILED(hr)) {
@@ -3841,6 +3861,7 @@ static void d3d11_destroy_ctx(void *ctx_ptr) {
     SAFE_RELEASE(ctx->depth_state_readonly_lequal);
     SAFE_RELEASE(ctx->depth_state_no_write);
     SAFE_RELEASE(ctx->depth_state);
+    SAFE_RELEASE(ctx->blend_state_additive);
     SAFE_RELEASE(ctx->blend_state_alpha);
     SAFE_RELEASE(ctx->blend_state_opaque);
     SAFE_RELEASE(ctx->dsv);

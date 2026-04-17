@@ -89,6 +89,7 @@ The OpenGL backend now follows the same high-level split, adapted to its GLX/swa
 - direct mode: when GPU postfx is disabled, window-backed draws render straight into the default framebuffer and `present()` only swaps buffers
 - postfx mode: the main scene renders into an HDR scene FBO, screenshots/readback can composite that scene through the backend-owned postfx shader, and 2D overlay passes preserve scene history instead of overwriting it
 - overlay composition: when a screen overlay follows a GPU-postfx main scene, OpenGL first composites the postfx result to the default framebuffer, then renders the overlay directly on top so SSAO / DOF / motion-blur history remains sourced from the 3D scene
+- texture origin normalization: `Pixels` and `CubeMap3D` faces use a top-left origin, so OpenGL flips RGBA rows before `glTexImage2D` / cubemap face upload to match software, Metal, and D3D11 sampling
 
 Like D3D11, this keeps the no-postfx path cheap while preserving the scene depth/history inputs required by the advanced GPU postfx path.
 
@@ -98,6 +99,7 @@ GPU backends now treat `RenderTarget3D` color buffers as lazily synchronized CPU
 
 - backends mark the render target color as dirty when an RTT pass finishes
 - [`rt_rendertarget3d_as_pixels()`](/Users/stephen/git/viper/src/runtime/graphics/rt_rendertarget3d.c) and [`rt_canvas3d_screenshot()`](/Users/stephen/git/viper/src/runtime/graphics/rt_canvas3d_overlay.c) call the backend-owned sync hook only when CPU pixels are actually requested
+- [`rt_canvas3d_begin()`](/Users/stephen/git/viper/src/runtime/graphics/rt_canvas3d.c) synchronizes the camera's effective projection aspect against the active output size before `begin_frame`, so window resizes and RTT passes share the correct frustum
 - while a render target is bound, Canvas3D overlay sizing, screenshots, and `Width`/`Height` queries follow the active target dimensions instead of the window dimensions
 - this avoids unconditional GPU stalls on RTT-heavy frames while preserving the `RenderTarget3D.AsPixels()` contract
 
@@ -352,7 +354,7 @@ Bone palette computation (per-frame, in `compute_bone_palette`):
 2. For alpha blend mode: sort particles back-to-front by distance from camera (insertion sort)
 3. Build vertex buffer: 4 vertices per particle (center ± right*halfSize ± up*halfSize), with per-vertex color/alpha from lifetime interpolation
 4. Build index buffer: 2 triangles per quad (CCW winding)
-5. Additive mode submits one batched `DrawMesh` call; alpha mode submits one keyed quad draw per particle so blending sorts correctly against the rest of the scene
+5. Additive mode submits one batched `DrawMesh` call through a dedicated additive blend state and preserves each particle's interpolated alpha; alpha mode submits one keyed quad draw per particle so blending sorts correctly against the rest of the scene
 
 ## Post-Processing Chain
 

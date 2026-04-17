@@ -188,8 +188,9 @@ void rt_camera3d_set_position(void *obj, void *pos);
 void *rt_camera3d_get_forward(void *obj);
 /// @brief Get the unit right vector (perpendicular to forward and up).
 void *rt_camera3d_get_right(void *obj);
-/// @brief Cast a world-space ray from screen pixel (sx, sy) given screen size (sw, sh).
-/// Returns a Ray suitable for picking and intersection tests.
+/// @brief Return a normalized world-space picking direction for screen pixel (sx, sy).
+/// Combine it with `GetPosition()` as the origin for perspective picking.
+/// Orthographic cameras return their forward direction (parallel rays).
 void *rt_camera3d_screen_to_ray(void *obj, int64_t sx, int64_t sy, int64_t sw, int64_t sh);
 
 //=========================================================================

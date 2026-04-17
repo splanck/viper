@@ -34,6 +34,7 @@ extern double rt_vec3_x(void *v);
 extern double rt_vec3_y(void *v);
 extern double rt_vec3_z(void *v);
 extern void *rt_quat_new(double x, double y, double z, double w);
+extern void *rt_quat_from_axis_angle(void *axis, double angle);
 extern void *rt_quat_from_euler(double pitch, double yaw, double roll);
 extern double rt_quat_x(void *q);
 extern double rt_quat_y(void *q);
@@ -91,6 +92,16 @@ static void *make_anim(const char *name,
     rt_animation3d_set_looping(anim, 1);
     rt_animation3d_add_keyframe(anim, bone_index, 0.0, pos0, rot, scl);
     rt_animation3d_add_keyframe(anim, bone_index, 1.0, pos1, rot, scl);
+    return anim;
+}
+
+static void *make_anim_with_rotation(void *rot0, void *rot1) {
+    void *anim = rt_animation3d_new(rt_const_cstr("turn"), 1.0);
+    void *pos = rt_vec3_new(0.0, 0.0, 0.0);
+    void *scl = rt_vec3_new(1.0, 1.0, 1.0);
+    rt_animation3d_set_looping(anim, 0);
+    rt_animation3d_add_keyframe(anim, 0, 0.0, pos, rot0, scl);
+    rt_animation3d_add_keyframe(anim, 0, 1.0, pos, rot1, scl);
     return anim;
 }
 
@@ -259,6 +270,44 @@ static void test_animator_root_motion_mode_consumes_delta_once() {
     EXPECT_NEAR(rt_vec3_x(pos), 3.0, 0.1, "Animator root motion is consumed once per update");
 }
 
+static void test_animator_root_motion_applies_rotation_delta() {
+    void *scene = rt_scene3d_new();
+    void *node = rt_scene_node3d_new();
+    void *skel = rt_skeleton3d_new();
+    void *controller;
+    void *turn;
+    void *rot0 = rt_quat_new(0.0, 0.0, 0.0, 1.0);
+    void *rot1 = rt_quat_from_axis_angle(rt_vec3_new(0.0, 1.0, 0.0), 1.5707963267948966);
+    void *rot;
+    double first_y;
+    double first_w;
+    rt_scene3d_add(scene, node);
+
+    rt_skeleton3d_add_bone(skel, rt_const_cstr("root"), -1, rt_mat4_identity());
+    rt_skeleton3d_compute_inverse_bind(skel);
+    turn = make_anim_with_rotation(rot0, rot1);
+    controller = rt_anim_controller3d_new(skel);
+    rt_anim_controller3d_add_state(controller, rt_const_cstr("turn"), turn);
+    rt_anim_controller3d_set_root_motion_bone(controller, 0);
+    rt_anim_controller3d_play(controller, rt_const_cstr("turn"));
+    rt_anim_controller3d_update(controller, 1.0);
+
+    rt_scene_node3d_bind_animator(node, controller);
+    rt_scene_node3d_set_sync_mode(node, RT_SCENE_NODE3D_SYNC_NODE_FROM_ANIMATOR_ROOT_MOTION);
+    rt_scene3d_sync_bindings(scene, 0.016);
+
+    rot = rt_scene_node3d_get_rotation(node);
+    EXPECT_TRUE(std::fabs(rt_quat_y(rot)) > 0.5, "Animator root motion rotates the bound node");
+    EXPECT_TRUE(std::fabs(rt_quat_w(rot)) < 0.9, "Animator root motion changes the node quaternion");
+    first_y = rt_quat_y(rot);
+    first_w = rt_quat_w(rot);
+
+    rt_scene3d_sync_bindings(scene, 0.016);
+    rot = rt_scene_node3d_get_rotation(node);
+    EXPECT_NEAR(rt_quat_y(rot), first_y, 0.001, "Animator root-motion rotation is consumed once");
+    EXPECT_NEAR(rt_quat_w(rot), first_w, 0.001, "Animator root-motion W stays stable after consumption");
+}
+
 static void test_scene_draw_uses_bound_animator_palette() {
     vgfx3d_backend_t backend = {};
     rt_canvas3d canvas;
@@ -315,6 +364,7 @@ int main() {
     test_two_way_kinematic_switches_direction();
     test_node_from_body_compensates_for_scaled_parent();
     test_animator_root_motion_mode_consumes_delta_once();
+    test_animator_root_motion_applies_rotation_delta();
     test_scene_draw_uses_bound_animator_palette();
 
     std::printf("Scene3D binding tests: %d/%d passed\n", tests_passed, tests_run);

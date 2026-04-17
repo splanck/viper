@@ -141,6 +141,9 @@ typedef struct {
     int8_t is_ortho;   /* 1 = orthographic projection */
     double ortho_size; /* half-extent of ortho view */
 } rt_camera3d;
+void rt_camera3d_sync_render_aspect(void *cam, double aspect);
+/// @brief Internal: advance camera shake by @p dt seconds and refresh the shaken view.
+void rt_camera3d_update_shake_for_frame(void *cam, double dt);
 
 //=============================================================================
 // Material3D
@@ -170,6 +173,7 @@ typedef struct {
     double reflectivity; /* [0.0=no reflection, 1.0=mirror], default 0.0 */
     int8_t unlit;
     int8_t double_sided;
+    int8_t additive_blend; /* internal-only: route through additive blend state when true */
     int32_t alpha_mode; /* 0=opaque, 1=mask, 2=blend */
     int32_t shading_model;   /* 0=BlinnPhong, 1=Toon, 2=reserved, 3=Unlit, 4=Fresnel, 5=Emissive */
     double custom_params[8]; /* user-defined parameters per shading model */

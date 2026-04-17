@@ -773,6 +773,23 @@ static void test_frustum_no_mesh_no_aabb() {
     EXPECT_NEAR(rt_vec3_x(amin), 0.0, 0.01, "No-mesh AABB min X = 0");
 }
 
+static void test_node_aabb_refreshes_after_mesh_mutation() {
+    void *node = rt_scene_node3d_new();
+    void *mesh = rt_mesh3d_new();
+    rt_mesh3d_add_vertex(mesh, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0);
+    rt_mesh3d_add_vertex(mesh, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0);
+    rt_mesh3d_add_vertex(mesh, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0);
+    rt_mesh3d_add_triangle(mesh, 0, 1, 2);
+    rt_scene_node3d_set_mesh(node, mesh);
+
+    void *amax = rt_scene_node3d_get_aabb_max(node);
+    EXPECT_NEAR(rt_vec3_x(amax), 1.0, 0.01, "Initial mesh AABB max X = 1");
+
+    rt_mesh3d_add_vertex(mesh, 2.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0);
+    amax = rt_scene_node3d_get_aabb_max(node);
+    EXPECT_NEAR(rt_vec3_x(amax), 2.0, 0.01, "Scene node AABB refreshes after mesh mutation");
+}
+
 static void test_frustum_culled_count_initial() {
     void *scene = rt_scene3d_new();
     EXPECT_TRUE(rt_scene3d_get_culled_count(scene) == 0, "Initial culled count = 0");
@@ -841,6 +858,7 @@ int main() {
     test_frustum_sphere_aabb();
     test_frustum_plane_aabb();
     test_frustum_no_mesh_no_aabb();
+    test_node_aabb_refreshes_after_mesh_mutation();
     test_frustum_culled_count_initial();
     test_lod_culling_uses_selected_mesh_bounds();
     test_scene_draw_reuses_active_frame();

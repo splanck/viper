@@ -319,8 +319,8 @@ static void test_draw_cmd_alpha_blend_policy(void) {
     memset(&cmd, 0, sizeof(cmd));
     cmd.alpha = 0.5f;
     cmd.workflow = RT_MATERIAL3D_WORKFLOW_LEGACY;
-    EXPECT_TRUE(vgfx3d_draw_cmd_uses_alpha_blend(&cmd),
-                "Legacy materials with partial alpha use blend semantics");
+    EXPECT_TRUE(!vgfx3d_draw_cmd_uses_alpha_blend(&cmd),
+                "Legacy materials require explicit blend alpha mode");
 
     memset(&cmd, 0, sizeof(cmd));
     cmd.alpha = 1.0f;
@@ -356,6 +356,14 @@ static void test_draw_cmd_alpha_blend_policy(void) {
     cmd.alpha_mode = RT_MATERIAL3D_ALPHA_MODE_MASK;
     EXPECT_TRUE(!vgfx3d_draw_cmd_uses_alpha_blend(&cmd),
                 "Legacy masked materials stay on the opaque path");
+
+    memset(&cmd, 0, sizeof(cmd));
+    cmd.workflow = RT_MATERIAL3D_WORKFLOW_LEGACY;
+    cmd.additive_blend = 1;
+    EXPECT_TRUE(!vgfx3d_draw_cmd_uses_alpha_blend(&cmd),
+                "Additive materials do not use the alpha-blend depth policy");
+    EXPECT_TRUE(vgfx3d_draw_cmd_uses_transparent_blend(&cmd),
+                "Additive materials still route through the transparent pass");
 }
 
 int main(void) {

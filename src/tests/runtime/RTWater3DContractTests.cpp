@@ -5,8 +5,10 @@
 //
 //===----------------------------------------------------------------------===//
 
+extern "C" {
 #include "rt_canvas3d_internal.h"
 #include "rt_water3d.h"
+}
 
 #include <cassert>
 #include <cstring>
@@ -110,6 +112,13 @@ extern "C" void *rt_mat4_identity(void) {
 
 extern "C" void rt_canvas3d_draw_mesh(void *, void *, void *, void *) {
     g_draw_mesh_calls++;
+}
+
+extern "C" void rt_canvas3d_draw_mesh_matrix(void *canvas,
+                                             void *mesh,
+                                             const double *,
+                                             void *material) {
+    rt_canvas3d_draw_mesh(canvas, mesh, nullptr, material);
 }
 
 extern "C" void *rt_material3d_new_color(double, double, double) {

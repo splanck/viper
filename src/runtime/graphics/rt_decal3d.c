@@ -42,8 +42,9 @@ extern void *rt_mesh3d_new(void);
 extern void rt_mesh3d_add_vertex(
     void *m, double x, double y, double z, double nx, double ny, double nz, double u, double v);
 extern void rt_mesh3d_add_triangle(void *m, int64_t v0, int64_t v1, int64_t v2);
-extern void *rt_mat4_identity(void);
 extern void rt_canvas3d_draw_mesh(void *canvas, void *mesh, void *transform, void *material);
+extern void rt_canvas3d_draw_mesh_matrix(
+    void *canvas, void *mesh, const double *transform, void *material);
 
 typedef struct {
     void *vptr;
@@ -255,7 +256,13 @@ void rt_canvas3d_draw_decal(void *canvas, void *obj) {
     extern void rt_material3d_set_alpha(void *m, double a);
     rt_material3d_set_alpha(d->material, d->alpha);
 
-    rt_canvas3d_draw_mesh(canvas, d->mesh, rt_mat4_identity(), d->material);
+    {
+        static const double identity[16] = {
+            1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0,
+            0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+        };
+        rt_canvas3d_draw_mesh_matrix(canvas, d->mesh, identity, d->material);
+    }
 }
 
 #else

@@ -60,6 +60,8 @@ static void scene3d_release_ref(void **slot) {
     *slot = NULL;
 }
 
+extern void *rt_anim_controller3d_consume_root_motion_rotation(void *obj);
+
 /*==========================================================================
  * Helpers
  *=========================================================================*/
@@ -467,14 +469,35 @@ static void scene_node_set_world_transform(rt_scene_node3d *node,
 /// the node's local transform so the character actually traverses.
 static void scene_node_apply_root_motion(rt_scene_node3d *node) {
     void *delta;
+    void *delta_rot;
+    void *node_rot;
+    void *combined_rot;
     if (!node || !node->bound_animator)
         return;
     delta = rt_anim_controller3d_consume_root_motion(node->bound_animator);
-    if (!delta)
+    delta_rot = rt_anim_controller3d_consume_root_motion_rotation(node->bound_animator);
+    if (!delta) {
+        scene3d_release_ref(&delta_rot);
         return;
+    }
     node->position[0] += rt_vec3_x(delta);
     node->position[1] += rt_vec3_y(delta);
     node->position[2] += rt_vec3_z(delta);
+    if (delta_rot) {
+        node_rot =
+            rt_quat_new(node->rotation[0], node->rotation[1], node->rotation[2], node->rotation[3]);
+        combined_rot = node_rot ? rt_quat_mul(node_rot, delta_rot) : NULL;
+        if (combined_rot) {
+            node->rotation[0] = rt_quat_x(combined_rot);
+            node->rotation[1] = rt_quat_y(combined_rot);
+            node->rotation[2] = rt_quat_z(combined_rot);
+            node->rotation[3] = rt_quat_w(combined_rot);
+            quat_normalize_local(node->rotation);
+        }
+        scene3d_release_ref(&combined_rot);
+        scene3d_release_ref(&node_rot);
+        scene3d_release_ref(&delta_rot);
+    }
     if (rt_obj_release_check0(delta))
         rt_obj_free(delta);
     mark_dirty(node);
@@ -517,6 +540,8 @@ static void scene_node_sync_recursive(rt_scene_node3d *node) {
         world_quat[2] = quat ? rt_quat_z(quat) : 0.0;
         world_quat[3] = quat ? rt_quat_w(quat) : 1.0;
         scene_node_set_world_transform(node, world_pos, world_quat);
+        scene3d_release_ref(&pos);
+        scene3d_release_ref(&quat);
     } else if (node->bound_animator &&
                (mode == RT_SCENE_NODE3D_SYNC_NODE_FROM_ANIMATOR_ROOT_MOTION || push_to_body)) {
         scene_node_apply_root_motion(node);
@@ -528,9 +553,11 @@ static void scene_node_sync_recursive(rt_scene_node3d *node) {
         scene_node_get_world_position(node, &world_pos[0], &world_pos[1], &world_pos[2]);
         scene_node_get_world_rotation(node, world_quat);
         rt_body3d_set_position(node->bound_body, world_pos[0], world_pos[1], world_pos[2]);
-        rt_body3d_set_orientation(
-            node->bound_body,
-            rt_quat_new(world_quat[0], world_quat[1], world_quat[2], world_quat[3]));
+        {
+            void *quat = rt_quat_new(world_quat[0], world_quat[1], world_quat[2], world_quat[3]);
+            rt_body3d_set_orientation(node->bound_body, quat);
+            scene3d_release_ref(&quat);
+        }
     }
 
     for (int32_t i = 0; i < node->child_count; i++)
@@ -1053,6 +1080,8 @@ void *rt_scene_node3d_get_aabb_min(void *obj) {
     if (!obj)
         return rt_vec3_new(0, 0, 0);
     rt_scene_node3d *n = (rt_scene_node3d *)obj;
+    if (n->mesh)
+        scene_mesh_bounds((rt_mesh3d *)n->mesh, n->aabb_min, n->aabb_max, &n->bsphere_radius);
     return rt_vec3_new(n->aabb_min[0], n->aabb_min[1], n->aabb_min[2]);
 }
 
@@ -1061,6 +1090,8 @@ void *rt_scene_node3d_get_aabb_max(void *obj) {
     if (!obj)
         return rt_vec3_new(0, 0, 0);
     rt_scene_node3d *n = (rt_scene_node3d *)obj;
+    if (n->mesh)
+        scene_mesh_bounds((rt_mesh3d *)n->mesh, n->aabb_min, n->aabb_max, &n->bsphere_radius);
     return rt_vec3_new(n->aabb_max[0], n->aabb_max[1], n->aabb_max[2]);
 }
 

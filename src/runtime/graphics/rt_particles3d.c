@@ -141,7 +141,8 @@ static void random_cone_dir(rt_particles3d *ps, const double *dir, double spread
     }
 
     /* Random angle within cone */
-    float theta = randf(ps) * (float)spread;
+    float cos_theta = 1.0f - randf(ps) * (1.0f - cosf((float)spread));
+    float theta = acosf(cos_theta);
     float phi = randf(ps) * (float)(2.0 * M_PI);
 
     /* Build a coordinate frame around dir */
@@ -458,7 +459,7 @@ static void spawn_particle(rt_particles3d *ps) {
 
     if (ps->emitter_shape == 1) /* sphere */
     {
-        float r = randf(ps) * (float)ps->emitter_size[0];
+        float r = cbrtf(randf(ps)) * (float)ps->emitter_size[0];
         float theta = randf(ps) * (float)(2.0 * M_PI);
         float phi = acosf(1.0f - 2.0f * randf(ps));
         p->pos[0] += r * sinf(phi) * cosf(theta);
@@ -574,8 +575,8 @@ extern void *rt_material3d_new(void);
 extern void rt_material3d_set_color(void *m, double r, double g, double b);
 extern void rt_material3d_set_unlit(void *m, int8_t u);
 extern void rt_material3d_set_alpha(void *m, double a);
+extern void rt_material3d_set_alpha_mode(void *m, int64_t mode);
 extern void rt_material3d_set_texture(void *m, void *tex);
-extern void *rt_mat4_identity(void);
 
 /// @brief Render every live particle as a camera-facing billboard quad. Extracts right/up from
 /// the camera view matrix to build the quads. Sorts back-to-front for alpha blending; skips the
@@ -708,21 +709,25 @@ void rt_particles3d_draw(void *o, void *canvas3d, void *camera) {
     }
     void *mat = ps->cached_material;
     rt_material3d_set_texture(mat, ps->texture);
+    ((rt_material3d *)mat)->additive_blend = 0;
 
     /* Register buffers for end-of-frame cleanup */
     rt_canvas3d_add_temp_buffer(canvas3d, verts);
     rt_canvas3d_add_temp_buffer(canvas3d, indices);
 
     if (ps->additive_blend) {
-        float max_alpha = 0.0f;
-        for (int32_t i = 0; i < ps->count; i++)
-            if (ps->particles[i].color[3] > max_alpha)
-                max_alpha = ps->particles[i].color[3];
-        rt_material3d_set_alpha(mat, (double)max_alpha);
-        rt_canvas3d_draw_mesh(canvas3d, &tmp_mesh, rt_mat4_identity(), mat);
+        static const double identity[16] = {
+            1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0,
+            0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+        };
+        rt_material3d_set_alpha(mat, 1.0);
+        rt_material3d_set_alpha_mode(mat, RT_MATERIAL3D_ALPHA_MODE_BLEND);
+        ((rt_material3d *)mat)->additive_blend = 1;
+        rt_canvas3d_draw_mesh_matrix(canvas3d, &tmp_mesh, identity, mat);
         return;
     }
 
+    rt_material3d_set_alpha_mode(mat, RT_MATERIAL3D_ALPHA_MODE_BLEND);
     for (int32_t i = 0; i < ps->count; i++) {
         vgfx3d_particle_t *p = &ps->particles[i];
         rt_mesh3d quad_mesh;

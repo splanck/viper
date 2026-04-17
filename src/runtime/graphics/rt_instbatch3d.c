@@ -207,13 +207,13 @@ void rt_instbatch3d_remove(void *obj, int64_t index) {
             instbatch_copy_matrix_slot(
                 b->current_snapshot, (int32_t)index, b->current_snapshot, last_idx);
         else if (index < b->motion_snapshot_count)
-            b->motion_snapshot_count = 0;
+            b->motion_snapshot_count = (int32_t)index;
         if (last_idx < b->prev_count)
             instbatch_copy_matrix_slot(
                 b->prev_transforms, (int32_t)index, b->prev_transforms, last_idx);
         else if (index < b->prev_count) {
-            b->prev_count = 0;
-            b->has_prev_snapshot = 0;
+            b->prev_count = (int32_t)index;
+            b->has_prev_snapshot = b->prev_count > 0 ? 1 : 0;
         }
     }
     b->instance_count--;

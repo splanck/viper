@@ -121,6 +121,8 @@ void *rt_rendertarget3d_new(int64_t width, int64_t height) {
     rtd->target = rt_alloc((int32_t)width, (int32_t)height);
 
     if (!rtd->target) {
+        if (rt_obj_release_check0(rtd))
+            rt_obj_free(rtd);
         rt_trap("RenderTarget3D.New: buffer allocation failed");
         return NULL;
     }

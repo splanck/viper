@@ -14,6 +14,7 @@
 
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
+#include "rt_object.h"
 #include "rt_pixels.h"
 #include "rt_string.h"
 #include "rt_vec3.h"
@@ -258,8 +259,11 @@ void *rt_canvas3d_screenshot(void *obj) {
     px_view *pv = (px_view *)pixels;
 
     if (c->render_target && c->render_target->color_buf) {
-        if (!vgfx3d_rendertarget_sync_color_if_needed(c->render_target))
-            return pixels;
+        if (!vgfx3d_rendertarget_sync_color_if_needed(c->render_target)) {
+            if (rt_obj_release_check0(pixels))
+                rt_obj_free(pixels);
+            return NULL;
+        }
         for (int32_t y = 0; y < shot_h; y++)
             for (int32_t x = 0; x < shot_w; x++) {
                 const uint8_t *src =

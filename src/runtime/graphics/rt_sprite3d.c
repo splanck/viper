@@ -39,8 +39,9 @@ extern void rt_mesh3d_clear(void *m);
 extern void rt_mesh3d_add_vertex(
     void *m, double x, double y, double z, double nx, double ny, double nz, double u, double v);
 extern void rt_mesh3d_add_triangle(void *m, int64_t v0, int64_t v1, int64_t v2);
-extern void *rt_mat4_identity(void);
 extern void rt_canvas3d_draw_mesh(void *canvas, void *mesh, void *transform, void *material);
+extern void rt_canvas3d_draw_mesh_matrix(
+    void *canvas, void *mesh, const double *transform, void *material);
 extern void rt_canvas3d_add_temp_object(void *canvas, void *value);
 extern int64_t rt_pixels_width(void *pixels);
 extern int64_t rt_pixels_height(void *pixels);
@@ -257,7 +258,13 @@ void rt_canvas3d_draw_sprite3d(void *canvas, void *obj, void *camera) {
     rt_canvas3d_add_temp_object(canvas, mesh);
     rt_canvas3d_add_temp_object(canvas, s->cached_material);
 
-    rt_canvas3d_draw_mesh(canvas, mesh, rt_mat4_identity(), s->cached_material);
+    {
+        static const double identity[16] = {
+            1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0,
+            0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+        };
+        rt_canvas3d_draw_mesh_matrix(canvas, mesh, identity, s->cached_material);
+    }
 }
 
 #else
