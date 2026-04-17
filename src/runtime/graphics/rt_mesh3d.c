@@ -332,7 +332,7 @@ void *rt_mesh3d_clone(void *obj) {
     return dst;
 }
 
-/// @brief Apply a 4x4 transformation matrix to all vertex positions and normals in-place.
+/// @brief Apply a 4x4 transformation matrix to all vertex positions and shading bases in-place.
 void rt_mesh3d_transform(void *obj, void *mat4_obj) {
     if (!obj || !mat4_obj)
         return;
@@ -367,6 +367,22 @@ void rt_mesh3d_transform(void *obj, void *mat4_obj) {
             n[1] /= len;
             n[2] /= len;
         }
+
+        float *t = m->vertices[i].tangent;
+        float handedness = t[3];
+        float tx = t[0];
+        float ty = t[1];
+        float tz = t[2];
+        t[0] = normal_matrix[0] * tx + normal_matrix[1] * ty + normal_matrix[2] * tz;
+        t[1] = normal_matrix[4] * tx + normal_matrix[5] * ty + normal_matrix[6] * tz;
+        t[2] = normal_matrix[8] * tx + normal_matrix[9] * ty + normal_matrix[10] * tz;
+        len = sqrtf(t[0] * t[0] + t[1] * t[1] + t[2] * t[2]);
+        if (len > 1e-8f) {
+            t[0] /= len;
+            t[1] /= len;
+            t[2] /= len;
+        }
+        t[3] = handedness == 0.0f ? 1.0f : handedness;
     }
     rt_mesh3d_touch_geometry(m);
     rt_mesh3d_refresh_bounds(m);

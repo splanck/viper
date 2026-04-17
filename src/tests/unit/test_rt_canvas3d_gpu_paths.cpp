@@ -906,6 +906,54 @@ static void test_instanced_transform_history_forwarded(void) {
     cleanup_fake_canvas(&canvas);
 }
 
+static void test_instanced_transform_history_survives_count_changes(void) {
+    vgfx3d_backend_t backend = {};
+    backend.name = "opengl";
+    backend.end_frame = noop_end_frame;
+    backend.submit_draw_instanced = record_draw_instanced;
+
+    rt_canvas3d canvas;
+    init_fake_canvas(&canvas, &backend);
+    reset_recorded_instancing();
+
+    void *mesh = make_test_mesh();
+    void *material = rt_material3d_new();
+    void *batch = rt_instbatch3d_new(mesh, material);
+    void *t0 = rt_mat4_identity();
+    void *t1 = rt_mat4_identity();
+    ((mat4_impl *)t0)->m[3] = -0.75;
+    ((mat4_impl *)t1)->m[3] = 0.5;
+    rt_instbatch3d_add(batch, t0);
+
+    reset_canvas_frame(&canvas, 1);
+    rt_canvas3d_draw_instanced(&canvas, batch);
+    rt_canvas3d_end(&canvas);
+    EXPECT_TRUE(last_instance_count == 1, "Initial instanced draw submits the original instance");
+
+    ((mat4_impl *)t0)->m[3] = 0.0;
+    rt_instbatch3d_set(batch, 0, t0);
+    rt_instbatch3d_add(batch, t1);
+
+    reset_canvas_frame(&canvas, 2);
+    rt_canvas3d_draw_instanced(&canvas, batch);
+    rt_canvas3d_end(&canvas);
+
+    EXPECT_TRUE(last_instance_count == 2,
+                "Instanced draw still submits all instances after the batch grows");
+    EXPECT_TRUE(last_instanced_cmd.has_prev_instance_matrices == 1,
+                "Instanced draw keeps previous-transform history when the count changes");
+    EXPECT_TRUE(last_instanced_cmd.prev_instance_matrices != nullptr,
+                "Instanced draw provides a padded previous-transform buffer on count changes");
+    if (last_instanced_cmd.prev_instance_matrices) {
+        EXPECT_TRUE(last_instanced_cmd.prev_instance_matrices[3] == -0.75f,
+                    "Existing instances preserve their prior transform when the batch grows");
+        EXPECT_TRUE(last_instanced_cmd.prev_instance_matrices[19] == 0.5f,
+                    "New instances seed previous transforms from their current pose");
+    }
+
+    cleanup_fake_canvas(&canvas);
+}
+
 static void test_instanced_material_payload_forwarded(void) {
     vgfx3d_backend_t backend = {};
     backend.name = "metal";
@@ -1241,6 +1289,7 @@ int main() {
     test_morph_weight_history_forwarded();
     test_skinning_palette_history_forwarded();
     test_instanced_transform_history_forwarded();
+    test_instanced_transform_history_survives_count_changes();
     test_instanced_material_payload_forwarded();
     test_pbr_material_payload_forwarded();
     test_instanced_runtime_culls_outside_frustum();

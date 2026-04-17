@@ -35,6 +35,9 @@
 
 extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
 extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
+extern void rt_obj_retain_maybe(void *obj);
+extern int32_t rt_obj_release_check0(void *obj);
+extern void rt_obj_free(void *obj);
 #include "rt_trap.h"
 extern void *rt_vec3_new(double x, double y, double z);
 extern void *rt_mesh3d_new(void);
@@ -43,6 +46,7 @@ extern void rt_mesh3d_add_vertex(
 extern void rt_mesh3d_add_triangle(void *m, int64_t v0, int64_t v1, int64_t v2);
 extern void *rt_mat4_identity(void);
 extern void rt_canvas3d_draw_mesh(void *canvas, void *mesh, void *transform, void *material);
+extern void rt_material3d_set_texture(void *material, void *pixels);
 
 #define TERRAIN_CHUNK_SIZE 16
 
@@ -68,10 +72,55 @@ typedef struct {
     void *splat_map;
     void *layer_textures[TERRAIN_MAX_SPLAT_LAYERS];
     double layer_scales[TERRAIN_MAX_SPLAT_LAYERS]; /* UV tiling per layer */
+    void *base_texture;
+    void *baked_texture;
+    int8_t splat_dirty;
 } rt_terrain3d;
+
+static void terrain_release_ref(void **slot) {
+    if (!slot || !*slot)
+        return;
+    if (rt_obj_release_check0(*slot))
+        rt_obj_free(*slot);
+    *slot = NULL;
+}
+
+static void terrain_assign_ref(void **slot, void *value) {
+    if (!slot || *slot == value)
+        return;
+    rt_obj_retain_maybe(value);
+    terrain_release_ref(slot);
+    *slot = value;
+}
+
+static void terrain_release_mesh_slot(void **slot) {
+    terrain_release_ref(slot);
+}
+
+static void terrain_release_chunk_meshes(rt_terrain3d *t) {
+    int32_t n;
+    if (!t)
+        return;
+    n = t->chunks_x * t->chunks_z;
+    for (int32_t i = 0; i < n; i++) {
+        if (t->chunk_meshes)
+            terrain_release_mesh_slot(&t->chunk_meshes[i]);
+        if (t->chunk_meshes_lod1)
+            terrain_release_mesh_slot(&t->chunk_meshes_lod1[i]);
+        if (t->chunk_meshes_lod2)
+            terrain_release_mesh_slot(&t->chunk_meshes_lod2[i]);
+    }
+}
 
 static void terrain3d_finalizer(void *obj) {
     rt_terrain3d *t = (rt_terrain3d *)obj;
+    terrain_release_chunk_meshes(t);
+    terrain_release_ref(&t->material);
+    terrain_release_ref(&t->splat_map);
+    for (int i = 0; i < TERRAIN_MAX_SPLAT_LAYERS; i++)
+        terrain_release_ref(&t->layer_textures[i]);
+    terrain_release_ref(&t->base_texture);
+    terrain_release_ref(&t->baked_texture);
     free(t->heights);
     free(t->chunk_meshes);
     free(t->chunk_meshes_lod1);
@@ -88,6 +137,9 @@ static void terrain3d_finalizer(void *obj) {
 static void invalidate_all_chunks(rt_terrain3d *t) {
     int32_t n = t->chunks_x * t->chunks_z;
     for (int32_t i = 0; i < n; i++) {
+        terrain_release_mesh_slot(&t->chunk_meshes[i]);
+        terrain_release_mesh_slot(&t->chunk_meshes_lod1[i]);
+        terrain_release_mesh_slot(&t->chunk_meshes_lod2[i]);
         t->chunk_meshes[i] = NULL;
         t->chunk_meshes_lod1[i] = NULL;
         t->chunk_meshes_lod2[i] = NULL;
@@ -108,6 +160,7 @@ void *rt_terrain3d_new(int64_t width, int64_t depth) {
         rt_trap("Terrain3D.New: allocation failed");
         return NULL;
     }
+    memset(t, 0, sizeof(*t));
     t->vptr = NULL;
     t->width = (int32_t)width;
     t->depth = (int32_t)depth;
@@ -122,11 +175,22 @@ void *rt_terrain3d_new(int64_t width, int64_t depth) {
     t->chunk_meshes_lod1 = (void **)calloc((size_t)num_chunks, sizeof(void *));
     t->chunk_meshes_lod2 = (void **)calloc((size_t)num_chunks, sizeof(void *));
     t->chunk_aabbs = (float *)calloc((size_t)(num_chunks * 6), sizeof(float));
+    if (!t->heights || !t->chunk_meshes || !t->chunk_meshes_lod1 || !t->chunk_meshes_lod2 ||
+        !t->chunk_aabbs) {
+        terrain3d_finalizer(t);
+        if (rt_obj_release_check0(t))
+            rt_obj_free(t);
+        rt_trap("Terrain3D.New: allocation failed");
+        return NULL;
+    }
     t->lod_dist1 = 100.0f;
     t->lod_dist2 = 250.0f;
     t->skirt_depth = 2.0f;
     t->material = NULL;
     t->splat_map = NULL;
+    t->base_texture = NULL;
+    t->baked_texture = NULL;
+    t->splat_dirty = 0;
     for (int i = 0; i < TERRAIN_MAX_SPLAT_LAYERS; i++) {
         t->layer_textures[i] = NULL;
         t->layer_scales[i] = 1.0;
@@ -207,8 +271,15 @@ void rt_terrain3d_set_heightmap(void *obj, void *pixels) {
 /// rendered with this material, optionally overridden by the splat-bake texture if a splat map
 /// is set. Does not invalidate chunks (the mesh data is independent of the material).
 void rt_terrain3d_set_material(void *obj, void *material) {
-    if (obj)
-        ((rt_terrain3d *)obj)->material = material;
+    if (!obj)
+        return;
+    rt_terrain3d *t = (rt_terrain3d *)obj;
+    if (t->material == material)
+        return;
+    terrain_assign_ref(&t->material, material);
+    terrain_release_ref(&t->base_texture);
+    terrain_release_ref(&t->baked_texture);
+    t->splat_dirty = t->splat_map ? 1 : 0;
 }
 
 /// @brief Set per-axis world-space scale: `sx` and `sz` are grid-cell spacing in world units;
@@ -231,7 +302,15 @@ void rt_terrain3d_set_splat_map(void *obj, void *pixels) {
     if (!obj)
         return;
     rt_terrain3d *t = (rt_terrain3d *)obj;
-    t->splat_map = pixels;
+    terrain_assign_ref(&t->splat_map, pixels);
+    if (!pixels) {
+        if (t->material)
+            rt_material3d_set_texture(t->material, t->base_texture);
+        terrain_release_ref(&t->baked_texture);
+        t->splat_dirty = 0;
+    } else {
+        t->splat_dirty = 1;
+    }
     invalidate_all_chunks(t);
 }
 
@@ -241,7 +320,8 @@ void rt_terrain3d_set_layer_texture(void *obj, int64_t layer, void *pixels) {
     if (!obj || layer < 0 || layer >= TERRAIN_MAX_SPLAT_LAYERS)
         return;
     rt_terrain3d *t = (rt_terrain3d *)obj;
-    t->layer_textures[layer] = pixels;
+    terrain_assign_ref(&t->layer_textures[layer], pixels);
+    t->splat_dirty = 1;
     invalidate_all_chunks(t);
 }
 
@@ -253,6 +333,7 @@ void rt_terrain3d_set_layer_scale(void *obj, int64_t layer, double scale) {
         return;
     rt_terrain3d *t = (rt_terrain3d *)obj;
     t->layer_scales[layer] = scale;
+    t->splat_dirty = 1;
     invalidate_all_chunks(t);
 }
 
@@ -379,7 +460,6 @@ void *rt_terrain3d_get_normal_at(void *obj, double wx, double wz) {
 /// map RGBA channels. Applied once when chunks are invalidated.
 extern void *rt_pixels_new(int64_t width, int64_t height);
 extern void rt_pixels_set(void *pixels, int64_t x, int64_t y, int64_t color);
-extern void rt_material3d_set_texture(void *material, void *pixels);
 
 static void bake_splat_texture(rt_terrain3d *t) {
     if (!t->splat_map || !t->material)
@@ -399,6 +479,12 @@ static void bake_splat_texture(rt_terrain3d *t) {
     void *baked = rt_pixels_new(tw, th);
     if (!baked)
         return;
+
+    if (!t->base_texture) {
+        rt_material3d *material = (rt_material3d *)t->material;
+        if (material && material->texture != t->baked_texture)
+            terrain_assign_ref(&t->base_texture, material->texture);
+    }
 
     for (int32_t y = 0; y < th; y++) {
         for (int32_t x = 0; x < tw; x++) {
@@ -456,6 +542,10 @@ static void bake_splat_texture(rt_terrain3d *t) {
     }
 
     rt_material3d_set_texture(t->material, baked);
+    terrain_assign_ref(&t->baked_texture, baked);
+    if (rt_obj_release_check0(baked))
+        rt_obj_free(baked);
+    t->splat_dirty = 0;
 }
 
 /// @brief Compute per-vertex data at grid position (ix, iz).
@@ -689,6 +779,10 @@ void rt_canvas3d_draw_terrain(void *canvas_obj, void *terrain_obj) {
     rt_terrain3d *t = (rt_terrain3d *)terrain_obj;
     if (!c->in_frame || !c->backend || !t->material)
         return;
+    if (c->frame_is_2d) {
+        rt_trap("Canvas3D.DrawTerrain: cannot draw terrain during Begin2D/End");
+        return;
+    }
 
     /* Bake splat-blended texture if splat map is set and chunks are invalid */
     if (t->splat_map) {
@@ -696,7 +790,7 @@ void rt_canvas3d_draw_terrain(void *canvas_obj, void *terrain_obj) {
         for (int32_t i = 0; i < t->chunks_x * t->chunks_z && !any_invalid; i++)
             if (!t->chunk_meshes[i])
                 any_invalid = 1;
-        if (any_invalid)
+        if (t->splat_dirty || any_invalid)
             bake_splat_texture(t);
     }
 

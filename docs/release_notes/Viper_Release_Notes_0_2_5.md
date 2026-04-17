@@ -23,10 +23,10 @@ v0.2.5 is a polish-and-hardening cycle concentrated on the runtime, the GUI widg
 
 | Metric | v0.2.4 | v0.2.5 | Delta |
 |---|---|---|---|
-| Commits | — | 10 | +10 |
+| Commits | — | 11 | +11 |
 | Source files | 2,869 | 2,877 | +8 |
-| Production SLOC | ~450K | ~457K | ~+7K |
-| Test SLOC | ~183K | ~184K | ~+1K |
+| Production SLOC | ~450K | ~458K | ~+8K |
+| Test SLOC | ~183K | ~185K | ~+2K |
 | Demo SLOC | ~177K | ~184K | +~7K |
 
 Counts produced by `scripts/count_sloc.sh` (`Production SLOC` = `src/` minus `src/tests/`). Growth concentrates on the demo side (Crackman modularization + Paint feature pass) and the GUI runtime, with surgical edits across the rest of the tree.
@@ -49,11 +49,19 @@ Counts produced by `scripts/count_sloc.sh` (`Production SLOC` = `src/` minus `sr
 
 **Tilemap / Scene.** Tilemap rendering polish; `rt_scene` surface refinements for scene-graph parent/child invariants.
 
-**Graphics3D — Canvas3D.** `Begin2D` now caches the full V·P product (matching `Begin3D`) instead of just the projection. Overlay code that unprojects through `cached_vp` sees consistent semantics across modes; for an identity 2D view the numeric result equals projection, but the shape of the math matches 3D.
+**Graphics3D — Canvas3D.** `Begin2D` now caches the full V·P product (matching `Begin3D`) instead of just the projection. Overlay code that unprojects through `cached_vp` sees consistent semantics across modes; for an identity 2D view the numeric result equals projection, but the shape of the math matches 3D. Internal header (`rt_canvas3d_internal.h`) picks up additional surface bits used by the morph and material paths.
+
+**Graphics3D — Camera3D.** New input sanitizers — `sanitize_aspect` (≥1e-6), `sanitize_clip_planes` (near ≥ 0.1, far ≥ near + 0.1 with a 1000-unit default), `sanitize_fov` ([1°, 179°]), and `sanitize_ortho_size` (≥1e-6) — normalize pathological values before they reach the projection builders. Degenerate `look_at` (eye == target) falls back to the default forward axis while *preserving* the camera translation, instead of returning an identity matrix that also zeroed the camera position.
+
+**Graphics3D — Mesh3D.** Reference-slot ownership is now explicit. New `mesh_assign_ref` / `mesh_release_ref` helpers replace ad-hoc pointer manipulation on the skeleton / morph-target / material back-references; assignments retain-then-release and releases free on zero, closing a class of use-after-free and double-release bugs on mesh reassignment. The earlier bone-index `uint8_t` range check is retained.
 
 **Graphics3D — Skeleton3D & Animation.** `rt_skeleton3d_add_bone` rejects `parent_index` values below `-1` (previously only the upper bound was checked, so `-2`, `-100`, etc. survived validation and corrupted the hierarchy). `rt_mesh3d_set_bone_weights` now range-checks each influence against `VGFX3D_MAX_BONES` before the `uint8_t` cast — previously the cast silently wrapped `256` → `0` and `-1` → `255`, driving the skinning palette with the wrong bone. Out-of-range indices drop the influence (weight 0). In the animation player, the crossfade bind-pose fallback decomposes the full 4×4 bind-pose matrix into TRS (scale from column magnitudes, rotation via Shepperd's method on the orthonormalized basis, translation from column 3) instead of snapping to identity rotation and unit scale when the target animation has no channel for a bone.
 
-**Graphics3D — MorphTarget3D.** `rt_morphtarget3d_set_weight` clamps weights to `[-1, 1]` so callers can't silently over-extrude vertices past the target mesh.
+**Graphics3D — MorphTarget3D.** `rt_morphtarget3d_set_weight` clamps weights to `[-1, 1]` so callers can't silently over-extrude vertices past the target mesh. Packed position/normal delta arrays (`packed_pos_deltas` / `packed_nrm_deltas`) are now rebuilt lazily, gated on a generation counter: `morphtarget_touch_payload` bumps the generation when shapes are added or deltas edited; weight-only changes skip the rebuild. Backends that prefer GPU-side morphing (Metal, OpenGL, D3D11) consume the shared packed buffer directly.
+
+**Graphics3D — Backends.** `vgfx3d_backend.h` plus the four concrete backends (`vgfx3d_backend_d3d11.c`, `vgfx3d_backend_metal.m`, `vgfx3d_backend_opengl.c`, `vgfx3d_backend_sw.c`) extend their morph-handoff surface to accept the shared packed-delta buffers from `rt_morphtarget3d`. `vgfx3d_backend_prefers_gpu_morph` is formalized on the selector; the software backend gets matching CPU-fallback paths so feature behavior stays uniform across all four backends.
+
+**Graphics3D — Lights / PostFX / Scene.** `rt_light3d` refinements for colour/intensity initialization and finalizer plumbing so lights are safely retained/released through scene-graph mutations. `rt_postfx3d` picks up a small header/surface touch. `rt_scene3d` gains reference-handling refinements matching the new mesh-reference pattern.
 
 **Graphics3D — Physics3D / Collider3D.** The heightfield collider normal formula now multiplies the Y component by both horizontal scales and carries the perpendicular horizontal scale on each lateral component; this fixes tilted lighting and misaligned physics normals on non-uniformly scaled heightfields. `capsule_axis_endpoints` documents its Y-only contract; an opt-in `RT_PHYSICS3D_STRICT_CAPSULE_AXIS` build flag traps on non-identity capsule orientation so the limitation becomes visible instead of silently corrupting collision.
 
@@ -168,7 +176,11 @@ Counts produced by `scripts/count_sloc.sh` (`Production SLOC` = `src/` minus `sr
 - Three new cases in `test_vg_tier2_fixes.c`: `tabbar_metrics_follow_theme_scale`, `tab_tooltip_can_be_replaced`, `native_menubar_measures_to_zero_height`. Additional tier coverage for TabBar close-index lifetime/full-rect hit testing, toolbar/statusbar local hit testing, VBox/HBox flex margin budgeting, SplitPane tiny-resize clamping, ScrollView cross-axis auto-hide, ListBox virtual clipping, Toolbar overflow popup, `ToolbarItem.SetText()` invalidation, fold-gutter click toggling, silent `TextInput.SetText`, CodeEditor line-slot metadata reuse, hidden-widget focus/capture cleanup, tab-tooltip hover propagation, scrollbar drag capture, wrap-aware pixel helpers, folded-line pixel mapping, line-number-width font tracking, live FindBar semantics, menu/toolbar pixel-icon contracts, and `TabBar.WasChanged()` edge triggering.
 - Extended `RTGuiRuntimeTests.c` with CodeEditor tab-size clamping, word-wrap toggle, `CanUndo`/`CanRedo`, folded-line pixel helpers, line-number-width tracking, live FindBar text/no-op replace checks, menu/toolbar pixel-icon checks, and `test_tabbar_close_click_index_survives_auto_close`.
 - Extended `RTVideoWidgetContractTests.cpp` with explicit destroy coverage.
-- Three new weight-clamp cases in `test_rt_morphtarget3d.cpp`. Full 3D suite verification: 318 tests green across `test_rt_morphtarget3d`, `test_rt_skeleton3d`, `test_rt_canvas3d`, `test_rt_physics3d`, `test_rt_animcontroller3d`.
+- Extended `test_rt_morphtarget3d.cpp` with weight-clamp cases plus packed-payload generation tracking (shape-add and delta-edit bump the generation; weight-only edits do not) and packed position/normal export assertions.
+- `test_rt_canvas3d.cpp` (+208 LOC) and `test_rt_canvas3d_gpu_paths.cpp` (+60 LOC) extended for the new VP caching, overlay paths, and backend hand-off.
+- New case in `test_rt_scene3d.cpp` guarding scene-graph reference handling through mesh reassignment.
+- New shared-contract cases in `test_vgfx3d_backend_d3d11_shared.c`, `test_vgfx3d_backend_metal_shared.c`, `test_vgfx3d_backend_opengl_shared.c`, and `test_vgfx3d_backend_utils.c` for the packed-delta handoff across every backend.
+- Extended `RTParticles3DContractTests.cpp` contract coverage. Full 3D suite verification on the prior pass: 318 tests green across `test_rt_morphtarget3d`, `test_rt_skeleton3d`, `test_rt_canvas3d`, `test_rt_physics3d`, `test_rt_animcontroller3d`.
 - Extended `RTCameraTests.cpp`, `test_rt_bitmapfont.cpp`, `test_rt_tilemap_layers.cpp`, `RTCanvasFrameTests.cpp`, `RTCanvasTextLayoutTests.cpp`, `RTCanvasUnavailableTests.cpp`, `RTPixelsTests.cpp`, and `test_rt_sprite_consolidated.cpp` for parallax-camera rendering, UTF-8 codepoint text, and the refined sprite/tilemap surfaces.
 - New `tests/zia_runtime/41_runtime_reference_types.zia` exercising `Viper.Network.Url.Parse`, property access (`Host`, `Path`), `Url.Clone()` returning `Url?`, and `!` unwrap.
 - New `MacPlannerMapsMachineAndHostSyscallsToLibSystem` case in `test_platform_import_planners.cpp` for the new dynamic-symbol entries.
@@ -189,5 +201,6 @@ Counts produced by `scripts/count_sloc.sh` (`Production SLOC` = `src/` minus `sr
 | `6c600dbd9` | 2026-04-16 | `chore(gui,runtime,zia)`: GUI correctness sweep (dialog, tooltip, notification, findreplace, tabbar, contextmenu, codeeditor, scrollview, splitpane, flex layout, textinput), per-widget tick, FileDialog/Spinner/Image expansion, lowerer refactor |
 | `deccd1978` | 2026-04-16 | `chore(gui,runtime,docs)`: macOS arrow-key translation, mouse-wheel union-aliasing, dropdown flip-above, scrollview narrow-gutter, tooltip wrap termination, treeview scroll clamp, notification fade, widget polish sweep |
 | `c5b0685af` | 2026-04-16 | `chore(graphics3d,graphics,runtime)`: skeleton parent/bone-index validation, terrain/heightfield normals, capsule Y-only contract, navmesh edge hash, crossfade bind-pose TRS, Canvas3D cached_vp, morph clamp, particle dt, water direction, parallax camera, UTF-8 text |
+| `cd07b31af` | 2026-04-16 | `chore(graphics3d,runtime,docs)`: Camera3D input sanitizers, Mesh3D reference-slot helpers, MorphTarget3D lazy packed-payload rebuild, backend packed-delta handoff (d3d11/metal/opengl/sw), release-notes re-organized by area |
 
 <!-- END DRAFT -->

@@ -5,9 +5,13 @@
 //
 //===----------------------------------------------------------------------===//
 
+extern "C" {
+#include "rt_canvas3d_internal.h"
 #include "rt_particles3d.h"
+}
 
 #include <cassert>
+#include <cmath>
 #include <csetjmp>
 #include <cstdint>
 #include <cstdio>
@@ -19,6 +23,19 @@ namespace {
 std::jmp_buf g_env;
 const char *g_last_trap = nullptr;
 bool g_expect_trap = false;
+int g_draw_mesh_calls = 0;
+int g_draw_mesh_matrix_keyed_calls = 0;
+int g_last_mesh_vertex_count = 0;
+int g_last_mesh_index_count = 0;
+double g_keyed_draw_z[16] = {0.0};
+double g_keyed_draw_alpha[16] = {0.0};
+
+struct StubMaterial {
+    double color[3] = {0.0, 0.0, 0.0};
+    double alpha = 1.0;
+    int8_t unlit = 0;
+    void *texture = nullptr;
+};
 
 } // namespace
 
@@ -41,16 +58,27 @@ extern "C" void rt_obj_free(void *obj) {
 extern "C" void rt_canvas3d_add_temp_buffer(void *, void *) {}
 
 extern "C" void *rt_material3d_new(void) {
-    return std::calloc(1, 1);
+    return std::calloc(1, sizeof(StubMaterial));
 }
 
-extern "C" void rt_material3d_set_color(void *, double, double, double) {}
+extern "C" void rt_material3d_set_color(void *m, double r, double g, double b) {
+    StubMaterial *mat = static_cast<StubMaterial *>(m);
+    mat->color[0] = r;
+    mat->color[1] = g;
+    mat->color[2] = b;
+}
 
-extern "C" void rt_material3d_set_unlit(void *, int8_t) {}
+extern "C" void rt_material3d_set_unlit(void *m, int8_t enabled) {
+    static_cast<StubMaterial *>(m)->unlit = enabled;
+}
 
-extern "C" void rt_material3d_set_alpha(void *, double) {}
+extern "C" void rt_material3d_set_alpha(void *m, double a) {
+    static_cast<StubMaterial *>(m)->alpha = a;
+}
 
-extern "C" void rt_material3d_set_texture(void *, void *) {}
+extern "C" void rt_material3d_set_texture(void *m, void *tex) {
+    static_cast<StubMaterial *>(m)->texture = tex;
+}
 
 extern "C" void *rt_mat4_identity(void) {
     static double identity[16] = {
@@ -58,7 +86,27 @@ extern "C" void *rt_mat4_identity(void) {
     return identity;
 }
 
-extern "C" void rt_canvas3d_draw_mesh(void *, void *, void *, void *) {}
+extern "C" void rt_canvas3d_draw_mesh(void *, void *mesh, void *, void *) {
+    rt_mesh3d *m = static_cast<rt_mesh3d *>(mesh);
+    g_draw_mesh_calls++;
+    g_last_mesh_vertex_count = m ? (int)m->vertex_count : 0;
+    g_last_mesh_index_count = m ? (int)m->index_count : 0;
+}
+
+extern "C" void rt_canvas3d_draw_mesh_matrix_keyed(void *,
+                                                   void *,
+                                                   const double *model_matrix,
+                                                   void *material,
+                                                   const void *,
+                                                   const float *,
+                                                   const float *) {
+    int draw_index = g_draw_mesh_matrix_keyed_calls++;
+    if (draw_index < (int)(sizeof(g_keyed_draw_z) / sizeof(g_keyed_draw_z[0]))) {
+        g_keyed_draw_z[draw_index] = model_matrix ? model_matrix[11] : 0.0;
+        g_keyed_draw_alpha[draw_index] =
+            material ? static_cast<StubMaterial *>(material)->alpha : 0.0;
+    }
+}
 
 extern "C" void rt_trap(const char *msg) {
     g_last_trap = msg;
@@ -121,11 +169,69 @@ static void test_particles_expire_after_lifetime() {
     assert(rt_particles3d_get_count(ps) == 0);
 }
 
+static void reset_draw_records() {
+    g_draw_mesh_calls = 0;
+    g_draw_mesh_matrix_keyed_calls = 0;
+    g_last_mesh_vertex_count = 0;
+    g_last_mesh_index_count = 0;
+    std::memset(g_keyed_draw_z, 0, sizeof(g_keyed_draw_z));
+    std::memset(g_keyed_draw_alpha, 0, sizeof(g_keyed_draw_alpha));
+}
+
+static rt_camera3d make_test_camera() {
+    rt_camera3d cam = {};
+    cam.view[0] = 1.0;
+    cam.view[5] = 1.0;
+    cam.view[10] = 1.0;
+    cam.view[15] = 1.0;
+    cam.projection[0] = 1.0;
+    cam.projection[5] = 1.0;
+    cam.projection[10] = 1.0;
+    cam.projection[15] = 1.0;
+    cam.eye[0] = 0.0;
+    cam.eye[1] = 0.0;
+    cam.eye[2] = 0.0;
+    return cam;
+}
+
+static void test_draw_additive_batches_and_alpha_splits_per_particle() {
+    void *ps = rt_particles3d_new(8);
+    rt_camera3d cam = make_test_camera();
+    assert(ps != nullptr);
+
+    rt_particles3d_set_position(ps, 0.0, 0.0, 1.0);
+    rt_particles3d_burst(ps, 1);
+    rt_particles3d_set_position(ps, 0.0, 0.0, 5.0);
+    rt_particles3d_burst(ps, 1);
+    rt_particles3d_set_position(ps, 0.0, 0.0, 3.0);
+    rt_particles3d_burst(ps, 1);
+    assert(rt_particles3d_get_count(ps) == 3);
+
+    rt_particles3d_set_additive(ps, 1);
+    reset_draw_records();
+    rt_particles3d_draw(ps, reinterpret_cast<void *>(1), &cam);
+    assert(g_draw_mesh_calls == 1);
+    assert(g_draw_mesh_matrix_keyed_calls == 0);
+    assert(g_last_mesh_vertex_count == 12);
+    assert(g_last_mesh_index_count == 18);
+
+    rt_particles3d_set_additive(ps, 0);
+    reset_draw_records();
+    rt_particles3d_draw(ps, reinterpret_cast<void *>(1), &cam);
+    assert(g_draw_mesh_calls == 0);
+    assert(g_draw_mesh_matrix_keyed_calls == 3);
+    assert(std::fabs(g_keyed_draw_z[0] - 5.0) < 1e-6);
+    assert(std::fabs(g_keyed_draw_z[1] - 3.0) < 1e-6);
+    assert(std::fabs(g_keyed_draw_z[2] - 1.0) < 1e-6);
+    assert(std::fabs(g_keyed_draw_alpha[0] - 1.0) < 1e-6);
+}
+
 int main() {
     expect_trap_on_invalid_capacity();
     test_burst_and_clear();
     test_start_stop_and_update_spawns_particles();
     test_particles_expire_after_lifetime();
+    test_draw_additive_batches_and_alpha_splits_per_particle();
     std::printf("RTParticles3DContractTests passed.\n");
     return 0;
 }

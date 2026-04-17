@@ -98,6 +98,7 @@ GPU backends now treat `RenderTarget3D` color buffers as lazily synchronized CPU
 
 - backends mark the render target color as dirty when an RTT pass finishes
 - [`rt_rendertarget3d_as_pixels()`](/Users/stephen/git/viper/src/runtime/graphics/rt_rendertarget3d.c) and [`rt_canvas3d_screenshot()`](/Users/stephen/git/viper/src/runtime/graphics/rt_canvas3d_overlay.c) call the backend-owned sync hook only when CPU pixels are actually requested
+- while a render target is bound, Canvas3D overlay sizing, screenshots, and `Width`/`Height` queries follow the active target dimensions instead of the window dimensions
 - this avoids unconditional GPU stalls on RTT-heavy frames while preserving the `RenderTarget3D.AsPixels()` contract
 
 ## Software Renderer Pipeline (vgfx3d_backend_sw.c)
@@ -345,13 +346,13 @@ Bone palette computation (per-frame, in `compute_bone_palette`):
 
 ## Particle Billboard Rendering
 
-All particles are batched into a single draw call per `Particles3D.Draw()`:
+`Particles3D.Draw()` uses one temporary billboard build per call, then chooses submission strategy by blend mode:
 
 1. Extract camera right/up vectors from the view matrix (rows 0 and 1)
 2. For alpha blend mode: sort particles back-to-front by distance from camera (insertion sort)
 3. Build vertex buffer: 4 vertices per particle (center ± right*halfSize ± up*halfSize), with per-vertex color/alpha from lifetime interpolation
 4. Build index buffer: 2 triangles per quad (CCW winding)
-5. Submit as one `DrawMesh` call with an unlit material (vertex colors handle tinting)
+5. Additive mode submits one batched `DrawMesh` call; alpha mode submits one keyed quad draw per particle so blending sorts correctly against the rest of the scene
 
 ## Post-Processing Chain
 

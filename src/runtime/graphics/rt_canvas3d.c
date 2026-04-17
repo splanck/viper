@@ -116,6 +116,31 @@ static void rt_canvas3d_apply_resize(rt_canvas3d *c, int32_t w, int32_t h) {
         c->backend->resize(c->backend_ctx, w, h);
 }
 
+/// @brief Resolve the dimensions of the canvas's active render output.
+///
+/// When a render target is bound, 2D overlays and coordinate
+/// conversions should operate in render-target pixel space rather than
+/// the window's framebuffer size.
+static void canvas3d_active_output_size(const rt_canvas3d *c, int32_t *out_w, int32_t *out_h) {
+    if (out_w)
+        *out_w = 0;
+    if (out_h)
+        *out_h = 0;
+    if (!c)
+        return;
+    if (c->render_target) {
+        if (out_w)
+            *out_w = c->render_target->width;
+        if (out_h)
+            *out_h = c->render_target->height;
+        return;
+    }
+    if (out_w)
+        *out_w = c->width;
+    if (out_h)
+        *out_h = c->height;
+}
+
 /// @brief Window-system resize callback — `userdata` is the canvas pointer.
 ///
 /// Hooked into the underlying `vgfx_window_t`'s resize event so the
@@ -617,12 +642,19 @@ static float canvas3d_compute_sort_key(const rt_canvas3d *c, const float *model_
 static void canvas3d_build_ortho_camera(const rt_canvas3d *c, vgfx3d_camera_params_t *params) {
     float w;
     float h;
+    int32_t out_w = 0;
+    int32_t out_h = 0;
 
     if (!c || !params)
         return;
     memset(params, 0, sizeof(*params));
-    w = (float)c->width + 2.0f;
-    h = (float)c->height + 2.0f;
+    canvas3d_active_output_size(c, &out_w, &out_h);
+    if (out_w <= 0)
+        out_w = c->width;
+    if (out_h <= 0)
+        out_h = c->height;
+    w = (float)out_w + 2.0f;
+    h = (float)out_h + 2.0f;
     params->projection[0] = 2.0f / w;
     params->projection[5] = -2.0f / h;
     params->projection[10] = -1.0f;
@@ -660,7 +692,13 @@ int canvas3d_begin_overlay_frame(rt_canvas3d *c, int8_t preserve_existing_color)
     c->cached_cam_pos[2] = 1.0f;
     c->draw_count = 0;
     c->frame_is_2d = 1;
-    memcpy(c->cached_vp, params.projection, sizeof(c->cached_vp));
+    for (int r = 0; r < 4; r++)
+        for (int col = 0; col < 4; col++)
+            c->cached_vp[r * 4 + col] =
+                params.projection[r * 4 + 0] * params.view[0 * 4 + col] +
+                params.projection[r * 4 + 1] * params.view[1 * 4 + col] +
+                params.projection[r * 4 + 2] * params.view[2 * 4 + col] +
+                params.projection[r * 4 + 3] * params.view[3 * 4 + col];
     c->backend->begin_frame(c->backend_ctx, &params);
     c->in_frame = 1;
     return 1;
@@ -1299,8 +1337,8 @@ void *rt_canvas3d_new(rt_string title, int64_t w, int64_t h) {
  *=========================================================================*/
 
 /// @brief Clear the framebuffer and depth buffer with the given background color.
-/// @details Must be called at the start of each frame before Begin. Also resets
-///          fog state and ambient light to defaults for the new frame.
+/// @details Must be called at the start of each frame before Begin. Fog and
+///          ambient light persist until explicitly changed.
 void rt_canvas3d_clear(void *obj, double r, double g, double b) {
     if (!obj)
         return;
@@ -1479,8 +1517,8 @@ int canvas3d_queue_screen_line(rt_canvas3d *c,
 ///
 /// All subsequent screen-space draws (rects, lines, sprites, text)
 /// queue into the post-3D HUD pass, which renders after the 3D
-/// scene, postFX, and tonemapping. Pair with `rt_canvas3d_end_2d`
-/// to return to 3D drawing.
+/// scene, postFX, and tonemapping. Pair with `rt_canvas3d_end`
+/// to finish the overlay pass.
 void rt_canvas3d_begin_2d(void *obj) {
     vgfx3d_camera_params_t params;
 
@@ -1501,6 +1539,8 @@ void rt_canvas3d_begin_2d(void *obj) {
     c->cached_cam_pos[0] = 0.0f;
     c->cached_cam_pos[1] = 0.0f;
     c->cached_cam_pos[2] = 1.0f;
+    c->frame_serial++;
+    canvas3d_prune_motion_history(c);
     c->draw_count = 0;
     c->frame_is_2d = 1;
     // Cache the full VP product so cached_vp has consistent semantics between
@@ -2455,12 +2495,22 @@ void rt_canvas3d_add_temp_object(void *obj, void *value) {
 
 /// @brief Get the current canvas width in pixels (updates on window resize).
 int64_t rt_canvas3d_get_width(void *obj) {
-    return obj ? ((rt_canvas3d *)obj)->width : 0;
+    if (!obj)
+        return 0;
+    rt_canvas3d *c = (rt_canvas3d *)obj;
+    int32_t out_w = 0;
+    canvas3d_active_output_size(c, &out_w, NULL);
+    return out_w;
 }
 
 /// @brief Get the current canvas height in pixels (updates on window resize).
 int64_t rt_canvas3d_get_height(void *obj) {
-    return obj ? ((rt_canvas3d *)obj)->height : 0;
+    if (!obj)
+        return 0;
+    rt_canvas3d *c = (rt_canvas3d *)obj;
+    int32_t out_h = 0;
+    canvas3d_active_output_size(c, NULL, &out_h);
+    return out_h;
 }
 
 /// @brief Get the current frames-per-second (updated each Flip call).

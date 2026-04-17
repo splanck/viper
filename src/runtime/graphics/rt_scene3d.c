@@ -160,21 +160,6 @@ static int mat4d_invert(const double *m, double *out) {
     return 0;
 }
 
-/// @brief Transform a 3D point `(x,y,z)` by row-major matrix `m` (treats point as `w=1`).
-static void mat4d_transform_point(const double *m,
-                                  double x,
-                                  double y,
-                                  double z,
-                                  double *out_x,
-                                  double *out_y,
-                                  double *out_z) {
-    if (!m || !out_x || !out_y || !out_z)
-        return;
-    *out_x = m[0] * x + m[1] * y + m[2] * z + m[3];
-    *out_y = m[4] * x + m[5] * y + m[6] * z + m[7];
-    *out_z = m[8] * x + m[9] * y + m[10] * z + m[11];
-}
-
 /// @brief Set `out` to the identity quaternion `(0, 0, 0, 1)` — no rotation.
 static void quat_identity(double *out) {
     if (!out)
@@ -201,35 +186,6 @@ static void quat_normalize_local(double *q) {
     q[1] *= inv_len;
     q[2] *= inv_len;
     q[3] *= inv_len;
-}
-
-/// @brief Quaternion conjugate `(-x, -y, -z, w)` — for unit quats, this is the inverse rotation.
-static void quat_conjugate_local(const double *q, double *out) {
-    if (!q || !out)
-        return;
-    out[0] = -q[0];
-    out[1] = -q[1];
-    out[2] = -q[2];
-    out[3] = q[3];
-}
-
-/// @brief Hamilton quaternion product `out = a * b` — composition of rotations (apply `b` then `a`).
-static void quat_mul_local(const double *a, const double *b, double *out) {
-    double x;
-    double y;
-    double z;
-    double w;
-    if (!a || !b || !out)
-        return;
-    x = a[3] * b[0] + a[0] * b[3] + a[1] * b[2] - a[2] * b[1];
-    y = a[3] * b[1] - a[0] * b[2] + a[1] * b[3] + a[2] * b[0];
-    z = a[3] * b[2] + a[0] * b[1] - a[1] * b[0] + a[2] * b[3];
-    w = a[3] * b[3] - a[0] * b[0] - a[1] * b[1] - a[2] * b[2];
-    out[0] = x;
-    out[1] = y;
-    out[2] = z;
-    out[3] = w;
-    quat_normalize_local(out);
 }
 
 /// @brief Extract a unit quaternion from the rotation part of a row-major matrix.
@@ -328,6 +284,76 @@ static void quat_from_world_matrix(const double *m, double *out) {
     quat_from_matrix_rows(rx, ux, fx, ry, uy, fy, rz, uz, fz, out);
 }
 
+/// @brief Decompose a row-major TRS matrix into translation, rotation, and scale.
+static void decompose_trs_matrix(const double *m, double *pos, double *quat, double *scale) {
+    double rx;
+    double ry;
+    double rz;
+    double ux;
+    double uy;
+    double uz;
+    double fx;
+    double fy;
+    double fz;
+    if (!m)
+        return;
+    if (pos) {
+        pos[0] = m[3];
+        pos[1] = m[7];
+        pos[2] = m[11];
+    }
+    rx = m[0];
+    ry = m[4];
+    rz = m[8];
+    ux = m[1];
+    uy = m[5];
+    uz = m[9];
+    fx = m[2];
+    fy = m[6];
+    fz = m[10];
+    if (scale) {
+        scale[0] = sqrt(rx * rx + ry * ry + rz * rz);
+        scale[1] = sqrt(ux * ux + uy * uy + uz * uz);
+        scale[2] = sqrt(fx * fx + fy * fy + fz * fz);
+        if (scale[0] < 1e-12)
+            scale[0] = 1.0;
+        if (scale[1] < 1e-12)
+            scale[1] = 1.0;
+        if (scale[2] < 1e-12)
+            scale[2] = 1.0;
+        rx /= scale[0];
+        ry /= scale[0];
+        rz /= scale[0];
+        ux /= scale[1];
+        uy /= scale[1];
+        uz /= scale[1];
+        fx /= scale[2];
+        fy /= scale[2];
+        fz /= scale[2];
+    } else {
+        double rlen = sqrt(rx * rx + ry * ry + rz * rz);
+        double ulen = sqrt(ux * ux + uy * uy + uz * uz);
+        double flen = sqrt(fx * fx + fy * fy + fz * fz);
+        if (rlen < 1e-12)
+            rlen = 1.0;
+        if (ulen < 1e-12)
+            ulen = 1.0;
+        if (flen < 1e-12)
+            flen = 1.0;
+        rx /= rlen;
+        ry /= rlen;
+        rz /= rlen;
+        ux /= ulen;
+        uy /= ulen;
+        uz /= ulen;
+        fx /= flen;
+        fy /= flen;
+        fz /= flen;
+    }
+    if (quat)
+        quat_from_matrix_rows(rx, ux, fx, ry, uy, fy, rz, uz, fz, quat);
+}
+
 /// @brief Recursively mark a node and all descendants as dirty.
 static void mark_dirty(rt_scene_node3d *node) {
     node->world_dirty = 1;
@@ -398,54 +424,38 @@ static void scene_node_get_world_rotation(rt_scene_node3d *node, double *out_qua
 static void scene_node_set_world_transform(rt_scene_node3d *node,
                                            const double *world_pos,
                                            const double *world_quat) {
-    double local_pos[3];
-    double local_quat[4];
+    double world_rot[4];
+    double desired_world[16];
+    double local_matrix[16];
     double inv_parent[16];
     if (!node || !world_pos || !world_quat)
         return;
+    world_rot[0] = world_quat[0];
+    world_rot[1] = world_quat[1];
+    world_rot[2] = world_quat[2];
+    world_rot[3] = world_quat[3];
+    quat_normalize_local(world_rot);
 
     if (!node->parent) {
         node->position[0] = world_pos[0];
         node->position[1] = world_pos[1];
         node->position[2] = world_pos[2];
-        node->rotation[0] = world_quat[0];
-        node->rotation[1] = world_quat[1];
-        node->rotation[2] = world_quat[2];
-        node->rotation[3] = world_quat[3];
+        node->rotation[0] = world_rot[0];
+        node->rotation[1] = world_rot[1];
+        node->rotation[2] = world_rot[2];
+        node->rotation[3] = world_rot[3];
         mark_dirty(node);
         return;
     }
 
     recompute_world_matrix(node->parent);
+    build_trs_matrix(world_pos, world_rot, node->scale_xyz, desired_world);
     if (mat4d_invert(node->parent->world_matrix, inv_parent) == 0) {
-        mat4d_transform_point(inv_parent,
-                              world_pos[0],
-                              world_pos[1],
-                              world_pos[2],
-                              &local_pos[0],
-                              &local_pos[1],
-                              &local_pos[2]);
+        mat4d_mul(inv_parent, desired_world, local_matrix);
     } else {
-        local_pos[0] = world_pos[0];
-        local_pos[1] = world_pos[1];
-        local_pos[2] = world_pos[2];
+        memcpy(local_matrix, desired_world, sizeof(local_matrix));
     }
-
-    node->position[0] = local_pos[0];
-    node->position[1] = local_pos[1];
-    node->position[2] = local_pos[2];
-
-    {
-        double parent_world_quat[4];
-        double parent_inv_quat[4];
-        scene_node_get_world_rotation(node->parent, parent_world_quat);
-        quat_conjugate_local(parent_world_quat, parent_inv_quat);
-        quat_mul_local(parent_inv_quat, world_quat, local_quat);
-        node->rotation[0] = local_quat[0];
-        node->rotation[1] = local_quat[1];
-        node->rotation[2] = local_quat[2];
-        node->rotation[3] = local_quat[3];
-    }
+    decompose_trs_matrix(local_matrix, node->position, node->rotation, node->scale_xyz);
 
     mark_dirty(node);
 }
@@ -809,6 +819,7 @@ void rt_scene_node3d_set_rotation(void *obj, void *quat) {
     n->rotation[1] = rt_quat_y(quat);
     n->rotation[2] = rt_quat_z(quat);
     n->rotation[3] = rt_quat_w(quat);
+    quat_normalize_local(n->rotation);
     mark_dirty(n);
 }
 

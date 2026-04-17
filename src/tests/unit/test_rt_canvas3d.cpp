@@ -930,11 +930,15 @@ static void test_cubemap_new() {
 }
 
 static void test_material_reflectivity() {
-    TEST("Material3D.Reflectivity — default 0.0, set/get works");
+    TEST("Material3D.Reflectivity clamps to [0, 1]");
     void *m = rt_material3d_new();
     EXPECT_NEAR(rt_material3d_get_reflectivity(m), 0.0, 0.001);
     rt_material3d_set_reflectivity(m, 0.5);
     EXPECT_NEAR(rt_material3d_get_reflectivity(m), 0.5, 0.001);
+    rt_material3d_set_reflectivity(m, 3.0);
+    EXPECT_NEAR(rt_material3d_get_reflectivity(m), 1.0, 0.001);
+    rt_material3d_set_reflectivity(m, -2.0);
+    EXPECT_NEAR(rt_material3d_get_reflectivity(m), 0.0, 0.001);
     /* Null safety */
     rt_material3d_set_reflectivity(NULL, 0.5);
     EXPECT_NEAR(rt_material3d_get_reflectivity(NULL), 0.0, 0.001);
@@ -1103,6 +1107,8 @@ static int g_render_target_release_count = 0;
 static int g_light_release_count = 0;
 static int g_render_target_sync_calls = 0;
 static uint8_t g_render_target_sync_rgba[4] = {0};
+static int g_canvas_begin_frame_calls = 0;
+static vgfx3d_camera_params_t g_canvas_begin_frame_params = {};
 } // namespace
 
 typedef struct {
@@ -1142,6 +1148,14 @@ extern "C" void tracked_light_finalizer(void *obj) {
     (void)obj;
     g_light_release_count++;
 }
+
+static void tracked_begin_frame(void *, const vgfx3d_camera_params_t *params) {
+    g_canvas_begin_frame_calls++;
+    if (params)
+        g_canvas_begin_frame_params = *params;
+}
+
+static void tracked_end_frame(void *) {}
 
 static void test_canvas_postfx_retains_owned_reference() {
     TEST("Canvas3D.SetPostFX retains owned reference");
@@ -1257,13 +1271,12 @@ static void test_rendertarget_as_pixels_syncs_gpu_color_on_demand() {
 }
 
 static void test_canvas_screenshot_syncs_render_target_on_demand() {
-    TEST("Canvas3D.Screenshot syncs backend-owned render targets on demand");
+    TEST("Canvas3D.Screenshot syncs render targets on demand without a window");
     rt_canvas3d canvas;
     rt_rendertarget3d *rt = (rt_rendertarget3d *)rt_rendertarget3d_new(1, 1);
     assert(rt != NULL && rt->target != NULL);
 
     memset(&canvas, 0, sizeof(canvas));
-    canvas.gfx_win = (vgfx_window_t)1;
     canvas.render_target = rt->target;
     canvas.width = 1;
     canvas.height = 1;
@@ -1291,6 +1304,62 @@ static void test_canvas_screenshot_syncs_render_target_on_demand() {
         FAIL("Canvas3D.Screenshot did not copy the synced render-target RGBA bytes");
         return;
     }
+    PASS();
+}
+
+static void test_canvas_dimensions_follow_active_render_target() {
+    TEST("Canvas3D width/height follow the active render target");
+    rt_canvas3d canvas;
+    void *rt = rt_rendertarget3d_new(320, 180);
+    assert(rt != NULL);
+
+    memset(&canvas, 0, sizeof(canvas));
+    canvas.width = 800;
+    canvas.height = 600;
+
+    EXPECT_EQ(rt_canvas3d_get_width(&canvas), 800);
+    EXPECT_EQ(rt_canvas3d_get_height(&canvas), 600);
+
+    rt_canvas3d_set_render_target(&canvas, rt);
+    EXPECT_EQ(rt_canvas3d_get_width(&canvas), 320);
+    EXPECT_EQ(rt_canvas3d_get_height(&canvas), 180);
+
+    rt_canvas3d_reset_render_target(&canvas);
+    EXPECT_EQ(rt_canvas3d_get_width(&canvas), 800);
+    EXPECT_EQ(rt_canvas3d_get_height(&canvas), 600);
+    PASS();
+}
+
+static void test_canvas_begin2d_uses_render_target_dimensions() {
+    TEST("Canvas3D.Begin2D uses render-target size and advances frame serial");
+    vgfx3d_backend_t backend = {};
+    rt_canvas3d canvas;
+    void *rt = rt_rendertarget3d_new(320, 180);
+    assert(rt != NULL);
+
+    backend.name = "opengl";
+    backend.begin_frame = tracked_begin_frame;
+    backend.end_frame = tracked_end_frame;
+
+    memset(&canvas, 0, sizeof(canvas));
+    canvas.backend = &backend;
+    canvas.gfx_win = (vgfx_window_t)1;
+    canvas.width = 800;
+    canvas.height = 600;
+    canvas.frame_serial = 41;
+    rt_canvas3d_set_render_target(&canvas, rt);
+
+    g_canvas_begin_frame_calls = 0;
+    memset(&g_canvas_begin_frame_params, 0, sizeof(g_canvas_begin_frame_params));
+    rt_canvas3d_begin_2d(&canvas);
+
+    EXPECT_EQ(g_canvas_begin_frame_calls, 1);
+    EXPECT_EQ(canvas.frame_serial, 42);
+    EXPECT_TRUE(canvas.frame_is_2d == 1, "Canvas3D.Begin2D marks the frame as 2D");
+    EXPECT_NEAR(g_canvas_begin_frame_params.projection[0], 2.0f / 322.0f, 0.0001);
+    EXPECT_NEAR(g_canvas_begin_frame_params.projection[5], -2.0f / 182.0f, 0.0001);
+
+    rt_canvas3d_end(&canvas);
     PASS();
 }
 
@@ -1333,6 +1402,34 @@ static void test_canvas_delta_time_preserves_first_zero() {
     canvas.dt_max_ms = 16;
     canvas.delta_time_ms = 0;
     EXPECT_EQ(rt_canvas3d_get_delta_time(&canvas), 0);
+    PASS();
+}
+
+static void test_canvas_draw_terrain_rejects_2d_frame() {
+    TEST("Canvas3D.DrawTerrain rejects Begin2D frames");
+    rt_canvas3d canvas;
+    void *terrain = rt_terrain3d_new(8, 8);
+    void *material = rt_material3d_new_color(0.2, 0.4, 0.6);
+    assert(terrain != NULL);
+    assert(material != NULL);
+    rt_terrain3d_set_material(terrain, material);
+
+    memset(&canvas, 0, sizeof(canvas));
+    canvas.in_frame = 1;
+    canvas.frame_is_2d = 1;
+    canvas.backend = (const vgfx3d_backend_t *)1;
+
+    g_expect_trap = true;
+    if (setjmp(g_trap_jmp) == 0) {
+        rt_canvas3d_draw_terrain(&canvas, terrain);
+        g_expect_trap = false;
+        FAIL("Canvas3D.DrawTerrain should trap during Begin2D");
+        return;
+    }
+    g_expect_trap = false;
+    EXPECT_TRUE(g_last_trap != nullptr &&
+                    std::strstr(g_last_trap, "cannot draw terrain during Begin2D/End") != nullptr,
+                "Canvas3D.DrawTerrain reports the Begin2D misuse");
     PASS();
 }
 
@@ -1423,6 +1520,30 @@ static void test_mesh_tangents_for_normal_map() {
     /* CalcTangents should not crash and mesh should still be valid */
     EXPECT_EQ(rt_mesh3d_get_vertex_count(m), 3);
     EXPECT_EQ(rt_mesh3d_get_triangle_count(m), 1);
+    PASS();
+}
+
+static void test_mesh_transform_updates_tangent_basis() {
+    TEST("Mesh3D.Transform updates tangent bases for normal mapping");
+    rt_mesh3d *m = (rt_mesh3d *)rt_mesh3d_new();
+    void *scale = rt_mat4_scale(2.0, 1.0, 1.0);
+    assert(m != NULL);
+
+    rt_mesh3d_add_vertex(m, 0, 0, 0, 0, 0, 1, 0, 0);
+    rt_mesh3d_add_vertex(m, 1, 0, 0, 0, 0, 1, 1, 0);
+    rt_mesh3d_add_vertex(m, 0, 1, 0, 0, 0, 1, 0, 1);
+    rt_mesh3d_add_triangle(m, 0, 1, 2);
+    m->vertices[0].tangent[0] = 0.70710678f;
+    m->vertices[0].tangent[1] = 0.70710678f;
+    m->vertices[0].tangent[2] = 0.0f;
+    m->vertices[0].tangent[3] = -1.0f;
+
+    rt_mesh3d_transform(m, scale);
+
+    EXPECT_NEAR(m->vertices[0].tangent[0], 0.44721359, 0.01);
+    EXPECT_NEAR(m->vertices[0].tangent[1], 0.89442719, 0.01);
+    EXPECT_NEAR(m->vertices[0].tangent[2], 0.0, 0.01);
+    EXPECT_NEAR(m->vertices[0].tangent[3], -1.0, 0.001);
     PASS();
 }
 
@@ -1662,6 +1783,7 @@ int main() {
     test_mesh_cylinder();
     test_mesh_clone();
     test_mesh_transform_uses_inverse_transpose_normals();
+    test_mesh_transform_updates_tangent_basis();
     test_mesh_recalc_normals();
     test_mesh_obj_loader();
     test_mesh_obj_loader_flattens_material_groups();
@@ -1750,11 +1872,14 @@ int main() {
     test_rendertarget_null_safety();
     test_rendertarget_as_pixels_syncs_gpu_color_on_demand();
     test_canvas_screenshot_syncs_render_target_on_demand();
+    test_canvas_dimensions_follow_active_render_target();
+    test_canvas_begin2d_uses_render_target_dimensions();
     test_canvas_postfx_uses_render_target_pixels();
     test_canvas_postfx_retains_owned_reference();
     test_canvas_render_target_retains_owned_reference();
     test_canvas_light_retains_owned_reference();
     test_canvas_delta_time_preserves_first_zero();
+    test_canvas_draw_terrain_rejects_2d_frame();
 
     /* Terrain3D splat */
     test_terrain_create();

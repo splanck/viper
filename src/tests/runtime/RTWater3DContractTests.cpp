@@ -9,6 +9,7 @@
 #include "rt_water3d.h"
 
 #include <cassert>
+#include <cstring>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -26,6 +27,8 @@ struct StubMaterial {
 int g_draw_mesh_calls = 0;
 int g_backface_cull_off = 0;
 int g_backface_cull_on = 0;
+int g_backface_cull_values[8] = {0};
+int g_backface_cull_call_count = 0;
 
 struct WaterWaveView {
     double dir[2];
@@ -82,6 +85,14 @@ extern "C" void *rt_mesh3d_new(void) {
     return std::calloc(1, sizeof(rt_mesh3d));
 }
 
+extern "C" void rt_mesh3d_clear(void *m) {
+    rt_mesh3d *mesh = static_cast<rt_mesh3d *>(m);
+    if (!mesh)
+        return;
+    mesh->vertex_count = 0;
+    mesh->index_count = 0;
+}
+
 extern "C" void rt_mesh3d_add_vertex(
     void *m, double, double, double, double, double, double, double, double) {
     static_cast<rt_mesh3d *>(m)->vertex_count++;
@@ -129,7 +140,14 @@ extern "C" void rt_material3d_set_reflectivity(void *m, double r) {
 
 extern "C" void rt_material3d_set_color(void *, double, double, double) {}
 
-extern "C" void rt_canvas3d_set_backface_cull(void *, int8_t enabled) {
+extern "C" void rt_canvas3d_set_backface_cull(void *canvas, int8_t enabled) {
+    if (canvas)
+        static_cast<rt_canvas3d *>(canvas)->backface_cull = enabled;
+    if (g_backface_cull_call_count < (int)(sizeof(g_backface_cull_values) /
+                                           sizeof(g_backface_cull_values[0]))) {
+        g_backface_cull_values[g_backface_cull_call_count] = enabled ? 1 : 0;
+    }
+    g_backface_cull_call_count++;
     if (enabled)
         g_backface_cull_on++;
     else
@@ -170,26 +188,38 @@ static void test_material_wiring_and_reflectivity() {
     rt_water3d_update(water, 0.1);
     assert(material->env_map == &dummy_env);
     assert(material->reflectivity == 0.75);
+
+    rt_water3d_set_reflectivity(water, 5.0);
+    rt_water3d_update(water, 0.1);
+    assert(material->reflectivity == 1.0);
 }
 
-static void test_draw_toggles_backface_cull() {
+static void test_draw_restores_backface_cull_state() {
     void *water = rt_water3d_new(4.0, 4.0);
+    rt_canvas3d canvas = {};
     rt_water3d_update(water, 0.1);
 
+    canvas.backface_cull = 0;
     g_draw_mesh_calls = 0;
     g_backface_cull_off = 0;
     g_backface_cull_on = 0;
-    rt_canvas3d_draw_water(reinterpret_cast<void *>(1), water, nullptr);
+    g_backface_cull_call_count = 0;
+    std::memset(g_backface_cull_values, 0, sizeof(g_backface_cull_values));
+    rt_canvas3d_draw_water(&canvas, water, nullptr);
 
     assert(g_draw_mesh_calls == 1);
-    assert(g_backface_cull_off == 1);
-    assert(g_backface_cull_on == 1);
+    assert(g_backface_cull_off == 2);
+    assert(g_backface_cull_on == 0);
+    assert(g_backface_cull_call_count == 2);
+    assert(g_backface_cull_values[0] == 0);
+    assert(g_backface_cull_values[1] == 0);
+    assert(canvas.backface_cull == 0);
 }
 
 int main() {
     test_resolution_clamp_drives_mesh_size();
     test_material_wiring_and_reflectivity();
-    test_draw_toggles_backface_cull();
+    test_draw_restores_backface_cull_state();
     std::printf("RTWater3DContractTests passed.\n");
     return 0;
 }

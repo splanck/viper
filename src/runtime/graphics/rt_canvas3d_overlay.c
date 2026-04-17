@@ -44,6 +44,32 @@ static int world_to_screen(
     return 1;
 }
 
+static int overlay_output_size(const rt_canvas3d *c, int32_t *out_w, int32_t *out_h) {
+    if (out_w)
+        *out_w = 0;
+    if (out_h)
+        *out_h = 0;
+    if (!c)
+        return 0;
+    if (c->render_target) {
+        if (out_w)
+            *out_w = c->render_target->width;
+        if (out_h)
+            *out_h = c->render_target->height;
+        return c->render_target->width > 0 && c->render_target->height > 0;
+    }
+    if (!c->gfx_win)
+        return 0;
+    vgfx_framebuffer_t fb;
+    if (!vgfx_get_framebuffer(c->gfx_win, &fb))
+        return 0;
+    if (out_w)
+        *out_w = fb.width;
+    if (out_h)
+        *out_h = fb.height;
+    return fb.width > 0 && fb.height > 0;
+}
+
 /// @brief Draw a 3D world-space line between two Vec3 endpoints in `color`. Useful for debug
 /// visualizers, motion trails, gizmos. Color is 0xRRGGBBAA. Auto-projects to screen space.
 void rt_canvas3d_draw_line3d(void *obj, void *from, void *to, int64_t color) {
@@ -52,10 +78,9 @@ void rt_canvas3d_draw_line3d(void *obj, void *from, void *to, int64_t color) {
     if (!obj || !from || !to)
         return;
     rt_canvas3d *c = (rt_canvas3d *)obj;
-    if (!c->gfx_win)
-        return;
-    vgfx_framebuffer_t fb;
-    if (!vgfx_get_framebuffer(c->gfx_win, &fb))
+    int32_t out_w = 0;
+    int32_t out_h = 0;
+    if (!overlay_output_size(c, &out_w, &out_h))
         return;
 
     {
@@ -65,9 +90,9 @@ void rt_canvas3d_draw_line3d(void *obj, void *from, void *to, int64_t color) {
         float sy0;
         float sx1;
         float sy1;
-        if (!world_to_screen(c, p0, &sx0, &sy0, fb.width, fb.height))
+        if (!world_to_screen(c, p0, &sx0, &sy0, out_w, out_h))
             return;
-        if (!world_to_screen(c, p1, &sx1, &sy1, fb.width, fb.height))
+        if (!world_to_screen(c, p1, &sx1, &sy1, out_w, out_h))
             return;
         if (!c->in_frame) {
             if (!canvas3d_begin_overlay_frame(c, 1))
@@ -97,17 +122,16 @@ void rt_canvas3d_draw_point3d(void *obj, void *pos, int64_t color, int64_t size)
     if (!obj || !pos)
         return;
     rt_canvas3d *c = (rt_canvas3d *)obj;
-    if (!c->gfx_win)
-        return;
-    vgfx_framebuffer_t fb;
-    if (!vgfx_get_framebuffer(c->gfx_win, &fb))
+    int32_t out_w = 0;
+    int32_t out_h = 0;
+    if (!overlay_output_size(c, &out_w, &out_h))
         return;
 
     {
         float p[3] = {(float)rt_vec3_x(pos), (float)rt_vec3_y(pos), (float)rt_vec3_z(pos)};
         float sx;
         float sy;
-        if (!world_to_screen(c, p, &sx, &sy, fb.width, fb.height))
+        if (!world_to_screen(c, p, &sx, &sy, out_w, out_h))
             return;
         if (!c->in_frame) {
             if (!canvas3d_begin_overlay_frame(c, 1))
@@ -159,15 +183,14 @@ void rt_canvas3d_draw_crosshair(void *obj, int64_t color, int64_t size) {
     if (!obj)
         return;
     rt_canvas3d *c = (rt_canvas3d *)obj;
-    if (!c->gfx_win)
-        return;
-    vgfx_framebuffer_t fb;
-    if (!vgfx_get_framebuffer(c->gfx_win, &fb))
+    int32_t out_w = 0;
+    int32_t out_h = 0;
+    if (!overlay_output_size(c, &out_w, &out_h))
         return;
 
     {
-        const int32_t cx = fb.width / 2;
-        const int32_t cy = fb.height / 2;
+        const int32_t cx = out_w / 2;
+        const int32_t cy = out_h / 2;
         const int32_t half = (int32_t)(size / 2);
         const float r = (float)((color >> 16) & 0xFF) / 255.0f;
         const float g = (float)((color >> 8) & 0xFF) / 255.0f;
@@ -223,8 +246,6 @@ void *rt_canvas3d_screenshot(void *obj) {
     if (!obj)
         return NULL;
     rt_canvas3d *c = (rt_canvas3d *)obj;
-    if (!c->gfx_win)
-        return NULL;
 
     const int32_t shot_w = c->render_target ? c->render_target->width : c->width;
     const int32_t shot_h = c->render_target ? c->render_target->height : c->height;
@@ -266,7 +287,7 @@ void *rt_canvas3d_screenshot(void *obj) {
         free(rgba);
     }
 
-    {
+    if (c->gfx_win) {
         vgfx_framebuffer_t fb;
         if (!vgfx_get_framebuffer(c->gfx_win, &fb))
             return pixels;

@@ -8,12 +8,14 @@
 // File: src/runtime/graphics/rt_particles3d.c
 // Purpose: 3D particle system — emitter spawning, Euler integration physics,
 //   lifetime/size/color interpolation, camera-facing billboard quads,
-//   batched single-draw-call rendering.
+//   and blend-mode-aware billboard rendering.
 //
 // Key invariants:
 //   - Dead particles are swapped to end (unstable removal, O(1) per kill).
 //   - Billboard quads use camera right/up vectors from the view matrix.
-//   - All particles batched into one vertex+index buffer per Draw().
+//   - Each Draw builds one temporary vertex+index buffer for all live particles.
+//   - Additive mode submits one batched draw; alpha mode submits one keyed quad
+//     draw per particle so scene sorting remains correct.
 //   - xorshift32 PRNG for deterministic randomization (no stdlib rand).
 //
 // Links: rt_particles3d.h, plans/3d/17-particle-system.md
@@ -114,6 +116,18 @@ static void unpack_color(int64_t packed, float *rgb) {
     rgb[0] = (float)((packed >> 16) & 0xFF) / 255.0f;
     rgb[1] = (float)((packed >> 8) & 0xFF) / 255.0f;
     rgb[2] = (float)(packed & 0xFF) / 255.0f;
+}
+
+static void normalize3(float *x, float *y, float *z) {
+    float len;
+    if (!x || !y || !z)
+        return;
+    len = sqrtf((*x) * (*x) + (*y) * (*y) + (*z) * (*z));
+    if (len <= 1e-8f)
+        return;
+    *x /= len;
+    *y /= len;
+    *z /= len;
 }
 
 /// @brief Generate a random direction within a cone of half-angle `spread`
@@ -545,10 +559,17 @@ void rt_particles3d_update(void *o, double delta_time) {
 }
 
 /*==========================================================================
- * Billboard rendering (batched single draw call)
+ * Billboard rendering
  *=========================================================================*/
 
 extern void rt_canvas3d_draw_mesh(void *obj, void *mesh, void *transform, void *material);
+extern void rt_canvas3d_draw_mesh_matrix_keyed(void *obj,
+                                               void *mesh_obj,
+                                               const double *model_matrix,
+                                               void *material_obj,
+                                               const void *motion_key,
+                                               const float *prev_bone_palette,
+                                               const float *prev_morph_weights);
 extern void *rt_material3d_new(void);
 extern void rt_material3d_set_color(void *m, double r, double g, double b);
 extern void rt_material3d_set_unlit(void *m, int8_t u);
@@ -558,7 +579,8 @@ extern void *rt_mat4_identity(void);
 
 /// @brief Render every live particle as a camera-facing billboard quad. Extracts right/up from
 /// the camera view matrix to build the quads. Sorts back-to-front for alpha blending; skips the
-/// sort when in additive mode (order-independent). Submits as a single batched mesh draw.
+/// sort when in additive mode (order-independent). Additive mode stays batched; alpha mode emits
+/// one keyed quad draw per particle so it can sort correctly against the rest of the scene.
 void rt_particles3d_draw(void *o, void *canvas3d, void *camera) {
     if (!o || !canvas3d || !camera)
         return;
@@ -573,6 +595,12 @@ void rt_particles3d_draw(void *o, void *canvas3d, void *camera) {
      * Row 0 = right, Row 1 = up (before translation). */
     float right[3] = {(float)cam->view[0], (float)cam->view[1], (float)cam->view[2]};
     float up[3] = {(float)cam->view[4], (float)cam->view[5], (float)cam->view[6]};
+    normalize3(&right[0], &right[1], &right[2]);
+    normalize3(&up[0], &up[1], &up[2]);
+    float forward[3] = {right[1] * up[2] - right[2] * up[1],
+                        right[2] * up[0] - right[0] * up[2],
+                        right[0] * up[1] - right[1] * up[0]};
+    normalize3(&forward[0], &forward[1], &forward[2]);
 
     /* Sort particles back-to-front for alpha blend (skip for additive) */
     if (!ps->additive_blend) {
@@ -614,21 +642,23 @@ void rt_particles3d_draw(void *o, void *canvas3d, void *camera) {
         float hs = p->size * 0.5f;
         uint32_t base = (uint32_t)i * 4;
 
-        /* 4 billboard vertices: center ± right*hs ± up*hs */
-        float cx = p->pos[0], cy = p->pos[1], cz = p->pos[2];
-
         /* v0 = bottom-left, v1 = bottom-right, v2 = top-right, v3 = top-left */
         for (int vi = 0; vi < 4; vi++) {
             float rs = (vi == 1 || vi == 2) ? hs : -hs;
             float us = (vi == 2 || vi == 3) ? hs : -hs;
             vgfx3d_vertex_t *v = &verts[base + vi];
-            v->pos[0] = cx + right[0] * rs + up[0] * us;
-            v->pos[1] = cy + right[1] * rs + up[1] * us;
-            v->pos[2] = cz + right[2] * rs + up[2] * us;
-            /* Normal faces camera (forward = cross(right, up)) */
-            v->normal[0] = right[1] * up[2] - right[2] * up[1];
-            v->normal[1] = right[2] * up[0] - right[0] * up[2];
-            v->normal[2] = right[0] * up[1] - right[1] * up[0];
+            if (ps->additive_blend) {
+                v->pos[0] = p->pos[0] + right[0] * rs + up[0] * us;
+                v->pos[1] = p->pos[1] + right[1] * rs + up[1] * us;
+                v->pos[2] = p->pos[2] + right[2] * rs + up[2] * us;
+            } else {
+                v->pos[0] = right[0] * rs + up[0] * us;
+                v->pos[1] = right[1] * rs + up[1] * us;
+                v->pos[2] = right[2] * rs + up[2] * us;
+            }
+            v->normal[0] = forward[0];
+            v->normal[1] = forward[1];
+            v->normal[2] = forward[2];
             v->color[0] = p->color[0];
             v->color[1] = p->color[1];
             v->color[2] = p->color[2];
@@ -645,12 +675,21 @@ void rt_particles3d_draw(void *o, void *canvas3d, void *camera) {
         verts[base + 3].uv[1] = 0;
 
         /* 2 triangles per quad (CCW) */
-        indices[i * 6 + 0] = base + 0;
-        indices[i * 6 + 1] = base + 1;
-        indices[i * 6 + 2] = base + 2;
-        indices[i * 6 + 3] = base + 0;
-        indices[i * 6 + 4] = base + 2;
-        indices[i * 6 + 5] = base + 3;
+        if (ps->additive_blend) {
+            indices[i * 6 + 0] = base + 0;
+            indices[i * 6 + 1] = base + 1;
+            indices[i * 6 + 2] = base + 2;
+            indices[i * 6 + 3] = base + 0;
+            indices[i * 6 + 4] = base + 2;
+            indices[i * 6 + 5] = base + 3;
+        } else {
+            indices[i * 6 + 0] = 0;
+            indices[i * 6 + 1] = 1;
+            indices[i * 6 + 2] = 2;
+            indices[i * 6 + 3] = 0;
+            indices[i * 6 + 4] = 2;
+            indices[i * 6 + 5] = 3;
+        }
     }
 
     /* Create a temporary mesh and submit via the normal draw pipeline.
@@ -662,29 +701,44 @@ void rt_particles3d_draw(void *o, void *canvas3d, void *camera) {
     tmp_mesh.indices = indices;
     tmp_mesh.index_count = idx_count;
 
-    /* Build a lightweight material-like draw command.
-     * Particles use the deferred draw queue with alpha < 1.0
-     * for proper transparency sorting with scene geometry. */
-
     if (!ps->cached_material) {
         ps->cached_material = rt_material3d_new();
         rt_material3d_set_color(ps->cached_material, 1.0, 1.0, 1.0);
         rt_material3d_set_unlit(ps->cached_material, 1);
     }
     void *mat = ps->cached_material;
-    /* Use average particle alpha for draw sorting (approximate) */
-    float avg_alpha = 0.0f;
-    for (int32_t i = 0; i < ps->count; i++)
-        avg_alpha += ps->particles[i].color[3];
-    avg_alpha /= (float)ps->count;
-    rt_material3d_set_alpha(mat, (double)avg_alpha);
     rt_material3d_set_texture(mat, ps->texture);
 
     /* Register buffers for end-of-frame cleanup */
     rt_canvas3d_add_temp_buffer(canvas3d, verts);
     rt_canvas3d_add_temp_buffer(canvas3d, indices);
 
-    rt_canvas3d_draw_mesh(canvas3d, &tmp_mesh, rt_mat4_identity(), mat);
+    if (ps->additive_blend) {
+        float max_alpha = 0.0f;
+        for (int32_t i = 0; i < ps->count; i++)
+            if (ps->particles[i].color[3] > max_alpha)
+                max_alpha = ps->particles[i].color[3];
+        rt_material3d_set_alpha(mat, (double)max_alpha);
+        rt_canvas3d_draw_mesh(canvas3d, &tmp_mesh, rt_mat4_identity(), mat);
+        return;
+    }
+
+    for (int32_t i = 0; i < ps->count; i++) {
+        vgfx3d_particle_t *p = &ps->particles[i];
+        rt_mesh3d quad_mesh;
+        double model_matrix[16] = {
+            1.0, 0.0, 0.0, (double)p->pos[0], 0.0, 1.0, 0.0, (double)p->pos[1],
+            0.0, 0.0, 1.0, (double)p->pos[2], 0.0, 0.0, 0.0, 1.0};
+        memset(&quad_mesh, 0, sizeof(quad_mesh));
+        quad_mesh.vertices = &verts[(size_t)i * 4u];
+        quad_mesh.vertex_count = 4;
+        quad_mesh.indices = &indices[(size_t)i * 6u];
+        quad_mesh.index_count = 6;
+        quad_mesh.bounds_dirty = 1;
+        rt_material3d_set_alpha(mat, (double)p->color[3]);
+        rt_canvas3d_draw_mesh_matrix_keyed(
+            canvas3d, &quad_mesh, model_matrix, mat, NULL, NULL, NULL);
+    }
 }
 
 #else

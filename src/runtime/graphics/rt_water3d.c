@@ -36,6 +36,7 @@ extern int32_t rt_obj_release_check0(void *p);
 extern void rt_obj_free(void *p);
 #include "rt_trap.h"
 extern void *rt_mesh3d_new(void);
+extern void rt_mesh3d_clear(void *m);
 extern void rt_mesh3d_add_vertex(
     void *m, double x, double y, double z, double nx, double ny, double nz, double u, double v);
 extern void rt_mesh3d_add_triangle(void *m, int64_t v0, int64_t v1, int64_t v2);
@@ -100,6 +101,14 @@ static void water3d_assign_ref(void **slot, void *value) {
     rt_obj_retain_maybe(value);
     water3d_release_ref(slot);
     *slot = value;
+}
+
+static double water3d_clamp01(double value) {
+    if (value < 0.0)
+        return 0.0;
+    if (value > 1.0)
+        return 1.0;
+    return value;
 }
 
 /// @brief GC finalizer: release every retained graphics resource (textures, mesh, material).
@@ -174,7 +183,7 @@ void rt_water3d_set_color(void *obj, double r, double g, double b, double a) {
     w->color[0] = r;
     w->color[1] = g;
     w->color[2] = b;
-    w->alpha = a;
+    w->alpha = water3d_clamp01(a);
 }
 
 /// @brief Set surface texture for water.
@@ -209,8 +218,12 @@ void rt_water3d_set_env_map(void *obj, void *cubemap) {
 
 /// @brief Set reflectivity [0.0-1.0] for environment mapping.
 void rt_water3d_set_reflectivity(void *obj, double r) {
-    if (obj)
-        ((rt_water3d *)obj)->reflectivity = r;
+    if (!obj)
+        return;
+    rt_water3d *w = (rt_water3d *)obj;
+    w->reflectivity = water3d_clamp01(r);
+    if (w->material)
+        rt_material3d_set_reflectivity(w->material, w->env_map ? w->reflectivity : 0.0);
 }
 
 /// @brief Set grid resolution (clamped to [8, 256]).
@@ -262,11 +275,8 @@ void rt_water3d_update(void *obj, double dt) {
     /* Regenerate mesh with new wave positions (reuse allocation to avoid GC pressure) */
     if (!w->mesh)
         w->mesh = rt_mesh3d_new();
-    else {
-        rt_mesh3d *m = (rt_mesh3d *)w->mesh;
-        m->vertex_count = 0;
-        m->index_count = 0;
-    }
+    else
+        rt_mesh3d_clear(w->mesh);
     int32_t grid = w->resolution;
     double hx = w->width * 0.5, hz = w->depth * 0.5;
     double step_x = w->width / grid;
@@ -356,9 +366,10 @@ void rt_canvas3d_draw_water(void *canvas, void *obj, void *camera) {
 
     /* Draw with backface culling disabled (water visible from both sides) */
     extern void rt_canvas3d_set_backface_cull(void *canvas, int8_t enabled);
+    int8_t restore_backface_cull = ((rt_canvas3d *)canvas)->backface_cull;
     rt_canvas3d_set_backface_cull(canvas, 0);
     rt_canvas3d_draw_mesh(canvas, w->mesh, rt_mat4_identity(), w->material);
-    rt_canvas3d_set_backface_cull(canvas, 1);
+    rt_canvas3d_set_backface_cull(canvas, restore_backface_cull);
 }
 
 #else

@@ -196,6 +196,39 @@ static void test_two_way_kinematic_switches_direction() {
     EXPECT_NEAR(rt_vec3_x(node_pos), -4.0, 0.001, "TwoWayKinematic pulls dynamic body pose back into node");
 }
 
+static void test_node_from_body_compensates_for_scaled_parent() {
+    void *scene = rt_scene3d_new();
+    void *parent = rt_scene_node3d_new();
+    void *child = rt_scene_node3d_new();
+    void *body = rt_body3d_new_sphere(0.5, 1.0);
+    void *local_pos;
+    void *local_scale;
+    void *local_rot;
+
+    rt_scene_node3d_set_scale(parent, 2.0, 3.0, 4.0);
+    rt_scene_node3d_add_child(parent, child);
+    rt_scene3d_add(scene, parent);
+
+    rt_body3d_set_position(body, 4.0, 9.0, 16.0);
+    rt_body3d_set_orientation(body, rt_quat_new(0.0, 0.0, 0.0, 1.0));
+
+    rt_scene_node3d_bind_body(child, body);
+    rt_scene_node3d_set_sync_mode(child, RT_SCENE_NODE3D_SYNC_NODE_FROM_BODY);
+    rt_scene3d_sync_bindings(scene, 0.016);
+
+    local_pos = rt_scene_node3d_get_position(child);
+    local_scale = rt_scene_node3d_get_scale(child);
+    local_rot = rt_scene_node3d_get_rotation(child);
+
+    EXPECT_NEAR(rt_vec3_x(local_pos), 2.0, 0.001, "Scaled parent sync divides world X by parent scale");
+    EXPECT_NEAR(rt_vec3_y(local_pos), 3.0, 0.001, "Scaled parent sync divides world Y by parent scale");
+    EXPECT_NEAR(rt_vec3_z(local_pos), 4.0, 0.001, "Scaled parent sync divides world Z by parent scale");
+    EXPECT_NEAR(rt_vec3_x(local_scale), 0.5, 0.001, "Scaled parent sync compensates X scale");
+    EXPECT_NEAR(rt_vec3_y(local_scale), 1.0 / 3.0, 0.001, "Scaled parent sync compensates Y scale");
+    EXPECT_NEAR(rt_vec3_z(local_scale), 0.25, 0.001, "Scaled parent sync compensates Z scale");
+    EXPECT_NEAR(rt_quat_w(local_rot), 1.0, 0.001, "Scaled parent sync keeps identity orientation normalized");
+}
+
 static void test_animator_root_motion_mode_consumes_delta_once() {
     void *scene = rt_scene3d_new();
     void *node = rt_scene_node3d_new();
@@ -280,6 +313,7 @@ int main() {
     test_node_from_body_resolves_child_local_space();
     test_body_from_node_uses_world_space();
     test_two_way_kinematic_switches_direction();
+    test_node_from_body_compensates_for_scaled_parent();
     test_animator_root_motion_mode_consumes_delta_once();
     test_scene_draw_uses_bound_animator_palette();
 

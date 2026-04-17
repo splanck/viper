@@ -159,8 +159,8 @@ The rendering surface. Creates a window and manages the render loop.
 | Property | Type | Access | Description |
 |----------|------|--------|-------------|
 | `ShouldClose` | Boolean | read | True when user closes window |
-| `Width` | Integer | read | Canvas width in pixels |
-| `Height` | Integer | read | Canvas height in pixels |
+| `Width` | Integer | read | Active output width in pixels (window, or current RenderTarget3D when bound) |
+| `Height` | Integer | read | Active output height in pixels (window, or current RenderTarget3D when bound) |
 | `Fps` | Integer | read | Frames per second |
 | `DeltaTime` | Integer | read | Milliseconds since last Flip (first frame = 0) |
 | `Backend` | String | read | Active renderer: "software", "metal", "d3d11", "opengl" |
@@ -178,7 +178,7 @@ The rendering surface. Creates a window and manages the render loop.
 |--------|-----------|-------------|
 | `Clear(r, g, b)` | `void(f64, f64, f64)` | Clear framebuffer and depth buffer (0.0-1.0 per channel) |
 | `Begin(camera)` | `void(obj)` | Start 3D frame — must be called before DrawMesh |
-| `Begin2D()` | `void()` | Start 2D overlay mode (for HUD drawing between End and Flip) |
+| `Begin2D()` | `void()` | Start 2D overlay mode for the active output (closed by `End()`) |
 | `End()` | `void()` | End frame — must be called after all draw calls |
 | `Flip()` | `void()` | Present frame to screen, compute DeltaTime |
 | `Poll()` | `i64()` | Process window events (call once per frame) |
@@ -233,7 +233,7 @@ The rendering surface. Creates a window and manages the render loop.
 | `DrawSphereWire(center, radius, color)` | `void(obj, f64, i64)` | Draw wireframe sphere |
 | `DrawDebugRay(origin, dir, length, color)` | `void(obj, obj, f64, i64)` | Draw debug ray |
 | `DrawAxis(transform, size)` | `void(obj, f64)` | Draw XYZ axes at a Mat4 position |
-| `Screenshot()` | `obj()` | Capture framebuffer as Pixels object |
+| `Screenshot()` | `obj()` | Capture the active output as Pixels (window or current RenderTarget3D) |
 
 ### HUD Overlay (2D)
 
@@ -672,6 +672,7 @@ func start() {
 ```
 
 **Note:** `AsPixels()` returns a fresh copy each call. The render target's buffers are independent from the window framebuffer.
+When a render target is bound, `Canvas3D.Width`, `Canvas3D.Height`, `Begin2D()`, debug overlays, and `Screenshot()` all operate in that target's pixel space instead of the window's.
 **PostFX:** If a render target is active when you call `Flip()`, the canvas applies the current `PostFX3D` chain to that render target instead of the window backbuffer.
 
 ## CubeMap3D
@@ -1348,8 +1349,9 @@ func start() {
 }
 ```
 
-- Particles are billboarded (camera-facing) and batched into a single draw call
-- Alpha blend mode sorts particles back-to-front; additive is order-independent
+- Particles are billboarded (camera-facing)
+- Additive mode stays fully batched in one draw call
+- Alpha blend mode sorts particles back-to-front and submits per-particle keyed draws so blending stays correct against the rest of the scene
 
 ## PostFX3D
 
@@ -2345,7 +2347,7 @@ func start() {
 
 Configure with `SetLODDistances(nearDist, farDist)` — chunks closer than `nearDist` use LOD 0, between `nearDist` and `farDist` use LOD 1, beyond `farDist` use LOD 2. Default: 100/250. Chunks outside the camera frustum are culled entirely (not drawn). Skirt geometry (`SetSkirtDepth(depth)`) hides cracks at LOD transitions by extending chunk edges downward.
 
-Draw via `Canvas3D.DrawTerrain(terrain)`.
+Draw via `Canvas3D.DrawTerrain(terrain)` during a normal 3D `Begin`/`End` pass. Terrain is not valid inside `Begin2D()`.
 
 See `examples/apiaudit/graphics3d/procedural_terrain_demo.zia` and `terrain_lod_demo.zia` for complete examples.
 

@@ -291,11 +291,33 @@ void rt_canvas3d_draw_instanced(void *canvas_obj, void *batch_obj) {
 
     {
         const float *submit_transforms = b->transforms;
-        const float *submit_prev = (b->has_prev_snapshot && b->prev_count == b->instance_count)
-                                       ? b->prev_transforms
-                                       : NULL;
-        int8_t has_prev = submit_prev ? 1 : 0;
+        float *owned_prev = NULL;
+        const float *submit_prev = NULL;
+        int8_t has_prev = 0;
         int32_t submit_count = b->instance_count;
+        if (b->has_prev_snapshot && b->prev_count > 0) {
+            if (b->prev_count == b->instance_count) {
+                submit_prev = b->prev_transforms;
+                has_prev = 1;
+            } else {
+                owned_prev = (float *)malloc((size_t)b->instance_count * 16u * sizeof(float));
+                if (owned_prev) {
+                    int32_t preserved = b->prev_count < b->instance_count ? b->prev_count : b->instance_count;
+                    if (preserved > 0) {
+                        memcpy(owned_prev,
+                               b->prev_transforms,
+                               (size_t)preserved * 16u * sizeof(float));
+                    }
+                    if (preserved < b->instance_count) {
+                        memcpy(&owned_prev[(size_t)preserved * 16u],
+                               &b->transforms[(size_t)preserved * 16u],
+                               (size_t)(b->instance_count - preserved) * 16u * sizeof(float));
+                    }
+                    submit_prev = owned_prev;
+                    has_prev = 1;
+                }
+            }
+        }
         if (mesh->bsphere_radius > 0.0f && b->instance_count > 0) {
             float *visible_transforms =
                 (float *)malloc((size_t)b->instance_count * 16u * sizeof(float));
@@ -319,12 +341,14 @@ void rt_canvas3d_draw_instanced(void *canvas_obj, void *batch_obj) {
                 if (visible_count == 0) {
                     free(visible_transforms);
                     free(visible_prev);
+                    free(owned_prev);
                     return;
                 }
                 if (visible_count < b->instance_count) {
                     rt_canvas3d_add_temp_buffer(canvas_obj, visible_transforms);
                     if (visible_prev)
                         rt_canvas3d_add_temp_buffer(canvas_obj, visible_prev);
+                    free(owned_prev);
                     submit_transforms = visible_transforms;
                     submit_prev = visible_prev;
                     submit_count = visible_count;
@@ -338,6 +362,8 @@ void rt_canvas3d_draw_instanced(void *canvas_obj, void *batch_obj) {
                 free(visible_prev);
             }
         }
+        if (owned_prev && submit_prev == owned_prev)
+            rt_canvas3d_add_temp_buffer(canvas_obj, owned_prev);
         rt_canvas3d_queue_instanced_batch(
             canvas_obj, mesh, mat, submit_transforms, submit_count, submit_prev, has_prev);
     }
