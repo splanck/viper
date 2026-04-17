@@ -205,6 +205,51 @@ static void test_world_joint_count(void) {
     PASS();
 }
 
+static void test_duplicate_world_add_joint_is_ignored(void) {
+    TEST("World ignores duplicate joint add");
+    void *w = rt_physics2d_world_new(0.0, 0.0);
+    void *a = rt_physics2d_body_new(0, 0, 10, 10, 1.0);
+    void *b = rt_physics2d_body_new(50, 0, 10, 10, 1.0);
+    void *j = rt_physics2d_distance_joint_new(a, b, 50.0);
+
+    rt_physics2d_world_add_joint(w, j);
+    rt_physics2d_world_add_joint(w, j);
+    assert(rt_physics2d_world_joint_count(w) == 1);
+    PASS();
+}
+
+static void test_removed_joint_reports_inactive(void) {
+    TEST("Removed joint reports inactive");
+    void *w = rt_physics2d_world_new(0.0, 0.0);
+    void *a = rt_physics2d_body_new(0, 0, 10, 10, 1.0);
+    void *b = rt_physics2d_body_new(50, 0, 10, 10, 1.0);
+    void *j = rt_physics2d_distance_joint_new(a, b, 50.0);
+
+    rt_physics2d_world_add_joint(w, j);
+    assert(rt_physics2d_joint_is_active(j) == 1);
+    rt_physics2d_world_remove_joint(w, j);
+    assert(rt_physics2d_joint_is_active(j) == 0);
+    PASS();
+}
+
+static void test_removing_body_clears_attached_joints(void) {
+    TEST("Removing body clears attached joints");
+    void *w = rt_physics2d_world_new(0.0, 0.0);
+    void *a = rt_physics2d_body_new(0, 0, 10, 10, 1.0);
+    void *b = rt_physics2d_body_new(50, 0, 10, 10, 1.0);
+    void *j = rt_physics2d_distance_joint_new(a, b, 50.0);
+
+    rt_physics2d_world_add(w, a);
+    rt_physics2d_world_add(w, b);
+    rt_physics2d_world_add_joint(w, j);
+    assert(rt_physics2d_world_joint_count(w) == 1);
+
+    rt_physics2d_world_remove(w, a);
+    assert(rt_physics2d_world_joint_count(w) == 0);
+    assert(rt_physics2d_joint_is_active(j) == 0);
+    PASS();
+}
+
 static void test_null_body_safety(void) {
     TEST("NULL body returns NULL joint");
     void *a = rt_physics2d_body_new(0, 0, 10, 10, 1.0);
@@ -250,6 +295,9 @@ int main() {
     test_circle_body();
     test_aabb_body_not_circle();
     test_world_joint_count();
+    test_duplicate_world_add_joint_is_ignored();
+    test_removed_joint_reports_inactive();
+    test_removing_body_clears_attached_joints();
     test_null_body_safety();
     test_negative_params_clamped();
     test_circle_body_min_radius();

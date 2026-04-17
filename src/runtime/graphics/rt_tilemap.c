@@ -48,6 +48,7 @@
 #include "rt_internal.h"
 #include "rt_object.h"
 #include "rt_physics2d.h"
+#include "rt_physics2d_internal.h"
 #include "rt_pixels.h"
 #include "rt_string.h"
 
@@ -225,7 +226,6 @@ void rt_tilemap_set_tileset(void *tilemap_ptr, void *pixels) {
         rt_heap_release(tilemap->tileset);
 
     tilemap->tileset = cloned;
-    rt_heap_retain(cloned);
 
     // Calculate tileset dimensions
     int64_t ts_width = rt_pixels_width(cloned);
@@ -589,6 +589,7 @@ int8_t rt_tilemap_collide_body(void *tilemap_ptr, void *body_ptr) {
     double bh = rt_physics2d_body_h(body_ptr);
     double bvx = rt_physics2d_body_vx(body_ptr);
     double bvy = rt_physics2d_body_vy(body_ptr);
+    double prev_by = rt_physics2d_body_prev_y(body_ptr);
 
     // Determine the range of tiles the body overlaps
     int64_t left = tilemap_floor_div((int64_t)bx, tw);
@@ -634,7 +635,7 @@ int8_t rt_tilemap_collide_body(void *tilemap_ptr, void *body_ptr) {
             // One-way platforms only resolve when the body's previous bottom edge was above
             // the platform top and the current frame crossed the surface while moving down.
             if (ctype == TILE_COLLISION_ONE_WAY) {
-                double prev_bottom = by2 - bvy;
+                double prev_bottom = prev_by + bh;
                 if (bvy <= 0.0 || prev_bottom > tile_y1 + 1.0)
                     continue;
                 by = tile_y1 - bh;
@@ -905,7 +906,6 @@ void rt_tilemap_set_layer_tileset(void *tilemap_ptr, int64_t layer, void *pixels
         rt_heap_release(lyr->tileset);
 
     lyr->tileset = cloned;
-    rt_heap_retain(cloned);
 
     int64_t ts_width = rt_pixels_width(cloned);
     int64_t ts_height = rt_pixels_height(cloned);

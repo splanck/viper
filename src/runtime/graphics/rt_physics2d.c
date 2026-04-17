@@ -59,6 +59,55 @@
 
 // Internal types are in rt_physics2d_internal.h
 
+static int8_t aabb_overlap(rt_body_impl *a, rt_body_impl *b, double *nx, double *ny, double *pen);
+static void resolve_collision(rt_body_impl *a, rt_body_impl *b, double nx, double ny, double pen);
+
+static void world_release_joint_at(rt_world_impl *w, int32_t joint_index) {
+    if (!w || joint_index < 0 || joint_index >= w->joint_count)
+        return;
+
+    ph_joint *joint = w->joints[joint_index];
+    if (joint)
+        joint->active = 0;
+    if (joint && rt_obj_release_check0(joint))
+        rt_obj_free(joint);
+
+    w->joint_count--;
+    w->joints[joint_index] = w->joints[w->joint_count];
+    w->joints[w->joint_count] = NULL;
+}
+
+static void world_remove_joints_for_body(rt_world_impl *w, rt_body_impl *body) {
+    if (!w || !body)
+        return;
+
+    for (int32_t i = 0; i < w->joint_count;) {
+        ph_joint *joint = w->joints[i];
+        if (joint && (joint->body_a == body || joint->body_b == body)) {
+            world_release_joint_at(w, i);
+            continue;
+        }
+        i++;
+    }
+}
+
+static void maybe_resolve_pair(rt_world_impl *w, int ii, int jj) {
+    if (!w || ii < 0 || jj < 0 || ii >= w->body_count || jj >= w->body_count)
+        return;
+
+    rt_body_impl *bi = w->bodies[ii];
+    rt_body_impl *bj = w->bodies[jj];
+    if (!bi || !bj)
+        return;
+
+    if (!((bi->collision_layer & bj->collision_mask) && (bj->collision_layer & bi->collision_mask)))
+        return;
+
+    double nx, ny, pen;
+    if (aabb_overlap(bi, bj, &nx, &ny, &pen))
+        resolve_collision(bi, bj, nx, ny, pen);
+}
+
 //=============================================================================
 // Collision detection and resolution
 //=============================================================================
@@ -219,6 +268,9 @@ static void resolve_collision(rt_body_impl *a, rt_body_impl *b, double nx, doubl
 static void world_finalizer(void *obj) {
     rt_world_impl *w = (rt_world_impl *)obj;
     if (w) {
+        while (w->joint_count > 0)
+            world_release_joint_at(w, w->joint_count - 1);
+
         int64_t i;
         for (i = 0; i < w->body_count; i++) {
             if (w->bodies[i] && rt_obj_release_check0(w->bodies[i]))
@@ -260,6 +312,14 @@ void rt_physics2d_world_step(void *obj, double dt) {
     if (!obj || dt <= 0.0)
         return;
     w = (rt_world_impl *)obj;
+
+    for (i = 0; i < w->body_count; i++) {
+        rt_body_impl *b = w->bodies[i];
+        if (!b)
+            continue;
+        b->prev_x = b->x;
+        b->prev_y = b->y;
+    }
 
     /* Step 1: Apply accumulated forces and gravity to each dynamic body's
      * velocity (symplectic Euler, force→velocity half-step).
@@ -303,9 +363,9 @@ void rt_physics2d_world_step(void *obj, double dt) {
      * concurrent worlds from separate threads with no data sharing.
      *
      * The grid intentionally stores uint8_t body indices (not pointers) to
-     * keep each cell small. BPG_CELL_MAX caps the count per cell; a body is
-     * silently dropped from a cell if it overflows — which only affects
-     * broad-phase pairing efficiency, not correctness in normal scenes.
+     * keep each cell small. BPG_CELL_MAX caps the count per cell; if a cell
+     * overflows, the step falls back to an exhaustive O(n²) pair pass so
+     * collision correctness is preserved in dense scenes.
      *
      * Narrow phase: for each pair of bodies that share a grid cell, test with
      * aabb_overlap() and call resolve_collision() if they overlap.
@@ -350,6 +410,7 @@ void rt_physics2d_world_step(void *obj, double dt) {
          * with neighbours on either side. */
         uint8_t grid_bodies[BPG_DIM * BPG_DIM][BPG_CELL_MAX];
         int grid_count[BPG_DIM * BPG_DIM];
+        int grid_overflow = 0;
         memset(grid_count, 0, sizeof(grid_count));
 
         for (i = 0; i < w->body_count; i++) {
@@ -383,53 +444,43 @@ void rt_physics2d_world_step(void *obj, double dt) {
                     if (cnt < BPG_CELL_MAX) {
                         grid_bodies[cell][cnt] = (uint8_t)i;
                         grid_count[cell] = cnt + 1;
+                    } else {
+                        grid_overflow = 1;
                     }
-                    /* If cnt >= BPG_CELL_MAX the body is silently dropped from
-                     * this cell. It may still be paired via an adjacent cell. */
                 }
             }
         }
 
-        /* --- Step 3c: Narrow phase — test each cell's candidate pairs ---
-         * pair_checked is a bit-matrix preventing duplicate pair resolution.
-         * Pairs are always stored with the lower index first (ii < jj) so the
-         * bit position is deterministic regardless of cell iteration order. */
-        uint8_t pair_checked[PH_MAX_BODIES * PH_MAX_BODIES / 8 + 1];
-        memset(pair_checked, 0, sizeof(pair_checked));
+        if (grid_overflow) {
+            for (int ii = 0; ii < w->body_count; ii++) {
+                for (int jj = ii + 1; jj < w->body_count; jj++)
+                    maybe_resolve_pair(w, ii, jj);
+            }
+        } else {
+            /* --- Step 3c: Narrow phase — test each cell's candidate pairs ---
+             * pair_checked is a bit-matrix preventing duplicate pair resolution.
+             * Pairs are always stored with the lower index first (ii < jj) so the
+             * bit position is deterministic regardless of cell iteration order. */
+            uint8_t pair_checked[PH_MAX_BODIES * PH_MAX_BODIES / 8 + 1];
+            memset(pair_checked, 0, sizeof(pair_checked));
 
-        for (int cell = 0; cell < BPG_DIM * BPG_DIM; cell++) {
-            int cnt = grid_count[cell];
-            for (int a = 0; a < cnt; a++) {
-                for (int b_idx = a + 1; b_idx < cnt; b_idx++) {
-                    int ii = (int)grid_bodies[cell][a];
-                    int jj = (int)grid_bodies[cell][b_idx];
-                    /* Normalise order so ii < jj for bit-matrix lookup */
-                    if (ii > jj) {
-                        int tmp = ii;
-                        ii = jj;
-                        jj = tmp;
+            for (int cell = 0; cell < BPG_DIM * BPG_DIM; cell++) {
+                int cnt = grid_count[cell];
+                for (int a = 0; a < cnt; a++) {
+                    for (int b_idx = a + 1; b_idx < cnt; b_idx++) {
+                        int ii = (int)grid_bodies[cell][a];
+                        int jj = (int)grid_bodies[cell][b_idx];
+                        if (ii > jj) {
+                            int tmp = ii;
+                            ii = jj;
+                            jj = tmp;
+                        }
+                        int bit = ii * PH_MAX_BODIES + jj;
+                        if (pair_checked[bit >> 3] & (uint8_t)(1u << (bit & 7)))
+                            continue;
+                        pair_checked[bit >> 3] |= (uint8_t)(1u << (bit & 7));
+                        maybe_resolve_pair(w, ii, jj);
                     }
-                    /* Check the bit-matrix: skip this pair if already resolved */
-                    int bit = ii * PH_MAX_BODIES + jj;
-                    if (pair_checked[bit >> 3] & (uint8_t)(1u << (bit & 7)))
-                        continue;
-                    pair_checked[bit >> 3] |= (uint8_t)(1u << (bit & 7));
-
-                    double nx, ny, pen;
-                    rt_body_impl *bi = w->bodies[ii];
-                    rt_body_impl *bj = w->bodies[jj];
-                    if (!bi || !bj)
-                        continue;
-
-                    /* Bidirectional collision filter: both bodies must be on
-                     * layers the other can collide with. This allows one-sided
-                     * triggers (A sees B, but B ignores A). */
-                    if (!((bi->collision_layer & bj->collision_mask) &&
-                          (bj->collision_layer & bi->collision_mask)))
-                        continue;
-
-                    if (aabb_overlap(bi, bj, &nx, &ny, &pen))
-                        resolve_collision(bi, bj, nx, ny, pen);
                 }
             }
         }
@@ -465,6 +516,7 @@ void rt_physics2d_world_remove(void *obj, void *body) {
     w = (rt_world_impl *)obj;
     for (i = 0; i < w->body_count; i++) {
         if (w->bodies[i] == (rt_body_impl *)body) {
+            world_remove_joints_for_body(w, w->bodies[i]);
             if (rt_obj_release_check0(w->bodies[i]))
                 rt_obj_free(w->bodies[i]);
             /* Swap with tail to maintain a compact, order-independent array */
@@ -507,6 +559,8 @@ void *rt_physics2d_body_new(double x, double y, double w, double h, double mass)
     b->vptr = NULL;
     b->x = x;
     b->y = y;
+    b->prev_x = x;
+    b->prev_y = y;
     b->w = w;
     b->h = h;
     b->vx = 0.0;
@@ -537,6 +591,14 @@ double rt_physics2d_body_y(void *obj) {
     return obj ? ((rt_body_impl *)obj)->y : 0.0;
 }
 
+double rt_physics2d_body_prev_x(void *obj) {
+    return obj ? ((rt_body_impl *)obj)->prev_x : 0.0;
+}
+
+double rt_physics2d_body_prev_y(void *obj) {
+    return obj ? ((rt_body_impl *)obj)->prev_y : 0.0;
+}
+
 /// @brief AABB width in world units.
 double rt_physics2d_body_w(void *obj) {
     return obj ? ((rt_body_impl *)obj)->w : 0.0;
@@ -562,8 +624,11 @@ double rt_physics2d_body_vy(void *obj) {
 void rt_physics2d_body_set_pos(void *obj, double x, double y) {
     if (!obj)
         return;
-    ((rt_body_impl *)obj)->x = x;
-    ((rt_body_impl *)obj)->y = y;
+    rt_body_impl *body = (rt_body_impl *)obj;
+    body->x = x;
+    body->y = y;
+    body->prev_x = x;
+    body->prev_y = y;
 }
 
 /// @brief Override the body's linear velocity directly. Useful for kinematic motion (e.g.,

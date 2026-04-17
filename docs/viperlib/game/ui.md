@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-09
+last-verified: 2026-04-17
 ---
 
 # Game UI Widgets
@@ -17,6 +17,7 @@ last-verified: 2026-04-09
 - [Viper.Game.UI.Panel](#vipergameuipanel)
 - [Viper.Game.UI.NineSlice](#vipergameuinineslice)
 - [Viper.Game.UI.MenuList](#vipergameuimenulist)
+- [Viper.Game.UI.Dialogue](#vipergameuidialogue)
 - [Usage Example](#usage-example)
 
 ---
@@ -162,6 +163,62 @@ Vertical menu with selection highlight and keyboard-friendly wrap-around navigat
 
 ---
 
+## Viper.Game.UI.Dialogue
+
+Queued typewriter dialogue box with speaker labels, UTF-8-safe reveal timing, word wrapping,
+and optional BitmapFont rendering.
+
+**Type:** Instance (obj)
+**Constructor:** `Dialogue.New(x, y, width, height)`
+
+### Properties
+
+| Property | Type | Access | Description |
+|----------|------|--------|-------------|
+| `Font` | BitmapFont | Write | Custom font for speaker/body/indicator text (null = built-in 8x8) |
+| `TextColor` | Integer | Write | Dialogue body color (0xRRGGBB) |
+| `SpeakerColor` | Integer | Write | Speaker label color (0xRRGGBB) |
+| `BorderColor` | Integer | Write | Border color (`-1` disables the frame) |
+| `Padding` | Integer | Write | Inner padding in pixels |
+| `TextScale` | Integer | Write | Integer text scale (minimum 1) |
+
+### Methods
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `SetSpeed(charsPerSecond)` | `void(Integer)` | Reveal speed; values `<= 0` reveal the line instantly |
+| `SetFont(font)` | `void(BitmapFont)` | Use a BitmapFont for text measurement and drawing |
+| `SetTextColor(color)` | `void(Integer)` | Set body-text color |
+| `SetSpeakerColor(color)` | `void(Integer)` | Set speaker-label color |
+| `SetBgColor(color, alpha)` | `void(Integer, Integer)` | Set background fill color and alpha |
+| `SetBorderColor(color)` | `void(Integer)` | Set border color (`-1` disables the border) |
+| `SetPadding(pixels)` | `void(Integer)` | Set inner padding |
+| `SetTextScale(scale)` | `void(Integer)` | Set integer text scale |
+| `SetPos(x, y)` | `void(Integer, Integer)` | Move the dialogue box |
+| `SetSize(width, height)` | `void(Integer, Integer)` | Resize the dialogue box |
+| `Say(speaker, text)` | `void(String, String)` | Queue a spoken line |
+| `SayText(text)` | `void(String)` | Queue narration with no speaker label |
+| `Clear()` | `void()` | Remove all queued lines and reset playback state |
+| `Update(dtMs)` | `void(Integer)` | Advance the typewriter by milliseconds |
+| `Advance()` | `void()` | Skip the current line or move to the next one |
+| `Skip()` | `void()` | Reveal the current line immediately |
+| `IsActive()` | `Boolean()` | True while a line is being shown |
+| `IsLineComplete()` | `Boolean()` | True when the current line is fully revealed |
+| `IsFinished()` | `Boolean()` | True once the last line has been acknowledged |
+| `IsWaiting()` | `Boolean()` | True when waiting for the caller to advance |
+| `GetLineCount()` | `Integer()` | Number of queued lines |
+| `GetCurrentLine()` | `Integer()` | Zero-based active line index |
+| `GetSpeaker()` | `String()` | Speaker name of the active line, or empty string |
+| `Draw(canvas)` | `void(Canvas)` | Render the panel, speaker label, wrapped text, and wait indicator |
+
+### Notes
+
+- Reveal timing counts UTF-8 codepoints, not bytes, so multi-byte characters are revealed as one character.
+- The dialogue box stores UTF-8 safely; oversized speaker/text inputs are truncated on codepoint boundaries.
+- One-way use case: `Advance()` behaves like a confirm button. If the line is mid-reveal it completes the line first; only the next call advances the queue.
+
+---
+
 ## Usage Example
 
 ```zia
@@ -205,6 +262,9 @@ if downPressed { menu.MoveDown(); }
 | Label text length | 511 characters |
 | MenuList max items | 64 |
 | MenuList item text length | 127 characters |
+| Dialogue queued lines | 64 |
+| Dialogue text payload | 511 bytes (UTF-8-safe truncation) |
+| Dialogue speaker label | 63 bytes (UTF-8-safe truncation) |
 | Panel alpha range | 0-255 (clamped) |
 | Bar value | Clamped to [0, max] |
 | Bar max | Clamped to >= 1 |

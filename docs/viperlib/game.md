@@ -35,7 +35,7 @@ last-verified: 2026-04-17
 - [Viper.Game.PlatformerController](#vipergameplatformercontroller)
 - [Viper.Game.AchievementTracker](#vipergameachievementtracker)
 - [Viper.Game.Typewriter](#vipergametypewriter)
-- [Viper.Game.UI.*](game/ui.md) — Label, Bar, Panel, NineSlice, MenuList (in-game UI widgets)
+- [Viper.Game.UI.*](game/ui.md) — Label, Bar, Panel, NineSlice, MenuList, Dialogue (in-game UI widgets)
 - [Viper.Game.Pathfinder](game/pathfinding.md) — A* grid pathfinding for AI navigation
 - [Current Limits](#current-limits)
 - [Coordinate Systems](#coordinate-systems)
@@ -842,7 +842,7 @@ cam.Follow(camX, camY);
 |---|---|---|---|
 | Physics2D | 256 bodies/world | `PH_MAX_BODIES` | Traps on overflow |
 | Physics2D | 8×8 broad-phase cells | `BPG_DIM = 8` | Per-world |
-| Physics2D | 32 bodies/cell | `BPG_CELL_MAX = 32` | |
+| Physics2D | 32 bodies/cell | `BPG_CELL_MAX = 32` | Dense-cell overflow falls back to an exhaustive pair pass |
 | Quadtree | 256 query results | `RT_QUADTREE_MAX_RESULTS` | Detect with `QueryWasTruncated()` |
 | Quadtree | 4096 total items | Internal | |
 | Quadtree | 1024 overlap pairs | Internal | |

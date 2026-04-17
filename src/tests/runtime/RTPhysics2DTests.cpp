@@ -15,6 +15,7 @@ extern "C" {
 #include "rt_internal.h"
 #include "rt_object.h"
 #include "rt_physics2d.h"
+#include "rt_physics2d_joint.h"
 }
 
 //=============================================================================
@@ -49,6 +50,7 @@ extern "C" void vm_trap(const char *msg) {
 
 static int tests_run = 0;
 static int tests_passed = 0;
+static int g_joint_finalizer_calls = 0;
 
 static const double EPSILON = 1e-6;
 
@@ -63,6 +65,15 @@ static const double EPSILON = 1e-6;
     } while (0)
 
 #define ASSERT_NEAR(a, b, msg) ASSERT(fabs((a) - (b)) < EPSILON, msg)
+
+static void release_obj(void *obj) {
+    if (obj && rt_obj_release_check0(obj))
+        rt_obj_free(obj);
+}
+
+extern "C" void test_joint_finalizer(void *) {
+    g_joint_finalizer_calls++;
+}
 
 //=============================================================================
 // World tests
@@ -477,6 +488,61 @@ static void test_collision_mask_filtering_works() {
     rt_obj_release_check0(world);
 }
 
+static void test_dense_cell_overflow_falls_back_to_all_pairs() {
+    void *world = rt_physics2d_world_new(0.0, 0.0);
+
+    void *wall = rt_physics2d_body_new(0, 0, 20, 20, 0.0);
+    rt_physics2d_body_set_collision_layer(wall, 1);
+    rt_physics2d_body_set_collision_mask(wall, 1);
+    rt_physics2d_world_add(world, wall);
+
+    for (int i = 0; i < 32; i++) {
+        void *filler = rt_physics2d_body_new(0, 0, 20, 20, 1.0);
+        rt_physics2d_body_set_collision_layer(filler, 2);
+        rt_physics2d_body_set_collision_mask(filler, 0);
+        rt_physics2d_world_add(world, filler);
+        release_obj(filler);
+    }
+
+    // This body lands beyond the 32-body cell cap and used to be dropped from broad-phase cells.
+    void *target = rt_physics2d_body_new(1, 0, 20, 20, 1.0);
+    rt_physics2d_body_set_collision_layer(target, 1);
+    rt_physics2d_body_set_collision_mask(target, 1);
+    rt_physics2d_body_set_vel(target, -5.0, 0.0);
+    rt_physics2d_world_add(world, target);
+
+    rt_physics2d_world_step(world, 0.001);
+    ASSERT(fabs(rt_physics2d_body_vx(target) + 5.0) > EPSILON,
+           "dense-cell overflow still resolves the dropped pair via O(n^2) fallback");
+
+    release_obj(target);
+    release_obj(wall);
+    release_obj(world);
+}
+
+static void test_world_finalizer_releases_world_owned_joint() {
+    g_joint_finalizer_calls = 0;
+
+    void *world = rt_physics2d_world_new(0.0, 0.0);
+    void *a = rt_physics2d_body_new(0, 0, 10, 10, 1.0);
+    void *b = rt_physics2d_body_new(20, 0, 10, 10, 1.0);
+    void *joint = rt_physics2d_distance_joint_new(a, b, 20.0);
+    rt_obj_set_finalizer(joint, test_joint_finalizer);
+
+    rt_physics2d_world_add(world, a);
+    rt_physics2d_world_add(world, b);
+    rt_physics2d_world_add_joint(world, joint);
+
+    // Drop the caller's reference; the world should own the last remaining joint reference.
+    ASSERT(rt_obj_release_check0(joint) == 0, "joint retained by world before world finalizer");
+
+    release_obj(a);
+    release_obj(b);
+    release_obj(world);
+
+    ASSERT(g_joint_finalizer_calls == 1, "world finalizer releases attached joints");
+}
+
 //=============================================================================
 // GAME-C-4: PH_MAX_BODIES exceeded should trap
 //=============================================================================
@@ -535,6 +601,8 @@ int main() {
     test_collision_mask_default_full();
     test_collision_layer31_collides_with_default_mask();
     test_collision_mask_filtering_works();
+    test_dense_cell_overflow_falls_back_to_all_pairs();
+    test_world_finalizer_releases_world_owned_joint();
 
     // GAME-C-4: body limit traps
     test_body_limit_traps();

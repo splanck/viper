@@ -156,6 +156,33 @@ static void test_skip(void) {
     PASS();
 }
 
+static void test_zero_speed_reveals_instantly(void) {
+    TEST("Speed 0 reveals instantly");
+    void *d = rt_dialogue_new(0, 0, 200, 80);
+    rt_dialogue_set_speed(d, 0);
+    rt_dialogue_say_text(d, make_str("Instant"));
+
+    rt_dialogue_update(d, 1);
+    assert(rt_dialogue_is_line_complete(d) == 1);
+    assert(rt_dialogue_is_waiting(d) == 1);
+    PASS();
+}
+
+static void test_utf8_reveal_counts_codepoints(void) {
+    TEST("UTF-8 reveal counts codepoints, not bytes");
+    void *d = rt_dialogue_new(0, 0, 200, 80);
+    rt_dialogue_set_speed(d, 1);
+    rt_dialogue_say_text(d, make_str("A\xCE\xA9")); // "AΩ" = 2 codepoints, 3 bytes
+
+    rt_dialogue_update(d, 1000);
+    assert(rt_dialogue_is_line_complete(d) == 0);
+
+    rt_dialogue_update(d, 1000);
+    assert(rt_dialogue_is_line_complete(d) == 1);
+    assert(rt_dialogue_is_waiting(d) == 1);
+    PASS();
+}
+
 static void test_empty_text(void) {
     TEST("Empty text immediately completes");
     void *d = rt_dialogue_new(0, 0, 200, 80);
@@ -188,6 +215,8 @@ int main() {
     test_finished_state();
     test_clear();
     test_skip();
+    test_zero_speed_reveals_instantly();
+    test_utf8_reveal_counts_codepoints();
     test_empty_text();
     test_null_safety();
 

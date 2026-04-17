@@ -257,15 +257,37 @@ static void test_one_way_platform_catches_fast_downward_crossing(void) {
     rt_tilemap_set_tile(tm, 0, 1, 1);
     rt_tilemap_set_collision(tm, 1, RT_TILE_COLLISION_ONE_WAY_UP);
 
-    // Current position overlaps the platform, but the top edge has already stepped well past the
-    // surface this frame. Velocity preserves the previous-frame crossing direction.
-    void *body = rt_physics2d_body_new(0.0, 24.0, 12.0, 12.0, 1.0);
+    void *world = rt_physics2d_world_new(0.0, 0.0);
+    void *body = rt_physics2d_body_new(0.0, 0.0, 12.0, 12.0, 1.0);
     assert(body != NULL);
-    rt_physics2d_body_set_vel(body, 0.0, 20.0);
+    rt_physics2d_body_set_vel(body, 0.0, 40.0);
+    rt_physics2d_world_add(world, body);
+
+    // Advance from above the platform to well below it so CollideBody must consult the body's
+    // previous-step position instead of trying to infer crossing from velocity alone.
+    rt_physics2d_world_step(world, 0.6);
 
     assert(rt_tilemap_collide_body(tm, body) == 1);
     assert(rt_physics2d_body_y(body) == 4.0);
     assert(rt_physics2d_body_vy(body) == 0.0);
+    PASS();
+}
+
+static void test_one_way_platform_ignores_teleported_overlap(void) {
+    TEST("One-way platform ignores teleported overlap");
+    void *tm = rt_tilemap_new(2, 3, 16, 16);
+    assert(tm != NULL);
+
+    rt_tilemap_set_tile(tm, 0, 1, 1);
+    rt_tilemap_set_collision(tm, 1, RT_TILE_COLLISION_ONE_WAY_UP);
+
+    void *body = rt_physics2d_body_new(0.0, 24.0, 12.0, 12.0, 1.0);
+    assert(body != NULL);
+    rt_physics2d_body_set_vel(body, 0.0, 40.0);
+
+    // No previous-step crossing was recorded; a teleport into the platform should not snap upward.
+    assert(rt_tilemap_collide_body(tm, body) == 0);
+    assert(rt_physics2d_body_y(body) == 24.0);
     PASS();
 }
 
@@ -438,6 +460,7 @@ int main() {
     test_negative_pixels_do_not_hit_tile_zero();
     test_negative_body_does_not_false_collide();
     test_one_way_platform_catches_fast_downward_crossing();
+    test_one_way_platform_ignores_teleported_overlap();
     test_backwards_compatibility();
     test_remove_layer();
     test_cannot_remove_base_layer();

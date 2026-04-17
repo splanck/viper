@@ -33,6 +33,7 @@
 typedef struct {
     void *vptr;              ///< Zia virtual-dispatch pointer (must be first).
     double x, y;             ///< Top-left position (AABB) or center (circle).
+    double prev_x, prev_y;   ///< Previous-step position used for one-way tile tests.
     double w, h;             ///< Width and height of the AABB (0 for circles).
     double vx, vy;           ///< Velocity in world-units per second.
     double fx, fy;           ///< Accumulated force for the current frame.
@@ -72,3 +73,6 @@ struct ph_joint {
     double damping;            ///< Spring damping
     int8_t active;
 };
+
+double rt_physics2d_body_prev_x(void *body);
+double rt_physics2d_body_prev_y(void *body);

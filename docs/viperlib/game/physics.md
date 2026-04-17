@@ -463,14 +463,16 @@ Spatial partitioning data structure for efficient collision detection and spatia
 | `Insert(id, x, y, w, h)`  | `Boolean(5×Int)`   | Add item with bounds                             |
 | `PairFirst(index)`         | `Integer(Integer)` | Get first ID of collision pair                   |
 | `PairSecond(index)`        | `Integer(Integer)` | Get second ID of collision pair                  |
-| `QueryPoint(x, y, radius)` | `Integer(3×Int)`   | Find items near point; returns count             |
+| `QueryPoint(x, y, radius)` | `Integer(3×Int)`   | Find items whose bounds intersect the circular search area |
 | `QueryRect(x, y, w, h)`   | `Integer(4×Int)`   | Find items in rectangle; returns count           |
+| `QueryWasTruncated()`      | `Boolean()`        | True when the most recent query hit the 256-result cap |
 | `Remove(id)`               | `Boolean(Integer)` | Remove item by ID                                |
 | `Update(id, x, y, w, h)`  | `Boolean(5×Int)`   | Update item position/size                        |
 
 ### Notes
 
-- Query() returns at most 256 results. When more items match, results are silently truncated. Design queries to avoid exceeding this limit (use smaller query regions if needed).
+- Query results are capped at 256 items. Check `QueryWasTruncated()` after `QueryRect()` or `QueryPoint()` if the caller needs a complete answer.
+- `QueryPoint()` uses circle-vs-AABB testing, so large objects can match even when their centers are outside the radius.
 
 ### Zia Example
 

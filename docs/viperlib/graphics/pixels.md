@@ -571,7 +571,7 @@ Efficient tile-based 2D map rendering for platformers, RPGs, and strategy games.
 | Method                                         | Signature                                    | Description                                           |
 |------------------------------------------------|----------------------------------------------|-------------------------------------------------------|
 | `Clear()`                                      | `Void()`                                     | Clear map (set all to 0)                              |
-| `CollideBody(body)`                            | `Integer(Object)`                            | Resolve a Physics2D.Body against solid/one-way tiles (returns 1 on collision). Fast downward one-way crossings use the body's previous-step motion heuristic. |
+| `CollideBody(body)`                            | `Integer(Object)`                            | Resolve a Physics2D.Body against solid/one-way tiles (returns 1 on collision). One-way tiles compare against the body's previous Physics2D step, so teleports into a platform do not count as a landing. |
 | `Draw(canvas, offsetX, offsetY)`               | `Void(Canvas, Integer, Integer)`             | Draw every visible layer in layer order using the scroll offset |
 | `DrawRegion(canvas, ox, oy, vx, vy, vw, vh)`   | `Void(Canvas, Integer...)`                   | Draw a tile-coordinate sub-region across every visible layer |
 | `Fill(index)`                                  | `Void(Integer)`                              | Fill entire map with a tile                           |

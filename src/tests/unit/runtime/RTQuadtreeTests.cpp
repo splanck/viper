@@ -106,6 +106,20 @@ TEST(query_point) {
     rt_quadtree_destroy(tree);
 }
 
+TEST(query_point_excludes_corner_false_positive) {
+    rt_quadtree tree = rt_quadtree_new(0, 0, 1000, 1000);
+
+    // Rect query would catch this box in the corner, but the circle does not reach it.
+    rt_quadtree_insert(tree, 1, 120, 120, 10, 10);
+    rt_quadtree_insert(tree, 2, 100, 100, 10, 10);
+
+    int64_t count = rt_quadtree_query_point(tree, 100, 100, 20);
+    ASSERT(count == 1);
+    ASSERT(rt_quadtree_get_result(tree, 0) == 2);
+
+    rt_quadtree_destroy(tree);
+}
+
 TEST(update) {
     rt_quadtree tree = rt_quadtree_new(0, 0, 1000000, 1000000);
 
@@ -121,6 +135,22 @@ TEST(update) {
     // Should be found at new location
     count = rt_quadtree_query_point(tree, 800000, 800000, 50000);
     ASSERT(count == 1);
+
+    rt_quadtree_destroy(tree);
+}
+
+TEST(update_out_of_bounds_is_transactional) {
+    rt_quadtree tree = rt_quadtree_new(0, 0, 1000, 1000);
+
+    ASSERT(rt_quadtree_insert(tree, 1, 100, 100, 20, 20) == 1);
+    ASSERT(rt_quadtree_update(tree, 1, 2000, 2000, 20, 20) == 0);
+
+    int64_t count = rt_quadtree_query_point(tree, 100, 100, 30);
+    ASSERT(count == 1);
+    ASSERT(rt_quadtree_get_result(tree, 0) == 1);
+
+    count = rt_quadtree_query_point(tree, 2000, 2000, 30);
+    ASSERT(count == 0);
 
     rt_quadtree_destroy(tree);
 }
@@ -252,6 +282,20 @@ TEST(query_no_truncation_small_result) {
     rt_quadtree_destroy(tree);
 }
 
+TEST(reuses_inactive_slots_after_remove) {
+    rt_quadtree tree = rt_quadtree_new(0, 0, 1000, 1000);
+
+    for (int64_t i = 0; i < 5000; i++) {
+        ASSERT(rt_quadtree_insert(tree, i + 1, 100, 100, 10, 10) == 1);
+        ASSERT(rt_quadtree_remove(tree, i + 1) == 1);
+    }
+
+    ASSERT(rt_quadtree_item_count(tree) == 0);
+    ASSERT(rt_quadtree_insert(tree, 999999, 100, 100, 10, 10) == 1);
+
+    rt_quadtree_destroy(tree);
+}
+
 /// @brief Main.
 int main() {
     printf("RTQuadtreeTests:\n");
@@ -261,7 +305,9 @@ int main() {
     RUN_TEST(remove);
     RUN_TEST(query_rect);
     RUN_TEST(query_point);
+    RUN_TEST(query_point_excludes_corner_false_positive);
     RUN_TEST(update);
+    RUN_TEST(update_out_of_bounds_is_transactional);
     RUN_TEST(clear);
     RUN_TEST(get_pairs);
     RUN_TEST(many_items);
@@ -269,6 +315,7 @@ int main() {
     RUN_TEST(duplicate_id_rejected);
     RUN_TEST(query_truncation_detected);
     RUN_TEST(query_no_truncation_small_result);
+    RUN_TEST(reuses_inactive_slots_after_remove);
 
     printf("\n%d tests passed, %d tests failed\n", tests_passed, tests_failed);
     return tests_failed > 0 ? 1 : 0;

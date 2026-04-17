@@ -253,6 +253,11 @@ void rt_physics2d_world_add_joint(void *world, void *joint) {
     rt_world_impl *w = (rt_world_impl *)world;
     if (w->joint_count >= PH_MAX_JOINTS)
         return;
+    for (int32_t i = 0; i < w->joint_count; i++) {
+        if (w->joints[i] == (ph_joint *)joint)
+            return;
+    }
+    ((ph_joint *)joint)->active = 1;
     rt_obj_retain_maybe(joint);
     w->joints[w->joint_count++] = (ph_joint *)joint;
 }
@@ -264,6 +269,7 @@ void rt_physics2d_world_remove_joint(void *world, void *joint) {
     rt_world_impl *w = (rt_world_impl *)world;
     for (int32_t i = 0; i < w->joint_count; i++) {
         if (w->joints[i] == (ph_joint *)joint) {
+            ((ph_joint *)joint)->active = 0;
             if (rt_obj_release_check0(joint))
                 rt_obj_free(joint);
             w->joints[i] = w->joints[w->joint_count - 1];
@@ -450,6 +456,8 @@ void *rt_physics2d_circle_body_new(double cx, double cy, double radius, double m
     b->vptr = NULL;
     b->x = cx; // For circles, x/y is center
     b->y = cy;
+    b->prev_x = cx;
+    b->prev_y = cy;
     b->w = 0.0;
     b->h = 0.0;
     b->vx = 0.0;
