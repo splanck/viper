@@ -1,0 +1,22 @@
+module smoke_probe;
+
+bind Viper.Graphics3D;
+bind Viper.Graphics.Pixels as Pixels;
+bind Viper.Terminal as Terminal;
+bind "./game";
+
+func main() {
+    var demo = new SceneGame();
+    demo.initDemo("3D Scene Smoke", 960, 540);
+    demo.step(0.016);
+    demo.renderFrame();
+
+    var snap = demo.getCanvas().Screenshot();
+    if Pixels.SavePng(snap, "/tmp/3dscene_smoke.png") != 1 {
+        Terminal.Say("RESULT: fail screenshot");
+        return;
+    }
+
+    Canvas3D.Flip(demo.getCanvas());
+    Terminal.Say("RESULT: ok");
+}

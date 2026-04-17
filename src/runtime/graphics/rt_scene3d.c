@@ -42,6 +42,7 @@
 #include "rt_vec3.h"
 #include "vgfx3d_frustum.h"
 
+#include <float.h>
 #include <math.h>
 #include <stdarg.h>
 #include <stdint.h>
@@ -108,6 +109,17 @@ static void mat4d_mul(const double *a, const double *b, double *out) {
         for (int c = 0; c < 4; c++)
             out[r * 4 + c] = a[r * 4 + 0] * b[0 * 4 + c] + a[r * 4 + 1] * b[1 * 4 + c] +
                              a[r * 4 + 2] * b[2 * 4 + c] + a[r * 4 + 3] * b[3 * 4 + c];
+}
+
+/// @brief Write an identity 4x4 row-major matrix into @p out.
+static void mat4d_identity(double *out) {
+    if (!out)
+        return;
+    memset(out, 0, sizeof(double) * 16);
+    out[0] = 1.0;
+    out[5] = 1.0;
+    out[10] = 1.0;
+    out[15] = 1.0;
 }
 
 /// @brief Invert a row-major 4x4 matrix using the cofactor expansion.
@@ -620,6 +632,91 @@ static void scene_world_point(const double *world_matrix, const float local[3], 
                      world_matrix[10] * (double)local[2] + world_matrix[11]);
 }
 
+/// @brief Initialise a min/max pair so subsequent point inserts grow a valid AABB.
+static void scene_bounds_reset(float out_min[3], float out_max[3]) {
+    if (out_min) {
+        out_min[0] = FLT_MAX;
+        out_min[1] = FLT_MAX;
+        out_min[2] = FLT_MAX;
+    }
+    if (out_max) {
+        out_max[0] = -FLT_MAX;
+        out_max[1] = -FLT_MAX;
+        out_max[2] = -FLT_MAX;
+    }
+}
+
+/// @brief Expand @p bounds_min/@p bounds_max to include @p point.
+static void scene_bounds_include_point(float bounds_min[3], float bounds_max[3], const float point[3]) {
+    if (!bounds_min || !bounds_max || !point)
+        return;
+    for (int i = 0; i < 3; i++) {
+        if (point[i] < bounds_min[i])
+            bounds_min[i] = point[i];
+        if (point[i] > bounds_max[i])
+            bounds_max[i] = point[i];
+    }
+}
+
+/// @brief Transform the 8 corners of a local AABB and union them into @p bounds_min/max.
+static void scene_bounds_include_aabb(float bounds_min[3],
+                                      float bounds_max[3],
+                                      const float local_min[3],
+                                      const float local_max[3],
+                                      const double *local_to_root) {
+    float local_corner[3];
+    float root_corner[3];
+    if (!bounds_min || !bounds_max || !local_min || !local_max || !local_to_root)
+        return;
+    for (int xi = 0; xi < 2; xi++) {
+        for (int yi = 0; yi < 2; yi++) {
+            for (int zi = 0; zi < 2; zi++) {
+                local_corner[0] = xi ? local_max[0] : local_min[0];
+                local_corner[1] = yi ? local_max[1] : local_min[1];
+                local_corner[2] = zi ? local_max[2] : local_min[2];
+                scene_world_point(local_to_root, local_corner, root_corner);
+                scene_bounds_include_point(bounds_min, bounds_max, root_corner);
+            }
+        }
+    }
+}
+
+/// @brief Compute a node subtree's local-space AABB relative to the queried root node.
+///
+/// @param node Current subtree node.
+/// @param node_to_root Row-major matrix mapping @p node local space into the queried root's local space.
+/// @param out_min Running subtree minimum.
+/// @param out_max Running subtree maximum.
+/// @return 1 if the subtree contributed any mesh bounds, otherwise 0.
+static int scene_node_collect_subtree_bounds(rt_scene_node3d *node,
+                                             const double *node_to_root,
+                                             float out_min[3],
+                                             float out_max[3]) {
+    int has_bounds = 0;
+    if (!node || !node_to_root || !out_min || !out_max)
+        return 0;
+
+    if (node->mesh) {
+        float mesh_min[3];
+        float mesh_max[3];
+        scene_mesh_bounds((rt_mesh3d *)node->mesh, mesh_min, mesh_max, NULL);
+        scene_bounds_include_aabb(out_min, out_max, mesh_min, mesh_max, node_to_root);
+        has_bounds = 1;
+    }
+
+    for (int32_t i = 0; i < node->child_count; i++) {
+        rt_scene_node3d *child = node->children[i];
+        double child_local[16];
+        double child_to_root[16];
+        build_trs_matrix(child->position, child->rotation, child->scale_xyz, child_local);
+        mat4d_mul(node_to_root, child_local, child_to_root);
+        if (scene_node_collect_subtree_bounds(child, child_to_root, out_min, out_max))
+            has_bounds = 1;
+    }
+
+    return has_bounds;
+}
+
 /// @brief Depth-first search for a node whose `name` matches `target` (NULL on miss).
 static rt_scene_node3d *find_by_name(rt_scene_node3d *node, const char *target) {
     if (node->name) {
@@ -1075,23 +1172,37 @@ rt_string rt_scene_node3d_get_name(void *obj) {
     return rt_const_cstr("");
 }
 
-/// @brief Local-space minimum corner of the bound mesh's AABB (origin if no mesh).
+/// @brief Local-space minimum corner of this node subtree's AABB (origin if empty).
 void *rt_scene_node3d_get_aabb_min(void *obj) {
+    double identity[16];
+    int has_bounds;
     if (!obj)
         return rt_vec3_new(0, 0, 0);
     rt_scene_node3d *n = (rt_scene_node3d *)obj;
-    if (n->mesh)
-        scene_mesh_bounds((rt_mesh3d *)n->mesh, n->aabb_min, n->aabb_max, &n->bsphere_radius);
+    scene_bounds_reset(n->aabb_min, n->aabb_max);
+    mat4d_identity(identity);
+    has_bounds = scene_node_collect_subtree_bounds(n, identity, n->aabb_min, n->aabb_max);
+    if (!has_bounds) {
+        n->aabb_min[0] = n->aabb_min[1] = n->aabb_min[2] = 0.0f;
+        n->aabb_max[0] = n->aabb_max[1] = n->aabb_max[2] = 0.0f;
+    }
     return rt_vec3_new(n->aabb_min[0], n->aabb_min[1], n->aabb_min[2]);
 }
 
-/// @brief Local-space maximum corner of the bound mesh's AABB.
+/// @brief Local-space maximum corner of this node subtree's AABB.
 void *rt_scene_node3d_get_aabb_max(void *obj) {
+    double identity[16];
+    int has_bounds;
     if (!obj)
         return rt_vec3_new(0, 0, 0);
     rt_scene_node3d *n = (rt_scene_node3d *)obj;
-    if (n->mesh)
-        scene_mesh_bounds((rt_mesh3d *)n->mesh, n->aabb_min, n->aabb_max, &n->bsphere_radius);
+    scene_bounds_reset(n->aabb_min, n->aabb_max);
+    mat4d_identity(identity);
+    has_bounds = scene_node_collect_subtree_bounds(n, identity, n->aabb_min, n->aabb_max);
+    if (!has_bounds) {
+        n->aabb_min[0] = n->aabb_min[1] = n->aabb_min[2] = 0.0f;
+        n->aabb_max[0] = n->aabb_max[1] = n->aabb_max[2] = 0.0f;
+    }
     return rt_vec3_new(n->aabb_max[0], n->aabb_max[1], n->aabb_max[2]);
 }
 

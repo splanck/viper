@@ -1506,9 +1506,9 @@ static void orphan_stream_buffer(GLenum target, GLuint buffer, size_t capacity, 
     gl.BufferData(target, (GLsizeiptr)capacity, NULL, usage);
 }
 
-// Texture / cubemap / morph caches — keyed by `(host pointer, generation)`.
-// Generation lets re-uploaded source data invalidate cleanly without
-// leaking GL objects. LRU pruning bounds residency.
+// Texture / cubemap / morph caches — keyed by stable host identity + generation.
+// This avoids stale texture reuse when allocator address recycling hands a
+// fresh Pixels object the same pointer as an older cached upload.
 
 /// @brief Delete every cached 2D texture and reset the count.
 static void texture_cache_clear(gl_context_t *ctx) {
@@ -1670,21 +1670,21 @@ static void texture_cache_destroy(gl_context_t *ctx) {
 /// @brief Texture-cache lookup with auto-create.
 ///
 /// Three-way:
-///   1. Hit (pixels + generation match) → bump LRU timestamp, return.
+///   1. Hit (pixels + cache-key match) → bump LRU timestamp, return.
 ///   2. Pixels match but generation stale → re-upload into the existing
 ///      texture object (saves a `glDeleteTextures`/`glGenTextures`
 ///      round-trip).
 ///   3. Miss → create a new texture, append to cache.
 /// Returns 0 on failure (caller falls back to no texture).
 static GLuint gl_get_cached_texture(gl_context_t *ctx, const void *pixels_ptr) {
-    uint64_t generation;
+    uint64_t cache_key;
     if (!ctx || !pixels_ptr)
         return 0;
-    generation = vgfx3d_get_pixels_generation(pixels_ptr);
+    cache_key = vgfx3d_get_pixels_cache_key(pixels_ptr);
 
     for (int32_t i = 0; i < ctx->texture_cache_count; i++) {
         if (ctx->texture_cache[i].pixels == pixels_ptr &&
-            ctx->texture_cache[i].generation == generation) {
+            ctx->texture_cache[i].generation == cache_key) {
             ctx->texture_cache[i].last_used_frame = ctx->frame_serial;
             return ctx->texture_cache[i].tex;
         }
@@ -1701,7 +1701,7 @@ static GLuint gl_get_cached_texture(gl_context_t *ctx, const void *pixels_ptr) {
             gl.TexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, rgba);
             gl.GenerateMipmap(GL_TEXTURE_2D);
             free(rgba);
-            ctx->texture_cache[i].generation = generation;
+            ctx->texture_cache[i].generation = cache_key;
             ctx->texture_cache[i].last_used_frame = ctx->frame_serial;
             return ctx->texture_cache[i].tex;
         }
@@ -1738,7 +1738,7 @@ static GLuint gl_get_cached_texture(gl_context_t *ctx, const void *pixels_ptr) {
     }
 
     ctx->texture_cache[ctx->texture_cache_count].pixels = pixels_ptr;
-    ctx->texture_cache[ctx->texture_cache_count].generation = generation;
+    ctx->texture_cache[ctx->texture_cache_count].generation = cache_key;
     ctx->texture_cache[ctx->texture_cache_count].tex = tex;
     ctx->texture_cache[ctx->texture_cache_count].last_used_frame = ctx->frame_serial;
     ctx->texture_cache_count++;

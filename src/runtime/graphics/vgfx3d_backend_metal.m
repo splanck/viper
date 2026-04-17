@@ -2350,17 +2350,18 @@ static void metal_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) 
 }
 
 /// MTL-03: Retrieve or create a cached MTLTexture from a Pixels object pointer.
-/// Cache is keyed by the raw void* (Pixels identity). Conversion is RGBA→BGRA.
+/// Cache uses the stable Pixels cache key so allocator-reused addresses do not
+/// alias a fresh image to an older GPU upload. Conversion is RGBA→BGRA.
 static id<MTLTexture> metal_get_cached_texture(VGFXMetalContext *ctx, const void *pixels_ptr) {
     int32_t tw = 0;
     int32_t th = 0;
     uint8_t *rgba = NULL;
     int32_t mip_count;
-    uint64_t generation;
+    uint64_t cache_key;
     NSValue *key = [NSValue valueWithPointer:pixels_ptr];
     VGFXMetalTextureCacheEntry *cached = ctx.textureCache[key];
-    generation = vgfx3d_get_pixels_generation(pixels_ptr);
-    if (cached && cached.texture && cached.generation == generation) {
+    cache_key = vgfx3d_get_pixels_cache_key(pixels_ptr);
+    if (cached && cached.texture && cached.generation == cache_key) {
         cached.lastUsedFrame = ctx.frameSerial;
         return cached.texture;
     }
@@ -2386,7 +2387,7 @@ static id<MTLTexture> metal_get_cached_texture(VGFXMetalContext *ctx, const void
         return nil;
     }
     free(rgba);
-    cached.generation = generation;
+    cached.generation = cache_key;
     cached.lastUsedFrame = ctx.frameSerial;
     metal_generate_mipmaps(ctx, cached.texture);
     ctx.textureCache[key] = cached;

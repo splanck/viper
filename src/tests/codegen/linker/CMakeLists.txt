@@ -16,6 +16,7 @@ set(_linker_tests
         linker_integration
         native_linker
         platform_import_planners
+        runtime_import_audit
         icf
         branch_trampoline
         debug_sections)

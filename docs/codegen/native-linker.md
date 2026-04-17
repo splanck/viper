@@ -1,7 +1,7 @@
 ---
 status: active
 audience: contributors
-last-verified: 2026-04-09
+last-verified: 2026-04-16
 ---
 
 # Native Linker — Object File Linking & Executable Generation
@@ -62,6 +62,14 @@ runnable executable. It performs the classic linker pipeline:
 Archive-only / fully self-contained links can use the native linker on every output-writer target above.
 Programs that depend on libc, the Windows CRT, or OS frameworks require one of the native dynamic-import
 targets above; unsupported shared-library targets now fail explicitly instead of delegating to the host linker.
+
+### Validation Guardrails
+
+Native-link regressions are caught in three layers:
+
+1. `test_linker_platform_import_planners` validates the curated symbol-to-dylib/DLL mapping logic.
+2. `test_linker_runtime_import_audit` scans every member of the built runtime and support archives on the host and fails on any unresolved import that is not explicitly classified by the native-link policy.
+3. `scripts/run_cross_platform_smoke.sh` runs the archive-wide audit plus host-native demo smokes such as `native_smoke_3dbowling_build_arm64` when the current host supports them.
 
 > **Critical:** macOS arm64 requires 16KB page alignment. The dynamic linker (`dyld`) rejects executables with
 > incorrect page alignment. This is the single most important platform-specific detail in the linker.

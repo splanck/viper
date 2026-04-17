@@ -163,6 +163,17 @@ static bool write_gltf_fixture(const char *path) {
     return true;
 }
 
+static const char *find_existing_path(std::initializer_list<const char *> candidates) {
+    for (const char *candidate : candidates) {
+        FILE *f = std::fopen(candidate, "rb");
+        if (f) {
+            std::fclose(f);
+            return candidate;
+        }
+    }
+    return nullptr;
+}
+
 static void test_model3d_roundtrips_vscn_assets() {
     const char *path = "/tmp/viper_model3d_fixture.vscn";
     bool wrote_fixture = write_scene_fixture(path);
@@ -213,6 +224,33 @@ static void test_model3d_roundtrips_vscn_assets() {
     EXPECT_TRUE(inst_child != nullptr, "Model3D.Instantiate preserves named child nodes");
     if (!inst_parent || !inst_child)
         return;
+
+    void *inst_root_min = rt_scene_node3d_get_aabb_min(inst_root);
+    void *inst_root_max = rt_scene_node3d_get_aabb_max(inst_root);
+    EXPECT_NEAR(rt_vec3_x(inst_root_min),
+                0.5,
+                0.001,
+                "Model3D synthetic instance roots expose subtree AABB min X");
+    EXPECT_NEAR(rt_vec3_y(inst_root_min),
+                1.0,
+                0.001,
+                "Model3D synthetic instance roots expose subtree AABB min Y");
+    EXPECT_NEAR(rt_vec3_z(inst_root_min),
+                1.5,
+                0.001,
+                "Model3D synthetic instance roots expose subtree AABB min Z");
+    EXPECT_NEAR(rt_vec3_x(inst_root_max),
+                1.5,
+                0.001,
+                "Model3D synthetic instance roots expose subtree AABB max X");
+    EXPECT_NEAR(rt_vec3_y(inst_root_max),
+                8.0,
+                0.001,
+                "Model3D synthetic instance roots expose subtree AABB max Y");
+    EXPECT_NEAR(rt_vec3_z(inst_root_max),
+                4.5,
+                0.001,
+                "Model3D synthetic instance roots expose subtree AABB max Z");
 
     rt_scene_node3d_set_position(inst_child, 9.0, 9.0, 9.0);
     EXPECT_NEAR(rt_vec3_y(rt_scene_node3d_get_position(inst_child)),
@@ -285,9 +323,40 @@ static void test_model3d_adapts_gltf_scene_graphs() {
                 "glTF-backed Model3D instances preserve child names");
 }
 
+static void test_model3d_loads_demo_fbx_textures() {
+    const char *path = find_existing_path({
+#ifdef VIPER_SOURCE_DIR
+        VIPER_SOURCE_DIR "/examples/games/3dbaseball/model.fbx",
+#endif
+        "examples/games/3dbaseball/model.fbx",
+        "../examples/games/3dbaseball/model.fbx"});
+    EXPECT_TRUE(path != nullptr, "3dbaseball FBX fixture is present");
+    if (!path)
+        return;
+
+    void *model = rt_model3d_load(rt_const_cstr(path));
+    EXPECT_TRUE(model != nullptr, "Model3D.Load parses the 3dbaseball FBX asset");
+    if (!model)
+        return;
+
+    bool saw_textured_material = false;
+    int64_t material_count = rt_model3d_get_material_count(model);
+    for (int64_t i = 0; i < material_count; i++) {
+        auto *mat = static_cast<rt_material3d *>(rt_model3d_get_material(model, i));
+        if (mat && mat->texture) {
+            saw_textured_material = true;
+            break;
+        }
+    }
+
+    EXPECT_TRUE(saw_textured_material,
+                "FBX imports preserve demo diffuse textures when texture files sit beside the asset");
+}
+
 int main() {
     test_model3d_roundtrips_vscn_assets();
     test_model3d_adapts_gltf_scene_graphs();
+    test_model3d_loads_demo_fbx_textures();
     std::printf("Model3D tests: %d/%d passed\n", tests_passed, tests_run);
     return tests_passed == tests_run ? 0 : 1;
 }

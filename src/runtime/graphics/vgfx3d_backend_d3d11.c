@@ -1654,9 +1654,9 @@ static HRESULT d3d11_update_float_srv_buffer(d3d11_context_t *ctx,
     return S_OK;
 }
 
-// Texture and cubemap caches — keyed by `(pixels_ptr, generation)` so
+// Texture and cubemap caches — keyed by stable host identity + generation so
 // re-uploaded textures (Pixels.Set) get fresh GPU resources without
-// leaking the old. Generation is bumped by the source object on edits.
+// aliasing allocator-reused addresses to stale uploads.
 
 /// @brief Release every entry in the 2D-texture cache (teardown path).
 static void d3d11_release_texture_cache(d3d11_context_t *ctx) {
@@ -1864,7 +1864,7 @@ static HRESULT d3d11_create_texture_srv(d3d11_context_t *ctx,
 /// @brief Cache lookup for textures, with auto-create + temp fallback.
 ///
 /// Three-way decision:
-///   1. Hit (pixels_ptr + generation match) → return cached SRV.
+///   1. Hit (pixels_ptr + cache-key match) → return cached SRV.
 ///   2. Pixels match but stale generation → release + recreate in slot.
 ///   3. Miss → create new, append to cache if there's room, else hand
 ///      back as a temporary that the caller releases post-draw.
@@ -1873,16 +1873,16 @@ static ID3D11ShaderResourceView *d3d11_get_or_create_srv(d3d11_context_t *ctx,
                                                          d3d_temp_srv_t *out_temp) {
     ID3D11Texture2D *tex = NULL;
     ID3D11ShaderResourceView *srv = NULL;
-    uint64_t generation;
+    uint64_t cache_key;
 
     if (out_temp)
         memset(out_temp, 0, sizeof(*out_temp));
     if (!ctx || !pixels)
         return NULL;
-    generation = vgfx3d_get_pixels_generation(pixels);
+    cache_key = vgfx3d_get_pixels_cache_key(pixels);
 
     for (int32_t i = 0; i < ctx->tex_cache_count; i++) {
-        if (ctx->tex_cache[i].pixels_ptr == pixels && ctx->tex_cache[i].generation == generation)
+        if (ctx->tex_cache[i].pixels_ptr == pixels && ctx->tex_cache[i].generation == cache_key)
             return ctx->tex_cache[i].srv;
     }
 
@@ -1893,7 +1893,7 @@ static ID3D11ShaderResourceView *d3d11_get_or_create_srv(d3d11_context_t *ctx,
             if (FAILED(d3d11_create_texture_srv(
                     ctx, pixels, &ctx->tex_cache[i].tex, &ctx->tex_cache[i].srv)))
                 return NULL;
-            ctx->tex_cache[i].generation = generation;
+            ctx->tex_cache[i].generation = cache_key;
             return ctx->tex_cache[i].srv;
         }
     }
@@ -1903,7 +1903,7 @@ static ID3D11ShaderResourceView *d3d11_get_or_create_srv(d3d11_context_t *ctx,
 
     if (d3d11_ensure_tex_cache_capacity(ctx, ctx->tex_cache_count + 1)) {
         ctx->tex_cache[ctx->tex_cache_count].pixels_ptr = pixels;
-        ctx->tex_cache[ctx->tex_cache_count].generation = generation;
+        ctx->tex_cache[ctx->tex_cache_count].generation = cache_key;
         ctx->tex_cache[ctx->tex_cache_count].tex = tex;
         ctx->tex_cache[ctx->tex_cache_count].srv = srv;
         ctx->tex_cache_count++;

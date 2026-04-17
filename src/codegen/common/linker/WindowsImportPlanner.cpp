@@ -40,7 +40,8 @@ std::string stripLeadingUnderscores(const std::string &name) {
 bool isLinuxMathSymbol(const std::string &name) {
     static const std::unordered_set<std::string> kMath = {
         "acos",  "acosf",  "asin",      "asinf",      "atan",   "atan2", "atan2f", "atanf",
-        "ceil",  "ceilf",  "copysign",  "copysignf",  "cos",    "cosf",  "cosh",   "exp",
+        "cbrt",  "cbrtf",  "ceil",      "ceilf",      "copysign","copysignf","cos", "cosf",
+        "cosh",  "exp",
         "expf",  "fabs",   "fabsf",     "floor",      "floorf", "fmax",  "fmaxf",  "fmin",
         "fminf", "fmod",   "fmodf",     "hypot",      "ldexp",  "log",   "log10",  "log2",
         "logf",  "nan",    "pow",       "powf",       "round",  "roundf","sin",    "sinf",
@@ -117,7 +118,8 @@ bool dllForImport(const std::string &name, bool debugRuntime, std::string &dllNa
         "__local_stdio_scanf_options","__stdio_common_vfprintf","stdio_common_vfprintf",
         "__stdio_common_vsprintf","stdio_common_vsprintf","__stdio_common_vsscanf","stdio_common_vsscanf",
         "_vfprintf_l","_vsscanf_l","abort","access","abs","aligned_free","aligned_malloc",
-        "aligned_alloc","atexit","atof","atoi","atol","bsearch","calloc_dbg","calloc","ceil","ceilf",
+        "aligned_alloc","atexit","atof","atoi","atol","bsearch","calloc_dbg","calloc","cbrt","cbrtf",
+        "ceil","ceilf",
         "clearerr","clock","close","cos","cosf","create_locale","dclass","dsign","fdsign","ldsign","dup","dup2","errno","exit",
         "fabs","fabsf","fdclass","fclose","fcntl","ferror","feof","fflush","fgetc","fgets","fileno","fmax",
         "fmaxf","fmin","fminf","floor","floorf","fmod","fmodf","fopen","fprintf","fputc","fputs","fread",

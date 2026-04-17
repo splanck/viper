@@ -1,0 +1,10 @@
+module main;
+
+bind "./config";
+bind "./game";
+
+func start() {
+    var demo = new SceneGame();
+    demo.initDemo(config.WINDOW_TITLE, config.WINDOW_WIDTH, config.WINDOW_HEIGHT);
+    demo.run();
+}

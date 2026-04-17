@@ -40,6 +40,7 @@ typedef struct rt_pixels_impl {
     int64_t height;      ///< Height in pixels.
     uint32_t *data;      ///< Pixel storage (RGBA, row-major).
     uint64_t generation; ///< Monotonic content version for GPU caches.
+    uint64_t cache_identity; ///< Stable cache key to survive allocator address reuse.
 } rt_pixels_impl;
 
 /// @brief Convert 0x00RRGGBB canvas color to 0xRRGGBBFF (fully-opaque RGBA).

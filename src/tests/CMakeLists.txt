@@ -813,6 +813,30 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
             ENVIRONMENT "VIPER_3D_BACKEND=software")
 endif ()
 
+add_test(NAME zia_smoke_3dscene
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/3dscene/smoke_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/3dscene")
+set_tests_properties(zia_smoke_3dscene PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;smoke;graphics3d;requires_display"
+        TIMEOUT 30)
+if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    set_tests_properties(zia_smoke_3dscene PROPERTIES
+            ENVIRONMENT "VIPER_3D_BACKEND=software")
+endif ()
+
+add_test(NAME zia_smoke_3dbaseball
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/3dbaseball/smoke_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/3dbaseball")
+set_tests_properties(zia_smoke_3dbaseball PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;smoke;graphics3d;requires_display"
+        TIMEOUT 30)
+if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    set_tests_properties(zia_smoke_3dbaseball PROPERTIES
+            ENVIRONMENT "VIPER_3D_BACKEND=software")
+endif ()
+
 add_test(NAME zia_smoke_3dbowling_overlay
         COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/3dbowling/overlay_smoke_probe.zia"
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/3dbowling")
@@ -914,6 +938,14 @@ set_tests_properties(platform_policy_lint_empty_candidates PROPERTIES
         TIMEOUT 30)
 
 if (APPLE AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm64|aarch64)$")
+    add_test(NAME native_smoke_3dbowling_build_arm64
+            COMMAND /bin/bash "${CMAKE_SOURCE_DIR}/src/tests/e2e/test_3dbowling_native_build.sh"
+            $<TARGET_FILE:viper> "${CMAKE_SOURCE_DIR}")
+    set_tests_properties(native_smoke_3dbowling_build_arm64 PROPERTIES
+            PASS_REGULAR_EXPRESSION "PASS"
+            LABELS "zia;smoke;native-link"
+            TIMEOUT 120)
+
     add_test(NAME native_smoke_achievement_draw_arm64
             COMMAND /bin/bash "${CMAKE_SOURCE_DIR}/src/tests/e2e/test_achievement_draw_native.sh"
             $<TARGET_FILE:viper> "${CMAKE_SOURCE_DIR}")

@@ -231,6 +231,7 @@ RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_raycast_tilemap")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_action_init")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_action_shutdown")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_action_update")
+RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_anim_controller3d_consume_root_motion_rotation")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_anim_controller3d_get_final_palette_data")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_anim_controller3d_get_previous_palette_data")
 

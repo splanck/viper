@@ -48,7 +48,8 @@ const char *linuxNeededLibName(LinuxNeededLib lib) {
 bool isLinuxMathSymbol(const std::string &name) {
     static const std::unordered_set<std::string> kMath = {
         "acos",  "acosf",  "asin",      "asinf",      "atan",   "atan2", "atan2f", "atanf",
-        "ceil",  "ceilf",  "copysign",  "copysignf",  "cos",    "cosf",  "cosh",   "exp",
+        "cbrt",  "cbrtf",  "ceil",      "ceilf",      "copysign","copysignf","cos", "cosf",
+        "cosh",  "exp",
         "expf",  "fabs",   "fabsf",     "floor",      "floorf", "fmax",  "fmaxf",  "fmin",
         "fminf", "fmod",   "fmodf",     "hypot",      "ldexp",  "log",   "log10",  "log2",
         "logf",  "nan",    "pow",       "powf",       "round",  "roundf","sin",    "sinf",

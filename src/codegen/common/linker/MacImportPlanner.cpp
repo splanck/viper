@@ -104,7 +104,7 @@ static constexpr const char *kMacAudioToolboxPrefixes[] = {"AudioQueue", "AudioS
 static constexpr const char *kMacCoreAudioPrefixes[] = {"AudioObject", "AudioDevice", nullptr};
 static constexpr const char *kMacMetalPrefixes[] = {"MTLCreate", "MTL", nullptr};
 static constexpr const char *kMacQuartzCorePrefixes[] = {"CAMetalLayer","CATransaction","CALayer","CAAnimation","CAMediaTiming",nullptr};
-static constexpr const char *kMacSecurityPrefixes[] = {"Sec", nullptr};
+static constexpr const char *kMacSecurityPrefixes[] = {"Sec", "kSec", nullptr};
 
 static constexpr MacImportRule kMacImportRules[] = {
     {"/usr/lib/libSystem.B.dylib", kMacLibSystemPrefixes, kMacLibSystemExact},
@@ -153,7 +153,7 @@ bool isMacFrameworkLikeSymbol(const std::string &sym) {
     static constexpr const char *kFrameworkPrefixes[] = {
         "CF","kCF","CG","kCG","NS","IOKit","IOHID","IOService","IORegistryEntry","objc_","OBJC_",
         "_objc_","UTType","UTCopy","AudioQueue","AudioServices","AudioComponent","AudioObject",
-        "AudioDevice","MTL","Sec","CAMetalLayer","CATransaction","CALayer", nullptr,
+        "AudioDevice","MTL","Sec","kSec","CAMetalLayer","CATransaction","CALayer", nullptr,
     };
 
     const std::string stripped = stripLeadingUnderscores(sym);
@@ -185,6 +185,7 @@ bool planMacImports(const std::unordered_set<std::string> &dynamicSyms,
                     std::ostream &err) {
     static constexpr const char *kCocoaPath =
         "/System/Library/Frameworks/Cocoa.framework/Versions/A/Cocoa";
+    static constexpr const char *kLibcxxPath = "/usr/lib/libc++.1.dylib";
 
     std::unordered_map<std::string, uint32_t> pathToOrdinal;
     ensureMacDylibOrdinal("/usr/lib/libSystem.B.dylib", plan, pathToOrdinal);
@@ -196,6 +197,12 @@ bool planMacImports(const std::unordered_set<std::string> &dynamicSyms,
         if (const MacImportRule *rule = findMacImportRule(sym)) {
             const uint32_t ordinal = ensureMacDylibOrdinal(rule->dylibPath, plan, pathToOrdinal);
             plan.symOrdinals[sym] = isObjcClassLookupSymbol(sym) ? 0 : ordinal;
+            continue;
+        }
+
+        if (isKnownMacLibcxxDynamicSymbol(sym)) {
+            const uint32_t ordinal = ensureMacDylibOrdinal(kLibcxxPath, plan, pathToOrdinal);
+            plan.symOrdinals[sym] = ordinal;
             continue;
         }
 

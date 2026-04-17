@@ -23,9 +23,9 @@ v0.2.5 is a polish-and-hardening cycle concentrated on the runtime, the GUI widg
 
 | Metric | v0.2.4 | v0.2.5 | Delta |
 |---|---|---|---|
-| Commits | — | 13 | +13 |
+| Commits | — | 14 | +14 |
 | Source files | 2,869 | 2,877 | +8 |
-| Production SLOC | ~450K | ~458K | ~+8K |
+| Production SLOC | ~450K | ~459K | ~+9K |
 | Test SLOC | ~183K | ~185K | ~+2K |
 | Demo SLOC | ~177K | ~184K | +~7K |
 
@@ -49,7 +49,7 @@ Counts produced by `scripts/count_sloc.sh` (`Production SLOC` = `src/` minus `sr
 
 **Tilemap / Scene.** Tilemap rendering polish; `rt_scene` surface refinements for scene-graph parent/child invariants.
 
-**Graphics3D — Canvas3D.** `Begin2D` now caches the full V·P product (matching `Begin3D`) instead of just the projection. Overlay code that unprojects through `cached_vp` sees consistent semantics across modes; for an identity 2D view the numeric result equals projection, but the shape of the math matches 3D. Internal header (`rt_canvas3d_internal.h`) picks up additional surface bits used by the morph and material paths.
+**Graphics3D — Canvas3D.** `Begin2D` now caches the full V·P product (matching `Begin3D`) instead of just the projection. Overlay code that unprojects through `cached_vp` sees consistent semantics across modes; for an identity 2D view the numeric result equals projection, but the shape of the math matches 3D. Internal header (`rt_canvas3d_internal.h`) picks up additional surface bits used by the morph and material paths. `begin_frame` now forwards the camera's world-space forward vector (derived from the view matrix) and an `is_ortho` flag (detected by inspecting `m[15]` of the projection) so backends can specialize the ortho vs. perspective path for fog, rim lighting, and specular.
 
 **Graphics3D — Camera3D.** New input sanitizers — `sanitize_aspect` (≥1e-6), `sanitize_clip_planes` (near ≥ 0.1, far ≥ near + 0.1 with a 1000-unit default), `sanitize_fov` ([1°, 179°]), and `sanitize_ortho_size` (≥1e-6) — normalize pathological values before they reach the projection builders. Degenerate `look_at` (eye == target) falls back to the default forward axis while *preserving* the camera translation, instead of returning an identity matrix that also zeroed the camera position.
 `Canvas3D.Begin` now synchronizes the camera's effective aspect ratio against the active output (window or bound `RenderTarget3D`) before rebuilding the frame projection, and `ScreenToRay` now uses the shaken render pose while camera shake is active, so picking stays aligned with the visible image.
@@ -66,7 +66,7 @@ Counts produced by `scripts/count_sloc.sh` (`Production SLOC` = `src/` minus `sr
 
 **Graphics3D — MorphTarget3D.** `rt_morphtarget3d_set_weight` clamps weights to `[-1, 1]` so callers can't silently over-extrude vertices past the target mesh. Packed position/normal delta arrays (`packed_pos_deltas` / `packed_nrm_deltas`) are now rebuilt lazily, gated on a generation counter: `morphtarget_touch_payload` bumps the generation when shapes are added or deltas edited; weight-only changes skip the rebuild. Backends that prefer GPU-side morphing (Metal, OpenGL, D3D11) consume the shared packed buffer directly.
 
-**Graphics3D — Backends.** `vgfx3d_backend.h` plus the four concrete backends (`vgfx3d_backend_d3d11.c`, `vgfx3d_backend_metal.m`, `vgfx3d_backend_opengl.c`, `vgfx3d_backend_sw.c`) extend their morph-handoff surface to accept the shared packed-delta buffers from `rt_morphtarget3d`. `vgfx3d_backend_prefers_gpu_morph` is formalized on the selector; the software backend gets matching CPU-fallback paths so feature behavior stays uniform across all four backends. Additionally, a shared resize/aspect contract is exposed through the `*_shared.h` / `*_shared.c` headers so every backend reports its effective output size consistently — Canvas3D's aspect-sync path consumes this to rebuild the frame projection against the active window or bound `RenderTarget3D`.
+**Graphics3D — Backends.** `vgfx3d_backend.h` plus the four concrete backends (`vgfx3d_backend_d3d11.c`, `vgfx3d_backend_metal.m`, `vgfx3d_backend_opengl.c`, `vgfx3d_backend_sw.c`) extend their morph-handoff surface to accept the shared packed-delta buffers from `rt_morphtarget3d`. `vgfx3d_backend_prefers_gpu_morph` is formalized on the selector; the software backend gets matching CPU-fallback paths so feature behavior stays uniform across all four backends. Additionally, a shared resize/aspect contract is exposed through the `*_shared.h` / `*_shared.c` headers so every backend reports its effective output size consistently — Canvas3D's aspect-sync path consumes this to rebuild the frame projection against the active window or bound `RenderTarget3D`. Per-frame camera params now carry a `forward[3]` world-space view direction and an `is_ortho` flag (all four backends picked up the plumbing; the software rasterizer carries the largest diff because it consumes both values directly in the CPU per-pixel path, where the GPU backends forward them into a uniform buffer). `vgfx3d_draw_cmd_uses_alpha_blend` got smarter: PBR workflow draws keep their own opacity path (no alpha blend); explicit `BLEND` / `MASK` modes are honored; otherwise alpha-blend fires when material alpha or diffuse alpha < 0.999 (fuzzy threshold so FP noise can't toggle draw ordering). Previously the default branch returned 0, so materials with sub-1.0 alpha but no explicit BLEND mode drew opaque.
 
 **Graphics3D — Lights / PostFX.** `rt_light3d` refinements for colour/intensity initialization and finalizer plumbing so lights are safely retained/released through scene-graph mutations. `rt_postfx3d` picks up a small header/surface touch.
 
@@ -80,7 +80,9 @@ Counts produced by `scripts/count_sloc.sh` (`Production SLOC` = `src/` minus `sr
 
 **Graphics3D — Water3D / Particles3D.** Water Gerstner phase switched to the standard `k·x − ω·t` form — waves now travel in the user-specified `+direction` instead of against it. Both subsystems pick up the shared ref helpers: Water3D routes its surface texture, normal map, environment cubemap, mesh, and material through `water3d_assign_ref` / `water3d_release_ref`; Particles3D does the same for its emitter texture and the long-lived `cached_material` slot, closing a repeat-set-texture leak. Particles clamp `delta_time` at the spawn accumulator (≈4 frames' worth) so a frame hiccup with a high rate no longer spawns thousands of particles in a single frame. Sphere emitters now sample volume uniformly instead of clustering near the center, cone emitters sample solid angle uniformly instead of clustering near the axis, and additive particles now use an explicit additive blend path while preserving per-particle alpha.
 
-**Graphics3D — InstBatch3D / Cubemap3D.** InstBatch picks up the shared retain/release pattern for its underlying mesh and material slots; Cubemap3D closes a finalizer gap for its per-face texture references.
+**Graphics3D — InstBatch3D.** Picks up the shared retain/release pattern for its underlying mesh and material slots.
+
+**Graphics3D — Cubemap3D.** Substantial expansion. Two new internal mapping helpers cover the full cubemap geometry contract: `cubemap_direction_to_face_uv` picks the correct face (+X, -X, +Y, -Y, +Z, -Z) from a sample direction and returns the face-local UV using the standard right-hand-rule mapping, and `cubemap_face_uv_to_direction` is its inverse. New public `rt_cubemap_sample_roughness(cm, dir, roughness)` consumes those helpers to sample a blurred reflection from the correct face/mip pair, so material workflows that feed environment lighting back into shading have a single backend-agnostic entry point. The earlier retain/release pattern for per-face texture references is retained.
 
 **Graphics3D — draw-path lifetime / OpenGL uploads.** Terrain3D, Water3D, Sprite3D, Decal3D, and the additive Particles3D path now submit a static identity matrix directly instead of allocating a transient `Mat4.Identity()` object per draw. OpenGL texture and cubemap uploads now flip top-left-origin `Pixels` rows before upload so sampled textures, skyboxes, and reflections match the software, Metal, and D3D11 backends.
 
@@ -221,5 +223,6 @@ Counts produced by `scripts/count_sloc.sh` (`Production SLOC` = `src/` minus `sr
 | `cd07b31af` | 2026-04-16 | `chore(graphics3d,runtime,docs)`: Camera3D input sanitizers, Mesh3D reference-slot helpers, MorphTarget3D lazy packed-payload rebuild, backend packed-delta handoff (d3d11/metal/opengl/sw), release-notes re-organized by area |
 | `d5d938e55` | 2026-04-16 | `chore(graphics3d,docs)`: retain-then-release reference discipline rolled out across Terrain3D / Water3D / Particles3D / Scene3D / InstBatch3D / Cubemap3D, Scene3D `decompose_trs_matrix` helper |
 | `5f29ba785` | 2026-04-16 | `chore(graphics3d,docs)`: AnimController3D root-motion rotation, Camera3D shake-aware `ScreenToRay` + aspect sync, backend resize/aspect contract, `Canvas3D.New`/`RenderTarget3D.New` cleanup on failure |
+| `604a8dd68` | 2026-04-16 | `chore(graphics3d,docs)`: Cubemap3D roughness sampling + direction ↔ face-UV helpers, backend camera-forward/`is_ortho` plumbing, PBR-aware alpha-blend gate, README Windows build-script normalization |
 
 <!-- END DRAFT -->

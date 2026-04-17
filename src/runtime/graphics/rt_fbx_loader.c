@@ -39,6 +39,7 @@
 #include "rt_trap.h"
 #include "rt_vec3.h"
 
+#include <ctype.h>
 #include <math.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -73,6 +74,124 @@ typedef struct {
     uint32_t version;
     int is_64bit; /* version >= 7500 */
 } fbx_reader_t;
+
+/// @brief Treat POSIX roots, UNC-style roots, and `C:` prefixes as absolute paths.
+static int fbx_is_absolute_path(const char *path) {
+    if (!path || !*path)
+        return 0;
+    if (path[0] == '/' || path[0] == '\\')
+        return 1;
+    return isalpha((unsigned char)path[0]) && path[1] == ':';
+}
+
+/// @brief Copy a path while normalising separators to `/`.
+static void fbx_normalize_path(char *dst, size_t dst_size, const char *src) {
+    size_t di = 0;
+    if (!dst || dst_size == 0)
+        return;
+    if (!src)
+        src = "";
+    while (*src && di + 1 < dst_size) {
+        char ch = *src++;
+        dst[di++] = (ch == '\\') ? '/' : ch;
+    }
+    dst[di] = '\0';
+}
+
+/// @brief Return the last path component inside @p path.
+static const char *fbx_path_basename(const char *path) {
+    const char *last = path;
+    if (!path)
+        return "";
+    for (const char *p = path; *p; p++) {
+        if (*p == '/' || *p == '\\')
+            last = p + 1;
+    }
+    return last;
+}
+
+/// @brief Extract the directory portion of @p path into @p out (or empty if none).
+static void fbx_parent_dir(char *out, size_t out_size, const char *path) {
+    char normalized[1024];
+    const char *last_sep;
+    size_t dir_len;
+    if (!out || out_size == 0)
+        return;
+    fbx_normalize_path(normalized, sizeof(normalized), path);
+    last_sep = strrchr(normalized, '/');
+    if (!last_sep) {
+        out[0] = '\0';
+        return;
+    }
+    dir_len = (size_t)(last_sep - normalized);
+    if (dir_len >= out_size)
+        dir_len = out_size - 1;
+    memcpy(out, normalized, dir_len);
+    out[dir_len] = '\0';
+}
+
+/// @brief Join a directory and leaf filename using `/`.
+static void fbx_join_path(char *out, size_t out_size, const char *dir, const char *leaf) {
+    size_t dir_len;
+    if (!out || out_size == 0)
+        return;
+    out[0] = '\0';
+    if (!leaf || !*leaf)
+        return;
+    if (!dir || !*dir) {
+        fbx_normalize_path(out, out_size, leaf);
+        return;
+    }
+    fbx_normalize_path(out, out_size, dir);
+    dir_len = strlen(out);
+    if (dir_len > 0 && out[dir_len - 1] != '/' && dir_len + 1 < out_size) {
+        out[dir_len++] = '/';
+        out[dir_len] = '\0';
+    }
+    if (dir_len + 1 < out_size) {
+        fbx_normalize_path(out + dir_len, out_size - dir_len, leaf);
+    }
+}
+
+/// @brief Try a texture reference verbatim, then fall back to its basename beside the FBX file.
+static void *fbx_try_load_texture_path(const char *fbx_path, const char *texture_ref) {
+    char normalized_ref[1024];
+    char dir[1024];
+    char candidate[1024];
+    const char *basename;
+    void *pixels;
+
+    if (!texture_ref || !*texture_ref)
+        return NULL;
+
+    fbx_normalize_path(normalized_ref, sizeof(normalized_ref), texture_ref);
+    if (!*normalized_ref)
+        return NULL;
+
+    fbx_parent_dir(dir, sizeof(dir), fbx_path);
+    if (fbx_is_absolute_path(normalized_ref)) {
+        pixels = rt_pixels_load(rt_const_cstr(normalized_ref));
+    } else if (*dir) {
+        fbx_join_path(candidate, sizeof(candidate), dir, normalized_ref);
+        pixels = rt_pixels_load(rt_const_cstr(candidate));
+    } else {
+        pixels = rt_pixels_load(rt_const_cstr(normalized_ref));
+    }
+    if (pixels)
+        return pixels;
+
+    basename = fbx_path_basename(normalized_ref);
+    if (!basename || !*basename)
+        return NULL;
+    if (strcmp(basename, normalized_ref) == 0 && !*dir)
+        return NULL;
+
+    if (*dir)
+        fbx_join_path(candidate, sizeof(candidate), dir, basename);
+    else
+        fbx_normalize_path(candidate, sizeof(candidate), basename);
+    return rt_pixels_load(rt_const_cstr(candidate));
+}
 
 // ---------------------------------------------------------------------------
 // FBX is little-endian; v >= 7500 promotes lengths/offsets to 64-bit
@@ -1514,6 +1633,7 @@ void *rt_fbx_load(rt_string path) {
             // Extract RelativeFilename from Properties70
             fbx_node_t *p70 = fbx_find_child(obj, "Properties70");
             const char *rel_filename = NULL;
+            const char *filename = NULL;
             if (p70) {
                 for (int32_t pi = 0; pi < p70->child_count; pi++) {
                     fbx_node_t *p = &p70->children[pi];
@@ -1522,7 +1642,8 @@ void *rt_fbx_load(rt_string path) {
                     const char *pname = fbx_prop_str(p, 0);
                     if (strcmp(pname, "RelativeFilename") == 0) {
                         rel_filename = fbx_prop_str(p, 4);
-                        break;
+                    } else if (strcmp(pname, "FileName") == 0) {
+                        filename = fbx_prop_str(p, 4);
                     }
                 }
             }
@@ -1532,36 +1653,19 @@ void *rt_fbx_load(rt_string path) {
                 if (rfn && rfn->prop_count > 0)
                     rel_filename = fbx_prop_str(rfn, 0);
             }
-            if (!rel_filename || !*rel_filename)
+            if (!filename || !*filename) {
+                fbx_node_t *fn = fbx_find_child(obj, "FileName");
+                if (fn && fn->prop_count > 0)
+                    filename = fbx_prop_str(fn, 0);
+            }
+            if ((!rel_filename || !*rel_filename) && (!filename || !*filename))
                 continue;
 
-            // Resolve texture path relative to FBX file directory
-            char tex_path[1024];
-            {
-                // Find last path separator in the FBX file path
-                const char *last_sep = strrchr(cpath, '/');
-                const char *last_bsep = strrchr(cpath, '\\');
-                if (last_bsep > last_sep)
-                    last_sep = last_bsep;
-                if (last_sep) {
-                    size_t dir_len = (size_t)(last_sep - cpath + 1);
-                    if (dir_len >= sizeof(tex_path))
-                        dir_len = sizeof(tex_path) - 1;
-                    memcpy(tex_path, cpath, dir_len);
-                    tex_path[dir_len] = '\0';
-                    // Skip any leading path separators in relative filename
-                    while (*rel_filename == '/' || *rel_filename == '\\')
-                        rel_filename++;
-                    strncat(tex_path, rel_filename, sizeof(tex_path) - dir_len - 1);
-                } else {
-                    strncpy(tex_path, rel_filename, sizeof(tex_path) - 1);
-                    tex_path[sizeof(tex_path) - 1] = '\0';
-                }
-            }
-
             // Load texture via auto-detect loader
-            rt_string tex_rts = rt_const_cstr(tex_path);
-            void *pixels = rt_pixels_load(tex_rts);
+            void *pixels = fbx_try_load_texture_path(cpath, rel_filename);
+            if (!pixels && filename && *filename &&
+                (!rel_filename || !*rel_filename || strcmp(filename, rel_filename) != 0))
+                pixels = fbx_try_load_texture_path(cpath, filename);
             if (!pixels)
                 continue;
 

@@ -11241,6 +11241,7 @@ RT_CLASS_END()
 //=============================================================================
 
 RT_FUNC(VideoWidgetNew,       rt_videowidget_new,              "Viper.GUI.VideoWidget.New",            "obj(obj,str)")
+RT_FUNC(VideoWidgetDestroy,   rt_videowidget_destroy,          "Viper.GUI.VideoWidget.Destroy",        "void(obj)")
 RT_FUNC(VideoWidgetPlay,      rt_videowidget_play,             "Viper.GUI.VideoWidget.Play",           "void(obj)")
 RT_FUNC(VideoWidgetPause,     rt_videowidget_pause,            "Viper.GUI.VideoWidget.Pause",          "void(obj)")
 RT_FUNC(VideoWidgetStop,      rt_videowidget_stop,             "Viper.GUI.VideoWidget.Stop",           "void(obj)")
@@ -11253,6 +11254,7 @@ RT_FUNC(VideoWidgetGetPos,    rt_videowidget_get_position,     "Viper.GUI.VideoW
 RT_FUNC(VideoWidgetGetDur,    rt_videowidget_get_duration,     "Viper.GUI.VideoWidget.get_Duration",   "f64(obj)")
 
 RT_CLASS_BEGIN("Viper.GUI.VideoWidget", VideoWidget, "obj", VideoWidgetNew)
+    RT_METHOD("Destroy", "void()", VideoWidgetDestroy)
     RT_METHOD("Play", "void()", VideoWidgetPlay)
     RT_METHOD("Pause", "void()", VideoWidgetPause)
     RT_METHOD("Stop", "void()", VideoWidgetStop)

@@ -665,6 +665,7 @@ function(viper_add_runtime_tests)
 
     viper_add_test(test_rt_model3d ${VIPER_TESTS_DIR}/unit/test_rt_model3d.cpp)
     target_link_libraries(test_rt_model3d PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    target_compile_definitions(test_rt_model3d PRIVATE VIPER_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
     viper_add_ctest(test_rt_model3d test_rt_model3d)
 
     viper_add_test(test_rt_animcontroller3d ${VIPER_TESTS_DIR}/unit/test_rt_animcontroller3d.cpp)

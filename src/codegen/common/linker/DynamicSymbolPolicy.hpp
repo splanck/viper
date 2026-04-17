@@ -26,6 +26,37 @@ inline std::string stripDynamicSymbolLeadingUnderscores(const std::string &name)
     return i == 0 ? name : name.substr(i);
 }
 
+inline bool dynamicSymbolHasPrefix(const std::string &name, const char *const *prefixes) {
+    const std::string stripped = stripDynamicSymbolLeadingUnderscores(name);
+    for (const char *const *p = prefixes; p != nullptr && *p != nullptr; ++p) {
+        const std::string prefix(*p);
+        if (name.rfind(prefix, 0) == 0 || stripped.rfind(prefix, 0) == 0)
+            return true;
+    }
+    return false;
+}
+
+inline bool isKnownMacLibcxxDynamicSymbol(const std::string &name) {
+    static const char *const kMacLibcxxPrefixes[] = {
+        "ZNSt",
+        "ZTINSt",
+        "ZTSNSt",
+        "ZTVNSt",
+        "ZSt",
+        "ZTISt",
+        "ZTSSt",
+        "ZTVSt",
+        "Zda",
+        "Zdl",
+        "Zna",
+        "Znw",
+        "cxa_",
+        "gxx_personality_",
+        nullptr,
+    };
+    return dynamicSymbolHasPrefix(name, kMacLibcxxPrefixes);
+}
+
 /// Known system/dynamic library symbols that won't be present in runtime
 /// archives and may be resolved through platform loader metadata instead.
 inline bool isKnownDynamicSymbol(const std::string &name, LinkPlatform platform) {
@@ -70,6 +101,7 @@ inline bool isKnownDynamicSymbol(const std::string &name, LinkPlatform platform)
         "strrchr",
         "atoi",
         "atol",
+        "atoll",
         "atof",
         "strtol",
         "strtod",
@@ -83,6 +115,7 @@ inline bool isKnownDynamicSymbol(const std::string &name, LinkPlatform platform)
         "system",
         "time",
         "clock",
+        "difftime",
         "gettimeofday",
         "gmtime_r",
         "localtime_r",
@@ -134,6 +167,8 @@ inline bool isKnownDynamicSymbol(const std::string &name, LinkPlatform platform)
         "inet_pton",
         "getaddrinfo",
         "freeaddrinfo",
+        "getifaddrs",
+        "freeifaddrs",
         "getnameinfo",
         "GetAdaptersAddresses",
         "GetComputerNameA",
@@ -206,6 +241,7 @@ inline bool isKnownDynamicSymbol(const std::string &name, LinkPlatform platform)
         "getuid",
         "signal",
         "sigaction",
+        "sigaltstack",
         "raise",
         "setjmp",
         "longjmp",
@@ -216,6 +252,7 @@ inline bool isKnownDynamicSymbol(const std::string &name, LinkPlatform platform)
         "isalpha",
         "isalnum",
         "isdigit",
+        "isxdigit",
         "islower",
         "isspace",
         "isupper",
@@ -237,6 +274,7 @@ inline bool isKnownDynamicSymbol(const std::string &name, LinkPlatform platform)
         "freopen",
         "tmpfile",
         "tmpnam",
+        "mkstemp",
         "fdopen",
         "getc",
         "putc",
@@ -264,6 +302,7 @@ inline bool isKnownDynamicSymbol(const std::string &name, LinkPlatform platform)
         "fcntl",
         "fsync",
         "ioctl",
+        "realpath",
         "uname",
         "kqueue",
         "kevent",
@@ -292,6 +331,8 @@ inline bool isKnownDynamicSymbol(const std::string &name, LinkPlatform platform)
         "acosf",
         "atanf",
         "atan2f",
+        "cbrt",
+        "cbrtf",
         "sqrt",
         "sqrtf",
         "pow",
@@ -344,6 +385,7 @@ inline bool isKnownDynamicSymbol(const std::string &name, LinkPlatform platform)
         "__memset_chk",
         "__snprintf_chk",
         "__strcat_chk",
+        "__strncat_chk",
         "__strcpy_chk",
         "__strncpy_chk",
         "__vsnprintf_chk",
@@ -364,6 +406,7 @@ inline bool isKnownDynamicSymbol(const std::string &name, LinkPlatform platform)
         "freelocale",
         "uselocale",
         "utime",
+        "arc4random_buf",
         "backtrace",
         "backtrace_symbols_fd",
         "closedir",
@@ -455,11 +498,14 @@ inline bool isKnownDynamicSymbol(const std::string &name, LinkPlatform platform)
         "AudioServices",
         "AudioComponent",
         "Sec",
+        "kSec",
+        "CC_",
         "mach_",
         "task_",
         "host_",
         "vm_",
         "kern_",
+        "Unwind_",
         "dispatch_",
         "MTL",
         "AudioObject",
@@ -513,6 +559,9 @@ inline bool isKnownDynamicSymbol(const std::string &name, LinkPlatform platform)
             return true;
         }
     }
+
+    if (platform == LinkPlatform::macOS && isKnownMacLibcxxDynamicSymbol(name))
+        return true;
 
     return false;
 }

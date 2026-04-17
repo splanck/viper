@@ -33,6 +33,7 @@ typedef struct {
     int64_t h;
     uint32_t *data;
     uint64_t generation;
+    uint64_t cache_identity;
 } vgfx3d_pixels_view_t;
 
 typedef struct {
@@ -50,6 +51,18 @@ uint64_t vgfx3d_get_pixels_generation(const void *pixels_ptr) {
     if (!pv)
         return 0;
     return pv->generation;
+}
+
+uint64_t vgfx3d_get_pixels_cache_key(const void *pixels_ptr) {
+    const vgfx3d_pixels_view_t *pv = (const vgfx3d_pixels_view_t *)pixels_ptr;
+    uint64_t signature = 1469598103934665603ull;
+
+    if (!pv)
+        return 0;
+
+    signature ^= pv->cache_identity + 0x9e3779b97f4a7c15ull + (signature << 6) + (signature >> 2);
+    signature ^= pv->generation + 0x9e3779b97f4a7c15ull + (signature << 6) + (signature >> 2);
+    return signature;
 }
 
 /// @brief Decode a Pixels object into a freshly malloc'd RGBA8 byte array.

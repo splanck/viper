@@ -783,8 +783,8 @@ Individual node in a Scene3D tree with transform, mesh, material, and child hier
 | `Name` | String | read/write | Name for Find() lookup |
 | `Mesh` | Mesh3D | write | Mesh to render |
 | `Material` | Material3D | write | Material for rendering |
-| `AABBMin` | Vec3 | read | Axis-aligned bounding box minimum |
-| `AABBMax` | Vec3 | read | Axis-aligned bounding box maximum |
+| `AABBMin` | Vec3 | read | Subtree axis-aligned bounding box minimum in this node's local space |
+| `AABBMax` | Vec3 | read | Subtree axis-aligned bounding box maximum in this node's local space |
 | `Body` | Physics3DBody | read | Bound body used by `SyncBindings` |
 | `Animator` | AnimController3D | read | Bound controller used for root motion and skinned draw submission |
 | `SyncMode` | Integer | read/write | Transform sync policy used by `Scene3D.SyncBindings` |

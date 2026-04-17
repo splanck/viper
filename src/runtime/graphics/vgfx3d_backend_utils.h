@@ -13,6 +13,8 @@ int vgfx3d_unpack_pixels_rgba(const void *pixels_ptr,
                               uint8_t **out_rgba);
 /// @brief Read the Pixels generation counter (used to detect when a GPU upload is required).
 uint64_t vgfx3d_get_pixels_generation(const void *pixels_ptr);
+/// @brief Stable cache signature for a Pixels object (identity + generation).
+uint64_t vgfx3d_get_pixels_cache_key(const void *pixels_ptr);
 /// @brief Decode all six cubemap faces into separate RGBA8 byte arrays (caller frees each).
 int vgfx3d_unpack_cubemap_faces_rgba(const void *cubemap_ptr,
                                      int32_t *out_face_size,

@@ -317,6 +317,28 @@ static void test_visibility() {
     EXPECT_TRUE(rt_scene_node3d_get_visible(node) == 0, "After set visible=false");
 }
 
+static void test_subtree_aabb_includes_child_meshes() {
+    void *root = rt_scene_node3d_new();
+    void *child = rt_scene_node3d_new();
+    void *mesh = rt_mesh3d_new_box(2.0, 4.0, 6.0);
+
+    rt_scene_node3d_set_mesh(child, mesh);
+    rt_scene_node3d_set_scale(child, 1.5, 0.5, 2.0);
+    rt_scene_node3d_set_position(child, 5.0, 1.0, -2.0);
+    rt_scene_node3d_add_child(root, child);
+
+    void *min_v = rt_scene_node3d_get_aabb_min(root);
+    void *max_v = rt_scene_node3d_get_aabb_max(root);
+
+    EXPECT_NEAR(rt_vec3_x(min_v), 3.5, 0.001, "Synthetic roots report subtree AABB min X");
+    EXPECT_NEAR(rt_vec3_y(min_v), 0.0, 0.001, "Synthetic roots report subtree AABB min Y");
+    EXPECT_NEAR(rt_vec3_z(min_v), -8.0, 0.001, "Synthetic roots report subtree AABB min Z");
+
+    EXPECT_NEAR(rt_vec3_x(max_v), 6.5, 0.001, "Synthetic roots report subtree AABB max X");
+    EXPECT_NEAR(rt_vec3_y(max_v), 2.0, 0.001, "Synthetic roots report subtree AABB max Y");
+    EXPECT_NEAR(rt_vec3_z(max_v), 4.0, 0.001, "Synthetic roots report subtree AABB max Z");
+}
+
 static void test_clear() {
     void *scene = rt_scene3d_new();
     void *n1 = rt_scene_node3d_new();
@@ -849,6 +871,7 @@ int main() {
     test_node_count_tracks_nested_hierarchy_edits();
     test_prevent_cycle();
     test_visibility();
+    test_subtree_aabb_includes_child_meshes();
     test_clear();
     test_get_child();
     test_default_transform();

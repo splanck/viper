@@ -39,6 +39,7 @@ typedef struct {
     int64_t h;
     uint32_t *data;
     uint64_t generation;
+    uint64_t cache_identity;
 } fake_pixels_t;
 
 typedef struct {
@@ -50,7 +51,7 @@ typedef struct {
 
 static void test_unpack_pixels_rgba_success(void) {
     uint32_t data[2] = {0x11223344u, 0xAABBCCDDu};
-    fake_pixels_t px = {2, 1, data, 7};
+    fake_pixels_t px = {2, 1, data, 7, 41};
     int32_t w = 0;
     int32_t h = 0;
     uint8_t *rgba = NULL;
@@ -69,7 +70,7 @@ static void test_unpack_pixels_rgba_success(void) {
 }
 
 static void test_unpack_pixels_rgba_rejects_invalid(void) {
-    fake_pixels_t px = {0, 1, NULL, 0};
+    fake_pixels_t px = {0, 1, NULL, 0, 0};
     int32_t w = 0;
     int32_t h = 0;
     uint8_t *rgba = NULL;
@@ -121,8 +122,8 @@ static void test_unpack_cubemap_faces_rgba_success(void) {
 
 static void test_unpack_cubemap_faces_rgba_rejects_invalid(void) {
     uint32_t data = 0x11223344u;
-    fake_pixels_t good_face = {1, 1, &data, 2};
-    fake_pixels_t bad_face = {2, 1, &data, 5};
+    fake_pixels_t good_face = {1, 1, &data, 2, 61};
+    fake_pixels_t bad_face = {2, 1, &data, 5, 62};
     fake_cubemap_t cubemap = {0};
     int32_t face_size = 0;
     uint8_t *rgba_faces[6];
@@ -167,12 +168,12 @@ static void test_flip_rgba_rows(void) {
 static void test_generation_helpers(void) {
     uint32_t data = 0x11223344u;
     fake_pixels_t faces[6] = {
-        {1, 1, &data, 1},
-        {1, 1, &data, 4},
-        {1, 1, &data, 2},
-        {1, 1, &data, 9},
-        {1, 1, &data, 3},
-        {1, 1, &data, 5},
+        {1, 1, &data, 1, 101},
+        {1, 1, &data, 4, 102},
+        {1, 1, &data, 2, 103},
+        {1, 1, &data, 9, 104},
+        {1, 1, &data, 3, 105},
+        {1, 1, &data, 5, 106},
     };
     fake_cubemap_t cubemap = {0};
     uint64_t base_generation;
@@ -185,6 +186,14 @@ static void test_generation_helpers(void) {
 
     EXPECT_TRUE(vgfx3d_get_pixels_generation(&faces[1]) == 4,
                 "Pixels generation helper exposes the object generation");
+    EXPECT_TRUE(vgfx3d_get_pixels_cache_key(&faces[1]) != vgfx3d_get_pixels_cache_key(&faces[2]),
+                "Pixels cache key distinguishes different image identities");
+    faces[1].generation = 0;
+    faces[2].generation = 0;
+    EXPECT_TRUE(vgfx3d_get_pixels_cache_key(&faces[1]) != vgfx3d_get_pixels_cache_key(&faces[2]),
+                "Pixels cache key remains unique when multiple images share generation zero");
+    faces[1].generation = 4;
+    faces[2].generation = 2;
     base_generation = vgfx3d_get_cubemap_generation(&cubemap);
     EXPECT_TRUE(base_generation != 0,
                 "Cubemap generation helper returns a non-zero signature for populated cubemaps");

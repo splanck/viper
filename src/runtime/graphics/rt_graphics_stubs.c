@@ -10615,6 +10615,16 @@ void *rt_videowidget_new(void *p, void *path) {
     return NULL;
 }
 
+/// @brief Stub for `VideoWidget.Destroy` — would normally destroy the
+///        widget subtree and release the owned VideoPlayer immediately.
+///
+/// Silent no-op stub.
+///
+/// @param v VideoWidget handle (ignored).
+void rt_videowidget_destroy(void *v) {
+    (void)v;
+}
+
 /// @brief Stub for `VideoWidget.Play` — start or resume video playback
 ///        (delegates to the embedded VideoPlayer).
 ///

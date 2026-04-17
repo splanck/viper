@@ -108,11 +108,16 @@ run_named_tests "$core_regex"
 disabled_surface_regex='^(test_rt_canvas_unavailable|test_rt_graphics_surface_link|test_rt_audio_unavailable|test_rt_audio_surface_link)$'
 run_named_tests "$disabled_surface_regex"
 
-planner_regex='^(test_linker_platform_import_planners|test_linker_elf_exe_writer)$'
+planner_regex='^(test_linker_platform_import_planners|test_linker_runtime_import_audit|test_linker_elf_exe_writer)$'
 run_named_tests "$planner_regex"
 
+if [[ $HOST_MACOS -eq 1 && $NATIVE_LINK_A64 -eq 1 ]]; then
+    native_link_regex='^(native_smoke_3dbowling_build_arm64|native_smoke_xenoscape_start_arm64|native_smoke_xenoscape_action_names_arm64)$'
+    run_named_tests "$native_link_regex"
+fi
+
 if [[ $HAS_GRAPHICS -eq 1 && $HAS_DISPLAY -eq 1 ]]; then
-    display_regex='^(zia_smoke_viperide|zia_smoke_3dbowling|zia_smoke_xenoscape)$'
+    display_regex='^(zia_smoke_viperide|zia_smoke_3dbowling|zia_smoke_3dscene|zia_smoke_3dbaseball|zia_smoke_xenoscape)$'
     run_named_tests "$display_regex"
 else
     echo "Skipping display-bound smoke tests on this host"

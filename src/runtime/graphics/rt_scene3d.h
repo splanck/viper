@@ -106,9 +106,9 @@ int8_t rt_scene_node3d_get_visible(void *node);
 void rt_scene_node3d_set_name(void *node, rt_string name);
 /// @brief Get the node's name (empty string if unset).
 rt_string rt_scene_node3d_get_name(void *node);
-/// @brief Get the AABB minimum corner for the node's mesh in local space.
+/// @brief Get the AABB minimum corner for the node subtree in this node's local space.
 void *rt_scene_node3d_get_aabb_min(void *node);
-/// @brief Get the AABB maximum corner for the node's mesh in local space.
+/// @brief Get the AABB maximum corner for the node subtree in this node's local space.
 void *rt_scene_node3d_get_aabb_max(void *node);
 /// @brief Bind a physics Body3D so its transform syncs with this node's transform.
 void rt_scene_node3d_bind_body(void *node, void *body);

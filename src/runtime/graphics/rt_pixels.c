@@ -48,6 +48,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+static volatile int64_t g_next_pixels_cache_identity = 1;
+
 /// @brief Allocate a new Pixels object with embedded pixel data.
 rt_pixels_impl *pixels_alloc(int64_t width, int64_t height) {
     if (width < 0)
@@ -76,6 +78,11 @@ rt_pixels_impl *pixels_alloc(int64_t width, int64_t height) {
     pixels->data =
         pixel_count > 0 ? (uint32_t *)((uint8_t *)pixels + sizeof(rt_pixels_impl)) : NULL;
     pixels->generation = 0;
+    pixels->cache_identity =
+        (uint64_t)__atomic_fetch_add(&g_next_pixels_cache_identity, (int64_t)1, __ATOMIC_RELAXED);
+    if (pixels->cache_identity == 0)
+        pixels->cache_identity = (uint64_t)__atomic_fetch_add(
+            &g_next_pixels_cache_identity, (int64_t)1, __ATOMIC_RELAXED);
 
     // Zero-fill (transparent black)
     if (pixels->data && data_size > 0)

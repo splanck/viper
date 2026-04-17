@@ -1,7 +1,7 @@
 ---
 status: active
 audience: contributors
-last-verified: 2026-04-15
+last-verified: 2026-04-16
 ---
 
 # Review Readiness Checklist
@@ -27,7 +27,10 @@ ctest --test-dir build --output-on-failure -R 'runtime_surface|rtgen|runtime_nam
 ```
 
 For native/codegen changes, run the host-supported native smoke slice and record
-the host architecture in the review notes.
+the host architecture in the review notes. That smoke slice now includes the
+archive-wide runtime import audit (`test_linker_runtime_import_audit`), so a
+passing run is evidence that every built runtime/support archive member has an
+explicit host-native import classification.
 
 ## Platform Claims
 
