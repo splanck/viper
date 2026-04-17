@@ -282,6 +282,11 @@ void vaud_music_pause(vaud_music_t music);
 /// @param music Music to resume.
 void vaud_music_resume(vaud_music_t music);
 
+/// @brief Update the loop flag for a music stream without changing its play state.
+/// @param music Music handle.
+/// @param loop Non-zero for looped playback, zero for one-shot.
+void vaud_music_set_loop(vaud_music_t music, int loop);
+
 /// @brief Set music playback volume.
 /// @param music Music handle.
 /// @param volume Volume (0.0 to 1.0).

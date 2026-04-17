@@ -13,7 +13,7 @@
 //   - Two built-in groups: RT_MIXGROUP_MUSIC (0) and RT_MIXGROUP_SFX (1).
 //   - Group volumes default to 100 (full) and are clamped to [0, 100].
 //   - Effective volume = voice_volume × group_volume × master_volume / 10000.
-//   - Crossfade state is global — only one crossfade can run at a time.
+//   - Crossfades are tracked per active music pair; unrelated playlist transitions do not collide.
 //
 // Ownership/Lifetime:
 //   - Mix group state is global (module-level); no allocation needed.

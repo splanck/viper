@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-09
+last-verified: 2026-04-17
 ---
 
 # Audio
@@ -37,7 +37,7 @@ Sound effect class for short audio clips. Sounds are loaded entirely into memory
 
 | Method       | Signature        | Description                                       |
 |--------------|------------------|---------------------------------------------------|
-| `Load(path)` | `Sound(String)`  | Load a sound from a WAV file. Returns `null` on failure |
+| `Load(path)` | `Sound(String)`  | Load a sound from WAV, OGG Vorbis, or MP3. Returns `null` on failure |
 
 ### Methods
 
@@ -132,7 +132,7 @@ Viper.Sound.Voice.Stop(engineSound)
 
 ## Viper.Sound.Music
 
-Streaming music class for longer audio tracks. Music is streamed from disk for memory efficiency.
+Buffered music class for longer audio tracks. Playback uses incremental decode and fixed-size buffers for memory efficiency.
 
 **Type:** Instance (obj)
 **Constructor:** `Viper.Sound.Music.Load(path)`
@@ -141,15 +141,14 @@ Streaming music class for longer audio tracks. Music is streamed from disk for m
 > `Music.Load()` returns `null` if this limit is exceeded. Stop and free unused
 > streams before loading new ones.
 
-> **Sample rate:** Music files must be **44100 Hz**. Files at other sample rates
-> (e.g., 48000 Hz) will play at incorrect pitch and speed. Sound effects are
-> automatically resampled at load time; music streams are not.
+> **Formats and sample rates:** Music accepts WAV, OGG Vorbis, and MP3. Any supported
+> sample rate is resampled to the engine mix rate during playback.
 
 ### Static Methods
 
 | Method       | Signature        | Description                                       |
 |--------------|------------------|---------------------------------------------------|
-| `Load(path)` | `Music(String)`  | Load music from a WAV file. Returns `null` on failure or when the 4-stream limit is reached |
+| `Load(path)` | `Music(String)`  | Load music from WAV, OGG Vorbis, or MP3. Returns `null` on failure or when the 4-stream limit is reached |
 
 ### Properties
 
@@ -185,7 +184,7 @@ func start() {
     Audio.Init();
     var c = Canvas.New("Music Player", 400, 200);
 
-    var mus = Music.Load("background.wav");  // Must be 44100 Hz WAV
+    var mus = Music.Load("background.ogg");
     if mus != null {
         mus.set_Volume(70);
         mus.Play(1);  // Looped
@@ -263,9 +262,9 @@ Static class for controlling individual playing voices (sound instances).
 | `SetVolume(id, vol)`       | `Void(Integer, Integer)`       | Set volume for a voice (0–100)                           |
 | `Stop(id)`                 | `Void(Integer)`                | Stop a playing voice                                     |
 
-> **Pan law:** At `pan=0` (center) the signal is equal in both channels. `pan=100`
-> routes the full signal to the right channel with zero output on the left. The
-> gain is applied linearly: `left = (100 − pan) / 200`, `right = (100 + pan) / 200`.
+> **Pan law:** Mono sounds use equal-power panning, so `pan=0` plays evenly in both
+> channels without the center-volume drop of a linear pan law. Stereo sounds keep
+> their original channel balance at `pan=0`; panning attenuates the far side.
 
 > **Invalid IDs:** All voice functions are safe to call with any integer ID. If the
 > voice has already stopped or the ID was never valid, the call is a no-op.
@@ -398,7 +397,7 @@ Named sound registry that maps string names to loaded Sound objects. Games use S
 
 | Method                     | Signature                          | Description                                                          |
 |----------------------------|------------------------------------|----------------------------------------------------------------------|
-| `Register(name, path)`    | `Integer(String, String)`          | Load WAV file and register under name. Returns 1 on success         |
+| `Register(name, path)`    | `Integer(String, String)`          | Load WAV, OGG Vorbis, or MP3 and register under name. Returns 1 on success |
 | `RegisterSound(name, sound)` | `Integer(String, Sound)`        | Register an existing Sound object (e.g., from Synth). Returns 1 on success |
 | `Play(name)`              | `Integer(String)`                  | Play named sound. Returns voice ID, or -1 if not found              |
 | `PlayEx(name, vol, pan)`  | `Integer(String, Integer, Integer)` | Play with volume (0-100) and pan (-100 to 100)                     |
@@ -407,7 +406,7 @@ Named sound registry that maps string names to loaded Sound objects. Games use S
 | `Remove(name)`            | `Void(String)`                     | Remove a named entry                                                |
 | `Clear()`                 | `Void()`                           | Remove all entries                                                  |
 
-Max 64 entries per bank. Names are truncated at 31 characters.
+Max 64 entries per bank. Names are matched exactly and are not truncated.
 
 ### Zia Example
 
@@ -711,6 +710,8 @@ Effective volume = `voice_volume × group_volume / 100`. Master volume is applie
 
 Smooth transitions between music tracks — the old track fades out while the new one fades in simultaneously.
 
+Unrelated playlist or direct-music crossfades can run independently; starting one transition no longer cancels another unrelated fade.
+
 ### Music Methods (Crossfade)
 
 | Method | Signature | Description |
@@ -763,20 +764,21 @@ playlist.Update();         // advances playback and pending playlist crossfades
 Viper Audio supports **WAV (PCM)**, **OGG Vorbis**, and **MP3** files. The format is
 auto-detected from file magic bytes — no extension matching required.
 
-| Property    | WAV                              | OGG Vorbis                          | MP3                                 |
-|-------------|----------------------------------|-------------------------------------|-------------------------------------|
-| Format      | PCM (uncompressed)              | Vorbis I (baseline, Huffman-coded) | MPEG-1/2/2.5 Layer III              |
-| Bit depth   | 8-bit or 16-bit                 | N/A (lossy compressed)             | N/A (lossy compressed)              |
-| Channels    | Mono or Stereo                  | Mono or Stereo                     | Mono, Stereo, or Joint Stereo       |
-| Sample rate | Any (resampled to 44100 Hz)     | Any (resampled to 44100 Hz)        | Any (resampled to 44100 Hz)         |
+| Property    | WAV                                      | OGG Vorbis                          | MP3                                 |
+|-------------|------------------------------------------|-------------------------------------|-------------------------------------|
+| Format      | PCM or 32-bit IEEE float                 | Vorbis I (baseline, Huffman-coded) | MPEG-1/2/2.5 Layer III              |
+| Bit depth   | 8/16/24/32-bit PCM, or 32-bit float     | N/A (lossy compressed)             | N/A (lossy compressed)              |
+| Channels    | Mono or Stereo                           | Mono or Stereo                     | Mono, Stereo, or Joint Stereo       |
+| Sample rate | Any supported rate (resampled to 44100) | Any supported rate (resampled to 44100) | Any supported rate (resampled to 44100) |
 
 ### Tips
 
 1. **Sound effects:** Any sample rate works — the engine resamples to 44100 Hz at load time.
-2. **Music streams:** Any sample rate works — the engine resamples on-the-fly during streaming.
+2. **Music playback:** Any supported sample rate works — the engine resamples during buffered playback.
 3. **Memory:** Sounds are loaded entirely into memory; keep individual clips short.
-4. **Streaming:** Music is streamed from disk for all formats (WAV, OGG, MP3), using ~100 KB of buffer memory regardless of track length.
-5. **Encoding:** Use a tool such as ffmpeg to convert source audio between formats:
+4. **Buffered decode:** WAV and OGG music read incrementally; MP3 music keeps the compressed file in memory and decodes frame-by-frame during playback.
+5. **MP3 decoder scope:** Unsupported MP3 Huffman codebooks now fail at load time instead of producing corrupted audio. Re-encode the file if a specific MP3 is rejected.
+6. **Encoding:** Use a tool such as ffmpeg to convert source audio between formats:
    ```
    ffmpeg -i input.wav output.ogg                      # OGG Vorbis
    ffmpeg -i input.wav -codec:a libmp3lame output.mp3 # MP3
@@ -792,12 +794,12 @@ auto-detected from file magic bytes — no extension matching required.
 |-------|-------|-------|
 | Max simultaneous Sound voices | **32** | Oldest non-looping voice is evicted (LRU) when full |
 | Max simultaneous Music streams | **4** | `Music.Load()` returns `null` when exceeded |
-| Supported audio formats | **WAV PCM, OGG Vorbis, MP3** | WAV sound effects load from memory; OGG/MP3 support both import and streaming music |
+| Supported audio formats | **WAV, OGG Vorbis, MP3** | Sounds load fully into memory; music uses buffered incremental playback |
 | Music sample rate | **Any** | Automatically resampled to 44100 Hz |
 | Sound sample rate | Any | Resampled to 44100 Hz at load time |
 | Pan range | −100 to +100 | −100 = hard left, 0 = center, +100 = hard right |
 | Volume range | 0 to 100 | Applies to Sound, Music, and Voice |
-| Max SoundBank entries | **64** | Names truncated at 31 characters |
+| Max SoundBank entries | **64** | Keys are exact strings; long names remain distinct |
 | Max MusicGen channels | **8** | Per song builder instance |
 | Max MusicGen notes/channel | **4,096** | `AddNote()` returns 0 when full |
 | Max MusicGen duration | **5 min** | `Build()` caps at 5 minutes |

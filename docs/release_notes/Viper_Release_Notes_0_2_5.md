@@ -12,23 +12,25 @@ v0.2.5 is a polish-and-hardening cycle concentrated on the runtime, the GUI widg
 
 - **Runtime surface hardening** — owner-header discipline across the C runtime, typed IL return descriptors for `Canvas` accessors, a magic-value guard on the `Canvas` object, `ButtonGroup` selection correctness, and runtime-string-handle threading in `AchievementTracker`.
 - **Runtime/gameplay follow-up fixes** — PathFollower zero-length segment traversal, ParticleEmitter alpha/pool-saturation behavior, SceneManager transition progress latching and duplicate-name handling, SpriteAnimation stop/ping-pong edge cases, SpriteSheet grid validation, and animated-tile collision/render sync.
+- **Audio runtime consolidation** — WAV / OGG / MP3 load paths unified through a single decoder dispatch in `rt_audio.c` (standalone `rt_audio_codec` translation unit retired), new `Viper.Sound.Audio.Update` tick for driving crossfades outside `Playlist.Update`, `Viper.Sound.Encode` removed from the runtime surface now that format conversion lives in the asset pipeline, and follow-up fixes landing for WAV float/metadata streaming, playlist crossfade state, SoundBank key fidelity, and incremental MP3 music decode.
 - **Graphics runtime** — parallax camera rendering, UTF-8 codepoint iteration for bitmap fonts and drawing, sprite/spritebatch/spritesheet refinements, tilemap polish, and scene-graph touches.
 - **Graphics3D correctness pass** — terrain/heightfield normal math, skeletal animation hierarchy and bone-index validation, crossfade bind-pose TRS decomposition, capsule collision Y-only contract, navmesh edge hashing, Canvas3D 2D/3D state consistency, morph weight clamp, particle spawn catchup, and Gerstner wave direction.
 - **GUI widget toolkit** — broad widget correctness pass plus new APIs on CodeEditor (word-wrap driving all coord math, fold gutters, Can/Redo/TabSize), TabBar (tooltips, ellipsis, stable close-index), Toolbar/MenuBar (overflow popup, disabled-menu rendering, pixel-icon contracts), FindBar (live reads, SetVisible), ScrollView (auto-hide stabilization, drag capture), Tooltip (multi-line wrap, destroy notify), Dialog (re-entrancy, dual user_data), HiDPI scaling across tabbar/toolbar, and several lifetime fixes (dialog use-after-free, tooltip dangling pointer, notification auto-dismiss).
 - **Platform input** — macOS Fn+arrow translation no longer intercepts bare arrow keys; mouse wheel payload no longer destroyed by coordinate localization (mouse/wheel union aliasing).
 - **Zia frontend** — path-aware `Viper.Zia.Completion` APIs, Lowerer modularization into three helper classes, unified type display strings, and tightened Sema error messages.
 - **Linker** — `uname`, `gethostname`, `sysctlbyname` added to the dynamic-symbol policy so `Viper.Machine.OS` / `Hostname` link cleanly, plus a generalized prefix-matching helper and a `isKnownMacLibcxxDynamicSymbol` classifier that recognizes Itanium-ABI C++ runtime symbols (`ZNSt` / `ZSt` / operator new/delete / `cxa_` / `gxx_personality_`) on macOS.
-- **Demos & docs** — Pac-Man renamed and rebuilt as Crackman, Paint gains layers/undo/redo, ViperIDE wires up the new GUI APIs, all ten demos built by `build_demos_mac.sh` carry tutorial-style annotations, two new 3D demos land (`3dbaseball`, `3dscene`, ~1,100 LOC of Zia combined); new codemaps for the bytecode VM and graphics-disabled runtime stubs, plus clarifications to optimizer rehab status, `--no-mem2reg` behavior, graphics-stub policy, and cross-platform validation language.
+- **Tools & codegen polish** — `--` program-args separator in the frontend tools now matches before the generic flag-forwarding branch (fixes `viper run file.zia -- …` pass-through), `native_compiler` temp paths mix PID + steady-clock tick + an atomic counter so parallel compiles in one process can't collide, and x64 `--asset-blob` errors cleanly when combined with text-asm mode instead of silently dropping the companion object.
+- **Demos & docs** — Pac-Man renamed and rebuilt as Crackman, Paint gains layers/undo/redo, ViperIDE wires up the new GUI APIs, all ten demos built by `build_demos_mac.sh` carry tutorial-style annotations, two new 3D demos land (`3dbaseball`, `3dscene`, ~1,100 LOC of Zia combined), and the baseball engine grows a text-mode human-manager franchise shell (plans 14 + 17 — pacing profiles, interactive lineup building, save-slot management, three new probes) while the auto-season regression path is preserved via `--auto-season`; new codemaps for the bytecode VM and graphics-disabled runtime stubs, plus clarifications to optimizer rehab status, `--no-mem2reg` behavior, graphics-stub policy, and cross-platform validation language.
 
 #### By the Numbers
 
 | Metric | v0.2.4 | v0.2.5 | Delta |
 |---|---|---|---|
-| Commits | — | 17 | +17 |
-| Source files | 2,869 | 2,885 | +16 |
-| Production SLOC | 450K | 460K | +10K |
+| Commits | — | 18 | +18 |
+| Source files | 2,869 | 2,883 | +14 |
+| Production SLOC | 450K | 461K | +11K |
 | Test SLOC | 183K | 188K | +5K |
-| Demo SLOC | 177K | 185K | +8K |
+| Demo SLOC | 177K | 187K | +10K |
 
 Counts produced by `scripts/count_sloc.sh` (`Production SLOC` = `src/` minus `src/tests/`). Growth concentrates on the demo side (Crackman modularization + Paint feature pass) and the GUI runtime, with surgical edits across the rest of the tree.
 
@@ -103,6 +105,8 @@ Counts produced by `scripts/count_sloc.sh` (`Production SLOC` = `src/` minus `sr
 
 **ButtonGroup.** Removing the currently selected button now clears the active selection and marks the selection as changed; previously `selected_index` could stay stale and `is_selected()` could return `true` for an already-removed id.
 
+**Audio.** `rt_audio_codec.{c,h}` and `test_rt_audio_codec.cpp` retired; `rt_audio.c` is rewritten (~807 LOC changed) to unify WAV / OGG / MP3 load paths behind a single internal decoder registry so `rt_sound_load`, `rt_sound_load_mem`, and the music-streaming variants accept any of the three formats rather than exposing one API per encoding. `rt_mp3.c` trims ~150 LOC (moves its shared hook into `rt_mp3.h`); `rt_vorbis.c` picks up the matching shape; `rt_playlist.c` restructures around the shared crossfade tick and drops duplicated per-format branches. `vaud.c` / `vaud_mixer.c` (lib-side audio) pick up the matching surface changes. New `rt_audio_update()` entry point (registered as `Viper.Sound.Audio.Update` in `runtime.def`) advances time-based audio state — crossfades specifically — from a per-frame hook outside `Playlist.Update`. `Viper.Sound.Encode` is removed from the runtime surface (both the `RT_FUNC` registration and `RuntimeSurfacePolicy`): WAV→VAF translation now lives entirely in the asset pipeline, so the runtime no longer needs a parallel encoder entry point. Follow-up hardening in the same area fixes float32 WAV music streams being decoded as integer PCM, removes the old 256-byte ceiling on WAV stream-header scanning (so metadata-heavy/BWF files load again), updates playlist pause/stop/volume handling to operate on both sides of an active crossfade, preserves exact `SoundBank` keys instead of truncating them to 31 bytes, and switches MP3 music playback from eager full-file PCM expansion to incremental frame decode over the compressed source buffer. Unsupported MP3 Huffman tables now fail cleanly instead of silently emitting corrupted audio.
+
 **Game — Dialogue.** `rt_dialogue.c` (+339 LOC) rewritten against the real `rt_bitmapfont` measurement surface. Previous hard-coded `DLG_CHAR_WIDTH = 8` / `DLG_LINE_HEIGHT = 10` approximations replaced with font-metric queries plus a configurable `DLG_DEFAULT_LINE_GAP`. Per-line state now distinguishes byte length (`text_len_bytes`) from character length (`text_len_chars`), so UTF-8 multibyte text wraps and reveals at codepoint boundaries rather than byte boundaries. New `dlg_draw_bytes` and `dlg_draw_wrapped_revealed` helpers render the visible prefix of a wrapped line against the reveal-speed accumulator. `rt_dialogue_finalizer` releases the owned font through the shared retain-then-release discipline, closing a leak on dialog replacement and a potential UAF on destroy.
 
 **Game — Quadtree.** `rt_quadtree.c` per-node `items` array switched from a fixed-size stack array to a heap allocation with explicit capacity. `struct qt_node` now carries `int64_t *items` + `int64_t item_capacity` instead of `int64_t items[RT_QUADTREE_MAX_ITEMS]`. `create_node` allocates the initial array (initial size `RT_QUADTREE_MAX_ITEMS`) and fails cleanly on allocation failure; `destroy_node` frees the allocation. Inserts can now grow past the initial capacity rather than silently dropping items on overflow — scenes with dense spatial clusters keep every entity in the spatial index.
@@ -163,7 +167,7 @@ Counts produced by `scripts/count_sloc.sh` (`Production SLOC` = `src/` minus `sr
 
 ### IL
 
-**`runtime.def`.** `Canvas.CopyRect` and `Canvas.Screenshot` now declare `obj<Viper.Graphics.Pixels>` return types on both the `RT_FUNC` and `RT_METHOD` rows so the IL type system carries the `Pixels` return type through to callers instead of erasing it to a bare `obj`.
+**`runtime.def`.** `Canvas.CopyRect` and `Canvas.Screenshot` now declare `obj<Viper.Graphics.Pixels>` return types on both the `RT_FUNC` and `RT_METHOD` rows so the IL type system carries the `Pixels` return type through to callers instead of erasing it to a bare `obj`. Audio surface edit: `AudioUpdate` / `Viper.Sound.Audio.Update` (void()) added to drive crossfade ticks; `AudioEncode` / `Viper.Sound.Encode` removed (`RuntimeSignatures.cpp` and `RuntimeSurfacePolicy.inc` drop the matching entries).
 
 ---
 
@@ -182,6 +186,16 @@ Counts produced by `scripts/count_sloc.sh` (`Production SLOC` = `src/` minus `sr
 ### Linker
 
 **Dynamic symbol policy (`DynamicSymbolPolicy.hpp`).** `uname`, `gethostname`, and `sysctlbyname` added to the known dynamic-symbol list on Linux and macOS. Required by `Viper.Machine.OS` / `Viper.Machine.Hostname` and by the IDE's macOS font-fallback chain; without these entries the linker produced static-resolution failures. Additionally, a new generalized `dynamicSymbolHasPrefix` helper plus `isKnownMacLibcxxDynamicSymbol` classify Itanium-ABI C++ runtime symbols (std:: template instantiations via `ZNSt` / `ZTINSt` / `ZTSNSt` / `ZTVNSt`, `ZSt` / `ZTISt` / `ZTSSt` / `ZTVSt`, operator `new` / `delete` via `Zna` / `Znw` / `Zda` / `Zdl`, Itanium C++ ABI helpers via `cxa_`, and Itanium personality functions via `gxx_personality_`). The helper checks both the raw mangled name and its leading-underscore-stripped form so macOS's `_`-prefixed naming works uniformly with the ELF and PE planners. `LinuxImportPlanner.cpp`, `MacImportPlanner.cpp`, and `WindowsImportPlanner.cpp` consume the new helper so C++ runtime symbols route through the correct dylib or import library per platform.
+
+---
+
+### Tools & Codegen
+
+**Frontend tool argument parsing (`frontend_tool.hpp`).** The `--` program-args separator is now matched before the generic `starts_with('-')` forwarding branch. Previously `--` was tested *after* the generic flag check, so the `--` token itself was forwarded to ilc and every following argument stayed in the tool's own argv rather than reaching the user program's argument vector. `viper run demo.zia -- --auto-season` now threads `--auto-season` all the way to the program (this is the path the new baseball shell's regression fallback depends on).
+
+**Unique native-compiler temp paths (`native_compiler.{hpp,cpp}`).** `generateUniqueTempPath(prefix, extension)` combines the temp directory with `prefix + PID + steady_clock::now() + atomic<uint64_t>++ + extension`. `generateTempIlPath()` (and each subsequent temp-object helper) routes through it instead of composing `"viper_build_" + PID + ".il"` by hand — two parallel compilations in the same process can no longer collide on the same temp filename during interleaved cleanup.
+
+**x64 codegen `--asset-blob` gate (`CodegenPipeline.{hpp,cpp}`, `cmd_codegen_x64.cpp`).** `CodegenOptions.extra_objects` is now plumbed through `linkObjectWithNativeLinker` into `LinkOptions.extraObjPaths`, so x64 code generation can pick up companion object files from `--extra-obj`. In text-asm mode, specifying `--asset-blob` without either `--native-asm` *or* an explicit `--extra-obj` now produces `error: x64 --asset-blob requires --native-asm or a companion --extra-obj` up front, instead of silently producing a binary without the asset data linked in.
 
 ---
 
@@ -220,6 +234,10 @@ Counts produced by `scripts/count_sloc.sh` (`Production SLOC` = `src/` minus `sr
 - `RTParticles3DContractTests.cpp` extended (+118 LOC) for emitter texture and `cached_material` lifecycle: retain-on-assign, release-on-replace, no leak on repeat-set, no UAF on finalize after draw.
 - `RTWater3DContractTests.cpp` extended (+42 LOC) for the water `assign_ref` / `release_ref` helpers and the alpha clamp.
 - Additional runtime/tool regression coverage now locks down PathFollower zero-length traversal, SpriteAnimation stop/reset and single-frame ping-pong completion, ParticleEmitter alpha blending and saturation behavior, SceneManager transition completion progress, animated tile collision sync, SpriteSheet grid validation, frontend `--` runtime-arg parsing, x64 asset-object flag parsing, and unique native-compiler temp paths.
+- Audio regression coverage expanded: new `TestWavStream.cpp` covers float32 WAV stream decode and metadata-heavy WAV headers; `RTAudioIntegrationTests.cpp` adds paused-jump playlist resume and failed-replacement remove-current regressions; `RTSoundBankTests.cpp` now guards long-name key fidelity; `TestMp3Decode.cpp` adds MP3 stream-open rejection cases.
+- New `src/tests/tools/FrontendToolAndNativeCompilerTests.cpp` covers the `--` program-args separator behavior (flag-forwarding branch no longer eats it), the x64 `--asset-blob` + text-asm error path, and unique temp-path generation under concurrent calls.
+- New baseball probes: `human_smoke_probe.zia` (HumanSeasonTeamManager + HumanManagerPolicy wiring under observe-only profile), `human_legality_probe.zia` (validator rejects missing-pitcher and short-batting-order cards), `human_pacing_probe.zia` (AI baseline vs. observe / standard / high-touch profiles with forced delegation — completed-game and decision-log counts match byte-for-byte, confirming the new substitution / pitching-change virtuals are behavior-preserving).
+- Test registration plumbing updates in `src/tests/tools/CMakeLists.txt` and `src/tests/unit/CMakeLists.txt` to drop the retired `test_rt_audio_codec` binary and pick up the new frontend/native-compiler tests.
 - `test_rt_scene3d_bindings.cpp` (+34 LOC): covers the new TRS decomposition path and scene-node mesh/material reassignment through the ref helpers.
 - Further `test_rt_canvas3d.cpp` / `test_rt_canvas3d_gpu_paths.cpp` coverage (+131 / +49 LOC) for the new overlay-paint surfaces and reference-lifetime invariants. Full 3D suite verification on the prior pass: 318 tests green across `test_rt_morphtarget3d`, `test_rt_skeleton3d`, `test_rt_canvas3d`, `test_rt_physics3d`, `test_rt_animcontroller3d`.
 - Extended `RTCameraTests.cpp`, `test_rt_bitmapfont.cpp`, `test_rt_tilemap_layers.cpp`, `RTCanvasFrameTests.cpp`, `RTCanvasTextLayoutTests.cpp`, `RTCanvasUnavailableTests.cpp`, `RTPixelsTests.cpp`, and `test_rt_sprite_consolidated.cpp` for parallax-camera rendering, UTF-8 codepoint text, and the refined sprite/tilemap surfaces.
@@ -249,5 +267,6 @@ Counts produced by `scripts/count_sloc.sh` (`Production SLOC` = `src/` minus `sr
 | `edc36bf84` | 2026-04-17 | `chore(linker,runtime,demos,docs)`: Mac C++ dynamic-symbol classification, FBX path normalization, Scene3D subtree-bounds queries, two new 3D demos (`3dbaseball`, `3dscene`), runtime-import audit test |
 | `1dca700b1` | 2026-04-17 | `chore(runtime,tests,docs)`: shared HiDPI scale helpers + explicit-alpha flag, canvas state mirror, six new 2D-graphics contract suites; two failing tests disabled pending follow-up |
 | `23cf1d590` | 2026-04-17 | `chore(runtime,tests,docs)`: Dialogue font-aware wrap + UTF-8, Quadtree dynamic item capacity, Physics2D joint cleanup on body removal, release-notes format cleanup |
+| `7b3a66211` | 2026-04-17 | `chore(baseball,runtime,tools,codegen,docs,tests)`: human-manager franchise shell on baseball engine (plans 14 + 17), audio codec consolidation (WAV/OGG/MP3 unified load, `Audio.Update` tick, `Audio.Encode` retired), frontend `--` arg parsing + unique native-compiler temp paths + x64 `--asset-blob` gate |
 
 <!-- END DRAFT -->

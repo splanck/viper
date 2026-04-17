@@ -58,7 +58,7 @@ int mp3_decode_file(mp3_decoder_t *dec,
 typedef struct mp3_stream mp3_stream_t;
 
 /// @brief Open an MP3 file for streaming frame-by-frame decode.
-/// @details Reads the entire file into memory but decodes incrementally.
+/// @details Keeps the compressed file in memory and decodes one MP3 frame at a time.
 /// @return Stream handle or NULL on failure.
 mp3_stream_t *mp3_stream_open(const char *filepath);
 

@@ -260,6 +260,158 @@ static int parse_wav_header(const uint8_t *data, size_t size, vaud_wav_info *inf
     return 1;
 }
 
+/// @brief Parse a WAV header directly from an open file stream.
+/// @param file Open FILE* positioned anywhere in the file.
+/// @param info Output: parsed format information.
+/// @return 1 on success, 0 on failure.
+static int parse_wav_stream(FILE *file, vaud_wav_info *info) {
+    if (!file || !info) {
+        vaud_set_error(VAUD_ERR_INVALID_PARAM, "NULL parameter");
+        return 0;
+    }
+
+    if (fseek(file, 0, SEEK_END) != 0) {
+        vaud_set_error(VAUD_ERR_FILE, "Failed to seek WAV file");
+        return 0;
+    }
+    long file_size_long = ftell(file);
+    if (file_size_long < 44) {
+        vaud_set_error(VAUD_ERR_FORMAT, "WAV file too small");
+        return 0;
+    }
+    int64_t file_size = (int64_t)file_size_long;
+
+    if (fseek(file, 0, SEEK_SET) != 0) {
+        vaud_set_error(VAUD_ERR_FILE, "Failed to seek WAV file");
+        return 0;
+    }
+
+    uint8_t header[12];
+    if (fread(header, 1, sizeof(header), file) != sizeof(header)) {
+        vaud_set_error(VAUD_ERR_FILE, "Failed to read WAV header");
+        return 0;
+    }
+
+    if (read_u32_le(header) != WAV_RIFF_ID) {
+        vaud_set_error(VAUD_ERR_FORMAT, "Not a RIFF file");
+        return 0;
+    }
+    if (read_u32_le(header + 8) != WAV_WAVE_ID) {
+        vaud_set_error(VAUD_ERR_FORMAT, "Not a WAVE file");
+        return 0;
+    }
+
+    memset(info, 0, sizeof(*info));
+    int found_fmt = 0;
+    int found_data = 0;
+
+    while (1) {
+        uint8_t chunk_header[8];
+        size_t header_read = fread(chunk_header, 1, sizeof(chunk_header), file);
+        if (header_read == 0)
+            break;
+        if (header_read != sizeof(chunk_header)) {
+            vaud_set_error(VAUD_ERR_FORMAT, "Truncated WAV chunk header");
+            return 0;
+        }
+
+        uint32_t chunk_id = read_u32_le(chunk_header);
+        uint32_t chunk_size = read_u32_le(chunk_header + 4);
+        long chunk_data_offset = ftell(file);
+        if (chunk_data_offset < 0) {
+            vaud_set_error(VAUD_ERR_FILE, "Failed to read WAV chunk offset");
+            return 0;
+        }
+
+        int64_t padded_size = (int64_t)chunk_size + (int64_t)(chunk_size & 1u);
+        if ((int64_t)chunk_data_offset + padded_size > file_size) {
+            vaud_set_error(VAUD_ERR_FORMAT, "WAV chunk extends beyond file");
+            return 0;
+        }
+
+        if (chunk_id == WAV_FMT_ID) {
+            uint8_t fmt[16];
+            if (chunk_size < sizeof(fmt) || fread(fmt, 1, sizeof(fmt), file) != sizeof(fmt)) {
+                vaud_set_error(VAUD_ERR_FORMAT, "Invalid fmt chunk");
+                return 0;
+            }
+
+            uint16_t audio_format = read_u16_le(fmt);
+            if (audio_format != WAV_FORMAT_PCM && audio_format != WAV_FORMAT_IEEE_FLOAT) {
+                vaud_set_error(VAUD_ERR_FORMAT, "Only PCM and IEEE float formats supported");
+                return 0;
+            }
+
+            info->audio_format = (int32_t)audio_format;
+            info->channels = read_u16_le(fmt + 2);
+            info->sample_rate = (int32_t)read_u32_le(fmt + 4);
+            info->bits_per_sample = read_u16_le(fmt + 14);
+
+            if (info->sample_rate <= 0 || info->sample_rate > 384000) {
+                vaud_set_error(VAUD_ERR_FORMAT, "Invalid WAV sample rate");
+                return 0;
+            }
+
+            if (info->channels < 1 || info->channels > 2) {
+                vaud_set_error(VAUD_ERR_FORMAT, "Only mono and stereo supported");
+                return 0;
+            }
+
+            if (audio_format == WAV_FORMAT_IEEE_FLOAT) {
+                if (info->bits_per_sample != 32) {
+                    vaud_set_error(VAUD_ERR_FORMAT, "Only 32-bit IEEE float supported");
+                    return 0;
+                }
+            } else if (info->bits_per_sample != 8 && info->bits_per_sample != 16 &&
+                       info->bits_per_sample != 24 && info->bits_per_sample != 32) {
+                vaud_set_error(VAUD_ERR_FORMAT, "Only 8/16/24/32-bit PCM supported");
+                return 0;
+            }
+
+            int64_t remaining = (int64_t)chunk_size - (int64_t)sizeof(fmt);
+            if (remaining > 0 && fseek(file, (long)remaining, SEEK_CUR) != 0) {
+                vaud_set_error(VAUD_ERR_FILE, "Failed to skip fmt chunk");
+                return 0;
+            }
+            found_fmt = 1;
+        } else if (chunk_id == WAV_DATA_ID) {
+            info->data_offset = (int64_t)chunk_data_offset;
+            info->data_size = (int64_t)chunk_size;
+            if (fseek(file, (long)chunk_size, SEEK_CUR) != 0) {
+                vaud_set_error(VAUD_ERR_FILE, "Failed to skip data chunk");
+                return 0;
+            }
+            found_data = 1;
+        } else if (chunk_size > 0 && fseek(file, (long)chunk_size, SEEK_CUR) != 0) {
+            vaud_set_error(VAUD_ERR_FILE, "Failed to skip WAV chunk");
+            return 0;
+        }
+
+        if ((chunk_size & 1u) != 0 && fseek(file, 1, SEEK_CUR) != 0) {
+            vaud_set_error(VAUD_ERR_FILE, "Failed to skip WAV chunk padding");
+            return 0;
+        }
+
+        if (found_fmt && found_data)
+            break;
+    }
+
+    if (!found_fmt) {
+        vaud_set_error(VAUD_ERR_FORMAT, "Missing fmt chunk");
+        return 0;
+    }
+    if (!found_data) {
+        vaud_set_error(VAUD_ERR_FORMAT, "Missing data chunk");
+        return 0;
+    }
+    if (info->data_offset + info->data_size > file_size) {
+        vaud_set_error(VAUD_ERR_FORMAT, "Data chunk extends beyond file");
+        return 0;
+    }
+
+    return 1;
+}
+
 //===----------------------------------------------------------------------===//
 // PCM Conversion
 //===----------------------------------------------------------------------===//
@@ -399,9 +551,10 @@ int vaud_wav_open_stream(const char *path,
                          int64_t *out_frames,
                          int32_t *out_sample_rate,
                          int32_t *out_channels,
-                         int32_t *out_bits) {
+                         int32_t *out_bits,
+                         int32_t *out_format) {
     if (!path || !out_file || !out_data_offset || !out_data_size || !out_frames ||
-        !out_sample_rate || !out_channels || !out_bits) {
+        !out_sample_rate || !out_channels || !out_bits || !out_format) {
         vaud_set_error(VAUD_ERR_INVALID_PARAM, "NULL parameter");
         return 0;
     }
@@ -413,18 +566,8 @@ int vaud_wav_open_stream(const char *path,
         return 0;
     }
 
-    /* Read header (first 256 bytes should be enough for any WAV header) */
-    uint8_t header[256];
-    size_t header_size = fread(header, 1, sizeof(header), file);
-    if (header_size < 44) {
-        fclose(file);
-        vaud_set_error(VAUD_ERR_FORMAT, "WAV file too small");
-        return 0;
-    }
-
-    /* Parse header */
     vaud_wav_info info;
-    if (!parse_wav_header(header, header_size, &info)) {
+    if (!parse_wav_stream(file, &info)) {
         fclose(file);
         return 0;
     }
@@ -441,6 +584,7 @@ int vaud_wav_open_stream(const char *path,
     *out_sample_rate = info.sample_rate;
     *out_channels = info.channels;
     *out_bits = info.bits_per_sample;
+    *out_format = info.audio_format;
 
     /* Seek to start of data */
     fseek(file, (long)info.data_offset, SEEK_SET);
@@ -449,7 +593,12 @@ int vaud_wav_open_stream(const char *path,
 }
 
 int32_t vaud_wav_read_frames(
-    void *file, int16_t *samples, int32_t frames, int32_t channels, int32_t bits_per_sample) {
+    void *file,
+    int16_t *samples,
+    int32_t frames,
+    int32_t channels,
+    int32_t bits_per_sample,
+    int32_t audio_format) {
     if (!file || !samples || frames <= 0)
         return 0;
 
@@ -472,7 +621,7 @@ int32_t vaud_wav_read_frames(
 
     for (int32_t i = 0; i < frames_read; i++) {
         int16_t left, right;
-        decode_pcm_frame(src, bits_per_sample, channels, WAV_FORMAT_PCM, &left, &right);
+        decode_pcm_frame(src, bits_per_sample, channels, audio_format, &left, &right);
         *dst++ = left;
         *dst++ = right;
         src += bytes_per_frame;

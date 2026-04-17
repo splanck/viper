@@ -128,7 +128,7 @@ static int64_t get_track_index(playlist_impl *pl, int64_t position) {
 
 static void playlist_release_music(playlist_impl *pl) {
     if (pl->music) {
-        rt_music_stop(pl->music);
+        rt_music_stop_related(pl->music);
         rt_music_destroy(pl->music);
         pl->music = NULL;
     }
@@ -196,16 +196,17 @@ static void playlist_replace_music(playlist_impl *pl, void *new_music, int8_t pl
     if (play_now && new_music) {
         if (pl->crossfade_ms > 0 && old_music && pl->playing) {
             rt_music_crossfade_to(old_music, new_music, pl->crossfade_ms);
+            rt_music_set_loop(new_music, loop);
         } else {
             if (old_music)
-                rt_music_stop(old_music);
+                rt_music_stop_related(old_music);
             rt_music_play(new_music, loop);
         }
         pl->playing = 1;
         pl->paused = 0;
     } else {
         if (old_music)
-            rt_music_stop(old_music);
+            rt_music_stop_related(old_music);
     }
 
     if (old_music && old_music != new_music)
@@ -225,6 +226,9 @@ static void playlist_select_position(playlist_impl *pl,
 
     if (resume_playing && pl->music) {
         pl->playing = 1;
+        pl->paused = 0;
+    } else if (!pl->music) {
+        pl->playing = 0;
         pl->paused = 0;
     } else {
         pl->playing = 0;
@@ -376,7 +380,10 @@ void rt_playlist_remove(void *obj, int64_t index) {
 
         void *new_music = playlist_load_current_music(pl);
         playlist_replace_music(pl, new_music, was_playing);
-        if (!was_playing) {
+        if (!pl->music) {
+            pl->playing = 0;
+            pl->paused = 0;
+        } else if (!was_playing) {
             pl->playing = 0;
             pl->paused = was_paused;
         }
@@ -455,9 +462,12 @@ void rt_playlist_play(void *obj) {
         return;
 
     if (pl->paused && pl->music) {
-        rt_music_resume(pl->music);
+        int loop = (pl->repeat == RT_REPEAT_ONE) ? 1 : 0;
+        rt_music_resume_related(pl->music);
+        if (!rt_music_is_playing(pl->music))
+            rt_music_play(pl->music, loop);
         pl->paused = 0;
-        pl->playing = 1;
+        pl->playing = rt_music_is_playing(pl->music) ? 1 : 0;
         return;
     }
 
@@ -484,7 +494,7 @@ void rt_playlist_pause(void *obj) {
     playlist_impl *pl = (playlist_impl *)obj;
 
     if (pl->music && pl->playing) {
-        rt_music_pause(pl->music);
+        rt_music_pause_related(pl->music);
         pl->paused = 1;
         pl->playing = 0;
     }
@@ -498,7 +508,7 @@ void rt_playlist_stop(void *obj) {
     playlist_impl *pl = (playlist_impl *)obj;
 
     if (pl->music) {
-        rt_music_stop(pl->music);
+        rt_music_stop_related(pl->music);
     }
 
     pl->playing = 0;
@@ -657,7 +667,7 @@ void rt_playlist_set_volume(void *obj, int64_t volume) {
     pl->volume = volume;
 
     if (pl->music) {
-        rt_music_set_volume(pl->music, volume);
+        rt_music_set_crossfade_pair_volume(pl->music, volume);
     }
 }
 
@@ -723,6 +733,8 @@ void rt_playlist_set_repeat(void *obj, int64_t mode) {
     if (mode > RT_REPEAT_ONE)
         mode = RT_REPEAT_ONE;
     pl->repeat = mode;
+    if (pl->music)
+        rt_music_set_loop(pl->music, pl->repeat == RT_REPEAT_ONE);
 }
 
 /// @brief Return the current repeat mode.

@@ -116,6 +116,7 @@ struct vaud_music {
     int32_t source_sample_rate; ///< Source file/stream sample rate before resampling
     int32_t channels;           ///< File channel count
     int32_t bits_per_sample;    ///< Bits per sample in file
+    int32_t audio_format;       ///< Source sample encoding (PCM or IEEE float)
 
     vaud_music_state state; ///< Current playback state
     int64_t position;       ///< Current frame position
@@ -250,7 +251,8 @@ int vaud_wav_open_stream(const char *path,
                          int64_t *out_frames,
                          int32_t *out_sample_rate,
                          int32_t *out_channels,
-                         int32_t *out_bits);
+                         int32_t *out_bits,
+                         int32_t *out_format);
 
 /// @brief Read frames from a streaming WAV file.
 /// @param file File handle from vaud_wav_open_stream.
@@ -260,7 +262,12 @@ int vaud_wav_open_stream(const char *path,
 /// @param bits_per_sample Bits per sample.
 /// @return Number of frames actually read.
 int32_t vaud_wav_read_frames(
-    void *file, int16_t *samples, int32_t frames, int32_t channels, int32_t bits_per_sample);
+    void *file,
+    int16_t *samples,
+    int32_t frames,
+    int32_t channels,
+    int32_t bits_per_sample,
+    int32_t audio_format);
 
 //===----------------------------------------------------------------------===//
 // Resampling Functions

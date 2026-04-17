@@ -83,6 +83,7 @@ ZIA_DEMOS=(
     "vipersql:${APPS_DIR}/vipersql"
     "chess-zia:${GAMES_DIR}/chess"
     "xenoscape:${GAMES_DIR}/xenoscape"
+    "baseball:${GAMES_DIR}/baseball"
 )
 
 snapshot_bin_dir() {

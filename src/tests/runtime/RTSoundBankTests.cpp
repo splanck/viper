@@ -111,6 +111,35 @@ static void test_register_overwrite() {
     printf("  test_register_overwrite: PASSED\n");
 }
 
+static void test_long_names_do_not_alias() {
+    void *bank = rt_soundbank_new();
+
+    const char *name1 = "ambience_forest_loop_segment_alpha_version_01";
+    const char *name2 = "ambience_forest_loop_segment_alpha_version_02";
+    assert(strlen(name1) > 31);
+    assert(strlen(name2) > 31);
+
+    void *snd1 = rt_synth_tone(440, 100, 0);
+    void *snd2 = rt_synth_tone(660, 100, 0);
+
+    rt_soundbank_register_sound(bank, S(name1), snd1);
+    rt_soundbank_register_sound(bank, S(name2), snd2);
+
+    assert(rt_soundbank_count(bank) == 2);
+    assert(rt_soundbank_has(bank, S(name1)) == 1);
+    assert(rt_soundbank_has(bank, S(name2)) == 1);
+    assert(rt_soundbank_get(bank, S(name1)) == snd1);
+    assert(rt_soundbank_get(bank, S(name2)) == snd2);
+
+    rt_soundbank_remove(bank, S(name1));
+    assert(rt_soundbank_count(bank) == 1);
+    assert(rt_soundbank_has(bank, S(name1)) == 0);
+    assert(rt_soundbank_has(bank, S(name2)) == 1);
+    assert(rt_soundbank_get(bank, S(name2)) == snd2);
+
+    printf("  test_long_names_do_not_alias: PASSED\n");
+}
+
 // ============================================================================
 // Remove + Clear
 // ============================================================================
@@ -236,6 +265,7 @@ int main() {
     test_create();
     test_register_sound();
     test_register_overwrite();
+    test_long_names_do_not_alias();
     test_remove();
     test_clear();
     test_multiple_entries();

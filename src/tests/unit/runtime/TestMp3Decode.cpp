@@ -28,6 +28,15 @@ extern "C" {
 #include "runtime/audio/rt_mp3.h"
 }
 
+static bool write_temp_file(const char *path, const uint8_t *data, size_t size) {
+    FILE *f = fopen(path, "wb");
+    if (!f)
+        return false;
+    bool ok = fwrite(data, 1, size, f) == size;
+    fclose(f);
+    return ok;
+}
+
 TEST(Mp3DecodeTest, CreateAndFree) {
     mp3_decoder_t *dec = mp3_decoder_new();
     ASSERT_TRUE(dec != nullptr);
@@ -133,6 +142,39 @@ TEST(Mp3DecodeTest, SyntheticFrameHeader) {
     EXPECT_EQ(rc, -1);
 
     mp3_decoder_free(dec);
+}
+
+TEST(Mp3DecodeTest, StreamRejectsMissingFile) {
+    mp3_stream_t *stream = mp3_stream_open("/tmp/viper_missing_test_stream.mp3");
+    EXPECT_EQ(stream, nullptr);
+}
+
+TEST(Mp3DecodeTest, StreamRejectsGarbageFile) {
+    const char *path = "/tmp/viper_test_garbage_stream.mp3";
+    const uint8_t garbage[] = {0x00, 0x01, 0x02, 0x03, 0xFA, 0xCE, 0xBE, 0xEF};
+    ASSERT_TRUE(write_temp_file(path, garbage, sizeof(garbage)));
+
+    mp3_stream_t *stream = mp3_stream_open(path);
+    EXPECT_EQ(stream, nullptr);
+
+    remove(path);
+}
+
+TEST(Mp3DecodeTest, StreamRejectsId3OnlyFile) {
+    const char *path = "/tmp/viper_test_id3_only_stream.mp3";
+    uint8_t id3[120];
+    memset(id3, 0, sizeof(id3));
+    id3[0] = 'I';
+    id3[1] = 'D';
+    id3[2] = '3';
+    id3[3] = 3;
+    id3[9] = 100;
+    ASSERT_TRUE(write_temp_file(path, id3, sizeof(id3)));
+
+    mp3_stream_t *stream = mp3_stream_open(path);
+    EXPECT_EQ(stream, nullptr);
+
+    remove(path);
 }
 
 int main() {

@@ -30,6 +30,7 @@
 
 #include "vaud_internal.h"
 
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -73,21 +74,27 @@ static inline int16_t soft_clip(int32_t sample) {
 
 /// @brief Calculate left/right gain from pan value.
 /// @param pan Pan value (-1.0 = left, 0.0 = center, 1.0 = right).
+/// @param source_channels Original source channel count (1 = mono, 2 = stereo).
 /// @param left_gain Output: left channel gain.
 /// @param right_gain Output: right channel gain.
-static void calculate_pan_gains(float pan, float *left_gain, float *right_gain) {
-    /* Constant power panning law */
+static void calculate_pan_gains(
+    float pan, int32_t source_channels, float *left_gain, float *right_gain) {
     if (pan < -1.0f)
         pan = -1.0f;
     if (pan > 1.0f)
         pan = 1.0f;
 
-    /* Linear pan law (C-5: previous formula gave 0.5 bleed on opposite channel at hard pan).
-     * pan=-1.0 → left=1.0, right=0.0   (full left)
-     * pan= 0.0 → left=0.5, right=0.5   (center)
-     * pan=+1.0 → left=0.0, right=1.0   (full right) */
-    *left_gain = (1.0f - pan) * 0.5f;
-    *right_gain = (1.0f + pan) * 0.5f;
+    if (source_channels == 1) {
+        /* Equal-power panning for mono sources keeps center playback perceptually stable. */
+        float angle = (pan + 1.0f) * 0.78539816339f; /* (pan + 1) * pi / 4 */
+        *left_gain = cosf(angle);
+        *right_gain = sinf(angle);
+        return;
+    }
+
+    /* Stereo sources use balance semantics: center is unity, pan attenuates the far side. */
+    *left_gain = (pan > 0.0f) ? (1.0f - pan) : 1.0f;
+    *right_gain = (pan < 0.0f) ? (1.0f + pan) : 1.0f;
 }
 
 //===----------------------------------------------------------------------===//
@@ -110,7 +117,7 @@ static int mix_voice(vaud_voice *voice, int32_t *output, int32_t frames, float m
     int64_t pos = voice->position;
 
     float left_gain, right_gain;
-    calculate_pan_gains(voice->pan, &left_gain, &right_gain);
+    calculate_pan_gains(voice->pan, sound->channels, &left_gain, &right_gain);
 
     float vol = voice->volume * master_vol;
     left_gain *= vol;

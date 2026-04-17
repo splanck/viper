@@ -826,8 +826,12 @@ int32_t vaud_music_fill_buffer(struct vaud_music *music, int32_t buf_idx) {
         return 0;
 
     if (source_rate == VAUD_SAMPLE_RATE) {
-        return vaud_wav_read_frames(
-            music->file, out, VAUD_MUSIC_BUFFER_FRAMES, music->channels, music->bits_per_sample);
+        return vaud_wav_read_frames(music->file,
+                                    out,
+                                    VAUD_MUSIC_BUFFER_FRAMES,
+                                    music->channels,
+                                    music->bits_per_sample,
+                                    music->audio_format);
     }
 
     // WAV resampling path
@@ -847,7 +851,8 @@ int32_t vaud_music_fill_buffer(struct vaud_music *music, int32_t buf_idx) {
                                             music->resample_buf,
                                             (int32_t)raw_needed,
                                             music->channels,
-                                            music->bits_per_sample);
+                                            music->bits_per_sample,
+                                            music->audio_format);
     if (raw_read == 0)
         return 0;
 
@@ -915,9 +920,18 @@ vaud_music_t vaud_load_music(vaud_context_t ctx, const char *path) {
     int32_t sample_rate = 0;
     int32_t channels = 0;
     int32_t bits = 0;
+    int32_t audio_format = 0;
 
     if (!vaud_wav_open_stream(
-            path, &file, &data_offset, &data_size, &frames, &sample_rate, &channels, &bits)) {
+            path,
+            &file,
+            &data_offset,
+            &data_size,
+            &frames,
+            &sample_rate,
+            &channels,
+            &bits,
+            &audio_format)) {
         return NULL;
     }
 
@@ -951,6 +965,7 @@ vaud_music_t vaud_load_music(vaud_context_t ctx, const char *path) {
     music->source_sample_rate = sample_rate;
     music->channels = channels;
     music->bits_per_sample = bits;
+    music->audio_format = audio_format;
     music->state = VAUD_MUSIC_STOPPED;
     music->position = 0;
     music->loop = 0;
@@ -1246,6 +1261,19 @@ void vaud_music_resume(vaud_music_t music) {
         music->state = VAUD_MUSIC_PLAYING;
     }
     vaud_mutex_unlock(&music->ctx->mutex);
+}
+
+void vaud_music_set_loop(vaud_music_t music, int loop) {
+    if (!music)
+        return;
+
+    if (music->ctx) {
+        vaud_mutex_lock(&music->ctx->mutex);
+        music->loop = loop ? 1 : 0;
+        vaud_mutex_unlock(&music->ctx->mutex);
+    } else {
+        music->loop = loop ? 1 : 0;
+    }
 }
 
 void vaud_music_set_volume(vaud_music_t music, float volume) {

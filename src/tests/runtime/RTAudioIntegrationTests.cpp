@@ -563,6 +563,80 @@ static void test_music_seek_resampled_wav() {
     remove(path);
 }
 
+static void test_playlist_play_after_paused_jump_starts_new_track() {
+    const char *path1 = "/tmp/viper_test_playlist_paused_jump_1.wav";
+    const char *path2 = "/tmp/viper_test_playlist_paused_jump_2.wav";
+    const char *path3 = "/tmp/viper_test_playlist_paused_jump_3.wav";
+    if (!write_test_wav_frames(path1, 44100, 4410) || !write_test_wav_frames(path2, 44100, 4410) ||
+        !write_test_wav_frames(path3, 44100, 4410)) {
+        ASSERT(1, "could not write temp WAV files (skip paused-jump test)");
+        return;
+    }
+
+    void *pl = rt_playlist_new();
+    rt_playlist_add(pl, make_str(path1));
+    rt_playlist_add(pl, make_str(path2));
+    rt_playlist_add(pl, make_str(path3));
+
+    rt_playlist_play(pl);
+    if (!rt_playlist_is_playing(pl)) {
+        ASSERT(1, "playlist playback unavailable in environment (skip paused-jump test)");
+        remove(path1);
+        remove(path2);
+        remove(path3);
+        return;
+    }
+
+    rt_playlist_pause(pl);
+    ASSERT(rt_playlist_is_paused(pl) == 1, "playlist paused before track jump");
+
+    rt_playlist_jump(pl, 1);
+    ASSERT(rt_playlist_get_current(pl) == 1, "paused jump selects second track");
+    ASSERT(rt_playlist_is_paused(pl) == 1, "paused jump keeps paused state");
+
+    rt_playlist_play(pl);
+    ASSERT(rt_playlist_is_playing(pl) == 1, "play resumes playlist after paused jump");
+
+    rt_playlist_update(pl);
+    ASSERT(rt_playlist_get_current(pl) == 1,
+           "paused jump track remains current after immediate update");
+
+    rt_playlist_stop(pl);
+    remove(path1);
+    remove(path2);
+    remove(path3);
+}
+
+static void test_playlist_remove_current_failed_replacement_clears_state() {
+    const char *valid_path = "/tmp/viper_test_playlist_remove_current.wav";
+    const char *missing_path = "/tmp/viper_test_playlist_missing_replacement.wav";
+    if (!write_test_wav_frames(valid_path, 44100, 4410)) {
+        ASSERT(1, "could not write temp WAV file (skip remove-current test)");
+        return;
+    }
+    remove(missing_path);
+
+    void *pl = rt_playlist_new();
+    rt_playlist_add(pl, make_str(valid_path));
+    rt_playlist_add(pl, make_str(missing_path));
+
+    rt_playlist_play(pl);
+    if (!rt_playlist_is_playing(pl)) {
+        ASSERT(1, "playlist playback unavailable in environment (skip remove-current test)");
+        remove(valid_path);
+        return;
+    }
+
+    ASSERT(rt_playlist_get_current(pl) == 0, "first track selected before remove");
+    rt_playlist_remove(pl, 0);
+
+    ASSERT(rt_playlist_get_current(pl) == 0, "replacement track becomes current");
+    ASSERT(rt_playlist_is_playing(pl) == 0, "failed replacement clears playing state");
+    ASSERT(rt_playlist_is_paused(pl) == 0, "failed replacement clears paused state");
+
+    remove(valid_path);
+}
+
 /// @brief Main.
 int main() {
     // Audio system (headless-safe)
@@ -598,6 +672,8 @@ int main() {
     test_wav_extreme_sample_rate();
     test_wav_valid_sample_rate();
     test_music_seek_resampled_wav();
+    test_playlist_play_after_paused_jump_starts_new_track();
+    test_playlist_remove_current_failed_replacement_clears_state();
 
     printf("Audio integration tests: %d/%d passed\n", tests_passed, tests_run);
     return (tests_passed == tests_run) ? 0 : 1;

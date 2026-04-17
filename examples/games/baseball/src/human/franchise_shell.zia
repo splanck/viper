@@ -217,22 +217,29 @@ class FranchiseShell {
     }
 
     hide func showMyRoster() {
-        var team = self.getUserTeam();
-        if team == null {
+        var teamOpt = self.getUserTeam();
+        if teamOpt == null {
             Terminal.Say("(no user team installed)");
             return;
         }
+        // Bind to a non-optional local so downstream indexing doesn't have
+        // to re-bang-unwrap every time. The native codegen emits a pointer-
+        // type-mismatch IL verifier error when `team!.field.get(i)` is
+        // used inside a for-in range (seen on arm64 native builds), so we
+        // hoist the unwrap once here.
+        var team = teamOpt!;
         Terminal.Say("");
-        Terminal.Say("ACTIVE ROSTER — " + team!.teamRef.fullName);
+        Terminal.Say("ACTIVE ROSTER — " + team.teamRef.fullName);
         Terminal.Say("----------------------------------------------------");
-        for i in 0..team!.rosterEntries.length() {
-            var entry = team!.rosterEntries.get(i);
+        var roster = team.rosterEntries;
+        for i in 0..roster.length() {
+            var entry = roster.get(i);
             if entry.compartment != season_model.COMPARTMENT_ACTIVE_HITTERS &&
                entry.compartment != season_model.COMPARTMENT_ACTIVE_PITCHERS {
                 continue;
             }
             var p = entry.playerRef;
-            var avail = team!.getAvailability(p.id);
+            var avail = team.getAvailability(p.id);
             var status = "ok";
             if !avail.availableForGame {
                 status = "unavailable";

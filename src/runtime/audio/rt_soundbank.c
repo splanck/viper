@@ -11,7 +11,7 @@
 //
 // Key invariants:
 //   - Linear scan over fixed array (max 64 entries) — simple and cache-friendly.
-//   - Sound references are retained while stored; released on removal/clear.
+//   - Sound references and key strings are retained while stored; released on removal/clear.
 //   - Finalizer releases all held references when bank is garbage collected.
 //
 // Ownership/Lifetime:
@@ -35,10 +35,8 @@
 //===----------------------------------------------------------------------===//
 
 #define BANK_MAX_ENTRIES 64
-#define BANK_NAME_LEN 32
-
 typedef struct {
-    char name[BANK_NAME_LEN];
+    rt_string name;
     void *sound; /* retained rt_sound wrapper */
     int in_use;
 } bank_entry_t;
@@ -53,24 +51,10 @@ typedef struct {
 // Helpers
 //===----------------------------------------------------------------------===//
 
-/// @brief Copy an rt_string name into a fixed buffer, truncating if needed.
-static void copy_name(char *dst, rt_string name) {
-    const char *src = rt_string_cstr(name);
-    if (!src) {
-        dst[0] = '\0';
-        return;
-    }
-    size_t len = strlen(src);
-    if (len >= BANK_NAME_LEN)
-        len = BANK_NAME_LEN - 1;
-    memcpy(dst, src, len);
-    dst[len] = '\0';
-}
-
 /// @brief Find an entry by name. Returns index or -1.
-static int find_entry(const rt_soundbank_impl *bank, const char *name) {
+static int find_entry(const rt_soundbank_impl *bank, rt_string name) {
     for (int i = 0; i < BANK_MAX_ENTRIES; i++) {
-        if (bank->entries[i].in_use && strcmp(bank->entries[i].name, name) == 0)
+        if (bank->entries[i].in_use && rt_str_eq(bank->entries[i].name, name))
             return i;
     }
     return -1;
@@ -87,13 +71,14 @@ static int find_free(const rt_soundbank_impl *bank) {
 
 /// @brief Release a sound reference in an entry.
 static void release_entry(bank_entry_t *entry) {
+    rt_str_release_maybe(entry->name);
+    entry->name = NULL;
     if (entry->sound) {
         if (rt_obj_release_check0(entry->sound))
             rt_obj_free(entry->sound);
         entry->sound = NULL;
     }
     entry->in_use = 0;
-    entry->name[0] = '\0';
 }
 
 //===----------------------------------------------------------------------===//
@@ -145,12 +130,8 @@ int64_t rt_soundbank_register(void *bank_ptr, rt_string name, rt_string path) {
     if (!sound)
         return 0;
 
-    /* Get name as C string */
-    char namebuf[BANK_NAME_LEN];
-    copy_name(namebuf, name);
-
     /* Check if name already exists — replace */
-    int idx = find_entry(bank, namebuf);
+    int idx = find_entry(bank, name);
     if (idx >= 0) {
         release_entry(&bank->entries[idx]);
         bank->count--;
@@ -165,7 +146,8 @@ int64_t rt_soundbank_register(void *bank_ptr, rt_string name, rt_string path) {
     }
 
     /* Store: sound already has refcount 1 from rt_sound_load */
-    memcpy(bank->entries[idx].name, namebuf, BANK_NAME_LEN);
+    rt_str_retain_maybe(name);
+    bank->entries[idx].name = name;
     bank->entries[idx].sound = sound;
     bank->entries[idx].in_use = 1;
     bank->count++;
@@ -180,11 +162,8 @@ int64_t rt_soundbank_register_sound(void *bank_ptr, rt_string name, void *sound)
 
     rt_soundbank_impl *bank = (rt_soundbank_impl *)bank_ptr;
 
-    char namebuf[BANK_NAME_LEN];
-    copy_name(namebuf, name);
-
     /* Check if name already exists — replace */
-    int idx = find_entry(bank, namebuf);
+    int idx = find_entry(bank, name);
     if (idx >= 0) {
         release_entry(&bank->entries[idx]);
         bank->count--;
@@ -196,8 +175,9 @@ int64_t rt_soundbank_register_sound(void *bank_ptr, rt_string name, void *sound)
 
     /* Retain the sound (caller also holds a reference) */
     rt_obj_retain_maybe(sound);
+    rt_str_retain_maybe(name);
 
-    memcpy(bank->entries[idx].name, namebuf, BANK_NAME_LEN);
+    bank->entries[idx].name = name;
     bank->entries[idx].sound = sound;
     bank->entries[idx].in_use = 1;
     bank->count++;
@@ -211,10 +191,7 @@ int64_t rt_soundbank_play(void *bank_ptr, rt_string name) {
         return -1;
 
     rt_soundbank_impl *bank = (rt_soundbank_impl *)bank_ptr;
-    char namebuf[BANK_NAME_LEN];
-    copy_name(namebuf, name);
-
-    int idx = find_entry(bank, namebuf);
+    int idx = find_entry(bank, name);
     if (idx < 0)
         return -1;
 
@@ -227,10 +204,7 @@ int64_t rt_soundbank_play_ex(void *bank_ptr, rt_string name, int64_t volume, int
         return -1;
 
     rt_soundbank_impl *bank = (rt_soundbank_impl *)bank_ptr;
-    char namebuf[BANK_NAME_LEN];
-    copy_name(namebuf, name);
-
-    int idx = find_entry(bank, namebuf);
+    int idx = find_entry(bank, name);
     if (idx < 0)
         return -1;
 
@@ -243,10 +217,7 @@ int64_t rt_soundbank_has(void *bank_ptr, rt_string name) {
         return 0;
 
     rt_soundbank_impl *bank = (rt_soundbank_impl *)bank_ptr;
-    char namebuf[BANK_NAME_LEN];
-    copy_name(namebuf, name);
-
-    return find_entry(bank, namebuf) >= 0 ? 1 : 0;
+    return find_entry(bank, name) >= 0 ? 1 : 0;
 }
 
 /// @brief Get the Sound handle for a name (retained — caller must release). NULL if not found.
@@ -255,10 +226,7 @@ void *rt_soundbank_get(void *bank_ptr, rt_string name) {
         return NULL;
 
     rt_soundbank_impl *bank = (rt_soundbank_impl *)bank_ptr;
-    char namebuf[BANK_NAME_LEN];
-    copy_name(namebuf, name);
-
-    int idx = find_entry(bank, namebuf);
+    int idx = find_entry(bank, name);
     if (idx < 0)
         return NULL;
 
@@ -273,10 +241,7 @@ void rt_soundbank_remove(void *bank_ptr, rt_string name) {
         return;
 
     rt_soundbank_impl *bank = (rt_soundbank_impl *)bank_ptr;
-    char namebuf[BANK_NAME_LEN];
-    copy_name(namebuf, name);
-
-    int idx = find_entry(bank, namebuf);
+    int idx = find_entry(bank, name);
     if (idx < 0)
         return;
 

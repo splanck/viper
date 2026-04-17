@@ -154,6 +154,11 @@ void rt_music_pause(void *music);
 /// @param music Music handle.
 void rt_music_resume(void *music);
 
+/// @brief Update the loop flag for a music stream without changing play state.
+/// @param music Music handle.
+/// @param loop Non-zero for looped playback, zero for one-shot.
+void rt_music_set_loop(void *music, int64_t loop);
+
 /// @brief Set music playback volume.
 /// @param music Music handle.
 /// @param volume Volume (0-100).
@@ -183,6 +188,23 @@ int64_t rt_music_get_position(void *music);
 /// @param music Music handle.
 /// @return Duration in milliseconds, or 0 if NULL.
 int64_t rt_music_get_duration(void *music);
+
+/// @brief Pause a music stream and any active crossfade companion tied to it.
+/// @param music Music handle.
+void rt_music_pause_related(void *music);
+
+/// @brief Resume a music stream and any active crossfade companion tied to it.
+/// @param music Music handle.
+void rt_music_resume_related(void *music);
+
+/// @brief Stop a music stream and any active crossfade companion tied to it.
+/// @param music Music handle.
+void rt_music_stop_related(void *music);
+
+/// @brief Apply one logical volume to both sides of an active crossfade containing @p music.
+/// @param music Music handle.
+/// @param volume Volume (0-100).
+void rt_music_set_crossfade_pair_volume(void *music, int64_t volume);
 
 #ifdef __cplusplus
 }

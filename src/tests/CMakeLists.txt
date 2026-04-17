@@ -434,6 +434,11 @@ viper_add_test(test_mp3_decode
         ${CMAKE_CURRENT_SOURCE_DIR}/unit/runtime/TestMp3Decode.cpp
         LIBS viper_runtime viper_test_common)
 
+viper_add_test(test_wav_stream
+        ${CMAKE_CURRENT_SOURCE_DIR}/unit/runtime/TestWavStream.cpp
+        LIBS viperaud viper_test_common
+        INCLUDES ${CMAKE_SOURCE_DIR}/src/lib/audio/include ${CMAKE_SOURCE_DIR}/src/lib/audio/src)
+
 viper_add_test(test_stl_load
         ${CMAKE_CURRENT_SOURCE_DIR}/unit/runtime/TestStlLoad.cpp
         LIBS viper_runtime viper_test_common)
