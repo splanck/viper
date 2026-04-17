@@ -14,8 +14,9 @@
 //   - Pixels payloads are 0xRRGGBBAA in `uint32_t`, row-major, top-left origin.
 //   - Normal matrix is the inverse-transpose of the model matrix's upper 3×3,
 //     stored in the upper-left 3×3 of the 4×4 output (M[15] = 1, rest 0).
-//   - Cubemap generation is a 64-bit FNV-style hash of all six face generations,
-//     enabling cheap "did anything change?" checks for backend caches.
+//   - Cubemap generation mixes a stable cubemap identity plus all six face
+//     generations, enabling cheap "did anything change?" checks for backend
+//     caches even when the allocator reuses object addresses.
 //
 // Links: vgfx3d_backend_utils.h, vgfx3d_backend_*.c (per-API implementations)
 //
@@ -38,6 +39,7 @@ typedef struct {
     void *vptr;
     void *faces[6];
     int64_t face_size;
+    uint64_t cache_identity;
 } vgfx3d_cubemap_view_t;
 
 /// @brief Read the monotonic generation counter on a Pixels object.
@@ -119,9 +121,9 @@ int vgfx3d_unpack_cubemap_faces_rgba(const void *cubemap_ptr,
     return 0;
 }
 
-/// @brief Hash all six face generations into a single cubemap-level signature.
-/// Uses an FNV-prime mixing scheme so per-face changes propagate. Returns 0
-/// when no faces are bound.
+/// @brief Hash cubemap identity + all six face generations into one signature.
+/// Uses an FNV-prime mixing scheme so face mutations and cubemap object
+/// replacement both invalidate backend caches. Returns 0 when no faces are bound.
 uint64_t vgfx3d_get_cubemap_generation(const void *cubemap_ptr) {
     const vgfx3d_cubemap_view_t *cubemap = (const vgfx3d_cubemap_view_t *)cubemap_ptr;
     uint64_t signature = 1469598103934665603ull;
@@ -129,6 +131,9 @@ uint64_t vgfx3d_get_cubemap_generation(const void *cubemap_ptr) {
 
     if (!cubemap)
         return 0;
+
+    signature ^= cubemap->cache_identity + 0x9e3779b97f4a7c15ull + (signature << 6) +
+                 (signature >> 2);
 
     for (int face = 0; face < 6; face++) {
         uint64_t generation = vgfx3d_get_pixels_generation(cubemap->faces[face]);

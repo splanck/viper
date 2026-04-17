@@ -689,6 +689,10 @@ Six-face cube texture for skyboxes and environment reflections.
 
 CubeMap3D has no methods or properties — it is a data object used by `Canvas3D.SetSkybox` and `Material3D.SetEnvMap`.
 CubeMap faces use the same top-left pixel origin as `Pixels`; the GPU backends normalize upload orientation so skyboxes and reflections sample consistently across backends.
+Skyboxes honor the active camera projection across all backends. Perspective cameras reconstruct a per-pixel view ray; orthographic cameras sample the cubemap along the camera forward direction so the background stays stable instead of being distorted by perspective-only math.
+Environment reflections are roughness-aware. Low-roughness materials keep a sharp cubemap reflection, while higher roughness values sample blurrier cubemap mips on GPU backends and a matching blur kernel in the software renderer.
+CubeMap uploads are keyed by a stable internal cubemap identity plus the six face `Pixels` generations, so recreating cubemaps cannot accidentally reuse stale GPU skybox or reflection textures after allocator address reuse.
+Seam handling is also more consistent now: the software sampler remaps bilinear taps across neighboring faces and OpenGL enables seamless cubemap filtering, which reduces visible face-edge seams when the artwork itself lines up.
 
 ### Zia Example
 

@@ -212,6 +212,7 @@ typedef struct {
     void *vptr;
     void *faces[6];    /* Pixels objects: +X, -X, +Y, -Y, +Z, -Z */
     int64_t face_size; /* width = height per face (must be square) */
+    uint64_t cache_identity; /* stable cache key generation across allocator reuse */
 } rt_cubemap3d;
 
 //=============================================================================
@@ -275,6 +276,8 @@ typedef struct {
     int8_t frame_is_2d;      /* 1 = active frame uses orthographic 2D projection */
     float cached_vp[16];     /* VP matrix cached in begin_frame for debug drawing */
     float cached_cam_pos[3]; /* camera position cached for sort key computation */
+    float cached_cam_forward[3]; /* forward vector cached for skybox + ortho shading */
+    int8_t cached_cam_is_ortho;
     float last_scene_vp[16]; /* most recent 3D VP matrix (preserved across 2D passes) */
     float last_scene_cam_pos[3];
     int8_t has_last_scene_vp;
@@ -394,6 +397,15 @@ void rt_cubemap_sample(const rt_cubemap3d *cm,
                        float *out_r,
                        float *out_g,
                        float *out_b);
+/// @brief Internal: sample a cubemap reflection with a roughness-dependent blur kernel.
+void rt_cubemap_sample_roughness(const rt_cubemap3d *cm,
+                                 float dx,
+                                 float dy,
+                                 float dz,
+                                 float roughness,
+                                 float *out_r,
+                                 float *out_g,
+                                 float *out_b);
 /// @brief Internal: apply a canvas's active post-processing chain.
 void rt_postfx3d_apply_to_canvas(void *canvas);
 /// @brief Internal: inject a mouse delta without changing absolute position.

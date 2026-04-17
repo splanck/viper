@@ -22,6 +22,7 @@
 
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
+#include "rt_platform.h"
 
 #include <math.h>
 #include <stdint.h>
@@ -38,6 +39,8 @@ extern int64_t rt_pixels_width(void *pixels);
 extern int64_t rt_pixels_height(void *pixels);
 extern int64_t rt_pixels_get(void *pixels, int64_t x, int64_t y);
 
+static volatile int64_t g_next_cubemap_cache_identity = 1;
+
 static void cubemap_release_ref(void **slot) {
     if (!slot || !*slot)
         return;
@@ -52,6 +55,152 @@ static void cubemap_finalize(void *obj) {
         return;
     for (int i = 0; i < 6; i++)
         cubemap_release_ref(&cm->faces[i]);
+}
+
+static void cubemap_direction_to_face_uv(
+    float dx, float dy, float dz, int *out_face, float *out_u, float *out_v) {
+    float ax = fabsf(dx), ay = fabsf(dy), az = fabsf(dz);
+    int face;
+    float u, v, ma;
+
+    if (ax >= ay && ax >= az) {
+        ma = ax;
+        if (dx > 0.0f) {
+            face = 0; /* +X */
+            u = -dz;
+            v = -dy;
+        } else {
+            face = 1; /* -X */
+            u = dz;
+            v = -dy;
+        }
+    } else if (ay >= ax && ay >= az) {
+        ma = ay;
+        if (dy > 0.0f) {
+            face = 2; /* +Y */
+            u = dx;
+            v = dz;
+        } else {
+            face = 3; /* -Y */
+            u = dx;
+            v = -dz;
+        }
+    } else {
+        ma = az;
+        if (dz > 0.0f) {
+            face = 4; /* +Z */
+            u = dx;
+            v = -dy;
+        } else {
+            face = 5; /* -Z */
+            u = -dx;
+            v = -dy;
+        }
+    }
+
+    if (ma < 1e-8f)
+        ma = 1e-8f;
+    *out_face = face;
+    *out_u = (u / ma + 1.0f) * 0.5f;
+    *out_v = (v / ma + 1.0f) * 0.5f;
+}
+
+static void cubemap_face_uv_to_direction(
+    int face, float u, float v, float *out_dx, float *out_dy, float *out_dz) {
+    float uu = u * 2.0f - 1.0f;
+    float vv = v * 2.0f - 1.0f;
+    float dx = 0.0f;
+    float dy = 0.0f;
+    float dz = 0.0f;
+    float len;
+
+    switch (face) {
+        case 0: /* +X */
+            dx = 1.0f;
+            dy = -vv;
+            dz = -uu;
+            break;
+        case 1: /* -X */
+            dx = -1.0f;
+            dy = -vv;
+            dz = uu;
+            break;
+        case 2: /* +Y */
+            dx = uu;
+            dy = 1.0f;
+            dz = vv;
+            break;
+        case 3: /* -Y */
+            dx = uu;
+            dy = -1.0f;
+            dz = -vv;
+            break;
+        case 4: /* +Z */
+            dx = uu;
+            dy = -vv;
+            dz = 1.0f;
+            break;
+        default: /* -Z */
+            dx = -uu;
+            dy = -vv;
+            dz = -1.0f;
+            break;
+    }
+
+    len = sqrtf(dx * dx + dy * dy + dz * dz);
+    if (len > 1e-8f) {
+        dx /= len;
+        dy /= len;
+        dz /= len;
+    }
+    *out_dx = dx;
+    *out_dy = dy;
+    *out_dz = dz;
+}
+
+static uint32_t cubemap_sample_nearest_rgba(const rt_cubemap3d *cm, float dx, float dy, float dz) {
+    int face = 0;
+    float u = 0.5f;
+    float v = 0.5f;
+    void *face_pixels;
+    int64_t fw;
+    int64_t fh;
+    int xi;
+    int yi;
+
+    if (!cm)
+        return 0;
+
+    cubemap_direction_to_face_uv(dx, dy, dz, &face, &u, &v);
+    face_pixels = cm->faces[face];
+    if (!face_pixels)
+        return 0;
+
+    fw = rt_pixels_width(face_pixels);
+    fh = rt_pixels_height(face_pixels);
+    if (fw <= 0 || fh <= 0)
+        return 0;
+
+    if (u < 0.0f)
+        u = 0.0f;
+    else if (u > 1.0f)
+        u = 1.0f;
+    if (v < 0.0f)
+        v = 0.0f;
+    else if (v > 1.0f)
+        v = 1.0f;
+
+    xi = (int)floorf(u * (float)fw);
+    yi = (int)floorf(v * (float)fh);
+    if (xi >= (int)fw)
+        xi = (int)fw - 1;
+    if (yi >= (int)fh)
+        yi = (int)fh - 1;
+    if (xi < 0)
+        xi = 0;
+    if (yi < 0)
+        yi = 0;
+    return (uint32_t)rt_pixels_get(face_pixels, xi, yi);
 }
 
 /// @brief Create a cube map from six square face textures.
@@ -103,6 +252,11 @@ void *rt_cubemap3d_new(void *px, void *nx, void *py, void *ny, void *pz, void *n
         cm->faces[i] = faces[i];
     }
     cm->face_size = size;
+    cm->cache_identity =
+        (uint64_t)__atomic_fetch_add(&g_next_cubemap_cache_identity, (int64_t)1, __ATOMIC_RELAXED);
+    if (cm->cache_identity == 0)
+        cm->cache_identity =
+            (uint64_t)__atomic_fetch_add(&g_next_cubemap_cache_identity, (int64_t)1, __ATOMIC_RELAXED);
     rt_obj_set_finalizer(cm, cubemap_finalize);
     return cm;
 }
@@ -131,52 +285,12 @@ void rt_cubemap_sample(const rt_cubemap3d *cm,
         return;
     }
 
-    float ax = fabsf(dx), ay = fabsf(dy), az = fabsf(dz);
-    int face;
-    float u, v, ma;
-
-    if (ax >= ay && ax >= az) {
-        ma = ax;
-        if (dx > 0) {
-            face = 0; /* +X */
-            u = -dz;
-            v = -dy;
-        } else {
-            face = 1; /* -X */
-            u = dz;
-            v = -dy;
-        }
-    } else if (ay >= ax && ay >= az) {
-        ma = ay;
-        if (dy > 0) {
-            face = 2; /* +Y */
-            u = dx;
-            v = dz;
-        } else {
-            face = 3; /* -Y */
-            u = dx;
-            v = -dz;
-        }
-    } else {
-        ma = az;
-        if (dz > 0) {
-            face = 4; /* +Z */
-            u = dx;
-            v = -dy;
-        } else {
-            face = 5; /* -Z */
-            u = -dx;
-            v = -dy;
-        }
-    }
-
-    /* Map to [0, 1] */
-    if (ma < 1e-8f)
-        ma = 1e-8f;
-    u = (u / ma + 1.0f) * 0.5f;
-    v = (v / ma + 1.0f) * 0.5f;
+    int face = 0;
+    float u = 0.5f;
+    float v = 0.5f;
 
     /* Sample face texture using public API */
+    cubemap_direction_to_face_uv(dx, dy, dz, &face, &u, &v);
     void *face_pixels = cm->faces[face];
     if (!face_pixels) {
         *out_r = *out_g = *out_b = 0.0f;
@@ -195,29 +309,29 @@ void rt_cubemap_sample(const rt_cubemap3d *cm,
     float sx = fx - (float)x0;
     float sy = fy - (float)y0;
 
-    /* Clamp all 4 sample coordinates */
-    if (x0 < 0)
-        x0 = 0;
-    if (x0 >= (int)fw)
-        x0 = (int)fw - 1;
-    if (x1 < 0)
-        x1 = 0;
-    if (x1 >= (int)fw)
-        x1 = (int)fw - 1;
-    if (y0 < 0)
-        y0 = 0;
-    if (y0 >= (int)fh)
-        y0 = (int)fh - 1;
-    if (y1 < 0)
-        y1 = 0;
-    if (y1 >= (int)fh)
-        y1 = (int)fh - 1;
+    /* Bilinear taps follow the cubemap topology instead of clamping to one face. */
+    float tap_u0 = ((float)x0 + 0.5f) / (float)fw;
+    float tap_u1 = ((float)x1 + 0.5f) / (float)fw;
+    float tap_v0 = ((float)y0 + 0.5f) / (float)fh;
+    float tap_v1 = ((float)y1 + 0.5f) / (float)fh;
+    float dir00[3];
+    float dir10[3];
+    float dir01[3];
+    float dir11[3];
+    uint32_t p00;
+    uint32_t p10;
+    uint32_t p01;
+    uint32_t p11;
 
-    /* Sample 4 texels */
-    int64_t p00 = rt_pixels_get(face_pixels, x0, y0);
-    int64_t p10 = rt_pixels_get(face_pixels, x1, y0);
-    int64_t p01 = rt_pixels_get(face_pixels, x0, y1);
-    int64_t p11 = rt_pixels_get(face_pixels, x1, y1);
+    cubemap_face_uv_to_direction(face, tap_u0, tap_v0, &dir00[0], &dir00[1], &dir00[2]);
+    cubemap_face_uv_to_direction(face, tap_u1, tap_v0, &dir10[0], &dir10[1], &dir10[2]);
+    cubemap_face_uv_to_direction(face, tap_u0, tap_v1, &dir01[0], &dir01[1], &dir01[2]);
+    cubemap_face_uv_to_direction(face, tap_u1, tap_v1, &dir11[0], &dir11[1], &dir11[2]);
+
+    p00 = cubemap_sample_nearest_rgba(cm, dir00[0], dir00[1], dir00[2]);
+    p10 = cubemap_sample_nearest_rgba(cm, dir10[0], dir10[1], dir10[2]);
+    p01 = cubemap_sample_nearest_rgba(cm, dir01[0], dir01[1], dir01[2]);
+    p11 = cubemap_sample_nearest_rgba(cm, dir11[0], dir11[1], dir11[2]);
 
 /* Extract channels and bilinear blend */
 #define BL(ch, shift)                                                                              \
@@ -234,6 +348,114 @@ void rt_cubemap_sample(const rt_cubemap3d *cm,
     BL(out_g, 16);
     BL(out_b, 8);
 #undef BL
+}
+
+void rt_cubemap_sample_roughness(const rt_cubemap3d *cm,
+                                 float dx,
+                                 float dy,
+                                 float dz,
+                                 float roughness,
+                                 float *out_r,
+                                 float *out_g,
+                                 float *out_b) {
+    static const float k_offsets[9][2] = {
+        {0.0f, 0.0f},
+        {1.0f, 0.0f},
+        {-1.0f, 0.0f},
+        {0.0f, 1.0f},
+        {0.0f, -1.0f},
+        {0.70710678f, 0.70710678f},
+        {-0.70710678f, 0.70710678f},
+        {0.70710678f, -0.70710678f},
+        {-0.70710678f, -0.70710678f},
+    };
+    static const float k_weights[9] = {4.0f, 1.5f, 1.5f, 1.5f, 1.5f, 1.0f, 1.0f, 1.0f, 1.0f};
+    float len;
+    float tx;
+    float ty;
+    float tz;
+    float bx;
+    float by;
+    float bz;
+    float accum_r = 0.0f;
+    float accum_g = 0.0f;
+    float accum_b = 0.0f;
+    float total_w = 0.0f;
+    float spread;
+
+    if (!out_r || !out_g || !out_b) {
+        return;
+    }
+    if (!cm) {
+        *out_r = *out_g = *out_b = 0.0f;
+        return;
+    }
+
+    if (roughness <= 0.001f) {
+        rt_cubemap_sample(cm, dx, dy, dz, out_r, out_g, out_b);
+        return;
+    }
+
+    len = sqrtf(dx * dx + dy * dy + dz * dz);
+    if (len <= 1e-8f) {
+        *out_r = *out_g = *out_b = 0.0f;
+        return;
+    }
+    dx /= len;
+    dy /= len;
+    dz /= len;
+
+    if (fabsf(dz) < 0.999f) {
+        tx = -dy;
+        ty = dx;
+        tz = 0.0f;
+    } else {
+        tx = 0.0f;
+        ty = -dz;
+        tz = dy;
+    }
+    len = sqrtf(tx * tx + ty * ty + tz * tz);
+    if (len <= 1e-8f) {
+        *out_r = *out_g = *out_b = 0.0f;
+        return;
+    }
+    tx /= len;
+    ty /= len;
+    tz /= len;
+    bx = dy * tz - dz * ty;
+    by = dz * tx - dx * tz;
+    bz = dx * ty - dy * tx;
+
+    spread = roughness * roughness * 1.25f;
+    for (int i = 0; i < 9; i++) {
+        float sample_dx = dx + tx * k_offsets[i][0] * spread + bx * k_offsets[i][1] * spread;
+        float sample_dy = dy + ty * k_offsets[i][0] * spread + by * k_offsets[i][1] * spread;
+        float sample_dz = dz + tz * k_offsets[i][0] * spread + bz * k_offsets[i][1] * spread;
+        float sample_len = sqrtf(
+            sample_dx * sample_dx + sample_dy * sample_dy + sample_dz * sample_dz);
+        float sr;
+        float sg;
+        float sb;
+
+        if (sample_len <= 1e-8f)
+            continue;
+        sample_dx /= sample_len;
+        sample_dy /= sample_len;
+        sample_dz /= sample_len;
+        rt_cubemap_sample(cm, sample_dx, sample_dy, sample_dz, &sr, &sg, &sb);
+        accum_r += sr * k_weights[i];
+        accum_g += sg * k_weights[i];
+        accum_b += sb * k_weights[i];
+        total_w += k_weights[i];
+    }
+
+    if (total_w <= 1e-8f) {
+        *out_r = *out_g = *out_b = 0.0f;
+        return;
+    }
+    *out_r = accum_r / total_w;
+    *out_g = accum_g / total_w;
+    *out_b = accum_b / total_w;
 }
 
 //=============================================================================

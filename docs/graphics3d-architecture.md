@@ -90,6 +90,7 @@ The OpenGL backend now follows the same high-level split, adapted to its GLX/swa
 - postfx mode: the main scene renders into an HDR scene FBO, screenshots/readback can composite that scene through the backend-owned postfx shader, and 2D overlay passes preserve scene history instead of overwriting it
 - overlay composition: when a screen overlay follows a GPU-postfx main scene, OpenGL first composites the postfx result to the default framebuffer, then renders the overlay directly on top so SSAO / DOF / motion-blur history remains sourced from the 3D scene
 - texture origin normalization: `Pixels` and `CubeMap3D` faces use a top-left origin, so OpenGL flips RGBA rows before `glTexImage2D` / cubemap face upload to match software, Metal, and D3D11 sampling
+- cubemap seam filtering: OpenGL enables `GL_TEXTURE_CUBE_MAP_SEAMLESS`, while the software backend remaps bilinear taps across neighboring faces so skyboxes and reflections do not introduce backend-specific face seams
 
 Like D3D11, this keeps the no-postfx path cheap while preserving the scene depth/history inputs required by the advanced GPU postfx path.
 
@@ -139,10 +140,11 @@ Per sub-triangle:
      e. Per-pixel light   If normal_map: full Blinn-Phong per-pixel (with specular map)
      f. Shadow lookup     If shadow_active: transform to light space, compare depth
      g. Emissive map      Additive emissive texture contribution
-     h. Fog               Linear distance fog blend
-     i. Color compose     Gouraud × texture (default) or per-pixel lit result
-     j. Pixel write       Clamp to [0,255] → write RGBA to framebuffer
-     k. Z-buffer update   Store new depth value
+     h. Environment map   Roughness-aware cubemap reflection (optional)
+     i. Fog               Linear fog using projection-aware view distance
+     j. Color compose     Gouraud × texture (default) or per-pixel lit result
+     k. Pixel write       Clamp to [0,255] → write RGBA to framebuffer
+     l. Z-buffer update   Store new depth value
 
 Shadow Pass (before main pass, when shadows enabled):
   For each opaque mesh:
@@ -151,19 +153,28 @@ Shadow Pass (before main pass, when shadows enabled):
     No lighting, no texturing, no color — depth writes only
 ```
 
-## Vertex Format (vgfx3d_vertex_t — 80 bytes)
+## Vertex Format (vgfx3d_vertex_t — 84 bytes)
 
 ```c
 float pos[3];              //  0: object-space position
 float normal[3];           // 12: vertex normal
 float uv[2];               // 24: texture coordinates
 float color[4];            // 32: RGBA vertex color
-float tangent[3];           // 48: tangent vector (Phase 9)
+float tangent[3];          // 48: tangent vector (Phase 9)
 uint8_t bone_indices[4];   // 60: bone palette indices (Phase 14)
 float bone_weights[4];     // 64: blend weights (Phase 14)
+float tangent_w;           // 80: tangent handedness sign
 ```
 
-Defined upfront at 80 bytes for all phases. Unused fields are zero-initialized.
+Defined upfront at 84 bytes for all phases. Unused fields are zero-initialized.
+
+## Skybox And Cubemap Notes
+
+- `begin_frame` forwards the camera forward vector plus an orthographic flag so every backend can reconstruct skybox directions, view vectors, and fog distances consistently
+- GPU skyboxes use a full-screen triangle path with inverse-projection and inverse-view-rotation reconstruction for perspective cameras, and a direct forward-vector sample for orthographic cameras
+- cubemap caches key uploads by both a stable cubemap identity and per-face `Pixels` generations, preventing stale skyboxes or environment maps from surviving allocator address reuse
+- D3D11 now prunes cubemap cache residency by age, matching the bounded-cache policy already used by OpenGL and Metal
+- environment reflections read roughness from either the scalar material value or the metallic-roughness texture and choose cubemap mips where available; the software backend mirrors this with a roughness-dependent blur kernel
 
 ## Matrix Conventions
 

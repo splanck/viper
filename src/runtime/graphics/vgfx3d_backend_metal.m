@@ -45,6 +45,8 @@
     float _prevVP[16];
     float _invVP[16];
     float _camPos[3];
+    float _camForward[3];
+    BOOL _camIsOrtho;
     BOOL _prevVPValid;
     /* MTL-07: Fog parameters (stored per-frame from begin_frame) */
     float _fogColor[3];
@@ -264,6 +266,7 @@ static NSString *metal_shader_source =
      "    float4 fogColor;\n"
      "    float4 fogParams;\n"
      "    int4 counts;\n"
+     "    float4 cameraForward;\n"
      "    float4x4 prevViewProjection;\n"
      "    float4x4 shadowVP;\n"
      "};\n"
@@ -548,6 +551,15 @@ static NSString *metal_shader_source =
      "    return F0 + (1.0 - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);\n"
      "}\n"
      "\n"
+     "float3 env_sample(texturecube<float> envTex,\n"
+     "                  sampler envSampler,\n"
+     "                  float3 dir,\n"
+     "                  float roughness,\n"
+     "                  float maxLod) {\n"
+     "    float lod = clamp(roughness, 0.0, 1.0) * max(maxLod, 0.0);\n"
+     "    return envTex.sample(envSampler, normalize(dir), level(lod)).rgb;\n"
+     "}\n"
+     "\n"
      "fragment MainOut fragment_main(\n"
      "    VertexOut in [[stage_in]],\n"
      "    constant PerScene &scene [[buffer(0)]],\n"
@@ -595,7 +607,12 @@ static NSString *metal_shader_source =
      "        baseColor = blended * material.diffuseColor.rgb;\n"
      "    }\n"
      "    float3 N = normalize(in.normal);\n"
-     "    float3 V = normalize(scene.cameraPosition.xyz - in.worldPos);\n"
+     "    float3 cameraToWorld = scene.cameraPosition.xyz - in.worldPos;\n"
+     "    float3 V = normalize(scene.cameraPosition.w > 0.5 ? -scene.cameraForward.xyz : "
+     "cameraToWorld);\n"
+     "    float viewDistance = scene.cameraPosition.w > 0.5\n"
+     "        ? abs(dot(in.worldPos - scene.cameraPosition.xyz, scene.cameraForward.xyz))\n"
+     "        : length(cameraToWorld);\n"
      "    if (material.flags0.z != 0) {\n"
      "        float3 T = normalize(in.tangent.xyz);\n"
      "        T = normalize(T - N * dot(T, N));\n"
@@ -611,6 +628,12 @@ static NSString *metal_shader_source =
      "    if (material.flags1.x != 0) {\n"
      "        emissive *= emissiveTex.sample(texSampler, in.uv).rgb;\n"
      "    }\n"
+     "    float4 metallicRoughnessSample = float4(1.0);\n"
+     "    float envRoughness = clamp(material.pbrScalars0.y, 0.0, 1.0);\n"
+     "    if (material.pbrFlags.z != 0) {\n"
+     "        metallicRoughnessSample = metallicRoughnessTex.sample(texSampler, in.uv);\n"
+     "        envRoughness = clamp(envRoughness * metallicRoughnessSample.g, 0.045, 1.0);\n"
+     "    }\n"
      "    float finalAlpha = materialAlpha * texAlpha;\n"
      "    if (material.pbrFlags.y == 1) {\n"
      "        if (finalAlpha < material.pbrScalars1.y)\n"
@@ -623,8 +646,15 @@ static NSString *metal_shader_source =
      "        float3 unlitColor = baseColor + emissive;\n"
      "        if (material.flags1.y != 0) {\n"
      "            float3 R = reflect(-V, N);\n"
-     "            float3 envColor = envTex.sample(envSampler, R).rgb;\n"
+     "            float3 envColor = env_sample(envTex, envSampler, R, envRoughness, "
+     "material.scalars.z);\n"
      "            unlitColor = mix(unlitColor, envColor, clamp(material.scalars.y, 0.0, 1.0));\n"
+     "        }\n"
+     "        if (scene.fogColor.a > 0.5) {\n"
+     "            float fogRange = scene.fogParams.y - scene.fogParams.x;\n"
+     "            float fogFactor = clamp((viewDistance - scene.fogParams.x) / max(fogRange, "
+     "0.001), 0.0, 1.0);\n"
+     "            unlitColor = mix(unlitColor, scene.fogColor.rgb, fogFactor);\n"
      "        }\n"
      "        out.color = float4(unlitColor, finalAlpha);\n"
      "        out.motion = motion_output(in);\n"
@@ -636,9 +666,9 @@ static NSString *metal_shader_source =
      "        float roughness = clamp(material.pbrScalars0.y, 0.045, 1.0);\n"
      "        float ao = clamp(material.pbrScalars0.z, 0.0, 1.0);\n"
      "        if (material.pbrFlags.z != 0) {\n"
-     "            float4 mr = metallicRoughnessTex.sample(texSampler, in.uv);\n"
-     "            roughness = clamp(roughness * mr.g, 0.045, 1.0);\n"
-     "            metallic = clamp(metallic * mr.b, 0.0, 1.0);\n"
+     "            roughness = clamp(roughness * metallicRoughnessSample.g, 0.045, 1.0);\n"
+     "            metallic = clamp(metallic * metallicRoughnessSample.b, 0.0, 1.0);\n"
+     "            envRoughness = roughness;\n"
      "        }\n"
      "        if (material.pbrFlags.w != 0) {\n"
      "            float4 aoSample = aoTex.sample(texSampler, in.uv);\n"
@@ -753,13 +783,13 @@ static NSString *metal_shader_source =
      "    result += emissive;\n"
      "    if (material.flags1.y != 0) {\n"
      "        float3 R = reflect(-V, N);\n"
-     "        float3 envColor = envTex.sample(envSampler, R).rgb;\n"
+     "        float3 envColor = env_sample(envTex, envSampler, R, envRoughness, "
+     "material.scalars.z);\n"
      "        result = mix(result, envColor, clamp(material.scalars.y, 0.0, 1.0));\n"
      "    }\n"
      "    if (scene.fogColor.a > 0.5) {\n"
-     "        float dist = length(in.worldPos - scene.cameraPosition.xyz);\n"
      "        float fogRange = scene.fogParams.y - scene.fogParams.x;\n"
-     "        float fogFactor = clamp((dist - scene.fogParams.x) / max(fogRange, 0.001), "
+     "        float fogFactor = clamp((viewDistance - scene.fogParams.x) / max(fogRange, 0.001), "
      "0.0, 1.0);\n"
      "        result = mix(result, scene.fogColor.rgb, fogFactor);\n"
      "    }\n"
@@ -802,6 +832,7 @@ typedef struct {
     float fc[4];
     float fog_params[4];
     int32_t counts[4];
+    float camera_forward[4];
     float prev_vp[16];
     float shadow_vp[16];
 } mtl_per_scene_t;
@@ -842,6 +873,7 @@ typedef struct {
 typedef struct {
     float inverseProjection[16];
     float inverseViewRotation[16];
+    float cameraForward[4];
 } mtl_skybox_params_t;
 
 //=============================================================================
@@ -872,15 +904,15 @@ static void mat4f_identity(float *out) {
 }
 
 static const float metal_skybox_vertices[] = {
-    -1.0f, 1.0f,  -1.0f, -1.0f, -1.0f, -1.0f, 1.0f,  -1.0f, -1.0f, 1.0f,  -1.0f, -1.0f,
-    1.0f,  1.0f,  -1.0f, -1.0f, 1.0f,  -1.0f, -1.0f, -1.0f, 1.0f,  -1.0f, -1.0f, -1.0f,
-    -1.0f, 1.0f,  -1.0f, -1.0f, 1.0f,  -1.0f, -1.0f, 1.0f,  1.0f,  -1.0f, -1.0f, 1.0f,
-    1.0f,  -1.0f, -1.0f, 1.0f,  -1.0f, 1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f,
-    1.0f,  1.0f,  -1.0f, 1.0f,  -1.0f, -1.0f, -1.0f, -1.0f, 1.0f,  -1.0f, 1.0f,  1.0f,
-    1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  -1.0f, 1.0f,  -1.0f, -1.0f, 1.0f,
-    -1.0f, 1.0f,  -1.0f, 1.0f,  1.0f,  -1.0f, 1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f,
-    -1.0f, 1.0f,  1.0f,  -1.0f, 1.0f,  -1.0f, -1.0f, -1.0f, -1.0f, -1.0f, -1.0f, 1.0f,
-    1.0f,  -1.0f, -1.0f, 1.0f,  -1.0f, -1.0f, -1.0f, -1.0f, 1.0f,  1.0f,  -1.0f, 1.0f,
+    -1.0f,
+    -1.0f,
+    1.0f,
+    3.0f,
+    -1.0f,
+    1.0f,
+    -1.0f,
+    3.0f,
+    1.0f,
 };
 
 static const uint64_t k_texture_cache_max_age = 240u;
@@ -893,6 +925,16 @@ static void metal_update_layer_size(VGFXMetalContext *ctx);
 static int metal_capture_current_drawable_to_display_texture(VGFXMetalContext *ctx);
 static id<MTLTexture> metal_encode_postfx_if_needed(
     VGFXMetalContext *ctx, const vgfx3d_postfx_snapshot_t *postfx);
+
+static float metal_cubemap_max_lod(const rt_cubemap3d *cubemap) {
+    int32_t mip_count;
+
+    if (!cubemap || cubemap->face_size <= 1)
+        return 0.0f;
+    mip_count =
+        vgfx3d_metal_compute_mip_count((int32_t)cubemap->face_size, (int32_t)cubemap->face_size);
+    return mip_count > 1 ? (float)(mip_count - 1) : 0.0f;
+}
 
 static MTLPixelFormat
 metal_color_pixel_format(vgfx3d_metal_color_format_t format) {
@@ -2157,7 +2199,7 @@ static void *metal_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
                  "using namespace metal;\n"
                  "struct SkyboxOut { float4 position [[position]]; float2 ndc; };\n"
                  "struct SkyboxParams { float4x4 inverseProjection; float4x4 "
-                 "inverseViewRotation; };\n"
+                 "inverseViewRotation; float4 cameraForward; };\n"
                  "vertex SkyboxOut skybox_vs(uint vid [[vertex_id]]) {\n"
                  "    SkyboxOut out;\n"
                  "    float2 clip;\n"
@@ -2171,11 +2213,16 @@ static void *metal_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
                  "fragment float4 skybox_fs(SkyboxOut in [[stage_in]], constant SkyboxParams &p "
                  "[[buffer(0)]], texturecube<float> skyboxTex [[texture(0)]], sampler s "
                  "[[sampler(0)]]) {\n"
-                 "    float4 clip = float4(in.ndc, 1.0, 1.0);\n"
-                 "    float4 view = p.inverseProjection * clip;\n"
-                 "    float3 viewDir = normalize(view.xyz / max(fabs(view.w), 0.0001));\n"
-                 "    float3 worldDir = normalize((p.inverseViewRotation * float4(viewDir, "
+                 "    float3 worldDir;\n"
+                 "    if (p.cameraForward.w > 0.5) {\n"
+                 "        worldDir = normalize(p.cameraForward.xyz);\n"
+                 "    } else {\n"
+                 "        float4 clip = float4(in.ndc, 1.0, 1.0);\n"
+                 "        float4 view = p.inverseProjection * clip;\n"
+                 "        float3 viewDir = normalize(view.xyz / max(fabs(view.w), 0.0001));\n"
+                 "        worldDir = normalize((p.inverseViewRotation * float4(viewDir, "
                  "0.0)).xyz);\n"
+                 "    }\n"
                  "    return skyboxTex.sample(s, worldDir);\n"
                  "}\n";
             NSError *skyErr = nil;
@@ -2260,6 +2307,8 @@ static void metal_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) 
         memcpy(ctx->_prevVP, ctx.frameHistory.draw_prev_vp, sizeof(ctx->_prevVP));
         memcpy(ctx->_invVP, inv_vp, sizeof(ctx->_invVP));
         memcpy(ctx->_camPos, cam->position, sizeof(float) * 3);
+        memcpy(ctx->_camForward, cam->forward, sizeof(float) * 3);
+        ctx->_camIsOrtho = cam->is_ortho ? YES : NO;
         ctx->_prevVPValid = ctx.frameHistory.scene_history_valid ? YES : NO;
 
         /* MTL-07: Store fog parameters for submit_draw */
@@ -2615,6 +2664,7 @@ static void metal_submit_draw(void *ctx_ptr,
         mtl_per_scene_t scene;
         memset(&scene, 0, sizeof(scene));
         memcpy(scene.cp, ctx->_camPos, sizeof(float) * 3);
+        scene.cp[3] = ctx->_camIsOrtho ? 1.0f : 0.0f;
         scene.ac[0] = ambient[0];
         scene.ac[1] = ambient[1];
         scene.ac[2] = ambient[2];
@@ -2628,6 +2678,7 @@ static void metal_submit_draw(void *ctx_ptr,
         scene.counts[0] = light_count < 0 ? 0 : (light_count > 8 ? 8 : light_count);
         /* MTL-12: Shadow mapping */
         scene.counts[1] = ctx.shadowActive ? 1 : 0;
+        memcpy(scene.camera_forward, ctx->_camForward, sizeof(float) * 3);
         transpose4x4(ctx.frameHistory.draw_prev_vp, scene.prev_vp);
         if (ctx.shadowActive)
             transpose4x4(ctx->_shadowLightVP, scene.shadow_vp);
@@ -2648,6 +2699,8 @@ static void metal_submit_draw(void *ctx_ptr,
         mat.ec[3] = 0;
         mat.scalars[0] = cmd->alpha;
         mat.scalars[1] = cmd->reflectivity;
+        mat.scalars[2] =
+            cmd->env_map ? metal_cubemap_max_lod((const rt_cubemap3d *)cmd->env_map) : 0.0f;
         mat.pbrScalars0[0] = cmd->metallic;
         mat.pbrScalars0[1] = cmd->roughness;
         mat.pbrScalars0[2] = cmd->ao;
@@ -3119,6 +3172,7 @@ static void metal_submit_draw_instanced(void *ctx_ptr,
         mtl_per_scene_t scene;
         memset(&scene, 0, sizeof(scene));
         memcpy(scene.cp, ctx->_camPos, sizeof(float) * 3);
+        scene.cp[3] = ctx->_camIsOrtho ? 1.0f : 0.0f;
         scene.ac[0] = ambient[0];
         scene.ac[1] = ambient[1];
         scene.ac[2] = ambient[2];
@@ -3131,6 +3185,7 @@ static void metal_submit_draw_instanced(void *ctx_ptr,
         scene.fog_params[2] = ctx.shadowBias;
         scene.counts[0] = light_count < 0 ? 0 : (light_count > 8 ? 8 : light_count);
         scene.counts[1] = ctx.shadowActive ? 1 : 0;
+        memcpy(scene.camera_forward, ctx->_camForward, sizeof(float) * 3);
         transpose4x4(ctx.frameHistory.draw_prev_vp, scene.prev_vp);
         if (ctx.shadowActive)
             transpose4x4(ctx->_shadowLightVP, scene.shadow_vp);
@@ -3149,6 +3204,8 @@ static void metal_submit_draw_instanced(void *ctx_ptr,
         mat.ec[2] = cmd->emissive_color[2];
         mat.scalars[0] = cmd->alpha;
         mat.scalars[1] = cmd->reflectivity;
+        mat.scalars[2] =
+            cmd->env_map ? metal_cubemap_max_lod((const rt_cubemap3d *)cmd->env_map) : 0.0f;
         mat.pbrScalars0[0] = cmd->metallic;
         mat.pbrScalars0[1] = cmd->roughness;
         mat.pbrScalars0[2] = cmd->ao;
@@ -3487,11 +3544,13 @@ static void metal_draw_skybox(void *ctx_ptr, const void *cubemap_ptr) {
         view_rot[15] = 1.0f;
 
         memset(&params, 0, sizeof(params));
-        if (vgfx3d_invert_matrix4(ctx->_projection, inv_projection) != 0)
-            mat4f_identity(inv_projection);
-        transpose4x4(view_rot, inv_view_rot);
-        transpose4x4(inv_projection, params.inverseProjection);
-        transpose4x4(inv_view_rot, params.inverseViewRotation);
+    if (vgfx3d_invert_matrix4(ctx->_projection, inv_projection) != 0)
+        mat4f_identity(inv_projection);
+    transpose4x4(view_rot, inv_view_rot);
+    transpose4x4(inv_projection, params.inverseProjection);
+    transpose4x4(inv_view_rot, params.inverseViewRotation);
+    memcpy(params.cameraForward, ctx->_camForward, sizeof(float) * 3);
+    params.cameraForward[3] = ctx->_camIsOrtho ? 1.0f : 0.0f;
 
         [ctx.encoder setCullMode:MTLCullModeNone];
         [ctx.encoder setDepthStencilState:(ctx.skyboxDepthState ? ctx.skyboxDepthState

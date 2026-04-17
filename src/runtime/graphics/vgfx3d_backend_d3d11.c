@@ -107,9 +107,7 @@ static const char *d3d11_shader_source =
     "    float shadowBias;\n"
     "    int lightCount;\n"
     "    int shadowEnabled;\n"
-    "    float _scenePad0;\n"
-    "    float _scenePad1;\n"
-    "    float _scenePad2;\n"
+    "    float3 cameraForward;\n"
     "};\n"
     "\n"
     "cbuffer PerMaterial : register(b2) {\n"
@@ -467,7 +465,11 @@ static const char *d3d11_shader_source =
     "            N = normalize(mapN.x * T + mapN.y * B + mapN.z * N);\n"
     "        }\n"
     "    }\n"
-    "    float3 V = normalize(cameraPosition.xyz - input.worldPos);\n"
+    "    float3 cameraToWorld = cameraPosition.xyz - input.worldPos;\n"
+    "    float3 V = normalize(cameraPosition.w > 0.5 ? -cameraForward : cameraToWorld);\n"
+    "    float viewDistance = cameraPosition.w > 0.5\n"
+    "        ? abs(dot(input.worldPos - cameraPosition.xyz, cameraForward))\n"
+    "        : length(cameraToWorld);\n"
     "    float3 emissive = emissiveColor.rgb * pbrScalars0.w;\n"
     "    if (flags1.x != 0)\n"
     "        emissive *= emissiveTex.Sample(texSampler, input.uv).rgb;\n"
@@ -479,9 +481,10 @@ static const char *d3d11_shader_source =
     "    } else if (pbrFlags.y == 0) {\n"
     "        finalAlpha = 1.0;\n"
     "    }\n"
+    "    float envRoughness = saturate(pbrScalars0.y);\n"
     "    float3 result = ambientColor.rgb * baseColor;\n"
     "    if (flags0.y != 0) {\n"
-    "        result = baseColor + emissive;\n"
+    "        result = baseColor;\n"
     "    } else {\n"
     "        if (pbrFlags.x != 0) {\n"
     "            float metallic = saturate(pbrScalars0.x);\n"
@@ -491,6 +494,7 @@ static const char *d3d11_shader_source =
     "                float4 mr = metallicRoughnessTex.Sample(texSampler, input.uv);\n"
     "                roughness = clamp(roughness * mr.g, 0.045, 1.0);\n"
     "                metallic = saturate(metallic * mr.b);\n"
+    "                envRoughness = roughness;\n"
     "            }\n"
     "            if (pbrFlags.w != 0) {\n"
     "                float4 aoSample = aoTex.Sample(texSampler, input.uv);\n"
@@ -595,7 +599,8 @@ static const char *d3d11_shader_source =
     "    result += emissive;\n"
     "    if (flags1.y != 0) {\n"
     "        float3 R = reflect(-V, normalize(N));\n"
-    "        float3 envColor = envTex.Sample(envSampler, R).rgb;\n"
+    "        float envLod = saturate(envRoughness) * max(scalars.z, 0.0);\n"
+    "        float3 envColor = envTex.SampleLevel(envSampler, R, envLod).rgb;\n"
     "        result = lerp(result, envColor, saturate(scalars.y));\n"
     "    }\n"
     "    if (shadingModel == 1 && pbrFlags.x != 0) {\n"
@@ -611,8 +616,7 @@ static const char *d3d11_shader_source =
     "        result += emissive * (strength - 1.0);\n"
     "    }\n"
     "    if (fogColor.a > 0.5) {\n"
-    "        float dist = length(cameraPosition.xyz - input.worldPos);\n"
-    "        float fogFactor = saturate((dist - fogNear) / max(fogFar - fogNear, 0.001));\n"
+    "        float fogFactor = saturate((viewDistance - fogNear) / max(fogFar - fogNear, 0.001));\n"
     "        result = lerp(result, fogColor.rgb, fogFactor);\n"
     "    }\n"
     "    output.color = float4(result, finalAlpha);\n"
@@ -642,27 +646,33 @@ static const char *d3d11_shader_source =
 
 static const char *d3d11_skybox_shader_source =
     "cbuffer Skybox : register(b0) {\n"
-    "    row_major float4x4 viewRotation;\n"
-    "    row_major float4x4 projection;\n"
+    "    row_major float4x4 inverseProjection;\n"
+    "    row_major float4x4 inverseViewRotation;\n"
+    "    float4 cameraForward;\n"
     "};\n"
     "TextureCube skyboxTex : register(t0);\n"
     "SamplerState skyboxSampler : register(s0);\n"
     "struct VS_INPUT { float3 pos : POSITION; };\n"
     "struct VS_OUTPUT {\n"
     "    float4 pos : SV_POSITION;\n"
-    "    float3 dir : TEXCOORD0;\n"
+    "    float2 ndc : TEXCOORD0;\n"
     "};\n"
     "VS_OUTPUT VSSkybox(VS_INPUT input) {\n"
     "    VS_OUTPUT output;\n"
-    "    float4 viewPos = mul(viewRotation, float4(input.pos, 1.0));\n"
-    "    float4 clip = mul(projection, viewPos);\n"
-    "    clip.z = clip.w;\n"
-    "    output.pos = clip;\n"
-    "    output.dir = input.pos;\n"
+    "    output.pos = float4(input.pos.xy, 1.0, 1.0);\n"
+    "    output.ndc = input.pos.xy;\n"
     "    return output;\n"
     "}\n"
     "float4 PSSkybox(VS_OUTPUT input) : SV_Target {\n"
-    "    return skyboxTex.Sample(skyboxSampler, normalize(input.dir));\n"
+    "    float3 worldDir;\n"
+    "    if (cameraForward.w > 0.5) {\n"
+    "        worldDir = normalize(cameraForward.xyz);\n"
+    "    } else {\n"
+    "        float4 view = mul(inverseProjection, float4(input.ndc, 1.0, 1.0));\n"
+    "        float3 viewDir = normalize(view.xyz / max(abs(view.w), 0.0001));\n"
+    "        worldDir = normalize(mul(inverseViewRotation, float4(viewDir, 0.0)).xyz);\n"
+    "    }\n"
+    "    return skyboxTex.SampleLevel(skyboxSampler, worldDir, 0.0);\n"
     "}\n";
 
 static const char *d3d11_postfx_shader_source =
@@ -866,6 +876,7 @@ typedef struct {
     uint64_t generation;
     ID3D11Texture2D *tex;
     ID3D11ShaderResourceView *srv;
+    uint64_t last_used_frame;
 } d3d_cubemap_cache_entry_t;
 
 typedef struct {
@@ -901,9 +912,7 @@ typedef struct {
     float shadow_bias;
     int32_t light_count;
     int32_t shadow_enabled;
-    float _pad0;
-    float _pad1;
-    float _pad2;
+    float camera_forward[3];
 } d3d_per_scene_t;
 
 typedef vgfx3d_d3d11_per_material_t d3d_per_material_t;
@@ -923,8 +932,9 @@ typedef struct {
 } d3d_light_t;
 
 typedef struct {
-    float view_rotation[16];
-    float projection[16];
+    float inverse_projection[16];
+    float inverse_view_rotation[16];
+    float camera_forward[4];
 } d3d_skybox_cb_t;
 
 typedef struct {
@@ -975,6 +985,8 @@ typedef struct {
 } d3d11_mesh_cache_entry_t;
 
 #define D3D11_MORPH_CACHE_CAPACITY 32
+#define D3D11_CUBEMAP_CACHE_MAX_RESIDENT 64
+#define D3D11_CUBEMAP_CACHE_PRUNE_AGE 240u
 
 typedef struct {
     const void *key;
@@ -1121,6 +1133,8 @@ typedef struct {
     float scene_inv_vp[16];
     int8_t scene_history_valid;
     float cam_pos[3];
+    float cam_forward[3];
+    int8_t cam_is_ortho;
     float scene_cam_pos[3];
     float clear_r;
     float clear_g;
@@ -1674,6 +1688,28 @@ static void d3d11_release_cubemap_cache(d3d11_context_t *ctx) {
     ctx->cubemap_cache_capacity = 0;
 }
 
+static void d3d11_prune_cubemap_cache(d3d11_context_t *ctx) {
+    int32_t write_index = 0;
+
+    if (!ctx || !ctx->cubemap_cache)
+        return;
+    for (int32_t i = 0; i < ctx->cubemap_cache_count; i++) {
+        uint64_t age = ctx->frame_serial > ctx->cubemap_cache[i].last_used_frame
+                           ? (ctx->frame_serial - ctx->cubemap_cache[i].last_used_frame)
+                           : 0u;
+        if (ctx->cubemap_cache_count - write_index > D3D11_CUBEMAP_CACHE_MAX_RESIDENT &&
+            age > D3D11_CUBEMAP_CACHE_PRUNE_AGE) {
+            SAFE_RELEASE(ctx->cubemap_cache[i].srv);
+            SAFE_RELEASE(ctx->cubemap_cache[i].tex);
+            continue;
+        }
+        if (write_index != i)
+            ctx->cubemap_cache[write_index] = ctx->cubemap_cache[i];
+        write_index++;
+    }
+    ctx->cubemap_cache_count = write_index;
+}
+
 /// @brief Grow the texture cache table to hold `needed` entries.
 ///
 /// Geometric growth via the shared `vgfx3d_d3d11_next_capacity` helper.
@@ -1718,6 +1754,16 @@ static int d3d11_ensure_cubemap_cache_capacity(d3d11_context_t *ctx, int32_t nee
     ctx->cubemap_cache = new_entries;
     ctx->cubemap_cache_capacity = new_capacity;
     return 1;
+}
+
+static float d3d11_cubemap_max_lod(const rt_cubemap3d *cubemap) {
+    int32_t mip_count;
+
+    if (!cubemap || cubemap->face_size <= 1)
+        return 0.0f;
+    mip_count =
+        vgfx3d_d3d11_compute_mip_count((int32_t)cubemap->face_size, (int32_t)cubemap->face_size);
+    return mip_count > 1 ? (float)(mip_count - 1) : 0.0f;
 }
 
 /// @brief Release the GPU resources in one morph-target cache slot.
@@ -1954,8 +2000,10 @@ static ID3D11ShaderResourceView *d3d11_get_or_create_cubemap_srv(d3d11_context_t
 
     for (int32_t i = 0; i < ctx->cubemap_cache_count; i++) {
         if (ctx->cubemap_cache[i].cubemap_ptr == cubemap &&
-            ctx->cubemap_cache[i].generation == generation)
+            ctx->cubemap_cache[i].generation == generation) {
+            ctx->cubemap_cache[i].last_used_frame = ctx->frame_serial;
             return ctx->cubemap_cache[i].srv;
+        }
     }
 
     for (int32_t i = 0; i < ctx->cubemap_cache_count; i++) {
@@ -1966,6 +2014,7 @@ static ID3D11ShaderResourceView *d3d11_get_or_create_cubemap_srv(d3d11_context_t
                     ctx, cubemap, &ctx->cubemap_cache[i].tex, &ctx->cubemap_cache[i].srv)))
                 return NULL;
             ctx->cubemap_cache[i].generation = generation;
+            ctx->cubemap_cache[i].last_used_frame = ctx->frame_serial;
             return ctx->cubemap_cache[i].srv;
         }
     }
@@ -1978,6 +2027,7 @@ static ID3D11ShaderResourceView *d3d11_get_or_create_cubemap_srv(d3d11_context_t
         ctx->cubemap_cache[ctx->cubemap_cache_count].generation = generation;
         ctx->cubemap_cache[ctx->cubemap_cache_count].tex = tex;
         ctx->cubemap_cache[ctx->cubemap_cache_count].srv = srv;
+        ctx->cubemap_cache[ctx->cubemap_cache_count].last_used_frame = ctx->frame_serial;
         ctx->cubemap_cache_count++;
         return srv;
     }
@@ -2564,7 +2614,8 @@ static void d3d11_prepare_scene_data(d3d11_context_t *ctx,
     memcpy(scene_data->prev_vp, ctx->draw_prev_vp, sizeof(scene_data->prev_vp));
     memcpy(scene_data->shadow_vp, ctx->shadow_vp, sizeof(scene_data->shadow_vp));
     memcpy(scene_data->camera_pos, ctx->cam_pos, sizeof(float) * 3);
-    scene_data->camera_pos[3] = 1.0f;
+    scene_data->camera_pos[3] = ctx->cam_is_ortho ? 1.0f : 0.0f;
+    memcpy(scene_data->camera_forward, ctx->cam_forward, sizeof(scene_data->camera_forward));
     if (ambient) {
         scene_data->ambient[0] = ambient[0];
         scene_data->ambient[1] = ambient[1];
@@ -2610,6 +2661,8 @@ static void d3d11_prepare_material_data(const vgfx3d_draw_cmd_t *cmd,
     material_data->emissive[2] = cmd->emissive_color[2];
     material_data->scalars[0] = cmd->alpha;
     material_data->scalars[1] = cmd->reflectivity;
+    material_data->scalars[2] =
+        cmd->env_map ? d3d11_cubemap_max_lod((const rt_cubemap3d *)cmd->env_map) : 0.0f;
     material_data->pbr_scalars0[0] = cmd->metallic;
     material_data->pbr_scalars0[1] = cmd->roughness;
     material_data->pbr_scalars0[2] = cmd->ao;
@@ -2894,17 +2947,43 @@ static void d3d11_unbind_draw_resources(d3d11_context_t *ctx) {
     ID3D11DeviceContext_PSSetShaderResources(ctx->ctx, 0, 13, null_ps);
 }
 
-/// @brief Pack rotation-only view matrix and projection for the skybox shader.
-///
-/// Zeroing the translation column of the view matrix gives the
-/// "infinite distance" effect — the skybox tracks rotation but not
-/// translation.
+/// @brief Pack inverse-projection + inverse-view-rotation data for the skybox shader.
 static void d3d11_prepare_skybox_data(d3d11_context_t *ctx, d3d_skybox_cb_t *skybox_data) {
-    memcpy(skybox_data->view_rotation, ctx->view, sizeof(skybox_data->view_rotation));
-    memcpy(skybox_data->projection, ctx->projection, sizeof(skybox_data->projection));
-    skybox_data->view_rotation[3] = 0.0f;
-    skybox_data->view_rotation[7] = 0.0f;
-    skybox_data->view_rotation[11] = 0.0f;
+    float view_rotation[16];
+    static const float k_identity4x4[16] = {
+        1.0f,
+        0.0f,
+        0.0f,
+        0.0f,
+        0.0f,
+        1.0f,
+        0.0f,
+        0.0f,
+        0.0f,
+        0.0f,
+        1.0f,
+        0.0f,
+        0.0f,
+        0.0f,
+        0.0f,
+        1.0f,
+    };
+
+    memcpy(view_rotation, ctx->view, sizeof(view_rotation));
+    view_rotation[3] = 0.0f;
+    view_rotation[7] = 0.0f;
+    view_rotation[11] = 0.0f;
+    view_rotation[12] = 0.0f;
+    view_rotation[13] = 0.0f;
+    view_rotation[14] = 0.0f;
+    view_rotation[15] = 1.0f;
+    if (vgfx3d_invert_matrix4(ctx->projection, skybox_data->inverse_projection) != 0)
+        memcpy(skybox_data->inverse_projection, k_identity4x4, sizeof(skybox_data->inverse_projection));
+    for (int r = 0; r < 4; r++)
+        for (int c = 0; c < 4; c++)
+            skybox_data->inverse_view_rotation[r * 4 + c] = view_rotation[c * 4 + r];
+    memcpy(skybox_data->camera_forward, ctx->cam_forward, sizeof(float) * 3);
+    skybox_data->camera_forward[3] = ctx->cam_is_ortho ? 1.0f : 0.0f;
 }
 
 /// @brief Pack the post-FX cbuffer with snapshot data + camera + resolution.
@@ -3254,15 +3333,7 @@ static void *d3d11_create_ctx(vgfx_window_t win, int32_t width, int32_t height) 
     D3D11_BUFFER_DESC cb_desc;
     D3D11_BUFFER_DESC skybox_desc;
     static const float skybox_vertices[] = {
-        -1.0f, -1.0f, -1.0f, -1.0f, 1.0f,  -1.0f, 1.0f,  1.0f,  -1.0f, -1.0f, -1.0f, -1.0f,
-        1.0f,  1.0f,  -1.0f, 1.0f,  -1.0f, -1.0f, -1.0f, -1.0f, 1.0f,  1.0f,  1.0f,  1.0f,
-        -1.0f, 1.0f,  1.0f,  -1.0f, -1.0f, 1.0f,  1.0f,  -1.0f, 1.0f,  1.0f,  1.0f,  1.0f,
-        -1.0f, 1.0f,  -1.0f, -1.0f, 1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  -1.0f, 1.0f,  -1.0f,
-        1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  -1.0f, -1.0f, -1.0f, -1.0f, 1.0f,  -1.0f, 1.0f,
-        -1.0f, -1.0f, 1.0f,  -1.0f, -1.0f, -1.0f, 1.0f,  -1.0f, -1.0f, 1.0f,  -1.0f, 1.0f,
-        -1.0f, -1.0f, -1.0f, -1.0f, -1.0f, 1.0f,  -1.0f, 1.0f,  1.0f,  -1.0f, -1.0f, -1.0f,
-        -1.0f, 1.0f,  1.0f,  -1.0f, 1.0f,  -1.0f, 1.0f,  -1.0f, -1.0f, 1.0f,  1.0f,  1.0f,
-        1.0f,  -1.0f, 1.0f,  1.0f,  -1.0f, -1.0f, 1.0f,  1.0f,  -1.0f, 1.0f,  1.0f,  1.0f,
+        -1.0f, -1.0f, 1.0f, 3.0f, -1.0f, 1.0f, -1.0f, 3.0f, 1.0f,
     };
     D3D11_SUBRESOURCE_DATA skybox_init;
     HRESULT hr;
@@ -3913,6 +3984,8 @@ static void d3d11_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) 
     if (vgfx3d_invert_matrix4(ctx->vp, ctx->inv_vp) != 0)
         memcpy(ctx->inv_vp, k_identity4x4, sizeof(ctx->inv_vp));
     memcpy(ctx->cam_pos, cam->position, sizeof(float) * 3);
+    memcpy(ctx->cam_forward, cam->forward, sizeof(float) * 3);
+    ctx->cam_is_ortho = cam->is_ortho ? 1 : 0;
     ctx->fog_enabled = cam->fog_enabled;
     ctx->fog_near = cam->fog_near;
     ctx->fog_far = cam->fog_far;
@@ -3966,6 +4039,8 @@ static void d3d11_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) 
     d3d11_select_current_targets(ctx);
     d3d11_clear_current_targets(ctx, cam->load_existing_color, cam->load_existing_depth);
     d3d11_bind_common_state(ctx);
+    if ((ctx->frame_serial & 31u) == 0u)
+        d3d11_prune_cubemap_cache(ctx);
 }
 
 /// @brief Backend `end_frame` — copy RTT pixels to host memory if RTT is active.
@@ -4449,12 +4524,12 @@ static void d3d11_shadow_end(void *ctx_ptr, float bias) {
     d3d11_select_current_targets(ctx);
 }
 
-/// @brief Backend `draw_skybox` — full-cube draw with the cubemap shader.
+/// @brief Backend `draw_skybox` — full-screen triangle draw with the cubemap shader.
 ///
-/// Sets up skybox VS/PS, the cube VB built at context-creation, the
-/// rotation-only view matrix, and a depth-state that draws "behind"
-/// everything else (`<=` compare with no depth writes). The cubemap
-/// is bound from the cubemap cache or as a temp resource.
+/// Sets up skybox VS/PS, the fullscreen-triangle VB built at context creation,
+/// the inverse-projection/inverse-view-rotation constants, and a depth state
+/// that draws "behind" everything else (`<=` compare with no depth writes).
+/// The cubemap is bound from the cubemap cache or as a temp resource.
 static void d3d11_draw_skybox(void *ctx_ptr, const void *cubemap_ptr) {
     d3d11_context_t *ctx = (d3d11_context_t *)ctx_ptr;
     const rt_cubemap3d *cubemap = (const rt_cubemap3d *)cubemap_ptr;
@@ -4492,7 +4567,7 @@ static void d3d11_draw_skybox(void *ctx_ptr, const void *cubemap_ptr) {
     ID3D11DeviceContext_PSSetShaderResources(ctx->ctx, 0, 1, &srv);
     ID3D11DeviceContext_RSSetState(ctx->ctx, ctx->rs_solid_no_cull);
     ID3D11DeviceContext_OMSetDepthStencilState(ctx->ctx, ctx->depth_state_readonly_lequal, 0);
-    ID3D11DeviceContext_Draw(ctx->ctx, 36, 0);
+    ID3D11DeviceContext_Draw(ctx->ctx, 3, 0);
     {
         ID3D11ShaderResourceView *null_srv = NULL;
         ID3D11DeviceContext_PSSetShaderResources(ctx->ctx, 0, 1, &null_srv);

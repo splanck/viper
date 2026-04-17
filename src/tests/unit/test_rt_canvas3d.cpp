@@ -104,6 +104,7 @@ extern "C" double rt_vec3_y(void *v);
 extern "C" double rt_vec3_z(void *v);
 extern "C" void *rt_vec3_new(double x, double y, double z);
 extern "C" void *rt_pixels_new(int64_t width, int64_t height);
+extern "C" void rt_pixels_set(void *pixels, int64_t x, int64_t y, int64_t color);
 extern "C" void *rt_mat4_identity(void);
 extern "C" void *rt_mat4_scale(double sx, double sy, double sz);
 extern "C" int rt_obj_release_check0(void *obj);
@@ -1014,6 +1015,47 @@ static void test_material_reflectivity() {
     void *cm = rt_cubemap3d_new(px, px, px, px, px, px);
     rt_material3d_set_env_map(m, cm);
     rt_material3d_set_env_map(m, NULL);
+    PASS();
+}
+
+static void test_canvas_ortho_skybox_fills_render_target_uniformly() {
+    TEST("Canvas3D.End fills orthographic skybox render targets uniformly");
+    rt_canvas3d canvas = {};
+    rt_camera3d camera = {};
+    rt_rendertarget3d *rt = (rt_rendertarget3d *)rt_rendertarget3d_new(2, 2);
+    void *px = rt_pixels_new(1, 1);
+    void *cm;
+
+    EXPECT_TRUE(rt != nullptr && rt->target != nullptr, "RenderTarget3D fixture exists");
+    EXPECT_TRUE(px != nullptr, "Pixels fixture exists");
+    if (!rt || !rt->target || !px)
+        return;
+
+    rt_pixels_set(px, 0, 0, 0x123456FF);
+    cm = rt_cubemap3d_new(px, px, px, px, px, px);
+    EXPECT_TRUE(cm != nullptr, "CubeMap3D fixture exists");
+    if (!cm)
+        return;
+
+    canvas.backend = &vgfx3d_software_backend;
+    canvas.render_target = rt->target;
+    canvas.width = 2;
+    canvas.height = 2;
+    canvas.skybox = (rt_cubemap3d *)cm;
+    camera.view[0] = camera.view[5] = camera.view[10] = camera.view[15] = 1.0;
+    camera.projection[0] = camera.projection[5] = camera.projection[10] = camera.projection[15] = 1.0;
+    camera.eye[2] = 5.0;
+    camera.is_ortho = 1;
+
+    rt_canvas3d_begin(&canvas, &camera);
+    rt_canvas3d_end(&canvas);
+
+    EXPECT_TRUE(rt->target->color_buf[0] == 0x12 && rt->target->color_buf[1] == 0x34 &&
+                    rt->target->color_buf[2] == 0x56 && rt->target->color_buf[3] == 0xFF,
+                "Orthographic skyboxes sample the camera forward direction");
+    EXPECT_TRUE(rt->target->color_buf[12] == 0x12 && rt->target->color_buf[13] == 0x34 &&
+                    rt->target->color_buf[14] == 0x56 && rt->target->color_buf[15] == 0xFF,
+                "Orthographic skyboxes fill the whole target uniformly");
     PASS();
 }
 
@@ -1997,7 +2039,45 @@ static void test_instbatch_remove_preserves_unrelated_motion_history() {
 }
 
 static void test_canvas_opaque_alpha_mode_keeps_instanced_path() {
-    TEST("Canvas3D keeps opaque alpha-mode batches on the instanced path");
+    TEST("Canvas3D keeps fully opaque batches on the instanced path");
+    vgfx3d_backend_t backend = {};
+    rt_canvas3d canvas;
+    void *cam = rt_camera3d_new(60.0, 1.0, 0.1, 100.0);
+    void *mesh = rt_mesh3d_new_box(1.0, 1.0, 1.0);
+    void *mat = rt_material3d_new();
+    float instances[32] = {0.0f};
+
+    backend.name = "opengl";
+    backend.begin_frame = tracked_begin_frame;
+    backend.submit_draw = tracked_submit_draw;
+    backend.submit_draw_instanced = tracked_submit_draw_instanced;
+    backend.end_frame = tracked_end_frame;
+
+    instances[0] = instances[5] = instances[10] = instances[15] = 1.0f;
+    instances[16 + 0] = instances[16 + 5] = instances[16 + 10] = instances[16 + 15] = 1.0f;
+    instances[16 + 3] = 2.0f;
+
+    memset(&canvas, 0, sizeof(canvas));
+    canvas.backend = &backend;
+    rt_material3d_set_alpha(mat, 1.0);
+    rt_material3d_set_alpha_mode(mat, RT_MATERIAL3D_ALPHA_MODE_OPAQUE);
+
+    g_canvas_submit_draw_calls = 0;
+    g_canvas_submit_draw_instanced_calls = 0;
+    g_last_instanced_count = 0;
+
+    rt_canvas3d_begin(&canvas, cam);
+    rt_canvas3d_queue_instanced_batch(&canvas, mesh, mat, instances, 2, NULL, 0);
+    rt_canvas3d_end(&canvas);
+
+    EXPECT_EQ(g_canvas_submit_draw_instanced_calls, 1);
+    EXPECT_EQ(g_last_instanced_count, 2);
+    EXPECT_EQ(g_canvas_submit_draw_calls, 0);
+    PASS();
+}
+
+static void test_canvas_legacy_translucent_batch_falls_back_from_instancing() {
+    TEST("Canvas3D routes legacy translucent batches off the instanced path");
     vgfx3d_backend_t backend = {};
     rt_canvas3d canvas;
     void *cam = rt_camera3d_new(60.0, 1.0, 0.1, 100.0);
@@ -2028,9 +2108,8 @@ static void test_canvas_opaque_alpha_mode_keeps_instanced_path() {
     rt_canvas3d_queue_instanced_batch(&canvas, mesh, mat, instances, 2, NULL, 0);
     rt_canvas3d_end(&canvas);
 
-    EXPECT_EQ(g_canvas_submit_draw_instanced_calls, 1);
-    EXPECT_EQ(g_last_instanced_count, 2);
-    EXPECT_EQ(g_canvas_submit_draw_calls, 0);
+    EXPECT_EQ(g_canvas_submit_draw_instanced_calls, 0);
+    EXPECT_EQ(g_canvas_submit_draw_calls, 2);
     PASS();
 }
 
@@ -2190,6 +2269,7 @@ int main() {
 
     /* Phase 11 — Cube maps */
     test_cubemap_new();
+    test_canvas_ortho_skybox_fills_render_target_uniformly();
     test_material_reflectivity();
 
     /* Mesh3D.Clear */
@@ -2256,6 +2336,7 @@ int main() {
     test_metal_instbatch_create();
     test_instbatch_remove_preserves_unrelated_motion_history();
     test_canvas_opaque_alpha_mode_keeps_instanced_path();
+    test_canvas_legacy_translucent_batch_falls_back_from_instancing();
     test_metal_terrain_splat_for_gpu();
     test_metal_postfx_new();
     test_metal_postfx_null_safety();

@@ -23,7 +23,7 @@ v0.2.5 is a polish-and-hardening cycle concentrated on the runtime, the GUI widg
 
 | Metric | v0.2.4 | v0.2.5 | Delta |
 |---|---|---|---|
-| Commits | — | 12 | +12 |
+| Commits | — | 13 | +13 |
 | Source files | 2,869 | 2,877 | +8 |
 | Production SLOC | ~450K | ~458K | ~+8K |
 | Test SLOC | ~183K | ~185K | ~+2K |
@@ -62,9 +62,11 @@ Counts produced by `scripts/count_sloc.sh` (`Production SLOC` = `src/` minus `sr
 
 **Graphics3D — Skeleton3D & Animation.** `rt_skeleton3d_add_bone` rejects `parent_index` values below `-1` (previously only the upper bound was checked, so `-2`, `-100`, etc. survived validation and corrupted the hierarchy). `rt_mesh3d_set_bone_weights` now range-checks each influence against `VGFX3D_MAX_BONES` before the `uint8_t` cast — previously the cast silently wrapped `256` → `0` and `-1` → `255`, driving the skinning palette with the wrong bone. Out-of-range indices drop the influence (weight 0). In the animation player, the crossfade bind-pose fallback decomposes the full 4×4 bind-pose matrix into TRS (scale from column magnitudes, rotation via Shepperd's method on the orthonormalized basis, translation from column 3) instead of snapping to identity rotation and unit scale when the target animation has no channel for a bone.
 
+**Graphics3D — AnimController3D.** Root motion now tracks rotation in addition to translation. New `root_motion_rotation` quaternion slot on the controller plus `controller_quat_identity` / `controller_quat_normalize` helpers (full quaternion support pulled in via `rt_quat.h`). Crossfade and layered-blending paths feed the rotation through the same accumulation pipeline as the existing translation delta, so character controllers driven by root-motion animation now receive consistent translation+rotation deltas per frame instead of just translation. Header (`rt_animcontroller3d.h`) gains the matching public surface.
+
 **Graphics3D — MorphTarget3D.** `rt_morphtarget3d_set_weight` clamps weights to `[-1, 1]` so callers can't silently over-extrude vertices past the target mesh. Packed position/normal delta arrays (`packed_pos_deltas` / `packed_nrm_deltas`) are now rebuilt lazily, gated on a generation counter: `morphtarget_touch_payload` bumps the generation when shapes are added or deltas edited; weight-only changes skip the rebuild. Backends that prefer GPU-side morphing (Metal, OpenGL, D3D11) consume the shared packed buffer directly.
 
-**Graphics3D — Backends.** `vgfx3d_backend.h` plus the four concrete backends (`vgfx3d_backend_d3d11.c`, `vgfx3d_backend_metal.m`, `vgfx3d_backend_opengl.c`, `vgfx3d_backend_sw.c`) extend their morph-handoff surface to accept the shared packed-delta buffers from `rt_morphtarget3d`. `vgfx3d_backend_prefers_gpu_morph` is formalized on the selector; the software backend gets matching CPU-fallback paths so feature behavior stays uniform across all four backends.
+**Graphics3D — Backends.** `vgfx3d_backend.h` plus the four concrete backends (`vgfx3d_backend_d3d11.c`, `vgfx3d_backend_metal.m`, `vgfx3d_backend_opengl.c`, `vgfx3d_backend_sw.c`) extend their morph-handoff surface to accept the shared packed-delta buffers from `rt_morphtarget3d`. `vgfx3d_backend_prefers_gpu_morph` is formalized on the selector; the software backend gets matching CPU-fallback paths so feature behavior stays uniform across all four backends. Additionally, a shared resize/aspect contract is exposed through the `*_shared.h` / `*_shared.c` headers so every backend reports its effective output size consistently — Canvas3D's aspect-sync path consumes this to rebuild the frame projection against the active window or bound `RenderTarget3D`.
 
 **Graphics3D — Lights / PostFX.** `rt_light3d` refinements for colour/intensity initialization and finalizer plumbing so lights are safely retained/released through scene-graph mutations. `rt_postfx3d` picks up a small header/surface touch.
 
@@ -218,5 +220,6 @@ Counts produced by `scripts/count_sloc.sh` (`Production SLOC` = `src/` minus `sr
 | `c5b0685af` | 2026-04-16 | `chore(graphics3d,graphics,runtime)`: skeleton parent/bone-index validation, terrain/heightfield normals, capsule Y-only contract, navmesh edge hash, crossfade bind-pose TRS, Canvas3D cached_vp, morph clamp, particle dt, water direction, parallax camera, UTF-8 text |
 | `cd07b31af` | 2026-04-16 | `chore(graphics3d,runtime,docs)`: Camera3D input sanitizers, Mesh3D reference-slot helpers, MorphTarget3D lazy packed-payload rebuild, backend packed-delta handoff (d3d11/metal/opengl/sw), release-notes re-organized by area |
 | `d5d938e55` | 2026-04-16 | `chore(graphics3d,docs)`: retain-then-release reference discipline rolled out across Terrain3D / Water3D / Particles3D / Scene3D / InstBatch3D / Cubemap3D, Scene3D `decompose_trs_matrix` helper |
+| `5f29ba785` | 2026-04-16 | `chore(graphics3d,docs)`: AnimController3D root-motion rotation, Camera3D shake-aware `ScreenToRay` + aspect sync, backend resize/aspect contract, `Canvas3D.New`/`RenderTarget3D.New` cleanup on failure |
 
 <!-- END DRAFT -->

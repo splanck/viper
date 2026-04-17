@@ -186,6 +186,11 @@ static void test_target_kind_blend_motion_and_readback_helpers(void) {
 
     memset(&cmd, 0, sizeof(cmd));
     cmd.workflow = RT_MATERIAL3D_WORKFLOW_LEGACY;
+    cmd.alpha = 0.5f;
+    cmd.alpha_mode = RT_MATERIAL3D_ALPHA_MODE_OPAQUE;
+    EXPECT_TRUE(vgfx3d_metal_choose_blend_mode(&cmd) == VGFX3D_METAL_BLEND_ALPHA,
+                "Legacy translucent materials use alpha blending");
+    cmd.alpha = 1.0f;
     cmd.alpha_mode = RT_MATERIAL3D_ALPHA_MODE_BLEND;
     EXPECT_TRUE(vgfx3d_metal_choose_blend_mode(&cmd) == VGFX3D_METAL_BLEND_ALPHA,
                 "Legacy explicit blend materials use alpha blending");

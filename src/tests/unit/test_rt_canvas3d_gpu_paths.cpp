@@ -1267,6 +1267,43 @@ static void test_gpu_postfx_state_latches_across_overlay_pass(void) {
     cleanup_fake_canvas(&canvas);
 }
 
+static void test_begin_frame_forwards_camera_forward_and_ortho_flag(void) {
+    vgfx3d_backend_t backend = {};
+    rt_canvas3d canvas;
+    rt_camera3d camera = {};
+
+    backend.name = "metal";
+    backend.begin_frame = record_begin_frame;
+    backend.end_frame = noop_end_frame;
+
+    init_fake_canvas(&canvas, &backend);
+    canvas.in_frame = 0;
+    set_identity4x4d(camera.view);
+    set_identity4x4d(camera.projection);
+    camera.eye[0] = 1.5;
+    camera.eye[1] = -2.0;
+    camera.eye[2] = 7.0;
+    camera.is_ortho = 1;
+    reset_postfx_records();
+
+    rt_canvas3d_begin(&canvas, &camera);
+
+    EXPECT_TRUE(begin_frame_calls == 1, "Canvas3D.Begin forwards one backend begin_frame call");
+    EXPECT_TRUE(begin_frame_params[0].is_ortho == 1,
+                "Canvas3D.Begin forwards the orthographic camera flag");
+    EXPECT_TRUE(fabsf(begin_frame_params[0].forward[0]) < 0.0001f &&
+                    fabsf(begin_frame_params[0].forward[1]) < 0.0001f &&
+                    fabsf(begin_frame_params[0].forward[2] + 1.0f) < 0.0001f,
+                "Canvas3D.Begin forwards the camera forward vector extracted from the view matrix");
+    EXPECT_TRUE(fabsf(begin_frame_params[0].position[0] - 1.5f) < 0.0001f &&
+                    fabsf(begin_frame_params[0].position[1] + 2.0f) < 0.0001f &&
+                    fabsf(begin_frame_params[0].position[2] - 7.0f) < 0.0001f,
+                "Canvas3D.Begin forwards the camera position payload");
+
+    rt_canvas3d_end(&canvas);
+    cleanup_fake_canvas(&canvas);
+}
+
 int main() {
     test_gpu_skinning_bypass_for_opengl();
     test_gpu_skinning_bypass_for_d3d11();
@@ -1296,6 +1333,7 @@ int main() {
     test_instanced_shadow_pass_includes_instances();
     test_screenshot_prefers_backend_readback();
     test_gpu_postfx_state_latches_across_overlay_pass();
+    test_begin_frame_forwards_camera_forward_and_ortho_flag();
 
     std::printf("Canvas3D GPU path tests: %d/%d passed\n", tests_passed, tests_run);
     return tests_passed == tests_run ? 0 : 1;

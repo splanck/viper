@@ -338,7 +338,7 @@ static void mat4_d2f(const double *src, float *dst) {
 /// @brief Whether a draw command needs alpha blending (transparency).
 ///
 /// Two cases trigger blending:
-///   1. Material alpha < 1.0 (legacy / Phong workflow).
+///   1. Legacy / Phong workflow with scalar alpha < 1.0 or diffuse alpha < 1.0.
 ///   2. PBR workflow with explicit `BLEND` alpha mode.
 /// Used to route the command into the deferred transparency-sorted
 /// pass instead of the immediate opaque pass.
@@ -629,6 +629,31 @@ static float canvas3d_compute_sort_key(const rt_canvas3d *c, const float *model_
     return dx * dx + dy * dy + dz * dz;
 }
 
+static void canvas3d_extract_view_forward(const double *view, float *out_forward) {
+    double fx = 0.0;
+    double fy = 0.0;
+    double fz = -1.0;
+    double len;
+
+    if (!out_forward)
+        return;
+    if (view) {
+        fx = -view[8];
+        fy = -view[9];
+        fz = -view[10];
+    }
+    len = sqrt(fx * fx + fy * fy + fz * fz);
+    if (len > 1e-12) {
+        out_forward[0] = (float)(fx / len);
+        out_forward[1] = (float)(fy / len);
+        out_forward[2] = (float)(fz / len);
+    } else {
+        out_forward[0] = 0.0f;
+        out_forward[1] = 0.0f;
+        out_forward[2] = -1.0f;
+    }
+}
+
 /// @brief Build a 2D-overlay camera (orthographic projection in pixels).
 ///
 /// Used by `BeginOverlayFrame` so the 2D HUD layer can draw with
@@ -658,6 +683,8 @@ static void canvas3d_build_ortho_camera(const rt_canvas3d *c, vgfx3d_camera_para
     params->projection[15] = 1.0f;
     params->view[0] = params->view[5] = params->view[10] = params->view[15] = 1.0f;
     params->position[2] = 1.0f;
+    params->forward[2] = -1.0f;
+    params->is_ortho = 1;
     params->fog_enabled = 0;
 }
 
@@ -685,6 +712,10 @@ int canvas3d_begin_overlay_frame(rt_canvas3d *c, int8_t preserve_existing_color)
     c->cached_cam_pos[0] = 0.0f;
     c->cached_cam_pos[1] = 0.0f;
     c->cached_cam_pos[2] = 1.0f;
+    c->cached_cam_forward[0] = params.forward[0];
+    c->cached_cam_forward[1] = params.forward[1];
+    c->cached_cam_forward[2] = params.forward[2];
+    c->cached_cam_is_ortho = params.is_ortho;
     c->draw_count = 0;
     c->frame_is_2d = 1;
     for (int r = 0; r < 4; r++)
@@ -1536,6 +1567,10 @@ void rt_canvas3d_begin_2d(void *obj) {
     c->cached_cam_pos[0] = 0.0f;
     c->cached_cam_pos[1] = 0.0f;
     c->cached_cam_pos[2] = 1.0f;
+    c->cached_cam_forward[0] = params.forward[0];
+    c->cached_cam_forward[1] = params.forward[1];
+    c->cached_cam_forward[2] = params.forward[2];
+    c->cached_cam_is_ortho = params.is_ortho;
     c->frame_serial++;
     canvas3d_prune_motion_history(c);
     c->draw_count = 0;
@@ -1764,6 +1799,8 @@ void rt_canvas3d_begin(void *obj, void *camera) {
     params.position[0] = (float)(cam->eye[0] + cam->shake_offset[0]);
     params.position[1] = (float)(cam->eye[1] + cam->shake_offset[1]);
     params.position[2] = (float)(cam->eye[2] + cam->shake_offset[2]);
+    canvas3d_extract_view_forward(cam->view, params.forward);
+    params.is_ortho = cam->is_ortho;
     params.fog_enabled = c->fog_enabled;
     params.fog_near = c->fog_near;
     params.fog_far = c->fog_far;
@@ -1777,6 +1814,10 @@ void rt_canvas3d_begin(void *obj, void *camera) {
     c->cached_cam_pos[0] = params.position[0];
     c->cached_cam_pos[1] = params.position[1];
     c->cached_cam_pos[2] = params.position[2];
+    c->cached_cam_forward[0] = params.forward[0];
+    c->cached_cam_forward[1] = params.forward[1];
+    c->cached_cam_forward[2] = params.forward[2];
+    c->cached_cam_is_ortho = params.is_ortho;
 
     /* Reset draw command queue for this frame */
     c->frame_serial++;
@@ -2120,51 +2161,74 @@ void rt_canvas3d_end(void *obj) {
         }
 
         if (!c->backend->draw_skybox && out_pixels && !canvas3d_backend_owns_gpu_rtt(c)) {
-            float inv_vp[16];
-            if (vgfx3d_invert_matrix4(c->cached_vp, inv_vp) == 0) {
-                for (int32_t y = 0; y < out_h; y++) {
-                    float ndc_y = 1.0f - 2.0f * ((float)y + 0.5f) / (float)out_h;
-                    for (int32_t x = 0; x < out_w; x++) {
-                        float ndc_x = 2.0f * ((float)x + 0.5f) / (float)out_w - 1.0f;
-                        float clip[4] = {ndc_x, ndc_y, 1.0f, 1.0f};
-                        float world[4];
-                        float dx;
-                        float dy;
-                        float dz;
-                        float dl;
-                        float r;
-                        float g;
-                        float b;
-                        uint8_t *dst;
+            if (c->cached_cam_is_ortho) {
+                float r;
+                float g;
+                float b;
 
-                        world[0] = inv_vp[0] * clip[0] + inv_vp[1] * clip[1] + inv_vp[2] * clip[2] +
-                                   inv_vp[3] * clip[3];
-                        world[1] = inv_vp[4] * clip[0] + inv_vp[5] * clip[1] + inv_vp[6] * clip[2] +
-                                   inv_vp[7] * clip[3];
-                        world[2] = inv_vp[8] * clip[0] + inv_vp[9] * clip[1] +
-                                   inv_vp[10] * clip[2] + inv_vp[11] * clip[3];
-                        world[3] = inv_vp[12] * clip[0] + inv_vp[13] * clip[1] +
-                                   inv_vp[14] * clip[2] + inv_vp[15] * clip[3];
-                        if (fabsf(world[3]) > 1e-7f) {
-                            world[0] /= world[3];
-                            world[1] /= world[3];
-                            world[2] /= world[3];
-                        }
-                        dx = world[0] - c->cached_cam_pos[0];
-                        dy = world[1] - c->cached_cam_pos[1];
-                        dz = world[2] - c->cached_cam_pos[2];
-                        dl = sqrtf(dx * dx + dy * dy + dz * dz);
-                        if (dl > 1e-7f) {
-                            dx /= dl;
-                            dy /= dl;
-                            dz /= dl;
-                        }
-                        rt_cubemap_sample(c->skybox, dx, dy, dz, &r, &g, &b);
-                        dst = &out_pixels[y * out_stride + x * 4];
+                rt_cubemap_sample(c->skybox,
+                                  c->cached_cam_forward[0],
+                                  c->cached_cam_forward[1],
+                                  c->cached_cam_forward[2],
+                                  &r,
+                                  &g,
+                                  &b);
+                for (int32_t y = 0; y < out_h; y++) {
+                    for (int32_t x = 0; x < out_w; x++) {
+                        uint8_t *dst = &out_pixels[y * out_stride + x * 4];
                         dst[0] = (uint8_t)(r * 255.0f);
                         dst[1] = (uint8_t)(g * 255.0f);
                         dst[2] = (uint8_t)(b * 255.0f);
                         dst[3] = 0xFF;
+                    }
+                }
+            } else {
+                float inv_vp[16];
+                if (vgfx3d_invert_matrix4(c->cached_vp, inv_vp) == 0) {
+                    for (int32_t y = 0; y < out_h; y++) {
+                        float ndc_y = 1.0f - 2.0f * ((float)y + 0.5f) / (float)out_h;
+                        for (int32_t x = 0; x < out_w; x++) {
+                            float ndc_x = 2.0f * ((float)x + 0.5f) / (float)out_w - 1.0f;
+                            float clip[4] = {ndc_x, ndc_y, 1.0f, 1.0f};
+                            float world[4];
+                            float dx;
+                            float dy;
+                            float dz;
+                            float dl;
+                            float r;
+                            float g;
+                            float b;
+                            uint8_t *dst;
+
+                            world[0] = inv_vp[0] * clip[0] + inv_vp[1] * clip[1] +
+                                       inv_vp[2] * clip[2] + inv_vp[3] * clip[3];
+                            world[1] = inv_vp[4] * clip[0] + inv_vp[5] * clip[1] +
+                                       inv_vp[6] * clip[2] + inv_vp[7] * clip[3];
+                            world[2] = inv_vp[8] * clip[0] + inv_vp[9] * clip[1] +
+                                       inv_vp[10] * clip[2] + inv_vp[11] * clip[3];
+                            world[3] = inv_vp[12] * clip[0] + inv_vp[13] * clip[1] +
+                                       inv_vp[14] * clip[2] + inv_vp[15] * clip[3];
+                            if (fabsf(world[3]) > 1e-7f) {
+                                world[0] /= world[3];
+                                world[1] /= world[3];
+                                world[2] /= world[3];
+                            }
+                            dx = world[0] - c->cached_cam_pos[0];
+                            dy = world[1] - c->cached_cam_pos[1];
+                            dz = world[2] - c->cached_cam_pos[2];
+                            dl = sqrtf(dx * dx + dy * dy + dz * dz);
+                            if (dl > 1e-7f) {
+                                dx /= dl;
+                                dy /= dl;
+                                dz /= dl;
+                            }
+                            rt_cubemap_sample(c->skybox, dx, dy, dz, &r, &g, &b);
+                            dst = &out_pixels[y * out_stride + x * 4];
+                            dst[0] = (uint8_t)(r * 255.0f);
+                            dst[1] = (uint8_t)(g * 255.0f);
+                            dst[2] = (uint8_t)(b * 255.0f);
+                            dst[3] = 0xFF;
+                        }
                     }
                 }
             }

@@ -47,7 +47,7 @@ Build and test:
 ./scripts/build_viper_linux.sh
 
 # Windows
-scripts\build_viper.cmd
+.\scripts\build_viper.cmd
 ```
 
 Create and run a project:
@@ -296,6 +296,9 @@ viper repl                     # Interactive REPL
 
 # Linux
 ./scripts/build_viper_linux.sh
+
+# Windows
+.\scripts\build_viper.cmd
 ```
 
 This configures, builds, tests, and installs Viper in one step.
@@ -304,7 +307,7 @@ This configures, builds, tests, and installs Viper in one step.
 
 - **[macOS](docs/getting-started/macos.md)** — Use Apple Clang. ARM64 tests skip x86-64-specific checks automatically.
 - **[Linux](docs/getting-started/linux.md)** — Clang recommended.
-- **[Windows](docs/getting-started/windows.md)** — Use `scripts\build_viper.cmd` instead. Clang-CL preferred. Some POSIX tests are skipped.
+- **[Windows](docs/getting-started/windows.md)** — MSVC is the default compiler on Windows.
 
 ---
 

@@ -72,6 +72,7 @@ typedef unsigned int GLbitfield;
 #define GL_INFO_LOG_LENGTH 0x8B84
 #define GL_TEXTURE_2D 0x0DE1
 #define GL_TEXTURE_CUBE_MAP 0x8513
+#define GL_TEXTURE_CUBE_MAP_SEAMLESS 0x884F
 #define GL_TEXTURE_CUBE_MAP_POSITIVE_X 0x8515
 #define GL_RGBA 0x1908
 #define GL_RGBA8 0x8058
@@ -452,6 +453,8 @@ typedef struct {
     float scene_inv_vp[16];
     int8_t scene_history_valid;
     float cam_pos[3];
+    float cam_forward[3];
+    int8_t cam_is_ortho;
     float scene_cam_pos[3];
     int8_t fog_enabled;
     float fog_near;
@@ -469,11 +472,13 @@ typedef struct {
 
     GLint uModelMatrix, uPrevModelMatrix, uViewProjection, uPrevViewProjection, uNormalMatrix,
         uShadowVP;
-    GLint uCameraPos, uAmbientColor, uDiffuseColor, uSpecularColor, uEmissiveColor, uAlpha;
+    GLint uCameraPos, uCameraForward, uAmbientColor, uDiffuseColor, uSpecularColor, uEmissiveColor,
+        uAlpha;
     GLint uPbrScalars0, uPbrScalars1;
     GLint uUnlit, uShadingModel, uLightCount, uHasTexture, uHasNormalMap, uHasSpecularMap,
         uHasEmissiveMap;
-    GLint uHasEnvMap, uReflectivity, uWorkflow, uAlphaMode, uHasMetallicRoughnessMap, uHasAOMap;
+    GLint uHasEnvMap, uReflectivity, uEnvMaxLod, uWorkflow, uAlphaMode, uHasMetallicRoughnessMap,
+        uHasAOMap, uCameraIsOrtho;
     GLint uCustomParams;
     GLint uHasSplat, uFogEnabled, uFogNear, uFogFar, uFogColor;
     GLint uShadowEnabled, uShadowBias;
@@ -490,8 +495,10 @@ typedef struct {
     GLint shadow_uHasSkinning, shadow_uMorphShapeCount, shadow_uVertexCount;
     GLint shadow_uMorphWeights, shadow_uMorphDeltas;
 
-    GLint skybox_uProjection;
-    GLint skybox_uViewRotation;
+    GLint skybox_uInverseProjection;
+    GLint skybox_uInverseViewRotation;
+    GLint skybox_uDirection;
+    GLint skybox_uIsOrtho;
     GLint skybox_uSkybox;
 
     GLint postfx_uSceneTex, postfx_uSceneDepthTex, postfx_uSceneMotionTex, postfx_uInvResolution;
@@ -850,6 +857,7 @@ static const char *const glsl_fragment_src[] = {
     "layout(location=0) out vec4 FragColor;\n"
     "layout(location=1) out vec4 MotionColor;\n"
     "uniform vec3 uCameraPos;\n"
+    "uniform vec3 uCameraForward;\n"
     "uniform vec3 uAmbientColor;\n"
     "uniform vec4 uDiffuseColor;\n"
     "uniform vec4 uSpecularColor;\n"
@@ -866,8 +874,10 @@ static const char *const glsl_fragment_src[] = {
     "uniform int uHasEmissiveMap;\n"
     "uniform int uHasEnvMap;\n"
     "uniform float uReflectivity;\n"
+    "uniform float uEnvMaxLod;\n"
     "uniform int uWorkflow;\n"
     "uniform int uAlphaMode;\n"
+    "uniform int uCameraIsOrtho;\n"
     "uniform int uHasMetallicRoughnessMap;\n"
     "uniform int uHasAOMap;\n"
     "uniform int uHasSplat;\n"
@@ -918,6 +928,10 @@ static const char *const glsl_fragment_src[] = {
     "vec3 fresnelSchlick(float cosTheta, vec3 F0) {\n"
     "    return F0 + (1.0 - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);\n"
     "}\n"
+    "vec3 envSample(vec3 dir, float roughness) {\n"
+    "    float lod = clamp(roughness, 0.0, 1.0) * max(uEnvMaxLod, 0.0);\n"
+    "    return textureLod(uEnvMap, normalize(dir), lod).rgb;\n"
+    "}\n"
     "float sampleShadow(vec3 worldPos) {\n"
     "    if (uShadowEnabled == 0) return 1.0;\n"
     "    vec4 lc = uShadowVP * vec4(worldPos, 1.0);\n"
@@ -967,7 +981,12 @@ static const char *const glsl_fragment_src[] = {
     "    }\n"
     "    vec3 emissive = uEmissiveColor * uPbrScalars0.w;\n"
     "    if (uHasEmissiveMap != 0) emissive *= texture(uEmissiveTex, vUV).rgb;\n"
-    "    vec3 V = normalize(uCameraPos - vWorldPos);\n"
+    "    vec3 cameraToWorld = uCameraPos - vWorldPos;\n"
+    "    vec3 V = normalize((uCameraIsOrtho != 0) ? -uCameraForward : cameraToWorld);\n"
+    "    float viewDistance = (uCameraIsOrtho != 0)\n"
+    "        ? abs(dot(vWorldPos - uCameraPos, uCameraForward))\n"
+    "        : length(cameraToWorld);\n"
+    "    float envRoughness = clamp(uPbrScalars0.y, 0.0, 1.0);\n"
     "    float finalAlpha = materialAlpha * texAlpha;\n"
     "    if (uAlphaMode == 1) {\n"
     "        if (finalAlpha < uPbrScalars1.y) discard;\n"
@@ -979,12 +998,12 @@ static const char *const glsl_fragment_src[] = {
     "        vec3 unlitColor = baseColor + emissive;\n"
     "        if (uHasEnvMap != 0) {\n"
     "            vec3 R = reflect(-V, N);\n"
-    "            vec3 envColor = texture(uEnvMap, R).rgb;\n"
+    "            vec3 envColor = envSample(R, envRoughness);\n"
     "            unlitColor = mix(unlitColor, envColor, clamp(uReflectivity, 0.0, 1.0));\n"
     "        }\n"
     "        if (uFogEnabled != 0) {\n"
-    "            float dist = length(uCameraPos - vWorldPos);\n"
-    "            float fogFactor = clamp((dist - uFogNear) / max(uFogFar - uFogNear, 0.001), 0.0, "
+    "            float fogFactor = clamp((viewDistance - uFogNear) / max(uFogFar - uFogNear, "
+    "0.001), 0.0, "
     "1.0);\n"
     "            unlitColor = mix(unlitColor, uFogColor, fogFactor);\n"
     "        }\n"
@@ -1004,6 +1023,7 @@ static const char *const glsl_fragment_src[] = {
     "            vec4 mr = texture(uMetallicRoughnessTex, vUV);\n"
     "            roughness = clamp(roughness * mr.g, 0.045, 1.0);\n"
     "            metallic = clamp(metallic * mr.b, 0.0, 1.0);\n"
+    "            envRoughness = roughness;\n"
     "        }\n"
     "        if (uHasAOMap != 0) {\n"
     "            vec4 aoSample = texture(uAOTex, vUV);\n"
@@ -1103,7 +1123,7 @@ static const char *const glsl_fragment_src[] = {
     "    result += emissive;\n"
     "    if (uHasEnvMap != 0) {\n"
     "        vec3 R = reflect(-V, N);\n"
-    "        vec3 envColor = texture(uEnvMap, R).rgb;\n"
+    "        vec3 envColor = envSample(R, envRoughness);\n"
     "        result = mix(result, envColor, clamp(uReflectivity, 0.0, 1.0));\n"
     "    }\n"
     "    if (uShadingModel == 1 && uWorkflow != 0) {\n"
@@ -1119,8 +1139,8 @@ static const char *const glsl_fragment_src[] = {
     "        result += emissive * (strength - 1.0);\n"
     "    }\n"
     "    if (uFogEnabled != 0) {\n"
-    "        float dist = length(uCameraPos - vWorldPos);\n"
-    "        float fogFactor = clamp((dist - uFogNear) / max(uFogFar - uFogNear, 0.001), 0.0, "
+    "        float fogFactor = clamp((viewDistance - uFogNear) / max(uFogFar - uFogNear, 0.001), "
+    "0.0, "
     "1.0);\n"
     "        result = mix(result, uFogColor, fogFactor);\n"
     "    }\n"
@@ -1180,33 +1200,34 @@ static const char *glsl_shadow_fragment_src = "#version 330 core\n"
 static const char *glsl_skybox_vertex_src =
     "#version 330 core\n"
     "layout(location=0) in vec3 aPosition;\n"
-    "out vec3 vDir;\n"
-    "uniform mat4 uProjection;\n"
-    "uniform mat4 uViewRotation;\n"
+    "out vec2 vNdc;\n"
     "void main() {\n"
-    "    vDir = aPosition;\n"
-    "    vec4 pos = uProjection * uViewRotation * vec4(aPosition, 1.0);\n"
-    "    gl_Position = pos.xyww;\n"
+    "    vNdc = aPosition.xy;\n"
+    "    gl_Position = vec4(aPosition.xy, 1.0, 1.0);\n"
     "}\n";
 
 static const char *glsl_skybox_fragment_src = "#version 330 core\n"
-                                              "in vec3 vDir;\n"
+                                              "in vec2 vNdc;\n"
                                               "out vec4 FragColor;\n"
+                                              "uniform mat4 uInverseProjection;\n"
+                                              "uniform mat4 uInverseViewRotation;\n"
+                                              "uniform vec3 uDirection;\n"
+                                              "uniform int uIsOrtho;\n"
                                               "uniform samplerCube uSkybox;\n"
                                               "void main() {\n"
-                                              "    FragColor = texture(uSkybox, normalize(vDir));\n"
+                                              "    vec3 worldDir;\n"
+                                              "    if (uIsOrtho != 0) {\n"
+                                              "        worldDir = normalize(uDirection);\n"
+                                              "    } else {\n"
+                                              "        vec4 view = uInverseProjection * vec4(vNdc, 1.0, 1.0);\n"
+                                              "        vec3 viewDir = normalize(view.xyz / max(abs(view.w), 0.0001));\n"
+                                              "        worldDir = normalize((uInverseViewRotation * vec4(viewDir, 0.0)).xyz);\n"
+                                              "    }\n"
+                                              "    FragColor = texture(uSkybox, worldDir);\n"
                                               "}\n";
 
 static const float gl_skybox_vertices[] = {
-    -1.0f, 1.0f,  -1.0f, -1.0f, -1.0f, -1.0f, 1.0f,  -1.0f, -1.0f, 1.0f,  -1.0f, -1.0f,
-    1.0f,  1.0f,  -1.0f, -1.0f, 1.0f,  -1.0f, -1.0f, -1.0f, 1.0f,  -1.0f, -1.0f, -1.0f,
-    -1.0f, 1.0f,  -1.0f, -1.0f, 1.0f,  -1.0f, -1.0f, 1.0f,  1.0f,  -1.0f, -1.0f, 1.0f,
-    1.0f,  -1.0f, -1.0f, 1.0f,  -1.0f, 1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f,
-    1.0f,  1.0f,  -1.0f, 1.0f,  -1.0f, -1.0f, -1.0f, -1.0f, 1.0f,  -1.0f, 1.0f,  1.0f,
-    1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  -1.0f, 1.0f,  -1.0f, -1.0f, 1.0f,
-    -1.0f, 1.0f,  -1.0f, 1.0f,  1.0f,  -1.0f, 1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f,
-    -1.0f, 1.0f,  1.0f,  -1.0f, 1.0f,  -1.0f, -1.0f, -1.0f, -1.0f, -1.0f, -1.0f, 1.0f,
-    1.0f,  -1.0f, -1.0f, 1.0f,  -1.0f, -1.0f, -1.0f, -1.0f, 1.0f,  1.0f,  -1.0f, 1.0f,
+    -1.0f, -1.0f, 1.0f, 3.0f, -1.0f, 1.0f, -1.0f, 3.0f, 1.0f,
 };
 
 static const float gl_fullscreen_triangle[] = {
@@ -1722,6 +1743,20 @@ static GLuint gl_get_cached_texture(gl_context_t *ctx, const void *pixels_ptr) {
     ctx->texture_cache[ctx->texture_cache_count].last_used_frame = ctx->frame_serial;
     ctx->texture_cache_count++;
     return tex;
+}
+
+static float gl_cubemap_max_lod(const rt_cubemap3d *cubemap) {
+    int32_t size;
+    float lod = 0.0f;
+
+    if (!cubemap || cubemap->face_size <= 1)
+        return 0.0f;
+    size = (int32_t)cubemap->face_size;
+    while (size > 1) {
+        size >>= 1;
+        lod += 1.0f;
+    }
+    return lod;
 }
 
 /// @brief Cubemap-cache lookup with auto-create — analogous to `gl_get_cached_texture`.
@@ -2924,6 +2959,8 @@ static void upload_main_uniforms(gl_context_t *ctx,
     gl.UniformMatrix4fv(ctx->uShadowVP, 1, GL_TRUE, ctx->shadow_vp);
 
     gl.Uniform3f(ctx->uCameraPos, ctx->cam_pos[0], ctx->cam_pos[1], ctx->cam_pos[2]);
+    gl.Uniform3f(
+        ctx->uCameraForward, ctx->cam_forward[0], ctx->cam_forward[1], ctx->cam_forward[2]);
     gl.Uniform3f(ctx->uAmbientColor, ambient[0], ambient[1], ambient[2]);
     gl.Uniform4f(ctx->uDiffuseColor,
                  cmd->diffuse_color[0],
@@ -2944,11 +2981,14 @@ static void upload_main_uniforms(gl_context_t *ctx,
     gl.Uniform4f(ctx->uPbrScalars1, cmd->normal_scale, cmd->alpha_cutoff, 0.0f, 0.0f);
     gl.Uniform1i(ctx->uHasEnvMap, (cmd->env_map && cmd->reflectivity > 0.0001f) ? 1 : 0);
     gl.Uniform1f(ctx->uReflectivity, cmd->reflectivity);
+    gl.Uniform1f(ctx->uEnvMaxLod, cmd->env_map ? gl_cubemap_max_lod((const rt_cubemap3d *)cmd->env_map)
+                                               : 0.0f);
     gl.Uniform1f(ctx->uAlpha, cmd->alpha);
     gl.Uniform1i(ctx->uUnlit, cmd->unlit);
     gl.Uniform1i(ctx->uShadingModel, cmd->shading_model);
     gl.Uniform1i(ctx->uWorkflow, cmd->workflow);
     gl.Uniform1i(ctx->uAlphaMode, cmd->alpha_mode);
+    gl.Uniform1i(ctx->uCameraIsOrtho, ctx->cam_is_ortho ? 1 : 0);
     gl.Uniform1fv(ctx->uCustomParams, 8, cmd->custom_params);
     gl.Uniform1i(ctx->uUseInstancing, instanced ? 1 : 0);
     gl.Uniform1i(ctx->uHasPrevModelMatrix, cmd->has_prev_model_matrix ? 1 : 0);
@@ -3075,16 +3115,30 @@ static void draw_scene_texture(gl_context_t *ctx, const vgfx3d_postfx_snapshot_t
     gl_draw_scene_texture_to_target(ctx, 0, GL_BACK, ctx->width, ctx->height, snapshot);
 }
 
-/// @brief Internal skybox draw — full cube with rotation-only view matrix.
+/// @brief Internal skybox draw — full-screen triangle with reconstructed view rays.
 ///
-/// Steps:
-///   1. Resolve cubemap from cache.
-///   2. Strip translation from the view matrix (skybox tracks rotation
-///      only — gives the "infinite distance" effect).
-///   3. Switch to skybox program, depth-LEQUAL with no depth writes,
-///      no culling, draw the 36-vertex cube.
-///   4. Restore main program/state for subsequent draws.
+/// Reconstructs a world-space ray from the inverse projection and inverse
+/// rotation-only view matrix so perspective and orthographic cameras share one
+/// consistent skybox path.
 static void gl_draw_skybox_impl(gl_context_t *ctx, const rt_cubemap3d *cubemap) {
+    static const float kIdentity4x4[16] = {
+        1.0f,
+        0.0f,
+        0.0f,
+        0.0f,
+        0.0f,
+        1.0f,
+        0.0f,
+        0.0f,
+        0.0f,
+        0.0f,
+        1.0f,
+        0.0f,
+        0.0f,
+        0.0f,
+        0.0f,
+        1.0f,
+    };
     if (!ctx || !cubemap || !ctx->skybox_program)
         return;
 
@@ -3093,10 +3147,19 @@ static void gl_draw_skybox_impl(gl_context_t *ctx, const rt_cubemap3d *cubemap) 
         return;
 
     float view_rotation[16];
+    float inverse_projection[16];
+    float inverse_view_rotation[16];
     memcpy(view_rotation, ctx->view, sizeof(view_rotation));
     view_rotation[3] = 0.0f;
     view_rotation[7] = 0.0f;
     view_rotation[11] = 0.0f;
+    view_rotation[12] = 0.0f;
+    view_rotation[13] = 0.0f;
+    view_rotation[14] = 0.0f;
+    view_rotation[15] = 1.0f;
+    if (mat4f_inverse_gl(ctx->projection, inverse_projection) != 0)
+        memcpy(inverse_projection, kIdentity4x4, sizeof(inverse_projection));
+    transpose4x4(view_rotation, inverse_view_rotation);
 
     if (ctx->active_target_kind == VGFX3D_OPENGL_TARGET_SCENE) {
         gl.BindFramebuffer(GL_FRAMEBUFFER, ctx->scene_fbo);
@@ -3108,10 +3171,13 @@ static void gl_draw_skybox_impl(gl_context_t *ctx, const rt_cubemap3d *cubemap) 
     gl.Disable(GL_CULL_FACE);
     gl.UseProgram(ctx->skybox_program);
     gl.BindVertexArray(ctx->skybox_vao);
-    gl.UniformMatrix4fv(ctx->skybox_uProjection, 1, GL_TRUE, ctx->projection);
-    gl.UniformMatrix4fv(ctx->skybox_uViewRotation, 1, GL_TRUE, view_rotation);
+    gl.UniformMatrix4fv(ctx->skybox_uInverseProjection, 1, GL_TRUE, inverse_projection);
+    gl.UniformMatrix4fv(ctx->skybox_uInverseViewRotation, 1, GL_TRUE, inverse_view_rotation);
+    gl.Uniform3f(
+        ctx->skybox_uDirection, ctx->cam_forward[0], ctx->cam_forward[1], ctx->cam_forward[2]);
+    gl.Uniform1i(ctx->skybox_uIsOrtho, ctx->cam_is_ortho ? 1 : 0);
     bind_texture_unit(ctx->skybox_uSkybox, 13, GL_TEXTURE_CUBE_MAP, tex);
-    gl.DrawArrays(GL_TRIANGLES, 0, 36);
+    gl.DrawArrays(GL_TRIANGLES, 0, 3);
 
     gl.ActiveTexture(GL_TEXTURE0);
     gl.DepthFunc(GL_LESS);
@@ -3139,6 +3205,7 @@ static void query_main_uniforms(gl_context_t *ctx) {
     U(uNormalMatrix);
     U(uShadowVP);
     U(uCameraPos);
+    U(uCameraForward);
     U(uAmbientColor);
     U(uDiffuseColor);
     U(uSpecularColor);
@@ -3155,8 +3222,10 @@ static void query_main_uniforms(gl_context_t *ctx) {
     U(uHasEmissiveMap);
     U(uHasEnvMap);
     U(uReflectivity);
+    U(uEnvMaxLod);
     U(uWorkflow);
     U(uAlphaMode);
+    U(uCameraIsOrtho);
     U(uHasMetallicRoughnessMap);
     U(uHasAOMap);
     U(uCustomParams);
@@ -3229,8 +3298,12 @@ static void query_shadow_uniforms(gl_context_t *ctx) {
 
 /// @brief Resolve uniform locations for the cubemap skybox program.
 static void query_skybox_uniforms(gl_context_t *ctx) {
-    ctx->skybox_uProjection = gl.GetUniformLocation(ctx->skybox_program, "uProjection");
-    ctx->skybox_uViewRotation = gl.GetUniformLocation(ctx->skybox_program, "uViewRotation");
+    ctx->skybox_uInverseProjection =
+        gl.GetUniformLocation(ctx->skybox_program, "uInverseProjection");
+    ctx->skybox_uInverseViewRotation =
+        gl.GetUniformLocation(ctx->skybox_program, "uInverseViewRotation");
+    ctx->skybox_uDirection = gl.GetUniformLocation(ctx->skybox_program, "uDirection");
+    ctx->skybox_uIsOrtho = gl.GetUniformLocation(ctx->skybox_program, "uIsOrtho");
     ctx->skybox_uSkybox = gl.GetUniformLocation(ctx->skybox_program, "uSkybox");
 }
 
@@ -3380,6 +3453,7 @@ static void *gl_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
     ctx->display = dpy;
     ctx->window = xwin;
     ctx->glxCtx = glxCtx;
+    gl.Enable(GL_TEXTURE_CUBE_MAP_SEAMLESS);
     ctx->width = w;
     ctx->height = h;
     memcpy(ctx->view, kIdentity4x4, sizeof(ctx->view));
@@ -3699,6 +3773,8 @@ static void gl_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) {
     if (mat4f_inverse_gl(ctx->vp, ctx->inv_vp) != 0)
         memcpy(ctx->inv_vp, kIdentity4x4, sizeof(ctx->inv_vp));
     memcpy(ctx->cam_pos, cam->position, sizeof(float) * 3);
+    memcpy(ctx->cam_forward, cam->forward, sizeof(float) * 3);
+    ctx->cam_is_ortho = cam->is_ortho ? 1 : 0;
     ctx->fog_enabled = cam->fog_enabled;
     ctx->fog_near = cam->fog_near;
     ctx->fog_far = cam->fog_far;

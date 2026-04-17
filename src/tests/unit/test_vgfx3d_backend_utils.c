@@ -45,6 +45,7 @@ typedef struct {
     void *vptr;
     void *faces[6];
     int64_t face_size;
+    uint64_t cache_identity;
 } fake_cubemap_t;
 
 static void test_unpack_pixels_rgba_success(void) {
@@ -180,6 +181,7 @@ static void test_generation_helpers(void) {
     for (int i = 0; i < 6; i++)
         cubemap.faces[i] = &faces[i];
     cubemap.face_size = 1;
+    cubemap.cache_identity = 7;
 
     EXPECT_TRUE(vgfx3d_get_pixels_generation(&faces[1]) == 4,
                 "Pixels generation helper exposes the object generation");
@@ -196,6 +198,11 @@ static void test_generation_helpers(void) {
     faces[4].generation = 12;
     EXPECT_TRUE(vgfx3d_get_cubemap_generation(&cubemap) != base_generation,
                 "Cubemap generation signature depends on per-face generations, not just their max");
+
+    faces[4].generation = 3;
+    cubemap.cache_identity = 8;
+    EXPECT_TRUE(vgfx3d_get_cubemap_generation(&cubemap) != base_generation,
+                "Cubemap generation signature changes when the cubemap identity changes");
 }
 
 static void test_compute_normal_matrix_inverse_transpose(void) {
@@ -319,15 +326,16 @@ static void test_draw_cmd_alpha_blend_policy(void) {
     memset(&cmd, 0, sizeof(cmd));
     cmd.alpha = 0.5f;
     cmd.workflow = RT_MATERIAL3D_WORKFLOW_LEGACY;
-    EXPECT_TRUE(!vgfx3d_draw_cmd_uses_alpha_blend(&cmd),
-                "Legacy materials require explicit blend alpha mode");
+    EXPECT_TRUE(vgfx3d_draw_cmd_uses_alpha_blend(&cmd),
+                "Legacy translucent materials use alpha blending");
 
     memset(&cmd, 0, sizeof(cmd));
     cmd.alpha = 1.0f;
     cmd.workflow = RT_MATERIAL3D_WORKFLOW_PBR;
     cmd.alpha_mode = RT_MATERIAL3D_ALPHA_MODE_OPAQUE;
+    cmd.diffuse_color[3] = 0.0f;
     EXPECT_TRUE(!vgfx3d_draw_cmd_uses_alpha_blend(&cmd),
-                "PBR opaque materials keep depth writes enabled");
+                "PBR opaque materials ignore base-color alpha for blend routing");
 
     memset(&cmd, 0, sizeof(cmd));
     cmd.alpha = 1.0f;

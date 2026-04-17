@@ -101,7 +101,9 @@ static inline int vgfx3d_draw_cmd_uses_alpha_blend(const vgfx3d_draw_cmd_t *cmd)
         return 1;
     if (cmd->alpha_mode == RT_MATERIAL3D_ALPHA_MODE_MASK)
         return 0;
-    return 0;
+    if (cmd->workflow == RT_MATERIAL3D_WORKFLOW_PBR)
+        return 0;
+    return (cmd->alpha < 0.999f || cmd->diffuse_color[3] < 0.999f) ? 1 : 0;
 }
 
 static inline int vgfx3d_draw_cmd_uses_transparent_blend(const vgfx3d_draw_cmd_t *cmd) {
@@ -118,6 +120,8 @@ typedef struct {
     float view[16];       /* view matrix, row-major float */
     float projection[16]; /* projection matrix, row-major float */
     float position[3];    /* eye position (for specular) */
+    float forward[3];     /* forward/view direction in world space */
+    int8_t is_ortho;      /* 1 = orthographic projection */
     /* Distance fog */
     int8_t fog_enabled;
     float fog_near, fog_far;

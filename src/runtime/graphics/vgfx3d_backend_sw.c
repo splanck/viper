@@ -43,6 +43,8 @@ typedef struct {
     int32_t width, height;
     float vp[16]; /* view * projection (float, row-major) */
     float cam_pos[3];
+    float cam_forward[3];
+    int8_t cam_is_ortho;
     /* Render target override (NULL = render to window framebuffer) */
     vgfx3d_rendertarget_t *render_target;
     /* Fog parameters (copied from Canvas3D each begin_frame) */
@@ -56,6 +58,14 @@ typedef struct {
     float shadow_bias;
     int8_t shadow_active; /* 1 = shadow map is populated and ready for lookup */
 } sw_context_t;
+
+static inline void sw_compute_view_vector(const sw_context_t *ctx,
+                                          float wx,
+                                          float wy,
+                                          float wz,
+                                          float *out_vx,
+                                          float *out_vy,
+                                          float *out_vz);
 
 /// @brief Resize the depth buffer if dimensions changed; idempotent on match.
 ///
@@ -251,7 +261,7 @@ static int clip_triangle(const pipe_vert_t *tri, pipe_vert_t *out) {
 /// Shaded color is later interpolated across triangle pixels (Gouraud).
 /// Materials with `unlit` flag bypass lighting entirely.
 static void compute_lighting(pipe_vert_t *v,
-                             const float *cam_pos,
+                             const sw_context_t *ctx,
                              const vgfx3d_draw_cmd_t *cmd,
                              const vgfx3d_light_params_t *lights,
                              int32_t light_count,
@@ -272,15 +282,11 @@ static void compute_lighting(pipe_vert_t *v,
         nz /= nlen;
     }
 
-    float vx = cam_pos[0] - v->world[0];
-    float vy = cam_pos[1] - v->world[1];
-    float vz = cam_pos[2] - v->world[2];
-    float vlen = sqrtf(vx * vx + vy * vy + vz * vz);
-    if (vlen > 1e-7f) {
-        vx /= vlen;
-        vy /= vlen;
-        vz /= vlen;
-    }
+    float vx;
+    float vy;
+    float vz;
+
+    sw_compute_view_vector(ctx, v->world[0], v->world[1], v->world[2], &vx, &vy, &vz);
 
     /* Effective diffuse = material diffuse × vertex color */
     float dr = cmd->diffuse_color[0] * v->color[0];
@@ -514,6 +520,28 @@ typedef struct {
     float tx, ty, tz, tw; /* world tangent plus handedness sign (for TBN construction) */
 } screen_vert_t;
 
+static inline void sw_compute_view_vector(const sw_context_t *ctx,
+                                          float wx,
+                                          float wy,
+                                          float wz,
+                                          float *out_vx,
+                                          float *out_vy,
+                                          float *out_vz);
+static inline float sw_compute_fog_distance(const sw_context_t *ctx, float wx, float wy, float wz);
+static void sw_apply_environment_reflection(const vgfx3d_draw_cmd_t *cmd,
+                                            const sw_pixels_view *normal_map,
+                                            const sw_pixels_view *metallic_roughness_map,
+                                            float b0,
+                                            float b1,
+                                            float b2,
+                                            const screen_vert_t *v0,
+                                            const screen_vert_t *v1,
+                                            const screen_vert_t *v2,
+                                            const sw_context_t *ctx,
+                                            float *inout_r,
+                                            float *inout_g,
+                                            float *inout_b);
+
 // Inline math helpers — used heavily in the per-pixel PBR shading path,
 // inlined for the obvious reason that one indirect call per pixel
 // would dominate the cost.
@@ -535,6 +563,172 @@ static inline void normalize3f(float *x, float *y, float *z) {
         *x /= len;
         *y /= len;
         *z /= len;
+    }
+}
+
+static inline void sw_compute_view_vector(const sw_context_t *ctx,
+                                          float wx,
+                                          float wy,
+                                          float wz,
+                                          float *out_vx,
+                                          float *out_vy,
+                                          float *out_vz) {
+    float vx;
+    float vy;
+    float vz;
+
+    if (!ctx || !out_vx || !out_vy || !out_vz) {
+        return;
+    }
+    if (ctx->cam_is_ortho) {
+        vx = -ctx->cam_forward[0];
+        vy = -ctx->cam_forward[1];
+        vz = -ctx->cam_forward[2];
+    } else {
+        vx = ctx->cam_pos[0] - wx;
+        vy = ctx->cam_pos[1] - wy;
+        vz = ctx->cam_pos[2] - wz;
+    }
+    normalize3f(&vx, &vy, &vz);
+    *out_vx = vx;
+    *out_vy = vy;
+    *out_vz = vz;
+}
+
+static inline float sw_compute_fog_distance(const sw_context_t *ctx, float wx, float wy, float wz) {
+    if (!ctx)
+        return 0.0f;
+    if (ctx->cam_is_ortho) {
+        return fabsf((wx - ctx->cam_pos[0]) * ctx->cam_forward[0] +
+                     (wy - ctx->cam_pos[1]) * ctx->cam_forward[1] +
+                     (wz - ctx->cam_pos[2]) * ctx->cam_forward[2]);
+    }
+    {
+        float dx = wx - ctx->cam_pos[0];
+        float dy = wy - ctx->cam_pos[1];
+        float dz = wz - ctx->cam_pos[2];
+        return sqrtf(dx * dx + dy * dy + dz * dz);
+    }
+}
+
+static void sw_apply_environment_reflection(const vgfx3d_draw_cmd_t *cmd,
+                                            const sw_pixels_view *normal_map,
+                                            const sw_pixels_view *metallic_roughness_map,
+                                            float b0,
+                                            float b1,
+                                            float b2,
+                                            const screen_vert_t *v0,
+                                            const screen_vert_t *v1,
+                                            const screen_vert_t *v2,
+                                            const sw_context_t *ctx,
+                                            float *inout_r,
+                                            float *inout_g,
+                                            float *inout_b) {
+    float wx;
+    float wy;
+    float wz;
+    float pnx;
+    float pny;
+    float pnz;
+    float vdx;
+    float vdy;
+    float vdz;
+    float reflectivity;
+    float roughness;
+    float pp_iw;
+    float pp_u = 0.0f;
+    float pp_v = 0.0f;
+
+    if (!cmd || !ctx || !inout_r || !inout_g || !inout_b || !cmd->env_map || cmd->reflectivity <= 0.0001f)
+        return;
+
+    wx = b0 * v0->wx + b1 * v1->wx + b2 * v2->wx;
+    wy = b0 * v0->wy + b1 * v1->wy + b2 * v2->wy;
+    wz = b0 * v0->wz + b1 * v1->wz + b2 * v2->wz;
+    pnx = b0 * v0->nx + b1 * v1->nx + b2 * v2->nx;
+    pny = b0 * v0->ny + b1 * v1->ny + b2 * v2->ny;
+    pnz = b0 * v0->nz + b1 * v1->nz + b2 * v2->nz;
+    normalize3f(&pnx, &pny, &pnz);
+
+    pp_iw = b0 * v0->inv_w + b1 * v1->inv_w + b2 * v2->inv_w;
+    if (fabsf(pp_iw) > 1e-7f) {
+        pp_u = (b0 * v0->u_over_w + b1 * v1->u_over_w + b2 * v2->u_over_w) / pp_iw;
+        pp_v = (b0 * v0->v_over_w + b1 * v1->v_over_w + b2 * v2->v_over_w) / pp_iw;
+    }
+
+    if (normal_map) {
+        float ptx = b0 * v0->tx + b1 * v1->tx + b2 * v2->tx;
+        float pty = b0 * v0->ty + b1 * v1->ty + b2 * v2->ty;
+        float ptz = b0 * v0->tz + b1 * v1->tz + b2 * v2->tz;
+        float ptw = b0 * v0->tw + b1 * v1->tw + b2 * v2->tw;
+        float tlen = sqrtf(ptx * ptx + pty * pty + ptz * ptz);
+
+        if (tlen > 1e-7f) {
+            float tnr;
+            float tng;
+            float tnb;
+            float tna;
+            float map_x;
+            float map_y;
+            float map_z;
+            float tdotn;
+            float tangent_sign;
+            float bbx;
+            float bby;
+            float bbz;
+
+            ptx /= tlen;
+            pty /= tlen;
+            ptz /= tlen;
+            tdotn = ptx * pnx + pty * pny + ptz * pnz;
+            ptx -= tdotn * pnx;
+            pty -= tdotn * pny;
+            ptz -= tdotn * pnz;
+            normalize3f(&ptx, &pty, &ptz);
+
+            sample_texture(normal_map, pp_u, pp_v, &tnr, &tng, &tnb, &tna);
+            map_x = (tnr * 2.0f - 1.0f) * cmd->normal_scale;
+            map_y = (tng * 2.0f - 1.0f) * cmd->normal_scale;
+            map_z = tnb * 2.0f - 1.0f;
+            tangent_sign = ptw < 0.0f ? -1.0f : 1.0f;
+            bbx = (pny * ptz - pnz * pty) * tangent_sign;
+            bby = (pnz * ptx - pnx * ptz) * tangent_sign;
+            bbz = (pnx * pty - pny * ptx) * tangent_sign;
+            pnx = ptx * map_x + bbx * map_y + pnx * map_z;
+            pny = pty * map_x + bby * map_y + pny * map_z;
+            pnz = ptz * map_x + bbz * map_y + pnz * map_z;
+            normalize3f(&pnx, &pny, &pnz);
+        }
+    }
+
+    sw_compute_view_vector(ctx, wx, wy, wz, &vdx, &vdy, &vdz);
+    roughness = clamp01f(cmd->roughness);
+    if (cmd->workflow == RT_MATERIAL3D_WORKFLOW_PBR && metallic_roughness_map) {
+        float mrr;
+        float mrg;
+        float mrb;
+        float mra;
+        sample_texture(metallic_roughness_map, pp_u, pp_v, &mrr, &mrg, &mrb, &mra);
+        roughness = clamp01f(roughness * mrg);
+        if (roughness < 0.045f)
+            roughness = 0.045f;
+    }
+    reflectivity = clamp01f(cmd->reflectivity);
+    if (reflectivity > 0.0f) {
+        float dot_nv = dot3f(pnx, pny, pnz, vdx, vdy, vdz);
+        float rx = 2.0f * dot_nv * pnx - vdx;
+        float ry = 2.0f * dot_nv * pny - vdy;
+        float rz = 2.0f * dot_nv * pnz - vdz;
+        float env_r;
+        float env_g;
+        float env_b;
+
+        normalize3f(&rx, &ry, &rz);
+        rt_cubemap_sample_roughness(
+            (const rt_cubemap3d *)cmd->env_map, rx, ry, rz, roughness, &env_r, &env_g, &env_b);
+        *inout_r = *inout_r * (1.0f - reflectivity) + env_r * reflectivity;
+        *inout_g = *inout_g * (1.0f - reflectivity) + env_g * reflectivity;
+        *inout_b = *inout_b * (1.0f - reflectivity) + env_b * reflectivity;
     }
 }
 
@@ -849,15 +1043,10 @@ static void raster_triangle(uint8_t *pixels,
                             float wy = b0 * v0->wy + b1 * v1->wy + b2 * v2->wy;
                             float wz = b0 * v0->wz + b1 * v1->wz + b2 * v2->wz;
 
-                            float vdx = fog_ctx->cam_pos[0] - wx;
-                            float vdy = fog_ctx->cam_pos[1] - wy;
-                            float vdz = fog_ctx->cam_pos[2] - wz;
-                            float vdlen = sqrtf(vdx * vdx + vdy * vdy + vdz * vdz);
-                            if (vdlen > 1e-7f) {
-                                vdx /= vdlen;
-                                vdy /= vdlen;
-                                vdz /= vdlen;
-                            }
+                            float vdx;
+                            float vdy;
+                            float vdz;
+                            sw_compute_view_vector(fog_ctx, wx, wy, wz, &vdx, &vdy, &vdz);
                             pixel_ndv = clamp01f(dot3f(pnx, pny, pnz, vdx, vdy, vdz));
 
                             if (cmd->workflow == RT_MATERIAL3D_WORKFLOW_PBR) {
@@ -1182,15 +1371,28 @@ static void raster_triangle(uint8_t *pixels,
                         }
                     }
 
+                    if (cmd && cmd->env_map && cmd->reflectivity > 0.0001f) {
+                        sw_apply_environment_reflection(cmd,
+                                                        normal_map,
+                                                        metallic_roughness_map,
+                                                        b0,
+                                                        b1,
+                                                        b2,
+                                                        v0,
+                                                        v1,
+                                                        v2,
+                                                        fog_ctx,
+                                                        &fr,
+                                                        &fg,
+                                                        &fb_c);
+                    }
+
                     /* Distance fog — interpolate world position, compute camera distance */
                     if (fog_ctx && fog_ctx->fog_enabled) {
                         float wx = b0 * v0->wx + b1 * v1->wx + b2 * v2->wx;
                         float wy = b0 * v0->wy + b1 * v1->wy + b2 * v2->wy;
                         float wz = b0 * v0->wz + b1 * v1->wz + b2 * v2->wz;
-                        float fdx = wx - fog_ctx->cam_pos[0];
-                        float fdy = wy - fog_ctx->cam_pos[1];
-                        float fdz = wz - fog_ctx->cam_pos[2];
-                        float dist = sqrtf(fdx * fdx + fdy * fdy + fdz * fdz);
+                        float dist = sw_compute_fog_distance(fog_ctx, wx, wy, wz);
                         float fog_range = fog_ctx->fog_far - fog_ctx->fog_near;
                         float fog_f =
                             (fog_range > 1e-6f) ? (dist - fog_ctx->fog_near) / fog_range : 0.0f;
@@ -1580,6 +1782,10 @@ static void sw_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) {
     ctx->cam_pos[0] = cam->position[0];
     ctx->cam_pos[1] = cam->position[1];
     ctx->cam_pos[2] = cam->position[2];
+    ctx->cam_forward[0] = cam->forward[0];
+    ctx->cam_forward[1] = cam->forward[1];
+    ctx->cam_forward[2] = cam->forward[2];
+    ctx->cam_is_ortho = cam->is_ortho ? 1 : 0;
     ctx->fog_enabled = cam->fog_enabled;
     ctx->fog_near = cam->fog_near;
     ctx->fog_far = cam->fog_far;
@@ -1752,7 +1958,7 @@ static void sw_submit_draw(void *ctx_ptr,
             dst->color[2] = cmd->diffuse_color[2] * dst->color[2];
             dst->color[3] = dst->color[3] * cmd->diffuse_color[3] * cmd->alpha;
         } else {
-            compute_lighting(dst, ctx->cam_pos, cmd, lights, light_count, ambient);
+            compute_lighting(dst, ctx, cmd, lights, light_count, ambient);
         }
     }
 
