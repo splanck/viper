@@ -120,6 +120,8 @@ int64_t rt_camera_to_world_y(void *camera, int64_t screen_y);
 void rt_camera_move(void *camera, int64_t dx, int64_t dy);
 
 /// @brief Set camera bounds (limits where camera can go).
+///        If the current position lies outside the new bounds, it is clamped
+///        immediately and the camera becomes dirty.
 /// @param camera Camera object.
 /// @param min_x Minimum X position.
 /// @param min_y Minimum Y position.

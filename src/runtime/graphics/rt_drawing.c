@@ -111,13 +111,15 @@ void rt_canvas_line(
         return;
 
     rt_canvas *canvas = (rt_canvas *)canvas_ptr;
-    if (canvas->gfx_win)
+    if (canvas->gfx_win) {
+        rt_canvas_resync_window_state(canvas);
         vgfx_line(canvas->gfx_win,
                   (int32_t)x1,
                   (int32_t)y1,
                   (int32_t)x2,
                   (int32_t)y2,
                   (vgfx_color_t)color);
+    }
 }
 
 /// @brief Draw a filled rectangle on the canvas.
@@ -139,9 +141,11 @@ void rt_canvas_box(void *canvas_ptr, int64_t x, int64_t y, int64_t w, int64_t h,
     }
 
     rt_canvas *canvas = (rt_canvas *)canvas_ptr;
-    if (canvas->gfx_win)
+    if (canvas->gfx_win) {
+        rt_canvas_resync_window_state(canvas);
         vgfx_fill_rect(
             canvas->gfx_win, (int32_t)x, (int32_t)y, (int32_t)w, (int32_t)h, (vgfx_color_t)color);
+    }
 }
 
 /// @brief Draw an unfilled rectangle (outline) on the canvas.
@@ -150,9 +154,11 @@ void rt_canvas_frame(void *canvas_ptr, int64_t x, int64_t y, int64_t w, int64_t 
         return;
 
     rt_canvas *canvas = (rt_canvas *)canvas_ptr;
-    if (canvas->gfx_win)
+    if (canvas->gfx_win) {
+        rt_canvas_resync_window_state(canvas);
         vgfx_rect(
             canvas->gfx_win, (int32_t)x, (int32_t)y, (int32_t)w, (int32_t)h, (vgfx_color_t)color);
+    }
 }
 
 /// @brief Draw a filled circle on the canvas.
@@ -161,9 +167,11 @@ void rt_canvas_disc(void *canvas_ptr, int64_t cx, int64_t cy, int64_t radius, in
         return;
 
     rt_canvas *canvas = (rt_canvas *)canvas_ptr;
-    if (canvas->gfx_win)
+    if (canvas->gfx_win) {
+        rt_canvas_resync_window_state(canvas);
         vgfx_fill_circle(
             canvas->gfx_win, (int32_t)cx, (int32_t)cy, (int32_t)radius, (vgfx_color_t)color);
+    }
 }
 
 /// @brief Draw an unfilled circle (outline) on the canvas.
@@ -172,9 +180,11 @@ void rt_canvas_ring(void *canvas_ptr, int64_t cx, int64_t cy, int64_t radius, in
         return;
 
     rt_canvas *canvas = (rt_canvas *)canvas_ptr;
-    if (canvas->gfx_win)
+    if (canvas->gfx_win) {
+        rt_canvas_resync_window_state(canvas);
         vgfx_circle(
             canvas->gfx_win, (int32_t)cx, (int32_t)cy, (int32_t)radius, (vgfx_color_t)color);
+    }
 }
 
 /// @brief Draw a single pixel at the given coordinates.
@@ -183,8 +193,10 @@ void rt_canvas_plot(void *canvas_ptr, int64_t x, int64_t y, int64_t color) {
         return;
 
     rt_canvas *canvas = (rt_canvas *)canvas_ptr;
-    if (canvas->gfx_win)
+    if (canvas->gfx_win) {
+        rt_canvas_resync_window_state(canvas);
         vgfx_pset(canvas->gfx_win, (int32_t)x, (int32_t)y, (vgfx_color_t)color);
+    }
 }
 
 // Color constants — packed 0x00RRGGBB
@@ -252,8 +264,11 @@ int64_t rt_color_rgba(int64_t r, int64_t g, int64_t b, int64_t a) {
     uint8_t g8 = (g < 0) ? 0 : (g > 255) ? 255 : (uint8_t)g;
     uint8_t b8 = (b < 0) ? 0 : (b > 255) ? 255 : (uint8_t)b;
     uint8_t a8 = (a < 0) ? 0 : (a > 255) ? 255 : (uint8_t)a;
-    return (int64_t)(((uint32_t)a8 << 24) | ((uint32_t)r8 << 16) | ((uint32_t)g8 << 8) |
-                     (uint32_t)b8);
+    int64_t packed = (int64_t)(((uint32_t)a8 << 24) | ((uint32_t)r8 << 16) | ((uint32_t)g8 << 8) |
+                               (uint32_t)b8);
+    if (a8 == 0)
+        packed |= RT_COLOR_EXPLICIT_ALPHA_FLAG;
+    return packed;
 }
 
 //=============================================================================
@@ -268,6 +283,7 @@ void rt_canvas_text(void *canvas_ptr, int64_t x, int64_t y, rt_string text, int6
     rt_canvas *canvas = (rt_canvas *)canvas_ptr;
     if (!canvas->gfx_win)
         return;
+    rt_canvas_resync_window_state(canvas);
 
     const char *str = rt_string_cstr(text);
     if (!str)
@@ -306,6 +322,7 @@ void rt_canvas_text_bg(
     rt_canvas *canvas = (rt_canvas *)canvas_ptr;
     if (!canvas->gfx_win)
         return;
+    rt_canvas_resync_window_state(canvas);
 
     const char *str = rt_string_cstr(text);
     if (!str)
@@ -360,6 +377,7 @@ void rt_canvas_text_scaled(
     rt_canvas *canvas = (rt_canvas *)canvas_ptr;
     if (!canvas->gfx_win)
         return;
+    rt_canvas_resync_window_state(canvas);
 
     const char *str = rt_string_cstr(text);
     if (!str)
@@ -401,6 +419,7 @@ void rt_canvas_text_scaled_bg(
     rt_canvas *canvas = (rt_canvas *)canvas_ptr;
     if (!canvas->gfx_win)
         return;
+    rt_canvas_resync_window_state(canvas);
 
     const char *str = rt_string_cstr(text);
     if (!str)
@@ -538,75 +557,136 @@ void rt_canvas_disc_alpha(
 // Pixel Blitting
 //=============================================================================
 
+static int8_t rt_canvas_prepare_blit_region(rt_canvas *canvas,
+                                            rt_pixels_impl *pixels,
+                                            int64_t *dx,
+                                            int64_t *dy,
+                                            int64_t *sx,
+                                            int64_t *sy,
+                                            int64_t *w,
+                                            int64_t *h) {
+    if (!canvas || !canvas->gfx_win || !pixels || !pixels->data || !dx || !dy || !sx || !sy ||
+        !w || !h)
+        return 0;
+
+    if (*w <= 0 || *h <= 0)
+        return 0;
+
+    if (*sx < 0) {
+        int64_t skip = -*sx;
+        *dx += skip;
+        *w -= skip;
+        *sx = 0;
+    }
+    if (*sy < 0) {
+        int64_t skip = -*sy;
+        *dy += skip;
+        *h -= skip;
+        *sy = 0;
+    }
+    if (*sx + *w > pixels->width)
+        *w = pixels->width - *sx;
+    if (*sy + *h > pixels->height)
+        *h = pixels->height - *sy;
+    if (*w <= 0 || *h <= 0)
+        return 0;
+
+    int64_t clip_x = 0;
+    int64_t clip_y = 0;
+    int64_t clip_w = 0;
+    int64_t clip_h = 0;
+    if (!rt_canvas_get_logical_clip_bounds(canvas, &clip_x, &clip_y, &clip_w, &clip_h))
+        return 0;
+
+    if (*dx < clip_x) {
+        int64_t skip = clip_x - *dx;
+        *sx += skip;
+        *w -= skip;
+        *dx = clip_x;
+    }
+    if (*dy < clip_y) {
+        int64_t skip = clip_y - *dy;
+        *sy += skip;
+        *h -= skip;
+        *dy = clip_y;
+    }
+
+    int64_t clip_x1 = clip_x + clip_w;
+    int64_t clip_y1 = clip_y + clip_h;
+    if (*dx + *w > clip_x1)
+        *w = clip_x1 - *dx;
+    if (*dy + *h > clip_y1)
+        *h = clip_y1 - *dy;
+
+    return *w > 0 && *h > 0;
+}
+
 /// @brief Copy a rectangular region from one surface to another.
 void rt_canvas_blit(void *canvas_ptr, int64_t x, int64_t y, void *pixels_ptr) {
     if (!canvas_ptr || !pixels_ptr)
         return;
 
     rt_canvas *canvas = (rt_canvas *)canvas_ptr;
-    if (!canvas->gfx_win)
+    rt_pixels_impl *pixels = (rt_pixels_impl *)pixels_ptr;
+    if (!canvas->gfx_win || !pixels->data)
         return;
 
-    rt_pixels_impl *pixels = (rt_pixels_impl *)pixels_ptr;
-    if (!pixels->data)
-        return;
+    rt_canvas_resync_window_state(canvas);
 
     vgfx_framebuffer_t fb;
     if (!vgfx_get_framebuffer(canvas->gfx_win, &fb))
         return;
 
-    float cs = vgfx_window_get_scale(canvas->gfx_win);
-    int32_t isf = (cs > 1.0f) ? (int32_t)cs : 1;
-
-    // Scale destination to physical pixels
-    int64_t dst_x = x * isf;
-    int64_t dst_y = y * isf;
-    int64_t src_w = pixels->width;
-    int64_t src_h = pixels->height;
-    int64_t src_x = 0;
-    int64_t src_y = 0;
-
-    // Clip source against scaled destination bounds
-    if (dst_x < 0) {
-        int64_t skip = (-dst_x + isf - 1) / isf; // logical pixels to skip
-        src_x += skip;
-        src_w -= skip;
-        dst_x += skip * isf;
-    }
-    if (dst_y < 0) {
-        int64_t skip = (-dst_y + isf - 1) / isf;
-        src_y += skip;
-        src_h -= skip;
-        dst_y += skip * isf;
-    }
-    if (dst_x + src_w * isf > fb.width)
-        src_w = (fb.width - dst_x) / isf;
-    if (dst_y + src_h * isf > fb.height)
-        src_h = (fb.height - dst_y) / isf;
-
-    if (src_w <= 0 || src_h <= 0)
+    int64_t dx = x;
+    int64_t dy = y;
+    int64_t sx = 0;
+    int64_t sy = 0;
+    int64_t w = pixels->width;
+    int64_t h = pixels->height;
+    if (!rt_canvas_prepare_blit_region(canvas, pixels, &dx, &dy, &sx, &sy, &w, &h))
         return;
 
-    // Copy pixels with nearest-neighbor upscale (each src pixel -> isf x isf block)
-    for (int64_t row = 0; row < src_h; row++) {
-        uint32_t *src_row_data = &pixels->data[(src_y + row) * pixels->width + src_x];
-        for (int64_t col = 0; col < src_w; col++) {
+    float scale = vgfx_window_get_scale(canvas->gfx_win);
+
+    for (int64_t row = 0; row < h; row++) {
+        int64_t py0 = rtg_scale_up_i64(dy + row, scale);
+        int64_t py1 = rtg_scale_up_i64(dy + row + 1, scale);
+        if (py1 <= py0)
+            py1 = py0 + 1;
+        if (py0 < 0)
+            py0 = 0;
+        if (py1 > fb.height)
+            py1 = fb.height;
+        if (py1 <= py0)
+            continue;
+
+        uint32_t *src_row_data = &pixels->data[(sy + row) * pixels->width + sx];
+        for (int64_t col = 0; col < w; col++) {
+            int64_t px0 = rtg_scale_up_i64(dx + col, scale);
+            int64_t px1 = rtg_scale_up_i64(dx + col + 1, scale);
+            if (px1 <= px0)
+                px1 = px0 + 1;
+            if (px0 < 0)
+                px0 = 0;
+            if (px1 > fb.width)
+                px1 = fb.width;
+            if (px1 <= px0)
+                continue;
+
             uint32_t rgba = src_row_data[col];
             uint8_t r = (rgba >> 24) & 0xFF;
             uint8_t g = (rgba >> 16) & 0xFF;
             uint8_t b = (rgba >> 8) & 0xFF;
             uint8_t a = rgba & 0xFF;
 
-            for (int32_t sy = 0; sy < isf; sy++) {
-                int64_t py = dst_y + row * isf + sy;
-                if (py >= fb.height)
-                    break;
-                uint8_t *dst = &fb.pixels[py * fb.stride + (dst_x + col * isf) * 4];
-                for (int32_t sx = 0; sx < isf; sx++) {
-                    dst[sx * 4 + 0] = r;
-                    dst[sx * 4 + 1] = g;
-                    dst[sx * 4 + 2] = b;
-                    dst[sx * 4 + 3] = a;
+            for (int64_t py = py0; py < py1; py++) {
+                uint8_t *dst = &fb.pixels[(size_t)py * (size_t)fb.stride + (size_t)px0 * 4u];
+                for (int64_t px = px0; px < px1; px++) {
+                    dst[0] = r;
+                    dst[1] = g;
+                    dst[2] = b;
+                    dst[3] = a;
+                    dst += 4;
                 }
             }
         }
@@ -627,81 +707,60 @@ void rt_canvas_blit_region(void *canvas_ptr,
         return;
 
     rt_canvas *canvas = (rt_canvas *)canvas_ptr;
-    if (!canvas->gfx_win)
+    rt_pixels_impl *pixels = (rt_pixels_impl *)pixels_ptr;
+    if (!canvas->gfx_win || !pixels->data)
         return;
 
-    rt_pixels_impl *pixels = (rt_pixels_impl *)pixels_ptr;
-    if (!pixels->data)
-        return;
+    rt_canvas_resync_window_state(canvas);
 
     vgfx_framebuffer_t fb;
     if (!vgfx_get_framebuffer(canvas->gfx_win, &fb))
         return;
 
-    float cs = vgfx_window_get_scale(canvas->gfx_win);
-    int32_t isf = (cs > 1.0f) ? (int32_t)cs : 1;
-
-    // Clip source to pixels bounds (source coords are not scaled)
-    if (sx < 0) {
-        w += sx;
-        dx -= sx;
-        sx = 0;
-    }
-    if (sy < 0) {
-        h += sy;
-        dy -= sy;
-        sy = 0;
-    }
-    if (sx + w > pixels->width)
-        w = pixels->width - sx;
-    if (sy + h > pixels->height)
-        h = pixels->height - sy;
-
-    // Scale destination to physical
-    int64_t pdx = dx * isf;
-    int64_t pdy = dy * isf;
-
-    // Clip destination to framebuffer bounds (in logical, then convert)
-    if (pdx < 0) {
-        int64_t skip = (-pdx + isf - 1) / isf;
-        w -= skip;
-        sx += skip;
-        pdx += skip * isf;
-    }
-    if (pdy < 0) {
-        int64_t skip = (-pdy + isf - 1) / isf;
-        h -= skip;
-        sy += skip;
-        pdy += skip * isf;
-    }
-    if (pdx + w * isf > fb.width)
-        w = (fb.width - pdx) / isf;
-    if (pdy + h * isf > fb.height)
-        h = (fb.height - pdy) / isf;
-
-    if (w <= 0 || h <= 0)
+    if (!rt_canvas_prepare_blit_region(canvas, pixels, &dx, &dy, &sx, &sy, &w, &h))
         return;
 
-    // Copy pixels with nearest-neighbor upscale
+    float scale = vgfx_window_get_scale(canvas->gfx_win);
+
     for (int64_t row = 0; row < h; row++) {
+        int64_t py0 = rtg_scale_up_i64(dy + row, scale);
+        int64_t py1 = rtg_scale_up_i64(dy + row + 1, scale);
+        if (py1 <= py0)
+            py1 = py0 + 1;
+        if (py0 < 0)
+            py0 = 0;
+        if (py1 > fb.height)
+            py1 = fb.height;
+        if (py1 <= py0)
+            continue;
+
         uint32_t *src_row = &pixels->data[(sy + row) * pixels->width + sx];
         for (int64_t col = 0; col < w; col++) {
+            int64_t px0 = rtg_scale_up_i64(dx + col, scale);
+            int64_t px1 = rtg_scale_up_i64(dx + col + 1, scale);
+            if (px1 <= px0)
+                px1 = px0 + 1;
+            if (px0 < 0)
+                px0 = 0;
+            if (px1 > fb.width)
+                px1 = fb.width;
+            if (px1 <= px0)
+                continue;
+
             uint32_t rgba = src_row[col];
             uint8_t r = (rgba >> 24) & 0xFF;
             uint8_t g = (rgba >> 16) & 0xFF;
             uint8_t b = (rgba >> 8) & 0xFF;
             uint8_t a = rgba & 0xFF;
 
-            for (int32_t ys = 0; ys < isf; ys++) {
-                int64_t py = pdy + row * isf + ys;
-                if (py >= fb.height)
-                    break;
-                uint8_t *dst = &fb.pixels[py * fb.stride + (pdx + col * isf) * 4];
-                for (int32_t xs = 0; xs < isf; xs++) {
-                    dst[xs * 4 + 0] = r;
-                    dst[xs * 4 + 1] = g;
-                    dst[xs * 4 + 2] = b;
-                    dst[xs * 4 + 3] = a;
+            for (int64_t py = py0; py < py1; py++) {
+                uint8_t *dst = &fb.pixels[(size_t)py * (size_t)fb.stride + (size_t)px0 * 4u];
+                for (int64_t px = px0; px < px1; px++) {
+                    dst[0] = r;
+                    dst[1] = g;
+                    dst[2] = b;
+                    dst[3] = a;
+                    dst += 4;
                 }
             }
         }
@@ -714,53 +773,52 @@ void rt_canvas_blit_alpha(void *canvas_ptr, int64_t x, int64_t y, void *pixels_p
         return;
 
     rt_canvas *canvas = (rt_canvas *)canvas_ptr;
-    if (!canvas->gfx_win)
+    rt_pixels_impl *pixels = (rt_pixels_impl *)pixels_ptr;
+    if (!canvas->gfx_win || !pixels->data)
         return;
 
-    rt_pixels_impl *pixels = (rt_pixels_impl *)pixels_ptr;
-    if (!pixels->data)
-        return;
+    rt_canvas_resync_window_state(canvas);
 
     vgfx_framebuffer_t fb;
     if (!vgfx_get_framebuffer(canvas->gfx_win, &fb))
         return;
 
-    float cs = vgfx_window_get_scale(canvas->gfx_win);
-    int32_t isf = (cs > 1.0f) ? (int32_t)cs : 1;
-
-    int64_t src_w = pixels->width;
-    int64_t src_h = pixels->height;
-    int64_t dst_x = x * isf;
-    int64_t dst_y = y * isf;
-    int64_t src_x = 0;
-    int64_t src_y = 0;
-
-    // Clip to destination bounds
-    if (dst_x < 0) {
-        int64_t skip = (-dst_x + isf - 1) / isf;
-        src_x += skip;
-        src_w -= skip;
-        dst_x += skip * isf;
-    }
-    if (dst_y < 0) {
-        int64_t skip = (-dst_y + isf - 1) / isf;
-        src_y += skip;
-        src_h -= skip;
-        dst_y += skip * isf;
-    }
-    if (dst_x + src_w * isf > fb.width)
-        src_w = (fb.width - dst_x) / isf;
-    if (dst_y + src_h * isf > fb.height)
-        src_h = (fb.height - dst_y) / isf;
-
-    if (src_w <= 0 || src_h <= 0)
+    int64_t dx = x;
+    int64_t dy = y;
+    int64_t sx = 0;
+    int64_t sy = 0;
+    int64_t w = pixels->width;
+    int64_t h = pixels->height;
+    if (!rt_canvas_prepare_blit_region(canvas, pixels, &dx, &dy, &sx, &sy, &w, &h))
         return;
 
-    // Alpha blend pixels with nearest-neighbor upscale
-    for (int64_t row = 0; row < src_h; row++) {
-        uint32_t *src_row = &pixels->data[(src_y + row) * pixels->width + src_x];
+    float scale = vgfx_window_get_scale(canvas->gfx_win);
 
-        for (int64_t col = 0; col < src_w; col++) {
+    for (int64_t row = 0; row < h; row++) {
+        int64_t py0 = rtg_scale_up_i64(dy + row, scale);
+        int64_t py1 = rtg_scale_up_i64(dy + row + 1, scale);
+        if (py1 <= py0)
+            py1 = py0 + 1;
+        if (py0 < 0)
+            py0 = 0;
+        if (py1 > fb.height)
+            py1 = fb.height;
+        if (py1 <= py0)
+            continue;
+
+        uint32_t *src_row = &pixels->data[(sy + row) * pixels->width + sx];
+        for (int64_t col = 0; col < w; col++) {
+            int64_t px0 = rtg_scale_up_i64(dx + col, scale);
+            int64_t px1 = rtg_scale_up_i64(dx + col + 1, scale);
+            if (px1 <= px0)
+                px1 = px0 + 1;
+            if (px0 < 0)
+                px0 = 0;
+            if (px1 > fb.width)
+                px1 = fb.width;
+            if (px1 <= px0)
+                continue;
+
             uint32_t rgba = src_row[col];
             uint8_t sr = (rgba >> 24) & 0xFF;
             uint8_t sg = (rgba >> 16) & 0xFF;
@@ -770,25 +828,22 @@ void rt_canvas_blit_alpha(void *canvas_ptr, int64_t x, int64_t y, void *pixels_p
             if (sa == 0)
                 continue;
 
-            for (int32_t ys = 0; ys < isf; ys++) {
-                int64_t py = dst_y + row * isf + ys;
-                if (py >= fb.height)
-                    break;
-                uint8_t *dst = &fb.pixels[py * fb.stride + (dst_x + col * isf) * 4];
-
-                for (int32_t xs = 0; xs < isf; xs++) {
+            for (int64_t py = py0; py < py1; py++) {
+                uint8_t *dst = &fb.pixels[(size_t)py * (size_t)fb.stride + (size_t)px0 * 4u];
+                for (int64_t px = px0; px < px1; px++) {
                     if (sa == 255) {
-                        dst[xs * 4 + 0] = sr;
-                        dst[xs * 4 + 1] = sg;
-                        dst[xs * 4 + 2] = sb;
-                        dst[xs * 4 + 3] = 255;
+                        dst[0] = sr;
+                        dst[1] = sg;
+                        dst[2] = sb;
+                        dst[3] = 255;
                     } else {
                         uint16_t inv_alpha = 255 - sa;
-                        dst[xs * 4 + 0] = (uint8_t)((sr * sa + dst[xs * 4 + 0] * inv_alpha) / 255);
-                        dst[xs * 4 + 1] = (uint8_t)((sg * sa + dst[xs * 4 + 1] * inv_alpha) / 255);
-                        dst[xs * 4 + 2] = (uint8_t)((sb * sa + dst[xs * 4 + 2] * inv_alpha) / 255);
-                        dst[xs * 4 + 3] = 255;
+                        dst[0] = (uint8_t)((sr * sa + dst[0] * inv_alpha) / 255);
+                        dst[1] = (uint8_t)((sg * sa + dst[1] * inv_alpha) / 255);
+                        dst[2] = (uint8_t)((sb * sa + dst[2] * inv_alpha) / 255);
+                        dst[3] = 255;
                     }
+                    dst += 4;
                 }
             }
         }
@@ -811,6 +866,8 @@ int64_t rt_canvas_get_pixel(void *canvas_ptr, int64_t x, int64_t y) {
     if (!canvas->gfx_win)
         return 0;
 
+    rt_canvas_resync_window_state(canvas);
+
     vgfx_color_t color;
     if (vgfx_point(canvas->gfx_win, (int32_t)x, (int32_t)y, &color) != 0) {
         return (int64_t)color;
@@ -828,6 +885,8 @@ void *rt_canvas_copy_rect(void *canvas_ptr, int64_t x, int64_t y, int64_t w, int
     if (!canvas->gfx_win)
         return NULL;
 
+    rt_canvas_resync_window_state(canvas);
+
     // Create a new Pixels buffer
     void *pixels = rt_pixels_new(w, h);
     if (!pixels)
@@ -841,31 +900,29 @@ void *rt_canvas_copy_rect(void *canvas_ptr, int64_t x, int64_t y, int64_t w, int
         return pixels;
     }
 
-    // Scale logical coordinates to physical framebuffer space.
-    // Each logical pixel samples the top-left corner of its sf x sf physical block.
-    float cs = vgfx_window_get_scale(canvas->gfx_win);
-    int32_t isf = (cs > 1.0f) ? (int32_t)cs : 1;
+    // Sample the physical pixel at the logical pixel's scaled top-left corner.
+    float scale = vgfx_window_get_scale(canvas->gfx_win);
 
     rt_pixels_impl *pix = (rt_pixels_impl *)pixels;
 
     for (int64_t py = 0; py < h; py++) {
-        int64_t src_y = (y + py) * isf;
+        int64_t src_y = rtg_scale_up_i64(y + py, scale);
         if (src_y < 0 || src_y >= fb.height)
             continue;
 
-        uint8_t *src_row = &fb.pixels[(size_t)(src_y * fb.stride)];
+        uint8_t *src_row = &fb.pixels[(size_t)src_y * (size_t)fb.stride];
         uint32_t *dst_row = &pix->data[(size_t)(py * w)];
 
         for (int64_t px = 0; px < w; px++) {
-            int64_t src_x = (x + px) * isf;
+            int64_t src_x = rtg_scale_up_i64(x + px, scale);
             if (src_x < 0 || src_x >= fb.width) {
                 dst_row[px] = 0;
                 continue;
             }
-            uint8_t r = src_row[(size_t)(src_x * 4 + 0)];
-            uint8_t g = src_row[(size_t)(src_x * 4 + 1)];
-            uint8_t b = src_row[(size_t)(src_x * 4 + 2)];
-            uint8_t a = src_row[(size_t)(src_x * 4 + 3)];
+            uint8_t r = src_row[(size_t)src_x * 4u + 0u];
+            uint8_t g = src_row[(size_t)src_x * 4u + 1u];
+            uint8_t b = src_row[(size_t)src_x * 4u + 2u];
+            uint8_t a = src_row[(size_t)src_x * 4u + 3u];
             dst_row[px] = ((uint32_t)r << 24) | ((uint32_t)g << 16) | ((uint32_t)b << 8) |
                           (uint32_t)a;
         }

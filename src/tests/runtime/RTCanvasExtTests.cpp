@@ -74,7 +74,11 @@ static void test_color_rgba_basic() {
 
     // Blue with no alpha (transparent)
     int64_t blue_transparent = rt_color_rgba(0, 0, 255, 0);
-    assert(blue_transparent == (int64_t)0x000000FF);
+    assert((blue_transparent & 0xFFFFFFFFLL) == (int64_t)0x000000FF);
+    assert(rt_color_get_r(blue_transparent) == 0);
+    assert(rt_color_get_g(blue_transparent) == 0);
+    assert(rt_color_get_b(blue_transparent) == 255);
+    assert(rt_color_get_a(blue_transparent) == 0);
 
     printf("test_color_rgba_basic: PASSED\n");
 }

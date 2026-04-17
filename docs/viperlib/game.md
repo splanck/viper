@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-09
+last-verified: 2026-04-17
 ---
 
 # Game
@@ -73,7 +73,7 @@ rotation, scroll bounds, visibility culling, and a dirty flag for skipping redun
 | `ToScreenY(wy)` | `Integer(Integer)` | World Y → screen Y |
 | `ToWorldX(sx)` | `Integer(Integer)` | Screen X → world X |
 | `ToWorldY(sy)` | `Integer(Integer)` | Screen Y → world Y |
-| `SetBounds(minX, minY, maxX, maxY)` | `none(Integer,Integer,Integer,Integer)` | Clamp camera movement |
+| `SetBounds(minX, minY, maxX, maxY)` | `none(Integer,Integer,Integer,Integer)` | Clamp camera movement and immediately clamp the current view if needed |
 | `ClearBounds()` | `none()` | Remove movement clamping |
 | `IsVisible(x, y, w, h)` | `Integer(Integer,Integer,Integer,Integer)` | AABB visibility test |
 | `IsDirty()` | `Integer()` | 1 if camera changed since last `ClearDirty()` |
@@ -285,7 +285,7 @@ emitter.DrawToPixels(canvas, 0, 0);
 
 ## Viper.Game.SpriteBatch
 
-Accumulates sprite draw calls for efficient batched rendering.
+Accumulates sprite draw calls for efficient batched rendering. When depth sorting is enabled, equal-depth items still preserve submission order.
 
 **Type:** Instance (obj)
 **Constructor:** `SpriteBatch.New()`

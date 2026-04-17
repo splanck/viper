@@ -161,6 +161,21 @@ TEST(dirty_flag) {
     ASSERT(rt_camera_is_dirty(cam) == 1);
 }
 
+TEST(set_bounds_clamp_marks_dirty) {
+    void *cam = rt_camera_new(800, 600);
+    ASSERT(cam != NULL);
+
+    rt_camera_set_x(cam, 900);
+    rt_camera_set_y(cam, 700);
+    rt_camera_clear_dirty(cam);
+    ASSERT(rt_camera_is_dirty(cam) == 0);
+
+    rt_camera_set_bounds(cam, 0, 0, 1000, 1000);
+    ASSERT(rt_camera_get_x(cam) == 200);
+    ASSERT(rt_camera_get_y(cam) == 400);
+    ASSERT(rt_camera_is_dirty(cam) == 1);
+}
+
 TEST(parallax_add_remove) {
     void *cam = rt_camera_new(800, 600);
     ASSERT(rt_camera_parallax_count(cam) == 0);
@@ -276,6 +291,7 @@ int main() {
     RUN_TEST(world_screen_roundtrip_with_rotation_and_zoom);
     RUN_TEST(follow_and_bounds_respect_zoom);
     RUN_TEST(dirty_flag);
+    RUN_TEST(set_bounds_clamp_marks_dirty);
     RUN_TEST(parallax_add_remove);
     RUN_TEST(parallax_max_layers);
     RUN_TEST(parallax_null_safety);

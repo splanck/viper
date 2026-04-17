@@ -49,8 +49,8 @@ typedef struct {
     int16_t advance;  ///< Horizontal advance after glyph.
 } rt_glyph;
 
-/// @brief Maximum codepoints in the glyph table (ASCII + Latin-1).
-#define BF_MAX_GLYPHS 256
+/// @brief Maximum codepoints in the glyph table (full BMP / UTF-16 plane 0).
+#define BF_MAX_GLYPHS 65536
 
 /// @brief Internal bitmap font structure.
 typedef struct {
@@ -71,6 +71,8 @@ static inline int bf_row_bytes(int width) {
     return (width + 7) / 8;
 }
 
+static int bf_next_codepoint(const char *str, size_t byte_len, size_t *index, int *codepoint_out);
+
 /// @brief Get a glyph for a codepoint, returning a fallback if not available.
 static const rt_glyph *bf_get_glyph(const rt_bitmapfont_impl *font, int codepoint) {
     if (codepoint >= 0 && codepoint < BF_MAX_GLYPHS && font->glyphs[codepoint].bitmap)
@@ -83,6 +85,62 @@ static const rt_glyph *bf_get_glyph(const rt_bitmapfont_impl *font, int codepoin
         return &font->glyphs[' '];
 
     return NULL;
+}
+
+static void bf_extend_bounds(
+    int64_t left, int64_t right, int64_t *min_x, int64_t *max_x, int8_t *has_bounds) {
+    if (!min_x || !max_x || !has_bounds || right <= left)
+        return;
+
+    if (!*has_bounds) {
+        *min_x = left;
+        *max_x = right;
+        *has_bounds = 1;
+        return;
+    }
+
+    if (left < *min_x)
+        *min_x = left;
+    if (right > *max_x)
+        *max_x = right;
+}
+
+static void bf_text_bounds(
+    rt_bitmapfont_impl *font, rt_string text, int64_t *min_x, int64_t *max_x, int8_t *has_bounds) {
+    if (min_x)
+        *min_x = 0;
+    if (max_x)
+        *max_x = 0;
+    if (has_bounds)
+        *has_bounds = 0;
+    if (!font || !text || !min_x || !max_x || !has_bounds)
+        return;
+
+    const char *str = rt_string_cstr(text);
+    if (!str)
+        return;
+
+    int64_t pen_x = 0;
+    size_t len = rt_str_len(text);
+    size_t index = 0;
+    int codepoint = 0;
+    while (bf_next_codepoint(str, len, &index, &codepoint)) {
+        const rt_glyph *g = bf_get_glyph(font, codepoint);
+        int64_t span_left = pen_x;
+        int64_t span_right = pen_x + (g ? g->advance : font->max_width);
+
+        if (g && g->bitmap && g->width > 0 && g->height > 0) {
+            int64_t glyph_left = pen_x + g->x_offset;
+            int64_t glyph_right = glyph_left + g->width;
+            if (glyph_left < span_left)
+                span_left = glyph_left;
+            if (glyph_right > span_right)
+                span_right = glyph_right;
+        }
+
+        bf_extend_bounds(span_left, span_right, min_x, max_x, has_bounds);
+        pen_x += g ? g->advance : font->max_width;
+    }
 }
 
 static int bf_next_codepoint(const char *str, size_t byte_len, size_t *index, int *codepoint_out) {
@@ -557,28 +615,19 @@ int8_t rt_bitmapfont_is_monospace(void *font_ptr) {
 //=============================================================================
 
 /// @brief Compute the rendered width of @p text in pixels for this font.
-/// Sums per-glyph advance widths; missing glyphs contribute the font's max_width.
+/// Accounts for per-glyph advance widths plus left/right overhangs.
 int64_t rt_bitmapfont_text_width(void *font_ptr, rt_string text) {
     if (!font_ptr || !text)
         return 0;
 
     rt_bitmapfont_impl *font = (rt_bitmapfont_impl *)font_ptr;
-    const char *str = rt_string_cstr(text);
-    if (!str)
+    int64_t min_x = 0;
+    int64_t max_x = 0;
+    int8_t has_bounds = 0;
+    bf_text_bounds(font, text, &min_x, &max_x, &has_bounds);
+    if (!has_bounds)
         return 0;
-
-    int64_t width = 0;
-    size_t len = rt_str_len(text);
-    size_t index = 0;
-    int codepoint = 0;
-    while (bf_next_codepoint(str, len, &index, &codepoint)) {
-        const rt_glyph *g = bf_get_glyph(font, codepoint);
-        if (g)
-            width += g->advance;
-        else
-            width += font->max_width; // fallback width
-    }
-    return width;
+    return max_x - min_x;
 }
 
 /// @brief Single-line text height (same as line_height; multi-line callers must accumulate).
@@ -665,12 +714,22 @@ static void bf_draw_glyph_bg(vgfx_window_t win,
     if (!g)
         return;
 
-    // Fill background for the full advance × line_height
-    vgfx_fill_rect(win, (int32_t)px, (int32_t)py, (int32_t)g->advance, (int32_t)line_h, bg);
+    int64_t bg_left = px;
+    int64_t bg_right = px + g->advance;
 
     if (g->bitmap) {
         int64_t draw_x = px + g->x_offset;
         int64_t draw_y = py + (ascent - g->y_offset - g->height);
+        if (draw_x < bg_left)
+            bg_left = draw_x;
+        if (draw_x + g->width > bg_right)
+            bg_right = draw_x + g->width;
+
+        if (bg_right > bg_left) {
+            vgfx_fill_rect(
+                win, (int32_t)bg_left, (int32_t)py, (int32_t)(bg_right - bg_left), (int32_t)line_h, bg);
+        }
+
         int rb = bf_row_bytes(g->width);
 
         for (int row = 0; row < g->height; row++) {
@@ -682,6 +741,9 @@ static void bf_draw_glyph_bg(vgfx_window_t win,
                 }
             }
         }
+    } else if (bg_right > bg_left) {
+        vgfx_fill_rect(
+            win, (int32_t)bg_left, (int32_t)py, (int32_t)(bg_right - bg_left), (int32_t)line_h, bg);
     }
 }
 
@@ -700,6 +762,7 @@ void rt_canvas_text_font(
     rt_canvas *canvas = (rt_canvas *)canvas_ptr;
     if (!canvas->gfx_win)
         return;
+    rt_canvas_resync_window_state(canvas);
 
     rt_bitmapfont_impl *font = (rt_bitmapfont_impl *)font_ptr;
     const char *str = rt_string_cstr(text);
@@ -738,6 +801,7 @@ void rt_canvas_text_font_bg(void *canvas_ptr,
     rt_canvas *canvas = (rt_canvas *)canvas_ptr;
     if (!canvas->gfx_win)
         return;
+    rt_canvas_resync_window_state(canvas);
 
     rt_bitmapfont_impl *font = (rt_bitmapfont_impl *)font_ptr;
     const char *str = rt_string_cstr(text);
@@ -783,6 +847,7 @@ void rt_canvas_text_font_scaled(void *canvas_ptr,
     rt_canvas *canvas = (rt_canvas *)canvas_ptr;
     if (!canvas->gfx_win)
         return;
+    rt_canvas_resync_window_state(canvas);
 
     rt_bitmapfont_impl *font = (rt_bitmapfont_impl *)font_ptr;
     const char *str = rt_string_cstr(text);
@@ -820,8 +885,12 @@ void rt_canvas_text_font_centered(
     int32_t win_w = 0, win_h = 0;
     vgfx_get_size(canvas->gfx_win, &win_w, &win_h);
 
-    int64_t tw = rt_bitmapfont_text_width(font_ptr, text);
-    int64_t cx = (win_w - tw) / 2;
+    int64_t min_x = 0;
+    int64_t max_x = 0;
+    int8_t has_bounds = 0;
+    bf_text_bounds((rt_bitmapfont_impl *)font_ptr, text, &min_x, &max_x, &has_bounds);
+    int64_t tw = has_bounds ? (max_x - min_x) : 0;
+    int64_t cx = (win_w - tw) / 2 - min_x;
 
     rt_canvas_text_font(canvas_ptr, cx, y, text, font_ptr, color);
 }
@@ -839,8 +908,11 @@ void rt_canvas_text_font_right(
     int32_t win_w = 0, win_h = 0;
     vgfx_get_size(canvas->gfx_win, &win_w, &win_h);
 
-    int64_t tw = rt_bitmapfont_text_width(font_ptr, text);
-    int64_t cx = win_w - tw - margin;
+    int64_t min_x = 0;
+    int64_t max_x = 0;
+    int8_t has_bounds = 0;
+    bf_text_bounds((rt_bitmapfont_impl *)font_ptr, text, &min_x, &max_x, &has_bounds);
+    int64_t cx = has_bounds ? (win_w - margin - max_x) : (win_w - margin);
 
     rt_canvas_text_font(canvas_ptr, cx, y, text, font_ptr, color);
 }

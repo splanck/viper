@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-16
+last-verified: 2026-04-17
 ---
 
 # Images & Sprites
@@ -33,17 +33,17 @@ Creates a new pixel buffer initialized to transparent black (0x00000000).
 
 | Method                            | Signature                                                            | Description                                                                       |
 |-----------------------------------|----------------------------------------------------------------------|-----------------------------------------------------------------------------------|
-| `Blur(radius)`                    | `Pixels(Integer)`                                                    | Return a box-blurred copy (`0` = exact copy, positive radii use separable horizontal+vertical passes) |
+| `Blur(radius)`                    | `Pixels(Integer)`                                                    | Return an alpha-aware box-blurred copy (`0` = exact copy, positive radii use separable horizontal+vertical passes) |
 | `Clear()`                         | `Void()`                                                             | Clear buffer to transparent black (0x00000000)                                    |
 | `Clone()`                         | `Pixels()`                                                           | Create a deep copy of this buffer                                                 |
 | `Copy(dx, dy, src, sx, sy, w, h)` | `Void(Integer, Integer, Pixels, Integer, Integer, Integer, Integer)` | Copy a rectangle from source to this buffer                                       |
 | `Fill(color)`                     | `Void(Integer)`                                                      | Fill entire buffer with a color                                                   |
-| `FlipH()`                         | `Pixels()`                                                           | Flip horizontally in place (mirror left-right), returns self                      |
-| `FlipV()`                         | `Pixels()`                                                           | Flip vertically in place (mirror top-bottom), returns self                        |
+| `FlipH()`                         | `Pixels()`                                                           | Return a horizontally mirrored copy (left-right)                                  |
+| `FlipV()`                         | `Pixels()`                                                           | Return a vertically mirrored copy (top-bottom)                                    |
 | `Get(x, y)`                       | `Integer(Integer, Integer)`                                          | Get pixel color at (x, y) as packed RGBA (0xRRGGBBAA). Returns 0 if out of bounds |
 | `Grayscale()`                     | `Pixels()`                                                           | Return a grayscale copy of the image                                              |
 | `Invert()`                        | `Pixels()`                                                           | Return a copy with all colors inverted (255 minus each channel)                   |
-| `Resize(width, height)`           | `Pixels(Integer, Integer)`                                           | Return a scaled copy using bilinear interpolation (smoother than Scale)           |
+| `Resize(width, height)`           | `Pixels(Integer, Integer)`                                           | Return a scaled copy using alpha-aware bilinear interpolation (smoother than Scale) |
 | `Rotate180()`                     | `Pixels()`                                                           | Return a 180-degree rotated copy                                                  |
 | `RotateCCW()`                     | `Pixels()`                                                           | Return a 90-degree counter-clockwise rotated copy (swaps dimensions)              |
 | `RotateCW()`                      | `Pixels()`                                                           | Return a 90-degree clockwise rotated copy (swaps dimensions)                      |
@@ -168,9 +168,9 @@ func start() {
     var clone = p.Clone();
     Say("Clone: " + Fmt.Int(clone.get_Width()) + "x" + Fmt.Int(clone.get_Height()));
 
-    // Transform operations (FlipH/FlipV mutate in place, return self)
+    // Transform operations return new Pixels objects
     var flipped = p.Clone();
-    flipped.FlipH();
+    flipped = flipped.FlipH();
     var rotated = p.RotateCW();
     var scaled = p.Scale(128, 128);
     Say("Scaled: " + Fmt.Int(scaled.get_Width()) + "x" + Fmt.Int(scaled.get_Height()));
@@ -221,8 +221,8 @@ END IF
 
 ' Transform operations (all return new Pixels objects)
 DIM flipped AS Viper.Graphics.Pixels
-pixels.FlipH()               ' Mirror horizontally (in place)
-pixels.FlipV()               ' Mirror vertically (in place)
+flipped = pixels.FlipH()     ' Mirror horizontally
+flipped = pixels.FlipV()     ' Mirror vertically
 
 DIM rotated AS Viper.Graphics.Pixels
 rotated = pixels.RotateCW()  ' Rotate 90 degrees clockwise
@@ -266,8 +266,9 @@ pixels.SavePng("output.png")
 - All transform operations (flip, rotate, scale) return new Pixels objects
 - RotateCW and RotateCCW swap width and height dimensions
 - Scale uses nearest-neighbor interpolation (fast, no blending)
-- Resize uses bilinear interpolation (smoother, better for non-integer scale factors)
+- Resize uses alpha-aware bilinear interpolation (smoother, better for non-integer scale factors)
 - Image processing methods (Invert, Grayscale, Tint, Blur) return new Pixels objects
+- Blur uses alpha-aware averaging so transparent edges keep their original color instead of darkening
 - PNG support handles 8-bit RGB and RGBA files
 
 ---
@@ -295,8 +296,8 @@ pixels.SavePng("output.png")
 | `FrameCount` | Integer | Read   | Total number of animation frames             |
 | `Height`     | Integer | Read   | Height of current frame in pixels            |
 | `Rotation`   | Integer | R/W    | Rotation in degrees                          |
-| `ScaleX`     | Integer | R/W    | Horizontal scale (100 = 100%)                |
-| `ScaleY`     | Integer | R/W    | Vertical scale (100 = 100%)                  |
+| `ScaleX`     | Integer | R/W    | Horizontal scale (100 = 100%, values below 1 clamp to 1) |
+| `ScaleY`     | Integer | R/W    | Vertical scale (100 = 100%, values below 1 clamp to 1)   |
 | `Visible`    | Integer | R/W    | Visibility (1 = visible, 0 = hidden)         |
 | `Width`      | Integer | Read   | Width of current frame in pixels             |
 | `X`          | Integer | R/W    | X position in pixels                         |
@@ -314,6 +315,9 @@ pixels.SavePng("output.png")
 | `SetFrameDelay(ms)`         | `Void(Integer)`                    | Set delay between animation frames (milliseconds)     |
 | `SetOrigin(x, y)`           | `Void(Integer, Integer)`           | Set origin point for rotation/scaling                 |
 | `Update()`                  | `Void()`                           | Advance animation (call each frame)                   |
+
+Scaled sprite bounds used for `Contains()` and `Overlaps()` never collapse below `1x1`, even when
+very small scale values are provided.
 
 ### Zia Example
 
@@ -567,9 +571,9 @@ Efficient tile-based 2D map rendering for platformers, RPGs, and strategy games.
 | Method                                         | Signature                                    | Description                                           |
 |------------------------------------------------|----------------------------------------------|-------------------------------------------------------|
 | `Clear()`                                      | `Void()`                                     | Clear map (set all to 0)                              |
-| `CollideBody(body)`                            | `Integer(Object)`                            | Resolve a Physics2D.Body against solid/one-way tiles (returns 1 on collision). One-way platform detection is frame-rate independent. |
-| `Draw(canvas, offsetX, offsetY)`               | `Void(Canvas, Integer, Integer)`             | Draw tilemap with scroll offset                       |
-| `DrawRegion(canvas, ox, oy, vx, vy, vw, vh)`   | `Void(Canvas, Integer...)`                   | Draw only visible region (for optimization)           |
+| `CollideBody(body)`                            | `Integer(Object)`                            | Resolve a Physics2D.Body against solid/one-way tiles (returns 1 on collision). Fast downward one-way crossings use the body's previous-step motion heuristic. |
+| `Draw(canvas, offsetX, offsetY)`               | `Void(Canvas, Integer, Integer)`             | Draw every visible layer in layer order using the scroll offset |
+| `DrawRegion(canvas, ox, oy, vx, vy, vw, vh)`   | `Void(Canvas, Integer...)`                   | Draw a tile-coordinate sub-region across every visible layer |
 | `Fill(index)`                                  | `Void(Integer)`                              | Fill entire map with a tile                           |
 | `FillRect(x, y, w, h, index)`                  | `Void(Integer...)`                           | Fill rectangular region                               |
 | `GetCollision(tileId)`                         | `Integer(Integer)`                           | Get collision type for a tile ID                      |
@@ -583,7 +587,7 @@ Efficient tile-based 2D map rendering for platformers, RPGs, and strategy games.
 | `ToTileX(pixelX)`                              | `Integer(Integer)`                           | Convert pixel X to tile X                             |
 | `ToTileY(pixelY)`                              | `Integer(Integer)`                           | Convert pixel Y to tile Y                             |
 
-Advanced runtime support also includes multi-layer tilemaps, JSON save/load, auto-tiling rules, per-tile properties, and tile animation state. `SaveToFile` / `LoadFromFile` preserve layer visibility, collision-layer selection, collision types, tile properties, auto-tile rules, and animation progress.
+Advanced runtime support also includes multi-layer tilemaps, per-layer tilesets, JSON save/load, auto-tiling rules, per-tile properties, and tile animation state. `SaveToFile` / `LoadFromFile` preserve layer visibility, collision-layer selection, collision types, tile properties, auto-tile rules, and animation progress.
 
 ### Zia Example
 
@@ -677,7 +681,7 @@ LOOP
 |-------|--------------|--------------------------------------------------------------------------------|
 | `0`   | none         | Passthrough — no collision                                                     |
 | `1`   | solid        | Full AABB collision on all four sides                                          |
-| `2`   | one\_way\_up | Body lands on top only. A body coming from below passes through. Detection is frame-rate independent: collision fires only when the body's top edge is at or above the tile surface at the moment of contact. |
+| `2`   | one\_way\_up | Body lands on top only. A body coming from below passes through. Fast downward crossings use the body's previous-step motion to decide whether the platform top was crossed this frame. |
 
 ### Tileset Layout
 

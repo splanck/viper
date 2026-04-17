@@ -30,6 +30,99 @@
 
 #ifdef VIPER_ENABLE_GRAPHICS
 
+enum {
+    RTG_CORNER_TOP_LEFT = 0,
+    RTG_CORNER_TOP_RIGHT = 1,
+    RTG_CORNER_BOTTOM_LEFT = 2,
+    RTG_CORNER_BOTTOM_RIGHT = 3,
+};
+
+static void rt_canvas_plot_quarter_circle(rt_canvas *canvas,
+                                          int64_t cx,
+                                          int64_t cy,
+                                          int64_t x,
+                                          int64_t y,
+                                          int corner,
+                                          vgfx_color_t color) {
+    if (!canvas || !canvas->gfx_win)
+        return;
+
+    switch (corner) {
+        case RTG_CORNER_TOP_LEFT:
+            vgfx_pset(canvas->gfx_win, (int32_t)(cx - x), (int32_t)(cy - y), color);
+            vgfx_pset(canvas->gfx_win, (int32_t)(cx - y), (int32_t)(cy - x), color);
+            break;
+        case RTG_CORNER_TOP_RIGHT:
+            vgfx_pset(canvas->gfx_win, (int32_t)(cx + x), (int32_t)(cy - y), color);
+            vgfx_pset(canvas->gfx_win, (int32_t)(cx + y), (int32_t)(cy - x), color);
+            break;
+        case RTG_CORNER_BOTTOM_LEFT:
+            vgfx_pset(canvas->gfx_win, (int32_t)(cx - x), (int32_t)(cy + y), color);
+            vgfx_pset(canvas->gfx_win, (int32_t)(cx - y), (int32_t)(cy + x), color);
+            break;
+        case RTG_CORNER_BOTTOM_RIGHT:
+            vgfx_pset(canvas->gfx_win, (int32_t)(cx + x), (int32_t)(cy + y), color);
+            vgfx_pset(canvas->gfx_win, (int32_t)(cx + y), (int32_t)(cy + x), color);
+            break;
+    }
+}
+
+static void rt_canvas_draw_quarter_circle(rt_canvas *canvas,
+                                          int64_t cx,
+                                          int64_t cy,
+                                          int64_t radius,
+                                          int corner,
+                                          vgfx_color_t color) {
+    if (!canvas || !canvas->gfx_win || radius < 0)
+        return;
+
+    if (radius == 0) {
+        vgfx_pset(canvas->gfx_win, (int32_t)cx, (int32_t)cy, color);
+        return;
+    }
+
+    int64_t x = radius;
+    int64_t y = 0;
+    int64_t err = 1 - radius;
+    while (x >= y) {
+        rt_canvas_plot_quarter_circle(canvas, cx, cy, x, y, corner, color);
+        y++;
+        if (err < 0) {
+            err += 2 * y + 1;
+        } else {
+            x--;
+            err += 2 * (y - x) + 1;
+        }
+    }
+}
+
+static int8_t rt_canvas_get_scaled_clip_bounds(rt_canvas *canvas,
+                                               float *scale_out,
+                                               int64_t *px0,
+                                               int64_t *py0,
+                                               int64_t *px1,
+                                               int64_t *py1) {
+    int64_t clip_x = 0;
+    int64_t clip_y = 0;
+    int64_t clip_w = 0;
+    int64_t clip_h = 0;
+    if (!rt_canvas_get_logical_clip_bounds(canvas, &clip_x, &clip_y, &clip_w, &clip_h))
+        return 0;
+
+    float scale = vgfx_window_get_scale(canvas->gfx_win);
+    if (scale_out)
+        *scale_out = scale;
+    if (px0)
+        *px0 = rtg_scale_up_i64(clip_x, scale);
+    if (py0)
+        *py0 = rtg_scale_up_i64(clip_y, scale);
+    if (px1)
+        *px1 = rtg_scale_up_i64(clip_x + clip_w, scale);
+    if (py1)
+        *py1 = rtg_scale_up_i64(clip_y + clip_h, scale);
+    return 1;
+}
+
 //=============================================================================
 // Extended Drawing Primitives
 //=============================================================================
@@ -280,24 +373,15 @@ void rt_canvas_round_frame(
               (int32_t)(y + h - radius - 1),
               col);
 
-    // Draw corner arcs using circle algorithm
-    vgfx_circle(
-        canvas->gfx_win, (int32_t)(x + radius), (int32_t)(y + radius), (int32_t)radius, col);
-    vgfx_circle(canvas->gfx_win,
-                (int32_t)(x + w - radius - 1),
-                (int32_t)(y + radius),
-                (int32_t)radius,
-                col);
-    vgfx_circle(canvas->gfx_win,
-                (int32_t)(x + radius),
-                (int32_t)(y + h - radius - 1),
-                (int32_t)radius,
-                col);
-    vgfx_circle(canvas->gfx_win,
-                (int32_t)(x + w - radius - 1),
-                (int32_t)(y + h - radius - 1),
-                (int32_t)radius,
-                col);
+    // Draw corner arcs as true quarter circles so the outline stays hollow.
+    rt_canvas_draw_quarter_circle(
+        canvas, x + radius, y + radius, radius, RTG_CORNER_TOP_LEFT, col);
+    rt_canvas_draw_quarter_circle(
+        canvas, x + w - radius - 1, y + radius, radius, RTG_CORNER_TOP_RIGHT, col);
+    rt_canvas_draw_quarter_circle(
+        canvas, x + radius, y + h - radius - 1, radius, RTG_CORNER_BOTTOM_LEFT, col);
+    rt_canvas_draw_quarter_circle(
+        canvas, x + w - radius - 1, y + h - radius - 1, radius, RTG_CORNER_BOTTOM_RIGHT, col);
 }
 
 /// @brief Fill the flood.
@@ -313,15 +397,31 @@ void rt_canvas_flood_fill(void *canvas_ptr, int64_t start_x, int64_t start_y, in
     if (!vgfx_get_framebuffer(canvas->gfx_win, &fb))
         return;
 
-    // Scale start coordinates to physical pixels
-    float cs = vgfx_window_get_scale(canvas->gfx_win);
-    if (cs > 1.0f) {
-        start_x = (int64_t)(start_x * cs);
-        start_y = (int64_t)(start_y * cs);
-    }
+    int64_t clip_x = 0;
+    int64_t clip_y = 0;
+    int64_t clip_w = 0;
+    int64_t clip_h = 0;
+    if (!rt_canvas_get_logical_clip_bounds(canvas, &clip_x, &clip_y, &clip_w, &clip_h))
+        return;
+    if (start_x < clip_x || start_x >= clip_x + clip_w || start_y < clip_y ||
+        start_y >= clip_y + clip_h)
+        return;
 
-    // Bounds check (physical)
-    if (start_x < 0 || start_x >= fb.width || start_y < 0 || start_y >= fb.height)
+    float scale = 1.0f;
+    int64_t clip_px0 = 0;
+    int64_t clip_py0 = 0;
+    int64_t clip_px1 = 0;
+    int64_t clip_py1 = 0;
+    if (!rt_canvas_get_scaled_clip_bounds(
+            canvas, &scale, &clip_px0, &clip_py0, &clip_px1, &clip_py1))
+        return;
+
+    start_x = rtg_scale_up_i64(start_x, scale);
+    start_y = rtg_scale_up_i64(start_y, scale);
+
+    // Bounds check (physical, constrained to the active clip)
+    if (start_x < clip_px0 || start_x >= clip_px1 || start_y < clip_py0 || start_y >= clip_py1 ||
+        start_x < 0 || start_x >= fb.width || start_y < 0 || start_y >= fb.height)
         return;
 
     // Get the target color (color to replace)
@@ -362,7 +462,8 @@ void rt_canvas_flood_fill(void *canvas_ptr, int64_t start_x, int64_t start_y, in
         int64_t y = stack_y[stack_top];
 
         // Skip if out of bounds
-        if (x < 0 || x >= fb.width || y < 0 || y >= fb.height)
+        if (x < clip_px0 || x >= clip_px1 || y < clip_py0 || y >= clip_py1 || x < 0 ||
+            x >= fb.width || y < 0 || y >= fb.height)
             continue;
 
         uint8_t *pixel = &fb.pixels[y * fb.stride + x * 4];
@@ -380,7 +481,7 @@ void rt_canvas_flood_fill(void *canvas_ptr, int64_t start_x, int64_t start_y, in
         // Grow stack if needed before pushing 4 neighbors
         if (stack_top + 4 > stack_cap) {
             int64_t new_cap = stack_cap * 2;
-            int64_t max_cap = fb.width * fb.height + 4;
+            int64_t max_cap = (clip_px1 - clip_px0) * (clip_py1 - clip_py0) + 4;
             if (new_cap > max_cap)
                 new_cap = max_cap;
             int64_t *nx = (int64_t *)realloc(stack_x, (size_t)new_cap * sizeof(int64_t));
@@ -784,28 +885,21 @@ void rt_canvas_arc(void *canvas_ptr,
         for (int64_t x = -radius; x <= radius; x++) {
             if (x * x + y * y <= radius * radius) {
                 // Calculate angle of this point (in degrees, 0 = right)
-                int64_t angle;
                 if (x == 0 && y == 0) {
                     vgfx_pset(canvas->gfx_win, (int32_t)(cx), (int32_t)(cy), col);
                     continue;
                 }
 
-                // atan2 approximation
-                if (x >= 0 && y >= 0)
-                    angle = (y * 90) / (rtg_abs64(x) + rtg_abs64(y));
-                else if (x < 0 && y >= 0)
-                    angle = 90 + (rtg_abs64(x) * 90) / (rtg_abs64(x) + rtg_abs64(y));
-                else if (x < 0 && y < 0)
-                    angle = 180 + (rtg_abs64(y) * 90) / (rtg_abs64(x) + rtg_abs64(y));
-                else
-                    angle = 270 + (rtg_abs64(x) * 90) / (rtg_abs64(x) + rtg_abs64(y));
+                double angle = atan2((double)y, (double)x) * (180.0 / 3.14159265358979323846);
+                if (angle < 0.0)
+                    angle += 360.0;
 
                 // Check if angle is within arc range
-                int64_t check_angle = angle;
+                double check_angle = angle;
                 if (check_angle < start_angle)
                     check_angle += 360;
 
-                if (check_angle >= start_angle && check_angle <= end_angle) {
+                if (check_angle >= (double)start_angle && check_angle <= (double)end_angle) {
                     vgfx_pset(canvas->gfx_win, (int32_t)(cx + x), (int32_t)(cy - y), col);
                 }
             }
@@ -1021,6 +1115,10 @@ void rt_canvas_gradient_h(
     rt_canvas *canvas = (rt_canvas *)canvas_ptr;
     if (!canvas->gfx_win)
         return;
+    rt_canvas_resync_window_state(canvas);
+
+    int64_t orig_x = x;
+    int64_t orig_w = w;
 
     // Precompute gradient colours for each column, then blit each row of height h
     // with a single memcpy-equivalent pass — avoids w*vgfx_line() call overhead.
@@ -1040,40 +1138,62 @@ void rt_canvas_gradient_h(
         return;
     }
 
-    // Scale logical coordinates to physical framebuffer space.
-    float cs = vgfx_window_get_scale(canvas->gfx_win);
-    int32_t isf = (cs > 1.0f) ? (int32_t)cs : 1;
-    int64_t px = x * isf, py = y * isf;
-    int64_t pw = w * isf, ph = h * isf;
-
-    // Build a single gradient row (clamped to physical framebuffer bounds).
-    int64_t x0 = px < 0 ? 0 : px;
-    int64_t x1_clip = px + pw > fb.width ? fb.width : px + pw;
-    int64_t y0 = py < 0 ? 0 : py;
-    int64_t y1_clip = py + ph > fb.height ? fb.height : py + ph;
-
-    if (x1_clip <= x0 || y1_clip <= y0)
+    if (!rt_canvas_clip_intersect_logical(canvas, &x, &y, &w, &h))
         return;
 
-    int64_t draw_w = x1_clip - x0;
-    uint8_t *row_buf = (uint8_t *)malloc((size_t)(draw_w * 4));
+    float scale = vgfx_window_get_scale(canvas->gfx_win);
+    int64_t px0 = rtg_scale_up_i64(x, scale);
+    int64_t px1 = rtg_scale_up_i64(x + w, scale);
+    int64_t py0 = rtg_scale_up_i64(y, scale);
+    int64_t py1 = rtg_scale_up_i64(y + h, scale);
+    if (px0 < 0)
+        px0 = 0;
+    if (py0 < 0)
+        py0 = 0;
+    if (px1 > fb.width)
+        px1 = fb.width;
+    if (py1 > fb.height)
+        py1 = fb.height;
+    if (px1 <= px0 || py1 <= py0)
+        return;
+
+    int64_t draw_w = px1 - px0;
+    uint8_t *row_buf = (uint8_t *)malloc((size_t)draw_w * 4u);
     if (!row_buf)
         return;
 
-    // Gradient interpolation uses logical width so colour distribution is unchanged.
-    int64_t w_minus1 = w > 1 ? w - 1 : 1;
-    for (int64_t i = 0; i < draw_w; i++) {
-        // Map physical column back to logical for gradient interpolation.
-        int64_t col = ((x0 - px) + i) / isf;
-        int64_t color = rt_color_lerp(c1, c2, col * 100 / w_minus1);
-        row_buf[i * 4 + 0] = (uint8_t)((color >> 16) & 0xFF); // R
-        row_buf[i * 4 + 1] = (uint8_t)((color >> 8) & 0xFF);  // G
-        row_buf[i * 4 + 2] = (uint8_t)(color & 0xFF);         // B
-        row_buf[i * 4 + 3] = 0xFF;                            // A
+    int64_t w_minus1 = orig_w > 1 ? orig_w - 1 : 1;
+    memset(row_buf, 0, (size_t)draw_w * 4u);
+    for (int64_t col = 0; col < w; col++) {
+        int64_t col_px0 = rtg_scale_up_i64(x + col, scale);
+        int64_t col_px1 = rtg_scale_up_i64(x + col + 1, scale);
+        if (col_px1 <= col_px0)
+            col_px1 = col_px0 + 1;
+        if (col_px0 < px0)
+            col_px0 = px0;
+        if (col_px1 > px1)
+            col_px1 = px1;
+        if (col_px1 <= col_px0)
+            continue;
+
+        int64_t gradient_col = (x + col) - orig_x;
+        int64_t color = rt_color_lerp(c1, c2, gradient_col * 100 / w_minus1);
+        uint8_t cr = (uint8_t)((color >> 16) & 0xFF);
+        uint8_t cg = (uint8_t)((color >> 8) & 0xFF);
+        uint8_t cb = (uint8_t)(color & 0xFF);
+        for (int64_t px = col_px0; px < col_px1; px++) {
+            size_t idx = (size_t)(px - px0) * 4u;
+            row_buf[idx + 0u] = cr;
+            row_buf[idx + 1u] = cg;
+            row_buf[idx + 2u] = cb;
+            row_buf[idx + 3u] = 0xFF;
+        }
     }
 
-    for (int64_t row = y0; row < y1_clip; row++)
-        memcpy(&fb.pixels[(size_t)(row * fb.stride + x0 * 4)], row_buf, (size_t)(draw_w * 4));
+    for (int64_t row = py0; row < py1; row++)
+        memcpy(&fb.pixels[(size_t)row * (size_t)fb.stride + (size_t)px0 * 4u],
+               row_buf,
+               (size_t)draw_w * 4u);
 
     free(row_buf);
 }
@@ -1088,6 +1208,10 @@ void rt_canvas_gradient_v(
     rt_canvas *canvas = (rt_canvas *)canvas_ptr;
     if (!canvas->gfx_win)
         return;
+    rt_canvas_resync_window_state(canvas);
+
+    int64_t orig_y = y;
+    int64_t orig_h = h;
 
     // Write each row directly into the framebuffer — one colour per row, no per-row
     // vgfx_line() overhead.
@@ -1106,36 +1230,53 @@ void rt_canvas_gradient_v(
         return;
     }
 
-    // Scale logical coordinates to physical framebuffer space.
-    float cs = vgfx_window_get_scale(canvas->gfx_win);
-    int32_t isf = (cs > 1.0f) ? (int32_t)cs : 1;
-    int64_t px = x * isf, py = y * isf;
-    int64_t pw = w * isf, ph = h * isf;
-
-    int64_t x0 = px < 0 ? 0 : px;
-    int64_t x1_clip = px + pw > fb.width ? fb.width : px + pw;
-    int64_t y0 = py < 0 ? 0 : py;
-    int64_t y1_clip = py + ph > fb.height ? fb.height : py + ph;
-
-    if (x1_clip <= x0 || y1_clip <= y0)
+    if (!rt_canvas_clip_intersect_logical(canvas, &x, &y, &w, &h))
         return;
 
-    int64_t draw_w = x1_clip - x0;
-    int64_t h_minus1 = h > 1 ? h - 1 : 1;
+    float scale = vgfx_window_get_scale(canvas->gfx_win);
+    int64_t px0 = rtg_scale_up_i64(x, scale);
+    int64_t px1 = rtg_scale_up_i64(x + w, scale);
+    int64_t py0 = rtg_scale_up_i64(y, scale);
+    int64_t py1 = rtg_scale_up_i64(y + h, scale);
+    if (px0 < 0)
+        px0 = 0;
+    if (py0 < 0)
+        py0 = 0;
+    if (px1 > fb.width)
+        px1 = fb.width;
+    if (py1 > fb.height)
+        py1 = fb.height;
+    if (px1 <= px0 || py1 <= py0)
+        return;
 
-    for (int64_t row = y0; row < y1_clip; row++) {
-        // Map physical row back to logical for gradient interpolation.
-        int64_t r_idx = (row - py) / isf;
-        int64_t color = rt_color_lerp(c1, c2, r_idx * 100 / h_minus1);
+    int64_t draw_w = px1 - px0;
+    int64_t h_minus1 = orig_h > 1 ? orig_h - 1 : 1;
+
+    for (int64_t row = 0; row < h; row++) {
+        int64_t row_py0 = rtg_scale_up_i64(y + row, scale);
+        int64_t row_py1 = rtg_scale_up_i64(y + row + 1, scale);
+        if (row_py1 <= row_py0)
+            row_py1 = row_py0 + 1;
+        if (row_py0 < py0)
+            row_py0 = py0;
+        if (row_py1 > py1)
+            row_py1 = py1;
+        if (row_py1 <= row_py0)
+            continue;
+
+        int64_t gradient_row = (y + row) - orig_y;
+        int64_t color = rt_color_lerp(c1, c2, gradient_row * 100 / h_minus1);
         uint8_t cr = (uint8_t)((color >> 16) & 0xFF);
         uint8_t cg = (uint8_t)((color >> 8) & 0xFF);
         uint8_t cb = (uint8_t)(color & 0xFF);
-        uint8_t *dst = &fb.pixels[(size_t)(row * fb.stride + x0 * 4)];
-        for (int64_t i = 0; i < draw_w; i++) {
-            dst[i * 4 + 0] = cr;
-            dst[i * 4 + 1] = cg;
-            dst[i * 4 + 2] = cb;
-            dst[i * 4 + 3] = 0xFF;
+        for (int64_t py = row_py0; py < row_py1; py++) {
+            uint8_t *dst = &fb.pixels[(size_t)py * (size_t)fb.stride + (size_t)px0 * 4u];
+            for (int64_t i = 0; i < draw_w; i++) {
+                dst[i * 4 + 0] = cr;
+                dst[i * 4 + 1] = cg;
+                dst[i * 4 + 2] = cb;
+                dst[i * 4 + 3] = 0xFF;
+            }
         }
     }
 }
@@ -1287,6 +1428,32 @@ int64_t rt_color_darken(int64_t color, int64_t amount) {
     return ((r & 0xFF) << 16) | ((g & 0xFF) << 8) | (b & 0xFF);
 }
 
+static int rt_color_hex_digit(char c) {
+    if (c >= '0' && c <= '9')
+        return c - '0';
+    if (c >= 'a' && c <= 'f')
+        return c - 'a' + 10;
+    if (c >= 'A' && c <= 'F')
+        return c - 'A' + 10;
+    return -1;
+}
+
+static int rt_color_parse_hex_n(const char *s, size_t len, uint64_t *out) {
+    if (!s || !out)
+        return 0;
+
+    uint64_t value = 0;
+    for (size_t i = 0; i < len; ++i) {
+        int digit = rt_color_hex_digit(s[i]);
+        if (digit < 0)
+            return 0;
+        value = (value << 4) | (uint64_t)digit;
+    }
+
+    *out = value;
+    return 1;
+}
+
 /// @brief Hex the from.
 int64_t rt_color_from_hex(rt_string hex) {
     const char *s = rt_string_cstr(hex);
@@ -1295,36 +1462,47 @@ int64_t rt_color_from_hex(rt_string hex) {
     if (*s == '#')
         s++;
     size_t len = strlen(s);
-    unsigned long val = strtoul(s, NULL, 16);
-    if (len == 6)
+    uint64_t val = 0;
+    if (len == 6) {
+        if (!rt_color_parse_hex_n(s, len, &val))
+            return 0;
         return (int64_t)val; // 0xRRGGBB
+    }
     if (len == 8) {
+        if (!rt_color_parse_hex_n(s, len, &val))
+            return 0;
         // Input is RRGGBBAA, store as AARRGGBB
         int64_t r = (val >> 24) & 0xFF;
         int64_t g = (val >> 16) & 0xFF;
         int64_t b = (val >> 8) & 0xFF;
         int64_t a = val & 0xFF;
-        return (a << 24) | (r << 16) | (g << 8) | b;
+        int64_t packed = (a << 24) | (r << 16) | (g << 8) | b;
+        if (a == 0)
+            packed |= RT_COLOR_EXPLICIT_ALPHA_FLAG;
+        return packed;
     }
     if (len == 3) {
+        if (!rt_color_parse_hex_n(s, len, &val))
+            return 0;
         // Shorthand: RGB -> RRGGBB
         int64_t r = (val >> 8) & 0xF;
         int64_t g = (val >> 4) & 0xF;
         int64_t b = val & 0xF;
         return ((r | (r << 4)) << 16) | ((g | (g << 4)) << 8) | (b | (b << 4));
     }
-    return (int64_t)val;
+    return 0;
 }
 
 /// @brief Hex the to.
 rt_string rt_color_to_hex(int64_t color) {
     char buf[10];
+    int8_t has_explicit_alpha = (color & RT_COLOR_EXPLICIT_ALPHA_FLAG) != 0;
     int64_t a = (color >> 24) & 0xFF;
     int64_t r = (color >> 16) & 0xFF;
     int64_t g = (color >> 8) & 0xFF;
     int64_t b = color & 0xFF;
     int len;
-    if (a != 0)
+    if (has_explicit_alpha || a != 0)
         len = snprintf(buf, sizeof(buf), "#%02X%02X%02X%02X", (int)r, (int)g, (int)b, (int)a);
     else
         len = snprintf(buf, sizeof(buf), "#%02X%02X%02X", (int)r, (int)g, (int)b);

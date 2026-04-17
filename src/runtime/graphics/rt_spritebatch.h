@@ -10,6 +10,8 @@
 // Key invariants:
 //   - Begin must be called before any draw calls; End flushes the batch.
 //   - Draw calls preserve submission order unless depth sorting is enabled.
+//   - When depth sorting is enabled, equal-depth items still preserve their
+//     original submission order.
 //   - Batch size is bounded by RT_SPRITEBATCH_MAX_SPRITES per begin/end pair.
 //   - Nested Begin/End pairs are not supported.
 //

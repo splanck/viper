@@ -573,21 +573,30 @@ static void test_flip_h() {
     rt_pixels_set(p, 1, 1, 0x55555555); // bottom-middle
     rt_pixels_set(p, 2, 1, 0x66666666); // bottom-right
 
-    // FlipH mutates in place and returns self
+    // FlipH returns a new buffer and leaves the source unchanged
     void *result = rt_pixels_flip_h(p);
-    assert(result == p); // returns same pointer
-    assert(rt_pixels_width(p) == 3);
-    assert(rt_pixels_height(p) == 2);
+    assert(result != nullptr);
+    assert(result != p);
+    assert(rt_pixels_width(result) == 3);
+    assert(rt_pixels_height(result) == 2);
+
+    // Source remains unchanged
+    assert(rt_pixels_get(p, 0, 0) == 0x11111111);
+    assert(rt_pixels_get(p, 1, 0) == 0x22222222);
+    assert(rt_pixels_get(p, 2, 0) == 0x33333333);
+    assert(rt_pixels_get(p, 0, 1) == 0x44444444);
+    assert(rt_pixels_get(p, 1, 1) == 0x55555555);
+    assert(rt_pixels_get(p, 2, 1) == 0x66666666);
 
     // After horizontal flip:
     // [B G R]
     // [Y M C]
-    assert(rt_pixels_get(p, 0, 0) == 0x33333333); // was top-right
-    assert(rt_pixels_get(p, 1, 0) == 0x22222222); // middle unchanged
-    assert(rt_pixels_get(p, 2, 0) == 0x11111111); // was top-left
-    assert(rt_pixels_get(p, 0, 1) == 0x66666666); // was bottom-right
-    assert(rt_pixels_get(p, 1, 1) == 0x55555555); // middle unchanged
-    assert(rt_pixels_get(p, 2, 1) == 0x44444444); // was bottom-left
+    assert(rt_pixels_get(result, 0, 0) == 0x33333333); // was top-right
+    assert(rt_pixels_get(result, 1, 0) == 0x22222222); // middle unchanged
+    assert(rt_pixels_get(result, 2, 0) == 0x11111111); // was top-left
+    assert(rt_pixels_get(result, 0, 1) == 0x66666666); // was bottom-right
+    assert(rt_pixels_get(result, 1, 1) == 0x55555555); // middle unchanged
+    assert(rt_pixels_get(result, 2, 1) == 0x44444444); // was bottom-left
 
     printf("test_flip_h: PASSED\n");
 }
@@ -602,19 +611,28 @@ static void test_flip_v() {
     rt_pixels_set(p, 0, 2, 0x55555555); // row 2
     rt_pixels_set(p, 1, 2, 0x66666666);
 
-    // FlipV mutates in place and returns self
+    // FlipV returns a new buffer and leaves the source unchanged
     void *result = rt_pixels_flip_v(p);
-    assert(result == p); // returns same pointer
-    assert(rt_pixels_width(p) == 2);
-    assert(rt_pixels_height(p) == 3);
+    assert(result != nullptr);
+    assert(result != p);
+    assert(rt_pixels_width(result) == 2);
+    assert(rt_pixels_height(result) == 3);
+
+    // Source remains unchanged
+    assert(rt_pixels_get(p, 0, 0) == 0x11111111);
+    assert(rt_pixels_get(p, 1, 0) == 0x22222222);
+    assert(rt_pixels_get(p, 0, 1) == 0x33333333);
+    assert(rt_pixels_get(p, 1, 1) == 0x44444444);
+    assert(rt_pixels_get(p, 0, 2) == 0x55555555);
+    assert(rt_pixels_get(p, 1, 2) == 0x66666666);
 
     // After vertical flip, row 0 becomes row 2, row 2 becomes row 0
-    assert(rt_pixels_get(p, 0, 0) == 0x55555555); // was row 2
-    assert(rt_pixels_get(p, 1, 0) == 0x66666666);
-    assert(rt_pixels_get(p, 0, 1) == 0x33333333); // row 1 unchanged
-    assert(rt_pixels_get(p, 1, 1) == 0x44444444);
-    assert(rt_pixels_get(p, 0, 2) == 0x11111111); // was row 0
-    assert(rt_pixels_get(p, 1, 2) == 0x22222222);
+    assert(rt_pixels_get(result, 0, 0) == 0x55555555); // was row 2
+    assert(rt_pixels_get(result, 1, 0) == 0x66666666);
+    assert(rt_pixels_get(result, 0, 1) == 0x33333333); // row 1 unchanged
+    assert(rt_pixels_get(result, 1, 1) == 0x44444444);
+    assert(rt_pixels_get(result, 0, 2) == 0x11111111); // was row 0
+    assert(rt_pixels_get(result, 1, 2) == 0x22222222);
 
     printf("test_flip_v: PASSED\n");
 }
@@ -819,37 +837,93 @@ static int channel_a(int64_t rgba) {
     return (int)(rgba & 0xFF);
 }
 
-static int64_t bilerp_rgba(
+static int64_t bilerp_rgba_premul(
     int64_t p00, int64_t p10, int64_t p01, int64_t p11, int frac_x, int frac_y) {
     int inv_frac_x = 256 - frac_x;
     int inv_frac_y = 256 - frac_y;
 
-    int r = (channel_r(p00) * inv_frac_x * inv_frac_y + channel_r(p10) * frac_x * inv_frac_y +
-             channel_r(p01) * inv_frac_x * frac_y + channel_r(p11) * frac_x * frac_y) >>
+    int a00 = channel_a(p00);
+    int a10 = channel_a(p10);
+    int a01 = channel_a(p01);
+    int a11 = channel_a(p11);
+
+    int a = (a00 * inv_frac_x * inv_frac_y + a10 * frac_x * inv_frac_y +
+             a01 * inv_frac_x * frac_y + a11 * frac_x * frac_y) >>
             16;
-    int g = (channel_g(p00) * inv_frac_x * inv_frac_y + channel_g(p10) * frac_x * inv_frac_y +
-             channel_g(p01) * inv_frac_x * frac_y + channel_g(p11) * frac_x * frac_y) >>
-            16;
-    int b = (channel_b(p00) * inv_frac_x * inv_frac_y + channel_b(p10) * frac_x * inv_frac_y +
-             channel_b(p01) * inv_frac_x * frac_y + channel_b(p11) * frac_x * frac_y) >>
-            16;
-    int a = (channel_a(p00) * inv_frac_x * inv_frac_y + channel_a(p10) * frac_x * inv_frac_y +
-             channel_a(p01) * inv_frac_x * frac_y + channel_a(p11) * frac_x * frac_y) >>
-            16;
+    if (a <= 0)
+        return 0;
+
+    int premul_r = ((channel_r(p00) * a00) * inv_frac_x * inv_frac_y +
+                    (channel_r(p10) * a10) * frac_x * inv_frac_y +
+                    (channel_r(p01) * a01) * inv_frac_x * frac_y +
+                    (channel_r(p11) * a11) * frac_x * frac_y) >>
+                   16;
+    int premul_g = ((channel_g(p00) * a00) * inv_frac_x * inv_frac_y +
+                    (channel_g(p10) * a10) * frac_x * inv_frac_y +
+                    (channel_g(p01) * a01) * inv_frac_x * frac_y +
+                    (channel_g(p11) * a11) * frac_x * frac_y) >>
+                   16;
+    int premul_b = ((channel_b(p00) * a00) * inv_frac_x * inv_frac_y +
+                    (channel_b(p10) * a10) * frac_x * inv_frac_y +
+                    (channel_b(p01) * a01) * inv_frac_x * frac_y +
+                    (channel_b(p11) * a11) * frac_x * frac_y) >>
+                   16;
+
+    int r = (premul_r + a / 2) / a;
+    int g = (premul_g + a / 2) / a;
+    int b = (premul_b + a / 2) / a;
+    return pack_rgba(r, g, b, a);
+}
+
+static int64_t average_rgba_premul(int64_t p0, int64_t p1, int64_t p2) {
+    int a0 = channel_a(p0);
+    int a1 = channel_a(p1);
+    int a2 = channel_a(p2);
+    int a = (a0 + a1 + a2 + 1) / 3;
+    if (a <= 0)
+        return 0;
+
+    int premul_r = (channel_r(p0) * a0 + channel_r(p1) * a1 + channel_r(p2) * a2 + 1) / 3;
+    int premul_g = (channel_g(p0) * a0 + channel_g(p1) * a1 + channel_g(p2) * a2 + 1) / 3;
+    int premul_b = (channel_b(p0) * a0 + channel_b(p1) * a1 + channel_b(p2) * a2 + 1) / 3;
+
+    int r = (premul_r + a / 2) / a;
+    int g = (premul_g + a / 2) / a;
+    int b = (premul_b + a / 2) / a;
     return pack_rgba(r, g, b, a);
 }
 
 static void test_blur_rgba_channel_order() {
     void *p = rt_pixels_new(3, 1);
-    rt_pixels_set(p, 0, 0, 0x10002040);
-    rt_pixels_set(p, 1, 0, 0x80FF8040);
-    rt_pixels_set(p, 2, 0, 0xF01020C0);
+    int64_t p0 = 0x10002040;
+    int64_t p1 = 0x80FF8040;
+    int64_t p2 = 0xF01020C0;
+    rt_pixels_set(p, 0, 0, p0);
+    rt_pixels_set(p, 1, 0, p1);
+    rt_pixels_set(p, 2, 0, p2);
 
     void *blurred = rt_pixels_blur(p, 1);
     assert(blurred != nullptr);
-    assert(rt_pixels_get(blurred, 1, 0) == 0x805A406A);
+    assert(rt_pixels_get(blurred, 1, 0) == average_rgba_premul(p0, p1, p2));
 
     printf("test_blur_rgba_channel_order: PASSED\n");
+}
+
+static void test_blur_alpha_aware_preserves_edge_color() {
+    void *p = rt_pixels_new(2, 1);
+    rt_pixels_set(p, 0, 0, pack_rgba(255, 0, 0, 255));
+    rt_pixels_set(p, 1, 0, pack_rgba(0, 0, 0, 0));
+
+    void *blurred = rt_pixels_blur(p, 1);
+    assert(blurred != nullptr);
+
+    int64_t rgba = rt_pixels_get(blurred, 0, 0);
+    assert(channel_r(rgba) >= 254 && channel_r(rgba) <= 255);
+    assert(channel_g(rgba) == 0);
+    assert(channel_b(rgba) == 0);
+    assert(channel_a(rgba) >= 127 && channel_a(rgba) <= 128);
+
+    printf("test_blur_alpha_aware_preserves_edge_color: PASSED\n");
 }
 
 static void test_blur_zero_returns_exact_copy() {
@@ -886,9 +960,26 @@ static void test_resize_rgba_channel_order() {
 
     void *resized = rt_pixels_resize(p, 3, 3);
     assert(resized != nullptr);
-    assert(rt_pixels_get(resized, 1, 1) == bilerp_rgba(p00, p10, p01, p11, 170, 170));
+    assert(rt_pixels_get(resized, 1, 1) == bilerp_rgba_premul(p00, p10, p01, p11, 170, 170));
 
     printf("test_resize_rgba_channel_order: PASSED\n");
+}
+
+static void test_resize_alpha_aware_preserves_edge_color() {
+    void *p = rt_pixels_new(2, 1);
+    rt_pixels_set(p, 0, 0, pack_rgba(255, 0, 0, 255));
+    rt_pixels_set(p, 1, 0, pack_rgba(0, 0, 0, 0));
+
+    void *resized = rt_pixels_resize(p, 3, 1);
+    assert(resized != nullptr);
+
+    int64_t rgba = rt_pixels_get(resized, 1, 0);
+    assert(channel_r(rgba) == 255);
+    assert(channel_g(rgba) == 0);
+    assert(channel_b(rgba) == 0);
+    assert(channel_a(rgba) >= 85 && channel_a(rgba) <= 86);
+
+    printf("test_resize_alpha_aware_preserves_edge_color: PASSED\n");
 }
 
 // ============================================================================
@@ -996,7 +1087,9 @@ int main() {
     test_scale_down();
     test_blur_zero_returns_exact_copy();
     test_blur_rgba_channel_order();
+    test_blur_alpha_aware_preserves_edge_color();
     test_resize_rgba_channel_order();
+    test_resize_alpha_aware_preserves_edge_color();
 
     // BlendPixel
     test_blend_fully_opaque();

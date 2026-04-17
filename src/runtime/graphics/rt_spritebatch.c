@@ -73,6 +73,7 @@ typedef struct {
     int64_t src_y;
     int64_t src_w;
     int64_t src_h;
+    int64_t submission_order;
 } batch_item;
 
 typedef struct {
@@ -83,6 +84,7 @@ typedef struct {
     int8_t sort_by_depth;
     int64_t tint_color;
     int64_t alpha;
+    int64_t next_submission_order;
 } spritebatch_impl;
 
 typedef struct {
@@ -90,6 +92,10 @@ typedef struct {
     int64_t height;
     uint32_t *data;
 } spritebatch_pixels_view;
+
+static int64_t spritebatch_normalize_scale(int64_t scale) {
+    return scale < 1 ? 1 : scale;
+}
 
 //=============================================================================
 // Helper Functions
@@ -101,6 +107,10 @@ static int compare_depth(const void *a, const void *b) {
     if (ia->depth < ib->depth)
         return -1;
     if (ia->depth > ib->depth)
+        return 1;
+    if (ia->submission_order < ib->submission_order)
+        return -1;
+    if (ia->submission_order > ib->submission_order)
         return 1;
     return 0;
 }
@@ -171,6 +181,7 @@ static void add_item(spritebatch_impl *batch, batch_item *item) {
     if (!ensure_capacity(batch, 1))
         return;
     spritebatch_retain_object(item->source);
+    item->submission_order = batch->next_submission_order++;
     batch->items[batch->count] = *item;
     batch->count++;
 }
@@ -224,7 +235,10 @@ static void draw_region_item(spritebatch_impl *batch, void *canvas, const batch_
     if (!item->source)
         return;
 
-    const bool needsTransform = item->scale_x != 100 || item->scale_y != 100 || item->rotation != 0;
+    int64_t scale_x = spritebatch_normalize_scale(item->scale_x);
+    int64_t scale_y = spritebatch_normalize_scale(item->scale_y);
+
+    const bool needsTransform = scale_x != 100 || scale_y != 100 || item->rotation != 0;
     const bool needsColor = batch->tint_color != 0 || batch->alpha < 255;
     if (!needsTransform && !needsColor) {
         rt_canvas_blit_region(canvas,
@@ -243,9 +257,9 @@ static void draw_region_item(spritebatch_impl *batch, void *canvas, const batch_
     if (!transformed)
         return;
 
-    if (item->scale_x != 100 || item->scale_y != 100) {
-        int64_t new_w = item->src_w * item->scale_x / 100;
-        int64_t new_h = item->src_h * item->scale_y / 100;
+    if (scale_x != 100 || scale_y != 100) {
+        int64_t new_w = item->src_w * scale_x / 100;
+        int64_t new_h = item->src_h * scale_y / 100;
         if (new_w < 1)
             new_w = 1;
         if (new_h < 1)
@@ -316,6 +330,7 @@ void *rt_spritebatch_new(int64_t capacity) {
     batch->sort_by_depth = 0;
     batch->tint_color = 0;
     batch->alpha = 255;
+    batch->next_submission_order = 0;
 
     rt_obj_set_finalizer(batch, spritebatch_finalize);
     return batch;
@@ -333,6 +348,7 @@ void rt_spritebatch_begin(void *batch_ptr) {
     spritebatch_impl *batch = (spritebatch_impl *)batch_ptr;
     spritebatch_clear_items(batch);
     batch->active = 1;
+    batch->next_submission_order = 0;
 }
 
 /// @brief End the spritebatch.

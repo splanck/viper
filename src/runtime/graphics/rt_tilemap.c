@@ -332,6 +332,46 @@ void rt_tilemap_fill_rect(
 // Rendering
 //=============================================================================
 
+static void rt_tilemap_draw_region_layer_impl(rt_tilemap_impl *tilemap,
+                                              void *tilemap_ptr,
+                                              void *canvas_ptr,
+                                              tm_layer *layer,
+                                              int64_t offset_x,
+                                              int64_t offset_y,
+                                              int64_t view_x,
+                                              int64_t view_y,
+                                              int64_t view_w,
+                                              int64_t view_h) {
+    if (!tilemap || !layer || !canvas_ptr || !layer->visible || !layer->tiles)
+        return;
+
+    void *tileset = layer->tileset ? layer->tileset : tilemap->tileset;
+    int64_t tileset_cols = layer->tileset ? layer->tileset_cols : tilemap->tileset_cols;
+    int64_t tile_count = layer->tileset ? layer->tile_count : tilemap->tile_count;
+    if (!tileset || tile_count <= 0 || tileset_cols <= 0)
+        return;
+
+    int64_t tw = tilemap->tile_width;
+    int64_t th = tilemap->tile_height;
+
+    for (int64_t ty = view_y; ty < view_y + view_h; ty++) {
+        for (int64_t tx = view_x; tx < view_x + view_w; tx++) {
+            int64_t tile_index =
+                rt_tilemap_resolve_anim_tile(tilemap_ptr, layer->tiles[ty * tilemap->width + tx]);
+            if (tile_index <= 0 || tile_index > tile_count)
+                continue;
+
+            int64_t ti = tile_index - 1;
+            int64_t ts_x = (ti % tileset_cols) * tw;
+            int64_t ts_y = (ti / tileset_cols) * th;
+            int64_t screen_x = tx * tw + offset_x;
+            int64_t screen_y = ty * th + offset_y;
+
+            rt_canvas_blit_region(canvas_ptr, screen_x, screen_y, tileset, ts_x, ts_y, tw, th);
+        }
+    }
+}
+
 /// @brief Render the entire tilemap (every visible layer) onto a canvas at `(offset_x, offset_y)`.
 ///
 /// Walks layers in order; layer 0 (base) draws first, followed by
@@ -374,8 +414,8 @@ void rt_tilemap_draw(void *tilemap_ptr, void *canvas_ptr, int64_t offset_x, int6
 /// @brief Render only a sub-rectangle of the tilemap (camera-clipped draw).
 ///
 /// `(view_x, view_y, view_w, view_h)` defines a rectangle in
-/// pixel coordinates within the tilemap. Saves work for large
-/// maps when only a small viewport needs drawing.
+/// tile coordinates within the tilemap. Saves work for large maps
+/// when only a small viewport needs drawing.
 void rt_tilemap_draw_region(void *tilemap_ptr,
                             void *canvas_ptr,
                             int64_t offset_x,
@@ -389,9 +429,6 @@ void rt_tilemap_draw_region(void *tilemap_ptr,
 
     rt_tilemap_impl *tilemap = (rt_tilemap_impl *)tilemap_ptr;
 
-    if (!tilemap->tileset || tilemap->tile_count == 0)
-        return;
-
     // Clamp view to tilemap bounds
     if (view_x < 0)
         view_x = 0;
@@ -402,35 +439,17 @@ void rt_tilemap_draw_region(void *tilemap_ptr,
     if (view_y + view_h > tilemap->height)
         view_h = tilemap->height - view_y;
 
-    int64_t tw = tilemap->tile_width;
-    int64_t th = tilemap->tile_height;
-    int64_t ts_cols = tilemap->tileset_cols;
-
-    // Draw visible tiles
-    for (int64_t ty = view_y; ty < view_y + view_h; ty++) {
-        for (int64_t tx = view_x; tx < view_x + view_w; tx++) {
-            int64_t tile_index =
-                rt_tilemap_resolve_anim_tile(tilemap_ptr, tilemap->tiles[ty * tilemap->width + tx]);
-
-            // Skip empty tiles (index 0)
-            if (tile_index <= 0 || tile_index > tilemap->tile_count)
-                continue;
-
-            // Adjust for 1-based indexing (0 = empty)
-            int64_t ti = tile_index - 1;
-
-            // Calculate tile position in tileset
-            int64_t ts_x = (ti % ts_cols) * tw;
-            int64_t ts_y = (ti / ts_cols) * th;
-
-            // Calculate screen position
-            int64_t screen_x = tx * tw + offset_x;
-            int64_t screen_y = ty * th + offset_y;
-
-            // Blit the tile
-            rt_canvas_blit_region(
-                canvas_ptr, screen_x, screen_y, tilemap->tileset, ts_x, ts_y, tw, th);
-        }
+    for (int32_t layer = 0; layer < tilemap->layer_count; layer++) {
+        rt_tilemap_draw_region_layer_impl(tilemap,
+                                          tilemap_ptr,
+                                          canvas_ptr,
+                                          &tilemap->layers[layer],
+                                          offset_x,
+                                          offset_y,
+                                          view_x,
+                                          view_y,
+                                          view_w,
+                                          view_h);
     }
 }
 
@@ -612,12 +631,16 @@ int8_t rt_tilemap_collide_body(void *tilemap_ptr, void *body_ptr) {
             if (bx2 <= tile_x1 || bx1 >= tile_x2 || by2 <= tile_y1 || by1 >= tile_y2)
                 continue;
 
-            // One-way platform: only collide if body is moving down AND came from above.
-            // by1 > tile_y1 + 2.0 means the body's top is already below the tile surface —
-            // it entered from below and should pass through. Frame-rate independent.
+            // One-way platforms only resolve when the body's previous bottom edge was above
+            // the platform top and the current frame crossed the surface while moving down.
             if (ctype == TILE_COLLISION_ONE_WAY) {
-                if (bvy <= 0.0 || by1 > tile_y1 + 2.0)
+                double prev_bottom = by2 - bvy;
+                if (bvy <= 0.0 || prev_bottom > tile_y1 + 1.0)
                     continue;
+                by = tile_y1 - bh;
+                bvy = 0.0;
+                collided = 1;
+                continue;
             }
 
             // Calculate overlap on each axis
@@ -910,18 +933,6 @@ void rt_tilemap_draw_layer(
     if (layer < 0 || layer >= tilemap->layer_count)
         return;
 
-    tm_layer *lyr = &tilemap->layers[layer];
-    if (!lyr->visible || !lyr->tiles)
-        return;
-
-    // Determine which tileset to use: per-layer or base
-    void *ts = lyr->tileset ? lyr->tileset : tilemap->tileset;
-    int64_t ts_cols = lyr->tileset ? lyr->tileset_cols : tilemap->tileset_cols;
-    int64_t tc = lyr->tileset ? lyr->tile_count : tilemap->tile_count;
-
-    if (!ts || tc == 0)
-        return;
-
     int64_t tw = tilemap->tile_width > 0 ? tilemap->tile_width : 1;
     int64_t th = tilemap->tile_height > 0 ? tilemap->tile_height : 1;
 
@@ -945,22 +956,16 @@ void rt_tilemap_draw_layer(
     if (vis_w <= 0 || vis_h <= 0)
         return;
 
-    for (int64_t ty = first_y; ty < first_y + vis_h; ty++) {
-        for (int64_t tx = first_x; tx < first_x + vis_w; tx++) {
-            int64_t tile_index =
-                rt_tilemap_resolve_anim_tile(tilemap_ptr, lyr->tiles[ty * tilemap->width + tx]);
-            if (tile_index <= 0 || tile_index > tc)
-                continue;
-
-            int64_t ti = tile_index - 1;
-            int64_t ts_x = (ti % ts_cols) * tw;
-            int64_t ts_y = (ti / ts_cols) * th;
-            int64_t screen_x = tx * tw + cam_x;
-            int64_t screen_y = ty * th + cam_y;
-
-            rt_canvas_blit_region(canvas_ptr, screen_x, screen_y, ts, ts_x, ts_y, tw, th);
-        }
-    }
+    rt_tilemap_draw_region_layer_impl(tilemap,
+                                      tilemap_ptr,
+                                      canvas_ptr,
+                                      &tilemap->layers[layer],
+                                      cam_x,
+                                      cam_y,
+                                      first_x,
+                                      first_y,
+                                      vis_w,
+                                      vis_h);
 }
 
 //=============================================================================
@@ -996,7 +1001,8 @@ void rt_tilemap_set_tile_anim(void *tilemap_ptr,
                               int64_t base_tile_id,
                               int64_t frame_count,
                               int64_t ms_per_frame) {
-    if (!tilemap_ptr || frame_count < 1 || frame_count > TM_MAX_ANIM_FRAMES)
+    if (!tilemap_ptr || frame_count < 1 || frame_count > TM_MAX_ANIM_FRAMES ||
+        ms_per_frame <= 0)
         return;
     rt_tilemap_impl *tm = (rt_tilemap_impl *)tilemap_ptr;
     if (tm->tile_anim_count >= TM_MAX_TILE_ANIMS)
@@ -1040,6 +1046,8 @@ void rt_tilemap_update_anims(void *tilemap_ptr, int64_t dt_ms) {
     rt_tilemap_impl *tm = (rt_tilemap_impl *)tilemap_ptr;
     for (int32_t i = 0; i < tm->tile_anim_count; i++) {
         tm_tile_anim *anim = &tm->tile_anims[i];
+        if (anim->ms_per_frame <= 0 || anim->frame_count <= 0)
+            continue;
         anim->timer += dt_ms;
         while (anim->timer >= anim->ms_per_frame) {
             anim->timer -= anim->ms_per_frame;

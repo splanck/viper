@@ -1,7 +1,7 @@
 ---
 status: active
 audience: contributors
-last-verified: 2026-04-09
+last-verified: 2026-04-17
 ---
 
 # CODEMAP: Graphics Library
@@ -25,13 +25,13 @@ The Viper.Graphics.* namespace is implemented by these C runtime files:
 | `rt_spriteanim.h`   | `Viper.Game.SpriteAnimation` class declaration                            |
 | `rt_spriteanim.c`   | Frame-based sprite animation state machine (play/pause/stop, looping, ping-pong, speed multiplier) — exposed as `Viper.Game.SpriteAnimation` |
 | `rt_spritebatch.h`  | SpriteBatch class declaration + TextureAtlas forward declarations         |
-| `rt_spritebatch.c`  | Efficient batched sprite rendering                                        |
+| `rt_spritebatch.c`  | Efficient batched sprite rendering with stable equal-depth ordering        |
 | `rt_texatlas.h`     | TextureAtlas class declaration — named-region sprite sheet atlas          |
 | `rt_texatlas.c`     | TextureAtlas implementation — grid slicing, named regions, hash lookup    |
 | `rt_spritesheet.h`  | SpriteSheet class declaration                                             |
 | `rt_spritesheet.c`  | Sprite sheet/atlas for named region extraction from a single texture      |
 | `rt_tilemap.h`      | Tilemap class declaration                                                 |
-| `rt_tilemap.c`      | Tile-based map rendering with tileset support; viewport culling renders only the tiles intersecting the current camera bounds |
+| `rt_tilemap.c`      | Tile-based map rendering with multi-layer visibility, per-layer tilesets, animation-aware drawing, and viewport culling over the current camera bounds |
 
 Graphics-disabled builds use `src/runtime/graphics/rt_graphics_stubs.c`; see
 [Runtime Graphics Stubs](runtime-graphics-stubs.md) for the required trap/no-op/helper policy.

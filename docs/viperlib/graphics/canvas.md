@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-16
+last-verified: 2026-04-17
 ---
 
 # Canvas & Color
@@ -22,7 +22,7 @@ last-verified: 2026-04-16
 
 | Property      | Type    | Description                                        |
 |---------------|---------|----------------------------------------------------|
-| `DeltaTime`   | Integer | Milliseconds elapsed between last two `Flip()` calls (first frame may be `0`) |
+| `DeltaTime`   | Integer | Milliseconds elapsed between last two `Flip()` calls (first frame may be `0`; later positive sub-millisecond frames report `1`) |
 | `Height`      | Integer | Canvas height in pixels                            |
 | `ShouldClose` | Integer | Non-zero if the user requested to close the canvas |
 | `Width`       | Integer | Canvas width in pixels                             |
@@ -35,9 +35,9 @@ last-verified: 2026-04-16
 | `ArcFrame(cx, cy, radius, startAngle, endAngle, color)` | `Void(Integer...)`    | Draws an arc outline                                       |
 | `BeginFrame()`                         | `Integer()`                           | Call Poll(), return 0 if ShouldClose, else 1. Simplifies game loop |
 | `Bezier(x1, y1, cx, cy, x2, y2, color)` | `Void(Integer...)`                  | Draws a quadratic Bezier curve                             |
-| `Blit(x, y, pixels)`                  | `Void(Integer, Integer, Pixels)`      | Blits a Pixels buffer to the canvas at (x, y)              |
-| `BlitAlpha(x, y, pixels)`             | `Void(Integer, Integer, Pixels)`      | Blits with alpha blending (respects alpha channel)         |
-| `BlitRegion(dx, dy, pixels, sx, sy, w, h)` | `Void(Integer...)`               | Blits a region of a Pixels buffer to the canvas            |
+| `Blit(x, y, pixels)`                  | `Void(Integer, Integer, Pixels)`      | Blits a Pixels buffer to the canvas at (x, y); honors the active clip rect |
+| `BlitAlpha(x, y, pixels)`             | `Void(Integer, Integer, Pixels)`      | Blits with alpha blending (respects alpha channel and clip rect) |
+| `BlitRegion(dx, dy, pixels, sx, sy, w, h)` | `Void(Integer...)`               | Blits a region of a Pixels buffer to the canvas; honors the active clip rect |
 | `Box(x, y, w, h, color)`              | `Void(Integer...)`                    | Draws a filled rectangle                                   |
 | `Clear(color)`                        | `Void(Integer)`                       | Clears the canvas with a solid color                       |
 | `ClearClipRect()`                     | `Void()`                              | Clears clipping rectangle; restores full canvas drawing    |
@@ -46,15 +46,15 @@ last-verified: 2026-04-16
 | `Ellipse(cx, cy, rx, ry, color)`      | `Void(Integer...)`                    | Draws a filled ellipse                                     |
 | `EllipseFrame(cx, cy, rx, ry, color)` | `Void(Integer...)`                    | Draws an ellipse outline                                   |
 | `Flip()`                              | `Void()`                              | Presents the back buffer and displays drawn content        |
-| `FloodFill(x, y, color)`              | `Void(Integer, Integer, Integer)`     | Flood fills connected area starting at (x, y)              |
+| `FloodFill(x, y, color)`              | `Void(Integer, Integer, Integer)`     | Flood fills connected area starting at (x, y), constrained by the active clip rect |
 | `Focus()`                             | `Void()`                              | Brings the window to the front and gives it focus          |
 | `Frame(x, y, w, h, color)`            | `Void(Integer...)`                    | Draws a rectangle outline                                  |
 | `Fullscreen()`                        | `Void()`                              | Enters fullscreen mode                                     |
 | `GetFps()`                            | `Integer()`                           | Returns the current target FPS (-1 = unlimited)            |
 | `GetPixel(x, y)`                      | `Integer(Integer, Integer)`           | Gets pixel color at (x, y)                                 |
 | `GetScale()`                          | `Double()`                            | Returns the HiDPI display scale factor (1.0 normal, 2.0 on Retina) |
-| `GradientH(x, y, w, h, c1, c2)`      | `Void(Integer...)`                    | Draws a horizontal gradient (left c1 to right c2)          |
-| `GradientV(x, y, w, h, c1, c2)`      | `Void(Integer...)`                    | Draws a vertical gradient (top c1 to bottom c2)            |
+| `GradientH(x, y, w, h, c1, c2)`      | `Void(Integer...)`                    | Draws a horizontal gradient (left c1 to right c2), honoring the active clip rect |
+| `GradientV(x, y, w, h, c1, c2)`      | `Void(Integer...)`                    | Draws a vertical gradient (top c1 to bottom c2), honoring the active clip rect |
 | `IsFocused()`                         | `Boolean()`                           | Returns true if the window has keyboard focus              |
 | `IsMaximized()`                       | `Boolean()`                           | Returns true if the window is maximized                    |
 | `IsMinimized()`                       | `Boolean()`                           | Returns true if the window is minimized (iconified)        |
@@ -193,7 +193,8 @@ The canvas includes a built-in 8x8 pixel bitmap font for rendering text:
 
 ### Blitting Pixels Buffers
 
-Use `Blit`, `BlitRegion`, and `BlitAlpha` to copy Pixels buffers to the canvas:
+Use `Blit`, `BlitRegion`, and `BlitAlpha` to copy Pixels buffers to the canvas. These APIs use
+logical canvas coordinates, respect `SetClipRect`, and scale correctly on fractional HiDPI displays:
 
 ```basic
 ' Load an image
@@ -290,7 +291,9 @@ canvas.GradientV(0, 0, 800, 600, &H00000000, &H00FFFFFF)  ' Black to white (vert
 ### Canvas Clipping
 
 Restrict drawing to a rectangular region. All drawing operations will be clipped to the
-specified bounds until `ClearClipRect()` is called.
+specified bounds until `ClearClipRect()` is called. This includes direct framebuffer-backed paths
+such as `Blit`, `BlitRegion`, `BlitAlpha`, `FloodFill`, `GradientH`, and `GradientV`.
+Clipped gradients keep their original color ramp; they do not restart from the clipped edge.
 
 ```basic
 ' Set a clipping region (x=100, y=100, width=200, height=150)
@@ -327,7 +330,7 @@ canvas = NEW Viper.Graphics.Canvas("My Game", 800, 600)
 ' Update window title dynamically (e.g., show FPS or game state)
 canvas.SetTitle("My Game - Level 1")
 
-' HiDPI / Retina: multiply logical coords by scale for sharp rendering
+' HiDPI / Retina: all Canvas APIs use logical coordinates; the runtime applies the window scale automatically
 DIM scale AS DOUBLE = canvas.GetScale()   ' 2.0 on Retina, 1.0 otherwise
 
 ' Window state management
@@ -379,6 +382,7 @@ LOOP
 - Window size (Width/Height) remains unchanged; content is scaled
 - Use `Fullscreen()` to enter and `Windowed()` to exit fullscreen mode
 - `GetScale()` returns 2.0 on HiDPI (Retina) displays — multiply pixel dimensions by this factor for sharp rendering
+- If the window moves between displays with different DPI scales, logical drawing, clipping, size queries, and input coordinates automatically follow the new scale
 - `SetFps(-1)` disables frame rate limiting (default); `GetFps()` returns the configured target
 - `PreventClose(1)` blocks the OS close button; the `ShouldClose` property will not become true until you call `PreventClose(0)`
 
@@ -414,6 +418,7 @@ func start() {
 **Notes:**
 - `BeginFrame()` calls `Poll()` internally, then returns 0 if `ShouldClose` is set, otherwise 1
 - `SetDTMax(max)` sets the upper clamp for `DeltaTime` in milliseconds; after the first frame, `DeltaTime` auto-clamps to `[1, max]`
+- At very high uncapped frame rates, any positive frame shorter than 1 ms still reports as `1`
 - A typical max of 50 ms (20 FPS equivalent) prevents large time steps that can break physics or animation
 
 ---
@@ -432,7 +437,7 @@ Color utility functions for graphics operations.
 | `Complement(color)`      | `Integer(Integer)`                            | Returns the complementary color (opposite on color wheel)                       |
 | `Darken(color, amount)`  | `Integer(Integer, Integer)`                   | Darkens a color by the given amount (0-100)                                     |
 | `Desaturate(color, amount)` | `Integer(Integer, Integer)`               | Decreases saturation of a color (0-100)                                         |
-| `FromHex(hex)`           | `Integer(String)`                             | Parses a hex color string (e.g., "#FF0000" or "#FF000080")                      |
+| `FromHex(hex)`           | `Integer(String)`                             | Parses `#RRGGBB` or `#RRGGBBAA`; invalid input returns `0`                      |
 | `FromHSL(h, s, l)`       | `Integer(Integer, Integer, Integer)`          | Creates a color from hue (0-360), saturation (0-100), lightness (0-100)         |
 | `GetA(color)`            | `Integer(Integer)`                            | Extracts alpha component (0-255) from a packed color                            |
 | `GetB(color)`            | `Integer(Integer)`                            | Extracts blue component (0-255) from a packed color                             |
@@ -447,7 +452,9 @@ Color utility functions for graphics operations.
 | `RGB(r, g, b)`           | `Integer(Integer, Integer, Integer)`          | Creates a color value from red, green, blue components (0-255 each)             |
 | `RGBA(r, g, b, a)`       | `Integer(Integer, Integer, Integer, Integer)` | Creates a color with alpha from red, green, blue, alpha components (0-255 each) |
 | `Saturate(color, amount)` | `Integer(Integer, Integer)`                  | Increases saturation of a color (0-100)                                         |
-| `ToHex(color)`           | `String(Integer)`                             | Converts a color to hex string (e.g., "#RRGGBB" or "#RRGGBBAA")                |
+| `ToHex(color)`           | `String(Integer)`                             | Converts a color to hex string and preserves explicit alpha, including `#RRGGBB00` |
+
+`Color.ToHex(Color.RGBA(r, g, b, 0))` now round-trips through `Color.FromHex()` as `#RRGGBB00`.
 
 ### Zia Example
 

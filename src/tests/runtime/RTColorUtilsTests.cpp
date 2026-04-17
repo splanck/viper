@@ -83,6 +83,24 @@ static void test_roundtrip_hex() {
     rt_string_unref(hex);
 }
 
+static void test_roundtrip_hex_transparent_alpha_zero() {
+    int64_t original = rt_color_rgba(0xFF, 0x00, 0x00, 0x00);
+    rt_string hex = rt_color_to_hex(original);
+    assert(str_eq(hex, "#FF000000"));
+    int64_t back = rt_color_from_hex(hex);
+    assert(back == original);
+    rt_string_unref(hex);
+}
+
+static void test_from_hex_invalid_returns_zero() {
+    rt_string bad_chars = rt_string_from_bytes("#GG0000", 7);
+    rt_string bad_len = rt_string_from_bytes("#12345", 6);
+    assert(rt_color_from_hex(bad_chars) == 0);
+    assert(rt_color_from_hex(bad_len) == 0);
+    rt_string_unref(bad_chars);
+    rt_string_unref(bad_len);
+}
+
 static void test_from_hsl_primary_red() {
     assert(rt_color_from_hsl(0, 100, 50) == rgb(255, 0, 0));
 }
@@ -196,6 +214,8 @@ int main() {
     test_to_hex_black();
     test_to_hex_white();
     test_roundtrip_hex();
+    test_roundtrip_hex_transparent_alpha_zero();
+    test_from_hex_invalid_returns_zero();
     test_from_hsl_primary_red();
     test_get_hsl_components();
     test_lerp_midpoint();

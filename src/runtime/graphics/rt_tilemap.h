@@ -123,6 +123,7 @@ void rt_tilemap_fill_rect(
 /// @param canvas Canvas to draw on.
 /// @param offset_x X offset for scrolling.
 /// @param offset_y Y offset for scrolling.
+/// @note Draws every visible layer in layer order.
 void rt_tilemap_draw(void *tilemap, void *canvas, int64_t offset_x, int64_t offset_y);
 
 /// @brief Draw a portion of the tilemap (for culling).
@@ -134,6 +135,7 @@ void rt_tilemap_draw(void *tilemap, void *canvas, int64_t offset_x, int64_t offs
 /// @param view_y View start Y in tiles.
 /// @param view_w View width in tiles.
 /// @param view_h View height in tiles.
+/// @note Draws the tile-coordinate sub-region across every visible layer.
 void rt_tilemap_draw_region(void *tilemap,
                             void *canvas,
                             int64_t offset_x,

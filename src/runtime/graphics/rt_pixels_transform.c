@@ -41,8 +41,114 @@
 // Image Transforms
 //=============================================================================
 
-/// @brief Mirror the pixel buffer horizontally (left↔right) in place. Returns the same
-/// pixels handle for fluent chaining.
+static uint8_t pixels_clamp_u8_i64(int64_t value) {
+    if (value <= 0)
+        return 0;
+    if (value >= 255)
+        return 255;
+    return (uint8_t)value;
+}
+
+static uint32_t pixels_pack_rgba_pm(int64_t premul_r, int64_t premul_g, int64_t premul_b, int64_t a) {
+    uint8_t a8 = pixels_clamp_u8_i64(a);
+    if (a8 == 0)
+        return 0;
+
+    int64_t r = (premul_r + a / 2) / a;
+    int64_t g = (premul_g + a / 2) / a;
+    int64_t b = (premul_b + a / 2) / a;
+    return ((uint32_t)pixels_clamp_u8_i64(r) << 24) | ((uint32_t)pixels_clamp_u8_i64(g) << 16) |
+           ((uint32_t)pixels_clamp_u8_i64(b) << 8) | (uint32_t)a8;
+}
+
+static uint32_t pixels_bilerp_rgba_premul_fixed(
+    uint32_t c00, uint32_t c10, uint32_t c01, uint32_t c11, int64_t frac_x, int64_t frac_y) {
+    int64_t inv_frac_x = 256 - frac_x;
+    int64_t inv_frac_y = 256 - frac_y;
+
+    int64_t a00 = c00 & 0xFF;
+    int64_t a10 = c10 & 0xFF;
+    int64_t a01 = c01 & 0xFF;
+    int64_t a11 = c11 & 0xFF;
+
+    int64_t a = (a00 * inv_frac_x * inv_frac_y + a10 * frac_x * inv_frac_y +
+                 a01 * inv_frac_x * frac_y + a11 * frac_x * frac_y) >>
+                16;
+    if (a <= 0)
+        return 0;
+
+    int64_t premul_r = ((((c00 >> 24) & 0xFF) * a00) * inv_frac_x * inv_frac_y +
+                        (((c10 >> 24) & 0xFF) * a10) * frac_x * inv_frac_y +
+                        (((c01 >> 24) & 0xFF) * a01) * inv_frac_x * frac_y +
+                        (((c11 >> 24) & 0xFF) * a11) * frac_x * frac_y) >>
+                       16;
+    int64_t premul_g = ((((c00 >> 16) & 0xFF) * a00) * inv_frac_x * inv_frac_y +
+                        (((c10 >> 16) & 0xFF) * a10) * frac_x * inv_frac_y +
+                        (((c01 >> 16) & 0xFF) * a01) * inv_frac_x * frac_y +
+                        (((c11 >> 16) & 0xFF) * a11) * frac_x * frac_y) >>
+                       16;
+    int64_t premul_b = ((((c00 >> 8) & 0xFF) * a00) * inv_frac_x * inv_frac_y +
+                        (((c10 >> 8) & 0xFF) * a10) * frac_x * inv_frac_y +
+                        (((c01 >> 8) & 0xFF) * a01) * inv_frac_x * frac_y +
+                        (((c11 >> 8) & 0xFF) * a11) * frac_x * frac_y) >>
+                       16;
+
+    return pixels_pack_rgba_pm(premul_r, premul_g, premul_b, a);
+}
+
+static uint32_t pixels_bilerp_rgba_premul_double(
+    uint32_t c00, uint32_t c10, uint32_t c01, uint32_t c11, double fx, double fy) {
+    double wx0 = 1.0 - fx;
+    double wy0 = 1.0 - fy;
+    double w00 = wx0 * wy0;
+    double w10 = fx * wy0;
+    double w01 = wx0 * fy;
+    double w11 = fx * fy;
+
+    double a00 = (double)(c00 & 0xFF);
+    double a10 = (double)(c10 & 0xFF);
+    double a01 = (double)(c01 & 0xFF);
+    double a11 = (double)(c11 & 0xFF);
+
+    double a = a00 * w00 + a10 * w10 + a01 * w01 + a11 * w11;
+    if (a <= 0.0)
+        return 0;
+
+    double premul_r = (double)((c00 >> 24) & 0xFF) * a00 * w00 +
+                      (double)((c10 >> 24) & 0xFF) * a10 * w10 +
+                      (double)((c01 >> 24) & 0xFF) * a01 * w01 +
+                      (double)((c11 >> 24) & 0xFF) * a11 * w11;
+    double premul_g = (double)((c00 >> 16) & 0xFF) * a00 * w00 +
+                      (double)((c10 >> 16) & 0xFF) * a10 * w10 +
+                      (double)((c01 >> 16) & 0xFF) * a01 * w01 +
+                      (double)((c11 >> 16) & 0xFF) * a11 * w11;
+    double premul_b = (double)((c00 >> 8) & 0xFF) * a00 * w00 +
+                      (double)((c10 >> 8) & 0xFF) * a10 * w10 +
+                      (double)((c01 >> 8) & 0xFF) * a01 * w01 +
+                      (double)((c11 >> 8) & 0xFF) * a11 * w11;
+
+    return pixels_pack_rgba_pm((int64_t)(premul_r + 0.5),
+                               (int64_t)(premul_g + 0.5),
+                               (int64_t)(premul_b + 0.5),
+                               (int64_t)(a + 0.5));
+}
+
+static uint32_t pixels_average_rgba_premul(
+    int64_t sum_premul_r, int64_t sum_premul_g, int64_t sum_premul_b, int64_t sum_a, int64_t count) {
+    if (count <= 0)
+        return 0;
+
+    int64_t a = (sum_a + count / 2) / count;
+    if (a <= 0)
+        return 0;
+
+    int64_t premul_r = (sum_premul_r + count / 2) / count;
+    int64_t premul_g = (sum_premul_g + count / 2) / count;
+    int64_t premul_b = (sum_premul_b + count / 2) / count;
+    return pixels_pack_rgba_pm(premul_r, premul_g, premul_b, a);
+}
+
+/// @brief Mirror the pixel buffer horizontally (left↔right). Returns a new Pixels.
 void *rt_pixels_flip_h(void *pixels) {
     if (!pixels) {
         rt_trap("Pixels.FlipH: null pixels");
@@ -50,21 +156,20 @@ void *rt_pixels_flip_h(void *pixels) {
     }
 
     rt_pixels_impl *p = (rt_pixels_impl *)pixels;
+    rt_pixels_impl *result = pixels_alloc(p->width, p->height);
+    if (!result)
+        return NULL;
 
-    // Flip in place: swap pixels symmetrically within each row
     for (int64_t y = 0; y < p->height; y++) {
-        uint32_t *row = p->data + y * p->width;
-        for (int64_t x = 0; x < p->width / 2; x++) {
-            uint32_t tmp = row[x];
-            row[x] = row[p->width - 1 - x];
-            row[p->width - 1 - x] = tmp;
+        for (int64_t x = 0; x < p->width; x++) {
+            result->data[y * p->width + (p->width - 1 - x)] = p->data[y * p->width + x];
         }
     }
 
-    return pixels; // Return self for chaining
+    return result;
 }
 
-/// @brief Mirror the pixel buffer vertically (top↔bottom) in place. Returns the same handle.
+/// @brief Mirror the pixel buffer vertically (top↔bottom). Returns a new Pixels.
 void *rt_pixels_flip_v(void *pixels) {
     if (!pixels) {
         rt_trap("Pixels.FlipV: null pixels");
@@ -72,23 +177,17 @@ void *rt_pixels_flip_v(void *pixels) {
     }
 
     rt_pixels_impl *p = (rt_pixels_impl *)pixels;
+    rt_pixels_impl *result = pixels_alloc(p->width, p->height);
+    if (!result)
+        return NULL;
 
-    // Flip in place: swap rows symmetrically
-    size_t row_bytes = (size_t)p->width * sizeof(uint32_t);
-    uint32_t *tmp_row = (uint32_t *)malloc(row_bytes);
-    if (!tmp_row)
-        return pixels;
-
-    for (int64_t y = 0; y < p->height / 2; y++) {
-        uint32_t *top = p->data + y * p->width;
-        uint32_t *bot = p->data + (p->height - 1 - y) * p->width;
-        memcpy(tmp_row, top, row_bytes);
-        memcpy(top, bot, row_bytes);
-        memcpy(bot, tmp_row, row_bytes);
+    for (int64_t y = 0; y < p->height; y++) {
+        memcpy(&result->data[(p->height - 1 - y) * p->width],
+               &p->data[y * p->width],
+               (size_t)p->width * sizeof(uint32_t));
     }
 
-    free(tmp_row);
-    return pixels; // Return self for chaining
+    return result;
 }
 
 /// @brief Rotate 90° clockwise. Returns a NEW Pixels (dimensions swap: w×h → h×w).
@@ -301,32 +400,8 @@ void *rt_pixels_rotate(void *pixels, double angle_degrees) {
             if (x1 >= 0 && x1 < p->width && y1 >= 0 && y1 < p->height)
                 c11 = p->data[y1 * p->width + x1];
 
-            // Bilinear interpolation for each channel (0xRRGGBBAA format)
-            uint8_t r00 = (c00 >> 24) & 0xFF, g00 = (c00 >> 16) & 0xFF;
-            uint8_t b00 = (c00 >> 8) & 0xFF, a00 = c00 & 0xFF;
-            uint8_t r10 = (c10 >> 24) & 0xFF, g10 = (c10 >> 16) & 0xFF;
-            uint8_t b10 = (c10 >> 8) & 0xFF, a10 = c10 & 0xFF;
-            uint8_t r01 = (c01 >> 24) & 0xFF, g01 = (c01 >> 16) & 0xFF;
-            uint8_t b01 = (c01 >> 8) & 0xFF, a01 = c01 & 0xFF;
-            uint8_t r11 = (c11 >> 24) & 0xFF, g11 = (c11 >> 16) & 0xFF;
-            uint8_t b11 = (c11 >> 8) & 0xFF, a11 = c11 & 0xFF;
-
-            double r = r00 * (1 - fx) * (1 - fy) + r10 * fx * (1 - fy) + r01 * (1 - fx) * fy +
-                       r11 * fx * fy;
-            double g = g00 * (1 - fx) * (1 - fy) + g10 * fx * (1 - fy) + g01 * (1 - fx) * fy +
-                       g11 * fx * fy;
-            double b = b00 * (1 - fx) * (1 - fy) + b10 * fx * (1 - fy) + b01 * (1 - fx) * fy +
-                       b11 * fx * fy;
-            double a = a00 * (1 - fx) * (1 - fy) + a10 * fx * (1 - fy) + a01 * (1 - fx) * fy +
-                       a11 * fx * fy;
-
-            uint8_t ri = (uint8_t)(r > 255 ? 255 : (r < 0 ? 0 : r));
-            uint8_t gi = (uint8_t)(g > 255 ? 255 : (g < 0 ? 0 : g));
-            uint8_t bi = (uint8_t)(b > 255 ? 255 : (b < 0 ? 0 : b));
-            uint8_t ai = (uint8_t)(a > 255 ? 255 : (a < 0 ? 0 : a));
-
             result->data[dy * new_width + dx] =
-                ((uint32_t)ri << 24) | ((uint32_t)gi << 16) | ((uint32_t)bi << 8) | ai;
+                pixels_bilerp_rgba_premul_double(c00, c10, c01, c11, fx, fy);
         }
     }
 
@@ -507,51 +582,51 @@ void *rt_pixels_blur(void *pixels, int64_t radius) {
     // Reduces O(w×h×(2r+1)²) to O(w×h×(2r+1)×2).  Format: 0xRRGGBBAA.
     uint32_t *tmp = (uint32_t *)malloc((size_t)(w * h) * sizeof(uint32_t));
     if (!tmp)
-        return result; // return zero-filled result on OOM
+        return result;
 
     // Horizontal pass: blur each row independently into tmp
     for (int64_t y = 0; y < h; y++) {
         for (int64_t x = 0; x < w; x++) {
-            int64_t sum_r = 0, sum_g = 0, sum_b = 0, sum_a = 0;
+            int64_t sum_premul_r = 0, sum_premul_g = 0, sum_premul_b = 0, sum_a = 0;
             int64_t count = 0;
             for (int64_t kdx = -radius; kdx <= radius; kdx++) {
                 int64_t sx = x + kdx;
                 if (sx >= 0 && sx < w) {
                     uint32_t pixel = p->data[y * w + sx];
-                    sum_r += (pixel >> 24) & 0xFF;
-                    sum_g += (pixel >> 16) & 0xFF;
-                    sum_b += (pixel >> 8) & 0xFF;
-                    sum_a += pixel & 0xFF;
+                    int64_t a = pixel & 0xFF;
+                    sum_premul_r += ((pixel >> 24) & 0xFF) * a;
+                    sum_premul_g += ((pixel >> 16) & 0xFF) * a;
+                    sum_premul_b += ((pixel >> 8) & 0xFF) * a;
+                    sum_a += a;
                     count++;
                 }
             }
             if (count > 0)
-                tmp[y * w + x] = ((uint32_t)(sum_r / count) << 24) |
-                                 ((uint32_t)(sum_g / count) << 16) |
-                                 ((uint32_t)(sum_b / count) << 8) | (uint32_t)(sum_a / count);
+                tmp[y * w + x] = pixels_average_rgba_premul(
+                    sum_premul_r, sum_premul_g, sum_premul_b, sum_a, count);
         }
     }
 
     // Vertical pass: blur each column from tmp into result (y-outer for cache locality)
     for (int64_t y = 0; y < h; y++) {
         for (int64_t x = 0; x < w; x++) {
-            int64_t sum_r = 0, sum_g = 0, sum_b = 0, sum_a = 0;
+            int64_t sum_premul_r = 0, sum_premul_g = 0, sum_premul_b = 0, sum_a = 0;
             int64_t count = 0;
             for (int64_t kdy = -radius; kdy <= radius; kdy++) {
                 int64_t sy = y + kdy;
                 if (sy >= 0 && sy < h) {
                     uint32_t pixel = tmp[sy * w + x];
-                    sum_r += (pixel >> 24) & 0xFF;
-                    sum_g += (pixel >> 16) & 0xFF;
-                    sum_b += (pixel >> 8) & 0xFF;
-                    sum_a += pixel & 0xFF;
+                    int64_t a = pixel & 0xFF;
+                    sum_premul_r += ((pixel >> 24) & 0xFF) * a;
+                    sum_premul_g += ((pixel >> 16) & 0xFF) * a;
+                    sum_premul_b += ((pixel >> 8) & 0xFF) * a;
+                    sum_a += a;
                     count++;
                 }
             }
             if (count > 0)
-                result->data[y * w + x] =
-                    ((uint32_t)(sum_r / count) << 24) | ((uint32_t)(sum_g / count) << 16) |
-                    ((uint32_t)(sum_b / count) << 8) | (uint32_t)(sum_a / count);
+                result->data[y * w + x] = pixels_average_rgba_premul(
+                    sum_premul_r, sum_premul_g, sum_premul_b, sum_a, count);
         }
     }
 
@@ -618,36 +693,8 @@ void *rt_pixels_resize(void *pixels, int64_t new_width, int64_t new_height) {
             uint32_t p01 = p->data[sy1 * p->width + src_x];
             uint32_t p11 = p->data[sy1 * p->width + sx1];
 
-            // Extract components - format is 0xRRGGBBAA
-            int64_t r00 = (p00 >> 24) & 0xFF, g00 = (p00 >> 16) & 0xFF, b00 = (p00 >> 8) & 0xFF,
-                    a00 = p00 & 0xFF;
-            int64_t r10 = (p10 >> 24) & 0xFF, g10 = (p10 >> 16) & 0xFF, b10 = (p10 >> 8) & 0xFF,
-                    a10 = p10 & 0xFF;
-            int64_t r01 = (p01 >> 24) & 0xFF, g01 = (p01 >> 16) & 0xFF, b01 = (p01 >> 8) & 0xFF,
-                    a01 = p01 & 0xFF;
-            int64_t r11 = (p11 >> 24) & 0xFF, g11 = (p11 >> 16) & 0xFF, b11 = (p11 >> 8) & 0xFF,
-                    a11 = p11 & 0xFF;
-
-            // Bilinear interpolation
-            int64_t inv_frac_x = 256 - frac_x;
-            int64_t inv_frac_y = 256 - frac_y;
-
-            int64_t a = (a00 * inv_frac_x * inv_frac_y + a10 * frac_x * inv_frac_y +
-                         a01 * inv_frac_x * frac_y + a11 * frac_x * frac_y) >>
-                        16;
-            int64_t r = (r00 * inv_frac_x * inv_frac_y + r10 * frac_x * inv_frac_y +
-                         r01 * inv_frac_x * frac_y + r11 * frac_x * frac_y) >>
-                        16;
-            int64_t g = (g00 * inv_frac_x * inv_frac_y + g10 * frac_x * inv_frac_y +
-                         g01 * inv_frac_x * frac_y + g11 * frac_x * frac_y) >>
-                        16;
-            int64_t b = (b00 * inv_frac_x * inv_frac_y + b10 * frac_x * inv_frac_y +
-                         b01 * inv_frac_x * frac_y + b11 * frac_x * frac_y) >>
-                        16;
-
-            result->data[y * new_width + x] = ((uint32_t)(r & 0xFF) << 24) |
-                                              ((uint32_t)(g & 0xFF) << 16) |
-                                              ((uint32_t)(b & 0xFF) << 8) | (a & 0xFF);
+            result->data[y * new_width + x] =
+                pixels_bilerp_rgba_premul_fixed(p00, p10, p01, p11, frac_x, frac_y);
         }
     }
 

@@ -212,6 +212,11 @@ typedef struct {
     int64_t last_flip_us;    ///< Monotonic time (microseconds) of last Flip()
     int64_t delta_time_ms;   ///< Milliseconds elapsed between the last two Flip() calls
     int64_t dt_max_ms;       ///< Maximum delta time clamp (0 = no clamping)
+    int8_t clip_enabled;     ///< Runtime mirror of the logical clip rect state
+    int64_t clip_x;          ///< Logical clip X
+    int64_t clip_y;          ///< Logical clip Y
+    int64_t clip_w;          ///< Logical clip width
+    int64_t clip_h;          ///< Logical clip height
 } rt_canvas;
 
 static inline rt_canvas *rt_canvas_checked(void *canvas_ptr) {
@@ -227,5 +232,115 @@ typedef struct rt_pixels_impl {
     int64_t height;
     uint32_t *data;
 } rt_pixels_impl;
+
+#define RT_COLOR_EXPLICIT_ALPHA_FLAG ((int64_t)1 << 56)
+
+static inline float rtg_sanitize_scale(float scale) {
+    return scale >= 1.0f ? scale : 1.0f;
+}
+
+static inline int64_t rtg_round_scaled(double value) {
+    return (int64_t)(value >= 0.0 ? value + 0.5 : value - 0.5);
+}
+
+static inline int64_t rtg_scale_up_i64(int64_t logical, float scale) {
+    return rtg_round_scaled((double)logical * (double)rtg_sanitize_scale(scale));
+}
+
+static inline int64_t rtg_scale_down_i64(int64_t physical, float scale) {
+    return rtg_round_scaled((double)physical / (double)rtg_sanitize_scale(scale));
+}
+
+static inline void rt_canvas_resync_window_state(rt_canvas *canvas) {
+    if (!canvas || !canvas->gfx_win)
+        return;
+
+    float scale = rtg_sanitize_scale(vgfx_window_get_scale(canvas->gfx_win));
+    vgfx_set_coord_scale(canvas->gfx_win, scale);
+    if (canvas->clip_enabled) {
+        vgfx_set_clip(canvas->gfx_win,
+                      (int32_t)canvas->clip_x,
+                      (int32_t)canvas->clip_y,
+                      (int32_t)canvas->clip_w,
+                      (int32_t)canvas->clip_h);
+    } else {
+        vgfx_clear_clip(canvas->gfx_win);
+    }
+}
+
+static inline int8_t rt_canvas_get_logical_clip_bounds(
+    rt_canvas *canvas, int64_t *x, int64_t *y, int64_t *w, int64_t *h) {
+    if (!canvas || !canvas->gfx_win || !x || !y || !w || !h)
+        return 0;
+
+    rt_canvas_resync_window_state(canvas);
+
+    int32_t canvas_w = 0;
+    int32_t canvas_h = 0;
+    vgfx_get_size(canvas->gfx_win, &canvas_w, &canvas_h);
+
+    int64_t clip_x = 0;
+    int64_t clip_y = 0;
+    int64_t clip_w = (int64_t)canvas_w;
+    int64_t clip_h = (int64_t)canvas_h;
+    if (canvas->clip_enabled) {
+        clip_x = canvas->clip_x;
+        clip_y = canvas->clip_y;
+        clip_w = canvas->clip_w;
+        clip_h = canvas->clip_h;
+    }
+
+    int64_t x0 = rtg_max64(0, clip_x);
+    int64_t y0 = rtg_max64(0, clip_y);
+    int64_t x1 = rtg_min64((int64_t)canvas_w, clip_x + clip_w);
+    int64_t y1 = rtg_min64((int64_t)canvas_h, clip_y + clip_h);
+    if (clip_w <= 0 || clip_h <= 0 || x1 <= x0 || y1 <= y0) {
+        *x = x0;
+        *y = y0;
+        *w = 0;
+        *h = 0;
+        return 0;
+    }
+
+    *x = x0;
+    *y = y0;
+    *w = x1 - x0;
+    *h = y1 - y0;
+    return 1;
+}
+
+static inline int8_t rt_canvas_clip_intersect_logical(
+    rt_canvas *canvas, int64_t *x, int64_t *y, int64_t *w, int64_t *h) {
+    if (!x || !y || !w || !h || *w <= 0 || *h <= 0)
+        return 0;
+
+    int64_t clip_x = 0;
+    int64_t clip_y = 0;
+    int64_t clip_w = 0;
+    int64_t clip_h = 0;
+    if (!rt_canvas_get_logical_clip_bounds(canvas, &clip_x, &clip_y, &clip_w, &clip_h)) {
+        *w = 0;
+        *h = 0;
+        return 0;
+    }
+
+    int64_t x0 = rtg_max64(*x, clip_x);
+    int64_t y0 = rtg_max64(*y, clip_y);
+    int64_t x1 = rtg_min64(*x + *w, clip_x + clip_w);
+    int64_t y1 = rtg_min64(*y + *h, clip_y + clip_h);
+    if (x1 <= x0 || y1 <= y0) {
+        *x = x0;
+        *y = y0;
+        *w = 0;
+        *h = 0;
+        return 0;
+    }
+
+    *x = x0;
+    *y = y0;
+    *w = x1 - x0;
+    *h = y1 - y0;
+    return 1;
+}
 
 #endif /* VIPER_ENABLE_GRAPHICS */

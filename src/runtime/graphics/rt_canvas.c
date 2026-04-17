@@ -95,6 +95,11 @@ void *rt_canvas_new(rt_string title, int64_t width, int64_t height) {
     canvas->last_flip_us = 0;
     canvas->delta_time_ms = 0;
     canvas->dt_max_ms = 0;
+    canvas->clip_enabled = 0;
+    canvas->clip_x = 0;
+    canvas->clip_y = 0;
+    canvas->clip_w = 0;
+    canvas->clip_h = 0;
     rt_obj_set_finalizer(canvas, rt_canvas_finalize);
 
     vgfx_window_params_t params = vgfx_window_params_default();
@@ -171,6 +176,8 @@ int64_t rt_canvas_width(void *canvas_ptr) {
     if (!canvas->gfx_win)
         return 0;
 
+    rt_canvas_resync_window_state(canvas);
+
     int32_t width = 0;
     vgfx_get_size(canvas->gfx_win, &width, NULL);
     return (int64_t)width;
@@ -186,6 +193,8 @@ int64_t rt_canvas_height(void *canvas_ptr) {
     rt_canvas *canvas = (rt_canvas *)canvas_ptr;
     if (!canvas->gfx_win)
         return 0;
+
+    rt_canvas_resync_window_state(canvas);
 
     int32_t height = 0;
     vgfx_get_size(canvas->gfx_win, NULL, &height);
@@ -226,13 +235,14 @@ void rt_canvas_flip(void *canvas_ptr) {
     if (!canvas->gfx_win)
         return;
 
+    rt_canvas_resync_window_state(canvas);
     vgfx_update(canvas->gfx_win);
 
     /* Compute delta time between consecutive Flip() calls */
     int64_t now_us = rt_clock_ticks_us();
     if (canvas->last_flip_us > 0) {
         int64_t delta_us = now_us - canvas->last_flip_us;
-        canvas->delta_time_ms = delta_us > 0 ? delta_us / 1000 : 0;
+        canvas->delta_time_ms = delta_us > 0 ? (delta_us + 999) / 1000 : 0;
     } else {
         canvas->delta_time_ms = 0; /* first frame */
     }
@@ -278,8 +288,10 @@ void rt_canvas_clear(void *canvas_ptr, int64_t color) {
         return;
 
     rt_canvas *canvas = (rt_canvas *)canvas_ptr;
-    if (canvas->gfx_win)
+    if (canvas->gfx_win) {
+        rt_canvas_resync_window_state(canvas);
         vgfx_cls(canvas->gfx_win, (vgfx_color_t)color);
+    }
 }
 
 /// @brief Poll for input events and update the keyboard, mouse, and gamepad state.
@@ -300,6 +312,8 @@ int64_t rt_canvas_poll(void *canvas_ptr) {
     rt_canvas *canvas = (rt_canvas *)canvas_ptr;
     if (!canvas->gfx_win)
         return 0;
+
+    rt_canvas_resync_window_state(canvas);
 
     // Reset keyboard, mouse, and gamepad per-frame state at the start of polling
     rt_keyboard_begin_frame();
@@ -399,16 +413,28 @@ int64_t rt_canvas_key_held(void *canvas_ptr, int64_t key) {
 /// @param h Height of clip region.
 void rt_canvas_set_clip_rect(void *canvas_ptr, int64_t x, int64_t y, int64_t w, int64_t h) {
     rt_canvas *canvas = (rt_canvas *)canvas_ptr;
-    if (canvas && canvas->gfx_win)
-        vgfx_set_clip(canvas->gfx_win, (int32_t)x, (int32_t)y, (int32_t)w, (int32_t)h);
+    if (canvas && canvas->gfx_win) {
+        canvas->clip_enabled = 1;
+        canvas->clip_x = x;
+        canvas->clip_y = y;
+        canvas->clip_w = w;
+        canvas->clip_h = h;
+        rt_canvas_resync_window_state(canvas);
+    }
 }
 
 /// @brief Remove the clipping rectangle, restoring full-canvas drawing.
 /// @param canvas_ptr Canvas handle. NULL-safe.
 void rt_canvas_clear_clip_rect(void *canvas_ptr) {
     rt_canvas *canvas = (rt_canvas *)canvas_ptr;
-    if (canvas && canvas->gfx_win)
-        vgfx_clear_clip(canvas->gfx_win);
+    if (canvas && canvas->gfx_win) {
+        canvas->clip_enabled = 0;
+        canvas->clip_x = 0;
+        canvas->clip_y = 0;
+        canvas->clip_w = 0;
+        canvas->clip_h = 0;
+        rt_canvas_resync_window_state(canvas);
+    }
 }
 
 /// @brief Change the window title bar text.
@@ -443,8 +469,10 @@ rt_string rt_canvas_get_title(void *canvas_ptr) {
 /// @param height New height in logical pixels.
 void rt_canvas_resize(void *canvas_ptr, int64_t width, int64_t height) {
     rt_canvas *canvas = (rt_canvas *)canvas_ptr;
-    if (canvas && canvas->gfx_win)
+    if (canvas && canvas->gfx_win) {
         vgfx_set_window_size(canvas->gfx_win, (int32_t)width, (int32_t)height);
+        rt_canvas_resync_window_state(canvas);
+    }
 }
 
 /// @brief Programmatically close the canvas window.
@@ -482,16 +510,20 @@ void *rt_canvas_screenshot(void *canvas_ptr) {
 /// @param canvas_ptr Canvas handle. NULL-safe.
 void rt_canvas_fullscreen(void *canvas_ptr) {
     rt_canvas *canvas = (rt_canvas *)canvas_ptr;
-    if (canvas && canvas->gfx_win)
+    if (canvas && canvas->gfx_win) {
         vgfx_set_fullscreen(canvas->gfx_win, 1);
+        rt_canvas_resync_window_state(canvas);
+    }
 }
 
 /// @brief Switch the canvas window back to windowed mode from fullscreen.
 /// @param canvas_ptr Canvas handle. NULL-safe.
 void rt_canvas_windowed(void *canvas_ptr) {
     rt_canvas *canvas = (rt_canvas *)canvas_ptr;
-    if (canvas && canvas->gfx_win)
+    if (canvas && canvas->gfx_win) {
         vgfx_set_fullscreen(canvas->gfx_win, 0);
+        rt_canvas_resync_window_state(canvas);
+    }
 }
 
 /// @brief Set the target frame rate for the canvas.

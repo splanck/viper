@@ -110,6 +110,10 @@ static int64_t sprite_scale_origin(int64_t origin, int64_t scale) {
     return (origin * scale) / 100;
 }
 
+static int64_t sprite_normalize_scale(int64_t scale) {
+    return scale < 1 ? 1 : scale;
+}
+
 /// @brief Release a transformed-pixels buffer if it isn't the original frame.
 ///
 /// `sprite_prepare_pixels` may either return the frame unchanged
@@ -185,17 +189,18 @@ static void *sprite_prepare_pixels(rt_sprite_impl *sprite,
     if (!frame)
         return NULL;
 
+    scale_x = sprite_normalize_scale(scale_x);
+    scale_y = sprite_normalize_scale(scale_y);
+
     void *transformed = frame;
 
     if (sprite->flip_x) {
-        transformed = sprite_clone_for_edit(transformed, frame);
-        if (transformed)
-            rt_pixels_flip_h(transformed);
+        void *flipped = rt_pixels_flip_h(transformed);
+        transformed = sprite_replace_pixels(flipped, &transformed, frame);
     }
     if (sprite->flip_y) {
-        transformed = sprite_clone_for_edit(transformed, frame);
-        if (transformed)
-            rt_pixels_flip_v(transformed);
+        void *flipped = rt_pixels_flip_v(transformed);
+        transformed = sprite_replace_pixels(flipped, &transformed, frame);
     }
 
     if (!transformed)
@@ -517,7 +522,7 @@ void rt_sprite_set_scale_x(void *sprite_ptr, int64_t scale) {
         rt_trap("Sprite.ScaleX: null sprite");
         return;
     }
-    ((rt_sprite_impl *)sprite_ptr)->scale_x = scale;
+    ((rt_sprite_impl *)sprite_ptr)->scale_x = sprite_normalize_scale(scale);
 }
 
 /// @brief Vertical scale percent (100 = unscaled). Default 100 when null (with trap).
@@ -535,7 +540,7 @@ void rt_sprite_set_scale_y(void *sprite_ptr, int64_t scale) {
         rt_trap("Sprite.ScaleY: null sprite");
         return;
     }
-    ((rt_sprite_impl *)sprite_ptr)->scale_y = scale;
+    ((rt_sprite_impl *)sprite_ptr)->scale_y = sprite_normalize_scale(scale);
 }
 
 /// @brief Rotation in degrees clockwise (0..360 typical, but unconstrained). Traps on null.
@@ -838,6 +843,14 @@ int8_t rt_sprite_overlaps(void *sprite_ptr, void *other_ptr) {
     int64_t h1 = rt_sprite_get_height(sprite_ptr) * s1->scale_y / 100;
     int64_t w2 = rt_sprite_get_width(other_ptr) * s2->scale_x / 100;
     int64_t h2 = rt_sprite_get_height(other_ptr) * s2->scale_y / 100;
+    if (w1 < 1)
+        w1 = 1;
+    if (h1 < 1)
+        h1 = 1;
+    if (w2 < 1)
+        w2 = 1;
+    if (h2 < 1)
+        h2 = 1;
 
     int64_t x1 = s1->x - sprite_scale_origin(s1->origin_x, s1->scale_x);
     int64_t y1 = s1->y - sprite_scale_origin(s1->origin_y, s1->scale_y);
@@ -859,6 +872,10 @@ int8_t rt_sprite_contains(void *sprite_ptr, int64_t px, int64_t py) {
 
     int64_t w = rt_sprite_get_width(sprite_ptr) * sprite->scale_x / 100;
     int64_t h = rt_sprite_get_height(sprite_ptr) * sprite->scale_y / 100;
+    if (w < 1)
+        w = 1;
+    if (h < 1)
+        h = 1;
     int64_t x = sprite->x - sprite_scale_origin(sprite->origin_x, sprite->scale_x);
     int64_t y = sprite->y - sprite_scale_origin(sprite->origin_y, sprite->scale_y);
 

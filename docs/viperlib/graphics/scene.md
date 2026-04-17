@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-16
+last-verified: 2026-04-17
 ---
 
 # Scene Graph
@@ -36,7 +36,7 @@ last-verified: 2026-04-16
 | `ClearBounds()`                  | `Void()`                               | Remove camera bounds                             |
 | `Follow(x, y)`                   | `Void(Integer, Integer)`               | Center camera on world position                  |
 | `Move(dx, dy)`                   | `Void(Integer, Integer)`               | Move camera by delta amounts                     |
-| `SetBounds(minX, minY, maxX, maxY)` | `Void(Integer, Integer, Integer, Integer)` | Limit camera movement range         |
+| `SetBounds(minX, minY, maxX, maxY)` | `Void(Integer, Integer, Integer, Integer)` | Limit camera movement range; immediately clamps the current view if needed |
 | `ToScreenX(worldX)`              | `Integer(Integer)`                     | Convert world X to screen X                      |
 | `ToScreenY(worldY)`              | `Integer(Integer)`                     | Convert world Y to screen Y                      |
 | `ToWorldX(screenX)`              | `Integer(Integer)`                     | Convert screen X to world X                      |
@@ -464,7 +464,7 @@ Batched sprite rendering for improved performance when drawing many sprites.
 **Type:** Instance (obj)
 **Constructor:** `NEW Viper.Graphics.SpriteBatch(capacity)`
 
-Creates a sprite batch with the given initial capacity (use 0 for default). SpriteBatch records draw calls, optionally sorts them by depth, applies shared tint/alpha state, and flushes them during `End(canvas)`. `End(canvas)` also clears the recorded batch so the same instance can be reused next frame. Use `Draw`/`DrawEx` for `Sprite` objects and `DrawPixels`/`DrawRegion` for raw `Pixels` buffers. `DrawPixels` preserves per-pixel alpha, so transparent sprites and overlays blend like `Canvas.BlitAlpha`.
+Creates a sprite batch with the given initial capacity (use 0 for default). SpriteBatch records draw calls, optionally sorts them by depth, applies shared tint/alpha state, and flushes them during `End(canvas)`. `End(canvas)` also clears the recorded batch so the same instance can be reused next frame. Use `Draw`/`DrawEx` for `Sprite` objects and `DrawPixels`/`DrawRegion` for raw `Pixels` buffers. `DrawPixels` preserves per-pixel alpha, so transparent sprites and overlays blend like `Canvas.BlitAlpha`. When depth sorting is enabled, items with the same depth still preserve their original submission order. Scale values below `1` clamp to `1` for both sprite and raw-pixels batch entries.
 
 ### Properties
 
@@ -487,7 +487,7 @@ Creates a sprite batch with the given initial capacity (use 0 for default). Spri
 | `End(canvas)`                                   | `Void(Canvas)`                                         | End batch, flush recorded draws to the canvas, and clear the batch |
 | `ResetSettings()`                               | `Void()`                                               | Clear all settings to defaults                 |
 | `SetAlpha(alpha)`                               | `Void(Integer)`                                        | Set global alpha (0-255) for all sprites       |
-| `SetSortByDepth(enabled)`                       | `Void(Integer)`                                        | Enable/disable depth sorting (1=on, 0=off)     |
+| `SetSortByDepth(enabled)`                       | `Void(Integer)`                                        | Enable/disable depth sorting (1=on, 0=off); equal depths stay stable in submission order |
 | `SetTint(color)`                                | `Void(Integer)`                                        | Set tint color (ARGB) for all sprites          |
 | `DrawAtlas(atlas, name, x, y)`                  | `Void(TextureAtlas, String, Integer, Integer)`         | Draw named atlas region at position            |
 | `DrawAtlasScaled(atlas, name, x, y, scale)`     | `Void(TextureAtlas, String, Integer, Integer, Integer)`| Draw named atlas region with uniform scale     |

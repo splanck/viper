@@ -47,6 +47,13 @@ TEST(TilemapAnim, NonAnimatedUnchanged) {
     EXPECT_EQ(rt_tilemap_resolve_anim_tile(tm, 99), 99); // not animated
 }
 
+TEST(TilemapAnim, InvalidFrameDurationIgnored) {
+    void *tm = rt_tilemap_new(10, 10, 32, 32);
+    rt_tilemap_set_tile_anim(tm, 7, 2, 0);
+    rt_tilemap_update_anims(tm, 500);
+    EXPECT_EQ(rt_tilemap_resolve_anim_tile(tm, 7), 7);
+}
+
 int main() {
     return viper_test::run_all_tests();
 }

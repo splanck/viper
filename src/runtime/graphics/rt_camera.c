@@ -612,7 +612,11 @@ void rt_camera_set_bounds(
     camera->min_y = min_y;
     camera->max_x = max_x;
     camera->max_y = max_y;
+    int64_t old_x = camera->x;
+    int64_t old_y = camera->y;
     camera_clamp_bounds(camera);
+    if (camera->x != old_x || camera->y != old_y)
+        camera->dirty = 1;
 }
 
 /// @brief Disable bounds clamping. Camera can be moved freely afterwards.

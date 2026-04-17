@@ -239,6 +239,7 @@ void rt_canvas_ellipse_alpha(
 /// @param x Destination X coordinate.
 /// @param y Destination Y coordinate.
 /// @param pixels Source Pixels object.
+/// @note Uses logical canvas coordinates and honors the active clip rectangle.
 void rt_canvas_blit(void *canvas, int64_t x, int64_t y, void *pixels);
 
 /// @brief Blit a region of a Pixels buffer to the canvas.
@@ -250,6 +251,7 @@ void rt_canvas_blit(void *canvas, int64_t x, int64_t y, void *pixels);
 /// @param sy Source Y coordinate.
 /// @param w Width of region to blit.
 /// @param h Height of region to blit.
+/// @note Uses logical canvas coordinates and honors the active clip rectangle.
 void rt_canvas_blit_region(void *canvas,
                            int64_t dx,
                            int64_t dy,
@@ -264,6 +266,7 @@ void rt_canvas_blit_region(void *canvas,
 /// @param x Destination X coordinate.
 /// @param y Destination Y coordinate.
 /// @param pixels Source Pixels object (RGBA format).
+/// @note Uses logical canvas coordinates and honors the active clip rectangle.
 void rt_canvas_blit_alpha(void *canvas, int64_t x, int64_t y, void *pixels);
 
 //=========================================================================
@@ -308,7 +311,8 @@ void rt_canvas_round_frame(
 /// @param x Starting X coordinate.
 /// @param y Starting Y coordinate.
 /// @param color Fill color (0x00RRGGBB).
-/// @note Fills connected pixels of the same color as the starting pixel.
+/// @note Fills connected pixels of the same color as the starting pixel and
+///       does not expand beyond the active clip rectangle.
 void rt_canvas_flood_fill(void *canvas, int64_t x, int64_t y, int64_t color);
 
 /// @brief Draw a filled triangle.
@@ -659,6 +663,7 @@ void rt_canvas_windowed(void *canvas);
 /// @param h Height.
 /// @param c1 Left color (0x00RRGGBB).
 /// @param c2 Right color (0x00RRGGBB).
+/// @note Honors the active clip rectangle.
 void rt_canvas_gradient_h(
     void *canvas, int64_t x, int64_t y, int64_t w, int64_t h, int64_t c1, int64_t c2);
 
@@ -670,6 +675,7 @@ void rt_canvas_gradient_h(
 /// @param h Height.
 /// @param c1 Top color (0x00RRGGBB).
 /// @param c2 Bottom color (0x00RRGGBB).
+/// @note Honors the active clip rectangle.
 void rt_canvas_gradient_v(
     void *canvas, int64_t x, int64_t y, int64_t w, int64_t h, int64_t c1, int64_t c2);
 

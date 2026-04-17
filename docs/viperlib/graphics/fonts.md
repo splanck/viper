@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-16
+last-verified: 2026-04-17
 ---
 
 # Fonts
@@ -23,8 +23,8 @@ last-verified: 2026-04-16
 
 Load variable-size bitmap fonts from BDF (Bitmap Distribution Format) or PSF (PC Screen Font) files. Provides text measurement and integrates with Canvas for rendering.
 
-Input strings are decoded as UTF-8 for measurement and drawing. The loaded glyph table still spans
-codepoints `0-255`, so missing glyphs fall back to `?` (or space if `?` is unavailable).
+Input strings are decoded as UTF-8 for measurement and drawing. The runtime stores glyphs for
+BMP codepoints `0-65535`; missing glyphs fall back to `?` (or space if `?` is unavailable).
 
 **Type:** Static (no instance constructor — use `LoadBDF` or `LoadPSF`)
 
@@ -49,7 +49,7 @@ codepoints `0-255`, so missing glyphs fall back to `?` (or space if `?` is unava
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| `TextWidth(text)` | `Integer(String)` | Measure pixel width of a UTF-8 string in this font |
+| `TextWidth(text)` | `Integer(String)` | Measure rendered pixel width of a UTF-8 string, including glyph overhangs |
 
 ---
 
@@ -60,10 +60,10 @@ These methods extend the Canvas class for rendering text with a loaded BitmapFon
 | Method | Signature | Description |
 |--------|-----------|-------------|
 | `TextFont(x, y, text, font, color)` | `void(Integer, Integer, String, BitmapFont, Integer)` | Draw text at position |
-| `TextFontBg(x, y, text, font, fg, bg)` | `void(Integer, Integer, String, BitmapFont, Integer, Integer)` | Draw with background color |
+| `TextFontBg(x, y, text, font, fg, bg)` | `void(Integer, Integer, String, BitmapFont, Integer, Integer)` | Draw with background color covering both advance cells and glyph overhangs |
 | `TextFontScaled(x, y, text, font, scale, color)` | `void(Integer, Integer, String, BitmapFont, Integer, Integer)` | Draw with integer scaling |
-| `TextFontCentered(y, text, font, color)` | `void(Integer, String, BitmapFont, Integer)` | Draw horizontally centered |
-| `TextFontRight(margin, y, text, font, color)` | `void(Integer, Integer, String, BitmapFont, Integer)` | Draw right-aligned |
+| `TextFontCentered(y, text, font, color)` | `void(Integer, String, BitmapFont, Integer)` | Draw horizontally centered using rendered glyph bounds |
+| `TextFontRight(margin, y, text, font, color)` | `void(Integer, Integer, String, BitmapFont, Integer)` | Draw right-aligned using rendered glyph bounds |
 
 ---
 
@@ -74,7 +74,7 @@ These methods extend the Canvas class for rendering text with a loaded BitmapFon
 A plain-text format defined by Adobe for the X Window System. Each glyph is encoded as hex bitmap rows.
 
 - **File extension:** `.bdf`
-- **Character set:** ASCII + Latin-1 (codepoints 0-255)
+- **Character set:** Any BMP codepoints present in the file (`0-65535`)
 - **Features:** Per-glyph width (proportional support), baseline positioning
 - **Free fonts:** Terminus, Cozette, Tamzen, GNU Unifont, Spleen
 
@@ -83,7 +83,7 @@ A plain-text format defined by Adobe for the X Window System. Each glyph is enco
 A simple binary format used by the Linux console. Supports v1 (2-byte header) and v2 (32-byte header).
 
 - **File extension:** `.psf`
-- **Character set:** Up to 256 or 512 glyphs (sequential from codepoint 0)
+- **Character set:** Up to 256 or 512 glyphs by index; BMP Unicode mappings are preserved when present
 - **Features:** Always monospace, compact binary format
 - **Free fonts:** Linux console fonts (`/usr/share/consolefonts/`)
 

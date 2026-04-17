@@ -249,6 +249,26 @@ static void test_negative_body_does_not_false_collide(void) {
     PASS();
 }
 
+static void test_one_way_platform_catches_fast_downward_crossing(void) {
+    TEST("One-way platform catches a fast downward crossing");
+    void *tm = rt_tilemap_new(2, 3, 16, 16);
+    assert(tm != NULL);
+
+    rt_tilemap_set_tile(tm, 0, 1, 1);
+    rt_tilemap_set_collision(tm, 1, RT_TILE_COLLISION_ONE_WAY_UP);
+
+    // Current position overlaps the platform, but the top edge has already stepped well past the
+    // surface this frame. Velocity preserves the previous-frame crossing direction.
+    void *body = rt_physics2d_body_new(0.0, 24.0, 12.0, 12.0, 1.0);
+    assert(body != NULL);
+    rt_physics2d_body_set_vel(body, 0.0, 20.0);
+
+    assert(rt_tilemap_collide_body(tm, body) == 1);
+    assert(rt_physics2d_body_y(body) == 4.0);
+    assert(rt_physics2d_body_vy(body) == 0.0);
+    PASS();
+}
+
 static void test_backwards_compatibility(void) {
     TEST("Backwards compatibility (single-layer API on layer 0)");
     void *tm = rt_tilemap_new(10, 10, 16, 16);
@@ -417,6 +437,7 @@ int main() {
     test_negative_pixel_to_tile_rounds_down();
     test_negative_pixels_do_not_hit_tile_zero();
     test_negative_body_does_not_false_collide();
+    test_one_way_platform_catches_fast_downward_crossing();
     test_backwards_compatibility();
     test_remove_layer();
     test_cannot_remove_base_layer();
