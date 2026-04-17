@@ -30,8 +30,10 @@
 // ============================================================================
 module game_engine;
 
+bind Viper.Fmt as Fmt;
 bind "../model/game_state";
 bind "./rng";
+bind "./manager_action";
 bind "./manager_policy";
 bind "./plate_appearance_engine";
 bind "./scorer";
@@ -87,6 +89,12 @@ class GameEngine {
             state.clearCount();
 
             while state.outs < 3 {
+                // Between-PA substitution checkpoint (plan 14 §
+                // MakeSubstitution). The default AI policy returns NOOP
+                // so AI-only games are behavior-preserving; the human
+                // policy surfaces a pinch-hit/pinch-run/defensive-sub
+                // prompt here when the pacing profile enables it.
+                self.maybeSubstitute();
                 self.maybeChangePitcher();
                 var result = pa_.resolve(state, self.defensePolicy());
                 scorer_.apply(state, result);
@@ -138,7 +146,7 @@ class GameEngine {
         var defense = state.defense();
         var policy = self.defensePolicy();
         var decision = policy.decidePitchingChangeAction(state, defense);
-        if decision.kind != manager_policy.ACTION_CHANGE_PITCHER {
+        if decision.kind != manager_action.ACTION_CHANGE_PITCHER {
             return;
         }
         var oldPitcher = defense.lineup.activePitcher;
@@ -223,5 +231,72 @@ class GameEngine {
             return homePolicy_;
         }
         return awayPolicy_;
+    }
+
+    // Return the policy of the team currently at bat. Mirror of
+    // defensePolicy — needed for substitution checkpoints where the
+    // offensive manager decides whether to pinch-hit / pinch-run / make a
+    // defensive switch ahead of the next PA.
+    hide func offensePolicy() -> manager_policy.DefaultManagerPolicy {
+        if state.topHalf {
+            return awayPolicy_;
+        }
+        return homePolicy_;
+    }
+
+    // Return the TeamGameState of the team currently at bat.
+    hide func offenseTeam() -> game_state.TeamGameState {
+        if state.topHalf {
+            return state.away;
+        }
+        return state.home;
+    }
+
+    // Consult the offensive team's manager policy to see if it wants to make
+    // a between-PA substitution (pinch hit / pinch run / defensive switch).
+    // The default AI policy returns NOOP, so this is inert for AI-only
+    // games — no existing probe output shifts. HumanManagerPolicy overrides
+    // decideSubstitutionAction and returns ACTION_MAKE_SUBSTITUTION with a
+    // filled-in payload (subSlot / subOut / subIn) when the user picks a
+    // substitution from the prompt.
+    hide func maybeSubstitute() {
+        var offense = self.offenseTeam();
+        var policy = self.offensePolicy();
+        var decision = policy.decideSubstitutionAction(state, offense);
+        if decision.kind != manager_action.ACTION_MAKE_SUBSTITUTION {
+            return;
+        }
+        self.applySubstitution(offense, policy, decision);
+    }
+
+    // Apply a single MakeSubstitution action. Validates the payload, swaps
+    // the bench player into the batting order at the chosen slot, writes
+    // the decision log line, and emits an event-log line. Rejects the
+    // action silently if the payload is malformed or the swap fails
+    // (LineupCard.swapInBench returns false on illegal slot/unknown bench
+    // player) — in that case the engine proceeds as if the policy had
+    // returned NOOP.
+    hide func applySubstitution(offense: game_state.TeamGameState,
+                                policy: manager_policy.DefaultManagerPolicy,
+                                decision: manager_action.ManagerAction) {
+        if decision.subIn == null || decision.subSlot <= 0 {
+            return;
+        }
+        var slot = decision.subSlot;
+        var inPlayer = decision.subIn!;
+        var outName = "";
+        if decision.subOut != null {
+            outName = decision.subOut!.name;
+        }
+        var ok = offense.lineup.swapInBench(slot, inPlayer);
+        if !ok {
+            return;
+        }
+        state.managerDecisionLog.add(policy.policyName + "|substitution|slot=" +
+                                     Fmt.Int(slot) + "|" + outName + "->" +
+                                     inPlayer.name + "|" + decision.rationale);
+        state.eventLog.add(offense.teamRef.fullName + " substitutes " +
+                           inPlayer.name + " for " + outName +
+                           " in slot " + Fmt.Int(slot) + ".");
     }
 }

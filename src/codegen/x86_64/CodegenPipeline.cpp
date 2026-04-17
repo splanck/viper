@@ -238,6 +238,7 @@ void collectNativeLinkArchives(const common::LinkContext &ctx, std::vector<std::
 int linkObjectWithNativeLinker(const std::filesystem::path &objPath,
                                const std::filesystem::path &exePath,
                                const common::LinkContext &ctx,
+                               const std::vector<std::string> &extraObjects,
                                std::size_t stackSize,
                                std::ostream &out,
                                std::ostream &err) {
@@ -249,6 +250,7 @@ int linkObjectWithNativeLinker(const std::filesystem::path &objPath,
     linkOpts.arch = linker::LinkArch::X86_64;
     linkOpts.stackSize = stackSize;
     collectNativeLinkArchives(ctx, linkOpts.archivePaths);
+    linkOpts.extraObjPaths = extraObjects;
     return linker::nativeLink(linkOpts, out, err);
 }
 
@@ -343,6 +345,14 @@ PipelineResult CodegenPipeline::run() {
     pipelineModule.il = std::move(module);
 
     const bool useNativeAsm = (opts_.assembler_mode == AssemblerMode::Native);
+    if (!useNativeAsm && !opts_.asset_blob_path.empty() && opts_.extra_objects.empty()) {
+        err << "error: x64 --asset-blob requires --native-asm or a companion --extra-obj\n";
+        result.exit_code = 1;
+        result.stdout_text = out.str();
+        result.stderr_text = err.str();
+        return result;
+    }
+
     CodegenOptions codegenOpts{};
     codegenOpts.optimizeLevel = opts_.optimize;
     codegenOpts.targetABI = opts_.target_abi;
@@ -507,7 +517,8 @@ PipelineResult CodegenPipeline::run() {
             err << "warning: --system-link is deprecated; using the native linker\n";
 
         const int linkExit =
-            linkObjectWithNativeLinker(objPath, exePath, ctx, opts_.stack_size, out, err);
+            linkObjectWithNativeLinker(
+                objPath, exePath, ctx, opts_.extra_objects, opts_.stack_size, out, err);
         if (linkExit != 0) {
             result.exit_code = linkExit == -1 ? 1 : linkExit;
             result.stdout_text = out.str();
@@ -631,7 +642,8 @@ PipelineResult CodegenPipeline::run() {
         err << "warning: --system-link is deprecated; using the native linker\n";
 
     const int linkExit =
-        linkObjectWithNativeLinker(objPath, exePath, ctx, opts_.stack_size, out, err);
+        linkObjectWithNativeLinker(
+            objPath, exePath, ctx, opts_.extra_objects, opts_.stack_size, out, err);
 
     {
         std::error_code ec;

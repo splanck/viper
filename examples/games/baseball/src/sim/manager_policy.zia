@@ -37,42 +37,17 @@ bind "../model/constants";
 bind "../model/game_state";
 bind "../model/player";
 bind "../model/lineup_card";
+bind "./manager_action";
+bind "../human/pacing_profile";
+bind "../human/prompts";
 
-// --- Pitch intent buckets. The plate-appearance engine adjusts the in-zone
-//     probability based on which intent the manager picked. ----------------
-final INTENT_ATTACK = "attack_zone";
-final INTENT_EDGE = "edge_strike";
-final INTENT_CHASE = "chase_pitch";
-final INTENT_PITCH_AROUND = "pitch_around";
-
-// --- Manager action kinds. ManagerAction.kind is set to one of these. ----
-final ACTION_NOOP = "no_action";
-final ACTION_ISSUE_INTENTIONAL_WALK = "issue_intentional_walk";
-final ACTION_SET_PITCH_INTENT = "set_pitch_intent";
-final ACTION_CHANGE_PITCHER = "change_pitcher";
-final ACTION_SUBMIT_LINEUP = "submit_lineup";
-
-// Typed manager decision. Carries the action kind, a short human-readable
-// rationale code (logged verbatim by the engine), and any payload fields the
-// specific action needs. Unused fields are null/empty.
-class ManagerAction {
-    expose String kind;
-    expose String rationale;
-    expose String intentValue;
-    expose player.Player? pitcherChoice;
-    expose lineup_card.LineupCard? lineupChoice;
-
-    // Construct a fresh ManagerAction with the given kind and rationale. All
-    // payload fields default to empty/null and are filled in by callers as
-    // needed.
-    expose func init(actionKind: String, why: String) {
-        kind = actionKind;
-        rationale = why;
-        intentValue = "";
-        pitcherChoice = null;
-        lineupChoice = null;
-    }
-}
+// The ManagerAction class + ACTION_* / INTENT_* constants live in
+// manager_action.zia (leaf-level module) so human/prompts.zia can reference
+// them without depending on this module (which itself needs to bind prompts
+// for the HumanManagerPolicy implementation below). References in this file
+// go through the `manager_action.` prefix; other sim modules bind both and
+// use `manager_action.ACTION_*` for constants and `manager_policy.*` for
+// policy classes.
 
 // The default in-game manager AI. Implements the Stage-1 policy from
 // plan 09: never bunt, never steal, no pinch hitting, no intentional walks,
@@ -216,5 +191,179 @@ class DefaultManagerPolicy {
                                     defense: game_state.TeamGameState) -> Boolean {
         var action = self.decidePitchingChangeAction(state, defense);
         return action.kind == ACTION_CHANGE_PITCHER;
+    }
+
+    // Decision: at this between-PA checkpoint, should we make an offensive
+    // substitution (pinch hit / pinch run / defensive switch)? The default
+    // AI policy never substitutes — every call returns NOOP. HumanManagerPolicy
+    // overrides this to prompt the user when the pacing profile allows.
+    //
+    // The engine calls this before every between-PA pitching check so the
+    // human sees a substitution opportunity first. Because the default stays
+    // NOOP, AI simulation is behavior-preserving.
+    expose func decideSubstitutionAction(state: game_state.GameState,
+                                         offense: game_state.TeamGameState) -> ManagerAction {
+        return new ManagerAction(ACTION_NOOP, "default_no_substitution");
+    }
+
+    // Decision: at a pre-pitch tactical checkpoint, should we declare a bunt
+    // or steal attempt? Default is NOOP. HumanManagerPolicy overrides under
+    // the high_touch_manager pacing profile. NOTE: v1 ships without a pre-
+    // pitch engine call-site, so this virtual is exposed for parity with
+    // plan 14 but remains inert until plate_appearance_engine.resolve gains
+    // the matching checkpoint.
+    expose func decideBuntStealAction(state: game_state.GameState,
+                                      offense: game_state.TeamGameState) -> ManagerAction {
+        return new ManagerAction(ACTION_NOOP, "default_no_bunt_steal");
+    }
+}
+
+// ----------------------------------------------------------------------------
+// HumanManagerPolicy — plan 17's human-in-the-loop policy.
+//
+// Subclasses DefaultManagerPolicy so GameEngine.setPolicies accepts it
+// transparently. Zia requires the parent class identifier to be in the
+// same module as the subclass, so this class lives here rather than
+// alongside the rest of the human/ files; the actual terminal I/O still
+// lives in human/prompts.zia, which this class calls into.
+//
+// Every override is a thin filter:
+//   - if the user has delegated the rest of the game / day to AI,
+//     or the pacing profile disables this checkpoint,
+//     fall through to super.decide*Action()
+//   - else call prompts.prompt*()
+//   - if the prompt returns a delegation verb (auto / auto game / auto day
+//     / quit), update the delegation flags and fall through to super
+//   - otherwise return the user-chosen ManagerAction.
+//
+// This satisfies plan 14's AI/human parity rule by construction: every
+// code path ultimately returns either super's ManagerAction or one that
+// the user explicitly selected from a menu whose options are legal
+// ManagerAction variants. Nothing else can escape.
+// ----------------------------------------------------------------------------
+class HumanManagerPolicy extends DefaultManagerPolicy {
+    expose pacing_profile.PacingProfile profile;
+    expose Boolean delegateRestOfGame;
+    expose Boolean delegateRestOfDay;
+    expose Boolean abortRequested;
+
+    override expose func init() {
+        profile = pacing_profile.makeStandardManager();
+        delegateRestOfGame = false;
+        delegateRestOfDay = false;
+        abortRequested = false;
+        policyName = "HumanManagerPolicy";
+    }
+
+    expose func setProfile(p: pacing_profile.PacingProfile) {
+        profile = p;
+    }
+
+    expose func resetGameDelegation() {
+        delegateRestOfGame = false;
+        abortRequested = false;
+    }
+
+    expose func resetDayDelegation() {
+        delegateRestOfDay = false;
+    }
+
+    expose func isDelegating() -> Boolean {
+        return delegateRestOfGame || delegateRestOfDay;
+    }
+
+    hide func consumeDelegation(res: prompts.PromptResult) -> Boolean {
+        if res.kind == prompts.RESULT_AUTO {
+            return true;
+        }
+        if res.kind == prompts.RESULT_AUTO_GAME {
+            delegateRestOfGame = true;
+            return true;
+        }
+        if res.kind == prompts.RESULT_AUTO_DAY {
+            delegateRestOfDay = true;
+            return true;
+        }
+        if res.kind == prompts.RESULT_QUIT {
+            abortRequested = true;
+            return true;
+        }
+        return false;
+    }
+
+    override expose func decideIntentionalWalkAction(state: game_state.GameState,
+                                                     batter: player.Player,
+                                                     pitcher: player.Player) -> ManagerAction {
+        if self.isDelegating() || !profile.prompt_on_intentional_walk {
+            return super.decideIntentionalWalkAction(state, batter, pitcher);
+        }
+        if !prompts.isMaterialIntentionalWalkMoment(state) {
+            return super.decideIntentionalWalkAction(state, batter, pitcher);
+        }
+        var res = prompts.promptIntentionalWalk(state, batter);
+        if self.consumeDelegation(res) {
+            return super.decideIntentionalWalkAction(state, batter, pitcher);
+        }
+        if res.action == null {
+            return super.decideIntentionalWalkAction(state, batter, pitcher);
+        }
+        return res.action!;
+    }
+
+    override expose func decidePitchIntentAction(state: game_state.GameState,
+                                                 batter: player.Player,
+                                                 pitcher: player.Player) -> ManagerAction {
+        if self.isDelegating() || !profile.prompt_per_pitch_intent {
+            return super.decidePitchIntentAction(state, batter, pitcher);
+        }
+        return super.decidePitchIntentAction(state, batter, pitcher);
+    }
+
+    override expose func decidePitchingChangeAction(state: game_state.GameState,
+                                                    defense: game_state.TeamGameState) -> ManagerAction {
+        if self.isDelegating() || !profile.prompt_on_pitching_change {
+            return super.decidePitchingChangeAction(state, defense);
+        }
+        var baseCall = super.decidePitchingChangeAction(state, defense);
+        if baseCall.kind != ACTION_CHANGE_PITCHER {
+            return baseCall;
+        }
+        var res = prompts.promptPitchingChange(state, defense);
+        if self.consumeDelegation(res) {
+            return baseCall;
+        }
+        if res.action == null {
+            return baseCall;
+        }
+        return res.action!;
+    }
+
+    override expose func decideSubstitutionAction(state: game_state.GameState,
+                                                  offense: game_state.TeamGameState) -> ManagerAction {
+        if self.isDelegating() || !profile.prompt_on_substitution {
+            return super.decideSubstitutionAction(state, offense);
+        }
+        if !prompts.isMaterialSubstitutionMoment(state) {
+            return super.decideSubstitutionAction(state, offense);
+        }
+        if offense.lineup.bench.length() == 0 {
+            return super.decideSubstitutionAction(state, offense);
+        }
+        var res = prompts.promptSubstitution(state, offense);
+        if self.consumeDelegation(res) {
+            return super.decideSubstitutionAction(state, offense);
+        }
+        if res.action == null {
+            return super.decideSubstitutionAction(state, offense);
+        }
+        return res.action!;
+    }
+
+    override expose func decideBuntStealAction(state: game_state.GameState,
+                                               offense: game_state.TeamGameState) -> ManagerAction {
+        if self.isDelegating() || !profile.prompt_on_bunt_steal {
+            return super.decideBuntStealAction(state, offense);
+        }
+        return super.decideBuntStealAction(state, offense);
     }
 }

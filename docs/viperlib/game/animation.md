@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-09
+last-verified: 2026-04-17
 ---
 
 # Animation & Movement
@@ -196,8 +196,10 @@ Frame-based sprite animation controller for animated characters, effects, and UI
 | `Reset()`                     | `Void()`            | Reset to first frame                |
 | `Resume()`                    | `Void()`            | Resume paused animation             |
 | `Setup(start, end, duration)` | `Void(Int,Int,Int)` | Configure frame range and timing    |
-| `Stop()`                      | `Void()`            | Stop at current frame               |
-| `Update()`                    | `Boolean()`         | Advance animation; true if finished |
+| `Stop()`                      | `Void()`            | Stop and reset to first frame       |
+| `Update()`                    | `Boolean()`         | Advance animation; high playback speeds may step through multiple frames in one call |
+
+`Stop()` clears pause/finish state and rewinds to the configured start frame. In one-shot ping-pong mode, a single-frame animation now reports completion on the first completed update instead of waiting for a second bounce.
 
 ### Zia Example
 
@@ -263,6 +265,11 @@ IF attackAnim.Update() THEN
     idleAnim.Play()
 END IF
 ```
+
+### Notes
+
+- `Update()` can advance through multiple frames in one call when `Speed` is high or frame time accumulates; `FrameChanged` still reports whether any visible frame step occurred.
+- Non-looping animations still finish on their terminal frame even if a single update consumes several frame steps.
 
 ---
 
@@ -380,6 +387,7 @@ Sprite sheet/atlas for named region extraction from a single texture. Defines na
 ### Notes
 
 - `FromGrid()` automatically slices the atlas into equal cells and names them `"0"`, `"1"`, etc. (left-to-right, top-to-bottom)
+- Atlas width and height must be exact multiples of `frameW` and `frameH`; partial right/bottom strips are rejected instead of being silently dropped
 - `GetRegion()` returns a new Pixels object each call — cache results for repeated use
 - Region coordinates are in pixels, relative to the atlas top-left corner
 - Backed by a single atlas Pixels object — regions share the source data
@@ -521,6 +529,7 @@ Path following for moving objects along predefined waypoint paths.
 ### Coordinate Scale
 
 PathFollower uses a 1000:1 coordinate scale — 1000 units equals 1 world unit. Waypoint coordinates should be specified in this scale.
+Zero-length segments are skipped automatically during playback, so duplicate adjacent waypoints no longer stall loop or ping-pong paths.
 
 ### Zia Example
 
@@ -591,6 +600,11 @@ DO WHILE NOT cameraPath.IsFinished
     RenderScene()
 LOOP
 ```
+
+### Notes
+
+- `Start()` resumes a paused path. If an `ONCE` path already finished, `Start()` rewinds to the first waypoint before replaying it.
+- Closely spaced waypoints keep their true segment length; short segments are not collapsed away by internal distance rounding.
 
 ---
 

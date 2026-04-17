@@ -544,8 +544,9 @@ int64_t rt_tilemap_get_collision(void *tilemap_ptr, int64_t tile_id) {
 }
 
 /// @brief Sample the designated collision layer at a pixel coordinate; returns 1 if SOLID.
-/// Resolves animation frames via `rt_tilemap_resolve_anim_tile` so animated tiles share collision
-/// with their base id. Out-of-bounds samples and tiles outside MAX_TILE_COLLISION_IDS return 0.
+/// Animated tiles resolve through their current visual frame before collision
+/// lookup so rendering and collision stay in sync. Out-of-bounds samples and
+/// tiles outside MAX_TILE_COLLISION_IDS return 0.
 int8_t rt_tilemap_is_solid_at(void *tilemap_ptr, int64_t pixel_x, int64_t pixel_y) {
     if (!tilemap_ptr)
         return 0;
@@ -1058,7 +1059,8 @@ void rt_tilemap_update_anims(void *tilemap_ptr, int64_t dt_ms) {
 
 /// @brief Map a tile id through the animation table, returning the current frame's tile id.
 /// If `tile_id` is not the base of any registered animation it is returned unchanged. Called by
-/// `is_solid_at` and `draw_layer` so animation affects both rendering and collision consistently.
+/// rendering paths so animated tiles display the current frame while collision
+/// continues to use the base tile id stored in the map data.
 int64_t rt_tilemap_resolve_anim_tile(void *tilemap_ptr, int64_t tile_id) {
     if (!tilemap_ptr)
         return tile_id;

@@ -33,10 +33,9 @@
 //
 // Ownership/Lifetime:
 //   - The emitter struct is GC-managed (rt_obj_new_i64). The particle array is
-//     malloc'd separately and freed in rt_particle_emitter_destroy(). The
-//     destructor must be called explicitly (it is not a GC finalizer) unless
-//     the caller knows the GC will not collect the emitter before the program
-//     exits.
+//     malloc'd separately and freed by a GC finalizer.
+//   - rt_particle_emitter_destroy() releases the emitter handle; when the last
+//     reference goes away the finalizer reclaims the particle pool.
 //
 // Links: src/runtime/game/rt_particle.h (public API),
 //        src/runtime/graphics/rt_pixels.h (rt_pixels_draw_disc for batch draw),
@@ -115,6 +114,76 @@ static int64_t rand_range_i64(struct rt_particle_emitter_impl *e, int64_t min, i
     return min + (int64_t)(rand_double(e) * (double)(max - min + 1));
 }
 
+static int64_t particle_effective_color(const struct rt_particle_emitter_impl *emitter,
+                                        const struct particle *p) {
+    int64_t color = p->color;
+    int64_t alpha = (color >> 24) & 0xFF;
+    if (alpha == 0)
+        alpha = 255; // Legacy 0x00RRGGBB colors are treated as opaque.
+    if (emitter->fade_out && p->max_life > 0) {
+        const double life_ratio = (double)p->life / (double)p->max_life;
+        alpha = (int64_t)(alpha * life_ratio);
+    }
+    return (color & 0x00FFFFFF) | (alpha << 24);
+}
+
+static int64_t blend_rgb(int64_t dst_rgb, int64_t src_rgb, int64_t alpha) {
+    int64_t dst_r = (dst_rgb >> 16) & 0xFF;
+    int64_t dst_g = (dst_rgb >> 8) & 0xFF;
+    int64_t dst_b = dst_rgb & 0xFF;
+    int64_t src_r = (src_rgb >> 16) & 0xFF;
+    int64_t src_g = (src_rgb >> 8) & 0xFF;
+    int64_t src_b = src_rgb & 0xFF;
+    int64_t inv_alpha = 255 - alpha;
+
+    int64_t out_r = (src_r * alpha + dst_r * inv_alpha + 127) / 255;
+    int64_t out_g = (src_g * alpha + dst_g * inv_alpha + 127) / 255;
+    int64_t out_b = (src_b * alpha + dst_b * inv_alpha + 127) / 255;
+
+    return (out_r << 16) | (out_g << 8) | out_b;
+}
+
+static void rt_particle_draw_disc_blended(
+    void *pixels, int64_t cx, int64_t cy, int64_t radius, int64_t color) {
+    int64_t alpha = (color >> 24) & 0xFF;
+    int64_t rgb = color & 0x00FFFFFF;
+
+    if (alpha <= 0)
+        return;
+    if (alpha >= 255) {
+        rt_pixels_draw_disc(pixels, cx, cy, radius, rgb);
+        return;
+    }
+
+    int64_t width = rt_pixels_width(pixels);
+    int64_t height = rt_pixels_height(pixels);
+    int64_t min_x = cx - radius;
+    int64_t max_x = cx + radius;
+    int64_t min_y = cy - radius;
+    int64_t max_y = cy + radius;
+    if (min_x < 0)
+        min_x = 0;
+    if (min_y < 0)
+        min_y = 0;
+    if (max_x >= width)
+        max_x = width - 1;
+    if (max_y >= height)
+        max_y = height - 1;
+
+    int64_t rr = radius * radius;
+    for (int64_t y = min_y; y <= max_y; ++y) {
+        int64_t dy = y - cy;
+        int64_t dy2 = dy * dy;
+        for (int64_t x = min_x; x <= max_x; ++x) {
+            int64_t dx = x - cx;
+            if (dx * dx + dy2 > rr)
+                continue;
+            int64_t dst = rt_pixels_get_rgb(pixels, x, y);
+            rt_pixels_set_rgb(pixels, x, y, blend_rgb(dst, rgb, alpha));
+        }
+    }
+}
+
 static void particle_emitter_finalizer(void *obj) {
     struct rt_particle_emitter_impl *e = (struct rt_particle_emitter_impl *)obj;
     if (e && e->particles) {
@@ -138,6 +207,8 @@ rt_particle_emitter rt_particle_emitter_new(int64_t max_particles) {
 
     struct rt_particle_emitter_impl *e = (struct rt_particle_emitter_impl *)rt_obj_new_i64(
         0, (int64_t)sizeof(struct rt_particle_emitter_impl));
+    if (!e)
+        return NULL;
 
     e->particles = calloc((size_t)max_particles, sizeof(struct particle));
     if (!e->particles) {
@@ -179,8 +250,8 @@ rt_particle_emitter rt_particle_emitter_new(int64_t max_particles) {
 void rt_particle_emitter_destroy(rt_particle_emitter emitter) {
     if (!emitter)
         return;
-    if (emitter->particles)
-        free(emitter->particles);
+    if (rt_obj_release_check0(emitter))
+        rt_obj_free(emitter);
 }
 
 /// @brief Set the emission origin point (new particles spawn here).
@@ -255,7 +326,7 @@ void rt_particle_emitter_set_gravity(rt_particle_emitter emitter, double gx, dou
     emitter->gy = gy;
 }
 
-/// @brief Set the color for newly spawned particles (0xRRGGBBAA packed).
+/// @brief Set the color for newly spawned particles (0xAARRGGBB, alpha in high byte).
 void rt_particle_emitter_set_color(rt_particle_emitter emitter, int64_t color) {
     if (!emitter)
         return;
@@ -317,7 +388,7 @@ int8_t rt_particle_emitter_shrink(rt_particle_emitter emitter) {
     return emitter ? emitter->shrink : 0;
 }
 
-/// @brief Get the current emission color (0xRRGGBBAA packed).
+/// @brief Get the current emission color (0xAARRGGBB, alpha in high byte).
 int64_t rt_particle_emitter_color(rt_particle_emitter emitter) {
     return emitter ? emitter->color : 0;
 }
@@ -372,6 +443,8 @@ void rt_particle_emitter_update(rt_particle_emitter emitter) {
             emit_one(emitter);
             emitter->rate_accumulator -= 1.0;
         }
+        if (emitter->active_count >= emitter->max_particles)
+            emitter->rate_accumulator = 0.0;
     }
 
     // Update existing particles
@@ -446,16 +519,8 @@ int8_t rt_particle_emitter_get(rt_particle_emitter emitter,
             if (out_size)
                 *out_size = p->size;
 
-            // Calculate color with fade
             if (out_color) {
-                int64_t color = p->color;
-                if (emitter->fade_out && p->max_life > 0) {
-                    double life_ratio = (double)p->life / (double)p->max_life;
-                    int64_t base_alpha = (color >> 24) & 0xFF;
-                    int64_t new_alpha = (int64_t)(base_alpha * life_ratio);
-                    color = (color & 0x00FFFFFF) | (new_alpha << 24);
-                }
-                *out_color = color;
+                *out_color = particle_effective_color(emitter, p);
             }
             return 1;
         }
@@ -479,35 +544,13 @@ int64_t rt_particle_emitter_draw_to_pixels(rt_particle_emitter emitter,
         if (!p->active)
             continue;
 
-        // Compute color with optional fade-out
-        int64_t color = p->color;
-        int64_t base_alpha = (color >> 24) & 0xFF;
-        if (base_alpha == 0)
-            base_alpha = 255; /* Color.RGB() returns 0x00RRGGBB — treat 0 alpha as opaque */
-        if (emitter->fade_out && p->max_life > 0) {
-            double life_ratio = (double)p->life / (double)p->max_life;
-            int64_t new_alpha = (int64_t)(base_alpha * life_ratio);
-            color = (color & 0x00FFFFFF) | (new_alpha << 24);
-        } else {
-            color = (color & 0x00FFFFFF) | (base_alpha << 24);
-        }
-
-        // Convert ARGB (0xAARRGGBB) to Canvas RGB (0x00RRGGBB)
-        // Apply fade alpha by scaling RGB channels (approximates alpha blending
-        // against a black background, which is correct for particle effects)
-        int64_t alpha = (color >> 24) & 0xFF;
-        int64_t r = ((color >> 16) & 0xFF) * alpha / 255;
-        int64_t g = ((color >> 8) & 0xFF) * alpha / 255;
-        int64_t b = (color & 0xFF) * alpha / 255;
-        int64_t canvas_color = (r << 16) | (g << 8) | b;
-
         int64_t px = (int64_t)p->x + offset_x;
         int64_t py = (int64_t)p->y + offset_y;
         int64_t radius = (int64_t)(p->size * 0.5);
         if (radius < 1)
             radius = 1;
 
-        rt_pixels_draw_disc(pixels, px, py, radius, canvas_color);
+        rt_particle_draw_disc_blended(pixels, px, py, radius, particle_effective_color(emitter, p));
         drawn++;
     }
 
@@ -534,16 +577,8 @@ int64_t rt_particle_emitter_draw_at(rt_particle_emitter emitter,
         if (!p->active)
             continue;
 
-        /* Compute color with optional fade-out alpha */
-        int64_t color = p->color;
+        int64_t color = particle_effective_color(emitter, p);
         int64_t alpha = (color >> 24) & 0xFF;
-        if (alpha == 0)
-            alpha = 255; /* Color.RGB() returns 0x00RRGGBB — treat 0 alpha as opaque */
-        if (emitter->fade_out && p->max_life > 0) {
-            double life_ratio = (double)p->life / (double)p->max_life;
-            alpha = (int64_t)(alpha * life_ratio);
-        }
-
         int64_t canvas_color = color & 0x00FFFFFF;
         int64_t px = (int64_t)p->x + offset_x;
         int64_t py = (int64_t)p->y + offset_y;

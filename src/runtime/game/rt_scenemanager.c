@@ -35,6 +35,7 @@ typedef struct {
     int32_t next_scene;     // Target scene during transition
     int64_t trans_timer;    // Countdown ms
     int64_t trans_duration; // Total duration ms
+    int8_t transition_completed;
 } scenemanager_impl;
 
 static scenemanager_impl *get(void *mgr) {
@@ -74,6 +75,8 @@ void rt_scenemanager_add(void *mgr, void *name) {
     const char *cname = rt_string_cstr((rt_string)name);
     if (!cname)
         return;
+    if (find_scene(sm, cname) >= 0)
+        return;
     sm_scene_t *s = &sm->scenes[sm->count++];
     strncpy(s->name, cname, 31);
     s->name[31] = '\0';
@@ -99,6 +102,10 @@ void rt_scenemanager_switch(void *mgr, void *name) {
     sm->just_entered = 1;
     sm->just_exited = 1;
     sm->transitioning = 0;
+    sm->transition_completed = 0;
+    sm->next_scene = -1;
+    sm->trans_timer = 0;
+    sm->trans_duration = 0;
 }
 
 /// @brief Begin a timed transition to a new scene (completes after duration_ms).
@@ -108,9 +115,10 @@ void rt_scenemanager_switch_transition(void *mgr, void *name, int64_t duration_m
     scenemanager_impl *sm = get(mgr);
     const char *cname = rt_string_cstr((rt_string)name);
     int idx = find_scene(sm, cname);
-    if (idx < 0)
+    if (idx < 0 || idx == sm->current || (sm->transitioning && idx == sm->next_scene))
         return;
     sm->transitioning = 1;
+    sm->transition_completed = 0;
     sm->next_scene = idx;
     sm->trans_duration = duration_ms > 0 ? duration_ms : 1;
     sm->trans_timer = sm->trans_duration;
@@ -122,6 +130,7 @@ void rt_scenemanager_update(void *mgr, int64_t dt) {
     if (!mgr)
         return;
     scenemanager_impl *sm = get(mgr);
+    sm->transition_completed = 0;
     sm->just_entered = 0;
     sm->just_exited = 0;
 
@@ -129,9 +138,11 @@ void rt_scenemanager_update(void *mgr, int64_t dt) {
         sm->trans_timer -= dt;
         if (sm->trans_timer <= 0) {
             sm->transitioning = 0;
+            sm->transition_completed = 1;
             sm->previous = sm->current;
             sm->current = sm->next_scene;
             sm->next_scene = -1;
+            sm->trans_timer = 0;
             sm->just_entered = 1;
             sm->just_exited = 1;
         }
@@ -189,8 +200,14 @@ double rt_scenemanager_transition_progress(void *mgr) {
     if (!mgr)
         return 0.0;
     scenemanager_impl *sm = get(mgr);
+    if (sm->transition_completed)
+        return 1.0;
     if (!sm->transitioning || sm->trans_duration <= 0)
         return 0.0;
     double elapsed = (double)(sm->trans_duration - sm->trans_timer);
+    if (elapsed < 0.0)
+        elapsed = 0.0;
+    if (elapsed > (double)sm->trans_duration)
+        elapsed = (double)sm->trans_duration;
     return elapsed / (double)sm->trans_duration;
 }

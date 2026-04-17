@@ -16,6 +16,8 @@
 #include "tools/viper/cmd_codegen_arm64.hpp"
 
 #include <filesystem>
+#include <atomic>
+#include <chrono>
 #include <iostream>
 #include <string>
 #include <vector>
@@ -27,6 +29,25 @@
 #endif
 
 namespace viper::tools {
+namespace {
+
+std::string generateUniqueTempPath(const char *prefix, const char *extension) {
+    static std::atomic<uint64_t> counter{0};
+
+    const auto dir = std::filesystem::temp_directory_path();
+    const auto tick = std::chrono::steady_clock::now().time_since_epoch().count();
+#ifdef _WIN32
+    const auto pid = static_cast<uint64_t>(_getpid());
+#else
+    const auto pid = static_cast<uint64_t>(getpid());
+#endif
+    const auto uniqueId = counter.fetch_add(1, std::memory_order_relaxed);
+    return (dir / (std::string(prefix) + "_" + std::to_string(pid) + "_" + std::to_string(tick) +
+                   "_" + std::to_string(uniqueId) + extension))
+        .string();
+}
+
+} // namespace
 
 /// @brief Is native output path.
 bool isNativeOutputPath(const std::string &path) {
@@ -35,13 +56,7 @@ bool isNativeOutputPath(const std::string &path) {
 
 /// @brief Generate temp il path.
 std::string generateTempIlPath() {
-    auto dir = std::filesystem::temp_directory_path();
-#ifdef _WIN32
-    auto pid = _getpid();
-#else
-    auto pid = getpid();
-#endif
-    return (dir / ("viper_build_" + std::to_string(pid) + ".il")).string();
+    return generateUniqueTempPath("viper_build", ".il");
 }
 
 /// @brief Compile to native.
@@ -76,6 +91,8 @@ int compileToNative(const std::string &ilPath,
     opts.output_obj_path = outputPath;
     opts.optimize = 0;
     opts.asset_blob_path = assetBlobPath;
+    if (!assetObjPath.empty())
+        opts.extra_objects.push_back(assetObjPath);
 
     viper::codegen::x64::CodegenPipeline pipeline(opts);
     PipelineResult result;
@@ -96,13 +113,7 @@ int compileToNative(const std::string &ilPath,
 
 /// @brief Generate temp asset path.
 std::string generateTempAssetPath() {
-    auto dir = std::filesystem::temp_directory_path();
-#ifdef _WIN32
-    auto pid = _getpid();
-#else
-    auto pid = getpid();
-#endif
-    return (dir / ("viper_assets_" + std::to_string(pid) + ".vpa")).string();
+    return generateUniqueTempPath("viper_assets", ".vpa");
 }
 
 } // namespace viper::tools

@@ -224,8 +224,8 @@ int64_t rt_canvas_should_close(void *canvas_ptr) {
 ///   If SetFps() was called, the ViperGFX backend rate-limits Flip() to the
 ///   target frame rate — no additional sleep is needed.
 ///
-///   Delta time is computed from monotonic microsecond timestamps, converted
-///   to milliseconds. The first frame always reports dt=0.
+///   Delta time is computed from monotonic microsecond timestamps and rounded
+///   to the nearest millisecond. The first frame always reports dt=0.
 /// @param canvas_ptr Canvas handle. NULL-safe (no-op).
 void rt_canvas_flip(void *canvas_ptr) {
     if (!canvas_ptr)
@@ -242,7 +242,7 @@ void rt_canvas_flip(void *canvas_ptr) {
     int64_t now_us = rt_clock_ticks_us();
     if (canvas->last_flip_us > 0) {
         int64_t delta_us = now_us - canvas->last_flip_us;
-        canvas->delta_time_ms = delta_us > 0 ? (delta_us + 999) / 1000 : 0;
+        canvas->delta_time_ms = delta_us > 0 ? (delta_us + 500) / 1000 : 0;
     } else {
         canvas->delta_time_ms = 0; /* first frame */
     }

@@ -939,19 +939,17 @@ int mp3_decode_file(mp3_decoder_t *dec,
 //===----------------------------------------------------------------------===//
 
 struct mp3_stream {
-    mp3_decoder_t *dec;
-    uint8_t *file_data;
-    size_t file_len;
-    size_t effective_len; // excludes ID3v1 tail
-    size_t decode_pos;    // current byte position in file
+    int16_t *pcm_data;
+    int total_samples;
+    int cursor;
     int sample_rate;
     int channels;
-    int samples_per_frame;
-    // Output buffer for one frame (max 1152 stereo samples)
-    int16_t pcm_buf[1152 * 2];
 };
 
-/// @brief Open an MP3 file for per-frame streaming decode (skips ID3v2 tags).
+/// @brief Open an MP3 file for frame-sliced playback.
+/// @details The file is decoded once up front, then exposed through the
+///          streaming API as stable 1152-frame slices. This avoids the broken
+///          per-frame reparse path and yields deterministic seek/duration.
 mp3_stream_t *mp3_stream_open(const char *filepath) {
     if (!filepath)
         return NULL;
@@ -979,57 +977,36 @@ mp3_stream_t *mp3_stream_open(const char *filepath) {
     }
     fclose(f);
 
+    mp3_decoder_t *dec = mp3_decoder_new();
+    if (!dec) {
+        free(data);
+        return NULL;
+    }
+
+    int16_t *pcm = NULL;
+    int samples = 0;
+    int channels = 0;
+    int sample_rate = 0;
+    int rc = mp3_decode_file(dec, data, (size_t)flen, &pcm, &samples, &channels, &sample_rate);
+    mp3_decoder_free(dec);
+    free(data);
+
+    if (rc != 0 || !pcm || samples <= 0 || channels < 1 || channels > 2 || sample_rate <= 0) {
+        free(pcm);
+        return NULL;
+    }
+
     mp3_stream_t *s = (mp3_stream_t *)calloc(1, sizeof(mp3_stream_t));
     if (!s) {
-        free(data);
+        free(pcm);
         return NULL;
     }
 
-    s->dec = mp3_decoder_new();
-    if (!s->dec) {
-        free(data);
-        free(s);
-        return NULL;
-    }
-
-    s->file_data = data;
-    s->file_len = (size_t)flen;
-    s->effective_len = (size_t)flen;
-
-    // Skip ID3v1 tail
-    if (s->file_len >= 128 && data[s->file_len - 128] == 'T' && data[s->file_len - 127] == 'A' &&
-        data[s->file_len - 126] == 'G')
-        s->effective_len = s->file_len - 128;
-
-    // Skip ID3v2 header
-    s->decode_pos = mp3_skip_id3v2(data, s->effective_len);
-
-    // Find first frame to get metadata
-    s->decode_pos = mp3_find_sync(data, s->effective_len, s->decode_pos);
-    if (s->decode_pos >= s->effective_len) {
-        mp3_decoder_free(s->dec);
-        free(data);
-        free(s);
-        return NULL;
-    }
-
-    mp3_frame_header_t hdr;
-    if (mp3_parse_header(data + s->decode_pos, &hdr) != 0) {
-        mp3_decoder_free(s->dec);
-        free(data);
-        free(s);
-        return NULL;
-    }
-
-    s->sample_rate = hdr.sample_rate;
-    s->channels = hdr.channels;
-    s->samples_per_frame = (hdr.mpeg_version == 3) ? 1152 : 576;
-
-    // Reset decoder state
-    memset(s->dec->overlap, 0, sizeof(s->dec->overlap));
-    memset(s->dec->synth_buf, 0, sizeof(s->dec->synth_buf));
-    memset(s->dec->synth_offset, 0, sizeof(s->dec->synth_offset));
-    s->dec->reservoir_size = 0;
+    s->pcm_data = pcm;
+    s->total_samples = samples;
+    s->cursor = 0;
+    s->sample_rate = sample_rate;
+    s->channels = channels;
 
     return s;
 }
@@ -1039,59 +1016,14 @@ int mp3_stream_decode_frame(mp3_stream_t *stream, int16_t **out_pcm) {
     if (!stream || !out_pcm)
         return -1;
 
-    // Find next frame sync
-    while (stream->decode_pos + 4 <= stream->effective_len) {
-        mp3_frame_header_t hdr;
-        if (mp3_parse_header(stream->file_data + stream->decode_pos, &hdr) != 0) {
-            stream->decode_pos++;
-            stream->decode_pos =
-                mp3_find_sync(stream->file_data, stream->effective_len, stream->decode_pos);
-            continue;
-        }
+    if (!stream->pcm_data || stream->cursor >= stream->total_samples)
+        return 0;
 
-        if (stream->decode_pos + (size_t)hdr.frame_size > stream->effective_len)
-            return 0; // EOF
-
-        // Decode this single frame using the existing whole-file decoder infrastructure.
-        // We feed one frame worth of data and collect the PCM output.
-        // For simplicity, decode the frame by calling the internal pipeline directly.
-        // The decoder state (overlap, synth buffers, reservoir) persists across calls.
-        int16_t *pcm = NULL;
-        int samples = 0, ch = 0, sr = 0;
-
-        size_t frame_end = stream->decode_pos + (size_t)hdr.frame_size;
-
-        // Use mp3_decode_file on just the remaining data from current position.
-        // This is suboptimal (re-parses from current pos) but correct.
-        // A proper per-frame decode would refactor the inner loop, but the
-        // existing code maintains state (overlap, synth) in the decoder struct.
-        int rc = mp3_decode_file(stream->dec,
-                                 stream->file_data + stream->decode_pos,
-                                 (size_t)hdr.frame_size,
-                                 &pcm,
-                                 &samples,
-                                 &ch,
-                                 &sr);
-
-        stream->decode_pos = frame_end;
-
-        if (rc == 0 && pcm && samples > 0) {
-            int to_copy = samples;
-            if (to_copy > 1152)
-                to_copy = 1152;
-            memcpy(stream->pcm_buf, pcm, (size_t)(to_copy * ch) * sizeof(int16_t));
-            free(pcm);
-            *out_pcm = stream->pcm_buf;
-            return to_copy;
-        }
-        if (pcm)
-            free(pcm);
-
-        // Frame decode failed — try next frame
-        continue;
-    }
-
-    return 0; // EOF
+    int remaining = stream->total_samples - stream->cursor;
+    int frames = remaining > 1152 ? 1152 : remaining;
+    *out_pcm = stream->pcm_data + (size_t)stream->cursor * (size_t)stream->channels;
+    stream->cursor += frames;
+    return frames;
 }
 
 /// @brief Get the sample rate of the MP3 stream (determined from the first frame header).
@@ -1104,26 +1036,22 @@ int mp3_stream_channels(const mp3_stream_t *stream) {
     return stream ? stream->channels : 0;
 }
 
+/// @brief Get the total decoded frame count of the MP3 stream.
+int mp3_stream_total_samples(const mp3_stream_t *stream) {
+    return stream ? stream->total_samples : 0;
+}
+
 /// @brief Rewind the MP3 stream to the beginning for re-playback.
 void mp3_stream_rewind(mp3_stream_t *stream) {
     if (!stream)
         return;
-    stream->decode_pos = mp3_skip_id3v2(stream->file_data, stream->effective_len);
-    stream->decode_pos =
-        mp3_find_sync(stream->file_data, stream->effective_len, stream->decode_pos);
-
-    // Reset decoder state for clean restart
-    memset(stream->dec->overlap, 0, sizeof(stream->dec->overlap));
-    memset(stream->dec->synth_buf, 0, sizeof(stream->dec->synth_buf));
-    memset(stream->dec->synth_offset, 0, sizeof(stream->dec->synth_offset));
-    stream->dec->reservoir_size = 0;
+    stream->cursor = 0;
 }
 
 /// @brief Close the MP3 stream and free the decoder, file handle, and read buffer.
 void mp3_stream_free(mp3_stream_t *stream) {
     if (!stream)
         return;
-    mp3_decoder_free(stream->dec);
-    free(stream->file_data);
+    free(stream->pcm_data);
     free(stream);
 }

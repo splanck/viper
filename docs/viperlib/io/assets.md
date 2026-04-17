@@ -34,7 +34,7 @@ Load an asset by name. Returns a typed object based on file extension:
 | Extension | Return Type |
 |-----------|-------------|
 | `.png`, `.jpg`, `.jpeg`, `.bmp`, `.gif` | Pixels |
-| `.wav`, `.ogg`, `.mp3`, `.vaf` | Sound |
+| `.wav`, `.ogg`, `.mp3` | Sound |
 | Other | Bytes |
 
 Returns null if not found.

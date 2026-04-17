@@ -361,7 +361,6 @@ set(RT_AUDIO_SOURCES
         audio/rt_playlist.c
         audio/rt_soundbank.c
         audio/rt_synth.c
-        audio/rt_audio_codec.c
         audio/rt_musicgen.c
         audio/rt_ogg.c
         audio/rt_vorbis.c

@@ -16,7 +16,9 @@ Multi-scene management with named scenes, switching, and timed transitions.
 - `JustEntered` — True on first frame of new scene
 - `JustExited` — True on first frame after leaving scene
 - `Transitioning` — True during timed transition
-- `TransProgress` — 0.0 to 1.0 during transition
+- `TransProgress` — 0.0 to 1.0 during transition, and `1.0` on the update tick that completes the switch
+
+`Add(name)` ignores duplicate scene names. `SwitchTransition(name, durationMs)` is a no-op when `name` is already the current scene or is already the pending transition target. It does not retrigger `JustEntered` or `JustExited` in those cases.
 
 ## Example
 ```zia

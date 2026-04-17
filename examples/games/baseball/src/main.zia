@@ -1,24 +1,31 @@
 // ============================================================================
 // File: src/main.zia
 // Purpose: Top-level entry point for the baseball manager simulation demo.
-//          Builds a default 4-team franchise, runs a full regular season via
-//          the SeasonEngine, prints the final standings, recent games, and a
-//          short readiness summary, then advances the calendar one off-season
-//          to demonstrate that multi-season state is wired correctly.
-// Owns:    Nothing — this file is purely orchestration. All real logic lives
-//          in the model/, sim/, season/, and output/ subdirectories.
-// Entry:   `func start()` is the canonical Zia entry function (matches the
-//          frogger / centipede / 3dworld convention used elsewhere in the
-//          repo).
+//          By default launches the interactive FranchiseShell, which runs
+//          the title screen, new-career / load flow, and the main menu loop
+//          until the user picks quit.
+//
+//          For CI and regression use, passing `--auto-season` on the command
+//          line runs the original behavior: builds the default 4-team
+//          franchise, sims the whole regular season, prints the snapshot +
+//          recent games, and advances one off-season. This preserves
+//          byte-for-byte compatibility with the pre-shell golden output so
+//          downstream tools that consume it continue to work.
+//
+// Owns:    Nothing. All real logic lives in model/, sim/, season/, output/,
+//          and human/ subtrees.
+// Entry:   `func start()` is the canonical Zia entry function.
 // ============================================================================
 module Main;
 
 bind Viper.Terminal;
 bind Viper.Fmt as Fmt;
+bind Viper.Environment as Env;
 bind "./season/demo/default_franchise";
 bind "./season/season_engine";
 bind "./season/output/season_writer";
 bind "./season/date_utils";
+bind "./human/franchise_shell";
 
 // Print every entry of a List[String] as a separate terminal line. Used to
 // dump the multi-line output blocks returned by the season writers without
@@ -29,10 +36,26 @@ func writeLines(lines: List[String]) {
     }
 }
 
-// Demo entry point. Constructs a deterministic franchise from a fixed seed,
-// simulates one regular season, prints the snapshot + recent results, runs
-// the off-season tick to advance to the next season, and exits cleanly.
-func start() {
+// True iff `--auto-season` (or `-A`) appears in the argument list. Kept as a
+// plain linear scan since the arg count is tiny and the set of recognized
+// flags is also tiny.
+func wantsAutoSeason() -> Boolean {
+    var argc = Env.GetArgumentCount();
+    var i = 0;
+    while i < argc {
+        var arg = Env.GetArgument(i);
+        if arg == "--auto-season" || arg == "-A" {
+            return true;
+        }
+        i = i + 1;
+    }
+    return false;
+}
+
+// Run the legacy, non-interactive regular-season simulation. This is the
+// regression path the pre-shell main.zia executed unconditionally. Output
+// format must stay stable: downstream probes compare this directly.
+func runAutoSeason() {
     var franchise = default_franchise.buildDefaultFranchise(4242);
     var engine = new season_engine.SeasonEngine(franchise);
     var finalState = engine.simulateRegularSeason();
@@ -48,4 +71,27 @@ func start() {
     Say("Career ledger entries: " + Fmt.Int(finalState.careerLines.length()));
     Say("");
     Say("Ready for continued simulation.");
+}
+
+// Run the interactive franchise shell. Returns when the user picks quit or
+// the shell fails to boot (e.g., picked "Quit" from the title-screen menu).
+func runInteractiveShell() {
+    var shell = new franchise_shell.FranchiseShell("");
+    if !shell.boot() {
+        Say("Goodbye.");
+        return;
+    }
+    shell.run();
+    Say("Thanks for playing.");
+}
+
+// Entry point. Route to the interactive shell by default; fall back to the
+// legacy auto-season simulation when `--auto-season` is passed so CI and
+// golden-file comparisons continue to work unchanged.
+func start() {
+    if wantsAutoSeason() {
+        runAutoSeason();
+        return;
+    }
+    runInteractiveShell();
 }

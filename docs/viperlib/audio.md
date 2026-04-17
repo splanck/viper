@@ -723,6 +723,12 @@ Smooth transitions between music tracks — the old track fades out while the ne
 |----------|------|-------------|
 | `Audio.IsCrossfading` | Boolean (read-only) | True during an active crossfade |
 
+### Audio Methods (Crossfade)
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `Audio.Update()` | `void()` | Advance active crossfades; call once per frame when using `Music.CrossfadeTo` directly |
+
 ### Playlist Properties (Crossfade)
 
 | Property | Type | Description |
@@ -743,17 +749,19 @@ explosionSound.PlayGroup(1);
 
 // Crossfade between music tracks
 Music.CrossfadeTo(currentTrack, newTrack, 2000); // 2-second crossfade
+Audio.Update(); // call each frame while the crossfade runs
 
 // Enable auto-crossfade on playlist
 playlist.Crossfade = 1000; // 1-second crossfade between tracks
+playlist.Update();         // advances playback and pending playlist crossfades
 ```
 
 ---
 
 ## Audio File Format
 
-Viper Audio supports **WAV (PCM)** and **OGG Vorbis** files. The format is auto-detected
-from file magic bytes — no extension matching required.
+Viper Audio supports **WAV (PCM)**, **OGG Vorbis**, and **MP3** files. The format is
+auto-detected from file magic bytes — no extension matching required.
 
 | Property    | WAV                              | OGG Vorbis                          | MP3                                 |
 |-------------|----------------------------------|-------------------------------------|-------------------------------------|
@@ -768,8 +776,10 @@ from file magic bytes — no extension matching required.
 2. **Music streams:** Any sample rate works — the engine resamples on-the-fly during streaming.
 3. **Memory:** Sounds are loaded entirely into memory; keep individual clips short.
 4. **Streaming:** Music is streamed from disk for all formats (WAV, OGG, MP3), using ~100 KB of buffer memory regardless of track length.
-5. **Encoding:** Use a tool such as ffmpeg to convert audio to WAV:
+5. **Encoding:** Use a tool such as ffmpeg to convert source audio between formats:
    ```
+   ffmpeg -i input.wav output.ogg                      # OGG Vorbis
+   ffmpeg -i input.wav -codec:a libmp3lame output.mp3 # MP3
    ffmpeg -i input.mp3 -ac 2 -f wav output.wav      # stereo music
    ffmpeg -i input.mp3 -ac 1 -f wav sfx.wav         # mono sound effect
    ```
@@ -782,7 +792,7 @@ from file magic bytes — no extension matching required.
 |-------|-------|-------|
 | Max simultaneous Sound voices | **32** | Oldest non-looping voice is evicted (LRU) when full |
 | Max simultaneous Music streams | **4** | `Music.Load()` returns `null` when exceeded |
-| Supported audio formats | **WAV PCM, OGG Vorbis** | 8/16-bit PCM or Vorbis compressed |
+| Supported audio formats | **WAV PCM, OGG Vorbis, MP3** | WAV sound effects load from memory; OGG/MP3 support both import and streaming music |
 | Music sample rate | **Any** | Automatically resampled to 44100 Hz |
 | Sound sample rate | Any | Resampled to 44100 Hz at load time |
 | Pan range | −100 to +100 | −100 = hard left, 0 = center, +100 = hard right |

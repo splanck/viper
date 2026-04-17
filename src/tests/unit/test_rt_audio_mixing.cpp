@@ -24,6 +24,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt.hpp"
+#include "rt_audio.h"
 #include "rt_internal.h"
 #include "rt_mixgroup.h"
 #include "rt_playlist.h"
@@ -153,6 +154,13 @@ static void test_crossfade_update_when_inactive(void) {
     PASS();
 }
 
+static void test_audio_update_when_inactive(void) {
+    TEST("Audio.Update when inactive is no-op");
+    rt_audio_update();
+    assert(rt_music_is_crossfading() == 0);
+    PASS();
+}
+
 //=============================================================================
 // Playlist Crossfade Tests
 //=============================================================================
@@ -223,6 +231,7 @@ int main() {
     test_crossfade_initially_inactive();
     test_crossfade_null_safety();
     test_crossfade_update_when_inactive();
+    test_audio_update_when_inactive();
 
     // Playlist crossfade
     test_playlist_crossfade_default();

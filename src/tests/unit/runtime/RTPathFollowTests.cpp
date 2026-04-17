@@ -213,6 +213,76 @@ TEST(segment) {
     rt_pathfollow_destroy(path);
 }
 
+TEST(restart_after_finish_rewinds_to_start) {
+    rt_pathfollow path = rt_pathfollow_new();
+    rt_pathfollow_add_point(path, 0, 0);
+    rt_pathfollow_add_point(path, 10000, 0);
+    rt_pathfollow_set_mode(path, RT_PATHFOLLOW_ONCE);
+    rt_pathfollow_set_speed(path, 100000);
+    rt_pathfollow_start(path);
+
+    rt_pathfollow_update(path, 1000);
+    ASSERT(rt_pathfollow_is_finished(path) == 1);
+    ASSERT(rt_pathfollow_get_x(path) == 10000);
+
+    rt_pathfollow_start(path);
+    ASSERT(rt_pathfollow_is_active(path) == 1);
+    ASSERT(rt_pathfollow_is_finished(path) == 0);
+    ASSERT(rt_pathfollow_get_x(path) == 0);
+
+    rt_pathfollow_update(path, 500);
+    ASSERT(rt_pathfollow_get_x(path) > 0);
+
+    rt_pathfollow_destroy(path);
+}
+
+TEST(short_segments_keep_nonzero_length) {
+    rt_pathfollow path = rt_pathfollow_new();
+    rt_pathfollow_add_point(path, 0, 0);
+    rt_pathfollow_add_point(path, 99, 0);
+    rt_pathfollow_set_speed(path, 99);
+    rt_pathfollow_start(path);
+
+    rt_pathfollow_update(path, 1000);
+    ASSERT(rt_pathfollow_get_x(path) == 99);
+    ASSERT(rt_pathfollow_get_progress(path) == 1000);
+    ASSERT(rt_pathfollow_is_finished(path) == 1);
+
+    rt_pathfollow_destroy(path);
+}
+
+TEST(loop_mode_skips_zero_length_segments) {
+    rt_pathfollow path = rt_pathfollow_new();
+    rt_pathfollow_add_point(path, 0, 0);
+    rt_pathfollow_add_point(path, 0, 0);
+    rt_pathfollow_add_point(path, 1000, 0);
+    rt_pathfollow_set_mode(path, RT_PATHFOLLOW_LOOP);
+    rt_pathfollow_set_speed(path, 500);
+    rt_pathfollow_start(path);
+
+    rt_pathfollow_update(path, 1000);
+    ASSERT(rt_pathfollow_is_active(path) == 1);
+    ASSERT(rt_pathfollow_get_x(path) >= 450 && rt_pathfollow_get_x(path) <= 550);
+
+    rt_pathfollow_destroy(path);
+}
+
+TEST(pingpong_mode_skips_zero_length_end_segments) {
+    rt_pathfollow path = rt_pathfollow_new();
+    rt_pathfollow_add_point(path, 0, 0);
+    rt_pathfollow_add_point(path, 1000, 0);
+    rt_pathfollow_add_point(path, 1000, 0);
+    rt_pathfollow_set_mode(path, RT_PATHFOLLOW_PINGPONG);
+    rt_pathfollow_set_speed(path, 1500);
+    rt_pathfollow_start(path);
+
+    rt_pathfollow_update(path, 1000);
+    ASSERT(rt_pathfollow_is_active(path) == 1);
+    ASSERT(rt_pathfollow_get_x(path) >= 450 && rt_pathfollow_get_x(path) <= 550);
+
+    rt_pathfollow_destroy(path);
+}
+
 /// @brief Main.
 int main() {
     printf("RTPathFollowTests:\n");
@@ -227,6 +297,10 @@ int main() {
     RUN_TEST(set_progress);
     RUN_TEST(clear);
     RUN_TEST(segment);
+    RUN_TEST(restart_after_finish_rewinds_to_start);
+    RUN_TEST(short_segments_keep_nonzero_length);
+    RUN_TEST(loop_mode_skips_zero_length_segments);
+    RUN_TEST(pingpong_mode_skips_zero_length_end_segments);
 
     printf("\n%d tests passed, %d tests failed\n", tests_passed, tests_failed);
     return tests_failed > 0 ? 1 : 0;

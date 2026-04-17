@@ -64,16 +64,16 @@ typedef struct {
 //=============================================================================
 
 static void generate_shuffle_order(playlist_impl *pl) {
-    int64_t count = rt_seq_len(pl->tracks);
-    if (count == 0)
-        return;
-
-    // Release old shuffle order before creating a new one (C-2)
     if (pl->shuffle_order) {
         if (rt_obj_release_check0(pl->shuffle_order))
             rt_obj_free(pl->shuffle_order);
         pl->shuffle_order = NULL;
     }
+
+    int64_t count = rt_seq_len(pl->tracks);
+    if (count == 0)
+        return;
+
     pl->shuffle_order = rt_seq_new();
 
     // Create sequential order first
@@ -126,23 +126,109 @@ static int64_t get_track_index(playlist_impl *pl, int64_t position) {
     return position;
 }
 
-static void load_current(playlist_impl *pl) {
-    // Stop and free previous music
+static void playlist_release_music(playlist_impl *pl) {
     if (pl->music) {
         rt_music_stop(pl->music);
         rt_music_destroy(pl->music);
         pl->music = NULL;
     }
+}
+
+static int64_t playlist_current_actual_index(playlist_impl *pl) {
+    if (!pl || pl->current < 0)
+        return -1;
+    return get_track_index(pl, pl->current);
+}
+
+static int64_t playlist_find_shuffle_position(playlist_impl *pl, int64_t actual_index) {
+    if (!pl || !pl->shuffle_order || actual_index < 0)
+        return -1;
+    int64_t count = rt_seq_len(pl->shuffle_order);
+    for (int64_t i = 0; i < count; i++) {
+        if ((int64_t)(intptr_t)rt_seq_get(pl->shuffle_order, i) == actual_index)
+            return i;
+    }
+    return -1;
+}
+
+static void playlist_set_current_from_actual(playlist_impl *pl, int64_t actual_index) {
+    if (!pl) {
+        return;
+    }
+    if (actual_index < 0 || actual_index >= rt_seq_len(pl->tracks)) {
+        pl->current = -1;
+        return;
+    }
+    if (pl->shuffle) {
+        int64_t pos = playlist_find_shuffle_position(pl, actual_index);
+        pl->current = pos >= 0 ? pos : 0;
+        return;
+    }
+    pl->current = actual_index;
+}
+
+static void *playlist_load_current_music(playlist_impl *pl) {
+    if (!pl)
+        return NULL;
 
     if (pl->current < 0 || pl->current >= rt_seq_len(pl->tracks))
-        return;
+        return NULL;
 
     int64_t actual_index = get_track_index(pl, pl->current);
     rt_string path = (rt_string)rt_seq_get(pl->tracks, actual_index);
+    if (!path)
+        return NULL;
 
-    pl->music = rt_music_load(path);
-    if (pl->music) {
-        rt_music_set_volume(pl->music, pl->volume);
+    void *music = rt_music_load(path);
+    if (music)
+        rt_music_set_volume(music, pl->volume);
+    return music;
+}
+
+static void playlist_replace_music(playlist_impl *pl, void *new_music, int8_t play_now) {
+    void *old_music = pl->music;
+    int loop = (pl->repeat == RT_REPEAT_ONE) ? 1 : 0;
+
+    pl->music = new_music;
+    if (new_music)
+        rt_music_set_volume(new_music, pl->volume);
+
+    if (play_now && new_music) {
+        if (pl->crossfade_ms > 0 && old_music && pl->playing) {
+            rt_music_crossfade_to(old_music, new_music, pl->crossfade_ms);
+        } else {
+            if (old_music)
+                rt_music_stop(old_music);
+            rt_music_play(new_music, loop);
+        }
+        pl->playing = 1;
+        pl->paused = 0;
+    } else {
+        if (old_music)
+            rt_music_stop(old_music);
+    }
+
+    if (old_music && old_music != new_music)
+        rt_music_destroy(old_music);
+}
+
+static void playlist_select_position(playlist_impl *pl,
+                                     int64_t new_position,
+                                     int8_t resume_playing,
+                                     int8_t preserve_paused) {
+    if (!pl)
+        return;
+
+    pl->current = new_position;
+    void *new_music = playlist_load_current_music(pl);
+    playlist_replace_music(pl, new_music, resume_playing);
+
+    if (resume_playing && pl->music) {
+        pl->playing = 1;
+        pl->paused = 0;
+    } else {
+        pl->playing = 0;
+        pl->paused = (preserve_paused && pl->music) ? 1 : 0;
     }
 }
 
@@ -154,11 +240,7 @@ static void load_current(playlist_impl *pl) {
 static void playlist_finalize(void *obj) {
     playlist_impl *pl = (playlist_impl *)obj;
 
-    if (pl->music) {
-        rt_music_stop(pl->music);
-        rt_music_destroy(pl->music);
-        pl->music = NULL;
-    }
+    playlist_release_music(pl);
 
     if (pl->shuffle_order) {
         if (rt_obj_release_check0(pl->shuffle_order))
@@ -179,6 +261,7 @@ void *rt_playlist_new(void) {
     memset(pl, 0, sizeof(playlist_impl));
 
     pl->tracks = rt_seq_new();
+    rt_seq_set_owns_elements(pl->tracks, 1);
     pl->current = -1;
     pl->music = NULL;
     pl->volume = 100;
@@ -207,14 +290,14 @@ void rt_playlist_add(void *obj, rt_string path) {
     if (!obj)
         return;
     playlist_impl *pl = (playlist_impl *)obj;
+    int64_t current_actual = playlist_current_actual_index(pl);
 
-    // Copy the path string
-    rt_string copy = path ? rt_string_ref(path) : rt_const_cstr("");
-    rt_seq_push(pl->tracks, (void *)copy);
+    rt_seq_push(pl->tracks, (void *)(path ? path : rt_const_cstr("")));
 
-    // Regenerate shuffle order if needed
     if (pl->shuffle) {
         generate_shuffle_order(pl);
+        if (current_actual >= 0)
+            playlist_set_current_from_actual(pl, current_actual);
     }
 }
 
@@ -229,17 +312,18 @@ void rt_playlist_insert(void *obj, int64_t index, rt_string path) {
     if (!obj)
         return;
     playlist_impl *pl = (playlist_impl *)obj;
+    int64_t current_actual = playlist_current_actual_index(pl);
 
-    rt_string copy = path ? rt_string_ref(path) : rt_const_cstr("");
-    rt_seq_insert(pl->tracks, index, (void *)copy);
-
-    // Adjust current if needed
-    if (pl->current >= index) {
-        pl->current++;
-    }
+    rt_seq_insert(pl->tracks, index, (void *)(path ? path : rt_const_cstr("")));
 
     if (pl->shuffle) {
         generate_shuffle_order(pl);
+        if (current_actual >= 0 && index <= current_actual)
+            current_actual++;
+        if (current_actual >= 0)
+            playlist_set_current_from_actual(pl, current_actual);
+    } else if (pl->current >= index) {
+        pl->current++;
     }
 }
 
@@ -257,35 +341,49 @@ void rt_playlist_remove(void *obj, int64_t index) {
     int64_t count = rt_seq_len(pl->tracks);
     if (index < 0 || index >= count)
         return;
+    int64_t current_actual = playlist_current_actual_index(pl);
+    int64_t current_position = pl->current;
+    int8_t was_playing = pl->playing;
+    int8_t was_paused = pl->paused;
+    int8_t removed_current = (current_actual == index);
 
-    rt_seq_remove(pl->tracks, index);
+    if (current_actual > index)
+        current_actual--;
 
-    // Adjust current
-    if (index < pl->current) {
-        pl->current--;
-    } else if (index == pl->current) {
-        // Current track removed
-        if (pl->music) {
-            rt_music_stop(pl->music);
-            rt_music_destroy(pl->music);
-            pl->music = NULL;
-        }
+    void *removed = rt_seq_remove(pl->tracks, index);
+    if (removed && rt_obj_release_check0(removed))
+        rt_obj_free(removed);
+
+    count = rt_seq_len(pl->tracks);
+    if (pl->shuffle)
+        generate_shuffle_order(pl);
+
+    if (count == 0) {
+        playlist_release_music(pl);
+        pl->current = -1;
         pl->playing = 0;
         pl->paused = 0;
+        return;
+    }
 
-        // Try to load next (or wrap)
-        if (rt_seq_len(pl->tracks) > 0) {
-            if (pl->current >= rt_seq_len(pl->tracks)) {
-                pl->current = 0;
-            }
-        } else {
-            pl->current = -1;
+    if (removed_current) {
+        int64_t next_position = current_position;
+        if (next_position < 0)
+            next_position = 0;
+        if (next_position >= count)
+            next_position = 0;
+        pl->current = next_position;
+
+        void *new_music = playlist_load_current_music(pl);
+        playlist_replace_music(pl, new_music, was_playing);
+        if (!was_playing) {
+            pl->playing = 0;
+            pl->paused = was_paused;
         }
+        return;
     }
 
-    if (pl->shuffle) {
-        generate_shuffle_order(pl);
-    }
+    playlist_set_current_from_actual(pl, current_actual);
 }
 
 /// @brief Remove all tracks from the playlist and stop playback.
@@ -298,16 +396,9 @@ void rt_playlist_clear(void *obj) {
         return;
     playlist_impl *pl = (playlist_impl *)obj;
 
-    if (pl->music) {
-        rt_music_stop(pl->music);
-        rt_music_destroy(pl->music);
-        pl->music = NULL;
-    }
+    playlist_release_music(pl);
 
-    // Clear tracks
-    while (rt_seq_len(pl->tracks) > 0) {
-        rt_seq_pop(pl->tracks);
-    }
+    rt_seq_clear(pl->tracks);
 
     pl->current = -1;
     pl->playing = 0;
@@ -370,11 +461,13 @@ void rt_playlist_play(void *obj) {
         return;
     }
 
-    if (pl->current < 0) {
+    if (pl->current < 0 || pl->current >= rt_seq_len(pl->tracks)) {
         pl->current = 0;
     }
 
-    load_current(pl);
+    if (!pl->music)
+        pl->music = playlist_load_current_music(pl);
+
     if (pl->music) {
         int loop = (pl->repeat == RT_REPEAT_ONE) ? 1 : 0;
         rt_music_play(pl->music, loop);
@@ -410,7 +503,6 @@ void rt_playlist_stop(void *obj) {
 
     pl->playing = 0;
     pl->paused = 0;
-    pl->current = 0;
 }
 
 /// @brief Advance to the next track in the playlist.
@@ -427,31 +519,23 @@ void rt_playlist_next(void *obj) {
     if (count == 0)
         return;
 
-    pl->current++;
+    int8_t was_playing = pl->playing;
+    int8_t was_paused = pl->paused;
+    int64_t next_position = (pl->current < 0) ? 0 : pl->current + 1;
 
-    if (pl->current >= count) {
+    if (next_position >= count) {
         if (pl->repeat == RT_REPEAT_ALL) {
-            // Repeat all: go back to start
-            pl->current = 0;
-            if (pl->shuffle) {
+            next_position = 0;
+            if (pl->shuffle)
                 generate_shuffle_order(pl);
-            }
         } else {
-            // No repeat: stop at end
             pl->current = count - 1;
             rt_playlist_stop(obj);
             return;
         }
     }
 
-    int was_playing = pl->playing || pl->paused;
-    load_current(pl);
-    if (was_playing && pl->music) {
-        int loop = (pl->repeat == RT_REPEAT_ONE) ? 1 : 0;
-        rt_music_play(pl->music, loop);
-        pl->playing = 1;
-        pl->paused = 0;
-    }
+    playlist_select_position(pl, next_position, was_playing, was_paused);
 }
 
 /// @brief Go back to the previous track in the playlist.
@@ -467,25 +551,19 @@ void rt_playlist_prev(void *obj) {
     if (count == 0)
         return;
 
-    pl->current--;
+    int8_t was_playing = pl->playing;
+    int8_t was_paused = pl->paused;
+    int64_t prev_position = (pl->current < 0) ? 0 : pl->current - 1;
 
-    if (pl->current < 0) {
+    if (prev_position < 0) {
         if (pl->repeat == RT_REPEAT_ALL) {
-            // Repeat all: go to end
-            pl->current = count - 1;
+            prev_position = count - 1;
         } else {
-            pl->current = 0;
+            prev_position = 0;
         }
     }
 
-    int was_playing = pl->playing || pl->paused;
-    load_current(pl);
-    if (was_playing && pl->music) {
-        int loop = (pl->repeat == RT_REPEAT_ONE) ? 1 : 0;
-        rt_music_play(pl->music, loop);
-        pl->playing = 1;
-        pl->paused = 0;
-    }
+    playlist_select_position(pl, prev_position, was_playing, was_paused);
 }
 
 /// @brief Jump to a specific track by index and begin playback if active.
@@ -500,16 +578,16 @@ void rt_playlist_jump(void *obj, int64_t index) {
     if (count == 0 || index < 0 || index >= count)
         return;
 
-    pl->current = index;
-
-    int was_playing = pl->playing || pl->paused;
-    load_current(pl);
-    if (was_playing && pl->music) {
-        int loop = (pl->repeat == RT_REPEAT_ONE) ? 1 : 0;
-        rt_music_play(pl->music, loop);
-        pl->playing = 1;
-        pl->paused = 0;
+    int64_t target_position = index;
+    if (pl->shuffle) {
+        if (!pl->shuffle_order)
+            generate_shuffle_order(pl);
+        target_position = playlist_find_shuffle_position(pl, index);
+        if (target_position < 0)
+            return;
     }
+
+    playlist_select_position(pl, target_position, pl->playing, pl->paused);
 }
 
 //=============================================================================
@@ -598,10 +676,25 @@ void rt_playlist_set_shuffle(void *obj, int8_t shuffle) {
         return;
     playlist_impl *pl = (playlist_impl *)obj;
 
-    pl->shuffle = shuffle ? 1 : 0;
+    int8_t new_shuffle = shuffle ? 1 : 0;
+    if (pl->shuffle == new_shuffle)
+        return;
+
+    int64_t current_actual = playlist_current_actual_index(pl);
+    pl->shuffle = new_shuffle;
 
     if (pl->shuffle) {
         generate_shuffle_order(pl);
+        if (current_actual >= 0)
+            playlist_set_current_from_actual(pl, current_actual);
+    } else {
+        if (pl->shuffle_order) {
+            if (rt_obj_release_check0(pl->shuffle_order))
+                rt_obj_free(pl->shuffle_order);
+            pl->shuffle_order = NULL;
+        }
+        if (current_actual >= 0)
+            pl->current = current_actual;
     }
 }
 
@@ -655,6 +748,8 @@ void rt_playlist_update(void *obj) {
     if (!obj)
         return;
     playlist_impl *pl = (playlist_impl *)obj;
+
+    rt_audio_update();
 
     if (!pl->playing || !pl->music)
         return;

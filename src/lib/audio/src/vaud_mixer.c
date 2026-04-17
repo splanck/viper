@@ -169,30 +169,21 @@ static void mix_music(vaud_music_t music, int32_t *output, int32_t frames, float
     while (frames_remaining > 0) {
         /* Check if we need to refill buffer */
         if (music->buffer_position >= music->buffer_frames[music->current_buffer]) {
-            /* Move to next buffer */
-            int32_t next_buffer = (music->current_buffer + 1) % VAUD_MUSIC_BUFFER_COUNT;
-
-            /* Refill current buffer (resamples if needed) */
-            {
-                int32_t read = vaud_music_fill_buffer(music, music->current_buffer);
-
-                if (read == 0 && music->loop) {
-                    if (!vaud_music_seek_output_frame(music, 0)) {
-                        music->state = VAUD_MUSIC_STOPPED;
-                        return;
-                    }
-                    continue;
-                }
-
-                if (read == 0) {
+            int32_t read = vaud_music_fill_buffer(music, music->current_buffer);
+            if (read == 0 && music->loop) {
+                if (!vaud_music_seek_output_frame(music, 0)) {
                     music->state = VAUD_MUSIC_STOPPED;
                     return;
                 }
-
-                music->buffer_frames[music->current_buffer] = read;
+                continue;
             }
 
-            music->current_buffer = next_buffer;
+            if (read == 0) {
+                music->state = VAUD_MUSIC_STOPPED;
+                return;
+            }
+
+            music->buffer_frames[music->current_buffer] = read;
             music->buffer_position = 0;
         }
 

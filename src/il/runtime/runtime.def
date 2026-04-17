@@ -2477,6 +2477,7 @@ RT_FUNC(AudioSetMasterVolume,  rt_audio_set_master_volume, "Viper.Sound.Audio.Se
 RT_FUNC(AudioGetMasterVolume,  rt_audio_get_master_volume, "Viper.Sound.Audio.GetMasterVolume", "i64()")
 RT_FUNC(AudioPauseAll,         rt_audio_pause_all,        "Viper.Sound.Audio.PauseAll",         "void()")
 RT_FUNC(AudioResumeAll,        rt_audio_resume_all,       "Viper.Sound.Audio.ResumeAll",        "void()")
+RT_FUNC(AudioUpdate,           rt_audio_update,           "Viper.Sound.Audio.Update",           "void()")
 RT_FUNC(AudioStopAllSounds,    rt_audio_stop_all_sounds,  "Viper.Sound.Audio.StopAllSounds",    "void()")
 
 // Mix Groups & Crossfade
@@ -2493,9 +2494,6 @@ RT_FUNC(SoundPlayLoopGroup,   rt_sound_play_loop_in_group, "Viper.Sound.Sound.Pl
 //=============================================================================
 // SOUND - SOUND EFFECTS
 //=============================================================================
-
-// Audio encoding (WAV → VAF)
-RT_FUNC(AudioEncode, rt_audio_encode, "Viper.Sound.Encode", "i1(str,str)")
 
 RT_FUNC(SoundLoad,     rt_sound_load,      "Viper.Sound.Sound.Load",     "obj(str)")
 RT_FUNC(SoundDestroy,  rt_sound_destroy,   "Viper.Sound.Sound.Destroy",  "void(obj)")
@@ -7073,10 +7071,12 @@ RT_CLASS_BEGIN("Viper.Sound.Audio", Audio, "obj", none)
     RT_METHOD("GetMasterVolume", "i64()", AudioGetMasterVolume)
     RT_METHOD("PauseAll", "void()", AudioPauseAll)
     RT_METHOD("ResumeAll", "void()", AudioResumeAll)
+    RT_METHOD("Update", "void()", AudioUpdate)
     RT_METHOD("StopAllSounds", "void()", AudioStopAllSounds)
     // Mix groups
     RT_METHOD("SetGroupVolume", "void(i64,i64)", AudioSetGroupVolume)
     RT_METHOD("GetGroupVolume", "i64(i64)", AudioGetGroupVolume)
+    RT_PROP("IsCrossfading", "i1", MusicIsCrossfading, none)
 RT_CLASS_END()
 
 // Viper.Sound.Sound - sound effect playback

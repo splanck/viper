@@ -38,6 +38,7 @@ bind "../model/constants";
 bind "../model/game_state";
 bind "../model/player";
 bind "../model/play_result";
+bind "./manager_action";
 bind "./manager_policy";
 bind "./batted_ball_engine";
 bind "./runner_engine";
@@ -73,7 +74,7 @@ class PlateAppearanceEngine {
         // Intentional walk short-circuit. If the manager calls for one, log
         // it and skip the pitch loop entirely.
         var ibbAction = policy.decideIntentionalWalkAction(state, batter, pitcher);
-        if ibbAction.kind == manager_policy.ACTION_ISSUE_INTENTIONAL_WALK {
+        if ibbAction.kind == manager_action.ACTION_ISSUE_INTENTIONAL_WALK {
             state.managerDecisionLog.add(policy.policyName + "|intentional_walk|" +
                                          batter.name + "|" + ibbAction.rationale);
             var ibbLog: List[String] = ["Pitch 1: Manager puts " + batter.name + " on intentionally."];
@@ -103,16 +104,16 @@ class PlateAppearanceEngine {
             }
             var pitchType = self.choosePitchType(pitcher);
             var zoneScore = pitcher.command + pitcher.control - 100;
-            if intent == manager_policy.INTENT_ATTACK {
+            if intent == manager_action.INTENT_ATTACK {
                 zoneScore = zoneScore + 22;
             }
-            if intent == manager_policy.INTENT_EDGE {
+            if intent == manager_action.INTENT_EDGE {
                 zoneScore = zoneScore + 5;
             }
-            if intent == manager_policy.INTENT_CHASE {
+            if intent == manager_action.INTENT_CHASE {
                 zoneScore = zoneScore - 10;
             }
-            if intent == manager_policy.INTENT_PITCH_AROUND {
+            if intent == manager_action.INTENT_PITCH_AROUND {
                 zoneScore = zoneScore - 18;
             }
 
@@ -159,7 +160,7 @@ class PlateAppearanceEngine {
             if state.strikes >= 2 {
                 contactChance = contactChance + 10;
             }
-            if intent == manager_policy.INTENT_CHASE {
+            if intent == manager_action.INTENT_CHASE {
                 contactChance = contactChance - 10;
             }
             if !inZone {
@@ -245,7 +246,7 @@ class PlateAppearanceEngine {
         if balls == 3 {
             swingScore = swingScore - 6;
         }
-        if intent == manager_policy.INTENT_PITCH_AROUND {
+        if intent == manager_action.INTENT_PITCH_AROUND {
             swingScore = swingScore - 6;
         }
         return rng.chance(46 + swingScore / 2);

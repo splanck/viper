@@ -307,6 +307,7 @@ void rt_debugoverlay_draw(rt_debugoverlay dbg, void *canvas_ptr) {
         line[5 + flen] = '\0';
         rt_string s = make_string(line);
         rt_canvas_text_scaled(canvas_ptr, tx, ty, s, SCALE, fps_col);
+        rt_string_unref(s);
         ty += LINE_H;
     }
 
@@ -329,6 +330,7 @@ void rt_debugoverlay_draw(rt_debugoverlay dbg, void *canvas_ptr) {
         line[pos + 3] = '\0';
         rt_string s = make_string(line);
         rt_canvas_text_scaled(canvas_ptr, tx, ty, s, SCALE, COL_LABEL);
+        rt_string_unref(s);
         ty += LINE_H;
     }
 
@@ -358,6 +360,7 @@ void rt_debugoverlay_draw(rt_debugoverlay dbg, void *canvas_ptr) {
 
             rt_string s = make_string(line);
             rt_canvas_text_scaled(canvas_ptr, tx, ty, s, SCALE, COL_VALUE);
+            rt_string_unref(s);
             ty += LINE_H;
         }
     }

@@ -739,7 +739,7 @@ Frame-based sprite animation controller. Use alongside `Viper.Graphics.Sprite` t
 | `Pause()`                         | `Void()`                                | Pause at the current frame                         |
 | `Resume()`                        | `Void()`                                | Resume from the paused frame                       |
 | `Reset()`                         | `Void()`                                | Reset to first frame without stopping              |
-| `Update()`                        | `Boolean()`                             | Advance animation by one frame tick; returns true if frame changed |
+| `Update()`                        | `Boolean()`                             | Advance animation by one frame tick; high playback speeds may cross multiple frames and still return true if any visible frame changed |
 | `Destroy()`                       | `Void()`                                | Free the animator                                  |
 
 ### Zia Example
@@ -777,6 +777,7 @@ func start() {
 ### Notes
 
 - Call `Update()` once per frame in your game loop; it advances the frame timer and returns `true` when the visible frame changes.
+- High `Speed` values can consume multiple frame steps in one `Update()` call, so fast effects stay time-correct instead of slowing down.
 - `FrameChanged` is a convenience flag — equivalent to the `Update()` return value — useful when calling `Update()` elsewhere but checking in a different location.
 - `PingPong` and `Loop` are independent: setting both causes the animation to reverse at the end and loop indefinitely; `PingPong` alone (no `Loop`) plays forward then backward once.
 

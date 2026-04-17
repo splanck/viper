@@ -1144,9 +1144,9 @@ residue_done:
     }
 
     // --- Apply floor, IMDCT, window, overlap-add ---
-    int prev_n = (dec->prev_block_flag < 0)
-                     ? n
-                     : (dec->prev_block_flag ? dec->blocksize_1 : dec->blocksize_0);
+    int prev_block_flag = dec->prev_block_flag;
+    int prev_n =
+        (prev_block_flag < 0) ? n : (prev_block_flag ? dec->blocksize_1 : dec->blocksize_0);
     int overlap = (prev_n < n ? prev_n : n) / 2;
     int output_samples = overlap; // output from overlap region
 
@@ -1233,9 +1233,7 @@ residue_done:
     free(residue_buf);
     free(no_residue);
 
-    dec->prev_block_flag = block_flag;
-
-    if (dec->prev_block_flag < 0) {
+    if (prev_block_flag < 0) {
         // First frame — no output (only overlap saved)
         *out_pcm = NULL;
         *out_samples = 0;
@@ -1243,6 +1241,8 @@ residue_done:
         *out_pcm = dec->pcm_out;
         *out_samples = output_samples;
     }
+
+    dec->prev_block_flag = block_flag;
 
     return 0;
 }

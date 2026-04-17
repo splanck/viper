@@ -60,7 +60,6 @@
 #include "rt_audio3d.h"
 #include "rt_audiolistener3d.h"
 #include "rt_audiosource3d.h"
-#include "rt_audio_codec.h"
 #include "rt_bag.h"
 #include "rt_behavior.h"
 #include "rt_bigint.h"

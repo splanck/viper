@@ -146,13 +146,13 @@ implemented in C and exposed through the IL runtime system.
 | [`CollisionRect`](game.md#vipergamecollisionrect)         | Instance | AABB collision detection                 |
 | [`Grid2D`](game.md#vipergamegrid2d)                       | Instance | 2D array for tile maps and grids         |
 | [`ObjectPool`](game.md#vipergameobjectpool)               | Instance | Efficient object slot reuse              |
-| [`ParticleEmitter`](game.md#vipergameparticleemitter)     | Instance | Particle effects with batch rendering    |
-| [`PathFollower`](game.md#vipergamepathfollower)           | Instance | Path following along waypoints           |
+| [`ParticleEmitter`](game/effects.md#vipergameparticleemitter) | Instance | Particle effects with batch rendering |
+| [`PathFollower`](game/animation.md#vipergamepathfollower) | Instance | Path following along waypoints |
 | [`Physics2D`](game.md#vipergamephysics2d)                 | Compound | 2D rigid body physics (World + Body)     |
 | [`Quadtree`](game.md#vipergamequadtree)                   | Instance | Spatial partitioning for collision       |
 | [`ScreenFX`](game.md#vipergamescreenfx)                   | Instance | Screen effects (shake, flash, fade)      |
 | [`SmoothValue`](game.md#vipergamesmoothvalue)             | Instance | Smooth value interpolation               |
-| [`SpriteAnimation`](game.md#vipergamespriteanimation)     | Instance | Frame-based sprite animation controller  |
+| [`SpriteAnimation`](game/animation.md#vipergamespriteanimation) | Instance | Frame-based sprite animation controller |
 | [`StateMachine`](game.md#vipergamestatemachine)           | Instance | Finite state machine for game states     |
 | [`Timer`](game.md#vipergametimer)                         | Instance | Frame-based game timers                  |
 | [`Tween`](game.md#vipergametween)                         | Instance | Animation tweening with 19 easing curves |

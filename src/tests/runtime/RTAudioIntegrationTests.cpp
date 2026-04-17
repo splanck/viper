@@ -245,6 +245,46 @@ static void test_playlist_navigation() {
     ASSERT(rt_playlist_get_current(pl) == 0, "jumped to track 0");
 }
 
+static void test_playlist_shuffle_preserves_current_track() {
+    void *pl = rt_playlist_new();
+    rt_playlist_add(pl, make_str("one.wav"));
+    rt_playlist_add(pl, make_str("two.wav"));
+    rt_playlist_add(pl, make_str("three.wav"));
+
+    rt_playlist_jump(pl, 1);
+    ASSERT(rt_playlist_get_current(pl) == 1, "current starts on actual track 1");
+
+    rt_playlist_set_shuffle(pl, 1);
+    ASSERT(rt_playlist_get_current(pl) == 1, "enabling shuffle preserves current actual track");
+
+    rt_playlist_set_shuffle(pl, 0);
+    ASSERT(rt_playlist_get_current(pl) == 1, "disabling shuffle preserves current actual track");
+}
+
+static void test_playlist_jump_uses_actual_index_in_shuffle_mode() {
+    void *pl = rt_playlist_new();
+    rt_playlist_add(pl, make_str("one.wav"));
+    rt_playlist_add(pl, make_str("two.wav"));
+    rt_playlist_add(pl, make_str("three.wav"));
+
+    rt_playlist_set_shuffle(pl, 1);
+    rt_playlist_jump(pl, 2);
+    ASSERT(rt_playlist_get_current(pl) == 2, "jump uses actual track index while shuffled");
+}
+
+static void test_playlist_stop_preserves_selected_track() {
+    void *pl = rt_playlist_new();
+    rt_playlist_add(pl, make_str("one.wav"));
+    rt_playlist_add(pl, make_str("two.wav"));
+    rt_playlist_add(pl, make_str("three.wav"));
+
+    rt_playlist_jump(pl, 2);
+    ASSERT(rt_playlist_get_current(pl) == 2, "selected track 2 before stop");
+
+    rt_playlist_stop(pl);
+    ASSERT(rt_playlist_get_current(pl) == 2, "stop preserves selected track");
+}
+
 static void test_playlist_update_no_crash() {
     void *pl = rt_playlist_new();
     rt_playlist_add(pl, make_str("song.wav"));
@@ -541,6 +581,9 @@ int main() {
     test_playlist_volume();
     test_playlist_shuffle_repeat();
     test_playlist_navigation();
+    test_playlist_shuffle_preserves_current_track();
+    test_playlist_jump_uses_actual_index_in_shuffle_mode();
+    test_playlist_stop_preserves_selected_track();
     test_playlist_update_no_crash();
     test_playlist_null_safety();
     test_playlist_bounds();

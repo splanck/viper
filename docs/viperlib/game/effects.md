@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-09
+last-verified: 2026-04-17
 ---
 
 # Visual Effects
@@ -42,7 +42,7 @@ Simple particle system for visual effects like explosions, sparks, smoke, and ot
 |---------------------------------------------|--------------------------------|--------------------------------------|
 | `Burst(count)`                              | `Void(Integer)`                | Emit burst of particles instantly    |
 | `Clear()`                                   | `Void()`                       | Remove all particles                 |
-| `Get(index, xPtr, yPtr, sizePtr, alphaPtr)` | `Boolean(Int,Ptr,Ptr,Ptr,Ptr)` | Get particle data by index           |
+| `Get(index, xPtr, yPtr, sizePtr, colorPtr)` | `Boolean(Int,Ptr,Ptr,Ptr,Ptr)` | Get particle data by index           |
 | `SetGravity(gx, gy)`                        | `Void(Double,Double)`          | Set gravity (per frame²)             |
 | `SetLifetime(min, max)`                     | `Void(Int,Int)`                | Set particle lifetime range (frames) |
 | `SetPosition(x, y)`                         | `Void(Double,Double)`          | Set emitter position                 |
@@ -52,7 +52,8 @@ Simple particle system for visual effects like explosions, sparks, smoke, and ot
 | `Stop()`                                    | `Void()`                       | Stop emission (particles continue)   |
 | `Draw(canvas)`                              | `Integer(Canvas)`              | Draw all particles to a Canvas       |
 | `DrawAt(canvas, offsetX, offsetY)`          | `Integer(Canvas,Int,Int)`      | Draw all particles with position offset |
-| `DrawToPixels(pixels, offsetX, offsetY)`    | `Integer(Pixels,Int,Int)`      | Draw all particles to a Pixels buffer|
+| `DrawToPixels(pixels, offsetX, offsetY)`    | `Integer(Pixels,Int,Int)`      | Alpha-blend all particles into a Pixels buffer |
+| `Destroy()`                                 | `Void()`                       | Release the emitter handle when finished |
 | `Update()`                                  | `Void()`                       | Update all particles (call per frame)|
 
 ### Zia Example
@@ -119,6 +120,10 @@ explosion.DrawAt(canvas, -cameraX, -cameraY)
 ' Or render to a Pixels buffer for compositing
 explosion.DrawToPixels(pixelsBuffer, 0, 0)
 ```
+
+`Get()` returns the particle color in `0xAARRGGBB` form after fade-out has been applied. Legacy `0x00RRGGBB` particle colors are treated as fully opaque when read back or drawn. Continuous emitters also discard emission backlog while saturated, so they resume at the configured rate instead of bursting after a full pool drains.
+
+Call `Destroy()` when the emitter is no longer needed. The runtime releases the emitter handle and reclaims its particle pool when the last reference goes away.
 
 ---
 

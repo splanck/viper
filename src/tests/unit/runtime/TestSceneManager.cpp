@@ -68,10 +68,53 @@ TEST(SceneManager, TransitionProgress) {
     EXPECT_TRUE(p > 0.4 && p < 0.6);
 }
 
+TEST(SceneManager, TransitionProgressReachesOneOnCompletionTick) {
+    void *mgr = rt_scenemanager_new();
+    rt_scenemanager_add(mgr, (void *)rt_const_cstr("a"));
+    rt_scenemanager_add(mgr, (void *)rt_const_cstr("b"));
+
+    rt_scenemanager_switch_transition(mgr, (void *)rt_const_cstr("b"), 100);
+    rt_scenemanager_update(mgr, 100);
+
+    EXPECT_FALSE(rt_scenemanager_is_transitioning(mgr));
+    EXPECT_EQ(rt_scenemanager_transition_progress(mgr), 1.0);
+    EXPECT_TRUE(rt_scenemanager_is_scene(mgr, (void *)rt_const_cstr("b")));
+
+    rt_scenemanager_update(mgr, 16);
+    EXPECT_EQ(rt_scenemanager_transition_progress(mgr), 0.0);
+}
+
 TEST(SceneManager, UnknownSceneNoOp) {
     void *mgr = rt_scenemanager_new();
     rt_scenemanager_add(mgr, (void *)rt_const_cstr("menu"));
     rt_scenemanager_switch(mgr, (void *)rt_const_cstr("nonexistent")); // no crash
+    EXPECT_TRUE(rt_scenemanager_is_scene(mgr, (void *)rt_const_cstr("menu")));
+}
+
+TEST(SceneManager, TransitionToCurrentSceneIsNoOp) {
+    void *mgr = rt_scenemanager_new();
+    rt_scenemanager_add(mgr, (void *)rt_const_cstr("menu"));
+    rt_scenemanager_add(mgr, (void *)rt_const_cstr("game"));
+
+    rt_scenemanager_update(mgr, 16); // clear initial just_entered
+    rt_scenemanager_switch_transition(mgr, (void *)rt_const_cstr("menu"), 250);
+
+    EXPECT_FALSE(rt_scenemanager_is_transitioning(mgr));
+    EXPECT_TRUE(rt_scenemanager_is_scene(mgr, (void *)rt_const_cstr("menu")));
+    EXPECT_FALSE(rt_scenemanager_just_entered(mgr));
+    EXPECT_FALSE(rt_scenemanager_just_exited(mgr));
+}
+
+TEST(SceneManager, DuplicateSceneNamesAreIgnored) {
+    void *mgr = rt_scenemanager_new();
+    rt_scenemanager_add(mgr, (void *)rt_const_cstr("menu"));
+    rt_scenemanager_add(mgr, (void *)rt_const_cstr("menu"));
+    rt_scenemanager_add(mgr, (void *)rt_const_cstr("game"));
+
+    rt_scenemanager_switch(mgr, (void *)rt_const_cstr("game"));
+    EXPECT_TRUE(rt_scenemanager_is_scene(mgr, (void *)rt_const_cstr("game")));
+
+    rt_scenemanager_switch(mgr, (void *)rt_const_cstr("menu"));
     EXPECT_TRUE(rt_scenemanager_is_scene(mgr, (void *)rt_const_cstr("menu")));
 }
 

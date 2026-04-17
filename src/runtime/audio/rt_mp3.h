@@ -75,6 +75,9 @@ int mp3_stream_sample_rate(const mp3_stream_t *stream);
 /// @brief Get the channel count of the MP3 stream.
 int mp3_stream_channels(const mp3_stream_t *stream);
 
+/// @brief Get the total decoded frame count of the MP3 stream.
+int mp3_stream_total_samples(const mp3_stream_t *stream);
+
 /// @brief Reset stream to beginning (for looping).
 void mp3_stream_rewind(mp3_stream_t *stream);
 

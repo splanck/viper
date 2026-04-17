@@ -58,6 +58,7 @@ bind Viper.Fmt as Fmt;
 bind "../model/constants";
 bind "../model/game_state";
 bind "../sim/game_engine";
+bind "../sim/manager_action";
 bind "../sim/manager_policy";
 bind "./season_model";
 bind "./manager_layer";
@@ -217,8 +218,8 @@ class SeasonEngine {
                                   home: season_model.TeamSeasonState,
                                   awayManager: manager_layer.SeasonTeamManager,
                                   homeManager: manager_layer.SeasonTeamManager,
-                                  awayLineupAction: manager_policy.ManagerAction,
-                                  homeLineupAction: manager_policy.ManagerAction) -> Boolean {
+                                  awayLineupAction: manager_action.ManagerAction,
+                                  homeLineupAction: manager_action.ManagerAction) -> Boolean {
         if awayLineupAction.lineupChoice == null || homeLineupAction.lineupChoice == null {
             franchise.managerDecisionLog.add("day=" + Fmt.Int(franchise.calendar.currentDayIndex + 1) +
                                              "|lineup_failure|" + scheduled.awayTeamId + "|" + scheduled.homeTeamId);
@@ -238,8 +239,8 @@ class SeasonEngine {
 
     hide func logSubmittedLineups(away: season_model.TeamSeasonState,
                                   home: season_model.TeamSeasonState,
-                                  awayLineupAction: manager_policy.ManagerAction,
-                                  homeLineupAction: manager_policy.ManagerAction) {
+                                  awayLineupAction: manager_action.ManagerAction,
+                                  homeLineupAction: manager_action.ManagerAction) {
         franchise.managerDecisionLog.add("day=" + Fmt.Int(franchise.calendar.currentDayIndex + 1) +
                                          "|submit_lineup|" + away.teamRef.id + "|" + awayLineupAction.rationale);
         franchise.managerDecisionLog.add("day=" + Fmt.Int(franchise.calendar.currentDayIndex + 1) +
@@ -249,8 +250,8 @@ class SeasonEngine {
     hide func buildGameState(scheduled: season_model.ScheduledGame,
                              away: season_model.TeamSeasonState,
                              home: season_model.TeamSeasonState,
-                             awayLineupAction: manager_policy.ManagerAction,
-                             homeLineupAction: manager_policy.ManagerAction) -> game_state.GameState {
+                             awayLineupAction: manager_action.ManagerAction,
+                             homeLineupAction: manager_action.ManagerAction) -> game_state.GameState {
         return new game_state.GameState(franchise.rules, home.homePark,
                                         new game_state.TeamGameState(away.teamRef, awayLineupAction.lineupChoice!),
                                         new game_state.TeamGameState(home.teamRef, homeLineupAction.lineupChoice!),

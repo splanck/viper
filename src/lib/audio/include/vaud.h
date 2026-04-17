@@ -178,6 +178,12 @@ vaud_sound_t vaud_load_sound_mem(vaud_context_t ctx, const void *data, size_t si
 /// @param sound Sound to free (may be NULL).
 void vaud_free_sound(vaud_sound_t sound);
 
+/// @brief Detach a sound from its owning context without freeing its sample data.
+/// @details Used during runtime shutdown so higher-level wrappers can survive
+///          `vaud_destroy()` and free themselves later without touching a dead context.
+/// @param sound Sound to detach (may be NULL).
+void vaud_detach_sound(vaud_sound_t sound);
+
 /// @brief Play a sound effect.
 /// @details Starts playback immediately using the next available voice. If all
 ///          voices are in use, the oldest non-looping voice is stolen.
@@ -249,6 +255,12 @@ vaud_music_t vaud_load_music_mp3(vaud_context_t ctx, const char *path);
 /// @details Stops playback if playing, closes the file, and frees resources.
 /// @param music Music to free (may be NULL).
 void vaud_free_music(vaud_music_t music);
+
+/// @brief Detach a music stream from its owning context without freeing decoder state.
+/// @details Used during runtime shutdown so wrapper-owned finalizers can release
+///          the music later without touching a destroyed context.
+/// @param music Music to detach (may be NULL).
+void vaud_detach_music(vaud_music_t music);
 
 /// @brief Start music playback.
 /// @details Begins streaming playback from the beginning of the file.

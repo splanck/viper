@@ -125,7 +125,7 @@ void *rt_asset_decode_typed(const char *name, const uint8_t *data, size_t size) 
         return rt_jpeg_decode_buffer(data, size);
 
     // Audio — direct buffer API (WAV/OGG/MP3 format detection is internal)
-    if (iext(name, ".wav") || iext(name, ".ogg") || iext(name, ".mp3") || iext(name, ".vaf"))
+    if (iext(name, ".wav") || iext(name, ".ogg") || iext(name, ".mp3"))
         return rt_sound_load_mem(data, (int64_t)size);
 
     // PNG — via temp file

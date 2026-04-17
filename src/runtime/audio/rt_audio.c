@@ -40,6 +40,7 @@
 #include "rt_ogg.h"
 #include "rt_platform.h"
 #include "rt_string.h"
+#include "rt_time.h"
 #include "rt_vorbis.h"
 
 #include <stddef.h>
@@ -57,13 +58,15 @@ static int64_t g_group_volume[RT_MIXGROUP_COUNT] = {100, 100};
 #ifdef VIPER_ENABLE_AUDIO
 /// @brief Crossfade state.
 static struct {
-    void *fade_out;   ///< Music being faded out (NULL when not crossfading).
-    void *fade_in;    ///< Music being faded in (NULL when not crossfading).
-    int64_t elapsed;  ///< Milliseconds elapsed in crossfade.
-    int64_t duration; ///< Total crossfade duration in ms.
-    int64_t vol_out;  ///< Starting volume of fade-out track.
-    int8_t active;    ///< 1 if crossfade in progress.
-} g_crossfade = {NULL, NULL, 0, 0, 100, 0};
+    void *fade_out;      ///< Music being faded out (NULL when not crossfading).
+    void *fade_in;       ///< Music being faded in (NULL when not crossfading).
+    int64_t elapsed;     ///< Milliseconds elapsed in crossfade.
+    int64_t duration;    ///< Total crossfade duration in ms.
+    int64_t vol_out;     ///< Starting logical volume of the fade-out track.
+    int64_t vol_in;      ///< Target logical volume of the fade-in track.
+    int64_t last_tick_ms; ///< Last monotonic tick used to advance the fade.
+    int8_t active;       ///< 1 if crossfade in progress.
+} g_crossfade = {NULL, NULL, 0, 0, 100, 100, 0, 0};
 
 #include "vaud.h"
 
@@ -86,16 +89,75 @@ static volatile int g_audio_init_lock = 0;
 #include <sched.h>
 #endif
 
+static void audio_state_lock(void) {
+#if RT_COMPILER_MSVC
+    while (_InterlockedExchange8((volatile char *)&g_audio_init_lock, 1))
+#else
+    while (__atomic_test_and_set(&g_audio_init_lock, __ATOMIC_ACQUIRE))
+#endif
+    {
+#ifdef _WIN32
+        SwitchToThread();
+#else
+        sched_yield();
+#endif
+    }
+}
+
+static void audio_state_unlock(void) {
+#if RT_COMPILER_MSVC
+    _InterlockedExchange8((volatile char *)&g_audio_init_lock, 0);
+#else
+    __atomic_clear(&g_audio_init_lock, __ATOMIC_RELEASE);
+#endif
+}
+
+typedef struct {
+    int64_t voice_id;
+    int64_t group;
+    int64_t base_volume;
+} rt_tracked_voice;
+
+static rt_tracked_voice g_tracked_voices[VAUD_MAX_VOICES];
+static int32_t g_tracked_voice_count = 0;
+
 //===----------------------------------------------------------------------===//
 // Sound Wrapper Structure
 //===----------------------------------------------------------------------===//
 
 /// @brief Internal sound wrapper structure.
 /// @details Contains the vptr (for future OOP support) and the vaud sound handle.
-typedef struct {
-    void *vptr;         ///< VTable pointer (reserved for future use)
-    vaud_sound_t sound; ///< ViperAUD sound handle
+typedef struct rt_sound {
+    void *vptr;            ///< VTable pointer (reserved for future use)
+    vaud_sound_t sound;    ///< ViperAUD sound handle
+    struct rt_sound *prev; ///< Registry linkage
+    struct rt_sound *next; ///< Registry linkage
 } rt_sound;
+
+static rt_sound *g_sound_wrappers = NULL;
+
+static void sound_registry_add(rt_sound *snd) {
+    if (!snd)
+        return;
+    snd->prev = NULL;
+    snd->next = g_sound_wrappers;
+    if (g_sound_wrappers)
+        g_sound_wrappers->prev = snd;
+    g_sound_wrappers = snd;
+}
+
+static void sound_registry_remove(rt_sound *snd) {
+    if (!snd)
+        return;
+    if (snd->prev)
+        snd->prev->next = snd->next;
+    else if (g_sound_wrappers == snd)
+        g_sound_wrappers = snd->next;
+    if (snd->next)
+        snd->next->prev = snd->prev;
+    snd->prev = NULL;
+    snd->next = NULL;
+}
 
 /// @brief Finalizer for sound objects.
 static void rt_sound_finalize(void *obj) {
@@ -103,6 +165,9 @@ static void rt_sound_finalize(void *obj) {
         return;
 
     rt_sound *snd = (rt_sound *)obj;
+    audio_state_lock();
+    sound_registry_remove(snd);
+    audio_state_unlock();
     if (snd->sound) {
         vaud_free_sound(snd->sound);
         snd->sound = NULL;
@@ -115,10 +180,38 @@ static void rt_sound_finalize(void *obj) {
 
 /// @brief Internal music wrapper structure.
 /// @details Contains the vptr (for future OOP support) and the vaud music handle.
-typedef struct {
-    void *vptr;         ///< VTable pointer (reserved for future use)
-    vaud_music_t music; ///< ViperAUD music handle
+typedef struct rt_music {
+    void *vptr;            ///< VTable pointer (reserved for future use)
+    vaud_music_t music;    ///< ViperAUD music handle
+    int64_t logical_volume; ///< User-facing 0-100 volume before mix-group scaling
+    struct rt_music *prev; ///< Registry linkage
+    struct rt_music *next; ///< Registry linkage
 } rt_music;
+
+static rt_music *g_music_wrappers = NULL;
+
+static void music_registry_add(rt_music *mus) {
+    if (!mus)
+        return;
+    mus->prev = NULL;
+    mus->next = g_music_wrappers;
+    if (g_music_wrappers)
+        g_music_wrappers->prev = mus;
+    g_music_wrappers = mus;
+}
+
+static void music_registry_remove(rt_music *mus) {
+    if (!mus)
+        return;
+    if (mus->prev)
+        mus->prev->next = mus->next;
+    else if (g_music_wrappers == mus)
+        g_music_wrappers = mus->next;
+    if (mus->next)
+        mus->next->prev = mus->prev;
+    mus->prev = NULL;
+    mus->next = NULL;
+}
 
 /// @brief Finalizer for music objects.
 static void rt_music_finalize(void *obj) {
@@ -126,6 +219,9 @@ static void rt_music_finalize(void *obj) {
         return;
 
     rt_music *mus = (rt_music *)obj;
+    audio_state_lock();
+    music_registry_remove(mus);
+    audio_state_unlock();
     if (mus->music) {
         vaud_free_music(mus->music);
         mus->music = NULL;
@@ -212,6 +308,127 @@ static int ensure_audio_init(void) {
     return g_audio_ctx != NULL;
 }
 
+static int64_t clamp_volume_100(int64_t volume) {
+    if (volume < 0)
+        return 0;
+    if (volume > 100)
+        return 100;
+    return volume;
+}
+
+static int64_t apply_group_volume(int64_t volume, int64_t group) {
+    if (group < 0 || group >= RT_MIXGROUP_COUNT)
+        group = RT_MIXGROUP_SFX;
+    return clamp_volume_100(volume) * g_group_volume[group] / 100;
+}
+
+static void tracked_voice_remove_at(int32_t index) {
+    if (index < 0 || index >= g_tracked_voice_count)
+        return;
+    for (int32_t i = index; i < g_tracked_voice_count - 1; i++)
+        g_tracked_voices[i] = g_tracked_voices[i + 1];
+    g_tracked_voice_count--;
+}
+
+static int32_t tracked_voice_find(int64_t voice_id) {
+    for (int32_t i = 0; i < g_tracked_voice_count; i++) {
+        if (g_tracked_voices[i].voice_id == voice_id)
+            return i;
+    }
+    return -1;
+}
+
+static void tracked_voice_set(int64_t voice_id, int64_t group, int64_t base_volume) {
+    if (voice_id < 0)
+        return;
+    int32_t index = tracked_voice_find(voice_id);
+    if (index < 0) {
+        if (g_tracked_voice_count >= VAUD_MAX_VOICES)
+            tracked_voice_remove_at(0);
+        index = g_tracked_voice_count++;
+    }
+    g_tracked_voices[index].voice_id = voice_id;
+    g_tracked_voices[index].group = group;
+    g_tracked_voices[index].base_volume = clamp_volume_100(base_volume);
+}
+
+static void tracked_voice_remove(int64_t voice_id) {
+    int32_t index = tracked_voice_find(voice_id);
+    if (index >= 0)
+        tracked_voice_remove_at(index);
+}
+
+static void rt_audio_apply_music_volume(rt_music *mus) {
+    if (!mus || !mus->music)
+        return;
+    int64_t effective = apply_group_volume(mus->logical_volume, RT_MIXGROUP_MUSIC);
+    vaud_music_set_volume(mus->music, (float)effective / 100.0f);
+}
+
+static void rt_audio_refresh_music_group_volumes(void) {
+    for (rt_music *mus = g_music_wrappers; mus; mus = mus->next) {
+        if (mus->music)
+            rt_audio_apply_music_volume(mus);
+    }
+}
+
+static void rt_audio_refresh_voice_group_volumes(int64_t group) {
+    for (int32_t i = g_tracked_voice_count - 1; i >= 0; i--) {
+        int64_t voice_id = g_tracked_voices[i].voice_id;
+        if (!g_audio_ctx || !vaud_voice_is_playing(g_audio_ctx, (vaud_voice_id)voice_id)) {
+            tracked_voice_remove_at(i);
+            continue;
+        }
+        if (g_tracked_voices[i].group != group)
+            continue;
+        int64_t effective = apply_group_volume(g_tracked_voices[i].base_volume, group);
+        vaud_set_voice_volume(g_audio_ctx, (vaud_voice_id)voice_id, (float)effective / 100.0f);
+    }
+}
+
+static void rt_audio_invalidate_wrappers_for_shutdown(void) {
+    for (rt_sound *snd = g_sound_wrappers; snd; snd = snd->next) {
+        if (snd->sound)
+            vaud_detach_sound(snd->sound);
+    }
+
+    for (rt_music *mus = g_music_wrappers; mus; mus = mus->next) {
+        if (mus->music)
+            vaud_detach_music(mus->music);
+    }
+
+    g_tracked_voice_count = 0;
+}
+
+static void rt_audio_release_crossfade_refs_locked(void) {
+    if (g_crossfade.fade_out) {
+        if (rt_obj_release_check0(g_crossfade.fade_out))
+            rt_obj_free(g_crossfade.fade_out);
+    }
+    if (g_crossfade.fade_in) {
+        if (rt_obj_release_check0(g_crossfade.fade_in))
+            rt_obj_free(g_crossfade.fade_in);
+    }
+    g_crossfade.fade_out = NULL;
+    g_crossfade.fade_in = NULL;
+    g_crossfade.elapsed = 0;
+    g_crossfade.duration = 0;
+    g_crossfade.vol_out = 100;
+    g_crossfade.vol_in = 100;
+    g_crossfade.last_tick_ms = 0;
+    g_crossfade.active = 0;
+}
+
+static void rt_audio_crossfade_cancel_locked(int stop_fade_out) {
+    if (!g_crossfade.active)
+        return;
+    if (stop_fade_out && g_crossfade.fade_out)
+        vaud_music_stop(((rt_music *)g_crossfade.fade_out)->music);
+    rt_audio_release_crossfade_refs_locked();
+}
+
+static void rt_audio_update_crossfade_locked(int64_t dt_ms);
+
 /// @brief Explicitly initialize the audio system. Returns 1 on success, 0 on failure.
 /// @details Normally called lazily on first sound/music operation. This function
 ///          allows eager initialization to detect audio hardware issues early.
@@ -223,21 +440,11 @@ int64_t rt_audio_init(void) {
 /// @details Thread-safe via spinlock. Resets the initialization state so the
 ///          system can be re-initialized later if needed.
 void rt_audio_shutdown(void) {
-    // Acquire lock to ensure exclusive access during shutdown
-#if RT_COMPILER_MSVC
-    while (_InterlockedExchange8((volatile char *)&g_audio_init_lock, 1))
-#else
-    while (__atomic_test_and_set(&g_audio_init_lock, __ATOMIC_ACQUIRE))
-#endif
-    {
-#ifdef _WIN32
-        SwitchToThread();
-#else
-        sched_yield();
-#endif
-    }
+    audio_state_lock();
 
     if (g_audio_ctx) {
+        rt_audio_crossfade_cancel_locked(0);
+        rt_audio_invalidate_wrappers_for_shutdown();
         vaud_destroy(g_audio_ctx);
         g_audio_ctx = NULL;
     }
@@ -249,11 +456,7 @@ void rt_audio_shutdown(void) {
     __atomic_store_n(&g_audio_initialized, 0, __ATOMIC_RELEASE);
 #endif
 
-#if RT_COMPILER_MSVC
-    _InterlockedExchange8((volatile char *)&g_audio_init_lock, 0);
-#else
-    __atomic_clear(&g_audio_init_lock, __ATOMIC_RELEASE);
-#endif
+    audio_state_unlock();
 }
 
 /// @brief Set the global master volume (0 = mute, 100 = full volume).
@@ -291,6 +494,22 @@ void rt_audio_resume_all(void) {
         vaud_resume_all(g_audio_ctx);
 }
 
+/// @brief Advance time-based audio state using the monotonic clock.
+void rt_audio_update(void) {
+    audio_state_lock();
+    if (g_crossfade.active) {
+        int64_t now_ms = rt_timer_ms();
+        if (g_crossfade.last_tick_ms <= 0)
+            g_crossfade.last_tick_ms = now_ms;
+        int64_t dt_ms = now_ms - g_crossfade.last_tick_ms;
+        if (dt_ms > 0) {
+            g_crossfade.last_tick_ms = now_ms;
+            rt_audio_update_crossfade_locked(dt_ms);
+        }
+    }
+    audio_state_unlock();
+}
+
 /// @brief Stop all currently playing sound effects (music is unaffected).
 void rt_audio_stop_all_sounds(void) {
     if (g_audio_ctx)
@@ -301,123 +520,51 @@ void rt_audio_stop_all_sounds(void) {
 // Sound Effects
 //===----------------------------------------------------------------------===//
 
+/// @brief Detect audio file format from an in-memory header.
+/// @return 1=WAV/RIFF, 2=OGG, 3=MP3, 0=unknown
+static int detect_audio_format_mem(const void *data, size_t size) {
+    if (!data || size < 4)
+        return 0;
+    const uint8_t *hdr = (const uint8_t *)data;
+    if (hdr[0] == 'R' && hdr[1] == 'I' && hdr[2] == 'F' && hdr[3] == 'F')
+        return 1;
+    if (hdr[0] == 'O' && hdr[1] == 'g' && hdr[2] == 'g' && hdr[3] == 'S')
+        return 2;
+    if (hdr[0] == 'I' && hdr[1] == 'D' && hdr[2] == '3')
+        return 3;
+    if (hdr[0] == 0xFF && (hdr[1] & 0xE0) == 0xE0)
+        return 3;
+    return 0;
+}
+
 /// @brief Detect audio file format from magic bytes.
-/// @return 1=WAV/RIFF, 2=OGG, 0=unknown
+/// @return 1=WAV/RIFF, 2=OGG, 3=MP3, 0=unknown
 static int detect_audio_format(const char *filepath) {
     FILE *af = fopen(filepath, "rb");
     if (!af)
         return 0;
     uint8_t hdr[4];
-    size_t n = fread(hdr, 1, 4, af);
+    size_t n = fread(hdr, 1, sizeof(hdr), af);
     fclose(af);
-    if (n < 4)
-        return 0;
-    if (hdr[0] == 'R' && hdr[1] == 'I' && hdr[2] == 'F' && hdr[3] == 'F')
-        return 1; // WAV
-    if (hdr[0] == 'O' && hdr[1] == 'g' && hdr[2] == 'g' && hdr[3] == 'S')
-        return 2; // OGG
-    if (hdr[0] == 'I' && hdr[1] == 'D' && hdr[2] == '3')
-        return 3; // MP3 with ID3v2 tag
-    if (hdr[0] == 0xFF && (hdr[1] & 0xE0) == 0xE0)
-        return 3; // MP3 frame sync
-    return 0;
+    return detect_audio_format_mem(hdr, n);
 }
 
-/// @brief Decode an entire OGG Vorbis file to a WAV-format memory buffer.
-/// @details Creates a valid RIFF/WAV header followed by raw PCM data.
-/// @param filepath Path to the .ogg file.
-/// @param out_data Receives malloc'd WAV data (caller frees).
-/// @param out_len Receives total WAV data length.
-/// @return 0 on success, -1 on failure.
-static int ogg_decode_to_wav(const char *filepath, uint8_t **out_data, size_t *out_len) {
-    ogg_reader_t *reader = ogg_reader_open_file(filepath);
-    if (!reader)
+static int build_wav_from_pcm(const int16_t *pcm,
+                              size_t frames,
+                              int channels,
+                              int sample_rate,
+                              uint8_t **out_data,
+                              size_t *out_len) {
+    if (!pcm || !out_data || !out_len || frames == 0 || channels < 1 || channels > 2 ||
+        sample_rate <= 0)
         return -1;
 
-    vorbis_decoder_t *dec = vorbis_decoder_new();
-    if (!dec) {
-        ogg_reader_free(reader);
-        return -1;
-    }
-
-    // Read and decode the 3 header packets
-    for (int i = 0; i < 3; i++) {
-        const uint8_t *pkt_data;
-        size_t pkt_len;
-        if (!ogg_reader_next_packet(reader, &pkt_data, &pkt_len)) {
-            vorbis_decoder_free(dec);
-            ogg_reader_free(reader);
-            return -1;
-        }
-        if (vorbis_decode_header(dec, pkt_data, pkt_len, i) != 0) {
-            vorbis_decoder_free(dec);
-            ogg_reader_free(reader);
-            return -1;
-        }
-    }
-
-    int channels = vorbis_get_channels(dec);
-    int sample_rate = vorbis_get_sample_rate(dec);
-    if (channels <= 0 || sample_rate <= 0) {
-        vorbis_decoder_free(dec);
-        ogg_reader_free(reader);
-        return -1;
-    }
-
-    // Decode all audio packets into a growing PCM buffer
-    int16_t *pcm_buf = NULL;
-    size_t pcm_frames = 0;
-    size_t pcm_cap = 0;
-
-    const uint8_t *pkt_data;
-    size_t pkt_len;
-    while (ogg_reader_next_packet(reader, &pkt_data, &pkt_len)) {
-        int16_t *frame_pcm = NULL;
-        int frame_samples = 0;
-        if (vorbis_decode_packet(dec, pkt_data, pkt_len, &frame_pcm, &frame_samples) != 0)
-            break;
-        if (frame_samples > 0 && frame_pcm) {
-            size_t needed = pcm_frames + (size_t)frame_samples;
-            if (needed > pcm_cap) {
-                size_t new_cap = pcm_cap ? pcm_cap * 2 : 65536;
-                if (new_cap < needed)
-                    new_cap = needed;
-                int16_t *new_buf =
-                    (int16_t *)realloc(pcm_buf, new_cap * (size_t)channels * sizeof(int16_t));
-                if (!new_buf) {
-                    free(pcm_buf);
-                    vorbis_decoder_free(dec);
-                    ogg_reader_free(reader);
-                    return -1;
-                }
-                pcm_buf = new_buf;
-                pcm_cap = new_cap;
-            }
-            memcpy(pcm_buf + pcm_frames * channels,
-                   frame_pcm,
-                   (size_t)frame_samples * (size_t)channels * sizeof(int16_t));
-            pcm_frames += (size_t)frame_samples;
-        }
-    }
-
-    vorbis_decoder_free(dec);
-    ogg_reader_free(reader);
-
-    if (pcm_frames == 0) {
-        free(pcm_buf);
-        return -1;
-    }
-
-    // Build a WAV file in memory: 44-byte header + PCM data
-    size_t data_size = pcm_frames * (size_t)channels * sizeof(int16_t);
+    size_t data_size = frames * (size_t)channels * sizeof(int16_t);
     size_t wav_size = 44 + data_size;
     uint8_t *wav = (uint8_t *)malloc(wav_size);
-    if (!wav) {
-        free(pcm_buf);
+    if (!wav)
         return -1;
-    }
 
-    // RIFF header
     memcpy(wav, "RIFF", 4);
     uint32_t riff_size = (uint32_t)(wav_size - 8);
     wav[4] = (uint8_t)(riff_size);
@@ -425,13 +572,11 @@ static int ogg_decode_to_wav(const char *filepath, uint8_t **out_data, size_t *o
     wav[6] = (uint8_t)(riff_size >> 16);
     wav[7] = (uint8_t)(riff_size >> 24);
     memcpy(wav + 8, "WAVE", 4);
-
-    // fmt chunk
     memcpy(wav + 12, "fmt ", 4);
     wav[16] = 16;
-    wav[17] = wav[18] = wav[19] = 0; // chunk size = 16
+    wav[17] = wav[18] = wav[19] = 0;
     wav[20] = 1;
-    wav[21] = 0; // PCM format
+    wav[21] = 0;
     wav[22] = (uint8_t)channels;
     wav[23] = 0;
     wav[24] = (uint8_t)(sample_rate);
@@ -443,23 +588,141 @@ static int ogg_decode_to_wav(const char *filepath, uint8_t **out_data, size_t *o
     wav[29] = (uint8_t)(byte_rate >> 8);
     wav[30] = (uint8_t)(byte_rate >> 16);
     wav[31] = (uint8_t)(byte_rate >> 24);
-    wav[32] = (uint8_t)(channels * 2); // block align
+    wav[32] = (uint8_t)(channels * 2);
     wav[33] = 0;
-    wav[34] = 16; // bits per sample
+    wav[34] = 16;
     wav[35] = 0;
-
-    // data chunk
     memcpy(wav + 36, "data", 4);
     wav[40] = (uint8_t)(data_size);
     wav[41] = (uint8_t)(data_size >> 8);
     wav[42] = (uint8_t)(data_size >> 16);
     wav[43] = (uint8_t)(data_size >> 24);
-    memcpy(wav + 44, pcm_buf, data_size);
+    memcpy(wav + 44, pcm, data_size);
 
-    free(pcm_buf);
     *out_data = wav;
     *out_len = wav_size;
     return 0;
+}
+
+static int ogg_decode_reader_to_wav(ogg_reader_t *reader, uint8_t **out_data, size_t *out_len) {
+    if (!reader || !out_data || !out_len)
+        return -1;
+
+    vorbis_decoder_t *dec = vorbis_decoder_new();
+    if (!dec)
+        return -1;
+
+    for (int i = 0; i < 3; i++) {
+        const uint8_t *pkt_data = NULL;
+        size_t pkt_len = 0;
+        if (!ogg_reader_next_packet(reader, &pkt_data, &pkt_len) ||
+            vorbis_decode_header(dec, pkt_data, pkt_len, i) != 0) {
+            vorbis_decoder_free(dec);
+            return -1;
+        }
+    }
+
+    int channels = vorbis_get_channels(dec);
+    int sample_rate = vorbis_get_sample_rate(dec);
+    if (channels < 1 || channels > 2 || sample_rate <= 0) {
+        vorbis_decoder_free(dec);
+        return -1;
+    }
+
+    int16_t *pcm_buf = NULL;
+    size_t pcm_frames = 0;
+    size_t pcm_cap = 0;
+
+    const uint8_t *pkt_data = NULL;
+    size_t pkt_len = 0;
+    while (ogg_reader_next_packet(reader, &pkt_data, &pkt_len)) {
+        int16_t *frame_pcm = NULL;
+        int frame_samples = 0;
+        if (vorbis_decode_packet(dec, pkt_data, pkt_len, &frame_pcm, &frame_samples) != 0) {
+            free(pcm_buf);
+            vorbis_decoder_free(dec);
+            return -1;
+        }
+        if (frame_samples <= 0 || !frame_pcm)
+            continue;
+
+        size_t needed = pcm_frames + (size_t)frame_samples;
+        if (needed > pcm_cap) {
+            size_t new_cap = pcm_cap ? pcm_cap * 2 : 65536;
+            if (new_cap < needed)
+                new_cap = needed;
+            int16_t *new_buf =
+                (int16_t *)realloc(pcm_buf, new_cap * (size_t)channels * sizeof(int16_t));
+            if (!new_buf) {
+                free(pcm_buf);
+                vorbis_decoder_free(dec);
+                return -1;
+            }
+            pcm_buf = new_buf;
+            pcm_cap = new_cap;
+        }
+
+        memcpy(pcm_buf + pcm_frames * (size_t)channels,
+               frame_pcm,
+               (size_t)frame_samples * (size_t)channels * sizeof(int16_t));
+        pcm_frames += (size_t)frame_samples;
+    }
+
+    vorbis_decoder_free(dec);
+    if (pcm_frames == 0) {
+        free(pcm_buf);
+        return -1;
+    }
+
+    int rc = build_wav_from_pcm(pcm_buf, pcm_frames, channels, sample_rate, out_data, out_len);
+    free(pcm_buf);
+    return rc;
+}
+
+static int ogg_file_to_wav(const char *filepath, uint8_t **out_data, size_t *out_len) {
+    ogg_reader_t *reader = ogg_reader_open_file(filepath);
+    if (!reader)
+        return -1;
+    int rc = ogg_decode_reader_to_wav(reader, out_data, out_len);
+    ogg_reader_free(reader);
+    return rc;
+}
+
+static int ogg_mem_to_wav(const void *data, size_t size, uint8_t **out_data, size_t *out_len) {
+    ogg_reader_t *reader = ogg_reader_open_mem((const uint8_t *)data, size);
+    if (!reader)
+        return -1;
+    int rc = ogg_decode_reader_to_wav(reader, out_data, out_len);
+    ogg_reader_free(reader);
+    return rc;
+}
+
+static int mp3_data_to_wav(const uint8_t *data,
+                           size_t size,
+                           uint8_t **out_data,
+                           size_t *out_len) {
+    if (!data || size == 0)
+        return -1;
+
+    mp3_decoder_t *dec = mp3_decoder_new();
+    if (!dec)
+        return -1;
+
+    int16_t *pcm = NULL;
+    int samples = 0;
+    int channels = 0;
+    int sample_rate = 0;
+    int rc = mp3_decode_file(dec, data, size, &pcm, &samples, &channels, &sample_rate);
+    mp3_decoder_free(dec);
+
+    if (rc != 0 || !pcm || samples <= 0 || channels < 1 || channels > 2 || sample_rate <= 0) {
+        free(pcm);
+        return -1;
+    }
+
+    rc = build_wav_from_pcm(pcm, (size_t)samples, channels, sample_rate, out_data, out_len);
+    free(pcm);
+    return rc;
 }
 
 /// @brief Decode an MP3 file to a WAV-format memory buffer.
@@ -486,68 +749,9 @@ static int mp3_file_to_wav(const char *filepath, uint8_t **out_data, size_t *out
     }
     fclose(mf);
 
-    mp3_decoder_t *dec = mp3_decoder_new();
-    if (!dec) {
-        free(mf_data);
-        return -1;
-    }
-
-    int16_t *pcm = NULL;
-    int samples = 0, channels = 0, sample_rate = 0;
-    int rc = mp3_decode_file(dec, mf_data, (size_t)mf_len, &pcm, &samples, &channels, &sample_rate);
-    mp3_decoder_free(dec);
+    int rc = mp3_data_to_wav(mf_data, (size_t)mf_len, out_data, out_len);
     free(mf_data);
-
-    if (rc != 0 || !pcm || samples == 0)
-        return -1;
-
-    // Build WAV header
-    size_t data_size = (size_t)samples * (size_t)channels * sizeof(int16_t);
-    size_t wav_size = 44 + data_size;
-    uint8_t *wav = (uint8_t *)malloc(wav_size);
-    if (!wav) {
-        free(pcm);
-        return -1;
-    }
-
-    memcpy(wav, "RIFF", 4);
-    uint32_t riff_sz = (uint32_t)(wav_size - 8);
-    wav[4] = (uint8_t)(riff_sz);
-    wav[5] = (uint8_t)(riff_sz >> 8);
-    wav[6] = (uint8_t)(riff_sz >> 16);
-    wav[7] = (uint8_t)(riff_sz >> 24);
-    memcpy(wav + 8, "WAVE", 4);
-    memcpy(wav + 12, "fmt ", 4);
-    wav[16] = 16;
-    wav[17] = wav[18] = wav[19] = 0;
-    wav[20] = 1;
-    wav[21] = 0;
-    wav[22] = (uint8_t)channels;
-    wav[23] = 0;
-    wav[24] = (uint8_t)(sample_rate);
-    wav[25] = (uint8_t)(sample_rate >> 8);
-    wav[26] = (uint8_t)(sample_rate >> 16);
-    wav[27] = (uint8_t)(sample_rate >> 24);
-    uint32_t brate = (uint32_t)(sample_rate * channels * 2);
-    wav[28] = (uint8_t)(brate);
-    wav[29] = (uint8_t)(brate >> 8);
-    wav[30] = (uint8_t)(brate >> 16);
-    wav[31] = (uint8_t)(brate >> 24);
-    wav[32] = (uint8_t)(channels * 2);
-    wav[33] = 0;
-    wav[34] = 16;
-    wav[35] = 0;
-    memcpy(wav + 36, "data", 4);
-    wav[40] = (uint8_t)(data_size);
-    wav[41] = (uint8_t)(data_size >> 8);
-    wav[42] = (uint8_t)(data_size >> 16);
-    wav[43] = (uint8_t)(data_size >> 24);
-    memcpy(wav + 44, pcm, data_size);
-    free(pcm);
-
-    *out_data = wav;
-    *out_len = wav_size;
-    return 0;
+    return rc;
 }
 
 /// @brief Load a sound effect from a file (WAV, OGG, or MP3 auto-detected from magic bytes).
@@ -572,7 +776,7 @@ void *rt_sound_load(rt_string path) {
         // OGG Vorbis
         uint8_t *wav_data = NULL;
         size_t wav_len = 0;
-        if (ogg_decode_to_wav(path_str, &wav_data, &wav_len) != 0)
+        if (ogg_file_to_wav(path_str, &wav_data, &wav_len) != 0)
             return NULL;
         snd = vaud_load_sound_mem(g_audio_ctx, wav_data, wav_len);
         free(wav_data);
@@ -600,12 +804,17 @@ void *rt_sound_load(rt_string path) {
 
     wrapper->vptr = NULL;
     wrapper->sound = snd;
+    wrapper->prev = NULL;
+    wrapper->next = NULL;
     rt_obj_set_finalizer(wrapper, rt_sound_finalize);
+    audio_state_lock();
+    sound_registry_add(wrapper);
+    audio_state_unlock();
 
     return wrapper;
 }
 
-/// @brief Load a sound effect from an in-memory buffer (WAV format expected).
+/// @brief Load a sound effect from an in-memory buffer (WAV/OGG/MP3 supported).
 void *rt_sound_load_mem(const void *data, int64_t size) {
     if (!data || size <= 0)
         return NULL;
@@ -613,8 +822,25 @@ void *rt_sound_load_mem(const void *data, int64_t size) {
     if (!ensure_audio_init())
         return NULL;
 
-    /* Load the sound from memory via ViperAUD */
-    vaud_sound_t snd = vaud_load_sound_mem(g_audio_ctx, data, (size_t)size);
+    vaud_sound_t snd = NULL;
+    int fmt = detect_audio_format_mem(data, (size_t)size);
+    if (fmt == 2) {
+        uint8_t *wav_data = NULL;
+        size_t wav_len = 0;
+        if (ogg_mem_to_wav(data, (size_t)size, &wav_data, &wav_len) != 0)
+            return NULL;
+        snd = vaud_load_sound_mem(g_audio_ctx, wav_data, wav_len);
+        free(wav_data);
+    } else if (fmt == 3) {
+        uint8_t *wav_data = NULL;
+        size_t wav_len = 0;
+        if (mp3_data_to_wav((const uint8_t *)data, (size_t)size, &wav_data, &wav_len) != 0)
+            return NULL;
+        snd = vaud_load_sound_mem(g_audio_ctx, wav_data, wav_len);
+        free(wav_data);
+    } else {
+        snd = vaud_load_sound_mem(g_audio_ctx, data, (size_t)size);
+    }
     if (!snd)
         return NULL;
 
@@ -627,7 +853,12 @@ void *rt_sound_load_mem(const void *data, int64_t size) {
 
     wrapper->vptr = NULL;
     wrapper->sound = snd;
+    wrapper->prev = NULL;
+    wrapper->next = NULL;
     rt_obj_set_finalizer(wrapper, rt_sound_finalize);
+    audio_state_lock();
+    sound_registry_add(wrapper);
+    audio_state_unlock();
 
     return wrapper;
 }
@@ -714,6 +945,9 @@ void rt_voice_stop(int64_t voice_id) {
         return;
 
     vaud_stop_voice(g_audio_ctx, (vaud_voice_id)voice_id);
+    audio_state_lock();
+    tracked_voice_remove(voice_id);
+    audio_state_unlock();
 }
 
 /// @brief Change the volume of a playing voice (0–100).
@@ -721,13 +955,18 @@ void rt_voice_set_volume(int64_t voice_id, int64_t volume) {
     if (!g_audio_ctx || voice_id < 0)
         return;
 
-    if (volume < 0)
-        volume = 0;
-    if (volume > 100)
-        volume = 100;
-    float vol = (float)volume / 100.0f;
+    volume = clamp_volume_100(volume);
 
-    vaud_set_voice_volume(g_audio_ctx, (vaud_voice_id)voice_id, vol);
+    audio_state_lock();
+    int32_t index = tracked_voice_find(voice_id);
+    if (index >= 0) {
+        g_tracked_voices[index].base_volume = volume;
+        int64_t effective = apply_group_volume(volume, g_tracked_voices[index].group);
+        vaud_set_voice_volume(g_audio_ctx, (vaud_voice_id)voice_id, (float)effective / 100.0f);
+    } else {
+        vaud_set_voice_volume(g_audio_ctx, (vaud_voice_id)voice_id, (float)volume / 100.0f);
+    }
+    audio_state_unlock();
 }
 
 /// @brief Change the stereo pan of a playing voice (-100 = full left, 100 = full right).
@@ -749,7 +988,13 @@ int64_t rt_voice_is_playing(int64_t voice_id) {
     if (!g_audio_ctx || voice_id < 0)
         return 0;
 
-    return vaud_voice_is_playing(g_audio_ctx, (vaud_voice_id)voice_id) ? 1 : 0;
+    int64_t playing = vaud_voice_is_playing(g_audio_ctx, (vaud_voice_id)voice_id) ? 1 : 0;
+    if (!playing) {
+        audio_state_lock();
+        tracked_voice_remove(voice_id);
+        audio_state_unlock();
+    }
+    return playing;
 }
 
 //===----------------------------------------------------------------------===//
@@ -796,7 +1041,14 @@ void *rt_music_load(rt_string path) {
 
     wrapper->vptr = NULL;
     wrapper->music = mus;
+    wrapper->logical_volume = 100;
+    wrapper->prev = NULL;
+    wrapper->next = NULL;
     rt_obj_set_finalizer(wrapper, rt_music_finalize);
+    audio_state_lock();
+    music_registry_add(wrapper);
+    rt_audio_apply_music_volume(wrapper);
+    audio_state_unlock();
 
     return wrapper;
 }
@@ -861,13 +1113,8 @@ void rt_music_set_volume(void *music, int64_t volume) {
     if (!mus->music)
         return;
 
-    if (volume < 0)
-        volume = 0;
-    if (volume > 100)
-        volume = 100;
-    float vol = (float)volume / 100.0f;
-
-    vaud_music_set_volume(mus->music, vol);
+    mus->logical_volume = clamp_volume_100(volume);
+    rt_audio_apply_music_volume(mus);
 }
 
 /// @brief Get the current music playback volume (0–100).
@@ -879,8 +1126,7 @@ int64_t rt_music_get_volume(void *music) {
     if (!mus->music)
         return 0;
 
-    float vol = vaud_music_get_volume(mus->music);
-    return (int64_t)(vol * 100.0f + 0.5f);
+    return mus->logical_volume;
 }
 
 /// @brief Check whether a music track is currently playing.
@@ -945,11 +1191,14 @@ int64_t rt_music_get_duration(void *music) {
 void rt_audio_set_group_volume(int64_t group, int64_t volume) {
     if (group < 0 || group >= RT_MIXGROUP_COUNT)
         return;
-    if (volume < 0)
-        volume = 0;
-    if (volume > 100)
-        volume = 100;
-    g_group_volume[group] = volume;
+    g_group_volume[group] = clamp_volume_100(volume);
+
+    audio_state_lock();
+    if (group == RT_MIXGROUP_MUSIC)
+        rt_audio_refresh_music_group_volumes();
+    else
+        rt_audio_refresh_voice_group_volumes(group);
+    audio_state_unlock();
 }
 
 /// @brief Get the volume of a mix group (0–100).
@@ -965,40 +1214,25 @@ int64_t rt_audio_get_group_volume(int64_t group) {
 
 /// @brief Begin a crossfade transition between two music tracks over the given duration.
 /// @details Fades out the current track while fading in the new track simultaneously.
-///          Both tracks are retained for the duration of the crossfade. Call
-///          rt_music_crossfade_update each frame to advance the fade.
+///          Both tracks are retained for the duration of the crossfade.
 void rt_music_crossfade_to(void *current_music, void *new_music, int64_t duration_ms) {
-    // Cancel any existing crossfade and release retained music objects
-    if (g_crossfade.active) {
-        // Complete the previous crossfade immediately
-        if (g_crossfade.fade_out) {
-            rt_music_stop(g_crossfade.fade_out);
-            if (rt_obj_release_check0(g_crossfade.fade_out))
-                rt_obj_free(g_crossfade.fade_out);
-        }
-        if (g_crossfade.fade_in) {
-            if (rt_obj_release_check0(g_crossfade.fade_in))
-                rt_obj_free(g_crossfade.fade_in);
-        }
-        g_crossfade.fade_out = NULL;
-        g_crossfade.fade_in = NULL;
-        g_crossfade.active = 0;
+    audio_state_lock();
+    rt_audio_crossfade_cancel_locked(1);
+
+    if ((!current_music && !new_music) || current_music == new_music) {
+        audio_state_unlock();
+        return;
     }
 
-    // Nothing to crossfade if both are NULL
-    if (!current_music && !new_music)
-        return;
-
     if (duration_ms <= 0) {
-        // Immediate switch: stop old, start new
         if (current_music)
             rt_music_stop(current_music);
         if (new_music)
             rt_music_play(new_music, 0);
+        audio_state_unlock();
         return;
     }
 
-    // Start crossfade — retain both music objects for the duration
     if (current_music)
         rt_obj_retain_maybe(current_music);
     if (new_music)
@@ -1008,65 +1242,67 @@ void rt_music_crossfade_to(void *current_music, void *new_music, int64_t duratio
     g_crossfade.duration = duration_ms;
     g_crossfade.elapsed = 0;
     g_crossfade.active = 1;
+    g_crossfade.last_tick_ms = rt_timer_ms();
 
-    // Get current volume of fade-out track
     if (current_music)
         g_crossfade.vol_out = rt_music_get_volume(current_music);
     else
         g_crossfade.vol_out = 100;
+    if (new_music)
+        g_crossfade.vol_in = rt_music_get_volume(new_music);
+    else
+        g_crossfade.vol_in = 100;
 
-    // Start the new track at volume 0
     if (new_music) {
         rt_music_set_volume(new_music, 0);
         rt_music_play(new_music, 0);
     }
+    audio_state_unlock();
 }
 
 /// @brief Check whether a music crossfade is currently in progress.
 int8_t rt_music_is_crossfading(void) {
-    return g_crossfade.active;
+    rt_audio_update();
+    audio_state_lock();
+    int8_t active = g_crossfade.active;
+    audio_state_unlock();
+    return active;
 }
 
 /// @brief Advance the crossfade by dt_ms milliseconds (call each frame during a crossfade).
 void rt_music_crossfade_update(int64_t dt_ms) {
+    audio_state_lock();
+    rt_audio_update_crossfade_locked(dt_ms);
+    audio_state_unlock();
+}
+
+static void rt_audio_update_crossfade_locked(int64_t dt_ms) {
     if (!g_crossfade.active)
+        return;
+    if (dt_ms <= 0)
         return;
 
     g_crossfade.elapsed += dt_ms;
 
     if (g_crossfade.elapsed >= g_crossfade.duration) {
-        // Crossfade complete
         if (g_crossfade.fade_out) {
             rt_music_stop(g_crossfade.fade_out);
             rt_music_set_volume(g_crossfade.fade_out, (int64_t)g_crossfade.vol_out);
         }
         if (g_crossfade.fade_in)
-            rt_music_set_volume(g_crossfade.fade_in, (int64_t)g_crossfade.vol_out);
-
-        // Release retained music objects
-        if (g_crossfade.fade_out) {
-            if (rt_obj_release_check0(g_crossfade.fade_out))
-                rt_obj_free(g_crossfade.fade_out);
-        }
-        if (g_crossfade.fade_in) {
-            if (rt_obj_release_check0(g_crossfade.fade_in))
-                rt_obj_free(g_crossfade.fade_in);
-        }
-        g_crossfade.active = 0;
-        g_crossfade.fade_out = NULL;
-        g_crossfade.fade_in = NULL;
+            rt_music_set_volume(g_crossfade.fade_in, (int64_t)g_crossfade.vol_in);
+        rt_audio_release_crossfade_refs_locked();
         return;
     }
 
-    // Linear interpolation
-    int64_t progress = (g_crossfade.elapsed * 1000) / g_crossfade.duration; // 0-1000
+    int64_t progress = (g_crossfade.elapsed * 1000) / g_crossfade.duration;
 
     if (g_crossfade.fade_out) {
         int64_t vol = g_crossfade.vol_out * (1000 - progress) / 1000;
         rt_music_set_volume(g_crossfade.fade_out, vol);
     }
     if (g_crossfade.fade_in) {
-        int64_t vol = g_crossfade.vol_out * progress / 1000;
+        int64_t vol = g_crossfade.vol_in * progress / 1000;
         rt_music_set_volume(g_crossfade.fade_in, vol);
     }
 }
@@ -1075,35 +1311,37 @@ void rt_music_crossfade_update(int64_t dt_ms) {
 // Group-Aware Sound Playback — real implementation
 //===----------------------------------------------------------------------===//
 
-/// @brief Apply group volume to a requested volume.
-static int64_t apply_group_volume(int64_t volume, int64_t group) {
-    if (group < 0 || group >= RT_MIXGROUP_COUNT)
-        group = RT_MIXGROUP_SFX;
-    return volume * g_group_volume[group] / 100;
-}
-
 /// @brief Play a sound at default volume, scaled by the given mix group's volume.
 int64_t rt_sound_play_in_group(void *sound, int64_t group) {
     if (!sound)
         return -1;
-    int64_t vol = apply_group_volume(100, group);
-    return rt_sound_play_ex(sound, vol, 0);
+    int64_t voice = rt_sound_play_ex(sound, apply_group_volume(100, group), 0);
+    audio_state_lock();
+    tracked_voice_set(voice, group, 100);
+    audio_state_unlock();
+    return voice;
 }
 
 /// @brief Play a sound with explicit volume/pan, scaled by the mix group's volume.
 int64_t rt_sound_play_ex_in_group(void *sound, int64_t volume, int64_t pan, int64_t group) {
     if (!sound)
         return -1;
-    int64_t vol = apply_group_volume(volume, group);
-    return rt_sound_play_ex(sound, vol, pan);
+    int64_t voice = rt_sound_play_ex(sound, apply_group_volume(volume, group), pan);
+    audio_state_lock();
+    tracked_voice_set(voice, group, volume);
+    audio_state_unlock();
+    return voice;
 }
 
 /// @brief Play a looping sound with explicit volume/pan, scaled by the mix group's volume.
 int64_t rt_sound_play_loop_in_group(void *sound, int64_t volume, int64_t pan, int64_t group) {
     if (!sound)
         return -1;
-    int64_t vol = apply_group_volume(volume, group);
-    return rt_sound_play_loop(sound, vol, pan);
+    int64_t voice = rt_sound_play_loop(sound, apply_group_volume(volume, group), pan);
+    audio_state_lock();
+    tracked_voice_set(voice, group, volume);
+    audio_state_unlock();
+    return voice;
 }
 
 #else /* !VIPER_ENABLE_AUDIO */
@@ -1161,6 +1399,9 @@ void rt_audio_pause_all(void) {}
 
 /// @brief Audio-disabled stub for `Audio.ResumeAll`. Silent no-op.
 void rt_audio_resume_all(void) {}
+
+/// @brief Audio-disabled stub for `Audio.Update`. Silent no-op.
+void rt_audio_update(void) {}
 
 /// @brief Audio-disabled stub for `Audio.StopAllSounds`. Silent no-op.
 void rt_audio_stop_all_sounds(void) {}

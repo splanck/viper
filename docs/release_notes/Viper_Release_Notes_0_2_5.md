@@ -11,6 +11,7 @@
 v0.2.5 is a polish-and-hardening cycle concentrated on the runtime, the GUI widget toolkit, and the 3D graphics stack, with smaller touches to the IL, Zia frontend, linker, and build system.
 
 - **Runtime surface hardening** — owner-header discipline across the C runtime, typed IL return descriptors for `Canvas` accessors, a magic-value guard on the `Canvas` object, `ButtonGroup` selection correctness, and runtime-string-handle threading in `AchievementTracker`.
+- **Runtime/gameplay follow-up fixes** — PathFollower zero-length segment traversal, ParticleEmitter alpha/pool-saturation behavior, SceneManager transition progress latching and duplicate-name handling, SpriteAnimation stop/ping-pong edge cases, SpriteSheet grid validation, and animated-tile collision/render sync.
 - **Graphics runtime** — parallax camera rendering, UTF-8 codepoint iteration for bitmap fonts and drawing, sprite/spritebatch/spritesheet refinements, tilemap polish, and scene-graph touches.
 - **Graphics3D correctness pass** — terrain/heightfield normal math, skeletal animation hierarchy and bone-index validation, crossfade bind-pose TRS decomposition, capsule collision Y-only contract, navmesh edge hashing, Canvas3D 2D/3D state consistency, morph weight clamp, particle spawn catchup, and Gerstner wave direction.
 - **GUI widget toolkit** — broad widget correctness pass plus new APIs on CodeEditor (word-wrap driving all coord math, fold gutters, Can/Redo/TabSize), TabBar (tooltips, ellipsis, stable close-index), Toolbar/MenuBar (overflow popup, disabled-menu rendering, pixel-icon contracts), FindBar (live reads, SetVisible), ScrollView (auto-hide stabilization, drag capture), Tooltip (multi-line wrap, destroy notify), Dialog (re-entrancy, dual user_data), HiDPI scaling across tabbar/toolbar, and several lifetime fixes (dialog use-after-free, tooltip dangling pointer, notification auto-dismiss).
@@ -23,10 +24,10 @@ v0.2.5 is a polish-and-hardening cycle concentrated on the runtime, the GUI widg
 
 | Metric | v0.2.4 | v0.2.5 | Delta |
 |---|---|---|---|
-| Commits | — | 16 | +16 |
-| Source files | 2,869 | 2,884 | +15 |
+| Commits | — | 17 | +17 |
+| Source files | 2,869 | 2,885 | +16 |
 | Production SLOC | 450K | 460K | +10K |
-| Test SLOC | 183K | 187K | +4K |
+| Test SLOC | 183K | 188K | +5K |
 | Demo SLOC | 177K | 185K | +8K |
 
 Counts produced by `scripts/count_sloc.sh` (`Production SLOC` = `src/` minus `src/tests/`). Growth concentrates on the demo side (Crackman modularization + Paint feature pass) and the GUI runtime, with surgical edits across the rest of the tree.
@@ -101,6 +102,12 @@ Counts produced by `scripts/count_sloc.sh` (`Production SLOC` = `src/` minus `sr
 **AchievementTracker.** `Viper.Game.AchievementTracker` threads runtime string handles end-to-end instead of raw C strings; the tracker retains and releases `rt_string` values consistently and draws notifications through the real graphics string ABI rather than transient C-string conversions.
 
 **ButtonGroup.** Removing the currently selected button now clears the active selection and marks the selection as changed; previously `selected_index` could stay stale and `is_selected()` could return `true` for an already-removed id.
+
+**Game — Dialogue.** `rt_dialogue.c` (+339 LOC) rewritten against the real `rt_bitmapfont` measurement surface. Previous hard-coded `DLG_CHAR_WIDTH = 8` / `DLG_LINE_HEIGHT = 10` approximations replaced with font-metric queries plus a configurable `DLG_DEFAULT_LINE_GAP`. Per-line state now distinguishes byte length (`text_len_bytes`) from character length (`text_len_chars`), so UTF-8 multibyte text wraps and reveals at codepoint boundaries rather than byte boundaries. New `dlg_draw_bytes` and `dlg_draw_wrapped_revealed` helpers render the visible prefix of a wrapped line against the reveal-speed accumulator. `rt_dialogue_finalizer` releases the owned font through the shared retain-then-release discipline, closing a leak on dialog replacement and a potential UAF on destroy.
+
+**Game — Quadtree.** `rt_quadtree.c` per-node `items` array switched from a fixed-size stack array to a heap allocation with explicit capacity. `struct qt_node` now carries `int64_t *items` + `int64_t item_capacity` instead of `int64_t items[RT_QUADTREE_MAX_ITEMS]`. `create_node` allocates the initial array (initial size `RT_QUADTREE_MAX_ITEMS`) and fails cleanly on allocation failure; `destroy_node` frees the allocation. Inserts can now grow past the initial capacity rather than silently dropping items on overflow — scenes with dense spatial clusters keep every entity in the spatial index.
+
+**Game — Physics2D joint lifecycle.** `rt_physics2d.c` formalizes joint cleanup on body removal. New `world_release_joint_at(w, joint_index)` drops a joint slot with proper retain/release accounting; new `world_remove_joints_for_body(w, body)` walks the joint array and releases any joint attached to the removed body. Called from the body-removal path so stale joints pointing at destroyed bodies can no longer fire during the next simulation step. New `maybe_resolve_pair(w, ii, jj)` extracts the per-pair narrow phase so the broadphase loop is readable and the collision resolver can be reused for trigger-only queries. `resolve_collision` is forward-declared so the helpers can call into it without textual ordering constraints. `rt_physics2d_internal.h` adds the matching internal surface.
 
 ---
 
@@ -201,12 +208,18 @@ Counts produced by `scripts/count_sloc.sh` (`Production SLOC` = `src/` minus `sr
 - New shared-contract cases in `test_vgfx3d_backend_d3d11_shared.c`, `test_vgfx3d_backend_metal_shared.c`, `test_vgfx3d_backend_opengl_shared.c`, and `test_vgfx3d_backend_utils.c` for the packed-delta handoff across every backend.
 - Follow-up Graphics3D correctness coverage now guards camera-shake-aligned `ScreenToRay`, active-output aspect sync in `Canvas3D.Begin`, root-motion rotation consumption, degenerate `1x1` terrain splat maps, additive/alpha blend policy helpers, and the updated particles/water runtime contracts.
 - Six new 2D-graphics contract suites (~1,434 LOC combined) lock down the new HiDPI-shared helpers and canvas state surface: `RTBitmapFontContractTests.cpp`, `RTCanvasContractTests.cpp`, `RTCanvasStateContractTests.cpp`, `RTSpriteBatchContractTests.cpp`, `RTSpriteContractTests.cpp`, `RTTilemapRenderContractTests.cpp`. Each covers scale-aware logical↔physical conversion reversibility, explicit-alpha flag routing, and clip/state-mirror invariants at every HiDPI scale factor.
+- New `RTDialogueContractTests.cpp` (240 LOC): black-box contract for the Game Dialogue surface — font replacement retain/release, UTF-8 wrap boundaries, typewriter reveal at codepoint rate, speaker/text separation.
+- Extended `RTPhysics2DTests.cpp` (+68 LOC) and `test_rt_physics_joints.cpp` (+48 LOC): joint cleanup on body removal and stale-joint guarding in the simulation step.
+- Extended `RTQuadtreeTests.cpp` (+47 LOC): dynamic-capacity / grow-past-max behaviour.
+- Extended `test_rt_dialogue.cpp` (+29 LOC): UTF-8 + font-replacement unit cases.
+- Additional tilemap coverage in `RTTilemapRenderContractTests.cpp` (+119 LOC) and `test_rt_tilemap_layers.cpp` (+31 LOC).
 - `RTPixelsTests.cpp` (+167 LOC) picks up scale-aware Pixels get/set round-trips and blend-mode coverage; `RTCameraTests.cpp` (+16), `TestTilemapAnim.cpp` (+7), `test_rt_tilemap_layers.cpp` (+21), `RTColorUtilsTests.cpp` (+20), and `RTCanvasExtTests.cpp` (+6) tighten coverage around the new shared helpers.
 - New `test_runtime_import_audit.cpp` (linker) audits the runtime surface against the dynamic-symbol policy so any runtime export without a matching planner entry fails at test time. New `test_3dbowling_native_build.sh` (e2e) smoke-tests the 3D bowling demo through the native build pipeline. `test_platform_import_planners.cpp` (+62 LOC) covers the Mac libc++ / libstdc++ classifier across all three platform planners.
 - `test_rt_model3d.cpp` (+69 LOC) covers FBX path normalization and the texture-resolution fast path; `test_rt_scene3d.cpp` (+23 LOC) exercises the new subtree-bounds queries.
 - Two tests temporarily disabled: `test_rt_model3d` (via `NO_CTEST` on `viper_add_test` — executable still builds) and `zia_smoke_3dbaseball` (via commented `add_test`). Both carry "re-enable" markers in their CMake source; they fail against post-landing runtime changes and will flip back once brought in line.
 - `RTParticles3DContractTests.cpp` extended (+118 LOC) for emitter texture and `cached_material` lifecycle: retain-on-assign, release-on-replace, no leak on repeat-set, no UAF on finalize after draw.
 - `RTWater3DContractTests.cpp` extended (+42 LOC) for the water `assign_ref` / `release_ref` helpers and the alpha clamp.
+- Additional runtime/tool regression coverage now locks down PathFollower zero-length traversal, SpriteAnimation stop/reset and single-frame ping-pong completion, ParticleEmitter alpha blending and saturation behavior, SceneManager transition completion progress, animated tile collision sync, SpriteSheet grid validation, frontend `--` runtime-arg parsing, x64 asset-object flag parsing, and unique native-compiler temp paths.
 - `test_rt_scene3d_bindings.cpp` (+34 LOC): covers the new TRS decomposition path and scene-node mesh/material reassignment through the ref helpers.
 - Further `test_rt_canvas3d.cpp` / `test_rt_canvas3d_gpu_paths.cpp` coverage (+131 / +49 LOC) for the new overlay-paint surfaces and reference-lifetime invariants. Full 3D suite verification on the prior pass: 318 tests green across `test_rt_morphtarget3d`, `test_rt_skeleton3d`, `test_rt_canvas3d`, `test_rt_physics3d`, `test_rt_animcontroller3d`.
 - Extended `RTCameraTests.cpp`, `test_rt_bitmapfont.cpp`, `test_rt_tilemap_layers.cpp`, `RTCanvasFrameTests.cpp`, `RTCanvasTextLayoutTests.cpp`, `RTCanvasUnavailableTests.cpp`, `RTPixelsTests.cpp`, and `test_rt_sprite_consolidated.cpp` for parallax-camera rendering, UTF-8 codepoint text, and the refined sprite/tilemap surfaces.
@@ -235,5 +248,6 @@ Counts produced by `scripts/count_sloc.sh` (`Production SLOC` = `src/` minus `sr
 | `604a8dd68` | 2026-04-16 | `chore(graphics3d,docs)`: Cubemap3D roughness sampling + direction ↔ face-UV helpers, backend camera-forward/`is_ortho` plumbing, PBR-aware alpha-blend gate, README Windows build-script normalization |
 | `edc36bf84` | 2026-04-17 | `chore(linker,runtime,demos,docs)`: Mac C++ dynamic-symbol classification, FBX path normalization, Scene3D subtree-bounds queries, two new 3D demos (`3dbaseball`, `3dscene`), runtime-import audit test |
 | `1dca700b1` | 2026-04-17 | `chore(runtime,tests,docs)`: shared HiDPI scale helpers + explicit-alpha flag, canvas state mirror, six new 2D-graphics contract suites; two failing tests disabled pending follow-up |
+| `23cf1d590` | 2026-04-17 | `chore(runtime,tests,docs)`: Dialogue font-aware wrap + UTF-8, Quadtree dynamic item capacity, Physics2D joint cleanup on body removal, release-notes format cleanup |
 
 <!-- END DRAFT -->

@@ -93,12 +93,12 @@ static int64_t find_region(rt_spritesheet_impl *ss, const char *name) {
     return -1;
 }
 
-static void ensure_cap(rt_spritesheet_impl *ss) {
+static int8_t ensure_cap(rt_spritesheet_impl *ss) {
     if (ss->count < ss->capacity)
-        return;
+        return 1;
     if (ss->capacity > INT64_MAX / 2) {
         rt_trap("SpriteSheet: capacity overflow");
-        return;
+        return 0;
     }
     int64_t new_cap = ss->capacity * 2;
 
@@ -108,13 +108,13 @@ static void ensure_cap(rt_spritesheet_impl *ss) {
     ss_region *tmp_regions = (ss_region *)malloc((size_t)new_cap * sizeof(ss_region));
     if (!tmp_regions) {
         rt_trap("SpriteSheet: memory allocation failed");
-        return;
+        return 0;
     }
     char **tmp_names = (char **)malloc((size_t)new_cap * sizeof(char *));
     if (!tmp_names) {
         free(tmp_regions);
         rt_trap("SpriteSheet: memory allocation failed");
-        return;
+        return 0;
     }
     memcpy(tmp_regions, ss->regions, (size_t)ss->count * sizeof(ss_region));
     memcpy(tmp_names, ss->names, (size_t)ss->count * sizeof(char *));
@@ -123,6 +123,7 @@ static void ensure_cap(rt_spritesheet_impl *ss) {
     ss->regions = tmp_regions;
     ss->names = tmp_names;
     ss->capacity = new_cap;
+    return 1;
 }
 
 //=============================================================================
@@ -177,12 +178,15 @@ void *rt_spritesheet_from_grid(void *atlas_pixels, int64_t frame_w, int64_t fram
     if (!atlas_pixels || frame_w <= 0 || frame_h <= 0)
         return NULL;
 
+    atlas_w = rt_pixels_width(atlas_pixels);
+    atlas_h = rt_pixels_height(atlas_pixels);
+    if (atlas_w <= 0 || atlas_h <= 0 || atlas_w % frame_w != 0 || atlas_h % frame_h != 0)
+        return NULL;
+
     sheet = rt_spritesheet_new(atlas_pixels);
     if (!sheet)
         return NULL;
 
-    atlas_w = rt_pixels_width(atlas_pixels);
-    atlas_h = rt_pixels_height(atlas_pixels);
     cols = atlas_w / frame_w;
     rows = atlas_h / frame_h;
 
@@ -191,8 +195,9 @@ void *rt_spritesheet_from_grid(void *atlas_pixels, int64_t frame_w, int64_t fram
         for (ix = 0; ix < cols; ix++) {
             char name_buf[32];
             snprintf(name_buf, sizeof(name_buf), "%d", (int)idx);
-            rt_spritesheet_set_region(
-                sheet, rt_const_cstr(name_buf), ix * frame_w, iy * frame_h, frame_w, frame_h);
+            rt_string name = rt_const_cstr(name_buf);
+            rt_spritesheet_set_region(sheet, name, ix * frame_w, iy * frame_h, frame_w, frame_h);
+            rt_string_unref(name);
             idx++;
         }
     }
@@ -225,7 +230,8 @@ void rt_spritesheet_set_region(
     }
 
     /* Add new region */
-    ensure_cap(ss);
+    if (!ensure_cap(ss))
+        return;
     {
         size_t name_len = strlen(cstr);
         ss->names[ss->count] = (char *)malloc(name_len + 1);

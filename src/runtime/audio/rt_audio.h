@@ -60,6 +60,10 @@ void rt_audio_pause_all(void);
 /// @brief Resume all audio playback.
 void rt_audio_resume_all(void);
 
+/// @brief Advance time-based audio state such as music crossfades.
+/// @details Call once per frame when using crossfades outside Playlist.Update().
+void rt_audio_update(void);
+
 /// @brief Stop all playing sounds (but not music).
 void rt_audio_stop_all_sounds(void);
 
@@ -67,13 +71,13 @@ void rt_audio_stop_all_sounds(void);
 // Sound Effects
 //=========================================================================
 
-/// @brief Load a sound effect from a WAV file.
+/// @brief Load a sound effect from a WAV, OGG, or MP3 file.
 /// @param path Path to the WAV file (runtime string).
 /// @return Opaque sound handle, or NULL on failure.
 void *rt_sound_load(rt_string path);
 
-/// @brief Load a sound effect from in-memory WAV data.
-/// @param data Pointer to WAV file data in memory.
+/// @brief Load a sound effect from in-memory WAV, OGG, or MP3 data.
+/// @param data Pointer to file data in memory.
 /// @param size Size of the data in bytes.
 /// @return Opaque sound handle, or NULL on failure.
 void *rt_sound_load_mem(const void *data, int64_t size);
@@ -124,8 +128,8 @@ int64_t rt_voice_is_playing(int64_t voice_id);
 // Music Streaming
 //=========================================================================
 
-/// @brief Load music from a WAV file for streaming playback.
-/// @param path Path to the WAV file (runtime string).
+/// @brief Load music from a WAV, OGG, or MP3 file for playback.
+/// @param path Path to the audio file (runtime string).
 /// @return Opaque music handle, or NULL on failure.
 void *rt_music_load(rt_string path);
 

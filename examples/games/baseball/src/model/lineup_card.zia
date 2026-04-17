@@ -103,6 +103,41 @@ class LineupCard {
         }
     }
 
+    // Swap a bench player into the given batting-order slot (1-9, 1-based).
+    // The existing starter at that slot is removed from the batting order
+    // (they can't return once pulled — baseball substitution is one-way).
+    // The new player takes their batting slot AND their fielding position.
+    //
+    // Returns true on a legal swap, false if:
+    //   - slot is out of range (not 1..battingOrder.length())
+    //   - inPlayer is not on the current bench list
+    //   - the indexed player in the batting order is null / unset
+    //
+    // Consumed by game_engine.applySubstitution. The caller is responsible
+    // for emitting the event-log line; this helper only mutates state.
+    expose func swapInBench(slot: Integer, inPlayer: player.Player) -> Boolean {
+        if slot < 1 || slot > battingOrder.length() {
+            return false;
+        }
+        var slotIndex = slot - 1;
+        var benchIndex = -1;
+        for i in 0..bench.length() {
+            if bench.get(i).id == inPlayer.id {
+                benchIndex = i;
+            }
+        }
+        if benchIndex < 0 {
+            return false;
+        }
+        // Remove the incoming player from the bench, install them at the
+        // chosen batting slot at the same fielding position. The starter
+        // they replace is gone for the rest of the game — they don't go
+        // back on the bench (baseball rule).
+        bench.removeAt(benchIndex);
+        battingOrder.set(slotIndex, inPlayer);
+        return true;
+    }
+
     // Look up the player currently assigned to a fielding position. Returns
     // null if no one in the batting order is at that position. Used by the
     // batted-ball engine to find the fielder for routing.

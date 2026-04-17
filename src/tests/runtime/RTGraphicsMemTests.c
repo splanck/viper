@@ -10,11 +10,10 @@
 // Key invariants:
 //   R-16: rt_scene_draw / rt_scene_draw_with_camera must release the temporary
 //         nodes seq they allocate on every call.
-//   R-17: rt_spritebatch ensure_capacity uses a temp-pointer pattern so a
-//         failed realloc does not leave batch->items dangling.
-//   R-18: rt_spritesheet ensure_cap updates ss->regions before attempting the
-//         second realloc, so a failure of the second realloc does not leave
-//         ss->regions dangling.
+//   R-17: rt_spritebatch_new must fail cleanly if the initial items buffer
+//         allocation fails; growth still preserves queued items and capacity.
+//   R-18: rt_spritesheet_set_region only appends after ensure_cap succeeds, so
+//         region tables stay consistent across expansions.
 //
 // Note: Tests that require a canvas (rt_scene_draw, rt_spritebatch_end) cannot
 // run without a display/graphics context. Those functions are covered by code
@@ -163,8 +162,8 @@ static void test_spritesheet_many_regions_survive_realloc(void) {
     int64_t total = 100;
 
     for (int64_t i = 0; i < total; i++) {
-        // snprintf into local buffer; rt_const_cstr borrows the pointer
-        // so we must use it immediately before the buffer changes.
+        // snprintf into a local buffer and copy it into a temporary runtime
+        // string for the region name.
         int written = snprintf(name_buf, sizeof(name_buf), "region_%lld", (long long)i);
         assert(written > 0 && written < (int)sizeof(name_buf));
         rt_spritesheet_set_region(sheet, rt_const_cstr(name_buf), i * 2, 0, 2, 2);
@@ -228,6 +227,15 @@ static void test_spritesheet_dimensions(void) {
 
     assert(rt_spritesheet_width(sheet) == 128);
     assert(rt_spritesheet_height(sheet) == 64);
+}
+
+/// @brief FromGrid rejects atlases whose dimensions are not exact frame multiples.
+static void test_spritesheet_from_grid_rejects_partial_frames(void) {
+    void *atlas = rt_pixels_new(65, 64);
+    assert(atlas != NULL);
+
+    void *sheet = rt_spritesheet_from_grid(atlas, 16, 16);
+    assert(sheet == NULL);
 }
 
 //=============================================================================
@@ -419,6 +427,7 @@ int main(void) {
     test_spritesheet_update_existing_region();
     test_spritesheet_remove_region();
     test_spritesheet_dimensions();
+    test_spritesheet_from_grid_rejects_partial_frames();
 
     // Scene tests (Bug R-16)
     // Note: rt_scene_draw / rt_scene_draw_with_camera require a canvas backed

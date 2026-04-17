@@ -185,6 +185,54 @@ TEST(progress) {
     rt_spriteanim_destroy(sa);
 }
 
+TEST(speed_can_advance_multiple_frames_in_one_update) {
+    rt_spriteanim sa = rt_spriteanim_new();
+    rt_spriteanim_setup(sa, 0, 9, 2);
+    rt_spriteanim_set_speed(sa, 5.0);
+    rt_spriteanim_play(sa);
+
+    rt_spriteanim_update(sa);
+    ASSERT(rt_spriteanim_frame(sa) == 2);
+    ASSERT(rt_spriteanim_frame_changed(sa) == 1);
+
+    rt_spriteanim_update(sa);
+    ASSERT(rt_spriteanim_frame(sa) == 5);
+
+    rt_spriteanim_destroy(sa);
+}
+
+TEST(stop_resets_to_start_frame) {
+    rt_spriteanim sa = rt_spriteanim_new();
+    rt_spriteanim_setup(sa, 3, 5, 1);
+    rt_spriteanim_play(sa);
+
+    rt_spriteanim_update(sa);
+    ASSERT(rt_spriteanim_frame(sa) == 4);
+
+    rt_spriteanim_stop(sa);
+    ASSERT(rt_spriteanim_is_playing(sa) == 0);
+    ASSERT(rt_spriteanim_is_paused(sa) == 0);
+    ASSERT(rt_spriteanim_is_finished(sa) == 0);
+    ASSERT(rt_spriteanim_frame(sa) == 3);
+
+    rt_spriteanim_destroy(sa);
+}
+
+TEST(single_frame_pingpong_one_shot_finishes_immediately) {
+    rt_spriteanim sa = rt_spriteanim_new();
+    rt_spriteanim_setup(sa, 4, 4, 1);
+    rt_spriteanim_set_loop(sa, 0);
+    rt_spriteanim_set_pingpong(sa, 1);
+    rt_spriteanim_play(sa);
+
+    ASSERT(rt_spriteanim_update(sa) == 1);
+    ASSERT(rt_spriteanim_is_finished(sa) == 1);
+    ASSERT(rt_spriteanim_is_playing(sa) == 0);
+    ASSERT(rt_spriteanim_frame(sa) == 4);
+
+    rt_spriteanim_destroy(sa);
+}
+
 /// @brief Main.
 int main() {
     printf("RTSpriteAnimTests:\n");
@@ -198,6 +246,9 @@ int main() {
     RUN_TEST(pause_resume);
     RUN_TEST(speed);
     RUN_TEST(progress);
+    RUN_TEST(speed_can_advance_multiple_frames_in_one_update);
+    RUN_TEST(stop_resets_to_start_frame);
+    RUN_TEST(single_frame_pingpong_one_shot_finishes_immediately);
 
     printf("\n%d tests passed, %d tests failed\n", tests_passed, tests_failed);
     return tests_failed > 0 ? 1 : 0;

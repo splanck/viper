@@ -322,6 +322,9 @@ void *rt_spritebatch_new(int64_t capacity) {
     batch->items = (batch_item *)malloc((size_t)capacity * sizeof(batch_item));
     if (!batch->items) {
         rt_trap("SpriteBatch: memory allocation failed");
+        if (rt_obj_release_check0(batch))
+            rt_obj_free(batch);
+        return NULL;
     }
 
     batch->count = 0;

@@ -1,0 +1,581 @@
+// ============================================================================
+// File: src/human/franchise_shell.zia
+// Purpose: The text-mode franchise shell. Owns the interactive session
+//          between games: title screen, new-career / load / quit choice,
+//          then the main menu loop (standings, roster, schedule, sim,
+//          manage, save) that wraps the existing SeasonEngine.
+//
+//          The shell is deliberately thin — every menu option dispatches
+//          to either SeasonEngine.{setManager, simulateCurrentDay,
+//          buildStandings, runOffseason} or save_slot.{listSlots, createSlot,
+//          loadSlot, saveSlot, deleteSlot}. The shell itself holds no game
+//          state beyond (engine, userTeamId, pacingProfile, saveSlotPath).
+//
+//          "Manage next game" installs a HumanSeasonTeamManager on the
+//          user's team and then calls simulateCurrentDay so that team's
+//          pregame lineup + in-game pitching / substitution checkpoints
+//          surface prompts. Days with no user game run through AI unchanged
+//          (the HumanManagerPolicy instance is still installed but its
+//          profile's prompts never fire when its team isn't on the slate).
+//
+// Cross-refs:
+//          - SeasonEngine — src/season/season_engine.zia
+//          - HumanSeasonTeamManager — src/season/manager_layer.zia
+//          - save_slot + user_profile — src/human/
+//          - prompts.promptMenuChoice — src/human/prompts.zia
+// ============================================================================
+module franchise_shell;
+
+bind Viper.Terminal as Terminal;
+bind Viper.Fmt as Fmt;
+bind Viper.IO.Path as Path;
+bind Viper.Collections.Seq as Seq;
+bind "../model/constants";
+bind "../season/season_model";
+bind "../season/season_engine";
+bind "../season/manager_layer";
+bind "../season/date_utils";
+bind "./prompts";
+bind "./pacing_profile";
+bind "./user_profile";
+bind "./save_slot";
+
+// The default save-slot root. Relative to the current working directory so
+// the user can have multiple independent save trees (one per demo run) if
+// they launch the shell from different directories.
+final DEFAULT_SAVE_ROOT = "./baseball_saves";
+
+// One interactive franchise session. Constructed with a save-root path;
+// the boot() + run() methods drive the full lifecycle from title screen
+// through the main menu loop until the user picks "Quit".
+class FranchiseShell {
+    expose String saveRoot;
+    expose String franchiseId;
+    expose season_engine.SeasonEngine? engine;
+    expose user_profile.UserProfile profile;
+    expose pacing_profile.PacingProfile pacing;
+    expose Boolean running;
+    expose Boolean dirty;
+
+    // Construct a shell bound to the given save root. If `root` is the
+    // empty string, falls back to DEFAULT_SAVE_ROOT. No filesystem access
+    // happens at construction time — boot() does all I/O.
+    expose func init(root: String) {
+        saveRoot = root;
+        if saveRoot == "" {
+            saveRoot = DEFAULT_SAVE_ROOT;
+        }
+        franchiseId = "";
+        engine = null;
+        profile = new user_profile.UserProfile();
+        pacing = pacing_profile.makeStandardManager();
+        running = false;
+        dirty = false;
+    }
+
+    // Title screen + new-career / load / quit choice. Returns true iff the
+    // user picked something that installed a live engine (new career or
+    // loaded save); false on quit. Must be called before run().
+    expose func boot() -> Boolean {
+        self.showTitle();
+        var slots = save_slot.listSlots(saveRoot);
+        while true {
+            var options: List[String] = [];
+            options.add("Start a new career");
+            if slots.length() > 0 {
+                options.add("Load an existing career");
+            }
+            options.add("Quit");
+            var res = prompts.promptMenuChoice("Main menu:", options);
+            if res.kind == prompts.RESULT_QUIT {
+                return false;
+            }
+            if res.action == null {
+                return false;
+            }
+            var slot = res.action!.subSlot;
+            if slot == 1 {
+                return self.startNewCareer();
+            }
+            if slot == 2 && slots.length() > 0 {
+                return self.loadExistingCareer(slots);
+            }
+            return false;
+        }
+        return false;
+    }
+
+    // The main menu loop. Runs until the user picks quit or the session is
+    // otherwise terminated (e.g. season ends and they decline to advance).
+    expose func run() {
+        if engine == null {
+            return;
+        }
+        running = true;
+        while running {
+            self.renderStatusHeader();
+            var options: List[String] = [];
+            options.add("View standings");
+            options.add("View my roster");
+            options.add("View schedule");
+            options.add("Manage today's game");
+            options.add("Sim 1 day (AI for my team)");
+            options.add("Sim to my next game");
+            options.add("Sim to end of season");
+            options.add("Run offseason");
+            options.add("Save");
+            options.add("Save and quit");
+            options.add("Quit without saving");
+            var res = prompts.promptMenuChoice("What next?", options);
+            if res.kind == prompts.RESULT_QUIT {
+                if self.confirmQuit() {
+                    running = false;
+                }
+                continue;
+            }
+            if res.action == null {
+                continue;
+            }
+            var slot = res.action!.subSlot;
+            self.dispatch(slot);
+        }
+    }
+
+    // --- Dispatch + individual menu-action implementations -------------------
+
+    // Route a numeric menu pick (1-based) to the matching handler.
+    hide func dispatch(slot: Integer) {
+        if slot == 1 { self.showStandings(); return; }
+        if slot == 2 { self.showMyRoster(); return; }
+        if slot == 3 { self.showSchedule(); return; }
+        if slot == 4 { self.manageTodaysGame(); return; }
+        if slot == 5 { self.simOneDayAI(); return; }
+        if slot == 6 { self.simToMyNextGame(); return; }
+        if slot == 7 { self.simToEndOfSeason(); return; }
+        if slot == 8 { self.runOffseason(); return; }
+        if slot == 9 { self.saveNow(); return; }
+        if slot == 10 { self.saveAndQuit(); return; }
+        if slot == 11 {
+            if self.confirmQuit() {
+                running = false;
+            }
+            return;
+        }
+    }
+
+    // Render the persistent status header shown above every main menu. Shows
+    // the league, season year, day label, user team win-loss, and the next
+    // scheduled user game (if any). Kept to ~5 lines so the main menu stays
+    // on screen together with it.
+    hide func renderStatusHeader() {
+        Terminal.Say("");
+        Terminal.Say("===============================================================");
+        var f = engine!.franchise;
+        var calendar = f.calendar;
+        Terminal.Say(f.leagueName + " — " + Fmt.Int(f.seasonYear));
+        if calendar.currentDayIndex < calendar.days.length() {
+            var day = calendar.currentDay();
+            Terminal.Say("Date: " + date_utils.fromDaysText(day.dateDays) +
+                         " (day " + Fmt.Int(calendar.currentDayIndex + 1) +
+                         " of " + Fmt.Int(calendar.days.length()) + ")");
+        } else {
+            Terminal.Say("Regular season complete.");
+        }
+        var userTeam = self.getUserTeam();
+        if userTeam != null {
+            var record = self.userRecord();
+            Terminal.Say("Manager: " + profile.managerName +
+                         "   Team: " + userTeam!.teamRef.fullName +
+                         "   W-L: " + record);
+        }
+        if dirty {
+            Terminal.Say("(unsaved changes)");
+        }
+        Terminal.Say("===============================================================");
+    }
+
+    // --- Menu handlers -------------------------------------------------------
+
+    hide func showStandings() {
+        var rows = engine!.buildStandings();
+        Terminal.Say("");
+        Terminal.Say(self.padRight("TEAM", 22) + "  W   L   RF   RA   DIFF");
+        Terminal.Say("---------------------------------------------------");
+        for i in 0..rows.length() {
+            var r = rows.get(i);
+            var marker = " ";
+            if r.teamId == profile.userTeamId {
+                marker = ">";
+            }
+            Terminal.Say(marker + self.padRight(r.teamName, 21) + "  " +
+                         self.padLeft(Fmt.Int(r.wins), 3) + " " +
+                         self.padLeft(Fmt.Int(r.losses), 3) + " " +
+                         self.padLeft(Fmt.Int(r.runsScored), 4) + " " +
+                         self.padLeft(Fmt.Int(r.runsAllowed), 4) + "  " +
+                         self.padLeft(Fmt.Int(r.runDifferential), 4));
+        }
+    }
+
+    hide func showMyRoster() {
+        var team = self.getUserTeam();
+        if team == null {
+            Terminal.Say("(no user team installed)");
+            return;
+        }
+        Terminal.Say("");
+        Terminal.Say("ACTIVE ROSTER — " + team!.teamRef.fullName);
+        Terminal.Say("----------------------------------------------------");
+        for i in 0..team!.rosterEntries.length() {
+            var entry = team!.rosterEntries.get(i);
+            if entry.compartment != season_model.COMPARTMENT_ACTIVE_HITTERS &&
+               entry.compartment != season_model.COMPARTMENT_ACTIVE_PITCHERS {
+                continue;
+            }
+            var p = entry.playerRef;
+            var avail = team!.getAvailability(p.id);
+            var status = "ok";
+            if !avail.availableForGame {
+                status = "unavailable";
+            } else if avail.recommendedRest {
+                status = "rest-recommended";
+            }
+            Terminal.Say("  " + self.padRight(p.name, 22) + " " +
+                         self.padRight(p.primaryPosition, 4) + " " +
+                         self.padRight(entry.roleTag, 14) + " " + status);
+        }
+    }
+
+    hide func showSchedule() {
+        var calendar = engine!.franchise.calendar;
+        var startIdx = calendar.currentDayIndex;
+        var endIdx = startIdx + 10;
+        if endIdx > calendar.days.length() {
+            endIdx = calendar.days.length();
+        }
+        Terminal.Say("");
+        Terminal.Say("NEXT " + Fmt.Int(endIdx - startIdx) + " DAYS");
+        Terminal.Say("------------------------------------------");
+        for i in startIdx..endIdx {
+            var day = calendar.days.get(i);
+            var text = date_utils.fromDaysText(day.dateDays) + "  ";
+            if day.isOffDay || day.scheduledGames.length() == 0 {
+                text = text + "(off day)";
+            } else {
+                for j in 0..day.scheduledGames.length() {
+                    var g = day.scheduledGames.get(j);
+                    text = text + g.awayTeamId + " @ " + g.homeTeamId;
+                    if j + 1 < day.scheduledGames.length() {
+                        text = text + ", ";
+                    }
+                }
+            }
+            Terminal.Say("  " + text);
+        }
+    }
+
+    hide func manageTodaysGame() {
+        if !self.userPlaysToday() {
+            Terminal.Say("(no game scheduled for your team today — try 'Sim to my next game')");
+            return;
+        }
+        self.installHumanManager();
+        engine!.simulateCurrentDay();
+        dirty = true;
+    }
+
+    hide func simOneDayAI() {
+        self.installAIManager();
+        engine!.simulateCurrentDay();
+        dirty = true;
+    }
+
+    hide func simToMyNextGame() {
+        self.installAIManager();
+        var budget = 120;
+        while budget > 0 {
+            var cal = engine!.franchise.calendar;
+            if cal.currentDayIndex >= cal.days.length() {
+                break;
+            }
+            if self.userPlaysToday() {
+                break;
+            }
+            engine!.simulateCurrentDay();
+            budget = budget - 1;
+        }
+        dirty = true;
+        if self.userPlaysToday() {
+            Terminal.Say("(stopped on your next game — pick 'Manage today's game' to take control)");
+        } else {
+            Terminal.Say("(regular season complete or no user game scheduled)");
+        }
+    }
+
+    hide func simToEndOfSeason() {
+        self.installAIManager();
+        var budget = 300;
+        while budget > 0 {
+            var cal = engine!.franchise.calendar;
+            if cal.currentDayIndex >= cal.days.length() {
+                break;
+            }
+            engine!.simulateCurrentDay();
+            budget = budget - 1;
+        }
+        dirty = true;
+        Terminal.Say("(regular season complete)");
+    }
+
+    hide func runOffseason() {
+        engine!.runOffseason();
+        dirty = true;
+        Terminal.Say("(offseason run — new season year is " + Fmt.Int(engine!.franchise.seasonYear) + ")");
+    }
+
+    hide func saveNow() {
+        save_slot.saveSlot(saveRoot, engine!.franchise, profile);
+        dirty = false;
+        Terminal.Say("(saved to " + Path.Join(saveRoot, franchiseId) + ")");
+    }
+
+    hide func saveAndQuit() {
+        self.saveNow();
+        running = false;
+    }
+
+    // --- Boot helpers --------------------------------------------------------
+
+    hide func showTitle() {
+        Terminal.Say("");
+        Terminal.Say("=================================================================");
+        Terminal.Say("                 VIPER BASEBALL — Franchise Shell");
+        Terminal.Say("=================================================================");
+        Terminal.Say("");
+    }
+
+    hide func startNewCareer() -> Boolean {
+        Terminal.Say("");
+        Terminal.Say("--- New Career ---");
+        var nameText = Terminal.Ask("Manager name: ");
+        var managerName = "";
+        if nameText != null {
+            managerName = nameText!;
+        }
+        if managerName == "" {
+            managerName = "Skipper";
+        }
+
+        var idText = Terminal.Ask("Save slot id (no spaces): ");
+        var sid = "";
+        if idText != null {
+            sid = idText!;
+        }
+        if sid == "" {
+            sid = "default_career";
+        }
+
+        // Build the league preview so the user can pick a team.
+        var preview = buildTeamPreview();
+        Terminal.Say("Teams in the league:");
+        for i in 0..preview.length() {
+            Terminal.Say("  " + Fmt.Int(i + 1) + ". " + preview.get(i).fullName +
+                         " (" + preview.get(i).id + ")");
+        }
+        var teamText = Terminal.Ask("Manage which team? (enter the id): ");
+        var teamId = "port_city";
+        if teamText != null && teamText! != "" {
+            teamId = teamText!;
+        }
+
+        var pacingId = self.promptPacingProfile();
+
+        var franchise = save_slot.createSlot(saveRoot, sid, teamId, managerName,
+                                             pacingId, 20260401);
+        franchiseId = sid;
+        profile = new user_profile.UserProfile();
+        profile.userTeamId = teamId;
+        profile.managerName = managerName;
+        profile.pacingProfileId = pacingId;
+        profile.hasProfile = true;
+        pacing = pacing_profile.fromIdentifier(pacingId);
+        engine = new season_engine.SeasonEngine(franchise);
+        dirty = false;
+        return true;
+    }
+
+    hide func loadExistingCareer(slots: List[save_slot.SaveSlot]) -> Boolean {
+        Terminal.Say("");
+        Terminal.Say("--- Load Career ---");
+        var options: List[String] = [];
+        for i in 0..slots.length() {
+            var s = slots.get(i);
+            options.add(s.franchiseId + "  —  " + s.leagueName + " " +
+                        Fmt.Int(s.seasonYear) + "  (" + s.managerName + ", team " +
+                        s.userTeamId + ")");
+        }
+        var res = prompts.promptMenuChoice("Pick a save slot:", options);
+        if res.kind != prompts.RESULT_ACTION || res.action == null {
+            return false;
+        }
+        var idx = res.action!.subSlot - 1;
+        if idx < 0 || idx >= slots.length() {
+            return false;
+        }
+        var chosen = slots.get(idx);
+        var lr = save_slot.loadSlot(saveRoot, chosen.franchiseId);
+        if !lr.ok || lr.franchise == null {
+            Terminal.Say("Load failed: " + lr.error);
+            return false;
+        }
+        franchiseId = chosen.franchiseId;
+        profile = lr.profile;
+        if !profile.hasProfile {
+            // Legacy save; ask which team + profile.
+            profile.managerName = "Skipper";
+            profile.userTeamId = chosen.userTeamId;
+            if profile.userTeamId == "" {
+                profile.userTeamId = "port_city";
+            }
+            profile.pacingProfileId = self.promptPacingProfile();
+            profile.hasProfile = true;
+        }
+        pacing = pacing_profile.fromIdentifier(profile.pacingProfileId);
+        engine = new season_engine.SeasonEngine(lr.franchise!);
+        dirty = false;
+        return true;
+    }
+
+    hide func promptPacingProfile() -> String {
+        var options: List[String] = [];
+        options.add("Observe only (AI runs the game)");
+        options.add("Standard manager (pregame lineup + key in-game prompts)");
+        options.add("High-touch manager (adds bunt/steal prompts)");
+        var res = prompts.promptMenuChoice("Pacing profile:", options);
+        if res.kind != prompts.RESULT_ACTION || res.action == null {
+            return pacing_profile.PROFILE_STANDARD_MANAGER;
+        }
+        var slot = res.action!.subSlot;
+        if slot == 1 { return pacing_profile.PROFILE_OBSERVE_ONLY; }
+        if slot == 3 { return pacing_profile.PROFILE_HIGH_TOUCH_MANAGER; }
+        return pacing_profile.PROFILE_STANDARD_MANAGER;
+    }
+
+    // Install a HumanSeasonTeamManager on the user's team. Subsequent
+    // simulateCurrentDay calls route that team's decisions through prompts.
+    hide func installHumanManager() {
+        var mgr = new manager_layer.HumanSeasonTeamManager(profile.managerName);
+        mgr.setProfile(pacing);
+        engine!.setManager(profile.userTeamId, mgr);
+    }
+
+    // Install an AI-default SeasonTeamManager on the user's team. Used by
+    // "Sim 1 day" and "Sim to my next game" so the sim doesn't prompt.
+    hide func installAIManager() {
+        var mgr = new manager_layer.SeasonTeamManager(profile.managerName);
+        engine!.setManager(profile.userTeamId, mgr);
+    }
+
+    // Derive the user's record as "W-L" from buildStandings. TeamSeasonState
+    // doesn't carry wins/losses directly — they're computed from the
+    // completedGames list each time the standings view is built.
+    hide func userRecord() -> String {
+        var rows = engine!.buildStandings();
+        for i in 0..rows.length() {
+            if rows.get(i).teamId == profile.userTeamId {
+                return Fmt.Int(rows.get(i).wins) + "-" + Fmt.Int(rows.get(i).losses);
+            }
+        }
+        return "0-0";
+    }
+
+    hide func getUserTeam() -> season_model.TeamSeasonState? {
+        if engine == null {
+            return null;
+        }
+        return engine!.franchise.getTeam(profile.userTeamId);
+    }
+
+    hide func userPlaysToday() -> Boolean {
+        if engine == null {
+            return false;
+        }
+        var cal = engine!.franchise.calendar;
+        if cal.currentDayIndex >= cal.days.length() {
+            return false;
+        }
+        var day = cal.currentDay();
+        if day.isOffDay {
+            return false;
+        }
+        for i in 0..day.scheduledGames.length() {
+            var g = day.scheduledGames.get(i);
+            if g.homeTeamId == profile.userTeamId || g.awayTeamId == profile.userTeamId {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    hide func confirmQuit() -> Boolean {
+        if !dirty {
+            return true;
+        }
+        var options: List[String] = [];
+        options.add("Save and quit");
+        options.add("Quit without saving");
+        options.add("Cancel");
+        var res = prompts.promptMenuChoice("Unsaved changes — what next?", options);
+        if res.kind != prompts.RESULT_ACTION || res.action == null {
+            return false;
+        }
+        var slot = res.action!.subSlot;
+        if slot == 1 {
+            self.saveNow();
+            return true;
+        }
+        if slot == 2 {
+            return true;
+        }
+        return false;
+    }
+
+    // --- Small string utilities ---------------------------------------------
+
+    hide func padRight(s: String, width: Integer) -> String {
+        var out = s;
+        while out.length() < width {
+            out = out + " ";
+        }
+        return out;
+    }
+
+    hide func padLeft(s: String, width: Integer) -> String {
+        var out = s;
+        while out.length() < width {
+            out = " " + out;
+        }
+        return out;
+    }
+}
+
+// One team's display-name shorthand for the "pick a team" screen. Mirrors the
+// four teams built by default_franchise.buildDefaultFranchise — if that list
+// changes, update this one too (or load a full franchise purely to show the
+// list, which is overkill for a 4-team demo).
+class TeamPreview {
+    expose String id;
+    expose String fullName;
+    expose func init(ident: String, name: String) {
+        id = ident;
+        fullName = name;
+    }
+}
+
+func buildTeamPreview() -> List[TeamPreview] {
+    var out: List[TeamPreview] = [];
+    out.add(new TeamPreview("port_city", "Port City Captains"));
+    out.add(new TeamPreview("lakeview", "Lakeview Stags"));
+    out.add(new TeamPreview("rivergate", "Rivergate Foxes"));
+    out.add(new TeamPreview("high_desert", "High Desert Suns"));
+    return out;
+}

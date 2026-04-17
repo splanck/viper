@@ -38,7 +38,8 @@ namespace {
 constexpr std::string_view kUsage =
     "usage: ilc codegen x64 <file.il> [-S <file.s>] [-o <a.out>] "
     "[-run-native] [--stack-size=SIZE] [--native-asm|--system-asm] "
-    "[--native-link|--system-link(deprecated)] [--target-host|--target-sysv|--target-win64]\n";
+    "[--native-link|--system-link(deprecated)] [--asset-blob <file.vpa>] "
+    "[--extra-obj <file.o>] [--target-host|--target-sysv|--target-win64]\n";
 
 // Use shared ArgvView from tools/common
 using viper::tools::ArgvView;
@@ -145,6 +146,24 @@ ParseOutcome parseCompileArgs(const ArgvView &args) {
         }
         if (arg == "--target-win64") {
             opts.target_abi = viper::codegen::x64::CodegenOptions::TargetABI::Win64;
+            continue;
+        }
+        if (arg == "--asset-blob") {
+            if (index + 1 >= args.argc) {
+                diag << "error: --asset-blob requires a path\n" << kUsage;
+                outcome.diagnostics = diag.str();
+                return outcome;
+            }
+            opts.asset_blob_path = std::string(args.at(++index));
+            continue;
+        }
+        if (arg == "--extra-obj") {
+            if (index + 1 >= args.argc) {
+                diag << "error: --extra-obj requires a path\n" << kUsage;
+                outcome.diagnostics = diag.str();
+                return outcome;
+            }
+            opts.extra_objects.push_back(std::string(args.at(++index)));
             continue;
         }
 

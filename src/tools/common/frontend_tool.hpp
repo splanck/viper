@@ -119,6 +119,11 @@ inline FrontendToolConfig parseArgs(int argc, char **argv, const FrontendToolCal
                 callbacks.printUsage();
                 std::exit(1);
             }
+        } else if (arg == "--") {
+            // Remaining arguments are program arguments
+            for (int j = i + 1; j < argc; ++j)
+                config.programArgs.emplace_back(argv[j]);
+            break;
         } else if (arg.starts_with("-")) {
             // Forward other flags to underlying ilc implementation
             config.forwardedArgs.push_back(std::string(arg));
@@ -135,11 +140,6 @@ inline FrontendToolConfig parseArgs(int argc, char **argv, const FrontendToolCal
                     std::exit(1);
                 }
             }
-        } else if (arg == "--") {
-            // Remaining arguments are program arguments
-            for (int j = i + 1; j < argc; ++j)
-                config.programArgs.emplace_back(argv[j]);
-            break;
         } else if (arg.ends_with(callbacks.fileExtension)) {
             if (!config.sourcePath.empty()) {
                 std::cerr << "error: multiple source files not supported\n\n";

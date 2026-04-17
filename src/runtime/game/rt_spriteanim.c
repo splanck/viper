@@ -62,10 +62,55 @@ struct rt_spriteanim_impl {
     int8_t frame_changed; ///< 1 if frame changed this update.
 };
 
+static int8_t rt_spriteanim_advance_one_frame(rt_spriteanim anim) {
+    anim->current_frame += anim->direction;
+
+    if (anim->pingpong) {
+        if (anim->direction == 1 && anim->current_frame > anim->end_frame) {
+            anim->direction = -1;
+            anim->current_frame = anim->end_frame - 1;
+            if (anim->current_frame < anim->start_frame) {
+                if (!anim->loop) {
+                    anim->current_frame = anim->start_frame;
+                    anim->finished = 1;
+                    anim->playing = 0;
+                    return 1;
+                }
+                anim->current_frame = anim->start_frame;
+            }
+        } else if (anim->direction == -1 && anim->current_frame < anim->start_frame) {
+            if (anim->loop) {
+                anim->direction = 1;
+                anim->current_frame = anim->start_frame + 1;
+                if (anim->current_frame > anim->end_frame)
+                    anim->current_frame = anim->start_frame;
+            } else {
+                anim->current_frame = anim->start_frame;
+                anim->finished = 1;
+                anim->playing = 0;
+                return 1;
+            }
+        }
+    } else if (anim->current_frame > anim->end_frame) {
+        if (anim->loop) {
+            anim->current_frame = anim->start_frame;
+        } else {
+            anim->current_frame = anim->end_frame;
+            anim->finished = 1;
+            anim->playing = 0;
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
 /// @brief Create a new spriteanim object.
 rt_spriteanim rt_spriteanim_new(void) {
     struct rt_spriteanim_impl *anim =
         (struct rt_spriteanim_impl *)rt_obj_new_i64(0, (int64_t)sizeof(struct rt_spriteanim_impl));
+    if (!anim)
+        return NULL;
 
     anim->start_frame = 0;
     anim->end_frame = 0;
@@ -156,8 +201,14 @@ void rt_spriteanim_play(rt_spriteanim anim) {
 void rt_spriteanim_stop(rt_spriteanim anim) {
     if (!anim)
         return;
+    anim->current_frame = anim->start_frame;
+    anim->frame_counter = 0;
     anim->playing = 0;
     anim->paused = 0;
+    anim->finished = 0;
+    anim->direction = 1;
+    anim->speed_accum = 0.0;
+    anim->frame_changed = 0;
 }
 
 /// @brief Pause a playing animation so it can be resumed from the current frame.
@@ -203,47 +254,11 @@ int8_t rt_spriteanim_update(rt_spriteanim anim) {
         anim->frame_counter++;
     }
 
-    // Check if it's time to advance the frame
-    if (anim->frame_counter >= anim->frame_duration) {
-        anim->frame_counter = 0;
+    while (anim->frame_counter >= anim->frame_duration && !anim->finished) {
+        anim->frame_counter -= anim->frame_duration;
         anim->frame_changed = 1;
-
-        // Advance frame
-        anim->current_frame += anim->direction;
-
-        // Check bounds
-        if (anim->pingpong) {
-            if (anim->direction == 1 && anim->current_frame > anim->end_frame) {
-                anim->direction = -1;
-                anim->current_frame = anim->end_frame - 1;
-                if (anim->current_frame < anim->start_frame)
-                    anim->current_frame = anim->start_frame;
-            } else if (anim->direction == -1 && anim->current_frame < anim->start_frame) {
-                if (anim->loop) {
-                    anim->direction = 1;
-                    anim->current_frame = anim->start_frame + 1;
-                    if (anim->current_frame > anim->end_frame)
-                        anim->current_frame = anim->start_frame;
-                } else {
-                    anim->current_frame = anim->start_frame;
-                    anim->finished = 1;
-                    anim->playing = 0;
-                    return 1;
-                }
-            }
-        } else {
-            // Normal forward animation
-            if (anim->current_frame > anim->end_frame) {
-                if (anim->loop) {
-                    anim->current_frame = anim->start_frame;
-                } else {
-                    anim->current_frame = anim->end_frame;
-                    anim->finished = 1;
-                    anim->playing = 0;
-                    return 1;
-                }
-            }
-        }
+        if (rt_spriteanim_advance_one_frame(anim))
+            return 1;
     }
 
     return 0;

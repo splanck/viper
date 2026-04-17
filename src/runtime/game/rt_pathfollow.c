@@ -41,6 +41,8 @@
 #include "rt_pathfollow.h"
 #include "rt_object.h"
 
+#include <limits.h>
+#include <math.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -67,33 +69,71 @@ struct rt_pathfollow_impl {
     int64_t *segment_lengths;  ///< Cached segment lengths.
 };
 
-/// @brief Integer square root via Newton-Heron iteration. Returns floor(sqrt(n)) for n>=0,
-/// or 0 for negative inputs. Used by `distance()` so the runtime stays libm-free.
-static int64_t isqrt(int64_t n) {
-    if (n < 0)
-        return 0;
-    if (n < 2)
-        return n;
-
-    int64_t x = n;
-    int64_t y = (x + 1) / 2;
-    while (y < x) {
-        x = y;
-        y = (x + n / x) / 2;
-    }
-    return x;
+/// @brief Euclidean distance between two fixed-point points.
+/// Uses long-double arithmetic so very short segments remain non-zero while
+/// still avoiding overflow for large coordinates.
+static int64_t distance(int64_t x1, int64_t y1, int64_t x2, int64_t y2) {
+    long double dx = (long double)x2 - (long double)x1;
+    long double dy = (long double)y2 - (long double)y1;
+    long double len = sqrtl(dx * dx + dy * dy);
+    if (len >= (long double)INT64_MAX)
+        return INT64_MAX;
+    return (int64_t)(len + 0.5L);
 }
 
-/// @brief Euclidean distance between two fixed-point points. Pre-scales each delta by 1/100 to
-/// keep `dx*dx + dy*dy` inside i64 range even at large coordinates, then re-scales the isqrt
-/// result by 100. Result is in the same fixed-point units (×1000) as the inputs.
-static int64_t distance(int64_t x1, int64_t y1, int64_t x2, int64_t y2) {
-    int64_t dx = x2 - x1;
-    int64_t dy = y2 - y1;
-    // Scale down to prevent overflow, then scale result back
-    int64_t dx_scaled = dx / 100;
-    int64_t dy_scaled = dy / 100;
-    return isqrt(dx_scaled * dx_scaled + dy_scaled * dy_scaled) * 100;
+static void rt_pathfollow_rewind(rt_pathfollow path) {
+    if (!path)
+        return;
+
+    path->segment = 0;
+    path->segment_progress = 0;
+    path->reverse = 0;
+
+    if (path->point_count > 0) {
+        path->current_x = path->points[0].x;
+        path->current_y = path->points[0].y;
+    } else {
+        path->current_x = 0;
+        path->current_y = 0;
+    }
+}
+
+static void rt_pathfollow_advance_segment_boundary(rt_pathfollow path) {
+    int64_t seg = path->segment;
+
+    if (path->reverse) {
+        if (seg > 0) {
+            path->segment--;
+            path->segment_progress = 1000;
+        } else {
+            path->segment_progress = 0;
+            if (path->mode == RT_PATHFOLLOW_PINGPONG) {
+                path->reverse = 0;
+            } else if (path->mode == RT_PATHFOLLOW_LOOP) {
+                path->segment = path->point_count - 2;
+                path->segment_progress = 1000;
+            } else {
+                path->finished = 1;
+                path->active = 0;
+            }
+        }
+    } else {
+        if (seg < path->point_count - 2) {
+            path->segment++;
+            path->segment_progress = 0;
+        } else {
+            path->segment_progress = 1000;
+            if (path->mode == RT_PATHFOLLOW_PINGPONG) {
+                path->reverse = 1;
+            } else if (path->mode == RT_PATHFOLLOW_LOOP) {
+                path->segment = 0;
+                path->segment_progress = 0;
+            } else {
+                path->finished = 1;
+                path->active = 0;
+            }
+        }
+    }
 }
 
 /// @brief Rebuild the cached `segment_lengths` array and `total_length` from the waypoint list.
@@ -103,19 +143,28 @@ static void recalculate_lengths(rt_pathfollow path) {
     if (!path)
         return;
     if (path->point_count < 2) {
+        if (path->segment_lengths) {
+            free(path->segment_lengths);
+            path->segment_lengths = NULL;
+        }
+        path->total_length = 0;
+        return;
+    }
+
+    int64_t segments = path->point_count - 1;
+    int64_t *new_lengths = malloc((size_t)segments * sizeof(int64_t));
+    if (!new_lengths) {
+        if (path->segment_lengths) {
+            free(path->segment_lengths);
+            path->segment_lengths = NULL;
+        }
         path->total_length = 0;
         return;
     }
 
     if (path->segment_lengths)
         free(path->segment_lengths);
-
-    int64_t segments = path->point_count - 1;
-    path->segment_lengths = malloc((size_t)segments * sizeof(int64_t));
-    if (!path->segment_lengths) {
-        path->total_length = 0;
-        return;
-    }
+    path->segment_lengths = new_lengths;
 
     path->total_length = 0;
     for (int64_t i = 0; i < segments; i++) {
@@ -240,6 +289,9 @@ void rt_pathfollow_start(rt_pathfollow path) {
     if (!path || path->point_count < 2)
         return;
 
+    if (path->finished)
+        rt_pathfollow_rewind(path);
+
     path->active = 1;
     path->finished = 0;
 }
@@ -258,14 +310,7 @@ void rt_pathfollow_stop(rt_pathfollow path) {
 
     path->active = 0;
     path->finished = 0;
-    path->segment = 0;
-    path->segment_progress = 0;
-    path->reverse = 0;
-
-    if (path->point_count > 0) {
-        path->current_x = path->points[0].x;
-        path->current_y = path->points[0].y;
-    }
+    rt_pathfollow_rewind(path);
 }
 
 /// @brief Returns 1 while the follower is actively advancing each `update()` tick.
@@ -289,14 +334,35 @@ void rt_pathfollow_update(rt_pathfollow path, int64_t dt) {
 
     if (!path->segment_lengths || path->total_length == 0)
         return;
+    if (dt <= 0)
+        return;
 
     // Calculate distance to move this frame
     // speed is units/sec (fixed-point 1000), dt is ms
-    int64_t move_dist = (path->speed * dt) / 1000;
+    long double scaled_move_dist = ((long double)path->speed * (long double)dt) / 1000.0L;
+    int64_t move_dist = scaled_move_dist >= (long double)INT64_MAX
+                            ? INT64_MAX
+                            : (int64_t)scaled_move_dist;
+    int64_t zero_hops = 0;
 
     while (move_dist > 0 && !path->finished) {
         int64_t seg = path->segment;
+        if (seg < 0 || seg >= path->point_count - 1) {
+            path->active = 0;
+            path->finished = 1;
+            break;
+        }
         int64_t seg_len = path->segment_lengths[seg];
+
+        if (seg_len <= 0) {
+            if (++zero_hops > path->point_count * 2) {
+                path->active = 0;
+                break;
+            }
+            rt_pathfollow_advance_segment_boundary(path);
+            continue;
+        }
+        zero_hops = 0;
 
         // Calculate remaining distance in current segment
         int64_t seg_traveled = (seg_len * path->segment_progress) / 1000;
@@ -310,64 +376,29 @@ void rt_pathfollow_update(rt_pathfollow path, int64_t dt) {
         if (move_dist >= seg_remaining) {
             // Move to next segment
             move_dist -= seg_remaining;
-
-            if (path->reverse) {
-                // Moving backwards
-                if (seg > 0) {
-                    path->segment--;
-                    path->segment_progress = 1000;
-                } else {
-                    // Reached start
-                    path->segment_progress = 0;
-                    if (path->mode == RT_PATHFOLLOW_PINGPONG) {
-                        path->reverse = 0;
-                    } else if (path->mode == RT_PATHFOLLOW_LOOP) {
-                        path->segment = path->point_count - 2;
-                        path->segment_progress = 1000;
-                    } else {
-                        path->finished = 1;
-                        path->active = 0;
-                    }
-                }
-            } else {
-                // Moving forward
-                if (seg < path->point_count - 2) {
-                    path->segment++;
-                    path->segment_progress = 0;
-                } else {
-                    // Reached end
-                    path->segment_progress = 1000;
-                    if (path->mode == RT_PATHFOLLOW_PINGPONG) {
-                        path->reverse = 1;
-                    } else if (path->mode == RT_PATHFOLLOW_LOOP) {
-                        path->segment = 0;
-                        path->segment_progress = 0;
-                    } else {
-                        path->finished = 1;
-                        path->active = 0;
-                    }
-                }
-            }
+            rt_pathfollow_advance_segment_boundary(path);
         } else {
             // Partial movement within segment
-            if (seg_len > 0) {
-                int64_t progress_delta = (move_dist * 1000) / seg_len;
-                if (path->reverse)
-                    path->segment_progress -= progress_delta;
-                else
-                    path->segment_progress += progress_delta;
+            int64_t progress_delta = (move_dist * 1000) / seg_len;
+            if (path->reverse)
+                path->segment_progress -= progress_delta;
+            else
+                path->segment_progress += progress_delta;
 
-                // Clamp
-                if (path->segment_progress < 0)
-                    path->segment_progress = 0;
-                if (path->segment_progress > 1000)
-                    path->segment_progress = 1000;
-            }
+            // Clamp
+            if (path->segment_progress < 0)
+                path->segment_progress = 0;
+            if (path->segment_progress > 1000)
+                path->segment_progress = 1000;
             move_dist = 0;
         }
     }
 
     // Update current position based on segment and progress
+    if (path->segment < 0)
+        path->segment = 0;
+    if (path->segment > path->point_count - 2)
+        path->segment = path->point_count - 2;
     int64_t seg = path->segment;
     int64_t p = path->segment_progress;
     int64_t x1 = path->points[seg].x;

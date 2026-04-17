@@ -118,11 +118,12 @@ int8_t rt_achievement_unlock(rt_achievement ach, int64_t id) {
     if (!ach || id < 0 || id >= ach->capacity || !ach->entries[id].defined)
         return 0;
 
-    int64_t bit = (int64_t)1 << id;
-    if (ach->unlock_mask & bit)
+    uint64_t unlock_mask = (uint64_t)ach->unlock_mask;
+    uint64_t bit = UINT64_C(1) << (uint64_t)id;
+    if (unlock_mask & bit)
         return 0; // Already unlocked
 
-    ach->unlock_mask |= bit;
+    ach->unlock_mask = (int64_t)(unlock_mask | bit);
 
     // Trigger notification
     ach->notify_id = id;
@@ -136,7 +137,7 @@ int8_t rt_achievement_unlock(rt_achievement ach, int64_t id) {
 int8_t rt_achievement_is_unlocked(rt_achievement ach, int64_t id) {
     if (!ach || id < 0 || id >= ach->capacity)
         return 0;
-    return (ach->unlock_mask & ((int64_t)1 << id)) ? 1 : 0;
+    return ((((uint64_t)ach->unlock_mask) & (UINT64_C(1) << (uint64_t)id)) != 0) ? 1 : 0;
 }
 
 /// @brief Get the raw 64-bit unlock bitmask (for serialization/save games).

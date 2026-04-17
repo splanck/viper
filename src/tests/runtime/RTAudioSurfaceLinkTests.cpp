@@ -15,7 +15,6 @@
 #include "rt_audio3d.h"
 #include "rt_audiolistener3d.h"
 #include "rt_audiosource3d.h"
-#include "rt_audio_codec.h"
 #include "rt_mixgroup.h"
 #include "rt_musicgen.h"
 #include "rt_playlist.h"
@@ -46,6 +45,7 @@ int main() {
         fn_bits(&rt_audio_get_master_volume),
         fn_bits(&rt_audio_pause_all),
         fn_bits(&rt_audio_resume_all),
+        fn_bits(&rt_audio_update),
         fn_bits(&rt_audio_stop_all_sounds),
         fn_bits(&rt_sound_load),
         fn_bits(&rt_sound_load_mem),
@@ -136,10 +136,6 @@ int main() {
         fn_bits(&rt_musicgen_get_length),
         fn_bits(&rt_musicgen_get_channel_count),
         fn_bits(&rt_musicgen_build),
-        fn_bits(&rt_audio_encode_vaf),
-        fn_bits(&rt_audio_decode_vaf),
-        fn_bits(&rt_audio_is_vaf),
-        fn_bits(&rt_audio_encode),
         fn_bits(&rt_audio3d_listener_state_identity),
         fn_bits(&rt_audio3d_listener_state_set),
         fn_bits(&rt_audio3d_get_effective_listener_state),

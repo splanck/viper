@@ -642,10 +642,6 @@ function(viper_add_runtime_tests)
             ${VIPER_TESTS_DIR}/runtime/RTDialogueContractTests.cpp
             ${CMAKE_SOURCE_DIR}/src/runtime/game/rt_dialogue.c)
 
-    viper_add_test(test_rt_audio_codec ${VIPER_TESTS_DIR}/unit/test_rt_audio_codec.cpp)
-    target_link_libraries(test_rt_audio_codec PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
-    viper_add_ctest(test_rt_audio_codec test_rt_audio_codec)
-
     viper_add_test(test_rt_tilemap_io ${VIPER_TESTS_DIR}/unit/test_rt_tilemap_io.cpp)
     target_link_libraries(test_rt_tilemap_io PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_tilemap_io test_rt_tilemap_io)

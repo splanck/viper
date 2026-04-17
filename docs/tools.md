@@ -199,10 +199,14 @@ Compile IL to native code.
 # x86-64
 viper codegen x64 <in.il> -o <executable>
 viper codegen x64 <in.il> -S <out.s>  # Assembly only
+viper codegen x64 <in.il> -o <executable> --asset-blob assets.vpa --extra-obj assets.o
 
 # ARM64 (Apple Silicon validated)
 viper codegen arm64 <in.il> -S <out.s>
+viper codegen arm64 <in.il> -o <executable> --asset-blob assets.vpa --extra-obj assets.o
 ```
+
+On x86-64, `--asset-blob` embeds the VPA payload directly when using `--native-asm`. If you force `--system-asm`, pair it with `--extra-obj <asset.o>` so the asset symbols are still linked into the final binary.
 
 ### viper install-package
 

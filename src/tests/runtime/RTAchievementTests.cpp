@@ -159,12 +159,26 @@ static void test_notification_lifetime_and_draw() {
     rt_achievement_destroy(ach);
 }
 
+static void test_highest_bit_unlock_is_supported() {
+    rt_achievement ach = rt_achievement_new(64);
+    assert(ach != nullptr);
+
+    rt_achievement_add(ach, 63, rt_const_cstr("TopBit"), rt_const_cstr("Highest"));
+    assert(rt_achievement_unlock(ach, 63) == 1);
+    assert(rt_achievement_is_unlocked(ach, 63) == 1);
+    assert(rt_achievement_unlocked_count(ach) == 1);
+    assert(static_cast<uint64_t>(rt_achievement_get_mask(ach)) == (UINT64_C(1) << 63));
+
+    rt_achievement_destroy(ach);
+}
+
 int main() {
     test_capacity_is_honored();
     test_unlock_requires_defined_entry();
     test_mask_round_trip_clamps_to_capacity();
     test_stat_tracking();
     test_notification_lifetime_and_draw();
+    test_highest_bit_unlock_is_supported();
     std::printf("RTAchievementTests passed.\n");
     return 0;
 }

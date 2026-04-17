@@ -60,7 +60,6 @@ bool VpaWriter::isPreCompressed(const std::string &name) {
         ".gif",
         ".ogg",
         ".mp3",
-        ".vaf",
         ".glb",
         ".gz",
         ".zip",

@@ -33,6 +33,13 @@ function(viper_add_tools_tests)
     target_link_libraries(test_tools_basic_common PRIVATE ${VIPER_TOOLS_LIBS})
     viper_add_ctest(test_tools_basic_common test_tools_basic_common)
 
+    viper_add_test(test_tools_frontend_native_compiler
+            ${_VIPER_TOOLS_DIR}/FrontendToolAndNativeCompilerTests.cpp
+            ${CMAKE_SOURCE_DIR}/src/tools/viper/cmd_codegen_x64.cpp)
+    target_include_directories(test_tools_frontend_native_compiler PRIVATE ${CMAKE_SOURCE_DIR}/src)
+    target_link_libraries(test_tools_frontend_native_compiler PRIVATE ${VIPER_TOOLS_LIBS} viper_native_compiler viper_codegen_x86_64)
+    viper_add_ctest(test_tools_frontend_native_compiler test_tools_frontend_native_compiler)
+
     viper_add_test(test_cli_run_missing_main
             ${VIPER_TESTS_DIR}/unit/test_cli_run_missing_main.cpp
             ${CMAKE_SOURCE_DIR}/src/tools/viper/cli.cpp

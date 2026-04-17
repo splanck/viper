@@ -22,6 +22,7 @@
 #include "codegen/x86_64/passes/PassManager.hpp"
 
 #include <string>
+#include <vector>
 
 struct PipelineResult {
     int exit_code;           ///< Final exit status of the pipeline; zero indicates success.
@@ -58,6 +59,7 @@ class CodegenPipeline {
         AssemblerMode assembler_mode = AssemblerMode::Native;
         LinkMode link_mode = LinkMode::Native;
         std::string asset_blob_path; ///< Path to VPA asset blob for .rodata embedding (optional).
+        std::vector<std::string> extra_objects; ///< Extra object files linked into the final image.
         CodegenOptions::TargetABI target_abi = CodegenOptions::TargetABI::Host;
     };
 

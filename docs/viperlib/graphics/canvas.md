@@ -22,7 +22,7 @@ last-verified: 2026-04-17
 
 | Property      | Type    | Description                                        |
 |---------------|---------|----------------------------------------------------|
-| `DeltaTime`   | Integer | Milliseconds elapsed between last two `Flip()` calls (first frame may be `0`; later positive sub-millisecond frames report `1`) |
+| `DeltaTime`   | Integer | Milliseconds elapsed between last two `Flip()` calls, rounded to the nearest millisecond (first frame may be `0`) |
 | `Height`      | Integer | Canvas height in pixels                            |
 | `ShouldClose` | Integer | Non-zero if the user requested to close the canvas |
 | `Width`       | Integer | Canvas width in pixels                             |
@@ -405,7 +405,7 @@ func start() {
     c.SetDTMax(50);
 
     while c.BeginFrame() != 0 {
-        var dt = c.DeltaTime;  // First frame may be 0; later frames are clamped to [1, 50]
+        var dt = c.DeltaTime;  // First frame may be 0; with SetDTMax set, later positive frames clamp to [1, 50]
 
         // Game logic using dt for frame-independent movement
         c.Clear(Color.RGB(0, 0, 0));
@@ -417,8 +417,8 @@ func start() {
 
 **Notes:**
 - `BeginFrame()` calls `Poll()` internally, then returns 0 if `ShouldClose` is set, otherwise 1
-- `SetDTMax(max)` sets the upper clamp for `DeltaTime` in milliseconds; after the first frame, `DeltaTime` auto-clamps to `[1, max]`
-- At very high uncapped frame rates, any positive frame shorter than 1 ms still reports as `1`
+- Without `SetDTMax()`, `DeltaTime` is rounded to the nearest millisecond, so very short uncapped frames may report `0` or `1`
+- `SetDTMax(max)` sets the upper clamp for `DeltaTime` in milliseconds; after the first positive frame, rounded values clamp to `[1, max]`
 - A typical max of 50 ms (20 FPS equivalent) prevents large time steps that can break physics or animation
 
 ---

@@ -589,6 +589,8 @@ Efficient tile-based 2D map rendering for platformers, RPGs, and strategy games.
 
 Advanced runtime support also includes multi-layer tilemaps, per-layer tilesets, JSON save/load, auto-tiling rules, per-tile properties, and tile animation state. `SaveToFile` / `LoadFromFile` preserve layer visibility, collision-layer selection, collision types, tile properties, auto-tile rules, and animation progress.
 
+Animated tiles keep collision from the base tile ID stored in the map. Changing the visual animation frame does not change solidity or one-way behavior unless you also change the base tile's collision type.
+
 ### Zia Example
 
 ```rust
