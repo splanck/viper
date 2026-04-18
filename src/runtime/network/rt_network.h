@@ -518,6 +518,12 @@ void *rt_http_req_set_body_str(void *obj, rt_string text);
 /// @return Same HttpReq object (for chaining).
 void *rt_http_req_set_timeout(void *obj, int64_t timeout_ms);
 
+/// @brief Enable or disable TLS certificate verification for this request.
+/// @param obj HttpReq object.
+/// @param verify 1 to verify the peer certificate and hostname, 0 to skip verification.
+/// @return Same HttpReq object (for chaining).
+void *rt_http_req_set_tls_verify(void *obj, int8_t verify);
+
 /// @brief Enable or disable automatic redirect following for this request.
 /// @param obj HttpReq object.
 /// @param follow 1 to follow redirects, 0 to return the redirect response as-is.

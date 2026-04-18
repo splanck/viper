@@ -52,6 +52,7 @@ typedef struct rt_tls_session rt_tls_session_t;
 /// @brief TLS configuration.
 typedef struct rt_tls_config {
     const char *hostname; // Server hostname for SNI
+    const char *alpn_protocol; // Optional single ALPN protocol (e.g. "http/1.1")
     int verify_cert;      // 1 = verify certificate (default), 0 = skip
     int timeout_ms;       // Connection timeout in ms (0 = default 30s)
 } rt_tls_config_t;
@@ -82,6 +83,9 @@ void rt_tls_close(rt_tls_session_t *session);
 
 /// @brief Get last error message.
 const char *rt_tls_get_error(rt_tls_session_t *session);
+
+/// @brief Get the most recent connect/handshake error captured by `rt_tls_connect`.
+const char *rt_tls_last_error(void);
 
 /// @brief Convenience: connect, handshake, return session.
 /// @param host Hostname to connect to.

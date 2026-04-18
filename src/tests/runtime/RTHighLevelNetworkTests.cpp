@@ -11,6 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_netutils.h"
+#include "rt_http_client.h"
 #include "rt_network.h"
 #include "rt_smtp.h"
 #include "rt_sse.h"
@@ -32,6 +33,24 @@ static void test_result(const char *name, bool passed) {
 static std::atomic<bool> api_server_ready{false};
 static std::atomic<bool> api_server_failed{false};
 static std::string smtp_captured_message;
+static std::string http_cookie_headers[3];
+static std::string sse_resume_header;
+
+static bool ascii_header_name_equals(const char *line, const char *name, size_t name_len) {
+    if (!line || !name)
+        return false;
+    for (size_t i = 0; i < name_len; i++) {
+        char a = line[i];
+        char b = name[i];
+        if (a >= 'A' && a <= 'Z')
+            a = (char)(a + ('a' - 'A'));
+        if (b >= 'A' && b <= 'Z')
+            b = (char)(b + ('a' - 'A'));
+        if (a != b)
+            return false;
+    }
+    return true;
+}
 
 static void send_text(void *client, const char *text) {
     rt_tcp_send_str(client, rt_const_cstr(text));
@@ -46,6 +65,45 @@ static void read_http_request_headers(void *client) {
         if (done)
             break;
     }
+}
+
+static std::string read_http_cookie_header(void *client) {
+    std::string cookie_header;
+    while (true) {
+        rt_string line = rt_tcp_recv_line(client);
+        const char *cstr = rt_string_cstr(line);
+        const bool done = !cstr || *cstr == '\0';
+        if (cstr && ascii_header_name_equals(cstr, "Cookie", 6) && cstr[6] == ':') {
+            const char *value = cstr + 7;
+            while (*value == ' ' || *value == '\t')
+                value++;
+            cookie_header = value;
+        }
+        rt_string_unref(line);
+        if (done)
+            break;
+    }
+    return cookie_header;
+}
+
+static std::string read_http_header_value(void *client, const char *name) {
+    std::string header_value;
+    const size_t name_len = strlen(name);
+    while (true) {
+        rt_string line = rt_tcp_recv_line(client);
+        const char *cstr = rt_string_cstr(line);
+        const bool done = !cstr || *cstr == '\0';
+        if (cstr && ascii_header_name_equals(cstr, name, name_len) && cstr[name_len] == ':') {
+            const char *value = cstr + name_len + 1;
+            while (*value == ' ' || *value == '\t')
+                value++;
+            header_value = value;
+        }
+        rt_string_unref(line);
+        if (done)
+            break;
+    }
+    return header_value;
 }
 
 static void sse_plain_server_thread(int port) {
@@ -118,6 +176,55 @@ static void sse_chunked_server_thread(int port) {
     rt_tcp_server_close(server);
 }
 
+static void sse_resume_server_thread(int port) {
+    void *server = rt_tcp_server_listen(port);
+    if (!server) {
+        api_server_failed = true;
+        api_server_ready = true;
+        return;
+    }
+
+    api_server_failed = false;
+    api_server_ready = true;
+    sse_resume_header.clear();
+
+    void *client = rt_tcp_server_accept_for(server, 5000);
+    if (!client) {
+        rt_tcp_server_close(server);
+        return;
+    }
+    read_http_request_headers(client);
+    send_text(client,
+              "HTTP/1.1 200 OK\r\n"
+              "Content-Type: text/event-stream\r\n"
+              "Connection: close\r\n"
+              "\r\n"
+              "retry: 1\r\n"
+              "id: 1\r\n"
+              "data: first\r\n"
+              "\r\n");
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    rt_tcp_close(client);
+
+    client = rt_tcp_server_accept_for(server, 5000);
+    if (!client) {
+        rt_tcp_server_close(server);
+        return;
+    }
+    sse_resume_header = read_http_header_value(client, "Last-Event-ID");
+    send_text(client,
+              "HTTP/1.1 200 OK\r\n"
+              "Content-Type: text/event-stream\r\n"
+              "Connection: close\r\n"
+              "\r\n"
+              "id: 2\r\n"
+              "data: second\r\n"
+              "\r\n");
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    rt_tcp_close(client);
+    rt_tcp_server_close(server);
+}
+
 static void smtp_plain_server_thread(int port) {
     void *server = rt_tcp_server_listen(port);
     if (!server) {
@@ -183,6 +290,49 @@ static void smtp_plain_server_thread(int port) {
     send_text(client, "221 Bye\r\n");
 
     rt_tcp_close(client);
+    rt_tcp_server_close(server);
+}
+
+static void http_cookie_scope_server_thread(int port) {
+    void *server = rt_tcp_server_listen(port);
+    if (!server) {
+        api_server_failed = true;
+        api_server_ready = true;
+        return;
+    }
+
+    api_server_failed = false;
+    api_server_ready = true;
+    http_cookie_headers[0].clear();
+    http_cookie_headers[1].clear();
+    http_cookie_headers[2].clear();
+
+    for (int i = 0; i < 3; i++) {
+        void *client = rt_tcp_server_accept_for(server, 5000);
+        if (!client)
+            break;
+
+        rt_string request_line = rt_tcp_recv_line(client);
+        rt_string_unref(request_line);
+        http_cookie_headers[i] = read_http_cookie_header(client);
+
+        if (i == 0) {
+            send_text(client,
+                      "HTTP/1.1 200 OK\r\n"
+                      "Content-Length: 2\r\n"
+                      "Set-Cookie: appToken=alpha; Path=/app\r\n"
+                      "Set-Cookie: rootToken=beta; Path=/\r\n"
+                      "Set-Cookie: secureToken=secret; Path=/app; Secure\r\n"
+                      "\r\nok");
+        } else if (i == 1) {
+            send_text(client, "HTTP/1.1 200 OK\r\nContent-Length: 3\r\n\r\napp");
+        } else {
+            send_text(client, "HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nother");
+        }
+
+        rt_tcp_close(client);
+    }
+
     rt_tcp_server_close(server);
 }
 
@@ -264,6 +414,45 @@ static void test_sse_chunked_event() {
     server.join();
 }
 
+static void test_sse_resume_after_disconnect() {
+    printf("\nTesting SseClient reconnect and resume:\n");
+
+    const int port = (int)rt_netutils_get_free_port();
+    if (port <= 0) {
+        printf("  SKIP: local bind unavailable in this environment\n");
+        return;
+    }
+
+    api_server_ready = false;
+    api_server_failed = false;
+    std::thread server(sse_resume_server_thread, port);
+    wait_for_server();
+    if (api_server_failed) {
+        server.join();
+        printf("  SKIP: local bind unavailable in this environment\n");
+        return;
+    }
+
+    char url_buf[128];
+    snprintf(url_buf, sizeof(url_buf), "http://127.0.0.1:%d/resume", port);
+    void *sse = rt_sse_connect(rt_const_cstr(url_buf));
+    test_result("SSE resume connection opens", sse != nullptr && rt_sse_is_open(sse) == 1);
+
+    rt_string data1 = rt_sse_recv(sse);
+    test_result("SSE first event payload matches", strcmp(rt_string_cstr(data1), "first") == 0);
+    rt_string first_id = rt_sse_last_event_id(sse);
+    test_result("SSE first event id captured", strcmp(rt_string_cstr(first_id), "1") == 0);
+
+    rt_string data2 = rt_sse_recv(sse);
+    test_result("SSE reconnect receives next event", strcmp(rt_string_cstr(data2), "second") == 0);
+    rt_string second_id = rt_sse_last_event_id(sse);
+    test_result("SSE second event id captured", strcmp(rt_string_cstr(second_id), "2") == 0);
+    test_result("SSE reconnect sent Last-Event-ID header", sse_resume_header == "1");
+
+    rt_sse_close(sse);
+    server.join();
+}
+
 static void test_smtp_plain_send_sanitizes_and_dot_stuffs() {
     printf("\nTesting SmtpClient plain send path:\n");
 
@@ -311,9 +500,59 @@ static void test_smtp_plain_send_sanitizes_and_dot_stuffs() {
                 smtp_captured_message.find("second line") != std::string::npos);
 }
 
+static void test_http_client_cookie_scope() {
+    printf("\nTesting HttpClient cookie scope:\n");
+
+    const int port = (int)rt_netutils_get_free_port();
+    if (port <= 0) {
+        printf("  SKIP: local bind unavailable in this environment\n");
+        return;
+    }
+
+    api_server_ready = false;
+    api_server_failed = false;
+    std::thread server(http_cookie_scope_server_thread, port);
+    wait_for_server();
+    if (api_server_failed) {
+        server.join();
+        printf("  SKIP: local bind unavailable in this environment\n");
+        return;
+    }
+
+    char url_buf[128];
+    void *client = rt_http_client_new();
+
+    snprintf(url_buf, sizeof(url_buf), "http://127.0.0.1:%d/set", port);
+    void *res1 = rt_http_client_get(client, rt_const_cstr(url_buf));
+    test_result("HttpClient initial cookie response succeeds", rt_http_res_status(res1) == 200);
+
+    snprintf(url_buf, sizeof(url_buf), "http://127.0.0.1:%d/app/data", port);
+    void *res2 = rt_http_client_get(client, rt_const_cstr(url_buf));
+    test_result("HttpClient matching-path request succeeds", rt_http_res_status(res2) == 200);
+
+    snprintf(url_buf, sizeof(url_buf), "http://127.0.0.1:%d/other", port);
+    void *res3 = rt_http_client_get(client, rt_const_cstr(url_buf));
+    test_result("HttpClient non-matching-path request succeeds", rt_http_res_status(res3) == 200);
+
+    server.join();
+
+    test_result("Path cookie sent on matching path",
+                http_cookie_headers[1].find("appToken=alpha") != std::string::npos);
+    test_result("Root cookie sent on matching path",
+                http_cookie_headers[1].find("rootToken=beta") != std::string::npos);
+    test_result("Secure cookie withheld on plain HTTP",
+                http_cookie_headers[1].find("secureToken=secret") == std::string::npos);
+    test_result("Path cookie withheld outside its path",
+                http_cookie_headers[2].find("appToken=alpha") == std::string::npos);
+    test_result("Root cookie still sent outside the path",
+                http_cookie_headers[2].find("rootToken=beta") != std::string::npos);
+}
+
 int main() {
     test_sse_plain_event();
     test_sse_chunked_event();
+    test_sse_resume_after_disconnect();
+    test_http_client_cookie_scope();
     test_smtp_plain_send_sanitizes_and_dot_stuffs();
 
     printf("\nAll high-level network tests passed.\n");

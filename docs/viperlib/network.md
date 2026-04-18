@@ -751,10 +751,14 @@ PRINT "Content-Length: "; headers.Get("content-length")
 
 - **HTTP/1.1 support** - Standard HTTP/1.1 protocol
 - **HTTPS support** - TLS 1.3 with full certificate chain validation, hostname verification, and CertificateVerify proof-of-key-possession (see HTTPS/TLS note below)
-- **Redirect handling** - Automatically follows 301, 302, 307, 308 redirects (up to 5)
+- **Redirect handling** - Automatically follows 301, 302, 303, 307, 308 redirects (up to 5), including relative `Location:` targets
 - **Content-Length** - Handles Content-Length bodies
 - **Chunked encoding** - Handles Transfer-Encoding: chunked responses
+- **Gzip decoding** - `Http`, `HttpReq`, and `HttpClient` automatically advertise `Accept-Encoding: gzip` and transparently decode `Content-Encoding: gzip` responses
+- **Streaming download** - `Http.Download()` writes response bytes directly to disk instead of buffering the entire body in memory
 - **Timeout** - Default 30 second timeout
+
+> **Download note:** `Http.Download()` intentionally keeps `Accept-Encoding` at identity so the response can stay fully streamed to disk without buffering and decompressing the file in memory first.
 
 ### HTTPS/TLS Support
 
@@ -781,7 +785,7 @@ HTTP operations trap on errors:
 
 - Traps on invalid URL format
 - Traps on connection failure
-- Traps on TLS handshake failure (protocol errors, certificate chain validation failure, or hostname mismatch)
+- Traps on TLS setup / handshake failure with the underlying TLS diagnostic when available (for example hostname mismatch, certificate validation failure, or handshake protocol error)
 - Traps on timeout
 - Traps on too many redirects (>5)
 
@@ -813,6 +817,7 @@ HTTP request builder for advanced requests with custom headers and options.
 | `SetBodyStr(text)`        | HttpReq | Set request body as string (chainable)       |
 | `SetHeader(name, value)`  | HttpReq | Set a request header (chainable)             |
 | `SetTimeout(ms)`          | HttpReq | Set request timeout in milliseconds          |
+| `SetTlsVerify(enabled)`   | HttpReq | Enable or disable HTTPS certificate verification |
 
 > **TLS configuration:** Certificate verification is enabled by default (`verify_cert=1`). To disable verification (insecure, not recommended for production): call `.SetTlsVerify(false)` on the `HttpReq` before calling `Send()`. Use `SetTimeout(ms)` to control the overall request timeout. For raw TLS connections (without HTTP), use `Viper.Crypto.Tls` directly.
 
@@ -1794,6 +1799,12 @@ Threaded HTTP/1.1 server with routing and handler-tag lookup.
 
 > **Current runtime note:** Routes are matched and associated with the registered handler tag. The built-in response path returns matched tag metadata; direct invocation of user-defined language handlers is not yet wired through the frontend/runtime boundary.
 
+### Request Body Support
+
+- Request bodies can be framed with either `Content-Length` or `Transfer-Encoding: chunked`.
+- Oversize request bodies are rejected.
+- Connections are still handled one request per socket (`Connection: close`); keep-alive request reuse is not implemented on the server path.
+
 ---
 
 ## Viper.Network.ConnectionPool
@@ -1922,6 +1933,13 @@ Server-Sent Events (SSE) client for receiving event streams over HTTP.
 | `LastEventType` | String | Most recent `event:` field value |
 | `LastEventId` | String | Most recent `id:` field value |
 
+### Stream Behavior
+
+- Supports both plain `Content-Length` and HTTP chunked `text/event-stream` responses.
+- When the server drops the stream after delivering an event, the client reconnects automatically.
+- `retry:` updates the reconnect delay in milliseconds.
+- When an `id:` field has been seen, reconnect requests include `Last-Event-ID` so the server can resume from the last delivered event.
+
 ---
 
 ## Viper.Network.HttpClient
@@ -1945,13 +1963,20 @@ Session-based HTTP client with cookie jar, auto-redirect, and persistent headers
 | `SetTimeout(ms)` | void | Set request timeout in milliseconds |
 | `SetMaxRedirects(max)` | void | Set maximum redirect count |
 | `SetCookie(domain, name, value)` | void | Manually set a cookie |
-| `GetCookies(domain)` | Map | Get all cookies for a domain |
+| `GetCookies(domain)` | Map | Get the active cookies that match a domain |
 
 ### Properties
 
 | Property | Type | Description |
 |----------|------|-------------|
 | `FollowRedirects` | Boolean | Whether to auto-follow redirects (default: true) |
+
+### Cookie Behavior
+
+- `HttpClient` stores cookies with domain, path, expiry, and secure attributes.
+- Path-scoped cookies are only sent to matching request paths.
+- `Secure` cookies are only sent over `https://` requests.
+- Expired cookies are purged automatically before requests and lookups.
 
 ---
 

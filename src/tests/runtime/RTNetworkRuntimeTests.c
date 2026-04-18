@@ -153,12 +153,26 @@ static void test_http_server_rejects_duplicate_content_length(void) {
     ASSERT(rt_http_server_test_parse_request(raw, strlen(raw), NULL, NULL, NULL, NULL) == 0);
 }
 
-static void test_http_server_rejects_chunked_request_body(void) {
+static void test_http_server_parses_chunked_request_body(void) {
     const char raw[] = "POST /stream HTTP/1.1\r\n"
                        "Transfer-Encoding: chunked\r\n"
                        "\r\n"
                        "5\r\nhello\r\n0\r\n\r\n";
-    ASSERT(rt_http_server_test_parse_request(raw, strlen(raw), NULL, NULL, NULL, NULL) == 0);
+    char *method = NULL;
+    char *path = NULL;
+    char *body = NULL;
+    size_t body_len = 0;
+
+    ASSERT(rt_http_server_test_parse_request(raw, strlen(raw), &method, &path, &body, &body_len) ==
+           1);
+    ASSERT(method && strcmp(method, "POST") == 0);
+    ASSERT(path && strcmp(path, "/stream") == 0);
+    ASSERT(body && strcmp(body, "hello") == 0);
+    ASSERT(body_len == 5);
+
+    free(method);
+    free(path);
+    free(body);
 }
 
 static void test_http_server_builds_large_header_block(void) {
@@ -231,6 +245,40 @@ static void test_http_server_executes_bound_native_handler(void) {
     ASSERT(strcmp(captured_query, "search") == 0);
     ASSERT(strcmp(captured_header, "abc") == 0);
     ASSERT(strcmp(captured_param, "42") == 0);
+    ASSERT(strcmp(captured_body, "hello") == 0);
+
+    rt_string_unref(response);
+    if (rt_obj_release_check0(server))
+        rt_obj_free(server);
+}
+
+static void test_http_server_executes_bound_native_handler_for_chunked_body(void) {
+    reset_captured_request_state();
+
+    void *server = rt_http_server_new(8082);
+    rt_http_server_post(server, rt_const_cstr("/stream/:id"), rt_const_cstr("handle_stream"));
+    rt_http_server_bind_handler(
+        server, rt_const_cstr("handle_stream"), (void *)&native_http_handler);
+
+    rt_string raw = rt_const_cstr("POST /stream/7?q=resume HTTP/1.1\r\n"
+                                  "Host: example.test\r\n"
+                                  "X-Test: xyz\r\n"
+                                  "Transfer-Encoding: chunked\r\n"
+                                  "\r\n"
+                                  "2\r\nhe\r\n"
+                                  "3\r\nllo\r\n"
+                                  "0\r\n\r\n");
+    rt_string response = (rt_string)rt_http_server_process_request(server, raw);
+    const char *response_cstr = rt_string_cstr(response);
+
+    ASSERT(response_cstr != NULL);
+    ASSERT(strstr(response_cstr, "HTTP/1.1 201 Created\r\n") != NULL);
+    ASSERT(strstr(response_cstr, "\r\n\r\nnative-ok") != NULL);
+    ASSERT(strcmp(captured_method, "POST") == 0);
+    ASSERT(strcmp(captured_path, "/stream/7") == 0);
+    ASSERT(strcmp(captured_query, "resume") == 0);
+    ASSERT(strcmp(captured_header, "xyz") == 0);
+    ASSERT(strcmp(captured_param, "7") == 0);
     ASSERT(strcmp(captured_body, "hello") == 0);
 
     rt_string_unref(response);
@@ -336,10 +384,11 @@ int main(void) {
     test_http_server_rejects_invalid_content_length();
     test_http_server_rejects_truncated_body();
     test_http_server_rejects_duplicate_content_length();
-    test_http_server_rejects_chunked_request_body();
+    test_http_server_parses_chunked_request_body();
     test_http_server_builds_large_header_block();
     test_http_server_response_filters_managed_and_injected_headers();
     test_http_server_executes_bound_native_handler();
+    test_http_server_executes_bound_native_handler_for_chunked_body();
     test_http_server_reports_missing_handler_binding();
     test_http_parse_url_accepts_ipv6_literal();
     test_ws_parse_url_accepts_ipv6_literal();

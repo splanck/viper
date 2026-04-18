@@ -56,6 +56,14 @@ typedef int socket_t;
 extern void rt_net_init_wsa(void);
 #endif
 
+#ifdef _WIN32
+#define TLS_THREAD_LOCAL __declspec(thread)
+#else
+#define TLS_THREAD_LOCAL __thread
+#endif
+
+static TLS_THREAD_LOCAL char g_tls_last_error[256];
+
 // SIGPIPE suppression.
 #if defined(__linux__) || defined(__viperdos__)
 #define SEND_FLAGS MSG_NOSIGNAL
@@ -183,6 +191,7 @@ static void tls_release_dynamic_state(rt_tls_session_t *session) {
 
 // Extensions
 #define TLS_EXT_SERVER_NAME 0
+#define TLS_EXT_ALPN 16
 #define TLS_EXT_SUPPORTED_GROUPS 10
 #define TLS_EXT_SIGNATURE_ALGORITHMS 13
 #define TLS_EXT_COOKIE 44
@@ -235,6 +244,18 @@ static void transcript_init(rt_tls_session_t *session) {
     session->transcript_len = 0;
     rt_sha256_init(&session->transcript_ctx);
     rt_sha256(NULL, 0, session->transcript_hash);
+}
+
+static void tls_set_last_error_msg(const char *msg) {
+    if (!msg || !*msg) {
+        g_tls_last_error[0] = '\0';
+        return;
+    }
+    snprintf(g_tls_last_error, sizeof(g_tls_last_error), "%s", msg);
+}
+
+const char *rt_tls_last_error(void) {
+    return g_tls_last_error[0] ? g_tls_last_error : "no error";
 }
 
 /// @brief Append `len` bytes of handshake data to the transcript hash.
@@ -384,6 +405,43 @@ static void derive_application_keys(rt_tls_session_t *session) {
     rt_hkdf_expand_label(
         session->client_application_traffic_secret, "iv", NULL, 0, session->write_keys.iv, 12);
     session->write_keys.seq_num = 0;
+}
+
+static void update_application_secret_and_keys(uint8_t secret[32],
+                                               traffic_keys_t *keys,
+                                               uint16_t cipher_suite) {
+    uint8_t next_secret[32];
+    const int app_key_len = (cipher_suite == TLS_AES_128_GCM_SHA256) ? 16 : 32;
+
+    rt_hkdf_expand_label(secret, "traffic upd", NULL, 0, next_secret, sizeof(next_secret));
+    memcpy(secret, next_secret, sizeof(next_secret));
+
+    rt_hkdf_expand_label(secret, "key", NULL, 0, keys->key, app_key_len);
+    rt_hkdf_expand_label(secret, "iv", NULL, 0, keys->iv, sizeof(keys->iv));
+    keys->seq_num = 0;
+}
+
+static void update_read_application_keys(rt_tls_session_t *session) {
+    update_application_secret_and_keys(
+        session->server_application_traffic_secret, &session->read_keys, session->cipher_suite);
+}
+
+static void update_write_application_keys(rt_tls_session_t *session) {
+    update_application_secret_and_keys(
+        session->client_application_traffic_secret, &session->write_keys, session->cipher_suite);
+}
+
+static int send_record(rt_tls_session_t *session,
+                       uint8_t content_type,
+                       const uint8_t *data,
+                       size_t len);
+
+static int send_key_update_record(rt_tls_session_t *session, uint8_t request_update) {
+    uint8_t msg[5];
+    msg[0] = 24; // KeyUpdate
+    write_u24(msg + 1, 1);
+    msg[4] = request_update ? 1 : 0;
+    return send_record(session, TLS_CONTENT_HANDSHAKE, msg, sizeof(msg));
 }
 
 /// @brief Construct the per-record AEAD nonce per RFC 8446 §5.3.
@@ -605,7 +663,8 @@ static int recv_record(rt_tls_session_t *session,
 /// the null compression method, and the following extensions:
 ///   - `server_name` (when `session->hostname` is set, RFC 6066)
 ///   - `supported_versions` (TLS 1.3 only)
-///   - `supported_groups` (X25519 only — see RFC 7748)
+    ///   - `alpn` (optional single protocol, e.g. `http/1.1`)
+    ///   - `supported_groups` (X25519 only — see RFC 7748)
 ///   - `signature_algorithms` (ECDSA P-256/P-384, RSA-PSS SHA-256/384/512)
 ///   - `cookie` (only when echoing back a HelloRetryRequest)
 ///   - `key_share` with a freshly generated X25519 public key
@@ -674,6 +733,24 @@ static int send_client_hello(rt_tls_session_t *session) {
     msg[pos++] = 2;
     write_u16(msg + pos, TLS_VERSION_1_3);
     pos += 2;
+
+    // ALPN (optional single protocol)
+    if (session->alpn_protocol[0] != '\0') {
+        size_t proto_len = strlen(session->alpn_protocol);
+        if (proto_len == 0 || proto_len > 255 || pos + proto_len + 7 > sizeof(msg) - 64) {
+            session->error = "ClientHello: ALPN protocol too long";
+            return RT_TLS_ERROR;
+        }
+        write_u16(msg + pos, TLS_EXT_ALPN);
+        pos += 2;
+        write_u16(msg + pos, (uint16_t)(proto_len + 3));
+        pos += 2;
+        write_u16(msg + pos, (uint16_t)(proto_len + 1));
+        pos += 2;
+        msg[pos++] = (uint8_t)proto_len;
+        memcpy(msg + pos, session->alpn_protocol, proto_len);
+        pos += proto_len;
+    }
 
     // Supported groups
     write_u16(msg + pos, TLS_EXT_SUPPORTED_GROUPS);
@@ -949,6 +1026,95 @@ static int process_server_hello(rt_tls_session_t *session,
     return RT_TLS_OK;
 }
 
+static int process_encrypted_extensions(rt_tls_session_t *session, const uint8_t *data, size_t len) {
+    if (len < 2) {
+        session->error = "EncryptedExtensions too short";
+        return RT_TLS_ERROR_HANDSHAKE;
+    }
+
+    size_t ext_len = read_u16(data);
+    if (ext_len != len - 2) {
+        session->error = "EncryptedExtensions length mismatch";
+        return RT_TLS_ERROR_HANDSHAKE;
+    }
+
+    const uint8_t *p = data + 2;
+    const uint8_t *end = data + len;
+    while (p + 4 <= end) {
+        uint16_t ext_type = read_u16(p);
+        uint16_t one_ext_len = read_u16(p + 2);
+        p += 4;
+        if ((size_t)(end - p) < one_ext_len) {
+            session->error = "EncryptedExtensions truncated";
+            return RT_TLS_ERROR_HANDSHAKE;
+        }
+
+        if (ext_type == TLS_EXT_ALPN) {
+            if (one_ext_len < 3) {
+                session->error = "EncryptedExtensions ALPN too short";
+                return RT_TLS_ERROR_HANDSHAKE;
+            }
+            size_t list_len = read_u16(p);
+            if (list_len + 2 != one_ext_len || list_len < 1) {
+                session->error = "EncryptedExtensions ALPN malformed";
+                return RT_TLS_ERROR_HANDSHAKE;
+            }
+            uint8_t proto_len = p[2];
+            if ((size_t)proto_len + 3 != one_ext_len || proto_len == 0) {
+                session->error = "EncryptedExtensions ALPN protocol malformed";
+                return RT_TLS_ERROR_HANDSHAKE;
+            }
+            if (session->alpn_protocol[0] != '\0') {
+                size_t expected_len = strlen(session->alpn_protocol);
+                if (expected_len != proto_len ||
+                    memcmp(p + 3, session->alpn_protocol, expected_len) != 0) {
+                    session->error = "EncryptedExtensions ALPN mismatch";
+                    return RT_TLS_ERROR_HANDSHAKE;
+                }
+            }
+        }
+
+        p += one_ext_len;
+    }
+
+    if (p != end) {
+        session->error = "EncryptedExtensions trailing bytes";
+        return RT_TLS_ERROR_HANDSHAKE;
+    }
+
+    session->state = TLS_STATE_WAIT_CERTIFICATE;
+    return RT_TLS_OK;
+}
+
+static int process_post_handshake_message(rt_tls_session_t *session,
+                                          uint8_t hs_type,
+                                          const uint8_t *hs_data,
+                                          size_t hs_len) {
+    switch (hs_type) {
+        case 4: // NewSessionTicket
+            return RT_TLS_OK;
+
+        case 24: { // KeyUpdate
+            if (hs_len != 1 || hs_data[0] > 1) {
+                session->error = "TLS: malformed KeyUpdate";
+                return RT_TLS_ERROR_HANDSHAKE;
+            }
+
+            update_read_application_keys(session);
+            if (hs_data[0] == 1) {
+                int rc = send_key_update_record(session, 0);
+                if (rc != RT_TLS_OK)
+                    return rc;
+                update_write_application_keys(session);
+            }
+            return RT_TLS_OK;
+        }
+
+        default:
+            return RT_TLS_OK;
+    }
+}
+
 /// @brief Compute and send the client Finished handshake message.
 ///
 /// Derives the per-direction "finished_key" via HKDF-Expand-Label
@@ -1062,6 +1228,9 @@ rt_tls_session_t *rt_tls_new(int socket_fd, const rt_tls_config_t *config) {
     if (config && config->hostname) {
         strncpy(session->hostname, config->hostname, sizeof(session->hostname) - 1);
     }
+    if (config && config->alpn_protocol) {
+        strncpy(session->alpn_protocol, config->alpn_protocol, sizeof(session->alpn_protocol) - 1);
+    }
 
     return session;
 }
@@ -1140,8 +1309,9 @@ int rt_tls_handshake(rt_tls_session_t *session) {
                     break;
 
                 case TLS_HS_ENCRYPTED_EXTENSIONS:
-                    // Skip - we don't process any extensions
-                    session->state = TLS_STATE_WAIT_CERTIFICATE;
+                    rc = process_encrypted_extensions(session, hs_data, hs_len);
+                    if (rc != RT_TLS_OK)
+                        return rc;
                     break;
 
                 case TLS_HS_CERTIFICATE:
@@ -1275,8 +1445,30 @@ retry_recv:;
         return 0;
     }
 
+    if (content_type == TLS_CONTENT_HANDSHAKE) {
+        size_t pos = 0;
+        while (pos + 4 <= data_len) {
+            uint8_t hs_type = session->app_buffer[pos];
+            uint32_t hs_len = read_u24(session->app_buffer + pos + 1);
+            if (pos + 4 + hs_len > data_len) {
+                session->error = "TLS: incomplete post-handshake message";
+                return RT_TLS_ERROR_HANDSHAKE;
+            }
+            rc = process_post_handshake_message(
+                session, hs_type, session->app_buffer + pos + 4, hs_len);
+            if (rc != RT_TLS_OK)
+                return rc;
+            pos += 4 + hs_len;
+        }
+        if (pos != data_len) {
+            session->error = "TLS: malformed post-handshake record";
+            return RT_TLS_ERROR_HANDSHAKE;
+        }
+    } else if (content_type != TLS_CONTENT_APPLICATION) {
+        // Ignore non-application records we don't use (e.g. CCS compatibility records).
+    }
+
     if (content_type != TLS_CONTENT_APPLICATION) {
-        // Skip non-application records (e.g., NewSessionTicket post-handshake messages).
         // Limit retries to prevent CPU starvation from malicious servers.
         if (++non_app_retries > 100) {
             session->error = "TLS: too many non-application records";
@@ -1392,7 +1584,9 @@ rt_tls_session_t *rt_tls_connect(const char *host, uint16_t port, const rt_tls_c
     } else {
         rt_tls_config_init(&cfg);
     }
-    cfg.hostname = host;
+    tls_set_last_error_msg(NULL);
+    if (!cfg.hostname)
+        cfg.hostname = host;
     if (cfg.timeout_ms <= 0)
         cfg.timeout_ms = 30000;
 
@@ -1405,8 +1599,10 @@ rt_tls_session_t *rt_tls_connect(const char *host, uint16_t port, const rt_tls_c
     snprintf(port_str, sizeof(port_str), "%u", (unsigned)port);
 
     struct addrinfo *res = NULL;
-    if (getaddrinfo(host, port_str, &hints, &res) != 0 || !res)
+    if (getaddrinfo(host, port_str, &hints, &res) != 0 || !res) {
+        tls_set_last_error_msg("TLS: host resolution failed");
         return NULL;
+    }
 
 #ifdef _WIN32
     socket_t sock = INVALID_SOCKET;
@@ -1469,7 +1665,10 @@ rt_tls_session_t *rt_tls_connect(const char *host, uint16_t port, const rt_tls_c
 #else
     if (sock < 0)
 #endif
+    {
+        tls_set_last_error_msg("TLS: TCP connect failed");
         return NULL;
+    }
 
     if (cfg.timeout_ms > 0) {
         tls_set_socket_timeout(sock, cfg.timeout_ms, 1);
@@ -1479,15 +1678,18 @@ rt_tls_session_t *rt_tls_connect(const char *host, uint16_t port, const rt_tls_c
     rt_tls_session_t *session = rt_tls_new((int)sock, &cfg);
     if (!session) {
         CLOSE_SOCKET(sock);
+        tls_set_last_error_msg("TLS: failed to allocate session");
         return NULL;
     }
 
     // Perform handshake
     if (rt_tls_handshake(session) != RT_TLS_OK) {
+        tls_set_last_error_msg(rt_tls_get_error(session));
         rt_tls_close(session);
         return NULL;
     }
 
+    tls_set_last_error_msg(NULL);
     return session;
 }
 

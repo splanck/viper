@@ -435,7 +435,14 @@ static int smtp_connect_and_handshake(rt_smtp_impl *s) {
         cfg.timeout_ms = 30000;
         s->tls = rt_tls_connect(s->host, (uint16_t)s->port, &cfg);
         if (!s->tls) {
-            set_error(s, "SMTP: TLS connection failed");
+            const char *detail = rt_tls_last_error();
+            char msg[512];
+            if (detail && *detail) {
+                snprintf(msg, sizeof(msg), "SMTP: TLS connection failed: %s", detail);
+                set_error(s, msg);
+            } else {
+                set_error(s, "SMTP: TLS connection failed");
+            }
             return -1;
         }
         smtp_set_transport_timeouts(s, 30000);
@@ -469,11 +476,25 @@ static int smtp_connect_and_handshake(rt_smtp_impl *s) {
         cfg.timeout_ms = 30000;
         s->tls = rt_tls_new((int)rt_tcp_socket_fd(s->tcp), &cfg);
         if (!s->tls) {
-            set_error(s, "SMTP: TLS setup failed");
+            const char *detail = rt_tls_last_error();
+            char msg[512];
+            if (detail && *detail) {
+                snprintf(msg, sizeof(msg), "SMTP: TLS setup failed: %s", detail);
+                set_error(s, msg);
+            } else {
+                set_error(s, "SMTP: TLS setup failed");
+            }
             return -1;
         }
         if (rt_tls_handshake(s->tls) != RT_TLS_OK) {
-            set_error(s, "SMTP: TLS handshake failed");
+            const char *detail = rt_tls_get_error(s->tls);
+            char msg[512];
+            if (detail && *detail) {
+                snprintf(msg, sizeof(msg), "SMTP: TLS handshake failed: %s", detail);
+                set_error(s, msg);
+            } else {
+                set_error(s, "SMTP: TLS handshake failed");
+            }
             rt_tls_close(s->tls);
             s->tls = NULL;
             return -1;

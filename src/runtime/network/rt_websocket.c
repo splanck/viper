@@ -1232,22 +1232,35 @@ void *rt_ws_connect_for(rt_string url, int64_t timeout_ms) {
         rt_tls_config_t config;
         rt_tls_config_init(&config);
         config.hostname = host;
+        config.alpn_protocol = "http/1.1";
 
         ws->tls = rt_tls_new(ws->socket_fd, &config);
         if (!ws->tls) {
+            const char *detail = rt_tls_last_error();
+            char msg[512];
             free(host);
             free(path);
             if (rt_obj_release_check0(ws))
                 rt_obj_free(ws);
+            if (detail && *detail) {
+                snprintf(msg, sizeof(msg), "WebSocket: TLS setup failed: %s", detail);
+                rt_trap_net(msg, Err_TlsError);
+            }
             rt_trap_net("WebSocket: TLS setup failed", Err_TlsError);
             return NULL;
         }
 
         if (rt_tls_handshake(ws->tls) != RT_TLS_OK) {
+            const char *detail = rt_tls_get_error(ws->tls);
+            char msg[512];
             free(host);
             free(path);
             if (rt_obj_release_check0(ws))
                 rt_obj_free(ws);
+            if (detail && *detail) {
+                snprintf(msg, sizeof(msg), "WebSocket: TLS handshake failed: %s", detail);
+                rt_trap_net(msg, Err_TlsError);
+            }
             rt_trap_net("WebSocket: TLS handshake failed", Err_TlsError);
             return NULL;
         }

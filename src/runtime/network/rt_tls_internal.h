@@ -70,6 +70,7 @@ struct rt_tls_session {
 
     // Configuration
     char hostname[256];
+    char alpn_protocol[64];
     int verify_cert;
     int timeout_ms;
 

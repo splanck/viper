@@ -28,6 +28,7 @@
 #include "rt_network_internal.h"
 #include "rt_object.h"
 #include "rt_string.h"
+#include "rt_threads.h"
 #include "rt_tls.h"
 
 #include <stdbool.h>
@@ -47,11 +48,13 @@
 //=============================================================================
 
 typedef struct {
-    void *tcp;             // TCP connection for http://
+    socket_t socket_fd;    // Connected socket for http://, or TLS-owned socket for https://
     rt_tls_session_t *tls; // TLS session for https://
     bool is_open;
+    char *url;
     char *last_event_type; // Most recent "event:" field
     char *last_event_id;   // Most recent "id:" field
+    int64_t retry_ms;
     uint8_t read_buf[4096];
     size_t read_buf_len;
     size_t read_buf_pos;
@@ -63,22 +66,156 @@ static int sse_host_needs_brackets(const char *host) {
     return host && strchr(host, ':') != NULL && host[0] != '[';
 }
 
+static bool sse_set_nonblocking(socket_t sock, bool nonblocking) {
+#ifdef _WIN32
+    u_long mode = nonblocking ? 1 : 0;
+    return ioctlsocket(sock, FIONBIO, &mode) == 0;
+#else
+    int flags = fcntl(sock, F_GETFL, 0);
+    if (flags < 0)
+        return false;
+    return fcntl(sock, F_SETFL, nonblocking ? (flags | O_NONBLOCK) : (flags & ~O_NONBLOCK)) == 0;
+#endif
+}
+
+static bool sse_connect_socket_with_timeout(
+    socket_t sock, const struct sockaddr *addr, socklen_t addrlen, int timeout_ms, int *err_out) {
+    if (err_out)
+        *err_out = 0;
+
+    if (timeout_ms > 0) {
+        if (!sse_set_nonblocking(sock, true)) {
+            if (err_out)
+                *err_out = GET_LAST_ERROR();
+            return false;
+        }
+
+        if (connect(sock, addr, addrlen) == SOCK_ERROR) {
+            int err = GET_LAST_ERROR();
+#ifdef _WIN32
+            if (err == WSAEWOULDBLOCK)
+#else
+            if (err == EINPROGRESS)
+#endif
+            {
+                int ready = wait_socket(sock, timeout_ms, true);
+                if (ready <= 0) {
+                    if (err_out)
+                        *err_out = ready == 0 ? ETIMEDOUT : GET_LAST_ERROR();
+                    sse_set_nonblocking(sock, false);
+                    return false;
+                }
+
+                int so_error = 0;
+                socklen_t len = sizeof(so_error);
+                getsockopt(sock, SOL_SOCKET, SO_ERROR, (char *)&so_error, &len);
+                if (so_error != 0) {
+                    if (err_out)
+                        *err_out = so_error;
+                    sse_set_nonblocking(sock, false);
+                    return false;
+                }
+            } else {
+                if (err_out)
+                    *err_out = err;
+                sse_set_nonblocking(sock, false);
+                return false;
+            }
+        }
+
+        if (!sse_set_nonblocking(sock, false)) {
+            if (err_out)
+                *err_out = GET_LAST_ERROR();
+            return false;
+        }
+        return true;
+    }
+
+    if (connect(sock, addr, addrlen) == SOCK_ERROR) {
+        if (err_out)
+            *err_out = GET_LAST_ERROR();
+        return false;
+    }
+    return true;
+}
+
+static socket_t sse_create_tcp_socket(const char *host, int port, int timeout_ms, int *err_code) {
+    struct addrinfo hints, *res = NULL, *rp = NULL;
+    socket_t sock = INVALID_SOCK;
+    int last_err = 0;
+    char port_str[16];
+
+    if (err_code)
+        *err_code = Err_NetworkError;
+
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_socktype = SOCK_STREAM;
+    snprintf(port_str, sizeof(port_str), "%d", port);
+
+    if (getaddrinfo(host, port_str, &hints, &res) != 0 || !res) {
+        if (err_code)
+            *err_code = Err_HostNotFound;
+        return INVALID_SOCK;
+    }
+
+    for (rp = res; rp; rp = rp->ai_next) {
+        socket_t candidate = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
+        if (candidate == INVALID_SOCK)
+            continue;
+        suppress_sigpipe(candidate);
+        if (sse_connect_socket_with_timeout(
+                candidate, rp->ai_addr, (socklen_t)rp->ai_addrlen, timeout_ms, &last_err)) {
+            sock = candidate;
+            break;
+        }
+        CLOSE_SOCKET(candidate);
+    }
+    freeaddrinfo(res);
+
+    if (sock == INVALID_SOCK && err_code) {
+        if (last_err == CONN_REFUSED)
+            *err_code = Err_ConnectionRefused;
+#ifdef _WIN32
+        else if (last_err == WSAETIMEDOUT)
+#else
+        else if (last_err == ETIMEDOUT)
+#endif
+            *err_code = Err_Timeout;
+        else
+            *err_code = Err_NetworkError;
+    }
+
+    return sock;
+}
+
+static void sse_format_connect_error(char *msg, size_t msg_cap, const char *prefix, int err_code) {
+    const char *detail = "connection failed";
+    if (err_code == Err_HostNotFound)
+        detail = "host not found";
+    else if (err_code == Err_ConnectionRefused)
+        detail = "connection refused";
+    else if (err_code == Err_Timeout)
+        detail = "connection timeout";
+    snprintf(msg, msg_cap, "%s: %s", prefix, detail);
+}
+
 static void sse_close_transport(rt_sse_impl *sse) {
     if (!sse)
         return;
     if (sse->tls) {
         rt_tls_close(sse->tls);
         sse->tls = NULL;
+        sse->socket_fd = INVALID_SOCK;
     }
-    if (sse->tcp) {
-        rt_tcp_close(sse->tcp);
-        if (rt_obj_release_check0(sse->tcp))
-            rt_obj_free(sse->tcp);
-        sse->tcp = NULL;
+    if (sse->socket_fd != INVALID_SOCK) {
+        CLOSE_SOCKET(sse->socket_fd);
+        sse->socket_fd = INVALID_SOCK;
     }
     sse->read_buf_len = 0;
     sse->read_buf_pos = 0;
     sse->chunk_remaining = 0;
+    sse->chunked = 0;
 }
 
 /// @brief GC finalizer: tear down the active transport (TLS/TCP) and free the cached last-event
@@ -88,6 +225,7 @@ static void rt_sse_finalize(void *obj) {
         return;
     rt_sse_impl *sse = (rt_sse_impl *)obj;
     sse_close_transport(sse);
+    free(sse->url);
     free(sse->last_event_type);
     free(sse->last_event_id);
 }
@@ -109,7 +247,16 @@ static int sse_transport_send_all(rt_sse_impl *sse, const void *data, size_t len
         }
         return 1;
     }
-    rt_tcp_send_all_raw(sse->tcp, data, (int64_t)len);
+    size_t total = 0;
+    while (total < len) {
+        int sent = send(sse->socket_fd,
+                        (const char *)data + total,
+                        (int)((len - total) > INT_MAX ? INT_MAX : (len - total)),
+                        SEND_FLAGS);
+        if (sent == SOCK_ERROR)
+            return 0;
+        total += (size_t)sent;
+    }
     return 1;
 }
 
@@ -119,14 +266,7 @@ static int sse_transport_send_all(rt_sse_impl *sse, const void *data, size_t len
 static long sse_transport_read(rt_sse_impl *sse, void *buffer, size_t len) {
     if (sse->tls)
         return rt_tls_recv(sse->tls, buffer, len);
-
-    void *chunk = rt_tcp_recv(sse->tcp, (int64_t)len);
-    int64_t chunk_len = rt_bytes_len(chunk);
-    if (chunk_len > 0)
-        memcpy(buffer, bytes_data(chunk), (size_t)chunk_len);
-    if (chunk && rt_obj_release_check0(chunk))
-        rt_obj_free(chunk);
-    return (long)chunk_len;
+    return recv(sse->socket_fd, (char *)buffer, (int)(len > INT_MAX ? INT_MAX : len), 0);
 }
 
 static int sse_raw_recv_byte(rt_sse_impl *sse, uint8_t *byte) {
@@ -327,97 +467,101 @@ static int sse_wait_readable(rt_sse_impl *sse, int64_t timeout_ms) {
             return 1;
         return wait_socket(rt_tls_get_socket(sse->tls), (int)timeout_ms, false) > 0;
     }
-    return wait_socket(rt_tcp_socket_fd(sse->tcp), (int)timeout_ms, false) > 0;
+    return sse->socket_fd != INVALID_SOCK && wait_socket(sse->socket_fd, (int)timeout_ms, false) > 0;
 }
 
 //=============================================================================
 // Public API
 //=============================================================================
 
-void *rt_sse_connect(rt_string url) {
-    const char *url_str = rt_string_cstr(url);
-    if (!url_str)
-        rt_trap("SSE: NULL URL");
+static int sse_open_url(
+    rt_sse_impl *sse, const char *url_str, int allow_resume, char *err_msg, size_t err_msg_cap) {
+    rt_string url = NULL;
+    void *url_obj = NULL;
+    rt_string scheme = NULL;
+    rt_string host = NULL;
+    rt_string path = NULL;
+    rt_string query = NULL;
+    const char *scheme_cstr;
+    const char *host_cstr;
+    const char *path_cstr;
+    const char *query_cstr;
+    int is_secure;
+    int64_t port;
+    size_t path_len;
+    size_t query_len;
+    size_t target_len;
+    char *target = NULL;
+    char host_header[512];
+    const char *last_event_id = (allow_resume && sse->last_event_id) ? sse->last_event_id : NULL;
+    size_t request_cap;
+    char *request = NULL;
+    int rlen;
+    rt_string status_line = NULL;
+    int saw_stream_type = 0;
 
-    rt_sse_impl *sse = (rt_sse_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_sse_impl));
-    if (!sse) {
-        rt_trap("SSE: OOM");
-        return NULL;
-    }
-    memset(sse, 0, sizeof(*sse));
-    rt_obj_set_finalizer(sse, rt_sse_finalize);
+    if (err_msg && err_msg_cap > 0)
+        err_msg[0] = '\0';
 
-    void *url_obj = rt_url_parse(url);
-    rt_string scheme = rt_url_scheme(url_obj);
-    rt_string host = rt_url_host(url_obj);
-    rt_string path = rt_url_path(url_obj);
-    rt_string query = rt_url_query(url_obj);
-    const char *scheme_cstr = rt_string_cstr(scheme);
-    const char *host_cstr = rt_string_cstr(host);
-    const char *path_cstr = rt_string_cstr(path);
-    const char *query_cstr = rt_string_cstr(query);
-    int is_secure = scheme_cstr && strcmp(scheme_cstr, "https") == 0;
+    sse_close_transport(sse);
+    url = rt_string_from_bytes(url_str, strlen(url_str));
+    url_obj = rt_url_parse(url);
+    scheme = rt_url_scheme(url_obj);
+    host = rt_url_host(url_obj);
+    path = rt_url_path(url_obj);
+    query = rt_url_query(url_obj);
+    scheme_cstr = rt_string_cstr(scheme);
+    host_cstr = rt_string_cstr(host);
+    path_cstr = rt_string_cstr(path);
+    query_cstr = rt_string_cstr(query);
+    is_secure = scheme_cstr && strcmp(scheme_cstr, "https") == 0;
 
     if (!scheme_cstr || !host_cstr || !*host_cstr ||
         (strcmp(scheme_cstr, "http") != 0 && strcmp(scheme_cstr, "https") != 0)) {
-        rt_string_unref(query);
-        rt_string_unref(path);
-        rt_string_unref(host);
-        rt_string_unref(scheme);
-        if (url_obj && rt_obj_release_check0(url_obj))
-            rt_obj_free(url_obj);
-        if (rt_obj_release_check0(sse))
-            rt_obj_free(sse);
-        rt_trap("SSE: invalid URL");
+        if (err_msg && err_msg_cap > 0)
+            snprintf(err_msg, err_msg_cap, "SSE: invalid URL");
+        goto fail;
     }
 
-    int64_t port = rt_url_port(url_obj);
+    port = rt_url_port(url_obj);
     if (is_secure) {
         rt_tls_config_t cfg;
         rt_tls_config_init(&cfg);
         cfg.hostname = host_cstr;
+        cfg.alpn_protocol = "http/1.1";
         cfg.timeout_ms = 30000;
         sse->tls = rt_tls_connect(host_cstr, (uint16_t)port, &cfg);
         if (!sse->tls) {
-            rt_string_unref(query);
-            rt_string_unref(path);
-            rt_string_unref(host);
-            rt_string_unref(scheme);
-            if (url_obj && rt_obj_release_check0(url_obj))
-                rt_obj_free(url_obj);
-            if (rt_obj_release_check0(sse))
-                rt_obj_free(sse);
-            rt_trap("SSE: TLS connection failed");
+            const char *detail = rt_tls_last_error();
+            if (err_msg && err_msg_cap > 0) {
+                if (detail && *detail)
+                    snprintf(err_msg, err_msg_cap, "SSE: TLS connection failed: %s", detail);
+                else
+                    snprintf(err_msg, err_msg_cap, "SSE: TLS connection failed");
+            }
+            goto fail;
         }
+        sse->socket_fd = (socket_t)rt_tls_get_socket(sse->tls);
     } else {
-        sse->tcp = rt_tcp_connect_for(host, port, 30000);
-        if (!sse->tcp || !rt_tcp_is_open(sse->tcp)) {
-            rt_string_unref(query);
-            rt_string_unref(path);
-            rt_string_unref(host);
-            rt_string_unref(scheme);
-            if (url_obj && rt_obj_release_check0(url_obj))
-                rt_obj_free(url_obj);
-            if (rt_obj_release_check0(sse))
-                rt_obj_free(sse);
-            rt_trap("SSE: connection failed");
+        int err_code = Err_NetworkError;
+        sse->socket_fd = sse_create_tcp_socket(host_cstr, (int)port, 30000, &err_code);
+        if (sse->socket_fd == INVALID_SOCK) {
+            if (err_msg && err_msg_cap > 0)
+                sse_format_connect_error(err_msg, err_msg_cap, "SSE", err_code);
+            goto fail;
         }
+        set_socket_timeout(sse->socket_fd, 30000, true);
+        set_socket_timeout(sse->socket_fd, 30000, false);
     }
 
-    size_t path_len = path_cstr && *path_cstr ? strlen(path_cstr) : 1;
-    size_t query_len = query_cstr && *query_cstr ? strlen(query_cstr) : 0;
-    size_t target_len = path_len + (query_len ? query_len + 1 : 0);
-    char *target = (char *)malloc(target_len + 1);
+    path_len = path_cstr && *path_cstr ? strlen(path_cstr) : 1;
+    query_len = query_cstr && *query_cstr ? strlen(query_cstr) : 0;
+    target_len = path_len + (query_len ? query_len + 1 : 0);
+    target = (char *)malloc(target_len + 1);
     if (!target) {
-        rt_string_unref(query);
-        rt_string_unref(path);
-        rt_string_unref(host);
-        rt_string_unref(scheme);
-        if (url_obj && rt_obj_release_check0(url_obj))
-            rt_obj_free(url_obj);
-        if (rt_obj_release_check0(sse))
-            rt_obj_free(sse);
-        rt_trap("SSE: OOM");
+        if (err_msg && err_msg_cap > 0)
+            snprintf(err_msg, err_msg_cap, "SSE: OOM");
+        goto fail;
     }
     snprintf(target,
              target_len + 1,
@@ -425,9 +569,7 @@ void *rt_sse_connect(rt_string url) {
              path_cstr && *path_cstr ? path_cstr : "/",
              query_cstr ? query_cstr : "");
 
-    char host_header[512];
-    int default_port = is_secure ? 443 : 80;
-    if (port != default_port) {
+    if (port != (is_secure ? 443 : 80)) {
         snprintf(host_header,
                  sizeof(host_header),
                  sse_host_needs_brackets(host_cstr) ? "[%s]:%lld" : "%s:%lld",
@@ -440,83 +582,65 @@ void *rt_sse_connect(rt_string url) {
                  host_cstr);
     }
 
-    char request[2048];
-    int rlen = snprintf(request,
-                        sizeof(request),
-                        "GET %s HTTP/1.1\r\n"
-                        "Host: %s\r\n"
-                        "Accept: text/event-stream\r\n"
-                        "Cache-Control: no-cache\r\n"
-                        "Connection: keep-alive\r\n"
-                        "\r\n",
-                        target,
-                        host_header);
-    free(target);
-    if (rlen <= 0 || (size_t)rlen >= sizeof(request)) {
-        rt_string_unref(query);
-        rt_string_unref(path);
-        rt_string_unref(host);
-        rt_string_unref(scheme);
-        if (url_obj && rt_obj_release_check0(url_obj))
-            rt_obj_free(url_obj);
-        if (rt_obj_release_check0(sse))
-            rt_obj_free(sse);
-        rt_trap("SSE: request too large");
+    request_cap = strlen(target) + strlen(host_header) + 256 +
+                  (last_event_id ? strlen(last_event_id) + 32 : 0);
+    request = (char *)malloc(request_cap);
+    if (!request) {
+        if (err_msg && err_msg_cap > 0)
+            snprintf(err_msg, err_msg_cap, "SSE: OOM");
+        goto fail;
+    }
+    rlen = snprintf(request,
+                    request_cap,
+                    "GET %s HTTP/1.1\r\n"
+                    "Host: %s\r\n"
+                    "Accept: text/event-stream\r\n"
+                    "Cache-Control: no-cache\r\n"
+                    "Connection: keep-alive\r\n"
+                    "%s%s%s"
+                    "\r\n",
+                    target,
+                    host_header,
+                    last_event_id ? "Last-Event-ID: " : "",
+                    last_event_id ? last_event_id : "",
+                    last_event_id ? "\r\n" : "");
+    if (rlen <= 0 || (size_t)rlen >= request_cap) {
+        if (err_msg && err_msg_cap > 0)
+            snprintf(err_msg, err_msg_cap, "SSE: request too large");
+        goto fail;
     }
 
     if (!sse_transport_send_all(sse, request, (size_t)rlen)) {
-        rt_string_unref(query);
-        rt_string_unref(path);
-        rt_string_unref(host);
-        rt_string_unref(scheme);
-        if (url_obj && rt_obj_release_check0(url_obj))
-            rt_obj_free(url_obj);
-        if (rt_obj_release_check0(sse))
-            rt_obj_free(sse);
-        rt_trap("SSE: request send failed");
+        if (err_msg && err_msg_cap > 0)
+            snprintf(err_msg, err_msg_cap, "SSE: request send failed");
+        goto fail;
     }
 
-    rt_string status_line = sse_raw_recv_line(sse);
+    status_line = sse_raw_recv_line(sse);
     if (!status_line) {
-        rt_string_unref(query);
-        rt_string_unref(path);
-        rt_string_unref(host);
-        rt_string_unref(scheme);
-        if (url_obj && rt_obj_release_check0(url_obj))
-            rt_obj_free(url_obj);
-        if (rt_obj_release_check0(sse))
-            rt_obj_free(sse);
-        rt_trap("SSE: no HTTP response");
+        if (err_msg && err_msg_cap > 0)
+            snprintf(err_msg, err_msg_cap, "SSE: no HTTP response");
+        goto fail;
     }
-    const char *status_cstr = rt_string_cstr(status_line);
-    int ok_status = status_cstr && (strncmp(status_cstr, "HTTP/1.1 200", 12) == 0 ||
-                                    strncmp(status_cstr, "HTTP/1.0 200", 12) == 0);
-    rt_string_unref(status_line);
-    if (!ok_status) {
-        rt_string_unref(query);
-        rt_string_unref(path);
-        rt_string_unref(host);
-        rt_string_unref(scheme);
-        if (url_obj && rt_obj_release_check0(url_obj))
-            rt_obj_free(url_obj);
-        if (rt_obj_release_check0(sse))
-            rt_obj_free(sse);
-        rt_trap("SSE: endpoint did not return HTTP 200");
+    {
+        const char *status_cstr = rt_string_cstr(status_line);
+        int ok_status = status_cstr && (strncmp(status_cstr, "HTTP/1.1 200", 12) == 0 ||
+                                        strncmp(status_cstr, "HTTP/1.0 200", 12) == 0);
+        rt_string_unref(status_line);
+        status_line = NULL;
+        if (!ok_status) {
+            if (err_msg && err_msg_cap > 0)
+                snprintf(err_msg, err_msg_cap, "SSE: endpoint did not return HTTP 200");
+            goto fail;
+        }
     }
 
-    int saw_stream_type = 0;
     while (1) {
         rt_string line = sse_raw_recv_line(sse);
         if (!line) {
-            rt_string_unref(query);
-            rt_string_unref(path);
-            rt_string_unref(host);
-            rt_string_unref(scheme);
-            if (url_obj && rt_obj_release_check0(url_obj))
-                rt_obj_free(url_obj);
-            if (rt_obj_release_check0(sse))
-                rt_obj_free(sse);
-            rt_trap("SSE: incomplete HTTP headers");
+            if (err_msg && err_msg_cap > 0)
+                snprintf(err_msg, err_msg_cap, "SSE: incomplete HTTP headers");
+            goto fail;
         }
 
         const char *line_cstr = rt_string_cstr(line);
@@ -540,20 +664,83 @@ void *rt_sse_connect(rt_string url) {
         rt_string_unref(line);
     }
 
+    if (!saw_stream_type) {
+        if (err_msg && err_msg_cap > 0)
+            snprintf(err_msg, err_msg_cap, "SSE: response is not text/event-stream");
+        goto fail;
+    }
+
+    free(request);
+    free(target);
     rt_string_unref(query);
     rt_string_unref(path);
     rt_string_unref(host);
     rt_string_unref(scheme);
     if (url_obj && rt_obj_release_check0(url_obj))
         rt_obj_free(url_obj);
+    rt_string_unref(url);
+    sse->is_open = true;
+    return 1;
 
-    if (!saw_stream_type) {
+fail:
+    if (status_line)
+        rt_string_unref(status_line);
+    free(request);
+    free(target);
+    sse_close_transport(sse);
+    if (query)
+        rt_string_unref(query);
+    if (path)
+        rt_string_unref(path);
+    if (host)
+        rt_string_unref(host);
+    if (scheme)
+        rt_string_unref(scheme);
+    if (url_obj && rt_obj_release_check0(url_obj))
+        rt_obj_free(url_obj);
+    if (url)
+        rt_string_unref(url);
+    return 0;
+}
+
+static int sse_try_reconnect(rt_sse_impl *sse) {
+    char err_msg[512];
+    if (!sse || !sse->url || !sse->is_open)
+        return 0;
+    if (sse->retry_ms > 0)
+        rt_thread_sleep(sse->retry_ms);
+    return sse_open_url(sse, sse->url, 1, err_msg, sizeof(err_msg));
+}
+
+void *rt_sse_connect(rt_string url) {
+    const char *url_str = rt_string_cstr(url);
+    if (!url_str)
+        rt_trap("SSE: NULL URL");
+
+    rt_sse_impl *sse = (rt_sse_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_sse_impl));
+    if (!sse) {
+        rt_trap("SSE: OOM");
+        return NULL;
+    }
+    memset(sse, 0, sizeof(*sse));
+    rt_obj_set_finalizer(sse, rt_sse_finalize);
+    sse->socket_fd = INVALID_SOCK;
+    sse->retry_ms = 3000;
+    sse->url = strdup(url_str);
+    if (!sse->url) {
         if (rt_obj_release_check0(sse))
             rt_obj_free(sse);
-        rt_trap("SSE: response is not text/event-stream");
+        rt_trap("SSE: OOM");
     }
 
-    sse->is_open = true;
+    char err_msg[512];
+    if (!sse_open_url(sse, url_str, 0, err_msg, sizeof(err_msg))) {
+        if (rt_obj_release_check0(sse))
+            rt_obj_free(sse);
+        if (strstr(err_msg, "TLS") != NULL)
+            rt_trap_net(err_msg[0] ? err_msg : "SSE: TLS connection failed", Err_TlsError);
+        rt_trap(err_msg[0] ? err_msg : "SSE: connection failed");
+    }
     return sse;
 }
 
@@ -562,7 +749,7 @@ rt_string rt_sse_recv(void *obj) {
     if (!obj)
         return rt_string_from_bytes("", 0);
     rt_sse_impl *sse = (rt_sse_impl *)obj;
-    if (!sse->is_open || (!sse->tcp && !sse->tls))
+    if (!sse->is_open || (sse->socket_fd == INVALID_SOCK && !sse->tls))
         return rt_string_from_bytes("", 0);
 
     // Accumulate "data:" lines until a blank line (event boundary)
@@ -574,6 +761,9 @@ rt_string rt_sse_recv(void *obj) {
     while (sse->is_open) {
         rt_string line = sse_payload_recv_line(sse);
         if (!line) {
+            len = 0; // Drop partial event fragments across reconnects.
+            if (sse_try_reconnect(sse))
+                continue;
             sse->is_open = false;
             sse_close_transport(sse);
             break;
@@ -622,6 +812,19 @@ rt_string rt_sse_recv(void *obj) {
                 val++;
             free(sse->last_event_id);
             sse->last_event_id = strdup(val);
+        } else if (strncmp(l, "retry:", 6) == 0) {
+            const char *val = l + 6;
+            int64_t retry_ms = 0;
+            if (*val == ' ')
+                val++;
+            while (*val >= '0' && *val <= '9') {
+                retry_ms = retry_ms * 10 + (*val - '0');
+                val++;
+            }
+            while (*val == ' ' || *val == '\t')
+                val++;
+            if (*val == '\0')
+                sse->retry_ms = retry_ms;
         }
         // Ignore "retry:" and comment lines (starting with ':')
 
@@ -657,7 +860,7 @@ int8_t rt_sse_is_open(void *obj) {
         return 0;
     if (sse->tls)
         return rt_tls_get_socket(sse->tls) != INVALID_SOCK ? 1 : 0;
-    return sse->tcp && rt_tcp_is_open(sse->tcp) ? 1 : 0;
+    return sse->socket_fd != INVALID_SOCK ? 1 : 0;
 }
 
 /// @brief Close the sse.

@@ -31,6 +31,7 @@
 #include <cstdio>
 #include <cstring>
 #include <string>
+#include <thread>
 
 #if defined(_WIN32)
 #include <winsock2.h>
@@ -385,6 +386,51 @@ static void test_dns_reverse_invalid() {
     printf("  PASS: DnsReverseInvalid → Err_DnsError (%d)\n", code);
 }
 
+// ── Scenario 11: HTTP invalid Content-Length is rejected ───────────────────
+static void test_http_invalid_content_length() {
+    int port = 0;
+    sock_t listener = make_listener(&port);
+    if (listener == SOCK_INVALID) {
+        printf("  SKIP: HttpInvalidContentLength → local bind unavailable in this environment\n");
+        return;
+    }
+
+    std::thread server([listener]() {
+        sock_t client_fd = accept(listener, NULL, NULL);
+        assert(client_fd != SOCK_INVALID);
+
+        char byte = 0;
+        char tail[4] = {0, 0, 0, 0};
+        while (recv(client_fd, &byte, 1, 0) == 1) {
+            tail[0] = tail[1];
+            tail[1] = tail[2];
+            tail[2] = tail[3];
+            tail[3] = byte;
+            if (tail[0] == '\r' && tail[1] == '\n' && tail[2] == '\r' && tail[3] == '\n')
+                break;
+        }
+
+        const char *response = "HTTP/1.1 200 OK\r\n"
+                               "Content-Length: nope\r\n"
+                               "\r\n";
+        send(client_fd, response, (int)strlen(response), 0);
+        SOCK_CLOSE(client_fd);
+        SOCK_CLOSE(listener);
+    });
+
+    char url[64];
+    snprintf(url, sizeof(url), "http://127.0.0.1:%d/bad-length", port);
+    EXPECT_TRAP(rt_http_get(rt_const_cstr(url)));
+
+    assert(g_last_trap != nullptr);
+    assert(strstr(g_last_trap, "Content-Length") != nullptr);
+    int code = rt_trap_get_net_code();
+    assert(code == Err_ProtocolError);
+
+    printf("  PASS: HttpInvalidContentLength → Err_ProtocolError (%d)\n", code);
+    server.join();
+}
+
 // ── Main ───────────────────────────────────────────────────────────────────
 int main() {
     net_init();
@@ -399,6 +445,7 @@ int main() {
     test_network_unreachable();
     test_dns_resolve4_nonexistent();
     test_dns_reverse_invalid();
+    test_http_invalid_content_length();
 
     net_cleanup();
 

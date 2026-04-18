@@ -33,6 +33,7 @@
 
 #include <stdarg.h>
 #include <stdbool.h>
+#include <ctype.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -59,6 +60,7 @@ extern void rt_trap_net(const char *msg, int err_code);
 #define HTTP_REQ_MAX_LINE 8192
 #define HTTP_REQ_MAX_HEADERS 100
 #define HTTP_REQ_MAX_BODY (16 * 1024 * 1024) // 16 MB
+#define HTTP_REQ_MAX_ENCODED_BODY (HTTP_REQ_MAX_BODY + 65536)
 
 typedef struct {
     char *method;
@@ -113,6 +115,12 @@ static void free_server_req(server_req_t *req);
 static void build_route_response(rt_http_server_impl *server, server_req_t *req, server_res_t *res);
 static void free_route_entries(rt_http_server_impl *server);
 static void free_handler_bindings(rt_http_server_impl *server);
+
+typedef enum {
+    CHUNK_PARSE_OK = 0,
+    CHUNK_PARSE_INCOMPLETE = 1,
+    CHUNK_PARSE_INVALID = 2,
+} chunk_parse_status_t;
 
 /// @brief Heap-allocate a NUL-terminated copy of a C string.
 ///
@@ -543,6 +551,160 @@ static bool parse_size_decimal(const char *text, size_t len, size_t *out) {
     return true;
 }
 
+/// @brief Return true if a comma-separated header value contains @p token case-insensitively.
+static bool header_value_contains_token(
+    const char *value, size_t value_len, const char *token, size_t token_len) {
+    const char *p = value;
+    const char *end = value + value_len;
+
+    while (p < end) {
+        while (p < end && (*p == ' ' || *p == '\t' || *p == ','))
+            p++;
+        const char *token_start = p;
+        while (p < end && *p != ',' && *p != ';')
+            p++;
+        const char *token_end = p;
+        while (token_end > token_start && (token_end[-1] == ' ' || token_end[-1] == '\t'))
+            token_end--;
+        if ((size_t)(token_end - token_start) == token_len &&
+            strncasecmp(token_start, token, token_len) == 0) {
+            return true;
+        }
+        while (p < end && *p != ',')
+            p++;
+    }
+
+    return false;
+}
+
+/// @brief Parse an HTTP chunk-size line (hex digits with optional extensions after ';').
+static bool parse_chunk_size_line(const char *line, size_t len, size_t *chunk_size_out) {
+    size_t value = 0;
+    size_t i = 0;
+    bool saw_digit = false;
+
+    while (i < len && (line[i] == ' ' || line[i] == '\t'))
+        i++;
+    for (; i < len; i++) {
+        unsigned char c = (unsigned char)line[i];
+        unsigned digit = 0;
+        if (c == ';')
+            break;
+        if (c >= '0' && c <= '9')
+            digit = (unsigned)(c - '0');
+        else if (c >= 'a' && c <= 'f')
+            digit = (unsigned)(c - 'a' + 10);
+        else if (c >= 'A' && c <= 'F')
+            digit = (unsigned)(c - 'A' + 10);
+        else if (c == ' ' || c == '\t') {
+            while (i < len && (line[i] == ' ' || line[i] == '\t'))
+                i++;
+            if (i < len && line[i] != ';')
+                return false;
+            break;
+        } else {
+            return false;
+        }
+
+        if (value > (SIZE_MAX - digit) / 16)
+            return false;
+        value = value * 16 + digit;
+        saw_digit = true;
+    }
+
+    if (!saw_digit || value > HTTP_REQ_MAX_BODY)
+        return false;
+    *chunk_size_out = value;
+    return true;
+}
+
+/// @brief Decode a chunked request body.
+/// @return parse status; on success returns decoded bytes and consumed encoded length if requested.
+static chunk_parse_status_t decode_chunked_body(const char *encoded,
+                                                size_t encoded_len,
+                                                char **decoded_out,
+                                                size_t *decoded_len_out,
+                                                size_t *consumed_len_out) {
+    size_t pos = 0;
+    size_t decoded_len = 0;
+    size_t decoded_cap = 0;
+    char *decoded = NULL;
+
+    while (1) {
+        const char *line_end = find_crlf(encoded + pos, encoded_len - pos);
+        size_t chunk_size = 0;
+        if (!line_end) {
+            free(decoded);
+            return CHUNK_PARSE_INCOMPLETE;
+        }
+        if (!parse_chunk_size_line(encoded + pos, (size_t)(line_end - (encoded + pos)), &chunk_size)) {
+            free(decoded);
+            return CHUNK_PARSE_INVALID;
+        }
+
+        pos = (size_t)((line_end - encoded) + 2);
+        if (chunk_size > HTTP_REQ_MAX_BODY || decoded_len + chunk_size > HTTP_REQ_MAX_BODY) {
+            free(decoded);
+            return CHUNK_PARSE_INVALID;
+        }
+        if (chunk_size == 0) {
+            while (1) {
+                const char *trailer_end = find_crlf(encoded + pos, encoded_len - pos);
+                if (!trailer_end) {
+                    free(decoded);
+                    return CHUNK_PARSE_INCOMPLETE;
+                }
+                if (trailer_end == encoded + pos) {
+                    pos += 2;
+                    if (decoded_out) {
+                        if (!decoded) {
+                            decoded = (char *)malloc(1);
+                            if (!decoded)
+                                return CHUNK_PARSE_INVALID;
+                        }
+                        decoded[decoded_len] = '\0';
+                        *decoded_out = decoded;
+                    }
+                    if (decoded_len_out)
+                        *decoded_len_out = decoded_len;
+                    if (consumed_len_out)
+                        *consumed_len_out = pos;
+                    return CHUNK_PARSE_OK;
+                }
+                pos = (size_t)((trailer_end - encoded) + 2);
+            }
+        }
+        if (encoded_len - pos < chunk_size + 2) {
+            free(decoded);
+            return CHUNK_PARSE_INCOMPLETE;
+        }
+
+        if (decoded_out && chunk_size > 0) {
+            if (decoded_len + chunk_size + 1 > decoded_cap) {
+                size_t next_cap = decoded_cap ? decoded_cap : 256;
+                while (next_cap < decoded_len + chunk_size + 1)
+                    next_cap *= 2;
+                char *grown = (char *)realloc(decoded, next_cap);
+                if (!grown) {
+                    free(decoded);
+                    return CHUNK_PARSE_INVALID;
+                }
+                decoded = grown;
+                decoded_cap = next_cap;
+            }
+            memcpy(decoded + decoded_len, encoded + pos, chunk_size);
+        }
+        decoded_len += chunk_size;
+        pos += chunk_size;
+
+        if (encoded[pos] != '\r' || encoded[pos + 1] != '\n') {
+            free(decoded);
+            return CHUNK_PARSE_INVALID;
+        }
+        pos += 2;
+    }
+}
+
 /// @brief Scan a raw HTTP header block to extract `Content-Length` and
 ///        `Transfer-Encoding: chunked` framing hints.
 ///
@@ -595,7 +757,7 @@ static bool parse_content_length_header_block(const char *headers,
                 const char *value = colon + 1;
                 while (value < line_end && (*value == ' ' || *value == '\t'))
                     value++;
-                if (strncasecmp(value, "chunked", 7) == 0)
+                if (header_value_contains_token(value, (size_t)(line_end - value), "chunked", 7))
                     saw_chunked = true;
             }
         }
@@ -603,6 +765,8 @@ static bool parse_content_length_header_block(const char *headers,
         p = line_end + 2;
     }
 
+    if (saw_chunked && saw_content_length)
+        return false;
     *content_length_out = saw_content_length ? content_length : 0;
     if (chunked_out)
         *chunked_out = saw_chunked;
@@ -714,14 +878,21 @@ static bool parse_http_request(const char *raw, size_t raw_len, server_req_t *re
 
     bool chunked = false;
     size_t headers_len = body_start > headers_begin ? (size_t)(body_start - headers_begin - 2) : 0;
-    if (!parse_content_length_header_block(headers_begin, headers_len, &content_length, &chunked) ||
-        chunked)
+    if (!parse_content_length_header_block(headers_begin, headers_len, &content_length, &chunked))
         goto fail;
 
     // Parse body
-    if (content_length > HTTP_REQ_MAX_BODY)
+    if (chunked) {
+        size_t available = (size_t)(raw + raw_len - body_start);
+        size_t consumed_len = 0;
+        char *decoded_body = NULL;
+        if (decode_chunked_body(
+                body_start, available, &decoded_body, &req->body_len, &consumed_len) != CHUNK_PARSE_OK)
+            goto fail;
+        req->body = decoded_body;
+    } else if (content_length > HTTP_REQ_MAX_BODY)
         goto fail;
-    if (content_length > 0) {
+    else if (content_length > 0) {
         size_t available = (size_t)(raw + raw_len - body_start);
         if (available < content_length)
             goto fail;
@@ -1012,7 +1183,7 @@ char *rt_http_server_test_build_response(int status_code,
 ///
 /// Reads the request (with a 30-second receive timeout to bound idle
 /// keepalives), parses headers, validates the framing
-/// (`Content-Length` only — chunked is rejected; oversize bodies are
+/// (`Content-Length` or `Transfer-Encoding: chunked`; oversize bodies are
 /// rejected at `HTTP_REQ_MAX_BODY`), parses the request, dispatches
 /// through the route table via `build_route_response`, formats the
 /// response via `build_response`, sends it on the socket, and closes
@@ -1038,6 +1209,7 @@ static void handle_connection(rt_http_server_impl *server, void *tcp) {
     bool headers_done = false;
     size_t content_length = 0;
     size_t header_end_pos = 0;
+    bool chunked = false;
     bool bad_request = false;
 
     // Set a 30-second timeout for reading
@@ -1069,10 +1241,9 @@ static void handle_connection(rt_http_server_impl *server, void *tcp) {
             if (header_end) {
                 headers_done = true;
                 header_end_pos = (size_t)(header_end - buf);
-                bool chunked = false;
                 if (!parse_content_length_header_block(
                         buf, header_end_pos, &content_length, &chunked) ||
-                    chunked || content_length > HTTP_REQ_MAX_BODY) {
+                    content_length > HTTP_REQ_MAX_BODY) {
                     bad_request = true;
                     break;
                 }
@@ -1083,15 +1254,44 @@ static void handle_connection(rt_http_server_impl *server, void *tcp) {
         if (bad_request)
             break;
         if (headers_done) {
-            if (content_length == 0 || buf_len >= header_end_pos + content_length)
-                break;
-            // Grow buffer for large bodies
-            if (header_end_pos + content_length > buf_cap) {
-                buf_cap = header_end_pos + content_length + 1;
-                char *new_buf = (char *)realloc(buf, buf_cap);
-                if (!new_buf)
+            if (chunked) {
+                size_t consumed_len = 0;
+                chunk_parse_status_t status =
+                    decode_chunked_body(buf + header_end_pos,
+                                        buf_len - header_end_pos,
+                                        NULL,
+                                        NULL,
+                                        &consumed_len);
+                if (status == CHUNK_PARSE_OK)
                     break;
-                buf = new_buf;
+                if (status == CHUNK_PARSE_INVALID) {
+                    bad_request = true;
+                    break;
+                }
+                if (buf_cap < header_end_pos + HTTP_REQ_MAX_ENCODED_BODY) {
+                    size_t next_cap = buf_cap * 2;
+                    size_t max_cap = header_end_pos + HTTP_REQ_MAX_ENCODED_BODY + 1;
+                    if (next_cap > max_cap)
+                        next_cap = max_cap;
+                    if (next_cap > buf_cap) {
+                        char *new_buf = (char *)realloc(buf, next_cap);
+                        if (!new_buf)
+                            break;
+                        buf = new_buf;
+                        buf_cap = next_cap;
+                    }
+                }
+            } else {
+                if (content_length == 0 || buf_len >= header_end_pos + content_length)
+                    break;
+                // Grow buffer for large bodies
+                if (header_end_pos + content_length > buf_cap) {
+                    buf_cap = header_end_pos + content_length + 1;
+                    char *new_buf = (char *)realloc(buf, buf_cap);
+                    if (!new_buf)
+                        break;
+                    buf = new_buf;
+                }
             }
         }
     }

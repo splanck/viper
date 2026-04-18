@@ -13,6 +13,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_bytes.h"
+#include "rt_compress.h"
 #include "rt_connpool.h"
 #include "rt_map.h"
 #include "rt_netutils.h"
@@ -26,6 +27,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <string>
 #include <thread>
 
 #if defined(_WIN32)
@@ -77,6 +79,23 @@ static void *make_bytes_str(const char *str) {
 /// @brief Atomic flag for server shutdown
 static std::atomic<bool> server_ready{false};
 static std::atomic<bool> server_done{false};
+static std::string http_accept_encoding_header;
+
+static bool ascii_header_name_equals(const char *line, const char *name, size_t name_len) {
+    if (!line || !name)
+        return false;
+    for (size_t i = 0; i < name_len; i++) {
+        char a = line[i];
+        char b = name[i];
+        if (a >= 'A' && a <= 'Z')
+            a = (char)(a + ('a' - 'A'));
+        if (b >= 'A' && b <= 'Z')
+            b = (char)(b + ('a' - 'A'));
+        if (a != b)
+            return false;
+    }
+    return true;
+}
 
 static bool localhost_bind_available() {
     static const bool available = []() {
@@ -1051,6 +1070,28 @@ static void test_dns_resolve_all() {
 
 #include "rt_map.h"
 
+static std::string read_http_header_value(void *client, const char *name) {
+    std::string value_out;
+    const size_t name_len = strlen(name);
+
+    while (true) {
+        rt_string line = rt_tcp_recv_line(client);
+        const char *cstr = rt_string_cstr(line);
+        const bool done = !cstr || *cstr == '\0';
+        if (cstr && ascii_header_name_equals(cstr, name, name_len) && cstr[name_len] == ':') {
+            const char *value = cstr + name_len + 1;
+            while (*value == ' ' || *value == '\t')
+                value++;
+            value_out = value;
+        }
+        rt_string_unref(line);
+        if (done)
+            break;
+    }
+
+    return value_out;
+}
+
 /// @brief Mock HTTP server - returns fixed response
 static void http_server_thread(int port, const char *response_body, int response_status) {
     void *server = rt_tcp_server_listen(port);
@@ -1183,11 +1224,132 @@ static void http_redirect_server_thread(int port, int target_port) {
     server_done = true;
 }
 
+/// @brief Mock HTTP server that first emits a relative redirect, then serves the final target.
+static void http_relative_redirect_server_thread(int port) {
+    void *server = rt_tcp_server_listen(port);
+    assert(server != nullptr);
+
+    server_ready = true;
+
+    for (int i = 0; i < 2; i++) {
+        void *client = rt_tcp_server_accept(server);
+        if (!client)
+            break;
+
+        char buf[4096];
+        int pos = 0;
+        while (pos < (int)sizeof(buf) - 1) {
+            void *data = rt_tcp_recv(client, 1);
+            if (get_bytes_len(data) == 0)
+                break;
+            buf[pos++] = get_bytes_data(data)[0];
+            if (pos >= 4 && buf[pos - 4] == '\r' && buf[pos - 3] == '\n' && buf[pos - 2] == '\r' &&
+                buf[pos - 1] == '\n') {
+                break;
+            }
+        }
+        buf[pos] = '\0';
+
+        if (i == 0) {
+            const char *response = "HTTP/1.1 302 Found\r\n"
+                                   "Location: final\r\n"
+                                   "Content-Length: 0\r\n"
+                                   "\r\n";
+            rt_tcp_send_str(client, rt_const_cstr(response));
+        } else {
+            const char *response = "HTTP/1.1 200 OK\r\n"
+                                   "Content-Type: text/plain\r\n"
+                                   "Content-Length: 18\r\n"
+                                   "\r\nRelative redirect!";
+            rt_tcp_send_str(client, rt_const_cstr(response));
+        }
+
+        rt_tcp_close(client);
+    }
+
+    rt_tcp_server_close(server);
+    server_done = true;
+}
+
+/// @brief Mock HTTP server that sends a gzip-encoded response body.
+static void http_gzip_server_thread(int port, const char *plain_body) {
+    void *server = rt_tcp_server_listen(port);
+    assert(server != nullptr);
+
+    server_ready = true;
+    http_accept_encoding_header.clear();
+
+    void *client = rt_tcp_server_accept(server);
+    if (client) {
+        rt_string request_line = rt_tcp_recv_line(client);
+        rt_string_unref(request_line);
+        http_accept_encoding_header = read_http_header_value(client, "Accept-Encoding");
+
+        void *plain_bytes = make_bytes_str(plain_body);
+        void *gzip_bytes = rt_compress_gzip(plain_bytes);
+        const size_t gzip_len = (size_t)get_bytes_len(gzip_bytes);
+
+        char headers[512];
+        const int header_len = snprintf(headers,
+                                        sizeof(headers),
+                                        "HTTP/1.1 200 OK\r\n"
+                                        "Content-Type: text/plain\r\n"
+                                        "Content-Encoding: gzip\r\n"
+                                        "Content-Length: %zu\r\n"
+                                        "\r\n",
+                                        gzip_len);
+        assert(header_len > 0);
+
+        void *response = rt_bytes_new((int64_t)header_len + (int64_t)gzip_len);
+        uint8_t *response_ptr = get_bytes_data(response);
+        memcpy(response_ptr, headers, (size_t)header_len);
+        memcpy(response_ptr + header_len, get_bytes_data(gzip_bytes), gzip_len);
+        rt_tcp_send_all(client, response);
+
+        rt_tcp_close(client);
+    }
+
+    rt_tcp_server_close(server);
+    server_done = true;
+}
+
+/// @brief Mock HTTP server that records Accept-Encoding and serves an identity body.
+static void http_identity_download_server_thread(int port, const char *body) {
+    void *server = rt_tcp_server_listen(port);
+    assert(server != nullptr);
+
+    server_ready = true;
+    http_accept_encoding_header.clear();
+
+    void *client = rt_tcp_server_accept(server);
+    if (client) {
+        rt_string request_line = rt_tcp_recv_line(client);
+        rt_string_unref(request_line);
+        http_accept_encoding_header = read_http_header_value(client, "Accept-Encoding");
+
+        char response[8192];
+        snprintf(response,
+                 sizeof(response),
+                 "HTTP/1.1 200 OK\r\n"
+                 "Content-Type: text/plain\r\n"
+                 "Content-Length: %zu\r\n"
+                 "\r\n%s",
+                 strlen(body),
+                 body);
+        rt_tcp_send_str(client, rt_const_cstr(response));
+        rt_tcp_close(client);
+    }
+
+    rt_tcp_server_close(server);
+    server_done = true;
+}
+
 /// @brief Test Http.Get with mock server
 static void test_http_get() {
     printf("\nTesting Http.Get:\n");
 
-    const int port = 19901;
+    const int port = get_free_tcp_port_ipv4();
+    assert(port > 0);
     const char *body = "Hello from HTTP!";
     server_ready = false;
     server_done = false;
@@ -1215,7 +1377,8 @@ static void test_http_get() {
 static void test_http_get_bytes() {
     printf("\nTesting Http.GetBytes:\n");
 
-    const int port = 19902;
+    const int port = get_free_tcp_port_ipv4();
+    assert(port > 0);
     const char *body = "Binary data here";
     server_ready = false;
     server_done = false;
@@ -1244,7 +1407,8 @@ static void test_http_get_bytes() {
 static void test_http_head() {
     printf("\nTesting Http.Head:\n");
 
-    const int port = 19903;
+    const int port = get_free_tcp_port_ipv4();
+    assert(port > 0);
     server_ready = false;
     server_done = false;
 
@@ -1276,7 +1440,8 @@ static void test_http_head() {
 static void test_http_chunked() {
     printf("\nTesting Http chunked encoding:\n");
 
-    const int port = 19904;
+    const int port = get_free_tcp_port_ipv4();
+    assert(port > 0);
     server_ready = false;
     server_done = false;
 
@@ -1303,7 +1468,8 @@ static void test_http_chunked() {
 static void test_http_req_builder() {
     printf("\nTesting HttpReq builder:\n");
 
-    const int port = 19905;
+    const int port = get_free_tcp_port_ipv4();
+    assert(port > 0);
     server_ready = false;
     server_done = false;
 
@@ -1359,8 +1525,11 @@ static void test_http_req_builder() {
 static void test_http_redirect() {
     printf("\nTesting Http redirect:\n");
 
-    const int redirect_port = 19906;
-    const int target_port = 19907;
+    const int redirect_port = get_free_tcp_port_ipv4();
+    const int target_port = get_free_tcp_port_ipv4();
+    assert(redirect_port > 0);
+    assert(target_port > 0);
+    assert(redirect_port != target_port);
     server_ready = false;
     server_done = false;
 
@@ -1419,6 +1588,146 @@ static void test_http_redirect() {
 
     redirect_thread.join();
     target_thread.join();
+}
+
+/// @brief Test relative redirect resolution against the current request URL.
+static void test_http_relative_redirect() {
+    printf("\nTesting Http relative redirect:\n");
+
+    const int port = get_free_tcp_port_ipv4();
+    assert(port > 0);
+    server_ready = false;
+    server_done = false;
+
+    std::thread server_thread(http_relative_redirect_server_thread, port);
+    while (!server_ready)
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+
+    char url[64];
+    snprintf(url, sizeof(url), "http://127.0.0.1:%d/start", port);
+
+    rt_string result = rt_http_get(rt_const_cstr(url));
+    const char *result_cstr = rt_string_cstr(result);
+    test_result("Http relative redirect follows sibling path",
+                strcmp(result_cstr, "Relative redirect!") == 0);
+
+    server_thread.join();
+}
+
+/// @brief Test transparent gzip decoding and automatic Accept-Encoding negotiation.
+static void test_http_gzip_response() {
+    printf("\nTesting Http gzip response decoding:\n");
+
+    const int port = get_free_tcp_port_ipv4();
+    assert(port > 0);
+    const char *body = "Hello from gzip!";
+    server_ready = false;
+    server_done = false;
+
+    std::thread server_thread(http_gzip_server_thread, port, body);
+    while (!server_ready)
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+
+    char url[64];
+    snprintf(url, sizeof(url), "http://127.0.0.1:%d/gzip", port);
+
+    void *req = rt_http_req_new(rt_const_cstr("GET"), rt_const_cstr(url));
+    void *res = rt_http_req_send(req);
+    test_result("HttpReq gzip response returns HttpRes", res != nullptr);
+
+    rt_string result = rt_http_res_body_str(res);
+    test_result("Http gzip body is transparently decompressed",
+                strcmp(rt_string_cstr(result), body) == 0);
+
+    rt_string content_encoding = rt_http_res_header(res, rt_const_cstr("content-encoding"));
+    test_result("Http gzip response strips Content-Encoding after decode",
+                strcmp(rt_string_cstr(content_encoding), "") == 0);
+
+    char expected_len[32];
+    snprintf(expected_len, sizeof(expected_len), "%zu", strlen(body));
+    rt_string content_length = rt_http_res_header(res, rt_const_cstr("content-length"));
+    test_result("Http gzip response normalizes Content-Length to decoded body",
+                strcmp(rt_string_cstr(content_length), expected_len) == 0);
+
+    server_thread.join();
+    test_result("Http requests advertise gzip support by default",
+                http_accept_encoding_header.find("gzip") != std::string::npos);
+}
+
+/// @brief Test Http.Download writes streamed content to disk.
+static void test_http_download() {
+    printf("\nTesting Http download:\n");
+
+    const int port = get_free_tcp_port_ipv4();
+    assert(port > 0);
+    const char *body = "Download payload for disk";
+    server_ready = false;
+    server_done = false;
+
+    std::thread server_thread(http_server_thread, port, body, 200);
+    while (!server_ready)
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+
+    char url[64];
+    snprintf(url, sizeof(url), "http://127.0.0.1:%d/download", port);
+    char path[128];
+    snprintf(path, sizeof(path), "/tmp/viper_http_download_%d.txt", port);
+    remove(path);
+
+    int8_t ok = rt_http_download(rt_const_cstr(url), rt_const_cstr(path));
+    test_result("Http.Download succeeds", ok == 1);
+
+    FILE *f = fopen(path, "rb");
+    test_result("Http.Download creates destination file", f != nullptr);
+    char buffer[128] = {0};
+    size_t read_len = f ? fread(buffer, 1, sizeof(buffer) - 1, f) : 0;
+    if (f)
+        fclose(f);
+    remove(path);
+
+    test_result("Http.Download writes expected bytes", read_len == strlen(body));
+    test_result("Http.Download file contents match", strcmp(buffer, body) == 0);
+
+    server_thread.join();
+}
+
+/// @brief Test Http.Download keeps identity encoding so the stream can stay on-disk.
+static void test_http_download_identity_encoding() {
+    printf("\nTesting Http download identity encoding:\n");
+
+    const int port = get_free_tcp_port_ipv4();
+    assert(port > 0);
+    const char *body = "Download payload for identity stream";
+    server_ready = false;
+    server_done = false;
+
+    std::thread server_thread(http_identity_download_server_thread, port, body);
+    while (!server_ready)
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+
+    char url[64];
+    snprintf(url, sizeof(url), "http://127.0.0.1:%d/download-identity", port);
+    char path[128];
+    snprintf(path, sizeof(path), "/tmp/viper_http_download_identity_%d.txt", port);
+    remove(path);
+
+    int8_t ok = rt_http_download(rt_const_cstr(url), rt_const_cstr(path));
+    test_result("Http.Download identity request succeeds", ok == 1);
+
+    FILE *f = fopen(path, "rb");
+    test_result("Http.Download identity output exists", f != nullptr);
+    char buffer[128] = {0};
+    size_t read_len = f ? fread(buffer, 1, sizeof(buffer) - 1, f) : 0;
+    if (f)
+        fclose(f);
+    remove(path);
+
+    server_thread.join();
+
+    test_result("Http.Download does not advertise gzip by default",
+                http_accept_encoding_header.find("gzip") == std::string::npos);
+    test_result("Http.Download identity body length matches", read_len == strlen(body));
+    test_result("Http.Download identity body matches", strcmp(buffer, body) == 0);
 }
 
 //=============================================================================
@@ -1716,14 +2025,17 @@ int main() {
     test_dns_local_addrs();
     test_dns_resolve_all();
 
-    // HTTP tests temporarily disabled pending debugging
-    // printf("\n=== Viper.Network.Http Tests ===\n");
-    // test_http_get();
-    // test_http_get_bytes();
-    // test_http_head();
-    // test_http_chunked();
-    // test_http_req_builder();
-    // test_http_redirect();
+    printf("\n=== Viper.Network.Http Tests ===\n");
+    test_http_get();
+    test_http_get_bytes();
+    test_http_head();
+    test_http_chunked();
+    test_http_req_builder();
+    test_http_redirect();
+    test_http_relative_redirect();
+    test_http_gzip_response();
+    test_http_download();
+    test_http_download_identity_encoding();
 
     printf("\n=== Viper.Network.Url Tests ===\n");
 
