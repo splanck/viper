@@ -9,6 +9,7 @@
 //
 //===----------------------------------------------------------------------===//
 // vg_outputpane.c - Output Pane widget implementation
+#include "../../../graphics/include/vgfx.h"
 #include "../../include/vg_event.h"
 #include "../../include/vg_ide_widgets.h"
 #include "../../include/vg_theme.h"
@@ -79,6 +80,58 @@ static void outputpane_set_font_widget(vg_widget_t *widget, void *font, float si
     if (!widget || !font)
         return;
     vg_outputpane_set_font((vg_outputpane_t *)widget, (vg_font_t *)font, size);
+}
+
+static size_t outputpane_line_length(const vg_output_line_t *line) {
+    size_t len = 0;
+    if (!line)
+        return 0;
+    for (size_t i = 0; i < line->segment_count; i++) {
+        if (line->segments[i].text)
+            len += strlen(line->segments[i].text);
+    }
+    return len;
+}
+
+static float outputpane_prefix_width(vg_outputpane_t *pane,
+                                     const vg_output_line_t *line,
+                                     uint32_t target_col) {
+    float width = 0.0f;
+    size_t col = 0;
+
+    if (!pane || !pane->font || !line)
+        return 0.0f;
+
+    for (size_t i = 0; i < line->segment_count; i++) {
+        const char *text = line->segments[i].text;
+        size_t seg_len = 0;
+        vg_text_metrics_t metrics = {0};
+
+        if (!text)
+            continue;
+        seg_len = strlen(text);
+        if (col + seg_len <= target_col) {
+            vg_font_measure_text(pane->font, pane->font_size, text, &metrics);
+            width += metrics.width;
+            col += seg_len;
+            continue;
+        }
+
+        if (target_col > col) {
+            size_t partial_len = (size_t)(target_col - col);
+            char *partial = malloc(partial_len + 1);
+            if (partial) {
+                memcpy(partial, text, partial_len);
+                partial[partial_len] = '\0';
+                vg_font_measure_text(pane->font, pane->font_size, partial, &metrics);
+                width += metrics.width;
+                free(partial);
+            }
+        }
+        return width;
+    }
+
+    return width;
 }
 
 //=============================================================================
@@ -256,18 +309,61 @@ static void outputpane_measure(vg_widget_t *widget, float available_width, float
 
 static void outputpane_paint(vg_widget_t *widget, void *canvas) {
     vg_outputpane_t *pane = (vg_outputpane_t *)widget;
+    vg_theme_t *theme = vg_theme_get_current();
+    vgfx_window_t win = (vgfx_window_t)canvas;
+    uint32_t selection_color =
+        theme ? vg_color_blend(theme->colors.bg_selected, theme->colors.accent_primary, 0.18f)
+              : 0x334C73u;
+    uint32_t border_color = theme ? theme->colors.border_primary : 0x333333u;
+    vg_font_metrics_t font_metrics = {0};
+    uint32_t start_line = 0;
+    uint32_t end_line = 0;
+    uint32_t start_col = 0;
+    uint32_t end_col = 0;
 
-    // Draw background (placeholder)
-    (void)pane->bg_color;
+    vgfx_fill_rect(win,
+                   (int32_t)widget->x,
+                   (int32_t)widget->y,
+                   (int32_t)widget->width,
+                   (int32_t)widget->height,
+                   pane->bg_color);
+    vgfx_rect(win,
+              (int32_t)widget->x,
+              (int32_t)widget->y,
+              (int32_t)widget->width,
+              (int32_t)widget->height,
+              border_color);
 
     if (!pane->font)
         return;
+
+    vg_font_get_metrics(pane->font, pane->font_size, &font_metrics);
 
     // Calculate visible lines
     int first_visible = (int)(pane->scroll_y / pane->line_height);
     int visible_count = (int)(widget->height / pane->line_height) + 1;
 
     float y = widget->y - fmodf(pane->scroll_y, pane->line_height);
+    vgfx_set_clip(win,
+                  (int32_t)widget->x,
+                  (int32_t)widget->y,
+                  (int32_t)widget->width,
+                  (int32_t)widget->height);
+
+    if (pane->has_selection) {
+        start_line = pane->sel_start_line;
+        start_col = pane->sel_start_col;
+        end_line = pane->sel_end_line;
+        end_col = pane->sel_end_col;
+        if (start_line > end_line || (start_line == end_line && start_col > end_col)) {
+            uint32_t tmp = start_line;
+            start_line = end_line;
+            end_line = tmp;
+            tmp = start_col;
+            start_col = end_col;
+            end_col = tmp;
+        }
+    }
 
     for (int i = 0; i < visible_count && first_visible + i < (int)pane->line_count; i++) {
         int line_idx = first_visible + i;
@@ -276,33 +372,59 @@ static void outputpane_paint(vg_widget_t *widget, void *canvas) {
 
         vg_output_line_t *line = &pane->lines[line_idx];
         float x = widget->x + 4; // Left padding
+        float line_top = y;
+
+        if (pane->has_selection && (uint32_t)line_idx >= start_line && (uint32_t)line_idx <= end_line) {
+            uint32_t line_start_col = (uint32_t)line_idx == start_line ? start_col : 0;
+            uint32_t line_end_col =
+                (uint32_t)line_idx == end_line && end_col != UINT32_MAX ? end_col
+                                                                         : (uint32_t)outputpane_line_length(line);
+            float sel_x0 = widget->x + 4.0f + outputpane_prefix_width(pane, line, line_start_col);
+            float sel_x1 = widget->x + 4.0f + outputpane_prefix_width(pane, line, line_end_col);
+            if (sel_x1 < sel_x0) {
+                float tmp = sel_x0;
+                sel_x0 = sel_x1;
+                sel_x1 = tmp;
+            }
+            if (sel_x1 > sel_x0) {
+                vgfx_fill_rect(win,
+                               (int32_t)sel_x0,
+                               (int32_t)line_top,
+                               (int32_t)(sel_x1 - sel_x0),
+                               (int32_t)pane->line_height,
+                               selection_color);
+            }
+        }
 
         for (size_t s = 0; s < line->segment_count; s++) {
             vg_styled_segment_t *seg = &line->segments[s];
+            vg_text_metrics_t metrics = {0};
             if (!seg->text)
                 continue;
 
+            vg_font_measure_text(pane->font, pane->font_size, seg->text, &metrics);
+
             // Draw segment background if any
             if (seg->bg_color != 0) {
-                // Background drawing would go here
+                vgfx_fill_rect(win,
+                               (int32_t)x,
+                               (int32_t)line_top,
+                               (int32_t)metrics.width,
+                               (int32_t)pane->line_height,
+                               seg->bg_color);
             }
 
             // Draw text
-            vg_font_draw_text(canvas, pane->font, pane->font_size, x, y, seg->text, seg->fg_color);
+            vg_font_draw_text(
+                canvas, pane->font, pane->font_size, x, line_top + font_metrics.ascent, seg->text, seg->fg_color);
 
             // Advance X position
-            vg_text_metrics_t metrics;
-            vg_font_measure_text(pane->font, pane->font_size, seg->text, &metrics);
             x += metrics.width;
         }
 
         y += pane->line_height;
     }
-
-    // Draw selection if any
-    if (pane->has_selection) {
-        // Selection drawing would go here
-    }
+    vgfx_clear_clip(win);
 }
 
 static bool outputpane_handle_event(vg_widget_t *widget, vg_event_t *event) {

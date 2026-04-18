@@ -288,6 +288,9 @@ typedef struct vg_filedialog {
     void *filter_dropdown; ///< Filter selector
     void *bookmark_list;   ///< Sidebar bookmarks
     bool filename_active;  ///< True when the inline save-name field has focus
+    float file_scroll_y;   ///< Vertical scroll position for the file list
+    float bookmark_scroll_y; ///< Vertical scroll position for the bookmark list
+    size_t filename_cursor_pos; ///< Byte offset cursor for inline save-name editing
 
     // Result
     char **selected_files;      ///< Result: array of selected paths

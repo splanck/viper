@@ -32,6 +32,11 @@ static vg_widget_t *g_focused_widget = NULL;
 static vg_widget_t *g_input_capture_widget = NULL;
 static vg_widget_t *g_modal_root = NULL;
 static vg_widget_t *g_hovered_widget = NULL;
+static vg_widget_t *g_last_click_widget = NULL;
+static uint64_t g_last_click_time_ms = 0;
+static int32_t g_last_click_button = -1;
+static float g_last_click_screen_x = 0.0f;
+static float g_last_click_screen_y = 0.0f;
 
 static bool widget_paints_children_internally(const vg_widget_t *widget) {
     if (!widget)
@@ -432,6 +437,13 @@ void vg_widget_destroy(vg_widget_t *widget) {
     if (g_hovered_widget == widget) {
         g_hovered_widget = NULL;
     }
+    if (g_last_click_widget == widget) {
+        g_last_click_widget = NULL;
+        g_last_click_time_ms = 0;
+        g_last_click_button = -1;
+        g_last_click_screen_x = 0.0f;
+        g_last_click_screen_y = 0.0f;
+    }
 
     // Notify tooltip manager so it does not retain a dangling pointer.
     vg_tooltip_manager_widget_destroyed(widget);
@@ -795,6 +807,13 @@ void vg_widget_set_enabled(vg_widget_t *widget, bool enabled) {
         if (g_modal_root && widget_is_ancestor(widget, g_modal_root)) {
             g_modal_root = NULL;
         }
+        if (g_last_click_widget && widget_is_ancestor(widget, g_last_click_widget)) {
+            g_last_click_widget = NULL;
+            g_last_click_time_ms = 0;
+            g_last_click_button = -1;
+            g_last_click_screen_x = 0.0f;
+            g_last_click_screen_y = 0.0f;
+        }
         vg_tooltip_manager_widget_hidden(widget);
         clear_interactive_state_recursive(widget);
     }
@@ -825,6 +844,13 @@ void vg_widget_set_visible(vg_widget_t *widget, bool visible) {
         }
         if (g_modal_root && widget_is_ancestor(widget, g_modal_root)) {
             g_modal_root = NULL;
+        }
+        if (g_last_click_widget && widget_is_ancestor(widget, g_last_click_widget)) {
+            g_last_click_widget = NULL;
+            g_last_click_time_ms = 0;
+            g_last_click_button = -1;
+            g_last_click_screen_x = 0.0f;
+            g_last_click_screen_y = 0.0f;
         }
         vg_tooltip_manager_widget_hidden(widget);
         clear_interactive_state_recursive(widget);
@@ -1037,6 +1063,11 @@ void vg_widget_get_runtime_state(vg_widget_runtime_state_t *state) {
     state->input_capture_widget = g_input_capture_widget;
     state->modal_root = g_modal_root;
     state->hovered_widget = g_hovered_widget;
+    state->last_click_widget = g_last_click_widget;
+    state->last_click_time_ms = g_last_click_time_ms;
+    state->last_click_button = g_last_click_button;
+    state->last_click_screen_x = g_last_click_screen_x;
+    state->last_click_screen_y = g_last_click_screen_y;
 }
 
 void vg_widget_set_runtime_state(const vg_widget_runtime_state_t *state) {
@@ -1045,12 +1076,22 @@ void vg_widget_set_runtime_state(const vg_widget_runtime_state_t *state) {
         g_input_capture_widget = NULL;
         g_modal_root = NULL;
         g_hovered_widget = NULL;
+        g_last_click_widget = NULL;
+        g_last_click_time_ms = 0;
+        g_last_click_button = -1;
+        g_last_click_screen_x = 0.0f;
+        g_last_click_screen_y = 0.0f;
         return;
     }
     g_focused_widget = state->focused_widget;
     g_input_capture_widget = state->input_capture_widget;
     g_modal_root = state->modal_root;
     g_hovered_widget = state->hovered_widget;
+    g_last_click_widget = state->last_click_widget;
+    g_last_click_time_ms = state->last_click_time_ms;
+    g_last_click_button = state->last_click_button;
+    g_last_click_screen_x = state->last_click_screen_x;
+    g_last_click_screen_y = state->last_click_screen_y;
 }
 
 //=============================================================================

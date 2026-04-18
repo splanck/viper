@@ -14,7 +14,11 @@
 #include "../../include/vg_event.h"
 #include "../../include/vg_widget.h"
 #include "vgfx.h"
+#include <stdint.h>
 #include <string.h>
+
+#define VG_DOUBLE_CLICK_MAX_INTERVAL_MS 400
+#define VG_DOUBLE_CLICK_MAX_DISTANCE_PX 5.0f
 
 static bool event_has_widget_local_mouse_coords(vg_event_type_t type) {
     // NOTE: VG_EVENT_MOUSE_WHEEL is intentionally excluded. In vg_event_t, the
@@ -73,6 +77,51 @@ static void update_hovered_widget(vg_widget_t *widget) {
         enter.target = widget;
         vg_event_send(widget, &enter);
     }
+}
+
+static void clear_last_click_state(void) {
+    vg_widget_runtime_state_t state = {0};
+    vg_widget_get_runtime_state(&state);
+    state.last_click_widget = NULL;
+    state.last_click_time_ms = 0;
+    state.last_click_button = -1;
+    state.last_click_screen_x = 0.0f;
+    state.last_click_screen_y = 0.0f;
+    vg_widget_set_runtime_state(&state);
+}
+
+static void remember_click(vg_widget_t *widget, const vg_event_t *event) {
+    if (!widget || !event)
+        return;
+
+    vg_widget_runtime_state_t state = {0};
+    vg_widget_get_runtime_state(&state);
+    state.last_click_widget = widget;
+    state.last_click_time_ms = event->timestamp;
+    state.last_click_button = (int32_t)event->mouse.button;
+    state.last_click_screen_x = event->mouse.screen_x;
+    state.last_click_screen_y = event->mouse.screen_y;
+    vg_widget_set_runtime_state(&state);
+}
+
+static bool is_double_click_for_widget(vg_widget_t *widget, const vg_event_t *event) {
+    if (!widget || !event || event->timestamp <= 0)
+        return false;
+
+    vg_widget_runtime_state_t state = {0};
+    vg_widget_get_runtime_state(&state);
+    if (state.last_click_widget != widget || state.last_click_button != (int32_t)event->mouse.button ||
+        state.last_click_time_ms <= 0 || event->timestamp < state.last_click_time_ms) {
+        return false;
+    }
+
+    if (event->timestamp - state.last_click_time_ms > VG_DOUBLE_CLICK_MAX_INTERVAL_MS)
+        return false;
+
+    float dx = event->mouse.screen_x - state.last_click_screen_x;
+    float dy = event->mouse.screen_y - state.last_click_screen_y;
+    float max_dist_sq = VG_DOUBLE_CLICK_MAX_DISTANCE_PX * VG_DOUBLE_CLICK_MAX_DISTANCE_PX;
+    return dx * dx + dy * dy <= max_dist_sq;
 }
 
 //=============================================================================
@@ -181,6 +230,7 @@ vg_event_t vg_event_from_platform(void *platform_event) {
         return event;
 
     vgfx_event_t *pe = (vgfx_event_t *)platform_event;
+    event.timestamp = pe->time_ms;
 
     switch (pe->type) {
         case VGFX_EVENT_KEY_DOWN:
@@ -370,6 +420,23 @@ bool vg_event_dispatch(vg_widget_t *root, vg_event_t *event) {
             }
         }
 
+        vg_widget_t *focus_root = (modal_kb && modal_kb->visible) ? modal_kb : root;
+
+        if (event->type == VG_EVENT_KEY_DOWN && event->key.key == VG_KEY_TAB &&
+            (event->modifiers & (VG_MOD_CTRL | VG_MOD_ALT | VG_MOD_SUPER)) == 0) {
+            if (focused) {
+                event->target = focused;
+                if (vg_event_send(focused, event))
+                    return true;
+            }
+
+            if (event->modifiers & VG_MOD_SHIFT)
+                vg_widget_focus_prev(focus_root);
+            else
+                vg_widget_focus_next(focus_root);
+            return true;
+        }
+
         if (focused) {
             event->target = focused;
             return vg_event_send(focused, event);
@@ -393,6 +460,7 @@ bool vg_event_send(vg_widget_t *widget, vg_event_t *event) {
         event_has_widget_local_mouse_coords(event->type) && event->target != NULL;
     const float target_mouse_x = event->mouse.x;
     const float target_mouse_y = event->mouse.y;
+    bool handled = event->handled;
 
     event_localize_mouse_to_widget(widget, event);
 
@@ -420,7 +488,20 @@ bool vg_event_send(vg_widget_t *widget, vg_event_t *event) {
             vg_widget_contains_point(widget, event->mouse.screen_x, event->mouse.screen_y)) {
             vg_event_t click_event = *event;
             click_event.type = VG_EVENT_CLICK;
-            vg_event_send(widget, &click_event);
+            click_event.mouse.click_count = 1;
+            handled |= vg_event_send(widget, &click_event);
+
+            if (is_double_click_for_widget(widget, event)) {
+                vg_event_t double_click_event = *event;
+                double_click_event.type = VG_EVENT_DOUBLE_CLICK;
+                double_click_event.mouse.click_count = 2;
+                handled |= vg_event_send(widget, &double_click_event);
+                clear_last_click_state();
+            } else {
+                remember_click(widget, event);
+            }
+        } else if (was_pressed) {
+            clear_last_click_state();
         }
     }
 
@@ -453,10 +534,12 @@ bool vg_event_send(vg_widget_t *widget, vg_event_t *event) {
         current = current->parent;
     }
 
+    if (handled)
+        event->handled = true;
     if (restore_mouse) {
         event->mouse.x = target_mouse_x;
         event->mouse.y = target_mouse_y;
     }
 
-    return event->handled;
+    return event->handled || handled;
 }

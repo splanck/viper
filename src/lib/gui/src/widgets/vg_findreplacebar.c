@@ -9,6 +9,7 @@
 //
 //===----------------------------------------------------------------------===//
 // vg_findreplacebar.c - Find/Replace bar widget implementation
+#include "../../../graphics/include/vgfx.h"
 #include "../../include/vg_event.h"
 #include "../../include/vg_ide_widgets.h"
 #include "../../include/vg_theme.h"
@@ -546,19 +547,53 @@ static void findreplacebar_arrange(
 
 static void findreplacebar_paint(vg_widget_t *widget, void *canvas) {
     vg_findreplacebar_t *bar = (vg_findreplacebar_t *)widget;
+    vg_theme_t *theme = vg_theme_get_current();
+    vgfx_window_t win = (vgfx_window_t)canvas;
 
-    // Draw background (placeholder - actual drawing via vgfx)
-    (void)bar->bg_color;
+    vgfx_fill_rect(win,
+                   (int32_t)widget->x,
+                   (int32_t)widget->y,
+                   (int32_t)widget->width,
+                   (int32_t)widget->height,
+                   bar->bg_color ? bar->bg_color : theme->colors.bg_secondary);
+    vgfx_rect(win,
+              (int32_t)widget->x,
+              (int32_t)widget->y,
+              (int32_t)widget->width,
+              (int32_t)widget->height,
+              bar->border_color ? bar->border_color : theme->colors.border_primary);
+    vgfx_fill_rect(win,
+                   (int32_t)widget->x,
+                   (int32_t)(widget->y + FINDREPLACEBAR_HEIGHT - 1),
+                   (int32_t)widget->width,
+                   1,
+                   theme->colors.border_secondary);
 
-    // Draw border (placeholder - actual drawing via vgfx)
-    (void)bar->border_color;
+    if (bar->show_replace) {
+        vgfx_fill_rect(win,
+                       (int32_t)widget->x,
+                       (int32_t)(widget->y + FINDREPLACEBAR_HEIGHT - 1),
+                       (int32_t)widget->width,
+                       1,
+                       theme->colors.border_primary);
+    }
 
-    // Draw result text
     if (bar->result_text[0] && bar->font) {
-        float text_x = widget->x + INPUT_WIDTH + BUTTON_WIDTH * 2 + PADDING * 5 + 108;
-        float text_y = widget->y + (float)FINDREPLACEBAR_HEIGHT / 2.0f - bar->font_size / 2.0f;
-
+        vg_text_metrics_t result_metrics = {0};
+        vg_font_metrics_t font_metrics = {0};
+        float close_left = widget->x + widget->width - BUTTON_WIDTH - PADDING;
+        float text_x = 0.0f;
+        float text_y = 0.0f;
         uint32_t text_color = bar->match_count > 0 ? 0xFF00FF00 : 0xFFFF6666;
+
+        vg_font_measure_text(bar->font, bar->font_size, bar->result_text, &result_metrics);
+        vg_font_get_metrics(bar->font, bar->font_size, &font_metrics);
+        text_x = close_left - result_metrics.width - 10.0f;
+        text_y = widget->y + ((float)FINDREPLACEBAR_HEIGHT - bar->font_size) * 0.5f +
+                 font_metrics.ascent;
+        if (text_x < widget->x + INPUT_WIDTH + BUTTON_WIDTH * 2 + PADDING * 6 + 100.0f)
+            text_x = widget->x + INPUT_WIDTH + BUTTON_WIDTH * 2 + PADDING * 6 + 100.0f;
+
         vg_font_draw_text(
             canvas, bar->font, bar->font_size, text_x, text_y, bar->result_text, text_color);
     }
@@ -600,15 +635,14 @@ static bool findreplacebar_handle_event(vg_widget_t *widget, vg_event_t *event) 
         }
     }
 
-    // Pass events to children
-    vg_widget_t *child = widget->first_child;
-    while (child) {
-        if (child->visible && child->vtable && child->vtable->handle_event) {
-            if (child->vtable->handle_event(child, event)) {
-                return true;
-            }
+    if (event->type == VG_EVENT_MOUSE_MOVE || event->type == VG_EVENT_MOUSE_DOWN ||
+        event->type == VG_EVENT_MOUSE_UP || event->type == VG_EVENT_CLICK ||
+        event->type == VG_EVENT_DOUBLE_CLICK || event->type == VG_EVENT_MOUSE_WHEEL) {
+        vg_widget_t *target =
+            vg_widget_hit_test(widget, event->mouse.screen_x, event->mouse.screen_y);
+        if (target && target != widget) {
+            return vg_event_send(target, event);
         }
-        child = child->next_sibling;
     }
 
     return false;

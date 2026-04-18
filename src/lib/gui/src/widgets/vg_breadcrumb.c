@@ -40,6 +40,18 @@ static void breadcrumb_stroke_round_rect(vgfx_window_t win,
                                          int32_t radius,
                                          uint32_t color);
 static float breadcrumb_outer_padding(const vg_breadcrumb_t *bc);
+static bool breadcrumb_item_rect(const vg_breadcrumb_t *bc,
+                                 int index,
+                                 float *out_x,
+                                 float *out_y,
+                                 float *out_w,
+                                 float *out_h);
+static bool breadcrumb_dropdown_rect(const vg_breadcrumb_t *bc,
+                                     float *out_x,
+                                     float *out_y,
+                                     float *out_w,
+                                     float *out_h);
+static int breadcrumb_find_dropdown_item_at(const vg_breadcrumb_t *bc, float px, float py);
 
 //=============================================================================
 // Breadcrumb VTable
@@ -140,6 +152,109 @@ static float breadcrumb_outer_padding(const vg_breadcrumb_t *bc) {
     if (!bc)
         return 4.0f;
     return (float)bc->separator_padding + 2.0f;
+}
+
+static bool breadcrumb_item_rect(const vg_breadcrumb_t *bc,
+                                 int index,
+                                 float *out_x,
+                                 float *out_y,
+                                 float *out_w,
+                                 float *out_h) {
+    float x = 0.0f;
+    float item_y = 0.0f;
+    float item_h = 0.0f;
+
+    if (!bc || !bc->font || index < 0 || (size_t)index >= bc->item_count)
+        return false;
+
+    x = bc->base.x + breadcrumb_outer_padding(bc);
+    item_y = bc->base.y + 4.0f;
+    item_h = bc->base.height - 8.0f;
+    if (item_h < 12.0f)
+        item_h = bc->base.height;
+
+    for (size_t i = 0; i < bc->item_count; i++) {
+        vg_text_metrics_t metrics = {0};
+        float item_width = 0.0f;
+        vg_font_measure_text(bc->font, bc->font_size, bc->items[i].label, &metrics);
+        item_width = metrics.width + bc->item_padding * 2;
+        if ((int)i == index) {
+            if (out_x)
+                *out_x = x;
+            if (out_y)
+                *out_y = item_y;
+            if (out_w)
+                *out_w = item_width;
+            if (out_h)
+                *out_h = item_h;
+            return true;
+        }
+
+        x += item_width;
+        if (i < bc->item_count - 1 && bc->separator) {
+            vg_font_measure_text(bc->font, bc->font_size, bc->separator, &metrics);
+            x += metrics.width + bc->separator_padding * 2;
+        }
+    }
+
+    return false;
+}
+
+static bool breadcrumb_dropdown_rect(const vg_breadcrumb_t *bc,
+                                     float *out_x,
+                                     float *out_y,
+                                     float *out_w,
+                                     float *out_h) {
+    vg_breadcrumb_item_t *item = NULL;
+    float crumb_x = 0.0f;
+    float crumb_y = 0.0f;
+    float crumb_w = 0.0f;
+    float crumb_h = 0.0f;
+    float dropdown_w = 0.0f;
+    float dropdown_h = 0.0f;
+
+    if (!bc || !bc->dropdown_open || bc->dropdown_index < 0 ||
+        (size_t)bc->dropdown_index >= bc->item_count) {
+        return false;
+    }
+
+    item = &bc->items[bc->dropdown_index];
+    if (item->dropdown_count == 0 || !breadcrumb_item_rect(
+                                         bc, bc->dropdown_index, &crumb_x, &crumb_y, &crumb_w, &crumb_h)) {
+        return false;
+    }
+
+    dropdown_w = crumb_w > 160.0f ? crumb_w : 160.0f;
+    dropdown_h = (float)item->dropdown_count * (crumb_h > 24.0f ? crumb_h : 24.0f);
+
+    if (out_x)
+        *out_x = crumb_x;
+    if (out_y)
+        *out_y = crumb_y + crumb_h + 4.0f;
+    if (out_w)
+        *out_w = dropdown_w;
+    if (out_h)
+        *out_h = dropdown_h;
+    return true;
+}
+
+static int breadcrumb_find_dropdown_item_at(const vg_breadcrumb_t *bc, float px, float py) {
+    vg_breadcrumb_item_t *item = NULL;
+    float x = 0.0f;
+    float y = 0.0f;
+    float w = 0.0f;
+    float h = 0.0f;
+    float row_h = 0.0f;
+
+    if (!bc || !breadcrumb_dropdown_rect(bc, &x, &y, &w, &h))
+        return -1;
+
+    item = &bc->items[bc->dropdown_index];
+    row_h = item->dropdown_count > 0 ? h / (float)item->dropdown_count : 0.0f;
+    if (row_h <= 0.0f || px < x || px >= x + w || py < y || py >= y + h)
+        return -1;
+
+    return (int)((py - y) / row_h);
 }
 
 //=============================================================================
@@ -344,8 +459,43 @@ static void breadcrumb_paint(vg_widget_t *widget, void *canvas) {
     // Draw dropdown if open
     if (bc->dropdown_open && bc->dropdown_index >= 0 && bc->dropdown_index < (int)bc->item_count) {
         vg_breadcrumb_item_t *item = &bc->items[bc->dropdown_index];
-        // Dropdown rendering would go here
-        (void)item;
+        float dd_x = 0.0f;
+        float dd_y = 0.0f;
+        float dd_w = 0.0f;
+        float dd_h = 0.0f;
+        if (breadcrumb_dropdown_rect(bc, &dd_x, &dd_y, &dd_w, &dd_h)) {
+            float row_h = item->dropdown_count > 0 ? dd_h / (float)item->dropdown_count : 0.0f;
+            uint32_t dd_bg =
+                theme ? vg_color_blend(theme->colors.bg_primary, theme->colors.bg_secondary, 0.22f)
+                      : 0x1F2633u;
+            uint32_t dd_border = theme ? theme->colors.border_primary : 0x3C4658u;
+            uint32_t dd_hover = theme ? theme->colors.bg_hover : 0x2F3440u;
+
+            breadcrumb_fill_round_rect(
+                win, (int32_t)dd_x, (int32_t)dd_y, (int32_t)dd_w, (int32_t)dd_h, radius, dd_bg);
+            breadcrumb_stroke_round_rect(
+                win, (int32_t)dd_x, (int32_t)dd_y, (int32_t)dd_w, (int32_t)dd_h, radius, dd_border);
+            vgfx_set_clip(win, (int32_t)dd_x, (int32_t)dd_y, (int32_t)dd_w, (int32_t)dd_h);
+
+            for (size_t i = 0; i < item->dropdown_count; i++) {
+                float row_y = dd_y + row_h * (float)i;
+                vg_font_metrics_t dd_metrics = {0};
+                vg_font_get_metrics(bc->font, bc->font_size, &dd_metrics);
+                if ((int)i == bc->dropdown_hovered) {
+                    vgfx_fill_rect(
+                        win, (int32_t)dd_x, (int32_t)row_y, (int32_t)dd_w, (int32_t)row_h, dd_hover);
+                }
+                vg_font_draw_text(canvas,
+                                  bc->font,
+                                  bc->font_size,
+                                  dd_x + (float)bc->item_padding,
+                                  row_y + (row_h - bc->font_size) * 0.5f + dd_metrics.ascent,
+                                  item->dropdown_items[i].label,
+                                  theme ? theme->colors.fg_primary : 0xFFFFFFu);
+            }
+
+            vgfx_clear_clip(win);
+        }
     }
 }
 
@@ -386,6 +536,15 @@ static bool breadcrumb_handle_event(vg_widget_t *widget, vg_event_t *event) {
 
     switch (event->type) {
         case VG_EVENT_MOUSE_MOVE: {
+            if (bc->dropdown_open) {
+                int dd_idx = breadcrumb_find_dropdown_item_at(bc, event->mouse.x, event->mouse.y);
+                if (dd_idx != bc->dropdown_hovered) {
+                    bc->dropdown_hovered = dd_idx;
+                    bc->base.needs_paint = true;
+                }
+                if (dd_idx >= 0)
+                    return true;
+            }
             int idx = find_item_at(bc, event->mouse.x, event->mouse.y);
             if (idx != bc->hovered_index) {
                 bc->hovered_index = idx;
@@ -400,23 +559,54 @@ static bool breadcrumb_handle_event(vg_widget_t *widget, vg_event_t *event) {
             return true;
 
         case VG_EVENT_CLICK: {
+            if (bc->dropdown_open) {
+                int dd_idx = breadcrumb_find_dropdown_item_at(bc, event->mouse.x, event->mouse.y);
+                if (dd_idx >= 0 && bc->dropdown_index >= 0 &&
+                    (size_t)bc->dropdown_index < bc->item_count) {
+                    if (bc->on_dropdown_select) {
+                        bc->on_dropdown_select(bc, bc->dropdown_index, dd_idx, bc->user_data);
+                    }
+                    bc->dropdown_open = false;
+                    bc->dropdown_hovered = -1;
+                    if (vg_widget_get_input_capture() == widget)
+                        vg_widget_release_input_capture();
+                    bc->base.needs_paint = true;
+                    return true;
+                }
+            }
+
             int idx = find_item_at(bc, event->mouse.x, event->mouse.y);
             if (idx >= 0) {
                 vg_breadcrumb_item_t *item = &bc->items[idx];
 
                 // Check if item has dropdown
                 if (item->dropdown_count > 0) {
-                    bc->dropdown_open = !bc->dropdown_open;
+                    bc->dropdown_open = !(bc->dropdown_open && bc->dropdown_index == idx);
                     bc->dropdown_index = idx;
                     bc->dropdown_hovered = -1;
+                    if (bc->dropdown_open)
+                        vg_widget_set_input_capture(widget);
+                    else if (vg_widget_get_input_capture() == widget)
+                        vg_widget_release_input_capture();
                     bc->base.needs_paint = true;
                 } else {
                     // Regular click
                     bc->dropdown_open = false;
+                    if (vg_widget_get_input_capture() == widget)
+                        vg_widget_release_input_capture();
                     if (bc->on_click) {
                         bc->on_click(bc, idx, bc->user_data);
                     }
                 }
+                return true;
+            }
+
+            if (bc->dropdown_open) {
+                bc->dropdown_open = false;
+                bc->dropdown_hovered = -1;
+                if (vg_widget_get_input_capture() == widget)
+                    vg_widget_release_input_capture();
+                bc->base.needs_paint = true;
                 return true;
             }
             break;

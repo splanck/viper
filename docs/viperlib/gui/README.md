@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-09
+last-verified: 2026-04-18
 ---
 
 # GUI Widgets
@@ -20,6 +20,8 @@ last-verified: 2026-04-09
 | [Basic Widgets](widgets.md) | Label, Button, TextInput, Checkbox, Slider, RadioButton, and more |
 | [Containers & Advanced](containers.md) | ScrollView, SplitPane, TabBar, TreeView, CodeEditor, Minimap |
 | [Application Components](application.md) | MenuBar, Toolbar, StatusBar, Dialogs, Notifications, Utilities, Themes |
+
+Recent runtime updates include reliable `Tab` / `Shift+Tab` focus traversal, better popup/input-capture behavior for menus and palettes, scroll-safe dialog/list rendering, and clipped floating-panel text rendering for overlay-heavy apps such as ViperIDE.
 
 ## Complete Example (Zia)
 

@@ -457,6 +457,11 @@ static void tabbar_paint(vg_widget_t *widget, void *canvas) {
     }
 
     float tab_x = widget->x - tabbar->scroll_x;
+    vgfx_set_clip(win,
+                  (int32_t)widget->x,
+                  (int32_t)widget->y,
+                  (int32_t)widget->width,
+                  (int32_t)widget->height);
 
     for (vg_tab_t *tab = tabbar->first_tab; tab; tab = tab->next) {
         float width = get_tab_width(tabbar, tab);
@@ -555,6 +560,8 @@ static void tabbar_paint(vg_widget_t *widget, void *canvas) {
 
         tab_x += width;
     }
+
+    vgfx_clear_clip(win);
 }
 
 static bool tabbar_handle_event(vg_widget_t *widget, vg_event_t *event) {

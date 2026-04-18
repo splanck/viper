@@ -759,7 +759,7 @@ static void dialog_paint(vg_widget_t *widget, void *canvas) {
     // Draw full-screen dim overlay so the dialog floats above all other widgets
     if (dlg->modal && dlg->overlay_color) {
         int32_t win_w = 0, win_h = 0;
-        if (vgfx_get_size(win, &win_w, &win_h) == 0) {
+        if (vgfx_get_size(win, &win_w, &win_h)) {
             vgfx_fill_rect(win, 0, 0, win_w, win_h, dlg->overlay_color);
         }
     }

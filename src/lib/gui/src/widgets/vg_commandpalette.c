@@ -27,6 +27,7 @@ static void commandpalette_measure(vg_widget_t *widget,
                                    float available_height);
 static void commandpalette_paint(vg_widget_t *widget, void *canvas);
 static bool commandpalette_handle_event(vg_widget_t *widget, vg_event_t *event);
+static void commandpalette_ensure_selection_visible(vg_commandpalette_t *palette);
 
 //=============================================================================
 // CommandPalette VTable
@@ -132,7 +133,37 @@ static void filter_commands(vg_commandpalette_t *palette) {
 
     // Reset selection
     palette->selected_index = palette->filtered_count > 0 ? 0 : -1;
+    palette->first_visible_index = 0;
     palette->base.needs_paint = true;
+}
+
+static void commandpalette_ensure_selection_visible(vg_commandpalette_t *palette) {
+    int max_visible = 0;
+
+    if (!palette || palette->max_visible == 0)
+        return;
+
+    max_visible = (int)palette->max_visible;
+    if (palette->selected_index < 0) {
+        palette->first_visible_index = 0;
+        return;
+    }
+
+    if (palette->first_visible_index < 0)
+        palette->first_visible_index = 0;
+    if (palette->selected_index < palette->first_visible_index)
+        palette->first_visible_index = palette->selected_index;
+    if (palette->selected_index >= palette->first_visible_index + max_visible) {
+        palette->first_visible_index = palette->selected_index - max_visible + 1;
+    }
+
+    if (palette->filtered_count <= (size_t)max_visible) {
+        palette->first_visible_index = 0;
+    } else {
+        int max_first = (int)palette->filtered_count - max_visible;
+        if (palette->first_visible_index > max_first)
+            palette->first_visible_index = max_first;
+    }
 }
 
 static size_t utf8_encode_codepoint(uint32_t codepoint, char out[4]) {
@@ -223,6 +254,7 @@ vg_commandpalette_t *vg_commandpalette_create(void) {
     palette->is_visible = false;
     palette->selected_index = -1;
     palette->hovered_index = -1;
+    palette->first_visible_index = 0;
     palette->placeholder_text = strdup("Type to search...");
 
     return palette;
@@ -316,13 +348,17 @@ static void commandpalette_paint(vg_widget_t *widget, void *canvas) {
     if (visible > palette->max_visible)
         visible = palette->max_visible;
 
+    commandpalette_ensure_selection_visible(palette);
+
     for (size_t i = 0; i < visible; i++) {
-        vg_command_t *cmd = palette->filtered[i];
+        size_t filtered_index = (size_t)palette->first_visible_index + i;
+        vg_command_t *cmd =
+            filtered_index < palette->filtered_count ? palette->filtered[filtered_index] : NULL;
         if (!cmd)
             continue;
 
         // Draw item background
-        if ((int)i == palette->selected_index) {
+        if ((int)filtered_index == palette->selected_index) {
             vgfx_fill_rect(win,
                            (int32_t)(x + 1.0f),
                            (int32_t)item_y,
@@ -378,6 +414,7 @@ static bool commandpalette_handle_event(vg_widget_t *widget, vg_event_t *event) 
             case VG_KEY_UP:
                 if (palette->selected_index > 0) {
                     palette->selected_index--;
+                    commandpalette_ensure_selection_visible(palette);
                     palette->base.needs_paint = true;
                 }
                 return true;
@@ -385,6 +422,7 @@ static bool commandpalette_handle_event(vg_widget_t *widget, vg_event_t *event) 
             case VG_KEY_DOWN:
                 if (palette->selected_index < (int)palette->filtered_count - 1) {
                     palette->selected_index++;
+                    commandpalette_ensure_selection_visible(palette);
                     palette->base.needs_paint = true;
                 }
                 return true;
@@ -403,14 +441,37 @@ static bool commandpalette_handle_event(vg_widget_t *widget, vg_event_t *event) 
         return true;
     }
 
+    if (event->type == VG_EVENT_MOUSE_WHEEL) {
+        int direction = 0;
+        if (event->wheel.delta_y > 0.0f)
+            direction = -1;
+        else if (event->wheel.delta_y < 0.0f)
+            direction = 1;
+
+        if (direction != 0 && palette->filtered_count > palette->max_visible) {
+            palette->first_visible_index += direction;
+            commandpalette_ensure_selection_visible(palette);
+            if (palette->selected_index < palette->first_visible_index)
+                palette->selected_index = palette->first_visible_index;
+            if (palette->selected_index >= palette->first_visible_index + (int)palette->max_visible) {
+                palette->selected_index =
+                    palette->first_visible_index + (int)palette->max_visible - 1;
+            }
+            palette->base.needs_paint = true;
+            return true;
+        }
+    }
+
     if (event->type == VG_EVENT_MOUSE_MOVE) {
         float local_y = event->mouse.y - 36.0f;
         if (local_y >= 0.0f) {
-            int hovered = (int)(local_y / (float)palette->item_height);
-            if (hovered >= 0 && hovered < (int)palette->filtered_count) {
+            int hovered = palette->first_visible_index + (int)(local_y / (float)palette->item_height);
+            if (hovered >= 0 && hovered < (int)palette->filtered_count &&
+                hovered < palette->first_visible_index + (int)palette->max_visible) {
                 if (palette->hovered_index != hovered) {
                     palette->hovered_index = hovered;
                     palette->selected_index = hovered;
+                    commandpalette_ensure_selection_visible(palette);
                     palette->base.needs_paint = true;
                 }
                 return true;
@@ -421,9 +482,11 @@ static bool commandpalette_handle_event(vg_widget_t *widget, vg_event_t *event) 
     if (event->type == VG_EVENT_MOUSE_DOWN || event->type == VG_EVENT_CLICK) {
         float local_y = event->mouse.y - 36.0f;
         if (local_y >= 0.0f) {
-            int clicked = (int)(local_y / (float)palette->item_height);
-            if (clicked >= 0 && clicked < (int)palette->filtered_count) {
+            int clicked = palette->first_visible_index + (int)(local_y / (float)palette->item_height);
+            if (clicked >= 0 && clicked < (int)palette->filtered_count &&
+                clicked < palette->first_visible_index + (int)palette->max_visible) {
                 palette->selected_index = clicked;
+                commandpalette_ensure_selection_visible(palette);
                 palette->base.needs_paint = true;
                 if (event->type == VG_EVENT_CLICK)
                     vg_commandpalette_execute_selected(palette);
@@ -526,6 +589,7 @@ void vg_commandpalette_show(vg_commandpalette_t *palette) {
     free(palette->current_query);
     palette->current_query = NULL;
     filter_commands(palette);
+    palette->first_visible_index = 0;
 
     palette->base.needs_paint = true;
     palette->base.needs_layout = true;
@@ -627,5 +691,6 @@ void vg_commandpalette_clear(vg_commandpalette_t *palette) {
     palette->filtered_count = 0;
     palette->selected_index = -1;
     palette->hovered_index = -1;
+    palette->first_visible_index = 0;
     palette->base.needs_paint = true;
 }

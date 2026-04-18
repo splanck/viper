@@ -10,6 +10,7 @@
 //===----------------------------------------------------------------------===//
 // vg_toolbar.c - Toolbar widget implementation
 #include "../../../graphics/include/vgfx.h"
+#include "../../../graphics/src/vgfx_internal.h"
 #include "../../include/vg_event.h"
 #include "../../include/vg_ide_widgets.h"
 #include "../../include/vg_theme.h"
@@ -143,6 +144,26 @@ static void toolbar_draw_image_icon(vgfx_window_t win,
     int end_x = toolbar_clampi((int)(draw_x + draw_w), 0, fb.width);
     int end_y = toolbar_clampi((int)(draw_y + draw_h), 0, fb.height);
     uint8_t opacity = enabled ? 255u : 144u;
+    const struct vgfx_window *internal = (const struct vgfx_window *)win;
+    int clip_x = 0;
+    int clip_y = 0;
+    int clip_w = fb.width;
+    int clip_h = fb.height;
+
+    if (internal && internal->clip_enabled) {
+        clip_x = internal->clip_x;
+        clip_y = internal->clip_y;
+        clip_w = internal->clip_w;
+        clip_h = internal->clip_h;
+    }
+    if (start_x < clip_x)
+        start_x = clip_x;
+    if (start_y < clip_y)
+        start_y = clip_y;
+    if (end_x > clip_x + clip_w)
+        end_x = clip_x + clip_w;
+    if (end_y > clip_y + clip_h)
+        end_y = clip_y + clip_h;
 
     for (int fb_y = start_y; fb_y < end_y; fb_y++) {
         for (int fb_x = start_x; fb_x < end_x; fb_x++) {
@@ -850,17 +871,8 @@ static bool toolbar_forward_popup_event(vg_toolbar_t *tb, vg_event_t *event) {
         return false;
 
     vg_event_t translated = *event;
-    if (event->type == VG_EVENT_MOUSE_MOVE || event->type == VG_EVENT_MOUSE_DOWN ||
-        event->type == VG_EVENT_MOUSE_UP || event->type == VG_EVENT_CLICK) {
-        translated.mouse.x = event->mouse.screen_x;
-        translated.mouse.y = event->mouse.screen_y;
-        translated.mouse.screen_x = event->mouse.screen_x;
-        translated.mouse.screen_y = event->mouse.screen_y;
-    }
-
-    if (!popup->base.vtable || !popup->base.vtable->handle_event)
-        return false;
-    return popup->base.vtable->handle_event(&popup->base, &translated);
+    translated.target = &popup->base;
+    return vg_event_send(&popup->base, &translated);
 }
 
 static float get_item_width(vg_toolbar_t *tb, vg_toolbar_item_t *item) {

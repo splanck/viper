@@ -13,7 +13,7 @@ A full-featured IDE for Zia and Viper BASIC, built entirely in Zia using the `Vi
 - **Find/Replace** bar with match count and navigation
 - **Build Integration** — compile and run Zia/BASIC files with error diagnostics
 - **Command Palette** (Ctrl+Shift+P) for keyboard-driven workflow
-- **Persistent Settings** — font size, optional font path, theme, minimap visibility, diagnostics, folding, and tab width saved to `~/.viperide/settings.ini`
+- **Persistent Settings** — inline floating settings panel with clipped scrollable sections, keyboard-editable fields, and saved font size, optional font path, theme, minimap visibility, diagnostics, folding, and tab width in `~/.viperide/settings.ini`
 - **File Watcher** — detects external changes and prompts for reload
 - **Themes** — dark and light theme switching
 

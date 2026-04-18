@@ -10,6 +10,7 @@
 //===----------------------------------------------------------------------===//
 // vg_codeeditor.c - Code editor widget implementation
 #include "../../../graphics/include/vgfx.h"
+#include "../../../graphics/src/vgfx_internal.h"
 #include "../../include/vg_event.h"
 #include "../../include/vg_ide_widgets.h"
 #include "../../include/vg_theme.h"
@@ -1428,15 +1429,27 @@ static void codeeditor_draw_gutter_icon_image(vgfx_window_t canvas,
     const uint8_t *src_pixels = icon->image.data.image.pixels;
     int src_w = (int)icon->image.data.image.width;
     int src_h = (int)icon->image.data.image.height;
+    const struct vgfx_window *internal = (const struct vgfx_window *)canvas;
+    int clip_x = 0;
+    int clip_y = 0;
+    int clip_w = fb.width;
+    int clip_h = fb.height;
     if (src_w <= 0 || src_h <= 0)
         return;
+
+    if (internal && internal->clip_enabled) {
+        clip_x = internal->clip_x;
+        clip_y = internal->clip_y;
+        clip_w = internal->clip_w;
+        clip_h = internal->clip_h;
+    }
 
     for (int row = 0; row < dst_h; row++) {
         int src_y = row * src_h / dst_h;
         if (src_y >= src_h)
             src_y = src_h - 1;
         int fb_y = dst_y + row;
-        if (fb_y < 0 || fb_y >= fb.height)
+        if (fb_y < 0 || fb_y >= fb.height || fb_y < clip_y || fb_y >= clip_y + clip_h)
             continue;
 
         for (int col = 0; col < dst_w; col++) {
@@ -1444,7 +1457,7 @@ static void codeeditor_draw_gutter_icon_image(vgfx_window_t canvas,
             if (src_x >= src_w)
                 src_x = src_w - 1;
             int fb_x = dst_x + col;
-            if (fb_x < 0 || fb_x >= fb.width)
+            if (fb_x < 0 || fb_x >= fb.width || fb_x < clip_x || fb_x >= clip_x + clip_w)
                 continue;
 
             const uint8_t *src = &src_pixels[(src_y * src_w + src_x) * 4];

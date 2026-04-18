@@ -68,6 +68,11 @@ typedef struct vg_widget_runtime_state {
     vg_widget_t *input_capture_widget;
     vg_widget_t *modal_root;
     vg_widget_t *hovered_widget;
+    vg_widget_t *last_click_widget;
+    uint64_t last_click_time_ms;
+    int32_t last_click_button;
+    float last_click_screen_x;
+    float last_click_screen_y;
 } vg_widget_runtime_state_t;
 
 //=============================================================================

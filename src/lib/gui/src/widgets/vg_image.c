@@ -11,6 +11,7 @@
 // vg_image.c - Image widget implementation
 #include "../../include/vg_widget.h"
 #include "../../include/vg_widgets.h"
+#include "../../../graphics/src/vgfx_internal.h"
 #include "vgfx.h"
 #include <stdlib.h>
 #include <string.h>
@@ -136,6 +137,18 @@ static void image_paint(vg_widget_t *widget, void *canvas) {
     int start_y = clampi((int)draw_y, dy, dy + dh);
     int end_x = clampi((int)(draw_x + draw_w), dx, dx + dw);
     int end_y = clampi((int)(draw_y + draw_h), dy, dy + dh);
+    const struct vgfx_window *internal = (const struct vgfx_window *)canvas;
+    int clip_x = 0;
+    int clip_y = 0;
+    int clip_w = fb.width;
+    int clip_h = fb.height;
+
+    if (internal && internal->clip_enabled) {
+        clip_x = internal->clip_x;
+        clip_y = internal->clip_y;
+        clip_w = internal->clip_w;
+        clip_h = internal->clip_h;
+    }
 
     if (start_x < 0)
         start_x = 0;
@@ -145,6 +158,14 @@ static void image_paint(vg_widget_t *widget, void *canvas) {
         end_x = fb.width;
     if (end_y > fb.height)
         end_y = fb.height;
+    if (start_x < clip_x)
+        start_x = clip_x;
+    if (start_y < clip_y)
+        start_y = clip_y;
+    if (end_x > clip_x + clip_w)
+        end_x = clip_x + clip_w;
+    if (end_y > clip_y + clip_h)
+        end_y = clip_y + clip_h;
 
     for (int fb_y = start_y; fb_y < end_y; fb_y++) {
         for (int fb_x = start_x; fb_x < end_x; fb_x++) {

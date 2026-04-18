@@ -444,6 +444,7 @@ typedef struct vg_commandpalette {
     bool is_visible;    ///< Is palette visible
     int selected_index; ///< Selected result index
     int hovered_index;  ///< Hovered result index
+    int first_visible_index; ///< First filtered result currently visible
 
     // Appearance
     uint32_t item_height; ///< Height of each result item

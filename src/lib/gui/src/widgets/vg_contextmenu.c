@@ -217,10 +217,10 @@ static void contextmenu_destroy(vg_widget_t *widget) {
 
 /// @brief Contextmenu destroy.
 void vg_contextmenu_destroy(vg_contextmenu_t *menu) {
-    if (menu) {
-        contextmenu_destroy(&menu->base);
-        free(menu);
-    }
+    if (!menu)
+        return;
+
+    vg_widget_destroy(&menu->base);
 }
 
 static void contextmenu_measure(vg_widget_t *widget,
@@ -252,7 +252,7 @@ static void contextmenu_paint(vg_widget_t *widget, void *canvas) {
     // pointer, so we resolve and apply the clamp here on every paint — it also
     // adjusts correctly if the window is resized while the menu is open.
     int32_t win_w = 0, win_h = 0;
-    if (win && vgfx_get_size(win, &win_w, &win_h) == 0) {
+    if (win && vgfx_get_size(win, &win_w, &win_h)) {
         float mw = widget->width;
         float mh = widget->height;
         if (widget->x + mw > (float)win_w)
@@ -366,8 +366,8 @@ static bool contextmenu_handle_event(vg_widget_t *widget, vg_event_t *event) {
 
     switch (event->type) {
         case VG_EVENT_MOUSE_MOVE: {
-            float local_x = event->mouse.x - widget->x;
-            float local_y = event->mouse.y - widget->y;
+            float local_x = event->mouse.x;
+            float local_y = event->mouse.y;
 
             // Check if inside menu
             if (local_x >= 0 && local_x < widget->width && local_y >= 0 &&
@@ -412,8 +412,8 @@ static bool contextmenu_handle_event(vg_widget_t *widget, vg_event_t *event) {
         }
 
         case VG_EVENT_MOUSE_DOWN: {
-            float local_x = event->mouse.x - widget->x;
-            float local_y = event->mouse.y - widget->y;
+            float local_x = event->mouse.x;
+            float local_y = event->mouse.y;
 
             // Check if inside menu
             if (local_x >= 0 && local_x < widget->width && local_y >= 0 &&
@@ -455,7 +455,7 @@ static bool contextmenu_handle_event(vg_widget_t *widget, vg_event_t *event) {
                     root = root->parent_menu;
                 }
                 vg_contextmenu_dismiss(root);
-                return false;
+                return true;
             }
         }
 
@@ -693,6 +693,7 @@ void vg_contextmenu_show_at(vg_contextmenu_t *menu, int x, int y) {
 
     menu->base.visible = true;
     menu->base.needs_paint = true;
+    vg_widget_set_input_capture(&menu->base);
 }
 
 /// @brief Contextmenu show for widget.
@@ -703,8 +704,13 @@ void vg_contextmenu_show_for_widget(vg_contextmenu_t *menu,
     if (!menu || !widget)
         return;
 
-    int x = (int)widget->x + offset_x;
-    int y = (int)(widget->y + widget->height) + offset_y;
+    float screen_x = 0.0f;
+    float screen_y = 0.0f;
+    float screen_h = 0.0f;
+    vg_widget_get_screen_bounds(widget, &screen_x, &screen_y, NULL, &screen_h);
+
+    int x = (int)screen_x + offset_x;
+    int y = (int)(screen_y + screen_h) + offset_y;
     vg_contextmenu_show_at(menu, x, y);
 }
 
@@ -723,6 +729,14 @@ void vg_contextmenu_dismiss(vg_contextmenu_t *menu) {
     menu->hovered_index = -1;
     menu->parent_menu = NULL;
     menu->base.visible = false;
+
+    if (vg_widget_get_input_capture() == &menu->base) {
+        if (menu->parent_menu && menu->parent_menu->is_visible) {
+            vg_widget_set_input_capture(&menu->parent_menu->base);
+        } else {
+            vg_widget_release_input_capture();
+        }
+    }
 
     // Invoke dismiss callback
     if (menu->on_dismiss) {

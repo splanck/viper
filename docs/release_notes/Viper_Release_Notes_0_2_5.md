@@ -14,9 +14,9 @@ A polish-and-hardening cycle. Most of the work is in three areas: the audio runt
 
 | Metric | v0.2.4 | v0.2.5 | Delta |
 |---|---|---|---|
-| Commits | — | 23 | +23 |
+| Commits | — | 24 | +24 |
 | Source files | 2,869 | 2,884 | +15 |
-| Production SLOC | 450K | 465K | +15K |
+| Production SLOC | 450K | 467K | +17K |
 | Test SLOC | 183K | 189K | +6K |
 | Demo SLOC | 177K | 188K | +11K |
 
@@ -51,17 +51,19 @@ A two-step rework: first consolidate, then harden.
 
 ### GUI Library
 
-Three rounds of widget audit. The big themes: lifetime correctness, HiDPI consistency, and a dark-theme palette refresh.
+Four rounds of widget audit. The big themes: lifetime correctness, HiDPI consistency, a dark-theme palette refresh, and keyboard accessibility / modifier-aware selection.
 
 **Dark theme.** New cooler-tinted palette (deeper, more saturated background ramp; warmer accents). Default font sizes nudged up (normal 13 → 13.5, large 16 → 17, heading 20 → 21). Button and input rows aligned at 28 px height with a wider border radius. Scrollbar metrics retuned.
 
-**CodeEditor.** New APIs: `CanUndo`, `CanRedo`, `SetTabSize` / `GetTabSize` (1–16), `SetWordWrap` / `GetWordWrap`, plus `GetLineAtPixel` / `GetColAtPixel`. Word-wrap now drives cursor movement, scrollbar math, hit-testing, and `ScrollToLine` — previously it was paint-only and the rest of the widget thought every line was unwrapped. Fold gutters render and toggle. Line-slot metadata is cleared on `SetText` and language switch (fixes a ViperIDE crash on file open).
+**CodeEditor.** New APIs: `CanUndo`, `CanRedo`, `SetTabSize` / `GetTabSize` (1–16), `SetWordWrap` / `GetWordWrap`, plus `GetLineAtPixel` / `GetColAtPixel`. Word-wrap now drives cursor movement, scrollbar math, hit-testing, and `ScrollToLine` — previously it was paint-only and the rest of the widget thought every line was unwrapped. Fold gutters render and toggle. Line-slot metadata is cleared on `SetText` and language switch (fixes a ViperIDE crash on file open). The per-glyph paint loop is now factored into `draw_text_slice` / `draw_colored_slice` helpers so syntax-colored runs and plain runs share one layout path — sets up upcoming inline-diagnostics and squiggle-underline work.
 
-**TabBar.** Tab tooltips. Stable close-click index that survives `auto_close`. Drag now requires 6 px of pointer movement before reordering (small click-jitter no longer scrambles the tab order). HiDPI scaling on tab metrics; ellipsis on long titles. Keyboard navigation/reorder/close (`Left` / `Right`, `Home` / `End`, `Ctrl+W`, `Ctrl+Shift+Arrow`) is now built in.
+**TabBar.** Tab tooltips. Stable close-click index that survives `auto_close`. Drag now requires 6 px of pointer movement before reordering (small click-jitter no longer scrambles the tab order). HiDPI scaling on tab metrics; ellipsis on long titles. Keyboard navigation/reorder/close (`Left` / `Right`, `Home` / `End`, `Ctrl+W`, `Ctrl+Shift+Arrow`) is now built in. Click semantics are now press-and-release coupled — the activate / close action fires on mouse-up *only* if the pointer is still over the same target; mouse-down on tab A then drag-and-release on tab B now cancels cleanly instead of firing the wrong target.
 
-**Toolbar / MenuBar.** Real overflow popup (was a stub). Disabled top-level menus paint and behave as disabled. Pixel-icon setters create real image icons instead of casting pointers as glyphs. MenuBar measures to zero height when the macOS native main menu is active.
+**Toolbar / MenuBar.** Real overflow popup (was a stub). Disabled top-level menus paint and behave as disabled. Pixel-icon setters create real image icons instead of casting pointers as glyphs. MenuBar measures to zero height when the macOS native main menu is active. Toolbar gains full keyboard navigation: arrow keys move focus across visible items, Home/End snap to first/last (with End reaching the overflow button), Enter / Space activates the focused item, Tab cycles focus out cleanly. Custom image-icon paint path with explicit alpha compositing replaces the previous best-effort blit.
 
 **FindBar.** Live `GetFindText` / `GetReplaceText`. `SetVisible` routes through the standard widget visibility path. UTF-8-safe match advance.
+
+**Popup routing and overlays.** ContextMenu now anchors against widget screen bounds instead of local coordinates, captures input while open, and reliably dismisses on outside click without click-through. FloatingPanel clips its child subtree to the panel bounds, and the shared glyph renderer now respects the active clip rect, fixing overlay text bleeding out of panels such as the ViperIDE settings dialog. Breadcrumb overflow menus now render as real interactive dropdowns instead of dead state.
 
 **ScrollView.** Auto-hide stabilizes (cross-axis case where one bar forces the other no longer ping-pongs). Drag keeps capture until mouse-up even outside the widget. Thumb drag now preserves the within-thumb grab offset instead of snapping.
 
@@ -73,19 +75,23 @@ Three rounds of widget audit. The big themes: lifetime correctness, HiDPI consis
 
 **Font inheritance.** The complex-widget bridge (`rt_gui_app.c`) now gates metric queries on a font-handle sanity check (`(uintptr_t)font >= 4096u`) and provides a lazy `rt_gui_inherit_font_to_widget` path that copies a font handle + size into a widget subtree without dereferencing it. Opaque sentinel handles used by runtime tests no longer crash the metric path, and construction-time inheritance of a not-yet-loaded font no longer requires every widget setter to guard for itself.
 
-**Dropdown.** Keyboard navigation on the open popup (arrow / page / home / end). Pressing a key on a closed dropdown opens it. Mouse wheel scrolls the open popup. Panel flips above the trigger when there's no room below. Popup placement and hit-testing now agree in nested layouts; popup row paint tracks fractional scroll instead of jumping a whole row.
+**Dropdown.** Keyboard navigation on the open popup (arrow / page / home / end). Pressing a key on a closed dropdown opens it. Mouse wheel scrolls the open popup. Panel flips above the trigger when there's no room below. Popup placement and hit-testing now agree in nested layouts; popup row paint tracks fractional scroll instead of jumping a whole row. Typeahead search: typing letters jumps to the first item whose visible text starts with the typed prefix (resets after a 1-second idle). Panel sizes to the longest item rather than the trigger width.
 
-**TextInput.** Max-length now counts UTF-8 codepoints, not bytes. Single-line ignores newline character input. Read-only navigation collapses the selection. Focus / hover / read-only / disabled all paint distinctly. Password mask handles long pasted secrets via heap allocation instead of capping at 1023 asterisks. Multiline editing now has real line-based paint, hit-testing, cursor movement, drag selection, and wheel scrolling.
+**TextInput.** Max-length now counts UTF-8 codepoints, not bytes. Single-line ignores newline character input. Read-only navigation collapses the selection. Focus / hover / read-only / disabled all paint distinctly. Password mask handles long pasted secrets via heap allocation instead of capping at 1023 asterisks. Multiline editing now has real line-based paint, hit-testing, cursor movement, drag selection, and wheel scrolling. Standard editor expectations land: `Ctrl+Shift+Z` performs redo (`Ctrl+Z` undo was already there but redo was missing), double-click selects the word under the cursor, and programmatic `SetText` fires `on_change` while resetting the undo baseline so subsequent undo doesn't roll back to a stale prior state.
 
-**TreeView.** Click on the blank area of a nested row selects rather than toggling expand (matches IDE convention). Scroll clamps after collapse. Per-node glyph icons and loading indicators finally render.
+**TreeView.** Click on the blank area of a nested row selects rather than toggling expand (matches IDE convention). Scroll clamps after collapse. Per-node glyph icons and loading indicators finally render. Drag-and-drop actually works: `suppress_click` swallows the synthetic click that would otherwise fire after drop, drop-target validation respects the tree's hierarchy rules, and ellipsis-aware text fitting keeps deeply-nested nodes from painting past the viewport.
 
-**ListBox.** Virtual-mode change detection now compares against `prev_selected_index` so virtual lists actually report selection changes. Add/remove/clear/select now invalidate layout/paint immediately, and item labels are clipped to the viewport.
+**ListBox.** Virtual-mode change detection now compares against `prev_selected_index` so virtual lists actually report selection changes. Add/remove/clear/select now invalidate layout/paint immediately, and item labels are clipped to the viewport. Multi-select with Ctrl and Shift modifiers: plain click clears + selects, Ctrl+click toggles, Shift+click extends a range from the anchor. Virtual-mode and non-virtual-mode share matching helpers so the semantics are identical regardless of backing storage.
 
 **Spinner.** The numeric field is directly editable now: typing starts inline numeric entry, `Enter` commits, and `Escape` cancels back to the formatted value.
 
 **Layout.** Flex non-stretch alignment preserves the child's measured cross size (no more few-pixel descender clip). VBox/HBox budget child margins when distributing space. SplitPane proportional clamping when min sizes exceed available.
 
-**FileDialog.** Layout metrics extracted to named constants. Multi-select dialogs snapshot the accepted-paths list on success instead of aliasing backend memory (fixes repeat-show + destroy lifetime).
+**SplitPane.** Keyboard navigation: SplitPane now advertises `can_focus`. Arrow keys (Left/Right for horizontal split, Up/Down for vertical) adjust the split position by a sensible pixel delta; Home / End snap to the edges, respecting min sizes.
+
+**FileDialog.** Layout metrics extracted to named constants. Multi-select dialogs snapshot the accepted-paths list on success instead of aliasing backend memory (fixes repeat-show + destroy lifetime). The in-app dialog now scrolls long bookmark/file lists, keeps keyboard selection visible, clips long path text, and supports caret-aware save-name editing (`Left` / `Right`, `Home`, `End`, `Backspace`, `Delete`).
+
+**CommandPalette / focus routing.** CommandPalette now keeps the current selection visible while keyboarding or wheel-scrolling through long result sets. Toolkit-level `Tab` / `Shift+Tab` focus traversal is wired back into event dispatch, so keyboard-only navigation works across focusable widgets again.
 
 **Notification.** Lazy `created_at` stamp (toasts no longer vanish on the first frame). Fade math guards `fade_duration_ms > 0`. Toasts now use wrapped title/body/action layout plus coordinated fade/slide animation on both entry and dismissal.
 
@@ -100,6 +106,7 @@ Three rounds of widget audit. The big themes: lifetime correctness, HiDPI consis
 **Shared coordinate helpers.** `rt_graphics_internal.h` adds four inline helpers (`rtg_sanitize_scale`, `rtg_round_scaled`, `rtg_scale_up_i64`, `rtg_scale_down_i64`) so every 2D drawing site does logical↔physical conversion the same way. New `RT_COLOR_EXPLICIT_ALPHA_FLAG` distinguishes a caller-specified alpha byte from the `0xFF000000` default, routing through different blend paths.
 
 **Text.** UTF-8 codepoint iteration in BitmapFont and Canvas text — multi-byte glyphs now hit-test and render correctly. Old font objects are released when replaced.
+Clip-sensitive GUI text/image paths now honor the active `vgfx` clip rect even when they render directly into the framebuffer, which prevents scrolled or clipped widgets from bleeding pixels outside their viewport.
 
 **Camera.** Parallax layers each get independent zoom/rotation/scroll with integer-floor-div tile wrapping (no seam at any zoom).
 
@@ -193,6 +200,7 @@ A correctness-and-hardening pass spanning every subsystem.
 
 - macOS no longer maps bare arrow keys to PageUp/PageDown/Home/End. The Fn+arrow translation block was gating on `NSEventModifierFlagFunction`, which Cocoa sets on every arrow press — so the gate intercepted ordinary arrow input. Real Fn+arrow on compact keyboards keeps working through the character switch.
 - Mouse wheel events no longer have their delta destroyed by coordinate localization. The `mouse` and `wheel` payloads share a union, so any path that wrote `mouse.x/y` on a wheel event silently zeroed the scroll delta.
+- Linux text-input events now enqueue every UTF-8 codepoint committed by X11 input methods instead of dropping everything after the first codepoint. Linux text clipboard operations are implemented again for editor widgets and other GUI text surfaces.
 
 ---
 
@@ -215,6 +223,7 @@ A correctness-and-hardening pass spanning every subsystem.
 Net additions across the cycle: a few thousand lines of new test coverage spread across runtime, GUI, codegen, and linker. Highlights:
 
 - Six new 2D-graphics contract suites lock down the new HiDPI-shared helpers and explicit-alpha flag.
+- `test_vg_tier3_fixes` now covers synthesized double-click dispatch, `Tab` / `Shift+Tab` focus traversal, screen-space context-menu anchoring + capture, command-palette visible-window management, and file-dialog save-field editing/scroll behavior.
 - `RTDialogueContractTests`, `RTQuadtreeTests`, `RTPhysics2DTests`, and `test_rt_physics_joints` cover the new game-runtime fixes.
 - Audio coverage: new `TestWavStream` (float WAV, metadata-heavy headers); `TestMp3Decode` adds incremental-decode and Huffman-table cases; `RTAudioIntegrationTests` covers crossfade pause, foreground reclaim, seek isolation, and playlist clamping; `RTSoundBankTests` guards long-name keys; `RTMusicGenTests` covers short-note release and silent-channel skip.
 - New `test_vg_audit_fixes` (19 cases) and `test_vg_tier1_fixes` / `test_vg_tier2_fixes` cover the GUI widget audit work — tabbar drag threshold, dropdown keyboard nav and wheel, textinput UTF-8 max-length, treeview nested click, scrollview thumb drag, and the rest.
@@ -260,5 +269,6 @@ Pac-Man renamed to Crackman and split into session/progression/frontend with a s
 | `f8a565a0b` | 2026-04-17 | Dark-theme palette refresh, dropdown keyboard+wheel, tabbar drag threshold, textinput UTF-8 + state-aware paint, runtime input edge-vs-level fixes |
 | `0e5b49868` | 2026-04-17 | Dialog/Notification rewrites (rounded card, text wrap, fade/slide), multiline TextInput, editable Spinner, Tooltip card + hide-delay, TabBar keyboard nav, Button/Slider/ProgressBar/FloatingPanel polish, ViperIDE settings/about overlays |
 | `35613e928` | 2026-04-18 | rtgen audit cleanup (`Music.SetLoop` IL surface + 4 internal helpers classified), font-handle metric-safety guard + lazy inheritance, Breadcrumb rounded-card rewrite, ViperIDE monitor-aware window bounds |
+| `c5b491911` | 2026-04-18 | Keyboard nav + accessibility pass (Toolbar / SplitPane / Dropdown), TreeView drag-drop, ListBox multi-select with Ctrl/Shift modifiers, TextInput redo + double-click word select, TabBar press-release coupling, paint-flag invalidation fix |
 
 <!-- END DRAFT -->

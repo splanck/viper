@@ -205,6 +205,8 @@ app.SetFont(font, 14);
 
 All widgets share these common functions:
 
+Focusable widgets now participate in standard desktop keyboard traversal: `Tab` moves to the next focusable widget and `Shift+Tab` moves to the previous one, respecting modal roots when a dialog or popup is active.
+
 | Method                        | Signature                | Description                              |
 |-------------------------------|--------------------------|------------------------------------------|
 | `AddChild(child)`             | `Void(Object)`           | Add a child widget                       |

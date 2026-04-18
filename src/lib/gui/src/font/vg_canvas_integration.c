@@ -12,6 +12,7 @@
 //===----------------------------------------------------------------------===//
 // vg_canvas_integration.c - Integration with vgfx canvas
 #include "../../include/vg_font.h"
+#include "../../../graphics/src/vgfx_internal.h"
 #include "vgfx.h"
 #include <stddef.h>
 #include <stdint.h>
@@ -44,19 +45,49 @@ void vg_canvas_draw_glyph(
 
     int canvas_w = fb.width;
     int canvas_h = fb.height;
+    const struct vgfx_window *internal = (const struct vgfx_window *)window;
+
+    int clip_x = 0;
+    int clip_y = 0;
+    int clip_w = canvas_w;
+    int clip_h = canvas_h;
+    if (internal && internal->clip_enabled) {
+        clip_x = internal->clip_x;
+        clip_y = internal->clip_y;
+        clip_w = internal->clip_w;
+        clip_h = internal->clip_h;
+    }
+
+    int start_x = x;
+    int start_y = y;
+    int end_x = x + width;
+    int end_y = y + height;
+
+    if (start_x < clip_x)
+        start_x = clip_x;
+    if (start_y < clip_y)
+        start_y = clip_y;
+    if (end_x > clip_x + clip_w)
+        end_x = clip_x + clip_w;
+    if (end_y > clip_y + clip_h)
+        end_y = clip_y + clip_h;
+    if (start_x < 0)
+        start_x = 0;
+    if (start_y < 0)
+        start_y = 0;
+    if (end_x > canvas_w)
+        end_x = canvas_w;
+    if (end_y > canvas_h)
+        end_y = canvas_h;
+    if (start_x >= end_x || start_y >= end_y)
+        return;
 
     // Draw each pixel with alpha blending
     // Use byte-level access matching vgfx's RGBA format
-    for (int py = 0; py < height; py++) {
-        int screen_y = y + py;
-        if (screen_y < 0 || screen_y >= canvas_h)
-            continue;
-
-        for (int px = 0; px < width; px++) {
-            int screen_x = x + px;
-            if (screen_x < 0 || screen_x >= canvas_w)
-                continue;
-
+    for (int screen_y = start_y; screen_y < end_y; screen_y++) {
+        int py = screen_y - y;
+        for (int screen_x = start_x; screen_x < end_x; screen_x++) {
+            int px = screen_x - x;
             uint8_t alpha = bitmap[py * width + px];
             if (alpha == 0)
                 continue;

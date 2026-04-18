@@ -201,16 +201,28 @@ static void floatingpanel_arrange(vg_widget_t *widget, float x, float y, float w
     float content_y = widget->layout.padding_top;
     float content_w = widget->width - widget->layout.padding_left - widget->layout.padding_right;
     float content_h = widget->height - widget->layout.padding_top - widget->layout.padding_bottom;
+    float cursor_y = content_y;
 
     VG_FOREACH_VISIBLE_CHILD(widget, child) {
+        float remaining_h = content_h - (cursor_y - content_y);
         float child_w = content_w - child->layout.margin_left - child->layout.margin_right;
-        float child_h = content_h - child->layout.margin_top - child->layout.margin_bottom;
-        vg_widget_measure(child, content_w, content_h);
+        vg_widget_measure(child, content_w, remaining_h > 0.0f ? remaining_h : content_h);
+        float child_h = child->measured_height;
+        if (child_h <= 0.0f)
+            child_h = remaining_h > 0.0f ? remaining_h : content_h;
+        child_h -= child->layout.margin_top + child->layout.margin_bottom;
+        if (child_h < 0.0f)
+            child_h = 0.0f;
+        if (remaining_h > 0.0f && child_h > remaining_h - child->layout.margin_top -
+                                          child->layout.margin_bottom) {
+            child_h = remaining_h - child->layout.margin_top - child->layout.margin_bottom;
+        }
         vg_widget_arrange(child,
                           content_x + child->layout.margin_left,
-                          content_y + child->layout.margin_top,
+                          cursor_y + child->layout.margin_top,
                           child_w > 0.0f ? child_w : child->measured_width,
                           child_h > 0.0f ? child_h : child->measured_height);
+        cursor_y += child->layout.margin_top + child->height + child->layout.margin_bottom;
     }
 }
 
@@ -267,9 +279,14 @@ static void floatingpanel_paint_overlay(vg_widget_t *widget, void *canvas) {
         vgfx_clear_clip(win);
     }
 
-    // Let nested overlays such as dropdown panels and tooltips escape the panel bounds.
-    VG_FOREACH_VISIBLE_CHILD(widget, child) {
-        floatingpanel_render_overlay_subtree(child, canvas, widget->x, widget->y);
+    // Nested overlays inherit the panel clip so large forms and scroll views stay contained.
+    if (pw > 0 && ph > 0) {
+        vgfx_set_clip(win, px, py, pw, ph);
+        VG_FOREACH_VISIBLE_CHILD(widget, child) {
+            floatingpanel_render_overlay_subtree(child, canvas, widget->x, widget->y);
+            vgfx_set_clip(win, px, py, pw, ph);
+        }
+        vgfx_clear_clip(win);
     }
 }
 

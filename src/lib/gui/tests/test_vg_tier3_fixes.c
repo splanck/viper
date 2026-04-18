@@ -452,11 +452,16 @@ TEST(textinput_multiline_mouse_wheel_scrolls_content) {
 typedef struct {
     vg_widget_t base;
     int click_count;
+    int double_click_count;
 } test_clickable_t;
 
 static bool test_clickable_handle(vg_widget_t *w, vg_event_t *ev) {
     if (ev->type == VG_EVENT_MOUSE_DOWN || ev->type == VG_EVENT_CLICK) {
         ((test_clickable_t *)w)->click_count++;
+        return true;
+    }
+    if (ev->type == VG_EVENT_DOUBLE_CLICK) {
+        ((test_clickable_t *)w)->double_click_count++;
         return true;
     }
     return false;
@@ -686,6 +691,176 @@ TEST(dialog_embedded_content_keeps_measured_height) {
     vg_widget_destroy(root);
 }
 
+TEST(event_dispatch_synthesizes_double_click_for_widget) {
+    vg_widget_runtime_state_t empty = {0};
+    vg_widget_set_runtime_state(&empty);
+
+    vg_widget_t *root = vg_widget_create(VG_WIDGET_CONTAINER);
+    ASSERT_NOT_NULL(root);
+    root->visible = true;
+    root->enabled = true;
+    root->width = 300.0f;
+    root->height = 200.0f;
+
+    test_clickable_t *clickable = calloc(1, sizeof(test_clickable_t));
+    ASSERT_NOT_NULL(clickable);
+    vg_widget_init(&clickable->base, VG_WIDGET_CUSTOM, &s_clickable_vtable);
+    clickable->base.x = 10.0f;
+    clickable->base.y = 10.0f;
+    clickable->base.width = 100.0f;
+    clickable->base.height = 40.0f;
+    clickable->base.visible = true;
+    clickable->base.enabled = true;
+    vg_widget_add_child(root, &clickable->base);
+
+    vg_event_t down1 = vg_event_mouse(VG_EVENT_MOUSE_DOWN, 20.0f, 20.0f, VG_MOUSE_LEFT, 0);
+    vg_event_t up1 = vg_event_mouse(VG_EVENT_MOUSE_UP, 20.0f, 20.0f, VG_MOUSE_LEFT, 0);
+    vg_event_t down2 = vg_event_mouse(VG_EVENT_MOUSE_DOWN, 21.0f, 19.0f, VG_MOUSE_LEFT, 0);
+    vg_event_t up2 = vg_event_mouse(VG_EVENT_MOUSE_UP, 21.0f, 19.0f, VG_MOUSE_LEFT, 0);
+
+    down1.timestamp = 100;
+    up1.timestamp = 120;
+    down2.timestamp = 300;
+    up2.timestamp = 320;
+
+    ASSERT_TRUE(vg_event_dispatch(root, &down1));
+    ASSERT_TRUE(vg_event_dispatch(root, &up1));
+    ASSERT_TRUE(vg_event_dispatch(root, &down2));
+    ASSERT_TRUE(vg_event_dispatch(root, &up2));
+    ASSERT_EQ(clickable->double_click_count, 1);
+
+    vg_widget_destroy(root);
+    vg_widget_set_runtime_state(&empty);
+}
+
+TEST(key_tab_dispatch_moves_focus_when_unhandled) {
+    vg_widget_runtime_state_t empty = {0};
+    vg_widget_set_runtime_state(&empty);
+
+    vg_widget_t *root = vg_widget_create(VG_WIDGET_CONTAINER);
+    ASSERT_NOT_NULL(root);
+    root->visible = true;
+    root->enabled = true;
+
+    vg_button_t *btn_a = vg_button_create(root, "A");
+    vg_button_t *btn_b = vg_button_create(root, "B");
+    ASSERT_NOT_NULL(btn_a);
+    ASSERT_NOT_NULL(btn_b);
+    vg_widget_set_tab_index(&btn_a->base, 0);
+    vg_widget_set_tab_index(&btn_b->base, 1);
+
+    vg_event_t tab = make_key_event(VG_KEY_TAB, 0);
+    ASSERT_TRUE(vg_event_dispatch(root, &tab));
+    ASSERT_EQ(vg_widget_get_focused(root), &btn_a->base);
+
+    ASSERT_TRUE(vg_event_dispatch(root, &tab));
+    ASSERT_EQ(vg_widget_get_focused(root), &btn_b->base);
+
+    vg_event_t shift_tab = make_key_event(VG_KEY_TAB, VG_MOD_SHIFT);
+    ASSERT_TRUE(vg_event_dispatch(root, &shift_tab));
+    ASSERT_EQ(vg_widget_get_focused(root), &btn_a->base);
+
+    vg_widget_destroy(root);
+    vg_widget_set_runtime_state(&empty);
+}
+
+TEST(contextmenu_show_for_widget_uses_screen_bounds_and_capture) {
+    vg_widget_t *root = vg_widget_create(VG_WIDGET_CONTAINER);
+    vg_widget_t *parent = vg_widget_create(VG_WIDGET_CONTAINER);
+    vg_widget_t *target = vg_widget_create(VG_WIDGET_LABEL);
+    vg_contextmenu_t *menu = vg_contextmenu_create();
+    ASSERT_NOT_NULL(root);
+    ASSERT_NOT_NULL(parent);
+    ASSERT_NOT_NULL(target);
+    ASSERT_NOT_NULL(menu);
+
+    root->visible = true;
+    root->enabled = true;
+    parent->visible = true;
+    parent->enabled = true;
+    target->visible = true;
+    target->enabled = true;
+    parent->x = 40.0f;
+    parent->y = 30.0f;
+    target->x = 25.0f;
+    target->y = 15.0f;
+    target->width = 80.0f;
+    target->height = 24.0f;
+    vg_widget_add_child(root, parent);
+    vg_widget_add_child(parent, target);
+
+    vg_contextmenu_add_item(menu, "One", NULL, NULL, NULL);
+    vg_contextmenu_show_for_widget(menu, target, 5, 7);
+    ASSERT_EQ((int)menu->base.x, 70);
+    ASSERT_EQ((int)menu->base.y, 76);
+    ASSERT_EQ(vg_widget_get_input_capture(), &menu->base);
+
+    vg_contextmenu_dismiss(menu);
+    ASSERT_NULL(vg_widget_get_input_capture());
+
+    vg_contextmenu_destroy(menu);
+    vg_widget_destroy(root);
+}
+
+TEST(commandpalette_keeps_selected_result_visible) {
+    vg_commandpalette_t *palette = vg_commandpalette_create();
+    ASSERT_NOT_NULL(palette);
+    palette->max_visible = 5;
+
+    for (int i = 0; i < 10; i++) {
+        char id[16];
+        char label[32];
+        snprintf(id, sizeof(id), "cmd.%d", i);
+        snprintf(label, sizeof(label), "Command %d", i);
+        ASSERT_NOT_NULL(vg_commandpalette_add_command(palette, id, label, NULL, NULL, NULL));
+    }
+
+    vg_commandpalette_show(palette);
+    for (int i = 0; i < 7; i++) {
+        vg_event_t down = make_key_event(VG_KEY_DOWN, 0);
+        ASSERT_TRUE(palette->base.vtable->handle_event(&palette->base, &down));
+    }
+
+    ASSERT_EQ(palette->selected_index, 7);
+    ASSERT_EQ(palette->first_visible_index, 3);
+
+    vg_commandpalette_destroy(palette);
+}
+
+TEST(filedialog_save_field_supports_cursor_editing_and_list_scroll) {
+    vg_filedialog_t *dialog = vg_filedialog_create(VG_FILEDIALOG_SAVE);
+    ASSERT_NOT_NULL(dialog);
+    dialog->base.is_open = true;
+    dialog->base.base.visible = true;
+    dialog->base.base.width = 600.0f;
+    dialog->base.base.height = 420.0f;
+    dialog->filename_active = true;
+
+    vg_filedialog_set_filename(dialog, "report");
+    ASSERT_EQ(dialog->filename_cursor_pos, (size_t)6);
+
+    vg_event_t left = make_key_event(VG_KEY_LEFT, 0);
+    ASSERT_TRUE(dialog->base.base.vtable->handle_event(&dialog->base.base, &left));
+    ASSERT_EQ(dialog->filename_cursor_pos, (size_t)5);
+
+    vg_event_t insert = make_char_event('X');
+    ASSERT_TRUE(dialog->base.base.vtable->handle_event(&dialog->base.base, &insert));
+    ASSERT_EQ(strcmp(dialog->default_filename, "reporXt"), 0);
+    ASSERT_EQ(dialog->filename_cursor_pos, (size_t)6);
+
+    dialog->entry_count = 30;
+    vg_event_t wheel = {0};
+    wheel.type = VG_EVENT_MOUSE_WHEEL;
+    wheel.wheel.delta_y = -1.0f;
+    wheel.mouse.screen_x = 220.0f;
+    wheel.mouse.screen_y = 120.0f;
+    ASSERT_TRUE(dialog->base.base.vtable->handle_event(&dialog->base.base, &wheel));
+    ASSERT(dialog->file_scroll_y > 0.0f);
+
+    dialog->entry_count = 0;
+    vg_widget_destroy(&dialog->base.base);
+}
+
 //=============================================================================
 // FEAT-006: Tab Order via tab_index
 //=============================================================================
@@ -856,11 +1031,16 @@ int main(void) {
     RUN(dialog_show_centered_uses_nested_screen_bounds);
     RUN(filedialog_save_confirm_uses_local_coords_and_default_extension);
     RUN(dialog_embedded_content_keeps_measured_height);
+    RUN(event_dispatch_synthesizes_double_click_for_widget);
+    RUN(contextmenu_show_for_widget_uses_screen_bounds_and_capture);
+    RUN(commandpalette_keeps_selected_result_visible);
+    RUN(filedialog_save_field_supports_cursor_editing_and_list_scroll);
 
     printf("\nFEAT-006: Tab Order\n");
     RUN(focus_next_respects_tab_index_order);
     RUN(focus_prev_reverses_tab_index_order);
     RUN(tab_index_defaults_to_minus_one);
+    RUN(key_tab_dispatch_moves_focus_when_unhandled);
 
     printf("\nFEAT-005: Button Icon\n");
     RUN(button_set_icon_stores_text);

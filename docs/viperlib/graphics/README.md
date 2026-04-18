@@ -1,13 +1,15 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-09
+last-verified: 2026-04-18
 ---
 
 # Graphics
 > 2D graphics, scene management, 3D runtime surfaces, and asset import workflows.
 
 **Part of [Viper Runtime Library](../README.md)**
+
+The current 2D runtime includes clip-correct text/image rendering inside GUI surfaces, full UTF-8 text-input event delivery from desktop backends, and desktop text clipboard support across the supported platforms.
 
 ---
 

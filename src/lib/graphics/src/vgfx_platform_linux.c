@@ -160,21 +160,61 @@ static int x11_modifiers(unsigned int state) {
     return mods;
 }
 
-static uint32_t utf8_first_codepoint(const char *bytes, int len) {
+static int utf8_decode_codepoint(const char *bytes, int len, uint32_t *out_codepoint) {
     const unsigned char *s = (const unsigned char *)bytes;
-    if (!s || len <= 0)
+    if (!s || len <= 0 || !out_codepoint)
         return 0;
-    if (s[0] < 0x80)
-        return s[0];
-    if (len >= 2 && (s[0] & 0xE0) == 0xC0)
-        return ((uint32_t)(s[0] & 0x1F) << 6) | (uint32_t)(s[1] & 0x3F);
-    if (len >= 3 && (s[0] & 0xF0) == 0xE0)
-        return ((uint32_t)(s[0] & 0x0F) << 12) | ((uint32_t)(s[1] & 0x3F) << 6) |
-               (uint32_t)(s[2] & 0x3F);
-    if (len >= 4 && (s[0] & 0xF8) == 0xF0)
-        return ((uint32_t)(s[0] & 0x07) << 18) | ((uint32_t)(s[1] & 0x3F) << 12) |
-               ((uint32_t)(s[2] & 0x3F) << 6) | (uint32_t)(s[3] & 0x3F);
-    return 0;
+
+    if (s[0] < 0x80) {
+        *out_codepoint = s[0];
+        return 1;
+    }
+    if (len >= 2 && (s[0] & 0xE0) == 0xC0 && (s[1] & 0xC0) == 0x80) {
+        *out_codepoint = ((uint32_t)(s[0] & 0x1F) << 6) | (uint32_t)(s[1] & 0x3F);
+        return 2;
+    }
+    if (len >= 3 && (s[0] & 0xF0) == 0xE0 && (s[1] & 0xC0) == 0x80 &&
+        (s[2] & 0xC0) == 0x80) {
+        *out_codepoint = ((uint32_t)(s[0] & 0x0F) << 12) |
+                         ((uint32_t)(s[1] & 0x3F) << 6) | (uint32_t)(s[2] & 0x3F);
+        return 3;
+    }
+    if (len >= 4 && (s[0] & 0xF8) == 0xF0 && (s[1] & 0xC0) == 0x80 &&
+        (s[2] & 0xC0) == 0x80 && (s[3] & 0xC0) == 0x80) {
+        *out_codepoint = ((uint32_t)(s[0] & 0x07) << 18) |
+                         ((uint32_t)(s[1] & 0x3F) << 12) |
+                         ((uint32_t)(s[2] & 0x3F) << 6) | (uint32_t)(s[3] & 0x3F);
+        return 4;
+    }
+
+    *out_codepoint = 0;
+    return 1;
+}
+
+static void x11_enqueue_text_input_events(struct vgfx_window *win,
+                                          int64_t timestamp,
+                                          int mods,
+                                          const char *text,
+                                          int text_len) {
+    int offset = 0;
+
+    if (!win || !text || text_len <= 0)
+        return;
+
+    while (offset < text_len) {
+        uint32_t codepoint = 0;
+        int consumed = utf8_decode_codepoint(text + offset, text_len - offset, &codepoint);
+        if (consumed <= 0)
+            break;
+        offset += consumed;
+
+        if (codepoint >= 0x20 && codepoint != 0x7F) {
+            vgfx_event_t text_event = {.type = VGFX_EVENT_TEXT_INPUT,
+                                       .time_ms = timestamp,
+                                       .data.text = {.codepoint = codepoint, .modifiers = mods}};
+            vgfx_internal_enqueue_event(win, &text_event);
+        }
+    }
 }
 
 static int32_t x11_logical_to_physical(const struct vgfx_window *win, int32_t logical) {
@@ -586,16 +626,27 @@ int vgfx_platform_process_events(struct vgfx_window *win) {
                 KeySym keysym = NoSymbol;
                 int mods = x11_modifiers(event.xkey.state);
                 char text_buf[16];
+                char *text_storage = text_buf;
                 int text_len = 0;
                 if (x11->xic) {
                     Status status = 0;
                     text_len = Xutf8LookupString(
-                        x11->xic, &event.xkey, text_buf, (int)sizeof(text_buf), &keysym, &status);
+                        x11->xic, &event.xkey, text_storage, (int)sizeof(text_buf), &keysym, &status);
+                    if (status == XBufferOverflow && text_len > 0) {
+                        text_storage = (char *)malloc((size_t)text_len + 1u);
+                        if (text_storage) {
+                            text_len = Xutf8LookupString(
+                                x11->xic, &event.xkey, text_storage, text_len, &keysym, &status);
+                        } else {
+                            text_storage = text_buf;
+                            text_len = 0;
+                        }
+                    }
                     if (status == XLookupNone)
                         text_len = 0;
                 } else {
-                    text_len =
-                        XLookupString(&event.xkey, text_buf, (int)sizeof(text_buf), &keysym, NULL);
+                    text_len = XLookupString(
+                        &event.xkey, text_storage, (int)sizeof(text_buf), &keysym, NULL);
                 }
                 if (keysym == NoSymbol)
                     keysym = XLookupKeysym(&event.xkey, 0);
@@ -611,14 +662,9 @@ int vgfx_platform_process_events(struct vgfx_window *win) {
                         .data.key = {.key = key, .is_repeat = is_repeat, .modifiers = mods}};
                     vgfx_internal_enqueue_event(win, &vgfx_event);
                 }
-                uint32_t codepoint = utf8_first_codepoint(text_buf, text_len);
-                if (codepoint >= 0x20 && codepoint != 0x7F) {
-                    vgfx_event_t text_event = {
-                        .type = VGFX_EVENT_TEXT_INPUT,
-                        .time_ms = timestamp,
-                        .data.text = {.codepoint = codepoint, .modifiers = mods}};
-                    vgfx_internal_enqueue_event(win, &text_event);
-                }
+                x11_enqueue_text_input_events(win, timestamp, mods, text_storage, text_len);
+                if (text_storage != text_buf)
+                    free(text_storage);
                 break;
             }
 
@@ -1405,19 +1451,69 @@ void vgfx_platform_set_window_size(struct vgfx_window *win, int32_t w, int32_t h
 // ============================================================================
 
 int vgfx_clipboard_has_format(vgfx_clipboard_format_t format) {
-    (void)format;
-    return 0;
+    char *text = NULL;
+    int has_text = 0;
+
+    if (format != VGFX_CLIPBOARD_TEXT)
+        return 0;
+
+    text = vgfx_clipboard_get_text();
+    has_text = text && text[0] != '\0';
+    free(text);
+    return has_text ? 1 : 0;
 }
 
 char *vgfx_clipboard_get_text(void) {
-    return NULL;
+    vgfx_x11_data *x11 = NULL;
+    char *buffer = NULL;
+    int len = 0;
+
+    if (!g_vgfx_cursor_window || !g_vgfx_cursor_window->platform_data)
+        return NULL;
+
+    x11 = (vgfx_x11_data *)g_vgfx_cursor_window->platform_data;
+    if (!x11 || !x11->display)
+        return NULL;
+
+    buffer = XFetchBuffer(x11->display, &len, 0);
+    if (!buffer || len <= 0) {
+        if (buffer)
+            XFree(buffer);
+        return NULL;
+    }
+
+    {
+        char *copy = (char *)malloc((size_t)len + 1u);
+        if (!copy) {
+            XFree(buffer);
+            return NULL;
+        }
+        memcpy(copy, buffer, (size_t)len);
+        copy[len] = '\0';
+        XFree(buffer);
+        return copy;
+    }
 }
 
 void vgfx_clipboard_set_text(const char *text) {
-    (void)text;
+    vgfx_x11_data *x11 = NULL;
+    size_t len = 0;
+
+    if (!g_vgfx_cursor_window || !g_vgfx_cursor_window->platform_data)
+        return;
+
+    x11 = (vgfx_x11_data *)g_vgfx_cursor_window->platform_data;
+    if (!x11 || !x11->display)
+        return;
+
+    len = text ? strlen(text) : 0u;
+    XStoreBuffer(x11->display, text ? text : "", (int)len, 0);
+    XFlush(x11->display);
 }
 
-void vgfx_clipboard_clear(void) {}
+void vgfx_clipboard_clear(void) {
+    vgfx_clipboard_set_text("");
+}
 
 void *vgfx_get_native_view(vgfx_window_t window) {
     if (!window)

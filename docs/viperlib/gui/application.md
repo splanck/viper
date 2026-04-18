@@ -166,6 +166,8 @@ item.SetTooltip("File encoding");
 
 Right-click context menu.
 
+Context menus now anchor in screen space for nested widgets, capture input while open, clamp to the host window, and reliably dismiss on outside click instead of letting clicks fall through to the underlying UI.
+
 **Constructor:** `NEW Viper.GUI.ContextMenu()`
 
 | Method                                | Signature                | Description                              |
@@ -199,7 +201,7 @@ if copyItem.WasClicked() == 1 { /* copy */ }
 
 Find and replace bar for text searching.
 
-`GetFindText()` and `GetReplaceText()` read the live text currently shown in the inputs, and `Replace()` now returns `0` when there is no active editor or no current match to replace.
+`GetFindText()` and `GetReplaceText()` read the live text currently shown in the inputs, `Replace()` returns `0` when there is no active editor or no current match to replace, and pointer input now routes through the standard widget event pipeline so focus, hover, and click behavior match the rest of the toolkit.
 
 **Constructor:** `NEW Viper.GUI.FindBar(parent)`
 
@@ -248,7 +250,7 @@ SayInt(findbar.GetMatchCount());
 
 Command palette for searchable command execution.
 
-The palette renders a full panel background, row highlight, and right-aligned shortcuts so the current selection is always visible.
+The palette renders a full panel background, row highlight, and right-aligned shortcuts. Keyboard navigation and mouse-wheel scrolling now maintain a visible selection window, so moving past the first page of results keeps the active command onscreen.
 
 **Constructor:** `NEW Viper.GUI.CommandPalette(parent)`
 
@@ -286,6 +288,8 @@ if palette.WasSelected() == 1 {
 ### Breadcrumb
 
 Breadcrumb navigation widget.
+
+When the path is truncated, the overflow affordance now opens a real dropdown menu that paints, tracks hover, captures input while open, and reports the selected breadcrumb normally.
 
 **Constructor:** `NEW Viper.GUI.Breadcrumb(parent)`
 
@@ -387,6 +391,7 @@ Native file dialog boxes (static methods).
 
 Save dialogs honor the default filename field, append the configured default extension when needed, and keep buttons/bookmarks/file-list hit-testing correct after the window is repositioned.
 Object-style dialogs snapshot their accepted path list on each `Show()`, so repeated `Show()` / `Destroy()` cycles and multi-select accessors stay valid.
+The in-app dialog implementation now scrolls long file and bookmark lists, keeps the selected row visible during keyboard navigation, clips long path text, and supports caret-aware editing in the save-name field (`Left` / `Right`, `Home`, `End`, `Backspace`, `Delete`).
 
 | Method                                          | Signature                        | Description                              |
 |-------------------------------------------------|----------------------------------|------------------------------------------|
@@ -516,6 +521,8 @@ Tooltip.Hide();
 ### Clipboard
 
 System clipboard access (static methods).
+
+Desktop backends now provide text clipboard support on Linux as well as macOS and Windows, so `TextInput`, `CodeEditor`, and other editor widgets can use the same copy/cut/paste path across platforms.
 
 | Method                              | Signature      | Description                    |
 |-------------------------------------|----------------|--------------------------------|

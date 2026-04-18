@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-09
+last-verified: 2026-04-18
 ---
 
 # ViperGFX Graphics Library
@@ -22,7 +22,8 @@ management, pixel operations, drawing primitives, and input handling through a s
 - **Pure software rendering** — No GPU dependencies
 - **Cross-platform** — macOS (Cocoa), Linux (X11), Windows (Win32)
 - **Simple API** — Immediate-mode drawing with direct framebuffer access
-- **Event handling** — Keyboard, mouse, and window events
+- **Event handling** — Keyboard, mouse, UTF-8 text input, and window events
+- **Clipboard support** — System text clipboard helpers on desktop backends
 - **FPS limiting** — Built-in frame rate control
 - **Test infrastructure** — Mock backend for deterministic unit testing
 
@@ -130,6 +131,7 @@ int32_t vgfx_close_requested(vgfx_window_t window);  // Non-zero if close was re
 int vgfx_update(vgfx_window_t window);  // Present + process events + FPS limit
 
 // Query window properties
+// Returns non-zero on success, 0 on failure.
 int vgfx_get_size(vgfx_window_t window, int32_t* out_width, int32_t* out_height);
 int vgfx_get_framebuffer(vgfx_window_t window, vgfx_framebuffer_t* out_fb);
 
@@ -207,6 +209,7 @@ typedef enum {
     VGFX_EVENT_NONE,
     VGFX_EVENT_KEY_DOWN,
     VGFX_EVENT_KEY_UP,
+    VGFX_EVENT_TEXT_INPUT,
     VGFX_EVENT_MOUSE_MOVE,
     VGFX_EVENT_MOUSE_DOWN,
     VGFX_EVENT_MOUSE_UP,
@@ -216,6 +219,19 @@ typedef enum {
     VGFX_EVENT_FOCUS_LOST
 } vgfx_event_type_t;
 ```
+
+`VGFX_EVENT_TEXT_INPUT` emits translated Unicode codepoints. On Linux/X11, committed text now queues every UTF-8 codepoint produced by the platform input method instead of truncating composed input to the first character.
+
+### Clipboard
+
+```c
+int vgfx_clipboard_has_format(vgfx_clipboard_format_t format);
+char *vgfx_clipboard_get_text(void);      // malloc'd UTF-8 string or NULL
+void vgfx_clipboard_set_text(const char *text);
+void vgfx_clipboard_clear(void);
+```
+
+The clipboard helpers operate on UTF-8 text and back the higher-level `Viper.GUI.Clipboard` runtime surface.
 
 ---
 
