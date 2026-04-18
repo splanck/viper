@@ -25,6 +25,8 @@ static void splitpane_measure(vg_widget_t *widget, float available_width, float 
 static void splitpane_arrange(vg_widget_t *widget, float x, float y, float width, float height);
 static void splitpane_paint(vg_widget_t *widget, void *canvas);
 static bool splitpane_handle_event(vg_widget_t *widget, vg_event_t *event);
+static bool splitpane_can_focus(vg_widget_t *widget);
+static bool splitpane_adjust_position_by_pixels(vg_splitpane_t *split, float delta_pixels);
 
 //=============================================================================
 // SplitPane VTable
@@ -35,7 +37,7 @@ static vg_widget_vtable_t g_splitpane_vtable = {.destroy = splitpane_destroy,
                                                 .arrange = splitpane_arrange,
                                                 .paint = splitpane_paint,
                                                 .handle_event = splitpane_handle_event,
-                                                .can_focus = NULL,
+                                                .can_focus = splitpane_can_focus,
                                                 .on_focus = NULL};
 
 //=============================================================================
@@ -58,7 +60,10 @@ vg_splitpane_t *vg_splitpane_create(vg_widget_t *parent, vg_split_direction_t di
     split->split_position = 0.5f; // 50% by default
     split->min_first_size = 50.0f;
     split->min_second_size = 50.0f;
-    split->splitter_size = 4.0f;
+    {
+        float scale = theme && theme->ui_scale > 0.0f ? theme->ui_scale : 1.0f;
+        split->splitter_size = 6.0f * scale;
+    }
 
     split->splitter_color = theme->colors.border_primary;
     split->splitter_hover_color = theme->colors.border_focus;
@@ -211,25 +216,10 @@ static void splitpane_arrange(vg_widget_t *widget, float x, float y, float width
             second_width = 0.0f;
 
         // Arrange first pane
-        if (first->vtable && first->vtable->arrange) {
-            first->vtable->arrange(first, 0, 0, first_width, height);
-        } else {
-            first->x = 0;
-            first->y = 0;
-            first->width = first_width;
-            first->height = height;
-        }
+        vg_widget_arrange(first, 0, 0, first_width, height);
 
         // Arrange second pane
-        if (second->vtable && second->vtable->arrange) {
-            second->vtable->arrange(
-                second, first_width + split->splitter_size, 0, second_width, height);
-        } else {
-            second->x = first_width + split->splitter_size;
-            second->y = 0;
-            second->width = second_width;
-            second->height = height;
-        }
+        vg_widget_arrange(second, first_width + split->splitter_size, 0, second_width, height);
     } else {
         // Top/Bottom split
         float available = height - split->splitter_size;
@@ -244,26 +234,41 @@ static void splitpane_arrange(vg_widget_t *widget, float x, float y, float width
             second_height = 0.0f;
 
         // Arrange first pane
-        if (first->vtable && first->vtable->arrange) {
-            first->vtable->arrange(first, 0, 0, width, first_height);
-        } else {
-            first->x = 0;
-            first->y = 0;
-            first->width = width;
-            first->height = first_height;
-        }
+        vg_widget_arrange(first, 0, 0, width, first_height);
 
         // Arrange second pane
-        if (second->vtable && second->vtable->arrange) {
-            second->vtable->arrange(
-                second, 0, first_height + split->splitter_size, width, second_height);
-        } else {
-            second->x = 0;
-            second->y = first_height + split->splitter_size;
-            second->width = width;
-            second->height = second_height;
-        }
+        vg_widget_arrange(second, 0, first_height + split->splitter_size, width, second_height);
     }
+}
+
+static bool splitpane_can_focus(vg_widget_t *widget) {
+    return widget && widget->enabled && widget->visible;
+}
+
+static bool splitpane_adjust_position_by_pixels(vg_splitpane_t *split, float delta_pixels) {
+    if (!split)
+        return false;
+
+    float available = (split->direction == VG_SPLIT_HORIZONTAL ? split->base.width : split->base.height) -
+                      split->splitter_size;
+    if (available <= 0.0f)
+        return false;
+
+    float first_size = available * split->split_position + delta_pixels;
+    float resolved =
+        resolve_first_size(available, first_size, split->min_first_size, split->min_second_size);
+    float new_position = available > 0.0f ? resolved / available : split->split_position;
+    if (new_position < 0.0f)
+        new_position = 0.0f;
+    if (new_position > 1.0f)
+        new_position = 1.0f;
+    if (new_position == split->split_position)
+        return false;
+
+    split->split_position = new_position;
+    split->base.needs_layout = true;
+    split->base.needs_paint = true;
+    return true;
 }
 
 static void splitpane_paint(vg_widget_t *widget, void *canvas) {
@@ -430,6 +435,32 @@ static bool splitpane_handle_event(vg_widget_t *widget, vg_event_t *event) {
                 return true;
             }
             return false;
+
+        case VG_EVENT_KEY_DOWN: {
+            float step = 16.0f * ((vg_theme_get_current()->ui_scale > 0.0f)
+                                      ? vg_theme_get_current()->ui_scale
+                                      : 1.0f);
+            if (event->key.key == VG_KEY_HOME) {
+                vg_splitpane_set_position(split, 0.0f);
+                return true;
+            }
+            if (event->key.key == VG_KEY_END) {
+                vg_splitpane_set_position(split, 1.0f);
+                return true;
+            }
+            if (split->direction == VG_SPLIT_HORIZONTAL) {
+                if (event->key.key == VG_KEY_LEFT)
+                    return splitpane_adjust_position_by_pixels(split, -step);
+                if (event->key.key == VG_KEY_RIGHT)
+                    return splitpane_adjust_position_by_pixels(split, step);
+            } else {
+                if (event->key.key == VG_KEY_UP)
+                    return splitpane_adjust_position_by_pixels(split, -step);
+                if (event->key.key == VG_KEY_DOWN)
+                    return splitpane_adjust_position_by_pixels(split, step);
+            }
+            break;
+        }
 
         default:
             break;

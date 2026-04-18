@@ -131,6 +131,18 @@ static void rt_gui_tick_widget_tree(vg_widget_t *widget, float dt) {
     }
 }
 
+static bool rt_gui_widget_tree_needs_layout(const vg_widget_t *widget) {
+    if (!widget || !widget->visible)
+        return false;
+    if (widget->needs_layout)
+        return true;
+    for (const vg_widget_t *child = widget->first_child; child; child = child->next_sibling) {
+        if (rt_gui_widget_tree_needs_layout(child))
+            return true;
+    }
+    return false;
+}
+
 /// @brief Apply a HiDPI scale factor to all size-sensitive theme fields.
 /// @details Multiplies typography sizes, spacing constants, button/input
 ///          heights, padding, and scrollbar width by the given scale. This
@@ -156,9 +168,15 @@ static void rt_gui_scale_theme(vg_theme_t *theme, float scale) {
     theme->spacing.xl *= scale;
     theme->button.height *= scale;
     theme->button.padding_h *= scale;
+    theme->button.border_radius *= scale;
+    theme->button.border_width *= scale;
     theme->input.height *= scale;
     theme->input.padding_h *= scale;
+    theme->input.border_radius *= scale;
+    theme->input.border_width *= scale;
     theme->scrollbar.width *= scale;
+    theme->scrollbar.min_thumb_size *= scale;
+    theme->scrollbar.border_radius *= scale;
 }
 
 /// @brief Rebuild and activate the app's scaled theme if the base or scale changed.
@@ -1359,10 +1377,13 @@ void rt_gui_app_render(void *app_ptr) {
     }
     app->last_render_time_ms = now_ms;
 
-    // Perform layout using the GUI library's proper layout system.
-    // This handles VBox/HBox flex, padding, spacing, and widget constraints.
     if (app->root) {
-        vg_widget_layout(app->root, (float)win_w, (float)win_h);
+        bool size_changed = app->last_layout_width != win_w || app->last_layout_height != win_h;
+        if (size_changed || rt_gui_widget_tree_needs_layout(app->root)) {
+            vg_widget_layout(app->root, (float)win_w, (float)win_h);
+            app->last_layout_width = win_w;
+            app->last_layout_height = win_h;
+        }
         rt_gui_tick_widget_tree(app->root, dt);
     }
 

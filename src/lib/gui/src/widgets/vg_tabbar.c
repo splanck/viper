@@ -617,17 +617,9 @@ static bool tabbar_handle_event(vg_widget_t *widget, vg_event_t *event) {
             if (clicked) {
                 // Check if clicking close button
                 if (tab_close_button_hit(tabbar, clicked, local_x, event->mouse.y)) {
-                    // Record close-clicked tab for runtime polling before any mutation.
-                    tabbar->close_clicked_index = vg_tabbar_get_tab_index(tabbar, clicked);
-
-                    // Close tab
-                    bool allow_close = true;
-                    if (tabbar->on_close) {
-                        allow_close = tabbar->on_close(widget, clicked, tabbar->on_close_data);
-                    }
-                    if (allow_close && tabbar->auto_close) {
-                        vg_tabbar_remove_tab(tabbar, clicked);
-                    }
+                    tabbar->pressed_close_tab = clicked;
+                    tabbar->pressed_tab = NULL;
+                    vg_widget_set_input_capture(widget);
                     return true;
                 }
 
@@ -637,22 +629,51 @@ static bool tabbar_handle_event(vg_widget_t *widget, vg_event_t *event) {
                 tabbar->drag_tab = clicked;
                 tabbar->drag_origin_x = local_x;
                 tabbar->drag_x = local_x;
+                tabbar->pressed_tab = clicked;
+                tabbar->pressed_close_tab = NULL;
                 vg_widget_set_input_capture(widget);
-
-                // Activate tab
-                vg_tabbar_set_active(tabbar, clicked);
+                widget->needs_paint = true;
                 return true;
             }
             return false;
         }
 
-        case VG_EVENT_MOUSE_UP:
+        case VG_EVENT_MOUSE_UP: {
+            float local_x = event->mouse.x;
+            vg_tab_t *released = find_tab_at_x(tabbar, local_x);
+            if (tabbar->pressed_close_tab) {
+                vg_tab_t *close_tab = tabbar->pressed_close_tab;
+                bool close_hit = released == close_tab &&
+                                 tab_close_button_hit(tabbar, close_tab, local_x, event->mouse.y);
+                tabbar->pressed_close_tab = NULL;
+                tabbar->dragging = false;
+                tabbar->drag_pending = false;
+                tabbar->drag_tab = NULL;
+                if (vg_widget_get_input_capture() == widget)
+                    vg_widget_release_input_capture();
+                if (!close_hit)
+                    return false;
+
+                tabbar->close_clicked_index = vg_tabbar_get_tab_index(tabbar, close_tab);
+                bool allow_close = true;
+                if (tabbar->on_close)
+                    allow_close = tabbar->on_close(widget, close_tab, tabbar->on_close_data);
+                if (allow_close && tabbar->auto_close)
+                    vg_tabbar_remove_tab(tabbar, close_tab);
+                return true;
+            }
+
+            if (tabbar->pressed_tab && released == tabbar->pressed_tab) {
+                vg_tabbar_set_active(tabbar, tabbar->pressed_tab);
+            }
+            tabbar->pressed_tab = NULL;
             tabbar->dragging = false;
             tabbar->drag_pending = false;
             tabbar->drag_tab = NULL;
             if (vg_widget_get_input_capture() == widget)
                 vg_widget_release_input_capture();
-            return false;
+            return released != NULL;
+        }
 
         case VG_EVENT_MOUSE_WHEEL:
             // Horizontal scroll with mouse wheel
@@ -825,6 +846,10 @@ void vg_tabbar_remove_tab(vg_tabbar_t *tabbar, vg_tab_t *tab) {
         if (vg_widget_get_input_capture() == &tabbar->base)
             vg_widget_release_input_capture();
     }
+    if (tabbar->pressed_tab == tab)
+        tabbar->pressed_tab = NULL;
+    if (tabbar->pressed_close_tab == tab)
+        tabbar->pressed_close_tab = NULL;
 
     // Remove from list
     if (tab->prev) {

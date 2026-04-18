@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-17
+last-verified: 2026-04-18
 ---
 
 # Basic Widgets
@@ -79,7 +79,7 @@ Single-line or multiline text input field.
 
 Long single-line values stay clipped to the field bounds, the caret auto-scrolls horizontally as the cursor moves, and the caret blink is advanced automatically while the field is focused.
 When the widget is configured for multiline mode it now paints real per-line text, selection, and caret state, supports `Enter` for newline insertion, `Up` / `Down` for line navigation, line-local `Home` / `End`, drag selection, and mouse-wheel vertical scrolling.
-`Ctrl+Left` / `Ctrl+Right` now stop on punctuation and whitespace boundaries instead of treating only ASCII spaces as word breaks.
+`Ctrl+Left` / `Ctrl+Right` now stop on punctuation and whitespace boundaries instead of treating only ASCII spaces as word breaks. `Ctrl/Cmd+Shift+Z` redoes the last undone edit, `Shift+Click` extends the current selection, and double-click selects the word under the pointer.
 
 **Constructor:** `NEW Viper.GUI.TextInput(parent)`
 
@@ -89,7 +89,7 @@ When the widget is configured for multiline mode it now paints real per-line tex
 
 | Method                       | Signature          | Description              |
 |------------------------------|--------------------|--------------------------|
-| `SetText(text)`              | `Void(String)`     | Set input text without firing the user-edit change callback |
+| `SetText(text)`              | `Void(String)`     | Replace the text, reset the undo/redo baseline, and fire the change callback when the content actually changes |
 | `SetPlaceholder(text)`       | `Void(String)`     | Set placeholder text     |
 | `SetFont(font, size)`        | `Void(Font, Double)`| Set font and size       |
 
@@ -304,7 +304,7 @@ progress.SetValue(0.75);  // 75%
 
 Dropdown selection list.
 
-Item additions, removals, selection changes, and font changes invalidate the widget immediately. Popup hit-testing is screen-correct even when the control is nested or repositioned, long headers clip cleanly, and the popup panel tracks fractional scroll instead of stepping a whole row at a time.
+Item additions, removals, selection changes, and font changes invalidate the widget immediately. The closed control and popup width now size to the widest visible item instead of using a fixed narrow default. Popup hit-testing is screen-correct even when the control is nested or repositioned, long headers clip cleanly, and the popup panel tracks fractional scroll instead of stepping a whole row at a time. Keyboard typeahead selects matching items while closed and moves the hovered row while open; `PageUp` / `PageDown` navigate long menus.
 
 **Constructor:** `NEW Viper.GUI.Dropdown(parent)`
 
@@ -352,7 +352,7 @@ END IF
 
 Scrollable list of selectable items with enhanced item management.
 
-Hit-testing uses widget-local coordinates, so nested list boxes select the correct row. Measured height also follows the actual item count for short lists instead of reserving five rows unconditionally.
+Hit-testing uses widget-local coordinates, so nested list boxes select the correct row. Measured height also follows the actual item count for short lists instead of reserving five rows unconditionally. In multi-select mode, `Ctrl/Cmd+Click` toggles rows, `Shift+Click` extends the active range, and keyboard navigation with `Shift` extends the current selection.
 Item text is clipped to the viewport and item add/remove/clear/select operations invalidate the list immediately so the visual state updates on the same frame.
 
 **Constructor:** `NEW Viper.GUI.ListBox(parent)`

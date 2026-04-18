@@ -32,6 +32,10 @@ static void dropdown_scroll_to_index(vg_dropdown_t *dd, int index);
 static void dropdown_open(vg_widget_t *widget, vg_dropdown_t *dd, int preferred_hover);
 static void dropdown_close(vg_widget_t *widget, vg_dropdown_t *dd);
 static float dropdown_item_height(vg_dropdown_t *dd);
+static float dropdown_measure_text_width(vg_dropdown_t *dd, const char *text);
+static float dropdown_preferred_width(vg_dropdown_t *dd);
+static float dropdown_panel_width(vg_dropdown_t *dd, float trigger_width);
+static int dropdown_find_typeahead_index(vg_dropdown_t *dd, uint32_t codepoint, int start_index);
 
 static float dropdown_scrollbar_thumb_size(float track_size, float content_size, float viewport_size);
 static float dropdown_scrollbar_thumb_offset(float scroll_pos,
@@ -67,10 +71,14 @@ static void dropdown_destroy(vg_widget_t *widget) {
 }
 
 static void dropdown_measure(vg_widget_t *widget, float avail_w, float avail_h) {
-    (void)avail_w;
     (void)avail_h;
 
-    widget->measured_width = 140.0f;
+    float width = dropdown_preferred_width((vg_dropdown_t *)widget);
+    if (avail_w > 0.0f && width > avail_w)
+        width = avail_w;
+    if (width < 120.0f)
+        width = 120.0f;
+    widget->measured_width = width;
     widget->measured_height = dropdown_item_height((vg_dropdown_t *)widget);
 }
 
@@ -98,6 +106,61 @@ static float dropdown_text_baseline(vg_dropdown_t *dd, float row_y, float row_h)
     vg_font_metrics_t metrics = {0};
     vg_font_get_metrics(dd->font, dd->font_size, &metrics);
     return row_y + (row_h + (float)metrics.ascent + (float)metrics.descent) / 2.0f;
+}
+
+static float dropdown_measure_text_width(vg_dropdown_t *dd, const char *text) {
+    if (!dd || !text || !text[0])
+        return 0.0f;
+    if (!dd->font)
+        return (float)strlen(text) * (dd->font_size > 0.0f ? dd->font_size * 0.6f : 8.0f);
+
+    vg_text_metrics_t metrics = {0};
+    vg_font_measure_text(dd->font, dd->font_size, text, &metrics);
+    return metrics.width;
+}
+
+static float dropdown_preferred_width(vg_dropdown_t *dd) {
+    vg_theme_t *theme = vg_theme_get_current();
+    float text_width = dropdown_measure_text_width(dd, dd ? dd->placeholder : NULL);
+    if (dd) {
+        for (int i = 0; i < dd->item_count; i++) {
+            float item_width = dropdown_measure_text_width(dd, dd->items[i]);
+            if (item_width > text_width)
+                text_width = item_width;
+        }
+    }
+    float padding = theme ? theme->input.padding_h : 10.0f;
+    float gutter = (dd ? dd->arrow_size : 10.0f) + 24.0f;
+    return text_width + padding * 2.0f + gutter;
+}
+
+static float dropdown_panel_width(vg_dropdown_t *dd, float trigger_width) {
+    float panel_width = dropdown_preferred_width(dd);
+    if (panel_width < trigger_width)
+        panel_width = trigger_width;
+    return panel_width;
+}
+
+static int dropdown_find_typeahead_index(vg_dropdown_t *dd, uint32_t codepoint, int start_index) {
+    if (!dd || dd->item_count <= 0)
+        return -1;
+
+    unsigned char needle = (unsigned char)codepoint;
+    if (needle >= 'A' && needle <= 'Z')
+        needle = (unsigned char)(needle - 'A' + 'a');
+
+    for (int offset = 0; offset < dd->item_count; offset++) {
+        int index = (start_index + offset) % dd->item_count;
+        const char *item = dd->items[index];
+        if (!item || !item[0])
+            continue;
+        unsigned char first = (unsigned char)item[0];
+        if (first >= 'A' && first <= 'Z')
+            first = (unsigned char)(first - 'A' + 'a');
+        if (first == needle)
+            return index;
+    }
+    return -1;
 }
 
 static void dropdown_get_viewport_bounds(vg_dropdown_t *dd,
@@ -159,7 +222,7 @@ static bool dropdown_panel_hit(vg_dropdown_t *dd, float screen_x, float screen_y
     dropdown_resolve_panel_rect(dd, sx, sy, &panel_top, &panel_h);
 
     float panel_left = sx;
-    float panel_right = panel_left + dd->base.width;
+    float panel_right = panel_left + dropdown_panel_width(dd, dd->base.width);
     float panel_bottom = panel_top + panel_h;
     if (screen_x < panel_left || screen_x >= panel_right || screen_y < panel_top ||
         screen_y >= panel_bottom) {
@@ -375,7 +438,7 @@ static void dropdown_paint_overlay(vg_widget_t *widget, void *canvas) {
 
     int32_t px = (int32_t)sx;
     int32_t py = (int32_t)panel_top_abs;
-    int32_t pw = (int32_t)sw;
+    int32_t pw = (int32_t)dropdown_panel_width(dd, sw);
     int32_t ph = (int32_t)panel_h;
     int32_t scroll_track_w = 6;
     int32_t content_right_pad = 8;
@@ -553,6 +616,28 @@ static bool dropdown_handle_event(vg_widget_t *widget, vg_event_t *event) {
                 widget->needs_paint = true;
                 return true;
             }
+            if (event->key.key == VG_KEY_PAGE_DOWN) {
+                int page = (int)(dd->dropdown_height / dropdown_item_height(dd));
+                if (page < 1)
+                    page = 1;
+                dd->hovered_index += page;
+                if (dd->hovered_index >= dd->item_count)
+                    dd->hovered_index = dd->item_count - 1;
+                dropdown_scroll_to_index(dd, dd->hovered_index);
+                widget->needs_paint = true;
+                return true;
+            }
+            if (event->key.key == VG_KEY_PAGE_UP) {
+                int page = (int)(dd->dropdown_height / dropdown_item_height(dd));
+                if (page < 1)
+                    page = 1;
+                dd->hovered_index -= page;
+                if (dd->hovered_index < 0)
+                    dd->hovered_index = 0;
+                dropdown_scroll_to_index(dd, dd->hovered_index);
+                widget->needs_paint = true;
+                return true;
+            }
             if (event->key.key == VG_KEY_ENTER) {
                 if (dd->hovered_index >= 0 && dd->hovered_index < dd->item_count)
                     vg_dropdown_set_selected(dd, dd->hovered_index);
@@ -561,6 +646,24 @@ static bool dropdown_handle_event(vg_widget_t *widget, vg_event_t *event) {
                 return true;
             }
             return false;
+
+        case VG_EVENT_KEY_CHAR: {
+            int start = dd->open && dd->hovered_index >= 0 ? dd->hovered_index + 1
+                                                           : dd->selected_index + 1;
+            if (start < 0)
+                start = 0;
+            int found = dropdown_find_typeahead_index(dd, event->key.codepoint, start);
+            if (found < 0)
+                return false;
+            if (dd->open) {
+                dd->hovered_index = found;
+                dropdown_scroll_to_index(dd, dd->hovered_index);
+            } else {
+                vg_dropdown_set_selected(dd, found);
+            }
+            widget->needs_paint = true;
+            return true;
+        }
 
         default:
             return false;

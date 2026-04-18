@@ -319,15 +319,57 @@ TEST(textinput_new_edit_clears_redo) {
     vg_widget_destroy(w);
 }
 
-TEST(textinput_set_text_is_silent) {
+TEST(textinput_set_text_notifies_and_resets_undo_baseline) {
     int change_count = 0;
     vg_textinput_t *ti = vg_textinput_create(NULL);
     ASSERT_NOT_NULL(ti);
 
     vg_textinput_set_on_change(ti, count_text_changes, &change_count);
     vg_textinput_set_text(ti, "programmatic");
-    ASSERT_EQ(change_count, 0);
+    ASSERT_EQ(change_count, 1);
     ASSERT_EQ(strcmp(vg_textinput_get_text(ti), "programmatic"), 0);
+
+    vg_event_t undo = make_key_event(VG_KEY_Z, VG_MOD_CTRL);
+    ti->base.vtable->handle_event(&ti->base, &undo);
+    ASSERT_EQ(strcmp(vg_textinput_get_text(ti), "programmatic"), 0);
+
+    vg_widget_destroy(&ti->base);
+}
+
+TEST(textinput_ctrl_shift_z_redoes_last_undo) {
+    vg_textinput_t *ti = vg_textinput_create(NULL);
+    ASSERT_NOT_NULL(ti);
+
+    vg_widget_t *w = &ti->base;
+    w->vtable->handle_event(w, &(vg_event_t){.type = VG_EVENT_KEY_CHAR, .key.codepoint = 'a'});
+    w->vtable->handle_event(w, &(vg_event_t){.type = VG_EVENT_KEY_CHAR, .key.codepoint = 'b'});
+
+    vg_event_t undo = make_key_event(VG_KEY_Z, VG_MOD_CTRL);
+    w->vtable->handle_event(w, &undo);
+    ASSERT_EQ(0, strcmp(ti->text, "a"));
+
+    vg_event_t redo = make_key_event(VG_KEY_Z, VG_MOD_CTRL | VG_MOD_SHIFT);
+    w->vtable->handle_event(w, &redo);
+    ASSERT_EQ(0, strcmp(ti->text, "ab"));
+
+    vg_widget_destroy(&ti->base);
+}
+
+TEST(textinput_double_click_selects_word) {
+    vg_textinput_t *ti = vg_textinput_create(NULL);
+    ASSERT_NOT_NULL(ti);
+    ti->base.width = 240.0f;
+    ti->base.height = 32.0f;
+    vg_textinput_set_text(ti, "hello world");
+    vg_textinput_set_cursor(ti, 0);
+
+    vg_event_t dbl = vg_event_mouse(VG_EVENT_DOUBLE_CLICK, 20.0f, 12.0f, VG_MOUSE_LEFT, 0);
+    ASSERT_TRUE(ti->base.vtable->handle_event(&ti->base, &dbl));
+
+    char *selection = vg_textinput_get_selection(ti);
+    ASSERT_NOT_NULL(selection);
+    ASSERT_EQ(strcmp(selection, "hello"), 0);
+    free(selection);
 
     vg_widget_destroy(&ti->base);
 }
@@ -801,7 +843,9 @@ int main(void) {
     RUN(textinput_undo_at_beginning_is_noop);
     RUN(textinput_redo_reapplies_undone_edit);
     RUN(textinput_new_edit_clears_redo);
-    RUN(textinput_set_text_is_silent);
+    RUN(textinput_set_text_notifies_and_resets_undo_baseline);
+    RUN(textinput_ctrl_shift_z_redoes_last_undo);
+    RUN(textinput_double_click_selects_word);
     RUN(textinput_multiline_enter_and_vertical_navigation);
     RUN(textinput_multiline_shift_navigation_selects_across_lines);
     RUN(textinput_multiline_mouse_wheel_scrolls_content);

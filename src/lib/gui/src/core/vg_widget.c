@@ -41,6 +41,15 @@ static bool widget_paints_children_internally(const vg_widget_t *widget) {
     return widget->type == VG_WIDGET_CUSTOM && widget->vtable && widget->vtable->paint_overlay;
 }
 
+static void clear_paint_flag_recursive(vg_widget_t *root) {
+    if (!root)
+        return;
+    root->needs_paint = false;
+    VG_FOREACH_CHILD(root, child) {
+        clear_paint_flag_recursive(child);
+    }
+}
+
 static void paint_widget_normal_tree(vg_widget_t *root, void *canvas) {
     if (!root || !root->visible || !canvas)
         return;
@@ -89,15 +98,39 @@ static void default_destroy(vg_widget_t *self) {
 }
 
 static void default_measure(vg_widget_t *self, float available_width, float available_height) {
-    // Default: use preferred size or measure children
-    float w = self->constraints.preferred_width;
-    float h = self->constraints.preferred_height;
+    (void)available_width;
+    (void)available_height;
 
-    // If no preferred size, measure children
-    if (w == 0)
+    float padding_w = self->layout.padding_left + self->layout.padding_right;
+    float padding_h = self->layout.padding_top + self->layout.padding_bottom;
+    float content_w = 0.0f;
+    float content_h = 0.0f;
+
+    VG_FOREACH_VISIBLE_CHILD(self, child) {
+        float child_w =
+            child->measured_width + child->layout.margin_left + child->layout.margin_right;
+        float child_h =
+            child->measured_height + child->layout.margin_top + child->layout.margin_bottom;
+        if (child_w > content_w)
+            content_w = child_w;
+        content_h += child_h;
+    }
+
+    float w = self->constraints.preferred_width > 0.0f
+                  ? self->constraints.preferred_width
+                  : (content_w > 0.0f ? content_w + padding_w : self->constraints.min_width);
+    float h = self->constraints.preferred_height > 0.0f
+                  ? self->constraints.preferred_height
+                  : (content_h > 0.0f ? content_h + padding_h : self->constraints.min_height);
+
+    if (w < self->constraints.min_width)
         w = self->constraints.min_width;
-    if (h == 0)
+    if (h < self->constraints.min_height)
         h = self->constraints.min_height;
+    if (self->constraints.max_width > 0.0f && w > self->constraints.max_width)
+        w = self->constraints.max_width;
+    if (self->constraints.max_height > 0.0f && h > self->constraints.max_height)
+        h = self->constraints.max_height;
 
     self->measured_width = w;
     self->measured_height = h;
@@ -123,23 +156,25 @@ static void default_arrange(vg_widget_t *self, float x, float y, float width, fl
     self->width = width;
     self->height = height;
 
-    // Position children within content area (simple stacking for plain containers).
-    // Layout containers (VBox, HBox, SplitPane) override arrange and handle
-    // children themselves, so this only runs for default containers.
-    // Children are stretched to fill the content area (like CSS stretch).
+    // Position children within content area using a simple vertical flow.
+    // Specialized layout widgets override arrange and handle their own child
+    // placement; this default path is only for plain containers.
     float cx = self->layout.padding_left;
     float cy = self->layout.padding_top;
     float content_w = width - self->layout.padding_left - self->layout.padding_right;
-    float content_h = height - self->layout.padding_top - self->layout.padding_bottom;
+    if (content_w < 0.0f)
+        content_w = 0.0f;
 
     VG_FOREACH_VISIBLE_CHILD(self, child) {
         float cw = content_w - child->layout.margin_left - child->layout.margin_right;
-        float ch = content_h - child->layout.margin_top - child->layout.margin_bottom;
-        vg_widget_arrange(child,
-                          cx + child->layout.margin_left,
-                          cy + child->layout.margin_top,
-                          cw > 0 ? cw : child->measured_width,
-                          ch > 0 ? ch : child->measured_height);
+        float ch = child->measured_height;
+        if (cw < 0.0f)
+            cw = child->measured_width;
+        if (ch < 0.0f)
+            ch = 0.0f;
+        vg_widget_arrange(
+            child, cx + child->layout.margin_left, cy + child->layout.margin_top, cw, ch);
+        cy += child->layout.margin_top + ch + child->layout.margin_bottom;
     }
 }
 
@@ -205,6 +240,8 @@ static void clear_interactive_state_recursive(vg_widget_t *widget) {
             tabbar->close_button_hovered = false;
             tabbar->dragging = false;
             tabbar->drag_tab = NULL;
+            tabbar->pressed_tab = NULL;
+            tabbar->pressed_close_tab = NULL;
             break;
         }
         case VG_WIDGET_SPLITPANE: {
@@ -881,7 +918,7 @@ void vg_widget_paint(vg_widget_t *root, void *canvas) {
     paint_widget_normal_tree(root, canvas);
     paint_widget_overlay_tree(root, canvas);
 
-    root->needs_paint = false;
+    clear_paint_flag_recursive(root);
 }
 
 /// @brief Widget invalidate.

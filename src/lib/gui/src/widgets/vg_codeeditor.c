@@ -157,6 +157,78 @@ static void highlight_line(vg_codeeditor_t *editor, size_t line_idx) {
         (vg_widget_t *)editor, (int)line_idx, line->text, line->colors, editor->syntax_data);
 }
 
+static void codeeditor_draw_text_slice(void *canvas,
+                                       vg_font_t *font,
+                                       float font_size,
+                                       float x,
+                                       float y,
+                                       const char *text,
+                                       size_t start,
+                                       size_t len,
+                                       uint32_t color) {
+    if (!font || !text || len == 0)
+        return;
+
+    char stack_buf[256];
+    char *buf = stack_buf;
+    size_t copy_len = len;
+    if (copy_len >= sizeof(stack_buf)) {
+        buf = (char *)malloc(copy_len + 1);
+        if (!buf)
+            return;
+    }
+    memcpy(buf, text + start, copy_len);
+    buf[copy_len] = '\0';
+    vg_font_draw_text(canvas, font, font_size, x, y, buf, color);
+    if (buf != stack_buf)
+        free(buf);
+}
+
+static void codeeditor_draw_colored_slice(void *canvas,
+                                          vg_font_t *font,
+                                          float font_size,
+                                          float origin_x,
+                                          float y,
+                                          const char *text,
+                                          const uint32_t *colors,
+                                          size_t colors_capacity,
+                                          size_t start,
+                                          size_t len,
+                                          float char_width,
+                                          uint32_t fallback_color) {
+    if (!text || !colors || len == 0)
+        return;
+
+    size_t run_start = start;
+    uint32_t run_color = run_start < colors_capacity ? colors[run_start] : fallback_color;
+    size_t end = start + len;
+    for (size_t i = start + 1; i < end; i++) {
+        uint32_t color = i < colors_capacity ? colors[i] : fallback_color;
+        if (color == run_color)
+            continue;
+        codeeditor_draw_text_slice(canvas,
+                                   font,
+                                   font_size,
+                                   origin_x + (float)(run_start - start) * char_width,
+                                   y,
+                                   text,
+                                   run_start,
+                                   i - run_start,
+                                   run_color);
+        run_start = i;
+        run_color = color;
+    }
+    codeeditor_draw_text_slice(canvas,
+                               font,
+                               font_size,
+                               origin_x + (float)(run_start - start) * char_width,
+                               y,
+                               text,
+                               run_start,
+                               end - run_start,
+                               run_color);
+}
+
 static float codeeditor_auto_line_number_gutter_width(const vg_codeeditor_t *editor) {
     if (!editor || !editor->show_line_numbers)
         return 0.0f;
@@ -1571,19 +1643,18 @@ static void codeeditor_paint(vg_widget_t *widget, void *canvas) {
                 highlight_line(editor, i);
                 float text_x = content_x - editor->scroll_x;
                 if (editor->lines[i].colors) {
-                    for (size_t c = 0; c < editor->lines[i].length; c++) {
-                        uint32_t col = (c < editor->lines[i].colors_capacity)
-                                           ? editor->lines[i].colors[c]
-                                           : editor->text_color;
-                        char ch[2] = {editor->lines[i].text[c], '\0'};
-                        vg_font_draw_text(canvas,
-                                          editor->font,
-                                          editor->font_size,
-                                          text_x + c * editor->char_width,
-                                          text_y,
-                                          ch,
-                                          col);
-                    }
+                    codeeditor_draw_colored_slice(canvas,
+                                                  editor->font,
+                                                  editor->font_size,
+                                                  text_x,
+                                                  text_y,
+                                                  editor->lines[i].text,
+                                                  editor->lines[i].colors,
+                                                  editor->lines[i].colors_capacity,
+                                                  0,
+                                                  editor->lines[i].length,
+                                                  editor->char_width,
+                                                  editor->text_color);
                 } else {
                     vg_font_draw_text(canvas,
                                       editor->font,
@@ -1749,20 +1820,18 @@ static void codeeditor_paint(vg_widget_t *widget, void *canvas) {
                 if (editor->lines[line].text && line_len > 0 && seg_len > 0) {
                     float text_y = row_y + font_metrics.ascent;
                     if (editor->lines[line].colors) {
-                        for (int c = 0; c < seg_len; c++) {
-                            size_t gi = (size_t)seg_start + (size_t)c;
-                            uint32_t col = (gi < editor->lines[line].colors_capacity)
-                                               ? editor->lines[line].colors[gi]
-                                               : editor->text_color;
-                            char ch[2] = {editor->lines[line].text[gi], '\0'};
-                            vg_font_draw_text(canvas,
-                                              editor->font,
-                                              editor->font_size,
-                                              content_x + (float)c * editor->char_width,
-                                              text_y,
-                                              ch,
-                                              col);
-                        }
+                        codeeditor_draw_colored_slice(canvas,
+                                                      editor->font,
+                                                      editor->font_size,
+                                                      content_x,
+                                                      text_y,
+                                                      editor->lines[line].text,
+                                                      editor->lines[line].colors,
+                                                      editor->lines[line].colors_capacity,
+                                                      (size_t)seg_start,
+                                                      (size_t)seg_len,
+                                                      editor->char_width,
+                                                      editor->text_color);
                     } else {
                         char stack_buf[256];
                         char *seg_buf = stack_buf;
@@ -2402,7 +2471,10 @@ static bool codeeditor_handle_event(vg_widget_t *widget, vg_event_t *event) {
 
                     case VG_KEY_Z: // Undo
                         if (!editor->read_only) {
-                            vg_codeeditor_undo(editor);
+                            if ((event->modifiers & VG_MOD_SHIFT) != 0)
+                                vg_codeeditor_redo(editor);
+                            else
+                                vg_codeeditor_undo(editor);
                         }
                         widget->needs_paint = true;
                         return true;

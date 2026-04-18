@@ -29,6 +29,18 @@ static bool listbox_can_focus(vg_widget_t *widget);
 static void listbox_destroy(vg_widget_t *widget);
 static float listbox_default_item_height(vg_listbox_t *lb);
 static float listbox_text_baseline(vg_listbox_t *lb, float item_y, float item_h);
+static vg_listbox_item_t *listbox_item_at_index_nonvirtual(vg_listbox_t *lb, size_t index);
+static size_t listbox_index_of_item(vg_listbox_t *lb, vg_listbox_item_t *target);
+static void listbox_clear_nonvirtual_selection(vg_listbox_t *lb);
+static void listbox_clear_virtual_selection(vg_listbox_t *lb);
+static void listbox_select_nonvirtual_with_modifiers(vg_listbox_t *lb,
+                                                     vg_listbox_item_t *item,
+                                                     bool toggle,
+                                                     bool range);
+static void listbox_select_virtual_with_modifiers(vg_listbox_t *lb,
+                                                  size_t index,
+                                                  bool toggle,
+                                                  bool range);
 
 //=============================================================================
 // VTable
@@ -57,6 +69,26 @@ static void listbox_free_virtual_cache(vg_listbox_t *lb) {
         lb->visible_cache[i].text = NULL;
         lb->visible_cache[i].selected = false;
     }
+}
+
+static vg_listbox_item_t *listbox_item_at_index_nonvirtual(vg_listbox_t *lb, size_t index) {
+    if (!lb)
+        return NULL;
+    vg_listbox_item_t *item = lb->first_item;
+    for (size_t i = 0; i < index && item; i++)
+        item = item->next;
+    return item;
+}
+
+static size_t listbox_index_of_item(vg_listbox_t *lb, vg_listbox_item_t *target) {
+    if (!lb || !target)
+        return SIZE_MAX;
+    size_t index = 0;
+    for (vg_listbox_item_t *item = lb->first_item; item; item = item->next, index++) {
+        if (item == target)
+            return index;
+    }
+    return SIZE_MAX;
 }
 
 static size_t listbox_virtual_item_count(const vg_listbox_t *lb) {
@@ -161,17 +193,91 @@ static bool listbox_item_at_y(vg_listbox_t *lb,
     return true;
 }
 
-static void listbox_select_virtual_index(vg_listbox_t *lb, size_t index) {
-    if (!lb || !lb->virtual_mode || index >= lb->total_item_count)
+static void listbox_clear_nonvirtual_selection(vg_listbox_t *lb) {
+    if (!lb)
+        return;
+    for (vg_listbox_item_t *item = lb->first_item; item; item = item->next)
+        item->selected = false;
+}
+
+static void listbox_clear_virtual_selection(vg_listbox_t *lb) {
+    if (!lb || !lb->selection_bitmap)
+        return;
+    memset(lb->selection_bitmap, 0, lb->selection_bitmap_size * sizeof(bool));
+}
+
+static void listbox_select_nonvirtual_with_modifiers(vg_listbox_t *lb,
+                                                     vg_listbox_item_t *item,
+                                                     bool toggle,
+                                                     bool range) {
+    if (!lb || !item)
         return;
 
-    if (!lb->multi_select && lb->selected_index < lb->selection_bitmap_size) {
-        lb->selection_bitmap[lb->selected_index] = false;
+    if (!lb->multi_select || (!toggle && !range)) {
+        listbox_clear_nonvirtual_selection(lb);
+        item->selected = true;
+        lb->selected = item;
+        lb->prev_selected = item;
+        return;
     }
 
-    lb->selected_index = index;
+    if (range) {
+        vg_listbox_item_t *anchor = lb->prev_selected ? lb->prev_selected : lb->selected;
+        size_t anchor_index = listbox_index_of_item(lb, anchor ? anchor : item);
+        size_t target_index = listbox_index_of_item(lb, item);
+        if (anchor_index == SIZE_MAX || target_index == SIZE_MAX) {
+            listbox_clear_nonvirtual_selection(lb);
+            item->selected = true;
+        } else {
+            size_t start = anchor_index < target_index ? anchor_index : target_index;
+            size_t end = anchor_index > target_index ? anchor_index : target_index;
+            listbox_clear_nonvirtual_selection(lb);
+            for (size_t index = start; index <= end; index++) {
+                vg_listbox_item_t *selected_item = listbox_item_at_index_nonvirtual(lb, index);
+                if (selected_item)
+                    selected_item->selected = true;
+            }
+        }
+        lb->selected = item;
+        return;
+    }
+
+    item->selected = !item->selected;
+    lb->selected = item;
+    lb->prev_selected = item;
+}
+
+static void listbox_select_virtual_with_modifiers(vg_listbox_t *lb,
+                                                  size_t index,
+                                                  bool toggle,
+                                                  bool range) {
+    if (!lb || index >= lb->total_item_count)
+        return;
+
+    if (!lb->multi_select || (!toggle && !range)) {
+        listbox_clear_virtual_selection(lb);
+        lb->selected_index = index;
+        if (index < lb->selection_bitmap_size)
+            lb->selection_bitmap[index] = true;
+        lb->prev_selected_index = index;
+        return;
+    }
+
+    if (range) {
+        size_t anchor = lb->prev_selected_index < lb->total_item_count ? lb->prev_selected_index : index;
+        size_t start = anchor < index ? anchor : index;
+        size_t end = anchor > index ? anchor : index;
+        listbox_clear_virtual_selection(lb);
+        for (size_t i = start; i <= end && i < lb->selection_bitmap_size; i++)
+            lb->selection_bitmap[i] = true;
+        lb->selected_index = index;
+        return;
+    }
+
     if (index < lb->selection_bitmap_size)
-        lb->selection_bitmap[index] = true;
+        lb->selection_bitmap[index] = !lb->selection_bitmap[index];
+    lb->selected_index = index;
+    lb->prev_selected_index = index;
 }
 
 static void listbox_destroy(vg_widget_t *widget) {
@@ -213,11 +319,25 @@ static float listbox_text_baseline(vg_listbox_t *lb, float item_y, float item_h)
 
 static void listbox_measure(vg_widget_t *widget, float avail_w, float avail_h) {
     vg_listbox_t *lb = (vg_listbox_t *)widget;
-    (void)avail_w;
     (void)avail_h;
     int count = lb->virtual_mode ? (int)lb->total_item_count : lb->item_count;
     int visible = count > 0 ? (count < 5 ? count : 5) : 5;
-    widget->measured_width = 200.0f;
+    float measured_width = 200.0f;
+    if (lb->font && !lb->virtual_mode) {
+        vg_text_metrics_t metrics = {0};
+        for (vg_listbox_item_t *item = lb->first_item; item; item = item->next) {
+            if (!item->text)
+                continue;
+            vg_font_measure_text(lb->font, lb->font_size, item->text, &metrics);
+            float candidate =
+                metrics.width + vg_theme_get_current()->input.padding_h * 2.0f + 12.0f;
+            if (candidate > measured_width)
+                measured_width = candidate;
+        }
+    }
+    if (avail_w > 0.0f && measured_width > avail_w)
+        measured_width = avail_w;
+    widget->measured_width = measured_width;
     widget->measured_height = (float)(visible * (int)lb->item_height);
 }
 
@@ -269,7 +389,9 @@ static void listbox_paint(vg_widget_t *widget, void *canvas) {
                 ((index & 1u) == 0u)
                     ? lb->item_bg
                     : vg_color_blend(lb->item_bg, theme->colors.bg_secondary, 0.35f);
-            if (index == lb->selected_index)
+            bool is_selected =
+                index < lb->selection_bitmap_size && lb->selection_bitmap[index];
+            if (is_selected)
                 bg = lb->selected_bg;
             else if (index == lb->hovered_index)
                 bg = lb->hover_bg;
@@ -277,7 +399,7 @@ static void listbox_paint(vg_widget_t *widget, void *canvas) {
             int32_t iy = (int32_t)item_y;
             int32_t ih32 = (int32_t)ih;
             vgfx_fill_rect(win, x + 1, iy, w - 2, ih32, bg);
-            if (index == lb->selected_index)
+            if (is_selected)
                 vgfx_fill_rect(win, x + 1, iy, 3, ih32, theme->colors.accent_primary);
             vgfx_fill_rect(win, x + 1, iy + ih32 - 1, w - 2, 1, theme->colors.border_secondary);
 
@@ -310,7 +432,7 @@ static void listbox_paint(vg_widget_t *widget, void *canvas) {
                 break;
 
             uint32_t bg;
-            if (item == lb->selected)
+            if (item->selected)
                 bg = lb->selected_bg;
             else if (item == lb->hovered)
                 bg = lb->hover_bg;
@@ -321,7 +443,7 @@ static void listbox_paint(vg_widget_t *widget, void *canvas) {
             int32_t iy = (int32_t)item_y;
             int32_t ih32 = (int32_t)ih;
             vgfx_fill_rect(win, x + 1, iy, w - 2, ih32, bg);
-            if (item == lb->selected)
+            if (item->selected)
                 vgfx_fill_rect(win, x + 1, iy, 3, ih32, theme->colors.accent_primary);
             vgfx_fill_rect(win, x + 1, iy + ih32 - 1, w - 2, 1, theme->colors.border_secondary);
 
@@ -358,10 +480,14 @@ static bool listbox_handle_event(vg_widget_t *widget, vg_event_t *event) {
 
     switch (event->type) {
         case VG_EVENT_MOUSE_DOWN: {
+            uint32_t mods = event->modifiers;
+            bool toggle =
+                lb->multi_select && ((mods & VG_MOD_CTRL) != 0 || (mods & VG_MOD_SUPER) != 0);
+            bool range = lb->multi_select && (mods & VG_MOD_SHIFT) != 0;
             size_t idx = 0;
             if (lb->virtual_mode) {
                 if (listbox_item_at_y(lb, widget, event->mouse.y, &idx)) {
-                    listbox_select_virtual_index(lb, idx);
+                    listbox_select_virtual_with_modifiers(lb, idx, toggle, range);
                     if (lb->on_select)
                         lb->on_select(widget, NULL, lb->on_select_data);
                     widget->needs_paint = true;
@@ -373,11 +499,12 @@ static bool listbox_handle_event(vg_widget_t *widget, vg_event_t *event) {
                 float ry = event->mouse.y + lb->scroll_y;
                 int idx32 = (lb->item_height > 0) ? (int)(ry / lb->item_height) : -1;
                 if (idx32 >= 0 && idx32 < lb->item_count) {
-                    vg_listbox_item_t *item = lb->first_item;
-                    for (int i = 0; i < idx32 && item; i++)
-                        item = item->next;
+                    vg_listbox_item_t *item = listbox_item_at_index_nonvirtual(lb, (size_t)idx32);
                     if (item) {
-                        vg_listbox_select(lb, item);
+                        listbox_select_nonvirtual_with_modifiers(lb, item, toggle, range);
+                        if (lb->on_select)
+                            lb->on_select(widget, item, lb->on_select_data);
+                        widget->needs_paint = true;
                         event->handled = true;
                         return true;
                     }
@@ -425,6 +552,7 @@ static bool listbox_handle_event(vg_widget_t *widget, vg_event_t *event) {
             float scroll_delta = -event->wheel.delta_y * lb->item_height;
             lb->scroll_y += scroll_delta;
             listbox_clamp_scroll(lb, widget->height);
+            widget->needs_paint = true;
             event->handled = true;
             return true;
         }
@@ -448,6 +576,8 @@ static bool listbox_handle_event(vg_widget_t *widget, vg_event_t *event) {
             int total = lb->virtual_mode ? (int)lb->total_item_count : lb->item_count;
             if (total <= 0)
                 return false;
+            uint32_t mods = event->modifiers;
+            bool range = lb->multi_select && (mods & VG_MOD_SHIFT) != 0;
             int page_items = (lb->item_height > 0.0f) ? (int)(widget->height / lb->item_height) : 8;
             if (page_items < 1)
                 page_items = 1;
@@ -493,11 +623,16 @@ static bool listbox_handle_event(vg_widget_t *widget, vg_event_t *event) {
 
             if (new_idx != current_idx && new_idx >= 0 && new_idx < total) {
                 if (lb->virtual_mode) {
-                    listbox_select_virtual_index(lb, (size_t)new_idx);
+                    listbox_select_virtual_with_modifiers(lb, (size_t)new_idx, false, range);
                     if (lb->on_select)
                         lb->on_select(widget, NULL, lb->on_select_data);
                 } else {
-                    vg_listbox_select_index(lb, (size_t)new_idx);
+                    vg_listbox_item_t *item = listbox_item_at_index_nonvirtual(lb, (size_t)new_idx);
+                    if (item) {
+                        listbox_select_nonvirtual_with_modifiers(lb, item, false, range);
+                        if (lb->on_select)
+                            lb->on_select(widget, item, lb->on_select_data);
+                    }
                 }
                 /* Scroll the selected item into view */
                 float item_top = new_idx * lb->item_height;
@@ -620,6 +755,7 @@ void vg_listbox_clear(vg_listbox_t *listbox) {
 
     listbox->first_item = listbox->last_item = NULL;
     listbox->selected = listbox->hovered = NULL;
+    listbox->prev_selected = NULL;
     listbox->item_count = 0;
     listbox->base.needs_layout = true;
     listbox->base.needs_paint = true;
@@ -630,14 +766,13 @@ void vg_listbox_select(vg_listbox_t *listbox, vg_listbox_item_t *item) {
     if (!listbox)
         return;
 
-    // Clear previous selection if not multi-select
-    if (!listbox->multi_select && listbox->selected) {
-        listbox->selected->selected = false;
-    }
+    if (!listbox->multi_select)
+        listbox_clear_nonvirtual_selection(listbox);
 
     listbox->selected = item;
     if (item) {
         item->selected = true;
+        listbox->prev_selected = item;
         if (listbox->on_select) {
             listbox->on_select(&listbox->base, item, listbox->on_select_data);
         }
@@ -830,13 +965,7 @@ void vg_listbox_select_index(vg_listbox_t *listbox, size_t index) {
     if (index >= listbox->total_item_count)
         return;
 
-    // Clear previous selection
-    if (!listbox->multi_select && listbox->selected_index < listbox->selection_bitmap_size) {
-        listbox->selection_bitmap[listbox->selected_index] = false;
-    }
-
-    // Set new selection
-    listbox_select_virtual_index(listbox, index);
+    listbox_select_virtual_with_modifiers(listbox, index, false, false);
 
     listbox->base.needs_paint = true;
 }

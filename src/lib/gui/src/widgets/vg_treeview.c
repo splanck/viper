@@ -37,6 +37,12 @@ static float treeview_outer_padding(void);
 static void treeview_sync_metrics(vg_treeview_t *tree);
 static float treeview_text_baseline(vg_treeview_t *tree, float row_y);
 static void treeview_encode_glyph(uint32_t codepoint, char out[8]);
+static char *treeview_fit_text(vg_treeview_t *tree, const char *text, float max_width);
+static bool treeview_drop_is_valid(vg_treeview_t *tree,
+                                   vg_tree_node_t *source,
+                                   vg_tree_node_t *target,
+                                   vg_tree_drop_position_t position);
+static void treeview_update_drop_target(vg_treeview_t *tree, float local_y);
 static void treeview_paint_icon(vg_treeview_t *tree,
                                 void *canvas,
                                 vg_tree_node_t *node,
@@ -190,6 +196,40 @@ static float treeview_text_baseline(vg_treeview_t *tree, float row_y) {
     vg_font_metrics_t metrics = {0};
     vg_font_get_metrics(tree->font, tree->font_size, &metrics);
     return row_y + (tree->row_height + (float)metrics.ascent + (float)metrics.descent) / 2.0f;
+}
+
+static char *treeview_fit_text(vg_treeview_t *tree, const char *text, float max_width) {
+    if (!text)
+        return strdup("");
+    if (!tree->font || max_width <= 0.0f)
+        return strdup("");
+
+    vg_text_metrics_t metrics = {0};
+    vg_font_measure_text(tree->font, tree->font_size, text, &metrics);
+    if (metrics.width <= max_width)
+        return strdup(text);
+
+    vg_text_metrics_t ellipsis_metrics = {0};
+    vg_font_measure_text(tree->font, tree->font_size, "...", &ellipsis_metrics);
+    if (ellipsis_metrics.width > max_width)
+        return strdup("");
+
+    size_t len = strlen(text);
+    char *buf = (char *)malloc(len + 4);
+    if (!buf)
+        return NULL;
+
+    while (len > 0) {
+        memcpy(buf, text, len);
+        memcpy(buf + len, "...", 4);
+        vg_font_measure_text(tree->font, tree->font_size, buf, &metrics);
+        if (metrics.width <= max_width)
+            return buf;
+        len--;
+    }
+
+    memcpy(buf, "...", 4);
+    return buf;
 }
 
 static void treeview_encode_glyph(uint32_t codepoint, char out[8]) {
@@ -467,13 +507,39 @@ static void paint_node(
 
             // Draw text
             if (tree->font && child->text) {
+                float text_max_width = tree->base.width - (text_x - tree->base.x) - treeview_outer_padding();
+                if (text_max_width < 0.0f)
+                    text_max_width = 0.0f;
+                char *fit = treeview_fit_text(tree, child->text, text_max_width);
                 vg_font_draw_text(canvas,
                                   tree->font,
                                   tree->font_size,
                                   text_x,
                                   treeview_text_baseline(tree, display_y),
-                                  child->text,
+                                  fit ? fit : child->text,
                                   row_fg);
+                free(fit);
+            }
+
+            if (tree->is_dragging && child == tree->drop_target) {
+                if (tree->drop_position == VG_TREE_DROP_INTO) {
+                    vgfx_rect((vgfx_window_t)canvas,
+                              (int32_t)tree->base.x + 2,
+                              (int32_t)display_y + 2,
+                              (int32_t)width - 4,
+                              (int32_t)tree->row_height - 4,
+                              theme->colors.accent_primary);
+                } else {
+                    int32_t line_y = (int32_t)(display_y +
+                                               (tree->drop_position == VG_TREE_DROP_BEFORE ? 1.0f
+                                                                                           : tree->row_height - 2.0f));
+                    vgfx_fill_rect((vgfx_window_t)canvas,
+                                   (int32_t)tree->base.x + 2,
+                                   line_y,
+                                   (int32_t)width - 4,
+                                   2,
+                                   theme->colors.accent_primary);
+                }
             }
         }
 
@@ -542,6 +608,54 @@ static vg_tree_node_t *find_node_at_y(vg_treeview_t *tree,
     return NULL;
 }
 
+static bool treeview_drop_is_valid(vg_treeview_t *tree,
+                                   vg_tree_node_t *source,
+                                   vg_tree_node_t *target,
+                                   vg_tree_drop_position_t position) {
+    if (!tree || !source || !target || source == target)
+        return false;
+    if (node_in_subtree(source, target))
+        return false;
+    if (tree->can_drop)
+        return tree->can_drop(source, target, position, tree->drag_user_data);
+    return true;
+}
+
+static void treeview_update_drop_target(vg_treeview_t *tree, float local_y) {
+    if (!tree || !tree->is_dragging || !tree->drag_node) {
+        if (tree) {
+            tree->drop_target = NULL;
+            tree->drop_position = VG_TREE_DROP_INTO;
+        }
+        return;
+    }
+
+    float y = local_y + tree->scroll_y;
+    float current_y = 0.0f;
+    vg_tree_node_t *target = find_node_at_y(tree, tree->root, y, &current_y);
+    if (!target) {
+        tree->drop_target = NULL;
+        tree->drop_position = VG_TREE_DROP_INTO;
+        return;
+    }
+
+    float row_top = current_y - tree->scroll_y;
+    float local_row_y = local_y - row_top;
+    vg_tree_drop_position_t position = VG_TREE_DROP_INTO;
+    if (local_row_y < tree->row_height * 0.3f)
+        position = VG_TREE_DROP_BEFORE;
+    else if (local_row_y > tree->row_height * 0.7f)
+        position = VG_TREE_DROP_AFTER;
+
+    if (!treeview_drop_is_valid(tree, tree->drag_node, target, position)) {
+        tree->drop_target = NULL;
+        return;
+    }
+
+    tree->drop_target = target;
+    tree->drop_position = position;
+}
+
 static bool treeview_handle_event(vg_widget_t *widget, vg_event_t *event) {
     vg_treeview_t *tree = (vg_treeview_t *)widget;
 
@@ -550,7 +664,41 @@ static bool treeview_handle_event(vg_widget_t *widget, vg_event_t *event) {
     }
 
     switch (event->type) {
+        case VG_EVENT_MOUSE_DOWN: {
+            if (!tree->drag_enabled)
+                return false;
+            float y = event->mouse.y + tree->scroll_y;
+            float current_y = 0.0f;
+            vg_tree_node_t *pressed = find_node_at_y(tree, tree->root, y, &current_y);
+            if (!pressed)
+                return false;
+            if (tree->can_drag && !tree->can_drag(pressed, tree->drag_user_data))
+                return false;
+            tree->drag_node = pressed;
+            tree->drag_start_x = (int)event->mouse.x;
+            tree->drag_start_y = (int)event->mouse.y;
+            tree->is_dragging = false;
+            tree->drop_target = NULL;
+            tree->drop_position = VG_TREE_DROP_INTO;
+            vg_widget_set_input_capture(widget);
+            return false;
+        }
+
         case VG_EVENT_MOUSE_MOVE: {
+            if (vg_widget_get_input_capture() == widget && tree->drag_node) {
+                float scale = treeview_scale();
+                int dx = (int)event->mouse.x - tree->drag_start_x;
+                int dy = (int)event->mouse.y - tree->drag_start_y;
+                if (!tree->is_dragging && (dx * dx + dy * dy) >= (int)((6.0f * scale) * (6.0f * scale))) {
+                    tree->is_dragging = true;
+                }
+                if (tree->is_dragging) {
+                    treeview_update_drop_target(tree, event->mouse.y);
+                    widget->needs_paint = true;
+                    return true;
+                }
+            }
+
             // Find node at position
             float y = event->mouse.y + tree->scroll_y;
             float current_y = 0;
@@ -563,13 +711,17 @@ static bool treeview_handle_event(vg_widget_t *widget, vg_event_t *event) {
         }
 
         case VG_EVENT_MOUSE_LEAVE:
-            if (tree->hovered) {
+            if (!tree->is_dragging && tree->hovered) {
                 tree->hovered = NULL;
                 widget->needs_paint = true;
             }
             return false;
 
         case VG_EVENT_CLICK: {
+            if (tree->suppress_click) {
+                tree->suppress_click = false;
+                return true;
+            }
             float y = event->mouse.y + tree->scroll_y;
             float current_y = 0;
             vg_tree_node_t *clicked = find_node_at_y(tree, tree->root, y, &current_y);
@@ -577,7 +729,11 @@ static bool treeview_handle_event(vg_widget_t *widget, vg_event_t *event) {
             if (clicked) {
                 // Check if clicked on expand arrow
                 float arrow_left = treeview_outer_padding() + clicked->depth * tree->indent_size;
-                if (event->mouse.x >= arrow_left && event->mouse.x < arrow_left + tree->icon_size) {
+                float arrow_size = 8.0f * treeview_scale();
+                float row_local_y = current_y - tree->scroll_y;
+                float arrow_top = row_local_y + (tree->row_height - arrow_size) * 0.5f;
+                if (event->mouse.x >= arrow_left && event->mouse.x < arrow_left + tree->icon_size &&
+                    event->mouse.y >= arrow_top && event->mouse.y < arrow_top + arrow_size) {
                     // Toggle expand
                     vg_treeview_toggle(tree, clicked);
                 } else {
@@ -653,10 +809,29 @@ static bool treeview_handle_event(vg_widget_t *widget, vg_event_t *event) {
             return false;
 
         case VG_EVENT_MOUSE_WHEEL:
-            tree->scroll_y -= event->wheel.delta_y * tree->row_height * 3;
+            tree->scroll_y -= event->wheel.delta_y * tree->row_height;
             treeview_clamp_scroll(tree);
             widget->needs_paint = true;
             return true;
+
+        case VG_EVENT_MOUSE_UP: {
+            bool was_dragging = tree->is_dragging;
+            if (vg_widget_get_input_capture() == widget)
+                vg_widget_release_input_capture();
+            if (tree->is_dragging && tree->drag_node && tree->drop_target && tree->on_drop) {
+                tree->on_drop(
+                    tree->drag_node, tree->drop_target, tree->drop_position, tree->drag_user_data);
+            }
+            tree->drag_node = NULL;
+            tree->drop_target = NULL;
+            tree->is_dragging = false;
+            tree->suppress_click = was_dragging;
+            if (was_dragging) {
+                widget->needs_paint = true;
+                return true;
+            }
+            return false;
+        }
 
         default:
             break;

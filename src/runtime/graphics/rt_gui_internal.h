@@ -101,6 +101,8 @@ typedef struct {
     int32_t mouse_y; ///< Current mouse Y coordinate in window space.
     uint64_t last_event_time_ms;
     uint64_t last_render_time_ms;
+    int32_t last_layout_width;
+    int32_t last_layout_height;
     vg_theme_t *theme;
     const vg_theme_t *theme_base;
     float theme_scale;

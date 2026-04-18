@@ -183,6 +183,38 @@ static void toolbar_menu_action_counter(void *user_data) {
 
 typedef struct {
     int count;
+    vg_tree_node_t *source;
+    vg_tree_node_t *target;
+    vg_tree_drop_position_t position;
+} tree_drop_state_t;
+
+static bool treeview_can_drag_any(vg_tree_node_t *node, void *user_data) {
+    (void)user_data;
+    return node != NULL;
+}
+
+static bool treeview_can_drop_accept(vg_tree_node_t *source,
+                                     vg_tree_node_t *target,
+                                     vg_tree_drop_position_t position,
+                                     void *user_data) {
+    (void)position;
+    (void)user_data;
+    return source != NULL && target != NULL && source != target;
+}
+
+static void treeview_drop_counter(vg_tree_node_t *source,
+                                  vg_tree_node_t *target,
+                                  vg_tree_drop_position_t position,
+                                  void *user_data) {
+    tree_drop_state_t *state = (tree_drop_state_t *)user_data;
+    state->count++;
+    state->source = source;
+    state->target = target;
+    state->position = position;
+}
+
+typedef struct {
+    int count;
     int last_index;
     vg_tab_t *last_tab;
 } tabbar_reorder_state_t;
@@ -1182,6 +1214,42 @@ TEST(treeview_nested_blank_click_selects_instead_of_toggling) {
     vg_widget_destroy(&tree->base);
 }
 
+TEST(treeview_drag_and_drop_invokes_callback) {
+    tree_drop_state_t state = {0};
+    vg_treeview_t *tree = vg_treeview_create(NULL);
+    ASSERT_NOT_NULL(tree);
+
+    vg_tree_node_t *source = vg_treeview_add_node(tree, NULL, "source");
+    vg_tree_node_t *target = vg_treeview_add_node(tree, NULL, "target");
+    ASSERT_NOT_NULL(source);
+    ASSERT_NOT_NULL(target);
+
+    vg_treeview_set_drag_enabled(tree, true);
+    vg_treeview_set_drag_callbacks(
+        tree, treeview_can_drag_any, treeview_can_drop_accept, treeview_drop_counter, &state);
+    tree->base.width = 240.0f;
+    tree->base.height = 120.0f;
+
+    vg_event_t down = vg_event_mouse(
+        VG_EVENT_MOUSE_DOWN, 24.0f, tree->row_height * 0.5f, VG_MOUSE_LEFT, 0);
+    ASSERT_FALSE(vg_event_send(&tree->base, &down));
+
+    vg_event_t move = vg_event_mouse(
+        VG_EVENT_MOUSE_MOVE, 24.0f, tree->row_height * 1.5f, VG_MOUSE_LEFT, 0);
+    ASSERT_TRUE(vg_event_send(&tree->base, &move));
+
+    vg_event_t up = vg_event_mouse(
+        VG_EVENT_MOUSE_UP, 24.0f, tree->row_height * 1.5f, VG_MOUSE_LEFT, 0);
+    ASSERT_TRUE(vg_event_send(&tree->base, &up));
+
+    ASSERT_EQ(state.count, 1);
+    ASSERT_EQ(state.source, source);
+    ASSERT_EQ(state.target, target);
+    ASSERT_EQ(state.position, VG_TREE_DROP_INTO);
+
+    vg_widget_destroy(&tree->base);
+}
+
 TEST(widget_paint_runs_overlay_second_pass) {
     vg_widget_t *root = vg_widget_create(VG_WIDGET_CONTAINER);
     test_probe_widget_t *overlay = make_probe_widget(&g_probe_overlay_vtable);
@@ -1308,6 +1376,27 @@ TEST(splitpane_drag_captures_pointer_until_mouse_up) {
     ASSERT_NULL(vg_widget_get_input_capture());
 
     vg_widget_destroy(root);
+}
+
+TEST(splitpane_keyboard_adjusts_position_and_edges) {
+    vg_splitpane_t *split = vg_splitpane_create(NULL, VG_SPLIT_HORIZONTAL);
+    ASSERT_NOT_NULL(split);
+    vg_widget_arrange(&split->base, 0.0f, 0.0f, 200.0f, 80.0f);
+
+    float original = vg_splitpane_get_position(split);
+    vg_event_t right = tier2_key_down(VG_KEY_RIGHT);
+    ASSERT_TRUE(split->base.vtable->handle_event(&split->base, &right));
+    ASSERT(vg_splitpane_get_position(split) > original);
+
+    vg_event_t home = tier2_key_down(VG_KEY_HOME);
+    ASSERT_TRUE(split->base.vtable->handle_event(&split->base, &home));
+    ASSERT_EQ(vg_splitpane_get_position(split), 0.0f);
+
+    vg_event_t end = tier2_key_down(VG_KEY_END);
+    ASSERT_TRUE(split->base.vtable->handle_event(&split->base, &end));
+    ASSERT_EQ(vg_splitpane_get_position(split), 1.0f);
+
+    vg_widget_destroy(&split->base);
 }
 
 TEST(scrollview_scrollbar_drag_captures_until_release_outside_widget) {
@@ -1588,6 +1677,55 @@ TEST(toolbar_item_text_change_marks_owner_dirty) {
     vg_widget_destroy(&tb->base);
 }
 
+TEST(toolbar_keyboard_navigation_activates_focused_item) {
+    int click_count = 0;
+    vg_toolbar_t *tb = vg_toolbar_create(NULL, VG_TOOLBAR_HORIZONTAL);
+    ASSERT_NOT_NULL(tb);
+    ASSERT_NOT_NULL(
+        vg_toolbar_add_button(tb, "one", "One", (vg_icon_t){0}, toolbar_click_counter, &click_count));
+    ASSERT_NOT_NULL(
+        vg_toolbar_add_button(tb, "two", "Two", (vg_icon_t){0}, toolbar_click_counter, &click_count));
+    vg_widget_arrange(&tb->base, 0.0f, 0.0f, 240.0f, 32.0f);
+    vg_widget_set_focus(&tb->base);
+    ASSERT_EQ(tb->focused_index, 0);
+
+    vg_event_t right = tier2_key_down(VG_KEY_RIGHT);
+    ASSERT_TRUE(tb->base.vtable->handle_event(&tb->base, &right));
+    ASSERT_EQ(tb->focused_index, 1);
+
+    vg_event_t enter = tier2_key_down(VG_KEY_ENTER);
+    ASSERT_TRUE(tb->base.vtable->handle_event(&tb->base, &enter));
+    ASSERT_EQ(click_count, 1);
+
+    vg_widget_destroy(&tb->base);
+}
+
+TEST(toolbar_keyboard_end_focuses_overflow_button) {
+    vg_toolbar_t *tb = vg_toolbar_create(NULL, VG_TOOLBAR_HORIZONTAL);
+    ASSERT_NOT_NULL(tb);
+    ASSERT_NOT_NULL(vg_toolbar_add_button(tb, "a", "Alpha", vg_icon_from_glyph('A'), NULL, NULL));
+    ASSERT_NOT_NULL(vg_toolbar_add_button(tb, "b", "Beta", vg_icon_from_glyph('B'), NULL, NULL));
+    ASSERT_NOT_NULL(vg_toolbar_add_button(tb, "c", "Gamma", vg_icon_from_glyph('C'), NULL, NULL));
+    vg_widget_arrange(&tb->base, 0.0f, 0.0f, 48.0f, 32.0f);
+    ASSERT_TRUE(tb->overflow_start_index >= 0);
+
+    vg_widget_set_focus(&tb->base);
+    vg_event_t end = tier2_key_down(VG_KEY_END);
+    ASSERT_TRUE(tb->base.vtable->handle_event(&tb->base, &end));
+    ASSERT_EQ(tb->focused_index, tb->overflow_start_index);
+
+    vg_event_t enter = tier2_key_down(VG_KEY_ENTER);
+    ASSERT_TRUE(tb->base.vtable->handle_event(&tb->base, &enter));
+    ASSERT_NOT_NULL(tb->overflow_popup);
+    ASSERT_TRUE(tb->overflow_popup->is_visible);
+
+    vg_event_t escape = tier2_key_down(VG_KEY_ESCAPE);
+    ASSERT_TRUE(tb->base.vtable->handle_event(&tb->base, &escape));
+    ASSERT_FALSE(tb->overflow_popup->is_visible);
+
+    vg_widget_destroy(&tb->base);
+}
+
 TEST(statusbar_hit_testing_uses_local_coords) {
     int click_count = 0;
     vg_statusbar_t *sb = vg_statusbar_create(NULL);
@@ -1679,6 +1817,44 @@ TEST(dropdown_closed_key_opens_popup) {
     ASSERT_TRUE(dd->open);
     ASSERT_EQ(dd->hovered_index, 0);
     ASSERT_EQ(vg_widget_get_input_capture(), &dd->base);
+
+    vg_widget_destroy(&dd->base);
+}
+
+TEST(dropdown_typeahead_selects_matching_closed_item) {
+    vg_dropdown_t *dd = vg_dropdown_create(NULL);
+    ASSERT_NOT_NULL(dd);
+    ASSERT_EQ(vg_dropdown_add_item(dd, "Alpha"), 0);
+    ASSERT_EQ(vg_dropdown_add_item(dd, "Beta"), 1);
+    ASSERT_EQ(vg_dropdown_add_item(dd, "Gamma"), 2);
+
+    vg_event_t key = vg_event_key(VG_EVENT_KEY_CHAR, 0, 'b', 0);
+    ASSERT_TRUE(dd->base.vtable->handle_event(&dd->base, &key));
+    ASSERT_EQ(dd->selected_index, 1);
+
+    vg_widget_destroy(&dd->base);
+}
+
+TEST(dropdown_page_navigation_moves_hovered_index) {
+    vg_dropdown_t *dd = vg_dropdown_create(NULL);
+    ASSERT_NOT_NULL(dd);
+    for (int i = 0; i < 30; i++) {
+        char label[16];
+        snprintf(label, sizeof(label), "Item %d", i);
+        ASSERT_TRUE(vg_dropdown_add_item(dd, label) >= 0);
+    }
+
+    dd->open = true;
+    dd->hovered_index = 0;
+    dd->dropdown_height = 96.0f;
+
+    vg_event_t page_down = tier2_key_down(VG_KEY_PAGE_DOWN);
+    ASSERT_TRUE(dd->base.vtable->handle_event(&dd->base, &page_down));
+    ASSERT(dd->hovered_index > 0);
+
+    vg_event_t page_up = tier2_key_down(VG_KEY_PAGE_UP);
+    ASSERT_TRUE(dd->base.vtable->handle_event(&dd->base, &page_up));
+    ASSERT_EQ(dd->hovered_index, 0);
 
     vg_widget_destroy(&dd->base);
 }
@@ -1792,7 +1968,7 @@ TEST(tabbar_small_jitter_does_not_reorder) {
     up.mouse.y = tabbar->tab_height * 0.5f;
     up.mouse.screen_x = 53.0f;
     up.mouse.screen_y = up.mouse.y;
-    ASSERT_FALSE(vg_event_send(&tabbar->base, &up));
+    ASSERT_TRUE(vg_event_send(&tabbar->base, &up));
 
     ASSERT_EQ(vg_tabbar_get_tab_index(tabbar, first), 0);
     ASSERT_EQ(state.count, 0);
@@ -1838,6 +2014,42 @@ TEST(listbox_measure_uses_small_item_count) {
 
     ASSERT_TRUE(lb->base.measured_height > lb->item_height - 0.1f);
     ASSERT_TRUE(lb->base.measured_height < lb->item_height + 0.1f);
+
+    vg_widget_destroy(&lb->base);
+}
+
+TEST(listbox_multi_select_respects_ctrl_and_shift_modifiers) {
+    vg_listbox_t *lb = vg_listbox_create(NULL);
+    ASSERT_NOT_NULL(lb);
+    lb->multi_select = true;
+    vg_listbox_item_t *first = vg_listbox_add_item(lb, "One", NULL);
+    vg_listbox_item_t *second = vg_listbox_add_item(lb, "Two", NULL);
+    vg_listbox_item_t *third = vg_listbox_add_item(lb, "Three", NULL);
+    ASSERT_NOT_NULL(first);
+    ASSERT_NOT_NULL(second);
+    ASSERT_NOT_NULL(third);
+    vg_widget_arrange(&lb->base, 0.0f, 0.0f, 200.0f, 120.0f);
+
+    vg_event_t click_second =
+        vg_event_mouse(VG_EVENT_MOUSE_DOWN, 10.0f, lb->item_height * 1.5f, VG_MOUSE_LEFT, 0);
+    ASSERT_TRUE(vg_event_send(&lb->base, &click_second));
+    ASSERT_FALSE(first->selected);
+    ASSERT_TRUE(second->selected);
+    ASSERT_FALSE(third->selected);
+
+    vg_event_t ctrl_click_third = vg_event_mouse(
+        VG_EVENT_MOUSE_DOWN, 10.0f, lb->item_height * 2.5f, VG_MOUSE_LEFT, VG_MOD_CTRL);
+    ASSERT_TRUE(vg_event_send(&lb->base, &ctrl_click_third));
+    ASSERT_FALSE(first->selected);
+    ASSERT_TRUE(second->selected);
+    ASSERT_TRUE(third->selected);
+
+    vg_event_t shift_click_first = vg_event_mouse(
+        VG_EVENT_MOUSE_DOWN, 10.0f, lb->item_height * 0.5f, VG_MOUSE_LEFT, VG_MOD_SHIFT);
+    ASSERT_TRUE(vg_event_send(&lb->base, &shift_click_first));
+    ASSERT_TRUE(first->selected);
+    ASSERT_TRUE(second->selected);
+    ASSERT_TRUE(third->selected);
 
     vg_widget_destroy(&lb->base);
 }
@@ -1946,11 +2158,13 @@ int main(void) {
     RUN(scrollview_scroll_to_nested_descendant_uses_full_offset);
     RUN(treeview_remove_node_clears_descendant_state);
     RUN(treeview_nested_blank_click_selects_instead_of_toggling);
+    RUN(treeview_drag_and_drop_invokes_callback);
     RUN(widget_paint_runs_overlay_second_pass);
     RUN(widget_set_focus_null_clears_focus);
     RUN(widget_hide_and_disable_clear_focus_and_capture);
     RUN(splitpane_arrange_clamps_negative_sizes);
     RUN(splitpane_drag_captures_pointer_until_mouse_up);
+    RUN(splitpane_keyboard_adjusts_position_and_edges);
     RUN(scrollview_scrollbar_drag_captures_until_release_outside_widget);
     RUN(scrollview_thumb_drag_maps_to_scroll_range);
     RUN(codeeditor_scrollbar_drag_captures_until_release_outside_widget);
@@ -1959,15 +2173,20 @@ int main(void) {
     RUN(toolbar_overflow_popup_exposes_hidden_items);
     RUN(toolbar_dropdown_opens_menu_popup_and_triggers_menu_item);
     RUN(toolbar_item_text_change_marks_owner_dirty);
+    RUN(toolbar_keyboard_navigation_activates_focused_item);
+    RUN(toolbar_keyboard_end_focuses_overflow_button);
     RUN(statusbar_hit_testing_uses_local_coords);
     RUN(statusbar_item_mutators_invalidate_owner);
     RUN(dropdown_mutators_invalidate_and_adjust_indices);
     RUN(dropdown_closed_key_opens_popup);
+    RUN(dropdown_typeahead_selects_matching_closed_item);
+    RUN(dropdown_page_navigation_moves_hovered_index);
     RUN(dropdown_wheel_scrolls_open_popup);
     RUN(tabbar_drag_reorders_tabs_and_fires_callback);
     RUN(tabbar_small_jitter_does_not_reorder);
     RUN(listbox_virtual_paint_clips_to_viewport);
     RUN(listbox_measure_uses_small_item_count);
+    RUN(listbox_multi_select_respects_ctrl_and_shift_modifiers);
     RUN(codeeditor_fold_gutter_click_toggles_region);
 
     printf("\n%d passed, %d failed\n", g_passed, g_failed);

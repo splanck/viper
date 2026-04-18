@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-17
+last-verified: 2026-04-18
 ---
 
 # Containers & Advanced
@@ -17,7 +17,7 @@ last-verified: 2026-04-17
 
 Scrollable container for content larger than the viewport.
 
-Direct children are arranged as vertically stacked content items inside the scroll region. For more complex nested layouts, place a `VBox`, `HBox`, or other container inside the `ScrollView` and add content there.
+Direct children are arranged as vertically stacked content items inside the scroll region. When a direct child does not report its own width it stretches to the viewport width, and scroll clamping now uses the true viewport after scrollbar gutters are reserved. For more complex nested layouts, place a `VBox`, `HBox`, or other container inside the `ScrollView` and add content there.
 Scrollbar thumb drags keep pointer capture until mouse-up, even if the cursor leaves the widget while dragging.
 Child overlay widgets such as dropdown popups and tooltips now render outside the viewport clip instead of being cut off by the scroll region.
 
@@ -46,7 +46,7 @@ scroll.SetScroll(0.0, 0.0);
 
 Two-pane split view with draggable divider.
 
-Once a divider drag starts, the split keeps tracking until mouse-up even if the pointer leaves the splitter strip.
+Once a divider drag starts, the split keeps tracking until mouse-up even if the pointer leaves the splitter strip. While focused, `Left` / `Right` or `Up` / `Down` nudge the divider, and `Home` / `End` jump the logical split position to the start or end.
 
 **Constructor:** `NEW Viper.GUI.SplitPane(parent, horizontal)`
 
@@ -113,6 +113,7 @@ Tab strip for switching between views.
 
 Tabs can be reordered by dragging, close-button hit testing stays confined to the close glyph instead of the whole tab tail, and `WasChanged()` only reports real post-construction active-tab transitions. Hovering a tab surfaces that tab's tooltip through the standard widget tooltip system.
 Keyboard navigation is available while the tab bar is focused: `Left` / `Right` switch tabs, `Home` / `End` jump to the edges, `Ctrl+W` closes the active closable tab, and `Ctrl+Shift+Left` / `Ctrl+Shift+Right` reorder the active tab.
+Mouse activation and close actions now commit on mouse-up instead of mouse-down, which avoids accidental closes while starting a drag or sliding off a tab.
 
 **Constructor:** `NEW Viper.GUI.TabBar(parent)`
 
@@ -191,7 +192,7 @@ if tabs.WasCloseClicked() == 1 {
 Hierarchical tree view with expandable nodes.
 
 Mouse hit testing is widget-local, so nested trees continue to select the correct row after layout shifts. Removing a node also clears any selected or hovered state inside the removed subtree.
-Node glyph icons are rendered when present, and lazy/loading nodes now show an inline loading indicator instead of a blank row.
+Node glyph icons are rendered when present, and lazy/loading nodes now show an inline loading indicator instead of a blank row. Long labels are ellipsized instead of hard-clipping mid-string, and drag-and-drop callbacks now fire with validated `before` / `after` / `into` targets.
 
 **Constructor:** `NEW Viper.GUI.TreeView(parent)`
 
@@ -263,6 +264,7 @@ Full-featured code editor with syntax highlighting.
 The focused caret blink is advanced automatically during the app render loop, matching the existing `TextInput` caret behavior.
 When word wrap is enabled, the editor uses wrapped visual rows for painting, cursor up/down movement, pixel hit-testing, scrollbar math, and `ScrollToLine`; only the stored document text remains unchanged.
 Hiding line numbers fully collapses the line-number gutter. `SetLineNumberWidth(width)` is measured in character cells, so the gutter scales with the active font metrics instead of staying pinned to stale pixels. Fold regions now render in the gutter and hide folded body lines from cursor movement, scrolling, and pixel-position helpers.
+Syntax-colored text now renders in contiguous same-color runs instead of issuing one draw call per byte, which keeps large highlighted files responsive.
 
 **Constructor:** `NEW Viper.GUI.CodeEditor(parent)`
 

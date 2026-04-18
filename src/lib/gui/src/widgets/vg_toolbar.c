@@ -37,6 +37,8 @@ static void toolbar_arrange(vg_widget_t *widget, float x, float y, float width, 
 static void toolbar_paint(vg_widget_t *widget, void *canvas);
 static void toolbar_paint_overlay(vg_widget_t *widget, void *canvas);
 static bool toolbar_handle_event(vg_widget_t *widget, vg_event_t *event);
+static bool toolbar_can_focus(vg_widget_t *widget);
+static void toolbar_on_focus(vg_widget_t *widget, bool gained);
 static float get_item_width(vg_toolbar_t *tb, vg_toolbar_item_t *item);
 static float get_item_height(vg_toolbar_t *tb, vg_toolbar_item_t *item);
 
@@ -50,8 +52,8 @@ static vg_widget_vtable_t g_toolbar_vtable = {.destroy = toolbar_destroy,
                                               .paint = toolbar_paint,
                                               .paint_overlay = toolbar_paint_overlay,
                                               .handle_event = toolbar_handle_event,
-                                              .can_focus = NULL,
-                                              .on_focus = NULL};
+                                              .can_focus = toolbar_can_focus,
+                                              .on_focus = toolbar_on_focus};
 
 //=============================================================================
 // Helper Functions
@@ -73,6 +75,109 @@ static bool ensure_item_capacity(vg_toolbar_t *tb, size_t needed) {
     tb->items = new_items;
     tb->item_capacity = new_capacity;
     return true;
+}
+
+static int toolbar_clampi(int value, int min_value, int max_value) {
+    if (value < min_value)
+        return min_value;
+    if (value > max_value)
+        return max_value;
+    return value;
+}
+
+static void toolbar_blend_pixel(uint8_t *dst, const uint8_t *src, uint8_t alpha) {
+    if (alpha == 0)
+        return;
+
+    if (alpha == 255) {
+        dst[0] = src[0];
+        dst[1] = src[1];
+        dst[2] = src[2];
+        dst[3] = 255;
+        return;
+    }
+
+    const uint32_t inv = (uint32_t)(255 - alpha);
+    dst[0] = (uint8_t)(((uint32_t)src[0] * alpha + (uint32_t)dst[0] * inv + 127u) / 255u);
+    dst[1] = (uint8_t)(((uint32_t)src[1] * alpha + (uint32_t)dst[1] * inv + 127u) / 255u);
+    dst[2] = (uint8_t)(((uint32_t)src[2] * alpha + (uint32_t)dst[2] * inv + 127u) / 255u);
+    dst[3] = (uint8_t)(alpha + (((uint32_t)dst[3] * inv + 127u) / 255u));
+}
+
+static void toolbar_draw_image_icon(vgfx_window_t win,
+                                    const vg_icon_t *icon,
+                                    float x,
+                                    float y,
+                                    float w,
+                                    float h,
+                                    bool enabled) {
+    if (!icon || icon->type != VG_ICON_IMAGE || !icon->data.image.pixels || w <= 0.0f || h <= 0.0f)
+        return;
+
+    vgfx_framebuffer_t fb;
+    if (!vgfx_get_framebuffer(win, &fb))
+        return;
+
+    const int sw = (int)icon->data.image.width;
+    const int sh = (int)icon->data.image.height;
+    if (sw <= 0 || sh <= 0)
+        return;
+
+    float draw_x = x;
+    float draw_y = y;
+    float draw_w = w;
+    float draw_h = h;
+    float scale = w / (float)sw;
+    if ((float)sh * scale > h)
+        scale = h / (float)sh;
+    if (scale <= 0.0f)
+        return;
+
+    draw_w = (float)sw * scale;
+    draw_h = (float)sh * scale;
+    draw_x = x + (w - draw_w) * 0.5f;
+    draw_y = y + (h - draw_h) * 0.5f;
+
+    int start_x = toolbar_clampi((int)draw_x, 0, fb.width);
+    int start_y = toolbar_clampi((int)draw_y, 0, fb.height);
+    int end_x = toolbar_clampi((int)(draw_x + draw_w), 0, fb.width);
+    int end_y = toolbar_clampi((int)(draw_y + draw_h), 0, fb.height);
+    uint8_t opacity = enabled ? 255u : 144u;
+
+    for (int fb_y = start_y; fb_y < end_y; fb_y++) {
+        for (int fb_x = start_x; fb_x < end_x; fb_x++) {
+            float u = draw_w > 0.0f ? ((float)fb_x - draw_x) / draw_w : 0.0f;
+            float v = draw_h > 0.0f ? ((float)fb_y - draw_y) / draw_h : 0.0f;
+            int sx = toolbar_clampi((int)(u * (float)sw), 0, sw - 1);
+            int sy = toolbar_clampi((int)(v * (float)sh), 0, sh - 1);
+            const uint8_t *src = &icon->data.image.pixels[(sy * sw + sx) * 4];
+            uint8_t alpha = src[3];
+            if (!enabled)
+                alpha = (uint8_t)(((uint32_t)alpha * opacity + 127u) / 255u);
+            if (alpha == 0)
+                continue;
+
+            uint8_t *dst = &fb.pixels[fb_y * fb.stride + fb_x * 4];
+            toolbar_blend_pixel(dst, src, alpha);
+        }
+    }
+}
+
+static bool toolbar_item_can_focus(const vg_toolbar_item_t *item) {
+    if (!item || !item->enabled)
+        return false;
+    return item->type == VG_TOOLBAR_ITEM_BUTTON || item->type == VG_TOOLBAR_ITEM_TOGGLE ||
+           item->type == VG_TOOLBAR_ITEM_DROPDOWN;
+}
+
+static int toolbar_index_of_item(vg_toolbar_t *tb, vg_toolbar_item_t *item) {
+    if (!tb || !item)
+        return -1;
+    for (size_t i = 0; i < tb->item_count; i++) {
+        if (tb->items[i] == item)
+            return (int)i;
+    }
+    return -1;
 }
 
 static void free_item(vg_toolbar_item_t *item) {
@@ -146,6 +251,87 @@ static float get_item_extent(vg_toolbar_t *tb, vg_toolbar_item_t *item) {
 
 static int toolbar_visible_limit(vg_toolbar_t *tb) {
     return tb->overflow_start_index >= 0 ? tb->overflow_start_index : (int)tb->item_count;
+}
+
+static bool toolbar_focus_is_overflow(const vg_toolbar_t *tb, int index) {
+    return tb && tb->overflow_start_index >= 0 && index == tb->overflow_start_index;
+}
+
+static bool toolbar_focus_index_valid(vg_toolbar_t *tb, int index) {
+    if (!tb || index < 0)
+        return false;
+    if (toolbar_focus_is_overflow(tb, index))
+        return true;
+    int limit = toolbar_visible_limit(tb);
+    return index < limit && toolbar_item_can_focus(tb->items[index]);
+}
+
+static int toolbar_first_focus_index(vg_toolbar_t *tb) {
+    if (!tb)
+        return -1;
+    int limit = toolbar_visible_limit(tb);
+    for (int i = 0; i < limit; i++) {
+        if (toolbar_item_can_focus(tb->items[i]))
+            return i;
+    }
+    return tb->overflow_start_index >= 0 ? tb->overflow_start_index : -1;
+}
+
+static int toolbar_last_focus_index(vg_toolbar_t *tb) {
+    if (!tb)
+        return -1;
+    if (tb->overflow_start_index >= 0)
+        return tb->overflow_start_index;
+    int limit = toolbar_visible_limit(tb);
+    for (int i = limit - 1; i >= 0; i--) {
+        if (toolbar_item_can_focus(tb->items[i]))
+            return i;
+    }
+    return -1;
+}
+
+static int toolbar_next_focus_index(vg_toolbar_t *tb, int current, int direction) {
+    if (!tb)
+        return -1;
+    if (direction == 0)
+        return toolbar_focus_index_valid(tb, current) ? current : toolbar_first_focus_index(tb);
+
+    int limit = toolbar_visible_limit(tb);
+    if (direction > 0) {
+        if (current < 0)
+            return toolbar_first_focus_index(tb);
+        if (!toolbar_focus_is_overflow(tb, current)) {
+            for (int i = current + 1; i < limit; i++) {
+                if (toolbar_item_can_focus(tb->items[i]))
+                    return i;
+            }
+            if (tb->overflow_start_index >= 0)
+                return tb->overflow_start_index;
+        }
+        return current;
+    }
+
+    if (current < 0)
+        return toolbar_last_focus_index(tb);
+    if (toolbar_focus_is_overflow(tb, current)) {
+        for (int i = limit - 1; i >= 0; i--) {
+            if (toolbar_item_can_focus(tb->items[i]))
+                return i;
+        }
+        return current;
+    }
+    for (int i = current - 1; i >= 0; i--) {
+        if (toolbar_item_can_focus(tb->items[i]))
+            return i;
+    }
+    return current;
+}
+
+static void toolbar_normalize_focus_index(vg_toolbar_t *tb) {
+    if (!tb)
+        return;
+    if (!toolbar_focus_index_valid(tb, tb->focused_index))
+        tb->focused_index = toolbar_first_focus_index(tb);
 }
 
 static float toolbar_primary_available(vg_toolbar_t *tb) {
@@ -803,6 +989,7 @@ vg_toolbar_t *vg_toolbar_create(vg_widget_t *parent, vg_toolbar_orientation_t or
     tb->hovered_item = NULL;
     tb->pressed_item = NULL;
     tb->overflow_start_index = -1;
+    tb->focused_index = -1;
 
     // Add to parent
     if (parent) {
@@ -877,6 +1064,7 @@ static void toolbar_arrange(vg_widget_t *widget, float x, float y, float width, 
 
     toolbar_compute_overflow(
         tb, tb->orientation == VG_TOOLBAR_HORIZONTAL ? width : height);
+    toolbar_normalize_focus_index(tb);
 
     // Arrange custom widgets within toolbar items
     float pos = 0.0f;
@@ -918,6 +1106,7 @@ static void toolbar_arrange(vg_widget_t *widget, float x, float y, float width, 
 static void toolbar_paint(vg_widget_t *widget, void *canvas) {
     vg_toolbar_t *tb = (vg_toolbar_t *)widget;
     vgfx_window_t win = (vgfx_window_t)canvas;
+    vg_theme_t *theme = vg_theme_get_current();
 
     // Draw toolbar background
     vgfx_fill_rect(win,
@@ -978,6 +1167,8 @@ static void toolbar_paint(vg_widget_t *widget, void *canvas) {
             case VG_TOOLBAR_ITEM_BUTTON:
             case VG_TOOLBAR_ITEM_TOGGLE:
             case VG_TOOLBAR_ITEM_DROPDOWN: {
+                bool keyboard_focused =
+                    (widget->state & VG_STATE_FOCUSED) && tb->focused_index == i;
                 // Draw button background based on state
                 uint32_t btn_bg = 0; // No background by default
                 if (item == tb->pressed_item) {
@@ -986,6 +1177,8 @@ static void toolbar_paint(vg_widget_t *widget, void *canvas) {
                     btn_bg = tb->hover_color;
                 } else if (item->type == VG_TOOLBAR_ITEM_TOGGLE && item->checked) {
                     btn_bg = tb->active_color;
+                } else if (keyboard_focused) {
+                    btn_bg = vg_color_blend(tb->bg_color, tb->hover_color, 0.7f);
                 }
 
                 if (btn_bg != 0) {
@@ -1042,7 +1235,8 @@ static void toolbar_paint(vg_widget_t *widget, void *canvas) {
                         break;
 
                     case VG_ICON_IMAGE:
-                        // Draw image (placeholder - needs vgfx integration)
+                        toolbar_draw_image_icon(
+                            win, &item->icon, icon_x, icon_y, icon_px, icon_px, item->enabled);
                         break;
 
                     default:
@@ -1072,6 +1266,19 @@ static void toolbar_paint(vg_widget_t *widget, void *canvas) {
                     vgfx_fill_rect(
                         win, (int32_t)(arrow_x + 2), (int32_t)(arrow_y + 1), 1, 1, txt_color);
                 }
+                if (keyboard_focused) {
+                    uint32_t focus = theme->colors.border_focus;
+                    int32_t fx = (int32_t)item_x;
+                    int32_t fy = (int32_t)item_y;
+                    int32_t fw = (int32_t)item_width;
+                    int32_t fh = (int32_t)item_height;
+                    if (fw > 1 && fh > 1) {
+                        vgfx_fill_rect(win, fx, fy, fw, 1, focus);
+                        vgfx_fill_rect(win, fx, fy + fh - 1, fw, 1, focus);
+                        vgfx_fill_rect(win, fx, fy, 1, fh, focus);
+                        vgfx_fill_rect(win, fx + fw - 1, fy, 1, fh, focus);
+                    }
+                }
                 break;
             }
 
@@ -1099,6 +1306,8 @@ static void toolbar_paint(vg_widget_t *widget, void *canvas) {
             ov_bg = tb->active_color;
         else if (tb->overflow_button_hovered)
             ov_bg = tb->hover_color;
+        else if ((widget->state & VG_STATE_FOCUSED) && tb->focused_index == tb->overflow_start_index)
+            ov_bg = vg_color_blend(tb->bg_color, tb->hover_color, 0.7f);
         if (ov_bg != 0) {
             vgfx_fill_rect(win,
                            (int32_t)(widget->x + ov_x),
@@ -1120,6 +1329,19 @@ static void toolbar_paint(vg_widget_t *widget, void *canvas) {
             vgfx_fill_rect(win, (int32_t)center_x, (int32_t)(center_y - 6.0f), 2, 2, tb->text_color);
             vgfx_fill_rect(win, (int32_t)center_x, (int32_t)(center_y - 1.0f), 2, 2, tb->text_color);
             vgfx_fill_rect(win, (int32_t)center_x, (int32_t)(center_y + 4.0f), 2, 2, tb->text_color);
+        }
+        if ((widget->state & VG_STATE_FOCUSED) && tb->focused_index == tb->overflow_start_index) {
+            uint32_t focus = theme->colors.border_focus;
+            int32_t fx = (int32_t)(widget->x + ov_x);
+            int32_t fy = (int32_t)(widget->y + ov_y);
+            int32_t fw = (int32_t)ov_w;
+            int32_t fh = (int32_t)ov_h;
+            if (fw > 1 && fh > 1) {
+                vgfx_fill_rect(win, fx, fy, fw, 1, focus);
+                vgfx_fill_rect(win, fx, fy + fh - 1, fw, 1, focus);
+                vgfx_fill_rect(win, fx, fy, 1, fh, focus);
+                vgfx_fill_rect(win, fx + fw - 1, fy, 1, fh, focus);
+            }
         }
     }
 }
@@ -1224,6 +1446,8 @@ static bool toolbar_handle_event(vg_widget_t *widget, vg_event_t *event) {
 
         case VG_EVENT_MOUSE_DOWN: {
             if (toolbar_overflow_button_hit(tb, event->mouse.x, event->mouse.y)) {
+                vg_widget_set_focus(widget);
+                tb->focused_index = tb->overflow_start_index;
                 toolbar_dismiss_dropdown_popup(tb);
                 if (tb->overflow_popup && tb->overflow_popup->is_visible)
                     toolbar_dismiss_overflow_popup(tb);
@@ -1235,6 +1459,10 @@ static bool toolbar_handle_event(vg_widget_t *widget, vg_event_t *event) {
 
             vg_toolbar_item_t *item = find_item_at(tb, event->mouse.x, event->mouse.y);
             if (item && item->enabled) {
+                int item_index = toolbar_index_of_item(tb, item);
+                if (item_index >= 0)
+                    tb->focused_index = item_index;
+                vg_widget_set_focus(widget);
                 toolbar_dismiss_overflow_popup(tb);
                 if (item->type != VG_TOOLBAR_ITEM_DROPDOWN || item != tb->dropdown_item)
                     toolbar_dismiss_dropdown_popup(tb);
@@ -1262,9 +1490,112 @@ static bool toolbar_handle_event(vg_widget_t *widget, vg_event_t *event) {
             return item != NULL;
         }
 
+        case VG_EVENT_KEY_DOWN: {
+            if (!toolbar_focus_index_valid(tb, tb->focused_index))
+                tb->focused_index = toolbar_first_focus_index(tb);
+
+            bool horizontal = tb->orientation == VG_TOOLBAR_HORIZONTAL;
+            if ((horizontal && event->key.key == VG_KEY_LEFT) ||
+                (!horizontal && event->key.key == VG_KEY_UP)) {
+                int next = toolbar_next_focus_index(tb, tb->focused_index, -1);
+                if (next != tb->focused_index) {
+                    tb->focused_index = next;
+                    tb->hovered_item =
+                        toolbar_focus_is_overflow(tb, next) ? NULL : tb->items[next];
+                    widget->needs_paint = true;
+                }
+                return true;
+            }
+            if ((horizontal && event->key.key == VG_KEY_RIGHT) ||
+                (!horizontal && event->key.key == VG_KEY_DOWN)) {
+                int next = toolbar_next_focus_index(tb, tb->focused_index, 1);
+                if (next != tb->focused_index) {
+                    tb->focused_index = next;
+                    tb->hovered_item =
+                        toolbar_focus_is_overflow(tb, next) ? NULL : tb->items[next];
+                    widget->needs_paint = true;
+                }
+                return true;
+            }
+            if (event->key.key == VG_KEY_HOME) {
+                tb->focused_index = toolbar_first_focus_index(tb);
+                tb->hovered_item = toolbar_focus_is_overflow(tb, tb->focused_index)
+                                       ? NULL
+                                       : (tb->focused_index >= 0 ? tb->items[tb->focused_index]
+                                                                 : NULL);
+                widget->needs_paint = true;
+                return true;
+            }
+            if (event->key.key == VG_KEY_END) {
+                tb->focused_index = toolbar_last_focus_index(tb);
+                tb->hovered_item = toolbar_focus_is_overflow(tb, tb->focused_index)
+                                       ? NULL
+                                       : (tb->focused_index >= 0 ? tb->items[tb->focused_index]
+                                                                 : NULL);
+                widget->needs_paint = true;
+                return true;
+            }
+            if (event->key.key == VG_KEY_ESCAPE) {
+                bool dismissed = false;
+                if (tb->overflow_popup && tb->overflow_popup->is_visible) {
+                    toolbar_dismiss_overflow_popup(tb);
+                    dismissed = true;
+                }
+                if (tb->dropdown_popup && tb->dropdown_popup->is_visible) {
+                    toolbar_dismiss_dropdown_popup(tb);
+                    dismissed = true;
+                }
+                toolbar_sync_popup_capture(tb);
+                if (dismissed)
+                    widget->needs_paint = true;
+                return dismissed;
+            }
+            if (horizontal && event->key.key == VG_KEY_DOWN &&
+                toolbar_focus_is_overflow(tb, tb->focused_index)) {
+                toolbar_show_overflow_popup(tb);
+                return true;
+            }
+            if (horizontal && event->key.key == VG_KEY_DOWN &&
+                toolbar_focus_index_valid(tb, tb->focused_index)) {
+                vg_toolbar_item_t *item = tb->items[tb->focused_index];
+                if (item && item->type == VG_TOOLBAR_ITEM_DROPDOWN) {
+                    toolbar_show_dropdown_popup(tb, item);
+                    return true;
+                }
+            }
+            if (event->key.key == VG_KEY_ENTER || event->key.key == VG_KEY_SPACE) {
+                if (toolbar_focus_is_overflow(tb, tb->focused_index)) {
+                    if (tb->overflow_popup && tb->overflow_popup->is_visible)
+                        toolbar_dismiss_overflow_popup(tb);
+                    else
+                        toolbar_show_overflow_popup(tb);
+                    widget->needs_paint = true;
+                    return true;
+                }
+                if (toolbar_focus_index_valid(tb, tb->focused_index)) {
+                    toolbar_activate_item(tb, tb->items[tb->focused_index]);
+                    widget->needs_paint = true;
+                    return true;
+                }
+            }
+            return false;
+        }
+
         default:
             return false;
     }
+}
+
+static bool toolbar_can_focus(vg_widget_t *widget) {
+    vg_toolbar_t *tb = (vg_toolbar_t *)widget;
+    return widget->enabled && widget->visible && toolbar_first_focus_index(tb) >= 0;
+}
+
+static void toolbar_on_focus(vg_widget_t *widget, bool gained) {
+    vg_toolbar_t *tb = (vg_toolbar_t *)widget;
+    if (gained)
+        toolbar_normalize_focus_index(tb);
+    widget->needs_paint = true;
 }
 
 //=============================================================================
@@ -1416,6 +1747,10 @@ void vg_toolbar_remove_item(vg_toolbar_t *tb, const char *id) {
                 tb->hovered_item = NULL;
             if (tb->pressed_item == tb->items[i])
                 tb->pressed_item = NULL;
+            if (tb->focused_index == (int)i)
+                tb->focused_index = -1;
+            else if (tb->focused_index > (int)i && !toolbar_focus_is_overflow(tb, tb->focused_index))
+                tb->focused_index--;
             if (tb->dropdown_item == tb->items[i])
                 toolbar_dismiss_dropdown_popup(tb);
             free_item(tb->items[i]);

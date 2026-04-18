@@ -556,13 +556,17 @@ static void test_tabbar_close_click_index_survives_auto_close(void) {
     tabbar->base.width = 200.0f;
     tabbar->base.height = tabbar->tab_height;
 
-    vg_event_t click = {0};
-    click.type = VG_EVENT_MOUSE_DOWN;
-    click.mouse.x = 180.0f;
-    click.mouse.y = tabbar->tab_height / 2.0f;
-    click.mouse.screen_x = click.mouse.x;
-    click.mouse.screen_y = click.mouse.y;
-    assert(vg_event_send(&tabbar->base, &click));
+    vg_event_t down = {0};
+    down.type = VG_EVENT_MOUSE_DOWN;
+    down.mouse.x = 180.0f;
+    down.mouse.y = tabbar->tab_height / 2.0f;
+    down.mouse.screen_x = down.mouse.x;
+    down.mouse.screen_y = down.mouse.y;
+    assert(vg_event_send(&tabbar->base, &down));
+
+    vg_event_t up = down;
+    up.type = VG_EVENT_MOUSE_UP;
+    assert(vg_event_send(&tabbar->base, &up));
 
     assert(tabbar->tab_count == 0);
     assert(rt_tabbar_was_close_clicked(tabbar) == 1);

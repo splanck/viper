@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-17
+last-verified: 2026-04-18
 ---
 
 # Application Components
@@ -79,6 +79,7 @@ Application toolbar widget.
 When the toolbar is narrower than its contents, hidden items are exposed through an automatic overflow popup rather than becoming inaccessible.
 Flexible spacer items now consume the remaining strip width, and dropdown toolbar items open their attached menus directly.
 Runtime text and icon changes invalidate layout and overflow measurement immediately, so the strip repacks without waiting for an unrelated refresh.
+Toolbar items now render pixel icons directly, keyboard focus is visible, and `Left` / `Right` / `Home` / `End` navigate the strip while `Enter` / `Space` activate the focused item or overflow button.
 
 **Constructor:** `NEW Viper.GUI.Toolbar(parent)`
 

@@ -228,6 +228,7 @@ typedef struct vg_toolbar {
     bool overflow_popup_dirty;        ///< Rebuild popup contents before next show
     vg_contextmenu_t *dropdown_popup; ///< Popup sourced from a dropdown menu item
     vg_toolbar_item_t *dropdown_item; ///< Dropdown item currently showing a popup
+    int focused_index;                ///< Keyboard-focused visible item index (-1 if none)
 } vg_toolbar_t;
 
 /// @brief Create a new toolbar widget

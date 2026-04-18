@@ -89,6 +89,8 @@ typedef struct vg_tabbar {
     vg_tab_t *drag_tab;        ///< Tab being dragged
     float drag_origin_x;       ///< Mouse-down X position for drag-threshold checks
     float drag_x;              ///< Drag position
+    vg_tab_t *pressed_tab;     ///< Tab pressed on mouse-down, committed on mouse-up
+    vg_tab_t *pressed_close_tab; ///< Close button pressed on mouse-down, committed on mouse-up
 
     // Per-frame tracking for Zia runtime
     vg_tab_t *prev_active_tab; ///< Previous active tab (for change detection)

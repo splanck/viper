@@ -252,6 +252,7 @@ typedef struct vg_treeview {
 
     // State
     vg_tree_node_t *hovered; ///< Currently hovered node
+    bool suppress_click;     ///< Swallow the synthetic click that follows a drag
 } vg_treeview_t;
 
 /// @brief Create a new tree view widget

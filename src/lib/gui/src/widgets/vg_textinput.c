@@ -35,6 +35,7 @@ static void textinput_paint(vg_widget_t *widget, void *canvas);
 static bool textinput_handle_event(vg_widget_t *widget, vg_event_t *event);
 static bool textinput_can_focus(vg_widget_t *widget);
 static void textinput_on_focus(vg_widget_t *widget, bool gained);
+static void textinput_ensure_cursor_visible(vg_textinput_t *input);
 
 // Forward declaration for clipboard support
 char *vg_textinput_get_selection(vg_textinput_t *input);
@@ -158,6 +159,14 @@ static bool textinput_is_word_separator(unsigned char ch) {
     return strchr(".,;:!?()[]{}<>/\\|+-*=~`'\"@", (int)ch) != NULL;
 }
 
+static bool textinput_char_is_word_separator_at(const vg_textinput_t *input, size_t char_pos) {
+    size_t char_count = textinput_char_count(input);
+    if (!input || char_pos >= char_count)
+        return true;
+    size_t byte_pos = textinput_byte_offset(input, char_pos);
+    return textinput_is_word_separator((unsigned char)input->text[byte_pos]);
+}
+
 static void textinput_reset_cursor_blink(vg_textinput_t *input) {
     if (!input)
         return;
@@ -165,11 +174,54 @@ static void textinput_reset_cursor_blink(vg_textinput_t *input) {
     input->cursor_visible = true;
 }
 
+static void textinput_reset_undo_history(vg_textinput_t *input) {
+    if (!input)
+        return;
+    for (int i = 0; i < TEXTINPUT_UNDO_CAPACITY; i++) {
+        free(input->undo_stack[i]);
+        input->undo_stack[i] = NULL;
+        input->undo_cursors[i] = 0;
+    }
+    input->undo_stack[0] = strdup(input->text ? input->text : "");
+    input->undo_cursors[0] = input->cursor_pos;
+    input->undo_count = input->undo_stack[0] ? 1 : 0;
+    input->undo_pos = 0;
+}
+
 static void textinput_set_cursor_internal(vg_textinput_t *input, size_t pos) {
     size_t clamped = textinput_clamp_char_pos(input, pos);
     input->cursor_pos = clamped;
     input->selection_start = clamped;
     input->selection_end = clamped;
+}
+
+static void textinput_select_word_at(vg_textinput_t *input, size_t char_pos) {
+    if (!input)
+        return;
+    size_t char_count = textinput_char_count(input);
+    if (char_count == 0) {
+        textinput_set_cursor_internal(input, 0);
+        return;
+    }
+    if (char_pos >= char_count)
+        char_pos = char_count - 1;
+
+    bool separators = textinput_char_is_word_separator_at(input, char_pos);
+    size_t start = char_pos;
+    size_t end = char_pos + 1;
+    while (start > 0 && textinput_char_is_word_separator_at(input, start - 1) == separators) {
+        start--;
+    }
+    while (end < char_count && textinput_char_is_word_separator_at(input, end) == separators) {
+        end++;
+    }
+
+    input->selection_start = start;
+    input->selection_end = end;
+    input->cursor_pos = end;
+    textinput_ensure_cursor_visible(input);
+    textinput_reset_cursor_blink(input);
+    input->base.needs_paint = true;
 }
 
 static float textinput_line_height(const vg_textinput_t *input) {
@@ -942,6 +994,8 @@ static void textinput_undo(vg_textinput_t *input) {
     size_t cur = input->undo_cursors[input->undo_pos];
     textinput_set_cursor_internal(input, cur);
     textinput_ensure_cursor_visible(input);
+    if (input->on_change)
+        input->on_change(&input->base, input->text, input->on_change_data);
     input->base.needs_paint = true;
 }
 
@@ -964,6 +1018,8 @@ static void textinput_redo(vg_textinput_t *input) {
     size_t cur = input->undo_cursors[input->undo_pos];
     textinput_set_cursor_internal(input, cur);
     textinput_ensure_cursor_visible(input);
+    if (input->on_change)
+        input->on_change(&input->base, input->text, input->on_change_data);
     input->base.needs_paint = true;
 }
 
@@ -978,6 +1034,7 @@ static bool textinput_handle_event(vg_widget_t *widget, vg_event_t *event) {
         case VG_EVENT_MOUSE_DOWN:
             // Set focus and cursor position
             if (input->font) {
+                size_t old_cursor = input->cursor_pos;
                 float padding = vg_theme_get_current()->input.padding_h;
                 if (input->multiline) {
                     float local_x = event->mouse.x - padding + input->scroll_x;
@@ -993,12 +1050,38 @@ static bool textinput_handle_event(vg_widget_t *widget, vg_event_t *event) {
                         input->cursor_pos = textinput_char_count(input);
                     }
                 }
-                input->selection_start = input->cursor_pos;
-                input->selection_end = input->cursor_pos;
+                if ((event->modifiers & VG_MOD_SHIFT) != 0) {
+                    if (input->selection_start == input->selection_end)
+                        input->selection_start = old_cursor;
+                    input->selection_end = input->cursor_pos;
+                } else {
+                    input->selection_start = input->cursor_pos;
+                    input->selection_end = input->cursor_pos;
+                }
                 textinput_ensure_cursor_visible(input);
                 textinput_reset_cursor_blink(input);
             }
             vg_widget_set_input_capture(widget);
+            return true;
+
+        case VG_EVENT_DOUBLE_CLICK:
+            if (input->font) {
+                float padding = vg_theme_get_current()->input.padding_h;
+                size_t hit = 0;
+                if (input->multiline) {
+                    float local_x = event->mouse.x - padding + input->scroll_x;
+                    float local_y = event->mouse.y - 6.0f + input->scroll_y;
+                    hit = textinput_hit_test_multiline(input, local_x, local_y);
+                } else {
+                    float local_x = event->mouse.x - padding + input->scroll_x;
+                    int char_index =
+                        vg_font_hit_test(input->font, input->font_size, input->text, local_x);
+                    hit = char_index >= 0 ? (size_t)char_index : textinput_char_count(input);
+                }
+                textinput_select_word_at(input, hit);
+            } else {
+                textinput_select_word_at(input, input->cursor_pos);
+            }
             return true;
 
         case VG_EVENT_MOUSE_MOVE:
@@ -1106,8 +1189,12 @@ static bool textinput_handle_event(vg_widget_t *widget, vg_event_t *event) {
                         return true;
 
                     case VG_KEY_Z: // Undo
-                        if (!input->read_only)
-                            textinput_undo(input);
+                        if (!input->read_only) {
+                            if ((mods & VG_MOD_SHIFT) != 0)
+                                textinput_redo(input);
+                            else
+                                textinput_undo(input);
+                        }
                         widget->needs_paint = true;
                         return true;
 
@@ -1421,6 +1508,8 @@ void vg_textinput_set_text(vg_textinput_t *input, const char *text) {
     if (!input)
         return;
 
+    const char *next_text = text ? text : "";
+    bool changed = strcmp(input->text ? input->text : "", next_text) != 0;
     size_t len = text ? strlen(text) : 0;
 
     if (!ensure_capacity(input, len + 1))
@@ -1436,10 +1525,13 @@ void vg_textinput_set_text(vg_textinput_t *input, const char *text) {
     input->scroll_x = 0.0f;
     input->scroll_y = 0.0f;
     textinput_ensure_cursor_visible(input);
+    textinput_reset_undo_history(input);
 
     if (input->multiline)
         input->base.needs_layout = true;
     input->base.needs_paint = true;
+    if (changed && input->on_change)
+        input->on_change(&input->base, input->text, input->on_change_data);
 }
 
 const char *vg_textinput_get_text(vg_textinput_t *input) {
