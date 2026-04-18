@@ -374,6 +374,15 @@ TEST(scrollview_hit_test_excludes_scrollbar_gutter) {
     sv->base.visible = true;
     sv->base.enabled = true;
 
+    // Force the vertical scrollbar to be visible so the gutter exists at
+    // the right edge. Auto-hide would otherwise drop it because the child
+    // has no measured overflow content at arrange time, and the hit-test
+    // correctly only excludes the gutter when a scrollbar is actually
+    // shown.
+    sv->auto_hide_scrollbars = false;
+    sv->show_v_scrollbar = true;
+    sv->show_h_scrollbar = false;
+
     vg_widget_arrange(root, 0.0f, 0.0f, 100.0f, 100.0f);
     vg_widget_arrange(&sv->base, 0.0f, 0.0f, 100.0f, 100.0f);
     child->x = 0.0f;
@@ -661,6 +670,7 @@ TEST(notification_zero_fade_duration_snaps_cleanly) {
     vg_notification_manager_t *mgr = vg_notification_manager_create();
     ASSERT_NOT_NULL(mgr);
     mgr->fade_duration_ms = 0; // no fade
+    mgr->slide_duration_ms = 0;
 
     uint32_t id = vg_notification_show(mgr, VG_NOTIFICATION_INFO, "t", "m", 50);
     ASSERT(id > 0);
@@ -671,6 +681,81 @@ TEST(notification_zero_fade_duration_snaps_cleanly) {
 
     // Past duration with no fade — should dismiss on this tick.
     vg_notification_manager_update(mgr, 1100);
+    ASSERT_EQ(mgr->notification_count, (size_t)0);
+
+    vg_widget_destroy(&mgr->base);
+}
+
+TEST(tooltip_manager_honors_duration_and_hide_delay) {
+    vg_tooltip_manager_t *mgr = vg_tooltip_manager_get();
+    ASSERT_NOT_NULL(mgr);
+    vg_tooltip_manager_on_leave(mgr);
+
+    vg_widget_t *w = vg_widget_create(VG_WIDGET_LABEL);
+    ASSERT_NOT_NULL(w);
+    vg_widget_set_tooltip_text(w, "timed");
+
+    vg_tooltip_manager_on_hover(mgr, w, 10, 20);
+    ASSERT_NOT_NULL(mgr->active_tooltip);
+    vg_tooltip_set_timing(mgr->active_tooltip, 0, 40, 30);
+    mgr->hover_start_time = 1000;
+    vg_tooltip_manager_update(mgr, 1000);
+    ASSERT_TRUE(mgr->active_tooltip->is_visible);
+
+    mgr->active_tooltip->show_timer = 1000;
+    vg_tooltip_manager_update(mgr, 1031);
+    ASSERT_FALSE(mgr->active_tooltip->is_visible);
+
+    vg_tooltip_manager_on_hover(mgr, w, 10, 20);
+    mgr->hover_start_time = 2000;
+    vg_tooltip_manager_update(mgr, 2000);
+    ASSERT_TRUE(mgr->active_tooltip->is_visible);
+    mgr->active_tooltip->duration_ms = 0;
+
+    vg_tooltip_manager_on_leave(mgr);
+    ASSERT_TRUE(mgr->active_tooltip->is_visible);
+    ASSERT(mgr->active_tooltip->hide_timer > 0);
+    uint64_t hide_at = mgr->active_tooltip->hide_timer;
+    vg_tooltip_manager_update(mgr, hide_at - 1);
+    ASSERT_TRUE(mgr->active_tooltip->is_visible);
+    vg_tooltip_manager_update(mgr, hide_at);
+    ASSERT_FALSE(mgr->active_tooltip->is_visible);
+
+    vg_widget_destroy(w);
+    vg_tooltip_manager_on_leave(mgr);
+}
+
+TEST(notification_manual_dismiss_respects_exit_animation) {
+    vg_notification_manager_t *mgr = vg_notification_manager_create();
+    ASSERT_NOT_NULL(mgr);
+    mgr->fade_duration_ms = 100;
+    mgr->slide_duration_ms = 120;
+
+    uint32_t id = vg_notification_show(mgr, VG_NOTIFICATION_INFO, "Title", "Body", 0);
+    ASSERT(id > 0);
+
+    vg_notification_manager_update(mgr, 1000);
+    vg_notification_manager_update(mgr, 1200);
+    ASSERT_EQ(mgr->notification_count, (size_t)1);
+    ASSERT_EQ(mgr->notifications[0]->opacity, 1.0f);
+    ASSERT_EQ(mgr->notifications[0]->slide_progress, 1.0f);
+
+    vg_notification_dismiss(mgr, id);
+    ASSERT_TRUE(mgr->notifications[0]->dismissed);
+    ASSERT_EQ(mgr->notifications[0]->dismiss_started_at, (uint64_t)0);
+
+    vg_notification_manager_update(mgr, 1200);
+    ASSERT_EQ(mgr->notification_count, (size_t)1);
+    ASSERT_EQ(mgr->notifications[0]->dismiss_started_at, (uint64_t)1200);
+
+    vg_notification_manager_update(mgr, 1260);
+    ASSERT_EQ(mgr->notification_count, (size_t)1);
+    ASSERT(mgr->notifications[0]->opacity < 1.0f);
+    ASSERT(mgr->notifications[0]->opacity > 0.0f);
+    ASSERT(mgr->notifications[0]->slide_progress < 1.0f);
+    ASSERT(mgr->notifications[0]->slide_progress > 0.0f);
+
+    vg_notification_manager_update(mgr, 1330);
     ASSERT_EQ(mgr->notification_count, (size_t)0);
 
     vg_widget_destroy(&mgr->base);
@@ -727,7 +812,9 @@ int main(void) {
     RUN(dropdown_flip_above_without_window_is_noop);
     RUN(scrollview_narrow_still_hit_tests_children);
     RUN(tooltip_wrap_terminates_on_whitespace_only_text);
+    RUN(tooltip_manager_honors_duration_and_hide_delay);
     RUN(treeview_collapse_reclamps_scroll);
+    RUN(notification_manual_dismiss_respects_exit_animation);
     RUN(notification_zero_fade_duration_snaps_cleanly);
 
     printf("\n=== Results: %d passed, %d failed ===\n", g_passed, g_failed);

@@ -51,6 +51,8 @@ static void rt_messagebox_prepare_modal(rt_gui_app_t *app, vg_dialog_t *dlg) {
     rt_gui_ensure_default_font();
     if (app && app->default_font)
         vg_dialog_set_font(dlg, app->default_font, app->default_font_size);
+    if (dlg && dlg->min_width < 360)
+        vg_dialog_set_size_constraints(dlg, 360, dlg->min_height, 720, dlg->max_height);
     vg_dialog_set_modal(dlg, true, app ? app->root : NULL);
     vg_dialog_show_centered(dlg, app ? app->root : NULL);
     rt_gui_push_dialog(app, dlg);
@@ -216,6 +218,9 @@ rt_string rt_messagebox_prompt(rt_string title, rt_string message) {
 
     if (app->default_font)
         vg_textinput_set_font(input, app->default_font, app->default_font_size);
+    input->base.constraints.min_width = 240.0f;
+    input->base.constraints.preferred_width = 360.0f;
+    vg_textinput_set_placeholder(input, "Enter a value");
 
     // When Enter is pressed inside the input, dismiss as OK
     rt_prompt_commit_data_t commit_data = {.dialog = dlg};
@@ -224,6 +229,7 @@ rt_string rt_messagebox_prompt(rt_string title, rt_string message) {
     // Place the input as the dialog's content widget
     vg_dialog_set_content(dlg, (vg_widget_t *)input);
     vg_dialog_set_buttons(dlg, VG_DIALOG_BUTTONS_OK_CANCEL);
+    vg_dialog_set_size_constraints(dlg, 420, 190, 760, 420);
 
     // Show and focus the input so the user can type immediately.
     rt_messagebox_prepare_modal(app, dlg);

@@ -48,7 +48,7 @@ bind Viper.GUI;
 
 /// @brief Default font size (in points). Used both at construction and as
 ///        the reset target for the "Reset font size" command.
-final DEFAULT_FONT_SIZE = 14;
+final DEFAULT_FONT_SIZE = 15;
 
 /// @brief Settings store with INI-backed persistence.
 class SettingsManager {

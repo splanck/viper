@@ -1,0 +1,334 @@
+module ide_overlays;
+
+bind "../ui/app_shell";
+bind "../core/settings";
+
+bind Viper.GUI as GUI;
+bind Str = Viper.String;
+bind Convert = Viper.Core.Convert;
+
+final ACTION_NONE = 0;
+final ACTION_APPLY_SETTINGS = 1;
+final ACTION_BROWSE_FONT = 2;
+final ACTION_USE_SYSTEM_FONT = 3;
+final ACTION_RESET_FONT_SIZE = 4;
+final ACTION_CLOSE_SETTINGS = 5;
+final ACTION_CLOSE_ABOUT = 6;
+
+final SETTINGS_PANEL_WIDTH = 700;
+final SETTINGS_PANEL_HEIGHT = 430;
+final ABOUT_PANEL_WIDTH = 520;
+final ABOUT_PANEL_HEIGHT = 270;
+final LABEL_WIDTH = 150;
+
+/// @brief Floating in-app overlays for ViperIDE settings and about panels.
+/// @details These replace the old stacked MessageBox/Prompt flow with
+///          persistent controls that can be edited inline.
+class IdeOverlays {
+    expose GUI.FloatingPanel settingsPanel;
+    expose GUI.FloatingPanel aboutPanel;
+
+    expose GUI.TextInput fontPathInput;
+    expose GUI.Spinner fontSizeSpinner;
+    expose GUI.Spinner tabWidthSpinner;
+    expose GUI.Dropdown themeDropdown;
+    expose GUI.Checkbox minimapCheck;
+    expose GUI.Checkbox autoCheckCheck;
+    expose GUI.Checkbox codeFoldingCheck;
+    expose GUI.Button browseFontButton;
+    expose GUI.Button useSystemFontButton;
+    expose GUI.Button resetFontSizeButton;
+    expose GUI.Button applySettingsButton;
+    expose GUI.Button closeSettingsButton;
+    expose GUI.Button aboutCloseButton;
+
+    expose Boolean settingsVisible;
+    expose Boolean aboutVisible;
+
+    expose func init() {
+        settingsVisible = false;
+        aboutVisible = false;
+    }
+
+    expose func Setup(shell: app_shell.AppShell) {
+        setupSettingsPanel(shell);
+        setupAboutPanel(shell);
+    }
+
+    expose func OpenSettings(shell: app_shell.AppShell,
+                             appSettings: settings.SettingsManager) {
+        SyncSettings(appSettings);
+        layoutSettingsPanel(shell);
+        settingsPanel.SetVisible(1);
+        aboutPanel.SetVisible(0);
+        settingsVisible = true;
+        aboutVisible = false;
+        fontPathInput.Focus();
+    }
+
+    expose func CloseSettings() {
+        if settingsPanel != null {
+            settingsPanel.SetVisible(0);
+        }
+        settingsVisible = false;
+    }
+
+    expose func OpenAbout(shell: app_shell.AppShell) {
+        layoutAboutPanel(shell);
+        aboutPanel.SetVisible(1);
+        settingsPanel.SetVisible(0);
+        aboutVisible = true;
+        settingsVisible = false;
+    }
+
+    expose func CloseAbout() {
+        if aboutPanel != null {
+            aboutPanel.SetVisible(0);
+        }
+        aboutVisible = false;
+    }
+
+    expose func SyncSettings(appSettings: settings.SettingsManager) {
+        if fontSizeSpinner != null {
+            fontSizeSpinner.SetValue(appSettings.fontSize);
+        }
+        if tabWidthSpinner != null {
+            tabWidthSpinner.SetValue(appSettings.tabWidth);
+        }
+        if themeDropdown != null {
+            if appSettings.theme == "light" {
+                themeDropdown.SetSelected(1);
+            } else {
+                themeDropdown.SetSelected(0);
+            }
+        }
+        if fontPathInput != null {
+            fontPathInput.SetText(appSettings.fontPath);
+        }
+        if minimapCheck != null {
+            if appSettings.minimapVisible {
+                minimapCheck.SetChecked(1);
+            } else {
+                minimapCheck.SetChecked(0);
+            }
+        }
+        if autoCheckCheck != null {
+            if appSettings.autoCheckOnSave {
+                autoCheckCheck.SetChecked(1);
+            } else {
+                autoCheckCheck.SetChecked(0);
+            }
+        }
+        if codeFoldingCheck != null {
+            if appSettings.codeFolding {
+                codeFoldingCheck.SetChecked(1);
+            } else {
+                codeFoldingCheck.SetChecked(0);
+            }
+        }
+    }
+
+    expose func Pump(shell: app_shell.AppShell) -> Integer {
+        if settingsVisible {
+            layoutSettingsPanel(shell);
+            if browseFontButton.WasClicked() != 0 { return ACTION_BROWSE_FONT; }
+            if useSystemFontButton.WasClicked() != 0 { return ACTION_USE_SYSTEM_FONT; }
+            if resetFontSizeButton.WasClicked() != 0 { return ACTION_RESET_FONT_SIZE; }
+            if applySettingsButton.WasClicked() != 0 { return ACTION_APPLY_SETTINGS; }
+            if closeSettingsButton.WasClicked() != 0 { return ACTION_CLOSE_SETTINGS; }
+        }
+
+        if aboutVisible {
+            layoutAboutPanel(shell);
+            if aboutCloseButton.WasClicked() != 0 { return ACTION_CLOSE_ABOUT; }
+        }
+
+        return ACTION_NONE;
+    }
+
+    expose func ReadFontSize() -> Integer {
+        return Convert.ToInt("" + fontSizeSpinner.Value);
+    }
+
+    expose func ReadTabWidth() -> Integer {
+        return Convert.ToInt("" + tabWidthSpinner.Value);
+    }
+
+    expose func ReadTheme() -> String {
+        if themeDropdown.Selected == 1 {
+            return "light";
+        }
+        return "dark";
+    }
+
+    expose func ReadFontPath() -> String {
+        return Str.Trim(fontPathInput.Text);
+    }
+
+    expose func ReadMinimapVisible() -> Boolean {
+        return minimapCheck.IsChecked() != 0;
+    }
+
+    expose func ReadAutoCheck() -> Boolean {
+        return autoCheckCheck.IsChecked() != 0;
+    }
+
+    expose func ReadCodeFolding() -> Boolean {
+        return codeFoldingCheck.IsChecked() != 0;
+    }
+
+    expose func UseSystemFont() {
+        fontPathInput.SetText("");
+        fontPathInput.Focus();
+    }
+
+    expose func ResetFontSize() {
+        fontSizeSpinner.SetValue(settings.DEFAULT_FONT_SIZE);
+    }
+
+    expose func SetFontPath(path: String) {
+        fontPathInput.SetText(path);
+        fontPathInput.Focus();
+    }
+
+    hide func setupSettingsPanel(shell: app_shell.AppShell) {
+        settingsPanel = GUI.FloatingPanel.New(shell.app);
+        settingsPanel.SetSize(SETTINGS_PANEL_WIDTH, SETTINGS_PANEL_HEIGHT);
+        settingsPanel.SetVisible(0);
+
+        var root = GUI.VBox.New();
+        root.SetPadding(18.0);
+        root.SetSpacing(12.0);
+        settingsPanel.AddChild(root);
+
+        var title = GUI.Label.New(root, "Settings");
+        title.SetMargin(1);
+
+        var intro = GUI.Label.New(
+            root,
+            "Edit appearance and behavior inline. Nothing here opens another prompt.");
+        intro.SetMargin(1);
+
+        var fontPathRow = GUI.HBox.New();
+        fontPathRow.SetSpacing(10.0);
+        root.AddChild(fontPathRow);
+        var fontPathLabel = GUI.Label.New(fontPathRow, "Editor font");
+        fontPathLabel.SetSize(LABEL_WIDTH, 0);
+        fontPathInput = GUI.TextInput.New(fontPathRow);
+        fontPathInput.SetFlex(1.0);
+        fontPathInput.SetPlaceholder("Leave blank for the system default");
+        browseFontButton = GUI.Button.New(fontPathRow, "Browse...");
+        browseFontButton.SetStyle(2);
+        useSystemFontButton = GUI.Button.New(fontPathRow, "System");
+        useSystemFontButton.SetStyle(2);
+
+        var fontSizeRow = GUI.HBox.New();
+        fontSizeRow.SetSpacing(10.0);
+        root.AddChild(fontSizeRow);
+        var fontSizeLabel = GUI.Label.New(fontSizeRow, "Font size");
+        fontSizeLabel.SetSize(LABEL_WIDTH, 0);
+        fontSizeSpinner = GUI.Spinner.New(fontSizeRow);
+        fontSizeSpinner.SetRange(6.0, 32.0);
+        fontSizeSpinner.SetStep(1.0);
+        fontSizeSpinner.SetDecimals(0);
+        fontSizeSpinner.SetSize(120, 0);
+        resetFontSizeButton = GUI.Button.New(fontSizeRow, "Reset");
+        resetFontSizeButton.SetStyle(2);
+
+        var tabWidthRow = GUI.HBox.New();
+        tabWidthRow.SetSpacing(10.0);
+        root.AddChild(tabWidthRow);
+        var tabWidthLabel = GUI.Label.New(tabWidthRow, "Tab width");
+        tabWidthLabel.SetSize(LABEL_WIDTH, 0);
+        tabWidthSpinner = GUI.Spinner.New(tabWidthRow);
+        tabWidthSpinner.SetRange(2.0, 8.0);
+        tabWidthSpinner.SetStep(1.0);
+        tabWidthSpinner.SetDecimals(0);
+        tabWidthSpinner.SetSize(120, 0);
+
+        var themeRow = GUI.HBox.New();
+        themeRow.SetSpacing(10.0);
+        root.AddChild(themeRow);
+        var themeLabel = GUI.Label.New(themeRow, "Theme");
+        themeLabel.SetSize(LABEL_WIDTH, 0);
+        themeDropdown = GUI.Dropdown.New(themeRow);
+        themeDropdown.SetFlex(1.0);
+        themeDropdown.AddItem("Dark");
+        themeDropdown.AddItem("Light");
+
+        var togglesTitle = GUI.Label.New(root, "Editor behavior");
+        togglesTitle.SetMargin(1);
+
+        minimapCheck = GUI.Checkbox.New(root, "Show minimap");
+        autoCheckCheck = GUI.Checkbox.New(root, "Live diagnostics while typing");
+        codeFoldingCheck = GUI.Checkbox.New(root, "Enable code folding");
+
+        var footer = GUI.HBox.New();
+        footer.SetSpacing(10.0);
+        root.AddChild(footer);
+        var footerSpacer = GUI.Label.New(footer, "");
+        footerSpacer.SetFlex(1.0);
+        closeSettingsButton = GUI.Button.New(footer, "Close");
+        closeSettingsButton.SetStyle(2);
+        applySettingsButton = GUI.Button.New(footer, "Apply");
+        applySettingsButton.SetStyle(1);
+    }
+
+    hide func setupAboutPanel(shell: app_shell.AppShell) {
+        aboutPanel = GUI.FloatingPanel.New(shell.app);
+        aboutPanel.SetSize(ABOUT_PANEL_WIDTH, ABOUT_PANEL_HEIGHT);
+        aboutPanel.SetVisible(0);
+
+        var root = GUI.VBox.New();
+        root.SetPadding(18.0);
+        root.SetSpacing(12.0);
+        aboutPanel.AddChild(root);
+
+        var title = GUI.Label.New(root, "About ViperIDE");
+        title.SetMargin(1);
+
+        GUI.Label.New(
+            root,
+            "A native IDE for Zia and Viper BASIC with live diagnostics, hover info, project search, and an integrated editor.");
+        GUI.Label.New(
+            root,
+            "This build now uses inline settings controls instead of the old stacked dialog flow.");
+        GUI.Label.New(
+            root,
+            "Shortcuts: Ctrl+B sidebar, Ctrl+Shift+P palette, Ctrl+, settings, F5 build and run.");
+
+        var footer = GUI.HBox.New();
+        footer.SetSpacing(10.0);
+        root.AddChild(footer);
+        var footerSpacer = GUI.Label.New(footer, "");
+        footerSpacer.SetFlex(1.0);
+        aboutCloseButton = GUI.Button.New(footer, "Close");
+        aboutCloseButton.SetStyle(1);
+    }
+
+    hide func layoutSettingsPanel(shell: app_shell.AppShell) {
+        if settingsPanel == null { return; }
+        var rootW = shell.app.GetWidth();
+        var rootH = shell.app.GetHeight();
+        if rootW <= 0 { rootW = 1280; }
+        if rootH <= 0 { rootH = 800; }
+        var x = (rootW - SETTINGS_PANEL_WIDTH) / 2;
+        var y = (rootH - SETTINGS_PANEL_HEIGHT) / 2;
+        if x < 24 { x = 24; }
+        if y < 24 { y = 24; }
+        settingsPanel.SetPosition(x, y);
+    }
+
+    hide func layoutAboutPanel(shell: app_shell.AppShell) {
+        if aboutPanel == null { return; }
+        var rootW = shell.app.GetWidth();
+        var rootH = shell.app.GetHeight();
+        if rootW <= 0 { rootW = 1280; }
+        if rootH <= 0 { rootH = 800; }
+        var x = (rootW - ABOUT_PANEL_WIDTH) / 2;
+        var y = (rootH - ABOUT_PANEL_HEIGHT) / 2;
+        if x < 24 { x = 24; }
+        if y < 24 { y = 24; }
+        aboutPanel.SetPosition(x, y);
+    }
+}

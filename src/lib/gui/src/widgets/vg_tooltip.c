@@ -29,6 +29,21 @@
 static void tooltip_destroy(vg_widget_t *widget);
 static void tooltip_measure(vg_widget_t *widget, float available_width, float available_height);
 static void tooltip_paint(vg_widget_t *widget, void *canvas);
+static uint32_t tooltip_apply_alpha(uint32_t color, uint32_t backdrop);
+static void tooltip_fill_round_rect(vgfx_window_t win,
+                                    int32_t x,
+                                    int32_t y,
+                                    int32_t w,
+                                    int32_t h,
+                                    int32_t radius,
+                                    uint32_t color);
+static void tooltip_stroke_round_rect(vgfx_window_t win,
+                                      int32_t x,
+                                      int32_t y,
+                                      int32_t w,
+                                      int32_t h,
+                                      int32_t radius,
+                                      uint32_t color);
 
 static bool tooltip_widget_is_descendant_of(const vg_widget_t *widget, const vg_widget_t *ancestor) {
     for (const vg_widget_t *current = widget; current; current = current->parent) {
@@ -187,6 +202,65 @@ static int tooltip_wrap_text(vg_tooltip_t *tooltip, char ***out_lines, float *ou
     return count > 0 ? count : 1;
 }
 
+static uint32_t tooltip_apply_alpha(uint32_t color, uint32_t backdrop) {
+    uint8_t alpha = (uint8_t)(color >> 24);
+    uint32_t rgb = color & 0x00FFFFFFu;
+    if (alpha == 0 || alpha == 0xFF)
+        return rgb;
+    return vg_color_blend(backdrop, rgb, (float)alpha / 255.0f);
+}
+
+static void tooltip_fill_round_rect(vgfx_window_t win,
+                                    int32_t x,
+                                    int32_t y,
+                                    int32_t w,
+                                    int32_t h,
+                                    int32_t radius,
+                                    uint32_t color) {
+    if (w <= 0 || h <= 0)
+        return;
+    int32_t max_radius = w < h ? w / 2 : h / 2;
+    if (radius <= 0 || max_radius <= 0 || w <= radius * 2 || h <= radius * 2) {
+        vgfx_fill_rect(win, x, y, w, h, color);
+        return;
+    }
+    if (radius > max_radius)
+        radius = max_radius;
+    vgfx_fill_rect(win, x + radius, y, w - radius * 2, h, color);
+    vgfx_fill_rect(win, x, y + radius, radius, h - radius * 2, color);
+    vgfx_fill_rect(win, x + w - radius, y + radius, radius, h - radius * 2, color);
+    vgfx_fill_circle(win, x + radius, y + radius, radius, color);
+    vgfx_fill_circle(win, x + w - radius - 1, y + radius, radius, color);
+    vgfx_fill_circle(win, x + radius, y + h - radius - 1, radius, color);
+    vgfx_fill_circle(win, x + w - radius - 1, y + h - radius - 1, radius, color);
+}
+
+static void tooltip_stroke_round_rect(vgfx_window_t win,
+                                      int32_t x,
+                                      int32_t y,
+                                      int32_t w,
+                                      int32_t h,
+                                      int32_t radius,
+                                      uint32_t color) {
+    if (w <= 1 || h <= 1)
+        return;
+    int32_t max_radius = w < h ? w / 2 : h / 2;
+    if (radius <= 0 || max_radius <= 0 || w <= radius * 2 || h <= radius * 2) {
+        vgfx_rect(win, x, y, w, h, color);
+        return;
+    }
+    if (radius > max_radius)
+        radius = max_radius;
+    vgfx_line(win, x + radius, y, x + w - radius - 1, y, color);
+    vgfx_line(win, x + radius, y + h - 1, x + w - radius - 1, y + h - 1, color);
+    vgfx_line(win, x, y + radius, x, y + h - radius - 1, color);
+    vgfx_line(win, x + w - 1, y + radius, x + w - 1, y + h - radius - 1, color);
+    vgfx_circle(win, x + radius, y + radius, radius, color);
+    vgfx_circle(win, x + w - radius - 1, y + radius, radius, color);
+    vgfx_circle(win, x + radius, y + h - radius - 1, radius, color);
+    vgfx_circle(win, x + w - radius - 1, y + h - radius - 1, radius, color);
+}
+
 //=============================================================================
 // Tooltip VTable
 //=============================================================================
@@ -242,12 +316,13 @@ vg_tooltip_t *vg_tooltip_create(void) {
     tooltip->offset_y = 20;
 
     tooltip->max_width = 300;
-    tooltip->padding = 6;
-    tooltip->corner_radius = 4;
-    tooltip->bg_color = 0xF0333333; // Dark semi-transparent
-    tooltip->text_color = 0xFFFFFFFF;
-    tooltip->border_color = 0xFF555555;
+    tooltip->padding = 8;
+    tooltip->corner_radius = 6;
+    tooltip->bg_color = 0xE0222A36;
+    tooltip->text_color = 0x00FFFFFF;
+    tooltip->border_color = 0xCC66758A;
 
+    tooltip->font = theme->typography.font_regular;
     tooltip->font_size = theme->typography.size_small;
     tooltip->is_visible = false;
 
@@ -293,42 +368,26 @@ static void tooltip_measure(vg_widget_t *widget, float available_width, float av
 
 static void tooltip_paint(vg_widget_t *widget, void *canvas) {
     vg_tooltip_t *tooltip = (vg_tooltip_t *)widget;
+    vg_theme_t *theme = vg_theme_get_current();
 
     if (!tooltip->is_visible || !tooltip->text)
         return;
 
     vgfx_window_t win = (vgfx_window_t)canvas;
-    vgfx_fill_rect(win,
-                   (int32_t)widget->x,
-                   (int32_t)widget->y,
-                   (int32_t)widget->measured_width,
-                   (int32_t)widget->measured_height,
-                   tooltip->bg_color);
+    int32_t x = (int32_t)widget->x;
+    int32_t y = (int32_t)widget->y;
+    int32_t w = (int32_t)widget->measured_width;
+    int32_t h = (int32_t)widget->measured_height;
+    int32_t radius = (int32_t)tooltip->corner_radius;
+    uint32_t bg = tooltip_apply_alpha(tooltip->bg_color, theme ? theme->colors.bg_primary : 0x00202020u);
+    uint32_t border =
+        tooltip_apply_alpha(tooltip->border_color, theme ? theme->colors.border_primary : 0x00555555u);
 
-    vgfx_fill_rect(win,
-                   (int32_t)widget->x,
-                   (int32_t)widget->y,
-                   (int32_t)widget->measured_width,
-                   1,
-                   tooltip->border_color);
-    vgfx_fill_rect(win,
-                   (int32_t)widget->x,
-                   (int32_t)(widget->y + widget->measured_height - 1.0f),
-                   (int32_t)widget->measured_width,
-                   1,
-                   tooltip->border_color);
-    vgfx_fill_rect(win,
-                   (int32_t)widget->x,
-                   (int32_t)widget->y,
-                   1,
-                   (int32_t)widget->measured_height,
-                   tooltip->border_color);
-    vgfx_fill_rect(win,
-                   (int32_t)(widget->x + widget->measured_width - 1.0f),
-                   (int32_t)widget->y,
-                   1,
-                   (int32_t)widget->measured_height,
-                   tooltip->border_color);
+    tooltip_fill_round_rect(win, x + 3, y + 4, w, h, radius, vg_color_darken(bg, 0.68f));
+    tooltip_fill_round_rect(win, x, y, w, h, radius, bg);
+    if (w > radius * 2)
+        vgfx_fill_rect(win, x + radius, y + 1, w - radius * 2, 1, vg_color_lighten(bg, 0.08f));
+    tooltip_stroke_round_rect(win, x, y, w, h, radius, border);
 
     if (!tooltip->font || !tooltip->text[0])
         return;
@@ -342,6 +401,13 @@ static void tooltip_paint(vg_widget_t *widget, void *canvas) {
         font_metrics.line_height > 0 ? (float)font_metrics.line_height : tooltip->font_size;
     float text_x = widget->x + (float)tooltip->padding;
     float text_y = widget->y + (float)tooltip->padding + (float)font_metrics.ascent;
+    int32_t clip_x = x + (int32_t)tooltip->padding;
+    int32_t clip_y = y + (int32_t)tooltip->padding;
+    int32_t clip_w = w - (int32_t)tooltip->padding * 2;
+    int32_t clip_h = h - (int32_t)tooltip->padding * 2;
+
+    if (clip_w > 0 && clip_h > 0)
+        vgfx_set_clip(win, clip_x, clip_y, clip_w, clip_h);
 
     for (int i = 0; i < line_count; i++) {
         const char *line = (lines && lines[i]) ? lines[i] : "";
@@ -353,6 +419,9 @@ static void tooltip_paint(vg_widget_t *widget, void *canvas) {
                           line,
                           tooltip->text_color);
     }
+
+    if (clip_w > 0 && clip_h > 0)
+        vgfx_clear_clip(win);
 
     if (lines) {
         for (int i = 0; i < line_count; i++)
@@ -369,6 +438,7 @@ void vg_tooltip_set_text(vg_tooltip_t *tooltip, const char *text) {
     free(tooltip->text);
     tooltip->text = text ? strdup(text) : NULL;
     tooltip->base.needs_layout = true;
+    tooltip->base.needs_paint = true;
 }
 
 /// @brief Tooltip show at.
@@ -376,10 +446,36 @@ void vg_tooltip_show_at(vg_tooltip_t *tooltip, int x, int y) {
     if (!tooltip)
         return;
 
-    tooltip->base.x = (float)x + tooltip->offset_x;
-    tooltip->base.y = (float)y + tooltip->offset_y;
+    bool was_visible = tooltip->is_visible;
+    vg_widget_measure(&tooltip->base, 0.0f, 0.0f);
+    if (tooltip->position_mode == VG_TOOLTIP_ANCHOR_WIDGET && tooltip->anchor_widget) {
+        float ax = 0.0f, ay = 0.0f, aw = 0.0f, ah = 0.0f;
+        vg_widget_get_screen_bounds(tooltip->anchor_widget, &ax, &ay, &aw, &ah);
+        tooltip->base.x = ax + (float)tooltip->offset_x;
+        tooltip->base.y = ay + ah + (float)tooltip->offset_y;
+
+        vg_widget_t *root = tooltip->anchor_widget;
+        while (root->parent)
+            root = root->parent;
+        float vx = 0.0f, vy = 0.0f, vw = 0.0f, vh = 0.0f;
+        vg_widget_get_screen_bounds(root, &vx, &vy, &vw, &vh);
+        if (vw > 0.0f && tooltip->base.x + tooltip->base.measured_width > vx + vw)
+            tooltip->base.x = vx + vw - tooltip->base.measured_width - 2.0f;
+        if (vh > 0.0f && tooltip->base.y + tooltip->base.measured_height > vy + vh)
+            tooltip->base.y = ay - tooltip->base.measured_height - (float)tooltip->offset_y;
+        if (tooltip->base.x < vx)
+            tooltip->base.x = vx;
+        if (tooltip->base.y < vy)
+            tooltip->base.y = vy;
+    } else {
+        tooltip->base.x = (float)x + (float)tooltip->offset_x;
+        tooltip->base.y = (float)y + (float)tooltip->offset_y;
+    }
     tooltip->is_visible = true;
     tooltip->base.visible = true;
+    if (!was_visible)
+        tooltip->show_timer = tooltip_now_ms();
+    tooltip->hide_timer = 0;
     tooltip->base.needs_paint = true;
 }
 
@@ -390,6 +486,7 @@ void vg_tooltip_hide(vg_tooltip_t *tooltip) {
 
     tooltip->is_visible = false;
     tooltip->base.visible = false;
+    tooltip->base.needs_paint = true;
 }
 
 /// @brief Tooltip set anchor.
@@ -431,11 +528,14 @@ void vg_tooltip_manager_update(vg_tooltip_manager_t *mgr, uint64_t now_ms) {
         }
     }
 
-    // Check auto-hide
-    if (mgr->active_tooltip && mgr->active_tooltip->is_visible &&
-        mgr->active_tooltip->duration_ms > 0) {
-        // Auto-hide logic would go here
-        (void)now_ms;
+    if (mgr->active_tooltip && mgr->active_tooltip->is_visible) {
+        if (mgr->active_tooltip->hide_timer > 0 && now_ms >= mgr->active_tooltip->hide_timer) {
+            vg_tooltip_hide(mgr->active_tooltip);
+            mgr->active_tooltip->hide_timer = 0;
+        } else if (mgr->active_tooltip->duration_ms > 0 && mgr->active_tooltip->show_timer > 0 &&
+                   now_ms >= mgr->active_tooltip->show_timer + mgr->active_tooltip->duration_ms) {
+            vg_tooltip_hide(mgr->active_tooltip);
+        }
     }
 }
 
@@ -460,6 +560,9 @@ void vg_tooltip_manager_on_hover(vg_tooltip_manager_t *mgr, vg_widget_t *widget,
             }
             if (mgr->active_tooltip) {
                 vg_tooltip_set_text(mgr->active_tooltip, widget->tooltip_text);
+                mgr->active_tooltip->position_mode = VG_TOOLTIP_FOLLOW_CURSOR;
+                mgr->active_tooltip->anchor_widget = NULL;
+                mgr->active_tooltip->hide_timer = 0;
                 mgr->pending_show = true;
             } else {
                 mgr->pending_show = false;
@@ -500,7 +603,17 @@ void vg_tooltip_manager_on_hover(vg_tooltip_manager_t *mgr, vg_widget_t *widget,
         }
     } else if (mgr->active_tooltip->is_visible &&
                mgr->active_tooltip->position_mode == VG_TOOLTIP_FOLLOW_CURSOR) {
+        mgr->active_tooltip->hide_timer = 0;
         vg_tooltip_show_at(mgr->active_tooltip, mgr->cursor_x, mgr->cursor_y);
+    } else if (!mgr->active_tooltip->is_visible) {
+        mgr->active_tooltip->hide_timer = 0;
+        mgr->hover_start_time = tooltip_now_ms();
+        if (mgr->active_tooltip->show_delay_ms == 0) {
+            mgr->pending_show = false;
+            vg_tooltip_show_at(mgr->active_tooltip, mgr->cursor_x, mgr->cursor_y);
+        } else {
+            mgr->pending_show = true;
+        }
     }
 }
 
@@ -510,7 +623,12 @@ void vg_tooltip_manager_on_leave(vg_tooltip_manager_t *mgr) {
         return;
 
     if (mgr->active_tooltip) {
-        vg_tooltip_hide(mgr->active_tooltip);
+        if (mgr->active_tooltip->is_visible && mgr->active_tooltip->hide_delay_ms > 0) {
+            mgr->active_tooltip->hide_timer =
+                tooltip_now_ms() + (uint64_t)mgr->active_tooltip->hide_delay_ms;
+        } else {
+            vg_tooltip_hide(mgr->active_tooltip);
+        }
     }
 
     mgr->hovered_widget = NULL;

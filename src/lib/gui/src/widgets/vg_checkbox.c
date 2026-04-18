@@ -52,6 +52,7 @@ vg_checkbox_t *vg_checkbox_create(vg_widget_t *parent, const char *text) {
 
     // Get theme
     vg_theme_t *theme = vg_theme_get_current();
+    float scale = theme->ui_scale > 0.0f ? theme->ui_scale : 1.0f;
 
     // Initialize checkbox-specific fields
     checkbox->text = text ? strdup(text) : strdup("");
@@ -61,8 +62,8 @@ vg_checkbox_t *vg_checkbox_create(vg_widget_t *parent, const char *text) {
     checkbox->indeterminate = false;
 
     // Appearance
-    checkbox->box_size = 16.0f;
-    checkbox->gap = 8.0f;
+    checkbox->box_size = 18.0f * scale;
+    checkbox->gap = 10.0f * scale;
     checkbox->check_color = theme->colors.fg_primary;
     checkbox->box_color = theme->colors.bg_tertiary;
     checkbox->text_color = theme->colors.fg_primary;
@@ -72,7 +73,8 @@ vg_checkbox_t *vg_checkbox_create(vg_widget_t *parent, const char *text) {
     checkbox->on_change_data = NULL;
 
     // Set minimum size
-    checkbox->base.constraints.min_height = checkbox->box_size;
+    checkbox->base.constraints.min_height =
+        theme->input.height > checkbox->box_size ? theme->input.height : checkbox->box_size;
     checkbox->base.constraints.min_width = checkbox->box_size;
 
     // Add to parent
@@ -175,7 +177,8 @@ static void checkbox_paint(vg_widget_t *widget, void *canvas) {
         vg_font_metrics_t font_metrics;
         vg_font_get_metrics(checkbox->font, checkbox->font_size, &font_metrics);
         float text_y =
-            widget->y + (widget->height + font_metrics.ascent - font_metrics.descent) / 2.0f;
+            widget->y +
+            (widget->height + (float)font_metrics.ascent + (float)font_metrics.descent) / 2.0f;
 
         vg_font_draw_text(canvas,
                           checkbox->font,

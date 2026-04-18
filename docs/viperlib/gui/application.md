@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-16
+last-verified: 2026-04-17
 ---
 
 # Application Components
@@ -443,6 +443,8 @@ dlg.Destroy();
 
 Toast notification system.
 
+Toasts now render as wrapped card-style notifications with animated slide/fade entry and exit. Manual dismissals and auto-expiry both honor the exit animation before the toast is removed, and long message/action text is wrapped instead of overflowing off the card.
+
 | Method                                  | Signature                  | Description                              |
 |-----------------------------------------|----------------------------|------------------------------------------|
 | `Viper.GUI.Toast.DismissAll()`          | `Void()`                   | Dismiss all toasts                       |
@@ -486,7 +488,8 @@ if t.WasActionClicked() == 1 { /* undo action */ }
 
 Tooltip display system (static methods).
 
-Widget tooltips now wrap long text, draw an opaque panel/background, and automatically disappear when the hovered or anchored widget is hidden, disabled, or destroyed.
+Widget tooltips now wrap long text, draw a rounded opaque panel/background, and automatically disappear when the hovered or anchored widget is hidden, disabled, or destroyed.
+Leave events honor the configured hide delay, timed tooltips auto-hide after their display duration, and hovering the same widget again after auto-hide re-shows the tooltip without requiring the pointer to visit another widget first.
 
 | Method                                          | Signature                | Description                    |
 |-------------------------------------------------|--------------------------|--------------------------------|

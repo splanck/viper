@@ -239,6 +239,55 @@ TEST(spinner_mouse_buttons_adjust_value) {
     vg_widget_destroy(&spinner->base);
 }
 
+TEST(spinner_text_entry_commits_value) {
+    vg_spinner_t *spinner = vg_spinner_create(NULL);
+    ASSERT_NOT_NULL(spinner);
+    vg_spinner_set_range(spinner, -100.0, 100.0);
+
+    vg_event_t ch4 = {0};
+    ch4.type = VG_EVENT_KEY_CHAR;
+    ch4.key.codepoint = '4';
+    ASSERT(spinner->base.vtable->handle_event(&spinner->base, &ch4));
+
+    vg_event_t ch2 = ch4;
+    ch2.key.codepoint = '2';
+    ASSERT(spinner->base.vtable->handle_event(&spinner->base, &ch2));
+    ASSERT(spinner->editing);
+    ASSERT_STR_EQ(spinner->text_buffer, "42");
+
+    vg_event_t enter = {0};
+    enter.type = VG_EVENT_KEY_DOWN;
+    enter.key.key = VG_KEY_ENTER;
+    ASSERT(spinner->base.vtable->handle_event(&spinner->base, &enter));
+    ASSERT_EQ(vg_spinner_get_value(spinner), 42.0);
+    ASSERT(!spinner->editing);
+
+    vg_widget_destroy(&spinner->base);
+}
+
+TEST(spinner_escape_cancels_pending_edit) {
+    vg_spinner_t *spinner = vg_spinner_create(NULL);
+    ASSERT_NOT_NULL(spinner);
+    vg_spinner_set_value(spinner, 12.0);
+
+    vg_event_t ch9 = {0};
+    ch9.type = VG_EVENT_KEY_CHAR;
+    ch9.key.codepoint = '9';
+    ASSERT(spinner->base.vtable->handle_event(&spinner->base, &ch9));
+    ASSERT(spinner->editing);
+    ASSERT_STR_EQ(spinner->text_buffer, "9");
+
+    vg_event_t esc = {0};
+    esc.type = VG_EVENT_KEY_DOWN;
+    esc.key.key = VG_KEY_ESCAPE;
+    ASSERT(spinner->base.vtable->handle_event(&spinner->base, &esc));
+    ASSERT_EQ(vg_spinner_get_value(spinner), 12.0);
+    ASSERT_STR_EQ(spinner->text_buffer, "12");
+    ASSERT(!spinner->editing);
+
+    vg_widget_destroy(&spinner->base);
+}
+
 //=============================================================================
 // Group E2c — Image
 //=============================================================================
@@ -369,6 +418,32 @@ TEST(listbox_clear_empties_list) {
     ASSERT_EQ(lb->item_count, 0);
     ASSERT_NULL(lb->first_item);
     ASSERT_NULL(lb->last_item);
+    vg_widget_destroy(&lb->base);
+}
+
+TEST(listbox_mutations_invalidate_layout_and_paint) {
+    vg_listbox_t *lb = vg_listbox_create(NULL);
+    ASSERT_NOT_NULL(lb);
+
+    lb->base.needs_layout = false;
+    lb->base.needs_paint = false;
+    vg_listbox_item_t *item = vg_listbox_add_item(lb, "Item", NULL);
+    ASSERT_NOT_NULL(item);
+    ASSERT(lb->base.needs_layout);
+    ASSERT(lb->base.needs_paint);
+
+    lb->base.needs_layout = false;
+    lb->base.needs_paint = false;
+    vg_listbox_select(lb, item);
+    ASSERT(!lb->base.needs_layout);
+    ASSERT(lb->base.needs_paint);
+
+    lb->base.needs_layout = false;
+    lb->base.needs_paint = false;
+    vg_listbox_clear(lb);
+    ASSERT(lb->base.needs_layout);
+    ASSERT(lb->base.needs_paint);
+
     vg_widget_destroy(&lb->base);
 }
 
@@ -630,6 +705,8 @@ int main(void) {
     RUN(spinner_create_vtable_set);
     RUN(spinner_arrow_keys_adjust_value);
     RUN(spinner_mouse_buttons_adjust_value);
+    RUN(spinner_text_entry_commits_value);
+    RUN(spinner_escape_cancels_pending_edit);
 
     printf("\nGroup E2c — Image:\n");
     RUN(image_scale_none_preserves_original_size);
@@ -643,6 +720,7 @@ int main(void) {
     RUN(listbox_remove_item);
     RUN(listbox_remove_clears_selection);
     RUN(listbox_clear_empties_list);
+    RUN(listbox_mutations_invalidate_layout_and_paint);
 
     printf("\nGroup D-other — Breadcrumb max_items:\n");
     RUN(breadcrumb_push_pop_basic);

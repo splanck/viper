@@ -27,6 +27,8 @@ static void listbox_paint(vg_widget_t *widget, void *canvas);
 static bool listbox_handle_event(vg_widget_t *widget, vg_event_t *event);
 static bool listbox_can_focus(vg_widget_t *widget);
 static void listbox_destroy(vg_widget_t *widget);
+static float listbox_default_item_height(vg_listbox_t *lb);
+static float listbox_text_baseline(vg_listbox_t *lb, float item_y, float item_h);
 
 //=============================================================================
 // VTable
@@ -184,6 +186,31 @@ static void listbox_destroy(vg_widget_t *widget) {
     lb->selection_bitmap_size = 0;
 }
 
+static float listbox_default_item_height(vg_listbox_t *lb) {
+    vg_theme_t *theme = vg_theme_get_current();
+    float scale = theme && theme->ui_scale > 0.0f ? theme->ui_scale : 1.0f;
+    float height = theme ? theme->input.height : 28.0f * scale;
+
+    if (lb && lb->font) {
+        vg_font_metrics_t metrics = {0};
+        vg_font_get_metrics(lb->font, lb->font_size, &metrics);
+        float metrics_height = (float)metrics.line_height + 8.0f * scale;
+        if (metrics_height > height)
+            height = metrics_height;
+    }
+
+    return height;
+}
+
+static float listbox_text_baseline(vg_listbox_t *lb, float item_y, float item_h) {
+    if (!lb || !lb->font)
+        return item_y;
+
+    vg_font_metrics_t metrics = {0};
+    vg_font_get_metrics(lb->font, lb->font_size, &metrics);
+    return item_y + (item_h + (float)metrics.ascent + (float)metrics.descent) / 2.0f;
+}
+
 static void listbox_measure(vg_widget_t *widget, float avail_w, float avail_h) {
     vg_listbox_t *lb = (vg_listbox_t *)widget;
     (void)avail_w;
@@ -207,6 +234,7 @@ static void listbox_paint(vg_widget_t *widget, void *canvas) {
     vgfx_window_t win = (vgfx_window_t)canvas;
     int32_t x = (int32_t)widget->x, y = (int32_t)widget->y;
     int32_t w = (int32_t)widget->width, h = (int32_t)widget->height;
+    float text_padding = theme->input.padding_h;
 
     /* Background */
     vgfx_fill_rect(win, x, y, w, h, lb->bg_color);
@@ -219,6 +247,10 @@ static void listbox_paint(vg_widget_t *widget, void *canvas) {
     /* Draw items */
     float item_y = widget->y - lb->scroll_y;
     float ih = lb->item_height;
+    int32_t text_clip_x = x + (int32_t)text_padding;
+    int32_t text_clip_y = y + 1;
+    int32_t text_clip_w = w - (int32_t)text_padding - 6;
+    int32_t text_clip_h = h - 2;
 
     if (lb->virtual_mode) {
         listbox_sync_virtual_cache(lb, widget->height);
@@ -250,14 +282,17 @@ static void listbox_paint(vg_widget_t *widget, void *canvas) {
             vgfx_fill_rect(win, x + 1, iy + ih32 - 1, w - 2, 1, theme->colors.border_secondary);
 
             if (lb->visible_cache[i].text && lb->font) {
-                float ty = item_y + ih * 0.7f;
+                if (text_clip_w > 0 && text_clip_h > 0)
+                    vgfx_set_clip(win, text_clip_x, text_clip_y, text_clip_w, text_clip_h);
                 vg_font_draw_text(canvas,
                                   lb->font,
                                   lb->font_size,
-                                  widget->x + 4.0f,
-                                  ty,
+                                  widget->x + text_padding,
+                                  listbox_text_baseline(lb, item_y, ih),
                                   lb->visible_cache[i].text,
                                   lb->text_color);
+                if (text_clip_w > 0 && text_clip_h > 0)
+                    vgfx_set_clip(win, x, y, w, h);
             }
 
             item_y += ih;
@@ -291,14 +326,17 @@ static void listbox_paint(vg_widget_t *widget, void *canvas) {
             vgfx_fill_rect(win, x + 1, iy + ih32 - 1, w - 2, 1, theme->colors.border_secondary);
 
             if (item->text && lb->font) {
-                float ty = item_y + ih * 0.7f;
+                if (text_clip_w > 0 && text_clip_h > 0)
+                    vgfx_set_clip(win, text_clip_x, text_clip_y, text_clip_w, text_clip_h);
                 vg_font_draw_text(canvas,
                                   lb->font,
                                   lb->font_size,
-                                  widget->x + 4.0f,
-                                  ty,
+                                  widget->x + text_padding,
+                                  listbox_text_baseline(lb, item_y, ih),
                                   item->text,
                                   lb->text_color);
+                if (text_clip_w > 0 && text_clip_h > 0)
+                    vgfx_set_clip(win, x, y, w, h);
             }
 
             item_y += ih;
@@ -494,9 +532,8 @@ vg_listbox_t *vg_listbox_create(vg_widget_t *parent) {
 
     // Default appearance — scale pixel constants by ui_scale for HiDPI displays.
     vg_theme_t *_lb_theme = vg_theme_get_current();
-    float _lb_s = _lb_theme && _lb_theme->ui_scale > 0.0f ? _lb_theme->ui_scale : 1.0f;
-    listbox->item_height = (int)(24 * _lb_s);
-    listbox->font_size = 14.0f * _lb_s;
+    listbox->font = _lb_theme->typography.font_regular;
+    listbox->font_size = _lb_theme->typography.size_normal;
     listbox->bg_color = _lb_theme->colors.bg_primary;
     listbox->item_bg = _lb_theme->colors.bg_primary;
     listbox->selected_bg = _lb_theme->colors.bg_selected;
@@ -506,6 +543,7 @@ vg_listbox_t *vg_listbox_create(vg_widget_t *parent) {
     listbox->selected_index = SIZE_MAX;
     listbox->prev_selected_index = SIZE_MAX;
     listbox->hovered_index = SIZE_MAX;
+    listbox->item_height = listbox_default_item_height(listbox);
 
     if (parent) {
         vg_widget_add_child(parent, &listbox->base);
@@ -534,6 +572,8 @@ vg_listbox_item_t *vg_listbox_add_item(vg_listbox_t *listbox, const char *text, 
         listbox->first_item = listbox->last_item = item;
     }
     listbox->item_count++;
+    listbox->base.needs_layout = true;
+    listbox->base.needs_paint = true;
 
     return item;
 }
@@ -561,6 +601,8 @@ void vg_listbox_remove_item(vg_listbox_t *listbox, vg_listbox_item_t *item) {
     free(item->text);
     free(item);
     listbox->item_count--;
+    listbox->base.needs_layout = true;
+    listbox->base.needs_paint = true;
 }
 
 /// @brief Listbox clear.
@@ -579,6 +621,8 @@ void vg_listbox_clear(vg_listbox_t *listbox) {
     listbox->first_item = listbox->last_item = NULL;
     listbox->selected = listbox->hovered = NULL;
     listbox->item_count = 0;
+    listbox->base.needs_layout = true;
+    listbox->base.needs_paint = true;
 }
 
 /// @brief Listbox select.
@@ -598,6 +642,7 @@ void vg_listbox_select(vg_listbox_t *listbox, vg_listbox_item_t *item) {
             listbox->on_select(&listbox->base, item, listbox->on_select_data);
         }
     }
+    listbox->base.needs_paint = true;
 }
 
 vg_listbox_item_t *vg_listbox_get_selected(vg_listbox_t *listbox) {
@@ -609,7 +654,14 @@ void vg_listbox_set_font(vg_listbox_t *listbox, vg_font_t *font, float size) {
     if (!listbox)
         return;
     listbox->font = font;
-    listbox->font_size = size;
+    listbox->font_size = size > 0 ? size : vg_theme_get_current()->typography.size_normal;
+    {
+        float min_item_height = listbox_default_item_height(listbox);
+        if (listbox->item_height < min_item_height)
+            listbox->item_height = min_item_height;
+    }
+    listbox->base.needs_layout = true;
+    listbox->base.needs_paint = true;
 }
 
 /// @brief Listbox set on select.

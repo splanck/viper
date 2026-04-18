@@ -34,6 +34,7 @@
 #define DIALOG_BUTTON_MIN_WIDTH 80
 #define DIALOG_CLOSE_BUTTON_SIZE 24
 #define DIALOG_ICON_SIZE 32
+#define DIALOG_SCREEN_MARGIN 24
 
 //=============================================================================
 // Forward Declarations
@@ -68,6 +69,11 @@ typedef struct {
     bool is_cancel;
 } preset_button_t;
 
+static void get_preset_buttons(vg_dialog_buttons_t preset,
+                               const preset_button_t **buttons,
+                               size_t *count);
+static float get_button_width(vg_dialog_t *dlg, const char *label);
+
 static const preset_button_t g_ok_buttons[] = {{"OK", VG_DIALOG_RESULT_OK, true, false}};
 
 static const preset_button_t g_ok_cancel_buttons[] = {
@@ -84,6 +90,363 @@ static const preset_button_t g_yes_no_cancel_buttons[] = {
 static const preset_button_t g_retry_cancel_buttons[] = {
     {"Retry", VG_DIALOG_RESULT_RETRY, true, false},
     {"Cancel", VG_DIALOG_RESULT_CANCEL, false, true}};
+
+static float dialog_ui_scale(void) {
+    vg_theme_t *theme = vg_theme_get_current();
+    return (theme && theme->ui_scale > 0.0f) ? theme->ui_scale : 1.0f;
+}
+
+static float dialog_outer_padding(void) {
+    vg_theme_t *theme = vg_theme_get_current();
+    float s = dialog_ui_scale();
+    float theme_pad = theme ? theme->spacing.lg : (float)DIALOG_CONTENT_PADDING;
+    return theme_pad > 0.0f ? theme_pad : (float)DIALOG_CONTENT_PADDING * s;
+}
+
+static float dialog_section_gap(void) {
+    vg_theme_t *theme = vg_theme_get_current();
+    float s = dialog_ui_scale();
+    float gap = theme ? theme->spacing.md : (float)DIALOG_BUTTON_PADDING;
+    return gap > 0.0f ? gap : (float)DIALOG_BUTTON_PADDING * s;
+}
+
+static float dialog_title_height(void) {
+    float s = dialog_ui_scale();
+    return (float)DIALOG_TITLE_BAR_HEIGHT * s + 6.0f * s;
+}
+
+static float dialog_button_bar_height(void) {
+    float s = dialog_ui_scale();
+    return (float)DIALOG_BUTTON_BAR_HEIGHT * s + 6.0f * s;
+}
+
+static float dialog_button_height(void) {
+    float s = dialog_ui_scale();
+    return (float)DIALOG_BUTTON_HEIGHT * s + 4.0f * s;
+}
+
+static float dialog_close_size(void) {
+    return (float)DIALOG_CLOSE_BUTTON_SIZE * dialog_ui_scale();
+}
+
+static float dialog_icon_size(void) {
+    return (float)DIALOG_ICON_SIZE * dialog_ui_scale();
+}
+
+static int dialog_corner_radius(void) {
+    float s = dialog_ui_scale();
+    int radius = (int)(8.0f * s);
+    if (radius < 3)
+        radius = 3;
+    return radius;
+}
+
+static void dialog_fill_round_rect(vgfx_window_t win,
+                                   int32_t x,
+                                   int32_t y,
+                                   int32_t w,
+                                   int32_t h,
+                                   int32_t radius,
+                                   uint32_t color) {
+    if (!win || w <= 0 || h <= 0) {
+        return;
+    }
+
+    int32_t max_radius = w < h ? w / 2 : h / 2;
+    if (radius <= 0 || max_radius <= 0) {
+        vgfx_fill_rect(win, x, y, w, h, color);
+        return;
+    }
+
+    if (radius > max_radius)
+        radius = max_radius;
+
+    if (w <= radius * 2 || h <= radius * 2) {
+        vgfx_fill_rect(win, x, y, w, h, color);
+        return;
+    }
+
+    vgfx_fill_rect(win, x + radius, y, w - radius * 2, h, color);
+    vgfx_fill_rect(win, x, y + radius, radius, h - radius * 2, color);
+    vgfx_fill_rect(win, x + w - radius, y + radius, radius, h - radius * 2, color);
+    vgfx_fill_circle(win, x + radius, y + radius, radius, color);
+    vgfx_fill_circle(win, x + w - radius - 1, y + radius, radius, color);
+    vgfx_fill_circle(win, x + radius, y + h - radius - 1, radius, color);
+    vgfx_fill_circle(win, x + w - radius - 1, y + h - radius - 1, radius, color);
+}
+
+static void dialog_stroke_round_rect(vgfx_window_t win,
+                                     int32_t x,
+                                     int32_t y,
+                                     int32_t w,
+                                     int32_t h,
+                                     int32_t radius,
+                                     uint32_t color) {
+    if (!win || w <= 1 || h <= 1) {
+        return;
+    }
+
+    int32_t max_radius = w < h ? w / 2 : h / 2;
+    if (radius <= 0 || max_radius <= 0) {
+        vgfx_rect(win, x, y, w, h, color);
+        return;
+    }
+
+    if (radius > max_radius)
+        radius = max_radius;
+
+    if (w <= radius * 2 || h <= radius * 2) {
+        vgfx_rect(win, x, y, w, h, color);
+        return;
+    }
+
+    vgfx_line(win, x + radius, y, x + w - radius - 1, y, color);
+    vgfx_line(win, x + radius, y + h - 1, x + w - radius - 1, y + h - 1, color);
+    vgfx_line(win, x, y + radius, x, y + h - radius - 1, color);
+    vgfx_line(win, x + w - 1, y + radius, x + w - 1, y + h - radius - 1, color);
+    vgfx_circle(win, x + radius, y + radius, radius, color);
+    vgfx_circle(win, x + w - radius - 1, y + radius, radius, color);
+    vgfx_circle(win, x + radius, y + h - radius - 1, radius, color);
+    vgfx_circle(win, x + w - radius - 1, y + h - radius - 1, radius, color);
+}
+
+static char *dialog_dup_range(const char *text, size_t len) {
+    char *copy = (char *)malloc(len + 1);
+    if (!copy)
+        return NULL;
+    memcpy(copy, text, len);
+    copy[len] = '\0';
+    return copy;
+}
+
+static void dialog_free_wrapped_lines(char **lines, int line_count) {
+    if (!lines)
+        return;
+    for (int i = 0; i < line_count; i++) {
+        free(lines[i]);
+    }
+    free(lines);
+}
+
+static int dialog_wrap_text(vg_dialog_t *dlg,
+                            const char *text,
+                            float max_width,
+                            char ***out_lines,
+                            float *out_max_width) {
+    if (out_lines)
+        *out_lines = NULL;
+    if (out_max_width)
+        *out_max_width = 0.0f;
+    if (!dlg || !text || !text[0] || !dlg->font)
+        return 0;
+
+    int cap = 4;
+    int count = 0;
+    char **lines = out_lines ? (char **)calloc((size_t)cap, sizeof(char *)) : NULL;
+    size_t text_len = strlen(text);
+    size_t start = 0;
+
+    while (start <= text_len) {
+        if (text[start] == '\0') {
+            if (count == 0 && out_lines && lines) {
+                lines[count++] = strdup("");
+            }
+            break;
+        }
+
+        size_t line_end = start;
+        size_t best_end = start;
+        size_t best_next = start;
+        float best_width = 0.0f;
+        bool found_break = false;
+
+        while (line_end < text_len && text[line_end] != '\n') {
+            size_t candidate_end = line_end + 1;
+            char *candidate = dialog_dup_range(text + start, candidate_end - start);
+            if (!candidate)
+                break;
+
+            vg_text_metrics_t metrics = {0};
+            vg_font_measure_text(dlg->font, dlg->font_size, candidate, &metrics);
+            free(candidate);
+
+            if (max_width > 0.0f && metrics.width > max_width) {
+                break;
+            }
+
+            best_end = candidate_end;
+            best_next = candidate_end;
+            best_width = metrics.width;
+            found_break = true;
+            if (text[line_end] == ' ' || text[line_end] == '\t') {
+                best_end = line_end;
+                best_next = candidate_end;
+            }
+            line_end = candidate_end;
+        }
+
+        if (!found_break) {
+            best_end = start + 1;
+            best_next = best_end;
+            char *candidate = dialog_dup_range(text + start, best_end - start);
+            if (candidate) {
+                vg_text_metrics_t metrics = {0};
+                vg_font_measure_text(dlg->font, dlg->font_size, candidate, &metrics);
+                best_width = metrics.width;
+                free(candidate);
+            }
+        }
+
+        while (best_end > start && (text[best_end - 1] == ' ' || text[best_end - 1] == '\t')) {
+            best_end--;
+        }
+
+        if (out_lines && lines) {
+            if (count >= cap) {
+                int new_cap = cap * 2;
+                char **new_lines = (char **)realloc(lines, (size_t)new_cap * sizeof(char *));
+                if (!new_lines)
+                    break;
+                memset(new_lines + cap, 0, (size_t)(new_cap - cap) * sizeof(char *));
+                lines = new_lines;
+                cap = new_cap;
+            }
+            lines[count] = dialog_dup_range(text + start, best_end - start);
+            if (!lines[count])
+                break;
+            count++;
+        } else {
+            count++;
+        }
+
+        if (out_max_width && best_width > *out_max_width)
+            *out_max_width = best_width;
+
+        size_t prev_start = start;
+        start = best_next;
+        while (text[start] == ' ' || text[start] == '\t')
+            start++;
+        if (start <= prev_start) {
+            if (text[start] == '\0')
+                break;
+            start = prev_start + 1;
+        }
+        if (text[start] == '\n') {
+            start++;
+            if (out_lines && lines) {
+                if (count >= cap) {
+                    int new_cap = cap * 2;
+                    char **new_lines = (char **)realloc(lines, (size_t)new_cap * sizeof(char *));
+                    if (!new_lines)
+                        break;
+                    memset(new_lines + cap, 0, (size_t)(new_cap - cap) * sizeof(char *));
+                    lines = new_lines;
+                    cap = new_cap;
+                }
+                lines[count] = strdup("");
+                if (!lines[count])
+                    break;
+                count++;
+            } else {
+                count++;
+            }
+        }
+    }
+
+    if (out_lines) {
+        *out_lines = lines;
+    } else if (lines) {
+        dialog_free_wrapped_lines(lines, count);
+    }
+    return count > 0 ? count : 1;
+}
+
+static void dialog_measure_message_block(vg_dialog_t *dlg,
+                                         float max_width,
+                                         float *out_width,
+                                         float *out_height,
+                                         float *out_line_height,
+                                         int *out_line_count) {
+    if (out_width)
+        *out_width = 0.0f;
+    if (out_height)
+        *out_height = 0.0f;
+    if (out_line_height)
+        *out_line_height = 0.0f;
+    if (out_line_count)
+        *out_line_count = 0;
+
+    if (!dlg || !dlg->message || !dlg->message[0] || !dlg->font)
+        return;
+
+    vg_font_metrics_t font_metrics = {0};
+    vg_font_get_metrics(dlg->font, dlg->font_size, &font_metrics);
+    float line_height =
+        font_metrics.line_height > 0 ? (float)font_metrics.line_height : dlg->font_size;
+    float max_line_width = 0.0f;
+    int line_count = dialog_wrap_text(dlg, dlg->message, max_width, NULL, &max_line_width);
+
+    if (out_width)
+        *out_width = max_line_width;
+    if (out_height)
+        *out_height = line_height * (float)line_count;
+    if (out_line_height)
+        *out_line_height = line_height;
+    if (out_line_count)
+        *out_line_count = line_count;
+}
+
+static float dialog_measure_buttons_width(vg_dialog_t *dlg) {
+    float total_width = 0.0f;
+    float gap = dialog_section_gap();
+    const preset_button_t *preset_buttons = NULL;
+    size_t button_count = 0;
+    get_preset_buttons(dlg->button_preset, &preset_buttons, &button_count);
+
+    if (dlg->button_preset == VG_DIALOG_BUTTONS_CUSTOM && dlg->custom_buttons) {
+        for (size_t i = 0; i < dlg->custom_button_count; i++) {
+            total_width += get_button_width(dlg, dlg->custom_buttons[i].label);
+            if (i + 1 < dlg->custom_button_count)
+                total_width += gap;
+        }
+    } else if (preset_buttons) {
+        for (size_t i = 0; i < button_count; i++) {
+            total_width += get_button_width(dlg, preset_buttons[i].label);
+            if (i + 1 < button_count)
+                total_width += gap;
+        }
+    }
+
+    return total_width;
+}
+
+static float dialog_available_width_limit(vg_dialog_t *dlg, float available_width) {
+    float max_width = (float)dlg->max_width;
+    if (available_width > 0.0f) {
+        float clamped = available_width - (float)DIALOG_SCREEN_MARGIN * 2.0f;
+        if (clamped > 0.0f && clamped < max_width) {
+            max_width = clamped;
+        }
+    }
+    if (max_width < (float)dlg->min_width) {
+        max_width = (float)dlg->min_width;
+    }
+    return max_width;
+}
+
+static float dialog_available_height_limit(vg_dialog_t *dlg, float available_height) {
+    float max_height = (float)dlg->max_height;
+    if (available_height > 0.0f) {
+        float clamped = available_height - (float)DIALOG_SCREEN_MARGIN * 2.0f;
+        if (clamped > 0.0f && clamped < max_height) {
+            max_height = clamped;
+        }
+    }
+    if (max_height < (float)dlg->min_height) {
+        max_height = (float)dlg->min_height;
+    }
+    return max_height;
+}
 
 static void get_preset_buttons(vg_dialog_buttons_t preset,
                                const preset_button_t **buttons,
@@ -117,13 +480,13 @@ static void get_preset_buttons(vg_dialog_buttons_t preset,
 }
 
 static float get_button_width(vg_dialog_t *dlg, const char *label) {
-    float width = DIALOG_BUTTON_MIN_WIDTH;
+    float width = (float)DIALOG_BUTTON_MIN_WIDTH * dialog_ui_scale();
     if (dlg->font && label) {
         vg_text_metrics_t metrics;
         vg_font_measure_text(dlg->font, dlg->font_size, label, &metrics);
-        width = metrics.width + DIALOG_BUTTON_PADDING * 4;
-        if (width < DIALOG_BUTTON_MIN_WIDTH) {
-            width = DIALOG_BUTTON_MIN_WIDTH;
+        width = metrics.width + dialog_outer_padding() * 1.4f;
+        if (width < (float)DIALOG_BUTTON_MIN_WIDTH * dialog_ui_scale()) {
+            width = (float)DIALOG_BUTTON_MIN_WIDTH * dialog_ui_scale();
         }
     }
     return width;
@@ -201,16 +564,16 @@ vg_dialog_t *vg_dialog_create(const char *title) {
     // Font
     dlg->font = NULL;
     dlg->font_size = theme->typography.size_normal;
-    dlg->title_font_size = theme->typography.size_normal;
+    dlg->title_font_size = theme->typography.size_large;
 
     // Colors
-    dlg->bg_color = theme->colors.bg_primary;
-    dlg->title_bg_color = theme->colors.bg_tertiary;
+    dlg->bg_color = vg_color_blend(theme->colors.bg_primary, theme->colors.bg_secondary, 0.18f);
+    dlg->title_bg_color = vg_color_blend(theme->colors.bg_secondary, theme->colors.bg_tertiary, 0.42f);
     dlg->title_text_color = theme->colors.fg_primary;
     dlg->text_color = theme->colors.fg_primary;
-    dlg->button_bg_color = theme->colors.bg_secondary;
+    dlg->button_bg_color = vg_color_blend(theme->colors.bg_secondary, theme->colors.bg_primary, 0.32f);
     dlg->button_hover_color = theme->colors.bg_hover;
-    dlg->overlay_color = 0x00101010; // Near-black dim overlay (vgfx has no alpha blend)
+    dlg->overlay_color = vg_color_darken(theme->colors.bg_primary, 0.75f);
 
     // State
     dlg->result = VG_DIALOG_RESULT_NONE;
@@ -257,69 +620,73 @@ static void dialog_destroy(vg_widget_t *widget) {
 
 static void dialog_measure(vg_widget_t *widget, float available_width, float available_height) {
     vg_dialog_t *dlg = (vg_dialog_t *)widget;
-    (void)available_width;
-    (void)available_height;
+    float title_h = dialog_title_height();
+    float button_bar_h = dialog_button_bar_height();
+    float padding = dialog_outer_padding();
+    float gap = dialog_section_gap();
+    float icon_size = dialog_icon_size();
+    bool has_icon = dlg->icon != VG_DIALOG_ICON_NONE || dlg->custom_icon.type != VG_ICON_NONE;
 
-    // Calculate content size
-    float content_width = 0;
-    float content_height = 0;
+    float max_width = dialog_available_width_limit(dlg, available_width);
+    float max_height = dialog_available_height_limit(dlg, available_height);
 
+    float body_width_limit = max_width - padding * 2.0f;
+    if (has_icon)
+        body_width_limit -= icon_size + gap;
+    if (body_width_limit < 80.0f)
+        body_width_limit = 80.0f;
+
+    float message_width = 0.0f;
+    float message_height = 0.0f;
+    dialog_measure_message_block(dlg, body_width_limit, &message_width, &message_height, NULL, NULL);
+
+    float content_width = 0.0f;
+    float content_height = 0.0f;
     if (dlg->content) {
-        // Measure content widget
-        vg_widget_measure(dlg->content,
-                          dlg->max_width - DIALOG_CONTENT_PADDING * 2,
-                          dlg->max_height - DIALOG_TITLE_BAR_HEIGHT - DIALOG_BUTTON_BAR_HEIGHT -
-                              DIALOG_CONTENT_PADDING * 2);
+        float content_max_height = max_height - title_h - button_bar_h - padding * 2.0f;
+        if (message_height > 0.0f)
+            content_max_height -= message_height + gap;
+        if (content_max_height < 40.0f)
+            content_max_height = 40.0f;
+        vg_widget_measure(dlg->content, body_width_limit, content_max_height);
         content_width = dlg->content->measured_width;
         content_height = dlg->content->measured_height;
-    } else if (dlg->message && dlg->font) {
-        // Measure message text
-        vg_text_metrics_t metrics;
-        vg_font_measure_text(dlg->font, dlg->font_size, dlg->message, &metrics);
-        content_width = metrics.width;
-        content_height = metrics.height;
-
-        // Add space for icon if present
-        if (dlg->icon != VG_DIALOG_ICON_NONE || dlg->custom_icon.type != VG_ICON_NONE) {
-            content_width += DIALOG_ICON_SIZE + DIALOG_CONTENT_PADDING;
-        }
     }
 
-    // Calculate button bar width
-    float buttons_width = 0;
-    const preset_button_t *preset_buttons;
-    size_t button_count;
-    get_preset_buttons(dlg->button_preset, &preset_buttons, &button_count);
+    float body_content_width = message_width;
+    if (content_width > body_content_width)
+        body_content_width = content_width;
+    if (body_content_width < 160.0f * dialog_ui_scale())
+        body_content_width = 160.0f * dialog_ui_scale();
 
-    if (dlg->button_preset == VG_DIALOG_BUTTONS_CUSTOM && dlg->custom_buttons) {
-        for (size_t i = 0; i < dlg->custom_button_count; i++) {
-            buttons_width +=
-                get_button_width(dlg, dlg->custom_buttons[i].label) + DIALOG_BUTTON_PADDING;
-        }
-    } else if (preset_buttons) {
-        for (size_t i = 0; i < button_count; i++) {
-            buttons_width += get_button_width(dlg, preset_buttons[i].label) + DIALOG_BUTTON_PADDING;
-        }
+    float buttons_width = dialog_measure_buttons_width(dlg);
+    float total_width = padding * 2.0f + body_content_width;
+    if (has_icon)
+        total_width += icon_size + gap;
+    if (buttons_width > 0.0f && buttons_width + padding * 2.0f > total_width)
+        total_width = buttons_width + padding * 2.0f;
+
+    float body_height = 0.0f;
+    if (message_height > 0.0f)
+        body_height += message_height;
+    if (dlg->content && content_height > 0.0f) {
+        if (body_height > 0.0f)
+            body_height += gap;
+        body_height += content_height;
     }
+    if (has_icon && icon_size > body_height)
+        body_height = icon_size;
 
-    // Calculate total size
-    float total_width = content_width + DIALOG_CONTENT_PADDING * 2;
-    if (buttons_width + DIALOG_CONTENT_PADDING * 2 > total_width) {
-        total_width = buttons_width + DIALOG_CONTENT_PADDING * 2;
-    }
+    float total_height = title_h + button_bar_h + padding * 2.0f + body_height;
 
-    float total_height = DIALOG_TITLE_BAR_HEIGHT + content_height + DIALOG_CONTENT_PADDING * 2 +
-                         DIALOG_BUTTON_BAR_HEIGHT;
-
-    // Apply constraints
-    if (total_width < dlg->min_width)
+    if (total_width < (float)dlg->min_width)
         total_width = (float)dlg->min_width;
-    if (total_width > dlg->max_width)
-        total_width = (float)dlg->max_width;
-    if (total_height < dlg->min_height)
+    if (total_width > max_width)
+        total_width = max_width;
+    if (total_height < (float)dlg->min_height)
         total_height = (float)dlg->min_height;
-    if (total_height > dlg->max_height)
-        total_height = (float)dlg->max_height;
+    if (total_height > max_height)
+        total_height = max_height;
 
     widget->measured_width = total_width;
     widget->measured_height = total_height;
@@ -327,27 +694,47 @@ static void dialog_measure(vg_widget_t *widget, float available_width, float ava
 
 static void dialog_arrange(vg_widget_t *widget, float x, float y, float width, float height) {
     vg_dialog_t *dlg = (vg_dialog_t *)widget;
+    float title_h = dialog_title_height();
+    float button_bar_h = dialog_button_bar_height();
+    float padding = dialog_outer_padding();
+    float gap = dialog_section_gap();
+    float icon_size = dialog_icon_size();
+    bool has_icon = dlg->icon != VG_DIALOG_ICON_NONE || dlg->custom_icon.type != VG_ICON_NONE;
 
     widget->x = x;
     widget->y = y;
     widget->width = width;
     widget->height = height;
 
-    // Arrange content widget if present
     if (dlg->content) {
-        float content_x = x + DIALOG_CONTENT_PADDING;
-        float content_y = y + DIALOG_TITLE_BAR_HEIGHT + DIALOG_CONTENT_PADDING;
-        float content_w = width - DIALOG_CONTENT_PADDING * 2;
-        float content_h = height - DIALOG_TITLE_BAR_HEIGHT - DIALOG_BUTTON_BAR_HEIGHT -
-                          DIALOG_CONTENT_PADDING * 2;
+        float body_x = x + padding;
+        float body_y = y + title_h + padding;
+        float body_w = width - padding * 2.0f;
+        float body_h = height - title_h - button_bar_h - padding * 2.0f;
+        if (has_icon) {
+            body_x += icon_size + gap;
+            body_w -= icon_size + gap;
+        }
+        if (body_w < 0.0f)
+            body_w = 0.0f;
+        if (body_h < 0.0f)
+            body_h = 0.0f;
 
-        // Account for icon space
-        if (dlg->icon != VG_DIALOG_ICON_NONE || dlg->custom_icon.type != VG_ICON_NONE) {
-            content_x += DIALOG_ICON_SIZE + DIALOG_CONTENT_PADDING;
-            content_w -= DIALOG_ICON_SIZE + DIALOG_CONTENT_PADDING;
+        float message_height = 0.0f;
+        dialog_measure_message_block(dlg, body_w, NULL, &message_height, NULL, NULL);
+        float content_y = body_y;
+        if (message_height > 0.0f) {
+            content_y += message_height + gap;
         }
 
-        vg_widget_arrange(dlg->content, content_x, content_y, content_w, content_h);
+        float remaining_h = body_y + body_h - content_y;
+        if (remaining_h < 0.0f)
+            remaining_h = 0.0f;
+        float desired_h = dlg->content->measured_height > 0.0f ? dlg->content->measured_height : remaining_h;
+        if (desired_h > remaining_h)
+            desired_h = remaining_h;
+
+        vg_widget_arrange(dlg->content, body_x, content_y, body_w, desired_h);
     }
 }
 
@@ -359,6 +746,15 @@ static void dialog_paint(vg_widget_t *widget, void *canvas) {
 
     vgfx_window_t win = (vgfx_window_t)canvas;
     vg_theme_t *theme = vg_theme_get_current();
+    float padding = dialog_outer_padding();
+    float gap = dialog_section_gap();
+    float title_h = dialog_title_height();
+    float button_bar_h = dialog_button_bar_height();
+    float button_h = dialog_button_height();
+    float close_size = dialog_close_size();
+    float icon_size = dialog_icon_size();
+    bool has_icon = dlg->icon != VG_DIALOG_ICON_NONE || dlg->custom_icon.type != VG_ICON_NONE;
+    int radius = dialog_corner_radius();
 
     // Draw full-screen dim overlay so the dialog floats above all other widgets
     if (dlg->modal && dlg->overlay_color) {
@@ -373,22 +769,31 @@ static void dialog_paint(vg_widget_t *widget, void *canvas) {
     int32_t w = (int32_t)widget->width;
     int32_t h = (int32_t)widget->height;
 
-    // Dialog background
-    vgfx_fill_rect(win, x, y, w, h, dlg->bg_color);
+    uint32_t panel_bg = dlg->bg_color ? dlg->bg_color : theme->colors.bg_primary;
+    uint32_t header_bg = dlg->title_bg_color ? dlg->title_bg_color
+                                             : vg_color_blend(panel_bg, theme->colors.bg_secondary, 0.65f);
+    uint32_t border_color = theme->colors.border_primary;
+    uint32_t shadow_color = vg_color_darken(panel_bg, 0.65f);
+    uint32_t highlight = vg_color_lighten(panel_bg, 0.06f);
 
-    // Title bar background
-    vgfx_fill_rect(win, x, y, w, DIALOG_TITLE_BAR_HEIGHT, dlg->title_bg_color);
+    dialog_fill_round_rect(win, x + 4, y + 6, w, h, radius, shadow_color);
+    dialog_fill_round_rect(win, x + 2, y + 3, w, h, radius, vg_color_darken(panel_bg, 0.45f));
+    dialog_fill_round_rect(win, x, y, w, h, radius, panel_bg);
+    vgfx_fill_rect(win, x + 1, y + 1, w - 2, (int32_t)title_h, header_bg);
+    vgfx_fill_rect(win, x + 1, y + 1, w - 2, 1, highlight);
+    vgfx_fill_rect(win, x + 1, y + (int32_t)title_h - 1, w - 2, 1, border_color);
+    dialog_stroke_round_rect(win, x, y, w, h, radius, border_color);
 
-    // Separator between title bar and content
-    vgfx_fill_rect(win, x, y + DIALOG_TITLE_BAR_HEIGHT - 1, w, 1, theme->colors.border_primary);
-
-    // Outer border
-    vgfx_rect(win, x, y, w, h, theme->colors.border_primary);
-
-    // Title text
     if (dlg->title && dlg->font) {
-        float title_x = (float)x + DIALOG_CONTENT_PADDING;
-        float title_y = (float)y + DIALOG_TITLE_BAR_HEIGHT / 2.0f + dlg->title_font_size / 3.0f;
+        vg_font_metrics_t title_metrics = {0};
+        vg_font_get_metrics(dlg->font, dlg->title_font_size, &title_metrics);
+        float title_x = (float)x + padding;
+        float title_y = (float)y + (title_h - (float)(title_metrics.ascent - title_metrics.descent)) * 0.5f +
+                        (float)title_metrics.ascent;
+        int32_t title_clip_w = (int32_t)((float)w - padding * 2.0f - close_size - gap);
+        if (title_clip_w < 0)
+            title_clip_w = 0;
+        vgfx_set_clip(win, (int32_t)title_x, y + 1, title_clip_w, (int32_t)title_h - 2);
         vg_font_draw_text(canvas,
                           dlg->font,
                           dlg->title_font_size,
@@ -396,63 +801,129 @@ static void dialog_paint(vg_widget_t *widget, void *canvas) {
                           title_y,
                           dlg->title,
                           dlg->title_text_color);
+        vgfx_clear_clip(win);
     }
 
-    // Close button — draw X glyph
     if (dlg->show_close_button && dlg->font) {
-        float close_cx = (float)x + (float)w - (float)DIALOG_CLOSE_BUTTON_SIZE / 2.0f - 4.0f;
-        float close_cy = (float)y + DIALOG_TITLE_BAR_HEIGHT / 2.0f + dlg->font_size / 3.0f;
+        int32_t close_x = x + w - (int32_t)padding - (int32_t)close_size;
+        int32_t close_y = y + (int32_t)((title_h - close_size) * 0.5f);
+        dialog_fill_round_rect(win,
+                               close_x,
+                               close_y,
+                               (int32_t)close_size,
+                               (int32_t)close_size,
+                               radius / 2,
+                               vg_color_blend(header_bg, theme->colors.bg_hover, 0.45f));
+        dialog_stroke_round_rect(win,
+                                 close_x,
+                                 close_y,
+                                 (int32_t)close_size,
+                                 (int32_t)close_size,
+                                 radius / 2,
+                                 border_color);
+        vg_font_metrics_t close_metrics = {0};
+        vg_font_get_metrics(dlg->font, dlg->font_size, &close_metrics);
+        float close_cx = (float)close_x + close_size * 0.5f;
+        float close_cy =
+            (float)close_y + (close_size - (float)(close_metrics.ascent - close_metrics.descent)) * 0.5f +
+            (float)close_metrics.ascent;
         vg_font_draw_text(canvas,
                           dlg->font,
                           dlg->font_size,
-                          close_cx - dlg->font_size / 4.0f,
+                          close_cx - dlg->font_size * 0.3f,
                           close_cy,
                           "X",
                           dlg->title_text_color);
     }
 
-    // Content area
-    float content_x = (float)x + DIALOG_CONTENT_PADDING;
-    float content_y = (float)y + DIALOG_TITLE_BAR_HEIGHT + DIALOG_CONTENT_PADDING;
+    float body_x = (float)x + padding;
+    float body_y = (float)y + title_h + padding;
+    float body_w = (float)w - padding * 2.0f;
+    float body_h = (float)h - title_h - button_bar_h - padding * 2.0f;
 
-    // Icon glyph
+    if (has_icon) {
+        dialog_fill_round_rect(win,
+                               (int32_t)body_x,
+                               (int32_t)body_y,
+                               (int32_t)icon_size,
+                               (int32_t)icon_size,
+                               radius / 2,
+                               vg_color_blend(panel_bg, theme->colors.accent_primary, 0.22f));
+        dialog_stroke_round_rect(win,
+                                 (int32_t)body_x,
+                                 (int32_t)body_y,
+                                 (int32_t)icon_size,
+                                 (int32_t)icon_size,
+                                 radius / 2,
+                                 vg_color_blend(border_color, theme->colors.accent_primary, 0.35f));
+    }
+
+    float content_x = body_x;
+    float content_y = body_y;
+    if (has_icon) {
+        content_x += icon_size + gap;
+        body_w -= icon_size + gap;
+    }
+    if (body_w < 0.0f)
+        body_w = 0.0f;
+    if (body_h < 0.0f)
+        body_h = 0.0f;
+
     if (dlg->icon != VG_DIALOG_ICON_NONE) {
         const char *glyph = get_icon_glyph(dlg->icon);
         if (glyph && dlg->font) {
+            vg_font_metrics_t icon_metrics = {0};
+            float icon_font_size = icon_size * 0.75f;
+            vg_font_get_metrics(dlg->font, icon_font_size, &icon_metrics);
             vg_font_draw_text(canvas,
                               dlg->font,
-                              (float)DIALOG_ICON_SIZE,
-                              content_x,
-                              content_y + (float)DIALOG_ICON_SIZE * 0.8f,
+                              icon_font_size,
+                              body_x + icon_size * 0.28f,
+                              body_y + (icon_size - (float)(icon_metrics.ascent - icon_metrics.descent)) * 0.5f +
+                                  (float)icon_metrics.ascent,
                               glyph,
-                              dlg->text_color);
+                              theme->colors.accent_primary);
         }
-        content_x += DIALOG_ICON_SIZE + DIALOG_CONTENT_PADDING;
     }
 
-    // Message text
     if (dlg->message && dlg->font) {
-        vg_font_draw_text(canvas,
-                          dlg->font,
-                          dlg->font_size,
-                          content_x,
-                          content_y + dlg->font_size,
-                          dlg->message,
-                          dlg->text_color);
+        char **lines = NULL;
+        float ignored_width = 0.0f;
+        int line_count = dialog_wrap_text(dlg, dlg->message, body_w, &lines, &ignored_width);
+        vg_font_metrics_t font_metrics = {0};
+        vg_font_get_metrics(dlg->font, dlg->font_size, &font_metrics);
+        float line_height =
+            font_metrics.line_height > 0 ? (float)font_metrics.line_height : dlg->font_size;
+        float text_y = content_y + (float)font_metrics.ascent;
+
+        vgfx_set_clip(win, (int32_t)content_x, (int32_t)content_y, (int32_t)body_w, (int32_t)body_h);
+        for (int i = 0; i < line_count; i++) {
+            const char *line = (lines && lines[i]) ? lines[i] : "";
+            vg_font_draw_text(
+                canvas, dlg->font, dlg->font_size, content_x, text_y + (float)i * line_height, line, dlg->text_color);
+        }
+        vgfx_clear_clip(win);
+        dialog_free_wrapped_lines(lines, line_count);
+        content_y += line_height * (float)line_count;
+        if (dlg->content)
+            content_y += gap;
     }
 
-    // Content widget
     if (dlg->content) {
+        float clip_h = body_y + body_h - content_y;
+        if (clip_h < 0.0f)
+            clip_h = 0.0f;
+        vgfx_set_clip(win, (int32_t)content_x, (int32_t)content_y, (int32_t)body_w, (int32_t)clip_h);
         vg_widget_paint(dlg->content, canvas);
+        vgfx_clear_clip(win);
     }
 
-    // Button bar background + separator
-    int32_t btn_bar_y = y + h - DIALOG_BUTTON_BAR_HEIGHT;
-    vgfx_fill_rect(win, x, btn_bar_y, w, DIALOG_BUTTON_BAR_HEIGHT, dlg->title_bg_color);
-    vgfx_fill_rect(win, x, btn_bar_y, w, 1, theme->colors.border_primary);
+    int32_t btn_bar_y = y + h - (int32_t)button_bar_h;
+    vgfx_fill_rect(win, x + 1, btn_bar_y, w - 2, (int32_t)button_bar_h - 1, dlg->title_bg_color);
+    vgfx_fill_rect(win, x + 1, btn_bar_y, w - 2, 1, border_color);
 
-    float button_y = (float)btn_bar_y + (DIALOG_BUTTON_BAR_HEIGHT - DIALOG_BUTTON_HEIGHT) / 2.0f;
-    float button_x = (float)x + (float)w - DIALOG_CONTENT_PADDING;
+    float button_y = (float)btn_bar_y + (button_bar_h - button_h) * 0.5f;
+    float button_x = (float)x + (float)w - padding;
 
     const preset_button_t *buttons;
     size_t button_count;
@@ -463,64 +934,86 @@ static void dialog_paint(vg_widget_t *widget, void *canvas) {
             vg_dialog_button_def_t *btn = &dlg->custom_buttons[i];
             float btn_w = get_button_width(dlg, btn->label);
             button_x -= btn_w;
+            bool is_default = btn->is_default;
+            uint32_t btn_bg = is_default ? theme->colors.accent_primary : dlg->button_bg_color;
+            if (dlg->hovered_button == i) {
+                btn_bg = vg_color_lighten(btn_bg, is_default ? 0.08f : 0.05f);
+            }
+            uint32_t btn_border =
+                is_default ? vg_color_blend(theme->colors.accent_primary, theme->colors.border_focus, 0.4f)
+                           : theme->colors.border_primary;
+            uint32_t btn_fg = is_default ? 0x00FFFFFF : dlg->text_color;
 
-            uint32_t btn_bg =
-                (dlg->hovered_button == i) ? dlg->button_hover_color : dlg->button_bg_color;
-            vgfx_fill_rect(win,
-                           (int32_t)button_x,
-                           (int32_t)button_y,
-                           (int32_t)btn_w,
-                           DIALOG_BUTTON_HEIGHT,
-                           btn_bg);
-            vgfx_rect(win,
-                      (int32_t)button_x,
-                      (int32_t)button_y,
-                      (int32_t)btn_w,
-                      DIALOG_BUTTON_HEIGHT,
-                      theme->colors.border_primary);
+            dialog_fill_round_rect(
+                win, (int32_t)button_x, (int32_t)button_y, (int32_t)btn_w, (int32_t)button_h, radius / 2, btn_bg);
+            dialog_stroke_round_rect(win,
+                                     (int32_t)button_x,
+                                     (int32_t)button_y,
+                                     (int32_t)btn_w,
+                                     (int32_t)button_h,
+                                     radius / 2,
+                                     btn_border);
 
             if (btn->label && dlg->font) {
                 vg_text_metrics_t metrics;
                 vg_font_measure_text(dlg->font, dlg->font_size, btn->label, &metrics);
                 float text_x = button_x + (btn_w - metrics.width) / 2.0f;
-                float text_y = button_y + DIALOG_BUTTON_HEIGHT / 2.0f + dlg->font_size / 3.0f;
+                vg_font_metrics_t button_metrics = {0};
+                vg_font_get_metrics(dlg->font, dlg->font_size, &button_metrics);
+                float text_y = button_y +
+                               (button_h - (float)(button_metrics.ascent - button_metrics.descent)) * 0.5f +
+                               (float)button_metrics.ascent;
+                vgfx_set_clip(
+                    win, (int32_t)button_x, (int32_t)button_y, (int32_t)btn_w, (int32_t)button_h);
                 vg_font_draw_text(
-                    canvas, dlg->font, dlg->font_size, text_x, text_y, btn->label, dlg->text_color);
+                    canvas, dlg->font, dlg->font_size, text_x, text_y, btn->label, btn_fg);
+                vgfx_clear_clip(win);
             }
 
-            button_x -= DIALOG_BUTTON_PADDING;
+            button_x -= gap;
         }
     } else if (buttons) {
         for (int i = (int)button_count - 1; i >= 0; i--) {
             const preset_button_t *btn = &buttons[i];
             float btn_w = get_button_width(dlg, btn->label);
             button_x -= btn_w;
+            bool is_default = btn->is_default;
+            uint32_t btn_bg = is_default ? theme->colors.accent_primary : dlg->button_bg_color;
+            if (dlg->hovered_button == i) {
+                btn_bg = vg_color_lighten(btn_bg, is_default ? 0.08f : 0.05f);
+            }
+            uint32_t btn_border =
+                is_default ? vg_color_blend(theme->colors.accent_primary, theme->colors.border_focus, 0.4f)
+                           : theme->colors.border_primary;
+            uint32_t btn_fg = is_default ? 0x00FFFFFF : dlg->text_color;
 
-            uint32_t btn_bg =
-                (dlg->hovered_button == i) ? dlg->button_hover_color : dlg->button_bg_color;
-            vgfx_fill_rect(win,
-                           (int32_t)button_x,
-                           (int32_t)button_y,
-                           (int32_t)btn_w,
-                           DIALOG_BUTTON_HEIGHT,
-                           btn_bg);
-            vgfx_rect(win,
-                      (int32_t)button_x,
-                      (int32_t)button_y,
-                      (int32_t)btn_w,
-                      DIALOG_BUTTON_HEIGHT,
-                      theme->colors.border_primary);
+            dialog_fill_round_rect(
+                win, (int32_t)button_x, (int32_t)button_y, (int32_t)btn_w, (int32_t)button_h, radius / 2, btn_bg);
+            dialog_stroke_round_rect(win,
+                                     (int32_t)button_x,
+                                     (int32_t)button_y,
+                                     (int32_t)btn_w,
+                                     (int32_t)button_h,
+                                     radius / 2,
+                                     btn_border);
 
             if (btn->label && dlg->font) {
                 vg_text_metrics_t metrics;
                 vg_font_measure_text(dlg->font, dlg->font_size, btn->label, &metrics);
                 float text_x = button_x + (btn_w - metrics.width) / 2.0f;
-                float text_y = button_y + DIALOG_BUTTON_HEIGHT / 2.0f + dlg->font_size / 3.0f;
+                vg_font_metrics_t button_metrics = {0};
+                vg_font_get_metrics(dlg->font, dlg->font_size, &button_metrics);
+                float text_y = button_y +
+                               (button_h - (float)(button_metrics.ascent - button_metrics.descent)) * 0.5f +
+                               (float)button_metrics.ascent;
+                vgfx_set_clip(
+                    win, (int32_t)button_x, (int32_t)button_y, (int32_t)btn_w, (int32_t)button_h);
                 vg_font_draw_text(
-                    canvas, dlg->font, dlg->font_size, text_x, text_y, btn->label, dlg->text_color);
+                    canvas, dlg->font, dlg->font_size, text_x, text_y, btn->label, btn_fg);
+                vgfx_clear_clip(win);
             }
 
-            button_x -= DIALOG_BUTTON_PADDING;
+            button_x -= gap;
         }
     }
 }
@@ -528,15 +1021,17 @@ static void dialog_paint(vg_widget_t *widget, void *canvas) {
 static int find_button_at(vg_dialog_t *dlg, float px, float py) {
     float w = dlg->base.width;
     float h = dlg->base.height;
+    float button_bar_h = dialog_button_bar_height();
+    float button_h = dialog_button_height();
+    float padding = dialog_outer_padding();
+    float gap = dialog_section_gap();
 
-    // Check if in button bar area
-    float button_bar_y = h - DIALOG_BUTTON_BAR_HEIGHT;
+    float button_bar_y = h - button_bar_h;
     if (py < button_bar_y || py > h)
         return -1;
 
-    // Calculate button positions right-to-left
-    float button_y = button_bar_y + (DIALOG_BUTTON_BAR_HEIGHT - DIALOG_BUTTON_HEIGHT) / 2;
-    float button_x = w - DIALOG_CONTENT_PADDING;
+    float button_y = button_bar_y + (button_bar_h - button_h) / 2.0f;
+    float button_x = w - padding;
 
     const preset_button_t *buttons;
     size_t button_count;
@@ -547,24 +1042,22 @@ static int find_button_at(vg_dialog_t *dlg, float px, float py) {
             float btn_w = get_button_width(dlg, dlg->custom_buttons[i].label);
             button_x -= btn_w;
 
-            if (px >= button_x && px < button_x + btn_w && py >= button_y &&
-                py < button_y + DIALOG_BUTTON_HEIGHT) {
+            if (px >= button_x && px < button_x + btn_w && py >= button_y && py < button_y + button_h) {
                 return i;
             }
 
-            button_x -= DIALOG_BUTTON_PADDING;
+            button_x -= gap;
         }
     } else if (buttons) {
         for (int i = (int)button_count - 1; i >= 0; i--) {
             float btn_w = get_button_width(dlg, buttons[i].label);
             button_x -= btn_w;
 
-            if (px >= button_x && px < button_x + btn_w && py >= button_y &&
-                py < button_y + DIALOG_BUTTON_HEIGHT) {
+            if (px >= button_x && px < button_x + btn_w && py >= button_y && py < button_y + button_h) {
                 return i;
             }
 
-            button_x -= DIALOG_BUTTON_PADDING;
+            button_x -= gap;
         }
     }
 
@@ -572,18 +1065,19 @@ static int find_button_at(vg_dialog_t *dlg, float px, float py) {
 }
 
 static bool is_in_title_bar(vg_dialog_t *dlg, float px, float py) {
-    return px >= 0.0f && px < dlg->base.width && py >= 0.0f && py < DIALOG_TITLE_BAR_HEIGHT;
+    return px >= 0.0f && px < dlg->base.width && py >= 0.0f && py < dialog_title_height();
 }
 
 static bool is_on_close_button(vg_dialog_t *dlg, float px, float py) {
     if (!dlg->show_close_button)
         return false;
 
-    float x = dlg->base.width - DIALOG_CLOSE_BUTTON_SIZE - 4.0f;
-    float y = (DIALOG_TITLE_BAR_HEIGHT - DIALOG_CLOSE_BUTTON_SIZE) / 2.0f;
+    float size = dialog_close_size();
+    float pad = dialog_outer_padding();
+    float x = dlg->base.width - pad - size;
+    float y = (dialog_title_height() - size) / 2.0f;
 
-    return px >= x && px < x + DIALOG_CLOSE_BUTTON_SIZE && py >= y &&
-           py < y + DIALOG_CLOSE_BUTTON_SIZE;
+    return px >= x && px < x + size && py >= y && py < y + size;
 }
 
 static void trigger_button_click(vg_dialog_t *dlg, int button_index) {
@@ -625,6 +1119,21 @@ static bool dialog_handle_event(vg_widget_t *widget, vg_event_t *event) {
                 get_parent_screen_origin(widget, &parent_sx, &parent_sy);
                 widget->x = event->mouse.screen_x - parent_sx - (float)dlg->drag_offset_x;
                 widget->y = event->mouse.screen_y - parent_sy - (float)dlg->drag_offset_y;
+                if (dlg->modal_parent) {
+                    float max_x = dlg->modal_parent->width - widget->width - (float)DIALOG_SCREEN_MARGIN;
+                    float max_y =
+                        dlg->modal_parent->height - dialog_title_height() - (float)DIALOG_SCREEN_MARGIN;
+                    float min_x = (float)DIALOG_SCREEN_MARGIN;
+                    float min_y = (float)DIALOG_SCREEN_MARGIN;
+                    if (widget->x < min_x)
+                        widget->x = min_x;
+                    if (widget->y < min_y)
+                        widget->y = min_y;
+                    if (widget->x > max_x)
+                        widget->x = max_x;
+                    if (widget->y > max_y)
+                        widget->y = max_y;
+                }
                 widget->needs_paint = true;
                 widget->needs_layout = true;
                 return true;
@@ -744,6 +1253,7 @@ void vg_dialog_set_title(vg_dialog_t *dialog, const char *title) {
         return;
     free(dialog->title);
     dialog->title = title ? strdup(title) : NULL;
+    dialog->base.needs_layout = true;
     dialog->base.needs_paint = true;
 }
 
@@ -771,6 +1281,7 @@ void vg_dialog_set_message(vg_dialog_t *dialog, const char *message) {
     free(dialog->message);
     dialog->message = message ? strdup(message) : NULL;
     dialog->base.needs_layout = true;
+    dialog->base.needs_paint = true;
 }
 
 /// @brief Dialog set icon.
@@ -779,6 +1290,7 @@ void vg_dialog_set_icon(vg_dialog_t *dialog, vg_dialog_icon_t icon) {
         return;
     dialog->icon = icon;
     dialog->base.needs_layout = true;
+    dialog->base.needs_paint = true;
 }
 
 /// @brief Dialog set custom icon.
@@ -788,6 +1300,7 @@ void vg_dialog_set_custom_icon(vg_dialog_t *dialog, vg_icon_t icon) {
     vg_icon_destroy(&dialog->custom_icon);
     dialog->custom_icon = icon;
     dialog->base.needs_layout = true;
+    dialog->base.needs_paint = true;
 }
 
 /// @brief Dialog set buttons.
@@ -796,6 +1309,7 @@ void vg_dialog_set_buttons(vg_dialog_t *dialog, vg_dialog_buttons_t buttons) {
         return;
     dialog->button_preset = buttons;
     dialog->base.needs_layout = true;
+    dialog->base.needs_paint = true;
 }
 
 /// @brief Dialog set custom buttons.
@@ -827,6 +1341,7 @@ void vg_dialog_set_custom_buttons(vg_dialog_t *dialog,
     }
 
     dialog->base.needs_layout = true;
+    dialog->base.needs_paint = true;
 }
 
 /// @brief Dialog set resizable.
@@ -834,6 +1349,7 @@ void vg_dialog_set_resizable(vg_dialog_t *dialog, bool resizable) {
     if (!dialog)
         return;
     dialog->resizable = resizable;
+    dialog->base.needs_paint = true;
 }
 
 /// @brief Dialog set size constraints.
@@ -848,6 +1364,7 @@ void vg_dialog_set_size_constraints(
     dialog->base.constraints.min_width = (float)min_w;
     dialog->base.constraints.min_height = (float)min_h;
     dialog->base.needs_layout = true;
+    dialog->base.needs_paint = true;
 }
 
 /// @brief Dialog set modal.
@@ -856,6 +1373,7 @@ void vg_dialog_set_modal(vg_dialog_t *dialog, bool modal, vg_widget_t *parent) {
         return;
     dialog->modal = modal;
     dialog->modal_parent = parent;
+    dialog->base.needs_paint = true;
 }
 
 /// @brief Dialog show.
@@ -879,10 +1397,23 @@ void vg_dialog_show_centered(vg_dialog_t *dialog, vg_widget_t *relative_to) {
 
     vg_dialog_show(dialog);
 
-    // Measure first to get dialog size
-    vg_widget_measure(&dialog->base, 0, 0);
+    float avail_w = 0.0f;
+    float avail_h = 0.0f;
+    if (relative_to) {
+        avail_w = relative_to->width;
+        avail_h = relative_to->height;
+    } else if (dialog->modal_parent) {
+        avail_w = dialog->modal_parent->width;
+        avail_h = dialog->modal_parent->height;
+    }
+    if (avail_w <= 0.0f)
+        avail_w = 800.0f;
+    if (avail_h <= 0.0f)
+        avail_h = 600.0f;
 
-    // Center on relative widget
+    vg_widget_measure(&dialog->base, avail_w, avail_h);
+
+    float region_x = 0.0f, region_y = 0.0f, region_w = avail_w, region_h = avail_h;
     float center_x, center_y;
     if (relative_to) {
         float sx = 0.0f;
@@ -891,16 +1422,52 @@ void vg_dialog_show_centered(vg_dialog_t *dialog, vg_widget_t *relative_to) {
         center_x = sx + relative_to->width / 2.0f;
         center_y = sy + relative_to->height / 2.0f;
     } else {
-        // Center on screen (assume 800x600 default)
-        center_x = 400.0f;
-        center_y = 300.0f;
+        center_x = region_w * 0.5f;
+        center_y = region_h * 0.5f;
     }
 
     float parent_sx = 0.0f;
     float parent_sy = 0.0f;
     get_parent_screen_origin(&dialog->base, &parent_sx, &parent_sy);
+
+    bool have_clamp_region = false;
+    vg_widget_t *clamp_ref = dialog->modal_parent ? dialog->modal_parent : dialog->base.parent;
+    if (clamp_ref && clamp_ref->width > 0.0f && clamp_ref->height > 0.0f) {
+        vg_widget_get_screen_bounds(clamp_ref, &region_x, &region_y, NULL, NULL);
+        region_w = clamp_ref->width;
+        region_h = clamp_ref->height;
+        have_clamp_region = true;
+    } else if (!relative_to) {
+        have_clamp_region = true;
+    }
+
     dialog->base.x = center_x - parent_sx - dialog->base.measured_width / 2.0f;
     dialog->base.y = center_y - parent_sy - dialog->base.measured_height / 2.0f;
+
+    if (have_clamp_region) {
+        float local_region_x = region_x - parent_sx;
+        float local_region_y = region_y - parent_sy;
+        float min_x = local_region_x + (float)DIALOG_SCREEN_MARGIN;
+        float min_y = local_region_y + (float)DIALOG_SCREEN_MARGIN;
+        float max_x =
+            local_region_x + region_w - dialog->base.measured_width - (float)DIALOG_SCREEN_MARGIN;
+        float max_y =
+            local_region_y + region_h - dialog->base.measured_height - (float)DIALOG_SCREEN_MARGIN;
+
+        if (max_x < min_x)
+            max_x = min_x;
+        if (max_y < min_y)
+            max_y = min_y;
+
+        if (dialog->base.x < min_x)
+            dialog->base.x = min_x;
+        if (dialog->base.y < min_y)
+            dialog->base.y = min_y;
+        if (dialog->base.x > max_x)
+            dialog->base.x = max_x;
+        if (dialog->base.y > max_y)
+            dialog->base.y = max_y;
+    }
 
     vg_widget_arrange(&dialog->base,
                       dialog->base.x,
@@ -1008,8 +1575,9 @@ void vg_dialog_set_font(vg_dialog_t *dialog, vg_font_t *font, float size) {
         return;
     dialog->font = font;
     dialog->font_size = size > 0 ? size : vg_theme_get_current()->typography.size_normal;
-    dialog->title_font_size = dialog->font_size;
+    dialog->title_font_size = dialog->font_size + dialog_ui_scale();
     dialog->base.needs_layout = true;
+    dialog->base.needs_paint = true;
 }
 
 //=============================================================================

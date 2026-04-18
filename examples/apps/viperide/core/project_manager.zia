@@ -2,6 +2,7 @@ module project_manager;
 
 bind "project";
 bind Viper.GUI as GUI;
+bind IO = Viper.IO;
 bind Viper.IO.Path as Path;
 bind Viper.IO.Dir as Dir;
 bind Viper.String as Str;
@@ -23,14 +24,9 @@ bind Viper.String as Str;
 //     the IDE's frame-driven model and avoids needing a callback
 //     dispatcher.
 //   * NODE DATA = ABSOLUTE PATH. Each tree node stores its absolute
-//     path via `TreeView.Node.SetData`. The label is decorative
-//     ("[D] folder" or "    file"); the path is the source of truth.
-//   * LABEL-PREFIX FILE DETECTION. File nodes use a 4-space label
-//     prefix; directory nodes use "[D] "; the project root uses the
-//     bare project name. `HandleTreeClicks` distinguishes these by
-//     looking at `Str.Left(label, 4) == "    "`. A future refactor
-//     could use a typed-node enum, but the prefix trick keeps the
-//     callback-free design simple.
+//     path via `TreeView.Node.SetData`. The label is now just the plain
+//     basename; the path is the source of truth for file-vs-directory
+//     detection.
 //   * EXCLUDE PATTERNS. `ShouldExclude` and `ShouldExcludeFile` skip
 //     hidden entries (starting with ".") and common build artifacts
 //     ("build", "node_modules", "__pycache__"). Hardcoded — a real IDE
@@ -116,25 +112,20 @@ class ProjectManager {
     ///          absolute path via `SetData` so click handling can read
     ///          the full path back without re-walking the tree.
     func BuildTree(dirPath: String, parentNode: GUI.TreeNode) {
-        // Directories: prefix with "[D] " for visual contrast.
         for dirName in Dir.DirsSeq(dirPath) {
             if ShouldExclude(dirName) == false {
                 var fullPath = Path.Join(dirPath, dirName);
-                var folderLabel = "[D] " + dirName;
-                var folderNode = treeView.AddNode(parentNode, folderLabel);
+                var folderNode = treeView.AddNode(parentNode, dirName);
                 GUI.TreeView.Node.SetData(folderNode, fullPath);
 
                 BuildTree(fullPath, folderNode);
             }
         }
 
-        // Files: prefix with 4 spaces. The prefix is what
-        // HandleTreeClicks uses to identify file nodes vs directories.
         for fileName in Dir.FilesSeq(dirPath) {
             if ShouldExcludeFile(fileName) == false {
                 var fullPath = Path.Join(dirPath, fileName);
-                var fileLabel = "    " + fileName;
-                var fileNode = treeView.AddNode(parentNode, fileLabel);
+                var fileNode = treeView.AddNode(parentNode, fileName);
                 GUI.TreeView.Node.SetData(fileNode, fullPath);
             }
         }
@@ -158,9 +149,7 @@ class ProjectManager {
             var selected = treeView.GetSelected();
             if selected != null {
                 var path = GUI.TreeView.Node.GetData(selected);
-                var label = GUI.TreeView.Node.GetText(selected);
-
-                if Str.Left(label, 4) == "    " {
+                if IO.File.Exists(path) != 0 {
                     selectedFilePath = path;
                     fileWasSelected = true;
                     return path;

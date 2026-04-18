@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-16
+last-verified: 2026-04-17
 ---
 
 # Containers & Advanced
@@ -19,6 +19,7 @@ Scrollable container for content larger than the viewport.
 
 Direct children are arranged as vertically stacked content items inside the scroll region. For more complex nested layouts, place a `VBox`, `HBox`, or other container inside the `ScrollView` and add content there.
 Scrollbar thumb drags keep pointer capture until mouse-up, even if the cursor leaves the widget while dragging.
+Child overlay widgets such as dropdown popups and tooltips now render outside the viewport clip instead of being cut off by the scroll region.
 
 **Constructor:** `NEW Viper.GUI.ScrollView(parent)`
 
@@ -111,6 +112,7 @@ panel.AddChild(btn);
 Tab strip for switching between views.
 
 Tabs can be reordered by dragging, close-button hit testing stays confined to the close glyph instead of the whole tab tail, and `WasChanged()` only reports real post-construction active-tab transitions. Hovering a tab surfaces that tab's tooltip through the standard widget tooltip system.
+Keyboard navigation is available while the tab bar is focused: `Left` / `Right` switch tabs, `Home` / `End` jump to the edges, `Ctrl+W` closes the active closable tab, and `Ctrl+Shift+Left` / `Ctrl+Shift+Right` reorder the active tab.
 
 **Constructor:** `NEW Viper.GUI.TabBar(parent)`
 
@@ -189,6 +191,7 @@ if tabs.WasCloseClicked() == 1 {
 Hierarchical tree view with expandable nodes.
 
 Mouse hit testing is widget-local, so nested trees continue to select the correct row after layout shifts. Removing a node also clears any selected or hovered state inside the removed subtree.
+Node glyph icons are rendered when present, and lazy/loading nodes now show an inline loading indicator instead of a blank row.
 
 **Constructor:** `NEW Viper.GUI.TreeView(parent)`
 

@@ -152,6 +152,19 @@ static size_t textinput_valid_utf8_prefix(const char *text, size_t max_bytes) {
     return (size_t)(cursor - text);
 }
 
+static bool textinput_is_word_separator(unsigned char ch) {
+    if (ch <= ' ')
+        return true;
+    return strchr(".,;:!?()[]{}<>/\\|+-*=~`'\"@", (int)ch) != NULL;
+}
+
+static void textinput_reset_cursor_blink(vg_textinput_t *input) {
+    if (!input)
+        return;
+    input->cursor_blink_time = 0.0f;
+    input->cursor_visible = true;
+}
+
 static void textinput_set_cursor_internal(vg_textinput_t *input, size_t pos) {
     size_t clamped = textinput_clamp_char_pos(input, pos);
     input->cursor_pos = clamped;
@@ -159,11 +172,266 @@ static void textinput_set_cursor_internal(vg_textinput_t *input, size_t pos) {
     input->selection_end = clamped;
 }
 
+static float textinput_line_height(const vg_textinput_t *input) {
+    vg_font_metrics_t metrics = {0};
+    if (!input || !input->font)
+        return input ? input->font_size : 14.0f;
+    vg_font_get_metrics(input->font, input->font_size, &metrics);
+    return metrics.line_height > 0 ? (float)metrics.line_height : (input->font_size + 4.0f);
+}
+
+static size_t textinput_line_count(const vg_textinput_t *input) {
+    if (!input)
+        return 1;
+    size_t lines = 1;
+    for (size_t i = 0; i < input->text_len; i++) {
+        if (input->text[i] == '\n')
+            lines++;
+    }
+    return lines;
+}
+
+static char *textinput_dup_range(const char *text, size_t start_byte, size_t end_byte) {
+    if (!text || end_byte < start_byte)
+        return NULL;
+    size_t len = end_byte - start_byte;
+    char *copy = (char *)malloc(len + 1);
+    if (!copy)
+        return NULL;
+    memcpy(copy, text + start_byte, len);
+    copy[len] = '\0';
+    return copy;
+}
+
+static void textinput_get_line_at_index(const vg_textinput_t *input,
+                                        size_t target_line,
+                                        size_t *out_start_byte,
+                                        size_t *out_end_byte,
+                                        size_t *out_start_char) {
+    size_t start_byte = 0;
+    size_t start_char = 0;
+    size_t line = 0;
+
+    while (1) {
+        size_t end_byte = start_byte;
+        while (end_byte < input->text_len && input->text[end_byte] != '\n')
+            end_byte++;
+
+        if (line == target_line || end_byte == input->text_len) {
+            if (out_start_byte)
+                *out_start_byte = start_byte;
+            if (out_end_byte)
+                *out_end_byte = end_byte;
+            if (out_start_char)
+                *out_start_char = start_char;
+            return;
+        }
+
+        size_t line_chars = textinput_codepoint_count_in_prefix(input->text + start_byte,
+                                                                end_byte - start_byte);
+        start_byte = end_byte + 1;
+        start_char += line_chars + 1;
+        line++;
+    }
+}
+
+static void textinput_get_line_for_char_pos(const vg_textinput_t *input,
+                                            size_t char_pos,
+                                            size_t *out_line_index,
+                                            size_t *out_start_byte,
+                                            size_t *out_end_byte,
+                                            size_t *out_start_char) {
+    size_t clamped = textinput_clamp_char_pos(input, char_pos);
+    size_t start_byte = 0;
+    size_t start_char = 0;
+    size_t line = 0;
+
+    while (1) {
+        size_t end_byte = start_byte;
+        while (end_byte < input->text_len && input->text[end_byte] != '\n')
+            end_byte++;
+
+        size_t line_chars =
+            textinput_codepoint_count_in_prefix(input->text + start_byte, end_byte - start_byte);
+        if (clamped <= start_char + line_chars || end_byte == input->text_len) {
+            if (out_line_index)
+                *out_line_index = line;
+            if (out_start_byte)
+                *out_start_byte = start_byte;
+            if (out_end_byte)
+                *out_end_byte = end_byte;
+            if (out_start_char)
+                *out_start_char = start_char;
+            return;
+        }
+
+        start_byte = end_byte + 1;
+        start_char += line_chars + 1;
+        line++;
+    }
+}
+
+static size_t textinput_hit_test_line_x(const vg_textinput_t *input, size_t line_index, float local_x) {
+    size_t start_byte = 0;
+    size_t end_byte = 0;
+    size_t start_char = 0;
+    textinput_get_line_at_index(input, line_index, &start_byte, &end_byte, &start_char);
+
+    char *line_text = textinput_dup_range(input->text, start_byte, end_byte);
+    size_t line_chars = textinput_codepoint_count_in_prefix(input->text + start_byte,
+                                                            end_byte - start_byte);
+    int hit = line_text ? vg_font_hit_test(input->font, input->font_size, line_text, local_x) : -1;
+    free(line_text);
+    if (hit < 0)
+        hit = (int)line_chars;
+    if ((size_t)hit > line_chars)
+        hit = (int)line_chars;
+    return start_char + (size_t)hit;
+}
+
+static size_t textinput_hit_test_multiline(const vg_textinput_t *input, float local_x, float local_y) {
+    if (!input || !input->font)
+        return textinput_char_count(input);
+
+    float line_h = textinput_line_height(input);
+    size_t line_count = textinput_line_count(input);
+    size_t line_index = 0;
+    if (line_h > 0.0f && local_y > 0.0f)
+        line_index = (size_t)(local_y / line_h);
+    if (line_index >= line_count)
+        line_index = line_count - 1;
+
+    return textinput_hit_test_line_x(input, line_index, local_x);
+}
+
+static float textinput_multiline_cursor_x(const vg_textinput_t *input, size_t cursor_pos) {
+    if (!input || !input->font)
+        return 0.0f;
+
+    size_t line_start_byte = 0;
+    size_t line_end_byte = 0;
+    size_t line_start_char = 0;
+    textinput_get_line_for_char_pos(
+        input, cursor_pos, NULL, &line_start_byte, &line_end_byte, &line_start_char);
+
+    char *line_text = textinput_dup_range(input->text, line_start_byte, line_end_byte);
+    size_t column = cursor_pos >= line_start_char ? (cursor_pos - line_start_char) : 0;
+    float cursor_x = 0.0f;
+    if (line_text) {
+        cursor_x = vg_font_get_cursor_x(input->font, input->font_size, line_text, (int)column);
+        free(line_text);
+    }
+    return cursor_x;
+}
+
+static size_t textinput_move_vertical_cursor(const vg_textinput_t *input, size_t cursor_pos, int direction) {
+    size_t line_index = 0;
+    size_t line_start_byte = 0;
+    size_t line_end_byte = 0;
+    size_t line_start_char = 0;
+    textinput_get_line_for_char_pos(
+        input, cursor_pos, &line_index, &line_start_byte, &line_end_byte, &line_start_char);
+    size_t column = cursor_pos >= line_start_char ? (cursor_pos - line_start_char) : 0;
+    size_t line_count = textinput_line_count(input);
+    size_t target_line = line_index;
+
+    if (direction < 0) {
+        if (line_index == 0)
+            return 0;
+        target_line = line_index - 1;
+    } else {
+        if (line_index + 1 >= line_count)
+            return textinput_char_count(input);
+        target_line = line_index + 1;
+    }
+
+    size_t target_start_byte = 0;
+    size_t target_end_byte = 0;
+    size_t target_start_char = 0;
+    textinput_get_line_at_index(
+        input, target_line, &target_start_byte, &target_end_byte, &target_start_char);
+    size_t target_chars = textinput_codepoint_count_in_prefix(input->text + target_start_byte,
+                                                              target_end_byte - target_start_byte);
+    if (column > target_chars)
+        column = target_chars;
+    return target_start_char + column;
+}
+
+static size_t textinput_line_boundary(const vg_textinput_t *input, size_t cursor_pos, bool to_end) {
+    size_t line_start_byte = 0;
+    size_t line_end_byte = 0;
+    size_t line_start_char = 0;
+    textinput_get_line_for_char_pos(
+        input, cursor_pos, NULL, &line_start_byte, &line_end_byte, &line_start_char);
+    size_t line_chars = textinput_codepoint_count_in_prefix(input->text + line_start_byte,
+                                                            line_end_byte - line_start_byte);
+    return to_end ? (line_start_char + line_chars) : line_start_char;
+}
+
 static void textinput_ensure_cursor_visible(vg_textinput_t *input) {
-    if (!input || !input->font || input->multiline)
+    if (!input || !input->font)
         return;
 
     float padding = vg_theme_get_current()->input.padding_h;
+    if (input->multiline) {
+        const float padding_y = 6.0f;
+        float viewport_w = input->base.width - padding * 2.0f;
+        float viewport_h = input->base.height - padding_y * 2.0f;
+        if (viewport_w <= 0.0f || viewport_h <= 0.0f) {
+            input->scroll_x = 0.0f;
+            input->scroll_y = 0.0f;
+            return;
+        }
+
+        size_t line_index = 0;
+        textinput_get_line_for_char_pos(input, input->cursor_pos, &line_index, NULL, NULL, NULL);
+        float line_h = textinput_line_height(input);
+        float cursor_x = textinput_multiline_cursor_x(input, input->cursor_pos);
+        float cursor_y = (float)line_index * line_h;
+
+        if (cursor_x < input->scroll_x) {
+            input->scroll_x = cursor_x;
+        } else if (cursor_x > input->scroll_x + viewport_w) {
+            input->scroll_x = cursor_x - viewport_w + 2.0f;
+        }
+
+        if (cursor_y < input->scroll_y) {
+            input->scroll_y = cursor_y;
+        } else if (cursor_y + line_h > input->scroll_y + viewport_h) {
+            input->scroll_y = cursor_y + line_h - viewport_h;
+        }
+
+        float max_line_width = 0.0f;
+        size_t line_count = textinput_line_count(input);
+        for (size_t line = 0; line < line_count; line++) {
+            size_t start_byte = 0, end_byte = 0;
+            textinput_get_line_at_index(input, line, &start_byte, &end_byte, NULL);
+            char *line_text = textinput_dup_range(input->text, start_byte, end_byte);
+            if (line_text) {
+                vg_text_metrics_t metrics = {0};
+                vg_font_measure_text(input->font, input->font_size, line_text, &metrics);
+                if (metrics.width > max_line_width)
+                    max_line_width = metrics.width;
+                free(line_text);
+            }
+        }
+        float max_scroll_x = max_line_width - viewport_w;
+        float max_scroll_y = (float)line_count * line_h - viewport_h;
+        if (max_scroll_x < 0.0f)
+            max_scroll_x = 0.0f;
+        if (max_scroll_y < 0.0f)
+            max_scroll_y = 0.0f;
+        if (input->scroll_x < 0.0f)
+            input->scroll_x = 0.0f;
+        if (input->scroll_y < 0.0f)
+            input->scroll_y = 0.0f;
+        if (input->scroll_x > max_scroll_x)
+            input->scroll_x = max_scroll_x;
+        if (input->scroll_y > max_scroll_y)
+            input->scroll_y = max_scroll_y;
+        return;
+    }
+
     float viewport = input->base.width - padding * 2.0f;
     if (viewport <= 0.0f) {
         input->scroll_x = 0.0f;
@@ -223,7 +491,7 @@ vg_textinput_t *vg_textinput_create(vg_widget_t *parent) {
     input->selection_start = 0;
     input->selection_end = 0;
     input->placeholder = NULL;
-    input->font = NULL;
+    input->font = theme->typography.font_regular;
     input->font_size = theme->typography.size_normal;
     input->max_length = 0;
     input->password_mode = false;
@@ -306,10 +574,11 @@ static void textinput_measure(vg_widget_t *widget, float available_width, float 
 
     // Apply multiline height
     if (input->multiline && input->font) {
-        vg_font_metrics_t font_metrics;
-        vg_font_get_metrics(input->font, input->font_size, &font_metrics);
-        // Use at least 3 lines for multiline
-        height = font_metrics.line_height * 3;
+        float line_h = textinput_line_height(input);
+        size_t line_count = textinput_line_count(input);
+        if (line_count < 3)
+            line_count = 3;
+        height = line_h * (float)line_count + 12.0f;
     }
 
     widget->measured_width = width;
@@ -397,7 +666,8 @@ static void textinput_paint(vg_widget_t *widget, void *canvas) {
 
     vg_font_metrics_t font_metrics;
     vg_font_get_metrics(input->font, input->font_size, &font_metrics);
-    text_y += (widget->height + font_metrics.ascent - font_metrics.descent) / 2.0f;
+    text_y +=
+        (widget->height + (float)font_metrics.ascent + (float)font_metrics.descent) / 2.0f;
 
     const char *display_text = input->text;
     uint32_t display_color = text_color;
@@ -409,6 +679,128 @@ static void textinput_paint(vg_widget_t *widget, void *canvas) {
 
     if (clip_w > 0 && clip_h > 0)
         vgfx_set_clip(win, clip_x, clip_y, clip_w, clip_h);
+
+    if (input->multiline) {
+        const float padding_y = 6.0f;
+        float line_h = textinput_line_height(input);
+        float base_x = widget->x + padding - input->scroll_x;
+        float base_y = widget->y + padding_y - input->scroll_y;
+        vg_font_metrics_t metrics = {0};
+        vg_font_get_metrics(input->font, input->font_size, &metrics);
+
+        if (input->text_len == 0 && input->placeholder) {
+            vg_font_draw_text(canvas,
+                              input->font,
+                              input->font_size,
+                              base_x,
+                              base_y + (float)metrics.ascent,
+                              input->placeholder,
+                              input->placeholder_color);
+            if ((widget->state & VG_STATE_FOCUSED) && input->cursor_visible && !input->read_only) {
+                int32_t cursor_x = (int32_t)base_x;
+                int32_t cursor_y0 = (int32_t)(base_y + 2.0f);
+                int32_t cursor_y1 = (int32_t)(base_y + line_h - 2.0f);
+                vgfx_line(win, cursor_x, cursor_y0, cursor_x, cursor_y1, input->cursor_color);
+            }
+            if (clip_w > 0 && clip_h > 0)
+                vgfx_clear_clip(win);
+            return;
+        }
+
+        size_t sel_start = input->selection_start < input->selection_end ? input->selection_start
+                                                                         : input->selection_end;
+        size_t sel_end = input->selection_start < input->selection_end ? input->selection_end
+                                                                       : input->selection_start;
+        size_t line_count = textinput_line_count(input);
+        size_t current_line = 0;
+        size_t current_line_start_char = 0;
+        textinput_get_line_for_char_pos(input,
+                                        input->cursor_pos,
+                                        &current_line,
+                                        NULL,
+                                        NULL,
+                                        &current_line_start_char);
+
+        for (size_t line = 0; line < line_count; line++) {
+            size_t line_start_byte = 0, line_end_byte = 0, line_start_char = 0;
+            textinput_get_line_at_index(
+                input, line, &line_start_byte, &line_end_byte, &line_start_char);
+            size_t line_char_len = textinput_codepoint_count_in_prefix(input->text + line_start_byte,
+                                                                       line_end_byte - line_start_byte);
+            float line_y = base_y + (float)line * line_h;
+            if (line_y + line_h < widget->y || line_y > widget->y + widget->height)
+                continue;
+
+            char *line_text = textinput_dup_range(input->text, line_start_byte, line_end_byte);
+            if (!line_text)
+                line_text = strdup("");
+
+            if ((widget->state & VG_STATE_FOCUSED) && sel_start != sel_end) {
+                size_t draw_start = sel_start > line_start_char ? sel_start : line_start_char;
+                size_t draw_end = sel_end < (line_start_char + line_char_len) ? sel_end
+                                                                              : (line_start_char + line_char_len);
+                if (draw_start < draw_end) {
+                    size_t start_col = draw_start - line_start_char;
+                    size_t end_col = draw_end - line_start_char;
+                    float sel_x0 =
+                        base_x + vg_font_get_cursor_x(input->font, input->font_size, line_text, (int)start_col);
+                    float sel_x1 =
+                        base_x + vg_font_get_cursor_x(input->font, input->font_size, line_text, (int)end_col);
+                    vgfx_fill_rect(win,
+                                   (int32_t)sel_x0,
+                                   (int32_t)line_y,
+                                   (int32_t)(sel_x1 - sel_x0),
+                                   (int32_t)line_h,
+                                   input->selection_color);
+                }
+            }
+
+            const char *draw_text = line_text;
+            char *masked = NULL;
+            if (input->password_mode && line_char_len > 0) {
+                masked = (char *)malloc(line_char_len + 1);
+                if (masked) {
+                    for (size_t m = 0; m < line_char_len; m++)
+                        masked[m] = '*';
+                    masked[line_char_len] = '\0';
+                    draw_text = masked;
+                }
+            }
+
+            if (draw_text && draw_text[0]) {
+                vg_font_draw_text(canvas,
+                                  input->font,
+                                  input->font_size,
+                                  base_x,
+                                  line_y + (float)metrics.ascent,
+                                  draw_text,
+                                  text_color);
+            }
+
+            bool cursor_on_line = (line == current_line);
+            if ((widget->state & VG_STATE_FOCUSED) && input->cursor_visible && !input->read_only &&
+                cursor_on_line) {
+                size_t col = input->cursor_pos >= current_line_start_char
+                                 ? (input->cursor_pos - current_line_start_char)
+                                 : 0;
+                float cursor_x =
+                    base_x + vg_font_get_cursor_x(input->font, input->font_size, line_text, (int)col);
+                vgfx_line(win,
+                          (int32_t)cursor_x,
+                          (int32_t)(line_y + 2.0f),
+                          (int32_t)cursor_x,
+                          (int32_t)(line_y + line_h - 2.0f),
+                          input->cursor_color);
+            }
+
+            free(masked);
+            free(line_text);
+        }
+
+        if (clip_w > 0 && clip_h > 0)
+            vgfx_clear_clip(win);
+        return;
+    }
 
     // Draw selection highlight if focused
     if ((widget->state & VG_STATE_FOCUSED) && input->selection_start != input->selection_end) {
@@ -587,24 +979,82 @@ static bool textinput_handle_event(vg_widget_t *widget, vg_event_t *event) {
             // Set focus and cursor position
             if (input->font) {
                 float padding = vg_theme_get_current()->input.padding_h;
-                float local_x = event->mouse.x - padding + input->scroll_x;
-                int char_index =
-                    vg_font_hit_test(input->font, input->font_size, input->text, local_x);
-                if (char_index >= 0) {
-                    input->cursor_pos = (size_t)char_index;
+                if (input->multiline) {
+                    float local_x = event->mouse.x - padding + input->scroll_x;
+                    float local_y = event->mouse.y - 6.0f + input->scroll_y;
+                    input->cursor_pos = textinput_hit_test_multiline(input, local_x, local_y);
                 } else {
-                    input->cursor_pos = textinput_char_count(input);
+                    float local_x = event->mouse.x - padding + input->scroll_x;
+                    int char_index =
+                        vg_font_hit_test(input->font, input->font_size, input->text, local_x);
+                    if (char_index >= 0) {
+                        input->cursor_pos = (size_t)char_index;
+                    } else {
+                        input->cursor_pos = textinput_char_count(input);
+                    }
                 }
                 input->selection_start = input->cursor_pos;
                 input->selection_end = input->cursor_pos;
                 textinput_ensure_cursor_visible(input);
+                textinput_reset_cursor_blink(input);
             }
+            vg_widget_set_input_capture(widget);
             return true;
+
+        case VG_EVENT_MOUSE_MOVE:
+            if (vg_widget_get_input_capture() == widget && input->font) {
+                float padding = vg_theme_get_current()->input.padding_h;
+                if (input->multiline) {
+                    float local_x = event->mouse.x - padding + input->scroll_x;
+                    float local_y = event->mouse.y - 6.0f + input->scroll_y;
+                    input->cursor_pos = textinput_hit_test_multiline(input, local_x, local_y);
+                } else {
+                    float local_x = event->mouse.x - padding + input->scroll_x;
+                    int char_index =
+                        vg_font_hit_test(input->font, input->font_size, input->text, local_x);
+                    if (char_index >= 0)
+                        input->cursor_pos = (size_t)char_index;
+                    else
+                        input->cursor_pos = textinput_char_count(input);
+                }
+                input->selection_end = input->cursor_pos;
+                textinput_ensure_cursor_visible(input);
+                textinput_reset_cursor_blink(input);
+                widget->needs_paint = true;
+                return true;
+            }
+            return false;
+
+        case VG_EVENT_MOUSE_WHEEL:
+            if (input->multiline) {
+                float padding_y = 6.0f;
+                float viewport_h = input->base.height - padding_y * 2.0f;
+                float max_scroll_y = (float)textinput_line_count(input) * textinput_line_height(input) -
+                                     viewport_h;
+                input->scroll_y -= event->wheel.delta_y * textinput_line_height(input) * 2.0f;
+                if (input->scroll_y < 0.0f)
+                    input->scroll_y = 0.0f;
+                if (max_scroll_y < 0.0f)
+                    max_scroll_y = 0.0f;
+                if (input->scroll_y > max_scroll_y)
+                    input->scroll_y = max_scroll_y;
+                widget->needs_paint = true;
+                return true;
+            }
+            return false;
+
+        case VG_EVENT_MOUSE_UP:
+            if (vg_widget_get_input_capture() == widget) {
+                vg_widget_release_input_capture();
+                return true;
+            }
+            return false;
 
         case VG_EVENT_KEY_DOWN: {
             // Check for modifier key shortcuts
             uint32_t mods = event->modifiers;
             bool has_ctrl = (mods & VG_MOD_CTRL) != 0 || (mods & VG_MOD_SUPER) != 0;
+            textinput_reset_cursor_blink(input);
 
             // Clipboard shortcuts (work in read-only mode for copy)
             if (has_ctrl) {
@@ -687,11 +1137,23 @@ static bool textinput_handle_event(vg_widget_t *widget, vg_event_t *event) {
                         if (input->cursor_pos < char_count)
                             input->cursor_pos++;
                         break;
+                    case VG_KEY_UP:
+                        if (input->multiline)
+                            input->cursor_pos = textinput_move_vertical_cursor(input, input->cursor_pos, -1);
+                        break;
+                    case VG_KEY_DOWN:
+                        if (input->multiline)
+                            input->cursor_pos = textinput_move_vertical_cursor(input, input->cursor_pos, 1);
+                        break;
                     case VG_KEY_HOME:
-                        input->cursor_pos = 0;
+                        input->cursor_pos =
+                            input->multiline && !has_ctrl ? textinput_line_boundary(input, input->cursor_pos, false)
+                                                          : 0;
                         break;
                     case VG_KEY_END:
-                        input->cursor_pos = char_count;
+                        input->cursor_pos =
+                            input->multiline && !has_ctrl ? textinput_line_boundary(input, input->cursor_pos, true)
+                                                          : char_count;
                         break;
                     default:
                         break;
@@ -714,11 +1176,11 @@ static bool textinput_handle_event(vg_widget_t *widget, vg_event_t *event) {
                     case VG_KEY_LEFT: {
                         size_t pos = input->cursor_pos;
                         size_t byte_pos = textinput_byte_offset(input, pos);
-                        /* Skip leading spaces */
-                        while (byte_pos > 0 && input->text[byte_pos - 1] == ' ')
+                        while (byte_pos > 0 &&
+                               textinput_is_word_separator((unsigned char)input->text[byte_pos - 1]))
                             byte_pos--;
-                        /* Skip word characters */
-                        while (byte_pos > 0 && input->text[byte_pos - 1] != ' ')
+                        while (byte_pos > 0 &&
+                               !textinput_is_word_separator((unsigned char)input->text[byte_pos - 1]))
                             byte_pos--;
                         pos = textinput_char_index_from_byte_offset(input->text, byte_pos);
                         if (has_shift) {
@@ -735,11 +1197,11 @@ static bool textinput_handle_event(vg_widget_t *widget, vg_event_t *event) {
                     case VG_KEY_RIGHT: {
                         size_t pos = input->cursor_pos;
                         size_t byte_pos = textinput_byte_offset(input, pos);
-                        /* Skip word characters */
-                        while (byte_pos < input->text_len && input->text[byte_pos] != ' ')
+                        while (byte_pos < input->text_len &&
+                               !textinput_is_word_separator((unsigned char)input->text[byte_pos]))
                             byte_pos++;
-                        /* Skip trailing spaces */
-                        while (byte_pos < input->text_len && input->text[byte_pos] == ' ')
+                        while (byte_pos < input->text_len &&
+                               textinput_is_word_separator((unsigned char)input->text[byte_pos]))
                             byte_pos++;
                         pos = textinput_char_index_from_byte_offset(input->text, byte_pos);
                         if (has_shift) {
@@ -795,6 +1257,36 @@ static bool textinput_handle_event(vg_widget_t *widget, vg_event_t *event) {
                     textinput_ensure_cursor_visible(input);
                     break;
 
+                case VG_KEY_UP:
+                    if (input->multiline) {
+                        size_t old = input->cursor_pos;
+                        input->cursor_pos = textinput_move_vertical_cursor(input, input->cursor_pos, -1);
+                        if (has_shift) {
+                            if (input->selection_start == input->selection_end)
+                                input->selection_start = old;
+                            input->selection_end = input->cursor_pos;
+                        } else {
+                            input->selection_start = input->selection_end = input->cursor_pos;
+                        }
+                        textinput_ensure_cursor_visible(input);
+                    }
+                    break;
+
+                case VG_KEY_DOWN:
+                    if (input->multiline) {
+                        size_t old = input->cursor_pos;
+                        input->cursor_pos = textinput_move_vertical_cursor(input, input->cursor_pos, 1);
+                        if (has_shift) {
+                            if (input->selection_start == input->selection_end)
+                                input->selection_start = old;
+                            input->selection_end = input->cursor_pos;
+                        } else {
+                            input->selection_start = input->selection_end = input->cursor_pos;
+                        }
+                        textinput_ensure_cursor_visible(input);
+                    }
+                    break;
+
                 case VG_KEY_LEFT:
                     if (has_shift) {
                         /* Extend selection: anchor is kept, end moves */
@@ -829,28 +1321,41 @@ static bool textinput_handle_event(vg_widget_t *widget, vg_event_t *event) {
 
                 case VG_KEY_HOME:
                     if (has_shift) {
-                        input->cursor_pos = 0;
-                        input->selection_end = 0;
+                        input->cursor_pos =
+                            input->multiline && !has_ctrl ? textinput_line_boundary(input, input->cursor_pos, false)
+                                                          : 0;
+                        input->selection_end = input->cursor_pos;
                     } else {
-                        input->cursor_pos = 0;
-                        input->selection_start = input->selection_end = 0;
+                        input->cursor_pos =
+                            input->multiline && !has_ctrl ? textinput_line_boundary(input, input->cursor_pos, false)
+                                                          : 0;
+                        input->selection_start = input->selection_end = input->cursor_pos;
                     }
                     textinput_ensure_cursor_visible(input);
                     break;
 
                 case VG_KEY_END:
                     if (has_shift) {
-                        input->cursor_pos = textinput_char_count(input);
+                        input->cursor_pos = input->multiline && !has_ctrl
+                                                ? textinput_line_boundary(input, input->cursor_pos, true)
+                                                : textinput_char_count(input);
                         input->selection_end = input->cursor_pos;
                     } else {
-                        input->cursor_pos = textinput_char_count(input);
+                        input->cursor_pos = input->multiline && !has_ctrl
+                                                ? textinput_line_boundary(input, input->cursor_pos, true)
+                                                : textinput_char_count(input);
                         input->selection_start = input->selection_end = input->cursor_pos;
                     }
+                    textinput_ensure_cursor_visible(input);
                     break;
 
                 case VG_KEY_ENTER:
-                    if (!input->multiline && input->on_commit)
+                    if (input->multiline) {
+                        vg_textinput_insert(input, "\n");
+                        textinput_push_undo(input);
+                    } else if (input->on_commit) {
                         input->on_commit(widget, input->text, input->on_commit_data);
+                    }
                     break;
 
                 default:
@@ -862,11 +1367,12 @@ static bool textinput_handle_event(vg_widget_t *widget, vg_event_t *event) {
 
         case VG_EVENT_KEY_CHAR:
             if (!input->read_only) {
+                textinput_reset_cursor_blink(input);
                 // Insert typed character
                 char utf8[5] = {0};
                 // Convert codepoint to UTF-8
                 uint32_t cp = event->key.codepoint;
-                if (!input->multiline && (cp == '\r' || cp == '\n'))
+                if (cp == '\r' || cp == '\n')
                     return true;
                 if (cp < 0x80) {
                     utf8[0] = (char)cp;
@@ -903,9 +1409,7 @@ static void textinput_on_focus(vg_widget_t *widget, bool gained) {
     vg_textinput_t *input = (vg_textinput_t *)widget;
 
     if (gained) {
-        // Reset cursor blink
-        input->cursor_blink_time = 0;
-        input->cursor_visible = true;
+        textinput_reset_cursor_blink(input);
     }
 }
 
@@ -933,6 +1437,8 @@ void vg_textinput_set_text(vg_textinput_t *input, const char *text) {
     input->scroll_y = 0.0f;
     textinput_ensure_cursor_visible(input);
 
+    if (input->multiline)
+        input->base.needs_layout = true;
     input->base.needs_paint = true;
 }
 
@@ -1054,7 +1560,10 @@ void vg_textinput_insert(vg_textinput_t *input, const char *text) {
     input->cursor_pos += insert_chars;
     input->selection_start = input->selection_end = input->cursor_pos;
     textinput_ensure_cursor_visible(input);
+    textinput_reset_cursor_blink(input);
 
+    if (input->multiline)
+        input->base.needs_layout = true;
     input->base.needs_paint = true;
 
     if (input->on_change) {
@@ -1083,7 +1592,10 @@ void vg_textinput_delete_selection(vg_textinput_t *input) {
     input->selection_start = start;
     input->selection_end = start;
     textinput_ensure_cursor_visible(input);
+    textinput_reset_cursor_blink(input);
 
+    if (input->multiline)
+        input->base.needs_layout = true;
     input->base.needs_paint = true;
 
     if (input->on_change) {

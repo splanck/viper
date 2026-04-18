@@ -549,8 +549,10 @@ typedef struct vg_notification {
     void *action_user_data;
 
     // State
-    float opacity;  ///< Current opacity (for animation)
-    bool dismissed; ///< Has been dismissed
+    float opacity;             ///< Current opacity (for animation)
+    float slide_progress;      ///< Entrance / exit slide interpolation (0..1)
+    uint64_t dismiss_started_at; ///< When the dismissal animation began (0 = not dismissing)
+    bool dismissed;            ///< Dismissal requested / in progress
 } vg_notification_t;
 
 /// @brief Notification manager widget

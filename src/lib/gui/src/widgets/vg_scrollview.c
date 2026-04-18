@@ -350,10 +350,14 @@ static void scrollview_paint(vg_widget_t *widget, void *canvas) {
         VG_FOREACH_VISIBLE_CHILD(widget, child) {
             scrollview_render_normal_subtree(child, canvas, widget->x, widget->y);
             vgfx_set_clip(win, clip_x, clip_y, clip_w, clip_h);
-            scrollview_render_overlay_subtree(child, canvas, widget->x, widget->y);
-            vgfx_set_clip(win, clip_x, clip_y, clip_w, clip_h);
         }
         vgfx_clear_clip(win);
+    }
+
+    // Overlay children such as dropdown panels and tooltips should escape the
+    // scroll viewport clip so they can float above the content area.
+    VG_FOREACH_VISIBLE_CHILD(widget, child) {
+        scrollview_render_overlay_subtree(child, canvas, widget->x, widget->y);
     }
 
     // Vertical scrollbar

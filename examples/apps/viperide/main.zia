@@ -1,6 +1,7 @@
 module viperide;
 
 bind "ui/app_shell";
+bind "ui/ide_overlays";
 bind "core/document";
 bind "core/document_manager";
 bind "core/project";
@@ -87,6 +88,9 @@ func main() {
     shell.Build("ViperIDE", WIN_WIDTH, WIN_HEIGHT);
     view_commands.applyShellFont(shell);
     shell.CenterAndSize(WINDOW_SIZE_PERCENT);
+
+    var overlays = new ide_overlays.IdeOverlays();
+    overlays.Setup(shell);
 
     engine.Setup(shell.editorRow);
     engine.editor.Focus();
@@ -202,18 +206,7 @@ func main() {
     // ========================================================================
     var appSettings = new settings.SettingsManager();
     appSettings.Load();
-    view_commands.applyEditorFont(shell, engine, appSettings);
-    engine.editor.SetTabSize(appSettings.tabWidth);
-    if appSettings.codeFolding {
-        engine.editor.SetAutoFoldDetection(1);
-    } else {
-        engine.editor.SetAutoFoldDetection(0);
-    }
-    liveDiag.enabled = appSettings.autoCheckOnSave;
-    appSettings.ApplyTheme();
-    if appSettings.minimapVisible == false {
-        shell.minimap.SetVisible(0);
-    }
+    view_commands.applyPersistentSettings(shell, engine, liveDiag, appSettings);
 
     // File watcher state
     var watchedPath = "";
@@ -315,8 +308,7 @@ func main() {
                 var ctxNode = shell.sidebarTree.GetSelected();
                 if ctxNode != null {
                     var nodePath = GUI.TreeView.Node.GetData(ctxNode);
-                    var nodeLabel = GUI.TreeView.Node.GetText(ctxNode);
-                    if Str.IndexOf(nodeLabel, "[D] ") == 1 {
+                    if IO.Dir.Exists(nodePath) != 0 {
                         ctxDir = nodePath;
                     } else {
                         ctxDir = Path.Dir(nodePath);
@@ -329,8 +321,7 @@ func main() {
             var ctxNode = shell.sidebarTree.GetSelected();
             if ctxNode != null {
                 var ctxPath = GUI.TreeView.Node.GetData(ctxNode);
-                var ctxLabel = GUI.TreeView.Node.GetText(ctxNode);
-                if Str.Left(ctxLabel, 4) == "    " {
+                if IO.File.Exists(ctxPath) != 0 {
                     file_commands.OpenFileAtPath(shell, docMgr, engine, tabs, ctxPath);
                     pendingReload = false;
                 }
@@ -443,8 +434,8 @@ func main() {
         if triggered("toggletheme", shell.miToggleTheme, null, cpSelected)     { view_commands.handleToggleTheme(appSettings); }
         if triggered("fullscreen", shell.miFullscreen, null, cpSelected)       { view_commands.handleFullscreen(shell); }
         if triggered("minimap", shell.miToggleMinimap, null, cpSelected)       { minimapVisible = view_commands.handleToggleMinimap(shell, appSettings); }
-        if triggered("settings", shell.miPreferences, null, cpSelected)        { view_commands.handleSettings(shell, engine, appSettings); }
-        if shell.miAbout.WasClicked() != 0                                     { view_commands.handleAbout(); }
+        if triggered("settings", shell.miPreferences, null, cpSelected)        { overlays.OpenSettings(shell, appSettings); }
+        if shell.miAbout.WasClicked() != 0                                     { overlays.OpenAbout(shell); }
         if triggeredNoMenu("searchproject", cpSelected) { search_commands.handleProjectSearch(shell, projMgr, docMgr, engine, tabs); }
         if triggeredNoMenu("symboloutline", cpSelected) { symbolOutline.toggle(); }
 
@@ -463,6 +454,68 @@ func main() {
                     engine.GoToLine(lineNum);
                 }
             }
+        }
+
+        // Inline overlay actions
+        var overlayAction = overlays.Pump(shell);
+        if overlayAction == ide_overlays.ACTION_BROWSE_FONT {
+            var fontPath = GUI.FileDialog.Open("Choose Editor Font", "", "*.ttf;*.otf;*.ttc");
+            if fontPath != "" {
+                overlays.SetFontPath(fontPath);
+            }
+        }
+        if overlayAction == ide_overlays.ACTION_USE_SYSTEM_FONT {
+            overlays.UseSystemFont();
+        }
+        if overlayAction == ide_overlays.ACTION_RESET_FONT_SIZE {
+            overlays.ResetFontSize();
+        }
+        if overlayAction == ide_overlays.ACTION_APPLY_SETTINGS {
+            var requestedPath = overlays.ReadFontPath();
+            if requestedPath != "" {
+                var previewFont = GUI.Font.Load(requestedPath);
+                if previewFont == null {
+                    GUI.Toast.Warning("Could not load font: " + requestedPath);
+                    shell.SetStatusLeft("Font preview failed");
+                } else {
+                    GUI.Font.Destroy(previewFont);
+                    appSettings.fontPath = requestedPath;
+                    appSettings.fontSize = overlays.ReadFontSize();
+                    appSettings.tabWidth = overlays.ReadTabWidth();
+                    appSettings.theme = overlays.ReadTheme();
+                    appSettings.minimapVisible = overlays.ReadMinimapVisible();
+                    appSettings.autoCheckOnSave = overlays.ReadAutoCheck();
+                    appSettings.codeFolding = overlays.ReadCodeFolding();
+                    view_commands.applyPersistentSettings(shell, engine, liveDiag, appSettings);
+                    appSettings.Save();
+                    liveDiag.invalidate();
+                    minimapVisible = appSettings.minimapVisible;
+                    shell.SetStatusLeft("Settings applied");
+                    GUI.Toast.Success("Settings updated");
+                }
+            } else {
+                appSettings.fontPath = "";
+                appSettings.fontSize = overlays.ReadFontSize();
+                appSettings.tabWidth = overlays.ReadTabWidth();
+                appSettings.theme = overlays.ReadTheme();
+                appSettings.minimapVisible = overlays.ReadMinimapVisible();
+                appSettings.autoCheckOnSave = overlays.ReadAutoCheck();
+                appSettings.codeFolding = overlays.ReadCodeFolding();
+                view_commands.applyPersistentSettings(shell, engine, liveDiag, appSettings);
+                appSettings.Save();
+                liveDiag.invalidate();
+                minimapVisible = appSettings.minimapVisible;
+                shell.SetStatusLeft("Settings applied");
+                GUI.Toast.Success("Settings updated");
+            }
+        }
+        if overlayAction == ide_overlays.ACTION_CLOSE_SETTINGS {
+            overlays.CloseSettings();
+            shell.SetStatusLeft("Ready");
+        }
+        if overlayAction == ide_overlays.ACTION_CLOSE_ABOUT {
+            overlays.CloseAbout();
+            shell.SetStatusLeft("Ready");
         }
 
         // ====================================================================

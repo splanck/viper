@@ -10,6 +10,7 @@
 //===----------------------------------------------------------------------===//
 // vg_progressbar.c - ProgressBar widget implementation
 #include "../../../graphics/include/vgfx.h"
+#include "../../include/vg_theme.h"
 #include "../../include/vg_widgets.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -21,6 +22,13 @@
 static void progressbar_measure(vg_widget_t *widget, float avail_w, float avail_h);
 static void progressbar_arrange(vg_widget_t *widget, float x, float y, float w, float h);
 static void progressbar_paint(vg_widget_t *widget, void *canvas);
+static void progressbar_fill_round_rect(vgfx_window_t win,
+                                        int32_t x,
+                                        int32_t y,
+                                        int32_t w,
+                                        int32_t h,
+                                        int32_t radius,
+                                        uint32_t color);
 
 //=============================================================================
 // VTable
@@ -41,10 +49,21 @@ static vg_widget_vtable_t g_progressbar_vtable = {
 //=============================================================================
 
 static void progressbar_measure(vg_widget_t *widget, float avail_w, float avail_h) {
+    vg_progressbar_t *pb = (vg_progressbar_t *)widget;
+    vg_theme_t *theme = vg_theme_get_current();
     (void)avail_w;
     (void)avail_h;
     widget->measured_width = 100.0f;
     widget->measured_height = 8.0f;
+    if (pb->show_percentage && pb->font) {
+        vg_font_metrics_t metrics = {0};
+        vg_font_get_metrics(pb->font, pb->font_size, &metrics);
+        float text_height = (float)metrics.line_height + 6.0f;
+        if (text_height > widget->measured_height)
+            widget->measured_height = text_height;
+    } else if (theme && theme->input.height * 0.32f > widget->measured_height) {
+        widget->measured_height = theme->input.height * 0.32f;
+    }
 }
 
 static void progressbar_arrange(vg_widget_t *widget, float x, float y, float w, float h) {
@@ -54,44 +73,85 @@ static void progressbar_arrange(vg_widget_t *widget, float x, float y, float w, 
     widget->height = h;
 }
 
+static void progressbar_fill_round_rect(vgfx_window_t win,
+                                        int32_t x,
+                                        int32_t y,
+                                        int32_t w,
+                                        int32_t h,
+                                        int32_t radius,
+                                        uint32_t color) {
+    if (w <= 0 || h <= 0)
+        return;
+    if (radius <= 0 || w <= radius * 2 || h <= radius * 2) {
+        vgfx_fill_rect(win, x, y, w, h, color);
+        return;
+    }
+    vgfx_fill_rect(win, x + radius, y, w - radius * 2, h, color);
+    vgfx_fill_rect(win, x, y + radius, radius, h - radius * 2, color);
+    vgfx_fill_rect(win, x + w - radius, y + radius, radius, h - radius * 2, color);
+    vgfx_fill_circle(win, x + radius, y + radius, radius, color);
+    vgfx_fill_circle(win, x + w - radius - 1, y + radius, radius, color);
+    vgfx_fill_circle(win, x + radius, y + h - radius - 1, radius, color);
+    vgfx_fill_circle(win, x + w - radius - 1, y + h - radius - 1, radius, color);
+}
+
 static void progressbar_paint(vg_widget_t *widget, void *canvas) {
     vg_progressbar_t *pb = (vg_progressbar_t *)widget;
     vgfx_window_t win = (vgfx_window_t)canvas;
+    vg_theme_t *theme = vg_theme_get_current();
     int32_t x = (int32_t)widget->x, y = (int32_t)widget->y;
     int32_t w = (int32_t)widget->width, h = (int32_t)widget->height;
+    uint32_t track_color = pb->track_color ? pb->track_color
+                                           : vg_color_blend(theme->colors.bg_secondary, theme->colors.bg_primary, 0.45f);
+    uint32_t fill_color = pb->fill_color ? pb->fill_color : theme->colors.accent_primary;
+    int32_t radius = (int32_t)pb->corner_radius;
+    if (radius < 2)
+        radius = 2;
 
-    /* Track background */
-    vgfx_fill_rect(win, x, y, w, h, pb->track_color);
+    progressbar_fill_round_rect(win, x, y, w, h, radius, track_color);
+    vgfx_rect(win, x, y, w, h, theme->colors.border_secondary);
+    if (w > 2 && h > 2) {
+        vgfx_fill_rect(win, x + 1, y + 1, w - 2, 1, vg_color_lighten(track_color, 0.08f));
+    }
 
     if (pb->style == VG_PROGRESS_BAR) {
-        /* Determinate fill bar */
         float clamped = pb->value < 0.0f ? 0.0f : (pb->value > 1.0f ? 1.0f : pb->value);
         int32_t fill_w = (int32_t)(clamped * (float)w);
         if (fill_w > 0)
-            vgfx_fill_rect(win, x, y, fill_w, h, pb->fill_color);
+            progressbar_fill_round_rect(win, x, y, fill_w, h, radius, fill_color);
     } else if (pb->style == VG_PROGRESS_INDETERMINATE) {
-        /* Indeterminate: sliding block using animation_phase [0,1) */
-        float phase = pb->animation_phase - (int)pb->animation_phase; /* fractional part */
+        float phase = pb->animation_phase - (int)pb->animation_phase;
         int32_t block_w = w / 4;
         int32_t block_x = x + (int32_t)(phase * (float)(w + block_w)) - block_w;
-        /* Clamp to widget bounds */
         if (block_x < x)
             block_x = x;
         int32_t block_end = block_x + block_w;
         if (block_end > x + w)
             block_end = x + w;
         if (block_end > block_x)
-            vgfx_fill_rect(win, block_x, y, block_end - block_x, h, pb->fill_color);
+            progressbar_fill_round_rect(win, block_x, y, block_end - block_x, h, radius, fill_color);
     }
 
-    /* Optional percentage text */
     if (pb->show_percentage && pb->font && pb->style == VG_PROGRESS_BAR) {
         char buf[8];
         int pct = (int)(pb->value * 100.0f + 0.5f);
         snprintf(buf, sizeof(buf), "%d%%", pct);
-        float cx = widget->x + widget->width / 2.0f;
-        float cy = widget->y + widget->height / 2.0f + pb->font_size * 0.35f;
-        vg_font_draw_text(canvas, pb->font, pb->font_size, cx, cy, buf, 0xFFFFFFFF);
+        vg_text_metrics_t text_metrics = {0};
+        vg_font_measure_text(pb->font, pb->font_size, buf, &text_metrics);
+        vg_font_metrics_t font_metrics = {0};
+        vg_font_get_metrics(pb->font, pb->font_size, &font_metrics);
+        float text_x = widget->x + (widget->width - text_metrics.width) * 0.5f;
+        float text_y =
+            widget->y + (widget->height - (font_metrics.ascent - font_metrics.descent)) * 0.5f +
+            font_metrics.ascent;
+        uint32_t text_color = pct >= 50 ? 0x00FFFFFF : theme->colors.fg_primary;
+        int32_t clip_w = w - 4;
+        int32_t clip_h = h - 2;
+        if (clip_w > 0 && clip_h > 0) {
+            vgfx_set_clip(win, x + 2, y + 1, clip_w, clip_h);
+            vg_font_draw_text(canvas, pb->font, pb->font_size, text_x, text_y, buf, text_color);
+            vgfx_clear_clip(win);
+        }
     }
 }
 
@@ -107,10 +167,12 @@ vg_progressbar_t *vg_progressbar_create(vg_widget_t *parent) {
     progress->style = VG_PROGRESS_BAR;
 
     // Default appearance
-    progress->track_color = 0xFF3C3C3C;
-    progress->fill_color = 0xFF0078D4;
+    vg_theme_t *theme = vg_theme_get_current();
+    progress->track_color = vg_color_blend(theme->colors.bg_secondary, theme->colors.bg_primary, 0.45f);
+    progress->fill_color = theme->colors.accent_primary;
     progress->corner_radius = 4;
-    progress->font_size = 12;
+    progress->font = theme->typography.font_regular;
+    progress->font_size = theme->typography.size_small;
 
     if (parent) {
         vg_widget_add_child(parent, &progress->base);
@@ -128,6 +190,7 @@ void vg_progressbar_set_value(vg_progressbar_t *progress, float value) {
     if (value > 1)
         value = 1;
     progress->value = value;
+    progress->base.needs_paint = true;
 }
 
 /// @brief Progressbar get value.
@@ -140,6 +203,7 @@ void vg_progressbar_set_style(vg_progressbar_t *progress, vg_progress_style_t st
     if (!progress)
         return;
     progress->style = style;
+    progress->base.needs_paint = true;
 }
 
 /// @brief Progressbar show percentage.
@@ -147,6 +211,8 @@ void vg_progressbar_show_percentage(vg_progressbar_t *progress, bool show) {
     if (!progress)
         return;
     progress->show_percentage = show;
+    progress->base.needs_layout = true;
+    progress->base.needs_paint = true;
 }
 
 /// @brief Progressbar tick.

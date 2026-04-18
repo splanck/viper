@@ -6,243 +6,225 @@
 
 <!-- DRAFT: release date TBD. v0.2.4 was cut on 2026-04-13. -->
 
-### Overview
+### What this release is about
 
-v0.2.5 is a polish-and-hardening cycle concentrated on the runtime, the GUI widget toolkit, and the 3D graphics stack, with smaller touches to the IL, Zia frontend, linker, and build system.
+A polish-and-hardening cycle. Most of the work is in three areas: the audio runtime got a big consolidation pass, the GUI widget library went through a multi-round audit, and the 3D graphics stack picked up the correctness fixes that were piling up. The Zia frontend, linker, and codegen also got smaller targeted fixes. The biggest user-visible new thing is a text-mode human-manager simulator built on the existing baseball engine.
 
-- **Runtime surface hardening** — owner-header discipline across the C runtime, typed IL return descriptors for `Canvas` accessors, a magic-value guard on the `Canvas` object, `ButtonGroup` selection correctness, and runtime-string-handle threading in `AchievementTracker`.
-- **Runtime/gameplay follow-up fixes** — PathFollower zero-length segment traversal, ParticleEmitter alpha/pool-saturation behavior, SceneManager transition progress latching and duplicate-name handling, SpriteAnimation stop/ping-pong edge cases, SpriteSheet grid validation, and animated-tile collision/render sync.
-- **Audio runtime consolidation** — WAV / OGG / MP3 load paths unified through a single decoder dispatch in `rt_audio.c` (standalone `rt_audio_codec` translation unit retired), new `Viper.Sound.Audio.Update` tick for driving crossfades outside `Playlist.Update`, `Viper.Sound.Encode` removed from the runtime surface now that format conversion lives in the asset pipeline, new music companion APIs (`rt_music_set_loop`, `rt_music_pause_related`, `rt_music_resume_related` plus `vaud_music_set_loop`) for managing loop flags and crossfade-partnered playback, and follow-up fixes landing for WAV float/metadata streaming, playlist crossfade state, SoundBank key fidelity, and incremental MP3 music decode.
-- **Graphics runtime** — parallax camera rendering, UTF-8 codepoint iteration for bitmap fonts and drawing, sprite/spritebatch/spritesheet refinements, tilemap polish, and scene-graph touches.
-- **Graphics3D correctness pass** — terrain/heightfield normal math, skeletal animation hierarchy and bone-index validation, crossfade bind-pose TRS decomposition, capsule collision Y-only contract, navmesh edge hashing, Canvas3D 2D/3D state consistency, morph weight clamp, particle spawn catchup, and Gerstner wave direction.
-- **GUI widget toolkit** — broad widget correctness pass plus new APIs on CodeEditor (word-wrap driving all coord math, fold gutters, Can/Redo/TabSize), TabBar (tooltips, ellipsis, stable close-index), Toolbar/MenuBar (overflow popup, disabled-menu rendering, pixel-icon contracts), FindBar (live reads, SetVisible), ScrollView (auto-hide stabilization, drag capture), Tooltip (multi-line wrap, destroy notify), Dialog (re-entrancy, dual user_data), HiDPI scaling across tabbar/toolbar, and several lifetime fixes (dialog use-after-free, tooltip dangling pointer, notification auto-dismiss).
-- **Platform input** — macOS Fn+arrow translation no longer intercepts bare arrow keys; mouse wheel payload no longer destroyed by coordinate localization (mouse/wheel union aliasing).
-- **Zia frontend** — path-aware `Viper.Zia.Completion` APIs, Lowerer modularization into three helper classes, unified type display strings, and tightened Sema error messages.
-- **Linker** — `uname`, `gethostname`, `sysctlbyname` added to the dynamic-symbol policy so `Viper.Machine.OS` / `Hostname` link cleanly, plus a generalized prefix-matching helper and a `isKnownMacLibcxxDynamicSymbol` classifier that recognizes Itanium-ABI C++ runtime symbols (`ZNSt` / `ZSt` / operator new/delete / `cxa_` / `gxx_personality_`) on macOS.
-- **Tools & codegen polish** — `--` program-args separator in the frontend tools now matches before the generic flag-forwarding branch (fixes `viper run file.zia -- …` pass-through), `native_compiler` temp paths mix PID + steady-clock tick + an atomic counter so parallel compiles in one process can't collide, and x64 `--asset-blob` errors cleanly when combined with text-asm mode instead of silently dropping the companion object.
-- **Demos & docs** — Pac-Man renamed and rebuilt as Crackman, Paint gains layers/undo/redo, ViperIDE wires up the new GUI APIs, all ten demos built by `build_demos_mac.sh` carry tutorial-style annotations, two new 3D demos land (`3dbaseball`, `3dscene`, ~1,100 LOC of Zia combined), and the baseball engine grows a text-mode human-manager franchise shell (plans 14 + 17 — pacing profiles, interactive lineup building, save-slot management, three new probes) registered across all four `build_demos.*` scripts while the auto-season regression path is preserved via `--auto-season`; `viperlib/audio.md` picks up the new music companion APIs; new codemaps for the bytecode VM and graphics-disabled runtime stubs, plus clarifications to optimizer rehab status, `--no-mem2reg` behavior, graphics-stub policy, and cross-platform validation language.
-
-#### By the Numbers
+### By the Numbers
 
 | Metric | v0.2.4 | v0.2.5 | Delta |
 |---|---|---|---|
-| Commits | — | 19 | +19 |
+| Commits | — | 21 | +21 |
 | Source files | 2,869 | 2,884 | +15 |
-| Production SLOC | 450K | 461K | +11K |
+| Production SLOC | 450K | 462K | +12K |
 | Test SLOC | 183K | 189K | +6K |
 | Demo SLOC | 177K | 187K | +10K |
 
-Counts produced by `scripts/count_sloc.sh` (`Production SLOC` = `src/` minus `src/tests/`). Growth concentrates on the demo side (Crackman modularization + Paint feature pass) and the GUI runtime, with surgical edits across the rest of the tree.
+Counts via `scripts/count_sloc.sh`. Most of the growth is in demos (Crackman split, Paint feature pass, baseball shell) and the GUI runtime.
 
 ---
 
-### Runtime (`src/runtime/`)
+### Audio
 
-**Runtime header discipline.** `rtgen` picks up runtime headers and `RuntimeSurfacePolicy` as CMake dependencies, so changes to the authoritative runtime surface invalidate the generated bindings. Canvas3D internal helper declarations moved out of ad-hoc local externs and into a new owning `rt_canvas3d_internal.h`; callers (`rt_canvas3d.c`, `rt_canvas3d_overlay.c`, `rt_model3d.c`, `rt_scene3d.c`, `rt_scene3d_vscn.c`, `rt_fbx_loader.c`, `rt_skeleton3d.c`, `rt_morphtarget3d.c`, `rt_animcontroller3d.c`) include the owning header instead of redeclaring prototypes locally. Stray `extern rt_*` forward declarations across `rt_canvas.c`, `rt_countdown.c`, `rt_gui_app.c`, `rt_input.c`, `rt_sprite.c`, and the game runtime (`rt_config.c`, `rt_debugoverlay.c`, `rt_entity.c`, `rt_leveldata.c`, `rt_lighting2d.c`, `rt_raycast2d.c`, `rt_scenemanager.c`, `rt_animstate.c`) replaced with includes of the owning runtime headers.
+A two-step rework: first consolidate, then harden.
 
-**Canvas (2D).** `rt_canvas` gains an `RT_CANVAS_MAGIC` guard field and an `rt_canvas_checked()` helper. The `GetPixel` / `CopyRect` / `SaveBmp` / `SavePng` paths in `rt_drawing.c` route every incoming `void *` through this validator so callers passing a non-Canvas object fail safely (0 / NULL) instead of reinterpret-casting arbitrary memory. Paired edits to `rt_gui_filedialog.c`, `rt_gui_system.c`, `rt_spritebatch.c` pick up the same validator. New `rt_canvas_next_codepoint` lets text measurement and draw walk UTF-8 codepoints rather than raw bytes, fixing glyph picks for multi-byte characters. The canvas struct now mirrors the logical clip rect (`clip_enabled`, `clip_x/y/w/h`) and picks up a `rt_canvas_resync_window_state` helper that pulls the window's live scale factor into `vgfx_set_coord_scale` at frame boundaries, keeping logical and physical coordinates consistent across HiDPI transitions.
+**Consolidation.** WAV / OGG / MP3 used to take three separate code paths through the runtime. They now go through one decoder dispatch in `rt_audio.c`. The standalone `rt_audio_codec` translation unit is gone; the encoder side (`Viper.Sound.Encode`) is gone too — encoding lives in the asset pipeline now and the runtime doesn't need a parallel entry point. New `Viper.Sound.Audio.Update()` drives crossfade ticks from outside `Playlist.Update`.
 
-**Shared graphics internal surface.** `rt_graphics_internal.h` (+115 LOC) unifies scale and state handling that was previously open-coded in each 2D drawing path. Four new inline helpers — `rtg_sanitize_scale`, `rtg_round_scaled`, `rtg_scale_up_i64`, `rtg_scale_down_i64` — provide symmetric logical↔physical conversions so every drawing site uses the same math. A new `RT_COLOR_EXPLICIT_ALPHA_FLAG` bit on the `int64_t` color argument (bit 56) lets drawing paths distinguish a caller-specified alpha byte from the `0xFF000000` default, routing the two through different blend paths. Consumed by `rt_drawing.c` (+403 LOC), `rt_drawing_advanced.c` (+366 LOC), `rt_pixels_transform.c` (+239 LOC), `rt_bitmapfont.c` (+120 LOC), `rt_sprite.c`, `rt_spritebatch.c/.h`, `rt_tilemap.c/.h`, and `rt_camera.c/.h` — every 2D drawing surface now routes logical↔physical coordinate conversions through the shared helpers and consumes the explicit-alpha flag uniformly.
+**Fixes.**
+- Float32 WAV music streams used to decode as integer PCM. Now the format is plumbed through `vaud_wav_open_stream` and the mixer converts correctly.
+- WAV stream header scanning had a 256-byte ceiling, which rejected BWF/metadata-heavy files. Removed.
+- MP3 music playback no longer expands the whole file to PCM up front — it streams frame-by-frame. Sound effects (short clips) keep the eager-decode path because it's the right trade-off for them.
+- Unsupported MP3 Huffman tables now fail cleanly instead of silently emitting noise.
+- `SoundBank` keys longer than 31 bytes used to truncate. They're now stored as full retained strings.
+- Pause / stop / volume on a playlist with an in-flight crossfade only touched one of the two tracks. They now reach both.
+- Crossfade fade-clock kept advancing through pause. Fixed — pausing now freezes the clock.
+- Resume during a crossfade could restart the wrong track as foreground. Fixed.
+- `Music.Seek(ms)` only seeks that stream now; it no longer affects unrelated music.
 
-**Pixels.** `Canvas.CopyRect` and `Canvas.Screenshot` are now typed `obj<Viper.Graphics.Pixels>` in `src/il/runtime/runtime.def` (both `RT_FUNC` and `RT_METHOD` rows), eliminating the previous `obj` erasure through the IL type system. Minor transform-helper cleanup in `rt_pixels_transform.c`.
+**MusicGen / Synth.**
+- ADSR envelope release used `sustain` as the start level even when note-off happened during attack or decay, producing audible clicks on short notes. Now the release fades from the actual envelope level at note-off.
+- Empty / muted channels no longer participate in the render loop or the per-channel normalization count, so placeholder channels don't quietly dim everything else.
 
-**Camera.** New `camera_draw_parallax_transformed` applies zoom, rotation, and scroll factors to each parallax layer independently with integer-floor-div tile wrapping so the ground scroll stays seamless at any zoom level.
-
-**BitmapFont.** New `bf_next_codepoint` UTF-8 iterator and an owning `bf_release_font` release path; text measure/draw now walk codepoints, and old font objects are correctly released when replaced.
-
-**Sprite / SpriteBatch / SpriteSheet.** Batching lifecycle and sheet indexing refinements; `rt_spritebatch.c` picks up the Canvas magic-guard validator.
-
-**Tilemap / Scene.** Tilemap rendering polish; `rt_scene` surface refinements for scene-graph parent/child invariants.
-
-**Graphics3D — Canvas3D.** `Begin2D` now caches the full V·P product (matching `Begin3D`) instead of just the projection. Overlay code that unprojects through `cached_vp` sees consistent semantics across modes; for an identity 2D view the numeric result equals projection, but the shape of the math matches 3D. Internal header (`rt_canvas3d_internal.h`) picks up additional surface bits used by the morph and material paths. `begin_frame` now forwards the camera's world-space forward vector (derived from the view matrix) and an `is_ortho` flag (detected by inspecting `m[15]` of the projection) so backends can specialize the ortho vs. perspective path for fog, rim lighting, and specular.
-
-**Graphics3D — Camera3D.** New input sanitizers — `sanitize_aspect` (≥1e-6), `sanitize_clip_planes` (near ≥ 0.1, far ≥ near + 0.1 with a 1000-unit default), `sanitize_fov` ([1°, 179°]), and `sanitize_ortho_size` (≥1e-6) — normalize pathological values before they reach the projection builders. Degenerate `look_at` (eye == target) falls back to the default forward axis while *preserving* the camera translation, instead of returning an identity matrix that also zeroed the camera position.
-`Canvas3D.Begin` now synchronizes the camera's effective aspect ratio against the active output (window or bound `RenderTarget3D`) before rebuilding the frame projection, and `ScreenToRay` now uses the shaken render pose while camera shake is active, so picking stays aligned with the visible image.
-
-**Graphics3D — Canvas3D / RenderTarget3D.** Constructor-failure paths in `Canvas3D.New` and `RenderTarget3D.New` now release partially initialized wrappers instead of leaking them when backend/target allocation fails.
-
-**Graphics3D — reference ownership (cross-cutting).** A retain-then-release reference-slot pattern is now used uniformly across every Graphics3D subsystem that owns references to other graphics objects. Each owning subsystem carries a local `*_release_ref` / `*_assign_ref` helper pair: assignments *retain the new value first, then release the old*, so re-assigning a slot to its current value can no longer briefly drop the refcount to 0 and free the live object. Finalizers walk each owned slot through the same helper. Rolled out across `rt_mesh3d`, `rt_morphtarget3d`, `rt_terrain3d`, `rt_water3d`, `rt_particles3d`, `rt_scene3d`, `rt_instbatch3d`, and `rt_cubemap3d`, closing a class of use-after-free and double-release bugs on reassignment.
-
-**Graphics3D — Mesh3D.** Reference-slot ownership is explicit via the cross-cutting pattern described above (`mesh_assign_ref` / `mesh_release_ref` on the skeleton / morph-target / material back-references). The earlier bone-index `uint8_t` range check is retained.
-
-**Graphics3D — Skeleton3D & Animation.** `rt_skeleton3d_add_bone` rejects `parent_index` values below `-1` (previously only the upper bound was checked, so `-2`, `-100`, etc. survived validation and corrupted the hierarchy). `rt_mesh3d_set_bone_weights` now range-checks each influence against `VGFX3D_MAX_BONES` before the `uint8_t` cast — previously the cast silently wrapped `256` → `0` and `-1` → `255`, driving the skinning palette with the wrong bone. Out-of-range indices drop the influence (weight 0). In the animation player, the crossfade bind-pose fallback decomposes the full 4×4 bind-pose matrix into TRS (scale from column magnitudes, rotation via Shepperd's method on the orthonormalized basis, translation from column 3) instead of snapping to identity rotation and unit scale when the target animation has no channel for a bone.
-
-**Graphics3D — AnimController3D.** Root motion now tracks rotation in addition to translation. New `root_motion_rotation` quaternion slot on the controller plus `controller_quat_identity` / `controller_quat_normalize` helpers (full quaternion support pulled in via `rt_quat.h`). Crossfade and layered-blending paths feed the rotation through the same accumulation pipeline as the existing translation delta, so character controllers driven by root-motion animation now receive consistent translation+rotation deltas per frame instead of just translation. Header (`rt_animcontroller3d.h`) gains the matching public surface.
-
-**Graphics3D — MorphTarget3D.** `rt_morphtarget3d_set_weight` clamps weights to `[-1, 1]` so callers can't silently over-extrude vertices past the target mesh. Packed position/normal delta arrays (`packed_pos_deltas` / `packed_nrm_deltas`) are now rebuilt lazily, gated on a generation counter: `morphtarget_touch_payload` bumps the generation when shapes are added or deltas edited; weight-only changes skip the rebuild. Backends that prefer GPU-side morphing (Metal, OpenGL, D3D11) consume the shared packed buffer directly.
-
-**Graphics3D — Backends.** `vgfx3d_backend.h` plus the four concrete backends (`vgfx3d_backend_d3d11.c`, `vgfx3d_backend_metal.m`, `vgfx3d_backend_opengl.c`, `vgfx3d_backend_sw.c`) extend their morph-handoff surface to accept the shared packed-delta buffers from `rt_morphtarget3d`. `vgfx3d_backend_prefers_gpu_morph` is formalized on the selector; the software backend gets matching CPU-fallback paths so feature behavior stays uniform across all four backends. Additionally, a shared resize/aspect contract is exposed through the `*_shared.h` / `*_shared.c` headers so every backend reports its effective output size consistently — Canvas3D's aspect-sync path consumes this to rebuild the frame projection against the active window or bound `RenderTarget3D`. Per-frame camera params now carry a `forward[3]` world-space view direction and an `is_ortho` flag (all four backends picked up the plumbing; the software rasterizer carries the largest diff because it consumes both values directly in the CPU per-pixel path, where the GPU backends forward them into a uniform buffer). `vgfx3d_draw_cmd_uses_alpha_blend` got smarter: PBR workflow draws keep their own opacity path (no alpha blend); explicit `BLEND` / `MASK` modes are honored; otherwise alpha-blend fires when material alpha or diffuse alpha < 0.999 (fuzzy threshold so FP noise can't toggle draw ordering). Previously the default branch returned 0, so materials with sub-1.0 alpha but no explicit BLEND mode drew opaque.
-
-**Graphics3D — Lights / PostFX.** `rt_light3d` refinements for colour/intensity initialization and finalizer plumbing so lights are safely retained/released through scene-graph mutations. `rt_postfx3d` picks up a small header/surface touch.
-
-**Graphics3D — Scene3D.** Scene-node reference handling (mesh, material, skeleton, morph-target, child list) routes through the shared retain-then-release helpers. New `decompose_trs_matrix` helper recovers translation / quaternion rotation / scale from a 4×4 transform (scale from column magnitudes, quaternion via the orthonormalized basis, translation from column 3) — matching the pattern introduced for the skeleton crossfade fallback, so scene-node TRS sampling stays consistent across the runtime. `NodeFromAnimatorRootMotion` now consumes both translation and rotation deltas from the bound controller instead of dropping root-bone turns on the floor. New public `GetLocalMin()` / `GetLocalMax()` accessors expose a subtree's local-space AABB (internal helpers `mat4d_identity`, `scene_bounds_reset`, `scene_bounds_include_point`, `scene_bounds_include_aabb`, `scene_node_collect_subtree_bounds` walk the hierarchy and transform each child's local AABB into the queried root's space).
-
-**Graphics3D — Model3D / FBX loader.** `rt_fbx_loader.c` (+160 LOC) gains cross-platform texture-path normalization. `fbx_is_absolute_path(path)` recognizes POSIX roots, UNC-style paths, and Windows drive-letter prefixes (`C:`); `fbx_normalize_path(dst, dst_size, src)` copies a path while normalizing separators to `/`. Used by the texture-resolution fast path during model import so FBX assets exported on Windows resolve identically on macOS and Linux.
-
-**Graphics3D — Physics3D / Collider3D.** The heightfield collider normal formula now multiplies the Y component by both horizontal scales and carries the perpendicular horizontal scale on each lateral component; this fixes tilted lighting and misaligned physics normals on non-uniformly scaled heightfields. `capsule_axis_endpoints` documents its Y-only contract; an opt-in `RT_PHYSICS3D_STRICT_CAPSULE_AXIS` build flag traps on non-identity capsule orientation so the limitation becomes visible instead of silently corrupting collision.
-
-**Graphics3D — NavMesh3D.** Edge keys switched from `lo * 1_000_000 + hi` to a bit-packed `(lo << 32) | hi`. The old formula collided on meshes with any vertex index ≥ 1M — e.g. edges `(1, 2000000)` and `(2, 1000000)` both hashed to `3_000_000`, falsely marking unrelated triangles adjacent and silently breaking pathfinding.
-
-**Graphics3D — Terrain3D.** `rt_terrain3d_get_normal_at` and the chunk build helper both compute the Y component of the finite-difference normal as `2 * scale[0] * scale[2]` (previously `2 * scale[0]` only); lateral components carry the perpendicular horizontal scale. Non-uniformly scaled terrain now reports correct lighting and collision normals. The splat-map texture, base texture, baked texture, and four per-layer splat textures route through the shared ref helpers; a dedicated `terrain_release_mesh_slot` wrapper walks the three LOD mesh caches on finalize. A new `splat_dirty` flag lets the baked splat texture regenerate lazily rather than on every frame. Degenerate `1x1` splat maps are now treated as valid uniform coverage instead of dividing by zero during bake.
-
-**Graphics3D — Water3D / Particles3D.** Water Gerstner phase switched to the standard `k·x − ω·t` form — waves now travel in the user-specified `+direction` instead of against it. Both subsystems pick up the shared ref helpers: Water3D routes its surface texture, normal map, environment cubemap, mesh, and material through `water3d_assign_ref` / `water3d_release_ref`; Particles3D does the same for its emitter texture and the long-lived `cached_material` slot, closing a repeat-set-texture leak. Particles clamp `delta_time` at the spawn accumulator (≈4 frames' worth) so a frame hiccup with a high rate no longer spawns thousands of particles in a single frame. Sphere emitters now sample volume uniformly instead of clustering near the center, cone emitters sample solid angle uniformly instead of clustering near the axis, and additive particles now use an explicit additive blend path while preserving per-particle alpha.
-
-**Graphics3D — InstBatch3D.** Picks up the shared retain/release pattern for its underlying mesh and material slots.
-
-**Graphics3D — Cubemap3D.** Substantial expansion. Two new internal mapping helpers cover the full cubemap geometry contract: `cubemap_direction_to_face_uv` picks the correct face (+X, -X, +Y, -Y, +Z, -Z) from a sample direction and returns the face-local UV using the standard right-hand-rule mapping, and `cubemap_face_uv_to_direction` is its inverse. New public `rt_cubemap_sample_roughness(cm, dir, roughness)` consumes those helpers to sample a blurred reflection from the correct face/mip pair, so material workflows that feed environment lighting back into shading have a single backend-agnostic entry point. The earlier retain/release pattern for per-face texture references is retained.
-
-**Graphics3D — draw-path lifetime / OpenGL uploads.** Terrain3D, Water3D, Sprite3D, Decal3D, and the additive Particles3D path now submit a static identity matrix directly instead of allocating a transient `Mat4.Identity()` object per draw. OpenGL texture and cubemap uploads now flip top-left-origin `Pixels` rows before upload so sampled textures, skyboxes, and reflections match the software, Metal, and D3D11 backends.
-
-**GUI (runtime, `rt_gui_*`).** `Widget.Focus()` promoted to the base widget runtime class and mirrored on `CodeEditor`. New `rt_gui_tick_widget_tree` walks the widget tree from `rt_gui_app_render` once per frame with a clamped `dt`, dispatching `vg_textinput_tick` (cursor blink), `vg_progressbar_tick`, and `vg_codeeditor_tick`; visible command palettes are also ticked. Runtime `ToolbarItem.SetText()` invalidates layout/overflow bookkeeping immediately; toolbar/menu pixel-icon setters create real image icons instead of reinterpret-casting pointers as glyph codes. Wheel-event delivery in `rt_gui_send_event_to_widget` no longer localizes mouse coords on wheel events (see Event Dispatch under GUI Library).
-
-**CodeEditor (runtime API).** Six new/updated APIs: `CanUndo` / `CanRedo` (query undo stack), `SetTabSize(n)` / `GetTabSize` (1–16 spaces), `SetWordWrap(flag)` / `GetWordWrap` (display-only wrapping; resets horizontal scroll). `AddHighlight` gains a 5th `color` parameter. `GetLineAtPixel(y)` / `GetColAtPixel(x, y)` map screen-relative pixel coordinates to text positions. All functions carry graphics-disabled stubs. Word-wrap now drives cursor movement, scrollbar math, pixel hit-testing, `ScrollToLine`, and runtime cursor-pixel helpers rather than being paint-only.
-
-**TabBar (runtime API).** `Tab.SetTooltip(text)` added; new tabs default their tooltip to the tab title. `WasChanged()` no longer spuriously primed on first poll, and `GetCloseClickedIndex()` remains valid when `auto_close` destroys the tab during the same click.
-
-**Breadcrumb / Minimap (runtime API).** `SetVisible` / `IsVisible` added on both so apps can hide chrome when there's no content. `Widget.IsHovered()` promoted to the base widget class — any widget can now be queried for hover state without bespoke tracking.
-
-**AchievementTracker.** `Viper.Game.AchievementTracker` threads runtime string handles end-to-end instead of raw C strings; the tracker retains and releases `rt_string` values consistently and draws notifications through the real graphics string ABI rather than transient C-string conversions.
-
-**ButtonGroup.** Removing the currently selected button now clears the active selection and marks the selection as changed; previously `selected_index` could stay stale and `is_selected()` could return `true` for an already-removed id.
-
-**Audio.** `rt_audio_codec.{c,h}` and `test_rt_audio_codec.cpp` retired; `rt_audio.c` is rewritten (~807 LOC changed) to unify WAV / OGG / MP3 load paths behind a single internal decoder registry so `rt_sound_load`, `rt_sound_load_mem`, and the music-streaming variants accept any of the three formats rather than exposing one API per encoding. `rt_mp3.c` trims ~150 LOC (moves its shared hook into `rt_mp3.h`); `rt_vorbis.c` picks up the matching shape; `rt_playlist.c` restructures around the shared crossfade tick and drops duplicated per-format branches. `vaud.c` / `vaud_mixer.c` (lib-side audio) pick up the matching surface changes. New `rt_audio_update()` entry point (registered as `Viper.Sound.Audio.Update` in `runtime.def`) advances time-based audio state — crossfades specifically — from a per-frame hook outside `Playlist.Update`. `Viper.Sound.Encode` is removed from the runtime surface (both the `RT_FUNC` registration and `RuntimeSurfacePolicy`): WAV→VAF translation now lives entirely in the asset pipeline, so the runtime no longer needs a parallel encoder entry point. Follow-up hardening in the same area fixes float32 WAV music streams being decoded as integer PCM (new `audio_format` out-parameter threaded through `vaud_wav_open_stream` / `vaud_wav_read_frames` and stored on `struct vaud_music`), removes the old 256-byte ceiling on WAV stream-header scanning (so metadata-heavy/BWF files load again), updates playlist pause/stop/volume handling to operate on both sides of an active crossfade, preserves exact `SoundBank` keys instead of truncating them to 31 bytes (`bank_entry_t.name` switched from `char name[32]` to a retained `rt_string`), and switches MP3 music playback from eager full-file PCM expansion to incremental frame decode over the compressed source buffer (sound effects retain the fully-decoded path since it remains the right trade-off for short samples). Unsupported MP3 Huffman tables now fail cleanly instead of silently emitting corrupted audio. New music companion APIs — `rt_music_set_loop(music, loop)` flips the loop flag without restarting the stream, and `rt_music_pause_related` / `rt_music_resume_related` reach both tracks of an active crossfade from a single call. A matching `vaud_music_set_loop` is exposed on the lib-audio surface.
-
-**Game — Dialogue.** `rt_dialogue.c` (+339 LOC) rewritten against the real `rt_bitmapfont` measurement surface. Previous hard-coded `DLG_CHAR_WIDTH = 8` / `DLG_LINE_HEIGHT = 10` approximations replaced with font-metric queries plus a configurable `DLG_DEFAULT_LINE_GAP`. Per-line state now distinguishes byte length (`text_len_bytes`) from character length (`text_len_chars`), so UTF-8 multibyte text wraps and reveals at codepoint boundaries rather than byte boundaries. New `dlg_draw_bytes` and `dlg_draw_wrapped_revealed` helpers render the visible prefix of a wrapped line against the reveal-speed accumulator. `rt_dialogue_finalizer` releases the owned font through the shared retain-then-release discipline, closing a leak on dialog replacement and a potential UAF on destroy.
-
-**Game — Quadtree.** `rt_quadtree.c` per-node `items` array switched from a fixed-size stack array to a heap allocation with explicit capacity. `struct qt_node` now carries `int64_t *items` + `int64_t item_capacity` instead of `int64_t items[RT_QUADTREE_MAX_ITEMS]`. `create_node` allocates the initial array (initial size `RT_QUADTREE_MAX_ITEMS`) and fails cleanly on allocation failure; `destroy_node` frees the allocation. Inserts can now grow past the initial capacity rather than silently dropping items on overflow — scenes with dense spatial clusters keep every entity in the spatial index.
-
-**Game — Physics2D joint lifecycle.** `rt_physics2d.c` formalizes joint cleanup on body removal. New `world_release_joint_at(w, joint_index)` drops a joint slot with proper retain/release accounting; new `world_remove_joints_for_body(w, body)` walks the joint array and releases any joint attached to the removed body. Called from the body-removal path so stale joints pointing at destroyed bodies can no longer fire during the next simulation step. New `maybe_resolve_pair(w, ii, jj)` extracts the per-pair narrow phase so the broadphase loop is readable and the collision resolver can be reused for trigger-only queries. `resolve_collision` is forward-declared so the helpers can call into it without textual ordering constraints. `rt_physics2d_internal.h` adds the matching internal surface.
+**New runtime APIs.** `rt_music_set_loop`, `rt_music_pause_related`, `rt_music_resume_related`, plus `vaud_music_set_loop` on the lib side.
 
 ---
 
-### GUI Library (`src/lib/gui/`)
+### GUI Library
 
-**Event dispatch (`vg_event.c`).** `VG_EVENT_MOUSE_WHEEL` removed from `event_has_widget_local_mouse_coords`; the mirror list in `rt_gui_send_event_to_widget` is also trimmed. `vg_event_t`'s `mouse` and `wheel` payloads share an anonymous union — `mouse.x` overlaps `wheel.delta_x` at byte 0, `mouse.y` overlaps `wheel.delta_y` at byte 4 — so any path that wrote `mouse.x/y` on a wheel event silently zeroed the scroll delta before the handler could consume it. Wheel events carry `screen_x/y` for hit-test routing but need no widget-local coords.
+Three rounds of widget audit. The big themes: lifetime correctness, HiDPI consistency, and a dark-theme palette refresh.
 
-**Widget core & hit testing (`vg_widget.c`).** `vg_widget_hit_test` excludes a scrollbar-gutter strip from child recursion when the parent is a `VG_WIDGET_SCROLLVIEW` — but only for scrollviews wider than ~32 px, so narrow embedded scrollviews (color-picker channels, completion popups) still hit-test their children. New `vg_tooltip_manager_widget_destroyed()` is called from `vg_widget_destroy` to clear any manager references (hovered widget, anchor widget) so subsequent hover updates don't dereference freed memory.
+**Dark theme.** New cooler-tinted palette (deeper, more saturated background ramp; warmer accents). Default font sizes nudged up (normal 13 → 13.5, large 16 → 17, heading 20 → 21). Button and input rows aligned at 28 px height with a wider border radius. Scrollbar metrics retuned.
 
-**Layout (`vg_layout.c`).** Flex layout in non-stretch alignment modes preserves the child's measured cross size instead of subtracting margins twice, fixing a few-pixel clip on descenders/icons. `VBox` / `HBox` budget child margins when distributing remaining space, eliminating overflow and clipping of later siblings. `SplitPane` pane sizes are clamped non-negative during tiny resizes; when `min_first + min_second` exceeds available, a new `resolve_first_size()` helper distributes space proportionally instead of collapsing the first pane to zero.
+**CodeEditor.** New APIs: `CanUndo`, `CanRedo`, `SetTabSize` / `GetTabSize` (1–16), `SetWordWrap` / `GetWordWrap`, plus `GetLineAtPixel` / `GetColAtPixel`. Word-wrap now drives cursor movement, scrollbar math, hit-testing, and `ScrollToLine` — previously it was paint-only and the rest of the widget thought every line was unwrapped. Fold gutters render and toggle. Line-slot metadata is cleared on `SetText` and language switch (fixes a ViperIDE crash on file open).
 
-**Dialog (`vg_dialog.c`).** New `closing_in_progress` flag plus snapshotted callback locals prevent double dispatch when an `on_result` handler calls `vg_dialog_close` again. The header gains `on_result_user_data` and `on_close_user_data` so each callback receives its own context (legacy `user_data` preserved as an alias); previously `set_on_close` silently dropped its user_data whenever `on_result` was registered.
+**TabBar.** Tab tooltips. Stable close-click index that survives `auto_close`. Drag now requires 6 px of pointer movement before reordering (small click-jitter no longer scrambles the tab order). HiDPI scaling on tab metrics; ellipsis on long titles. Keyboard navigation/reorder/close (`Left` / `Right`, `Home` / `End`, `Ctrl+W`, `Ctrl+Shift+Arrow`) is now built in.
 
-**TabBar (`vg_tabbar.c`).** `tabbar_measure` re-clamps `scroll_x` against the new `total_width` so removing tabs can't strand remaining tabs offscreen. Close-click polling stores a stable tab index instead of a tab pointer; close-button hit testing uses the full close-rect bounds; default tooltips mirror renamed titles until explicitly overridden; hovered tabs surface their per-tab tooltip through the standard tooltip manager; modified (`" *"`) markers participate in width measurement.
+**Toolbar / MenuBar.** Real overflow popup (was a stub). Disabled top-level menus paint and behave as disabled. Pixel-icon setters create real image icons instead of casting pointers as glyphs. MenuBar measures to zero height when the macOS native main menu is active.
 
-**Toolbar / MenuBar / StatusBar.** Toolbar overflow is now a real popup backed by `ContextMenu` plumbing (`toolbar_ensure_overflow_popup`, `rebuild_overflow_popup`, `sync_popup_capture`, `dismiss_overflow_popup`, `show_overflow_popup`, `forward_popup_event`) with input capture, overlay painting, and hover/click forwarding. Toolbar/StatusBar pointer hit testing uses widget-local coordinates, fixing hover and click offsets when the widget is not positioned at `(0, 0)`. Top-level disabled menus paint and behave as disabled. MenuBar desktop dropdown width expands to fit the widest visible item/shortcut row; outside clicks close without firing the highlighted action. Tabbar and toolbar size fields (`tab_height`, `tab_padding`, `close_button_size`, `max_tab_width`, `item_spacing`, scaled icon pixels, label centering via font metrics) scale by `theme.ui_scale` for HiDPI. The managed menubar measures to zero height when `native_main_menu` is active (macOS).
+**FindBar.** Live `GetFindText` / `GetReplaceText`. `SetVisible` routes through the standard widget visibility path. UTF-8-safe match advance.
 
-**CodeEditor (`vg_codeeditor.c`).** Line-slot reuse clears stale per-line syntax-color metadata during `SetText` and multi-line compaction (fixes a ViperIDE crash on file open / language switch where `SetLanguage` could free a recycled `line->colors` pointer). Scrollbar `scroll_ratio` divisor is guarded (`scroll_range > 0`) to prevent NaN feeding an `(int32_t)` cast when content exactly fits the viewport. `clamp_editor_position` is split into `clamp_editor_line` + `clamp_editor_col` helpers so future selection-anchor code can clamp axes independently. Editor content is clipped to the viewport during paint; scrollbar drags keep capture until mouse-up outside the widget. Hiding line numbers collapses the gutter completely; `SetLineNumberWidth()` is stored in character cells so it tracks font changes. Fold gutters/regions render, toggle from gutter clicks, and hide folded body lines consistently across painting, scrolling, cursor clamps, and pixel-position helpers.
+**ScrollView.** Auto-hide stabilizes (cross-axis case where one bar forces the other no longer ping-pongs). Drag keeps capture until mouse-up even outside the widget. Thumb drag now preserves the within-thumb grab offset instead of snapping.
 
-**FindBar (`vg_findreplacebar.c`).** `SetVisible()` routes through normal widget visibility; live `GetFindText()` / `GetReplaceText()` reads reflect the current input contents; `Replace()` returns `0` when there is no bound editor or current match instead of reporting false success. `perform_search` advances by `match_len` (or 1 byte when zero) rather than `pos++`, keeping the cursor on UTF-8 codepoint boundaries and producing non-overlapping matches.
+**Tooltip.** Multi-line wrap. Rounded card paint. Hides automatically when the anchored widget is hidden or destroyed (was a dangling-pointer crash). Wrap loop terminates on whitespace-only input. Hide delay and timed auto-hide now work correctly across repeated hovers on the same widget.
 
-**ContextMenu (`vg_contextmenu.c`).** Screen-edge clamping moved from `vg_contextmenu_show_at` into `contextmenu_paint`, where the window handle is reliably available via the canvas argument; the never-set `impl_data` dependency is gone.
+**Dialog.** Re-entrancy guard for `on_result` calling `vg_dialog_close` again. Dual `user_data` slots — `on_result` and `on_close` each get their own context.
 
-**FileDialog (`vg_filedialog.c`).** Layout metrics extracted into `FILEDIALOG_*` named constants (title height, sidebar width, row height, button dimensions, save-mode bottom strip). New `get_parent_screen_origin` helper resolves anchor coordinates so the dialog positions correctly inside nested containers. Substantial layout rewrite for HiDPI scaling and the save-mode bottom strip. Accepted path lists are now snapshotted on successful `Show()` / `OpenMultiple()` completion instead of aliasing backend-owned arrays — fixes repeat-show and destroy-time lifetime bugs for multi-select dialogs.
+**Dropdown.** Keyboard navigation on the open popup (arrow / page / home / end). Pressing a key on a closed dropdown opens it. Mouse wheel scrolls the open popup. Panel flips above the trigger when there's no room below. Popup placement and hit-testing now agree in nested layouts; popup row paint tracks fractional scroll instead of jumping a whole row.
 
-**ScrollView (`vg_scrollview.c`).** Auto-hide scrollbar selection iterates until horizontal/vertical visibility stabilizes (covers the cross-axis case where one scrollbar forces the other). Viewport hit testing respects clipped ancestors; scrollbar-thumb drags keep pointer capture until mouse-up even when released outside the widget.
+**TextInput.** Max-length now counts UTF-8 codepoints, not bytes. Single-line ignores newline character input. Read-only navigation collapses the selection. Focus / hover / read-only / disabled all paint distinctly. Password mask handles long pasted secrets via heap allocation instead of capping at 1023 asterisks. Multiline editing now has real line-based paint, hit-testing, cursor movement, drag selection, and wheel scrolling.
 
-**Dropdown (`vg_dropdown.c`).** New `dropdown_resolve_panel_rect` helper shared by `dropdown_panel_hit` and `dropdown_paint_overlay` flips the panel above the trigger when it would overflow the window below and there's more vertical room up than down; hit-testing and paint agree on the final rect.
+**TreeView.** Click on the blank area of a nested row selects rather than toggling expand (matches IDE convention). Scroll clamps after collapse. Per-node glyph icons and loading indicators finally render.
 
-**ListBox / TreeView.** Virtual-mode painting clips to the viewport before drawing overscanned cached rows. `vg_treeview_collapse` re-clamps `scroll_y` against the new visible-row count so collapsing a scrolled node no longer leaves blank space at the bottom.
+**ListBox.** Virtual-mode change detection now compares against `prev_selected_index` so virtual lists actually report selection changes. Add/remove/clear/select now invalidate layout/paint immediately, and item labels are clipped to the viewport.
 
-**TextInput (`vg_textinput.c`).** Password-mode mask render allocates dynamically (256-byte stack buffer for short input, `malloc` beyond) so long pasted secrets are no longer silently capped at 1023 asterisks. `SetText()` (programmatic assignment) no longer fires the user-edit `on_change` callback.
+**Spinner.** The numeric field is directly editable now: typing starts inline numeric entry, `Enter` commits, and `Escape` cancels back to the formatted value.
 
-**Tooltip (`vg_tooltip.c`).** Multi-line wrap, opaque background/border, follows live tooltip-text changes on the hovered widget, and hides automatically when the hovered/anchored widget is hidden or disabled. A progress guard in the wrap loop forces at least one byte of advance per outer iteration so whitespace-only input (`"   "`) no longer spins the wrap code and hangs the UI.
+**Layout.** Flex non-stretch alignment preserves the child's measured cross size (no more few-pixel descender clip). VBox/HBox budget child margins when distributing space. SplitPane proportional clamping when min sizes exceed available.
 
-**Notification (`vg_notification.c`).** `vg_notification_manager_update` lazily stamps `created_at` on first observation instead of leaving it at 0 (previously all toasts with `duration_ms > 0` vanished on the first frame). Fade math now guards `fade_duration_ms > 0` and snaps opacity to 0/1 when no fade is configured, replacing the NaN opacity that silently hid notifications.
+**FileDialog.** Layout metrics extracted to named constants. Multi-select dialogs snapshot the accepted-paths list on success instead of aliasing backend memory (fixes repeat-show + destroy lifetime).
 
-**VideoWidget (`rt_videowidget`).** New explicit `Destroy()` tears down the widget subtree and releases the owned `VideoPlayer` immediately; failure paths are hardened and post-destroy method calls are guarded.
+**Notification.** Lazy `created_at` stamp (toasts no longer vanish on the first frame). Fade math guards `fade_duration_ms > 0`. Toasts now use wrapped title/body/action layout plus coordinated fade/slide animation on both entry and dismissal.
 
-**Minimap.** Click-to-scroll reworked. New internal helpers (`minimap_document_line_count`, `minimap_line_from_local_y`, `minimap_scroll_editor_to_line`, `minimap_trimmed_line_bounds`) resolve a click's local-Y to a document line and scroll the bound editor there, handling blank-line trimming so the minimap maps to visible content rather than the raw buffer.
-
-**Drag / drop.** Drag-over state remains active while the pointer is stationary over a valid drop target. An empty accepted-type list once again means "accept any type" instead of rejecting typeless drags. Drag start is gated to `VGFX_MOUSE_LEFT`.
-
-**Spinner / Image.** Spinner gains additional size variants and theming hooks; Image gains additional fit modes and colorization paths.
+**Lifetime fixes.** Tooltip dangling pointer on widget destroy. Dialog use-after-free in nested close. Notification auto-dismiss. CodeEditor line-slot pointer stability. VideoWidget destroy hardening.
 
 ---
 
-### Graphics Platform (`src/lib/graphics/`)
+### Graphics runtime (2D)
 
-**macOS (`vgfx_platform_macos.m`).** The Fn+arrow translation block that gated on `NSEventModifierFlagFunction` has been removed. Cocoa sets that modifier flag on every arrow-key press because arrow keys are themselves classified as function keys, so the gate intercepted bare Up/Down/Left/Right and emitted `VGFX_KEY_PAGE_UP` / `PAGE_DOWN` / `HOME` / `END` — breaking both editor navigation and game input. Real Fn+arrow on compact keyboards already arrives as `NSPageUpFunctionKey` / `NSHomeFunctionKey` etc. through the `chars` argument and is handled by the character switch.
+**Canvas.** New `RT_CANVAS_MAGIC` guard field; `GetPixel` / `CopyRect` / `SaveBmp` / `SavePng` route every incoming `void*` through a validator so a non-Canvas object fails safely instead of getting reinterpret-cast. `Canvas.CopyRect` and `Canvas.Screenshot` carry their `Pixels` return type through the IL system instead of erasing to bare `obj`.
+
+**Shared coordinate helpers.** `rt_graphics_internal.h` adds four inline helpers (`rtg_sanitize_scale`, `rtg_round_scaled`, `rtg_scale_up_i64`, `rtg_scale_down_i64`) so every 2D drawing site does logical↔physical conversion the same way. New `RT_COLOR_EXPLICIT_ALPHA_FLAG` distinguishes a caller-specified alpha byte from the `0xFF000000` default, routing through different blend paths.
+
+**Text.** UTF-8 codepoint iteration in BitmapFont and Canvas text — multi-byte glyphs now hit-test and render correctly. Old font objects are released when replaced.
+
+**Camera.** Parallax layers each get independent zoom/rotation/scroll with integer-floor-div tile wrapping (no seam at any zoom).
+
+**Sprite / SpriteBatch / SpriteSheet / Tilemap.** Lifecycle and indexing refinements; canvas magic guard adopted across drawing surfaces.
 
 ---
 
-### IL
+### Graphics3D
 
-**`runtime.def`.** `Canvas.CopyRect` and `Canvas.Screenshot` now declare `obj<Viper.Graphics.Pixels>` return types on both the `RT_FUNC` and `RT_METHOD` rows so the IL type system carries the `Pixels` return type through to callers instead of erasing it to a bare `obj`. Audio surface edit: `AudioUpdate` / `Viper.Sound.Audio.Update` (void()) added to drive crossfade ticks; `AudioEncode` / `Viper.Sound.Encode` removed (`RuntimeSignatures.cpp` and `RuntimeSurfacePolicy.inc` drop the matching entries).
+A correctness-and-hardening pass spanning every subsystem.
+
+**Skeletal animation.** `add_bone` rejects parent indices below `-1` (was only checking the upper bound). `set_bone_weights` range-checks each influence against `VGFX3D_MAX_BONES` before the `uint8_t` cast (was silently wrapping `256`→`0`). Crossfade bind-pose decomposes the actual TRS instead of snapping to identity.
+
+**AnimController3D.** Root motion now tracks rotation in addition to translation.
+
+**Camera3D.** Input sanitizers for aspect, near/far clip, FOV, and ortho size catch pathological values before they hit the projection builder. `look_at` with degenerate eye==target preserves the camera position instead of returning identity. `Canvas3D.Begin` syncs aspect against the active output before rebuilding the projection. `ScreenToRay` uses the shaken render pose during camera shake so picking matches the visible image.
+
+**Canvas3D.** `Begin2D` caches the full V·P (matched to `Begin3D`) so overlay unprojection has consistent semantics. Camera params now carry world-space forward and an `is_ortho` flag — backends specialize fog / rim / specular per mode. Cleanup paths on `Canvas3D.New` / `RenderTarget3D.New` release partially initialized wrappers on failure.
+
+**Reference ownership (cross-cutting).** Every Graphics3D subsystem that holds references to other graphics objects now uses a uniform retain-then-release slot pattern: assign retains the new value first, then releases the old, so re-assigning a slot to its current value can't briefly drop the refcount to zero. Rolled out across Mesh3D, MorphTarget3D, Terrain3D, Water3D, Particles3D, Scene3D, InstBatch3D, Cubemap3D.
+
+**Terrain3D / Heightfield.** Normal computation now multiplies the Y component by both horizontal scales (was Y by X only); lateral components carry the perpendicular horizontal scale. Non-uniformly scaled terrain reports correct lighting and collision. Splat texture rebakes lazily off a `splat_dirty` flag. Degenerate `1×1` splat maps treated as uniform coverage instead of dividing by zero.
+
+**Water3D.** Gerstner phase switched to standard `k·x − ω·t` form so waves travel in the user's `+direction` instead of against it.
+
+**Particles3D.** Spawn `delta_time` clamped to ~4 frames so a frame hiccup doesn't dump thousands of particles in one tick. Sphere emitters sample volume uniformly; cone emitters sample solid angle uniformly. Additive particles use an explicit additive blend path while preserving per-particle alpha.
+
+**MorphTarget3D.** Weights clamped to `[-1, 1]`. Packed delta arrays rebuilt lazily off a generation counter — weight-only changes skip the rebuild; shape edits or delta edits bump the generation.
+
+**NavMesh3D.** Edge keys switched from `lo * 1_000_000 + hi` to bit-packed `(lo << 32) | hi`. The old formula collided on meshes with vertex indices ≥ 1M (e.g. edges `(1, 2_000_000)` and `(2, 1_000_000)` both hashed to `3_000_000`).
+
+**Physics3D / Collider3D.** `capsule_axis_endpoints` documents its Y-only contract; opt-in `RT_PHYSICS3D_STRICT_CAPSULE_AXIS` build flag traps on non-identity orientation.
+
+**Cubemap3D.** New `cubemap_direction_to_face_uv` and `cubemap_face_uv_to_direction` helpers cover the standard cubemap geometry. Public `rt_cubemap_sample_roughness(cm, dir, roughness)` consumes them for blurred reflection sampling.
+
+**FBX loader.** Cross-platform texture-path normalization (`fbx_is_absolute_path` recognizes POSIX, UNC, and Windows drive prefixes; `fbx_normalize_path` normalizes separators). FBX assets exported on Windows now resolve identically on macOS and Linux.
+
+**Backends.** Morph-handoff surface unified across D3D11, Metal, OpenGL, and the software rasterizer — backends consume the shared packed-delta buffer directly. PBR-aware alpha-blend gate replaces the old "always opaque" default for sub-1.0 alpha materials. OpenGL texture and cubemap uploads flip top-left-origin pixel rows before upload to match the other backends.
+
+**Lights / PostFX.** Color/intensity init and finalizer plumbing so lights are safely retained / released through scene-graph mutations.
 
 ---
 
-### Frontend — Zia
+### Game runtime
 
-**Completion.** Four new `Viper.Zia.Completion` overloads take a `sourcePath` parameter: `CompleteForFile(text, path, line, col)`, `CheckForFile(text, path)`, `HoverForFile(text, path, line, col)`, `SymbolsForFile(text, path)`. Relative `bind` paths now resolve against the active file, so multi-file projects keep completion accuracy when the IDE's working directory differs from the file's directory. The original argument-less overloads remain for in-memory snippets. Implemented in `rt_gui_features.c` with stubs in `rt_zia_completion_stub.c`; plumbed end-to-end through `CompilerBridge.cpp`.
+**Dialogue.** Rewritten against the real BitmapFont measurement surface — no more hard-coded 8×10 character cells. Per-line state distinguishes byte length from codepoint length, so UTF-8 text wraps and reveals at codepoint boundaries.
 
-**Lowerer.** The monolithic `Lowerer_Expr_Binary.cpp`, `Lowerer_Expr_Call.cpp`, and `Lowerer_Expr_Collections.cpp` shed roughly 540 LOC into three helper classes: `BinaryOperatorLowerer` (arithmetic, comparison, string concatenation, bitwise), `CallArgumentLowerer` (named-argument ordering, default parameters, variadic packing), and `CollectionLowerer` (list/set/map literals, tuples, index access). The `Lowerer` class befriends each helper; entry-point methods delegate. No behavioural change; expression-lowering surface is now navigable in three discrete files instead of one ~1200-LOC file.
+**Quadtree.** Per-node items array switched from a fixed-size stack array to a heap allocation with explicit capacity. Inserts grow past the initial cap instead of silently dropping items.
 
-**Types display strings.** `Types.cpp` / `Types.hpp` consolidate scattered type-to-string formatters into one recursive `appendTypeString(ss, type, developerFacing)` helper covering every `TypeKindSem` case (Integer / Number / Boolean / String / Byte / Unit / Void / Error / Ptr / Optional / generic type args) and rendering type arguments as `[T1, T2, ...]`. A new `toDisplayString()` accessor is the user-facing entry point; `developerFacing` lets diagnostics show terser user-grade names (e.g. `String?`) while debug dumps can still request the fully-qualified form.
+**Physics2D.** Joint cleanup on body removal — stale joints pointing at destroyed bodies can no longer fire during the next simulation step.
 
-**Sema error messages.** Every Sema error that names a type (type mismatch, member-access on Optional without null check, missing member, cast failure, pattern-literal vs scrutinee mismatch, tuple index on non-tuple) renders through `toDisplayString()` — users see `String?` instead of `Optional<String>`, and `List[Integer]` instead of the internal representation. New check: `var x = null;` without an explicit type annotation fails with *"Cannot infer type from null initializer; add an explicit type annotation such as 'String?', 'MyType', or 'GUI.Font'"* instead of silently producing `Optional<Unknown>`. Optional member access (`opt.field` instead of `opt?.field` / `opt!.field`) produces a targeted error naming the Optional type rather than a generic "has no member" message. Tighter assignment type-conversion check: mixed Unknown-type operands no longer bypass the convertibility assertion.
+**PathFollower / SpriteAnimation / SpriteSheet / SceneManager / ParticleEmitter.** Various correctness fixes: zero-length segment traversal, single-frame ping-pong completion, grid validation, transition progress latching, alpha and pool-saturation behavior.
+
+**Achievement / ButtonGroup.** Achievement now threads runtime string handles end-to-end. ButtonGroup clears the active selection when the selected button is removed.
+
+**Input correctness.** Four edge-vs-level fixes:
+- Action chord release now fires on the same frame held drops to false.
+- Debounced key-press uses the press-edge instead of the held state, so a held key doesn't re-fire every frame after the cooldown.
+- KeyChord combos reset on a wrong-order press in the chord's key set (instead of silently extending).
+- `rt_keyboard_text_input` got real UTF-8 encoding (1- to 4-byte codepoints up to U+10FFFF). Above-127 codepoints used to drop silently.
+
+---
+
+### Zia frontend
+
+**Completion.** Path-aware overloads: `CompleteForFile`, `CheckForFile`, `HoverForFile`, `SymbolsForFile`. Relative `bind` paths now resolve against the active file, so multi-file projects keep completion accuracy when the IDE's working directory differs from the file's directory.
+
+**Lowerer.** Three monolithic lowering files (`Lowerer_Expr_Binary`, `_Call`, `_Collections`) shed ~540 LOC into helper classes (`BinaryOperatorLowerer`, `CallArgumentLowerer`, `CollectionLowerer`). No behavior change; the surface is now navigable.
+
+**Type display.** One recursive `appendTypeString` helper covers every type. Diagnostics show terser user-grade names — `String?` instead of `Optional<String>`, `List[Integer]` instead of the internal form.
+
+**Sema errors.** Tightened across the board. Notably: `var x = null;` without an explicit type fails with a targeted "cannot infer type from null initializer" message instead of silently producing `Optional<Unknown>`. Optional member access without `?.` or `!.` produces a targeted error naming the Optional type.
 
 ---
 
 ### Linker
 
-**Dynamic symbol policy (`DynamicSymbolPolicy.hpp`).** `uname`, `gethostname`, and `sysctlbyname` added to the known dynamic-symbol list on Linux and macOS. Required by `Viper.Machine.OS` / `Viper.Machine.Hostname` and by the IDE's macOS font-fallback chain; without these entries the linker produced static-resolution failures. Additionally, a new generalized `dynamicSymbolHasPrefix` helper plus `isKnownMacLibcxxDynamicSymbol` classify Itanium-ABI C++ runtime symbols (std:: template instantiations via `ZNSt` / `ZTINSt` / `ZTSNSt` / `ZTVNSt`, `ZSt` / `ZTISt` / `ZTSSt` / `ZTVSt`, operator `new` / `delete` via `Zna` / `Znw` / `Zda` / `Zdl`, Itanium C++ ABI helpers via `cxa_`, and Itanium personality functions via `gxx_personality_`). The helper checks both the raw mangled name and its leading-underscore-stripped form so macOS's `_`-prefixed naming works uniformly with the ELF and PE planners. `LinuxImportPlanner.cpp`, `MacImportPlanner.cpp`, and `WindowsImportPlanner.cpp` consume the new helper so C++ runtime symbols route through the correct dylib or import library per platform.
+`uname`, `gethostname`, and `sysctlbyname` added to the dynamic-symbol policy so `Viper.Machine.OS` / `Hostname` link cleanly. New `dynamicSymbolHasPrefix` plus `isKnownMacLibcxxDynamicSymbol` classify Itanium-ABI C++ runtime symbols (`ZNSt`, `ZSt`, `Zna`/`Znw`/`Zda`/`Zdl`, `cxa_`, `gxx_personality_`) with leading-underscore handling for macOS. The three platform planners consume the new helper so C++ runtime symbols route through the correct dylib or import library.
 
 ---
 
-### Tools & Codegen
+### Tools & codegen
 
-**Frontend tool argument parsing (`frontend_tool.hpp`).** The `--` program-args separator is now matched before the generic `starts_with('-')` forwarding branch. Previously `--` was tested *after* the generic flag check, so the `--` token itself was forwarded to ilc and every following argument stayed in the tool's own argv rather than reaching the user program's argument vector. `viper run demo.zia -- --auto-season` now threads `--auto-season` all the way to the program (this is the path the new baseball shell's regression fallback depends on).
+- The frontend tools' `--` program-args separator now matches before the generic flag-forwarding branch. `viper run file.zia -- --foo` actually reaches the user program now.
+- `native_compiler` temp paths combine PID, steady-clock tick, and an atomic counter so two parallel compiles in one process can't collide.
+- x64 `--asset-blob` errors cleanly when combined with text-asm mode (requires `--native-asm` or a companion `--extra-obj`) instead of silently dropping the asset data.
 
-**Unique native-compiler temp paths (`native_compiler.{hpp,cpp}`).** `generateUniqueTempPath(prefix, extension)` combines the temp directory with `prefix + PID + steady_clock::now() + atomic<uint64_t>++ + extension`. `generateTempIlPath()` (and each subsequent temp-object helper) routes through it instead of composing `"viper_build_" + PID + ".il"` by hand — two parallel compilations in the same process can no longer collide on the same temp filename during interleaved cleanup.
+---
 
-**x64 codegen `--asset-blob` gate (`CodegenPipeline.{hpp,cpp}`, `cmd_codegen_x64.cpp`).** `CodegenOptions.extra_objects` is now plumbed through `linkObjectWithNativeLinker` into `LinkOptions.extraObjPaths`, so x64 code generation can pick up companion object files from `--extra-obj`. In text-asm mode, specifying `--asset-blob` without either `--native-asm` *or* an explicit `--extra-obj` now produces `error: x64 --asset-blob requires --native-asm or a companion --extra-obj` up front, instead of silently producing a binary without the asset data linked in.
+### Platform input
+
+- macOS no longer maps bare arrow keys to PageUp/PageDown/Home/End. The Fn+arrow translation block was gating on `NSEventModifierFlagFunction`, which Cocoa sets on every arrow press — so the gate intercepted ordinary arrow input. Real Fn+arrow on compact keyboards keeps working through the character switch.
+- Mouse wheel events no longer have their delta destroyed by coordinate localization. The `mouse` and `wheel` payloads share a union, so any path that wrote `mouse.x/y` on a wheel event silently zeroed the scroll delta.
+
+---
+
+### IL
+
+- `Canvas.CopyRect` and `Canvas.Screenshot` declare `obj<Viper.Graphics.Pixels>` return types so the `Pixels` type carries through to callers instead of erasing to `obj`.
+- Audio surface edit: `AudioUpdate` (`Viper.Sound.Audio.Update`) added; `AudioEncode` (`Viper.Sound.Encode`) removed.
 
 ---
 
 ### Build
 
-- `src/buildmeta/VERSION` bumped from `0.2.4-dev` → `0.2.5-snapshot`.
-- `src/lib/gui/CMakeLists.txt` keys GUI test targets off `VIPER_BUILD_TESTING`, matching the rest of the tree. Fixes a long-standing registration bug where GUI tier tests existed in source but were silently absent from generated CTest targets.
+- VERSION bumped `0.2.4-dev` → `0.2.5-snapshot`.
+- GUI test targets now key off `VIPER_BUILD_TESTING`, matching the rest of the tree. Fixes a long-standing registration bug where GUI tier tests existed in source but were silently absent from CTest.
 
 ---
 
 ### Tests
 
-- `zia_smoke_crackman` — runs `examples/games/pacman/smoke_probe.zia`, expects `RESULT: ok`, 30 s timeout, labels `zia;smoke`.
-- `test_achievement_draw_native` — AArch64 native smoke probe exercising the runtime-string-handle draw path for achievement notifications.
-- Extended `RTAchievementTests.cpp` for the `rt_string` retain/release lifecycle.
-- New `src/tests/unit/runtime/TestConfig.cpp` covering the `Viper.Game.Config` runtime class.
-- New `test_vg_audit_fixes` suite (19 cases) covering dialog re-entry guard, two-slot user_data routing, tooltip dangling-pointer cleanup, notification lazy timestamp, find/replace UTF-8 advance, tabbar scroll clamp, contextmenu independence from `impl_data`, codeeditor cursor clamp, scrollbar finite scroll, splitpane proportional clamp, scrollview hit-test gutter (including narrow-widget re-test), flex non-stretch sizing, password-mask long content, wheel-delta survives localize, dropdown flip-above without window, tooltip wrap termination on whitespace, treeview collapse re-clamp, and notification zero-fade snap.
-- Three new cases in `test_vg_tier2_fixes.c`: `tabbar_metrics_follow_theme_scale`, `tab_tooltip_can_be_replaced`, `native_menubar_measures_to_zero_height`. Additional tier coverage for TabBar close-index lifetime/full-rect hit testing, toolbar/statusbar local hit testing, VBox/HBox flex margin budgeting, SplitPane tiny-resize clamping, ScrollView cross-axis auto-hide, ListBox virtual clipping, Toolbar overflow popup, `ToolbarItem.SetText()` invalidation, fold-gutter click toggling, silent `TextInput.SetText`, CodeEditor line-slot metadata reuse, hidden-widget focus/capture cleanup, tab-tooltip hover propagation, scrollbar drag capture, wrap-aware pixel helpers, folded-line pixel mapping, line-number-width font tracking, live FindBar semantics, menu/toolbar pixel-icon contracts, and `TabBar.WasChanged()` edge triggering.
-- Extended `RTGuiRuntimeTests.c` with CodeEditor tab-size clamping, word-wrap toggle, `CanUndo`/`CanRedo`, folded-line pixel helpers, line-number-width tracking, live FindBar text/no-op replace checks, menu/toolbar pixel-icon checks, and `test_tabbar_close_click_index_survives_auto_close`.
-- Extended `RTVideoWidgetContractTests.cpp` with explicit destroy coverage.
-- Extended `test_rt_morphtarget3d.cpp` with weight-clamp cases plus packed-payload generation tracking (shape-add and delta-edit bump the generation; weight-only edits do not) and packed position/normal export assertions.
-- `test_rt_canvas3d.cpp` (+208 LOC) and `test_rt_canvas3d_gpu_paths.cpp` (+60 LOC) extended for the new VP caching, overlay paths, and backend hand-off.
-- New case in `test_rt_scene3d.cpp` guarding scene-graph reference handling through mesh reassignment.
-- New shared-contract cases in `test_vgfx3d_backend_d3d11_shared.c`, `test_vgfx3d_backend_metal_shared.c`, `test_vgfx3d_backend_opengl_shared.c`, and `test_vgfx3d_backend_utils.c` for the packed-delta handoff across every backend.
-- Follow-up Graphics3D correctness coverage now guards camera-shake-aligned `ScreenToRay`, active-output aspect sync in `Canvas3D.Begin`, root-motion rotation consumption, degenerate `1x1` terrain splat maps, additive/alpha blend policy helpers, and the updated particles/water runtime contracts.
-- Six new 2D-graphics contract suites (~1,434 LOC combined) lock down the new HiDPI-shared helpers and canvas state surface: `RTBitmapFontContractTests.cpp`, `RTCanvasContractTests.cpp`, `RTCanvasStateContractTests.cpp`, `RTSpriteBatchContractTests.cpp`, `RTSpriteContractTests.cpp`, `RTTilemapRenderContractTests.cpp`. Each covers scale-aware logical↔physical conversion reversibility, explicit-alpha flag routing, and clip/state-mirror invariants at every HiDPI scale factor.
-- New `RTDialogueContractTests.cpp` (240 LOC): black-box contract for the Game Dialogue surface — font replacement retain/release, UTF-8 wrap boundaries, typewriter reveal at codepoint rate, speaker/text separation.
-- Extended `RTPhysics2DTests.cpp` (+68 LOC) and `test_rt_physics_joints.cpp` (+48 LOC): joint cleanup on body removal and stale-joint guarding in the simulation step.
-- Extended `RTQuadtreeTests.cpp` (+47 LOC): dynamic-capacity / grow-past-max behaviour.
-- Extended `test_rt_dialogue.cpp` (+29 LOC): UTF-8 + font-replacement unit cases.
-- Additional tilemap coverage in `RTTilemapRenderContractTests.cpp` (+119 LOC) and `test_rt_tilemap_layers.cpp` (+31 LOC).
-- `RTPixelsTests.cpp` (+167 LOC) picks up scale-aware Pixels get/set round-trips and blend-mode coverage; `RTCameraTests.cpp` (+16), `TestTilemapAnim.cpp` (+7), `test_rt_tilemap_layers.cpp` (+21), `RTColorUtilsTests.cpp` (+20), and `RTCanvasExtTests.cpp` (+6) tighten coverage around the new shared helpers.
-- New `test_runtime_import_audit.cpp` (linker) audits the runtime surface against the dynamic-symbol policy so any runtime export without a matching planner entry fails at test time. New `test_3dbowling_native_build.sh` (e2e) smoke-tests the 3D bowling demo through the native build pipeline. `test_platform_import_planners.cpp` (+62 LOC) covers the Mac libc++ / libstdc++ classifier across all three platform planners.
-- `test_rt_model3d.cpp` (+69 LOC) covers FBX path normalization and the texture-resolution fast path; `test_rt_scene3d.cpp` (+23 LOC) exercises the new subtree-bounds queries.
-- Two tests temporarily disabled: `test_rt_model3d` (via `NO_CTEST` on `viper_add_test` — executable still builds) and `zia_smoke_3dbaseball` (via commented `add_test`). Both carry "re-enable" markers in their CMake source; they fail against post-landing runtime changes and will flip back once brought in line.
-- `RTParticles3DContractTests.cpp` extended (+118 LOC) for emitter texture and `cached_material` lifecycle: retain-on-assign, release-on-replace, no leak on repeat-set, no UAF on finalize after draw.
-- `RTWater3DContractTests.cpp` extended (+42 LOC) for the water `assign_ref` / `release_ref` helpers and the alpha clamp.
-- Additional runtime/tool regression coverage now locks down PathFollower zero-length traversal, SpriteAnimation stop/reset and single-frame ping-pong completion, ParticleEmitter alpha blending and saturation behavior, SceneManager transition completion progress, animated tile collision sync, SpriteSheet grid validation, frontend `--` runtime-arg parsing, x64 asset-object flag parsing, and unique native-compiler temp paths.
-- Audio regression coverage expanded: new `TestWavStream.cpp` covers float32 WAV stream decode and metadata-heavy WAV headers; `RTAudioIntegrationTests.cpp` adds paused-jump playlist resume and failed-replacement remove-current regressions; `RTSoundBankTests.cpp` now guards long-name key fidelity; `TestMp3Decode.cpp` adds MP3 stream-open rejection cases.
-- New `src/tests/tools/FrontendToolAndNativeCompilerTests.cpp` covers the `--` program-args separator behavior (flag-forwarding branch no longer eats it), the x64 `--asset-blob` + text-asm error path, and unique temp-path generation under concurrent calls.
-- New baseball probes: `human_smoke_probe.zia` (HumanSeasonTeamManager + HumanManagerPolicy wiring under observe-only profile), `human_legality_probe.zia` (validator rejects missing-pitcher and short-batting-order cards), `human_pacing_probe.zia` (AI baseline vs. observe / standard / high-touch profiles with forced delegation — completed-game and decision-log counts match byte-for-byte, confirming the new substitution / pitching-change virtuals are behavior-preserving).
-- Test registration plumbing updates in `src/tests/tools/CMakeLists.txt` and `src/tests/unit/CMakeLists.txt` to drop the retired `test_rt_audio_codec` binary and pick up the new frontend/native-compiler tests.
-- `test_rt_scene3d_bindings.cpp` (+34 LOC): covers the new TRS decomposition path and scene-node mesh/material reassignment through the ref helpers.
-- Further `test_rt_canvas3d.cpp` / `test_rt_canvas3d_gpu_paths.cpp` coverage (+131 / +49 LOC) for the new overlay-paint surfaces and reference-lifetime invariants. Full 3D suite verification on the prior pass: 318 tests green across `test_rt_morphtarget3d`, `test_rt_skeleton3d`, `test_rt_canvas3d`, `test_rt_physics3d`, `test_rt_animcontroller3d`.
-- Extended `RTCameraTests.cpp`, `test_rt_bitmapfont.cpp`, `test_rt_tilemap_layers.cpp`, `RTCanvasFrameTests.cpp`, `RTCanvasTextLayoutTests.cpp`, `RTCanvasUnavailableTests.cpp`, `RTPixelsTests.cpp`, and `test_rt_sprite_consolidated.cpp` for parallax-camera rendering, UTF-8 codepoint text, and the refined sprite/tilemap surfaces.
-- New `tests/zia_runtime/41_runtime_reference_types.zia` exercising `Viper.Network.Url.Parse`, property access (`Host`, `Path`), `Url.Clone()` returning `Url?`, and `!` unwrap.
-- New `MacPlannerMapsMachineAndHostSyscallsToLibSystem` case in `test_platform_import_planners.cpp` for the new dynamic-symbol entries.
+Net additions across the cycle: a few thousand lines of new test coverage spread across runtime, GUI, codegen, and linker. Highlights:
+
+- Six new 2D-graphics contract suites lock down the new HiDPI-shared helpers and explicit-alpha flag.
+- `RTDialogueContractTests`, `RTQuadtreeTests`, `RTPhysics2DTests`, and `test_rt_physics_joints` cover the new game-runtime fixes.
+- Audio coverage: new `TestWavStream` (float WAV, metadata-heavy headers); `TestMp3Decode` adds incremental-decode and Huffman-table cases; `RTAudioIntegrationTests` covers crossfade pause, foreground reclaim, seek isolation, and playlist clamping; `RTSoundBankTests` guards long-name keys; `RTMusicGenTests` covers short-note release and silent-channel skip.
+- New `test_vg_audit_fixes` (19 cases) and `test_vg_tier1_fixes` / `test_vg_tier2_fixes` cover the GUI widget audit work — tabbar drag threshold, dropdown keyboard nav and wheel, textinput UTF-8 max-length, treeview nested click, scrollview thumb drag, and the rest.
+- `test_runtime_import_audit` audits the runtime surface against the dynamic-symbol policy. New `test_3dbowling_native_build.sh` smoke-tests the 3D bowling demo through the native build pipeline.
+- New `RTKeyboardTests` UTF-8 case, `RTKeyChordTests` wrong-order reset, `RTActionMappingTests` chord release edge.
+- New `FrontendToolAndNativeCompilerTests` covers the `--` arg parsing, x64 asset-blob gate, and unique-temp-path contract.
+- Three new baseball probes (`human_smoke_probe`, `human_legality_probe`, `human_pacing_probe`) confirm the new manager classes are behavior-preserving against the AI baseline.
+- Two tests temporarily disabled with re-enable markers: `test_rt_model3d` and `zia_smoke_3dbaseball`.
+
+---
+
+### Demos & docs
+
+Pac-Man renamed to Crackman and split into session/progression/frontend with a smoke probe and audio banks. Paint gains layers, undo/redo, and an expanded feature set. ViperIDE wires up the new GUI APIs (per-file IntelliSense, pixel-position hover, custom fonts, theme toggle, font zoom). All ten demos in `build_demos_mac.sh` carry tutorial-style annotations. Two new 3D demos (`3dbaseball`, `3dscene`, ~1,100 LOC of Zia combined). The baseball engine grows a text-mode human-manager franchise shell — pacing profiles, interactive lineup building, save-slot management, three new probes — registered across all four `build_demos.*` scripts; `--auto-season` preserves the legacy regression path. New codemaps for the bytecode VM and graphics-disabled runtime stubs; `viperlib/audio.md` picks up the new music APIs; clarifications to the optimizer rehab status, `--no-mem2reg` behavior, graphics-stub policy, and cross-platform validation language.
 
 ---
 
@@ -250,24 +232,26 @@ Counts produced by `scripts/count_sloc.sh` (`Production SLOC` = `src/` minus `sr
 
 | Commit | Date | Summary |
 |---|---|---|
-| `d58df4f98` | 2026-04-14 | `chore(demos,build,docs)`: pacman → crackman binary rename, chess + crackman UI polish, VERSION → 0.2.5-snapshot |
-| `74f4ec4c7` | 2026-04-14 | `feat(crackman)`: rename Pac-Man demo to Crackman, split into session/progression/frontend, add smoke probe and audio banks |
-| `8126432f6` | 2026-04-15 | Harden runtime surface and Crackman progression |
-| `a34c3d555` | 2026-04-15 | `chore`: annotate vipersql/xenoscape demos, expand paint app, runtime polish |
-| `06c33c339` | 2026-04-15 | `feat(gui)`: tab tooltips, CodeEditor APIs, HiDPI toolbar/tabbar polish |
-| `d54e03b9d` | 2026-04-16 | `feat(viperide,zia,gui)`: per-file IntelliSense, pixel-position hover, lowerer refactor, custom fonts |
-| `2fe3b9a1e` | 2026-04-16 | `chore(demos,gui)`: tutorial-comment sweep across 8 demos, GUI widget correctness pass, Widget.Focus runtime API |
-| `6c600dbd9` | 2026-04-16 | `chore(gui,runtime,zia)`: GUI correctness sweep (dialog, tooltip, notification, findreplace, tabbar, contextmenu, codeeditor, scrollview, splitpane, flex layout, textinput), per-widget tick, FileDialog/Spinner/Image expansion, lowerer refactor |
-| `deccd1978` | 2026-04-16 | `chore(gui,runtime,docs)`: macOS arrow-key translation, mouse-wheel union-aliasing, dropdown flip-above, scrollview narrow-gutter, tooltip wrap termination, treeview scroll clamp, notification fade, widget polish sweep |
-| `c5b0685af` | 2026-04-16 | `chore(graphics3d,graphics,runtime)`: skeleton parent/bone-index validation, terrain/heightfield normals, capsule Y-only contract, navmesh edge hash, crossfade bind-pose TRS, Canvas3D cached_vp, morph clamp, particle dt, water direction, parallax camera, UTF-8 text |
-| `cd07b31af` | 2026-04-16 | `chore(graphics3d,runtime,docs)`: Camera3D input sanitizers, Mesh3D reference-slot helpers, MorphTarget3D lazy packed-payload rebuild, backend packed-delta handoff (d3d11/metal/opengl/sw), release-notes re-organized by area |
-| `d5d938e55` | 2026-04-16 | `chore(graphics3d,docs)`: retain-then-release reference discipline rolled out across Terrain3D / Water3D / Particles3D / Scene3D / InstBatch3D / Cubemap3D, Scene3D `decompose_trs_matrix` helper |
-| `5f29ba785` | 2026-04-16 | `chore(graphics3d,docs)`: AnimController3D root-motion rotation, Camera3D shake-aware `ScreenToRay` + aspect sync, backend resize/aspect contract, `Canvas3D.New`/`RenderTarget3D.New` cleanup on failure |
-| `604a8dd68` | 2026-04-16 | `chore(graphics3d,docs)`: Cubemap3D roughness sampling + direction ↔ face-UV helpers, backend camera-forward/`is_ortho` plumbing, PBR-aware alpha-blend gate, README Windows build-script normalization |
-| `edc36bf84` | 2026-04-17 | `chore(linker,runtime,demos,docs)`: Mac C++ dynamic-symbol classification, FBX path normalization, Scene3D subtree-bounds queries, two new 3D demos (`3dbaseball`, `3dscene`), runtime-import audit test |
-| `1dca700b1` | 2026-04-17 | `chore(runtime,tests,docs)`: shared HiDPI scale helpers + explicit-alpha flag, canvas state mirror, six new 2D-graphics contract suites; two failing tests disabled pending follow-up |
-| `23cf1d590` | 2026-04-17 | `chore(runtime,tests,docs)`: Dialogue font-aware wrap + UTF-8, Quadtree dynamic item capacity, Physics2D joint cleanup on body removal, release-notes format cleanup |
-| `7b3a66211` | 2026-04-17 | `chore(baseball,runtime,tools,codegen,docs,tests)`: human-manager franchise shell on baseball engine (plans 14 + 17), audio codec consolidation (WAV/OGG/MP3 unified load, `Audio.Update` tick, `Audio.Encode` retired), frontend `--` arg parsing + unique native-compiler temp paths + x64 `--asset-blob` gate |
-| `605ea3555` | 2026-04-17 | `chore(audio,demos,tests,docs)`: audio follow-up fixes (WAV float/metadata streaming, incremental MP3 music decode, SoundBank long-key fidelity, playlist crossfade pause/stop/volume), music companion APIs (`rt_music_set_loop`, `rt_music_pause_related`, `rt_music_resume_related`), baseball added to `build_demos.*` scripts, `FranchiseShell.showMyRoster` IL verifier fix for native codegen |
+| `d58df4f98` | 2026-04-14 | pacman → crackman binary rename, chess + crackman UI polish, VERSION → 0.2.5-snapshot |
+| `74f4ec4c7` | 2026-04-14 | Crackman split into session/progression/frontend, smoke probe, audio banks |
+| `8126432f6` | 2026-04-15 | Runtime surface hardening, Crackman progression |
+| `a34c3d555` | 2026-04-15 | vipersql/xenoscape demo annotations, Paint expansion, runtime polish |
+| `06c33c339` | 2026-04-15 | Tab tooltips, CodeEditor APIs, HiDPI toolbar/tabbar polish |
+| `d54e03b9d` | 2026-04-16 | Per-file IntelliSense, pixel-position hover, lowerer refactor, custom fonts |
+| `2fe3b9a1e` | 2026-04-16 | Tutorial-comment sweep across 8 demos, GUI widget pass, Widget.Focus runtime API |
+| `6c600dbd9` | 2026-04-16 | GUI correctness sweep (dialog, tooltip, notification, findreplace, tabbar, etc.) + lowerer refactor |
+| `deccd1978` | 2026-04-16 | macOS arrow-key fix, mouse-wheel union aliasing, dropdown flip-above, widget polish |
+| `c5b0685af` | 2026-04-16 | Skeleton/bone validation, terrain normals, capsule contract, navmesh hash, Canvas3D V·P, parallax, UTF-8 text |
+| `cd07b31af` | 2026-04-16 | Camera3D sanitizers, Mesh3D ref slots, lazy morph rebuild, packed-delta backend handoff |
+| `d5d938e55` | 2026-04-16 | Retain-then-release rolled out across Graphics3D; Scene3D TRS decomposition |
+| `5f29ba785` | 2026-04-16 | AnimController3D root-motion rotation, Camera3D shake-aware ScreenToRay + aspect sync, backend resize contract |
+| `604a8dd68` | 2026-04-16 | Cubemap3D roughness sampling + face-UV helpers, backend camera-forward/ortho, PBR alpha-blend gate |
+| `edc36bf84` | 2026-04-17 | Mac C++ dynamic-symbol classification, FBX path normalization, Scene3D subtree bounds, two new 3D demos |
+| `1dca700b1` | 2026-04-17 | Shared HiDPI scale helpers + explicit-alpha flag, canvas state mirror, six new 2D contract suites |
+| `23cf1d590` | 2026-04-17 | Dialogue font-aware wrap + UTF-8, Quadtree dynamic capacity, Physics2D joint cleanup |
+| `7b3a66211` | 2026-04-17 | Baseball human-manager franchise shell, audio codec consolidation, frontend `--` arg fix, x64 `--asset-blob` gate |
+| `605ea3555` | 2026-04-17 | Audio fixes (WAV float, incremental MP3, SoundBank long keys, crossfade pause/stop), music companion APIs, baseball in `build_demos.*` |
+| `0d4ff3147` | 2026-04-17 | Crossfade pause clock + foreground-reclaim, MusicGen ADSR short-note release, silent-channel skip |
+| `f8a565a0b` | 2026-04-17 | Dark-theme palette refresh, dropdown keyboard+wheel, tabbar drag threshold, textinput UTF-8 + state-aware paint, runtime input edge-vs-level fixes |
 
 <!-- END DRAFT -->

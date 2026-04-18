@@ -332,6 +332,76 @@ TEST(textinput_set_text_is_silent) {
     vg_widget_destroy(&ti->base);
 }
 
+TEST(textinput_multiline_enter_and_vertical_navigation) {
+    vg_textinput_t *ti = vg_textinput_create(NULL);
+    ASSERT_NOT_NULL(ti);
+    ti->multiline = true;
+    ti->base.width = 240.0f;
+    ti->base.height = 120.0f;
+
+    vg_widget_t *w = &ti->base;
+    vg_event_t ev_a = make_char_event('a');
+    vg_event_t ev_b = make_char_event('b');
+    vg_event_t ev_c = make_char_event('c');
+    w->vtable->handle_event(w, &ev_a);
+    w->vtable->handle_event(w, &ev_b);
+    vg_event_t enter = make_key_event(VG_KEY_ENTER, 0);
+    w->vtable->handle_event(w, &enter);
+    w->vtable->handle_event(w, &ev_c);
+
+    ASSERT_EQ(0, strcmp(ti->text, "ab\nc"));
+
+    vg_textinput_set_cursor(ti, 3);
+    vg_event_t up = make_key_event(VG_KEY_UP, 0);
+    w->vtable->handle_event(w, &up);
+    ASSERT(ti->cursor_pos <= (size_t)2);
+
+    vg_event_t end = make_key_event(VG_KEY_END, 0);
+    w->vtable->handle_event(w, &end);
+    ASSERT_EQ(ti->cursor_pos, (size_t)2);
+
+    vg_event_t down = make_key_event(VG_KEY_DOWN, 0);
+    w->vtable->handle_event(w, &down);
+    ASSERT(ti->cursor_pos >= (size_t)3);
+
+    vg_widget_destroy(w);
+}
+
+TEST(textinput_multiline_shift_navigation_selects_across_lines) {
+    vg_textinput_t *ti = vg_textinput_create(NULL);
+    ASSERT_NOT_NULL(ti);
+    ti->multiline = true;
+    ti->base.width = 240.0f;
+    ti->base.height = 120.0f;
+    vg_textinput_set_text(ti, "ab\ncd");
+    vg_textinput_set_cursor(ti, 2);
+
+    vg_event_t shift_down = make_key_event(VG_KEY_DOWN, VG_MOD_SHIFT);
+    ASSERT_TRUE(ti->base.vtable->handle_event(&ti->base, &shift_down));
+    ASSERT(ti->selection_end > ti->selection_start);
+    ASSERT_EQ(ti->selection_start, (size_t)2);
+    ASSERT(ti->cursor_pos >= (size_t)4);
+
+    vg_widget_destroy(&ti->base);
+}
+
+TEST(textinput_multiline_mouse_wheel_scrolls_content) {
+    vg_textinput_t *ti = vg_textinput_create(NULL);
+    ASSERT_NOT_NULL(ti);
+    ti->multiline = true;
+    ti->base.width = 240.0f;
+    ti->base.height = 36.0f;
+    vg_textinput_set_text(ti, "one\ntwo\nthree\nfour\nfive\nsix");
+
+    vg_event_t wheel = {0};
+    wheel.type = VG_EVENT_MOUSE_WHEEL;
+    wheel.wheel.delta_y = -1.0f;
+    ASSERT_TRUE(ti->base.vtable->handle_event(&ti->base, &wheel));
+    ASSERT(ti->scroll_y > 0.0f);
+
+    vg_widget_destroy(&ti->base);
+}
+
 //=============================================================================
 // BUG-GUI-002: Dialog Modal Event Blocking
 //=============================================================================
@@ -545,6 +615,35 @@ TEST(filedialog_save_confirm_uses_local_coords_and_default_extension) {
     vg_widget_destroy(root);
 }
 
+TEST(dialog_embedded_content_keeps_measured_height) {
+    vg_widget_t *root = vg_widget_create(VG_WIDGET_CONTAINER);
+    ASSERT_NOT_NULL(root);
+    root->visible = true;
+    root->enabled = true;
+    root->width = 800.0f;
+    root->height = 600.0f;
+
+    vg_dialog_t *dialog = vg_dialog_create("Prompt");
+    ASSERT_NOT_NULL(dialog);
+    vg_widget_add_child(root, &dialog->base);
+
+    vg_textinput_t *input = vg_textinput_create(NULL);
+    ASSERT_NOT_NULL(input);
+    vg_dialog_set_content(dialog, &input->base);
+    vg_dialog_show(dialog);
+
+    vg_widget_measure(&dialog->base, root->width, root->height);
+    vg_widget_arrange(
+        &dialog->base, 120.0f, 90.0f, dialog->base.measured_width, dialog->base.measured_height);
+
+    ASSERT_TRUE(input->base.measured_height > 0.0f);
+    ASSERT_TRUE(input->base.height > 0.0f);
+    ASSERT_TRUE(input->base.height <= input->base.measured_height + 0.1f);
+    ASSERT_TRUE(input->base.height < dialog->base.height - 40.0f);
+
+    vg_widget_destroy(root);
+}
+
 //=============================================================================
 // FEAT-006: Tab Order via tab_index
 //=============================================================================
@@ -703,12 +802,16 @@ int main(void) {
     RUN(textinput_redo_reapplies_undone_edit);
     RUN(textinput_new_edit_clears_redo);
     RUN(textinput_set_text_is_silent);
+    RUN(textinput_multiline_enter_and_vertical_navigation);
+    RUN(textinput_multiline_shift_navigation_selects_across_lines);
+    RUN(textinput_multiline_mouse_wheel_scrolls_content);
 
     printf("\nBUG-GUI-002: Dialog Modal Event Blocking\n");
     RUN(modal_blocks_mouse_behind_dialog);
     RUN(dialog_button_hit_testing_uses_local_coords);
     RUN(dialog_show_centered_uses_nested_screen_bounds);
     RUN(filedialog_save_confirm_uses_local_coords_and_default_extension);
+    RUN(dialog_embedded_content_keeps_measured_height);
 
     printf("\nFEAT-006: Tab Order\n");
     RUN(focus_next_respects_tab_index_order);

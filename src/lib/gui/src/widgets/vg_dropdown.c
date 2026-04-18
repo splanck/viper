@@ -31,12 +31,14 @@ static void dropdown_clamp_scroll(vg_dropdown_t *dd, float panel_h);
 static void dropdown_scroll_to_index(vg_dropdown_t *dd, int index);
 static void dropdown_open(vg_widget_t *widget, vg_dropdown_t *dd, int preferred_hover);
 static void dropdown_close(vg_widget_t *widget, vg_dropdown_t *dd);
+static float dropdown_item_height(vg_dropdown_t *dd);
 
 static float dropdown_scrollbar_thumb_size(float track_size, float content_size, float viewport_size);
 static float dropdown_scrollbar_thumb_offset(float scroll_pos,
                                              float scroll_range,
                                              float track_size,
                                              float thumb_size);
+static float dropdown_text_baseline(vg_dropdown_t *dd, float row_y, float row_h);
 
 //=============================================================================
 // Dropdown VTable
@@ -65,17 +67,37 @@ static void dropdown_destroy(vg_widget_t *widget) {
 }
 
 static void dropdown_measure(vg_widget_t *widget, float avail_w, float avail_h) {
-    vg_theme_t *theme = vg_theme_get_current();
     (void)avail_w;
     (void)avail_h;
 
     widget->measured_width = 140.0f;
-    widget->measured_height = theme ? theme->input.height : 28.0f;
+    widget->measured_height = dropdown_item_height((vg_dropdown_t *)widget);
 }
 
 // Height of one item row in the dropdown panel
 static float dropdown_item_height(vg_dropdown_t *dd) {
-    return dd->font_size > 0 ? (dd->font_size * 1.6f) : 24.0f;
+    vg_theme_t *theme = vg_theme_get_current();
+    float scale = theme && theme->ui_scale > 0.0f ? theme->ui_scale : 1.0f;
+    float height = theme ? theme->input.height : 28.0f * scale;
+
+    if (dd && dd->font) {
+        vg_font_metrics_t metrics = {0};
+        vg_font_get_metrics(dd->font, dd->font_size, &metrics);
+        float metrics_height = (float)metrics.line_height + 10.0f * scale;
+        if (metrics_height > height)
+            height = metrics_height;
+    }
+
+    return height;
+}
+
+static float dropdown_text_baseline(vg_dropdown_t *dd, float row_y, float row_h) {
+    if (!dd || !dd->font)
+        return row_y;
+
+    vg_font_metrics_t metrics = {0};
+    vg_font_get_metrics(dd->font, dd->font_size, &metrics);
+    return row_y + (row_h + (float)metrics.ascent + (float)metrics.descent) / 2.0f;
 }
 
 static void dropdown_get_viewport_bounds(vg_dropdown_t *dd,
@@ -297,14 +319,21 @@ static void dropdown_paint(vg_widget_t *widget, void *canvas) {
                             ? dd->items[dd->selected_index]
                             : dd->placeholder;
     if (label && dd->font) {
-        float ty = widget->y + widget->height * 0.5f + dd->font_size * 0.35f;
+        int32_t clip_x = x + (int32_t)theme->input.padding_h;
+        int32_t clip_y = y + 2;
+        int32_t clip_w = w - gutter_w - (int32_t)theme->input.padding_h - 6;
+        int32_t clip_h = h - 4;
+        if (clip_w > 0 && clip_h > 0)
+            vgfx_set_clip(win, clip_x, clip_y, clip_w, clip_h);
         vg_font_draw_text(canvas,
                           dd->font,
                           dd->font_size,
-                          widget->x + 6.0f,
-                          ty,
+                          widget->x + theme->input.padding_h,
+                          dropdown_text_baseline(dd, widget->y, widget->height),
                           label,
                           label == dd->placeholder ? theme->colors.fg_secondary : text);
+        if (clip_w > 0 && clip_h > 0)
+            vgfx_clear_clip(win);
     }
 
     // Arrow glyph
@@ -333,22 +362,29 @@ static void dropdown_paint_overlay(vg_widget_t *widget, void *canvas) {
     if (!dd->open || dd->item_count <= 0)
         return;
 
+    float sx = 0.0f;
+    float sy = 0.0f;
+    float sw = 0.0f;
+    float sh = 0.0f;
+    vg_widget_get_screen_bounds(&dd->base, &sx, &sy, &sw, &sh);
+
     float ih = dropdown_item_height(dd);
     float panel_top_abs = 0.0f;
     float panel_h = 0.0f;
-    dropdown_resolve_panel_rect(dd, widget->x, widget->y, &panel_top_abs, &panel_h);
+    dropdown_resolve_panel_rect(dd, sx, sy, &panel_top_abs, &panel_h);
 
-    int32_t px = (int32_t)widget->x;
-    // paint works in widget-coordinates via canvas; translate the absolute
-    // panel_top back into the same coordinate space the rest of paint uses.
+    int32_t px = (int32_t)sx;
     int32_t py = (int32_t)panel_top_abs;
-    int32_t pw = (int32_t)widget->width;
+    int32_t pw = (int32_t)sw;
     int32_t ph = (int32_t)panel_h;
     int32_t scroll_track_w = 6;
+    int32_t content_right_pad = 8;
     bool show_scrollbar = dd->item_count * ih > panel_h;
 
     dropdown_clamp_scroll(dd, panel_h);
 
+    vgfx_fill_rect(win, px + 4, py + 5, pw, ph, vg_color_darken(dd->dropdown_bg, 0.72f));
+    vgfx_fill_rect(win, px + 2, py + 2, pw, ph, vg_color_darken(dd->dropdown_bg, 0.55f));
     vgfx_fill_rect(win, px, py, pw, ph, dd->dropdown_bg);
     vgfx_rect(win, px, py, pw, ph, dd->border_color);
     if (pw > 2)
@@ -356,11 +392,17 @@ static void dropdown_paint_overlay(vg_widget_t *widget, void *canvas) {
 
     int visible_count = (int)(panel_h / ih);
     int start_item = (int)(dd->scroll_y / ih);
+    float scroll_offset = dd->scroll_y - (float)start_item * ih;
     if (start_item < 0)
         start_item = 0;
 
+    int32_t row_clip_w = pw - 2 - content_right_pad - (show_scrollbar ? scroll_track_w + 6 : 0);
+    int32_t row_clip_h = ph - 2;
+    if (row_clip_w > 0 && row_clip_h > 0)
+        vgfx_set_clip(win, px + 1, py + 1, row_clip_w, row_clip_h);
+
     for (int i = start_item; i < dd->item_count && i < start_item + visible_count + 1; i++) {
-        float iy = (float)py + (i - start_item) * ih;
+        float iy = (float)py - scroll_offset + (float)(i - start_item) * ih;
         int32_t iy32 = (int32_t)iy;
         uint32_t row_bg =
             (i == dd->hovered_index)
@@ -376,17 +418,19 @@ static void dropdown_paint_overlay(vg_widget_t *widget, void *canvas) {
         vgfx_fill_rect(win, px + 1, iy32 + (int32_t)ih - 1, pw - 2, 1, theme->colors.border_secondary);
 
         if (dd->items[i] && dd->font) {
-            float ty = iy + ih * 0.7f;
             vg_font_draw_text(
                 canvas,
                 dd->font,
                 dd->font_size,
-                (float)(px + 8),
-                ty,
+                (float)px + theme->input.padding_h,
+                dropdown_text_baseline(dd, iy, ih),
                 dd->items[i],
                 dd->text_color);
         }
     }
+
+    if (row_clip_w > 0 && row_clip_h > 0)
+        vgfx_clear_clip(win);
 
     if (show_scrollbar) {
         float track_x = (float)(px + pw - scroll_track_w - 3);
@@ -540,9 +584,10 @@ vg_dropdown_t *vg_dropdown_create(vg_widget_t *parent) {
     dropdown->items = calloc(dropdown->item_capacity, sizeof(char *));
 
     // Default appearance
-    dropdown->font_size = 14;
-    dropdown->dropdown_height = 200;
-    dropdown->arrow_size = 12;
+    dropdown->font = theme->typography.font_regular;
+    dropdown->font_size = theme->typography.size_normal;
+    dropdown->dropdown_height = 220.0f * (theme->ui_scale > 0.0f ? theme->ui_scale : 1.0f);
+    dropdown->arrow_size = 11.0f * (theme->ui_scale > 0.0f ? theme->ui_scale : 1.0f);
     dropdown->bg_color = theme->colors.bg_primary;
     dropdown->text_color = theme->colors.fg_primary;
     dropdown->border_color = theme->colors.border_primary;
@@ -670,7 +715,7 @@ void vg_dropdown_set_font(vg_dropdown_t *dropdown, vg_font_t *font, float size) 
     if (!dropdown)
         return;
     dropdown->font = font;
-    dropdown->font_size = size;
+    dropdown->font_size = size > 0 ? size : vg_theme_get_current()->typography.size_normal;
     dropdown->base.needs_layout = true;
     dropdown->base.needs_paint = true;
 }

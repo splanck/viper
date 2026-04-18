@@ -18,6 +18,7 @@
 #include "../../../graphics/include/vgfx.h"
 #include "../../include/vg_event.h"
 #include "../../include/vg_ide_widgets.h"
+#include "../../include/vg_theme.h"
 #include "../../include/vg_widget.h"
 #include <stdlib.h>
 #include <string.h>
@@ -42,6 +43,20 @@ static void floatingpanel_render_overlay_subtree(vg_widget_t *widget,
                                                  void *canvas,
                                                  float parent_abs_x,
                                                  float parent_abs_y);
+static void floatingpanel_fill_round_rect(vgfx_window_t win,
+                                          int32_t x,
+                                          int32_t y,
+                                          int32_t w,
+                                          int32_t h,
+                                          int32_t radius,
+                                          uint32_t color);
+static void floatingpanel_stroke_round_rect(vgfx_window_t win,
+                                            int32_t x,
+                                            int32_t y,
+                                            int32_t w,
+                                            int32_t h,
+                                            int32_t radius,
+                                            uint32_t color);
 
 //=============================================================================
 // VTable
@@ -62,6 +77,69 @@ static vg_widget_vtable_t g_floatingpanel_vtable = {
 // Implementation
 //=============================================================================
 
+static void floatingpanel_fill_round_rect(vgfx_window_t win,
+                                          int32_t x,
+                                          int32_t y,
+                                          int32_t w,
+                                          int32_t h,
+                                          int32_t radius,
+                                          uint32_t color) {
+    if (w <= 0 || h <= 0)
+        return;
+
+    int32_t max_radius = w < h ? w / 2 : h / 2;
+    if (radius <= 0 || max_radius <= 0) {
+        vgfx_fill_rect(win, x, y, w, h, color);
+        return;
+    }
+    if (radius > max_radius)
+        radius = max_radius;
+    if (w <= radius * 2 || h <= radius * 2) {
+        vgfx_fill_rect(win, x, y, w, h, color);
+        return;
+    }
+
+    vgfx_fill_rect(win, x + radius, y, w - radius * 2, h, color);
+    vgfx_fill_rect(win, x, y + radius, radius, h - radius * 2, color);
+    vgfx_fill_rect(win, x + w - radius, y + radius, radius, h - radius * 2, color);
+    vgfx_fill_circle(win, x + radius, y + radius, radius, color);
+    vgfx_fill_circle(win, x + w - radius - 1, y + radius, radius, color);
+    vgfx_fill_circle(win, x + radius, y + h - radius - 1, radius, color);
+    vgfx_fill_circle(win, x + w - radius - 1, y + h - radius - 1, radius, color);
+}
+
+static void floatingpanel_stroke_round_rect(vgfx_window_t win,
+                                            int32_t x,
+                                            int32_t y,
+                                            int32_t w,
+                                            int32_t h,
+                                            int32_t radius,
+                                            uint32_t color) {
+    if (w <= 1 || h <= 1)
+        return;
+
+    int32_t max_radius = w < h ? w / 2 : h / 2;
+    if (radius <= 0 || max_radius <= 0) {
+        vgfx_rect(win, x, y, w, h, color);
+        return;
+    }
+    if (radius > max_radius)
+        radius = max_radius;
+    if (w <= radius * 2 || h <= radius * 2) {
+        vgfx_rect(win, x, y, w, h, color);
+        return;
+    }
+
+    vgfx_line(win, x + radius, y, x + w - radius - 1, y, color);
+    vgfx_line(win, x + radius, y + h - 1, x + w - radius - 1, y + h - 1, color);
+    vgfx_line(win, x, y + radius, x, y + h - radius - 1, color);
+    vgfx_line(win, x + w - 1, y + radius, x + w - 1, y + h - radius - 1, color);
+    vgfx_circle(win, x + radius, y + radius, radius, color);
+    vgfx_circle(win, x + w - radius - 1, y + radius, radius, color);
+    vgfx_circle(win, x + radius, y + h - radius - 1, radius, color);
+    vgfx_circle(win, x + w - radius - 1, y + h - radius - 1, radius, color);
+}
+
 vg_floatingpanel_t *vg_floatingpanel_create(vg_widget_t *root) {
     vg_floatingpanel_t *panel = calloc(1, sizeof(vg_floatingpanel_t));
     if (!panel)
@@ -69,9 +147,10 @@ vg_floatingpanel_t *vg_floatingpanel_create(vg_widget_t *root) {
 
     vg_widget_init(&panel->base, VG_WIDGET_CUSTOM, &g_floatingpanel_vtable);
 
-    // Defaults — dark popup background matching IDE theme
-    panel->bg_color = 0xFF252526u; // VS-Code-style dark panel
-    panel->border_color = 0xFF454545u;
+    vg_theme_t *theme = vg_theme_get_current();
+    panel->bg_color = theme ? vg_color_blend(theme->colors.bg_primary, theme->colors.bg_secondary, 0.16f)
+                            : 0x1A2230u;
+    panel->border_color = theme ? theme->colors.border_primary : 0x334156u;
     panel->border_width = 1.0f;
 
     // Initially hidden
@@ -144,6 +223,7 @@ static void floatingpanel_paint(vg_widget_t *widget, void *canvas) {
 // Overlay pass — paint background, border, and children.
 static void floatingpanel_paint_overlay(vg_widget_t *widget, void *canvas) {
     vg_floatingpanel_t *panel = (vg_floatingpanel_t *)widget;
+    vg_theme_t *theme = vg_theme_get_current();
 
     if (!panel->base.visible || panel->abs_w <= 0.0f || panel->abs_h <= 0.0f)
         return;
@@ -154,33 +234,42 @@ static void floatingpanel_paint_overlay(vg_widget_t *widget, void *canvas) {
     int32_t py = (int32_t)widget->y;
     int32_t pw = (int32_t)widget->width;
     int32_t ph = (int32_t)widget->height;
+    int32_t radius = 8;
 
-    // Background fill
-    vgfx_fill_rect(win, px, py, pw, ph, panel->bg_color);
+    uint32_t bg_color =
+        panel->bg_color ? panel->bg_color
+                        : (theme ? vg_color_blend(theme->colors.bg_primary, theme->colors.bg_secondary, 0.16f)
+                                 : 0x1A2230u);
+    uint32_t border_color =
+        panel->border_color ? panel->border_color
+                            : (theme ? theme->colors.border_primary : 0x334156u);
+    uint32_t shadow_color = vg_color_darken(bg_color, 0.65f);
+    uint32_t inner_shadow = vg_color_darken(bg_color, 0.45f);
+    uint32_t highlight = vg_color_lighten(bg_color, 0.06f);
+    uint32_t accent = theme ? theme->colors.accent_primary : border_color;
 
-    // Border (1-px rectangles on each edge)
-    if (panel->border_width > 0.0f) {
-        int32_t bw = (int32_t)panel->border_width;
-        uint32_t bc = panel->border_color;
-        // Top
-        vgfx_fill_rect(win, px, py, pw, bw, bc);
-        // Bottom
-        vgfx_fill_rect(win, px, py + ph - bw, pw, bw, bc);
-        // Left
-        vgfx_fill_rect(win, px, py, bw, ph, bc);
-        // Right
-        vgfx_fill_rect(win, px + pw - bw, py, bw, ph, bc);
-    }
+    floatingpanel_fill_round_rect(win, px + 4, py + 6, pw, ph, radius, shadow_color);
+    floatingpanel_fill_round_rect(win, px + 2, py + 3, pw, ph, radius, inner_shadow);
+    floatingpanel_fill_round_rect(win, px, py, pw, ph, radius, bg_color);
+    if (pw > radius * 2)
+        vgfx_fill_rect(win, px + radius, py + 1, pw - radius * 2, 1, highlight);
+    if (pw > 24)
+        vgfx_fill_rect(win, px + radius, py + 1, pw - radius * 2, 3, accent);
+    if (panel->border_width > 0.0f)
+        floatingpanel_stroke_round_rect(win, px, py, pw, ph, radius, border_color);
 
     if (pw > 0 && ph > 0) {
         vgfx_set_clip(win, px, py, pw, ph);
         VG_FOREACH_VISIBLE_CHILD(widget, child) {
             floatingpanel_render_normal_subtree(child, canvas, widget->x, widget->y);
             vgfx_set_clip(win, px, py, pw, ph);
-            floatingpanel_render_overlay_subtree(child, canvas, widget->x, widget->y);
-            vgfx_set_clip(win, px, py, pw, ph);
         }
         vgfx_clear_clip(win);
+    }
+
+    // Let nested overlays such as dropdown panels and tooltips escape the panel bounds.
+    VG_FOREACH_VISIBLE_CHILD(widget, child) {
+        floatingpanel_render_overlay_subtree(child, canvas, widget->x, widget->y);
     }
 }
 
@@ -312,9 +401,9 @@ void vg_floatingpanel_set_size(vg_floatingpanel_t *panel, float w, float h) {
 void vg_floatingpanel_set_visible(vg_floatingpanel_t *panel, int visible) {
     if (!panel)
         return;
-    panel->base.visible = (visible != 0);
-    panel->base.needs_layout = true;
-    panel->base.needs_paint = true;
+    if (!visible)
+        panel->dragging = false;
+    vg_widget_set_visible(&panel->base, visible != 0);
 }
 
 /// @brief Floatingpanel add child.

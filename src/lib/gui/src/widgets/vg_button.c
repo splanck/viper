@@ -39,11 +39,79 @@ static vg_widget_vtable_t g_button_vtable = {.destroy = button_destroy,
                                              .on_focus = NULL};
 
 //=============================================================================
-// Helper: Draw rounded rectangle
+// Helpers
 //=============================================================================
 
-static void draw_filled_rect(void *canvas, float x, float y, float w, float h, uint32_t color) {
-    vgfx_fill_rect((vgfx_window_t)canvas, (int32_t)x, (int32_t)y, (int32_t)w, (int32_t)h, color);
+static int button_corner_radius(const vg_button_t *button, const vg_theme_t *theme) {
+    float radius = button && button->border_radius > 0.0f
+                       ? button->border_radius
+                       : (theme ? theme->button.border_radius : 4.0f);
+    if (radius < 2.0f)
+        radius = 2.0f;
+    return (int)radius;
+}
+
+static void button_fill_round_rect(vgfx_window_t win,
+                                   int32_t x,
+                                   int32_t y,
+                                   int32_t w,
+                                   int32_t h,
+                                   int32_t radius,
+                                   uint32_t color) {
+    if (w <= 0 || h <= 0)
+        return;
+
+    int32_t max_radius = w < h ? w / 2 : h / 2;
+    if (radius <= 0 || max_radius <= 0) {
+        vgfx_fill_rect(win, x, y, w, h, color);
+        return;
+    }
+    if (radius > max_radius)
+        radius = max_radius;
+    if (w <= radius * 2 || h <= radius * 2) {
+        vgfx_fill_rect(win, x, y, w, h, color);
+        return;
+    }
+
+    vgfx_fill_rect(win, x + radius, y, w - radius * 2, h, color);
+    vgfx_fill_rect(win, x, y + radius, radius, h - radius * 2, color);
+    vgfx_fill_rect(win, x + w - radius, y + radius, radius, h - radius * 2, color);
+    vgfx_fill_circle(win, x + radius, y + radius, radius, color);
+    vgfx_fill_circle(win, x + w - radius - 1, y + radius, radius, color);
+    vgfx_fill_circle(win, x + radius, y + h - radius - 1, radius, color);
+    vgfx_fill_circle(win, x + w - radius - 1, y + h - radius - 1, radius, color);
+}
+
+static void button_stroke_round_rect(vgfx_window_t win,
+                                     int32_t x,
+                                     int32_t y,
+                                     int32_t w,
+                                     int32_t h,
+                                     int32_t radius,
+                                     uint32_t color) {
+    if (w <= 1 || h <= 1)
+        return;
+
+    int32_t max_radius = w < h ? w / 2 : h / 2;
+    if (radius <= 0 || max_radius <= 0) {
+        vgfx_rect(win, x, y, w, h, color);
+        return;
+    }
+    if (radius > max_radius)
+        radius = max_radius;
+    if (w <= radius * 2 || h <= radius * 2) {
+        vgfx_rect(win, x, y, w, h, color);
+        return;
+    }
+
+    vgfx_line(win, x + radius, y, x + w - radius - 1, y, color);
+    vgfx_line(win, x + radius, y + h - 1, x + w - radius - 1, y + h - 1, color);
+    vgfx_line(win, x, y + radius, x, y + h - radius - 1, color);
+    vgfx_line(win, x + w - 1, y + radius, x + w - 1, y + h - radius - 1, color);
+    vgfx_circle(win, x + radius, y + radius, radius, color);
+    vgfx_circle(win, x + w - radius - 1, y + radius, radius, color);
+    vgfx_circle(win, x + radius, y + h - radius - 1, radius, color);
+    vgfx_circle(win, x + w - radius - 1, y + h - radius - 1, radius, color);
 }
 
 //=============================================================================
@@ -63,7 +131,7 @@ vg_button_t *vg_button_create(vg_widget_t *parent, const char *text) {
 
     // Initialize button-specific fields
     button->text = text ? strdup(text) : strdup("");
-    button->font = NULL;
+    button->font = theme->typography.font_regular;
     button->font_size = theme->typography.size_normal;
     button->style = VG_BUTTON_STYLE_DEFAULT;
     button->on_click = NULL;
@@ -151,41 +219,80 @@ static void button_measure(vg_widget_t *widget, float available_width, float ava
 static void button_paint(vg_widget_t *widget, void *canvas) {
     vg_button_t *button = (vg_button_t *)widget;
     vg_theme_t *theme = vg_theme_get_current();
+    vgfx_window_t win = (vgfx_window_t)canvas;
+    int radius = button_corner_radius(button, theme);
 
-    // Determine colors based on state
-    uint32_t bg_color = button->bg_color;
-    uint32_t fg_color = button->fg_color;
+    uint32_t bg_color = button->bg_color ? button->bg_color : theme->colors.bg_tertiary;
+    uint32_t fg_color = button->fg_color ? button->fg_color : theme->colors.fg_primary;
+    uint32_t border_color = button->border_color ? button->border_color : theme->colors.border_primary;
+
+    if (button->style == VG_BUTTON_STYLE_PRIMARY) {
+        bg_color = theme->colors.accent_primary;
+        fg_color = 0x00FFFFFF;
+        border_color = vg_color_blend(theme->colors.accent_primary, theme->colors.border_focus, 0.45f);
+    } else if (button->style == VG_BUTTON_STYLE_DANGER) {
+        bg_color = theme->colors.accent_danger;
+        fg_color = 0x00FFFFFF;
+        border_color = vg_color_darken(theme->colors.accent_danger, 0.18f);
+    } else if (button->style == VG_BUTTON_STYLE_SECONDARY) {
+        bg_color = vg_color_blend(theme->colors.bg_secondary, theme->colors.bg_primary, 0.35f);
+        fg_color = theme->colors.fg_primary;
+        border_color = theme->colors.border_secondary;
+    } else if (button->style == VG_BUTTON_STYLE_TEXT) {
+        bg_color = theme->colors.bg_primary;
+        fg_color = theme->colors.fg_link;
+        border_color = bg_color;
+    }
 
     if (widget->state & VG_STATE_DISABLED) {
         bg_color = theme->colors.bg_disabled;
         fg_color = theme->colors.fg_disabled;
+        border_color = theme->colors.border_secondary;
     } else if (widget->state & VG_STATE_PRESSED) {
-        bg_color = theme->colors.bg_active;
-        fg_color = 0xFFFFFFFF; // White text on active
+        bg_color = vg_color_darken(bg_color, button->style == VG_BUTTON_STYLE_TEXT ? 0.04f : 0.10f);
     } else if (widget->state & VG_STATE_HOVERED) {
-        bg_color = theme->colors.bg_hover;
+        bg_color = vg_color_lighten(bg_color, button->style == VG_BUTTON_STYLE_TEXT ? 0.03f : 0.05f);
     }
 
-    // Draw background
-    draw_filled_rect(canvas, widget->x, widget->y, widget->width, widget->height, bg_color);
+    button_fill_round_rect(
+        win, (int32_t)widget->x, (int32_t)widget->y, (int32_t)widget->width, (int32_t)widget->height, radius, bg_color);
+    if (button->style != VG_BUTTON_STYLE_TEXT) {
+        vgfx_fill_rect(win,
+                       (int32_t)widget->x + radius,
+                       (int32_t)widget->y + 1,
+                       (int32_t)widget->width - radius * 2,
+                       1,
+                       vg_color_lighten(bg_color, 0.08f));
+    }
 
-    // Draw border; use focus color when the button has keyboard focus
-    uint32_t border =
-        (widget->state & VG_STATE_FOCUSED) ? theme->colors.border_focus : button->border_color;
-    vgfx_rect((vgfx_window_t)canvas,
-              (int32_t)widget->x,
-              (int32_t)widget->y,
-              (int32_t)widget->width,
-              (int32_t)widget->height,
-              border);
+    if (widget->state & VG_STATE_FOCUSED) {
+        border_color = theme->colors.border_focus;
+    }
+    if (button->style != VG_BUTTON_STYLE_TEXT || (widget->state & (VG_STATE_HOVERED | VG_STATE_FOCUSED))) {
+        button_stroke_round_rect(win,
+                                 (int32_t)widget->x,
+                                 (int32_t)widget->y,
+                                 (int32_t)widget->width,
+                                 (int32_t)widget->height,
+                                 radius,
+                                 border_color);
+    }
 
-    // Draw icon and/or text
     if (button->font) {
         vg_font_metrics_t font_metrics;
         vg_font_get_metrics(button->font, button->font_size, &font_metrics);
         float baseline_y = widget->y +
                            (widget->height - (font_metrics.ascent - font_metrics.descent)) / 2.0f +
                            font_metrics.ascent;
+        int32_t clip_x = (int32_t)widget->x + 6;
+        int32_t clip_y = (int32_t)widget->y + 2;
+        int32_t clip_w = (int32_t)widget->width - 12;
+        int32_t clip_h = (int32_t)widget->height - 4;
+        if (clip_w < 0)
+            clip_w = 0;
+        if (clip_h < 0)
+            clip_h = 0;
+        vgfx_set_clip(win, clip_x, clip_y, clip_w, clip_h);
 
         bool has_text = button->text && button->text[0];
         bool has_icon = button->icon_text && button->icon_text[0];
@@ -256,6 +363,7 @@ static void button_paint(vg_widget_t *widget, void *canvas) {
                 }
             }
         }
+        vgfx_clear_clip(win);
     }
 }
 
@@ -279,6 +387,10 @@ static bool button_handle_event(vg_widget_t *widget, vg_event_t *event) {
 
     if (event->type == VG_EVENT_KEY_DOWN) {
         if (event->key.key == VG_KEY_SPACE || event->key.key == VG_KEY_ENTER) {
+            if (event->key.repeat) {
+                event->handled = true;
+                return true;
+            }
             if (button->on_click)
                 button->on_click(widget, button->user_data);
             if (widget->on_click)
@@ -336,23 +448,29 @@ void vg_button_set_style(vg_button_t *button, vg_button_style_t style) {
     switch (style) {
         case VG_BUTTON_STYLE_PRIMARY:
             button->bg_color = theme->colors.accent_primary;
-            button->fg_color = 0xFFFFFFFF; // White
+            button->fg_color = 0x00FFFFFF; // White
+            button->border_color =
+                vg_color_blend(theme->colors.accent_primary, theme->colors.border_focus, 0.45f);
             break;
         case VG_BUTTON_STYLE_SECONDARY:
-            button->bg_color = theme->colors.bg_tertiary;
+            button->bg_color = vg_color_blend(theme->colors.bg_secondary, theme->colors.bg_primary, 0.35f);
             button->fg_color = theme->colors.fg_primary;
+            button->border_color = theme->colors.border_secondary;
             break;
         case VG_BUTTON_STYLE_DANGER:
             button->bg_color = theme->colors.accent_danger;
-            button->fg_color = 0xFFFFFFFF;
+            button->fg_color = 0x00FFFFFF;
+            button->border_color = vg_color_darken(theme->colors.accent_danger, 0.18f);
             break;
         case VG_BUTTON_STYLE_TEXT:
-            button->bg_color = 0x00000000; // Transparent
+            button->bg_color = theme->colors.bg_primary;
             button->fg_color = theme->colors.fg_link;
+            button->border_color = theme->colors.bg_primary;
             break;
         default:
             button->bg_color = theme->colors.bg_tertiary;
             button->fg_color = theme->colors.fg_primary;
+            button->border_color = theme->colors.border_primary;
             break;
     }
 

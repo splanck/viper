@@ -33,10 +33,12 @@ static void tabbar_destroy(vg_widget_t *widget);
 static void tabbar_measure(vg_widget_t *widget, float available_width, float available_height);
 static void tabbar_paint(vg_widget_t *widget, void *canvas);
 static bool tabbar_handle_event(vg_widget_t *widget, vg_event_t *event);
+static bool tabbar_can_focus(vg_widget_t *widget);
 static float get_tab_width(vg_tabbar_t *tabbar, vg_tab_t *tab);
 static bool tab_close_button_hit(vg_tabbar_t *tabbar, vg_tab_t *tab, float local_x, float local_y);
 static void tabbar_sync_hover_tooltip(vg_tabbar_t *tabbar);
 static char *make_tab_title(const vg_tab_t *tab);
+static void tabbar_ensure_tab_visible(vg_tabbar_t *tabbar, vg_tab_t *tab);
 
 //=============================================================================
 // TabBar VTable
@@ -47,7 +49,7 @@ static vg_widget_vtable_t g_tabbar_vtable = {.destroy = tabbar_destroy,
                                              .arrange = NULL,
                                              .paint = tabbar_paint,
                                              .handle_event = tabbar_handle_event,
-                                             .can_focus = NULL,
+                                             .can_focus = tabbar_can_focus,
                                              .on_focus = NULL};
 
 //=============================================================================
@@ -274,6 +276,35 @@ static void tabbar_sync_hover_tooltip(vg_tabbar_t *tabbar) {
     }
 }
 
+static bool tabbar_can_focus(vg_widget_t *widget) {
+    return widget && widget->enabled && widget->visible;
+}
+
+static void tabbar_ensure_tab_visible(vg_tabbar_t *tabbar, vg_tab_t *tab) {
+    if (!tabbar || !tab)
+        return;
+
+    float tab_x = get_tab_x(tabbar, tab);
+    float tab_w = get_tab_width(tabbar, tab);
+    float viewport_w = tabbar->base.width > 0.0f ? tabbar->base.width : tabbar->base.measured_width;
+    if (viewport_w <= 0.0f)
+        return;
+
+    if (tab_x < tabbar->scroll_x) {
+        tabbar->scroll_x = tab_x;
+    } else if (tab_x + tab_w > tabbar->scroll_x + viewport_w) {
+        tabbar->scroll_x = tab_x + tab_w - viewport_w;
+    }
+
+    float max_scroll = tabbar->total_width - viewport_w;
+    if (max_scroll < 0.0f)
+        max_scroll = 0.0f;
+    if (tabbar->scroll_x < 0.0f)
+        tabbar->scroll_x = 0.0f;
+    if (tabbar->scroll_x > max_scroll)
+        tabbar->scroll_x = max_scroll;
+}
+
 //=============================================================================
 // TabBar Implementation
 //=============================================================================
@@ -295,7 +326,7 @@ vg_tabbar_t *vg_tabbar_create(vg_widget_t *parent) {
     tabbar->active_tab = NULL;
     tabbar->tab_count = 0;
 
-    tabbar->font = NULL;
+    tabbar->font = theme->typography.font_regular;
     tabbar->font_size = theme->typography.size_normal;
 
     // Appearance
@@ -636,6 +667,86 @@ static bool tabbar_handle_event(vg_widget_t *widget, vg_event_t *event) {
             widget->needs_paint = true;
             return true;
 
+        case VG_EVENT_KEY_DOWN: {
+            if (tabbar->tab_count <= 0)
+                return false;
+
+            uint32_t mods = event->modifiers;
+            bool has_ctrl = (mods & VG_MOD_CTRL) != 0 || (mods & VG_MOD_SUPER) != 0;
+            bool has_shift = (mods & VG_MOD_SHIFT) != 0;
+            vg_tab_t *active = tabbar->active_tab ? tabbar->active_tab : tabbar->first_tab;
+            if (!active)
+                return false;
+
+            int current = vg_tabbar_get_tab_index(tabbar, active);
+            if (current < 0)
+                return false;
+
+            if (has_ctrl && has_shift &&
+                (event->key.key == VG_KEY_LEFT || event->key.key == VG_KEY_RIGHT)) {
+                int target = current + (event->key.key == VG_KEY_LEFT ? -1 : 1);
+                if (tabbar_move_tab_to_index(tabbar, active, target)) {
+                    if (tabbar->on_reorder)
+                        tabbar->on_reorder(widget,
+                                           active,
+                                           vg_tabbar_get_tab_index(tabbar, active),
+                                           tabbar->on_reorder_data);
+                    tabbar_ensure_tab_visible(tabbar, active);
+                    widget->needs_paint = true;
+                    event->handled = true;
+                    return true;
+                }
+                return false;
+            }
+
+            if ((has_ctrl && event->key.key == VG_KEY_W) || event->key.key == VG_KEY_DELETE) {
+                if (active->closable) {
+                    bool allow_close = true;
+                    tabbar->close_clicked_index = current;
+                    if (tabbar->on_close)
+                        allow_close = tabbar->on_close(widget, active, tabbar->on_close_data);
+                    if (allow_close && tabbar->auto_close)
+                        vg_tabbar_remove_tab(tabbar, active);
+                    event->handled = true;
+                    return true;
+                }
+                return false;
+            }
+
+            switch (event->key.key) {
+                case VG_KEY_LEFT:
+                    if (current > 0)
+                        vg_tabbar_set_active(tabbar, vg_tabbar_get_tab_at(tabbar, current - 1));
+                    else
+                        vg_tabbar_set_active(tabbar, vg_tabbar_get_tab_at(tabbar, 0));
+                    tabbar_ensure_tab_visible(tabbar, tabbar->active_tab);
+                    event->handled = true;
+                    return true;
+                case VG_KEY_RIGHT:
+                    if (current < tabbar->tab_count - 1)
+                        vg_tabbar_set_active(tabbar, vg_tabbar_get_tab_at(tabbar, current + 1));
+                    else
+                        vg_tabbar_set_active(tabbar,
+                                             vg_tabbar_get_tab_at(tabbar, tabbar->tab_count - 1));
+                    tabbar_ensure_tab_visible(tabbar, tabbar->active_tab);
+                    event->handled = true;
+                    return true;
+                case VG_KEY_HOME:
+                    vg_tabbar_set_active(tabbar, tabbar->first_tab);
+                    tabbar_ensure_tab_visible(tabbar, tabbar->active_tab);
+                    event->handled = true;
+                    return true;
+                case VG_KEY_END:
+                    vg_tabbar_set_active(tabbar, tabbar->last_tab);
+                    tabbar_ensure_tab_visible(tabbar, tabbar->active_tab);
+                    event->handled = true;
+                    return true;
+                default:
+                    break;
+            }
+            break;
+        }
+
         default:
             break;
     }
@@ -752,6 +863,7 @@ void vg_tabbar_set_active(vg_tabbar_t *tabbar, vg_tab_t *tab) {
     tabbar->active_tab = tab;
     tabbar->active_change_version++;
     tabbar->prev_active_tab = tab;
+    tabbar_ensure_tab_visible(tabbar, tab);
     tabbar->base.needs_paint = true;
 
     if (tabbar->on_select && tab) {

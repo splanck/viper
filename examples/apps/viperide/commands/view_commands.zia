@@ -3,6 +3,7 @@ module view_commands;
 bind "../ui/app_shell";
 bind "../core/settings";
 bind "../editor/editor_engine";
+bind "../editor/diagnostics";
 
 bind Viper.GUI;
 bind Convert = Viper.Core.Convert;
@@ -12,7 +13,7 @@ bind Machine = Viper.Machine;
 // MODULE: view_commands
 // PURPOSE: View / appearance command handlers — toggle sidebar / status
 //          bar / minimap / theme / fullscreen, zoom in/out/reset, and
-//          the font/settings prompt. Also owns the cross-platform
+//          the shared font / theme application helpers. Also owns the cross-platform
 //          font-fallback chains.
 //
 // WHERE-THIS-FITS: Command handlers wired into main.zia's command
@@ -38,11 +39,6 @@ bind Machine = Viper.Machine;
 //   * CLAMP ON ZOOM. clampFontSize keeps font size in [6, 72]. Outside
 //     that range the editor would be unreadable or rendered in a
 //     single glyph.
-//   * SETTINGS DIALOG IS DOCS + PROMPTS. handleSettings prints a
-//     keyboard-shortcut cheat sheet via MessageBox.Info, then prompts
-//     for new font size and font path. Two prompts is uglier than a
-//     single dialog with multiple fields, but the runtime doesn't
-//     have multi-field dialogs yet.
 // ============================================================================
 
 /// @brief Clamp font size to the editor's usable range [6, 72].
@@ -55,29 +51,33 @@ func clampFontSize(size: Integer) -> Integer {
 /// @brief Set the shell's chrome font from the OS-conventional UI font.
 /// @details Tries SFNS / HelveticaNeue / Helvetica on macOS, Segoe UI /
 ///          Arial on Windows, DejaVu Sans on Linux. Falls back to
-///          `SetFontSize(14)` on the default if every load fails.
+///          `SetFontSize(15)` on the default if every load fails.
 func applyShellFont(shell: app_shell.AppShell) {
     var font: GUI.Font = null;
     var os = Machine.OS;
 
     if os == "macos" {
         font = GUI.Font.Load("/System/Library/Fonts/SFNS.ttf");
-        if font == null { font = GUI.Font.Load("/System/Library/Fonts/HelveticaNeue.ttc"); }
-        if font == null { font = GUI.Font.Load("/System/Library/Fonts/Helvetica.ttc"); }
+        if font == null { font = GUI.Font.Load("/System/Library/Fonts/SFNSRounded.ttf"); }
+        if font == null { font = GUI.Font.Load("/System/Library/Fonts/Geneva.ttf"); }
     } else if os == "windows" {
         font = GUI.Font.Load("C:\\Windows\\Fonts\\segoeui.ttf");
+        if font == null { font = GUI.Font.Load("C:\\Windows\\Fonts\\tahoma.ttf"); }
         if font == null { font = GUI.Font.Load("C:\\Windows\\Fonts\\arial.ttf"); }
     } else {
-        font = GUI.Font.Load("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf");
+        font = GUI.Font.Load("/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf");
+        if font == null { font = GUI.Font.Load("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"); }
+        if font == null { font = GUI.Font.Load("/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf"); }
+        if font == null { font = GUI.Font.Load("/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"); }
         if font == null { font = GUI.Font.Load("/usr/share/fonts/TTF/DejaVuSans.ttf"); }
     }
 
     if font != null {
-        shell.app.SetFont(font, 14);
+        shell.app.SetFont(font, 15);
         return;
     }
 
-    shell.app.SetFontSize(14);
+    shell.app.SetFontSize(15);
 }
 
 /// @brief Set the editor's monospace font from settings + OS fallback.
@@ -95,6 +95,7 @@ func applyEditorFont(shell: app_shell.AppShell,
         font = GUI.Font.Load(appSettings.fontPath);
         if font == null {
             GUI.Toast.Warning("Could not load font: " + appSettings.fontPath);
+            appSettings.fontPath = "";
         }
     }
 
@@ -102,13 +103,16 @@ func applyEditorFont(shell: app_shell.AppShell,
         var os = Machine.OS;
         if os == "macos" {
             font = GUI.Font.Load("/System/Library/Fonts/SFNSMono.ttf");
-            if font == null { font = GUI.Font.Load("/System/Library/Fonts/Menlo.ttc"); }
             if font == null { font = GUI.Font.Load("/System/Library/Fonts/Monaco.ttf"); }
         } else if os == "windows" {
-            font = GUI.Font.Load("C:\\Windows\\Fonts\\consola.ttf");
-            if font == null { font = GUI.Font.Load("C:\\Windows\\Fonts\\cour.ttf"); }
+            font = GUI.Font.Load("C:\\Windows\\Fonts\\CascadiaMono.ttf");
+            if font == null { font = GUI.Font.Load("C:\\Windows\\Fonts\\consola.ttf"); }
+            if font == null { font = GUI.Font.Load("C:\\Windows\\Fonts\\lucon.ttf"); }
         } else {
-            font = GUI.Font.Load("/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf");
+            font = GUI.Font.Load("/usr/share/fonts/truetype/noto/NotoSansMono-Regular.ttf");
+            if font == null { font = GUI.Font.Load("/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf"); }
+            if font == null { font = GUI.Font.Load("/usr/share/fonts/truetype/liberation2/LiberationMono-Regular.ttf"); }
+            if font == null { font = GUI.Font.Load("/usr/share/fonts/truetype/liberation/LiberationMono-Regular.ttf"); }
             if font == null { font = GUI.Font.Load("/usr/share/fonts/TTF/DejaVuSansMono.ttf"); }
         }
     }
@@ -119,6 +123,42 @@ func applyEditorFont(shell: app_shell.AppShell,
     }
 
     engine.editor.SetFontSize(appSettings.fontSize);
+}
+
+/// @brief Apply all persisted appearance / behavior settings in one pass.
+func applyPersistentSettings(shell: app_shell.AppShell,
+                             engine: editor_engine.EditorEngine,
+                             liveDiag: diagnostics.LiveDiagnostics,
+                             appSettings: settings.SettingsManager) {
+    appSettings.fontSize = clampFontSize(appSettings.fontSize);
+    if appSettings.tabWidth < 2 { appSettings.tabWidth = 2; }
+    if appSettings.tabWidth > 8 { appSettings.tabWidth = 8; }
+
+    appSettings.ApplyTheme();
+    applyEditorFont(shell, engine, appSettings);
+    engine.editor.SetTabSize(appSettings.tabWidth);
+
+    if appSettings.codeFolding {
+        engine.editor.SetAutoFoldDetection(1);
+    } else {
+        engine.editor.SetAutoFoldDetection(0);
+    }
+
+    liveDiag.enabled = appSettings.autoCheckOnSave;
+    if appSettings.autoCheckOnSave {
+        liveDiag.invalidate();
+    } else {
+        shell.diagListBox.Clear();
+        shell.diagListBox.SetVisible(0);
+        shell.minimap.ClearMarkers();
+        engine.editor.ClearHighlights();
+    }
+
+    if appSettings.minimapVisible {
+        shell.minimap.SetVisible(1);
+    } else {
+        shell.minimap.SetVisible(0);
+    }
 }
 
 /// @brief Toggle the file-tree sidebar visibility.
@@ -209,26 +249,35 @@ func handleToggleMinimap(shell: app_shell.AppShell,
 func handleSettings(shell: app_shell.AppShell,
                     engine: editor_engine.EditorEngine,
                     appSettings: settings.SettingsManager) {
-    var settingsInfo = "Current Settings\n\n";
-    settingsInfo = settingsInfo + "Font Size:     " + appSettings.fontSize + "pt\n";
-    settingsInfo = settingsInfo + "Font Path:     " + appSettings.fontPath + "\n";
-    settingsInfo = settingsInfo + "Theme:         " + appSettings.theme + "\n";
-    settingsInfo = settingsInfo + "Tab Width:     " + appSettings.tabWidth + "\n";
-    settingsInfo = settingsInfo + "Code Folding:  " + appSettings.codeFolding + "\n";
-    settingsInfo = settingsInfo + "Auto-Check:    " + appSettings.autoCheckOnSave + "\n";
-    settingsInfo = settingsInfo + "\nKeyboard shortcuts:\n";
-    settingsInfo = settingsInfo + "  Ctrl+=  /  Ctrl+-     Zoom In / Out\n";
-    settingsInfo = settingsInfo + "  Ctrl+0                Reset Font Size\n";
-    settingsInfo = settingsInfo + "  Ctrl+Shift+T          Toggle Theme\n";
-    settingsInfo = settingsInfo + "  F11                   Toggle Fullscreen\n";
-    settingsInfo = settingsInfo + "  Ctrl+Shift+M          Toggle Minimap\n";
-    settingsInfo = settingsInfo + "  F12                   Go To Definition\n";
-    settingsInfo = settingsInfo + "  F8 / Shift+F8         Next / Prev Error\n";
-    settingsInfo = settingsInfo + "  Ctrl+Shift+F          Search in Project\n";
-    settingsInfo = settingsInfo + "  Ctrl+Shift+O          Symbol Outline";
+    var fontPathDisplay = appSettings.fontPath;
+    if fontPathDisplay == "" {
+        fontPathDisplay = "(system default)";
+    }
+
+    var settingsInfo = "Editor settings\n\n";
+    settingsInfo = settingsInfo + "Font size: " + appSettings.fontSize + " pt\n";
+    settingsInfo = settingsInfo + "Font path: " + fontPathDisplay + "\n";
+    settingsInfo = settingsInfo + "Theme: " + appSettings.theme + "\n";
+    settingsInfo = settingsInfo + "Tab width: " + appSettings.tabWidth + "\n";
+    settingsInfo = settingsInfo + "Code folding: " + appSettings.codeFolding + "\n";
+    settingsInfo = settingsInfo + "Auto-check on save: " + appSettings.autoCheckOnSave + "\n";
+    settingsInfo = settingsInfo + "\nQuick controls\n";
+    settingsInfo = settingsInfo + "Ctrl+= / Ctrl+-  Zoom in or out\n";
+    settingsInfo = settingsInfo + "Ctrl+0           Reset font size\n";
+    settingsInfo = settingsInfo + "Ctrl+Shift+T     Toggle theme\n";
+    settingsInfo = settingsInfo + "Ctrl+Shift+M     Toggle minimap\n";
+    settingsInfo = settingsInfo + "F11              Toggle fullscreen\n";
+    settingsInfo = settingsInfo + "F12              Go to definition\n";
+    settingsInfo = settingsInfo + "F8 / Shift+F8    Next / previous error\n";
+    settingsInfo = settingsInfo + "Ctrl+Shift+F     Search in project\n";
+    settingsInfo = settingsInfo + "Ctrl+Shift+O     Symbol outline\n";
+    settingsInfo = settingsInfo + "\nThe next two dialogs let you update the editor font size and optional font path.";
     GUI.MessageBox.Info("Settings", settingsInfo);
 
-    var sizeText = GUI.MessageBox.Prompt("Editor Font Size", "Enter font size 6-72, or leave blank to keep current:");
+    var sizePrompt = "Current size: " + appSettings.fontSize + " pt\n\n";
+    sizePrompt = sizePrompt + "Enter a font size from 6 to 72.\n";
+    sizePrompt = sizePrompt + "Leave this blank to keep the current value.";
+    var sizeText = GUI.MessageBox.Prompt("Editor Font Size", sizePrompt);
     if sizeText != "" {
         var requestedSize = Convert.ToInt(sizeText);
         if requestedSize >= 6 and requestedSize <= 72 {
@@ -241,7 +290,11 @@ func handleSettings(shell: app_shell.AppShell,
         }
     }
 
-    var fontText = GUI.MessageBox.Prompt("Editor Font Path", "Optional .ttf/.ttc path. Enter default to reset, or leave blank to keep current:");
+    var fontPrompt = "Current path: " + fontPathDisplay + "\n\n";
+    fontPrompt = fontPrompt + "Enter a .ttf or .ttc file path.\n";
+    fontPrompt = fontPrompt + "Enter default to go back to the system font.\n";
+    fontPrompt = fontPrompt + "Leave this blank to keep the current path.";
+    var fontText = GUI.MessageBox.Prompt("Editor Font Path", fontPrompt);
     if fontText == "default" {
         appSettings.fontPath = "";
         applyEditorFont(shell, engine, appSettings);
@@ -258,5 +311,10 @@ func handleSettings(shell: app_shell.AppShell,
 /// @brief "About ViperIDE" message box.
 func handleAbout() {
     GUI.MessageBox.Info("About ViperIDE",
-        "ViperIDE — IDE for Zia and Viper Basic\nPowered by the Viper Runtime.");
+        "ViperIDE\n\n"
+        + "A lightweight IDE for Zia and Viper Basic, built on the Viper Runtime.\n\n"
+        + "Demo highlights\n"
+        + "- Docked panels, toolbars, menus, and dialogs\n"
+        + "- Code editor, project search, diagnostics, and minimap\n"
+        + "- Persistent editor settings for fonts, theme, tabs, and visibility");
 }

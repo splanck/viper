@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-16
+last-verified: 2026-04-17
 ---
 
 # Basic Widgets
@@ -75,9 +75,11 @@ if saveBtn.WasClicked() == 1 { SaveDocument(); }
 
 ### TextInput
 
-Single-line text input field.
+Single-line or multiline text input field.
 
 Long single-line values stay clipped to the field bounds, the caret auto-scrolls horizontally as the cursor moves, and the caret blink is advanced automatically while the field is focused.
+When the widget is configured for multiline mode it now paints real per-line text, selection, and caret state, supports `Enter` for newline insertion, `Up` / `Down` for line navigation, line-local `Home` / `End`, drag selection, and mouse-wheel vertical scrolling.
+`Ctrl+Left` / `Ctrl+Right` now stop on punctuation and whitespace boundaries instead of treating only ASCII spaces as word breaks.
 
 **Constructor:** `NEW Viper.GUI.TextInput(parent)`
 
@@ -224,7 +226,8 @@ volume.SetSize(200, 20);
 
 Numeric input with increment/decrement buttons.
 
-The spinner now behaves as a real interactive widget: the up/down buttons repaint correctly, `Up` / `Down` keys adjust the value while focused, and the mouse wheel steps the value when hovered.
+The spinner now behaves as a real interactive widget: the up/down buttons repaint correctly, `Up` / `Down` keys adjust the value while focused, the mouse wheel steps the value when hovered, and the value field accepts direct keyboard entry.
+Typing while the spinner is focused starts inline editing, `Enter` commits the typed number, and `Escape` restores the previous formatted value.
 
 **Constructor:** `NEW Viper.GUI.Spinner(parent)`
 
@@ -301,7 +304,7 @@ progress.SetValue(0.75);  // 75%
 
 Dropdown selection list.
 
-Item additions, removals, selection changes, and font changes invalidate the widget immediately. Popup hit-testing is screen-correct even when the control is nested or repositioned.
+Item additions, removals, selection changes, and font changes invalidate the widget immediately. Popup hit-testing is screen-correct even when the control is nested or repositioned, long headers clip cleanly, and the popup panel tracks fractional scroll instead of stepping a whole row at a time.
 
 **Constructor:** `NEW Viper.GUI.Dropdown(parent)`
 
@@ -350,6 +353,7 @@ END IF
 Scrollable list of selectable items with enhanced item management.
 
 Hit-testing uses widget-local coordinates, so nested list boxes select the correct row. Measured height also follows the actual item count for short lists instead of reserving five rows unconditionally.
+Item text is clipped to the viewport and item add/remove/clear/select operations invalidate the list immediately so the visual state updates on the same frame.
 
 **Constructor:** `NEW Viper.GUI.ListBox(parent)`
 

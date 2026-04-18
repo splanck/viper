@@ -958,6 +958,7 @@ typedef struct vg_spinner {
     float font_size;   ///< Font size
     char *text_buffer; ///< Text buffer for display
     bool editing;      ///< Is user editing the text
+    size_t cursor_pos; ///< Caret position inside the edit buffer
 
     // Appearance
     uint32_t bg_color;     ///< Background color

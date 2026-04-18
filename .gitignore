@@ -103,6 +103,8 @@ lcov.info
 **/build/test-out/
 *.il
 *.s
+# Baseball franchise shell save root (created on first interactive run).
+baseball_saves/
 
 # --- Code mapping / analysis temp files ---
 .all_code_files.txt

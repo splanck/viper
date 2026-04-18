@@ -216,6 +216,12 @@ static vg_event_t tier2_key_down(vg_key_t key) {
     return ev;
 }
 
+static vg_event_t tier2_key_down_mods(vg_key_t key, uint32_t mods) {
+    vg_event_t ev = tier2_key_down(key);
+    ev.modifiers = mods;
+    return ev;
+}
+
 //=============================================================================
 // BINDING-003: GuiWidget field accessors
 //=============================================================================
@@ -831,6 +837,62 @@ TEST(tabbar_close_button_requires_full_rect) {
     (void)vg_event_send(&tabbar->base, &down);
     ASSERT_EQ(tabbar->tab_count, 1);
     ASSERT_EQ(tabbar->close_clicked_index, -1);
+
+    vg_widget_destroy((vg_widget_t *)tabbar);
+}
+
+TEST(tabbar_keyboard_navigation_changes_active_tab) {
+    vg_tabbar_t *tabbar = vg_tabbar_create(NULL);
+    ASSERT_NOT_NULL(tabbar);
+
+    vg_tab_t *first = vg_tabbar_add_tab(tabbar, "one.zia", true);
+    vg_tab_t *second = vg_tabbar_add_tab(tabbar, "two.zia", true);
+    vg_tab_t *third = vg_tabbar_add_tab(tabbar, "three.zia", true);
+    ASSERT_NOT_NULL(first);
+    ASSERT_NOT_NULL(second);
+    ASSERT_NOT_NULL(third);
+    ASSERT_EQ(vg_tabbar_get_active(tabbar), first);
+
+    vg_event_t right = tier2_key_down(VG_KEY_RIGHT);
+    ASSERT_TRUE(tabbar->base.vtable->handle_event(&tabbar->base, &right));
+    ASSERT_EQ(vg_tabbar_get_active(tabbar), second);
+
+    vg_event_t end = tier2_key_down(VG_KEY_END);
+    ASSERT_TRUE(tabbar->base.vtable->handle_event(&tabbar->base, &end));
+    ASSERT_EQ(vg_tabbar_get_active(tabbar), third);
+
+    vg_event_t home = tier2_key_down(VG_KEY_HOME);
+    ASSERT_TRUE(tabbar->base.vtable->handle_event(&tabbar->base, &home));
+    ASSERT_EQ(vg_tabbar_get_active(tabbar), first);
+
+    vg_widget_destroy((vg_widget_t *)tabbar);
+}
+
+TEST(tabbar_keyboard_reorder_and_close_are_supported) {
+    tabbar_reorder_state_t state = {0};
+    vg_tabbar_t *tabbar = vg_tabbar_create(NULL);
+    ASSERT_NOT_NULL(tabbar);
+
+    vg_tab_t *first = vg_tabbar_add_tab(tabbar, "a.zia", true);
+    vg_tab_t *second = vg_tabbar_add_tab(tabbar, "b.zia", true);
+    vg_tab_t *third = vg_tabbar_add_tab(tabbar, "c.zia", true);
+    ASSERT_NOT_NULL(first);
+    ASSERT_NOT_NULL(second);
+    ASSERT_NOT_NULL(third);
+    vg_tabbar_set_on_reorder(tabbar, tabbar_reorder_counter, &state);
+
+    vg_event_t reorder = tier2_key_down_mods(VG_KEY_RIGHT, VG_MOD_CTRL | VG_MOD_SHIFT);
+    ASSERT_TRUE(tabbar->base.vtable->handle_event(&tabbar->base, &reorder));
+    ASSERT_EQ(vg_tabbar_get_tab_index(tabbar, first), 1);
+    ASSERT_EQ(state.count, 1);
+    ASSERT_EQ(state.last_tab, first);
+    ASSERT_EQ(state.last_index, 1);
+
+    vg_event_t close = tier2_key_down_mods(VG_KEY_W, VG_MOD_CTRL);
+    ASSERT_TRUE(tabbar->base.vtable->handle_event(&tabbar->base, &close));
+    ASSERT_EQ(tabbar->tab_count, 2);
+    ASSERT_EQ(vg_tabbar_get_tab_index(tabbar, second), 0);
+    ASSERT_EQ(vg_tabbar_get_tab_index(tabbar, third), 1);
 
     vg_widget_destroy((vg_widget_t *)tabbar);
 }
@@ -1869,6 +1931,8 @@ int main(void) {
     RUN(tabbar_title_updates_default_tooltip);
     RUN(tabbar_hover_promotes_tab_tooltip_to_widget_tooltip);
     RUN(tabbar_close_button_requires_full_rect);
+    RUN(tabbar_keyboard_navigation_changes_active_tab);
+    RUN(tabbar_keyboard_reorder_and_close_are_supported);
     RUN(native_menubar_measures_to_zero_height);
     RUN(widget_destroy_child_detaches_from_parent);
     RUN(widget_add_child_rejects_cycles);

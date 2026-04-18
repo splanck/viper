@@ -32,6 +32,17 @@ static vg_tree_node_t *get_node_at_index(vg_tree_node_t *root, int index, int *c
 static int get_node_index(vg_tree_node_t *root, vg_tree_node_t *target, int *current);
 static bool node_in_subtree(const vg_tree_node_t *root, const vg_tree_node_t *candidate);
 static void treeview_clamp_scroll(vg_treeview_t *tree);
+static float treeview_scale(void);
+static float treeview_outer_padding(void);
+static void treeview_sync_metrics(vg_treeview_t *tree);
+static float treeview_text_baseline(vg_treeview_t *tree, float row_y);
+static void treeview_encode_glyph(uint32_t codepoint, char out[8]);
+static void treeview_paint_icon(vg_treeview_t *tree,
+                                void *canvas,
+                                vg_tree_node_t *node,
+                                float icon_x,
+                                float row_y,
+                                uint32_t color);
 
 //=============================================================================
 // TreeView VTable
@@ -143,6 +154,117 @@ static void treeview_clamp_scroll(vg_treeview_t *tree) {
         tree->scroll_y = max_scroll;
 }
 
+static float treeview_scale(void) {
+    vg_theme_t *theme = vg_theme_get_current();
+    return (theme && theme->ui_scale > 0.0f) ? theme->ui_scale : 1.0f;
+}
+
+static float treeview_outer_padding(void) {
+    return 10.0f * treeview_scale();
+}
+
+static void treeview_sync_metrics(vg_treeview_t *tree) {
+    if (!tree)
+        return;
+
+    float scale = treeview_scale();
+    tree->indent_size = 18.0f * scale;
+    tree->icon_size = 16.0f * scale;
+    tree->icon_gap = 8.0f * scale;
+
+    float row_height = 28.0f * scale;
+    if (tree->font) {
+        vg_font_metrics_t metrics = {0};
+        vg_font_get_metrics(tree->font, tree->font_size, &metrics);
+        float metrics_height = (float)metrics.line_height + 8.0f * scale;
+        if (metrics_height > row_height)
+            row_height = metrics_height;
+    }
+    tree->row_height = row_height;
+}
+
+static float treeview_text_baseline(vg_treeview_t *tree, float row_y) {
+    if (!tree || !tree->font)
+        return row_y;
+
+    vg_font_metrics_t metrics = {0};
+    vg_font_get_metrics(tree->font, tree->font_size, &metrics);
+    return row_y + (tree->row_height + (float)metrics.ascent + (float)metrics.descent) / 2.0f;
+}
+
+static void treeview_encode_glyph(uint32_t codepoint, char out[8]) {
+    if (!out)
+        return;
+
+    memset(out, 0, 8);
+    if (codepoint < 0x80) {
+        out[0] = (char)codepoint;
+    } else if (codepoint < 0x800) {
+        out[0] = (char)(0xC0 | (codepoint >> 6));
+        out[1] = (char)(0x80 | (codepoint & 0x3F));
+    } else if (codepoint < 0x10000) {
+        out[0] = (char)(0xE0 | (codepoint >> 12));
+        out[1] = (char)(0x80 | ((codepoint >> 6) & 0x3F));
+        out[2] = (char)(0x80 | (codepoint & 0x3F));
+    } else {
+        out[0] = (char)(0xF0 | (codepoint >> 18));
+        out[1] = (char)(0x80 | ((codepoint >> 12) & 0x3F));
+        out[2] = (char)(0x80 | ((codepoint >> 6) & 0x3F));
+        out[3] = (char)(0x80 | (codepoint & 0x3F));
+    }
+}
+
+static void treeview_paint_icon(vg_treeview_t *tree,
+                                void *canvas,
+                                vg_tree_node_t *node,
+                                float icon_x,
+                                float row_y,
+                                uint32_t color) {
+    if (!tree || !node)
+        return;
+
+    vg_theme_t *theme = vg_theme_get_current();
+    vgfx_window_t win = (vgfx_window_t)canvas;
+    float icon_center_y = row_y + tree->row_height * 0.5f;
+    vg_icon_t icon = node->icon;
+    if (node->expanded && node->expanded_icon.type != VG_ICON_NONE)
+        icon = node->expanded_icon;
+
+    if (node->loading) {
+        int32_t dot_r = (int32_t)(tree->icon_size * 0.12f);
+        if (dot_r < 1)
+            dot_r = 1;
+        int32_t cy = (int32_t)icon_center_y;
+        int32_t cx = (int32_t)(icon_x + tree->icon_size * 0.5f);
+        int32_t gap = (int32_t)(tree->icon_size * 0.28f);
+        vgfx_fill_circle(win, cx - gap, cy, dot_r, color);
+        vgfx_fill_circle(win, cx, cy, dot_r, vg_color_lighten(color, 0.08f));
+        vgfx_fill_circle(win, cx + gap, cy, dot_r, color);
+        return;
+    }
+
+    if (icon.type == VG_ICON_GLYPH && tree->font) {
+        char glyph[8];
+        vg_font_metrics_t metrics = {0};
+        treeview_encode_glyph(icon.data.glyph, glyph);
+        vg_font_get_metrics(tree->font, tree->icon_size, &metrics);
+        vg_font_draw_text(canvas,
+                          tree->font,
+                          tree->icon_size,
+                          icon_x,
+                          row_y + (tree->row_height + (float)metrics.ascent + (float)metrics.descent) * 0.5f,
+                          glyph,
+                          color);
+        return;
+    }
+
+    vgfx_fill_circle(win,
+                     (int32_t)(icon_x + tree->icon_size * 0.5f),
+                     (int32_t)icon_center_y,
+                     (int32_t)(tree->icon_size * 0.18f),
+                     vg_color_blend(color, theme->colors.bg_primary, 0.15f));
+}
+
 //=============================================================================
 // TreeView Implementation
 //=============================================================================
@@ -169,15 +291,11 @@ vg_treeview_t *vg_treeview_create(vg_widget_t *parent) {
 
     // Initialize treeview-specific fields
     tree->selected = NULL;
-    tree->font = NULL;
+    tree->font = theme->typography.font_regular;
     tree->font_size = theme->typography.size_normal;
 
     // Appearance
-    float s = theme->ui_scale > 0.0f ? theme->ui_scale : 1.0f;
-    tree->row_height = 22.0f * s;
-    tree->indent_size = 16.0f * s;
-    tree->icon_size = 16.0f * s;
-    tree->icon_gap = 4.0f * s;
+    treeview_sync_metrics(tree);
     tree->text_color = theme->colors.fg_primary;
     tree->selected_bg = theme->colors.bg_selected;
     tree->hover_bg = theme->colors.bg_hover;
@@ -244,6 +362,7 @@ static void treeview_measure(vg_widget_t *widget, float available_width, float a
 static void paint_node(
     vg_treeview_t *tree, void *canvas, vg_tree_node_t *node, float x, float *y, float width) {
     vg_theme_t *theme = vg_theme_get_current();
+    float outer_padding = treeview_outer_padding();
 
     for (vg_tree_node_t *child = node->first_child; child; child = child->next_sibling) {
         float row_y = *y;
@@ -253,15 +372,19 @@ static void paint_node(
         if (row_y + tree->row_height >= tree->scroll_y &&
             row_y < tree->scroll_y + tree->base.height) {
             float display_y = tree->base.y + row_y - tree->scroll_y;
-            float arrow_slot_x = x + child->depth * tree->indent_size;
-            float indent = x + (child->depth + 1) * tree->indent_size;
+            float arrow_slot_x = x + outer_padding + child->depth * tree->indent_size;
+            float icon_x = arrow_slot_x + tree->indent_size;
+            float text_x = icon_x + tree->icon_size + tree->icon_gap;
+            float arrow_size = 8.0f * treeview_scale();
             uint32_t row_bg =
                 ((row_index & 1) == 0)
                     ? theme->colors.bg_primary
                     : vg_color_blend(theme->colors.bg_primary, theme->colors.bg_secondary, 0.35f);
+            uint32_t row_fg = tree->text_color;
 
             if (child == tree->selected) {
                 row_bg = tree->selected_bg;
+                row_fg = theme->colors.fg_primary;
             } else if (child == tree->hovered) {
                 row_bg = tree->hover_bg;
             }
@@ -288,40 +411,69 @@ static void paint_node(
 
             // Draw expand/collapse arrow if has children
             if (child->has_children || child->first_child) {
-                int32_t ax = (int32_t)(arrow_slot_x + (tree->icon_size - 8.0f) * 0.5f);
-                int32_t ay = (int32_t)(display_y + (tree->row_height - 8.0f) / 2.0f);
+                int32_t ax = (int32_t)(arrow_slot_x + (tree->icon_size - arrow_size) * 0.5f);
+                int32_t ay = (int32_t)(display_y + (tree->row_height - arrow_size) / 2.0f);
                 uint32_t arrow_color =
                     (child == tree->selected) ? theme->colors.fg_primary : theme->colors.fg_secondary;
                 if (child->expanded) {
                     // ▼ downward triangle
-                    vgfx_line((vgfx_window_t)canvas, ax, ay, ax + 8, ay, arrow_color);
-                    vgfx_line((vgfx_window_t)canvas, ax, ay, ax + 4, ay + 6, arrow_color);
-                    vgfx_line((vgfx_window_t)canvas, ax + 8, ay, ax + 4, ay + 6, arrow_color);
+                    vgfx_line((vgfx_window_t)canvas,
+                              ax,
+                              ay,
+                              ax + (int32_t)arrow_size,
+                              ay,
+                              arrow_color);
+                    vgfx_line((vgfx_window_t)canvas,
+                              ax,
+                              ay,
+                              ax + (int32_t)(arrow_size * 0.5f),
+                              ay + (int32_t)(arrow_size * 0.75f),
+                              arrow_color);
+                    vgfx_line((vgfx_window_t)canvas,
+                              ax + (int32_t)arrow_size,
+                              ay,
+                              ax + (int32_t)(arrow_size * 0.5f),
+                              ay + (int32_t)(arrow_size * 0.75f),
+                              arrow_color);
                 } else {
                     // ▶ rightward triangle
-                    vgfx_line((vgfx_window_t)canvas, ax, ay, ax, ay + 8, arrow_color);
-                    vgfx_line((vgfx_window_t)canvas, ax, ay, ax + 6, ay + 4, arrow_color);
-                    vgfx_line((vgfx_window_t)canvas, ax, ay + 8, ax + 6, ay + 4, arrow_color);
+                    vgfx_line((vgfx_window_t)canvas,
+                              ax,
+                              ay,
+                              ax,
+                              ay + (int32_t)arrow_size,
+                              arrow_color);
+                    vgfx_line((vgfx_window_t)canvas,
+                              ax,
+                              ay,
+                              ax + (int32_t)(arrow_size * 0.75f),
+                              ay + (int32_t)(arrow_size * 0.5f),
+                              arrow_color);
+                    vgfx_line((vgfx_window_t)canvas,
+                              ax,
+                              ay + (int32_t)arrow_size,
+                              ax + (int32_t)(arrow_size * 0.75f),
+                              ay + (int32_t)(arrow_size * 0.5f),
+                              arrow_color);
                 }
             }
 
+            treeview_paint_icon(tree,
+                                canvas,
+                                child,
+                                icon_x,
+                                display_y,
+                                child->loading ? theme->colors.accent_primary : row_fg);
+
             // Draw text
             if (tree->font && child->text) {
-                vg_font_metrics_t font_metrics;
-                vg_font_get_metrics(tree->font, tree->font_size, &font_metrics);
-
-                float text_x = indent + tree->icon_gap;
-                float text_y =
-                    display_y +
-                    (tree->row_height + font_metrics.ascent - font_metrics.descent) / 2.0f;
-
                 vg_font_draw_text(canvas,
                                   tree->font,
                                   tree->font_size,
                                   text_x,
-                                  text_y,
+                                  treeview_text_baseline(tree, display_y),
                                   child->text,
-                                  tree->text_color);
+                                  row_fg);
             }
         }
 
@@ -348,7 +500,15 @@ static void treeview_paint(vg_widget_t *widget, void *canvas) {
 
     // Paint nodes
     float y = 0;
+    if (widget->width > 2.0f && widget->height > 2.0f)
+        vgfx_set_clip((vgfx_window_t)canvas,
+                      (int32_t)widget->x + 1,
+                      (int32_t)widget->y + 1,
+                      (int32_t)widget->width - 2,
+                      (int32_t)widget->height - 2);
     paint_node(tree, canvas, tree->root, widget->x, &y, widget->width);
+    if (widget->width > 2.0f && widget->height > 2.0f)
+        vgfx_clear_clip((vgfx_window_t)canvas);
 
     vgfx_rect((vgfx_window_t)canvas,
               (int32_t)widget->x,
@@ -416,7 +576,7 @@ static bool treeview_handle_event(vg_widget_t *widget, vg_event_t *event) {
 
             if (clicked) {
                 // Check if clicked on expand arrow
-                float arrow_left = clicked->depth * tree->indent_size;
+                float arrow_left = treeview_outer_padding() + clicked->depth * tree->indent_size;
                 if (event->mouse.x >= arrow_left && event->mouse.x < arrow_left + tree->icon_size) {
                     // Toggle expand
                     vg_treeview_toggle(tree, clicked);
@@ -738,6 +898,7 @@ void vg_treeview_set_font(vg_treeview_t *tree, vg_font_t *font, float size) {
 
     tree->font = font;
     tree->font_size = size > 0 ? size : vg_theme_get_current()->typography.size_normal;
+    treeview_sync_metrics(tree);
     tree->base.needs_layout = true;
     tree->base.needs_paint = true;
 }
