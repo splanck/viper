@@ -516,6 +516,19 @@ TEST(breadcrumb_separator_change) {
     vg_breadcrumb_destroy(bc);
 }
 
+TEST(breadcrumb_user_data_not_owned_by_default) {
+    vg_breadcrumb_t *bc = vg_breadcrumb_create();
+    ASSERT_NOT_NULL(bc);
+    char *payload = strdup("payload");
+    ASSERT_NOT_NULL(payload);
+    vg_breadcrumb_push(bc, "A", payload);
+    ASSERT_EQ((int)bc->item_count, 1);
+    ASSERT(!bc->items[0].owns_user_data);
+    vg_breadcrumb_clear(bc);
+    free(payload);
+    vg_breadcrumb_destroy(bc);
+}
+
 //=============================================================================
 // Group D-other — vg_commandpalette clear (new feature)
 //=============================================================================
@@ -677,6 +690,24 @@ TEST(codeeditor_tick_toggles_cursor_visibility) {
     vg_widget_destroy(&ed->base);
 }
 
+TEST(codeeditor_mouse_wheel_scrolls_one_line_per_notch) {
+    vg_codeeditor_t *ed = vg_codeeditor_create(NULL);
+    ASSERT_NOT_NULL(ed);
+    vg_codeeditor_set_text(ed, "one\ntwo\nthree\nfour\nfive\nsix\n");
+    ed->base.width = 320.0f;
+    ed->base.height = ed->line_height * 2.0f;
+    ed->base.measured_width = ed->base.width;
+    ed->base.measured_height = ed->base.height;
+
+    vg_event_t wheel = {0};
+    wheel.type = VG_EVENT_MOUSE_WHEEL;
+    wheel.wheel.delta_y = -1.0f;
+    ASSERT(ed->base.vtable->handle_event(&ed->base, &wheel));
+    ASSERT(ed->scroll_y == ed->line_height);
+
+    vg_widget_destroy(&ed->base);
+}
+
 //=============================================================================
 // Entry Point
 //=============================================================================
@@ -747,6 +778,7 @@ int main(void) {
     RUN(codeeditor_fold_regions_init_zero);
     RUN(codeeditor_extra_cursors_init_zero);
     RUN(codeeditor_tick_toggles_cursor_visibility);
+    RUN(codeeditor_mouse_wheel_scrolls_one_line_per_notch);
 
     printf("\n=== %d passed, %d failed ===\n", g_passed, g_failed);
     return g_failed > 0 ? 1 : 0;

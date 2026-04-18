@@ -849,8 +849,15 @@ void rt_breadcrumb_set_path(void *crumb, rt_string path, rt_string separator) {
         char *token = rt_strtok_r(cpath, csep, &saveptr);
         while (token) {
             char *label = strdup(token);
-            if (label)
+            if (label) {
+                size_t prev_count = data->breadcrumb->item_count;
                 vg_breadcrumb_push(data->breadcrumb, token, label);
+                if (data->breadcrumb->item_count > prev_count) {
+                    data->breadcrumb->items[data->breadcrumb->item_count - 1].owns_user_data = true;
+                } else {
+                    free(label);
+                }
+            }
             token = rt_strtok_r(NULL, csep, &saveptr);
         }
     }
@@ -886,8 +893,15 @@ void rt_breadcrumb_set_items(void *crumb, rt_string items) {
                 *end-- = '\0';
 
             char *label = strdup(token);
-            if (label)
+            if (label) {
+                size_t prev_count = data->breadcrumb->item_count;
                 vg_breadcrumb_push(data->breadcrumb, token, label);
+                if (data->breadcrumb->item_count > prev_count) {
+                    data->breadcrumb->items[data->breadcrumb->item_count - 1].owns_user_data = true;
+                } else {
+                    free(label);
+                }
+            }
             token = rt_strtok_r(NULL, ",", &saveptr);
         }
         free(citems);
@@ -905,7 +919,16 @@ void rt_breadcrumb_add_item(void *crumb, rt_string text, rt_string item_data) {
     char *cdata = rt_string_to_cstr(item_data);
 
     if (ctext) {
-        vg_breadcrumb_push(data->breadcrumb, ctext, cdata ? strdup(cdata) : NULL);
+        char *payload = cdata ? strdup(cdata) : NULL;
+        size_t prev_count = data->breadcrumb->item_count;
+        vg_breadcrumb_push(data->breadcrumb, ctext, payload);
+        if (data->breadcrumb->item_count > prev_count) {
+            if (payload) {
+                data->breadcrumb->items[data->breadcrumb->item_count - 1].owns_user_data = true;
+            }
+        } else if (payload) {
+            free(payload);
+        }
         free(ctext);
     }
     if (cdata)

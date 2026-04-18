@@ -57,16 +57,10 @@
 /// @return Opaque tab bar widget handle, or NULL on failure.
 void *rt_tabbar_new(void *parent) {
     RT_ASSERT_MAIN_THREAD();
-    rt_gui_app_t *app = rt_gui_app_from_handle(parent);
     vg_widget_t *parent_widget = rt_gui_widget_parent_from_handle(parent);
     vg_tabbar_t *tabbar = vg_tabbar_create(parent_widget);
-    if (tabbar) {
-        if (app)
-            rt_gui_activate_app(app);
-        rt_gui_ensure_default_font();
-        if (app && app->default_font)
-            vg_tabbar_set_font(tabbar, app->default_font, app->default_font_size);
-    }
+    if (tabbar)
+        rt_gui_apply_default_font((vg_widget_t *)tabbar);
     return tabbar;
 }
 
@@ -266,16 +260,10 @@ void *rt_splitpane_get_second(void *split) {
 /// @return Opaque code editor widget handle, or NULL on failure.
 void *rt_codeeditor_new(void *parent) {
     RT_ASSERT_MAIN_THREAD();
-    rt_gui_app_t *app = rt_gui_app_from_handle(parent);
     vg_widget_t *parent_widget = rt_gui_widget_parent_from_handle(parent);
     vg_codeeditor_t *editor = vg_codeeditor_create(parent_widget);
-    if (editor && app) {
-        rt_gui_activate_app(app);
-        rt_gui_ensure_default_font();
-        if (app->default_font) {
-            vg_codeeditor_set_font(editor, app->default_font, app->default_font_size);
-        }
-    }
+    if (editor)
+        rt_gui_apply_default_font((vg_widget_t *)editor);
     return editor;
 }
 

@@ -644,7 +644,10 @@ int64_t rt_app_get_monitor_width(void *app) {
         return 0;
     int32_t w = 0, h = 0;
     vgfx_get_monitor_size(gui_app->window, &w, &h);
-    return (int64_t)w;
+    float scale = vgfx_window_get_scale(gui_app->window);
+    if (scale <= 0.0f)
+        scale = 1.0f;
+    return (int64_t)((double)w / (double)scale);
 }
 
 /// @brief Get the monitor height of the app.
@@ -657,7 +660,10 @@ int64_t rt_app_get_monitor_height(void *app) {
         return 0;
     int32_t w = 0, h = 0;
     vgfx_get_monitor_size(gui_app->window, &w, &h);
-    return (int64_t)h;
+    float scale = vgfx_window_get_scale(gui_app->window);
+    if (scale <= 0.0f)
+        scale = 1.0f;
+    return (int64_t)((double)h / (double)scale);
 }
 
 /// @brief Get a dimension of the app window (width, height, or scale factor).
@@ -668,6 +674,23 @@ void rt_app_set_window_size(void *app, int64_t w, int64_t h) {
     rt_gui_app_t *gui_app = (rt_gui_app_t *)app;
     if (!gui_app->window)
         return;
+    float scale = vgfx_window_get_scale(gui_app->window);
+    if (scale <= 0.0f)
+        scale = 1.0f;
+    int32_t max_w = (int32_t)((float)VGFX_MAX_WIDTH / scale);
+    int32_t max_h = (int32_t)((float)VGFX_MAX_HEIGHT / scale);
+    if (max_w < 1)
+        max_w = 1;
+    if (max_h < 1)
+        max_h = 1;
+    if (w > max_w)
+        w = max_w;
+    if (h > max_h)
+        h = max_h;
+    if (w < 1)
+        w = 1;
+    if (h < 1)
+        h = 1;
     vgfx_set_window_size(gui_app->window, (int32_t)w, (int32_t)h);
     // Root sizing is handled by vg_widget_layout(root, phys_w, phys_h) in
     // rt_gui_app_render — do not set root->width/height here with the logical

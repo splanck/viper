@@ -597,16 +597,10 @@ double rt_scrollview_get_scroll_y(void *scroll) {
 /// @return Opaque tree view widget handle, or NULL on failure.
 void *rt_treeview_new(void *parent) {
     RT_ASSERT_MAIN_THREAD();
-    rt_gui_app_t *app = rt_gui_app_from_handle(parent);
     vg_widget_t *parent_widget = rt_gui_widget_parent_from_handle(parent);
     vg_treeview_t *tv = vg_treeview_create(parent_widget);
-    if (tv) {
-        if (app)
-            rt_gui_activate_app(app);
-        rt_gui_ensure_default_font();
-        if (app && app->default_font)
-            vg_treeview_set_font(tv, app->default_font, app->default_font_size);
-    }
+    if (tv)
+        rt_gui_apply_default_font((vg_widget_t *)tv);
     return tv;
 }
 

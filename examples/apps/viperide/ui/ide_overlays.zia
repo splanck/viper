@@ -15,11 +15,14 @@ final ACTION_RESET_FONT_SIZE = 4;
 final ACTION_CLOSE_SETTINGS = 5;
 final ACTION_CLOSE_ABOUT = 6;
 
-final SETTINGS_PANEL_WIDTH = 700;
-final SETTINGS_PANEL_HEIGHT = 430;
+final SETTINGS_PANEL_WIDTH = 860;
+final SETTINGS_PANEL_HEIGHT = 600;
 final ABOUT_PANEL_WIDTH = 520;
 final ABOUT_PANEL_HEIGHT = 270;
-final LABEL_WIDTH = 150;
+final FIELD_LABEL_WIDTH = 220;
+final PANEL_SCREEN_MARGIN = 28;
+final SETTINGS_MIN_WIDTH = 560;
+final SETTINGS_MIN_HEIGHT = 420;
 
 /// @brief Floating in-app overlays for ViperIDE settings and about panels.
 /// @details These replace the old stacked MessageBox/Prompt flow with
@@ -197,80 +200,123 @@ class IdeOverlays {
         settingsPanel.SetVisible(0);
 
         var root = GUI.VBox.New();
-        root.SetPadding(18.0);
-        root.SetSpacing(12.0);
+        root.SetPadding(20.0);
+        root.SetSpacing(14.0);
         settingsPanel.AddChild(root);
 
-        var title = GUI.Label.New(root, "Settings");
+        var title = GUI.Label.New(root, "Editor Settings");
         title.SetMargin(1);
 
         var intro = GUI.Label.New(
             root,
-            "Edit appearance and behavior inline. Nothing here opens another prompt.");
+            "Appearance, editing, and diagnostics preferences for this workspace.");
         intro.SetMargin(1);
 
+        var bodyScroll = GUI.ScrollView.New(root);
+        bodyScroll.SetFlex(1.0);
+
+        var body = GUI.VBox.New();
+        body.SetPadding(4.0);
+        body.SetSpacing(20.0);
+        bodyScroll.AddChild(body);
+
+        var appearanceTitle = GUI.Label.New(body, "Appearance");
+        appearanceTitle.SetMargin(1);
+        GUI.Label.New(
+            body,
+            "Choose the editor font and overall color scheme.");
+
         var fontPathRow = GUI.HBox.New();
-        fontPathRow.SetSpacing(10.0);
-        root.AddChild(fontPathRow);
-        var fontPathLabel = GUI.Label.New(fontPathRow, "Editor font");
-        fontPathLabel.SetSize(LABEL_WIDTH, 0);
-        fontPathInput = GUI.TextInput.New(fontPathRow);
+        fontPathRow.SetSpacing(16.0);
+        body.AddChild(fontPathRow);
+        var fontPathMeta = GUI.VBox.New();
+        fontPathMeta.SetSpacing(4.0);
+        fontPathMeta.SetSize(FIELD_LABEL_WIDTH, 0);
+        fontPathRow.AddChild(fontPathMeta);
+        GUI.Label.New(fontPathMeta, "Editor font");
+        GUI.Label.New(
+            fontPathMeta,
+            "Optional .ttf or .ttc file for the code editor.");
+        var fontPathControls = GUI.VBox.New();
+        fontPathControls.SetSpacing(8.0);
+        fontPathControls.SetFlex(1.0);
+        fontPathRow.AddChild(fontPathControls);
+        fontPathInput = GUI.TextInput.New(fontPathControls);
         fontPathInput.SetFlex(1.0);
-        fontPathInput.SetPlaceholder("Leave blank for the system default");
-        browseFontButton = GUI.Button.New(fontPathRow, "Browse...");
+        fontPathInput.SetPlaceholder("Built-in editor font");
+        var fontPathButtons = GUI.HBox.New();
+        fontPathButtons.SetSpacing(10.0);
+        fontPathControls.AddChild(fontPathButtons);
+        browseFontButton = GUI.Button.New(fontPathButtons, "Choose Font...");
         browseFontButton.SetStyle(2);
-        useSystemFontButton = GUI.Button.New(fontPathRow, "System");
+        useSystemFontButton = GUI.Button.New(fontPathButtons, "Use Default");
         useSystemFontButton.SetStyle(2);
 
-        var fontSizeRow = GUI.HBox.New();
-        fontSizeRow.SetSpacing(10.0);
-        root.AddChild(fontSizeRow);
-        var fontSizeLabel = GUI.Label.New(fontSizeRow, "Font size");
-        fontSizeLabel.SetSize(LABEL_WIDTH, 0);
-        fontSizeSpinner = GUI.Spinner.New(fontSizeRow);
+        var editorMetricsRow = GUI.HBox.New();
+        editorMetricsRow.SetSpacing(18.0);
+        body.AddChild(editorMetricsRow);
+
+        var fontSizeGroup = GUI.VBox.New();
+        fontSizeGroup.SetSpacing(8.0);
+        fontSizeGroup.SetFlex(1.0);
+        editorMetricsRow.AddChild(fontSizeGroup);
+        GUI.Label.New(fontSizeGroup, "Font size");
+        GUI.Label.New(fontSizeGroup, "Point size used by labels and editors.");
+        var fontSizeControls = GUI.HBox.New();
+        fontSizeControls.SetSpacing(10.0);
+        fontSizeGroup.AddChild(fontSizeControls);
+        fontSizeSpinner = GUI.Spinner.New(fontSizeControls);
         fontSizeSpinner.SetRange(6.0, 32.0);
         fontSizeSpinner.SetStep(1.0);
         fontSizeSpinner.SetDecimals(0);
         fontSizeSpinner.SetSize(120, 0);
-        resetFontSizeButton = GUI.Button.New(fontSizeRow, "Reset");
+        resetFontSizeButton = GUI.Button.New(fontSizeControls, "Restore Default");
         resetFontSizeButton.SetStyle(2);
 
-        var tabWidthRow = GUI.HBox.New();
-        tabWidthRow.SetSpacing(10.0);
-        root.AddChild(tabWidthRow);
-        var tabWidthLabel = GUI.Label.New(tabWidthRow, "Tab width");
-        tabWidthLabel.SetSize(LABEL_WIDTH, 0);
-        tabWidthSpinner = GUI.Spinner.New(tabWidthRow);
+        var tabWidthGroup = GUI.VBox.New();
+        tabWidthGroup.SetSpacing(8.0);
+        tabWidthGroup.SetFlex(1.0);
+        editorMetricsRow.AddChild(tabWidthGroup);
+        GUI.Label.New(tabWidthGroup, "Tab size");
+        GUI.Label.New(tabWidthGroup, "How many columns a hard tab should occupy.");
+        tabWidthSpinner = GUI.Spinner.New(tabWidthGroup);
         tabWidthSpinner.SetRange(2.0, 8.0);
         tabWidthSpinner.SetStep(1.0);
         tabWidthSpinner.SetDecimals(0);
         tabWidthSpinner.SetSize(120, 0);
 
         var themeRow = GUI.HBox.New();
-        themeRow.SetSpacing(10.0);
-        root.AddChild(themeRow);
-        var themeLabel = GUI.Label.New(themeRow, "Theme");
-        themeLabel.SetSize(LABEL_WIDTH, 0);
+        themeRow.SetSpacing(16.0);
+        body.AddChild(themeRow);
+        var themeMeta = GUI.VBox.New();
+        themeMeta.SetSpacing(4.0);
+        themeMeta.SetSize(FIELD_LABEL_WIDTH, 0);
+        themeRow.AddChild(themeMeta);
+        GUI.Label.New(themeMeta, "Color theme");
+        GUI.Label.New(themeMeta, "Switch the shell between dark and light surfaces.");
         themeDropdown = GUI.Dropdown.New(themeRow);
         themeDropdown.SetFlex(1.0);
         themeDropdown.AddItem("Dark");
         themeDropdown.AddItem("Light");
 
-        var togglesTitle = GUI.Label.New(root, "Editor behavior");
+        var togglesTitle = GUI.Label.New(body, "Editing");
         togglesTitle.SetMargin(1);
+        GUI.Label.New(
+            body,
+            "These options control navigation, diagnostics, and code structure aids.");
 
-        minimapCheck = GUI.Checkbox.New(root, "Show minimap");
-        autoCheckCheck = GUI.Checkbox.New(root, "Live diagnostics while typing");
-        codeFoldingCheck = GUI.Checkbox.New(root, "Enable code folding");
+        minimapCheck = GUI.Checkbox.New(body, "Show the minimap");
+        autoCheckCheck = GUI.Checkbox.New(body, "Run diagnostics while typing");
+        codeFoldingCheck = GUI.Checkbox.New(body, "Enable code folding");
 
         var footer = GUI.HBox.New();
         footer.SetSpacing(10.0);
         root.AddChild(footer);
         var footerSpacer = GUI.Label.New(footer, "");
         footerSpacer.SetFlex(1.0);
-        closeSettingsButton = GUI.Button.New(footer, "Close");
+        closeSettingsButton = GUI.Button.New(footer, "Cancel");
         closeSettingsButton.SetStyle(2);
-        applySettingsButton = GUI.Button.New(footer, "Apply");
+        applySettingsButton = GUI.Button.New(footer, "Save Changes");
         applySettingsButton.SetStyle(1);
     }
 
@@ -312,10 +358,21 @@ class IdeOverlays {
         var rootH = shell.app.GetHeight();
         if rootW <= 0 { rootW = 1280; }
         if rootH <= 0 { rootH = 800; }
-        var x = (rootW - SETTINGS_PANEL_WIDTH) / 2;
-        var y = (rootH - SETTINGS_PANEL_HEIGHT) / 2;
-        if x < 24 { x = 24; }
-        if y < 24 { y = 24; }
+        var maxW = rootW - (PANEL_SCREEN_MARGIN * 2);
+        var maxH = rootH - (PANEL_SCREEN_MARGIN * 2);
+        if maxW <= 0 { maxW = rootW; }
+        if maxH <= 0 { maxH = rootH; }
+        var panelW = SETTINGS_PANEL_WIDTH;
+        var panelH = SETTINGS_PANEL_HEIGHT;
+        if panelW > maxW { panelW = maxW; }
+        if panelH > maxH { panelH = maxH; }
+        if panelW < SETTINGS_MIN_WIDTH and maxW >= SETTINGS_MIN_WIDTH { panelW = SETTINGS_MIN_WIDTH; }
+        if panelH < SETTINGS_MIN_HEIGHT and maxH >= SETTINGS_MIN_HEIGHT { panelH = SETTINGS_MIN_HEIGHT; }
+        settingsPanel.SetSize(panelW, panelH);
+        var x = (rootW - panelW) / 2;
+        var y = (rootH - panelH) / 2;
+        if x < PANEL_SCREEN_MARGIN { x = PANEL_SCREEN_MARGIN; }
+        if y < PANEL_SCREEN_MARGIN { y = PANEL_SCREEN_MARGIN; }
         settingsPanel.SetPosition(x, y);
     }
 
@@ -325,10 +382,19 @@ class IdeOverlays {
         var rootH = shell.app.GetHeight();
         if rootW <= 0 { rootW = 1280; }
         if rootH <= 0 { rootH = 800; }
-        var x = (rootW - ABOUT_PANEL_WIDTH) / 2;
-        var y = (rootH - ABOUT_PANEL_HEIGHT) / 2;
-        if x < 24 { x = 24; }
-        if y < 24 { y = 24; }
+        var panelW = ABOUT_PANEL_WIDTH;
+        var panelH = ABOUT_PANEL_HEIGHT;
+        if panelW > rootW - (PANEL_SCREEN_MARGIN * 2) {
+            panelW = rootW - (PANEL_SCREEN_MARGIN * 2);
+        }
+        if panelH > rootH - (PANEL_SCREEN_MARGIN * 2) {
+            panelH = rootH - (PANEL_SCREEN_MARGIN * 2);
+        }
+        aboutPanel.SetSize(panelW, panelH);
+        var x = (rootW - panelW) / 2;
+        var y = (rootH - panelH) / 2;
+        if x < PANEL_SCREEN_MARGIN { x = PANEL_SCREEN_MARGIN; }
+        if y < PANEL_SCREEN_MARGIN { y = PANEL_SCREEN_MARGIN; }
         aboutPanel.SetPosition(x, y);
     }
 }

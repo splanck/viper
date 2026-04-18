@@ -288,7 +288,8 @@ class AppShell {
 
         // Breadcrumb (file path, shown below the tab bar)
         breadcrumb = GUI.Breadcrumb.New(editorArea);
-        breadcrumb.SetSeparator("/");
+        breadcrumb.SetSeparator(" / ");
+        breadcrumb.SetMaxItems(6);
         breadcrumb.SetVisible(0);
 
         // Find bar inside editor area (hidden until Ctrl+F)
@@ -424,8 +425,23 @@ class AppShell {
     expose func CenterAndSize(scalePct: Integer) {
         var mw = app.GetMonitorWidth();
         var mh = app.GetMonitorHeight();
+        if mw <= 0 { mw = 1440; }
+        if mh <= 0 { mh = 900; }
         var w = (mw * scalePct) / 100;
         var h = (mh * scalePct) / 100;
+        var edgeGap = 96;
+        var maxW = 1540;
+        var maxH = 980;
+        if maxW > mw - edgeGap { maxW = mw - edgeGap; }
+        if maxH > mh - edgeGap { maxH = mh - edgeGap; }
+        if maxW > 0 and w > maxW { w = maxW; }
+        if maxH > 0 and h > maxH { h = maxH; }
+        if w > mw - 32 { w = mw - 32; }
+        if h > mh - 32 { h = mh - 32; }
+        if mw > 760 and w < 720 { w = 720; }
+        if mh > 560 and h < 520 { h = 520; }
+        if w < 1 { w = 1; }
+        if h < 1 { h = 1; }
         app.SetWindowSize(w, h);
         app.SetPosition((mw - w) / 2, (mh - h) / 2);
     }

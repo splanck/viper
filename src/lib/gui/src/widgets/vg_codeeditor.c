@@ -34,6 +34,7 @@
 #define CURSOR_BLINK_RATE 0.5f
 #define CODEEDITOR_SCROLLBAR_WIDTH 12.0f
 #define CODEEDITOR_FOLD_GUTTER_MIN_WIDTH 14.0f
+#define CODEEDITOR_MOUSE_WHEEL_LINES 1.0f
 
 //=============================================================================
 // Forward Declarations
@@ -2563,7 +2564,7 @@ static bool codeeditor_handle_event(vg_widget_t *widget, vg_event_t *event) {
         }
 
         case VG_EVENT_MOUSE_WHEEL:
-            editor->scroll_y -= event->wheel.delta_y * editor->line_height * 3;
+            editor->scroll_y -= event->wheel.delta_y * editor->line_height * CODEEDITOR_MOUSE_WHEEL_LINES;
             codeeditor_clamp_scroll(editor, widget);
             widget->needs_paint = true;
             return true;

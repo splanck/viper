@@ -49,8 +49,8 @@ static int rt_messagebox_label_is_cancel(const char *label) {
 static void rt_messagebox_prepare_modal(rt_gui_app_t *app, vg_dialog_t *dlg) {
     rt_gui_activate_app(app);
     rt_gui_ensure_default_font();
-    if (app && app->default_font)
-        vg_dialog_set_font(dlg, app->default_font, app->default_font_size);
+    if (dlg)
+        rt_gui_apply_default_font((vg_widget_t *)dlg);
     if (dlg && dlg->min_width < 360)
         vg_dialog_set_size_constraints(dlg, 360, dlg->min_height, 720, dlg->max_height);
     vg_dialog_set_modal(dlg, true, app ? app->root : NULL);
@@ -206,8 +206,7 @@ rt_string rt_messagebox_prompt(rt_string title, rt_string message) {
     }
 
     // Apply app font to dialog
-    if (app->default_font)
-        vg_dialog_set_font(dlg, app->default_font, app->default_font_size);
+    rt_gui_apply_default_font((vg_widget_t *)dlg);
 
     // Create the text input and attach it as dialog content.
     vg_textinput_t *input = vg_textinput_create(NULL);
@@ -216,8 +215,7 @@ rt_string rt_messagebox_prompt(rt_string title, rt_string message) {
         return rt_str_empty();
     }
 
-    if (app->default_font)
-        vg_textinput_set_font(input, app->default_font, app->default_font_size);
+    rt_gui_apply_default_font((vg_widget_t *)input);
     input->base.constraints.min_width = 240.0f;
     input->base.constraints.preferred_width = 360.0f;
     vg_textinput_set_placeholder(input, "Enter a value");

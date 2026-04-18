@@ -336,6 +336,7 @@ typedef struct vg_breadcrumb_item {
     char *tooltip;   ///< Tooltip text
     vg_icon_t icon;  ///< Optional icon
     void *user_data; ///< User data
+    bool owns_user_data; ///< Free user_data when the item is destroyed
 
     // Dropdown items
     vg_breadcrumb_dropdown_t *dropdown_items;

@@ -41,6 +41,7 @@ func main() {
     var tabs = new editor_tabs.EditorTabs();
 
     shell.Build("ViperIDE Smoke", 960, 640);
+    shell.CenterAndSize(72);
     engine.Setup(shell.editorRow);
 
     shell.minimap = GUI.Minimap.New(shell.editorRow);

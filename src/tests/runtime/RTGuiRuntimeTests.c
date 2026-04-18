@@ -167,6 +167,29 @@ static void test_default_font_is_applied_to_text_widgets(void) {
     printf("test_default_font_is_applied_to_text_widgets: PASSED\n");
 }
 
+static void test_default_font_is_applied_to_complex_text_widgets(void) {
+    rt_gui_app_t app;
+    reset_fake_app(&app);
+    app.default_font = (vg_font_t *)0x1;
+    app.default_font_size = 17.0f;
+    app.root = vg_widget_create(VG_WIDGET_CONTAINER);
+    app.root->user_data = &app;
+    rt_gui_activate_app(&app);
+
+    vg_treeview_t *tree = (vg_treeview_t *)rt_treeview_new(app.root);
+    vg_tabbar_t *tabbar = (vg_tabbar_t *)rt_tabbar_new(app.root);
+    vg_codeeditor_t *editor = (vg_codeeditor_t *)rt_codeeditor_new(app.root);
+
+    assert(tree && tree->font == app.default_font && tree->font_size == app.default_font_size);
+    assert(tabbar && tabbar->font == app.default_font &&
+           tabbar->font_size == app.default_font_size);
+    assert(editor && editor->font == app.default_font &&
+           editor->font_size == app.default_font_size);
+
+    cleanup_fake_app(&app);
+    printf("test_default_font_is_applied_to_complex_text_widgets: PASSED\n");
+}
+
 static void test_dropdown_placeholder_is_copied(void) {
     vg_dropdown_t *dropdown = vg_dropdown_create(NULL);
     char placeholder[] = "Choose item";
@@ -558,6 +581,7 @@ int main(void) {
     test_file_drop_is_app_scoped();
     test_statusbar_click_is_edge_triggered();
     test_default_font_is_applied_to_text_widgets();
+    test_default_font_is_applied_to_complex_text_widgets();
     test_dropdown_placeholder_is_copied();
     test_dialog_content_is_parented();
     test_notification_cleanup_runs_for_manual_dismiss();

@@ -702,6 +702,12 @@ void vg_notification_manager_update(vg_notification_manager_t *mgr, uint64_t now
         if (!notif)
             continue;
 
+        if (notif->dismissed && notif->created_at == 0 && notif->dismiss_started_at == 0) {
+            notif->opacity = 0.0f;
+            notif->slide_progress = 0.0f;
+            continue;
+        }
+
         if (notif->created_at == 0) {
             notif->created_at = now_ms ? now_ms : 1;
             needs_repaint = true;

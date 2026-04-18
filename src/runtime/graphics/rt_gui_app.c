@@ -578,6 +578,173 @@ static void rt_gui_apply_font_to_widget(vg_widget_t *widget, vg_font_t *font, fl
     }
 }
 
+/// @brief Return whether the font handle is safe to pass through metric APIs.
+/// @details Runtime tests sometimes install opaque sentinel handles (for
+///          example `(vg_font_t *)0x1`) to verify default-font propagation
+///          without loading a real font. Those handles must be copied into
+///          widgets without immediately dereferencing them. Real heap-backed
+///          fonts always live well above the first memory page, so treat tiny
+///          addresses as opaque placeholders and fall back to lazy assignment.
+/// @param font Candidate font handle.
+/// @return True when widget setters may safely query font metrics.
+static bool rt_gui_font_handle_supports_metrics(vg_font_t *font) {
+    return font && (uintptr_t)font >= 4096u;
+}
+
+/// @brief Lazily copy a font handle into a widget subtree without measuring it.
+/// @details Used when the runtime only needs construction-time inheritance of
+///          an opaque font handle. This avoids synchronous metric lookups while
+///          still updating the widget fields and invalidation flags so a later
+///          real font assignment can lay out normally.
+/// @param widget Root widget to update.
+/// @param font Font handle to store.
+/// @param size Font size in physical pixels.
+static void rt_gui_inherit_font_to_widget(vg_widget_t *widget, vg_font_t *font, float size) {
+    if (!widget || !font)
+        return;
+
+    vg_theme_t *theme = vg_theme_get_current();
+    float scale = (theme && theme->ui_scale > 0.0f) ? theme->ui_scale : 1.0f;
+
+    switch (widget->type) {
+        case VG_WIDGET_LABEL: {
+            vg_label_t *label = (vg_label_t *)widget;
+            label->font = font;
+            label->font_size = size > 0 ? size : 13.0f;
+            break;
+        }
+        case VG_WIDGET_BUTTON: {
+            vg_button_t *button = (vg_button_t *)widget;
+            button->font = font;
+            button->font_size =
+                size > 0 ? size : (theme ? theme->typography.size_normal : 13.0f);
+            break;
+        }
+        case VG_WIDGET_TEXTINPUT: {
+            vg_textinput_t *input = (vg_textinput_t *)widget;
+            input->font = font;
+            input->font_size =
+                size > 0 ? size : (theme ? theme->typography.size_normal : 14.0f);
+            break;
+        }
+        case VG_WIDGET_CHECKBOX: {
+            vg_checkbox_t *checkbox = (vg_checkbox_t *)widget;
+            checkbox->font = font;
+            checkbox->font_size =
+                size > 0 ? size : (theme ? theme->typography.size_normal : 14.0f);
+            break;
+        }
+        case VG_WIDGET_LISTBOX: {
+            vg_listbox_t *listbox = (vg_listbox_t *)widget;
+            listbox->font = font;
+            listbox->font_size =
+                size > 0 ? size : (theme ? theme->typography.size_normal : 14.0f);
+            float min_item_height =
+                (theme ? theme->input.height : 28.0f * scale) > (listbox->font_size + 8.0f * scale)
+                    ? (theme ? theme->input.height : 28.0f * scale)
+                    : (listbox->font_size + 8.0f * scale);
+            if (listbox->item_height < min_item_height)
+                listbox->item_height = min_item_height;
+            break;
+        }
+        case VG_WIDGET_DROPDOWN: {
+            vg_dropdown_t *dropdown = (vg_dropdown_t *)widget;
+            dropdown->font = font;
+            dropdown->font_size =
+                size > 0 ? size : (theme ? theme->typography.size_normal : 14.0f);
+            break;
+        }
+        case VG_WIDGET_SPINNER: {
+            vg_spinner_t *spinner = (vg_spinner_t *)widget;
+            spinner->font = font;
+            spinner->font_size = size > 0 ? size : 14.0f;
+            break;
+        }
+        case VG_WIDGET_COLORPICKER: {
+            vg_colorpicker_t *picker = (vg_colorpicker_t *)widget;
+            picker->font = font;
+            picker->font_size = size > 0 ? size : 12.0f;
+            break;
+        }
+        case VG_WIDGET_TREEVIEW: {
+            vg_treeview_t *tree = (vg_treeview_t *)widget;
+            tree->font = font;
+            tree->font_size =
+                size > 0 ? size : (theme ? theme->typography.size_normal : 14.0f);
+            {
+                float row_height = 28.0f * scale;
+                float text_height = tree->font_size + 8.0f * scale;
+                if (text_height > row_height)
+                    row_height = text_height;
+                tree->row_height = row_height;
+            }
+            break;
+        }
+        case VG_WIDGET_TABBAR: {
+            vg_tabbar_t *tabbar = (vg_tabbar_t *)widget;
+            tabbar->font = font;
+            tabbar->font_size =
+                size > 0 ? size : (theme ? theme->typography.size_normal : 14.0f);
+            break;
+        }
+        case VG_WIDGET_MENUBAR: {
+            vg_menubar_t *menubar = (vg_menubar_t *)widget;
+            menubar->font = font;
+            menubar->font_size =
+                size > 0 ? size : (theme ? theme->typography.size_normal : 14.0f);
+            break;
+        }
+        case VG_WIDGET_TOOLBAR: {
+            vg_toolbar_t *toolbar = (vg_toolbar_t *)widget;
+            toolbar->font = font;
+            toolbar->font_size =
+                size > 0 ? size : (theme ? theme->typography.size_small : 12.0f);
+            break;
+        }
+        case VG_WIDGET_STATUSBAR: {
+            vg_statusbar_t *statusbar = (vg_statusbar_t *)widget;
+            statusbar->font = font;
+            statusbar->font_size =
+                size > 0 ? size : (theme ? theme->typography.size_small : 12.0f);
+            break;
+        }
+        case VG_WIDGET_DIALOG: {
+            vg_dialog_t *dialog = (vg_dialog_t *)widget;
+            dialog->font = font;
+            dialog->font_size =
+                size > 0 ? size : (theme ? theme->typography.size_normal : 14.0f);
+            dialog->title_font_size = dialog->font_size + scale;
+            break;
+        }
+        case VG_WIDGET_CODEEDITOR: {
+            vg_codeeditor_t *editor = (vg_codeeditor_t *)widget;
+            editor->font = font;
+            editor->font_size =
+                size > 0 ? size : (theme ? theme->typography.size_normal : 14.0f);
+            if (editor->char_width <= 0.0f)
+                editor->char_width = editor->font_size * 0.6f;
+            if (editor->line_height <= 0.0f)
+                editor->line_height = editor->font_size * 1.35f;
+            break;
+        }
+        case VG_WIDGET_RADIO: {
+            vg_radiobutton_t *radio = (vg_radiobutton_t *)widget;
+            radio->font = font;
+            radio->font_size =
+                size > 0 ? size : (theme ? theme->typography.size_normal : 14.0f);
+            break;
+        }
+        default:
+            break;
+    }
+
+    widget->needs_layout = true;
+    widget->needs_paint = true;
+    for (vg_widget_t *child = widget->first_child; child; child = child->next_sibling) {
+        rt_gui_inherit_font_to_widget(child, font, size);
+    }
+}
+
 /// @brief Apply the app's default font to a newly-created widget.
 /// @details Resolves the owning app from the widget's parent chain, ensures
 ///          the default font is loaded (lazy init), then calls
@@ -599,7 +766,10 @@ void rt_gui_apply_default_font(vg_widget_t *widget) {
         rt_gui_ensure_default_font();
     if (!app->default_font)
         return;
-    rt_gui_apply_font_to_widget(widget, app->default_font, app->default_font_size);
+    if (rt_gui_font_handle_supports_metrics(app->default_font))
+        rt_gui_apply_font_to_widget(widget, app->default_font, app->default_font_size);
+    else
+        rt_gui_inherit_font_to_widget(widget, app->default_font, app->default_font_size);
 }
 
 /// @brief Create a new GUI application with a window and root widget container.

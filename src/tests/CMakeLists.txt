@@ -795,6 +795,7 @@ add_test(NAME zia_smoke_viperide
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/apps/viperide")
 set_tests_properties(zia_smoke_viperide PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
+        FAIL_REGULAR_EXPRESSION "Framebuffer resize dimensions exceed maximum"
         LABELS "zia;smoke;requires_display"
         TIMEOUT 30)
 

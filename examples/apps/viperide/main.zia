@@ -71,7 +71,7 @@ bind Str = Viper.String;
 
 final WIN_WIDTH = 1280;
 final WIN_HEIGHT = 800;
-final WINDOW_SIZE_PERCENT = 80;  // % of monitor size on first launch.
+final WINDOW_SIZE_PERCENT = 72;  // % of monitor size on first launch.
 
 /// @brief Program entry point. Constructs the IDE and runs the main loop.
 func main() {
