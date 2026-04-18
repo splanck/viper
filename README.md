@@ -11,7 +11,7 @@
 
 **Viper** is an IL-first compiler toolchain and virtual machine for building platform-native applications. Programs compile through a strongly typed, SSA-based intermediate language (**[Viper IL](docs/il-guide.md)**) that can be executed by the [VM](docs/vm.md) or compiled directly to native machine code.
 
-**[Zia](docs/zia-reference.md)** is Viper's flagship language — a modern, statically typed language with classes, generics, enums, lambdas, modules, and pattern matching, designed for building real applications on the Viper platform. A **[BASIC](docs/basic-reference.md)** frontend is also included for educational use and rapid prototyping.
+**[Zia](docs/zia-reference.md)** is Viper's flagship language — a modern, statically typed language with classes, generics, enums, lambdas, modules, and pattern matching, designed for building real applications and games on the Viper platform. A **[BASIC](docs/basic-reference.md)** frontend is also included for educational use and rapid prototyping.
 
 > **Status:** Active development. APIs, IL, and tooling are still evolving and are subject to change. Ready for experimentation and game prototyping, but not production-ready.
 
