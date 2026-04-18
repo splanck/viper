@@ -14,9 +14,11 @@
 #include "rt_input.h"
 #include "rt_internal.h"
 #include "rt_seq.h"
+#include "rt_string.h"
 
 #include <cassert>
 #include <cstdio>
+#include <cstring>
 
 extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
@@ -246,6 +248,24 @@ static void test_text_input() {
     printf("test_text_input: PASSED\n");
 }
 
+static void test_text_input_utf8() {
+    rt_keyboard_init();
+    rt_keyboard_begin_frame();
+    rt_keyboard_enable_text_input();
+
+    rt_keyboard_text_input(0x00E9);   // e acute
+    rt_keyboard_text_input(0x1F642);  // slightly smiling face
+
+    rt_string text = rt_keyboard_get_text();
+    assert(text != nullptr);
+    assert(rt_str_len(text) == 6);
+    assert(std::strcmp(rt_string_cstr(text), "\xC3\xA9\xF0\x9F\x99\x82") == 0);
+
+    rt_keyboard_disable_text_input();
+
+    printf("test_text_input_utf8: PASSED\n");
+}
+
 // ============================================================================
 // Boundary Cases
 // ============================================================================
@@ -280,6 +300,7 @@ int main() {
     test_caps_lock_query();
     test_canvas_detach();
     test_text_input();
+    test_text_input_utf8();
     test_boundary_cases();
 
     printf("\nAll tests passed!\n");

@@ -239,14 +239,29 @@ void rt_keychord_update(void *obj) {
                 e->triggered = 1;
         } else /* KC_TYPE_COMBO */
         {
+            int8_t wrong_order_pressed = 0;
+
             /* Check for timeout */
             if (e->combo_index > 0 &&
                 (kc->frame_counter - e->last_match_frame) > e->window_frames) {
                 e->combo_index = 0;
             }
 
-            /* Check if the next expected key was pressed this frame */
             if (e->combo_index < e->key_count) {
+                int64_t expected_key = e->keys[e->combo_index];
+                int64_t k;
+                for (k = 0; k < e->key_count; k++) {
+                    int64_t key = e->keys[k];
+                    if (key != expected_key && rt_keyboard_was_pressed(key)) {
+                        e->combo_index = 0;
+                        wrong_order_pressed = 1;
+                        break;
+                    }
+                }
+            }
+
+            /* Check if the next expected key was pressed this frame */
+            if (!wrong_order_pressed && e->combo_index < e->key_count) {
                 int64_t expected_key = e->keys[e->combo_index];
                 if (rt_keyboard_was_pressed(expected_key)) {
                     e->combo_index++;

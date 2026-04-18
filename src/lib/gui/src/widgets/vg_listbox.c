@@ -203,12 +203,15 @@ static void listbox_arrange(vg_widget_t *widget, float x, float y, float w, floa
 
 static void listbox_paint(vg_widget_t *widget, void *canvas) {
     vg_listbox_t *lb = (vg_listbox_t *)widget;
+    vg_theme_t *theme = vg_theme_get_current();
     vgfx_window_t win = (vgfx_window_t)canvas;
     int32_t x = (int32_t)widget->x, y = (int32_t)widget->y;
     int32_t w = (int32_t)widget->width, h = (int32_t)widget->height;
 
     /* Background */
     vgfx_fill_rect(win, x, y, w, h, lb->bg_color);
+    if (w > 2)
+        vgfx_fill_rect(win, x + 1, y + 1, w - 2, 1, vg_color_lighten(lb->bg_color, 0.05f));
     if (w <= 0 || h <= 0)
         return;
     vgfx_set_clip(win, x, y, w, h);
@@ -230,7 +233,10 @@ static void listbox_paint(vg_widget_t *widget, void *canvas) {
             if (item_y >= widget->y + widget->height)
                 break;
 
-            uint32_t bg = lb->item_bg;
+            uint32_t bg =
+                ((index & 1u) == 0u)
+                    ? lb->item_bg
+                    : vg_color_blend(lb->item_bg, theme->colors.bg_secondary, 0.35f);
             if (index == lb->selected_index)
                 bg = lb->selected_bg;
             else if (index == lb->hovered_index)
@@ -239,6 +245,9 @@ static void listbox_paint(vg_widget_t *widget, void *canvas) {
             int32_t iy = (int32_t)item_y;
             int32_t ih32 = (int32_t)ih;
             vgfx_fill_rect(win, x + 1, iy, w - 2, ih32, bg);
+            if (index == lb->selected_index)
+                vgfx_fill_rect(win, x + 1, iy, 3, ih32, theme->colors.accent_primary);
+            vgfx_fill_rect(win, x + 1, iy + ih32 - 1, w - 2, 1, theme->colors.border_secondary);
 
             if (lb->visible_cache[i].text && lb->font) {
                 float ty = item_y + ih * 0.7f;
@@ -254,10 +263,12 @@ static void listbox_paint(vg_widget_t *widget, void *canvas) {
             item_y += ih;
         }
     } else {
+        int row_index = 0;
         for (vg_listbox_item_t *item = lb->first_item; item; item = item->next) {
             float item_bottom = item_y + ih;
             if (item_bottom < widget->y) {
                 item_y += ih;
+                row_index++;
                 continue;
             }
             if (item_y > widget->y + widget->height)
@@ -269,11 +280,15 @@ static void listbox_paint(vg_widget_t *widget, void *canvas) {
             else if (item == lb->hovered)
                 bg = lb->hover_bg;
             else
-                bg = lb->item_bg;
+                bg = (row_index & 1) == 0 ? lb->item_bg
+                                          : vg_color_blend(lb->item_bg, theme->colors.bg_secondary, 0.35f);
 
             int32_t iy = (int32_t)item_y;
             int32_t ih32 = (int32_t)ih;
             vgfx_fill_rect(win, x + 1, iy, w - 2, ih32, bg);
+            if (item == lb->selected)
+                vgfx_fill_rect(win, x + 1, iy, 3, ih32, theme->colors.accent_primary);
+            vgfx_fill_rect(win, x + 1, iy + ih32 - 1, w - 2, 1, theme->colors.border_secondary);
 
             if (item->text && lb->font) {
                 float ty = item_y + ih * 0.7f;
@@ -287,6 +302,7 @@ static void listbox_paint(vg_widget_t *widget, void *canvas) {
             }
 
             item_y += ih;
+            row_index++;
         }
     }
 
@@ -481,13 +497,14 @@ vg_listbox_t *vg_listbox_create(vg_widget_t *parent) {
     float _lb_s = _lb_theme && _lb_theme->ui_scale > 0.0f ? _lb_theme->ui_scale : 1.0f;
     listbox->item_height = (int)(24 * _lb_s);
     listbox->font_size = 14.0f * _lb_s;
-    listbox->bg_color = 0xFF1E1E1E;
-    listbox->item_bg = 0xFF1E1E1E;
-    listbox->selected_bg = 0xFF094771;
-    listbox->hover_bg = 0xFF2A2D2E;
-    listbox->text_color = 0xFFCCCCCC;
-    listbox->border_color = 0xFF3C3C3C;
+    listbox->bg_color = _lb_theme->colors.bg_primary;
+    listbox->item_bg = _lb_theme->colors.bg_primary;
+    listbox->selected_bg = _lb_theme->colors.bg_selected;
+    listbox->hover_bg = _lb_theme->colors.bg_hover;
+    listbox->text_color = _lb_theme->colors.fg_primary;
+    listbox->border_color = _lb_theme->colors.border_primary;
     listbox->selected_index = SIZE_MAX;
+    listbox->prev_selected_index = SIZE_MAX;
     listbox->hovered_index = SIZE_MAX;
 
     if (parent) {
@@ -619,6 +636,7 @@ void vg_listbox_set_virtual_mode(vg_listbox_t *listbox,
     listbox->virtual_mode = enabled;
     listbox->total_item_count = total_count;
     listbox->hovered_index = SIZE_MAX;
+    listbox->prev_selected_index = SIZE_MAX;
     if (item_height > 0) {
         listbox->item_height = item_height;
     }
@@ -629,6 +647,7 @@ void vg_listbox_set_virtual_mode(vg_listbox_t *listbox,
         listbox->selection_bitmap = calloc(total_count, sizeof(bool));
         listbox->selection_bitmap_size = total_count;
         listbox->selected_index = SIZE_MAX; // None selected
+        listbox->prev_selected_index = SIZE_MAX;
 
         // Allocate visible-item cache (capped at 64 — enough for one viewport page)
         size_t cap = total_count < 64 ? total_count : 64;
@@ -644,6 +663,7 @@ void vg_listbox_set_virtual_mode(vg_listbox_t *listbox,
         listbox->selection_bitmap = NULL;
         listbox->selection_bitmap_size = 0;
         listbox->selected_index = SIZE_MAX;
+        listbox->prev_selected_index = SIZE_MAX;
     }
 
     // Reset scroll and invalidate
@@ -688,6 +708,7 @@ void vg_listbox_set_total_count(vg_listbox_t *listbox, size_t count) {
     // Reset selection if out of bounds
     if (listbox->selected_index >= count) {
         listbox->selected_index = SIZE_MAX;
+        listbox->prev_selected_index = SIZE_MAX;
     }
 
     // Clamp scroll position

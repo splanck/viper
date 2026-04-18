@@ -11,7 +11,9 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_action.h"
+#include "rt_box.h"
 #include "rt_input.h"
+#include "rt_seq.h"
 #include "rt_string.h"
 
 #include <cassert>
@@ -20,6 +22,14 @@
 // Helper to create an rt_string from a C string
 static rt_string make_str(const char *s) {
     return rt_string_from_bytes(s, strlen(s));
+}
+
+static void *make_key_seq(const int64_t *keys, int count) {
+    void *seq = rt_seq_new();
+    for (int i = 0; i < count; i++) {
+        rt_seq_push(seq, rt_box_i64(keys[i]));
+    }
+    return seq;
 }
 
 static void sim_key_frame(const int64_t *press_keys, const int64_t *release_keys) {
@@ -302,6 +312,53 @@ static void test_action_edge_state_requires_update() {
     rt_action_clear();
 }
 
+static void test_chord_release_edge_state() {
+    rt_keyboard_init();
+    rt_action_init();
+    rt_action_clear();
+
+    rt_string save = make_str("save");
+    assert(rt_action_define(save) == 1);
+
+    int64_t chord_keys[] = {VIPER_KEY_LCTRL, VIPER_KEY_S};
+    assert(rt_action_bind_chord(make_str("save"), make_key_seq(chord_keys, 2)) == 1);
+    assert(rt_action_chord_count(make_str("save")) == 1);
+
+    int64_t press_ctrl[] = {VIPER_KEY_LCTRL, -1};
+    sim_key_frame(press_ctrl, NULL);
+    rt_action_update();
+    assert(rt_action_pressed(make_str("save")) == 0);
+    assert(rt_action_held(make_str("save")) == 0);
+    assert(rt_action_released(make_str("save")) == 0);
+
+    int64_t press_s[] = {VIPER_KEY_S, -1};
+    sim_key_frame(press_s, NULL);
+    rt_action_update();
+    assert(rt_action_pressed(make_str("save")) == 1);
+    assert(rt_action_held(make_str("save")) == 1);
+    assert(rt_action_released(make_str("save")) == 0);
+
+    sim_key_frame(NULL, NULL);
+    rt_action_update();
+    assert(rt_action_pressed(make_str("save")) == 0);
+    assert(rt_action_held(make_str("save")) == 1);
+    assert(rt_action_released(make_str("save")) == 0);
+
+    int64_t release_s[] = {VIPER_KEY_S, -1};
+    sim_key_frame(NULL, release_s);
+    rt_action_update();
+    assert(rt_action_pressed(make_str("save")) == 0);
+    assert(rt_action_held(make_str("save")) == 0);
+    assert(rt_action_released(make_str("save")) == 1);
+
+    int64_t release_ctrl[] = {VIPER_KEY_LCTRL, -1};
+    sim_key_frame(NULL, release_ctrl);
+    rt_action_update();
+    assert(rt_action_released(make_str("save")) == 0);
+
+    rt_action_clear();
+}
+
 // Test: Axis constant getters
 static void test_axis_constants() {
     assert(rt_action_axis_left_x() == VIPER_AXIS_LEFT_X);
@@ -366,6 +423,7 @@ int main() {
     test_bindings_str();
     test_key_bound_to();
     test_action_edge_state_requires_update();
+    test_chord_release_edge_state();
     test_axis_constants();
     test_lifecycle();
     test_invalid_names();

@@ -31,6 +31,7 @@ static int count_visible_nodes(vg_tree_node_t *node);
 static vg_tree_node_t *get_node_at_index(vg_tree_node_t *root, int index, int *current);
 static int get_node_index(vg_tree_node_t *root, vg_tree_node_t *target, int *current);
 static bool node_in_subtree(const vg_tree_node_t *root, const vg_tree_node_t *candidate);
+static void treeview_clamp_scroll(vg_treeview_t *tree);
 
 //=============================================================================
 // TreeView VTable
@@ -125,6 +126,21 @@ static bool node_in_subtree(const vg_tree_node_t *root, const vg_tree_node_t *ca
             return true;
     }
     return false;
+}
+
+static void treeview_clamp_scroll(vg_treeview_t *tree) {
+    if (!tree)
+        return;
+
+    if (tree->scroll_y < 0.0f)
+        tree->scroll_y = 0.0f;
+
+    int visible = count_visible_nodes(tree->root);
+    float max_scroll = (float)visible * tree->row_height - tree->base.height;
+    if (max_scroll < 0.0f)
+        max_scroll = 0.0f;
+    if (tree->scroll_y > max_scroll)
+        tree->scroll_y = max_scroll;
 }
 
 //=============================================================================
@@ -231,35 +247,51 @@ static void paint_node(
 
     for (vg_tree_node_t *child = node->first_child; child; child = child->next_sibling) {
         float row_y = *y;
+        int row_index = (int)(row_y / tree->row_height);
 
         // Check if visible
         if (row_y + tree->row_height >= tree->scroll_y &&
             row_y < tree->scroll_y + tree->base.height) {
             float display_y = tree->base.y + row_y - tree->scroll_y;
+            float arrow_slot_x = x + child->depth * tree->indent_size;
             float indent = x + (child->depth + 1) * tree->indent_size;
+            uint32_t row_bg =
+                ((row_index & 1) == 0)
+                    ? theme->colors.bg_primary
+                    : vg_color_blend(theme->colors.bg_primary, theme->colors.bg_secondary, 0.35f);
 
-            // Draw background for selected/hovered
+            if (child == tree->selected) {
+                row_bg = tree->selected_bg;
+            } else if (child == tree->hovered) {
+                row_bg = tree->hover_bg;
+            }
+            vgfx_fill_rect((vgfx_window_t)canvas,
+                           (int32_t)tree->base.x,
+                           (int32_t)display_y,
+                           (int32_t)width,
+                           (int32_t)tree->row_height,
+                           row_bg);
             if (child == tree->selected) {
                 vgfx_fill_rect((vgfx_window_t)canvas,
                                (int32_t)tree->base.x,
                                (int32_t)display_y,
-                               (int32_t)tree->base.width,
+                               3,
                                (int32_t)tree->row_height,
-                               tree->selected_bg);
-            } else if (child == tree->hovered) {
-                vgfx_fill_rect((vgfx_window_t)canvas,
-                               (int32_t)tree->base.x,
-                               (int32_t)display_y,
-                               (int32_t)tree->base.width,
-                               (int32_t)tree->row_height,
-                               tree->hover_bg);
+                               theme->colors.accent_primary);
             }
+            vgfx_fill_rect((vgfx_window_t)canvas,
+                           (int32_t)tree->base.x,
+                           (int32_t)(display_y + tree->row_height - 1.0f),
+                           (int32_t)width,
+                           1,
+                           theme->colors.border_secondary);
 
             // Draw expand/collapse arrow if has children
             if (child->has_children || child->first_child) {
-                int32_t ax = (int32_t)(indent - tree->icon_size);
+                int32_t ax = (int32_t)(arrow_slot_x + (tree->icon_size - 8.0f) * 0.5f);
                 int32_t ay = (int32_t)(display_y + (tree->row_height - 8.0f) / 2.0f);
-                uint32_t arrow_color = theme->colors.fg_secondary;
+                uint32_t arrow_color =
+                    (child == tree->selected) ? theme->colors.fg_primary : theme->colors.fg_secondary;
                 if (child->expanded) {
                     // ▼ downward triangle
                     vgfx_line((vgfx_window_t)canvas, ax, ay, ax + 8, ay, arrow_color);
@@ -312,21 +344,19 @@ static void treeview_paint(vg_widget_t *widget, void *canvas) {
                    (int32_t)widget->y,
                    (int32_t)widget->width,
                    (int32_t)widget->height,
-                   theme->colors.bg_primary);
+                   theme->colors.bg_secondary);
 
     // Paint nodes
     float y = 0;
     paint_node(tree, canvas, tree->root, widget->x, &y, widget->width);
 
-    // Draw focus ring when the treeview has keyboard focus
-    if (widget->state & VG_STATE_FOCUSED) {
-        vgfx_rect((vgfx_window_t)canvas,
-                  (int32_t)widget->x,
-                  (int32_t)widget->y,
-                  (int32_t)widget->width,
-                  (int32_t)widget->height,
-                  theme->colors.border_focus);
-    }
+    vgfx_rect((vgfx_window_t)canvas,
+              (int32_t)widget->x,
+              (int32_t)widget->y,
+              (int32_t)widget->width,
+              (int32_t)widget->height,
+              (widget->state & VG_STATE_FOCUSED) ? theme->colors.border_focus
+                                                 : theme->colors.border_primary);
 }
 
 static vg_tree_node_t *find_node_at_y(vg_treeview_t *tree,
@@ -386,8 +416,8 @@ static bool treeview_handle_event(vg_widget_t *widget, vg_event_t *event) {
 
             if (clicked) {
                 // Check if clicked on expand arrow
-                float indent = clicked->depth * tree->indent_size;
-                if (event->mouse.x < indent + tree->icon_size) {
+                float arrow_left = clicked->depth * tree->indent_size;
+                if (event->mouse.x >= arrow_left && event->mouse.x < arrow_left + tree->icon_size) {
                     // Toggle expand
                     vg_treeview_toggle(tree, clicked);
                 } else {
@@ -464,16 +494,7 @@ static bool treeview_handle_event(vg_widget_t *widget, vg_event_t *event) {
 
         case VG_EVENT_MOUSE_WHEEL:
             tree->scroll_y -= event->wheel.delta_y * tree->row_height * 3;
-            if (tree->scroll_y < 0)
-                tree->scroll_y = 0;
-
-            int visible = count_visible_nodes(tree->root);
-            float max_scroll = visible * tree->row_height - widget->height;
-            if (max_scroll < 0)
-                max_scroll = 0;
-            if (tree->scroll_y > max_scroll)
-                tree->scroll_y = max_scroll;
-
+            treeview_clamp_scroll(tree);
             widget->needs_paint = true;
             return true;
 
@@ -630,14 +651,7 @@ void vg_treeview_collapse(vg_treeview_t *tree, vg_tree_node_t *node) {
         // Re-clamp scroll_y against the new (smaller) content. Without this
         // the view can sit past the last visible row, leaving blank space at
         // the bottom and desynchronizing arrow-key navigation.
-        int visible = count_visible_nodes(tree->root);
-        float max_scroll = (float)visible * tree->row_height - tree->base.height;
-        if (max_scroll < 0.0f)
-            max_scroll = 0.0f;
-        if (tree->scroll_y > max_scroll)
-            tree->scroll_y = max_scroll;
-        if (tree->scroll_y < 0.0f)
-            tree->scroll_y = 0.0f;
+        treeview_clamp_scroll(tree);
 
         if (tree->on_expand) {
             tree->on_expand(&tree->base, node, false, tree->on_expand_data);
@@ -669,6 +683,9 @@ void vg_treeview_select(vg_treeview_t *tree, vg_tree_node_t *node) {
         tree->selected = node;
         if (node) {
             node->selected = true;
+            vg_treeview_scroll_to(tree, node);
+        } else {
+            treeview_clamp_scroll(tree);
         }
         tree->base.needs_paint = true;
 
@@ -697,6 +714,7 @@ void vg_treeview_scroll_to(vg_treeview_t *tree, vg_tree_node_t *node) {
     } else if (node_y + tree->row_height > tree->scroll_y + tree->base.height) {
         tree->scroll_y = node_y + tree->row_height - tree->base.height;
     }
+    treeview_clamp_scroll(tree);
 
     tree->base.needs_paint = true;
 }

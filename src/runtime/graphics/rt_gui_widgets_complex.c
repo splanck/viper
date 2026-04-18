@@ -779,8 +779,14 @@ int64_t rt_listbox_was_selection_changed(void *listbox) {
         return 0;
     vg_listbox_t *lb = (vg_listbox_t *)listbox;
 
-    // Per-instance selection tracking using prev_selected field
-    // (matches the pattern used by rt_tabbar_was_changed / prev_active_tab).
+    if (lb->virtual_mode) {
+        if (lb->selected_index != lb->prev_selected_index) {
+            lb->prev_selected_index = lb->selected_index;
+            return 1;
+        }
+        return 0;
+    }
+
     if (lb->selected != lb->prev_selected) {
         lb->prev_selected = lb->selected;
         return 1;

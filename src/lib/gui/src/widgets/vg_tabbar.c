@@ -13,6 +13,7 @@
 #include "../../include/vg_event.h"
 #include "../../include/vg_ide_widgets.h"
 #include "../../include/vg_theme.h"
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -22,6 +23,7 @@
 #define TABBAR_DEFAULT_CLOSE_SIZE 14.0f
 #define TABBAR_DEFAULT_MAX_WIDTH 200.0f
 #define TABBAR_CLOSE_GAP 4.0f
+#define TABBAR_DRAG_THRESHOLD 6.0f
 
 //=============================================================================
 // Forward Declarations
@@ -303,7 +305,7 @@ vg_tabbar_t *vg_tabbar_create(vg_widget_t *parent) {
     tabbar->close_button_size = TABBAR_DEFAULT_CLOSE_SIZE * s;
     tabbar->max_tab_width = TABBAR_DEFAULT_MAX_WIDTH * s;
     tabbar->active_bg = theme->colors.bg_primary;
-    tabbar->inactive_bg = theme->colors.bg_secondary;
+    tabbar->inactive_bg = vg_color_blend(theme->colors.bg_secondary, theme->colors.bg_primary, 0.35f);
     tabbar->text_color = theme->colors.fg_primary;
     tabbar->close_color = theme->colors.fg_secondary;
 
@@ -323,7 +325,9 @@ vg_tabbar_t *vg_tabbar_create(vg_widget_t *parent) {
     tabbar->hovered_tab = NULL;
     tabbar->close_button_hovered = false;
     tabbar->dragging = false;
+    tabbar->drag_pending = false;
     tabbar->drag_tab = NULL;
+    tabbar->drag_origin_x = 0;
     tabbar->drag_x = 0;
 
     // Per-frame tracking
@@ -406,6 +410,20 @@ static void tabbar_paint(vg_widget_t *widget, void *canvas) {
                    (int32_t)widget->width,
                    (int32_t)widget->height,
                    theme->colors.bg_secondary);
+    if (widget->width > 2.0f) {
+        vgfx_fill_rect(win,
+                       (int32_t)widget->x,
+                       (int32_t)widget->y,
+                       (int32_t)widget->width,
+                       1,
+                       vg_color_lighten(theme->colors.bg_secondary, 0.08f));
+        vgfx_fill_rect(win,
+                       (int32_t)widget->x,
+                       (int32_t)(widget->y + widget->height - 1.0f),
+                       (int32_t)widget->width,
+                       1,
+                       theme->colors.border_primary);
+    }
 
     float tab_x = widget->x - tabbar->scroll_x;
 
@@ -421,12 +439,33 @@ static void tabbar_paint(vg_widget_t *widget, void *canvas) {
         // Determine background color
         uint32_t bg = (tab == tabbar->active_tab) ? tabbar->active_bg : tabbar->inactive_bg;
         if (tab == tabbar->hovered_tab && tab != tabbar->active_tab) {
-            bg = theme->colors.bg_hover;
+            bg = vg_color_blend(bg, theme->colors.bg_hover, 0.55f);
         }
+        uint32_t text_color = (tab == tabbar->active_tab) ? tabbar->text_color : theme->colors.fg_secondary;
 
         // Draw tab background
         vgfx_fill_rect(
-            win, (int32_t)tab_x, (int32_t)widget->y, (int32_t)width, (int32_t)widget->height, bg);
+            win, (int32_t)tab_x, (int32_t)widget->y, (int32_t)width, (int32_t)widget->height - 1, bg);
+        vgfx_fill_rect(win,
+                       (int32_t)(tab_x + width - 1.0f),
+                       (int32_t)widget->y + 4,
+                       1,
+                       (int32_t)widget->height - 8,
+                       theme->colors.border_secondary);
+        if (tab == tabbar->active_tab) {
+            vgfx_fill_rect(win,
+                           (int32_t)tab_x + 1,
+                           (int32_t)(widget->y + widget->height - 3.0f),
+                           (int32_t)width - 2,
+                           3,
+                           theme->colors.accent_primary);
+            vgfx_fill_rect(win,
+                           (int32_t)tab_x + 1,
+                           (int32_t)widget->y + 1,
+                           (int32_t)width - 2,
+                           1,
+                           vg_color_lighten(bg, 0.07f));
+        }
 
         // Draw tab title
         if (tabbar->font && tab->title) {
@@ -453,7 +492,7 @@ static void tabbar_paint(vg_widget_t *widget, void *canvas) {
                                   text_x,
                                   text_y,
                                   fitted_title,
-                                  tabbar->text_color);
+                                  text_color);
             }
             free(fitted_title);
             free(title);
@@ -467,6 +506,12 @@ static void tabbar_paint(vg_widget_t *widget, void *canvas) {
             uint32_t close_color = tabbar->close_color;
             if (tab == tabbar->hovered_tab && tabbar->close_button_hovered) {
                 close_color = theme->colors.accent_danger;
+                vgfx_fill_rect(win,
+                               (int32_t)close_x - 2,
+                               (int32_t)close_y - 1,
+                               (int32_t)tabbar->close_button_size + 4,
+                               (int32_t)tabbar->close_button_size + 2,
+                               vg_color_blend(bg, theme->colors.bg_hover, 0.65f));
             }
 
             // Draw X button as two crossing diagonal lines
@@ -483,6 +528,7 @@ static void tabbar_paint(vg_widget_t *widget, void *canvas) {
 
 static bool tabbar_handle_event(vg_widget_t *widget, vg_event_t *event) {
     vg_tabbar_t *tabbar = (vg_tabbar_t *)widget;
+    vg_theme_t *theme = vg_theme_get_current();
 
     switch (event->type) {
         case VG_EVENT_MOUSE_MOVE: {
@@ -501,6 +547,15 @@ static bool tabbar_handle_event(vg_widget_t *widget, vg_event_t *event) {
                 widget->needs_paint = true;
             }
 
+            if (tabbar->drag_pending && tabbar->drag_tab) {
+                float threshold =
+                    TABBAR_DRAG_THRESHOLD * (theme->ui_scale > 0.0f ? theme->ui_scale : 1.0f);
+                if (fabsf(local_x - tabbar->drag_origin_x) >= threshold) {
+                    tabbar->drag_pending = false;
+                    tabbar->dragging = true;
+                }
+            }
+
             // Handle dragging
             if (tabbar->dragging && tabbar->drag_tab) {
                 tabbar->drag_x = local_x;
@@ -511,6 +566,7 @@ static bool tabbar_handle_event(vg_widget_t *widget, vg_event_t *event) {
                         widget, tabbar->drag_tab, new_index, tabbar->on_reorder_data);
                 }
                 widget->needs_paint = true;
+                return true;
             }
 
             return false;
@@ -545,8 +601,10 @@ static bool tabbar_handle_event(vg_widget_t *widget, vg_event_t *event) {
                 }
 
                 // Start potential drag
-                tabbar->dragging = true;
+                tabbar->dragging = false;
+                tabbar->drag_pending = true;
                 tabbar->drag_tab = clicked;
+                tabbar->drag_origin_x = local_x;
                 tabbar->drag_x = local_x;
                 vg_widget_set_input_capture(widget);
 
@@ -559,6 +617,7 @@ static bool tabbar_handle_event(vg_widget_t *widget, vg_event_t *event) {
 
         case VG_EVENT_MOUSE_UP:
             tabbar->dragging = false;
+            tabbar->drag_pending = false;
             tabbar->drag_tab = NULL;
             if (vg_widget_get_input_capture() == widget)
                 vg_widget_release_input_capture();

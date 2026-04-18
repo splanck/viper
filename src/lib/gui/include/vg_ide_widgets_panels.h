@@ -85,7 +85,9 @@ typedef struct vg_tabbar {
     vg_tab_t *hovered_tab;     ///< Currently hovered tab
     bool close_button_hovered; ///< Is close button hovered
     bool dragging;             ///< Is dragging a tab
+    bool drag_pending;         ///< Pointer is captured and may become a drag after threshold
     vg_tab_t *drag_tab;        ///< Tab being dragged
+    float drag_origin_x;       ///< Mouse-down X position for drag-threshold checks
     float drag_x;              ///< Drag position
 
     // Per-frame tracking for Zia runtime

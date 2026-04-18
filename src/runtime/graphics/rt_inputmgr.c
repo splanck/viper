@@ -140,8 +140,8 @@ int8_t rt_inputmgr_key_pressed_debounced(rt_inputmgr mgr, int64_t key) {
 
     int64_t slot = find_or_create_debounce_slot(mgr, key);
 
-    // Check if debounce timer has expired and key is pressed
-    if (mgr->debounce_timers[slot] == 0 && rt_keyboard_is_down(key)) {
+    // Check if debounce timer has expired and the key transitioned down this frame.
+    if (mgr->debounce_timers[slot] == 0 && rt_keyboard_was_pressed(key)) {
         mgr->debounce_timers[slot] = mgr->debounce_delay;
         return 1;
     }

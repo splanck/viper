@@ -119,6 +119,22 @@ static size_t textinput_codepoint_count_in_prefix(const char *text, size_t byte_
     return chars;
 }
 
+static size_t textinput_prefix_for_codepoints(const char *text, size_t max_chars) {
+    if (!text)
+        return 0;
+
+    const char *cursor = text;
+    size_t chars = 0;
+    while (*cursor && chars < max_chars) {
+        const char *prev = cursor;
+        vg_utf8_decode(&cursor);
+        if (cursor == prev)
+            break;
+        chars++;
+    }
+    return (size_t)(cursor - text);
+}
+
 static size_t textinput_valid_utf8_prefix(const char *text, size_t max_bytes) {
     if (!text)
         return 0;
@@ -315,26 +331,56 @@ static void textinput_paint(vg_widget_t *widget, void *canvas) {
 
     // Determine colors based on state
     uint32_t text_color = input->text_color;
+    uint32_t bg_color = input->bg_color;
+    uint32_t border_color = input->border_color;
 
     if (widget->state & VG_STATE_DISABLED) {
         text_color = theme->colors.fg_disabled;
+        bg_color = theme->colors.bg_disabled;
+        border_color = theme->colors.border_secondary;
+    } else {
+        if (input->read_only)
+            bg_color = vg_color_blend(bg_color, theme->colors.bg_secondary, 0.45f);
+        if (widget->state & VG_STATE_HOVERED)
+            bg_color = vg_color_blend(bg_color, theme->colors.bg_hover, 0.25f);
+        if (widget->state & VG_STATE_FOCUSED) {
+            bg_color = vg_color_blend(bg_color, theme->colors.bg_secondary, 0.2f);
+            border_color = theme->colors.border_focus;
+        } else if (widget->state & VG_STATE_HOVERED) {
+            border_color = theme->colors.border_secondary;
+        }
     }
 
-    // Draw background and border
-    uint32_t border_color = (widget->state & VG_STATE_FOCUSED) ? theme->colors.border_focus
-                                                               : theme->colors.border_primary;
     vgfx_fill_rect(win,
                    (int32_t)widget->x,
                    (int32_t)widget->y,
                    (int32_t)widget->width,
                    (int32_t)widget->height,
-                   input->bg_color);
+                   bg_color);
+    if (widget->width > 2.0f) {
+        vgfx_fill_rect(win,
+                       (int32_t)widget->x + 1,
+                       (int32_t)widget->y + 1,
+                       (int32_t)widget->width - 2,
+                       1,
+                       vg_color_lighten(bg_color, 0.06f));
+    }
     vgfx_rect(win,
               (int32_t)widget->x,
               (int32_t)widget->y,
               (int32_t)widget->width,
               (int32_t)widget->height,
               border_color);
+    if (widget->width > 2.0f) {
+        uint32_t accent = (widget->state & VG_STATE_FOCUSED) ? theme->colors.accent_primary
+                                                             : vg_color_darken(border_color, 0.15f);
+        vgfx_fill_rect(win,
+                       (int32_t)widget->x + 1,
+                       (int32_t)(widget->y + widget->height - 2.0f),
+                       (int32_t)widget->width - 2,
+                       2,
+                       accent);
+    }
 
     // Calculate text area
     float padding = theme->input.padding_h;
@@ -629,6 +675,7 @@ static bool textinput_handle_event(vg_widget_t *widget, vg_event_t *event) {
             bool has_shift = (mods & VG_MOD_SHIFT) != 0;
 
             if (input->read_only) {
+                size_t old_cursor = input->cursor_pos;
                 size_t char_count = textinput_char_count(input);
                 // Only allow navigation in read-only mode
                 switch (event->key.key) {
@@ -648,6 +695,13 @@ static bool textinput_handle_event(vg_widget_t *widget, vg_event_t *event) {
                         break;
                     default:
                         break;
+                }
+                if (has_shift) {
+                    if (input->selection_start == input->selection_end)
+                        input->selection_start = old_cursor;
+                    input->selection_end = input->cursor_pos;
+                } else {
+                    input->selection_start = input->selection_end = input->cursor_pos;
                 }
                 textinput_ensure_cursor_visible(input);
                 widget->needs_paint = true;
@@ -812,6 +866,8 @@ static bool textinput_handle_event(vg_widget_t *widget, vg_event_t *event) {
                 char utf8[5] = {0};
                 // Convert codepoint to UTF-8
                 uint32_t cp = event->key.codepoint;
+                if (!input->multiline && (cp == '\r' || cp == '\n'))
+                    return true;
                 if (cp < 0x80) {
                     utf8[0] = (char)cp;
                 } else if (cp < 0x800) {
@@ -963,16 +1019,24 @@ void vg_textinput_insert(vg_textinput_t *input, const char *text) {
     }
 
     size_t insert_len = strlen(text);
-    size_t new_len = input->text_len + insert_len;
+    size_t insert_chars = textinput_codepoint_count_in_prefix(text, insert_len);
 
-    // Check max length
-    if (input->max_length > 0 && new_len > (size_t)input->max_length) {
-        insert_len = (size_t)input->max_length - input->text_len;
-        insert_len = textinput_valid_utf8_prefix(text, insert_len);
-        if (insert_len == 0)
+    if (input->max_length > 0) {
+        size_t current_chars = textinput_char_count(input);
+        size_t max_chars = (size_t)input->max_length;
+        if (current_chars >= max_chars)
             return;
-        new_len = input->text_len + insert_len;
+        if (current_chars + insert_chars > max_chars) {
+            size_t remaining_chars = max_chars - current_chars;
+            insert_len = textinput_prefix_for_codepoints(text, remaining_chars);
+            insert_len = textinput_valid_utf8_prefix(text, insert_len);
+            if (insert_len == 0)
+                return;
+            insert_chars = textinput_codepoint_count_in_prefix(text, insert_len);
+        }
     }
+
+    size_t new_len = input->text_len + insert_len;
 
     if (!ensure_capacity(input, new_len + 1))
         return;
@@ -987,7 +1051,7 @@ void vg_textinput_insert(vg_textinput_t *input, const char *text) {
     // Insert text
     memcpy(input->text + byte_pos, text, insert_len);
     input->text_len = new_len;
-    input->cursor_pos += textinput_codepoint_count_in_prefix(text, insert_len);
+    input->cursor_pos += insert_chars;
     input->selection_start = input->selection_end = input->cursor_pos;
     textinput_ensure_cursor_visible(input);
 

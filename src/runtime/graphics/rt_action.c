@@ -402,6 +402,7 @@ void rt_action_update(void) {
 
     Action *a = g_actions;
     while (a) {
+        int8_t was_held = a->held;
         a->pressed = 0;
         a->released = 0;
         a->held = 0;
@@ -507,6 +508,9 @@ void rt_action_update(void) {
             }
             b = b->next;
         }
+
+        if (was_held && !a->held)
+            a->released = 1;
 
         a = a->next;
     }

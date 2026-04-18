@@ -28,34 +28,34 @@ static vg_theme_t g_dark_theme = {
     .colors =
         {
             // Background colors (0x00RRGGBB format for vgfx compatibility)
-            .bg_primary = 0x1E1E1E,   // Main background - dark gray
-            .bg_secondary = 0x2D2D30, // Secondary panels - noticeably lighter
-            .bg_tertiary = 0x383838,  // Tertiary elements
-            .bg_hover = 0x454545,     // Hover state - clearly visible
-            .bg_active = 0x0A5A9C,    // Active/pressed - bright blue
-            .bg_selected = 0x264F78,  // Selected items - blue highlight
-            .bg_disabled = 0x3D3D3D,  // Disabled elements
+            .bg_primary = 0x131922,
+            .bg_secondary = 0x1A2230,
+            .bg_tertiary = 0x243041,
+            .bg_hover = 0x2D3B50,
+            .bg_active = 0x1E527E,
+            .bg_selected = 0x214F7A,
+            .bg_disabled = 0x293240,
 
             // Foreground colors
-            .fg_primary = 0xE0E0E0,     // Primary text - bright white-gray
-            .fg_secondary = 0xA0A0A0,   // Secondary text
-            .fg_tertiary = 0x808080,    // Tertiary text
-            .fg_disabled = 0x606060,    // Disabled text
-            .fg_placeholder = 0x707070, // Placeholder text
-            .fg_link = 0x3794FF,        // Links
+            .fg_primary = 0xE7EEF7,
+            .fg_secondary = 0xA9B5C6,
+            .fg_tertiary = 0x7D8A9C,
+            .fg_disabled = 0x627080,
+            .fg_placeholder = 0x718097,
+            .fg_link = 0x7CC4FF,
 
             // Accent colors
-            .accent_primary = 0x0E639C,   // Primary accent (blue)
-            .accent_secondary = 0x007ACC, // Secondary accent
-            .accent_danger = 0xF14C4C,    // Danger/error (red)
-            .accent_warning = 0xCCA700,   // Warning (yellow)
-            .accent_success = 0x89D185,   // Success (green)
-            .accent_info = 0x3794FF,      // Info (blue)
+            .accent_primary = 0x49A6FF,
+            .accent_secondary = 0x2F7DC6,
+            .accent_danger = 0xFF6B6B,
+            .accent_warning = 0xE8B04C,
+            .accent_success = 0x71C784,
+            .accent_info = 0x69B9FF,
 
             // Border colors
-            .border_primary = 0x505050,   // Primary border - more visible
-            .border_secondary = 0x404040, // Secondary border
-            .border_focus = 0x007ACC,     // Focus ring
+            .border_primary = 0x334156,
+            .border_secondary = 0x273247,
+            .border_focus = 0x49A6FF,
 
             // Syntax highlighting
             .syntax_keyword = 0x569CD6,  // Blue
@@ -74,9 +74,9 @@ static vg_theme_t g_dark_theme = {
             .font_bold = NULL,
             .font_mono = NULL,
             .size_small = 11.0f,
-            .size_normal = 13.0f,
-            .size_large = 16.0f,
-            .size_heading = 20.0f,
+            .size_normal = 13.5f,
+            .size_large = 17.0f,
+            .size_heading = 21.0f,
             .line_height = 1.4f,
         },
     .spacing =
@@ -89,23 +89,23 @@ static vg_theme_t g_dark_theme = {
         },
     .button =
         {
-            .height = 26.0f,
-            .padding_h = 14.0f,
-            .border_radius = 2.0f,
+            .height = 28.0f,
+            .padding_h = 16.0f,
+            .border_radius = 4.0f,
             .border_width = 1.0f,
         },
     .input =
         {
-            .height = 24.0f,
-            .padding_h = 8.0f,
-            .border_radius = 2.0f,
+            .height = 28.0f,
+            .padding_h = 10.0f,
+            .border_radius = 4.0f,
             .border_width = 1.0f,
         },
     .scrollbar =
         {
-            .width = 14.0f,
-            .min_thumb_size = 40.0f,
-            .border_radius = 7.0f,
+            .width = 12.0f,
+            .min_thumb_size = 32.0f,
+            .border_radius = 6.0f,
         },
 };
 
@@ -118,34 +118,34 @@ static vg_theme_t g_light_theme = {
     .colors =
         {
             // Background colors (0x00RRGGBB format for vgfx compatibility)
-            .bg_primary = 0xFFFFFF,   // Main background - white
-            .bg_secondary = 0xF0F0F0, // Secondary panels
-            .bg_tertiary = 0xE0E0E0,  // Tertiary elements
-            .bg_hover = 0xD8D8D8,     // Hover state
-            .bg_active = 0x0060C0,    // Active/pressed
-            .bg_selected = 0xCCE8FF,  // Selected items
-            .bg_disabled = 0xEBEBEB,  // Disabled elements
+            .bg_primary = 0xFAFBFC,
+            .bg_secondary = 0xF1F4F8,
+            .bg_tertiary = 0xE6ECF2,
+            .bg_hover = 0xDFE8F2,
+            .bg_active = 0xC6E0FF,
+            .bg_selected = 0xD7E9FF,
+            .bg_disabled = 0xF0F2F5,
 
             // Foreground colors
-            .fg_primary = 0x1E1E1E,     // Primary text - black
-            .fg_secondary = 0x6E6E6E,   // Secondary text
-            .fg_tertiary = 0x8E8E8E,    // Tertiary text
-            .fg_disabled = 0xA0A0A0,    // Disabled text
-            .fg_placeholder = 0x8E8E8E, // Placeholder text
-            .fg_link = 0x006AB1,        // Links
+            .fg_primary = 0x17212E,
+            .fg_secondary = 0x556273,
+            .fg_tertiary = 0x788598,
+            .fg_disabled = 0x99A3AF,
+            .fg_placeholder = 0x8894A5,
+            .fg_link = 0x1877F2,
 
             // Accent colors
-            .accent_primary = 0x0078D4,   // Primary accent (blue)
-            .accent_secondary = 0x005A9E, // Secondary accent
-            .accent_danger = 0xE81123,    // Danger/error (red)
-            .accent_warning = 0xCA5010,   // Warning (orange)
-            .accent_success = 0x107C10,   // Success (green)
-            .accent_info = 0x0078D4,      // Info (blue)
+            .accent_primary = 0x1877F2,
+            .accent_secondary = 0x0D5FCC,
+            .accent_danger = 0xD64545,
+            .accent_warning = 0xC88926,
+            .accent_success = 0x2C8F5A,
+            .accent_info = 0x1877F2,
 
             // Border colors
-            .border_primary = 0xD4D4D4,   // Primary border
-            .border_secondary = 0xE8E8E8, // Secondary border
-            .border_focus = 0x0078D4,     // Focus ring
+            .border_primary = 0xCAD4E0,
+            .border_secondary = 0xE0E6EE,
+            .border_focus = 0x1877F2,
 
             // Syntax highlighting
             .syntax_keyword = 0x0000FF,  // Blue
@@ -164,9 +164,9 @@ static vg_theme_t g_light_theme = {
             .font_bold = NULL,
             .font_mono = NULL,
             .size_small = 11.0f,
-            .size_normal = 13.0f,
-            .size_large = 16.0f,
-            .size_heading = 20.0f,
+            .size_normal = 13.5f,
+            .size_large = 17.0f,
+            .size_heading = 21.0f,
             .line_height = 1.4f,
         },
     .spacing =
@@ -179,23 +179,23 @@ static vg_theme_t g_light_theme = {
         },
     .button =
         {
-            .height = 26.0f,
-            .padding_h = 14.0f,
-            .border_radius = 2.0f,
+            .height = 28.0f,
+            .padding_h = 16.0f,
+            .border_radius = 4.0f,
             .border_width = 1.0f,
         },
     .input =
         {
-            .height = 24.0f,
-            .padding_h = 8.0f,
-            .border_radius = 2.0f,
+            .height = 28.0f,
+            .padding_h = 10.0f,
+            .border_radius = 4.0f,
             .border_width = 1.0f,
         },
     .scrollbar =
         {
-            .width = 14.0f,
-            .min_thumb_size = 40.0f,
-            .border_radius = 7.0f,
+            .width = 12.0f,
+            .min_thumb_size = 32.0f,
+            .border_radius = 6.0f,
         },
 };
 

@@ -83,6 +83,14 @@ static vg_event_t make_key_down(vg_key_t key, uint32_t mods) {
     return ev;
 }
 
+static vg_event_t make_key_char(uint32_t codepoint) {
+    vg_event_t ev;
+    memset(&ev, 0, sizeof(ev));
+    ev.type = VG_EVENT_KEY_CHAR;
+    ev.key.codepoint = codepoint;
+    return ev;
+}
+
 static vg_event_t make_click(void) {
     vg_event_t ev;
     memset(&ev, 0, sizeof(ev));
@@ -559,6 +567,48 @@ TEST(textinput_utf8_selection_extracts_full_character) {
     vg_widget_destroy(&ti->base);
 }
 
+TEST(textinput_single_line_ignores_newline_char_input) {
+    vg_textinput_t *ti = vg_textinput_create(NULL);
+    ASSERT_NOT_NULL(ti);
+    vg_textinput_set_text(ti, "abc");
+
+    vg_event_t ev = make_key_char('\n');
+    ASSERT_TRUE(ti->base.vtable->handle_event(&ti->base, &ev));
+    ASSERT_EQ(strcmp(ti->text, "abc"), 0);
+
+    vg_widget_destroy(&ti->base);
+}
+
+TEST(textinput_max_length_counts_utf8_codepoints) {
+    vg_textinput_t *ti = vg_textinput_create(NULL);
+    ASSERT_NOT_NULL(ti);
+    ti->max_length = 2;
+
+    vg_textinput_insert(ti, "\xE2\x82\xAC\xE2\x82\xAC\xE2\x82\xAC");
+    ASSERT_EQ(strcmp(ti->text, "\xE2\x82\xAC\xE2\x82\xAC"), 0);
+    ASSERT_EQ((int)ti->cursor_pos, 2);
+
+    vg_widget_destroy(&ti->base);
+}
+
+TEST(textinput_readonly_navigation_collapses_selection) {
+    vg_textinput_t *ti = vg_textinput_create(NULL);
+    ASSERT_NOT_NULL(ti);
+    vg_textinput_set_text(ti, "hello");
+    ti->read_only = true;
+    ti->cursor_pos = 4;
+    ti->selection_start = 1;
+    ti->selection_end = 4;
+
+    vg_event_t ev = make_key_down(VG_KEY_LEFT, VG_MOD_NONE);
+    ASSERT_TRUE(ti->base.vtable->handle_event(&ti->base, &ev));
+    ASSERT_EQ((int)ti->cursor_pos, 3);
+    ASSERT_EQ((int)ti->selection_start, 3);
+    ASSERT_EQ((int)ti->selection_end, 3);
+
+    vg_widget_destroy(&ti->base);
+}
+
 TEST(listbox_virtual_mouse_selects_index) {
     vg_listbox_t *lb = vg_listbox_create(NULL);
     ASSERT_NOT_NULL(lb);
@@ -654,6 +704,9 @@ int main(void) {
     RUN(textinput_plain_left_collapses_selection);
     RUN(textinput_utf8_backspace_removes_whole_codepoint);
     RUN(textinput_utf8_selection_extracts_full_character);
+    RUN(textinput_single_line_ignores_newline_char_input);
+    RUN(textinput_max_length_counts_utf8_codepoints);
+    RUN(textinput_readonly_navigation_collapses_selection);
     RUN(listbox_virtual_mouse_selects_index);
     RUN(listbox_virtual_wheel_clamps_using_total_count);
 

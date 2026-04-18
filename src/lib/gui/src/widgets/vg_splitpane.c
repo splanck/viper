@@ -268,10 +268,12 @@ static void splitpane_arrange(vg_widget_t *widget, float x, float y, float width
 
 static void splitpane_paint(vg_widget_t *widget, void *canvas) {
     vg_splitpane_t *split = (vg_splitpane_t *)widget;
+    vg_theme_t *theme = vg_theme_get_current();
 
     // Draw splitter
     uint32_t color = split->splitter_hovered || split->dragging ? split->splitter_hover_color
                                                                 : split->splitter_color;
+    uint32_t bg = vg_color_blend(theme->colors.bg_secondary, theme->colors.bg_primary, 0.4f);
 
     vg_widget_t *first = widget->first_child;
     if (!first)
@@ -297,7 +299,32 @@ static void splitpane_paint(vg_widget_t *widget, void *canvas) {
                    (int32_t)splitter_y,
                    (int32_t)splitter_w,
                    (int32_t)splitter_h,
-                   color);
+                   bg);
+    if (split->direction == VG_SPLIT_HORIZONTAL) {
+        int32_t line_x = (int32_t)(splitter_x + splitter_w * 0.5f);
+        vgfx_fill_rect((vgfx_window_t)canvas,
+                       line_x,
+                       (int32_t)splitter_y + 2,
+                       1,
+                       (int32_t)splitter_h - 4,
+                       color);
+        int32_t cy = (int32_t)(splitter_y + splitter_h * 0.5f);
+        vgfx_fill_circle((vgfx_window_t)canvas, line_x, cy - 7, 1, color);
+        vgfx_fill_circle((vgfx_window_t)canvas, line_x, cy, 1, color);
+        vgfx_fill_circle((vgfx_window_t)canvas, line_x, cy + 7, 1, color);
+    } else {
+        int32_t line_y = (int32_t)(splitter_y + splitter_h * 0.5f);
+        vgfx_fill_rect((vgfx_window_t)canvas,
+                       (int32_t)splitter_x + 2,
+                       line_y,
+                       (int32_t)splitter_w - 4,
+                       1,
+                       color);
+        int32_t cx = (int32_t)(splitter_x + splitter_w * 0.5f);
+        vgfx_fill_circle((vgfx_window_t)canvas, cx - 7, line_y, 1, color);
+        vgfx_fill_circle((vgfx_window_t)canvas, cx, line_y, 1, color);
+        vgfx_fill_circle((vgfx_window_t)canvas, cx + 7, line_y, 1, color);
+    }
 }
 
 static bool splitpane_handle_event(vg_widget_t *widget, vg_event_t *event) {

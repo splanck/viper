@@ -553,6 +553,7 @@ typedef struct vg_listbox {
     bool *selection_bitmap;       ///< Selection state for virtual mode
     size_t selection_bitmap_size; ///< Bitmap size
     size_t selected_index;        ///< Currently selected index (virtual mode)
+    size_t prev_selected_index;   ///< Previous selected index (virtual mode change detection)
     size_t hovered_index;         ///< Currently hovered index (virtual mode)
 
     // Appearance

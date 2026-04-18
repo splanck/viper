@@ -101,6 +101,46 @@ static void calculate_content_size(vg_scrollview_t *scroll,
         scroll->content_height = auto_height;
 }
 
+static float scrollbar_thumb_size(float track_size, float content_size, float viewport_size) {
+    if (track_size <= 0.0f || content_size <= 0.0f || viewport_size <= 0.0f)
+        return track_size;
+
+    vg_theme_t *theme = vg_theme_get_current();
+    float visible_ratio = viewport_size / content_size;
+    if (visible_ratio > 1.0f)
+        visible_ratio = 1.0f;
+    float thumb_size = track_size * visible_ratio;
+    if (thumb_size < theme->scrollbar.min_thumb_size)
+        thumb_size = theme->scrollbar.min_thumb_size;
+    if (thumb_size > track_size)
+        thumb_size = track_size;
+    return thumb_size;
+}
+
+static float scrollbar_thumb_offset(float scroll_pos,
+                                    float scroll_range,
+                                    float track_size,
+                                    float thumb_size) {
+    float thumb_travel = track_size - thumb_size;
+    if (scroll_range <= 0.0f || thumb_travel <= 0.0f)
+        return 0.0f;
+    return (scroll_pos / scroll_range) * thumb_travel;
+}
+
+static float scrollbar_scroll_from_thumb(float thumb_offset,
+                                         float track_size,
+                                         float thumb_size,
+                                         float scroll_range) {
+    float thumb_travel = track_size - thumb_size;
+    if (scroll_range <= 0.0f || thumb_travel <= 0.0f)
+        return 0.0f;
+    if (thumb_offset < 0.0f)
+        thumb_offset = 0.0f;
+    if (thumb_offset > thumb_travel)
+        thumb_offset = thumb_travel;
+    return (thumb_offset / thumb_travel) * scroll_range;
+}
+
 static void clamp_scroll(vg_scrollview_t *scroll) {
     vg_widget_t *base = &scroll->base;
 
@@ -172,9 +212,9 @@ vg_scrollview_t *vg_scrollview_create(vg_widget_t *parent) {
     scroll->scrollbar_width = theme->scrollbar.width;
 
     // Scrollbar appearance
-    scroll->track_color = theme->colors.bg_secondary;
-    scroll->thumb_color = theme->colors.bg_tertiary;
-    scroll->thumb_hover_color = theme->colors.bg_hover;
+    scroll->track_color = vg_color_blend(theme->colors.bg_secondary, theme->colors.bg_primary, 0.5f);
+    scroll->thumb_color = vg_color_blend(theme->colors.bg_tertiary, theme->colors.border_primary, 0.35f);
+    scroll->thumb_hover_color = vg_color_blend(theme->colors.bg_hover, theme->colors.accent_primary, 0.2f);
 
     // State
     scroll->h_scrollbar_hovered = false;
@@ -321,6 +361,12 @@ static void scrollview_paint(vg_widget_t *widget, void *canvas) {
         float track_x = widget->x + widget->width - scroll->scrollbar_width;
         float track_y = widget->y;
         float track_height = content_area_height;
+        float thumb_height =
+            scrollbar_thumb_size(track_height, scroll->content_height, content_area_height);
+        float scroll_range = scroll->content_height - content_area_height;
+        float thumb_y = track_y +
+                        scrollbar_thumb_offset(scroll->scroll_y, scroll_range, track_height, thumb_height);
+        float inset = scroll->scrollbar_width > 9.0f ? 2.0f : 1.0f;
 
         // Draw track
         vgfx_fill_rect(win,
@@ -329,29 +375,21 @@ static void scrollview_paint(vg_widget_t *widget, void *canvas) {
                        (int32_t)scroll->scrollbar_width,
                        (int32_t)track_height,
                        scroll->track_color);
-
-        // Calculate thumb size and position
-        float visible_ratio = content_area_height / scroll->content_height;
-        if (visible_ratio > 1.0f)
-            visible_ratio = 1.0f;
-
-        float thumb_height = track_height * visible_ratio;
-        if (thumb_height < theme->scrollbar.min_thumb_size) {
-            thumb_height = theme->scrollbar.min_thumb_size;
-        }
-
-        float denom_v = scroll->content_height - content_area_height;
-        float scroll_ratio = (denom_v > 0.0f) ? (scroll->scroll_y / denom_v) : 0.0f;
-        float thumb_y = track_y + scroll_ratio * (track_height - thumb_height);
+        vgfx_rect(win,
+                  (int32_t)track_x,
+                  (int32_t)track_y,
+                  (int32_t)scroll->scrollbar_width,
+                  (int32_t)track_height,
+                  theme->colors.border_secondary);
 
         // Draw thumb
         uint32_t thumb_color = scroll->v_scrollbar_hovered || scroll->v_scrollbar_dragging
                                    ? scroll->thumb_hover_color
                                    : scroll->thumb_color;
         vgfx_fill_rect(win,
-                       (int32_t)track_x,
+                       (int32_t)(track_x + inset),
                        (int32_t)thumb_y,
-                       (int32_t)scroll->scrollbar_width,
+                       (int32_t)(scroll->scrollbar_width - inset * 2.0f),
                        (int32_t)thumb_height,
                        thumb_color);
     }
@@ -361,6 +399,12 @@ static void scrollview_paint(vg_widget_t *widget, void *canvas) {
         float track_x = widget->x;
         float track_y = widget->y + widget->height - scroll->scrollbar_width;
         float track_width = content_area_width;
+        float thumb_width =
+            scrollbar_thumb_size(track_width, scroll->content_width, content_area_width);
+        float scroll_range = scroll->content_width - content_area_width;
+        float thumb_x = track_x +
+                        scrollbar_thumb_offset(scroll->scroll_x, scroll_range, track_width, thumb_width);
+        float inset = scroll->scrollbar_width > 9.0f ? 2.0f : 1.0f;
 
         vgfx_window_t win_h = (vgfx_window_t)canvas;
 
@@ -371,20 +415,12 @@ static void scrollview_paint(vg_widget_t *widget, void *canvas) {
                        (int32_t)track_width,
                        (int32_t)scroll->scrollbar_width,
                        scroll->track_color);
-
-        // Calculate thumb size and position
-        float visible_ratio = content_area_width / scroll->content_width;
-        if (visible_ratio > 1.0f)
-            visible_ratio = 1.0f;
-
-        float thumb_width = track_width * visible_ratio;
-        if (thumb_width < theme->scrollbar.min_thumb_size) {
-            thumb_width = theme->scrollbar.min_thumb_size;
-        }
-
-        float denom_h = scroll->content_width - content_area_width;
-        float scroll_ratio = (denom_h > 0.0f) ? (scroll->scroll_x / denom_h) : 0.0f;
-        float thumb_x = track_x + scroll_ratio * (track_width - thumb_width);
+        vgfx_rect(win_h,
+                  (int32_t)track_x,
+                  (int32_t)track_y,
+                  (int32_t)track_width,
+                  (int32_t)scroll->scrollbar_width,
+                  theme->colors.border_secondary);
 
         // Draw thumb
         uint32_t thumb_color = scroll->h_scrollbar_hovered || scroll->h_scrollbar_dragging
@@ -392,9 +428,9 @@ static void scrollview_paint(vg_widget_t *widget, void *canvas) {
                                    : scroll->thumb_color;
         vgfx_fill_rect(win_h,
                        (int32_t)thumb_x,
-                       (int32_t)track_y,
+                       (int32_t)(track_y + inset),
                        (int32_t)thumb_width,
-                       (int32_t)scroll->scrollbar_width,
+                       (int32_t)(scroll->scrollbar_width - inset * 2.0f),
                        thumb_color);
     }
 }
@@ -488,33 +524,20 @@ static bool scrollview_handle_event(vg_widget_t *widget, vg_event_t *event) {
             event->mouse.x >= content_area_width && event->mouse.x < widget->width &&
             event->mouse.y >= 0.0f && event->mouse.y < content_area_height) {
             float track_height = content_area_height;
-            float visible_ratio =
-                scroll->content_height > 0.0f ? (content_area_height / scroll->content_height) : 1.0f;
-            if (visible_ratio > 1.0f)
-                visible_ratio = 1.0f;
-            float thumb_height = track_height * visible_ratio;
-            if (thumb_height < vg_theme_get_current()->scrollbar.min_thumb_size) {
-                thumb_height = vg_theme_get_current()->scrollbar.min_thumb_size;
-            }
-            if (thumb_height > track_height)
-                thumb_height = track_height;
+            float thumb_height =
+                scrollbar_thumb_size(track_height, scroll->content_height, content_area_height);
             float scroll_range = scroll->content_height - content_area_height;
-            float scroll_ratio = (scroll_range > 0.0f) ? (scroll->scroll_y / scroll_range) : 0.0f;
-            float thumb_y = scroll_ratio * (track_height - thumb_height);
+            float thumb_y =
+                scrollbar_thumb_offset(scroll->scroll_y, scroll_range, track_height, thumb_height);
 
             if (event->mouse.y >= thumb_y && event->mouse.y < thumb_y + thumb_height) {
                 scroll->v_scrollbar_dragging = true;
-                scroll->drag_offset = event->mouse.y;
+                scroll->drag_offset = event->mouse.y - thumb_y;
                 vg_widget_set_input_capture(widget);
             } else if (scroll_range > 0.0f) {
-                float denom = track_height - thumb_height;
                 float target = event->mouse.y - thumb_height * 0.5f;
-                float ratio = (denom > 0.0f) ? (target / denom) : 0.0f;
-                if (ratio < 0.0f)
-                    ratio = 0.0f;
-                if (ratio > 1.0f)
-                    ratio = 1.0f;
-                scroll->scroll_y = ratio * scroll_range;
+                scroll->scroll_y =
+                    scrollbar_scroll_from_thumb(target, track_height, thumb_height, scroll_range);
                 clamp_scroll(scroll);
                 widget->needs_layout = true;
                 widget->needs_paint = true;
@@ -527,33 +550,20 @@ static bool scrollview_handle_event(vg_widget_t *widget, vg_event_t *event) {
             event->mouse.y >= content_area_height && event->mouse.y < widget->height &&
             event->mouse.x >= 0.0f && event->mouse.x < content_area_width) {
             float track_width = content_area_width;
-            float visible_ratio =
-                scroll->content_width > 0.0f ? (content_area_width / scroll->content_width) : 1.0f;
-            if (visible_ratio > 1.0f)
-                visible_ratio = 1.0f;
-            float thumb_width = track_width * visible_ratio;
-            if (thumb_width < vg_theme_get_current()->scrollbar.min_thumb_size) {
-                thumb_width = vg_theme_get_current()->scrollbar.min_thumb_size;
-            }
-            if (thumb_width > track_width)
-                thumb_width = track_width;
+            float thumb_width =
+                scrollbar_thumb_size(track_width, scroll->content_width, content_area_width);
             float scroll_range = scroll->content_width - content_area_width;
-            float scroll_ratio = (scroll_range > 0.0f) ? (scroll->scroll_x / scroll_range) : 0.0f;
-            float thumb_x = scroll_ratio * (track_width - thumb_width);
+            float thumb_x =
+                scrollbar_thumb_offset(scroll->scroll_x, scroll_range, track_width, thumb_width);
 
             if (event->mouse.x >= thumb_x && event->mouse.x < thumb_x + thumb_width) {
                 scroll->h_scrollbar_dragging = true;
-                scroll->drag_offset = event->mouse.x;
+                scroll->drag_offset = event->mouse.x - thumb_x;
                 vg_widget_set_input_capture(widget);
             } else if (scroll_range > 0.0f) {
-                float denom = track_width - thumb_width;
                 float target = event->mouse.x - thumb_width * 0.5f;
-                float ratio = (denom > 0.0f) ? (target / denom) : 0.0f;
-                if (ratio < 0.0f)
-                    ratio = 0.0f;
-                if (ratio > 1.0f)
-                    ratio = 1.0f;
-                scroll->scroll_x = ratio * scroll_range;
+                scroll->scroll_x =
+                    scrollbar_scroll_from_thumb(target, track_width, thumb_width, scroll_range);
                 clamp_scroll(scroll);
                 widget->needs_layout = true;
                 widget->needs_paint = true;
@@ -581,13 +591,15 @@ static bool scrollview_handle_event(vg_widget_t *widget, vg_event_t *event) {
             widget->width - (scroll->show_v_scrollbar ? scroll->scrollbar_width : 0);
 
         if (scroll->v_scrollbar_dragging) {
-            float delta = event->mouse.y - scroll->drag_offset;
             float track_height = content_area_height;
+            float thumb_height =
+                scrollbar_thumb_size(track_height, scroll->content_height, content_area_height);
             float scroll_range = scroll->content_height - content_area_height;
             if (scroll_range > 0 && track_height > 0.0f) {
-                scroll->scroll_y += delta * (scroll_range / track_height);
+                float thumb_y = event->mouse.y - scroll->drag_offset;
+                scroll->scroll_y =
+                    scrollbar_scroll_from_thumb(thumb_y, track_height, thumb_height, scroll_range);
                 clamp_scroll(scroll);
-                scroll->drag_offset = event->mouse.y;
                 widget->needs_layout = true;
                 widget->needs_paint = true;
             }
@@ -595,13 +607,15 @@ static bool scrollview_handle_event(vg_widget_t *widget, vg_event_t *event) {
         }
 
         if (scroll->h_scrollbar_dragging) {
-            float delta = event->mouse.x - scroll->drag_offset;
             float track_width = content_area_width;
+            float thumb_width =
+                scrollbar_thumb_size(track_width, scroll->content_width, content_area_width);
             float scroll_range = scroll->content_width - content_area_width;
             if (scroll_range > 0 && track_width > 0.0f) {
-                scroll->scroll_x += delta * (scroll_range / track_width);
+                float thumb_x = event->mouse.x - scroll->drag_offset;
+                scroll->scroll_x =
+                    scrollbar_scroll_from_thumb(thumb_x, track_width, thumb_width, scroll_range);
                 clamp_scroll(scroll);
-                scroll->drag_offset = event->mouse.x;
                 widget->needs_layout = true;
                 widget->needs_paint = true;
             }

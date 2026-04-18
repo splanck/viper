@@ -334,17 +334,42 @@ void rt_keyboard_on_key_up(int64_t key) {
     }
 }
 
-/// @brief Append a text-input character to the per-frame text buffer (ASCII only currently).
+/// @brief Append a text-input character to the per-frame UTF-8 text buffer.
 void rt_keyboard_text_input(int32_t ch) {
     RT_ASSERT_MAIN_THREAD();
     if (!g_text_input_enabled)
         return;
 
-    // Simple UTF-8 encoding for ASCII characters
-    // Full UTF-8 would require more complex handling
-    if (ch >= 32 && ch < 127 && g_text_length < 255) {
-        g_text_buffer[g_text_length++] = (char)ch;
+    if (ch < 32 || ch == 127)
+        return;
+
+    char utf8[4];
+    int utf8_len = 0;
+    if (ch < 0x80) {
+        utf8[0] = (char)ch;
+        utf8_len = 1;
+    } else if (ch < 0x800) {
+        utf8[0] = (char)(0xC0 | (ch >> 6));
+        utf8[1] = (char)(0x80 | (ch & 0x3F));
+        utf8_len = 2;
+    } else if (ch < 0x10000) {
+        utf8[0] = (char)(0xE0 | (ch >> 12));
+        utf8[1] = (char)(0x80 | ((ch >> 6) & 0x3F));
+        utf8[2] = (char)(0x80 | (ch & 0x3F));
+        utf8_len = 3;
+    } else if (ch <= 0x10FFFF) {
+        utf8[0] = (char)(0xF0 | (ch >> 18));
+        utf8[1] = (char)(0x80 | ((ch >> 12) & 0x3F));
+        utf8[2] = (char)(0x80 | ((ch >> 6) & 0x3F));
+        utf8[3] = (char)(0x80 | (ch & 0x3F));
+        utf8_len = 4;
     }
+
+    if (utf8_len <= 0 || g_text_length + utf8_len >= (int)sizeof(g_text_buffer))
+        return;
+
+    memcpy(g_text_buffer + g_text_length, utf8, (size_t)utf8_len);
+    g_text_length += utf8_len;
 }
 
 /// @brief Bind the keyboard to a canvas window (auto-initializes on first bind).

@@ -274,6 +274,40 @@ static void test_combo_wrong_key_does_not_advance() {
     printf("test_combo_wrong_key_does_not_advance: PASSED\n");
 }
 
+static void test_combo_wrong_order_resets_progress() {
+    rt_keyboard_init();
+    void *kc = rt_keychord_new();
+
+    int64_t keys[] = {VIPER_KEY_A, VIPER_KEY_B};
+    rt_keychord_define_combo(kc, make_str("ab"), make_key_seq(keys, 2), 30);
+
+    int64_t p1[] = {VIPER_KEY_A, -1};
+    sim_frame(p1, NULL);
+    rt_keychord_update(kc);
+    assert(rt_keychord_progress(kc, make_str("ab")) == 1);
+
+    int64_t r1[] = {VIPER_KEY_A, -1};
+    sim_frame(NULL, r1);
+    rt_keychord_update(kc);
+    assert(rt_keychord_progress(kc, make_str("ab")) == 1);
+
+    sim_frame(p1, NULL);
+    rt_keychord_update(kc);
+    assert(rt_keychord_progress(kc, make_str("ab")) == 0);
+    assert(rt_keychord_triggered(kc, make_str("ab")) == 0);
+
+    int64_t p2[] = {VIPER_KEY_B, -1};
+    sim_frame(p2, NULL);
+    rt_keychord_update(kc);
+    assert(rt_keychord_progress(kc, make_str("ab")) == 0);
+    assert(rt_keychord_triggered(kc, make_str("ab")) == 0);
+
+    int64_t r2[] = {VIPER_KEY_B, -1};
+    sim_frame(NULL, r2);
+
+    printf("test_combo_wrong_order_resets_progress: PASSED\n");
+}
+
 // ============================================================================
 // Management tests
 // ============================================================================
@@ -367,6 +401,7 @@ int main() {
     test_combo_basic();
     test_combo_timeout();
     test_combo_wrong_key_does_not_advance();
+    test_combo_wrong_order_resets_progress();
 
     /* Management */
     test_count_and_clear();

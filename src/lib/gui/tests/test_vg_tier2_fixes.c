@@ -209,6 +209,13 @@ static void test_codeeditor_syntax_fill(
     }
 }
 
+static vg_event_t tier2_key_down(vg_key_t key) {
+    vg_event_t ev = {0};
+    ev.type = VG_EVENT_KEY_DOWN;
+    ev.key.key = key;
+    return ev;
+}
+
 //=============================================================================
 // BINDING-003: GuiWidget field accessors
 //=============================================================================
@@ -1086,6 +1093,33 @@ TEST(treeview_remove_node_clears_descendant_state) {
     vg_widget_destroy(&tree->base);
 }
 
+TEST(treeview_nested_blank_click_selects_instead_of_toggling) {
+    vg_treeview_t *tree = vg_treeview_create(NULL);
+    ASSERT_NOT_NULL(tree);
+
+    vg_tree_node_t *parent = vg_treeview_add_node(tree, NULL, "parent");
+    vg_tree_node_t *child = vg_treeview_add_node(tree, parent, "child");
+    ASSERT_NOT_NULL(parent);
+    ASSERT_NOT_NULL(child);
+    ASSERT_NOT_NULL(vg_treeview_add_node(tree, child, "grandchild"));
+    vg_treeview_expand(tree, parent);
+
+    tree->base.x = 0.0f;
+    tree->base.y = 0.0f;
+    tree->base.width = 200.0f;
+    tree->base.height = 120.0f;
+
+    vg_event_t click = {0};
+    click.type = VG_EVENT_CLICK;
+    click.mouse.x = 4.0f;
+    click.mouse.y = tree->row_height + tree->row_height * 0.5f;
+    ASSERT_TRUE(tree->base.vtable->handle_event(&tree->base, &click));
+    ASSERT_EQ(tree->selected, child);
+    ASSERT_FALSE(child->expanded);
+
+    vg_widget_destroy(&tree->base);
+}
+
 TEST(widget_paint_runs_overlay_second_pass) {
     vg_widget_t *root = vg_widget_create(VG_WIDGET_CONTAINER);
     test_probe_widget_t *overlay = make_probe_widget(&g_probe_overlay_vtable);
@@ -1243,6 +1277,51 @@ TEST(scrollview_scrollbar_drag_captures_until_release_outside_widget) {
     ASSERT_TRUE(vg_event_dispatch(root, &up));
     ASSERT_NULL(vg_widget_get_input_capture());
     ASSERT_FALSE(sv->v_scrollbar_dragging);
+
+    vg_widget_destroy(root);
+}
+
+TEST(scrollview_thumb_drag_maps_to_scroll_range) {
+    vg_widget_t *root = vg_widget_create(VG_WIDGET_CONTAINER);
+    ASSERT_NOT_NULL(root);
+    root->visible = true;
+    root->enabled = true;
+    root->width = 200.0f;
+    root->height = 160.0f;
+
+    vg_scrollview_t *sv = vg_scrollview_create(root);
+    ASSERT_NOT_NULL(sv);
+    vg_scrollview_set_content_size(sv, 100.0f, 220.0f);
+    vg_widget_arrange(&sv->base, 10.0f, 10.0f, 100.0f, 60.0f);
+
+    float thumb_x = sv->base.x + sv->base.width - sv->scrollbar_width * 0.5f;
+    vg_event_t down =
+        vg_event_mouse(VG_EVENT_MOUSE_DOWN, thumb_x, sv->base.y + 8.0f, VG_MOUSE_LEFT, 0);
+    ASSERT_TRUE(vg_event_dispatch(root, &down));
+    ASSERT_TRUE(sv->v_scrollbar_dragging);
+
+    vg_event_t move =
+        vg_event_mouse(VG_EVENT_MOUSE_MOVE, thumb_x, sv->base.y + 22.0f, VG_MOUSE_LEFT, 0);
+    ASSERT_TRUE(vg_event_dispatch(root, &move));
+    float content_area_height =
+        sv->base.height - (sv->show_h_scrollbar ? sv->scrollbar_width : 0.0f);
+    float scroll_range = sv->content_height - content_area_height;
+    float thumb_height = 0.0f;
+    if (sv->content_height > 0.0f && content_area_height > 0.0f) {
+        thumb_height = content_area_height * (content_area_height / sv->content_height);
+    }
+    vg_theme_t *theme = vg_theme_get_current();
+    if (thumb_height < theme->scrollbar.min_thumb_size)
+        thumb_height = theme->scrollbar.min_thumb_size;
+    if (thumb_height > content_area_height)
+        thumb_height = content_area_height;
+    float thumb_travel = content_area_height - thumb_height;
+    float expected_scroll = 0.0f;
+    if (thumb_travel > 0.0f && scroll_range > 0.0f) {
+        expected_scroll = ((22.0f - sv->drag_offset) / thumb_travel) * scroll_range;
+    }
+    ASSERT_TRUE(sv->scroll_y > expected_scroll - 0.5f);
+    ASSERT_TRUE(sv->scroll_y < expected_scroll + 0.5f);
 
     vg_widget_destroy(root);
 }
@@ -1527,6 +1606,52 @@ TEST(dropdown_mutators_invalidate_and_adjust_indices) {
     vg_widget_destroy(&dd->base);
 }
 
+TEST(dropdown_closed_key_opens_popup) {
+    vg_dropdown_t *dd = vg_dropdown_create(NULL);
+    ASSERT_NOT_NULL(dd);
+    ASSERT_EQ(vg_dropdown_add_item(dd, "One"), 0);
+    ASSERT_EQ(vg_dropdown_add_item(dd, "Two"), 1);
+
+    vg_event_t key = tier2_key_down(VG_KEY_ENTER);
+    ASSERT_TRUE(dd->base.vtable->handle_event(&dd->base, &key));
+    ASSERT_TRUE(dd->open);
+    ASSERT_EQ(dd->hovered_index, 0);
+    ASSERT_EQ(vg_widget_get_input_capture(), &dd->base);
+
+    vg_widget_destroy(&dd->base);
+}
+
+TEST(dropdown_wheel_scrolls_open_popup) {
+    vg_widget_t *root = vg_widget_create(VG_WIDGET_CONTAINER);
+    ASSERT_NOT_NULL(root);
+    root->visible = true;
+    root->enabled = true;
+    root->width = 400.0f;
+    root->height = 400.0f;
+
+    vg_dropdown_t *dd = vg_dropdown_create(root);
+    ASSERT_NOT_NULL(dd);
+    for (int i = 0; i < 20; i++) {
+        char label[16];
+        snprintf(label, sizeof(label), "Item %d", i);
+        ASSERT_TRUE(vg_dropdown_add_item(dd, label) >= 0);
+    }
+    dd->base.x = 20.0f;
+    dd->base.y = 20.0f;
+    dd->base.width = 140.0f;
+    dd->base.height = 28.0f;
+    dd->open = true;
+    dd->hovered_index = 0;
+
+    vg_event_t wheel = {0};
+    wheel.type = VG_EVENT_MOUSE_WHEEL;
+    wheel.wheel.delta_y = -3.0f;
+    ASSERT_TRUE(dd->base.vtable->handle_event(&dd->base, &wheel));
+    ASSERT_TRUE(dd->scroll_y > 0.0f);
+
+    vg_widget_destroy(root);
+}
+
 TEST(tabbar_drag_reorders_tabs_and_fires_callback) {
     tabbar_reorder_state_t state = {0};
     vg_tabbar_t *tabbar = vg_tabbar_create(NULL);
@@ -1566,6 +1691,49 @@ TEST(tabbar_drag_reorders_tabs_and_fires_callback) {
     ASSERT_EQ(state.last_index, 2);
     ASSERT_EQ(state.last_tab, first);
     ASSERT_NULL(vg_widget_get_input_capture());
+
+    vg_widget_destroy(&tabbar->base);
+}
+
+TEST(tabbar_small_jitter_does_not_reorder) {
+    tabbar_reorder_state_t state = {0};
+    vg_tabbar_t *tabbar = vg_tabbar_create(NULL);
+    ASSERT_NOT_NULL(tabbar);
+
+    vg_tab_t *first = vg_tabbar_add_tab(tabbar, "a.zia", false);
+    ASSERT_NOT_NULL(first);
+    ASSERT_NOT_NULL(vg_tabbar_add_tab(tabbar, "b.zia", false));
+    ASSERT_NOT_NULL(vg_tabbar_add_tab(tabbar, "c.zia", false));
+    vg_tabbar_set_on_reorder(tabbar, tabbar_reorder_counter, &state);
+
+    vg_widget_arrange(&tabbar->base, 0.0f, 0.0f, 600.0f, tabbar->tab_height);
+
+    vg_event_t down = {0};
+    down.type = VG_EVENT_MOUSE_DOWN;
+    down.mouse.x = 50.0f;
+    down.mouse.y = tabbar->tab_height * 0.5f;
+    down.mouse.screen_x = down.mouse.x;
+    down.mouse.screen_y = down.mouse.y;
+    ASSERT_TRUE(vg_event_send(&tabbar->base, &down));
+
+    vg_event_t move = {0};
+    move.type = VG_EVENT_MOUSE_MOVE;
+    move.mouse.x = 53.0f;
+    move.mouse.y = tabbar->tab_height * 0.5f;
+    move.mouse.screen_x = 53.0f;
+    move.mouse.screen_y = move.mouse.y;
+    ASSERT_FALSE(vg_event_send(&tabbar->base, &move));
+
+    vg_event_t up = {0};
+    up.type = VG_EVENT_MOUSE_UP;
+    up.mouse.x = 53.0f;
+    up.mouse.y = tabbar->tab_height * 0.5f;
+    up.mouse.screen_x = 53.0f;
+    up.mouse.screen_y = up.mouse.y;
+    ASSERT_FALSE(vg_event_send(&tabbar->base, &up));
+
+    ASSERT_EQ(vg_tabbar_get_tab_index(tabbar, first), 0);
+    ASSERT_EQ(state.count, 0);
 
     vg_widget_destroy(&tabbar->base);
 }
@@ -1713,12 +1881,14 @@ int main(void) {
     RUN(scrollview_auto_hide_rechecks_cross_axis);
     RUN(scrollview_scroll_to_nested_descendant_uses_full_offset);
     RUN(treeview_remove_node_clears_descendant_state);
+    RUN(treeview_nested_blank_click_selects_instead_of_toggling);
     RUN(widget_paint_runs_overlay_second_pass);
     RUN(widget_set_focus_null_clears_focus);
     RUN(widget_hide_and_disable_clear_focus_and_capture);
     RUN(splitpane_arrange_clamps_negative_sizes);
     RUN(splitpane_drag_captures_pointer_until_mouse_up);
     RUN(scrollview_scrollbar_drag_captures_until_release_outside_widget);
+    RUN(scrollview_thumb_drag_maps_to_scroll_range);
     RUN(codeeditor_scrollbar_drag_captures_until_release_outside_widget);
     RUN(toolbar_hit_testing_uses_local_coords);
     RUN(toolbar_spacer_pushes_trailing_button_to_edge);
@@ -1728,7 +1898,10 @@ int main(void) {
     RUN(statusbar_hit_testing_uses_local_coords);
     RUN(statusbar_item_mutators_invalidate_owner);
     RUN(dropdown_mutators_invalidate_and_adjust_indices);
+    RUN(dropdown_closed_key_opens_popup);
+    RUN(dropdown_wheel_scrolls_open_popup);
     RUN(tabbar_drag_reorders_tabs_and_fires_callback);
+    RUN(tabbar_small_jitter_does_not_reorder);
     RUN(listbox_virtual_paint_clips_to_viewport);
     RUN(listbox_measure_uses_small_item_count);
     RUN(codeeditor_fold_gutter_click_toggles_region);

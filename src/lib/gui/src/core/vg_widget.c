@@ -941,19 +941,11 @@ vg_widget_t *vg_widget_hit_test(vg_widget_t *root, float x, float y) {
     float child_clip_w = sw;
     float child_clip_h = sh;
     if (root->type == VG_WIDGET_SCROLLVIEW) {
-        // The scrollbar gutter sits at the right and bottom edges. We can't
-        // reach scrollview-specific fields from here without a circular
-        // include, so use a conservative slack heuristic: most scrollbars are
-        // 12-16 px wide. Only apply the exclusion when the scrollview is
-        // large enough that a gutter is meaningful — narrow embedded
-        // scrollviews (color-picker channels, completion popups) would
-        // otherwise have their entire child-area hit-testing disabled.
-        const float kScrollbarGutter = 16.0f;
-        const float kMinDimForGutter = 32.0f;
-        if (child_clip_w > kMinDimForGutter)
-            child_clip_w -= kScrollbarGutter;
-        if (child_clip_h > kMinDimForGutter)
-            child_clip_h -= kScrollbarGutter;
+        const vg_scrollview_t *scroll = (const vg_scrollview_t *)root;
+        if (scroll->show_v_scrollbar)
+            child_clip_w -= scroll->scrollbar_width;
+        if (scroll->show_h_scrollbar)
+            child_clip_h -= scroll->scrollbar_width;
         if (child_clip_w < 0.0f)
             child_clip_w = 0.0f;
         if (child_clip_h < 0.0f)
