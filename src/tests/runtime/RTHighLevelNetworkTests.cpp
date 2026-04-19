@@ -14,6 +14,7 @@
 #include "rt_bytes.h"
 #include "rt_http_server.h"
 #include "rt_https_server.h"
+#include "rt_http2.h"
 #include "rt_http_client.h"
 #include "rt_map.h"
 #include "rt_network.h"
@@ -488,6 +489,16 @@ static rt_tls_session_t *connect_local_tls_server(int port) {
     return rt_tls_connect("127.0.0.1", (uint16_t)port, &config);
 }
 
+static rt_tls_session_t *connect_local_tls_server_with_alpn(int port, const char *alpn) {
+    rt_tls_config_t config;
+    rt_tls_config_init(&config);
+    config.hostname = "127.0.0.1";
+    config.alpn_protocol = alpn;
+    config.verify_cert = 0;
+    config.timeout_ms = 5000;
+    return rt_tls_connect("127.0.0.1", (uint16_t)port, &config);
+}
+
 static rt_tls_session_t *connect_local_tls_server_verified(int port,
                                                            const char *connect_host,
                                                            const char *hostname,
@@ -500,6 +511,14 @@ static rt_tls_session_t *connect_local_tls_server_verified(int port,
     config.verify_cert = 1;
     config.timeout_ms = 5000;
     return rt_tls_connect(connect_host, (uint16_t)port, &config);
+}
+
+static long tls_http2_read_cb(void *ctx, uint8_t *buf, size_t len) {
+    return rt_tls_recv((rt_tls_session_t *)ctx, buf, len);
+}
+
+static int tls_http2_write_cb(void *ctx, const uint8_t *buf, size_t len) {
+    return rt_tls_send((rt_tls_session_t *)ctx, buf, len) == (long)len;
 }
 
 static bool tls_recv_ws_frame(rt_tls_session_t *tls, uint8_t *opcode_out, std::vector<uint8_t> *payload_out) {
@@ -1527,6 +1546,7 @@ static void test_https_server_roundtrip() {
     void *req = rt_http_req_new(rt_const_cstr("GET"), rt_const_cstr(url_buf));
     rt_http_req_set_tls_verify(req, 0);
     rt_http_req_set_keep_alive(req, 1);
+    rt_http_req_set_force_http1(req, 1); // HTTP/1.1-specific assertion below; don't negotiate h2.
     void *res = rt_http_req_send(req);
     test_result("HttpsServer request status is 200", rt_http_res_status(res) == 200);
     rt_string body = rt_http_res_body_str(res);
@@ -1588,6 +1608,74 @@ static void test_https_server_roundtrip() {
     test_result("HttpsServer keeps the first TLS response alive", connection1.find("keep-alive") != std::string::npos);
     test_result("HttpsServer closes the second TLS response", connection2.find("close") != std::string::npos);
 
+    rt_tls_close(tls);
+    rt_https_server_stop(server);
+}
+
+static void test_https_server_http2_roundtrip() {
+    printf("\nTesting HttpsServer HTTP/2 ALPN round-trip:\n");
+
+    const int port = get_bindable_local_port();
+    if (port <= 0) {
+        printf("  SKIP: local bind unavailable in this environment\n");
+        return;
+    }
+
+    temp_tls_files_t tls_files = create_temp_tls_files();
+    if (!tls_files.valid) {
+        printf("  SKIP: could not write temporary TLS fixture files\n");
+        return;
+    }
+
+    void *server =
+        rt_https_server_new(port, rt_const_cstr(tls_files.cert_path.c_str()), rt_const_cstr(tls_files.key_path.c_str()));
+    rt_https_server_get(server, rt_const_cstr("/secure"), rt_const_cstr("secure"));
+    rt_https_server_bind_handler(server, rt_const_cstr("secure"), (void *)&https_server_secure_handler);
+    rt_https_server_start(server);
+    if (!wait_for_condition([&]() { return rt_https_server_is_running(server) == 1; }, 1000)) {
+        rt_https_server_stop(server);
+        printf("  SKIP: local bind unavailable in this environment\n");
+        return;
+    }
+
+    rt_tls_session_t *tls = connect_local_tls_server_with_alpn(port, "h2,http/1.1");
+    test_result("HTTP/2 TLS client connects to HttpsServer", tls != nullptr);
+    if (!tls) {
+        rt_https_server_stop(server);
+        return;
+    }
+
+    test_result("HttpsServer negotiates h2 over ALPN",
+                std::strcmp(rt_tls_get_negotiated_alpn(tls), "h2") == 0);
+
+    rt_http2_io_t io{tls, tls_http2_read_cb, tls_http2_write_cb};
+    rt_http2_conn_t *h2 = rt_http2_client_new(&io);
+    test_result("HTTP/2 client transport allocates", h2 != nullptr);
+    if (!h2) {
+        rt_tls_close(tls);
+        rt_https_server_stop(server);
+        return;
+    }
+
+    rt_http2_response_t first{};
+    rt_http2_response_t second{};
+    bool ok = rt_http2_client_roundtrip(
+                  h2, "GET", "https", "127.0.0.1", "/secure", nullptr, nullptr, 0, 1024, &first) == 1 &&
+              rt_http2_client_roundtrip(
+                  h2, "GET", "https", "127.0.0.1", "/secure", nullptr, nullptr, 0, 1024, &second) == 1;
+    test_result("HTTP/2 client completes two requests on one TLS connection", ok);
+    test_result("HTTP/2 first response status is 200", first.status == 200);
+    test_result("HTTP/2 second response status is 200", second.status == 200);
+    test_result("HTTP/2 first response body matches",
+                first.body_len == 9 && std::memcmp(first.body, "secure-ok", 9) == 0);
+    test_result("HTTP/2 second response body matches",
+                second.body_len == 9 && std::memcmp(second.body, "secure-ok", 9) == 0);
+    test_result("HTTP/2 second stream id advances",
+                first.stream_id == 1 && second.stream_id == 3);
+
+    rt_http2_response_free(&first);
+    rt_http2_response_free(&second);
+    rt_http2_conn_free(h2);
     rt_tls_close(tls);
     rt_https_server_stop(server);
 }
@@ -1929,6 +2017,7 @@ int main() {
     test_http_client_keepalive_reuse();
     test_http_server_keepalive_response();
     test_https_server_roundtrip();
+    test_https_server_http2_roundtrip();
     test_https_server_rsa_roundtrip_with_verification();
     test_wss_server_broadcast();
     test_wss_server_rejects_invalid_sec_websocket_key();

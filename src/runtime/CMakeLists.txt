@@ -389,6 +389,7 @@ set(RT_NETWORK_SOURCES
         network/rt_network_udp.c
         network/rt_network_dns.c
         network/rt_network_http.c
+        network/rt_http2.c
         network/rt_http_url.c
         network/rt_restclient.c
         network/rt_retry.c

@@ -53,7 +53,7 @@ typedef struct rt_tls_session rt_tls_session_t;
 /// @brief TLS configuration.
 typedef struct rt_tls_config {
     const char *hostname; // Server hostname for cert verification and DNS-name SNI
-    const char *alpn_protocol; // Optional single ALPN protocol (e.g. "http/1.1")
+    const char *alpn_protocol; // Optional comma-separated ALPN preference list (e.g. "h2,http/1.1")
     const char *ca_file;  // Optional PEM bundle override for trust anchors
     int verify_cert;      // 1 = verify certificate (default), 0 = skip
     int timeout_ms;       // Connection timeout in ms (0 = default 30s)
@@ -98,6 +98,9 @@ rt_tls_session_t *rt_tls_connect(const char *host, uint16_t port, const rt_tls_c
 
 /// @brief Get underlying socket file descriptor.
 int rt_tls_get_socket(rt_tls_session_t *session);
+
+/// @brief Get the negotiated ALPN protocol, or an empty string when none was negotiated.
+const char *rt_tls_get_negotiated_alpn(rt_tls_session_t *session);
 
 /// @brief Check if the TLS session has buffered application data available.
 /// @return 1 if buffered data exists, 0 otherwise.

@@ -531,6 +531,14 @@ void *rt_http_req_set_tls_verify(void *obj, int8_t verify);
 /// @return Same HttpReq object (for chaining).
 void *rt_http_req_set_keep_alive(void *obj, int8_t keep_alive);
 
+/// @brief Restrict this request to HTTP/1.1 transport even over TLS.
+/// @param obj HttpReq object.
+/// @param force 1 to advertise only `http/1.1` via ALPN (forces HTTP/1.1
+///        framing, including the `Connection: keep-alive` header), 0 for
+///        the default `h2,http/1.1` negotiation.
+/// @return Same HttpReq object (for chaining).
+void *rt_http_req_set_force_http1(void *obj, int8_t force);
+
 /// @brief Enable or disable automatic redirect following for this request.
 /// @param obj HttpReq object.
 /// @param follow 1 to follow redirects, 0 to return the redirect response as-is.

@@ -76,7 +76,7 @@ struct rt_tls_server_ctx {
     int key_type;
     uint8_t private_key[32];
     rt_rsa_key_t rsa_key;
-    char alpn_protocol[64];
+    char alpn_protocols[128];
     int timeout_ms;
 };
 
@@ -108,6 +108,18 @@ static int tls_extract_cert_key_type(const uint8_t *cert_der, size_t cert_len);
 static int tls_hostname_is_ip_literal(const char *hostname);
 static int tls_parse_client_sni(rt_tls_session_t *session, const uint8_t *data, size_t len);
 static int tls_server_name_matches_leaf_cert(const rt_tls_server_ctx_t *ctx, const char *hostname);
+static int tls_alpn_list_next_token(const char *list,
+                                    size_t *offset_io,
+                                    const char **token_out,
+                                    size_t *token_len_out);
+static int tls_alpn_list_contains(const char *list, const uint8_t *wanted, size_t wanted_len);
+static int tls_alpn_list_wire_len(const char *list, size_t *wire_len_out);
+static int tls_alpn_write_wire_list(
+    uint8_t *dst, size_t dst_cap, const char *list, size_t *wire_len_out);
+static int tls_select_alpn_from_wire_list(const char *preferred_list,
+                                          const uint8_t *wire_list,
+                                          size_t wire_list_len,
+                                          char selected_out[64]);
 
 // SIGPIPE suppression.
 #if defined(__linux__) || defined(__viperdos__)
@@ -284,8 +296,15 @@ rt_tls_server_ctx_t *rt_tls_server_ctx_new(const rt_tls_server_config_t *config)
     }
 
     ctx->timeout_ms = config->timeout_ms > 0 ? config->timeout_ms : 30000;
-    if (config->alpn_protocol)
-        strncpy(ctx->alpn_protocol, config->alpn_protocol, sizeof(ctx->alpn_protocol) - 1);
+    if (config->alpn_protocol) {
+        size_t wire_len = 0;
+        if (!tls_alpn_list_wire_len(config->alpn_protocol, &wire_len) ||
+            strlen(config->alpn_protocol) >= sizeof(ctx->alpn_protocols)) {
+            tls_set_server_last_error_msg("TLS server: invalid ALPN protocol list");
+            goto fail;
+        }
+        strncpy(ctx->alpn_protocols, config->alpn_protocol, sizeof(ctx->alpn_protocols) - 1);
+    }
 
     cert_pem = tls_read_text_file(config->cert_file, &file_len);
     if (!cert_pem) {
@@ -1610,22 +1629,25 @@ static int send_client_hello(rt_tls_session_t *session) {
     write_u16(msg + pos, TLS_VERSION_1_3);
     pos += 2;
 
-    // ALPN (optional single protocol)
-    if (session->alpn_protocol[0] != '\0') {
-        size_t proto_len = strlen(session->alpn_protocol);
-        if (proto_len == 0 || proto_len > 255 || pos + proto_len + 7 > sizeof(msg) - 64) {
-            session->error = "ClientHello: ALPN protocol too long";
+    // ALPN (optional ordered preference list)
+    if (session->alpn_protocols[0] != '\0') {
+        size_t wire_len = 0;
+        if (!tls_alpn_list_wire_len(session->alpn_protocols, &wire_len) || wire_len == 0 ||
+            pos + wire_len + 6 > sizeof(msg) - 64) {
+            session->error = "ClientHello: invalid ALPN protocol list";
             return RT_TLS_ERROR;
         }
         write_u16(msg + pos, TLS_EXT_ALPN);
         pos += 2;
-        write_u16(msg + pos, (uint16_t)(proto_len + 3));
+        write_u16(msg + pos, (uint16_t)(wire_len + 2));
         pos += 2;
-        write_u16(msg + pos, (uint16_t)(proto_len + 1));
+        write_u16(msg + pos, (uint16_t)wire_len);
         pos += 2;
-        msg[pos++] = (uint8_t)proto_len;
-        memcpy(msg + pos, session->alpn_protocol, proto_len);
-        pos += proto_len;
+        if (!tls_alpn_write_wire_list(msg + pos, sizeof(msg) - pos, session->alpn_protocols, &wire_len)) {
+            session->error = "ClientHello: failed to encode ALPN list";
+            return RT_TLS_ERROR;
+        }
+        pos += wire_len;
     }
 
     // Supported groups
@@ -1942,14 +1964,17 @@ static int process_encrypted_extensions(rt_tls_session_t *session, const uint8_t
                 session->error = "EncryptedExtensions ALPN protocol malformed";
                 return RT_TLS_ERROR_HANDSHAKE;
             }
-            if (session->alpn_protocol[0] != '\0') {
-                size_t expected_len = strlen(session->alpn_protocol);
-                if (expected_len != proto_len ||
-                    memcmp(p + 3, session->alpn_protocol, expected_len) != 0) {
+            if (session->alpn_protocols[0] != '\0' &&
+                !tls_alpn_list_contains(session->alpn_protocols, p + 3, proto_len)) {
                     session->error = "EncryptedExtensions ALPN mismatch";
                     return RT_TLS_ERROR_HANDSHAKE;
-                }
             }
+            if (proto_len >= sizeof(session->negotiated_alpn)) {
+                session->error = "EncryptedExtensions ALPN protocol too long";
+                return RT_TLS_ERROR_HANDSHAKE;
+            }
+            memcpy(session->negotiated_alpn, p + 3, proto_len);
+            session->negotiated_alpn[proto_len] = '\0';
         }
 
         p += one_ext_len;
@@ -2092,10 +2117,55 @@ static int clienthello_offers_sig_scheme(
     return 0;
 }
 
-static int clienthello_offers_alpn(
-    const uint8_t *list, size_t list_len, const char *wanted_protocol) {
+static int tls_alpn_list_next_token(const char *list,
+                                    size_t *offset_io,
+                                    const char **token_out,
+                                    size_t *token_len_out) {
+    size_t offset = offset_io ? *offset_io : 0;
+    const char *start = NULL;
+    const char *end = NULL;
+
+    if (!list)
+        return 0;
+
+    while (list[offset] == ' ' || list[offset] == '\t' || list[offset] == ',')
+        offset++;
+    if (list[offset] == '\0') {
+        if (offset_io)
+            *offset_io = offset;
+        return 0;
+    }
+
+    start = list + offset;
+    while (list[offset] != '\0' && list[offset] != ',')
+        offset++;
+    end = list + offset;
+    while (end > start && (end[-1] == ' ' || end[-1] == '\t'))
+        end--;
+    while (list[offset] == ',')
+        offset++;
+
+    if (offset_io)
+        *offset_io = offset;
+    if (token_out)
+        *token_out = start;
+    if (token_len_out)
+        *token_len_out = (size_t)(end - start);
+    return end > start;
+}
+
+/// @brief Test whether the ClientHello's wire-format ALPN list contains `wanted_protocol[0..wanted_len)`.
+/// @details Takes an explicit (ptr, len) pair for the wanted token
+///          because the caller (`tls_select_alpn_from_wire_list`)
+///          passes a substring pointer into a larger comma-separated
+///          preferred list — that substring is *not* NUL-terminated
+///          at its end, so `strlen()` would over-read. Bounded-length
+///          comparison is the only correct form here.
+static int clienthello_offers_alpn(const uint8_t *list,
+                                   size_t list_len,
+                                   const char *wanted_protocol,
+                                   size_t wanted_len) {
     size_t pos = 0;
-    size_t wanted_len = wanted_protocol ? strlen(wanted_protocol) : 0;
     if (!wanted_protocol || wanted_len == 0)
         return 1;
     while (pos < list_len) {
@@ -2105,6 +2175,96 @@ static int clienthello_offers_alpn(
         if (one_len == wanted_len && memcmp(list + pos, wanted_protocol, wanted_len) == 0)
             return 1;
         pos += one_len;
+    }
+    return 0;
+}
+
+static int tls_alpn_list_contains(const char *list, const uint8_t *wanted, size_t wanted_len) {
+    size_t offset = 0;
+    const char *token = NULL;
+    size_t token_len = 0;
+
+    if (!wanted || wanted_len == 0)
+        return 0;
+
+    while (tls_alpn_list_next_token(list, &offset, &token, &token_len)) {
+        if (token_len == wanted_len && memcmp(token, wanted, wanted_len) == 0)
+            return 1;
+    }
+    return 0;
+}
+
+static int tls_alpn_list_wire_len(const char *list, size_t *wire_len_out) {
+    size_t offset = 0;
+    const char *token = NULL;
+    size_t token_len = 0;
+    size_t wire_len = 0;
+
+    if (wire_len_out)
+        *wire_len_out = 0;
+    if (!list || !*list)
+        return 1;
+
+    while (tls_alpn_list_next_token(list, &offset, &token, &token_len)) {
+        if (token_len == 0 || token_len > 255)
+            return 0;
+        if (wire_len > SIZE_MAX - token_len - 1)
+            return 0;
+        wire_len += token_len + 1;
+    }
+
+    if (wire_len_out)
+        *wire_len_out = wire_len;
+    return 1;
+}
+
+static int tls_alpn_write_wire_list(
+    uint8_t *dst, size_t dst_cap, const char *list, size_t *wire_len_out) {
+    size_t offset = 0;
+    const char *token = NULL;
+    size_t token_len = 0;
+    size_t wire_len = 0;
+
+    if (wire_len_out)
+        *wire_len_out = 0;
+    if (!list || !*list)
+        return 1;
+
+    while (tls_alpn_list_next_token(list, &offset, &token, &token_len)) {
+        if (token_len == 0 || token_len > 255 || wire_len + token_len + 1 > dst_cap)
+            return 0;
+        dst[wire_len++] = (uint8_t)token_len;
+        memcpy(dst + wire_len, token, token_len);
+        wire_len += token_len;
+    }
+
+    if (wire_len_out)
+        *wire_len_out = wire_len;
+    return 1;
+}
+
+static int tls_select_alpn_from_wire_list(const char *preferred_list,
+                                          const uint8_t *wire_list,
+                                          size_t wire_list_len,
+                                          char selected_out[64]) {
+    size_t offset = 0;
+    const char *token = NULL;
+    size_t token_len = 0;
+
+    if (!selected_out)
+        return 0;
+    selected_out[0] = '\0';
+    if (!preferred_list || !*preferred_list || !wire_list || wire_list_len == 0)
+        return 0;
+
+    while (tls_alpn_list_next_token(preferred_list, &offset, &token, &token_len)) {
+        if (token_len == 0 || token_len >= 64)
+            continue;
+        if (clienthello_offers_alpn(wire_list, wire_list_len, token, token_len)) {
+            memcpy(selected_out, token, token_len);
+            selected_out[token_len] = '\0';
+            return 1;
+        }
     }
     return 0;
 }
@@ -2122,6 +2282,7 @@ static int parse_client_hello(rt_tls_session_t *session, const uint8_t *data, si
     if (!session || !session->server_ctx) {
         return RT_TLS_ERROR_INVALID_ARG;
     }
+    session->negotiated_alpn[0] = '\0';
 
     switch (session->server_ctx->key_type) {
         case TLS_SERVER_KEY_ECDSA_P256:
@@ -2285,17 +2446,22 @@ static int parse_client_hello(rt_tls_session_t *session, const uint8_t *data, si
                         share_pos += key_len;
                     }
                 }
-            } else if (ext_type == TLS_EXT_ALPN && session->alpn_protocol[0] != '\0') {
+            } else if (ext_type == TLS_EXT_ALPN) {
                 if (one_len < 3) {
                     session->error = "ClientHello ALPN malformed";
                     return RT_TLS_ERROR_HANDSHAKE;
                 }
                 {
                     uint16_t list_len = read_u16(data + pos);
-                    if ((size_t)list_len + 2 != one_len ||
-                        !clienthello_offers_alpn(data + pos + 2, list_len, session->alpn_protocol)) {
-                        session->error = "ClientHello ALPN does not offer the configured protocol";
+                    if ((size_t)list_len + 2 != one_len) {
+                        session->error = "ClientHello ALPN malformed";
                         return RT_TLS_ERROR_HANDSHAKE;
+                    }
+                    if (session->server_ctx->alpn_protocols[0] != '\0') {
+                        (void)tls_select_alpn_from_wire_list(session->server_ctx->alpn_protocols,
+                                                             data + pos + 2,
+                                                             list_len,
+                                                             session->negotiated_alpn);
                     }
                 }
             }
@@ -2409,8 +2575,8 @@ static int send_encrypted_extensions_server(rt_tls_session_t *session) {
 
     ext_start = pos;
     pos += 2;
-    if (session->alpn_protocol[0] != '\0') {
-        size_t proto_len = strlen(session->alpn_protocol);
+    if (session->negotiated_alpn[0] != '\0') {
+        size_t proto_len = strlen(session->negotiated_alpn);
         write_u16(body + pos, TLS_EXT_ALPN);
         pos += 2;
         write_u16(body + pos, (uint16_t)(proto_len + 3));
@@ -2418,7 +2584,7 @@ static int send_encrypted_extensions_server(rt_tls_session_t *session) {
         write_u16(body + pos, (uint16_t)(proto_len + 1));
         pos += 2;
         body[pos++] = (uint8_t)proto_len;
-        memcpy(body + pos, session->alpn_protocol, proto_len);
+        memcpy(body + pos, session->negotiated_alpn, proto_len);
         pos += proto_len;
     }
     write_u16(body + ext_start, (uint16_t)(pos - ext_start - 2));
@@ -2604,8 +2770,8 @@ rt_tls_session_t *rt_tls_server_accept_socket(int socket_fd, const rt_tls_server
     session->server_ctx = ctx;
     session->verify_cert = 0;
     session->timeout_ms = ctx->timeout_ms > 0 ? ctx->timeout_ms : 30000;
-    if (ctx->alpn_protocol[0] != '\0')
-        strncpy(session->alpn_protocol, ctx->alpn_protocol, sizeof(session->alpn_protocol) - 1);
+    if (ctx->alpn_protocols[0] != '\0')
+        strncpy(session->alpn_protocols, ctx->alpn_protocols, sizeof(session->alpn_protocols) - 1);
     tls_set_socket_timeout((socket_t)session->socket_fd, session->timeout_ms, 1);
     tls_set_socket_timeout((socket_t)session->socket_fd, session->timeout_ms, 0);
 
@@ -2731,7 +2897,14 @@ rt_tls_session_t *rt_tls_new(int socket_fd, const rt_tls_config_t *config) {
         strncpy(session->hostname, config->hostname, sizeof(session->hostname) - 1);
     }
     if (config && config->alpn_protocol) {
-        strncpy(session->alpn_protocol, config->alpn_protocol, sizeof(session->alpn_protocol) - 1);
+        size_t wire_len = 0;
+        if (!tls_alpn_list_wire_len(config->alpn_protocol, &wire_len) ||
+            strlen(config->alpn_protocol) >= sizeof(session->alpn_protocols)) {
+            session->error = "invalid ALPN protocol list";
+            session->state = TLS_STATE_ERROR;
+            return session;
+        }
+        strncpy(session->alpn_protocols, config->alpn_protocol, sizeof(session->alpn_protocols) - 1);
     }
     if (config && config->ca_file) {
         strncpy(session->ca_file, config->ca_file, sizeof(session->ca_file) - 1);
@@ -3062,6 +3235,12 @@ int rt_tls_has_buffered_data(rt_tls_session_t *session) {
     if (!session)
         return 0;
     return session->app_buffer_pos < session->app_buffer_len ? 1 : 0;
+}
+
+const char *rt_tls_get_negotiated_alpn(rt_tls_session_t *session) {
+    if (!session)
+        return "";
+    return session->negotiated_alpn;
 }
 
 /// @brief Expose the underlying socket descriptor (for select/poll integration).

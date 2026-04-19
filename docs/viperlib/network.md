@@ -777,7 +777,7 @@ PRINT "Content-Length: "; headers.Get("content-length")
 
 ### Features
 
-- **HTTP/1.1 support** - Standard HTTP/1.1 protocol
+- **HTTP/1.1 + HTTP/2 transport** - Cleartext requests use HTTP/1.1; HTTPS requests negotiate `h2` first and fall back to HTTP/1.1
 - **HTTPS support** - TLS 1.3 with full certificate chain validation, hostname verification, and CertificateVerify proof-of-key-possession (see HTTPS/TLS note below)
 - **Redirect handling** - Automatically follows 301, 302, 303, 307, 308 redirects (up to 5), including relative `Location:` targets
 - **Informational responses** - Consumes interim `1xx` responses (for example `100 Continue` and `103 Early Hints`) and returns the final response
@@ -787,13 +787,14 @@ PRINT "Content-Length: "; headers.Get("content-length")
 - **Streaming download** - `Http.Download()` writes response bytes directly to disk instead of buffering the entire body in memory
 - **Timeout** - Default 30 second timeout
 
-> **Download note:** `Http.Download()` intentionally keeps `Accept-Encoding` at identity so the response can stay fully streamed to disk without buffering and decompressing the file in memory first.
+> **Download note:** `Http.Download()` intentionally keeps `Accept-Encoding` at identity and stays on the HTTP/1.1 path over HTTPS so the response can remain fully streamed to disk without buffering and decompressing the file in memory first.
 
 ### HTTPS/TLS Support
 
 The HTTP client transparently supports HTTPS URLs using TLS 1.3:
 
 - **Automatic upgrade** - URLs starting with `https://` automatically use TLS
+- **ALPN negotiation** - HTTPS requests advertise `h2,http/1.1`; the runtime uses HTTP/2 automatically when the server selects `h2`
 - **Modern encryption** - TLS 1.3 with ChaCha20-Poly1305 cipher suite and X25519 key exchange
 - **Certificate verification enabled by default** - Server certificates are validated against the runtime trust source: Windows uses CryptoAPI, while macOS and Linux use the built-in PEM-bundle verifier with standard system trust bundles. Hostname is verified against the certificate's SubjectAltName DNS names (with RFC 6125 wildcard support) or CommonName as fallback. The server's CertificateVerify signature over the handshake transcript is checked in-tree, proving possession of the private key.
 - **SNI behavior** - DNS hostnames are sent in the TLS SNI extension. IP literals are still verified against certificate IP SANs, but they are not sent in SNI.
@@ -1380,8 +1381,9 @@ and base URL configuration across multiple requests.
 
 ### Transport Behavior
 
-- `RestClient` enables HTTP/1.1 keep-alive reuse by default.
-- Reuse applies to both `http://` and `https://` requests when the response framing makes reuse safe (`Content-Length`, chunked, or body-less responses).
+- `RestClient` enables transport reuse by default.
+- Plain `http://` requests reuse HTTP/1.1 keep-alive sockets when the response framing makes reuse safe.
+- `https://` requests negotiate HTTP/2 first; when `h2` is selected, sequential requests reuse one TLS connection as separate HTTP/2 streams. Otherwise the client falls back to the HTTP/1.1 keep-alive path.
 - Set `KeepAlive = false` to force one request per socket.
 
 ### Raw HTTP Methods
@@ -1858,7 +1860,7 @@ Threaded HTTP/1.1 server with routing and handler-tag lookup.
 
 ## Viper.Network.HttpsServer
 
-Threaded TLS-backed HTTP/1.1 server built on the in-tree TLS 1.3 runtime with zero external TLS dependencies.
+Threaded TLS-backed HTTP/1.1 + HTTP/2 server built on the in-tree TLS 1.3 runtime with zero external TLS dependencies.
 
 **Type:** Instance class
 
@@ -1890,7 +1892,7 @@ Threaded TLS-backed HTTP/1.1 server built on the in-tree TLS 1.3 runtime with ze
 - The built-in zero-dependency server path accepts either:
   - a P-256 ECDSA leaf certificate with an unencrypted SEC1 (`BEGIN EC PRIVATE KEY`) or PKCS#8 (`BEGIN PRIVATE KEY`) key
   - an RSA leaf certificate with an unencrypted PKCS#1 (`BEGIN RSA PRIVATE KEY`) or PKCS#8 (`BEGIN PRIVATE KEY`) key
-- `HttpsServer` serves HTTP/1.1 over TLS 1.3 and advertises `http/1.1` via ALPN.
+- `HttpsServer` serves both HTTP/1.1 and HTTP/2 over TLS 1.3 and advertises `h2,http/1.1` via ALPN.
 - DNS-name SNI is validated against the configured certificate before the HTTP request is accepted.
 
 ### Runtime Notes
@@ -1898,6 +1900,9 @@ Threaded TLS-backed HTTP/1.1 server built on the in-tree TLS 1.3 runtime with ze
 - `HttpsServer.New(0, certFile, keyFile)` is supported. Read the actual bound port back from `server.Port` after `Start()`.
 - The request/response handler model mirrors `HttpServer`.
 - Sequential HTTPS keep-alive requests on the same TLS connection are supported when response framing is safe.
+- When ALPN selects `h2`, the same route table serves HTTP/2 streams through the existing `ServerReq` / `ServerRes` handler model.
+- HTTP/2 request trailers are merged into `req.Headers`, and HTTP/2 response trailers are preserved in the client-visible header list.
+- If a peer opens another request stream before the active one finishes, `HttpsServer` refuses that extra stream with `RST_STREAM` and keeps the TLS connection alive for later requests.
 - The built-in TLS server stack performs the full TLS 1.3 handshake in-tree, including `ClientHello`/`ServerHello`, ALPN negotiation, certificate chain delivery, `CertificateVerify`, and bidirectional `Finished` processing.
 - `Start()` now fails cleanly on listener-bind or accept-thread startup errors instead of leaving the server in a partial running state.
 - Route tables and handler bindings become immutable once the server is running.
@@ -2142,8 +2147,9 @@ Session-based HTTP client with cookie jar, auto-redirect, and persistent headers
 
 ### Transport Behavior
 
-- `HttpClient` enables keep-alive reuse by default and maintains an internal per-client connection pool.
-- HTTPS sessions are reused only when the request host/port/TLS verification mode match and the response framing is safe to reuse.
+- `HttpClient` enables transport reuse by default and maintains an internal per-client connection pool.
+- Plain `http://` requests reuse HTTP/1.1 keep-alive sockets when the response framing is safe.
+- `https://` requests negotiate `h2` first; an HTTP/2 connection is reused across sequential requests as new streams when the peer selects `h2`, otherwise the client falls back to pooled HTTP/1.1 keep-alive reuse.
 - Sensitive default headers such as `Authorization`, `Cookie`, and common API-key headers are stripped automatically when a redirect crosses origin boundaries.
 - Default-header and cookie-jar mutations are synchronized internally, so one `HttpClient` instance can be shared across concurrent request paths.
 - Set `KeepAlive = false` to force the previous close-after-each-request behavior.

@@ -17,6 +17,7 @@
 
 #include "rt_network_http_internal.h"
 #include "rt_network_internal.h"
+#include "rt_http2.h"
 #include "rt_tls.h"
 
 #include "rt_box.h"
@@ -144,6 +145,7 @@ typedef struct http_header {
 typedef struct http_conn {
     socket_t socket_fd;     // Connected socket (owned directly for HTTP, by TLS for HTTPS)
     rt_tls_session_t *tls;  // TLS session (for HTTPS)
+    rt_http2_conn_t *http2; // HTTP/2 transport state (for ALPN h2)
     int use_tls;            // 1 if using TLS
     uint8_t read_buf[4096]; // Read buffer
     size_t read_buf_len;    // Bytes in buffer
@@ -159,6 +161,7 @@ static void http_conn_init_tcp(http_conn_t *conn, socket_t socket_fd) {
     memset(conn, 0, sizeof(*conn));
     conn->socket_fd = socket_fd;
     conn->tls = NULL;
+    conn->http2 = NULL;
     conn->use_tls = 0;
     conn->pool_slot = -1;
 }
@@ -168,8 +171,25 @@ static void http_conn_init_tls(http_conn_t *conn, rt_tls_session_t *tls) {
     memset(conn, 0, sizeof(*conn));
     conn->socket_fd = tls ? (socket_t)rt_tls_get_socket(tls) : INVALID_SOCK;
     conn->tls = tls;
+    conn->http2 = NULL;
     conn->use_tls = 1;
     conn->pool_slot = -1;
+}
+
+static long http2_tls_read(void *ctx, uint8_t *buf, size_t len) {
+    rt_tls_session_t *tls = (rt_tls_session_t *)ctx;
+    if (!tls || !buf)
+        return -1;
+    return rt_tls_recv(tls, buf, len);
+}
+
+static int http2_tls_write(void *ctx, const uint8_t *buf, size_t len) {
+    rt_tls_session_t *tls = (rt_tls_session_t *)ctx;
+    long sent = 0;
+    if (!tls || (!buf && len > 0))
+        return 0;
+    sent = rt_tls_send(tls, buf, len);
+    return sent == (long)len;
 }
 
 /// @brief Send all data over HTTP connection.
@@ -255,6 +275,10 @@ static int http_conn_recv_byte(http_conn_t *conn, uint8_t *byte) {
 
 /// @brief Close HTTP connection.
 static void http_conn_close(http_conn_t *conn) {
+    if (conn->http2) {
+        rt_http2_conn_free(conn->http2);
+        conn->http2 = NULL;
+    }
     if (conn->use_tls && conn->tls) {
         rt_tls_close(conn->tls);
         conn->tls = NULL;
@@ -305,6 +329,8 @@ static void http_make_pool_key(
 static int http_conn_is_healthy(http_conn_t *conn) {
     if (!conn || conn->socket_fd == INVALID_SOCK)
         return 0;
+    if (conn->http2)
+        return rt_http2_conn_is_usable(conn->http2);
     if (conn->use_tls && conn->tls && rt_tls_has_buffered_data(conn->tls))
         return 1;
 
@@ -543,6 +569,7 @@ typedef struct rt_http_req {
     int decode_gzip;        // Transparently decode gzip-encoded response bodies
     int keep_alive;         // Request connection reuse when paired with a pool
     void *connection_pool;  // Internal pool used by session-style HTTP clients
+    int force_http1;        // Keep the transport on HTTP/1.1 even over TLS
 } rt_http_req_t;
 
 /// @brief HTTP response structure.
@@ -565,6 +592,8 @@ static void http_set_tls_open_error(const char *msg) {
 }
 
 static socket_t http_create_tcp_socket(const char *host, int port, int timeout_ms, int *err_code);
+static void rt_http_res_finalize(void *obj);
+static rt_http_res_t *do_http_request(rt_http_req_t *req, int redirects_remaining);
 
 static int http_request_wants_pool(const rt_http_req_t *req) {
     return req && req->keep_alive && req->connection_pool;
@@ -621,7 +650,7 @@ static int http_open_connection(rt_http_req_t *req, http_conn_t *conn, int *err_
         rt_tls_config_t tls_config;
         rt_tls_config_init(&tls_config);
         tls_config.hostname = req->url.host;
-        tls_config.alpn_protocol = "http/1.1";
+        tls_config.alpn_protocol = req->force_http1 ? "http/1.1" : "h2,http/1.1";
         tls_config.verify_cert = conn->tls_verify;
         if (req->timeout_ms > 0)
             tls_config.timeout_ms = req->timeout_ms;
@@ -642,6 +671,22 @@ static int http_open_connection(rt_http_req_t *req, http_conn_t *conn, int *err_
             return 0;
         }
         http_conn_init_tls(conn, tls);
+        if (strcmp(rt_tls_get_negotiated_alpn(tls), "h2") == 0) {
+            rt_http2_io_t io;
+            io.ctx = tls;
+            io.read = http2_tls_read;
+            io.write = http2_tls_write;
+            conn->http2 = rt_http2_client_new(&io);
+            if (!conn->http2) {
+                http_set_tls_open_error("HTTP/2: transport allocation failed");
+                rt_tls_close(tls);
+                conn->tls = NULL;
+                conn->socket_fd = INVALID_SOCK;
+                if (err_out)
+                    *err_out = Err_TlsError;
+                return 0;
+            }
+        }
         conn->tls_verify = tls_config.verify_cert;
     } else {
         int connect_err = Err_NetworkError;
@@ -1643,62 +1688,89 @@ static int parse_status_line(
     return status;
 }
 
-/// @brief Parse header line into name and value.
-static void parse_header_line(const char *line, void *headers_map) {
-    const char *colon = strchr(line, ':');
-    if (!colon)
-        return;
+static int append_response_header_value(void *headers_map, const char *name, const char *value) {
+    char *lower_name = NULL;
+    rt_string name_str = NULL;
+    rt_string value_str = NULL;
+    void *boxed = NULL;
 
-    size_t name_len = colon - line;
-    char *name = (char *)malloc(name_len + 1);
-    if (!name)
-        return;
-    memcpy(name, line, name_len);
-    name[name_len] = '\0';
+    if (!headers_map || !name || !value)
+        return 0;
 
-    // Skip colon and whitespace
-    const char *value = colon + 1;
-    while (*value == ' ' || *value == '\t')
-        value++;
-
-    // Convert name to lowercase for case-insensitive lookup
-    for (char *p = name; *p; p++) {
+    lower_name = strdup(name);
+    if (!lower_name)
+        return 0;
+    for (char *p = lower_name; *p; p++) {
         if (*p >= 'A' && *p <= 'Z')
-            *p = *p + ('a' - 'A');
+            *p = (char)(*p + ('a' - 'A'));
     }
 
-    rt_string name_str = rt_string_from_bytes(name, strlen(name));
-    rt_string value_str = rt_string_from_bytes(value, strlen(value));
-
-    void *existing = rt_map_get(headers_map, name_str);
-    if (existing && rt_box_type(existing) == RT_BOX_STR) {
-        rt_string existing_str = rt_unbox_str(existing);
-        const char *existing_cstr = rt_string_cstr(existing_str);
-        const char *value_cstr = rt_string_cstr(value_str);
-        const char *sep = strcmp(name, "set-cookie") == 0 ? "\n" : ", ";
-        size_t existing_len = existing_cstr ? strlen(existing_cstr) : 0;
-        size_t value_len = value_cstr ? strlen(value_cstr) : 0;
-        size_t sep_len = strlen(sep);
-        char *joined = (char *)malloc(existing_len + sep_len + value_len + 1);
-        if (joined) {
-            memcpy(joined, existing_cstr ? existing_cstr : "", existing_len);
-            memcpy(joined + existing_len, sep, sep_len);
-            memcpy(joined + existing_len + sep_len, value_cstr ? value_cstr : "", value_len);
-            joined[existing_len + sep_len + value_len] = '\0';
-            rt_string merged = rt_string_from_bytes(joined, existing_len + sep_len + value_len);
+    name_str = rt_string_from_bytes(lower_name, strlen(lower_name));
+    value_str = rt_string_from_bytes(value, strlen(value));
+    if (!name_str || !value_str) {
+        free(lower_name);
+        if (name_str)
+            rt_string_unref(name_str);
+        if (value_str)
             rt_string_unref(value_str);
-            value_str = merged;
-            free(joined);
-        }
-        rt_string_unref(existing_str);
+        return 0;
     }
 
-    void *boxed = rt_box_str(value_str);
+    {
+        void *existing = rt_map_get(headers_map, name_str);
+        if (existing && rt_box_type(existing) == RT_BOX_STR) {
+            rt_string existing_str = rt_unbox_str(existing);
+            const char *existing_cstr = rt_string_cstr(existing_str);
+            const char *value_cstr = rt_string_cstr(value_str);
+            const char *sep = strcmp(lower_name, "set-cookie") == 0 ? "\n" : ", ";
+            size_t existing_len = existing_cstr ? strlen(existing_cstr) : 0;
+            size_t value_len = value_cstr ? strlen(value_cstr) : 0;
+            size_t sep_len = strlen(sep);
+            char *joined = (char *)malloc(existing_len + sep_len + value_len + 1);
+            if (joined) {
+                memcpy(joined, existing_cstr ? existing_cstr : "", existing_len);
+                memcpy(joined + existing_len, sep, sep_len);
+                memcpy(joined + existing_len + sep_len, value_cstr ? value_cstr : "", value_len);
+                joined[existing_len + sep_len + value_len] = '\0';
+                rt_string merged = rt_string_from_bytes(joined, existing_len + sep_len + value_len);
+                if (merged) {
+                    rt_string_unref(value_str);
+                    value_str = merged;
+                }
+                free(joined);
+            }
+            rt_string_unref(existing_str);
+        }
+    }
+
+    boxed = rt_box_str(value_str);
     rt_map_set(headers_map, name_str, boxed);
     if (boxed && rt_obj_release_check0(boxed))
         rt_obj_free(boxed);
     rt_string_unref(value_str);
     rt_string_unref(name_str);
+    free(lower_name);
+    return 1;
+}
+
+/// @brief Parse header line into name and value.
+static void parse_header_line(const char *line, void *headers_map) {
+    const char *colon = strchr(line, ':');
+    char *name = NULL;
+    if (!colon)
+        return;
+
+    name = (char *)malloc((size_t)(colon - line) + 1);
+    if (!name)
+        return;
+    memcpy(name, line, (size_t)(colon - line));
+    name[colon - line] = '\0';
+
+    const char *value = colon + 1;
+    while (*value == ' ' || *value == '\t')
+        value++;
+
+    (void)append_response_header_value(headers_map, name, value);
     free(name);
 }
 
@@ -2111,6 +2183,355 @@ static int write_body_until_close_conn(http_conn_t *conn, FILE *out, size_t *out
     return 1;
 }
 
+static char *http_status_text_dup(int status) {
+    const char *text = NULL;
+    switch (status) {
+        case 100:
+            text = "Continue";
+            break;
+        case 101:
+            text = "Switching Protocols";
+            break;
+        case 200:
+            text = "OK";
+            break;
+        case 201:
+            text = "Created";
+            break;
+        case 202:
+            text = "Accepted";
+            break;
+        case 204:
+            text = "No Content";
+            break;
+        case 206:
+            text = "Partial Content";
+            break;
+        case 301:
+            text = "Moved Permanently";
+            break;
+        case 302:
+            text = "Found";
+            break;
+        case 303:
+            text = "See Other";
+            break;
+        case 304:
+            text = "Not Modified";
+            break;
+        case 307:
+            text = "Temporary Redirect";
+            break;
+        case 308:
+            text = "Permanent Redirect";
+            break;
+        case 400:
+            text = "Bad Request";
+            break;
+        case 401:
+            text = "Unauthorized";
+            break;
+        case 403:
+            text = "Forbidden";
+            break;
+        case 404:
+            text = "Not Found";
+            break;
+        case 405:
+            text = "Method Not Allowed";
+            break;
+        case 500:
+            text = "Internal Server Error";
+            break;
+        case 502:
+            text = "Bad Gateway";
+            break;
+        case 503:
+            text = "Service Unavailable";
+            break;
+        case 504:
+            text = "Gateway Timeout";
+            break;
+        default:
+            text = "Unknown";
+            break;
+    }
+    return strdup(text);
+}
+
+static char *http_format_authority(const parsed_url_t *url) {
+    char buf[320];
+    int default_port = 0;
+    if (!url || !url->host)
+        return NULL;
+    default_port = url->use_tls ? 443 : 80;
+    if (url->port != default_port) {
+        snprintf(buf,
+                 sizeof(buf),
+                 host_needs_brackets(url->host) ? "[%s]:%d" : "%s:%d",
+                 url->host,
+                 url->port);
+    } else {
+        snprintf(buf, sizeof(buf), host_needs_brackets(url->host) ? "[%s]" : "%s", url->host);
+    }
+    return strdup(buf);
+}
+
+static int http2_header_is_connection_specific(const char *name, const char *value) {
+    if (!name)
+        return 0;
+    if (strcasecmp(name, "connection") == 0 || strcasecmp(name, "proxy-connection") == 0 ||
+        strcasecmp(name, "keep-alive") == 0 || strcasecmp(name, "upgrade") == 0 ||
+        strcasecmp(name, "transfer-encoding") == 0) {
+        return 1;
+    }
+    if (strcasecmp(name, "te") == 0 && value && strcasecmp(value, "trailers") != 0)
+        return 1;
+    return 0;
+}
+
+static int http2_build_request_headers(rt_http_req_t *req, rt_http2_header_t **headers_out) {
+    char content_len_buf[64];
+    rt_http2_header_t *headers = NULL;
+    if (!req || !headers_out)
+        return 0;
+    *headers_out = NULL;
+    for (http_header_t *h = req->headers; h; h = h->next) {
+        if (!h->name || !h->value)
+            continue;
+        if (strcasecmp(h->name, "Host") == 0 ||
+            http2_header_is_connection_specific(h->name, h->value))
+            continue;
+        if (!rt_http2_header_append_copy(&headers, h->name, h->value)) {
+            rt_http2_headers_free(headers);
+            return 0;
+        }
+    }
+    if (req->accept_gzip && !has_header(req, "Accept-Encoding") &&
+        !rt_http2_header_append_copy(&headers, "accept-encoding", "gzip")) {
+        rt_http2_headers_free(headers);
+        return 0;
+    }
+    if (req->body && req->body_len > 0 && !has_header(req, "Content-Length")) {
+        snprintf(content_len_buf, sizeof(content_len_buf), "%zu", req->body_len);
+        if (!rt_http2_header_append_copy(&headers, "content-length", content_len_buf)) {
+            rt_http2_headers_free(headers);
+            return 0;
+        }
+    }
+    *headers_out = headers;
+    return 1;
+}
+
+static int http2_headers_to_map(const rt_http2_header_t *headers,
+                                void **headers_map_out,
+                                char **redirect_location_out) {
+    void *headers_map = NULL;
+    char *redirect_location = NULL;
+    if (headers_map_out)
+        *headers_map_out = NULL;
+    if (redirect_location_out)
+        *redirect_location_out = NULL;
+
+    headers_map = rt_map_new();
+    if (!headers_map)
+        return 0;
+    for (const rt_http2_header_t *it = headers; it; it = it->next) {
+        if (!it->name || !it->value || it->name[0] == ':')
+            continue;
+        if (!append_response_header_value(headers_map, it->name, it->value)) {
+            if (headers_map && rt_obj_release_check0(headers_map))
+                rt_obj_free(headers_map);
+            free(redirect_location);
+            return 0;
+        }
+        if (!redirect_location && strcasecmp(it->name, "location") == 0) {
+            redirect_location = strdup(it->value);
+            if (!redirect_location) {
+                if (headers_map && rt_obj_release_check0(headers_map))
+                    rt_obj_free(headers_map);
+                return 0;
+            }
+        }
+    }
+    if (headers_map_out)
+        *headers_map_out = headers_map;
+    if (redirect_location_out)
+        *redirect_location_out = redirect_location;
+    return 1;
+}
+
+static rt_http_res_t *http_make_response_obj(
+    int status, char *status_text, void *headers_map, uint8_t *body, size_t body_len) {
+    rt_http_res_t *res = (rt_http_res_t *)rt_obj_new_i64(0, (int64_t)sizeof(rt_http_res_t));
+    if (!res) {
+        free(body);
+        free(status_text);
+        if (headers_map && rt_obj_release_check0(headers_map))
+            rt_obj_free(headers_map);
+        rt_trap("HTTP: memory allocation failed");
+        return NULL;
+    }
+    rt_obj_set_finalizer(res, rt_http_res_finalize);
+    res->status = status;
+    res->status_text = status_text;
+    res->headers = headers_map;
+    res->body = body;
+    res->body_len = body_len;
+    return res;
+}
+
+static rt_http_res_t *do_http2_request_opened(
+    rt_http_req_t *req, http_conn_t *conn, int redirects_remaining) {
+    rt_http2_header_t *request_headers = NULL;
+    rt_http2_response_t h2res;
+    char *authority = NULL;
+    char *status_text = NULL;
+    char *redirect_location = NULL;
+    void *headers_map = NULL;
+    uint8_t *body = NULL;
+    size_t body_len = 0;
+    int status = 0;
+    int reusable = 0;
+
+    memset(&h2res, 0, sizeof(h2res));
+    authority = http_format_authority(&req->url);
+    if (!authority || !http2_build_request_headers(req, &request_headers)) {
+        free(authority);
+        rt_http2_headers_free(request_headers);
+        return NULL;
+    }
+
+    if (!rt_http2_client_roundtrip(conn->http2,
+                                   req->method,
+                                   req->url.use_tls ? "https" : "http",
+                                   authority,
+                                   req->url.path,
+                                   request_headers,
+                                   req->body,
+                                   req->body ? req->body_len : 0,
+                                   HTTP_MAX_BODY_SIZE,
+                                   &h2res)) {
+        free(authority);
+        rt_http2_headers_free(request_headers);
+        return NULL;
+    }
+    free(authority);
+    rt_http2_headers_free(request_headers);
+
+    status = h2res.status;
+    status_text = http_status_text_dup(status);
+    if (!status_text || !http2_headers_to_map(h2res.headers, &headers_map, &redirect_location)) {
+        free(status_text);
+        rt_http2_response_free(&h2res);
+        if (headers_map && rt_obj_release_check0(headers_map))
+            rt_obj_free(headers_map);
+        free(redirect_location);
+        return NULL;
+    }
+
+    body = h2res.body;
+    body_len = h2res.body_len;
+    h2res.body = NULL;
+    rt_http2_response_free(&h2res);
+
+    if (req->follow_redirects &&
+        (status == 301 || status == 302 || status == 303 || status == 307 || status == 308) &&
+        redirect_location) {
+        char *current_full = NULL;
+        rt_string current_url = NULL;
+        rt_string location_url = NULL;
+        rt_string next_url = NULL;
+        int cross_origin = 0;
+        if (redirects_remaining <= 0) {
+            free(body);
+            free(status_text);
+            free(redirect_location);
+            if (headers_map && rt_obj_release_check0(headers_map))
+                rt_obj_free(headers_map);
+            rt_trap_net("HTTP: too many redirects", Err_ProtocolError);
+            return NULL;
+        }
+
+        current_full = build_absolute_url(&req->url);
+        if (current_full) {
+            current_url = rt_string_from_bytes(current_full, strlen(current_full));
+            location_url = rt_string_from_bytes(redirect_location, strlen(redirect_location));
+            next_url = rt_http_resolve_redirect_url(current_url, location_url);
+            cross_origin = !rt_http_url_has_same_origin(current_url, next_url);
+        }
+        reusable = http_request_wants_pool(req) && rt_http2_conn_is_usable(conn->http2);
+        http_conn_pool_release(conn, reusable);
+        free(body);
+        free(status_text);
+        if (headers_map && rt_obj_release_check0(headers_map))
+            rt_obj_free(headers_map);
+        if (cross_origin)
+            strip_sensitive_redirect_headers(req);
+        if (status == 303 || ((status == 301 || status == 302) && strcmp(req->method, "POST") == 0)) {
+            free(req->method);
+            req->method = strdup("GET");
+            free(req->body);
+            req->body = NULL;
+            req->body_len = 0;
+            strip_redirect_body_headers(req);
+            if (!req->method) {
+                if (next_url)
+                    rt_string_unref(next_url);
+                if (location_url)
+                    rt_string_unref(location_url);
+                if (current_url)
+                    rt_string_unref(current_url);
+                free(current_full);
+                free(redirect_location);
+                rt_trap("HTTP: memory allocation failed");
+                return NULL;
+            }
+        }
+        if (resolve_redirect_target(&req->url, redirect_location) != 0) {
+            if (next_url)
+                rt_string_unref(next_url);
+            if (location_url)
+                rt_string_unref(location_url);
+            if (current_url)
+                rt_string_unref(current_url);
+            free(current_full);
+            free(redirect_location);
+            rt_trap_net("HTTP: invalid redirect URL", Err_InvalidUrl);
+            return NULL;
+        }
+        if (next_url)
+            rt_string_unref(next_url);
+        if (location_url)
+            rt_string_unref(location_url);
+        if (current_url)
+            rt_string_unref(current_url);
+        free(current_full);
+        free(redirect_location);
+        return do_http_request(req, redirects_remaining - 1);
+    }
+    free(redirect_location);
+
+    if (response_has_no_body(req, status)) {
+        free(body);
+        body = NULL;
+        body_len = 0;
+    } else if (body && !maybe_decode_gzip_body(req, headers_map, &body, &body_len)) {
+        free(body);
+        free(status_text);
+        if (headers_map && rt_obj_release_check0(headers_map))
+            rt_obj_free(headers_map);
+        http_conn_pool_release(conn, 0);
+        rt_trap_net("HTTP: invalid gzip response body", Err_ProtocolError);
+        return NULL;
+    }
+
+    set_content_length_header(headers_map, body_len);
+    reusable = http_request_wants_pool(req) && rt_http2_conn_is_usable(conn->http2);
+    http_conn_pool_release(conn, reusable);
+    return http_make_response_obj(status, status_text, headers_map, body, body_len);
+}
+
 /// @brief Perform HTTP request and return response.
 static rt_http_res_t *do_http_request(rt_http_req_t *req, int redirects_remaining) {
     rt_net_init_wsa();
@@ -2123,6 +2544,17 @@ static rt_http_res_t *do_http_request(rt_http_req_t *req, int redirects_remainin
         rt_trap_net(req->url.use_tls ? "HTTPS: connection failed" : "HTTP: connection failed",
                     open_err);
         return NULL;
+    }
+
+    if (conn.http2) {
+        rt_http_res_t *res = do_http2_request_opened(req, &conn, redirects_remaining);
+        if (!res) {
+            http_set_tls_open_error(rt_http2_get_error(conn.http2));
+            http_conn_pool_release(&conn, 0);
+            rt_trap_net("HTTPS: HTTP/2 request failed", Err_ProtocolError);
+            return NULL;
+        }
+        return res;
     }
 
     // Build and send request
@@ -2365,23 +2797,7 @@ static rt_http_res_t *do_http_request(rt_http_req_t *req, int redirects_remainin
     if (content_length_val)
         rt_string_unref(content_length_val);
 
-    // Create response object (must use rt_obj_new_i64 for GC management)
-    rt_http_res_t *res = (rt_http_res_t *)rt_obj_new_i64(0, (int64_t)sizeof(rt_http_res_t));
-    if (!res) {
-        free(body);
-        free(status_text);
-        rt_trap("HTTP: memory allocation failed");
-        return NULL;
-    }
-    rt_obj_set_finalizer(res, rt_http_res_finalize);
-
-    res->status = status;
-    res->status_text = status_text;
-    res->headers = headers_map;
-    res->body = body;
-    res->body_len = body_len;
-
-    return res;
+    return http_make_response_obj(status, status_text, headers_map, body, body_len);
 }
 
 /// @brief Execute an HTTP GET/download and stream the response body into an open file.
@@ -2406,6 +2822,28 @@ static int do_http_download_request(rt_http_req_t *req, int redirects_remaining,
 
     if (!http_open_connection(req, &conn, &open_err))
         return 0;
+
+    if (conn.http2) {
+        rt_http_res_t *res = do_http2_request_opened(req, &conn, redirects_remaining);
+        if (!res)
+            goto cleanup;
+        if (res->status < 200 || res->status >= 300) {
+            if (res && rt_obj_release_check0(res))
+                rt_obj_free(res);
+            goto cleanup;
+        }
+        {
+            if (res->body_len > 0 &&
+                fwrite(res->body, 1, res->body_len, out) != res->body_len) {
+                if (res && rt_obj_release_check0(res))
+                    rt_obj_free(res);
+                goto cleanup;
+            }
+        }
+        if (res && rt_obj_release_check0(res))
+            rt_obj_free(res);
+        return 1;
+    }
 
     request_str = build_request(req);
     if (!request_str)
@@ -2764,6 +3202,7 @@ int8_t rt_http_download(rt_string url, rt_string dest_path) {
     req.follow_redirects = 1;
     req.accept_gzip = 0;
     req.decode_gzip = 0;
+    req.force_http1 = 1;
 
     if (parse_url(url_str, &req.url) < 0) {
         free(req.method);
@@ -3258,6 +3697,23 @@ void *rt_http_req_set_keep_alive(void *obj, int8_t keep_alive) {
 
     rt_http_req_t *req = (rt_http_req_t *)obj;
     req->keep_alive = keep_alive ? 1 : 0;
+    return obj;
+}
+
+/// @brief Restrict this request to HTTP/1.1 transport even over TLS.
+/// @details When set, the TLS client advertises only `http/1.1` via
+///          ALPN instead of the default `h2,http/1.1`, forcing the
+///          server to select HTTP/1.1. Useful for code that depends
+///          on HTTP/1.1 framing semantics (e.g. the `Connection:
+///          keep-alive` response header, which HTTP/2 omits because
+///          persistence is implicit). Default is `0` (allow HTTP/2).
+/// @return `obj` (for fluent chaining).
+void *rt_http_req_set_force_http1(void *obj, int8_t force) {
+    if (!obj)
+        rt_trap("HTTP: NULL request");
+
+    rt_http_req_t *req = (rt_http_req_t *)obj;
+    req->force_http1 = force ? 1 : 0;
     return obj;
 }
 

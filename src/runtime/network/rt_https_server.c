@@ -25,6 +25,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_https_server.h"
+#include "rt_http2.h"
 #include "rt_http_router.h"
 
 #include "rt_bytes.h"
@@ -147,6 +148,9 @@ static void free_server_req(server_req_t *req);
 static void build_route_response(rt_http_server_impl *server, server_req_t *req, server_res_t *res);
 static void free_route_entries(rt_http_server_impl *server);
 static void free_handler_bindings(rt_http_server_impl *server);
+static int contains_crlf(const char *text);
+static int is_server_managed_header_name(const char *name);
+static int response_forces_close(const server_res_t *res);
 
 static void https_server_state_lock(rt_http_server_impl *server) {
     if (server && server->state_lock_initialized)
@@ -706,6 +710,184 @@ static int https_conn_send_all(rt_tls_session_t *tls, const void *buf, size_t le
     return rt_tls_send(tls, buf, len) == (long)len;
 }
 
+static long https_http2_read(void *ctx, uint8_t *buf, size_t len) {
+    return https_conn_recv((rt_tls_session_t *)ctx, buf, len);
+}
+
+static int https_http2_write(void *ctx, const uint8_t *buf, size_t len) {
+    return https_conn_send_all((rt_tls_session_t *)ctx, buf, len);
+}
+
+static int http2_request_to_server_req(const rt_http2_request_t *src, server_req_t *dst) {
+    char *path_copy = NULL;
+    char *qmark = NULL;
+    if (!src || !dst || !src->method || !src->path || src->path[0] != '/')
+        return 0;
+
+    memset(dst, 0, sizeof(*dst));
+    dst->method = strdup(src->method);
+    path_copy = strdup(src->path);
+    if (!dst->method || !path_copy)
+        goto fail;
+
+    qmark = strchr(path_copy, '?');
+    if (qmark) {
+        *qmark = '\0';
+        dst->query = strdup(qmark + 1);
+        if (!dst->query)
+            goto fail;
+    }
+
+    dst->path = strdup(path_copy);
+    if (!dst->path)
+        goto fail;
+    dst->http_major = 2;
+    dst->http_minor = 0;
+    dst->headers = rt_map_new();
+    if (!dst->headers)
+        goto fail;
+    for (const rt_http2_header_t *it = src->headers; it; it = it->next) {
+        rt_string key = NULL;
+        rt_string value = NULL;
+        if (!it->name || !it->value)
+            continue;
+        key = rt_string_from_bytes(it->name, strlen(it->name));
+        value = rt_string_from_bytes(it->value, strlen(it->value));
+        if (!key || !value) {
+            if (key)
+                rt_string_unref(key);
+            if (value)
+                rt_string_unref(value);
+            goto fail;
+        }
+        rt_map_set(dst->headers, key, value);
+        rt_string_unref(key);
+        rt_string_unref(value);
+    }
+    if (src->body_len > 0) {
+        dst->body = (char *)malloc(src->body_len + 1);
+        if (!dst->body)
+            goto fail;
+        memcpy(dst->body, src->body, src->body_len);
+        dst->body[src->body_len] = '\0';
+        dst->body_len = src->body_len;
+    }
+    free(path_copy);
+    return 1;
+
+fail:
+    free(path_copy);
+    free_server_req(dst);
+    memset(dst, 0, sizeof(*dst));
+    return 0;
+}
+
+static int server_headers_to_http2(const server_res_t *src, rt_http2_header_t **headers_out) {
+    rt_http2_header_t *headers = NULL;
+    if (!headers_out)
+        return 0;
+    *headers_out = NULL;
+    if (src && src->headers) {
+        void *keys = rt_map_keys(src->headers);
+        int64_t count = rt_seq_len(keys);
+        for (int64_t i = 0; i < count; i++) {
+            rt_string key = (rt_string)rt_seq_get(keys, i);
+            void *val = rt_map_get(src->headers, key);
+            const char *k = rt_string_cstr(key);
+            const char *v = val ? rt_string_cstr((rt_string)val) : NULL;
+            if (k && v && !contains_crlf(k) && !contains_crlf(v) &&
+                !is_server_managed_header_name(k) &&
+                !rt_http2_header_append_copy(&headers, k, v)) {
+                rt_http2_headers_free(headers);
+                if (rt_obj_release_check0(keys))
+                    rt_obj_free(keys);
+                return 0;
+            }
+        }
+        if (rt_obj_release_check0(keys))
+            rt_obj_free(keys);
+    }
+    if (src && src->body) {
+        char len_buf[32];
+        snprintf(len_buf, sizeof(len_buf), "%zu", src->body_len);
+        if (!rt_http2_header_append_copy(&headers, "content-length", len_buf)) {
+            rt_http2_headers_free(headers);
+            return 0;
+        }
+    }
+    *headers_out = headers;
+    return 1;
+}
+
+static void handle_connection_http2(rt_http_server_impl *server, rt_tls_session_t *tls) {
+    rt_http2_io_t io;
+    rt_http2_conn_t *h2 = NULL;
+
+    io.ctx = tls;
+    io.read = https_http2_read;
+    io.write = https_http2_write;
+    h2 = rt_http2_server_new(&io);
+    if (!h2) {
+        rt_tls_close(tls);
+        return;
+    }
+
+    if (!https_server_register_active_conn(server, tls)) {
+        rt_http2_conn_free(h2);
+        rt_tls_close(tls);
+        return;
+    }
+    https_conn_set_recv_timeout(tls, 30000);
+    https_conn_set_send_timeout(tls, 30000);
+
+    while (https_conn_is_open(tls) && https_server_is_running(server) && rt_http2_conn_is_usable(h2)) {
+        rt_http2_request_t h2req;
+        server_req_t req;
+        server_res_t res;
+        rt_http2_header_t *resp_headers = NULL;
+        int close_after = 0;
+
+        memset(&h2req, 0, sizeof(h2req));
+        memset(&req, 0, sizeof(req));
+        memset(&res, 0, sizeof(res));
+
+        if (!rt_http2_server_receive_request(h2, HTTP_REQ_MAX_BODY, &h2req))
+            break;
+        if (!http2_request_to_server_req(&h2req, &req)) {
+            (void)rt_http2_server_send_response(h2, h2req.stream_id, 400, NULL, NULL, 0);
+            rt_http2_request_free(&h2req);
+            break;
+        }
+
+        build_route_response(server, &req, &res);
+        if (!server_headers_to_http2(&res, &resp_headers) ||
+            !rt_http2_server_send_response(
+                h2, h2req.stream_id, res.status_code, resp_headers, (uint8_t *)res.body, res.body_len)) {
+            rt_http2_headers_free(resp_headers);
+            free(res.body);
+            if (res.headers && rt_obj_release_check0(res.headers))
+                rt_obj_free(res.headers);
+            free_server_req(&req);
+            rt_http2_request_free(&h2req);
+            break;
+        }
+
+        close_after = response_forces_close(&res);
+        rt_http2_headers_free(resp_headers);
+        free(res.body);
+        if (res.headers && rt_obj_release_check0(res.headers))
+            rt_obj_free(res.headers);
+        free_server_req(&req);
+        rt_http2_request_free(&h2req);
+        if (close_after)
+            break;
+    }
+
+    https_server_unregister_active_conn(server, tls);
+    rt_http2_conn_free(h2);
+    rt_tls_close(tls);
+}
+
 /// @brief Handle a single accepted client connection end-to-end.
 ///
 /// Reads the request (with a 30-second receive timeout to bound idle
@@ -725,6 +907,10 @@ static int https_conn_send_all(rt_tls_session_t *tls, const void *buf, size_t le
 /// @param tcp    Accepted TLS connection handle (we close it).
 static void handle_connection(rt_http_server_impl *server, void *tcp) {
     rt_tls_session_t *tls = (rt_tls_session_t *)tcp;
+    if (strcmp(rt_tls_get_negotiated_alpn(tls), "h2") == 0) {
+        handle_connection_http2(server, tls);
+        return;
+    }
     if (!https_server_register_active_conn(server, tls)) {
         rt_tls_close(tls);
         return;
@@ -1085,7 +1271,7 @@ void *rt_https_server_new(int64_t port, rt_string cert_file, rt_string key_file)
         rt_tls_server_config_init(&tls_cfg);
         tls_cfg.cert_file = server->cert_file;
         tls_cfg.key_file = server->key_file;
-        tls_cfg.alpn_protocol = "http/1.1";
+        tls_cfg.alpn_protocol = "h2,http/1.1";
         server->tls_ctx = rt_tls_server_ctx_new(&tls_cfg);
         if (!server->tls_ctx)
             rt_trap(rt_tls_server_last_error());
