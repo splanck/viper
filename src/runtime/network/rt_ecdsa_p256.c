@@ -6,7 +6,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/network/rt_ecdsa_p256.c
-// Purpose: Native ECDSA P-256 (secp256r1) signature verification in pure C.
+// Purpose: Native ECDSA P-256 (secp256r1) signature verification and
+//          signing in pure C.
 //          Implements 256-bit modular field arithmetic, Jacobian projective
 //          elliptic curve point operations, and the ECDSA verify algorithm.
 // Key invariants:
@@ -21,10 +22,17 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_ecdsa_p256.h"
+#include "rt_crypto.h"
 #include <string.h>
 
 #ifdef _MSC_VER
 #include <intrin.h>
+#endif
+
+#if defined(__GNUC__) || defined(__clang__)
+#define ECDSA_P256_MAYBE_UNUSED __attribute__((unused))
+#else
+#define ECDSA_P256_MAYBE_UNUSED
 #endif
 
 //=============================================================================
@@ -103,6 +111,16 @@ static void u256_from_bytes(u256 r, const uint8_t b[32]) {
     }
 }
 
+static void u256_to_bytes(uint8_t out[32], const u256 a) {
+    for (int i = 0; i < 4; i++) {
+        uint64_t limb = a[i];
+        for (int j = 7; j >= 0; j--) {
+            out[i * 8 + j] = (uint8_t)(limb & 0xFF);
+            limb >>= 8;
+        }
+    }
+}
+
 // r = a + b, returns carry (0 or 1)
 #ifdef _MSC_VER
 static uint64_t u256_add(u256 r, const u256 a, const u256 b) {
@@ -143,40 +161,117 @@ static uint64_t u256_sub(u256 r, const u256 a, const u256 b) {
 }
 #endif
 
-// 256x256 → 512 schoolbook multiplication
+// 256x256 → 512 schoolbook multiplication.
+//
+// The field / scalar code stores 256-bit integers as four 64-bit limbs in
+// big-endian limb order. To keep the wide multiply simple and portable, we
+// expand both operands into little-endian 32-bit digits, do base-2^32
+// schoolbook multiplication, normalize carries, then pack back into eight
+// 64-bit big-endian limbs.
+static ECDSA_P256_MAYBE_UNUSED void u256_mul_wide(u512 r, const u256 a, const u256 b) {
+    uint32_t aw[8], bw[8];
+    uint64_t acc[16];
+
+    memset(acc, 0, sizeof(acc));
+
+    for (int i = 0; i < 4; i++) {
+        uint64_t limb_a = a[3 - i];
+        uint64_t limb_b = b[3 - i];
+        aw[2 * i] = (uint32_t)(limb_a & 0xFFFFFFFFu);
+        aw[2 * i + 1] = (uint32_t)(limb_a >> 32);
+        bw[2 * i] = (uint32_t)(limb_b & 0xFFFFFFFFu);
+        bw[2 * i + 1] = (uint32_t)(limb_b >> 32);
+    }
+
+    for (int i = 0; i < 8; i++) {
+        for (int j = 0; j < 8; j++)
+            acc[i + j] += (uint64_t)aw[i] * (uint64_t)bw[j];
+    }
+
+    for (int i = 0; i < 15; i++) {
+        acc[i + 1] += acc[i] >> 32;
+        acc[i] &= 0xFFFFFFFFu;
+    }
+    acc[15] &= 0xFFFFFFFFu;
+
+    for (int i = 0; i < 8; i++)
+        r[7 - i] = (acc[2 * i + 1] << 32) | acc[2 * i];
+}
+
+static ECDSA_P256_MAYBE_UNUSED int u512_bit_length_le(const uint64_t limbs[8]) {
+    for (int i = 7; i >= 0; i--) {
+        if (limbs[i] != 0)
+            return i * 64 + (64 - __builtin_clzll(limbs[i]));
+    }
+    return 0;
+}
+
+static ECDSA_P256_MAYBE_UNUSED uint64_t u256_shifted_limb_le(const uint64_t mod_le[4],
+                                                             int shift,
+                                                             int limb_index) {
+    const int word_shift = shift / 64;
+    const int bit_shift = shift % 64;
+    const int base = limb_index - word_shift;
+    uint64_t limb = 0;
+
+    if (base >= 0 && base < 4)
+        limb |= mod_le[base] << bit_shift;
+    if (bit_shift != 0 && base - 1 >= 0 && base - 1 < 4)
+        limb |= mod_le[base - 1] >> (64 - bit_shift);
+    return limb;
+}
+
+static ECDSA_P256_MAYBE_UNUSED int u512_cmp_shifted_u256_le(const uint64_t value_le[8],
+                                                            const uint64_t mod_le[4],
+                                                            int shift) {
+    for (int i = 7; i >= 0; i--) {
+        const uint64_t shifted = u256_shifted_limb_le(mod_le, shift, i);
+        if (value_le[i] < shifted)
+            return -1;
+        if (value_le[i] > shifted)
+            return 1;
+    }
+    return 0;
+}
+
+static ECDSA_P256_MAYBE_UNUSED void u512_sub_shifted_u256_le(uint64_t value_le[8],
+                                                             const uint64_t mod_le[4],
+                                                             int shift) {
+    uint64_t borrow = 0;
+    for (int i = 0; i < 8; i++) {
+        const uint64_t shifted = u256_shifted_limb_le(mod_le, shift, i);
 #ifdef _MSC_VER
-static void u256_mul_wide(u512 r, const u256 a, const u256 b) {
-    memset(r, 0, 8 * sizeof(uint64_t));
-    for (int i = 3; i >= 0; i--) {
-        uint64_t carry = 0;
-        for (int j = 3; j >= 0; j--) {
-            uint64_t hi;
-            uint64_t lo = _umul128(a[i], b[j], &hi);
-            // Add existing value at r[i+j+1]
-            unsigned char c = _addcarry_u64(0, lo, r[i + j + 1], &r[i + j + 1]);
-            // Add incoming carry to hi
-            unsigned char c2 = _addcarry_u64(c, hi, carry, &carry);
-            // If c2 overflows, it propagates into the next iteration's carry
-            // (cannot happen in practice for 256×256, but be safe)
-            (void)c2;
-        }
-        r[i] += carry;
-    }
-}
+        borrow = _subborrow_u64((unsigned char)borrow, value_le[i], shifted, &value_le[i]);
 #else
-static void u256_mul_wide(u512 r, const u256 a, const u256 b) {
-    memset(r, 0, 8 * sizeof(uint64_t));
-    for (int i = 3; i >= 0; i--) {
-        __uint128_t carry = 0;
-        for (int j = 3; j >= 0; j--) {
-            __uint128_t prod = (__uint128_t)a[i] * b[j] + r[i + j + 1] + carry;
-            r[i + j + 1] = (uint64_t)prod;
-            carry = prod >> 64;
-        }
-        r[i] += (uint64_t)carry;
+        __uint128_t diff = (__uint128_t)value_le[i] - shifted - borrow;
+        value_le[i] = (uint64_t)diff;
+        borrow = (uint64_t)((diff >> 127) & 1);
+#endif
     }
 }
-#endif
+
+static ECDSA_P256_MAYBE_UNUSED void u512_mod_u256(u256 out, const u512 wide, const u256 mod) {
+    uint64_t value_le[8];
+    uint64_t mod_le[4];
+    int shift;
+
+    for (int i = 0; i < 8; i++)
+        value_le[i] = wide[7 - i];
+    for (int i = 0; i < 4; i++)
+        mod_le[i] = mod[3 - i];
+
+    shift = u512_bit_length_le(value_le) - 256;
+    if (shift < 0)
+        shift = 0;
+
+    for (; shift >= 0; shift--) {
+        if (u512_cmp_shifted_u256_le(value_le, mod_le, shift) >= 0)
+            u512_sub_shifted_u256_le(value_le, mod_le, shift);
+    }
+
+    for (int i = 0; i < 4; i++)
+        out[3 - i] = value_le[i];
+}
 
 //=============================================================================
 // Field arithmetic mod p (NIST P-256 prime)
@@ -213,10 +308,43 @@ static void fp_sub(u256 r, const u256 a, const u256 b) {
     }
 }
 
+static void u256_mod_add_generic(u256 r, const u256 a, const u256 b, const u256 mod) {
+    uint64_t carry = u256_add(r, a, b);
+    if (carry || u256_cmp(r, mod) >= 0)
+        u256_sub(r, r, mod);
+}
+
+static void u256_mod_double_generic(u256 r, const u256 a, const u256 mod) {
+    u256_mod_add_generic(r, a, a, mod);
+}
+
+static void u256_mod_mul_generic(u256 r, const u256 a, const u256 b, const u256 mod) {
+    u256 result, base;
+    u256_zero(result);
+    u256_copy(base, a);
+    while (u256_cmp(base, mod) >= 0)
+        u256_sub(base, base, mod);
+
+    for (int limb = 3; limb >= 0; limb--) {
+        uint64_t word = b[limb];
+        for (int bit = 0; bit < 64; bit++) {
+            if (word & 1ULL)
+                u256_mod_add_generic(result, result, base, mod);
+            u256_mod_double_generic(base, base, mod);
+            word >>= 1;
+        }
+    }
+    u256_copy(r, result);
+}
+
 // P-256 fast reduction (Solinas reduction)
 // p = 2^256 - 2^224 + 2^192 + 2^96 - 1
 // Input: 512-bit product t[0..7], output: 256-bit result r mod p
+#if defined(__GNUC__) || defined(__clang__)
+static ECDSA_P256_MAYBE_UNUSED void fp_reduce_512(u256 r, const u512 t) {
+#else
 static void fp_reduce_512(u256 r, const u512 t) {
+#endif
     // Extract 32-bit words from the 512-bit value (c0=MSW, c15=LSW)
     // t[0] is the most significant 64 bits, t[7] is least significant
     uint64_t c[16];
@@ -388,11 +516,13 @@ static void fp_reduce_512(u256 r, const u512 t) {
     fp_reduce_once(r, r);
 }
 
+static ECDSA_P256_MAYBE_UNUSED void fp_reduce_512_generic(u256 r, const u512 t) {
+    u512_mod_u256(r, t, P256_P);
+}
+
 // r = a * b mod p
 static void fp_mul(u256 r, const u256 a, const u256 b) {
-    u512 wide;
-    u256_mul_wide(wide, a, b);
-    fp_reduce_512(r, wide);
+    u256_mod_mul_generic(r, a, b, P256_P);
 }
 
 // r = a^2 mod p
@@ -457,71 +587,16 @@ static void sn_reduce_once(u256 r, const u256 a) {
         u256_copy(r, tmp);
 }
 
+// r = a + b mod n
+static void sn_add(u256 r, const u256 a, const u256 b) {
+    uint64_t carry = u256_add(r, a, b);
+    if (carry || u256_cmp(r, P256_N) >= 0)
+        u256_sub(r, r, P256_N);
+}
+
 // r = a * b mod n
 static void sn_mul(u256 r, const u256 a, const u256 b) {
-    u512 wide;
-    u256_mul_wide(wide, a, b);
-
-    // Generic Barrett-like reduction mod n:
-    // For correctness, we do repeated subtraction since the product fits in 512 bits
-    // and n is 256 bits. We extract 256-bit chunks and reduce.
-
-    // Simple approach: convert 512-bit to a series of fp_reduce-like steps
-    // Since we only need this for a few multiplications in ECDSA verify,
-    // we use a straightforward approach.
-
-    // Pack the low 256 bits
-    u256 lo = {wide[4], wide[5], wide[6], wide[7]};
-    u256 hi = {wide[0], wide[1], wide[2], wide[3]};
-
-    // If hi is zero, just reduce lo
-    if (u256_is_zero(hi)) {
-        sn_reduce_once(r, lo);
-        return;
-    }
-
-    // Compute hi * 2^256 mod n + lo mod n
-    // 2^256 mod n = 2^256 - n (since n < 2^256)
-    // = 0x00000000FFFFFFFF00000000000000004319055258E8617B0C46353D039CDAAFULL
-    static const u256 R_MOD_N = {
-        0x00000000FFFFFFFFULL, 0x0000000000000000ULL, 0x4319055258E8617BULL, 0x0C46353D039CDAAFULL};
-
-    // result = hi * R_MOD_N + lo (mod n)
-    // Since hi < 2^256 and R_MOD_N < n, the product hi * R_MOD_N < 2^512
-    // We need to reduce this carefully.
-
-    // Multiply hi * R_MOD_N (both 256-bit) → 512-bit
-    u512 hr;
-    u256_mul_wide(hr, hi, R_MOD_N);
-
-    // Add lo to the low 256 bits of hr
-    u256 hr_lo = {hr[4], hr[5], hr[6], hr[7]};
-    u256 hr_hi = {hr[0], hr[1], hr[2], hr[3]};
-
-    u256 sum;
-    uint64_t carry = u256_add(sum, hr_lo, lo);
-    if (carry) {
-        u256 one_val = {0, 0, 0, 1};
-        u256_add(hr_hi, hr_hi, one_val);
-    }
-
-    // Now reduce hr_hi * 2^256 + sum (mod n)
-    // Recurse: if hr_hi is non-zero, multiply again
-    if (u256_is_zero(hr_hi)) {
-        sn_reduce_once(r, sum);
-        return;
-    }
-
-    // Second round: hr_hi * R_MOD_N + sum
-    u512 hr2;
-    u256_mul_wide(hr2, hr_hi, R_MOD_N);
-    u256 hr2_lo = {hr2[4], hr2[5], hr2[6], hr2[7]};
-
-    // hr2_hi should be zero or very small at this point
-    u256 sum2;
-    u256_add(sum2, hr2_lo, sum);
-    sn_reduce_once(sum2, sum2);
-    sn_reduce_once(r, sum2);
+    u256_mod_mul_generic(r, a, b, P256_N);
 }
 
 // r = a^(-1) mod n using Fermat: a^(n-2) mod n
@@ -588,67 +663,51 @@ static void jpoint_from_affine(jpoint *P, const u256 x, const u256 y) {
     P->Z[3] = 1; // Z = 1
 }
 
-// Point doubling in Jacobian coordinates
-// Uses the formula for a = -3 (P-256 specific optimization):
-//   M = 3*(X-Z^2)*(X+Z^2)
-//   S = 4*X*Y^2
-//   X' = M^2 - 2*S
-//   Y' = M*(S - X') - 8*Y^4
-//   Z' = 2*Y*Z
+static void jpoint_to_affine(u256 x, u256 y, const jpoint *P);
+
+// Point doubling using affine formulas.
+//
+// This deliberately trades speed for simpler, easier-to-audit arithmetic.
+// The server/client TLS stack only needs a small number of scalar multiplies
+// per handshake, so the extra inversion cost is acceptable.
 static void jpoint_double(jpoint *R, const jpoint *P) {
+    static const u256 THREE = {0, 0, 0, 3};
+
     if (jpoint_is_infinity(P)) {
         jpoint_set_infinity(R);
         return;
     }
 
-    u256 m, s, t, y2, z2, tmp;
+    u256 x1, y1, lambda, numerator, denominator, tmp;
 
-    // Z^2
-    fp_sqr(z2, P->Z);
+    jpoint_to_affine(x1, y1, P);
+    if (u256_is_zero(y1)) {
+        jpoint_set_infinity(R);
+        return;
+    }
 
-    // Y^2
-    fp_sqr(y2, P->Y);
+    fp_sqr(numerator, x1);
+    fp_add(tmp, numerator, numerator);
+    fp_add(numerator, tmp, numerator); // 3*x^2
+    fp_sub(numerator, numerator, THREE); // 3*x^2 - 3
 
-    // S = 4*X*Y^2
-    fp_mul(s, P->X, y2);
-    fp_add(s, s, s);
-    fp_add(s, s, s); // s = 4*X*Y^2
+    fp_add(denominator, y1, y1); // 2*y
+    fp_inv(denominator, denominator);
+    fp_mul(lambda, numerator, denominator);
 
-    // M = 3*(X-Z^2)*(X+Z^2) [using a=-3 optimization]
-    fp_sub(tmp, P->X, z2);
-    fp_add(t, P->X, z2);
-    fp_mul(m, tmp, t);
-    u256 m3;
-    fp_add(m3, m, m);
-    fp_add(m, m3, m); // m = 3*(X-Z^2)*(X+Z^2)
+    fp_sqr(R->X, lambda);
+    fp_sub(R->X, R->X, x1);
+    fp_sub(R->X, R->X, x1);
 
-    // X' = M^2 - 2*S
-    fp_sqr(R->X, m);
-    fp_sub(R->X, R->X, s);
-    fp_sub(R->X, R->X, s);
+    fp_sub(tmp, x1, R->X);
+    fp_mul(R->Y, lambda, tmp);
+    fp_sub(R->Y, R->Y, y1);
 
-    // Y' = M*(S - X') - 8*Y^4
-    fp_sub(tmp, s, R->X);
-    fp_mul(R->Y, m, tmp);
-    fp_sqr(t, y2);   // Y^4
-    fp_add(t, t, t); // 2*Y^4
-    fp_add(t, t, t); // 4*Y^4
-    fp_add(t, t, t); // 8*Y^4
-    fp_sub(R->Y, R->Y, t);
-
-    // Z' = 2*Y*Z
-    fp_mul(R->Z, P->Y, P->Z);
-    fp_add(R->Z, R->Z, R->Z);
+    u256_zero(R->Z);
+    R->Z[3] = 1;
 }
 
-// Point addition in Jacobian coordinates (mixed: Q.Z=1 for affine Q not used here)
-// General formula:
-//   U1 = X1*Z2^2,  U2 = X2*Z1^2
-//   S1 = Y1*Z2^3,  S2 = Y2*Z1^3
-//   H = U2-U1,     R = S2-S1
-//   X3 = R^2 - H^3 - 2*U1*H^2
-//   Y3 = R*(U1*H^2 - X3) - S1*H^3
-//   Z3 = H*Z1*Z2
+// Point addition using affine formulas.
 static void jpoint_add(jpoint *Res, const jpoint *P, const jpoint *Q) {
     if (jpoint_is_infinity(P)) {
         memcpy(Res, Q, sizeof(jpoint));
@@ -659,55 +718,35 @@ static void jpoint_add(jpoint *Res, const jpoint *P, const jpoint *Q) {
         return;
     }
 
-    u256 z1sq, z2sq, u1, u2, z1cu, z2cu, s1, s2, h, rr;
+    u256 x1, y1, x2, y2, lambda, numerator, denominator, tmp;
 
-    fp_sqr(z1sq, P->Z);
-    fp_sqr(z2sq, Q->Z);
+    jpoint_to_affine(x1, y1, P);
+    jpoint_to_affine(x2, y2, Q);
 
-    fp_mul(u1, P->X, z2sq);
-    fp_mul(u2, Q->X, z1sq);
-
-    fp_mul(z1cu, z1sq, P->Z);
-    fp_mul(z2cu, z2sq, Q->Z);
-
-    fp_mul(s1, P->Y, z2cu);
-    fp_mul(s2, Q->Y, z1cu);
-
-    fp_sub(h, u2, u1);
-    fp_sub(rr, s2, s1);
-
-    // If h == 0 and rr == 0, points are equal → double
-    if (u256_is_zero(h) && u256_is_zero(rr)) {
+    if (u256_cmp(x1, x2) == 0) {
+        if (u256_cmp(y1, y2) != 0) {
+            jpoint_set_infinity(Res);
+            return;
+        }
         jpoint_double(Res, P);
         return;
     }
-    // If h == 0 and rr != 0, points are inverses → infinity
-    if (u256_is_zero(h)) {
-        jpoint_set_infinity(Res);
-        return;
-    }
 
-    u256 h2, h3, u1h2;
-    fp_sqr(h2, h);
-    fp_mul(h3, h2, h);
-    fp_mul(u1h2, u1, h2);
+    fp_sub(numerator, y2, y1);
+    fp_sub(denominator, x2, x1);
+    fp_inv(denominator, denominator);
+    fp_mul(lambda, numerator, denominator);
 
-    // X3 = rr^2 - h3 - 2*u1h2
-    fp_sqr(Res->X, rr);
-    fp_sub(Res->X, Res->X, h3);
-    fp_sub(Res->X, Res->X, u1h2);
-    fp_sub(Res->X, Res->X, u1h2);
+    fp_sqr(Res->X, lambda);
+    fp_sub(Res->X, Res->X, x1);
+    fp_sub(Res->X, Res->X, x2);
 
-    // Y3 = rr*(u1h2 - X3) - s1*h3
-    u256 tmp;
-    fp_sub(tmp, u1h2, Res->X);
-    fp_mul(Res->Y, rr, tmp);
-    fp_mul(tmp, s1, h3);
-    fp_sub(Res->Y, Res->Y, tmp);
+    fp_sub(tmp, x1, Res->X);
+    fp_mul(Res->Y, lambda, tmp);
+    fp_sub(Res->Y, Res->Y, y1);
 
-    // Z3 = h * Z1 * Z2
-    fp_mul(Res->Z, P->Z, Q->Z);
-    fp_mul(Res->Z, Res->Z, h);
+    u256_zero(Res->Z);
+    Res->Z[3] = 1;
 }
 
 // Scalar multiplication: R = k * P (double-and-add, MSB first)
@@ -823,4 +862,84 @@ int ecdsa_p256_verify(const uint8_t pubkey_x[32],
     sn_reduce_once(rx, rx);
 
     return u256_cmp(rx, r) == 0 ? 1 : 0;
+}
+
+int ecdsa_p256_public_from_private(const uint8_t privkey[32],
+                                   uint8_t pubkey_x[32],
+                                   uint8_t pubkey_y[32]) {
+    u256 d;
+    u256_from_bytes(d, privkey);
+    if (u256_is_zero(d) || u256_cmp(d, P256_N) >= 0)
+        return 0;
+
+    jpoint G;
+    jpoint Q;
+    u256 qx, qy;
+    jpoint_from_affine(&G, P256_GX, P256_GY);
+    jpoint_scalar_mul(&Q, d, &G);
+    if (jpoint_is_infinity(&Q))
+        return 0;
+    jpoint_to_affine(qx, qy, &Q);
+    u256_to_bytes(pubkey_x, qx);
+    u256_to_bytes(pubkey_y, qy);
+    return 1;
+}
+
+int ecdsa_p256_sign(const uint8_t privkey[32],
+                    const uint8_t digest[32],
+                    uint8_t sig_r[32],
+                    uint8_t sig_s[32]) {
+    u256 d, e;
+    u256_from_bytes(d, privkey);
+    u256_from_bytes(e, digest);
+    if (u256_is_zero(d) || u256_cmp(d, P256_N) >= 0)
+        return 0;
+
+    jpoint G;
+    jpoint_from_affine(&G, P256_GX, P256_GY);
+
+    for (int attempt = 0; attempt < 32; attempt++) {
+        uint8_t nonce_bytes[32];
+        u256 k;
+        u256 r, s, tmp, kinv;
+        jpoint R;
+        u256 rx, ry;
+
+        rt_crypto_random_bytes(nonce_bytes, sizeof(nonce_bytes));
+        u256_from_bytes(k, nonce_bytes);
+        sn_reduce_once(k, k);
+        if (u256_is_zero(k) || u256_cmp(k, P256_N) >= 0)
+            continue;
+
+        jpoint_scalar_mul(&R, k, &G);
+        if (jpoint_is_infinity(&R))
+            continue;
+
+        jpoint_to_affine(rx, ry, &R);
+        sn_reduce_once(r, rx);
+        if (u256_is_zero(r))
+            continue;
+
+        sn_mul(tmp, r, d);
+        sn_add(tmp, tmp, e);
+        if (u256_is_zero(tmp))
+            continue;
+
+        sn_inv(kinv, k);
+        sn_mul(s, kinv, tmp);
+        if (u256_is_zero(s))
+            continue;
+
+        // Canonicalize to low-S form for broader interoperability.
+        u256 half_n = {
+            0x7FFFFFFF80000000ULL, 0x7FFFFFFFFFFFFFFFULL, 0xDE737D56D38BCF42ULL, 0x79DCE5617E3192A8ULL};
+        if (u256_cmp(s, half_n) > 0)
+            u256_sub(s, P256_N, s);
+
+        u256_to_bytes(sig_r, r);
+        u256_to_bytes(sig_s, s);
+        return 1;
+    }
+
+    return 0;
 }

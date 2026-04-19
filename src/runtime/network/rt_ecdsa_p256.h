@@ -6,10 +6,10 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/network/rt_ecdsa_p256.h
-// Purpose: Native ECDSA P-256 (secp256r1) signature verification in pure C.
+// Purpose: Native ECDSA P-256 (secp256r1) verification and signing in pure C.
 //          No external dependencies — replaces dlopen(libcrypto) on Linux.
 // Key invariants:
-//   - Verification-only: no signing or key generation.
+//   - Signing support is limited to caller-supplied private scalars.
 //   - All inputs are big-endian byte arrays; no heap allocation.
 //   - Constant-time field arithmetic is NOT guaranteed (verify-only, public data).
 // Ownership/Lifetime:
@@ -47,6 +47,26 @@ int ecdsa_p256_verify(const uint8_t pubkey_x[32],
                       const uint8_t digest[32],
                       const uint8_t sig_r[32],
                       const uint8_t sig_s[32]);
+
+/// @brief Derive the public key point for a 32-byte P-256 private scalar.
+/// @param privkey  32-byte big-endian private scalar d where 1 <= d < n.
+/// @param pubkey_x Output 32-byte big-endian affine X coordinate.
+/// @param pubkey_y Output 32-byte big-endian affine Y coordinate.
+/// @return 1 on success, 0 if the private scalar is invalid.
+int ecdsa_p256_public_from_private(const uint8_t privkey[32],
+                                   uint8_t pubkey_x[32],
+                                   uint8_t pubkey_y[32]);
+
+/// @brief Sign a SHA-256 digest with a P-256 private scalar.
+/// @param privkey 32-byte big-endian private scalar d where 1 <= d < n.
+/// @param digest  32-byte SHA-256 digest of the message to sign.
+/// @param sig_r   Output 32-byte big-endian R component.
+/// @param sig_s   Output 32-byte big-endian S component.
+/// @return 1 on success, 0 on invalid key material or repeated nonce failure.
+int ecdsa_p256_sign(const uint8_t privkey[32],
+                    const uint8_t digest[32],
+                    uint8_t sig_r[32],
+                    uint8_t sig_s[32]);
 
 #ifdef __cplusplus
 }

@@ -13,8 +13,10 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_crypto.h"
+#include "rt_ecdsa_p256.h"
 #include "rt_object.h"
 #include "rt_tls_internal.h"
+#include "rt_tls_server_internal.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -63,6 +65,34 @@ extern void rt_net_init_wsa(void);
 #endif
 
 static TLS_THREAD_LOCAL char g_tls_last_error[256];
+static TLS_THREAD_LOCAL char g_tls_server_last_error[256];
+
+struct rt_tls_server_ctx {
+    uint8_t *cert_list_entries;
+    size_t cert_list_entries_len;
+    uint8_t *leaf_cert_der;
+    size_t leaf_cert_der_len;
+    uint8_t private_key[32];
+    char alpn_protocol[64];
+    int timeout_ms;
+};
+
+static void tls_set_server_last_error_msg(const char *msg);
+static char *tls_read_text_file(const char *path, size_t *len_out);
+static size_t tls_pem_base64_decode(
+    const char *pem_b64, size_t b64_len, uint8_t *out_der, size_t max_der);
+static int tls_find_pem_block(const char *pem,
+                              const char *begin_marker,
+                              const char *end_marker,
+                              const char **body_out,
+                              size_t *body_len_out,
+                              const char **next_out);
+static int tls_parse_sec1_ec_private_key(
+    const uint8_t *der, size_t der_len, uint8_t out_priv[32]);
+static int tls_parse_pkcs8_ec_private_key(
+    const uint8_t *der, size_t der_len, uint8_t out_priv[32]);
+static int tls_extract_cert_ec_pubkey(
+    const uint8_t *cert_der, size_t cert_len, uint8_t x_out[32], uint8_t y_out[32]);
 
 // SIGPIPE suppression.
 #if defined(__linux__) || defined(__viperdos__)
@@ -167,6 +197,189 @@ static void tls_release_dynamic_state(rt_tls_session_t *session) {
     session->app_buffer_pos = 0;
 }
 
+static int tls_server_ctx_append_cert(
+    rt_tls_server_ctx_t *ctx, const uint8_t *der, size_t der_len, int is_leaf) {
+    size_t entry_len = 3 + der_len + 2;
+    uint8_t *grown = NULL;
+    if (!ctx || !der || der_len == 0 || der_len > 0xFFFFFF)
+        return 0;
+
+    grown = (uint8_t *)realloc(ctx->cert_list_entries, ctx->cert_list_entries_len + entry_len);
+    if (!grown)
+        return 0;
+    ctx->cert_list_entries = grown;
+    grown += ctx->cert_list_entries_len;
+    grown[0] = (uint8_t)((der_len >> 16) & 0xFF);
+    grown[1] = (uint8_t)((der_len >> 8) & 0xFF);
+    grown[2] = (uint8_t)(der_len & 0xFF);
+    memcpy(grown + 3, der, der_len);
+    grown[3 + der_len] = 0;
+    grown[3 + der_len + 1] = 0;
+    ctx->cert_list_entries_len += entry_len;
+
+    if (is_leaf) {
+        ctx->leaf_cert_der = (uint8_t *)malloc(der_len);
+        if (!ctx->leaf_cert_der)
+            return 0;
+        memcpy(ctx->leaf_cert_der, der, der_len);
+        ctx->leaf_cert_der_len = der_len;
+    }
+
+    return 1;
+}
+
+void rt_tls_server_config_init(rt_tls_server_config_t *config) {
+    if (!config)
+        return;
+    memset(config, 0, sizeof(*config));
+    config->timeout_ms = 30000;
+}
+
+rt_tls_server_ctx_t *rt_tls_server_ctx_new(const rt_tls_server_config_t *config) {
+    char *cert_pem = NULL;
+    char *key_pem = NULL;
+    const char *cursor = NULL;
+    const char *body = NULL;
+    const char *next = NULL;
+    size_t body_len = 0;
+    size_t file_len = 0;
+    int cert_count = 0;
+    rt_tls_server_ctx_t *ctx = NULL;
+    uint8_t cert_pub_x[32];
+    uint8_t cert_pub_y[32];
+    uint8_t key_pub_x[32];
+    uint8_t key_pub_y[32];
+
+    tls_set_server_last_error_msg(NULL);
+
+    if (!config || !config->cert_file || !config->key_file) {
+        tls_set_server_last_error_msg("TLS server: certificate and key files are required");
+        return NULL;
+    }
+
+    ctx = (rt_tls_server_ctx_t *)calloc(1, sizeof(*ctx));
+    if (!ctx) {
+        tls_set_server_last_error_msg("TLS server: context allocation failed");
+        return NULL;
+    }
+
+    ctx->timeout_ms = config->timeout_ms > 0 ? config->timeout_ms : 30000;
+    if (config->alpn_protocol)
+        strncpy(ctx->alpn_protocol, config->alpn_protocol, sizeof(ctx->alpn_protocol) - 1);
+
+    cert_pem = tls_read_text_file(config->cert_file, &file_len);
+    if (!cert_pem) {
+        tls_set_server_last_error_msg("TLS server: failed to read certificate file");
+        goto fail;
+    }
+
+    cursor = cert_pem;
+    while (tls_find_pem_block(
+        cursor, "-----BEGIN CERTIFICATE-----", "-----END CERTIFICATE-----", &body, &body_len, &next)) {
+        size_t max_der = body_len;
+        uint8_t *der = (uint8_t *)malloc(max_der);
+        size_t der_len = 0;
+        if (!der) {
+            tls_set_server_last_error_msg("TLS server: certificate buffer allocation failed");
+            goto fail;
+        }
+        der_len = tls_pem_base64_decode(body, body_len, der, max_der);
+        if (der_len == 0 || !tls_server_ctx_append_cert(ctx, der, der_len, cert_count == 0)) {
+            free(der);
+            tls_set_server_last_error_msg("TLS server: failed to decode certificate chain");
+            goto fail;
+        }
+        free(der);
+        cert_count++;
+        cursor = next;
+    }
+
+    if (cert_count == 0) {
+        tls_set_server_last_error_msg("TLS server: certificate file does not contain a PEM certificate");
+        goto fail;
+    }
+
+    key_pem = tls_read_text_file(config->key_file, &file_len);
+    if (!key_pem) {
+        tls_set_server_last_error_msg("TLS server: failed to read private key file");
+        goto fail;
+    }
+
+    if (tls_find_pem_block(
+            key_pem, "-----BEGIN PRIVATE KEY-----", "-----END PRIVATE KEY-----", &body, &body_len, NULL)) {
+        uint8_t *der = (uint8_t *)malloc(body_len);
+        size_t der_len = 0;
+        if (!der) {
+            tls_set_server_last_error_msg("TLS server: private key buffer allocation failed");
+            goto fail;
+        }
+        der_len = tls_pem_base64_decode(body, body_len, der, body_len);
+        if (der_len == 0 || !tls_parse_pkcs8_ec_private_key(der, der_len, ctx->private_key)) {
+            free(der);
+            tls_set_server_last_error_msg(
+                "TLS server: only unencrypted P-256 PKCS#8 private keys are supported");
+            goto fail;
+        }
+        free(der);
+    } else if (tls_find_pem_block(key_pem,
+                                  "-----BEGIN EC PRIVATE KEY-----",
+                                  "-----END EC PRIVATE KEY-----",
+                                  &body,
+                                  &body_len,
+                                  NULL)) {
+        uint8_t *der = (uint8_t *)malloc(body_len);
+        size_t der_len = 0;
+        if (!der) {
+            tls_set_server_last_error_msg("TLS server: private key buffer allocation failed");
+            goto fail;
+        }
+        der_len = tls_pem_base64_decode(body, body_len, der, body_len);
+        if (der_len == 0 || !tls_parse_sec1_ec_private_key(der, der_len, ctx->private_key)) {
+            free(der);
+            tls_set_server_last_error_msg(
+                "TLS server: only unencrypted P-256 EC private keys are supported");
+            goto fail;
+        }
+        free(der);
+    } else {
+        tls_set_server_last_error_msg("TLS server: unsupported private key PEM format");
+        goto fail;
+    }
+
+    if (!tls_extract_cert_ec_pubkey(ctx->leaf_cert_der,
+                                    ctx->leaf_cert_der_len,
+                                    cert_pub_x,
+                                    cert_pub_y)) {
+        tls_set_server_last_error_msg("TLS server: leaf certificate must use a P-256 ECDSA public key");
+        goto fail;
+    }
+
+    if (!ecdsa_p256_public_from_private(ctx->private_key, key_pub_x, key_pub_y) ||
+        memcmp(cert_pub_x, key_pub_x, sizeof(cert_pub_x)) != 0 ||
+        memcmp(cert_pub_y, key_pub_y, sizeof(cert_pub_y)) != 0) {
+        tls_set_server_last_error_msg("TLS server: certificate and private key do not match");
+        goto fail;
+    }
+
+    free(cert_pem);
+    free(key_pem);
+    return ctx;
+
+fail:
+    free(cert_pem);
+    free(key_pem);
+    rt_tls_server_ctx_free(ctx);
+    return NULL;
+}
+
+void rt_tls_server_ctx_free(rt_tls_server_ctx_t *ctx) {
+    if (!ctx)
+        return;
+    free(ctx->cert_list_entries);
+    free(ctx->leaf_cert_der);
+    free(ctx);
+}
+
 // TLS constants
 #define TLS_VERSION_1_2 0x0303
 #define TLS_VERSION_1_3 0x0304
@@ -234,6 +447,296 @@ static uint32_t read_u24(const uint8_t *p) {
     return ((uint32_t)p[0] << 16) | ((uint32_t)p[1] << 8) | p[2];
 }
 
+static int tls_der_read_tlv(
+    const uint8_t *buf, size_t buf_len, uint8_t *tag, size_t *val_len, size_t *hdr_len) {
+    if (buf_len < 2)
+        return -1;
+
+    *tag = buf[0];
+    if (buf[1] < 0x80) {
+        *val_len = buf[1];
+        *hdr_len = 2;
+    } else {
+        size_t num_len_bytes = buf[1] & 0x7F;
+        size_t value = 0;
+        if (num_len_bytes == 0 || num_len_bytes > 4 || 2 + num_len_bytes > buf_len)
+            return -1;
+        for (size_t i = 0; i < num_len_bytes; i++)
+            value = (value << 8) | buf[2 + i];
+        *val_len = value;
+        *hdr_len = 2 + num_len_bytes;
+    }
+
+    return (*hdr_len + *val_len <= buf_len) ? 0 : -1;
+}
+
+static int tls_oid_matches(
+    const uint8_t *buf, size_t buf_len, const uint8_t *oid, size_t oid_len) {
+    return buf_len == oid_len && memcmp(buf, oid, oid_len) == 0;
+}
+
+static char *tls_read_text_file(const char *path, size_t *len_out) {
+    FILE *f = NULL;
+    char *buf = NULL;
+    long len = 0;
+
+    if (len_out)
+        *len_out = 0;
+    if (!path || !*path)
+        return NULL;
+
+    f = fopen(path, "rb");
+    if (!f)
+        return NULL;
+    if (fseek(f, 0, SEEK_END) != 0)
+        goto fail;
+    len = ftell(f);
+    if (len < 0 || fseek(f, 0, SEEK_SET) != 0)
+        goto fail;
+
+    buf = (char *)malloc((size_t)len + 1);
+    if (!buf)
+        goto fail;
+    if ((long)fread(buf, 1, (size_t)len, f) != len)
+        goto fail;
+    buf[len] = '\0';
+    fclose(f);
+    if (len_out)
+        *len_out = (size_t)len;
+    return buf;
+
+fail:
+    if (f)
+        fclose(f);
+    free(buf);
+    return NULL;
+}
+
+static size_t tls_pem_base64_decode(
+    const char *pem_b64, size_t b64_len, uint8_t *out_der, size_t max_der) {
+    static const int8_t b64tab[256] = {
+        -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+        -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 62,
+        -1, -1, -1, 63, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, -1, -1, -1, -1, -1, -1, -1, 0,
+        1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22,
+        23, 24, 25, -1, -1, -1, -1, -1, -1, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38,
+        39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+        -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+        -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+        -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+        -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+        -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+        -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1};
+    size_t out_len = 0;
+    uint32_t acc = 0;
+    int bits = 0;
+
+    for (size_t i = 0; i < b64_len; i++) {
+        unsigned char c = (unsigned char)pem_b64[i];
+        if (c == '\r' || c == '\n' || c == ' ' || c == '\t')
+            continue;
+        if (c == '=')
+            break;
+        if (b64tab[c] < 0)
+            continue;
+        acc = (acc << 6) | (uint32_t)b64tab[c];
+        bits += 6;
+        if (bits >= 8) {
+            bits -= 8;
+            if (out_len >= max_der)
+                return 0;
+            out_der[out_len++] = (uint8_t)((acc >> bits) & 0xFF);
+        }
+    }
+    return out_len;
+}
+
+static int tls_find_pem_block(const char *pem,
+                              const char *begin_marker,
+                              const char *end_marker,
+                              const char **body_out,
+                              size_t *body_len_out,
+                              const char **next_out) {
+    const char *begin = NULL;
+    const char *body = NULL;
+    const char *end = NULL;
+    if (!pem || !begin_marker || !end_marker || !body_out || !body_len_out)
+        return 0;
+    begin = strstr(pem, begin_marker);
+    if (!begin)
+        return 0;
+    body = strchr(begin, '\n');
+    if (!body)
+        return 0;
+    body++;
+    end = strstr(body, end_marker);
+    if (!end)
+        return 0;
+    *body_out = body;
+    *body_len_out = (size_t)(end - body);
+    if (next_out)
+        *next_out = end + strlen(end_marker);
+    return 1;
+}
+
+static int tls_copy_der_octets(
+    const uint8_t *data, size_t len, uint8_t out[32], size_t *out_len) {
+    size_t skip = 0;
+    if (len == 0 || !out || !out_len)
+        return 0;
+    while (skip + 1 < len && data[skip] == 0x00)
+        skip++;
+    len -= skip;
+    data += skip;
+    if (len > 32)
+        return 0;
+    memset(out, 0, 32);
+    memcpy(out + (32 - len), data, len);
+    *out_len = len;
+    return 1;
+}
+
+static int tls_parse_sec1_ec_private_key(const uint8_t *der,
+                                         size_t der_len,
+                                         uint8_t out_priv[32]) {
+    uint8_t tag;
+    size_t vl, hl;
+    const uint8_t *p = der;
+    size_t rem = der_len;
+    size_t scalar_len = 0;
+
+    if (tls_der_read_tlv(p, rem, &tag, &vl, &hl) != 0 || tag != 0x30)
+        return 0;
+    p += hl;
+    rem = vl;
+    if (tls_der_read_tlv(p, rem, &tag, &vl, &hl) != 0 || tag != 0x02)
+        return 0;
+    p += hl + vl;
+    rem -= hl + vl;
+    if (tls_der_read_tlv(p, rem, &tag, &vl, &hl) != 0 || tag != 0x04)
+        return 0;
+    return tls_copy_der_octets(p + hl, vl, out_priv, &scalar_len);
+}
+
+static int tls_parse_pkcs8_ec_private_key(const uint8_t *der,
+                                          size_t der_len,
+                                          uint8_t out_priv[32]) {
+    static const uint8_t OID_EC_PUBLIC_KEY[] = {0x2A, 0x86, 0x48, 0xCE, 0x3D, 0x02, 0x01};
+    static const uint8_t OID_PRIME256V1[] = {
+        0x2A, 0x86, 0x48, 0xCE, 0x3D, 0x03, 0x01, 0x07};
+    uint8_t tag;
+    size_t vl, hl;
+    const uint8_t *p = der;
+    size_t rem = der_len;
+    const uint8_t *alg = NULL;
+    size_t alg_len = 0;
+
+    if (tls_der_read_tlv(p, rem, &tag, &vl, &hl) != 0 || tag != 0x30)
+        return 0;
+    p += hl;
+    rem = vl;
+    if (tls_der_read_tlv(p, rem, &tag, &vl, &hl) != 0 || tag != 0x02)
+        return 0;
+    p += hl + vl;
+    rem -= hl + vl;
+    if (tls_der_read_tlv(p, rem, &tag, &vl, &hl) != 0 || tag != 0x30)
+        return 0;
+    alg = p + hl;
+    alg_len = vl;
+    p += hl + vl;
+    rem -= hl + vl;
+
+    if (tls_der_read_tlv(alg, alg_len, &tag, &vl, &hl) != 0 || tag != 0x06 ||
+        !tls_oid_matches(alg + hl, vl, OID_EC_PUBLIC_KEY, sizeof(OID_EC_PUBLIC_KEY))) {
+        return 0;
+    }
+    alg += hl + vl;
+    alg_len -= hl + vl;
+    if (tls_der_read_tlv(alg, alg_len, &tag, &vl, &hl) != 0 || tag != 0x06 ||
+        !tls_oid_matches(alg + hl, vl, OID_PRIME256V1, sizeof(OID_PRIME256V1))) {
+        return 0;
+    }
+
+    if (tls_der_read_tlv(p, rem, &tag, &vl, &hl) != 0 || tag != 0x04)
+        return 0;
+    return tls_parse_sec1_ec_private_key(p + hl, vl, out_priv);
+}
+
+static int tls_extract_cert_ec_pubkey(const uint8_t *cert_der,
+                                      size_t cert_len,
+                                      uint8_t x_out[32],
+                                      uint8_t y_out[32]) {
+    static const uint8_t OID_EC_PUBLIC_KEY[] = {0x2A, 0x86, 0x48, 0xCE, 0x3D, 0x02, 0x01};
+    static const uint8_t OID_PRIME256V1[] = {
+        0x2A, 0x86, 0x48, 0xCE, 0x3D, 0x03, 0x01, 0x07};
+    uint8_t tag;
+    size_t vl, hl;
+    const uint8_t *p = cert_der;
+    size_t rem = cert_len;
+    const uint8_t *tbs = NULL;
+    size_t tbs_rem = 0;
+    const uint8_t *spki = NULL;
+    size_t spki_rem = 0;
+    const uint8_t *algo = NULL;
+    size_t algo_rem = 0;
+    const uint8_t *bits = NULL;
+
+    if (tls_der_read_tlv(p, rem, &tag, &vl, &hl) != 0 || tag != 0x30)
+        return 0;
+    p += hl;
+    rem = vl;
+    if (tls_der_read_tlv(p, rem, &tag, &vl, &hl) != 0 || tag != 0x30)
+        return 0;
+    tbs = p + hl;
+    tbs_rem = vl;
+
+    if (tls_der_read_tlv(tbs, tbs_rem, &tag, &vl, &hl) != 0)
+        return 0;
+    if (tag == 0xA0) {
+        tbs += hl + vl;
+        tbs_rem -= hl + vl;
+    }
+
+    for (int i = 0; i < 5; i++) {
+        if (tls_der_read_tlv(tbs, tbs_rem, &tag, &vl, &hl) != 0)
+            return 0;
+        tbs += hl + vl;
+        tbs_rem -= hl + vl;
+    }
+
+    if (tls_der_read_tlv(tbs, tbs_rem, &tag, &vl, &hl) != 0 || tag != 0x30)
+        return 0;
+    spki = tbs + hl;
+    spki_rem = vl;
+
+    if (tls_der_read_tlv(spki, spki_rem, &tag, &vl, &hl) != 0 || tag != 0x30)
+        return 0;
+    algo = spki + hl;
+    algo_rem = vl;
+    spki += hl + vl;
+    spki_rem -= hl + vl;
+
+    if (tls_der_read_tlv(algo, algo_rem, &tag, &vl, &hl) != 0 || tag != 0x06 ||
+        !tls_oid_matches(algo + hl, vl, OID_EC_PUBLIC_KEY, sizeof(OID_EC_PUBLIC_KEY))) {
+        return 0;
+    }
+    algo += hl + vl;
+    algo_rem -= hl + vl;
+    if (tls_der_read_tlv(algo, algo_rem, &tag, &vl, &hl) != 0 || tag != 0x06 ||
+        !tls_oid_matches(algo + hl, vl, OID_PRIME256V1, sizeof(OID_PRIME256V1))) {
+        return 0;
+    }
+
+    if (tls_der_read_tlv(spki, spki_rem, &tag, &vl, &hl) != 0 || tag != 0x03 || vl < 66)
+        return 0;
+    bits = spki + hl;
+    if (bits[0] != 0x00 || bits[1] != 0x04)
+        return 0;
+    memcpy(x_out, bits + 2, 32);
+    memcpy(y_out, bits + 34, 32);
+    return 1;
+}
+
 /// @brief Reset the transcript hash to the empty-handshake state.
 ///
 /// TLS 1.3 keys are derived from a running SHA-256 hash over every
@@ -254,8 +757,20 @@ static void tls_set_last_error_msg(const char *msg) {
     snprintf(g_tls_last_error, sizeof(g_tls_last_error), "%s", msg);
 }
 
+static void tls_set_server_last_error_msg(const char *msg) {
+    if (!msg || !*msg) {
+        g_tls_server_last_error[0] = '\0';
+        return;
+    }
+    snprintf(g_tls_server_last_error, sizeof(g_tls_server_last_error), "%s", msg);
+}
+
 const char *rt_tls_last_error(void) {
     return g_tls_last_error[0] ? g_tls_last_error : "no error";
+}
+
+const char *rt_tls_server_last_error(void) {
+    return g_tls_server_last_error[0] ? g_tls_server_last_error : "no error";
 }
 
 /// @brief Append `len` bytes of handshake data to the transcript hash.
@@ -344,20 +859,53 @@ static void derive_handshake_keys(rt_tls_session_t *session, const uint8_t share
     session->keys_established = 1;
 }
 
-/// @brief Rotate keys from handshake to application traffic secrets.
-///
-/// Continues the RFC 8446 §7.1 schedule:
-///   derived       = Derive-Secret(handshake_secret, "derived", "")
-///   master_secret = HKDF-Extract(derived, 0)
-///   c_ap_traffic  = Derive-Secret(master_secret, "c ap traffic", H(handshake))
-///   s_ap_traffic  = Derive-Secret(master_secret, "s ap traffic", H(handshake))
-///
-/// Replaces the AEAD key/IV pair on both `read_keys` and
-/// `write_keys` and resets the per-direction sequence numbers,
-/// effectively transitioning the record layer from handshake to
-/// application encryption. Must be called after the server's
-/// Finished is verified so the transcript hash covers it.
-static void derive_application_keys(rt_tls_session_t *session) {
+static void derive_handshake_keys_server(
+    rt_tls_session_t *session, const uint8_t shared_secret[32]) {
+    uint8_t zero_key[32] = {0};
+    uint8_t early_secret[32];
+    uint8_t derived[32];
+    int key_len;
+
+    rt_hkdf_extract(NULL, 0, zero_key, 32, early_secret);
+
+    {
+        uint8_t empty_hash[32];
+        rt_sha256(NULL, 0, empty_hash);
+        rt_hkdf_expand_label(early_secret, "derived", empty_hash, 32, derived, 32);
+    }
+
+    rt_hkdf_extract(derived, 32, shared_secret, 32, session->handshake_secret);
+
+    rt_hkdf_expand_label(session->handshake_secret,
+                         "c hs traffic",
+                         session->transcript_hash,
+                         32,
+                         session->client_handshake_traffic_secret,
+                         32);
+    rt_hkdf_expand_label(session->handshake_secret,
+                         "s hs traffic",
+                         session->transcript_hash,
+                         32,
+                         session->server_handshake_traffic_secret,
+                         32);
+
+    key_len = (session->cipher_suite == TLS_AES_128_GCM_SHA256) ? 16 : 32;
+    rt_hkdf_expand_label(
+        session->client_handshake_traffic_secret, "key", NULL, 0, session->read_keys.key, key_len);
+    rt_hkdf_expand_label(
+        session->client_handshake_traffic_secret, "iv", NULL, 0, session->read_keys.iv, 12);
+    session->read_keys.seq_num = 0;
+
+    rt_hkdf_expand_label(
+        session->server_handshake_traffic_secret, "key", NULL, 0, session->write_keys.key, key_len);
+    rt_hkdf_expand_label(
+        session->server_handshake_traffic_secret, "iv", NULL, 0, session->write_keys.iv, 12);
+    session->write_keys.seq_num = 0;
+
+    session->keys_established = 1;
+}
+
+static void derive_application_secrets(rt_tls_session_t *session) {
     uint8_t derived[32];
     uint8_t zero_key[32] = {0};
     uint8_t empty_hash[32];
@@ -383,28 +931,34 @@ static void derive_application_keys(rt_tls_session_t *session) {
                          32,
                          session->server_application_traffic_secret,
                          32);
+}
 
-    // Derive application keys (AES-128-GCM uses 16-byte keys; ChaCha20 uses 32-byte keys)
-    int app_key_len = (session->cipher_suite == TLS_AES_128_GCM_SHA256) ? 16 : 32;
-    rt_hkdf_expand_label(session->server_application_traffic_secret,
-                         "key",
-                         NULL,
-                         0,
-                         session->read_keys.key,
-                         app_key_len);
-    rt_hkdf_expand_label(
-        session->server_application_traffic_secret, "iv", NULL, 0, session->read_keys.iv, 12);
-    session->read_keys.seq_num = 0;
+static void install_traffic_keys_from_secret(
+    const uint8_t secret[32], traffic_keys_t *keys, uint16_t cipher_suite) {
+    int key_len = (cipher_suite == TLS_AES_128_GCM_SHA256) ? 16 : 32;
+    rt_hkdf_expand_label(secret, "key", NULL, 0, keys->key, key_len);
+    rt_hkdf_expand_label(secret, "iv", NULL, 0, keys->iv, 12);
+    keys->seq_num = 0;
+}
 
-    rt_hkdf_expand_label(session->client_application_traffic_secret,
-                         "key",
-                         NULL,
-                         0,
-                         session->write_keys.key,
-                         app_key_len);
-    rt_hkdf_expand_label(
-        session->client_application_traffic_secret, "iv", NULL, 0, session->write_keys.iv, 12);
-    session->write_keys.seq_num = 0;
+static void install_client_application_read_keys(rt_tls_session_t *session) {
+    install_traffic_keys_from_secret(
+        session->server_application_traffic_secret, &session->read_keys, session->cipher_suite);
+}
+
+static void install_client_application_write_keys(rt_tls_session_t *session) {
+    install_traffic_keys_from_secret(
+        session->client_application_traffic_secret, &session->write_keys, session->cipher_suite);
+}
+
+static void install_server_application_read_keys(rt_tls_session_t *session) {
+    install_traffic_keys_from_secret(
+        session->client_application_traffic_secret, &session->read_keys, session->cipher_suite);
+}
+
+static void install_server_application_write_keys(rt_tls_session_t *session) {
+    install_traffic_keys_from_secret(
+        session->server_application_traffic_secret, &session->write_keys, session->cipher_suite);
 }
 
 static void update_application_secret_and_keys(uint8_t secret[32],
@@ -422,13 +976,23 @@ static void update_application_secret_and_keys(uint8_t secret[32],
 }
 
 static void update_read_application_keys(rt_tls_session_t *session) {
-    update_application_secret_and_keys(
-        session->server_application_traffic_secret, &session->read_keys, session->cipher_suite);
+    if (session->is_server) {
+        update_application_secret_and_keys(
+            session->client_application_traffic_secret, &session->read_keys, session->cipher_suite);
+    } else {
+        update_application_secret_and_keys(
+            session->server_application_traffic_secret, &session->read_keys, session->cipher_suite);
+    }
 }
 
 static void update_write_application_keys(rt_tls_session_t *session) {
-    update_application_secret_and_keys(
-        session->client_application_traffic_secret, &session->write_keys, session->cipher_suite);
+    if (session->is_server) {
+        update_application_secret_and_keys(
+            session->server_application_traffic_secret, &session->write_keys, session->cipher_suite);
+    } else {
+        update_application_secret_and_keys(
+            session->client_application_traffic_secret, &session->write_keys, session->cipher_suite);
+    }
 }
 
 static int send_record(rt_tls_session_t *session,
@@ -802,9 +1366,11 @@ static int send_client_hello(rt_tls_session_t *session) {
 
     write_u16(msg + pos, TLS_EXT_KEY_SHARE);
     pos += 2;
-    write_u16(msg + pos, 36);
+    // KeyShareClientHello wraps the KeyShareEntry in a length-prefixed vector:
+    // 2 bytes vector length + (2 bytes group + 2 bytes key len + 32 bytes key).
+    write_u16(msg + pos, 38);
     pos += 2;
-    write_u16(msg + pos, 34); // client shares length
+    write_u16(msg + pos, 36); // client_shares vector length
     pos += 2;
     write_u16(msg + pos, 0x001D); // x25519
     pos += 2;
@@ -1122,10 +1688,10 @@ static int process_post_handshake_message(rt_tls_session_t *session,
 /// transcript hash with HMAC-SHA256, and emits a Finished record.
 /// The transcript is updated *before* sending so the application
 /// keys derived afterwards mix in this message (RFC 8446 §4.4.4).
-static int send_finished(rt_tls_session_t *session) {
+static int send_finished_with_secret(
+    rt_tls_session_t *session, const uint8_t base_secret[32]) {
     uint8_t finished_key[32];
-    rt_hkdf_expand_label(
-        session->client_handshake_traffic_secret, "finished", NULL, 0, finished_key, 32);
+    rt_hkdf_expand_label(base_secret, "finished", NULL, 0, finished_key, 32);
 
     uint8_t verify_data[32];
     rt_hmac_sha256(finished_key, 32, session->transcript_hash, 32, verify_data);
@@ -1135,9 +1701,21 @@ static int send_finished(rt_tls_session_t *session) {
     write_u24(msg + 1, 32);
     memcpy(msg + 4, verify_data, 32);
 
-    transcript_update(session, msg, 36);
+    {
+        int rc = send_record(session, TLS_CONTENT_HANDSHAKE, msg, 36);
+        if (rc != RT_TLS_OK)
+            return rc;
+    }
 
-    return send_record(session, TLS_CONTENT_HANDSHAKE, msg, 36);
+    return transcript_update(session, msg, 36) == 0 ? RT_TLS_OK : RT_TLS_ERROR_HANDSHAKE;
+}
+
+static int send_finished(rt_tls_session_t *session) {
+    return send_finished_with_secret(session, session->client_handshake_traffic_secret);
+}
+
+static int send_finished_server(rt_tls_session_t *session) {
+    return send_finished_with_secret(session, session->server_handshake_traffic_secret);
 }
 
 /// @brief Constant-time byte comparison used for MAC and verify_data checks.
@@ -1162,15 +1740,15 @@ static int ct_memcmp(const uint8_t *a, const uint8_t *b, size_t n) {
 /// has been tampered with or the server doesn't share our key
 /// schedule.
 /// @return RT_TLS_OK on match, RT_TLS_ERROR_HANDSHAKE on failure.
-static int verify_finished(rt_tls_session_t *session, const uint8_t *data, size_t len) {
+static int verify_finished_with_secret(
+    rt_tls_session_t *session, const uint8_t base_secret[32], const uint8_t *data, size_t len) {
     if (len != 32) {
         session->error = "invalid Finished length";
         return RT_TLS_ERROR_HANDSHAKE;
     }
 
     uint8_t finished_key[32];
-    rt_hkdf_expand_label(
-        session->server_handshake_traffic_secret, "finished", NULL, 0, finished_key, 32);
+    rt_hkdf_expand_label(base_secret, "finished", NULL, 0, finished_key, 32);
 
     uint8_t expected[32];
     rt_hmac_sha256(finished_key, 32, session->transcript_hash, 32, expected);
@@ -1181,6 +1759,532 @@ static int verify_finished(rt_tls_session_t *session, const uint8_t *data, size_
     }
 
     return RT_TLS_OK;
+}
+
+static int verify_finished(rt_tls_session_t *session, const uint8_t *data, size_t len) {
+    return verify_finished_with_secret(session, session->server_handshake_traffic_secret, data, len);
+}
+
+static int verify_finished_server(rt_tls_session_t *session, const uint8_t *data, size_t len) {
+    return verify_finished_with_secret(session, session->client_handshake_traffic_secret, data, len);
+}
+
+static int clienthello_offers_sig_scheme(
+    const uint8_t *list, size_t list_len, uint16_t wanted_scheme) {
+    if (list_len < 2 || (list_len & 1) != 0)
+        return 0;
+    for (size_t i = 0; i + 1 < list_len; i += 2) {
+        if (read_u16(list + i) == wanted_scheme)
+            return 1;
+    }
+    return 0;
+}
+
+static int clienthello_offers_alpn(
+    const uint8_t *list, size_t list_len, const char *wanted_protocol) {
+    size_t pos = 0;
+    size_t wanted_len = wanted_protocol ? strlen(wanted_protocol) : 0;
+    if (!wanted_protocol || wanted_len == 0)
+        return 1;
+    while (pos < list_len) {
+        uint8_t one_len = list[pos++];
+        if (pos + one_len > list_len)
+            return 0;
+        if (one_len == wanted_len && memcmp(list + pos, wanted_protocol, wanted_len) == 0)
+            return 1;
+        pos += one_len;
+    }
+    return 0;
+}
+
+static int parse_client_hello(rt_tls_session_t *session, const uint8_t *data, size_t len) {
+    size_t pos = 0;
+    int found_tls13 = 0;
+    int found_key_share = 0;
+    int found_sig_alg = 0;
+    int offered_aes = 0;
+    int offered_chacha = 0;
+    int compression_ok = 0;
+
+    if (len < 42) {
+        session->error = "ClientHello too short";
+        return RT_TLS_ERROR_HANDSHAKE;
+    }
+
+    pos += 2; // legacy_version
+    memcpy(session->client_random, data + pos, 32);
+    pos += 32;
+
+    session->legacy_session_id_len = data[pos++];
+    if (session->legacy_session_id_len > sizeof(session->legacy_session_id) ||
+        pos + session->legacy_session_id_len + 2 > len) {
+        session->error = "ClientHello session id malformed";
+        return RT_TLS_ERROR_HANDSHAKE;
+    }
+    memcpy(session->legacy_session_id, data + pos, session->legacy_session_id_len);
+    pos += session->legacy_session_id_len;
+
+    {
+        uint16_t suites_len = read_u16(data + pos);
+        pos += 2;
+        if (pos + suites_len + 1 > len || suites_len < 2 || (suites_len & 1) != 0) {
+            session->error = "ClientHello cipher_suites malformed";
+            return RT_TLS_ERROR_HANDSHAKE;
+        }
+        for (size_t i = 0; i < suites_len; i += 2) {
+            uint16_t suite = read_u16(data + pos + i);
+            if (suite == TLS_AES_128_GCM_SHA256)
+                offered_aes = 1;
+            else if (suite == TLS_CHACHA20_POLY1305_SHA256)
+                offered_chacha = 1;
+        }
+        pos += suites_len;
+    }
+
+    {
+        uint8_t compression_len = data[pos++];
+        if (pos + compression_len + 2 > len || compression_len == 0) {
+            session->error = "ClientHello compression_methods malformed";
+            return RT_TLS_ERROR_HANDSHAKE;
+        }
+        for (size_t i = 0; i < compression_len; i++) {
+            if (data[pos + i] == 0)
+                compression_ok = 1;
+        }
+        pos += compression_len;
+    }
+
+    if (!compression_ok) {
+        session->error = "ClientHello missing null compression";
+        return RT_TLS_ERROR_HANDSHAKE;
+    }
+
+    {
+        uint16_t ext_len = read_u16(data + pos);
+        size_t ext_end;
+        pos += 2;
+        if (pos + ext_len != len) {
+            session->error = "ClientHello extensions malformed";
+            return RT_TLS_ERROR_HANDSHAKE;
+        }
+        ext_end = pos + ext_len;
+
+        while (pos + 4 <= ext_end) {
+            uint16_t ext_type = read_u16(data + pos);
+            uint16_t one_len = read_u16(data + pos + 2);
+            pos += 4;
+            if (pos + one_len > ext_end) {
+                session->error = "ClientHello extension truncated";
+                return RT_TLS_ERROR_HANDSHAKE;
+            }
+
+            if (ext_type == TLS_EXT_SUPPORTED_VERSIONS) {
+                if (one_len < 3) {
+                    session->error = "ClientHello supported_versions malformed";
+                    return RT_TLS_ERROR_HANDSHAKE;
+                }
+                {
+                    uint8_t list_len = data[pos];
+                    if ((size_t)list_len + 1 != one_len || (list_len & 1) != 0) {
+                        session->error = "ClientHello supported_versions length mismatch";
+                        return RT_TLS_ERROR_HANDSHAKE;
+                    }
+                    for (size_t i = 0; i + 1 < list_len; i += 2) {
+                        if (read_u16(data + pos + 1 + i) == TLS_VERSION_1_3)
+                            found_tls13 = 1;
+                    }
+                }
+            } else if (ext_type == TLS_EXT_SIGNATURE_ALGORITHMS) {
+                if (one_len < 2) {
+                    session->error = "ClientHello signature_algorithms malformed";
+                    return RT_TLS_ERROR_HANDSHAKE;
+                }
+                {
+                    uint16_t list_len = read_u16(data + pos);
+                    if ((size_t)list_len + 2 != one_len ||
+                        !clienthello_offers_sig_scheme(data + pos + 2, list_len, 0x0403)) {
+                        session->error = "ClientHello does not offer ecdsa_secp256r1_sha256";
+                        return RT_TLS_ERROR_HANDSHAKE;
+                    }
+                    found_sig_alg = 1;
+                }
+            } else if (ext_type == TLS_EXT_KEY_SHARE) {
+                if (one_len < 2) {
+                    session->error = "ClientHello key_share malformed";
+                    return RT_TLS_ERROR_HANDSHAKE;
+                }
+                {
+                    uint16_t list_len = read_u16(data + pos);
+                    size_t share_pos = pos + 2;
+                    size_t share_end = share_pos + list_len;
+                    if ((size_t)list_len + 2 != one_len || share_end > ext_end) {
+                        session->error = "ClientHello key_share length mismatch";
+                        return RT_TLS_ERROR_HANDSHAKE;
+                    }
+                    while (share_pos + 4 <= share_end) {
+                        uint16_t group = read_u16(data + share_pos);
+                        uint16_t key_len = read_u16(data + share_pos + 2);
+                        share_pos += 4;
+                        if (share_pos + key_len > share_end) {
+                            session->error = "ClientHello key_share truncated";
+                            return RT_TLS_ERROR_HANDSHAKE;
+                        }
+                        if (group == 0x001D && key_len == 32) {
+                            memcpy(session->server_public_key, data + share_pos, 32);
+                            found_key_share = 1;
+                        }
+                        share_pos += key_len;
+                    }
+                }
+            } else if (ext_type == TLS_EXT_ALPN && session->alpn_protocol[0] != '\0') {
+                if (one_len < 3) {
+                    session->error = "ClientHello ALPN malformed";
+                    return RT_TLS_ERROR_HANDSHAKE;
+                }
+                {
+                    uint16_t list_len = read_u16(data + pos);
+                    if ((size_t)list_len + 2 != one_len ||
+                        !clienthello_offers_alpn(data + pos + 2, list_len, session->alpn_protocol)) {
+                        session->error = "ClientHello ALPN does not offer the configured protocol";
+                        return RT_TLS_ERROR_HANDSHAKE;
+                    }
+                }
+            }
+
+            pos += one_len;
+        }
+    }
+
+    if (!found_tls13) {
+        session->error = "ClientHello does not offer TLS 1.3";
+        return RT_TLS_ERROR_HANDSHAKE;
+    }
+    if (!found_sig_alg) {
+        session->error = "ClientHello missing compatible signature algorithms";
+        return RT_TLS_ERROR_HANDSHAKE;
+    }
+    if (!found_key_share) {
+        session->error = "ClientHello missing X25519 key share";
+        return RT_TLS_ERROR_HANDSHAKE;
+    }
+
+    if (offered_aes)
+        session->cipher_suite = TLS_AES_128_GCM_SHA256;
+    else if (offered_chacha)
+        session->cipher_suite = TLS_CHACHA20_POLY1305_SHA256;
+    else {
+        session->error = "ClientHello does not offer a supported TLS 1.3 cipher suite";
+        return RT_TLS_ERROR_HANDSHAKE;
+    }
+
+    return RT_TLS_OK;
+}
+
+static int send_server_hello(rt_tls_session_t *session) {
+    uint8_t body[256];
+    uint8_t hs[4 + 256];
+    size_t pos = 0;
+    uint8_t shared_secret[32];
+
+    write_u16(body + pos, TLS_VERSION_1_2);
+    pos += 2;
+    rt_crypto_random_bytes(session->server_random, sizeof(session->server_random));
+    memcpy(body + pos, session->server_random, sizeof(session->server_random));
+    pos += sizeof(session->server_random);
+
+    body[pos++] = (uint8_t)session->legacy_session_id_len;
+    memcpy(body + pos, session->legacy_session_id, session->legacy_session_id_len);
+    pos += session->legacy_session_id_len;
+
+    write_u16(body + pos, session->cipher_suite);
+    pos += 2;
+    body[pos++] = 0;
+
+    {
+        size_t ext_start = pos;
+        pos += 2;
+        rt_x25519_keygen(session->client_private_key, session->client_public_key);
+
+        write_u16(body + pos, TLS_EXT_SUPPORTED_VERSIONS);
+        pos += 2;
+        write_u16(body + pos, 2);
+        pos += 2;
+        write_u16(body + pos, TLS_VERSION_1_3);
+        pos += 2;
+
+        write_u16(body + pos, TLS_EXT_KEY_SHARE);
+        pos += 2;
+        write_u16(body + pos, 36);
+        pos += 2;
+        write_u16(body + pos, 0x001D);
+        pos += 2;
+        write_u16(body + pos, 32);
+        pos += 2;
+        memcpy(body + pos, session->client_public_key, 32);
+        pos += 32;
+
+        write_u16(body + ext_start, (uint16_t)(pos - ext_start - 2));
+    }
+
+    hs[0] = TLS_HS_SERVER_HELLO;
+    write_u24(hs + 1, (uint32_t)pos);
+    memcpy(hs + 4, body, pos);
+
+    if (transcript_update(session, hs, 4 + pos) != 0)
+        return RT_TLS_ERROR_HANDSHAKE;
+
+    rt_x25519(session->client_private_key, session->server_public_key, shared_secret);
+
+    // ServerHello itself is still plaintext in TLS 1.3. Switch to handshake
+    // traffic keys only after the record has been transmitted.
+    {
+        int rc = send_record(session, TLS_CONTENT_HANDSHAKE, hs, 4 + pos);
+        if (rc != RT_TLS_OK)
+            return rc;
+    }
+
+    derive_handshake_keys_server(session, shared_secret);
+    return RT_TLS_OK;
+}
+
+static int send_encrypted_extensions_server(rt_tls_session_t *session) {
+    uint8_t body[256];
+    uint8_t hs[4 + 256];
+    size_t pos = 0;
+    size_t ext_start = 0;
+
+    ext_start = pos;
+    pos += 2;
+    if (session->alpn_protocol[0] != '\0') {
+        size_t proto_len = strlen(session->alpn_protocol);
+        write_u16(body + pos, TLS_EXT_ALPN);
+        pos += 2;
+        write_u16(body + pos, (uint16_t)(proto_len + 3));
+        pos += 2;
+        write_u16(body + pos, (uint16_t)(proto_len + 1));
+        pos += 2;
+        body[pos++] = (uint8_t)proto_len;
+        memcpy(body + pos, session->alpn_protocol, proto_len);
+        pos += proto_len;
+    }
+    write_u16(body + ext_start, (uint16_t)(pos - ext_start - 2));
+
+    hs[0] = TLS_HS_ENCRYPTED_EXTENSIONS;
+    write_u24(hs + 1, (uint32_t)pos);
+    memcpy(hs + 4, body, pos);
+    if (transcript_update(session, hs, 4 + pos) != 0)
+        return RT_TLS_ERROR_HANDSHAKE;
+    return send_record(session, TLS_CONTENT_HANDSHAKE, hs, 4 + pos);
+}
+
+static int send_certificate_server(rt_tls_session_t *session) {
+    size_t body_len = 1 + 3 + session->server_ctx->cert_list_entries_len;
+    uint8_t *hs = (uint8_t *)malloc(4 + body_len);
+    if (!hs) {
+        session->error = "TLS: failed to allocate Certificate message";
+        return RT_TLS_ERROR_MEMORY;
+    }
+
+    hs[0] = TLS_HS_CERTIFICATE;
+    write_u24(hs + 1, (uint32_t)body_len);
+    hs[4] = 0;
+    write_u24(hs + 5, (uint32_t)session->server_ctx->cert_list_entries_len);
+    memcpy(hs + 8,
+           session->server_ctx->cert_list_entries,
+           session->server_ctx->cert_list_entries_len);
+
+    if (transcript_update(session, hs, 4 + body_len) != 0) {
+        free(hs);
+        return RT_TLS_ERROR_HANDSHAKE;
+    }
+
+    {
+        int rc = send_record(session, TLS_CONTENT_HANDSHAKE, hs, 4 + body_len);
+        free(hs);
+        return rc;
+    }
+}
+
+static size_t encode_ecdsa_signature_der(
+    const uint8_t r[32], const uint8_t s[32], uint8_t out[80]) {
+    const uint8_t *r_ptr = r;
+    const uint8_t *s_ptr = s;
+    size_t r_len = 32;
+    size_t s_len = 32;
+    size_t pos = 0;
+    int r_pad = 0;
+    int s_pad = 0;
+
+    while (r_len > 1 && *r_ptr == 0) {
+        r_ptr++;
+        r_len--;
+    }
+    while (s_len > 1 && *s_ptr == 0) {
+        s_ptr++;
+        s_len--;
+    }
+    if (r_ptr[0] & 0x80)
+        r_pad = 1;
+    if (s_ptr[0] & 0x80)
+        s_pad = 1;
+
+    out[pos++] = 0x30;
+    out[pos++] = (uint8_t)(2 + r_pad + r_len + 2 + s_pad + s_len);
+    out[pos++] = 0x02;
+    out[pos++] = (uint8_t)(r_pad + r_len);
+    if (r_pad)
+        out[pos++] = 0x00;
+    memcpy(out + pos, r_ptr, r_len);
+    pos += r_len;
+    out[pos++] = 0x02;
+    out[pos++] = (uint8_t)(s_pad + s_len);
+    if (s_pad)
+        out[pos++] = 0x00;
+    memcpy(out + pos, s_ptr, s_len);
+    pos += s_len;
+    return pos;
+}
+
+static void build_server_cert_verify_message(
+    const uint8_t transcript_hash[32], uint8_t out_content[130]) {
+    static const char context_str[] = "TLS 1.3, server CertificateVerify";
+    memset(out_content, 0x20, 64);
+    memcpy(out_content + 64, context_str, 33);
+    out_content[97] = 0x00;
+    memcpy(out_content + 98, transcript_hash, 32);
+}
+
+static int send_certificate_verify_server(rt_tls_session_t *session) {
+    uint8_t content[130];
+    uint8_t digest[32];
+    uint8_t sig_r[32];
+    uint8_t sig_s[32];
+    uint8_t sig_der[80];
+    uint8_t hs[4 + 2 + 2 + 80];
+    size_t sig_der_len = 0;
+
+    build_server_cert_verify_message(session->transcript_hash, content);
+    rt_sha256(content, sizeof(content), digest);
+
+    if (!ecdsa_p256_sign(session->server_ctx->private_key, digest, sig_r, sig_s)) {
+        session->error = "TLS: failed to sign CertificateVerify";
+        return RT_TLS_ERROR_HANDSHAKE;
+    }
+
+    sig_der_len = encode_ecdsa_signature_der(sig_r, sig_s, sig_der);
+    hs[0] = TLS_HS_CERTIFICATE_VERIFY;
+    write_u24(hs + 1, (uint32_t)(4 + sig_der_len));
+    write_u16(hs + 4, 0x0403);
+    write_u16(hs + 6, (uint16_t)sig_der_len);
+    memcpy(hs + 8, sig_der, sig_der_len);
+
+    if (transcript_update(session, hs, 8 + sig_der_len) != 0)
+        return RT_TLS_ERROR_HANDSHAKE;
+    return send_record(session, TLS_CONTENT_HANDSHAKE, hs, 8 + sig_der_len);
+}
+
+rt_tls_session_t *rt_tls_server_accept_socket(int socket_fd, const rt_tls_server_ctx_t *ctx) {
+    rt_tls_session_t *session = NULL;
+    uint8_t content_type = 0;
+    uint8_t data[TLS_MAX_RECORD_SIZE];
+    size_t data_len = 0;
+
+    tls_set_server_last_error_msg(NULL);
+
+    if (socket_fd < 0 || !ctx) {
+        tls_set_server_last_error_msg("TLS server: invalid socket or context");
+        return NULL;
+    }
+
+    session = rt_tls_new(socket_fd, NULL);
+    if (!session) {
+        tls_set_server_last_error_msg("TLS server: failed to allocate session");
+        CLOSE_SOCKET((socket_t)socket_fd);
+        return NULL;
+    }
+    session->is_server = 1;
+    session->server_ctx = ctx;
+    session->verify_cert = 0;
+    session->timeout_ms = ctx->timeout_ms > 0 ? ctx->timeout_ms : 30000;
+    if (ctx->alpn_protocol[0] != '\0')
+        strncpy(session->alpn_protocol, ctx->alpn_protocol, sizeof(session->alpn_protocol) - 1);
+    tls_set_socket_timeout((socket_t)session->socket_fd, session->timeout_ms, 1);
+    tls_set_socket_timeout((socket_t)session->socket_fd, session->timeout_ms, 0);
+
+    while (1) {
+        size_t pos = 0;
+        int rc = recv_record(session, &content_type, data, &data_len);
+        if (rc != RT_TLS_OK)
+            goto fail;
+        if (content_type == TLS_CONTENT_CHANGE_CIPHER)
+            continue;
+        if (content_type != TLS_CONTENT_HANDSHAKE) {
+            session->error = "TLS: expected ClientHello";
+            goto fail;
+        }
+
+        while (pos + 4 <= data_len) {
+            uint8_t hs_type = data[pos];
+            uint32_t hs_len = read_u24(data + pos + 1);
+            if (pos + 4 + hs_len > data_len) {
+                session->error = "TLS: incomplete ClientHello record";
+                goto fail;
+            }
+            if (hs_type != TLS_HS_CLIENT_HELLO) {
+                session->error = "TLS: unexpected handshake message before ClientHello";
+                goto fail;
+            }
+            if (parse_client_hello(session, data + pos + 4, hs_len) != RT_TLS_OK)
+                goto fail;
+            if (transcript_update(session, data + pos, 4 + hs_len) != 0)
+                goto fail;
+
+            if (send_server_hello(session) != RT_TLS_OK || send_encrypted_extensions_server(session) != RT_TLS_OK ||
+                send_certificate_server(session) != RT_TLS_OK ||
+                send_certificate_verify_server(session) != RT_TLS_OK ||
+                send_finished_server(session) != RT_TLS_OK) {
+                goto fail;
+            }
+
+            derive_application_secrets(session);
+            install_server_application_write_keys(session);
+
+            // Expect the client's Finished under the handshake read keys.
+            while (1) {
+                rc = recv_record(session, &content_type, data, &data_len);
+                if (rc != RT_TLS_OK)
+                    goto fail;
+                if (content_type == TLS_CONTENT_CHANGE_CIPHER)
+                    continue;
+                if (content_type == TLS_CONTENT_ALERT) {
+                    session->error = "TLS: received alert during handshake";
+                    goto fail;
+                }
+                if (content_type != TLS_CONTENT_HANDSHAKE) {
+                    session->error = "TLS: expected client Finished";
+                    goto fail;
+                }
+                if (data_len < 4 || data[0] != TLS_HS_FINISHED ||
+                    read_u24(data + 1) + 4 != data_len) {
+                    session->error = "TLS: malformed client Finished";
+                    goto fail;
+                }
+                if (verify_finished_server(session, data + 4, data_len - 4) != RT_TLS_OK)
+                    goto fail;
+                if (transcript_update(session, data, data_len) != 0)
+                    goto fail;
+                install_server_application_read_keys(session);
+                session->state = TLS_STATE_CONNECTED;
+                tls_set_server_last_error_msg(NULL);
+                return session;
+            }
+        }
+    }
+
+fail:
+    tls_set_server_last_error_msg(rt_tls_get_error(session));
+    rt_tls_close(session);
+    return NULL;
 }
 
 // Certificate validation functions (tls_parse_certificate_msg, tls_verify_hostname,
@@ -1295,9 +2399,10 @@ int rt_tls_handshake(rt_tls_session_t *session) {
                 return RT_TLS_ERROR_HANDSHAKE;
             }
 
-            // Update transcript before processing (H-10: abort on overflow)
-            if (transcript_update(session, data + pos, 4 + hs_len) != 0)
+            if (hs_type != TLS_HS_FINISHED &&
+                transcript_update(session, data + pos, 4 + hs_len) != 0) {
                 return RT_TLS_ERROR_HANDSHAKE;
+            }
 
             const uint8_t *hs_data = data + pos + 4;
 
@@ -1352,13 +2457,19 @@ int rt_tls_handshake(rt_tls_session_t *session) {
                     if (rc != RT_TLS_OK)
                         return rc;
 
-                    // Derive application keys
-                    derive_application_keys(session);
+                    if (transcript_update(session, data + pos, 4 + hs_len) != 0)
+                        return RT_TLS_ERROR_HANDSHAKE;
 
-                    // Send our Finished
+                    // TLS 1.3 transitions read keys after server Finished, but
+                    // the client Finished itself is still sent under handshake keys.
+                    derive_application_secrets(session);
+                    install_client_application_read_keys(session);
+
                     rc = send_finished(session);
                     if (rc != RT_TLS_OK)
                         return rc;
+
+                    install_client_application_write_keys(session);
 
                     session->state = TLS_STATE_CONNECTED;
                     break;

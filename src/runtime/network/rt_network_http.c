@@ -38,6 +38,7 @@ typedef CRITICAL_SECTION http_pool_mutex_t;
 #define HTTP_POOL_MUTEX_LOCK(m) EnterCriticalSection(m)
 #define HTTP_POOL_MUTEX_UNLOCK(m) LeaveCriticalSection(m)
 #define HTTP_POOL_MUTEX_DESTROY(m) DeleteCriticalSection(m)
+#define HTTP_THREAD_LOCAL __declspec(thread)
 #else
 #include <pthread.h>
 typedef pthread_mutex_t http_pool_mutex_t;
@@ -45,6 +46,7 @@ typedef pthread_mutex_t http_pool_mutex_t;
 #define HTTP_POOL_MUTEX_LOCK(m) pthread_mutex_lock(m)
 #define HTTP_POOL_MUTEX_UNLOCK(m) pthread_mutex_unlock(m)
 #define HTTP_POOL_MUTEX_DESTROY(m) pthread_mutex_destroy(m)
+#define HTTP_THREAD_LOCAL __thread
 #endif
 
 #include "rt_trap.h"
@@ -500,6 +502,16 @@ typedef struct rt_http_res {
     size_t body_len;   // Body length
 } rt_http_res_t;
 
+static HTTP_THREAD_LOCAL char g_http_tls_open_error[256];
+
+static void http_set_tls_open_error(const char *msg) {
+    if (!msg || !*msg) {
+        g_http_tls_open_error[0] = '\0';
+        return;
+    }
+    snprintf(g_http_tls_open_error, sizeof(g_http_tls_open_error), "%s", msg);
+}
+
 static socket_t http_create_tcp_socket(const char *host, int port, int timeout_ms, int *err_code);
 
 static int http_request_wants_pool(const rt_http_req_t *req) {
@@ -512,6 +524,8 @@ static int http_open_connection(rt_http_req_t *req, http_conn_t *conn, int *err_
             *err_out = Err_NetworkError;
         return 0;
     }
+
+    http_set_tls_open_error(NULL);
 
     memset(conn, 0, sizeof(*conn));
     conn->socket_fd = INVALID_SOCK;
@@ -562,12 +576,14 @@ static int http_open_connection(rt_http_req_t *req, http_conn_t *conn, int *err_
 
         rt_tls_session_t *tls = rt_tls_new((int)sock, &tls_config);
         if (!tls) {
+            http_set_tls_open_error(rt_tls_last_error());
             CLOSE_SOCKET(sock);
             if (err_out)
                 *err_out = Err_TlsError;
             return 0;
         }
         if (rt_tls_handshake(tls) != RT_TLS_OK) {
+            http_set_tls_open_error(rt_tls_get_error(tls));
             rt_tls_close(tls);
             if (err_out)
                 *err_out = Err_TlsError;
@@ -1902,7 +1918,7 @@ static rt_http_res_t *do_http_request(rt_http_req_t *req, int redirects_remainin
     int open_err = Err_NetworkError;
     if (!http_open_connection(req, &conn, &open_err)) {
         if (req->url.use_tls && open_err == Err_TlsError)
-            http_trap_tls_error("HTTPS: connection failed", rt_tls_last_error());
+            http_trap_tls_error("HTTPS: connection failed", g_http_tls_open_error);
         rt_trap_net(req->url.use_tls ? "HTTPS: connection failed" : "HTTP: connection failed",
                     open_err);
         return NULL;

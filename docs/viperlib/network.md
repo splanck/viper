@@ -6,7 +6,7 @@ last-verified: 2026-04-18
 
 # Network
 
-> TCP and UDP networking with HTTP/HTTPS client and DNS resolution support.
+> TCP and UDP networking with HTTP/HTTPS clients, secure HTTPS/WSS servers, and DNS resolution support.
 
 **Part of the [Viper Runtime Library](README.md)**
 
@@ -27,10 +27,12 @@ last-verified: 2026-04-18
 - [Viper.Network.RateLimiter](#vipernetworkratelimiter)
 - [Viper.Network.HttpRouter](#vipernetworkhttprouter)
 - [Viper.Network.HttpServer](#vipernetworkhttpserver)
+- [Viper.Network.HttpsServer](#vipernetworkhttpsserver)
 - [Viper.Network.ConnectionPool](#vipernetworkconnectionpool)
 - [Viper.Network.Multipart](#vipernetworkmultipart)
 - [Viper.Network.NetUtils](#vipernetworknetutils)
 - [Viper.Network.WsServer](#vipernetworkwsserver)
+- [Viper.Network.WssServer](#vipernetworkwssserver)
 - [Viper.Network.SseClient](#vipernetworksseclient)
 - [Viper.Network.HttpClient](#vipernetworkhttpclient)
 - [Viper.Network.SmtpClient](#vipernetworksmtpclient)
@@ -1818,6 +1820,48 @@ Threaded HTTP/1.1 server with routing and handler-tag lookup.
 
 ---
 
+## Viper.Network.HttpsServer
+
+Threaded TLS-backed HTTP/1.1 server built on the in-tree TLS 1.3 runtime with zero external TLS dependencies.
+
+**Type:** Instance class
+
+**Constructors:**
+- `Viper.Network.HttpsServer.New(port, certFile, keyFile)` - Create an HTTPS server on the given port using PEM credentials
+
+### Methods
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `Get(pattern, tag)` | void | Register a GET route with handler tag |
+| `Post(pattern, tag)` | void | Register a POST route |
+| `Put(pattern, tag)` | void | Register a PUT route |
+| `Delete(pattern, tag)` | void | Register a DELETE route |
+| `Start()` | void | Start accepting TLS connections in background |
+| `Stop()` | void | Stop the server gracefully |
+
+### Properties
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `Port` | Integer | Listening TCP port number |
+| `IsRunning` | Boolean | True if the TLS listener is accepting connections |
+
+### TLS Credential Requirements
+
+- `certFile` must be a PEM certificate file. A leaf certificate plus any intermediate chain certificates may be concatenated into the same file.
+- `keyFile` must be an unencrypted PEM private key.
+- The built-in zero-dependency server path currently expects an ECDSA P-256 certificate/key pair.
+- `HttpsServer` serves HTTP/1.1 over TLS 1.3 and advertises `http/1.1` via ALPN.
+
+### Runtime Notes
+
+- The request/response handler model mirrors `HttpServer`.
+- Sequential HTTPS keep-alive requests on the same TLS connection are supported when response framing is safe.
+- The built-in TLS server stack performs the full TLS 1.3 handshake in-tree, including `ClientHello`/`ServerHello`, ALPN negotiation, certificate chain delivery, `CertificateVerify`, and bidirectional `Finished` processing.
+
+---
+
 ## Viper.Network.ConnectionPool
 
 Thread-safe TCP connection pooling for reuse across HTTP requests.
@@ -1916,6 +1960,46 @@ WebSocket server that accepts upgrade requests and manages connected clients.
 | `ClientCount` | Integer | Number of currently connected clients |
 | `Port` | Integer | Listening port number |
 | `IsRunning` | Boolean | True if server is accepting connections |
+
+---
+
+## Viper.Network.WssServer
+
+TLS-backed WebSocket server built on the in-tree TLS 1.3 runtime with zero external TLS dependencies.
+
+**Type:** Instance class
+
+**Constructors:**
+- `Viper.Network.WssServer.New(port, certFile, keyFile)` - Create a secure WebSocket server on the given port using PEM credentials
+
+### Methods
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `Start()` | void | Start accepting secure WebSocket connections in background |
+| `Stop()` | void | Stop server and disconnect all clients |
+| `Broadcast(message)` | void | Send a text message to all connected clients |
+| `BroadcastBytes(data)` | void | Send a binary message to all connected clients |
+
+### Properties
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `ClientCount` | Integer | Number of currently connected secure WebSocket clients |
+| `Port` | Integer | Listening TCP port number |
+| `IsRunning` | Boolean | True if the TLS listener is accepting connections |
+
+### TLS Credential Requirements
+
+- `certFile` and `keyFile` follow the same PEM requirements as `HttpsServer`.
+- The built-in secure WebSocket path runs the RFC 6455 HTTP upgrade over TLS 1.3 with ALPN `http/1.1`.
+- Because the TLS stack is implemented in-tree, `WssServer` does not require OpenSSL, LibreSSL, mbedTLS, or platform TLS frameworks at runtime.
+
+### Runtime Notes
+
+- `WssServer` automatically completes the RFC 6455 HTTP upgrade after the TLS handshake succeeds.
+- Control frames are handled automatically: server-side pong replies are sent for client pings, and close frames are echoed so the WebSocket close handshake completes cleanly.
+- Client text/binary frames are drained and validated so broadcasts continue to work on long-lived secure connections even when clients send their own traffic.
 
 ---
 

@@ -14,8 +14,8 @@ A polish-and-hardening cycle. Most of the work is in four areas: the audio runti
 
 | Metric | v0.2.4 | v0.2.5 | Delta |
 |---|---|---|---|
-| Commits | — | 26 | +26 |
-| Source files | 2,869 | 2,884 | +15 |
+| Commits | — | 27 | +27 |
+| Source files | 2,869 | 2,885 | +16 |
 | Production SLOC | 450K | 470K | +20K |
 | Test SLOC | 183K | 190K | +7K |
 | Demo SLOC | 177K | 188K | +11K |
@@ -174,9 +174,11 @@ A correctness-and-hardening pass spanning every subsystem.
 
 Broad hardening and feature pass across the HTTP client, HTTP server, SSE, and TLS.
 
-**HTTP client.** RFC-compliant cookie jar — `Set-Cookie` lines are parsed into typed entries (name, value, domain, path, `Expires`, `Max-Age`, `Secure`, `HttpOnly`), indexed by domain/path scope, and attached to outgoing requests automatically. Cross-domain and cross-path leakage is prevented by explicit match tests; expired cookies are purged. Transparent gzip: outgoing requests advertise `Accept-Encoding: gzip` and `Content-Encoding: gzip` responses are decoded inline, including in chunked+gzip combinations. `Http.Download()` now streams bytes straight to disk instead of buffering the body in memory, so multi-GB downloads work without matching RAM (intentionally keeps `Accept-Encoding: identity` so the file on disk is byte-for-byte what the server sent). Relative `Location:` headers now resolve against the current URL, and 303 See Other joins the existing 301/302/307/308 redirect set. Strict `Content-Length` parsing rejects negative / non-numeric / whitespace-only values up front instead of treating them as 0. `response_has_no_body` centralises HEAD / 204 / 304 / 1xx handling. Non-blocking connect with proper timeout replaces the previous blocking `connect`.
+**HTTP client.** RFC-compliant cookie jar — `Set-Cookie` lines are parsed into typed entries (name, value, domain, path, `Expires`, `Max-Age`, `Secure`, `HttpOnly`), indexed by domain/path scope, and attached to outgoing requests automatically. Cross-domain and cross-path leakage is prevented by explicit match tests; expired cookies are purged. Transparent gzip: outgoing requests advertise `Accept-Encoding: gzip` and `Content-Encoding: gzip` responses are decoded inline, including in chunked+gzip combinations. `Http.Download()` now streams bytes straight to disk instead of buffering the body in memory, so multi-GB downloads work without matching RAM (intentionally keeps `Accept-Encoding: identity` so the file on disk is byte-for-byte what the server sent). Relative `Location:` headers now resolve against the current URL, and 303 See Other joins the existing 301/302/307/308 redirect set. Strict `Content-Length` parsing rejects negative / non-numeric / whitespace-only values up front instead of treating them as 0. `response_has_no_body` centralises HEAD / 204 / 304 / 1xx handling. Non-blocking connect with proper timeout replaces the previous blocking `connect`. Keep-alive / connection pooling lands end-to-end: idle TCP/TLS connections are cached per `(host, port, tls)` with LRU eviction and idle-timeout scrub, and `HttpClient.KeepAlive` / `HttpClient.SetPoolSize` + `HttpReq.SetKeepAlive(i1)` give callers per-client and per-request control. Request-heavy workloads stop paying the TCP + TLS handshake cost on every call.
 
-**HTTP server.** `Transfer-Encoding: chunked` request bodies are now decoded correctly — browser streaming uploads and `curl --data-binary @-` finally work. Header token scanning is robust against substring false positives.
+**HTTP server.** `Transfer-Encoding: chunked` request bodies are now decoded correctly — browser streaming uploads and `curl --data-binary @-` finally work. Header token scanning is robust against substring false positives. The response path is Connection-header-aware: the server inspects the incoming `Connection:` value, honours `keep-alive` on HTTP/1.1 by default (and `close` when asked), and emits matching response headers plus proper `Content-Length` / `Transfer-Encoding` framing so the client knows where responses end on a persistent connection.
+
+**RestClient.** Keep-alive and pool-size configuration thread through to the underlying HTTP client, so REST-heavy workflows (microservices, paginated API loops) reuse connections transparently without changing call sites.
 
 **SSE (Server-Sent Events).** Automatic reconnect-after-disconnect. The client re-opens the connection when the server drops and honours `Last-Event-ID` to resume where the stream left off, instead of silently ending on transient network failures. Matching non-blocking connect + timeout behaviour as the HTTP client.
 
@@ -200,7 +202,7 @@ Broad hardening and feature pass across the HTTP client, HTTP server, SSE, and T
 
 ### Linker
 
-`uname`, `gethostname`, and `sysctlbyname` added to the dynamic-symbol policy so `Viper.Machine.OS` / `Hostname` link cleanly. New `dynamicSymbolHasPrefix` plus `isKnownMacLibcxxDynamicSymbol` classify Itanium-ABI C++ runtime symbols (`ZNSt`, `ZSt`, `Zna`/`Znw`/`Zda`/`Zdl`, `cxa_`, `gxx_personality_`) with leading-underscore handling for macOS. The three platform planners consume the new helper so C++ runtime symbols route through the correct dylib or import library.
+`uname`, `gethostname`, and `sysctlbyname` added to the dynamic-symbol policy so `Viper.Machine.OS` / `Hostname` link cleanly. New `dynamicSymbolHasPrefix` plus `isKnownMacLibcxxDynamicSymbol` classify Itanium-ABI C++ runtime symbols (`ZNSt`, `ZSt`, `Zna`/`Znw`/`Zda`/`Zdl`, `cxa_`, `gxx_personality_`) with leading-underscore handling for macOS. The three platform planners consume the new helper so C++ runtime symbols route through the correct dylib or import library. `stripDynamicSymbolLeadingUnderscores` now also strips the macOS `$DARWIN_EXTSN` suffix that Mach-O sometimes appends to libsystem symbols — without this, symbols like `_readdir$DARWIN_EXTSN` didn't match their unsuffixed dynamic-import entries and the Mac import planner fell back to static resolution.
 
 ---
 
@@ -288,5 +290,6 @@ Pac-Man renamed to Crackman and split into session/progression/frontend with a s
 | `c5b491911` | 2026-04-18 | Keyboard nav + accessibility pass (Toolbar / SplitPane / Dropdown), TreeView drag-drop, ListBox multi-select with Ctrl/Shift modifiers, TextInput redo + double-click word select, TabBar press-release coupling, paint-flag invalidation fix |
 | `ad2948be5` | 2026-04-18 | Framework double-click synthesis + Tab-focus dispatch, FileDialog editable save-name + list scroll, popup routing (ContextMenu / FloatingPanel / Breadcrumb overflow), Linux X11 UTF-8 text input + clipboard |
 | `2f103a8ce` | 2026-04-18 | HTTP cookie jar + gzip decode + streaming download + relative redirects, chunked request-body parsing on HttpServer, SSE reconnect, TLS per-request verify (`HttpReq.SetTlsVerify`) + ALPN + error diagnostics |
+| `b240f18be` | 2026-04-18 | HTTP keep-alive + connection pooling across `HttpClient` / `HttpReq` / `RestClient`, HttpServer `Connection`-header awareness, macOS `$DARWIN_EXTSN` handling in DynamicSymbolPolicy, runtime-surface classification follow-ups |
 
 <!-- END DRAFT -->

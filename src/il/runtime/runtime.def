@@ -5117,6 +5117,21 @@ RT_FUNC(ServerResSend,           rt_server_res_send,           "Viper.Network.Se
 RT_FUNC(ServerResJson,           rt_server_res_json,           "Viper.Network.ServerRes.Json",              "void(obj,str)")
 
 //=============================================================================
+// NETWORK - HTTPSSERVER
+//=============================================================================
+
+RT_FUNC(HttpsServerNew,          rt_https_server_new,          "Viper.Network.HttpsServer.New",             "obj(i64,str,str)")
+RT_FUNC(HttpsServerGetRoute,     rt_https_server_get,          "Viper.Network.HttpsServer.Get",             "void(obj,str,str)")
+RT_FUNC(HttpsServerPostRoute,    rt_https_server_post,         "Viper.Network.HttpsServer.Post",            "void(obj,str,str)")
+RT_FUNC(HttpsServerPutRoute,     rt_https_server_put,          "Viper.Network.HttpsServer.Put",             "void(obj,str,str)")
+RT_FUNC(HttpsServerDeleteRoute,  rt_https_server_del,          "Viper.Network.HttpsServer.Delete",          "void(obj,str,str)")
+RT_FUNC(HttpsServerBindHandler,  rt_https_server_bind_handler, "Viper.Network.HttpsServer.BindHandler",     "void(obj,str,ptr)")
+RT_FUNC(HttpsServerStart,        rt_https_server_start,        "Viper.Network.HttpsServer.Start",           "void(obj)")
+RT_FUNC(HttpsServerStop,         rt_https_server_stop,         "Viper.Network.HttpsServer.Stop",            "void(obj)")
+RT_FUNC(HttpsServerPort,         rt_https_server_port,         "Viper.Network.HttpsServer.get_Port",        "i64(obj)")
+RT_FUNC(HttpsServerIsRunning,    rt_https_server_is_running,   "Viper.Network.HttpsServer.get_IsRunning",   "i1(obj)")
+
+//=============================================================================
 // NETWORK - CONNECTIONPOOL
 //=============================================================================
 
@@ -5163,6 +5178,19 @@ RT_FUNC(WsServerBroadcastBytes,  rt_ws_server_broadcast_bytes, "Viper.Network.Ws
 RT_FUNC(WsServerClientCount,     rt_ws_server_client_count,    "Viper.Network.WsServer.get_ClientCount",    "i64(obj)")
 RT_FUNC(WsServerPort,            rt_ws_server_port,            "Viper.Network.WsServer.get_Port",           "i64(obj)")
 RT_FUNC(WsServerIsRunning,       rt_ws_server_is_running,      "Viper.Network.WsServer.get_IsRunning",      "i1(obj)")
+
+//=============================================================================
+// NETWORK - WSSSERVER
+//=============================================================================
+
+RT_FUNC(WssServerNew,            rt_wss_server_new,            "Viper.Network.WssServer.New",               "obj(i64,str,str)")
+RT_FUNC(WssServerStart,          rt_wss_server_start,          "Viper.Network.WssServer.Start",             "void(obj)")
+RT_FUNC(WssServerStop,           rt_wss_server_stop,           "Viper.Network.WssServer.Stop",              "void(obj)")
+RT_FUNC(WssServerBroadcast,      rt_wss_server_broadcast,      "Viper.Network.WssServer.Broadcast",         "void(obj,str)")
+RT_FUNC(WssServerBroadcastBytes, rt_wss_server_broadcast_bytes,"Viper.Network.WssServer.BroadcastBytes",    "void(obj,obj)")
+RT_FUNC(WssServerClientCount,    rt_wss_server_client_count,   "Viper.Network.WssServer.get_ClientCount",   "i64(obj)")
+RT_FUNC(WssServerPort,           rt_wss_server_port,           "Viper.Network.WssServer.get_Port",          "i64(obj)")
+RT_FUNC(WssServerIsRunning,      rt_wss_server_is_running,     "Viper.Network.WssServer.get_IsRunning",     "i1(obj)")
 
 //=============================================================================
 // NETWORK - SSE
@@ -9741,6 +9769,19 @@ RT_CLASS_BEGIN("Viper.Network.HttpServer", HttpServer, "obj", HttpServerNew)
     RT_PROP("IsRunning", "i1", HttpServerIsRunning, none)
 RT_CLASS_END()
 
+// Viper.Network.HttpsServer - threaded TLS-backed HTTP/1.1 server
+RT_CLASS_BEGIN("Viper.Network.HttpsServer", HttpsServer, "obj", HttpsServerNew)
+    RT_METHOD("Get", "void(str,str)", HttpsServerGetRoute)
+    RT_METHOD("Post", "void(str,str)", HttpsServerPostRoute)
+    RT_METHOD("Put", "void(str,str)", HttpsServerPutRoute)
+    RT_METHOD("Delete", "void(str,str)", HttpsServerDeleteRoute)
+    RT_METHOD("BindHandler", "void(str,ptr)", HttpsServerBindHandler)
+    RT_METHOD("Start", "void()", HttpsServerStart)
+    RT_METHOD("Stop", "void()", HttpsServerStop)
+    RT_PROP("Port", "i64", HttpsServerPort, none)
+    RT_PROP("IsRunning", "i1", HttpsServerIsRunning, none)
+RT_CLASS_END()
+
 RT_CLASS_BEGIN("Viper.Network.ServerReq", ServerReq, "obj", none)
     RT_PROP("Method", "str", ServerReqMethod, none)
     RT_PROP("Path", "str", ServerReqPath, none)
@@ -9796,6 +9837,17 @@ RT_CLASS_BEGIN("Viper.Network.WsServer", WsServer, "obj", WsServerNew)
     RT_PROP("ClientCount", "i64", WsServerClientCount, none)
     RT_PROP("Port", "i64", WsServerPort, none)
     RT_PROP("IsRunning", "i1", WsServerIsRunning, none)
+RT_CLASS_END()
+
+// Viper.Network.WssServer - TLS-backed WebSocket server
+RT_CLASS_BEGIN("Viper.Network.WssServer", WssServer, "obj", WssServerNew)
+    RT_METHOD("Start", "void()", WssServerStart)
+    RT_METHOD("Stop", "void()", WssServerStop)
+    RT_METHOD("Broadcast", "void(str)", WssServerBroadcast)
+    RT_METHOD("BroadcastBytes", "void(obj)", WssServerBroadcastBytes)
+    RT_PROP("ClientCount", "i64", WssServerClientCount, none)
+    RT_PROP("Port", "i64", WssServerPort, none)
+    RT_PROP("IsRunning", "i1", WssServerIsRunning, none)
 RT_CLASS_END()
 
 // Viper.Network.SseClient - Server-Sent Events client

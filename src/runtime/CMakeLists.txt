@@ -400,10 +400,12 @@ set(RT_NETWORK_SOURCES
         network/rt_ecdsa_p256.c
         network/rt_http_router.c
         network/rt_http_server.c
+        network/rt_https_server.c
         network/rt_connpool.c
         network/rt_multipart.c
         network/rt_netutils.c
         network/rt_ws_server.c
+        network/rt_wss_server.c
         network/rt_sse.c
         network/rt_http_client.c
         network/rt_smtp.c

@@ -36,7 +36,9 @@ namespace {
 
 bool isHttpServerRouteTarget(const std::string &target) {
     return target == "Viper.Network.HttpServer.Get" || target == "Viper.Network.HttpServer.Post" ||
-           target == "Viper.Network.HttpServer.Put" || target == "Viper.Network.HttpServer.Delete";
+           target == "Viper.Network.HttpServer.Put" || target == "Viper.Network.HttpServer.Delete" ||
+           target == "Viper.Network.HttpsServer.Get" || target == "Viper.Network.HttpsServer.Post" ||
+           target == "Viper.Network.HttpsServer.Put" || target == "Viper.Network.HttpsServer.Delete";
 }
 
 bool isValidHttpHandlerSignature(const ::il::frontends::basic::ProcedureSignature *sig) {
@@ -50,6 +52,12 @@ std::string resolveHttpHandlerTarget(const Lowerer &lowerer, const std::string &
     if (!isValidHttpHandlerSignature(sig))
         return {};
     return lowerer.resolveCalleeName(tag);
+}
+
+const char *httpServerBindHandlerTarget(const std::string &target) {
+    if (target.rfind("Viper.Network.HttpsServer.", 0) == 0)
+        return "Viper.Network.HttpsServer.BindHandler";
+    return "Viper.Network.HttpServer.BindHandler";
 }
 
 } // namespace
@@ -266,8 +274,9 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr) {
                 if (const auto *tagExpr = as<const StringExpr>(*expr.args[1])) {
                     std::string handlerTarget = resolveHttpHandlerTarget(*this, tagExpr->value);
                     if (!handlerTarget.empty()) {
-                        runtimeTracker.trackCalleeName("Viper.Network.HttpServer.BindHandler");
-                        emitCall("Viper.Network.HttpServer.BindHandler",
+                        const char *bindHandlerTarget = httpServerBindHandlerTarget(info->target);
+                        runtimeTracker.trackCalleeName(bindHandlerTarget);
+                        emitCall(bindHandlerTarget,
                                  {args[0], args[2], Value::global(handlerTarget)});
                     }
                 }

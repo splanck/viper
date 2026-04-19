@@ -32,6 +32,8 @@
 extern "C" {
 #endif
 
+struct rt_tls_server_ctx;
+
 // Max sizes
 #define TLS_MAX_RECORD_SIZE 16384
 #define TLS_MAX_CIPHERTEXT (TLS_MAX_RECORD_SIZE + 256)
@@ -67,12 +69,16 @@ struct rt_tls_session {
 #endif
     tls_state_t state;
     const char *error;
+    int is_server;
 
     // Configuration
     char hostname[256];
     char alpn_protocol[64];
     int verify_cert;
     int timeout_ms;
+    uint8_t legacy_session_id[32];
+    size_t legacy_session_id_len;
+    const struct rt_tls_server_ctx *server_ctx;
 
     // Handshake state
     uint8_t client_private_key[32];

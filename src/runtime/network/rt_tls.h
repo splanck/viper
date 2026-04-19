@@ -4,7 +4,7 @@
 // See LICENSE for license information.
 //
 // File: src/runtime/network/rt_tls.h
-// Purpose: TLS 1.3 client for secure HTTPS connections using AES-128-GCM-SHA256
+// Purpose: TLS 1.3 transport for secure networking using AES-128-GCM-SHA256
 // and ChaCha20-Poly1305-SHA256 AEAD with X25519 key exchange, implemented in
 // pure C without external TLS libraries.
 //
@@ -13,7 +13,8 @@
 //   - Supports AES-128-GCM-SHA256 (0x1301) and ChaCha20-Poly1305-SHA256 (0x1303).
 //   - Certificate verification is performed against the system trust store using the
 //     server-supplied certificate chain and hostname/IP SAN verification.
-//   - Only client mode is supported; server-side TLS is not implemented.
+//   - The public low-level API remains client-oriented; server-side TLS is consumed
+//     internally by `Viper.Network.HttpsServer` / `Viper.Network.WssServer`.
 //
 // Ownership/Lifetime:
 //   - TLS connection objects are heap-allocated; caller must close and free.
