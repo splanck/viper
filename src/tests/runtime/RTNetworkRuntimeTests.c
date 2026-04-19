@@ -129,6 +129,13 @@ static void test_http_server_parses_exact_body(void) {
     free(body);
 }
 
+static void test_http_server_rejects_invalid_http_version(void) {
+    const char raw[] = "GET / HTTP/2.0\r\n"
+                       "Host: example.test\r\n"
+                       "\r\n";
+    ASSERT(rt_http_server_test_parse_request(raw, strlen(raw), NULL, NULL, NULL, NULL) == 0);
+}
+
 static void test_http_server_rejects_invalid_content_length(void) {
     const char raw[] = "POST /x HTTP/1.1\r\n"
                        "Content-Length: -1\r\n"
@@ -286,6 +293,45 @@ static void test_http_server_executes_bound_native_handler_for_chunked_body(void
         rt_obj_free(server);
 }
 
+static void test_http_server_http10_defaults_to_close(void) {
+    void *server = rt_http_server_new(8083);
+    rt_http_server_get(server, rt_const_cstr("/ping"), rt_const_cstr("handle_ping"));
+    rt_http_server_bind_handler(server, rt_const_cstr("handle_ping"), (void *)&native_http_handler);
+
+    rt_string raw = rt_const_cstr("GET /ping HTTP/1.0\r\n"
+                                  "Host: example.test\r\n"
+                                  "\r\n");
+    rt_string response = (rt_string)rt_http_server_process_request(server, raw);
+    const char *response_cstr = rt_string_cstr(response);
+
+    ASSERT(response_cstr != NULL);
+    ASSERT(strstr(response_cstr, "Connection: close\r\n") != NULL);
+
+    rt_string_unref(response);
+    if (rt_obj_release_check0(server))
+        rt_obj_free(server);
+}
+
+static void test_http_server_http10_keepalive_opt_in(void) {
+    void *server = rt_http_server_new(8084);
+    rt_http_server_get(server, rt_const_cstr("/ping"), rt_const_cstr("handle_ping"));
+    rt_http_server_bind_handler(server, rt_const_cstr("handle_ping"), (void *)&native_http_handler);
+
+    rt_string raw = rt_const_cstr("GET /ping HTTP/1.0\r\n"
+                                  "Host: example.test\r\n"
+                                  "Connection: keep-alive\r\n"
+                                  "\r\n");
+    rt_string response = (rt_string)rt_http_server_process_request(server, raw);
+    const char *response_cstr = rt_string_cstr(response);
+
+    ASSERT(response_cstr != NULL);
+    ASSERT(strstr(response_cstr, "Connection: keep-alive\r\n") != NULL);
+
+    rt_string_unref(response);
+    if (rt_obj_release_check0(server))
+        rt_obj_free(server);
+}
+
 static void test_http_server_reports_missing_handler_binding(void) {
     void *server = rt_http_server_new(8081);
     rt_http_server_get(server, rt_const_cstr("/missing"), rt_const_cstr("missing_handler"));
@@ -316,6 +362,20 @@ static void test_http_parse_url_accepts_ipv6_literal(void) {
     ASSERT(path && strcmp(path, "/api?q=1") == 0);
     ASSERT(use_tls == 1);
 
+    free(host);
+    free(path);
+}
+
+static void test_http_parse_url_rejects_crlf_injection(void) {
+    char *host = NULL;
+    char *path = NULL;
+    int port = 0;
+    int use_tls = 0;
+    ASSERT(rt_http_parse_url_for_test("http://example.test/\r\nX-Evil: yes",
+                                      &host,
+                                      &port,
+                                      &path,
+                                      &use_tls) == 0);
     free(host);
     free(path);
 }
@@ -381,6 +441,7 @@ static void test_ws_handshake_validation_rejects_spurious_101(void) {
 
 int main(void) {
     test_http_server_parses_exact_body();
+    test_http_server_rejects_invalid_http_version();
     test_http_server_rejects_invalid_content_length();
     test_http_server_rejects_truncated_body();
     test_http_server_rejects_duplicate_content_length();
@@ -389,8 +450,11 @@ int main(void) {
     test_http_server_response_filters_managed_and_injected_headers();
     test_http_server_executes_bound_native_handler();
     test_http_server_executes_bound_native_handler_for_chunked_body();
+    test_http_server_http10_defaults_to_close();
+    test_http_server_http10_keepalive_opt_in();
     test_http_server_reports_missing_handler_binding();
     test_http_parse_url_accepts_ipv6_literal();
+    test_http_parse_url_rejects_crlf_injection();
     test_ws_parse_url_accepts_ipv6_literal();
     test_ws_handshake_validation_accepts_valid_response();
     test_ws_handshake_validation_rejects_spurious_101();

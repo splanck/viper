@@ -685,7 +685,8 @@ The TLS implementation uses:
 - **Key Exchange:** X25519 (Curve25519 ECDH)
 - **Cipher:** ChaCha20-Poly1305 AEAD
 - **Hash:** SHA-256
-- **Certificate Verification:** Enabled by default
+- **Certificate Verification:** Enabled by default against the platform trust store
+- **Hostname / SNI behavior:** DNS hostnames are sent in SNI; IP literals are verified against IP SANs but are not sent in SNI
 
 ### Zia Example
 
@@ -758,6 +759,7 @@ END IF
 TLS operations trap on errors:
 
 - `Connect()` traps on connection refused, host not found, or TLS handshake failure
+- Certificate / hostname / handshake diagnostics are preserved in `conn.Error()`
 - `ConnectFor()` traps on timeout
 - `Send()` traps if connection is closed
 - `Recv()` traps on receive errors

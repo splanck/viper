@@ -556,11 +556,6 @@ static void ws_set_socket_timeout(int fd, int timeout_ms, int is_recv) {
 #endif
 }
 
-/// @brief Clear socket timeout (set to 0 = no timeout).
-static void ws_clear_socket_timeout(int fd, int is_recv) {
-    ws_set_socket_timeout(fd, 0, is_recv);
-}
-
 /// @brief Case-insensitive ASCII compare of two `len`-byte regions.
 ///
 /// Used for HTTP header name/value matching during the WebSocket
@@ -1279,12 +1274,6 @@ void *rt_ws_connect_for(rt_string url, int64_t timeout_ms) {
     free(host);
     free(path);
 
-    // Clear socket timeouts now that handshake is complete
-    if (timeout_ms > 0) {
-        ws_clear_socket_timeout(ws->socket_fd, 1);
-        ws_clear_socket_timeout(ws->socket_fd, 0);
-    }
-
     ws->is_open = 1;
     return ws;
 }
@@ -1325,7 +1314,7 @@ rt_string rt_ws_close_reason(void *obj) {
     return rt_string_from_bytes(ws->close_reason, strlen(ws->close_reason));
 }
 
-/// @brief Send a text frame. Sends the string's bytes as UTF-8 (no validation).
+/// @brief Send a text frame. Rejects invalid UTF-8 payloads before they hit the wire.
 /// @throws Err_ConnectionClosed if `is_open == 0`,
 ///         Err_NetworkError if the underlying send fails.
 void rt_ws_send(void *obj, rt_string text) {
@@ -1339,6 +1328,11 @@ void rt_ws_send(void *obj, rt_string text) {
 
     const char *cstr = rt_string_cstr(text);
     size_t len = cstr ? strlen(cstr) : 0;
+
+    if (cstr && !ws_is_valid_utf8((const uint8_t *)cstr, len)) {
+        rt_trap_net("WebSocket: invalid UTF-8 text frame", Err_ProtocolError);
+        return;
+    }
 
     if (!ws_send_frame(ws, WS_OP_TEXT, cstr, len)) {
         ws->is_open = 0;

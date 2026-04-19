@@ -8,6 +8,7 @@
 #include "rt_async.h"
 #include "rt_future.h"
 #include "rt_http_server.h"
+#include "rt_https_server.h"
 #include "rt_object.h"
 #include "rt_threads.h"
 #include "support/small_vector.hpp"
@@ -51,6 +52,7 @@ UnifiedRuntimeHandler gPriorThreadStartHandler = nullptr;
 UnifiedRuntimeHandler gPriorThreadStartSafeHandler = nullptr;
 UnifiedRuntimeHandler gPriorAsyncRunHandler = nullptr;
 UnifiedRuntimeHandler gPriorHttpBindHandler = nullptr;
+UnifiedRuntimeHandler gPriorHttpsBindHandler = nullptr;
 
 } // namespace
 
@@ -3193,6 +3195,72 @@ static void unified_http_server_bind_handler(void **args, void *result) {
     rt_http_server_bind_handler(server, tag, entry);
 }
 
+static void unified_https_server_bind_handler(void **args, void *result) {
+    (void)result;
+
+    void *server = nullptr;
+    rt_string tag = nullptr;
+    void *entry = nullptr;
+    if (args && args[0])
+        server = *reinterpret_cast<void **>(args[0]);
+    if (args && args[1])
+        tag = *reinterpret_cast<rt_string *>(args[1]);
+    if (args && args[2])
+        entry = *reinterpret_cast<void **>(args[2]);
+
+    if (!entry)
+        rt_trap("HttpsServer.BindHandler: null entry");
+
+    il::vm::VM *stdVm = il::vm::activeVMInstance();
+    if (stdVm) {
+        std::shared_ptr<il::vm::VM::ProgramState> program = stdVm->programState();
+        if (!program)
+            rt_trap("HttpServer.BindHandler: invalid runtime state");
+
+        const il::core::Module &module = stdVm->module();
+        const il::core::Function *entryFn = resolveILEntry(module, entry);
+        if (!entryFn)
+            rt_trap("HttpServer.BindHandler: invalid entry");
+        validateHttpHandlerSignature(*entryFn);
+
+        auto *payload =
+            new VmHttpHandlerPayload{&module, std::move(program), stdVm->externRegistry(), entryFn};
+        il::vm::retainExternRegistry(payload->externRegistry);
+        rt_https_server_bind_handler_dispatch(
+            server,
+            tag,
+            reinterpret_cast<void *>(&vm_http_handler_dispatch_bc),
+            payload,
+            reinterpret_cast<void *>(&destroy_vm_http_handler_payload_bc));
+        return;
+    }
+
+    BytecodeVM *bcVm = activeBytecodeVMInstance();
+    const BytecodeModule *bcModule = activeBytecodeModule();
+    if (bcVm && bcModule) {
+        const BytecodeFunction *entryFn = resolveBytecodeEntry(bcModule, entry);
+        if (!entryFn)
+            rt_trap("HttpServer.BindHandler: invalid bytecode entry");
+        validateBytecodeHttpHandlerSignature(*entryFn);
+
+        auto *payload =
+            new BytecodeHttpHandlerPayload{bcModule, entryFn, bcVm->captureExecutionEnvironment()};
+        rt_https_server_bind_handler_dispatch(
+            server,
+            tag,
+            reinterpret_cast<void *>(&bytecode_http_handler_dispatch),
+            payload,
+            reinterpret_cast<void *>(&destroy_bytecode_http_handler_payload));
+        return;
+    }
+
+    if (gPriorHttpsBindHandler) {
+        gPriorHttpsBindHandler(args, result);
+        return;
+    }
+    rt_https_server_bind_handler(server, tag, entry);
+}
+
 static void unified_async_run_handler(void **args, void *result) {
     void *entry = nullptr;
     void *arg = nullptr;
@@ -3305,6 +3373,9 @@ void registerUnifiedVmRuntimeHandlers() {
         capturePriorHandler("Viper.Network.HttpServer.BindHandler",
                             reinterpret_cast<void *>(&unified_http_server_bind_handler),
                             gPriorHttpBindHandler);
+        capturePriorHandler("Viper.Network.HttpsServer.BindHandler",
+                            reinterpret_cast<void *>(&unified_https_server_bind_handler),
+                            gPriorHttpsBindHandler);
     });
 
     using il::runtime::signatures::make_signature;
@@ -3336,6 +3407,13 @@ void registerUnifiedVmRuntimeHandlers() {
         ext.name = "Viper.Network.HttpServer.BindHandler";
         ext.signature = make_signature(ext.name, {SigParam::Ptr, SigParam::Str, SigParam::Ptr});
         ext.fn = reinterpret_cast<void *>(&unified_http_server_bind_handler);
+        il::vm::RuntimeBridge::registerExtern(ext);
+    }
+    {
+        il::vm::ExternDesc ext;
+        ext.name = "Viper.Network.HttpsServer.BindHandler";
+        ext.signature = make_signature(ext.name, {SigParam::Ptr, SigParam::Str, SigParam::Ptr});
+        ext.fn = reinterpret_cast<void *>(&unified_https_server_bind_handler);
         il::vm::RuntimeBridge::registerExtern(ext);
     }
 }

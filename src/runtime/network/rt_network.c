@@ -834,7 +834,7 @@ void rt_tcp_detach_socket(void *obj) {
 static void *rt_tcp_server_listen_impl(const char *address, int64_t port) {
     rt_net_init_wsa();
 
-    if (port < 1 || port > 65535)
+    if (port < 0 || port > 65535)
         rt_trap("Network: invalid port number");
 
     struct addrinfo hints;
@@ -911,7 +911,7 @@ static void *rt_tcp_server_listen_impl(const char *address, int64_t port) {
 
     server->sock = sock;
     server->address = addr_cstr;
-    server->port = (int)port;
+    server->port = port == 0 ? get_local_port(sock) : (int)port;
     server->is_listening = true;
 
     return server;

@@ -125,7 +125,9 @@ typedef struct {
     ws_client_t clients[WS_SERVER_MAX_CLIENTS];
     int client_count;
     ws_mutex_t lock;
+    ws_mutex_t io_lock;
     bool lock_initialized;
+    bool io_lock_initialized;
 #ifdef _WIN32
     HANDLE accept_thread;
 #else
@@ -139,6 +141,11 @@ typedef struct {
     int slot;
     void *tcp;
 } ws_client_task_t;
+
+typedef struct {
+    int slot;
+    void *tcp;
+} ws_broadcast_target_t;
 
 static int ws_header_has_upgrade_token(const char *value) {
     const char *p = value;
@@ -155,6 +162,100 @@ static int ws_header_has_upgrade_token(const char *value) {
             return 1;
     }
     return 0;
+}
+
+static char *ws_strdup_trimmed(const char *text) {
+    if (!text)
+        return NULL;
+    while (*text == ' ' || *text == '\t')
+        text++;
+    size_t len = strlen(text);
+    while (len > 0 && (text[len - 1] == ' ' || text[len - 1] == '\t'))
+        len--;
+    char *copy = (char *)malloc(len + 1);
+    if (!copy)
+        return NULL;
+    memcpy(copy, text, len);
+    copy[len] = '\0';
+    return copy;
+}
+
+static char *ws_extract_authority_host(const char *authority) {
+    const char *start = authority;
+    const char *end = NULL;
+    size_t len = 0;
+    char *host = NULL;
+
+    if (!authority || !*authority)
+        return NULL;
+
+    while (*start == ' ' || *start == '\t')
+        start++;
+    if (*start == '[') {
+        end = strchr(start + 1, ']');
+        if (!end)
+            return NULL;
+        len = (size_t)(end - (start + 1));
+        host = (char *)malloc(len + 1);
+        if (!host)
+            return NULL;
+        memcpy(host, start + 1, len);
+        host[len] = '\0';
+        return host;
+    }
+
+    end = start;
+    while (*end && *end != ':' && *end != '/' && *end != '?' && *end != '#')
+        end++;
+    len = (size_t)(end - start);
+    if (len == 0)
+        return NULL;
+    host = (char *)malloc(len + 1);
+    if (!host)
+        return NULL;
+    memcpy(host, start, len);
+    host[len] = '\0';
+    return host;
+}
+
+static int ws_origin_matches_host_header(const char *origin, const char *host_header) {
+    const char *scheme_sep = NULL;
+    const char *authority = NULL;
+    const char *authority_end = NULL;
+    size_t authority_len = 0;
+    char *origin_authority = NULL;
+    char *origin_host = NULL;
+    char *request_host = NULL;
+    int matches = 0;
+
+    if (!origin || !*origin)
+        return 1;
+    if (!host_header || !*host_header)
+        return 0;
+
+    scheme_sep = strstr(origin, "://");
+    if (!scheme_sep)
+        return 0;
+    authority = scheme_sep + 3;
+    authority_end = authority;
+    while (*authority_end && *authority_end != '/' && *authority_end != '?' && *authority_end != '#')
+        authority_end++;
+    authority_len = (size_t)(authority_end - authority);
+    origin_authority = (char *)malloc(authority_len + 1);
+    if (!origin_authority)
+        return 0;
+    memcpy(origin_authority, authority, authority_len);
+    origin_authority[authority_len] = '\0';
+
+    origin_host = ws_extract_authority_host(origin_authority);
+    request_host = ws_extract_authority_host(host_header);
+    if (origin_host && request_host && strcasecmp(origin_host, request_host) == 0)
+        matches = 1;
+
+    free(request_host);
+    free(origin_host);
+    free(origin_authority);
+    return matches;
 }
 
 static int ws_is_valid_opcode(uint8_t opcode) {
@@ -433,13 +534,16 @@ static int ws_server_handshake(void *tcp) {
     if (!line)
         return 0;
     const char *request_line = rt_string_cstr(line);
-    if (!request_line || strncmp(request_line, "GET ", 4) != 0) {
+    if (!request_line || strncmp(request_line, "GET ", 4) != 0 ||
+        strstr(request_line, " HTTP/1.1") == NULL) {
         rt_string_unref(line);
         return 0;
     }
     rt_string_unref(line);
 
     char ws_key[128] = {0};
+    char host_header[256] = {0};
+    char origin_header[256] = {0};
     int saw_upgrade = 0;
     int saw_connection = 0;
     int saw_version = 0;
@@ -460,6 +564,22 @@ static int ws_server_handshake(void *tcp) {
             while (*val == ' ')
                 val++;
             strncpy(ws_key, val, sizeof(ws_key) - 1);
+        } else if (strncasecmp(h, "Host:", 5) == 0) {
+            char *trimmed = ws_strdup_trimmed(h + 5);
+            if (!trimmed) {
+                rt_string_unref(hdr);
+                return 0;
+            }
+            snprintf(host_header, sizeof(host_header), "%s", trimmed);
+            free(trimmed);
+        } else if (strncasecmp(h, "Origin:", 7) == 0) {
+            char *trimmed = ws_strdup_trimmed(h + 7);
+            if (!trimmed) {
+                rt_string_unref(hdr);
+                return 0;
+            }
+            snprintf(origin_header, sizeof(origin_header), "%s", trimmed);
+            free(trimmed);
         } else if (strncasecmp(h, "Upgrade:", 8) == 0) {
             const char *val = h + 8;
             while (*val == ' ')
@@ -479,7 +599,8 @@ static int ws_server_handshake(void *tcp) {
         rt_string_unref(hdr);
     }
 
-    if (ws_key[0] == '\0' || !saw_upgrade || !saw_connection || !saw_version)
+    if (ws_key[0] == '\0' || host_header[0] == '\0' || !saw_upgrade || !saw_connection ||
+        !saw_version || !ws_origin_matches_host_header(origin_header, host_header))
         return 0;
 
     // Compute accept key
@@ -525,6 +646,8 @@ static void rt_ws_server_finalize(void *obj) {
     if (s->worker_pool && rt_obj_release_check0(s->worker_pool))
         rt_obj_free(s->worker_pool);
     s->worker_pool = NULL;
+    if (s->io_lock_initialized)
+        WS_MUTEX_DESTROY(&s->io_lock);
     if (s->lock_initialized)
         WS_MUTEX_DESTROY(&s->lock);
 }
@@ -533,6 +656,7 @@ static void ws_server_remove_client(rt_ws_server_impl *s, int slot, void *tcp) {
     if (!s || slot < 0)
         return;
 
+    WS_MUTEX_LOCK(&s->io_lock);
     WS_MUTEX_LOCK(&s->lock);
     if (slot < s->client_count && s->clients[slot].tcp == tcp) {
         ws_release_tcp(&s->clients[slot].tcp);
@@ -541,15 +665,16 @@ static void ws_server_remove_client(rt_ws_server_impl *s, int slot, void *tcp) {
         ws_release_tcp(&tcp);
     }
     WS_MUTEX_UNLOCK(&s->lock);
+    WS_MUTEX_UNLOCK(&s->io_lock);
 }
 
 static int ws_server_send_locked(rt_ws_server_impl *s, void *tcp, uint8_t opcode, const void *data, size_t len) {
     int ok = 0;
     if (!s || !tcp)
         return 0;
-    WS_MUTEX_LOCK(&s->lock);
+    WS_MUTEX_LOCK(&s->io_lock);
     ok = ws_server_send_frame(tcp, opcode, data, len);
-    WS_MUTEX_UNLOCK(&s->lock);
+    WS_MUTEX_UNLOCK(&s->io_lock);
     return ok;
 }
 
@@ -767,6 +892,8 @@ void *rt_wss_server_new(int64_t port, rt_string cert_file, rt_string key_file) {
     }
     WS_MUTEX_INIT(&s->lock);
     s->lock_initialized = true;
+    WS_MUTEX_INIT(&s->io_lock);
+    s->io_lock_initialized = true;
     return s;
 }
 
@@ -819,6 +946,7 @@ void rt_wss_server_stop(void *obj) {
         s->thread_started = false;
     }
 
+    WS_MUTEX_LOCK(&s->io_lock);
     WS_MUTEX_LOCK(&s->lock);
     for (int i = 0; i < s->client_count; i++) {
         if (s->clients[i].active && s->clients[i].tcp)
@@ -827,6 +955,7 @@ void rt_wss_server_stop(void *obj) {
     }
     s->client_count = 0;
     WS_MUTEX_UNLOCK(&s->lock);
+    WS_MUTEX_UNLOCK(&s->io_lock);
 
     if (s->worker_pool)
         rt_threadpool_wait(s->worker_pool);
@@ -841,17 +970,39 @@ void rt_wss_server_broadcast(void *obj, rt_string message) {
     rt_ws_server_impl *s = (rt_ws_server_impl *)obj;
     const char *msg = rt_string_cstr(message);
     size_t len = msg ? strlen(msg) : 0;
+    ws_broadcast_target_t targets[WS_SERVER_MAX_CLIENTS];
+    int target_count = 0;
 
     WS_MUTEX_LOCK(&s->lock);
     for (int i = 0; i < s->client_count; i++) {
-        if (s->clients[i].active && s->clients[i].tcp && ws_tls_is_open(s->clients[i].tcp)) {
-            if (!ws_server_send_frame(s->clients[i].tcp, WS_OP_TEXT, msg, len)) {
-                ws_release_tcp(&s->clients[i].tcp);
-                s->clients[i].active = false;
-            }
-        }
+        if (s->clients[i].active && s->clients[i].tcp)
+            targets[target_count++] = (ws_broadcast_target_t){i, s->clients[i].tcp};
     }
     WS_MUTEX_UNLOCK(&s->lock);
+
+    for (int i = 0; i < target_count; i++) {
+        int should_send = 0;
+        int ok = 1;
+        WS_MUTEX_LOCK(&s->io_lock);
+        WS_MUTEX_LOCK(&s->lock);
+        if (targets[i].slot < s->client_count && s->clients[targets[i].slot].active &&
+            s->clients[targets[i].slot].tcp == targets[i].tcp && ws_tls_is_open(targets[i].tcp)) {
+            should_send = 1;
+        }
+        WS_MUTEX_UNLOCK(&s->lock);
+
+        if (should_send)
+            ok = ws_server_send_frame(targets[i].tcp, WS_OP_TEXT, msg, len);
+
+        WS_MUTEX_LOCK(&s->lock);
+        if (!ok && targets[i].slot < s->client_count &&
+            s->clients[targets[i].slot].tcp == targets[i].tcp) {
+            ws_release_tcp(&s->clients[targets[i].slot].tcp);
+            s->clients[targets[i].slot].active = false;
+        }
+        WS_MUTEX_UNLOCK(&s->lock);
+        WS_MUTEX_UNLOCK(&s->io_lock);
+    }
 }
 
 /// @brief Binary-frame variant of `_broadcast`. `data` is interpreted as a `(int64 length, uint8*)`
@@ -869,16 +1020,39 @@ void rt_wss_server_broadcast_bytes(void *obj, void *data) {
     int64_t len = ((bi *)data)->l;
     uint8_t *ptr = ((bi *)data)->d;
 
+    ws_broadcast_target_t targets[WS_SERVER_MAX_CLIENTS];
+    int target_count = 0;
+
     WS_MUTEX_LOCK(&s->lock);
     for (int i = 0; i < s->client_count; i++) {
-        if (s->clients[i].active && s->clients[i].tcp && ws_tls_is_open(s->clients[i].tcp)) {
-            if (!ws_server_send_frame(s->clients[i].tcp, WS_OP_BINARY, ptr, (size_t)len)) {
-                ws_release_tcp(&s->clients[i].tcp);
-                s->clients[i].active = false;
-            }
-        }
+        if (s->clients[i].active && s->clients[i].tcp)
+            targets[target_count++] = (ws_broadcast_target_t){i, s->clients[i].tcp};
     }
     WS_MUTEX_UNLOCK(&s->lock);
+
+    for (int i = 0; i < target_count; i++) {
+        int should_send = 0;
+        int ok = 1;
+        WS_MUTEX_LOCK(&s->io_lock);
+        WS_MUTEX_LOCK(&s->lock);
+        if (targets[i].slot < s->client_count && s->clients[targets[i].slot].active &&
+            s->clients[targets[i].slot].tcp == targets[i].tcp && ws_tls_is_open(targets[i].tcp)) {
+            should_send = 1;
+        }
+        WS_MUTEX_UNLOCK(&s->lock);
+
+        if (should_send)
+            ok = ws_server_send_frame(targets[i].tcp, WS_OP_BINARY, ptr, (size_t)len);
+
+        WS_MUTEX_LOCK(&s->lock);
+        if (!ok && targets[i].slot < s->client_count &&
+            s->clients[targets[i].slot].tcp == targets[i].tcp) {
+            ws_release_tcp(&s->clients[targets[i].slot].tcp);
+            s->clients[targets[i].slot].active = false;
+        }
+        WS_MUTEX_UNLOCK(&s->lock);
+        WS_MUTEX_UNLOCK(&s->io_lock);
+    }
 }
 
 /// @brief Count active clients (only counts slots flagged active — slots from disconnected

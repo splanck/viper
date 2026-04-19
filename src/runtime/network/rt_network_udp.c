@@ -39,12 +39,229 @@ typedef struct rt_udp {
     socket_t sock;                     // Socket descriptor
     char *address;                     // Bound address (allocated, or NULL if unbound)
     int port;                          // Bound port (0 if unbound)
+    int family;                        // AF_INET or AF_INET6
     bool is_bound;                     // Whether socket is bound
     bool is_open;                      // Socket state
-    char sender_host[INET_ADDRSTRLEN]; // Last sender host
+    char sender_host[INET6_ADDRSTRLEN]; // Last sender host
     int sender_port;                   // Last sender port
     int recv_timeout_ms;               // Receive timeout (0 = none)
 } rt_udp_t;
+
+static void rt_udp_finalize(void *obj);
+
+#if defined(IPV6_JOIN_GROUP) && !defined(IPV6_ADD_MEMBERSHIP)
+#define IPV6_ADD_MEMBERSHIP IPV6_JOIN_GROUP
+#endif
+#if defined(IPV6_LEAVE_GROUP) && !defined(IPV6_DROP_MEMBERSHIP)
+#define IPV6_DROP_MEMBERSHIP IPV6_LEAVE_GROUP
+#endif
+
+static socket_t udp_create_socket(int family, int dual_stack) {
+    socket_t sock = socket(family, SOCK_DGRAM, IPPROTO_UDP);
+    if (sock == INVALID_SOCK)
+        return INVALID_SOCK;
+    suppress_sigpipe(sock);
+#ifdef IPV6_V6ONLY
+    if (family == AF_INET6) {
+        int v6only = dual_stack ? 0 : 1;
+        setsockopt(sock, IPPROTO_IPV6, IPV6_V6ONLY, (const char *)&v6only, sizeof(v6only));
+    }
+#endif
+    return sock;
+}
+
+static void udp_make_v4_mapped(const struct sockaddr_in *src,
+                               struct sockaddr_in6 *dst,
+                               socklen_t *dst_len) {
+    memset(dst, 0, sizeof(*dst));
+    dst->sin6_family = AF_INET6;
+    dst->sin6_port = src->sin_port;
+    dst->sin6_addr.s6_addr[10] = 0xFF;
+    dst->sin6_addr.s6_addr[11] = 0xFF;
+    memcpy(&dst->sin6_addr.s6_addr[12], &src->sin_addr, sizeof(src->sin_addr));
+    if (dst_len)
+        *dst_len = (socklen_t)sizeof(*dst);
+}
+
+static void udp_store_sender_info(rt_udp_t *udp, const struct sockaddr *addr, socklen_t addr_len) {
+    (void)addr_len;
+    if (!udp || !addr) {
+        return;
+    }
+
+    udp->sender_host[0] = '\0';
+    udp->sender_port = 0;
+
+    if (addr->sa_family == AF_INET) {
+        const struct sockaddr_in *in = (const struct sockaddr_in *)addr;
+        inet_ntop(AF_INET, &in->sin_addr, udp->sender_host, sizeof(udp->sender_host));
+        udp->sender_port = ntohs(in->sin_port);
+        return;
+    }
+
+    if (addr->sa_family == AF_INET6) {
+        const struct sockaddr_in6 *in6 = (const struct sockaddr_in6 *)addr;
+#ifdef IN6_IS_ADDR_V4MAPPED
+        if (IN6_IS_ADDR_V4MAPPED(&in6->sin6_addr)) {
+            struct in_addr mapped_v4;
+            memcpy(&mapped_v4, &in6->sin6_addr.s6_addr[12], sizeof(mapped_v4));
+            inet_ntop(AF_INET, &mapped_v4, udp->sender_host, sizeof(udp->sender_host));
+        } else
+#endif
+        {
+            inet_ntop(AF_INET6, &in6->sin6_addr, udp->sender_host, sizeof(udp->sender_host));
+        }
+        udp->sender_port = ntohs(in6->sin6_port);
+    }
+}
+
+static int udp_resolve_destination(const char *host,
+                                   int port,
+                                   int socket_family,
+                                   struct sockaddr_storage *addr_out,
+                                   socklen_t *addr_len_out) {
+    struct addrinfo hints;
+    struct addrinfo *res = NULL;
+    struct addrinfo *rp = NULL;
+    char port_str[16];
+
+    if (!host || !*host || !addr_out || !addr_len_out)
+        return -1;
+
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_socktype = SOCK_DGRAM;
+    snprintf(port_str, sizeof(port_str), "%d", port);
+
+    if (getaddrinfo(host, port_str, &hints, &res) != 0 || !res)
+        return -1;
+
+    for (rp = res; rp != NULL; rp = rp->ai_next) {
+        if (socket_family == AF_INET && rp->ai_family != AF_INET)
+            continue;
+        if (socket_family == AF_INET6 && rp->ai_family == AF_INET) {
+            udp_make_v4_mapped((const struct sockaddr_in *)rp->ai_addr,
+                               (struct sockaddr_in6 *)addr_out,
+                               addr_len_out);
+            freeaddrinfo(res);
+            return 0;
+        }
+        if (socket_family != AF_INET6 && socket_family != AF_INET)
+            continue;
+        if (socket_family == AF_INET6 && rp->ai_family != AF_INET6)
+            continue;
+        if ((socklen_t)rp->ai_addrlen > (socklen_t)sizeof(*addr_out))
+            continue;
+        memcpy(addr_out, rp->ai_addr, rp->ai_addrlen);
+        *addr_len_out = (socklen_t)rp->ai_addrlen;
+        freeaddrinfo(res);
+        return 0;
+    }
+
+    freeaddrinfo(res);
+    return -1;
+}
+
+static void *rt_udp_bind_impl(const char *address, int64_t port) {
+    struct addrinfo hints;
+    struct addrinfo *res = NULL;
+    struct addrinfo *rp = NULL;
+    socket_t sock = INVALID_SOCK;
+    int last_err = 0;
+    int family = AF_INET;
+    int actual_port = (int)port;
+    char *addr_cstr = NULL;
+    char port_str[16];
+
+    rt_net_init_wsa();
+
+    if (port < 0 || port > 65535)
+        rt_trap("Network: invalid port number");
+    if (address && *address == '\0')
+        rt_trap("Network: invalid address");
+
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_socktype = SOCK_DGRAM;
+    if (!address)
+        hints.ai_flags = AI_PASSIVE;
+
+    snprintf(port_str, sizeof(port_str), "%d", (int)port);
+    if (getaddrinfo(address, port_str, &hints, &res) != 0 || !res)
+        rt_trap("Network: invalid address");
+
+    for (rp = res; rp != NULL; rp = rp->ai_next) {
+        int reuse = 1;
+        socket_t candidate = udp_create_socket(rp->ai_family, rp->ai_family == AF_INET6);
+        if (candidate == INVALID_SOCK)
+            continue;
+
+        setsockopt(candidate, SOL_SOCKET, SO_REUSEADDR, (const char *)&reuse, sizeof(reuse));
+
+        if (bind(candidate, rp->ai_addr, (socklen_t)rp->ai_addrlen) == 0) {
+            sock = candidate;
+            family = rp->ai_family;
+            break;
+        }
+
+        last_err = GET_LAST_ERROR();
+        CLOSE_SOCKET(candidate);
+    }
+
+    freeaddrinfo(res);
+
+    if (sock == INVALID_SOCK) {
+        if (last_err == ADDR_IN_USE)
+            rt_trap_net("Network: port already in use", Err_NetworkError);
+        if (last_err == PERM_DENIED)
+            rt_trap_net("Network: permission denied (port < 1024?)", Err_NetworkError);
+        rt_trap_net("Network: bind failed", Err_NetworkError);
+    }
+
+    if (port == 0) {
+        struct sockaddr_storage bound_addr;
+        socklen_t len = sizeof(bound_addr);
+        if (getsockname(sock, (struct sockaddr *)&bound_addr, &len) == 0) {
+            if (((struct sockaddr *)&bound_addr)->sa_family == AF_INET) {
+                actual_port = ntohs(((struct sockaddr_in *)&bound_addr)->sin_port);
+            } else if (((struct sockaddr *)&bound_addr)->sa_family == AF_INET6) {
+                actual_port = ntohs(((struct sockaddr_in6 *)&bound_addr)->sin6_port);
+            }
+        }
+    }
+
+    {
+        const char *addr_ptr = address ? address : (family == AF_INET6 ? "::" : "0.0.0.0");
+        size_t addr_len = strlen(addr_ptr);
+        addr_cstr = (char *)malloc(addr_len + 1);
+        if (!addr_cstr) {
+            CLOSE_SOCKET(sock);
+            rt_trap("Network: memory allocation failed");
+        }
+        memcpy(addr_cstr, addr_ptr, addr_len + 1);
+    }
+
+    {
+        rt_udp_t *udp = (rt_udp_t *)rt_obj_new_i64(0, (int64_t)sizeof(rt_udp_t));
+        if (!udp) {
+            CLOSE_SOCKET(sock);
+            free(addr_cstr);
+            rt_trap("Network: memory allocation failed");
+        }
+        rt_obj_set_finalizer(udp, rt_udp_finalize);
+
+        udp->sock = sock;
+        udp->address = addr_cstr;
+        udp->port = actual_port;
+        udp->family = family;
+        udp->is_bound = true;
+        udp->is_open = true;
+        udp->sender_host[0] = '\0';
+        udp->sender_port = 0;
+        udp->recv_timeout_ms = 0;
+        return udp;
+    }
+}
 
 /// @brief GC finalizer: close the socket if still open and free the bound-address string.
 static void rt_udp_finalize(void *obj) {
@@ -66,17 +283,21 @@ static void rt_udp_finalize(void *obj) {
 // Udp - Creation
 //=============================================================================
 
-/// @brief Create an unbound UDP socket (AF_INET, SOCK_DGRAM). Suppresses SIGPIPE on platforms
-/// that need it. Returns a GC-managed handle wired to `rt_udp_finalize`. Traps on socket()
-/// failure or OOM. Use this for client-side senders that don't need to receive on a fixed port.
+/// @brief Create an unbound UDP socket. Prefers an IPv6 dual-stack socket when available so the
+/// same handle can send to IPv4 and IPv6 destinations; falls back to IPv4-only when the platform
+/// cannot create a dual-stack datagram socket.
 void *rt_udp_new(void) {
     rt_net_init_wsa();
 
-    socket_t sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+    socket_t sock = udp_create_socket(AF_INET6, 1);
+    int family = AF_INET6;
+    if (sock == INVALID_SOCK) {
+        sock = udp_create_socket(AF_INET, 0);
+        family = AF_INET;
+    }
     if (sock == INVALID_SOCK) {
         rt_trap("Network: failed to create UDP socket");
     }
-    suppress_sigpipe(sock);
 
     rt_udp_t *udp = (rt_udp_t *)rt_obj_new_i64(0, (int64_t)sizeof(rt_udp_t));
     if (!udp) {
@@ -88,6 +309,7 @@ void *rt_udp_new(void) {
     udp->sock = sock;
     udp->address = NULL;
     udp->port = 0;
+    udp->family = family;
     udp->is_bound = false;
     udp->is_open = true;
     udp->sender_host[0] = '\0';
@@ -101,96 +323,17 @@ void *rt_udp_new(void) {
 /// `port=0` to let the OS pick a free port (read it back via `rt_udp_port`). Convenience wrapper
 /// over `rt_udp_bind_at` for the common "listen on any address" case.
 void *rt_udp_bind(int64_t port) {
-    return rt_udp_bind_at(rt_const_cstr("0.0.0.0"), port);
+    return rt_udp_bind_impl(NULL, port);
 }
 
-/// @brief Create and bind a UDP socket to `(address, port)`. `address` must be a valid IPv4 dotted
-/// quad. Sets `SO_REUSEADDR` so re-binding after process restart doesn't fail with TIME_WAIT.
-/// When `port==0` the OS assigns a free port; the actual port is queried back via `getsockname`
-/// and stored in `udp->port`. Translates kernel errors (EADDRINUSE → "port already in use",
-/// EACCES → "permission denied (port < 1024?)") into specific traps for ergonomic diagnostics.
+/// @brief Create and bind a UDP socket to `(address, port)`. Supports IPv4 literals, IPv6
+/// literals, and hostnames that resolve to a local interface address. When `port==0` the OS
+/// assigns a free port and the actual port is queried back via `getsockname`.
 void *rt_udp_bind_at(rt_string address, int64_t port) {
-    rt_net_init_wsa();
-
-    if (port < 0 || port > 65535) {
-        rt_trap("Network: invalid port number");
-    }
-
     const char *addr_ptr = rt_string_cstr(address);
-    if (!addr_ptr || *addr_ptr == '\0') {
+    if (!addr_ptr || *addr_ptr == '\0')
         rt_trap("Network: invalid address");
-    }
-
-    // Create socket
-    socket_t sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-    if (sock == INVALID_SOCK) {
-        rt_trap("Network: failed to create UDP socket");
-    }
-    suppress_sigpipe(sock);
-
-    // Enable address reuse
-    int reuse = 1;
-    setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, (const char *)&reuse, sizeof(reuse));
-
-    // Bind to address
-    struct sockaddr_in bind_addr;
-    memset(&bind_addr, 0, sizeof(bind_addr));
-    bind_addr.sin_family = AF_INET;
-    bind_addr.sin_port = htons((uint16_t)port);
-
-    if (inet_pton(AF_INET, addr_ptr, &bind_addr.sin_addr) != 1) {
-        CLOSE_SOCKET(sock);
-        rt_trap("Network: invalid address");
-    }
-
-    if (bind(sock, (struct sockaddr *)&bind_addr, sizeof(bind_addr)) == SOCK_ERROR) {
-        int err = GET_LAST_ERROR();
-        CLOSE_SOCKET(sock);
-        if (err == ADDR_IN_USE)
-            rt_trap_net("Network: port already in use", Err_NetworkError);
-        if (err == PERM_DENIED)
-            rt_trap_net("Network: permission denied (port < 1024?)", Err_NetworkError);
-        rt_trap_net("Network: bind failed", Err_NetworkError);
-    }
-
-    // Get actual port if 0 was specified
-    int actual_port = (int)port;
-    if (port == 0) {
-        struct sockaddr_in bound_addr;
-        socklen_t len = sizeof(bound_addr);
-        if (getsockname(sock, (struct sockaddr *)&bound_addr, &len) == 0) {
-            actual_port = ntohs(bound_addr.sin_port);
-        }
-    }
-
-    // Copy address string
-    size_t addr_len = strlen(addr_ptr);
-    char *addr_cstr = (char *)malloc(addr_len + 1);
-    if (!addr_cstr) {
-        CLOSE_SOCKET(sock);
-        rt_trap("Network: memory allocation failed");
-    }
-    memcpy(addr_cstr, addr_ptr, addr_len + 1);
-
-    // Create UDP object
-    rt_udp_t *udp = (rt_udp_t *)rt_obj_new_i64(0, (int64_t)sizeof(rt_udp_t));
-    if (!udp) {
-        CLOSE_SOCKET(sock);
-        free(addr_cstr);
-        rt_trap("Network: memory allocation failed");
-    }
-    rt_obj_set_finalizer(udp, rt_udp_finalize);
-
-    udp->sock = sock;
-    udp->address = addr_cstr;
-    udp->port = actual_port;
-    udp->is_bound = true;
-    udp->is_open = true;
-    udp->sender_host[0] = '\0';
-    udp->sender_port = 0;
-    udp->recv_timeout_ms = 0;
-
-    return udp;
+    return rt_udp_bind_impl(addr_ptr, port);
 }
 
 //=============================================================================
@@ -233,40 +376,9 @@ int8_t rt_udp_is_bound(void *obj) {
 // Udp - Send Methods
 //=============================================================================
 
-/// @brief Resolve a host string (IPv4 dotted quad OR DNS name) into an IPv4 sockaddr_in.
-/// Tries `inet_pton` first (zero-allocation common path); falls back to `getaddrinfo` for
-/// real DNS. The returned sockaddr is filled with `(family, port, addr)`. Returns -1 on
-/// resolution failure so the caller can trap with a meaningful error class.
-static int resolve_host(const char *host, int port, struct sockaddr_in *addr) {
-    memset(addr, 0, sizeof(*addr));
-    addr->sin_family = AF_INET;
-    addr->sin_port = htons((uint16_t)port);
-
-    // Try parsing as IP address first
-    if (inet_pton(AF_INET, host, &addr->sin_addr) == 1) {
-        return 0;
-    }
-
-    // Resolve hostname
-    struct addrinfo hints, *res;
-    memset(&hints, 0, sizeof(hints));
-    hints.ai_family = AF_INET;
-    hints.ai_socktype = SOCK_DGRAM;
-
-    if (getaddrinfo(host, NULL, &hints, &res) != 0) {
-        return -1;
-    }
-
-    struct sockaddr_in *resolved = (struct sockaddr_in *)res->ai_addr;
-    addr->sin_addr = resolved->sin_addr;
-    freeaddrinfo(res);
-
-    return 0;
-}
-
 /// @brief Send a Bytes payload as a single UDP datagram to `(host, port)`. Caps payload at the
 /// IPv4 UDP max of 65507 bytes (65535 IP MTU − 20 IP header − 8 UDP header) to avoid silent
-/// kernel fragmentation. Resolves `host` via `resolve_host` (IP-literal fast path + DNS fallback).
+/// kernel fragmentation. Resolves `host` through `getaddrinfo`, supporting IPv4, IPv6, and DNS.
 /// Returns the byte count actually sent. Traps with specific kinds for EMSGSIZE, host-not-found,
 /// and generic send errors so callers can distinguish recoverable failures.
 int64_t rt_udp_send_to(void *obj, rt_string host, int64_t port, void *data) {
@@ -297,8 +409,9 @@ int64_t rt_udp_send_to(void *obj, rt_string host, int64_t port, void *data) {
         rt_trap_net("Network: message too large (max 65507 bytes for UDP)", Err_NetworkError);
 
     // Resolve destination
-    struct sockaddr_in dest_addr;
-    if (resolve_host(host_ptr, (int)port, &dest_addr) != 0)
+    struct sockaddr_storage dest_addr;
+    socklen_t dest_len = 0;
+    if (udp_resolve_destination(host_ptr, (int)port, udp->family, &dest_addr, &dest_len) != 0)
         rt_trap_net("Network: host not found", Err_HostNotFound);
 
     int sent = sendto(udp->sock,
@@ -306,7 +419,7 @@ int64_t rt_udp_send_to(void *obj, rt_string host, int64_t port, void *data) {
                       (int)len,
                       SEND_FLAGS,
                       (struct sockaddr *)&dest_addr,
-                      sizeof(dest_addr));
+                      dest_len);
     if (sent == SOCK_ERROR) {
 #ifdef _WIN32
         int err = WSAGetLastError();
@@ -349,8 +462,9 @@ int64_t rt_udp_send_to_str(void *obj, rt_string host, int64_t port, rt_string te
         rt_trap_net("Network: message too large (max 65507 bytes for UDP)", Err_NetworkError);
 
     // Resolve destination
-    struct sockaddr_in dest_addr;
-    if (resolve_host(host_ptr, (int)port, &dest_addr) != 0)
+    struct sockaddr_storage dest_addr;
+    socklen_t dest_len = 0;
+    if (udp_resolve_destination(host_ptr, (int)port, udp->family, &dest_addr, &dest_len) != 0)
         rt_trap_net("Network: host not found", Err_HostNotFound);
 
     int sent = sendto(udp->sock,
@@ -358,7 +472,7 @@ int64_t rt_udp_send_to_str(void *obj, rt_string host, int64_t port, rt_string te
                       (int)len,
                       SEND_FLAGS,
                       (struct sockaddr *)&dest_addr,
-                      sizeof(dest_addr));
+                      dest_len);
     if (sent == SOCK_ERROR) {
         rt_trap_net("Network: send failed", net_classify_errno());
     }
@@ -396,7 +510,7 @@ void *rt_udp_recv_from(void *obj, int64_t max_bytes) {
     void *result = rt_bytes_new(max_bytes);
     uint8_t *buf = bytes_data(result);
 
-    struct sockaddr_in sender_addr;
+    struct sockaddr_storage sender_addr;
     socklen_t sender_len = sizeof(sender_addr);
 
     int received = recvfrom(
@@ -419,8 +533,7 @@ void *rt_udp_recv_from(void *obj, int64_t max_bytes) {
     }
 
     // Store sender info
-    inet_ntop(AF_INET, &sender_addr.sin_addr, udp->sender_host, sizeof(udp->sender_host));
-    udp->sender_port = ntohs(sender_addr.sin_port);
+    udp_store_sender_info(udp, (const struct sockaddr *)&sender_addr, sender_len);
 
     // Return exact size received
     if (received < max_bytes) {
@@ -501,10 +614,8 @@ void rt_udp_set_broadcast(void *obj, int8_t enable) {
     }
 }
 
-/// @brief Subscribe to an IPv4 multicast group via `IP_ADD_MEMBERSHIP`. Validates that
-/// `group_addr` falls in the canonical 224.0.0.0/4 range (high nibble == 0xE) before issuing
-/// the syscall — catches mistakes that would otherwise silently no-op. Joins on `INADDR_ANY`
-/// (let the kernel pick the routing interface).
+/// @brief Subscribe to an IPv4 or IPv6 multicast group. IPv4 uses `IP_ADD_MEMBERSHIP`;
+/// IPv6 uses `IPV6_ADD_MEMBERSHIP`.
 void rt_udp_join_group(void *obj, rt_string group_addr) {
     if (!obj)
         rt_trap("Network: NULL socket");
@@ -517,30 +628,55 @@ void rt_udp_join_group(void *obj, rt_string group_addr) {
     if (!addr_ptr || *addr_ptr == '\0')
         rt_trap("Network: invalid multicast address");
 
-    // Validate multicast address (224.0.0.0 - 239.255.255.255)
     struct in_addr mcast_addr;
-    if (inet_pton(AF_INET, addr_ptr, &mcast_addr) != 1) {
-        rt_trap("Network: invalid multicast address");
+    if (inet_pton(AF_INET, addr_ptr, &mcast_addr) == 1) {
+        uint32_t addr_val = ntohl(mcast_addr.s_addr);
+        if ((addr_val & 0xF0000000) != 0xE0000000)
+            rt_trap("Network: invalid multicast address (must be 224.0.0.0 - 239.255.255.255)");
+
+        {
+            struct ip_mreq mreq;
+            mreq.imr_multiaddr = mcast_addr;
+            mreq.imr_interface.s_addr = htonl(INADDR_ANY);
+
+            if (setsockopt(
+                    udp->sock, IPPROTO_IP, IP_ADD_MEMBERSHIP, (const char *)&mreq, sizeof(mreq)) ==
+                SOCK_ERROR) {
+                rt_trap_net("Network: failed to join multicast group", Err_NetworkError);
+            }
+        }
+        return;
     }
 
-    uint32_t addr_val = ntohl(mcast_addr.s_addr);
-    if ((addr_val & 0xF0000000) != 0xE0000000) {
-        rt_trap("Network: invalid multicast address (must be 224.0.0.0 - 239.255.255.255)");
-    }
-
-    struct ip_mreq mreq;
-    mreq.imr_multiaddr = mcast_addr;
-    mreq.imr_interface.s_addr = htonl(INADDR_ANY);
-
-    if (setsockopt(udp->sock, IPPROTO_IP, IP_ADD_MEMBERSHIP, (const char *)&mreq, sizeof(mreq)) ==
-        SOCK_ERROR) {
-        rt_trap_net("Network: failed to join multicast group", Err_NetworkError);
+    {
+        struct in6_addr mcast_addr6;
+        if (inet_pton(AF_INET6, addr_ptr, &mcast_addr6) != 1)
+            rt_trap("Network: invalid multicast address");
+        if (mcast_addr6.s6_addr[0] != 0xFF)
+            rt_trap("Network: invalid multicast address (IPv6 multicast must be ff00::/8)");
+#ifdef IPV6_ADD_MEMBERSHIP
+        {
+            struct ipv6_mreq mreq6;
+            memset(&mreq6, 0, sizeof(mreq6));
+            mreq6.ipv6mr_multiaddr = mcast_addr6;
+            mreq6.ipv6mr_interface = 0;
+            if (setsockopt(udp->sock,
+                           IPPROTO_IPV6,
+                           IPV6_ADD_MEMBERSHIP,
+                           (const char *)&mreq6,
+                           sizeof(mreq6)) == SOCK_ERROR) {
+                rt_trap_net("Network: failed to join multicast group", Err_NetworkError);
+            }
+        }
+        return;
+#else
+        rt_trap_net("Network: IPv6 multicast is not supported on this platform", Err_NetworkError);
+#endif
     }
 }
 
-/// @brief Unsubscribe from a multicast group via `IP_DROP_MEMBERSHIP`. Tolerant of bad input —
-/// silently no-ops on closed sockets, empty addresses, or malformed IPs (so cleanup paths can
-/// be unconditional without fear of throwing during teardown).
+/// @brief Unsubscribe from an IPv4 or IPv6 multicast group. Tolerant of bad input — silently
+/// no-ops on closed sockets, empty addresses, or malformed IPs.
 void rt_udp_leave_group(void *obj, rt_string group_addr) {
     if (!obj)
         rt_trap("Network: NULL socket");
@@ -554,14 +690,32 @@ void rt_udp_leave_group(void *obj, rt_string group_addr) {
         return;
 
     struct in_addr mcast_addr;
-    if (inet_pton(AF_INET, addr_ptr, &mcast_addr) != 1)
+    if (inet_pton(AF_INET, addr_ptr, &mcast_addr) == 1) {
+        struct ip_mreq mreq;
+        mreq.imr_multiaddr = mcast_addr;
+        mreq.imr_interface.s_addr = htonl(INADDR_ANY);
+        setsockopt(udp->sock, IPPROTO_IP, IP_DROP_MEMBERSHIP, (const char *)&mreq, sizeof(mreq));
         return;
+    }
 
-    struct ip_mreq mreq;
-    mreq.imr_multiaddr = mcast_addr;
-    mreq.imr_interface.s_addr = htonl(INADDR_ANY);
-
-    setsockopt(udp->sock, IPPROTO_IP, IP_DROP_MEMBERSHIP, (const char *)&mreq, sizeof(mreq));
+#ifdef IPV6_DROP_MEMBERSHIP
+    {
+        struct in6_addr mcast_addr6;
+        if (inet_pton(AF_INET6, addr_ptr, &mcast_addr6) != 1)
+            return;
+        {
+            struct ipv6_mreq mreq6;
+            memset(&mreq6, 0, sizeof(mreq6));
+            mreq6.ipv6mr_multiaddr = mcast_addr6;
+            mreq6.ipv6mr_interface = 0;
+            setsockopt(udp->sock,
+                       IPPROTO_IPV6,
+                       IPV6_DROP_MEMBERSHIP,
+                       (const char *)&mreq6,
+                       sizeof(mreq6));
+        }
+    }
+#endif
 }
 
 /// @brief Set a persistent socket-level recv timeout via SO_RCVTIMEO. Subsequent `recv*` calls

@@ -35,6 +35,18 @@ bool isHttpServerRouteRuntime(std::string_view callee) {
            callee == "Viper.Network.HttpServer.Put" || callee == "Viper.Network.HttpServer.Delete";
 }
 
+bool isHttpsServerRouteRuntime(std::string_view callee) {
+    return callee == "Viper.Network.HttpsServer.Get" ||
+           callee == "Viper.Network.HttpsServer.Post" ||
+           callee == "Viper.Network.HttpsServer.Put" ||
+           callee == "Viper.Network.HttpsServer.Delete";
+}
+
+const char *httpServerBindHandlerTarget(std::string_view callee) {
+    return isHttpsServerRouteRuntime(callee) ? "Viper.Network.HttpsServer.BindHandler"
+                                             : "Viper.Network.HttpServer.BindHandler";
+}
+
 bool isTerminalTextRuntime(std::string_view callee) {
     return callee == kTerminalSay || callee == kTerminalPrint;
 }
@@ -740,13 +752,14 @@ LowerResult Lowerer::lowerCall(CallExpr *expr) {
             args.push_back(argValue);
         }
 
-        if (isHttpServerRouteRuntime(runtimeCallee) && orderedSources.size() == 2 &&
+        if ((isHttpServerRouteRuntime(runtimeCallee) || isHttpsServerRouteRuntime(runtimeCallee)) &&
+            orderedSources.size() == 2 &&
             args.size() >= 3) {
             size_t tagSourceIndex = static_cast<size_t>(orderedSources[1]);
             if (auto *tagExpr = dynamic_cast<StringLiteralExpr *>(expr->args[tagSourceIndex].value.get())) {
                 std::string handlerTarget = httpHandlerTargetName(sema_, tagExpr->value);
                 if (!handlerTarget.empty()) {
-                    emitCall("Viper.Network.HttpServer.BindHandler",
+                    emitCall(httpServerBindHandlerTarget(runtimeCallee),
                              {args[0], args[paramOffset + 1], Value::global(handlerTarget)});
                 }
             }

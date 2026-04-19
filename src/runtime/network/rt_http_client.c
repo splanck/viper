@@ -94,15 +94,60 @@ static void rt_http_client_finalize(void *obj) {
 // Helpers
 //=============================================================================
 
-static void apply_defaults(rt_http_client_impl *c, void *req) {
+static int header_is_sensitive_for_cross_origin_redirect(const char *name) {
+    if (!name)
+        return 0;
+    return strcasecmp(name, "Authorization") == 0 ||
+           strcasecmp(name, "Proxy-Authorization") == 0 ||
+           strcasecmp(name, "Cookie") == 0 || strcasecmp(name, "Cookie2") == 0 ||
+           strcasecmp(name, "X-API-Key") == 0 || strcasecmp(name, "Api-Key") == 0 ||
+           strcasecmp(name, "ApiKey") == 0 || strcasecmp(name, "X-Auth-Token") == 0 ||
+           strcasecmp(name, "X-Access-Token") == 0;
+}
+
+static int url_has_same_origin(rt_string lhs, rt_string rhs) {
+    int same_origin = 0;
+    void *lhs_parsed = rt_url_parse(lhs);
+    void *rhs_parsed = rt_url_parse(rhs);
+    rt_string lhs_scheme = rt_url_scheme(lhs_parsed);
+    rt_string rhs_scheme = rt_url_scheme(rhs_parsed);
+    rt_string lhs_host = rt_url_host(lhs_parsed);
+    rt_string rhs_host = rt_url_host(rhs_parsed);
+    const char *lhs_scheme_cstr = rt_string_cstr(lhs_scheme);
+    const char *rhs_scheme_cstr = rt_string_cstr(rhs_scheme);
+    const char *lhs_host_cstr = rt_string_cstr(lhs_host);
+    const char *rhs_host_cstr = rt_string_cstr(rhs_host);
+    const int64_t lhs_port = rt_url_port(lhs_parsed);
+    const int64_t rhs_port = rt_url_port(rhs_parsed);
+
+    if (lhs_scheme_cstr && rhs_scheme_cstr && lhs_host_cstr && rhs_host_cstr &&
+        strcasecmp(lhs_scheme_cstr, rhs_scheme_cstr) == 0 &&
+        strcasecmp(lhs_host_cstr, rhs_host_cstr) == 0 && lhs_port == rhs_port) {
+        same_origin = 1;
+    }
+
+    rt_string_unref(rhs_host);
+    rt_string_unref(lhs_host);
+    rt_string_unref(rhs_scheme);
+    rt_string_unref(lhs_scheme);
+    if (rhs_parsed && rt_obj_release_check0(rhs_parsed))
+        rt_obj_free(rhs_parsed);
+    if (lhs_parsed && rt_obj_release_check0(lhs_parsed))
+        rt_obj_free(lhs_parsed);
+    return same_origin;
+}
+
+static void apply_defaults(rt_http_client_impl *c, void *req, int allow_sensitive_headers) {
     // Apply default headers
     void *keys = rt_map_keys(c->default_headers);
     int64_t count = rt_seq_len(keys);
     for (int64_t i = 0; i < count; i++) {
         rt_string key = (rt_string)rt_seq_get(keys, i);
         void *val = rt_map_get(c->default_headers, key);
-        if (val)
+        if (val && (allow_sensitive_headers ||
+                    !header_is_sensitive_for_cross_origin_redirect(rt_string_cstr(key)))) {
             rt_http_req_set_header(req, key, (rt_string)val);
+        }
     }
     if (rt_obj_release_check0(keys))
         rt_obj_free(keys);
@@ -373,7 +418,6 @@ static void store_cookie_line(rt_http_client_impl *c,
     size_t value_len;
     rt_http_cookie *cookie;
 
-    (void)is_secure;
     if (!host || !line || !*line)
         return;
 
@@ -459,6 +503,11 @@ static void store_cookie_line(rt_http_client_impl *c,
         free(attr_value);
         free(attr_name);
         attr = attr_end ? attr_end + 1 : NULL;
+    }
+
+    if (cookie->secure && !is_secure) {
+        free_cookie_list(cookie);
+        return;
     }
 
     if (!cookie->host_only) {
@@ -581,13 +630,14 @@ static void *do_request(rt_http_client_impl *c, const char *method, rt_string ur
 
     int64_t redirects_left = c->follow_redirects ? c->max_redirects : 0;
     void *final_res = NULL;
+    int allow_sensitive_defaults = 1;
 
     while (1) {
         rt_string method_str = rt_string_from_bytes(current_method, strlen(current_method));
         void *req = rt_http_req_new(method_str, current_url);
         rt_string_unref(method_str);
 
-        apply_defaults(c, req);
+        apply_defaults(c, req, allow_sensitive_defaults);
         apply_cookie_header(c, req, current_url);
         rt_http_req_set_max_redirects(req, 0);
 
@@ -615,6 +665,8 @@ static void *do_request(rt_http_client_impl *c, const char *method, rt_string ur
 
         rt_string next_url = resolve_redirect_url(current_url, location);
         rt_string_unref(location);
+        if (!url_has_same_origin(current_url, next_url))
+            allow_sensitive_defaults = 0;
         rt_string_unref(current_url);
         current_url = next_url;
         redirects_left--;

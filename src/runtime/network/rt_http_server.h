@@ -10,7 +10,7 @@
 // Key invariants:
 //   - Each incoming connection handled in a thread pool worker.
 //   - Routes are matched via HttpRouter; unmatched routes return 404.
-//   - Connection: close after each request (no keep-alive in v1).
+//   - HTTP/1.0 and HTTP/1.1 request framing / keep-alive semantics are enforced.
 // Ownership/Lifetime:
 //   - Server objects are GC-managed via rt_obj_set_finalizer.
 //   - ServerReq/ServerRes are created per-request and GC-managed.

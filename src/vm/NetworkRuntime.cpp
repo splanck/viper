@@ -16,6 +16,7 @@
 #include "il/runtime/signatures/Registry.hpp"
 #include "rt.hpp"
 #include "rt_http_server.h"
+#include "rt_https_server.h"
 #include "rt_string.h"
 #include "support/small_vector.hpp"
 #include "vm/OpHandlerAccess.hpp"
@@ -83,7 +84,14 @@ static void validateHttpHandlerSignature(const il::core::Function &fn) {
     }
 }
 
-static void network_http_server_bind_handler_handler(void **args, void *result) {
+using NativeBindHandlerFn = void (*)(void *, rt_string, void *);
+using DispatchBindHandlerFn = void (*)(void *, rt_string, void *, void *, void *);
+
+static void network_server_bind_handler_handler(void **args,
+                                                void *result,
+                                                const char *trap_name,
+                                                NativeBindHandlerFn native_bind,
+                                                DispatchBindHandlerFn dispatch_bind) {
     (void)result;
 
     void *server = nullptr;
@@ -97,11 +105,11 @@ static void network_http_server_bind_handler_handler(void **args, void *result) 
         entry = *reinterpret_cast<void **>(args[2]);
 
     if (!entry)
-        rt_trap("HttpServer.BindHandler: null entry");
+        rt_trap(trap_name);
 
     VM *parentVm = activeVMInstance();
     if (!parentVm) {
-        rt_http_server_bind_handler(server, tag, entry);
+        native_bind(server, tag, entry);
         return;
     }
 
@@ -118,7 +126,7 @@ static void network_http_server_bind_handler_handler(void **args, void *result) 
     auto *payload =
         new VmHttpHandlerPayload{&module, std::move(program), parentVm->externRegistry(), entryFn};
     retainExternRegistry(payload->externRegistry);
-    rt_http_server_bind_handler_dispatch(
+    dispatch_bind(
         server,
         tag,
         reinterpret_cast<void *>(&vm_http_handler_dispatch),
@@ -126,14 +134,39 @@ static void network_http_server_bind_handler_handler(void **args, void *result) 
         reinterpret_cast<void *>(&vm_http_handler_payload_destroy));
 }
 
+static void network_http_server_bind_handler_handler(void **args, void *result) {
+    network_server_bind_handler_handler(args,
+                                        result,
+                                        "HttpServer.BindHandler: null entry",
+                                        &rt_http_server_bind_handler,
+                                        &rt_http_server_bind_handler_dispatch);
+}
+
+static void network_https_server_bind_handler_handler(void **args, void *result) {
+    network_server_bind_handler_handler(args,
+                                        result,
+                                        "HttpsServer.BindHandler: null entry",
+                                        &rt_https_server_bind_handler,
+                                        &rt_https_server_bind_handler_dispatch);
+}
+
 } // namespace
 
 void registerNetworkRuntimeExternals() {
-    ExternDesc ext;
-    ext.name = "Viper.Network.HttpServer.BindHandler";
-    ext.signature = make_signature(ext.name, {SigParam::Ptr, SigParam::Str, SigParam::Ptr});
-    ext.fn = reinterpret_cast<void *>(&network_http_server_bind_handler_handler);
-    RuntimeBridge::registerExtern(ext);
+    {
+        ExternDesc ext;
+        ext.name = "Viper.Network.HttpServer.BindHandler";
+        ext.signature = make_signature(ext.name, {SigParam::Ptr, SigParam::Str, SigParam::Ptr});
+        ext.fn = reinterpret_cast<void *>(&network_http_server_bind_handler_handler);
+        RuntimeBridge::registerExtern(ext);
+    }
+    {
+        ExternDesc ext;
+        ext.name = "Viper.Network.HttpsServer.BindHandler";
+        ext.signature = make_signature(ext.name, {SigParam::Ptr, SigParam::Str, SigParam::Ptr});
+        ext.fn = reinterpret_cast<void *>(&network_https_server_bind_handler_handler);
+        RuntimeBridge::registerExtern(ext);
+    }
 }
 
 } // namespace il::vm

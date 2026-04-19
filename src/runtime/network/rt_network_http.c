@@ -60,6 +60,43 @@ static bool host_needs_brackets(const char *host) {
     return host && strchr(host, ':') != NULL && host[0] != '[';
 }
 
+static int http_contains_ctl_or_space(const char *text) {
+    if (!text)
+        return 1;
+    for (const unsigned char *p = (const unsigned char *)text; *p; ++p) {
+        if (*p <= 0x20 || *p == 0x7Fu)
+            return 1;
+    }
+    return 0;
+}
+
+static int http_method_is_token(const char *method) {
+    static const char *kSeparators = "()<>@,;:\\\"/[]?={} \t";
+    if (!method || !*method)
+        return 0;
+    for (const unsigned char *p = (const unsigned char *)method; *p; ++p) {
+        if (*p <= 0x20 || *p == 0x7Fu || strchr(kSeparators, (int)*p) != NULL)
+            return 0;
+    }
+    return 1;
+}
+
+static int http_host_is_valid(const char *host) {
+    if (!host || !*host || http_contains_ctl_or_space(host))
+        return 0;
+    return strpbrk(host, "/?#") == NULL;
+}
+
+static int http_request_target_is_valid(const char *target) {
+    if (!target || target[0] != '/')
+        return 0;
+    for (const unsigned char *p = (const unsigned char *)target; *p; ++p) {
+        if (*p <= 0x20 || *p == 0x7Fu)
+            return 0;
+    }
+    return 1;
+}
+
 //=============================================================================
 // HTTP Client Implementation
 //=============================================================================
@@ -264,6 +301,9 @@ static int http_conn_is_healthy(http_conn_t *conn) {
         if (ready <= 0)
             return 1;
     }
+
+    if (conn->use_tls)
+        return 0;
 
     {
         uint8_t byte = 0;
@@ -636,6 +676,13 @@ static int parse_url(const char *url_str, parsed_url_t *result) {
     result->port = 80;
     result->use_tls = 0;
 
+    if (!url_str || !*url_str)
+        return -1;
+    for (const unsigned char *p = (const unsigned char *)url_str; *p; ++p) {
+        if (*p == '\r' || *p == '\n')
+            return -1;
+    }
+
     // Check for http:// or https:// prefix; reject any other scheme
     if (strncmp(url_str, "http://", 7) == 0) {
         url_str += 7;
@@ -681,6 +728,11 @@ static int parse_url(const char *url_str, parsed_url_t *result) {
         memcpy(result->host, p, host_len);
         result->host[host_len] = '\0';
         p = host_end;
+    }
+
+    if (!http_host_is_valid(result->host)) {
+        free_parsed_url(result);
+        return -1;
     }
 
     if (*p != '\0' && *p != ':' && *p != '/' && *p != '?' && *p != '#') {
@@ -736,6 +788,11 @@ static int parse_url(const char *url_str, parsed_url_t *result) {
         }
         result->path[0] = '/';
         result->path[1] = '\0';
+    }
+
+    if (!http_request_target_is_valid(result->path)) {
+        free_parsed_url(result);
+        return -1;
     }
 
     return 0;
@@ -1233,6 +1290,11 @@ static int maybe_decode_gzip_body(
 /// @brief Build HTTP request string.
 /// @return Allocated string, caller must free.
 static char *build_request(rt_http_req_t *req) {
+    if (!req || !http_method_is_token(req->method) || !http_host_is_valid(req->url.host) ||
+        !http_request_target_is_valid(req->url.path)) {
+        return NULL;
+    }
+
     int add_default_connection = !has_header(req, "Connection");
     int want_keep_alive = req->keep_alive ? 1 : 0;
 
@@ -1518,13 +1580,6 @@ static int read_response_head(http_conn_t *conn,
                               char **status_text_out,
                               void **headers_map_out,
                               char **redirect_location_out) {
-    char *status_line = NULL;
-    char *status_text = NULL;
-    void *headers_map = NULL;
-    char *redirect_location = NULL;
-    int status = -1;
-    int header_count = 0;
-
     if (status_out)
         *status_out = -1;
     if (http_minor_out)
@@ -1536,66 +1591,82 @@ static int read_response_head(http_conn_t *conn,
     if (redirect_location_out)
         *redirect_location_out = NULL;
 
-    status_line = read_line_conn(conn);
-    if (!status_line)
-        return 0;
+    for (int informational_count = 0; informational_count < 8; informational_count++) {
+        char *status_line = read_line_conn(conn);
+        char *status_text = NULL;
+        void *headers_map = NULL;
+        char *redirect_location = NULL;
+        int status = -1;
+        int header_count = 0;
 
-    status = parse_status_line(status_line, http_minor_out, &status_text);
-    free(status_line);
-    if (status < 0)
-        goto fail;
+        if (!status_line)
+            return 0;
 
-    headers_map = rt_map_new();
-    if (!headers_map)
-        goto fail;
+        status = parse_status_line(status_line, http_minor_out, &status_text);
+        free(status_line);
+        if (status < 0)
+            goto fail;
 
-    while (1) {
-        char *line = NULL;
-        if (header_count >= 256) {
-            while ((line = read_line_conn(conn)) != NULL && line[0] != '\0')
+        headers_map = rt_map_new();
+        if (!headers_map)
+            goto fail;
+
+        while (1) {
+            char *line = read_line_conn(conn);
+            if (!line)
+                goto fail;
+            if (line[0] == '\0') {
                 free(line);
-            if (line)
-                free(line);
-            break;
-        }
+                break;
+            }
 
-        line = read_line_conn(conn);
-        if (!line || line[0] == '\0') {
-            free(line);
-            break;
-        }
-
-        header_count++;
-        if (strncasecmp(line, "location:", 9) == 0 && !redirect_location) {
-            const char *loc = line + 9;
-            while (*loc == ' ')
-                loc++;
-            redirect_location = strdup(loc);
-            if (!redirect_location) {
+            header_count++;
+            if (header_count > 256) {
                 free(line);
                 goto fail;
             }
+
+            if (strncasecmp(line, "location:", 9) == 0 && !redirect_location) {
+                const char *loc = line + 9;
+                while (*loc == ' ')
+                    loc++;
+                redirect_location = strdup(loc);
+                if (!redirect_location) {
+                    free(line);
+                    goto fail;
+                }
+            }
+
+            parse_header_line(line, headers_map);
+            free(line);
         }
 
-        parse_header_line(line, headers_map);
-        free(line);
+        if (status >= 100 && status < 200 && status != 101) {
+            free(status_text);
+            free(redirect_location);
+            if (headers_map && rt_obj_release_check0(headers_map))
+                rt_obj_free(headers_map);
+            continue;
+        }
+
+        if (status_out)
+            *status_out = status;
+        if (status_text_out)
+            *status_text_out = status_text;
+        if (headers_map_out)
+            *headers_map_out = headers_map;
+        if (redirect_location_out)
+            *redirect_location_out = redirect_location;
+        return 1;
+
+    fail:
+        free(status_text);
+        free(redirect_location);
+        if (headers_map && rt_obj_release_check0(headers_map))
+            rt_obj_free(headers_map);
+        return 0;
     }
 
-    if (status_out)
-        *status_out = status;
-    if (status_text_out)
-        *status_text_out = status_text;
-    if (headers_map_out)
-        *headers_map_out = headers_map;
-    if (redirect_location_out)
-        *redirect_location_out = redirect_location;
-    return 1;
-
-fail:
-    free(status_text);
-    free(redirect_location);
-    if (headers_map && rt_obj_release_check0(headers_map))
-        rt_obj_free(headers_map);
     return 0;
 }
 
@@ -2814,7 +2885,7 @@ void *rt_http_req_new(rt_string method, rt_string url) {
     const char *method_str = rt_string_cstr(method);
     const char *url_str = rt_string_cstr(url);
 
-    if (!method_str || *method_str == '\0')
+    if (!http_method_is_token(method_str))
         rt_trap("HTTP: invalid method");
     if (!url_str || *url_str == '\0')
         rt_trap_net("HTTP: invalid URL", Err_InvalidUrl);

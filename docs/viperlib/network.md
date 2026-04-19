@@ -273,6 +273,8 @@ TCP server for accepting incoming client connections.
 | `AcceptFor(ms)`    | Tcp     | Accept with timeout, returns null on timeout     |
 | `Close()`          | void    | Stop listening and close the server              |
 
+`Listen(0)` is supported and asks the OS to assign an ephemeral port. Read the actual port back from `server.Port` after the listener is created.
+
 ### Zia Example
 
 > TcpServer is accessible via `bind Viper.Network.TcpServer as TcpServer;`. Call `TcpServer.Listen(port)` or `TcpServer.ListenAt(addr, port)`. Properties use get_ pattern.
@@ -405,7 +407,7 @@ UDP datagram socket for connectionless communication.
 
 - `Viper.Network.Udp.New()` - Create an unbound UDP socket
 - `Viper.Network.Udp.Bind(port)` - Create and bind to port on all interfaces
-- `Viper.Network.Udp.BindAt(address, port)` - Bind to specific interface
+- `Viper.Network.Udp.BindAt(address, port)` - Bind to a specific IPv4 or IPv6 interface
 
 ### Properties
 
@@ -437,7 +439,7 @@ UDP datagram socket for connectionless communication.
 | Method                  | Returns | Description                                  |
 |-------------------------|---------|----------------------------------------------|
 | `Close()`               | void    | Close the socket                             |
-| `JoinGroup(addr)`       | void    | Join multicast group (224.0.0.0-239.255.255.255) |
+| `JoinGroup(addr)`       | void    | Join IPv4 or IPv6 multicast group |
 | `LeaveGroup(addr)`      | void    | Leave multicast group                        |
 | `SetBroadcast(enable)`  | void    | Enable/disable broadcast                     |
 | `SetRecvTimeout(ms)`    | void    | Set receive timeout (0 = no timeout)         |
@@ -501,6 +503,23 @@ sock.SendToStr("255.255.255.255", 9000, "Discover")
 sock.Close()
 ```
 
+### IPv6 Example
+
+```basic
+' IPv6 loopback UDP
+DIM server AS OBJECT = Viper.Network.Udp.BindAt("::1", 9000)
+DIM client AS OBJECT = Viper.Network.Udp.BindAt("::1", 0)
+
+client.SendToStr("::1", 9000, "hello over ipv6")
+DIM data AS OBJECT = server.RecvFrom(1024)
+
+PRINT "Sender: "; server.SenderHost(); ":"; server.SenderPort()
+PRINT "Bytes: "; data.Length
+
+client.Close()
+server.Close()
+```
+
 ### Multicast Example
 
 ```basic
@@ -529,6 +548,13 @@ UDP operations trap on errors:
 - `Bind()` traps if port is in use or permission denied
 
 The `RecvFor()` method returns `NULL` on timeout instead of trapping.
+
+### Address Family Notes
+
+- `Udp.New()` prefers a dual-stack socket when the platform supports it, so one socket can usually send to both IPv4 and IPv6 destinations.
+- `Udp.Bind(port)` may bind to either `0.0.0.0` or `::` depending on the platform's preferred wildcard family. Read back `sock.Address` / `sock.Port` after binding.
+- `Udp.BindAt(address, port)` supports IPv4 literals, IPv6 literals, and hostnames that resolve to a local interface.
+- `SenderHost()` returns IPv4 senders in dotted-quad form and IPv6 senders in canonical IPv6 text form.
 
 ### UDP vs TCP
 
@@ -754,6 +780,7 @@ PRINT "Content-Length: "; headers.Get("content-length")
 - **HTTP/1.1 support** - Standard HTTP/1.1 protocol
 - **HTTPS support** - TLS 1.3 with full certificate chain validation, hostname verification, and CertificateVerify proof-of-key-possession (see HTTPS/TLS note below)
 - **Redirect handling** - Automatically follows 301, 302, 303, 307, 308 redirects (up to 5), including relative `Location:` targets
+- **Informational responses** - Consumes interim `1xx` responses (for example `100 Continue` and `103 Early Hints`) and returns the final response
 - **Content-Length** - Handles Content-Length bodies
 - **Chunked encoding** - Handles Transfer-Encoding: chunked responses
 - **Gzip decoding** - `Http`, `HttpReq`, and `HttpClient` automatically advertise `Accept-Encoding: gzip` and transparently decode `Content-Encoding: gzip` responses
@@ -769,6 +796,7 @@ The HTTP client transparently supports HTTPS URLs using TLS 1.3:
 - **Automatic upgrade** - URLs starting with `https://` automatically use TLS
 - **Modern encryption** - TLS 1.3 with ChaCha20-Poly1305 cipher suite and X25519 key exchange
 - **Certificate verification enabled by default** - Server certificates are validated against the OS trust store (macOS Security.framework, Windows CryptoAPI, Linux CA bundle at `/etc/ssl/certs/`). Hostname is verified against the certificate's SubjectAltName DNS names (with RFC 6125 wildcard support) or CommonName as fallback. The server's CertificateVerify signature over the handshake transcript is checked, proving possession of the private key.
+- **SNI behavior** - DNS hostnames are sent in the TLS SNI extension. IP literals are still verified against certificate IP SANs, but they are not sent in SNI.
 - **To disable verification (insecure):** Use `HttpReq` and call `.SetTlsVerify(false)` — not recommended for production.
 - **For custom TLS:** Use `Viper.Crypto.Tls` directly or use `HttpReq` with `SetTimeout()` for timeout control.
 
@@ -1810,13 +1838,15 @@ Threaded HTTP/1.1 server with routing and handler-tag lookup.
 | `Port` | Integer | Listening port number |
 | `IsRunning` | Boolean | True if server is accepting connections |
 
-> **Current runtime note:** Routes are matched and associated with the registered handler tag. The built-in response path returns matched tag metadata; direct invocation of user-defined language handlers is not yet wired through the frontend/runtime boundary.
+> **Runtime note:** Route handlers registered through the language frontends are wired through the runtime for both `HttpServer` and `HttpsServer`. Register routes and bind handler tags before calling `Start()`.
 
 ### Request Body Support
 
 - Request bodies can be framed with either `Content-Length` or `Transfer-Encoding: chunked`.
 - Oversize request bodies are rejected.
-- `HttpServer` now honors `Connection: keep-alive` for sequential HTTP/1.1 requests on the same socket and returns `Connection: close` when the client asks to close.
+- Only `HTTP/1.0` and `HTTP/1.1` request lines are accepted.
+- `HttpServer` honors protocol-correct keep-alive semantics: HTTP/1.1 defaults to keep-alive unless `Connection: close` is present, while HTTP/1.0 requires explicit `Connection: keep-alive`.
+- Send and receive timeouts are enforced on live client sockets so slow readers do not stall workers indefinitely.
 
 ---
 
@@ -1853,12 +1883,15 @@ Threaded TLS-backed HTTP/1.1 server built on the in-tree TLS 1.3 runtime with ze
 - `keyFile` must be an unencrypted PEM private key.
 - The built-in zero-dependency server path currently expects an ECDSA P-256 certificate/key pair.
 - `HttpsServer` serves HTTP/1.1 over TLS 1.3 and advertises `http/1.1` via ALPN.
+- DNS-name SNI is validated against the configured certificate before the HTTP request is accepted.
 
 ### Runtime Notes
 
+- `HttpsServer.New(0, certFile, keyFile)` is supported. Read the actual bound port back from `server.Port` after `Start()`.
 - The request/response handler model mirrors `HttpServer`.
 - Sequential HTTPS keep-alive requests on the same TLS connection are supported when response framing is safe.
 - The built-in TLS server stack performs the full TLS 1.3 handshake in-tree, including `ClientHello`/`ServerHello`, ALPN negotiation, certificate chain delivery, `CertificateVerify`, and bidirectional `Finished` processing.
+- Route tables and handler bindings become immutable once the server is running.
 
 ---
 
@@ -1998,6 +2031,7 @@ TLS-backed WebSocket server built on the in-tree TLS 1.3 runtime with zero exter
 ### Runtime Notes
 
 - `WssServer` automatically completes the RFC 6455 HTTP upgrade after the TLS handshake succeeds.
+- Browser-facing upgrades require a `Host` header, and when an `Origin` header is present it must match the request host.
 - Control frames are handled automatically: server-side pong replies are sent for client pings, and close frames are echoed so the WebSocket close handshake completes cleanly.
 - Client text/binary frames are drained and validated so broadcasts continue to work on long-lived secure connections even when clients send their own traffic.
 
@@ -2073,12 +2107,14 @@ Session-based HTTP client with cookie jar, auto-redirect, and persistent headers
 - `HttpClient` stores cookies with domain, path, expiry, and secure attributes.
 - Path-scoped cookies are only sent to matching request paths.
 - `Secure` cookies are only sent over `https://` requests.
+- `Secure` cookies received over plain `http://` responses are rejected instead of being stored.
 - Expired cookies are purged automatically before requests and lookups.
 
 ### Transport Behavior
 
 - `HttpClient` enables keep-alive reuse by default and maintains an internal per-client connection pool.
 - HTTPS sessions are reused only when the request host/port/TLS verification mode match and the response framing is safe to reuse.
+- Sensitive default headers such as `Authorization`, `Cookie`, and common API-key headers are stripped automatically when a redirect crosses origin boundaries.
 - Set `KeepAlive = false` to force the previous close-after-each-request behavior.
 
 ---

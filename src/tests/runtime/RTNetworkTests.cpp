@@ -619,6 +619,20 @@ static void test_server_properties() {
     test_result("Server not listening after close", rt_tcp_server_is_listening(server) == 0);
 }
 
+/// @brief Test ephemeral TcpServer bind with port 0.
+static void test_server_ephemeral_port() {
+    printf("\nTesting Server Ephemeral Port Binding:\n");
+
+    void *server = rt_tcp_server_listen(0);
+    assert(server != nullptr);
+
+    const int64_t bound_port = rt_tcp_server_port(server);
+    test_result("Server assigns an ephemeral port", bound_port > 0 && bound_port <= 65535);
+    test_result("Ephemeral server is listening", rt_tcp_server_is_listening(server) == 1);
+
+    rt_tcp_server_close(server);
+}
+
 /// @brief Test client properties
 static void test_client_properties() {
     printf("\nTesting Client Properties:\n");
@@ -750,7 +764,8 @@ static void test_udp_bind() {
     test_result("UDP is bound", rt_udp_is_bound(sock) == 1);
 
     rt_string addr = rt_udp_address(sock);
-    test_result("UDP address is 0.0.0.0", strcmp(rt_string_cstr(addr), "0.0.0.0") == 0);
+    test_result("UDP address is wildcard",
+                strcmp(rt_string_cstr(addr), "0.0.0.0") == 0 || strcmp(rt_string_cstr(addr), "::") == 0);
 
     rt_udp_close(sock);
 }
@@ -870,6 +885,47 @@ static void test_udp_recv_from() {
     test_result("UDP SenderHost is 127.0.0.1",
                 strcmp(rt_string_cstr(sender_host), "127.0.0.1") == 0);
     test_result("UDP SenderPort is correct", sender_port == send_port);
+
+    rt_udp_close(sender);
+    rt_udp_close(receiver);
+}
+
+/// @brief Test UDP IPv6 bind, send, receive, and sender metadata.
+static void test_udp_send_recv_ipv6() {
+    printf("\nTesting UDP IPv6 Send/Recv:\n");
+
+    if (!localhost_bind_available_ipv6()) {
+        printf("  SKIP: IPv6 loopback unavailable in this environment\n");
+        return;
+    }
+
+    const int recv_port = get_free_port_ipv6();
+    const int send_port = get_free_port_ipv6();
+    if (recv_port <= 0 || send_port <= 0 || recv_port == send_port) {
+        printf("  SKIP: could not allocate IPv6 loopback ports\n");
+        return;
+    }
+
+    void *receiver = rt_udp_bind_at(rt_const_cstr("::1"), recv_port);
+    void *sender = rt_udp_bind_at(rt_const_cstr("::1"), send_port);
+
+    test_result("UDP IPv6 receiver bound", receiver != nullptr);
+    test_result("UDP IPv6 sender bound", sender != nullptr);
+
+    const char *test_msg = "Hello UDP IPv6!";
+    void *send_data = make_bytes_str(test_msg);
+    int64_t sent = rt_udp_send_to(sender, rt_const_cstr("::1"), recv_port, send_data);
+    test_result("UDP IPv6 SendTo returns byte count", sent == (int64_t)strlen(test_msg));
+
+    void *recv_data = rt_udp_recv_from(receiver, 1024);
+    int64_t recv_len = get_bytes_len(recv_data);
+    test_result("UDP IPv6 RecvFrom returns correct length", recv_len == (int64_t)strlen(test_msg));
+    test_result("UDP IPv6 payload matches",
+                memcmp(get_bytes_data(recv_data), test_msg, strlen(test_msg)) == 0);
+
+    rt_string sender_host = rt_udp_sender_host(receiver);
+    test_result("UDP IPv6 SenderHost is ::1", strcmp(rt_string_cstr(sender_host), "::1") == 0);
+    test_result("UDP IPv6 SenderPort is correct", rt_udp_sender_port(receiver) == send_port);
 
     rt_udp_close(sender);
     rt_udp_close(receiver);
@@ -1987,6 +2043,7 @@ int main() {
         printf("=== Viper.Network.Tcp/TcpServer Tests ===\n");
 
         test_server_properties();
+        test_server_ephemeral_port();
         test_listen_at();
         test_accept_timeout();
         test_server_client_connect();
@@ -2006,6 +2063,7 @@ int main() {
         test_udp_send_recv();
         test_udp_send_recv_str();
         test_udp_recv_from();
+        test_udp_send_recv_ipv6();
         test_udp_recv_timeout();
         test_udp_broadcast();
         test_udp_set_recv_timeout();

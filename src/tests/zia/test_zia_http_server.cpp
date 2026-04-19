@@ -66,6 +66,30 @@ func start() {    var server = new Viper.Network.HttpServer(8080);
     EXPECT_EQ(countCallsTo(result.module, "Viper.Network.HttpServer.BindHandler"), 1);
 }
 
+TEST(ZiaHttpServerBinding, EmitsHttpsBindHandlerForLiteralRouteTag) {
+    il::support::SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+func handlePing(req: Viper.Network.ServerReq, res: Viper.Network.ServerRes) {
+    res.Send("pong");
+}
+
+func start() {
+    var server = new Viper.Network.HttpsServer(8443, "cert.pem", "key.pem");
+    server.Get("/ping", "handlePing");
+}
+)";
+
+    il::frontends::zia::CompilerInput input{.source = source, .path = "https_server_binding.zia"};
+    il::frontends::zia::CompilerOptions opts{};
+    auto result = il::frontends::zia::compile(input, opts, sm);
+    ASSERT_TRUE(result.succeeded());
+    EXPECT_TRUE(hasExtern(result.module, "Viper.Network.HttpsServer.Get"));
+    EXPECT_TRUE(hasExtern(result.module, "Viper.Network.HttpsServer.BindHandler"));
+    EXPECT_EQ(countCallsTo(result.module, "Viper.Network.HttpsServer.BindHandler"), 1);
+}
+
 int main() {
     return viper_test::run_all_tests();
 }

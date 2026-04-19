@@ -44,10 +44,20 @@
 #include <windows.h>
 #define strcasecmp _stricmp
 #define strncasecmp _strnicmp
+typedef CRITICAL_SECTION http_server_mutex_t;
+#define HTTP_SERVER_MUTEX_INIT(m) InitializeCriticalSection(m)
+#define HTTP_SERVER_MUTEX_LOCK(m) EnterCriticalSection(m)
+#define HTTP_SERVER_MUTEX_UNLOCK(m) LeaveCriticalSection(m)
+#define HTTP_SERVER_MUTEX_DESTROY(m) DeleteCriticalSection(m)
 #else
 #include <pthread.h>
 #include <strings.h>
 #include <unistd.h>
+typedef pthread_mutex_t http_server_mutex_t;
+#define HTTP_SERVER_MUTEX_INIT(m) pthread_mutex_init(m, NULL)
+#define HTTP_SERVER_MUTEX_LOCK(m) pthread_mutex_lock(m)
+#define HTTP_SERVER_MUTEX_UNLOCK(m) pthread_mutex_unlock(m)
+#define HTTP_SERVER_MUTEX_DESTROY(m) pthread_mutex_destroy(m)
 #endif
 
 #include "rt_trap.h"
@@ -68,6 +78,8 @@ typedef struct {
     char *query;
     char *body;
     size_t body_len;
+    int http_major;
+    int http_minor;
     void *headers; // Map
     void *params;  // Map (from router)
 } server_req_t;
@@ -109,12 +121,34 @@ typedef struct {
     pthread_t accept_thread;
 #endif
     bool thread_started;
+    http_server_mutex_t state_lock;
+    bool state_lock_initialized;
 } rt_http_server_impl;
 
 static void free_server_req(server_req_t *req);
 static void build_route_response(rt_http_server_impl *server, server_req_t *req, server_res_t *res);
 static void free_route_entries(rt_http_server_impl *server);
 static void free_handler_bindings(rt_http_server_impl *server);
+
+static void server_state_lock(rt_http_server_impl *server) {
+    if (server && server->state_lock_initialized)
+        HTTP_SERVER_MUTEX_LOCK(&server->state_lock);
+}
+
+static void server_state_unlock(rt_http_server_impl *server) {
+    if (server && server->state_lock_initialized)
+        HTTP_SERVER_MUTEX_UNLOCK(&server->state_lock);
+}
+
+static int server_is_running(rt_http_server_impl *server) {
+    int running = 0;
+    if (!server)
+        return 0;
+    server_state_lock(server);
+    running = server->running ? 1 : 0;
+    server_state_unlock(server);
+    return running;
+}
 
 typedef enum {
     CHUNK_PARSE_OK = 0,
@@ -409,6 +443,10 @@ static void rt_http_server_finalize(void *obj) {
     if (server->worker_pool && rt_obj_release_check0(server->worker_pool))
         rt_obj_free(server->worker_pool);
     server->worker_pool = NULL;
+    if (server->state_lock_initialized) {
+        HTTP_SERVER_MUTEX_DESTROY(&server->state_lock);
+        server->state_lock_initialized = false;
+    }
 }
 
 //=============================================================================
@@ -823,6 +861,14 @@ static bool parse_http_request(const char *raw, size_t raw_len, server_req_t *re
     if (!req->path)
         goto fail;
 
+    p = space + 1;
+    if ((size_t)(line_end - p) != strlen("HTTP/1.1") || strncmp(p, "HTTP/1.", 7) != 0 ||
+        (p[7] != '0' && p[7] != '1')) {
+        goto fail;
+    }
+    req->http_major = 1;
+    req->http_minor = p[7] - '0';
+
     // Parse headers
     req->headers = rt_map_new();
     if (!req->headers)
@@ -927,9 +973,16 @@ static const char *map_get_lower_header_cstr(void *headers, const char *lower_na
 static int request_allows_keep_alive(const server_req_t *req) {
     const char *connection =
         req ? map_get_lower_header_cstr(req->headers, "connection") : NULL;
+    if (!req)
+        return 0;
+    if (req->http_major > 1 || (req->http_major == 1 && req->http_minor >= 1)) {
+        if (!connection)
+            return 1;
+        return !header_value_contains_token(connection, strlen(connection), "close", 5);
+    }
     if (!connection)
-        return 1;
-    return !header_value_contains_token(connection, strlen(connection), "close", 5);
+        return 0;
+    return header_value_contains_token(connection, strlen(connection), "keep-alive", 10);
 }
 
 static int response_forces_close(const server_res_t *res) {
@@ -1224,6 +1277,7 @@ char *rt_http_server_test_build_response(int status_code,
 /// @param tcp    Accepted TCP connection handle (we close it).
 static void handle_connection(rt_http_server_impl *server, void *tcp) {
     rt_tcp_set_recv_timeout(tcp, 30000);
+    rt_tcp_set_send_timeout(tcp, 30000);
     while (rt_tcp_is_open(tcp)) {
         size_t buf_cap = 65536;
         char *buf = (char *)malloc(buf_cap);
@@ -1505,12 +1559,12 @@ static void *accept_loop(void *arg)
 {
     rt_http_server_impl *server = (rt_http_server_impl *)arg;
 
-    while (server->running) {
+    while (server_is_running(server)) {
         void *tcp = rt_tcp_server_accept_for(server->tcp_server, 1000);
         if (!tcp)
             continue; // Timeout — check running flag
 
-        if (!server->running) {
+        if (!server_is_running(server)) {
             rt_tcp_close(tcp);
             break;
         }
@@ -1557,7 +1611,7 @@ static void *accept_loop(void *arg)
 /// @param port TCP port number, 1..65535.
 /// @return GC-managed `HttpServer` handle.
 void *rt_http_server_new(int64_t port) {
-    if (port < 1 || port > 65535)
+    if (port < 0 || port > 65535)
         rt_trap("HttpServer: invalid port");
 
     rt_http_server_impl *server =
@@ -1571,6 +1625,8 @@ void *rt_http_server_new(int64_t port) {
     server->router = rt_http_router_new();
     server->worker_pool = rt_threadpool_new(8);
     server->running = false;
+    HTTP_SERVER_MUTEX_INIT(&server->state_lock);
+    server->state_lock_initialized = true;
 
     return server;
 }
@@ -1597,6 +1653,8 @@ static void add_route_binding(void *obj,
         return;
 
     rt_http_server_impl *server = (rt_http_server_impl *)obj;
+    if (server_is_running(server))
+        rt_trap("HttpServer: cannot add routes while running");
     adder(server->router, pattern);
 
     const char *tag = rt_string_cstr(handler_tag);
@@ -1644,6 +1702,9 @@ void rt_http_server_bind_handler(void *obj, rt_string handler_tag, void *entry) 
     if (!obj || !entry)
         return;
 
+    if (server_is_running((rt_http_server_impl *)obj))
+        rt_trap("HttpServer: cannot bind handlers while running");
+
     const char *tag = rt_string_cstr(handler_tag);
     if (!tag)
         return;
@@ -1673,6 +1734,9 @@ void rt_http_server_bind_handler_dispatch(
     if (!obj || !dispatch)
         return;
 
+    if (server_is_running((rt_http_server_impl *)obj))
+        rt_trap("HttpServer: cannot bind handlers while running");
+
     const char *tag = rt_string_cstr(handler_tag);
     if (!tag)
         return;
@@ -1700,14 +1764,17 @@ void rt_http_server_start(void *obj) {
         rt_trap("HttpServer: NULL server");
 
     rt_http_server_impl *server = (rt_http_server_impl *)obj;
-    if (server->running)
+    if (server_is_running(server))
         return;
 
     // Create TCP server
     server->tcp_server = rt_tcp_server_listen(server->port);
+    server->port = rt_tcp_server_port(server->tcp_server);
     if (!server->worker_pool)
         server->worker_pool = rt_threadpool_new(8);
+    server_state_lock(server);
     server->running = true;
+    server_state_unlock(server);
 
     // Start accept loop in background thread
 #ifdef _WIN32
@@ -1716,6 +1783,18 @@ void rt_http_server_start(void *obj) {
 #else
     server->thread_started = pthread_create(&server->accept_thread, NULL, accept_loop, server) == 0;
 #endif
+    if (!server->thread_started) {
+        server_state_lock(server);
+        server->running = false;
+        server_state_unlock(server);
+        if (server->tcp_server) {
+            rt_tcp_server_close(server->tcp_server);
+            if (rt_obj_release_check0(server->tcp_server))
+                rt_obj_free(server->tcp_server);
+            server->tcp_server = NULL;
+        }
+        rt_trap("HttpServer: failed to start accept thread");
+    }
 }
 
 /// @brief `HttpServer.Stop()` — tear down the listener and join the
@@ -1732,22 +1811,42 @@ void rt_http_server_stop(void *obj) {
     if (!obj)
         return;
     rt_http_server_impl *server = (rt_http_server_impl *)obj;
-    server->running = false;
-
-    if (server->tcp_server) {
-        rt_tcp_server_close(server->tcp_server);
-        server->tcp_server = NULL;
-    }
-
-    if (server->thread_started) {
+    void *listener = NULL;
+    int had_thread = 0;
 #ifdef _WIN32
-        WaitForSingleObject(server->accept_thread, 5000);
-        CloseHandle(server->accept_thread);
+    HANDLE accept_thread = NULL;
 #else
-        pthread_join(server->accept_thread, NULL);
+    pthread_t accept_thread;
 #endif
-        server->thread_started = false;
+
+    server_state_lock(server);
+    server->running = false;
+    listener = server->tcp_server;
+    had_thread = server->thread_started ? 1 : 0;
+    accept_thread = server->accept_thread;
+    server_state_unlock(server);
+
+    if (listener)
+        rt_tcp_server_close(listener);
+
+    if (had_thread) {
+#ifdef _WIN32
+        WaitForSingleObject(accept_thread, 5000);
+        CloseHandle(accept_thread);
+#else
+        pthread_join(accept_thread, NULL);
+#endif
     }
+
+    server_state_lock(server);
+    if (server->tcp_server == listener)
+        server->tcp_server = NULL;
+    if (had_thread)
+        server->thread_started = false;
+    server_state_unlock(server);
+
+    if (listener && rt_obj_release_check0(listener))
+        rt_obj_free(listener);
 
     if (server->worker_pool)
         rt_threadpool_wait(server->worker_pool);
@@ -1779,7 +1878,7 @@ int64_t rt_http_server_port(void *obj) {
 int8_t rt_http_server_is_running(void *obj) {
     if (!obj)
         return 0;
-    return ((rt_http_server_impl *)obj)->running ? 1 : 0;
+    return server_is_running((rt_http_server_impl *)obj) ? 1 : 0;
 }
 
 //=============================================================================
@@ -2071,8 +2170,9 @@ void *rt_http_server_process_request(void *obj, rt_string raw_request) {
 
     build_route_response((rt_http_server_impl *)obj, &req, &res);
 
+    int keep_alive = request_allows_keep_alive(&req) && !response_forces_close(&res);
     size_t resp_len = 0;
-    char *resp = build_response(&res, 0, &resp_len);
+    char *resp = build_response(&res, keep_alive, &resp_len);
     rt_string result = resp ? rt_string_from_bytes(resp, resp_len) : rt_string_from_bytes("", 0);
 
     free(resp);

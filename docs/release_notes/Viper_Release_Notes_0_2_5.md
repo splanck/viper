@@ -8,16 +8,16 @@
 
 ### What this release is about
 
-A polish-and-hardening cycle. Most of the work is in four areas: the audio runtime got a big consolidation pass, the GUI widget library went through a multi-round audit, the 3D graphics stack picked up the correctness fixes that were piling up, and the network runtime picked up a cookie jar, transparent gzip, streaming downloads, chunked server request bodies, SSE reconnect, and per-request TLS controls. The Zia frontend, linker, and codegen also got smaller targeted fixes. The biggest user-visible new thing is a text-mode human-manager simulator built on the existing baseball engine.
+A polish-and-hardening cycle that grew a notable new capability along the way. Most of the work is in four areas: the audio runtime got a big consolidation pass, the GUI widget library went through a multi-round audit, the 3D graphics stack picked up the correctness fixes that were piling up, and the network runtime grew from "complete HTTPS client" into "full TLS-aware platform" — cookie jar, transparent gzip, streaming downloads, chunked server request bodies, SSE reconnect, keep-alive / connection pooling, per-request TLS controls, and a from-scratch TLS-backed server (`HttpsServer` + `WssServer`). The Zia frontend, linker, and codegen also got smaller targeted fixes. The biggest user-visible new thing is a text-mode human-manager simulator built on the existing baseball engine.
 
 ### By the Numbers
 
 | Metric | v0.2.4 | v0.2.5 | Delta |
 |---|---|---|---|
-| Commits | — | 27 | +27 |
-| Source files | 2,869 | 2,885 | +16 |
-| Production SLOC | 450K | 470K | +20K |
-| Test SLOC | 183K | 190K | +7K |
+| Commits | — | 28 | +28 |
+| Source files | 2,869 | 2,890 | +21 |
+| Production SLOC | 450K | 474K | +24K |
+| Test SLOC | 183K | 191K | +8K |
 | Demo SLOC | 177K | 188K | +11K |
 
 Counts via `scripts/count_sloc.sh`. Most of the growth is in demos (Crackman split, Paint feature pass, baseball shell) and the GUI runtime.
@@ -178,11 +178,15 @@ Broad hardening and feature pass across the HTTP client, HTTP server, SSE, and T
 
 **HTTP server.** `Transfer-Encoding: chunked` request bodies are now decoded correctly — browser streaming uploads and `curl --data-binary @-` finally work. Header token scanning is robust against substring false positives. The response path is Connection-header-aware: the server inspects the incoming `Connection:` value, honours `keep-alive` on HTTP/1.1 by default (and `close` when asked), and emits matching response headers plus proper `Content-Length` / `Transfer-Encoding` framing so the client knows where responses end on a persistent connection.
 
+**HttpsServer.** New TLS-backed HTTP/1.1 server (`Viper.Network.HttpsServer`). Mirrors the `HttpServer` surface — `Get` / `Post` / `Put` / `Delete` route registration, `BindHandler` for native handler binding, `Start` / `Stop` lifecycle, `Port` / `IsRunning` properties — but every accepted connection goes through TLS first. Constructor takes `(port, cert_path, key_path)`. Inherits the keep-alive + pooling work, so TLS sessions are pooled where keep-alive is requested and the cost of the TLS handshake is amortised across requests. The BASIC frontend lowers literal-route registrations on `HttpsServer` through the same handler-binding pattern as `HttpServer`.
+
+**WssServer.** New TLS-backed WebSocket server (`Viper.Network.WssServer`). Same constructor shape as HttpsServer (`port, cert_path, key_path`); broadcast surface (`Broadcast(text)` + `BroadcastBytes(bytes)`) plus `ClientCount`, `Port`, `IsRunning`. The wire sequence per client is TCP accept → TLS handshake → HTTP/1.1 upgrade → WebSocket framing.
+
 **RestClient.** Keep-alive and pool-size configuration thread through to the underlying HTTP client, so REST-heavy workflows (microservices, paginated API loops) reuse connections transparently without changing call sites.
 
 **SSE (Server-Sent Events).** Automatic reconnect-after-disconnect. The client re-opens the connection when the server drops and honours `Last-Event-ID` to resume where the stream left off, instead of silently ending on transient network failures. Matching non-blocking connect + timeout behaviour as the HTTP client.
 
-**TLS.** New `HttpReq.SetTlsVerify(bool)` IL method (`Viper.Network.HttpReq.SetTlsVerify`) for per-request verification control — useful for dev servers with self-signed certs and staging environments with internal CAs. Default stays secure (verification on). `alpn_protocol` field on `rt_tls_config_t` lets callers declare a single protocol (`http/1.1`, `h2`) during the handshake; the HTTP client wires this up based on request URL scheme. New `rt_tls_last_error()` captures connect/handshake errors in thread-local storage so trap messages surface the underlying diagnostic (hostname mismatch, cert expired, handshake protocol error) instead of generic "TLS handshake failed".
+**TLS.** New `HttpReq.SetTlsVerify(bool)` IL method (`Viper.Network.HttpReq.SetTlsVerify`) for per-request verification control — useful for dev servers with self-signed certs and staging environments with internal CAs. Default stays secure (verification on). `alpn_protocol` field on `rt_tls_config_t` lets callers declare a single protocol (`http/1.1`, `h2`) during the handshake; the HTTP client wires this up based on request URL scheme. New `rt_tls_last_error()` captures connect/handshake errors in thread-local storage so trap messages surface the underlying diagnostic (hostname mismatch, cert expired, handshake protocol error) instead of generic "TLS handshake failed". Server-side TLS lands as a from-scratch implementation supporting the HttpsServer / WssServer above: PEM cert + EC private key loading (both SEC1 and PKCS#8 formats via a small DER TLV walker), cert-chain support, server-side TLS 1.3 handshake state machine with separate handshake-key and application-secret derivation, and a thread-local server-side error mirror (`rt_tls_server_last_error`) matching the client-side pattern. Underneath, the ECDSA-P256 module gained the wide-arithmetic and modular-math primitives (`u256_mul_wide`, `u512_mod_u256`, `u256_mod_{add,double,mul}`) needed for the certificate signature path that most modern TLS uses.
 
 **WebSocket / SMTP.** Small correctness follow-ups on header parsing and error paths consistent with the HTTP/TLS changes above.
 
@@ -291,5 +295,6 @@ Pac-Man renamed to Crackman and split into session/progression/frontend with a s
 | `ad2948be5` | 2026-04-18 | Framework double-click synthesis + Tab-focus dispatch, FileDialog editable save-name + list scroll, popup routing (ContextMenu / FloatingPanel / Breadcrumb overflow), Linux X11 UTF-8 text input + clipboard |
 | `2f103a8ce` | 2026-04-18 | HTTP cookie jar + gzip decode + streaming download + relative redirects, chunked request-body parsing on HttpServer, SSE reconnect, TLS per-request verify (`HttpReq.SetTlsVerify`) + ALPN + error diagnostics |
 | `b240f18be` | 2026-04-18 | HTTP keep-alive + connection pooling across `HttpClient` / `HttpReq` / `RestClient`, HttpServer `Connection`-header awareness, macOS `$DARWIN_EXTSN` handling in DynamicSymbolPolicy, runtime-surface classification follow-ups |
+| `0ec6b1cd4` | 2026-04-18 | New `HttpsServer` + `WssServer` (server-side TLS), full from-scratch TLS-server handshake with EC cert/key loading (SEC1 + PKCS#8), ECDSA-P256 math expansion, BASIC frontend route lowering for `HttpsServer` |
 
 <!-- END DRAFT -->

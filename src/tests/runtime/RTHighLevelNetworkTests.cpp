@@ -15,7 +15,9 @@
 #include "rt_http_server.h"
 #include "rt_https_server.h"
 #include "rt_http_client.h"
+#include "rt_map.h"
 #include "rt_network.h"
+#include "rt_object.h"
 #include "rt_smtp.h"
 #include "rt_sse.h"
 #include "rt_string.h"
@@ -50,6 +52,9 @@ static std::string smtp_captured_message;
 static std::string http_cookie_headers[3];
 static std::string http_keepalive_connection_headers[2];
 static std::string sse_resume_header;
+static std::string redirect_target_authorization_header;
+static std::string redirect_target_api_key_header;
+static std::string redirect_source_location;
 static std::atomic<unsigned> tls_fixture_counter{0};
 
 static const char *LOCALHOST_TEST_KEY_PEM = R"PEM(-----BEGIN PRIVATE KEY-----
@@ -137,6 +142,23 @@ static void send_text(void *client, const char *text) {
 static void http_server_keepalive_handler(void *req_obj, void *res_obj) {
     (void)req_obj;
     rt_server_res_send(res_obj, rt_const_cstr("ok"));
+}
+
+static void http_redirect_source_handler(void *req_obj, void *res_obj) {
+    (void)req_obj;
+    rt_server_res_status(res_obj, 302);
+    rt_server_res_header(res_obj, rt_const_cstr("Location"), rt_const_cstr(redirect_source_location.c_str()));
+    rt_server_res_send(res_obj, rt_const_cstr(""));
+}
+
+static void http_redirect_target_handler(void *req_obj, void *res_obj) {
+    rt_string authorization = rt_server_req_header(req_obj, rt_const_cstr("Authorization"));
+    rt_string api_key = rt_server_req_header(req_obj, rt_const_cstr("X-API-Key"));
+    redirect_target_authorization_header = rt_string_cstr(authorization);
+    redirect_target_api_key_header = rt_string_cstr(api_key);
+    rt_string_unref(authorization);
+    rt_string_unref(api_key);
+    rt_server_res_send(res_obj, rt_const_cstr("final"));
 }
 
 static void read_http_request_headers(void *client) {
@@ -668,6 +690,41 @@ static void http_keepalive_server_thread(int port) {
     rt_tcp_server_close(server);
 }
 
+static void http_informational_server_thread(int port, std::atomic<bool> *ready, std::atomic<bool> *failed) {
+    void *server = rt_tcp_server_listen(port);
+    if (!server) {
+        if (failed)
+            *failed = true;
+        if (ready)
+            *ready = true;
+        return;
+    }
+
+    if (failed)
+        *failed = false;
+    if (ready)
+        *ready = true;
+
+    void *client = rt_tcp_server_accept_for(server, 5000);
+    if (client) {
+        rt_string request_line = rt_tcp_recv_line(client);
+        rt_string_unref(request_line);
+        read_http_request_headers(client);
+        send_text(client,
+                  "HTTP/1.1 103 Early Hints\r\n"
+                  "Link: </style.css>; rel=preload; as=style\r\n"
+                  "\r\n"
+                  "HTTP/1.1 200 OK\r\n"
+                  "Content-Length: 5\r\n"
+                  "Connection: close\r\n"
+                  "\r\n"
+                  "hello");
+        rt_tcp_close(client);
+    }
+
+    rt_tcp_server_close(server);
+}
+
 static void wait_for_server() {
     while (!api_server_ready)
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
@@ -857,6 +914,11 @@ static void test_http_client_cookie_scope() {
     snprintf(url_buf, sizeof(url_buf), "http://127.0.0.1:%d/set", port);
     void *res1 = rt_http_client_get(client, rt_const_cstr(url_buf));
     test_result("HttpClient initial cookie response succeeds", rt_http_res_status(res1) == 200);
+    void *cookies = rt_http_client_get_cookies(client, rt_const_cstr("127.0.0.1"));
+    test_result("HttpClient rejects secure cookies set over HTTP",
+                rt_map_has(cookies, rt_const_cstr("secureToken")) == 0);
+    if (cookies && rt_obj_release_check0(cookies))
+        rt_obj_free(cookies);
 
     snprintf(url_buf, sizeof(url_buf), "http://127.0.0.1:%d/app/data", port);
     void *res2 = rt_http_client_get(client, rt_const_cstr(url_buf));
@@ -878,6 +940,94 @@ static void test_http_client_cookie_scope() {
                 http_cookie_headers[2].find("appToken=alpha") == std::string::npos);
     test_result("Root cookie still sent outside the path",
                 http_cookie_headers[2].find("rootToken=beta") != std::string::npos);
+}
+
+static void test_http_client_cross_origin_redirect_strips_sensitive_headers() {
+    printf("\nTesting HttpClient cross-origin redirect credential stripping:\n");
+
+    void *target_server = rt_http_server_new(0);
+    void *redirect_server = rt_http_server_new(0);
+    rt_http_server_get(target_server, rt_const_cstr("/final"), rt_const_cstr("target"));
+    rt_http_server_bind_handler(target_server, rt_const_cstr("target"), (void *)&http_redirect_target_handler);
+    rt_http_server_get(redirect_server, rt_const_cstr("/redirect"), rt_const_cstr("redirect"));
+    rt_http_server_bind_handler(
+        redirect_server, rt_const_cstr("redirect"), (void *)&http_redirect_source_handler);
+
+    rt_http_server_start(target_server);
+    rt_http_server_start(redirect_server);
+
+    const bool ready = wait_for_condition([&]() {
+        return rt_http_server_is_running(target_server) == 1 &&
+               rt_http_server_is_running(redirect_server) == 1 &&
+               rt_http_server_port(target_server) > 0 && rt_http_server_port(redirect_server) > 0;
+    }, 2000);
+    if (!ready) {
+        rt_http_server_stop(redirect_server);
+        rt_http_server_stop(target_server);
+        printf("  SKIP: local bind unavailable in this environment\n");
+        return;
+    }
+
+    redirect_target_authorization_header.clear();
+    redirect_target_api_key_header.clear();
+
+    char location_buf[128];
+    snprintf(location_buf,
+             sizeof(location_buf),
+             "http://127.0.0.1:%lld/final",
+             (long long)rt_http_server_port(target_server));
+    redirect_source_location = location_buf;
+
+    char url_buf[128];
+    snprintf(url_buf,
+             sizeof(url_buf),
+             "http://127.0.0.1:%lld/redirect",
+             (long long)rt_http_server_port(redirect_server));
+
+    void *client = rt_http_client_new();
+    rt_http_client_set_header(client, rt_const_cstr("Authorization"), rt_const_cstr("Bearer secret"));
+    rt_http_client_set_header(client, rt_const_cstr("X-API-Key"), rt_const_cstr("top-secret"));
+
+    void *res = rt_http_client_get(client, rt_const_cstr(url_buf));
+    test_result("HttpClient follows cross-origin redirect", rt_http_res_status(res) == 200);
+    rt_http_server_stop(redirect_server);
+    rt_http_server_stop(target_server);
+
+    test_result("HttpClient strips Authorization on cross-origin redirect",
+                redirect_target_authorization_header.empty());
+    test_result("HttpClient strips API key headers on cross-origin redirect",
+                redirect_target_api_key_header.empty());
+}
+
+static void test_http_client_consumes_informational_responses() {
+    printf("\nTesting HttpClient informational response handling:\n");
+
+    const int port = (int)rt_netutils_get_free_port();
+    if (port <= 0) {
+        printf("  SKIP: local bind unavailable in this environment\n");
+        return;
+    }
+
+    std::atomic<bool> ready{false};
+    std::atomic<bool> failed{false};
+    std::thread server(http_informational_server_thread, port, &ready, &failed);
+    if (!wait_for_condition([&]() { return ready.load(); }, 1000) || failed.load()) {
+        server.join();
+        printf("  SKIP: local bind unavailable in this environment\n");
+        return;
+    }
+
+    char url_buf[128];
+    snprintf(url_buf, sizeof(url_buf), "http://127.0.0.1:%d/hints", port);
+    void *client = rt_http_client_new();
+    void *res = rt_http_client_get(client, rt_const_cstr(url_buf));
+    test_result("HttpClient returns the final response after 103",
+                rt_http_res_status(res) == 200);
+    rt_string body = rt_http_res_body_str(res);
+    test_result("HttpClient preserves the final response body", strcmp(rt_string_cstr(body), "hello") == 0);
+    rt_string_unref(body);
+
+    server.join();
 }
 
 static void test_http_client_keepalive_reuse() {
@@ -1019,6 +1169,20 @@ static void test_https_server_roundtrip() {
                 strstr(rt_string_cstr(conn), "keep-alive") != nullptr);
     rt_string_unref(conn);
 
+    rt_tls_config_t bad_sni_config;
+    rt_tls_config_init(&bad_sni_config);
+    bad_sni_config.hostname = "wrong.example.com";
+    bad_sni_config.alpn_protocol = "http/1.1";
+    bad_sni_config.verify_cert = 0;
+    bad_sni_config.timeout_ms = 5000;
+    rt_tls_session_t *bad_sni_tls = rt_tls_connect("127.0.0.1", (uint16_t)port, &bad_sni_config);
+    const char *bad_sni_error = rt_tls_last_error();
+    test_result("HttpsServer rejects mismatched SNI", bad_sni_tls == nullptr);
+    test_result("HttpsServer reports the failed TLS handshake",
+                bad_sni_error != nullptr && *bad_sni_error != '\0');
+    if (bad_sni_tls)
+        rt_tls_close(bad_sni_tls);
+
     rt_tls_session_t *tls = connect_local_tls_server(port);
     test_result("Raw TLS client connects to HttpsServer", tls != nullptr);
     if (!tls) {
@@ -1147,6 +1311,8 @@ int main() {
     test_sse_chunked_event();
     test_sse_resume_after_disconnect();
     test_http_client_cookie_scope();
+    test_http_client_cross_origin_redirect_strips_sensitive_headers();
+    test_http_client_consumes_informational_responses();
     test_http_client_keepalive_reuse();
     test_http_server_keepalive_response();
     test_https_server_roundtrip();

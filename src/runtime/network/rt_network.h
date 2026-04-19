@@ -222,6 +222,7 @@ void rt_tcp_server_close(void *obj);
 
 /// @brief Create an unbound UDP socket.
 /// @return Udp socket object.
+/// @note Prefers a dual-stack IPv6 socket when available so one handle can send to IPv4 and IPv6.
 void *rt_udp_new(void);
 
 /// @brief Create a UDP socket bound to a port on all interfaces.
@@ -231,7 +232,7 @@ void *rt_udp_new(void);
 void *rt_udp_bind(int64_t port);
 
 /// @brief Create a UDP socket bound to a specific address and port.
-/// @param address Address to bind to (e.g., "127.0.0.1" or "0.0.0.0").
+/// @param address Address to bind to (e.g., "127.0.0.1", "0.0.0.0", or "::1").
 /// @param port Port number to bind to.
 /// @return Udp socket object.
 /// @note Traps if port is in use, permission denied, or invalid address.
@@ -266,7 +267,7 @@ int8_t rt_udp_is_bound(void *obj);
 /// @param port Destination port number.
 /// @param data Bytes object to send.
 /// @return Number of bytes sent.
-/// @note Traps on host not found or message too large.
+/// @note Supports IPv4, IPv6, and DNS hostnames. Traps on host not found or message too large.
 int64_t rt_udp_send_to(void *obj, rt_string host, int64_t port, void *data);
 
 /// @brief Send a UDP packet as a string.

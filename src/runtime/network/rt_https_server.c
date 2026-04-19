@@ -50,10 +50,20 @@
 #include <windows.h>
 #define strcasecmp _stricmp
 #define strncasecmp _strnicmp
+typedef CRITICAL_SECTION https_server_mutex_t;
+#define HTTPS_SERVER_MUTEX_INIT(m) InitializeCriticalSection(m)
+#define HTTPS_SERVER_MUTEX_LOCK(m) EnterCriticalSection(m)
+#define HTTPS_SERVER_MUTEX_UNLOCK(m) LeaveCriticalSection(m)
+#define HTTPS_SERVER_MUTEX_DESTROY(m) DeleteCriticalSection(m)
 #else
 #include <pthread.h>
 #include <strings.h>
 #include <unistd.h>
+typedef pthread_mutex_t https_server_mutex_t;
+#define HTTPS_SERVER_MUTEX_INIT(m) pthread_mutex_init(m, NULL)
+#define HTTPS_SERVER_MUTEX_LOCK(m) pthread_mutex_lock(m)
+#define HTTPS_SERVER_MUTEX_UNLOCK(m) pthread_mutex_unlock(m)
+#define HTTPS_SERVER_MUTEX_DESTROY(m) pthread_mutex_destroy(m)
 #endif
 
 #include "rt_trap.h"
@@ -80,6 +90,8 @@ typedef struct {
     char *query;
     char *body;
     size_t body_len;
+    int http_major;
+    int http_minor;
     void *headers; // Map
     void *params;  // Map (from router)
 } server_req_t;
@@ -124,12 +136,34 @@ typedef struct {
     pthread_t accept_thread;
 #endif
     bool thread_started;
+    https_server_mutex_t state_lock;
+    bool state_lock_initialized;
 } rt_http_server_impl;
 
 static void free_server_req(server_req_t *req);
 static void build_route_response(rt_http_server_impl *server, server_req_t *req, server_res_t *res);
 static void free_route_entries(rt_http_server_impl *server);
 static void free_handler_bindings(rt_http_server_impl *server);
+
+static void https_server_state_lock(rt_http_server_impl *server) {
+    if (server && server->state_lock_initialized)
+        HTTPS_SERVER_MUTEX_LOCK(&server->state_lock);
+}
+
+static void https_server_state_unlock(rt_http_server_impl *server) {
+    if (server && server->state_lock_initialized)
+        HTTPS_SERVER_MUTEX_UNLOCK(&server->state_lock);
+}
+
+static int https_server_is_running(rt_http_server_impl *server) {
+    int running = 0;
+    if (!server)
+        return 0;
+    https_server_state_lock(server);
+    running = server->running ? 1 : 0;
+    https_server_state_unlock(server);
+    return running;
+}
 
 typedef enum {
     CHUNK_PARSE_OK = 0,
@@ -430,6 +464,10 @@ static void rt_http_server_finalize(void *obj) {
     free(server->key_file);
     server->cert_file = NULL;
     server->key_file = NULL;
+    if (server->state_lock_initialized) {
+        HTTPS_SERVER_MUTEX_DESTROY(&server->state_lock);
+        server->state_lock_initialized = false;
+    }
 }
 
 //=============================================================================
@@ -844,6 +882,14 @@ static bool parse_http_request(const char *raw, size_t raw_len, server_req_t *re
     if (!req->path)
         goto fail;
 
+    p = space + 1;
+    if ((size_t)(line_end - p) != strlen("HTTP/1.1") || strncmp(p, "HTTP/1.", 7) != 0 ||
+        (p[7] != '0' && p[7] != '1')) {
+        goto fail;
+    }
+    req->http_major = 1;
+    req->http_minor = p[7] - '0';
+
     // Parse headers
     req->headers = rt_map_new();
     if (!req->headers)
@@ -948,9 +994,16 @@ static const char *map_get_lower_header_cstr(void *headers, const char *lower_na
 static int request_allows_keep_alive(const server_req_t *req) {
     const char *connection =
         req ? map_get_lower_header_cstr(req->headers, "connection") : NULL;
+    if (!req)
+        return 0;
+    if (req->http_major > 1 || (req->http_major == 1 && req->http_minor >= 1)) {
+        if (!connection)
+            return 1;
+        return !header_value_contains_token(connection, strlen(connection), "close", 5);
+    }
     if (!connection)
-        return 1;
-    return !header_value_contains_token(connection, strlen(connection), "close", 5);
+        return 0;
+    return header_value_contains_token(connection, strlen(connection), "keep-alive", 10);
 }
 
 static int response_forces_close(const server_res_t *res) {
@@ -1236,6 +1289,12 @@ static void https_conn_set_recv_timeout(rt_tls_session_t *tls, int timeout_ms) {
         set_socket_timeout((socket_t)fd, timeout_ms, true);
 }
 
+static void https_conn_set_send_timeout(rt_tls_session_t *tls, int timeout_ms) {
+    int fd = tls ? rt_tls_get_socket(tls) : -1;
+    if (fd >= 0)
+        set_socket_timeout((socket_t)fd, timeout_ms, false);
+}
+
 static long https_conn_recv(rt_tls_session_t *tls, uint8_t *buf, size_t len) {
     return rt_tls_recv(tls, buf, len);
 }
@@ -1264,6 +1323,7 @@ static int https_conn_send_all(rt_tls_session_t *tls, const void *buf, size_t le
 static void handle_connection(rt_http_server_impl *server, void *tcp) {
     rt_tls_session_t *tls = (rt_tls_session_t *)tcp;
     https_conn_set_recv_timeout(tls, 30000);
+    https_conn_set_send_timeout(tls, 30000);
     while (https_conn_is_open(tls)) {
         size_t buf_cap = 65536;
         char *buf = (char *)malloc(buf_cap);
@@ -1531,12 +1591,12 @@ static void *accept_loop(void *arg)
 {
     rt_http_server_impl *server = (rt_http_server_impl *)arg;
 
-    while (server->running) {
+    while (https_server_is_running(server)) {
         void *tcp = rt_tcp_server_accept_for(server->tcp_server, 1000);
         if (!tcp)
             continue; // Timeout — check running flag
 
-        if (!server->running) {
+        if (!https_server_is_running(server)) {
             rt_tcp_close(tcp);
             if (rt_obj_release_check0(tcp))
                 rt_obj_free(tcp);
@@ -1592,7 +1652,7 @@ static void *accept_loop(void *arg)
 /// @param port TCP port number, 1..65535.
 /// @return GC-managed `HttpServer` handle.
 void *rt_https_server_new(int64_t port, rt_string cert_file, rt_string key_file) {
-    if (port < 1 || port > 65535)
+    if (port < 0 || port > 65535)
         rt_trap("HttpsServer: invalid port");
 
     rt_http_server_impl *server =
@@ -1606,6 +1666,8 @@ void *rt_https_server_new(int64_t port, rt_string cert_file, rt_string key_file)
     server->router = rt_http_router_new();
     server->worker_pool = rt_threadpool_new(8);
     server->running = false;
+    HTTPS_SERVER_MUTEX_INIT(&server->state_lock);
+    server->state_lock_initialized = true;
     server->cert_file = dup_cstr(rt_string_cstr(cert_file));
     server->key_file = dup_cstr(rt_string_cstr(key_file));
     if (!server->cert_file || !server->key_file)
@@ -1646,6 +1708,8 @@ static void add_route_binding(void *obj,
         return;
 
     rt_http_server_impl *server = (rt_http_server_impl *)obj;
+    if (https_server_is_running(server))
+        rt_trap("HttpsServer: cannot add routes while running");
     adder(server->router, pattern);
 
     const char *tag = rt_string_cstr(handler_tag);
@@ -1693,6 +1757,9 @@ void rt_https_server_bind_handler(void *obj, rt_string handler_tag, void *entry)
     if (!obj || !entry)
         return;
 
+    if (https_server_is_running((rt_http_server_impl *)obj))
+        rt_trap("HttpsServer: cannot bind handlers while running");
+
     const char *tag = rt_string_cstr(handler_tag);
     if (!tag)
         return;
@@ -1722,6 +1789,9 @@ void rt_https_server_bind_handler_dispatch(
     if (!obj || !dispatch)
         return;
 
+    if (https_server_is_running((rt_http_server_impl *)obj))
+        rt_trap("HttpsServer: cannot bind handlers while running");
+
     const char *tag = rt_string_cstr(handler_tag);
     if (!tag)
         return;
@@ -1749,16 +1819,19 @@ void rt_https_server_start(void *obj) {
         rt_trap("HttpsServer: NULL server");
 
     rt_http_server_impl *server = (rt_http_server_impl *)obj;
-    if (server->running)
+    if (https_server_is_running(server))
         return;
 
     // Create TCP server
     server->tcp_server = rt_tcp_server_listen(server->port);
+    server->port = rt_tcp_server_port(server->tcp_server);
     if (!server->tls_ctx)
         rt_trap("HttpsServer: missing TLS context");
     if (!server->worker_pool)
         server->worker_pool = rt_threadpool_new(8);
+    https_server_state_lock(server);
     server->running = true;
+    https_server_state_unlock(server);
 
     // Start accept loop in background thread
 #ifdef _WIN32
@@ -1767,6 +1840,18 @@ void rt_https_server_start(void *obj) {
 #else
     server->thread_started = pthread_create(&server->accept_thread, NULL, accept_loop, server) == 0;
 #endif
+    if (!server->thread_started) {
+        https_server_state_lock(server);
+        server->running = false;
+        https_server_state_unlock(server);
+        if (server->tcp_server) {
+            rt_tcp_server_close(server->tcp_server);
+            if (rt_obj_release_check0(server->tcp_server))
+                rt_obj_free(server->tcp_server);
+            server->tcp_server = NULL;
+        }
+        rt_trap("HttpsServer: failed to start accept thread");
+    }
 }
 
 /// @brief `HttpServer.Stop()` — tear down the listener and join the
@@ -1783,24 +1868,42 @@ void rt_https_server_stop(void *obj) {
     if (!obj)
         return;
     rt_http_server_impl *server = (rt_http_server_impl *)obj;
-    server->running = false;
-
-    if (server->tcp_server) {
-        rt_tcp_server_close(server->tcp_server);
-        if (rt_obj_release_check0(server->tcp_server))
-            rt_obj_free(server->tcp_server);
-        server->tcp_server = NULL;
-    }
-
-    if (server->thread_started) {
+    void *listener = NULL;
+    int had_thread = 0;
 #ifdef _WIN32
-        WaitForSingleObject(server->accept_thread, 5000);
-        CloseHandle(server->accept_thread);
+    HANDLE accept_thread = NULL;
 #else
-        pthread_join(server->accept_thread, NULL);
+    pthread_t accept_thread;
 #endif
-        server->thread_started = false;
+
+    https_server_state_lock(server);
+    server->running = false;
+    listener = server->tcp_server;
+    had_thread = server->thread_started ? 1 : 0;
+    accept_thread = server->accept_thread;
+    https_server_state_unlock(server);
+
+    if (listener)
+        rt_tcp_server_close(listener);
+
+    if (had_thread) {
+#ifdef _WIN32
+        WaitForSingleObject(accept_thread, 5000);
+        CloseHandle(accept_thread);
+#else
+        pthread_join(accept_thread, NULL);
+#endif
     }
+
+    https_server_state_lock(server);
+    if (server->tcp_server == listener)
+        server->tcp_server = NULL;
+    if (had_thread)
+        server->thread_started = false;
+    https_server_state_unlock(server);
+
+    if (listener && rt_obj_release_check0(listener))
+        rt_obj_free(listener);
 
     if (server->worker_pool)
         rt_threadpool_wait(server->worker_pool);
@@ -1832,7 +1935,7 @@ int64_t rt_https_server_port(void *obj) {
 int8_t rt_https_server_is_running(void *obj) {
     if (!obj)
         return 0;
-    return ((rt_http_server_impl *)obj)->running ? 1 : 0;
+    return https_server_is_running((rt_http_server_impl *)obj) ? 1 : 0;
 }
 
 //=============================================================================
@@ -2104,7 +2207,7 @@ static HTTPS_MAYBE_UNUSED void https_server_res_json_unused(void *obj, rt_string
 /// @param obj         HttpServer handle.
 /// @param raw_request Raw HTTP request (request line + headers + body).
 /// @return Owned `rt_string` containing the full HTTP/1.1 response.
-static HTTPS_MAYBE_UNUSED void *rt_https_server_process_request(void *obj, rt_string raw_request) {
+HTTPS_MAYBE_UNUSED void *rt_https_server_process_request(void *obj, rt_string raw_request) {
     if (!obj)
         return rt_string_from_bytes("", 0);
 
@@ -2125,8 +2228,9 @@ static HTTPS_MAYBE_UNUSED void *rt_https_server_process_request(void *obj, rt_st
 
     build_route_response((rt_http_server_impl *)obj, &req, &res);
 
+    int keep_alive = request_allows_keep_alive(&req) && !response_forces_close(&res);
     size_t resp_len = 0;
-    char *resp = build_response(&res, 0, &resp_len);
+    char *resp = build_response(&res, keep_alive, &resp_len);
     rt_string result = resp ? rt_string_from_bytes(resp, resp_len) : rt_string_from_bytes("", 0);
 
     free(resp);

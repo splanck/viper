@@ -93,6 +93,9 @@ static int tls_parse_pkcs8_ec_private_key(
     const uint8_t *der, size_t der_len, uint8_t out_priv[32]);
 static int tls_extract_cert_ec_pubkey(
     const uint8_t *cert_der, size_t cert_len, uint8_t x_out[32], uint8_t y_out[32]);
+static int tls_hostname_is_ip_literal(const char *hostname);
+static int tls_parse_client_sni(rt_tls_session_t *session, const uint8_t *data, size_t len);
+static int tls_server_name_matches_leaf_cert(const rt_tls_server_ctx_t *ctx, const char *hostname);
 
 // SIGPIPE suppression.
 #if defined(__linux__) || defined(__viperdos__)
@@ -473,6 +476,98 @@ static int tls_der_read_tlv(
 static int tls_oid_matches(
     const uint8_t *buf, size_t buf_len, const uint8_t *oid, size_t oid_len) {
     return buf_len == oid_len && memcmp(buf, oid, oid_len) == 0;
+}
+
+static int tls_hostname_is_ip_literal(const char *hostname) {
+    struct in_addr ipv4;
+    struct in6_addr ipv6;
+    if (!hostname || !*hostname)
+        return 0;
+    if (inet_pton(AF_INET, hostname, &ipv4) == 1)
+        return 1;
+    if (inet_pton(AF_INET6, hostname, &ipv6) == 1)
+        return 1;
+    return 0;
+}
+
+static int tls_parse_client_sni(rt_tls_session_t *session, const uint8_t *data, size_t len) {
+    size_t pos = 0;
+    int saw_host_name = 0;
+
+    if (!session || !data || len < 2)
+        return RT_TLS_ERROR_HANDSHAKE;
+
+    {
+        uint16_t list_len = read_u16(data);
+        if ((size_t)list_len + 2 != len) {
+            session->error = "ClientHello server_name length mismatch";
+            return RT_TLS_ERROR_HANDSHAKE;
+        }
+        pos = 2;
+        while (pos + 3 <= len) {
+            uint8_t name_type = data[pos++];
+            uint16_t name_len = read_u16(data + pos);
+            pos += 2;
+            if (pos + name_len > len) {
+                session->error = "ClientHello server_name entry truncated";
+                return RT_TLS_ERROR_HANDSHAKE;
+            }
+            if (name_type == 0) {
+                if (saw_host_name) {
+                    session->error = "ClientHello contains multiple host_name SNI entries";
+                    return RT_TLS_ERROR_HANDSHAKE;
+                }
+                if (name_len == 0 || name_len >= sizeof(session->hostname)) {
+                    session->error = "ClientHello host_name SNI is invalid";
+                    return RT_TLS_ERROR_HANDSHAKE;
+                }
+                for (uint16_t i = 0; i < name_len; i++) {
+                    unsigned char ch = data[pos + i];
+                    if (ch <= 0x20u || ch >= 0x7Fu) {
+                        session->error = "ClientHello host_name SNI contains invalid characters";
+                        return RT_TLS_ERROR_HANDSHAKE;
+                    }
+                    session->hostname[i] =
+                        (char)((ch >= 'A' && ch <= 'Z') ? (ch + ('a' - 'A')) : ch);
+                }
+                session->hostname[name_len] = '\0';
+                if (tls_hostname_is_ip_literal(session->hostname))
+                    session->hostname[0] = '\0';
+                saw_host_name = 1;
+            }
+            pos += name_len;
+        }
+        if (pos != len) {
+            session->error = "ClientHello server_name malformed";
+            return RT_TLS_ERROR_HANDSHAKE;
+        }
+    }
+
+    return RT_TLS_OK;
+}
+
+static int tls_server_name_matches_leaf_cert(const rt_tls_server_ctx_t *ctx, const char *hostname) {
+    char san_names[32][256];
+    char cn[256];
+    int san_count = 0;
+
+    if (!ctx || !ctx->leaf_cert_der || ctx->leaf_cert_der_len == 0 || !hostname || !*hostname)
+        return 1;
+    if (tls_hostname_is_ip_literal(hostname))
+        return 1;
+
+    san_count = tls_extract_san_names(ctx->leaf_cert_der, ctx->leaf_cert_der_len, san_names, 32);
+    for (int i = 0; i < san_count; i++) {
+        if (tls_match_hostname(san_names[i], hostname))
+            return 1;
+    }
+    if (san_count > 0)
+        return 0;
+
+    if (tls_extract_cn(ctx->leaf_cert_der, ctx->leaf_cert_der_len, cn) && cn[0] != '\0')
+        return tls_match_hostname(cn, hostname);
+
+    return 0;
 }
 
 static char *tls_read_text_file(const char *path, size_t *len_out) {
@@ -1270,7 +1365,7 @@ static int send_client_hello(rt_tls_session_t *session) {
     pos += 2; // Length placeholder
 
     // SNI extension
-    if (session->hostname[0] != '\0') {
+    if (session->hostname[0] != '\0' && !tls_hostname_is_ip_literal(session->hostname)) {
         size_t name_len = strlen(session->hostname);
         if (pos + name_len + 11 > sizeof(msg) - 64) {
             session->error = "ClientHello: hostname too long";
@@ -1878,7 +1973,11 @@ static int parse_client_hello(rt_tls_session_t *session, const uint8_t *data, si
                 return RT_TLS_ERROR_HANDSHAKE;
             }
 
-            if (ext_type == TLS_EXT_SUPPORTED_VERSIONS) {
+            if (ext_type == TLS_EXT_SERVER_NAME) {
+                int rc = tls_parse_client_sni(session, data + pos, one_len);
+                if (rc != RT_TLS_OK)
+                    return rc;
+            } else if (ext_type == TLS_EXT_SUPPORTED_VERSIONS) {
                 if (one_len < 3) {
                     session->error = "ClientHello supported_versions malformed";
                     return RT_TLS_ERROR_HANDSHAKE;
@@ -1965,6 +2064,11 @@ static int parse_client_hello(rt_tls_session_t *session, const uint8_t *data, si
     }
     if (!found_key_share) {
         session->error = "ClientHello missing X25519 key share";
+        return RT_TLS_ERROR_HANDSHAKE;
+    }
+    if (session->hostname[0] != '\0' &&
+        !tls_server_name_matches_leaf_cert(session->server_ctx, session->hostname)) {
+        session->error = "ClientHello SNI does not match the configured certificate";
         return RT_TLS_ERROR_HANDSHAKE;
     }
 
