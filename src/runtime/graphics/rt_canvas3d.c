@@ -217,7 +217,7 @@ typedef struct {
     int8_t has_local_bounds;
     float local_bounds_min[3];
     float local_bounds_max[3];
-    float sort_key; /* squared distance from camera (for transparent sorting) */
+    float sort_key; /* bounds-aware view-depth key for deferred draw sorting */
 } deferred_draw_t;
 
 typedef struct {
@@ -549,6 +549,52 @@ static int32_t build_light_params(const rt_canvas3d *c, vgfx3d_light_params_t *o
     return count;
 }
 
+/// @brief Pick the directional light that should drive the single shadow map.
+/// @details The renderer currently exposes one shadow map, so this chooses the
+///          strongest directional light deterministically instead of using the
+///          first populated slot.
+static int canvas3d_select_shadow_directional_light(const rt_canvas3d *c,
+                                                    vgfx3d_light_params_t *out_light) {
+    float best_score = -1.0f;
+    int found = 0;
+
+    if (!c || !out_light)
+        return 0;
+
+    for (int32_t i = 0; i < VGFX3D_MAX_LIGHTS; i++) {
+        const rt_light3d *l = c->lights[i];
+        float luminance;
+        float score;
+
+        if (!l || l->type != 0)
+            continue;
+        luminance = (float)(0.2126 * l->color[0] + 0.7152 * l->color[1] + 0.0722 * l->color[2]);
+        score = (float)l->intensity * luminance;
+        if (score <= 0.0f)
+            continue;
+        if (!found || score > best_score) {
+            out_light->type = l->type;
+            out_light->direction[0] = (float)l->direction[0];
+            out_light->direction[1] = (float)l->direction[1];
+            out_light->direction[2] = (float)l->direction[2];
+            out_light->position[0] = (float)l->position[0];
+            out_light->position[1] = (float)l->position[1];
+            out_light->position[2] = (float)l->position[2];
+            out_light->color[0] = (float)l->color[0];
+            out_light->color[1] = (float)l->color[1];
+            out_light->color[2] = (float)l->color[2];
+            out_light->intensity = (float)l->intensity;
+            out_light->attenuation = (float)l->attenuation;
+            out_light->inner_cos = (float)l->inner_cos;
+            out_light->outer_cos = (float)l->outer_cos;
+            best_score = score;
+            found = 1;
+        }
+    }
+
+    return found;
+}
+
 /// @brief Track a malloc'd buffer for end-of-frame cleanup.
 ///
 /// Used when the deferred path needs to allocate a transient instance-
@@ -612,29 +658,158 @@ static void canvas3d_clear_temp_objects(rt_canvas3d *c) {
     c->temp_obj_count = 0;
 }
 
-/// @brief Compute a draw's sort key — squared distance from camera to mesh origin.
-///
-/// Squared distance avoids a `sqrtf` per draw — order is preserved
-/// since distance is non-negative. The mesh origin (model_matrix
-/// translation) is the cheapest proxy for "centroid" since exact
-/// centroids would need the bounding box per draw.
-static float canvas3d_compute_sort_key(const rt_canvas3d *c, const float *model_matrix) {
-    float cx;
-    float cy;
-    float cz;
+/// @brief Transform a local point by a row-major 4x4 model matrix.
+static void canvas3d_transform_point(const float *model_matrix,
+                                     const float local_point[3],
+                                     float out_world[3]) {
+    if (!model_matrix || !local_point || !out_world)
+        return;
+    out_world[0] = model_matrix[0] * local_point[0] + model_matrix[1] * local_point[1] +
+                   model_matrix[2] * local_point[2] + model_matrix[3];
+    out_world[1] = model_matrix[4] * local_point[0] + model_matrix[5] * local_point[1] +
+                   model_matrix[6] * local_point[2] + model_matrix[7];
+    out_world[2] = model_matrix[8] * local_point[0] + model_matrix[9] * local_point[1] +
+                   model_matrix[10] * local_point[2] + model_matrix[11];
+}
+
+/// @brief Project a world-space point onto the camera's forward axis.
+static float canvas3d_depth_along_view(const rt_canvas3d *c, const float world_point[3]) {
     float dx;
     float dy;
     float dz;
 
-    if (!c || !model_matrix)
+    if (!c || !world_point)
         return 0.0f;
-    cx = model_matrix[3];
-    cy = model_matrix[7];
-    cz = model_matrix[11];
-    dx = cx - c->cached_cam_pos[0];
-    dy = cy - c->cached_cam_pos[1];
-    dz = cz - c->cached_cam_pos[2];
-    return dx * dx + dy * dy + dz * dz;
+    dx = world_point[0] - c->cached_cam_pos[0];
+    dy = world_point[1] - c->cached_cam_pos[1];
+    dz = world_point[2] - c->cached_cam_pos[2];
+    return dx * c->cached_cam_forward[0] + dy * c->cached_cam_forward[1] +
+           dz * c->cached_cam_forward[2];
+}
+
+/// @brief Compute the min/max view depth covered by a transformed local AABB.
+static void canvas3d_compute_depth_range(const rt_canvas3d *c,
+                                         const float *model_matrix,
+                                         const float *local_bounds_min,
+                                         const float *local_bounds_max,
+                                         int8_t has_local_bounds,
+                                         float *out_near_depth,
+                                         float *out_far_depth) {
+    float near_depth;
+    float far_depth;
+
+    if (out_near_depth)
+        *out_near_depth = 0.0f;
+    if (out_far_depth)
+        *out_far_depth = 0.0f;
+    if (!c || !model_matrix)
+        return;
+
+    near_depth = FLT_MAX;
+    far_depth = -FLT_MAX;
+    if (has_local_bounds && local_bounds_min && local_bounds_max) {
+        for (int xi = 0; xi < 2; xi++) {
+            for (int yi = 0; yi < 2; yi++) {
+                for (int zi = 0; zi < 2; zi++) {
+                    float local_point[3];
+                    float world_point[3];
+                    float depth;
+
+                    local_point[0] = xi ? local_bounds_max[0] : local_bounds_min[0];
+                    local_point[1] = yi ? local_bounds_max[1] : local_bounds_min[1];
+                    local_point[2] = zi ? local_bounds_max[2] : local_bounds_min[2];
+                    canvas3d_transform_point(model_matrix, local_point, world_point);
+                    depth = canvas3d_depth_along_view(c, world_point);
+                    if (depth < near_depth)
+                        near_depth = depth;
+                    if (depth > far_depth)
+                        far_depth = depth;
+                }
+            }
+        }
+    } else {
+        float origin[3] = {0.0f, 0.0f, 0.0f};
+        float world_origin[3];
+        canvas3d_transform_point(model_matrix, origin, world_origin);
+        near_depth = far_depth = canvas3d_depth_along_view(c, world_origin);
+    }
+
+    if (out_near_depth)
+        *out_near_depth = near_depth;
+    if (out_far_depth)
+        *out_far_depth = far_depth;
+}
+
+/// @brief Compute the deferred-sort key for one draw.
+/// @details Opaque draws sort by nearest depth (front-to-back). Transparent
+///          draws sort by farthest depth (back-to-front). When local bounds are
+///          available, the key comes from the transformed AABB rather than the
+///          model origin, which makes sorting more stable for large or offset
+///          meshes.
+static float canvas3d_compute_sort_key(const rt_canvas3d *c,
+                                       const float *model_matrix,
+                                       const float *local_bounds_min,
+                                       const float *local_bounds_max,
+                                       int8_t has_local_bounds,
+                                       int8_t transparent) {
+    float near_depth;
+    float far_depth;
+
+    canvas3d_compute_depth_range(c,
+                                 model_matrix,
+                                 local_bounds_min,
+                                 local_bounds_max,
+                                 has_local_bounds,
+                                 &near_depth,
+                                 &far_depth);
+    return transparent ? far_depth : near_depth;
+}
+
+/// @brief Compute one opaque sort key for an instanced batch.
+/// @details A single key can only approximate a spatially wide batch. This
+///          uses the center of the aggregate world-space bounds instead of the
+///          old minimum-per-instance depth, which biased large batches toward
+///          whichever instance happened to be closest to the camera.
+static float canvas3d_compute_instanced_batch_sort_key(const rt_canvas3d *c,
+                                                       const float *instance_matrices,
+                                                       int32_t instance_count,
+                                                       const float *local_bounds_min,
+                                                       const float *local_bounds_max) {
+    float world_min[3] = {0.0f, 0.0f, 0.0f};
+    float world_max[3] = {0.0f, 0.0f, 0.0f};
+    int8_t has_bounds = 0;
+
+    if (!c || !instance_matrices || instance_count <= 0 || !local_bounds_min || !local_bounds_max)
+        return 0.0f;
+
+    for (int32_t i = 0; i < instance_count; i++) {
+        double world_matrix[16];
+        float instance_min[3];
+        float instance_max[3];
+        for (int j = 0; j < 16; j++)
+            world_matrix[j] = (double)instance_matrices[(size_t)i * 16u + (size_t)j];
+        vgfx3d_transform_aabb(local_bounds_min, local_bounds_max, world_matrix, instance_min, instance_max);
+        if (!has_bounds) {
+            memcpy(world_min, instance_min, sizeof(world_min));
+            memcpy(world_max, instance_max, sizeof(world_max));
+            has_bounds = 1;
+        } else {
+            for (int axis = 0; axis < 3; axis++) {
+                if (instance_min[axis] < world_min[axis])
+                    world_min[axis] = instance_min[axis];
+                if (instance_max[axis] > world_max[axis])
+                    world_max[axis] = instance_max[axis];
+            }
+        }
+    }
+
+    if (has_bounds) {
+        float center[3] = {0.5f * (world_min[0] + world_max[0]),
+                           0.5f * (world_min[1] + world_max[1]),
+                           0.5f * (world_min[2] + world_max[2])};
+        return canvas3d_depth_along_view(c, center);
+    }
+    return 0.0f;
 }
 
 /// @brief Extract a normalized forward vector (camera look direction) from a view matrix.
@@ -1786,6 +1961,7 @@ void rt_canvas3d_begin(void *obj, void *camera) {
     vgfx3d_camera_params_t params;
     int32_t output_w = 0;
     int32_t output_h = 0;
+    double render_aspect = 0.0;
 
     if (!obj || !camera)
         return;
@@ -1804,13 +1980,13 @@ void rt_canvas3d_begin(void *obj, void *camera) {
 
     canvas3d_active_output_size(c, &output_w, &output_h);
     if (output_w > 0 && output_h > 0)
-        rt_camera3d_sync_render_aspect(cam, (double)output_w / (double)output_h);
+        render_aspect = (double)output_w / (double)output_h;
 
     if (c->delta_time_ms > 0)
         rt_camera3d_update_shake_for_frame(cam, (double)c->delta_time_ms / 1000.0);
 
     mat4_d2f(cam->view, params.view);
-    mat4_d2f(cam->projection, params.projection);
+    rt_camera3d_get_render_projection(cam, render_aspect, params.projection);
     params.position[0] = (float)(cam->eye[0] + cam->shake_offset[0]);
     params.position[1] = (float)(cam->eye[1] + cam->shake_offset[1]);
     params.position[2] = (float)(cam->eye[2] + cam->shake_offset[2]);
@@ -1842,15 +2018,14 @@ void rt_canvas3d_begin(void *obj, void *camera) {
 
     /* Cache VP matrix for debug drawing (backend-agnostic) */
     {
-        float vf[16], pf[16];
-        mat4_d2f(cam->view, vf);
-        mat4_d2f(cam->projection, pf);
         /* VP = P * V (row-major) */
         for (int r = 0; r < 4; r++)
             for (int col = 0; col < 4; col++)
                 c->cached_vp[r * 4 + col] =
-                    pf[r * 4 + 0] * vf[0 * 4 + col] + pf[r * 4 + 1] * vf[1 * 4 + col] +
-                    pf[r * 4 + 2] * vf[2 * 4 + col] + pf[r * 4 + 3] * vf[3 * 4 + col];
+                    params.projection[r * 4 + 0] * params.view[0 * 4 + col] +
+                    params.projection[r * 4 + 1] * params.view[1 * 4 + col] +
+                    params.projection[r * 4 + 2] * params.view[2 * 4 + col] +
+                    params.projection[r * 4 + 3] * params.view[3 * 4 + col];
     }
     memcpy(c->last_scene_vp, c->cached_vp, sizeof(c->last_scene_vp));
     memcpy(c->last_scene_cam_pos, c->cached_cam_pos, sizeof(c->last_scene_cam_pos));
@@ -1973,11 +2148,12 @@ void rt_canvas3d_draw_mesh_matrix_keyed(void *obj,
     memcpy(dd->local_bounds_min, mesh->aabb_min, sizeof(dd->local_bounds_min));
     memcpy(dd->local_bounds_max, mesh->aabb_max, sizeof(dd->local_bounds_max));
 
-    /* Compute sort key: squared distance from camera to mesh centroid.
-     * Uses model matrix translation (column 3 in row-major) as centroid proxy. */
-    {
-        dd->sort_key = canvas3d_compute_sort_key(c, dd->cmd.model_matrix);
-    }
+    dd->sort_key = canvas3d_compute_sort_key(c,
+                                             dd->cmd.model_matrix,
+                                             dd->local_bounds_min,
+                                             dd->local_bounds_max,
+                                             dd->has_local_bounds,
+                                             canvas3d_cmd_requires_blend(&dd->cmd));
 }
 
 /// @brief Convenience: queue a mesh draw without an explicit sort key (uses default).
@@ -2079,7 +2255,12 @@ void rt_canvas3d_queue_instanced_batch(void *canvas_obj,
                                         1,
                                         c->wireframe,
                                         canvas3d_material_backface_cull(c, mat),
-                                        canvas3d_compute_sort_key(c, per_instance.model_matrix),
+                                        canvas3d_compute_sort_key(c,
+                                                                  per_instance.model_matrix,
+                                                                  mesh->aabb_min,
+                                                                  mesh->aabb_max,
+                                                                  1,
+                                                                  canvas3d_cmd_requires_blend(&per_instance)),
                                         mesh->aabb_min,
                                         mesh->aabb_max);
         }
@@ -2089,28 +2270,19 @@ void rt_canvas3d_queue_instanced_batch(void *canvas_obj,
     base_cmd.prev_instance_matrices = prev_instance_matrices;
     base_cmd.has_prev_instance_matrices =
         (int8_t)(has_prev_instance_matrices && prev_instance_matrices != NULL);
-    {
-        float batch_sort_key = FLT_MAX;
-        for (int32_t i = 0; i < instance_count; i++) {
-            float key = canvas3d_compute_sort_key(c, &instance_matrices[(size_t)i * 16u]);
-            if (key < batch_sort_key)
-                batch_sort_key = key;
-        }
-        if (batch_sort_key == FLT_MAX)
-            batch_sort_key = 0.0f;
-        (void)canvas3d_enqueue_draw(c,
-                                    &base_cmd,
-                                    DEFERRED_DRAW_INSTANCED,
-                                    DEFERRED_PASS_MAIN,
-                                    instance_matrices,
-                                    instance_count,
-                                    1,
-                                    c->wireframe,
-                                    canvas3d_material_backface_cull(c, mat),
-                                    batch_sort_key,
-                                    mesh->aabb_min,
-                                    mesh->aabb_max);
-    }
+    (void)canvas3d_enqueue_draw(c,
+                                &base_cmd,
+                                DEFERRED_DRAW_INSTANCED,
+                                DEFERRED_PASS_MAIN,
+                                instance_matrices,
+                                instance_count,
+                                1,
+                                c->wireframe,
+                                canvas3d_material_backface_cull(c, mat),
+                                canvas3d_compute_instanced_batch_sort_key(
+                                    c, instance_matrices, instance_count, mesh->aabb_min, mesh->aabb_max),
+                                mesh->aabb_min,
+                                mesh->aabb_max);
 }
 
 /// @brief End-of-frame: flush all deferred passes, run postFX, present, and bookkeep.
@@ -2270,21 +2442,10 @@ void rt_canvas3d_end(void *obj) {
     if (!c->frame_is_2d && main_count > 0 && c->shadows_enabled && c->shadow_rt &&
         c->shadow_rt->depth_buf && c->backend->shadow_begin && c->backend->shadow_draw &&
         c->backend->shadow_end) {
-        const vgfx3d_light_params_t *dir_light = NULL;
-        for (int32_t i = 0; i < c->draw_count && !dir_light; i++) {
-            if (cmds[i].pass_kind != DEFERRED_PASS_MAIN)
-                continue;
-            for (int32_t li = 0; li < cmds[i].light_count; li++) {
-                if (cmds[i].lights[li].type == 0) {
-                    dir_light = &cmds[i].lights[li];
-                    break;
-                }
-            }
-        }
-
-        if (dir_light) {
+        vgfx3d_light_params_t dir_light;
+        if (canvas3d_select_shadow_directional_light(c, &dir_light)) {
             float light_vp[16];
-            if (canvas3d_build_shadow_light_vp(cmds, c->draw_count, dir_light, light_vp)) {
+            if (canvas3d_build_shadow_light_vp(cmds, c->draw_count, &dir_light, light_vp)) {
                 memcpy(c->shadow_light_vp, light_vp, sizeof(light_vp));
                 c->backend->shadow_begin(c->backend_ctx,
                                          c->shadow_rt->depth_buf,

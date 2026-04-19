@@ -7,7 +7,8 @@
 //
 // File: src/runtime/graphics/rt_morphtarget3d.c
 // Purpose: MorphTarget3D — named blend shapes with per-vertex position and
-//   normal deltas. CPU-applied before draw submission.
+//   normal deltas. Applied on GPU when the active backend can carry the payload,
+//   otherwise on CPU before draw submission.
 //
 // Key invariants:
 //   - Deltas are stored as 3 floats per vertex per shape (sparse via zero default).
@@ -31,6 +32,7 @@
 #include "vgfx3d_backend.h"
 #include "vgfx3d_backend_d3d11_shared.h"
 
+#include <limits.h>
 #include <math.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -44,14 +46,15 @@ typedef struct {
 
 typedef struct {
     void *vptr;
-    vgfx3d_morph_shape_t shapes[VGFX3D_D3D11_MAX_MORPH_SHAPES];
-    float weights[VGFX3D_D3D11_MAX_MORPH_SHAPES];
-    float prev_weights[VGFX3D_D3D11_MAX_MORPH_SHAPES];
-    float motion_weight_snapshot[VGFX3D_D3D11_MAX_MORPH_SHAPES];
+    vgfx3d_morph_shape_t *shapes;
+    float *weights;
+    float *prev_weights;
+    float *motion_weight_snapshot;
     float *packed_pos_deltas;
     float *packed_nrm_deltas;
     uint64_t payload_generation;
     int32_t shape_count;
+    int32_t shape_capacity;
     int32_t vertex_count;
     int64_t last_motion_frame;
     int8_t has_prev_weights;
@@ -118,11 +121,75 @@ static int morphtarget_rebuild_packed_payload(rt_morphtarget3d *mt) {
     return 1;
 }
 
-static int vgfx3d_backend_prefers_gpu_morph(const char *backend_name) {
+static int morphtarget_reserve_shapes(rt_morphtarget3d *mt, int32_t min_capacity) {
+    int32_t new_capacity;
+    vgfx3d_morph_shape_t *new_shapes = NULL;
+    float *new_weights = NULL;
+    float *new_prev_weights = NULL;
+    float *new_motion_snapshot = NULL;
+
+    if (!mt)
+        return 0;
+    if (min_capacity <= mt->shape_capacity)
+        return 1;
+
+    new_capacity = mt->shape_capacity > 0 ? mt->shape_capacity : 4;
+    while (new_capacity < min_capacity) {
+        if (new_capacity > INT32_MAX / 2) {
+            new_capacity = min_capacity;
+            break;
+        }
+        new_capacity *= 2;
+    }
+
+    new_shapes = (vgfx3d_morph_shape_t *)calloc((size_t)new_capacity, sizeof(*new_shapes));
+    new_weights = (float *)calloc((size_t)new_capacity, sizeof(*new_weights));
+    new_prev_weights = (float *)calloc((size_t)new_capacity, sizeof(*new_prev_weights));
+    new_motion_snapshot = (float *)calloc((size_t)new_capacity, sizeof(*new_motion_snapshot));
+    if (!new_shapes || !new_weights || !new_prev_weights || !new_motion_snapshot) {
+        free(new_shapes);
+        free(new_weights);
+        free(new_prev_weights);
+        free(new_motion_snapshot);
+        return 0;
+    }
+
+    if (mt->shape_count > 0) {
+        memcpy(new_shapes, mt->shapes, (size_t)mt->shape_count * sizeof(*new_shapes));
+        memcpy(new_weights, mt->weights, (size_t)mt->shape_count * sizeof(*new_weights));
+        memcpy(new_prev_weights, mt->prev_weights, (size_t)mt->shape_count * sizeof(*new_prev_weights));
+        memcpy(new_motion_snapshot,
+               mt->motion_weight_snapshot,
+               (size_t)mt->shape_count * sizeof(*new_motion_snapshot));
+    }
+
+    free(mt->shapes);
+    free(mt->weights);
+    free(mt->prev_weights);
+    free(mt->motion_weight_snapshot);
+    mt->shapes = new_shapes;
+    mt->weights = new_weights;
+    mt->prev_weights = new_prev_weights;
+    mt->motion_weight_snapshot = new_motion_snapshot;
+    mt->shape_capacity = new_capacity;
+    return 1;
+}
+
+static int32_t vgfx3d_backend_morph_shape_limit(const char *backend_name) {
     if (!backend_name)
         return 0;
-    return strcmp(backend_name, "metal") == 0 || strcmp(backend_name, "opengl") == 0 ||
-           strcmp(backend_name, "d3d11") == 0;
+    if (strcmp(backend_name, "metal") == 0)
+        return INT32_MAX;
+    if (strcmp(backend_name, "opengl") == 0)
+        return 32;
+    if (strcmp(backend_name, "d3d11") == 0)
+        return VGFX3D_D3D11_MAX_MORPH_SHAPES;
+    return 0;
+}
+
+static int vgfx3d_backend_prefers_gpu_morph(const char *backend_name, int32_t shape_count) {
+    int32_t limit = vgfx3d_backend_morph_shape_limit(backend_name);
+    return limit > 0 && shape_count <= limit;
 }
 
 /*==========================================================================
@@ -135,15 +202,19 @@ static void rt_morphtarget3d_finalize(void *obj) {
         free(mt->shapes[i].pos_deltas);
         free(mt->shapes[i].nrm_deltas);
     }
+    free(mt->shapes);
+    free(mt->weights);
+    free(mt->prev_weights);
+    free(mt->motion_weight_snapshot);
     free(mt->packed_pos_deltas);
     free(mt->packed_nrm_deltas);
 }
 
 /// @brief Create a morph target container for blendshape animation.
 /// @details Morph targets (aka blend shapes) deform a mesh by adding weighted
-///          per-vertex deltas to the base positions and normals. Up to 32 shapes
-///          are supported. Each shape stores position deltas (and optionally normal
-///          deltas) for all vertices. Weights control the blend amount per shape.
+///          per-vertex deltas to the base positions and normals. Shapes grow on
+///          demand, while GPU backends may still fall back to CPU deformation if
+///          the active shape count exceeds the backend's shader payload limits.
 /// @param vertex_count Number of vertices in the base mesh (must match mesh vertex count).
 /// @return Opaque morph target handle, or NULL on failure.
 void *rt_morphtarget3d_new(int64_t vertex_count) {
@@ -157,11 +228,12 @@ void *rt_morphtarget3d_new(int64_t vertex_count) {
         return NULL;
     }
     mt->vptr = NULL;
-    memset(mt->shapes, 0, sizeof(mt->shapes));
-    memset(mt->weights, 0, sizeof(mt->weights));
-    memset(mt->prev_weights, 0, sizeof(mt->prev_weights));
-    memset(mt->motion_weight_snapshot, 0, sizeof(mt->motion_weight_snapshot));
+    mt->shapes = NULL;
+    mt->weights = NULL;
+    mt->prev_weights = NULL;
+    mt->motion_weight_snapshot = NULL;
     mt->shape_count = 0;
+    mt->shape_capacity = 0;
     mt->vertex_count = (int32_t)vertex_count;
     mt->last_motion_frame = 0;
     mt->has_prev_weights = 0;
@@ -182,8 +254,8 @@ int64_t rt_morphtarget3d_add_shape(void *obj, rt_string name) {
     if (!obj)
         return -1;
     rt_morphtarget3d *mt = (rt_morphtarget3d *)obj;
-    if (mt->shape_count >= VGFX3D_D3D11_MAX_MORPH_SHAPES) {
-        rt_trap("MorphTarget3D.AddShape: max 32 shapes exceeded");
+    if (!morphtarget_reserve_shapes(mt, mt->shape_count + 1)) {
+        rt_trap("MorphTarget3D.AddShape: memory allocation failed");
         return -1;
     }
 
@@ -304,7 +376,7 @@ void rt_morphtarget3d_set_weight_by_name(void *obj, rt_string name, double weigh
         return;
     for (int32_t i = 0; i < mt->shape_count; i++) {
         if (strcmp(mt->shapes[i].name, target) == 0) {
-            mt->weights[i] = (float)weight;
+            rt_morphtarget3d_set_weight(mt, i, weight);
             return;
         }
     }
@@ -351,11 +423,13 @@ static const float *morphtarget_prepare_prev_weights(rt_morphtarget3d *mt, int64
     if (!mt)
         return NULL;
     if (mt->last_motion_frame != frame_serial) {
-        if (mt->last_motion_frame != 0) {
-            memcpy(mt->prev_weights, mt->motion_weight_snapshot, sizeof(mt->prev_weights));
+        size_t weight_bytes = (size_t)mt->shape_count * sizeof(float);
+        if (mt->last_motion_frame != 0 && weight_bytes > 0) {
+            memcpy(mt->prev_weights, mt->motion_weight_snapshot, weight_bytes);
             mt->has_prev_weights = 1;
         }
-        memcpy(mt->motion_weight_snapshot, mt->weights, sizeof(mt->motion_weight_snapshot));
+        if (weight_bytes > 0)
+            memcpy(mt->motion_weight_snapshot, mt->weights, weight_bytes);
         mt->last_motion_frame = frame_serial;
     }
     return mt->has_prev_weights ? mt->prev_weights : NULL;
@@ -411,7 +485,7 @@ static void morphtarget_draw_mesh_matrix(void *canvas,
         return;
 
     rt_canvas3d *c = (rt_canvas3d *)canvas;
-    if (c && c->backend && vgfx3d_backend_prefers_gpu_morph(c->backend->name)) {
+    if (c && c->backend && vgfx3d_backend_prefers_gpu_morph(c->backend->name, mt->shape_count)) {
         void *saved_ref;
         const float *saved_deltas;
         const float *saved_normal_deltas;

@@ -32,7 +32,8 @@ static void transpose4x4_local(const float *src, float *dst) {
 }
 
 /// @brief Copy a bone palette into a fixed-size MTLBuffer slot (zero-pads unused bones).
-/// Matches `vgfx3d_d3d11_pack_bone_palette` semantics; bones beyond the cap are dropped.
+/// Matches `vgfx3d_d3d11_pack_bone_palette` semantics; oversized inputs are
+/// clamped to the largest palette this backend exposes.
 void vgfx3d_metal_pack_bone_palette(float *dst, const float *src, int32_t bone_count) {
     size_t copy_count;
 

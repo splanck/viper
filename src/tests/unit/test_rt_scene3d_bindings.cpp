@@ -45,6 +45,16 @@ extern double rt_mat4_get(void *m, int64_t row, int64_t col);
 extern rt_string rt_const_cstr(const char *s);
 extern void *rt_material3d_new_color(double r, double g, double b);
 extern void *rt_mesh3d_new_box(double w, double h, double d);
+extern void rt_mesh3d_set_bone_weights(void *mesh,
+                                       int64_t vertex_index,
+                                       int64_t b0,
+                                       double w0,
+                                       int64_t b1,
+                                       double w1,
+                                       int64_t b2,
+                                       double w2,
+                                       int64_t b3,
+                                       double w3);
 extern void *rt_camera3d_new(double fov, double aspect, double near, double far);
 extern void rt_camera3d_look_at(void *cam, void *eye, void *target, void *up);
 }
@@ -114,6 +124,7 @@ static void init_test_canvas(rt_canvas3d *canvas, const vgfx3d_backend_t *backen
 static int g_submit_count = 0;
 static const float *g_last_bone_palette = nullptr;
 static int32_t g_last_bone_count = 0;
+static const vgfx3d_vertex_t *g_last_vertices = nullptr;
 
 static void test_begin_frame(void *, const vgfx3d_camera_params_t *) {}
 
@@ -130,6 +141,7 @@ static void test_submit_draw(void *,
     g_submit_count++;
     g_last_bone_palette = cmd ? cmd->bone_palette : nullptr;
     g_last_bone_count = cmd ? cmd->bone_count : 0;
+    g_last_vertices = cmd ? cmd->vertices : nullptr;
 }
 
 static void test_node_from_body_resolves_child_local_space() {
@@ -358,6 +370,102 @@ static void test_scene_draw_uses_bound_animator_palette() {
                 "Scene3D.Draw forwards the animator bone count");
 }
 
+static void test_scene_draw_cpu_skins_bound_animators_for_software_backend() {
+    vgfx3d_backend_t backend = {};
+    rt_canvas3d canvas;
+    void *scene = rt_scene3d_new();
+    void *node = rt_scene_node3d_new();
+    void *mesh = rt_mesh3d_new_box(1.0, 1.0, 1.0);
+    void *material = rt_material3d_new_color(1.0, 1.0, 1.0);
+    void *camera = rt_camera3d_new(60.0, 1.0, 0.1, 100.0);
+    void *eye = rt_vec3_new(0.0, 0.0, 5.0);
+    void *target = rt_vec3_new(0.0, 0.0, 0.0);
+    void *up = rt_vec3_new(0.0, 1.0, 0.0);
+    void *skel = rt_skeleton3d_new();
+    void *controller;
+    void *anim;
+
+    backend.name = "software";
+    backend.begin_frame = test_begin_frame;
+    backend.end_frame = test_end_frame;
+    backend.submit_draw = test_submit_draw;
+    init_test_canvas(&canvas, &backend);
+    rt_camera3d_look_at(camera, eye, target, up);
+    g_submit_count = 0;
+    g_last_bone_palette = nullptr;
+    g_last_bone_count = 0;
+    g_last_vertices = nullptr;
+
+    rt_skeleton3d_add_bone(skel, rt_const_cstr("root"), -1, rt_mat4_identity());
+    rt_skeleton3d_compute_inverse_bind(skel);
+    anim = make_anim("walk", 0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0);
+    controller = rt_anim_controller3d_new(skel);
+    rt_anim_controller3d_add_state(controller, rt_const_cstr("walk"), anim);
+    rt_anim_controller3d_play(controller, rt_const_cstr("walk"));
+    rt_anim_controller3d_update(controller, 0.25);
+
+    ((rt_mesh3d *)mesh)->bone_count = 1;
+    rt_mesh3d_set_bone_weights(mesh, 0, 0, 1.0, 0, 0.0, 0, 0.0, 0, 0.0);
+    rt_scene_node3d_set_mesh(node, mesh);
+    rt_scene_node3d_set_material(node, material);
+    rt_scene_node3d_bind_animator(node, controller);
+    rt_scene3d_add(scene, node);
+    rt_scene3d_draw(scene, &canvas, camera);
+
+    EXPECT_TRUE(g_submit_count == 1, "Scene3D.Draw still submits one draw on the software backend");
+    EXPECT_TRUE(g_last_vertices != ((rt_mesh3d *)mesh)->vertices,
+                "Scene3D.Draw CPU-skins bound animators on the software backend");
+    EXPECT_TRUE(g_last_bone_palette == nullptr && g_last_bone_count == 0,
+                "Scene3D.Draw clears GPU skinning payloads after CPU fallback");
+}
+
+static void test_scene_draw_preserves_large_bound_animator_palettes_on_gpu_backends() {
+    vgfx3d_backend_t backend = {};
+    rt_canvas3d canvas;
+    void *scene = rt_scene3d_new();
+    void *node = rt_scene_node3d_new();
+    void *mesh = rt_mesh3d_new_box(1.0, 1.0, 1.0);
+    void *material = rt_material3d_new_color(1.0, 1.0, 1.0);
+    void *camera = rt_camera3d_new(60.0, 1.0, 0.1, 100.0);
+    void *eye = rt_vec3_new(0.0, 0.0, 5.0);
+    void *target = rt_vec3_new(0.0, 0.0, 0.0);
+    void *up = rt_vec3_new(0.0, 1.0, 0.0);
+    void *skel = rt_skeleton3d_new();
+    void *controller;
+    void *anim;
+
+    backend.name = "opengl";
+    backend.begin_frame = test_begin_frame;
+    backend.end_frame = test_end_frame;
+    backend.submit_draw = test_submit_draw;
+    init_test_canvas(&canvas, &backend);
+    rt_camera3d_look_at(camera, eye, target, up);
+    g_submit_count = 0;
+    g_last_bone_palette = nullptr;
+    g_last_bone_count = 0;
+
+    for (int i = 0; i < 200; i++)
+        rt_skeleton3d_add_bone(skel, rt_const_cstr("bone"), i - 1, rt_mat4_identity());
+    rt_skeleton3d_compute_inverse_bind(skel);
+    anim = make_anim("walk", 0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0);
+    controller = rt_anim_controller3d_new(skel);
+    rt_anim_controller3d_add_state(controller, rt_const_cstr("walk"), anim);
+    rt_anim_controller3d_play(controller, rt_const_cstr("walk"));
+    rt_anim_controller3d_update(controller, 0.25);
+
+    ((rt_mesh3d *)mesh)->bone_count = 200;
+    rt_mesh3d_set_bone_weights(mesh, 0, 199, 1.0, 0, 0.0, 0, 0.0, 0, 0.0);
+    rt_scene_node3d_set_mesh(node, mesh);
+    rt_scene_node3d_set_material(node, material);
+    rt_scene_node3d_bind_animator(node, controller);
+    rt_scene3d_add(scene, node);
+    rt_scene3d_draw(scene, &canvas, camera);
+
+    EXPECT_TRUE(g_submit_count == 1, "Scene3D.Draw still submits one large-rig animated draw");
+    EXPECT_TRUE(g_last_bone_palette != nullptr && g_last_bone_count == 200,
+                "Scene3D.Draw preserves expanded animator palettes on GPU backends");
+}
+
 int main() {
     test_node_from_body_resolves_child_local_space();
     test_body_from_node_uses_world_space();
@@ -366,6 +474,8 @@ int main() {
     test_animator_root_motion_mode_consumes_delta_once();
     test_animator_root_motion_applies_rotation_delta();
     test_scene_draw_uses_bound_animator_palette();
+    test_scene_draw_cpu_skins_bound_animators_for_software_backend();
+    test_scene_draw_preserves_large_bound_animator_palettes_on_gpu_backends();
 
     std::printf("Scene3D binding tests: %d/%d passed\n", tests_passed, tests_run);
     return tests_passed == tests_run ? 0 : 1;

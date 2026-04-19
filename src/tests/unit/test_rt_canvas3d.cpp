@@ -1528,14 +1528,16 @@ static void test_canvas_begin2d_uses_render_target_dimensions() {
     PASS();
 }
 
-static void test_canvas_begin_syncs_camera_aspect_to_active_output() {
-    TEST("Canvas3D.Begin syncs camera aspect to the active output");
+static void test_canvas_begin_uses_active_output_aspect_without_mutating_camera() {
+    TEST("Canvas3D.Begin uses the active output aspect without mutating the camera");
     vgfx3d_backend_t backend = {};
     rt_canvas3d canvas;
     rt_camera3d *cam = (rt_camera3d *)rt_camera3d_new(60.0, 1.0, 0.1, 100.0);
     void *rt = rt_rendertarget3d_new(320, 160);
+    double original_projection[16];
     assert(cam != NULL);
     assert(rt != NULL);
+    std::memcpy(original_projection, cam->projection, sizeof(original_projection));
 
     backend.name = "opengl";
     backend.begin_frame = tracked_begin_frame;
@@ -1554,7 +1556,9 @@ static void test_canvas_begin_syncs_camera_aspect_to_active_output() {
     rt_canvas3d_end(&canvas);
 
     EXPECT_EQ(g_canvas_begin_frame_calls, 1);
-    EXPECT_NEAR(cam->aspect, 2.0, 0.0001);
+    EXPECT_NEAR(cam->aspect, 1.0, 0.0001);
+    EXPECT_TRUE(std::memcmp(original_projection, cam->projection, sizeof(original_projection)) == 0,
+                "Canvas3D.Begin leaves the camera's stored projection matrix unchanged");
     EXPECT_NEAR(g_canvas_begin_frame_params.projection[0], 0.8660254f, 0.001);
     PASS();
 }
@@ -2296,7 +2300,7 @@ int main() {
     test_canvas_screenshot_returns_null_when_sync_fails();
     test_canvas_dimensions_follow_active_render_target();
     test_canvas_begin2d_uses_render_target_dimensions();
-    test_canvas_begin_syncs_camera_aspect_to_active_output();
+    test_canvas_begin_uses_active_output_aspect_without_mutating_camera();
     test_canvas_begin_applies_camera_shake_without_follow();
     test_canvas_overlay_draws_replay_after_3d_frame();
     test_canvas_postfx_uses_render_target_pixels();

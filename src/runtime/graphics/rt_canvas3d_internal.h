@@ -142,6 +142,7 @@ typedef struct {
     double ortho_size; /* half-extent of ortho view */
 } rt_camera3d;
 void rt_camera3d_sync_render_aspect(void *cam, double aspect);
+void rt_camera3d_get_render_projection(void *cam, double aspect_override, float *out_projection);
 /// @brief Internal: advance camera shake by @p dt seconds and refresh the shaken view.
 void rt_camera3d_update_shake_for_frame(void *cam, double dt);
 

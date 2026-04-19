@@ -1619,6 +1619,9 @@ static void test_http_req_builder() {
     req = rt_http_req_set_timeout(req, 5000);
     test_result("HttpReq.SetTimeout returns same object", req != nullptr);
 
+    req = rt_http_req_set_force_http1(req, 1);
+    test_result("HttpReq.SetForceHttp1 returns same object", req != nullptr);
+
     void *res = rt_http_req_send(req);
     test_result("HttpReq.Send returns HttpRes", res != nullptr);
 

@@ -12,6 +12,7 @@
 #include "rt_string.h"
 #include "vgfx3d_backend.h"
 
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -71,6 +72,7 @@ static int skybox_draw_calls = 0;
 static int shadow_begin_calls = 0;
 static int shadow_draw_calls = 0;
 static int shadow_end_calls = 0;
+static float last_shadow_vp[16];
 static vgfx3d_draw_cmd_t last_instanced_cmd;
 static const float *last_instance_matrices = nullptr;
 static int32_t last_instance_count = 0;
@@ -107,10 +109,13 @@ static void reset_shadow_counts(void) {
     shadow_begin_calls = 0;
     shadow_draw_calls = 0;
     shadow_end_calls = 0;
+    std::memset(last_shadow_vp, 0, sizeof(last_shadow_vp));
 }
 
-static void record_shadow_begin(void *, float *, int32_t, int32_t, const float *) {
+static void record_shadow_begin(void *, float *, int32_t, int32_t, const float *light_vp) {
     shadow_begin_calls++;
+    if (light_vp)
+        std::memcpy(last_shadow_vp, light_vp, sizeof(last_shadow_vp));
 }
 
 static void record_shadow_draw(void *, const vgfx3d_draw_cmd_t *) {
@@ -284,9 +289,36 @@ static void *make_test_mesh(void) {
     return mesh;
 }
 
+static void *make_depth_test_mesh(float z0, float z1, float z2) {
+    void *mesh = rt_mesh3d_new();
+    rt_mesh3d_add_vertex(mesh, 0.0, 0.0, z0, 0.0, 0.0, 1.0, 0.0, 0.0);
+    rt_mesh3d_add_vertex(mesh, 1.0, 0.0, z1, 0.0, 0.0, 1.0, 1.0, 0.0);
+    rt_mesh3d_add_vertex(mesh, 0.0, 1.0, z2, 0.0, 0.0, 1.0, 0.0, 1.0);
+    rt_mesh3d_add_triangle(mesh, 0, 1, 2);
+    return mesh;
+}
+
+static bool matrices_nearly_equal(const float *a, const float *b, float epsilon) {
+    if (!a || !b)
+        return false;
+    for (int i = 0; i < 16; i++) {
+        if (std::fabs(a[i] - b[i]) > epsilon)
+            return false;
+    }
+    return true;
+}
+
 static void *make_test_player(void) {
     void *skel = rt_skeleton3d_new();
     rt_skeleton3d_add_bone(skel, rt_const_cstr("root"), -1, rt_mat4_identity());
+    rt_skeleton3d_compute_inverse_bind(skel);
+    return rt_anim_player3d_new(skel);
+}
+
+static void *make_test_player_with_bones(int bone_count) {
+    void *skel = rt_skeleton3d_new();
+    for (int i = 0; i < bone_count; i++)
+        rt_skeleton3d_add_bone(skel, rt_const_cstr("bone"), i - 1, rt_mat4_identity());
     rt_skeleton3d_compute_inverse_bind(skel);
     return rt_anim_player3d_new(skel);
 }
@@ -377,8 +409,80 @@ static void test_cpu_skinning_fallback_for_software(void) {
     EXPECT_TRUE(canvas.temp_buf_count == 1, "Software skinned draw allocates CPU temp buffer");
     EXPECT_TRUE(draws[0].cmd.vertices != mesh_view->vertices,
                 "Software skinned draw uses CPU-skinned vertex buffer");
-    EXPECT_TRUE(draws[0].cmd.bone_palette != nullptr,
-                "Software skinned draw still forwards bone palette");
+    EXPECT_TRUE(draws[0].cmd.bone_palette == nullptr && draws[0].cmd.bone_count == 0,
+                "Software skinned draw clears GPU palette payloads after CPU fallback");
+
+    cleanup_fake_canvas(&canvas);
+}
+
+static void test_large_gpu_skinning_bypass_for_opengl(void) {
+    rt_canvas3d canvas;
+    init_fake_canvas(&canvas, &kOpenGLBackend);
+
+    void *mesh = make_test_mesh();
+    void *player = make_test_player_with_bones(200);
+    void *material = rt_material3d_new();
+    void *transform = rt_mat4_identity();
+    rt_mesh3d_set_bone_weights(mesh, 0, 199, 1.0, 0, 0.0, 0, 0.0, 0, 0.0);
+
+    rt_canvas3d_draw_mesh_skinned(&canvas, mesh, transform, material, player);
+
+    rt_mesh3d *mesh_view = (rt_mesh3d *)mesh;
+    test_deferred_draw_t *draws = (test_deferred_draw_t *)canvas.draw_cmds;
+    EXPECT_TRUE(canvas.draw_count == 1, "OpenGL large-rig skinned draw enqueues one draw");
+    EXPECT_TRUE(canvas.temp_buf_count == 0, "OpenGL large-rig skinned draw stays on the GPU path");
+    EXPECT_TRUE(draws[0].cmd.vertices == mesh_view->vertices,
+                "OpenGL large-rig skinned draw avoids CPU skinning");
+    EXPECT_TRUE(draws[0].cmd.bone_count == 200,
+                "OpenGL large-rig skinned draw forwards the expanded bone count");
+
+    cleanup_fake_canvas(&canvas);
+}
+
+static void test_large_gpu_skinning_bypass_for_d3d11(void) {
+    rt_canvas3d canvas;
+    init_fake_canvas(&canvas, &kD3D11Backend);
+
+    void *mesh = make_test_mesh();
+    void *player = make_test_player_with_bones(200);
+    void *material = rt_material3d_new();
+    void *transform = rt_mat4_identity();
+    rt_mesh3d_set_bone_weights(mesh, 0, 199, 1.0, 0, 0.0, 0, 0.0, 0, 0.0);
+
+    rt_canvas3d_draw_mesh_skinned(&canvas, mesh, transform, material, player);
+
+    rt_mesh3d *mesh_view = (rt_mesh3d *)mesh;
+    test_deferred_draw_t *draws = (test_deferred_draw_t *)canvas.draw_cmds;
+    EXPECT_TRUE(canvas.draw_count == 1, "D3D11 large-rig skinned draw enqueues one draw");
+    EXPECT_TRUE(canvas.temp_buf_count == 0, "D3D11 large-rig skinned draw stays on the GPU path");
+    EXPECT_TRUE(draws[0].cmd.vertices == mesh_view->vertices,
+                "D3D11 large-rig skinned draw avoids CPU skinning");
+    EXPECT_TRUE(draws[0].cmd.bone_count == 200,
+                "D3D11 large-rig skinned draw forwards the expanded bone count");
+
+    cleanup_fake_canvas(&canvas);
+}
+
+static void test_large_gpu_skinning_bypass_for_metal(void) {
+    rt_canvas3d canvas;
+    init_fake_canvas(&canvas, &kMetalBackend);
+
+    void *mesh = make_test_mesh();
+    void *player = make_test_player_with_bones(200);
+    void *material = rt_material3d_new();
+    void *transform = rt_mat4_identity();
+    rt_mesh3d_set_bone_weights(mesh, 0, 199, 1.0, 0, 0.0, 0, 0.0, 0, 0.0);
+
+    rt_canvas3d_draw_mesh_skinned(&canvas, mesh, transform, material, player);
+
+    rt_mesh3d *mesh_view = (rt_mesh3d *)mesh;
+    test_deferred_draw_t *draws = (test_deferred_draw_t *)canvas.draw_cmds;
+    EXPECT_TRUE(canvas.draw_count == 1, "Metal large-rig skinned draw enqueues one draw");
+    EXPECT_TRUE(canvas.temp_buf_count == 0, "Metal large-rig skinned draw stays on the GPU path");
+    EXPECT_TRUE(draws[0].cmd.vertices == mesh_view->vertices,
+                "Metal large-rig skinned draw avoids CPU skinning");
+    EXPECT_TRUE(draws[0].cmd.bone_count == 200,
+                "Metal large-rig skinned draw forwards the expanded bone count");
 
     cleanup_fake_canvas(&canvas);
 }
@@ -638,6 +742,98 @@ static void test_attached_morph_targets_route_through_draw_mesh(void) {
                 "Attached morph targets route DrawMesh through the morph payload path");
     EXPECT_TRUE(draws[0].cmd.morph_shape_count == 1,
                 "Attached morph targets preserve the shape count on DrawMesh");
+
+    cleanup_fake_canvas(&canvas);
+}
+
+static void test_large_morph_payload_falls_back_to_cpu_for_opengl(void) {
+    rt_canvas3d canvas;
+    init_fake_canvas(&canvas, &kOpenGLBackend);
+
+    void *mesh = make_test_mesh();
+    void *material = rt_material3d_new();
+    void *transform = rt_mat4_identity();
+    void *morph = rt_morphtarget3d_new(3);
+    for (int i = 0; i < 33; i++)
+        rt_morphtarget3d_add_shape(morph, rt_const_cstr("shape"));
+    rt_morphtarget3d_set_delta(morph, 32, 0, 4.0, 0.0, 0.0);
+    rt_morphtarget3d_set_weight(morph, 32, 1.0);
+
+    rt_canvas3d_draw_mesh_morphed(&canvas, mesh, transform, material, morph);
+
+    rt_mesh3d *mesh_view = (rt_mesh3d *)mesh;
+    test_deferred_draw_t *draws = (test_deferred_draw_t *)canvas.draw_cmds;
+    EXPECT_TRUE(canvas.draw_count == 1, "OpenGL large morph draw still enqueues one draw");
+    EXPECT_TRUE(canvas.temp_buf_count == 1,
+                "OpenGL falls back to CPU morphing when shape count exceeds shader capacity");
+    EXPECT_TRUE(draws[0].cmd.vertices != mesh_view->vertices,
+                "OpenGL oversize morph payload uses CPU-morphed vertices");
+    EXPECT_TRUE(draws[0].cmd.morph_shape_count == 0 && draws[0].cmd.morph_deltas == nullptr,
+                "OpenGL oversize morph payload leaves GPU morph bindings empty");
+    EXPECT_TRUE(draws[0].cmd.vertices[0].pos[0] == 4.0f,
+                "OpenGL CPU morph fallback still applies shapes beyond slot 31");
+
+    cleanup_fake_canvas(&canvas);
+}
+
+static void test_large_morph_payload_falls_back_to_cpu_for_d3d11(void) {
+    rt_canvas3d canvas;
+    init_fake_canvas(&canvas, &kD3D11Backend);
+
+    void *mesh = make_test_mesh();
+    void *material = rt_material3d_new();
+    void *transform = rt_mat4_identity();
+    void *morph = rt_morphtarget3d_new(3);
+    for (int i = 0; i < 33; i++)
+        rt_morphtarget3d_add_shape(morph, rt_const_cstr("shape"));
+    rt_morphtarget3d_set_delta(morph, 32, 0, 5.0, 0.0, 0.0);
+    rt_morphtarget3d_set_weight(morph, 32, 1.0);
+
+    rt_canvas3d_draw_mesh_morphed(&canvas, mesh, transform, material, morph);
+
+    rt_mesh3d *mesh_view = (rt_mesh3d *)mesh;
+    test_deferred_draw_t *draws = (test_deferred_draw_t *)canvas.draw_cmds;
+    EXPECT_TRUE(canvas.draw_count == 1, "D3D11 large morph draw still enqueues one draw");
+    EXPECT_TRUE(canvas.temp_buf_count == 1,
+                "D3D11 falls back to CPU morphing when shape count exceeds shader capacity");
+    EXPECT_TRUE(draws[0].cmd.vertices != mesh_view->vertices,
+                "D3D11 oversize morph payload uses CPU-morphed vertices");
+    EXPECT_TRUE(draws[0].cmd.morph_shape_count == 0 && draws[0].cmd.morph_deltas == nullptr,
+                "D3D11 oversize morph payload leaves GPU morph bindings empty");
+    EXPECT_TRUE(draws[0].cmd.vertices[0].pos[0] == 5.0f,
+                "D3D11 CPU morph fallback still applies shapes beyond slot 31");
+
+    cleanup_fake_canvas(&canvas);
+}
+
+static void test_large_morph_payload_stays_on_gpu_for_metal(void) {
+    rt_canvas3d canvas;
+    init_fake_canvas(&canvas, &kMetalBackend);
+
+    void *mesh = make_test_mesh();
+    void *material = rt_material3d_new();
+    void *transform = rt_mat4_identity();
+    void *morph = rt_morphtarget3d_new(3);
+    for (int i = 0; i < 33; i++)
+        rt_morphtarget3d_add_shape(morph, rt_const_cstr("shape"));
+    rt_morphtarget3d_set_delta(morph, 32, 0, 6.0, 0.0, 0.0);
+    rt_morphtarget3d_set_weight(morph, 32, 1.0);
+
+    rt_canvas3d_draw_mesh_morphed(&canvas, mesh, transform, material, morph);
+
+    test_deferred_draw_t *draws = (test_deferred_draw_t *)canvas.draw_cmds;
+    EXPECT_TRUE(canvas.draw_count == 1, "Metal large morph draw still enqueues one draw");
+    EXPECT_TRUE(canvas.temp_buf_count == 0,
+                "Metal keeps large morph payloads on the GPU path");
+    EXPECT_TRUE(draws[0].cmd.morph_shape_count == 33,
+                "Metal forwards morph shape counts beyond the old 32-shape ceiling");
+    EXPECT_TRUE(draws[0].cmd.morph_deltas != nullptr,
+                "Metal forwards packed morph data for large shape counts");
+    if (draws[0].cmd.morph_deltas) {
+        size_t offset = (size_t)32 * 9u;
+        EXPECT_TRUE(draws[0].cmd.morph_deltas[offset] == 6.0f,
+                    "Metal packed morph payload retains shape 32 deltas");
+    }
 
     cleanup_fake_canvas(&canvas);
 }
@@ -1173,6 +1369,123 @@ static void test_instanced_shadow_pass_includes_instances(void) {
     cleanup_fake_canvas(&canvas);
 }
 
+static void test_transparent_sort_key_uses_mesh_bounds_depth(void) {
+    rt_canvas3d canvas;
+    init_fake_canvas(&canvas, &kOpenGLBackend);
+    reset_canvas_frame(&canvas, 1);
+    canvas.cached_cam_forward[2] = -1.0f;
+
+    void *mesh = make_depth_test_mesh(-10.0f, -10.0f, -9.0f);
+    void *material = rt_material3d_new();
+    void *transform = rt_mat4_identity();
+    rt_material3d *mat_view = (rt_material3d *)material;
+    mat_view->alpha = 0.5;
+    mat_view->alpha_mode = RT_MATERIAL3D_ALPHA_MODE_BLEND;
+
+    rt_canvas3d_draw_mesh(&canvas, mesh, transform, material);
+
+    test_deferred_draw_t *draws = (test_deferred_draw_t *)canvas.draw_cmds;
+    EXPECT_TRUE(canvas.draw_count == 1, "Transparent bounds-sort test enqueues one draw");
+    EXPECT_TRUE(std::fabs(draws[0].sort_key - 10.0f) < 0.001f,
+                "Transparent sorting uses the mesh bounds depth instead of the model origin");
+
+    cleanup_fake_canvas(&canvas);
+}
+
+static void test_instanced_batch_sort_key_uses_aggregate_bounds_center(void) {
+    vgfx3d_backend_t backend = {};
+    backend.name = "metal";
+    backend.end_frame = noop_end_frame;
+    backend.submit_draw_instanced = record_draw_instanced;
+
+    rt_canvas3d canvas;
+    init_fake_canvas(&canvas, &backend);
+    reset_canvas_frame(&canvas, 1);
+    canvas.cached_cam_forward[2] = -1.0f;
+
+    void *mesh = make_test_mesh();
+    void *material = rt_material3d_new();
+    void *batch = rt_instbatch3d_new(mesh, material);
+    void *near_tx = rt_mat4_identity();
+    void *far_tx = rt_mat4_identity();
+    ((mat4_impl *)near_tx)->m[11] = -0.25;
+    ((mat4_impl *)far_tx)->m[11] = -0.75;
+    rt_instbatch3d_add(batch, near_tx);
+    rt_instbatch3d_add(batch, far_tx);
+
+    rt_canvas3d_draw_instanced(&canvas, batch);
+
+    test_deferred_draw_t *draws = (test_deferred_draw_t *)canvas.draw_cmds;
+    EXPECT_TRUE(canvas.draw_count == 1, "Opaque instanced batch enqueues one deferred draw");
+    EXPECT_TRUE(std::fabs(draws[0].sort_key - 0.5f) < 0.01f,
+                "Opaque instanced batch sorting uses the aggregate bounds center instead of the nearest instance");
+
+    cleanup_fake_canvas(&canvas);
+}
+
+static void test_shadow_selection_prefers_strongest_directional_light_regardless_of_slot(void) {
+    vgfx3d_backend_t backend = {};
+    backend.name = "metal";
+    backend.end_frame = noop_end_frame;
+    backend.submit_draw = noop_draw;
+    backend.shadow_begin = record_shadow_begin;
+    backend.shadow_draw = record_shadow_draw;
+    backend.shadow_end = record_shadow_end;
+
+    rt_canvas3d canvas;
+    vgfx3d_rendertarget_t shadow_rt = {};
+    float shadow_depth[16] = {};
+    rt_light3d dim_light = {};
+    rt_light3d bright_light = {};
+    float first_shadow_vp[16];
+    init_fake_canvas(&canvas, &backend);
+
+    shadow_rt.depth_buf = shadow_depth;
+    shadow_rt.width = 4;
+    shadow_rt.height = 4;
+    canvas.shadow_rt = &shadow_rt;
+    canvas.shadows_enabled = 1;
+    canvas.shadow_bias = 0.0025f;
+
+    dim_light.type = 0;
+    dim_light.direction[1] = -1.0;
+    dim_light.color[0] = dim_light.color[1] = dim_light.color[2] = 1.0;
+    dim_light.intensity = 0.25;
+
+    bright_light.type = 0;
+    bright_light.direction[0] = 1.0 / 1.41421356237;
+    bright_light.direction[1] = -1.0 / 1.41421356237;
+    bright_light.color[0] = bright_light.color[1] = bright_light.color[2] = 1.0;
+    bright_light.intensity = 3.0;
+
+    void *mesh = make_test_mesh();
+    void *material = rt_material3d_new();
+    void *transform = rt_mat4_identity();
+    ((mat4_impl *)transform)->m[11] = -2.0;
+
+    canvas.lights[0] = &dim_light;
+    canvas.lights[1] = &bright_light;
+    reset_shadow_counts();
+    reset_canvas_frame(&canvas, 1);
+    rt_canvas3d_draw_mesh(&canvas, mesh, transform, material);
+    rt_canvas3d_end(&canvas);
+    std::memcpy(first_shadow_vp, last_shadow_vp, sizeof(first_shadow_vp));
+
+    canvas.lights[0] = &bright_light;
+    canvas.lights[1] = &dim_light;
+    reset_shadow_counts();
+    reset_canvas_frame(&canvas, 2);
+    rt_canvas3d_draw_mesh(&canvas, mesh, transform, material);
+    rt_canvas3d_end(&canvas);
+
+    EXPECT_TRUE(shadow_begin_calls == 1 && shadow_draw_calls == 1 && shadow_end_calls == 1,
+                "Shadow selection test still executes exactly one shadow pass");
+    EXPECT_TRUE(matrices_nearly_equal(first_shadow_vp, last_shadow_vp, 0.0001f),
+                "Shadow-map selection follows the strongest directional light instead of slot order");
+
+    cleanup_fake_canvas(&canvas);
+}
+
 static void test_screenshot_prefers_backend_readback(void) {
     typedef struct {
         int64_t w;
@@ -1309,6 +1622,9 @@ int main() {
     test_gpu_skinning_bypass_for_d3d11();
     test_gpu_skinning_bypass_for_metal();
     test_cpu_skinning_fallback_for_software();
+    test_large_gpu_skinning_bypass_for_opengl();
+    test_large_gpu_skinning_bypass_for_d3d11();
+    test_large_gpu_skinning_bypass_for_metal();
     test_gpu_morph_payload_for_opengl();
     test_gpu_morph_payload_for_d3d11();
     test_gpu_morph_payload_for_metal();
@@ -1316,6 +1632,9 @@ int main() {
     test_gpu_morph_normal_payload_for_d3d11();
     test_gpu_morph_normal_payload_for_metal();
     test_attached_morph_targets_route_through_draw_mesh();
+    test_large_morph_payload_falls_back_to_cpu_for_opengl();
+    test_large_morph_payload_falls_back_to_cpu_for_d3d11();
+    test_large_morph_payload_stays_on_gpu_for_metal();
     test_cpu_morph_fallback_for_software();
     test_env_map_payload_forwarded();
     test_backend_skybox_hook_used();
@@ -1331,6 +1650,9 @@ int main() {
     test_pbr_material_payload_forwarded();
     test_instanced_runtime_culls_outside_frustum();
     test_instanced_shadow_pass_includes_instances();
+    test_transparent_sort_key_uses_mesh_bounds_depth();
+    test_instanced_batch_sort_key_uses_aggregate_bounds_center();
+    test_shadow_selection_prefers_strongest_directional_light_regardless_of_slot();
     test_screenshot_prefers_backend_readback();
     test_gpu_postfx_state_latches_across_overlay_pass();
     test_begin_frame_forwards_camera_forward_and_ortho_flag();

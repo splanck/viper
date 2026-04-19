@@ -10,9 +10,10 @@
 //   weight. Enables facial animation, muscle flex, and shape-based deformation.
 //
 // Key invariants:
-//   - Max 32 shapes per MorphTarget3D (VGFX3D_MAX_MORPH_SHAPES).
+//   - Shape storage grows on demand; GPU backends may still fall back to CPU
+//     morphing when the active shape count exceeds backend shader limits.
 //   - vertex_count must match the mesh's vertex count at draw time.
-//   - CPU-applied: morphed vertices submitted through normal draw pipeline.
+//   - Morphed vertices are applied on GPU when supported, otherwise on CPU.
 //   - Normal deltas are optional per shape (NULL = normals unchanged).
 //
 // Links: plans/3d/16-morph-targets.md, rt_canvas3d.h
@@ -27,7 +28,7 @@
 extern "C" {
 #endif
 
-/// @brief Create a morph-target container for blendshape animation (max 32 shapes).
+/// @brief Create a morph-target container for blendshape animation.
 void *rt_morphtarget3d_new(int64_t vertex_count);
 /// @brief Register a named blendshape and allocate its delta arrays. Returns the new shape index.
 int64_t rt_morphtarget3d_add_shape(void *mt, rt_string name);

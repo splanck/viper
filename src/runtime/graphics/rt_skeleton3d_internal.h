@@ -16,7 +16,7 @@
 
 #ifdef VIPER_ENABLE_GRAPHICS
 
-#define VGFX3D_MAX_BONES 128
+#define VGFX3D_MAX_BONES 256
 #define RT_ANIM_BLEND3D_MAX_STATES 8
 
 typedef struct {
@@ -100,5 +100,14 @@ typedef struct rt_anim_blend3d {
     int64_t last_motion_frame;
     int8_t has_prev_motion_palette;
 } rt_anim_blend3d;
+
+void rt_canvas3d_draw_mesh_matrix_skinned_keyed(void *canvas,
+                                                void *mesh,
+                                                const double *model_matrix,
+                                                void *material,
+                                                const void *motion_key,
+                                                const float *bone_palette,
+                                                const float *prev_bone_palette,
+                                                int32_t bone_count);
 
 #endif

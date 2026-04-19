@@ -37,6 +37,7 @@
 #include "rt_physics3d.h"
 #include "rt_quat.h"
 #include "rt_seq.h"
+#include "rt_skeleton3d_internal.h"
 #include "rt_string.h"
 #include "rt_trap.h"
 #include "rt_vec3.h"
@@ -795,12 +796,10 @@ static void draw_node(rt_scene_node3d *node,
     }
 
     if (draw_self && draw_mesh && node->material) {
-        const float *saved_palette = ((rt_mesh3d *)draw_mesh)->bone_palette;
-        const float *saved_prev_palette = ((rt_mesh3d *)draw_mesh)->prev_bone_palette;
-        int32_t saved_bone_count = ((rt_mesh3d *)draw_mesh)->bone_count;
         const float *anim_palette = NULL;
         const float *anim_prev_palette = NULL;
         int32_t anim_bone_count = 0;
+        int32_t mesh_bone_count = ((rt_mesh3d *)draw_mesh)->bone_count;
 
         if (node->bound_animator) {
             anim_palette =
@@ -808,16 +807,21 @@ static void draw_node(rt_scene_node3d *node,
             anim_prev_palette = rt_anim_controller3d_get_previous_palette_data(node->bound_animator,
                                                                                 &anim_bone_count);
         }
-        if (anim_palette && anim_bone_count > 0 && saved_bone_count > 0) {
-            ((rt_mesh3d *)draw_mesh)->bone_palette = anim_palette;
-            ((rt_mesh3d *)draw_mesh)->bone_count =
-                anim_bone_count < saved_bone_count ? anim_bone_count : saved_bone_count;
+        if (anim_palette && anim_bone_count > 0 && mesh_bone_count > 0) {
+            int32_t draw_bone_count =
+                anim_bone_count < mesh_bone_count ? anim_bone_count : mesh_bone_count;
+            rt_canvas3d_draw_mesh_matrix_skinned_keyed(canvas3d,
+                                                       draw_mesh,
+                                                       node->world_matrix,
+                                                       node->material,
+                                                       node,
+                                                       anim_palette,
+                                                       anim_prev_palette,
+                                                       draw_bone_count);
+        } else {
+            rt_canvas3d_draw_mesh_matrix_keyed(
+                canvas3d, draw_mesh, node->world_matrix, node->material, node, NULL, NULL);
         }
-        rt_canvas3d_draw_mesh_matrix_keyed(
-            canvas3d, draw_mesh, node->world_matrix, node->material, node, anim_prev_palette, NULL);
-        ((rt_mesh3d *)draw_mesh)->bone_palette = saved_palette;
-        ((rt_mesh3d *)draw_mesh)->prev_bone_palette = saved_prev_palette;
-        ((rt_mesh3d *)draw_mesh)->bone_count = saved_bone_count;
     }
 
     for (int32_t i = 0; i < node->child_count; i++)

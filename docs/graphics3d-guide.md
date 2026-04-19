@@ -208,7 +208,7 @@ The rendering surface. Creates a window and manages the render loop.
 | `ClearSkybox()` | `void()` | Remove skybox |
 | `SetFog(r, g, b, near, far)` | `void(f64, f64, f64, f64, f64)` | Enable linear distance fog |
 | `ClearFog()` | `void()` | Disable fog |
-| `EnableShadows(mapSize)` | `void(i64)` | Enable shadow mapping (mapSize = shadow map resolution) |
+| `EnableShadows(mapSize)` | `void(i64)` | Enable shadow mapping (mapSize = shadow map resolution; current shadow map follows the strongest directional light) |
 | `DisableShadows()` | `void()` | Disable shadow mapping |
 | `SetShadowBias(bias)` | `void(f64)` | Set shadow acne bias |
 
@@ -411,7 +411,7 @@ Perspective or orthographic camera with view and projection matrices.
 | `FPSUpdate(mdx, mdy, fwd, right, up, speed, dt)` | `void(f64, f64, f64, f64, f64, f64, f64)` | FPS mouse look + WASD movement |
 
 `Yaw`, `Pitch`, `Orbit`, and `Light3D.NewSpot` all use degrees. Writing `Yaw` or `Pitch` updates the camera view immediately.
-`Canvas3D.Begin(canvas, camera)` automatically syncs the camera projection aspect to the active output (window or bound `RenderTarget3D`), so perspective remains correct across resizes and RTT passes.
+`Canvas3D.Begin(canvas, camera)` uses the active output's aspect ratio (window or bound `RenderTarget3D`) when building that frame's projection, so perspective remains correct across resizes and RTT passes without mutating the camera object's stored projection/aspect.
 
 ### Zia Example
 
@@ -674,7 +674,7 @@ func start() {
 
 **Note:** `AsPixels()` returns a fresh copy each call. The render target's buffers are independent from the window framebuffer.
 When a render target is bound, `Canvas3D.Width`, `Canvas3D.Height`, `Begin2D()`, debug overlays, and `Screenshot()` all operate in that target's pixel space instead of the window's.
-`Canvas3D.Begin()` also uses the target's aspect ratio for the camera projection while the render target is bound, so switching between the window and RTT views does not stretch perspective.
+`Canvas3D.Begin()` also uses the target's aspect ratio for that frame's projection while the render target is bound, so switching between the window and RTT views does not stretch perspective or rewrite the camera's stored projection.
 **PostFX:** If a render target is active when you call `Flip()`, the canvas applies the current `PostFX3D` chain to that render target instead of the window backbuffer.
 
 ## CubeMap3D
@@ -946,6 +946,8 @@ For game-facing asset loading, prefer `Model3D.Load`. Use the lower-level `FBX` 
 Format note:
 - `.vscn` and FBX imports can currently populate shared skeletons and animation clips.
 - glTF imports currently populate meshes, materials, and node hierarchy, but not skeletons or animation clips yet.
+- glTF mesh extraction supports `POSITION`, `NORMAL`, `TEXCOORD_0`, `COLOR_0`, `TANGENT`, and `JOINTS_0`/`WEIGHTS_0`.
+- Triangle-list, triangle-strip, and triangle-fan glTF primitives are triangulated on import.
 
 ## Skeleton3D
 
@@ -972,7 +974,7 @@ Bone hierarchy for skeletal animation.
 | `FindBone(name)` | `i64(str)` | Find bone index by name (-1 if not found) |
 | `GetBoneName(index)` | `str(i64)` | Get bone name by index |
 
-Bones must be added in topological order (parent before child). Max 128 bones per skeleton.
+Bones must be added in topological order (parent before child). Max 256 bones per skeleton.
 
 ---
 
@@ -1157,10 +1159,10 @@ func start() {
 }
 ```
 
-- Max 32 shapes per MorphTarget3D
+- Shape storage grows on demand
 - Normal deltas optional (lazy-allocated on first `SetNormalDelta`)
 - Weights can be negative (reverse deformation)
-- CPU-applied: `finalPos = basePos + sum(weight * delta)` per vertex
+- GPU-applied on Metal and on OpenGL/D3D11 while the active shape count fits backend shader limits; otherwise CPU-applied as `finalPos = basePos + sum(weight * delta)` per vertex
 
 ## FBX Loader
 
@@ -1275,7 +1277,7 @@ func start() {
 }
 ```
 
-**Note:** GLTF functions are standalone extractor helpers. For preserved node hierarchies and scene instantiation, load `.gltf` or `.glb` through `Model3D.Load`. Unlike FBX, the low-level GLTF API still does not expose skeletons or animations.
+**Note:** GLTF functions are standalone extractor helpers. They preserve the active-scene hierarchy, matrix-authored node transforms, and extended mesh attributes listed above. For preserved node hierarchies and scene instantiation, load `.gltf` or `.glb` through `Model3D.Load`. Unlike FBX, the low-level GLTF API still does not expose skeletons or animations.
 
 ## Particles3D
 

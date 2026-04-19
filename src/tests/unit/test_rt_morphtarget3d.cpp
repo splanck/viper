@@ -96,6 +96,16 @@ static void test_weight_by_name() {
     EXPECT_NEAR(rt_morphtarget3d_get_weight(mt, 0), 0.5, 0.001, "SetWeightByName works");
 }
 
+static void test_weight_by_name_clamps_like_indexed_set_weight() {
+    void *mt = rt_morphtarget3d_new(4);
+    rt_morphtarget3d_add_shape(mt, rt_const_cstr("blink"));
+    rt_morphtarget3d_set_weight_by_name(mt, rt_const_cstr("blink"), 4.0);
+    EXPECT_NEAR(rt_morphtarget3d_get_weight(mt, 0),
+                1.0,
+                0.001,
+                "SetWeightByName clamps weights to the same unit range");
+}
+
 static void test_negative_weight() {
     void *mt = rt_morphtarget3d_new(4);
     rt_morphtarget3d_add_shape(mt, rt_const_cstr("test"));
@@ -188,6 +198,42 @@ static void test_packed_payload_exports_positions_and_normals() {
     }
 }
 
+static void test_add_shape_grows_beyond_32_entries() {
+    void *mt = rt_morphtarget3d_new(1);
+    int64_t last_index = -1;
+    for (int i = 0; i < 40; i++)
+        last_index = rt_morphtarget3d_add_shape(mt, rt_const_cstr("shape"));
+    EXPECT_TRUE(last_index == 39, "MorphTarget3D.AddShape no longer traps at 32 shapes");
+    EXPECT_TRUE(rt_morphtarget3d_get_shape_count(mt) == 40,
+                "MorphTarget3D tracks shape counts beyond the old 32-shape ceiling");
+}
+
+static void test_packed_payload_keeps_shapes_beyond_32() {
+    void *mt = rt_morphtarget3d_new(1);
+    const float *packed_pos;
+    const float *packed_nrm;
+    for (int i = 0; i < 33; i++)
+        rt_morphtarget3d_add_shape(mt, rt_const_cstr("shape"));
+    rt_morphtarget3d_set_delta(mt, 32, 0, 7.0, 8.0, 9.0);
+    rt_morphtarget3d_set_normal_delta(mt, 32, 0, 0.25, 0.5, 0.75);
+    packed_pos = rt_morphtarget3d_get_packed_deltas(mt);
+    packed_nrm = rt_morphtarget3d_get_packed_normal_deltas(mt);
+    EXPECT_TRUE(packed_pos != nullptr, "Packed morph positions rebuild for shapes beyond slot 31");
+    EXPECT_TRUE(packed_nrm != nullptr, "Packed morph normals rebuild for shapes beyond slot 31");
+    if (packed_pos) {
+        size_t offset = (size_t)32 * 3u;
+        EXPECT_NEAR(packed_pos[offset + 0], 7.0f, 1e-6f, "Packed payload keeps shape 32 X");
+        EXPECT_NEAR(packed_pos[offset + 1], 8.0f, 1e-6f, "Packed payload keeps shape 32 Y");
+        EXPECT_NEAR(packed_pos[offset + 2], 9.0f, 1e-6f, "Packed payload keeps shape 32 Z");
+    }
+    if (packed_nrm) {
+        size_t offset = (size_t)32 * 3u;
+        EXPECT_NEAR(packed_nrm[offset + 0], 0.25f, 1e-6f, "Packed normal payload keeps shape 32 X");
+        EXPECT_NEAR(packed_nrm[offset + 1], 0.5f, 1e-6f, "Packed normal payload keeps shape 32 Y");
+        EXPECT_NEAR(packed_nrm[offset + 2], 0.75f, 1e-6f, "Packed normal payload keeps shape 32 Z");
+    }
+}
+
 namespace {
 static int g_morph_release_count = 0;
 } // namespace
@@ -232,12 +278,15 @@ int main() {
     test_weight_zero();
     test_weight_set_get();
     test_weight_by_name();
+    test_weight_by_name_clamps_like_indexed_set_weight();
     test_negative_weight();
     test_weight_clamped_to_unit_range();
     test_bounds_checks();
     test_null_safety();
     test_packed_payload_generation_tracks_delta_edits_only();
     test_packed_payload_exports_positions_and_normals();
+    test_add_shape_grows_beyond_32_entries();
+    test_packed_payload_keeps_shapes_beyond_32();
     test_mesh_clone_and_clear_manage_morph_target_lifetime();
 
     printf("MorphTarget3D tests: %d/%d passed\n", tests_passed, tests_run);

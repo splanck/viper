@@ -11,7 +11,9 @@
 //   - Uses existing rt_json parser for JSON content
 //   - Supports .glb binary container (magic 0x46546C67)
 //   - Preserves glTF metallic-roughness materials on Material3D's native PBR surface
-//   - Mesh primitives with POSITION, NORMAL, TEXCOORD_0 attributes
+//   - Mesh primitives support POSITION/NORMAL/TEXCOORD_0 plus COLOR_0, TANGENT,
+//     and JOINTS_0/WEIGHTS_0 vertex attributes
+//   - Triangle-list, triangle-strip, and triangle-fan primitives are triangulated
 // Ownership/Lifetime:
 //   - All extracted objects are GC-managed
 // Links: rt_gltf.h, rt_json.h
@@ -25,8 +27,10 @@
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
 #include "rt_pixels.h"
+#include "rt_skeleton3d.h"
 #include "rt_string.h"
 
+#include <limits.h>
 #include <math.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -130,13 +134,13 @@ static void gltf_matrix_to_trs(const double *m, double *pos, double *quat, doubl
     if (!m || !pos || !quat || !scale)
         return;
 
-    pos[0] = m[12];
-    pos[1] = m[13];
-    pos[2] = m[14];
+    pos[0] = m[3];
+    pos[1] = m[7];
+    pos[2] = m[11];
 
-    scale[0] = sqrt(m[0] * m[0] + m[1] * m[1] + m[2] * m[2]);
-    scale[1] = sqrt(m[4] * m[4] + m[5] * m[5] + m[6] * m[6]);
-    scale[2] = sqrt(m[8] * m[8] + m[9] * m[9] + m[10] * m[10]);
+    scale[0] = sqrt(m[0] * m[0] + m[4] * m[4] + m[8] * m[8]);
+    scale[1] = sqrt(m[1] * m[1] + m[5] * m[5] + m[9] * m[9]);
+    scale[2] = sqrt(m[2] * m[2] + m[6] * m[6] + m[10] * m[10]);
     if (scale[0] <= 1e-12)
         scale[0] = 1.0;
     if (scale[1] <= 1e-12)
@@ -145,13 +149,13 @@ static void gltf_matrix_to_trs(const double *m, double *pos, double *quat, doubl
         scale[2] = 1.0;
 
     r00 = m[0] / scale[0];
-    r10 = m[1] / scale[0];
-    r20 = m[2] / scale[0];
-    r01 = m[4] / scale[1];
+    r10 = m[4] / scale[0];
+    r20 = m[8] / scale[0];
+    r01 = m[1] / scale[1];
     r11 = m[5] / scale[1];
-    r21 = m[6] / scale[1];
-    r02 = m[8] / scale[2];
-    r12 = m[9] / scale[2];
+    r21 = m[9] / scale[1];
+    r02 = m[2] / scale[2];
+    r12 = m[6] / scale[2];
     r22 = m[10] / scale[2];
 
     trace = r00 + r11 + r22;
@@ -179,6 +183,16 @@ static void gltf_matrix_to_trs(const double *m, double *pos, double *quat, doubl
         quat[0] = (r02 + r20) / s;
         quat[1] = (r12 + r21) / s;
         quat[2] = 0.25 * s;
+    }
+}
+
+/// @brief Convert a glTF column-major matrix array into Viper's row-major matrix layout.
+static void gltf_matrix_column_major_to_row_major(const double *src, double *dst) {
+    if (!src || !dst)
+        return;
+    for (int row = 0; row < 4; row++) {
+        for (int col = 0; col < 4; col++)
+            dst[row * 4 + col] = src[col * 4 + row];
     }
 }
 
@@ -295,6 +309,15 @@ typedef struct {
     uint8_t *data;
     size_t len;
 } gltf_buffer_t;
+
+typedef struct {
+    const uint8_t *data;
+    int32_t count;
+    int32_t stride;
+    int32_t comp_type;
+    int32_t comp_count;
+    int8_t normalized;
+} gltf_accessor_view_t;
 
 static const char gltf_base64_chars[] =
     "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -442,69 +465,273 @@ static const uint8_t *gltf_get_buffer_view_data(
     return buffers[buf_idx].data + byte_offset;
 }
 
-/// @brief Read accessor data: resolve bufferView → buffer → byte range.
-static const uint8_t *gltf_get_accessor_data(void *root,
-                                             int64_t accessor_idx,
-                                             gltf_buffer_t *buffers,
-                                             int buf_count,
-                                             int *out_count,
-                                             int *out_stride) {
+static int gltf_component_size(int comp_type) {
+    switch (comp_type) {
+        case 5120:
+        case 5121:
+            return 1;
+        case 5122:
+        case 5123:
+            return 2;
+        case 5125:
+        case 5126:
+            return 4;
+        default:
+            return 0;
+    }
+}
+
+static int gltf_component_count(const char *acc_type) {
+    if (!acc_type)
+        return 1;
+    if (strcmp(acc_type, "VEC2") == 0)
+        return 2;
+    if (strcmp(acc_type, "VEC3") == 0)
+        return 3;
+    if (strcmp(acc_type, "VEC4") == 0)
+        return 4;
+    if (strcmp(acc_type, "MAT4") == 0)
+        return 16;
+    return 1;
+}
+
+/// @brief Resolve a glTF accessor into a typed byte view.
+static int gltf_get_accessor_view(void *root,
+                                  int64_t accessor_idx,
+                                  gltf_buffer_t *buffers,
+                                  int buf_count,
+                                  gltf_accessor_view_t *out) {
     void *accessors = jarr(root, "accessors");
+    size_t required_len;
+    int comp_size;
+    int comp_count;
+    const char *acc_type;
     if (!accessors || accessor_idx < 0 || accessor_idx >= jarr_len(accessors))
-        return NULL;
+        return 0;
     void *acc = rt_seq_get(accessors, accessor_idx);
     if (!acc)
-        return NULL;
+        return 0;
 
-    *out_count = (int)jint(acc, "count", 0);
+    memset(out, 0, sizeof(*out));
+    out->count = (int32_t)jint(acc, "count", 0);
     int bv_idx = (int)jint(acc, "bufferView", -1);
     int byte_offset_acc = (int)jint(acc, "byteOffset", 0);
     int comp_type = (int)jint(acc, "componentType", 5126); // 5126=FLOAT
 
     void *views = jarr(root, "bufferViews");
     if (!views || bv_idx < 0 || bv_idx >= (int)jarr_len(views))
-        return NULL;
+        return 0;
     void *bv = rt_seq_get(views, (int64_t)bv_idx);
     if (!bv)
-        return NULL;
+        return 0;
 
     int buf_idx = (int)jint(bv, "buffer", 0);
     int byte_offset_bv = (int)jint(bv, "byteOffset", 0);
     int byte_stride = (int)jint(bv, "byteStride", 0);
 
     if (buf_idx < 0 || buf_idx >= buf_count)
-        return NULL;
+        return 0;
 
-    // Determine element size from componentType
-    int comp_size = 4; // default float
-    if (comp_type == 5120 || comp_type == 5121)
-        comp_size = 1;
-    else if (comp_type == 5122 || comp_type == 5123)
-        comp_size = 2;
-    else if (comp_type == 5125)
-        comp_size = 4; // unsigned int
+    comp_size = gltf_component_size(comp_type);
+    acc_type = jstr(acc, "type");
+    comp_count = gltf_component_count(acc_type);
+    if (comp_size <= 0 || comp_count <= 0)
+        return 0;
 
-    // Determine component count from accessor type
-    const char *acc_type = jstr(acc, "type");
-    int comp_count = 1;
-    if (acc_type) {
-        if (strcmp(acc_type, "VEC2") == 0)
-            comp_count = 2;
-        else if (strcmp(acc_type, "VEC3") == 0)
-            comp_count = 3;
-        else if (strcmp(acc_type, "VEC4") == 0)
-            comp_count = 4;
-        else if (strcmp(acc_type, "MAT4") == 0)
-            comp_count = 16;
-    }
-
-    *out_stride = byte_stride > 0 ? byte_stride : comp_size * comp_count;
+    out->stride = byte_stride > 0 ? byte_stride : comp_size * comp_count;
+    out->comp_type = comp_type;
+    out->comp_count = comp_count;
+    out->normalized = jint(acc, "normalized", 0) ? 1 : 0;
 
     size_t offset = (size_t)byte_offset_bv + (size_t)byte_offset_acc;
-    if (offset >= buffers[buf_idx].len)
-        return NULL;
+    if (offset > buffers[buf_idx].len)
+        return 0;
+    if (out->count <= 0)
+        return 0;
+    required_len = offset + (size_t)(out->count - 1) * (size_t)out->stride +
+                   (size_t)comp_size * (size_t)comp_count;
+    if (required_len > buffers[buf_idx].len)
+        return 0;
 
-    return buffers[buf_idx].data + offset;
+    out->data = buffers[buf_idx].data + offset;
+    return 1;
+}
+
+static float gltf_decode_component_f32(const uint8_t *src, int comp_type, int normalized) {
+    switch (comp_type) {
+        case 5120: {
+            int8_t value = 0;
+            memcpy(&value, src, sizeof(value));
+            if (!normalized)
+                return (float)value;
+            if (value == INT8_MIN)
+                return -1.0f;
+            return (float)value / 127.0f;
+        }
+        case 5121: {
+            uint8_t value = 0;
+            memcpy(&value, src, sizeof(value));
+            return normalized ? (float)value / 255.0f : (float)value;
+        }
+        case 5122: {
+            int16_t value = 0;
+            memcpy(&value, src, sizeof(value));
+            if (!normalized)
+                return (float)value;
+            if (value == INT16_MIN)
+                return -1.0f;
+            return (float)value / 32767.0f;
+        }
+        case 5123: {
+            uint16_t value = 0;
+            memcpy(&value, src, sizeof(value));
+            return normalized ? (float)value / 65535.0f : (float)value;
+        }
+        case 5125: {
+            uint32_t value = 0;
+            memcpy(&value, src, sizeof(value));
+            return normalized ? (float)((double)value / 4294967295.0) : (float)value;
+        }
+        case 5126: {
+            float value = 0.0f;
+            memcpy(&value, src, sizeof(value));
+            return value;
+        }
+        default:
+            return 0.0f;
+    }
+}
+
+static uint32_t gltf_decode_component_u32(const uint8_t *src, int comp_type) {
+    switch (comp_type) {
+        case 5120: {
+            int8_t value = 0;
+            memcpy(&value, src, sizeof(value));
+            return value < 0 ? 0u : (uint32_t)value;
+        }
+        case 5121: {
+            uint8_t value = 0;
+            memcpy(&value, src, sizeof(value));
+            return (uint32_t)value;
+        }
+        case 5122: {
+            int16_t value = 0;
+            memcpy(&value, src, sizeof(value));
+            return value < 0 ? 0u : (uint32_t)value;
+        }
+        case 5123: {
+            uint16_t value = 0;
+            memcpy(&value, src, sizeof(value));
+            return (uint32_t)value;
+        }
+        case 5125: {
+            uint32_t value = 0;
+            memcpy(&value, src, sizeof(value));
+            return value;
+        }
+        case 5126: {
+            float value = 0.0f;
+            memcpy(&value, src, sizeof(value));
+            return value < 0.0f ? 0u : (uint32_t)value;
+        }
+        default:
+            return 0u;
+    }
+}
+
+static void gltf_accessor_read_f32(const gltf_accessor_view_t *view,
+                                   int32_t element_idx,
+                                   float *out,
+                                   int32_t out_components) {
+    if (!out || out_components <= 0) {
+        return;
+    }
+    for (int32_t i = 0; i < out_components; i++)
+        out[i] = 0.0f;
+    if (!view || !view->data || element_idx < 0 || element_idx >= view->count)
+        return;
+    int comp_size = gltf_component_size(view->comp_type);
+    if (comp_size <= 0)
+        return;
+    const uint8_t *base = view->data + (size_t)element_idx * (size_t)view->stride;
+    int32_t limit = view->comp_count < out_components ? view->comp_count : out_components;
+    for (int32_t i = 0; i < limit; i++)
+        out[i] = gltf_decode_component_f32(base + (size_t)i * (size_t)comp_size,
+                                           view->comp_type,
+                                           view->normalized);
+}
+
+static void gltf_accessor_read_u32(const gltf_accessor_view_t *view,
+                                   int32_t element_idx,
+                                   uint32_t *out,
+                                   int32_t out_components) {
+    if (!out || out_components <= 0) {
+        return;
+    }
+    for (int32_t i = 0; i < out_components; i++)
+        out[i] = 0u;
+    if (!view || !view->data || element_idx < 0 || element_idx >= view->count)
+        return;
+    int comp_size = gltf_component_size(view->comp_type);
+    if (comp_size <= 0)
+        return;
+    const uint8_t *base = view->data + (size_t)element_idx * (size_t)view->stride;
+    int32_t limit = view->comp_count < out_components ? view->comp_count : out_components;
+    for (int32_t i = 0; i < limit; i++)
+        out[i] = gltf_decode_component_u32(base + (size_t)i * (size_t)comp_size, view->comp_type);
+}
+
+static void gltf_emit_triangle(void *mesh, uint32_t i0, uint32_t i1, uint32_t i2) {
+    if (i0 == i1 || i1 == i2 || i0 == i2)
+        return;
+    rt_mesh3d_add_triangle(mesh, (int64_t)i0, (int64_t)i1, (int64_t)i2);
+}
+
+static uint32_t gltf_read_index(const gltf_accessor_view_t *view, int32_t element_idx) {
+    if (!view)
+        return (uint32_t)element_idx;
+    uint32_t value = 0;
+    gltf_accessor_read_u32(view, element_idx, &value, 1);
+    return value;
+}
+
+static int gltf_append_primitive_indices(void *mesh,
+                                         int64_t mode,
+                                         const gltf_accessor_view_t *index_view,
+                                         int32_t vertex_count) {
+    int32_t count = index_view ? index_view->count : vertex_count;
+    if (count <= 0)
+        return 0;
+    if (mode == 4) {
+        for (int32_t i = 0; i + 2 < count; i += 3) {
+            gltf_emit_triangle(
+                mesh, gltf_read_index(index_view, i), gltf_read_index(index_view, i + 1), gltf_read_index(index_view, i + 2));
+        }
+        return 1;
+    }
+    if (mode == 5) {
+        for (int32_t i = 0; i + 2 < count; i++) {
+            uint32_t i0 = gltf_read_index(index_view, i + 0);
+            uint32_t i1 = gltf_read_index(index_view, i + 1);
+            uint32_t i2 = gltf_read_index(index_view, i + 2);
+            if ((i & 1) != 0) {
+                uint32_t tmp = i0;
+                i0 = i1;
+                i1 = tmp;
+            }
+            gltf_emit_triangle(mesh, i0, i1, i2);
+        }
+        return 1;
+    }
+    if (mode == 6) {
+        uint32_t base = gltf_read_index(index_view, 0);
+        for (int32_t i = 1; i + 1 < count; i++) {
+            gltf_emit_triangle(
+                mesh, base, gltf_read_index(index_view, i), gltf_read_index(index_view, i + 1));
+        }
+        return 1;
+    }
+    return 0;
 }
 
 /// @brief Refcount-aware free of `*slot`; nulls the pointer afterwards.
@@ -966,101 +1193,114 @@ void *rt_gltf_load(rt_string path) {
                     int64_t pos_acc = jint(attrs, "POSITION", -1);
                     int64_t norm_acc = jint(attrs, "NORMAL", -1);
                     int64_t uv_acc = jint(attrs, "TEXCOORD_0", -1);
+                    int64_t color_acc = jint(attrs, "COLOR_0", -1);
+                    int64_t tangent_acc = jint(attrs, "TANGENT", -1);
+                    int64_t joints_acc = jint(attrs, "JOINTS_0", -1);
+                    int64_t weights_acc = jint(attrs, "WEIGHTS_0", -1);
                     int64_t idx_acc = jint(prim, "indices", -1);
+                    int64_t mode = jint(prim, "mode", 4);
 
                     if (pos_acc < 0)
                         continue;
 
-                    // Read position data
-                    int pos_count = 0, pos_stride = 0;
-                    const uint8_t *pos_data = gltf_get_accessor_data(
-                        root, pos_acc, buffers, buf_count, &pos_count, &pos_stride);
-                    if (!pos_data || pos_count == 0)
+                    gltf_accessor_view_t pos_view;
+                    gltf_accessor_view_t norm_view;
+                    gltf_accessor_view_t uv_view;
+                    gltf_accessor_view_t color_view;
+                    gltf_accessor_view_t tangent_view;
+                    gltf_accessor_view_t joints_view;
+                    gltf_accessor_view_t weights_view;
+                    gltf_accessor_view_t idx_view;
+                    int has_normals = gltf_get_accessor_view(root, norm_acc, buffers, buf_count, &norm_view);
+                    int has_uvs = gltf_get_accessor_view(root, uv_acc, buffers, buf_count, &uv_view);
+                    int has_colors =
+                        gltf_get_accessor_view(root, color_acc, buffers, buf_count, &color_view);
+                    int has_tangents =
+                        gltf_get_accessor_view(root, tangent_acc, buffers, buf_count, &tangent_view);
+                    int has_joints =
+                        gltf_get_accessor_view(root, joints_acc, buffers, buf_count, &joints_view);
+                    int has_weights =
+                        gltf_get_accessor_view(root, weights_acc, buffers, buf_count, &weights_view);
+                    int has_indices =
+                        gltf_get_accessor_view(root, idx_acc, buffers, buf_count, &idx_view);
+
+                    if (!gltf_get_accessor_view(root, pos_acc, buffers, buf_count, &pos_view) ||
+                        pos_view.count == 0)
                         continue;
-
-                    // Read normal data (optional)
-                    int norm_count = 0, norm_stride = 0;
-                    const uint8_t *norm_data = NULL;
-                    if (norm_acc >= 0)
-                        norm_data = gltf_get_accessor_data(
-                            root, norm_acc, buffers, buf_count, &norm_count, &norm_stride);
-
-                    // Read UV data (optional)
-                    int uv_count = 0, uv_stride = 0;
-                    const uint8_t *uv_data = NULL;
-                    if (uv_acc >= 0)
-                        uv_data = gltf_get_accessor_data(
-                            root, uv_acc, buffers, buf_count, &uv_count, &uv_stride);
 
                     // Create mesh and populate vertices
                     void *mesh = rt_mesh3d_new();
                     if (!mesh)
                         continue;
 
-                    for (int vi = 0; vi < pos_count; vi++) {
-                        const float *p =
-                            (const float *)(pos_data + (size_t)vi * (size_t)pos_stride);
-                        float nx = 0, ny = 0, nz = 0;
-                        if (norm_data && vi < norm_count) {
-                            const float *n =
-                                (const float *)(norm_data + (size_t)vi * (size_t)norm_stride);
-                            nx = n[0];
-                            ny = n[1];
-                            nz = n[2];
+                    for (int32_t vi = 0; vi < pos_view.count; vi++) {
+                        float pos[3] = {0.0f, 0.0f, 0.0f};
+                        float nrm[3] = {0.0f, 0.0f, 0.0f};
+                        float uv[2] = {0.0f, 0.0f};
+                        float color[4] = {1.0f, 1.0f, 1.0f, 1.0f};
+                        float tangent[4] = {0.0f, 0.0f, 0.0f, 1.0f};
+                        float weights[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+                        uint32_t joints[4] = {0u, 0u, 0u, 0u};
+                        gltf_accessor_read_f32(&pos_view, vi, pos, 3);
+                        if (has_normals)
+                            gltf_accessor_read_f32(&norm_view, vi, nrm, 3);
+                        if (has_uvs)
+                            gltf_accessor_read_f32(&uv_view, vi, uv, 2);
+                        if (has_colors) {
+                            gltf_accessor_read_f32(&color_view, vi, color, 4);
+                            if (color_view.comp_count < 4)
+                                color[3] = 1.0f;
                         }
-                        float u = 0, v = 0;
-                        if (uv_data && vi < uv_count) {
-                            const float *t =
-                                (const float *)(uv_data + (size_t)vi * (size_t)uv_stride);
-                            u = t[0];
-                            v = t[1];
+                        if (has_tangents) {
+                            gltf_accessor_read_f32(&tangent_view, vi, tangent, 4);
+                            if (tangent_view.comp_count < 4)
+                                tangent[3] = 1.0f;
                         }
-                        rt_mesh3d_add_vertex(mesh, p[0], p[1], p[2], nx, ny, nz, u, v);
-                    }
+                        if (has_joints)
+                            gltf_accessor_read_u32(&joints_view, vi, joints, 4);
+                        if (has_weights)
+                            gltf_accessor_read_f32(&weights_view, vi, weights, 4);
 
-                    // Read indices (optional — if absent, use sequential)
-                    if (idx_acc >= 0) {
-                        int idx_count = 0, idx_stride = 0;
-                        const uint8_t *idx_data = gltf_get_accessor_data(
-                            root, idx_acc, buffers, buf_count, &idx_count, &idx_stride);
-                        // Determine index component type
-                        void *acc_obj = rt_seq_get(jarr(root, "accessors"), idx_acc);
-                        int comp_type = (int)jint(acc_obj, "componentType", 5123);
-
-                        if (idx_data) {
-                            for (int ii = 0; ii + 2 < idx_count; ii += 3) {
-                                int64_t i0, i1, i2;
-                                if (comp_type == 5121) { // UNSIGNED_BYTE
-                                    i0 = idx_data[ii * idx_stride];
-                                    i1 = idx_data[(ii + 1) * idx_stride];
-                                    i2 = idx_data[(ii + 2) * idx_stride];
-                                } else if (comp_type == 5123) { // UNSIGNED_SHORT
-                                    i0 = *(const uint16_t *)(idx_data +
-                                                             (size_t)ii * (size_t)idx_stride);
-                                    i1 = *(const uint16_t *)(idx_data +
-                                                             (size_t)(ii + 1) * (size_t)idx_stride);
-                                    i2 = *(const uint16_t *)(idx_data +
-                                                             (size_t)(ii + 2) * (size_t)idx_stride);
-                                } else { // UNSIGNED_INT (5125)
-                                    i0 = *(const uint32_t *)(idx_data +
-                                                             (size_t)ii * (size_t)idx_stride);
-                                    i1 = *(const uint32_t *)(idx_data +
-                                                             (size_t)(ii + 1) * (size_t)idx_stride);
-                                    i2 = *(const uint32_t *)(idx_data +
-                                                             (size_t)(ii + 2) * (size_t)idx_stride);
+                        rt_mesh3d_add_vertex(
+                            mesh, pos[0], pos[1], pos[2], nrm[0], nrm[1], nrm[2], uv[0], uv[1]);
+                        vgfx3d_vertex_t *vertex = &((rt_mesh3d *)mesh)->vertices[vi];
+                        memcpy(vertex->color, color, sizeof(vertex->color));
+                        memcpy(vertex->tangent, tangent, sizeof(vertex->tangent));
+                        if (has_joints || has_weights) {
+                            rt_mesh3d_set_bone_weights(mesh,
+                                                       vi,
+                                                       (int64_t)joints[0],
+                                                       weights[0],
+                                                       (int64_t)joints[1],
+                                                       weights[1],
+                                                       (int64_t)joints[2],
+                                                       weights[2],
+                                                       (int64_t)joints[3],
+                                                       weights[3]);
+                            for (int j = 0; j < 4; j++) {
+                                if (weights[j] > 0.0001f &&
+                                    (int32_t)(joints[j] + 1u) > ((rt_mesh3d *)mesh)->bone_count) {
+                                    ((rt_mesh3d *)mesh)->bone_count = (int32_t)(joints[j] + 1u);
                                 }
-                                rt_mesh3d_add_triangle(mesh, i0, i1, i2);
                             }
                         }
-                    } else {
-                        // No indices — sequential triangles
-                        for (int vi = 0; vi + 2 < pos_count; vi += 3)
-                            rt_mesh3d_add_triangle(mesh, vi, vi + 1, vi + 2);
+                    }
+
+                    if (!gltf_append_primitive_indices(
+                            mesh, mode, has_indices ? &idx_view : NULL, pos_view.count)) {
+                        gltf_release_local(mesh);
+                        continue;
                     }
 
                     // Recalc normals if none provided
-                    if (!norm_data && ((rt_mesh3d *)mesh)->vertex_count > 0)
+                    if (!has_normals && ((rt_mesh3d *)mesh)->vertex_count > 0)
                         rt_mesh3d_recalc_normals(mesh);
+                    if (!has_tangents && has_uvs && material_idx >= 0 &&
+                        material_idx < asset->material_count) {
+                        rt_material3d *prim_material = (rt_material3d *)asset->materials[material_idx];
+                        if (prim_material && prim_material->normal_map)
+                            rt_mesh3d_calc_tangents(mesh);
+                    }
 
                     asset->meshes[mesh_idx++] = mesh;
                     asset->mesh_count = mesh_idx;
@@ -1100,7 +1340,9 @@ void *rt_gltf_load(rt_string path) {
                     double m[16];
                     for (int i = 0; i < 16; i++)
                         m[i] = jvalue_num(rt_seq_get(matrix_arr, (int64_t)i), i % 5 == 0 ? 1.0 : 0.0);
-                    gltf_matrix_to_trs(m, node->position, node->rotation, node->scale_xyz);
+                    double row_major[16];
+                    gltf_matrix_column_major_to_row_major(m, row_major);
+                    gltf_matrix_to_trs(row_major, node->position, node->rotation, node->scale_xyz);
                 } else {
                     node->position[0] = translation && jarr_len(translation) > 0
                                             ? jvalue_num(rt_seq_get(translation, 0), 0.0)

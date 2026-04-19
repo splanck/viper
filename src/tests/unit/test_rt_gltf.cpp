@@ -198,6 +198,9 @@ static void test_gltf_loads_data_uri_buffers_and_embedded_textures() {
 
     EXPECT_TRUE(mesh->vertices[1].pos[0] == 1.0f && mesh->vertices[2].uv[1] == 1.0f,
                 "GLTF.Load preserves vertex attributes");
+    EXPECT_TRUE(std::fabs(mesh->vertices[0].tangent[0]) > 0.9f &&
+                    std::fabs(mesh->vertices[0].tangent[3]) > 0.9f,
+                "GLTF.Load computes tangents when a normal map is present but tangents are absent");
     EXPECT_TRUE(material->workflow == RT_MATERIAL3D_WORKFLOW_PBR,
                 "GLTF.Load preserves the PBR workflow");
     EXPECT_TRUE(material->texture != nullptr &&
@@ -346,9 +349,231 @@ static void test_gltf_builds_scene_hierarchy_for_active_scene() {
                 "GLTF root node reuses extracted material objects");
 }
 
+static void test_gltf_imports_extended_vertex_attributes_and_triangle_strips() {
+    const char *gltf_path = "/tmp/viper_gltf_extended_attrs.gltf";
+    std::vector<uint8_t> gltf_buffer;
+    const float positions[12] = {
+        0.0f, 0.0f, 0.0f,
+        1.0f, 0.0f, 0.0f,
+        0.0f, 1.0f, 0.0f,
+        1.0f, 1.0f, 0.0f,
+    };
+    const float normals[12] = {
+        0.0f, 0.0f, 1.0f,
+        0.0f, 0.0f, 1.0f,
+        0.0f, 0.0f, 1.0f,
+        0.0f, 0.0f, 1.0f,
+    };
+    const float uvs[8] = {
+        0.0f, 0.0f,
+        1.0f, 0.0f,
+        0.0f, 1.0f,
+        1.0f, 1.0f,
+    };
+    const uint8_t colors[16] = {
+        255, 0, 0, 255,
+        0, 255, 0, 255,
+        0, 0, 255, 255,
+        255, 255, 255, 128,
+    };
+    const float tangents[16] = {
+        1.0f, 0.0f, 0.0f, 1.0f,
+        1.0f, 0.0f, 0.0f, 1.0f,
+        1.0f, 0.0f, 0.0f, 1.0f,
+        1.0f, 0.0f, 0.0f, -1.0f,
+    };
+    const uint8_t joints[16] = {
+        1, 2, 3, 4,
+        4, 3, 2, 1,
+        5, 6, 7, 8,
+        8, 7, 6, 5,
+    };
+    const uint8_t weights[16] = {
+        255, 0, 0, 0,
+        128, 127, 0, 0,
+        64, 64, 64, 63,
+        0, 0, 255, 0,
+    };
+    const uint16_t indices[4] = {0, 1, 2, 3};
+
+    for (float v : positions)
+        append_bytes(gltf_buffer, v);
+    for (float v : normals)
+        append_bytes(gltf_buffer, v);
+    for (float v : uvs)
+        append_bytes(gltf_buffer, v);
+    for (uint8_t v : colors)
+        append_bytes(gltf_buffer, v);
+    for (float v : tangents)
+        append_bytes(gltf_buffer, v);
+    for (uint8_t v : joints)
+        append_bytes(gltf_buffer, v);
+    for (uint8_t v : weights)
+        append_bytes(gltf_buffer, v);
+    for (uint16_t v : indices)
+        append_bytes(gltf_buffer, v);
+
+    std::string buffer_b64 = base64_encode(gltf_buffer.data(), gltf_buffer.size());
+    std::string gltf_json =
+        "{\n"
+        "  \"asset\": {\"version\": \"2.0\"},\n"
+        "  \"buffers\": [{\"uri\": \"data:application/octet-stream;base64," +
+        buffer_b64 + "\", \"byteLength\": " + std::to_string(gltf_buffer.size()) +
+        "}],\n"
+        "  \"bufferViews\": [\n"
+        "    {\"buffer\": 0, \"byteOffset\": 0, \"byteLength\": 48},\n"
+        "    {\"buffer\": 0, \"byteOffset\": 48, \"byteLength\": 48},\n"
+        "    {\"buffer\": 0, \"byteOffset\": 96, \"byteLength\": 32},\n"
+        "    {\"buffer\": 0, \"byteOffset\": 128, \"byteLength\": 16},\n"
+        "    {\"buffer\": 0, \"byteOffset\": 144, \"byteLength\": 64},\n"
+        "    {\"buffer\": 0, \"byteOffset\": 208, \"byteLength\": 16},\n"
+        "    {\"buffer\": 0, \"byteOffset\": 224, \"byteLength\": 16},\n"
+        "    {\"buffer\": 0, \"byteOffset\": 240, \"byteLength\": 8}\n"
+        "  ],\n"
+        "  \"accessors\": [\n"
+        "    {\"bufferView\": 0, \"componentType\": 5126, \"count\": 4, \"type\": \"VEC3\"},\n"
+        "    {\"bufferView\": 1, \"componentType\": 5126, \"count\": 4, \"type\": \"VEC3\"},\n"
+        "    {\"bufferView\": 2, \"componentType\": 5126, \"count\": 4, \"type\": \"VEC2\"},\n"
+        "    {\"bufferView\": 3, \"componentType\": 5121, \"normalized\": true, \"count\": 4, \"type\": \"VEC4\"},\n"
+        "    {\"bufferView\": 4, \"componentType\": 5126, \"count\": 4, \"type\": \"VEC4\"},\n"
+        "    {\"bufferView\": 5, \"componentType\": 5121, \"count\": 4, \"type\": \"VEC4\"},\n"
+        "    {\"bufferView\": 6, \"componentType\": 5121, \"normalized\": true, \"count\": 4, \"type\": \"VEC4\"},\n"
+        "    {\"bufferView\": 7, \"componentType\": 5123, \"count\": 4, \"type\": \"SCALAR\"}\n"
+        "  ],\n"
+        "  \"materials\": [{\"pbrMetallicRoughness\": {\"baseColorFactor\": [1.0, 1.0, 1.0, 1.0]}}],\n"
+        "  \"meshes\": [{\"primitives\": [{\n"
+        "    \"attributes\": {\n"
+        "      \"POSITION\": 0,\n"
+        "      \"NORMAL\": 1,\n"
+        "      \"TEXCOORD_0\": 2,\n"
+        "      \"COLOR_0\": 3,\n"
+        "      \"TANGENT\": 4,\n"
+        "      \"JOINTS_0\": 5,\n"
+        "      \"WEIGHTS_0\": 6\n"
+        "    },\n"
+        "    \"indices\": 7,\n"
+        "    \"mode\": 5,\n"
+        "    \"material\": 0\n"
+        "  }]}]\n"
+        "}\n";
+
+    FILE *gltf = std::fopen(gltf_path, "wb");
+    EXPECT_TRUE(gltf != nullptr, "Extended-attribute glTF file can be created");
+    if (!gltf)
+        return;
+    std::fwrite(gltf_json.data(), 1, gltf_json.size(), gltf);
+    std::fclose(gltf);
+
+    void *asset = rt_gltf_load(rt_const_cstr(gltf_path));
+    EXPECT_TRUE(asset != nullptr, "GLTF.Load parses triangle-strip meshes with extended attributes");
+    if (!asset)
+        return;
+
+    rt_mesh3d *mesh = (rt_mesh3d *)rt_gltf_get_mesh(asset, 0);
+    EXPECT_TRUE(mesh != nullptr, "GLTF.Load returns the extended-attribute mesh");
+    if (!mesh)
+        return;
+
+    EXPECT_TRUE(mesh->vertex_count == 4 && mesh->index_count == 6,
+                "GLTF.Load triangulates triangle strips into indexed triangles");
+    EXPECT_NEAR(mesh->vertices[0].color[0], 1.0, 0.001, "GLTF.Load normalizes COLOR_0 red");
+    EXPECT_NEAR(mesh->vertices[3].color[3], 128.0 / 255.0, 0.001, "GLTF.Load normalizes COLOR_0 alpha");
+    EXPECT_NEAR(mesh->vertices[3].tangent[3], -1.0, 0.001, "GLTF.Load preserves tangent handedness");
+    EXPECT_TRUE(mesh->vertices[0].bone_indices[0] == 1 && mesh->vertices[0].bone_indices[3] == 4,
+                "GLTF.Load preserves JOINTS_0 indices");
+    EXPECT_NEAR(mesh->vertices[1].bone_weights[0], 128.0 / 255.0, 0.001, "GLTF.Load normalizes WEIGHTS_0");
+    EXPECT_TRUE(mesh->bone_count == 9, "GLTF.Load grows the mesh bone palette from JOINTS_0 data");
+    EXPECT_TRUE(mesh->indices[0] == 0 && mesh->indices[1] == 1 && mesh->indices[2] == 2 &&
+                    mesh->indices[3] == 2 && mesh->indices[4] == 1 && mesh->indices[5] == 3,
+                "GLTF.Load preserves triangle-strip winding during triangulation");
+}
+
+static void test_gltf_applies_matrix_nodes_in_column_major_order() {
+    const char *gltf_path = "/tmp/viper_gltf_matrix_node.gltf";
+    std::vector<uint8_t> gltf_buffer;
+    const float positions[9] = {0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f};
+    const uint16_t indices[3] = {0, 1, 2};
+
+    for (float v : positions)
+        append_bytes(gltf_buffer, v);
+    for (uint16_t v : indices)
+        append_bytes(gltf_buffer, v);
+
+    std::string buffer_b64 = base64_encode(gltf_buffer.data(), gltf_buffer.size());
+    std::string gltf_json =
+        "{\n"
+        "  \"asset\": {\"version\": \"2.0\"},\n"
+        "  \"buffers\": [{\"uri\": \"data:application/octet-stream;base64," +
+        buffer_b64 + "\", \"byteLength\": " + std::to_string(gltf_buffer.size()) +
+        "}],\n"
+        "  \"bufferViews\": [\n"
+        "    {\"buffer\": 0, \"byteOffset\": 0, \"byteLength\": 36},\n"
+        "    {\"buffer\": 0, \"byteOffset\": 36, \"byteLength\": 6}\n"
+        "  ],\n"
+        "  \"accessors\": [\n"
+        "    {\"bufferView\": 0, \"componentType\": 5126, \"count\": 3, \"type\": \"VEC3\"},\n"
+        "    {\"bufferView\": 1, \"componentType\": 5123, \"count\": 3, \"type\": \"SCALAR\"}\n"
+        "  ],\n"
+        "  \"materials\": [{\"pbrMetallicRoughness\": {\"baseColorFactor\": [1.0, 1.0, 1.0, 1.0]}}],\n"
+        "  \"meshes\": [{\"primitives\": [{\"attributes\": {\"POSITION\": 0}, \"indices\": 1, \"material\": 0}]}],\n"
+        "  \"nodes\": [{\n"
+        "    \"name\": \"MatrixNode\",\n"
+        "    \"mesh\": 0,\n"
+        "    \"matrix\": [2.0, 0.0, 0.0, 0.0, 0.0, 3.0, 0.0, 0.0, 0.0, 0.0, 4.0, 0.0, 5.0, 6.0, 7.0, 1.0]\n"
+        "  }],\n"
+        "  \"scenes\": [{\"nodes\": [0]}],\n"
+        "  \"scene\": 0\n"
+        "}\n";
+
+    FILE *gltf = std::fopen(gltf_path, "wb");
+    EXPECT_TRUE(gltf != nullptr, "Matrix-node glTF file can be created");
+    if (!gltf)
+        return;
+    std::fwrite(gltf_json.data(), 1, gltf_json.size(), gltf);
+    std::fclose(gltf);
+
+    void *asset = rt_gltf_load(rt_const_cstr(gltf_path));
+    EXPECT_TRUE(asset != nullptr, "GLTF.Load parses matrix-node assets");
+    if (!asset)
+        return;
+
+    void *scene_root = rt_gltf_get_scene_root(asset);
+    void *node = rt_scene_node3d_find(scene_root, rt_const_cstr("MatrixNode"));
+    EXPECT_TRUE(node != nullptr, "GLTF.Load exposes nodes authored with matrix transforms");
+    if (!node)
+        return;
+
+    EXPECT_NEAR(rt_vec3_x(rt_scene_node3d_get_position(node)),
+                5.0,
+                0.001,
+                "GLTF.Load decodes column-major matrix translation.x correctly");
+    EXPECT_NEAR(rt_vec3_y(rt_scene_node3d_get_position(node)),
+                6.0,
+                0.001,
+                "GLTF.Load decodes column-major matrix translation.y correctly");
+    EXPECT_NEAR(rt_vec3_z(rt_scene_node3d_get_position(node)),
+                7.0,
+                0.001,
+                "GLTF.Load decodes column-major matrix translation.z correctly");
+    EXPECT_NEAR(rt_vec3_x(rt_scene_node3d_get_scale(node)),
+                2.0,
+                0.001,
+                "GLTF.Load decodes matrix scale.x correctly");
+    EXPECT_NEAR(rt_vec3_y(rt_scene_node3d_get_scale(node)),
+                3.0,
+                0.001,
+                "GLTF.Load decodes matrix scale.y correctly");
+    EXPECT_NEAR(rt_vec3_z(rt_scene_node3d_get_scale(node)),
+                4.0,
+                0.001,
+                "GLTF.Load decodes matrix scale.z correctly");
+}
+
 int main() {
     test_gltf_loads_data_uri_buffers_and_embedded_textures();
     test_gltf_builds_scene_hierarchy_for_active_scene();
+    test_gltf_imports_extended_vertex_attributes_and_triangle_strips();
+    test_gltf_applies_matrix_nodes_in_column_major_order();
     std::printf("GLTF tests: %d/%d passed\n", tests_passed, tests_run);
     return tests_passed == tests_run ? 0 : 1;
 }

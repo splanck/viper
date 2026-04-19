@@ -12,7 +12,7 @@
 //
 // Key invariants:
 //   - Bones must be added in topological order (parent before child).
-//   - Max 128 bones per skeleton (VGFX3D_MAX_BONES).
+//   - Max 256 bones per skeleton (VGFX3D_MAX_BONES).
 //   - Bone palette = global_transform * inverse_bind_pose per bone.
 //   - Keyframe rotation uses SLERP; position/scale use linear interpolation.
 //

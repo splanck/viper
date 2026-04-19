@@ -41,18 +41,19 @@
 
 /// @brief Heuristic — should we hand bone matrices to the GPU instead of skinning on the CPU?
 ///
-/// Metal is GPU-skinned unconditionally; OpenGL and D3D11 only when
-/// the bone count fits in a typical uniform-buffer slot (≤128).
+/// GPU backends can skin directly while the active palette fits the backend's
+/// shader-visible upload limit. The software backend always returns 0 and uses
+/// CPU skinning.
 /// The Software backend always returns 0 (CPU-skin path).
 static int vgfx3d_backend_prefers_gpu_skinning(const char *backend_name, int32_t bone_count) {
     if (!backend_name || bone_count <= 0)
         return 0;
     if (strcmp(backend_name, "metal") == 0)
-        return 1;
+        return bone_count <= VGFX3D_MAX_BONES;
     if (strcmp(backend_name, "opengl") == 0)
-        return bone_count <= 128;
+        return bone_count <= VGFX3D_MAX_BONES;
     if (strcmp(backend_name, "d3d11") == 0)
-        return bone_count <= 128;
+        return bone_count <= VGFX3D_MAX_BONES;
     return 0;
 }
 
@@ -214,7 +215,7 @@ int64_t rt_skeleton3d_add_bone(void *obj, rt_string name, int64_t parent_index, 
         return -1;
     rt_skeleton3d *s = (rt_skeleton3d *)obj;
     if (s->bone_count >= VGFX3D_MAX_BONES) {
-        rt_trap("Skeleton3D.AddBone: max 128 bones exceeded");
+        rt_trap("Skeleton3D.AddBone: max 256 bones exceeded");
         return -1;
     }
     // parent_index == -1 denotes a root bone. Any other negative value is
@@ -1002,8 +1003,8 @@ void rt_mesh3d_set_bone_weights(void *obj,
     if (vertex_index < 0 || vertex_index >= m->vertex_count)
         return;
 
-    // Bone indices are stored as uint8_t (VGFX3D_MAX_BONES == 128). A raw
-    // int64 → uint8 cast silently wraps values outside [0, 127] to bogus
+    // Bone indices are stored as uint8_t. A raw int64 → uint8 cast silently
+    // wraps values outside [0, 255] to bogus
     // valid-looking indices, then the skinning palette applies the wrong
     // transform. Validate each influence: any out-of-range index drops that
     // influence (weight forced to 0) instead of silently deforming the mesh.
@@ -1022,69 +1023,74 @@ void rt_mesh3d_set_bone_weights(void *obj,
 }
 
 /*==========================================================================
- * Canvas3D extension — DrawMeshSkinned (CPU path)
+ * Canvas3D extension — DrawMeshSkinned
  *=========================================================================*/
 
-/// @brief Draw a skinned mesh — applies the player's bone palette before rasterising.
-///
-/// Picks GPU-skinning when the active backend supports it
-/// (`vgfx3d_backend_prefers_gpu_skinning`); otherwise CPU-skins
-/// the mesh into a transient deformed-vertex buffer (parked on the
-/// canvas via `rt_canvas3d_add_temp_buffer`) and submits the
-/// matrix-form draw.
-void rt_canvas3d_draw_mesh_skinned(
-    void *canvas, void *mesh, void *transform, void *material, void *anim_player) {
-    if (!canvas || !mesh || !transform || !material || !anim_player)
+void rt_canvas3d_draw_mesh_matrix_skinned_keyed(void *canvas,
+                                                void *mesh_obj,
+                                                const double *model_matrix,
+                                                void *material,
+                                                const void *motion_key,
+                                                const float *bone_palette,
+                                                const float *prev_bone_palette,
+                                                int32_t bone_count) {
+    rt_mesh3d *mesh;
+    rt_canvas3d *c;
+
+    if (!canvas || !mesh_obj || !model_matrix || !material || !bone_palette || bone_count <= 0)
+        return;
+    mesh = (rt_mesh3d *)mesh_obj;
+    if (mesh->vertex_count == 0)
         return;
 
-    rt_mesh3d *m = (rt_mesh3d *)mesh;
-    rt_anim_player3d *p = (rt_anim_player3d *)anim_player;
-
-    if (m->vertex_count == 0 || !p->bone_palette)
-        return;
-
-    rt_canvas3d *c = (rt_canvas3d *)canvas;
-    if (c && c->backend &&
-        vgfx3d_backend_prefers_gpu_skinning(c->backend->name, p->skeleton->bone_count)) {
-        const float *prev_palette =
-            anim_player_prepare_prev_palette(p, rt_canvas3d_get_frame_serial(canvas));
-        rt_mesh3d tmp = *m;
-        tmp.bone_palette = p->bone_palette;
-        tmp.prev_bone_palette = prev_palette;
-        tmp.bone_count = p->skeleton->bone_count;
+    c = (rt_canvas3d *)canvas;
+    if (c && c->backend && vgfx3d_backend_prefers_gpu_skinning(c->backend->name, bone_count)) {
+        rt_mesh3d tmp = *mesh;
+        tmp.bone_palette = bone_palette;
+        tmp.prev_bone_palette = prev_bone_palette;
+        tmp.bone_count = bone_count;
         rt_canvas3d_draw_mesh_matrix_keyed(
-            canvas, &tmp, ((mat4_impl *)transform)->m, material, transform, prev_palette, NULL);
+            canvas, &tmp, model_matrix, material, motion_key, prev_bone_palette, NULL);
         return;
     }
 
-    /* Allocate temporary skinned vertex buffer */
     vgfx3d_vertex_t *skinned =
-        (vgfx3d_vertex_t *)malloc((size_t)m->vertex_count * sizeof(vgfx3d_vertex_t));
+        (vgfx3d_vertex_t *)malloc((size_t)mesh->vertex_count * sizeof(vgfx3d_vertex_t));
     if (!skinned)
         return;
 
-    /* Apply CPU skinning (always needed — GPU skinning not yet bypassing this).
-     * The bone_palette is also passed through the draw command so GPU backends
-     * can apply skinning on the vertex shader if they choose. */
-    vgfx3d_skin_vertices(
-        m->vertices, skinned, m->vertex_count, p->bone_palette, p->skeleton->bone_count);
+    vgfx3d_skin_vertices(mesh->vertices, skinned, mesh->vertex_count, bone_palette, bone_count);
 
-    /* Create a temporary mesh wrapper with skinned vertices */
-    rt_mesh3d tmp = *m;
+    rt_mesh3d tmp = *mesh;
     tmp.vertices = skinned;
-
-    /* Register skinned buffer for cleanup at end of frame.
-     * rt_canvas3d_draw_mesh stores a pointer to vertices in the deferred
-     * draw queue, so we can't free until End() has processed the draw. */
+    tmp.bone_palette = NULL;
+    tmp.prev_bone_palette = NULL;
+    tmp.bone_count = 0;
     rt_canvas3d_add_temp_buffer(canvas, skinned);
+    rt_canvas3d_draw_mesh_matrix_keyed(canvas, &tmp, model_matrix, material, motion_key, NULL, NULL);
+}
 
-    /* Stash bone palette info on the mesh for draw command population.
-     * Canvas3D's draw path reads these when building vgfx3d_draw_cmd_t. */
-    tmp.bone_palette = p->bone_palette;
-    tmp.bone_count = p->skeleton->bone_count;
-
-    /* Draw using the normal pipeline */
-    rt_canvas3d_draw_mesh(canvas, &tmp, transform, material);
+/// @brief Draw a skinned mesh — applies the player's bone palette before rasterising.
+void rt_canvas3d_draw_mesh_skinned(
+    void *canvas, void *mesh, void *transform, void *material, void *anim_player) {
+    rt_mesh3d *m;
+    rt_anim_player3d *p;
+    const float *prev_palette;
+    if (!canvas || !mesh || !transform || !material || !anim_player)
+        return;
+    m = (rt_mesh3d *)mesh;
+    p = (rt_anim_player3d *)anim_player;
+    if (m->vertex_count == 0 || !p->bone_palette)
+        return;
+    prev_palette = anim_player_prepare_prev_palette(p, rt_canvas3d_get_frame_serial(canvas));
+    rt_canvas3d_draw_mesh_matrix_skinned_keyed(canvas,
+                                               mesh,
+                                               ((mat4_impl *)transform)->m,
+                                               material,
+                                               transform,
+                                               p->bone_palette,
+                                               prev_palette,
+                                               p->skeleton->bone_count);
 }
 
 /*==========================================================================
@@ -1335,46 +1341,15 @@ void rt_canvas3d_draw_mesh_blended(
     if (mesh->vertex_count == 0)
         return;
 
-    rt_canvas3d *canvas3d = (rt_canvas3d *)canvas;
-    if (canvas3d && canvas3d->backend &&
-        vgfx3d_backend_prefers_gpu_skinning(canvas3d->backend->name, skel->bone_count)) {
-        const float *prev_palette =
-            anim_blend_prepare_prev_palette(b, rt_canvas3d_get_frame_serial(canvas));
-        rt_mesh3d tmp = *mesh;
-        tmp.bone_palette = b->bone_palette;
-        tmp.prev_bone_palette = prev_palette;
-        tmp.bone_count = skel->bone_count;
-        rt_canvas3d_draw_mesh_matrix_keyed(
-            canvas, &tmp, ((mat4_impl *)transform)->m, material, transform, prev_palette, NULL);
-        return;
-    }
-
-    /* CPU skinning with blend palette */
-    vgfx3d_vertex_t *skinned =
-        (vgfx3d_vertex_t *)malloc(mesh->vertex_count * sizeof(vgfx3d_vertex_t));
-    if (!skinned)
-        return;
-
-    extern void vgfx3d_skin_vertices(const vgfx3d_vertex_t *src,
-                                     vgfx3d_vertex_t *dst,
-                                     uint32_t count,
-                                     const float *palette,
-                                     int32_t bone_count);
-    vgfx3d_skin_vertices(
-        mesh->vertices, skinned, mesh->vertex_count, b->bone_palette, skel->bone_count);
-
-    rt_mesh3d tmp;
-    tmp.vptr = NULL;
-    tmp.vertices = skinned;
-    tmp.vertex_count = mesh->vertex_count;
-    tmp.vertex_capacity = mesh->vertex_count;
-    tmp.indices = mesh->indices;
-    tmp.index_count = mesh->index_count;
-    tmp.index_capacity = mesh->index_count;
-
-    rt_canvas3d_add_temp_buffer(canvas, skinned);
-
-    rt_canvas3d_draw_mesh(canvas, &tmp, transform, material);
+    const float *prev_palette = anim_blend_prepare_prev_palette(b, rt_canvas3d_get_frame_serial(canvas));
+    rt_canvas3d_draw_mesh_matrix_skinned_keyed(canvas,
+                                               mesh,
+                                               ((mat4_impl *)transform)->m,
+                                               material,
+                                               transform,
+                                               b->bone_palette,
+                                               prev_palette,
+                                               skel->bone_count);
 }
 
 #else

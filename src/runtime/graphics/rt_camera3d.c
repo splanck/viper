@@ -192,6 +192,38 @@ void rt_camera3d_sync_render_aspect(void *obj, double aspect) {
     rebuild_projection(cam);
 }
 
+/// @brief Build the projection matrix a render pass should use for the given aspect.
+/// @details Unlike `rt_camera3d_sync_render_aspect`, this does not mutate the
+///          camera object. Canvas3D uses it so the same camera can be reused
+///          across outputs with different aspect ratios without permanently
+///          rewriting `cam->aspect` / `cam->projection`.
+void rt_camera3d_get_render_projection(void *obj, double aspect_override, float *out_projection) {
+    rt_camera3d *cam = (rt_camera3d *)obj;
+    double projection[16];
+    double aspect;
+    double near_plane;
+    double far_plane;
+
+    if (!cam || !out_projection)
+        return;
+
+    aspect = sanitize_aspect(aspect_override > 1e-6 ? aspect_override : cam->aspect);
+    near_plane = cam->near_plane;
+    far_plane = cam->far_plane;
+    sanitize_clip_planes(&near_plane, &far_plane);
+
+    if (cam->is_ortho) {
+        double half_h = sanitize_ortho_size(cam->ortho_size);
+        double half_w = half_h * aspect;
+        build_ortho(projection, -half_w, half_w, -half_h, half_h, near_plane, far_plane);
+    } else {
+        build_perspective(projection, sanitize_fov(cam->fov), aspect, near_plane, far_plane);
+    }
+
+    for (int i = 0; i < 16; i++)
+        out_projection[i] = (float)projection[i];
+}
+
 /// @brief Recover the FPS yaw/pitch state from the current view matrix.
 /// @details Called after `LookAt` or other view-replacing ops so the next
 ///          FPS-style mouse delta starts from the correct heading. Forward

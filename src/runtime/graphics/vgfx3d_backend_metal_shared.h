@@ -8,7 +8,7 @@
 extern "C" {
 #endif
 
-#define VGFX3D_METAL_MAX_BONES 128
+#define VGFX3D_METAL_MAX_BONES 256
 
 typedef enum {
     VGFX3D_METAL_BLEND_OPAQUE = 0,

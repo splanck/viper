@@ -348,7 +348,7 @@ static NSString *metal_shader_source =
      "        float bw = in.boneWt[i];\n"
      "        if (bw <= 0.0001)\n"
      "            continue;\n"
-     "        uint idx = min((uint)in.boneIdx[i], 127u);\n"
+     "        uint idx = min((uint)in.boneIdx[i], 255u);\n"
      "        skinned += (palette[idx] * pos) * bw;\n"
      "    }\n"
      "    return skinned;\n"
@@ -365,7 +365,7 @@ static NSString *metal_shader_source =
      "        float bw = in.boneWt[i];\n"
      "        if (bw <= 0.0001)\n"
      "            continue;\n"
-     "        uint idx = min((uint)in.boneIdx[i], 127u);\n"
+     "        uint idx = min((uint)in.boneIdx[i], 255u);\n"
      "        skinned += (palette[idx] * float4(vec, 0.0)).xyz * bw;\n"
      "    }\n"
      "    return skinned;\n"
@@ -2640,7 +2640,8 @@ static void metal_submit_draw(void *ctx_ptr,
         memcpy(obj.vp, vp_t, sizeof(float) * 16);
         vgfx3d_compute_normal_matrix4(cmd->model_matrix, normal_m);
         transpose4x4(normal_m, obj.nm);
-        int capped_bone_count = cmd->bone_count > 128 ? 128 : cmd->bone_count;
+        int capped_bone_count = cmd->bone_count > VGFX3D_METAL_MAX_BONES ? VGFX3D_METAL_MAX_BONES
+                                                                          : cmd->bone_count;
         int has_skinning = (cmd->bone_palette && capped_bone_count > 0) ? 1 : 0;
         int has_prev_skinning = (has_skinning && cmd->prev_bone_palette) ? 1 : 0;
         obj.flags0[0] = has_skinning;
@@ -3150,7 +3151,8 @@ static void metal_submit_draw_instanced(void *ctx_ptr,
         mtl_per_object_t obj;
         memset(&obj, 0, sizeof(obj));
         float vp_t[16];
-        int capped_bone_count = cmd->bone_count > 128 ? 128 : cmd->bone_count;
+        int capped_bone_count = cmd->bone_count > VGFX3D_METAL_MAX_BONES ? VGFX3D_METAL_MAX_BONES
+                                                                          : cmd->bone_count;
         int has_skinning = (cmd->bone_palette && capped_bone_count > 0) ? 1 : 0;
         int has_prev_skinning = (has_skinning && cmd->prev_bone_palette) ? 1 : 0;
         mat4f_identity(obj.m);

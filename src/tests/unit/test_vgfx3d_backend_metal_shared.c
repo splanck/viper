@@ -56,6 +56,21 @@ static void test_pack_bone_palette_zero_pads_unused_bones(void) {
                 "Bone palette zero-pads the tail of the upload buffer");
 }
 
+static void test_pack_bone_palette_keeps_highest_supported_bone(void) {
+    float src[VGFX3D_METAL_MAX_BONES * 16];
+    float dst[VGFX3D_METAL_MAX_BONES * 16];
+    size_t tail = (size_t)(VGFX3D_METAL_MAX_BONES - 1) * 16u;
+
+    for (size_t i = 0; i < sizeof(src) / sizeof(src[0]); i++)
+        src[i] = (float)i;
+    memset(dst, 0, sizeof(dst));
+    vgfx3d_metal_pack_bone_palette(dst, src, VGFX3D_METAL_MAX_BONES);
+
+    EXPECT_NEAR(dst[tail + 0], src[tail + 0], 1e-6f, "Metal bone packing preserves the final supported bone");
+    EXPECT_NEAR(dst[tail + 15], src[tail + 15], 1e-6f,
+                "Metal bone packing preserves the tail matrix element of the final supported bone");
+}
+
 static void test_fill_instance_data_transposes_and_tracks_history(void) {
     vgfx3d_metal_instance_data_t instances[2];
     float models[32];
@@ -242,6 +257,7 @@ static void test_capacity_mip_and_morph_cache_helpers(void) {
 
 int main(void) {
     test_pack_bone_palette_zero_pads_unused_bones();
+    test_pack_bone_palette_keeps_highest_supported_bone();
     test_fill_instance_data_transposes_and_tracks_history();
     test_frame_history_preserves_scene_state_across_overlay_passes();
     test_target_kind_blend_motion_and_readback_helpers();

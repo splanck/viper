@@ -733,8 +733,8 @@ static const char *const glsl_vertex_src[] = {
     "layout(location=12) in vec4 aPrevInstanceRow1;\n"
     "layout(location=13) in vec4 aPrevInstanceRow2;\n"
     "layout(location=14) in vec4 aPrevInstanceRow3;\n"
-    "layout(std140) uniform Bones { mat4 uBonePalette[128]; };\n"
-    "layout(std140) uniform PrevBones { mat4 uPrevBonePalette[128]; };\n"
+    "layout(std140) uniform Bones { mat4 uBonePalette[256]; };\n"
+    "layout(std140) uniform PrevBones { mat4 uPrevBonePalette[256]; };\n"
     "uniform mat4 uModelMatrix;\n"
     "uniform mat4 uPrevModelMatrix;\n"
     "uniform mat4 uViewProjection;\n"
@@ -783,7 +783,7 @@ static const char *const glsl_vertex_src[] = {
     "    for (int i = 0; i < 4; i++) {\n"
     "        float bw = aBoneWt[i];\n"
     "        if (bw > 0.0001) {\n"
-    "            int b = min(int(aBoneIdx[i]), 127);\n"
+    "            int b = min(int(aBoneIdx[i]), 255);\n"
     "            mat4 bm = (usePrevPalette != 0 && uHasPrevSkinning != 0) ? uPrevBonePalette[b] : "
     "uBonePalette[b];\n"
     "            skinnedPos += bm * localPos * bw;\n"
@@ -797,7 +797,7 @@ static const char *const glsl_vertex_src[] = {
     "    for (int i = 0; i < 4; i++) {\n"
     "        float bw = aBoneWt[i];\n"
     "        if (bw > 0.0001) {\n"
-    "            int b = min(int(aBoneIdx[i]), 127);\n"
+    "            int b = min(int(aBoneIdx[i]), 255);\n"
     "            mat4 bm = uBonePalette[b];\n"
     "            skinnedNormal += (bm * vec4(localNormal, 0.0)).xyz * bw;\n"
     "        }\n"
@@ -1157,7 +1157,7 @@ static const char *glsl_shadow_vertex_src =
     "layout(location=0) in vec3 aPosition;\n"
     "layout(location=5) in uvec4 aBoneIdx;\n"
     "layout(location=6) in vec4 aBoneWt;\n"
-    "layout(std140) uniform Bones { mat4 uBonePalette[128]; };\n"
+    "layout(std140) uniform Bones { mat4 uBonePalette[256]; };\n"
     "uniform mat4 uModelMatrix;\n"
     "uniform mat4 uViewProjection;\n"
     "uniform int uHasSkinning;\n"
@@ -1185,7 +1185,7 @@ static const char *glsl_shadow_vertex_src =
     "        for (int i = 0; i < 4; i++) {\n"
     "            float bw = aBoneWt[i];\n"
     "            if (bw > 0.0001) {\n"
-    "                int b = min(int(aBoneIdx[i]), 127);\n"
+    "                int b = min(int(aBoneIdx[i]), 255);\n"
     "                skinnedPos += uBonePalette[b] * localPos * bw;\n"
     "            }\n"
     "        }\n"
@@ -2634,21 +2634,20 @@ static void configure_instance_attributes(gl_context_t *ctx,
 ///
 /// GLSL's `mat4` UBO layout is column-major; our matrices are row-
 /// major. We transpose during upload so the shader sees the right
-/// layout without per-multiply transposes. Bone counts > 128 are
-/// silently truncated (the shader's array is fixed-size).
+/// layout without per-multiply transposes.
 static void upload_bone_palette(gl_context_t *ctx,
                                 GLuint ubo,
                                 const float *bone_palette,
                                 int32_t bone_count) {
-    static const size_t kBonePaletteBytes = 128u * 16u * sizeof(float);
-    float upload[128 * 16];
+    static const size_t kBonePaletteBytes = 256u * 16u * sizeof(float);
+    float upload[256 * 16];
 
     if (!ctx || !bone_palette || bone_count <= 0)
         return;
 
     memset(upload, 0, sizeof(upload));
-    if (bone_count > 128)
-        bone_count = 128;
+    if (bone_count > 256)
+        bone_count = 256;
     for (int32_t i = 0; i < bone_count; i++)
         transpose4x4(&bone_palette[i * 16], &upload[i * 16]);
 
@@ -2826,7 +2825,7 @@ static void bind_morph_payload(gl_context_t *ctx,
     gl_morph_cache_entry_t *cached_entry = NULL;
     GLuint morph_tbo = 0;
     GLuint morph_normal_tbo = 0;
-    int use_skinning = (cmd->bone_palette && cmd->bone_count > 0 && cmd->bone_count <= 128) ? 1 : 0;
+    int use_skinning = (cmd->bone_palette && cmd->bone_count > 0 && cmd->bone_count <= 256) ? 1 : 0;
     int morph_count = (cmd->morph_deltas && cmd->morph_weights && cmd->morph_shape_count > 0)
                           ? cmd->morph_shape_count
                           : 0;
@@ -3083,7 +3082,7 @@ static void bind_material_textures(gl_context_t *ctx, const vgfx3d_draw_cmd_t *c
 /// for the unused locations so it skips those uniform writes.
 static void bind_shadow_anim(gl_context_t *ctx, const vgfx3d_draw_cmd_t *cmd) {
     gl.Uniform1i(ctx->shadow_uHasSkinning,
-                 (cmd->bone_palette && cmd->bone_count > 0 && cmd->bone_count <= 128) ? 1 : 0);
+                 (cmd->bone_palette && cmd->bone_count > 0 && cmd->bone_count <= 256) ? 1 : 0);
     int morph_count = (cmd->morph_deltas && cmd->morph_weights && cmd->morph_shape_count > 0)
                           ? cmd->morph_shape_count
                           : 0;

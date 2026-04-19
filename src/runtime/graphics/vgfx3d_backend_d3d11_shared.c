@@ -14,8 +14,9 @@
 // Key invariants:
 //   - HLSL constant buffers require float4 alignment, so scalar arrays must be
 //     packed into vec4 slots (one scalar per .x, padding zeros in .yzw).
-//   - Bone palette is a fixed VGFX3D_D3D11_MAX_BONES × mat4 (16 floats); excess
-//     bones are silently truncated to keep the cbuffer size constant.
+//   - Bone palette is a fixed VGFX3D_D3D11_MAX_BONES × mat4 (16 floats); the
+//     upload is zero-padded and clamped to that supported cap to keep the
+//     cbuffer size constant.
 //   - Frame history tracks scene VP and previous-frame VP separately from
 //     overlay/draw VP so motion vectors stay correct across overlay passes.
 //
@@ -54,7 +55,8 @@ void vgfx3d_d3d11_pack_scalar_array4(float (*dst)[4],
 
 /// @brief Copy a bone palette (mat4 per bone) into a fixed-size cbuffer slot.
 /// Zero-fills the entire palette first so unused slots produce identity-like behavior.
-/// Bones beyond `VGFX3D_D3D11_MAX_BONES` are silently dropped.
+/// If @p bone_count exceeds `VGFX3D_D3D11_MAX_BONES`, the upload is clamped to
+/// the largest supported palette size for this backend.
 void vgfx3d_d3d11_pack_bone_palette(float *dst, const float *src, int32_t bone_count) {
     size_t copy_count;
 

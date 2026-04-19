@@ -847,11 +847,14 @@ HTTP request builder for advanced requests with custom headers and options.
 | `SetBody(data)`           | HttpReq | Set request body as Bytes (chainable)        |
 | `SetBodyStr(text)`        | HttpReq | Set request body as string (chainable)       |
 | `SetHeader(name, value)`  | HttpReq | Set a request header (chainable)             |
+| `SetForceHttp1(enabled)` | HttpReq | Force HTTP/1.1 and opt out of HTTP/2 ALPN    |
 | `SetKeepAlive(enabled)`   | HttpReq | Allow or disable pooled keep-alive reuse     |
 | `SetTimeout(ms)`          | HttpReq | Set request timeout in milliseconds          |
 | `SetTlsVerify(enabled)`   | HttpReq | Enable or disable HTTPS certificate verification |
 
 > **TLS configuration:** Certificate verification is enabled by default (`verify_cert=1`). To disable verification (insecure, not recommended for production): call `.SetTlsVerify(false)` on the `HttpReq` before calling `Send()`. Use `SetTimeout(ms)` to control the overall request timeout. For raw TLS connections (without HTTP), use `Viper.Crypto.Tls` directly.
+>
+> **HTTP/2 control:** HTTPS requests advertise `h2,http/1.1` by default and use HTTP/2 automatically when the server selects it. Call `.SetForceHttp1(true)` when you need HTTP/1.1-specific behavior or want to suppress HTTP/2 ALPN negotiation for a particular request.
 >
 > **Connection reuse:** `HttpReq` closes the socket by default. Call `.SetKeepAlive(true)` when the request is being sent through a session/client that has an attached connection pool.
 
