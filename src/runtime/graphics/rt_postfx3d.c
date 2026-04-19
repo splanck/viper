@@ -108,8 +108,9 @@ typedef struct {
 
 typedef struct {
     void *vptr;
-    postfx_entry_t effects[8];
+    postfx_entry_t *effects;
     int32_t effect_count;
+    int32_t effect_capacity;
     int8_t enabled;
 } rt_postfx3d;
 
@@ -123,6 +124,35 @@ static float clampf(float v, float lo, float hi) {
 
 static float luminance(float r, float g, float b) {
     return 0.2126f * r + 0.7152f * g + 0.0722f * b;
+}
+
+static postfx_entry_t *postfx_append_entry(rt_postfx3d *fx) {
+    postfx_entry_t *effects;
+    int32_t new_capacity;
+
+    if (!fx)
+        return NULL;
+    if (fx->effect_count < fx->effect_capacity) {
+        postfx_entry_t *entry = &fx->effects[fx->effect_count++];
+        memset(entry, 0, sizeof(*entry));
+        return entry;
+    }
+
+    new_capacity = fx->effect_capacity > 0 ? fx->effect_capacity * 2 : 8;
+    if (new_capacity < fx->effect_count + 1)
+        new_capacity = fx->effect_count + 1;
+    effects =
+        (postfx_entry_t *)realloc(fx->effects, (size_t)new_capacity * sizeof(postfx_entry_t));
+    if (!effects)
+        return NULL;
+    memset(effects + fx->effect_capacity,
+           0,
+           (size_t)(new_capacity - fx->effect_capacity) * sizeof(postfx_entry_t));
+    fx->effects = effects;
+    fx->effect_capacity = new_capacity;
+    effects = &fx->effects[fx->effect_count++];
+    memset(effects, 0, sizeof(*effects));
+    return effects;
 }
 
 /*==========================================================================
@@ -451,7 +481,13 @@ static void postfx_apply(rt_postfx3d *fx, uint8_t *pixels, int32_t w, int32_t h,
  *=========================================================================*/
 
 static void rt_postfx3d_finalize(void *obj) {
-    (void)obj; /* no heap allocations in the struct itself */
+    rt_postfx3d *fx = (rt_postfx3d *)obj;
+    if (!fx)
+        return;
+    free(fx->effects);
+    fx->effects = NULL;
+    fx->effect_capacity = 0;
+    fx->effect_count = 0;
 }
 
 void *rt_postfx3d_new(void) {
@@ -461,23 +497,25 @@ void *rt_postfx3d_new(void) {
         return NULL;
     }
     fx->vptr = NULL;
+    fx->effects = NULL;
     fx->effect_count = 0;
+    fx->effect_capacity = 0;
     fx->enabled = 1;
-    memset(fx->effects, 0, sizeof(fx->effects));
     rt_obj_set_finalizer(fx, rt_postfx3d_finalize);
     return fx;
 }
 
 /// @brief Append a Bloom effect: extracts pixels brighter than `threshold`, blurs `blur_passes`
-/// times, then composites back at `intensity` strength. Effect chain caps at 8 entries (silently
-/// dropped past that). Common values: threshold 0.8–1.0, intensity 0.3–1.5, passes 2–6.
+/// times, then composites back at `intensity` strength. Common values: threshold 0.8–1.0,
+/// intensity 0.3–1.5, passes 2–6.
 void rt_postfx3d_add_bloom(void *obj, double threshold, double intensity, int64_t blur_passes) {
+    postfx_entry_t *e;
     if (!obj)
         return;
     rt_postfx3d *fx = (rt_postfx3d *)obj;
-    if (fx->effect_count >= 8)
+    e = postfx_append_entry(fx);
+    if (!e)
         return;
-    postfx_entry_t *e = &fx->effects[fx->effect_count++];
     e->type = POSTFX_BLOOM;
     e->enabled = 1;
     e->p.bloom.threshold = (float)threshold;
@@ -488,12 +526,13 @@ void rt_postfx3d_add_bloom(void *obj, double threshold, double intensity, int64_
 /// @brief Append a tone-map (HDR → LDR compression). `mode`: 0 = Reinhard, 1 = ACES filmic,
 /// 2 = Uncharted-2. `exposure` scales the input before mapping (typical 0.5–2.0).
 void rt_postfx3d_add_tonemap(void *obj, int64_t mode, double exposure) {
+    postfx_entry_t *e;
     if (!obj)
         return;
     rt_postfx3d *fx = (rt_postfx3d *)obj;
-    if (fx->effect_count >= 8)
+    e = postfx_append_entry(fx);
+    if (!e)
         return;
-    postfx_entry_t *e = &fx->effects[fx->effect_count++];
     e->type = POSTFX_TONEMAP;
     e->enabled = 1;
     e->p.tonemap.mode = (int32_t)mode;
@@ -503,12 +542,13 @@ void rt_postfx3d_add_tonemap(void *obj, int64_t mode, double exposure) {
 /// @brief Append FXAA (Fast Approximate Anti-Aliasing). Smooths jagged edges by detecting
 /// luminance discontinuities. Defaults to standard edge-threshold 0.166 / min-threshold 0.0833.
 void rt_postfx3d_add_fxaa(void *obj) {
+    postfx_entry_t *e;
     if (!obj)
         return;
     rt_postfx3d *fx = (rt_postfx3d *)obj;
-    if (fx->effect_count >= 8)
+    e = postfx_append_entry(fx);
+    if (!e)
         return;
-    postfx_entry_t *e = &fx->effects[fx->effect_count++];
     e->type = POSTFX_FXAA;
     e->enabled = 1;
     e->p.fxaa.edge_threshold = 0.166f;
@@ -518,12 +558,13 @@ void rt_postfx3d_add_fxaa(void *obj) {
 /// @brief Append a color-grading effect. All three params are multiplicative (1.0 = neutral):
 /// `brightness` adds, `contrast` scales around 0.5, `saturation` interpolates from grayscale.
 void rt_postfx3d_add_color_grade(void *obj, double brightness, double contrast, double saturation) {
+    postfx_entry_t *e;
     if (!obj)
         return;
     rt_postfx3d *fx = (rt_postfx3d *)obj;
-    if (fx->effect_count >= 8)
+    e = postfx_append_entry(fx);
+    if (!e)
         return;
-    postfx_entry_t *e = &fx->effects[fx->effect_count++];
     e->type = POSTFX_COLOR_GRADE;
     e->enabled = 1;
     e->p.color_grade.brightness = (float)brightness;
@@ -534,12 +575,13 @@ void rt_postfx3d_add_color_grade(void *obj, double brightness, double contrast, 
 /// @brief Append a vignette (radial darkening toward edges). `radius` is the bright-circle
 /// fraction of half-screen-min-axis (typical 0.5–0.8); `softness` controls the falloff width.
 void rt_postfx3d_add_vignette(void *obj, double radius, double softness) {
+    postfx_entry_t *e;
     if (!obj)
         return;
     rt_postfx3d *fx = (rt_postfx3d *)obj;
-    if (fx->effect_count >= 8)
+    e = postfx_append_entry(fx);
+    if (!e)
         return;
-    postfx_entry_t *e = &fx->effects[fx->effect_count++];
     e->type = POSTFX_VIGNETTE;
     e->enabled = 1;
     e->p.vignette.radius = (float)radius;
@@ -564,10 +606,12 @@ void rt_postfx3d_clear(void *obj) {
         return;
     rt_postfx3d *fx = (rt_postfx3d *)obj;
     fx->effect_count = 0;
-    memset(fx->effects, 0, sizeof(fx->effects));
+    if (fx->effects && fx->effect_capacity > 0) {
+        memset(fx->effects, 0, (size_t)fx->effect_capacity * sizeof(*fx->effects));
+    }
 }
 
-/// @brief Number of effects currently in the chain (0..8).
+/// @brief Number of effects currently in the chain.
 int64_t rt_postfx3d_get_effect_count(void *obj) {
     return obj ? ((rt_postfx3d *)obj)->effect_count : 0;
 }
@@ -607,6 +651,8 @@ void rt_postfx3d_apply_to_canvas(void *canvas) {
     if (!fx || !fx->enabled || fx->effect_count == 0)
         return;
     if (c->render_target) {
+        if (!vgfx3d_rendertarget_ensure_color(c->render_target))
+            return;
         if (!vgfx3d_rendertarget_sync_color_if_needed(c->render_target))
             return;
         pixels = c->render_target->color_buf;
@@ -634,12 +680,13 @@ void rt_postfx3d_apply_to_canvas(void *canvas) {
 /// neighborhood; `intensity` is the darkening multiplier; `samples` controls quality (8..64).
 /// Higher `samples` = better quality but slower.
 void rt_postfx3d_add_ssao(void *obj, double radius, double intensity, int64_t samples) {
+    postfx_entry_t *e;
     if (!obj)
         return;
     rt_postfx3d *fx = (rt_postfx3d *)obj;
-    if (fx->effect_count >= 8)
+    e = postfx_append_entry(fx);
+    if (!e)
         return;
-    postfx_entry_t *e = &fx->effects[fx->effect_count++];
     e->type = POSTFX_SSAO;
     e->enabled = 1;
     e->p.ssao.ao_radius = (float)radius;
@@ -651,12 +698,13 @@ void rt_postfx3d_add_ssao(void *obj, double radius, double intensity, int64_t sa
 /// `aperture` controls how quickly things outside that depth blur; `max_blur` caps the blur
 /// kernel radius in pixels. Larger aperture = shallower DOF.
 void rt_postfx3d_add_dof(void *obj, double focus_distance, double aperture, double max_blur) {
+    postfx_entry_t *e;
     if (!obj)
         return;
     rt_postfx3d *fx = (rt_postfx3d *)obj;
-    if (fx->effect_count >= 8)
+    e = postfx_append_entry(fx);
+    if (!e)
         return;
-    postfx_entry_t *e = &fx->effects[fx->effect_count++];
     e->type = POSTFX_DOF;
     e->enabled = 1;
     e->p.dof.focus_distance = (float)focus_distance;
@@ -667,12 +715,13 @@ void rt_postfx3d_add_dof(void *obj, double focus_distance, double aperture, doub
 /// @brief Append per-pixel motion blur. `intensity` controls the blur length; `samples` is
 /// the per-pixel sample count along the motion vector (more = smoother but slower).
 void rt_postfx3d_add_motion_blur(void *obj, double intensity, int64_t samples) {
+    postfx_entry_t *e;
     if (!obj)
         return;
     rt_postfx3d *fx = (rt_postfx3d *)obj;
-    if (fx->effect_count >= 8)
+    e = postfx_append_entry(fx);
+    if (!e)
         return;
-    postfx_entry_t *e = &fx->effects[fx->effect_count++];
     e->type = POSTFX_MOTION_BLUR;
     e->enabled = 1;
     e->p.motion_blur.mb_intensity = (float)intensity;

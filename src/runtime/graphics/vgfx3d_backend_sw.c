@@ -2152,8 +2152,15 @@ static void sw_resize(void *ctx_ptr, int32_t w, int32_t h) {
 /// NULL `rt` reverts to swapchain rendering.
 static void sw_set_render_target(void *ctx_ptr, vgfx3d_rendertarget_t *rt) {
     sw_context_t *ctx = (sw_context_t *)ctx_ptr;
-    if (ctx)
-        ctx->render_target = rt;
+    if (!ctx)
+        return;
+    if (rt) {
+        if (!vgfx3d_rendertarget_ensure_color(rt) || !vgfx3d_rendertarget_ensure_depth(rt)) {
+            ctx->render_target = NULL;
+            return;
+        }
+    }
+    ctx->render_target = rt;
 }
 
 /*==========================================================================

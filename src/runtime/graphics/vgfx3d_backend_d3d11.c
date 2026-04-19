@@ -43,6 +43,9 @@
 #pragma comment(lib, "d3dcompiler.lib")
 #pragma comment(lib, "dxguid.lib")
 
+#define VGFX3D_STR_IMPL(x) #x
+#define VGFX3D_STR(x) VGFX3D_STR_IMPL(x)
+
 #ifndef D3D11CalcSubresource
 #define D3D11CalcSubresource(MipSlice, ArraySlice, MipLevels)                                    \
     ((MipSlice) + ((ArraySlice) * (MipLevels)))
@@ -127,7 +130,7 @@ static const char *d3d11_shader_source =
     "};\n"
     "\n"
     "cbuffer PerLights : register(b3) {\n"
-    "    Light lights[8];\n"
+    "    Light lights[" VGFX3D_STR(VGFX3D_MAX_LIGHTS) "];\n"
     "};\n"
     "\n"
     "cbuffer BonesCurrent : register(b4) {\n"
@@ -2299,6 +2302,39 @@ static HRESULT d3d11_ensure_overlay_target(d3d11_context_t *ctx, int32_t width, 
     return hr;
 }
 
+static int d3d11_sync_render_target_color(void *ctx_ptr, vgfx3d_rendertarget_t *target) {
+    d3d11_context_t *ctx = (d3d11_context_t *)ctx_ptr;
+    D3D11_MAPPED_SUBRESOURCE mapped;
+    HRESULT hr;
+    int32_t row_bytes;
+
+    if (!ctx || !target || !ctx->rtt_color_tex || !ctx->rtt_staging || ctx->rtt_target != target ||
+        target->width <= 0 || target->height <= 0) {
+        return 0;
+    }
+    if (!vgfx3d_rendertarget_ensure_color(target))
+        return 0;
+
+    ID3D11DeviceContext_CopyResource(
+        ctx->ctx, (ID3D11Resource *)ctx->rtt_staging, (ID3D11Resource *)ctx->rtt_color_tex);
+    hr = ID3D11DeviceContext_Map(
+        ctx->ctx, (ID3D11Resource *)ctx->rtt_staging, 0, D3D11_MAP_READ, 0, &mapped);
+    if (FAILED(hr)) {
+        d3d11_log_hresult("Map(rttStaging)", hr);
+        return 0;
+    }
+
+    row_bytes = target->stride;
+    for (int32_t y = 0; y < target->height; y++) {
+        memcpy(&target->color_buf[(size_t)y * (size_t)row_bytes],
+               (const uint8_t *)mapped.pData + (size_t)y * mapped.RowPitch,
+               (size_t)row_bytes);
+    }
+    ID3D11DeviceContext_Unmap(ctx->ctx, (ID3D11Resource *)ctx->rtt_staging, 0);
+    target->color_dirty = 0;
+    return 1;
+}
+
 /// @brief Release every offscreen render-to-texture (RTT) resource.
 ///
 /// `rtt_target` is the user-visible RT object — we set it to NULL so
@@ -2306,6 +2342,11 @@ static HRESULT d3d11_ensure_overlay_target(d3d11_context_t *ctx, int32_t width, 
 static void d3d11_destroy_rtt_targets(d3d11_context_t *ctx) {
     if (!ctx)
         return;
+    if (ctx->rtt_target) {
+        if (ctx->rtt_target->color_dirty)
+            d3d11_sync_render_target_color(ctx, ctx->rtt_target);
+        vgfx3d_rendertarget_clear_sync(ctx->rtt_target);
+    }
     SAFE_RELEASE(ctx->rtt_staging);
     SAFE_RELEASE(ctx->rtt_dsv);
     SAFE_RELEASE(ctx->rtt_depth_tex);
@@ -2327,8 +2368,16 @@ static HRESULT d3d11_ensure_rtt_targets(d3d11_context_t *ctx, vgfx3d_rendertarge
     if (!ctx || !rt)
         return E_INVALIDARG;
     if (ctx->rtt_color_tex && ctx->rtt_width == rt->width && ctx->rtt_height == rt->height) {
+        if (ctx->rtt_target && ctx->rtt_target != rt) {
+            if (ctx->rtt_target->color_dirty)
+                d3d11_sync_render_target_color(ctx, ctx->rtt_target);
+            vgfx3d_rendertarget_clear_sync(ctx->rtt_target);
+        }
         ctx->rtt_active = 1;
         ctx->rtt_target = rt;
+        rt->color_dirty = 0;
+        rt->sync_color = d3d11_sync_render_target_color;
+        rt->sync_color_userdata = ctx;
         return S_OK;
     }
 
@@ -2361,6 +2410,9 @@ static HRESULT d3d11_ensure_rtt_targets(d3d11_context_t *ctx, vgfx3d_rendertarge
     ctx->rtt_height = rt->height;
     ctx->rtt_active = 1;
     ctx->rtt_target = rt;
+    rt->color_dirty = 0;
+    rt->sync_color = d3d11_sync_render_target_color;
+    rt->sync_color_userdata = ctx;
     return S_OK;
 }
 
@@ -2629,8 +2681,12 @@ static void d3d11_prepare_scene_data(d3d11_context_t *ctx,
     scene_data->fog_near = ctx->fog_near;
     scene_data->fog_far = ctx->fog_far;
     scene_data->shadow_bias = ctx->shadow_bias;
-    scene_data->light_count =
-        lights ? (light_count < 0 ? 0 : (light_count > 8 ? 8 : light_count)) : 0;
+    scene_data->light_count = lights
+                                  ? (light_count < 0
+                                         ? 0
+                                         : (light_count > VGFX3D_MAX_LIGHTS ? VGFX3D_MAX_LIGHTS
+                                                                             : light_count))
+                                  : 0;
     scene_data->shadow_enabled = (ctx->shadow_active && ctx->shadow_srv) ? 1 : 0;
 }
 
@@ -2689,16 +2745,16 @@ static void d3d11_prepare_material_data(const vgfx3d_draw_cmd_t *cmd,
         material_data->splat_scales, cmd->splat_layer_scales, sizeof(material_data->splat_scales));
 }
 
-/// @brief Copy up to 8 lights from the scene into the cbuffer Light array.
+/// @brief Copy up to `VGFX3D_MAX_LIGHTS` lights from the scene into the cbuffer Light array.
 ///
 /// Each light contributes type, direction, position, color, intensity,
-/// attenuation, and spot-cone parameters. Anything beyond 8 is dropped
-/// silently (the shader's array is fixed-size).
+/// attenuation, and spot-cone parameters. Anything beyond `VGFX3D_MAX_LIGHTS`
+/// is dropped silently (the shader's array is fixed-size).
 static void d3d11_prepare_light_data(const vgfx3d_light_params_t *lights,
                                      int32_t light_count,
                                      d3d_light_t *light_data) {
-    memset(light_data, 0, sizeof(d3d_light_t) * 8);
-    for (int32_t i = 0; i < light_count && i < 8; i++) {
+    memset(light_data, 0, sizeof(d3d_light_t) * VGFX3D_MAX_LIGHTS);
+    for (int32_t i = 0; i < light_count && i < VGFX3D_MAX_LIGHTS; i++) {
         light_data[i].type = lights[i].type;
         light_data[i].direction[0] = lights[i].direction[0];
         light_data[i].direction[1] = lights[i].direction[1];
@@ -3117,7 +3173,7 @@ static void d3d11_submit_draw(void *ctx_ptr,
     d3d_per_object_t object_data;
     d3d_per_scene_t scene_data;
     d3d_per_material_t material_data;
-    d3d_light_t light_data[8];
+    d3d_light_t light_data[VGFX3D_MAX_LIGHTS];
     d3d_draw_resources_t draw_resources;
     int has_splat;
     HRESULT hr;
@@ -3208,7 +3264,7 @@ static void d3d11_submit_draw_instanced(void *ctx_ptr,
     d3d_per_object_t object_data;
     d3d_per_scene_t scene_data;
     d3d_per_material_t material_data;
-    d3d_light_t light_data[8];
+    d3d_light_t light_data[VGFX3D_MAX_LIGHTS];
     d3d_draw_resources_t draw_resources;
     int has_splat;
     HRESULT hr;
@@ -3775,7 +3831,8 @@ static void *d3d11_create_ctx(vgfx_window_t win, int32_t width, int32_t height) 
         d3d11_log_hresult("CreateBuffer(cbPerMaterial)", hr);
         goto fail;
     }
-    cb_desc.ByteWidth = d3d11_constant_buffer_byte_width(sizeof(d3d_light_t) * 8u);
+    cb_desc.ByteWidth =
+        d3d11_constant_buffer_byte_width(sizeof(d3d_light_t) * (uint32_t)VGFX3D_MAX_LIGHTS);
     hr = ID3D11Device_CreateBuffer(ctx->device, &cb_desc, NULL, &ctx->cb_per_lights);
     if (FAILED(hr)) {
         d3d11_log_hresult("CreateBuffer(cbPerLights)", hr);
@@ -4043,38 +4100,21 @@ static void d3d11_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) 
         d3d11_prune_cubemap_cache(ctx);
 }
 
-/// @brief Backend `end_frame` — copy RTT pixels to host memory if RTT is active.
+/// @brief Backend `end_frame` — mark RTT pixels dirty for lazy host readback.
 ///
-/// CopyResource into the staging texture, then map + memcpy each row
-/// into the user-visible `rt->color_buf`. No-op when not in RTT mode
-/// (the swapchain present happens elsewhere).
+/// CPU readback is deferred until a caller explicitly asks for pixels.
+/// This keeps render-to-texture frames on the GPU fast instead of forcing
+/// a staging copy at the end of every RTT frame.
 static void d3d11_end_frame(void *ctx_ptr) {
     d3d11_context_t *ctx = (d3d11_context_t *)ctx_ptr;
-    D3D11_MAPPED_SUBRESOURCE mapped;
-    HRESULT hr;
-    int32_t row_bytes;
 
     if (!ctx)
         return;
     if (!ctx->rtt_active || !ctx->rtt_target || !ctx->rtt_color_tex || !ctx->rtt_staging)
         return;
-
-    ID3D11DeviceContext_CopyResource(
-        ctx->ctx, (ID3D11Resource *)ctx->rtt_staging, (ID3D11Resource *)ctx->rtt_color_tex);
-    hr = ID3D11DeviceContext_Map(
-        ctx->ctx, (ID3D11Resource *)ctx->rtt_staging, 0, D3D11_MAP_READ, 0, &mapped);
-    if (FAILED(hr)) {
-        d3d11_log_hresult("Map(rttStaging)", hr);
-        return;
-    }
-
-    row_bytes = ctx->rtt_target->stride;
-    for (int32_t y = 0; y < ctx->rtt_height; y++) {
-        memcpy(&ctx->rtt_target->color_buf[(size_t)y * (size_t)row_bytes],
-               (const uint8_t *)mapped.pData + (size_t)y * mapped.RowPitch,
-               (size_t)row_bytes);
-    }
-    ID3D11DeviceContext_Unmap(ctx->ctx, (ID3D11Resource *)ctx->rtt_staging, 0);
+    ctx->rtt_target->sync_color = d3d11_sync_render_target_color;
+    ctx->rtt_target->sync_color_userdata = ctx;
+    ctx->rtt_target->color_dirty = 1;
 }
 
 /// @brief Backend `resize` — handle window-size changes.

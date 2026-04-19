@@ -27,6 +27,8 @@
 #include <float.h>
 #include <math.h>
 #include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
 
 //=============================================================================
 // Vertex format (84 bytes — final layout for all phases)
@@ -200,7 +202,7 @@ typedef struct {
 // Canvas3D
 //=============================================================================
 
-#define VGFX3D_MAX_LIGHTS 8
+#define VGFX3D_MAX_LIGHTS 16
 
 /* Forward declaration — defined in vgfx3d_backend.h */
 typedef struct vgfx3d_backend vgfx3d_backend_t;
@@ -233,6 +235,39 @@ struct vgfx3d_rendertarget {
     vgfx3d_rendertarget_sync_fn sync_color;
     void *sync_color_userdata;
 };
+
+static inline int vgfx3d_rendertarget_ensure_color(vgfx3d_rendertarget_t *target) {
+    size_t bytes;
+    if (!target)
+        return 0;
+    if (target->color_buf)
+        return 1;
+    if (target->width <= 0 || target->height <= 0 || target->stride <= 0)
+        return 0;
+    bytes = (size_t)target->height * (size_t)target->stride;
+    target->color_buf = (uint8_t *)malloc(bytes);
+    if (!target->color_buf)
+        return 0;
+    memset(target->color_buf, 0, bytes);
+    return 1;
+}
+
+static inline int vgfx3d_rendertarget_ensure_depth(vgfx3d_rendertarget_t *target) {
+    size_t pixel_count;
+    if (!target)
+        return 0;
+    if (target->depth_buf)
+        return 1;
+    if (target->width <= 0 || target->height <= 0)
+        return 0;
+    pixel_count = (size_t)target->width * (size_t)target->height;
+    target->depth_buf = (float *)malloc(pixel_count * sizeof(float));
+    if (!target->depth_buf)
+        return 0;
+    for (size_t i = 0; i < pixel_count; i++)
+        target->depth_buf[i] = FLT_MAX;
+    return 1;
+}
 
 static inline int vgfx3d_rendertarget_sync_color_if_needed(vgfx3d_rendertarget_t *target) {
     if (!target)

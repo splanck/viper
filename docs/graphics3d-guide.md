@@ -553,7 +553,7 @@ func start() {
 
 ## Light3D
 
-Light sources for the scene. Up to 8 lights simultaneously.
+Light sources for the scene. Up to 16 lights simultaneously.
 
 ### Constructors
 
@@ -672,7 +672,7 @@ func start() {
 }
 ```
 
-**Note:** `AsPixels()` returns a fresh copy each call. The render target's buffers are independent from the window framebuffer.
+**Note:** `AsPixels()` returns a fresh copy each call. The render target's CPU-side color/depth buffers are allocated lazily on first CPU access (or when the software backend binds the target), so GPU-only RTT passes do not pay the host-memory cost up front.
 When a render target is bound, `Canvas3D.Width`, `Canvas3D.Height`, `Begin2D()`, debug overlays, and `Screenshot()` all operate in that target's pixel space instead of the window's.
 `Canvas3D.Begin()` also uses the target's aspect ratio for that frame's projection while the render target is bound, so switching between the window and RTT views does not stretch perspective or rewrite the camera's stored projection.
 **PostFX:** If a render target is active when you call `Flip()`, the canvas applies the current `PostFX3D` chain to that render target instead of the window backbuffer.
@@ -1427,7 +1427,7 @@ func start() {
 }
 ```
 
-Effects are applied in chain order (first added = first applied). Max 8 effects.
+Effects are applied in chain order (first added = first applied). Chain storage grows as needed instead of truncating at a fixed 8-effect limit.
 
 ## Ray3D / AABB3D / Sphere3D / Segment3D / Capsule3D / RayHit3D
 

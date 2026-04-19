@@ -1179,8 +1179,11 @@ static void test_sprite3d_null_safety() {
 
 static void test_rendertarget_new() {
     TEST("RenderTarget3D.New — creates target");
-    void *rt = rt_rendertarget3d_new(256, 256);
+    rt_rendertarget3d *rt = (rt_rendertarget3d *)rt_rendertarget3d_new(256, 256);
     assert(rt);
+    EXPECT_TRUE(rt->target != nullptr, "RenderTarget3D.New creates the backing target");
+    EXPECT_TRUE(rt->target->color_buf == nullptr && rt->target->depth_buf == nullptr,
+                "RenderTarget3D.New keeps CPU color/depth buffers lazy until first CPU use");
     PASS();
 }
 
@@ -1380,10 +1383,37 @@ static void test_canvas_light_retains_owned_reference() {
     PASS();
 }
 
+static void test_canvas_light_supports_last_slot() {
+    TEST("Canvas3D.SetLight supports the last light slot");
+    rt_canvas3d canvas;
+    memset(&canvas, 0, sizeof(canvas));
+    void *light = rt_light3d_new_ambient(0.4, 0.5, 0.6);
+    assert(light != NULL);
+    g_light_release_count = 0;
+    rt_obj_set_finalizer(light, tracked_light_finalizer);
+
+    rt_canvas3d_set_light(&canvas, VGFX3D_MAX_LIGHTS - 1, light);
+    if (rt_obj_release_check0(light))
+        rt_obj_free(light);
+    if (g_light_release_count != 0) {
+        FAIL("Canvas3D did not retain a Light3D stored in the last slot");
+        return;
+    }
+
+    rt_canvas3d_set_light(&canvas, VGFX3D_MAX_LIGHTS - 1, NULL);
+    if (g_light_release_count != 1) {
+        FAIL("Canvas3D did not release a Light3D cleared from the last slot");
+        return;
+    }
+    PASS();
+}
+
 static void test_rendertarget_as_pixels_syncs_gpu_color_on_demand() {
     TEST("RenderTarget3D.AsPixels syncs backend-owned color on demand");
     rt_rendertarget3d *rt = (rt_rendertarget3d *)rt_rendertarget3d_new(1, 1);
     assert(rt != NULL && rt->target != NULL);
+    EXPECT_TRUE(rt->target->color_buf == nullptr,
+                "RenderTarget3D starts without a CPU color buffer before sync/readback");
 
     g_render_target_sync_calls = 0;
     g_render_target_sync_rgba[0] = 0xAB;
@@ -1398,6 +1428,10 @@ static void test_rendertarget_as_pixels_syncs_gpu_color_on_demand() {
     assert(px != NULL);
     if (g_render_target_sync_calls != 1) {
         FAIL("RenderTarget3D.AsPixels did not trigger the backend sync callback");
+        return;
+    }
+    if (!rt->target->color_buf) {
+        FAIL("RenderTarget3D.AsPixels did not allocate a CPU color buffer before sync");
         return;
     }
     if (rt->target->color_dirty != 0) {
@@ -2155,6 +2189,16 @@ static void test_metal_postfx_new() {
     PASS();
 }
 
+static void test_metal_postfx_grows_past_legacy_cap() {
+    TEST("MTL-11: PostFX3D grows past the legacy 8-effect cap");
+    void *fx = rt_postfx3d_new();
+    assert(fx != NULL);
+    for (int i = 0; i < 12; i++)
+        rt_postfx3d_add_fxaa(fx);
+    EXPECT_EQ(rt_postfx3d_get_effect_count(fx), 12);
+    PASS();
+}
+
 static void test_metal_postfx_null_safety() {
     TEST("MTL-11: PostFX3D — null safety on all ops");
     rt_postfx3d_add_bloom(NULL, 0.5, 1.0, 2);
@@ -2307,6 +2351,7 @@ int main() {
     test_canvas_postfx_retains_owned_reference();
     test_canvas_render_target_retains_owned_reference();
     test_canvas_light_retains_owned_reference();
+    test_canvas_light_supports_last_slot();
     test_canvas_delta_time_preserves_first_zero();
     test_canvas_draw_terrain_rejects_2d_frame();
 
@@ -2343,6 +2388,7 @@ int main() {
     test_canvas_legacy_translucent_batch_falls_back_from_instancing();
     test_metal_terrain_splat_for_gpu();
     test_metal_postfx_new();
+    test_metal_postfx_grows_past_legacy_cap();
     test_metal_postfx_null_safety();
     test_metal_skinned_mesh_bone_fields();
 

@@ -12,7 +12,7 @@
 //
 // Key invariants:
 //   - Effects are applied in chain order (first added = first applied).
-//   - Max 8 effects per chain.
+//   - Chain storage grows dynamically as effects are appended.
 //   - Software path: per-pixel operations on the CPU framebuffer.
 //   - SetPostFX on Canvas3D enables automatic application in Flip().
 //
@@ -46,7 +46,7 @@ void rt_postfx3d_set_enabled(void *obj, int8_t enabled);
 int8_t rt_postfx3d_get_enabled(void *obj);
 /// @brief Remove all effects from the chain.
 void rt_postfx3d_clear(void *obj);
-/// @brief Number of effects currently in the chain (max 8).
+/// @brief Number of effects currently in the chain.
 int64_t rt_postfx3d_get_effect_count(void *obj);
 /// @brief Bind a PostFX chain to a Canvas3D for automatic application during Flip to the active output.
 void rt_canvas3d_set_post_fx(void *canvas, void *postfx);

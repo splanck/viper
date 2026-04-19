@@ -1112,7 +1112,9 @@ static int metal_sync_render_target_color(void *userdata, vgfx3d_rendertarget_t 
     VGFXMetalContext *ctx = (__bridge VGFXMetalContext *)userdata;
     VGFXMetalRenderTargetCacheEntry *entry;
 
-    if (!ctx || !target || !target->color_buf)
+    if (!ctx || !target)
+        return 0;
+    if (!vgfx3d_rendertarget_ensure_color(target))
         return 0;
     entry = metal_lookup_render_target_entry(ctx, target);
     if (!entry || !entry.colorTexture)
@@ -2677,7 +2679,10 @@ static void metal_submit_draw(void *ctx_ptr,
         scene.fog_params[0] = ctx->_fogNear;
         scene.fog_params[1] = ctx->_fogFar;
         scene.fog_params[2] = ctx.shadowBias;
-        scene.counts[0] = light_count < 0 ? 0 : (light_count > 8 ? 8 : light_count);
+        scene.counts[0] = light_count < 0
+                              ? 0
+                              : (light_count > VGFX3D_MAX_LIGHTS ? VGFX3D_MAX_LIGHTS
+                                                                  : light_count);
         /* MTL-12: Shadow mapping */
         scene.counts[1] = ctx.shadowActive ? 1 : 0;
         memcpy(scene.camera_forward, ctx->_camForward, sizeof(float) * 3);
@@ -2796,9 +2801,9 @@ static void metal_submit_draw(void *ctx_ptr,
 
         /* Lights — always set buffer 2, even if empty (prevents validation warnings) */
         {
-            mtl_light_t ml[8];
+            mtl_light_t ml[VGFX3D_MAX_LIGHTS];
             memset(ml, 0, sizeof(ml));
-            for (int32_t i = 0; i < light_count && i < 8; i++) {
+            for (int32_t i = 0; i < light_count && i < VGFX3D_MAX_LIGHTS; i++) {
                 ml[i].type = lights[i].type;
                 ml[i].dir[0] = lights[i].direction[0];
                 ml[i].dir[1] = lights[i].direction[1];
@@ -2814,7 +2819,10 @@ static void metal_submit_draw(void *ctx_ptr,
                 ml[i].inner_cos = lights[i].inner_cos;
                 ml[i].outer_cos = lights[i].outer_cos;
             }
-            int32_t buf_count = light_count > 0 ? (light_count > 8 ? 8 : light_count) : 1;
+            int32_t buf_count = light_count > 0
+                                    ? (light_count > VGFX3D_MAX_LIGHTS ? VGFX3D_MAX_LIGHTS
+                                                                        : light_count)
+                                    : 1;
             [ctx.encoder setFragmentBytes:ml length:sizeof(mtl_light_t) * buf_count atIndex:2];
         }
 
@@ -3186,7 +3194,10 @@ static void metal_submit_draw_instanced(void *ctx_ptr,
         scene.fog_params[0] = ctx->_fogNear;
         scene.fog_params[1] = ctx->_fogFar;
         scene.fog_params[2] = ctx.shadowBias;
-        scene.counts[0] = light_count < 0 ? 0 : (light_count > 8 ? 8 : light_count);
+        scene.counts[0] = light_count < 0
+                              ? 0
+                              : (light_count > VGFX3D_MAX_LIGHTS ? VGFX3D_MAX_LIGHTS
+                                                                  : light_count);
         scene.counts[1] = ctx.shadowActive ? 1 : 0;
         memcpy(scene.camera_forward, ctx->_camForward, sizeof(float) * 3);
         transpose4x4(ctx.frameHistory.draw_prev_vp, scene.prev_vp);
@@ -3301,9 +3312,9 @@ static void metal_submit_draw_instanced(void *ctx_ptr,
 
         /* Lights */
         {
-            mtl_light_t ml[8];
+            mtl_light_t ml[VGFX3D_MAX_LIGHTS];
             memset(ml, 0, sizeof(ml));
-            for (int32_t i = 0; i < light_count && i < 8; i++) {
+            for (int32_t i = 0; i < light_count && i < VGFX3D_MAX_LIGHTS; i++) {
                 ml[i].type = lights[i].type;
                 ml[i].dir[0] = lights[i].direction[0];
                 ml[i].dir[1] = lights[i].direction[1];
@@ -3319,7 +3330,10 @@ static void metal_submit_draw_instanced(void *ctx_ptr,
                 ml[i].inner_cos = lights[i].inner_cos;
                 ml[i].outer_cos = lights[i].outer_cos;
             }
-            int32_t bc = light_count > 0 ? (light_count > 8 ? 8 : light_count) : 1;
+            int32_t bc = light_count > 0
+                             ? (light_count > VGFX3D_MAX_LIGHTS ? VGFX3D_MAX_LIGHTS
+                                                                 : light_count)
+                             : 1;
             [ctx.encoder setFragmentBytes:ml length:sizeof(mtl_light_t) * bc atIndex:2];
         }
 

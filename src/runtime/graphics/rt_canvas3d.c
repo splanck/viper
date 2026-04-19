@@ -2332,10 +2332,12 @@ void rt_canvas3d_end(void *obj) {
             c->backend->draw_skybox(c->backend_ctx, c->skybox);
         } else {
             if (c->render_target) {
-                out_pixels = c->render_target->color_buf;
-                out_w = c->render_target->width;
-                out_h = c->render_target->height;
-                out_stride = c->render_target->stride;
+                if (vgfx3d_rendertarget_ensure_color(c->render_target)) {
+                    out_pixels = c->render_target->color_buf;
+                    out_w = c->render_target->width;
+                    out_h = c->render_target->height;
+                    out_stride = c->render_target->stride;
+                }
             } else {
                 vgfx_framebuffer_t fb;
                 if (c->gfx_win && vgfx_get_framebuffer(c->gfx_win, &fb)) {
@@ -2792,7 +2794,7 @@ void rt_canvas3d_set_dt_max(void *obj, int64_t max_ms) {
         ((rt_canvas3d *)obj)->dt_max_ms = max_ms;
 }
 
-/// @brief Assign a light to one of the 8 per-canvas light slots.
+/// @brief Assign a light to one of the per-canvas light slots.
 /// @details Slot index must be in [0, VGFX3D_MAX_LIGHTS). Pass NULL to clear a slot.
 void rt_canvas3d_set_light(void *obj, int64_t index, void *light) {
     if (!obj || index < 0 || index >= VGFX3D_MAX_LIGHTS)

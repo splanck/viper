@@ -69,10 +69,21 @@ static void test_snapshot_preserves_documented_tonemap_and_grade_params(void) {
                 "Snapshot preserves additive color-grade parameters");
 }
 
+static void test_effect_chain_grows_past_legacy_cap(void) {
+    void *fx = rt_postfx3d_new();
+
+    for (int i = 0; i < 12; i++)
+        rt_postfx3d_add_fxaa(fx);
+
+    EXPECT_TRUE(rt_postfx3d_get_effect_count(fx) == 12,
+                "PostFX3D preserves effects appended past the old 8-entry cap");
+}
+
 int main(void) {
     test_snapshot_includes_advanced_effects();
     test_snapshot_disabled_returns_zero();
     test_snapshot_preserves_documented_tonemap_and_grade_params();
+    test_effect_chain_grows_past_legacy_cap();
 
     printf("rt_postfx3d snapshot tests: %d/%d passed\n", tests_passed, tests_run);
     return tests_passed == tests_run ? 0 : 1;

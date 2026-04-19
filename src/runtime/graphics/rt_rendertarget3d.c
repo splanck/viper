@@ -13,6 +13,8 @@
 // Key invariants:
 //   - Color buffer is RGBA uint8_t (same format as vgfx framebuffer)
 //   - Depth buffer is float (same as Z-buffer)
+//   - CPU-side color/depth storage is allocated lazily on first CPU use
+//     or when the software backend binds the target.
 //   - AsPixels() returns a NEW Pixels object (fresh copy each call)
 //   - GC finalizer frees both buffers
 //
@@ -25,11 +27,8 @@
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
 #include "vgfx3d_backend.h"
-
-#include <float.h>
 #include <stdint.h>
 #include <stdlib.h>
-#include <string.h>
 
 extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
 extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
@@ -51,25 +50,6 @@ static vgfx3d_rendertarget_t *rt_alloc(int32_t w, int32_t h) {
     rt->width = w;
     rt->height = h;
     rt->stride = w * 4;
-
-    size_t color_size = (size_t)w * (size_t)h * 4;
-    size_t depth_size = (size_t)w * (size_t)h * sizeof(float);
-
-    rt->color_buf = (uint8_t *)malloc(color_size);
-    rt->depth_buf = (float *)malloc(depth_size);
-
-    if (!rt->color_buf || !rt->depth_buf) {
-        free(rt->color_buf);
-        free(rt->depth_buf);
-        free(rt);
-        return NULL;
-    }
-
-    /* Clear to black, depth to FLT_MAX */
-    memset(rt->color_buf, 0, color_size);
-    int32_t total = w * h;
-    for (int32_t i = 0; i < total; i++)
-        rt->depth_buf[i] = FLT_MAX;
 
     return rt;
 }
@@ -151,7 +131,9 @@ void *rt_rendertarget3d_as_pixels(void *obj) {
     if (!obj)
         return NULL;
     rt_rendertarget3d *rtd = (rt_rendertarget3d *)obj;
-    if (!rtd->target || !rtd->target->color_buf)
+    if (!rtd->target)
+        return NULL;
+    if (!vgfx3d_rendertarget_ensure_color(rtd->target))
         return NULL;
     if (!vgfx3d_rendertarget_sync_color_if_needed(rtd->target))
         return NULL;

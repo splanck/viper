@@ -2133,7 +2133,7 @@ void rt_canvas3d_set_dt_max(void *o, int64_t m) {
 }
 
 /// @brief Stub for `Canvas3D.SetLight` — would normally bind a Light3D to
-///        slot `i` of the per-frame light array (max 8 lights).
+///        slot `i` of the per-frame light array (up to `VGFX3D_MAX_LIGHTS` lights).
 ///
 /// Silent no-op stub.
 ///

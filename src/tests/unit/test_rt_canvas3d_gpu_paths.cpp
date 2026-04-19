@@ -1486,6 +1486,42 @@ static void test_shadow_selection_prefers_strongest_directional_light_regardless
     cleanup_fake_canvas(&canvas);
 }
 
+static void test_draw_mesh_preserves_full_light_capacity(void) {
+    rt_canvas3d canvas;
+    init_fake_canvas(&canvas, &kOpenGLBackend);
+    reset_canvas_frame(&canvas, 1);
+
+    rt_light3d lights[VGFX3D_MAX_LIGHTS];
+    std::memset(lights, 0, sizeof(lights));
+    for (int32_t i = 0; i < VGFX3D_MAX_LIGHTS; i++) {
+        lights[i].type = 1;
+        lights[i].position[0] = (double)i;
+        lights[i].color[0] = 0.1 + 0.01 * (double)i;
+        lights[i].color[1] = 0.2 + 0.01 * (double)i;
+        lights[i].color[2] = 0.3 + 0.01 * (double)i;
+        lights[i].intensity = 1.0 + 0.25 * (double)i;
+        canvas.lights[i] = &lights[i];
+    }
+
+    void *mesh = make_test_mesh();
+    void *material = rt_material3d_new();
+    void *transform = rt_mat4_identity();
+    rt_canvas3d_draw_mesh(&canvas, mesh, transform, material);
+
+    test_deferred_draw_t *draws = (test_deferred_draw_t *)canvas.draw_cmds;
+    EXPECT_TRUE(canvas.draw_count == 1, "Full-light-capacity test enqueues one draw");
+    EXPECT_TRUE(draws[0].light_count == VGFX3D_MAX_LIGHTS,
+                "Deferred draw preserves every configured light slot");
+    EXPECT_TRUE(std::fabs(draws[0].lights[VGFX3D_MAX_LIGHTS - 1].position[0] -
+                              (float)(VGFX3D_MAX_LIGHTS - 1)) < 0.001f,
+                "Deferred draw includes the last light slot position");
+    EXPECT_TRUE(std::fabs(draws[0].lights[VGFX3D_MAX_LIGHTS - 1].intensity -
+                              (float)(1.0 + 0.25 * (double)(VGFX3D_MAX_LIGHTS - 1))) < 0.001f,
+                "Deferred draw includes the last light slot intensity");
+
+    cleanup_fake_canvas(&canvas);
+}
+
 static void test_screenshot_prefers_backend_readback(void) {
     typedef struct {
         int64_t w;
@@ -1653,6 +1689,7 @@ int main() {
     test_transparent_sort_key_uses_mesh_bounds_depth();
     test_instanced_batch_sort_key_uses_aggregate_bounds_center();
     test_shadow_selection_prefers_strongest_directional_light_regardless_of_slot();
+    test_draw_mesh_preserves_full_light_capacity();
     test_screenshot_prefers_backend_readback();
     test_gpu_postfx_state_latches_across_overlay_pass();
     test_begin_frame_forwards_camera_forward_and_ortho_flag();

@@ -40,6 +40,9 @@ typedef ptrdiff_t GLsizeiptr;
 typedef ptrdiff_t GLintptr;
 typedef unsigned int GLbitfield;
 
+#define VGFX3D_STR_IMPL(x) #x
+#define VGFX3D_STR(x) VGFX3D_STR_IMPL(x)
+
 #define GL_TRUE 1
 #define GL_FALSE 0
 #define GL_NONE 0
@@ -488,8 +491,11 @@ typedef struct {
     GLint uDiffuseTex, uNormalTex, uSpecularTex, uEmissiveTex, uShadowTex, uEnvMap;
     GLint uMetallicRoughnessTex, uAOTex;
     GLint uSplatTex, uSplatLayer0, uSplatLayer1, uSplatLayer2, uSplatLayer3, uSplatScales;
-    GLint uLightType[8], uLightDir[8], uLightPos[8], uLightColor[8], uLightIntensity[8];
-    GLint uLightAtten[8], uLightInnerCos[8], uLightOuterCos[8];
+    GLint uLightType[VGFX3D_MAX_LIGHTS], uLightDir[VGFX3D_MAX_LIGHTS],
+        uLightPos[VGFX3D_MAX_LIGHTS], uLightColor[VGFX3D_MAX_LIGHTS],
+        uLightIntensity[VGFX3D_MAX_LIGHTS];
+    GLint uLightAtten[VGFX3D_MAX_LIGHTS], uLightInnerCos[VGFX3D_MAX_LIGHTS],
+        uLightOuterCos[VGFX3D_MAX_LIGHTS];
 
     GLint shadow_uModelMatrix, shadow_uViewProjection;
     GLint shadow_uHasSkinning, shadow_uMorphShapeCount, shadow_uVertexCount;
@@ -888,14 +894,14 @@ static const char *const glsl_fragment_src[] = {
     "uniform int uShadowEnabled;\n"
     "uniform mat4 uShadowVP;\n"
     "uniform float uShadowBias;\n"
-    "uniform int uLightType[8];\n"
-    "uniform vec3 uLightDir[8];\n"
-    "uniform vec3 uLightPos[8];\n"
-    "uniform vec3 uLightColor[8];\n"
-    "uniform float uLightIntensity[8];\n"
-    "uniform float uLightAtten[8];\n"
-    "uniform float uLightInnerCos[8];\n"
-    "uniform float uLightOuterCos[8];\n"
+    "uniform int uLightType[" VGFX3D_STR(VGFX3D_MAX_LIGHTS) "];\n"
+    "uniform vec3 uLightDir[" VGFX3D_STR(VGFX3D_MAX_LIGHTS) "];\n"
+    "uniform vec3 uLightPos[" VGFX3D_STR(VGFX3D_MAX_LIGHTS) "];\n"
+    "uniform vec3 uLightColor[" VGFX3D_STR(VGFX3D_MAX_LIGHTS) "];\n"
+    "uniform float uLightIntensity[" VGFX3D_STR(VGFX3D_MAX_LIGHTS) "];\n"
+    "uniform float uLightAtten[" VGFX3D_STR(VGFX3D_MAX_LIGHTS) "];\n"
+    "uniform float uLightInnerCos[" VGFX3D_STR(VGFX3D_MAX_LIGHTS) "];\n"
+    "uniform float uLightOuterCos[" VGFX3D_STR(VGFX3D_MAX_LIGHTS) "];\n"
     "uniform sampler2D uDiffuseTex;\n"
     "uniform sampler2D uNormalTex;\n"
     "uniform sampler2D uSpecularTex;\n"
@@ -2344,8 +2350,10 @@ static int gl_sync_render_target_color(void *ctx_ptr, vgfx3d_rendertarget_t *rt)
     uint8_t *tmp;
     size_t bytes;
 
-    if (!ctx || !rt || !rt->color_buf || rt->width <= 0 || rt->height <= 0 || !ctx->rtt_fbo ||
-        ctx->rtt_target != rt) {
+    if (!ctx || !rt || rt->width <= 0 || rt->height <= 0 || !ctx->rtt_fbo || ctx->rtt_target != rt) {
+        return 0;
+    }
+    if (!vgfx3d_rendertarget_ensure_color(rt)) {
         return 0;
     }
 
@@ -2903,7 +2911,7 @@ static void bind_texture_unit(GLint uniform_loc, int unit, GLenum target, GLuint
         gl.Uniform1i(uniform_loc, unit);
 }
 
-/// @brief Push up to 8 lights' uniforms to the program.
+/// @brief Push up to `VGFX3D_MAX_LIGHTS` lights' uniforms to the program.
 ///
 /// Uniforms are arrays-of-uniforms (one location per light index)
 /// rather than a UBO — simpler to set up and small enough not to
@@ -2911,8 +2919,8 @@ static void bind_texture_unit(GLint uniform_loc, int unit, GLenum target, GLuint
 static void upload_light_uniforms(gl_context_t *ctx,
                                   const vgfx3d_light_params_t *lights,
                                   int32_t light_count) {
-    if (light_count > 8)
-        light_count = 8;
+    if (light_count > VGFX3D_MAX_LIGHTS)
+        light_count = VGFX3D_MAX_LIGHTS;
     gl.Uniform1i(ctx->uLightCount, light_count);
     for (int32_t i = 0; i < light_count; i++) {
         gl.Uniform1i(ctx->uLightType[i], lights[i].type);
@@ -3263,7 +3271,7 @@ static void query_main_uniforms(gl_context_t *ctx) {
     U(uSplatLayer3);
     U(uSplatScales);
 #undef U
-    for (int i = 0; i < 8; i++) {
+    for (int i = 0; i < VGFX3D_MAX_LIGHTS; i++) {
         char name[64];
         snprintf(name, sizeof(name), "uLightType[%d]", i);
         ctx->uLightType[i] = gl.GetUniformLocation(ctx->program, name);

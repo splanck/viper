@@ -290,7 +290,7 @@ void *rt_canvas3d_screenshot(void *obj) {
         return NULL;
     px_view *pv = (px_view *)pixels;
 
-    if (c->render_target && c->render_target->color_buf) {
+    if (c->render_target && vgfx3d_rendertarget_ensure_color(c->render_target)) {
         if (!vgfx3d_rendertarget_sync_color_if_needed(c->render_target)) {
             if (rt_obj_release_check0(pixels))
                 rt_obj_free(pixels);
