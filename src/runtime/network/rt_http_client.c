@@ -19,6 +19,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_http_client.h"
+#include "rt_network_http_internal.h"
 
 #include "rt_internal.h"
 #include "rt_map.h"
@@ -61,6 +62,9 @@ typedef struct {
     int64_t timeout_ms;
     int64_t max_redirects;
     int8_t follow_redirects;
+    void *connection_pool;
+    int64_t pool_size;
+    int8_t keep_alive;
 } rt_http_client_impl;
 
 static void free_cookie_list(rt_http_cookie *cookie) {
@@ -81,6 +85,8 @@ static void rt_http_client_finalize(void *obj) {
     rt_http_client_impl *c = (rt_http_client_impl *)obj;
     if (c->default_headers && rt_obj_release_check0(c->default_headers))
         rt_obj_free(c->default_headers);
+    if (c->connection_pool && rt_obj_release_check0(c->connection_pool))
+        rt_obj_free(c->connection_pool);
     free_cookie_list(c->cookies);
 }
 
@@ -106,6 +112,8 @@ static void apply_defaults(rt_http_client_impl *c, void *req) {
         rt_http_req_set_timeout(req, c->timeout_ms);
 
     rt_http_req_set_follow_redirects(req, 0);
+    rt_http_req_set_keep_alive(req, c->keep_alive);
+    rt_http_req_set_connection_pool(req, c->keep_alive ? c->connection_pool : NULL);
 }
 
 static int64_t cookie_now_seconds(void) {
@@ -649,6 +657,9 @@ void *rt_http_client_new(void) {
     c->timeout_ms = 30000;
     c->max_redirects = 5;
     c->follow_redirects = 1;
+    c->pool_size = 8;
+    c->keep_alive = 1;
+    c->connection_pool = rt_http_conn_pool_new(c->pool_size);
     rt_obj_set_finalizer(c, rt_http_client_finalize);
     return c;
 }
@@ -696,6 +707,41 @@ void rt_http_client_set_timeout(void *obj, int64_t timeout_ms) {
     if (!obj)
         return;
     ((rt_http_client_impl *)obj)->timeout_ms = timeout_ms;
+}
+
+/// @brief Check whether this client keeps HTTP connections open for reuse.
+int8_t rt_http_client_get_keep_alive(void *obj) {
+    if (!obj)
+        return 0;
+    return ((rt_http_client_impl *)obj)->keep_alive;
+}
+
+/// @brief Enable or disable pooled keep-alive transport for this client.
+void rt_http_client_set_keep_alive(void *obj, int8_t keep_alive) {
+    if (!obj)
+        return;
+    rt_http_client_impl *c = (rt_http_client_impl *)obj;
+    c->keep_alive = keep_alive ? 1 : 0;
+    if (!c->keep_alive && c->connection_pool)
+        rt_http_conn_pool_clear(c->connection_pool);
+    if (c->keep_alive && !c->connection_pool)
+        c->connection_pool = rt_http_conn_pool_new(c->pool_size > 0 ? c->pool_size : 8);
+}
+
+/// @brief Resize the keep-alive pool. Existing idle connections are dropped.
+void rt_http_client_set_pool_size(void *obj, int64_t max_size) {
+    if (!obj)
+        return;
+    rt_http_client_impl *c = (rt_http_client_impl *)obj;
+    if (max_size <= 0)
+        max_size = 1;
+    c->pool_size = max_size;
+
+    void *new_pool = rt_http_conn_pool_new(max_size);
+    void *old_pool = c->connection_pool;
+    c->connection_pool = new_pool;
+    if (old_pool && rt_obj_release_check0(old_pool))
+        rt_obj_free(old_pool);
 }
 
 /// @brief Set the maximum number of HTTP redirects to follow (0 = no redirects).

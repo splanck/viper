@@ -15,6 +15,7 @@
 #define _GNU_SOURCE 1
 #endif
 
+#include "rt_network_http_internal.h"
 #include "rt_network_internal.h"
 #include "rt_tls.h"
 
@@ -29,6 +30,22 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
+
+#ifdef _WIN32
+typedef CRITICAL_SECTION http_pool_mutex_t;
+#define HTTP_POOL_MUTEX_INIT(m) InitializeCriticalSection(m)
+#define HTTP_POOL_MUTEX_LOCK(m) EnterCriticalSection(m)
+#define HTTP_POOL_MUTEX_UNLOCK(m) LeaveCriticalSection(m)
+#define HTTP_POOL_MUTEX_DESTROY(m) DeleteCriticalSection(m)
+#else
+#include <pthread.h>
+typedef pthread_mutex_t http_pool_mutex_t;
+#define HTTP_POOL_MUTEX_INIT(m) pthread_mutex_init(m, NULL)
+#define HTTP_POOL_MUTEX_LOCK(m) pthread_mutex_lock(m)
+#define HTTP_POOL_MUTEX_UNLOCK(m) pthread_mutex_unlock(m)
+#define HTTP_POOL_MUTEX_DESTROY(m) pthread_mutex_destroy(m)
+#endif
 
 #include "rt_trap.h"
 
@@ -80,24 +97,28 @@ typedef struct http_conn {
     uint8_t read_buf[4096]; // Read buffer
     size_t read_buf_len;    // Bytes in buffer
     size_t read_buf_pos;    // Current position in buffer
+    void *pool;             // Owning connection pool, if this lease came from / returns to one
+    int pool_slot;          // Slot reserved inside @p pool while the lease is checked out
+    int tls_verify;         // Verification mode used to establish this connection
+    char pool_key[320];     // Stable host/port/TLS key for reuse
 } http_conn_t;
 
 /// @brief Initialize HTTP connection for TCP.
 static void http_conn_init_tcp(http_conn_t *conn, socket_t socket_fd) {
+    memset(conn, 0, sizeof(*conn));
     conn->socket_fd = socket_fd;
     conn->tls = NULL;
     conn->use_tls = 0;
-    conn->read_buf_len = 0;
-    conn->read_buf_pos = 0;
+    conn->pool_slot = -1;
 }
 
 /// @brief Initialize HTTP connection for TLS.
 static void http_conn_init_tls(http_conn_t *conn, rt_tls_session_t *tls) {
+    memset(conn, 0, sizeof(*conn));
     conn->socket_fd = tls ? (socket_t)rt_tls_get_socket(tls) : INVALID_SOCK;
     conn->tls = tls;
     conn->use_tls = 1;
-    conn->read_buf_len = 0;
-    conn->read_buf_pos = 0;
+    conn->pool_slot = -1;
 }
 
 /// @brief Send all data over HTTP connection.
@@ -191,6 +212,266 @@ static void http_conn_close(http_conn_t *conn) {
         CLOSE_SOCKET(conn->socket_fd);
         conn->socket_fd = INVALID_SOCK;
     }
+    conn->read_buf_len = 0;
+    conn->read_buf_pos = 0;
+    conn->pool = NULL;
+    conn->pool_slot = -1;
+    conn->tls_verify = 0;
+    conn->pool_key[0] = '\0';
+}
+
+#define HTTP_CONN_POOL_MAX_ENTRIES 64
+#define HTTP_CONN_POOL_IDLE_TIMEOUT_SEC 30
+
+typedef struct http_conn_pool_entry {
+    http_conn_t conn;
+    char *key;
+    time_t last_used;
+    int in_use;
+} http_conn_pool_entry_t;
+
+typedef struct http_conn_pool {
+    http_conn_pool_entry_t entries[HTTP_CONN_POOL_MAX_ENTRIES];
+    int count;
+    int max_size;
+    http_pool_mutex_t lock;
+    int lock_initialized;
+} http_conn_pool_t;
+
+static void http_make_pool_key(
+    const char *host, int port, int use_tls, int tls_verify, char *buf, size_t buf_len) {
+    snprintf(buf,
+             buf_len,
+             "%c%c|%s%s%s|%d",
+             use_tls ? 's' : 'p',
+             tls_verify ? 'v' : 'i',
+             host_needs_brackets(host) ? "[" : "",
+             host ? host : "",
+             host_needs_brackets(host) ? "]" : "",
+             port);
+}
+
+static int http_conn_is_healthy(http_conn_t *conn) {
+    if (!conn || conn->socket_fd == INVALID_SOCK)
+        return 0;
+    if (conn->use_tls && conn->tls && rt_tls_has_buffered_data(conn->tls))
+        return 1;
+
+    {
+        int ready = wait_socket(conn->socket_fd, 0, false);
+        if (ready <= 0)
+            return 1;
+    }
+
+    {
+        uint8_t byte = 0;
+        int peeked = recv(conn->socket_fd, (char *)&byte, 1, MSG_PEEK);
+        if (peeked > 0)
+            return 1;
+        if (peeked == 0)
+            return 0;
+    }
+
+#ifdef _WIN32
+    return GET_LAST_ERROR() == WSAEWOULDBLOCK ? 1 : 0;
+#else
+    return errno == EAGAIN || errno == EWOULDBLOCK ? 1 : 0;
+#endif
+}
+
+static void http_conn_pool_entry_reset(http_conn_pool_entry_t *entry) {
+    if (!entry)
+        return;
+    http_conn_close(&entry->conn);
+    free(entry->key);
+    entry->key = NULL;
+    entry->last_used = 0;
+    entry->in_use = 0;
+    memset(&entry->conn, 0, sizeof(entry->conn));
+    entry->conn.socket_fd = INVALID_SOCK;
+    entry->conn.pool_slot = -1;
+}
+
+static void http_conn_pool_trim_locked(http_conn_pool_t *pool) {
+    while (pool->count > 0) {
+        http_conn_pool_entry_t *tail = &pool->entries[pool->count - 1];
+        if (tail->in_use || tail->key)
+            break;
+        memset(tail, 0, sizeof(*tail));
+        tail->conn.socket_fd = INVALID_SOCK;
+        tail->conn.pool_slot = -1;
+        pool->count--;
+    }
+}
+
+static void http_conn_pool_finalize(void *obj) {
+    if (!obj)
+        return;
+    http_conn_pool_t *pool = (http_conn_pool_t *)obj;
+    for (int i = 0; i < pool->count; i++)
+        http_conn_pool_entry_reset(&pool->entries[i]);
+    if (pool->lock_initialized)
+        HTTP_POOL_MUTEX_DESTROY(&pool->lock);
+}
+
+void *rt_http_conn_pool_new(int64_t max_size) {
+    http_conn_pool_t *pool =
+        (http_conn_pool_t *)rt_obj_new_i64(0, (int64_t)sizeof(http_conn_pool_t));
+    if (!pool)
+        rt_trap("HTTP: connection pool allocation failed");
+    memset(pool, 0, sizeof(*pool));
+    pool->max_size = (int)(max_size > 0 && max_size < HTTP_CONN_POOL_MAX_ENTRIES ? max_size
+                                                                                  : HTTP_CONN_POOL_MAX_ENTRIES);
+    for (int i = 0; i < HTTP_CONN_POOL_MAX_ENTRIES; i++) {
+        pool->entries[i].conn.socket_fd = INVALID_SOCK;
+        pool->entries[i].conn.pool_slot = -1;
+    }
+    HTTP_POOL_MUTEX_INIT(&pool->lock);
+    pool->lock_initialized = 1;
+    rt_obj_set_finalizer(pool, http_conn_pool_finalize);
+    return pool;
+}
+
+void rt_http_conn_pool_clear(void *obj) {
+    if (!obj)
+        return;
+    http_conn_pool_t *pool = (http_conn_pool_t *)obj;
+    HTTP_POOL_MUTEX_LOCK(&pool->lock);
+    for (int i = 0; i < pool->count; i++)
+        http_conn_pool_entry_reset(&pool->entries[i]);
+    pool->count = 0;
+    HTTP_POOL_MUTEX_UNLOCK(&pool->lock);
+}
+
+static void http_conn_pool_evict_idle_locked(http_conn_pool_t *pool, time_t now) {
+    for (int i = 0; i < pool->count; i++) {
+        http_conn_pool_entry_t *entry = &pool->entries[i];
+        if (entry->in_use)
+            continue;
+        if (difftime(now, entry->last_used) <= HTTP_CONN_POOL_IDLE_TIMEOUT_SEC)
+            continue;
+        http_conn_pool_entry_reset(entry);
+    }
+    http_conn_pool_trim_locked(pool);
+}
+
+static int http_conn_pool_acquire(void *obj,
+                                  const char *host,
+                                  int port,
+                                  int use_tls,
+                                  int tls_verify,
+                                  http_conn_t *out_conn) {
+    if (!obj || !host || !out_conn)
+        return 0;
+
+    http_conn_pool_t *pool = (http_conn_pool_t *)obj;
+    char key[sizeof(out_conn->pool_key)];
+    http_make_pool_key(host, port, use_tls, tls_verify, key, sizeof(key));
+
+    HTTP_POOL_MUTEX_LOCK(&pool->lock);
+    http_conn_pool_evict_idle_locked(pool, time(NULL));
+
+    for (int i = 0; i < pool->count; i++) {
+        http_conn_pool_entry_t *entry = &pool->entries[i];
+        if (entry->in_use || !entry->key || strcmp(entry->key, key) != 0)
+            continue;
+        if (!http_conn_is_healthy(&entry->conn)) {
+            http_conn_pool_entry_reset(entry);
+            http_conn_pool_trim_locked(pool);
+            i--;
+            continue;
+        }
+
+        entry->in_use = 1;
+        *out_conn = entry->conn;
+        memset(&entry->conn, 0, sizeof(entry->conn));
+        entry->conn.socket_fd = INVALID_SOCK;
+        entry->conn.pool_slot = -1;
+        out_conn->pool = pool;
+        out_conn->pool_slot = i;
+        snprintf(out_conn->pool_key, sizeof(out_conn->pool_key), "%s", key);
+        HTTP_POOL_MUTEX_UNLOCK(&pool->lock);
+        return 1;
+    }
+
+    HTTP_POOL_MUTEX_UNLOCK(&pool->lock);
+    return 0;
+}
+
+static void http_conn_pool_release(http_conn_t *conn, int reusable) {
+    if (!conn)
+        return;
+
+    http_conn_pool_t *pool = (http_conn_pool_t *)conn->pool;
+    if (!pool) {
+        http_conn_close(conn);
+        return;
+    }
+
+    if (!reusable || !http_conn_is_healthy(conn)) {
+        http_conn_close(conn);
+        HTTP_POOL_MUTEX_LOCK(&pool->lock);
+        if (conn->pool_slot >= 0 && conn->pool_slot < pool->count) {
+            http_conn_pool_entry_t *entry = &pool->entries[conn->pool_slot];
+            if (entry->in_use) {
+                http_conn_pool_entry_reset(entry);
+            }
+        }
+        http_conn_pool_trim_locked(pool);
+        HTTP_POOL_MUTEX_UNLOCK(&pool->lock);
+        memset(conn, 0, sizeof(*conn));
+        conn->socket_fd = INVALID_SOCK;
+        conn->pool_slot = -1;
+        return;
+    }
+
+    HTTP_POOL_MUTEX_LOCK(&pool->lock);
+
+    if (conn->pool_slot >= 0 && conn->pool_slot < pool->count) {
+        http_conn_pool_entry_t *entry = &pool->entries[conn->pool_slot];
+        entry->conn = *conn;
+        entry->key = entry->key ? entry->key : strdup(conn->pool_key);
+        entry->last_used = time(NULL);
+        entry->in_use = 0;
+        entry->conn.pool = NULL;
+        entry->conn.pool_slot = -1;
+    } else {
+        int slot = -1;
+        for (int i = 0; i < pool->count; i++) {
+            if (!pool->entries[i].in_use && !pool->entries[i].key) {
+                slot = i;
+                break;
+            }
+        }
+        if (slot < 0 && pool->count < pool->max_size)
+            slot = pool->count++;
+        if (slot >= 0) {
+            http_conn_pool_entry_t *entry = &pool->entries[slot];
+            memset(entry, 0, sizeof(*entry));
+            entry->conn = *conn;
+            entry->key = strdup(conn->pool_key);
+            entry->last_used = time(NULL);
+            entry->in_use = 0;
+            entry->conn.pool = NULL;
+            entry->conn.pool_slot = -1;
+            if (!entry->key) {
+                http_conn_close(&entry->conn);
+                memset(entry, 0, sizeof(*entry));
+                entry->conn.socket_fd = INVALID_SOCK;
+                entry->conn.pool_slot = -1;
+                if (slot == pool->count - 1)
+                    http_conn_pool_trim_locked(pool);
+            }
+        } else {
+            http_conn_close(conn);
+        }
+    }
+
+    HTTP_POOL_MUTEX_UNLOCK(&pool->lock);
+
+    memset(conn, 0, sizeof(*conn));
+    conn->socket_fd = INVALID_SOCK;
+    conn->pool_slot = -1;
 }
 
 /// @brief HTTP request structure.
@@ -206,6 +487,8 @@ typedef struct rt_http_req {
     int max_redirects;      // Redirect limit for this request
     int accept_gzip;        // Advertise gzip support when no explicit Accept-Encoding is set
     int decode_gzip;        // Transparently decode gzip-encoded response bodies
+    int keep_alive;         // Request connection reuse when paired with a pool
+    void *connection_pool;  // Internal pool used by session-style HTTP clients
 } rt_http_req_t;
 
 /// @brief HTTP response structure.
@@ -216,6 +499,109 @@ typedef struct rt_http_res {
     uint8_t *body;     // Response body
     size_t body_len;   // Body length
 } rt_http_res_t;
+
+static socket_t http_create_tcp_socket(const char *host, int port, int timeout_ms, int *err_code);
+
+static int http_request_wants_pool(const rt_http_req_t *req) {
+    return req && req->keep_alive && req->connection_pool;
+}
+
+static int http_open_connection(rt_http_req_t *req, http_conn_t *conn, int *err_out) {
+    if (!req || !conn) {
+        if (err_out)
+            *err_out = Err_NetworkError;
+        return 0;
+    }
+
+    memset(conn, 0, sizeof(*conn));
+    conn->socket_fd = INVALID_SOCK;
+    conn->pool_slot = -1;
+    conn->tls_verify = req->tls_verify ? 1 : 0;
+    http_make_pool_key(req->url.host,
+                       req->url.port,
+                       req->url.use_tls,
+                       conn->tls_verify,
+                       conn->pool_key,
+                       sizeof(conn->pool_key));
+
+    if (http_request_wants_pool(req) &&
+        http_conn_pool_acquire(req->connection_pool,
+                               req->url.host,
+                               req->url.port,
+                               req->url.use_tls,
+                               conn->tls_verify,
+                               conn)) {
+        if (req->timeout_ms > 0 && conn->socket_fd != INVALID_SOCK) {
+            set_socket_timeout(conn->socket_fd, req->timeout_ms, true);
+            set_socket_timeout(conn->socket_fd, req->timeout_ms, false);
+        }
+        return 1;
+    }
+
+    if (req->url.use_tls) {
+        int connect_err = Err_NetworkError;
+        socket_t sock =
+            http_create_tcp_socket(req->url.host, req->url.port, req->timeout_ms, &connect_err);
+        if (sock == INVALID_SOCK) {
+            if (err_out)
+                *err_out = connect_err;
+            return 0;
+        }
+        if (req->timeout_ms > 0) {
+            set_socket_timeout(sock, req->timeout_ms, true);
+            set_socket_timeout(sock, req->timeout_ms, false);
+        }
+
+        rt_tls_config_t tls_config;
+        rt_tls_config_init(&tls_config);
+        tls_config.hostname = req->url.host;
+        tls_config.alpn_protocol = "http/1.1";
+        tls_config.verify_cert = conn->tls_verify;
+        if (req->timeout_ms > 0)
+            tls_config.timeout_ms = req->timeout_ms;
+
+        rt_tls_session_t *tls = rt_tls_new((int)sock, &tls_config);
+        if (!tls) {
+            CLOSE_SOCKET(sock);
+            if (err_out)
+                *err_out = Err_TlsError;
+            return 0;
+        }
+        if (rt_tls_handshake(tls) != RT_TLS_OK) {
+            rt_tls_close(tls);
+            if (err_out)
+                *err_out = Err_TlsError;
+            return 0;
+        }
+        http_conn_init_tls(conn, tls);
+        conn->tls_verify = tls_config.verify_cert;
+    } else {
+        int connect_err = Err_NetworkError;
+        socket_t sock =
+            http_create_tcp_socket(req->url.host, req->url.port, req->timeout_ms, &connect_err);
+        if (sock == INVALID_SOCK) {
+            if (err_out)
+                *err_out = connect_err;
+            return 0;
+        }
+        if (req->timeout_ms > 0) {
+            set_socket_timeout(sock, req->timeout_ms, true);
+            set_socket_timeout(sock, req->timeout_ms, false);
+        }
+        http_conn_init_tcp(conn, sock);
+        conn->tls_verify = req->tls_verify ? 1 : 0;
+    }
+
+    http_make_pool_key(req->url.host,
+                       req->url.port,
+                       req->url.use_tls,
+                       conn->tls_verify,
+                       conn->pool_key,
+                       sizeof(conn->pool_key));
+    if (http_request_wants_pool(req))
+        conn->pool = req->connection_pool;
+    return 1;
+}
 
 /// @brief Free parsed URL.
 static void free_parsed_url(parsed_url_t *url) {
@@ -831,6 +1217,9 @@ static int maybe_decode_gzip_body(
 /// @brief Build HTTP request string.
 /// @return Allocated string, caller must free.
 static char *build_request(rt_http_req_t *req) {
+    int add_default_connection = !has_header(req, "Connection");
+    int want_keep_alive = req->keep_alive ? 1 : 0;
+
     // Calculate total size
     size_t size =
         strlen(req->method) + 1 + strlen(req->url.path) + 11; // "METHOD PATH HTTP/1.1\r\n"
@@ -860,8 +1249,8 @@ static char *build_request(rt_http_req_t *req) {
         size += strlen(content_len_header);
     }
 
-    // Connection header
-    size += 19; // "Connection: close\r\n"
+    if (add_default_connection)
+        size += want_keep_alive ? 24 : 19; // keep-alive / close
 
     if (req->accept_gzip && !has_header(req, "Accept-Encoding"))
         size += 23; // "Accept-Encoding: gzip\r\n"
@@ -899,7 +1288,9 @@ static char *build_request(rt_http_req_t *req) {
     if (content_len_header[0])
         SNPRINTF_OR_FAIL("%s", content_len_header);
 
-    SNPRINTF_OR_FAIL("%s", "Connection: close\r\n");
+    if (add_default_connection)
+        SNPRINTF_OR_FAIL("%s", want_keep_alive ? "Connection: keep-alive\r\n"
+                                               : "Connection: close\r\n");
     if (req->accept_gzip && !has_header(req, "Accept-Encoding"))
         SNPRINTF_OR_FAIL("%s", "Accept-Encoding: gzip\r\n");
 
@@ -1002,7 +1393,8 @@ static char *read_line_conn(http_conn_t *conn) {
 
 /// @brief Parse HTTP response status line.
 /// @return Status code, or -1 on error.
-static int parse_status_line(const char *line, char **status_text_out) {
+static int parse_status_line(
+    const char *line, int *http_minor_out, char **status_text_out) {
     // Format: HTTP/1.x STATUS_CODE STATUS_TEXT
     if (strncmp(line, "HTTP/1.", 7) != 0)
         return -1;
@@ -1011,6 +1403,8 @@ static int parse_status_line(const char *line, char **status_text_out) {
     // Skip version digit
     if (*p != '0' && *p != '1')
         return -1;
+    if (http_minor_out)
+        *http_minor_out = *p - '0';
     p++;
 
     // Skip space
@@ -1104,6 +1498,7 @@ static void parse_header_line(const char *line, void *headers_map) {
 /// @return 1 on success, 0 on malformed/short response or allocation failure.
 static int read_response_head(http_conn_t *conn,
                               int *status_out,
+                              int *http_minor_out,
                               char **status_text_out,
                               void **headers_map_out,
                               char **redirect_location_out) {
@@ -1116,6 +1511,8 @@ static int read_response_head(http_conn_t *conn,
 
     if (status_out)
         *status_out = -1;
+    if (http_minor_out)
+        *http_minor_out = 1;
     if (status_text_out)
         *status_text_out = NULL;
     if (headers_map_out)
@@ -1127,7 +1524,7 @@ static int read_response_head(http_conn_t *conn,
     if (!status_line)
         return 0;
 
-    status = parse_status_line(status_line, &status_text);
+    status = parse_status_line(status_line, http_minor_out, &status_text);
     free(status_line);
     if (status < 0)
         goto fail;
@@ -1501,65 +1898,20 @@ static int write_body_until_close_conn(http_conn_t *conn, FILE *out, size_t *out
 static rt_http_res_t *do_http_request(rt_http_req_t *req, int redirects_remaining) {
     rt_net_init_wsa();
 
-    // Create connection (TLS or plain TCP)
     http_conn_t conn;
-    memset(&conn, 0, sizeof(conn));
-    conn.socket_fd = INVALID_SOCK;
-
-    if (req->url.use_tls) {
-        int connect_err = Err_NetworkError;
-        socket_t sock =
-            http_create_tcp_socket(req->url.host, req->url.port, req->timeout_ms, &connect_err);
-        if (sock == INVALID_SOCK) {
-            rt_trap_net("HTTPS: connection failed", connect_err);
-            return NULL;
-        }
-        if (req->timeout_ms > 0) {
-            set_socket_timeout(sock, req->timeout_ms, true);
-            set_socket_timeout(sock, req->timeout_ms, false);
-        }
-
-        rt_tls_config_t tls_config;
-        rt_tls_config_init(&tls_config);
-        tls_config.hostname = req->url.host;
-        tls_config.alpn_protocol = "http/1.1";
-        tls_config.verify_cert = req->tls_verify ? 1 : 0;
-        if (req->timeout_ms > 0)
-            tls_config.timeout_ms = req->timeout_ms;
-
-        rt_tls_session_t *tls = rt_tls_new((int)sock, &tls_config);
-        if (!tls) {
-            CLOSE_SOCKET(sock);
-            http_trap_tls_error("HTTPS: TLS setup failed", rt_tls_last_error());
-            return NULL;
-        }
-        if (rt_tls_handshake(tls) != RT_TLS_OK) {
-            const char *tls_err = rt_tls_get_error(tls);
-            rt_tls_close(tls);
-            http_trap_tls_error("HTTPS: TLS handshake failed", tls_err);
-            return NULL;
-        }
-        http_conn_init_tls(&conn, tls);
-    } else {
-        int connect_err = Err_NetworkError;
-        socket_t sock =
-            http_create_tcp_socket(req->url.host, req->url.port, req->timeout_ms, &connect_err);
-        if (sock == INVALID_SOCK) {
-            rt_trap_net("HTTP: connection failed", connect_err);
-            return NULL;
-        }
-
-        if (req->timeout_ms > 0) {
-            set_socket_timeout(sock, req->timeout_ms, true);
-            set_socket_timeout(sock, req->timeout_ms, false);
-        }
-        http_conn_init_tcp(&conn, sock);
+    int open_err = Err_NetworkError;
+    if (!http_open_connection(req, &conn, &open_err)) {
+        if (req->url.use_tls && open_err == Err_TlsError)
+            http_trap_tls_error("HTTPS: connection failed", rt_tls_last_error());
+        rt_trap_net(req->url.use_tls ? "HTTPS: connection failed" : "HTTP: connection failed",
+                    open_err);
+        return NULL;
     }
 
     // Build and send request
     char *request_str = build_request(req);
     if (!request_str) {
-        http_conn_close(&conn);
+        http_conn_pool_release(&conn, 0);
         rt_trap("HTTP: failed to build request");
         return NULL;
     }
@@ -1568,7 +1920,7 @@ static rt_http_res_t *do_http_request(rt_http_req_t *req, int redirects_remainin
     size_t req_body_len = req->body ? req->body_len : 0;
     if (req_body_len > SIZE_MAX - header_len) {
         free(request_str);
-        http_conn_close(&conn);
+        http_conn_pool_release(&conn, 0);
         rt_trap_net("HTTP: request too large", Err_ProtocolError);
         return NULL;
     }
@@ -1576,7 +1928,7 @@ static rt_http_res_t *do_http_request(rt_http_req_t *req, int redirects_remainin
     uint8_t *request_buf = (uint8_t *)malloc(request_len);
     if (!request_buf) {
         free(request_str);
-        http_conn_close(&conn);
+        http_conn_pool_release(&conn, 0);
         rt_trap("HTTP: memory allocation failed");
         return NULL;
     }
@@ -1589,18 +1941,20 @@ static rt_http_res_t *do_http_request(rt_http_req_t *req, int redirects_remainin
 
     if (http_conn_send(&conn, request_buf, request_len) < 0) {
         free(request_buf);
-        http_conn_close(&conn);
+        http_conn_pool_release(&conn, 0);
         rt_trap_net("HTTP: send failed", Err_NetworkError);
         return NULL;
     }
     free(request_buf);
 
     int status = -1;
+    int http_minor = 1;
     char *status_text = NULL;
     void *headers_map = NULL;
     char *redirect_location = NULL;
-    if (!read_response_head(&conn, &status, &status_text, &headers_map, &redirect_location)) {
-        http_conn_close(&conn);
+    if (!read_response_head(
+            &conn, &status, &http_minor, &status_text, &headers_map, &redirect_location)) {
+        http_conn_pool_release(&conn, 0);
         rt_trap_net("HTTP: invalid response", Err_ProtocolError);
         return NULL;
     }
@@ -1610,7 +1964,7 @@ static rt_http_res_t *do_http_request(rt_http_req_t *req, int redirects_remainin
         (status == 301 || status == 302 || status == 303 || status == 307 || status == 308) &&
         redirect_location) {
         if (redirects_remaining <= 0) {
-            http_conn_close(&conn);
+            http_conn_pool_release(&conn, 0);
             free(status_text);
             free(redirect_location);
             if (headers_map && rt_obj_release_check0(headers_map))
@@ -1618,7 +1972,7 @@ static rt_http_res_t *do_http_request(rt_http_req_t *req, int redirects_remainin
             rt_trap_net("HTTP: too many redirects", Err_ProtocolError);
             return NULL;
         }
-        http_conn_close(&conn);
+        http_conn_pool_release(&conn, 0);
         free(status_text);
         if (headers_map && rt_obj_release_check0(headers_map))
             rt_obj_free(headers_map);
@@ -1662,6 +2016,13 @@ static rt_http_res_t *do_http_request(rt_http_req_t *req, int redirects_remainin
     if (transfer_encoding_box && rt_box_type(transfer_encoding_box) == RT_BOX_STR)
         transfer_encoding_val = rt_unbox_str(transfer_encoding_box);
 
+    rt_string connection_val = get_header_value(headers_map, "connection");
+    int response_closes =
+        connection_val && header_value_has_token(rt_string_cstr(connection_val), "close");
+    int response_keepalive =
+        connection_val && header_value_has_token(rt_string_cstr(connection_val), "keep-alive");
+    int has_content_length = content_length_val != NULL;
+
     bool no_body = response_has_no_body(req, status) != 0;
     bool chunked_transfer =
         transfer_encoding_val && header_value_has_token(rt_string_cstr(transfer_encoding_val), "chunked");
@@ -1674,7 +2035,9 @@ static rt_http_res_t *do_http_request(rt_http_req_t *req, int redirects_remainin
     } else if (content_length_val) {
         size_t content_len = 0;
         if (parse_content_length_strict(rt_string_cstr(content_length_val), &content_len) != 0) {
-            http_conn_close(&conn);
+            http_conn_pool_release(&conn, 0);
+            if (connection_val)
+                rt_string_unref(connection_val);
             if (transfer_encoding_val)
                 rt_string_unref(transfer_encoding_val);
             if (content_length_val)
@@ -1691,13 +2054,14 @@ static rt_http_res_t *do_http_request(rt_http_req_t *req, int redirects_remainin
         body = read_body_until_close_conn(&conn, &body_len);
     }
 
-    http_conn_close(&conn);
-    if (transfer_encoding_val)
-        rt_string_unref(transfer_encoding_val);
-    if (content_length_val)
-        rt_string_unref(content_length_val);
-
     if (!no_body && !body) {
+        http_conn_pool_release(&conn, 0);
+        if (connection_val)
+            rt_string_unref(connection_val);
+        if (transfer_encoding_val)
+            rt_string_unref(transfer_encoding_val);
+        if (content_length_val)
+            rt_string_unref(content_length_val);
         if (headers_map && rt_obj_release_check0(headers_map))
             rt_obj_free(headers_map);
         free(status_text);
@@ -1709,6 +2073,13 @@ static rt_http_res_t *do_http_request(rt_http_req_t *req, int redirects_remainin
         if (chunked_transfer)
             set_header_value(headers_map, "transfer-encoding", NULL);
         if (!maybe_decode_gzip_body(req, headers_map, &body, &body_len)) {
+            http_conn_pool_release(&conn, 0);
+            if (connection_val)
+                rt_string_unref(connection_val);
+            if (transfer_encoding_val)
+                rt_string_unref(transfer_encoding_val);
+            if (content_length_val)
+                rt_string_unref(content_length_val);
             free(body);
             if (headers_map && rt_obj_release_check0(headers_map))
                 rt_obj_free(headers_map);
@@ -1718,6 +2089,20 @@ static rt_http_res_t *do_http_request(rt_http_req_t *req, int redirects_remainin
         }
         set_content_length_header(headers_map, body_len);
     }
+
+    {
+        int reusable = http_request_wants_pool(req) &&
+                       (no_body || chunked_transfer || has_content_length) &&
+                       !response_closes &&
+                       (http_minor >= 1 || response_keepalive);
+        http_conn_pool_release(&conn, reusable);
+    }
+    if (connection_val)
+        rt_string_unref(connection_val);
+    if (transfer_encoding_val)
+        rt_string_unref(transfer_encoding_val);
+    if (content_length_val)
+        rt_string_unref(content_length_val);
 
     // Create response object (must use rt_obj_new_i64 for GC management)
     rt_http_res_t *res = (rt_http_res_t *)rt_obj_new_i64(0, (int64_t)sizeof(rt_http_res_t));
@@ -1745,58 +2130,21 @@ static int do_http_download_request(rt_http_req_t *req, int redirects_remaining,
     char *request_str = NULL;
     uint8_t *request_buf = NULL;
     int status = -1;
+    int http_minor = 1;
     char *status_text = NULL;
     void *headers_map = NULL;
     char *redirect_location = NULL;
     rt_string content_length_val = NULL;
     rt_string transfer_encoding_val = NULL;
     int ok = 0;
+    int open_err = Err_NetworkError;
 
     rt_net_init_wsa();
     memset(&conn, 0, sizeof(conn));
     conn.socket_fd = INVALID_SOCK;
 
-    if (req->url.use_tls) {
-        int connect_err = Err_NetworkError;
-        socket_t sock =
-            http_create_tcp_socket(req->url.host, req->url.port, req->timeout_ms, &connect_err);
-        if (sock == INVALID_SOCK)
-            return 0;
-        if (req->timeout_ms > 0) {
-            set_socket_timeout(sock, req->timeout_ms, true);
-            set_socket_timeout(sock, req->timeout_ms, false);
-        }
-
-        rt_tls_config_t tls_config;
-        rt_tls_config_init(&tls_config);
-        tls_config.hostname = req->url.host;
-        tls_config.alpn_protocol = "http/1.1";
-        tls_config.verify_cert = req->tls_verify ? 1 : 0;
-        if (req->timeout_ms > 0)
-            tls_config.timeout_ms = req->timeout_ms;
-
-        rt_tls_session_t *tls = rt_tls_new((int)sock, &tls_config);
-        if (!tls) {
-            CLOSE_SOCKET(sock);
-            return 0;
-        }
-        if (rt_tls_handshake(tls) != RT_TLS_OK) {
-            rt_tls_close(tls);
-            return 0;
-        }
-        http_conn_init_tls(&conn, tls);
-    } else {
-        int connect_err = Err_NetworkError;
-        socket_t sock =
-            http_create_tcp_socket(req->url.host, req->url.port, req->timeout_ms, &connect_err);
-        if (sock == INVALID_SOCK)
-            return 0;
-        if (req->timeout_ms > 0) {
-            set_socket_timeout(sock, req->timeout_ms, true);
-            set_socket_timeout(sock, req->timeout_ms, false);
-        }
-        http_conn_init_tcp(&conn, sock);
-    }
+    if (!http_open_connection(req, &conn, &open_err))
+        return 0;
 
     request_str = build_request(req);
     if (!request_str)
@@ -1817,8 +2165,10 @@ static int do_http_download_request(rt_http_req_t *req, int redirects_remaining,
     if (http_conn_send(&conn, request_buf, header_len + req->body_len) < 0)
         goto cleanup;
 
-    if (!read_response_head(&conn, &status, &status_text, &headers_map, &redirect_location))
+    if (!read_response_head(
+            &conn, &status, &http_minor, &status_text, &headers_map, &redirect_location))
         goto cleanup;
+    (void)http_minor;
 
     if (req->follow_redirects &&
         (status == 301 || status == 302 || status == 303 || status == 307 || status == 308) &&
@@ -2467,6 +2817,8 @@ void *rt_http_req_new(rt_string method, rt_string url) {
     req->max_redirects = HTTP_MAX_REDIRECTS;
     req->accept_gzip = 1;
     req->decode_gzip = 1;
+    req->keep_alive = 0;
+    req->connection_pool = NULL;
 
     if (parse_url(url_str, &req->url) < 0) {
         free(req->method);
@@ -2596,6 +2948,28 @@ void *rt_http_req_set_max_redirects(void *obj, int64_t max_redirects) {
     if (max_redirects < 0)
         max_redirects = 0;
     req->max_redirects = (int)max_redirects;
+    return obj;
+}
+
+/// @brief Toggle keep-alive / pooled transport for this request.
+/// @return `obj` (for fluent chaining).
+void *rt_http_req_set_keep_alive(void *obj, int8_t keep_alive) {
+    if (!obj)
+        rt_trap("HTTP: NULL request");
+
+    rt_http_req_t *req = (rt_http_req_t *)obj;
+    req->keep_alive = keep_alive ? 1 : 0;
+    return obj;
+}
+
+/// @brief Attach an internal connection pool to this request.
+/// @return `obj` (for fluent chaining).
+void *rt_http_req_set_connection_pool(void *obj, void *pool) {
+    if (!obj)
+        rt_trap("HTTP: NULL request");
+
+    rt_http_req_t *req = (rt_http_req_t *)obj;
+    req->connection_pool = pool;
     return obj;
 }
 

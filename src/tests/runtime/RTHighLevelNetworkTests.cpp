@@ -11,6 +11,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_netutils.h"
+#include "rt_bytes.h"
+#include "rt_http_server.h"
 #include "rt_http_client.h"
 #include "rt_network.h"
 #include "rt_smtp.h"
@@ -32,8 +34,11 @@ static void test_result(const char *name, bool passed) {
 
 static std::atomic<bool> api_server_ready{false};
 static std::atomic<bool> api_server_failed{false};
+static std::atomic<int> http_keepalive_accept_count{0};
+static std::atomic<bool> http_keepalive_reused{false};
 static std::string smtp_captured_message;
 static std::string http_cookie_headers[3];
+static std::string http_keepalive_connection_headers[2];
 static std::string sse_resume_header;
 
 static bool ascii_header_name_equals(const char *line, const char *name, size_t name_len) {
@@ -54,6 +59,11 @@ static bool ascii_header_name_equals(const char *line, const char *name, size_t 
 
 static void send_text(void *client, const char *text) {
     rt_tcp_send_str(client, rt_const_cstr(text));
+}
+
+static void http_server_keepalive_handler(void *req_obj, void *res_obj) {
+    (void)req_obj;
+    rt_server_res_send(res_obj, rt_const_cstr("ok"));
 }
 
 static void read_http_request_headers(void *client) {
@@ -336,6 +346,70 @@ static void http_cookie_scope_server_thread(int port) {
     rt_tcp_server_close(server);
 }
 
+static void http_keepalive_server_thread(int port) {
+    void *server = rt_tcp_server_listen(port);
+    if (!server) {
+        api_server_failed = true;
+        api_server_ready = true;
+        return;
+    }
+
+    api_server_failed = false;
+    api_server_ready = true;
+    http_keepalive_accept_count = 0;
+    http_keepalive_reused = false;
+    http_keepalive_connection_headers[0].clear();
+    http_keepalive_connection_headers[1].clear();
+
+    void *client = rt_tcp_server_accept_for(server, 5000);
+    if (!client) {
+        rt_tcp_server_close(server);
+        return;
+    }
+
+    http_keepalive_accept_count = 1;
+    rt_string request_line = rt_tcp_recv_line(client);
+    rt_string_unref(request_line);
+    http_keepalive_connection_headers[0] = read_http_header_value(client, "Connection");
+    send_text(client,
+              "HTTP/1.1 200 OK\r\n"
+              "Content-Length: 2\r\n"
+              "Connection: keep-alive\r\n"
+              "\r\n"
+              "ok");
+
+    void *second_client = rt_tcp_server_accept_for(server, 750);
+    if (second_client) {
+        http_keepalive_accept_count = 2;
+        request_line = rt_tcp_recv_line(second_client);
+        rt_string_unref(request_line);
+        http_keepalive_connection_headers[1] = read_http_header_value(second_client, "Connection");
+        send_text(second_client,
+                  "HTTP/1.1 200 OK\r\n"
+                  "Content-Length: 2\r\n"
+                  "Connection: close\r\n"
+                  "\r\n"
+                  "ok");
+        rt_tcp_close(second_client);
+        rt_tcp_close(client);
+        rt_tcp_server_close(server);
+        return;
+    }
+
+    request_line = rt_tcp_recv_line(client);
+    rt_string_unref(request_line);
+    http_keepalive_connection_headers[1] = read_http_header_value(client, "Connection");
+    http_keepalive_reused = true;
+    send_text(client,
+              "HTTP/1.1 200 OK\r\n"
+              "Content-Length: 2\r\n"
+              "Connection: close\r\n"
+              "\r\n"
+              "ok");
+    rt_tcp_close(client);
+    rt_tcp_server_close(server);
+}
+
 static void wait_for_server() {
     while (!api_server_ready)
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
@@ -548,11 +622,112 @@ static void test_http_client_cookie_scope() {
                 http_cookie_headers[2].find("rootToken=beta") != std::string::npos);
 }
 
+static void test_http_client_keepalive_reuse() {
+    printf("\nTesting HttpClient keep-alive reuse:\n");
+
+    const int port = (int)rt_netutils_get_free_port();
+    if (port <= 0) {
+        printf("  SKIP: local bind unavailable in this environment\n");
+        return;
+    }
+
+    api_server_ready = false;
+    api_server_failed = false;
+    std::thread server(http_keepalive_server_thread, port);
+    wait_for_server();
+    if (api_server_failed) {
+        server.join();
+        printf("  SKIP: local bind unavailable in this environment\n");
+        return;
+    }
+
+    char url_buf[128];
+    snprintf(url_buf, sizeof(url_buf), "http://127.0.0.1:%d/reuse", port);
+
+    void *client = rt_http_client_new();
+    test_result("HttpClient keep-alive defaults on", rt_http_client_get_keep_alive(client) == 1);
+
+    void *res1 = rt_http_client_get(client, rt_const_cstr(url_buf));
+    test_result("HttpClient first keep-alive request succeeds", rt_http_res_status(res1) == 200);
+
+    void *res2 = rt_http_client_get(client, rt_const_cstr(url_buf));
+    test_result("HttpClient second keep-alive request succeeds", rt_http_res_status(res2) == 200);
+
+    server.join();
+
+    test_result("HttpClient reused a single accepted socket", http_keepalive_reused.load());
+    test_result("HttpClient keep-alive did not require a second accept",
+                http_keepalive_accept_count.load() == 1);
+    test_result("HttpClient first request advertises keep-alive",
+                http_keepalive_connection_headers[0].find("keep-alive") != std::string::npos);
+    test_result("HttpClient second request advertises keep-alive",
+                http_keepalive_connection_headers[1].find("keep-alive") != std::string::npos);
+}
+
+static void test_http_server_keepalive_response() {
+    printf("\nTesting HttpServer keep-alive responses:\n");
+
+    const int port = (int)rt_netutils_get_free_port();
+    if (port <= 0) {
+        printf("  SKIP: local bind unavailable in this environment\n");
+        return;
+    }
+
+    void *server = rt_http_server_new(port);
+    rt_http_server_get(server, rt_const_cstr("/ping"), rt_const_cstr("ping"));
+    rt_http_server_bind_handler(server, rt_const_cstr("ping"), (void *)&http_server_keepalive_handler);
+    rt_http_server_start(server);
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+    void *client = rt_tcp_connect(rt_const_cstr("127.0.0.1"), port);
+
+    send_text(client,
+              "GET /ping HTTP/1.1\r\n"
+              "Host: 127.0.0.1\r\n"
+              "Connection: keep-alive\r\n"
+              "\r\n");
+    rt_string status1 = rt_tcp_recv_line(client);
+    test_result("HttpServer first response status is 200",
+                strcmp(rt_string_cstr(status1), "HTTP/1.1 200 OK") == 0);
+    rt_string_unref(status1);
+    std::string connection1 = read_http_header_value(client, "Connection");
+    rt_string body1_bytes = nullptr;
+    void *body1 = rt_tcp_recv_exact(client, 2);
+    body1_bytes = rt_bytes_to_str(body1);
+    test_result("HttpServer first response body matches", strcmp(rt_string_cstr(body1_bytes), "ok") == 0);
+    rt_string_unref(body1_bytes);
+
+    send_text(client,
+              "GET /ping HTTP/1.1\r\n"
+              "Host: 127.0.0.1\r\n"
+              "Connection: close\r\n"
+              "\r\n");
+    rt_string status2 = rt_tcp_recv_line(client);
+    test_result("HttpServer second response status is 200",
+                strcmp(rt_string_cstr(status2), "HTTP/1.1 200 OK") == 0);
+    rt_string_unref(status2);
+    std::string connection2 = read_http_header_value(client, "Connection");
+    void *body2 = rt_tcp_recv_exact(client, 2);
+    rt_string body2_str = rt_bytes_to_str(body2);
+    test_result("HttpServer second response body matches", strcmp(rt_string_cstr(body2_str), "ok") == 0);
+    rt_string_unref(body2_str);
+
+    rt_http_server_stop(server);
+    rt_tcp_close(client);
+
+    test_result("HttpServer honors keep-alive on the first response",
+                connection1.find("keep-alive") != std::string::npos);
+    test_result("HttpServer closes when the request asks for close",
+                connection2.find("close") != std::string::npos);
+}
+
 int main() {
     test_sse_plain_event();
     test_sse_chunked_event();
     test_sse_resume_after_disconnect();
     test_http_client_cookie_scope();
+    test_http_client_keepalive_reuse();
+    test_http_server_keepalive_response();
     test_smtp_plain_send_sanitizes_and_dot_stuffs();
 
     printf("\nAll high-level network tests passed.\n");

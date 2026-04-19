@@ -524,6 +524,12 @@ void *rt_http_req_set_timeout(void *obj, int64_t timeout_ms);
 /// @return Same HttpReq object (for chaining).
 void *rt_http_req_set_tls_verify(void *obj, int8_t verify);
 
+/// @brief Enable or disable keep-alive on this request.
+/// @param obj HttpReq object.
+/// @param keep_alive 1 to allow pooled reuse, 0 to close after the response.
+/// @return Same HttpReq object (for chaining).
+void *rt_http_req_set_keep_alive(void *obj, int8_t keep_alive);
+
 /// @brief Enable or disable automatic redirect following for this request.
 /// @param obj HttpReq object.
 /// @param follow 1 to follow redirects, 0 to return the redirect response as-is.

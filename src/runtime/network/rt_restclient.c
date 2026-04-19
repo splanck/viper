@@ -16,6 +16,7 @@
 #include "rt_json.h"
 #include "rt_map.h"
 #include "rt_network.h"
+#include "rt_network_http_internal.h"
 #include "rt_object.h"
 #include "rt_seq.h"
 #include "rt_string.h"
@@ -34,6 +35,9 @@ typedef struct {
     int64_t timeout_ms;
     void *last_response; // Last HttpRes
     int64_t last_status;
+    void *connection_pool;
+    int64_t pool_size;
+    int8_t keep_alive;
 } rest_client;
 
 //=============================================================================
@@ -55,6 +59,8 @@ static void rest_client_finalize(void *obj) {
     // Release last response
     if (client->last_response && rt_obj_release_check0(client->last_response))
         rt_obj_free(client->last_response);
+    if (client->connection_pool && rt_obj_release_check0(client->connection_pool))
+        rt_obj_free(client->connection_pool);
 }
 
 //=============================================================================
@@ -133,6 +139,8 @@ static void *create_request(rest_client *client, rt_string method, rt_string pat
     if (client->timeout_ms > 0) {
         rt_http_req_set_timeout(req, client->timeout_ms);
     }
+    rt_http_req_set_keep_alive(req, client->keep_alive);
+    rt_http_req_set_connection_pool(req, client->keep_alive ? client->connection_pool : NULL);
 
     return req;
 }
@@ -172,6 +180,9 @@ void *rt_restclient_new(rt_string base_url) {
     client->timeout_ms = 30000; // 30 second default
     client->last_response = NULL;
     client->last_status = 0;
+    client->pool_size = 8;
+    client->keep_alive = 1;
+    client->connection_pool = rt_http_conn_pool_new(client->pool_size);
 
     rt_obj_set_finalizer(client, rest_client_finalize);
     return client;
@@ -298,6 +309,41 @@ void rt_restclient_set_timeout(void *obj, int64_t timeout_ms) {
         return;
     rest_client *client = (rest_client *)obj;
     client->timeout_ms = timeout_ms;
+}
+
+/// @brief Check whether this RestClient reuses keep-alive connections.
+int8_t rt_restclient_get_keep_alive(void *obj) {
+    if (!obj)
+        return 0;
+    return ((rest_client *)obj)->keep_alive;
+}
+
+/// @brief Enable or disable keep-alive connection reuse.
+void rt_restclient_set_keep_alive(void *obj, int8_t keep_alive) {
+    if (!obj)
+        return;
+    rest_client *client = (rest_client *)obj;
+    client->keep_alive = keep_alive ? 1 : 0;
+    if (!client->keep_alive && client->connection_pool)
+        rt_http_conn_pool_clear(client->connection_pool);
+    if (client->keep_alive && !client->connection_pool)
+        client->connection_pool = rt_http_conn_pool_new(client->pool_size > 0 ? client->pool_size : 8);
+}
+
+/// @brief Resize the keep-alive pool. Existing idle connections are dropped.
+void rt_restclient_set_pool_size(void *obj, int64_t max_size) {
+    if (!obj)
+        return;
+    rest_client *client = (rest_client *)obj;
+    if (max_size <= 0)
+        max_size = 1;
+    client->pool_size = max_size;
+
+    void *new_pool = rt_http_conn_pool_new(max_size);
+    void *old_pool = client->connection_pool;
+    client->connection_pool = new_pool;
+    if (old_pool && rt_obj_release_check0(old_pool))
+        rt_obj_free(old_pool);
 }
 
 //=============================================================================

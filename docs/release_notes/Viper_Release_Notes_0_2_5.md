@@ -8,16 +8,16 @@
 
 ### What this release is about
 
-A polish-and-hardening cycle. Most of the work is in three areas: the audio runtime got a big consolidation pass, the GUI widget library went through a multi-round audit, and the 3D graphics stack picked up the correctness fixes that were piling up. The Zia frontend, linker, and codegen also got smaller targeted fixes. The biggest user-visible new thing is a text-mode human-manager simulator built on the existing baseball engine.
+A polish-and-hardening cycle. Most of the work is in four areas: the audio runtime got a big consolidation pass, the GUI widget library went through a multi-round audit, the 3D graphics stack picked up the correctness fixes that were piling up, and the network runtime picked up a cookie jar, transparent gzip, streaming downloads, chunked server request bodies, SSE reconnect, and per-request TLS controls. The Zia frontend, linker, and codegen also got smaller targeted fixes. The biggest user-visible new thing is a text-mode human-manager simulator built on the existing baseball engine.
 
 ### By the Numbers
 
 | Metric | v0.2.4 | v0.2.5 | Delta |
 |---|---|---|---|
-| Commits | — | 25 | +25 |
+| Commits | — | 26 | +26 |
 | Source files | 2,869 | 2,884 | +15 |
-| Production SLOC | 450K | 468K | +18K |
-| Test SLOC | 183K | 189K | +6K |
+| Production SLOC | 450K | 470K | +20K |
+| Test SLOC | 183K | 190K | +7K |
 | Demo SLOC | 177K | 188K | +11K |
 
 Counts via `scripts/count_sloc.sh`. Most of the growth is in demos (Crackman split, Paint feature pass, baseball shell) and the GUI runtime.
@@ -170,6 +170,22 @@ A correctness-and-hardening pass spanning every subsystem.
 
 ---
 
+### Network
+
+Broad hardening and feature pass across the HTTP client, HTTP server, SSE, and TLS.
+
+**HTTP client.** RFC-compliant cookie jar — `Set-Cookie` lines are parsed into typed entries (name, value, domain, path, `Expires`, `Max-Age`, `Secure`, `HttpOnly`), indexed by domain/path scope, and attached to outgoing requests automatically. Cross-domain and cross-path leakage is prevented by explicit match tests; expired cookies are purged. Transparent gzip: outgoing requests advertise `Accept-Encoding: gzip` and `Content-Encoding: gzip` responses are decoded inline, including in chunked+gzip combinations. `Http.Download()` now streams bytes straight to disk instead of buffering the body in memory, so multi-GB downloads work without matching RAM (intentionally keeps `Accept-Encoding: identity` so the file on disk is byte-for-byte what the server sent). Relative `Location:` headers now resolve against the current URL, and 303 See Other joins the existing 301/302/307/308 redirect set. Strict `Content-Length` parsing rejects negative / non-numeric / whitespace-only values up front instead of treating them as 0. `response_has_no_body` centralises HEAD / 204 / 304 / 1xx handling. Non-blocking connect with proper timeout replaces the previous blocking `connect`.
+
+**HTTP server.** `Transfer-Encoding: chunked` request bodies are now decoded correctly — browser streaming uploads and `curl --data-binary @-` finally work. Header token scanning is robust against substring false positives.
+
+**SSE (Server-Sent Events).** Automatic reconnect-after-disconnect. The client re-opens the connection when the server drops and honours `Last-Event-ID` to resume where the stream left off, instead of silently ending on transient network failures. Matching non-blocking connect + timeout behaviour as the HTTP client.
+
+**TLS.** New `HttpReq.SetTlsVerify(bool)` IL method (`Viper.Network.HttpReq.SetTlsVerify`) for per-request verification control — useful for dev servers with self-signed certs and staging environments with internal CAs. Default stays secure (verification on). `alpn_protocol` field on `rt_tls_config_t` lets callers declare a single protocol (`http/1.1`, `h2`) during the handshake; the HTTP client wires this up based on request URL scheme. New `rt_tls_last_error()` captures connect/handshake errors in thread-local storage so trap messages surface the underlying diagnostic (hostname mismatch, cert expired, handshake protocol error) instead of generic "TLS handshake failed".
+
+**WebSocket / SMTP.** Small correctness follow-ups on header parsing and error paths consistent with the HTTP/TLS changes above.
+
+---
+
 ### Zia frontend
 
 **Completion.** Path-aware overloads: `CompleteForFile`, `CheckForFile`, `HoverForFile`, `SymbolsForFile`. Relative `bind` paths now resolve against the active file, so multi-file projects keep completion accuracy when the IDE's working directory differs from the file's directory.
@@ -271,5 +287,6 @@ Pac-Man renamed to Crackman and split into session/progression/frontend with a s
 | `35613e928` | 2026-04-18 | rtgen audit cleanup (`Music.SetLoop` IL surface + 4 internal helpers classified), font-handle metric-safety guard + lazy inheritance, Breadcrumb rounded-card rewrite, ViperIDE monitor-aware window bounds |
 | `c5b491911` | 2026-04-18 | Keyboard nav + accessibility pass (Toolbar / SplitPane / Dropdown), TreeView drag-drop, ListBox multi-select with Ctrl/Shift modifiers, TextInput redo + double-click word select, TabBar press-release coupling, paint-flag invalidation fix |
 | `ad2948be5` | 2026-04-18 | Framework double-click synthesis + Tab-focus dispatch, FileDialog editable save-name + list scroll, popup routing (ContextMenu / FloatingPanel / Breadcrumb overflow), Linux X11 UTF-8 text input + clipboard |
+| `2f103a8ce` | 2026-04-18 | HTTP cookie jar + gzip decode + streaming download + relative redirects, chunked request-body parsing on HttpServer, SSE reconnect, TLS per-request verify (`HttpReq.SetTlsVerify`) + ALPN + error diagnostics |
 
 <!-- END DRAFT -->

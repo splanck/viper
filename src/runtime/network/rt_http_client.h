@@ -39,6 +39,12 @@ void *rt_http_client_delete(void *client, rt_string url);
 void rt_http_client_set_header(void *client, rt_string name, rt_string value);
 /// @brief Set the per-request timeout in milliseconds (0 = no timeout).
 void rt_http_client_set_timeout(void *client, int64_t timeout_ms);
+/// @brief True if the client reuses keep-alive connections.
+int8_t rt_http_client_get_keep_alive(void *client);
+/// @brief Enable or disable keep-alive connection reuse.
+void rt_http_client_set_keep_alive(void *client, int8_t keep_alive);
+/// @brief Resize the internal keep-alive connection pool.
+void rt_http_client_set_pool_size(void *client, int64_t max_size);
 /// @brief Cap the number of automatic redirects followed (default 5; 0 disables).
 void rt_http_client_set_max_redirects(void *client, int64_t max);
 /// @brief True if the client follows 3xx redirects automatically.

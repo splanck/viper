@@ -914,6 +914,32 @@ fail:
     return false;
 }
 
+static const char *map_get_lower_header_cstr(void *headers, const char *lower_name) {
+    if (!headers || !lower_name)
+        return NULL;
+    rt_string key = rt_const_cstr(lower_name);
+    void *val = rt_map_get(headers, key);
+    if (!val)
+        return NULL;
+    return rt_string_cstr((rt_string)val);
+}
+
+static int request_allows_keep_alive(const server_req_t *req) {
+    const char *connection =
+        req ? map_get_lower_header_cstr(req->headers, "connection") : NULL;
+    if (!connection)
+        return 1;
+    return !header_value_contains_token(connection, strlen(connection), "close", 5);
+}
+
+static int response_forces_close(const server_res_t *res) {
+    const char *connection =
+        res ? map_get_lower_header_cstr(res->headers, "connection") : NULL;
+    if (!connection)
+        return 0;
+    return header_value_contains_token(connection, strlen(connection), "close", 5);
+}
+
 /// @brief Free every owned field of a parsed `server_req_t`.
 ///
 /// Releases the heap-owned `method`, `path`, `query`, and `body`
@@ -1014,12 +1040,12 @@ static const char *status_text_for_code(int code) {
 }
 
 /// @brief Build HTTP response string.
-static char *build_response(server_res_t *res, size_t *out_len) {
+static char *build_response(server_res_t *res, int keep_alive, size_t *out_len) {
     size_t body_len = res->body_len;
     size_t cap = (size_t)snprintf(
         NULL, 0, "HTTP/1.1 %d %s\r\n", res->status_code, status_text_for_code(res->status_code));
     cap += (size_t)snprintf(NULL, 0, "Content-Length: %zu\r\n", body_len);
-    cap += strlen("Connection: close\r\n");
+    cap += strlen(keep_alive ? "Connection: keep-alive\r\n" : "Connection: close\r\n");
 
     if (res->headers) {
         void *keys = rt_map_keys(res->headers);
@@ -1069,7 +1095,7 @@ static char *build_response(server_res_t *res, size_t *out_len) {
 
     APPEND_FORMAT("HTTP/1.1 %d %s\r\n", res->status_code, status_text_for_code(res->status_code));
     APPEND_FORMAT("Content-Length: %zu\r\n", body_len);
-    APPEND_FORMAT("%s", "Connection: close\r\n");
+    APPEND_FORMAT("%s", keep_alive ? "Connection: keep-alive\r\n" : "Connection: close\r\n");
 
     if (res->headers) {
         void *keys = rt_map_keys(res->headers);
@@ -1168,7 +1194,7 @@ char *rt_http_server_test_build_response(int status_code,
         rt_string_unref(value);
     }
 
-    char *resp = build_response(&res, out_len);
+    char *resp = build_response(&res, 0, out_len);
     if (res.headers && rt_obj_release_check0(res.headers))
         rt_obj_free(res.headers);
     free(body_copy);
@@ -1197,147 +1223,141 @@ char *rt_http_server_test_build_response(int status_code,
 /// @param server Server impl owning the route table and bindings.
 /// @param tcp    Accepted TCP connection handle (we close it).
 static void handle_connection(rt_http_server_impl *server, void *tcp) {
-    // Read request (up to 64KB headers + body)
-    size_t buf_cap = 65536;
-    char *buf = (char *)malloc(buf_cap);
-    if (!buf) {
-        rt_tcp_close(tcp);
-        return;
-    }
-
-    size_t buf_len = 0;
-    bool headers_done = false;
-    size_t content_length = 0;
-    size_t header_end_pos = 0;
-    bool chunked = false;
-    bool bad_request = false;
-
-    // Set a 30-second timeout for reading
     rt_tcp_set_recv_timeout(tcp, 30000);
+    while (rt_tcp_is_open(tcp)) {
+        size_t buf_cap = 65536;
+        char *buf = (char *)malloc(buf_cap);
+        if (!buf)
+            break;
 
-    while (buf_len < buf_cap && rt_tcp_is_open(tcp)) {
-        void *data = rt_tcp_recv(tcp, (int64_t)(buf_cap - buf_len));
-        int64_t data_len = rt_bytes_len(data);
-        if (data_len <= 0) {
+        size_t buf_len = 0;
+        bool headers_done = false;
+        size_t content_length = 0;
+        size_t header_end_pos = 0;
+        bool chunked = false;
+        bool bad_request = false;
+
+        while (buf_len < buf_cap && rt_tcp_is_open(tcp)) {
+            void *data = rt_tcp_recv(tcp, (int64_t)(buf_cap - buf_len));
+            int64_t data_len = rt_bytes_len(data);
+            if (data_len <= 0) {
+                if (data && rt_obj_release_check0(data))
+                    rt_obj_free(data);
+                break;
+            }
+
+            typedef struct {
+                int64_t len;
+                uint8_t *d;
+            } bi;
+
+            uint8_t *ptr = ((bi *)data)->d;
+            memcpy(buf + buf_len, ptr, (size_t)data_len);
+            buf_len += (size_t)data_len;
             if (data && rt_obj_release_check0(data))
                 rt_obj_free(data);
-            break;
-        }
 
-        typedef struct {
-            int64_t len;
-            uint8_t *d;
-        } bi;
-
-        uint8_t *ptr = ((bi *)data)->d;
-        memcpy(buf + buf_len, ptr, (size_t)data_len);
-        buf_len += (size_t)data_len;
-        if (data && rt_obj_release_check0(data))
-            rt_obj_free(data);
-
-        // Check if headers are complete
-        if (!headers_done) {
-            const char *header_end = find_header_end(buf, buf_len);
-            if (header_end) {
-                headers_done = true;
-                header_end_pos = (size_t)(header_end - buf);
-                if (!parse_content_length_header_block(
-                        buf, header_end_pos, &content_length, &chunked) ||
-                    content_length > HTTP_REQ_MAX_BODY) {
-                    bad_request = true;
-                    break;
+            if (!headers_done) {
+                const char *header_end = find_header_end(buf, buf_len);
+                if (header_end) {
+                    headers_done = true;
+                    header_end_pos = (size_t)(header_end - buf);
+                    if (!parse_content_length_header_block(
+                            buf, header_end_pos, &content_length, &chunked) ||
+                        content_length > HTTP_REQ_MAX_BODY) {
+                        bad_request = true;
+                        break;
+                    }
                 }
             }
-        }
 
-        // Check if we have the full body
-        if (bad_request)
-            break;
-        if (headers_done) {
-            if (chunked) {
-                size_t consumed_len = 0;
-                chunk_parse_status_t status =
-                    decode_chunked_body(buf + header_end_pos,
-                                        buf_len - header_end_pos,
-                                        NULL,
-                                        NULL,
-                                        &consumed_len);
-                if (status == CHUNK_PARSE_OK)
-                    break;
-                if (status == CHUNK_PARSE_INVALID) {
-                    bad_request = true;
-                    break;
-                }
-                if (buf_cap < header_end_pos + HTTP_REQ_MAX_ENCODED_BODY) {
-                    size_t next_cap = buf_cap * 2;
-                    size_t max_cap = header_end_pos + HTTP_REQ_MAX_ENCODED_BODY + 1;
-                    if (next_cap > max_cap)
-                        next_cap = max_cap;
-                    if (next_cap > buf_cap) {
-                        char *new_buf = (char *)realloc(buf, next_cap);
+            if (bad_request)
+                break;
+            if (headers_done) {
+                if (chunked) {
+                    size_t consumed_len = 0;
+                    chunk_parse_status_t status =
+                        decode_chunked_body(buf + header_end_pos,
+                                            buf_len - header_end_pos,
+                                            NULL,
+                                            NULL,
+                                            &consumed_len);
+                    if (status == CHUNK_PARSE_OK)
+                        break;
+                    if (status == CHUNK_PARSE_INVALID) {
+                        bad_request = true;
+                        break;
+                    }
+                    if (buf_cap < header_end_pos + HTTP_REQ_MAX_ENCODED_BODY) {
+                        size_t next_cap = buf_cap * 2;
+                        size_t max_cap = header_end_pos + HTTP_REQ_MAX_ENCODED_BODY + 1;
+                        if (next_cap > max_cap)
+                            next_cap = max_cap;
+                        if (next_cap > buf_cap) {
+                            char *new_buf = (char *)realloc(buf, next_cap);
+                            if (!new_buf)
+                                break;
+                            buf = new_buf;
+                            buf_cap = next_cap;
+                        }
+                    }
+                } else {
+                    if (content_length == 0 || buf_len >= header_end_pos + content_length)
+                        break;
+                    if (header_end_pos + content_length > buf_cap) {
+                        buf_cap = header_end_pos + content_length + 1;
+                        char *new_buf = (char *)realloc(buf, buf_cap);
                         if (!new_buf)
                             break;
                         buf = new_buf;
-                        buf_cap = next_cap;
                     }
-                }
-            } else {
-                if (content_length == 0 || buf_len >= header_end_pos + content_length)
-                    break;
-                // Grow buffer for large bodies
-                if (header_end_pos + content_length > buf_cap) {
-                    buf_cap = header_end_pos + content_length + 1;
-                    char *new_buf = (char *)realloc(buf, buf_cap);
-                    if (!new_buf)
-                        break;
-                    buf = new_buf;
                 }
             }
         }
-    }
 
-    if (buf_len == 0) {
+        if (buf_len == 0) {
+            free(buf);
+            break;
+        }
+
+        if (buf_len < buf_cap)
+            buf[buf_len] = '\0';
+        else
+            buf[buf_cap - 1] = '\0';
+
+        server_req_t req;
+        if (bad_request || !parse_http_request(buf, buf_len, &req)) {
+            const char *bad =
+                "HTTP/1.1 400 Bad Request\r\nConnection: close\r\nContent-Length: 0\r\n\r\n";
+            rt_string bad_str = rt_const_cstr(bad);
+            rt_tcp_send_str(tcp, bad_str);
+            free(buf);
+            break;
+        }
         free(buf);
-        rt_tcp_close(tcp);
-        return;
+
+        server_res_t res;
+        memset(&res, 0, sizeof(res));
+        build_route_response(server, &req, &res);
+
+        int keep_alive = request_allows_keep_alive(&req) && !response_forces_close(&res);
+        size_t resp_len = 0;
+        char *resp = build_response(&res, keep_alive, &resp_len);
+        if (resp) {
+            rt_tcp_send_all_raw(tcp, resp, (int64_t)resp_len);
+            free(resp);
+        } else {
+            keep_alive = 0;
+        }
+
+        free(res.body);
+        if (res.headers && rt_obj_release_check0(res.headers))
+            rt_obj_free(res.headers);
+        free_server_req(&req);
+
+        if (!keep_alive)
+            break;
     }
-
-    if (buf_len < buf_cap)
-        buf[buf_len] = '\0';
-    else
-        buf[buf_cap - 1] = '\0';
-
-    // Parse request
-    server_req_t req;
-    if (bad_request || !parse_http_request(buf, buf_len, &req)) {
-        // Send 400 Bad Request
-        const char *bad =
-            "HTTP/1.1 400 Bad Request\r\nConnection: close\r\nContent-Length: 0\r\n\r\n";
-        rt_string bad_str = rt_const_cstr(bad);
-        rt_tcp_send_str(tcp, bad_str);
-        free(buf);
-        rt_tcp_close(tcp);
-        return;
-    }
-    free(buf);
-
-    server_res_t res;
-    memset(&res, 0, sizeof(res));
-    build_route_response(server, &req, &res);
-
-    // Send response
-    size_t resp_len;
-    char *resp = build_response(&res, &resp_len);
-    if (resp) {
-        rt_tcp_send_all_raw(tcp, resp, (int64_t)resp_len);
-        free(resp);
-    }
-
-    // Cleanup
-    free(res.body);
-    if (res.headers && rt_obj_release_check0(res.headers))
-        rt_obj_free(res.headers);
-    free_server_req(&req);
     rt_tcp_close(tcp);
 }
 
@@ -2052,7 +2072,7 @@ void *rt_http_server_process_request(void *obj, rt_string raw_request) {
     build_route_response((rt_http_server_impl *)obj, &req, &res);
 
     size_t resp_len = 0;
-    char *resp = build_response(&res, &resp_len);
+    char *resp = build_response(&res, 0, &resp_len);
     rt_string result = resp ? rt_string_from_bytes(resp, resp_len) : rt_string_from_bytes("", 0);
 
     free(resp);

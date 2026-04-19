@@ -23,7 +23,16 @@ inline std::string stripDynamicSymbolLeadingUnderscores(const std::string &name)
     size_t i = 0;
     while (i < name.size() && name[i] == '_')
         ++i;
-    return i == 0 ? name : name.substr(i);
+
+    size_t end = name.size();
+    static constexpr const char *kDarwinExtSuffix = "$DARWIN_EXTSN";
+    static constexpr size_t kDarwinExtSuffixLen = 13;
+    if (end >= i + kDarwinExtSuffixLen &&
+        name.compare(end - kDarwinExtSuffixLen, kDarwinExtSuffixLen, kDarwinExtSuffix) == 0) {
+        end -= kDarwinExtSuffixLen;
+    }
+
+    return (i == 0 && end == name.size()) ? name : name.substr(i, end - i);
 }
 
 inline bool dynamicSymbolHasPrefix(const std::string &name, const char *const *prefixes) {

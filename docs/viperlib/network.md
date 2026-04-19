@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-09
+last-verified: 2026-04-18
 ---
 
 # Network
@@ -816,10 +816,13 @@ HTTP request builder for advanced requests with custom headers and options.
 | `SetBody(data)`           | HttpReq | Set request body as Bytes (chainable)        |
 | `SetBodyStr(text)`        | HttpReq | Set request body as string (chainable)       |
 | `SetHeader(name, value)`  | HttpReq | Set a request header (chainable)             |
+| `SetKeepAlive(enabled)`   | HttpReq | Allow or disable pooled keep-alive reuse     |
 | `SetTimeout(ms)`          | HttpReq | Set request timeout in milliseconds          |
 | `SetTlsVerify(enabled)`   | HttpReq | Enable or disable HTTPS certificate verification |
 
 > **TLS configuration:** Certificate verification is enabled by default (`verify_cert=1`). To disable verification (insecure, not recommended for production): call `.SetTlsVerify(false)` on the `HttpReq` before calling `Send()`. Use `SetTimeout(ms)` to control the overall request timeout. For raw TLS connections (without HTTP), use `Viper.Crypto.Tls` directly.
+>
+> **Connection reuse:** `HttpReq` closes the socket by default. Call `.SetKeepAlive(true)` when the request is being sent through a session/client that has an attached connection pool.
 
 ### Zia Example
 
@@ -1322,9 +1325,10 @@ and base URL configuration across multiple requests.
 
 ### Properties
 
-| Property  | Type   | Description                                    |
-|-----------|--------|------------------------------------------------|
-| `BaseUrl` | String | Base URL for all requests (read-only)          |
+| Property    | Type    | Description                                      |
+|-------------|---------|--------------------------------------------------|
+| `BaseUrl`   | String  | Base URL for all requests (read-only)            |
+| `KeepAlive` | Boolean | Whether requests reuse pooled keep-alive sockets |
 
 ### Configuration Methods
 
@@ -1335,7 +1339,14 @@ and base URL configuration across multiple requests.
 | `SetAuthBasic(username, pass)` | void    | Set HTTP Basic authentication                  |
 | `SetAuthBearer(token)`         | void    | Set Bearer token authentication                |
 | `SetHeader(name, value)`       | void    | Set a default header for all requests          |
+| `SetPoolSize(max)`             | void    | Resize the internal keep-alive pool            |
 | `SetTimeout(ms)`               | void    | Set request timeout in milliseconds            |
+
+### Transport Behavior
+
+- `RestClient` enables HTTP/1.1 keep-alive reuse by default.
+- Reuse applies to both `http://` and `https://` requests when the response framing makes reuse safe (`Content-Length`, chunked, or body-less responses).
+- Set `KeepAlive = false` to force one request per socket.
 
 ### Raw HTTP Methods
 
@@ -1803,7 +1814,7 @@ Threaded HTTP/1.1 server with routing and handler-tag lookup.
 
 - Request bodies can be framed with either `Content-Length` or `Transfer-Encoding: chunked`.
 - Oversize request bodies are rejected.
-- Connections are still handled one request per socket (`Connection: close`); keep-alive request reuse is not implemented on the server path.
+- `HttpServer` now honors `Connection: keep-alive` for sequential HTTP/1.1 requests on the same socket and returns `Connection: close` when the client asks to close.
 
 ---
 
@@ -1960,6 +1971,7 @@ Session-based HTTP client with cookie jar, auto-redirect, and persistent headers
 | `Put(url, body)` | HttpRes | HTTP PUT with string body |
 | `Delete(url)` | HttpRes | HTTP DELETE request |
 | `SetHeader(name, value)` | void | Set default header for all requests |
+| `SetPoolSize(max)` | void | Resize the internal keep-alive pool |
 | `SetTimeout(ms)` | void | Set request timeout in milliseconds |
 | `SetMaxRedirects(max)` | void | Set maximum redirect count |
 | `SetCookie(domain, name, value)` | void | Manually set a cookie |
@@ -1970,6 +1982,7 @@ Session-based HTTP client with cookie jar, auto-redirect, and persistent headers
 | Property | Type | Description |
 |----------|------|-------------|
 | `FollowRedirects` | Boolean | Whether to auto-follow redirects (default: true) |
+| `KeepAlive` | Boolean | Whether requests reuse pooled keep-alive sockets |
 
 ### Cookie Behavior
 
@@ -1977,6 +1990,12 @@ Session-based HTTP client with cookie jar, auto-redirect, and persistent headers
 - Path-scoped cookies are only sent to matching request paths.
 - `Secure` cookies are only sent over `https://` requests.
 - Expired cookies are purged automatically before requests and lookups.
+
+### Transport Behavior
+
+- `HttpClient` enables keep-alive reuse by default and maintains an internal per-client connection pool.
+- HTTPS sessions are reused only when the request host/port/TLS verification mode match and the response framing is safe to reuse.
+- Set `KeepAlive = false` to force the previous close-after-each-request behavior.
 
 ---
 

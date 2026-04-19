@@ -988,6 +988,8 @@ void *rt_tcp_server_accept_for(void *obj, int64_t timeout_ms) {
             return NULL;
         }
         if (ready < 0) {
+            if (!server->is_listening)
+                return NULL;
             rt_trap_net("Network: accept failed", Err_NetworkError);
         }
     }
@@ -1057,8 +1059,8 @@ void rt_tcp_server_close(void *obj) {
 
     rt_tcp_server_t *server = (rt_tcp_server_t *)obj;
     if (server->is_listening) {
-        CLOSE_SOCKET(server->sock);
         server->is_listening = false;
+        CLOSE_SOCKET(server->sock);
     }
 }
 

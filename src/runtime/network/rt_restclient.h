@@ -74,6 +74,15 @@ void rt_restclient_clear_auth(void *obj);
 /// @param timeout_ms Timeout in milliseconds.
 void rt_restclient_set_timeout(void *obj, int64_t timeout_ms);
 
+/// @brief True if the client reuses keep-alive connections.
+int8_t rt_restclient_get_keep_alive(void *obj);
+
+/// @brief Enable or disable keep-alive connection reuse.
+void rt_restclient_set_keep_alive(void *obj, int8_t keep_alive);
+
+/// @brief Resize the internal keep-alive connection pool.
+void rt_restclient_set_pool_size(void *obj, int64_t max_size);
+
 //=============================================================================
 // HTTP Methods - Raw
 //=============================================================================
