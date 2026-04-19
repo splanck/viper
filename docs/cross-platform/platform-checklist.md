@@ -96,8 +96,8 @@ Important rule:
 | File | Reason |
 |------|--------|
 | `src/runtime/network/rt_network.c` | ~15 platform-conditional blocks. Windows: `<winsock2.h>`, `WSAStartup`, `closesocket()`, `WSAGetLastError()`. POSIX: `<sys/socket.h>`, `close()`, `errno`. SIGPIPE suppression differs: Linux uses `MSG_NOSIGNAL` per-send; macOS uses `SO_NOSIGPIPE` socket option; Windows needs neither. |
-| `src/runtime/network/rt_tls.c` | TLS/SSL — platform-specific crypto. macOS: Security.framework. Linux: custom built-in (ECDSA P-256, ECDHE) with `dlopen` fallback to system libcrypto for RSA-PSS only. Windows: Schannel (via WinCrypt). No external library is linked at build time on any platform. |
-| `src/runtime/CMakeLists.txt` | Windows links `ws2_32`; macOS links `-framework Security`. |
+| `src/runtime/network/rt_tls.c` | TLS/SSL — fully in-tree TLS 1.3, X.509, and HTTPS runtime. Windows uses CryptoAPI for trust-store integration; macOS/Linux use the built-in PEM-bundle verifier and native RSA/ECDSA helpers. No external TLS library or platform TLS framework is required on macOS/Linux. |
+| `src/runtime/CMakeLists.txt` | Windows links `ws2_32`; macOS networking no longer links Security.framework for TLS. |
 | `CMakeLists.txt` | Feature flag `VIPER_ENABLE_NETWORK` and `VIPER_ENABLE_TLS`. |
 
 ---
@@ -271,13 +271,13 @@ For features that use `#ifdef` blocks within a single file (used by runtime):
 - `build-essential`, `cmake`, `clang` or `gcc`
 - `libx11-dev` (graphics)
 - `libasound2-dev` (audio)
-- `libssl-dev` (optional; only needed at runtime for RSA-PSS TLS cipher suites)
+- No OpenSSL/libssl dependency is required for TLS
 
 ### Linux (RedHat/Fedora)
 - `gcc`, `cmake`, `make`
 - `libX11-devel` (graphics)
 - `alsa-lib-devel` (audio)
-- `openssl-devel` (optional; only needed at runtime for RSA-PSS TLS cipher suites)
+- No OpenSSL dependency is required for TLS
 
 ### Windows
 - MSVC or Clang-CL

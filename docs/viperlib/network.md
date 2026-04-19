@@ -795,10 +795,10 @@ The HTTP client transparently supports HTTPS URLs using TLS 1.3:
 
 - **Automatic upgrade** - URLs starting with `https://` automatically use TLS
 - **Modern encryption** - TLS 1.3 with ChaCha20-Poly1305 cipher suite and X25519 key exchange
-- **Certificate verification enabled by default** - Server certificates are validated against the OS trust store (macOS Security.framework, Windows CryptoAPI, Linux CA bundle at `/etc/ssl/certs/`). Hostname is verified against the certificate's SubjectAltName DNS names (with RFC 6125 wildcard support) or CommonName as fallback. The server's CertificateVerify signature over the handshake transcript is checked, proving possession of the private key.
+- **Certificate verification enabled by default** - Server certificates are validated against the runtime trust source: Windows uses CryptoAPI, while macOS and Linux use the built-in PEM-bundle verifier with standard system trust bundles. Hostname is verified against the certificate's SubjectAltName DNS names (with RFC 6125 wildcard support) or CommonName as fallback. The server's CertificateVerify signature over the handshake transcript is checked in-tree, proving possession of the private key.
 - **SNI behavior** - DNS hostnames are sent in the TLS SNI extension. IP literals are still verified against certificate IP SANs, but they are not sent in SNI.
 - **To disable verification (insecure):** Use `HttpReq` and call `.SetTlsVerify(false)` — not recommended for production.
-- **For custom TLS:** Use `Viper.Crypto.Tls` directly or use `HttpReq` with `SetTimeout()` for timeout control.
+- **For custom TLS:** Use `Viper.Crypto.Tls` directly when you need lower-level TLS control, or use `HttpReq` with `SetTimeout()` for request-level timeout control.
 
 ```basic
 ' HTTPS works exactly like HTTP
@@ -1881,7 +1881,9 @@ Threaded TLS-backed HTTP/1.1 server built on the in-tree TLS 1.3 runtime with ze
 
 - `certFile` must be a PEM certificate file. A leaf certificate plus any intermediate chain certificates may be concatenated into the same file.
 - `keyFile` must be an unencrypted PEM private key.
-- The built-in zero-dependency server path currently expects an ECDSA P-256 certificate/key pair.
+- The built-in zero-dependency server path accepts either:
+  - a P-256 ECDSA leaf certificate with an unencrypted SEC1 (`BEGIN EC PRIVATE KEY`) or PKCS#8 (`BEGIN PRIVATE KEY`) key
+  - an RSA leaf certificate with an unencrypted PKCS#1 (`BEGIN RSA PRIVATE KEY`) or PKCS#8 (`BEGIN PRIVATE KEY`) key
 - `HttpsServer` serves HTTP/1.1 over TLS 1.3 and advertises `http/1.1` via ALPN.
 - DNS-name SNI is validated against the configured certificate before the HTTP request is accepted.
 
@@ -2172,7 +2174,7 @@ All methods return a `Future` that can be awaited using `Threads.Future.Get()`.
 - [Input/Output](io/README.md) - File operations for saving downloaded content
 - [Cryptography](crypto.md) - `Tls` for secure connections
 
-> **Note:** `Viper.Crypto.Tls` provides a low-level TLS 1.3 client API (connect/send/recv/close) that can be used independently of the HTTP layer. It supports AES-128-GCM-SHA256 and ChaCha20-Poly1305-SHA256 encryption with X25519 key exchange, IPv4/IPv6 connections, handshake timeouts, and HelloRetryRequest retry cookies for the X25519 path. When `verify_cert=1` (the default), it performs TLS 1.3 authentication using the platform trust store plus the server-supplied chain, hostname verification against SubjectAltName/CommonName/IP SANs, and CertificateVerify signature verification. Documentation for this class is in `crypto.md`.
+> **Note:** `Viper.Crypto.Tls` provides a low-level TLS 1.3 client API (connect/send/recv/close) that can be used independently of the HTTP layer. It supports AES-128-GCM-SHA256 and ChaCha20-Poly1305-SHA256 encryption with X25519 key exchange, IPv4/IPv6 connections, handshake timeouts, and HelloRetryRequest retry cookies for the X25519 path. When `verify_cert=1` (the default), it performs TLS 1.3 authentication using the runtime trust source plus the server-supplied chain, hostname verification against SubjectAltName/CommonName/IP SANs, and in-tree CertificateVerify signature verification. Documentation for this class is in `crypto.md`.
 
 ---
 

@@ -156,6 +156,13 @@ static pthread_t g_main_thread_;
 #endif
 static int g_main_thread_set_ = 0;
 
+/// @brief Atomically install the calling thread as the main thread (idempotent).
+/// @details Wins the CAS on the first call only — subsequent invocations
+///          short-circuit. Captures the platform-native thread handle
+///          (`GetCurrentThreadId` on Windows, `pthread_self` elsewhere)
+///          so `rt_is_main_thread` can compare against it later. Used
+///          to detect cross-thread access to GUI / input state, which
+///          is illegal on macOS and undefined on Windows.
 static void rt_capture_process_main_thread_(void) {
     int expected = 0;
     if (!__atomic_compare_exchange_n(
@@ -170,6 +177,7 @@ static void rt_capture_process_main_thread_(void) {
 }
 
 #if RT_PLATFORM_WINDOWS
+/// @brief MSVC CRT-init shim that calls `rt_capture_process_main_thread_` at startup.
 static void __cdecl rt_capture_process_main_thread_ctor(void) {
     rt_capture_process_main_thread_();
 }
@@ -178,11 +186,17 @@ static void __cdecl rt_capture_process_main_thread_ctor(void) {
 __declspec(allocate(".CRT$XCU")) void(__cdecl *rt_capture_process_main_thread_ctor_)(void) =
     rt_capture_process_main_thread_ctor;
 #elif !RT_PLATFORM_VIPERDOS
+/// @brief GCC/Clang `__attribute__((constructor))` that runs main-thread capture before main().
 __attribute__((constructor)) static void rt_capture_process_main_thread_ctor(void) {
     rt_capture_process_main_thread_();
 }
 #endif
 
+/// @brief Manually re-install the calling thread as the main thread (overrides ctor capture).
+/// @details Useful when the runtime is loaded as a shared library and
+///          the constructor fired on the loader's thread rather than
+///          the actual UI thread. Atomically updates the stored thread
+///          handle and the "set" flag.
 void rt_set_main_thread(void) {
 #if RT_PLATFORM_WINDOWS
     g_main_thread_id_ = GetCurrentThreadId();
@@ -192,6 +206,13 @@ void rt_set_main_thread(void) {
     __atomic_store_n(&g_main_thread_set_, 1, __ATOMIC_RELEASE);
 }
 
+/// @brief Return non-zero when the calling thread is the runtime's designated main thread.
+/// @details Lazily captures the main thread on first call if neither
+///          the constructor nor `rt_set_main_thread` has run.
+///          ViperDOS is single-threaded so this always returns 1.
+///          On Windows uses thread-ID compare; on POSIX uses
+///          `pthread_equal` because `pthread_t` is opaque and
+///          comparison via `==` isn't portable.
 int8_t rt_is_main_thread(void) {
     if (!__atomic_load_n(&g_main_thread_set_, __ATOMIC_ACQUIRE))
         rt_capture_process_main_thread_();
@@ -204,6 +225,12 @@ int8_t rt_is_main_thread(void) {
 #endif
 }
 
+/// @brief Trap with a thread-violation diagnostic if the caller isn't on the main thread.
+/// @details Used at every entry point that touches GUI, input, or
+///          other thread-affine subsystems. On a misuse, raises an
+///          `InvalidOperation` trap with the source location so the
+///          developer can find the offending call site immediately
+///          rather than discovering a corrupted UI later.
 void rt_assert_main_thread_(const char *file, int line) {
     if (!rt_is_main_thread()) {
         char buffer[256];

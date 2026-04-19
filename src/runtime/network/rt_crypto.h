@@ -72,6 +72,18 @@ void rt_sha256_final(rt_sha256_ctx *ctx, uint8_t digest[32]);
 /// @param digest Output buffer for the 32-byte (256-bit) hash digest.
 void rt_sha256(const void *data, size_t len, uint8_t digest[32]);
 
+/// @brief Compute SHA-384 hash.
+/// @param data Pointer to the input data to hash.
+/// @param len Length of @p data in bytes.
+/// @param digest Output buffer for the 48-byte (384-bit) hash digest.
+void rt_sha384(const void *data, size_t len, uint8_t digest[48]);
+
+/// @brief Compute SHA-512 hash.
+/// @param data Pointer to the input data to hash.
+/// @param len Length of @p data in bytes.
+/// @param digest Output buffer for the 64-byte (512-bit) hash digest.
+void rt_sha512(const void *data, size_t len, uint8_t digest[64]);
+
 //=========================================================================
 // HMAC-SHA256
 //=========================================================================

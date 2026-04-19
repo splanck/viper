@@ -39,7 +39,15 @@
 // Basic Text Wrapping
 //=============================================================================
 
-/// @brief Wrap the textwrap.
+/// @brief Greedy word-wrap a string to fit within `width` columns per line.
+/// @details Walks character-by-character tracking the column position
+///          and the index of the most recent space. When the line
+///          overflows, breaks at that last space; if no space has
+///          been seen on the current line, force-breaks at the
+///          overflow point. Existing newlines in the input act as
+///          paragraph boundaries (column resets, last-space cleared).
+///          Width is clamped to `[1, ...]` so the worst-case is
+///          one-character lines, never an infinite loop.
 rt_string rt_textwrap_wrap(rt_string text, int64_t width) {
     if (width < 1)
         width = 1;
@@ -128,7 +136,10 @@ void *rt_textwrap_wrap_lines(rt_string text, int64_t width) {
     return lines;
 }
 
-/// @brief Fill the textwrap.
+/// @brief Alias for `rt_textwrap_wrap` — kept for API parity with Python's `textwrap`.
+/// @details In CPython, `wrap()` returns a list of lines and `fill()`
+///          returns a single string. This runtime always returns a
+///          string from both, so they collapse to the same call.
 rt_string rt_textwrap_fill(rt_string text, int64_t width) {
     return rt_textwrap_wrap(text, width);
 }
@@ -137,7 +148,11 @@ rt_string rt_textwrap_fill(rt_string text, int64_t width) {
 // Indentation
 //=============================================================================
 
-/// @brief Indent the textwrap.
+/// @brief Prepend `prefix` to every line of `text` (including empty lines).
+/// @details Walks the input one byte at a time, emitting `prefix`
+///          before each line and again after every embedded `\n`.
+///          Counts lines up-front to size the output buffer exactly:
+///          `src_len + line_count * pre_len`.
 rt_string rt_textwrap_indent(rt_string text, rt_string prefix) {
     const char *src = rt_string_cstr(text);
     int64_t src_len = rt_str_len(text);
@@ -180,7 +195,16 @@ rt_string rt_textwrap_indent(rt_string text, rt_string prefix) {
     return ret;
 }
 
-/// @brief Dedent the textwrap.
+/// @brief Strip the longest leading-whitespace prefix common to every non-empty line.
+/// @details Two passes:
+///          1. Walk the input once to find `min_indent` — the smallest
+///             leading-whitespace count across all non-empty lines
+///             (empty lines are skipped to match Python's
+///             `textwrap.dedent` behavior).
+///          2. Emit each line with that many leading whitespace bytes
+///             skipped. Tabs count as 4 spaces for the indent
+///             measurement (and 4-space worth of skip).
+///          Returns the input unchanged when `min_indent <= 0`.
 rt_string rt_textwrap_dedent(rt_string text) {
     const char *src = rt_string_cstr(text);
     int64_t src_len = rt_str_len(text);
@@ -246,7 +270,11 @@ rt_string rt_textwrap_dedent(rt_string text) {
     return ret;
 }
 
-/// @brief Hang the textwrap.
+/// @brief Indent every line *except* the first with `prefix` (hanging-indent style).
+/// @details Useful for "labelled paragraph" output where the first line
+///          carries the label and continuation lines are indented to
+///          align under the body. The first non-empty line is left
+///          alone; every subsequent line gets `prefix` prepended.
 rt_string rt_textwrap_hang(rt_string text, rt_string prefix) {
     const char *src = rt_string_cstr(text);
     int64_t src_len = rt_str_len(text);
@@ -291,12 +319,16 @@ rt_string rt_textwrap_hang(rt_string text, rt_string prefix) {
 // Truncation
 //=============================================================================
 
-/// @brief Truncate the textwrap.
+/// @brief Truncate to `width` characters total, appending `"..."` if it didn't fit.
 rt_string rt_textwrap_truncate(rt_string text, int64_t width) {
     return rt_textwrap_truncate_with(text, width, rt_const_cstr("..."));
 }
 
-/// @brief Truncate the with of the textwrap.
+/// @brief Truncate to `width` characters total, appending `suffix` if shortened.
+/// @details If `text` already fits, returns it unchanged. Otherwise
+///          keeps `width - suffix_len` characters and appends `suffix`.
+///          Edge case: if `width <= suffix_len`, returns just the
+///          suffix (no useful prefix can fit).
 rt_string rt_textwrap_truncate_with(rt_string text, int64_t width, rt_string suffix) {
     int64_t text_len = rt_str_len(text);
     int64_t suffix_len = rt_str_len(suffix);
@@ -312,7 +344,12 @@ rt_string rt_textwrap_truncate_with(rt_string text, int64_t width, rt_string suf
     return rt_str_concat(kept, suffix);
 }
 
-/// @brief Shorten the textwrap.
+/// @brief Shorten by replacing the middle with `"..."` while preserving start and end.
+/// @details Useful for paths and identifiers where keeping both ends
+///          helps readability. Splits the keep budget roughly in half
+///          (right side gets the extra char on odd widths). Falls
+///          back to a head-truncate when `width < 5` (no room for
+///          even three dots plus one char on each side).
 rt_string rt_textwrap_shorten(rt_string text, int64_t width) {
     int64_t text_len = rt_str_len(text);
 
@@ -336,7 +373,9 @@ rt_string rt_textwrap_shorten(rt_string text, int64_t width) {
 // Alignment
 //=============================================================================
 
-/// @brief Left the textwrap.
+/// @brief Left-justify `text` in a `width`-column field, padding with trailing spaces.
+/// @details If `text` is already as wide or wider than `width`, it's
+///          returned unchanged.
 rt_string rt_textwrap_left(rt_string text, int64_t width) {
     int64_t text_len = rt_str_len(text);
     if (text_len >= width)
@@ -356,7 +395,7 @@ rt_string rt_textwrap_left(rt_string text, int64_t width) {
     return rt_str_concat(text, padding);
 }
 
-/// @brief Right the textwrap.
+/// @brief Right-justify `text` in a `width`-column field, padding with leading spaces.
 rt_string rt_textwrap_right(rt_string text, int64_t width) {
     int64_t text_len = rt_str_len(text);
     if (text_len >= width)
@@ -376,7 +415,9 @@ rt_string rt_textwrap_right(rt_string text, int64_t width) {
     return rt_str_concat(padding, text);
 }
 
-/// @brief Center the textwrap.
+/// @brief Center `text` in a `width`-column field with balanced space padding.
+/// @details For odd-padding cases the extra space goes on the right
+///          (matching Python's `str.center`).
 rt_string rt_textwrap_center(rt_string text, int64_t width) {
     int64_t text_len = rt_str_len(text);
     if (text_len >= width)
@@ -414,7 +455,9 @@ rt_string rt_textwrap_center(rt_string text, int64_t width) {
 // Utility
 //=============================================================================
 
-/// @brief Return the count of elements in the textwrap.
+/// @brief Count the number of lines in `text` (defined as `\n` count + 1).
+/// @details Empty input still counts as 1 line. Trailing newline does
+///          not add an extra empty line.
 int64_t rt_textwrap_line_count(rt_string text) {
     const char *src = rt_string_cstr(text);
     int64_t len = rt_str_len(text);
@@ -428,7 +471,9 @@ int64_t rt_textwrap_line_count(rt_string text) {
     return count;
 }
 
-/// @brief Return the number of elements in the textwrap.
+/// @brief Return the byte length of the longest line in `text`.
+/// @details Walks the input once, tracking the running line length
+///          and resetting it on each newline.
 int64_t rt_textwrap_max_line_len(rt_string text) {
     const char *src = rt_string_cstr(text);
     int64_t len = rt_str_len(text);

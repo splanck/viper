@@ -41,6 +41,9 @@ extern int64_t rt_pixels_get(void *pixels, int64_t x, int64_t y);
 
 static volatile int64_t g_next_cubemap_cache_identity = 1;
 
+/// @brief Drop a GC-managed reference held in a `**slot` and null the slot.
+/// @details Idempotent — safe to call on already-null slots. Used by the
+///          finalizer to release each of the six cached face Pixels.
 static void cubemap_release_ref(void **slot) {
     if (!slot || !*slot)
         return;
@@ -49,6 +52,11 @@ static void cubemap_release_ref(void **slot) {
     *slot = NULL;
 }
 
+/// @brief GC finalizer: release every face Pixels reference and null the slots.
+/// @details Called when the cubemap's refcount reaches zero. Each face
+///          is released independently so cubemaps built with a subset
+///          of faces (e.g. a 3-face placeholder during streaming) don't
+///          trip a null-deref in the inner release.
 static void cubemap_finalize(void *obj) {
     rt_cubemap3d *cm = (rt_cubemap3d *)obj;
     if (!cm)
@@ -57,6 +65,20 @@ static void cubemap_finalize(void *obj) {
         cubemap_release_ref(&cm->faces[i]);
 }
 
+/// @brief Convert a 3D direction vector into a cubemap face index plus UV.
+/// @details Implements the classic "pick the major axis" projection used
+///          by every GPU cubemap sampler:
+///          1. Compare |dx|, |dy|, |dz| — the largest component picks
+///             one of the six cube faces.
+///          2. Divide the other two components by the major axis value
+///             to get (u, v) in `[-1, +1]`, then remap to `[0, 1]`.
+///          The per-face U/V sign conventions here match the
+///          `cube_pos_x.png` / `cube_neg_x.png` layout Blender and
+///          most tool chains export, so no extra flip is needed at
+///          load time.
+///          Floor at `1e-8` on the major axis prevents division by
+///          zero when a direction component is exactly zero (e.g.
+///          sampling straight down (0,-1,0)).
 static void cubemap_direction_to_face_uv(
     float dx, float dy, float dz, int *out_face, float *out_u, float *out_v) {
     float ax = fabsf(dx), ay = fabsf(dy), az = fabsf(dz);
@@ -105,6 +127,14 @@ static void cubemap_direction_to_face_uv(
     *out_v = (v / ma + 1.0f) * 0.5f;
 }
 
+/// @brief Inverse of `direction_to_face_uv` — convert (face, u, v) back to a unit direction.
+/// @details Used when *baking* from a cubemap into an equirectangular
+///          texture (or prefiltering for IBL). For each texel on the
+///          destination equirect, we walk the cubemap face grid in
+///          reverse: remap `(u, v)` from `[0, 1]` to `[-1, +1]`, pick
+///          the fixed major axis for the face, then normalize. The
+///          `1e-8` floor on the length avoids a NaN if the inputs
+///          collapsed to zero.
 static void cubemap_face_uv_to_direction(
     int face, float u, float v, float *out_dx, float *out_dy, float *out_dz) {
     float uu = u * 2.0f - 1.0f;
@@ -158,6 +188,16 @@ static void cubemap_face_uv_to_direction(
     *out_dz = dz;
 }
 
+/// @brief Nearest-neighbor RGBA sample from a cubemap along direction `(dx, dy, dz)`.
+/// @details Three-step classical cubemap fetch:
+///          1. Project the direction into face + UV.
+///          2. Clamp UV to `[0, 1]` (guards against directions that
+///             drift off-face by floating-point error at cube edges).
+///          3. Floor-scale UV into pixel coords and fetch through
+///             `rt_pixels_get`.
+///          Returns 0 (transparent black) for null cubemaps or empty
+///          faces. Used by skybox backgrounds and environment-map
+///          reflection in Material.reflectivity > 0 draws.
 static uint32_t cubemap_sample_nearest_rgba(const rt_cubemap3d *cm, float dx, float dy, float dz) {
     int face = 0;
     float u = 0.5f;

@@ -45,7 +45,16 @@ uint64_t rt_siphash_k0_ = 0;
 uint64_t rt_siphash_k1_ = 0;
 int rt_siphash_seeded_ = 0;
 
-/// @brief Fill buffer with random bytes from the OS CSPRNG.
+/// @brief Fill `buf` with `len` random bytes from the OS CSPRNG.
+/// @details Platform split:
+///          - **Windows** → `BCryptGenRandom` with the system-preferred
+///            RNG; one call covers the whole buffer.
+///          - **Unix** → loop on `read("/dev/urandom")` because short
+///            reads are legal even from `/dev/urandom` (rare in
+///            practice, but kernel guarantees only "at least one byte").
+///          Returns 0 on success, -1 on any failure (open, read, or
+///          BCryptGenRandom error). The caller falls back to
+///          address-space entropy in that case.
 static int hash_random_fill(uint8_t *buf, size_t len) {
     if (len == 0)
         return 0;
@@ -70,7 +79,15 @@ static int hash_random_fill(uint8_t *buf, size_t len) {
 #endif
 }
 
-/// @brief Actual seed initialization (called exactly once).
+/// @brief Sample 16 bytes of CSPRNG entropy into the SipHash 128-bit key.
+/// @details Run-once via `pthread_once` / `InitOnceExecuteOnce` (see
+///          `rt_hash_ensure_seeded_`). On CSPRNG failure, falls back
+///          to address-space entropy XORed with the canonical SipHash
+///          ASCII constants `"somepseu"`/`"dorandom"` — strictly
+///          weaker than CSPRNG but still uncorrelated across processes
+///          thanks to ASLR. The release-store at the end pairs with
+///          relaxed loads in `rt_hash_ensure_seeded_`'s caller so
+///          other threads see a fully-published seed.
 static void hash_seed_init(void) {
     uint8_t buf[16];
     if (hash_random_fill(buf, 16) == 0) {
@@ -91,6 +108,7 @@ static void hash_seed_init(void) {
 #ifdef _WIN32
 static INIT_ONCE g_hash_seed_once_ = INIT_ONCE_STATIC_INIT;
 
+/// @brief Win32 InitOnce callback shim — adapts our void-returning init to BOOL CALLBACK.
 static BOOL CALLBACK hash_seed_once_cb(PINIT_ONCE InitOnce, PVOID Parameter, PVOID *Context) {
     (void)InitOnce;
     (void)Parameter;
@@ -99,12 +117,20 @@ static BOOL CALLBACK hash_seed_once_cb(PINIT_ONCE InitOnce, PVOID Parameter, PVO
     return TRUE;
 }
 
+/// @brief Idempotent: ensure the SipHash key has been seeded (Windows path).
+/// @details Safe to call from any thread, any number of times — the
+///          OS's `InitOnceExecuteOnce` serializes the first invocation
+///          and short-circuits all subsequent ones with no lock cost.
 void rt_hash_ensure_seeded_(void) {
     InitOnceExecuteOnce(&g_hash_seed_once_, hash_seed_once_cb, NULL, NULL);
 }
 #else
 static pthread_once_t g_hash_seed_once_ = PTHREAD_ONCE_INIT;
 
+/// @brief Idempotent: ensure the SipHash key has been seeded (POSIX path).
+/// @details Same contract as the Windows variant — `pthread_once`
+///          guarantees `hash_seed_init` runs exactly once across all
+///          threads, with subsequent calls returning immediately.
 void rt_hash_ensure_seeded_(void) {
     pthread_once(&g_hash_seed_once_, hash_seed_init);
 }

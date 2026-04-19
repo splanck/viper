@@ -64,7 +64,7 @@ void *rt_scanner_new(rt_string source) {
 // Position and State
 //=============================================================================
 
-/// @brief Pos the scanner.
+/// @brief Return the scanner's current byte offset into the input.
 int64_t rt_scanner_pos(void *obj) {
     if (!obj)
         return 0;
@@ -100,7 +100,7 @@ int64_t rt_scanner_remaining(void *obj) {
     return s->len - s->pos;
 }
 
-/// @brief Return the number of elements in the scanner.
+/// @brief Return the total length of the input in bytes (not affected by current position).
 int64_t rt_scanner_len(void *obj) {
     if (!obj)
         return 0;
@@ -120,7 +120,7 @@ void rt_scanner_reset(void *obj) {
 // Peeking
 //=============================================================================
 
-/// @brief Return the top/last element without removing it.
+/// @brief Return the byte at the current position without consuming (-1 at end).
 int64_t rt_scanner_peek(void *obj) {
     if (!obj)
         return -1;

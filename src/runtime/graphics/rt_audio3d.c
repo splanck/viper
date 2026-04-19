@@ -97,6 +97,15 @@ static void audio3d_vec_from_obj(void *vec, double *out_xyz) {
     out_xyz[2] = rt_vec3_z(vec);
 }
 
+/// @brief Normalise the listener forward vector and derive the matching right vector.
+/// @details Falls back to forward = `(0, 0, -1)` when the input is degenerate
+///          (zero or NULL). The right vector is computed as the XZ-plane
+///          rotation of forward by -90° (`right = (-forward.z, 0, forward.x)`),
+///          so even an upward-tilted forward yields a horizontal right
+///          vector — appropriate for stereo panning where pitch shouldn't
+///          affect left/right balance. A second degenerate fallback covers
+///          the case where forward is nearly straight up/down (`right`
+///          collapses to zero in XZ); right snaps to `+X` then.
 static void audio3d_set_forward_and_right(rt_audio3d_listener_state *state, const double *forward) {
     double fx;
     double fy;
@@ -197,6 +206,14 @@ void rt_audio3d_clear_active_listener_state(void) {
     s_has_active_listener = 0;
 }
 
+/// @brief Record per-voice 3D parameters (max distance + base volume) for later updates.
+/// @details `rt_audio3d_update_voice` needs to recompute attenuation against
+///          the same `max_distance` the voice was launched with, but the
+///          underlying 2D audio API doesn't carry per-voice 3D state.
+///          This table holds it. New voices append until the table fills,
+///          then the oldest entry (slot 0) is overwritten — sufficient for
+///          typical workloads (≤ 64 simultaneously moving 3D sounds) and
+///          much cheaper than a heap-managed map.
 static void track_voice_params(int64_t voice, double max_dist, int64_t base_volume) {
     /* Update existing entry */
     for (int32_t i = 0; i < s_voice_dist_count; i++) {
@@ -220,6 +237,7 @@ static void track_voice_params(int64_t voice, double max_dist, int64_t base_volu
     }
 }
 
+/// @brief Look up the recorded `max_distance` for a voice, or 50.0 if unknown.
 static double lookup_voice_distance(int64_t voice) {
     for (int32_t i = 0; i < s_voice_dist_count; i++) {
         if (s_voice_dist[i].voice_id == voice)
@@ -228,6 +246,7 @@ static double lookup_voice_distance(int64_t voice) {
     return 50.0; /* default fallback */
 }
 
+/// @brief Look up the recorded base volume for a voice, or 100 (max) if unknown.
 static int64_t lookup_voice_base_volume(int64_t voice) {
     for (int32_t i = 0; i < s_voice_dist_count; i++) {
         if (s_voice_dist[i].voice_id == voice)

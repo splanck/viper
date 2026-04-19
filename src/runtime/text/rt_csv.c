@@ -114,7 +114,21 @@ static char parser_consume(csv_parser *p) {
     return p->input[p->pos++];
 }
 
-/// @brief Parse a single field (possibly quoted).
+/// @brief Parse a single CSV field, handling RFC 4180 quoting and line endings.
+/// @details Two distinct paths based on the leading character:
+///          1. **Quoted field** (starts with `"`): consume content
+///             until the closing quote, treating `""` as an escaped
+///             literal `"`. Newlines inside a quoted field are
+///             preserved (multi-line records are RFC-legal).
+///          2. **Unquoted field**: read raw bytes until the next
+///             delimiter or line terminator — no escape handling.
+///          After the field content is captured, the parser steps over
+///          one trailing terminator: a delimiter (still in row), `\r`,
+///          `\n`, or `\r\n` (row done — sets `*at_line_end = true`).
+///          EOF mid-field always counts as line-end.
+///          Quoted-field buffer grows geometrically starting at 64;
+///          unquoted-field returns a slice of the input directly with
+///          no extra alloc.
 /// @param p Parser state.
 /// @param at_line_end Output: set to true if field ends at line boundary.
 /// @return Newly allocated field string.

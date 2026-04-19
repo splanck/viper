@@ -21,7 +21,7 @@ For a contributor-oriented checklist of which source files to modify when adding
 | Filesystem I/O | ⚠️ Partial [1] | ✅ Full | ✅ Full |
 | File Watching | ✅ Full | ✅ Full | ✅ Full |
 | Networking (TCP/UDP/HTTP) | ✅ Full | ✅ Full | ✅ Full |
-| TLS/SSL | ✅ Full (Schannel) | ✅ Full (Security.framework) | ✅ Full (custom built-in) |
+| TLS/SSL | ✅ Full (Schannel + in-tree handshake) | ✅ Full (in-tree TLS/X.509 runtime) | ✅ Full (in-tree TLS/X.509 runtime) |
 | Threading | ✅ Full | ✅ Full | ✅ Full |
 | Graphics | ✅ Full (GDI) | ✅ Full (Cocoa) | ⚠️ Partial [2] |
 | Audio | ✅ Full (WASAPI) | ✅ Full (AudioQueue) | ⚠️ Partial [3] |
@@ -135,12 +135,12 @@ The socket API is functionally equivalent, but initialization and error handling
 | Platform | Backend | Certificate Store |
 |----------|---------|-------------------|
 | Windows | Schannel via WinCrypt API | Windows Certificate Store (`CertOpenStore`) |
-| macOS | Security.framework | macOS Keychain (`SecTrustEvaluate`) |
-| Linux | Custom built-in (ECDSA P-256, ECDHE); `dlopen` fallback to system libcrypto for RSA-PSS only | System CA bundle (typically `/etc/ssl/certs`) |
+| macOS | Custom built-in TLS/X.509 runtime | Configured PEM bundle override or the system PEM bundle (`/etc/ssl/cert.pem` on current macOS releases) |
+| Linux | Custom built-in TLS/X.509 runtime | Configured PEM bundle override or the system PEM bundle (typically `/etc/ssl/certs/...`) |
 
-The Linux TLS implementation is entirely custom and built-in — it does **not** link against OpenSSL or any external library at build time. The only external dependency is a runtime `dlopen("libcrypto.so")` fallback used exclusively when the server selects an RSA-PSS signature scheme (0x0804/0x0805/0x0806). For the common ECDSA P-256 cipher suites, no external library is needed.
+The macOS and Linux TLS implementations are entirely custom and built-in. TLS 1.3 handshake processing, certificate-chain parsing, hostname verification, RSA-PSS CertificateVerify, and HTTPS/WSS server signing all run in-tree without OpenSSL, Security.framework, LibreSSL, mbedTLS, or runtime `dlopen()` fallbacks.
 
-All three backends validate server certificates against the platform's trusted root store. Certificate pinning behavior may differ slightly between platform stores.
+All three backends validate server certificates against a trusted root source. Windows uses the platform certificate store; macOS and Linux use a PEM trust bundle discovered from standard system locations unless a PEM bundle override is configured by the caller.
 
 ### 1.7 Game Controller Input
 

@@ -108,6 +108,15 @@ static const vg_theme_t *rt_gui_theme_base(rt_gui_theme_kind_t kind) {
     return (kind == RT_GUI_THEME_LIGHT) ? vg_theme_light() : vg_theme_dark();
 }
 
+/// @brief Recursively advance per-frame animation state across a widget subtree.
+/// @details Called from the app's render loop with the elapsed time since the
+///          last frame. Three widget types currently maintain time-based state
+///          and need a per-frame tick: TextInput (cursor blink), ProgressBar
+///          (indeterminate animation), and CodeEditor (cursor blink + scroll
+///          animation). Hidden subtrees and zero/negative `dt` short-circuit
+///          so background panels don't burn cycles or accumulate phase drift.
+///          When a new widget type grows time-dependent state, add it to the
+///          switch — the rest of the tree walk is generic.
 static void rt_gui_tick_widget_tree(vg_widget_t *widget, float dt) {
     if (!widget || !widget->visible || dt <= 0.0f)
         return;
@@ -131,6 +140,14 @@ static void rt_gui_tick_widget_tree(vg_widget_t *widget, float dt) {
     }
 }
 
+/// @brief Test whether any widget in a visible subtree has its layout-dirty flag set.
+/// @details Drives the "skip layout pass entirely if nothing changed" fast path
+///          in the render loop. Hidden subtrees are skipped because their
+///          dirty flags don't affect the visible output until they're shown
+///          again (at which point the show transition will re-flag layout).
+///          The walk short-circuits on the first dirty descendant — a typical
+///          frame finds nothing dirty in O(visible widget count) and the
+///          render loop can go straight to paint.
 static bool rt_gui_widget_tree_needs_layout(const vg_widget_t *widget) {
     if (!widget || !widget->visible)
         return false;

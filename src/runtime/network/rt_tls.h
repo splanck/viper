@@ -54,6 +54,7 @@ typedef struct rt_tls_session rt_tls_session_t;
 typedef struct rt_tls_config {
     const char *hostname; // Server hostname for cert verification and DNS-name SNI
     const char *alpn_protocol; // Optional single ALPN protocol (e.g. "http/1.1")
+    const char *ca_file;  // Optional PEM bundle override for trust anchors
     int verify_cert;      // 1 = verify certificate (default), 0 = skip
     int timeout_ms;       // Connection timeout in ms (0 = default 30s)
 } rt_tls_config_t;

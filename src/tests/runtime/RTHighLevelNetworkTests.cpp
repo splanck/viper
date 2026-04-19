@@ -77,9 +77,83 @@ ptOACq7G5MbeXCED94+Klf9Txx0gZ+qg8GckbdA=
 -----END CERTIFICATE-----
 )PEM";
 
+static const char *LOCALHOST_RSA_ROOT_CERT_PEM = R"PEM(-----BEGIN CERTIFICATE-----
+MIIDEzCCAfugAwIBAgICEAEwDQYJKoZIhvcNAQELBQAwGjEYMBYGA1UEAwwPVmlw
+ZXIgVGVzdCBSb290MB4XDTI0MDEwMTAwMDAwMFoXDTM4MDEwMTAwMDAwMFowGjEY
+MBYGA1UEAwwPVmlwZXIgVGVzdCBSb290MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8A
+MIIBCgKCAQEAsCvt6uYssvJ6Qlsn8LQAmJ0YUbN2gOYwyj2RV3s8UejGMQPleNIf
+eRvoeD/WZuG25Vf35YJ6djd0Vw1Mgt0Uk6M8C8oORoGQ6XRsGlNBOqzDiZbuDqxH
+KZ1kP3C69p7Ey5cOmk+tgo3vVJgwFAGPhR2f4540UvJ+rAe255wbs9IJ5uqFkKHI
+ccb+lrNZZaFPFGBSmI1Czm6ggPx3RHByOtSBepqB6VZzv05rzDV1WHFCGhlyBClJ
+BfG29kPuj5n03MUPxfw8NAMahPFszFPoA71oxan4qzffWyKP7FubAUTzxArI8sf5
+3otkyWp1d6snlyHlAI7kAb4vdIrwqZRcMQIDAQABo2MwYTAdBgNVHQ4EFgQUZsaT
++usuVwXWs0SWZvbAykvJFP8wHwYDVR0jBBgwFoAUZsaT+usuVwXWs0SWZvbAykvJ
+FP8wDwYDVR0TAQH/BAUwAwEB/zAOBgNVHQ8BAf8EBAMCAQYwDQYJKoZIhvcNAQEL
+BQADggEBAI+1UE7O2TCevcQfQJZSPGJw8vNGkzCv9tMh4qhV+zfmtjLkmefvQ+0M
+FJr/adXHYGE0WjwQ8VK4pfmd6gs26/PCEDREy0JpSXxrkyEiyei5WZvrNBvGQL4m
++XAngI5eTX7UwL7YBP/z8oUHQZOWXGsRyCNFpKi5zZKMUoR8aHuc1f9JDkyNbeon
+by85P8iOkGoFFWGMSSI8+lQqPLAYITEUfzqWsyU/T9yXuGzaeOh+lLnq/sOygumJ
+crDCbvYzu1M8VSpiGtQ9tiFSqIyQruau7RM69GFicRtKfWOOnHEafY5cZ+V9Dder
+RXrTo5++oZs1QvYkMwOG9dD4/fGdRTY=
+-----END CERTIFICATE-----
+)PEM";
+
+static const char *LOCALHOST_RSA_LEAF_CERT_PEM = R"PEM(-----BEGIN CERTIFICATE-----
+MIIDPTCCAiWgAwIBAgICIAEwDQYJKoZIhvcNAQELBQAwGjEYMBYGA1UEAwwPVmlw
+ZXIgVGVzdCBSb290MB4XDTI0MDEwMTAwMDAwMFoXDTM4MDEwMTAwMDAwMFowFDES
+MBAGA1UEAwwJbG9jYWxob3N0MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKC
+AQEAhKKdI7etjnO2Jnf/6gT9VrQEFCRmU73zic7zvHXkpyg/5zWy+cz7kdV87Ol6
+h+5mvl63sspIpCeQ4DbQenlzhyMyDwO+YCZhkZp1Pu6Tq/XoixFL30JHL8uWyvd+
+IJDY/Ihn163GdFHJ5aoiljUeZu9xEsYz8qqTR3hwDBpQpeTL3Bd4qIfVUeD5vazF
+nEAjOzQpGv3yTmZVn8p5vPxkwusjOHwhXSrIDjAw/PoffsdHXGutjDxZMBdwviEd
+VShtoVWN6L5SQZK/y01P4FXN+YpgAcBNUA7vovJO76iaPeCQR2vnj3R/rxq/vvug
+sO7JA04QImdhyZ4qbZoLUHJ69wIDAQABo4GSMIGPMBoGA1UdEQQTMBGCCWxvY2Fs
+aG9zdIcEfwAAATAMBgNVHRMBAf8EAjAAMA4GA1UdDwEB/wQEAwIFoDATBgNVHSUE
+DDAKBggrBgEFBQcDATAdBgNVHQ4EFgQUUrU52T/pEly3nsAxjlpTVltClS0wHwYD
+VR0jBBgwFoAUZsaT+usuVwXWs0SWZvbAykvJFP8wDQYJKoZIhvcNAQELBQADggEB
+AA1wTY/oNMXbAONfawVKoz+biuEFiSwsy4XHKyZmhsFpOcjGlotWl14hjJp/zRBG
+6B4PZwYT7D43/1C6wC3q5AOD+kjcrGik4Ef5WFggSZJUl43Ln51TNm5yhWhCT6nZ
+0IVv2vKWRmoy3JMRG4hDfAT3Z+SaiwEZPpXnIvClXOgIl+DAuC+8h8CMRrJQ4mVN
+aPCWTHi1eZAIiIcJ7Z55yWyWBmH7wx+y1YtYnDXH5ZeXSsm2EMJJtOeX/MPVStpT
+cx+Oj/wMKAolQHbKLlO3Y2cBkuJ/cRM252X3QJfC+wk0T6n5MfF8MBlNj/z2fure
+KwmzLhH+CCh6NMsSird2hjw=
+-----END CERTIFICATE-----
+)PEM";
+
+static const char *LOCALHOST_RSA_LEAF_KEY_PEM = R"PEM(-----BEGIN PRIVATE KEY-----
+MIIEvAIBADANBgkqhkiG9w0BAQEFAASCBKYwggSiAgEAAoIBAQCEop0jt62Oc7Ym
+d//qBP1WtAQUJGZTvfOJzvO8deSnKD/nNbL5zPuR1Xzs6XqH7ma+XreyykikJ5Dg
+NtB6eXOHIzIPA75gJmGRmnU+7pOr9eiLEUvfQkcvy5bK934gkNj8iGfXrcZ0Ucnl
+qiKWNR5m73ESxjPyqpNHeHAMGlCl5MvcF3ioh9VR4Pm9rMWcQCM7NCka/fJOZlWf
+ynm8/GTC6yM4fCFdKsgOMDD8+h9+x0dca62MPFkwF3C+IR1VKG2hVY3ovlJBkr/L
+TU/gVc35imABwE1QDu+i8k7vqJo94JBHa+ePdH+vGr+++6Cw7skDThAiZ2HJnipt
+mgtQcnr3AgMBAAECggEAAYRuDBpG+9V6tLBJhT037dIoJuYrep3hEGc+gqxcJP7y
+tmvMOy85hGln3YG70JxihC1VxMFypy2lXHibK2OCZ6i/eFqc4zMH3tILP27/0ZVl
+h1owd/RP+ypFHyz0MAihDmS7+SgqChXWG5tSX6K/JnSjxh5Dj8KAHu7MgOYNR1s1
+UHqJ/Ldqm2/XzQHkYvAKC6wM7uBXK/voxqH2ob6R7ksPrI6geJMfIFEVXbxzJvnS
+azS2iRu7dr47fO2L5q28OiYb6jFxi7pOb8Fa0Tr/cW9mOECZ8MidOXu7AjP5BNiJ
+0sgSTXgZ6LqCk2xZBC6r7YUZ+m0onT7XXpSb9ilXBQKBgQC569FRs+TLMBXhJ4Oa
+12TP9kDtqDHACx8hieLxQQpVRQVXpHSaSEcAukaVxmWt5W0xlk/1o5CezAICAKst
+8tYqkAQo1YnPPPNkX7ZtlOi+fxOmwLDBlUXpvSGkO0dI719HwDkbIL3Pn7o+rD7Z
+IyfO2UKQ/CkWnnu4Puw82mj7AwKBgQC2oQxrT+V+qGcGKTAvK9UNSvMjr17HrGau
+RqHq9ljMjjIQ1c83EsCibuk9hm4zTti6C2EuDtxciS3OVQAJwFjR4BcAnt9jQr4l
+bfmZFE4xpbF6TEHYY4EuTvZOV+1CYd9uNQS18GzhD45r4zSr539/pcaxcsJsuKC/
+NU6GW8sj/QKBgGJxX9MACrwfiOY/8uow9Js8y6JK9ZS3DtPGW9jcVGlT84E1fdwX
+OylCeI9jjoEmQswHx+zLn47FfKaszfa1ZvsAaINqld6aalGScFjTiO0dAj3AN5c4
+v90EnOSF0rfmry+hs1sO2hIuhAIdV+XHPJPE6/8y1Vq5rc6f2pxaFU4bAoGALs3/
+fNExI9DM9os/yhcVtx5qSc78H3hTqH55qNoRz/rxYdcqEBdCP17lb9swCv4+FRAt
+i7xLRXvyvVqTc+xT1xXzTzloTuwgBz+0JENL9vVcEtfQWEDILrIV9eYa7FRhCsGT
+v30qqlNuUMAeE6B00KYP0hJzOaHnsJlc0ppb6ZECgYAvxGRLH2tM01RHzpVEuMJo
+BOEO0CXN4TOLIzzOJ/+U30eEGGLMdTgQvNApbqpEZlErSyVW85Xq5M57kyMce4/K
+cgD9SkQcscJsGtN3qe481Cha/aHxF0SpE6ZTrmcVSXCdwPxON7ZGf2KRakvBUMkb
+s9ACvsoKGa8Ahrkw0OK3kA==
+-----END PRIVATE KEY-----
+)PEM";
+
 struct temp_tls_files_t {
     std::string cert_path;
     std::string key_path;
+    std::string ca_path;
     bool valid = false;
 
     temp_tls_files_t() = default;
@@ -87,9 +161,13 @@ struct temp_tls_files_t {
     temp_tls_files_t &operator=(const temp_tls_files_t &) = delete;
 
     temp_tls_files_t(temp_tls_files_t &&other) noexcept
-        : cert_path(std::move(other.cert_path)), key_path(std::move(other.key_path)), valid(other.valid) {
+        : cert_path(std::move(other.cert_path)),
+          key_path(std::move(other.key_path)),
+          ca_path(std::move(other.ca_path)),
+          valid(other.valid) {
         other.cert_path.clear();
         other.key_path.clear();
+        other.ca_path.clear();
         other.valid = false;
     }
 
@@ -101,11 +179,15 @@ struct temp_tls_files_t {
             std::filesystem::remove(cert_path, ec);
         if (!key_path.empty())
             std::filesystem::remove(key_path, ec);
+        if (!ca_path.empty())
+            std::filesystem::remove(ca_path, ec);
         cert_path = std::move(other.cert_path);
         key_path = std::move(other.key_path);
+        ca_path = std::move(other.ca_path);
         valid = other.valid;
         other.cert_path.clear();
         other.key_path.clear();
+        other.ca_path.clear();
         other.valid = false;
         return *this;
     }
@@ -116,6 +198,8 @@ struct temp_tls_files_t {
             std::filesystem::remove(cert_path, ec);
         if (!key_path.empty())
             std::filesystem::remove(key_path, ec);
+        if (!ca_path.empty())
+            std::filesystem::remove(ca_path, ec);
     }
 };
 
@@ -219,7 +303,9 @@ static bool write_text_file(const std::string &path, const char *contents) {
     return out.good();
 }
 
-static temp_tls_files_t create_temp_tls_files() {
+static temp_tls_files_t create_temp_tls_files_with_contents(const char *cert_pem,
+                                                            const char *key_pem,
+                                                            const char *ca_pem = nullptr) {
     temp_tls_files_t files;
     std::error_code ec;
     const auto temp_dir = std::filesystem::temp_directory_path(ec);
@@ -229,18 +315,27 @@ static temp_tls_files_t create_temp_tls_files() {
     const unsigned id = ++tls_fixture_counter;
     files.cert_path = (temp_dir / ("viper_tls_fixture_" + std::to_string(id) + "_cert.pem")).string();
     files.key_path = (temp_dir / ("viper_tls_fixture_" + std::to_string(id) + "_key.pem")).string();
-    if (!write_text_file(files.cert_path, LOCALHOST_TEST_CERT_PEM) ||
-        !write_text_file(files.key_path, LOCALHOST_TEST_KEY_PEM)) {
+    if (ca_pem)
+        files.ca_path = (temp_dir / ("viper_tls_fixture_" + std::to_string(id) + "_ca.pem")).string();
+    if (!write_text_file(files.cert_path, cert_pem) || !write_text_file(files.key_path, key_pem) ||
+        (ca_pem && !write_text_file(files.ca_path, ca_pem))) {
         std::error_code cleanup_ec;
         std::filesystem::remove(files.cert_path, cleanup_ec);
         std::filesystem::remove(files.key_path, cleanup_ec);
+        if (!files.ca_path.empty())
+            std::filesystem::remove(files.ca_path, cleanup_ec);
         files.cert_path.clear();
         files.key_path.clear();
+        files.ca_path.clear();
         return files;
     }
 
     files.valid = true;
     return files;
+}
+
+static temp_tls_files_t create_temp_tls_files() {
+    return create_temp_tls_files_with_contents(LOCALHOST_TEST_CERT_PEM, LOCALHOST_TEST_KEY_PEM);
 }
 
 static bool wait_for_condition(const std::function<bool()> &predicate, int timeout_ms) {
@@ -345,6 +440,20 @@ static rt_tls_session_t *connect_local_tls_server(int port) {
     config.verify_cert = 0;
     config.timeout_ms = 5000;
     return rt_tls_connect("127.0.0.1", (uint16_t)port, &config);
+}
+
+static rt_tls_session_t *connect_local_tls_server_verified(int port,
+                                                           const char *connect_host,
+                                                           const char *hostname,
+                                                           const char *ca_file) {
+    rt_tls_config_t config;
+    rt_tls_config_init(&config);
+    config.hostname = hostname;
+    config.alpn_protocol = "http/1.1";
+    config.ca_file = ca_file;
+    config.verify_cert = 1;
+    config.timeout_ms = 5000;
+    return rt_tls_connect(connect_host, (uint16_t)port, &config);
 }
 
 static bool tls_recv_ws_frame(rt_tls_session_t *tls, uint8_t *opcode_out, std::vector<uint8_t> *payload_out) {
@@ -1224,6 +1333,57 @@ static void test_https_server_roundtrip() {
     rt_https_server_stop(server);
 }
 
+static void test_https_server_rsa_roundtrip_with_verification() {
+    printf("\nTesting HttpsServer RSA round-trip with native verification:\n");
+
+    const int port = (int)rt_netutils_get_free_port();
+    if (port <= 0) {
+        printf("  SKIP: local bind unavailable in this environment\n");
+        return;
+    }
+
+    temp_tls_files_t tls_files = create_temp_tls_files_with_contents(
+        LOCALHOST_RSA_LEAF_CERT_PEM, LOCALHOST_RSA_LEAF_KEY_PEM, LOCALHOST_RSA_ROOT_CERT_PEM);
+    if (!tls_files.valid || tls_files.ca_path.empty()) {
+        printf("  SKIP: could not write temporary RSA TLS fixture files\n");
+        return;
+    }
+
+    void *server =
+        rt_https_server_new(port, rt_const_cstr(tls_files.cert_path.c_str()), rt_const_cstr(tls_files.key_path.c_str()));
+    rt_https_server_get(server, rt_const_cstr("/secure"), rt_const_cstr("secure"));
+    rt_https_server_bind_handler(server, rt_const_cstr("secure"), (void *)&https_server_secure_handler);
+    rt_https_server_start(server);
+    std::this_thread::sleep_for(std::chrono::milliseconds(120));
+
+    test_result("HttpsServer RSA fixture reports running", rt_https_server_is_running(server) == 1);
+
+    rt_tls_session_t *tls =
+        connect_local_tls_server_verified(port, "127.0.0.1", "localhost", tls_files.ca_path.c_str());
+    test_result("RSA HttpsServer verifies against the custom trust bundle", tls != nullptr);
+    if (!tls) {
+        rt_https_server_stop(server);
+        return;
+    }
+
+    const char *request =
+        "GET /secure HTTP/1.1\r\n"
+        "Host: localhost\r\n"
+        "Connection: close\r\n"
+        "\r\n";
+    test_result("RSA HttpsServer accepts the verified HTTPS request",
+                tls_send_all(tls, request, strlen(request)));
+    const std::string status = tls_recv_line(tls);
+    test_result("RSA HttpsServer response status is 200", status == "HTTP/1.1 200 OK");
+    const auto headers = tls_read_http_headers(tls);
+    const std::string length = tls_find_http_header(headers, "Content-Length");
+    const std::string body = tls_recv_string(tls, (size_t)strtoull(length.c_str(), nullptr, 10));
+    test_result("RSA HttpsServer verified response body matches", body == "secure-ok");
+
+    rt_tls_close(tls);
+    rt_https_server_stop(server);
+}
+
 static void test_wss_server_broadcast() {
     printf("\nTesting WssServer TLS upgrade and broadcast:\n");
 
@@ -1316,6 +1476,7 @@ int main() {
     test_http_client_keepalive_reuse();
     test_http_server_keepalive_response();
     test_https_server_roundtrip();
+    test_https_server_rsa_roundtrip_with_verification();
     test_wss_server_broadcast();
     test_smtp_plain_send_sanitizes_and_dot_stuffs();
 

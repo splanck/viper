@@ -115,12 +115,25 @@ static const uint8_t rcon[11] = {0x00, 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40,
 // AES Helper Functions
 //=============================================================================
 
-/// @brief Multiply by 2 in GF(2^8)
+/// @brief Multiply by 2 in GF(2⁸) using AES's irreducible polynomial `x⁸ + x⁴ + x³ + x + 1`.
+/// @details Left-shift by 1, then conditionally XOR with `0x1b` (the
+///          low byte of the polynomial) when the high bit was set —
+///          that's the modular reduction. Used by `mix_columns` to
+///          implement the per-column matrix multiply without
+///          materializing a full lookup table for the rare case of
+///          ×2 / ×3 multiplications.
 static inline uint8_t xtime(uint8_t x) {
     return (uint8_t)((x << 1) ^ (((x >> 7) & 1) * 0x1b));
 }
 
-/// @brief Multiply two bytes in GF(2^8)
+/// @brief Multiply two bytes in GF(2⁸) — full peasant-multiplication algorithm.
+/// @details Walks `b`'s bits low-to-high. For each set bit, accumulates
+///          the running power-of-2 multiple of `a` into the result;
+///          after each step, double `a` via `xtime` (with the modular
+///          reduction baked in). Used by `inv_mix_columns` where the
+///          inverse matrix multiplies are arbitrary GF(2⁸) constants
+///          (0x09, 0x0b, 0x0d, 0x0e), too varied to hard-code as
+///          xtime chains.
 static inline uint8_t gf_mul(uint8_t a, uint8_t b) {
     uint8_t result = 0;
     uint8_t hi_bit;
@@ -309,20 +322,31 @@ static void aes_key_expansion(const uint8_t *key, uint8_t *w, int nk, int nr) {
 // AES Cipher Transformations
 //=============================================================================
 
-/// @brief Apply S-box substitution to all bytes in state
+/// @brief AES `SubBytes` step — replace every byte in state via the S-box lookup.
+/// @details Provides the cipher's non-linearity: the S-box is built
+///          from `x ↦ x⁻¹` in GF(2⁸) followed by an affine transform,
+///          chosen so it has no fixed points and resists linear /
+///          differential cryptanalysis.
 static void sub_bytes(uint8_t *state) {
     for (int i = 0; i < 16; i++)
         state[i] = sbox[state[i]];
 }
 
-/// @brief Apply inverse S-box substitution to all bytes in state
+/// @brief Inverse of `SubBytes` — replace every byte via the inverse S-box.
+/// @details The inverse table is precomputed (not derived) so decryption
+///          is the same number of operations as encryption.
 static void inv_sub_bytes(uint8_t *state) {
     for (int i = 0; i < 16; i++)
         state[i] = inv_sbox[state[i]];
 }
 
-/// @brief Shift rows of the state matrix
-/// State is column-major: state[row + 4*col]
+/// @brief AES `ShiftRows` step — cyclically rotate each row of the 4×4 state.
+/// @details Row 0 stays put; rows 1, 2, 3 rotate left by 1, 2, 3 positions
+///          respectively. Combined with `MixColumns`, this provides the
+///          *diffusion* that AES needs — without it, each byte of
+///          ciphertext would depend on only one byte of plaintext.
+///          State layout is column-major: `state[row + 4*col]`, so
+///          row 1 spans indices 1, 5, 9, 13 etc.
 static void shift_rows(uint8_t *state) {
     uint8_t temp;
 
@@ -349,7 +373,10 @@ static void shift_rows(uint8_t *state) {
     state[3] = temp;
 }
 
-/// @brief Inverse shift rows of the state matrix
+/// @brief Inverse of `ShiftRows` — cyclically rotate each row to the right.
+/// @details Mirror of `shift_rows`: row 1 right-rotates by 1, row 2 by
+///          2 (same as left-rotate by 2 since the row is 4 wide),
+///          row 3 right-rotates by 3 (= left-rotate by 1).
 static void inv_shift_rows(uint8_t *state) {
     uint8_t temp;
 
@@ -376,7 +403,20 @@ static void inv_shift_rows(uint8_t *state) {
     state[15] = temp;
 }
 
-/// @brief Mix columns transformation
+/// @brief AES `MixColumns` step — multiply each column by the fixed MDS matrix in GF(2⁸).
+/// @details Each output column is the matrix product
+///          ```
+///          [02 03 01 01]   [a0]
+///          [01 02 03 01] × [a1]
+///          [01 01 02 03]   [a2]
+///          [03 01 01 02]   [a3]
+///          ```
+///          where multiplication is in GF(2⁸). Implemented inline as
+///          `xtime` (which is ×2 in the field) plus XORs because the
+///          matrix entries are all ∈ {01, 02, 03} — no general
+///          `gf_mul` needed. Provides the second half of AES's
+///          diffusion: now each output byte depends on all four
+///          input bytes of the same column.
 static void mix_columns(uint8_t *state) {
     for (int c = 0; c < 4; c++) {
         int i = c * 4;
@@ -392,7 +432,11 @@ static void mix_columns(uint8_t *state) {
     }
 }
 
-/// @brief Inverse mix columns transformation
+/// @brief Inverse of `MixColumns` — multiply each column by the inverse MDS matrix.
+/// @details Inverse matrix entries are `{0e, 0b, 0d, 09}` — too varied
+///          to express via xtime chains, so falls back to general
+///          `gf_mul`. This is why decryption is slower than encryption
+///          on architectures without an AES instruction.
 static void inv_mix_columns(uint8_t *state) {
     for (int c = 0; c < 4; c++) {
         int i = c * 4;
@@ -408,7 +452,12 @@ static void inv_mix_columns(uint8_t *state) {
     }
 }
 
-/// @brief XOR state with round key
+/// @brief AES `AddRoundKey` step — XOR the round key into the state, byte-by-byte.
+/// @details The only step that actually mixes the secret key into the
+///          state. Repeated `nr+1` times per block (once before the
+///          first round, once after every round including the last).
+///          XOR is its own inverse, which is why decryption uses the
+///          same operation in reverse round order.
 static void add_round_key(uint8_t *state, const uint8_t *round_key) {
     for (int i = 0; i < 16; i++)
         state[i] ^= round_key[i];

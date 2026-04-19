@@ -65,6 +65,23 @@ static void rt_gui_menu_sync_menubar(vg_menubar_t *menubar) {
     rt_gui_macos_menu_sync_for_menubar(menubar);
 }
 
+/// @brief Convert a runtime Pixels object (ARGB) into a `vg_icon_t` (RGBA).
+/// @details Repacks the pixels' ARGB-as-uint32 buffer into the byte-order
+///          RGBA layout that the GUI library's icon API expects (one byte
+///          each, R-G-B-A in memory). Validates `width * height` for
+///          integer overflow before allocating — guards against a
+///          maliciously-sized Pixels object claiming dimensions whose
+///          product overflows `size_t`.
+///
+///          Unlike `rt_codeeditor_icon_from_pixels`, this function returns
+///          an empty `vg_icon_t{0}` on any failure path (NULL pixels, bad
+///          dimensions, allocation failure) instead of trapping. Menu
+///          icons are decorative — the menu still works without them — so
+///          the runtime trades a missing glyph for a usable menu rather
+///          than aborting the program.
+/// @param pixels Source Pixels object; ownership not transferred.
+/// @return Populated icon on success; `{0}` (`type == VG_ICON_NONE`) on
+///         failure.
 static vg_icon_t rt_gui_icon_from_pixels(void *pixels) {
     vg_icon_t icon = {0};
     if (!pixels)

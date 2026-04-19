@@ -45,21 +45,54 @@
 /// SHA256 output size in bytes.
 #define SHA256_DIGEST_LEN 32
 
+/// @brief Optimization-resistant zero-fill for sensitive PBKDF2 intermediates.
+/// @details `volatile` pointer write defeats dead-store elimination so
+///          the compiler can't optimize this loop away. Used to wipe
+///          every transient buffer (`U`, `T`, `salt || INT(i)`, the
+///          fully-derived key once it's been copied to a Bytes
+///          object) before functions return.
 static void keyderive_secure_zero(void *ptr, size_t len) {
     volatile uint8_t *p = (volatile uint8_t *)ptr;
     while (len-- > 0)
         *p++ = 0;
 }
 
-/// @brief PBKDF2-HMAC-SHA256 implementation (RFC 2898 / RFC 8018).
+/// @brief PBKDF2-HMAC-SHA256 implementation (RFC 2898 § 5.2 / RFC 8018).
+/// @details Derives `out_len` bytes from `(password, salt)` by iterating HMAC-
+///          SHA256 `iterations` times per output block. The output is
+///          structured as a concatenation of fixed-size blocks:
 ///
-/// DK = T1 || T2 || ... || Tdklen/hlen
-/// Ti = F(Password, Salt, c, i)
-/// F(Password, Salt, c, i) = U1 ^ U2 ^ ... ^ Uc
-/// U1 = PRF(Password, Salt || INT(i))
-/// U2 = PRF(Password, U1)
-/// ...
-/// Uc = PRF(Password, Uc-1)
+///          ```
+///          DK = T(1) || T(2) || ... || T(L)        where L = ceil(out_len / 32)
+///          T(i) = U(1) XOR U(2) XOR ... XOR U(c)   c = iterations
+///          U(1) = HMAC-SHA256(password, salt || INT32_BE(i))
+///          U(j) = HMAC-SHA256(password, U(j-1))    for j > 1
+///          ```
+///
+///          The XOR-accumulation across iterations is the cost amplification:
+///          an attacker brute-forcing the password must evaluate HMAC-SHA256
+///          `c` times per guess, making the per-guess cost linear in
+///          `iterations`. Modern guidance (OWASP 2023) recommends at least
+///          ~600,000 iterations for SHA256; this raw function trusts the
+///          caller, but the higher-level `Password` class enforces a
+///          minimum of 1,000 (the historical RFC-2898 floor) to prevent
+///          accidentally toothless deployments.
+///
+///          The block-index `INT32_BE(i)` is appended to the salt buffer in
+///          place across the outer loop (allocated once, reused with the
+///          last 4 bytes overwritten per block). All intermediate state
+///          (`U`, `T`, the `salt || INT(i)` buffer) is zeroed via
+///          `keyderive_secure_zero` before the function returns so the
+///          derived key material doesn't linger in heap memory after the
+///          caller copies it out.
+/// @param password Password bytes (any length).
+/// @param password_len Length of `password`.
+/// @param salt Salt bytes (any length, including 0).
+/// @param salt_len Length of `salt`.
+/// @param iterations Number of HMAC iterations per output block (cost
+///        parameter — higher means slower per guess).
+/// @param out Output buffer for derived key material.
+/// @param out_len Number of bytes to produce.
 void rt_keyderive_pbkdf2_sha256_raw(const uint8_t *password,
                                     size_t password_len,
                                     const uint8_t *salt,

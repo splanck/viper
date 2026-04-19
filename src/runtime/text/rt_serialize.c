@@ -52,12 +52,19 @@
 /// Thread-local error message.
 static _Thread_local rt_string g_last_error = NULL;
 
+/// @brief Replace the thread-local error string with `msg` (refcounts the previous one off).
+/// @details Stored per-thread (`_Thread_local`) so concurrent
+///          serialize calls in different threads don't clobber each
+///          other's diagnostics. Released via `clear_error` at the
+///          start of every public entry point so stale errors from
+///          a prior call don't leak across operations.
 static void set_error(const char *msg) {
     if (g_last_error)
         rt_string_unref(g_last_error);
     g_last_error = rt_string_from_bytes(msg, strlen(msg));
 }
 
+/// @brief Drop the current thread-local error string (called at the start of each entry point).
 static void clear_error(void) {
     if (g_last_error)
         rt_string_unref(g_last_error);
@@ -112,7 +119,11 @@ void *rt_serialize_parse(rt_string text, int64_t format) {
 // Unified Format
 //=============================================================================
 
-/// @brief Format the serialize.
+/// @brief Serialize `obj` into the requested text format (compact output).
+/// @details Dispatches to the per-format formatter (`rt_json_format`,
+///          `rt_xml_format`, etc.) based on the `format` enum.
+///          Returns an empty string on unknown format. Use
+///          `rt_serialize_format_pretty` for indented output.
 rt_string rt_serialize_format(void *obj, int64_t format) {
     clear_error();
 
@@ -209,7 +220,18 @@ static const char *skip_ws(const char *s) {
     return s;
 }
 
-/// @brief Detect the serialize.
+/// @brief Sniff a text blob and return the most likely serialization format.
+/// @details Heuristic dispatch on the first non-whitespace character(s):
+///          - `{` or `[` → JSON.
+///          - `<` → XML.
+///          - `---` → YAML document marker.
+///          - `[name]` on first line → TOML section.
+///          - `key = ...` on first line → TOML key/value.
+///          - `key: ...` on first line → YAML.
+///          - everything else → CSV (catch-all).
+///          Returns the matching `RT_FORMAT_*` constant, or -1 for
+///          NULL/empty input. Never throws — this is meant to be a
+///          best-effort guess used as a fallback.
 int64_t rt_serialize_detect(rt_string text) {
     const char *s;
     const char *line;
@@ -288,7 +310,12 @@ void *rt_serialize_auto_parse(rt_string text) {
 // Round-Trip Conversion
 //=============================================================================
 
-/// @brief Convert the serialize.
+/// @brief Round-trip text through a parse → re-format cycle to convert between formats.
+/// @details Implementation: parse `text` as `from_format` to a tree,
+///          then re-serialize that tree as `to_format`. Lossy in both
+///          directions for some pairs (XML attributes ↔ JSON keys,
+///          TOML datetimes ↔ JSON strings) — caller should expect
+///          structural fidelity, not byte-for-byte equivalence.
 rt_string rt_serialize_convert(rt_string text, int64_t from_format, int64_t to_format) {
     void *parsed;
 
@@ -345,7 +372,9 @@ rt_string rt_serialize_mime_type(int64_t format) {
     }
 }
 
-/// @brief Format the from name of the serialize.
+/// @brief Look up a format constant by its short name (case-insensitive: "json", "xml", ...).
+/// @details Inverse of `rt_serialize_format_name`. Accepts both
+///          "yaml" and "yml" for YAML. Returns -1 for unknown names.
 int64_t rt_serialize_format_from_name(rt_string name) {
     const char *s;
     if (!name)
@@ -376,7 +405,10 @@ int64_t rt_serialize_format_from_name(rt_string name) {
 // Error Handling
 //=============================================================================
 
-/// @brief Error the serialize.
+/// @brief Return the most recent thread-local error message (empty string if none).
+/// @details Stored per-thread, so concurrent serialize calls don't
+///          step on each other's diagnostics. Cleared at the start of
+///          every public entry point.
 rt_string rt_serialize_error(void) {
     if (g_last_error)
         return g_last_error;

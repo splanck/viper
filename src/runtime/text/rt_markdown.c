@@ -39,7 +39,14 @@
 #include <stdio.h>
 #include <string.h>
 
-/* S-13: Check if a URL scheme is unsafe (javascript:, data:, vbscript:) */
+/// @brief Detect URL schemes that could execute script (javascript:, data:, vbscript:).
+/// @details Used by the link/image handlers to block XSS via Markdown
+///          links of the form `[click](javascript:alert(1))`. The
+///          comparison is case-insensitive (manual lowercase fold so
+///          we don't pull in `tolower` per byte) and tolerates the
+///          scheme being a prefix of a longer URL string. Matched
+///          schemes get rewritten to `#` so the link is rendered but
+///          inert. (Tracking ID: S-13.)
 static bool url_scheme_is_blocked(const char *url, int64_t len) {
     static const struct {
         const char *scheme;
@@ -68,6 +75,12 @@ static bool url_scheme_is_blocked(const char *url, int64_t len) {
 
 // --- Helper: append escaped HTML ---
 
+/// @brief Write one character to `sb`, escaping the four HTML metacharacters.
+/// @details Maps `<`/`>`/`&`/`"` to their named entities; passes
+///          everything else through verbatim. The single-quote `'`
+///          is intentionally not escaped because it never causes
+///          problems inside double-quoted attributes (the only
+///          context we emit user content into here).
 static void append_escaped(rt_string_builder *sb, char c) {
     switch (c) {
         case '<':
@@ -90,6 +103,18 @@ static void append_escaped(rt_string_builder *sb, char c) {
 
 // --- Helper: process inline formatting ---
 
+/// @brief Convert one Markdown line's inline span syntax to HTML, appending into `sb`.
+/// @details Handles four span constructs in priority order:
+///          1. `**bold**`     → `<strong>...</strong>`
+///          2. `*italic*`     → `<em>...</em>` (skipped if followed by `*`
+///             so `**` always wins as bold).
+///          3. `` `code` ``   → `<code>...</code>`
+///          4. `[text](url)`  → `<a href="url">text</a>`, with the URL
+///             scheme passed through `url_scheme_is_blocked`.
+///          All literal characters route through `append_escaped` so
+///          attacker-controlled `<`/`>`/`&` can't break out into raw
+///          HTML. Unmatched closing markers (e.g. `*foo` with no
+///          closing `*`) just emit the leading marker as a literal.
 static void process_inline(rt_string_builder *sb, const char *line, int64_t len) {
     int64_t i = 0;
     while (i < len) {

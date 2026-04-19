@@ -74,6 +74,7 @@ struct rt_tls_session {
     // Configuration
     char hostname[256];
     char alpn_protocol[64];
+    char ca_file[512];
     int verify_cert;
     int timeout_ms;
     uint8_t legacy_session_id[32];
@@ -87,6 +88,7 @@ struct rt_tls_session {
     uint8_t client_random[32];
     uint8_t server_random[32];
     uint16_t cipher_suite;
+    uint16_t server_sig_scheme;
 
     // Key schedule
     uint8_t handshake_secret[32];

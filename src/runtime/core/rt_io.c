@@ -177,6 +177,13 @@ RT_WEAK void vm_trap(const char *msg) {
 #include <intrin.h>
 #endif
 
+/// @brief Return the caller's return address using compiler-specific intrinsics.
+/// @details Used by the trap dispatcher to record the IP where a
+///          trap fired, so a debugger or stack-printing helper can
+///          show the user *where* in their compiled code the trap
+///          originated. MSVC has `_ReturnAddress`, GCC/Clang have
+///          `__builtin_return_address(0)`, anything else falls back
+///          to `0` (no IP capture, but the trap still propagates).
 static uintptr_t rt_capture_return_address(void) {
 #if defined(_MSC_VER)
     return (uintptr_t)_ReturnAddress();
@@ -187,6 +194,22 @@ static uintptr_t rt_capture_return_address(void) {
 #endif
 }
 
+/// @brief Centralized trap dispatcher: classify, store fields, longjmp or call vm_trap.
+/// @details Single entry point used by all trap-raising helpers.
+///          Steps:
+///          1. Validate `kind`; out-of-range values normalize to
+///             `RT_TRAP_KIND_RUNTIME_ERROR`.
+///          2. Stash IP / kind / code / line into thread-local slots
+///             so `ErrGetKind/Code/Line/Ip` can read them inside a
+///             catch handler.
+///          3. Clear the network-error code unless this is a network
+///             trap (so `Net.LastError` doesn't show stale data).
+///          4. If a recovery point is active, copy the message into
+///             the TLS error buffer and `longjmp` — the kind of jump
+///             depends on whether the recovery is a legacy `jmp_buf`
+///             or a native EH frame.
+///          5. Otherwise, the trap is unrecoverable: hand off to the
+///             user-replaceable `vm_trap` (which by default aborts).
 static void rt_trap_dispatch(
     const char *msg, int32_t kind, int32_t code, int32_t line, uintptr_t return_address) {
     if (kind < RT_TRAP_KIND_DIVIDE_BY_ZERO || kind > RT_TRAP_KIND_NETWORK_ERROR)

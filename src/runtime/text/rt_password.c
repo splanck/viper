@@ -48,6 +48,12 @@
 #define SALT_LENGTH 16
 #define HASH_LENGTH 32
 
+/// @brief Optimization-resistant zero-fill for sensitive password and hash buffers.
+/// @details Volatile-pointer write defeats dead-store elimination so
+///          plaintext passwords and derived hashes don't linger in
+///          stack frames after `rt_password_hash` / `rt_password_verify`
+///          return. Run on every transient buffer before the function
+///          exits (and on every error-path early return).
 static void password_secure_zero(void *ptr, size_t len) {
     volatile uint8_t *p = (volatile uint8_t *)ptr;
     while (len-- > 0)
@@ -61,6 +67,12 @@ static void password_secure_zero(void *ptr, size_t len) {
 static const char base64_chars[] =
     "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
+/// @brief Encode a binary buffer as standard Base64 (RFC 4648 alphabet, with `=` padding).
+/// @details Three input bytes → four output characters. Final group
+///          uses `=` padding when the input doesn't divide evenly by
+///          three. Caller owns the returned buffer (must `free`).
+///          Returns NULL on allocation failure. Used internally to
+///          serialize the salt and hash into the on-disk hash format.
 static char *base64_encode(const uint8_t *data, size_t len, size_t *out_len) {
     size_t olen = ((len + 2) / 3) * 4;
     char *output = (char *)malloc(olen + 1);
@@ -92,6 +104,11 @@ static char *base64_encode(const uint8_t *data, size_t len, size_t *out_len) {
     return output;
 }
 
+/// @brief Map one Base64 alphabet character to its 6-bit value (-1 for invalid).
+/// @details Hand-coded range checks instead of a lookup table because
+///          this is only called from `base64_decode` (rare path) and
+///          the table would itself need to live somewhere in the
+///          binary — branchless ranges win on size for the few calls.
 static int base64_decode_char(char c) {
     if (c >= 'A' && c <= 'Z')
         return c - 'A';
@@ -106,6 +123,12 @@ static int base64_decode_char(char c) {
     return -1;
 }
 
+/// @brief Decode a NUL-padded Base64 string into a freshly allocated byte buffer.
+/// @details Requires `len` to be a multiple of 4 (validated up-front
+///          to reject malformed input). `=` padding bytes shrink the
+///          output length by 1 each (1 or 2 padding bytes legal).
+///          On any non-Base64 byte, frees the buffer and returns
+///          NULL — strict mode, no garbage-in/garbage-out.
 static uint8_t *base64_decode(const char *data, size_t len, size_t *out_len) {
     if (len % 4 != 0)
         return NULL;

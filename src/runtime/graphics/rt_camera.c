@@ -89,22 +89,32 @@ static void camera_release_ref(void **slot) {
     *slot = NULL;
 }
 
+/// @brief World-space width covered by the viewport at the current zoom (zoom is in percent).
 static int64_t camera_world_width(const rt_camera_impl *camera) {
     return (camera->width * 100) / camera->zoom;
 }
 
+/// @brief World-space height covered by the viewport at the current zoom.
 static int64_t camera_world_height(const rt_camera_impl *camera) {
     return (camera->height * 100) / camera->zoom;
 }
 
+/// @brief World-space X coordinate at the centre of the viewport.
 static double camera_center_x(const rt_camera_impl *camera) {
     return (double)camera->x + (double)camera_world_width(camera) * 0.5;
 }
 
+/// @brief World-space Y coordinate at the centre of the viewport.
 static double camera_center_y(const rt_camera_impl *camera) {
     return (double)camera->y + (double)camera_world_height(camera) * 0.5;
 }
 
+/// @brief World → screen forward transform (translate, rotate, zoom, recenter).
+/// @details Applies the camera's view transform: translate the world point by
+///          minus the camera centre, rotate by the negated camera rotation
+///          (so positive `rotation` rotates the *world* clockwise = camera
+///          counter-clockwise), scale by zoom/100, then translate to screen
+///          centre. Used by the parallax draw loop to place each tile.
 static void camera_apply_transform(const rt_camera_impl *camera,
                                    double world_x,
                                    double world_y,
@@ -123,6 +133,12 @@ static void camera_apply_transform(const rt_camera_impl *camera,
         *screen_y = ry * (double)camera->zoom / 100.0 + (double)camera->height * 0.5;
 }
 
+/// @brief Screen → world inverse transform.
+/// @details Inverts `camera_apply_transform`: translate by minus screen
+///          centre, scale by 100/zoom, rotate by the unnegated camera
+///          rotation, then translate by camera centre. Used to compute
+///          world-space tile coverage from screen corners during parallax
+///          rendering.
 static void camera_apply_inverse_transform(const rt_camera_impl *camera,
                                            double screen_x,
                                            double screen_y,
@@ -141,6 +157,14 @@ static void camera_apply_inverse_transform(const rt_camera_impl *camera,
         *world_y = ry + camera_center_y(camera);
 }
 
+/// @brief Floor-division on int64 (rounds toward negative infinity, not toward zero).
+/// @details C's `/` operator rounds toward zero, which produces the wrong
+///          tile coordinate for negative world positions: `(-1)/16 == 0`
+///          in C, but the tile containing `-1` is tile `-1`, not tile `0`.
+///          The mismatch-of-signs check (`r != 0 && (sign(r) != sign(divisor))`)
+///          decrements the quotient by one to recover floor semantics.
+///          Used by the parallax tile loop to find the first/last tile
+///          indices straddling the visible world bounds.
 static int64_t camera_floor_div(int64_t value, int64_t divisor) {
     int64_t q = value / divisor;
     int64_t r = value % divisor;
@@ -149,6 +173,27 @@ static int64_t camera_floor_div(int64_t value, int64_t divisor) {
     return q;
 }
 
+/// @brief Render one parallax layer at the camera's current zoom + rotation.
+/// @details Three stages:
+///          1. Build a *layer-specific* camera by scaling the parent
+///             camera's position by the layer's per-axis `scroll_factor_*`
+///             (a layer at factor 50 scrolls half as fast = appears
+///             further away). The layer-camera retains the parent's
+///             zoom/rotation so the layer transforms identically.
+///          2. Pre-bake the tile pixels: scale to the camera's zoom (if
+///             not 100), then rotate to the camera's negated rotation
+///             (cancels the camera's view rotation when the tile is
+///             drawn back through `camera_apply_transform` below). The
+///             scaled/rotated buffers are reference-counted and released
+///             at the end.
+///          3. Compute the world-space tile coverage by inverse-
+///             transforming the four screen corners, then iterate every
+///             tile in that AABB and `vgfx_blit_alpha` the prepared
+///             pixels at the screen position from the forward transform.
+///             Wrapping is implicit — tiles at any integer `(tx, ty)`
+///             repeat the layer's source texture.
+///          The final blit is centre-anchored, so the tile's centre of
+///          rotation matches the precomputed rotated buffer's centre.
 static int64_t camera_draw_parallax_transformed(const rt_camera_impl *camera,
                                                 const rt_parallax_layer *layer,
                                                 void *canvas) {
@@ -303,6 +348,12 @@ static void camera_clamp_bounds(rt_camera_impl *camera) {
 // Camera Creation
 //=============================================================================
 
+/// @brief Construct a new Camera2D bound to a viewport size in pixels.
+/// @details Width and height below 1 are clamped to 1 to avoid divide-by-zero
+///          in `camera_world_width` / `_height`. Initial position is the
+///          world origin, zoom is 100 (1×), rotation is 0, no bounds. The
+///          camera starts marked dirty so the first render computes its
+///          view transform fresh. Returns NULL on allocation failure.
 void *rt_camera_new(int64_t width, int64_t height) {
     if (width <= 0)
         width = 1;

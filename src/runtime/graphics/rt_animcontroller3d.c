@@ -95,6 +95,11 @@ typedef struct {
     int32_t event_queue_count;
 } rt_anim_controller3d;
 
+/// @brief Drop one reference from a slot, free if it was the last, then NULL out the slot.
+/// @details Used by the finalizer and slot-replacement paths so the same
+///          retain-then-release discipline is shared across every animated-
+///          object pointer the controller owns. NULL slot or NULL contents
+///          are no-ops.
 static void controller_release_ref(void **slot) {
     if (!slot || !*slot)
         return;
@@ -103,6 +108,11 @@ static void controller_release_ref(void **slot) {
     *slot = NULL;
 }
 
+/// @brief Copy an `rt_string` into a fixed-size character buffer, NUL-terminating.
+/// @details Truncates if the source exceeds `cap - 1` bytes; produces an
+///          empty string when `name` is NULL or the buffer is zero-sized.
+///          Used to snapshot state and event names into the fixed-size
+///          arrays in `anim_controller3d_state_t` / `_event_t`.
 static void controller_copy_name(char *dst, size_t cap, rt_string name) {
     const char *src = name ? rt_string_cstr(name) : NULL;
     size_t len = src ? strlen(src) : 0;
@@ -116,6 +126,12 @@ static void controller_copy_name(char *dst, size_t cap, rt_string name) {
     dst[len] = '\0';
 }
 
+/// @brief Geometric-grow a heap buffer to hold at least `need` elements.
+/// @details Doubles capacity (or jumps to `need`, whichever is larger) and
+///          `realloc`s in place. Used by the states / transitions / events
+///          arrays — capacity starts at 0, jumps to 4, then doubles.
+/// @return 1 on success (buffer + capacity updated); 0 on allocation failure
+///         (buffer + capacity left untouched).
 static int controller_grow_array(void **buffer, int32_t *capacity, int32_t need, size_t elem_size) {
     int32_t new_capacity;
     void *grown;
@@ -132,6 +148,8 @@ static int controller_grow_array(void **buffer, int32_t *capacity, int32_t need,
     return 1;
 }
 
+/// @brief Linear-scan the state table by name.
+/// @return State index, or -1 if `name` is NULL/empty or no match.
 static int32_t controller_find_state(const rt_anim_controller3d *controller, rt_string name) {
     const char *target = name ? rt_string_cstr(name) : NULL;
     if (!controller || !target)
@@ -143,6 +161,8 @@ static int32_t controller_find_state(const rt_anim_controller3d *controller, rt_
     return -1;
 }
 
+/// @brief Linear-scan the transition table for an exact `(from, to)` pair.
+/// @return Transition index, or -1 if no match is registered.
 static int32_t controller_find_transition(
     const rt_anim_controller3d *controller, int32_t from_state, int32_t to_state) {
     if (!controller)
@@ -155,6 +175,13 @@ static int32_t controller_find_transition(
     return -1;
 }
 
+/// @brief Push an event name onto the event-queue ring buffer.
+/// @details The queue is bounded at `RT_ANIM_CONTROLLER3D_EVENT_QUEUE_MAX`.
+///          When full, the oldest entry is dropped (head advances) before
+///          the new one is appended — the rationale is "lose the stalest
+///          event, never silently drop the freshest one." NULL or empty
+///          event names are silently ignored. Names longer than the
+///          fixed-size slot are truncated (NUL-terminated within `slot`).
 static void controller_enqueue_event(rt_anim_controller3d *controller, const char *event_name) {
     int32_t slot;
     size_t len;
@@ -175,6 +202,12 @@ static void controller_enqueue_event(rt_anim_controller3d *controller, const cha
     controller->event_queue_count++;
 }
 
+/// @brief Enqueue every event registered at time ≈ 0 for a state, on entry to that state.
+/// @details Some events are pinned to the start of an animation (e.g., a
+///          weapon-pull anim that should fire its sound on frame 0). These
+///          would otherwise be missed by the prev_time→curr_time window
+///          tracking in `controller_process_events` because the player
+///          hasn't ticked yet. Threshold is 1µs.
 static void controller_fire_entry_events(rt_anim_controller3d *controller, int32_t state_index) {
     if (!controller || state_index < 0 || state_index >= controller->state_count)
         return;
@@ -186,6 +219,19 @@ static void controller_fire_entry_events(rt_anim_controller3d *controller, int32
     }
 }
 
+/// @brief Fire any state events whose timestamp falls in the (prev_time, curr_time] window.
+/// @details Three cases:
+///          - **Zero-duration animation** (no real timeline): any event with
+///            `time_seconds <= curr_time` fires. Treats the animation as a
+///            single-frame impulse.
+///          - **Non-looping**: standard half-open window — events fire when
+///            `prev_time < t <= curr_time`.
+///          - **Looping**: when `curr_time < prev_time` the playback wrapped
+///            around the loop boundary, so the window is the union of
+///            `(prev_time, duration]` and `[0, curr_time]`. Events are
+///            still fired at most once per crossing.
+///          Half-open semantics on the lower bound prevent an event at
+///          exactly `prev_time` from firing twice on consecutive ticks.
 static void controller_process_events(rt_anim_controller3d *controller,
                                       int32_t state_index,
                                       double prev_time,
@@ -224,6 +270,10 @@ static void controller_process_events(rt_anim_controller3d *controller,
     }
 }
 
+/// @brief Mark every bone (up to `bone_count`) as included in this layer's mask.
+/// @details Used for the base layer (layer 0) which always covers the full
+///          skeleton, and as the reset state when an overlay layer's
+///          `mask_root_bone` is invalid or out of range.
 static void controller_set_all_mask_bits(anim_controller3d_layer_t *layer, int32_t bone_count) {
     if (!layer)
         return;
@@ -232,6 +282,13 @@ static void controller_set_all_mask_bits(anim_controller3d_layer_t *layer, int32
         layer->mask_bits[bone] = 1;
 }
 
+/// @brief Recompute a layer's mask bits from its `mask_root_bone` setting.
+/// @details For layer 0 or invalid root, sets all bits (covers the whole
+///          skeleton). Otherwise, walks each bone's parent chain and marks
+///          the bone as masked-in if `mask_root_bone` is an ancestor.
+///          This is the standard "this layer animates an arm subtree only"
+///          construction — the upper-body layer of a character that
+///          composites a wave / aim / reload pose over a running base.
 static void controller_rebuild_layer_mask(rt_anim_controller3d *controller, int32_t layer_index) {
     anim_controller3d_layer_t *layer;
     int32_t bone_count;
@@ -256,6 +313,10 @@ static void controller_rebuild_layer_mask(rt_anim_controller3d *controller, int3
     }
 }
 
+/// @brief Push a state's per-state speed and looping settings into a player.
+/// @details Always enables the player's loop-override so the controller's
+///          per-state looping decision wins over whatever the underlying
+///          Animation3D defaults to.
 static void controller_apply_state_settings(
     rt_anim_player3d *player, const anim_controller3d_state_t *state) {
     if (!player || !state)
@@ -265,6 +326,16 @@ static void controller_apply_state_settings(
     rt_anim_player3d_set_speed(player, state->speed);
 }
 
+/// @brief Switch a layer to a new state, optionally crossfading from the current state.
+/// @details Crossfade is used when `blend_seconds > 0`, the layer already has
+///          a different active state, and the existing player is mid-play.
+///          Otherwise the switch is instantaneous (a hard cut). After
+///          switching, the player is ticked by 0 seconds to push initial
+///          pose data into the bone palette so the next render sees the
+///          new state without a one-frame lag, and time-zero entry events
+///          for the new state are fired.
+/// @return 1 on success, 0 on bad layer index, missing state, or missing
+///         underlying player/animation.
 static int8_t controller_set_layer_state(rt_anim_controller3d *controller,
                                          int32_t layer_index,
                                          int32_t state_index,
@@ -303,6 +374,10 @@ static int8_t controller_set_layer_state(rt_anim_controller3d *controller,
     return 1;
 }
 
+/// @brief Reset the final bone palette to identity matrices for every bone.
+/// @details Used as the seed when no base-layer animation is playing or as
+///          a clean slate before compositing overlay layers. Each 16-float
+///          matrix block is zeroed then the diagonal is set to 1.0.
 static void controller_identity_palette(rt_anim_controller3d *controller) {
     int32_t bone_count;
     if (!controller || !controller->final_palette || !controller->skeleton)
@@ -315,6 +390,17 @@ static void controller_identity_palette(rt_anim_controller3d *controller) {
     }
 }
 
+/// @brief Composite the base layer + weighted overlay layers into the final bone palette.
+/// @details Two-pass blend:
+///          1. Base layer (layer 0) is copied wholesale into `final_palette`.
+///             If the base has no animation, identity matrices are used so
+///             the skeleton renders in its rest pose.
+///          2. For each overlay layer (1..MAX-1) with weight > 0, blend the
+///             overlay's palette into `final_palette` at the layer's weight,
+///             but only on bones whose `mask_bits` flag is set. The blend
+///             is per-element linear interpolation: `dst += (src - dst) * w`.
+///          Weight is clamped to `[0, 1]`. Layers with empty masks contribute
+///          nothing.
 static void controller_compute_final_palette(rt_anim_controller3d *controller) {
     int32_t bone_count;
     if (!controller || !controller->final_palette || !controller->skeleton)
@@ -352,6 +438,11 @@ static void controller_compute_final_palette(rt_anim_controller3d *controller) {
     }
 }
 
+/// @brief Read the translation column from a layer's bone matrix at `bone_index`.
+/// @details Reads `(m[3], m[7], m[11])` which is the translation row in the
+///          column-major 4x4 matrix used by the player's bone palette.
+///          Used by root-motion delta accumulation. Out-pointers are zeroed
+///          on any failure path so callers don't have to NULL-check.
 static void controller_get_layer_translation(const anim_controller3d_layer_t *layer,
                                              int32_t bone_index,
                                              double *x,
@@ -374,6 +465,7 @@ static void controller_get_layer_translation(const anim_controller3d_layer_t *la
     *z = (double)m[11];
 }
 
+/// @brief Set a quaternion to the identity rotation `(0, 0, 0, 1)` (xyzw).
 static void controller_quat_identity(double *out) {
     if (!out)
         return;
@@ -383,6 +475,11 @@ static void controller_quat_identity(double *out) {
     out[3] = 1.0;
 }
 
+/// @brief Normalize a quaternion in place to unit length.
+/// @details Falls back to identity if the quaternion is degenerate (squared
+///          length below 1e-20) to avoid `1/0` from the inverse-length
+///          division. Critical because subsequent quaternion multiplications
+///          assume unit operands.
 static void controller_quat_normalize(double *q) {
     double len_sq;
     double inv_len;
@@ -400,6 +497,13 @@ static void controller_quat_normalize(double *q) {
     q[3] *= inv_len;
 }
 
+/// @brief Convert a 3×3 rotation matrix (passed as nine row elements) to a quaternion.
+/// @details Implementation of Shepperd's method (1978): pick the branch that
+///          maximises numerical stability based on which of `trace`,
+///          `m00`, `m11`, or `m22` is largest. This avoids the catastrophic
+///          cancellation that the naive `sqrt(1+trace)/2` formulation
+///          produces near 180° rotations. Output quaternion is normalised
+///          before return.
 static void controller_quat_from_matrix_rows(double m00,
                                              double m01,
                                              double m02,
@@ -442,6 +546,13 @@ static void controller_quat_from_matrix_rows(double m00,
     controller_quat_normalize(out);
 }
 
+/// @brief Extract the rotation quaternion from a layer's bone matrix at `bone_index`.
+/// @details The bone palette stores TRS-composed matrices, so the rotation
+///          must be unscaled before being converted to a quaternion.
+///          Computes per-axis scale from the columns' Euclidean norms,
+///          divides each column out by its scale to recover an orthonormal
+///          rotation matrix, then converts via Shepperd's method. Falls
+///          back to identity when any axis scale is degenerate (< 1e-8).
 static void controller_get_layer_rotation(
     const anim_controller3d_layer_t *layer, int32_t bone_index, double *out_quat) {
     const float *m;
@@ -478,6 +589,10 @@ static void controller_get_layer_rotation(
                                      out_quat);
 }
 
+/// @brief Compute the conjugate of a quaternion (`(-x, -y, -z, w)`).
+/// @details For a unit quaternion, the conjugate equals the inverse. Used
+///          here to invert the "before" rotation when computing the
+///          per-frame rotation delta.
 static void controller_quat_conjugate(const double *q, double *out) {
     if (!q || !out)
         return;
@@ -487,6 +602,11 @@ static void controller_quat_conjugate(const double *q, double *out) {
     out[3] = q[3];
 }
 
+/// @brief Multiply two quaternions: `out = a * b` (apply `b` then `a`).
+/// @details Standard Hamilton product. Output is normalised before return
+///          to absorb the floating-point drift that accumulates as
+///          quaternion multiplications are chained over many frames of
+///          root-motion accumulation.
 static void controller_quat_mul(const double *a, const double *b, double *out) {
     double x;
     double y;
@@ -505,6 +625,11 @@ static void controller_quat_mul(const double *a, const double *b, double *out) {
     controller_quat_normalize(out);
 }
 
+/// @brief GC finalizer: release every owned reference and free the heap arrays.
+/// @details Releases the skeleton, every state's animation, all four layer
+///          players, and frees the states / transitions / events / palette
+///          buffers. Slot pointers are NULL'd via `controller_release_ref`
+///          so a re-entrant call (shouldn't happen but defensive) is safe.
 static void controller_finalize(void *obj) {
     rt_anim_controller3d *controller = (rt_anim_controller3d *)obj;
     if (!controller)
@@ -526,6 +651,17 @@ static void controller_finalize(void *obj) {
     controller->prev_final_palette = NULL;
 }
 
+/// @brief Construct a new AnimController3D bound to a skeleton.
+/// @details Allocates the controller object with a finalizer, retains the
+///          skeleton, allocates the current and previous bone-palette
+///          buffers, and constructs `RT_ANIM_CONTROLLER3D_MAX_LAYERS`
+///          (currently 4) underlying anim players — one per layer. Layer 0
+///          is the base layer (weight 1.0); higher layers start at weight
+///          0.0 with full-skeleton masks. The palette is initialised to
+///          identity so the skeleton renders in rest pose until a state
+///          is played. Traps on null skeleton or any allocation failure
+///          (failed palette / layer allocations clean up partial state via
+///          `controller_finalize` before returning NULL).
 void *rt_anim_controller3d_new(void *skeleton) {
     rt_anim_controller3d *controller;
     rt_skeleton3d *skel = (rt_skeleton3d *)skeleton;
@@ -916,6 +1052,13 @@ void *rt_anim_controller3d_consume_root_motion(void *obj) {
     return delta;
 }
 
+/// @brief Atomically read and reset the accumulated root-motion rotation as a Quat.
+/// @details Mirror of `_consume_root_motion` for rotation. Returns the
+///          quaternion the character should be rotated by this frame to
+///          follow the animation's hip-bone yaw / pitch / roll, then
+///          resets the accumulator to identity so the next frame starts
+///          fresh. Animation systems that drive character heading from
+///          root motion call this each frame after `_update`.
 void *rt_anim_controller3d_consume_root_motion_rotation(void *obj) {
     rt_anim_controller3d *controller = (rt_anim_controller3d *)obj;
     void *rotation;
@@ -1007,6 +1150,11 @@ void rt_anim_controller3d_stop_layer(void *obj, int64_t layer_index) {
     layer->transition_duration = 0.0f;
 }
 
+/// @brief Snapshot the current final-palette matrix for a single bone as a Mat4.
+/// @details Returns a freshly allocated Mat4 — caller owns the resulting
+///          object. Returns NULL on missing controller / palette / out-of-
+///          range bone. The matrix reflects the composited result of all
+///          layers as of the most recent `_update`.
 void *rt_anim_controller3d_get_bone_matrix(void *obj, int64_t bone_index) {
     rt_anim_controller3d *controller = (rt_anim_controller3d *)obj;
     const float *m;
@@ -1033,6 +1181,13 @@ void *rt_anim_controller3d_get_bone_matrix(void *obj, int64_t bone_index) {
                        m[15]);
 }
 
+/// @brief Direct pointer to the final-palette float buffer (no copy).
+/// @details Used by the renderer's GPU-upload path which needs to upload
+///          the entire palette in one call. The caller does not own the
+///          buffer — it remains valid until the next `_update` overwrites
+///          it or the controller is finalised. `bone_count` is filled with
+///          the palette length in bones (not floats).
+/// @return Pointer to `bone_count * 16` floats, or NULL on missing data.
 const float *rt_anim_controller3d_get_final_palette_data(void *obj, int32_t *bone_count) {
     rt_anim_controller3d *controller = (rt_anim_controller3d *)obj;
     if (bone_count)
@@ -1044,6 +1199,12 @@ const float *rt_anim_controller3d_get_final_palette_data(void *obj, int32_t *bon
     return controller->final_palette;
 }
 
+/// @brief Direct pointer to the *previous* frame's final-palette float buffer.
+/// @details Used by motion-vector / temporal-AA renderers that need both
+///          this frame's and last frame's bone palettes to compute per-
+///          pixel velocity. Returns NULL until at least one `_update` has
+///          completed (the prev-palette is populated by snapshotting
+///          before the per-layer player update).
 const float *rt_anim_controller3d_get_previous_palette_data(void *obj, int32_t *bone_count) {
     rt_anim_controller3d *controller = (rt_anim_controller3d *)obj;
     if (bone_count)

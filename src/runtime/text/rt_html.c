@@ -107,7 +107,20 @@ static int is_self_closing_tag(const char *tag, size_t len) {
     return 0;
 }
 
-/// @brief Parse attributes from a tag body like: key="value" key2='value2'.
+/// @brief Parse the attribute portion of an HTML opening tag into a name→value map.
+/// @details Walks `[start, end)` (the substring between the tag name
+///          and the closing `>`) and extracts each `key="val"` /
+///          `key='val'` / `key=bare` / boolean (no `=`) attribute.
+///          Quirks accepted by browsers, mirrored here:
+///          - Single OR double quotes for the value (chosen by the
+///            opening quote; the matching one terminates).
+///          - Unquoted values run until whitespace or `>` / `/`.
+///          - A bare attribute (no `=`) maps to an empty string —
+///            matches HTML5 boolean attribute semantics
+///            (`<input disabled>` ⇒ `disabled = ""`).
+///          Skips whitespace runs between tokens. Names are stored
+///          case-as-is (caller normalizes if needed). Stops cleanly
+///          at `end` even on malformed input — never reads past.
 static void parse_attrs(void *attrs_map, const char *start, const char *end) {
     const char *p = start;
     while (p < end) {

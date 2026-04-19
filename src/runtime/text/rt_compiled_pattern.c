@@ -65,6 +65,12 @@ typedef struct {
 // Creation and Lifecycle
 //=============================================================================
 
+/// @brief GC finalizer — free the underlying compiled regex automaton.
+/// @details `re_compile` allocates a private NFA/DFA structure that
+///          isn't part of Viper's GC heap. This finalizer hands that
+///          allocation back to the regex engine when the wrapping
+///          GC object is collected. Nulled afterwards so a double
+///          finalize (rare but possible during shutdown) is safe.
 static void compiled_pattern_finalizer(void *obj) {
     compiled_pattern_obj *cpo = (compiled_pattern_obj *)obj;
     if (cpo && cpo->pattern) {

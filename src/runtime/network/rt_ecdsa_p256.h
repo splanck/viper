@@ -7,7 +7,7 @@
 //
 // File: src/runtime/network/rt_ecdsa_p256.h
 // Purpose: Native ECDSA P-256 (secp256r1) verification and signing in pure C.
-//          No external dependencies — replaces dlopen(libcrypto) on Linux.
+//          No external dependencies.
 // Key invariants:
 //   - Signing support is limited to caller-supplied private scalars.
 //   - All inputs are big-endian byte arrays; no heap allocation.

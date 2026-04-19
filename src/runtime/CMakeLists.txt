@@ -398,6 +398,7 @@ set(RT_NETWORK_SOURCES
         network/rt_tls.c
         network/rt_tls_verify.c
         network/rt_ecdsa_p256.c
+        network/rt_rsa.c
         network/rt_http_router.c
         network/rt_http_server.c
         network/rt_https_server.c
@@ -681,9 +682,6 @@ if (APPLE)
     # Metal frameworks for 3D GPU backend
     target_link_libraries(viper_rt_graphics PUBLIC "-framework Metal" "-framework MetalKit" "-framework QuartzCore")
     target_link_libraries(viper_runtime PUBLIC "-framework Metal" "-framework MetalKit" "-framework QuartzCore")
-    # Security.framework required for TLS X.509 chain validation (CS-1/CS-2/CS-3)
-    target_link_libraries(viper_rt_network PUBLIC "-framework Security" "-framework CoreFoundation")
-    target_link_libraries(viper_runtime PUBLIC "-framework Security")
 endif ()
 
 target_link_libraries(viper_rt_threads PUBLIC Threads::Threads)

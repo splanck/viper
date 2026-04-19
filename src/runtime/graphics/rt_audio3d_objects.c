@@ -109,6 +109,12 @@ static void audio3d_vec_from_obj(void *vec, double *out_xyz) {
     out_xyz[2] = rt_vec3_z(vec);
 }
 
+/// @brief Compute velocity from position delta and update the last-position cache.
+/// @details Skips velocity computation on the first call (no prior position to
+///          differentiate against) or when `dt < 1e-8` (avoids divide-by-near-zero
+///          producing huge spurious velocities). The last-position cache is
+///          always updated so the *next* call has a baseline. Velocity is
+///          intended to drive Doppler effects in the audio core.
 static void audio3d_update_velocity(double *velocity,
                                     double *last_position,
                                     int8_t *has_last_position,
@@ -181,6 +187,12 @@ static void audio3d_source_list_remove(rt_audiosource3d *source) {
     source->next = NULL;
 }
 
+/// @brief Resolve a SceneNode3D's world-space position by applying its world matrix to the origin.
+/// @details Uses the node's cached world matrix when available (the standard
+///          path — the scene graph has already composed the parent chain).
+///          Falls back to the node's local position when no world matrix
+///          is cached, which produces the wrong answer for parented nodes
+///          but at least doesn't crash.
 static void audio3d_get_node_world_position(void *node, double *out_position) {
     void *world_matrix;
     void *world_position;
@@ -201,6 +213,14 @@ static void audio3d_get_node_world_position(void *node, double *out_position) {
     audio3d_vec_from_obj(world_position, out_position);
 }
 
+/// @brief Resolve a SceneNode3D's world-space forward direction.
+/// @details Computes forward as the world-transformed `(0, 0, -1)` minus the
+///          world-transformed origin — the difference cancels the
+///          translation component, leaving only the rotated direction.
+///          Result is normalised; degenerate transforms fall back to the
+///          identity forward `(0, 0, -1)`. Two `rt_vec3_new` allocations
+///          per call are accepted overhead since this is per-tick, not
+///          per-frame-per-pixel.
 static void audio3d_get_node_world_forward(void *node, double *out_forward) {
     void *world_matrix;
     void *origin;
@@ -248,6 +268,15 @@ static void audio3d_listener_push_active_state(rt_audiolistener3d *listener) {
         rt_audio3d_set_active_listener_state(&listener->state);
 }
 
+/// @brief Re-sync a listener's state from its bound camera or scene node.
+/// @details Camera binding takes precedence over node binding when both are
+///          set. Either source provides position + forward, after which
+///          velocity is derived from the position delta over `dt` and the
+///          listener-state struct is updated. If the listener is the
+///          currently-active one, its state is also pushed into the audio
+///          core so spatial mixing immediately reflects the new pose.
+///          No-op when the listener has no binding at all (free-floating
+///          listener whose state is set manually).
 static void audio3d_listener_sync_binding(rt_audiolistener3d *listener, double dt) {
     double position[3];
     double forward[3];
@@ -295,6 +324,15 @@ static int8_t audio3d_source_refresh_play_state(rt_audiosource3d *source) {
     return 1;
 }
 
+/// @brief Recompute and push spatial volume + pan to a source's underlying voice.
+/// @details Skips silently when the source has no live voice (refresh-play-state
+///          will reap stale voice IDs as a side effect). Refreshes the active
+///          listener first so the calculation uses an up-to-date pose, then
+///          delegates to `rt_audio3d_compute_voice_params` for the actual
+///          attenuation + pan math, then pushes the results to the voice via
+///          `rt_voice_set_volume` / `rt_voice_set_pan`. Called from every
+///          source-mutating setter so changes take effect immediately rather
+///          than at the next sync tick.
 static void audio3d_source_apply_spatial(rt_audiosource3d *source) {
     rt_audio3d_listener_state listener;
     int64_t spatial_volume = 0;
@@ -309,6 +347,11 @@ static void audio3d_source_apply_spatial(rt_audiosource3d *source) {
     rt_voice_set_pan(source->voice_id, spatial_pan);
 }
 
+/// @brief Re-sync a source's position from its bound scene node.
+/// @details No-op when the source isn't bound to a node (free-floating
+///          source whose position is set manually). After updating
+///          position + velocity, applies spatial mixing so the next
+///          mixer tick uses the new values.
 static void audio3d_source_sync_binding(rt_audiosource3d *source, double dt) {
     double position[3];
     if (!source || !source->bound_node)

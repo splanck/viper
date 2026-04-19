@@ -216,6 +216,11 @@ typedef struct rt_pool_state {
 static rt_pool_state_t g_pools[RT_POOL_COUNT];
 
 #if RT_POOL_PAC_SAFE
+/// @brief Acquire the PAC-safe freelist spinlock with yield-on-contention.
+/// @details Used only on Pointer-Authentication targets (arm64e on
+///          Apple Silicon) where tagged pointers would corrupt PAC
+///          signatures. Falls back to a simple lock-protected
+///          freelist instead of the lock-free tagged-pointer CAS.
 static void rt_pool_lock_(int *lock) {
     if (__atomic_test_and_set(lock, __ATOMIC_ACQUIRE)) {
         do {
@@ -228,6 +233,7 @@ static void rt_pool_lock_(int *lock) {
     }
 }
 
+/// @brief Release the PAC-safe freelist spinlock with release semantics.
 static void rt_pool_unlock_(int *lock) {
     __atomic_clear(lock, __ATOMIC_RELEASE);
 }

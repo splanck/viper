@@ -24,10 +24,16 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_tls.h"
+#include "rt_tls_internal.h"
 
 #include <cassert>
 #include <cstdio>
 #include <cstring>
+#include <chrono>
+#include <filesystem>
+#include <fstream>
+#include <string>
+#include <vector>
 
 // ---------------------------------------------------------------------------
 // Test certificate DER data
@@ -98,6 +104,151 @@ static const uint8_t TEST_CERT_CN_ONLY[] = {
     0x61, 0x0b, 0x6c, 0x88, 0xe6, 0x86, 0x30, 0xba, 0x23, 0xe8, 0xdb, 0x4c, 0x1b, 0x30, 0x42, 0x1b,
     0xd9, 0x8e, 0x14, 0x24, 0xc8};
 static const size_t TEST_CERT_CN_ONLY_LEN = 405;
+
+static const char *TEST_RSA_ROOT_CERT_PEM = R"PEM(-----BEGIN CERTIFICATE-----
+MIIDEzCCAfugAwIBAgICEAEwDQYJKoZIhvcNAQELBQAwGjEYMBYGA1UEAwwPVmlw
+ZXIgVGVzdCBSb290MB4XDTI0MDEwMTAwMDAwMFoXDTM4MDEwMTAwMDAwMFowGjEY
+MBYGA1UEAwwPVmlwZXIgVGVzdCBSb290MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8A
+MIIBCgKCAQEAsCvt6uYssvJ6Qlsn8LQAmJ0YUbN2gOYwyj2RV3s8UejGMQPleNIf
+eRvoeD/WZuG25Vf35YJ6djd0Vw1Mgt0Uk6M8C8oORoGQ6XRsGlNBOqzDiZbuDqxH
+KZ1kP3C69p7Ey5cOmk+tgo3vVJgwFAGPhR2f4540UvJ+rAe255wbs9IJ5uqFkKHI
+ccb+lrNZZaFPFGBSmI1Czm6ggPx3RHByOtSBepqB6VZzv05rzDV1WHFCGhlyBClJ
+BfG29kPuj5n03MUPxfw8NAMahPFszFPoA71oxan4qzffWyKP7FubAUTzxArI8sf5
+3otkyWp1d6snlyHlAI7kAb4vdIrwqZRcMQIDAQABo2MwYTAdBgNVHQ4EFgQUZsaT
++usuVwXWs0SWZvbAykvJFP8wHwYDVR0jBBgwFoAUZsaT+usuVwXWs0SWZvbAykvJ
+FP8wDwYDVR0TAQH/BAUwAwEB/zAOBgNVHQ8BAf8EBAMCAQYwDQYJKoZIhvcNAQEL
+BQADggEBAI+1UE7O2TCevcQfQJZSPGJw8vNGkzCv9tMh4qhV+zfmtjLkmefvQ+0M
+FJr/adXHYGE0WjwQ8VK4pfmd6gs26/PCEDREy0JpSXxrkyEiyei5WZvrNBvGQL4m
++XAngI5eTX7UwL7YBP/z8oUHQZOWXGsRyCNFpKi5zZKMUoR8aHuc1f9JDkyNbeon
+by85P8iOkGoFFWGMSSI8+lQqPLAYITEUfzqWsyU/T9yXuGzaeOh+lLnq/sOygumJ
+crDCbvYzu1M8VSpiGtQ9tiFSqIyQruau7RM69GFicRtKfWOOnHEafY5cZ+V9Dder
+RXrTo5++oZs1QvYkMwOG9dD4/fGdRTY=
+-----END CERTIFICATE-----
+)PEM";
+
+static const char *TEST_RSA_LEAF_CERT_PEM = R"PEM(-----BEGIN CERTIFICATE-----
+MIIDPTCCAiWgAwIBAgICIAEwDQYJKoZIhvcNAQELBQAwGjEYMBYGA1UEAwwPVmlw
+ZXIgVGVzdCBSb290MB4XDTI0MDEwMTAwMDAwMFoXDTM4MDEwMTAwMDAwMFowFDES
+MBAGA1UEAwwJbG9jYWxob3N0MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKC
+AQEAhKKdI7etjnO2Jnf/6gT9VrQEFCRmU73zic7zvHXkpyg/5zWy+cz7kdV87Ol6
+h+5mvl63sspIpCeQ4DbQenlzhyMyDwO+YCZhkZp1Pu6Tq/XoixFL30JHL8uWyvd+
+IJDY/Ihn163GdFHJ5aoiljUeZu9xEsYz8qqTR3hwDBpQpeTL3Bd4qIfVUeD5vazF
+nEAjOzQpGv3yTmZVn8p5vPxkwusjOHwhXSrIDjAw/PoffsdHXGutjDxZMBdwviEd
+VShtoVWN6L5SQZK/y01P4FXN+YpgAcBNUA7vovJO76iaPeCQR2vnj3R/rxq/vvug
+sO7JA04QImdhyZ4qbZoLUHJ69wIDAQABo4GSMIGPMBoGA1UdEQQTMBGCCWxvY2Fs
+aG9zdIcEfwAAATAMBgNVHRMBAf8EAjAAMA4GA1UdDwEB/wQEAwIFoDATBgNVHSUE
+DDAKBggrBgEFBQcDATAdBgNVHQ4EFgQUUrU52T/pEly3nsAxjlpTVltClS0wHwYD
+VR0jBBgwFoAUZsaT+usuVwXWs0SWZvbAykvJFP8wDQYJKoZIhvcNAQELBQADggEB
+AA1wTY/oNMXbAONfawVKoz+biuEFiSwsy4XHKyZmhsFpOcjGlotWl14hjJp/zRBG
+6B4PZwYT7D43/1C6wC3q5AOD+kjcrGik4Ef5WFggSZJUl43Ln51TNm5yhWhCT6nZ
+0IVv2vKWRmoy3JMRG4hDfAT3Z+SaiwEZPpXnIvClXOgIl+DAuC+8h8CMRrJQ4mVN
+aPCWTHi1eZAIiIcJ7Z55yWyWBmH7wx+y1YtYnDXH5ZeXSsm2EMJJtOeX/MPVStpT
+cx+Oj/wMKAolQHbKLlO3Y2cBkuJ/cRM252X3QJfC+wk0T6n5MfF8MBlNj/z2fure
+KwmzLhH+CCh6NMsSird2hjw=
+-----END CERTIFICATE-----
+)PEM";
+
+static int pem_base64_value(char c) {
+    if (c >= 'A' && c <= 'Z')
+        return c - 'A';
+    if (c >= 'a' && c <= 'z')
+        return c - 'a' + 26;
+    if (c >= '0' && c <= '9')
+        return c - '0' + 52;
+    if (c == '+')
+        return 62;
+    if (c == '/')
+        return 63;
+    return -1;
+}
+
+static std::vector<uint8_t> decode_pem_certificate(const char *pem) {
+    const char *begin_marker = "-----BEGIN CERTIFICATE-----";
+    const char *end_marker = "-----END CERTIFICATE-----";
+    const char *begin = strstr(pem, begin_marker);
+    const char *end = strstr(pem, end_marker);
+    std::vector<uint8_t> decoded;
+    int quartet[4];
+    int quartet_len = 0;
+
+    if (!begin || !end || end <= begin)
+        return decoded;
+    begin = strchr(begin, '\n');
+    if (!begin)
+        return decoded;
+    begin++;
+
+    for (const char *p = begin; p < end; ++p) {
+        if (*p == '\r' || *p == '\n' || *p == ' ' || *p == '\t')
+            continue;
+        quartet[quartet_len++] = (*p == '=') ? -2 : pem_base64_value(*p);
+        if (quartet[quartet_len - 1] < 0 && quartet[quartet_len - 1] != -2)
+            return std::vector<uint8_t>();
+        if (quartet_len == 4) {
+            uint32_t block = 0;
+            if (quartet[0] < 0 || quartet[1] < 0)
+                return std::vector<uint8_t>();
+            block |= (uint32_t)quartet[0] << 18;
+            block |= (uint32_t)quartet[1] << 12;
+            if (quartet[2] >= 0)
+                block |= (uint32_t)quartet[2] << 6;
+            if (quartet[3] >= 0)
+                block |= (uint32_t)quartet[3];
+            decoded.push_back((uint8_t)((block >> 16) & 0xFF));
+            if (quartet[2] != -2)
+                decoded.push_back((uint8_t)((block >> 8) & 0xFF));
+            if (quartet[3] != -2)
+                decoded.push_back((uint8_t)(block & 0xFF));
+            quartet_len = 0;
+        }
+    }
+
+    if (quartet_len != 0)
+        return std::vector<uint8_t>();
+    return decoded;
+}
+
+struct temp_text_file_t {
+    std::string path;
+
+    temp_text_file_t() = default;
+    temp_text_file_t(const temp_text_file_t &) = delete;
+    temp_text_file_t &operator=(const temp_text_file_t &) = delete;
+
+    temp_text_file_t(temp_text_file_t &&other) noexcept : path(std::move(other.path)) {
+        other.path.clear();
+    }
+
+    temp_text_file_t &operator=(temp_text_file_t &&other) noexcept {
+        if (this == &other)
+            return *this;
+        std::error_code ec;
+        if (!path.empty())
+            std::filesystem::remove(path, ec);
+        path = std::move(other.path);
+        other.path.clear();
+        return *this;
+    }
+
+    ~temp_text_file_t() {
+        std::error_code ec;
+        if (!path.empty())
+            std::filesystem::remove(path, ec);
+    }
+};
+
+static temp_text_file_t write_temp_text_file(const char *suffix, const char *content) {
+    temp_text_file_t file;
+    std::filesystem::path dir = std::filesystem::temp_directory_path();
+    auto id = (unsigned long long)std::chrono::steady_clock::now().time_since_epoch().count();
+    file.path = (dir / ("viper_tls_cert_" + std::to_string(id) + suffix)).string();
+    std::ofstream out(file.path, std::ios::binary | std::ios::trunc);
+    if (!out)
+        file.path.clear();
+    else
+        out << content;
+    return file;
+}
 
 // ---------------------------------------------------------------------------
 // Helper: build a minimal TLS 1.3 Certificate message wrapping raw DER bytes.
@@ -426,6 +577,24 @@ static void test_hostname_verified_www_san(void) {
     printf("  PASS: test_hostname_verified_www_san\n");
 }
 
+static void test_chain_verification_custom_bundle_rsa(void) {
+    std::vector<uint8_t> leaf_der = decode_pem_certificate(TEST_RSA_LEAF_CERT_PEM);
+    temp_text_file_t ca_file = write_temp_text_file("_rsa_ca.pem", TEST_RSA_ROOT_CERT_PEM);
+    rt_tls_session_t session;
+
+    assert(!leaf_der.empty());
+    assert(!ca_file.path.empty());
+    assert(leaf_der.size() <= sizeof(session.server_cert_der));
+
+    memset(&session, 0, sizeof(session));
+    memcpy(session.server_cert_der, leaf_der.data(), leaf_der.size());
+    session.server_cert_der_len = leaf_der.size();
+    strncpy(session.ca_file, ca_file.path.c_str(), sizeof(session.ca_file) - 1);
+
+    assert(tls_verify_chain(&session) == RT_TLS_OK);
+    printf("  PASS: test_chain_verification_custom_bundle_rsa\n");
+}
+
 // ---------------------------------------------------------------------------
 // main
 // ---------------------------------------------------------------------------
@@ -459,6 +628,9 @@ int main(void) {
     test_hostname_verified_cn_fallback();
     test_hostname_verified_wildcard_san_two_levels();
     test_hostname_verified_www_san();
+
+    printf("-- Native RSA chain verification --\n");
+    test_chain_verification_custom_bundle_rsa();
 
     printf("=== All RTTlsCertTests passed ===\n");
     return 0;

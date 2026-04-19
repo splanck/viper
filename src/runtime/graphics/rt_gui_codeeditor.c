@@ -1263,6 +1263,13 @@ int64_t rt_codeeditor_get_word_wrap(void *editor) {
 
 #define RT_CODEEDITOR_SCROLLBAR_WIDTH 12.0f
 
+/// @brief Test whether a line is hidden inside a folded region.
+/// @details Walks the fold-region list and returns 1 if `line` falls strictly
+///          inside any active fold (`start_line < line <= end_line`). The
+///          fold's start line itself stays visible — it carries the fold-icon
+///          glyph and shows the collapsed-summary text — so the check is
+///          asymmetric on purpose.
+/// @return 1 if the line is currently hidden by an active fold, 0 otherwise.
 static int rt_codeeditor_line_is_hidden(const vg_codeeditor_t *ce, int line) {
     if (!ce)
         return 0;
@@ -1274,6 +1281,16 @@ static int rt_codeeditor_line_is_hidden(const vg_codeeditor_t *ce, int line) {
     return 0;
 }
 
+/// @brief Resolve a possibly-hidden line to the visible line that anchors it.
+/// @details When code-folding hides a line, cursor / scroll / hit-test
+///          operations need a visible "stand-in" — the start line of the
+///          enclosing fold, since that's the line currently on screen.
+///          If `line` isn't hidden, it's returned unchanged after a clamp
+///          to `[0, line_count - 1]`. If it's hidden, the function picks
+///          the *outermost* containing fold's start line (smallest
+///          `start_line` of any fold whose range covers `line`), so nested
+///          folds collapse correctly to the topmost visible anchor.
+/// @return Clamped visible line index suitable for cursor / scroll math.
 static int rt_codeeditor_visible_anchor_line(const vg_codeeditor_t *ce, int line) {
     if (!ce || ce->line_count <= 0)
         return 0;
@@ -1298,6 +1315,12 @@ static int rt_codeeditor_visible_anchor_line(const vg_codeeditor_t *ce, int line
     return found ? best_start : line;
 }
 
+/// @brief Compute how many monospace characters fit in one wrapped row.
+/// @details Returns 0 when word-wrap is disabled (caller should treat that as
+///          "no wrap budget — emit the full line as one row"). When word-wrap
+///          is on, returns at least 1 even for absurdly narrow viewports so
+///          the caller's division never trips on a zero divisor.
+/// @return Characters per row (>= 1 with word-wrap on; 0 with word-wrap off).
 static int rt_codeeditor_chars_per_row(const vg_codeeditor_t *ce, float content_width) {
     if (!ce || !ce->word_wrap || ce->char_width <= 0.0f || content_width <= 0.0f)
         return 0;
@@ -1305,6 +1328,12 @@ static int rt_codeeditor_chars_per_row(const vg_codeeditor_t *ce, float content_
     return chars > 0 ? chars : 1;
 }
 
+/// @brief Compute how many visual rows a single source line occupies under word-wrap.
+/// @details Ceiling-divides line length by `chars_per_row`. Returns 1 (a
+///          single-row fallback) when word-wrap is off, when the line is
+///          empty, or when the chars-per-row computation produces 0 (so
+///          callers always get a positive row count for any in-range line).
+/// @return Row count; always >= 1 for valid lines.
 static int rt_codeeditor_wrapped_rows_for_line(const vg_codeeditor_t *ce,
                                                int line,
                                                float content_width) {
@@ -1319,6 +1348,16 @@ static int rt_codeeditor_wrapped_rows_for_line(const vg_codeeditor_t *ce,
     return (int)((len + (size_t)chars_per_row - 1) / (size_t)chars_per_row);
 }
 
+/// @brief Combine fold-hiding and word-wrap to get the on-screen row count for a line.
+/// @details Three cases:
+///          - Line is hidden by a fold → returns 0 (consumes no vertical space).
+///          - Word-wrap is off → returns 1 (one source line = one screen row).
+///          - Word-wrap is on → defers to `rt_codeeditor_wrapped_rows_for_line`.
+///          This is the canonical helper for all visual-row arithmetic in
+///          the editor; cursor positioning, scrollbar math, and hit-testing
+///          all sum these counts to convert between source-line space and
+///          screen-row space.
+/// @return Visual row count for the line (0 if hidden, >= 1 otherwise).
 static int rt_codeeditor_visual_rows_for_line(const vg_codeeditor_t *ce,
                                               int line,
                                               float content_width) {
@@ -1329,6 +1368,23 @@ static int rt_codeeditor_visual_rows_for_line(const vg_codeeditor_t *ce,
     return rt_codeeditor_wrapped_rows_for_line(ce, line, content_width);
 }
 
+/// @brief Compute the editor's text-content width, accounting for the vertical scrollbar.
+/// @details This is a fixed-point convergence loop because word-wrap and the
+///          vertical-scrollbar's presence are mutually dependent: narrower
+///          content (because the scrollbar took space) produces more wrapped
+///          rows, which can push content past the viewport height and *make*
+///          the scrollbar appear, which narrows the content again. Without
+///          word-wrap the answer is just `base.width - gutter_width` and the
+///          loop is skipped.
+///
+///          The convergence is bounded at 3 passes — empirically the answer
+///          stabilises within 2 (the only oscillation possible is "no
+///          scrollbar / yes scrollbar"; once that flips, the next iteration
+///          sees the same width and the loop breaks via equality check).
+///          The pass cap defends against pathological cases where the cap
+///          line height makes the test oscillate; bounded iteration is
+///          better than risking an infinite loop in the paint path.
+/// @return Pixel width available for text after gutter and (if needed) scrollbar.
 static float rt_codeeditor_content_draw_width(const vg_codeeditor_t *ce) {
     if (!ce)
         return 0.0f;
@@ -1357,6 +1413,16 @@ static float rt_codeeditor_content_draw_width(const vg_codeeditor_t *ce) {
     return content_width;
 }
 
+/// @brief Within a single source line, map column → (wrapped row, column-in-row).
+/// @details For a line of length L wrapped at C chars-per-row, column `col`
+///          normally lives at `(col / C, col % C)`. The one subtlety is the
+///          end-of-line cursor: when `col == L` *and* L is a non-zero exact
+///          multiple of C, the simple division produces `row = L/C` (one
+///          past the last row), which would paint the cursor on a phantom
+///          row below the line. The special-case branch maps that situation
+///          back to the actual last row's trailing position.
+///          When word-wrap is off (chars_per_row == 0), `row_index` stays 0
+///          and `col_in_row == col`. Out parameters may be NULL.
 static void rt_codeeditor_visual_offset_for_position(const vg_codeeditor_t *ce,
                                                      float content_width,
                                                      int line,
@@ -1391,6 +1457,18 @@ static void rt_codeeditor_visual_offset_for_position(const vg_codeeditor_t *ce,
         *out_col_in_row = col_in_row;
 }
 
+/// @brief Convert a (line, col) position into an absolute visual row index.
+/// @details Sums the visual row counts of every preceding line (skipping
+///          folded-out lines, which contribute 0) and adds the wrapped-row
+///          offset within the target line. The result is the row coordinate
+///          to use against scroll position and viewport height — i.e., what
+///          you'd subtract `scroll_y / line_height` from to get the screen
+///          row.
+///          The leading clamp + `visible_anchor_line` resolution ensures
+///          callers passing an out-of-range or fold-hidden line still get
+///          a meaningful row number rather than triggering OOB reads on
+///          the per-line iteration.
+/// @return Absolute visual row index (always >= 0).
 static int rt_codeeditor_visual_row_for_position(const vg_codeeditor_t *ce,
                                                  float content_width,
                                                  int line,

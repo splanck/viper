@@ -437,9 +437,11 @@ The postfix `?` operator propagates null or error values from an expression. If 
 ```viper
 func findUser(id: Integer) -> User? {
     var record = database.lookup(id)?;  // Returns null if lookup returns null
-    return record.toUser();
+    return record.toUser();              // toUser is a user-defined method on User
 }
 ```
+
+> **Note:** The postfix `?` (try expression, propagates null/error out of the function) is distinct from `?.` (optional chaining, returns null if the receiver is null without unwinding). They can be combined: `obj?.field?` chains optional access with error propagation.
 
 ### Function/Method Calls
 
@@ -457,16 +459,13 @@ var part = "abcdef".Substring(1, 3);   // "bcd"
 
 #### Named Arguments
 
-Arguments can be passed by name using `name: value` syntax. This works for
-user-defined functions, methods, constructors, and runtime APIs that expose
-surface parameter names:
+Arguments can be passed by name using `name: value` syntax. Named arguments are supported for user-defined functions, methods, and constructors that have declared parameter names. Runtime APIs (`Viper.*` methods, including `String.Substring`) require positional arguments — they don't carry parameter names through the IL, so use the positional form for those.
 
 ```viper
 func createRect(x: Integer, y: Integer, w: Integer, h: Integer) -> Rect { ... }
 
-var r = createRect(x: 10, y: 20, w: 100, h: 50);
-var part = "abcdef".Substring(start: 1, len: 3);
-SetPosition(row: 10, col: 20);
+var r = createRect(x: 10, y: 20, w: 100, h: 50);    // OK: user-defined function
+var part = "abcdef".Substring(1, 3);                 // Runtime API: positional only
 ```
 
 ### Object Creation
@@ -890,6 +889,17 @@ func greet(name: String) -> String = "Hello, " + name;
 ```
 
 This desugars to a `return` statement wrapping the expression. Works for both top-level functions and class methods.
+
+### Foreign Function Declarations
+
+`foreign func` declares a function whose body is provided by another module — typically the BASIC frontend or another linked translation unit. Foreign declarations have a signature but no body; the linker resolves the implementation at build time.
+
+```viper
+foreign func Factorial(n: Integer) -> Integer;
+foreign func Render(canvas: Canvas, frame: Integer);
+```
+
+Use a foreign declaration when the function is implemented in BASIC and called from Zia, or when binding to a runtime entry that isn't already exposed through `Viper.*`. Calling a foreign function uses the same syntax as any other function call.
 
 ### Type Alias Declarations
 
@@ -1548,7 +1558,6 @@ list.insert(index, value);          // Insert at position
 
 var map: Map[String, Integer] = new Map[String, Integer]();
 map.set("key", value);              // Set or replace value
-map.put("key", value);              // Alias for set
 map.get("key");                     // Get value (null if missing)
 map.getOr("key", fallback);         // Get or default
 map.setIfMissing("key", value);     // Set only if missing
@@ -1635,9 +1644,11 @@ weak
 ### Type Names
 
 ```text
-Boolean     Bytes       Integer     List        Map
+Boolean     Integer     List        Map
 Number      Ptr         Set         String
 ```
+
+`Bytes` is a runtime class (`Viper.Collections.Bytes`) rather than a language-level type name and is accessed via the runtime library, not the type-name reserved set above.
 
 ---
 

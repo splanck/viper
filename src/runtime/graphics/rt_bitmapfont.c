@@ -87,6 +87,12 @@ static const rt_glyph *bf_get_glyph(const rt_bitmapfont_impl *font, int codepoin
     return NULL;
 }
 
+/// @brief Grow a `(min_x, max_x)` interval to also cover `[left, right)`.
+/// @details Initializes the bounds on the first call (`*has_bounds` flips
+///          from 0 to 1) so callers don't need a separate initialization
+///          pass. Empty spans (`right <= left`) are silently skipped so the
+///          caller can pass through every glyph regardless of whether it
+///          has visible pixels.
 static void bf_extend_bounds(
     int64_t left, int64_t right, int64_t *min_x, int64_t *max_x, int8_t *has_bounds) {
     if (!min_x || !max_x || !has_bounds || right <= left)
@@ -105,6 +111,16 @@ static void bf_extend_bounds(
         *max_x = right;
 }
 
+/// @brief Compute the horizontal pixel bounds of a rendered string.
+/// @details Walks the string codepoint by codepoint, tracking both the
+///          per-glyph advance (the cursor's nominal step) and the actual
+///          ink extent (which may overhang on either side via positive
+///          `x_offset` reaching past the advance, or negative `x_offset`
+///          starting before the cursor). The returned `(min_x, max_x)`
+///          interval covers the union of advance and ink extents — used by
+///          centering / right-alignment / width-measurement APIs to size
+///          text accurately even with overhanging glyphs (italics,
+///          decorative scripts).
 static void bf_text_bounds(
     rt_bitmapfont_impl *font, rt_string text, int64_t *min_x, int64_t *max_x, int8_t *has_bounds) {
     if (min_x)
@@ -143,6 +159,29 @@ static void bf_text_bounds(
     }
 }
 
+/// @brief Decode the UTF-8 codepoint at `*index` and advance `*index` past it.
+/// @details Handles 1- through 4-byte UTF-8 sequences with the standard
+///          continuation-byte (`0b10xxxxxx`) verification on every trailing
+///          byte. Several invalid-input cases collapse to the substitution
+///          character `'?'` rather than failing:
+///          - **Overlong encoding** (e.g., a 3-byte form for a value
+///            < 0x800): rejected. Allowing overlongs is a known
+///            security-hole pattern — a string filter that only checks
+///            the canonical encoding can be bypassed via overlong
+///            re-encoding.
+///          - **Surrogate pair half** (`0xD800-0xDFFF`): rejected.
+///            UTF-8 must not encode UTF-16 surrogate halves; their sole
+///            purpose is in UTF-16 pair encoding.
+///          - **Out-of-range codepoint** (above `U+10FFFF`): rejected.
+///          - **Truncated trailing byte** (sequence runs past `byte_len`):
+///            falls back to a single-byte read.
+///          - **Bad continuation byte**: falls back to a single-byte read.
+///
+///          The "fall back to single byte" cases produce `'?'` and only
+///          consume one byte, so the caller resyncs naturally to the next
+///          codepoint boundary on the following call.
+/// @return 1 if a codepoint was decoded and `*index` advanced; 0 if
+///         `*index` is already at or past `byte_len` (end of string).
 static int bf_next_codepoint(const char *str, size_t byte_len, size_t *index, int *codepoint_out) {
     if (!str || !index || !codepoint_out || *index >= byte_len)
         return 0;
@@ -645,7 +684,12 @@ int64_t rt_bitmapfont_text_height(void *font_ptr) {
 
 #include "rt_graphics_internal.h"
 
-/// @brief Draw a single glyph at (px, py) using vgfx_pset.
+/// @brief Draw a single glyph at `(px, py)` using `vgfx_pset` per lit pixel.
+/// @details Resolves the destination as `(px + x_offset, py + (ascent -
+///          y_offset - height))` so the BDF baseline / bearing offsets
+///          translate correctly to a top-of-line `(px, py)` reference. The
+///          glyph bitmap is packed MSB-left, row-major; iterates row × col
+///          and emits a `vgfx_pset` for each set bit.
 static void bf_draw_glyph(vgfx_window_t win,
                           const rt_glyph *g,
                           int64_t px,

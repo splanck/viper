@@ -76,7 +76,32 @@ typedef struct {
 // Parsing
 //=============================================================================
 
-/// @brief Parse a URL pattern into segments.
+/// @brief Parse a URL pattern into typed segments for route matching.
+/// @details Splits `pattern` at each `/` and classifies each non-empty
+///          segment into one of three types:
+///          - **`SEG_LITERAL`**: the segment matches its exact text. E.g.
+///            `users` in `/users/:id`.
+///          - **`SEG_PARAM`**: prefix `:` marks a single-segment capture.
+///            E.g. `:id` in `/users/:id` matches one segment and binds it
+///            to a route parameter named `id`. The captured segment cannot
+///            be empty and cannot span `/` boundaries.
+///          - **`SEG_WILDCARD`**: prefix `*` marks a multi-segment capture
+///            that consumes the remainder of the path. E.g. `*path` in
+///            `/static/*path` matches `assets/img/foo.png` and binds the
+///            full remainder to `path`. Wildcards are typically last but
+///            this parser doesn't enforce that — the matcher does.
+///
+///          A leading `/` is skipped before parsing. Empty segments
+///          (consecutive slashes like `/users//profile`) are ignored.
+///          The parser stops once `max_segments` is reached; subsequent
+///          path components are not parsed and the caller's segment array
+///          is the truncated view. On malloc failure the segment's
+///          `value` stays NULL but parsing continues — the matcher treats
+///          NULL values as a no-match for that segment.
+/// @param pattern Source URL pattern (with or without leading `/`).
+/// @param segments Output array of `max_segments` segments.
+/// @param max_segments Capacity of `segments`.
+/// @return Number of segments parsed (0 if pattern is null or empty).
 static int parse_pattern(const char *pattern, segment_t *segments, int max_segments) {
     if (!pattern || *pattern == '\0')
         return 0;

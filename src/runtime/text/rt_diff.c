@@ -47,6 +47,14 @@ typedef struct {
     int count;
 } line_array;
 
+/// @brief Split a NUL-terminated string into a heap-allocated array of line copies.
+/// @details Counts `\n` characters first to size the array, then walks
+///          again to copy each line (without the terminator) into its
+///          own malloc'd null-terminated string. The final segment after
+///          the last `\n` is always emitted, even when empty — that
+///          way `"a\nb\n"` produces `["a", "b", ""]` and `"a\nb"`
+///          produces `["a", "b"]`, mirroring how unified-diff tools
+///          treat trailing newlines.
 static line_array split_lines(const char *text) {
     line_array la = {NULL, 0};
     if (!text || !*text)
@@ -81,6 +89,10 @@ static line_array split_lines(const char *text) {
     return la;
 }
 
+/// @brief Free every line copy and the line-pointer array, leaving an empty `line_array`.
+/// @details Setting both `lines` and `count` to zero/NULL after free
+///          makes the helper idempotent — a second call is a no-op
+///          rather than a double-free.
 static void free_lines(line_array *la) {
     for (int i = 0; i < la->count; i++)
         free(la->lines[i]);
@@ -93,6 +105,16 @@ static void free_lines(line_array *la) {
 // Simple LCS-based diff (O(nm) space - sufficient for typical text)
 // ---------------------------------------------------------------------------
 
+/// @brief Fill the longest-common-subsequence DP table for two line arrays.
+/// @details Standard `O(m*n)` LCS recurrence run *backward* from
+///          `(m, n)` to `(0, 0)` so `table[i][j]` holds the LCS length
+///          of the suffixes `a[i..m]` and `b[j..n]`. The traceback in
+///          `rt_diff_lines` then walks forward from `(0, 0)` greedily,
+///          choosing the direction that preserves the LCS — that's
+///          how it produces a minimal (Myers-equivalent) diff for
+///          short inputs. Note: `O(n*m)` space — fine for source
+///          files (<10K lines × <10K lines) but would be replaced by
+///          Hirschberg's algorithm at scale.
 static void compute_lcs_table(line_array *a, line_array *b, int **table) {
     int m = a->count;
     int n = b->count;
@@ -186,7 +208,14 @@ void *rt_diff_lines(rt_string a, rt_string b) {
 // rt_diff_unified
 // ---------------------------------------------------------------------------
 
-/// @brief Unified the diff.
+/// @brief Render an `a → b` diff as a plain unified-diff style string.
+/// @details Emits the canonical `--- a` / `+++ b` header, then dumps
+///          every line from `rt_diff_lines` (each already prefixed
+///          with one of ` `, `+`, `-`) followed by `\n`. The
+///          `context` parameter is parsed (defaults to 3 if negative)
+///          but currently *all* lines are output — this is a
+///          simplified unified format suitable for diagnostics, not
+///          a true patch-applicable hunk format.
 rt_string rt_diff_unified(rt_string a, rt_string b, int64_t context) {
     if (context < 0)
         context = 3;
@@ -239,7 +268,16 @@ int64_t rt_diff_count_changes(rt_string a, rt_string b) {
 // rt_diff_patch
 // ---------------------------------------------------------------------------
 
-/// @brief Patch the diff.
+/// @brief Reconstruct the "after" text by applying a diff sequence.
+/// @details Walks the diff's line entries (each prefixed with ` `, `+`,
+///          or `-`) and emits the appropriate content into a builder:
+///          - ` ` (context) → output the line as-is.
+///          - `+` (added)   → output the line.
+///          - `-` (removed) → skip.
+///          Joins lines with `\n`. The `original` parameter is unused
+///          since the diff entries already encode every line — it's
+///          kept in the signature so the API can later switch to a
+///          non-redundant patch format without breaking callers.
 rt_string rt_diff_patch(rt_string original, void *diff) {
     (void)original;
     if (!diff)

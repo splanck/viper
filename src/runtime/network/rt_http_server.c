@@ -19,13 +19,18 @@
 //
 //===----------------------------------------------------------------------===//
 
+#if !defined(_WIN32)
+#define _DARWIN_C_SOURCE 1
+#define _GNU_SOURCE 1
+#endif
+
 #include "rt_http_server.h"
 #include "rt_http_router.h"
 
 #include "rt_bytes.h"
 #include "rt_internal.h"
 #include "rt_map.h"
-#include "rt_network.h"
+#include "rt_network_internal.h"
 #include "rt_object.h"
 #include "rt_seq.h"
 #include "rt_string.h"
@@ -121,6 +126,9 @@ typedef struct {
     pthread_t accept_thread;
 #endif
     bool thread_started;
+    void **active_conns;
+    int active_conn_count;
+    int active_conn_cap;
     http_server_mutex_t state_lock;
     bool state_lock_initialized;
 } rt_http_server_impl;
@@ -148,6 +156,81 @@ static int server_is_running(rt_http_server_impl *server) {
     running = server->running ? 1 : 0;
     server_state_unlock(server);
     return running;
+}
+
+static int server_register_active_conn(rt_http_server_impl *server, void *conn) {
+    int ok = 1;
+    if (!server || !conn)
+        return 0;
+    server_state_lock(server);
+    for (int i = 0; i < server->active_conn_count; i++) {
+        if (server->active_conns[i] == conn) {
+            server_state_unlock(server);
+            return 1;
+        }
+    }
+    if (server->active_conn_count == server->active_conn_cap) {
+        int new_cap = server->active_conn_cap > 0 ? server->active_conn_cap * 2 : 8;
+        void **grown = (void **)realloc(server->active_conns, (size_t)new_cap * sizeof(void *));
+        if (!grown) {
+            ok = 0;
+        } else {
+            server->active_conns = grown;
+            server->active_conn_cap = new_cap;
+        }
+    }
+    if (ok)
+        server->active_conns[server->active_conn_count++] = conn;
+    server_state_unlock(server);
+    return ok;
+}
+
+static void server_unregister_active_conn(rt_http_server_impl *server, void *conn) {
+    if (!server || !conn)
+        return;
+    server_state_lock(server);
+    for (int i = 0; i < server->active_conn_count; i++) {
+        if (server->active_conns[i] == conn) {
+            server->active_conn_count--;
+            server->active_conns[i] = server->active_conns[server->active_conn_count];
+            server->active_conns[server->active_conn_count] = NULL;
+            break;
+        }
+    }
+    server_state_unlock(server);
+}
+
+static void **server_snapshot_active_conns(rt_http_server_impl *server, int *count_out) {
+    void **snapshot = NULL;
+    int count = 0;
+    if (count_out)
+        *count_out = 0;
+    if (!server)
+        return NULL;
+    server_state_lock(server);
+    count = server->active_conn_count;
+    if (count > 0) {
+        snapshot = (void **)malloc((size_t)count * sizeof(void *));
+        if (snapshot)
+            memcpy(snapshot, server->active_conns, (size_t)count * sizeof(void *));
+        else
+            count = 0;
+    }
+    server_state_unlock(server);
+    if (count_out)
+        *count_out = count;
+    return snapshot;
+}
+
+static void server_interrupt_tcp_conn(void *conn) {
+    socket_t sock = rt_tcp_socket_fd(conn);
+    if (sock == INVALID_SOCK)
+        return;
+#ifdef _WIN32
+    shutdown(sock, SD_BOTH);
+#else
+    shutdown(sock, SHUT_RDWR);
+#endif
 }
 
 typedef enum {
@@ -443,6 +526,10 @@ static void rt_http_server_finalize(void *obj) {
     if (server->worker_pool && rt_obj_release_check0(server->worker_pool))
         rt_obj_free(server->worker_pool);
     server->worker_pool = NULL;
+    free(server->active_conns);
+    server->active_conns = NULL;
+    server->active_conn_count = 0;
+    server->active_conn_cap = 0;
     if (server->state_lock_initialized) {
         HTTP_SERVER_MUTEX_DESTROY(&server->state_lock);
         server->state_lock_initialized = false;
@@ -1276,9 +1363,13 @@ char *rt_http_server_test_build_response(int status_code,
 /// @param server Server impl owning the route table and bindings.
 /// @param tcp    Accepted TCP connection handle (we close it).
 static void handle_connection(rt_http_server_impl *server, void *tcp) {
+    if (!server_register_active_conn(server, tcp)) {
+        rt_tcp_close(tcp);
+        return;
+    }
     rt_tcp_set_recv_timeout(tcp, 30000);
     rt_tcp_set_send_timeout(tcp, 30000);
-    while (rt_tcp_is_open(tcp)) {
+    while (rt_tcp_is_open(tcp) && server_is_running(server)) {
         size_t buf_cap = 65536;
         char *buf = (char *)malloc(buf_cap);
         if (!buf)
@@ -1412,6 +1503,7 @@ static void handle_connection(rt_http_server_impl *server, void *tcp) {
         if (!keep_alive)
             break;
     }
+    server_unregister_active_conn(server, tcp);
     rt_tcp_close(tcp);
 }
 
@@ -1828,6 +1920,14 @@ void rt_http_server_stop(void *obj) {
 
     if (listener)
         rt_tcp_server_close(listener);
+
+    {
+        int conn_count = 0;
+        void **active_conns = server_snapshot_active_conns(server, &conn_count);
+        for (int i = 0; i < conn_count; i++)
+            server_interrupt_tcp_conn(active_conns[i]);
+        free(active_conns);
+    }
 
     if (had_thread) {
 #ifdef _WIN32

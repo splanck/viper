@@ -101,6 +101,16 @@ static int64_t parse_index(const char *s, int len) {
     return result;
 }
 
+/// @brief Copy a literal template span into the builder, collapsing doubled delimiters.
+/// @details Standard template "double the delimiter to escape it" pattern:
+///          - `{{{{` → `{{` (literal two-char prefix when prefix is `{{`).
+///          - `}}}}` → `}}` (likewise for suffix).
+///          - everything else → byte-for-byte copy.
+///          Lets users put literal `{{` / `}}` in their templates by
+///          doubling, mirroring how `{ }` work in Python f-strings.
+///          Operates byte-by-byte (1-byte append in the default branch)
+///          to keep the doubling logic clean — performance is fine
+///          because templates are typically rendered once per request.
 static void append_literal_unescaped(rt_string_builder *sb,
                                      const char *text,
                                      int len,

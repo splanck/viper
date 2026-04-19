@@ -54,6 +54,12 @@ static const char *ini_trim(const char *start, size_t len, size_t *out_len) {
     return start;
 }
 
+/// @brief Compute the C-string length of an `rt_string`, NULL-safe.
+/// @details The runtime stores strings as length-prefixed objects, but
+///          the existing `rt_string_cstr` accessor returns the inner
+///          NUL-terminated buffer. `strlen` is fine here because INI
+///          values are guaranteed to contain no embedded NULs (the
+///          parser strips them at line boundaries).
 static size_t str_len(rt_string s) {
     if (!s)
         return 0;
@@ -153,7 +159,16 @@ void *rt_ini_parse(rt_string text) {
 // Format
 // ---------------------------------------------------------------------------
 
-/// @brief Format the ini.
+/// @brief Serialize a parsed INI map back into INI-format text.
+/// @details Layout matches what most INI tools accept:
+///          1. Default-section keys (under empty-string section name)
+///             are written first, no `[section]` header.
+///          2. Each named section gets a leading blank line, then
+///             `[name]`, then its `key = value` entries.
+///          3. Values are written verbatim — no quoting, no escaping.
+///          The blank line before each section is what gives the
+///          rendered file its conventional INI look. Insertion order
+///          within a section is preserved by the underlying Map.
 rt_string rt_ini_format(void *ini_map) {
     if (!ini_map)
         return rt_string_from_bytes("", 0);

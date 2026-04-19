@@ -14,9 +14,9 @@ A polish-and-hardening cycle that grew a notable new capability along the way. M
 
 | Metric | v0.2.4 | v0.2.5 | Delta |
 |---|---|---|---|
-| Commits | — | 28 | +28 |
+| Commits | — | 29 | +29 |
 | Source files | 2,869 | 2,890 | +21 |
-| Production SLOC | 450K | 474K | +24K |
+| Production SLOC | 450K | 475K | +25K |
 | Test SLOC | 183K | 191K | +8K |
 | Demo SLOC | 177K | 188K | +11K |
 
@@ -55,11 +55,26 @@ Four rounds of widget audit. The big themes: lifetime correctness, HiDPI consist
 
 **Dark theme.** New cooler-tinted palette (deeper, more saturated background ramp; warmer accents). Default font sizes nudged up (normal 13 → 13.5, large 16 → 17, heading 20 → 21). Button and input rows aligned at 28 px height with a wider border radius. Scrollbar metrics retuned.
 
-**CodeEditor.** New APIs: `CanUndo`, `CanRedo`, `SetTabSize` / `GetTabSize` (1–16), `SetWordWrap` / `GetWordWrap`, plus `GetLineAtPixel` / `GetColAtPixel`. Word-wrap now drives cursor movement, scrollbar math, hit-testing, and `ScrollToLine` — previously it was paint-only and the rest of the widget thought every line was unwrapped. Fold gutters render and toggle. Line-slot metadata is cleared on `SetText` and language switch (fixes a ViperIDE crash on file open). The per-glyph paint loop is now factored into `draw_text_slice` / `draw_colored_slice` helpers so syntax-colored runs and plain runs share one layout path — sets up upcoming inline-diagnostics and squiggle-underline work.
+**CodeEditor.**
+*New APIs.* `CanUndo`, `CanRedo`, `SetTabSize` / `GetTabSize` (1–16), `SetWordWrap` / `GetWordWrap`, `GetLineAtPixel` / `GetColAtPixel`.
 
-**TabBar.** Tab tooltips. Stable close-click index that survives `auto_close`. Drag now requires 6 px of pointer movement before reordering (small click-jitter no longer scrambles the tab order). HiDPI scaling on tab metrics; ellipsis on long titles. Keyboard navigation/reorder/close (`Left` / `Right`, `Home` / `End`, `Ctrl+W`, `Ctrl+Shift+Arrow`) is now built in. Click semantics are now press-and-release coupled — the activate / close action fires on mouse-up *only* if the pointer is still over the same target; mouse-down on tab A then drag-and-release on tab B now cancels cleanly instead of firing the wrong target.
+*Word-wrap correctness.* Word-wrap now drives cursor movement, scrollbar math, hit-testing, and `ScrollToLine` — previously it was paint-only and the rest of the widget thought every line was unwrapped. Fold gutters render and toggle.
 
-**Toolbar / MenuBar.** Real overflow popup (was a stub). Disabled top-level menus paint and behave as disabled. Pixel-icon setters create real image icons instead of casting pointers as glyphs. MenuBar measures to zero height when the macOS native main menu is active. Toolbar gains full keyboard navigation: arrow keys move focus across visible items, Home/End snap to first/last (with End reaching the overflow button), Enter / Space activates the focused item, Tab cycles focus out cleanly. Custom image-icon paint path with explicit alpha compositing replaces the previous best-effort blit.
+*Stability.* Line-slot metadata is cleared on `SetText` and language switch (fixes a ViperIDE crash on file open). The per-glyph paint loop is factored into `draw_text_slice` / `draw_colored_slice` helpers so syntax-colored runs and plain runs share one layout path — sets up upcoming inline-diagnostics and squiggle-underline work.
+
+**TabBar.**
+*Visuals + drag.* Tab tooltips. HiDPI scaling on tab metrics; ellipsis on long titles. Drag now requires 6 px of pointer movement before reordering (small click-jitter no longer scrambles tab order).
+
+*Keyboard.* Built-in navigation / reorder / close — `Left` / `Right` move the active tab, `Home` / `End` jump to ends, `Ctrl+W` closes, `Ctrl+Shift+Arrow` reorders.
+
+*Click semantics.* Press-and-release coupled — the activate / close action fires on mouse-up *only* if the pointer is still over the same target. Mouse-down on tab A then drag-and-release on tab B cancels cleanly instead of firing the wrong target. Stable close-click index that survives `auto_close`.
+
+**Toolbar / MenuBar.**
+*Overflow + menus.* Real overflow popup (was a stub). Disabled top-level menus paint and behave as disabled. MenuBar measures to zero height when the macOS native main menu is active.
+
+*Icons.* Pixel-icon setters create real image icons instead of casting pointers as glyphs. Custom image-icon paint path with explicit alpha compositing replaces the previous best-effort blit.
+
+*Keyboard.* Toolbar gains full keyboard navigation — arrow keys move focus across visible items, Home/End snap to first/last (with End reaching the overflow button), Enter / Space activates the focused item, Tab cycles focus out cleanly.
 
 **FindBar.** Live `GetFindText` / `GetReplaceText`. `SetVisible` routes through the standard widget visibility path. UTF-8-safe match advance.
 
@@ -75,13 +90,33 @@ Four rounds of widget audit. The big themes: lifetime correctness, HiDPI consist
 
 **Font inheritance.** The complex-widget bridge (`rt_gui_app.c`) now gates metric queries on a font-handle sanity check (`(uintptr_t)font >= 4096u`) and provides a lazy `rt_gui_inherit_font_to_widget` path that copies a font handle + size into a widget subtree without dereferencing it. Opaque sentinel handles used by runtime tests no longer crash the metric path, and construction-time inheritance of a not-yet-loaded font no longer requires every widget setter to guard for itself.
 
-**Dropdown.** Keyboard navigation on the open popup (arrow / page / home / end). Pressing a key on a closed dropdown opens it. Mouse wheel scrolls the open popup. Panel flips above the trigger when there's no room below. Popup placement and hit-testing now agree in nested layouts; popup row paint tracks fractional scroll instead of jumping a whole row. Typeahead search: typing letters jumps to the first item whose visible text starts with the typed prefix (resets after a 1-second idle). Panel sizes to the longest item rather than the trigger width.
+**Dropdown.**
+*Keyboard + wheel.* Navigation on the open popup (arrow / page / home / end). Pressing a key on a closed dropdown opens it. Mouse wheel scrolls the open popup.
 
-**TextInput.** Max-length now counts UTF-8 codepoints, not bytes. Single-line ignores newline character input. Read-only navigation collapses the selection. Focus / hover / read-only / disabled all paint distinctly. Password mask handles long pasted secrets via heap allocation instead of capping at 1023 asterisks. Multiline editing now has real line-based paint, hit-testing, cursor movement, drag selection, and wheel scrolling. Standard editor expectations land: `Ctrl+Shift+Z` performs redo (`Ctrl+Z` undo was already there but redo was missing), double-click selects the word under the cursor, and programmatic `SetText` fires `on_change` while resetting the undo baseline so subsequent undo doesn't roll back to a stale prior state.
+*Placement.* Panel flips above the trigger when there's no room below. Popup placement and hit-testing now agree in nested layouts; popup row paint tracks fractional scroll instead of jumping a whole row.
 
-**TreeView.** Click on the blank area of a nested row selects rather than toggling expand (matches IDE convention). Scroll clamps after collapse. Per-node glyph icons and loading indicators finally render. Drag-and-drop actually works: `suppress_click` swallows the synthetic click that would otherwise fire after drop, drop-target validation respects the tree's hierarchy rules, and ellipsis-aware text fitting keeps deeply-nested nodes from painting past the viewport.
+*Typeahead + sizing.* Typing letters jumps to the first item whose visible text starts with the typed prefix (resets after a 1-second idle). Panel sizes to the longest item rather than the trigger width.
 
-**ListBox.** Virtual-mode change detection now compares against `prev_selected_index` so virtual lists actually report selection changes. Add/remove/clear/select now invalidate layout/paint immediately, and item labels are clipped to the viewport. Multi-select with Ctrl and Shift modifiers: plain click clears + selects, Ctrl+click toggles, Shift+click extends a range from the anchor. Virtual-mode and non-virtual-mode share matching helpers so the semantics are identical regardless of backing storage.
+**TextInput.**
+*Single-line.* Max-length counts UTF-8 codepoints, not bytes. Single-line ignores newline character input. Read-only navigation collapses the selection. Password mask handles long pasted secrets via heap allocation instead of capping at 1023 asterisks.
+
+*Multiline.* Real line-based paint, hit-testing, cursor movement, drag selection, and wheel scrolling.
+
+*Standard editor expectations.* `Ctrl+Shift+Z` performs redo (`Ctrl+Z` undo was already there). Double-click selects the word under the cursor. Programmatic `SetText` fires `on_change` and resets the undo baseline so subsequent undo doesn't roll back to a stale prior state.
+
+*Visual states.* Focus / hover / read-only / disabled all paint distinctly.
+
+**TreeView.**
+*Selection.* Click on the blank area of a nested row selects rather than toggling expand (matches IDE convention). Scroll clamps after collapse.
+
+*Visual.* Per-node glyph icons and loading indicators finally render. Ellipsis-aware text fitting keeps deeply-nested nodes from painting past the viewport.
+
+*Drag-and-drop.* Actually works now — `suppress_click` swallows the synthetic click that would otherwise fire after drop, drop-target validation respects the tree's hierarchy rules.
+
+**ListBox.**
+*Change detection.* Virtual-mode now compares against `prev_selected_index` so virtual lists actually report selection changes. Add/remove/clear/select invalidate layout/paint immediately; item labels are clipped to the viewport.
+
+*Multi-select.* With Ctrl and Shift modifiers — plain click clears + selects, Ctrl+click toggles, Shift+click extends a range from the anchor. Virtual-mode and non-virtual-mode share matching helpers so semantics are identical regardless of backing storage.
 
 **Spinner.** The numeric field is directly editable now: typing starts inline numeric entry, `Enter` commits, and `Escape` cancels back to the formatted value.
 
@@ -174,19 +209,38 @@ A correctness-and-hardening pass spanning every subsystem.
 
 Broad hardening and feature pass across the HTTP client, HTTP server, SSE, and TLS.
 
-**HTTP client.** RFC-compliant cookie jar — `Set-Cookie` lines are parsed into typed entries (name, value, domain, path, `Expires`, `Max-Age`, `Secure`, `HttpOnly`), indexed by domain/path scope, and attached to outgoing requests automatically. Cross-domain and cross-path leakage is prevented by explicit match tests; expired cookies are purged. Transparent gzip: outgoing requests advertise `Accept-Encoding: gzip` and `Content-Encoding: gzip` responses are decoded inline, including in chunked+gzip combinations. `Http.Download()` now streams bytes straight to disk instead of buffering the body in memory, so multi-GB downloads work without matching RAM (intentionally keeps `Accept-Encoding: identity` so the file on disk is byte-for-byte what the server sent). Relative `Location:` headers now resolve against the current URL, and 303 See Other joins the existing 301/302/307/308 redirect set. Strict `Content-Length` parsing rejects negative / non-numeric / whitespace-only values up front instead of treating them as 0. `response_has_no_body` centralises HEAD / 204 / 304 / 1xx handling. Non-blocking connect with proper timeout replaces the previous blocking `connect`. Keep-alive / connection pooling lands end-to-end: idle TCP/TLS connections are cached per `(host, port, tls)` with LRU eviction and idle-timeout scrub, and `HttpClient.KeepAlive` / `HttpClient.SetPoolSize` + `HttpReq.SetKeepAlive(i1)` give callers per-client and per-request control. Request-heavy workloads stop paying the TCP + TLS handshake cost on every call.
+**HTTP client.**
+*Features.* RFC-compliant cookie jar — `Set-Cookie` lines parsed into typed entries (name, value, domain, path, `Expires`, `Max-Age`, `Secure`, `HttpOnly`), indexed by domain/path scope, and attached to outgoing requests automatically. Transparent gzip: outgoing requests advertise `Accept-Encoding: gzip` and `Content-Encoding: gzip` responses are decoded inline (including chunked+gzip). `Http.Download()` streams bytes straight to disk so multi-GB downloads don't need matching RAM (download path keeps `Accept-Encoding: identity` so the file on disk is byte-for-byte what the server sent).
 
-**HTTP server.** `Transfer-Encoding: chunked` request bodies are now decoded correctly — browser streaming uploads and `curl --data-binary @-` finally work. Header token scanning is robust against substring false positives. The response path is Connection-header-aware: the server inspects the incoming `Connection:` value, honours `keep-alive` on HTTP/1.1 by default (and `close` when asked), and emits matching response headers plus proper `Content-Length` / `Transfer-Encoding` framing so the client knows where responses end on a persistent connection.
+*Protocol correctness.* Relative `Location:` headers resolve against the current URL; 303 See Other joins the redirect set. Strict `Content-Length` parsing rejects negative / non-numeric / whitespace-only values instead of silently treating them as 0. HEAD / 204 / 304 / 1xx handling centralised. 1xx informational responses (100 Continue, 101 Switching Protocols, 102/103) are consumed and discarded before the client reads the real response.
 
-**HttpsServer.** New TLS-backed HTTP/1.1 server (`Viper.Network.HttpsServer`). Mirrors the `HttpServer` surface — `Get` / `Post` / `Put` / `Delete` route registration, `BindHandler` for native handler binding, `Start` / `Stop` lifecycle, `Port` / `IsRunning` properties — but every accepted connection goes through TLS first. Constructor takes `(port, cert_path, key_path)`. Inherits the keep-alive + pooling work, so TLS sessions are pooled where keep-alive is requested and the cost of the TLS handshake is amortised across requests. The BASIC frontend lowers literal-route registrations on `HttpsServer` through the same handler-binding pattern as `HttpServer`.
+*Performance.* Non-blocking connect with proper timeout replaces blocking `connect`. End-to-end keep-alive / connection pooling — idle TCP/TLS connections cached per `(host, port, tls)` with LRU eviction and idle-timeout scrub. `HttpClient.KeepAlive`, `HttpClient.SetPoolSize`, and `HttpReq.SetKeepAlive(i1)` give callers per-client and per-request control.
 
-**WssServer.** New TLS-backed WebSocket server (`Viper.Network.WssServer`). Same constructor shape as HttpsServer (`port, cert_path, key_path`); broadcast surface (`Broadcast(text)` + `BroadcastBytes(bytes)`) plus `ClientCount`, `Port`, `IsRunning`. The wire sequence per client is TCP accept → TLS handshake → HTTP/1.1 upgrade → WebSocket framing.
+*Security.* Cross-origin redirects strip credential-bearing headers (`Authorization`, `Cookie`, etc.) so a redirect to a different origin can't leak tokens. URL parsing rejects CRLF sequences to block header-injection attacks. Cookie-jar match tests prevent cross-domain and cross-path leakage; expired cookies are purged.
+
+**HTTP server.**
+*Request handling.* `Transfer-Encoding: chunked` request bodies are now decoded correctly — browser streaming uploads and `curl --data-binary @-` finally work. Header token scanning is robust against substring false positives.
+
+*Connection framing.* The response path is Connection-header-aware: the server inspects the incoming `Connection:` value, honours `keep-alive` on HTTP/1.1 by default (and `close` when asked), and emits matching response headers plus proper `Content-Length` / `Transfer-Encoding` framing so the client knows where responses end. HTTP/1.0 clients correctly default to `Connection: close` (RFC 1945) and only get keep-alive when they opt in. Invalid HTTP version strings are rejected with a 505 / connection close instead of being silently treated as HTTP/1.1.
+
+*Lifecycle.* Thread-safe — `IsRunning` reads and `Stop` calls no longer race on the running flag. The constructor accepts `port=0` to ask the kernel for an ephemeral port (the assigned port is reported via `Port` after `Start`).
+
+**HttpsServer.** New TLS-backed HTTP/1.1 server (`Viper.Network.HttpsServer`). Mirrors the `HttpServer` surface — `Get` / `Post` / `Put` / `Delete` route registration, `BindHandler` for native handler binding, `Start` / `Stop` lifecycle, `Port` / `IsRunning` properties — but every accepted connection goes through TLS first. Constructor takes `(port, cert_path, key_path)`. Inherits the keep-alive + pooling work, so TLS sessions are pooled where keep-alive is requested and the cost of the TLS handshake is amortised across requests. Per-connection send-timeout bounds slow-loris-style attacks. Both the BASIC and the Zia frontends lower literal-route registrations on `HttpsServer` through the same handler-binding pattern as `HttpServer`, so Zia code with `server.Get("/path", "handler")` works identically against either server type.
+
+**WssServer.** New TLS-backed WebSocket server (`Viper.Network.WssServer`). Same constructor shape as HttpsServer (`port, cert_path, key_path`); broadcast surface (`Broadcast(text)` + `BroadcastBytes(bytes)`) plus `ClientCount`, `Port`, `IsRunning`. The wire sequence per client is TCP accept → TLS handshake → HTTP/1.1 upgrade → WebSocket framing. The upgrade path validates the WebSocket `Origin` header against the `Host` header to block cross-origin WebSocket abuse from browser-based attackers.
 
 **RestClient.** Keep-alive and pool-size configuration thread through to the underlying HTTP client, so REST-heavy workflows (microservices, paginated API loops) reuse connections transparently without changing call sites.
 
 **SSE (Server-Sent Events).** Automatic reconnect-after-disconnect. The client re-opens the connection when the server drops and honours `Last-Event-ID` to resume where the stream left off, instead of silently ending on transient network failures. Matching non-blocking connect + timeout behaviour as the HTTP client.
 
-**TLS.** New `HttpReq.SetTlsVerify(bool)` IL method (`Viper.Network.HttpReq.SetTlsVerify`) for per-request verification control — useful for dev servers with self-signed certs and staging environments with internal CAs. Default stays secure (verification on). `alpn_protocol` field on `rt_tls_config_t` lets callers declare a single protocol (`http/1.1`, `h2`) during the handshake; the HTTP client wires this up based on request URL scheme. New `rt_tls_last_error()` captures connect/handshake errors in thread-local storage so trap messages surface the underlying diagnostic (hostname mismatch, cert expired, handshake protocol error) instead of generic "TLS handshake failed". Server-side TLS lands as a from-scratch implementation supporting the HttpsServer / WssServer above: PEM cert + EC private key loading (both SEC1 and PKCS#8 formats via a small DER TLV walker), cert-chain support, server-side TLS 1.3 handshake state machine with separate handshake-key and application-secret derivation, and a thread-local server-side error mirror (`rt_tls_server_last_error`) matching the client-side pattern. Underneath, the ECDSA-P256 module gained the wide-arithmetic and modular-math primitives (`u256_mul_wide`, `u512_mod_u256`, `u256_mod_{add,double,mul}`) needed for the certificate signature path that most modern TLS uses.
+**TLS.**
+*Client side.* `HttpReq.SetTlsVerify(bool)` (`Viper.Network.HttpReq.SetTlsVerify`) gives per-request verification control — useful for dev servers with self-signed certs and staging environments with internal CAs. Default stays secure (verification on). `alpn_protocol` on `rt_tls_config_t` declares a single protocol (`http/1.1`, `h2`) during the handshake; the HTTP client wires this up from the request URL scheme. `rt_tls_last_error()` captures connect/handshake errors in thread-local storage so trap messages surface the underlying diagnostic (hostname mismatch, cert expired, handshake protocol error) instead of generic "TLS handshake failed".
+
+*Server side.* From-scratch TLS 1.3 server implementation supporting the new HttpsServer / WssServer. PEM cert + EC private key loading (both SEC1 and PKCS#8 formats via a small DER TLV walker), cert-chain support, separate handshake-key and application-secret derivation, and a thread-local server-side error mirror (`rt_tls_server_last_error`) matching the client-side pattern. The server validates the client's SNI extension against the leaf certificate's CN/SAN before completing the handshake — blocks a client from connecting to one host and receiving another host's cert from a multi-tenant TLS server (bare IPv4/IPv6 literals are correctly recognised as having no SNI).
+
+*Underneath.* The ECDSA-P256 module gained the wide-arithmetic and modular-math primitives (`u256_mul_wide`, `u512_mod_u256`, `u256_mod_{add,double,mul}`) needed for the certificate signature path that most modern TLS uses.
+
+**UDP.** Substantial socket-layer rewrite. Dual-stack IPv4 / IPv6 sockets work transparently — the same `Udp` instance can send to and receive from both address families. Sender address / family / port are captured on `recv_from` so callers can reply without re-resolving. Address resolution is centralised across unicast and multicast send paths.
 
 **WebSocket / SMTP.** Small correctness follow-ups on header parsing and error paths consistent with the HTTP/TLS changes above.
 
@@ -296,5 +350,6 @@ Pac-Man renamed to Crackman and split into session/progression/frontend with a s
 | `2f103a8ce` | 2026-04-18 | HTTP cookie jar + gzip decode + streaming download + relative redirects, chunked request-body parsing on HttpServer, SSE reconnect, TLS per-request verify (`HttpReq.SetTlsVerify`) + ALPN + error diagnostics |
 | `b240f18be` | 2026-04-18 | HTTP keep-alive + connection pooling across `HttpClient` / `HttpReq` / `RestClient`, HttpServer `Connection`-header awareness, macOS `$DARWIN_EXTSN` handling in DynamicSymbolPolicy, runtime-surface classification follow-ups |
 | `0ec6b1cd4` | 2026-04-18 | New `HttpsServer` + `WssServer` (server-side TLS), full from-scratch TLS-server handshake with EC cert/key loading (SEC1 + PKCS#8), ECDSA-P256 math expansion, BASIC frontend route lowering for `HttpsServer` |
+| `a1484835b` | 2026-04-18 | Network security hardening — cross-origin redirect strips sensitive headers, TLS server-side SNI validation, WSS Origin/Host check, CRLF injection guard, HTTP/1.0 keep-alive defaults, dual-stack IPv6 UDP, ephemeral port + thread-safe server state, Zia frontend `HttpsServer` lowering |
 
 <!-- END DRAFT -->

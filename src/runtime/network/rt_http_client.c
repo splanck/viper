@@ -94,6 +94,26 @@ static void rt_http_client_finalize(void *obj) {
 // Helpers
 //=============================================================================
 
+/// @brief Identify request headers that must be stripped on a cross-origin redirect.
+/// @details The HTTP client follows redirects by default, but a redirect to a
+///          different origin may be attacker-controlled (a server you trust
+///          redirecting you to a server you don't). Forwarding credential-bearing
+///          headers across that boundary leaks bearer tokens, session cookies,
+///          and API keys to whoever the attacker pointed the redirect at.
+///
+///          This function lists the names that must be dropped before reissuing
+///          the request to the new origin: standard HTTP auth (`Authorization`,
+///          `Proxy-Authorization`), all cookie variants (`Cookie`, `Cookie2`),
+///          and the common ad-hoc API-key / bearer-token header names that
+///          modern services use (`X-API-Key`, `Api-Key`, `ApiKey`,
+///          `X-Auth-Token`, `X-Access-Token`).
+///
+///          The list is comparison-only — case-insensitive via `strcasecmp`,
+///          since HTTP header names are case-insensitive. Same-origin redirects
+///          retain all headers because they're equivalent to the caller making
+///          the new request directly.
+/// @param name Header name (case-insensitive comparison).
+/// @return Non-zero if the header is sensitive and should be stripped.
 static int header_is_sensitive_for_cross_origin_redirect(const char *name) {
     if (!name)
         return 0;

@@ -30,6 +30,11 @@
 
 #ifdef VIPER_ENABLE_GRAPHICS
 
+/// @brief Check whether `VIPER_TRACE_CANVAS_BOX` is set, with one-shot caching.
+/// @details The env-var lookup happens once on first call and is cached
+///          in a static so the trace check on every `Canvas.Box()` is
+///          a single int compare. Used by debug builds to log the
+///          first 32 box draws — useful when reproducing layout bugs.
 static int rt_trace_canvas_box_enabled(void) {
     static int cached = -1;
     if (cached == -1)
@@ -37,6 +42,20 @@ static int rt_trace_canvas_box_enabled(void) {
     return cached;
 }
 
+/// @brief Decode the next UTF-8 codepoint from `str` starting at `*index`.
+/// @details Implements the standard 1/2/3/4-byte UTF-8 walk:
+///          - `0xxxxxxx`            → ASCII (1 byte).
+///          - `110xxxxx 10xxxxxx`   → U+0080..U+07FF (2 bytes).
+///          - `1110xxxx 10xxxxxx ×2` → U+0800..U+FFFF (3 bytes).
+///          - `11110xxx 10xxxxxx ×3` → U+10000..U+10FFFF (4 bytes).
+///          For each multi-byte form, validates the continuation bytes
+///          (`10xxxxxx`) and rejects:
+///          - Overlong encodings (e.g. 2-byte sequence < U+0080).
+///          - Surrogate halves (U+D800..U+DFFF) — never legal in UTF-8.
+///          - Out-of-range scalars (> U+10FFFF).
+///          Substitutes `?` (U+003F) for any malformed sequence so the
+///          renderer never blows up on bad input. Advances `*index`
+///          by the consumed byte count and returns 0 at EOF.
 static int rt_canvas_next_codepoint(const char *str,
                                     size_t byte_len,
                                     size_t *index,
@@ -87,6 +106,12 @@ static int rt_canvas_next_codepoint(const char *str,
     return 1;
 }
 
+/// @brief Measure rendered text width by counting UTF-8 codepoints (not bytes).
+/// @details The 8×8 bitmap font is monospace, so width is simply
+///          `codepoints * 8 * scale`. Counting *codepoints* (not raw
+///          bytes) ensures non-ASCII glyphs and ASCII glyphs both
+///          contribute exactly one cell — `"héllo"` measures the same
+///          as `"hello"` regardless of UTF-8 byte length.
 static int64_t rt_canvas_text_codepoint_width(rt_string text, int64_t scale) {
     if (!text || scale < 1)
         return 0;
@@ -353,12 +378,14 @@ void rt_canvas_text_bg(
     }
 }
 
-/// @brief Width the text.
+/// @brief Return the rendered width of `text` in pixels at 1× scale.
+/// @details Counts UTF-8 codepoints (so multibyte glyphs each take one
+///          cell of the monospace 8×8 font) and multiplies by 8.
 int64_t rt_canvas_text_width(rt_string text) {
     return rt_canvas_text_codepoint_width(text, 1);
 }
 
-/// @brief Height the text.
+/// @brief Return the height of one line of text in pixels — always 8 for the built-in font.
 int64_t rt_canvas_text_height(void) {
     return 8;
 }
@@ -451,7 +478,7 @@ void rt_canvas_text_scaled_bg(
     }
 }
 
-/// @brief Scaled the width of the text.
+/// @brief Return the rendered width of `text` in pixels when drawn at the given integer scale.
 int64_t rt_canvas_text_scaled_width(rt_string text, int64_t scale) {
     return rt_canvas_text_codepoint_width(text, scale);
 }
@@ -460,7 +487,10 @@ int64_t rt_canvas_text_scaled_width(rt_string text, int64_t scale) {
 // Centered / Right-Aligned Text Helpers
 //=============================================================================
 
-/// @brief Centered the text.
+/// @brief Draw `text` horizontally centered in the canvas at row `y`.
+/// @details Pre-measures via `text_width`, then offsets x so the
+///          rendered glyphs sit symmetrically about the canvas
+///          centerline.
 void rt_canvas_text_centered(void *canvas_ptr, int64_t y, rt_string text, int64_t color) {
     if (!canvas_ptr || !text)
         return;
@@ -557,6 +587,20 @@ void rt_canvas_disc_alpha(
 // Pixel Blitting
 //=============================================================================
 
+/// @brief Clip a blit region to both source pixels bounds and destination canvas + clip rect.
+/// @details In-place adjusts `(dx, dy, sx, sy, w, h)` so the resulting
+///          rectangle is fully contained in:
+///          1. The source `pixels` (skip the leading area where `sx`
+///             or `sy` is negative; trim the trailing area that
+///             extends past the source extent).
+///          2. The canvas's logical clip rectangle (skip leading area
+///             that lands left/above the clip; trim trailing area
+///             that extends right/below).
+///          Returns 0 if the resulting region is empty (caller should
+///          skip the blit). Centralized here so all four blit variants
+///          (opaque, region, alpha, alpha-region) share identical
+///          clipping behavior — keeps clip semantics consistent and
+///          off-by-one bugs to one place.
 static int8_t rt_canvas_prepare_blit_region(rt_canvas *canvas,
                                             rt_pixels_impl *pixels,
                                             int64_t *dx,
@@ -767,7 +811,15 @@ void rt_canvas_blit_region(void *canvas_ptr,
     }
 }
 
-/// @brief Alpha the blit.
+/// @brief Blit a Pixels source onto the canvas with per-pixel alpha blending.
+/// @details Like `rt_canvas_blit` but each source pixel composites onto
+///          the destination using straight alpha:
+///          - α = 0   → skip (preserves dest exactly).
+///          - α = 255 → overwrite (fast path, no division).
+///          - else    → `dst = (src*α + dst*(255-α)) / 255`.
+///          Honors the canvas's HiDPI scale by expanding each logical
+///          source pixel into the corresponding physical pixel block
+///          (so a 1× sprite stays sharp on a 2× display).
 void rt_canvas_blit_alpha(void *canvas_ptr, int64_t x, int64_t y, void *pixels_ptr) {
     if (!canvas_ptr || !pixels_ptr)
         return;
@@ -854,11 +906,12 @@ void rt_canvas_blit_alpha(void *canvas_ptr, int64_t x, int64_t y, void *pixels_p
 // Canvas Utilities (get_pixel, copy_rect, save_bmp, save_png)
 //=============================================================================
 
-/// @brief Get the pixel value.
-/// @param canvas_ptr
-/// @param x
-/// @param y
-/// @return Result value.
+/// @brief Read a single pixel's color from the canvas at the given logical coordinates.
+/// @details Returns the packed 0xRRGGBB color at (x, y), or 0 if the
+///          canvas isn't ready or (x, y) is out of bounds. Useful for
+///          procedural painting tools and color picking. Goes through
+///          `vgfx_point` rather than direct framebuffer access so the
+///          read honors any pending coordinate transforms.
 int64_t rt_canvas_get_pixel(void *canvas_ptr, int64_t x, int64_t y) {
     rt_canvas *canvas = rt_canvas_checked(canvas_ptr);
     if (!canvas)
@@ -875,6 +928,16 @@ int64_t rt_canvas_get_pixel(void *canvas_ptr, int64_t x, int64_t y) {
     return 0;
 }
 
+/// @brief Copy a rectangular region of the canvas into a freshly allocated Pixels object.
+/// @details Goes through the live framebuffer rather than per-pixel
+///          `vgfx_point` calls — for an `N×M` rect that's `O(N*M)`
+///          instead of `O(N*M)` clipped queries, easily 10× faster
+///          on large screenshots. HiDPI: each logical pixel samples
+///          its scaled top-left physical pixel, so the returned
+///          Pixels stays at logical resolution (matches what the
+///          user drew, not what the GPU rendered). Out-of-range
+///          source pixels are recorded as 0 so the resulting buffer
+///          is dense and easy to feed back into `Canvas.Blit`.
 void *rt_canvas_copy_rect(void *canvas_ptr, int64_t x, int64_t y, int64_t w, int64_t h) {
     if (w <= 0 || h <= 0)
         return NULL;
@@ -931,11 +994,15 @@ void *rt_canvas_copy_rect(void *canvas_ptr, int64_t x, int64_t y, int64_t w, int
     return pixels;
 }
 
-/// @brief Save bmp.
-/// @param canvas_ptr
-/// @param path
-/// @return Result value.
-/// @brief Save the canvas contents to a 24-bit BMP file. Returns 1 on success, 0 on failure.
+/// @brief Save the canvas contents to a 24-bit BMP file at `path`.
+/// @details Implementation steps:
+///          1. Snapshot the live canvas via `rt_canvas_copy_rect`
+///             into a temporary Pixels object.
+///          2. Delegate to `rt_pixels_save_bmp` for the actual file
+///             write (handles BMP header, row alignment, alpha→24-bit
+///             demotion).
+///          3. Let the GC reclaim the temporary Pixels.
+/// @return 1 on success, 0 on any failure (no canvas, write error, ...).
 int64_t rt_canvas_save_bmp(void *canvas_ptr, rt_string path) {
     if (!path)
         return 0;
@@ -963,11 +1030,13 @@ int64_t rt_canvas_save_bmp(void *canvas_ptr, rt_string path) {
     return result;
 }
 
-/// @brief Save png.
-/// @param canvas_ptr
-/// @param path
-/// @return Result value.
-/// @brief Save the canvas contents to a PNG file (zlib-compressed). Returns 1 on success.
+/// @brief Save the canvas contents to a PNG file at `path`.
+/// @details Same flow as `_save_bmp` but routes to `rt_pixels_save_png`
+///          which produces a deflate-compressed RGBA PNG (preserving
+///          per-pixel alpha unlike the BMP path). Smaller files than
+///          BMP for typical UI screenshots; slower to write because
+///          of the compression pass.
+/// @return 1 on success, 0 on any failure.
 int64_t rt_canvas_save_png(void *canvas_ptr, rt_string path) {
     if (!path)
         return 0;

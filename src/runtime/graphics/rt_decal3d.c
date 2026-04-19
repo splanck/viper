@@ -59,6 +59,10 @@ typedef struct {
     void *material; /* built on first draw */
 } rt_decal3d;
 
+/// @brief Idempotent release of a GC-managed reference held in `**slot`.
+/// @details Safe on already-null slots; zeroes the slot after the
+///          release so the finalizer can run twice without double-free
+///          (would never happen under normal GC but defensive anyway).
 static void decal3d_release_ref(void **slot) {
     if (!slot || !*slot)
         return;
@@ -67,6 +71,12 @@ static void decal3d_release_ref(void **slot) {
     *slot = NULL;
 }
 
+/// @brief GC finalizer: release the decal's texture, lazily-built mesh, and material.
+/// @details Note the lazy-build pattern: `mesh` and `material` are null
+///          until the first `draw_decal`. Releasing them here is safe
+///          because `decal3d_release_ref` short-circuits on null, so
+///          decals that were created but never drawn finalize cleanly
+///          without special-casing.
 static void decal3d_finalizer(void *obj) {
     rt_decal3d *d = (rt_decal3d *)obj;
     decal3d_release_ref(&d->texture);
@@ -148,7 +158,22 @@ int8_t rt_decal3d_is_expired(void *obj) {
     return d->lifetime <= 0 ? 1 : 0;
 }
 
-/// @brief Build the decal quad mesh on first draw.
+/// @brief Build the decal's quad mesh + material on first draw (lazy init).
+/// @details Classic tangent-frame construction:
+///          1. Pick an arbitrary "up" that isn't parallel to the surface
+///             normal (world +Y, or world +X when the normal is already
+///             close to ±Y, to guarantee the subsequent cross products
+///             don't degenerate).
+///          2. `right = cross(up, normal)`, then normalize.
+///          3. `true_up = cross(normal, right)` — already unit-length
+///             since normal and right are both unit and orthogonal.
+///          4. Emit the four corner vertices offset by `0.5 * size`
+///             along the right/up axes, each lifted 0.01 units along
+///             the normal to prevent z-fighting with the underlying
+///             surface.
+///          The material is created `unlit` so decals show their
+///          texture as-is without picking up scene lighting (matches
+///          bullet-hole / scorch-mark convention).
 static void ensure_decal_mesh(rt_decal3d *d) {
     if (d->mesh)
         return;

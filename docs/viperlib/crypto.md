@@ -685,7 +685,8 @@ The TLS implementation uses:
 - **Key Exchange:** X25519 (Curve25519 ECDH)
 - **Cipher:** ChaCha20-Poly1305 AEAD
 - **Hash:** SHA-256
-- **Certificate Verification:** Enabled by default against the platform trust store
+- **Certificate Verification:** Enabled by default against the runtime trust source. Windows uses CryptoAPI; macOS and Linux use the built-in PEM-bundle verifier with standard system trust bundles.
+- **Certificate Signature Support:** In-tree verification of ECDSA P-256, RSA PKCS#1 v1.5, and RSA-PSS certificate signatures
 - **Hostname / SNI behavior:** DNS hostnames are sent in SNI; IP literals are verified against IP SANs but are not sent in SNI
 
 ### Zia Example

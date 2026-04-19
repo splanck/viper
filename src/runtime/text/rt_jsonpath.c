@@ -136,6 +136,17 @@ static void *resolve_path(void *root, const char *path) {
 
 // --- Helper: wildcard query ---
 
+/// @brief Walk a wildcard `*` step: collect every child of `current`, then continue with `remaining`.
+/// @details Two cases:
+///          1. **Sequence** (`rt_seq_len > 0`) → for each element,
+///             either push it into results (if no remaining path) or
+///             resolve `remaining` against it and push if found.
+///          2. **Map** → enumerate the keys, then iterate values
+///             with the same push-or-resolve logic.
+///          The "try seq first, fall through to map" pattern works
+///          because Maps' first 8 bytes (vptr) read as zero, so
+///          `rt_seq_len` returns 0 for them — no separate type
+///          discriminator needed.
 static void collect_wildcard(void *current, const char *remaining, void *results) {
     if (!current)
         return;

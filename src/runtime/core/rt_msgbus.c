@@ -77,6 +77,13 @@ typedef void (*mb_callback_fn)(void *data);
 
 // --- FNV-1a hash ---
 
+/// @brief Compute the FNV-1a 64-bit hash of a NUL-terminated string.
+/// @details Standard FNV-1a constants: 64-bit offset basis
+///          `0xcbf29ce484222325` and prime `0x100000001b3`. Good
+///          distribution for short topic strings ("user.login",
+///          "tick", etc.) without the cost of a CSPRNG-seeded
+///          hash like SipHash. Used only to bucket topic names —
+///          collisions are handled by per-bucket linear probe.
 static uint64_t mb_hash(const char *s) {
     uint64_t h = 14695981039346656037ULL;
     while (*s) {
@@ -88,6 +95,10 @@ static uint64_t mb_hash(const char *s) {
 
 // --- Internal helpers ---
 
+/// @brief Free a single subscriber node (drops topic ref + callback ref).
+/// @details Called by `mb_finalizer` (full-bus teardown) and by the
+///          unsubscribe path. The callback is treated as a GC-managed
+///          opaque object so functions and bound methods both work.
 static void mb_free_sub(mb_sub *s) {
     if (s->topic)
         rt_string_unref(s->topic);
@@ -96,6 +107,11 @@ static void mb_free_sub(mb_sub *s) {
     free(s);
 }
 
+/// @brief GC finalizer — walk every bucket and free every topic + subscriber.
+/// @details Two-level walk: each bucket holds a linked list of
+///          `mb_topic` nodes; each topic holds its own linked list
+///          of subscribers. Releases topic-name refs and frees
+///          everything before nulling the bucket array.
 static void mb_finalizer(void *obj) {
     rt_msgbus_impl *mb = (rt_msgbus_impl *)obj;
     if (mb->buckets) {
@@ -120,6 +136,12 @@ static void mb_finalizer(void *obj) {
     }
 }
 
+/// @brief Look up the topic node for `topic_cstr` (returns NULL if not present).
+/// @details Hash → bucket → linear probe down the per-bucket chain.
+///          Bucket count is fixed at construction (32 by default) —
+///          rehashing isn't implemented because typical message-bus
+///          workloads have <100 topics, well under the load that
+///          would warrant resizing.
 static mb_topic *mb_find_topic(rt_msgbus_impl *mb, const char *topic_cstr) {
     uint64_t h = mb_hash(topic_cstr);
     int64_t idx = (int64_t)(h % (uint64_t)mb->bucket_count);
@@ -132,6 +154,11 @@ static mb_topic *mb_find_topic(rt_msgbus_impl *mb, const char *topic_cstr) {
     return NULL;
 }
 
+/// @brief Look up or create the topic node for `topic`.
+/// @details Find-or-insert: returns the existing node when present,
+///          otherwise allocates a fresh one, retains the topic-name
+///          string, and inserts at the head of its bucket's chain.
+///          Subscribers list starts empty — the caller appends.
 static mb_topic *mb_ensure_topic(rt_msgbus_impl *mb, rt_string topic) {
     const char *cstr = rt_string_cstr(topic);
     mb_topic *t = mb_find_topic(mb, cstr);
@@ -155,6 +182,11 @@ static mb_topic *mb_ensure_topic(rt_msgbus_impl *mb, rt_string topic) {
 
 // --- Public API ---
 
+/// @brief Create a new MessageBus with 32 hash buckets and ID counter starting at 1.
+/// @details Subscriber IDs start at 1 so 0 can act as a "no subscription"
+///          sentinel without ambiguity. Bucket count is small but
+///          typical message-bus workloads have few enough topics that
+///          collision chains stay short.
 void *rt_msgbus_new(void) {
     rt_msgbus_impl *mb = (rt_msgbus_impl *)rt_obj_new_i64(0, sizeof(rt_msgbus_impl));
     mb->bucket_count = 32;

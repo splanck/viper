@@ -48,6 +48,11 @@ typedef struct rt_version_impl {
     char *build;      // NULL if none
 } rt_version_impl;
 
+/// @brief GC finalizer — release the optional prerelease and build metadata strings.
+/// @details The numeric major/minor/patch live inline in the struct,
+///          but the optional `-pre` and `+build` portions are
+///          heap-allocated copies. `free(NULL)` is a no-op so we
+///          don't need to guard the optional fields explicitly.
 static void version_finalizer(void *obj) {
     rt_version_impl *v = (rt_version_impl *)obj;
     if (!v)
@@ -56,6 +61,7 @@ static void version_finalizer(void *obj) {
     free(v->build);
 }
 
+/// @brief NUL-terminated heap copy of `s[0..len)`. Returns NULL on allocation failure.
 static char *dup_str(const char *s, size_t len) {
     char *r = (char *)malloc(len + 1);
     if (!r)
@@ -65,8 +71,12 @@ static char *dup_str(const char *s, size_t len) {
     return r;
 }
 
-// Parse a non-negative integer from str[*pos], advancing *pos.
-// Returns -1 on failure.
+/// @brief Parse a non-negative decimal integer from `str` at `*pos`, advancing the cursor.
+/// @details Enforces the SemVer "no leading zeros" rule (so `01` is
+///          rejected, but plain `0` is fine). Returns -1 on
+///          malformed input, leaving `*pos` unchanged for the
+///          caller to react. Leaves `*pos` pointing at the first
+///          non-digit byte after a successful parse.
 static int64_t parse_num(const char *str, size_t len, size_t *pos) {
     if (*pos >= len || !isdigit((unsigned char)str[*pos]))
         return -1;
@@ -180,28 +190,28 @@ int8_t rt_version_is_valid(rt_string str) {
     return 1;
 }
 
-/// @brief Major the version.
+/// @brief Return the MAJOR component of the parsed version.
 int64_t rt_version_major(void *ver) {
     if (!ver)
         return 0;
     return ((rt_version_impl *)ver)->major;
 }
 
-/// @brief Minor the version.
+/// @brief Return the MINOR component of the parsed version.
 int64_t rt_version_minor(void *ver) {
     if (!ver)
         return 0;
     return ((rt_version_impl *)ver)->minor;
 }
 
-/// @brief Patch the version.
+/// @brief Return the PATCH component (defaults to 0 if absent in source).
 int64_t rt_version_patch(void *ver) {
     if (!ver)
         return 0;
     return ((rt_version_impl *)ver)->patch;
 }
 
-/// @brief Prerelease the version.
+/// @brief Return the prerelease label (text after `-`), or empty string if absent.
 rt_string rt_version_prerelease(void *ver) {
     if (!ver || !((rt_version_impl *)ver)->prerelease)
         return rt_string_from_bytes("", 0);
@@ -209,7 +219,10 @@ rt_string rt_version_prerelease(void *ver) {
     return rt_string_from_bytes(pr, strlen(pr));
 }
 
-/// @brief Build the version.
+/// @brief Return the build metadata (text after `+`), or empty string if absent.
+/// @details Per SemVer 2.0, build metadata does not affect comparison
+///          ordering — it's metadata for the consumer's bookkeeping
+///          (CI build numbers, commit hashes, etc.).
 rt_string rt_version_build(void *ver) {
     if (!ver || !((rt_version_impl *)ver)->build)
         return rt_string_from_bytes("", 0);

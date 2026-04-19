@@ -67,10 +67,31 @@ extern void arc4random_buf(void *buf, size_t nbytes);
 #include <unistd.h>
 #endif
 
-/// @brief Fill buffer with cryptographically secure random bytes.
-/// @param buf Buffer to fill.
-/// @param len Number of bytes to generate.
-/// @return 0 on success, -1 on failure.
+/// @brief Fill a buffer with cryptographically secure random bytes.
+/// @details Uses the platform's preferred CSPRNG with documented fallbacks:
+///          - **Windows**: `BCryptGenRandom` with `BCRYPT_USE_SYSTEM_PREFERRED_RNG`.
+///            One call, no fallback needed.
+///          - **macOS / *BSD**: `arc4random_buf` (ChaCha20-based, kernel-seeded,
+///            never fails — no return value to check).
+///          - **Linux**: `getrandom(2)` syscall first (preferred — never blocks
+///            after the kernel pool is initialized at boot, unlike older
+///            `/dev/urandom` semantics on first read). Loops on partial reads
+///            (the syscall can return fewer bytes than requested when
+///            interrupted) and on `EINTR`. Falls back to `/dev/urandom` if
+///            `getrandom` returns `ENOSYS` (kernel < 3.17 — extremely rare
+///            but possible on long-running enterprise distros).
+///          - **Other Unix / ViperDOS**: `/dev/urandom` directly. Same loop
+///            structure — read in a loop until the requested length is
+///            satisfied, retrying on `EINTR`, treating `read() == 0` as a
+///            failure (the device should never EOF).
+///
+///          The `EINTR` retry loops matter because both `getrandom` and
+///          `read` on `/dev/urandom` can be interrupted by signals on a
+///          process that uses signal handlers, and a single short read
+///          would leave the buffer with predictable trailing bytes.
+/// @param buf Buffer to fill (must be writable for `len` bytes).
+/// @param len Number of bytes to generate (0 is a no-op success).
+/// @return 0 on success; -1 on failure (CSPRNG unavailable or read error).
 static int secure_random_fill(uint8_t *buf, size_t len) {
     if (len == 0)
         return 0;

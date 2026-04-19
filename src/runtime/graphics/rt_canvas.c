@@ -30,6 +30,13 @@
 
 #ifdef VIPER_ENABLE_GRAPHICS
 
+/// @brief Clear keyboard/mouse module references that point at this window.
+/// @details The input modules cache the active canvas so global queries like
+///          `Action.Held()` can route to the right vgfx window. When a canvas
+///          is destroyed, those caches must be invalidated or subsequent
+///          input polls would read freed memory. The "if matches" guards
+///          ensure we don't clobber input state belonging to another canvas
+///          when multiple windows are open.
 static void rt_canvas_detach_input(vgfx_window_t gfx_win) {
     if (!gfx_win)
         return;
@@ -37,6 +44,12 @@ static void rt_canvas_detach_input(vgfx_window_t gfx_win) {
     rt_mouse_clear_canvas_if_matches(gfx_win);
 }
 
+/// @brief Detach input bindings, destroy the underlying vgfx window, and clear the pointer.
+/// @details Single chokepoint for window teardown so both the explicit
+///          `rt_canvas_close` path and the GC finalizer follow the same
+///          ordering: detach input first (so no late event delivery into
+///          the doomed window), then destroy, then null the pointer so
+///          subsequent ops see a closed canvas.
 static void rt_canvas_destroy_window(rt_canvas *canvas) {
     if (!canvas || !canvas->gfx_win)
         return;
@@ -45,6 +58,11 @@ static void rt_canvas_destroy_window(rt_canvas *canvas) {
     canvas->gfx_win = NULL;
 }
 
+/// @brief GC finalizer: free cached title, destroy window, and clear the magic number.
+/// @details Invoked by the runtime when the canvas refcount drops to zero.
+///          Wiping `magic` lets `rt_canvas_checked` reject use-after-free
+///          (caller dereferences a stale handle) by detecting the zeroed
+///          sentinel rather than producing undefined behavior.
 static void rt_canvas_finalize(void *obj) {
     if (!obj)
         return;
@@ -58,6 +76,13 @@ static void rt_canvas_finalize(void *obj) {
     rt_canvas_destroy_window(canvas);
 }
 
+/// @brief Convert a physical pixel position from a vgfx event into logical mouse coords.
+/// @details All public Canvas drawing uses logical pixels (CSS pixels);
+///          vgfx mouse events arrive in physical pixels (real framebuffer
+///          coordinates), which are 2x larger on Retina/HiDPI displays.
+///          Dividing by the per-window scale factor keeps `Mouse.X/Y`
+///          consistent with the coordinate space the user draws in. The
+///          `< 0.001f` guard avoids division by an uninitialized scale.
 static void rt_canvas_update_mouse_from_physical(vgfx_window_t gfx_win, int32_t x, int32_t y) {
     float scale = vgfx_window_get_scale(gfx_win);
     if (scale < 0.001f)

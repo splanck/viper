@@ -41,7 +41,12 @@
 // rt_numfmt_decimals
 // ---------------------------------------------------------------------------
 
-/// @brief Decimals the numfmt.
+/// @brief Format `n` with exactly `decimals` digits after the decimal point.
+/// @details Clamps `decimals` into [0, 20] to keep the printf format
+///          sane, then delegates to `snprintf("%.*f")` which handles
+///          the rounding (banker's-round on most C runtimes — close
+///          enough to half-up that the output matches user
+///          expectations for currency-style display).
 rt_string rt_numfmt_decimals(double n, int64_t decimals) {
     if (decimals < 0)
         decimals = 0;
@@ -61,7 +66,16 @@ rt_string rt_numfmt_decimals(double n, int64_t decimals) {
 // rt_numfmt_thousands
 // ---------------------------------------------------------------------------
 
-/// @brief Thousands the numfmt.
+/// @brief Format an integer with `sep` inserted every three digits from the right.
+/// @details `sep` defaults to `","` if NULL or empty. Steps:
+///          1. Stringify the absolute value via `snprintf` (handles
+///             `INT64_MIN` via the `INT64_MAX + 1` cast — direct
+///             negation would overflow).
+///          2. Emit a leading minus if needed, then the leading
+///             group (1, 2, or 3 digits depending on length mod 3).
+///          3. Loop: append separator + 3-digit group until
+///             exhausted.
+///          Examples: `1234567 → "1,234,567"`, `-12345 → "-12,345"`.
 rt_string rt_numfmt_thousands(int64_t n, rt_string sep) {
     const char *sep_cstr = sep ? rt_string_cstr(sep) : ",";
     if (!sep_cstr || *sep_cstr == '\0')
@@ -113,7 +127,12 @@ rt_string rt_numfmt_thousands(int64_t n, rt_string sep) {
 // rt_numfmt_currency
 // ---------------------------------------------------------------------------
 
-/// @brief Currency the numfmt.
+/// @brief Format `n` as a currency value: `[symbol]X,XXX.XX` (always 2 decimals).
+/// @details Defaults symbol to `"$"` if NULL. Layout:
+///          `[-][symbol][int with thousand separators].[2 decimals]`.
+///          Always emits exactly 2 decimal places (so `5.0 → "$5.00"`).
+///          Hard-codes `,` as the thousands separator — locale-aware
+///          formatting is intentionally out of scope.
 rt_string rt_numfmt_currency(double n, rt_string symbol) {
     const char *sym = symbol ? rt_string_cstr(symbol) : "$";
     if (!sym)
@@ -169,7 +188,12 @@ rt_string rt_numfmt_currency(double n, rt_string symbol) {
 // rt_numfmt_percent
 // ---------------------------------------------------------------------------
 
-/// @brief Percent the numfmt.
+/// @brief Format `n` as a percentage (multiplies by 100, appends `%`).
+/// @details Uses 1 decimal of precision unless the rounded value
+///          would have a `.0` fractional part, in which case the
+///          decimal is omitted for cleaner output.
+///          Examples: `0.5 → "50%"`, `0.123 → "12.3%"`,
+///          `0.345 → "34.5%"`, `0.5 → "50%"` (not `"50.0%"`).
 rt_string rt_numfmt_percent(double n) {
     double pct = n * 100.0;
     char buf[64];
@@ -195,7 +219,12 @@ rt_string rt_numfmt_percent(double n) {
 // rt_numfmt_ordinal
 // ---------------------------------------------------------------------------
 
-/// @brief Ordinal the numfmt.
+/// @brief Append the English ordinal suffix to `n` (1 → "1st", 22 → "22nd", 113 → "113th").
+/// @details Standard English rules:
+///          - Numbers ending in 11/12/13 always take `th` (so "11th",
+///            not "11st").
+///          - Otherwise: 1 → `st`, 2 → `nd`, 3 → `rd`, anything else → `th`.
+///          Sign is preserved on the number portion (so `-1 → "-1st"`).
 rt_string rt_numfmt_ordinal(int64_t n) {
     const char *suffix;
     int64_t abs_n = (n == INT64_MIN) ? INT64_MAX : (n < 0 ? -n : n);
@@ -234,6 +263,15 @@ static const char *const ones[] = {"",        "one",     "two",       "three",  
 static const char *const tens[] = {
     "", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety"};
 
+/// @brief Append the English-words form of `n` (`0..999`) to the builder.
+/// @details Implements the standard 100s/tens/ones decomposition:
+///          - `>= 100` → "X hundred" + remainder.
+///          - `>= 20`  → tens word + optional `-` + ones (e.g. "thirty-two").
+///          - `< 20`   → direct lookup in the `ones[]` table (which
+///            also covers the irregular teen forms like "fifteen").
+///          `has_prev` is set to 1 on first emission so callers can
+///          insert a space before subsequent chunks (used by
+///          `rt_numfmt_to_words` to separate scale words).
 static void append_chunk(rt_string_builder *sb, int64_t n, int *has_prev) {
     if (n == 0)
         return;
@@ -313,7 +351,13 @@ rt_string rt_numfmt_to_words(int64_t n) {
 // rt_numfmt_bytes
 // ---------------------------------------------------------------------------
 
-/// @brief Bytes the numfmt.
+/// @brief Format a byte count with a human-readable unit suffix (`B`, `KB`, `MB`, ...).
+/// @details Steps the value down by factors of 1024 (binary, not
+///          decimal) until it sits in `[0, 1024)`, then formats with
+///          one decimal of precision and the matching unit. Capped
+///          at exabytes (`EB`) — values above that just stay in EB.
+///          Negative byte counts emit a leading `-` and use the
+///          absolute value for unit selection.
 rt_string rt_numfmt_bytes(int64_t bytes) {
     static const char *const units[] = {"B", "KB", "MB", "GB", "TB", "PB", "EB"};
     double val = (double)(bytes < 0 ? -bytes : bytes);
@@ -355,7 +399,11 @@ rt_string rt_numfmt_bytes(int64_t bytes) {
 // rt_numfmt_pad
 // ---------------------------------------------------------------------------
 
-/// @brief Pad the numfmt.
+/// @brief Zero-pad an integer to the specified character width.
+/// @details `width` is clamped to `[1, 64]`. For positive values,
+///          uses printf's `%0*lld` directly. For negatives, the
+///          width budget includes the leading `-` so `pad(-5, 4)`
+///          produces `"-005"` (4 chars total, not 5).
 rt_string rt_numfmt_pad(int64_t n, int64_t width) {
     if (width < 1)
         width = 1;

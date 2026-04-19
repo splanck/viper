@@ -15,6 +15,7 @@
 #include "rt_crypto.h"
 #include "rt_ecdsa_p256.h"
 #include "rt_object.h"
+#include "rt_rsa.h"
 #include "rt_tls_internal.h"
 #include "rt_tls_server_internal.h"
 
@@ -72,9 +73,17 @@ struct rt_tls_server_ctx {
     size_t cert_list_entries_len;
     uint8_t *leaf_cert_der;
     size_t leaf_cert_der_len;
+    int key_type;
     uint8_t private_key[32];
+    rt_rsa_key_t rsa_key;
     char alpn_protocol[64];
     int timeout_ms;
+};
+
+enum {
+    TLS_SERVER_KEY_NONE = 0,
+    TLS_SERVER_KEY_ECDSA_P256 = 1,
+    TLS_SERVER_KEY_RSA_PSS_SHA256 = 2,
 };
 
 static void tls_set_server_last_error_msg(const char *msg);
@@ -93,6 +102,9 @@ static int tls_parse_pkcs8_ec_private_key(
     const uint8_t *der, size_t der_len, uint8_t out_priv[32]);
 static int tls_extract_cert_ec_pubkey(
     const uint8_t *cert_der, size_t cert_len, uint8_t x_out[32], uint8_t y_out[32]);
+static int tls_extract_cert_rsa_pubkey(
+    const uint8_t *cert_der, size_t cert_len, rt_rsa_key_t *out);
+static int tls_extract_cert_key_type(const uint8_t *cert_der, size_t cert_len);
 static int tls_hostname_is_ip_literal(const char *hostname);
 static int tls_parse_client_sni(rt_tls_session_t *session, const uint8_t *data, size_t len);
 static int tls_server_name_matches_leaf_cert(const rt_tls_server_ctx_t *ctx, const char *hostname);
@@ -247,11 +259,16 @@ rt_tls_server_ctx_t *rt_tls_server_ctx_new(const rt_tls_server_config_t *config)
     size_t body_len = 0;
     size_t file_len = 0;
     int cert_count = 0;
+    int parsed_key_type = TLS_SERVER_KEY_NONE;
+    int raw_key_loaded = 0;
     rt_tls_server_ctx_t *ctx = NULL;
     uint8_t cert_pub_x[32];
     uint8_t cert_pub_y[32];
     uint8_t key_pub_x[32];
     uint8_t key_pub_y[32];
+    rt_rsa_key_t cert_rsa_key;
+
+    rt_rsa_key_init(&cert_rsa_key);
 
     tls_set_server_last_error_msg(NULL);
 
@@ -302,75 +319,142 @@ rt_tls_server_ctx_t *rt_tls_server_ctx_new(const rt_tls_server_config_t *config)
         goto fail;
     }
 
+    parsed_key_type = tls_extract_cert_key_type(ctx->leaf_cert_der, ctx->leaf_cert_der_len);
+    if (parsed_key_type == TLS_SERVER_KEY_NONE) {
+        tls_set_server_last_error_msg(
+            "TLS server: leaf certificate must use an RSA or P-256 ECDSA public key");
+        goto fail;
+    }
+
     key_pem = tls_read_text_file(config->key_file, &file_len);
     if (!key_pem) {
         tls_set_server_last_error_msg("TLS server: failed to read private key file");
         goto fail;
     }
 
-    if (tls_find_pem_block(
-            key_pem, "-----BEGIN PRIVATE KEY-----", "-----END PRIVATE KEY-----", &body, &body_len, NULL)) {
-        uint8_t *der = (uint8_t *)malloc(body_len);
-        size_t der_len = 0;
-        if (!der) {
-            tls_set_server_last_error_msg("TLS server: private key buffer allocation failed");
-            goto fail;
-        }
-        der_len = tls_pem_base64_decode(body, body_len, der, body_len);
-        if (der_len == 0 || !tls_parse_pkcs8_ec_private_key(der, der_len, ctx->private_key)) {
+    if (parsed_key_type == TLS_SERVER_KEY_ECDSA_P256) {
+        if (tls_find_pem_block(
+                key_pem, "-----BEGIN PRIVATE KEY-----", "-----END PRIVATE KEY-----", &body, &body_len, NULL)) {
+            uint8_t *der = (uint8_t *)malloc(body_len);
+            size_t der_len = 0;
+            if (!der) {
+                tls_set_server_last_error_msg("TLS server: private key buffer allocation failed");
+                goto fail;
+            }
+            der_len = tls_pem_base64_decode(body, body_len, der, body_len);
+            if (der_len > 0 && tls_parse_pkcs8_ec_private_key(der, der_len, ctx->private_key))
+                raw_key_loaded = 1;
             free(der);
-            tls_set_server_last_error_msg(
-                "TLS server: only unencrypted P-256 PKCS#8 private keys are supported");
-            goto fail;
-        }
-        free(der);
-    } else if (tls_find_pem_block(key_pem,
-                                  "-----BEGIN EC PRIVATE KEY-----",
-                                  "-----END EC PRIVATE KEY-----",
-                                  &body,
-                                  &body_len,
-                                  NULL)) {
-        uint8_t *der = (uint8_t *)malloc(body_len);
-        size_t der_len = 0;
-        if (!der) {
-            tls_set_server_last_error_msg("TLS server: private key buffer allocation failed");
-            goto fail;
-        }
-        der_len = tls_pem_base64_decode(body, body_len, der, body_len);
-        if (der_len == 0 || !tls_parse_sec1_ec_private_key(der, der_len, ctx->private_key)) {
+        } else if (tls_find_pem_block(key_pem,
+                                      "-----BEGIN EC PRIVATE KEY-----",
+                                      "-----END EC PRIVATE KEY-----",
+                                      &body,
+                                      &body_len,
+                                      NULL)) {
+            uint8_t *der = (uint8_t *)malloc(body_len);
+            size_t der_len = 0;
+            if (!der) {
+                tls_set_server_last_error_msg("TLS server: private key buffer allocation failed");
+                goto fail;
+            }
+            der_len = tls_pem_base64_decode(body, body_len, der, body_len);
+            if (der_len > 0 && tls_parse_sec1_ec_private_key(der, der_len, ctx->private_key))
+                raw_key_loaded = 1;
             free(der);
+        }
+    }
+
+    if (parsed_key_type == TLS_SERVER_KEY_ECDSA_P256 && raw_key_loaded) {
+        if (!tls_extract_cert_ec_pubkey(ctx->leaf_cert_der,
+                                        ctx->leaf_cert_der_len,
+                                        cert_pub_x,
+                                        cert_pub_y)) {
             tls_set_server_last_error_msg(
-                "TLS server: only unencrypted P-256 EC private keys are supported");
+                "TLS server: leaf certificate must use a P-256 ECDSA public key");
             goto fail;
         }
-        free(der);
+
+        if (ecdsa_p256_public_from_private(ctx->private_key, key_pub_x, key_pub_y) &&
+            memcmp(cert_pub_x, key_pub_x, sizeof(cert_pub_x)) == 0 &&
+            memcmp(cert_pub_y, key_pub_y, sizeof(cert_pub_y)) == 0) {
+            ctx->key_type = TLS_SERVER_KEY_ECDSA_P256;
+            free(cert_pem);
+            free(key_pem);
+            return ctx;
+        }
+    }
+
+    if (parsed_key_type == TLS_SERVER_KEY_RSA_PSS_SHA256) {
+        rt_rsa_key_t private_rsa_key;
+        rt_rsa_key_init(&private_rsa_key);
+
+        if (tls_find_pem_block(
+                key_pem, "-----BEGIN PRIVATE KEY-----", "-----END PRIVATE KEY-----", &body, &body_len, NULL)) {
+            uint8_t *der = (uint8_t *)malloc(body_len);
+            size_t der_len = 0;
+            if (!der) {
+                tls_set_server_last_error_msg("TLS server: private key buffer allocation failed");
+                rt_rsa_key_free(&private_rsa_key);
+                goto fail;
+            }
+            der_len = tls_pem_base64_decode(body, body_len, der, body_len);
+            if (der_len > 0)
+                raw_key_loaded = rt_rsa_parse_private_key_pkcs8(der, der_len, &private_rsa_key);
+            free(der);
+        } else if (tls_find_pem_block(key_pem,
+                                      "-----BEGIN RSA PRIVATE KEY-----",
+                                      "-----END RSA PRIVATE KEY-----",
+                                      &body,
+                                      &body_len,
+                                      NULL)) {
+            uint8_t *der = (uint8_t *)malloc(body_len);
+            size_t der_len = 0;
+            if (!der) {
+                tls_set_server_last_error_msg("TLS server: private key buffer allocation failed");
+                rt_rsa_key_free(&private_rsa_key);
+                goto fail;
+            }
+            der_len = tls_pem_base64_decode(body, body_len, der, body_len);
+            if (der_len > 0)
+                raw_key_loaded = rt_rsa_parse_private_key_pkcs1(der, der_len, &private_rsa_key);
+            free(der);
+        }
+
+        if (raw_key_loaded &&
+            tls_extract_cert_rsa_pubkey(ctx->leaf_cert_der, ctx->leaf_cert_der_len, &cert_rsa_key) &&
+            rt_rsa_public_equals(&cert_rsa_key, &private_rsa_key)) {
+            ctx->rsa_key = private_rsa_key;
+            rt_rsa_key_init(&private_rsa_key);
+            ctx->key_type = TLS_SERVER_KEY_RSA_PSS_SHA256;
+            free(cert_pem);
+            free(key_pem);
+            rt_rsa_key_free(&cert_rsa_key);
+            return ctx;
+        }
+
+        rt_rsa_key_free(&private_rsa_key);
+    }
+
+    if (parsed_key_type == TLS_SERVER_KEY_ECDSA_P256) {
+        if (raw_key_loaded) {
+            tls_set_server_last_error_msg("TLS server: certificate and private key do not match");
+        } else {
+            tls_set_server_last_error_msg(
+                "TLS server: unsupported ECDSA private key format; expected an unencrypted P-256 PEM");
+        }
     } else {
-        tls_set_server_last_error_msg("TLS server: unsupported private key PEM format");
-        goto fail;
+        if (raw_key_loaded)
+            tls_set_server_last_error_msg("TLS server: certificate and private key do not match");
+        else
+            tls_set_server_last_error_msg(
+                "TLS server: unsupported RSA private key format; expected an unencrypted PKCS#1 or PKCS#8 PEM");
     }
-
-    if (!tls_extract_cert_ec_pubkey(ctx->leaf_cert_der,
-                                    ctx->leaf_cert_der_len,
-                                    cert_pub_x,
-                                    cert_pub_y)) {
-        tls_set_server_last_error_msg("TLS server: leaf certificate must use a P-256 ECDSA public key");
-        goto fail;
-    }
-
-    if (!ecdsa_p256_public_from_private(ctx->private_key, key_pub_x, key_pub_y) ||
-        memcmp(cert_pub_x, key_pub_x, sizeof(cert_pub_x)) != 0 ||
-        memcmp(cert_pub_y, key_pub_y, sizeof(cert_pub_y)) != 0) {
-        tls_set_server_last_error_msg("TLS server: certificate and private key do not match");
-        goto fail;
-    }
-
-    free(cert_pem);
-    free(key_pem);
-    return ctx;
+    goto fail;
 
 fail:
     free(cert_pem);
     free(key_pem);
+    rt_rsa_key_free(&cert_rsa_key);
     rt_tls_server_ctx_free(ctx);
     return NULL;
 }
@@ -378,6 +462,7 @@ fail:
 void rt_tls_server_ctx_free(rt_tls_server_ctx_t *ctx) {
     if (!ctx)
         return;
+    rt_rsa_key_free(&ctx->rsa_key);
     free(ctx->cert_list_entries);
     free(ctx->leaf_cert_der);
     free(ctx);
@@ -830,6 +915,138 @@ static int tls_extract_cert_ec_pubkey(const uint8_t *cert_der,
     memcpy(x_out, bits + 2, 32);
     memcpy(y_out, bits + 34, 32);
     return 1;
+}
+
+static int tls_extract_cert_rsa_pubkey(
+    const uint8_t *cert_der, size_t cert_len, rt_rsa_key_t *out) {
+    static const uint8_t OID_RSA_ENCRYPTION[] = {
+        0x2A, 0x86, 0x48, 0x86, 0xF7, 0x0D, 0x01, 0x01, 0x01};
+    uint8_t tag;
+    size_t vl, hl;
+    const uint8_t *p = cert_der;
+    size_t rem = cert_len;
+    const uint8_t *tbs = NULL;
+    size_t tbs_rem = 0;
+    const uint8_t *spki = NULL;
+    size_t spki_rem = 0;
+    const uint8_t *algo = NULL;
+    size_t algo_rem = 0;
+    const uint8_t *bits = NULL;
+
+    if (!cert_der || cert_len == 0 || !out)
+        return 0;
+    rt_rsa_key_init(out);
+
+    if (tls_der_read_tlv(p, rem, &tag, &vl, &hl) != 0 || tag != 0x30)
+        return 0;
+    p += hl;
+    rem = vl;
+    if (tls_der_read_tlv(p, rem, &tag, &vl, &hl) != 0 || tag != 0x30)
+        return 0;
+    tbs = p + hl;
+    tbs_rem = vl;
+
+    if (tls_der_read_tlv(tbs, tbs_rem, &tag, &vl, &hl) != 0)
+        return 0;
+    if (tag == 0xA0) {
+        tbs += hl + vl;
+        tbs_rem -= hl + vl;
+    }
+
+    for (int i = 0; i < 5; i++) {
+        if (tls_der_read_tlv(tbs, tbs_rem, &tag, &vl, &hl) != 0)
+            return 0;
+        tbs += hl + vl;
+        tbs_rem -= hl + vl;
+    }
+
+    if (tls_der_read_tlv(tbs, tbs_rem, &tag, &vl, &hl) != 0 || tag != 0x30)
+        return 0;
+    spki = tbs + hl;
+    spki_rem = vl;
+    if (tls_der_read_tlv(spki, spki_rem, &tag, &vl, &hl) != 0 || tag != 0x30)
+        return 0;
+    algo = spki + hl;
+    algo_rem = vl;
+    spki += hl + vl;
+    spki_rem -= hl + vl;
+
+    if (tls_der_read_tlv(algo, algo_rem, &tag, &vl, &hl) != 0 || tag != 0x06 ||
+        !tls_oid_matches(algo + hl, vl, OID_RSA_ENCRYPTION, sizeof(OID_RSA_ENCRYPTION))) {
+        return 0;
+    }
+    if (tls_der_read_tlv(spki, spki_rem, &tag, &vl, &hl) != 0 || tag != 0x03 || vl < 2)
+        return 0;
+    bits = spki + hl;
+    if (bits[0] != 0x00)
+        return 0;
+    return rt_rsa_parse_public_key_pkcs1(bits + 1, vl - 1, out);
+}
+
+static int tls_extract_cert_key_type(const uint8_t *cert_der, size_t cert_len) {
+    static const uint8_t OID_EC_PUBLIC_KEY[] = {0x2A, 0x86, 0x48, 0xCE, 0x3D, 0x02, 0x01};
+    static const uint8_t OID_PRIME256V1[] = {
+        0x2A, 0x86, 0x48, 0xCE, 0x3D, 0x03, 0x01, 0x07};
+    static const uint8_t OID_RSA_ENCRYPTION[] = {
+        0x2A, 0x86, 0x48, 0x86, 0xF7, 0x0D, 0x01, 0x01, 0x01};
+    uint8_t tag;
+    size_t vl, hl;
+    const uint8_t *p = cert_der;
+    size_t rem = cert_len;
+    const uint8_t *tbs = NULL;
+    size_t tbs_rem = 0;
+    const uint8_t *spki = NULL;
+    size_t spki_rem = 0;
+    const uint8_t *algo = NULL;
+    size_t algo_rem = 0;
+
+    if (tls_der_read_tlv(p, rem, &tag, &vl, &hl) != 0 || tag != 0x30)
+        return TLS_SERVER_KEY_NONE;
+    p += hl;
+    rem = vl;
+    if (tls_der_read_tlv(p, rem, &tag, &vl, &hl) != 0 || tag != 0x30)
+        return TLS_SERVER_KEY_NONE;
+    tbs = p + hl;
+    tbs_rem = vl;
+
+    if (tls_der_read_tlv(tbs, tbs_rem, &tag, &vl, &hl) != 0)
+        return TLS_SERVER_KEY_NONE;
+    if (tag == 0xA0) {
+        tbs += hl + vl;
+        tbs_rem -= hl + vl;
+    }
+
+    for (int i = 0; i < 5; i++) {
+        if (tls_der_read_tlv(tbs, tbs_rem, &tag, &vl, &hl) != 0)
+            return TLS_SERVER_KEY_NONE;
+        tbs += hl + vl;
+        tbs_rem -= hl + vl;
+    }
+
+    if (tls_der_read_tlv(tbs, tbs_rem, &tag, &vl, &hl) != 0 || tag != 0x30)
+        return TLS_SERVER_KEY_NONE;
+    spki = tbs + hl;
+    spki_rem = vl;
+
+    if (tls_der_read_tlv(spki, spki_rem, &tag, &vl, &hl) != 0 || tag != 0x30)
+        return TLS_SERVER_KEY_NONE;
+    algo = spki + hl;
+    algo_rem = vl;
+
+    if (tls_der_read_tlv(algo, algo_rem, &tag, &vl, &hl) != 0 || tag != 0x06)
+        return TLS_SERVER_KEY_NONE;
+    if (tls_oid_matches(algo + hl, vl, OID_RSA_ENCRYPTION, sizeof(OID_RSA_ENCRYPTION)))
+        return TLS_SERVER_KEY_RSA_PSS_SHA256;
+    if (!tls_oid_matches(algo + hl, vl, OID_EC_PUBLIC_KEY, sizeof(OID_EC_PUBLIC_KEY)))
+        return TLS_SERVER_KEY_NONE;
+
+    algo += hl + vl;
+    algo_rem -= hl + vl;
+    if (tls_der_read_tlv(algo, algo_rem, &tag, &vl, &hl) != 0 || tag != 0x06)
+        return TLS_SERVER_KEY_NONE;
+    if (tls_oid_matches(algo + hl, vl, OID_PRIME256V1, sizeof(OID_PRIME256V1)))
+        return TLS_SERVER_KEY_ECDSA_P256;
+    return TLS_SERVER_KEY_NONE;
 }
 
 /// @brief Reset the transcript hash to the empty-handshake state.
@@ -1900,6 +2117,23 @@ static int parse_client_hello(rt_tls_session_t *session, const uint8_t *data, si
     int offered_aes = 0;
     int offered_chacha = 0;
     int compression_ok = 0;
+    uint16_t wanted_sig_scheme = 0;
+
+    if (!session || !session->server_ctx) {
+        return RT_TLS_ERROR_INVALID_ARG;
+    }
+
+    switch (session->server_ctx->key_type) {
+        case TLS_SERVER_KEY_ECDSA_P256:
+            wanted_sig_scheme = 0x0403;
+            break;
+        case TLS_SERVER_KEY_RSA_PSS_SHA256:
+            wanted_sig_scheme = 0x0806;
+            break;
+        default:
+            session->error = "TLS: server certificate key type is not configured";
+            return RT_TLS_ERROR_HANDSHAKE;
+    }
 
     if (len < 42) {
         session->error = "ClientHello too short";
@@ -2000,8 +2234,24 @@ static int parse_client_hello(rt_tls_session_t *session, const uint8_t *data, si
                 }
                 {
                     uint16_t list_len = read_u16(data + pos);
-                    if ((size_t)list_len + 2 != one_len ||
-                        !clienthello_offers_sig_scheme(data + pos + 2, list_len, 0x0403)) {
+                    if ((size_t)list_len + 2 != one_len) {
+                        session->error = "ClientHello signature_algorithms length mismatch";
+                        return RT_TLS_ERROR_HANDSHAKE;
+                    }
+                    if (session->server_ctx->key_type == TLS_SERVER_KEY_RSA_PSS_SHA256) {
+                        if (clienthello_offers_sig_scheme(data + pos + 2, list_len, 0x0806))
+                            session->server_sig_scheme = 0x0806;
+                        else if (clienthello_offers_sig_scheme(data + pos + 2, list_len, 0x0805))
+                            session->server_sig_scheme = 0x0805;
+                        else if (clienthello_offers_sig_scheme(data + pos + 2, list_len, 0x0804))
+                            session->server_sig_scheme = 0x0804;
+                        else {
+                            session->error = "ClientHello does not offer an RSA-PSS signature algorithm";
+                            return RT_TLS_ERROR_HANDSHAKE;
+                        }
+                    } else if (clienthello_offers_sig_scheme(data + pos + 2, list_len, wanted_sig_scheme)) {
+                        session->server_sig_scheme = wanted_sig_scheme;
+                    } else {
                         session->error = "ClientHello does not offer ecdsa_secp256r1_sha256";
                         return RT_TLS_ERROR_HANDSHAKE;
                     }
@@ -2263,24 +2513,68 @@ static int send_certificate_verify_server(rt_tls_session_t *session) {
     uint8_t digest[32];
     uint8_t sig_r[32];
     uint8_t sig_s[32];
-    uint8_t sig_der[80];
-    uint8_t hs[4 + 2 + 2 + 80];
+    uint8_t sig_buf[1024];
+    uint8_t hs[4 + 2 + 2 + 1024];
     size_t sig_der_len = 0;
 
     build_server_cert_verify_message(session->transcript_hash, content);
     rt_sha256(content, sizeof(content), digest);
 
-    if (!ecdsa_p256_sign(session->server_ctx->private_key, digest, sig_r, sig_s)) {
+    if (!session || !session->server_ctx || session->server_sig_scheme == 0) {
+        session->error = "TLS: server signature scheme not negotiated";
+        return RT_TLS_ERROR_HANDSHAKE;
+    }
+
+    if (session->server_ctx->key_type == TLS_SERVER_KEY_ECDSA_P256) {
+        if (!ecdsa_p256_sign(session->server_ctx->private_key, digest, sig_r, sig_s)) {
+            session->error = "TLS: failed to sign CertificateVerify";
+            return RT_TLS_ERROR_HANDSHAKE;
+        }
+        sig_der_len = encode_ecdsa_signature_der(sig_r, sig_s, sig_buf);
+    } else if (session->server_ctx->key_type == TLS_SERVER_KEY_RSA_PSS_SHA256) {
+        rt_rsa_hash_t hash_id = RT_RSA_HASH_SHA256;
+        uint8_t hashed_content[64];
+        size_t hash_len = 32;
+
+        switch (session->server_sig_scheme) {
+            case 0x0805:
+                hash_id = RT_RSA_HASH_SHA384;
+                rt_sha384(content, sizeof(content), hashed_content);
+                hash_len = 48;
+                break;
+            case 0x0806:
+                hash_id = RT_RSA_HASH_SHA512;
+                rt_sha512(content, sizeof(content), hashed_content);
+                hash_len = 64;
+                break;
+            case 0x0804:
+            default:
+                hash_id = RT_RSA_HASH_SHA256;
+                memcpy(hashed_content, digest, sizeof(digest));
+                hash_len = 32;
+                break;
+        }
+        sig_der_len = sizeof(sig_buf);
+        if (!rt_rsa_pss_sign(
+                &session->server_ctx->rsa_key,
+                hash_id,
+                hashed_content,
+                hash_len,
+                sig_buf,
+                &sig_der_len)) {
+            session->error = "TLS: failed to sign CertificateVerify";
+            return RT_TLS_ERROR_HANDSHAKE;
+        }
+    } else {
         session->error = "TLS: failed to sign CertificateVerify";
         return RT_TLS_ERROR_HANDSHAKE;
     }
 
-    sig_der_len = encode_ecdsa_signature_der(sig_r, sig_s, sig_der);
     hs[0] = TLS_HS_CERTIFICATE_VERIFY;
     write_u24(hs + 1, (uint32_t)(4 + sig_der_len));
-    write_u16(hs + 4, 0x0403);
+    write_u16(hs + 4, session->server_sig_scheme);
     write_u16(hs + 6, (uint16_t)sig_der_len);
-    memcpy(hs + 8, sig_der, sig_der_len);
+    memcpy(hs + 8, sig_buf, sig_der_len);
 
     if (transcript_update(session, hs, 8 + sig_der_len) != 0)
         return RT_TLS_ERROR_HANDSHAKE;
@@ -2438,6 +2732,9 @@ rt_tls_session_t *rt_tls_new(int socket_fd, const rt_tls_config_t *config) {
     }
     if (config && config->alpn_protocol) {
         strncpy(session->alpn_protocol, config->alpn_protocol, sizeof(session->alpn_protocol) - 1);
+    }
+    if (config && config->ca_file) {
+        strncpy(session->ca_file, config->ca_file, sizeof(session->ca_file) - 1);
     }
 
     return session;

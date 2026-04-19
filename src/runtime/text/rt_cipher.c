@@ -64,12 +64,14 @@ typedef struct {
     uint8_t *data;
 } bytes_impl;
 
+/// @brief Read the raw byte buffer pointer from a Bytes object handle (NULL-safe).
 static inline uint8_t *bytes_data(void *obj) {
     if (!obj)
         return NULL;
     return ((bytes_impl *)obj)->data;
 }
 
+/// @brief Read the byte length from a Bytes object handle (NULL → 0).
 static inline int64_t bytes_len(void *obj) {
     if (!obj)
         return 0;
@@ -80,13 +82,30 @@ static inline int64_t bytes_len(void *obj) {
 // Key Derivation
 //=============================================================================
 
+/// @brief Optimization-resistant zero-fill for sensitive key/nonce buffers.
+/// @details Writes through a `volatile` pointer so the compiler can't
+///          elide the stores via dead-store elimination. Used after
+///          every key-derivation and AEAD operation so transient
+///          secrets don't linger in stack frames where a later memory
+///          dump (core file, swap, leaked mapping) could expose them.
 static void cipher_secure_zero(void *ptr, size_t len) {
     volatile uint8_t *p = (volatile uint8_t *)ptr;
     while (len-- > 0)
         *p++ = 0;
 }
 
-/// Derive a 32-byte key from password and salt using the legacy HKDF-SHA256 scheme.
+/// @brief Derive a 32-byte key using the legacy HKDF-SHA256 scheme.
+/// @details HKDF (RFC 5869) is fast and unsuitable for password-based key
+///          derivation in isolation — it has no cost parameter, so an
+///          attacker brute-forcing the password gets one hash evaluation
+///          per guess. This path is **legacy-only**: kept for decrypting
+///          ciphertext produced by older versions of the runtime that used
+///          HKDF before PBKDF2 was adopted. New encryption goes through
+///          `derive_key_pbkdf2` instead.
+///          Two-step HKDF: Extract collapses (salt, password) into a 256-bit
+///          PRK; Expand stretches the PRK into the 32-byte cipher key,
+///          domain-separated by the `HKDF_INFO` string. PRK is zeroed before
+///          return so it can't linger in heap memory.
 static void derive_key_legacy(const char *password,
                               size_t password_len,
                               const uint8_t *salt,
@@ -106,7 +125,14 @@ static void derive_key_legacy(const char *password,
     cipher_secure_zero(prk, sizeof(prk));
 }
 
-/// Derive a 32-byte key from password and salt using PBKDF2-HMAC-SHA256.
+/// @brief Derive a 32-byte key using PBKDF2-HMAC-SHA256 (modern default).
+/// @details Iteration count is fixed at `CIPHER_PBKDF2_ITERATIONS` (100,000
+///          at the time of writing), chosen to make per-guess brute force
+///          expensive on modern hardware while keeping the per-call latency
+///          tolerable for an interactive password-based encrypt operation
+///          (~50–100 ms on a typical desktop CPU). This is the path all new
+///          encryption uses; `derive_key_legacy` is only invoked when
+///          decrypting older ciphertexts that carry a legacy version tag.
 static void derive_key_pbkdf2(const char *password,
                               size_t password_len,
                               const uint8_t *salt,

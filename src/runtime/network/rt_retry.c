@@ -68,9 +68,30 @@ int8_t rt_retry_can_retry(void *policy) {
 }
 
 /// @brief Compute the delay (ms) before the next retry attempt and advance the counter.
-/// @details Applies exponential backoff with 0-25% additive jitter when exponential
-///          mode is enabled, or returns the fixed base delay otherwise. Returns -1
-///          when retries are exhausted.
+/// @details In exponential mode the delay is `base_delay_ms * 2^attempt`,
+///          capped at `max_delay_ms`. The doubling loop checks
+///          `delay > INT64_MAX / 2` *before* multiplying — checking after the
+///          fact would already have wrapped past INT64_MAX into negative
+///          territory, which would then compare incorrectly against
+///          `max_delay_ms`. Once the cap is reached, the loop short-circuits
+///          so further attempts don't keep iterating uselessly.
+///
+///          A 0–25% additive jitter is applied to the computed delay to
+///          prevent the **thundering herd** problem — when N clients all
+///          retry on the same backoff schedule (e.g., a server burped at
+///          T=0 and they all retry at T=base, then T=2*base, then T=4*base
+///          ...), they synchronize and re-overload the server at every
+///          retry boundary. Adding a per-call random offset spreads them out.
+///
+///          The jitter PRNG is a thread-local xorshift seeded from the
+///          address of its own slot — this gives each thread an independent
+///          stream without taking a lock or sharing state, and the seeding
+///          is good enough for jitter (no cryptographic strength needed).
+///          Using the global `rand()` would be a contention point and
+///          would coordinate jitter across threads, defeating the purpose.
+///
+///          Returns -1 when retries are exhausted (`current_attempt >=
+///          max_retries`); the counter is *not* advanced in that case.
 int64_t rt_retry_next_delay(void *policy) {
     if (!policy)
         return -1;

@@ -59,6 +59,12 @@ static uint32_t make_fourcc(char a, char b, char c, char d) {
  * Chunk addition
  *=========================================================================*/
 
+/// @brief Append a movi chunk record to the context's chunk list, growing the array as needed.
+/// @details Geometric growth: starts at capacity 64, doubles thereafter.
+///          Used to record the location of every video and audio chunk in
+///          the movi list during parsing — the post-parse pass then walks
+///          this array to build the video-frame index.
+/// @return 0 on success; -1 on allocation failure (chunk is dropped).
 static int add_chunk(avi_context_t *ctx, const uint8_t *data, uint32_t size, int8_t is_video) {
     if (ctx->chunk_count >= ctx->chunk_capacity) {
         int32_t new_cap = ctx->chunk_capacity < 64 ? 64 : ctx->chunk_capacity * 2;
@@ -243,6 +249,19 @@ static void handle_top(
  * Public API
  *=========================================================================*/
 
+/// @brief Parse an AVI file's RIFF chunk tree and build a frame index.
+/// @details Validates the `RIFF....AVI ` header, walks the top-level chunks
+///          (driving the parse via `handle_top` → `handle_hdrl` /
+///          `handle_movi`), then post-processes the recorded chunks into a
+///          dense index of video-frame chunks for `avi_get_video_frame`
+///          random access. The header-reported frame count is overridden
+///          by the actual movi-chunk count when the header lies (common in
+///          files produced by sloppy encoders).
+///          Note: `data` is not copied — the caller owns it and must keep
+///          the buffer alive for the lifetime of `ctx`. Only the chunks
+///          and indices arrays are heap-allocated; freed by `avi_free`.
+/// @return 0 on success (at least one video frame found); -1 on header
+///         validation failure or zero video frames.
 int avi_parse(avi_context_t *ctx, const uint8_t *data, size_t len) {
     if (!ctx || !data || len < 12)
         return -1;
@@ -283,6 +302,10 @@ int avi_parse(avi_context_t *ctx, const uint8_t *data, size_t len) {
     return (ctx->video_frame_count > 0) ? 0 : -1;
 }
 
+/// @brief Free the chunk list and frame index owned by `ctx`.
+/// @details Does not free the file-data buffer — that's owned by the caller.
+///          Safe to call multiple times; the second call sees the already-
+///          NULL pointers and is a no-op.
 void avi_free(avi_context_t *ctx) {
     if (!ctx)
         return;
@@ -294,6 +317,12 @@ void avi_free(avi_context_t *ctx) {
     ctx->video_frame_count = 0;
 }
 
+/// @brief Random-access fetch of one video frame's compressed payload.
+/// @details Uses the frame index built during parse, so this is O(1).
+///          The returned pointer points into the original file-data buffer
+///          (no copy); caller must not free or modify it. `out_size` may
+///          be NULL if the caller doesn't need the chunk size.
+/// @return Frame data pointer + size, or NULL on out-of-range index.
 const uint8_t *avi_get_video_frame(const avi_context_t *ctx,
                                    int32_t frame_index,
                                    uint32_t *out_size) {

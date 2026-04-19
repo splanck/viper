@@ -60,6 +60,13 @@ typedef struct {
     int8_t first_value[MAX_DEPTH];
 } rt_json_stream_impl;
 
+/// @brief GC finalizer — release the input ref, scratch string buffer, and error string.
+/// @details The streaming parser holds a reference to its input string
+///          (`input_owner`) so the underlying bytes don't disappear
+///          mid-iteration. Two heap-allocated scratches (`str_buf`
+///          for value accumulation, `error_msg` for the most recent
+///          error) are freed here. All pointers nulled afterwards
+///          so a double finalize is safe.
 static void stream_finalizer(void *obj) {
     rt_json_stream_impl *s = (rt_json_stream_impl *)obj;
     if (s) {
@@ -74,6 +81,7 @@ static void stream_finalizer(void *obj) {
     }
 }
 
+/// @brief Advance the cursor past any RFC 8259 whitespace (`space`, `tab`, `\n`, `\r`).
 static void skip_whitespace(rt_json_stream_impl *s) {
     while (s->pos < s->len) {
         char c = s->input[s->pos];
@@ -84,6 +92,10 @@ static void skip_whitespace(rt_json_stream_impl *s) {
     }
 }
 
+/// @brief Skip whitespace and return the next non-whitespace byte (`\0` at EOF).
+/// @details Combines whitespace skipping with peeking — most state-
+///          machine transitions need both, so this saves a separate
+///          call at every dispatch point.
 static char peek(rt_json_stream_impl *s) {
     skip_whitespace(s);
     if (s->pos >= s->len)
@@ -91,6 +103,12 @@ static char peek(rt_json_stream_impl *s) {
     return s->input[s->pos];
 }
 
+/// @brief Record a parse error: switch token type to ERROR and stash a message string.
+/// @details Frees any previously stored message before strdup-style
+///          duplicating the new one. On allocation failure for the
+///          message copy, the type still flips to ERROR but the
+///          message becomes NULL — so callers should not assume a
+///          non-NULL `error_msg` whenever `current_type == ERROR`.
 static void set_error(rt_json_stream_impl *s, const char *msg) {
     s->current_type = RT_JSON_TOK_ERROR;
     free(s->error_msg);
@@ -104,10 +122,16 @@ static void set_error(rt_json_stream_impl *s, const char *msg) {
     }
 }
 
+/// @brief Reset the value-accumulator buffer to empty (without freeing capacity).
 static void str_buf_clear(rt_json_stream_impl *s) {
     s->str_buf_len = 0;
 }
 
+/// @brief Append one byte to the value buffer, growing capacity when needed.
+/// @details Initial allocation grows from 0 to ≥64; subsequent growth
+///          doubles. Records an error and bails on allocation failure
+///          rather than crashing — the caller's next `peek` will
+///          observe `current_type = ERROR`.
 static void str_buf_push(rt_json_stream_impl *s, char c) {
     if (s->str_buf_len + 1 >= s->str_buf_cap) {
         size_t new_cap = s->str_buf_cap * 2;
@@ -125,6 +149,10 @@ static void str_buf_push(rt_json_stream_impl *s, char c) {
     s->str_buf[s->str_buf_len] = '\0';
 }
 
+/// @brief Parse exactly four hex digits into a 16-bit codepoint (used by `\uXXXX` escapes).
+/// @details Accepts both upper and lower case hex. Returns 0 on EOF
+///          mid-sequence or any non-hex byte; advances the cursor by
+///          exactly 4 on success.
 static int parse_hex4(rt_json_stream_impl *s, uint32_t *out) {
     uint32_t val = 0;
     for (int i = 0; i < 4; i++) {
@@ -145,6 +173,14 @@ static int parse_hex4(rt_json_stream_impl *s, uint32_t *out) {
     return 1;
 }
 
+/// @brief Append `cp` (a Unicode scalar) into the value buffer as 1–4 UTF-8 bytes.
+/// @details Standard UTF-8 layout:
+///          - U+0000..U+007F → 1 byte (`0xxxxxxx`)
+///          - U+0080..U+07FF → 2 bytes (`110xxxxx 10xxxxxx`)
+///          - U+0800..U+FFFF → 3 bytes (`1110xxxx 10xxxxxx ×2`)
+///          - U+10000..U+10FFFF → 4 bytes (`11110xxx 10xxxxxx ×3`)
+///          Caller is expected to have already resolved surrogate
+///          pairs to a single scalar.
 static void encode_utf8(rt_json_stream_impl *s, uint32_t cp) {
     if (cp < 0x80) {
         str_buf_push(s, (char)cp);
@@ -163,6 +199,15 @@ static void encode_utf8(rt_json_stream_impl *s, uint32_t cp) {
     }
 }
 
+/// @brief Consume a JSON string literal into the value buffer (handles all escapes).
+/// @details Steps from the opening `"` through to the matching close
+///          quote, decoding every escape sequence:
+///          - `\"`, `\\`, `\/`, `\b`, `\f`, `\n`, `\r`, `\t` → literal byte.
+///          - `\uXXXX` → Unicode scalar via `parse_hex4` + `encode_utf8`.
+///          - `\uD8XX\uDCXX` → surrogate pair → single supplementary
+///            scalar (Plane 1+).
+///          On any malformed escape, unterminated string, or
+///          incomplete surrogate pair, sets the error flag and returns 0.
 static int parse_string_content(rt_json_stream_impl *s) {
     str_buf_clear(s);
     if (s->pos >= s->len || s->input[s->pos] != '"') {
@@ -240,6 +285,15 @@ static int parse_string_content(rt_json_stream_impl *s) {
     return 0;
 }
 
+/// @brief Parse a JSON number into `s->num_value`, returning 1 on success.
+/// @details Accepts the JSON grammar: optional `-`, integer part
+///          (`0` or `1-9` followed by digits), optional fraction
+///          (`. digits`), optional exponent (`[eE] [+-]? digits`).
+///          The matched span is then handed to `strtod` for the
+///          actual conversion. Sets an error and returns 0 on
+///          malformed input (leading zero with extra digits is
+///          *not* rejected by the cursor walk — `strtod` accepts it,
+///          which is a slight deviation from strict RFC 8259).
 static int parse_number(rt_json_stream_impl *s) {
     size_t start = s->pos;
     if (s->pos < s->len && s->input[s->pos] == '-')
@@ -274,6 +328,11 @@ static int parse_number(rt_json_stream_impl *s) {
     return 1;
 }
 
+/// @brief Match a literal byte sequence (`true`, `false`, `null`) at the cursor and advance.
+/// @details Returns 1 and steps past the match on success, 0 (cursor
+///          unchanged) on EOF before completion or mismatch. The
+///          length is passed explicitly so the call site doesn't pay
+///          for `strlen` at every literal check.
 static int match_literal(rt_json_stream_impl *s, const char *lit, size_t len) {
     if (s->pos + len > s->len)
         return 0;

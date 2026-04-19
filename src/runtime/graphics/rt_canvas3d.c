@@ -161,6 +161,14 @@ static void canvas3d_release_owned_ref(void **slot) {
     *slot = NULL;
 }
 
+/// @brief Replace the GC-managed reference in `*slot` with `value`, retain/release as needed.
+/// @details Implements the canonical retain-then-release ownership swap so
+///          the new value's refcount goes up *before* the old value's
+///          goes down — important when `value == *slot`'s child or the
+///          two objects share lifetime, since releasing first could free
+///          the new value through a transitive reference. The early
+///          return on `*slot == value` skips the round trip when the
+///          assignment is a no-op.
 static void canvas3d_assign_owned_ref(void **slot, void *value) {
     if (!slot || *slot == value)
         return;
@@ -629,6 +637,13 @@ static float canvas3d_compute_sort_key(const rt_canvas3d *c, const float *model_
     return dx * dx + dy * dy + dz * dz;
 }
 
+/// @brief Extract a normalized forward vector (camera look direction) from a view matrix.
+/// @details View row 2 holds the *backward* basis vector (cameras look
+///          down −Z), so negating gives forward. Normalizes for safety
+///          even though look-at construction already normalizes the
+///          basis. Falls back to the conventional `(0, 0, −1)` if either
+///          the input is null or the view is degenerate (zero forward),
+///          which keeps downstream culling math safe.
 static void canvas3d_extract_view_forward(const double *view, float *out_forward) {
     double fx = 0.0;
     double fy = 0.0;
@@ -2098,20 +2113,20 @@ void rt_canvas3d_queue_instanced_batch(void *canvas_obj,
     }
 }
 
-/// @brief Flush all deferred draws, performing depth sorting and backend dispatch.
-/// @details Processes the deferred draw queue built during Begin/DrawMesh calls:
-///          1. Frustum-culls draws against the camera's view frustum.
-///          2. Sorts opaque draws front-to-back (Z-sort for early depth rejection).
-///          3. Sorts transparent draws back-to-front (for correct alpha blending).
-///          4. Dispatches each draw through the backend's submit_draw vtable.
-///          5. Applies shadow mapping and post-processing if enabled.
-///          Must be called after all DrawMesh calls and before Flip.
 /// @brief End-of-frame: flush all deferred passes, run postFX, present, and bookkeep.
-///
-/// Pass order: pre-3D HUD → opaque mesh → translucent (sorted) →
-/// postFX (bloom, tonemap, motion blur) → post-3D HUD → present.
-/// Increments `frame_serial`, clears the deferred queues, and
-/// releases per-frame temp objects.
+/// @details Processes the deferred queue built during Begin/DrawMesh calls
+///          in this strict pass order:
+///          1. Skybox (if attached) into the scene color buffer.
+///          2. Shadow pass: build a tight ortho light-VP, depth-render
+///             every opaque main draw into the shadow map.
+///          3. Opaque main draws — front-to-back when occlusion culling
+///             is enabled (maximizes early-Z rejection), unsorted otherwise.
+///          4. Translucent main draws — sorted back-to-front so alpha
+///             blends compose correctly.
+///          5. Pre/post-3D HUD overlay draws via `begin_overlay_frame`.
+///          Must be called after all DrawMesh calls and before Flip.
+///          Side effects: increments `frame_serial`, clears `draw_count`,
+///          drains temp-buffer + temp-object queues, resets `in_frame`.
 void rt_canvas3d_end(void *obj) {
     deferred_draw_t *cmds;
     int32_t queued_draw_count;
@@ -2419,11 +2434,11 @@ void rt_canvas3d_flip(void *obj) {
     }
 }
 
-/// @brief Process all pending window events (keyboard, mouse, resize, close).
-/// @details Polls the platform event queue and updates input state for
-///          Keyboard/Mouse/Pad subsystems. Must be called once per frame.
-/// @return Event type code of the last event processed, or 0 if no events.
 /// @brief Translate physical pixel coordinates to logical (HiDPI-scaled) and notify the mouse subsystem.
+/// @details All public Canvas drawing uses logical pixels; vgfx mouse
+///          events arrive in physical pixels (2× larger on Retina/HiDPI).
+///          Dividing by the per-window scale factor keeps `Mouse.X/Y`
+///          consistent with the coordinate space the user draws in.
 static void rt_canvas3d_update_mouse_from_physical(vgfx_window_t gfx_win, int32_t x, int32_t y) {
     float scale = vgfx_window_get_scale(gfx_win);
     if (scale < 0.001f)

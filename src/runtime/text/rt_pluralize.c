@@ -92,6 +92,12 @@ static const char *uncountables[] = {
     "luggage", "traffic",     "music",     "software", "hardware", "knowledge",
     "weather", "research",    "evidence",  "homework", NULL};
 
+/// @brief Test whether a length-bounded byte string ends with a specific NUL-terminated suffix.
+/// @details Case-sensitive byte comparison. Used by the pluralizer
+///          to test for English suffix patterns (`-s`, `-y`, `-ch`,
+///          `-sh`, `-fe`, etc.) without copying or modifying the
+///          input. Returns 0 when the suffix is longer than the
+///          input.
 static int str_ends_with(const char *str, size_t len, const char *suffix) {
     size_t slen = strlen(suffix);
     if (slen > len)
@@ -99,6 +105,11 @@ static int str_ends_with(const char *str, size_t len, const char *suffix) {
     return memcmp(str + len - slen, suffix, slen) == 0;
 }
 
+/// @brief Case-insensitive ASCII string comparison (`a == b` with `toLower` on both sides).
+/// @details Used to match user input against the irregular and
+///          uncountable word tables, which are stored lowercase.
+///          ASCII-only — locale-aware folds (e.g. Turkish `İ`) are
+///          out of scope.
 static int str_eq_nocase(const char *a, const char *b) {
     while (*a && *b) {
         if (tolower((unsigned char)*a) != tolower((unsigned char)*b))
@@ -109,6 +120,11 @@ static int str_eq_nocase(const char *a, const char *b) {
     return *a == *b;
 }
 
+/// @brief Test whether `word` is in the uncountable-noun list (case-insensitive).
+/// @details Linear scan — the table is small (~22 entries) so a hash
+///          lookup wouldn't pay off. Words like "sheep", "rice",
+///          "information" pluralize to themselves, so the caller
+///          short-circuits with "return the word as-is" on a hit.
 static int is_uncountable(const char *word) {
     for (int i = 0; uncountables[i]; ++i) {
         if (str_eq_nocase(word, uncountables[i]))
@@ -117,7 +133,17 @@ static int is_uncountable(const char *word) {
     return 0;
 }
 
-/// @brief Pluralize operation.
+/// @brief Convert an English noun from singular to plural form.
+/// @details Three-tier rule application:
+///          1. **Uncountable** ("sheep", "rice", ...) → return as-is.
+///          2. **Irregular** ("child" → "children", "person" → "people")
+///             → lookup in the irregular table.
+///          3. **Regular suffix rules** in priority order:
+///             - `-s/-x/-z/-ch/-sh` → `+es` ("box" → "boxes")
+///             - consonant + `y` → `-y +ies` ("city" → "cities")
+///             - `-f/-fe` → `-f/-fe +ves` ("life" → "lives")
+///             - default → `+s` ("cat" → "cats")
+///          Case is preserved for the original portion of the word.
 rt_string rt_pluralize(rt_string word) {
     if (!word)
         return rt_string_from_bytes("", 0);
@@ -226,7 +252,18 @@ rt_string rt_pluralize(rt_string word) {
     }
 }
 
-/// @brief Singularize operation.
+/// @brief Convert an English plural noun back to singular form.
+/// @details Rule order mirrors `rt_pluralize` in reverse:
+///          1. Uncountable → return as-is.
+///          2. Irregular table → reverse lookup ("children" → "child").
+///          3. Suffix peeling:
+///             - `-ves` → `-f` ("wolves" → "wolf").
+///             - `-ies` → `-y` ("cities" → "city").
+///             - `-shes/-ches/-ses/-xes/-zes/-oes` → strip `-es`.
+///             - bare `-s` (but not `-ss`) → strip.
+///          For ambiguous forms ("foxes" could come from "fox" or
+///          "foxe"), the rules pick the more common reverse — never
+///          perfect but matches typical English.
 rt_string rt_singularize(rt_string word) {
     if (!word)
         return rt_string_from_bytes("", 0);
@@ -299,7 +336,12 @@ rt_string rt_singularize(rt_string word) {
     return rt_string_from_bytes(src, len);
 }
 
-/// @brief Return the count of elements in the pluralize.
+/// @brief Format a count + noun pair, pluralizing the noun based on the count.
+/// @details Returns "1 item" for ±1, "5 items" / "0 items" otherwise.
+///          Matches the convention of natural English where "0 items"
+///          and "5 items" both use the plural form (unlike Russian or
+///          Polish which have separate "few" / "many" forms — out of
+///          scope here).
 rt_string rt_pluralize_count(int64_t count, rt_string word) {
     if (!word)
         return rt_string_from_bytes("", 0);

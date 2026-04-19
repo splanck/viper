@@ -23,7 +23,20 @@
 #include <math.h>
 #include <stdlib.h>
 
-/* Helper: project 3D point to screen using the active or most recent scene VP. */
+/// @brief Project a 3D world-space point onto 2D screen coordinates using the active scene VP.
+/// @details Standard `world → clip → NDC → screen` pipeline:
+///          1. Multiply (wp.x, wp.y, wp.z, 1) by the cached view-projection
+///             matrix to land in homogeneous clip space.
+///          2. Reject points behind the camera (`clip.w <= 0`) — those
+///             would invert through the perspective divide.
+///          3. Perspective-divide to NDC, remap [-1,1] → [0, fb_w/h], and
+///             flip Y so origin sits at the top-left to match screen
+///             conventions.
+///          Uses `canvas3d_active_scene_vp` so debug overlays projected
+///          *after* `End` still use the same VP that drew the scene —
+///          markers stay anchored across the begin/end boundary.
+///          Returns 0 if no scene VP is available or the point is behind
+///          the camera (caller should skip the draw).
 static int world_to_screen(
     const rt_canvas3d *c, const float *wp, float *sx, float *sy, int32_t fb_w, int32_t fb_h) {
     const float *vp = canvas3d_active_scene_vp(c);
@@ -45,6 +58,12 @@ static int world_to_screen(
     return 1;
 }
 
+/// @brief Resolve the active output surface's pixel size (RTT or window framebuffer).
+/// @details When a render target is bound, overlays must size to the
+///          RTT (so HUD text doesn't get drawn into pixels that won't
+///          be presented); otherwise they size to the live window
+///          framebuffer. Returns 0 (with zero-filled outputs) when no
+///          surface is available so callers can early-out cleanly.
 static int overlay_output_size(const rt_canvas3d *c, int32_t *out_w, int32_t *out_h) {
     if (out_w)
         *out_w = 0;
@@ -237,6 +256,19 @@ rt_string rt_canvas3d_get_backend(void *obj) {
     return rt_const_cstr(c->backend ? c->backend->name : "unknown");
 }
 
+/// @brief Capture the current canvas contents into a freshly allocated Pixels object.
+/// @details Three-way capture path, picked by what's bound:
+///          1. RTT bound → call `rendertarget_sync_color_if_needed` to
+///             pull GPU contents back to CPU, then RGBA-pack each row
+///             into the Pixels buffer.
+///          2. GPU backend with `readback_rgba` → allocate a temp
+///             RGBA buffer, ask the backend to fill it, repack.
+///          3. Software backend / fallback → copy directly from the
+///             window's CPU framebuffer.
+///          The 0xRRGGBBAA pack here matches the `rt_pixels` storage
+///          convention (top byte = red), so the screenshot can be saved
+///          to BMP/PNG via `Pixels.Save` without a swizzle pass.
+///          Returns NULL on size = 0 or alloc failure.
 void *rt_canvas3d_screenshot(void *obj) {
     typedef struct {
         int64_t w;

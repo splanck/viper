@@ -136,6 +136,9 @@ typedef struct {
     pthread_t accept_thread;
 #endif
     bool thread_started;
+    void **active_conns;
+    int active_conn_count;
+    int active_conn_cap;
     https_server_mutex_t state_lock;
     bool state_lock_initialized;
 } rt_http_server_impl;
@@ -163,6 +166,81 @@ static int https_server_is_running(rt_http_server_impl *server) {
     running = server->running ? 1 : 0;
     https_server_state_unlock(server);
     return running;
+}
+
+static int https_server_register_active_conn(rt_http_server_impl *server, void *conn) {
+    int ok = 1;
+    if (!server || !conn)
+        return 0;
+    https_server_state_lock(server);
+    for (int i = 0; i < server->active_conn_count; i++) {
+        if (server->active_conns[i] == conn) {
+            https_server_state_unlock(server);
+            return 1;
+        }
+    }
+    if (server->active_conn_count == server->active_conn_cap) {
+        int new_cap = server->active_conn_cap > 0 ? server->active_conn_cap * 2 : 8;
+        void **grown = (void **)realloc(server->active_conns, (size_t)new_cap * sizeof(void *));
+        if (!grown) {
+            ok = 0;
+        } else {
+            server->active_conns = grown;
+            server->active_conn_cap = new_cap;
+        }
+    }
+    if (ok)
+        server->active_conns[server->active_conn_count++] = conn;
+    https_server_state_unlock(server);
+    return ok;
+}
+
+static void https_server_unregister_active_conn(rt_http_server_impl *server, void *conn) {
+    if (!server || !conn)
+        return;
+    https_server_state_lock(server);
+    for (int i = 0; i < server->active_conn_count; i++) {
+        if (server->active_conns[i] == conn) {
+            server->active_conn_count--;
+            server->active_conns[i] = server->active_conns[server->active_conn_count];
+            server->active_conns[server->active_conn_count] = NULL;
+            break;
+        }
+    }
+    https_server_state_unlock(server);
+}
+
+static void **https_server_snapshot_active_conns(rt_http_server_impl *server, int *count_out) {
+    void **snapshot = NULL;
+    int count = 0;
+    if (count_out)
+        *count_out = 0;
+    if (!server)
+        return NULL;
+    https_server_state_lock(server);
+    count = server->active_conn_count;
+    if (count > 0) {
+        snapshot = (void **)malloc((size_t)count * sizeof(void *));
+        if (snapshot)
+            memcpy(snapshot, server->active_conns, (size_t)count * sizeof(void *));
+        else
+            count = 0;
+    }
+    https_server_state_unlock(server);
+    if (count_out)
+        *count_out = count;
+    return snapshot;
+}
+
+static void https_server_interrupt_conn(void *conn) {
+    int fd = rt_tls_get_socket((rt_tls_session_t *)conn);
+    if (fd < 0)
+        return;
+#ifdef _WIN32
+    shutdown((SOCKET)fd, SD_BOTH);
+#else
+    shutdown((socket_t)fd, SHUT_RDWR);
+#endif
 }
 
 typedef enum {
@@ -464,6 +542,10 @@ static void rt_http_server_finalize(void *obj) {
     free(server->key_file);
     server->cert_file = NULL;
     server->key_file = NULL;
+    free(server->active_conns);
+    server->active_conns = NULL;
+    server->active_conn_count = 0;
+    server->active_conn_cap = 0;
     if (server->state_lock_initialized) {
         HTTPS_SERVER_MUTEX_DESTROY(&server->state_lock);
         server->state_lock_initialized = false;
@@ -1322,9 +1404,13 @@ static int https_conn_send_all(rt_tls_session_t *tls, const void *buf, size_t le
 /// @param tcp    Accepted TLS connection handle (we close it).
 static void handle_connection(rt_http_server_impl *server, void *tcp) {
     rt_tls_session_t *tls = (rt_tls_session_t *)tcp;
+    if (!https_server_register_active_conn(server, tls)) {
+        rt_tls_close(tls);
+        return;
+    }
     https_conn_set_recv_timeout(tls, 30000);
     https_conn_set_send_timeout(tls, 30000);
-    while (https_conn_is_open(tls)) {
+    while (https_conn_is_open(tls) && https_server_is_running(server)) {
         size_t buf_cap = 65536;
         char *buf = (char *)malloc(buf_cap);
         if (!buf)
@@ -1444,6 +1530,7 @@ static void handle_connection(rt_http_server_impl *server, void *tcp) {
         if (!keep_alive)
             break;
     }
+    https_server_unregister_active_conn(server, tls);
     rt_tls_close(tls);
 }
 
@@ -1885,6 +1972,14 @@ void rt_https_server_stop(void *obj) {
 
     if (listener)
         rt_tcp_server_close(listener);
+
+    {
+        int conn_count = 0;
+        void **active_conns = https_server_snapshot_active_conns(server, &conn_count);
+        for (int i = 0; i < conn_count; i++)
+            https_server_interrupt_conn(active_conns[i]);
+        free(active_conns);
+    }
 
     if (had_thread) {
 #ifdef _WIN32

@@ -68,18 +68,21 @@ typedef struct {
     int8_t dirty;
 } rt_transform3d_view;
 
+/// @brief Initialize a 3-component vector with the given x/y/z components.
 static void vec3_set(double *dst, double x, double y, double z) {
     dst[0] = x;
     dst[1] = y;
     dst[2] = z;
 }
 
+/// @brief Copy a 3-component vector (`dst[0..2] = src[0..2]`).
 static void vec3_copy(double *dst, const double *src) {
     dst[0] = src[0];
     dst[1] = src[1];
     dst[2] = src[2];
 }
 
+/// @brief Clamp a `double` to the inclusive range `[lo, hi]`.
 static double clampd(double value, double lo, double hi) {
     if (value < lo)
         return lo;
@@ -88,6 +91,10 @@ static double clampd(double value, double lo, double hi) {
     return value;
 }
 
+/// @brief Set a quaternion to the identity rotation `(0, 0, 0, 1)` — no rotation.
+/// @details Layout is `(x, y, z, w)` with `w` as the scalar part. Used
+///          to initialize child transforms before reading from a real
+///          Transform3D source.
 static void quat_identity(double *q) {
     q[0] = 0.0;
     q[1] = 0.0;
@@ -95,6 +102,11 @@ static void quat_identity(double *q) {
     q[3] = 1.0;
 }
 
+/// @brief Hamilton quaternion product `out = a * b`.
+/// @details Applied left-to-right: rotating a vector by `out` is
+///          equivalent to rotating first by `b`, then by `a`. The
+///          formula expanded here is the standard `(s, v)` form
+///          inlined for the (x, y, z, w) memory layout this file uses.
 static void quat_mul(const double *a, const double *b, double *out) {
     out[0] = a[3] * b[0] + a[0] * b[3] + a[1] * b[2] - a[2] * b[1];
     out[1] = a[3] * b[1] - a[0] * b[2] + a[1] * b[3] + a[2] * b[0];
@@ -102,6 +114,12 @@ static void quat_mul(const double *a, const double *b, double *out) {
     out[3] = a[3] * b[3] - a[0] * b[0] - a[1] * b[1] - a[2] * b[2];
 }
 
+/// @brief Quaternion conjugate `out = (-x, -y, -z, w)`.
+/// @details For a unit quaternion, the conjugate is the inverse — i.e.,
+///          the rotation by the same angle around the opposite axis.
+///          Cheaper than computing the true inverse `(conj/||q||²)` so
+///          long as the input is normalized (which all rotations here
+///          are).
 static void quat_conjugate(const double *q, double *out) {
     out[0] = -q[0];
     out[1] = -q[1];
@@ -109,6 +127,13 @@ static void quat_conjugate(const double *q, double *out) {
     out[3] = q[3];
 }
 
+/// @brief Rotate a 3D vector by a unit quaternion via the conjugation formula `q * v * q⁻¹`.
+/// @details Treats `v` as a pure quaternion `(x, y, z, 0)`, conjugates
+///          on both sides, and extracts the vector part. This is the
+///          textbook (and stable) way to apply a quaternion rotation
+///          to a vector. Slightly slower than the optimized
+///          "two-cross-product" form but easier to verify against
+///          first principles.
 static void quat_rotate_vec3(const double *q, const double *v, double *out) {
     double qv[4] = {v[0], v[1], v[2], 0.0};
     double q_conj[4];
@@ -121,6 +146,12 @@ static void quat_rotate_vec3(const double *q, const double *v, double *out) {
     out[2] = tmp[2];
 }
 
+/// @brief Apply scale-then-rotate-then-translate to a single local point.
+/// @details Standard SRT decomposition order — scale axis-by-axis, then
+///          rotate by the quaternion, then translate. Reversing the
+///          order would produce a different (and usually wrong) result
+///          since rotation around the origin is not commutative with
+///          translation.
 static void transform_point_raw(const double *position,
                                 const double *rotation,
                                 const double *scale,
@@ -136,6 +167,14 @@ static void transform_point_raw(const double *position,
     out[2] = position[2] + rotated[2];
 }
 
+/// @brief Transform an axis-aligned bounding box and recompute the AABB in the new frame.
+/// @details Iterates the 8 corners of the input AABB, transforms each
+///          via SRT (`transform_point_raw`), and accumulates the new
+///          axis-aligned extent. After rotation, the original AABB is
+///          generally an OBB in the destination frame; the returned
+///          AABB is the tightest axis-aligned box that contains it
+///          (8 corners is the minimum needed — the OBB extrema sit at
+///          corners, not edge midpoints).
 static void transform_bounds_raw(const double *bounds_min,
                                  const double *bounds_max,
                                  const double *position,
@@ -167,6 +206,13 @@ static void transform_bounds_raw(const double *bounds_min,
 
 static void collider3d_recompute_bounds(rt_collider3d *collider);
 
+/// @brief GC finalizer — release the mesh ref, every child collider, and all owned arrays.
+/// @details Called when the collider's refcount drops to zero. Walks
+///          the children array first (each child is itself a
+///          GC-managed collider with its own finalizer), then frees
+///          the dense child / child-transform arrays and the
+///          heightfield-heights buffer. Nulled pointers prevent
+///          double-free if the GC sweeps twice during shutdown.
 static void collider3d_finalizer(void *obj) {
     rt_collider3d *collider = (rt_collider3d *)obj;
     if (!collider)
@@ -187,6 +233,14 @@ static void collider3d_finalizer(void *obj) {
     collider->heightfield_heights = NULL;
 }
 
+/// @brief Allocate a zeroed collider, set its type, and install the finalizer.
+/// @details Single chokepoint for collider construction so all six
+///          shape constructors (`new_box`, `new_sphere`, `new_capsule`,
+///          `new_convex_hull`, `new_mesh`, `new_compound`,
+///          `new_heightfield`) share identical initialization and GC
+///          ownership setup. Bounds default to a degenerate `(0,0,0)`
+///          AABB; each shape's constructor fills them in via
+///          `recompute_bounds`.
 static rt_collider3d *collider3d_alloc(int32_t type) {
     rt_collider3d *collider = (rt_collider3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_collider3d));
     if (!collider) {
@@ -201,6 +255,13 @@ static rt_collider3d *collider3d_alloc(int32_t type) {
     return collider;
 }
 
+/// @brief Copy position / rotation / scale from a Transform3D into a child slot.
+/// @details Defaults to the identity (origin, identity rotation, unit
+///          scale) if `transform_obj` is null, so a compound child added
+///          without an explicit local transform sits at the parent's
+///          origin. The cast to `rt_transform3d_view` is safe because
+///          `rt_transform3d` and the view share the prefix layout for
+///          (vptr, position, rotation, scale).
 static void collider3d_set_from_transform(rt_collider3d_child *dst, void *transform_obj) {
     vec3_set(dst->position, 0.0, 0.0, 0.0);
     quat_identity(dst->rotation);
@@ -218,6 +279,18 @@ static void collider3d_set_from_transform(rt_collider3d_child *dst, void *transf
     }
 }
 
+/// @brief Recompute the collider's local-space AABB based on its shape parameters.
+/// @details Shape-by-shape:
+///          - Box → ±half_extents on each axis.
+///          - Sphere → ±radius on every axis.
+///          - Capsule → radius on X/Z, half-height on Y (capsule axis is +Y).
+///          - Convex hull / mesh → mirror the underlying mesh AABB.
+///          - Compound → union of every child AABB after applying the
+///            child's local transform.
+///          - Heightfield → footprint width × heights min/max × footprint depth.
+///          Called after any geometry mutation (set radius, add child,
+///          rebuild heights) so subsequent broadphase queries use the
+///          current bounds.
 static void collider3d_recompute_bounds(rt_collider3d *collider) {
     if (!collider)
         return;

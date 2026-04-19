@@ -105,6 +105,30 @@ static void close_entry(pooled_entry_t *entry) {
     entry->in_use = false;
 }
 
+/// @brief Probe a pooled TCP connection to see if the peer has silently closed it.
+/// @details A connection sitting idle in the pool can be closed by the peer
+///          (server timeout, NAT tear-down, etc.) without our side noticing
+///          until the next write fails. Detecting that *before* handing the
+///          connection to a caller avoids spurious request failures.
+///
+///          The probe uses a non-blocking `select` + `MSG_PEEK` to look at
+///          whatever bytes (if any) are sitting in the receive buffer:
+///          - `wait_socket(..., 0, ...)` with a zero timeout returns >0 if
+///            the socket has readable data (peer wrote, *or* peer closed —
+///            both produce a readable signal).
+///          - If nothing's readable, the connection is healthy (idle but
+///            still open).
+///          - If something *is* readable, peek one byte without consuming it:
+///            * `peek > 0` — peer wrote real bytes (unexpected on an idle
+///              pooled connection but technically the connection is alive).
+///            * `peek == 0` — orderly close from the peer; the connection
+///              is dead.
+///            * `peek < 0` with EAGAIN/EWOULDBLOCK — race between select
+///              and peek; treat as healthy.
+///            * `peek < 0` with any other errno — connection is broken.
+/// @param tcp Pooled TCP connection object.
+/// @return 1 if the connection is healthy and reusable, 0 if it should be
+///         closed and removed from the pool.
 static int tcp_connection_healthy(void *tcp) {
     if (!tcp || !rt_tcp_is_open(tcp))
         return 0;

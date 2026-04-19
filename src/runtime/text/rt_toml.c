@@ -43,17 +43,24 @@
 
 // --- Helper: create string from substring ---
 
+/// @brief One-line wrapper that builds an `rt_string` from a (ptr, len) substring.
 static rt_string make_str(const char *s, int64_t len) {
     return rt_string_from_bytes(s, len);
 }
 
 // --- Helper: trim whitespace ---
 
+/// @brief Skip horizontal whitespace (`space`, `tab`) — does NOT consume newlines.
+/// @details TOML treats newlines as significant (line-oriented format),
+///          so we explicitly limit whitespace skipping to in-line spaces.
 static void skip_ws(const char **p) {
     while (**p == ' ' || **p == '\t')
         (*p)++;
 }
 
+/// @brief Advance the cursor past the rest of the current line, including the `\n`.
+/// @details Used to skip comments and malformed lines without breaking
+///          the parser. Stops at NUL if no terminating newline is found.
 static void skip_line(const char **p) {
     while (**p && **p != '\n')
         (*p)++;
@@ -63,6 +70,11 @@ static void skip_line(const char **p) {
 
 // --- Helper: parse a bare key (alphanumeric, dash, underscore) ---
 
+/// @brief Parse a TOML bare key (alphanumerics, `-`, `_`, `.`).
+/// @details Dotted keys (e.g. `a.b.c`) are returned as a single
+///          string here — the caller splits on `.` to walk nested
+///          tables. Returns NULL when the cursor isn't sitting on a
+///          legal key character.
 static rt_string parse_bare_key(const char **p) {
     const char *start = *p;
     while (isalnum((unsigned char)**p) || **p == '-' || **p == '_' || **p == '.')
@@ -74,6 +86,12 @@ static rt_string parse_bare_key(const char **p) {
 
 // --- Helper: parse a quoted string ---
 
+/// @brief Parse a basic / literal quoted TOML string (no escape decoding).
+/// @details Reads until the matching quote (or end-of-line, which is
+///          also treated as a string terminator for malformed input).
+///          Doesn't decode `\n`, `\"`, etc. — TOML escapes are not
+///          implemented in this simplified parser. The opening quote
+///          (`"` or `'`) must already be at `**p`.
 static rt_string parse_quoted_string(const char **p) {
     char quote = **p;
     (*p)++;
@@ -88,6 +106,13 @@ static rt_string parse_quoted_string(const char **p) {
 
 // --- Helper: parse a value ---
 
+/// @brief Parse a TOML scalar value (string, number, bool, date) into an `rt_string`.
+/// @details Strings (quoted or unquoted) all come back as raw strings;
+///          numeric/boolean type discrimination is left to the
+///          consumer (most callers run `rt_parse_try_int` /
+///          `rt_parse_try_bool` to coerce after the fact). Stops at
+///          newline, `#` (comment), or `,` (array element separator);
+///          trailing in-line whitespace is trimmed off.
 static rt_string parse_value(const char **p) {
     skip_ws(p);
 
@@ -110,6 +135,11 @@ static rt_string parse_value(const char **p) {
 
 // --- Helper: parse an inline array ---
 
+/// @brief Parse a TOML inline array literal `[a, b, c]` into a Seq of strings.
+/// @details Walks comma-separated values until the closing `]`. Each
+///          element is read via `parse_value` (so all elements come
+///          back as raw strings). Tolerates trailing commas and
+///          stray whitespace between elements.
 static void *parse_array(const char **p) {
     (*p)++; // skip '['
     void *seq = rt_seq_new();

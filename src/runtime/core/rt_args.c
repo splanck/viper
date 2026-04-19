@@ -56,6 +56,14 @@ static RtArgsState *rt_args_state(void) {
 }
 
 #ifdef _WIN32
+/// @brief Convert a NUL-terminated UTF-8 string to a heap-allocated wide string (Windows).
+/// @details Uses `MultiByteToWideChar` with `MB_ERR_INVALID_CHARS` so
+///          malformed UTF-8 traps cleanly instead of producing a
+///          silently-mangled wide string. Used by environment-API
+///          calls that need to hit the W (wide) Win32 entry points.
+///          Caller owns the returned buffer (must `free`). Traps on
+///          conversion failure or allocation failure — there's no
+///          recoverable path for an invalid env-var name on Windows.
 static wchar_t *rt_env_utf8_to_wide_or_trap(const char *utf8, const char *context) {
     if (!utf8)
         return NULL;
@@ -72,6 +80,12 @@ static wchar_t *rt_env_utf8_to_wide_or_trap(const char *utf8, const char *contex
     return wide;
 }
 
+/// @brief Convert a wide string of known length to an `rt_string` (UTF-8) on Windows.
+/// @details Inverse of `rt_env_utf8_to_wide_or_trap`. Two-call
+///          `WideCharToMultiByte` pattern: first call sizes the
+///          output, second fills it. Traps on conversion failure
+///          rather than returning empty so callers don't silently
+///          lose data on weird input from the OS.
 static rt_string rt_env_wide_to_string_or_trap(
     const wchar_t *wide, int wide_len, const char *context) {
     if (!wide || wide_len <= 0)

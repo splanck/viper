@@ -1236,8 +1236,16 @@ rt_string rt_json_format_pretty(void *obj, int64_t indent) {
 /// @note Does not allocate memory (validation only).
 ///
 /// @see rt_json_parse For parsing with full result
-/// Non-trapping JSON validator — returns 1 if the cursor was advanced past
-/// a valid JSON value, 0 on any syntax error.
+
+/// @brief Non-trapping JSON validator: advance the cursor past one JSON value.
+/// @details Mirrors the structure of `parse_value` but never allocates
+///          and never calls `rt_trap` — instead it returns 0 on any
+///          malformed input. Mutually recursive on objects and arrays
+///          (same recursion budget as the real parser since it
+///          touches the same `depth_exceeded` counter when extended).
+///          Used by `rt_json_is_valid` for cheap pre-validation
+///          when callers want to test parseability before committing.
+/// @return 1 if a complete JSON value was consumed, 0 otherwise.
 static int validate_value(json_parser *p) {
     parser_skip_whitespace(p);
     if (parser_eof(p))

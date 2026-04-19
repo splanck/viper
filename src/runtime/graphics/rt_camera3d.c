@@ -151,6 +151,12 @@ static void build_look_at(double *m, const double *eye, const double *target, co
     m[15] = 1.0;
 }
 
+/// @brief Recompute the camera's projection matrix from current FOV / aspect / clip / ortho size.
+/// @details Called whenever any projection input changes. Routes to
+///          `build_ortho` or `build_perspective` based on `cam->is_ortho`,
+///          re-sanitising the inputs first so callers can pass any value
+///          and still produce a valid projection (degenerate aspects or
+///          clip planes are clamped).
 static void rebuild_projection(rt_camera3d *cam) {
     if (!cam)
         return;
@@ -167,6 +173,12 @@ static void rebuild_projection(rt_camera3d *cam) {
     }
 }
 
+/// @brief Update the camera's aspect ratio to match the active output and rebuild projection.
+/// @details Called by Canvas3D / RenderTarget3D `Begin` when the render
+///          surface's dimensions change (window resize or render-target
+///          rebind). No-op when the new aspect matches within 1e-9, so
+///          repeated calls with the same dimensions don't churn the
+///          projection matrix.
 void rt_camera3d_sync_render_aspect(void *obj, double aspect) {
     rt_camera3d *cam = (rt_camera3d *)obj;
     double sanitized_aspect;
@@ -180,6 +192,14 @@ void rt_camera3d_sync_render_aspect(void *obj, double aspect) {
     rebuild_projection(cam);
 }
 
+/// @brief Recover the FPS yaw/pitch state from the current view matrix.
+/// @details Called after `LookAt` or other view-replacing ops so the next
+///          FPS-style mouse delta starts from the correct heading. Forward
+///          is row 2 of the view matrix (negated because view stores the
+///          inverse camera basis), so yaw = atan2(fx, -fz) and pitch =
+///          asin(fy). Pitch is clamped to ±89° so the next rebuild can't
+///          produce a degenerate look-at where forward becomes parallel
+///          to the world up vector.
 static void camera_sync_fps_angles_from_view(rt_camera3d *cam) {
     double fx;
     double fy;
@@ -198,6 +218,12 @@ static void camera_sync_fps_angles_from_view(rt_camera3d *cam) {
         cam->fps_pitch = -89.0;
 }
 
+/// @brief Rebuild the view matrix from the cached FPS yaw/pitch and eye position.
+/// @details Constructs a target one unit ahead of the eye along the
+///          spherical-coordinate forward (yaw rotates in the XZ plane,
+///          pitch tilts up/down) and feeds it to `build_look_at`. World
+///          up is fixed +Y. Called every frame an FPS controller mutates
+///          yaw/pitch via `RotateYaw` / `RotatePitch` / `LookDelta`.
 static void camera_rebuild_fps_view(rt_camera3d *cam) {
     double yaw_rad;
     double pitch_rad;
@@ -216,6 +242,12 @@ static void camera_rebuild_fps_view(rt_camera3d *cam) {
     build_look_at(cam->view, cam->eye, target, up);
 }
 
+/// @brief Re-derive the view matrix using the eye plus the current shake offset.
+/// @details Reads forward from the existing view (row 2 negated), shifts
+///          eye by the current shake delta, then builds a fresh look-at
+///          targeting eye+forward so heading stays identical — only
+///          translation jitters. The shake offset itself is updated
+///          per-frame by `apply_shake`.
 static void camera_apply_shake_to_view(rt_camera3d *cam) {
     double forward[3];
     double eye[3];
@@ -338,6 +370,10 @@ void *rt_camera3d_new_ortho(double size, double aspect, double near_val, double 
     return cam;
 }
 
+/// @brief Return non-zero when the camera uses an orthographic projection.
+/// @details Lets renderers branch on perspective vs ortho without poking
+///          into private struct fields. Returns 0 for null obj or for
+///          perspective cameras built via `rt_camera3d_new`.
 int8_t rt_camera3d_is_ortho(void *obj) {
     return obj ? ((rt_camera3d *)obj)->is_ortho : 0;
 }
@@ -424,6 +460,11 @@ void rt_camera3d_set_fov(void *obj, double fov) {
     rebuild_projection(cam);
 }
 
+/// @brief Return the camera's eye position as a freshly allocated Vec3.
+/// @details The eye is the *unshaken* position — shake offset is applied
+///          per-frame to the view matrix but never mutates `cam->eye`,
+///          so callers see the logical camera location (good for HUDs,
+///          attaching audio listeners, raycasts from the player).
 void *rt_camera3d_get_position(void *obj) {
     if (!obj)
         return NULL;
@@ -522,6 +563,21 @@ static int mat4d_invert(const double *m, double *out) {
     return 0;
 }
 
+/// @brief Unproject a screen-space pixel into a world-space ray direction.
+/// @details Standard picking ray construction:
+///          1. Convert pixel (sx,sy) to normalized device coords with the
+///             usual Y-flip (screen Y grows down, NDC Y grows up).
+///          2. Build VP = projection * view, invert it.
+///          3. Multiply NDC point at near plane (z=-1, w=1) by inv(VP)
+///             to get a homogeneous world-space point; perspective-divide
+///             to recover Cartesian coords.
+///          4. Direction = normalize(world − rendered eye), where the
+///             rendered eye includes the current shake offset so picks
+///             align with what the player actually sees.
+///          For ortho cameras, all rays are parallel (direction = view
+///          forward), so the projection-inversion path is skipped and
+///          the normalized forward axis is returned directly.
+///          Returns (0,0,-1) on degenerate inputs (zero size, singular VP).
 void *rt_camera3d_screen_to_ray(void *obj, int64_t sx, int64_t sy, int64_t sw, int64_t sh) {
     if (!obj || sw <= 0 || sh <= 0)
         return rt_vec3_new(0.0, 0.0, -1.0);
@@ -647,14 +703,21 @@ void rt_camera3d_fps_update(void *obj,
     camera_apply_shake_to_view(cam);
 }
 
+/// @brief Return the FPS-controller yaw in degrees (heading around world Y).
 double rt_camera3d_get_yaw(void *obj) {
     return obj ? ((rt_camera3d *)obj)->fps_yaw : 0.0;
 }
 
+/// @brief Return the FPS-controller pitch in degrees (look up/down).
 double rt_camera3d_get_pitch(void *obj) {
     return obj ? ((rt_camera3d *)obj)->fps_pitch : 0.0;
 }
 
+/// @brief Set yaw absolutely and rebuild the view (and shake) to match.
+/// @details Unlike `fps_update`'s yaw delta, this lets gameplay code
+///          snap heading directly (e.g. cutscene camera, teleport,
+///          respawn). Caller is responsible for normalizing the angle
+///          if they care about the stored value range.
 void rt_camera3d_set_yaw(void *obj, double yaw) {
     if (!obj)
         return;
@@ -663,6 +726,9 @@ void rt_camera3d_set_yaw(void *obj, double yaw) {
     camera_apply_shake_to_view((rt_camera3d *)obj);
 }
 
+/// @brief Set pitch absolutely (clamped to ±89°) and rebuild the view.
+/// @details The clamp matches `fps_update` so manual pitch overrides
+///          can never produce a degenerate look-at direction.
 void rt_camera3d_set_pitch(void *obj, double pitch) {
     if (!obj)
         return;
@@ -680,6 +746,21 @@ void rt_camera3d_set_pitch(void *obj, double pitch) {
  * Camera shake
  *=========================================================================*/
 
+/// @brief Advance the shake state one frame and recompute the eye offset.
+/// @details Bails out early once `shake_duration` reaches zero, also
+///          clearing the offset so the camera snaps back to its true
+///          eye position. While shake is active:
+///          - Duration counts down by dt (linear time decay).
+///          - Intensity follows an exponential decay
+///            (intensity *= exp(-decay * dt)) so impulses ramp out
+///            smoothly — `decay = 5` halves intensity in ~138 ms.
+///          - Two consecutive xorshift32 draws produce a deterministic
+///            uniform [-1, 1] pair (r1, r2). The Z component uses
+///            r1*r2*0.3 so it's correlated with X/Y but smaller, biasing
+///            shake toward the screen plane (preferred for first-person).
+///          The seed lives on the camera, so two cameras shake
+///          independently and a single camera replays identically across
+///          runs given the same dt sequence.
 static void apply_shake(rt_camera3d *cam, double dt) {
     if (cam->shake_duration <= 0.0) {
         cam->shake_offset[0] = cam->shake_offset[1] = cam->shake_offset[2] = 0.0;
@@ -703,6 +784,13 @@ static void apply_shake(rt_camera3d *cam, double dt) {
     cam->shake_offset[2] = (r1 * r2) * cam->shake_intensity * 0.3;
 }
 
+/// @brief Per-frame entry point that advances shake decay and rebuilds the view.
+/// @details Should be called once per frame from the renderer (or game
+///          loop) with the frame delta. Splits the work between
+///          `apply_shake` (advance state, compute offset) and
+///          `camera_apply_shake_to_view` (rebuild view matrix using the
+///          new offset) so other call sites that mutate the view can
+///          re-apply the shake without re-rolling the PRNG.
 void rt_camera3d_update_shake_for_frame(void *obj, double dt) {
     rt_camera3d *cam = (rt_camera3d *)obj;
 

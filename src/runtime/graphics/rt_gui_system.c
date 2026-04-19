@@ -317,9 +317,29 @@ void rt_shortcuts_clear_triggered(rt_gui_app_t *app) {
     app->triggered_shortcut_id = NULL;
 }
 
-// Check if a key event matches any registered shortcut.
-// Returns 1 if a shortcut was triggered, 0 otherwise.
-/// @brief Check the key of the shortcuts.
+/// @brief Match a key event against registered global shortcuts; trigger on hit.
+/// @details Walks the shortcut table and returns 1 if any enabled shortcut's
+///          (ctrl, shift, alt, key) tuple matches the incoming event. Several
+///          normalisations apply before comparison:
+///          - **Cmd → Ctrl on macOS.** Both `VGFX_MOD_CTRL` and `VGFX_MOD_CMD`
+///            map to `has_ctrl`, so a shortcut registered as `Ctrl+S` fires for
+///            `Cmd+S` on macOS without callers needing platform-specific logic.
+///          - **Modifier requirement.** Plain keys (no Ctrl, no Alt) are
+///            rejected up front *unless* they're function keys F1–F12, which
+///            are valid shortcuts on their own. This prevents typing `S` in a
+///            text field from accidentally firing the `S` half of `Ctrl+S`.
+///          - **Case folding.** Lowercase letters are upper-cased for
+///            comparison so the parsed-shortcut table and incoming events
+///            match regardless of the user's caps-lock state.
+///
+///          On match, the shortcut's `triggered` flag is set and its id is
+///          copied into `app->triggered_shortcut_id` for `Shortcuts.GetTriggered`
+///          to read on the same frame. The previous triggered id (if any) is
+///          freed first.
+/// @param app App owning the shortcut table.
+/// @param key Key code from the event.
+/// @param mods Modifier bitmask (`VGFX_MOD_*`).
+/// @return 1 if a shortcut was triggered, 0 otherwise.
 int8_t rt_shortcuts_check_key(rt_gui_app_t *app, int key, int mods) {
     RT_ASSERT_MAIN_THREAD();
     if (!app || !app->shortcuts_global_enabled)

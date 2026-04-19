@@ -111,6 +111,13 @@ typedef struct {
 
 static rt_heap_registry_t g_heap_registry_;
 
+/// @brief Hash a pointer to 64 bits using David Stafford's mix13 finalizer.
+/// @details Pointers from a real allocator are very correlated in their
+///          low bits (alignment puts zeros there) and clustered in
+///          their high bits (one heap region). Stafford's mix13 is a
+///          well-tested public-domain mixer that scrambles those
+///          patterns into a uniform-looking output suitable for
+///          open-addressing hash tables.
 static uint64_t rt_heap_ptr_hash_(const void *p) {
     uint64_t v = (uint64_t)(uintptr_t)p;
     v = (v ^ (v >> 30)) * 0xbf58476d1ce4e5b9ULL;
@@ -118,6 +125,11 @@ static uint64_t rt_heap_ptr_hash_(const void *p) {
     return v ^ (v >> 31);
 }
 
+/// @brief Acquire the registry's spinlock with yield-on-contention.
+/// @details Used to serialize structural mutations to the live-payload
+///          set. Insertions and removals are rare relative to lookups,
+///          so a simple test-and-set spinlock is faster than a full
+///          mutex on typical workloads.
 static void rt_heap_registry_lock_(void) {
     if (__atomic_test_and_set(&g_heap_registry_.lock, __ATOMIC_ACQUIRE)) {
         do {
@@ -130,14 +142,28 @@ static void rt_heap_registry_lock_(void) {
     }
 }
 
+/// @brief Release the registry spinlock with release semantics.
 static void rt_heap_registry_unlock_(void) {
     __atomic_clear(&g_heap_registry_.lock, __ATOMIC_RELEASE);
 }
 
+/// @brief Test whether a slot holds a real payload (vs EMPTY or TOMBSTONE sentinel).
+/// @details Open-addressing hash tables use three slot states: empty
+///          (never used), tombstone (was used, since deleted), and
+///          live (a real value). Lookups must walk past tombstones,
+///          insertions can reuse them; this helper distinguishes the
+///          live case for those callers.
 static int rt_heap_registry_slot_is_live_(void *slot) {
     return slot != RT_HEAP_REG_EMPTY && slot != RT_HEAP_REG_TOMBSTONE;
 }
 
+/// @brief Reallocate the registry to at least `min_capacity` slots and rehash existing entries.
+/// @details Doubles capacity (or jumps to `min_capacity` if larger),
+///          allocates a fresh power-of-two-sized table, and reinserts
+///          every live entry from the old table — this rebuilds the
+///          probe sequences against the new mask and drops all
+///          tombstones along the way. Returns 0 on allocation
+///          failure (caller leaves the registry untouched).
 static int rt_heap_registry_grow_locked_(size_t min_capacity) {
     size_t new_capacity = g_heap_registry_.capacity ? g_heap_registry_.capacity * 2 : 256;
     while (new_capacity < min_capacity) {
@@ -170,6 +196,12 @@ static int rt_heap_registry_grow_locked_(size_t min_capacity) {
     return 1;
 }
 
+/// @brief Grow the registry if load factor (live + tombstones) would exceed 5/8.
+/// @details Open-addressing tables degrade past about 5/8 load; the
+///          5*cap < 8*(count+tombstones+1) check enforces that.
+///          Initial allocation: 256 slots. Subsequent growth: 2×.
+///          Includes tombstones in the load calculation because they
+///          still consume probe-sequence length.
 static int rt_heap_registry_ensure_capacity_locked_(void) {
     if (g_heap_registry_.capacity == 0)
         return rt_heap_registry_grow_locked_(256);
@@ -179,6 +211,12 @@ static int rt_heap_registry_ensure_capacity_locked_(void) {
     return 1;
 }
 
+/// @brief Insert `payload` into an already-sized registry table (no growth check).
+/// @details Open-addressing linear-probe insertion. Tracks the first
+///          tombstone found along the probe path so we can reuse it
+///          (saving a slot) only after confirming the key isn't
+///          already present further along the chain. Returns 1 if
+///          stored or already present, 0 if the table is empty.
 static int rt_heap_registry_insert_existing_locked_(void *payload) {
     if (!payload || !g_heap_registry_.slots || g_heap_registry_.capacity == 0)
         return 0;
@@ -203,6 +241,11 @@ static int rt_heap_registry_insert_existing_locked_(void *payload) {
     }
 }
 
+/// @brief Grow-then-insert wrapper for the registry.
+/// @details Threads the ensure-capacity step ahead of the actual
+///          insert so callers don't have to manage the two-stage
+///          dance themselves. NULL payloads are silently ignored
+///          (treated as success).
 static int rt_heap_registry_insert_locked_(void *payload) {
     if (!payload)
         return 1;
@@ -211,6 +254,10 @@ static int rt_heap_registry_insert_locked_(void *payload) {
     return rt_heap_registry_insert_existing_locked_(payload);
 }
 
+/// @brief Membership test against the registry (linear probe through tombstones).
+/// @details Walks the probe chain from `hash & mask`, skipping over
+///          tombstones (which mean "moved on"), stopping at the
+///          first EMPTY slot. Returns 0 for unknown payloads.
 static int rt_heap_registry_contains_locked_(void *payload) {
     if (!payload || !g_heap_registry_.slots || g_heap_registry_.capacity == 0)
         return 0;
@@ -226,6 +273,11 @@ static int rt_heap_registry_contains_locked_(void *payload) {
     }
 }
 
+/// @brief Remove `payload` from the registry by stamping a TOMBSTONE in its slot.
+/// @details Open-addressing requires tombstones (rather than just
+///          re-empty) so that probe sequences past the deleted slot
+///          still terminate at the original "empty" sentinel. The
+///          next `grow` invocation drops accumulated tombstones.
 static void rt_heap_registry_remove_locked_(void *payload) {
     if (!payload || !g_heap_registry_.slots || g_heap_registry_.capacity == 0)
         return;
@@ -245,6 +297,12 @@ static void rt_heap_registry_remove_locked_(void *payload) {
     }
 }
 
+/// @brief Atomically move a registry entry from `old_payload` to `new_payload`.
+/// @details Used after `realloc` returns a different pointer for an
+///          allocation: the registry must forget the old address and
+///          remember the new one. Implements as remove-old +
+///          insert-new under the same lock so no thread can observe
+///          an inconsistent state.
 static int rt_heap_registry_move_locked_(void *old_payload, void *new_payload) {
     if (old_payload == new_payload)
         return 1;
@@ -266,6 +324,11 @@ static int rt_heap_registry_move_locked_(void *old_payload, void *new_payload) {
     }
 }
 
+/// @brief Free the registry's slot array at process shutdown.
+/// @details Called from `rt_global_shutdown` after every payload has
+///          been freed. The registry slots themselves are pointers
+///          into already-freed memory; we only need to free the
+///          slot array, not the (already-released) payloads.
 static void rt_heap_registry_shutdown_(void) {
     free(g_heap_registry_.slots);
     g_heap_registry_.slots = NULL;
