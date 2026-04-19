@@ -52,14 +52,23 @@ static void test_password_hash_format() {
     // Test 2: Hash with custom iterations
     {
         rt_string password = rt_const_cstr("testpass");
+        rt_string hash = rt_password_hash_with_iterations(password, 350000);
+        const char *hash_str = rt_string_cstr(hash);
+
+        // Should contain the requested iteration count
+        test_result("Hash contains custom iterations", strstr(hash_str, "$350000$") != nullptr);
+    }
+
+    // Test 3: Low custom iteration counts clamp to the minimum
+    {
+        rt_string password = rt_const_cstr("testpass");
         rt_string hash = rt_password_hash_with_iterations(password, 50000);
         const char *hash_str = rt_string_cstr(hash);
 
-        // Should contain "50000" as the iteration count
-        test_result("Hash contains custom iterations", strstr(hash_str, "$50000$") != nullptr);
+        test_result("Hash clamps low iteration counts", strstr(hash_str, "$100000$") != nullptr);
     }
 
-    // Test 3: Different passwords produce different hashes
+    // Test 4: Different passwords produce different hashes
     {
         rt_string pwd1 = rt_const_cstr("password1");
         rt_string pwd2 = rt_const_cstr("password2");
@@ -70,7 +79,7 @@ static void test_password_hash_format() {
                     strcmp(rt_string_cstr(hash1), rt_string_cstr(hash2)) != 0);
     }
 
-    // Test 4: Same password produces different hashes (due to random salt)
+    // Test 5: Same password produces different hashes (due to random salt)
     {
         rt_string password = rt_const_cstr("samepassword");
         rt_string hash1 = rt_password_hash(password);
@@ -137,7 +146,7 @@ static void test_password_verify() {
     // Test 6: Verify with different iteration count (hash includes iterations)
     {
         rt_string password = rt_const_cstr("testpassword");
-        rt_string hash = rt_password_hash_with_iterations(password, 20000);
+        rt_string hash = rt_password_hash_with_iterations(password, 250000);
         int8_t result = rt_password_verify(password, hash);
         test_result("Custom iteration hash verifies", result == 1);
     }
@@ -183,6 +192,13 @@ static void test_password_invalid_input() {
                                                "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=");
         int8_t result = rt_password_verify(password, invalid_hash);
         test_result("Excessive iterations return 0", result == 0);
+    }
+
+    // Test 5: NULL hash input returns 0 instead of crashing
+    {
+        rt_string password = rt_const_cstr("password");
+        int8_t result = rt_password_verify(password, NULL);
+        test_result("NULL hash input returns 0", result == 0);
     }
 
     printf("\n");

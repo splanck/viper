@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-18
+last-verified: 2026-04-19
 ---
 
 # Network
@@ -1893,13 +1893,14 @@ Threaded TLS-backed HTTP/1.1 server built on the in-tree TLS 1.3 runtime with ze
 - The request/response handler model mirrors `HttpServer`.
 - Sequential HTTPS keep-alive requests on the same TLS connection are supported when response framing is safe.
 - The built-in TLS server stack performs the full TLS 1.3 handshake in-tree, including `ClientHello`/`ServerHello`, ALPN negotiation, certificate chain delivery, `CertificateVerify`, and bidirectional `Finished` processing.
+- `Start()` now fails cleanly on listener-bind or accept-thread startup errors instead of leaving the server in a partial running state.
 - Route tables and handler bindings become immutable once the server is running.
 
 ---
 
 ## Viper.Network.ConnectionPool
 
-Thread-safe TCP connection pooling for reuse across HTTP requests.
+Thread-safe plain-TCP connection pooling for reuse across HTTP requests.
 
 **Type:** Instance class
 
@@ -1920,6 +1921,11 @@ Thread-safe TCP connection pooling for reuse across HTTP requests.
 |----------|------|-------------|
 | `Size` | Integer | Total connections in pool |
 | `Available` | Integer | Idle (available) connections |
+
+### Runtime Notes
+
+- `ConnectionPool` pools raw TCP sockets keyed by `host:port`.
+- It does not track TLS hostname verification, ALPN, or certificate policy; use `HttpClient` for HTTPS-aware pooling.
 
 ---
 
@@ -2033,9 +2039,10 @@ TLS-backed WebSocket server built on the in-tree TLS 1.3 runtime with zero exter
 ### Runtime Notes
 
 - `WssServer` automatically completes the RFC 6455 HTTP upgrade after the TLS handshake succeeds.
-- Browser-facing upgrades require a `Host` header, and when an `Origin` header is present it must match the request host.
+- Browser-facing upgrades require a `Host` header, and when an `Origin` header is present it must match the request scheme, host, and effective port.
 - Control frames are handled automatically: server-side pong replies are sent for client pings, and close frames are echoed so the WebSocket close handshake completes cleanly.
 - Client text/binary frames are drained and validated so broadcasts continue to work on long-lived secure connections even when clients send their own traffic.
+- `Start()` now fails cleanly on listener-bind or accept-thread startup errors instead of leaving the server in a partial running state.
 
 ---
 
@@ -2067,9 +2074,11 @@ Server-Sent Events (SSE) client for receiving event streams over HTTP.
 ### Stream Behavior
 
 - Supports both plain `Content-Length` and HTTP chunked `text/event-stream` responses.
+- Follows ordinary HTTP redirects before the event stream is established.
 - When the server drops the stream after delivering an event, the client reconnects automatically.
 - `retry:` updates the reconnect delay in milliseconds.
 - When an `id:` field has been seen, reconnect requests include `Last-Event-ID` so the server can resume from the last delivered event.
+- Unsupported `Content-Encoding` values are rejected instead of being misparsed as SSE frames.
 
 ---
 
@@ -2094,7 +2103,7 @@ Session-based HTTP client with cookie jar, auto-redirect, and persistent headers
 | `SetPoolSize(max)` | void | Resize the internal keep-alive pool |
 | `SetTimeout(ms)` | void | Set request timeout in milliseconds |
 | `SetMaxRedirects(max)` | void | Set maximum redirect count |
-| `SetCookie(domain, name, value)` | void | Manually set a cookie |
+| `SetCookie(domain, name, value)` | void | Manually set a host-only cookie for an exact host/IP |
 | `GetCookies(domain)` | Map | Get the active cookies that match a domain |
 
 ### Properties
@@ -2107,6 +2116,7 @@ Session-based HTTP client with cookie jar, auto-redirect, and persistent headers
 ### Cookie Behavior
 
 - `HttpClient` stores cookies with domain, path, expiry, and secure attributes.
+- `SetCookie(domain, name, value)` creates a host-only cookie that matches the exact host text you passed (for example, `localhost` and `127.0.0.1` are distinct).
 - Path-scoped cookies are only sent to matching request paths.
 - `Secure` cookies are only sent over `https://` requests.
 - `Secure` cookies received over plain `http://` responses are rejected instead of being stored.
@@ -2117,13 +2127,14 @@ Session-based HTTP client with cookie jar, auto-redirect, and persistent headers
 - `HttpClient` enables keep-alive reuse by default and maintains an internal per-client connection pool.
 - HTTPS sessions are reused only when the request host/port/TLS verification mode match and the response framing is safe to reuse.
 - Sensitive default headers such as `Authorization`, `Cookie`, and common API-key headers are stripped automatically when a redirect crosses origin boundaries.
+- Default-header and cookie-jar mutations are synchronized internally, so one `HttpClient` instance can be shared across concurrent request paths.
 - Set `KeepAlive = false` to force the previous close-after-each-request behavior.
 
 ---
 
 ## Viper.Network.SmtpClient
 
-Simple SMTP client for sending emails with optional AUTH LOGIN.
+Simple SMTP client for sending emails with optional AUTH LOGIN and negotiated STARTTLS.
 
 **Type:** Instance class
 
@@ -2146,6 +2157,12 @@ Simple SMTP client for sending emails with optional AUTH LOGIN.
 |----------|------|-------------|
 | `LastError` | String | Most recent error message |
 
+### Runtime Notes
+
+- `SetTls(true)` on submission ports negotiates `STARTTLS` only when the server advertises it after `EHLO`.
+- `AUTH LOGIN` is only attempted when the server advertises it and the connection is encrypted.
+- Recipient replies `250`, `251`, and `252` are accepted so forwarded/local-alias deliveries interoperate with real SMTP servers.
+
 ---
 
 ## Viper.Network.AsyncSocket
@@ -2166,6 +2183,11 @@ Non-blocking socket operations integrated with `Threads.Future`.
 
 All methods return a `Future` that can be awaited using `Threads.Future.Get()`.
 
+### Failure Behavior
+
+- Transport and HTTP failures resolve the returned `Future` as an error instead of trapping out of the worker thread.
+- Use `Threads.Future.IsError()` / `GetError()` to inspect asynchronous failures.
+
 ---
 
 ## See Also
@@ -2174,7 +2196,7 @@ All methods return a `Future` that can be awaited using `Threads.Future.Get()`.
 - [Input/Output](io/README.md) - File operations for saving downloaded content
 - [Cryptography](crypto.md) - `Tls` for secure connections
 
-> **Note:** `Viper.Crypto.Tls` provides a low-level TLS 1.3 client API (connect/send/recv/close) that can be used independently of the HTTP layer. It supports AES-128-GCM-SHA256 and ChaCha20-Poly1305-SHA256 encryption with X25519 key exchange, IPv4/IPv6 connections, handshake timeouts, and HelloRetryRequest retry cookies for the X25519 path. When `verify_cert=1` (the default), it performs TLS 1.3 authentication using the runtime trust source plus the server-supplied chain, hostname verification against SubjectAltName/CommonName/IP SANs, and in-tree CertificateVerify signature verification. Documentation for this class is in `crypto.md`.
+> **Note:** `Viper.Crypto.Tls` provides a low-level TLS 1.3 client API (connect/send/recv/close) that can be used independently of the HTTP layer. It supports AES-128-GCM-SHA256 and ChaCha20-Poly1305-SHA256 encryption with X25519 key exchange, IPv4/IPv6 connections, handshake timeouts, and HelloRetryRequest retry cookies for the X25519 path. When `verify_cert=1` (the default), it performs TLS 1.3 authentication using the runtime trust source plus the server-supplied chain, hostname verification against SubjectAltName/CommonName/IP SANs, leaf-certificate TLS-server-auth EKU/key-usage checks, and in-tree CertificateVerify signature verification. Documentation for this class is in `crypto.md`.
 
 ---
 

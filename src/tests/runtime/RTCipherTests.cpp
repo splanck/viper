@@ -40,6 +40,16 @@ static void *make_bytes_str(const char *str) {
     return make_bytes((const uint8_t *)str, strlen(str));
 }
 
+/// @brief Clone a Bytes object.
+static void *clone_bytes(void *src) {
+    int64_t len = rt_bytes_len(src);
+    void *copy = rt_bytes_new(len);
+    for (int64_t i = 0; i < len; i++) {
+        rt_bytes_set(copy, i, rt_bytes_get(src, i));
+    }
+    return copy;
+}
+
 /// @brief Compare two Bytes objects for equality.
 static bool bytes_equal(void *a, void *b) {
     int64_t len_a = rt_bytes_len(a);
@@ -117,6 +127,28 @@ static void test_password_encrypt_decrypt_roundtrip() {
         // Due to random salt and nonce, even same password produces different output
         test_result("Different outputs (randomness)", !bytes_equal(enc1, enc2));
     }
+
+    printf("\n");
+}
+
+static void test_password_decrypt_rejects_invalid_auth() {
+    printf("Testing Cipher authentication failure handling:\n");
+
+    void *plain = make_bytes_str("Auth failure regression");
+    rt_string password = rt_const_cstr("correct-password");
+    rt_string wrong_password = rt_const_cstr("wrong-password");
+
+    void *encrypted = rt_cipher_encrypt(plain, password);
+    test_result("Encrypted payload created", encrypted != NULL);
+
+    void *wrong = rt_cipher_decrypt(encrypted, wrong_password);
+    test_result("Wrong password returns NULL", wrong == NULL);
+
+    void *tampered = clone_bytes(encrypted);
+    const int64_t last_index = rt_bytes_len(tampered) - 1;
+    rt_bytes_set(tampered, last_index, rt_bytes_get(tampered, last_index) ^ 0x01);
+    void *corrupt = rt_cipher_decrypt(tampered, password);
+    test_result("Tampered ciphertext returns NULL", corrupt == NULL);
 
     printf("\n");
 }
@@ -296,6 +328,7 @@ int main() {
     printf("=== RT Cipher Tests ===\n\n");
 
     test_password_encrypt_decrypt_roundtrip();
+    test_password_decrypt_rejects_invalid_auth();
     test_key_based_encrypt_decrypt();
     test_key_derivation();
     test_encryption_randomness();

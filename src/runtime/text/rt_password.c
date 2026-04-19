@@ -15,7 +15,7 @@
 //   - Salts are 16 bytes of CSPRNG output, unique per hash call.
 //   - Hash output format: "pbkdf2-sha256$<iterations>$<hex-salt>$<hex-key>".
 //   - Verification uses constant-time comparison to prevent timing attacks.
-//   - Default iteration count is 100,000; minimum enforced by rt_keyderive.
+//   - Default iteration count is 300,000; custom requests clamp to at least 100,000.
 //   - Verify returns false (not trap) for mismatched passwords or invalid format.
 //   - The stored hash string is self-describing (includes algorithm and params).
 //
@@ -41,9 +41,9 @@
 #include <stdlib.h>
 #include <string.h>
 
-// Default iterations for password hashing (100k is reasonable for 2024+)
-#define DEFAULT_ITERATIONS 100000
-#define MIN_ITERATIONS 10000
+// Default iterations for password hashing.
+#define DEFAULT_ITERATIONS 300000
+#define MIN_ITERATIONS 100000
 #define MAX_ITERATIONS 10000000
 #define SALT_LENGTH 16
 #define HASH_LENGTH 32
@@ -178,12 +178,13 @@ static uint8_t *base64_decode(const char *data, size_t len, size_t *out_len) {
 // Public API
 //=============================================================================
 
-/// @brief Hash a password using PBKDF2-SHA256 with 100,000 iterations.
+/// @brief Hash a password using PBKDF2-SHA256 with the runtime default iteration count.
 /// @details Convenience wrapper that calls rt_password_hash_with_iterations
-///          with the default iteration count. The 100,000 default provides
-///          a good balance between security and latency (~50ms on modern hardware).
+///          with the default iteration count. The 300,000 default intentionally
+///          biases toward stronger offline-attack resistance for stored-password
+///          hashes while remaining practical for interactive use.
 /// @param password The password to hash.
-/// @return Self-describing hash string: "PBKDF2$100000$<salt_b64>$<hash_b64>".
+/// @return Self-describing hash string: "PBKDF2$300000$<salt_b64>$<hash_b64>".
 rt_string rt_password_hash(rt_string password) {
     return rt_password_hash_with_iterations(password, DEFAULT_ITERATIONS);
 }
@@ -194,7 +195,7 @@ rt_string rt_password_hash(rt_string password) {
 ///          encodes the algorithm, iteration count, salt, and hash. The format
 ///          is "PBKDF2$<iterations>$<salt_b64>$<hash_b64>", which allows
 ///          rt_password_verify to extract all parameters without separate
-///          salt storage. Iterations are clamped to [10,000, 10,000,000].
+///          salt storage. Iterations are clamped to [100,000, 10,000,000].
 /// @param password   The password to hash.
 /// @param iterations Number of PBKDF2 iterations (higher = slower + more secure).
 /// @return Encoded hash string safe for database storage.
@@ -250,7 +251,11 @@ rt_string rt_password_hash_with_iterations(rt_string password, int64_t iteration
 /// @param hash     The stored hash string from rt_password_hash.
 /// @return 1 if the password matches, 0 otherwise.
 int8_t rt_password_verify(rt_string password, rt_string hash) {
+    if (!hash)
+        return 0;
     const char *hash_str = rt_string_cstr(hash);
+    if (!hash_str)
+        return 0;
 
     // Parse format: "PBKDF2$iterations$salt_b64$hash_b64"
     if (strncmp(hash_str, "PBKDF2$", 7) != 0) {

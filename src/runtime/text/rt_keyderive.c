@@ -100,6 +100,13 @@ void rt_keyderive_pbkdf2_sha256_raw(const uint8_t *password,
                                     uint32_t iterations,
                                     uint8_t *out,
                                     size_t out_len) {
+    if (!salt || salt_len == 0)
+        rt_trap("PBKDF2: salt must not be empty");
+    if (iterations == 0)
+        rt_trap("PBKDF2: iterations must be greater than 0");
+    if (!out || out_len == 0 || out_len > RT_PBKDF2_MAX_KEY_LEN)
+        rt_trap("PBKDF2: key_len must be between 1 and 1024");
+
     // Number of blocks needed
     uint32_t block_count = (uint32_t)((out_len + SHA256_DIGEST_LEN - 1) / SHA256_DIGEST_LEN);
 
@@ -167,34 +174,34 @@ void *rt_keyderive_pbkdf2_sha256(rt_string password,
                                  int64_t iterations,
                                  int64_t key_len) {
     // Validate iterations
-    if (iterations < RT_PBKDF2_MIN_ITERATIONS) {
+    size_t salt_len;
+    uint8_t *salt_data;
+
+    if (iterations < RT_PBKDF2_MIN_ITERATIONS)
         rt_trap("PBKDF2: iterations must be at least 1000");
-    }
-
-    // Validate key length
-    if (key_len < 1 || key_len > RT_PBKDF2_MAX_KEY_LEN) {
+    if (key_len < 1 || key_len > RT_PBKDF2_MAX_KEY_LEN)
         rt_trap("PBKDF2: key_len must be between 1 and 1024");
-    }
 
-    // Extract password
     const char *pwd_cstr = rt_string_cstr(password);
     if (!pwd_cstr)
         pwd_cstr = "";
     size_t pwd_len = strlen(pwd_cstr);
 
-    // Extract salt
-    size_t salt_len;
-    uint8_t *salt_data = rt_bytes_extract_raw(salt, &salt_len);
+    salt_data = rt_bytes_extract_raw(salt, &salt_len);
+    if (!salt_data || salt_len == 0) {
+        free(salt_data);
+        rt_trap("PBKDF2: salt must not be empty");
+    }
 
-    // Allocate output buffer
     uint8_t *derived_key = (uint8_t *)malloc((size_t)key_len);
-    if (!derived_key)
+    if (!derived_key) {
+        free(salt_data);
         rt_trap("PBKDF2: memory allocation failed");
+    }
 
-    // Derive key
     rt_keyderive_pbkdf2_sha256_raw((const uint8_t *)pwd_cstr,
                                    pwd_len,
-                                   salt_data ? salt_data : (const uint8_t *)"",
+                                   salt_data,
                                    salt_len,
                                    (uint32_t)iterations,
                                    derived_key,
@@ -224,34 +231,34 @@ rt_string rt_keyderive_pbkdf2_sha256_str(rt_string password,
                                          int64_t iterations,
                                          int64_t key_len) {
     // Validate iterations
-    if (iterations < RT_PBKDF2_MIN_ITERATIONS) {
+    size_t salt_len;
+    uint8_t *salt_data;
+
+    if (iterations < RT_PBKDF2_MIN_ITERATIONS)
         rt_trap("PBKDF2: iterations must be at least 1000");
-    }
-
-    // Validate key length
-    if (key_len < 1 || key_len > RT_PBKDF2_MAX_KEY_LEN) {
+    if (key_len < 1 || key_len > RT_PBKDF2_MAX_KEY_LEN)
         rt_trap("PBKDF2: key_len must be between 1 and 1024");
-    }
 
-    // Extract password
     const char *pwd_cstr = rt_string_cstr(password);
     if (!pwd_cstr)
         pwd_cstr = "";
     size_t pwd_len = strlen(pwd_cstr);
 
-    // Extract salt
-    size_t salt_len;
-    uint8_t *salt_data = rt_bytes_extract_raw(salt, &salt_len);
+    salt_data = rt_bytes_extract_raw(salt, &salt_len);
+    if (!salt_data || salt_len == 0) {
+        free(salt_data);
+        rt_trap("PBKDF2: salt must not be empty");
+    }
 
-    // Allocate output buffer
     uint8_t *derived_key = (uint8_t *)malloc((size_t)key_len);
-    if (!derived_key)
+    if (!derived_key) {
+        free(salt_data);
         rt_trap("PBKDF2: memory allocation failed");
+    }
 
-    // Derive key
     rt_keyderive_pbkdf2_sha256_raw((const uint8_t *)pwd_cstr,
                                    pwd_len,
-                                   salt_data ? salt_data : (const uint8_t *)"",
+                                   salt_data,
                                    salt_len,
                                    (uint32_t)iterations,
                                    derived_key,

@@ -23,6 +23,7 @@
 
 #include "rt_crypto.h"
 #include "rt_ecdsa_p256.h"
+#include "rt_network_time.inc"
 #include "rt_rsa.h"
 #include "rt_tls_internal.h"
 
@@ -52,10 +53,6 @@
 #define RT_TLS_MAYBE_UNUSED __attribute__((unused))
 #else
 #define RT_TLS_MAYBE_UNUSED
-#endif
-
-#if !defined(_WIN32)
-extern time_t timegm(struct tm *);
 #endif
 
 //=============================================================================
@@ -776,6 +773,10 @@ int tls_verify_chain(rt_tls_session_t *session) {
         session->error = "TLS: no certificate to validate";
         return RT_TLS_ERROR_HANDSHAKE;
     }
+    if (!cert_allows_tls_server_auth(session->server_cert_der, session->server_cert_der_len)) {
+        session->error = "TLS: certificate is not valid for TLS server authentication";
+        return RT_TLS_ERROR_HANDSHAKE;
+    }
 
     PCCERT_CONTEXT cert_ctx = CertCreateCertificateContext(X509_ASN_ENCODING | PKCS_7_ASN_ENCODING,
                                                            session->server_cert_der,
@@ -1026,7 +1027,7 @@ static time_t parse_der_time(const uint8_t *data, size_t len, uint8_t tag) {
     tm_val.tm_hour = (s[pos + 4] - '0') * 10 + (s[pos + 5] - '0');
     tm_val.tm_min = (s[pos + 6] - '0') * 10 + (s[pos + 7] - '0');
     tm_val.tm_sec = (s[pos + 8] - '0') * 10 + (s[pos + 9] - '0');
-    return timegm(&tm_val);
+    return rt_network_timegm_utc(&tm_val);
 }
 
 static RT_TLS_MAYBE_UNUSED int cert_check_expiry(const uint8_t *cert_der, size_t cert_len) {
@@ -1105,6 +1106,130 @@ static RT_TLS_MAYBE_UNUSED int cert_is_self_signed(const uint8_t *cert_der, size
     const uint8_t *subject = cert_get_subject(cert_der, cert_len, &subject_len);
     const uint8_t *issuer = cert_get_issuer(cert_der, cert_len, &issuer_len);
     return subject && issuer && der_names_equal(subject, subject_len, issuer, issuer_len);
+}
+
+static RT_TLS_MAYBE_UNUSED int cert_allows_tls_server_auth(const uint8_t *cert_der, size_t cert_len) {
+    static const uint8_t OID_KEY_USAGE[] = {0x55, 0x1d, 0x0f};
+    static const uint8_t OID_EXTENDED_KEY_USAGE[] = {0x55, 0x1d, 0x25};
+    static const uint8_t OID_SERVER_AUTH[] = {0x2b, 0x06, 0x01, 0x05, 0x05, 0x07, 0x03, 0x01};
+    static const uint8_t OID_ANY_EXTENDED_KEY_USAGE[] = {0x55, 0x1d, 0x25, 0x00};
+    uint8_t tag;
+    size_t vl, hl;
+    const uint8_t *p = cert_der;
+    size_t rem = cert_len;
+    const uint8_t *tbs = NULL;
+    size_t tbs_rem = 0;
+    int key_usage_allows = 1;
+    int saw_eku = 0;
+    int eku_allows = 1;
+
+    if (der_read_tlv(p, rem, &tag, &vl, &hl) != 0 || tag != 0x30)
+        return 0;
+    p += hl;
+    rem = vl;
+    if (der_read_tlv(p, rem, &tag, &vl, &hl) != 0 || tag != 0x30)
+        return 0;
+    tbs = p + hl;
+    tbs_rem = vl;
+
+    if (der_read_tlv(tbs, tbs_rem, &tag, &vl, &hl) != 0)
+        return 0;
+    if (tag == 0xA0) {
+        tbs += hl + vl;
+        tbs_rem -= hl + vl;
+    }
+
+    for (int i = 0; i < 6; i++) {
+        if (der_read_tlv(tbs, tbs_rem, &tag, &vl, &hl) != 0)
+            return 0;
+        tbs += hl + vl;
+        tbs_rem -= hl + vl;
+    }
+
+    while (tbs_rem > 0) {
+        if (der_read_tlv(tbs, tbs_rem, &tag, &vl, &hl) != 0)
+            break;
+        if (tag == 0xA3) {
+            const uint8_t *exts = tbs + hl;
+            size_t exts_rem = vl;
+            if (der_read_tlv(exts, exts_rem, &tag, &vl, &hl) != 0 || tag != 0x30)
+                return 0;
+            exts += hl;
+            exts_rem = vl;
+            while (exts_rem > 0) {
+                const uint8_t *ext = exts;
+                size_t ext_rem = 0;
+                size_t ext_hdr_len = 0;
+                size_t ext_seq_len = 0;
+                const uint8_t *extn_value = NULL;
+                size_t extn_value_len = 0;
+                if (der_read_tlv(ext, exts_rem, &tag, &ext_seq_len, &ext_hdr_len) != 0 || tag != 0x30)
+                    return 0;
+                ext += ext_hdr_len;
+                ext_rem = ext_seq_len;
+                if (der_read_tlv(ext, ext_rem, &tag, &vl, &hl) != 0 || tag != 0x06)
+                    return 0;
+                {
+                    int is_key_usage = (vl == sizeof(OID_KEY_USAGE) &&
+                                        memcmp(ext + hl, OID_KEY_USAGE, sizeof(OID_KEY_USAGE)) == 0);
+                    int is_eku = (vl == sizeof(OID_EXTENDED_KEY_USAGE) &&
+                                  memcmp(ext + hl,
+                                         OID_EXTENDED_KEY_USAGE,
+                                         sizeof(OID_EXTENDED_KEY_USAGE)) == 0);
+                    ext += hl + vl;
+                    ext_rem -= hl + vl;
+                    if (der_read_tlv(ext, ext_rem, &tag, &vl, &hl) == 0 && tag == 0x01) {
+                        ext += hl + vl;
+                        ext_rem -= hl + vl;
+                    }
+                    if (der_read_tlv(ext, ext_rem, &tag, &vl, &hl) != 0 || tag != 0x04)
+                        return 0;
+                    extn_value = ext + hl;
+                    extn_value_len = vl;
+
+                    if (is_key_usage) {
+                        if (der_read_tlv(extn_value, extn_value_len, &tag, &vl, &hl) == 0 &&
+                            tag == 0x03 && vl >= 2) {
+                            const uint8_t *bits = extn_value + hl;
+                            key_usage_allows = (bits[1] & 0x80) != 0 || (bits[1] & 0x20) != 0;
+                        }
+                    } else if (is_eku) {
+                        const uint8_t *eku = extn_value;
+                        size_t eku_len = extn_value_len;
+                        saw_eku = 1;
+                        eku_allows = 0;
+                        if (der_read_tlv(eku, eku_len, &tag, &vl, &hl) == 0 && tag == 0x30) {
+                            eku += hl;
+                            eku_len = vl;
+                            while (eku_len > 0) {
+                                if (der_read_tlv(eku, eku_len, &tag, &vl, &hl) != 0 || tag != 0x06)
+                                    break;
+                                if ((vl == sizeof(OID_SERVER_AUTH) &&
+                                     memcmp(eku + hl, OID_SERVER_AUTH, sizeof(OID_SERVER_AUTH)) == 0) ||
+                                    (vl == sizeof(OID_ANY_EXTENDED_KEY_USAGE) &&
+                                     memcmp(eku + hl,
+                                            OID_ANY_EXTENDED_KEY_USAGE,
+                                            sizeof(OID_ANY_EXTENDED_KEY_USAGE)) == 0)) {
+                                    eku_allows = 1;
+                                    break;
+                                }
+                                eku += hl + vl;
+                                eku_len -= hl + vl;
+                            }
+                        }
+                    }
+                }
+
+                exts += ext_hdr_len + ext_seq_len;
+                exts_rem -= ext_hdr_len + ext_seq_len;
+            }
+            break;
+        }
+        tbs += hl + vl;
+        tbs_rem -= hl + vl;
+    }
+
+    return key_usage_allows && (!saw_eku || eku_allows);
 }
 
 static RT_TLS_MAYBE_UNUSED int cert_is_ca(const uint8_t *cert_der, size_t cert_len) {
@@ -1823,6 +1948,10 @@ int tls_verify_chain(rt_tls_session_t *session) {
 
     if (!session->server_cert_der_len) {
         session->error = "TLS: no certificate to validate";
+        return RT_TLS_ERROR_HANDSHAKE;
+    }
+    if (!cert_allows_tls_server_auth(session->server_cert_der, session->server_cert_der_len)) {
+        session->error = "TLS: certificate is not valid for TLS server authentication";
         return RT_TLS_ERROR_HANDSHAKE;
     }
 

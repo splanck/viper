@@ -25,6 +25,7 @@
 #include "rt_sse.h"
 
 #include "rt_internal.h"
+#include "rt_network_http_internal.h"
 #include "rt_network_internal.h"
 #include "rt_object.h"
 #include "rt_string.h"
@@ -470,6 +471,66 @@ static int sse_wait_readable(rt_sse_impl *sse, int64_t timeout_ms) {
     return sse->socket_fd != INVALID_SOCK && wait_socket(sse->socket_fd, (int)timeout_ms, false) > 0;
 }
 
+static char *sse_strdup_trimmed(const char *text) {
+    const char *start = text ? text : "";
+    size_t len = strlen(start);
+    while (len > 0 && (*start == ' ' || *start == '\t')) {
+        start++;
+        len--;
+    }
+    while (len > 0 && (start[len - 1] == ' ' || start[len - 1] == '\t'))
+        len--;
+    char *copy = (char *)malloc(len + 1);
+    if (!copy)
+        return NULL;
+    memcpy(copy, start, len);
+    copy[len] = '\0';
+    return copy;
+}
+
+static int sse_parse_http_status_line(const char *status_line) {
+    if (!status_line)
+        return -1;
+    if (strncmp(status_line, "HTTP/1.1 ", 9) != 0 && strncmp(status_line, "HTTP/1.0 ", 9) != 0)
+        return -1;
+    if (status_line[9] < '0' || status_line[9] > '9' || status_line[10] < '0' ||
+        status_line[10] > '9' || status_line[11] < '0' || status_line[11] > '9') {
+        return -1;
+    }
+    return (status_line[9] - '0') * 100 + (status_line[10] - '0') * 10 + (status_line[11] - '0');
+}
+
+static int sse_content_encoding_supported(const char *value) {
+    const char *p = value;
+    int saw_token = 0;
+    if (!value)
+        return 1;
+    while (*p) {
+        const char *start;
+        const char *end;
+        while (*p == ' ' || *p == '\t' || *p == ',')
+            p++;
+        if (*p == '\0')
+            break;
+        start = p;
+        while (*p && *p != ',' && *p != ';')
+            p++;
+        end = p;
+        while (end > start && (end[-1] == ' ' || end[-1] == '\t'))
+            end--;
+        if (end > start) {
+            saw_token = 1;
+            if ((size_t)(end - start) != strlen("identity") ||
+                strncasecmp(start, "identity", strlen("identity")) != 0) {
+                return 0;
+            }
+        }
+        while (*p && *p != ',')
+            p++;
+    }
+    return saw_token ? 1 : 1;
+}
+
 //=============================================================================
 // Public API
 //=============================================================================
@@ -486,25 +547,46 @@ static int sse_open_url(
     const char *host_cstr;
     const char *path_cstr;
     const char *query_cstr;
+    char *current_url = NULL;
+    char *target = NULL;
+    char *request = NULL;
+    char *redirect_location = NULL;
+    rt_string status_line = NULL;
+    const char *last_event_id = (allow_resume && sse->last_event_id) ? sse->last_event_id : NULL;
+    int redirects_left = 5;
+    int status = -1;
     int is_secure;
+    int saw_stream_type = 0;
+    int unsupported_content_encoding = 0;
+    int rlen;
     int64_t port;
     size_t path_len;
     size_t query_len;
     size_t target_len;
-    char *target = NULL;
-    char host_header[512];
-    const char *last_event_id = (allow_resume && sse->last_event_id) ? sse->last_event_id : NULL;
     size_t request_cap;
-    char *request = NULL;
-    int rlen;
-    rt_string status_line = NULL;
-    int saw_stream_type = 0;
+    char host_header[512];
 
     if (err_msg && err_msg_cap > 0)
         err_msg[0] = '\0';
 
+    current_url = url_str ? strdup(url_str) : NULL;
+    if (!current_url) {
+        if (err_msg && err_msg_cap > 0)
+            snprintf(err_msg, err_msg_cap, "SSE: OOM");
+        return 0;
+    }
+
+retry:
     sse_close_transport(sse);
-    url = rt_string_from_bytes(url_str, strlen(url_str));
+    sse->chunked = 0;
+    sse->chunk_remaining = 0;
+    sse->read_buf_len = 0;
+    sse->read_buf_pos = 0;
+    saw_stream_type = 0;
+    unsupported_content_encoding = 0;
+    status = -1;
+
+    url = rt_string_from_bytes(current_url, strlen(current_url));
     url_obj = rt_url_parse(url);
     scheme = rt_url_scheme(url_obj);
     host = rt_url_host(url_obj);
@@ -622,17 +704,13 @@ static int sse_open_url(
             snprintf(err_msg, err_msg_cap, "SSE: no HTTP response");
         goto fail;
     }
-    {
-        const char *status_cstr = rt_string_cstr(status_line);
-        int ok_status = status_cstr && (strncmp(status_cstr, "HTTP/1.1 200", 12) == 0 ||
-                                        strncmp(status_cstr, "HTTP/1.0 200", 12) == 0);
-        rt_string_unref(status_line);
-        status_line = NULL;
-        if (!ok_status) {
-            if (err_msg && err_msg_cap > 0)
-                snprintf(err_msg, err_msg_cap, "SSE: endpoint did not return HTTP 200");
-            goto fail;
-        }
+    status = sse_parse_http_status_line(rt_string_cstr(status_line));
+    rt_string_unref(status_line);
+    status_line = NULL;
+    if (status < 0) {
+        if (err_msg && err_msg_cap > 0)
+            snprintf(err_msg, err_msg_cap, "SSE: invalid HTTP response");
+        goto fail;
     }
 
     while (1) {
@@ -658,10 +736,82 @@ static int sse_open_url(
             const char *value = line_cstr + 18;
             while (*value == ' ' || *value == '\t')
                 value++;
-            sse->chunked = strncasecmp(value, "chunked", 7) == 0;
+            sse->chunked = rt_http_header_value_has_token(value, "chunked");
+        } else if (strncasecmp(line_cstr, "Location:", 9) == 0) {
+            free(redirect_location);
+            redirect_location = sse_strdup_trimmed(line_cstr + 9);
+        } else if (strncasecmp(line_cstr, "Content-Encoding:", 17) == 0) {
+            const char *value = line_cstr + 17;
+            while (*value == ' ' || *value == '\t')
+                value++;
+            if (!sse_content_encoding_supported(value))
+                unsupported_content_encoding = 1;
         }
 
         rt_string_unref(line);
+    }
+
+    if ((status == 301 || status == 302 || status == 303 || status == 307 || status == 308) &&
+        redirect_location && *redirect_location) {
+        rt_string current_rt = NULL;
+        rt_string location_rt = NULL;
+        rt_string next_rt = NULL;
+        char *next_url = NULL;
+
+        if (redirects_left-- <= 0) {
+            if (err_msg && err_msg_cap > 0)
+                snprintf(err_msg, err_msg_cap, "SSE: too many redirects");
+            goto fail;
+        }
+
+        current_rt = rt_string_from_bytes(current_url, strlen(current_url));
+        location_rt = rt_string_from_bytes(redirect_location, strlen(redirect_location));
+        next_rt = rt_http_resolve_redirect_url(current_rt, location_rt);
+        next_url = strdup(rt_string_cstr(next_rt) ? rt_string_cstr(next_rt) : "");
+        rt_string_unref(next_rt);
+        rt_string_unref(location_rt);
+        rt_string_unref(current_rt);
+        if (!next_url || !*next_url) {
+            free(next_url);
+            if (err_msg && err_msg_cap > 0)
+                snprintf(err_msg, err_msg_cap, "SSE: invalid redirect URL");
+            goto fail;
+        }
+
+        free(request);
+        request = NULL;
+        free(target);
+        target = NULL;
+        free(redirect_location);
+        redirect_location = NULL;
+        rt_string_unref(query);
+        query = NULL;
+        rt_string_unref(path);
+        path = NULL;
+        rt_string_unref(host);
+        host = NULL;
+        rt_string_unref(scheme);
+        scheme = NULL;
+        if (url_obj && rt_obj_release_check0(url_obj))
+            rt_obj_free(url_obj);
+        url_obj = NULL;
+        rt_string_unref(url);
+        url = NULL;
+        free(current_url);
+        current_url = next_url;
+        goto retry;
+    }
+
+    if (status != 200) {
+        if (err_msg && err_msg_cap > 0)
+            snprintf(err_msg, err_msg_cap, "SSE: endpoint did not return HTTP 200");
+        goto fail;
+    }
+
+    if (unsupported_content_encoding) {
+        if (err_msg && err_msg_cap > 0)
+            snprintf(err_msg, err_msg_cap, "SSE: unsupported Content-Encoding");
+        goto fail;
     }
 
     if (!saw_stream_type) {
@@ -672,6 +822,7 @@ static int sse_open_url(
 
     free(request);
     free(target);
+    free(redirect_location);
     rt_string_unref(query);
     rt_string_unref(path);
     rt_string_unref(host);
@@ -679,12 +830,14 @@ static int sse_open_url(
     if (url_obj && rt_obj_release_check0(url_obj))
         rt_obj_free(url_obj);
     rt_string_unref(url);
+    free(current_url);
     sse->is_open = true;
     return 1;
 
 fail:
     if (status_line)
         rt_string_unref(status_line);
+    free(redirect_location);
     free(request);
     free(target);
     sse_close_transport(sse);
@@ -700,6 +853,7 @@ fail:
         rt_obj_free(url_obj);
     if (url)
         rt_string_unref(url);
+    free(current_url);
     return 0;
 }
 

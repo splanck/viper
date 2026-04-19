@@ -6,14 +6,14 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/network/rt_connpool.h
-// Purpose: Thread-safe TCP/TLS connection pooling for HTTP keep-alive.
+// Purpose: Thread-safe plain-TCP connection pooling for HTTP keep-alive.
 // Key invariants:
 //   - Connections are keyed by host:port.
 //   - Pool is thread-safe (internal mutex).
 //   - Idle connections are evicted after max_idle_sec.
 // Ownership/Lifetime:
 //   - Pool objects are GC-managed via rt_obj_set_finalizer.
-// Links: rt_network.h (TCP), rt_tls.h (TLS)
+// Links: rt_network.h (TCP)
 //
 //===----------------------------------------------------------------------===//
 #pragma once
@@ -29,7 +29,7 @@ extern "C" {
 /// @param max_size Maximum number of pooled connections.
 void *rt_connpool_new(int64_t max_size);
 
-/// @brief Acquire a TCP connection from the pool (or create new).
+/// @brief Acquire a plain TCP connection from the pool (or create new).
 void *rt_connpool_acquire(void *pool, rt_string host, int64_t port);
 
 /// @brief Return a connection to the pool for reuse.

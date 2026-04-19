@@ -20,6 +20,7 @@
 
 #include "rt_http_client.h"
 #include "rt_network_http_internal.h"
+#include "rt_network_time.inc"
 
 #include "rt_internal.h"
 #include "rt_map.h"
@@ -33,9 +34,22 @@
 #include <string.h>
 #include <time.h>
 #ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
 #define strncasecmp _strnicmp
+typedef CRITICAL_SECTION http_client_mutex_t;
+#define HTTP_CLIENT_MUTEX_INIT(m) InitializeCriticalSection(m)
+#define HTTP_CLIENT_MUTEX_LOCK(m) EnterCriticalSection(m)
+#define HTTP_CLIENT_MUTEX_UNLOCK(m) LeaveCriticalSection(m)
+#define HTTP_CLIENT_MUTEX_DESTROY(m) DeleteCriticalSection(m)
 #else
+#include <pthread.h>
 #include <strings.h>
+typedef pthread_mutex_t http_client_mutex_t;
+#define HTTP_CLIENT_MUTEX_INIT(m) pthread_mutex_init(m, NULL)
+#define HTTP_CLIENT_MUTEX_LOCK(m) pthread_mutex_lock(m)
+#define HTTP_CLIENT_MUTEX_UNLOCK(m) pthread_mutex_unlock(m)
+#define HTTP_CLIENT_MUTEX_DESTROY(m) pthread_mutex_destroy(m)
 #endif
 
 #include "rt_trap.h"
@@ -65,6 +79,8 @@ typedef struct {
     void *connection_pool;
     int64_t pool_size;
     int8_t keep_alive;
+    http_client_mutex_t lock;
+    int8_t lock_initialized;
 } rt_http_client_impl;
 
 static void free_cookie_list(rt_http_cookie *cookie) {
@@ -88,76 +104,20 @@ static void rt_http_client_finalize(void *obj) {
     if (c->connection_pool && rt_obj_release_check0(c->connection_pool))
         rt_obj_free(c->connection_pool);
     free_cookie_list(c->cookies);
+    if (c->lock_initialized)
+        HTTP_CLIENT_MUTEX_DESTROY(&c->lock);
 }
 
 //=============================================================================
 // Helpers
 //=============================================================================
 
-/// @brief Identify request headers that must be stripped on a cross-origin redirect.
-/// @details The HTTP client follows redirects by default, but a redirect to a
-///          different origin may be attacker-controlled (a server you trust
-///          redirecting you to a server you don't). Forwarding credential-bearing
-///          headers across that boundary leaks bearer tokens, session cookies,
-///          and API keys to whoever the attacker pointed the redirect at.
-///
-///          This function lists the names that must be dropped before reissuing
-///          the request to the new origin: standard HTTP auth (`Authorization`,
-///          `Proxy-Authorization`), all cookie variants (`Cookie`, `Cookie2`),
-///          and the common ad-hoc API-key / bearer-token header names that
-///          modern services use (`X-API-Key`, `Api-Key`, `ApiKey`,
-///          `X-Auth-Token`, `X-Access-Token`).
-///
-///          The list is comparison-only — case-insensitive via `strcasecmp`,
-///          since HTTP header names are case-insensitive. Same-origin redirects
-///          retain all headers because they're equivalent to the caller making
-///          the new request directly.
-/// @param name Header name (case-insensitive comparison).
-/// @return Non-zero if the header is sensitive and should be stripped.
-static int header_is_sensitive_for_cross_origin_redirect(const char *name) {
-    if (!name)
-        return 0;
-    return strcasecmp(name, "Authorization") == 0 ||
-           strcasecmp(name, "Proxy-Authorization") == 0 ||
-           strcasecmp(name, "Cookie") == 0 || strcasecmp(name, "Cookie2") == 0 ||
-           strcasecmp(name, "X-API-Key") == 0 || strcasecmp(name, "Api-Key") == 0 ||
-           strcasecmp(name, "ApiKey") == 0 || strcasecmp(name, "X-Auth-Token") == 0 ||
-           strcasecmp(name, "X-Access-Token") == 0;
-}
-
-static int url_has_same_origin(rt_string lhs, rt_string rhs) {
-    int same_origin = 0;
-    void *lhs_parsed = rt_url_parse(lhs);
-    void *rhs_parsed = rt_url_parse(rhs);
-    rt_string lhs_scheme = rt_url_scheme(lhs_parsed);
-    rt_string rhs_scheme = rt_url_scheme(rhs_parsed);
-    rt_string lhs_host = rt_url_host(lhs_parsed);
-    rt_string rhs_host = rt_url_host(rhs_parsed);
-    const char *lhs_scheme_cstr = rt_string_cstr(lhs_scheme);
-    const char *rhs_scheme_cstr = rt_string_cstr(rhs_scheme);
-    const char *lhs_host_cstr = rt_string_cstr(lhs_host);
-    const char *rhs_host_cstr = rt_string_cstr(rhs_host);
-    const int64_t lhs_port = rt_url_port(lhs_parsed);
-    const int64_t rhs_port = rt_url_port(rhs_parsed);
-
-    if (lhs_scheme_cstr && rhs_scheme_cstr && lhs_host_cstr && rhs_host_cstr &&
-        strcasecmp(lhs_scheme_cstr, rhs_scheme_cstr) == 0 &&
-        strcasecmp(lhs_host_cstr, rhs_host_cstr) == 0 && lhs_port == rhs_port) {
-        same_origin = 1;
-    }
-
-    rt_string_unref(rhs_host);
-    rt_string_unref(lhs_host);
-    rt_string_unref(rhs_scheme);
-    rt_string_unref(lhs_scheme);
-    if (rhs_parsed && rt_obj_release_check0(rhs_parsed))
-        rt_obj_free(rhs_parsed);
-    if (lhs_parsed && rt_obj_release_check0(lhs_parsed))
-        rt_obj_free(lhs_parsed);
-    return same_origin;
-}
-
 static void apply_defaults(rt_http_client_impl *c, void *req, int allow_sensitive_headers) {
+    int64_t timeout_ms = 0;
+    int8_t keep_alive = 0;
+    void *connection_pool = NULL;
+
+    HTTP_CLIENT_MUTEX_LOCK(&c->lock);
     // Apply default headers
     void *keys = rt_map_keys(c->default_headers);
     int64_t count = rt_seq_len(keys);
@@ -165,20 +125,27 @@ static void apply_defaults(rt_http_client_impl *c, void *req, int allow_sensitiv
         rt_string key = (rt_string)rt_seq_get(keys, i);
         void *val = rt_map_get(c->default_headers, key);
         if (val && (allow_sensitive_headers ||
-                    !header_is_sensitive_for_cross_origin_redirect(rt_string_cstr(key)))) {
+                    !rt_http_header_is_sensitive_for_cross_origin_redirect(rt_string_cstr(key)))) {
             rt_http_req_set_header(req, key, (rt_string)val);
         }
     }
     if (rt_obj_release_check0(keys))
         rt_obj_free(keys);
 
-    // Apply timeout
-    if (c->timeout_ms > 0)
-        rt_http_req_set_timeout(req, c->timeout_ms);
+    timeout_ms = c->timeout_ms;
+    keep_alive = c->keep_alive;
+    connection_pool = keep_alive ? c->connection_pool : NULL;
+    if (connection_pool)
+        rt_obj_retain_maybe(connection_pool);
+    HTTP_CLIENT_MUTEX_UNLOCK(&c->lock);
 
+    if (timeout_ms > 0)
+        rt_http_req_set_timeout(req, timeout_ms);
     rt_http_req_set_follow_redirects(req, 0);
-    rt_http_req_set_keep_alive(req, c->keep_alive);
-    rt_http_req_set_connection_pool(req, c->keep_alive ? c->connection_pool : NULL);
+    rt_http_req_set_keep_alive(req, keep_alive);
+    rt_http_req_set_connection_pool(req, connection_pool);
+    if (connection_pool && rt_obj_release_check0(connection_pool))
+        rt_obj_free(connection_pool);
 }
 
 static int64_t cookie_now_seconds(void) {
@@ -214,6 +181,26 @@ static char *cookie_strdup_lower(const char *text) {
     return out;
 }
 
+static char *cookie_strdup_manual_domain(const char *text) {
+    char *out = cookie_strdup_lower(text);
+    size_t len;
+    if (!out)
+        return NULL;
+    while (*out == '.' || *out == ' ' || *out == '\t')
+        memmove(out, out + 1, strlen(out));
+    len = strlen(out);
+    while (len > 0 &&
+           (out[len - 1] == ' ' || out[len - 1] == '\t' || out[len - 1] == '.' ||
+            out[len - 1] == '/')) {
+        out[--len] = '\0';
+    }
+    if (len >= 2 && out[0] == '[' && out[len - 1] == ']') {
+        memmove(out, out + 1, len - 2);
+        out[len - 2] = '\0';
+    }
+    return out;
+}
+
 static char *cookie_default_path(const char *request_path) {
     if (!request_path || request_path[0] != '/')
         return strdup("/");
@@ -241,15 +228,6 @@ static int cookie_month_index(const char *month) {
     return -1;
 }
 
-static int64_t cookie_days_from_civil(int year, unsigned month, unsigned day) {
-    year -= month <= 2;
-    const int era = (year >= 0 ? year : year - 399) / 400;
-    const unsigned yoe = (unsigned)(year - era * 400);
-    const unsigned doy = (153 * (month + (month > 2 ? -3 : 9)) + 2) / 5 + day - 1;
-    const unsigned doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
-    return (int64_t)era * 146097 + (int64_t)doe - 719468;
-}
-
 static int parse_cookie_expires(const char *text, int64_t *out_epoch) {
     char weekday[4] = {0};
     char month[4] = {0};
@@ -275,7 +253,8 @@ static int parse_cookie_expires(const char *text, int64_t *out_epoch) {
         second < 0 || second > 60 || year < 1601)
         return -1;
 
-    *out_epoch = cookie_days_from_civil(year, (unsigned)(month_index + 1), (unsigned)day) * 86400 +
+    *out_epoch = rt_network_days_from_civil(year, (unsigned)(month_index + 1), (unsigned)day) *
+                     86400 +
                  hour * 3600 + minute * 60 + second;
     return 0;
 }
@@ -315,7 +294,7 @@ static int cookie_is_expired(const rt_http_cookie *cookie, int64_t now) {
     return cookie && cookie->persistent && cookie->expires_at <= now;
 }
 
-static void purge_expired_cookies(rt_http_client_impl *c) {
+static void purge_expired_cookies_locked(rt_http_client_impl *c) {
     rt_http_cookie **link = &c->cookies;
     const int64_t now = cookie_now_seconds();
     while (*link) {
@@ -330,7 +309,7 @@ static void purge_expired_cookies(rt_http_client_impl *c) {
     }
 }
 
-static void replace_cookie(rt_http_client_impl *c, rt_http_cookie *incoming) {
+static void replace_cookie_locked(rt_http_client_impl *c, rt_http_cookie *incoming) {
     rt_http_cookie **link = &c->cookies;
     while (*link) {
         rt_http_cookie *cookie = *link;
@@ -368,7 +347,8 @@ static void apply_cookie_header(rt_http_client_impl *c, void *req, rt_string url
     size_t cookie_count = 0;
     char *cookie_header = NULL;
 
-    purge_expired_cookies(c);
+    HTTP_CLIENT_MUTEX_LOCK(&c->lock);
+    purge_expired_cookies_locked(c);
 
     if (!host_cstr || !*host_cstr) {
         rt_string_unref(scheme);
@@ -376,6 +356,7 @@ static void apply_cookie_header(rt_http_client_impl *c, void *req, rt_string url
         rt_string_unref(host);
         if (parsed && rt_obj_release_check0(parsed))
             rt_obj_free(parsed);
+        HTTP_CLIENT_MUTEX_UNLOCK(&c->lock);
         return;
     }
 
@@ -419,6 +400,8 @@ static void apply_cookie_header(rt_http_client_impl *c, void *req, rt_string url
         free(cookie_header);
     }
 
+    HTTP_CLIENT_MUTEX_UNLOCK(&c->lock);
+
     rt_string_unref(scheme);
     rt_string_unref(path);
     rt_string_unref(host);
@@ -426,7 +409,7 @@ static void apply_cookie_header(rt_http_client_impl *c, void *req, rt_string url
         rt_obj_free(parsed);
 }
 
-static void store_cookie_line(rt_http_client_impl *c,
+static void store_cookie_line_locked(rt_http_client_impl *c,
                               const char *host,
                               const char *request_path,
                               int is_secure,
@@ -542,7 +525,7 @@ static void store_cookie_line(rt_http_client_impl *c,
         }
     }
 
-    replace_cookie(c, cookie);
+    replace_cookie_locked(c, cookie);
 }
 
 static void store_response_cookies(rt_http_client_impl *c, void *res, rt_string url) {
@@ -577,11 +560,13 @@ static void store_response_cookies(rt_http_client_impl *c, void *res, rt_string 
                 break;
             memcpy(entry, line, len);
             entry[len] = '\0';
-            store_cookie_line(c,
-                              host_cstr,
-                              path_cstr && *path_cstr ? path_cstr : "/",
-                              scheme_cstr && strcasecmp(scheme_cstr, "https") == 0,
-                              entry);
+            HTTP_CLIENT_MUTEX_LOCK(&c->lock);
+            store_cookie_line_locked(c,
+                                     host_cstr,
+                                     path_cstr && *path_cstr ? path_cstr : "/",
+                                     scheme_cstr && strcasecmp(scheme_cstr, "https") == 0,
+                                     entry);
+            HTTP_CLIENT_MUTEX_UNLOCK(&c->lock);
             free(entry);
             if (!end)
                 break;
@@ -597,46 +582,9 @@ static void store_response_cookies(rt_http_client_impl *c, void *res, rt_string 
         rt_obj_free(parsed);
 }
 
-static rt_string resolve_redirect_url(rt_string current_url, rt_string location) {
-    const char *location_cstr = rt_string_cstr(location);
-    if (!location_cstr || !*location_cstr)
-        return rt_string_from_bytes("", 0);
-
-    if (strstr(location_cstr, "://"))
-        return rt_string_from_bytes(location_cstr, strlen(location_cstr));
-    if (strncmp(location_cstr, "//", 2) == 0) {
-        void *base = rt_url_parse(current_url);
-        rt_string scheme = rt_url_scheme(base);
-        const char *scheme_cstr = rt_string_cstr(scheme);
-        size_t scheme_len = scheme_cstr ? strlen(scheme_cstr) : 0;
-        size_t out_len = scheme_len + strlen(location_cstr) + 1;
-        char *absolute = (char *)malloc(out_len + 1);
-        if (!absolute) {
-            rt_string_unref(scheme);
-            if (base && rt_obj_release_check0(base))
-                rt_obj_free(base);
-            return rt_string_from_bytes(location_cstr, strlen(location_cstr));
-        }
-        snprintf(absolute, out_len + 1, "%s:%s", scheme_cstr ? scheme_cstr : "http", location_cstr);
-        rt_string full = rt_string_from_bytes(absolute, strlen(absolute));
-        free(absolute);
-        rt_string_unref(scheme);
-        if (base && rt_obj_release_check0(base))
-            rt_obj_free(base);
-        return full;
-    }
-
-    void *base = rt_url_parse(current_url);
-    void *resolved = rt_url_resolve(base, location);
-    rt_string full = rt_url_full(resolved);
-    if (resolved && rt_obj_release_check0(resolved))
-        rt_obj_free(resolved);
-    if (base && rt_obj_release_check0(base))
-        rt_obj_free(base);
-    return full;
-}
-
 static void *do_request(rt_http_client_impl *c, const char *method, rt_string url, rt_string body) {
+    int8_t follow_redirects = 0;
+    int64_t redirects_left = 0;
     const char *url_cstr = rt_string_cstr(url);
     rt_string current_url =
         rt_string_from_bytes(url_cstr ? url_cstr : "", url_cstr ? strlen(url_cstr) : 0);
@@ -648,7 +596,11 @@ static void *do_request(rt_http_client_impl *c, const char *method, rt_string ur
             rt_string_from_bytes(body_cstr ? body_cstr : "", body_cstr ? strlen(body_cstr) : 0);
     }
 
-    int64_t redirects_left = c->follow_redirects ? c->max_redirects : 0;
+    HTTP_CLIENT_MUTEX_LOCK(&c->lock);
+    follow_redirects = c->follow_redirects ? 1 : 0;
+    redirects_left = follow_redirects ? c->max_redirects : 0;
+    HTTP_CLIENT_MUTEX_UNLOCK(&c->lock);
+
     void *final_res = NULL;
     int allow_sensitive_defaults = 1;
 
@@ -671,7 +623,7 @@ static void *do_request(rt_http_client_impl *c, const char *method, rt_string ur
         store_response_cookies(c, final_res, current_url);
 
         int64_t status = rt_http_res_status(final_res);
-        if (!c->follow_redirects || redirects_left <= 0 ||
+        if (!follow_redirects || redirects_left <= 0 ||
             !(status == 301 || status == 302 || status == 303 || status == 307 || status == 308)) {
             break;
         }
@@ -683,9 +635,9 @@ static void *do_request(rt_http_client_impl *c, const char *method, rt_string ur
             break;
         }
 
-        rt_string next_url = resolve_redirect_url(current_url, location);
+        rt_string next_url = rt_http_resolve_redirect_url(current_url, location);
         rt_string_unref(location);
-        if (!url_has_same_origin(current_url, next_url))
+        if (!rt_http_url_has_same_origin(current_url, next_url))
             allow_sensitive_defaults = 0;
         rt_string_unref(current_url);
         current_url = next_url;
@@ -732,6 +684,8 @@ void *rt_http_client_new(void) {
     c->pool_size = 8;
     c->keep_alive = 1;
     c->connection_pool = rt_http_conn_pool_new(c->pool_size);
+    HTTP_CLIENT_MUTEX_INIT(&c->lock);
+    c->lock_initialized = 1;
     rt_obj_set_finalizer(c, rt_http_client_finalize);
     return c;
 }
@@ -771,21 +725,31 @@ void rt_http_client_set_header(void *obj, rt_string name, rt_string value) {
     if (!obj)
         return;
     rt_http_client_impl *c = (rt_http_client_impl *)obj;
+    HTTP_CLIENT_MUTEX_LOCK(&c->lock);
     rt_map_set(c->default_headers, name, (void *)value);
+    HTTP_CLIENT_MUTEX_UNLOCK(&c->lock);
 }
 
 /// @brief Set the request timeout in milliseconds for all subsequent requests.
 void rt_http_client_set_timeout(void *obj, int64_t timeout_ms) {
     if (!obj)
         return;
-    ((rt_http_client_impl *)obj)->timeout_ms = timeout_ms;
+    rt_http_client_impl *c = (rt_http_client_impl *)obj;
+    HTTP_CLIENT_MUTEX_LOCK(&c->lock);
+    c->timeout_ms = timeout_ms;
+    HTTP_CLIENT_MUTEX_UNLOCK(&c->lock);
 }
 
 /// @brief Check whether this client keeps HTTP connections open for reuse.
 int8_t rt_http_client_get_keep_alive(void *obj) {
     if (!obj)
         return 0;
-    return ((rt_http_client_impl *)obj)->keep_alive;
+    rt_http_client_impl *c = (rt_http_client_impl *)obj;
+    int8_t keep_alive;
+    HTTP_CLIENT_MUTEX_LOCK(&c->lock);
+    keep_alive = c->keep_alive;
+    HTTP_CLIENT_MUTEX_UNLOCK(&c->lock);
+    return keep_alive;
 }
 
 /// @brief Enable or disable pooled keep-alive transport for this client.
@@ -793,11 +757,18 @@ void rt_http_client_set_keep_alive(void *obj, int8_t keep_alive) {
     if (!obj)
         return;
     rt_http_client_impl *c = (rt_http_client_impl *)obj;
+    void *pool_to_clear = NULL;
+    int64_t pool_size = 8;
+    HTTP_CLIENT_MUTEX_LOCK(&c->lock);
     c->keep_alive = keep_alive ? 1 : 0;
+    pool_size = c->pool_size > 0 ? c->pool_size : 8;
     if (!c->keep_alive && c->connection_pool)
-        rt_http_conn_pool_clear(c->connection_pool);
+        pool_to_clear = c->connection_pool;
     if (c->keep_alive && !c->connection_pool)
-        c->connection_pool = rt_http_conn_pool_new(c->pool_size > 0 ? c->pool_size : 8);
+        c->connection_pool = rt_http_conn_pool_new(pool_size);
+    HTTP_CLIENT_MUTEX_UNLOCK(&c->lock);
+    if (pool_to_clear)
+        rt_http_conn_pool_clear(pool_to_clear);
 }
 
 /// @brief Resize the keep-alive pool. Existing idle connections are dropped.
@@ -805,13 +776,16 @@ void rt_http_client_set_pool_size(void *obj, int64_t max_size) {
     if (!obj)
         return;
     rt_http_client_impl *c = (rt_http_client_impl *)obj;
+    void *old_pool;
+    void *new_pool;
     if (max_size <= 0)
         max_size = 1;
+    new_pool = rt_http_conn_pool_new(max_size);
+    HTTP_CLIENT_MUTEX_LOCK(&c->lock);
     c->pool_size = max_size;
-
-    void *new_pool = rt_http_conn_pool_new(max_size);
-    void *old_pool = c->connection_pool;
+    old_pool = c->connection_pool;
     c->connection_pool = new_pool;
+    HTTP_CLIENT_MUTEX_UNLOCK(&c->lock);
     if (old_pool && rt_obj_release_check0(old_pool))
         rt_obj_free(old_pool);
 }
@@ -820,21 +794,32 @@ void rt_http_client_set_pool_size(void *obj, int64_t max_size) {
 void rt_http_client_set_max_redirects(void *obj, int64_t max) {
     if (!obj)
         return;
-    ((rt_http_client_impl *)obj)->max_redirects = max < 0 ? 0 : max;
+    rt_http_client_impl *c = (rt_http_client_impl *)obj;
+    HTTP_CLIENT_MUTEX_LOCK(&c->lock);
+    c->max_redirects = max < 0 ? 0 : max;
+    HTTP_CLIENT_MUTEX_UNLOCK(&c->lock);
 }
 
 /// @brief Check whether the client automatically follows HTTP redirects.
 int8_t rt_http_client_get_follow_redirects(void *obj) {
     if (!obj)
         return 0;
-    return ((rt_http_client_impl *)obj)->follow_redirects;
+    rt_http_client_impl *c = (rt_http_client_impl *)obj;
+    int8_t follow;
+    HTTP_CLIENT_MUTEX_LOCK(&c->lock);
+    follow = c->follow_redirects;
+    HTTP_CLIENT_MUTEX_UNLOCK(&c->lock);
+    return follow;
 }
 
 /// @brief Enable or disable automatic following of HTTP redirects.
 void rt_http_client_set_follow_redirects(void *obj, int8_t follow) {
     if (!obj)
         return;
-    ((rt_http_client_impl *)obj)->follow_redirects = follow ? 1 : 0;
+    rt_http_client_impl *c = (rt_http_client_impl *)obj;
+    HTTP_CLIENT_MUTEX_LOCK(&c->lock);
+    c->follow_redirects = follow ? 1 : 0;
+    HTTP_CLIENT_MUTEX_UNLOCK(&c->lock);
 }
 
 /// @brief Store a cookie for a specific domain; sent automatically on matching requests.
@@ -856,15 +841,17 @@ void rt_http_client_set_cookie(void *obj, rt_string domain, rt_string name, rt_s
         return;
     cookie->name = strdup(name_cstr);
     cookie->value = strdup(value_cstr);
-    cookie->domain = cookie_strdup_lower(domain_cstr);
+    cookie->domain = cookie_strdup_manual_domain(domain_cstr);
     cookie->path = strdup("/");
-    cookie->host_only = 0;
-    if (!cookie->name || !cookie->value || !cookie->domain || !cookie->path) {
+    cookie->host_only = 1;
+    if (!cookie->name || !cookie->value || !cookie->domain || !cookie->path || !*cookie->domain) {
         free_cookie_list(cookie);
         return;
     }
 
-    replace_cookie((rt_http_client_impl *)obj, cookie);
+    HTTP_CLIENT_MUTEX_LOCK(&((rt_http_client_impl *)obj)->lock);
+    replace_cookie_locked((rt_http_client_impl *)obj, cookie);
+    HTTP_CLIENT_MUTEX_UNLOCK(&((rt_http_client_impl *)obj)->lock);
 }
 
 /// @brief Return a cloned snapshot of all cookies stored for `domain` (key→value Map). Cloned so
@@ -879,12 +866,14 @@ void *rt_http_client_get_cookies(void *obj, rt_string domain) {
         return rt_map_new();
 
     rt_http_client_impl *c = (rt_http_client_impl *)obj;
-    purge_expired_cookies(c);
+    HTTP_CLIENT_MUTEX_LOCK(&c->lock);
+    purge_expired_cookies_locked(c);
     snapshot = rt_map_new();
     for (rt_http_cookie *cookie = c->cookies; cookie; cookie = cookie->next) {
         if (!cookie_domain_matches(cookie, domain_cstr))
             continue;
         rt_map_set_str(snapshot, rt_const_cstr(cookie->name), rt_const_cstr(cookie->value));
     }
+    HTTP_CLIENT_MUTEX_UNLOCK(&c->lock);
     return snapshot;
 }

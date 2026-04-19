@@ -25,6 +25,7 @@
 #include "rt_object.h"
 #include "rt_string.h"
 
+#include <setjmp.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -103,6 +104,21 @@ static void async_fail_submit(void *promise, const char *message) {
     async_release_owned(promise);
 }
 
+static void async_promise_error_copy(void *promise, const char *msg, const char *fallback) {
+    const char *text = msg ? msg : fallback;
+    if (!text) {
+        rt_promise_set_error(promise, rt_const_cstr("Unknown error"));
+        return;
+    }
+    rt_string copy = rt_string_from_bytes(text, strlen(text));
+    rt_promise_set_error(promise, copy);
+    rt_string_unref(copy);
+}
+
+static void async_promise_error_from_trap(void *promise, const char *fallback) {
+    async_promise_error_copy(promise, rt_trap_get_error(), fallback);
+}
+
 //=============================================================================
 // Async Connect
 //=============================================================================
@@ -118,10 +134,23 @@ typedef struct {
 /// the heap-owned host string + args struct.
 static void async_connect_worker(void *arg) {
     connect_args_t *a = (connect_args_t *)arg;
-    rt_string host = rt_string_from_bytes(a->host, strlen(a->host));
-    void *tcp = rt_tcp_connect(host, a->port);
-    rt_string_unref(host);
-    rt_promise_set(a->promise, tcp);
+    rt_string host = NULL;
+    jmp_buf recovery;
+
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) == 0) {
+        host = rt_string_from_bytes(a->host, strlen(a->host));
+        void *tcp = rt_tcp_connect(host, a->port);
+        rt_string_unref(host);
+        host = NULL;
+        rt_promise_set(a->promise, tcp);
+    } else {
+        if (host)
+            rt_string_unref(host);
+        async_promise_error_from_trap(a->promise, "AsyncSocket: connect failed");
+    }
+    rt_trap_clear_recovery();
+
     async_release_owned(a->promise);
     free(a->host);
     free(a);
@@ -170,9 +199,17 @@ typedef struct {
 /// promise with the byte count (boxed as a pointer-sized integer for the void* ABI).
 static void async_send_worker(void *arg) {
     send_args_t *a = (send_args_t *)arg;
-    int64_t sent = rt_tcp_send(a->tcp, a->data);
-    // Resolve with boxed integer (use pointer-sized value)
-    rt_promise_set(a->promise, (void *)(intptr_t)sent);
+    jmp_buf recovery;
+
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) == 0) {
+        int64_t sent = rt_tcp_send(a->tcp, a->data);
+        rt_promise_set(a->promise, (void *)(intptr_t)sent);
+    } else {
+        async_promise_error_from_trap(a->promise, "AsyncSocket: send failed");
+    }
+    rt_trap_clear_recovery();
+
     async_release_owned(a->data);
     async_release_owned(a->tcp);
     async_release_owned(a->promise);
@@ -218,8 +255,17 @@ typedef struct {
 /// promise with the resulting Bytes object.
 static void async_recv_worker(void *arg) {
     recv_args_t *a = (recv_args_t *)arg;
-    void *data = rt_tcp_recv(a->tcp, a->max_bytes);
-    rt_promise_set(a->promise, data);
+    jmp_buf recovery;
+
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) == 0) {
+        void *data = rt_tcp_recv(a->tcp, a->max_bytes);
+        rt_promise_set(a->promise, data);
+    } else {
+        async_promise_error_from_trap(a->promise, "AsyncSocket: recv failed");
+    }
+    rt_trap_clear_recovery();
+
     async_release_owned(a->tcp);
     async_release_owned(a->promise);
     free(a);
@@ -262,10 +308,24 @@ typedef struct {
 /// resolves the promise with the response body string.
 static void async_http_get_worker(void *arg) {
     http_args_t *a = (http_args_t *)arg;
-    rt_string url = rt_string_from_bytes(a->url, strlen(a->url));
-    rt_string result = rt_http_get(url);
-    rt_string_unref(url);
-    rt_promise_set(a->promise, (void *)result);
+    rt_string url = NULL;
+    jmp_buf recovery;
+
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) == 0) {
+        rt_string result;
+        url = rt_string_from_bytes(a->url, strlen(a->url));
+        result = rt_http_get(url);
+        rt_string_unref(url);
+        url = NULL;
+        rt_promise_set(a->promise, (void *)result);
+    } else {
+        if (url)
+            rt_string_unref(url);
+        async_promise_error_from_trap(a->promise, "AsyncSocket: HTTP GET failed");
+    }
+    rt_trap_clear_recovery();
+
     async_release_owned(a->promise);
     free(a->url);
     free(a);
@@ -304,13 +364,30 @@ void *rt_async_http_get(rt_string url) {
 /// promise with the response body. Empty body is sent as "" rather than NULL.
 static void async_http_post_worker(void *arg) {
     http_args_t *a = (http_args_t *)arg;
-    rt_string url = rt_string_from_bytes(a->url, strlen(a->url));
-    rt_string body =
-        a->body ? rt_string_from_bytes(a->body, strlen(a->body)) : rt_string_from_bytes("", 0);
-    rt_string result = rt_http_post(url, body);
-    rt_string_unref(url);
-    rt_string_unref(body);
-    rt_promise_set(a->promise, (void *)result);
+    rt_string url = NULL;
+    rt_string body = NULL;
+    jmp_buf recovery;
+
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) == 0) {
+        rt_string result;
+        url = rt_string_from_bytes(a->url, strlen(a->url));
+        body = a->body ? rt_string_from_bytes(a->body, strlen(a->body)) : rt_string_from_bytes("", 0);
+        result = rt_http_post(url, body);
+        rt_string_unref(url);
+        rt_string_unref(body);
+        url = NULL;
+        body = NULL;
+        rt_promise_set(a->promise, (void *)result);
+    } else {
+        if (url)
+            rt_string_unref(url);
+        if (body)
+            rt_string_unref(body);
+        async_promise_error_from_trap(a->promise, "AsyncSocket: HTTP POST failed");
+    }
+    rt_trap_clear_recovery();
+
     async_release_owned(a->promise);
     free(a->url);
     free(a->body);

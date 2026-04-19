@@ -10,8 +10,10 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_restclient.h"
+#include "rt_http_server.h"
 #include "rt_netutils.h"
 #include "rt_network.h"
+#include "rt_object.h"
 #include "rt_string.h"
 
 #include <atomic>
@@ -21,6 +23,23 @@
 #include <cstring>
 #include <string>
 #include <thread>
+
+#if defined(_WIN32)
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#pragma comment(lib, "ws2_32.lib")
+typedef SOCKET local_sock_t;
+#define LOCAL_SOCK_INVALID INVALID_SOCKET
+#define LOCAL_SOCK_CLOSE(s) closesocket(s)
+#else
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <unistd.h>
+typedef int local_sock_t;
+#define LOCAL_SOCK_INVALID (-1)
+#define LOCAL_SOCK_CLOSE(s) close(s)
+#endif
 
 static void test_result(bool cond, const char *name) {
     if (!cond) {
@@ -34,6 +53,9 @@ static std::atomic<bool> rest_server_failed{false};
 static std::atomic<int> rest_keepalive_accept_count{0};
 static std::atomic<bool> rest_keepalive_reused{false};
 static std::string rest_keepalive_connection_headers[2];
+static std::string rest_redirect_target_authorization_header;
+static std::string rest_redirect_target_api_key_header;
+static std::string rest_redirect_location;
 
 static bool ascii_header_name_equals(const char *line, const char *name, size_t name_len) {
     if (!line || !name)
@@ -75,9 +97,57 @@ static void send_text(void *client, const char *text) {
     rt_tcp_send_str(client, rt_const_cstr(text));
 }
 
+static void rest_redirect_source_handler(void *req_obj, void *res_obj) {
+    (void)req_obj;
+    rt_server_res_status(res_obj, 302);
+    rt_server_res_header(res_obj,
+                         rt_const_cstr("Location"),
+                         rt_const_cstr(rest_redirect_location.c_str()));
+    rt_server_res_send(res_obj, rt_const_cstr(""));
+}
+
+static void rest_redirect_target_handler(void *req_obj, void *res_obj) {
+    rt_string authorization = rt_server_req_header(req_obj, rt_const_cstr("Authorization"));
+    rt_string api_key = rt_server_req_header(req_obj, rt_const_cstr("X-API-Key"));
+    rest_redirect_target_authorization_header = rt_string_cstr(authorization);
+    rest_redirect_target_api_key_header = rt_string_cstr(api_key);
+    rt_string_unref(authorization);
+    rt_string_unref(api_key);
+    rt_server_res_send(res_obj, rt_const_cstr("final"));
+}
+
 static void wait_for_server() {
     for (int i = 0; i < 200 && !rest_server_ready.load(); i++)
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
+}
+
+static int get_bindable_local_port() {
+    local_sock_t fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (fd == LOCAL_SOCK_INVALID)
+        return 0;
+
+    int opt = 1;
+    (void)setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, (const char *)&opt, sizeof(opt));
+
+    struct sockaddr_in addr;
+    memset(&addr, 0, sizeof(addr));
+    addr.sin_family = AF_INET;
+    addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    addr.sin_port = 0;
+    if (bind(fd, (struct sockaddr *)&addr, sizeof(addr)) != 0) {
+        LOCAL_SOCK_CLOSE(fd);
+        return 0;
+    }
+
+    socklen_t addr_len = (socklen_t)sizeof(addr);
+    if (getsockname(fd, (struct sockaddr *)&addr, &addr_len) != 0) {
+        LOCAL_SOCK_CLOSE(fd);
+        return 0;
+    }
+
+    const int port = ntohs(addr.sin_port);
+    LOCAL_SOCK_CLOSE(fd);
+    return port;
 }
 
 static void rest_keepalive_server_thread(int port) {
@@ -396,6 +466,71 @@ static void test_restclient_keepalive_reuse() {
                 "rest_keepalive: second request should advertise keepalive");
 }
 
+static void test_restclient_cross_origin_redirect_strips_sensitive_headers() {
+    const int target_port = get_bindable_local_port();
+    const int redirect_port = get_bindable_local_port();
+    if (target_port <= 0 || redirect_port <= 0) {
+        printf("SKIP: restclient_cross_origin_redirect (local bind unavailable)\n");
+        return;
+    }
+
+    void *target_server = rt_http_server_new(target_port);
+    void *redirect_server = rt_http_server_new(redirect_port);
+
+    rt_http_server_bind_handler(
+        target_server, rt_const_cstr("target"), (void *)&rest_redirect_target_handler);
+    rt_http_server_bind_handler(
+        redirect_server, rt_const_cstr("redirect"), (void *)&rest_redirect_source_handler);
+    rt_http_server_get(target_server, rt_const_cstr("/target"), rt_const_cstr("target"));
+    rt_http_server_get(redirect_server, rt_const_cstr("/redirect"), rt_const_cstr("redirect"));
+    rt_http_server_start(target_server);
+    rt_http_server_start(redirect_server);
+
+    if (!(rt_http_server_is_running(target_server) == 1 &&
+          rt_http_server_is_running(redirect_server) == 1 &&
+          rt_http_server_port(target_server) > 0 &&
+          rt_http_server_port(redirect_server) > 0)) {
+        rt_http_server_stop(redirect_server);
+        rt_http_server_stop(target_server);
+        printf("SKIP: restclient_cross_origin_redirect (local bind unavailable)\n");
+        return;
+    }
+
+    char location_buf[128];
+    snprintf(location_buf,
+             sizeof(location_buf),
+             "http://127.0.0.1:%lld/target",
+             (long long)rt_http_server_port(target_server));
+    rest_redirect_location = location_buf;
+    rest_redirect_target_authorization_header.clear();
+    rest_redirect_target_api_key_header.clear();
+
+    char base_url[128];
+    snprintf(base_url,
+             sizeof(base_url),
+             "http://127.0.0.1:%lld",
+             (long long)rt_http_server_port(redirect_server));
+
+    void *client = rt_restclient_new(rt_const_cstr(base_url));
+    rt_restclient_set_header(client,
+                             rt_const_cstr("Authorization"),
+                             rt_const_cstr("Bearer rest-secret"));
+    rt_restclient_set_header(
+        client, rt_const_cstr("X-API-Key"), rt_const_cstr("rest-api-key"));
+
+    void *res = rt_restclient_get(client, rt_const_cstr("redirect"));
+    test_result(rt_http_res_status(res) == 200,
+                "rest_redirect: request should follow cross-origin redirect");
+
+    rt_http_server_stop(redirect_server);
+    rt_http_server_stop(target_server);
+
+    test_result(rest_redirect_target_authorization_header.empty(),
+                "rest_redirect: should strip Authorization across origins");
+    test_result(rest_redirect_target_api_key_header.empty(),
+                "rest_redirect: should strip API key header across origins");
+}
+
 //=============================================================================
 // Main
 //=============================================================================
@@ -434,6 +569,7 @@ int main() {
     // Lifecycle / finalizer regression (RC-1)
     test_restclient_many_instances();
     test_restclient_keepalive_reuse();
+    test_restclient_cross_origin_redirect_strips_sensitive_headers();
 
     printf("All RestClient tests passed!\n");
     return 0;

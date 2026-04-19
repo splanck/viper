@@ -51,7 +51,7 @@ void rt_http_client_set_max_redirects(void *client, int64_t max);
 int8_t rt_http_client_get_follow_redirects(void *client);
 /// @brief Toggle automatic 3xx redirect following.
 void rt_http_client_set_follow_redirects(void *client, int8_t follow);
-/// @brief Manually inject a cookie into the jar for @p domain.
+/// @brief Manually inject a host-only cookie into the jar for the exact @p domain text.
 void rt_http_client_set_cookie(void *client, rt_string domain, rt_string name, rt_string value);
 /// @brief Get all cookies the jar holds for @p domain (returns a Map[string, string]).
 void *rt_http_client_get_cookies(void *client, rt_string domain);

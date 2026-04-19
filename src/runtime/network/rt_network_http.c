@@ -81,10 +81,22 @@ static int http_method_is_token(const char *method) {
     return 1;
 }
 
+static int http_contains_any_char(const char *text, const char *chars) {
+    if (!text || !chars)
+        return 0;
+    for (const unsigned char *p = (const unsigned char *)text; *p; ++p) {
+        for (const unsigned char *c = (const unsigned char *)chars; *c; ++c) {
+            if (*p == *c)
+                return 1;
+        }
+    }
+    return 0;
+}
+
 static int http_host_is_valid(const char *host) {
     if (!host || !*host || http_contains_ctl_or_space(host))
         return 0;
-    return strpbrk(host, "/?#") == NULL;
+    return !http_contains_any_char(host, "/?#");
 }
 
 static int http_request_target_is_valid(const char *target) {
@@ -1038,14 +1050,105 @@ static char *build_absolute_url(const parsed_url_t *url) {
     return full;
 }
 
+/// @brief Identify request headers that must not cross origin boundaries during redirects.
+int8_t rt_http_header_is_sensitive_for_cross_origin_redirect(const char *name) {
+    if (!name)
+        return 0;
+    return strcasecmp(name, "Authorization") == 0 ||
+           strcasecmp(name, "Proxy-Authorization") == 0 ||
+           strcasecmp(name, "Cookie") == 0 || strcasecmp(name, "Cookie2") == 0 ||
+           strcasecmp(name, "X-API-Key") == 0 || strcasecmp(name, "Api-Key") == 0 ||
+           strcasecmp(name, "ApiKey") == 0 || strcasecmp(name, "X-Auth-Token") == 0 ||
+           strcasecmp(name, "X-Access-Token") == 0;
+}
+
+int8_t rt_http_url_has_same_origin(rt_string lhs, rt_string rhs) {
+    int same_origin = 0;
+    void *lhs_parsed = rt_url_parse(lhs);
+    void *rhs_parsed = rt_url_parse(rhs);
+    rt_string lhs_scheme = rt_url_scheme(lhs_parsed);
+    rt_string rhs_scheme = rt_url_scheme(rhs_parsed);
+    rt_string lhs_host = rt_url_host(lhs_parsed);
+    rt_string rhs_host = rt_url_host(rhs_parsed);
+    const char *lhs_scheme_cstr = rt_string_cstr(lhs_scheme);
+    const char *rhs_scheme_cstr = rt_string_cstr(rhs_scheme);
+    const char *lhs_host_cstr = rt_string_cstr(lhs_host);
+    const char *rhs_host_cstr = rt_string_cstr(rhs_host);
+    const int64_t lhs_port = rt_url_port(lhs_parsed);
+    const int64_t rhs_port = rt_url_port(rhs_parsed);
+
+    if (lhs_scheme_cstr && rhs_scheme_cstr && lhs_host_cstr && rhs_host_cstr &&
+        strcasecmp(lhs_scheme_cstr, rhs_scheme_cstr) == 0 &&
+        strcasecmp(lhs_host_cstr, rhs_host_cstr) == 0 && lhs_port == rhs_port) {
+        same_origin = 1;
+    }
+
+    rt_string_unref(rhs_host);
+    rt_string_unref(lhs_host);
+    rt_string_unref(rhs_scheme);
+    rt_string_unref(lhs_scheme);
+    if (rhs_parsed && rt_obj_release_check0(rhs_parsed))
+        rt_obj_free(rhs_parsed);
+    if (lhs_parsed && rt_obj_release_check0(lhs_parsed))
+        rt_obj_free(lhs_parsed);
+    return same_origin ? 1 : 0;
+}
+
+rt_string rt_http_resolve_redirect_url(rt_string current_url, rt_string location) {
+    const char *location_cstr = rt_string_cstr(location);
+    if (!location_cstr || !*location_cstr)
+        return rt_string_from_bytes("", 0);
+
+    if (strstr(location_cstr, "://"))
+        return rt_string_from_bytes(location_cstr, strlen(location_cstr));
+
+    if (strncmp(location_cstr, "//", 2) == 0) {
+        void *base = rt_url_parse(current_url);
+        rt_string scheme = rt_url_scheme(base);
+        const char *scheme_cstr = rt_string_cstr(scheme);
+        size_t scheme_len = scheme_cstr ? strlen(scheme_cstr) : 0;
+        size_t out_len = scheme_len + strlen(location_cstr) + 1;
+        char *absolute = (char *)malloc(out_len + 1);
+        rt_string full;
+
+        if (!absolute) {
+            rt_string_unref(scheme);
+            if (base && rt_obj_release_check0(base))
+                rt_obj_free(base);
+            return rt_string_from_bytes(location_cstr, strlen(location_cstr));
+        }
+
+        snprintf(absolute,
+                 out_len + 1,
+                 "%s:%s",
+                 scheme_cstr ? scheme_cstr : "http",
+                 location_cstr);
+        full = rt_string_from_bytes(absolute, strlen(absolute));
+        free(absolute);
+        rt_string_unref(scheme);
+        if (base && rt_obj_release_check0(base))
+            rt_obj_free(base);
+        return full;
+    }
+
+    {
+        void *base = rt_url_parse(current_url);
+        void *resolved = rt_url_resolve(base, location);
+        rt_string full = rt_url_full(resolved);
+        if (resolved && rt_obj_release_check0(resolved))
+            rt_obj_free(resolved);
+        if (base && rt_obj_release_check0(base))
+            rt_obj_free(base);
+        return full;
+    }
+}
+
 /// @brief Resolve an HTTP redirect target against the current URL and replace the request URL.
 static int resolve_redirect_target(parsed_url_t *current, const char *location) {
     int ok = -1;
     char *current_full = NULL;
     rt_string current_rt = NULL;
     rt_string location_rt = NULL;
-    void *base = NULL;
-    void *resolved = NULL;
     rt_string resolved_full = NULL;
     parsed_url_t next = {0};
 
@@ -1058,11 +1161,9 @@ static int resolve_redirect_target(parsed_url_t *current, const char *location) 
 
     current_rt = rt_string_from_bytes(current_full, strlen(current_full));
     location_rt = rt_string_from_bytes(location, strlen(location));
-    base = rt_url_parse(current_rt);
-    resolved = rt_url_resolve(base, location_rt);
-    resolved_full = rt_url_full(resolved);
+    resolved_full = rt_http_resolve_redirect_url(current_rt, location_rt);
 
-    if (parse_url(rt_string_cstr(resolved_full), &next) == 0) {
+    if (resolved_full && parse_url(rt_string_cstr(resolved_full), &next) == 0) {
         free_parsed_url(current);
         *current = next;
         memset(&next, 0, sizeof(next));
@@ -1071,10 +1172,6 @@ static int resolve_redirect_target(parsed_url_t *current, const char *location) 
 
     if (resolved_full)
         rt_string_unref(resolved_full);
-    if (resolved && rt_obj_release_check0(resolved))
-        rt_obj_free(resolved);
-    if (base && rt_obj_release_check0(base))
-        rt_obj_free(base);
     if (location_rt)
         rt_string_unref(location_rt);
     if (current_rt)
@@ -1102,6 +1199,9 @@ static void rt_http_req_finalize(void *obj) {
     free(req->body);
     req->body = NULL;
     req->body_len = 0;
+    if (req->connection_pool && rt_obj_release_check0(req->connection_pool))
+        rt_obj_free(req->connection_pool);
+    req->connection_pool = NULL;
     req->timeout_ms = 0;
 }
 
@@ -1167,10 +1267,10 @@ static bool has_header(rt_http_req_t *req, const char *name) {
 }
 
 /// @brief Return true when a comma-separated HTTP header value contains @p token.
-static bool header_value_has_token(const char *value, const char *token) {
+int8_t rt_http_header_value_has_token(const char *value, const char *token) {
     size_t token_len;
     if (!value || !token)
-        return false;
+        return 0;
 
     token_len = strlen(token);
     while (*value) {
@@ -1193,13 +1293,42 @@ static bool header_value_has_token(const char *value, const char *token) {
         }
         segment_len = (size_t)(segment_end - segment_start);
         if (segment_len == token_len && strncasecmp(segment_start, token, token_len) == 0)
-            return true;
+            return 1;
 
         while (*value && *value != ',')
             value++;
     }
 
-    return false;
+    return 0;
+}
+
+static void remove_header_if(rt_http_req_t *req, int8_t (*predicate)(const char *)) {
+    http_header_t **link = req ? &req->headers : NULL;
+    while (link && *link) {
+        http_header_t *header = *link;
+        if (predicate && predicate(header->name)) {
+            *link = header->next;
+            header->next = NULL;
+            free_headers(header);
+            continue;
+        }
+        link = &header->next;
+    }
+}
+
+static int8_t is_body_specific_header(const char *name) {
+    if (!name)
+        return 0;
+    return strcasecmp(name, "Content-Length") == 0 || strcasecmp(name, "Content-Type") == 0 ||
+           strcasecmp(name, "Transfer-Encoding") == 0;
+}
+
+static void strip_sensitive_redirect_headers(rt_http_req_t *req) {
+    remove_header_if(req, rt_http_header_is_sensitive_for_cross_origin_redirect);
+}
+
+static void strip_redirect_body_headers(rt_http_req_t *req) {
+    remove_header_if(req, is_body_specific_header);
 }
 
 /// @brief Fetch a boxed string header value from the lowercase response header map.
@@ -1249,7 +1378,8 @@ static int maybe_decode_gzip_body(
         return 1;
 
     content_encoding = get_header_value(headers_map, "content-encoding");
-    if (!content_encoding || !header_value_has_token(rt_string_cstr(content_encoding), "gzip")) {
+    if (!content_encoding ||
+        !rt_http_header_value_has_token(rt_string_cstr(content_encoding), "gzip")) {
         if (content_encoding)
             rt_string_unref(content_encoding);
         return 1;
@@ -2050,6 +2180,11 @@ static rt_http_res_t *do_http_request(rt_http_req_t *req, int redirects_remainin
     if (req->follow_redirects &&
         (status == 301 || status == 302 || status == 303 || status == 307 || status == 308) &&
         redirect_location) {
+        char *current_full = NULL;
+        rt_string current_url = NULL;
+        rt_string location_url = NULL;
+        rt_string next_url = NULL;
+        int cross_origin = 0;
         if (redirects_remaining <= 0) {
             http_conn_pool_release(&conn, 0);
             free(status_text);
@@ -2059,10 +2194,20 @@ static rt_http_res_t *do_http_request(rt_http_req_t *req, int redirects_remainin
             rt_trap_net("HTTP: too many redirects", Err_ProtocolError);
             return NULL;
         }
+
+        current_full = build_absolute_url(&req->url);
+        if (current_full) {
+            current_url = rt_string_from_bytes(current_full, strlen(current_full));
+            location_url = rt_string_from_bytes(redirect_location, strlen(redirect_location));
+            next_url = rt_http_resolve_redirect_url(current_url, location_url);
+            cross_origin = !rt_http_url_has_same_origin(current_url, next_url);
+        }
         http_conn_pool_release(&conn, 0);
         free(status_text);
         if (headers_map && rt_obj_release_check0(headers_map))
             rt_obj_free(headers_map);
+        if (cross_origin)
+            strip_sensitive_redirect_headers(req);
 
         // RFC 7231 / browser de-facto behavior: 303 always switches to GET; 301/302 switch POST to GET.
         if (status == 303 || ((status == 301 || status == 302) && strcmp(req->method, "POST") == 0)) {
@@ -2071,13 +2216,40 @@ static rt_http_res_t *do_http_request(rt_http_req_t *req, int redirects_remainin
             free(req->body);
             req->body = NULL;
             req->body_len = 0;
+            strip_redirect_body_headers(req);
+            if (!req->method) {
+                if (next_url)
+                    rt_string_unref(next_url);
+                if (location_url)
+                    rt_string_unref(location_url);
+                if (current_url)
+                    rt_string_unref(current_url);
+                free(current_full);
+                free(redirect_location);
+                rt_trap("HTTP: memory allocation failed");
+                return NULL;
+            }
         }
 
         if (resolve_redirect_target(&req->url, redirect_location) != 0) {
+            if (next_url)
+                rt_string_unref(next_url);
+            if (location_url)
+                rt_string_unref(location_url);
+            if (current_url)
+                rt_string_unref(current_url);
+            free(current_full);
             free(redirect_location);
             rt_trap_net("HTTP: invalid redirect URL", Err_InvalidUrl);
             return NULL;
         }
+        if (next_url)
+            rt_string_unref(next_url);
+        if (location_url)
+            rt_string_unref(location_url);
+        if (current_url)
+            rt_string_unref(current_url);
+        free(current_full);
         free(redirect_location);
 
         // Follow redirect
@@ -2105,14 +2277,16 @@ static rt_http_res_t *do_http_request(rt_http_req_t *req, int redirects_remainin
 
     rt_string connection_val = get_header_value(headers_map, "connection");
     int response_closes =
-        connection_val && header_value_has_token(rt_string_cstr(connection_val), "close");
+        connection_val && rt_http_header_value_has_token(rt_string_cstr(connection_val), "close");
     int response_keepalive =
-        connection_val && header_value_has_token(rt_string_cstr(connection_val), "keep-alive");
+        connection_val &&
+        rt_http_header_value_has_token(rt_string_cstr(connection_val), "keep-alive");
     int has_content_length = content_length_val != NULL;
 
     bool no_body = response_has_no_body(req, status) != 0;
     bool chunked_transfer =
-        transfer_encoding_val && header_value_has_token(rt_string_cstr(transfer_encoding_val), "chunked");
+        transfer_encoding_val &&
+        rt_http_header_value_has_token(rt_string_cstr(transfer_encoding_val), "chunked");
 
     if (no_body) {
         body = NULL;
@@ -2260,21 +2434,59 @@ static int do_http_download_request(rt_http_req_t *req, int redirects_remaining,
     if (req->follow_redirects &&
         (status == 301 || status == 302 || status == 303 || status == 307 || status == 308) &&
         redirect_location) {
+        char *current_full = NULL;
+        rt_string current_url = NULL;
+        rt_string location_url = NULL;
+        rt_string next_url = NULL;
+        int cross_origin = 0;
         if (redirects_remaining <= 0)
             goto cleanup;
 
+        current_full = build_absolute_url(&req->url);
+        if (current_full) {
+            current_url = rt_string_from_bytes(current_full, strlen(current_full));
+            location_url = rt_string_from_bytes(redirect_location, strlen(redirect_location));
+            next_url = rt_http_resolve_redirect_url(current_url, location_url);
+            cross_origin = !rt_http_url_has_same_origin(current_url, next_url);
+        }
         http_conn_close(&conn);
+        if (cross_origin)
+            strip_sensitive_redirect_headers(req);
         if (status == 303 || ((status == 301 || status == 302) && strcmp(req->method, "POST") == 0)) {
             free(req->method);
             req->method = strdup("GET");
             free(req->body);
             req->body = NULL;
             req->body_len = 0;
-            if (!req->method)
+            strip_redirect_body_headers(req);
+            if (!req->method) {
+                if (next_url)
+                    rt_string_unref(next_url);
+                if (location_url)
+                    rt_string_unref(location_url);
+                if (current_url)
+                    rt_string_unref(current_url);
+                free(current_full);
                 goto cleanup;
+            }
         }
-        if (resolve_redirect_target(&req->url, redirect_location) != 0)
+        if (resolve_redirect_target(&req->url, redirect_location) != 0) {
+            if (next_url)
+                rt_string_unref(next_url);
+            if (location_url)
+                rt_string_unref(location_url);
+            if (current_url)
+                rt_string_unref(current_url);
+            free(current_full);
             goto cleanup;
+        }
+        if (next_url)
+            rt_string_unref(next_url);
+        if (location_url)
+            rt_string_unref(location_url);
+        if (current_url)
+            rt_string_unref(current_url);
+        free(current_full);
 
         if (headers_map && rt_obj_release_check0(headers_map))
             rt_obj_free(headers_map);
@@ -2310,7 +2522,7 @@ static int do_http_download_request(rt_http_req_t *req, int redirects_remaining,
     if (response_has_no_body(req, status)) {
         ok = 1;
     } else if (transfer_encoding_val &&
-               header_value_has_token(rt_string_cstr(transfer_encoding_val), "chunked")) {
+               rt_http_header_value_has_token(rt_string_cstr(transfer_encoding_val), "chunked")) {
         size_t streamed_len = 0;
         ok = write_body_chunked_conn(&conn, out, &streamed_len);
     } else if (content_length_val) {
@@ -3056,6 +3268,12 @@ void *rt_http_req_set_connection_pool(void *obj, void *pool) {
         rt_trap("HTTP: NULL request");
 
     rt_http_req_t *req = (rt_http_req_t *)obj;
+    if (req->connection_pool == pool)
+        return obj;
+    if (pool)
+        rt_obj_retain_maybe(pool);
+    if (req->connection_pool && rt_obj_release_check0(req->connection_pool))
+        rt_obj_free(req->connection_pool);
     req->connection_pool = pool;
     return obj;
 }

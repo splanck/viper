@@ -39,6 +39,23 @@
 #include <utility>
 #include <vector>
 
+#if defined(_WIN32)
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#pragma comment(lib, "ws2_32.lib")
+typedef SOCKET local_sock_t;
+#define LOCAL_SOCK_INVALID INVALID_SOCKET
+#define LOCAL_SOCK_CLOSE(s) closesocket(s)
+#else
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <unistd.h>
+typedef int local_sock_t;
+#define LOCAL_SOCK_INVALID (-1)
+#define LOCAL_SOCK_CLOSE(s) close(s)
+#endif
+
 static void test_result(const char *name, bool passed) {
     printf("  %s: %s\n", name, passed ? "PASS" : "FAIL");
     assert(passed);
@@ -348,6 +365,35 @@ static bool wait_for_condition(const std::function<bool()> &predicate, int timeo
     return predicate();
 }
 
+static int get_bindable_local_port() {
+    local_sock_t fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (fd == LOCAL_SOCK_INVALID)
+        return 0;
+
+    int opt = 1;
+    (void)setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, (const char *)&opt, sizeof(opt));
+
+    struct sockaddr_in addr;
+    memset(&addr, 0, sizeof(addr));
+    addr.sin_family = AF_INET;
+    addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    addr.sin_port = 0;
+    if (bind(fd, (struct sockaddr *)&addr, sizeof(addr)) != 0) {
+        LOCAL_SOCK_CLOSE(fd);
+        return 0;
+    }
+
+    socklen_t addr_len = (socklen_t)sizeof(addr);
+    if (getsockname(fd, (struct sockaddr *)&addr, &addr_len) != 0) {
+        LOCAL_SOCK_CLOSE(fd);
+        return 0;
+    }
+
+    const int port = ntohs(addr.sin_port);
+    LOCAL_SOCK_CLOSE(fd);
+    return port;
+}
+
 static bool tls_send_all(rt_tls_session_t *tls, const void *data, size_t len) {
     const uint8_t *bytes = static_cast<const uint8_t *>(data);
     size_t sent = 0;
@@ -624,7 +670,10 @@ static void sse_resume_server_thread(int port) {
     rt_tcp_server_close(server);
 }
 
-static void smtp_plain_server_thread(int port) {
+static void smtp_server_thread(int port,
+                               const char *ehlo_response,
+                               const char *rcpt_response,
+                               bool capture_message) {
     void *server = rt_tcp_server_listen(port);
     if (!server) {
         api_server_failed = true;
@@ -648,7 +697,14 @@ static void smtp_plain_server_thread(int port) {
     const char *cstr = rt_string_cstr(line);
     assert(cstr && strncmp(cstr, "EHLO ", 5) == 0);
     rt_string_unref(line);
-    send_text(client, "250-localhost\r\n250 SIZE 1024\r\n");
+    send_text(client, ehlo_response);
+
+    if (!capture_message) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(150));
+        rt_tcp_close(client);
+        rt_tcp_server_close(server);
+        return;
+    }
 
     line = rt_tcp_recv_line(client);
     cstr = rt_string_cstr(line);
@@ -660,7 +716,7 @@ static void smtp_plain_server_thread(int port) {
     cstr = rt_string_cstr(line);
     assert(cstr && strncmp(cstr, "RCPT TO:", 8) == 0);
     rt_string_unref(line);
-    send_text(client, "250 OK\r\n");
+    send_text(client, rcpt_response);
 
     line = rt_tcp_recv_line(client);
     cstr = rt_string_cstr(line);
@@ -690,6 +746,19 @@ static void smtp_plain_server_thread(int port) {
 
     rt_tcp_close(client);
     rt_tcp_server_close(server);
+}
+
+static void smtp_plain_server_thread(int port) {
+    smtp_server_thread(port, "250-localhost\r\n250 SIZE 1024\r\n", "250 OK\r\n", true);
+}
+
+static void smtp_no_starttls_server_thread(int port) {
+    smtp_server_thread(port, "250-localhost\r\n250 AUTH LOGIN\r\n", "250 OK\r\n", false);
+}
+
+static void smtp_forwarding_rcpt_server_thread(int port) {
+    smtp_server_thread(
+        port, "250-localhost\r\n250 SIZE 1024\r\n", "251 User not local; will forward\r\n", true);
 }
 
 static void http_cookie_scope_server_thread(int port) {
@@ -951,6 +1020,65 @@ static void test_sse_resume_after_disconnect() {
     server.join();
 }
 
+static void test_sse_redirect_to_stream() {
+    printf("\nTesting SseClient redirect handling:\n");
+
+    const int target_port = (int)rt_netutils_get_free_port();
+    const int redirect_port = get_bindable_local_port();
+    if (target_port <= 0 || redirect_port <= 0) {
+        printf("  SKIP: local bind unavailable in this environment\n");
+        return;
+    }
+
+    api_server_ready = false;
+    api_server_failed = false;
+    std::thread target_server(sse_plain_server_thread, target_port);
+    wait_for_server();
+    if (api_server_failed) {
+        target_server.join();
+        printf("  SKIP: local bind unavailable in this environment\n");
+        return;
+    }
+
+    void *redirect_server = rt_http_server_new(redirect_port);
+    rt_http_server_get(redirect_server, rt_const_cstr("/redirect"), rt_const_cstr("redirect"));
+    rt_http_server_bind_handler(
+        redirect_server, rt_const_cstr("redirect"), (void *)&http_redirect_source_handler);
+    rt_http_server_start(redirect_server);
+
+    const bool redirect_ready = wait_for_condition([&]() {
+        return rt_http_server_is_running(redirect_server) == 1 &&
+               rt_http_server_port(redirect_server) > 0;
+    }, 2000);
+    if (!redirect_ready) {
+        rt_http_server_stop(redirect_server);
+        target_server.join();
+        printf("  SKIP: local bind unavailable in this environment\n");
+        return;
+    }
+
+    char location_buf[128];
+    snprintf(location_buf, sizeof(location_buf), "http://127.0.0.1:%d/events", target_port);
+    redirect_source_location = location_buf;
+
+    char url_buf[128];
+    snprintf(url_buf,
+             sizeof(url_buf),
+             "http://127.0.0.1:%lld/redirect",
+             (long long)rt_http_server_port(redirect_server));
+    void *sse = rt_sse_connect(rt_const_cstr(url_buf));
+    test_result("SSE redirected connection opens", sse != nullptr && rt_sse_is_open(sse) == 1);
+
+    rt_string data = rt_sse_recv(sse);
+    test_result("SSE redirected payload matches", strcmp(rt_string_cstr(data), "hello") == 0);
+    rt_string event_type = rt_sse_last_event_type(sse);
+    test_result("SSE redirected event type captured", strcmp(rt_string_cstr(event_type), "greet") == 0);
+
+    rt_sse_close(sse);
+    rt_http_server_stop(redirect_server);
+    target_server.join();
+}
+
 static void test_smtp_plain_send_sanitizes_and_dot_stuffs() {
     printf("\nTesting SmtpClient plain send path:\n");
 
@@ -996,6 +1124,74 @@ static void test_smtp_plain_send_sanitizes_and_dot_stuffs() {
                 smtp_captured_message.find("..leading line") != std::string::npos);
     test_result("SMTP body preserved following line",
                 smtp_captured_message.find("second line") != std::string::npos);
+}
+
+static void test_smtp_requires_starttls_capability() {
+    printf("\nTesting SmtpClient STARTTLS capability enforcement:\n");
+
+    const int port = (int)rt_netutils_get_free_port();
+    if (port <= 0) {
+        printf("  SKIP: local bind unavailable in this environment\n");
+        return;
+    }
+
+    api_server_ready = false;
+    api_server_failed = false;
+    std::thread server(smtp_no_starttls_server_thread, port);
+    wait_for_server();
+    if (api_server_failed) {
+        server.join();
+        printf("  SKIP: local bind unavailable in this environment\n");
+        return;
+    }
+
+    void *smtp = rt_smtp_new(rt_const_cstr("127.0.0.1"), port);
+    rt_smtp_set_tls(smtp, 1);
+    int8_t ok = rt_smtp_send(smtp,
+                             rt_const_cstr("sender@example.com"),
+                             rt_const_cstr("dest@example.com"),
+                             rt_const_cstr("Hello"),
+                             rt_const_cstr("Body"));
+    rt_string error = rt_smtp_last_error(smtp);
+
+    test_result("SMTP send rejects missing STARTTLS capability", ok == 0);
+    test_result("SMTP error mentions STARTTLS",
+                strstr(rt_string_cstr(error), "STARTTLS") != nullptr);
+
+    server.join();
+}
+
+static void test_smtp_accepts_forwarding_recipient_codes() {
+    printf("\nTesting SmtpClient forwarding recipient handling:\n");
+
+    const int port = (int)rt_netutils_get_free_port();
+    if (port <= 0) {
+        printf("  SKIP: local bind unavailable in this environment\n");
+        return;
+    }
+
+    api_server_ready = false;
+    api_server_failed = false;
+    std::thread server(smtp_forwarding_rcpt_server_thread, port);
+    wait_for_server();
+    if (api_server_failed) {
+        server.join();
+        printf("  SKIP: local bind unavailable in this environment\n");
+        return;
+    }
+
+    smtp_captured_message.clear();
+    void *smtp = rt_smtp_new(rt_const_cstr("127.0.0.1"), port);
+    int8_t ok = rt_smtp_send(smtp,
+                             rt_const_cstr("sender@example.com"),
+                             rt_const_cstr("dest@example.com"),
+                             rt_const_cstr("Forwarded"),
+                             rt_const_cstr("Accepted via 251"));
+
+    test_result("SMTP send accepts 251 recipient forwarding", ok == 1);
+    server.join();
+    test_result("SMTP forwarded message still enters DATA path",
+                smtp_captured_message.find("Accepted via 251") != std::string::npos);
 }
 
 static void test_http_client_cookie_scope() {
@@ -1051,11 +1247,66 @@ static void test_http_client_cookie_scope() {
                 http_cookie_headers[2].find("rootToken=beta") != std::string::npos);
 }
 
+static void test_http_client_manual_cookie_is_host_only() {
+    printf("\nTesting HttpClient manual cookie host scoping:\n");
+
+    const int port = (int)rt_netutils_get_free_port();
+    if (port <= 0) {
+        printf("  SKIP: local bind unavailable in this environment\n");
+        return;
+    }
+
+    api_server_ready = false;
+    api_server_failed = false;
+    std::thread server(http_cookie_scope_server_thread, port);
+    wait_for_server();
+    if (api_server_failed) {
+        server.join();
+        printf("  SKIP: local bind unavailable in this environment\n");
+        return;
+    }
+
+    char url_buf[128];
+    void *client = rt_http_client_new();
+    rt_http_client_set_cookie(
+        client, rt_const_cstr("localhost"), rt_const_cstr("manualToken"), rt_const_cstr("hostonly"));
+
+    snprintf(url_buf, sizeof(url_buf), "http://localhost:%d/set", port);
+    void *res1 = rt_http_client_get(client, rt_const_cstr(url_buf));
+    test_result("HttpClient localhost cookie request succeeds", rt_http_res_status(res1) == 200);
+
+    snprintf(url_buf, sizeof(url_buf), "http://127.0.0.1:%d/app/data", port);
+    void *res2 = rt_http_client_get(client, rt_const_cstr(url_buf));
+    test_result("HttpClient IP request succeeds", rt_http_res_status(res2) == 200);
+
+    snprintf(url_buf, sizeof(url_buf), "http://localhost:%d/other", port);
+    void *res3 = rt_http_client_get(client, rt_const_cstr(url_buf));
+    test_result("HttpClient second localhost request succeeds", rt_http_res_status(res3) == 200);
+
+    server.join();
+
+    test_result("Manual cookie sent to matching host",
+                http_cookie_headers[0].find("manualToken=hostonly") != std::string::npos);
+    test_result("Manual cookie withheld from different host spelling",
+                http_cookie_headers[1].find("manualToken=hostonly") == std::string::npos);
+    test_result("Host-only response cookies withheld from different host spelling",
+                http_cookie_headers[1].find("rootToken=beta") == std::string::npos);
+    test_result("Manual cookie still sent to original host",
+                http_cookie_headers[2].find("manualToken=hostonly") != std::string::npos);
+}
+
 static void test_http_client_cross_origin_redirect_strips_sensitive_headers() {
     printf("\nTesting HttpClient cross-origin redirect credential stripping:\n");
 
-    void *target_server = rt_http_server_new(0);
-    void *redirect_server = rt_http_server_new(0);
+    const int target_port = get_bindable_local_port();
+    const int redirect_port = get_bindable_local_port();
+    if (target_port <= 0 || redirect_port <= 0) {
+        printf("  SKIP: local bind unavailable in this environment\n");
+        return;
+    }
+
+    void *target_server = rt_http_server_new(target_port);
+    void *redirect_server = rt_http_server_new(redirect_port);
     rt_http_server_get(target_server, rt_const_cstr("/final"), rt_const_cstr("target"));
     rt_http_server_bind_handler(target_server, rt_const_cstr("target"), (void *)&http_redirect_target_handler);
     rt_http_server_get(redirect_server, rt_const_cstr("/redirect"), rt_const_cstr("redirect"));
@@ -1184,7 +1435,7 @@ static void test_http_client_keepalive_reuse() {
 static void test_http_server_keepalive_response() {
     printf("\nTesting HttpServer keep-alive responses:\n");
 
-    const int port = (int)rt_netutils_get_free_port();
+    const int port = get_bindable_local_port();
     if (port <= 0) {
         printf("  SKIP: local bind unavailable in this environment\n");
         return;
@@ -1194,7 +1445,11 @@ static void test_http_server_keepalive_response() {
     rt_http_server_get(server, rt_const_cstr("/ping"), rt_const_cstr("ping"));
     rt_http_server_bind_handler(server, rt_const_cstr("ping"), (void *)&http_server_keepalive_handler);
     rt_http_server_start(server);
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    if (!wait_for_condition([&]() { return rt_http_server_is_running(server) == 1; }, 1000)) {
+        rt_http_server_stop(server);
+        printf("  SKIP: local bind unavailable in this environment\n");
+        return;
+    }
 
     void *client = rt_tcp_connect(rt_const_cstr("127.0.0.1"), port);
 
@@ -1241,7 +1496,7 @@ static void test_http_server_keepalive_response() {
 static void test_https_server_roundtrip() {
     printf("\nTesting HttpsServer round-trip and TLS keep-alive:\n");
 
-    const int port = (int)rt_netutils_get_free_port();
+    const int port = get_bindable_local_port();
     if (port <= 0) {
         printf("  SKIP: local bind unavailable in this environment\n");
         return;
@@ -1258,7 +1513,11 @@ static void test_https_server_roundtrip() {
     rt_https_server_get(server, rt_const_cstr("/secure"), rt_const_cstr("secure"));
     rt_https_server_bind_handler(server, rt_const_cstr("secure"), (void *)&https_server_secure_handler);
     rt_https_server_start(server);
-    std::this_thread::sleep_for(std::chrono::milliseconds(120));
+    if (!wait_for_condition([&]() { return rt_https_server_is_running(server) == 1; }, 1000)) {
+        rt_https_server_stop(server);
+        printf("  SKIP: local bind unavailable in this environment\n");
+        return;
+    }
 
     test_result("HttpsServer reports running", rt_https_server_is_running(server) == 1);
 
@@ -1336,7 +1595,7 @@ static void test_https_server_roundtrip() {
 static void test_https_server_rsa_roundtrip_with_verification() {
     printf("\nTesting HttpsServer RSA round-trip with native verification:\n");
 
-    const int port = (int)rt_netutils_get_free_port();
+    const int port = get_bindable_local_port();
     if (port <= 0) {
         printf("  SKIP: local bind unavailable in this environment\n");
         return;
@@ -1354,7 +1613,11 @@ static void test_https_server_rsa_roundtrip_with_verification() {
     rt_https_server_get(server, rt_const_cstr("/secure"), rt_const_cstr("secure"));
     rt_https_server_bind_handler(server, rt_const_cstr("secure"), (void *)&https_server_secure_handler);
     rt_https_server_start(server);
-    std::this_thread::sleep_for(std::chrono::milliseconds(120));
+    if (!wait_for_condition([&]() { return rt_https_server_is_running(server) == 1; }, 1000)) {
+        rt_https_server_stop(server);
+        printf("  SKIP: local bind unavailable in this environment\n");
+        return;
+    }
 
     test_result("HttpsServer RSA fixture reports running", rt_https_server_is_running(server) == 1);
 
@@ -1387,7 +1650,7 @@ static void test_https_server_rsa_roundtrip_with_verification() {
 static void test_wss_server_broadcast() {
     printf("\nTesting WssServer TLS upgrade and broadcast:\n");
 
-    const int port = (int)rt_netutils_get_free_port();
+    const int port = get_bindable_local_port();
     if (port <= 0) {
         printf("  SKIP: local bind unavailable in this environment\n");
         return;
@@ -1402,7 +1665,11 @@ static void test_wss_server_broadcast() {
     void *server =
         rt_wss_server_new(port, rt_const_cstr(tls_files.cert_path.c_str()), rt_const_cstr(tls_files.key_path.c_str()));
     rt_wss_server_start(server);
-    std::this_thread::sleep_for(std::chrono::milliseconds(120));
+    if (!wait_for_condition([&]() { return rt_wss_server_is_running(server) == 1; }, 1000)) {
+        rt_wss_server_stop(server);
+        printf("  SKIP: local bind unavailable in this environment\n");
+        return;
+    }
 
     test_result("WssServer reports running", rt_wss_server_is_running(server) == 1);
 
@@ -1470,7 +1737,9 @@ int main() {
     test_sse_plain_event();
     test_sse_chunked_event();
     test_sse_resume_after_disconnect();
+    test_sse_redirect_to_stream();
     test_http_client_cookie_scope();
+    test_http_client_manual_cookie_is_host_only();
     test_http_client_cross_origin_redirect_strips_sensitive_headers();
     test_http_client_consumes_informational_responses();
     test_http_client_keepalive_reuse();
@@ -1479,6 +1748,8 @@ int main() {
     test_https_server_rsa_roundtrip_with_verification();
     test_wss_server_broadcast();
     test_smtp_plain_send_sanitizes_and_dot_stuffs();
+    test_smtp_requires_starttls_capability();
+    test_smtp_accepts_forwarding_recipient_codes();
 
     printf("\nAll high-level network tests passed.\n");
     return 0;

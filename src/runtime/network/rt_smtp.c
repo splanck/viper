@@ -52,6 +52,11 @@ typedef struct {
     int8_t use_tls;
 } rt_smtp_impl;
 
+typedef struct {
+    int8_t supports_starttls;
+    int8_t supports_auth_login;
+} smtp_caps_t;
+
 /// @brief GC finalizer: tear down TLS session (if any), close + release the TCP socket, and free
 /// all heap-owned strings (host, credentials, last error).
 static void rt_smtp_finalize(void *obj) {
@@ -327,7 +332,13 @@ static char *smtp_dot_stuff_body(const char *body) {
 /// Handles **multi-line responses** (lines beginning `XXX-` are intermediate; the final line
 /// uses `XXX `, no dash). When `expected_code > 0`, mismatching codes are turned into a
 /// formatted error in `last_error` and the call returns -1.
-static int smtp_command(rt_smtp_impl *s, const char *cmd, int expected_code) {
+typedef void (*smtp_line_callback_t)(const char *line, void *ctx);
+
+static int smtp_command_ex(rt_smtp_impl *s,
+                           const char *cmd,
+                           int expected_code,
+                           smtp_line_callback_t line_cb,
+                           void *line_ctx) {
     if (cmd) {
         if (!smtp_transport_send_all(s, cmd, strlen(cmd))) {
             set_error(s, "SMTP: send failed");
@@ -342,6 +353,8 @@ static int smtp_command(rt_smtp_impl *s, const char *cmd, int expected_code) {
     }
     const char *l = rt_string_cstr(line);
     int code = l ? atoi(l) : -1;
+    if (l && line_cb)
+        line_cb(l, line_ctx);
 
     // Drain multi-line responses (line[3] == '-')
     while (l && strlen(l) > 3 && l[3] == '-') {
@@ -354,6 +367,8 @@ static int smtp_command(rt_smtp_impl *s, const char *cmd, int expected_code) {
         l = rt_string_cstr(line);
         if (l)
             code = atoi(l);
+        if (l && line_cb)
+            line_cb(l, line_ctx);
     }
     if (line)
         rt_string_unref(line);
@@ -366,6 +381,51 @@ static int smtp_command(rt_smtp_impl *s, const char *cmd, int expected_code) {
     }
 
     return code;
+}
+
+static int smtp_command(rt_smtp_impl *s, const char *cmd, int expected_code) {
+    return smtp_command_ex(s, cmd, expected_code, NULL, NULL);
+}
+
+static void smtp_parse_ehlo_caps_line(const char *line, void *ctx) {
+    smtp_caps_t *caps = (smtp_caps_t *)ctx;
+    const char *value = line;
+    if (!caps || !line)
+        return;
+    if (strlen(line) < 4)
+        return;
+    value = line + 3;
+    if (*value == '-' || *value == ' ')
+        value++;
+    while (*value == ' ' || *value == '\t')
+        value++;
+
+    if (strncasecmp(value, "STARTTLS", 8) == 0 && (value[8] == '\0' || value[8] == ' ' ||
+                                                   value[8] == '\t')) {
+        caps->supports_starttls = 1;
+        return;
+    }
+
+    if (strncasecmp(value, "AUTH", 4) == 0 && (value[4] == '\0' || value[4] == ' ' || value[4] == '\t')) {
+        const char *token = value + 4;
+        while (*token) {
+            const char *start;
+            const char *end;
+            while (*token == ' ' || *token == '\t')
+                token++;
+            if (*token == '\0')
+                break;
+            start = token;
+            while (*token && *token != ' ' && *token != '\t')
+                token++;
+            end = token;
+            if ((size_t)(end - start) == strlen("LOGIN") &&
+                strncasecmp(start, "LOGIN", strlen("LOGIN")) == 0) {
+                caps->supports_auth_login = 1;
+                break;
+            }
+        }
+    }
 }
 
 //=============================================================================
@@ -425,6 +485,7 @@ void rt_smtp_set_tls(void *obj, int8_t enable) {
 ///      output to keep peak memory low.
 /// All steps populate `last_error` on failure and return -1; success returns 0.
 static int smtp_connect_and_handshake(rt_smtp_impl *s) {
+    smtp_caps_t caps = {0, 0};
     smtp_close_transport(s);
     clear_error(s);
 
@@ -463,10 +524,14 @@ static int smtp_connect_and_handshake(rt_smtp_impl *s) {
 
     char ehlo[300];
     snprintf(ehlo, sizeof(ehlo), "EHLO localhost\r\n");
-    if (smtp_command(s, ehlo, 250) < 0)
+    if (smtp_command_ex(s, ehlo, 250, smtp_parse_ehlo_caps_line, &caps) < 0)
         return -1;
 
     if (s->use_tls && s->port != 465) {
+        if (!caps.supports_starttls) {
+            set_error(s, "SMTP: server does not advertise STARTTLS");
+            return -1;
+        }
         if (smtp_command(s, "STARTTLS\r\n", 220) < 0)
             return -1;
 
@@ -506,12 +571,22 @@ static int smtp_connect_and_handshake(rt_smtp_impl *s) {
         s->tcp = NULL;
         smtp_set_transport_timeouts(s, 30000);
 
-        if (smtp_command(s, ehlo, 250) < 0)
+        caps.supports_starttls = 0;
+        caps.supports_auth_login = 0;
+        if (smtp_command_ex(s, ehlo, 250, smtp_parse_ehlo_caps_line, &caps) < 0)
             return -1;
     }
 
     // AUTH LOGIN if credentials provided
     if (s->username && s->password) {
+        if (!s->tls && s->port != 465) {
+            set_error(s, "SMTP: refusing AUTH LOGIN over an unencrypted connection");
+            return -1;
+        }
+        if (!caps.supports_auth_login) {
+            set_error(s, "SMTP: server does not advertise AUTH LOGIN");
+            return -1;
+        }
         if (smtp_command(s, "AUTH LOGIN\r\n", 334) < 0)
             return -1;
 
@@ -563,8 +638,15 @@ static int smtp_send_message(rt_smtp_impl *s,
 
     // RCPT TO
     snprintf(cmd, sizeof(cmd), "RCPT TO:<%s>\r\n", to);
-    if (smtp_command(s, cmd, 250) < 0)
-        return -1;
+    {
+        int rcpt_code = smtp_command(s, cmd, 0);
+        if (!(rcpt_code == 250 || rcpt_code == 251 || rcpt_code == 252)) {
+            char err[128];
+            snprintf(err, sizeof(err), "SMTP: recipient rejected (%d)", rcpt_code);
+            set_error(s, err);
+            return -1;
+        }
+    }
 
     // DATA
     if (smtp_command(s, "DATA\r\n", 354) < 0)

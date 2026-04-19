@@ -35,6 +35,7 @@
 #include "rt_bytes.h"
 #include "rt_crypto.h"
 #include "rt_keyderive_internal.h"
+#include "rt_object.h"
 
 #include <stdint.h>
 #include <string.h>
@@ -50,7 +51,7 @@
 #define CIPHER_NONCE_SIZE 12
 #define CIPHER_KEY_SIZE 32
 #define CIPHER_TAG_SIZE 16
-#define CIPHER_PBKDF2_ITERATIONS 100000
+#define CIPHER_PBKDF2_ITERATIONS 300000
 
 // HKDF info string for key derivation
 static const char *HKDF_INFO = "viper-cipher-v1";
@@ -126,7 +127,7 @@ static void derive_key_legacy(const char *password,
 }
 
 /// @brief Derive a 32-byte key using PBKDF2-HMAC-SHA256 (modern default).
-/// @details Iteration count is fixed at `CIPHER_PBKDF2_ITERATIONS` (100,000
+/// @details Iteration count is fixed at `CIPHER_PBKDF2_ITERATIONS` (300,000
 ///          at the time of writing), chosen to make per-guess brute force
 ///          expensive on modern hardware while keeping the per-call latency
 ///          tolerable for an interactive password-based encrypt operation
@@ -225,13 +226,13 @@ void *rt_cipher_encrypt(void *plaintext, rt_string password) {
 ///          the key using PBKDF2-HMAC-SHA256, then decrypts and verifies the
 ///          Poly1305 authentication tag. If verification fails (wrong password
 ///          or corrupted data), falls back to the legacy HKDF-based key
-///          derivation scheme for backward compatibility. Traps if both
+///          derivation scheme for backward compatibility. Returns NULL if both
 ///          derivation schemes fail authentication.
 ///
 ///          Expected wire format: [salt(16) | nonce(12) | ciphertext | tag(16)]
 /// @param ciphertext Bytes object containing the encrypted payload.
 /// @param password   Password string for key derivation.
-/// @return Bytes object containing the decrypted plaintext.
+/// @return Bytes object containing the decrypted plaintext, or NULL on auth failure.
 void *rt_cipher_decrypt(void *ciphertext, rt_string password) {
     if (!ciphertext) {
         rt_trap("Cipher.Decrypt: ciphertext is null");
@@ -285,7 +286,8 @@ void *rt_cipher_decrypt(void *ciphertext, rt_string password) {
             key, nonce, NULL, 0, encrypted, (size_t)encrypted_len, plain_data);
         if (decrypt_result < 0) {
             cipher_secure_zero(key, sizeof(key));
-            rt_trap("Cipher.Decrypt: authentication failed (wrong password or corrupted data)");
+            if (result && rt_obj_release_check0(result))
+                rt_obj_free(result);
             return NULL;
         }
     }

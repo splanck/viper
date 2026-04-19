@@ -147,210 +147,7 @@ typedef struct {
     void *tcp;
 } ws_broadcast_target_t;
 
-static int ws_header_has_upgrade_token(const char *value) {
-    const char *p = value;
-    while (*p) {
-        while (*p == ' ' || *p == '\t' || *p == ',')
-            p++;
-        const char *start = p;
-        while (*p && *p != ',')
-            p++;
-        const char *end = p;
-        while (end > start && (end[-1] == ' ' || end[-1] == '\t'))
-            end--;
-        if ((size_t)(end - start) == strlen("Upgrade") && strncasecmp(start, "Upgrade", 7) == 0)
-            return 1;
-    }
-    return 0;
-}
-
-static char *ws_strdup_trimmed(const char *text) {
-    if (!text)
-        return NULL;
-    while (*text == ' ' || *text == '\t')
-        text++;
-    size_t len = strlen(text);
-    while (len > 0 && (text[len - 1] == ' ' || text[len - 1] == '\t'))
-        len--;
-    char *copy = (char *)malloc(len + 1);
-    if (!copy)
-        return NULL;
-    memcpy(copy, text, len);
-    copy[len] = '\0';
-    return copy;
-}
-
-static char *ws_extract_authority_host(const char *authority) {
-    const char *start = authority;
-    const char *end = NULL;
-    size_t len = 0;
-    char *host = NULL;
-
-    if (!authority || !*authority)
-        return NULL;
-
-    while (*start == ' ' || *start == '\t')
-        start++;
-    if (*start == '[') {
-        end = strchr(start + 1, ']');
-        if (!end)
-            return NULL;
-        len = (size_t)(end - (start + 1));
-        host = (char *)malloc(len + 1);
-        if (!host)
-            return NULL;
-        memcpy(host, start + 1, len);
-        host[len] = '\0';
-        return host;
-    }
-
-    end = start;
-    while (*end && *end != ':' && *end != '/' && *end != '?' && *end != '#')
-        end++;
-    len = (size_t)(end - start);
-    if (len == 0)
-        return NULL;
-    host = (char *)malloc(len + 1);
-    if (!host)
-        return NULL;
-    memcpy(host, start, len);
-    host[len] = '\0';
-    return host;
-}
-
-static int ws_origin_matches_host_header(const char *origin, const char *host_header) {
-    const char *scheme_sep = NULL;
-    const char *authority = NULL;
-    const char *authority_end = NULL;
-    size_t authority_len = 0;
-    char *origin_authority = NULL;
-    char *origin_host = NULL;
-    char *request_host = NULL;
-    int matches = 0;
-
-    if (!origin || !*origin)
-        return 1;
-    if (!host_header || !*host_header)
-        return 0;
-
-    scheme_sep = strstr(origin, "://");
-    if (!scheme_sep)
-        return 0;
-    authority = scheme_sep + 3;
-    authority_end = authority;
-    while (*authority_end && *authority_end != '/' && *authority_end != '?' && *authority_end != '#')
-        authority_end++;
-    authority_len = (size_t)(authority_end - authority);
-    origin_authority = (char *)malloc(authority_len + 1);
-    if (!origin_authority)
-        return 0;
-    memcpy(origin_authority, authority, authority_len);
-    origin_authority[authority_len] = '\0';
-
-    origin_host = ws_extract_authority_host(origin_authority);
-    request_host = ws_extract_authority_host(host_header);
-    if (origin_host && request_host && strcasecmp(origin_host, request_host) == 0)
-        matches = 1;
-
-    free(request_host);
-    free(origin_host);
-    free(origin_authority);
-    return matches;
-}
-
-static int ws_is_valid_opcode(uint8_t opcode) {
-    switch (opcode) {
-        case WS_OP_CONTINUATION:
-        case WS_OP_TEXT:
-        case WS_OP_BINARY:
-        case WS_OP_CLOSE:
-        case WS_OP_PING:
-        case WS_OP_PONG:
-            return 1;
-        default:
-            return 0;
-    }
-}
-
-static void ws_encode_u64_len(uint8_t out[8], size_t len) {
-    uint64_t value = (uint64_t)len;
-    for (int i = 7; i >= 0; i--) {
-        out[i] = (uint8_t)(value & 0xFFu);
-        value >>= 8;
-    }
-}
-
-static int ws_decode_u64_len(const uint8_t in[8], size_t *len_out) {
-    uint64_t value = 0;
-    for (int i = 0; i < 8; i++)
-        value = (value << 8) | in[i];
-    if (value > (uint64_t)SIZE_MAX)
-        return 0;
-    *len_out = (size_t)value;
-    return 1;
-}
-
-static int ws_is_valid_utf8(const uint8_t *data, size_t len) {
-    size_t i = 0;
-    while (i < len) {
-        uint8_t c = data[i++];
-        if (c <= 0x7F)
-            continue;
-        if (c >= 0xC2 && c <= 0xDF) {
-            if (i >= len || (data[i] & 0xC0) != 0x80)
-                return 0;
-            i++;
-            continue;
-        }
-        if (c == 0xE0) {
-            if (i + 1 >= len || data[i] < 0xA0 || data[i] > 0xBF || (data[i + 1] & 0xC0) != 0x80)
-                return 0;
-            i += 2;
-            continue;
-        }
-        if (c >= 0xE1 && c <= 0xEC) {
-            if (i + 1 >= len || (data[i] & 0xC0) != 0x80 || (data[i + 1] & 0xC0) != 0x80)
-                return 0;
-            i += 2;
-            continue;
-        }
-        if (c == 0xED) {
-            if (i + 1 >= len || data[i] < 0x80 || data[i] > 0x9F || (data[i + 1] & 0xC0) != 0x80)
-                return 0;
-            i += 2;
-            continue;
-        }
-        if (c >= 0xEE && c <= 0xEF) {
-            if (i + 1 >= len || (data[i] & 0xC0) != 0x80 || (data[i + 1] & 0xC0) != 0x80)
-                return 0;
-            i += 2;
-            continue;
-        }
-        if (c == 0xF0) {
-            if (i + 2 >= len || data[i] < 0x90 || data[i] > 0xBF || (data[i + 1] & 0xC0) != 0x80 ||
-                (data[i + 2] & 0xC0) != 0x80)
-                return 0;
-            i += 3;
-            continue;
-        }
-        if (c >= 0xF1 && c <= 0xF3) {
-            if (i + 2 >= len || (data[i] & 0xC0) != 0x80 || (data[i + 1] & 0xC0) != 0x80 ||
-                (data[i + 2] & 0xC0) != 0x80)
-                return 0;
-            i += 3;
-            continue;
-        }
-        if (c == 0xF4) {
-            if (i + 2 >= len || data[i] < 0x80 || data[i] > 0x8F || (data[i + 1] & 0xC0) != 0x80 ||
-                (data[i + 2] & 0xC0) != 0x80)
-                return 0;
-            i += 3;
-            continue;
-        }
-        return 0;
-    }
-    return 1;
-}
+#include "rt_ws_shared.inc"
 
 static int ws_tls_is_open(void *tcp) {
     return tcp && rt_tls_get_socket((rt_tls_session_t *)tcp) >= 0;
@@ -600,7 +397,7 @@ static int ws_server_handshake(void *tcp) {
     }
 
     if (ws_key[0] == '\0' || host_header[0] == '\0' || !saw_upgrade || !saw_connection ||
-        !saw_version || !ws_origin_matches_host_header(origin_header, host_header))
+        !saw_version || !ws_origin_matches_expected(origin_header, host_header, "https", 443))
         return 0;
 
     // Compute accept key
@@ -908,6 +705,9 @@ void rt_wss_server_start(void *obj) {
         return;
 
     s->tcp_server = rt_tcp_server_listen(s->port);
+    if (!s->tcp_server)
+        rt_trap("WssServer: failed to bind listener");
+    s->port = rt_tcp_server_port(s->tcp_server);
     if (!s->worker_pool)
         s->worker_pool = rt_threadpool_new(8);
     s->running = true;
@@ -918,6 +718,14 @@ void rt_wss_server_start(void *obj) {
 #else
     s->thread_started = pthread_create(&s->accept_thread, NULL, ws_accept_loop, s) == 0;
 #endif
+    if (!s->thread_started) {
+        s->running = false;
+        rt_tcp_server_close(s->tcp_server);
+        if (rt_obj_release_check0(s->tcp_server))
+            rt_obj_free(s->tcp_server);
+        s->tcp_server = NULL;
+        rt_trap("WssServer: failed to start accept thread");
+    }
 }
 
 /// @brief Stop the server: set `running=false`, close the TCP listener (which unblocks

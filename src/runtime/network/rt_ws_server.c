@@ -118,116 +118,7 @@ typedef struct {
     bool thread_started;
 } rt_ws_server_impl;
 
-static int ws_header_has_upgrade_token(const char *value) {
-    const char *p = value;
-    while (*p) {
-        while (*p == ' ' || *p == '\t' || *p == ',')
-            p++;
-        const char *start = p;
-        while (*p && *p != ',')
-            p++;
-        const char *end = p;
-        while (end > start && (end[-1] == ' ' || end[-1] == '\t'))
-            end--;
-        if ((size_t)(end - start) == strlen("Upgrade") && strncasecmp(start, "Upgrade", 7) == 0)
-            return 1;
-    }
-    return 0;
-}
-
-static int ws_is_valid_opcode(uint8_t opcode) {
-    switch (opcode) {
-        case WS_OP_CONTINUATION:
-        case WS_OP_TEXT:
-        case WS_OP_BINARY:
-        case WS_OP_CLOSE:
-        case WS_OP_PING:
-        case WS_OP_PONG:
-            return 1;
-        default:
-            return 0;
-    }
-}
-
-static void ws_encode_u64_len(uint8_t out[8], size_t len) {
-    uint64_t value = (uint64_t)len;
-    for (int i = 7; i >= 0; i--) {
-        out[i] = (uint8_t)(value & 0xFFu);
-        value >>= 8;
-    }
-}
-
-static int ws_decode_u64_len(const uint8_t in[8], size_t *len_out) {
-    uint64_t value = 0;
-    for (int i = 0; i < 8; i++)
-        value = (value << 8) | in[i];
-    if (value > (uint64_t)SIZE_MAX)
-        return 0;
-    *len_out = (size_t)value;
-    return 1;
-}
-
-static int ws_is_valid_utf8(const uint8_t *data, size_t len) {
-    size_t i = 0;
-    while (i < len) {
-        uint8_t c = data[i++];
-        if (c <= 0x7F)
-            continue;
-        if (c >= 0xC2 && c <= 0xDF) {
-            if (i >= len || (data[i] & 0xC0) != 0x80)
-                return 0;
-            i++;
-            continue;
-        }
-        if (c == 0xE0) {
-            if (i + 1 >= len || data[i] < 0xA0 || data[i] > 0xBF || (data[i + 1] & 0xC0) != 0x80)
-                return 0;
-            i += 2;
-            continue;
-        }
-        if (c >= 0xE1 && c <= 0xEC) {
-            if (i + 1 >= len || (data[i] & 0xC0) != 0x80 || (data[i + 1] & 0xC0) != 0x80)
-                return 0;
-            i += 2;
-            continue;
-        }
-        if (c == 0xED) {
-            if (i + 1 >= len || data[i] < 0x80 || data[i] > 0x9F || (data[i + 1] & 0xC0) != 0x80)
-                return 0;
-            i += 2;
-            continue;
-        }
-        if (c >= 0xEE && c <= 0xEF) {
-            if (i + 1 >= len || (data[i] & 0xC0) != 0x80 || (data[i + 1] & 0xC0) != 0x80)
-                return 0;
-            i += 2;
-            continue;
-        }
-        if (c == 0xF0) {
-            if (i + 2 >= len || data[i] < 0x90 || data[i] > 0xBF || (data[i + 1] & 0xC0) != 0x80 ||
-                (data[i + 2] & 0xC0) != 0x80)
-                return 0;
-            i += 3;
-            continue;
-        }
-        if (c >= 0xF1 && c <= 0xF3) {
-            if (i + 2 >= len || (data[i] & 0xC0) != 0x80 || (data[i + 1] & 0xC0) != 0x80 ||
-                (data[i + 2] & 0xC0) != 0x80)
-                return 0;
-            i += 3;
-            continue;
-        }
-        if (c == 0xF4) {
-            if (i + 2 >= len || data[i] < 0x80 || data[i] > 0x8F || (data[i + 1] & 0xC0) != 0x80 ||
-                (data[i + 2] & 0xC0) != 0x80)
-                return 0;
-            i += 3;
-            continue;
-        }
-        return 0;
-    }
-    return 1;
-}
+#include "rt_ws_shared.inc"
 
 static void ws_release_tcp(void **tcp_ptr) {
     if (!tcp_ptr || !*tcp_ptr)
@@ -401,13 +292,16 @@ static int ws_server_handshake(void *tcp) {
     if (!line)
         return 0;
     const char *request_line = rt_string_cstr(line);
-    if (!request_line || strncmp(request_line, "GET ", 4) != 0) {
+    if (!request_line || strncmp(request_line, "GET ", 4) != 0 ||
+        strstr(request_line, " HTTP/1.1") == NULL) {
         rt_string_unref(line);
         return 0;
     }
     rt_string_unref(line);
 
     char ws_key[128] = {0};
+    char host_header[256] = {0};
+    char origin_header[256] = {0};
     int saw_upgrade = 0;
     int saw_connection = 0;
     int saw_version = 0;
@@ -428,6 +322,22 @@ static int ws_server_handshake(void *tcp) {
             while (*val == ' ')
                 val++;
             strncpy(ws_key, val, sizeof(ws_key) - 1);
+        } else if (strncasecmp(h, "Host:", 5) == 0) {
+            char *trimmed = ws_strdup_trimmed(h + 5);
+            if (!trimmed) {
+                rt_string_unref(hdr);
+                return 0;
+            }
+            snprintf(host_header, sizeof(host_header), "%s", trimmed);
+            free(trimmed);
+        } else if (strncasecmp(h, "Origin:", 7) == 0) {
+            char *trimmed = ws_strdup_trimmed(h + 7);
+            if (!trimmed) {
+                rt_string_unref(hdr);
+                return 0;
+            }
+            snprintf(origin_header, sizeof(origin_header), "%s", trimmed);
+            free(trimmed);
         } else if (strncasecmp(h, "Upgrade:", 8) == 0) {
             const char *val = h + 8;
             while (*val == ' ')
@@ -447,8 +357,10 @@ static int ws_server_handshake(void *tcp) {
         rt_string_unref(hdr);
     }
 
-    if (ws_key[0] == '\0' || !saw_upgrade || !saw_connection || !saw_version)
+    if (ws_key[0] == '\0' || host_header[0] == '\0' || !saw_upgrade || !saw_connection ||
+        !saw_version || !ws_origin_matches_expected(origin_header, host_header, "http", 80)) {
         return 0;
+    }
 
     // Compute accept key
     char *accept = rt_ws_compute_accept_key(ws_key);
@@ -579,6 +491,9 @@ void rt_ws_server_start(void *obj) {
         return;
 
     s->tcp_server = rt_tcp_server_listen(s->port);
+    if (!s->tcp_server)
+        rt_trap("WsServer: failed to bind listener");
+    s->port = rt_tcp_server_port(s->tcp_server);
     s->running = true;
 
 #ifdef _WIN32
@@ -587,6 +502,14 @@ void rt_ws_server_start(void *obj) {
 #else
     s->thread_started = pthread_create(&s->accept_thread, NULL, ws_accept_loop, s) == 0;
 #endif
+    if (!s->thread_started) {
+        s->running = false;
+        rt_tcp_server_close(s->tcp_server);
+        if (rt_obj_release_check0(s->tcp_server))
+            rt_obj_free(s->tcp_server);
+        s->tcp_server = NULL;
+        rt_trap("WsServer: failed to start accept thread");
+    }
 }
 
 /// @brief Stop the server: set `running=false`, close the TCP listener (which unblocks

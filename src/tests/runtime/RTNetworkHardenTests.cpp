@@ -21,7 +21,9 @@
 #include "tests/common/PosixCompat.h"
 
 #include "rt_bytes.h"
+#include "rt_async_socket.h"
 #include "rt_error.h"
+#include "rt_future.h"
 #include "rt_internal.h"
 #include "rt_network.h"
 #include "rt_string.h"
@@ -431,6 +433,21 @@ static void test_http_invalid_content_length() {
     server.join();
 }
 
+// ── Scenario 12: Async connect failure resolves as Future error ───────────
+static void test_async_connect_failure_surfaces_as_future_error() {
+    void *future = rt_async_connect(rt_const_cstr("127.0.0.1"), 1);
+    assert(future != nullptr);
+
+    assert(rt_future_wait_for(future, 5000) == 1);
+    assert(rt_future_is_error(future) == 1);
+
+    rt_string error = rt_future_get_error(future);
+    const char *msg = rt_string_cstr(error);
+    assert(msg != nullptr && *msg != '\0');
+
+    printf("  PASS: AsyncConnectFailure → Future error [%s]\n", msg);
+}
+
 // ── Main ───────────────────────────────────────────────────────────────────
 int main() {
     net_init();
@@ -446,6 +463,7 @@ int main() {
     test_dns_resolve4_nonexistent();
     test_dns_reverse_invalid();
     test_http_invalid_content_length();
+    test_async_connect_failure_surfaces_as_future_error();
 
     net_cleanup();
 

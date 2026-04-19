@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-09
+last-verified: 2026-04-19
 ---
 
 # Cryptography
@@ -40,7 +40,7 @@ AES-128/256 symmetric encryption with CBC mode and PKCS7 padding.
 ### Notes
 
 - `Encrypt`/`Decrypt` require a raw key (16 or 32 bytes) and IV (16 bytes)
-- `EncryptStr` derives an AES-128 key from the password using PBKDF2-HMAC-SHA256 with a random salt
+- `EncryptStr` derives an AES-128 key from the password using PBKDF2-HMAC-SHA256 with a random salt and a 300,000-iteration default
 - `EncryptStr` output format is `[magic(4)][iterations(4)][salt(16)][nonce(12)][ciphertext][tag(16)]`
 - `DecryptStr` remains backward-compatible with older `[IV(16)][AES-CBC ciphertext]` payloads
 - For higher-level authenticated encryption with automatic key management, use `Viper.Crypto.Cipher` instead
@@ -136,7 +136,8 @@ Key-based encryption produces:
 - **Key Size:** 256 bits (32 bytes)
 - **Nonce Size:** 96 bits (12 bytes, randomly generated)
 - **Authentication Tag:** 128 bits (16 bytes)
-- **Key Derivation:** PBKDF2-HMAC-SHA256 with random 16-byte salt
+- **Key Derivation:** PBKDF2-HMAC-SHA256 with random 16-byte salt and a 300,000-iteration default
+- Password-based `Decrypt()` remains backward-compatible with older HKDF-derived payloads during migration
 
 ### Zia Example
 
@@ -240,11 +241,12 @@ Viper.IO.File.WriteAllBytes("secret.doc", decrypted)
 
 ### Error Handling
 
-Cipher operations trap on errors:
+Cipher operations use two failure modes:
 
-- `Decrypt()` traps if authentication fails (wrong password or corrupted data)
+- `Decrypt()` returns `NULL` when authentication fails (wrong password or corrupted ciphertext)
 - `DecryptWithKey()` traps if authentication fails (wrong key or corrupted data)
 - `EncryptWithKey()`/`DecryptWithKey()` trap if key is not exactly 32 bytes
+- Structural misuse still traps: null ciphertext, empty password, or malformed too-short ciphertext
 - Empty plaintext is allowed and produces valid ciphertext
 
 ### Security Recommendations
@@ -435,13 +437,14 @@ Key derivation functions for deriving cryptographic keys from passwords.
 | Parameter    | Type    | Description                                    |
 |--------------|---------|------------------------------------------------|
 | `password`   | String  | The password to derive from                    |
-| `salt`       | Bytes   | Unique random salt (at least 16 bytes recommended) |
-| `iterations` | Integer | Number of iterations (minimum 1000, recommend 100000+) |
+| `salt`       | Bytes   | Unique random salt (non-empty; 16 bytes recommended) |
+| `iterations` | Integer | Number of iterations (minimum 1000, recommend 300000+ for password storage) |
 | `keyLen`     | Integer | Desired key length in bytes (1-1024)           |
 
 ### Traps
 
 - `iterations < 1000`: Traps with "iterations must be at least 1000"
+- empty `salt`: Traps with "salt must not be empty"
 - `keyLen < 1 or keyLen > 1024`: Traps with "key_len must be between 1 and 1024"
 
 ### Zia Example
@@ -458,7 +461,7 @@ func start() {
     var salt = CRand.Bytes(16);
 
     // Derive a key using PBKDF2-SHA256
-    var keyHex = KD.Pbkdf2SHA256Str("password123", salt, 1000, 32);
+    var keyHex = KD.Pbkdf2SHA256Str("password123", salt, 300000, 32);
     Say("Derived key: " + keyHex);
 }
 ```
@@ -469,7 +472,7 @@ func start() {
 ' Derive a key from a password
 DIM password AS STRING = "user-password"
 DIM salt AS OBJECT = Viper.Crypto.Rand.Bytes(16)  ' Random 16-byte salt
-DIM iterations AS INTEGER = 100000  ' High iteration count for security
+DIM iterations AS INTEGER = 300000  ' High iteration count for security
 
 ' Derive a 32-byte key
 DIM key AS OBJECT = Viper.Crypto.KeyDerive.Pbkdf2SHA256(password, salt, iterations, 32)
@@ -488,13 +491,13 @@ FUNCTION HashPassword(password AS STRING) AS STRING
     DIM salt AS OBJECT = Viper.Crypto.Rand.Bytes(16)
 
     ' Derive key with high iteration count
-    DIM hash AS STRING = Viper.Crypto.KeyDerive.Pbkdf2SHA256Str(password, salt, 100000, 32)
+    DIM hash AS STRING = Viper.Crypto.KeyDerive.Pbkdf2SHA256Str(password, salt, 300000, 32)
 
     ' Convert salt to hex for storage
     DIM saltHex AS STRING = Viper.Codec.HexEncode(salt)
 
     ' Store iterations:salt:hash
-    RETURN "100000:" & saltHex & ":" & hash
+    RETURN "300000:" & saltHex & ":" & hash
 END FUNCTION
 
 FUNCTION VerifyPassword(password AS STRING, stored AS STRING) AS BOOLEAN
@@ -513,7 +516,7 @@ END FUNCTION
 
 ### Security Recommendations
 
-1. **Use high iteration counts**: At least 100,000 for password storage (2024)
+1. **Use high iteration counts**: Prefer 300,000 or higher for password storage on current hardware
 2. **Use unique salts**: Generate a new random salt for each password
 3. **Store salt with hash**: You need the salt to verify passwords
 4. **Use sufficient key length**: 32 bytes (256 bits) is standard
@@ -687,6 +690,7 @@ The TLS implementation uses:
 - **Hash:** SHA-256
 - **Certificate Verification:** Enabled by default against the runtime trust source. Windows uses CryptoAPI; macOS and Linux use the built-in PEM-bundle verifier with standard system trust bundles.
 - **Certificate Signature Support:** In-tree verification of ECDSA P-256, RSA PKCS#1 v1.5, and RSA-PSS certificate signatures
+- **Leaf-certificate policy:** Built-in verification enforces TLS server-auth EKU / compatible key-usage on the presented server certificate
 - **Hostname / SNI behavior:** DNS hostnames are sent in SNI; IP literals are verified against IP SANs but are not sent in SNI
 
 ### Zia Example
@@ -772,6 +776,7 @@ Use `Error()` to get descriptive error messages for debugging.
 
 - **Certificate verification:** Server certificates are validated against system trust store
 - **Hostname verification:** Server certificate must match the requested hostname
+- **Leaf certificate purpose:** The server certificate must be valid for TLS server authentication
 - **No self-signed certificates:** Self-signed or untrusted certificates will fail
 - **Forward secrecy:** X25519 key exchange provides perfect forward secrecy
 - **AEAD encryption:** ChaCha20-Poly1305 provides authenticated encryption
@@ -806,7 +811,7 @@ High-level password hashing and verification using PBKDF2. Provides a simple API
 
 | Method                    | Signature                  | Description                                                      |
 |---------------------------|----------------------------|------------------------------------------------------------------|
-| `Hash(password)`          | `String(String)`           | Hash a password with 100,000 iterations and random salt          |
+| `Hash(password)`          | `String(String)`           | Hash a password with 300,000 iterations and random salt          |
 | `HashIters(password, n)`  | `String(String, Integer)`  | Hash a password with a custom iteration count and random salt    |
 | `Verify(password, hash)`  | `Boolean(String, String)`  | Verify a password against a previously generated hash            |
 
@@ -823,12 +828,13 @@ This format stores everything needed for verification: the algorithm identifier,
 ### Notes
 
 - Uses PBKDF2-HMAC-SHA256 as the underlying key derivation function
-- Default iteration count is 100,000 (suitable for most applications)
-- Minimum allowed iteration count for `HashIters` is 10,000
+- Default iteration count is 300,000
+- `HashIters` clamps low requests up to 100,000 instead of silently using very weak counts
 - A random 16-byte salt is generated automatically for each hash
 - The salt and iteration count are embedded in the output string, so no separate storage is needed
 - `Verify` parses the stored hash string to extract parameters before re-deriving
-- Use `HashIters` to increase iterations for higher security
+- `Verify` returns `false` for malformed or null stored hashes instead of trapping
+- Use `HashIters` to increase iterations beyond the default when you have the latency budget
 
 ### Zia Example
 
@@ -842,7 +848,7 @@ bind Viper.Fmt as Fmt;
 func start() {
     // Hash a password
     var hash = Password.Hash("secret123");
-    Say("Hash: " + hash);  // PBKDF2$100000$...
+    Say("Hash: " + hash);  // PBKDF2$300000$...
 
     // Verify correct password
     Say("Verify correct: " + Fmt.Bool(Password.Verify("secret123", hash)));  // true
@@ -857,7 +863,7 @@ func start() {
 ```basic
 ' Hash a password
 DIM hash AS STRING = Viper.Crypto.Password.Hash("secret123")
-PRINT "Hash: "; hash  ' Output: PBKDF2$100000$...
+PRINT "Hash: "; hash  ' Output: PBKDF2$300000$...
 
 ' Verify correct password
 PRINT "Correct: "; Viper.Crypto.Password.Verify("secret123", hash)  ' Output: 1
@@ -866,14 +872,14 @@ PRINT "Correct: "; Viper.Crypto.Password.Verify("secret123", hash)  ' Output: 1
 PRINT "Wrong: "; Viper.Crypto.Password.Verify("wrong", hash)        ' Output: 0
 
 ' Hash with custom iteration count
-DIM strongHash AS STRING = Viper.Crypto.Password.HashIters("secret123", 200000)
+DIM strongHash AS STRING = Viper.Crypto.Password.HashIters("secret123", 500000)
 PRINT "Strong hash: "; strongHash
 PRINT "Verify: "; Viper.Crypto.Password.Verify("secret123", strongHash)  ' Output: 1
 ```
 
 ### Security Recommendations
 
-1. **Use default iterations for production:** 100,000 iterations provides good security for most use cases
+1. **Use default iterations for production:** 300,000 iterations is the current runtime baseline
 2. **Increase iterations over time:** As hardware gets faster, increase the iteration count
 3. **Never store plaintext:** Always store the hash string, never the original password
 4. **Timing-safe comparison:** `Verify` uses constant-time comparison to prevent timing attacks

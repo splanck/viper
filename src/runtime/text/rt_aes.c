@@ -49,7 +49,7 @@
 #define AES_STR_MAGIC2 'G'
 #define AES_STR_MAGIC3 '1'
 #define AES_STR_HEADER_LEN 36
-#define AES_STR_PBKDF2_ITERATIONS 100000U
+#define AES_STR_PBKDF2_ITERATIONS 300000U
 
 /// @brief Zero out `len` bytes at `ptr` in a way that the optimizer can't elide.
 ///
