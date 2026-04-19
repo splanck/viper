@@ -133,8 +133,8 @@
 @property(nonatomic) NSUInteger instanceCapacity;
 @property(nonatomic) vgfx3d_metal_target_kind_t currentTargetKind;
 @property(nonatomic) int8_t gpuPostfxEnabled;
-@property(nonatomic) int8_t gpuPostfxSnapshotValid;
-@property(nonatomic) vgfx3d_postfx_snapshot_t gpuPostfxSnapshot;
+@property(nonatomic) int8_t gpuPostfxChainValid;
+@property(nonatomic) vgfx3d_postfx_chain_t gpuPostfxChain;
 @property(nonatomic) vgfx3d_metal_frame_history_t frameHistory;
 @property(nonatomic) int8_t postfxEncodedThisFrame;
 @end
@@ -924,7 +924,7 @@ static int metal_copy_texture_to_rgba(
 static void metal_update_layer_size(VGFXMetalContext *ctx);
 static int metal_capture_current_drawable_to_display_texture(VGFXMetalContext *ctx);
 static id<MTLTexture> metal_encode_postfx_if_needed(
-    VGFXMetalContext *ctx, const vgfx3d_postfx_snapshot_t *postfx);
+    VGFXMetalContext *ctx, const vgfx3d_postfx_chain_t *postfx);
 
 static float metal_cubemap_max_lod(const rt_cubemap3d *cubemap) {
     int32_t mip_count;
@@ -1543,6 +1543,38 @@ static id<MTLTexture> metal_active_readback_texture(VGFXMetalContext *ctx) {
     if (ctx.currentTargetKind == VGFX3D_METAL_TARGET_SWAPCHAIN && ctx.drawable)
         return ctx.drawable.texture;
     return ctx.offscreenColor;
+}
+
+static void metal_reset_gpu_postfx_chain(VGFXMetalContext *ctx) {
+    vgfx3d_postfx_chain_t chain;
+    if (!ctx)
+        return;
+    chain = ctx.gpuPostfxChain;
+    vgfx3d_postfx_chain_reset(&chain);
+    ctx.gpuPostfxChain = chain;
+    ctx.gpuPostfxChainValid = 0;
+}
+
+static void metal_free_gpu_postfx_chain(VGFXMetalContext *ctx) {
+    vgfx3d_postfx_chain_t chain;
+    if (!ctx)
+        return;
+    chain = ctx.gpuPostfxChain;
+    vgfx3d_postfx_chain_free(&chain);
+    ctx.gpuPostfxChain = chain;
+    ctx.gpuPostfxChainValid = 0;
+}
+
+static int metal_copy_gpu_postfx_chain(VGFXMetalContext *ctx, const vgfx3d_postfx_chain_t *src) {
+    vgfx3d_postfx_chain_t chain;
+    int ok;
+    if (!ctx)
+        return 0;
+    chain = ctx.gpuPostfxChain;
+    ok = vgfx3d_postfx_chain_copy(&chain, src);
+    ctx.gpuPostfxChain = chain;
+    ctx.gpuPostfxChainValid = ok ? 1 : 0;
+    return ok;
 }
 
 //=============================================================================
@@ -2258,6 +2290,7 @@ static void metal_destroy_ctx(void *ctx_ptr) {
         return;
     @autoreleasepool {
         VGFXMetalContext *ctx = (__bridge_transfer VGFXMetalContext *)ctx_ptr;
+        metal_free_gpu_postfx_chain(ctx);
         [ctx.metalLayer removeFromSuperlayer];
         ctx.metalLayer = nil;
         (void)ctx; /* ARC releases all properties */
@@ -2915,21 +2948,22 @@ static int metal_readback_rgba(
     @autoreleasepool {
         VGFXMetalContext *ctx = (__bridge VGFXMetalContext *)ctx_ptr;
         id<MTLTexture> texture = nil;
-        vgfx3d_postfx_snapshot_t snapshot_copy;
-        const vgfx3d_postfx_snapshot_t *snapshot = NULL;
+        vgfx3d_postfx_chain_t chain_copy = {0};
+        const vgfx3d_postfx_chain_t *chain = NULL;
         vgfx3d_metal_readback_kind_t readback_kind;
         if (!ctx || !dst_rgba || w <= 0 || h <= 0 || stride < w * 4)
             return 0;
 
         readback_kind = vgfx3d_metal_choose_readback_kind(
-            (ctx.gpuPostfxEnabled && ctx.gpuPostfxSnapshotValid) ? 1 : 0);
+            (ctx.gpuPostfxEnabled && ctx.gpuPostfxChainValid) ? 1 : 0);
         if (!ctx.rttActive && ctx.cmdBuf) {
             if (readback_kind == VGFX3D_METAL_READBACK_POSTFX_COMPOSITE) {
-                if (ctx.gpuPostfxSnapshotValid) {
-                    snapshot_copy = ctx.gpuPostfxSnapshot;
-                    snapshot = &snapshot_copy;
+                if (ctx.gpuPostfxChainValid) {
+                    vgfx3d_postfx_chain_t stored_chain = ctx.gpuPostfxChain;
+                    if (vgfx3d_postfx_chain_copy(&chain_copy, &stored_chain))
+                        chain = &chain_copy;
                 }
-                texture = metal_encode_postfx_if_needed(ctx, snapshot);
+                texture = metal_encode_postfx_if_needed(ctx, chain);
             } else if (ctx.currentTargetKind == VGFX3D_METAL_TARGET_SWAPCHAIN &&
                        !metal_capture_current_drawable_to_display_texture(ctx)) {
                 return 0;
@@ -2937,7 +2971,11 @@ static int metal_readback_rgba(
             metal_commit_pending(ctx, YES);
         }
         texture = metal_active_readback_texture(ctx);
-        return metal_copy_texture_to_rgba(texture, dst_rgba, w, h, stride);
+        {
+            const int ok = metal_copy_texture_to_rgba(texture, dst_rgba, w, h, stride);
+            vgfx3d_postfx_chain_free(&chain_copy);
+            return ok;
+        }
     }
 }
 
@@ -3418,27 +3456,63 @@ static int metal_capture_current_drawable_to_display_texture(VGFXMetalContext *c
     return 1;
 }
 
-static id<MTLTexture> metal_encode_postfx_if_needed(
-    VGFXMetalContext *ctx, const vgfx3d_postfx_snapshot_t *postfx) {
+static void metal_fill_postfx_params(VGFXMetalContext *ctx,
+                                     const vgfx3d_postfx_snapshot_t *postfx,
+                                     int overlay_enabled,
+                                     mtl_postfx_params_t *params) {
+    if (!ctx || !params)
+        return;
+    memset(params, 0, sizeof(*params));
+    transpose4x4(ctx.frameHistory.scene_inv_vp, params->invViewProjection);
+    transpose4x4(ctx.frameHistory.scene_prev_vp, params->prevViewProjection);
+    memcpy(params->cameraPosition, ctx.frameHistory.scene_cam_pos, sizeof(float) * 3);
+    params->cameraPosition[3] = 1.0f;
+    params->invResolution[0] = ctx.width > 0 ? 1.0f / (float)ctx.width : 0.0f;
+    params->invResolution[1] = ctx.height > 0 ? 1.0f / (float)ctx.height : 0.0f;
+    params->overlayEnabled = overlay_enabled ? 1 : 0;
+    if (!postfx)
+        return;
+    params->bloomEnabled = postfx->bloom_enabled ? 1 : 0;
+    params->bloomThreshold = postfx->bloom_threshold;
+    params->bloomStrength = postfx->bloom_intensity;
+    params->tonemapMode = (int32_t)postfx->tonemap_mode;
+    params->tonemapExposure = postfx->tonemap_exposure;
+    params->fxaaEnabled = postfx->fxaa_enabled ? 1 : 0;
+    params->colorGradeEnabled = postfx->color_grade_enabled ? 1 : 0;
+    params->cgBright = postfx->cg_brightness;
+    params->cgContrast = postfx->cg_contrast;
+    params->cgSat = postfx->cg_saturation;
+    params->vignetteEnabled = postfx->vignette_enabled ? 1 : 0;
+    params->vigRadius = postfx->vignette_radius;
+    params->vigSoftness = postfx->vignette_softness;
+    params->dofEnabled = postfx->dof_enabled ? 1 : 0;
+    params->dofFocusDist = postfx->dof_focus_distance;
+    params->dofAperture = postfx->dof_aperture;
+    params->dofMaxBlur = postfx->dof_max_blur;
+    params->ssaoEnabled = postfx->ssao_enabled ? 1 : 0;
+    params->ssaoRadius = postfx->ssao_radius;
+    params->ssaoIntensity = postfx->ssao_intensity;
+    params->ssaoSamples = postfx->ssao_samples;
+    params->motionBlurEnabled = postfx->motion_blur_enabled ? 1 : 0;
+    params->motionBlurIntensity = postfx->motion_blur_intensity;
+    params->motionBlurSamples = postfx->motion_blur_samples;
+}
+
+static id<MTLTexture> metal_encode_postfx_pass(VGFXMetalContext *ctx,
+                                               id<MTLTexture> source_texture,
+                                               id<MTLTexture> target_texture,
+                                               const vgfx3d_postfx_snapshot_t *postfx,
+                                               int overlay_enabled) {
     MTLRenderPassDescriptor *rp;
     id<MTLRenderCommandEncoder> pfxEncoder;
     mtl_postfx_params_t params;
 
-    if (!ctx)
+    if (!ctx || !ctx.cmdBuf || !ctx.postfxPipeline || !source_texture || !target_texture ||
+        !ctx.offscreenMotion || !ctx.depthTexture)
         return nil;
-    if (ctx.postfxEncodedThisFrame && ctx.postfxColorTexture) {
-        ctx.displayTexture = ctx.postfxColorTexture;
-        return ctx.postfxColorTexture;
-    }
-    if (!ctx.cmdBuf || !ctx.postfxPipeline || !ctx.postfxColorTexture || !ctx.offscreenColor ||
-        !ctx.offscreenMotion || !ctx.depthTexture || !postfx) {
-        return nil;
-    }
-
-    metal_finish_encoding(ctx);
 
     rp = [MTLRenderPassDescriptor renderPassDescriptor];
-    rp.colorAttachments[0].texture = ctx.postfxColorTexture;
+    rp.colorAttachments[0].texture = target_texture;
     rp.colorAttachments[0].loadAction = MTLLoadActionDontCare;
     rp.colorAttachments[0].storeAction = MTLStoreActionStore;
 
@@ -3447,60 +3521,73 @@ static id<MTLTexture> metal_encode_postfx_if_needed(
         return nil;
 
     [pfxEncoder setRenderPipelineState:ctx.postfxPipeline];
-    [pfxEncoder setFragmentTexture:ctx.offscreenColor atIndex:0];
+    [pfxEncoder setFragmentTexture:source_texture atIndex:0];
     [pfxEncoder setFragmentTexture:ctx.depthTexture atIndex:1];
     [pfxEncoder setFragmentTexture:ctx.offscreenMotion atIndex:2];
-    if (ctx.frameHistory.overlay_used_this_frame && ctx.overlayColorTexture)
+    if (overlay_enabled && ctx.overlayColorTexture)
         [pfxEncoder setFragmentTexture:ctx.overlayColorTexture atIndex:3];
     [pfxEncoder
         setFragmentSamplerState:(ctx.sharedSampler ? ctx.sharedSampler : ctx.defaultSampler)
                         atIndex:0];
 
-    memset(&params, 0, sizeof(params));
-    transpose4x4(ctx.frameHistory.scene_inv_vp, params.invViewProjection);
-    transpose4x4(ctx.frameHistory.scene_prev_vp, params.prevViewProjection);
-    memcpy(params.cameraPosition, ctx.frameHistory.scene_cam_pos, sizeof(float) * 3);
-    params.cameraPosition[3] = 1.0f;
-    params.invResolution[0] = ctx.width > 0 ? 1.0f / (float)ctx.width : 0.0f;
-    params.invResolution[1] = ctx.height > 0 ? 1.0f / (float)ctx.height : 0.0f;
-    params.bloomEnabled = postfx->bloom_enabled ? 1 : 0;
-    params.bloomThreshold = postfx->bloom_threshold;
-    params.bloomStrength = postfx->bloom_intensity;
-    params.tonemapMode = (int32_t)postfx->tonemap_mode;
-    params.tonemapExposure = postfx->tonemap_exposure;
-    params.fxaaEnabled = postfx->fxaa_enabled ? 1 : 0;
-    params.colorGradeEnabled = postfx->color_grade_enabled ? 1 : 0;
-    params.cgBright = postfx->cg_brightness;
-    params.cgContrast = postfx->cg_contrast;
-    params.cgSat = postfx->cg_saturation;
-    params.vignetteEnabled = postfx->vignette_enabled ? 1 : 0;
-    params.vigRadius = postfx->vignette_radius;
-    params.vigSoftness = postfx->vignette_softness;
-    params.dofEnabled = postfx->dof_enabled ? 1 : 0;
-    params.dofFocusDist = postfx->dof_focus_distance;
-    params.dofAperture = postfx->dof_aperture;
-    params.dofMaxBlur = postfx->dof_max_blur;
-    params.ssaoEnabled = postfx->ssao_enabled ? 1 : 0;
-    params.ssaoRadius = postfx->ssao_radius;
-    params.ssaoIntensity = postfx->ssao_intensity;
-    params.ssaoSamples = postfx->ssao_samples;
-    params.motionBlurEnabled = postfx->motion_blur_enabled ? 1 : 0;
-    params.motionBlurIntensity = postfx->motion_blur_intensity;
-    params.motionBlurSamples = postfx->motion_blur_samples;
-    params.overlayEnabled = ctx.frameHistory.overlay_used_this_frame ? 1 : 0;
+    metal_fill_postfx_params(ctx, postfx, overlay_enabled, &params);
     [pfxEncoder setFragmentBytes:&params length:sizeof(params) atIndex:0];
 
     [pfxEncoder drawPrimitives:MTLPrimitiveTypeTriangleStrip vertexStart:0 vertexCount:4];
     [pfxEncoder endEncoding];
+    return target_texture;
+}
+
+static id<MTLTexture> metal_encode_postfx_if_needed(
+    VGFXMetalContext *ctx, const vgfx3d_postfx_chain_t *postfx) {
+    id<MTLTexture> source_texture;
+    id<MTLTexture> target_texture;
+
+    if (!ctx)
+        return nil;
+    if (ctx.postfxEncodedThisFrame && ctx.displayTexture)
+        return ctx.displayTexture;
+    if (!ctx.cmdBuf || !ctx.postfxPipeline || !ctx.postfxColorTexture || !ctx.offscreenColor ||
+        !ctx.offscreenMotion || !ctx.depthTexture || !postfx || !postfx->enabled ||
+        postfx->effect_count <= 0 || !postfx->effects) {
+        return nil;
+    }
+
+    metal_finish_encoding(ctx);
+
+    source_texture = ctx.offscreenColor;
+    target_texture = ctx.postfxColorTexture;
+    for (int32_t i = 0; i < postfx->effect_count; i++) {
+        id<MTLTexture> output_texture =
+            metal_encode_postfx_pass(ctx,
+                                     source_texture,
+                                     target_texture,
+                                     &postfx->effects[i].snapshot,
+                                     0);
+        if (!output_texture)
+            return nil;
+        source_texture = output_texture;
+        target_texture = (source_texture == ctx.postfxColorTexture) ? ctx.offscreenColor
+                                                                    : ctx.postfxColorTexture;
+    }
+
+    if (ctx.frameHistory.overlay_used_this_frame && ctx.overlayColorTexture) {
+        id<MTLTexture> output_texture =
+            metal_encode_postfx_pass(ctx, source_texture, target_texture, NULL, 1);
+        if (!output_texture)
+            return nil;
+        source_texture = output_texture;
+    }
+
     ctx.postfxEncodedThisFrame = 1;
-    ctx.displayTexture = ctx.postfxColorTexture;
-    return ctx.postfxColorTexture;
+    ctx.displayTexture = source_texture;
+    return source_texture;
 }
 
 /// @brief Metal PostFX presentation: render fullscreen quad with PostFX shader.
 /// Runs the fullscreen post-processing pass into an offscreen texture, then
 /// presents that texture through the CAMetalLayer drawable when available.
-static void metal_present_postfx(void *backend_ctx, const vgfx3d_postfx_snapshot_t *postfx) {
+static void metal_present_postfx(void *backend_ctx, const vgfx3d_postfx_chain_t *postfx) {
     if (!backend_ctx || !postfx)
         return;
     @autoreleasepool {
@@ -3597,6 +3684,9 @@ static void metal_set_gpu_postfx_enabled(void *ctx_ptr, int8_t enabled) {
         ctx.gpuPostfxEnabled = desired_enabled;
         ctx.postfxEncodedThisFrame = 0;
         ctx.displayTexture = nil;
+        if (!ctx.gpuPostfxEnabled) {
+            metal_reset_gpu_postfx_chain(ctx);
+        }
         if (ctx.cmdBuf)
             metal_commit_pending(ctx, YES);
         if (!ctx.rttActive && ctx.width > 0 && ctx.height > 0)
@@ -3604,20 +3694,19 @@ static void metal_set_gpu_postfx_enabled(void *ctx_ptr, int8_t enabled) {
     }
 }
 
-static void metal_set_gpu_postfx_snapshot(void *ctx_ptr, const vgfx3d_postfx_snapshot_t *postfx) {
+static void metal_set_gpu_postfx_snapshot(void *ctx_ptr, const vgfx3d_postfx_chain_t *postfx) {
     @autoreleasepool {
         VGFXMetalContext *ctx = (__bridge VGFXMetalContext *)ctx_ptr;
-        vgfx3d_postfx_snapshot_t empty_snapshot;
         if (!ctx)
             return;
         if (!postfx) {
-            memset(&empty_snapshot, 0, sizeof(empty_snapshot));
-            ctx.gpuPostfxSnapshot = empty_snapshot;
-            ctx.gpuPostfxSnapshotValid = 0;
+            metal_reset_gpu_postfx_chain(ctx);
             return;
         }
-        ctx.gpuPostfxSnapshot = *postfx;
-        ctx.gpuPostfxSnapshotValid = 1;
+        if (!metal_copy_gpu_postfx_chain(ctx, postfx)) {
+            metal_reset_gpu_postfx_chain(ctx);
+            return;
+        }
     }
 }
 

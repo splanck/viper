@@ -1083,10 +1083,15 @@ typedef struct {
     ID3D11Texture2D *overlay_color_tex;
     ID3D11RenderTargetView *overlay_color_rtv;
     ID3D11ShaderResourceView *overlay_color_srv;
+    ID3D11Texture2D *postfx_color_tex;
+    ID3D11RenderTargetView *postfx_color_rtv;
+    ID3D11ShaderResourceView *postfx_color_srv;
     int32_t scene_width;
     int32_t scene_height;
     int32_t overlay_width;
     int32_t overlay_height;
+    int32_t postfx_width;
+    int32_t postfx_height;
 
     ID3D11Texture2D *rtt_color_tex;
     ID3D11RenderTargetView *rtt_rtv;
@@ -1147,8 +1152,10 @@ typedef struct {
     float fog_far;
     float fog_color[3];
     int8_t gpu_postfx_enabled;
+    int8_t gpu_postfx_chain_valid;
     int8_t current_pass_is_overlay;
     int8_t overlay_used_this_frame;
+    vgfx3d_postfx_chain_t gpu_postfx_chain;
 } d3d11_context_t;
 
 #define SAFE_RELEASE(x)                                                                            \
@@ -2201,6 +2208,9 @@ static HRESULT d3d11_create_staging_texture(d3d11_context_t *ctx,
 static void d3d11_destroy_scene_targets(d3d11_context_t *ctx) {
     if (!ctx)
         return;
+    SAFE_RELEASE(ctx->postfx_color_srv);
+    SAFE_RELEASE(ctx->postfx_color_rtv);
+    SAFE_RELEASE(ctx->postfx_color_tex);
     SAFE_RELEASE(ctx->overlay_color_srv);
     SAFE_RELEASE(ctx->overlay_color_rtv);
     SAFE_RELEASE(ctx->overlay_color_tex);
@@ -2217,6 +2227,8 @@ static void d3d11_destroy_scene_targets(d3d11_context_t *ctx) {
     ctx->scene_height = 0;
     ctx->overlay_width = 0;
     ctx->overlay_height = 0;
+    ctx->postfx_width = 0;
+    ctx->postfx_height = 0;
 }
 
 /// @brief Allocate scene render targets at the requested size, idempotent on size match.
@@ -2300,6 +2312,35 @@ static HRESULT d3d11_ensure_overlay_target(d3d11_context_t *ctx, int32_t width, 
         ctx->overlay_height = height;
     }
     return hr;
+}
+
+static HRESULT d3d11_ensure_postfx_target(d3d11_context_t *ctx, int32_t width, int32_t height) {
+    HRESULT hr;
+
+    if (!ctx || width <= 0 || height <= 0)
+        return E_INVALIDARG;
+    if (ctx->postfx_color_rtv && ctx->postfx_width == width && ctx->postfx_height == height)
+        return S_OK;
+
+    SAFE_RELEASE(ctx->postfx_color_srv);
+    SAFE_RELEASE(ctx->postfx_color_rtv);
+    SAFE_RELEASE(ctx->postfx_color_tex);
+    hr = d3d11_create_color_target(ctx,
+                                   width,
+                                   height,
+                                   vgfx3d_d3d11_choose_color_format(VGFX3D_D3D11_TARGET_SCENE),
+                                   &ctx->postfx_color_tex,
+                                   &ctx->postfx_color_rtv,
+                                   &ctx->postfx_color_srv);
+    if (FAILED(hr)) {
+        SAFE_RELEASE(ctx->postfx_color_srv);
+        SAFE_RELEASE(ctx->postfx_color_rtv);
+        SAFE_RELEASE(ctx->postfx_color_tex);
+        return hr;
+    }
+    ctx->postfx_width = width;
+    ctx->postfx_height = height;
+    return S_OK;
 }
 
 static int d3d11_sync_render_target_color(void *ctx_ptr, vgfx3d_rendertarget_t *target) {
@@ -3950,6 +3991,7 @@ static void d3d11_destroy_ctx(void *ctx_ptr) {
     d3d11_destroy_shadow_targets(ctx);
     d3d11_destroy_rtt_targets(ctx);
     d3d11_destroy_scene_targets(ctx);
+    vgfx3d_postfx_chain_free(&ctx->gpu_postfx_chain);
 
     SAFE_RELEASE(ctx->morph_normal_srv);
     SAFE_RELEASE(ctx->morph_normal_buffer);
@@ -4303,12 +4345,171 @@ static int d3d11_readback_texture_rgba(d3d11_context_t *ctx,
     return 1;
 }
 
+static void d3d11_bind_postfx_target(
+    d3d11_context_t *ctx, ID3D11RenderTargetView *rtv, int32_t width, int32_t height) {
+    D3D11_VIEWPORT viewport;
+
+    if (!ctx || !rtv || width <= 0 || height <= 0)
+        return;
+    memset(&viewport, 0, sizeof(viewport));
+    viewport.Width = (FLOAT)width;
+    viewport.Height = (FLOAT)height;
+    viewport.MinDepth = 0.0f;
+    viewport.MaxDepth = 1.0f;
+    ID3D11DeviceContext_OMSetRenderTargets(ctx->ctx, 1, &rtv, NULL);
+    ID3D11DeviceContext_RSSetViewports(ctx->ctx, 1, &viewport);
+}
+
+static int d3d11_draw_postfx_pass(d3d11_context_t *ctx,
+                                  ID3D11ShaderResourceView *source_color_srv,
+                                  ID3D11RenderTargetView *dest_rtv,
+                                  int32_t width,
+                                  int32_t height,
+                                  const vgfx3d_postfx_snapshot_t *snapshot) {
+    d3d_postfx_cb_t postfx_data;
+    ID3D11ShaderResourceView *srvs[4];
+    ID3D11ShaderResourceView *null_srvs[4] = {NULL, NULL, NULL, NULL};
+    float blend_factor[4] = {0, 0, 0, 0};
+    HRESULT hr;
+
+    if (!ctx || !source_color_srv || !dest_rtv || width <= 0 || height <= 0)
+        return 0;
+
+    d3d11_prepare_postfx_data(ctx, snapshot, &postfx_data);
+    hr = d3d11_update_constant_buffer(ctx, ctx->cb_postfx, &postfx_data, sizeof(postfx_data));
+    if (FAILED(hr)) {
+        d3d11_log_hresult("Map(cbPostFX)", hr);
+        return 0;
+    }
+
+    d3d11_bind_postfx_target(ctx, dest_rtv, width, height);
+    srvs[0] = source_color_srv;
+    srvs[1] = ctx->scene_depth_srv;
+    srvs[2] = ctx->scene_motion_srv;
+    srvs[3] = NULL;
+    ID3D11DeviceContext_IASetInputLayout(ctx->ctx, NULL);
+    ID3D11DeviceContext_IASetPrimitiveTopology(ctx->ctx, D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    ID3D11DeviceContext_VSSetShader(ctx->ctx, ctx->vs_postfx, NULL, 0);
+    ID3D11DeviceContext_PSSetShader(ctx->ctx, ctx->ps_postfx, NULL, 0);
+    ID3D11DeviceContext_VSSetConstantBuffers(ctx->ctx, 0, 1, &ctx->cb_postfx);
+    ID3D11DeviceContext_PSSetConstantBuffers(ctx->ctx, 0, 1, &ctx->cb_postfx);
+    if (ctx->linear_clamp_sampler)
+        ID3D11DeviceContext_PSSetSamplers(ctx->ctx, 0, 1, &ctx->linear_clamp_sampler);
+    ID3D11DeviceContext_PSSetShaderResources(ctx->ctx, 0, 4, srvs);
+    ID3D11DeviceContext_RSSetState(ctx->ctx, ctx->rs_solid_no_cull);
+    ID3D11DeviceContext_OMSetDepthStencilState(ctx->ctx, NULL, 0);
+    ID3D11DeviceContext_OMSetBlendState(
+        ctx->ctx, ctx->blend_state_opaque, blend_factor, 0xFFFFFFFF);
+    ID3D11DeviceContext_Draw(ctx->ctx, 3, 0);
+    ID3D11DeviceContext_PSSetShaderResources(ctx->ctx, 0, 4, null_srvs);
+    return 1;
+}
+
+static int d3d11_draw_overlay_composite(d3d11_context_t *ctx,
+                                        ID3D11RenderTargetView *dest_rtv,
+                                        int32_t width,
+                                        int32_t height) {
+    ID3D11ShaderResourceView *overlay_srv;
+    ID3D11ShaderResourceView *null_srv = NULL;
+    float blend_factor[4] = {0, 0, 0, 0};
+
+    if (!ctx || !dest_rtv || width <= 0 || height <= 0 || !ctx->overlay_used_this_frame ||
+        !ctx->overlay_color_srv || !ctx->ps_overlay_composite) {
+        return 1;
+    }
+
+    overlay_srv = ctx->overlay_color_srv;
+    d3d11_bind_postfx_target(ctx, dest_rtv, width, height);
+    ID3D11DeviceContext_IASetInputLayout(ctx->ctx, NULL);
+    ID3D11DeviceContext_IASetPrimitiveTopology(ctx->ctx, D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    ID3D11DeviceContext_VSSetShader(ctx->ctx, ctx->vs_postfx, NULL, 0);
+    ID3D11DeviceContext_PSSetShader(ctx->ctx, ctx->ps_overlay_composite, NULL, 0);
+    if (ctx->linear_clamp_sampler)
+        ID3D11DeviceContext_PSSetSamplers(ctx->ctx, 0, 1, &ctx->linear_clamp_sampler);
+    ID3D11DeviceContext_PSSetShaderResources(ctx->ctx, 3, 1, &overlay_srv);
+    ID3D11DeviceContext_RSSetState(ctx->ctx, ctx->rs_solid_no_cull);
+    ID3D11DeviceContext_OMSetDepthStencilState(ctx->ctx, NULL, 0);
+    ID3D11DeviceContext_OMSetBlendState(
+        ctx->ctx, ctx->blend_state_alpha, blend_factor, 0xFFFFFFFF);
+    ID3D11DeviceContext_Draw(ctx->ctx, 3, 0);
+    ID3D11DeviceContext_PSSetShaderResources(ctx->ctx, 3, 1, &null_srv);
+    return 1;
+}
+
+static int d3d11_apply_postfx_chain(d3d11_context_t *ctx,
+                                    const vgfx3d_postfx_chain_t *chain,
+                                    ID3D11RenderTargetView *final_rtv,
+                                    int32_t final_width,
+                                    int32_t final_height,
+                                    int force_offscreen_final,
+                                    ID3D11Texture2D **out_result_tex) {
+    ID3D11ShaderResourceView *source_srv;
+    ID3D11RenderTargetView *dest_rtv;
+    ID3D11Texture2D *result_tex = NULL;
+    int32_t width;
+    int32_t height;
+
+    if (out_result_tex)
+        *out_result_tex = NULL;
+    if (!ctx || !chain || !chain->enabled || chain->effect_count <= 0 || !chain->effects ||
+        !ctx->scene_color_srv || !ctx->scene_color_rtv || !ctx->scene_color_tex || !ctx->scene_depth_srv ||
+        !ctx->scene_motion_srv) {
+        return 0;
+    }
+
+    if ((force_offscreen_final || chain->effect_count > 1) &&
+        FAILED(d3d11_ensure_postfx_target(ctx, ctx->scene_width, ctx->scene_height))) {
+        return 0;
+    }
+
+    source_srv = ctx->scene_color_srv;
+    result_tex = ctx->scene_color_tex;
+    for (int32_t i = 0; i < chain->effect_count; i++) {
+        const int is_last = (i == chain->effect_count - 1) ? 1 : 0;
+        if (is_last && !force_offscreen_final) {
+            dest_rtv = final_rtv;
+            width = final_width;
+            height = final_height;
+            result_tex = NULL;
+        } else if (source_srv == ctx->scene_color_srv) {
+            dest_rtv = ctx->postfx_color_rtv;
+            width = ctx->scene_width;
+            height = ctx->scene_height;
+            result_tex = ctx->postfx_color_tex;
+        } else {
+            dest_rtv = ctx->scene_color_rtv;
+            width = ctx->scene_width;
+            height = ctx->scene_height;
+            result_tex = ctx->scene_color_tex;
+        }
+        if (!d3d11_draw_postfx_pass(ctx, source_srv, dest_rtv, width, height, &chain->effects[i].snapshot))
+            return 0;
+        if (!is_last || force_offscreen_final) {
+            source_srv = (dest_rtv == ctx->postfx_color_rtv) ? ctx->postfx_color_srv : ctx->scene_color_srv;
+        }
+    }
+
+    if (force_offscreen_final) {
+        dest_rtv = (result_tex == ctx->postfx_color_tex) ? ctx->postfx_color_rtv : ctx->scene_color_rtv;
+        width = ctx->scene_width;
+        height = ctx->scene_height;
+        if (!d3d11_draw_overlay_composite(ctx, dest_rtv, width, height))
+            return 0;
+        if (out_result_tex)
+            *out_result_tex = result_tex;
+        return result_tex != NULL ? 1 : 0;
+    }
+
+    if (!d3d11_draw_overlay_composite(ctx, final_rtv, final_width, final_height))
+        return 0;
+    return 1;
+}
+
 /// @brief Backend `readback_rgba` op — pick the best source texture to read.
 ///
-/// Prefers the offscreen scene color (HDR-aware via `_readback_texture_rgba`)
-/// when scene targets are active or postfx is on. Falls back to the
-/// swapchain backbuffer otherwise. Used by screenshot capture and
-/// golden-frame e2e tests.
+/// Prefers the offscreen scene color (or the fully composited post-FX result)
+/// when scene targets are active. Falls back to the swapchain backbuffer
+/// otherwise. Used by screenshot capture and golden-frame e2e tests.
 static int d3d11_readback_rgba(
     void *ctx_ptr, uint8_t *dst_rgba, int32_t w, int32_t h, int32_t stride) {
     d3d11_context_t *ctx = (d3d11_context_t *)ctx_ptr;
@@ -4318,9 +4519,18 @@ static int d3d11_readback_rgba(
 
     if (!ctx || !dst_rgba || w <= 0 || h <= 0 || stride < w * 4)
         return 0;
-    if (ctx->scene_color_tex && ctx->scene_width > 0 && ctx->scene_height > 0 &&
-        (ctx->gpu_postfx_enabled ||
-         ctx->current_target_kind != VGFX3D_D3D11_TARGET_SWAPCHAIN)) {
+    if (ctx->gpu_postfx_enabled && ctx->gpu_postfx_chain_valid) {
+        if (!d3d11_apply_postfx_chain(ctx,
+                                      &ctx->gpu_postfx_chain,
+                                      NULL,
+                                      0,
+                                      0,
+                                      1,
+                                      &source_tex)) {
+            return 0;
+        }
+    } else if (ctx->scene_color_tex && ctx->scene_width > 0 && ctx->scene_height > 0 &&
+               ctx->current_target_kind != VGFX3D_D3D11_TARGET_SWAPCHAIN) {
         source_tex = ctx->scene_color_tex;
     } else {
         hr = IDXGISwapChain_GetBuffer(
@@ -4340,71 +4550,23 @@ static int d3d11_readback_rgba(
 }
 
 /// @brief Internal present path — composite scene + post-FX + overlay onto the swapchain.
-///
-/// When postfx is disabled, just calls `Present`. When enabled:
-///   1. Bind swapchain RTV.
-///   2. Upload postfx cbuffer and bind scene color/depth/motion as PS SRVs.
-///   3. Issue a fullscreen-triangle Draw using the postfx VS/PS.
-///   4. If the overlay layer is in use, do a second pass with the
-///      overlay-composite PS and alpha blending.
-///   5. Present the swapchain.
-static void d3d11_present_internal(d3d11_context_t *ctx, const vgfx3d_postfx_snapshot_t *snapshot) {
-    d3d_postfx_cb_t postfx_data;
-    ID3D11ShaderResourceView *srvs[4];
-    ID3D11ShaderResourceView *null_srvs[4] = {NULL, NULL, NULL, NULL};
-    float blend_factor[4] = {0, 0, 0, 0};
-    HRESULT hr;
+static void d3d11_present_internal(d3d11_context_t *ctx, const vgfx3d_postfx_chain_t *chain) {
     int use_postfx;
 
     if (!ctx || ctx->rtt_active)
         return;
-    use_postfx =
-        (snapshot != NULL && ctx->gpu_postfx_enabled && ctx->scene_color_srv && ctx->scene_depth_srv &&
-         ctx->scene_motion_srv)
-            ? 1
-            : 0;
+    use_postfx = (chain != NULL && chain->enabled && chain->effect_count > 0 && ctx->gpu_postfx_enabled &&
+                  ctx->scene_color_srv && ctx->scene_depth_srv && ctx->scene_motion_srv)
+                     ? 1
+                     : 0;
     if (!use_postfx) {
         d3d11_present_swapchain(ctx);
         return;
     }
 
-    d3d11_bind_swapchain_target(ctx);
-    d3d11_prepare_postfx_data(ctx, snapshot, &postfx_data);
-    hr = d3d11_update_constant_buffer(ctx, ctx->cb_postfx, &postfx_data, sizeof(postfx_data));
-    if (FAILED(hr)) {
-        d3d11_log_hresult("Map(cbPostFX)", hr);
+    if (!d3d11_apply_postfx_chain(ctx, chain, ctx->rtv, ctx->width, ctx->height, 0, NULL)) {
         d3d11_present_swapchain(ctx);
         return;
-    }
-
-    srvs[0] = ctx->scene_color_srv;
-    srvs[1] = ctx->scene_depth_srv;
-    srvs[2] = ctx->scene_motion_srv;
-    srvs[3] = NULL;
-    ID3D11DeviceContext_IASetInputLayout(ctx->ctx, NULL);
-    ID3D11DeviceContext_IASetPrimitiveTopology(ctx->ctx, D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-    ID3D11DeviceContext_VSSetShader(ctx->ctx, ctx->vs_postfx, NULL, 0);
-    ID3D11DeviceContext_PSSetShader(ctx->ctx, ctx->ps_postfx, NULL, 0);
-    ID3D11DeviceContext_VSSetConstantBuffers(ctx->ctx, 0, 1, &ctx->cb_postfx);
-    ID3D11DeviceContext_PSSetConstantBuffers(ctx->ctx, 0, 1, &ctx->cb_postfx);
-    if (ctx->linear_clamp_sampler)
-        ID3D11DeviceContext_PSSetSamplers(ctx->ctx, 0, 1, &ctx->linear_clamp_sampler);
-    ID3D11DeviceContext_PSSetShaderResources(ctx->ctx, 0, 4, srvs);
-    ID3D11DeviceContext_RSSetState(ctx->ctx, ctx->rs_solid_no_cull);
-    ID3D11DeviceContext_OMSetDepthStencilState(ctx->ctx, NULL, 0);
-    ID3D11DeviceContext_OMSetBlendState(
-        ctx->ctx, ctx->blend_state_opaque, blend_factor, 0xFFFFFFFF);
-    ID3D11DeviceContext_Draw(ctx->ctx, 3, 0);
-    ID3D11DeviceContext_PSSetShaderResources(ctx->ctx, 0, 4, null_srvs);
-
-    if (ctx->overlay_used_this_frame && ctx->overlay_color_srv && ctx->ps_overlay_composite) {
-        srvs[3] = ctx->overlay_color_srv;
-        ID3D11DeviceContext_PSSetShader(ctx->ctx, ctx->ps_overlay_composite, NULL, 0);
-        ID3D11DeviceContext_PSSetShaderResources(ctx->ctx, 3, 1, &srvs[3]);
-        ID3D11DeviceContext_OMSetBlendState(
-            ctx->ctx, ctx->blend_state_alpha, blend_factor, 0xFFFFFFFF);
-        ID3D11DeviceContext_Draw(ctx->ctx, 3, 0);
-        ID3D11DeviceContext_PSSetShaderResources(ctx->ctx, 3, 1, &null_srvs[3]);
     }
     d3d11_present_swapchain(ctx);
 }
@@ -4414,8 +4576,8 @@ static void d3d11_present(void *ctx_ptr) {
     d3d11_present_internal((d3d11_context_t *)ctx_ptr, NULL);
 }
 
-/// @brief Backend `present_postfx` — present with a post-FX snapshot applied.
-static void d3d11_present_postfx(void *ctx_ptr, const vgfx3d_postfx_snapshot_t *postfx) {
+/// @brief Backend `present_postfx` — present with an ordered post-FX chain applied.
+static void d3d11_present_postfx(void *ctx_ptr, const vgfx3d_postfx_chain_t *postfx) {
     d3d11_present_internal((d3d11_context_t *)ctx_ptr, postfx);
 }
 
@@ -4428,6 +4590,27 @@ static void d3d11_set_gpu_postfx_enabled(void *ctx_ptr, int8_t enabled) {
     if (!ctx)
         return;
     ctx->gpu_postfx_enabled = enabled ? 1 : 0;
+    if (!ctx->gpu_postfx_enabled) {
+        vgfx3d_postfx_chain_reset(&ctx->gpu_postfx_chain);
+        ctx->gpu_postfx_chain_valid = 0;
+    }
+}
+
+static void d3d11_set_gpu_postfx_snapshot(void *ctx_ptr, const vgfx3d_postfx_chain_t *postfx) {
+    d3d11_context_t *ctx = (d3d11_context_t *)ctx_ptr;
+    if (!ctx)
+        return;
+    if (!postfx) {
+        vgfx3d_postfx_chain_reset(&ctx->gpu_postfx_chain);
+        ctx->gpu_postfx_chain_valid = 0;
+        return;
+    }
+    if (!vgfx3d_postfx_chain_copy(&ctx->gpu_postfx_chain, postfx)) {
+        vgfx3d_postfx_chain_reset(&ctx->gpu_postfx_chain);
+        ctx->gpu_postfx_chain_valid = 0;
+        return;
+    }
+    ctx->gpu_postfx_chain_valid = 1;
 }
 
 /// @brief Backend `set_render_target` — bind / unbind RTT mode.
@@ -4634,6 +4817,7 @@ const vgfx3d_backend_t vgfx3d_d3d11_backend = {
     .readback_rgba = d3d11_readback_rgba,
     .present_postfx = d3d11_present_postfx,
     .set_gpu_postfx_enabled = d3d11_set_gpu_postfx_enabled,
+    .set_gpu_postfx_snapshot = d3d11_set_gpu_postfx_snapshot,
 };
 
 #endif /* _WIN32 && VIPER_ENABLE_GRAPHICS */

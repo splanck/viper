@@ -69,16 +69,16 @@ static int canvas3d_backend_owns_gpu_rtt(const rt_canvas3d *c) {
 /// Called by `latch_gpu_postfx_state` after capturing a snapshot.
 /// Backends that don't implement these hooks silently no-op.
 static void canvas3d_apply_gpu_postfx_state(rt_canvas3d *c) {
-    const vgfx3d_postfx_snapshot_t *snapshot = NULL;
+    const vgfx3d_postfx_chain_t *chain = NULL;
 
     if (!c || !c->backend)
         return;
     if (c->frame_gpu_postfx_enabled)
-        snapshot = &c->frame_postfx_snapshot;
+        chain = &c->frame_postfx_chain;
     if (c->backend->set_gpu_postfx_enabled)
         c->backend->set_gpu_postfx_enabled(c->backend_ctx, c->frame_gpu_postfx_enabled);
     if (c->backend->set_gpu_postfx_snapshot)
-        c->backend->set_gpu_postfx_snapshot(c->backend_ctx, snapshot);
+        c->backend->set_gpu_postfx_snapshot(c->backend_ctx, chain);
 }
 
 /// @brief Capture the current post-FX state into a per-frame snapshot.
@@ -90,11 +90,11 @@ static void canvas3d_apply_gpu_postfx_state(rt_canvas3d *c) {
 static void canvas3d_latch_gpu_postfx_state(rt_canvas3d *c) {
     if (!c)
         return;
-    memset(&c->frame_postfx_snapshot, 0, sizeof(c->frame_postfx_snapshot));
+    vgfx3d_postfx_chain_reset(&c->frame_postfx_chain);
     c->frame_gpu_postfx_enabled = 0;
     c->frame_postfx_state_latched = 1;
     if (canvas3d_backend_uses_gpu_postfx(c) &&
-        vgfx3d_postfx_get_snapshot(c->postfx, &c->frame_postfx_snapshot)) {
+        vgfx3d_postfx_get_chain(c->postfx, &c->frame_postfx_chain)) {
         c->frame_gpu_postfx_enabled = 1;
     }
     canvas3d_apply_gpu_postfx_state(c);
@@ -1432,6 +1432,7 @@ static void rt_canvas3d_finalize(void *obj) {
         c->skybox = NULL;
     }
 
+    vgfx3d_postfx_chain_free(&c->frame_postfx_chain);
     canvas3d_release_owned_ref(&c->postfx);
     canvas3d_release_owned_ref((void **)&c->render_target_owner);
     c->render_target = NULL;
@@ -2559,7 +2560,7 @@ void rt_canvas3d_flip(void *obj) {
     int gpu_postfx_presented = 0;
     if (canvas3d_backend_uses_gpu_postfx(c)) {
         if (c->frame_gpu_postfx_enabled) {
-            c->backend->present_postfx(c->backend_ctx, &c->frame_postfx_snapshot);
+            c->backend->present_postfx(c->backend_ctx, &c->frame_postfx_chain);
             gpu_postfx_presented = 1;
         }
     }
@@ -2579,7 +2580,7 @@ void rt_canvas3d_flip(void *obj) {
     vgfx_update(c->gfx_win);
     c->frame_postfx_state_latched = 0;
     c->frame_gpu_postfx_enabled = 0;
-    memset(&c->frame_postfx_snapshot, 0, sizeof(c->frame_postfx_snapshot));
+    vgfx3d_postfx_chain_reset(&c->frame_postfx_chain);
 
     int64_t now_us = rt_clock_ticks_us();
     if (c->last_flip_us > 0) {

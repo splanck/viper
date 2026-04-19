@@ -102,6 +102,10 @@ static const double *navagent_path_point(const rt_navagent3d *agent, int32_t ind
     return agent->path_points_xyz + (size_t)index * 3u;
 }
 
+/// @brief Tear down the current path — free the corner buffer, zero counters, and mark
+/// `has_path` false so the next update knows there's nothing to follow. Safe to call
+/// when no path is active. Does NOT zero the velocity; the caller handles that if a
+/// motion reset is also desired.
 static void navagent_clear_path(rt_navagent3d *agent) {
     if (!agent)
         return;
@@ -120,6 +124,9 @@ static void navagent_zero_motion(rt_navagent3d *agent) {
     navagent_vec_set(agent->desired_velocity, 0.0, 0.0, 0.0);
 }
 
+/// @brief Derive "close enough to this corner" distance from the agent's radius. Half
+/// the radius works well in practice, with a 0.15 unit floor so tiny agents (e.g. radius
+/// 0.2) don't wind up chasing corners forever because their tolerance converged to zero.
 static double navagent_corner_tolerance(const rt_navagent3d *agent) {
     double tol = agent->radius > 0.0 ? agent->radius * 0.5 : 0.2;
     if (tol < 0.15)
@@ -127,6 +134,11 @@ static double navagent_corner_tolerance(const rt_navagent3d *agent) {
     return tol;
 }
 
+/// @brief Snap a world-space query point onto the bound navmesh (closest valid point on
+/// any polygon). Falls through with an identity copy — or zero — when no navmesh is bound
+/// or when the mesh's closest-point query fails. Used to keep the agent's position, start
+/// of the path, and goal all on the navigable surface regardless of where the caller's
+/// coordinates originated.
 static void navagent_sample_point(rt_navagent3d *agent, const double src[3], double dst[3]) {
     if (!agent || !dst) {
         return;
@@ -152,6 +164,11 @@ static void navagent_sample_point(rt_navagent3d *agent, const double src[3], dou
     dst[2] = rt_vec3_z(sample);
 }
 
+/// @brief Resolve a SceneNode3D's world-space position by transforming the origin through
+/// its cached world matrix. Falls back to the local-space position when no world matrix
+/// is available (which is only approximately correct for parented nodes, but never
+/// crashes). Results land in `out_pos[0..2]` — always written even on the failure paths
+/// so callers don't read uninitialised memory.
 static void navagent_get_node_world_position(void *node, double out_pos[3]) {
     void *world_matrix;
     void *world_pos;
@@ -173,6 +190,11 @@ static void navagent_get_node_world_position(void *node, double out_pos[3]) {
     out_pos[2] = world_pos ? rt_vec3_z(world_pos) : 0.0;
 }
 
+/// @brief Write a world-space position into a SceneNode3D, converting through the
+/// inverse of the parent's world matrix so the node-local coordinate comes out right
+/// after the parent transform is applied. When the node is a root (no parent), the
+/// world position is written directly as the local position. Also falls back to direct
+/// write when the parent's world matrix can't be inverted (degenerate scale, etc.).
 static void navagent_set_node_world_position(void *node, const double world_pos[3]) {
     void *parent;
     if (!node || !world_pos)
@@ -198,6 +220,12 @@ static void navagent_set_node_world_position(void *node, const double world_pos[
     }
 }
 
+/// @brief Pull the agent's authoritative world position from whichever binding is
+/// primary. A bound CharacterController3D wins (the controller owns the physics position);
+/// otherwise a bound SceneNode3D provides the world transform. With neither binding the
+/// agent's cached position is already authoritative and this call is a no-op. Called at
+/// the top of every `_update` so external movement of the character or node flows into
+/// pathing decisions.
 static void navagent_sync_position_from_bindings(rt_navagent3d *agent) {
     if (!agent)
         return;
@@ -213,6 +241,10 @@ static void navagent_sync_position_from_bindings(rt_navagent3d *agent) {
     }
 }
 
+/// @brief Propagate the agent's current position *out* to every live binding — the
+/// controller via `rt_character3d_set_position`, the scene node via
+/// `navagent_set_node_world_position`. Used when the agent is warped, or when `_update`
+/// finishes and needs to keep a passive visual rig in sync with the AI mover.
 static void navagent_push_position_to_bindings(rt_navagent3d *agent) {
     if (!agent)
         return;
@@ -225,6 +257,11 @@ static void navagent_push_position_to_bindings(rt_navagent3d *agent) {
     }
 }
 
+/// @brief Advance `path_index` past any corners the agent has already reached (within
+/// the corner tolerance derived from its radius). Skips zero or more consecutive corners
+/// in one call so a character moving fast enough to overshoot several waypoints in a
+/// single tick still progresses cleanly. Always leaves `path_index` at the final corner
+/// at the latest (so the goal is never popped off the chase list).
 static void navagent_refresh_path_index(rt_navagent3d *agent) {
     double tolerance;
     if (!agent || !agent->has_path || agent->path_point_count <= 0)
@@ -236,6 +273,11 @@ static void navagent_refresh_path_index(rt_navagent3d *agent) {
     }
 }
 
+/// @brief Sum the remaining world-space path length from the agent's current position
+/// to the goal — that is, the straight-line hop to the current `path_index` waypoint
+/// plus every subsequent corner-to-corner segment. Clamped `path_index` into valid
+/// range defensively. Callers expose this via `get_remaining_distance` so AI scripts
+/// can decide "am I almost there?" without repeating the walk themselves.
 static double navagent_compute_remaining_distance(rt_navagent3d *agent) {
     double remaining = 0.0;
     int32_t idx;
@@ -253,6 +295,11 @@ static double navagent_compute_remaining_distance(rt_navagent3d *agent) {
     return remaining;
 }
 
+/// @brief Clear any previous path and query the navmesh for a fresh corner list between
+/// the agent's (navmesh-snapped) current position and its (navmesh-snapped) target.
+/// Resets the repath timer. On empty or failed path result, zeroes velocity so the agent
+/// stops cleanly instead of following a stale path. The first corner (`path_index = 1`)
+/// is the next waypoint, because corner 0 is the starting position.
 static void navagent_rebuild_path(rt_navagent3d *agent) {
     double start[3];
     double goal[3];
@@ -287,6 +334,9 @@ static void navagent_rebuild_path(rt_navagent3d *agent) {
     agent->remaining_distance = navagent_compute_remaining_distance(agent);
 }
 
+/// @brief GC finalizer for NavAgent3D. Frees the heap-allocated path-points buffer and
+/// drops references to the navmesh and any bound character / scene-node. Binding
+/// references may or may not actually free on release depending on external retains.
 static void navagent_finalize(void *obj) {
     rt_navagent3d *agent = (rt_navagent3d *)obj;
     if (!agent)

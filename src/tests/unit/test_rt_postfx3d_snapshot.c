@@ -79,11 +79,40 @@ static void test_effect_chain_grows_past_legacy_cap(void) {
                 "PostFX3D preserves effects appended past the old 8-entry cap");
 }
 
+static void test_chain_export_preserves_effect_order_and_duplicates(void) {
+    void *fx = rt_postfx3d_new();
+    vgfx3d_postfx_chain_t chain = {0};
+
+    rt_postfx3d_add_bloom(fx, 0.8, 1.5, 2);
+    rt_postfx3d_add_vignette(fx, 0.6, 0.25);
+    rt_postfx3d_add_bloom(fx, 0.9, 0.4, 1);
+
+    EXPECT_TRUE(vgfx3d_postfx_get_chain(fx, &chain) == 1,
+                "Chain export succeeds for ordered GPU postfx data");
+    EXPECT_TRUE(chain.enabled == 1 && chain.effect_count == 3,
+                "Chain export preserves every enabled effect entry");
+    EXPECT_TRUE(chain.effects[0].type == VGFX3D_POSTFX_EFFECT_BLOOM &&
+                    chain.effects[0].snapshot.bloom_threshold == 0.8f &&
+                    chain.effects[0].snapshot.bloom_intensity == 1.5f,
+                "Chain export preserves the first bloom pass");
+    EXPECT_TRUE(chain.effects[1].type == VGFX3D_POSTFX_EFFECT_VIGNETTE &&
+                    chain.effects[1].snapshot.vignette_enabled == 1 &&
+                    chain.effects[1].snapshot.vignette_radius == 0.6f,
+                "Chain export preserves middle-pass ordering");
+    EXPECT_TRUE(chain.effects[2].type == VGFX3D_POSTFX_EFFECT_BLOOM &&
+                    chain.effects[2].snapshot.bloom_threshold == 0.9f &&
+                    chain.effects[2].snapshot.bloom_intensity == 0.4f,
+                "Chain export preserves duplicate effect types as separate ordered passes");
+
+    vgfx3d_postfx_chain_free(&chain);
+}
+
 int main(void) {
     test_snapshot_includes_advanced_effects();
     test_snapshot_disabled_returns_zero();
     test_snapshot_preserves_documented_tonemap_and_grade_params();
     test_effect_chain_grows_past_legacy_cap();
+    test_chain_export_preserves_effect_order_and_duplicates();
 
     printf("rt_postfx3d snapshot tests: %d/%d passed\n", tests_passed, tests_run);
     return tests_passed == tests_run ? 0 : 1;

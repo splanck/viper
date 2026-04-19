@@ -87,10 +87,10 @@ static int set_gpu_postfx_enabled_calls = 0;
 static int8_t set_gpu_postfx_enabled_values[4];
 static int set_gpu_postfx_snapshot_calls = 0;
 static int8_t set_gpu_postfx_snapshot_present[4];
-static vgfx3d_postfx_snapshot_t set_gpu_postfx_snapshots[4];
+static vgfx3d_postfx_chain_t set_gpu_postfx_chains[4];
 
 static void noop_end_frame(void *) {}
-static void noop_present_postfx(void *, const vgfx3d_postfx_snapshot_t *) {}
+static void noop_present_postfx(void *, const vgfx3d_postfx_chain_t *) {}
 
 static void noop_draw(void *,
                       vgfx_window_t,
@@ -190,9 +190,11 @@ static void reset_postfx_records(void) {
     std::memset(begin_frame_params, 0, sizeof(begin_frame_params));
     set_gpu_postfx_enabled_calls = 0;
     std::memset(set_gpu_postfx_enabled_values, 0, sizeof(set_gpu_postfx_enabled_values));
+    for (vgfx3d_postfx_chain_t &chain : set_gpu_postfx_chains)
+        vgfx3d_postfx_chain_free(&chain);
     set_gpu_postfx_snapshot_calls = 0;
     std::memset(set_gpu_postfx_snapshot_present, 0, sizeof(set_gpu_postfx_snapshot_present));
-    std::memset(set_gpu_postfx_snapshots, 0, sizeof(set_gpu_postfx_snapshots));
+    std::memset(set_gpu_postfx_chains, 0, sizeof(set_gpu_postfx_chains));
 }
 
 static void record_begin_frame(void *, const vgfx3d_camera_params_t *cam) {
@@ -209,13 +211,13 @@ static void record_set_gpu_postfx_enabled(void *, int8_t enabled) {
     set_gpu_postfx_enabled_calls++;
 }
 
-static void record_set_gpu_postfx_snapshot(void *, const vgfx3d_postfx_snapshot_t *snapshot) {
+static void record_set_gpu_postfx_snapshot(void *, const vgfx3d_postfx_chain_t *snapshot) {
     if (set_gpu_postfx_snapshot_calls <
         (int)(sizeof(set_gpu_postfx_snapshot_present) /
               sizeof(set_gpu_postfx_snapshot_present[0]))) {
         set_gpu_postfx_snapshot_present[set_gpu_postfx_snapshot_calls] = snapshot ? 1 : 0;
         if (snapshot)
-            set_gpu_postfx_snapshots[set_gpu_postfx_snapshot_calls] = *snapshot;
+            vgfx3d_postfx_chain_copy(&set_gpu_postfx_chains[set_gpu_postfx_snapshot_calls], snapshot);
     }
     set_gpu_postfx_snapshot_calls++;
 }
@@ -259,6 +261,7 @@ static void cleanup_fake_canvas(rt_canvas3d *canvas) {
     std::free(canvas->motion_history);
     if (canvas->postfx && rt_obj_release_check0(canvas->postfx))
         rt_obj_free(canvas->postfx);
+    vgfx3d_postfx_chain_free(&canvas->frame_postfx_chain);
     canvas->temp_buffers = nullptr;
     canvas->temp_objects = nullptr;
     canvas->draw_cmds = nullptr;
@@ -1600,18 +1603,21 @@ static void test_gpu_postfx_state_latches_across_overlay_pass(void) {
                 "Canvas3D forwards the latched postfx snapshot to both backend passes");
     EXPECT_TRUE(set_gpu_postfx_snapshot_present[0] == 1 && set_gpu_postfx_snapshot_present[1] == 1,
                 "Canvas3D keeps the postfx snapshot alive across the overlay pass");
-    EXPECT_TRUE(set_gpu_postfx_snapshots[0].bloom_enabled == 1 &&
-                    set_gpu_postfx_snapshots[1].bloom_threshold == 0.8f &&
-                    set_gpu_postfx_snapshots[1].bloom_intensity == 1.5f,
-                "Canvas3D forwards the same latched postfx values to both backend passes");
+    EXPECT_TRUE(set_gpu_postfx_chains[0].effect_count == 1 && set_gpu_postfx_chains[1].effect_count == 1,
+                "Canvas3D forwards the same one-effect postfx chain to both backend passes");
+    EXPECT_TRUE(set_gpu_postfx_chains[0].effects[0].snapshot.bloom_enabled == 1 &&
+                    set_gpu_postfx_chains[1].effects[0].snapshot.bloom_threshold == 0.8f &&
+                    set_gpu_postfx_chains[1].effects[0].snapshot.bloom_intensity == 1.5f,
+                "Canvas3D forwards the same latched postfx effect values to both backend passes");
     EXPECT_TRUE(canvas.frame_postfx_state_latched == 1,
                 "Canvas3D keeps the frame postfx snapshot latched until Flip");
     EXPECT_TRUE(canvas.frame_gpu_postfx_enabled == 1,
                 "Canvas3D records the frame as GPU-postfx-enabled");
-    EXPECT_TRUE(canvas.frame_postfx_snapshot.bloom_enabled == 1 &&
-                    canvas.frame_postfx_snapshot.bloom_threshold == 0.8f &&
-                    canvas.frame_postfx_snapshot.bloom_intensity == 1.5f,
-                "Canvas3D preserves the original postfx snapshot across the overlay pass");
+    EXPECT_TRUE(canvas.frame_postfx_chain.effect_count == 1 &&
+                    canvas.frame_postfx_chain.effects[0].snapshot.bloom_enabled == 1 &&
+                    canvas.frame_postfx_chain.effects[0].snapshot.bloom_threshold == 0.8f &&
+                    canvas.frame_postfx_chain.effects[0].snapshot.bloom_intensity == 1.5f,
+                "Canvas3D preserves the original postfx chain across the overlay pass");
 
     cleanup_fake_canvas(&canvas);
 }

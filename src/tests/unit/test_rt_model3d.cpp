@@ -83,6 +83,231 @@ static std::string base64_encode(const uint8_t *data, size_t len) {
     return out;
 }
 
+struct FbxPropFixture {
+    char type;
+    std::vector<uint8_t> payload;
+};
+
+struct FbxNodeFixture {
+    std::string name;
+    std::vector<FbxPropFixture> props;
+    std::vector<FbxNodeFixture> children;
+};
+
+static void patch_u32(std::vector<uint8_t> &buf, size_t offset, uint32_t value) {
+    if (offset + sizeof(value) <= buf.size())
+        std::memcpy(buf.data() + offset, &value, sizeof(value));
+}
+
+static FbxPropFixture fbx_prop_string_fixture(const std::string &value) {
+    FbxPropFixture prop;
+    uint32_t len = (uint32_t)value.size();
+    prop.type = 'S';
+    append_bytes(prop.payload, len);
+    prop.payload.insert(prop.payload.end(), value.begin(), value.end());
+    return prop;
+}
+
+static FbxPropFixture fbx_prop_i64_fixture(int64_t value) {
+    FbxPropFixture prop;
+    prop.type = 'L';
+    append_bytes(prop.payload, value);
+    return prop;
+}
+
+static FbxPropFixture fbx_prop_f64_fixture(double value) {
+    FbxPropFixture prop;
+    prop.type = 'D';
+    append_bytes(prop.payload, value);
+    return prop;
+}
+
+template <typename T>
+static FbxPropFixture fbx_prop_array_fixture(char type, const T *data, size_t count) {
+    FbxPropFixture prop;
+    uint32_t element_count = (uint32_t)count;
+    uint32_t byte_length = (uint32_t)(count * sizeof(T));
+    prop.type = type;
+    append_bytes(prop.payload, element_count);
+    append_bytes(prop.payload, (uint32_t)0);
+    append_bytes(prop.payload, byte_length);
+    if (data && count > 0) {
+        const uint8_t *bytes = reinterpret_cast<const uint8_t *>(data);
+        prop.payload.insert(prop.payload.end(), bytes, bytes + byte_length);
+    }
+    return prop;
+}
+
+static void write_fbx_node_fixture(const FbxNodeFixture &node, std::vector<uint8_t> &out) {
+    size_t start = out.size();
+    size_t prop_len_offset;
+    size_t prop_start;
+
+    append_bytes(out, (uint32_t)0);
+    append_bytes(out, (uint32_t)node.props.size());
+    prop_len_offset = out.size();
+    append_bytes(out, (uint32_t)0);
+    append_bytes(out, (uint8_t)node.name.size());
+    out.insert(out.end(), node.name.begin(), node.name.end());
+
+    prop_start = out.size();
+    for (const FbxPropFixture &prop : node.props) {
+        append_bytes(out, (uint8_t)prop.type);
+        out.insert(out.end(), prop.payload.begin(), prop.payload.end());
+    }
+    patch_u32(out, prop_len_offset, (uint32_t)(out.size() - prop_start));
+
+    for (const FbxNodeFixture &child : node.children)
+        write_fbx_node_fixture(child, out);
+    if (!node.children.empty())
+        out.resize(out.size() + 13, 0);
+
+    patch_u32(out, start, (uint32_t)out.size());
+}
+
+static std::string make_fbx_object_name(const char *name, const char *kind) {
+    std::string out = name ? name : "";
+    out.push_back('\0');
+    out.push_back('\x01');
+    out += kind ? kind : "";
+    return out;
+}
+
+static FbxNodeFixture make_fbx_property_vec3(const char *name, double x, double y, double z) {
+    FbxNodeFixture node;
+    node.name = "P";
+    node.props.push_back(fbx_prop_string_fixture(name ? name : ""));
+    node.props.push_back(fbx_prop_string_fixture("Vector3D"));
+    node.props.push_back(fbx_prop_string_fixture(""));
+    node.props.push_back(fbx_prop_string_fixture("A"));
+    node.props.push_back(fbx_prop_f64_fixture(x));
+    node.props.push_back(fbx_prop_f64_fixture(y));
+    node.props.push_back(fbx_prop_f64_fixture(z));
+    return node;
+}
+
+static FbxNodeFixture make_fbx_property_scalar(const char *name, double value) {
+    FbxNodeFixture node;
+    node.name = "P";
+    node.props.push_back(fbx_prop_string_fixture(name ? name : ""));
+    node.props.push_back(fbx_prop_string_fixture("Number"));
+    node.props.push_back(fbx_prop_string_fixture(""));
+    node.props.push_back(fbx_prop_string_fixture("A"));
+    node.props.push_back(fbx_prop_f64_fixture(value));
+    node.props.push_back(fbx_prop_f64_fixture(0.0));
+    node.props.push_back(fbx_prop_f64_fixture(0.0));
+    return node;
+}
+
+static FbxNodeFixture make_fbx_model_fixture(int64_t id,
+                                             const char *name,
+                                             const char *type,
+                                             double tx,
+                                             double ty,
+                                             double tz) {
+    FbxNodeFixture node;
+    FbxNodeFixture props70;
+    node.name = "Model";
+    node.props.push_back(fbx_prop_i64_fixture(id));
+    node.props.push_back(fbx_prop_string_fixture(make_fbx_object_name(name, "Model")));
+    node.props.push_back(fbx_prop_string_fixture(type ? type : "Null"));
+    props70.name = "Properties70";
+    props70.children.push_back(make_fbx_property_vec3("Lcl Translation", tx, ty, tz));
+    props70.children.push_back(make_fbx_property_vec3("Lcl Rotation", 0.0, 0.0, 0.0));
+    props70.children.push_back(make_fbx_property_vec3("Lcl Scaling", 1.0, 1.0, 1.0));
+    node.children.push_back(props70);
+    return node;
+}
+
+static bool write_fbx_fixture(const char *path) {
+    static const int64_t kGeometryId = 100;
+    static const int64_t kMaterialId = 200;
+    static const int64_t kParentModelId = 300;
+    static const int64_t kChildModelId = 301;
+    static const double kPositions[9] = {0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0};
+    static const int32_t kIndices[3] = {0, 1, -3};
+
+    FbxNodeFixture geometry;
+    FbxNodeFixture material;
+    FbxNodeFixture material_props70;
+    FbxNodeFixture objects;
+    FbxNodeFixture connections;
+    std::vector<uint8_t> bytes;
+
+    geometry.name = "Geometry";
+    geometry.props.push_back(fbx_prop_i64_fixture(kGeometryId));
+    geometry.props.push_back(fbx_prop_string_fixture(make_fbx_object_name("FixtureMesh", "Geometry")));
+    geometry.props.push_back(fbx_prop_string_fixture("Mesh"));
+    geometry.children.push_back(FbxNodeFixture{"Vertices",
+                                               {fbx_prop_array_fixture('d',
+                                                                       kPositions,
+                                                                       sizeof(kPositions) /
+                                                                           sizeof(kPositions[0]))},
+                                               {}});
+    geometry.children.push_back(FbxNodeFixture{
+        "PolygonVertexIndex",
+        {fbx_prop_array_fixture(
+            'i', kIndices, sizeof(kIndices) / sizeof(kIndices[0]))},
+        {}});
+
+    material.name = "Material";
+    material.props.push_back(fbx_prop_i64_fixture(kMaterialId));
+    material.props.push_back(
+        fbx_prop_string_fixture(make_fbx_object_name("FixtureMaterial", "Material")));
+    material.props.push_back(fbx_prop_string_fixture(""));
+    material_props70.name = "Properties70";
+    material_props70.children.push_back(make_fbx_property_vec3("DiffuseColor", 0.2, 0.4, 0.8));
+    material_props70.children.push_back(make_fbx_property_scalar("Shininess", 16.0));
+    material.children.push_back(material_props70);
+
+    objects.name = "Objects";
+    objects.children.push_back(geometry);
+    objects.children.push_back(material);
+    objects.children.push_back(make_fbx_model_fixture(kParentModelId, "Parent", "Null", 1.0, 2.0, 3.0));
+    objects.children.push_back(make_fbx_model_fixture(kChildModelId, "Child", "Mesh", 0.0, 5.0, 0.0));
+
+    connections.name = "Connections";
+    connections.children.push_back(
+        FbxNodeFixture{"C",
+                       {fbx_prop_string_fixture("OO"),
+                        fbx_prop_i64_fixture(kParentModelId),
+                        fbx_prop_i64_fixture(0)},
+                       {}});
+    connections.children.push_back(
+        FbxNodeFixture{"C",
+                       {fbx_prop_string_fixture("OO"),
+                        fbx_prop_i64_fixture(kChildModelId),
+                        fbx_prop_i64_fixture(kParentModelId)},
+                       {}});
+    connections.children.push_back(
+        FbxNodeFixture{"C",
+                       {fbx_prop_string_fixture("OO"),
+                        fbx_prop_i64_fixture(kGeometryId),
+                        fbx_prop_i64_fixture(kChildModelId)},
+                       {}});
+    connections.children.push_back(
+        FbxNodeFixture{"C",
+                       {fbx_prop_string_fixture("OO"),
+                        fbx_prop_i64_fixture(kMaterialId),
+                        fbx_prop_i64_fixture(kChildModelId)},
+                       {}});
+
+    bytes.insert(bytes.end(),
+                 {'K', 'a', 'y', 'd', 'a', 'r', 'a', ' ', 'F', 'B', 'X', ' ', 'B',
+                  'i', 'n', 'a', 'r', 'y', ' ', ' ', '\0', '\x1A', '\0'});
+    append_bytes(bytes, (uint32_t)7400);
+    write_fbx_node_fixture(objects, bytes);
+    write_fbx_node_fixture(connections, bytes);
+    bytes.resize(bytes.size() + 13, 0);
+
+    FILE *f = std::fopen(path, "wb");
+    if (!f)
+        return false;
+    bool ok = std::fwrite(bytes.data(), 1, bytes.size(), f) == bytes.size();
+    std::fclose(f);
+    return ok;
+}
+
 static bool write_scene_fixture(const char *path) {
     void *scene = rt_scene3d_new();
     void *parent = rt_scene_node3d_new();
@@ -329,6 +554,60 @@ static void test_model3d_adapts_gltf_scene_graphs() {
                 "glTF-backed Model3D instances preserve child names");
 }
 
+static void test_model3d_adapts_fbx_scene_graphs() {
+    const char *path = "/tmp/viper_model3d_fixture.fbx";
+    bool wrote_fixture = write_fbx_fixture(path);
+    EXPECT_TRUE(wrote_fixture, "FBX fixture can be written");
+    if (!wrote_fixture)
+        return;
+
+    void *model = rt_model3d_load(rt_const_cstr(path));
+    EXPECT_TRUE(model != nullptr, "Model3D.Load parses generated FBX assets");
+    if (!model)
+        return;
+
+    EXPECT_TRUE(rt_model3d_get_mesh_count(model) == 1, "Model3D exposes FBX meshes");
+    EXPECT_TRUE(rt_model3d_get_material_count(model) == 1, "Model3D exposes FBX materials");
+    EXPECT_TRUE(rt_model3d_get_node_count(model) == 2,
+                "Model3D preserves logical FBX scene-node counts");
+
+    void *parent = rt_model3d_find_node(model, rt_const_cstr("Parent"));
+    void *child = rt_model3d_find_node(model, rt_const_cstr("Child"));
+    EXPECT_TRUE(parent != nullptr, "Model3D.FindNode finds FBX parent nodes");
+    EXPECT_TRUE(child != nullptr, "Model3D.FindNode finds FBX child nodes");
+    if (!parent || !child)
+        return;
+
+    EXPECT_NEAR(rt_vec3_x(rt_scene_node3d_get_position(parent)),
+                1.0,
+                0.001,
+                "Model3D preserves FBX parent translations");
+    EXPECT_NEAR(rt_vec3_y(rt_scene_node3d_get_position(parent)),
+                2.0,
+                0.001,
+                "Model3D preserves FBX parent Y translations");
+    EXPECT_NEAR(rt_vec3_y(rt_scene_node3d_get_position(child)),
+                5.0,
+                0.001,
+                "Model3D preserves FBX child translations");
+    EXPECT_TRUE(rt_scene_node3d_get_mesh(child) == rt_model3d_get_mesh(model, 0),
+                "FBX scene nodes reuse the extracted mesh object");
+    EXPECT_TRUE(rt_scene_node3d_get_material(child) == rt_model3d_get_material(model, 0),
+                "FBX scene nodes reuse the extracted material object");
+
+    void *inst_scene = rt_model3d_instantiate_scene(model);
+    EXPECT_TRUE(inst_scene != nullptr, "Model3D.InstantiateScene works for FBX assets");
+    if (!inst_scene)
+        return;
+
+    EXPECT_TRUE(rt_scene3d_get_node_count(inst_scene) == 3,
+                "FBX-backed Model3D instances attach below a new scene root");
+    EXPECT_TRUE(rt_scene_node3d_child_count(rt_scene3d_get_root(inst_scene)) == 1,
+                "FBX-backed Model3D instances preserve top-level grouping");
+    EXPECT_TRUE(rt_scene3d_find(inst_scene, rt_const_cstr("Child")) != nullptr,
+                "FBX-backed Model3D instances preserve child names");
+}
+
 static void test_model3d_loads_demo_fbx_textures() {
     const char *path = find_existing_path({
 #ifdef VIPER_SOURCE_DIR
@@ -363,6 +642,7 @@ static void test_model3d_loads_demo_fbx_textures() {
 int main() {
     test_model3d_roundtrips_vscn_assets();
     test_model3d_adapts_gltf_scene_graphs();
+    test_model3d_adapts_fbx_scene_graphs();
     test_model3d_loads_demo_fbx_textures();
     std::printf("Model3D tests: %d/%d passed\n", tests_passed, tests_run);
     return tests_passed == tests_run ? 0 : 1;

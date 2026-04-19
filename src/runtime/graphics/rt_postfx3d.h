@@ -83,8 +83,39 @@ typedef struct {
     int32_t motion_blur_samples;
 } vgfx3d_postfx_snapshot_t;
 
+typedef enum {
+    VGFX3D_POSTFX_EFFECT_BLOOM = 0,
+    VGFX3D_POSTFX_EFFECT_TONEMAP,
+    VGFX3D_POSTFX_EFFECT_FXAA,
+    VGFX3D_POSTFX_EFFECT_COLOR_GRADE,
+    VGFX3D_POSTFX_EFFECT_VIGNETTE,
+    VGFX3D_POSTFX_EFFECT_SSAO,
+    VGFX3D_POSTFX_EFFECT_DOF,
+    VGFX3D_POSTFX_EFFECT_MOTION_BLUR,
+} vgfx3d_postfx_effect_kind_t;
+
+typedef struct {
+    int32_t type; /* vgfx3d_postfx_effect_kind_t */
+    vgfx3d_postfx_snapshot_t snapshot;
+} vgfx3d_postfx_effect_desc_t;
+
+typedef struct {
+    int8_t enabled;
+    int32_t effect_count;
+    int32_t effect_capacity;
+    vgfx3d_postfx_effect_desc_t *effects;
+} vgfx3d_postfx_chain_t;
+
 /* Fill snapshot from a PostFX3D object. Returns 0 if postfx is NULL or disabled. */
 int vgfx3d_postfx_get_snapshot(void *postfx, vgfx3d_postfx_snapshot_t *out);
+/* Export the ordered PostFX chain for GPU backends. Reuses `out` storage when possible. */
+int vgfx3d_postfx_get_chain(void *postfx, vgfx3d_postfx_chain_t *out);
+/* Deep-copy one exported PostFX chain into another. */
+int vgfx3d_postfx_chain_copy(vgfx3d_postfx_chain_t *dst, const vgfx3d_postfx_chain_t *src);
+/* Reset an exported PostFX chain to empty while preserving its allocation. */
+void vgfx3d_postfx_chain_reset(vgfx3d_postfx_chain_t *chain);
+/* Release any storage owned by an exported PostFX chain. */
+void vgfx3d_postfx_chain_free(vgfx3d_postfx_chain_t *chain);
 
 #ifdef __cplusplus
 }

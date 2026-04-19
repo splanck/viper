@@ -70,6 +70,10 @@ typedef struct {
     double max_slope; /* degrees */
 } rt_navmesh3d;
 
+/// @brief GC finalizer for NavMesh3D. Frees the baked vertex and triangle arrays
+/// (heap-allocated during `Build`) and nulls the slots so a stale handle would crash
+/// loudly on use rather than reading freed memory. The source mesh is borrowed only
+/// during the build call, not retained, so there's no reference to release here.
 static void navmesh3d_finalizer(void *obj) {
     rt_navmesh3d *nm = (rt_navmesh3d *)obj;
     free(nm->vertices);
@@ -277,6 +281,10 @@ typedef struct {
     float f;
 } heap_entry_t;
 
+/// @brief Push a `(triangle, f-score)` entry onto the A* min-heap and sift up. Silently
+/// no-ops on overflow — the heap is sized to the triangle count, so overflow only
+/// happens if duplicate insertion guards fail. Comparison uses `f` (g + heuristic) so
+/// the heap top is always the lowest-cost open triangle.
 static void heap_push(heap_entry_t *heap, int32_t *size, int32_t capacity, int32_t tri, float f) {
     if (*size >= capacity)
         return;
@@ -295,6 +303,9 @@ static void heap_push(heap_entry_t *heap, int32_t *size, int32_t capacity, int32
     }
 }
 
+/// @brief Pop the lowest-`f` triangle from the A* min-heap and sift down. Returns the
+/// triangle index. Caller is responsible for ensuring `*size > 0` (assertion would be
+/// nice but this is a hot path; A* main loop guards via `while (size > 0)`).
 static int32_t heap_pop(heap_entry_t *heap, int32_t *size) {
     int32_t result = heap[0].tri;
     heap[0] = heap[--(*size)];
@@ -316,6 +327,9 @@ static int32_t heap_pop(heap_entry_t *heap, int32_t *size) {
     return result;
 }
 
+/// @brief Euclidean distance between two triangles' precomputed centroids. Used as the
+/// A* heuristic (admissible since centroid-to-centroid is always ≤ the true polygon-
+/// crossing path) and as the per-edge step cost when expanding neighbours.
 static float centroid_dist(const rt_navmesh3d *nm, int32_t a, int32_t b) {
     const float *ca = nm->triangles[a].centroid;
     const float *cb = nm->triangles[b].centroid;

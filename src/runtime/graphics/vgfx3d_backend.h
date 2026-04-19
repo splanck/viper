@@ -212,17 +212,17 @@ typedef struct vgfx3d_backend {
 
     /* Optional GPU post-processing presentation hook. When non-NULL, Canvas3D
      * skips the CPU postfx pass and lets the backend own the final onscreen
-     * composite for the supplied snapshot. */
-    void (*present_postfx)(void *ctx, const vgfx3d_postfx_snapshot_t *postfx);
+     * composite for the supplied ordered effect chain. */
+    void (*present_postfx)(void *ctx, const vgfx3d_postfx_chain_t *postfx);
 
     /* Optional per-frame hint for backends that need to know whether the
      * current window-backed frame will be presented through GPU postfx. */
     void (*set_gpu_postfx_enabled)(void *ctx, int8_t enabled);
 
-    /* Optional latched postfx snapshot for GPU backends that need the current
+    /* Optional latched postfx chain for GPU backends that need the current
      * frame's effect settings outside the immediate present_postfx call, for
      * example to service screenshots from the backend-owned presentation path. */
-    void (*set_gpu_postfx_snapshot)(void *ctx, const vgfx3d_postfx_snapshot_t *postfx);
+    void (*set_gpu_postfx_snapshot)(void *ctx, const vgfx3d_postfx_chain_t *postfx);
 
     /* Show/hide GPU layer. Called from Canvas3D.Begin/End to toggle
      * visibility of the GPU rendering layer (e.g., CAMetalLayer).

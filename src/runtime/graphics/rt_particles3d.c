@@ -89,6 +89,10 @@ typedef struct {
  * xorshift32 PRNG (per-instance, deterministic)
  *=========================================================================*/
 
+/// @brief George Marsaglia's xorshift32 PRNG stepped in the emitter's per-instance
+/// state. Deterministic for a given seed so two runs of the same emitter replay the
+/// same spawn distribution — useful for reproducible recordings and unit tests.
+/// Period is 2^32 - 1; fast enough to invoke many times per particle-spawn.
 static uint32_t xorshift32(rt_particles3d *ps) {
     uint32_t x = ps->prng_state;
     x ^= x << 13;
@@ -112,12 +116,20 @@ static float rand_range(rt_particles3d *ps, double lo, double hi) {
  * Helpers
  *=========================================================================*/
 
+/// @brief Split a 24-bit packed sRGB colour (0xRRGGBB layout) into three float channels
+/// normalized to `[0, 1]`. Used to translate user-facing `int64` colour params into the
+/// float vector format the mixer/renderer expects. Alpha is not part of the packed
+/// format — callers manage alpha separately.
 static void unpack_color(int64_t packed, float *rgb) {
     rgb[0] = (float)((packed >> 16) & 0xFF) / 255.0f;
     rgb[1] = (float)((packed >> 8) & 0xFF) / 255.0f;
     rgb[2] = (float)(packed & 0xFF) / 255.0f;
 }
 
+/// @brief Normalize a mutable 3-vector in place. NULL-safe and epsilon-guarded — vectors
+/// with length below 1e-8f are left untouched so accumulated "tiny but non-zero" drift
+/// doesn't produce huge normalized outputs. Used by spawn-direction computation on cone,
+/// sphere, and disc emitters.
 static void normalize3(float *x, float *y, float *z) {
     float len;
     if (!x || !y || !z)
@@ -205,6 +217,10 @@ static void random_cone_dir(rt_particles3d *ps, const double *dir, double spread
  * Lifecycle
  *=========================================================================*/
 
+/// @brief GC finalizer for Particles3D. Frees the particle pool, drops the texture
+/// reference (if any), and drops the per-emitter cached material (built once and reused
+/// across frames per GFX-052). Each release-check is independent so a missing texture
+/// doesn't prevent material teardown or vice versa.
 static void rt_particles3d_finalize(void *obj) {
     rt_particles3d *ps = (rt_particles3d *)obj;
     free(ps->particles);
@@ -217,6 +233,14 @@ static void rt_particles3d_finalize(void *obj) {
     ps->cached_material = NULL;
 }
 
+/// @brief Allocate a new particle emitter with an internally-sized pool of up to
+/// `max_particles` concurrent particles. Rejects 0 / negative / >100000 to keep a predictable
+/// memory ceiling — the pool is calloc'd up front so spawn/kill cost stays O(1) with no
+/// re-allocation. Defaults are tuned for a generic sparkle: upward cone emit, 0.3 rad spread,
+/// 1-3 u/s speed, 0.5-1.5 s lifetime, 0.2 → 0.05 size taper, 9.8 u/s² gravity, white colour,
+/// 1.0 → 0.0 alpha fade, rate 20 /s, alpha-blend mode, point-source emitter. The PRNG state is
+/// mixed with the instance pointer so two emitters constructed in the same tick produce
+/// different (but each individually deterministic) spawn distributions.
 void *rt_particles3d_new(int64_t max_particles) {
     if (max_particles <= 0 || max_particles > 100000) {
         rt_trap("Particles3D.New: max_particles must be 1-100000");
@@ -447,6 +471,13 @@ int8_t rt_particles3d_get_emitting(void *o) {
  * Spawning
  *=========================================================================*/
 
+/// @brief Initialize and append one new particle to the active pool. Silently no-ops
+/// when the pool is full — caller (`update`) decides emission rate, this only handles
+/// the per-particle slot. Reads emitter shape (point / sphere / cone / disc), velocity
+/// distribution, lifetime range, and start-colour to populate the new entry. Position
+/// is emitter-origin plus a per-shape offset. Velocity is randomised within the
+/// configured spread, then scaled to the speed range; lifetime gets a random value in
+/// the configured min..max window so the pool desynchronises naturally.
 static void spawn_particle(rt_particles3d *ps) {
     if (ps->count >= ps->max_particles)
         return;

@@ -945,6 +945,7 @@ For game-facing asset loading, prefer `Model3D.Load`. Use the lower-level `FBX` 
 
 Format note:
 - `.vscn` and FBX imports can currently populate shared skeletons and animation clips.
+- FBX-backed `Model3D` assets preserve authored `Model` hierarchy, local TRS, and mesh/material attachments when the source file contains object connections, instead of always collapsing to synthetic `mesh_N` nodes.
 - glTF imports currently populate meshes, materials, and node hierarchy, but not skeletons or animation clips yet.
 - glTF mesh extraction supports `POSITION`, `NORMAL`, `TEXCOORD_0`, `COLOR_0`, `TANGENT`, and `JOINTS_0`/`WEIGHTS_0`.
 - Triangle-list, triangle-strip, and triangle-fan glTF primitives are triangulated on import.
@@ -1230,7 +1231,7 @@ func start() {
 }
 ```
 
-Supports zlib-compressed array properties, negative polygon indices, and Z-up to Y-up coordinate conversion. `Model3D.Load("asset.fbx")` adapts these extracted resources into an instantiable scene asset.
+Supports zlib-compressed array properties, negative polygon indices, and Z-up to Y-up coordinate conversion. `Model3D.Load("asset.fbx")` adapts these extracted resources into an instantiable scene asset and now preserves authored FBX `Model` hierarchy when the file contains object connections.
 
 ---
 
@@ -1394,6 +1395,8 @@ Full-screen post-processing effect chain applied automatically in `Canvas3D.Flip
 | `AddDOF(focusDist, focusRange, blurAmount)` | `void(f64, f64, f64)` | Depth of field |
 | `AddMotionBlur(strength, samples)` | `void(f64, i64)` | Velocity-buffer motion blur |
 | `Clear()` | `void()` | Remove all effects from chain |
+
+Effects run strictly in append order. If you add the same effect type more than once, each pass is preserved instead of being collapsed into one combined backend setting. The GPU backends now follow that same ordered-chain behavior as the CPU path, so `Flip()`, GPU screenshots, and GPU readback all match the authored `PostFX3D` chain.
 
 ### Zia Example
 

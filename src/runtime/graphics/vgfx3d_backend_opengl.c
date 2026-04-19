@@ -466,12 +466,12 @@ typedef struct {
     float clearR, clearG, clearB;
     int8_t current_pass_is_overlay;
     int8_t gpu_postfx_enabled;
-    int8_t gpu_postfx_snapshot_valid;
+    int8_t gpu_postfx_chain_valid;
     int8_t rtt_color_dirty;
     int8_t scene_postfx_pending;
     int8_t scene_composited_to_backbuffer;
     vgfx3d_opengl_target_kind_t active_target_kind;
-    vgfx3d_postfx_snapshot_t gpu_postfx_snapshot;
+    vgfx3d_postfx_chain_t gpu_postfx_chain;
 
     GLint uModelMatrix, uPrevModelMatrix, uViewProjection, uPrevViewProjection, uNormalMatrix,
         uShadowVP;
@@ -2309,13 +2309,14 @@ static void gl_apply_postfx_uniforms(gl_context_t *ctx, const vgfx3d_postfx_snap
 /// color/depth/motion as samplers, applies post-FX uniforms, draws
 /// 3 vertices (the standard "fullscreen triangle covers the viewport"
 /// trick — cheaper than a 6-vertex quad).
-static void gl_draw_scene_texture_to_target(gl_context_t *ctx,
-                                            GLuint framebuffer,
-                                            GLenum draw_buffer,
-                                            int32_t width,
-                                            int32_t height,
-                                            const vgfx3d_postfx_snapshot_t *snapshot) {
-    if (!ctx || !ctx->postfx_program || !ctx->scene_color_tex || width <= 0 || height <= 0)
+static void gl_draw_texture_to_target(gl_context_t *ctx,
+                                      GLuint source_color_tex,
+                                      GLuint framebuffer,
+                                      GLenum draw_buffer,
+                                      int32_t width,
+                                      int32_t height,
+                                      const vgfx3d_postfx_snapshot_t *snapshot) {
+    if (!ctx || !ctx->postfx_program || !source_color_tex || width <= 0 || height <= 0)
         return;
 
     gl.BindFramebuffer(GL_FRAMEBUFFER, framebuffer);
@@ -2329,12 +2330,70 @@ static void gl_draw_scene_texture_to_target(gl_context_t *ctx,
     gl.PolygonMode(GL_FRONT_AND_BACK, GL_FILL);
     gl.UseProgram(ctx->postfx_program);
     gl.BindVertexArray(ctx->fullscreen_vao);
-    bind_texture_unit(ctx->postfx_uSceneTex, 0, GL_TEXTURE_2D, ctx->scene_color_tex);
+    bind_texture_unit(ctx->postfx_uSceneTex, 0, GL_TEXTURE_2D, source_color_tex);
     bind_texture_unit(ctx->postfx_uSceneDepthTex, 1, GL_TEXTURE_2D, ctx->scene_depth_tex);
     bind_texture_unit(ctx->postfx_uSceneMotionTex, 2, GL_TEXTURE_2D, ctx->scene_motion_tex);
     gl_apply_postfx_uniforms(ctx, snapshot);
     gl.DrawArrays(GL_TRIANGLES, 0, 3);
     GL_CHECK();
+}
+
+static int gl_apply_postfx_chain(gl_context_t *ctx,
+                                 GLuint source_tex,
+                                 int32_t width,
+                                 int32_t height,
+                                 const vgfx3d_postfx_chain_t *chain,
+                                 GLuint final_framebuffer,
+                                 GLenum final_draw_buffer,
+                                 int force_offscreen_final,
+                                 GLuint *out_result_framebuffer,
+                                 GLenum *out_result_read_buffer) {
+    GLuint last_framebuffer = final_framebuffer;
+    GLenum last_read_buffer = final_draw_buffer;
+
+    if (out_result_framebuffer)
+        *out_result_framebuffer = 0;
+    if (out_result_read_buffer)
+        *out_result_read_buffer = GL_BACK;
+    if (!ctx || !source_tex || width <= 0 || height <= 0 || !chain || !chain->enabled ||
+        chain->effect_count <= 0 || !chain->effects) {
+        return 0;
+    }
+    if (ensure_postfx_readback_target(ctx, width, height) != 0)
+        return 0;
+
+    for (int32_t i = 0; i < chain->effect_count; i++) {
+        const int is_last = (i == chain->effect_count - 1) ? 1 : 0;
+        GLuint dst_framebuffer;
+        GLenum dst_draw_buffer;
+
+        if (is_last && !force_offscreen_final) {
+            dst_framebuffer = final_framebuffer;
+            dst_draw_buffer = final_draw_buffer;
+        } else if (source_tex == ctx->scene_color_tex) {
+            dst_framebuffer = ctx->postfx_readback_fbo;
+            dst_draw_buffer = GL_COLOR_ATTACHMENT0;
+        } else {
+            dst_framebuffer = ctx->scene_fbo;
+            dst_draw_buffer = GL_COLOR_ATTACHMENT0;
+        }
+
+        gl_draw_texture_to_target(
+            ctx, source_tex, dst_framebuffer, dst_draw_buffer, width, height, &chain->effects[i].snapshot);
+
+        last_framebuffer = dst_framebuffer;
+        last_read_buffer = dst_draw_buffer;
+        if (!is_last || force_offscreen_final) {
+            source_tex = (dst_framebuffer == ctx->postfx_readback_fbo) ? ctx->postfx_readback_tex
+                                                                       : ctx->scene_color_tex;
+        }
+    }
+
+    if (out_result_framebuffer)
+        *out_result_framebuffer = last_framebuffer;
+    if (out_result_read_buffer)
+        *out_result_read_buffer = last_read_buffer;
+    return 1;
 }
 
 /// @brief Read back the RTT color buffer into the user's host RGBA buffer.
@@ -3114,12 +3173,14 @@ static void bind_shadow_anim(gl_context_t *ctx, const vgfx3d_draw_cmd_t *cmd) {
 
 /// @brief Composite the offscreen scene to the swapchain backbuffer.
 ///
-/// Convenience wrapper around `gl_draw_scene_texture_to_target` that
+/// Convenience wrapper around `gl_apply_postfx_chain` that
 /// targets FBO 0 (default framebuffer / swapchain).
-static void draw_scene_texture(gl_context_t *ctx, const vgfx3d_postfx_snapshot_t *snapshot) {
+static void draw_scene_texture(gl_context_t *ctx, const vgfx3d_postfx_chain_t *chain) {
     if (!ctx)
         return;
-    gl_draw_scene_texture_to_target(ctx, 0, GL_BACK, ctx->width, ctx->height, snapshot);
+    if (!chain || !chain->enabled || chain->effect_count <= 0 || !chain->effects)
+        return;
+    gl_apply_postfx_chain(ctx, ctx->scene_color_tex, ctx->width, ctx->height, chain, 0, GL_BACK, 0, NULL, NULL);
 }
 
 /// @brief Internal skybox draw — full-screen triangle with reconstructed view rays.
@@ -3668,6 +3729,7 @@ static void gl_destroy_ctx(void *ctx_ptr) {
     destroy_postfx_readback_target(ctx);
     destroy_rtt_targets(ctx);
     destroy_shadow_targets(ctx);
+    vgfx3d_postfx_chain_free(&ctx->gpu_postfx_chain);
 
     if (ctx->fullscreen_vbo)
         gl.DeleteBuffers(1, &ctx->fullscreen_vbo);
@@ -3807,8 +3869,7 @@ static void gl_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) {
 
     if (ctx->current_pass_is_overlay && ctx->gpu_postfx_enabled && ctx->scene_postfx_pending &&
         !ctx->scene_composited_to_backbuffer) {
-        draw_scene_texture(
-            ctx, ctx->gpu_postfx_snapshot_valid ? &ctx->gpu_postfx_snapshot : NULL);
+        draw_scene_texture(ctx, ctx->gpu_postfx_chain_valid ? &ctx->gpu_postfx_chain : NULL);
         ctx->scene_composited_to_backbuffer = 1;
     }
 
@@ -3975,6 +4036,8 @@ static int gl_readback_rgba(
     int use_postfx_readback;
     int32_t source_w, source_h;
     int32_t copy_w, copy_h;
+    GLuint readback_framebuffer = 0;
+    GLenum readback_buffer = GL_BACK;
     uint8_t *tmp;
 
     if (!ctx || !dst_rgba || w <= 0 || h <= 0 || stride < w * 4)
@@ -3989,15 +4052,19 @@ static int gl_readback_rgba(
     if (use_postfx_readback) {
         if (!ctx->scene_fbo || ctx->scene_width <= 0 || ctx->scene_height <= 0)
             return 0;
-        if (ensure_postfx_readback_target(ctx, ctx->scene_width, ctx->scene_height) != 0)
+        if (!ctx->gpu_postfx_chain_valid ||
+            !gl_apply_postfx_chain(ctx,
+                                   ctx->scene_color_tex,
+                                   ctx->scene_width,
+                                   ctx->scene_height,
+                                   &ctx->gpu_postfx_chain,
+                                   0,
+                                   GL_BACK,
+                                   1,
+                                   &readback_framebuffer,
+                                   &readback_buffer)) {
             return 0;
-        gl_draw_scene_texture_to_target(ctx,
-                                        ctx->postfx_readback_fbo,
-                                        GL_COLOR_ATTACHMENT0,
-                                        ctx->scene_width,
-                                        ctx->scene_height,
-                                        ctx->gpu_postfx_snapshot_valid ? &ctx->gpu_postfx_snapshot
-                                                                       : NULL);
+        }
         source_w = ctx->scene_width;
         source_h = ctx->scene_height;
     } else {
@@ -4012,9 +4079,8 @@ static int gl_readback_rgba(
         return 0;
 
     memset(dst_rgba, 0, (size_t)stride * (size_t)h);
-    gl.BindFramebuffer(
-        GL_FRAMEBUFFER, use_postfx_readback ? ctx->postfx_readback_fbo : 0);
-    gl.ReadBuffer(use_postfx_readback ? GL_COLOR_ATTACHMENT0 : GL_BACK);
+    gl.BindFramebuffer(GL_FRAMEBUFFER, use_postfx_readback ? readback_framebuffer : 0);
+    gl.ReadBuffer(use_postfx_readback ? readback_buffer : GL_BACK);
     gl.ReadPixels(0, 0, copy_w, copy_h, GL_RGBA, GL_UNSIGNED_BYTE, tmp);
     vgfx3d_flip_rgba_rows(tmp, copy_w, copy_h);
     for (int32_t y = 0; y < copy_h; y++)
@@ -4032,16 +4098,18 @@ static int gl_readback_rgba(
 /// Skips the composite when scene was never rendered offscreen (no
 /// postfx). After present, clears the per-frame state flags so the
 /// next frame starts clean.
-static void gl_present_impl(gl_context_t *ctx, const vgfx3d_postfx_snapshot_t *snapshot) {
+static void gl_present_impl(gl_context_t *ctx, const vgfx3d_postfx_chain_t *chain) {
     int use_postfx;
 
     if (!ctx || ctx->rtt_active)
         return;
     glx.MakeCurrent(ctx->display, ctx->window, ctx->glxCtx);
-    use_postfx =
-        (snapshot != NULL && ctx->gpu_postfx_enabled && ctx->scene_postfx_pending) ? 1 : 0;
+    use_postfx = (chain != NULL && chain->enabled && chain->effect_count > 0 &&
+                  ctx->gpu_postfx_enabled && ctx->scene_postfx_pending)
+                     ? 1
+                     : 0;
     if (use_postfx && !ctx->scene_composited_to_backbuffer)
-        draw_scene_texture(ctx, snapshot);
+        draw_scene_texture(ctx, chain);
     glx.SwapBuffers(ctx->display, ctx->window);
     ctx->scene_postfx_pending = 0;
     ctx->scene_composited_to_backbuffer = 0;
@@ -4052,8 +4120,8 @@ static void gl_present(void *ctx_ptr) {
     gl_present_impl((gl_context_t *)ctx_ptr, NULL);
 }
 
-/// @brief Backend `present_postfx` — present with a post-FX snapshot composited.
-static void gl_present_postfx(void *ctx_ptr, const vgfx3d_postfx_snapshot_t *postfx) {
+/// @brief Backend `present_postfx` — present with an ordered post-FX chain composited.
+static void gl_present_postfx(void *ctx_ptr, const vgfx3d_postfx_chain_t *postfx) {
     gl_present_impl((gl_context_t *)ctx_ptr, postfx);
 }
 
@@ -4069,25 +4137,31 @@ static void gl_set_gpu_postfx_enabled(void *ctx_ptr, int8_t enabled) {
     if (!ctx->gpu_postfx_enabled) {
         ctx->scene_postfx_pending = 0;
         ctx->scene_composited_to_backbuffer = 0;
+        vgfx3d_postfx_chain_reset(&ctx->gpu_postfx_chain);
+        ctx->gpu_postfx_chain_valid = 0;
     }
 }
 
-/// @brief Backend `set_gpu_postfx_snapshot` — store the current postfx parameters.
+/// @brief Backend `set_gpu_postfx_snapshot` — store the current postfx chain.
 ///
-/// NULL clears the snapshot (post-FX with no params = bypass). Used
-/// to capture the current postfx state at the begin/end of an
-/// overlay pass so the composite uses the right parameters.
-static void gl_set_gpu_postfx_snapshot(void *ctx_ptr, const vgfx3d_postfx_snapshot_t *postfx) {
+/// NULL clears the chain (post-FX disabled). Used to capture the current
+/// postfx state at the begin/end of an overlay pass so the composite uses
+/// the right ordered passes.
+static void gl_set_gpu_postfx_snapshot(void *ctx_ptr, const vgfx3d_postfx_chain_t *postfx) {
     gl_context_t *ctx = (gl_context_t *)ctx_ptr;
     if (!ctx)
         return;
     if (!postfx) {
-        memset(&ctx->gpu_postfx_snapshot, 0, sizeof(ctx->gpu_postfx_snapshot));
-        ctx->gpu_postfx_snapshot_valid = 0;
+        vgfx3d_postfx_chain_reset(&ctx->gpu_postfx_chain);
+        ctx->gpu_postfx_chain_valid = 0;
         return;
     }
-    ctx->gpu_postfx_snapshot = *postfx;
-    ctx->gpu_postfx_snapshot_valid = 1;
+    if (!vgfx3d_postfx_chain_copy(&ctx->gpu_postfx_chain, postfx)) {
+        vgfx3d_postfx_chain_reset(&ctx->gpu_postfx_chain);
+        ctx->gpu_postfx_chain_valid = 0;
+        return;
+    }
+    ctx->gpu_postfx_chain_valid = 1;
 }
 
 /// @brief Backend `set_render_target` op — bind / unbind RTT.

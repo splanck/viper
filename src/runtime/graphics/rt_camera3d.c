@@ -47,10 +47,17 @@ static void build_ortho(double *m,
                         double near_val,
                         double far_val);
 
+/// @brief Clamp aspect ratio away from zero. Values ≤ 1e-6 (including negatives and
+/// zero) fall back to 1.0 so `build_perspective`'s `f / aspect` divide never produces
+/// infinity or a negative scale. Used at every projection-building site.
 static double sanitize_aspect(double aspect) {
     return aspect > 1e-6 ? aspect : 1.0;
 }
 
+/// @brief Guard the near/far clip planes against degenerate configurations. Forces near
+/// ≥ 0.1 (prevents z-buffer precision collapse at very small near) and ensures far
+/// exceeds near by at least ~1e-4 — defaulting far to near + 1000 when the caller passes
+/// a degenerate pair. Both arguments are in-out so caller state stays valid.
 static void sanitize_clip_planes(double *near_val, double *far_val) {
     if (!near_val || !far_val)
         return;
@@ -60,6 +67,10 @@ static void sanitize_clip_planes(double *near_val, double *far_val) {
         *far_val = *near_val + 1000.0;
 }
 
+/// @brief Clamp vertical FOV to the usable `[1°, 179°]` range. Below 1° the perspective
+/// `tan(fov/2)` divisor approaches zero and the projection blows up; above 179° the
+/// forward basis effectively flips. Real-world content lives in ~30–100° so this clamp
+/// only kicks in for malformed input.
 static double sanitize_fov(double fov_deg) {
     if (fov_deg < 1.0)
         return 1.0;
@@ -68,11 +79,18 @@ static double sanitize_fov(double fov_deg) {
     return fov_deg;
 }
 
+/// @brief Clamp orthographic view-volume half-size away from zero — same logic as
+/// `sanitize_aspect` but for the ortho height parameter. Prevents a zero-size ortho
+/// projection from collapsing into a divide-by-zero during matrix construction.
 static double sanitize_ortho_size(double size) {
     return size > 1e-6 ? size : 1.0;
 }
 
-/* Build perspective projection matrix (matches rt_mat4_perspective) */
+/// @brief Build an OpenGL-style perspective projection matrix into `m` (column-major).
+/// `f = 1 / tan(fov/2)` sets vertical scale; horizontal divides by aspect. Writes depth
+/// in the `[-1, 1]` NDC convention with a reverse-Z mapping (`m[14] = -1` signals
+/// perspective division from the w-channel). Zeroes the matrix first so unused slots
+/// stay at 0 — callers can assume a fully initialised 4×4.
 static void build_perspective(double *m, double fov_deg, double aspect, double near, double far) {
     memset(m, 0, 16 * sizeof(double));
     double fov_rad = fov_deg * (M_PI / 180.0);
@@ -87,7 +105,15 @@ static void build_perspective(double *m, double fov_deg, double aspect, double n
     /* m[15] = 0 */
 }
 
-/* Build view matrix (matches rt_mat4_look_at) */
+/// @brief Build a right-handed look-at view matrix into `m`. Forward = normalize(eye -
+/// target); right = normalize(cross(up, forward)); true-up = cross(forward, right).
+/// Handles two degenerate cases: (1) eye == target (flen ≈ 0) falls back to +Z forward
+/// while preserving camera translation — avoids producing an identity with the
+/// translation stripped; (2) up parallel to forward (rlen ≈ 0) picks an orthogonal
+/// fallback axis based on which world axis dominates the forward vector. Final
+/// fallback is the world +X basis if both attempts collapse. Matches
+/// `rt_mat4_look_at` bit-for-bit so the Canvas3D projection and Camera3D forward
+/// vectors stay in lockstep.
 static void build_look_at(double *m, const double *eye, const double *target, const double *up) {
     /* Forward = normalize(eye - target) — right-handed.
      * If eye == target (flen ≈ 0), fall back to the default forward axis
@@ -341,7 +367,10 @@ void *rt_camera3d_new(double fov, double aspect, double near_val, double far_val
     return cam;
 }
 
-/* Build orthographic projection matrix */
+/// @brief Build an orthographic projection matrix into `m` (column-major). Maps the
+/// box `(left,right) × (bottom,top) × (near_val,far_val)` to OpenGL NDC `[-1,1]³`.
+/// Returns early (leaving `m` as the zero matrix) when any axis has zero extent so
+/// the caller can trap on the all-zero result rather than emitting NaN pixels.
 static void build_ortho(double *m,
                         double left,
                         double right,
@@ -529,6 +558,11 @@ void rt_camera3d_set_position(void *obj, void *pos) {
     camera_apply_shake_to_view(cam);
 }
 
+/// @brief Extract the world-space forward unit vector the camera is currently pointing
+/// at. Read directly from the view matrix's third row (negated because the view looks
+/// along -Z by convention). Caller owns the returned Vec3. Useful for "fire a ray from
+/// the camera" behaviors and for gameplay that needs the camera facing independent of
+/// its `look_at` target.
 void *rt_camera3d_get_forward(void *obj) {
     if (!obj)
         return NULL;
@@ -537,6 +571,10 @@ void *rt_camera3d_get_forward(void *obj) {
     return rt_vec3_new(-cam->view[8], -cam->view[9], -cam->view[10]);
 }
 
+/// @brief Extract the world-space right unit vector (the camera's screen-right axis).
+/// Read directly from the view matrix's first row. Used together with forward and up
+/// to build camera-relative movement (strafing, mouse-look yaw, etc.). Caller owns the
+/// returned Vec3.
 void *rt_camera3d_get_right(void *obj) {
     if (!obj)
         return NULL;

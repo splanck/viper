@@ -41,6 +41,9 @@ extern int rt_obj_release_check0(void *obj);
 extern void rt_obj_free(void *obj);
 #include "rt_trap.h"
 
+/// @brief Release the GC reference at `*slot` and NULL it. NULL-safe both ways (slot ==
+/// NULL or *slot == NULL). Only frees the underlying object when the release drops its
+/// retain count to zero — bystander references keep the texture alive.
 static void material_release_ref(void **slot) {
     if (!slot || !*slot)
         return;
@@ -49,6 +52,10 @@ static void material_release_ref(void **slot) {
     *slot = NULL;
 }
 
+/// @brief GC finalizer for Material3D. Walks all seven texture slots (diffuse, normal,
+/// specular, emissive, metallic-roughness, AO, environment) and releases each, regardless
+/// of which subset the material actually used. Unused slots are NULL and release is
+/// NULL-safe, so legacy-Phong materials pay the same teardown cost as full PBR ones.
 static void rt_material3d_finalize(void *obj) {
     rt_material3d *mat = (rt_material3d *)obj;
     if (!mat)
@@ -62,6 +69,11 @@ static void rt_material3d_finalize(void *obj) {
     material_release_ref(&mat->env_map);
 }
 
+/// @brief Retain-then-release swap for a texture slot: if `value` differs from the
+/// current occupant, retain the new one *first*, then release the old one. Retain-
+/// before-release keeps the refcount above zero through the transition so re-assigning
+/// a slot to its own contents (or to a shared texture whose only owner is this slot)
+/// can't briefly drop the refcount and trigger a finalize.
 static void material_assign_ref(void **slot, void *value) {
     if (*slot == value)
         return;
@@ -70,6 +82,8 @@ static void material_assign_ref(void **slot, void *value) {
     *slot = value;
 }
 
+/// @brief Clamp into the closed `[0, 1]` range — the common normalized-parameter guard
+/// used across PBR material setters (metallic, roughness, AO, alpha, reflectivity, etc.).
 static double clamp01(double value) {
     if (value < 0.0)
         return 0.0;
@@ -78,10 +92,18 @@ static double clamp01(double value) {
     return value;
 }
 
+/// @brief Clamp into the half-open range `[min_value, +inf)`. Used by setters whose
+/// input only needs a floor (shininess, normal scale, emissive intensity, etc.) and
+/// don't have a natural upper bound.
 static double clamp_min(double value, double min_value) {
     return value < min_value ? min_value : value;
 }
 
+/// @brief Initialize a freshly allocated material to the legacy-Phong default — white
+/// diffuse (RGBA 1,1,1,1), white specular, shininess 32, zero emissive, metallic 0 /
+/// roughness 0.5 (safe PBR fallback even though workflow starts legacy), opaque alpha
+/// mode, no textures bound. Zeroes the custom-param scratch buffer so backends see a
+/// stable initial state.
 static void material_init_defaults(rt_material3d *mat) {
     if (!mat)
         return;
@@ -117,12 +139,22 @@ static void material_init_defaults(rt_material3d *mat) {
     memset(mat->custom_params, 0, sizeof(mat->custom_params));
 }
 
+/// @brief Switch the material from legacy-Phong to PBR workflow. Called implicitly by
+/// any PBR-specific setter (metallic / roughness / metallic-roughness-map / AO / etc.)
+/// so a caller that touches those fields automatically opts into the PBR lighting path
+/// without having to call a separate "SetPBR" entry. Legacy-only setters leave the
+/// workflow alone so a pure-Phong material stays in that mode.
 static void material_promote_to_pbr(rt_material3d *mat) {
     if (!mat)
         return;
     mat->workflow = RT_MATERIAL3D_WORKFLOW_PBR;
 }
 
+/// @brief Deep-copy the material shell, retaining (not cloning) the underlying texture
+/// objects. Scalar / color / flag fields are memcpy-like copied; texture pointers go
+/// through `material_assign_ref` so the clone holds its own retain count. Shared texture
+/// data keeps GPU uploads cheap — callers who want independent textures clone them
+/// separately. Returns NULL if `rt_material3d_new` fails to allocate.
 static void *material_clone_like(void *obj) {
     rt_material3d *src = (rt_material3d *)obj;
     rt_material3d *dst;

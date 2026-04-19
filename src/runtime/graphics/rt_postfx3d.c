@@ -118,14 +118,25 @@ typedef struct {
  * Helpers
  *=========================================================================*/
 
+/// @brief Clamp `v` into the closed interval `[lo, hi]`. Used throughout the effect
+/// pipeline to keep intermediate float values inside the displayable range before
+/// converting back to 8-bit pixels at the end.
 static float clampf(float v, float lo, float hi) {
     return v < lo ? lo : (v > hi ? hi : v);
 }
 
+/// @brief Perceptual luminance of a linear sRGB colour using the Rec. 709 weights
+/// (0.2126 R + 0.7152 G + 0.0722 B). Used by the bloom extract pass, the FXAA edge
+/// detector, and the saturation term of `apply_color_grade`.
 static float luminance(float r, float g, float b) {
     return 0.2126f * r + 0.7152f * g + 0.0722f * b;
 }
 
+/// @brief Reserve and zero one more `postfx_entry_t` slot in the chain, growing the heap
+/// buffer when capacity is exceeded. Capacity doubles on each grow (starting at 8) so the
+/// amortized cost of long chains is O(1). Returns NULL on realloc failure — the caller's
+/// chain stays intact and the caller silently drops the add, matching the prior fixed-
+/// size-array implementation's "silent drop past N" contract.
 static postfx_entry_t *postfx_append_entry(rt_postfx3d *fx) {
     postfx_entry_t *effects;
     int32_t new_capacity;
@@ -155,11 +166,119 @@ static postfx_entry_t *postfx_append_entry(rt_postfx3d *fx) {
     return effects;
 }
 
+/// @brief Ensure the backend-facing postfx chain buffer has room for at least `needed`
+/// effect descriptors, doubling capacity each grow (starting at 8) and saturating at
+/// `INT32_MAX` to avoid integer overflow in the size-in-bytes multiplication. Returns 1
+/// on success, 0 on realloc failure. Freshly allocated entries are zeroed so unused
+/// tail descriptors carry an `enabled = 0` marker by default.
+static int vgfx3d_postfx_chain_reserve(vgfx3d_postfx_chain_t *chain, int32_t needed) {
+    vgfx3d_postfx_effect_desc_t *effects;
+    int32_t new_capacity;
+
+    if (!chain)
+        return 0;
+    if (needed <= 0)
+        return 1;
+    if (chain->effect_capacity >= needed && chain->effects)
+        return 1;
+
+    new_capacity = chain->effect_capacity > 0 ? chain->effect_capacity : 8;
+    while (new_capacity < needed) {
+        if (new_capacity > INT32_MAX / 2) {
+            new_capacity = needed;
+            break;
+        }
+        new_capacity *= 2;
+    }
+    effects = (vgfx3d_postfx_effect_desc_t *)realloc(
+        chain->effects, (size_t)new_capacity * sizeof(*effects));
+    if (!effects)
+        return 0;
+    if (new_capacity > chain->effect_capacity) {
+        memset(effects + chain->effect_capacity,
+               0,
+               (size_t)(new_capacity - chain->effect_capacity) * sizeof(*effects));
+    }
+    chain->effects = effects;
+    chain->effect_capacity = new_capacity;
+    return 1;
+}
+
+/// @brief Translate an internal `postfx_entry_t` into the backend-facing snapshot
+/// descriptor consumed by GPU postfx passes. Returns 0 (skip this slot) for disabled
+/// effects, NULL inputs, or unknown effect types so the backend never walks partial data.
+/// The snapshot is a stable, flat struct so GPU shaders don't have to chase the internal
+/// tagged union.
+static int vgfx3d_postfx_fill_effect_snapshot(const postfx_entry_t *e,
+                                              vgfx3d_postfx_effect_desc_t *out_effect) {
+    vgfx3d_postfx_snapshot_t snapshot;
+
+    if (!e || !out_effect || !e->enabled)
+        return 0;
+
+    memset(&snapshot, 0, sizeof(snapshot));
+    snapshot.enabled = 1;
+    out_effect->type = (int32_t)e->type;
+
+    switch (e->type) {
+        case POSTFX_BLOOM:
+            snapshot.bloom_enabled = 1;
+            snapshot.bloom_threshold = e->p.bloom.threshold;
+            snapshot.bloom_intensity = e->p.bloom.intensity;
+            break;
+        case POSTFX_TONEMAP:
+            snapshot.tonemap_mode = (int8_t)e->p.tonemap.mode;
+            snapshot.tonemap_exposure = e->p.tonemap.exposure;
+            break;
+        case POSTFX_FXAA:
+            snapshot.fxaa_enabled = 1;
+            break;
+        case POSTFX_COLOR_GRADE:
+            snapshot.color_grade_enabled = 1;
+            snapshot.cg_brightness = e->p.color_grade.brightness;
+            snapshot.cg_contrast = e->p.color_grade.contrast;
+            snapshot.cg_saturation = e->p.color_grade.saturation;
+            break;
+        case POSTFX_VIGNETTE:
+            snapshot.vignette_enabled = 1;
+            snapshot.vignette_radius = e->p.vignette.radius;
+            snapshot.vignette_softness = e->p.vignette.softness;
+            break;
+        case POSTFX_SSAO:
+            snapshot.ssao_enabled = 1;
+            snapshot.ssao_radius = e->p.ssao.ao_radius;
+            snapshot.ssao_intensity = e->p.ssao.ao_intensity;
+            snapshot.ssao_samples = e->p.ssao.ao_samples;
+            break;
+        case POSTFX_DOF:
+            snapshot.dof_enabled = 1;
+            snapshot.dof_focus_distance = e->p.dof.focus_distance;
+            snapshot.dof_aperture = e->p.dof.aperture;
+            snapshot.dof_max_blur = e->p.dof.max_blur;
+            break;
+        case POSTFX_MOTION_BLUR:
+            snapshot.motion_blur_enabled = 1;
+            snapshot.motion_blur_intensity = e->p.motion_blur.mb_intensity;
+            snapshot.motion_blur_samples = e->p.motion_blur.mb_samples;
+            break;
+        default:
+            return 0;
+    }
+
+    out_effect->snapshot = snapshot;
+    return 1;
+}
+
 /*==========================================================================
  * Effect implementations (per-pixel on float buffer)
  *=========================================================================*/
 
-/// @brief Apply bloom: extract bright pixels, blur, composite.
+/// @brief Apply bloom — the classic bright-extract / separable-Gaussian-blur /
+/// composite-back sequence. Downsamples to half-res for the extract + blur phase
+/// (four-times fewer fragments on the hot loop) and upsamples with nearest-neighbour
+/// during the composite. Uses a 5-tap symmetric Gaussian kernel (0.0625, 0.25, 0.375,
+/// 0.25, 0.0625) in each axis, re-applied `blur_passes` times; more passes = wider halo.
+/// Returns early on half-res degenerate dimensions or calloc failure.
 static void apply_bloom(
     float *buf, int32_t w, int32_t h, float threshold, float intensity, int32_t blur_passes) {
     int32_t hw = w / 2, hh = h / 2;
@@ -259,7 +378,13 @@ static void apply_bloom(
     free(bloom);
 }
 
-/// @brief Apply tone mapping (Reinhard or ACES filmic).
+/// @brief Apply HDR → LDR tone mapping in linear RGB. `mode = 1` selects simple
+/// Reinhard (`c / (c + 1)`), `mode = 2` selects the Narkowicz ACES filmic approximation
+/// (five-constant rational that matches the Academy curve). Any other mode no-ops so the
+/// uninitialised case passes through cleanly. Multiplies by `exposure` before mapping so
+/// scenes keyed for EV 0 stay in the mapper's responsive range. Finishes with a 2.2-gamma
+/// correction so the 8-bit framebuffer gets perceptual output (the earlier float buffer
+/// is linear).
 static void apply_tonemap(float *buf, int32_t w, int32_t h, int32_t mode, float exposure) {
     if (mode != 1 && mode != 2)
         return;
@@ -292,7 +417,12 @@ static void apply_tonemap(float *buf, int32_t w, int32_t h, int32_t mode, float 
     }
 }
 
-/// @brief Apply simplified FXAA (edge-aware 3x3 blur on high-contrast edges).
+/// @brief Apply a simplified FXAA pass — sample each pixel's luminance plus its four
+/// neighbours, compute the luminance range, and if it exceeds both `edge_threshold *
+/// lmax` and `min_threshold` (avoids smoothing near-uniform regions), replace the
+/// pixel with a 3×3 box average. Writes into a scratch buffer and memcpys back, so
+/// the pass is order-independent within a single invocation. Cheaper than real FXAA
+/// 3.11 but good enough for jagged-edge cleanup over the software pipeline's output.
 static void apply_fxaa(float *buf, int32_t w, int32_t h, float edge_thresh, float min_thresh) {
     float *out = (float *)malloc((size_t)w * h * 3 * sizeof(float));
     if (!out)
@@ -358,7 +488,12 @@ static void apply_fxaa(float *buf, int32_t w, int32_t h, float edge_thresh, floa
     free(out);
 }
 
-/// @brief Apply color grading (brightness, contrast, saturation).
+/// @brief Apply colour grading in a single pass — contrast scales each channel around
+/// mid-grey (0.5), brightness is a signed add, then saturation blends between grayscale
+/// (the Rec. 709 luminance computed on the post-contrast values) and the full-chroma
+/// result: `lum + (c - lum) * saturation`. All three terms are multiplicative around
+/// 1.0 being neutral. Final clamp to `[0, 1]` prevents the 8-bit write back from
+/// overflowing.
 static void apply_color_grade(
     float *buf, int32_t w, int32_t h, float brightness, float contrast, float saturation) {
     int32_t count = w * h;
@@ -380,7 +515,11 @@ static void apply_color_grade(
     }
 }
 
-/// @brief Apply vignette (darken corners).
+/// @brief Apply a radial-falloff vignette. Normalises the pixel-to-centre distance by
+/// the half-screen diagonal so the effect is resolution-independent, then multiplies
+/// the colour by a `1 → 0` ramp that starts at normalized distance `radius` and reaches
+/// full black at `radius + softness`. Pixels inside the radius are untouched. Alpha is
+/// preserved — only the RGB channels are scaled.
 static void apply_vignette(float *buf, int32_t w, int32_t h, float radius, float softness) {
     float cx = (float)w * 0.5f, cy = (float)h * 0.5f;
     float maxdist = sqrtf(cx * cx + cy * cy);
@@ -405,6 +544,12 @@ static void apply_vignette(float *buf, int32_t w, int32_t h, float radius, float
  * Apply entire effect chain to a framebuffer
  *=========================================================================*/
 
+/// @brief Run the full effect chain over a framebuffer. Converts the RGBA8 pixels to a
+/// temporary planar-RGB float buffer, applies each enabled effect in insertion order
+/// (skipping SSAO / DOF / motion-blur in the software pipeline because they require
+/// depth-buffer access the CPU fallback doesn't expose), then writes the result back to
+/// the framebuffer with alpha preserved. Failure to allocate the float scratch buffer
+/// leaves the framebuffer untouched.
 static void postfx_apply(rt_postfx3d *fx, uint8_t *pixels, int32_t w, int32_t h, int32_t stride) {
     if (!fx || !fx->enabled || fx->effect_count == 0 || !pixels)
         return;
@@ -480,6 +625,9 @@ static void postfx_apply(rt_postfx3d *fx, uint8_t *pixels, int32_t w, int32_t h,
  * PostFX3D lifecycle + API
  *=========================================================================*/
 
+/// @brief GC finalizer for `PostFX3D`. Frees the heap-allocated effect array and zeroes
+/// capacity/count so a dangling pointer re-use would fail cleanly. No other resources
+/// are owned by the object — backend snapshots are rebuilt on each frame.
 static void rt_postfx3d_finalize(void *obj) {
     rt_postfx3d *fx = (rt_postfx3d *)obj;
     if (!fx)
@@ -490,6 +638,11 @@ static void rt_postfx3d_finalize(void *obj) {
     fx->effect_count = 0;
 }
 
+/// @brief Create a new post-FX chain. Starts empty (no effects) and with the master
+/// enable flag on — a fresh chain is inert until the caller appends effects via
+/// `_add_bloom` / `_add_tonemap` / etc. The internal `effects` array is lazily
+/// allocated on the first append, so a never-used chain pays zero extra memory
+/// beyond the wrapper struct.
 void *rt_postfx3d_new(void) {
     rt_postfx3d *fx = (rt_postfx3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_postfx3d));
     if (!fx) {
@@ -732,59 +885,174 @@ void rt_postfx3d_add_motion_blur(void *obj, double intensity, int64_t samples) {
  * Backend-facing snapshot export (MTL-11)
  *=========================================================================*/
 
+/// @brief Wipe a backend-facing postfx chain to "disabled / empty" state *without* freeing
+/// its effect-descriptor storage. Used by the GPU frame loop to reuse a preallocated chain
+/// buffer across frames — zeroing the descriptors keeps the allocation warm while discarding
+/// last frame's contents. Pair with `_free` to release the buffer when the chain is retired.
+void vgfx3d_postfx_chain_reset(vgfx3d_postfx_chain_t *chain) {
+    if (!chain)
+        return;
+    chain->enabled = 0;
+    chain->effect_count = 0;
+    if (chain->effects && chain->effect_capacity > 0) {
+        memset(chain->effects, 0, (size_t)chain->effect_capacity * sizeof(*chain->effects));
+    }
+}
+
+/// @brief Release the effect-descriptor storage of a backend-facing chain and reset it to
+/// a freshly-initialised state. Used at backend teardown / canvas destruction. NULL-safe.
+void vgfx3d_postfx_chain_free(vgfx3d_postfx_chain_t *chain) {
+    if (!chain)
+        return;
+    free(chain->effects);
+    chain->effects = NULL;
+    chain->effect_capacity = 0;
+    chain->effect_count = 0;
+    chain->enabled = 0;
+}
+
+/// @brief Copy the enabled effect descriptors from `src` into `dst`, growing `dst`'s
+/// capacity if needed. Falls back to a reset (empty, disabled) on a disabled or empty
+/// source, or on realloc failure — the caller can safely treat a zero return as "no
+/// chain active" without inspecting `dst` further. Unused tail descriptors in `dst`
+/// are zeroed so a stale shader that over-reads sees explicit disables instead of
+/// garbage.
+int vgfx3d_postfx_chain_copy(vgfx3d_postfx_chain_t *dst, const vgfx3d_postfx_chain_t *src) {
+    if (!dst)
+        return 0;
+    if (!src || !src->enabled || src->effect_count <= 0 || !src->effects) {
+        vgfx3d_postfx_chain_reset(dst);
+        return 0;
+    }
+    if (!vgfx3d_postfx_chain_reserve(dst, src->effect_count)) {
+        vgfx3d_postfx_chain_reset(dst);
+        return 0;
+    }
+    memcpy(dst->effects, src->effects, (size_t)src->effect_count * sizeof(*src->effects));
+    if (dst->effect_capacity > src->effect_count) {
+        memset(dst->effects + src->effect_count,
+               0,
+               (size_t)(dst->effect_capacity - src->effect_count) * sizeof(*dst->effects));
+    }
+    dst->enabled = src->enabled ? 1 : 0;
+    dst->effect_count = src->effect_count;
+    return 1;
+}
+
+/// @brief Export a gameplay-facing `PostFX3D` as a backend-consumable chain of effect
+/// descriptors. Walks the internal effect list and appends only the *enabled* entries
+/// (translated via `vgfx3d_postfx_fill_effect_snapshot`) into `out->effects`. Returns 1
+/// when at least one effect made it through, 0 when the chain is empty / disabled / all
+/// entries disabled / the target buffer couldn't be grown. The per-frame backend reads
+/// this into a local snapshot so later edits to the gameplay chain don't affect the
+/// in-flight frame.
+int vgfx3d_postfx_get_chain(void *postfx, vgfx3d_postfx_chain_t *out) {
+    rt_postfx3d *fx;
+    int32_t enabled_count = 0;
+
+    if (!out)
+        return 0;
+    if (!postfx) {
+        vgfx3d_postfx_chain_reset(out);
+        return 0;
+    }
+    fx = (rt_postfx3d *)postfx;
+    if (!fx->enabled || fx->effect_count == 0) {
+        vgfx3d_postfx_chain_reset(out);
+        return 0;
+    }
+
+    for (int32_t i = 0; i < fx->effect_count; i++) {
+        if (fx->effects[i].enabled)
+            enabled_count++;
+    }
+    if (enabled_count == 0) {
+        vgfx3d_postfx_chain_reset(out);
+        return 0;
+    }
+    if (!vgfx3d_postfx_chain_reserve(out, enabled_count)) {
+        vgfx3d_postfx_chain_reset(out);
+        return 0;
+    }
+
+    out->enabled = 1;
+    out->effect_count = 0;
+    for (int32_t i = 0; i < fx->effect_count; i++) {
+        if (!vgfx3d_postfx_fill_effect_snapshot(&fx->effects[i], &out->effects[out->effect_count]))
+            continue;
+        out->effect_count++;
+    }
+    if (out->effect_capacity > out->effect_count) {
+        memset(out->effects + out->effect_count,
+               0,
+               (size_t)(out->effect_capacity - out->effect_count) * sizeof(*out->effects));
+    }
+    return out->effect_count > 0 ? 1 : 0;
+}
+
+/// @brief Flatten a gameplay-facing `PostFX3D` into a single struct whose fields carry
+/// the parameters of the *last* occurrence of each effect type — the legacy (pre-chain)
+/// API shape kept for backends that don't yet iterate the chain. When the same effect
+/// type appears more than once, later entries stomp earlier ones. Returns 1 when the
+/// chain is enabled and has ≥1 entry, 0 otherwise; `out` is always zeroed before use so
+/// disabled fields read as zero instead of garbage.
 int vgfx3d_postfx_get_snapshot(void *postfx, vgfx3d_postfx_snapshot_t *out) {
+    rt_postfx3d *fx;
+
+    if (!out)
+        return 0;
     memset(out, 0, sizeof(*out));
     if (!postfx)
         return 0;
-    rt_postfx3d *fx = (rt_postfx3d *)postfx;
+    fx = (rt_postfx3d *)postfx;
     if (!fx->enabled || fx->effect_count == 0)
         return 0;
 
     out->enabled = 1;
     for (int32_t i = 0; i < fx->effect_count; i++) {
-        postfx_entry_t *e = &fx->effects[i];
-        if (!e->enabled)
+        vgfx3d_postfx_effect_desc_t effect;
+        if (!vgfx3d_postfx_fill_effect_snapshot(&fx->effects[i], &effect))
             continue;
-        switch (e->type) {
+        switch ((postfx_type_t)effect.type) {
             case POSTFX_BLOOM:
                 out->bloom_enabled = 1;
-                out->bloom_threshold = e->p.bloom.threshold;
-                out->bloom_intensity = e->p.bloom.intensity;
+                out->bloom_threshold = effect.snapshot.bloom_threshold;
+                out->bloom_intensity = effect.snapshot.bloom_intensity;
                 break;
             case POSTFX_TONEMAP:
-                out->tonemap_mode = (int8_t)e->p.tonemap.mode;
-                out->tonemap_exposure = e->p.tonemap.exposure;
+                out->tonemap_mode = effect.snapshot.tonemap_mode;
+                out->tonemap_exposure = effect.snapshot.tonemap_exposure;
                 break;
             case POSTFX_FXAA:
                 out->fxaa_enabled = 1;
                 break;
             case POSTFX_COLOR_GRADE:
                 out->color_grade_enabled = 1;
-                out->cg_brightness = e->p.color_grade.brightness;
-                out->cg_contrast = e->p.color_grade.contrast;
-                out->cg_saturation = e->p.color_grade.saturation;
+                out->cg_brightness = effect.snapshot.cg_brightness;
+                out->cg_contrast = effect.snapshot.cg_contrast;
+                out->cg_saturation = effect.snapshot.cg_saturation;
                 break;
             case POSTFX_VIGNETTE:
                 out->vignette_enabled = 1;
-                out->vignette_radius = e->p.vignette.radius;
-                out->vignette_softness = e->p.vignette.softness;
+                out->vignette_radius = effect.snapshot.vignette_radius;
+                out->vignette_softness = effect.snapshot.vignette_softness;
                 break;
             case POSTFX_SSAO:
                 out->ssao_enabled = 1;
-                out->ssao_radius = e->p.ssao.ao_radius;
-                out->ssao_intensity = e->p.ssao.ao_intensity;
-                out->ssao_samples = e->p.ssao.ao_samples;
+                out->ssao_radius = effect.snapshot.ssao_radius;
+                out->ssao_intensity = effect.snapshot.ssao_intensity;
+                out->ssao_samples = effect.snapshot.ssao_samples;
                 break;
             case POSTFX_DOF:
                 out->dof_enabled = 1;
-                out->dof_focus_distance = e->p.dof.focus_distance;
-                out->dof_aperture = e->p.dof.aperture;
-                out->dof_max_blur = e->p.dof.max_blur;
+                out->dof_focus_distance = effect.snapshot.dof_focus_distance;
+                out->dof_aperture = effect.snapshot.dof_aperture;
+                out->dof_max_blur = effect.snapshot.dof_max_blur;
                 break;
             case POSTFX_MOTION_BLUR:
                 out->motion_blur_enabled = 1;
-                out->motion_blur_intensity = e->p.motion_blur.mb_intensity;
-                out->motion_blur_samples = e->p.motion_blur.mb_samples;
+                out->motion_blur_intensity = effect.snapshot.motion_blur_intensity;
+                out->motion_blur_samples = effect.snapshot.motion_blur_samples;
                 break;
             default:
                 break;

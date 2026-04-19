@@ -34,6 +34,7 @@
 #include "rt_object.h"
 #include "rt_pixels.h"
 #include "rt_quat.h"
+#include "rt_scene3d.h"
 #include "rt_skeleton3d.h"
 #include "rt_string.h"
 #include "rt_trap.h"
@@ -61,7 +62,18 @@ typedef struct {
     int32_t material_count;
     void **morph_targets; // rt_morphtarget3d*[] parallel to meshes[]
     int32_t morph_count;
+    void *scene_root;
 } rt_fbx_asset;
+
+typedef struct {
+    int64_t id;
+    void *mesh;
+} fbx_mesh_binding_t;
+
+typedef struct {
+    int64_t id;
+    void *material;
+} fbx_material_binding_t;
 
 /*==========================================================================
  * Binary reader helpers
@@ -653,6 +665,36 @@ static const char *fbx_prop_str(fbx_node_t *node, int idx) {
     return "";
 }
 
+/// @brief Strip the `Namespace::` prefix from an FBX object name and copy the remainder
+/// into `out`. FBX stores names as `Model::Hips`, `Geometry::CubeMesh`, etc., where the
+/// prefix is loader metadata that authors in Blender / Maya / Houdini never see. Walks
+/// the full string to find the *last* `::` so names that legitimately contain double
+/// colons in a sub-namespace still strip correctly. NULL-safe (treats NULL input as
+/// empty), output is always NUL-terminated, truncates when the stripped name doesn't
+/// fit in `out_size`.
+static void fbx_decode_object_name(const char *raw_name, char *out, size_t out_size) {
+    const char *start = raw_name ? raw_name : "";
+    const char *end = start;
+    const char *scope = NULL;
+    size_t len;
+
+    if (!out || out_size == 0)
+        return;
+    while (*end)
+        end++;
+    for (const char *p = start; p + 1 < end; p++) {
+        if (p[0] == ':' && p[1] == ':')
+            scope = p;
+    }
+    if (scope)
+        start = scope + 2;
+    len = (size_t)(end - start);
+    if (len >= out_size)
+        len = out_size - 1;
+    memcpy(out, start, len);
+    out[len] = '\0';
+}
+
 /*==========================================================================
  * Connection table
  *=========================================================================*/
@@ -668,6 +710,8 @@ typedef struct {
     int32_t count;
     int32_t capacity;
 } fbx_conn_table_t;
+
+static fbx_node_t *fbx_find_object_by_id(fbx_node_t *objects, int64_t id);
 
 /// @brief Walk the `Connections` block and populate the `(child_id, parent_id)` table.
 ///
@@ -962,6 +1006,352 @@ static void *fbx_extract_material(fbx_node_t *mat_node) {
 }
 
 /*==========================================================================
+ * Scene graph extraction
+ *=========================================================================*/
+
+static void fbx_release_ref(void **slot) {
+    if (!slot || !*slot)
+        return;
+    if (rt_obj_release_check0(*slot))
+        rt_obj_free(*slot);
+    *slot = NULL;
+}
+
+/// @brief Stash a namespace-stripped FBX object name onto a `SceneNode3D`. Skips the
+/// assignment entirely when the decoded name is empty so a node without a meaningful
+/// name keeps whatever default was already set (instead of being overwritten with `""`).
+/// 128-byte stack buffer matches the decode limit — longer FBX names get truncated.
+static void fbx_set_clean_object_name(void *node, const char *raw_name) {
+    char name[128];
+    fbx_decode_object_name(raw_name, name, sizeof(name));
+    if (*name)
+        rt_scene_node3d_set_name(node, rt_const_cstr(name));
+}
+
+/// @brief Pull Lcl-Translation / Lcl-Rotation / Lcl-Scaling off an FBX `Model` node's
+/// `Properties70` block and convert into the engine's TRS triple. FBX stores Euler
+/// angles in degrees with XYZ order — this routine re-derives the quaternion from the
+/// three Euler components using the standard "half-angle" construction (c = cos(θ/2),
+/// s = sin(θ/2)) and multiplies in XYZ order to match FBX's rotation convention.
+/// When `z_up` is set, the translation is run through `fbx_correct_zup` so the Z-up
+/// authoring orientation maps onto Viper's Y-up runtime. Missing P-properties default
+/// to (0,0,0) / identity / (1,1,1) so partial models still build cleanly.
+static void fbx_extract_model_trs(
+    fbx_node_t *model_node, int z_up, double *pos, double *quat, double *scale) {
+    double tx = 0.0;
+    double ty = 0.0;
+    double tz = 0.0;
+    double rx = 0.0;
+    double ry = 0.0;
+    double rz = 0.0;
+    double sx = 1.0;
+    double sy = 1.0;
+    double sz = 1.0;
+    double hx;
+    double hy;
+    double hz;
+    double cx;
+    double cy;
+    double cz;
+    double sxh;
+    double syh;
+    double szh;
+    double qx;
+    double qy;
+    double qz;
+    double qw;
+    fbx_node_t *p70;
+
+    if (pos) {
+        pos[0] = 0.0;
+        pos[1] = 0.0;
+        pos[2] = 0.0;
+    }
+    if (quat) {
+        quat[0] = 0.0;
+        quat[1] = 0.0;
+        quat[2] = 0.0;
+        quat[3] = 1.0;
+    }
+    if (scale) {
+        scale[0] = 1.0;
+        scale[1] = 1.0;
+        scale[2] = 1.0;
+    }
+    if (!model_node)
+        return;
+
+    p70 = fbx_find_child(model_node, "Properties70");
+    if (p70) {
+        for (int32_t pi = 0; pi < p70->child_count; pi++) {
+            fbx_node_t *p = &p70->children[pi];
+            const char *pn;
+            if (strcmp(p->name, "P") != 0 || p->prop_count < 7)
+                continue;
+            pn = fbx_prop_str(p, 0);
+            if (strcmp(pn, "Lcl Translation") == 0) {
+                tx = fbx_prop_f64(p, 4);
+                ty = fbx_prop_f64(p, 5);
+                tz = fbx_prop_f64(p, 6);
+            } else if (strcmp(pn, "Lcl Rotation") == 0) {
+                rx = fbx_prop_f64(p, 4);
+                ry = fbx_prop_f64(p, 5);
+                rz = fbx_prop_f64(p, 6);
+            } else if (strcmp(pn, "Lcl Scaling") == 0) {
+                sx = fbx_prop_f64(p, 4);
+                sy = fbx_prop_f64(p, 5);
+                sz = fbx_prop_f64(p, 6);
+            }
+        }
+    }
+
+    if (z_up)
+        fbx_correct_zup(&tx, &ty, &tz);
+
+    hx = rx * 3.14159265358979323846 / 360.0;
+    hy = ry * 3.14159265358979323846 / 360.0;
+    hz = rz * 3.14159265358979323846 / 360.0;
+    cx = cos(hx);
+    cy = cos(hy);
+    cz = cos(hz);
+    sxh = sin(hx);
+    syh = sin(hy);
+    szh = sin(hz);
+    qw = cx * cy * cz + sxh * syh * szh;
+    qx = sxh * cy * cz - cx * syh * szh;
+    qy = cx * syh * cz + sxh * cy * szh;
+    qz = cx * cy * szh - sxh * syh * cz;
+
+    if (pos) {
+        pos[0] = tx;
+        pos[1] = ty;
+        pos[2] = tz;
+    }
+    if (quat) {
+        quat[0] = qx;
+        quat[1] = qy;
+        quat[2] = qz;
+        quat[3] = qw;
+    }
+    if (scale) {
+        scale[0] = sx;
+        scale[1] = sy;
+        scale[2] = sz;
+    }
+}
+
+/// @brief Linear search for a `Mesh3D` associated with an FBX object ID. Typical FBX
+/// assets have a few dozen meshes so O(n) is fine — switching to a hash would cost
+/// more in setup than it saves on lookup. Returns NULL when no binding matches.
+static void *fbx_lookup_mesh_binding(
+    const fbx_mesh_binding_t *bindings, int32_t count, int64_t id) {
+    for (int32_t i = 0; i < count; i++)
+        if (bindings[i].id == id)
+            return bindings[i].mesh;
+    return NULL;
+}
+
+/// @brief Linear search for a `Material3D` associated with an FBX object ID. Mirror of
+/// `fbx_lookup_mesh_binding` for the material table.
+static void *fbx_lookup_material_binding(
+    const fbx_material_binding_t *bindings, int32_t count, int64_t id) {
+    for (int32_t i = 0; i < count; i++)
+        if (bindings[i].id == id)
+            return bindings[i].material;
+    return NULL;
+}
+
+/// @brief Three-phase builder that assembles a Viper `SceneNode3D` graph from the flat
+/// FBX `Objects` / `Connections` soup. Phase 1: iterate `Model` entries, skip skeleton
+/// limbs (handled by the skeleton importer), allocate a scene node per model with
+/// decoded name and extracted TRS, recording its FBX id + parent id. Phase 2: walk
+/// connections again to attach Meshes, Materials, and extra-mesh groupings (via
+/// auxiliary child nodes) to their parent models. Phase 3: parent nodes to each other
+/// using the recorded parent ids, rooting orphans under a synthesized scene root.
+/// Returns the scene root or NULL on any allocation failure (intermediate nodes are
+/// released via the GC on failure — no manual cleanup needed). This is the "scene
+/// graph" half of the FBX importer; the flat mesh/material/animation lists live on
+/// `rt_fbx_asset` alongside the root.
+static void *fbx_build_scene_root(fbx_node_t *root,
+                                  fbx_node_t *objects,
+                                  const fbx_conn_table_t *ct,
+                                  const fbx_mesh_binding_t *mesh_bindings,
+                                  int32_t mesh_binding_count,
+                                  const fbx_material_binding_t *material_bindings,
+                                  int32_t material_binding_count,
+                                  int z_up) {
+    typedef struct {
+        int64_t id;
+        int64_t parent_id;
+        fbx_node_t *source;
+        void *node;
+    } fbx_model_binding_t;
+
+    fbx_model_binding_t *models = NULL;
+    int32_t model_count = 0;
+    int32_t model_capacity = 0;
+    void *scene_root = NULL;
+    int failed = 0;
+
+    if (!root || !objects)
+        return NULL;
+
+    for (int32_t i = 0; i < objects->child_count; i++) {
+        fbx_node_t *obj = &objects->children[i];
+        const char *type_str;
+        void *node;
+        void *quat_obj;
+        double pos[3];
+        double quat[4];
+        double scale[3];
+        int64_t model_id;
+
+        if (strcmp(obj->name, "Model") != 0 || obj->prop_count < 3)
+            continue;
+        type_str = fbx_prop_str(obj, 2);
+        if (strcmp(type_str, "LimbNode") == 0 || strcmp(type_str, "Limb") == 0 ||
+            strcmp(type_str, "Root") == 0) {
+            continue;
+        }
+
+        if (model_count >= model_capacity) {
+            int32_t new_capacity = model_capacity == 0 ? 16 : model_capacity * 2;
+            void *nm = realloc(models, (size_t)new_capacity * sizeof(*models));
+            if (!nm) {
+                failed = 1;
+                break;
+            }
+            models = (fbx_model_binding_t *)nm;
+            model_capacity = new_capacity;
+        }
+
+        node = rt_scene_node3d_new();
+        if (!node) {
+            failed = 1;
+            break;
+        }
+        model_id = fbx_prop_i64(obj, 0);
+        fbx_set_clean_object_name(node, fbx_prop_str(obj, 1));
+        fbx_extract_model_trs(obj, z_up, pos, quat, scale);
+        rt_scene_node3d_set_position(node, pos[0], pos[1], pos[2]);
+        quat_obj = rt_quat_new(quat[0], quat[1], quat[2], quat[3]);
+        if (quat_obj) {
+            rt_scene_node3d_set_rotation(node, quat_obj);
+            fbx_release_ref(&quat_obj);
+        }
+        rt_scene_node3d_set_scale(node, scale[0], scale[1], scale[2]);
+
+        models[model_count].id = model_id;
+        models[model_count].parent_id = fbx_find_parent(ct, model_id);
+        models[model_count].source = obj;
+        models[model_count].node = node;
+        model_count++;
+    }
+
+    if (!failed) {
+        scene_root = rt_scene_node3d_new();
+        if (!scene_root)
+            failed = 1;
+    }
+
+    for (int32_t i = 0; !failed && i < model_count; i++) {
+        void *primary_mesh = NULL;
+        void *primary_material = NULL;
+        int32_t extra_mesh_count = 0;
+        for (int32_t ci = 0; ci < ct->count; ci++) {
+            int64_t child_id = ct->entries[ci].child_id;
+            int64_t parent_id = ct->entries[ci].parent_id;
+            fbx_node_t *child_obj;
+            void *material;
+
+            if (parent_id != models[i].id)
+                continue;
+            child_obj = fbx_find_object_by_id(objects, child_id);
+            if (!child_obj || child_obj->prop_count < 1)
+                continue;
+            if (strcmp(child_obj->name, "Material") != 0)
+                continue;
+            material =
+                fbx_lookup_material_binding(material_bindings, material_binding_count, child_id);
+            if (material && !primary_material)
+                primary_material = material;
+        }
+        for (int32_t ci = 0; ci < ct->count; ci++) {
+            int64_t child_id = ct->entries[ci].child_id;
+            int64_t parent_id = ct->entries[ci].parent_id;
+            fbx_node_t *child_obj;
+            void *mesh;
+            void *mesh_node;
+
+            if (parent_id != models[i].id)
+                continue;
+            child_obj = fbx_find_object_by_id(objects, child_id);
+            if (!child_obj || child_obj->prop_count < 3)
+                continue;
+            if (strcmp(child_obj->name, "Geometry") != 0 ||
+                strcmp(fbx_prop_str(child_obj, 2), "Mesh") != 0) {
+                continue;
+            }
+            mesh = fbx_lookup_mesh_binding(mesh_bindings, mesh_binding_count, child_id);
+            if (!mesh)
+                continue;
+            if (!primary_mesh) {
+                primary_mesh = mesh;
+                continue;
+            }
+            mesh_node = rt_scene_node3d_new();
+            if (!mesh_node) {
+                failed = 1;
+                break;
+            }
+            if (child_obj->prop_count >= 2)
+                fbx_set_clean_object_name(mesh_node, fbx_prop_str(child_obj, 1));
+            if (extra_mesh_count > 0) {
+                char generated_name[64];
+                snprintf(generated_name, sizeof(generated_name), "mesh_%d", extra_mesh_count);
+                rt_scene_node3d_set_name(mesh_node, rt_const_cstr(generated_name));
+            }
+            rt_scene_node3d_set_mesh(mesh_node, mesh);
+            if (primary_material)
+                rt_scene_node3d_set_material(mesh_node, primary_material);
+            rt_scene_node3d_add_child(models[i].node, mesh_node);
+            fbx_release_ref(&mesh_node);
+            extra_mesh_count++;
+        }
+        if (failed)
+            break;
+        if (primary_mesh) {
+            rt_scene_node3d_set_mesh(models[i].node, primary_mesh);
+            if (primary_material)
+                rt_scene_node3d_set_material(models[i].node, primary_material);
+        }
+    }
+
+    for (int32_t i = 0; !failed && i < model_count; i++) {
+        void *parent = scene_root;
+        if (models[i].parent_id != 0) {
+            for (int32_t pi = 0; pi < model_count; pi++) {
+                if (models[pi].id == models[i].parent_id) {
+                    parent = models[pi].node;
+                    break;
+                }
+            }
+        }
+        rt_scene_node3d_add_child(parent, models[i].node);
+    }
+
+    for (int32_t i = 0; i < model_count; i++)
+        fbx_release_ref(&models[i].node);
+    free(models);
+
+    if (failed) {
+        fbx_release_ref(&scene_root);
+        return NULL;
+    }
+    return scene_root;
+}
+
+/*==========================================================================
  * Skeleton extraction
  *=========================================================================*/
 
@@ -1013,11 +1403,10 @@ static void *fbx_extract_skeleton(fbx_node_t *root, const fbx_conn_table_t *ct, 
         bone_info_t *bi = &bones[bone_count++];
         memset(bi, 0, sizeof(bone_info_t));
         bi->id = fbx_prop_i64(obj, 0);
-        const char *nstr = fbx_prop_str(obj, 1);
-        /* FBX name may have "\x00\x01ModelName" prefix */
-        const char *sep = strstr(nstr, "\x00\x01");
-        if (sep)
-            nstr = sep + 2;
+        char decoded_name[64];
+        const char *nstr;
+        fbx_decode_object_name(fbx_prop_str(obj, 1), decoded_name, sizeof(decoded_name));
+        nstr = decoded_name;
         size_t nlen = strlen(nstr);
         if (nlen > 63)
             nlen = 63;
@@ -1326,10 +1715,11 @@ static void fbx_extract_animations(fbx_node_t *root,
                 if (skeleton) {
                     fbx_node_t *model_node = fbx_find_object_by_id(objects, model_id);
                     if (model_node && model_node->prop_count >= 2) {
-                        const char *mname = fbx_prop_str(model_node, 1);
-                        const char *msep = strstr(mname, "\x00\x01");
-                        if (msep)
-                            mname = msep + 2;
+                        char decoded_name[64];
+                        const char *mname;
+                        fbx_decode_object_name(
+                            fbx_prop_str(model_node, 1), decoded_name, sizeof(decoded_name));
+                        mname = decoded_name;
                         for (int64_t bi = 0; bi < bone_count; bi++) {
                             rt_string bname = rt_skeleton3d_get_bone_name(skeleton, bi);
                             const char *bstr = rt_string_cstr(bname);
@@ -1450,14 +1840,38 @@ static void fbx_extract_animations(fbx_node_t *root,
 /// @brief GC finalizer for `rt_fbx_asset` — release every owned mesh / material / skeleton / animation.
 static void rt_fbx_asset_finalize(void *obj) {
     rt_fbx_asset *fbx = (rt_fbx_asset *)obj;
+    if (!fbx)
+        return;
+    if (fbx->meshes) {
+        for (int32_t i = 0; i < fbx->mesh_count; i++)
+            fbx_release_ref(&fbx->meshes[i]);
+    }
     free(fbx->meshes);
     fbx->meshes = NULL;
+    fbx->mesh_count = 0;
+    fbx_release_ref(&fbx->skeleton);
+    if (fbx->animations) {
+        for (int32_t i = 0; i < fbx->animation_count; i++)
+            fbx_release_ref(&fbx->animations[i]);
+    }
     free(fbx->animations);
     fbx->animations = NULL;
+    fbx->animation_count = 0;
+    if (fbx->materials) {
+        for (int32_t i = 0; i < fbx->material_count; i++)
+            fbx_release_ref(&fbx->materials[i]);
+    }
     free(fbx->materials);
     fbx->materials = NULL;
+    fbx->material_count = 0;
+    if (fbx->morph_targets) {
+        for (int32_t i = 0; i < fbx->morph_count; i++)
+            fbx_release_ref(&fbx->morph_targets[i]);
+    }
     free(fbx->morph_targets);
     fbx->morph_targets = NULL;
+    fbx->morph_count = 0;
+    fbx_release_ref(&fbx->scene_root);
 }
 
 /// @brief Load an FBX binary file and extract meshes, skeleton, animations, and materials.
@@ -1468,6 +1882,10 @@ static void rt_fbx_asset_finalize(void *obj) {
 /// @param path File path to the .fbx file (runtime string).
 /// @return Opaque FBX asset handle containing meshes/skeleton/animations, or NULL.
 void *rt_fbx_load(rt_string path) {
+    fbx_mesh_binding_t *mesh_bindings = NULL;
+    int32_t mesh_binding_count = 0;
+    fbx_material_binding_t *material_bindings = NULL;
+    int32_t material_binding_count = 0;
     if (!path) {
         rt_trap("FBX.Load: null path");
         return NULL;
@@ -1571,6 +1989,8 @@ void *rt_fbx_load(rt_string path) {
     /* Extract assets */
     rt_fbx_asset *asset = (rt_fbx_asset *)rt_obj_new_i64(0, (int64_t)sizeof(rt_fbx_asset));
     if (!asset) {
+        free(mesh_bindings);
+        free(material_bindings);
         free(ct.entries);
         fbx_free_node(&root);
         rt_trap("FBX.Load: out of memory");
@@ -1586,6 +2006,7 @@ void *rt_fbx_load(rt_string path) {
     asset->material_count = 0;
     asset->morph_targets = NULL;
     asset->morph_count = 0;
+    asset->scene_root = NULL;
     rt_obj_set_finalizer(asset, rt_fbx_asset_finalize);
 
     /* Extract geometry */
@@ -1602,6 +2023,18 @@ void *rt_fbx_load(rt_string path) {
                         asset->meshes = nm;
                         asset->meshes[asset->mesh_count] = mesh;
                         asset->mesh_count = nc;
+                        {
+                            void *nb =
+                                realloc(mesh_bindings, (size_t)asset->mesh_count * sizeof(*mesh_bindings));
+                            if (nb) {
+                                mesh_bindings = (fbx_mesh_binding_t *)nb;
+                                mesh_bindings[mesh_binding_count].id = fbx_prop_i64(obj, 0);
+                                mesh_bindings[mesh_binding_count].mesh = mesh;
+                                mesh_binding_count++;
+                            }
+                        }
+                    } else {
+                        fbx_release_ref(&mesh);
                     }
                 }
             } else if (strcmp(obj->name, "Material") == 0) {
@@ -1613,6 +2046,19 @@ void *rt_fbx_load(rt_string path) {
                         asset->materials = nm;
                         asset->materials[asset->material_count] = mat;
                         asset->material_count = nc;
+                        {
+                            void *nb = realloc(material_bindings,
+                                               (size_t)asset->material_count *
+                                                   sizeof(*material_bindings));
+                            if (nb) {
+                                material_bindings = (fbx_material_binding_t *)nb;
+                                material_bindings[material_binding_count].id = fbx_prop_i64(obj, 0);
+                                material_bindings[material_binding_count].material = mat;
+                                material_binding_count++;
+                            }
+                        }
+                    } else {
+                        fbx_release_ref(&mat);
                     }
                 }
             }
@@ -1857,8 +2303,19 @@ void *rt_fbx_load(rt_string path) {
     fbx_extract_animations(
         &root, &ct, asset->skeleton, &asset->animations, &asset->animation_count);
 
+    asset->scene_root = fbx_build_scene_root(&root,
+                                             objects,
+                                             &ct,
+                                             mesh_bindings,
+                                             mesh_binding_count,
+                                             material_bindings,
+                                             material_binding_count,
+                                             z_up);
+
     /* Cleanup parser data */
     free(ct.entries);
+    free(mesh_bindings);
+    free(material_bindings);
     fbx_free_node(&root);
 
     return asset;
@@ -1886,6 +2343,15 @@ void *rt_fbx_get_mesh(void *obj, int64_t index) {
 /// @brief Get the skeleton extracted from the FBX file (NULL if no skeleton).
 void *rt_fbx_get_skeleton(void *obj) {
     return obj ? ((rt_fbx_asset *)obj)->skeleton : NULL;
+}
+
+/// @brief Get the `SceneNode3D` root of the imported scene graph — the tree of models
+/// the FBX author created, with their world transforms and mesh/material bindings.
+/// Returned reference is borrowed; the asset owns the lifetime. Distinct from the flat
+/// `mesh_count` / `material_count` lists which expose every shared resource the scene
+/// uses, regardless of whether it's actually attached to a node.
+void *rt_fbx_get_scene_root(void *obj) {
+    return obj ? ((rt_fbx_asset *)obj)->scene_root : NULL;
 }
 
 /// @brief Get the number of animation clips in the FBX file.

@@ -28,6 +28,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+extern void *rt_fbx_get_scene_root(void *fbx);
+
 typedef struct {
     void *vptr;
     rt_scene_node3d *template_root;
@@ -49,6 +51,9 @@ typedef struct {
     int32_t animation_capacity;
 } rt_model3d;
 
+/// @brief Release the GC reference at `*slot` and clear the slot. NULL-safe both ways
+/// (`slot == NULL` or `*slot == NULL`). Frees the object only when the release drops the
+/// retain count to zero — bystander references stay alive.
 static void model_release_ref(void **slot) {
     if (!slot || !*slot)
         return;
@@ -57,11 +62,18 @@ static void model_release_ref(void **slot) {
     *slot = NULL;
 }
 
+/// @brief Release a temporary local reference (e.g. a freshly-cloned scene-node we just
+/// re-parented and no longer need). Wrapper around `model_release_ref` that takes a value
+/// rather than a slot, so call sites can write `model_release_local(node)` instead of
+/// passing `&node` and worrying about the post-release zero.
 static void model_release_local(void *obj) {
     void *tmp = obj;
     model_release_ref(&tmp);
 }
 
+/// @brief Release every entry in a dynamically-grown reference array, then free the array
+/// storage itself and reset the count. Used by the finalizer to tear down `meshes`,
+/// `materials`, `skeletons`, and `animations` lists in one call each.
 static void model_release_array(void ***arr, int32_t *count) {
     if (!arr || !*arr)
         return;
@@ -74,6 +86,10 @@ static void model_release_array(void ***arr, int32_t *count) {
     *arr = NULL;
 }
 
+/// @brief GC finalizer for `Model3D`. Drops references on the template scene-graph root,
+/// then walks each component list (meshes, materials, skeletons, animations) and releases
+/// every entry. Underlying assets that other live owners still reference remain alive;
+/// solo-owned assets get freed.
 static void rt_model3d_finalize(void *obj) {
     rt_model3d *model = (rt_model3d *)obj;
     if (!model)
@@ -85,6 +101,9 @@ static void rt_model3d_finalize(void *obj) {
     model_release_array(&model->animations, &model->animation_count);
 }
 
+/// @brief Allocate a zeroed `rt_model3d` with finalizer wired and a fresh template-root
+/// scene node attached. Traps with a user-visible message on either allocation failure;
+/// returns NULL only after trapping so the caller's `goto fail` paths can still run.
 static rt_model3d *model_new(void) {
     rt_model3d *model = (rt_model3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_model3d));
     if (!model) {
@@ -102,6 +121,9 @@ static rt_model3d *model_new(void) {
     return model;
 }
 
+/// @brief Ensure `*arr` can hold at least `need` entries, doubling capacity (initial 4)
+/// when it grows. Returns 1 on success, 0 on realloc failure (existing array untouched so
+/// the caller can safely trap and bail).
 static int model_grow_array(void ***arr, int32_t *cap, int32_t need) {
     if (*cap >= need)
         return 1;
@@ -116,6 +138,10 @@ static int model_grow_array(void ***arr, int32_t *cap, int32_t need) {
     return 1;
 }
 
+/// @brief Append a retained reference to `obj` at the tail of `*arr`. Grows storage if
+/// needed; traps with `trap_msg` and returns 0 on allocation failure. Always retains `obj`
+/// (NULL-safe via `rt_obj_retain_maybe`) so the model owns a stable count for the lifetime
+/// of the entry.
 static int model_append_ref(
     void ***arr, int32_t *count, int32_t *cap, void *obj, const char *trap_msg) {
     if (!model_grow_array(arr, cap, *count + 1)) {
@@ -127,6 +153,9 @@ static int model_append_ref(
     return 1;
 }
 
+/// @brief Append `obj` only if the array does not already contain that exact pointer.
+/// Used for collecting unique mesh / material references off a scene-graph walk where the
+/// same asset may be referenced from many nodes. NULL `obj` is treated as success-noop.
 static int model_append_unique_ref(
     void ***arr, int32_t *count, int32_t *cap, void *obj, const char *trap_msg) {
     if (!obj)
@@ -138,6 +167,9 @@ static int model_append_unique_ref(
     return model_append_ref(arr, count, cap, obj, trap_msg);
 }
 
+/// @brief Recursively count nodes in the subtree rooted at `node`, including `node`
+/// itself. Used by `rt_model3d_get_node_count` (which subtracts 1 to exclude the synthetic
+/// template root from the user-visible count).
 static int32_t model_count_subtree(const rt_scene_node3d *node) {
     int32_t total = 1;
     if (!node)
@@ -147,6 +179,10 @@ static int32_t model_count_subtree(const rt_scene_node3d *node) {
     return total;
 }
 
+/// @brief Derive a friendly name for the template root from the source asset's file path
+/// — strips the directory prefix (handles both `/` and `\` separators so a Windows-authored
+/// path works on macOS/Linux) and the file extension. Falls back to a no-op when the
+/// resulting name would be empty. Truncates at 127 bytes to fit the local stack buffer.
 static void model_set_root_name(rt_scene_node3d *root, const char *path_cstr) {
     const char *name = path_cstr;
     const char *slash;
@@ -174,6 +210,12 @@ static void model_set_root_name(rt_scene_node3d *root, const char *path_cstr) {
     rt_scene_node3d_set_name(root, rt_const_cstr(buf));
 }
 
+/// @brief Recursive deep-copy of a scene-node subtree. Clones TRS, world-dirty flag,
+/// visibility, AABB / bounding sphere, and per-LOD entries; *retains* (does not clone)
+/// shared assets — `mesh`, `material`, `name`, and per-LOD meshes — so the cloned subtree
+/// shares geometry with the template instead of duplicating GPU resources. Children are
+/// cloned recursively and parented to the clone via `rt_scene_node3d_add_child`, then the
+/// caller's local reference is released so the parent owns the only retain.
 static rt_scene_node3d *model_clone_node(const rt_scene_node3d *src) {
     rt_scene_node3d *dst;
     if (!src)
@@ -239,6 +281,10 @@ static rt_scene_node3d *model_clone_node(const rt_scene_node3d *src) {
     return dst;
 }
 
+/// @brief Clone each child of `src_root` and attach to `dst_root`. Used by `Model3D.Load`
+/// to graft the imported scene's top-level children under the synthesized template root
+/// *without* copying the import's own root (which often carries loader-specific metadata
+/// we don't want to leak into the user-visible tree).
 static void model_clone_children_to_root(rt_scene_node3d *dst_root, const rt_scene_node3d *src_root) {
     if (!dst_root || !src_root)
         return;
@@ -251,6 +297,11 @@ static void model_clone_children_to_root(rt_scene_node3d *dst_root, const rt_sce
     }
 }
 
+/// @brief Walk the scene subtree at `node` and register every unique `mesh` / `material`
+/// reference (including those stored on LOD entries) into the model's component arrays.
+/// Used after cloning imported scene-graph nodes so consumers can enumerate the assets
+/// without re-walking the tree. Recurses into every child; duplicates are skipped by
+/// `model_append_unique_ref`.
 static void model_collect_scene_refs(rt_model3d *model, const rt_scene_node3d *node) {
     if (!model || !node)
         return;
@@ -274,6 +325,10 @@ static void model_collect_scene_refs(rt_model3d *model, const rt_scene_node3d *n
         model_collect_scene_refs(model, node->children[i]);
 }
 
+/// @brief Case-insensitive extension match. Returns 1 when `path_cstr` ends with `ext`
+/// (which must start with `.`), ignoring ASCII case. Used by `Model3D.Load` to pick the
+/// right importer (.vscn / .gltf / .glb / .fbx) without relying on platform-dependent
+/// filename normalization.
 static int model_has_ext(const char *path_cstr, const char *ext) {
     const char *dot;
     if (!path_cstr || !ext)
@@ -290,6 +345,11 @@ static int model_has_ext(const char *path_cstr, const char *ext) {
     return *dot == '\0' && *ext == '\0';
 }
 
+/// @brief Synthesize a minimal scene-graph when the imported asset only exposes a bare
+/// mesh/material list (no native scene hierarchy). One `mesh_<i>` child per mesh gets
+/// parented under the template root, with material assignment: single shared material
+/// if the asset has exactly one, otherwise parallel indexing by mesh slot. No-op when
+/// the template root already has children (i.e. the importer gave us a real hierarchy).
 static void model_build_synth_mesh_nodes(rt_model3d *model) {
     char name[64];
     if (!model || !model->template_root || model->template_root->child_count > 0)
@@ -375,12 +435,14 @@ void *rt_model3d_load(rt_string path) {
         int64_t material_count;
         int64_t animation_count;
         void *skeleton;
+        void *scene_root;
         if (!asset)
             goto fail;
         mesh_count = rt_fbx_mesh_count(asset);
         material_count = rt_fbx_material_count(asset);
         animation_count = rt_fbx_animation_count(asset);
         skeleton = rt_fbx_get_skeleton(asset);
+        scene_root = rt_fbx_get_scene_root(asset);
 
         for (int64_t i = 0; i < mesh_count; i++) {
             model_append_ref(&model->meshes,
@@ -410,6 +472,8 @@ void *rt_model3d_load(rt_string path) {
                              rt_fbx_get_animation(asset, i),
                              "Model3D.Load: animation list allocation failed");
         }
+        if (scene_root)
+            model_clone_children_to_root(model->template_root, (const rt_scene_node3d *)scene_root);
         model_build_synth_mesh_nodes(model);
         model_release_local(asset);
     } else {

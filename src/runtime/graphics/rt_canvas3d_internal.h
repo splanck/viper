@@ -338,7 +338,7 @@ typedef struct {
 
     /* Post-processing effect chain (NULL = disabled) */
     void *postfx;
-    vgfx3d_postfx_snapshot_t frame_postfx_snapshot;
+    vgfx3d_postfx_chain_t frame_postfx_chain;
     int8_t frame_gpu_postfx_enabled;
     int8_t frame_postfx_state_latched;
 

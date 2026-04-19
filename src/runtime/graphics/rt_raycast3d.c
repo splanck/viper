@@ -40,6 +40,8 @@ extern double rt_vec3_z(void *v);
 
 #define EPSILON 1e-8
 
+/// @brief Clamp a scalar into the closed range `[lo, hi]`. Used by the per-axis closest-
+/// point query and the box-projection paths that map an arbitrary point onto an AABB.
 static double clampd(double v, double lo, double hi) {
     if (v < lo)
         return lo;
@@ -48,6 +50,11 @@ static double clampd(double v, double lo, double hi) {
     return v;
 }
 
+/// @brief Project a 3-point onto an axis-aligned bounding box by clamping each
+/// coordinate independently into the box's extent. The result is the closest point on
+/// (or inside) the box to the input point. Used by sphere-vs-AABB and capsule-vs-AABB
+/// overlap tests; takes raw double arrays so the inner-loop tests don't have to allocate
+/// throwaway Vec3 wrappers.
 static void aabb3d_clamp_point_raw(const double *mn,
                                    const double *mx,
                                    const double *point,
@@ -57,6 +64,12 @@ static void aabb3d_clamp_point_raw(const double *mn,
     closest[2] = clampd(point[2], mn[2], mx[2]);
 }
 
+/// @brief Slab-method ray-vs-AABB intersection. For each axis, intersect the ray with
+/// the two parallel slab planes and accumulate `[tmin, tmax]` for the union of axes.
+/// Special-cases parallel rays (|dir| < EPSILON) by checking origin containment in the
+/// slab. Returns the smallest non-negative `t` (entry distance) or 0 when the ray
+/// originates inside the box; -1 when no intersection. The all-double signature lets
+/// hot inner loops skip Vec3 boxing.
 static double rt_ray3d_intersect_aabb_raw(const double *origin,
                                           const double *dir,
                                           const double *mn,
@@ -88,12 +101,20 @@ static double rt_ray3d_intersect_aabb_raw(const double *origin,
     return tmin >= 0.0 ? tmin : (tmax >= 0.0 ? 0.0 : -1.0);
 }
 
+/// @brief Transform a 3-point through a 4×4 matrix as `M * (point, 1)`. Drops the w
+/// row (assumed identity for the affine transforms used here). Allocation-free wrapper
+/// used by ray-into-mesh-local-space conversion before triangle intersection tests.
 static void mat4_transform_point_raw(const double *m, const double *point, double *out) {
     out[0] = m[0] * point[0] + m[1] * point[1] + m[2] * point[2] + m[3];
     out[1] = m[4] * point[0] + m[5] * point[1] + m[6] * point[2] + m[7];
     out[2] = m[8] * point[0] + m[9] * point[1] + m[10] * point[2] + m[11];
 }
 
+/// @brief Invert a 4×4 row-major matrix using the cofactor / adjugate method. Computes
+/// each adjugate entry as the signed minor of the transpose, then divides by the
+/// determinant (taken from the first row · first row of cofactors). Returns 0 on
+/// success, -1 when |det| < 1e-12 (singular). Used by raycast queries to bring a
+/// world-space ray into a mesh's local space for triangle intersection.
 static int mat4d_invert(const double *m, double *out) {
     double inv[16];
     inv[0] = m[5] * m[10] * m[15] - m[5] * m[11] * m[14] - m[9] * m[6] * m[15] +
@@ -159,6 +180,12 @@ typedef struct {
  * barycentric coordinates (u, v) and distance t simultaneously.
  *=========================================================================*/
 
+/// @brief Möller–Trumbore ray-triangle intersection. Returns the parametric distance
+/// `t` along the ray to the hit point (≥ 0 on hit), or -1 on miss / NULL inputs /
+/// degenerate (parallel) ray. Computes barycentric coordinates inline and rejects
+/// hits with `u`, `v`, or `1 - u - v` outside `[0, 1]`. The classic algorithm — no
+/// precomputation required, branch-light enough for tight inner loops over triangle
+/// soups.
 double rt_ray3d_intersect_triangle(
     void *origin, void *dir, void *v0_obj, void *v1_obj, void *v2_obj) {
     if (!origin || !dir || !v0_obj || !v1_obj || !v2_obj)
@@ -726,6 +753,11 @@ int8_t rt_aabb3d_sphere_overlaps(void *aabb_min, void *aabb_max, void *center, d
     }
 }
 
+/// @brief Closest point on a finite line segment to a query point. Projects the point
+/// onto the segment direction, clamps the parametric `t` to `[0, 1]` (so the result
+/// stays on the segment, never on its infinite extension), and reconstructs the world
+/// position. Degenerate zero-length segments collapse to endpoint A. Used by capsule
+/// overlap tests and AI path-following.
 void *rt_segment3d_closest_point(void *seg_a, void *seg_b, void *point) {
     if (!seg_a || !seg_b || !point)
         return rt_vec3_new(0, 0, 0);
@@ -744,6 +776,11 @@ void *rt_segment3d_closest_point(void *seg_a, void *seg_b, void *point) {
     return rt_vec3_new(ax + t * dx, ay + t * dy, az + t * dz);
 }
 
+/// @brief Capsule-vs-sphere overlap. Reduces to a point-segment distance check —
+/// the capsule's surface is everywhere `cap_radius` from its core segment, so the
+/// sphere intersects the capsule when the sphere centre is within `cap_radius +
+/// sphere_radius` of the closest point on the segment. Squared comparison avoids the
+/// sqrt.
 int8_t rt_capsule3d_sphere_overlaps(
     void *cap_a, void *cap_b, double cap_radius, void *sphere_center, double sphere_radius) {
     if (!cap_a || !cap_b || !sphere_center)
@@ -756,6 +793,13 @@ int8_t rt_capsule3d_sphere_overlaps(
     return (dx * dx + dy * dy + dz * dz) < r_sum * r_sum ? 1 : 0;
 }
 
+/// @brief Approximate capsule-vs-AABB overlap using a two-step closest-point
+/// projection. Find the closest point on the capsule's core segment to the AABB centre;
+/// then find the closest point on the AABB to that segment point. The capsule overlaps
+/// the AABB when those two points are within `radius` of each other. This is an
+/// approximation (the true minimum could be at a different segment parameter), but
+/// fast and correct for the most common geometry — character capsules vs world
+/// boxes — and never produces false negatives at small box sizes.
 int8_t rt_capsule3d_aabb_overlaps(
     void *cap_a, void *cap_b, double radius, void *aabb_min, void *aabb_max) {
     if (!cap_a || !cap_b || !aabb_min || !aabb_max)

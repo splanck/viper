@@ -42,6 +42,11 @@ extern void *rt_pixels_new(int64_t width, int64_t height);
 // Render target allocation
 //=============================================================================
 
+/// @brief Allocate the backend-side `vgfx3d_rendertarget_t` shell at `w × h` (RGBA8 stride =
+/// w * 4), with `color_buf` / `depth_buf` left NULL. CPU-side buffers are allocated lazily
+/// on first read or when the software backend binds the target — see
+/// `vgfx3d_rendertarget_ensure_color` / `_ensure_depth` in `rt_canvas3d_internal.h`. Returns
+/// NULL on calloc failure; the caller traps with a user-visible message.
 static vgfx3d_rendertarget_t *rt_alloc(int32_t w, int32_t h) {
     vgfx3d_rendertarget_t *rt = (vgfx3d_rendertarget_t *)calloc(1, sizeof(vgfx3d_rendertarget_t));
     if (!rt)
@@ -54,6 +59,8 @@ static vgfx3d_rendertarget_t *rt_alloc(int32_t w, int32_t h) {
     return rt;
 }
 
+/// @brief Tear down a `vgfx3d_rendertarget_t`. Frees both CPU-side buffers (NULL-safe — they
+/// may never have been allocated under the lazy-ensure model) and then the shell itself.
 static void rt_free(vgfx3d_rendertarget_t *rt) {
     if (!rt)
         return;
@@ -66,6 +73,9 @@ static void rt_free(vgfx3d_rendertarget_t *rt) {
 // Runtime type
 //=============================================================================
 
+/// @brief GC finalizer for `RenderTarget3D`. Frees the underlying backend rendertarget if
+/// still live. The Canvas3D side releases its own retained reference separately, so the
+/// finalizer only owns `target` itself, not the canvas pointer.
 static void rt_rendertarget3d_finalize(void *obj) {
     rt_rendertarget3d *rtd = (rt_rendertarget3d *)obj;
     if (rtd->target) {
