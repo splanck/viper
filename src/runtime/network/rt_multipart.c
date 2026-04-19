@@ -102,6 +102,199 @@ static const uint8_t *find_bytes(const uint8_t *haystack,
     return NULL;
 }
 
+static int multipart_ascii_ieq_n(const char *a, const char *b, size_t len) {
+    for (size_t i = 0; i < len; i++) {
+        unsigned char ca = (unsigned char)a[i];
+        unsigned char cb = (unsigned char)b[i];
+        if (ca >= 'A' && ca <= 'Z')
+            ca = (unsigned char)(ca + ('a' - 'A'));
+        if (cb >= 'A' && cb <= 'Z')
+            cb = (unsigned char)(cb + ('a' - 'A'));
+        if (ca != cb)
+            return 0;
+    }
+    return 1;
+}
+
+static size_t multipart_escaped_quoted_length(const char *value) {
+    size_t len = 0;
+    if (!value)
+        return 0;
+    while (*value) {
+        if (*value == '"' || *value == '\\')
+            len += 2;
+        else
+            len += 1;
+        value++;
+    }
+    return len;
+}
+
+static char *multipart_escape_quoted_value(const char *value) {
+    size_t len = multipart_escaped_quoted_length(value);
+    char *escaped = (char *)malloc(len + 1);
+    char *out = escaped;
+    if (!escaped)
+        return NULL;
+    if (!value) {
+        escaped[0] = '\0';
+        return escaped;
+    }
+    while (*value) {
+        char ch = *value++;
+        if (ch == '\r' || ch == '\n')
+            ch = ' ';
+        if (ch == '"' || ch == '\\')
+            *out++ = '\\';
+        *out++ = ch;
+    }
+    *out = '\0';
+    return escaped;
+}
+
+static void multipart_skip_ows(const char **cursor) {
+    while (cursor && *cursor && (**cursor == ' ' || **cursor == '\t'))
+        (*cursor)++;
+}
+
+static size_t multipart_copy_unescaped_quoted(const char **cursor, char *out, size_t out_cap) {
+    size_t len = 0;
+    const char *p = cursor ? *cursor : NULL;
+    if (!p || *p != '"')
+        return 0;
+    p++;
+    while (*p && *p != '"') {
+        char ch = *p++;
+        if (ch == '\\' && *p)
+            ch = *p++;
+        if (out && len + 1 < out_cap)
+            out[len] = ch;
+        len++;
+    }
+    if (*p == '"')
+        p++;
+    if (out && out_cap > 0) {
+        size_t write_len = len < out_cap - 1 ? len : out_cap - 1;
+        out[write_len] = '\0';
+    }
+    if (cursor)
+        *cursor = p;
+    return len;
+}
+
+static size_t multipart_copy_token_value(const char **cursor, char *out, size_t out_cap) {
+    size_t len = 0;
+    const char *p = cursor ? *cursor : NULL;
+    if (!p)
+        return 0;
+    while (*p && *p != ';' && *p != '\r' && *p != '\n') {
+        if (*p == ' ' || *p == '\t')
+            break;
+        if (out && len + 1 < out_cap)
+            out[len] = *p;
+        len++;
+        p++;
+    }
+    if (out && out_cap > 0) {
+        size_t write_len = len < out_cap - 1 ? len : out_cap - 1;
+        out[write_len] = '\0';
+    }
+    if (cursor)
+        *cursor = p;
+    return len;
+}
+
+static int multipart_extract_param_value(const char *text,
+                                         const char *target_name,
+                                         char *out,
+                                         size_t out_cap) {
+    const char *p = text;
+    size_t target_len = target_name ? strlen(target_name) : 0;
+    if (out && out_cap > 0)
+        out[0] = '\0';
+    if (!text || !target_name || target_len == 0)
+        return 0;
+
+    while (*p) {
+        const char *name_start;
+        const char *name_end;
+        multipart_skip_ows(&p);
+        while (*p && *p != ';')
+            p++;
+        if (*p == ';')
+            p++;
+        multipart_skip_ows(&p);
+        if (*p == '\0' || *p == '\r' || *p == '\n')
+            break;
+
+        name_start = p;
+        while (*p && *p != '=' && *p != ';' && *p != ' ' && *p != '\t' && *p != '\r' && *p != '\n')
+            p++;
+        name_end = p;
+        multipart_skip_ows(&p);
+        if (*p != '=') {
+            while (*p && *p != ';' && *p != '\r' && *p != '\n')
+                p++;
+            continue;
+        }
+        p++;
+        multipart_skip_ows(&p);
+
+        if ((size_t)(name_end - name_start) == target_len &&
+            multipart_ascii_ieq_n(name_start, target_name, target_len)) {
+            if (*p == '"')
+                multipart_copy_unescaped_quoted(&p, out, out_cap);
+            else
+                multipart_copy_token_value(&p, out, out_cap);
+            return 1;
+        }
+
+        if (*p == '"')
+            multipart_copy_unescaped_quoted(&p, NULL, 0);
+        else
+            multipart_copy_token_value(&p, NULL, 0);
+    }
+
+    return 0;
+}
+
+static int multipart_extract_header_value(const char *headers,
+                                          const char *header_name,
+                                          char *out,
+                                          size_t out_cap) {
+    const char *line = headers;
+    size_t target_len = header_name ? strlen(header_name) : 0;
+    if (out && out_cap > 0)
+        out[0] = '\0';
+    if (!headers || !header_name || target_len == 0)
+        return 0;
+
+    while (*line) {
+        const char *line_end = strstr(line, "\r\n");
+        const char *colon = strchr(line, ':');
+        size_t line_len = line_end ? (size_t)(line_end - line) : strlen(line);
+        if (colon && (size_t)(colon - line) == target_len &&
+            multipart_ascii_ieq_n(line, header_name, target_len)) {
+            const char *value = colon + 1;
+            size_t value_len;
+            while (*value == ' ' || *value == '\t')
+                value++;
+            value_len = line_len > (size_t)(value - line) ? line_len - (size_t)(value - line) : 0;
+            if (out && out_cap > 0) {
+                size_t write_len = value_len < out_cap - 1 ? value_len : out_cap - 1;
+                memcpy(out, value, write_len);
+                out[write_len] = '\0';
+            }
+            return 1;
+        }
+        if (!line_end)
+            break;
+        line = line_end + 2;
+    }
+
+    return 0;
+}
+
 //=============================================================================
 // Finalizer
 //=============================================================================
@@ -212,9 +405,19 @@ void *rt_multipart_build(void *obj) {
     size_t total = 0;
     size_t blen = strlen(mp->boundary);
     for (int i = 0; i < mp->part_count; i++) {
+        multipart_part_t *part = &mp->parts[i];
+        size_t escaped_name_len = multipart_escaped_quoted_length(part->name);
+        size_t escaped_filename_len = multipart_escaped_quoted_length(part->filename);
         total += 2 + blen + 2; // --boundary\r\n
-        total += 256;          // headers (generous estimate)
-        total += mp->parts[i].data_len;
+        if (part->is_file) {
+            total += strlen("Content-Disposition: form-data; name=\"\"; filename=\"\"\r\n"
+                            "Content-Type: application/octet-stream\r\n\r\n");
+            total += escaped_name_len + escaped_filename_len;
+        } else {
+            total += strlen("Content-Disposition: form-data; name=\"\"\r\n\r\n");
+            total += escaped_name_len;
+        }
+        total += part->data_len;
         total += 2; // \r\n
     }
     total += 2 + blen + 4; // --boundary--\r\n
@@ -226,6 +429,14 @@ void *rt_multipart_build(void *obj) {
     size_t pos = 0;
     for (int i = 0; i < mp->part_count; i++) {
         multipart_part_t *part = &mp->parts[i];
+        char *escaped_name = multipart_escape_quoted_value(part->name);
+        char *escaped_filename = part->is_file ? multipart_escape_quoted_value(part->filename) : NULL;
+        if (!escaped_name || (part->is_file && !escaped_filename)) {
+            free(escaped_filename);
+            free(escaped_name);
+            free(buf);
+            return rt_bytes_new(0);
+        }
 
         // Boundary
         pos += (size_t)snprintf((char *)buf + pos, total - pos, "--%s\r\n", mp->boundary);
@@ -237,14 +448,16 @@ void *rt_multipart_build(void *obj) {
                                     "Content-Disposition: form-data; name=\"%s\"; "
                                     "filename=\"%s\"\r\n"
                                     "Content-Type: application/octet-stream\r\n\r\n",
-                                    part->name,
-                                    part->filename);
+                                    escaped_name,
+                                    escaped_filename);
         } else {
             pos += (size_t)snprintf((char *)buf + pos,
                                     total - pos,
                                     "Content-Disposition: form-data; name=\"%s\"\r\n\r\n",
-                                    part->name);
+                                    escaped_name);
         }
+        free(escaped_filename);
+        free(escaped_name);
 
         // Data
         if (part->data_len > 0 && pos + part->data_len <= total) {
@@ -288,29 +501,9 @@ void *rt_multipart_parse(rt_string content_type, void *body) {
         return rt_multipart_new();
 
     // Extract boundary from content-type
-    const char *bnd = strstr(ct, "boundary=");
-    if (!bnd)
-        return rt_multipart_new();
-    bnd += 9;
-
-    // Strip quotes if present
     char boundary[128] = {0};
-    if (*bnd == '"') {
-        bnd++;
-        const char *end = strchr(bnd, '"');
-        size_t len = end ? (size_t)(end - bnd) : strlen(bnd);
-        if (len >= sizeof(boundary))
-            len = sizeof(boundary) - 1;
-        memcpy(boundary, bnd, len);
-    } else {
-        size_t len = 0;
-        while (bnd[len] && bnd[len] != ';' && bnd[len] != ' ' && bnd[len] != '\r' &&
-               bnd[len] != '\n')
-            len++;
-        if (len >= sizeof(boundary))
-            len = sizeof(boundary) - 1;
-        memcpy(boundary, bnd, len);
-    }
+    if (!multipart_extract_param_value(ct, "boundary", boundary, sizeof(boundary)) || !boundary[0])
+        return rt_multipart_new();
 
     rt_multipart_impl *mp =
         (rt_multipart_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_multipart_impl));
@@ -369,27 +562,12 @@ void *rt_multipart_parse(rt_string content_type, void *body) {
         memcpy(header_text, p, header_len);
         header_text[header_len] = '\0';
 
-        const char *name_start = strstr(header_text, "name=\"");
-        if (name_start) {
-            name_start += 6;
-            const char *name_end = strchr(name_start, '"');
-            if (name_end) {
-                size_t nlen = (size_t)(name_end - name_start);
-                if (nlen >= sizeof(part_name))
-                    nlen = sizeof(part_name) - 1;
-                memcpy(part_name, name_start, nlen);
-            }
-        }
-
-        const char *fn_start = strstr(header_text, "filename=\"");
-        if (fn_start) {
-            fn_start += 10;
-            const char *fn_end = strchr(fn_start, '"');
-            if (fn_end) {
-                size_t fnlen = (size_t)(fn_end - fn_start);
-                if (fnlen >= sizeof(part_filename))
-                    fnlen = sizeof(part_filename) - 1;
-                memcpy(part_filename, fn_start, fnlen);
+        char disposition[512] = {0};
+        if (multipart_extract_header_value(
+                header_text, "Content-Disposition", disposition, sizeof(disposition))) {
+            multipart_extract_param_value(disposition, "name", part_name, sizeof(part_name));
+            if (multipart_extract_param_value(
+                    disposition, "filename", part_filename, sizeof(part_filename))) {
                 is_file = 1;
             }
         }

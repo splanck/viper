@@ -1003,6 +1003,10 @@ function(viper_add_runtime_tests)
     viper_add_ctest(test_rt_network_harden test_rt_network_harden)
     viper_add_test_labels(test_rt_network_harden requires_local_bind)
 
+    viper_add_test(test_rt_multipart ${VIPER_TESTS_DIR}/runtime/RTMultipartTests.cpp)
+    target_link_libraries(test_rt_multipart PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_multipart test_rt_multipart)
+
     viper_add_test(test_rt_websocket ${VIPER_TESTS_DIR}/runtime/RTWebSocketTests.cpp)
     target_link_libraries(test_rt_websocket PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_websocket test_rt_websocket)

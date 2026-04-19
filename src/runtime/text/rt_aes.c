@@ -891,7 +891,7 @@ static void derive_key_legacy(const char *password, uint8_t key[32]) {
 
 /// @brief Modern PBKDF2-HMAC-SHA256 key derivation — used by all v2+ encryptions.
 ///
-/// 100,000 iterations (`AES_STR_PBKDF2_ITERATIONS`) of HMAC-SHA256
+/// `AES_STR_PBKDF2_ITERATIONS` iterations of HMAC-SHA256
 /// over `(password, salt)` produce the 32-byte AES key. The high
 /// iteration count makes brute-force attacks cost-prohibitive.
 static void derive_key_pbkdf2(const char *password,

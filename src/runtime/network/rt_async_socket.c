@@ -104,6 +104,11 @@ static void async_fail_submit(void *promise, const char *message) {
     async_release_owned(promise);
 }
 
+/// @brief Resolve `promise` as Err with `msg` (or `fallback` if NULL), copying the message string.
+/// @details The copy step matters because the caller's `msg` pointer may
+///          live in thread-local trap storage that gets clobbered by the
+///          next trap. Copying into a fresh `rt_string` decouples the
+///          promise's error message from any external buffer.
 static void async_promise_error_copy(void *promise, const char *msg, const char *fallback) {
     const char *text = msg ? msg : fallback;
     if (!text) {
@@ -115,6 +120,11 @@ static void async_promise_error_copy(void *promise, const char *msg, const char 
     rt_string_unref(copy);
 }
 
+/// @brief Resolve `promise` as Err using the most recent trap message on this thread.
+/// @details Used inside worker thread bodies after a trap was caught via
+///          `setjmp` recovery. The trap message lives in thread-local
+///          storage; this helper copies it into the promise so the
+///          caller can read it after the worker exits.
 static void async_promise_error_from_trap(void *promise, const char *fallback) {
     async_promise_error_copy(promise, rt_trap_get_error(), fallback);
 }
@@ -156,7 +166,14 @@ static void async_connect_worker(void *arg) {
     free(a);
 }
 
-/// @brief Async connect.
+/// @brief Initiate a non-blocking TCP connect, returning a future that resolves to the TCP handle.
+/// @details Submits the blocking `rt_tcp_connect(host, port)` to the
+///          shared 4-thread pool and returns immediately with a future
+///          the caller can `Await` or chain on. Heap-copies the host
+///          string so the worker can use it safely after the calling
+///          frame returns. On thread-pool refusal (pool shut down),
+///          resolves the promise as Err synchronously rather than
+///          leaking the request.
 void *rt_async_connect(rt_string host, int64_t port) {
     const char *h = rt_string_cstr(host);
     if (!h)

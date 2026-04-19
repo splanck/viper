@@ -4,8 +4,22 @@
 //
 //===----------------------------------------------------------------------===//
 
-static int ws_header_has_upgrade_token(const char *value) {
+static int ws_token_is_valid(const char *value) {
+    static const char *kSeparators = "()<>@,;:\\\"/[]?={} \t";
+    if (!value || !*value)
+        return 0;
+    for (const unsigned char *p = (const unsigned char *)value; *p; ++p) {
+        if (*p <= 0x20 || *p == 0x7Fu || strchr(kSeparators, (int)*p) != NULL)
+            return 0;
+    }
+    return 1;
+}
+
+static int ws_header_has_token_impl(const char *value, const char *token, int case_sensitive) {
     const char *p = value;
+    size_t token_len = token ? strlen(token) : 0;
+    if (!value || !token || token_len == 0)
+        return 0;
     while (*p) {
         while (*p == ' ' || *p == '\t' || *p == ',')
             p++;
@@ -15,10 +29,53 @@ static int ws_header_has_upgrade_token(const char *value) {
         const char *end = p;
         while (end > start && (end[-1] == ' ' || end[-1] == '\t'))
             end--;
-        if ((size_t)(end - start) == strlen("Upgrade") && strncasecmp(start, "Upgrade", 7) == 0)
+        if ((size_t)(end - start) == token_len &&
+            (case_sensitive ? memcmp(start, token, token_len) == 0
+                            : strncasecmp(start, token, token_len) == 0))
             return 1;
     }
     return 0;
+}
+
+static int ws_header_has_upgrade_token(const char *value) {
+    return ws_header_has_token_impl(value, "Upgrade", 0);
+}
+
+static int ws_protocol_header_is_valid(const char *value) {
+    const char *p = value;
+    int saw_any = 0;
+
+    if (!value)
+        return 0;
+
+    while (*p) {
+        char token[256];
+        size_t len = 0;
+
+        while (*p == ' ' || *p == '\t' || *p == ',')
+            p++;
+        if (!*p)
+            break;
+        while (*p && *p != ',') {
+            if (len + 1 >= sizeof(token))
+                return 0;
+            token[len++] = *p++;
+        }
+        while (len > 0 && (token[len - 1] == ' ' || token[len - 1] == '\t'))
+            len--;
+        token[len] = '\0';
+        if (!ws_token_is_valid(token))
+            return 0;
+        saw_any = 1;
+    }
+
+    return saw_any;
+}
+
+static int ws_protocol_list_contains(const char *value, const char *token) {
+    if (!ws_protocol_header_is_valid(value) || !ws_token_is_valid(token))
+        return 0;
+    return ws_header_has_token_impl(value, token, 1);
 }
 
 static char *ws_strdup_trimmed(const char *text) {
@@ -151,6 +208,78 @@ static int ws_parse_authority(const char *authority, char **host_out, int *port_
     if (port_out)
         *port_out = port;
     return 1;
+}
+
+static int ws_host_header_is_valid(const char *host_header) {
+    char *trimmed = NULL;
+    char *host = NULL;
+    int port = -1;
+    int ok = 0;
+
+    trimmed = ws_strdup_trimmed(host_header);
+    if (!trimmed || !*trimmed) {
+        free(trimmed);
+        return 0;
+    }
+
+    if (strchr(trimmed, ':') != strrchr(trimmed, ':') && trimmed[0] != '[') {
+        free(trimmed);
+        return 0;
+    }
+
+    if (!ws_parse_authority(trimmed, &host, &port)) {
+        free(trimmed);
+        return 0;
+    }
+
+    ok = host && *host && (port < 0 || (port >= 1 && port <= 65535));
+    free(trimmed);
+    free(host);
+    return ok;
+}
+
+static int ws_request_line_is_valid(const char *request_line) {
+    const char *target = NULL;
+    const char *version = NULL;
+
+    if (!request_line || strncmp(request_line, "GET ", 4) != 0)
+        return 0;
+
+    target = request_line + 4;
+    version = strchr(target, ' ');
+    if (!version || version == target || strcmp(version, " HTTP/1.1") != 0)
+        return 0;
+
+    if (*target != '/')
+        return 0;
+
+    for (const char *p = target; p < version; ++p) {
+        unsigned char ch = (unsigned char)*p;
+        if (ch < 0x20 || ch == 0x7F)
+            return 0;
+    }
+
+    return 1;
+}
+
+static int ws_sec_key_is_valid(const char *key) {
+    static const char base64_chars[] =
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    size_t len = 0;
+
+    if (!key)
+        return 0;
+
+    len = strlen(key);
+    if (len != 24)
+        return 0;
+
+    for (size_t i = 0; i < 22; ++i) {
+        if (!strchr(base64_chars, key[i]))
+            return 0;
+    }
+
+    return key[22] == '=' && key[23] == '=';
 }
 
 static int ws_origin_matches_expected(const char *origin,

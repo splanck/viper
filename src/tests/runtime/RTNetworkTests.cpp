@@ -535,6 +535,77 @@ static void test_connection_pool_reuses_live_connection() {
     test_result("Server finished after pooled connection close", server_done.load());
 }
 
+static void test_connection_pool_tracks_fresh_acquire() {
+    printf("\nTesting ConnectionPool fresh acquire tracking:\n");
+
+    const int port = (int)rt_netutils_get_free_port();
+    if (port <= 0) {
+        printf("  SKIP: could not allocate local port\n");
+        return;
+    }
+
+    server_ready = false;
+    server_done = false;
+
+    std::thread server_thread(echo_server_thread, port, 1);
+    while (!server_ready)
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+
+    void *pool = rt_connpool_new(4);
+    test_result("Fresh pool starts empty",
+                rt_connpool_size(pool) == 0 && rt_connpool_available(pool) == 0);
+
+    void *conn = rt_connpool_acquire(pool, rt_const_cstr("127.0.0.1"), port);
+    test_result("Tracked acquire returns connection", conn != nullptr);
+    test_result("Fresh acquire increments pool size immediately", rt_connpool_size(pool) == 1);
+    test_result("Checked-out connection is not available", rt_connpool_available(pool) == 0);
+
+    rt_connpool_release(pool, conn);
+    test_result("Release keeps tracked connection in pool", rt_connpool_size(pool) == 1);
+    test_result("Release makes tracked connection available", rt_connpool_available(pool) == 1);
+
+    rt_connpool_clear(pool);
+    server_thread.join();
+    test_result("Server finished after tracked acquire cleanup", server_done.load());
+}
+
+static void test_connection_pool_clamps_max_size_and_closes_overflow() {
+    printf("\nTesting ConnectionPool max-size clamp and overflow handling:\n");
+
+    const int port = (int)rt_netutils_get_free_port();
+    if (port <= 0) {
+        printf("  SKIP: could not allocate local port\n");
+        return;
+    }
+
+    server_ready = false;
+    server_done = false;
+
+    std::thread server_thread(echo_server_thread, port, 2);
+    while (!server_ready)
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+
+    void *pool = rt_connpool_new(0);
+    void *conn1 = rt_connpool_acquire(pool, rt_const_cstr("127.0.0.1"), port);
+    void *conn2 = rt_connpool_acquire(pool, rt_const_cstr("127.0.0.1"), port);
+
+    test_result("Clamped pool still returns first connection", conn1 != nullptr);
+    test_result("Overflow acquire still returns second connection", conn2 != nullptr);
+    test_result("Zero maxSize clamps to a single tracked slot", rt_connpool_size(pool) == 1);
+    test_result("Tracked slot stays unavailable while checked out", rt_connpool_available(pool) == 0);
+
+    rt_connpool_release(pool, conn2);
+    test_result("Overflow release does not grow the tracked pool", rt_connpool_size(pool) == 1);
+    test_result("Overflow release does not create an idle entry", rt_connpool_available(pool) == 0);
+
+    rt_connpool_release(pool, conn1);
+    test_result("Tracked connection becomes available after release", rt_connpool_available(pool) == 1);
+
+    rt_connpool_clear(pool);
+    server_thread.join();
+    test_result("Server finished after overflow cleanup", server_done.load());
+}
+
 /// @brief Line server thread function - sends lines
 static void line_server_thread(int port) {
     void *server = rt_tcp_server_listen(port);
@@ -2052,6 +2123,8 @@ int main() {
         test_send_recv();
         test_send_all_recv_exact();
         test_connection_pool_reuses_live_connection();
+        test_connection_pool_tracks_fresh_acquire();
+        test_connection_pool_clamps_max_size_and_closes_overflow();
         test_recv_line();
         test_connect_with_timeout();
 
@@ -2084,16 +2157,20 @@ int main() {
     test_dns_resolve_all();
 
     printf("\n=== Viper.Network.Http Tests ===\n");
-    test_http_get();
-    test_http_get_bytes();
-    test_http_head();
-    test_http_chunked();
-    test_http_req_builder();
-    test_http_redirect();
-    test_http_relative_redirect();
-    test_http_gzip_response();
-    test_http_download();
-    test_http_download_identity_encoding();
+    if (canBindLocal) {
+        test_http_get();
+        test_http_get_bytes();
+        test_http_head();
+        test_http_chunked();
+        test_http_req_builder();
+        test_http_redirect();
+        test_http_relative_redirect();
+        test_http_gzip_response();
+        test_http_download();
+        test_http_download_identity_encoding();
+    } else {
+        printf("  SKIP: local bind unavailable in this environment\n");
+    }
 
     printf("\n=== Viper.Network.Url Tests ===\n");
 

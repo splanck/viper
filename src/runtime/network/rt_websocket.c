@@ -106,6 +106,7 @@ typedef struct rt_ws_impl {
     int socket_fd;           ///< TCP socket file descriptor.
     rt_tls_session_t *tls;   ///< TLS session (NULL for ws://).
     char *url;               ///< Original connection URL.
+    char *subprotocol;       ///< Negotiated Sec-WebSocket-Protocol, if any.
     int8_t is_open;          ///< Connection state.
     int64_t close_code;      ///< Close status code.
     char *close_reason;      ///< Close reason string.
@@ -117,6 +118,61 @@ typedef struct rt_ws_impl {
 /// @brief True if `host` is an IPv6 literal that must be wrapped in `[…]` for URL/Host.
 static int host_needs_brackets(const char *host) {
     return host && strchr(host, ':') != NULL && host[0] != '[';
+}
+
+static int ws_default_port(int is_secure) {
+    return is_secure ? 443 : 80;
+}
+
+static int ws_format_host_header(char *buf, size_t buf_len, const char *host, int port, int is_secure) {
+    int include_port = 0;
+
+    if (!buf || buf_len == 0 || !host || port <= 0)
+        return -1;
+
+    include_port = (port != ws_default_port(is_secure));
+    if (include_port) {
+        return snprintf(buf,
+                        buf_len,
+                        "%s%s%s:%d",
+                        host_needs_brackets(host) ? "[" : "",
+                        host,
+                        host_needs_brackets(host) ? "]" : "",
+                        port);
+    }
+
+    return snprintf(buf,
+                    buf_len,
+                    "%s%s%s",
+                    host_needs_brackets(host) ? "[" : "",
+                    host,
+                    host_needs_brackets(host) ? "]" : "");
+}
+
+static int ws_token_is_valid(const char *value) {
+    static const char *kSeparators = "()<>@,;:\\\"/[]?={} \t";
+    if (!value || !*value)
+        return 0;
+    for (const unsigned char *p = (const unsigned char *)value; *p; ++p) {
+        if (*p <= 0x20 || *p == 0x7Fu || strchr(kSeparators, (int)*p) != NULL)
+            return 0;
+    }
+    return 1;
+}
+
+char *rt_ws_format_host_header_for_test(const char *host, int port, int is_secure) {
+    char header[512];
+    int len = ws_format_host_header(header, sizeof(header), host, port, is_secure);
+    char *result = NULL;
+
+    if (len < 0 || (size_t)len >= sizeof(header))
+        return NULL;
+
+    result = (char *)malloc((size_t)len + 1);
+    if (!result)
+        return NULL;
+    memcpy(result, header, (size_t)len + 1);
+    return result;
 }
 
 /// @brief Validate a WebSocket frame opcode against RFC 6455 §5.2.
@@ -583,7 +639,7 @@ static int ws_ascii_ieq_n(const char *a, const char *b, size_t len) {
 /// `Connection: Upgrade` (which may appear as `Connection:
 /// keep-alive, Upgrade`).
 /// @return 1 if token is present, 0 otherwise.
-static int ws_header_has_token(const char *value, size_t len, const char *token) {
+static int ws_header_has_token(const char *value, size_t len, const char *token, int case_sensitive) {
     size_t token_len = strlen(token);
     size_t i = 0;
     while (i < len) {
@@ -595,7 +651,9 @@ static int ws_header_has_token(const char *value, size_t len, const char *token)
         size_t end = i;
         while (end > start && (value[end - 1] == ' ' || value[end - 1] == '\t'))
             end--;
-        if (end - start == token_len && ws_ascii_ieq_n(value + start, token, token_len))
+        if (end - start == token_len &&
+            (case_sensitive ? memcmp(value + start, token, token_len) == 0
+                            : ws_ascii_ieq_n(value + start, token, token_len)))
             return 1;
     }
     return 0;
@@ -612,7 +670,10 @@ static int ws_header_has_token(const char *value, size_t len, const char *token)
 ///     `258EAFA5-E914-47DA-95CA-C5AB0DC85B11`.
 /// Made non-static to allow direct unit testing of the parser.
 /// @return 1 on a valid response, 0 on any mismatch / malformed header.
-int rt_ws_validate_handshake_response_for_test(const char *response, const char *key_copy) {
+static int ws_validate_handshake_response(const char *response,
+                                          const char *key_copy,
+                                          const char *expected_protocol,
+                                          char **selected_protocol_out) {
     if (!response || !key_copy)
         return 0;
 
@@ -626,6 +687,9 @@ int rt_ws_validate_handshake_response_for_test(const char *response, const char 
     int upgrade_ok = 0;
     int connection_ok = 0;
     const char *accept_hdr = NULL;
+    const char *protocol_hdr = NULL;
+    size_t protocol_len = 0;
+    char negotiated_protocol[256] = {0};
     const char *p = line_end + 2;
     while (*p) {
         const char *next = strstr(p, "\r\n");
@@ -645,10 +709,15 @@ int rt_ws_validate_handshake_response_for_test(const char *response, const char 
                 upgrade_ok = (value_len == strlen("websocket") &&
                               ws_ascii_ieq_n(value, "websocket", value_len));
             else if (name_len == strlen("Connection") && ws_ascii_ieq_n(p, "Connection", name_len))
-                connection_ok = ws_header_has_token(value, value_len, "Upgrade");
+                connection_ok = ws_header_has_token(value, value_len, "Upgrade", 0);
             else if (name_len == strlen("Sec-WebSocket-Accept") &&
                      ws_ascii_ieq_n(p, "Sec-WebSocket-Accept", name_len))
                 accept_hdr = value;
+            else if (name_len == strlen("Sec-WebSocket-Protocol") &&
+                     ws_ascii_ieq_n(p, "Sec-WebSocket-Protocol", name_len)) {
+                protocol_hdr = value;
+                protocol_len = value_len;
+            }
         }
 
         p = next + 2;
@@ -656,6 +725,24 @@ int rt_ws_validate_handshake_response_for_test(const char *response, const char 
 
     if (!upgrade_ok || !connection_ok || !accept_hdr)
         return 0;
+
+    if (expected_protocol && *expected_protocol) {
+        if (!protocol_hdr || protocol_len == 0 || protocol_len >= sizeof(negotiated_protocol))
+            return 0;
+        memcpy(negotiated_protocol, protocol_hdr, protocol_len);
+        negotiated_protocol[protocol_len] = '\0';
+        while (protocol_len > 0 &&
+               (negotiated_protocol[protocol_len - 1] == ' ' ||
+                negotiated_protocol[protocol_len - 1] == '\t')) {
+            negotiated_protocol[--protocol_len] = '\0';
+        }
+        if (!ws_token_is_valid(expected_protocol) || !ws_token_is_valid(negotiated_protocol))
+            return 0;
+        if (strcmp(negotiated_protocol, expected_protocol) != 0)
+            return 0;
+    } else if (protocol_hdr && protocol_len > 0) {
+        return 0;
+    }
 
     static const char WS_MAGIC[] = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
     size_t key_len = strlen(key_copy);
@@ -689,7 +776,16 @@ int rt_ws_validate_handshake_response_for_test(const char *response, const char 
         accept_ok = 1;
 
     rt_string_unref(expected_str);
+    if (accept_ok && selected_protocol_out && negotiated_protocol[0] != '\0') {
+        *selected_protocol_out = strdup(negotiated_protocol);
+        if (!*selected_protocol_out)
+            return 0;
+    }
     return accept_ok;
+}
+
+int rt_ws_validate_handshake_response_for_test(const char *response, const char *key_copy) {
+    return ws_validate_handshake_response(response, key_copy, NULL, NULL);
 }
 
 /// @brief Create TCP connection to host:port with optional timeout.
@@ -762,7 +858,11 @@ static int create_tcp_socket(const char *host, int port, int64_t timeout_ms) {
 }
 
 /// @brief Perform WebSocket handshake.
-static int ws_handshake(rt_ws_impl *ws, const char *host, int port, const char *path) {
+static int ws_handshake(rt_ws_impl *ws,
+                        const char *host,
+                        int port,
+                        const char *path,
+                        const char *requested_subprotocol) {
     // Generate key and keep a copy for accept validation
     rt_string ws_key = generate_ws_key();
     const char *key_cstr = rt_string_cstr(ws_key);
@@ -773,27 +873,48 @@ static int ws_handshake(rt_ws_impl *ws, const char *host, int port, const char *
 
     // Build handshake request
     char request[2048];
+    char host_header[512];
+    int host_header_len = ws_format_host_header(host_header, sizeof(host_header), host, port, ws->tls != NULL);
+    if (host_header_len < 0 || (size_t)host_header_len >= sizeof(host_header)) {
+        rt_string_unref(ws_key);
+        return 0;
+    }
     int req_len = snprintf(request,
                            sizeof(request),
                            "GET %s HTTP/1.1\r\n"
-                           "Host: %s%s%s:%d\r\n"
+                           "Host: %s\r\n"
                            "Upgrade: websocket\r\n"
                            "Connection: Upgrade\r\n"
                            "Sec-WebSocket-Key: %s\r\n"
-                           "Sec-WebSocket-Version: 13\r\n"
-                           "\r\n",
+                           "Sec-WebSocket-Version: 13\r\n",
                            path,
-                           host_needs_brackets(host) ? "[" : "",
-                           host,
-                           host_needs_brackets(host) ? "]" : "",
-                           port,
+                           host_header,
                            key_cstr);
+    if (req_len <= 0 || (size_t)req_len >= sizeof(request)) {
+        rt_string_unref(ws_key);
+        return 0;
+    }
+    if (requested_subprotocol && *requested_subprotocol) {
+        int wrote = snprintf(request + req_len,
+                             sizeof(request) - (size_t)req_len,
+                             "Sec-WebSocket-Protocol: %s\r\n",
+                             requested_subprotocol);
+        if (wrote <= 0 || (size_t)wrote >= sizeof(request) - (size_t)req_len) {
+            rt_string_unref(ws_key);
+            return 0;
+        }
+        req_len += wrote;
+    }
+    if ((size_t)req_len + 2 >= sizeof(request)) {
+        rt_string_unref(ws_key);
+        return 0;
+    }
+    memcpy(request + req_len, "\r\n", 3);
+    req_len += 2;
 
     rt_string_unref(ws_key);
 
     // Send request
-    if (req_len <= 0 || (size_t)req_len >= sizeof(request))
-        return 0;
     if (!ws_send_all(ws, request, (size_t)req_len))
         return 0;
 
@@ -812,7 +933,9 @@ static int ws_handshake(rt_ws_impl *ws, const char *host, int port, const char *
     }
     response[total] = '\0';
 
-    if (!rt_ws_validate_handshake_response_for_test(response, key_copy))
+    free(ws->subprotocol);
+    ws->subprotocol = NULL;
+    if (!ws_validate_handshake_response(response, key_copy, requested_subprotocol, &ws->subprotocol))
         return 0;
     return 1;
 }
@@ -1137,9 +1260,11 @@ static void rt_ws_finalize(void *obj) {
         ws->socket_fd = -1;
     }
     free(ws->url);
+    free(ws->subprotocol);
     free(ws->close_reason);
     free(ws->recv_buffer);
     ws->url = NULL;
+    ws->subprotocol = NULL;
     ws->close_reason = NULL;
     ws->recv_buffer = NULL;
 }
@@ -1147,7 +1272,11 @@ static void rt_ws_finalize(void *obj) {
 /// @brief Connect to a WebSocket URL with a 30-second default timeout.
 /// @see rt_ws_connect_for
 void *rt_ws_connect(rt_string url) {
-    return rt_ws_connect_for(url, 30000); // 30 second default timeout
+    return rt_ws_connect_for_protocol(url, 30000, NULL); // 30 second default timeout
+}
+
+void *rt_ws_connect_protocol(rt_string url, rt_string subprotocol) {
+    return rt_ws_connect_for_protocol(url, 30000, subprotocol);
 }
 
 /// @brief Connect to a WebSocket URL (`ws://` or `wss://`) with explicit timeout.
@@ -1161,9 +1290,18 @@ void *rt_ws_connect(rt_string url) {
 /// @throws Err_InvalidUrl on bad URL,
 ///         generic trap on connect/handshake failure or NULL URL.
 void *rt_ws_connect_for(rt_string url, int64_t timeout_ms) {
+    return rt_ws_connect_for_protocol(url, timeout_ms, NULL);
+}
+
+void *rt_ws_connect_for_protocol(rt_string url, int64_t timeout_ms, rt_string subprotocol) {
     const char *url_cstr = rt_string_cstr(url);
+    const char *protocol_cstr = subprotocol ? rt_string_cstr(subprotocol) : NULL;
     if (!url_cstr) {
         rt_trap("WebSocket: NULL URL");
+        return NULL;
+    }
+    if (protocol_cstr && *protocol_cstr && !ws_token_is_valid(protocol_cstr)) {
+        rt_trap("WebSocket: invalid subprotocol");
         return NULL;
     }
 
@@ -1197,6 +1335,7 @@ void *rt_ws_connect_for(rt_string url, int64_t timeout_ms) {
         return NULL;
     }
     ws->is_open = 0;
+    ws->subprotocol = NULL;
     ws->close_code = 0;
     ws->close_reason = NULL;
     ws->recv_buffer = NULL;
@@ -1262,7 +1401,7 @@ void *rt_ws_connect_for(rt_string url, int64_t timeout_ms) {
     }
 
     // WebSocket handshake
-    if (!ws_handshake(ws, host, port, path)) {
+    if (!ws_handshake(ws, host, port, path, protocol_cstr)) {
         free(host);
         free(path);
         if (rt_obj_release_check0(ws))
@@ -1312,6 +1451,15 @@ rt_string rt_ws_close_reason(void *obj) {
     if (!ws->close_reason)
         return rt_str_empty();
     return rt_string_from_bytes(ws->close_reason, strlen(ws->close_reason));
+}
+
+rt_string rt_ws_subprotocol(void *obj) {
+    if (!obj)
+        return rt_str_empty();
+    rt_ws_impl *ws = obj;
+    if (!ws->subprotocol)
+        return rt_str_empty();
+    return rt_string_from_bytes(ws->subprotocol, strlen(ws->subprotocol));
 }
 
 /// @brief Send a text frame. Rejects invalid UTF-8 payloads before they hit the wire.

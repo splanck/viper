@@ -154,7 +154,8 @@ static void derive_key_pbkdf2(const char *password,
 
 /// @brief Encrypt data using a password with ChaCha20-Poly1305 AEAD.
 /// @details Derives a 256-bit key from the password using PBKDF2-HMAC-SHA256
-///          (100,000 iterations) with a fresh random 16-byte salt. Generates
+///          (`CIPHER_PBKDF2_ITERATIONS`, currently 300,000 iterations) with a
+///          fresh random 16-byte salt. Generates
 ///          a random 12-byte nonce. Encrypts and authenticates the plaintext
 ///          using ChaCha20-Poly1305 (RFC 8439), producing a 16-byte Poly1305
 ///          authentication tag that detects any tampering.
@@ -428,12 +429,13 @@ void *rt_cipher_generate_key(void) {
 }
 
 /// @brief Derive a deterministic 256-bit key from a password and salt.
-/// @details Uses PBKDF2-HMAC-SHA256 with 100,000 iterations. The same password
-///          and salt always produce the same key, which is the point — this
-///          enables key agreement between parties who share a password. The salt
-///          should be at least 16 bytes of random data to prevent rainbow-table
-///          attacks. For one-time encryption, prefer rt_cipher_encrypt (which
-///          generates salt automatically).
+/// @details Uses PBKDF2-HMAC-SHA256 with `CIPHER_PBKDF2_ITERATIONS`
+///          iterations (currently 300,000). The same password and salt always
+///          produce the same key, which is the point — this enables key
+///          agreement between parties who share a password. The salt should be
+///          at least 16 bytes of random data to prevent rainbow-table attacks.
+///          For one-time encryption, prefer rt_cipher_encrypt (which generates
+///          salt automatically).
 /// @param password   Password string (traps if empty).
 /// @param salt_bytes Bytes object containing the salt (traps if NULL or empty).
 /// @return Bytes object containing the 32-byte derived key.

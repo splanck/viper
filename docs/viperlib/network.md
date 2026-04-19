@@ -1205,6 +1205,8 @@ binary messages following RFC 6455.
 
 - `Viper.Network.WebSocket.Connect(url)` - Connect to WebSocket server
 - `Viper.Network.WebSocket.ConnectFor(url, timeoutMs)` - Connect with timeout
+- `Viper.Network.WebSocket.ConnectProtocol(url, subprotocol)` - Connect and require a specific subprotocol
+- `Viper.Network.WebSocket.ConnectForProtocol(url, timeoutMs, subprotocol)` - Timeout-aware connect with a specific subprotocol
 
 ### Properties
 
@@ -1213,6 +1215,7 @@ binary messages following RFC 6455.
 | `CloseCode`   | Integer | Close status code (0 if not closed) (read-only)    |
 | `CloseReason` | String  | Close reason message (empty if not closed)         |
 | `IsOpen`      | Boolean | True if connection is open (read-only)             |
+| `Subprotocol` | String  | Negotiated `Sec-WebSocket-Protocol` token, if any  |
 | `Url`         | String  | WebSocket URL (ws:// or wss://) (read-only)        |
 
 ### Send Methods
@@ -1327,10 +1330,13 @@ WebSocket operations trap on errors:
 ### Protocol Notes
 
 - **Frame masking:** Client frames are automatically masked per RFC 6455
+- **Handshake formatting:** Client `Host` headers use canonical authority formatting, omitting default ports while still bracketing IPv6 literals
+- **Handshake validation:** `WsServer` / `WssServer` reject malformed `Sec-WebSocket-Key` values and invalid `Host` headers before switching protocols
+- **Subprotocol negotiation:** `ConnectProtocol` / `ConnectForProtocol` require the server to echo the requested `Sec-WebSocket-Protocol` token or the handshake fails
 - **Ping/pong:** Pong frames are handled automatically; use `Ping()` to test connectivity
 - **Message fragmentation:** Large messages are automatically fragmented/reassembled
 - **UTF-8 validation:** Text messages are validated for proper UTF-8 encoding
-- **Subprotocols:** Not currently supported; use headers via `HttpReq` if needed
+- **Subprotocols:** Single-token negotiation is supported; multi-option client preference lists are not exposed yet
 
 ### Use Cases
 
@@ -1925,6 +1931,8 @@ Thread-safe plain-TCP connection pooling for reuse across HTTP requests.
 ### Runtime Notes
 
 - `ConnectionPool` pools raw TCP sockets keyed by `host:port`.
+- New outbound connections are registered as in-use immediately when pool capacity allows, so `Size` and `Available` reflect checked-out state instead of only idle state.
+- `maxSize` is clamped to `[1, 128]`. Acquires beyond tracked capacity still succeed, but those overflow sockets are closed on `Release()` instead of being retained.
 - It does not track TLS hostname verification, ALPN, or certificate policy; use `HttpClient` for HTTPS-aware pooling.
 
 ---
@@ -1955,6 +1963,11 @@ Multipart form-data builder and parser for HTTP file uploads.
 |----------|------|-------------|
 | `ContentType` | String | Content-Type header with boundary |
 | `Count` | Integer | Number of parts |
+
+### Multipart Notes
+
+- Builder output escapes quoted `name=` / `filename=` values and strips embedded CR/LF from part headers, so untrusted field names and filenames cannot inject extra MIME headers.
+- Parser accepts quoted or bare-token multipart parameters, including quoted `boundary=` values and escaped quotes inside `Content-Disposition`.
 
 ---
 
@@ -1991,6 +2004,7 @@ WebSocket server that accepts upgrade requests and manages connected clients.
 |--------|---------|-------------|
 | `Start()` | void | Start accepting WebSocket connections in background |
 | `Stop()` | void | Stop server and disconnect all clients |
+| `SetSubprotocol(protocol)` | void | Require a specific subprotocol for future upgrades |
 | `Broadcast(message)` | void | Send text message to all connected clients |
 | `BroadcastBytes(data)` | void | Send binary data to all connected clients |
 
@@ -1999,6 +2013,7 @@ WebSocket server that accepts upgrade requests and manages connected clients.
 | Property | Type | Description |
 |----------|------|-------------|
 | `ClientCount` | Integer | Number of currently connected clients |
+| `Subprotocol` | String | Required subprotocol for future upgrades, if any |
 | `Port` | Integer | Listening port number |
 | `IsRunning` | Boolean | True if server is accepting connections |
 
@@ -2019,6 +2034,7 @@ TLS-backed WebSocket server built on the in-tree TLS 1.3 runtime with zero exter
 |--------|---------|-------------|
 | `Start()` | void | Start accepting secure WebSocket connections in background |
 | `Stop()` | void | Stop server and disconnect all clients |
+| `SetSubprotocol(protocol)` | void | Require a specific subprotocol for future secure upgrades |
 | `Broadcast(message)` | void | Send a text message to all connected clients |
 | `BroadcastBytes(data)` | void | Send a binary message to all connected clients |
 
@@ -2027,6 +2043,7 @@ TLS-backed WebSocket server built on the in-tree TLS 1.3 runtime with zero exter
 | Property | Type | Description |
 |----------|------|-------------|
 | `ClientCount` | Integer | Number of currently connected secure WebSocket clients |
+| `Subprotocol` | String | Required subprotocol for future secure upgrades, if any |
 | `Port` | Integer | Listening TCP port number |
 | `IsRunning` | Boolean | True if the TLS listener is accepting connections |
 
@@ -2039,6 +2056,7 @@ TLS-backed WebSocket server built on the in-tree TLS 1.3 runtime with zero exter
 ### Runtime Notes
 
 - `WssServer` automatically completes the RFC 6455 HTTP upgrade after the TLS handshake succeeds.
+- `SetSubprotocol(protocol)` makes the server require that token in the client's `Sec-WebSocket-Protocol` list and echoes it in the upgrade response.
 - Browser-facing upgrades require a `Host` header, and when an `Origin` header is present it must match the request scheme, host, and effective port.
 - Control frames are handled automatically: server-side pong replies are sent for client pings, and close frames are echoed so the WebSocket close handshake completes cleanly.
 - Client text/binary frames are drained and validated so broadcasts continue to work on long-lived secure connections even when clients send their own traffic.

@@ -105,6 +105,7 @@ typedef struct {
 typedef struct {
     void *tcp_server;
     int64_t port;
+    char *subprotocol;
     bool running;
     ws_client_t clients[WS_SERVER_MAX_CLIENTS];
     int client_count;
@@ -286,14 +287,13 @@ static int ws_server_recv_frame(
 }
 
 /// @brief Perform server-side WebSocket upgrade handshake.
-static int ws_server_handshake(void *tcp) {
+static int ws_server_handshake(void *tcp, const char *required_subprotocol) {
     // Read HTTP upgrade request
     rt_string line = rt_tcp_recv_line(tcp);
     if (!line)
         return 0;
     const char *request_line = rt_string_cstr(line);
-    if (!request_line || strncmp(request_line, "GET ", 4) != 0 ||
-        strstr(request_line, " HTTP/1.1") == NULL) {
+    if (!ws_request_line_is_valid(request_line)) {
         rt_string_unref(line);
         return 0;
     }
@@ -302,6 +302,7 @@ static int ws_server_handshake(void *tcp) {
     char ws_key[128] = {0};
     char host_header[256] = {0};
     char origin_header[256] = {0};
+    char protocol_header[256] = {0};
     int saw_upgrade = 0;
     int saw_connection = 0;
     int saw_version = 0;
@@ -338,6 +339,14 @@ static int ws_server_handshake(void *tcp) {
             }
             snprintf(origin_header, sizeof(origin_header), "%s", trimmed);
             free(trimmed);
+        } else if (strncasecmp(h, "Sec-WebSocket-Protocol:", 23) == 0) {
+            char *trimmed = ws_strdup_trimmed(h + 23);
+            if (!trimmed) {
+                rt_string_unref(hdr);
+                return 0;
+            }
+            snprintf(protocol_header, sizeof(protocol_header), "%s", trimmed);
+            free(trimmed);
         } else if (strncasecmp(h, "Upgrade:", 8) == 0) {
             const char *val = h + 8;
             while (*val == ' ')
@@ -357,10 +366,16 @@ static int ws_server_handshake(void *tcp) {
         rt_string_unref(hdr);
     }
 
-    if (ws_key[0] == '\0' || host_header[0] == '\0' || !saw_upgrade || !saw_connection ||
+    if (!ws_sec_key_is_valid(ws_key) || !ws_host_header_is_valid(host_header) || !saw_upgrade ||
+        !saw_connection ||
         !saw_version || !ws_origin_matches_expected(origin_header, host_header, "http", 80)) {
         return 0;
     }
+    if (protocol_header[0] != '\0' && !ws_protocol_header_is_valid(protocol_header))
+        return 0;
+    if (required_subprotocol && *required_subprotocol &&
+        !ws_protocol_list_contains(protocol_header, required_subprotocol))
+        return 0;
 
     // Compute accept key
     char *accept = rt_ws_compute_accept_key(ws_key);
@@ -368,16 +383,30 @@ static int ws_server_handshake(void *tcp) {
         return 0;
 
     // Send upgrade response
-    char response[512];
+    char response[768];
     int rlen = snprintf(response,
                         sizeof(response),
                         "HTTP/1.1 101 Switching Protocols\r\n"
                         "Upgrade: websocket\r\n"
                         "Connection: Upgrade\r\n"
-                        "Sec-WebSocket-Accept: %s\r\n"
-                        "\r\n",
+                        "Sec-WebSocket-Accept: %s\r\n",
                         accept);
     free(accept);
+    if (rlen <= 0 || (size_t)rlen >= sizeof(response))
+        return 0;
+    if (required_subprotocol && *required_subprotocol) {
+        int wrote = snprintf(response + rlen,
+                             sizeof(response) - (size_t)rlen,
+                             "Sec-WebSocket-Protocol: %s\r\n",
+                             required_subprotocol);
+        if (wrote <= 0 || (size_t)wrote >= sizeof(response) - (size_t)rlen)
+            return 0;
+        rlen += wrote;
+    }
+    if ((size_t)rlen + 2 >= sizeof(response))
+        return 0;
+    memcpy(response + rlen, "\r\n", 3);
+    rlen += 2;
 
     rt_string resp = rt_string_from_bytes(response, (size_t)rlen);
     rt_tcp_send_str(tcp, resp);
@@ -398,6 +427,8 @@ static void rt_ws_server_finalize(void *obj) {
         return;
     rt_ws_server_impl *s = (rt_ws_server_impl *)obj;
     rt_ws_server_stop(s);
+    free(s->subprotocol);
+    s->subprotocol = NULL;
     if (s->lock_initialized)
         WS_MUTEX_DESTROY(&s->lock);
 }
@@ -424,7 +455,7 @@ static void *ws_accept_loop(void *arg)
         }
 
         // Perform WebSocket handshake
-        if (!ws_server_handshake(tcp)) {
+        if (!ws_server_handshake(tcp, s->subprotocol)) {
             ws_release_tcp(&tcp);
             continue;
         }
@@ -548,6 +579,34 @@ void rt_ws_server_stop(void *obj) {
     WS_MUTEX_UNLOCK(&s->lock);
 }
 
+void rt_ws_server_set_subprotocol(void *obj, rt_string subprotocol) {
+    rt_ws_server_impl *s = (rt_ws_server_impl *)obj;
+    const char *protocol = subprotocol ? rt_string_cstr(subprotocol) : NULL;
+    char *copy = NULL;
+
+    if (!s)
+        return;
+    if (s->running)
+        rt_trap("WsServer.SetSubprotocol: cannot change subprotocol while server is running");
+    if (protocol && *protocol) {
+        if (!ws_token_is_valid(protocol))
+            rt_trap("WsServer.SetSubprotocol: invalid subprotocol token");
+        copy = strdup(protocol);
+        if (!copy)
+            rt_trap("WsServer.SetSubprotocol: memory allocation failed");
+    }
+
+    free(s->subprotocol);
+    s->subprotocol = copy;
+}
+
+rt_string rt_ws_server_subprotocol(void *obj) {
+    rt_ws_server_impl *s = (rt_ws_server_impl *)obj;
+    if (!s || !s->subprotocol)
+        return rt_str_empty();
+    return rt_string_from_bytes(s->subprotocol, strlen(s->subprotocol));
+}
+
 /// @brief Send a TEXT frame to every connected client. Clients whose send fails are marked
 /// inactive and their TCP handles released — handles dead-client cleanup as a side effect.
 /// Holds the client-list mutex during the entire broadcast (caller blocks on long sends).
@@ -642,7 +701,7 @@ void *rt_ws_server_accept(void *obj) {
     if (!tcp)
         return NULL;
 
-    if (!ws_server_handshake(tcp)) {
+    if (!ws_server_handshake(tcp, s->subprotocol)) {
         ws_release_tcp(&tcp);
         return NULL;
     }

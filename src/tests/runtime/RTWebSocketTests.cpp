@@ -22,6 +22,7 @@
 #include <chrono>
 #include <cstdio>
 #include <cstring>
+#include <string>
 #include <thread>
 
 /// @brief Helper to print test result.
@@ -30,20 +31,23 @@ static void test_result(const char *name, bool passed) {
     assert(passed);
 }
 
-/// @brief Extract the value of "Sec-WebSocket-Key:" from raw HTTP headers buffer.
+/// @brief Extract a header value from raw HTTP headers.
 /// Writes at most max_len-1 characters to out and NUL-terminates. Returns true on success.
-static bool extract_ws_key(const char *headers, char *out, size_t max_len) {
-    // Case-insensitive search for "Sec-WebSocket-Key:" header
+static bool extract_http_header(const char *headers, const char *name, char *out, size_t max_len) {
+    const size_t name_len = name ? strlen(name) : 0;
+    if (!headers || !name || name_len == 0 || !out || max_len == 0)
+        return false;
+
     const char *p = headers;
     while ((p = strstr(p, "\r\n")) != NULL) {
         p += 2; // skip CRLF
 #ifdef _WIN32
-        if (_strnicmp(p, "Sec-WebSocket-Key:", 18) == 0)
+        if (_strnicmp(p, name, name_len) == 0)
 #else
-        if (strncasecmp(p, "Sec-WebSocket-Key:", 18) == 0)
+        if (strncasecmp(p, name, name_len) == 0)
 #endif
         {
-            const char *val = p + 18;
+            const char *val = p + name_len;
             while (*val == ' ' || *val == '\t')
                 val++;
             const char *end = val;
@@ -58,6 +62,11 @@ static bool extract_ws_key(const char *headers, char *out, size_t max_len) {
         }
     }
     return false;
+}
+
+/// @brief Extract the value of "Sec-WebSocket-Key:" from raw HTTP headers buffer.
+static bool extract_ws_key(const char *headers, char *out, size_t max_len) {
+    return extract_http_header(headers, "Sec-WebSocket-Key:", out, max_len);
 }
 
 /// @brief Build and send a valid WebSocket 101 response using the client's key.
@@ -110,6 +119,8 @@ static void ws_send_server_frame(void *client,
 
 static std::atomic<bool> ws_server_ready{false};
 static std::atomic<bool> ws_server_failed{false};
+static std::string ws_last_host_header;
+static std::string ws_last_subprotocol_header;
 
 /// @brief Accept a TCP connection and perform a minimal WS handshake,
 ///        then sit idle (never send data) so recv_for can time out.
@@ -241,6 +252,81 @@ static void ws_echo_server_thread(int port) {
     }
 
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    rt_tcp_close(client);
+    rt_tcp_server_close(server);
+}
+
+/// @brief Accept one client, capture the Host header from the handshake, then complete the upgrade.
+static void ws_capture_handshake_server_thread(int port) {
+    void *server = rt_tcp_server_listen(port);
+    if (!server) {
+        printf("  WARNING: Could not create server on port %d\n", port);
+        ws_server_failed = true;
+        ws_server_ready = true;
+        return;
+    }
+
+    ws_server_failed = false;
+    ws_server_ready = true;
+    ws_last_host_header.clear();
+    ws_last_subprotocol_header.clear();
+
+    void *client = rt_tcp_server_accept_for(server, 5000);
+    if (!client) {
+        rt_tcp_server_close(server);
+        return;
+    }
+
+    char buf[4096];
+    int total = 0;
+    while (total < (int)sizeof(buf) - 1) {
+        rt_string line = rt_tcp_recv_str(client, 1);
+        if (!line)
+            break;
+        const char *c = rt_string_cstr(line);
+        if (c) {
+            buf[total] = c[0];
+            total++;
+        }
+        if (total >= 4 && buf[total - 4] == '\r' && buf[total - 3] == '\n' &&
+            buf[total - 2] == '\r' && buf[total - 1] == '\n')
+            break;
+    }
+
+    buf[total] = '\0';
+    char host[256] = {0};
+    char subprotocol[256] = {0};
+    if (extract_http_header(buf, "Host:", host, sizeof(host)))
+        ws_last_host_header = host;
+    if (extract_http_header(buf, "Sec-WebSocket-Protocol:", subprotocol, sizeof(subprotocol)))
+        ws_last_subprotocol_header = subprotocol;
+
+    char ws_key[128] = {0};
+    char *accept = NULL;
+    if (extract_ws_key(buf, ws_key, sizeof(ws_key)))
+        accept = rt_ws_compute_accept_key(ws_key);
+
+    char response[768];
+    int len = snprintf(response,
+                       sizeof(response),
+                       "HTTP/1.1 101 Switching Protocols\r\n"
+                       "Upgrade: websocket\r\n"
+                       "Connection: Upgrade\r\n"
+                       "Sec-WebSocket-Accept: %s\r\n",
+                       accept ? accept : "");
+    if (ws_last_subprotocol_header.size() > 0) {
+        len += snprintf(response + len,
+                        sizeof(response) - (size_t)len,
+                        "Sec-WebSocket-Protocol: %s\r\n",
+                        ws_last_subprotocol_header.c_str());
+    }
+    snprintf(response + len, sizeof(response) - (size_t)len, "\r\n");
+    if (accept)
+        free(accept);
+
+    rt_tcp_send_str(client, rt_const_cstr(response));
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
     rt_tcp_close(client);
     rt_tcp_server_close(server);
 }
@@ -517,6 +603,80 @@ static void test_ws_connect_for_success() {
     server.join();
 }
 
+static void test_ws_connect_sends_canonical_host_header() {
+    printf("\nTesting WebSocket Host header formatting:\n");
+
+    const int port = (int)rt_netutils_get_free_port();
+    if (port <= 0) {
+        printf("  SKIP: local bind unavailable in this environment\n");
+        return;
+    }
+    ws_server_ready = false;
+    ws_server_failed = false;
+    ws_last_host_header.clear();
+
+    std::thread server(ws_capture_handshake_server_thread, port);
+
+    while (!ws_server_ready)
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    if (ws_server_failed) {
+        server.join();
+        printf("  SKIP: local bind unavailable in this environment\n");
+        return;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+    char url_buf[64];
+    snprintf(url_buf, sizeof(url_buf), "ws://127.0.0.1:%d/chat", port);
+    void *ws = rt_ws_connect(rt_const_cstr(url_buf));
+    test_result("WebSocket connect succeeds", ws != nullptr);
+    if (ws)
+        rt_ws_close(ws);
+
+    server.join();
+    test_result("WebSocket Host header includes explicit non-default port",
+                ws_last_host_header == ("127.0.0.1:" + std::to_string(port)));
+}
+
+static void test_ws_connect_protocol_negotiates_subprotocol() {
+    printf("\nTesting WebSocket subprotocol negotiation:\n");
+
+    const int port = (int)rt_netutils_get_free_port();
+    if (port <= 0) {
+        printf("  SKIP: local bind unavailable in this environment\n");
+        return;
+    }
+    ws_server_ready = false;
+    ws_server_failed = false;
+    ws_last_subprotocol_header.clear();
+
+    std::thread server(ws_capture_handshake_server_thread, port);
+
+    while (!ws_server_ready)
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    if (ws_server_failed) {
+        server.join();
+        printf("  SKIP: local bind unavailable in this environment\n");
+        return;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+    char url_buf[64];
+    snprintf(url_buf, sizeof(url_buf), "ws://127.0.0.1:%d/chat", port);
+    void *ws = rt_ws_connect_protocol(rt_const_cstr(url_buf), rt_const_cstr("chat.v1"));
+    test_result("WebSocket connect with protocol succeeds", ws != nullptr);
+    if (ws) {
+        rt_string subprotocol = rt_ws_subprotocol(ws);
+        test_result("WebSocket stores negotiated subprotocol",
+                    strcmp(rt_string_cstr(subprotocol), "chat.v1") == 0);
+        rt_string_unref(subprotocol);
+        rt_ws_close(ws);
+    }
+
+    server.join();
+    test_result("Client sent requested subprotocol header", ws_last_subprotocol_header == "chat.v1");
+}
+
 static void test_ws_fragmented_text_reassembly() {
     printf("\nTesting WebSocket fragmented text reassembly:\n");
 
@@ -616,6 +776,8 @@ int main() {
     test_ws_recv_for_timeout();
     test_ws_recv_bytes_for_timeout();
     test_ws_connect_for_success();
+    test_ws_connect_sends_canonical_host_header();
+    test_ws_connect_protocol_negotiates_subprotocol();
     test_ws_fragmented_text_reassembly();
     test_ws_invalid_utf8_closes_with_1007();
 

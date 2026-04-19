@@ -10,7 +10,7 @@
 // Key invariants:
 //   - Hash output includes the salt and iteration count; no separate salt storage needed.
 //   - Verification uses constant-time comparison to prevent timing side-channels.
-//   - Default iteration count is 100,000 and verification rejects hostile work factors above
+//   - Default iteration count is 300,000 and verification rejects hostile work factors above
 //     the implementation cap.
 //   - Hash output format: "PBKDF2$iterations$salt_b64$hash_b64".
 //
@@ -33,7 +33,7 @@ extern "C" {
 #endif
 
 /// @brief Hash a password with auto-generated salt.
-/// @details Uses PBKDF2-SHA256 with 100,000 iterations and 16-byte salt.
+/// @details Uses PBKDF2-SHA256 with 300,000 iterations and a 16-byte salt.
 ///          Returns a string in the format: "PBKDF2$iterations$salt_b64$hash_b64"
 /// @param password The password to hash.
 /// @return Encoded hash string (safe to store in database).
@@ -42,7 +42,7 @@ rt_string rt_password_hash(rt_string password);
 /// @brief Hash a password with custom iteration count.
 /// @details Uses PBKDF2-SHA256 with specified iterations and 16-byte salt.
 /// @param password The password to hash.
-/// @param iterations Number of iterations (minimum 10000).
+/// @param iterations Number of iterations. Values below 100,000 clamp up.
 /// @return Encoded hash string.
 rt_string rt_password_hash_with_iterations(rt_string password, int64_t iterations);
 

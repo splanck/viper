@@ -21,9 +21,11 @@ extern "C" {
 void *rt_wss_server_new(int64_t port, rt_string cert_file, rt_string key_file);
 void rt_wss_server_start(void *server);
 void rt_wss_server_stop(void *server);
+void rt_wss_server_set_subprotocol(void *server, rt_string subprotocol);
 void rt_wss_server_broadcast(void *server, rt_string message);
 void rt_wss_server_broadcast_bytes(void *server, void *data);
 int64_t rt_wss_server_client_count(void *server);
+rt_string rt_wss_server_subprotocol(void *server);
 int64_t rt_wss_server_port(void *server);
 int8_t rt_wss_server_is_running(void *server);
 

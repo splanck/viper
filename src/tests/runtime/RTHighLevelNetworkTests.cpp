@@ -1733,6 +1733,190 @@ static void test_wss_server_broadcast() {
     rt_wss_server_stop(server);
 }
 
+static void test_wss_server_rejects_invalid_sec_websocket_key() {
+    printf("\nTesting WssServer rejects malformed handshake keys:\n");
+
+    const int port = get_bindable_local_port();
+    if (port <= 0) {
+        printf("  SKIP: local bind unavailable in this environment\n");
+        return;
+    }
+
+    temp_tls_files_t tls_files = create_temp_tls_files();
+    if (!tls_files.valid) {
+        printf("  SKIP: could not write temporary TLS fixture files\n");
+        return;
+    }
+
+    void *server =
+        rt_wss_server_new(port, rt_const_cstr(tls_files.cert_path.c_str()), rt_const_cstr(tls_files.key_path.c_str()));
+    rt_wss_server_start(server);
+    if (!wait_for_condition([&]() { return rt_wss_server_is_running(server) == 1; }, 1000)) {
+        rt_wss_server_stop(server);
+        printf("  SKIP: local bind unavailable in this environment\n");
+        return;
+    }
+
+    rt_tls_session_t *tls = connect_local_tls_server(port);
+    test_result("Raw TLS client connects to WssServer", tls != nullptr);
+    if (!tls) {
+        rt_wss_server_stop(server);
+        return;
+    }
+
+    char request[512];
+    snprintf(request,
+             sizeof(request),
+             "GET /chat HTTP/1.1\r\n"
+             "Host: 127.0.0.1:%d\r\n"
+             "Upgrade: websocket\r\n"
+             "Connection: Upgrade\r\n"
+             "Sec-WebSocket-Key: bad\r\n"
+             "Sec-WebSocket-Version: 13\r\n"
+             "\r\n",
+             port);
+    test_result("Malformed WSS handshake request is sent", tls_send_all(tls, request, strlen(request)));
+
+    const std::string status = tls_recv_line(tls);
+    test_result("WssServer does not upgrade malformed handshake", status.empty());
+    test_result("WssServer keeps zero connected clients",
+                wait_for_condition([&]() { return rt_wss_server_client_count(server) == 0; }, 250));
+
+    rt_tls_close(tls);
+    rt_wss_server_stop(server);
+}
+
+static void test_wss_server_rejects_invalid_host_header() {
+    printf("\nTesting WssServer rejects malformed Host headers:\n");
+
+    const int port = get_bindable_local_port();
+    if (port <= 0) {
+        printf("  SKIP: local bind unavailable in this environment\n");
+        return;
+    }
+
+    temp_tls_files_t tls_files = create_temp_tls_files();
+    if (!tls_files.valid) {
+        printf("  SKIP: could not write temporary TLS fixture files\n");
+        return;
+    }
+
+    void *server =
+        rt_wss_server_new(port, rt_const_cstr(tls_files.cert_path.c_str()), rt_const_cstr(tls_files.key_path.c_str()));
+    rt_wss_server_start(server);
+    if (!wait_for_condition([&]() { return rt_wss_server_is_running(server) == 1; }, 1000)) {
+        rt_wss_server_stop(server);
+        printf("  SKIP: local bind unavailable in this environment\n");
+        return;
+    }
+
+    rt_tls_session_t *tls = connect_local_tls_server(port);
+    test_result("Raw TLS client connects to WssServer", tls != nullptr);
+    if (!tls) {
+        rt_wss_server_stop(server);
+        return;
+    }
+
+    const char *request =
+        "GET /chat HTTP/1.1\r\n"
+        "Host: ::1\r\n"
+        "Upgrade: websocket\r\n"
+        "Connection: Upgrade\r\n"
+        "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n"
+        "Sec-WebSocket-Version: 13\r\n"
+        "\r\n";
+    test_result("Malformed Host handshake request is sent", tls_send_all(tls, request, strlen(request)));
+
+    const std::string status = tls_recv_line(tls);
+    test_result("WssServer does not upgrade malformed Host handshake", status.empty());
+    test_result("WssServer keeps zero connected clients",
+                wait_for_condition([&]() { return rt_wss_server_client_count(server) == 0; }, 250));
+
+    rt_tls_close(tls);
+    rt_wss_server_stop(server);
+}
+
+static void test_wss_server_subprotocol_negotiation() {
+    printf("\nTesting WssServer subprotocol negotiation:\n");
+
+    const int port = get_bindable_local_port();
+    if (port <= 0) {
+        printf("  SKIP: local bind unavailable in this environment\n");
+        return;
+    }
+
+    temp_tls_files_t tls_files = create_temp_tls_files();
+    if (!tls_files.valid) {
+        printf("  SKIP: could not write temporary TLS fixture files\n");
+        return;
+    }
+
+    void *server =
+        rt_wss_server_new(port, rt_const_cstr(tls_files.cert_path.c_str()), rt_const_cstr(tls_files.key_path.c_str()));
+    rt_wss_server_set_subprotocol(server, rt_const_cstr("chat.v1"));
+    rt_wss_server_start(server);
+    if (!wait_for_condition([&]() { return rt_wss_server_is_running(server) == 1; }, 1000)) {
+        rt_wss_server_stop(server);
+        printf("  SKIP: local bind unavailable in this environment\n");
+        return;
+    }
+
+    rt_tls_session_t *tls = connect_local_tls_server(port);
+    test_result("Raw TLS client connects to WssServer", tls != nullptr);
+    if (!tls) {
+        rt_wss_server_stop(server);
+        return;
+    }
+
+    char request[768];
+    snprintf(request,
+             sizeof(request),
+             "GET /chat HTTP/1.1\r\n"
+             "Host: 127.0.0.1:%d\r\n"
+             "Upgrade: websocket\r\n"
+             "Connection: Upgrade\r\n"
+             "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n"
+             "Sec-WebSocket-Version: 13\r\n"
+             "Sec-WebSocket-Protocol: other, chat.v1\r\n"
+             "\r\n",
+             port);
+    test_result("Matching subprotocol handshake request is sent", tls_send_all(tls, request, strlen(request)));
+    const std::string status = tls_recv_line(tls);
+    test_result("WssServer upgrades matching subprotocol handshake", status == "HTTP/1.1 101 Switching Protocols");
+    const auto headers = tls_read_http_headers(tls);
+    test_result("WssServer returns negotiated subprotocol",
+                tls_find_http_header(headers, "Sec-WebSocket-Protocol") == "chat.v1");
+    rt_tls_close(tls);
+    test_result("WssServer removes the negotiated client",
+                wait_for_condition([&]() { return rt_wss_server_client_count(server) == 0; }, 1000));
+
+    tls = connect_local_tls_server(port);
+    test_result("Second raw TLS client connects to WssServer", tls != nullptr);
+    if (!tls) {
+        rt_wss_server_stop(server);
+        return;
+    }
+
+    snprintf(request,
+             sizeof(request),
+             "GET /chat HTTP/1.1\r\n"
+             "Host: 127.0.0.1:%d\r\n"
+             "Upgrade: websocket\r\n"
+             "Connection: Upgrade\r\n"
+             "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n"
+             "Sec-WebSocket-Version: 13\r\n"
+             "Sec-WebSocket-Protocol: other\r\n"
+             "\r\n",
+             port);
+    test_result("Mismatched subprotocol handshake request is sent", tls_send_all(tls, request, strlen(request)));
+    test_result("WssServer rejects missing required subprotocol", tls_recv_line(tls).empty());
+    test_result("WssServer keeps zero connected clients after rejection",
+                wait_for_condition([&]() { return rt_wss_server_client_count(server) == 0; }, 250));
+
+    rt_tls_close(tls);
+    rt_wss_server_stop(server);
+}
+
 int main() {
     test_sse_plain_event();
     test_sse_chunked_event();
@@ -1747,6 +1931,9 @@ int main() {
     test_https_server_roundtrip();
     test_https_server_rsa_roundtrip_with_verification();
     test_wss_server_broadcast();
+    test_wss_server_rejects_invalid_sec_websocket_key();
+    test_wss_server_rejects_invalid_host_header();
+    test_wss_server_subprotocol_negotiation();
     test_smtp_plain_send_sanitizes_and_dot_stuffs();
     test_smtp_requires_starttls_capability();
     test_smtp_accepts_forwarding_recipient_codes();

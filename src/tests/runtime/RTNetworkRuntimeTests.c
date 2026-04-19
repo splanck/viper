@@ -51,6 +51,7 @@ extern int rt_ws_parse_url_for_test(
     const char *url, int *is_secure, char **host, int *port, char **path);
 extern int rt_ws_validate_handshake_response_for_test(const char *response, const char *key_copy);
 extern char *rt_ws_compute_accept_key(const char *key_cstr);
+extern char *rt_ws_format_host_header_for_test(const char *host, int port, int is_secure);
 
 static char captured_method[32];
 static char captured_path[64];
@@ -439,6 +440,50 @@ static void test_ws_handshake_validation_rejects_spurious_101(void) {
     free(accept);
 }
 
+static void test_ws_handshake_validation_rejects_unsolicited_subprotocol(void) {
+    static const char key[] = "dGhlIHNhbXBsZSBub25jZQ==";
+    char *accept = rt_ws_compute_accept_key(key);
+    ASSERT(accept != NULL);
+    if (!accept)
+        return;
+
+    char response[512];
+    snprintf(response,
+             sizeof(response),
+             "HTTP/1.1 101 Switching Protocols\r\n"
+             "Upgrade: websocket\r\n"
+             "Connection: Upgrade\r\n"
+             "Sec-WebSocket-Accept: %s\r\n"
+             "Sec-WebSocket-Protocol: chat.v1\r\n"
+             "\r\n",
+             accept);
+
+    ASSERT(rt_ws_validate_handshake_response_for_test(response, key) == 0);
+    free(accept);
+}
+
+static void test_ws_host_header_formatting(void) {
+    char *header = rt_ws_format_host_header_for_test("example.com", 80, 0);
+    ASSERT(header != NULL);
+    ASSERT(header && strcmp(header, "example.com") == 0);
+    free(header);
+
+    header = rt_ws_format_host_header_for_test("example.com", 8443, 1);
+    ASSERT(header != NULL);
+    ASSERT(header && strcmp(header, "example.com:8443") == 0);
+    free(header);
+
+    header = rt_ws_format_host_header_for_test("::1", 443, 1);
+    ASSERT(header != NULL);
+    ASSERT(header && strcmp(header, "[::1]") == 0);
+    free(header);
+
+    header = rt_ws_format_host_header_for_test("::1", 9000, 0);
+    ASSERT(header != NULL);
+    ASSERT(header && strcmp(header, "[::1]:9000") == 0);
+    free(header);
+}
+
 int main(void) {
     test_http_server_parses_exact_body();
     test_http_server_rejects_invalid_http_version();
@@ -458,6 +503,8 @@ int main(void) {
     test_ws_parse_url_accepts_ipv6_literal();
     test_ws_handshake_validation_accepts_valid_response();
     test_ws_handshake_validation_rejects_spurious_101();
+    test_ws_handshake_validation_rejects_unsolicited_subprotocol();
+    test_ws_host_header_formatting();
 
     printf("%d/%d tests passed\n", tests_run - tests_failed, tests_run);
     return tests_failed > 0 ? 1 : 0;

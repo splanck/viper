@@ -14,10 +14,10 @@ A polish-and-hardening cycle that grew a notable new capability along the way. M
 
 | Metric | v0.2.4 | v0.2.5 | Delta |
 |---|---|---|---|
-| Commits | — | 30 | +30 |
-| Source files | 2,869 | 2,892 | +23 |
-| Production SLOC | 450K | 478K | +28K |
-| Test SLOC | 183K | 191K | +8K |
+| Commits | — | 31 | +31 |
+| Source files | 2,869 | 2,895 | +26 |
+| Production SLOC | 450K | 476K | +26K |
+| Test SLOC | 183K | 192K | +9K |
 | Demo SLOC | 177K | 188K | +11K |
 
 Counts via `scripts/count_sloc.sh`. Most of the growth is in demos (Crackman split, Paint feature pass, baseball shell) and the GUI runtime.
@@ -218,6 +218,8 @@ Broad hardening and feature pass across the HTTP client, HTTP server, SSE, and T
 
 *Security.* Cross-origin redirects strip credential-bearing headers (`Authorization`, `Cookie`, etc.) so a redirect to a different origin can't leak tokens. URL parsing rejects CRLF sequences to block header-injection attacks. Cookie-jar match tests prevent cross-domain and cross-path leakage; expired cookies are purged.
 
+*Multipart + WebSocket hardening.* Multipart form-data building now escapes quoted `name` / `filename` parameters and strips CR/LF from emitted part headers; the parser now handles quoted boundaries plus escaped quoted parameters instead of `strstr`-style extraction. WebSocket client handshakes emit canonical `Host` authorities (default ports omitted, IPv6 bracketed), client/server subprotocol negotiation is now supported for single-token `Sec-WebSocket-Protocol` flows, and `WsServer` / `WssServer` reject malformed `Sec-WebSocket-Key` values or invalid `Host` headers before upgrading.
+
 **HTTP server.**
 *Request handling.* `Transfer-Encoding: chunked` request bodies are now decoded correctly — browser streaming uploads and `curl --data-binary @-` finally work. Header token scanning is robust against substring false positives.
 
@@ -231,6 +233,8 @@ Broad hardening and feature pass across the HTTP client, HTTP server, SSE, and T
 
 **RestClient.** Keep-alive and pool-size configuration thread through to the underlying HTTP client, so REST-heavy workflows (microservices, paginated API loops) reuse connections transparently without changing call sites.
 
+**Server-code consolidation.** HTTP and HTTPS server share a common request/response helper set (`rt_http_server_shared.inc`) — the line-terminator scanner, header-end finder, bounded `memchr`, response framing, and chunk-parser status handling are now defined once and pulled in by both translation units. WebSocket and WSS servers got the same treatment (`rt_ws_shared.inc`) — Upgrade-header tokenisation, trimmed-strdup, and the rest of the upgrade-handshake plumbing live in one place. Future protocol fixes land in both transport variants automatically instead of having to be ported between near-duplicate files. Net code reduction across the four servers despite adding the shared headers.
+
 **SSE (Server-Sent Events).** Automatic reconnect-after-disconnect. The client re-opens the connection when the server drops and honours `Last-Event-ID` to resume where the stream left off, instead of silently ending on transient network failures. Matching non-blocking connect + timeout behaviour as the HTTP client.
 
 **TLS.**
@@ -240,15 +244,19 @@ Broad hardening and feature pass across the HTTP client, HTTP server, SSE, and T
 
 *Native RSA.* New `rt_rsa.c` / `rt_rsa.h` implement RSA public-key parsing (PKCS#1 RSAPublicKey and SubjectPublicKeyInfo) plus modular exponentiation and RSA-PSS-SHA256 signature verification — the algorithm most public-CA TLS certificates use. Hooks into the cert-chain validator and the TLS server's `CertificateVerify` path. No external crypto dependency: same zero-dep posture as the rest of the network stack.
 
-*X.509 in-tree.* `rt_tls_verify.c` was rewritten as a from-scratch X.509 chain validator (~2 KLOC) covering certificate parsing, signature verification (ECDSA-P256 and RSA-PSS-SHA256), validity-window checks, hostname matching against CN/SAN, and chain-of-trust walking against the bundled CA roots. The macOS-specific `Security.framework` / `CoreFoundation` link directives in `src/runtime/CMakeLists.txt` are gone — `viper_runtime` now links the same on Linux, macOS, and Windows for the TLS path, matching what was already true for the rest of the network stack.
+*X.509 in-tree.* `rt_tls_verify.c` was rewritten as a from-scratch X.509 chain validator (~2 KLOC) covering certificate parsing, signature verification (ECDSA-P256 and RSA-PSS-SHA256), validity-window checks, hostname matching against CN/SAN, Extended Key Usage enforcement (the leaf cert must be valid for TLS server authentication; certificates issued for code signing / S/MIME / other purposes are rejected outright), and chain-of-trust walking against the bundled CA roots. The macOS-specific `Security.framework` / `CoreFoundation` link directives in `src/runtime/CMakeLists.txt` are gone — `viper_runtime` now links the same on Linux, macOS, and Windows for the TLS path, matching what was already true for the rest of the network stack.
+
+*In-tree time.* The platform `timegm()` extern in the TLS validator was replaced by an in-tree `rt_network_timegm_utc` helper (`rt_network_time.inc`) using Howard Hinnant's days-from-civil algorithm. Removes the last platform-specific time call from the network stack and gives certificate validity-window checks the same zero-dependency posture as the rest of the validator.
 
 *Underneath.* The ECDSA-P256 module gained the wide-arithmetic and modular-math primitives (`u256_mul_wide`, `u512_mod_u256`, `u256_mod_{add,double,mul}`) needed for the certificate signature path that most modern TLS uses.
+
+**Crypto / KDF defaults.** PBKDF2 iteration counts raised from 100,000 to 300,000 across the runtime (`AES_STR_PBKDF2_ITERATIONS` in `rt_aes.c`, `CIPHER_PBKDF2_ITERATIONS` in `rt_cipher.c`, `DEFAULT_ITERATIONS` in `rt_password.c`). The `Password.Hash` minimum iteration floor (`MIN_ITERATIONS`) bumped from 10,000 to 100,000 — custom requests below the new floor clamp up rather than being accepted at the lower count. Aligns with current OWASP guidance while staying practical for interactive use (~150 ms on typical desktop CPUs vs. the prior ~50 ms). `rt_keyderive_pbkdf2_sha256_raw` input validation tightened to reject empty salt, zero iterations, and zero / over-1024-byte output length explicitly instead of silently misbehaving. Old ciphertexts and password hashes encoded with the prior counts continue to verify correctly — the iteration count is stored in the hash format, so both old and new digests round-trip cleanly.
 
 **UDP.** Substantial socket-layer rewrite. Dual-stack IPv4 / IPv6 sockets work transparently — the same `Udp` instance can send to and receive from both address families. Sender address / family / port are captured on `recv_from` so callers can reply without re-resolving. Address resolution is centralised across unicast and multicast send paths.
 
 **WebSocket / SMTP.** Small correctness follow-ups on header parsing and error paths consistent with the HTTP/TLS changes above.
 
-**Follow-up hardening.** A second pass pulled duplicated HTTP/HTTPS request-parsing, chunked-body decoding, and response-framing code into shared runtime helpers so fixes now land once for both cleartext and TLS servers. Cross-origin redirect stripping is shared across `HttpReq`, `HttpClient`, and `RestClient`; manual `HttpClient.SetCookie` entries are exact-host cookies instead of overly broad domain cookies; `SseClient` follows initial redirects and rejects unsupported content encodings instead of misparsing compressed streams; SMTP now parses `EHLO` capability lines before `STARTTLS` / `AUTH LOGIN` and accepts `251` / `252` recipient replies; and `AsyncSocket` converts worker-thread transport traps into failed futures instead of unwinding out of the thread pool. Server `Start()` paths (`HttpServer`, `HttpsServer`, `WsServer`, `WssServer`) also fail cleanly on bind/thread-start errors instead of entering partial running states.
+**Follow-up hardening.** A second pass pulled duplicated HTTP/HTTPS request-parsing, chunked-body decoding, and response-framing code into shared runtime helpers so fixes now land once for both cleartext and TLS servers. Cross-origin redirect stripping is shared across `HttpReq`, `HttpClient`, and `RestClient`; manual `HttpClient.SetCookie` entries are exact-host cookies instead of overly broad domain cookies; `SseClient` follows initial redirects and rejects unsupported content encodings instead of misparsing compressed streams; SMTP now parses `EHLO` capability lines before `STARTTLS` / `AUTH LOGIN` and accepts `251` / `252` recipient replies; `ConnectionPool` now tracks fresh checked-out sockets immediately and clamps invalid `maxSize` inputs instead of silently turning `0` into a 128-slot pool; and `AsyncSocket` converts worker-thread transport traps into failed futures instead of unwinding out of the thread pool. Server `Start()` paths (`HttpServer`, `HttpsServer`, `WsServer`, `WssServer`) also fail cleanly on bind/thread-start errors instead of entering partial running states.
 
 **Crypto follow-up.** Password-based defaults were raised to 300,000 PBKDF2 rounds across `Password.Hash`, password-based `Cipher`, and `Aes.EncryptStr`. `Password.Verify` now treats null/malformed stored hashes as a simple mismatch, `Cipher.Decrypt` returns `NULL` on authentication failure instead of trapping, and the in-tree TLS verifier now rejects leaf certificates that do not advertise TLS server authentication through EKU / compatible key usage.
 
@@ -322,7 +330,9 @@ Net additions across the cycle: a few thousand lines of new test coverage spread
 
 ### Demos & docs
 
-Pac-Man renamed to Crackman and split into session/progression/frontend with a smoke probe and audio banks. Paint gains layers, undo/redo, and an expanded feature set. ViperIDE wires up the new GUI APIs (per-file IntelliSense, pixel-position hover, custom fonts, theme toggle, font zoom), lifts the settings + about modals out of `main.zia` into a dedicated `IdeOverlays` overlay manager, and clamps window bounds against the active monitor so the IDE can't boot into a window that overflows the display. All ten demos in `build_demos_mac.sh` carry tutorial-style annotations. Two new 3D demos (`3dbaseball`, `3dscene`, ~1,100 LOC of Zia combined). The baseball engine grows a text-mode human-manager franchise shell — pacing profiles, interactive lineup building, save-slot management, three new probes — registered across all four `build_demos.*` scripts; `--auto-season` preserves the legacy regression path; `baseball_saves/` is now gitignored so the franchise shell's interactive save root doesn't clutter `git status`. New codemaps for the bytecode VM and graphics-disabled runtime stubs; `viperlib/audio.md` picks up the new music APIs; `viperlib/gui/{application,containers,widgets}.md` refreshed alongside the widget overhaul; `viperlib/crypto.md` and `viperlib/network.md` reflect the in-tree X.509 + RSA work; the Zia reference clarifies `?` (try) vs `?.` (optional chain), pins the named-argument rule (user-defined only — runtime APIs stay positional), documents `foreign func`, and removes a stale `Map.put` alias; the cross-platform checklist + differences notes record that TLS no longer pulls in macOS-specific frameworks; clarifications to the optimizer rehab status, `--no-mem2reg` behavior, and graphics-stub policy. Final cycle item: a comment-grinding pass added or improved Doxygen blocks across ~50 `.c` files in `src/runtime/{graphics,text,core}` (no behavior change, replaces the last of the placeholder `/// @brief X the foo.` stubs).
+**Demos.** Pac-Man rewritten as Crackman (split into session/progression/frontend, smoke probe, audio banks). Paint gains layers, undo/redo, and an expanded feature set. ViperIDE adopts the new GUI APIs (per-file IntelliSense, pixel-position hover, custom fonts, theme toggle, font zoom). Two new 3D demos (`3dbaseball`, `3dscene`, ~1.1 KLOC combined). The marquee new piece is a text-mode human-manager franchise shell on top of the existing baseball engine — pacing profiles, interactive lineup building, save slots, three new probes — registered across all four `build_demos.*` scripts.
+
+**Docs.** Comprehensive sweep across `viperlib/` (audio, GUI, crypto, network) reflecting this cycle's runtime changes, plus Zia-reference clarifications (`?` vs `?.`, named-argument rules, `foreign func`) and cross-platform notes for the macOS framework removal. A comment-grinding pass added or improved Doxygen blocks across ~50 `.c` files in `src/runtime/{graphics,text,core}` (no behavior change, eliminates the last placeholder `/// @brief X the foo.` stubs).
 
 ---
 
@@ -360,5 +370,6 @@ Pac-Man renamed to Crackman and split into session/progression/frontend with a s
 | `0ec6b1cd4` | 2026-04-18 | New `HttpsServer` + `WssServer` (server-side TLS), full from-scratch TLS-server handshake with EC cert/key loading (SEC1 + PKCS#8), ECDSA-P256 math expansion, BASIC frontend route lowering for `HttpsServer` |
 | `a1484835b` | 2026-04-18 | Network security hardening — cross-origin redirect strips sensitive headers, TLS server-side SNI validation, WSS Origin/Host check, CRLF injection guard, HTTP/1.0 keep-alive defaults, dual-stack IPv6 UDP, ephemeral port + thread-safe server state, Zia frontend `HttpsServer` lowering |
 | `855ee2922` | 2026-04-19 | Native RSA (rt_rsa.c/h — RSA-PSS-SHA256 verify, PKCS#1 / SubjectPublicKeyInfo parsing) + TLS server key-type discrimination, in-tree X.509 chain validator drops macOS `Security.framework` link, ~50-file Doxygen comment-grinding pass across runtime graphics / text / core, Zia-reference + crypto/network/cross-platform doc clarifications |
+| `55dbe72b7` | 2026-04-19 | PBKDF2 iteration default 100K → 300K + `Password.Hash` floor 10K → 100K (rt_aes / rt_cipher / rt_password), TLS validator enforces Extended Key Usage / TLS server-auth on leaf cert, in-tree `rt_network_timegm_utc` replaces platform `timegm()` (last platform time-call removed from network stack), HTTP / HTTPS server shared-helper consolidation (`rt_http_server_shared.inc`), WS / WSS server shared-helper consolidation (`rt_ws_shared.inc`), expanded RTPasswordTests / RTCipherTests / RTHighLevelNetworkTests / RTRestClientTests / RTNetworkHardenTests coverage |
 
 <!-- END DRAFT -->

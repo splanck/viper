@@ -93,16 +93,52 @@ static void make_key(const char *host, int port, char *buf, size_t buf_len) {
         snprintf(buf, buf_len, "%s:%d", host ? host : "", port);
 }
 
+static void close_tcp_connection(void *tcp) {
+    if (!tcp)
+        return;
+    rt_tcp_close(tcp);
+    if (rt_obj_release_check0(tcp))
+        rt_obj_free(tcp);
+}
+
 static void close_entry(pooled_entry_t *entry) {
     if (entry->tcp) {
-        rt_tcp_close(entry->tcp);
-        if (rt_obj_release_check0(entry->tcp))
-            rt_obj_free(entry->tcp);
+        close_tcp_connection(entry->tcp);
         entry->tcp = NULL;
     }
     free(entry->key);
     entry->key = NULL;
     entry->in_use = false;
+}
+
+static void remove_entry_at(rt_connpool_impl *pool, int index) {
+    if (!pool || index < 0 || index >= pool->count)
+        return;
+    close_entry(&pool->entries[index]);
+    pool->entries[index] = pool->entries[pool->count - 1];
+    memset(&pool->entries[pool->count - 1], 0, sizeof(pooled_entry_t));
+    pool->count--;
+}
+
+static bool track_connection(rt_connpool_impl *pool,
+                             void *tcp,
+                             const char *key,
+                             bool in_use,
+                             time_t last_used) {
+    if (!pool || !tcp || !key || pool->count >= pool->max_size)
+        return false;
+
+    char *key_copy = strdup(key);
+    if (!key_copy)
+        return false;
+
+    pooled_entry_t *entry = &pool->entries[pool->count++];
+    memset(entry, 0, sizeof(*entry));
+    entry->tcp = tcp;
+    entry->key = key_copy;
+    entry->last_used = last_used;
+    entry->in_use = in_use;
+    return true;
 }
 
 /// @brief Probe a pooled TCP connection to see if the peer has silently closed it.
@@ -182,8 +218,11 @@ void *rt_connpool_new(int64_t max_size) {
     if (!pool)
         rt_trap("ConnectionPool: memory allocation failed");
     memset(pool, 0, sizeof(*pool));
-    pool->max_size =
-        (int)(max_size > 0 && max_size < POOL_MAX_ENTRIES ? max_size : POOL_MAX_ENTRIES);
+    if (max_size < 1)
+        max_size = 1;
+    if (max_size > POOL_MAX_ENTRIES)
+        max_size = POOL_MAX_ENTRIES;
+    pool->max_size = (int)max_size;
     POOL_MUTEX_INIT(&pool->lock);
     pool->lock_initialized = true;
     rt_obj_set_finalizer(pool, rt_connpool_finalize);
@@ -194,7 +233,8 @@ void *rt_connpool_new(int64_t max_size) {
 ///   1. Evict expired idle entries (`POOL_IDLE_TIMEOUT_SEC` since last_used).
 ///   2. Find an idle entry whose key matches; if its TCP is still healthy, reuse it.
 ///   3. If unhealthy, close + remove and keep searching.
-///   4. If nothing matches, open a fresh TCP connection.
+///   4. If nothing matches, open a fresh TCP connection and immediately track
+///      it as checked out when pool capacity allows.
 /// All steps run under the pool mutex except the actual `rt_tcp_connect` (which can block).
 void *rt_connpool_acquire(void *obj, rt_string host, int64_t port) {
     if (!obj)
@@ -215,11 +255,7 @@ void *rt_connpool_acquire(void *obj, rt_string host, int64_t port) {
     for (int i = 0; i < pool->count; i++) {
         if (!pool->entries[i].in_use &&
             difftime(now, pool->entries[i].last_used) > POOL_IDLE_TIMEOUT_SEC) {
-            close_entry(&pool->entries[i]);
-            // Swap with last
-            pool->entries[i] = pool->entries[pool->count - 1];
-            memset(&pool->entries[pool->count - 1], 0, sizeof(pooled_entry_t));
-            pool->count--;
+            remove_entry_at(pool, i);
             i--;
         }
     }
@@ -236,10 +272,7 @@ void *rt_connpool_acquire(void *obj, rt_string host, int64_t port) {
                 return tcp;
             } else {
                 // Connection died; remove it
-                close_entry(&pool->entries[i]);
-                pool->entries[i] = pool->entries[pool->count - 1];
-                memset(&pool->entries[pool->count - 1], 0, sizeof(pooled_entry_t));
-                pool->count--;
+                remove_entry_at(pool, i);
                 i--;
             }
         }
@@ -249,6 +282,9 @@ void *rt_connpool_acquire(void *obj, rt_string host, int64_t port) {
 
     // No pooled connection available; create new one
     void *tcp = rt_tcp_connect(host, port);
+    POOL_MUTEX_LOCK(&pool->lock);
+    (void)track_connection(pool, tcp, key, true, 0);
+    POOL_MUTEX_UNLOCK(&pool->lock);
     return tcp;
 }
 
@@ -260,9 +296,7 @@ void rt_connpool_release(void *obj, void *conn) {
     rt_connpool_impl *pool = (rt_connpool_impl *)obj;
 
     if (!tcp_connection_healthy(conn)) {
-        rt_tcp_close(conn);
-        if (rt_obj_release_check0(conn))
-            rt_obj_free(conn);
+        close_tcp_connection(conn);
         return;
     }
 
@@ -280,26 +314,21 @@ void rt_connpool_release(void *obj, void *conn) {
 
     // Not tracked — add it if there's space
     if (pool->count < pool->max_size) {
-        pooled_entry_t *entry = &pool->entries[pool->count++];
-        entry->tcp = conn;
         // Build key from connection properties
         rt_string h = rt_tcp_host(conn);
         int64_t p = rt_tcp_port(conn);
         char key[300];
         make_key(rt_string_cstr(h), (int)p, key, sizeof(key));
-        entry->key = strdup(key);
-        entry->last_used = time(NULL);
-        entry->in_use = false;
-        POOL_MUTEX_UNLOCK(&pool->lock);
-        return;
+        if (track_connection(pool, conn, key, false, time(NULL))) {
+            POOL_MUTEX_UNLOCK(&pool->lock);
+            return;
+        }
     }
 
     POOL_MUTEX_UNLOCK(&pool->lock);
 
-    // Pool full — close the connection
-    rt_tcp_close(conn);
-    if (rt_obj_release_check0(conn))
-        rt_obj_free(conn);
+    // Pool full or bookkeeping allocation failed — close the connection.
+    close_tcp_connection(conn);
 }
 
 /// @brief Remove all entries from the connpool.

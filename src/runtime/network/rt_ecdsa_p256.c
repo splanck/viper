@@ -76,10 +76,12 @@ static const u256 P256_GY = {
 // 256-bit arithmetic helpers
 //=============================================================================
 
+/// @brief Zero-fill a 256-bit integer (4 × 64-bit big-endian limbs).
 static void u256_zero(u256 r) {
     r[0] = r[1] = r[2] = r[3] = 0;
 }
 
+/// @brief Copy a 256-bit integer limb-by-limb.
 static void u256_copy(u256 r, const u256 a) {
     r[0] = a[0];
     r[1] = a[1];
@@ -87,11 +89,22 @@ static void u256_copy(u256 r, const u256 a) {
     r[3] = a[3];
 }
 
+/// @brief OR-reduce all limbs to test whether the value is zero.
+/// @details Constant-time: same instruction count regardless of value.
+///          A short-circuit `||` would leak which limb was non-zero
+///          through branch timing.
 static int u256_is_zero(const u256 a) {
     return (a[0] | a[1] | a[2] | a[3]) == 0;
 }
 
-// Compare: returns -1 if a < b, 0 if equal, 1 if a > b
+/// @brief Compare two 256-bit integers — returns -1 / 0 / 1 (a < b / a == b / a > b).
+/// @details Walks limbs from most-significant down (limb 0 first
+///          because the storage is big-endian). Used by the
+///          modular-reduction step (`fp_reduce_once`,
+///          `sn_reduce_once`) to decide whether a subtract is
+///          needed. Not constant-time on purpose — the caller
+///          uses it only on intermediate field-element comparisons,
+///          not on secret values.
 static int u256_cmp(const u256 a, const u256 b) {
     for (int i = 0; i < 4; i++) {
         if (a[i] < b[i])
@@ -102,7 +115,12 @@ static int u256_cmp(const u256 a, const u256 b) {
     return 0;
 }
 
-// Load from 32-byte big-endian
+/// @brief Load a 256-bit integer from a 32-byte big-endian byte buffer (network order).
+/// @details ECDSA signatures and public-key components cross the wire as
+///          big-endian byte arrays per SEC1 / X.509 conventions. This
+///          packs them into the internal 4×64-bit limb representation
+///          while preserving big-endian limb ordering (limb 0 = most
+///          significant 8 bytes).
 static void u256_from_bytes(u256 r, const uint8_t b[32]) {
     for (int i = 0; i < 4; i++) {
         r[i] = 0;
@@ -111,6 +129,10 @@ static void u256_from_bytes(u256 r, const uint8_t b[32]) {
     }
 }
 
+/// @brief Serialize a 256-bit integer into a 32-byte big-endian byte buffer.
+/// @details Inverse of `u256_from_bytes`. Used to emit signature
+///          components (`r`, `s`) and public-key coordinates back
+///          out to wire format.
 static void u256_to_bytes(uint8_t out[32], const u256 a) {
     for (int i = 0; i < 4; i++) {
         uint64_t limb = a[i];
@@ -121,7 +143,15 @@ static void u256_to_bytes(uint8_t out[32], const u256 a) {
     }
 }
 
-// r = a + b, returns carry (0 or 1)
+/// @brief Add two 256-bit integers with carry: `r = a + b`, returns the carry-out (0 or 1).
+/// @details Two implementations, picked at compile time:
+///          - **MSVC** uses `_addcarry_u64`, which compiles to the
+///            `adc` family of x86_64 instructions directly.
+///          - **GCC/Clang** uses `__uint128_t` arithmetic, which the
+///            optimizer also lowers to `adc` chains on x86_64 / `adds`
+///            + `adcs` on AArch64.
+///          Either way the loop is unrolled at -O2 into a tight
+///          carry-chain. Used by the field-element addition path.
 #ifdef _MSC_VER
 static uint64_t u256_add(u256 r, const u256 a, const u256 b) {
     unsigned char carry = 0;
@@ -141,7 +171,13 @@ static uint64_t u256_add(u256 r, const u256 a, const u256 b) {
 }
 #endif
 
-// r = a - b, returns borrow (0 or 1)
+/// @brief Subtract two 256-bit integers with borrow: `r = a - b`, returns the borrow-out (0 or 1).
+/// @details Mirror of `u256_add`. The borrow is captured by inspecting
+///          bit 127 of the `__int128` difference (which is set when
+///          the unsigned subtraction wrapped), or by `_subborrow_u64`
+///          on MSVC. The borrow return value is what callers like
+///          `fp_reduce_once` use to decide whether to add the
+///          modulus back.
 #ifdef _MSC_VER
 static uint64_t u256_sub(u256 r, const u256 a, const u256 b) {
     unsigned char borrow = 0;
@@ -161,13 +197,18 @@ static uint64_t u256_sub(u256 r, const u256 a, const u256 b) {
 }
 #endif
 
-// 256x256 → 512 schoolbook multiplication.
-//
-// The field / scalar code stores 256-bit integers as four 64-bit limbs in
-// big-endian limb order. To keep the wide multiply simple and portable, we
-// expand both operands into little-endian 32-bit digits, do base-2^32
-// schoolbook multiplication, normalize carries, then pack back into eight
-// 64-bit big-endian limbs.
+/// @brief 256×256 → 512 schoolbook multiplication of two big-endian-limb integers.
+/// @details The field / scalar code stores 256-bit integers as four
+///          64-bit limbs in big-endian limb order. To keep the wide
+///          multiply portable across compilers without `__int128` we
+///          expand both operands into little-endian 32-bit digits, do
+///          base-2^32 schoolbook multiplication (8×8 = 64 partial
+///          products), propagate carries in a single linear pass,
+///          then pack the result back into eight 64-bit big-endian
+///          limbs. Time complexity is O(n²) but for n=8 32-bit
+///          digits it's ~64 multiplies which the optimizer keeps in
+///          registers. Used by `fp_reduce_512` and the modular-mul
+///          helpers when a true 512-bit intermediate is needed.
 static ECDSA_P256_MAYBE_UNUSED void u256_mul_wide(u512 r, const u256 a, const u256 b) {
     uint32_t aw[8], bw[8];
     uint64_t acc[16];
@@ -277,7 +318,11 @@ static ECDSA_P256_MAYBE_UNUSED void u512_mod_u256(u256 out, const u512 wide, con
 // Field arithmetic mod p (NIST P-256 prime)
 //=============================================================================
 
-// r = a mod p (assumes a < 2p)
+/// @brief Reduce `a` modulo P256_P assuming `a < 2p` — at most one subtract needed.
+/// @details Tries `a - p`. If that borrows, `a` was already less than
+///          `p` so we keep the original. Otherwise the difference is
+///          the reduced value. Used after every field addition: the
+///          sum is in `[0, 2p)`, this brings it back into `[0, p)`.
 static void fp_reduce_once(u256 r, const u256 a) {
     u256 tmp;
     uint64_t borrow = u256_sub(tmp, a, P256_P);
@@ -288,7 +333,13 @@ static void fp_reduce_once(u256 r, const u256 a) {
         u256_copy(r, tmp);
 }
 
-// r = a + b mod p
+/// @brief Modular addition in the P-256 prime field: `r = (a + b) mod p`.
+/// @details Two cases handled:
+///          - **Carry on add** → result was ≥ 2²⁵⁶, so subtract p
+///            to bring it into range.
+///          - **No carry** → result is in `[0, 2p)`, so reduce once.
+///          Used by every elliptic-curve point operation
+///          (doubling, addition).
 static void fp_add(u256 r, const u256 a, const u256 b) {
     uint64_t carry = u256_add(r, a, b);
     if (carry) {
@@ -299,7 +350,10 @@ static void fp_add(u256 r, const u256 a, const u256 b) {
     }
 }
 
-// r = a - b mod p
+/// @brief Modular subtraction in the P-256 prime field: `r = (a - b) mod p`.
+/// @details If the unsigned subtraction borrows (`a < b`), we add
+///          `p` back to wrap into the positive residue. Otherwise
+///          the result is already in `[0, p)`.
 static void fp_sub(u256 r, const u256 a, const u256 b) {
     uint64_t borrow = u256_sub(r, a, b);
     if (borrow) {
@@ -645,6 +699,12 @@ typedef struct {
     u256 X, Y, Z;
 } jpoint;
 
+/// @brief Set a Jacobian point to "the point at infinity" (the curve's identity element).
+/// @details In Jacobian projective coordinates, the point at infinity
+///          is conventionally `(X=0, Y=1, Z=0)`. The Z=0 is the
+///          discriminator that `jpoint_is_infinity` checks. We set
+///          Y=1 (not 0) by convention so the point isn't all-zero,
+///          though most callers don't read X/Y when Z=0.
 static void jpoint_set_infinity(jpoint *P) {
     u256_zero(P->X);
     u256_zero(P->Y);
@@ -652,10 +712,17 @@ static void jpoint_set_infinity(jpoint *P) {
     P->Y[3] = 1; // Convention: Y=1 for point at infinity
 }
 
+/// @brief Test whether a Jacobian point is the point at infinity (Z component is zero).
 static int jpoint_is_infinity(const jpoint *P) {
     return u256_is_zero(P->Z);
 }
 
+/// @brief Initialize a Jacobian point from affine coordinates by setting Z=1.
+/// @details In Jacobian form, an affine point `(x, y)` maps to
+///          `(X, Y, Z) = (x, y, 1)`. The Z=1 lets us skip the
+///          division step in `jpoint_to_affine` until we actually
+///          need affine output. Used to load the generator G and
+///          parsed public-key points into Jacobian form.
 static void jpoint_from_affine(jpoint *P, const u256 x, const u256 y) {
     u256_copy(P->X, x);
     u256_copy(P->Y, y);
@@ -749,7 +816,19 @@ static void jpoint_add(jpoint *Res, const jpoint *P, const jpoint *Q) {
     Res->Z[3] = 1;
 }
 
-// Scalar multiplication: R = k * P (double-and-add, MSB first)
+/// @brief Scalar multiplication on the curve: `R = k * P` (the core EC primitive).
+/// @details Double-and-add walking from MSB to LSB of the scalar `k`:
+///          for each bit, double the running result, then add `P`
+///          if the bit is 1. The `started` flag skips the leading
+///          zero bits so we don't double the point-at-infinity
+///          unnecessarily.
+///          NOT constant-time: the per-bit branch on `(k[i] >> bit) & 1`
+///          is observable through timing/cache. **This is acceptable
+///          because Viper's ECDSA path only uses scalar-mul on
+///          *public* values during verification (G * u₁ + Q * u₂),
+///          never on the secret signing scalar.** A signing path would
+///          need a constant-time variant (Montgomery ladder, regular
+///          windowing).
 static void jpoint_scalar_mul(jpoint *R, const u256 k, const jpoint *P) {
     jpoint_set_infinity(R);
 
@@ -864,6 +943,15 @@ int ecdsa_p256_verify(const uint8_t pubkey_x[32],
     return u256_cmp(rx, r) == 0 ? 1 : 0;
 }
 
+/// @brief Derive the ECDSA-P256 public key from a 32-byte private key.
+/// @details Computes `Q = d * G` where `d` is the private scalar and
+///          `G` is the curve generator. Used at TLS-server startup
+///          to validate that a loaded EC private key matches the
+///          public key in the loaded certificate (or to surface
+///          the public key when only the private is provided).
+///          Validates `1 ≤ d < n` per FIPS 186-4. Returns 0 on
+///          out-of-range private key or on the (cryptographically
+///          impossible) scalar-mul producing the point at infinity.
 int ecdsa_p256_public_from_private(const uint8_t privkey[32],
                                    uint8_t pubkey_x[32],
                                    uint8_t pubkey_y[32]) {
@@ -885,6 +973,26 @@ int ecdsa_p256_public_from_private(const uint8_t privkey[32],
     return 1;
 }
 
+/// @brief Produce an ECDSA-P256 signature over `digest` using the private key.
+/// @details Implements FIPS 186-4 / SEC1 §4.1.3 ECDSA signing:
+///          1. Validate `1 ≤ d < n`.
+///          2. Generate a random per-signature nonce `k` via
+///             `rt_crypto_random_bytes`.
+///          3. Compute the curve point `R = k * G`, take its
+///             x-coordinate mod n as `r`.
+///          4. Compute `s = k⁻¹ * (e + r * d) mod n`, where `e`
+///             is the message digest as a scalar.
+///          5. Retry with a fresh nonce if any of `r`, `s`, or
+///             `e + r*d` came out zero (each rare but mathematically
+///             possible).
+///          6. Canonicalize to low-S form (`s = n - s` if `s > n/2`)
+///             so signatures verify against any conforming verifier
+///             — some validators reject high-S signatures as
+///             malleable.
+///          The 32-attempt cap is paranoia against pathological
+///          RNG output. Returns 1 on success with `sig_r` / `sig_s`
+///          filled, 0 if all 32 attempts failed (essentially never
+///          happens).
 int ecdsa_p256_sign(const uint8_t privkey[32],
                     const uint8_t digest[32],
                     uint8_t sig_r[32],

@@ -31,12 +31,16 @@ void *rt_ws_server_new(int64_t port);
 void rt_ws_server_start(void *server);
 /// @brief Stop accepting and close all client connections.
 void rt_ws_server_stop(void *server);
+/// @brief Require a specific subprotocol for future upgrades. Must be called while stopped.
+void rt_ws_server_set_subprotocol(void *server, rt_string subprotocol);
 /// @brief Send a text message to every connected client.
 void rt_ws_server_broadcast(void *server, rt_string message);
 /// @brief Send a binary frame (Bytes) to every connected client.
 void rt_ws_server_broadcast_bytes(void *server, void *data);
 /// @brief Count of currently-connected clients.
 int64_t rt_ws_server_client_count(void *server);
+/// @brief Negotiated subprotocol required for new clients, or empty string.
+rt_string rt_ws_server_subprotocol(void *server);
 /// @brief Get the server's listen port.
 int64_t rt_ws_server_port(void *server);
 /// @brief True if the server is currently accepting connections.

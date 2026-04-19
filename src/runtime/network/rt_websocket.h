@@ -46,6 +46,21 @@ void *rt_ws_connect(rt_string url);
 /// @note Traps on connection error, timeout, or handshake failure.
 void *rt_ws_connect_for(rt_string url, int64_t timeout_ms);
 
+/// @brief Connect to a WebSocket server and request a specific subprotocol.
+/// @param url WebSocket URL (ws:// or wss://).
+/// @param subprotocol Requested `Sec-WebSocket-Protocol` token.
+/// @return WebSocket connection object.
+/// @note Traps on invalid subprotocol, connection error, or handshake mismatch.
+void *rt_ws_connect_protocol(rt_string url, rt_string subprotocol);
+
+/// @brief Connect with timeout and request a specific WebSocket subprotocol.
+/// @param url WebSocket URL (ws:// or wss://).
+/// @param timeout_ms Connection timeout in milliseconds.
+/// @param subprotocol Requested `Sec-WebSocket-Protocol` token.
+/// @return WebSocket connection object.
+/// @note Traps on invalid subprotocol, timeout, or handshake mismatch.
+void *rt_ws_connect_for_protocol(rt_string url, int64_t timeout_ms, rt_string subprotocol);
+
 //=========================================================================
 // WebSocket - Properties
 //=========================================================================
@@ -69,6 +84,11 @@ int64_t rt_ws_close_code(void *obj);
 /// @param obj WebSocket connection object.
 /// @return Close reason string (empty if no reason provided).
 rt_string rt_ws_close_reason(void *obj);
+
+/// @brief Get the negotiated subprotocol, if any.
+/// @param obj WebSocket connection object.
+/// @return Selected `Sec-WebSocket-Protocol` token, or empty string.
+rt_string rt_ws_subprotocol(void *obj);
 
 //=========================================================================
 // WebSocket - Send Methods
