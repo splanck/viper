@@ -99,6 +99,19 @@ static int tests_total = 0;
         }                                                                                          \
     } while (0)
 
+template <typename Fn>
+static bool expect_trap_contains(Fn &&fn, const char *needle) {
+    g_last_trap = nullptr;
+    g_expect_trap = true;
+    if (setjmp(g_trap_jmp) == 0) {
+        fn();
+        g_expect_trap = false;
+        return false;
+    }
+    g_expect_trap = false;
+    return g_last_trap && (!needle || std::strstr(g_last_trap, needle) != nullptr);
+}
+
 extern "C" double rt_vec3_x(void *v);
 extern "C" double rt_vec3_y(void *v);
 extern "C" double rt_vec3_z(void *v);
@@ -214,6 +227,20 @@ static void test_mesh_cylinder() {
     PASS();
 }
 
+static void test_mesh_generators_reject_invalid_dimensions() {
+    TEST("Mesh3D generators reject invalid dimensions");
+    EXPECT_TRUE(expect_trap_contains([] { rt_mesh3d_new_box(1.0, 0.0, 1.0); },
+                                     "greater than zero"),
+                "NewBox rejects zero-sized dimensions");
+    EXPECT_TRUE(expect_trap_contains([] { rt_mesh3d_new_sphere(NAN, 8); },
+                                     "greater than zero"),
+                "NewSphere rejects non-finite radii");
+    EXPECT_TRUE(expect_trap_contains([] { rt_mesh3d_new_cylinder(1.0, -2.0, 8); },
+                                     "greater than zero"),
+                "NewCylinder rejects negative heights");
+    PASS();
+}
+
 static void test_mesh_clone() {
     TEST("Mesh3D.Clone preserves geometry");
     void *m = rt_mesh3d_new_box(1.0, 1.0, 1.0);
@@ -301,7 +328,7 @@ static void test_mesh_obj_loader() {
     rt_string path = rt_string_from_bytes(found, (int64_t)strlen(found));
     void *m = rt_mesh3d_from_obj(path);
     assert(m);
-    EXPECT_EQ(rt_mesh3d_get_vertex_count(m), 24);
+    EXPECT_EQ(rt_mesh3d_get_vertex_count(m), 8);
     EXPECT_EQ(rt_mesh3d_get_triangle_count(m), 12);
     PASS();
 }
@@ -331,6 +358,57 @@ static void test_mesh_obj_loader_flattens_material_groups() {
     assert(mesh);
     EXPECT_EQ(rt_mesh3d_get_vertex_count(mesh), 3);
     EXPECT_EQ(rt_mesh3d_get_triangle_count(mesh), 1);
+    PASS();
+}
+
+static void test_mesh_obj_loader_deduplicates_vertices_and_handles_ngons() {
+    TEST("Mesh3D.FromOBJ — deduplicates vertices and triangulates n-gons");
+    const char *path = "/tmp/viper_obj_dedup_ngon_test.obj";
+    FILE *f = fopen(path, "w");
+    assert(f);
+    fputs("v 0 0 0\n"
+          "v 1 0 0\n"
+          "v 1 1 0\n"
+          "v 0 1 0\n"
+          "v -1 0.5 0\n"
+          "vt 0 0\n"
+          "vt 1 0\n"
+          "vt 1 1\n"
+          "vt 0 1\n"
+          "vt -1 0.5\n"
+          "vn 0 0 1\n"
+          "f 1/1/1 2/2/1 3/3/1 4/4/1 5/5/1\n"
+          "f 1/1/1 3/3/1 5/5/1 # duplicate vertex tuples are reused\n",
+          f);
+    fclose(f);
+
+    rt_string obj_path = rt_string_from_bytes(path, (int64_t)strlen(path));
+    void *mesh = rt_mesh3d_from_obj(obj_path);
+    assert(mesh);
+    EXPECT_EQ(rt_mesh3d_get_vertex_count(mesh), 5);
+    EXPECT_EQ(rt_mesh3d_get_triangle_count(mesh), 4);
+    PASS();
+}
+
+static void test_mesh_obj_loader_rejects_invalid_indices() {
+    TEST("Mesh3D.FromOBJ — rejects invalid face indices");
+    const char *path = "/tmp/viper_obj_invalid_index_test.obj";
+    FILE *f = fopen(path, "w");
+    assert(f);
+    fputs("v 0 0 0\n"
+          "v 1 0 0\n"
+          "v 0 1 0\n"
+          "f 1 2 9\n",
+          f);
+    fclose(f);
+
+    EXPECT_TRUE(expect_trap_contains(
+                    [path] {
+                        rt_string obj_path = rt_string_from_bytes(path, (int64_t)strlen(path));
+                        rt_mesh3d_from_obj(obj_path);
+                    },
+                    "FromOBJ"),
+                "FromOBJ traps instead of emitting origin-collapsed triangles");
     PASS();
 }
 
@@ -688,6 +766,21 @@ static void test_camera_screen_to_ray_corners() {
     PASS();
 }
 
+static void test_camera_screen_to_ray_uses_viewport_aspect() {
+    TEST("Camera3D.ScreenToRay uses viewport aspect");
+    void *cam = rt_camera3d_new(60.0, 1.0, 0.1, 100.0);
+    void *eye = rt_vec3_new(0, 0, 5);
+    void *target = rt_vec3_new(0, 0, 0);
+    void *up = rt_vec3_new(0, 1, 0);
+    rt_camera3d_look_at(cam, eye, target, up);
+
+    void *wide_right = rt_camera3d_screen_to_ray(cam, 800, 200, 800, 400);
+    assert(wide_right);
+    EXPECT_TRUE(rt_vec3_x(wide_right) > 0.7,
+                "Wide viewport rays use the active 2:1 output aspect");
+    PASS();
+}
+
 static void test_camera_ortho_screen_to_ray_parallel() {
     TEST("Camera3D.ScreenToRay keeps orthographic rays parallel");
     void *cam = rt_camera3d_new_ortho(5.0, 1.0, 0.1, 100.0);
@@ -807,6 +900,28 @@ static void test_material_set_color() {
     TEST("Material3D.SetColor — changes material");
     void *m = rt_material3d_new();
     rt_material3d_set_color(m, 0.1, 0.2, 0.3);
+    PASS();
+}
+
+static void test_material_sanitizes_numeric_inputs() {
+    TEST("Material3D clamps non-finite and out-of-range inputs");
+    rt_material3d *m = (rt_material3d *)rt_material3d_new_color(-1.0, 0.5, INFINITY);
+    assert(m);
+    EXPECT_NEAR(m->diffuse[0], 0.0, 0.001);
+    EXPECT_NEAR(m->diffuse[1], 0.5, 0.001);
+    EXPECT_NEAR(m->diffuse[2], 0.0, 0.001);
+
+    rt_material3d_set_color(m, 2.0, NAN, 0.25);
+    EXPECT_NEAR(m->diffuse[0], 1.0, 0.001);
+    EXPECT_NEAR(m->diffuse[1], 0.0, 0.001);
+    EXPECT_NEAR(m->diffuse[2], 0.25, 0.001);
+
+    rt_material3d_set_shininess(m, -12.0);
+    EXPECT_NEAR(m->shininess, 0.0, 0.001);
+    rt_material3d_set_emissive_color(m, 3.0, -1.0, NAN);
+    EXPECT_NEAR(m->emissive[0], 1.0, 0.001);
+    EXPECT_NEAR(m->emissive[1], 0.0, 0.001);
+    EXPECT_NEAR(m->emissive[2], 0.0, 0.001);
     PASS();
 }
 
@@ -972,6 +1087,8 @@ static void test_material_alpha() {
     EXPECT_NEAR(rt_material3d_get_alpha(m), 1.0, 0.001);
     rt_material3d_set_alpha(m, 0.5);
     EXPECT_NEAR(rt_material3d_get_alpha(m), 0.5, 0.001);
+    EXPECT_EQ(rt_material3d_get_alpha_mode(m), RT_MATERIAL3D_ALPHA_MODE_BLEND);
+    rt_material3d_set_alpha_mode(m, RT_MATERIAL3D_ALPHA_MODE_OPAQUE);
     rt_material3d_set_alpha(m, 2.0);
     EXPECT_NEAR(rt_material3d_get_alpha(m), 1.0, 0.001);
     rt_material3d_set_alpha(m, -1.0);
@@ -1684,6 +1801,26 @@ static void test_canvas_begin_uses_active_output_aspect_without_mutating_camera(
     PASS();
 }
 
+static void test_canvas_fog_and_shadow_state_sanitize_inputs() {
+    TEST("Canvas3D sanitizes fog and shadow inputs");
+    rt_canvas3d canvas;
+    memset(&canvas, 0, sizeof(canvas));
+
+    rt_canvas3d_set_fog(&canvas, NAN, -4.0, 2.0, -1.0, INFINITY);
+    EXPECT_TRUE(canvas.fog_enabled == 1, "SetFog enables fog");
+    EXPECT_NEAR(canvas.fog_near, 0.0, 0.001);
+    EXPECT_TRUE(canvas.fog_far > canvas.fog_near, "SetFog keeps far greater than near");
+    EXPECT_NEAR(canvas.fog_color[0], 1.0, 0.001);
+    EXPECT_NEAR(canvas.fog_color[1], 0.0, 0.001);
+    EXPECT_NEAR(canvas.fog_color[2], 0.0, 0.001);
+
+    rt_canvas3d_set_shadow_bias(&canvas, -10.0);
+    EXPECT_NEAR(canvas.shadow_bias, 0.0, 0.001);
+    rt_canvas3d_set_shadow_bias(&canvas, NAN);
+    EXPECT_NEAR(canvas.shadow_bias, 0.005, 0.001);
+    PASS();
+}
+
 static void test_canvas_begin_applies_camera_shake_without_follow() {
     TEST("Canvas3D.Begin applies camera shake even without SmoothFollow");
     vgfx3d_backend_t backend = {};
@@ -1945,6 +2082,34 @@ static void test_mesh_tangents_for_normal_map() {
     /* CalcTangents should not crash and mesh should still be valid */
     EXPECT_EQ(rt_mesh3d_get_vertex_count(m), 3);
     EXPECT_EQ(rt_mesh3d_get_triangle_count(m), 1);
+    PASS();
+}
+
+static void test_canvas_draw_auto_generates_missing_normal_map_tangents() {
+    TEST("Canvas3D.DrawMesh auto-generates tangents for normal maps");
+    vgfx3d_backend_t backend = {};
+    rt_canvas3d canvas;
+    rt_mesh3d *mesh = (rt_mesh3d *)rt_mesh3d_new_plane(2.0, 2.0);
+    void *mat = rt_material3d_new();
+    void *normal = rt_pixels_new(1, 1);
+    double model[16] = {0.0};
+    assert(mesh != NULL && mat != NULL && normal != NULL);
+    rt_material3d_set_normal_map(mat, normal);
+
+    backend.name = "test";
+    memset(&canvas, 0, sizeof(canvas));
+    canvas.backend = &backend;
+    canvas.gfx_win = (vgfx_window_t)1;
+    canvas.in_frame = 1;
+    model[0] = model[5] = model[10] = model[15] = 1.0;
+
+    EXPECT_NEAR(mesh->vertices[0].tangent[0], 0.0, 0.001);
+    rt_canvas3d_draw_mesh_matrix(&canvas, mesh, model, mat);
+    EXPECT_TRUE(std::fabs(mesh->vertices[0].tangent[0]) +
+                    std::fabs(mesh->vertices[0].tangent[1]) +
+                    std::fabs(mesh->vertices[0].tangent[2]) >
+                    0.5,
+                "Normal-mapped draws have a usable tangent basis");
     PASS();
 }
 
@@ -2332,6 +2497,7 @@ int main() {
     test_mesh_sphere();
     test_mesh_plane();
     test_mesh_cylinder();
+    test_mesh_generators_reject_invalid_dimensions();
     test_mesh_clone();
     test_mesh_transform_uses_inverse_transpose_normals();
     test_mesh_transform_updates_tangent_basis();
@@ -2339,6 +2505,8 @@ int main() {
     test_mesh_recalc_normals();
     test_mesh_obj_loader();
     test_mesh_obj_loader_flattens_material_groups();
+    test_mesh_obj_loader_deduplicates_vertices_and_handles_ngons();
+    test_mesh_obj_loader_rejects_invalid_indices();
 
     /* Mesh3D — extended */
     test_mesh_many_vertices();
@@ -2363,6 +2531,7 @@ int main() {
     test_camera_orbit_yaw();
     test_camera_orbit_pitch();
     test_camera_screen_to_ray_corners();
+    test_camera_screen_to_ray_uses_viewport_aspect();
     test_camera_set_position_rebuilds_view();
     test_camera_set_yaw_pitch_rebuilds_view();
     test_camera_look_at_coincident_eye_preserves_translation();
@@ -2376,6 +2545,7 @@ int main() {
     test_material_new_color();
     test_material_new_textured();
     test_material_set_color();
+    test_material_sanitizes_numeric_inputs();
     test_material_set_shininess();
     test_material_set_unlit();
     test_material_null_safety();
@@ -2435,6 +2605,7 @@ int main() {
     test_canvas_dimensions_follow_active_render_target();
     test_canvas_begin2d_uses_render_target_dimensions();
     test_canvas_begin_uses_active_output_aspect_without_mutating_camera();
+    test_canvas_fog_and_shadow_state_sanitize_inputs();
     test_canvas_begin_applies_camera_shake_without_follow();
     test_canvas_overlay_draws_replay_after_3d_frame();
     test_canvas_postfx_uses_render_target_pixels();
@@ -2457,6 +2628,7 @@ int main() {
     test_vertex_color_default_white();
     test_shadow_enable_disable();
     test_mesh_tangents_for_normal_map();
+    test_canvas_draw_auto_generates_missing_normal_map_tangents();
     test_mesh_normals_recalc();
     test_terrain_splat_layer_count();
     test_terrain_splat_map_set();

@@ -73,6 +73,10 @@ static rt_audiolistener3d *s_listener_head = NULL;
 static rt_audiosource3d *s_source_head = NULL;
 static rt_audiolistener3d *s_active_listener_obj = NULL;
 
+/// @brief Drop a GC-managed reference stored in `**slot` and null the slot.
+/// @details Idempotent — safe to call on already-null slots. Used by the
+///   listener/source finalizers and by bind-site setters that need to
+///   release the previous target before installing a new one.
 static void audio3d_release_ref(void **slot) {
     if (!slot || !*slot)
         return;
@@ -81,6 +85,9 @@ static void audio3d_release_ref(void **slot) {
     *slot = NULL;
 }
 
+/// @brief Translation-unit-local copy of `rt_audio3d.c::audio3d_copy3`.
+/// @details Null-source-fills-zero convention applies: missing position
+///   vectors collapse to the origin rather than leaving `dst` untouched.
 static void audio3d_copy3(double *dst, const double *src) {
     if (!dst)
         return;
@@ -95,6 +102,9 @@ static void audio3d_copy3(double *dst, const double *src) {
     dst[2] = src[2];
 }
 
+/// @brief Translation-unit-local copy of `rt_audio3d.c::audio3d_vec_from_obj`.
+/// @details Decodes an `rt_vec3` object through the accessor API; null
+///   collapses to origin.
 static void audio3d_vec_from_obj(void *vec, double *out_xyz) {
     if (!out_xyz)
         return;
@@ -133,6 +143,11 @@ static void audio3d_update_velocity(double *velocity,
     *has_last_position = 1;
 }
 
+/// @brief Clamp a requested volume to the runtime's 0-100 scale.
+/// @details Zia / BASIC user code may pass arbitrary values (negative
+///   sentinels or "1000 = maximum" style conventions from other
+///   engines). This chokepoint normalizes everything to the actual
+///   mixer range so downstream code can assume valid input.
 static int64_t audio3d_clamp_volume(int64_t volume) {
     if (volume < 0)
         return 0;

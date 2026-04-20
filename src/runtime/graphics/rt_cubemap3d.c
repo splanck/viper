@@ -566,6 +566,8 @@ void rt_material3d_set_env_map(void *obj, void *cubemap) {
 void rt_material3d_set_reflectivity(void *obj, double r) {
     if (!obj)
         return;
+    if (!isfinite(r))
+        r = 0.0;
     if (r < 0.0)
         r = 0.0;
     if (r > 1.0)

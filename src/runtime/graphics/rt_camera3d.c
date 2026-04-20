@@ -678,14 +678,21 @@ void *rt_camera3d_screen_to_ray(void *obj, int64_t sx, int64_t sy, int64_t sw, i
     double ndc_x = (2.0 * (double)sx / (double)sw) - 1.0;
     double ndc_y = 1.0 - (2.0 * (double)sy / (double)sh); /* Y-flip */
 
+    double projection[16];
+    double aspect = sanitize_aspect((double)sw / (double)sh);
+    double near_plane = cam->near_plane;
+    double far_plane = cam->far_plane;
+    sanitize_clip_planes(&near_plane, &far_plane);
+    build_perspective(projection, sanitize_fov(cam->fov), aspect, near_plane, far_plane);
+
     /* Build VP = projection * view, then invert */
     double vp[16];
     for (int r = 0; r < 4; r++)
         for (int c = 0; c < 4; c++)
-            vp[r * 4 + c] = cam->projection[r * 4 + 0] * cam->view[0 * 4 + c] +
-                            cam->projection[r * 4 + 1] * cam->view[1 * 4 + c] +
-                            cam->projection[r * 4 + 2] * cam->view[2 * 4 + c] +
-                            cam->projection[r * 4 + 3] * cam->view[3 * 4 + c];
+            vp[r * 4 + c] = projection[r * 4 + 0] * cam->view[0 * 4 + c] +
+                            projection[r * 4 + 1] * cam->view[1 * 4 + c] +
+                            projection[r * 4 + 2] * cam->view[2 * 4 + c] +
+                            projection[r * 4 + 3] * cam->view[3 * 4 + c];
 
     double inv_vp[16];
     if (mat4d_invert(vp, inv_vp) != 0)

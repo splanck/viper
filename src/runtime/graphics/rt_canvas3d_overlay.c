@@ -22,6 +22,7 @@
 
 #include <math.h>
 #include <stdlib.h>
+#include <string.h>
 
 /// @brief Project a 3D world-space point onto 2D screen coordinates using the active scene VP.
 /// @details Standard `world → clip → NDC → screen` pipeline:
@@ -254,6 +255,80 @@ rt_string rt_canvas3d_get_backend(void *obj) {
         return rt_const_cstr("unknown");
     rt_canvas3d *c = (rt_canvas3d *)obj;
     return rt_const_cstr(c->backend ? c->backend->name : "unknown");
+}
+
+/// @brief Return the feature bits advertised by the active backend.
+/// @details The mask is based on backend vtable hooks plus the software
+///          fallback paths owned by Canvas3D. This lets applications choose
+///          production-safe rendering paths without hardcoding backend names.
+int64_t rt_canvas3d_get_backend_capabilities(void *obj) {
+    int64_t caps = 0;
+
+    if (!obj)
+        return 0;
+    rt_canvas3d *c = (rt_canvas3d *)obj;
+    const vgfx3d_backend_t *backend = c->backend;
+    if (!backend)
+        return 0;
+
+    if (backend == &vgfx3d_software_backend || (backend->name && strcmp(backend->name, "software") == 0))
+        caps |= RT_CANVAS3D_BACKEND_CAP_SOFTWARE;
+    else
+        caps |= RT_CANVAS3D_BACKEND_CAP_GPU;
+
+    if (backend->set_render_target)
+        caps |= RT_CANVAS3D_BACKEND_CAP_RENDER_TARGET;
+    if (backend->readback_rgba || (caps & RT_CANVAS3D_BACKEND_CAP_SOFTWARE))
+        caps |= RT_CANVAS3D_BACKEND_CAP_WINDOW_READBACK;
+    if (backend->shadow_begin && backend->shadow_draw && backend->shadow_end)
+        caps |= RT_CANVAS3D_BACKEND_CAP_SHADOWS;
+    if (backend->draw_skybox || (caps & RT_CANVAS3D_BACKEND_CAP_SOFTWARE))
+        caps |= RT_CANVAS3D_BACKEND_CAP_SKYBOX;
+    if (backend->submit_draw_instanced)
+        caps |= RT_CANVAS3D_BACKEND_CAP_HARDWARE_INSTANCING;
+    if (backend->present_postfx || (caps & RT_CANVAS3D_BACKEND_CAP_SOFTWARE))
+        caps |= RT_CANVAS3D_BACKEND_CAP_POSTFX;
+    if (backend->present_postfx)
+        caps |= RT_CANVAS3D_BACKEND_CAP_GPU_POSTFX;
+
+    return caps;
+}
+
+static int64_t canvas3d_capability_from_name(const char *name) {
+    if (!name || !*name)
+        return 0;
+    if (strcmp(name, "software") == 0)
+        return RT_CANVAS3D_BACKEND_CAP_SOFTWARE;
+    if (strcmp(name, "gpu") == 0)
+        return RT_CANVAS3D_BACKEND_CAP_GPU;
+    if (strcmp(name, "render_target") == 0 || strcmp(name, "rendertarget") == 0)
+        return RT_CANVAS3D_BACKEND_CAP_RENDER_TARGET;
+    if (strcmp(name, "window_readback") == 0 || strcmp(name, "readback") == 0 ||
+        strcmp(name, "screenshot") == 0)
+        return RT_CANVAS3D_BACKEND_CAP_WINDOW_READBACK;
+    if (strcmp(name, "shadows") == 0 || strcmp(name, "shadow_maps") == 0)
+        return RT_CANVAS3D_BACKEND_CAP_SHADOWS;
+    if (strcmp(name, "skybox") == 0 || strcmp(name, "cubemap_skybox") == 0)
+        return RT_CANVAS3D_BACKEND_CAP_SKYBOX;
+    if (strcmp(name, "hardware_instancing") == 0 || strcmp(name, "instancing") == 0)
+        return RT_CANVAS3D_BACKEND_CAP_HARDWARE_INSTANCING;
+    if (strcmp(name, "postfx") == 0 || strcmp(name, "post_fx") == 0)
+        return RT_CANVAS3D_BACKEND_CAP_POSTFX;
+    if (strcmp(name, "gpu_postfx") == 0 || strcmp(name, "gpu_post_fx") == 0)
+        return RT_CANVAS3D_BACKEND_CAP_GPU_POSTFX;
+    return 0;
+}
+
+/// @brief Return whether the active backend supports a named capability.
+int8_t rt_canvas3d_backend_supports(void *obj, rt_string capability) {
+    int64_t flag;
+
+    if (!obj || !capability)
+        return 0;
+    flag = canvas3d_capability_from_name(rt_string_cstr(capability));
+    if (!flag)
+        return 0;
+    return (rt_canvas3d_get_backend_capabilities(obj) & flag) ? 1 : 0;
 }
 
 /// @brief Capture the current canvas contents into a freshly allocated Pixels object.

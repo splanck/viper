@@ -86,6 +86,21 @@ void rt_canvas3d_draw_line3d(void *obj, void *from, void *to, int64_t color);
 void rt_canvas3d_draw_point3d(void *obj, void *pos, int64_t color, int64_t size);
 /// @brief Get the active backend name ("d3d11", "metal", "opengl", or "software").
 rt_string rt_canvas3d_get_backend(void *obj);
+
+#define RT_CANVAS3D_BACKEND_CAP_SOFTWARE 0x0001LL
+#define RT_CANVAS3D_BACKEND_CAP_GPU 0x0002LL
+#define RT_CANVAS3D_BACKEND_CAP_RENDER_TARGET 0x0004LL
+#define RT_CANVAS3D_BACKEND_CAP_WINDOW_READBACK 0x0008LL
+#define RT_CANVAS3D_BACKEND_CAP_SHADOWS 0x0010LL
+#define RT_CANVAS3D_BACKEND_CAP_SKYBOX 0x0020LL
+#define RT_CANVAS3D_BACKEND_CAP_HARDWARE_INSTANCING 0x0040LL
+#define RT_CANVAS3D_BACKEND_CAP_POSTFX 0x0080LL
+#define RT_CANVAS3D_BACKEND_CAP_GPU_POSTFX 0x0100LL
+
+/// @brief Return an RT_CANVAS3D_BACKEND_CAP_* bitmask for the active backend.
+int64_t rt_canvas3d_get_backend_capabilities(void *obj);
+/// @brief Return whether the active backend supports a named capability.
+int8_t rt_canvas3d_backend_supports(void *obj, rt_string capability);
 /// @brief Capture the current back-buffer contents into a fresh Pixels object.
 void *rt_canvas3d_screenshot(void *obj);
 
@@ -341,9 +356,11 @@ void rt_canvas3d_disable_shadows(void *canvas);
 /// @brief Set the shadow depth bias to combat shadow acne (typical: 0.001–0.005).
 void rt_canvas3d_set_shadow_bias(void *canvas, double bias);
 
-/* Opaque depth-order hint: enables front-to-back sorting for opaque draws.
- * This is not full occlusion-query or Hi-Z visibility culling. */
-/// @brief Toggle front-to-back sorting hint for opaque draws (helps early-Z reject overdraw).
+/* Coarse CPU visibility hint: enables frustum rejection and front-to-back
+ * sorting for opaque draws. This is not full occlusion-query or Hi-Z culling. */
+/// @brief Toggle coarse CPU frustum rejection plus front-to-back opaque ordering.
+void rt_canvas3d_set_frustum_culling(void *canvas, int8_t enabled);
+/// @brief Backwards-compatible alias for rt_canvas3d_set_frustum_culling().
 void rt_canvas3d_set_occlusion_culling(void *canvas, int8_t enabled);
 
 /* Instanced rendering + Terrain */

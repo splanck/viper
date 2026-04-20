@@ -31,6 +31,7 @@
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
 
+#include <math.h>
 #include <stdint.h>
 #include <string.h>
 
@@ -85,6 +86,8 @@ static void material_assign_ref(void **slot, void *value) {
 /// @brief Clamp into the closed `[0, 1]` range — the common normalized-parameter guard
 /// used across PBR material setters (metallic, roughness, AO, alpha, reflectivity, etc.).
 static double clamp01(double value) {
+    if (!isfinite(value))
+        return 0.0;
     if (value < 0.0)
         return 0.0;
     if (value > 1.0)
@@ -96,7 +99,21 @@ static double clamp01(double value) {
 /// input only needs a floor (shininess, normal scale, emissive intensity, etc.) and
 /// don't have a natural upper bound.
 static double clamp_min(double value, double min_value) {
+    if (!isfinite(value))
+        return min_value;
     return value < min_value ? min_value : value;
+}
+
+/// @brief Clamp a color component to the canonical `[0, 1]` range.
+/// @details Thin wrapper over `clamp01` whose separate name documents
+///   intent at call sites — a reader scanning a setter sees "this channel
+///   is a color component with normalized range" rather than a generic
+///   01 clamp that happens to be applied to RGBA. Values above 1.0 (HDR
+///   color authoring) are deliberately clamped down: the legacy material
+///   model is SDR-only, and HDR authoring goes through the separate PBR
+///   workflow.
+static double sanitize_color(double value) {
+    return clamp01(value);
 }
 
 /// @brief Initialize a freshly allocated material to the legacy-Phong default — white
@@ -227,9 +244,9 @@ void *rt_material3d_new_color(double r, double g, double b) {
     rt_material3d *mat = (rt_material3d *)rt_material3d_new();
     if (!mat)
         return NULL;
-    mat->diffuse[0] = r;
-    mat->diffuse[1] = g;
-    mat->diffuse[2] = b;
+    mat->diffuse[0] = sanitize_color(r);
+    mat->diffuse[1] = sanitize_color(g);
+    mat->diffuse[2] = sanitize_color(b);
     mat->diffuse[3] = 1.0;
     return mat;
 }
@@ -277,9 +294,9 @@ void rt_material3d_set_color(void *obj, double r, double g, double b) {
     if (!obj)
         return;
     rt_material3d *mat = (rt_material3d *)obj;
-    mat->diffuse[0] = r;
-    mat->diffuse[1] = g;
-    mat->diffuse[2] = b;
+    mat->diffuse[0] = sanitize_color(r);
+    mat->diffuse[1] = sanitize_color(g);
+    mat->diffuse[2] = sanitize_color(b);
 }
 
 /// @brief Set or replace the diffuse texture map.
@@ -298,7 +315,7 @@ void rt_material3d_set_albedo_map(void *obj, void *pixels) {
 void rt_material3d_set_shininess(void *obj, double s) {
     if (!obj)
         return;
-    ((rt_material3d *)obj)->shininess = s;
+    ((rt_material3d *)obj)->shininess = clamp_min(s, 0.0);
 }
 
 /// @brief Enable or disable unlit mode (ignores scene lighting, renders flat color/texture).
@@ -322,16 +339,20 @@ void rt_material3d_set_shading_model(void *obj, int64_t model) {
 void rt_material3d_set_custom_param(void *obj, int64_t index, double value) {
     if (!obj || index < 0 || index >= 8)
         return;
-    ((rt_material3d *)obj)->custom_params[index] = value;
+    ((rt_material3d *)obj)->custom_params[index] = isfinite(value) ? value : 0.0;
 }
 
 /// @brief Set the transparency level (0.0 = invisible, 1.0 = fully opaque).
-/// @details Alpha only affects coverage when `AlphaMode` is `MASK` or `BLEND`.
-///          `OPAQUE` ignores the alpha scalar entirely.
+/// @details Values are clamped to [0,1]. Setting alpha below 1.0 promotes an
+///          opaque material to BLEND so the visible result matches the scalar.
+///          Call SetAlphaMode afterwards when explicit MASK/OPAQUE behavior is needed.
 void rt_material3d_set_alpha(void *obj, double alpha) {
     if (!obj)
         return;
-    ((rt_material3d *)obj)->alpha = clamp01(alpha);
+    rt_material3d *mat = (rt_material3d *)obj;
+    mat->alpha = clamp01(alpha);
+    if (mat->alpha < 0.999 && mat->alpha_mode == RT_MATERIAL3D_ALPHA_MODE_OPAQUE)
+        mat->alpha_mode = RT_MATERIAL3D_ALPHA_MODE_BLEND;
 }
 
 /// @brief Get the current transparency level of the material.
@@ -457,9 +478,9 @@ void rt_material3d_set_emissive_color(void *obj, double r, double g, double b) {
     if (!obj)
         return;
     rt_material3d *m = (rt_material3d *)obj;
-    m->emissive[0] = r;
-    m->emissive[1] = g;
-    m->emissive[2] = b;
+    m->emissive[0] = sanitize_color(r);
+    m->emissive[1] = sanitize_color(g);
+    m->emissive[2] = sanitize_color(b);
 }
 
 /// @brief Set normal-map intensity (≥ 0). 1.0 = no scaling, > 1 amplifies bumps, < 1 flattens.

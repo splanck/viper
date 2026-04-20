@@ -53,6 +53,18 @@ uint64_t vgfx3d_get_pixels_generation(const void *pixels_ptr) {
     return pv->generation;
 }
 
+/// @brief Combine a Pixels object's identity + content generation into one cache key.
+/// @details Backends cache GPU-side texture uploads keyed by this value.
+///   The key must change whenever *either* the Pixels object is a
+///   different identity (recreated with the same address by the
+///   allocator — common after GC free+new) *or* the existing object's
+///   content mutates (generation bump from a Set / Fill / Paste).
+///   Seed is the FNV-1a 64-bit offset basis; the mixing step uses the
+///   golden-ratio increment from Boost's hash_combine so unrelated
+///   (identity, generation) pairs distribute uniformly across the output
+///   space. Null pointer returns 0 as a distinguishable "no Pixels"
+///   sentinel — 0 cannot otherwise appear because the mixing always
+///   XORs in the seed.
 uint64_t vgfx3d_get_pixels_cache_key(const void *pixels_ptr) {
     const vgfx3d_pixels_view_t *pv = (const vgfx3d_pixels_view_t *)pixels_ptr;
     uint64_t signature = 1469598103934665603ull;

@@ -25,6 +25,13 @@
 #include <limits.h>
 #include <string.h>
 
+/// @brief Transpose a 4x4 matrix from one row/column major layout to the other.
+/// @details The runtime stores matrices in row-major order (`m[r*4+c]`)
+///   while Metal shading language reads uniform matrices in column-major
+///   by default (`m[c*4+r]`). This helper is the conversion point on the
+///   CPU→GPU boundary — every matrix bound to a Metal argument goes
+///   through here first so shader code can continue to use natural
+///   column-major syntax without the upload site caring.
 static void transpose4x4_local(const float *src, float *dst) {
     for (int r = 0; r < 4; r++)
         for (int c = 0; c < 4; c++)
@@ -226,6 +233,16 @@ int vgfx3d_metal_should_reuse_morph_cache(const void *cached_key,
            cached_has_normal_deltas == has_normal_deltas;
 }
 
+/// @brief Decide whether a GPU-cached resource has gone cold enough to evict.
+/// @details Metal's texture/buffer caches track the last frame on which each
+///   entry was used. An entry is eligible for eviction when `current_frame -
+///   last_used_frame > max_age`. Two special cases: `max_age == 0` disables
+///   pruning entirely (treats every entry as immortal — useful for debug
+///   builds where texture churn should stay diagnosable), and
+///   `current_frame <= last_used_frame` is treated as "don't prune" because
+///   it indicates a counter wraparound or entry-from-the-future state that
+///   shouldn't trigger a mass eviction.
+/// @return Non-zero when the entry should be dropped.
 int vgfx3d_metal_should_prune_cache_entry(uint64_t current_frame,
                                           uint64_t last_used_frame,
                                           uint64_t max_age) {

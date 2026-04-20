@@ -164,6 +164,7 @@ The rendering surface. Creates a window and manages the render loop.
 | `Fps` | Integer | read | Frames per second |
 | `DeltaTime` | Integer | read | Milliseconds since last Flip (first frame = 0) |
 | `Backend` | String | read | Active renderer: "software", "metal", "d3d11", "opengl" |
+| `BackendCapabilities` | Integer | read | Bitmask of `Canvas3D` backend capabilities |
 | `Wireframe` | Boolean | write | Toggle wireframe rendering (default: off) |
 
 ### Constructors
@@ -182,6 +183,7 @@ The rendering surface. Creates a window and manages the render loop.
 | `End()` | `void()` | End frame — must be called after all draw calls |
 | `Flip()` | `void()` | Present frame to screen, compute DeltaTime |
 | `Poll()` | `i64()` | Process window events (call once per frame) |
+| `BackendSupports(capability)` | `i1(str)` | Test a named backend capability such as `shadows`, `skybox`, `render_target`, `window_readback`, `hardware_instancing`, `postfx`, or `gpu_postfx` |
 
 ### Drawing Methods
 
@@ -221,7 +223,8 @@ The rendering surface. Creates a window and manages the render loop.
 | `SetRenderTarget(target)` | `void(obj)` | Redirect rendering to offscreen RenderTarget3D |
 | `ResetRenderTarget()` | `void()` | Return to window rendering |
 | `SetPostFX(fx)` | `void(obj)` | Set PostFX3D chain (applied in Flip to the window or active render target) |
-| `SetOcclusionCulling(enabled)` | `void(i1)` | Toggle coarse CPU frustum rejection plus front-to-back opaque ordering |
+| `SetFrustumCulling(enabled)` | `void(i1)` | Toggle coarse CPU frustum rejection plus front-to-back opaque ordering |
+| `SetOcclusionCulling(enabled)` | `void(i1)` | Compatibility alias for `SetFrustumCulling`; this is not hardware occlusion-query culling |
 
 ### Debug Drawing
 
@@ -370,7 +373,9 @@ func start() {
 
 All mesh generators and the OBJ loader produce **counter-clockwise (CCW)** winding for front faces. When constructing meshes programmatically, vertices must be ordered CCW when viewed from the front.
 
-**OBJ loader:** Supports v/vn/vt, quads, and negative indices. `.mtl`, `usemtl`, `g`, and `o` directives are parsed and flattened but do not create per-material submeshes.
+**Mesh validation:** Procedural generators reject non-finite and non-positive dimensions. Sphere and cylinder segment counts are clamped to production-safe maxima to avoid accidental unbounded allocation. `AddVertex` traps on non-finite vertex data, and `AddTriangle` ignores invalid or degenerate triangles.
+
+**OBJ loader:** Supports v/vn/vt tuples, negative indices, inline face comments, and arbitrary n-gons through fan triangulation. The loader deduplicates identical `(position, uv, normal)` tuples so indexed assets do not balloon into one vertex per face corner. Invalid face indices trap and abort the load instead of emitting corrupt geometry. `.mtl`, `usemtl`, `g`, and `o` directives are parsed and flattened but do not create per-material submeshes.
 
 **STL loader:** Auto-detects binary vs ASCII format, computes normals.
 
@@ -467,7 +472,7 @@ Surface appearance for meshes, models, decals, and other 3D drawables.
 
 | Property | Type | Access | Description |
 |----------|------|--------|-------------|
-| `Alpha` | Float | read/write | Opacity [0.0=invisible, 1.0=opaque]. Default 1.0. `AlphaMode=Blend` uses it for transparency; `AlphaMode=Opaque` ignores it for blending/depth classification. |
+| `Alpha` | Float | read/write | Opacity [0.0=invisible, 1.0=opaque]. Default 1.0. Setting alpha below 1.0 promotes `AlphaMode` from `Opaque` to `Blend`. |
 | `Metallic` | Float | read/write | PBR metallic factor [0.0=dielectric, 1.0=metal]. Default 0.0 |
 | `Roughness` | Float | read/write | PBR roughness [0.0=smooth, 1.0=rough]. Default 0.5 |
 | `AO` | Float | read/write | Ambient-occlusion multiplier. Default 1.0 |
@@ -508,6 +513,7 @@ Surface appearance for meshes, models, decals, and other 3D drawables.
 - `NewPBR` selects the metallic/roughness workflow directly.
 - Calling `SetMetallic`, `SetRoughness`, `SetAO`, `SetMetallicRoughnessMap`, or `SetAOMap` on a legacy material promotes it into the PBR workflow.
 - `Clone()` and `MakeInstance()` both return independent material objects. They eagerly copy scalar state and share the currently referenced texture/cubemap objects by pointer. After cloning, either material can replace its maps independently.
+- Color and scalar setters sanitize input at the runtime boundary: colors and PBR factors are clamped to valid ranges, non-finite custom parameters become `0`, and non-finite shadow/fog/material values fall back to deterministic safe defaults.
 - `AlphaMode` changes how texture alpha is interpreted for PBR materials:
   - `0`: opaque. Texture/material alpha does not enable blending, and surviving fragments write depth as opaque.
   - `1`: masked. Fragments below the cutoff are discarded; surviving fragments render as opaque coverage.
@@ -2960,7 +2966,21 @@ The GPU backend is selected automatically at startup:
 
 If the GPU backend fails to initialize (no GPU, driver issue), the software rasterizer is used automatically. Check `canvas.Backend` to see which renderer is active.
 
-**Software renderer** — Always available. Gouraud shading by default, switches to per-pixel Blinn-Phong when a normal map is present. Supports bilinear texture filtering, per-vertex colors, shadow mapping for up to two directional lights, specular maps, normal maps, and per-pixel terrain splatting.
+For feature gating, prefer `canvas.BackendCapabilities` or `canvas.BackendSupports(name)` over string comparisons against `canvas.Backend`. Capability names currently include `software`, `gpu`, `render_target`, `window_readback`, `shadows`, `skybox`, `hardware_instancing`, `postfx`, and `gpu_postfx`. The bitmask values are:
+
+| Bit | Capability |
+|-----|------------|
+| `0x0001` | Software backend |
+| `0x0002` | GPU backend |
+| `0x0004` | RenderTarget3D binding |
+| `0x0008` | Window framebuffer readback / screenshots |
+| `0x0010` | Shadow map passes |
+| `0x0020` | Cubemap skybox path |
+| `0x0040` | Hardware instancing backend hook |
+| `0x0080` | PostFX support |
+| `0x0100` | GPU-owned PostFX presentation |
+
+**Software renderer** — Always available. Gouraud shading by default, switches to per-pixel Blinn-Phong when a normal map is present. Supports bilinear texture filtering, per-vertex colors, shadow mapping for up to two directional lights with 3x3 PCF filtering, specular maps, normal maps, and per-pixel terrain splatting.
 
 **Metal** (macOS) — Near-full feature parity (94%): lit/unlit textures, the shared `Material3D` PBR path (metallic/roughness, AO, alpha modes, emissive intensity, normal scale), spot light cone attenuation, linear fog, wireframe, per-frame texture caching, GPU skinning (4-bone), morph targets, up to two directional shadow maps, instanced rendering, terrain splatting, and post-processing (bloom, FXAA, tone mapping, vignette, color grading).
 

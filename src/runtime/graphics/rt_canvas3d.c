@@ -64,6 +64,24 @@ static int canvas3d_backend_owns_gpu_rtt(const rt_canvas3d *c) {
     return c && c->render_target && c->backend && c->backend != &vgfx3d_software_backend;
 }
 
+static float canvas3d_clamp01_f64(double value) {
+    if (!isfinite(value))
+        return 0.0f;
+    if (value < 0.0)
+        return 0.0f;
+    if (value > 1.0)
+        return 1.0f;
+    return (float)value;
+}
+
+static float canvas3d_sanitize_nonnegative_f64(double value, float fallback) {
+    if (!isfinite(value))
+        return fallback;
+    if (value < 0.0)
+        return 0.0f;
+    return (float)value;
+}
+
 /// @brief Push the current frame's post-FX enable flag + snapshot to the backend.
 ///
 /// Called by `latch_gpu_postfx_state` after capturing a snapshot.
@@ -365,6 +383,25 @@ static int8_t canvas3d_material_backface_cull(const rt_canvas3d *c, const rt_mat
     if (!c)
         return 0;
     return (int8_t)(c->backface_cull && !(mat && mat->double_sided));
+}
+
+static int canvas3d_mesh_has_tangents(const rt_mesh3d *mesh) {
+    if (!mesh || !mesh->vertices)
+        return 0;
+    for (uint32_t i = 0; i < mesh->vertex_count; i++) {
+        const float *t = mesh->vertices[i].tangent;
+        float len2 = t[0] * t[0] + t[1] * t[1] + t[2] * t[2];
+        if (len2 > 1e-8f)
+            return 1;
+    }
+    return 0;
+}
+
+static void canvas3d_ensure_normal_map_tangents(rt_mesh3d *mesh, const rt_material3d *mat) {
+    if (!mesh || !mat || !mat->normal_map)
+        return;
+    if (!canvas3d_mesh_has_tangents(mesh))
+        rt_mesh3d_calc_tangents(mesh);
 }
 
 /// @brief Translate every material field into the corresponding draw-command field.
@@ -2445,6 +2482,7 @@ void rt_canvas3d_draw_mesh_matrix_keyed(void *obj,
 
     if (mesh->vertex_count == 0 || mesh->index_count == 0)
         return;
+    canvas3d_ensure_normal_map_tangents(mesh, mat);
     rt_mesh3d_refresh_bounds(mesh);
 
     if (!canvas3d_track_temp_object(c, mesh_obj))
@@ -2579,6 +2617,7 @@ void rt_canvas3d_queue_instanced_batch(void *canvas_obj,
     if (!canvas3d_track_temp_object(c, material_obj))
         return;
 
+    canvas3d_ensure_normal_map_tangents(mesh, mat);
     rt_mesh3d_refresh_bounds(mesh);
     memset(&base_cmd, 0, sizeof(base_cmd));
     base_cmd.vertices = mesh->vertices;
@@ -2998,7 +3037,7 @@ int64_t rt_canvas3d_poll(void *obj) {
         int64_t dy = (int64_t)my - (int64_t)cy;
         rt_mouse_force_delta(dx, dy);
     } else {
-        rt_mouse_update_pos((int64_t)mx, (int64_t)my);
+        rt_canvas3d_update_mouse_from_physical(c->gfx_win, mx, my);
     }
 
     /* Process events (keyboard + mouse buttons only — mouse moves handled above) */
@@ -3036,7 +3075,7 @@ int64_t rt_canvas3d_poll(void *obj) {
 
     if (!captured) {
         vgfx_mouse_pos(c->gfx_win, &mx, &my);
-        rt_mouse_update_pos((int64_t)mx, (int64_t)my);
+        rt_canvas3d_update_mouse_from_physical(c->gfx_win, mx, my);
     }
 
     /* Update action mapping state after input devices and event queues are
@@ -3179,12 +3218,16 @@ void rt_canvas3d_set_fog(
     if (!obj)
         return;
     rt_canvas3d *c = (rt_canvas3d *)obj;
+    float sanitized_near = canvas3d_sanitize_nonnegative_f64(near_dist, 0.0f);
+    float sanitized_far = canvas3d_sanitize_nonnegative_f64(far_dist, sanitized_near + 1.0f);
+    if (sanitized_far <= sanitized_near + 1e-4f)
+        sanitized_far = sanitized_near + 1.0f;
     c->fog_enabled = 1;
-    c->fog_near = (float)near_dist;
-    c->fog_far = (float)far_dist;
-    c->fog_color[0] = (float)r;
-    c->fog_color[1] = (float)g;
-    c->fog_color[2] = (float)b;
+    c->fog_near = sanitized_near;
+    c->fog_far = sanitized_far;
+    c->fog_color[0] = canvas3d_clamp01_f64(r);
+    c->fog_color[1] = canvas3d_clamp01_f64(g);
+    c->fog_color[2] = canvas3d_clamp01_f64(b);
 }
 
 /// @brief Disable distance fog on the canvas.
@@ -3233,14 +3276,19 @@ void rt_canvas3d_disable_shadows(void *obj) {
 void rt_canvas3d_set_shadow_bias(void *obj, double bias) {
     if (!obj)
         return;
-    ((rt_canvas3d *)obj)->shadow_bias = (float)bias;
+    ((rt_canvas3d *)obj)->shadow_bias = canvas3d_sanitize_nonnegative_f64(bias, 0.005f);
 }
 
-/// @brief Enable or disable software occlusion culling for draw submission.
-void rt_canvas3d_set_occlusion_culling(void *obj, int8_t enabled) {
+/// @brief Enable or disable coarse CPU frustum culling for draw submission.
+void rt_canvas3d_set_frustum_culling(void *obj, int8_t enabled) {
     if (!obj)
         return;
-    ((rt_canvas3d *)obj)->occlusion_culling = enabled;
+    ((rt_canvas3d *)obj)->occlusion_culling = enabled ? 1 : 0;
+}
+
+/// @brief Backwards-compatible alias for rt_canvas3d_set_frustum_culling().
+void rt_canvas3d_set_occlusion_culling(void *obj, int8_t enabled) {
+    rt_canvas3d_set_frustum_culling(obj, enabled);
 }
 
 #else

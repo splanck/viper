@@ -26,6 +26,7 @@
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
 #include "vgfx3d_backend.h"
+#include "vgfx3d_backend_utils.h"
 
 #include <float.h>
 #include <math.h>
@@ -38,8 +39,12 @@
  * Software backend context
  *=========================================================================*/
 
+typedef struct pipe_vert pipe_vert_t;
+
 typedef struct {
     float *zbuf;
+    pipe_vert_t *vertex_scratch;
+    uint32_t vertex_scratch_capacity;
     int32_t width, height;
     float vp[16]; /* view * projection (float, row-major) */
     float cam_pos[3];
@@ -90,6 +95,8 @@ static float sw_sample_shadow_visibility(const sw_context_t *ctx,
     float dz_du = 0.0f;
     float dz_dv = 0.0f;
     float slope;
+    float visibility_sum = 0.0f;
+    int sample_count = 0;
 
     if (!ctx || slot < 0 || slot >= ctx->shadow_count || !ctx->shadow_depth[slot])
         return 1.0f;
@@ -123,7 +130,23 @@ static float sw_sample_shadow_visibility(const sw_context_t *ctx,
         dz_dv = ctx->shadow_depth[slot][(syi + 1) * shadow_w + sxi] - sz_map;
     slope = sqrtf(dz_du * dz_du + dz_dv * dz_dv);
     slope_bias += ctx->shadow_bias * slope * 4.0f;
-    return (sd > sz_map + slope_bias) ? 0.15f : 1.0f;
+
+    for (int oy = -1; oy <= 1; oy++) {
+        int py = syi + oy;
+        if (py < 0 || py >= shadow_h)
+            continue;
+        for (int ox = -1; ox <= 1; ox++) {
+            int px = sxi + ox;
+            float sample_depth;
+            if (px < 0 || px >= shadow_w)
+                continue;
+            sample_depth = ctx->shadow_depth[slot][py * shadow_w + px];
+            visibility_sum += (sd > sample_depth + slope_bias) ? 0.15f : 1.0f;
+            sample_count++;
+        }
+    }
+
+    return sample_count > 0 ? visibility_sum / (float)sample_count : 1.0f;
 }
 
 /// @brief Resize the depth buffer if dimensions changed; idempotent on match.
@@ -174,14 +197,30 @@ static void mat4f_transform4(const float *m, const float *in, float *out) {
  * Pipeline vertex
  *=========================================================================*/
 
-typedef struct {
+struct pipe_vert {
     float clip[4];
     float world[3];
     float normal[3];
     float tangent[4];
     float uv[2];
     float color[4];
-} pipe_vert_t;
+};
+
+static pipe_vert_t *sw_acquire_pipe_vertices(sw_context_t *ctx, uint32_t count) {
+    if (!ctx || count == 0)
+        return NULL;
+    if (ctx->vertex_scratch_capacity >= count)
+        return ctx->vertex_scratch;
+    if ((size_t)count > SIZE_MAX / sizeof(pipe_vert_t))
+        return NULL;
+    pipe_vert_t *new_scratch =
+        (pipe_vert_t *)realloc(ctx->vertex_scratch, (size_t)count * sizeof(pipe_vert_t));
+    if (!new_scratch)
+        return NULL;
+    ctx->vertex_scratch = new_scratch;
+    ctx->vertex_scratch_capacity = count;
+    return ctx->vertex_scratch;
+}
 
 /// @brief Cached `VIPER_3D_DEBUG` env-var query for tracing.
 ///
@@ -566,6 +605,24 @@ static void sample_texture(
          255.0f;
 }
 
+static float sw_srgb_to_linear(float value) {
+    if (value < 0.0f)
+        value = 0.0f;
+    if (value > 1.0f)
+        value = 1.0f;
+    if (value <= 0.04045f)
+        return value / 12.92f;
+    return powf((value + 0.055f) / 1.055f, 2.4f);
+}
+
+static void sample_texture_srgb(
+    const sw_pixels_view *tex, float u, float v, float *r, float *g, float *b, float *a) {
+    sample_texture(tex, u, v, r, g, b, a);
+    *r = sw_srgb_to_linear(*r);
+    *g = sw_srgb_to_linear(*g);
+    *b = sw_srgb_to_linear(*b);
+}
+
 /*==========================================================================
  * Edge-function triangle rasterizer
  *=========================================================================*/
@@ -625,6 +682,15 @@ static inline void normalize3f(float *x, float *y, float *z) {
     }
 }
 
+/// @brief Compute the unit view vector from a world-space point to the camera.
+/// @details Branches on projection mode: orthographic cameras have a
+///   constant view direction (camera looks along `-cam_forward` everywhere
+///   in the scene), so we return the negated forward vector regardless of
+///   the surface position. Perspective cameras have a per-fragment view
+///   direction that points from the fragment back to the eye position.
+///   The result is renormalized because subtle floating-point error in
+///   the subtraction can drift the magnitude away from 1.0 enough to
+///   affect specular highlight shape.
 static inline void sw_compute_view_vector(const sw_context_t *ctx,
                                           float wx,
                                           float wy,
@@ -654,6 +720,15 @@ static inline void sw_compute_view_vector(const sw_context_t *ctx,
     *out_vz = vz;
 }
 
+/// @brief Compute the effective fog distance from the camera to a world-space point.
+/// @details Orthographic cameras use the *depth along forward* (projection
+///   of the world→camera delta onto `cam_forward`, absolute value) so fog
+///   density depends only on how far in front of the camera a fragment
+///   sits, not its lateral offset — matches how fog attenuation behaves
+///   in real ortho-rendered scenes. Perspective cameras use plain
+///   euclidean distance to the eye, giving the familiar radial fog
+///   falloff. Null context returns 0 so missed-setup paths produce no
+///   fog rather than crashing.
 static inline float sw_compute_fog_distance(const sw_context_t *ctx, float wx, float wy, float wz) {
     if (!ctx)
         return 0.0f;
@@ -670,6 +745,17 @@ static inline float sw_compute_fog_distance(const sw_context_t *ctx, float wx, f
     }
 }
 
+/// @brief Blend an environment-cubemap reflection into the shaded fragment color.
+/// @details Barycentric-interpolates the world position, perturbs the
+///   surface normal through the optional tangent-space normal map,
+///   computes the reflection vector about the view direction, samples
+///   the bound environment cubemap (optionally roughness-blurred via
+///   `rt_cubemap_sample_roughness` when a metallic/roughness map is
+///   bound), and lerps the result into `inout_rgb` by the material's
+///   reflectivity scalar. All early-out branches (no cubemap bound,
+///   zero reflectivity, no valid view) leave `inout_rgb` untouched so
+///   the caller can invoke this unconditionally and not pay for
+///   reflection work on surfaces that don't want it.
 static void sw_apply_environment_reflection(const vgfx3d_draw_cmd_t *cmd,
                                             const sw_pixels_view *normal_map,
                                             const sw_pixels_view *metallic_roughness_map,
@@ -961,7 +1047,10 @@ static void raster_triangle(uint8_t *pixels,
                             float vc =
                                 (b0 * v0->v_over_w + b1 * v1->v_over_w + b2 * v2->v_over_w) / iw;
                             float tr, tg, tb, ta;
-                            sample_texture(tex, u, vc, &tr, &tg, &tb, &ta);
+                            if (cmd && cmd->workflow == RT_MATERIAL3D_WORKFLOW_PBR)
+                                sample_texture_srgb(tex, u, vc, &tr, &tg, &tb, &ta);
+                            else
+                                sample_texture(tex, u, vc, &tr, &tg, &tb, &ta);
                             fr *= tr;
                             fg *= tg;
                             fb_c *= tb;
@@ -1022,7 +1111,7 @@ static void raster_triangle(uint8_t *pixels,
                             float vc =
                                 (b0 * v0->v_over_w + b1 * v1->v_over_w + b2 * v2->v_over_w) / iw;
                             float er, eg, eb, ea;
-                            sample_texture(emissive_tex, u, vc, &er, &eg, &eb, &ea);
+                            sample_texture_srgb(emissive_tex, u, vc, &er, &eg, &eb, &ea);
                             float emissive_scale =
                                 (cmd ? cmd->emissive_intensity : 1.0f);
                             fr += er * emissive_color[0] * emissive_scale;
@@ -1243,7 +1332,7 @@ static void raster_triangle(uint8_t *pixels,
                                     cmd->emissive_color[2] * cmd->emissive_intensity;
                                 if (emissive_tex) {
                                     float er, eg, eb, ea;
-                                    sample_texture(emissive_tex, pp_u, pp_vc, &er, &eg, &eb, &ea);
+                                    sample_texture_srgb(emissive_tex, pp_u, pp_vc, &er, &eg, &eb, &ea);
                                     emissive_r *= er;
                                     emissive_g *= eg;
                                     emissive_b *= eb;
@@ -1746,6 +1835,7 @@ static void sw_destroy_ctx(void *ctx_ptr) {
         return;
     sw_context_t *ctx = (sw_context_t *)ctx_ptr;
     free(ctx->zbuf);
+    free(ctx->vertex_scratch);
     free(ctx);
 }
 
@@ -1873,7 +1963,9 @@ static void sw_submit_draw(void *ctx_ptr,
 
     /* Build MVP = VP * model */
     float mvp[16];
+    float normal_matrix[16];
     mat4f_mul(ctx->vp, cmd->model_matrix, mvp);
+    vgfx3d_compute_normal_matrix4(cmd->model_matrix, normal_matrix);
 
     /* Texture setup */
     sw_pixels_view tex_view, emissive_view;
@@ -1928,7 +2020,7 @@ static void sw_submit_draw(void *ctx_ptr,
 
     /* Transform mesh vertices */
     uint32_t vc = cmd->vertex_count;
-    pipe_vert_t *pv = (pipe_vert_t *)malloc(vc * sizeof(pipe_vert_t));
+    pipe_vert_t *pv = sw_acquire_pipe_vertices(ctx, vc);
     if (!pv)
         return;
 
@@ -1946,7 +2038,7 @@ static void sw_submit_draw(void *ctx_ptr,
 
         float nrm4[4] = {src->normal[0], src->normal[1], src->normal[2], 0.0f};
         float wnrm4[4];
-        mat4f_transform4(cmd->model_matrix, nrm4, wnrm4);
+        mat4f_transform4(normal_matrix, nrm4, wnrm4);
         dst->normal[0] = wnrm4[0];
         dst->normal[1] = wnrm4[1];
         dst->normal[2] = wnrm4[2];
@@ -1954,7 +2046,7 @@ static void sw_submit_draw(void *ctx_ptr,
         /* Transform tangent to world space (for TBN construction with normal maps) */
         float tan4[4] = {src->tangent[0], src->tangent[1], src->tangent[2], 0.0f};
         float wtan4[4];
-        mat4f_transform4(cmd->model_matrix, tan4, wtan4);
+        mat4f_transform4(normal_matrix, tan4, wtan4);
         dst->tangent[0] = wtan4[0];
         dst->tangent[1] = wtan4[1];
         dst->tangent[2] = wtan4[2];
@@ -2157,7 +2249,6 @@ static void sw_submit_draw(void *ctx_ptr,
         }
     }
 
-    free(pv);
 }
 
 /// @brief Backend `end_frame` op — no-op for software (frames write directly to fb).

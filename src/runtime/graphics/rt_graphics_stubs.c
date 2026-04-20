@@ -2230,6 +2230,34 @@ rt_string rt_canvas3d_get_backend(void *o) {
     return NULL;
 }
 
+/// @brief Stub for `Canvas3D.BackendCapabilities` — would normally return
+///        a bitmask describing backend feature hooks.
+///
+/// Silent stub returning 0 (no capabilities).
+///
+/// @param o Canvas3D handle (ignored).
+///
+/// @return `0`.
+int64_t rt_canvas3d_get_backend_capabilities(void *o) {
+    (void)o;
+    return 0;
+}
+
+/// @brief Stub for `Canvas3D.BackendSupports` — would normally test a named
+///        backend capability such as "shadows" or "hardware_instancing".
+///
+/// Silent stub returning false.
+///
+/// @param o Canvas3D handle (ignored).
+/// @param capability Capability name (ignored).
+///
+/// @return `0`.
+int8_t rt_canvas3d_backend_supports(void *o, rt_string capability) {
+    (void)o;
+    (void)capability;
+    return 0;
+}
+
 /// @brief Stub for `Canvas3D.Screenshot` — would normally read back the
 ///        current 3D framebuffer into a fresh Pixels surface.
 ///
@@ -11002,9 +11030,21 @@ int vgfx3d_postfx_get_snapshot(void *postfx, vgfx3d_postfx_snapshot_t *out) {
 
 /* Opaque front-to-back sorting stub */
 
-/// @brief Stub for `Canvas3D.SetOcclusionCulling` — when enabled, opaque
-///        meshes are sorted front-to-back so early-Z rejects far fragments
-///        before fragment shading.
+/// @brief Stub for `Canvas3D.SetFrustumCulling` — when enabled, opaque
+///        meshes can be frustum-rejected and sorted front-to-back before
+///        fragment shading.
+///
+/// Silent no-op stub.
+///
+/// @param c Canvas3D handle (ignored).
+/// @param e Non-zero to enable (ignored).
+void rt_canvas3d_set_frustum_culling(void *c, int8_t e) {
+    (void)c;
+    (void)e;
+}
+
+/// @brief Stub for `Canvas3D.SetOcclusionCulling` — compatibility alias
+///        for `SetFrustumCulling`.
 ///
 /// Silent no-op stub.
 ///

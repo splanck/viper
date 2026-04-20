@@ -70,6 +70,7 @@ typedef struct {
     float aabb_max[3];
     float bsphere_radius;
     int8_t bounds_dirty;
+    int8_t build_failed;       /* set when a construction/load append fails */
     void *morph_targets_ref;    /* attached MorphTarget3D (or NULL) */
     uint32_t geometry_revision; /* increments when CPU geometry changes */
 } rt_mesh3d;

@@ -61,6 +61,7 @@ static struct {
 
 static int32_t s_voice_dist_count = 0;
 
+/// @brief Clamp `value` into the closed interval `[lo, hi]`.
 static int64_t clamp_i64(int64_t value, int64_t lo, int64_t hi) {
     if (value < lo)
         return lo;
@@ -69,6 +70,11 @@ static int64_t clamp_i64(int64_t value, int64_t lo, int64_t hi) {
     return value;
 }
 
+/// @brief Copy a 3-component vector with null-safe zero fill.
+/// @details `dst == NULL` is a silent no-op so callers can pass through
+///   optional out-params without null-checking at every site. `src == NULL`
+///   writes zero rather than leaving `dst` untouched — spatial audio math
+///   treats missing positions as the origin, not undefined.
 static void audio3d_copy3(double *dst, const double *src) {
     if (!dst)
         return;
@@ -83,6 +89,11 @@ static void audio3d_copy3(double *dst, const double *src) {
     dst[2] = src[2];
 }
 
+/// @brief Decode an `rt_vec3` object handle into three raw doubles.
+/// @details The runtime stores Vec3 as a GC-managed object accessed through
+///   `rt_vec3_{x,y,z}`; this helper converts it into the plain array that
+///   the spatial-audio math works in. Null object collapses to the origin,
+///   matching `audio3d_copy3`'s null-fill convention.
 static void audio3d_vec_from_obj(void *vec, double *out_xyz) {
     if (!out_xyz)
         return;

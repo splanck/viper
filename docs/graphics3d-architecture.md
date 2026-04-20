@@ -39,9 +39,10 @@ typedef struct vgfx3d_backend {
     /* Render target */
     void (*set_render_target)(void *ctx, vgfx3d_rendertarget_t *rt);
     /* Shadow mapping */
-    void (*shadow_begin)(void *ctx, float *depth_buf, int32_t w, int32_t h, const float *light_vp);
+    void (*shadow_begin)(void *ctx, int32_t slot, float *depth_buf,
+                         int32_t w, int32_t h, const float *light_vp);
     void (*shadow_draw)(void *ctx, const vgfx3d_draw_cmd_t *cmd);
-    void (*shadow_end)(void *ctx, float bias);
+    void (*shadow_end)(void *ctx, int32_t slot, float bias);
     /* Skybox */
     void (*draw_skybox)(void *ctx, const void *cubemap);
     /* Instanced rendering (NULL = N individual submit_draw fallback) */
@@ -50,9 +51,9 @@ typedef struct vgfx3d_backend {
     /* Display */
     void (*present)(void *ctx);
     int (*readback_rgba)(void *ctx, uint8_t *out, int32_t w, int32_t h, int32_t stride);
-    void (*present_postfx)(void *ctx, const vgfx3d_postfx_snapshot_t *postfx);
+    void (*present_postfx)(void *ctx, const vgfx3d_postfx_chain_t *postfx);
     void (*set_gpu_postfx_enabled)(void *ctx, int8_t enabled);
-    void (*set_gpu_postfx_snapshot)(void *ctx, const vgfx3d_postfx_snapshot_t *postfx);
+    void (*set_gpu_postfx_snapshot)(void *ctx, const vgfx3d_postfx_chain_t *postfx);
     void (*show_gpu_layer)(void *ctx);
     void (*hide_gpu_layer)(void *ctx);
 } vgfx3d_backend_t;
@@ -62,6 +63,12 @@ typedef struct vgfx3d_backend {
 1. Try platform GPU backend (Metal/D3D11/OpenGL)
 2. If `create_ctx` returns NULL → fall back to software
 3. Software backend always succeeds
+
+Canvas exposes the selected backend through `Canvas3D.Backend`. Production code should use
+`Canvas3D.BackendCapabilities` or `Canvas3D.BackendSupports(name)` when deciding whether to
+enable optional paths such as window readback, GPU post effects, hardware instancing, skybox, or
+shadow maps. Those queries are derived from the active vtable hooks plus Canvas-owned software
+fallbacks, so they remain stable if backend names or platform selection change.
 
 ### Metal Window Presentation Model
 
@@ -139,7 +146,7 @@ Per sub-triangle:
      c. Terrain splat     If has_splat: sample weight map + 4 layer textures per-pixel
      d. Normal map        If normal_map: sample TBN, perturb normal per-pixel
      e. Per-pixel light   If normal_map: full Blinn-Phong per-pixel (with specular map)
-     f. Shadow lookup     If shadow_active: transform to light space, compare depth
+     f. Shadow lookup     If shadow_active: transform to light space, 3x3 PCF depth compare
      g. Emissive map      Additive emissive texture contribution
      h. Environment map   Roughness-aware cubemap reflection (optional)
      i. Fog               Linear fog using projection-aware view distance
@@ -152,6 +159,7 @@ Shadow Pass (before main pass, when shadows enabled):
     Transform vertices by light view-projection (orthographic)
     Rasterize depth-only into shadow depth buffer (1024×1024)
     No lighting, no texturing, no color — depth writes only
+  Main pass samples shadows through percentage-closer filtering to soften single-texel edges.
 ```
 
 ## Vertex Format (vgfx3d_vertex_t — 84 bytes)
@@ -337,6 +345,11 @@ Canvas3D coexists with the existing 2D Canvas system:
 ## Scene Graph and Frustum Culling
 
 `Scene3D.SyncBindings(dt)` is the explicit integration step for node bindings. It applies body-driven transforms, node-driven kinematic pushes, and animator root motion before rendering.
+
+`Canvas3D.SetFrustumCulling(true)` applies the same coarse AABB-vs-frustum rejection to the
+deferred canvas draw queue before opaque front-to-back sorting. The older
+`SetOcclusionCulling` name remains as a compatibility alias; it is not a hardware occlusion-query
+or Hi-Z visibility system.
 
 `Scene3D.Draw()` performs depth-first traversal of the scene node tree:
 
