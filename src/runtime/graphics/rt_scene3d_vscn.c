@@ -681,6 +681,29 @@ static int vscn_serialize_material(rt_material3d *material,
             return 0;
         }
     }
+    if (!vscn_append(buf, len, cap, "], \"textureSlots\": ["))
+        return 0;
+    for (int i = 0; i < RT_MATERIAL3D_TEXTURE_SLOT_COUNT; i++) {
+        const double *uvm = material->texture_slot_uv_transform[i];
+        if (!vscn_append(buf,
+                         len,
+                         cap,
+                         "%s{\"uvSet\": %d, \"wrapS\": %d, \"wrapT\": %d, "
+                         "\"filter\": %d, \"uvTransform\": [%.17g, %.17g, %.17g, %.17g, %.17g, %.17g]}",
+                         i == 0 ? "" : ", ",
+                         material->texture_slot_uv_set[i],
+                         material->texture_slot_wrap_s[i],
+                         material->texture_slot_wrap_t[i],
+                         material->texture_slot_filter[i],
+                         uvm[0],
+                         uvm[1],
+                         uvm[2],
+                         uvm[3],
+                         uvm[4],
+                         uvm[5])) {
+            return 0;
+        }
+    }
     return vscn_append(buf, len, cap, "]}");
 }
 
@@ -707,7 +730,7 @@ static int vscn_serialize_mesh(rt_mesh3d *mesh, char **buf, size_t *len, size_t 
         int ok = vscn_append(buf,
                              len,
                              cap,
-                             "%s{\"vertexFormat\": \"vgfx3d_vertex_le_v1\", "
+                             "%s{\"vertexFormat\": \"vgfx3d_vertex_le_v2\", "
                              "\"vertexCount\": %u, "
                              "\"indexCount\": %u, "
                              "\"boneCount\": %d, "
@@ -959,6 +982,35 @@ static rt_material3d *vscn_parse_material(void *material_obj,
             material->custom_params[i] = vjson_arr_f64(arr, i, material->custom_params[i]);
     }
 
+    arr = vjson_get(material_obj, "textureSlots");
+    if (arr) {
+        for (int i = 0; i < RT_MATERIAL3D_TEXTURE_SLOT_COUNT && i < vjson_len(arr); i++) {
+            void *slot_obj = rt_seq_get(arr, i);
+            void *uv_arr = slot_obj ? vjson_get(slot_obj, "uvTransform") : NULL;
+            if (!slot_obj)
+                continue;
+            material->texture_slot_uv_set[i] =
+                (int32_t)vjson_i64(slot_obj, "uvSet", material->texture_slot_uv_set[i]);
+            material->texture_slot_wrap_s[i] =
+                (int32_t)vjson_i64(slot_obj, "wrapS", material->texture_slot_wrap_s[i]);
+            material->texture_slot_wrap_t[i] =
+                (int32_t)vjson_i64(slot_obj, "wrapT", material->texture_slot_wrap_t[i]);
+            material->texture_slot_filter[i] =
+                (int32_t)vjson_i64(slot_obj, "filter", material->texture_slot_filter[i]);
+            for (int j = 0; j < 6; j++) {
+                if (uv_arr && j < vjson_len(uv_arr))
+                    material->texture_slot_uv_transform[i][j] =
+                        vjson_arr_f64(uv_arr, j, material->texture_slot_uv_transform[i][j]);
+            }
+        }
+        material->texture_wrap_s =
+            material->texture_slot_wrap_s[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR];
+        material->texture_wrap_t =
+            material->texture_slot_wrap_t[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR];
+        material->texture_filter =
+            material->texture_slot_filter[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR];
+    }
+
     {
         int64_t index = vjson_i64(material_obj, "texture", -1);
         if (index >= 0 && index < tex_count && textures[index])
@@ -1015,7 +1067,8 @@ static rt_mesh3d *vscn_parse_mesh(void *mesh_obj) {
         return NULL;
 
     vertex_format = vjson_cstr(mesh_obj, "vertexFormat");
-    if (vertex_format && strcmp(vertex_format, "vgfx3d_vertex_le_v1") != 0)
+    if (vertex_format && strcmp(vertex_format, "vgfx3d_vertex_le_v1") != 0 &&
+        strcmp(vertex_format, "vgfx3d_vertex_le_v2") != 0)
         return NULL;
 
     vertex_count = (uint32_t)vjson_i64(mesh_obj, "vertexCount", 0);
@@ -1034,7 +1087,8 @@ static rt_mesh3d *vscn_parse_mesh(void *mesh_obj) {
         free(indices_raw);
         return NULL;
     }
-    if (vertices_len != (size_t)vertex_count * sizeof(vgfx3d_vertex_t) ||
+    if ((vertices_len != (size_t)vertex_count * sizeof(vgfx3d_vertex_t) &&
+         vertices_len != (size_t)vertex_count * 84u) ||
         indices_len != (size_t)index_count * sizeof(uint32_t)) {
         free(vertices_raw);
         free(indices_raw);
@@ -1056,7 +1110,36 @@ static rt_mesh3d *vscn_parse_mesh(void *mesh_obj) {
             free(indices_raw);
             return mesh;
         }
-        memcpy(vertices, vertices_raw, (size_t)vertex_count * sizeof(vgfx3d_vertex_t));
+        if (vertices_len == (size_t)vertex_count * sizeof(vgfx3d_vertex_t)) {
+            memcpy(vertices, vertices_raw, (size_t)vertex_count * sizeof(vgfx3d_vertex_t));
+        } else {
+            typedef struct {
+                float pos[3];
+                float normal[3];
+                float uv[2];
+                float color[4];
+                float tangent[4];
+                uint8_t bone_indices[4];
+                float bone_weights[4];
+            } vgfx3d_vertex_legacy84_t;
+            const vgfx3d_vertex_legacy84_t *legacy =
+                (const vgfx3d_vertex_legacy84_t *)vertices_raw;
+            for (uint32_t vi = 0; vi < vertex_count; vi++) {
+                memset(&vertices[vi], 0, sizeof(vertices[vi]));
+                memcpy(vertices[vi].pos, legacy[vi].pos, sizeof(vertices[vi].pos));
+                memcpy(vertices[vi].normal, legacy[vi].normal, sizeof(vertices[vi].normal));
+                memcpy(vertices[vi].uv, legacy[vi].uv, sizeof(vertices[vi].uv));
+                memcpy(vertices[vi].uv1, legacy[vi].uv, sizeof(vertices[vi].uv1));
+                memcpy(vertices[vi].color, legacy[vi].color, sizeof(vertices[vi].color));
+                memcpy(vertices[vi].tangent, legacy[vi].tangent, sizeof(vertices[vi].tangent));
+                memcpy(vertices[vi].bone_indices,
+                       legacy[vi].bone_indices,
+                       sizeof(vertices[vi].bone_indices));
+                memcpy(vertices[vi].bone_weights,
+                       legacy[vi].bone_weights,
+                       sizeof(vertices[vi].bone_weights));
+            }
+        }
         free(mesh->vertices);
         mesh->vertices = vertices;
         mesh->vertex_count = vertex_count;

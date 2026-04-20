@@ -12,6 +12,7 @@ extern "C" {
 #define VGFX3D_D3D11_MAX_MORPH_SHAPES 32
 #define VGFX3D_D3D11_PACKED_MORPH_WEIGHT_VECS (VGFX3D_D3D11_MAX_MORPH_SHAPES / 4)
 #define VGFX3D_D3D11_PACKED_CUSTOM_PARAM_VECS 2
+#define VGFX3D_D3D11_TEXTURE_SLOT_COUNT RT_MATERIAL3D_TEXTURE_SLOT_COUNT
 
 typedef enum {
     VGFX3D_D3D11_BLEND_OPAQUE = 0,
@@ -61,6 +62,10 @@ typedef struct {
     int32_t shading_model;
     float _pad0[3];
     float custom_params_packed[VGFX3D_D3D11_PACKED_CUSTOM_PARAM_VECS][4];
+    int32_t texture_uv_sets0[4];
+    int32_t texture_uv_sets1[4];
+    float texture_uv_transform0[VGFX3D_D3D11_TEXTURE_SLOT_COUNT][4];
+    float texture_uv_transform1[VGFX3D_D3D11_TEXTURE_SLOT_COUNT][4];
 } vgfx3d_d3d11_per_material_t;
 
 typedef struct {

@@ -2694,47 +2694,28 @@ void *rt_fbx_load(rt_string path) {
                 int64_t mat_id = ct.entries[ci].parent_id;
                 const char *prop_name = ct.entries[ci].prop;
 
-                // Find the material by scanning Objects for matching Material ID
-                for (int32_t mi = 0; mi < objects->child_count; mi++) {
-                    fbx_node_t *mobj = &objects->children[mi];
-                    if (strcmp(mobj->name, "Material") != 0 || mobj->prop_count < 1)
-                        continue;
-                    if (fbx_prop_i64(mobj, 0) != mat_id)
-                        continue;
-
-                    // Find this material in the asset's material list
-                    // (match by order — materials were extracted in the same loop order)
-                    int mat_idx = -1;
-                    {
-                        int counter = 0;
-                        for (int32_t oi = 0; oi < objects->child_count; oi++) {
-                            if (strcmp(objects->children[oi].name, "Material") == 0) {
-                                if (objects->children[oi].prop_count > 0 &&
-                                    fbx_prop_i64(&objects->children[oi], 0) == mat_id) {
-                                    mat_idx = counter;
-                                    break;
-                                }
-                                counter++;
-                            }
-                        }
-                    }
-                    if (mat_idx < 0 || mat_idx >= asset->material_count)
+                void *mat = NULL;
+                for (int32_t mi = 0; mi < material_binding_count; mi++) {
+                    if (material_bindings[mi].id == mat_id) {
+                        mat = material_bindings[mi].material;
                         break;
-
-                    void *mat = asset->materials[mat_idx];
-                    // Assign based on property name in Connection
-                    if (strcmp(prop_name, "DiffuseColor") == 0 || *prop_name == '\0')
-                        rt_material3d_set_texture(mat, pixels);
-                    else if (strcmp(prop_name, "NormalMap") == 0 || strcmp(prop_name, "Bump") == 0)
-                        rt_material3d_set_normal_map(mat, pixels);
-                    else if (strcmp(prop_name, "SpecularColor") == 0)
-                        rt_material3d_set_specular_map(mat, pixels);
-                    else if (strcmp(prop_name, "EmissiveColor") == 0)
-                        rt_material3d_set_emissive_map(mat, pixels);
-                    else
-                        rt_material3d_set_texture(mat, pixels); // default to diffuse
-                    break;
+                    }
                 }
+                if (!mat)
+                    continue;
+
+                // Assign based on property name in Connection
+                if (strcmp(prop_name, "DiffuseColor") == 0 || *prop_name == '\0')
+                    rt_material3d_set_texture(mat, pixels);
+                else if (strcmp(prop_name, "NormalMap") == 0 || strcmp(prop_name, "Bump") == 0)
+                    rt_material3d_set_normal_map(mat, pixels);
+                else if (strcmp(prop_name, "SpecularColor") == 0)
+                    rt_material3d_set_specular_map(mat, pixels);
+                else if (strcmp(prop_name, "EmissiveColor") == 0)
+                    rt_material3d_set_emissive_map(mat, pixels);
+                else
+                    rt_material3d_set_texture(mat, pixels); // default to diffuse
+                break;
             }
             fbx_release_ref(&pixels);
         }

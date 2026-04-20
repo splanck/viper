@@ -10,7 +10,7 @@
 //   skeletons, animations, and an instantiable template node hierarchy.
 //
 // Key invariants:
-//   - Model3D.Load routes by file extension: .vscn, .fbx, .gltf, .glb.
+//   - Model3D.Load routes by file extension: .vscn, .fbx, .gltf, .glb, .obj.
 //   - Imported resources are shared, except morph-enabled meshes are cloned per
 //     instantiation so mutable blend-shape weights do not leak across instances.
 //   - InstantiateScene() creates a fresh Scene3D and attaches cloned top-level

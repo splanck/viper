@@ -16,6 +16,45 @@
 
 #ifdef VIPER_ENABLE_GRAPHICS
 
+#define RT_NODE_ANIM_PATH_TRANSLATION 0
+#define RT_NODE_ANIM_PATH_ROTATION 1
+#define RT_NODE_ANIM_PATH_SCALE 2
+#define RT_NODE_ANIM_PATH_WEIGHTS 3
+
+#define RT_NODE_ANIM_INTERP_LINEAR 0
+#define RT_NODE_ANIM_INTERP_STEP 1
+
+typedef struct {
+    rt_string target_name;
+    int32_t path;
+    int32_t interpolation;
+    int32_t key_count;
+    int32_t value_width;
+    double *times;
+    float *values;
+} rt_node_anim_channel3d;
+
+typedef struct rt_node_animation3d {
+    void *vptr;
+    rt_string name;
+    double duration;
+    rt_node_anim_channel3d *channels;
+    int32_t channel_count;
+    int32_t channel_capacity;
+    int8_t looping;
+} rt_node_animation3d;
+
+typedef struct rt_node_animator3d {
+    void *vptr;
+    rt_node_animation3d **animations;
+    int32_t animation_count;
+    int32_t current_animation;
+    double time;
+    double speed;
+    int8_t playing;
+    struct rt_scene_node3d *root;
+} rt_node_animator3d;
+
 typedef struct rt_scene_node3d {
     void *vptr;
 
@@ -35,6 +74,7 @@ typedef struct rt_scene_node3d {
     void *material;
     void *bound_body;
     void *bound_animator;
+    void *bound_node_animator;
     int32_t sync_mode;
 
     int8_t visible;
@@ -59,5 +99,25 @@ typedef struct {
     int32_t node_count;
     int32_t last_culled_count;
 } rt_scene3d;
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+void *rt_node_animation3d_new(rt_string name, double duration);
+int64_t rt_node_animation3d_add_channel(void *obj,
+                                        rt_string target_name,
+                                        int64_t path,
+                                        int64_t interpolation,
+                                        int64_t key_count,
+                                        int64_t value_width,
+                                        const double *times,
+                                        const float *values);
+void *rt_node_animator3d_new_from_clips(void **clips, int64_t clip_count);
+void rt_scene_node3d_bind_node_animator(void *obj, void *animator);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* VIPER_ENABLE_GRAPHICS */

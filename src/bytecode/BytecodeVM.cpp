@@ -3024,7 +3024,8 @@ extern "C" void vm_async_run_entry_trampoline_bc(void *raw) {
         s.ptr = payload->arg;
         args.push_back(s);
         il::vm::Slot result = il::vm::detail::VMAccess::callFunction(vm, *payload->entry, args);
-        rt_promise_set(payload->promise, result.ptr);
+        // Worker VMs unwind immediately after resolving; the Future must retain the payload.
+        rt_promise_set_owned(payload->promise, result.ptr);
     } catch (...) {
         rt_promise_set_error(payload->promise, rt_const_cstr("Async.Run: unhandled exception"));
     }
@@ -3060,7 +3061,8 @@ extern "C" void bytecode_async_entry_trampoline(void *raw) {
                                  ? rt_const_cstr("Async.Run: trapped")
                                  : rt_string_from_bytes(message.data(), message.size()));
     } else {
-        rt_promise_set(payload->promise, result.ptr);
+        // Worker VMs unwind immediately after resolving; the Future must retain the payload.
+        rt_promise_set_owned(payload->promise, result.ptr);
     }
 
     if (rt_obj_release_check0(payload->promise))

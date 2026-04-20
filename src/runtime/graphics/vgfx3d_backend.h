@@ -64,6 +64,14 @@ typedef struct {
     int32_t alpha_mode;          /* RT_MATERIAL3D_ALPHA_MODE_* */
     float alpha_cutoff;          /* alpha-mask cutoff */
     int32_t double_sided;        /* culling disabled when true */
+    int32_t texture_wrap_s;      /* RT_MATERIAL3D_TEXTURE_WRAP_* */
+    int32_t texture_wrap_t;      /* RT_MATERIAL3D_TEXTURE_WRAP_* */
+    int32_t texture_filter;      /* RT_MATERIAL3D_TEXTURE_FILTER_* */
+    int32_t texture_slot_wrap_s[RT_MATERIAL3D_TEXTURE_SLOT_COUNT];
+    int32_t texture_slot_wrap_t[RT_MATERIAL3D_TEXTURE_SLOT_COUNT];
+    int32_t texture_slot_filter[RT_MATERIAL3D_TEXTURE_SLOT_COUNT];
+    int32_t texture_slot_uv_set[RT_MATERIAL3D_TEXTURE_SLOT_COUNT];
+    float texture_slot_uv_transform[RT_MATERIAL3D_TEXTURE_SLOT_COUNT][6];
     const void *metallic_roughness_map; /* Pixels (glTF metallic/roughness map) or NULL */
     const void *ao_map;                 /* Pixels (ambient occlusion map) or NULL */
     const void *env_map;         /* CubeMap3D (environment reflections) or NULL */

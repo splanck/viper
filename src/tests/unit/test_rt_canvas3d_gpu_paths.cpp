@@ -1271,6 +1271,17 @@ static void test_pbr_material_payload_forwarded(void) {
     rt_material3d_set_alpha(material, 0.6);
     rt_material3d_set_alpha_mode(material, RT_MATERIAL3D_ALPHA_MODE_BLEND);
     rt_material3d_set_double_sided(material, 1);
+    ((rt_material3d *)material)->texture_slot_uv_set[RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS] = 1;
+    ((rt_material3d *)material)->texture_slot_wrap_s[RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS] =
+        RT_MATERIAL3D_TEXTURE_WRAP_CLAMP_TO_EDGE;
+    ((rt_material3d *)material)->texture_slot_wrap_t[RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS] =
+        RT_MATERIAL3D_TEXTURE_WRAP_MIRRORED_REPEAT;
+    ((rt_material3d *)material)->texture_slot_filter[RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS] =
+        RT_MATERIAL3D_TEXTURE_FILTER_NEAREST;
+    ((rt_material3d *)material)->texture_slot_uv_transform[RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS][0] =
+        1.5;
+    ((rt_material3d *)material)->texture_slot_uv_transform[RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS][5] =
+        0.25;
 
     rt_canvas3d_draw_mesh(&canvas, mesh, transform, material);
 
@@ -1298,6 +1309,22 @@ static void test_pbr_material_payload_forwarded(void) {
                 "PBR material draw forwards normal scale");
     EXPECT_TRUE(draws[0].cmd.alpha == 0.6f,
                 "PBR material draw forwards material opacity separately from alpha mode");
+    EXPECT_TRUE(draws[0].cmd.texture_slot_uv_set[RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS] == 1,
+                "PBR material draw forwards imported texture slot UV set");
+    EXPECT_TRUE(draws[0].cmd.texture_slot_wrap_s[RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS] ==
+                    RT_MATERIAL3D_TEXTURE_WRAP_CLAMP_TO_EDGE &&
+                    draws[0].cmd.texture_slot_wrap_t[RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS] ==
+                        RT_MATERIAL3D_TEXTURE_WRAP_MIRRORED_REPEAT &&
+                    draws[0].cmd.texture_slot_filter[RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS] ==
+                        RT_MATERIAL3D_TEXTURE_FILTER_NEAREST,
+                "PBR material draw forwards imported texture slot sampler state");
+    EXPECT_TRUE(std::fabs(draws[0].cmd.texture_slot_uv_transform
+                              [RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS][0] -
+                          1.5f) < 0.001f &&
+                    std::fabs(draws[0].cmd.texture_slot_uv_transform
+                                  [RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS][5] -
+                              0.25f) < 0.001f,
+                "PBR material draw forwards imported texture slot UV transform");
 
     cleanup_fake_canvas(&canvas);
 }

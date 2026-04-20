@@ -24,9 +24,11 @@
 #include "rt_canvas3d_internal.h"
 #include "rt_internal.h"
 #include "rt_mat4.h"
+#include "rt_morphtarget3d.h"
 #include "rt_skeleton3d.h"
 #include "rt_pixels.h"
 #include "rt_scene3d.h"
+#include "rt_scene3d_internal.h"
 #include "rt_string.h"
 #include "vgfx3d_backend.h"
 #include <cassert>
@@ -594,6 +596,28 @@ static void test_scene_roundtrip_loads_shared_assets() {
     material->shading_model = 4;
     material->custom_params[0] = 3.5;
     material->custom_params[1] = 1.25;
+    material->texture_slot_uv_set[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR] = 1;
+    material->texture_slot_wrap_s[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR] =
+        RT_MATERIAL3D_TEXTURE_WRAP_CLAMP_TO_EDGE;
+    material->texture_slot_wrap_t[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR] =
+        RT_MATERIAL3D_TEXTURE_WRAP_MIRRORED_REPEAT;
+    material->texture_slot_filter[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR] =
+        RT_MATERIAL3D_TEXTURE_FILTER_NEAREST;
+    material->texture_slot_uv_transform[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR][0] = 2.0;
+    material->texture_slot_uv_transform[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR][3] = 3.0;
+    material->texture_slot_uv_transform[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR][4] = 0.25;
+    material->texture_slot_uv_transform[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR][5] = 0.5;
+    material->texture_slot_uv_set[RT_MATERIAL3D_TEXTURE_SLOT_NORMAL] = 1;
+    material->texture_slot_uv_transform[RT_MATERIAL3D_TEXTURE_SLOT_NORMAL][0] = 0.5;
+    material->texture_slot_uv_transform[RT_MATERIAL3D_TEXTURE_SLOT_NORMAL][3] = 0.75;
+    material->texture_slot_uv_transform[RT_MATERIAL3D_TEXTURE_SLOT_NORMAL][4] = -0.125;
+    material->texture_slot_uv_transform[RT_MATERIAL3D_TEXTURE_SLOT_NORMAL][5] = 0.875;
+    material->texture_wrap_s =
+        material->texture_slot_wrap_s[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR];
+    material->texture_wrap_t =
+        material->texture_slot_wrap_t[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR];
+    material->texture_filter =
+        material->texture_slot_filter[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR];
     rt_material3d_set_texture(material, diffuse);
     rt_material3d_set_normal_map(material, normal);
     rt_material3d_set_specular_map(material, specular);
@@ -716,6 +740,34 @@ static void test_scene_roundtrip_loads_shared_assets() {
                     3.5,
                     0.001,
                     "Scene3D.Load restores custom shader params");
+        EXPECT_TRUE(loaded_material->texture_slot_uv_set[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR] == 1 &&
+                        loaded_material->texture_slot_wrap_s[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR] ==
+                            RT_MATERIAL3D_TEXTURE_WRAP_CLAMP_TO_EDGE &&
+                        loaded_material->texture_slot_wrap_t[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR] ==
+                            RT_MATERIAL3D_TEXTURE_WRAP_MIRRORED_REPEAT &&
+                        loaded_material->texture_slot_filter[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR] ==
+                            RT_MATERIAL3D_TEXTURE_FILTER_NEAREST,
+                    "Scene3D.Load restores base texture slot sampler and UV set");
+        EXPECT_NEAR(loaded_material->texture_slot_uv_transform[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR][0],
+                    2.0,
+                    0.001,
+                    "Scene3D.Load restores base texture slot U scale");
+        EXPECT_NEAR(loaded_material->texture_slot_uv_transform[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR][5],
+                    0.5,
+                    0.001,
+                    "Scene3D.Load restores base texture slot V offset");
+        EXPECT_TRUE(loaded_material->texture_wrap_s ==
+                        RT_MATERIAL3D_TEXTURE_WRAP_CLAMP_TO_EDGE &&
+                        loaded_material->texture_wrap_t ==
+                            RT_MATERIAL3D_TEXTURE_WRAP_MIRRORED_REPEAT &&
+                        loaded_material->texture_filter == RT_MATERIAL3D_TEXTURE_FILTER_NEAREST,
+                    "Scene3D.Load keeps legacy primary sampler fields in sync");
+        EXPECT_TRUE(loaded_material->texture_slot_uv_set[RT_MATERIAL3D_TEXTURE_SLOT_NORMAL] == 1,
+                    "Scene3D.Load restores normal-map texture coordinate set");
+        EXPECT_NEAR(loaded_material->texture_slot_uv_transform[RT_MATERIAL3D_TEXTURE_SLOT_NORMAL][4],
+                    -0.125,
+                    0.001,
+                    "Scene3D.Load restores independent normal-map UV transform");
         EXPECT_TRUE(loaded_material->texture != nullptr &&
                         rt_pixels_get(loaded_material->texture, 0, 0) == 0x10203040ll &&
                         rt_pixels_get(loaded_material->texture, 1, 0) == 0x50607080ll,
@@ -745,6 +797,51 @@ static void test_scene_roundtrip_loads_shared_assets() {
                         "Scene3D.Load restores cubemap face textures");
         }
     }
+}
+
+static void test_node_animator_handles_large_morph_weight_channels() {
+    void *scene = rt_scene3d_new();
+    void *node = rt_scene_node3d_new();
+    void *mesh = rt_mesh3d_new();
+    void *morph = rt_morphtarget3d_new(3);
+    double times[2] = {0.0, 1.0};
+    float values[40] = {};
+    void *anim;
+    void *animator;
+    void *clips[1];
+
+    rt_mesh3d_add_vertex(mesh, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0);
+    rt_mesh3d_add_vertex(mesh, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 0.0);
+    rt_mesh3d_add_vertex(mesh, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0);
+    rt_mesh3d_add_triangle(mesh, 0, 1, 2);
+
+    for (int i = 0; i < 20; i++)
+        rt_morphtarget3d_add_shape(morph, rt_const_cstr("shape"));
+    rt_mesh3d_set_morph_targets(mesh, morph);
+    rt_scene_node3d_set_name(node, rt_const_cstr("target"));
+    rt_scene_node3d_set_mesh(node, mesh);
+    rt_scene3d_add(scene, node);
+
+    values[20 + 19] = 0.8f;
+    anim = rt_node_animation3d_new(rt_const_cstr("many_weights"), 1.0);
+    EXPECT_TRUE(rt_node_animation3d_add_channel(anim,
+                                                rt_const_cstr("target"),
+                                                RT_NODE_ANIM_PATH_WEIGHTS,
+                                                RT_NODE_ANIM_INTERP_LINEAR,
+                                                2,
+                                                20,
+                                                times,
+                                                values) >= 0,
+                "Node animation accepts morph-weight channels wider than the stack scratch buffer");
+    clips[0] = anim;
+    animator = rt_node_animator3d_new_from_clips(clips, 1);
+    rt_scene_node3d_bind_node_animator(rt_scene3d_get_root(scene), animator);
+    rt_scene3d_sync_bindings(scene, 0.5);
+
+    EXPECT_NEAR(rt_morphtarget3d_get_weight(morph, 19),
+                0.4,
+                0.001,
+                "Node animation applies morph weights beyond the old fixed scratch limit");
 }
 
 static void test_frustum_aabb_inside() {
@@ -864,6 +961,41 @@ static void test_lod_culling_uses_selected_mesh_bounds() {
         "Scene3D increments culled count when the selected LOD mesh is outside the frustum");
 }
 
+static void test_dynamic_deformation_uses_conservative_frustum_culling() {
+    vgfx3d_backend_t backend = {};
+    backend.name = "opengl";
+    backend.begin_frame = scene_test_begin_frame;
+    backend.end_frame = scene_test_end_frame;
+    backend.submit_draw = scene_test_submit_draw;
+
+    rt_canvas3d canvas;
+    init_scene_test_canvas(&canvas, &backend);
+    reset_scene_capture();
+
+    void *scene = rt_scene3d_new();
+    void *node = rt_scene_node3d_new();
+    void *mesh = rt_mesh3d_new_box(1.0, 1.0, 1.0);
+    void *material = rt_material3d_new_color(1.0, 1.0, 1.0);
+    void *camera = rt_camera3d_new(60.0, 1.0, 0.1, 100.0);
+    void *eye = rt_vec3_new(0.0, 0.0, 5.0);
+    void *target = rt_vec3_new(0.0, 0.0, 0.0);
+    void *up = rt_vec3_new(0.0, 1.0, 0.0);
+
+    ((rt_mesh3d *)mesh)->morph_shape_count = 1;
+    rt_scene_node3d_set_position(node, 1000.0, 0.0, 0.0);
+    rt_scene_node3d_set_mesh(node, mesh);
+    rt_scene_node3d_set_material(node, material);
+    rt_scene3d_add(scene, node);
+    rt_camera3d_look_at(camera, eye, target, up);
+
+    rt_scene3d_draw(scene, &canvas, camera);
+
+    EXPECT_TRUE(g_scene_submit_count == 0,
+                "Scene3D culls dynamic meshes when conservative bounds are outside the frustum");
+    EXPECT_TRUE(rt_scene3d_get_culled_count(scene) == 1,
+                "Scene3D records conservative dynamic-mesh frustum culls");
+}
+
 static void test_parent_animator_drives_child_skinned_meshes() {
     vgfx3d_backend_t backend = {};
     backend.name = "opengl";
@@ -939,11 +1071,13 @@ int main() {
     test_node_aabb_refreshes_after_mesh_mutation();
     test_frustum_culled_count_initial();
     test_lod_culling_uses_selected_mesh_bounds();
+    test_dynamic_deformation_uses_conservative_frustum_culling();
     test_parent_animator_drives_child_skinned_meshes();
     test_scene_draw_reuses_active_frame();
     test_scene_save_escapes_json_names();
     test_scene_save_serializes_visibility_and_lod_metadata();
     test_scene_roundtrip_loads_shared_assets();
+    test_node_animator_handles_large_morph_weight_channels();
 
     printf("Scene3D tests: %d/%d passed\n", tests_passed, tests_run);
     return tests_passed == tests_run ? 0 : 1;

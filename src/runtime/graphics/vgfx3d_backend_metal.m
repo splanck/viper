@@ -107,6 +107,7 @@
 @property(nonatomic, strong) NSMutableDictionary *geometryCache;
 @property(nonatomic, strong) NSMutableDictionary *morphCache;
 @property(nonatomic, strong) NSMutableDictionary *renderTargetCache;
+@property(nonatomic, strong) NSMutableDictionary *samplerCache;
 @property(nonatomic) uint64_t frameSerial;
 @property(nonatomic, strong) id<MTLSamplerState> sharedSampler;
 @property(nonatomic, strong) id<MTLSamplerState> cubeSampler;
@@ -226,6 +227,7 @@ static NSString *metal_shader_source =
      "    float4 tangent  [[attribute(4)]];\n"
      "    uchar4 boneIdx  [[attribute(5)]];\n"
      "    float4 boneWt   [[attribute(6)]];\n"
+     "    float2 uv1      [[attribute(7)]];\n"
      "};\n"
      "\n"
      "struct InstanceData {\n"
@@ -240,6 +242,7 @@ static NSString *metal_shader_source =
      "    float3 normal;\n"
      "    float4 tangent;\n"
      "    float2 uv;\n"
+     "    float2 uv1;\n"
      "    float4 color;\n"
      "    float4 currClip;\n"
      "    float4 prevClip;\n"
@@ -292,6 +295,10 @@ static NSString *metal_shader_source =
      "    float4 splatScales;\n"
      "    int shadingModel;\n"
      "    float customParams[8];\n"
+     "    int4 textureUvSets0;\n"
+     "    int4 textureUvSets1;\n"
+     "    float4 textureUvTransform0[" VGFX3D_STR(RT_MATERIAL3D_TEXTURE_SLOT_COUNT) "];\n"
+     "    float4 textureUvTransform1[" VGFX3D_STR(RT_MATERIAL3D_TEXTURE_SLOT_COUNT) "];\n"
      "};\n"
      "\n"
      "struct ShadowOut {\n"
@@ -384,6 +391,7 @@ static NSString *metal_shader_source =
      "                      float3 currNormal,\n"
      "                      float4 currTangent,\n"
      "                      float2 uv,\n"
+     "                      float2 uv1,\n"
      "                      float4 color,\n"
      "                      float4x4 modelMatrix,\n"
      "                      float4x4 normalMatrix,\n"
@@ -402,6 +410,7 @@ static NSString *metal_shader_source =
      "    out.normal = (normalMatrix * float4(currNormal, 0.0)).xyz;\n"
      "    out.tangent = float4((modelMatrix * float4(currTangent.xyz, 0.0)).xyz, currTangent.w);\n"
      "    out.uv = uv;\n"
+     "    out.uv1 = uv1;\n"
      "    out.color = color;\n"
      "    out.currClip = currClip;\n"
      "    out.prevClip = prevClip;\n"
@@ -451,6 +460,7 @@ static NSString *metal_shader_source =
      "                       normalize(skinnedNormal),\n"
      "                       float4(normalize(skinnedTangent), currTangent.w),\n"
      "                       in.uv,\n"
+     "                       in.uv1,\n"
      "                       in.color,\n"
      "                       obj.modelMatrix,\n"
      "                       obj.normalMatrix,\n"
@@ -505,6 +515,7 @@ static NSString *metal_shader_source =
      "                       normalize(skinnedNormal),\n"
      "                       float4(normalize(skinnedTangent), currTangent.w),\n"
      "                       in.uv,\n"
+     "                       in.uv1,\n"
      "                       in.color,\n"
      "                       inst.modelMatrix,\n"
      "                       inst.normalMatrix,\n"
@@ -568,6 +579,18 @@ static NSString *metal_shader_source =
      "    return envTex.sample(envSampler, normalize(dir), level(lod)).rgb;\n"
      "}\n"
      "\n"
+     "int texture_uv_set_at(constant PerMaterial &material, int slot) {\n"
+     "    return slot < 4 ? material.textureUvSets0[slot] : material.textureUvSets1[slot - 4];\n"
+     "}\n"
+     "\n"
+     "float2 material_uv(VertexOut in, constant PerMaterial &material, int slot) {\n"
+     "    float2 uv = texture_uv_set_at(material, slot) != 0 ? in.uv1 : in.uv;\n"
+     "    float4 m = material.textureUvTransform0[slot];\n"
+     "    float4 t = material.textureUvTransform1[slot];\n"
+     "    return float2(uv.x * m.x + uv.y * m.y + t.x,\n"
+     "                  uv.x * m.z + uv.y * m.w + t.y);\n"
+     "}\n"
+     "\n"
      "float sample_shadow(int shadowIndex,\n"
      "                    float3 worldPos,\n"
      "                    constant PerScene &scene,\n"
@@ -606,31 +629,36 @@ static NSString *metal_shader_source =
      "    texturecube<float> envTex [[texture(13)]],\n"
      "    texture2d<float> metallicRoughnessTex [[texture(14)]],\n"
      "    texture2d<float> aoTex [[texture(15)]],\n"
-     "    sampler texSampler [[sampler(0)]],\n"
+     "    sampler diffuseSampler [[sampler(0)]],\n"
      "    sampler shadowSampler [[sampler(1)]],\n"
-     "    sampler envSampler [[sampler(2)]]\n"
+     "    sampler envSampler [[sampler(2)]],\n"
+     "    sampler normalSampler [[sampler(3)]],\n"
+     "    sampler specularSampler [[sampler(4)]],\n"
+     "    sampler emissiveSampler [[sampler(5)]],\n"
+     "    sampler metallicRoughnessSampler [[sampler(6)]],\n"
+     "    sampler aoSampler [[sampler(7)]]\n"
      ") {\n"
      "    MainOut out;\n"
      "    float3 baseColor = material.diffuseColor.rgb;\n"
      "    float texAlpha = 1.0;\n"
      "    float materialAlpha = material.diffuseColor.a * material.scalars.x;\n"
      "    if (material.flags0.x != 0) {\n"
-     "        float4 texSample = diffuseTex.sample(texSampler, in.uv);\n"
+     "        float4 texSample = diffuseTex.sample(diffuseSampler, material_uv(in, material, 0));\n"
      "        baseColor *= texSample.rgb;\n"
      "        texAlpha = texSample.a;\n"
      "    }\n"
      "    if (material.flags1.z != 0) {\n"
-     "        float4 sp = splatTex.sample(texSampler, in.uv);\n"
+     "        float4 sp = splatTex.sample(diffuseSampler, in.uv);\n"
      "        float wsum = sp.r + sp.g + sp.b + sp.a;\n"
      "        if (wsum > 0.001) sp /= wsum;\n"
      "        float3 blended = float3(0);\n"
-     "        if (sp.r > 0.001) blended += splatLayer0.sample(texSampler, in.uv * "
+     "        if (sp.r > 0.001) blended += splatLayer0.sample(diffuseSampler, in.uv * "
      "material.splatScales.x).rgb * sp.r;\n"
-     "        if (sp.g > 0.001) blended += splatLayer1.sample(texSampler, in.uv * "
+     "        if (sp.g > 0.001) blended += splatLayer1.sample(diffuseSampler, in.uv * "
      "material.splatScales.y).rgb * sp.g;\n"
-     "        if (sp.b > 0.001) blended += splatLayer2.sample(texSampler, in.uv * "
+     "        if (sp.b > 0.001) blended += splatLayer2.sample(diffuseSampler, in.uv * "
      "material.splatScales.z).rgb * sp.b;\n"
-     "        if (sp.a > 0.001) blended += splatLayer3.sample(texSampler, in.uv * "
+     "        if (sp.a > 0.001) blended += splatLayer3.sample(diffuseSampler, in.uv * "
      "material.splatScales.w).rgb * sp.a;\n"
      "        baseColor = blended * material.diffuseColor.rgb;\n"
      "    }\n"
@@ -647,19 +675,19 @@ static NSString *metal_shader_source =
      "        float lenT = length(T);\n"
      "        if (lenT > 0.001) {\n"
      "            float3 B = cross(N, T) * (in.tangent.w < 0.0 ? -1.0 : 1.0);\n"
-     "            float3 mapN = normalTex.sample(texSampler, in.uv).rgb * 2.0 - 1.0;\n"
+     "            float3 mapN = normalTex.sample(normalSampler, material_uv(in, material, 1)).rgb * 2.0 - 1.0;\n"
      "            mapN.xy *= material.pbrScalars1.x;\n"
      "            N = normalize(T * mapN.x + B * mapN.y + N * mapN.z);\n"
      "        }\n"
      "    }\n"
      "    float3 emissive = material.emissiveColor.rgb * material.pbrScalars0.w;\n"
      "    if (material.flags1.x != 0) {\n"
-     "        emissive *= emissiveTex.sample(texSampler, in.uv).rgb;\n"
+     "        emissive *= emissiveTex.sample(emissiveSampler, material_uv(in, material, 3)).rgb;\n"
      "    }\n"
      "    float4 metallicRoughnessSample = float4(1.0);\n"
      "    float envRoughness = clamp(material.pbrScalars0.y, 0.0, 1.0);\n"
      "    if (material.pbrFlags.z != 0) {\n"
-     "        metallicRoughnessSample = metallicRoughnessTex.sample(texSampler, in.uv);\n"
+     "        metallicRoughnessSample = metallicRoughnessTex.sample(metallicRoughnessSampler, material_uv(in, material, 4));\n"
      "        envRoughness = clamp(envRoughness * metallicRoughnessSample.g, 0.045, 1.0);\n"
      "    }\n"
      "    float finalAlpha = materialAlpha * texAlpha;\n"
@@ -699,7 +727,7 @@ static NSString *metal_shader_source =
      "            envRoughness = roughness;\n"
      "        }\n"
      "        if (material.pbrFlags.w != 0) {\n"
-     "            float4 aoSample = aoTex.sample(texSampler, in.uv);\n"
+     "            float4 aoSample = aoTex.sample(aoSampler, material_uv(in, material, 5));\n"
      "            ao = clamp(ao * aoSample.r, 0.0, 1.0);\n"
      "        }\n"
      "        result = scene.ambientColor.rgb * baseColor * ao;\n"
@@ -752,7 +780,7 @@ static NSString *metal_shader_source =
      "        result = scene.ambientColor.rgb * baseColor;\n"
      "        float3 specColor = material.specularColor.rgb;\n"
      "        if (material.flags0.w != 0) {\n"
-     "            specColor *= specularTex.sample(texSampler, in.uv).rgb;\n"
+     "            specColor *= specularTex.sample(specularSampler, material_uv(in, material, 2)).rgb;\n"
      "        }\n"
      "        for (int i = 0; i < scene.counts.x; i++) {\n"
      "            float3 L; float atten = 1.0;\n"
@@ -875,6 +903,10 @@ typedef struct {
     float splatScales[4];
     int32_t shadingModel;
     float customParams[8];
+    int32_t textureUvSets0[4];
+    int32_t textureUvSets1[4];
+    float textureUvTransform0[RT_MATERIAL3D_TEXTURE_SLOT_COUNT][4];
+    float textureUvTransform1[RT_MATERIAL3D_TEXTURE_SLOT_COUNT][4];
 } mtl_per_material_t;
 
 typedef struct {
@@ -1690,7 +1722,7 @@ static int metal_copy_gpu_postfx_chain(VGFXMetalContext *ctx, const vgfx3d_postf
 }
 
 //=============================================================================
-// Vertex descriptor (84-byte vgfx3d_vertex_t)
+// Vertex descriptor (92-byte vgfx3d_vertex_t)
 //=============================================================================
 
 static MTLVertexDescriptor *create_vertex_descriptor(void) {
@@ -1704,19 +1736,22 @@ static MTLVertexDescriptor *create_vertex_descriptor(void) {
     d.attributes[2].format = MTLVertexFormatFloat2;
     d.attributes[2].offset = 24;
     d.attributes[2].bufferIndex = 0;
+    d.attributes[7].format = MTLVertexFormatFloat2;
+    d.attributes[7].offset = 32;
+    d.attributes[7].bufferIndex = 0;
     d.attributes[3].format = MTLVertexFormatFloat4;
-    d.attributes[3].offset = 32;
+    d.attributes[3].offset = 40;
     d.attributes[3].bufferIndex = 0;
     d.attributes[4].format = MTLVertexFormatFloat4;
-    d.attributes[4].offset = 48;
+    d.attributes[4].offset = 56;
     d.attributes[4].bufferIndex = 0;
     d.attributes[5].format = MTLVertexFormatUChar4;
-    d.attributes[5].offset = 64;
+    d.attributes[5].offset = 72;
     d.attributes[5].bufferIndex = 0;
     d.attributes[6].format = MTLVertexFormatFloat4;
-    d.attributes[6].offset = 68;
+    d.attributes[6].offset = 76;
     d.attributes[6].bufferIndex = 0;
-    d.layouts[0].stride = 84;
+    d.layouts[0].stride = 92;
     d.layouts[0].stepRate = 1;
     d.layouts[0].stepFunction = MTLVertexStepFunctionPerVertex;
     return d;
@@ -1818,7 +1853,52 @@ metal_select_pipeline_state(VGFXMetalContext *ctx, const vgfx3d_draw_cmd_t *cmd,
     return blend_mode == VGFX3D_METAL_BLEND_ALPHA
                ? ctx.pipelineStateColorOnlyAlpha
                : (blend_mode == VGFX3D_METAL_BLEND_ADDITIVE ? ctx.pipelineStateColorOnlyAdditive
-                                                            : ctx.pipelineStateColorOnly);
+	                                                            : ctx.pipelineStateColorOnly);
+}
+
+static MTLSamplerAddressMode metal_material_address_mode(int32_t mode) {
+    if (mode == RT_MATERIAL3D_TEXTURE_WRAP_CLAMP_TO_EDGE)
+        return MTLSamplerAddressModeClampToEdge;
+    if (mode == RT_MATERIAL3D_TEXTURE_WRAP_MIRRORED_REPEAT)
+        return MTLSamplerAddressModeMirrorRepeat;
+    return MTLSamplerAddressModeRepeat;
+}
+
+static id<MTLSamplerState> metal_get_material_sampler(VGFXMetalContext *ctx,
+                                                      const vgfx3d_draw_cmd_t *cmd,
+                                                      int32_t slot) {
+    int use_slot = cmd && slot >= 0 && slot < RT_MATERIAL3D_TEXTURE_SLOT_COUNT;
+    if (!ctx)
+        return nil;
+    if (!cmd || !ctx.samplerCache)
+        return ctx.sharedSampler ? ctx.sharedSampler : ctx.defaultSampler;
+
+    int32_t wrap_s = use_slot ? cmd->texture_slot_wrap_s[slot] : cmd->texture_wrap_s;
+    int32_t wrap_t = use_slot ? cmd->texture_slot_wrap_t[slot] : cmd->texture_wrap_t;
+    int32_t filter = (use_slot ? cmd->texture_slot_filter[slot] : cmd->texture_filter) ==
+                             RT_MATERIAL3D_TEXTURE_FILTER_NEAREST
+                         ? RT_MATERIAL3D_TEXTURE_FILTER_NEAREST
+                         : RT_MATERIAL3D_TEXTURE_FILTER_LINEAR;
+    NSString *key = [NSString stringWithFormat:@"%d:%d:%d",
+                                               wrap_s,
+                                               wrap_t,
+                                               filter];
+    id<MTLSamplerState> sampler = ctx.samplerCache[key];
+    if (sampler)
+        return sampler;
+
+    MTLSamplerDescriptor *sd = [[MTLSamplerDescriptor alloc] init];
+    sd.minFilter = filter == RT_MATERIAL3D_TEXTURE_FILTER_NEAREST ? MTLSamplerMinMagFilterNearest
+                                                                  : MTLSamplerMinMagFilterLinear;
+    sd.magFilter = sd.minFilter;
+    sd.mipFilter =
+        filter == RT_MATERIAL3D_TEXTURE_FILTER_NEAREST ? MTLSamplerMipFilterNearest : MTLSamplerMipFilterLinear;
+    sd.sAddressMode = metal_material_address_mode(wrap_s);
+    sd.tAddressMode = metal_material_address_mode(wrap_t);
+    sampler = [ctx.device newSamplerStateWithDescriptor:sd];
+    if (sampler)
+        ctx.samplerCache[key] = sampler;
+    return sampler ? sampler : (ctx.sharedSampler ? ctx.sharedSampler : ctx.defaultSampler);
 }
 
 //=============================================================================
@@ -1849,6 +1929,7 @@ static void *metal_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
         ctx.geometryCache = [NSMutableDictionary dictionaryWithCapacity:32];
         ctx.morphCache = [NSMutableDictionary dictionaryWithCapacity:16];
         ctx.renderTargetCache = [NSMutableDictionary dictionaryWithCapacity:8];
+        ctx.samplerCache = [NSMutableDictionary dictionaryWithCapacity:8];
         ctx.currentTargetKind = VGFX3D_METAL_TARGET_SWAPCHAIN;
 
         view.wantsLayer = YES;
@@ -2889,6 +2970,18 @@ static void metal_submit_draw(void *ctx_ptr,
         }
         mat.shadingModel = cmd->shading_model;
         memcpy(mat.customParams, cmd->custom_params, sizeof(float) * 8);
+        for (int slot = 0; slot < RT_MATERIAL3D_TEXTURE_SLOT_COUNT; slot++) {
+            if (slot < 4)
+                mat.textureUvSets0[slot] = cmd->texture_slot_uv_set[slot];
+            else
+                mat.textureUvSets1[slot - 4] = cmd->texture_slot_uv_set[slot];
+            mat.textureUvTransform0[slot][0] = cmd->texture_slot_uv_transform[slot][0];
+            mat.textureUvTransform0[slot][1] = cmd->texture_slot_uv_transform[slot][1];
+            mat.textureUvTransform0[slot][2] = cmd->texture_slot_uv_transform[slot][2];
+            mat.textureUvTransform0[slot][3] = cmd->texture_slot_uv_transform[slot][3];
+            mat.textureUvTransform1[slot][0] = cmd->texture_slot_uv_transform[slot][4];
+            mat.textureUvTransform1[slot][1] = cmd->texture_slot_uv_transform[slot][5];
+        }
         [ctx.encoder setFragmentBytes:&mat length:sizeof(mat) atIndex:1];
 
         /* Bind default textures to all shader slots. */
@@ -2901,11 +2994,36 @@ static void metal_submit_draw(void *ctx_ptr,
             [ctx.encoder setFragmentTexture:ctx->_shadowDepthTexture[0] atIndex:4];
         if (ctx->_shadowCount > 1 && ctx->_shadowDepthTexture[1])
             [ctx.encoder setFragmentTexture:ctx->_shadowDepthTexture[1] atIndex:5];
-        [ctx.encoder setFragmentSamplerState:ctx.sharedSampler atIndex:0];
+        [ctx.encoder setFragmentSamplerState:metal_get_material_sampler(
+                                                 ctx,
+                                                 cmd,
+                                                 RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR)
+                                      atIndex:0];
         if (ctx.shadowSampler)
             [ctx.encoder setFragmentSamplerState:ctx.shadowSampler atIndex:1];
         if (ctx.cubeSampler)
             [ctx.encoder setFragmentSamplerState:ctx.cubeSampler atIndex:2];
+        [ctx.encoder setFragmentSamplerState:metal_get_material_sampler(ctx,
+                                                                         cmd,
+                                                                         RT_MATERIAL3D_TEXTURE_SLOT_NORMAL)
+                                      atIndex:3];
+        [ctx.encoder setFragmentSamplerState:metal_get_material_sampler(ctx,
+                                                                         cmd,
+                                                                         RT_MATERIAL3D_TEXTURE_SLOT_SPECULAR)
+                                      atIndex:4];
+        [ctx.encoder setFragmentSamplerState:metal_get_material_sampler(ctx,
+                                                                         cmd,
+                                                                         RT_MATERIAL3D_TEXTURE_SLOT_EMISSIVE)
+                                      atIndex:5];
+        [ctx.encoder setFragmentSamplerState:metal_get_material_sampler(
+                                                 ctx,
+                                                 cmd,
+                                                 RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS)
+                                      atIndex:6];
+        [ctx.encoder setFragmentSamplerState:metal_get_material_sampler(ctx,
+                                                                         cmd,
+                                                                         RT_MATERIAL3D_TEXTURE_SLOT_AO)
+                                      atIndex:7];
 
         /* MTL-03: Bind cached textures for each material map slot */
         if (cmd->texture) {
@@ -3413,6 +3531,18 @@ static void metal_submit_draw_instanced(void *ctx_ptr,
         }
         mat.shadingModel = cmd->shading_model;
         memcpy(mat.customParams, cmd->custom_params, sizeof(float) * 8);
+        for (int slot = 0; slot < RT_MATERIAL3D_TEXTURE_SLOT_COUNT; slot++) {
+            if (slot < 4)
+                mat.textureUvSets0[slot] = cmd->texture_slot_uv_set[slot];
+            else
+                mat.textureUvSets1[slot - 4] = cmd->texture_slot_uv_set[slot];
+            mat.textureUvTransform0[slot][0] = cmd->texture_slot_uv_transform[slot][0];
+            mat.textureUvTransform0[slot][1] = cmd->texture_slot_uv_transform[slot][1];
+            mat.textureUvTransform0[slot][2] = cmd->texture_slot_uv_transform[slot][2];
+            mat.textureUvTransform0[slot][3] = cmd->texture_slot_uv_transform[slot][3];
+            mat.textureUvTransform1[slot][0] = cmd->texture_slot_uv_transform[slot][4];
+            mat.textureUvTransform1[slot][1] = cmd->texture_slot_uv_transform[slot][5];
+        }
         [ctx.encoder setFragmentBytes:&mat length:sizeof(mat) atIndex:1];
 
         metal_bind_bone_palettes(ctx, cmd, has_skinning, has_prev_skinning);
@@ -3428,11 +3558,36 @@ static void metal_submit_draw_instanced(void *ctx_ptr,
             [ctx.encoder setFragmentTexture:ctx->_shadowDepthTexture[0] atIndex:4];
         if (ctx->_shadowCount > 1 && ctx->_shadowDepthTexture[1])
             [ctx.encoder setFragmentTexture:ctx->_shadowDepthTexture[1] atIndex:5];
-        [ctx.encoder setFragmentSamplerState:ctx.sharedSampler atIndex:0];
+        [ctx.encoder setFragmentSamplerState:metal_get_material_sampler(
+                                                 ctx,
+                                                 cmd,
+                                                 RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR)
+                                      atIndex:0];
         if (ctx.shadowSampler)
             [ctx.encoder setFragmentSamplerState:ctx.shadowSampler atIndex:1];
         if (ctx.cubeSampler)
             [ctx.encoder setFragmentSamplerState:ctx.cubeSampler atIndex:2];
+        [ctx.encoder setFragmentSamplerState:metal_get_material_sampler(ctx,
+                                                                         cmd,
+                                                                         RT_MATERIAL3D_TEXTURE_SLOT_NORMAL)
+                                      atIndex:3];
+        [ctx.encoder setFragmentSamplerState:metal_get_material_sampler(ctx,
+                                                                         cmd,
+                                                                         RT_MATERIAL3D_TEXTURE_SLOT_SPECULAR)
+                                      atIndex:4];
+        [ctx.encoder setFragmentSamplerState:metal_get_material_sampler(ctx,
+                                                                         cmd,
+                                                                         RT_MATERIAL3D_TEXTURE_SLOT_EMISSIVE)
+                                      atIndex:5];
+        [ctx.encoder setFragmentSamplerState:metal_get_material_sampler(
+                                                 ctx,
+                                                 cmd,
+                                                 RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS)
+                                      atIndex:6];
+        [ctx.encoder setFragmentSamplerState:metal_get_material_sampler(ctx,
+                                                                         cmd,
+                                                                         RT_MATERIAL3D_TEXTURE_SLOT_AO)
+                                      atIndex:7];
         if (cmd->texture) {
             id<MTLTexture> tex = metal_get_cached_texture(ctx, cmd->texture);
             if (tex)

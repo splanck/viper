@@ -12,6 +12,7 @@
 #include "rt_animcontroller3d.h"
 #include "rt_canvas3d_internal.h"
 #include "rt_model3d.h"
+#include "rt_morphtarget3d.h"
 #include "rt_scene3d.h"
 #include "rt_skeleton3d_internal.h"
 #include "rt_string.h"
@@ -75,6 +76,15 @@ template <typename T> static void append_bytes(std::vector<uint8_t> &buf, const 
     size_t offset = buf.size();
     buf.resize(offset + sizeof(T));
     std::memcpy(buf.data() + offset, &value, sizeof(T));
+}
+
+static bool write_text_file(const char *path, const std::string &text) {
+    FILE *f = std::fopen(path, "wb");
+    if (!f)
+        return false;
+    bool ok = std::fwrite(text.data(), 1, text.size(), f) == text.size();
+    std::fclose(f);
+    return ok;
 }
 
 static std::string base64_encode(const uint8_t *data, size_t len) {
@@ -828,6 +838,51 @@ static void test_model3d_adapts_fbx_scene_graphs() {
                 "FBX-backed Model3D instances preserve child names");
 }
 
+static void test_model3d_loads_obj_as_template_asset() {
+    const char *path = "/tmp/viper_model3d_fixture.obj";
+    const char *obj =
+        "# simple indexed triangle\n"
+        "v 0 0 0\n"
+        "v 1 0 0\n"
+        "v 0 1 0\n"
+        "vt 0 0\n"
+        "vt 1 0\n"
+        "vt 0 1\n"
+        "vn 0 0 1\n"
+        "f 1/1/1 2/2/1 3/3/1\n";
+    FILE *f = std::fopen(path, "wb");
+    bool wrote_fixture = f && std::fwrite(obj, 1, std::strlen(obj), f) == std::strlen(obj);
+    if (f)
+        std::fclose(f);
+    EXPECT_TRUE(wrote_fixture, "OBJ fixture can be written");
+    if (!wrote_fixture)
+        return;
+
+    void *model = rt_model3d_load(rt_const_cstr(path));
+    EXPECT_TRUE(model != nullptr, "Model3D.Load parses OBJ assets");
+    if (!model)
+        return;
+
+    EXPECT_TRUE(rt_model3d_get_mesh_count(model) == 1, "OBJ-backed Model3D exposes one mesh");
+    EXPECT_TRUE(rt_model3d_get_material_count(model) == 1,
+                "OBJ-backed Model3D creates a default material");
+    EXPECT_TRUE(rt_model3d_get_node_count(model) == 1,
+                "OBJ-backed Model3D synthesizes one template node");
+
+    auto *mesh = static_cast<rt_mesh3d *>(rt_model3d_get_mesh(model, 0));
+    EXPECT_TRUE(mesh != nullptr && mesh->vertex_count == 3 && mesh->index_count == 3,
+                "OBJ-backed Model3D preserves imported mesh geometry");
+
+    void *node = rt_model3d_find_node(model, rt_const_cstr("mesh_0"));
+    EXPECT_TRUE(node != nullptr, "OBJ-backed Model3D names the synthesized mesh node");
+    if (node) {
+        EXPECT_TRUE(rt_scene_node3d_get_mesh(node) == rt_model3d_get_mesh(model, 0),
+                    "OBJ synthesized node reuses the imported mesh");
+        EXPECT_TRUE(rt_scene_node3d_get_material(node) == rt_model3d_get_material(model, 0),
+                    "OBJ synthesized node uses the generated material");
+    }
+}
+
 static void test_model3d_imports_fbx_skinning_and_grouped_animation() {
     const char *path = "/tmp/viper_model3d_skinned_anim_fixture.fbx";
     bool wrote_fixture = write_fbx_skinned_animation_fixture(path);
@@ -960,13 +1015,109 @@ static void test_model3d_loads_demo_fbx_textures() {
                 "FBX imports preserve demo diffuse textures when texture files sit beside the asset");
 }
 
+static void test_model3d_autoplays_gltf_node_and_morph_animation() {
+    const char *path = "/tmp/viper_model3d_node_animation.gltf";
+    std::vector<uint8_t> buffer;
+    const float positions[9] = {0.0f, 0.0f, 0.0f, 1.0f, 0.0f,
+                                0.0f, 0.0f, 1.0f, 0.0f};
+    const uint16_t indices[3] = {0, 1, 2};
+    const float morph_positions[9] = {0.0f, 0.0f, 0.0f, 0.2f, 0.0f,
+                                      0.0f, 0.0f, 0.3f, 0.0f};
+    const float times[2] = {0.0f, 1.0f};
+    const float translations[6] = {0.0f, 0.0f, 0.0f, 2.0f, 0.0f, 0.0f};
+    const float weights[2] = {0.0f, 1.0f};
+
+    size_t pos_off = buffer.size();
+    for (float v : positions)
+        append_bytes(buffer, v);
+    size_t idx_off = buffer.size();
+    for (uint16_t v : indices)
+        append_bytes(buffer, v);
+    while (buffer.size() % 4 != 0)
+        buffer.push_back(0);
+    size_t morph_off = buffer.size();
+    for (float v : morph_positions)
+        append_bytes(buffer, v);
+    size_t times_off = buffer.size();
+    for (float v : times)
+        append_bytes(buffer, v);
+    size_t translation_off = buffer.size();
+    for (float v : translations)
+        append_bytes(buffer, v);
+    size_t weights_off = buffer.size();
+    for (float v : weights)
+        append_bytes(buffer, v);
+
+    std::string buffer_b64 = base64_encode(buffer.data(), buffer.size());
+    std::string gltf_json =
+        "{"
+        "\"asset\":{\"version\":\"2.0\"},"
+        "\"buffers\":[{\"uri\":\"data:application/octet-stream;base64," +
+        buffer_b64 + "\",\"byteLength\":" + std::to_string(buffer.size()) + "}],"
+        "\"bufferViews\":["
+        "{\"buffer\":0,\"byteOffset\":" + std::to_string(pos_off) + ",\"byteLength\":36},"
+        "{\"buffer\":0,\"byteOffset\":" + std::to_string(idx_off) + ",\"byteLength\":6},"
+        "{\"buffer\":0,\"byteOffset\":" + std::to_string(morph_off) + ",\"byteLength\":36},"
+        "{\"buffer\":0,\"byteOffset\":" + std::to_string(times_off) + ",\"byteLength\":8},"
+        "{\"buffer\":0,\"byteOffset\":" + std::to_string(translation_off) +
+        ",\"byteLength\":24},"
+        "{\"buffer\":0,\"byteOffset\":" + std::to_string(weights_off) + ",\"byteLength\":8}"
+        "],"
+        "\"accessors\":["
+        "{\"bufferView\":0,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\"},"
+        "{\"bufferView\":1,\"componentType\":5123,\"count\":3,\"type\":\"SCALAR\"},"
+        "{\"bufferView\":2,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\"},"
+        "{\"bufferView\":3,\"componentType\":5126,\"count\":2,\"type\":\"SCALAR\"},"
+        "{\"bufferView\":4,\"componentType\":5126,\"count\":2,\"type\":\"VEC3\"},"
+        "{\"bufferView\":5,\"componentType\":5126,\"count\":2,\"type\":\"SCALAR\"}"
+        "],"
+        "\"meshes\":[{\"weights\":[0.0],\"primitives\":[{\"attributes\":{\"POSITION\":0},"
+        "\"indices\":1,\"targets\":[{\"POSITION\":2}]}]}],"
+        "\"nodes\":[{\"name\":\"Mover\",\"mesh\":0,\"weights\":[0.0]}],"
+        "\"scenes\":[{\"nodes\":[0]}],\"scene\":0,"
+        "\"animations\":[{\"name\":\"MoveAndSmile\",\"samplers\":[{\"input\":3,\"output\":4},"
+        "{\"input\":3,\"output\":5}],\"channels\":["
+        "{\"sampler\":0,\"target\":{\"node\":0,\"path\":\"translation\"}},"
+        "{\"sampler\":1,\"target\":{\"node\":0,\"path\":\"weights\"}}]}]"
+        "}";
+    EXPECT_TRUE(write_text_file(path, gltf_json), "Node-animation glTF fixture can be written");
+    void *model = rt_model3d_load(rt_const_cstr(path));
+    EXPECT_TRUE(model != nullptr, "Model3D.Load imports glTF node animation clips");
+    if (!model)
+        return;
+    void *scene = rt_model3d_instantiate_scene(model);
+    EXPECT_TRUE(scene != nullptr, "Model3D.InstantiateScene creates a scene for node animation");
+    if (!scene)
+        return;
+    rt_scene3d_sync_bindings(scene, 0.5);
+    void *node = rt_scene3d_find(scene, rt_const_cstr("Mover"));
+    EXPECT_TRUE(node != nullptr, "Instantiated scene preserves animated node name");
+    if (!node)
+        return;
+    EXPECT_NEAR(rt_vec3_x(rt_scene_node3d_get_position(node)),
+                1.0,
+                0.001,
+                "Scene3D.SyncBindings advances glTF node translation animation");
+    auto *mesh = static_cast<rt_mesh3d *>(rt_scene_node3d_get_mesh(node));
+    EXPECT_TRUE(mesh != nullptr && mesh->morph_targets_ref != nullptr,
+                "Animated glTF node keeps an instance-local morph target");
+    if (mesh && mesh->morph_targets_ref) {
+        EXPECT_NEAR(rt_morphtarget3d_get_weight(mesh->morph_targets_ref, 0),
+                    0.5,
+                    0.001,
+                    "Scene3D.SyncBindings advances glTF morph weight animation");
+    }
+}
+
 int main() {
     test_model3d_roundtrips_vscn_assets();
     test_model3d_adapts_gltf_scene_graphs();
     test_model3d_adapts_fbx_scene_graphs();
+    test_model3d_loads_obj_as_template_asset();
     test_model3d_imports_fbx_skinning_and_grouped_animation();
     test_model3d_rejects_truncated_fbx();
     test_model3d_loads_demo_fbx_textures();
+    test_model3d_autoplays_gltf_node_and_morph_animation();
     std::printf("Model3D tests: %d/%d passed\n", tests_passed, tests_run);
     return tests_passed == tests_run ? 0 : 1;
 }

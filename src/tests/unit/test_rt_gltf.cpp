@@ -92,10 +92,26 @@ static bool read_file_bytes(const char *path, std::vector<uint8_t> &out) {
     return ok;
 }
 
+static bool write_text_file(const char *path, const std::string &text) {
+    FILE *f = std::fopen(path, "wb");
+    if (!f)
+        return false;
+    bool ok = std::fwrite(text.data(), 1, text.size(), f) == text.size();
+    std::fclose(f);
+    return ok;
+}
+
 template <typename T> static void append_bytes(std::vector<uint8_t> &buf, const T &value) {
     size_t offset = buf.size();
     buf.resize(offset + sizeof(T));
     std::memcpy(buf.data() + offset, &value, sizeof(T));
+}
+
+static void append_u32_le(std::vector<uint8_t> &buf, uint32_t value) {
+    buf.push_back((uint8_t)(value & 0xFFu));
+    buf.push_back((uint8_t)((value >> 8) & 0xFFu));
+    buf.push_back((uint8_t)((value >> 16) & 0xFFu));
+    buf.push_back((uint8_t)((value >> 24) & 0xFFu));
 }
 
 static void test_gltf_loads_data_uri_buffers_and_embedded_textures() {
@@ -1107,6 +1123,331 @@ static void test_gltf_imports_morph_targets() {
     }
 }
 
+static void test_gltf_rejects_malformed_glb_headers() {
+    const char *glb_path = "/tmp/viper_gltf_bad_header.glb";
+    std::vector<uint8_t> glb;
+    std::string json = "{\"asset\":{\"version\":\"2.0\"}}";
+    while ((json.size() & 3u) != 0)
+        json.push_back(' ');
+
+    glb.insert(glb.end(), {'g', 'l', 'T', 'F'});
+    append_u32_le(glb, 1); /* invalid: only GLB 2 is supported */
+    append_u32_le(glb, (uint32_t)(12 + 8 + json.size()));
+    append_u32_le(glb, (uint32_t)json.size());
+    append_u32_le(glb, 0x4E4F534Au);
+    glb.insert(glb.end(), json.begin(), json.end());
+
+    FILE *f = std::fopen(glb_path, "wb");
+    EXPECT_TRUE(f != nullptr, "Malformed GLB fixture can be created");
+    if (!f)
+        return;
+    std::fwrite(glb.data(), 1, glb.size(), f);
+    std::fclose(f);
+
+    EXPECT_TRUE(rt_gltf_load(rt_const_cstr(glb_path)) == nullptr,
+                "GLTF.Load rejects unsupported GLB versions");
+}
+
+static void test_gltf_rejects_unsafe_external_buffer_paths() {
+    const char *gltf_path = "/tmp/viper_gltf_unsafe_uri.gltf";
+    std::string gltf_json =
+        "{"
+        "\"asset\":{\"version\":\"2.0\"},"
+        "\"buffers\":[{\"uri\":\"../outside.bin\",\"byteLength\":4}],"
+        "\"bufferViews\":[{\"buffer\":0,\"byteOffset\":0,\"byteLength\":4}],"
+        "\"accessors\":[{\"bufferView\":0,\"componentType\":5126,\"count\":1,\"type\":\"SCALAR\"}]"
+        "}";
+    EXPECT_TRUE(write_text_file(gltf_path, gltf_json), "Unsafe-URI glTF fixture can be created");
+    EXPECT_TRUE(rt_gltf_load(rt_const_cstr(gltf_path)) == nullptr,
+                "GLTF.Load rejects external resource paths outside the asset directory");
+}
+
+static void test_gltf_assigns_default_material_to_materialless_primitives() {
+    const char *gltf_path = "/tmp/viper_gltf_default_material.gltf";
+    std::vector<uint8_t> gltf_buffer;
+    const float positions[9] = {0.0f, 0.0f, 0.0f, 1.0f, 0.0f,
+                                0.0f, 0.0f, 1.0f, 0.0f};
+    const uint16_t indices[3] = {0, 1, 2};
+    for (float v : positions)
+        append_bytes(gltf_buffer, v);
+    for (uint16_t v : indices)
+        append_bytes(gltf_buffer, v);
+    std::string buffer_b64 = base64_encode(gltf_buffer.data(), gltf_buffer.size());
+    std::string gltf_json =
+        "{"
+        "\"asset\":{\"version\":\"2.0\"},"
+        "\"buffers\":[{\"uri\":\"data:application/octet-stream;base64," +
+        buffer_b64 + "\",\"byteLength\":" + std::to_string(gltf_buffer.size()) + "}],"
+        "\"bufferViews\":[{\"buffer\":0,\"byteOffset\":0,\"byteLength\":36},"
+        "{\"buffer\":0,\"byteOffset\":36,\"byteLength\":6}],"
+        "\"accessors\":[{\"bufferView\":0,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\"},"
+        "{\"bufferView\":1,\"componentType\":5123,\"count\":3,\"type\":\"SCALAR\"}],"
+        "\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0},\"indices\":1}]}],"
+        "\"nodes\":[{\"name\":\"Matless\",\"mesh\":0}],\"scenes\":[{\"nodes\":[0]}],\"scene\":0"
+        "}";
+    EXPECT_TRUE(write_text_file(gltf_path, gltf_json), "Materialless glTF fixture can be created");
+    void *asset = rt_gltf_load(rt_const_cstr(gltf_path));
+    EXPECT_TRUE(asset != nullptr, "GLTF.Load parses materialless primitives");
+    if (!asset)
+        return;
+    EXPECT_TRUE(rt_gltf_material_count(asset) == 1,
+                "GLTF.Load creates a shared default material for materialless primitives");
+    void *node = rt_scene_node3d_find(rt_gltf_get_scene_root(asset), rt_const_cstr("Matless"));
+    EXPECT_TRUE(node != nullptr && rt_scene_node3d_get_material(node) != nullptr,
+                "GLTF scene nodes bind the default material so geometry renders");
+}
+
+static void test_gltf_uses_texture_texcoord_and_transform() {
+    const char *gltf_path = "/tmp/viper_gltf_texcoord_transform.gltf";
+    std::vector<uint8_t> gltf_buffer;
+    const float positions[9] = {0.0f, 0.0f, 0.0f, 1.0f, 0.0f,
+                                0.0f, 0.0f, 1.0f, 0.0f};
+    const float uv0[6] = {0.0f, 0.0f, 0.1f, 0.1f, 0.2f, 0.2f};
+    const float uv1[6] = {0.25f, 0.5f, 0.5f, 0.25f, 1.0f, 0.75f};
+    const uint16_t indices[3] = {0, 1, 2};
+    for (float v : positions)
+        append_bytes(gltf_buffer, v);
+    for (float v : uv0)
+        append_bytes(gltf_buffer, v);
+    for (float v : uv1)
+        append_bytes(gltf_buffer, v);
+    for (uint16_t v : indices)
+        append_bytes(gltf_buffer, v);
+    std::string buffer_b64 = base64_encode(gltf_buffer.data(), gltf_buffer.size());
+    std::string gltf_json =
+        "{"
+        "\"asset\":{\"version\":\"2.0\"},"
+        "\"buffers\":[{\"uri\":\"data:application/octet-stream;base64," +
+        buffer_b64 + "\",\"byteLength\":" + std::to_string(gltf_buffer.size()) + "}],"
+        "\"bufferViews\":[{\"buffer\":0,\"byteOffset\":0,\"byteLength\":36},"
+        "{\"buffer\":0,\"byteOffset\":36,\"byteLength\":24},"
+        "{\"buffer\":0,\"byteOffset\":60,\"byteLength\":24},"
+        "{\"buffer\":0,\"byteOffset\":84,\"byteLength\":6}],"
+        "\"accessors\":[{\"bufferView\":0,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\"},"
+        "{\"bufferView\":1,\"componentType\":5126,\"count\":3,\"type\":\"VEC2\"},"
+        "{\"bufferView\":2,\"componentType\":5126,\"count\":3,\"type\":\"VEC2\"},"
+        "{\"bufferView\":3,\"componentType\":5123,\"count\":3,\"type\":\"SCALAR\"}],"
+        "\"textures\":[{}],"
+        "\"materials\":[{\"pbrMetallicRoughness\":{\"baseColorTexture\":{\"index\":0,"
+        "\"texCoord\":1,\"extensions\":{\"KHR_texture_transform\":{\"offset\":[0.1,0.2],"
+        "\"scale\":[2.0,3.0]}}}}}],"
+        "\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0,\"TEXCOORD_0\":1,"
+        "\"TEXCOORD_1\":2},\"indices\":3,\"material\":0}]}]"
+        "}";
+    EXPECT_TRUE(write_text_file(gltf_path, gltf_json), "UV-transform glTF fixture can be created");
+    void *asset = rt_gltf_load(rt_const_cstr(gltf_path));
+    EXPECT_TRUE(asset != nullptr, "GLTF.Load parses texture-info UV transforms");
+    if (!asset)
+        return;
+    auto *mesh = static_cast<rt_mesh3d *>(rt_gltf_get_mesh(asset, 0));
+    auto *mat = static_cast<rt_material3d *>(rt_gltf_get_material(asset, 0));
+    EXPECT_TRUE(mesh != nullptr, "GLTF.Load exposes UV-transform mesh");
+    EXPECT_TRUE(mat != nullptr, "GLTF.Load exposes UV-transform material");
+    if (!mesh || !mat)
+        return;
+    EXPECT_NEAR(mesh->vertices[0].uv[0], 0.0, 0.001, "GLTF.Load preserves TEXCOORD_0 on vertex");
+    EXPECT_NEAR(mesh->vertices[0].uv1[0], 0.25, 0.001, "GLTF.Load preserves TEXCOORD_1 on vertex");
+    EXPECT_TRUE(mat->texture_slot_uv_set[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR] == 1,
+                "GLTF.Load records baseColorTexture texCoord=1 on the material slot");
+    EXPECT_NEAR(mat->texture_slot_uv_transform[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR][0],
+                2.0,
+                0.001,
+                "GLTF.Load records texture transform scale.x");
+    EXPECT_NEAR(mat->texture_slot_uv_transform[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR][3],
+                3.0,
+                0.001,
+                "GLTF.Load records texture transform scale.y");
+    EXPECT_NEAR(mat->texture_slot_uv_transform[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR][4],
+                0.1,
+                0.001,
+                "GLTF.Load records texture transform offset.x");
+    EXPECT_NEAR(mat->texture_slot_uv_transform[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR][5],
+                0.2,
+                0.001,
+                "GLTF.Load records texture transform offset.y");
+}
+
+static void test_gltf_imports_material_extensions_supported_by_material3d() {
+    const char *gltf_path = "/tmp/viper_gltf_material_extensions.gltf";
+    std::string gltf_json =
+        "{"
+        "\"asset\":{\"version\":\"2.0\"},"
+        "\"textures\":[{}],"
+        "\"materials\":[{\"pbrMetallicRoughness\":{\"baseColorFactor\":[1,1,1,1]},"
+        "\"extensions\":{\"KHR_materials_unlit\":{},"
+        "\"KHR_materials_specular\":{\"specularFactor\":0.25,"
+        "\"specularColorFactor\":[0.2,0.3,0.4],\"specularTexture\":{\"index\":0}},"
+        "\"KHR_materials_clearcoat\":{\"clearcoatFactor\":0.6}}}]"
+        "}";
+    EXPECT_TRUE(write_text_file(gltf_path, gltf_json), "Material-extension glTF fixture can be created");
+    void *asset = rt_gltf_load(rt_const_cstr(gltf_path));
+    EXPECT_TRUE(asset != nullptr, "GLTF.Load parses material extension assets");
+    if (!asset)
+        return;
+    auto *mat = static_cast<rt_material3d *>(rt_gltf_get_material(asset, 0));
+    EXPECT_TRUE(mat != nullptr, "GLTF.Load exposes extension material");
+    if (!mat)
+        return;
+    EXPECT_TRUE(mat->unlit == 1 && mat->shading_model == 3,
+                "GLTF.Load maps KHR_materials_unlit to Material3D unlit shading");
+    EXPECT_NEAR(mat->specular[0], 0.2, 0.001, "GLTF.Load imports specularColorFactor R");
+    EXPECT_NEAR(mat->specular[1], 0.3, 0.001, "GLTF.Load imports specularColorFactor G");
+    EXPECT_NEAR(mat->specular[2], 0.4, 0.001, "GLTF.Load imports specularColorFactor B");
+    EXPECT_NEAR(mat->reflectivity, 0.6, 0.001, "GLTF.Load approximates clearcoat reflectivity");
+}
+
+static void test_gltf_preserves_negative_matrix_scale_sign() {
+    const char *gltf_path = "/tmp/viper_gltf_negative_scale.gltf";
+    std::string gltf_json =
+        "{"
+        "\"asset\":{\"version\":\"2.0\"},"
+        "\"nodes\":[{\"name\":\"Mirror\",\"matrix\":[-2,0,0,0,0,3,0,0,0,0,4,0,0,0,0,1]}],"
+        "\"scenes\":[{\"nodes\":[0]}],\"scene\":0"
+        "}";
+    EXPECT_TRUE(write_text_file(gltf_path, gltf_json), "Negative-scale glTF fixture can be created");
+    void *asset = rt_gltf_load(rt_const_cstr(gltf_path));
+    EXPECT_TRUE(asset != nullptr, "GLTF.Load parses negative-scale matrix nodes");
+    if (!asset)
+        return;
+    void *node = rt_scene_node3d_find(rt_gltf_get_scene_root(asset), rt_const_cstr("Mirror"));
+    EXPECT_TRUE(node != nullptr, "GLTF.Load exposes negative-scale node");
+    if (!node)
+        return;
+    EXPECT_NEAR(rt_vec3_x(rt_scene_node3d_get_scale(node)),
+                -2.0,
+                0.001,
+                "GLTF.Load preserves negative X scale from matrix transforms");
+}
+
+static void test_gltf_skips_skins_over_runtime_bone_limit() {
+    const char *gltf_path = "/tmp/viper_gltf_oversized_skin.gltf";
+    std::string nodes;
+    std::string joints;
+    for (int i = 0; i < 257; i++) {
+        if (i > 0) {
+            nodes += ",";
+            joints += ",";
+        }
+        nodes += "{\"name\":\"J" + std::to_string(i) + "\"}";
+        joints += std::to_string(i);
+    }
+    std::string gltf_json =
+        "{\"asset\":{\"version\":\"2.0\"},\"skins\":[{\"joints\":[" + joints +
+        "]}],\"nodes\":[" + nodes + "],\"scenes\":[{\"nodes\":[0]}],\"scene\":0}";
+    EXPECT_TRUE(write_text_file(gltf_path, gltf_json), "Oversized-skin glTF fixture can be created");
+    void *asset = rt_gltf_load(rt_const_cstr(gltf_path));
+    EXPECT_TRUE(asset != nullptr, "GLTF.Load parses assets with oversized skins without trapping");
+    if (!asset)
+        return;
+    EXPECT_TRUE(rt_gltf_skeleton_count(asset) == 0,
+                "GLTF.Load skips skins above the runtime 256-bone palette limit");
+}
+
+static void test_gltf_preserves_primary_texture_sampler_state() {
+    const char *gltf_path = "/tmp/viper_gltf_sampler_state.gltf";
+    std::string gltf_json =
+        "{\n"
+        "  \"asset\": {\"version\": \"2.0\"},\n"
+        "  \"samplers\": [{\"magFilter\": 9728, \"minFilter\": 9728, \"wrapS\": 33071, "
+        "\"wrapT\": 33648}],\n"
+        "  \"textures\": [{\"sampler\": 0, \"source\": 0}],\n"
+        "  \"materials\": [{\"pbrMetallicRoughness\": {\"baseColorTexture\": {\"index\": 0}}}]\n"
+        "}\n";
+    EXPECT_TRUE(write_text_file(gltf_path, gltf_json), "Sampler-state glTF fixture can be created");
+
+    void *asset = rt_gltf_load(rt_const_cstr(gltf_path));
+    EXPECT_TRUE(asset != nullptr, "GLTF.Load accepts material sampler fixtures");
+    if (!asset)
+        return;
+
+    auto *mat = static_cast<rt_material3d *>(rt_gltf_get_material(asset, 0));
+    EXPECT_TRUE(mat != nullptr, "Sampler-state fixture imports a material");
+    if (!mat)
+        return;
+    EXPECT_TRUE(mat->texture_wrap_s == RT_MATERIAL3D_TEXTURE_WRAP_CLAMP_TO_EDGE,
+                "GLTF.Load preserves sampler wrapS=CLAMP_TO_EDGE");
+    EXPECT_TRUE(mat->texture_wrap_t == RT_MATERIAL3D_TEXTURE_WRAP_MIRRORED_REPEAT,
+                "GLTF.Load preserves sampler wrapT=MIRRORED_REPEAT");
+    EXPECT_TRUE(mat->texture_filter == RT_MATERIAL3D_TEXTURE_FILTER_NEAREST,
+                "GLTF.Load preserves nearest sampler filtering");
+    EXPECT_TRUE(mat->texture_slot_wrap_s[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR] ==
+                    RT_MATERIAL3D_TEXTURE_WRAP_CLAMP_TO_EDGE,
+                "GLTF.Load mirrors base slot sampler wrapS");
+    EXPECT_TRUE(mat->texture_slot_wrap_t[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR] ==
+                    RT_MATERIAL3D_TEXTURE_WRAP_MIRRORED_REPEAT,
+                "GLTF.Load mirrors base slot sampler wrapT");
+    EXPECT_TRUE(mat->texture_slot_filter[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR] ==
+                    RT_MATERIAL3D_TEXTURE_FILTER_NEAREST,
+                "GLTF.Load mirrors base slot sampler filtering");
+}
+
+static void test_gltf_preserves_independent_texture_slot_metadata() {
+    const char *gltf_path = "/tmp/viper_gltf_texture_slot_metadata.gltf";
+    std::string gltf_json =
+        "{"
+        "\"asset\":{\"version\":\"2.0\"},"
+        "\"samplers\":[{\"wrapS\":33071,\"wrapT\":33071,\"minFilter\":9728,\"magFilter\":9728},"
+        "{\"wrapS\":33648,\"wrapT\":10497,\"minFilter\":9729,\"magFilter\":9729}],"
+        "\"textures\":[{\"sampler\":0},{\"sampler\":1}],"
+        "\"materials\":[{\"pbrMetallicRoughness\":{\"baseColorTexture\":{\"index\":0,"
+        "\"texCoord\":0},\"metallicRoughnessTexture\":{\"index\":1,\"texCoord\":1,"
+        "\"extensions\":{\"KHR_texture_transform\":{\"offset\":[0.25,0.5],"
+        "\"scale\":[4,5]}}}},\"normalTexture\":{\"index\":1,\"texCoord\":1}}]"
+        "}";
+    EXPECT_TRUE(write_text_file(gltf_path, gltf_json),
+                "Independent texture-slot glTF fixture can be created");
+    void *asset = rt_gltf_load(rt_const_cstr(gltf_path));
+    EXPECT_TRUE(asset != nullptr, "GLTF.Load parses independent texture-slot metadata");
+    if (!asset)
+        return;
+    auto *mat = static_cast<rt_material3d *>(rt_gltf_get_material(asset, 0));
+    EXPECT_TRUE(mat != nullptr, "Independent slot fixture imports a material");
+    if (!mat)
+        return;
+    EXPECT_TRUE(mat->texture_slot_filter[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR] ==
+                    RT_MATERIAL3D_TEXTURE_FILTER_NEAREST,
+                "GLTF.Load keeps base-color nearest sampling independent");
+    EXPECT_TRUE(mat->texture_slot_filter[RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS] ==
+                    RT_MATERIAL3D_TEXTURE_FILTER_LINEAR,
+                "GLTF.Load keeps metallic-roughness linear sampling independent");
+    EXPECT_TRUE(mat->texture_slot_uv_set[RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS] == 1,
+                "GLTF.Load keeps metallic-roughness texCoord independent");
+    EXPECT_NEAR(mat->texture_slot_uv_transform[RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS][0],
+                4.0,
+                0.001,
+                "GLTF.Load keeps metallic-roughness transform scale.x independent");
+    EXPECT_NEAR(mat->texture_slot_uv_transform[RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS][5],
+                0.5,
+                0.001,
+                "GLTF.Load keeps metallic-roughness transform offset.y independent");
+    EXPECT_TRUE(mat->texture_slot_uv_set[RT_MATERIAL3D_TEXTURE_SLOT_NORMAL] == 1,
+                "GLTF.Load keeps normal-map texCoord independent");
+}
+
+static void test_gltf_rejects_invalid_scene_graph_links() {
+    const char *gltf_path = "/tmp/viper_gltf_invalid_scene_graph.gltf";
+    std::string gltf_json =
+        "{\n"
+        "  \"asset\": {\"version\": \"2.0\"},\n"
+        "  \"nodes\": [\n"
+        "    {\"name\": \"A\", \"children\": [1]},\n"
+        "    {\"name\": \"B\", \"children\": [0]}\n"
+        "  ],\n"
+        "  \"scenes\": [{\"nodes\": [0]}],\n"
+        "  \"scene\": 0\n"
+        "}\n";
+    EXPECT_TRUE(write_text_file(gltf_path, gltf_json), "Invalid scene-graph glTF fixture can be created");
+
+    void *asset = rt_gltf_load(rt_const_cstr(gltf_path));
+    EXPECT_TRUE(asset != nullptr, "GLTF.Load keeps resources while rejecting cyclic node graphs");
+    if (!asset)
+        return;
+    EXPECT_TRUE(rt_gltf_get_scene_root(asset) == nullptr,
+                "GLTF.Load does not build a scene root for cyclic node graphs");
+    EXPECT_TRUE(rt_gltf_node_count(asset) == 0,
+                "GLTF.Load reports zero imported nodes for invalid scene graphs");
+}
+
 int main() {
     test_gltf_loads_data_uri_buffers_and_embedded_textures();
     test_gltf_resolves_percent_encoded_external_buffers();
@@ -1118,6 +1459,16 @@ int main() {
     test_gltf_splits_animation_clips_per_skin();
     test_gltf_applies_sparse_accessors();
     test_gltf_imports_morph_targets();
+    test_gltf_rejects_malformed_glb_headers();
+    test_gltf_rejects_unsafe_external_buffer_paths();
+    test_gltf_assigns_default_material_to_materialless_primitives();
+    test_gltf_uses_texture_texcoord_and_transform();
+    test_gltf_imports_material_extensions_supported_by_material3d();
+    test_gltf_preserves_negative_matrix_scale_sign();
+    test_gltf_skips_skins_over_runtime_bone_limit();
+    test_gltf_preserves_primary_texture_sampler_state();
+    test_gltf_preserves_independent_texture_slot_metadata();
+    test_gltf_rejects_invalid_scene_graph_links();
     std::printf("GLTF tests: %d/%d passed\n", tests_passed, tests_run);
     return tests_passed == tests_run ? 0 : 1;
 }

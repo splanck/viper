@@ -36,6 +36,8 @@ int64_t rt_gltf_skeleton_count(void *asset);
 void *rt_gltf_get_skeleton(void *asset, int64_t index);
 int64_t rt_gltf_animation_count(void *asset);
 void *rt_gltf_get_animation(void *asset, int64_t index);
+int64_t rt_gltf_node_animation_count(void *asset);
+void *rt_gltf_get_node_animation(void *asset, int64_t index);
 int64_t rt_gltf_node_count(void *asset);
 void *rt_gltf_get_scene_root(void *asset);
 

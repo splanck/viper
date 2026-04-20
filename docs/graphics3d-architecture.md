@@ -152,7 +152,8 @@ Per sub-triangle:
 
   8. Per-Fragment:
      a. Z-test            Compare interpolated depth against Z-buffer
-     b. Texture sample    Bilinear filtering, perspective-correct UV: u = (u/w) / (1/w)
+     b. Texture sample    Per-slot sampler state, UV0/UV1 selection, texture transform,
+                          and perspective-correct UV: u = (u/w) / (1/w)
      c. Terrain splat     If has_splat: sample weight map + 4 layer textures per-pixel
      d. Normal map        If normal_map: sample TBN, perturb normal per-pixel
      e. Per-pixel light   If normal_map: full Blinn-Phong per-pixel (with specular map)
@@ -172,20 +173,20 @@ Shadow Pass (before main pass, when shadows enabled):
   Main pass samples shadows through percentage-closer filtering to soften single-texel edges.
 ```
 
-## Vertex Format (vgfx3d_vertex_t — 84 bytes)
+## Vertex Format (vgfx3d_vertex_t — 92 bytes)
 
 ```c
 float pos[3];              //  0: object-space position
 float normal[3];           // 12: vertex normal
-float uv[2];               // 24: texture coordinates
-float color[4];            // 32: RGBA vertex color
-float tangent[3];          // 48: tangent vector (Phase 9)
-uint8_t bone_indices[4];   // 60: bone palette indices (Phase 14)
-float bone_weights[4];     // 64: blend weights (Phase 14)
-float tangent_w;           // 80: tangent handedness sign
+float uv[2];               // 24: TEXCOORD_0
+float uv1[2];              // 32: TEXCOORD_1
+float color[4];            // 40: RGBA vertex color
+float tangent[4];          // 56: tangent.xyz + handedness sign
+uint8_t bone_indices[4];   // 72: bone palette indices
+float bone_weights[4];     // 76: blend weights
 ```
 
-Defined upfront at 84 bytes for all phases. Unused fields are zero-initialized.
+`Mesh3D.AddVertex` initializes `uv1` from `uv` for manually authored geometry and legacy assets. VSCN accepts both the older `vgfx3d_vertex_le_v1` 84-byte layout and the current `vgfx3d_vertex_le_v2` 92-byte layout, converting old vertices with `uv1 = uv` during load.
 
 ## Skybox And Cubemap Notes
 
@@ -287,13 +288,33 @@ src/runtime/graphics/
     └── rt_audio3d_objects.c       Object-backed listener/source bindings and voice updates
 ```
 
+## Asset Import Hardening
+
+`Model3D.Load` is the production-facing import path. It routes `.vscn`, `.fbx`, `.gltf`, `.glb`, and geometry-only `.obj` files into one retained asset container and now treats resource-list allocation failures as hard load failures instead of returning partially populated models.
+
+The glTF loader enforces the following importer contract before renderer-facing objects are created:
+
+1. GLB input must be GLB 2.0 with a matching declared length, a first JSON chunk, aligned chunk sizes, and non-overrunning chunks.
+2. `asset.version` must identify glTF 2.x.
+3. Buffer, bufferView, accessor, and sparse-accessor byte ranges use checked integer arithmetic. Negative offsets, overflowing spans, invalid strides, and out-of-buffer ranges fail the view resolution.
+4. External `.gltf` buffers and images are relative-only. Absolute paths, URI schemes, and `.` / `..` traversal segments are rejected before opening files.
+5. Valid primitives without authored materials get a shared default white PBR material so scene-graph rendering does not silently skip them.
+6. Runtime skin import respects the 256-bone palette limit. Skins above the supported limit are skipped instead of overflowing the fixed backend palette.
+7. Node hierarchies are validated for invalid child references, duplicate parents, and cycles before a scene root is built.
+
+glTF material import maps core metallic-roughness PBR plus selected extensions onto `Material3D`. The vertex format carries `TEXCOORD_0` and `TEXCOORD_1`; each material texture slot stores its own `textureInfo.texCoord`, `KHR_texture_transform`, wrap mode, and nearest/linear filter state. Canvas draw commands forward that per-slot metadata to software, Metal, D3D11, and OpenGL. OpenGL uses sampler objects so one uploaded texture can be reused by multiple material slots without sampler-state aliasing.
+
+glTF animation import now covers both skeletal clips and scene-node clips. Bone-targeted transform channels still feed `Skeleton3D` / `Animation3D`; non-joint node translation, rotation, scale, and morph `weights` channels are stored as retained node animation clips and bound automatically when a `Model3D` is instantiated. `Scene3D.SyncBindings(dt)` advances those node clips and applies morph weights before draw submission.
+
+VSCN saves the current vertex layout as `vgfx3d_vertex_le_v2` and serializes material `textureSlots` alongside texture references, so saved imported scenes preserve UV-set choices, transforms, and sampler state on reload. The loader still accepts the older `vgfx3d_vertex_le_v1` vertex blob for compatibility.
+
 ## Shader Architecture
 
 All three GPU backends now share the same material contract: the legacy Blinn-Phong path remains for compatibility, and `Material3D.NewPBR` uses the same direct-light metallic/roughness PBR path across Metal, D3D11, and OpenGL.
 
 Metal, D3D11, and OpenGL now all use small shared helper layers to keep target selection, frame-history updates, cache growth, and upload/readback policy consistent with the portable tests. Metal also now caches morph payloads by `morph_key` / `morph_revision`, applies morph normal deltas in the MSL vertex path, and keeps mipmapped texture/cubemap caches pruned by frame age.
 
-For D3D11 specifically, the CPU and HLSL sides also share explicit packed `float4` layouts for morph weights and material custom parameters.
+For D3D11 specifically, the CPU and HLSL sides also share explicit packed `float4` layouts for morph weights, material custom parameters, and per-slot material UV transforms.
 
 | Stage | Software | Metal (MSL) | D3D11 (HLSL) | OpenGL (GLSL 330) |
 |-------|----------|-------------|---------------|-------------------|
@@ -365,7 +386,7 @@ or Hi-Z visibility system.
 
 1. Extract VP matrix from camera, build frustum planes (Gribb-Hartmann)
 2. For each visible node: recompute world matrix if dirty (lazy TRS propagation)
-3. If node has a mesh: transform its object-space AABB to world space (8-corner expansion), test against frustum (p-vertex/n-vertex method). Skip draw if fully outside.
+3. If node has a mesh: transform its object-space AABB to world space (8-corner expansion), test against frustum (p-vertex/n-vertex method). Animated or morph-capable meshes use an inflated conservative AABB instead of disabling culling entirely. Skip draw if fully outside.
 4. Children are ALWAYS traversed even if parent mesh is culled (child transforms may place them inside the frustum independently).
 
 When a node is bound to an `AnimController3D`, the draw path forwards the controller's blended bone palette into the deferred draw command so skinned meshes render through the scene graph without manually calling `DrawMeshAnimated`.

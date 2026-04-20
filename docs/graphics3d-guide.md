@@ -899,7 +899,7 @@ Current scope:
 
 ## Model3D
 
-`Model3D` is the preferred high-level import surface for reusable 3D assets. It normalizes `.vscn`, `.fbx`, `.gltf`, and `.glb` files into one container that keeps shared meshes, materials, skeletons, animations, and a template node hierarchy together.
+`Model3D` is the preferred high-level import surface for reusable 3D assets. It normalizes `.vscn`, `.fbx`, `.gltf`, `.glb`, and geometry-only `.obj` files into one container that keeps shared meshes, materials, skeletons, animations, and a template node hierarchy together.
 
 ### Properties
 
@@ -915,7 +915,7 @@ Current scope:
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| `Load(path)` | `obj(str)` | Load `.vscn`, `.fbx`, `.gltf`, or `.glb` into a `Model3D` |
+| `Load(path)` | `obj(str)` | Load `.vscn`, `.fbx`, `.gltf`, `.glb`, or `.obj` into a `Model3D` |
 | `GetMesh(index)` | `obj(i64)` | Get a shared `Mesh3D` by index |
 | `GetMaterial(index)` | `obj(i64)` | Get a shared `Material3D` by index |
 | `GetSkeleton(index)` | `obj(i64)` | Get a shared `Skeleton3D` by index |
@@ -927,6 +927,7 @@ Current scope:
 ### Ownership and Instancing
 
 - Imported meshes, materials, skeletons, and animations are shared across instances.
+- OBJ-backed models create one default material and synthesized `mesh_N` template nodes.
 - `Instantiate()` clones nodes and transforms only. The returned node is a synthetic root group that owns the imported top-level nodes.
 - Mutating an instantiated node does not mutate the template returned by `FindNode`.
 - `InstantiateScene()` is the easiest way to drop an imported asset into a fresh scene while preserving node names and hierarchy.
@@ -956,11 +957,17 @@ func start() {
 For game-facing asset loading, prefer `Model3D.Load`. Use the lower-level `FBX` and `GLTF` helpers when you explicitly want extractor-style access to importer-native arrays.
 
 Format note:
-- `.vscn` and FBX imports can currently populate shared skeletons and animation clips.
+- `.vscn`, FBX, and glTF imports can populate shared skeletons and animation clips when the source format contains supported skin/animation data.
 - FBX-backed `Model3D` assets preserve authored `Model` hierarchy, local TRS, and mesh/material attachments when the source file contains object connections, instead of always collapsing to synthetic `mesh_N` nodes.
-- glTF imports currently populate meshes, materials, and node hierarchy, but not skeletons or animation clips yet.
-- glTF mesh extraction supports `POSITION`, `NORMAL`, `TEXCOORD_0`, `COLOR_0`, `TANGENT`, and `JOINTS_0`/`WEIGHTS_0`.
+- OBJ-backed `Model3D` assets use the existing geometry-only OBJ loader and synthesize template nodes because OBJ has no scene hierarchy.
+- glTF imports populate meshes, materials, active-scene node hierarchy, skins, morph targets, skeletal clips, and node/morph animation clips.
+- glTF skeletal tracks map to `Skeleton3D` / `Animation3D`; non-joint node translation, rotation, scale, and morph `weights` tracks are bound automatically on `Model3D.Instantiate()` and `InstantiateScene()`. Call `Scene3D.SyncBindings(dt)` each frame to advance those imported node clips.
+- glTF mesh extraction supports `POSITION`, `NORMAL`, `TEXCOORD_0`, `TEXCOORD_1`, `COLOR_0`, `TANGENT`, and `JOINTS_0`/`WEIGHTS_0`. Material texture slots preserve their own `textureInfo.texCoord`, `KHR_texture_transform`, wrap mode, and nearest/linear filtering.
+- glTF node hierarchies are rejected if they contain invalid child references, duplicate parents, or cycles; valid meshes/materials still remain available to the asset container.
 - Triangle-list, triangle-strip, and triangle-fan glTF primitives are triangulated on import.
+- Materialless glTF primitives receive a shared default white PBR material so valid assets render through `Scene3D` / `Model3D` without manual material assignment.
+- VSCN round-trips the current `vgfx3d_vertex_le_v2` vertex layout and per-slot material texture metadata, while still loading older `vgfx3d_vertex_le_v1` scenes.
+- `.glb` files are validated as GLB 2.0 containers before JSON parse. External `.gltf` buffers and images are resolved relative to the asset path and reject absolute paths, URI schemes, and `.` / `..` traversal segments.
 
 ## Skeleton3D
 
@@ -1290,7 +1297,12 @@ func start() {
 }
 ```
 
-**Note:** GLTF functions are standalone extractor helpers. They preserve the active-scene hierarchy, matrix-authored node transforms, and extended mesh attributes listed above. For preserved node hierarchies and scene instantiation, load `.gltf` or `.glb` through `Model3D.Load`. Unlike FBX, the low-level GLTF API still does not expose skeletons or animations.
+**Note:** GLTF functions are standalone extractor helpers. They preserve the active-scene hierarchy, matrix-authored node transforms, extended mesh attributes, materials, skeletons, animations, and morph targets listed above. For preserved node hierarchies and scene instantiation, load `.gltf` or `.glb` through `Model3D.Load`.
+
+Supported glTF material fidelity:
+- Core metallic-roughness PBR, base-color / normal / metallic-roughness / occlusion / emissive texture slots, alpha modes, `doubleSided`, and `KHR_materials_emissive_strength`.
+- `KHR_materials_unlit`, `KHR_materials_specular`, `KHR_materials_clearcoat`, and `KHR_materials_transmission` are mapped onto the current `Material3D` surface where possible.
+- `KHR_texture_transform`, `textureInfo.texCoord`, wrap mode, and nearest/linear filter state are preserved independently for base-color, normal, specular, emissive, metallic-roughness, and occlusion texture slots across software, Metal, D3D11, and OpenGL.
 
 ## Particles3D
 
@@ -2985,7 +2997,7 @@ For feature gating, prefer `canvas.BackendCapabilities` or `canvas.BackendSuppor
 | `0x0080` | PostFX support |
 | `0x0100` | GPU-owned PostFX presentation |
 
-**Software renderer** — Always available. Gouraud shading by default, switches to per-pixel Blinn-Phong when a normal map is present. Supports bilinear texture filtering, per-vertex colors, shadow mapping for up to two directional lights with 3x3 PCF filtering, specular maps, normal maps, and per-pixel terrain splatting.
+**Software renderer** — Always available. Gouraud shading by default, switches to per-pixel Blinn-Phong when a normal map is present. Supports nearest/bilinear material texture filtering with imported wrap modes, per-vertex colors, shadow mapping for up to two directional lights with 3x3 PCF filtering, specular maps, normal maps, and per-pixel terrain splatting.
 
 **Metal** (macOS) — Near-full feature parity (94%): lit/unlit textures, the shared `Material3D` PBR path (metallic/roughness, AO, alpha modes, emissive intensity, normal scale), spot light cone attenuation, linear fog, wireframe, per-frame texture caching, GPU skinning (4-bone), morph targets, up to two directional shadow maps, instanced rendering, terrain splatting, and post-processing (bloom, FXAA, tone mapping, vignette, color grading).
 

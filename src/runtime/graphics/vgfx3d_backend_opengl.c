@@ -143,6 +143,8 @@ typedef void (*PFNGLUNIFORM1FVPROC)(GLint, GLsizei, const GLfloat *);
 typedef void (*PFNGLUNIFORM2FPROC)(GLint, GLfloat, GLfloat);
 typedef void (*PFNGLUNIFORM3FPROC)(GLint, GLfloat, GLfloat, GLfloat);
 typedef void (*PFNGLUNIFORM4FPROC)(GLint, GLfloat, GLfloat, GLfloat, GLfloat);
+typedef void (*PFNGLUNIFORM4IPROC)(GLint, GLint, GLint, GLint, GLint);
+typedef void (*PFNGLUNIFORM4FVPROC)(GLint, GLsizei, const GLfloat *);
 typedef void (*PFNGLGENVERTEXARRAYSPROC)(GLsizei, GLuint *);
 typedef void (*PFNGLBINDVERTEXARRAYPROC)(GLuint);
 typedef void (*PFNGLGENBUFFERSPROC)(GLsizei, GLuint *);
@@ -170,6 +172,10 @@ typedef void (*PFNGLTEXIMAGE2DPROC)(
 typedef void (*PFNGLTEXPARAMETERIPROC)(GLenum, GLenum, GLint);
 typedef void (*PFNGLTEXBUFFERPROC)(GLenum, GLenum, GLuint);
 typedef void (*PFNGLGENERATEMIPMAPPROC)(GLenum);
+typedef void (*PFNGLGENSAMPLERSPROC)(GLsizei, GLuint *);
+typedef void (*PFNGLDELETESAMPLERSPROC)(GLsizei, const GLuint *);
+typedef void (*PFNGLSAMPLERPARAMETERIPROC)(GLuint, GLenum, GLint);
+typedef void (*PFNGLBINDSAMPLERPROC)(GLuint, GLuint);
 typedef void (*PFNGLGENFRAMEBUFFERSPROC)(GLsizei, GLuint *);
 typedef void (*PFNGLDELETEFRAMEBUFFERSPROC)(GLsizei, const GLuint *);
 typedef void (*PFNGLBINDFRAMEBUFFERPROC)(GLenum, GLuint);
@@ -225,6 +231,8 @@ static struct {
     PFNGLUNIFORM2FPROC Uniform2f;
     PFNGLUNIFORM3FPROC Uniform3f;
     PFNGLUNIFORM4FPROC Uniform4f;
+    PFNGLUNIFORM4IPROC Uniform4i;
+    PFNGLUNIFORM4FVPROC Uniform4fv;
     PFNGLGENVERTEXARRAYSPROC GenVertexArrays;
     PFNGLBINDVERTEXARRAYPROC BindVertexArray;
     PFNGLGENBUFFERSPROC GenBuffers;
@@ -250,6 +258,10 @@ static struct {
     PFNGLTEXPARAMETERIPROC TexParameteri;
     PFNGLTEXBUFFERPROC TexBuffer;
     PFNGLGENERATEMIPMAPPROC GenerateMipmap;
+    PFNGLGENSAMPLERSPROC GenSamplers;
+    PFNGLDELETESAMPLERSPROC DeleteSamplers;
+    PFNGLSAMPLERPARAMETERIPROC SamplerParameteri;
+    PFNGLBINDSAMPLERPROC BindSampler;
     PFNGLGENFRAMEBUFFERSPROC GenFramebuffers;
     PFNGLDELETEFRAMEBUFFERSPROC DeleteFramebuffers;
     PFNGLBINDFRAMEBUFFERPROC BindFramebuffer;
@@ -433,6 +445,7 @@ typedef struct {
     int32_t shadow_count;
     float shadow_bias;
     float shadow_vp[VGFX3D_MAX_SHADOW_LIGHTS][16];
+    GLuint material_samplers[3][3][2];
 
     gl_texture_cache_entry_t *texture_cache;
     int32_t texture_cache_count;
@@ -485,6 +498,8 @@ typedef struct {
         uHasAOMap, uCameraIsOrtho;
     GLint uCustomParams;
     GLint uHasSplat, uFogEnabled, uFogNear, uFogFar, uFogColor;
+    GLint uTextureUvSets0, uTextureUvSets1;
+    GLint uTextureUvTransform0, uTextureUvTransform1;
     GLint uShadowCount, uShadowBias;
     GLint uUseInstancing, uHasSkinning, uMorphShapeCount, uVertexCount;
     GLint uHasPrevModelMatrix, uHasPrevInstanceMatrices, uHasPrevSkinning, uHasPrevMorphWeights;
@@ -680,6 +695,8 @@ static int load_gl(void) {
     LOADP(Uniform2f);
     LOADP(Uniform3f);
     LOADP(Uniform4f);
+    LOADP(Uniform4i);
+    LOADP(Uniform4fv);
     LOADP(GenVertexArrays);
     LOADP(BindVertexArray);
     LOADP(GenBuffers);
@@ -703,6 +720,10 @@ static int load_gl(void) {
     LOADP(TexParameteri);
     LOADP(TexBuffer);
     LOADP(GenerateMipmap);
+    LOADP(GenSamplers);
+    LOADP(DeleteSamplers);
+    LOADP(SamplerParameteri);
+    LOADP(BindSampler);
     LOADP(GenFramebuffers);
     LOADP(DeleteFramebuffers);
     LOADP(BindFramebuffer);
@@ -743,6 +764,7 @@ static const char *const glsl_vertex_src[] = {
     "layout(location=12) in vec4 aPrevInstanceRow1;\n"
     "layout(location=13) in vec4 aPrevInstanceRow2;\n"
     "layout(location=14) in vec4 aPrevInstanceRow3;\n"
+    "layout(location=15) in vec2 aUV1;\n"
     "layout(std140) uniform Bones { mat4 uBonePalette[256]; };\n"
     "layout(std140) uniform PrevBones { mat4 uPrevBonePalette[256]; };\n"
     "uniform mat4 uModelMatrix;\n"
@@ -767,6 +789,7 @@ static const char *const glsl_vertex_src[] = {
     "out vec3 vNormal;\n"
     "out vec4 vTangent;\n"
     "out vec2 vUV;\n"
+    "out vec2 vUV1;\n"
     "out vec4 vColor;\n"
     "out vec4 vCurrClip;\n"
     "out vec4 vPrevClip;\n"
@@ -845,6 +868,7 @@ static const char *const glsl_vertex_src[] = {
     "    vNormal = normalMatrix * localNormal;\n"
     "    vTangent = vec4(mat3(model) * aTangent.xyz, aTangent.w);\n"
     "    vUV = aUV;\n"
+    "    vUV1 = aUV1;\n"
     "    vColor = aColor;\n"
     "    vCurrClip = gl_Position;\n"
     "    vPrevClip = uPrevViewProjection * prevWp;\n"
@@ -860,6 +884,7 @@ static const char *const glsl_fragment_src[] = {
     "in vec3 vNormal;\n"
     "in vec4 vTangent;\n"
     "in vec2 vUV;\n"
+    "in vec2 vUV1;\n"
     "in vec4 vColor;\n"
     "in vec4 vCurrClip;\n"
     "in vec4 vPrevClip;\n"
@@ -923,6 +948,10 @@ static const char *const glsl_fragment_src[] = {
     "uniform sampler2D uSplatLayer3;\n"
     "uniform vec4 uSplatScales;\n"
     "uniform float uCustomParams[8];\n"
+    "uniform ivec4 uTextureUvSets0;\n"
+    "uniform ivec4 uTextureUvSets1;\n"
+    "uniform vec4 uTextureUvTransform0[" VGFX3D_STR(RT_MATERIAL3D_TEXTURE_SLOT_COUNT) "];\n"
+    "uniform vec4 uTextureUvTransform1[" VGFX3D_STR(RT_MATERIAL3D_TEXTURE_SLOT_COUNT) "];\n"
     "float distributionGGX(float NdotH, float roughness) {\n"
     "    float a = roughness * roughness;\n"
     "    float a2 = a * a;\n"
@@ -943,6 +972,16 @@ static const char *const glsl_fragment_src[] = {
     "vec3 envSample(vec3 dir, float roughness) {\n"
     "    float lod = clamp(roughness, 0.0, 1.0) * max(uEnvMaxLod, 0.0);\n"
     "    return textureLod(uEnvMap, normalize(dir), lod).rgb;\n"
+    "}\n"
+    "int textureUvSetAt(int slot) {\n"
+    "    return slot < 4 ? uTextureUvSets0[slot] : uTextureUvSets1[slot - 4];\n"
+    "}\n"
+    "vec2 materialUv(int slot) {\n"
+    "    vec2 uv = textureUvSetAt(slot) != 0 ? vUV1 : vUV;\n"
+    "    vec4 m = uTextureUvTransform0[slot];\n"
+    "    vec4 t = uTextureUvTransform1[slot];\n"
+    "    return vec2(uv.x * m.x + uv.y * m.y + t.x,\n"
+    "                uv.x * m.z + uv.y * m.w + t.y);\n"
     "}\n"
     "float sampleShadowMap(int shadowIndex, vec3 worldPos) {\n"
     "    if (shadowIndex < 0 || shadowIndex >= uShadowCount) return 1.0;\n"
@@ -972,7 +1011,7 @@ static const char *const glsl_fragment_src[] = {
     "    float texAlpha = 1.0;\n"
     "    float materialAlpha = uDiffuseColor.a * uAlpha * vColor.a;\n"
     "    if (uHasTexture != 0) {\n"
-    "        vec4 texSample = texture(uDiffuseTex, vUV);\n"
+    "        vec4 texSample = texture(uDiffuseTex, materialUv(0));\n"
     "        baseColor *= texSample.rgb;\n"
     "        texAlpha = texSample.a;\n"
     "    }\n"
@@ -990,14 +1029,14 @@ static const char *const glsl_fragment_src[] = {
     "    }\n"
     "    vec3 N = normalize(vNormal);\n"
     "    if (uHasNormalMap != 0) {\n"
-    "        vec3 mapN = texture(uNormalTex, vUV).xyz * 2.0 - 1.0;\n"
+    "        vec3 mapN = texture(uNormalTex, materialUv(1)).xyz * 2.0 - 1.0;\n"
     "        mapN.xy *= uPbrScalars1.x;\n"
     "        vec3 T = normalize(vTangent.xyz - N * dot(vTangent.xyz, N));\n"
     "        vec3 B = normalize(cross(N, T)) * (vTangent.w < 0.0 ? -1.0 : 1.0);\n"
     "        N = normalize(mat3(T, B, N) * mapN);\n"
     "    }\n"
     "    vec3 emissive = uEmissiveColor * uPbrScalars0.w;\n"
-    "    if (uHasEmissiveMap != 0) emissive *= texture(uEmissiveTex, vUV).rgb;\n"
+    "    if (uHasEmissiveMap != 0) emissive *= texture(uEmissiveTex, materialUv(3)).rgb;\n"
     "    vec3 cameraToWorld = uCameraPos - vWorldPos;\n"
     "    vec3 V = normalize((uCameraIsOrtho != 0) ? -uCameraForward : cameraToWorld);\n"
     "    float viewDistance = (uCameraIsOrtho != 0)\n"
@@ -1037,13 +1076,13 @@ static const char *const glsl_fragment_src[] = {
     "        float roughness = clamp(uPbrScalars0.y, 0.045, 1.0);\n"
     "        float ao = clamp(uPbrScalars0.z, 0.0, 1.0);\n"
     "        if (uHasMetallicRoughnessMap != 0) {\n"
-    "            vec4 mr = texture(uMetallicRoughnessTex, vUV);\n"
+    "            vec4 mr = texture(uMetallicRoughnessTex, materialUv(4));\n"
     "            roughness = clamp(roughness * mr.g, 0.045, 1.0);\n"
     "            metallic = clamp(metallic * mr.b, 0.0, 1.0);\n"
     "            envRoughness = roughness;\n"
     "        }\n"
     "        if (uHasAOMap != 0) {\n"
-    "            vec4 aoSample = texture(uAOTex, vUV);\n"
+    "            vec4 aoSample = texture(uAOTex, materialUv(5));\n"
     "            ao = clamp(ao * aoSample.r, 0.0, 1.0);\n"
     "        }\n"
     "        result = uAmbientColor * baseColor * ao;\n"
@@ -1097,7 +1136,7 @@ static const char *const glsl_fragment_src[] = {
     "        }\n"
     "    } else {\n",
     "        vec3 specColor = uSpecularColor.rgb;\n"
-    "        if (uHasSpecularMap != 0) specColor *= texture(uSpecularTex, vUV).rgb;\n"
+    "        if (uHasSpecularMap != 0) specColor *= texture(uSpecularTex, materialUv(2)).rgb;\n"
     "        result = uAmbientColor * baseColor;\n"
     "        for (int i = 0; i < uLightCount; i++) {\n"
     "            vec3 L = vec3(0.0);\n"
@@ -2657,9 +2696,9 @@ static void set_identity_instance_constants(void) {
 
 /// @brief Bind the mesh VBO/IBO and wire up the 7 per-vertex attributes.
 ///
-/// Attribute slots: 0=pos, 1=normal, 2=uv, 3=color (4f), 4=tangent,
+/// Attribute slots: 0=pos, 1=normal, 2=uv0, 15=uv1, 3=color (4f), 4=tangent,
 /// 5=bone indices (4×u8 as int), 6=bone weights (4f). Layout matches
-/// the `vgfx3d_vertex_t` struct's offsets (12, 24, 32, 48, 64, 68).
+/// the `vgfx3d_vertex_t` struct's offsets.
 /// Also resets instance attributes to identity defaults.
 static void configure_mesh_attributes(gl_context_t *ctx, GLuint mesh_vbo, GLuint mesh_ibo) {
     GLsizei stride = (GLsizei)sizeof(vgfx3d_vertex_t);
@@ -2672,13 +2711,15 @@ static void configure_mesh_attributes(gl_context_t *ctx, GLuint mesh_vbo, GLuint
     gl.EnableVertexAttribArray(1);
     gl.VertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, stride, (void *)24);
     gl.EnableVertexAttribArray(2);
-    gl.VertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, stride, (void *)32);
+    gl.VertexAttribPointer(15, 2, GL_FLOAT, GL_FALSE, stride, (void *)32);
+    gl.EnableVertexAttribArray(15);
+    gl.VertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, stride, (void *)40);
     gl.EnableVertexAttribArray(3);
-    gl.VertexAttribPointer(4, 4, GL_FLOAT, GL_FALSE, stride, (void *)48);
+    gl.VertexAttribPointer(4, 4, GL_FLOAT, GL_FALSE, stride, (void *)56);
     gl.EnableVertexAttribArray(4);
-    gl.VertexAttribIPointer(5, 4, GL_UNSIGNED_BYTE, stride, (void *)64);
+    gl.VertexAttribIPointer(5, 4, GL_UNSIGNED_BYTE, stride, (void *)72);
     gl.EnableVertexAttribArray(5);
-    gl.VertexAttribPointer(6, 4, GL_FLOAT, GL_FALSE, stride, (void *)68);
+    gl.VertexAttribPointer(6, 4, GL_FLOAT, GL_FALSE, stride, (void *)76);
     gl.EnableVertexAttribArray(6);
     set_identity_instance_constants();
 }
@@ -3034,8 +3075,99 @@ static void bind_morph_payload(gl_context_t *ctx,
 static void bind_texture_unit(GLint uniform_loc, int unit, GLenum target, GLuint texture) {
     gl.ActiveTexture(GL_TEXTURE0 + (GLenum)unit);
     gl.BindTexture(target, texture);
+    gl.BindSampler((GLuint)unit, 0);
     if (uniform_loc >= 0)
         gl.Uniform1i(uniform_loc, unit);
+}
+
+static GLenum gl_material_wrap_mode(int32_t mode) {
+    if (mode == RT_MATERIAL3D_TEXTURE_WRAP_CLAMP_TO_EDGE)
+        return GL_CLAMP_TO_EDGE;
+    if (mode == RT_MATERIAL3D_TEXTURE_WRAP_MIRRORED_REPEAT)
+        return GL_MIRRORED_REPEAT;
+    return GL_REPEAT;
+}
+
+static GLenum gl_material_filter_mode(int32_t mode) {
+    return mode == RT_MATERIAL3D_TEXTURE_FILTER_NEAREST ? GL_NEAREST : GL_LINEAR;
+}
+
+static int gl_sampler_wrap_index(int32_t mode) {
+    if (mode == RT_MATERIAL3D_TEXTURE_WRAP_CLAMP_TO_EDGE)
+        return 1;
+    if (mode == RT_MATERIAL3D_TEXTURE_WRAP_MIRRORED_REPEAT)
+        return 2;
+    return 0;
+}
+
+static GLuint gl_get_material_sampler(gl_context_t *ctx,
+                                      const vgfx3d_draw_cmd_t *cmd,
+                                      int32_t slot) {
+    int use_slot = cmd && slot >= 0 && slot < RT_MATERIAL3D_TEXTURE_SLOT_COUNT;
+    int wrap_s;
+    int wrap_t;
+    int filter;
+    GLenum gl_filter;
+    GLuint sampler;
+    if (!ctx || !cmd)
+        return 0;
+    wrap_s =
+        gl_sampler_wrap_index(use_slot ? cmd->texture_slot_wrap_s[slot] : cmd->texture_wrap_s);
+    wrap_t =
+        gl_sampler_wrap_index(use_slot ? cmd->texture_slot_wrap_t[slot] : cmd->texture_wrap_t);
+    filter = (use_slot ? cmd->texture_slot_filter[slot] : cmd->texture_filter) ==
+                     RT_MATERIAL3D_TEXTURE_FILTER_NEAREST
+                 ? 1
+                 : 0;
+    sampler = ctx->material_samplers[wrap_s][wrap_t][filter];
+    if (sampler)
+        return sampler;
+    gl.GenSamplers(1, &sampler);
+    if (!sampler)
+        return 0;
+    gl_filter = filter ? GL_NEAREST : GL_LINEAR;
+    gl.SamplerParameteri(sampler,
+                         GL_TEXTURE_WRAP_S,
+                         (GLint)gl_material_wrap_mode(use_slot ? cmd->texture_slot_wrap_s[slot]
+                                                               : cmd->texture_wrap_s));
+    gl.SamplerParameteri(sampler,
+                         GL_TEXTURE_WRAP_T,
+                         (GLint)gl_material_wrap_mode(use_slot ? cmd->texture_slot_wrap_t[slot]
+                                                               : cmd->texture_wrap_t));
+    gl.SamplerParameteri(sampler, GL_TEXTURE_MIN_FILTER, (GLint)gl_filter);
+    gl.SamplerParameteri(sampler, GL_TEXTURE_MAG_FILTER, (GLint)gl_filter);
+    ctx->material_samplers[wrap_s][wrap_t][filter] = sampler;
+    return sampler;
+}
+
+static void bind_texture_unit_with_sampler(gl_context_t *ctx,
+                                           GLint uniform_loc,
+                                           int unit,
+                                           GLenum target,
+                                           GLuint texture,
+                                           const vgfx3d_draw_cmd_t *cmd,
+                                           int32_t slot) {
+    bind_texture_unit(uniform_loc, unit, target, texture);
+    if (texture != 0 && target == GL_TEXTURE_2D && cmd) {
+        int use_slot = slot >= 0 && slot < RT_MATERIAL3D_TEXTURE_SLOT_COUNT;
+        GLenum filter = gl_material_filter_mode(use_slot ? cmd->texture_slot_filter[slot]
+                                                         : cmd->texture_filter);
+        GLuint sampler = gl_get_material_sampler(ctx, cmd, slot);
+        if (sampler) {
+            gl.BindSampler((GLuint)unit, sampler);
+            return;
+        }
+        gl.TexParameteri(target,
+                         GL_TEXTURE_WRAP_S,
+                         (GLint)gl_material_wrap_mode(use_slot ? cmd->texture_slot_wrap_s[slot]
+                                                               : cmd->texture_wrap_s));
+        gl.TexParameteri(target,
+                         GL_TEXTURE_WRAP_T,
+                         (GLint)gl_material_wrap_mode(use_slot ? cmd->texture_slot_wrap_t[slot]
+                                                               : cmd->texture_wrap_t));
+        gl.TexParameteri(target, GL_TEXTURE_MIN_FILTER, (GLint)filter);
+        gl.TexParameteri(target, GL_TEXTURE_MAG_FILTER, (GLint)filter);
+    }
 }
 
 /// @brief Push up to `VGFX3D_MAX_LIGHTS` lights' uniforms to the program.
@@ -3125,6 +3257,36 @@ static void upload_main_uniforms(gl_context_t *ctx,
     gl.Uniform1i(ctx->uShadingModel, cmd->shading_model);
     gl.Uniform1i(ctx->uWorkflow, cmd->workflow);
     gl.Uniform1i(ctx->uAlphaMode, cmd->alpha_mode);
+    gl.Uniform4i(ctx->uTextureUvSets0,
+                 cmd->texture_slot_uv_set[0],
+                 cmd->texture_slot_uv_set[1],
+                 cmd->texture_slot_uv_set[2],
+                 cmd->texture_slot_uv_set[3]);
+    gl.Uniform4i(ctx->uTextureUvSets1,
+                 cmd->texture_slot_uv_set[4],
+                 cmd->texture_slot_uv_set[5],
+                 0,
+                 0);
+    {
+        float uv_transform0[RT_MATERIAL3D_TEXTURE_SLOT_COUNT][4];
+        float uv_transform1[RT_MATERIAL3D_TEXTURE_SLOT_COUNT][4];
+        for (int32_t slot = 0; slot < RT_MATERIAL3D_TEXTURE_SLOT_COUNT; slot++) {
+            uv_transform0[slot][0] = cmd->texture_slot_uv_transform[slot][0];
+            uv_transform0[slot][1] = cmd->texture_slot_uv_transform[slot][1];
+            uv_transform0[slot][2] = cmd->texture_slot_uv_transform[slot][2];
+            uv_transform0[slot][3] = cmd->texture_slot_uv_transform[slot][3];
+            uv_transform1[slot][0] = cmd->texture_slot_uv_transform[slot][4];
+            uv_transform1[slot][1] = cmd->texture_slot_uv_transform[slot][5];
+            uv_transform1[slot][2] = 0.0f;
+            uv_transform1[slot][3] = 0.0f;
+        }
+        gl.Uniform4fv(ctx->uTextureUvTransform0,
+                      RT_MATERIAL3D_TEXTURE_SLOT_COUNT,
+                      &uv_transform0[0][0]);
+        gl.Uniform4fv(ctx->uTextureUvTransform1,
+                      RT_MATERIAL3D_TEXTURE_SLOT_COUNT,
+                      &uv_transform1[0][0]);
+    }
     gl.Uniform1i(ctx->uCameraIsOrtho, ctx->cam_is_ortho ? 1 : 0);
     gl.Uniform1fv(ctx->uCustomParams, 8, cmd->custom_params);
     gl.Uniform1i(ctx->uUseInstancing, instanced ? 1 : 0);
@@ -3188,10 +3350,34 @@ static void bind_material_textures(gl_context_t *ctx, const vgfx3d_draw_cmd_t *c
     gl.Uniform1i(ctx->uHasAOMap, ao_tex ? 1 : 0);
     gl.Uniform1i(ctx->uHasSplat, has_splat ? 1 : 0);
 
-    bind_texture_unit(ctx->uDiffuseTex, 0, GL_TEXTURE_2D, diffuse_tex);
-    bind_texture_unit(ctx->uNormalTex, 1, GL_TEXTURE_2D, normal_tex);
-    bind_texture_unit(ctx->uSpecularTex, 2, GL_TEXTURE_2D, specular_tex);
-    bind_texture_unit(ctx->uEmissiveTex, 3, GL_TEXTURE_2D, emissive_tex);
+    bind_texture_unit_with_sampler(ctx,
+                                   ctx->uDiffuseTex,
+                                   0,
+                                   GL_TEXTURE_2D,
+                                   diffuse_tex,
+                                   cmd,
+                                   RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR);
+    bind_texture_unit_with_sampler(ctx,
+                                   ctx->uNormalTex,
+                                   1,
+                                   GL_TEXTURE_2D,
+                                   normal_tex,
+                                   cmd,
+                                   RT_MATERIAL3D_TEXTURE_SLOT_NORMAL);
+    bind_texture_unit_with_sampler(ctx,
+                                   ctx->uSpecularTex,
+                                   2,
+                                   GL_TEXTURE_2D,
+                                   specular_tex,
+                                   cmd,
+                                   RT_MATERIAL3D_TEXTURE_SLOT_SPECULAR);
+    bind_texture_unit_with_sampler(ctx,
+                                   ctx->uEmissiveTex,
+                                   3,
+                                   GL_TEXTURE_2D,
+                                   emissive_tex,
+                                   cmd,
+                                   RT_MATERIAL3D_TEXTURE_SLOT_EMISSIVE);
     bind_texture_unit(
         ctx->uShadowTex[0], 4, GL_TEXTURE_2D, ctx->shadow_count > 0 ? ctx->shadow_depth_tex[0] : 0);
     bind_texture_unit(
@@ -3202,8 +3388,20 @@ static void bind_material_textures(gl_context_t *ctx, const vgfx3d_draw_cmd_t *c
     bind_texture_unit(ctx->uSplatLayer2, 9, GL_TEXTURE_2D, splat_layer2);
     bind_texture_unit(ctx->uSplatLayer3, 10, GL_TEXTURE_2D, splat_layer3);
     bind_texture_unit(ctx->uEnvMap, 13, GL_TEXTURE_CUBE_MAP, env_tex);
-    bind_texture_unit(ctx->uMetallicRoughnessTex, 14, GL_TEXTURE_2D, metallic_roughness_tex);
-    bind_texture_unit(ctx->uAOTex, 15, GL_TEXTURE_2D, ao_tex);
+    bind_texture_unit_with_sampler(ctx,
+                                   ctx->uMetallicRoughnessTex,
+                                   14,
+                                   GL_TEXTURE_2D,
+                                   metallic_roughness_tex,
+                                   cmd,
+                                   RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS);
+    bind_texture_unit_with_sampler(ctx,
+                                   ctx->uAOTex,
+                                   15,
+                                   GL_TEXTURE_2D,
+                                   ao_tex,
+                                   cmd,
+                                   RT_MATERIAL3D_TEXTURE_SLOT_AO);
     if (ctx->uSplatScales >= 0) {
         gl.Uniform4f(ctx->uSplatScales,
                      cmd->splat_layer_scales[0],
@@ -3368,6 +3566,10 @@ static void query_main_uniforms(gl_context_t *ctx) {
     U(uHasMetallicRoughnessMap);
     U(uHasAOMap);
     U(uCustomParams);
+    U(uTextureUvSets0);
+    U(uTextureUvSets1);
+    ctx->uTextureUvTransform0 = gl.GetUniformLocation(ctx->program, "uTextureUvTransform0[0]");
+    ctx->uTextureUvTransform1 = gl.GetUniformLocation(ctx->program, "uTextureUvTransform1[0]");
     U(uHasSplat);
     U(uFogEnabled);
     U(uFogNear);
@@ -3811,6 +4013,15 @@ static void gl_destroy_ctx(void *ctx_ptr) {
     destroy_rtt_targets(ctx);
     destroy_shadow_targets(ctx);
     vgfx3d_postfx_chain_free(&ctx->gpu_postfx_chain);
+
+    for (int ws = 0; ws < 3; ws++) {
+        for (int wt = 0; wt < 3; wt++) {
+            for (int filter = 0; filter < 2; filter++) {
+                if (ctx->material_samplers[ws][wt][filter])
+                    gl.DeleteSamplers(1, &ctx->material_samplers[ws][wt][filter]);
+            }
+        }
+    }
 
     if (ctx->fullscreen_vbo)
         gl.DeleteBuffers(1, &ctx->fullscreen_vbo);

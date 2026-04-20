@@ -32,6 +32,7 @@
 #include "rt_json.h"
 #include "rt_map.h"
 #include "rt_mat4.h"
+#include "rt_morphtarget3d.h"
 #include "rt_object.h"
 #include "rt_pixels_internal.h"
 #include "rt_physics3d.h"
@@ -63,6 +64,149 @@ static void scene3d_release_ref(void **slot) {
 }
 
 extern void *rt_anim_controller3d_consume_root_motion_rotation(void *obj);
+
+/*==========================================================================
+ * Imported node animation clips
+ *=========================================================================*/
+
+static void rt_node_animation3d_finalize(void *obj) {
+    rt_node_animation3d *anim = (rt_node_animation3d *)obj;
+    if (!anim)
+        return;
+    scene3d_release_ref((void **)&anim->name);
+    for (int32_t i = 0; i < anim->channel_count; i++) {
+        scene3d_release_ref((void **)&anim->channels[i].target_name);
+        free(anim->channels[i].times);
+        free(anim->channels[i].values);
+    }
+    free(anim->channels);
+    anim->channels = NULL;
+    anim->channel_count = 0;
+    anim->channel_capacity = 0;
+}
+
+void *rt_node_animation3d_new(rt_string name, double duration) {
+    rt_node_animation3d *anim =
+        (rt_node_animation3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_node_animation3d));
+    if (!anim) {
+        rt_trap("NodeAnimation3D.New: allocation failed");
+        return NULL;
+    }
+    memset(anim, 0, sizeof(*anim));
+    rt_obj_set_finalizer(anim, rt_node_animation3d_finalize);
+    rt_obj_retain_maybe(name);
+    anim->name = name;
+    anim->duration = (isfinite(duration) && duration > 0.0) ? duration : 1.0;
+    anim->looping = 1;
+    return anim;
+}
+
+static int node_animation_reserve_channels(rt_node_animation3d *anim, int32_t needed) {
+    int32_t new_capacity;
+    rt_node_anim_channel3d *grown;
+    if (!anim)
+        return 0;
+    if (anim->channel_capacity >= needed)
+        return 1;
+    new_capacity = anim->channel_capacity > 0 ? anim->channel_capacity * 2 : 4;
+    if (new_capacity < needed)
+        new_capacity = needed;
+    grown = (rt_node_anim_channel3d *)realloc(
+        anim->channels, (size_t)new_capacity * sizeof(*anim->channels));
+    if (!grown)
+        return 0;
+    memset(grown + anim->channel_capacity,
+           0,
+           (size_t)(new_capacity - anim->channel_capacity) * sizeof(*grown));
+    anim->channels = grown;
+    anim->channel_capacity = new_capacity;
+    return 1;
+}
+
+int64_t rt_node_animation3d_add_channel(void *obj,
+                                        rt_string target_name,
+                                        int64_t path,
+                                        int64_t interpolation,
+                                        int64_t key_count,
+                                        int64_t value_width,
+                                        const double *times,
+                                        const float *values) {
+    rt_node_animation3d *anim = (rt_node_animation3d *)obj;
+    rt_node_anim_channel3d *channel;
+    size_t time_bytes;
+    size_t value_count;
+    if (!anim || !target_name || key_count <= 0 || value_width <= 0 || !times || !values)
+        return -1;
+    if (path < RT_NODE_ANIM_PATH_TRANSLATION || path > RT_NODE_ANIM_PATH_WEIGHTS)
+        return -1;
+    if (key_count > INT32_MAX || value_width > INT32_MAX)
+        return -1;
+    value_count = (size_t)key_count * (size_t)value_width;
+    if (value_count > SIZE_MAX / sizeof(float))
+        return -1;
+    if (!node_animation_reserve_channels(anim, anim->channel_count + 1))
+        return -1;
+    channel = &anim->channels[anim->channel_count];
+    time_bytes = (size_t)key_count * sizeof(double);
+    channel->times = (double *)malloc(time_bytes);
+    channel->values = (float *)malloc(value_count * sizeof(float));
+    if (!channel->times || !channel->values) {
+        free(channel->times);
+        free(channel->values);
+        memset(channel, 0, sizeof(*channel));
+        return -1;
+    }
+    memcpy(channel->times, times, time_bytes);
+    memcpy(channel->values, values, value_count * sizeof(float));
+    rt_obj_retain_maybe(target_name);
+    channel->target_name = target_name;
+    channel->path = (int32_t)path;
+    channel->interpolation =
+        interpolation == RT_NODE_ANIM_INTERP_STEP ? RT_NODE_ANIM_INTERP_STEP
+                                                  : RT_NODE_ANIM_INTERP_LINEAR;
+    channel->key_count = (int32_t)key_count;
+    channel->value_width = (int32_t)value_width;
+    return anim->channel_count++;
+}
+
+static void rt_node_animator3d_finalize(void *obj) {
+    rt_node_animator3d *animator = (rt_node_animator3d *)obj;
+    if (!animator)
+        return;
+    for (int32_t i = 0; i < animator->animation_count; i++)
+        scene3d_release_ref((void **)&animator->animations[i]);
+    free(animator->animations);
+    animator->animations = NULL;
+    animator->animation_count = 0;
+    animator->root = NULL;
+}
+
+void *rt_node_animator3d_new_from_clips(void **clips, int64_t clip_count) {
+    rt_node_animator3d *animator;
+    if (!clips || clip_count <= 0 || clip_count > INT32_MAX)
+        return NULL;
+    animator = (rt_node_animator3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_node_animator3d));
+    if (!animator) {
+        rt_trap("NodeAnimator3D.New: allocation failed");
+        return NULL;
+    }
+    memset(animator, 0, sizeof(*animator));
+    rt_obj_set_finalizer(animator, rt_node_animator3d_finalize);
+    animator->animations = (rt_node_animation3d **)calloc((size_t)clip_count, sizeof(void *));
+    if (!animator->animations) {
+        scene3d_release_ref((void **)&animator);
+        return NULL;
+    }
+    for (int32_t i = 0; i < (int32_t)clip_count; i++) {
+        rt_obj_retain_maybe(clips[i]);
+        animator->animations[i] = (rt_node_animation3d *)clips[i];
+    }
+    animator->animation_count = (int32_t)clip_count;
+    animator->current_animation = 0;
+    animator->speed = 1.0;
+    animator->playing = 1;
+    return animator;
+}
 
 /*==========================================================================
  * Helpers
@@ -376,6 +520,155 @@ static void mark_dirty(rt_scene_node3d *node) {
         mark_dirty(node->children[i]);
 }
 
+static rt_scene_node3d *find_by_name(rt_scene_node3d *node, const char *target);
+
+static void node_anim_sample_channel(const rt_node_anim_channel3d *channel,
+                                     double time,
+                                     float *out_values) {
+    int32_t lo;
+    int32_t hi;
+    double t0;
+    double t1;
+    double alpha;
+    if (!channel || !out_values || channel->key_count <= 0 || channel->value_width <= 0)
+        return;
+    if (time <= channel->times[0]) {
+        memcpy(out_values, channel->values, (size_t)channel->value_width * sizeof(float));
+        return;
+    }
+    if (time >= channel->times[channel->key_count - 1]) {
+        memcpy(out_values,
+               &channel->values[(size_t)(channel->key_count - 1) * (size_t)channel->value_width],
+               (size_t)channel->value_width * sizeof(float));
+        return;
+    }
+    lo = 0;
+    hi = channel->key_count - 1;
+    while (hi - lo > 1) {
+        int32_t mid = lo + (hi - lo) / 2;
+        if (channel->times[mid] <= time)
+            lo = mid;
+        else
+            hi = mid;
+    }
+    t0 = channel->times[lo];
+    t1 = channel->times[hi];
+    alpha = (t1 > t0 && channel->interpolation != RT_NODE_ANIM_INTERP_STEP) ? (time - t0) / (t1 - t0)
+                                                                            : 0.0;
+    for (int32_t i = 0; i < channel->value_width; i++) {
+        float a = channel->values[(size_t)lo * (size_t)channel->value_width + (size_t)i];
+        float b = channel->values[(size_t)hi * (size_t)channel->value_width + (size_t)i];
+        out_values[i] = (float)((double)a + ((double)b - (double)a) * alpha);
+    }
+}
+
+static void node_anim_apply_weights_recursive(rt_scene_node3d *node,
+                                              const float *weights,
+                                              int32_t weight_count) {
+    rt_mesh3d *mesh;
+    int64_t shape_count;
+    int32_t limit;
+    if (!node || !weights || weight_count <= 0)
+        return;
+    mesh = (rt_mesh3d *)node->mesh;
+    if (mesh && mesh->morph_targets_ref) {
+        shape_count = rt_morphtarget3d_get_shape_count(mesh->morph_targets_ref);
+        limit = (int32_t)((shape_count < weight_count) ? shape_count : weight_count);
+        for (int32_t i = 0; i < limit; i++)
+            rt_morphtarget3d_set_weight(mesh->morph_targets_ref, i, weights[i]);
+    }
+    for (int32_t i = 0; i < node->child_count; i++)
+        node_anim_apply_weights_recursive(node->children[i], weights, weight_count);
+}
+
+static void node_anim_apply_channel(rt_scene_node3d *root,
+                                    const rt_node_anim_channel3d *channel,
+                                    double time) {
+    const char *target_name;
+    rt_scene_node3d *target;
+    float stack_values[16];
+    float *values = stack_values;
+    int32_t width;
+    if (!root || !channel || !channel->target_name)
+        return;
+    width = channel->value_width;
+    if (width <= 0)
+        return;
+    if (width > (int32_t)(sizeof(stack_values) / sizeof(stack_values[0]))) {
+        values = (float *)calloc((size_t)width, sizeof(float));
+        if (!values)
+            return;
+    } else {
+        memset(values, 0, sizeof(stack_values));
+    }
+    target_name = rt_string_cstr(channel->target_name);
+    target = target_name ? find_by_name(root, target_name) : NULL;
+    if (!target) {
+        if (values != stack_values)
+            free(values);
+        return;
+    }
+    node_anim_sample_channel(channel, time, values);
+    switch (channel->path) {
+        case RT_NODE_ANIM_PATH_TRANSLATION:
+            if (width >= 3) {
+                target->position[0] = values[0];
+                target->position[1] = values[1];
+                target->position[2] = values[2];
+                mark_dirty(target);
+            }
+            break;
+        case RT_NODE_ANIM_PATH_ROTATION:
+            if (width >= 4) {
+                target->rotation[0] = values[0];
+                target->rotation[1] = values[1];
+                target->rotation[2] = values[2];
+                target->rotation[3] = values[3];
+                quat_normalize_local(target->rotation);
+                mark_dirty(target);
+            }
+            break;
+        case RT_NODE_ANIM_PATH_SCALE:
+            if (width >= 3) {
+                target->scale_xyz[0] = values[0];
+                target->scale_xyz[1] = values[1];
+                target->scale_xyz[2] = values[2];
+                mark_dirty(target);
+            }
+            break;
+        case RT_NODE_ANIM_PATH_WEIGHTS:
+            node_anim_apply_weights_recursive(target, values, width);
+            break;
+    }
+    if (values != stack_values)
+        free(values);
+}
+
+static void node_animator_update(rt_node_animator3d *animator, double dt) {
+    rt_node_animation3d *clip;
+    if (!animator || !animator->playing || animator->animation_count <= 0 || !animator->root)
+        return;
+    if (animator->current_animation < 0 || animator->current_animation >= animator->animation_count)
+        animator->current_animation = 0;
+    clip = animator->animations[animator->current_animation];
+    if (!clip)
+        return;
+    if (isfinite(dt) && dt > 0.0)
+        animator->time += dt * (isfinite(animator->speed) ? animator->speed : 1.0);
+    if (clip->duration > 0.0) {
+        if (clip->looping) {
+            animator->time = fmod(animator->time, clip->duration);
+            if (animator->time < 0.0)
+                animator->time += clip->duration;
+        } else if (animator->time > clip->duration) {
+            animator->time = clip->duration;
+            animator->playing = 0;
+        }
+    }
+    for (int32_t i = 0; i < clip->channel_count; i++)
+        node_anim_apply_channel(animator->root, &clip->channels[i], animator->time);
+}
+
 /// @brief Recompute the world matrix if dirty (recursive up to parent).
 static void recompute_world_matrix(rt_scene_node3d *node) {
     if (!node->world_dirty)
@@ -523,13 +816,16 @@ static void scene_node_apply_root_motion(rt_scene_node3d *node) {
 ///   - `NODE_TO_BODY`: pushes the node's transform back into the body.
 ///   - root motion: bumps the local TRS by the animator's per-frame delta.
 /// Then recurses into children.
-static void scene_node_sync_recursive(rt_scene_node3d *node) {
+static void scene_node_sync_recursive(rt_scene_node3d *node, double dt) {
     int64_t mode;
     int pull_from_body;
     int push_to_body;
     int body_is_kinematic;
     if (!node)
         return;
+
+    if (node->bound_node_animator)
+        node_animator_update((rt_node_animator3d *)node->bound_node_animator, dt);
 
     mode = node->sync_mode;
     body_is_kinematic = node->bound_body ? rt_body3d_is_kinematic(node->bound_body) : 0;
@@ -574,7 +870,7 @@ static void scene_node_sync_recursive(rt_scene_node3d *node) {
     }
 
     for (int32_t i = 0; i < node->child_count; i++)
-        scene_node_sync_recursive(node->children[i]);
+        scene_node_sync_recursive(node->children[i], dt);
 }
 
 /// @brief True if `target` appears anywhere in the subtree rooted at `root`.
@@ -786,14 +1082,23 @@ static void draw_node(rt_scene_node3d *node,
             (effective_animator != NULL || draw_mesh_impl->morph_targets_ref != NULL ||
              draw_mesh_impl->morph_deltas != NULL || draw_mesh_impl->morph_weights != NULL ||
              draw_mesh_impl->morph_shape_count > 0);
-        if (!has_dynamic_deformation) {
-            float world_min[3], world_max[3];
-            vgfx3d_transform_aabb(draw_min, draw_max, node->world_matrix, world_min, world_max);
-            if (vgfx3d_frustum_test_aabb(frustum, world_min, world_max) == 0) {
-                draw_self = 0;
-                if (culled)
-                    (*culled)++;
-            }
+        float cull_min[3] = {draw_min[0], draw_min[1], draw_min[2]};
+        float cull_max[3] = {draw_max[0], draw_max[1], draw_max[2]};
+        float world_min[3], world_max[3];
+        if (has_dynamic_deformation) {
+            float inflate = draw_radius > 0.0f ? draw_radius * 2.0f : 1.0f;
+            cull_min[0] -= inflate;
+            cull_min[1] -= inflate;
+            cull_min[2] -= inflate;
+            cull_max[0] += inflate;
+            cull_max[1] += inflate;
+            cull_max[2] += inflate;
+        }
+        vgfx3d_transform_aabb(cull_min, cull_max, node->world_matrix, world_min, world_max);
+        if (vgfx3d_frustum_test_aabb(frustum, world_min, world_max) == 0) {
+            draw_self = 0;
+            if (culled)
+                (*culled)++;
         }
     }
 
@@ -859,6 +1164,7 @@ static void rt_scene_node3d_finalize(void *obj) {
     scene3d_release_ref(&node->material);
     scene3d_release_ref(&node->bound_body);
     scene3d_release_ref(&node->bound_animator);
+    scene3d_release_ref(&node->bound_node_animator);
     scene3d_release_ref((void **)&node->name);
 }
 
@@ -901,6 +1207,7 @@ void *rt_scene_node3d_new(void) {
     node->material = NULL;
     node->bound_body = NULL;
     node->bound_animator = NULL;
+    node->bound_node_animator = NULL;
     node->sync_mode = RT_SCENE_NODE3D_SYNC_NODE_FROM_BODY;
     node->visible = 1;
     node->name = NULL;
@@ -1279,6 +1586,24 @@ void rt_scene_node3d_bind_animator(void *obj, void *controller) {
     node->bound_animator = controller;
 }
 
+void rt_scene_node3d_bind_node_animator(void *obj, void *animator) {
+    rt_scene_node3d *node;
+    rt_node_animator3d *node_animator;
+    if (!obj)
+        return;
+    node = (rt_scene_node3d *)obj;
+    if (node->bound_node_animator == animator)
+        return;
+    rt_obj_retain_maybe(animator);
+    if (node->bound_node_animator)
+        ((rt_node_animator3d *)node->bound_node_animator)->root = NULL;
+    scene3d_release_ref(&node->bound_node_animator);
+    node->bound_node_animator = animator;
+    node_animator = (rt_node_animator3d *)animator;
+    if (node_animator)
+        node_animator->root = node;
+}
+
 /// @brief Detach any bound animator. Subsequent frames stop applying its motion.
 void rt_scene_node3d_clear_animator_binding(void *obj) {
     if (!obj)
@@ -1440,7 +1765,7 @@ void rt_scene3d_sync_bindings(void *obj, double dt) {
     rt_scene3d *scene = (rt_scene3d *)obj;
     if (!scene || !scene->root)
         return;
-    scene_node_sync_recursive(scene->root);
+    scene_node_sync_recursive(scene->root, dt);
     rt_audio3d_sync_bindings(dt);
 }
 

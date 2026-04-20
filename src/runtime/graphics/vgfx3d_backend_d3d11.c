@@ -129,6 +129,10 @@ static const char *d3d11_shader_source =
     "    int shadingModel;\n"
     "    float3 _materialPad0;\n"
     "    float4 customParamsPacked[2];\n"
+    "    int4 textureUvSets0;\n"
+    "    int4 textureUvSets1;\n"
+    "    float4 textureUvTransform0[" VGFX3D_STR(RT_MATERIAL3D_TEXTURE_SLOT_COUNT) "];\n"
+    "    float4 textureUvTransform1[" VGFX3D_STR(RT_MATERIAL3D_TEXTURE_SLOT_COUNT) "];\n"
     "};\n"
     "\n"
     "cbuffer PerLights : register(b3) {\n"
@@ -160,14 +164,20 @@ static const char *d3d11_shader_source =
     "TextureCube envTex : register(t13);\n"
     "Texture2D metallicRoughnessTex : register(t14);\n"
     "Texture2D aoTex : register(t15);\n"
-    "SamplerState texSampler : register(s0);\n"
+    "SamplerState diffuseSampler : register(s0);\n"
     "SamplerComparisonState shadowSampler : register(s1);\n"
     "SamplerState envSampler : register(s2);\n"
+    "SamplerState normalSampler : register(s3);\n"
+    "SamplerState specularSampler : register(s4);\n"
+    "SamplerState emissiveSampler : register(s5);\n"
+    "SamplerState metallicRoughnessSampler : register(s6);\n"
+    "SamplerState aoSampler : register(s7);\n"
     "\n"
     "struct VS_INPUT {\n"
     "    float3 pos : POSITION;\n"
     "    float3 normal : NORMAL;\n"
     "    float2 uv : TEXCOORD0;\n"
+    "    float2 uv1 : TEXCOORD1;\n"
     "    float4 color : COLOR0;\n"
     "    float4 tangent : TANGENT;\n"
     "    uint4 boneIdx : BLENDINDICES;\n"
@@ -178,6 +188,7 @@ static const char *d3d11_shader_source =
     "    float3 pos : POSITION;\n"
     "    float3 normal : NORMAL;\n"
     "    float2 uv : TEXCOORD0;\n"
+    "    float2 uv1 : TEXCOORD1;\n"
     "    float4 color : COLOR0;\n"
     "    float4 tangent : TANGENT;\n"
     "    uint4 boneIdx : BLENDINDICES;\n"
@@ -206,6 +217,7 @@ static const char *d3d11_shader_source =
     "    float4 currClip : TEXCOORD4;\n"
     "    float4 prevClip : TEXCOORD5;\n"
     "    float hasObjectHistory : TEXCOORD6;\n"
+    "    float2 uv1 : TEXCOORD7;\n"
     "};\n"
     "\n"
     "struct PS_OUTPUT {\n"
@@ -231,6 +243,16 @@ static const char *d3d11_shader_source =
     "}\n"
     "float customParamAt(int idx) {\n"
     "    return readPackedScalar2(customParamsPacked, idx);\n"
+    "}\n"
+    "int textureUvSetAt(int slot) {\n"
+    "    return slot < 4 ? textureUvSets0[slot] : textureUvSets1[slot - 4];\n"
+    "}\n"
+    "float2 materialUv(PS_INPUT input, int slot) {\n"
+    "    float2 uv = textureUvSetAt(slot) != 0 ? input.uv1 : input.uv;\n"
+    "    float4 m = textureUvTransform0[slot];\n"
+    "    float4 t = textureUvTransform1[slot];\n"
+    "    return float2(uv.x * m.x + uv.y * m.y + t.x,\n"
+    "                  uv.x * m.z + uv.y * m.w + t.y);\n"
     "}\n"
     "\n"
     "float3 applyMorphPosition(float3 pos, uint vid, int usePrevWeights) {\n"
@@ -306,6 +328,7 @@ static const char *d3d11_shader_source =
     "                     float3 nrm,\n"
     "                     float4 tan,\n"
     "                     float2 uv,\n"
+    "                     float2 uv1,\n"
     "                     float4 color,\n"
     "                     row_major float4x4 currentModel,\n"
     "                     row_major float4x4 currentNormal,\n"
@@ -322,6 +345,7 @@ static const char *d3d11_shader_source =
     "    output.normal = mul(currentNormal, float4(nrm, 0.0)).xyz;\n"
     "    output.tangent = float4(mul(currentModel, float4(tan.xyz, 0.0)).xyz, tan.w);\n"
     "    output.uv = uv;\n"
+    "    output.uv1 = uv1;\n"
     "    output.color = color;\n"
     "    output.currClip = currClip;\n"
     "    output.prevClip = prevClip;\n"
@@ -351,6 +375,7 @@ static const char *d3d11_shader_source =
     "                       skinnedNormal,\n"
     "                       float4(skinnedTangent, tan.w),\n"
     "                       input.uv,\n"
+    "                       input.uv1,\n"
     "                       input.color,\n"
     "                       modelMatrix,\n"
     "                       normalMatrix,\n"
@@ -393,6 +418,7 @@ static const char *d3d11_shader_source =
     "                       skinnedNormal,\n"
     "                       float4(skinnedTangent, tan.w),\n"
     "                       input.uv,\n"
+    "                       input.uv1,\n"
     "                       input.color,\n"
     "                       instModel,\n"
     "                       instNormal,\n"
@@ -444,29 +470,29 @@ static const char *d3d11_shader_source =
     "    float texAlpha = 1.0;\n"
     "    float materialAlpha = diffuseColor.a * scalars.x * input.color.a;\n"
     "    if (flags0.x != 0) {\n"
-    "        float4 texSample = diffuseTex.Sample(texSampler, input.uv);\n"
+    "        float4 texSample = diffuseTex.Sample(diffuseSampler, materialUv(input, 0));\n"
     "        baseColor *= texSample.rgb;\n"
     "        texAlpha = texSample.a;\n"
     "    }\n"
     "    if (flags1.z != 0) {\n"
-    "        float4 sp = splatTex.Sample(texSampler, input.uv);\n"
+    "        float4 sp = splatTex.Sample(diffuseSampler, input.uv);\n"
     "        float sum = sp.r + sp.g + sp.b + sp.a;\n"
     "        if (sum > 0.0001) {\n"
     "            sp /= sum;\n"
-    "            float3 splatColor = splatLayer0.Sample(texSampler, input.uv * splatScales.x).rgb "
+    "            float3 splatColor = splatLayer0.Sample(diffuseSampler, input.uv * splatScales.x).rgb "
     "* sp.r +\n"
-    "                                splatLayer1.Sample(texSampler, input.uv * splatScales.y).rgb "
+    "                                splatLayer1.Sample(diffuseSampler, input.uv * splatScales.y).rgb "
     "* sp.g +\n"
-    "                                splatLayer2.Sample(texSampler, input.uv * splatScales.z).rgb "
+    "                                splatLayer2.Sample(diffuseSampler, input.uv * splatScales.z).rgb "
     "* sp.b +\n"
-    "                                splatLayer3.Sample(texSampler, input.uv * splatScales.w).rgb "
+    "                                splatLayer3.Sample(diffuseSampler, input.uv * splatScales.w).rgb "
     "* sp.a;\n"
     "            baseColor = splatColor * diffuseColor.rgb * input.color.rgb;\n"
     "        }\n"
     "    }\n"
     "    float3 N = normalize(input.normal);\n"
     "    if (flags0.z != 0) {\n"
-    "        float3 mapN = normalTex.Sample(texSampler, input.uv).xyz * 2.0 - 1.0;\n"
+    "        float3 mapN = normalTex.Sample(normalSampler, materialUv(input, 1)).xyz * 2.0 - 1.0;\n"
     "        mapN.xy *= pbrScalars1.x;\n"
     "        float3 T = normalize(input.tangent.xyz - N * dot(input.tangent.xyz, N));\n"
     "        if (dot(T, T) > 0.0001) {\n"
@@ -481,7 +507,7 @@ static const char *d3d11_shader_source =
     "        : length(cameraToWorld);\n"
     "    float3 emissive = emissiveColor.rgb * pbrScalars0.w;\n"
     "    if (flags1.x != 0)\n"
-    "        emissive *= emissiveTex.Sample(texSampler, input.uv).rgb;\n"
+    "        emissive *= emissiveTex.Sample(emissiveSampler, materialUv(input, 3)).rgb;\n"
     "    float finalAlpha = materialAlpha * texAlpha;\n"
     "    if (pbrFlags.y == 1) {\n"
     "        if (finalAlpha < pbrScalars1.y)\n"
@@ -500,13 +526,13 @@ static const char *d3d11_shader_source =
     "            float roughness = clamp(pbrScalars0.y, 0.045, 1.0);\n"
     "            float ao = saturate(pbrScalars0.z);\n"
     "            if (pbrFlags.z != 0) {\n"
-    "                float4 mr = metallicRoughnessTex.Sample(texSampler, input.uv);\n"
+    "                float4 mr = metallicRoughnessTex.Sample(metallicRoughnessSampler, materialUv(input, 4));\n"
     "                roughness = clamp(roughness * mr.g, 0.045, 1.0);\n"
     "                metallic = saturate(metallic * mr.b);\n"
     "                envRoughness = roughness;\n"
     "            }\n"
     "            if (pbrFlags.w != 0) {\n"
-    "                float4 aoSample = aoTex.Sample(texSampler, input.uv);\n"
+    "                float4 aoSample = aoTex.Sample(aoSampler, materialUv(input, 5));\n"
     "                ao = saturate(ao * aoSample.r);\n"
     "            }\n"
     "            result = ambientColor.rgb * baseColor * ao;\n"
@@ -561,7 +587,7 @@ static const char *d3d11_shader_source =
     "        } else {\n"
     "            float3 specColor = specularColor.rgb;\n"
     "            if (flags0.w != 0)\n"
-    "                specColor *= specularTex.Sample(texSampler, input.uv).rgb;\n"
+    "                specColor *= specularTex.Sample(specularSampler, materialUv(input, 2)).rgb;\n"
     "            for (int i = 0; i < lightCount; i++) {\n"
     "                float3 L = float3(0.0, 0.0, 0.0);\n"
     "                float atten = 1.0;\n"
@@ -1036,6 +1062,7 @@ typedef struct {
     ID3D11SamplerState *linear_wrap_sampler;
     ID3D11SamplerState *linear_clamp_sampler;
     ID3D11SamplerState *shadow_cmp_sampler;
+    ID3D11SamplerState *material_samplers[3][3][2];
 
     ID3D11VertexShader *vs_main;
     ID3D11VertexShader *vs_instanced;
@@ -2676,15 +2703,89 @@ static void d3d11_clear_current_targets(d3d11_context_t *ctx,
 /// Slot 0: linear/wrap (diffuse/normal/specular textures).
 /// Slot 1: comparison sampler for shadow PCF.
 /// Slot 2: linear/clamp (skybox + post-processing).
-static void d3d11_bind_common_state(d3d11_context_t *ctx) {
+static int d3d11_sampler_wrap_index(int32_t mode) {
+    if (mode == RT_MATERIAL3D_TEXTURE_WRAP_CLAMP_TO_EDGE)
+        return 1;
+    if (mode == RT_MATERIAL3D_TEXTURE_WRAP_MIRRORED_REPEAT)
+        return 2;
+    return 0;
+}
+
+static D3D11_TEXTURE_ADDRESS_MODE d3d11_sampler_address_mode(int index) {
+    if (index == 1)
+        return D3D11_TEXTURE_ADDRESS_CLAMP;
+    if (index == 2)
+        return D3D11_TEXTURE_ADDRESS_MIRROR;
+    return D3D11_TEXTURE_ADDRESS_WRAP;
+}
+
+static ID3D11SamplerState *d3d11_get_material_sampler(d3d11_context_t *ctx,
+                                                      const vgfx3d_draw_cmd_t *cmd,
+                                                      int32_t slot) {
+    int wrap_s;
+    int wrap_t;
+    int filter;
+    D3D11_SAMPLER_DESC desc;
+    HRESULT hr;
+    if (!ctx)
+        return NULL;
+    if (!cmd)
+        return ctx->linear_wrap_sampler;
+    if (slot >= 0 && slot < RT_MATERIAL3D_TEXTURE_SLOT_COUNT) {
+        wrap_s = d3d11_sampler_wrap_index(cmd->texture_slot_wrap_s[slot]);
+        wrap_t = d3d11_sampler_wrap_index(cmd->texture_slot_wrap_t[slot]);
+        filter = cmd->texture_slot_filter[slot] == RT_MATERIAL3D_TEXTURE_FILTER_NEAREST ? 1 : 0;
+    } else {
+        wrap_s = d3d11_sampler_wrap_index(cmd->texture_wrap_s);
+        wrap_t = d3d11_sampler_wrap_index(cmd->texture_wrap_t);
+        filter = cmd->texture_filter == RT_MATERIAL3D_TEXTURE_FILTER_NEAREST ? 1 : 0;
+    }
+    if (ctx->material_samplers[wrap_s][wrap_t][filter])
+        return ctx->material_samplers[wrap_s][wrap_t][filter];
+    memset(&desc, 0, sizeof(desc));
+    desc.Filter = filter ? D3D11_FILTER_MIN_MAG_MIP_POINT : D3D11_FILTER_MIN_MAG_MIP_LINEAR;
+    desc.AddressU = d3d11_sampler_address_mode(wrap_s);
+    desc.AddressV = d3d11_sampler_address_mode(wrap_t);
+    desc.AddressW = D3D11_TEXTURE_ADDRESS_WRAP;
+    desc.MaxLOD = D3D11_FLOAT32_MAX;
+    hr = ID3D11Device_CreateSamplerState(ctx->device, &desc, &ctx->material_samplers[wrap_s][wrap_t][filter]);
+    if (FAILED(hr))
+        return ctx->linear_wrap_sampler;
+    return ctx->material_samplers[wrap_s][wrap_t][filter];
+}
+
+static void d3d11_bind_common_state(d3d11_context_t *ctx, const vgfx3d_draw_cmd_t *cmd) {
+    ID3D11SamplerState *material_samplers[8] = {NULL};
     if (!ctx)
         return;
-    if (ctx->linear_wrap_sampler)
-        ID3D11DeviceContext_PSSetSamplers(ctx->ctx, 0, 1, &ctx->linear_wrap_sampler);
+    material_samplers[0] =
+        d3d11_get_material_sampler(ctx, cmd, RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR);
+    material_samplers[3] =
+        d3d11_get_material_sampler(ctx, cmd, RT_MATERIAL3D_TEXTURE_SLOT_NORMAL);
+    material_samplers[4] =
+        d3d11_get_material_sampler(ctx, cmd, RT_MATERIAL3D_TEXTURE_SLOT_SPECULAR);
+    material_samplers[5] =
+        d3d11_get_material_sampler(ctx, cmd, RT_MATERIAL3D_TEXTURE_SLOT_EMISSIVE);
+    material_samplers[6] =
+        d3d11_get_material_sampler(ctx, cmd, RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS);
+    material_samplers[7] =
+        d3d11_get_material_sampler(ctx, cmd, RT_MATERIAL3D_TEXTURE_SLOT_AO);
+    if (material_samplers[0])
+        ID3D11DeviceContext_PSSetSamplers(ctx->ctx, 0, 1, &material_samplers[0]);
     if (ctx->shadow_cmp_sampler)
         ID3D11DeviceContext_PSSetSamplers(ctx->ctx, 1, 1, &ctx->shadow_cmp_sampler);
     if (ctx->linear_clamp_sampler)
         ID3D11DeviceContext_PSSetSamplers(ctx->ctx, 2, 1, &ctx->linear_clamp_sampler);
+    if (material_samplers[3])
+        ID3D11DeviceContext_PSSetSamplers(ctx->ctx, 3, 1, &material_samplers[3]);
+    if (material_samplers[4])
+        ID3D11DeviceContext_PSSetSamplers(ctx->ctx, 4, 1, &material_samplers[4]);
+    if (material_samplers[5])
+        ID3D11DeviceContext_PSSetSamplers(ctx->ctx, 5, 1, &material_samplers[5]);
+    if (material_samplers[6])
+        ID3D11DeviceContext_PSSetSamplers(ctx->ctx, 6, 1, &material_samplers[6]);
+    if (material_samplers[7])
+        ID3D11DeviceContext_PSSetSamplers(ctx->ctx, 7, 1, &material_samplers[7]);
 }
 
 /// @brief Pack draw-command per-object state into the cbuffer struct.
@@ -2825,6 +2926,18 @@ static void d3d11_prepare_material_data(const vgfx3d_draw_cmd_t *cmd,
                                     VGFX3D_D3D11_PACKED_CUSTOM_PARAM_VECS,
                                     cmd->custom_params,
                                     8);
+    for (int32_t slot = 0; slot < RT_MATERIAL3D_TEXTURE_SLOT_COUNT; slot++) {
+        if (slot < 4)
+            material_data->texture_uv_sets0[slot] = cmd->texture_slot_uv_set[slot];
+        else
+            material_data->texture_uv_sets1[slot - 4] = cmd->texture_slot_uv_set[slot];
+        material_data->texture_uv_transform0[slot][0] = cmd->texture_slot_uv_transform[slot][0];
+        material_data->texture_uv_transform0[slot][1] = cmd->texture_slot_uv_transform[slot][1];
+        material_data->texture_uv_transform0[slot][2] = cmd->texture_slot_uv_transform[slot][2];
+        material_data->texture_uv_transform0[slot][3] = cmd->texture_slot_uv_transform[slot][3];
+        material_data->texture_uv_transform1[slot][0] = cmd->texture_slot_uv_transform[slot][4];
+        material_data->texture_uv_transform1[slot][1] = cmd->texture_slot_uv_transform[slot][5];
+    }
     memcpy(
         material_data->splat_scales, cmd->splat_layer_scales, sizeof(material_data->splat_scales));
 }
@@ -3067,7 +3180,7 @@ static void d3d11_bind_main_pipeline(d3d11_context_t *ctx,
     ID3D11DeviceContext_PSSetConstantBuffers(ctx->ctx, 1, 1, &ctx->cb_per_scene);
     ID3D11DeviceContext_PSSetConstantBuffers(ctx->ctx, 2, 1, &ctx->cb_per_material);
     ID3D11DeviceContext_PSSetConstantBuffers(ctx->ctx, 3, 1, &ctx->cb_per_lights);
-    d3d11_bind_common_state(ctx);
+    d3d11_bind_common_state(ctx, cmd);
 
     vs_srvs[0] = ctx->current_morph_srv;
     vs_srvs[1] = ctx->current_morph_normal_srv;
@@ -3472,8 +3585,8 @@ static void *d3d11_create_ctx(vgfx_window_t win, int32_t width, int32_t height) 
     ID3DBlob *ps_postfx_blob = NULL;
     ID3DBlob *ps_overlay_blob = NULL;
     ID3D11Texture2D *back_buffer = NULL;
-    D3D11_INPUT_ELEMENT_DESC layout[7];
-    D3D11_INPUT_ELEMENT_DESC instanced_layout[19];
+    D3D11_INPUT_ELEMENT_DESC layout[8];
+    D3D11_INPUT_ELEMENT_DESC instanced_layout[20];
     D3D11_INPUT_ELEMENT_DESC skybox_layout[1];
     D3D11_BUFFER_DESC cb_desc;
     D3D11_BUFFER_DESC skybox_desc;
@@ -3808,24 +3921,29 @@ static void *d3d11_create_ctx(vgfx_window_t win, int32_t width, int32_t height) 
     layout[2].Format = DXGI_FORMAT_R32G32_FLOAT;
     layout[2].AlignedByteOffset = 24;
     layout[3] = layout[0];
-    layout[3].SemanticName = "COLOR";
-    layout[3].Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+    layout[3].SemanticName = "TEXCOORD";
+    layout[3].SemanticIndex = 1;
+    layout[3].Format = DXGI_FORMAT_R32G32_FLOAT;
     layout[3].AlignedByteOffset = 32;
     layout[4] = layout[0];
-    layout[4].SemanticName = "TANGENT";
+    layout[4].SemanticName = "COLOR";
     layout[4].Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
-    layout[4].AlignedByteOffset = 48;
+    layout[4].AlignedByteOffset = 40;
     layout[5] = layout[0];
-    layout[5].SemanticName = "BLENDINDICES";
-    layout[5].Format = DXGI_FORMAT_R8G8B8A8_UINT;
-    layout[5].AlignedByteOffset = 64;
+    layout[5].SemanticName = "TANGENT";
+    layout[5].Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+    layout[5].AlignedByteOffset = 56;
     layout[6] = layout[0];
-    layout[6].SemanticName = "BLENDWEIGHT";
-    layout[6].Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
-    layout[6].AlignedByteOffset = 68;
+    layout[6].SemanticName = "BLENDINDICES";
+    layout[6].Format = DXGI_FORMAT_R8G8B8A8_UINT;
+    layout[6].AlignedByteOffset = 72;
+    layout[7] = layout[0];
+    layout[7].SemanticName = "BLENDWEIGHT";
+    layout[7].Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+    layout[7].AlignedByteOffset = 76;
     hr = ID3D11Device_CreateInputLayout(ctx->device,
                                         layout,
-                                        7,
+                                        8,
                                         ID3D10Blob_GetBufferPointer(vs_blob),
                                         ID3D10Blob_GetBufferSize(vs_blob),
                                         &ctx->input_layout);
@@ -3837,7 +3955,7 @@ static void *d3d11_create_ctx(vgfx_window_t win, int32_t width, int32_t height) 
     memcpy(instanced_layout, layout, sizeof(layout));
     instanced_layout[0].InputSlotClass = D3D11_INPUT_PER_VERTEX_DATA;
     {
-        int elem = 7;
+        int elem = 8;
         for (int row = 0; row < 4; row++, elem++) {
             instanced_layout[elem].SemanticName = "TEXCOORD";
             instanced_layout[elem].SemanticIndex = 4u + (UINT)row;
@@ -3871,7 +3989,7 @@ static void *d3d11_create_ctx(vgfx_window_t win, int32_t width, int32_t height) 
     }
     hr = ID3D11Device_CreateInputLayout(ctx->device,
                                         instanced_layout,
-                                        19,
+                                        20,
                                         ID3D10Blob_GetBufferPointer(vs_instanced_blob),
                                         ID3D10Blob_GetBufferSize(vs_instanced_blob),
                                         &ctx->input_layout_instanced);
@@ -4069,6 +4187,12 @@ static void d3d11_destroy_ctx(void *ctx_ptr) {
     SAFE_RELEASE(ctx->ps_main);
     SAFE_RELEASE(ctx->vs_instanced);
     SAFE_RELEASE(ctx->vs_main);
+    for (int ws = 0; ws < 3; ws++) {
+        for (int wt = 0; wt < 3; wt++) {
+            for (int filter = 0; filter < 2; filter++)
+                SAFE_RELEASE(ctx->material_samplers[ws][wt][filter]);
+        }
+    }
     SAFE_RELEASE(ctx->shadow_cmp_sampler);
     SAFE_RELEASE(ctx->linear_clamp_sampler);
     SAFE_RELEASE(ctx->linear_wrap_sampler);
@@ -4186,7 +4310,7 @@ static void d3d11_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) 
 
     d3d11_select_current_targets(ctx);
     d3d11_clear_current_targets(ctx, cam->load_existing_color, cam->load_existing_depth);
-    d3d11_bind_common_state(ctx);
+    d3d11_bind_common_state(ctx, NULL);
     if ((ctx->frame_serial & 31u) == 0u)
         d3d11_prune_cubemap_cache(ctx);
 }

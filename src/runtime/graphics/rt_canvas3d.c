@@ -462,6 +462,26 @@ static void canvas3d_fill_material_cmd(const rt_material3d *mat, vgfx3d_draw_cmd
     cmd->alpha_mode = mat->alpha_mode;
     cmd->alpha_cutoff = (float)mat->alpha_cutoff;
     cmd->double_sided = mat->double_sided ? 1 : 0;
+    cmd->texture_wrap_s = mat->texture_wrap_s;
+    cmd->texture_wrap_t = mat->texture_wrap_t;
+    cmd->texture_filter = mat->texture_filter;
+    memcpy(cmd->texture_slot_wrap_s,
+           mat->texture_slot_wrap_s,
+           sizeof(cmd->texture_slot_wrap_s));
+    memcpy(cmd->texture_slot_wrap_t,
+           mat->texture_slot_wrap_t,
+           sizeof(cmd->texture_slot_wrap_t));
+    memcpy(cmd->texture_slot_filter,
+           mat->texture_slot_filter,
+           sizeof(cmd->texture_slot_filter));
+    memcpy(cmd->texture_slot_uv_set,
+           mat->texture_slot_uv_set,
+           sizeof(cmd->texture_slot_uv_set));
+    for (int slot = 0; slot < RT_MATERIAL3D_TEXTURE_SLOT_COUNT; slot++) {
+        for (int i = 0; i < 6; i++)
+            cmd->texture_slot_uv_transform[slot][i] =
+                (float)mat->texture_slot_uv_transform[slot][i];
+    }
     cmd->env_map = mat->env_map;
     cmd->reflectivity = (float)mat->reflectivity;
     cmd->shading_model = (mat->shading_model == 3) ? 0 : mat->shading_model;

@@ -54,6 +54,10 @@ typedef struct {
     void **animations;
     int32_t animation_count;
     int32_t animation_capacity;
+
+    void **node_animations;
+    int32_t node_animation_count;
+    int32_t node_animation_capacity;
 } rt_model3d;
 
 /// @brief Release the GC reference at `*slot` and clear the slot. NULL-safe both ways
@@ -104,6 +108,7 @@ static void rt_model3d_finalize(void *obj) {
     model_release_array(&model->materials, &model->material_count);
     model_release_array(&model->skeletons, &model->skeleton_count);
     model_release_array(&model->animations, &model->animation_count);
+    model_release_array(&model->node_animations, &model->node_animation_count);
 }
 
 /// @brief Allocate a zeroed `rt_model3d` with finalizer wired and a fresh template-root
@@ -334,13 +339,16 @@ static void model_clone_children_to_root(rt_scene_node3d *dst_root, const rt_sce
     }
 }
 
-static void model_collect_scene_refs(rt_model3d *model, const rt_scene_node3d *node);
+static int model_collect_scene_refs(rt_model3d *model, const rt_scene_node3d *node);
 
-static void model_collect_template_refs(rt_model3d *model) {
+static int model_collect_template_refs(rt_model3d *model) {
     if (!model || !model->template_root)
-        return;
-    for (int32_t i = 0; i < model->template_root->child_count; i++)
-        model_collect_scene_refs(model, model->template_root->children[i]);
+        return 1;
+    for (int32_t i = 0; i < model->template_root->child_count; i++) {
+        if (!model_collect_scene_refs(model, model->template_root->children[i]))
+            return 0;
+    }
+    return 1;
 }
 
 static void model_bind_default_animator(rt_model3d *model, rt_scene_node3d *root) {
@@ -381,32 +389,50 @@ static void model_bind_default_animator(rt_model3d *model, rt_scene_node3d *root
     model_release_local(controller);
 }
 
+static void model_bind_default_node_animator(rt_model3d *model, rt_scene_node3d *root) {
+    void *animator;
+    if (!model || !root || root->bound_node_animator || model->node_animation_count <= 0)
+        return;
+    animator = rt_node_animator3d_new_from_clips(model->node_animations,
+                                                model->node_animation_count);
+    if (!animator)
+        return;
+    rt_scene_node3d_bind_node_animator(root, animator);
+    model_release_local(animator);
+}
+
 /// @brief Walk the scene subtree at `node` and register every unique `mesh` / `material`
 /// reference (including those stored on LOD entries) into the model's component arrays.
 /// Used after cloning imported scene-graph nodes so consumers can enumerate the assets
 /// without re-walking the tree. Recurses into every child; duplicates are skipped by
 /// `model_append_unique_ref`.
-static void model_collect_scene_refs(rt_model3d *model, const rt_scene_node3d *node) {
+static int model_collect_scene_refs(rt_model3d *model, const rt_scene_node3d *node) {
     if (!model || !node)
-        return;
+        return 1;
 
-    model_append_unique_ref(
-        &model->meshes, &model->mesh_count, &model->mesh_capacity, node->mesh,
-        "Model3D.Load: mesh list allocation failed");
-    model_append_unique_ref(&model->materials,
-                            &model->material_count,
-                            &model->material_capacity,
-                            node->material,
-                            "Model3D.Load: material list allocation failed");
+    if (!model_append_unique_ref(
+            &model->meshes, &model->mesh_count, &model->mesh_capacity, node->mesh,
+            "Model3D.Load: mesh list allocation failed"))
+        return 0;
+    if (!model_append_unique_ref(&model->materials,
+                                 &model->material_count,
+                                 &model->material_capacity,
+                                 node->material,
+                                 "Model3D.Load: material list allocation failed"))
+        return 0;
     for (int32_t i = 0; i < node->lod_count; i++) {
-        model_append_unique_ref(&model->meshes,
-                                &model->mesh_count,
-                                &model->mesh_capacity,
-                                node->lod_levels[i].mesh,
-                                "Model3D.Load: mesh list allocation failed");
+        if (!model_append_unique_ref(&model->meshes,
+                                     &model->mesh_count,
+                                     &model->mesh_capacity,
+                                     node->lod_levels[i].mesh,
+                                     "Model3D.Load: mesh list allocation failed"))
+            return 0;
     }
-    for (int32_t i = 0; i < node->child_count; i++)
-        model_collect_scene_refs(model, node->children[i]);
+    for (int32_t i = 0; i < node->child_count; i++) {
+        if (!model_collect_scene_refs(model, node->children[i]))
+            return 0;
+    }
+    return 1;
 }
 
 /// @brief Case-insensitive extension match. Returns 1 when `path_cstr` ends with `ext`
@@ -482,8 +508,12 @@ void *rt_model3d_load(rt_string path) {
         if (!scene)
             goto fail;
         model_clone_children_to_root(model->template_root, scene->root);
-        for (int32_t i = 0; i < model->template_root->child_count; i++)
-            model_collect_scene_refs(model, model->template_root->children[i]);
+        for (int32_t i = 0; i < model->template_root->child_count; i++) {
+            if (!model_collect_scene_refs(model, model->template_root->children[i])) {
+                model_release_local(scene);
+                goto fail;
+            }
+        }
         model_release_local(scene);
     } else if (model_has_ext(path_cstr, ".gltf") || model_has_ext(path_cstr, ".glb")) {
         void *asset = rt_gltf_load(path);
@@ -491,6 +521,7 @@ void *rt_model3d_load(rt_string path) {
         int64_t material_count;
         int64_t skeleton_count;
         int64_t animation_count;
+        int64_t node_animation_count;
         void *scene_root;
         if (!asset)
             goto fail;
@@ -498,38 +529,64 @@ void *rt_model3d_load(rt_string path) {
         material_count = rt_gltf_material_count(asset);
         skeleton_count = rt_gltf_skeleton_count(asset);
         animation_count = rt_gltf_animation_count(asset);
+        node_animation_count = rt_gltf_node_animation_count(asset);
         for (int64_t i = 0; i < mesh_count; i++) {
-            model_append_ref(&model->meshes,
-                             &model->mesh_count,
-                             &model->mesh_capacity,
-                             rt_gltf_get_mesh(asset, i),
-                             "Model3D.Load: mesh list allocation failed");
+            if (!model_append_ref(&model->meshes,
+                                  &model->mesh_count,
+                                  &model->mesh_capacity,
+                                  rt_gltf_get_mesh(asset, i),
+                                  "Model3D.Load: mesh list allocation failed")) {
+                model_release_local(asset);
+                goto fail;
+            }
         }
         for (int64_t i = 0; i < material_count; i++) {
-            model_append_ref(&model->materials,
-                             &model->material_count,
-                             &model->material_capacity,
-                             rt_gltf_get_material(asset, i),
-                             "Model3D.Load: material list allocation failed");
+            if (!model_append_ref(&model->materials,
+                                  &model->material_count,
+                                  &model->material_capacity,
+                                  rt_gltf_get_material(asset, i),
+                                  "Model3D.Load: material list allocation failed")) {
+                model_release_local(asset);
+                goto fail;
+            }
         }
         for (int64_t i = 0; i < skeleton_count; i++) {
-            model_append_ref(&model->skeletons,
-                             &model->skeleton_count,
-                             &model->skeleton_capacity,
-                             rt_gltf_get_skeleton(asset, i),
-                             "Model3D.Load: skeleton list allocation failed");
+            if (!model_append_ref(&model->skeletons,
+                                  &model->skeleton_count,
+                                  &model->skeleton_capacity,
+                                  rt_gltf_get_skeleton(asset, i),
+                                  "Model3D.Load: skeleton list allocation failed")) {
+                model_release_local(asset);
+                goto fail;
+            }
         }
         for (int64_t i = 0; i < animation_count; i++) {
-            model_append_ref(&model->animations,
-                             &model->animation_count,
-                             &model->animation_capacity,
-                             rt_gltf_get_animation(asset, i),
-                             "Model3D.Load: animation list allocation failed");
+            if (!model_append_ref(&model->animations,
+                                  &model->animation_count,
+                                  &model->animation_capacity,
+                                  rt_gltf_get_animation(asset, i),
+                                  "Model3D.Load: animation list allocation failed")) {
+                model_release_local(asset);
+                goto fail;
+            }
+        }
+        for (int64_t i = 0; i < node_animation_count; i++) {
+            if (!model_append_ref(&model->node_animations,
+                                  &model->node_animation_count,
+                                  &model->node_animation_capacity,
+                                  rt_gltf_get_node_animation(asset, i),
+                                  "Model3D.Load: node animation list allocation failed")) {
+                model_release_local(asset);
+                goto fail;
+            }
         }
         scene_root = rt_gltf_get_scene_root(asset);
         if (scene_root) {
             model_clone_children_to_root(model->template_root, (const rt_scene_node3d *)scene_root);
-            model_collect_template_refs(model);
+            if (!model_collect_template_refs(model)) {
+                model_release_local(asset);
+                goto fail;
+            }
         }
         model_build_synth_mesh_nodes(model);
         model_release_local(asset);
@@ -553,39 +610,85 @@ void *rt_model3d_load(rt_string path) {
             void *morph_targets = rt_fbx_get_morph_target(asset, i);
             if (morph_targets)
                 rt_mesh3d_set_morph_targets(mesh, morph_targets);
-            model_append_ref(&model->meshes,
-                             &model->mesh_count,
-                             &model->mesh_capacity,
-                             mesh,
-                             "Model3D.Load: mesh list allocation failed");
+            if (!model_append_ref(&model->meshes,
+                                  &model->mesh_count,
+                                  &model->mesh_capacity,
+                                  mesh,
+                                  "Model3D.Load: mesh list allocation failed")) {
+                model_release_local(asset);
+                goto fail;
+            }
         }
         for (int64_t i = 0; i < material_count; i++) {
-            model_append_ref(&model->materials,
-                             &model->material_count,
-                             &model->material_capacity,
-                             rt_fbx_get_material(asset, i),
-                             "Model3D.Load: material list allocation failed");
+            if (!model_append_ref(&model->materials,
+                                  &model->material_count,
+                                  &model->material_capacity,
+                                  rt_fbx_get_material(asset, i),
+                                  "Model3D.Load: material list allocation failed")) {
+                model_release_local(asset);
+                goto fail;
+            }
         }
         if (skeleton) {
-            model_append_ref(&model->skeletons,
-                             &model->skeleton_count,
-                             &model->skeleton_capacity,
-                             skeleton,
-                             "Model3D.Load: skeleton list allocation failed");
+            if (!model_append_ref(&model->skeletons,
+                                  &model->skeleton_count,
+                                  &model->skeleton_capacity,
+                                  skeleton,
+                                  "Model3D.Load: skeleton list allocation failed")) {
+                model_release_local(asset);
+                goto fail;
+            }
         }
         for (int64_t i = 0; i < animation_count; i++) {
-            model_append_ref(&model->animations,
-                             &model->animation_count,
-                             &model->animation_capacity,
-                             rt_fbx_get_animation(asset, i),
-                             "Model3D.Load: animation list allocation failed");
+            if (!model_append_ref(&model->animations,
+                                  &model->animation_count,
+                                  &model->animation_capacity,
+                                  rt_fbx_get_animation(asset, i),
+                                  "Model3D.Load: animation list allocation failed")) {
+                model_release_local(asset);
+                goto fail;
+            }
         }
         if (scene_root) {
             model_clone_children_to_root(model->template_root, (const rt_scene_node3d *)scene_root);
-            model_collect_template_refs(model);
+            if (!model_collect_template_refs(model)) {
+                model_release_local(asset);
+                goto fail;
+            }
         }
         model_build_synth_mesh_nodes(model);
         model_release_local(asset);
+    } else if (model_has_ext(path_cstr, ".obj")) {
+        void *mesh = rt_mesh3d_from_obj(path);
+        void *material = NULL;
+        if (!mesh)
+            goto fail;
+        material = rt_material3d_new();
+        if (!material) {
+            model_release_local(mesh);
+            goto fail;
+        }
+        if (!model_append_ref(&model->meshes,
+                              &model->mesh_count,
+                              &model->mesh_capacity,
+                              mesh,
+                              "Model3D.Load: mesh list allocation failed")) {
+            model_release_local(material);
+            model_release_local(mesh);
+            goto fail;
+        }
+        if (!model_append_ref(&model->materials,
+                              &model->material_count,
+                              &model->material_capacity,
+                              material,
+                              "Model3D.Load: material list allocation failed")) {
+            model_release_local(material);
+            model_release_local(mesh);
+            goto fail;
+        }
+        model_release_local(material);
+        model_release_local(mesh);
+        model_build_synth_mesh_nodes(model);
     } else {
         rt_trap("Model3D.Load: unsupported file extension");
         goto fail;
@@ -677,6 +780,7 @@ void *rt_model3d_instantiate(void *obj) {
         return NULL;
     root = model_clone_node(model->template_root, 1);
     model_bind_default_animator(model, root);
+    model_bind_default_node_animator(model, root);
     return root;
 }
 
@@ -698,6 +802,7 @@ void *rt_model3d_instantiate_scene(void *obj) {
         }
     }
     model_bind_default_animator(model, scene->root);
+    model_bind_default_node_animator(model, scene->root);
     return scene;
 }
 

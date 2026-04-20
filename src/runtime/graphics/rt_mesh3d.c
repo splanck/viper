@@ -225,6 +225,8 @@ void rt_mesh3d_add_vertex(
     vt->normal[2] = (float)nz;
     vt->uv[0] = (float)u;
     vt->uv[1] = (float)v;
+    vt->uv1[0] = (float)u;
+    vt->uv1[1] = (float)v;
     vt->color[0] = 1.0f;
     vt->color[1] = 1.0f;
     vt->color[2] = 1.0f;

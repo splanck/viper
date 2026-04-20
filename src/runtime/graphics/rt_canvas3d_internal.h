@@ -12,7 +12,7 @@
 // Key invariants:
 //   - These structs are internal to the runtime; never exposed in public headers.
 //   - All object pointers received from user code must be cast to these types.
-//   - vgfx3d_vertex_t is 84 bytes, defined upfront for all phases.
+//   - vgfx3d_vertex_t is internal and may evolve with renderer/importer needs.
 //
 // Links: rt_canvas3d.h, plans/3d/01-software-renderer.md
 //
@@ -31,18 +31,19 @@
 #include <string.h>
 
 //=============================================================================
-// Vertex format (84 bytes — final layout for all phases)
+// Vertex format
 //=============================================================================
 
 typedef struct {
     float pos[3];            /* object-space position */
     float normal[3];         /* vertex normal */
-    float uv[2];             /* texture coordinates */
+    float uv[2];             /* TEXCOORD_0 */
+    float uv1[2];            /* TEXCOORD_1 (falls back to uv when not authored) */
     float color[4];          /* RGBA vertex color */
     float tangent[4];        /* tangent.xyz + handedness sign in tangent.w */
     uint8_t bone_indices[4]; /* bone palette indices (Phase 14) */
     float bone_weights[4];   /* blend weights (Phase 14) */
-} vgfx3d_vertex_t;           /* 84 bytes */
+} vgfx3d_vertex_t;           /* 92 bytes */
 
 //=============================================================================
 // Mesh3D
@@ -153,6 +154,14 @@ void rt_camera3d_update_shake_for_frame(void *cam, double dt);
 // Material3D
 //=============================================================================
 
+#define RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR 0
+#define RT_MATERIAL3D_TEXTURE_SLOT_NORMAL 1
+#define RT_MATERIAL3D_TEXTURE_SLOT_SPECULAR 2
+#define RT_MATERIAL3D_TEXTURE_SLOT_EMISSIVE 3
+#define RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS 4
+#define RT_MATERIAL3D_TEXTURE_SLOT_AO 5
+#define RT_MATERIAL3D_TEXTURE_SLOT_COUNT 6
+
 typedef struct {
     void *vptr;
     double diffuse[4]; /* RGBA diffuse color */
@@ -179,9 +188,24 @@ typedef struct {
     int8_t double_sided;
     int8_t additive_blend; /* internal-only: route through additive blend state when true */
     int32_t alpha_mode; /* 0=opaque, 1=mask, 2=blend */
+    int32_t texture_wrap_s; /* RT_MATERIAL3D_TEXTURE_WRAP_* for imported material textures */
+    int32_t texture_wrap_t;
+    int32_t texture_filter; /* RT_MATERIAL3D_TEXTURE_FILTER_* */
+    int32_t texture_slot_wrap_s[RT_MATERIAL3D_TEXTURE_SLOT_COUNT];
+    int32_t texture_slot_wrap_t[RT_MATERIAL3D_TEXTURE_SLOT_COUNT];
+    int32_t texture_slot_filter[RT_MATERIAL3D_TEXTURE_SLOT_COUNT];
+    int32_t texture_slot_uv_set[RT_MATERIAL3D_TEXTURE_SLOT_COUNT];
+    double texture_slot_uv_transform[RT_MATERIAL3D_TEXTURE_SLOT_COUNT][6];
     int32_t shading_model;   /* 0=BlinnPhong, 1=Toon, 2=reserved, 3=Unlit, 4=Fresnel, 5=Emissive */
     double custom_params[8]; /* user-defined parameters per shading model */
 } rt_material3d;
+
+#define RT_MATERIAL3D_TEXTURE_WRAP_REPEAT 0
+#define RT_MATERIAL3D_TEXTURE_WRAP_CLAMP_TO_EDGE 1
+#define RT_MATERIAL3D_TEXTURE_WRAP_MIRRORED_REPEAT 2
+
+#define RT_MATERIAL3D_TEXTURE_FILTER_LINEAR 0
+#define RT_MATERIAL3D_TEXTURE_FILTER_NEAREST 1
 
 //=============================================================================
 // Light3D

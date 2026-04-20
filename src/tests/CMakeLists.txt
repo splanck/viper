@@ -736,6 +736,15 @@ foreach (test_name IN LISTS ZIA_LANG_TESTS)
     endif ()
 endforeach ()
 
+add_test(NAME zia_lang_34_async_functions_repeat
+        COMMAND /bin/bash
+        "${CMAKE_SOURCE_DIR}/src/tests/e2e/test_zia_async_functions_repeat.sh"
+        $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}" 25)
+set_tests_properties(zia_lang_34_async_functions_repeat PROPERTIES
+        PASS_REGULAR_EXPRESSION "PASS"
+        LABELS "zia;regression"
+        TIMEOUT 30)
+
 # =============================================================================
 # Zia Namespace Bind Tests
 # These tests verify the bind Viper.* namespace import feature.

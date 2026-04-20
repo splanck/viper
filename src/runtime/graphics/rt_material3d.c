@@ -42,6 +42,18 @@ extern int rt_obj_release_check0(void *obj);
 extern void rt_obj_free(void *obj);
 #include "rt_trap.h"
 
+void rt_material3d_set_import_texture_slot(void *obj,
+                                           int64_t slot,
+                                           int64_t uv_set,
+                                           double offset_u,
+                                           double offset_v,
+                                           double scale_u,
+                                           double scale_v,
+                                           double rotation,
+                                           int64_t wrap_s,
+                                           int64_t wrap_t,
+                                           int64_t filter);
+
 /// @brief Release the GC reference at `*slot` and NULL it. NULL-safe both ways (slot ==
 /// NULL or *slot == NULL). Only frees the underlying object when the release drops its
 /// retain count to zero — bystander references keep the texture alive.
@@ -116,6 +128,26 @@ static double sanitize_color(double value) {
     return clamp01(value);
 }
 
+static void material_init_texture_slots(rt_material3d *mat) {
+    if (!mat)
+        return;
+    for (int slot = 0; slot < RT_MATERIAL3D_TEXTURE_SLOT_COUNT; slot++) {
+        mat->texture_slot_wrap_s[slot] = RT_MATERIAL3D_TEXTURE_WRAP_REPEAT;
+        mat->texture_slot_wrap_t[slot] = RT_MATERIAL3D_TEXTURE_WRAP_REPEAT;
+        mat->texture_slot_filter[slot] = RT_MATERIAL3D_TEXTURE_FILTER_LINEAR;
+        mat->texture_slot_uv_set[slot] = 0;
+        mat->texture_slot_uv_transform[slot][0] = 1.0;
+        mat->texture_slot_uv_transform[slot][1] = 0.0;
+        mat->texture_slot_uv_transform[slot][2] = 0.0;
+        mat->texture_slot_uv_transform[slot][3] = 1.0;
+        mat->texture_slot_uv_transform[slot][4] = 0.0;
+        mat->texture_slot_uv_transform[slot][5] = 0.0;
+    }
+    mat->texture_wrap_s = mat->texture_slot_wrap_s[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR];
+    mat->texture_wrap_t = mat->texture_slot_wrap_t[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR];
+    mat->texture_filter = mat->texture_slot_filter[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR];
+}
+
 /// @brief Initialize a freshly allocated material to the legacy-Phong default — white
 /// diffuse (RGBA 1,1,1,1), white specular, shininess 32, zero emissive, metallic 0 /
 /// roughness 0.5 (safe PBR fallback even though workflow starts legacy), opaque alpha
@@ -147,6 +179,7 @@ static void material_init_defaults(rt_material3d *mat) {
     mat->alpha = 1.0;
     mat->alpha_cutoff = 0.5;
     mat->alpha_mode = RT_MATERIAL3D_ALPHA_MODE_OPAQUE;
+    material_init_texture_slots(mat);
     mat->env_map = NULL;
     mat->reflectivity = 0.0;
     mat->unlit = 0;
@@ -201,6 +234,16 @@ static void *material_clone_like(void *obj) {
     dst->alpha = src->alpha;
     dst->alpha_cutoff = src->alpha_cutoff;
     dst->alpha_mode = src->alpha_mode;
+    dst->texture_wrap_s = src->texture_wrap_s;
+    dst->texture_wrap_t = src->texture_wrap_t;
+    dst->texture_filter = src->texture_filter;
+    memcpy(dst->texture_slot_wrap_s, src->texture_slot_wrap_s, sizeof(dst->texture_slot_wrap_s));
+    memcpy(dst->texture_slot_wrap_t, src->texture_slot_wrap_t, sizeof(dst->texture_slot_wrap_t));
+    memcpy(dst->texture_slot_filter, src->texture_slot_filter, sizeof(dst->texture_slot_filter));
+    memcpy(dst->texture_slot_uv_set, src->texture_slot_uv_set, sizeof(dst->texture_slot_uv_set));
+    memcpy(dst->texture_slot_uv_transform,
+           src->texture_slot_uv_transform,
+           sizeof(dst->texture_slot_uv_transform));
     dst->reflectivity = src->reflectivity;
     dst->unlit = src->unlit;
     dst->double_sided = src->double_sided;
@@ -304,6 +347,93 @@ void rt_material3d_set_texture(void *obj, void *pixels) {
     if (!obj)
         return;
     material_assign_ref(&((rt_material3d *)obj)->texture, pixels);
+}
+
+static int32_t material_sanitize_wrap(int64_t value) {
+    if (value == RT_MATERIAL3D_TEXTURE_WRAP_CLAMP_TO_EDGE ||
+        value == RT_MATERIAL3D_TEXTURE_WRAP_MIRRORED_REPEAT)
+        return (int32_t)value;
+    return RT_MATERIAL3D_TEXTURE_WRAP_REPEAT;
+}
+
+static int32_t material_sanitize_filter(int64_t value) {
+    return value == RT_MATERIAL3D_TEXTURE_FILTER_NEAREST ? RT_MATERIAL3D_TEXTURE_FILTER_NEAREST
+                                                         : RT_MATERIAL3D_TEXTURE_FILTER_LINEAR;
+}
+
+static int32_t material_sanitize_texture_slot(int64_t slot) {
+    if (slot < 0 || slot >= RT_MATERIAL3D_TEXTURE_SLOT_COUNT)
+        return -1;
+    return (int32_t)slot;
+}
+
+/// @brief Internal importer hook: store glTF-style sampler state on the material.
+void rt_material3d_set_import_sampler(void *obj,
+                                      int64_t wrap_s,
+                                      int64_t wrap_t,
+                                      int64_t filter) {
+    rt_material3d *mat = (rt_material3d *)obj;
+    if (!mat)
+        return;
+    rt_material3d_set_import_texture_slot(obj,
+                                          RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR,
+                                          0,
+                                          0.0,
+                                          0.0,
+                                          1.0,
+                                          1.0,
+                                          0.0,
+                                          wrap_s,
+                                          wrap_t,
+                                          filter);
+}
+
+/// @brief Internal importer hook: store sampler, UV set, and KHR_texture_transform
+/// metadata for one material texture slot.
+void rt_material3d_set_import_texture_slot(void *obj,
+                                           int64_t slot,
+                                           int64_t uv_set,
+                                           double offset_u,
+                                           double offset_v,
+                                           double scale_u,
+                                           double scale_v,
+                                           double rotation,
+                                           int64_t wrap_s,
+                                           int64_t wrap_t,
+                                           int64_t filter) {
+    rt_material3d *mat = (rt_material3d *)obj;
+    int32_t slot_index = material_sanitize_texture_slot(slot);
+    double c;
+    double s;
+    if (!mat || slot_index < 0)
+        return;
+    if (!isfinite(offset_u))
+        offset_u = 0.0;
+    if (!isfinite(offset_v))
+        offset_v = 0.0;
+    if (!isfinite(scale_u))
+        scale_u = 1.0;
+    if (!isfinite(scale_v))
+        scale_v = 1.0;
+    if (!isfinite(rotation))
+        rotation = 0.0;
+    c = cos(rotation);
+    s = sin(rotation);
+    mat->texture_slot_wrap_s[slot_index] = material_sanitize_wrap(wrap_s);
+    mat->texture_slot_wrap_t[slot_index] = material_sanitize_wrap(wrap_t);
+    mat->texture_slot_filter[slot_index] = material_sanitize_filter(filter);
+    mat->texture_slot_uv_set[slot_index] = uv_set > 0 ? 1 : 0;
+    mat->texture_slot_uv_transform[slot_index][0] = scale_u * c;
+    mat->texture_slot_uv_transform[slot_index][1] = -scale_v * s;
+    mat->texture_slot_uv_transform[slot_index][2] = scale_u * s;
+    mat->texture_slot_uv_transform[slot_index][3] = scale_v * c;
+    mat->texture_slot_uv_transform[slot_index][4] = offset_u;
+    mat->texture_slot_uv_transform[slot_index][5] = offset_v;
+    if (slot_index == RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR) {
+        mat->texture_wrap_s = mat->texture_slot_wrap_s[slot_index];
+        mat->texture_wrap_t = mat->texture_slot_wrap_t[slot_index];
+        mat->texture_filter = mat->texture_slot_filter[slot_index];
+    }
 }
 
 /// @brief Alias for `_set_texture` using PBR-style "albedo" terminology.

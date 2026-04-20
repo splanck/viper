@@ -203,6 +203,7 @@ struct pipe_vert {
     float normal[3];
     float tangent[4];
     float uv[2];
+    float uv1[2];
     float color[4];
 };
 
@@ -261,6 +262,8 @@ static void pipe_lerp(const pipe_vert_t *a, const pipe_vert_t *b, float t, pipe_
         out->tangent[i] = s * a->tangent[i] + t * b->tangent[i];
     for (int i = 0; i < 2; i++)
         out->uv[i] = s * a->uv[i] + t * b->uv[i];
+    for (int i = 0; i < 2; i++)
+        out->uv1[i] = s * a->uv1[i] + t * b->uv1[i];
     for (int i = 0; i < 4; i++)
         out->color[i] = s * a->color[i] + t * b->color[i];
 }
@@ -553,13 +556,62 @@ static int setup_pixels_view(const void *pixels_obj, sw_pixels_view *out) {
     return (out->width > 0 && out->height > 0 && out->data != NULL);
 }
 
-/// @brief Bilinear texture sampler with REPEAT wrap.
+static float sw_wrap_coord(float value, int32_t mode) {
+    if (mode == RT_MATERIAL3D_TEXTURE_WRAP_CLAMP_TO_EDGE) {
+        if (value < 0.0f)
+            return 0.0f;
+        if (value > 1.0f)
+            return 1.0f;
+        return value;
+    }
+    if (mode == RT_MATERIAL3D_TEXTURE_WRAP_MIRRORED_REPEAT) {
+        float period = floorf(value);
+        float frac = value - period;
+        int64_t iperiod = (int64_t)period;
+        if (frac < 0.0f) {
+            frac += 1.0f;
+            iperiod--;
+        }
+        return (iperiod & 1) ? 1.0f - frac : frac;
+    }
+    return value - floorf(value);
+}
+
+static int sw_wrap_index(int index, int size, int32_t mode) {
+    if (size <= 0)
+        return 0;
+    if (mode == RT_MATERIAL3D_TEXTURE_WRAP_CLAMP_TO_EDGE) {
+        if (index < 0)
+            return 0;
+        if (index >= size)
+            return size - 1;
+        return index;
+    }
+    if (mode == RT_MATERIAL3D_TEXTURE_WRAP_MIRRORED_REPEAT) {
+        int period = size * 2;
+        int wrapped = index % period;
+        if (wrapped < 0)
+            wrapped += period;
+        return wrapped >= size ? period - 1 - wrapped : wrapped;
+    }
+    return ((index % size) + size) % size;
+}
+
+/// @brief Texture sampler with imported wrap/filter state.
 ///
 /// Maps UV → texel center (subtract 0.5), looks up the 4 surrounding
-/// texels with wrap-around indexing, then weights them by the
+/// texels with selected wrap indexing, then weights them by the
 /// fractional component. Produces normalized [0,1] RGBA.
-static void sample_texture(
-    const sw_pixels_view *tex, float u, float v, float *r, float *g, float *b, float *a) {
+static void sample_texture_ex(const sw_pixels_view *tex,
+                              float u,
+                              float v,
+                              int32_t wrap_s,
+                              int32_t wrap_t,
+                              int32_t filter,
+                              float *r,
+                              float *g,
+                              float *b,
+                              float *a) {
     int w = (int)tex->width, h = (int)tex->height;
     if (w == 0 || h == 0) {
         *r = *g = *b = 1.0f;
@@ -567,8 +619,19 @@ static void sample_texture(
         return;
     }
 
-    u = u - floorf(u);
-    v = v - floorf(v);
+    u = sw_wrap_coord(u, wrap_s);
+    v = sw_wrap_coord(v, wrap_t);
+
+    if (filter == RT_MATERIAL3D_TEXTURE_FILTER_NEAREST) {
+        int x = sw_wrap_index((int)floorf(u * (float)w), w, wrap_s);
+        int y = sw_wrap_index((int)floorf(v * (float)h), h, wrap_t);
+        uint32_t p = tex->data[y * w + x];
+        *r = (float)((p >> 24) & 0xFF) / 255.0f;
+        *g = (float)((p >> 16) & 0xFF) / 255.0f;
+        *b = (float)((p >> 8) & 0xFF) / 255.0f;
+        *a = (float)(p & 0xFF) / 255.0f;
+        return;
+    }
 
     /* Bilinear: map UV to texel center, then interpolate the 4 neighbors */
     float fx = u * (float)w - 0.5f;
@@ -578,13 +641,13 @@ static void sample_texture(
     float xf = fx - (float)x0; /* fractional part [0,1) */
     float yf = fy - (float)y0;
 
-    /* Wrap coordinates for repeat mode */
+    /* Wrap coordinates for the material sampler mode */
     int x1 = x0 + 1;
     int y1 = y0 + 1;
-    x0 = ((x0 % w) + w) % w;
-    y0 = ((y0 % h) + h) % h;
-    x1 = ((x1 % w) + w) % w;
-    y1 = ((y1 % h) + h) % h;
+    x0 = sw_wrap_index(x0, w, wrap_s);
+    y0 = sw_wrap_index(y0, h, wrap_t);
+    x1 = sw_wrap_index(x1, w, wrap_s);
+    y1 = sw_wrap_index(y1, h, wrap_t);
 
     /* Sample 4 texels */
     uint32_t p00 = tex->data[y0 * w + x0];
@@ -611,6 +674,20 @@ static void sample_texture(
          255.0f;
 }
 
+static void sample_texture(
+    const sw_pixels_view *tex, float u, float v, float *r, float *g, float *b, float *a) {
+    sample_texture_ex(tex,
+                      u,
+                      v,
+                      RT_MATERIAL3D_TEXTURE_WRAP_REPEAT,
+                      RT_MATERIAL3D_TEXTURE_WRAP_REPEAT,
+                      RT_MATERIAL3D_TEXTURE_FILTER_LINEAR,
+                      r,
+                      g,
+                      b,
+                      a);
+}
+
 /// @brief Convert one channel from sRGB-encoded to linear space (IEC 61966-2-1 curve).
 /// @details Standard two-segment sRGB EOTF: linear for dark values, `((v+0.055)/1.055)^2.4`
 ///   otherwise. Used by `sample_texture_srgb` so textures authored in sRGB are lit
@@ -626,13 +703,119 @@ static float sw_srgb_to_linear(float value) {
     return powf((value + 0.055f) / 1.055f, 2.4f);
 }
 
-/// @brief Bilinear texture fetch followed by per-channel sRGB → linear conversion.
-/// @details Equivalent to a hardware `SRGB8_ALPHA8` sampler: the filter samples first
-///   (so the bilinear weights are applied in display-encoded space), then the result
-///   is linearised. Alpha passes through unchanged.
-static void sample_texture_srgb(
-    const sw_pixels_view *tex, float u, float v, float *r, float *g, float *b, float *a) {
-    sample_texture(tex, u, v, r, g, b, a);
+static int32_t sw_cmd_wrap_s(const vgfx3d_draw_cmd_t *cmd) {
+    return cmd ? cmd->texture_wrap_s : RT_MATERIAL3D_TEXTURE_WRAP_REPEAT;
+}
+
+static int32_t sw_cmd_wrap_t(const vgfx3d_draw_cmd_t *cmd) {
+    return cmd ? cmd->texture_wrap_t : RT_MATERIAL3D_TEXTURE_WRAP_REPEAT;
+}
+
+static int32_t sw_cmd_filter(const vgfx3d_draw_cmd_t *cmd) {
+    return cmd ? cmd->texture_filter : RT_MATERIAL3D_TEXTURE_FILTER_LINEAR;
+}
+
+typedef struct screen_vert_t {
+    float sx, sy, sz;
+    float r, g, b, a;
+    float u_over_w, v_over_w, inv_w;
+    float u1_over_w, v1_over_w;
+    float wx, wy, wz; /* world position (for fog distance computation) */
+    float nx, ny, nz; /* world normal (for per-pixel lighting with normal maps) */
+    float tx, ty, tz, tw; /* world tangent plus handedness sign (for TBN construction) */
+} screen_vert_t;
+
+static int32_t sw_cmd_slot_wrap_s(const vgfx3d_draw_cmd_t *cmd, int32_t slot) {
+    if (!cmd || slot < 0 || slot >= RT_MATERIAL3D_TEXTURE_SLOT_COUNT)
+        return sw_cmd_wrap_s(cmd);
+    return cmd->texture_slot_wrap_s[slot];
+}
+
+static int32_t sw_cmd_slot_wrap_t(const vgfx3d_draw_cmd_t *cmd, int32_t slot) {
+    if (!cmd || slot < 0 || slot >= RT_MATERIAL3D_TEXTURE_SLOT_COUNT)
+        return sw_cmd_wrap_t(cmd);
+    return cmd->texture_slot_wrap_t[slot];
+}
+
+static int32_t sw_cmd_slot_filter(const vgfx3d_draw_cmd_t *cmd, int32_t slot) {
+    if (!cmd || slot < 0 || slot >= RT_MATERIAL3D_TEXTURE_SLOT_COUNT)
+        return sw_cmd_filter(cmd);
+    return cmd->texture_slot_filter[slot];
+}
+
+static void sw_interpolate_uv_for_slot(const vgfx3d_draw_cmd_t *cmd,
+                                       int32_t slot,
+                                       float b0,
+                                       float b1,
+                                       float b2,
+                                       const screen_vert_t *v0,
+                                       const screen_vert_t *v1,
+                                       const screen_vert_t *v2,
+                                       float *out_u,
+                                       float *out_v) {
+    float iw;
+    float u;
+    float v;
+    const float *m;
+    int use_uv1 = cmd && slot >= 0 && slot < RT_MATERIAL3D_TEXTURE_SLOT_COUNT &&
+                  cmd->texture_slot_uv_set[slot] > 0;
+    if (!out_u || !out_v)
+        return;
+    *out_u = 0.0f;
+    *out_v = 0.0f;
+    if (!v0 || !v1 || !v2)
+        return;
+    iw = b0 * v0->inv_w + b1 * v1->inv_w + b2 * v2->inv_w;
+    if (fabsf(iw) <= 1e-7f)
+        return;
+    if (use_uv1) {
+        u = (b0 * v0->u1_over_w + b1 * v1->u1_over_w + b2 * v2->u1_over_w) / iw;
+        v = (b0 * v0->v1_over_w + b1 * v1->v1_over_w + b2 * v2->v1_over_w) / iw;
+    } else {
+        u = (b0 * v0->u_over_w + b1 * v1->u_over_w + b2 * v2->u_over_w) / iw;
+        v = (b0 * v0->v_over_w + b1 * v1->v_over_w + b2 * v2->v_over_w) / iw;
+    }
+    if (cmd && slot >= 0 && slot < RT_MATERIAL3D_TEXTURE_SLOT_COUNT) {
+        m = cmd->texture_slot_uv_transform[slot];
+        *out_u = u * m[0] + v * m[1] + m[4];
+        *out_v = u * m[2] + v * m[3] + m[5];
+    } else {
+        *out_u = u;
+        *out_v = v;
+    }
+}
+
+static void sample_texture_slot_ex(const sw_pixels_view *tex,
+                                   const vgfx3d_draw_cmd_t *cmd,
+                                   int32_t slot,
+                                   float u,
+                                   float v,
+                                   float *r,
+                                   float *g,
+                                   float *b,
+                                   float *a) {
+    sample_texture_ex(tex,
+                      u,
+                      v,
+                      sw_cmd_slot_wrap_s(cmd, slot),
+                      sw_cmd_slot_wrap_t(cmd, slot),
+                      sw_cmd_slot_filter(cmd, slot),
+                      r,
+                      g,
+                      b,
+                      a);
+}
+
+static void sample_texture_slot_srgb_ex(const sw_pixels_view *tex,
+                                        const vgfx3d_draw_cmd_t *cmd,
+                                        int32_t slot,
+                                        float u,
+                                        float v,
+                                        float *r,
+                                        float *g,
+                                        float *b,
+                                        float *a) {
+    sample_texture_slot_ex(tex, cmd, slot, u, v, r, g, b, a);
     *r = sw_srgb_to_linear(*r);
     *g = sw_srgb_to_linear(*g);
     *b = sw_srgb_to_linear(*b);
@@ -641,15 +824,6 @@ static void sample_texture_srgb(
 /*==========================================================================
  * Edge-function triangle rasterizer
  *=========================================================================*/
-
-typedef struct {
-    float sx, sy, sz;
-    float r, g, b, a;
-    float u_over_w, v_over_w, inv_w;
-    float wx, wy, wz; /* world position (for fog distance computation) */
-    float nx, ny, nz; /* world normal (for per-pixel lighting with normal maps) */
-    float tx, ty, tz, tw; /* world tangent plus handedness sign (for TBN construction) */
-} screen_vert_t;
 
 static inline void sw_compute_view_vector(const sw_context_t *ctx,
                                           float wx,
@@ -795,9 +969,10 @@ static void sw_apply_environment_reflection(const vgfx3d_draw_cmd_t *cmd,
     float vdz;
     float reflectivity;
     float roughness;
-    float pp_iw;
-    float pp_u = 0.0f;
-    float pp_v = 0.0f;
+    float normal_u = 0.0f;
+    float normal_v = 0.0f;
+    float mr_u = 0.0f;
+    float mr_v = 0.0f;
 
     if (!cmd || !ctx || !inout_r || !inout_g || !inout_b || !cmd->env_map || cmd->reflectivity <= 0.0001f)
         return;
@@ -810,11 +985,26 @@ static void sw_apply_environment_reflection(const vgfx3d_draw_cmd_t *cmd,
     pnz = b0 * v0->nz + b1 * v1->nz + b2 * v2->nz;
     normalize3f(&pnx, &pny, &pnz);
 
-    pp_iw = b0 * v0->inv_w + b1 * v1->inv_w + b2 * v2->inv_w;
-    if (fabsf(pp_iw) > 1e-7f) {
-        pp_u = (b0 * v0->u_over_w + b1 * v1->u_over_w + b2 * v2->u_over_w) / pp_iw;
-        pp_v = (b0 * v0->v_over_w + b1 * v1->v_over_w + b2 * v2->v_over_w) / pp_iw;
-    }
+    sw_interpolate_uv_for_slot(cmd,
+                               RT_MATERIAL3D_TEXTURE_SLOT_NORMAL,
+                               b0,
+                               b1,
+                               b2,
+                               v0,
+                               v1,
+                               v2,
+                               &normal_u,
+                               &normal_v);
+    sw_interpolate_uv_for_slot(cmd,
+                               RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS,
+                               b0,
+                               b1,
+                               b2,
+                               v0,
+                               v1,
+                               v2,
+                               &mr_u,
+                               &mr_v);
 
     if (normal_map) {
         float ptx = b0 * v0->tx + b1 * v1->tx + b2 * v2->tx;
@@ -846,7 +1036,15 @@ static void sw_apply_environment_reflection(const vgfx3d_draw_cmd_t *cmd,
             ptz -= tdotn * pnz;
             normalize3f(&ptx, &pty, &ptz);
 
-            sample_texture(normal_map, pp_u, pp_v, &tnr, &tng, &tnb, &tna);
+            sample_texture_slot_ex(normal_map,
+                                   cmd,
+                                   RT_MATERIAL3D_TEXTURE_SLOT_NORMAL,
+                                   normal_u,
+                                   normal_v,
+                                   &tnr,
+                                   &tng,
+                                   &tnb,
+                                   &tna);
             map_x = (tnr * 2.0f - 1.0f) * cmd->normal_scale;
             map_y = (tng * 2.0f - 1.0f) * cmd->normal_scale;
             map_z = tnb * 2.0f - 1.0f;
@@ -868,7 +1066,15 @@ static void sw_apply_environment_reflection(const vgfx3d_draw_cmd_t *cmd,
         float mrg;
         float mrb;
         float mra;
-        sample_texture(metallic_roughness_map, pp_u, pp_v, &mrr, &mrg, &mrb, &mra);
+        sample_texture_slot_ex(metallic_roughness_map,
+                               cmd,
+                               RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS,
+                               mr_u,
+                               mr_v,
+                               &mrr,
+                               &mrg,
+                               &mrb,
+                               &mra);
         roughness = clamp01f(roughness * mrg);
         if (roughness < 0.045f)
             roughness = 0.045f;
@@ -1055,17 +1261,40 @@ static void raster_triangle(uint8_t *pixels,
                     float fb_c = b0 * v0->b + b1 * v1->b + b2 * v2->b;
                     float tex_alpha = 1.0f; /* per-texel alpha (for foliage, fences) */
                     if (tex) {
-                        float iw = b0 * v0->inv_w + b1 * v1->inv_w + b2 * v2->inv_w;
-                        if (fabsf(iw) > 1e-7f) {
-                            float u =
-                                (b0 * v0->u_over_w + b1 * v1->u_over_w + b2 * v2->u_over_w) / iw;
-                            float vc =
-                                (b0 * v0->v_over_w + b1 * v1->v_over_w + b2 * v2->v_over_w) / iw;
+                        float u;
+                        float vc;
+                        sw_interpolate_uv_for_slot(cmd,
+                                                   RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR,
+                                                   b0,
+                                                   b1,
+                                                   b2,
+                                                   v0,
+                                                   v1,
+                                                   v2,
+                                                   &u,
+                                                   &vc);
+                        {
                             float tr, tg, tb, ta;
                             if (cmd && cmd->workflow == RT_MATERIAL3D_WORKFLOW_PBR)
-                                sample_texture_srgb(tex, u, vc, &tr, &tg, &tb, &ta);
+                                sample_texture_slot_srgb_ex(tex,
+                                                            cmd,
+                                                            RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR,
+                                                            u,
+                                                            vc,
+                                                            &tr,
+                                                            &tg,
+                                                            &tb,
+                                                            &ta);
                             else
-                                sample_texture(tex, u, vc, &tr, &tg, &tb, &ta);
+                                sample_texture_slot_ex(tex,
+                                                       cmd,
+                                                       RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR,
+                                                       u,
+                                                       vc,
+                                                       &tr,
+                                                       &tg,
+                                                       &tb,
+                                                       &ta);
                             fr *= tr;
                             fg *= tg;
                             fb_c *= tb;
@@ -1119,14 +1348,29 @@ static void raster_triangle(uint8_t *pixels,
                      * branch so emissiveIntensity can scale both the color and the map.) */
                     if (emissive_tex &&
                         !(cmd && cmd->workflow == RT_MATERIAL3D_WORKFLOW_PBR)) {
-                        float iw = b0 * v0->inv_w + b1 * v1->inv_w + b2 * v2->inv_w;
-                        if (fabsf(iw) > 1e-7f) {
-                            float u =
-                                (b0 * v0->u_over_w + b1 * v1->u_over_w + b2 * v2->u_over_w) / iw;
-                            float vc =
-                                (b0 * v0->v_over_w + b1 * v1->v_over_w + b2 * v2->v_over_w) / iw;
+                        {
+                            float u;
+                            float vc;
                             float er, eg, eb, ea;
-                            sample_texture_srgb(emissive_tex, u, vc, &er, &eg, &eb, &ea);
+                            sw_interpolate_uv_for_slot(cmd,
+                                                       RT_MATERIAL3D_TEXTURE_SLOT_EMISSIVE,
+                                                       b0,
+                                                       b1,
+                                                       b2,
+                                                       v0,
+                                                       v1,
+                                                       v2,
+                                                       &u,
+                                                       &vc);
+                            sample_texture_slot_srgb_ex(emissive_tex,
+                                                        cmd,
+                                                        RT_MATERIAL3D_TEXTURE_SLOT_EMISSIVE,
+                                                        u,
+                                                        vc,
+                                                        &er,
+                                                        &eg,
+                                                        &eb,
+                                                        &ea);
                             float emissive_scale =
                                 (cmd ? cmd->emissive_intensity : 1.0f);
                             fr += er * emissive_color[0] * emissive_scale;
@@ -1141,10 +1385,66 @@ static void raster_triangle(uint8_t *pixels,
                         (cmd->workflow == RT_MATERIAL3D_WORKFLOW_PBR || normal_map)) {
                         float pp_iw = b0 * v0->inv_w + b1 * v1->inv_w + b2 * v2->inv_w;
                         if (fabsf(pp_iw) > 1e-7f) {
-                            float pp_u =
-                                (b0 * v0->u_over_w + b1 * v1->u_over_w + b2 * v2->u_over_w) / pp_iw;
-                            float pp_vc =
-                                (b0 * v0->v_over_w + b1 * v1->v_over_w + b2 * v2->v_over_w) / pp_iw;
+                            float normal_u = 0.0f;
+                            float normal_v = 0.0f;
+                            float specular_u = 0.0f;
+                            float specular_v = 0.0f;
+                            float emissive_u = 0.0f;
+                            float emissive_v = 0.0f;
+                            float mr_u = 0.0f;
+                            float mr_v = 0.0f;
+                            float ao_u = 0.0f;
+                            float ao_v = 0.0f;
+                            sw_interpolate_uv_for_slot(cmd,
+                                                       RT_MATERIAL3D_TEXTURE_SLOT_NORMAL,
+                                                       b0,
+                                                       b1,
+                                                       b2,
+                                                       v0,
+                                                       v1,
+                                                       v2,
+                                                       &normal_u,
+                                                       &normal_v);
+                            sw_interpolate_uv_for_slot(cmd,
+                                                       RT_MATERIAL3D_TEXTURE_SLOT_SPECULAR,
+                                                       b0,
+                                                       b1,
+                                                       b2,
+                                                       v0,
+                                                       v1,
+                                                       v2,
+                                                       &specular_u,
+                                                       &specular_v);
+                            sw_interpolate_uv_for_slot(cmd,
+                                                       RT_MATERIAL3D_TEXTURE_SLOT_EMISSIVE,
+                                                       b0,
+                                                       b1,
+                                                       b2,
+                                                       v0,
+                                                       v1,
+                                                       v2,
+                                                       &emissive_u,
+                                                       &emissive_v);
+                            sw_interpolate_uv_for_slot(cmd,
+                                                       RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS,
+                                                       b0,
+                                                       b1,
+                                                       b2,
+                                                       v0,
+                                                       v1,
+                                                       v2,
+                                                       &mr_u,
+                                                       &mr_v);
+                            sw_interpolate_uv_for_slot(cmd,
+                                                       RT_MATERIAL3D_TEXTURE_SLOT_AO,
+                                                       b0,
+                                                       b1,
+                                                       b2,
+                                                       v0,
+                                                       v1,
+                                                       v2,
+                                                       &ao_u,
+                                                       &ao_v);
 
                             /* Interpolate world normal */
                             float pnx = b0 * v0->nx + b1 * v1->nx + b2 * v2->nx;
@@ -1177,7 +1477,15 @@ static void raster_triangle(uint8_t *pixels,
 
                                 /* Sample normal map: [0,1] → [-1,1] */
                                 float tnr, tng, tnb, tna;
-                                sample_texture(normal_map, pp_u, pp_vc, &tnr, &tng, &tnb, &tna);
+                                sample_texture_slot_ex(normal_map,
+                                                       cmd,
+                                                       RT_MATERIAL3D_TEXTURE_SLOT_NORMAL,
+                                                       normal_u,
+                                                       normal_v,
+                                                       &tnr,
+                                                       &tng,
+                                                       &tnb,
+                                                       &tna);
                                 float map_x = (tnr * 2.0f - 1.0f) * cmd->normal_scale;
                                 float map_y = (tng * 2.0f - 1.0f) * cmd->normal_scale;
                                 float map_z = tnb * 2.0f - 1.0f;
@@ -1221,14 +1529,30 @@ static void raster_triangle(uint8_t *pixels,
                                 float ao = clamp01f(cmd->ao);
                                 if (metallic_roughness_map) {
                                     float mrr, mrg, mrb, mra;
-                                    sample_texture(
-                                        metallic_roughness_map, pp_u, pp_vc, &mrr, &mrg, &mrb, &mra);
+                                    sample_texture_slot_ex(
+                                        metallic_roughness_map,
+                                        cmd,
+                                        RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS,
+                                        mr_u,
+                                        mr_v,
+                                        &mrr,
+                                        &mrg,
+                                        &mrb,
+                                        &mra);
                                     roughness *= mrg;
                                     metallic *= mrb;
                                 }
                                 if (ao_map) {
                                     float aor, aog, aob, aoa;
-                                    sample_texture(ao_map, pp_u, pp_vc, &aor, &aog, &aob, &aoa);
+                                    sample_texture_slot_ex(ao_map,
+                                                           cmd,
+                                                           RT_MATERIAL3D_TEXTURE_SLOT_AO,
+                                                           ao_u,
+                                                           ao_v,
+                                                           &aor,
+                                                           &aog,
+                                                           &aob,
+                                                           &aoa);
                                     ao *= aor;
                                 }
                                 metallic = clamp01f(metallic);
@@ -1347,7 +1671,15 @@ static void raster_triangle(uint8_t *pixels,
                                     cmd->emissive_color[2] * cmd->emissive_intensity;
                                 if (emissive_tex) {
                                     float er, eg, eb, ea;
-                                    sample_texture_srgb(emissive_tex, pp_u, pp_vc, &er, &eg, &eb, &ea);
+                                    sample_texture_slot_srgb_ex(emissive_tex,
+                                                                cmd,
+                                                                RT_MATERIAL3D_TEXTURE_SLOT_EMISSIVE,
+                                                                emissive_u,
+                                                                emissive_v,
+                                                                &er,
+                                                                &eg,
+                                                                &eb,
+                                                                &ea);
                                     emissive_r *= er;
                                     emissive_g *= eg;
                                     emissive_b *= eb;
@@ -1385,7 +1717,15 @@ static void raster_triangle(uint8_t *pixels,
                                 float sp_b = cmd->specular[2];
                                 if (specular_map) {
                                     float smr, smg, smb, sma;
-                                    sample_texture(specular_map, pp_u, pp_vc, &smr, &smg, &smb, &sma);
+                                    sample_texture_slot_ex(specular_map,
+                                                           cmd,
+                                                           RT_MATERIAL3D_TEXTURE_SLOT_SPECULAR,
+                                                           specular_u,
+                                                           specular_v,
+                                                           &smr,
+                                                           &smg,
+                                                           &smb,
+                                                           &sma);
                                     sp_r *= smr;
                                     sp_g *= smg;
                                     sp_b *= smb;
@@ -2077,6 +2417,8 @@ static void sw_submit_draw(void *ctx_ptr,
 
         dst->uv[0] = src->uv[0];
         dst->uv[1] = src->uv[1];
+        dst->uv1[0] = src->uv1[0];
+        dst->uv1[1] = src->uv1[1];
 
         /* Vertex color (defaults to white {1,1,1,1} if not set) */
         dst->color[0] = src->color[0];
@@ -2187,6 +2529,8 @@ static void sw_submit_draw(void *ctx_ptr,
                 sv[vi].inv_w = iw;
                 sv[vi].u_over_w = p->uv[0] * iw;
                 sv[vi].v_over_w = p->uv[1] * iw;
+                sv[vi].u1_over_w = p->uv1[0] * iw;
+                sv[vi].v1_over_w = p->uv1[1] * iw;
                 sv[vi].wx = p->world[0];
                 sv[vi].wy = p->world[1];
                 sv[vi].wz = p->world[2];
