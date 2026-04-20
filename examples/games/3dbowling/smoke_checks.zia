@@ -1,0 +1,54 @@
+module smoke_checks;
+
+bind Viper.Graphics.Pixels as Pixels;
+
+// ============================================================================
+// MODULE: smoke_checks
+// PURPOSE: Shared image-quality checks for 3D Bowling smoke probes.
+// ============================================================================
+
+/// @brief Return true if the frame is dominated by the engine's magenta diagnostic colour.
+func IsMostlyMagenta(img: Pixels, width: Integer, height: Integer) -> Bool {
+    var total: Integer = 0;
+    var magenta: Integer = 0;
+    var y: Integer = 0;
+    while (y < height) {
+        var x: Integer = 0;
+        while (x < width) {
+            var px = Pixels.Get(img, x, y);
+            var r = (px >> 24) & 0xFF;
+            var g = (px >> 16) & 0xFF;
+            var b = (px >> 8) & 0xFF;
+            if (r > 220 && g < 80 && b > 220) {
+                magenta = magenta + 1;
+            }
+            total = total + 1;
+            x = x + 16;
+        }
+        y = y + 16;
+    }
+    return total > 0 && magenta * 4 > total * 3;
+}
+
+/// @brief Return true when the central/lower scene area contains enough visible 3D content.
+func HasVisible3DScene(img: Pixels, width: Integer, height: Integer) -> Bool {
+    var total: Integer = 0;
+    var visible: Integer = 0;
+    var y: Integer = height / 4;
+    while (y < height - 32) {
+        var x: Integer = 16;
+        while (x < width - 16) {
+            var px = Pixels.Get(img, x, y);
+            var r = (px >> 24) & 0xFF;
+            var g = (px >> 16) & 0xFF;
+            var b = (px >> 8) & 0xFF;
+            if (r + g + b > 120) {
+                visible = visible + 1;
+            }
+            total = total + 1;
+            x = x + 16;
+        }
+        y = y + 16;
+    }
+    return total > 0 && visible * 5 > total;
+}

@@ -1,9 +1,10 @@
-module smoke_probe;
+module title_postfx_smoke;
 
 bind Viper.Graphics3D;
 bind Viper.Graphics.Pixels as Pixels;
 bind Viper.Terminal as Terminal;
 bind "./config";
+bind "./menu";
 bind "./engine/renderer";
 bind "./engine/camera";
 bind "./lane/lane";
@@ -12,18 +13,13 @@ bind "./lane/ball";
 bind "./smoke_checks";
 
 // ============================================================================
-// MODULE: smoke_probe
-// PURPOSE: Headless smoke test for the 3D Bowling scene. Builds the
-//          renderer + scene, renders one frame, saves a PNG
-//          screenshot for inspection, prints RESULT: ok on success.
-//
-// WHERE-THIS-FITS: Run by CI (`zia_smoke_3dbowling` ctest target) to
-//          catch construction-time regressions without needing a
-//          display. Screenshot ends up in /tmp/3dbowling_smoke.png
-//          for the human reviewer.
+// MODULE: title_postfx_smoke
+// PURPOSE: Headless "render title screen with cinematic post-FX, save a
+//          PNG, exit" regression probe. This covers the same scene + menu
+//          overlay path used by the interactive 3D Bowling title screen.
 // ============================================================================
 
-/// @brief Smoke-probe entry point. Success prints RESULT: ok.
+/// @brief Capture one title-screen screenshot with post-FX; print RESULT: ok.
 func main() {
     var render = new Renderer();
     render.initRenderer(config.QUALITY_CINEMATIC);
@@ -48,15 +44,19 @@ func main() {
     pinMgr.applyEnvironment(env);
     ballObj.applyEnvironment(env);
 
+    var menuObj = new BowlingMenu();
+    menuObj.init();
+
     render.poll();
     render.beginFrame();
     laneObj.draw(render.getCanvas());
     pinMgr.draw(render.getCanvas());
     ballObj.draw(render.getCanvas());
     render.endFrame();
+    menuObj.drawTitle(render.getCanvas(), render.getWidth(), render.getHeight());
 
     var snap = render.getCanvas().Screenshot();
-    if Pixels.SavePng(snap, "/tmp/3dbowling_smoke.png") != 1 {
+    if Pixels.SavePng(snap, "/tmp/3dbowling_title_postfx.png") != 1 {
         Terminal.Say("RESULT: fail screenshot");
         return;
     }

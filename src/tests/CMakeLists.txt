@@ -858,6 +858,18 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
             ENVIRONMENT "VIPER_3D_BACKEND=software")
 endif ()
 
+add_test(NAME zia_smoke_3dbowling_title_postfx
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/3dbowling/title_postfx_smoke.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/3dbowling")
+set_tests_properties(zia_smoke_3dbowling_title_postfx PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;smoke;graphics3d;requires_display"
+        TIMEOUT 30)
+if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    set_tests_properties(zia_smoke_3dbowling_title_postfx PROPERTIES
+            ENVIRONMENT "VIPER_3D_BACKEND=software")
+endif ()
+
 add_test(NAME zia_smoke_chess
         COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/chess/smoke_probe.zia"
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/chess")
@@ -888,6 +900,7 @@ set(VIPER_DISPLAY_SMOKE_TESTS
         zia_smoke_3dbowling
         zia_smoke_3dscene
         zia_smoke_3dbowling_overlay
+        zia_smoke_3dbowling_title_postfx
         zia_smoke_xenoscape)
 set_tests_properties(${VIPER_DISPLAY_SMOKE_TESTS} PROPERTIES
         RESOURCE_LOCK viper_display)

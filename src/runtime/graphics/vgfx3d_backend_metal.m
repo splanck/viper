@@ -119,6 +119,7 @@
 @property(nonatomic, strong) id<MTLBuffer> instanceBuf;
 /* MTL-11: Post-processing state */
 @property(nonatomic, strong) id<MTLTexture> postfxColorTexture;
+@property(nonatomic, strong) id<MTLTexture> postfxScratchTexture;
 @property(nonatomic, strong) id<MTLRenderPipelineState> postfxPipeline;
 @property(nonatomic, strong) id<MTLLibrary> postfxLibrary;
 @property(nonatomic, strong) id<MTLTexture> overlayColorTexture;
@@ -1299,8 +1300,17 @@ static void metal_recreate_main_targets(VGFXMetalContext *ctx, int32_t w, int32_
                 MTLTextureUsageRenderTarget | MTLTextureUsageShaderRead,
                 MTLStorageModeShared,
                 NO);
+            ctx.postfxScratchTexture = metal_new_color_texture(
+                ctx,
+                w,
+                h,
+                metal_color_pixel_format(VGFX3D_METAL_COLOR_FORMAT_UNORM8),
+                MTLTextureUsageRenderTarget | MTLTextureUsageShaderRead,
+                MTLStorageModePrivate,
+                NO);
         } else {
             ctx.postfxColorTexture = nil;
+            ctx.postfxScratchTexture = nil;
         }
     } else {
         ctx.offscreenColor = nil;
@@ -1315,6 +1325,7 @@ static void metal_recreate_main_targets(VGFXMetalContext *ctx, int32_t w, int32_
         ctx.overlayMotionTexture = nil;
         ctx.overlayDepthTexture = nil;
         ctx.postfxColorTexture = nil;
+        ctx.postfxScratchTexture = nil;
     }
 
     ctx.displayTexture = nil;
@@ -3660,9 +3671,9 @@ static id<MTLTexture> metal_encode_postfx_if_needed(
         return nil;
     if (ctx.postfxEncodedThisFrame && ctx.displayTexture)
         return ctx.displayTexture;
-    if (!ctx.cmdBuf || !ctx.postfxPipeline || !ctx.postfxColorTexture || !ctx.offscreenColor ||
-        !ctx.offscreenMotion || !ctx.depthTexture || !postfx || !postfx->enabled ||
-        postfx->effect_count <= 0 || !postfx->effects) {
+    if (!ctx.cmdBuf || !ctx.postfxPipeline || !ctx.postfxColorTexture ||
+        !ctx.postfxScratchTexture || !ctx.offscreenColor || !ctx.offscreenMotion ||
+        !ctx.depthTexture) {
         return nil;
     }
 
@@ -3670,18 +3681,27 @@ static id<MTLTexture> metal_encode_postfx_if_needed(
 
     source_texture = ctx.offscreenColor;
     target_texture = ctx.postfxColorTexture;
-    for (int32_t i = 0; i < postfx->effect_count; i++) {
+    if (postfx && postfx->enabled && postfx->effect_count > 0 && postfx->effects) {
+        for (int32_t i = 0; i < postfx->effect_count; i++) {
+            id<MTLTexture> output_texture =
+                metal_encode_postfx_pass(ctx,
+                                         source_texture,
+                                         target_texture,
+                                         &postfx->effects[i].snapshot,
+                                         0);
+            if (!output_texture)
+                return nil;
+            source_texture = output_texture;
+            target_texture = (source_texture == ctx.postfxColorTexture) ? ctx.postfxScratchTexture
+                                                                        : ctx.postfxColorTexture;
+        }
+    } else {
         id<MTLTexture> output_texture =
-            metal_encode_postfx_pass(ctx,
-                                     source_texture,
-                                     target_texture,
-                                     &postfx->effects[i].snapshot,
-                                     0);
+            metal_encode_postfx_pass(ctx, source_texture, target_texture, NULL, 0);
         if (!output_texture)
             return nil;
         source_texture = output_texture;
-        target_texture = (source_texture == ctx.postfxColorTexture) ? ctx.offscreenColor
-                                                                    : ctx.postfxColorTexture;
+        target_texture = ctx.postfxScratchTexture;
     }
 
     if (ctx.frameHistory.overlay_used_this_frame && ctx.overlayColorTexture) {

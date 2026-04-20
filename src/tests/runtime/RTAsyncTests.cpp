@@ -37,6 +37,10 @@ static void *make_obj() {
 static std::atomic<int> g_precancel_calls{0};
 static std::atomic<int> g_trap_calls{0};
 static std::atomic<int64_t> g_owned_arg_len{0};
+static std::atomic<int> g_concurrent_started{0};
+static std::atomic<int> g_concurrent_active{0};
+static std::atomic<int> g_concurrent_peak{0};
+static std::atomic<int> g_concurrent_release{0};
 
 //=============================================================================
 // Callbacks for testing
@@ -96,7 +100,34 @@ static void *owned_arg_passthrough_cb(void *arg) {
     return arg;
 }
 
+static void update_concurrent_peak(int active) {
+    int peak = g_concurrent_peak.load(std::memory_order_relaxed);
+    while (active > peak &&
+           !g_concurrent_peak.compare_exchange_weak(
+               peak, active, std::memory_order_release, std::memory_order_relaxed)) {
+    }
+}
+
+static void *barrier_concurrent_cb(void *arg) {
+    int active = g_concurrent_active.fetch_add(1, std::memory_order_acq_rel) + 1;
+    update_concurrent_peak(active);
+    g_concurrent_started.fetch_add(1, std::memory_order_acq_rel);
+    while (!g_concurrent_release.load(std::memory_order_acquire))
+        rt_thread_sleep(1);
+    g_concurrent_active.fetch_sub(1, std::memory_order_acq_rel);
+    return arg;
+}
+
 } // extern "C"
+
+static bool wait_for_started_count(int expected, int timeout_ms) {
+    for (int waited = 0; waited < timeout_ms; waited++) {
+        if (g_concurrent_started.load(std::memory_order_acquire) >= expected)
+            return true;
+        rt_thread_sleep(1);
+    }
+    return g_concurrent_started.load(std::memory_order_acquire) >= expected;
+}
 
 //=============================================================================
 // rt_async_run tests
@@ -179,7 +210,6 @@ static void test_async_delay() {
     auto start = std::chrono::steady_clock::now();
     void *future = rt_async_delay(50);
     assert(future != NULL);
-    assert(rt_future_is_done(future) == 0 || 1); // May or may not be done yet
 
     rt_future_wait(future);
     auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -401,26 +431,32 @@ static void test_async_run_trap_becomes_error() {
 //=============================================================================
 
 static void test_async_runs_concurrently() {
-    auto start = std::chrono::steady_clock::now();
+    const int N = 5;
+    void *futures[N];
+    void *values[N];
 
-    // Launch 5 tasks each sleeping 50ms
-    void *futures[5];
-    int i;
-    for (i = 0; i < 5; i++)
-        futures[i] = rt_async_run((void *)slow_cb, make_obj());
+    g_concurrent_started.store(0, std::memory_order_release);
+    g_concurrent_active.store(0, std::memory_order_release);
+    g_concurrent_peak.store(0, std::memory_order_release);
+    g_concurrent_release.store(0, std::memory_order_release);
 
-    // Wait for all
-    for (i = 0; i < 5; i++)
-        rt_future_wait(futures[i]);
+    for (int i = 0; i < N; i++) {
+        values[i] = make_obj();
+        futures[i] = rt_async_run((void *)barrier_concurrent_cb, values[i]);
+        assert(futures[i] != NULL);
+    }
 
-    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-                       /// @brief Now.
-                       std::chrono::steady_clock::now() - start)
-                       .count();
+    bool all_started_before_release = wait_for_started_count(N, 5000);
+    int peak_before_release = g_concurrent_peak.load(std::memory_order_acquire);
+    g_concurrent_release.store(1, std::memory_order_release);
 
-    // If truly concurrent, should take ~50ms not ~250ms
-    // Allow generous margin for CI
-    assert(elapsed < 200);
+    for (int i = 0; i < N; i++) {
+        void *result = rt_future_get(futures[i]);
+        assert(result == values[i]);
+    }
+
+    assert(all_started_before_release);
+    assert(peak_before_release == N);
 }
 
 /// @brief Main.

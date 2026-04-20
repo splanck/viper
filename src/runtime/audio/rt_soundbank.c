@@ -124,6 +124,7 @@ int64_t rt_soundbank_register(void *bank_ptr, rt_string name, rt_string path) {
         return 0;
 
     rt_soundbank_impl *bank = (rt_soundbank_impl *)bank_ptr;
+    int replacing;
 
     /* Load the sound from file */
     void *sound = rt_sound_load(path);
@@ -132,10 +133,8 @@ int64_t rt_soundbank_register(void *bank_ptr, rt_string name, rt_string path) {
 
     /* Check if name already exists — replace */
     int idx = find_entry(bank, name);
-    if (idx >= 0) {
-        release_entry(&bank->entries[idx]);
-        bank->count--;
-    } else {
+    replacing = idx >= 0;
+    if (idx < 0) {
         idx = find_free(bank);
         if (idx < 0) {
             /* Bank full — free the loaded sound */
@@ -145,12 +144,16 @@ int64_t rt_soundbank_register(void *bank_ptr, rt_string name, rt_string path) {
         }
     }
 
-    /* Store: sound already has refcount 1 from rt_sound_load */
     rt_str_retain_maybe(name);
+    if (replacing)
+        release_entry(&bank->entries[idx]);
+    else
+        bank->count++;
+
+    /* Store: sound already has refcount 1 from rt_sound_load */
     bank->entries[idx].name = name;
     bank->entries[idx].sound = sound;
     bank->entries[idx].in_use = 1;
-    bank->count++;
 
     return 1;
 }
@@ -161,26 +164,28 @@ int64_t rt_soundbank_register_sound(void *bank_ptr, rt_string name, void *sound)
         return 0;
 
     rt_soundbank_impl *bank = (rt_soundbank_impl *)bank_ptr;
+    int replacing;
 
     /* Check if name already exists — replace */
     int idx = find_entry(bank, name);
-    if (idx >= 0) {
-        release_entry(&bank->entries[idx]);
-        bank->count--;
-    } else {
+    replacing = idx >= 0;
+    if (idx < 0) {
         idx = find_free(bank);
         if (idx < 0)
             return 0; /* Bank full */
     }
 
-    /* Retain the sound (caller also holds a reference) */
+    /* Retain first so replacing an entry with the same name/sound cannot free it early. */
     rt_obj_retain_maybe(sound);
     rt_str_retain_maybe(name);
+    if (replacing)
+        release_entry(&bank->entries[idx]);
+    else
+        bank->count++;
 
     bank->entries[idx].name = name;
     bank->entries[idx].sound = sound;
     bank->entries[idx].in_use = 1;
-    bank->count++;
 
     return 1;
 }
