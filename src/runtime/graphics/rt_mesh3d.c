@@ -50,10 +50,16 @@ extern const char *rt_string_cstr(rt_string s);
 #define MESH_MAX_SPHERE_SEGMENTS 512
 #define MESH_MAX_CYLINDER_SEGMENTS 8192
 
+/// @brief Cheap wrapper around `isfinite` so attribute-validation call sites read declaratively.
 static int mesh_value_is_finite(double value) {
     return isfinite(value);
 }
 
+/// @brief Guard for procedural-generator dimensions — trap if `value` is NaN/inf or ≤ 0.
+/// @details The generators (`new_box`, `new_sphere`, `new_plane`, `new_cylinder`) all
+///   require strictly positive, finite extents; any other value would produce degenerate
+///   geometry or runaway loops. The trap message includes `label` so the caller site
+///   (e.g. "Mesh3D.NewBox: sx") is identifiable in the user-facing error.
 static int mesh_validate_positive_finite(double value, const char *label) {
     char msg[128];
     if (mesh_value_is_finite(value) && value > 0.0)
@@ -63,11 +69,20 @@ static int mesh_validate_positive_finite(double value, const char *label) {
     return 0;
 }
 
+/// @brief Latch the `build_failed` bit on a mesh so subsequent builder calls bail early.
+/// @details Once any add-vertex / add-triangle step traps, the mesh is in an indeterminate
+///   state. Rather than mutating in place and risking inconsistent index/vertex counts,
+///   we sticky-set this flag and let the OBJ/STL loader detect it and free the partially
+///   built mesh.
 static void mesh_mark_build_failed(rt_mesh3d *mesh) {
     if (mesh)
         mesh->build_failed = 1;
 }
 
+/// @brief Decrement-and-free on a GC-tracked reference slot; no-op if the slot is NULL.
+/// @details Paired with `mesh_assign_ref` to implement `retain-then-release` ordering on
+///   the `morph_targets_ref` field. The slot is cleared to NULL after release so a
+///   subsequent assignment can't accidentally double-release.
 static void mesh_release_ref(void **slot) {
     if (!slot || !*slot)
         return;
@@ -76,6 +91,11 @@ static void mesh_release_ref(void **slot) {
     *slot = NULL;
 }
 
+/// @brief Safely swap in a new GC-tracked reference: retain new, then release old.
+/// @details The retain-first ordering matters when `value` is already held transitively
+///   through `*slot` — releasing first could drop the final reference and leave `value`
+///   dangling. The early-return on self-assignment skips an unnecessary retain/release
+///   round trip.
 static void mesh_assign_ref(void **slot, void *value) {
     if (!slot || *slot == value)
         return;
@@ -353,7 +373,7 @@ void *rt_mesh3d_clone(void *obj) {
     if (src->index_count > 0)
         memcpy(dst->indices, src->indices, src->index_count * sizeof(uint32_t));
     dst->bone_palette = NULL;
-    dst->bone_count = 0;
+    dst->bone_count = src->bone_count;
     dst->morph_deltas = NULL;
     dst->morph_weights = NULL;
     dst->morph_shape_count = 0;
@@ -376,7 +396,24 @@ void *rt_mesh3d_clone(void *obj) {
     return dst;
 }
 
-/// @brief Apply a 4x4 transformation matrix to all vertex positions and shading bases in-place.
+/// @brief Apply a 4x4 matrix to every vertex position, normal, and tangent in-place.
+/// @details Positions are transformed by the full affine matrix. Normals and tangents
+///          need the inverse-transpose of the upper-left 3x3 (the "normal matrix") so
+///          non-uniform scales don't tilt them off the surface; `vgfx3d_compute_normal_matrix4`
+///          computes that once and the per-vertex loop reuses it.
+///
+///          The matrix determinant is inspected for a handedness flip (det < 0): when
+///          the transform mirrors the mesh, the tangent-space bitangent must be negated
+///          to keep the TBN frame right-handed. That flip is encoded in the tangent's
+///          W component (stored in `t[3]`) so the shader can reconstruct the bitangent
+///          with `cross(N,T) * W`. We preserve any existing W (treating 0 as the
+///          canonical +1 for legacy meshes), then multiply by the handedness sign.
+///
+///          Normals and tangents are renormalized after transform — shear / non-uniform
+///          scale otherwise produce non-unit vectors. After the pass, geometry is
+///          marked dirty and bounds are recomputed so downstream culling stays correct.
+/// @param obj Target mesh (no-op when NULL).
+/// @param mat4_obj Mat4 handle (no-op when NULL).
 void rt_mesh3d_transform(void *obj, void *mat4_obj) {
     if (!obj || !mat4_obj)
         return;
@@ -728,6 +765,11 @@ typedef struct {
     size_t count;
 } obj_vertex_cache_t;
 
+/// @brief FNV-1a-ish mix of the `(v, vt, vn)` OBJ face triplet into a 64-bit hash.
+/// @details The mixing constants are the standard FNV offset basis + prime, combined with
+///   Knuth's golden-ratio constant and a Boost-style XOR-shift round to distribute low bits.
+///   Collisions fall back to linear probing in the cache — any well-distributed hash works
+///   here; this one was picked for speed and stability across platforms.
 static uint64_t obj_hash_index_triplet(int64_t vi, int64_t ti, int64_t ni) {
     uint64_t h = 1469598103934665603ull;
     uint64_t values[3] = {(uint64_t)vi, (uint64_t)ti, (uint64_t)ni};
@@ -738,6 +780,11 @@ static uint64_t obj_hash_index_triplet(int64_t vi, int64_t ti, int64_t ni) {
     return h;
 }
 
+/// @brief Allocate an open-addressing hash table for the OBJ vertex-deduplication cache.
+/// @details Capacity is floored to 64 and must be a power of two for the `(h + probe) & (cap-1)`
+///   slot wrap used by lookup/insert — the initial call sites in `rt_mesh3d_from_obj`
+///   respect this by passing 1024, and `obj_vertex_cache_grow` doubles. Returns 1 on
+///   success, 0 if the underlying calloc fails.
 static int obj_vertex_cache_init(obj_vertex_cache_t *cache, size_t capacity) {
     if (!cache)
         return 0;
@@ -749,6 +796,7 @@ static int obj_vertex_cache_init(obj_vertex_cache_t *cache, size_t capacity) {
     return cache->entries != NULL;
 }
 
+/// @brief Release the entry array owned by an OBJ vertex cache; safe on an already-empty cache.
 static void obj_vertex_cache_free(obj_vertex_cache_t *cache) {
     if (!cache)
         return;
@@ -758,6 +806,11 @@ static void obj_vertex_cache_free(obj_vertex_cache_t *cache) {
     cache->count = 0;
 }
 
+/// @brief Double the hash table capacity and rehash all live entries.
+/// @details Called by `obj_vertex_cache_insert` when the load factor (count/capacity) would
+///   exceed 70 %. Growing early keeps the open-addressing probe chains short so lookup
+///   stays close to O(1) even when a big OBJ file reuses the same vertex triplets
+///   thousands of times. Returns 0 if the new allocation fails or capacity would overflow.
 static int obj_vertex_cache_grow(obj_vertex_cache_t *cache) {
     obj_vertex_cache_t grown;
     size_t new_capacity;
@@ -787,6 +840,10 @@ static int obj_vertex_cache_grow(obj_vertex_cache_t *cache) {
     return 1;
 }
 
+/// @brief Linear-probe lookup for `(vi, ti, ni)` in the OBJ vertex cache.
+/// @details Returns 1 and writes the cached mesh-vertex index when found, 0 otherwise.
+///   Probing stops at the first unused slot — matching the invariant maintained by
+///   `obj_vertex_cache_insert` that entries are contiguous along their probe chain.
 static int obj_vertex_cache_lookup(const obj_vertex_cache_t *cache,
                                    int64_t vi,
                                    int64_t ti,
@@ -809,6 +866,11 @@ static int obj_vertex_cache_lookup(const obj_vertex_cache_t *cache,
     return 0;
 }
 
+/// @brief Record that `(vi, ti, ni)` has been emitted as mesh vertex `mesh_index`.
+/// @details Auto-grows when load would exceed ~70 % to keep probe chains short. Returns
+///   1 on success, 0 on allocation failure in grow (which propagates upward to fail the
+///   OBJ import). Duplicate keys never reach this function — callers always do a lookup
+///   first via `obj_get_or_add_mesh_vertex`.
 static int obj_vertex_cache_insert(obj_vertex_cache_t *cache,
                                    int64_t vi,
                                    int64_t ti,
@@ -837,6 +899,12 @@ static int obj_vertex_cache_insert(obj_vertex_cache_t *cache,
     return 0;
 }
 
+/// @brief Turn an OBJ face index into a 1-based absolute index, or reject it.
+/// @details OBJ face indices are 1-based and can be negative (counting from the end of
+///   the currently-defined list). A raw value of 0 means "no index at this slot" —
+///   accepted only when `allow_missing` is nonzero (used for optional UV/normal slots;
+///   position is always required). Writes the resolved positive index into `*out` and
+///   returns 1 on success, 0 on out-of-range or a missing-but-required zero.
 static int obj_resolve_index(int64_t raw, int count, int allow_missing, int64_t *out) {
     int64_t resolved = raw;
     if (!out)
@@ -856,6 +924,15 @@ static int obj_resolve_index(int64_t raw, int count, int allow_missing, int64_t 
     return 1;
 }
 
+/// @brief Resolve an OBJ face triplet to a mesh-vertex index, emitting a new vertex on miss.
+/// @details This is the workhorse of vertex deduplication. First tries the cache; on a
+///   hit, returns the existing mesh index (the same GPU vertex is reused across faces).
+///   On a miss, reads the referenced position/normal/UV from the parallel OBJ attribute
+///   arrays, appends a new mesh vertex, records the mapping in the cache, and returns
+///   the new index. Missing normal/UV indices (zero) emit a zeroed attribute — caller
+///   recomputes normals via `rt_mesh3d_recalc_normals` if the file had none.
+/// @return 1 on success, 0 on any failure (cache full, vertex-count overflow, or
+///         `rt_mesh3d_add_vertex` trapped).
 static int obj_get_or_add_mesh_vertex(void *mesh,
                                       obj_vertex_cache_t *cache,
                                       const float *positions,
@@ -906,7 +983,38 @@ static int obj_get_or_add_mesh_vertex(void *mesh,
     return 1;
 }
 
-/// @brief Calculate per-vertex tangent vectors for normal mapping (Lengyel method).
+/// @brief Calculate per-vertex tangent vectors for normal mapping (Lengyel's method).
+/// @details Tangent space is the local coordinate system at each vertex where the
+///          U texture axis aligns with the tangent and V aligns with the bitangent.
+///          Normal maps are authored in this space, so we need per-vertex T to read
+///          them correctly.
+///
+///          Two-phase algorithm (classic Eric Lengyel, "Mathematics for 3D Game
+///          Programming and Computer Graphics"):
+///
+///          Phase 1: For each triangle derive the tangent (`sdir`) and bitangent
+///          (`tdir`) directions by solving the 2x2 system that takes (dU,dV) to
+///          (dPos). `det = duv1.x*duv2.y - duv1.y*duv2.x` is the UV-triangle's
+///          signed area; triangles with zero UV area contribute nothing (would
+///          divide by zero). The per-vertex tangent/bitangent accumulators
+///          `tan1[]`/`tan2[]` sum contributions from every incident triangle so
+///          the final directions are area-weighted.
+///
+///          Phase 2: For each vertex, run Gram-Schmidt against the normal to make
+///          the tangent strictly perpendicular to N (so N, T, B form an orthonormal
+///          frame even if the summed tangent wasn't quite tangential). Then derive
+///          handedness: `dot(cross(N,T), summed_bitangent) < 0` means the UV chart
+///          is mirrored on this face relative to the object, and the bitangent in
+///          the shader must be negated — we encode that as `tangent.w = -1`. The
+///          +1/-1 W channel is how the shader reconstructs B cheaply.
+///
+///          Degenerate cases (zero-length tangent after orthogonalization) fall back
+///          to a canonical +X tangent with W=+1 so the vertex still produces sensible
+///          output in the shader.
+///
+///          Allocates two transient float buffers (`tan1`, `tan2`) sized to the
+///          vertex count; both are freed before returning. No-op on empty meshes.
+/// @param obj Mesh whose `tangent[4]` slot on every vertex gets written in place.
 void rt_mesh3d_calc_tangents(void *obj) {
     if (!obj)
         return;

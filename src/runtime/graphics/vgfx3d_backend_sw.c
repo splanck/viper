@@ -206,6 +206,12 @@ struct pipe_vert {
     float color[4];
 };
 
+/// @brief Grow-on-demand scratch buffer for per-draw transformed vertices.
+/// @details The software backend transforms each draw's vertices into a working buffer
+///   before rasterisation. Reallocating the buffer per draw would pressure the heap and
+///   waste cycles on memory-only work, so the context caches the largest buffer ever
+///   needed; subsequent smaller draws reuse it free. Returns the scratch pointer or
+///   `NULL` on overflow / allocation failure.
 static pipe_vert_t *sw_acquire_pipe_vertices(sw_context_t *ctx, uint32_t count) {
     if (!ctx || count == 0)
         return NULL;
@@ -605,6 +611,11 @@ static void sample_texture(
          255.0f;
 }
 
+/// @brief Convert one channel from sRGB-encoded to linear space (IEC 61966-2-1 curve).
+/// @details Standard two-segment sRGB EOTF: linear for dark values, `((v+0.055)/1.055)^2.4`
+///   otherwise. Used by `sample_texture_srgb` so textures authored in sRGB are lit
+///   correctly — lighting math is linear, so we have to undo the storage gamma first.
+///   Alpha is intentionally *not* converted, matching the sRGB spec.
 static float sw_srgb_to_linear(float value) {
     if (value < 0.0f)
         value = 0.0f;
@@ -615,6 +626,10 @@ static float sw_srgb_to_linear(float value) {
     return powf((value + 0.055f) / 1.055f, 2.4f);
 }
 
+/// @brief Bilinear texture fetch followed by per-channel sRGB → linear conversion.
+/// @details Equivalent to a hardware `SRGB8_ALPHA8` sampler: the filter samples first
+///   (so the bilinear weights are applied in display-encoded space), then the result
+///   is linearised. Alpha passes through unchanged.
 static void sample_texture_srgb(
     const sw_pixels_view *tex, float u, float v, float *r, float *g, float *b, float *a) {
     sample_texture(tex, u, v, r, g, b, a);

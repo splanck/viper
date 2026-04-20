@@ -59,14 +59,18 @@ typedef struct {
     int8_t auto_repath;
 } rt_navagent3d;
 
+/// @brief Squared length of a 3-vector; avoids a sqrt when only ordering/thresholding matters.
 static double navagent_len_sq(const double v[3]) {
     return v[0] * v[0] + v[1] * v[1] + v[2] * v[2];
 }
 
+/// @brief Euclidean length of a 3-vector (`sqrt` of the squared length).
 static double navagent_len(const double v[3]) {
     return sqrt(navagent_len_sq(v));
 }
 
+/// @brief Squared Euclidean distance between two points — cheaper when only compared to another
+///   squared value (corner-tolerance checks use this to skip the sqrt).
 static double navagent_dist_sq(const double a[3], const double b[3]) {
     double dx = a[0] - b[0];
     double dy = a[1] - b[1];
@@ -74,22 +78,29 @@ static double navagent_dist_sq(const double a[3], const double b[3]) {
     return dx * dx + dy * dy + dz * dz;
 }
 
+/// @brief Euclidean distance between two points.
 static double navagent_dist(const double a[3], const double b[3]) {
     return sqrt(navagent_dist_sq(a, b));
 }
 
+/// @brief Assign `(x,y,z)` to `dst[0..2]`. Reads declaratively as "set this vector to …".
 static void navagent_vec_set(double dst[3], double x, double y, double z) {
     dst[0] = x;
     dst[1] = y;
     dst[2] = z;
 }
 
+/// @brief Copy `src[0..2]` into `dst[0..2]` — trivial 3-double `memcpy`-equivalent.
 static void navagent_vec_copy(double dst[3], const double src[3]) {
     dst[0] = src[0];
     dst[1] = src[1];
     dst[2] = src[2];
 }
 
+/// @brief Decrement-and-free a GC reference slot, clearing the slot to NULL.
+/// @details Used when rebinding a navmesh / character / scene-node. The slot is zeroed
+///   so subsequent calls are idempotent, and the finalizer can call this on every slot
+///   without needing per-field null checks.
 static void navagent_release_ref(void **slot) {
     if (!slot || !*slot)
         return;

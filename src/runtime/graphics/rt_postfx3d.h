@@ -66,6 +66,7 @@ typedef struct {
     int8_t bloom_enabled;
     float bloom_threshold;
     float bloom_intensity;
+    int32_t bloom_passes;
     int8_t tonemap_mode; /* 0=off, 1=reinhard, 2=aces */
     float tonemap_exposure;
     int8_t fxaa_enabled;

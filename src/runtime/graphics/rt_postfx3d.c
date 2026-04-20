@@ -122,7 +122,31 @@ typedef struct {
 /// pipeline to keep intermediate float values inside the displayable range before
 /// converting back to 8-bit pixels at the end.
 static float clampf(float v, float lo, float hi) {
+    if (!isfinite(v))
+        return lo;
     return v < lo ? lo : (v > hi ? hi : v);
+}
+
+/// @brief Narrow a finite double to float, substituting `fallback` on NaN/inf.
+static float sanitize_f32(double value, float fallback) {
+    return isfinite(value) ? (float)value : fallback;
+}
+
+/// @brief `sanitize_f32` plus clamp-to-zero floor — for strengths/intensities that must be ≥ 0.
+static float sanitize_nonnegative_f32(double value, float fallback) {
+    float v = sanitize_f32(value, fallback);
+    return v < 0.0f ? 0.0f : v;
+}
+
+/// @brief Clamp a 64-bit integer into a 32-bit range, truncating outside values.
+/// @details Used where IL-side integer knobs (kernel radii, sample counts) need to match
+///   backend-side `int32_t` slots without trapping on out-of-range input.
+static int32_t clamp_i64_to_i32(int64_t value, int32_t lo, int32_t hi) {
+    if (value < lo)
+        return lo;
+    if (value > hi)
+        return hi;
+    return (int32_t)value;
 }
 
 /// @brief Perceptual luminance of a linear sRGB colour using the Rec. 709 weights
@@ -225,6 +249,7 @@ static int vgfx3d_postfx_fill_effect_snapshot(const postfx_entry_t *e,
             snapshot.bloom_enabled = 1;
             snapshot.bloom_threshold = e->p.bloom.threshold;
             snapshot.bloom_intensity = e->p.bloom.intensity;
+            snapshot.bloom_passes = e->p.bloom.blur_passes;
             break;
         case POSTFX_TONEMAP:
             snapshot.tonemap_mode = (int8_t)e->p.tonemap.mode;
@@ -671,13 +696,13 @@ void rt_postfx3d_add_bloom(void *obj, double threshold, double intensity, int64_
         return;
     e->type = POSTFX_BLOOM;
     e->enabled = 1;
-    e->p.bloom.threshold = (float)threshold;
-    e->p.bloom.intensity = (float)intensity;
-    e->p.bloom.blur_passes = (int32_t)blur_passes;
+    e->p.bloom.threshold = sanitize_nonnegative_f32(threshold, 0.8f);
+    e->p.bloom.intensity = sanitize_nonnegative_f32(intensity, 1.0f);
+    e->p.bloom.blur_passes = clamp_i64_to_i32(blur_passes, 0, 32);
 }
 
-/// @brief Append a tone-map (HDR → LDR compression). `mode`: 0 = Reinhard, 1 = ACES filmic,
-/// 2 = Uncharted-2. `exposure` scales the input before mapping (typical 0.5–2.0).
+/// @brief Append a tone-map (HDR → LDR compression). `mode`: 0 = off, 1 = Reinhard,
+/// 2 = ACES filmic. `exposure` scales the input before mapping (typical 0.5–2.0).
 void rt_postfx3d_add_tonemap(void *obj, int64_t mode, double exposure) {
     postfx_entry_t *e;
     if (!obj)
@@ -688,8 +713,8 @@ void rt_postfx3d_add_tonemap(void *obj, int64_t mode, double exposure) {
         return;
     e->type = POSTFX_TONEMAP;
     e->enabled = 1;
-    e->p.tonemap.mode = (int32_t)mode;
-    e->p.tonemap.exposure = (float)exposure;
+    e->p.tonemap.mode = clamp_i64_to_i32(mode, 0, 2);
+    e->p.tonemap.exposure = sanitize_nonnegative_f32(exposure, 1.0f);
 }
 
 /// @brief Append FXAA (Fast Approximate Anti-Aliasing). Smooths jagged edges by detecting
@@ -720,9 +745,9 @@ void rt_postfx3d_add_color_grade(void *obj, double brightness, double contrast, 
         return;
     e->type = POSTFX_COLOR_GRADE;
     e->enabled = 1;
-    e->p.color_grade.brightness = (float)brightness;
-    e->p.color_grade.contrast = (float)contrast;
-    e->p.color_grade.saturation = (float)saturation;
+    e->p.color_grade.brightness = clampf(sanitize_f32(brightness, 0.0f), -1.0f, 1.0f);
+    e->p.color_grade.contrast = clampf(sanitize_f32(contrast, 1.0f), 0.0f, 4.0f);
+    e->p.color_grade.saturation = clampf(sanitize_f32(saturation, 1.0f), 0.0f, 4.0f);
 }
 
 /// @brief Append a vignette (radial darkening toward edges). `radius` is the bright-circle
@@ -737,8 +762,8 @@ void rt_postfx3d_add_vignette(void *obj, double radius, double softness) {
         return;
     e->type = POSTFX_VIGNETTE;
     e->enabled = 1;
-    e->p.vignette.radius = (float)radius;
-    e->p.vignette.softness = (float)softness;
+    e->p.vignette.radius = clampf(sanitize_f32(radius, 0.7f), 0.0f, 1.0f);
+    e->p.vignette.softness = clampf(sanitize_f32(softness, 0.3f), 0.001f, 1.0f);
 }
 
 /// @brief Master enable/disable for the entire effect chain. Disabled = framebuffer passes
@@ -842,9 +867,9 @@ void rt_postfx3d_add_ssao(void *obj, double radius, double intensity, int64_t sa
         return;
     e->type = POSTFX_SSAO;
     e->enabled = 1;
-    e->p.ssao.ao_radius = (float)radius;
-    e->p.ssao.ao_intensity = (float)intensity;
-    e->p.ssao.ao_samples = (int32_t)samples;
+    e->p.ssao.ao_radius = sanitize_nonnegative_f32(radius, 0.5f);
+    e->p.ssao.ao_intensity = sanitize_nonnegative_f32(intensity, 1.0f);
+    e->p.ssao.ao_samples = clamp_i64_to_i32(samples, 1, 128);
 }
 
 /// @brief Append depth-of-field. `focus_distance` (world units) is the sharply-focused depth;
@@ -860,9 +885,9 @@ void rt_postfx3d_add_dof(void *obj, double focus_distance, double aperture, doub
         return;
     e->type = POSTFX_DOF;
     e->enabled = 1;
-    e->p.dof.focus_distance = (float)focus_distance;
-    e->p.dof.aperture = (float)aperture;
-    e->p.dof.max_blur = (float)max_blur;
+    e->p.dof.focus_distance = sanitize_nonnegative_f32(focus_distance, 10.0f);
+    e->p.dof.aperture = sanitize_nonnegative_f32(aperture, 0.0f);
+    e->p.dof.max_blur = clampf(sanitize_f32(max_blur, 8.0f), 0.0f, 128.0f);
 }
 
 /// @brief Append per-pixel motion blur. `intensity` controls the blur length; `samples` is
@@ -877,8 +902,8 @@ void rt_postfx3d_add_motion_blur(void *obj, double intensity, int64_t samples) {
         return;
     e->type = POSTFX_MOTION_BLUR;
     e->enabled = 1;
-    e->p.motion_blur.mb_intensity = (float)intensity;
-    e->p.motion_blur.mb_samples = (int32_t)samples;
+    e->p.motion_blur.mb_intensity = clampf(sanitize_f32(intensity, 0.0f), 0.0f, 1.0f);
+    e->p.motion_blur.mb_samples = clamp_i64_to_i32(samples, 1, 64);
 }
 
 /*==========================================================================
@@ -1018,6 +1043,7 @@ int vgfx3d_postfx_get_snapshot(void *postfx, vgfx3d_postfx_snapshot_t *out) {
                 out->bloom_enabled = 1;
                 out->bloom_threshold = effect.snapshot.bloom_threshold;
                 out->bloom_intensity = effect.snapshot.bloom_intensity;
+                out->bloom_passes = effect.snapshot.bloom_passes;
                 break;
             case POSTFX_TONEMAP:
                 out->tonemap_mode = effect.snapshot.tonemap_mode;

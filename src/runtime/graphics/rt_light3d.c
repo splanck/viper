@@ -40,7 +40,43 @@ extern double rt_vec3_z(void *v);
 ///   `fmax(0, value)` call to keep the hot path branch-predictable on
 ///   inputs that are almost always non-negative.
 static double clamp_min0(double value) {
+    if (!isfinite(value))
+        return 0.0;
     return value < 0.0 ? 0.0 : value;
+}
+
+/// @brief Clamp a value to the [0, 1] range, mapping NaN/inf to 0.
+/// @details Used for RGB color components, which the runtime treats as linear [0, 1]
+///   scalars. Anything NaN-poisoned would produce black pixels downstream, so sanitising
+///   at the boundary keeps the material pipeline free of infectious non-finite values.
+static double clamp01(double value) {
+    if (!isfinite(value))
+        return 0.0;
+    if (value < 0.0)
+        return 0.0;
+    if (value > 1.0)
+        return 1.0;
+    return value;
+}
+
+/// @brief Return `value` if finite, else 0. Boundary cleanup for positions/directions.
+static double finite_or_zero(double value) {
+    return isfinite(value) ? value : 0.0;
+}
+
+/// @brief Clamp a spot-light cone angle to [0°, 89°], substituting `fallback` when NaN.
+/// @details Spot lights convert angles to cosines in the shader; letting the half-angle
+///   reach 90° would produce `cos ≈ 0`, collapsing the cone to a single ray and killing
+///   the light. Capping at 89° guarantees a non-degenerate cone while still letting
+///   artists author very wide spots.
+static double sanitize_spot_angle(double value, double fallback) {
+    if (!isfinite(value))
+        value = fallback;
+    if (value < 0.0)
+        return 0.0;
+    if (value > 89.0)
+        return 89.0;
+    return value;
 }
 
 /// @brief Normalize a light's direction vector, defaulting to down on zero input.
@@ -54,8 +90,11 @@ static void normalize_light_direction(double *x, double *y, double *z) {
 
     if (!x || !y || !z)
         return;
+    *x = finite_or_zero(*x);
+    *y = finite_or_zero(*y);
+    *z = finite_or_zero(*z);
     len = sqrt((*x) * (*x) + (*y) * (*y) + (*z) * (*z));
-    if (len <= 1e-8) {
+    if (!isfinite(len) || len <= 1e-8) {
         *x = 0.0;
         *y = -1.0;
         *z = 0.0;
@@ -93,9 +132,9 @@ void *rt_light3d_new_directional(void *direction, double r, double g, double b) 
     light->direction[2] = rt_vec3_z(direction);
     normalize_light_direction(&light->direction[0], &light->direction[1], &light->direction[2]);
     light->position[0] = light->position[1] = light->position[2] = 0.0;
-    light->color[0] = r;
-    light->color[1] = g;
-    light->color[2] = b;
+    light->color[0] = clamp01(r);
+    light->color[1] = clamp01(g);
+    light->color[2] = clamp01(b);
     light->intensity = 1.0;
     light->attenuation = 0.0;
     return light;
@@ -124,12 +163,12 @@ void *rt_light3d_new_point(void *position, double r, double g, double b, double 
     light->vptr = NULL;
     light->type = 1; /* point */
     light->direction[0] = light->direction[1] = light->direction[2] = 0.0;
-    light->position[0] = rt_vec3_x(position);
-    light->position[1] = rt_vec3_y(position);
-    light->position[2] = rt_vec3_z(position);
-    light->color[0] = r;
-    light->color[1] = g;
-    light->color[2] = b;
+    light->position[0] = finite_or_zero(rt_vec3_x(position));
+    light->position[1] = finite_or_zero(rt_vec3_y(position));
+    light->position[2] = finite_or_zero(rt_vec3_z(position));
+    light->color[0] = clamp01(r);
+    light->color[1] = clamp01(g);
+    light->color[2] = clamp01(b);
     light->intensity = 1.0;
     light->attenuation = clamp_min0(attenuation);
     return light;
@@ -153,9 +192,9 @@ void *rt_light3d_new_ambient(double r, double g, double b) {
     light->type = 2; /* ambient */
     memset(light->direction, 0, sizeof(light->direction));
     memset(light->position, 0, sizeof(light->position));
-    light->color[0] = r;
-    light->color[1] = g;
-    light->color[2] = b;
+    light->color[0] = clamp01(r);
+    light->color[1] = clamp01(g);
+    light->color[2] = clamp01(b);
     light->intensity = 1.0;
     light->attenuation = 0.0;
     return light;
@@ -199,24 +238,18 @@ void *rt_light3d_new_spot(void *position,
     light->direction[1] = rt_vec3_y(direction);
     light->direction[2] = rt_vec3_z(direction);
     normalize_light_direction(&light->direction[0], &light->direction[1], &light->direction[2]);
-    light->position[0] = rt_vec3_x(position);
-    light->position[1] = rt_vec3_y(position);
-    light->position[2] = rt_vec3_z(position);
-    light->color[0] = r;
-    light->color[1] = g;
-    light->color[2] = b;
+    light->position[0] = finite_or_zero(rt_vec3_x(position));
+    light->position[1] = finite_or_zero(rt_vec3_y(position));
+    light->position[2] = finite_or_zero(rt_vec3_z(position));
+    light->color[0] = clamp01(r);
+    light->color[1] = clamp01(g);
+    light->color[2] = clamp01(b);
     light->intensity = 1.0;
     light->attenuation = clamp_min0(attenuation);
     /* Convert angles (degrees) to cosines for shader comparison */
     double pi = 3.14159265358979323846;
-    if (inner_angle < 0.0)
-        inner_angle = 0.0;
-    if (outer_angle < 0.0)
-        outer_angle = 0.0;
-    if (inner_angle > 89.0)
-        inner_angle = 89.0;
-    if (outer_angle > 89.0)
-        outer_angle = 89.0;
+    inner_angle = sanitize_spot_angle(inner_angle, 0.0);
+    outer_angle = sanitize_spot_angle(outer_angle, inner_angle);
     if (outer_angle < inner_angle)
         outer_angle = inner_angle;
     light->inner_cos = cos(inner_angle * pi / 180.0);
@@ -245,9 +278,9 @@ void rt_light3d_set_color(void *obj, double r, double g, double b) {
     if (!obj)
         return;
     rt_light3d *l = (rt_light3d *)obj;
-    l->color[0] = r;
-    l->color[1] = g;
-    l->color[2] = b;
+    l->color[0] = clamp01(r);
+    l->color[1] = clamp01(g);
+    l->color[2] = clamp01(b);
 }
 
 #else

@@ -11,8 +11,7 @@
 //   - Supports .gltf (JSON + external files) and .glb (binary container)
 //   - PBR metallic-roughness materials mapped to Blinn-Phong
 //   - Embedded base64 buffers/images and GLB bufferView images are supported
-//   - Extracts meshes, materials, and the active-scene node hierarchy
-//   - Skeletons and animation tracks are not extracted yet
+//   - Extracts meshes, materials, skeletons, animations, and the active-scene node hierarchy
 // Ownership/Lifetime:
 //   - Caller owns the returned asset and all objects within it
 // Links: rt_mesh3d.c, rt_material3d.c, rt_skeleton3d.c
@@ -33,6 +32,10 @@ int64_t rt_gltf_mesh_count(void *asset);
 void *rt_gltf_get_mesh(void *asset, int64_t index);
 int64_t rt_gltf_material_count(void *asset);
 void *rt_gltf_get_material(void *asset, int64_t index);
+int64_t rt_gltf_skeleton_count(void *asset);
+void *rt_gltf_get_skeleton(void *asset, int64_t index);
+int64_t rt_gltf_animation_count(void *asset);
+void *rt_gltf_get_animation(void *asset, int64_t index);
 int64_t rt_gltf_node_count(void *asset);
 void *rt_gltf_get_scene_root(void *asset);
 

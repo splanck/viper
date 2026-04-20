@@ -1690,7 +1690,8 @@ static void test_gpu_postfx_state_latches_across_overlay_pass(void) {
                 "Canvas3D forwards the same one-effect postfx chain to both backend passes");
     EXPECT_TRUE(set_gpu_postfx_chains[0].effects[0].snapshot.bloom_enabled == 1 &&
                     set_gpu_postfx_chains[1].effects[0].snapshot.bloom_threshold == 0.8f &&
-                    set_gpu_postfx_chains[1].effects[0].snapshot.bloom_intensity == 1.5f,
+                    set_gpu_postfx_chains[1].effects[0].snapshot.bloom_intensity == 1.5f &&
+                    set_gpu_postfx_chains[1].effects[0].snapshot.bloom_passes == 2,
                 "Canvas3D forwards the same latched postfx effect values to both backend passes");
     EXPECT_TRUE(canvas.frame_postfx_state_latched == 1,
                 "Canvas3D keeps the frame postfx snapshot latched until Flip");
@@ -1699,7 +1700,8 @@ static void test_gpu_postfx_state_latches_across_overlay_pass(void) {
     EXPECT_TRUE(canvas.frame_postfx_chain.effect_count == 1 &&
                     canvas.frame_postfx_chain.effects[0].snapshot.bloom_enabled == 1 &&
                     canvas.frame_postfx_chain.effects[0].snapshot.bloom_threshold == 0.8f &&
-                    canvas.frame_postfx_chain.effects[0].snapshot.bloom_intensity == 1.5f,
+                    canvas.frame_postfx_chain.effects[0].snapshot.bloom_intensity == 1.5f &&
+                    canvas.frame_postfx_chain.effects[0].snapshot.bloom_passes == 2,
                 "Canvas3D preserves the original postfx chain across the overlay pass");
 
     cleanup_fake_canvas(&canvas);

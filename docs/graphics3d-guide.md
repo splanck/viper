@@ -417,6 +417,7 @@ Perspective or orthographic camera with view and projection matrices.
 
 `Yaw`, `Pitch`, `Orbit`, and `Light3D.NewSpot` all use degrees. Writing `Yaw` or `Pitch` updates the camera view immediately.
 `Canvas3D.Begin(canvas, camera)` uses the active output's aspect ratio (window or bound `RenderTarget3D`) when building that frame's projection, so perspective remains correct across resizes and RTT passes without mutating the camera object's stored projection/aspect.
+Camera constructors and control methods sanitize invalid numeric inputs at the API boundary: non-finite FOV/aspect/clip planes, degenerate `LookAt` vectors, invalid FPS deltas, and invalid shake/follow parameters fall back to finite defaults so view matrices, projection matrices, and `ScreenToRay()` results remain usable.
 
 ### Zia Example
 
@@ -576,6 +577,8 @@ Light sources for the scene. Up to 16 lights simultaneously.
 |--------|-----------|-------------|
 | `SetIntensity(value)` | `void(f64)` | Brightness multiplier (default 1.0) |
 | `SetColor(r, g, b)` | `void(f64, f64, f64)` | Change light color |
+
+Light colors are clamped to `[0, 1]`, intensities and attenuations are clamped to non-negative values, and non-finite positions/directions fall back to finite defaults. Spot cone angles are clamped to `0..89` degrees and reordered when needed so `inner_cos >= outer_cos`.
 
 ### Zia Example
 
@@ -1396,16 +1399,18 @@ Full-screen post-processing effect chain applied automatically in `Canvas3D.Flip
 | Method | Signature | Description |
 |--------|-----------|-------------|
 | `AddBloom(threshold, intensity, passes)` | `void(f64, f64, i64)` | Bloom glow effect |
-| `AddTonemap(mode, exposure)` | `void(i64, f64)` | Tone mapping (0=Reinhard, 1=ACES) |
+| `AddTonemap(mode, exposure)` | `void(i64, f64)` | Tone mapping (0=off, 1=Reinhard, 2=ACES) |
 | `AddFXAA()` | `void()` | Fast approximate anti-aliasing |
 | `AddColorGrade(brightness, contrast, saturation)` | `void(f64, f64, f64)` | Color grading |
 | `AddVignette(radius, softness)` | `void(f64, f64)` | Screen-edge darkening |
 | `AddSSAO(radius, intensity, samples)` | `void(f64, f64, i64)` | Screen-space ambient occlusion |
-| `AddDOF(focusDist, focusRange, blurAmount)` | `void(f64, f64, f64)` | Depth of field |
+| `AddDOF(focusDist, aperture, maxBlur)` | `void(f64, f64, f64)` | Depth of field |
 | `AddMotionBlur(strength, samples)` | `void(f64, i64)` | Velocity-buffer motion blur |
 | `Clear()` | `void()` | Remove all effects from chain |
 
-Effects run strictly in append order. If you add the same effect type more than once, each pass is preserved instead of being collapsed into one combined backend setting. The GPU backends now follow that same ordered-chain behavior as the CPU path, so `Flip()`, GPU screenshots, and GPU readback all match the authored `PostFX3D` chain.
+Effects run strictly in append order. If you add the same effect type more than once, each pass is preserved instead of being collapsed into one combined backend setting. The GPU backends now follow that same ordered-chain behavior as the CPU path, so `Flip()`, GPU screenshots, and GPU readback all match the authored `PostFX3D` chain. Bloom `passes` is part of the backend snapshot so GPU paths can widen the bloom radius consistently with the authored quality setting.
+
+PostFX parameters are bounded before they reach CPU or GPU shaders: bloom passes clamp to `0..32`, SSAO samples to `1..128`, motion-blur samples to `1..64`, vignette softness has a non-zero floor, and non-finite exposure/radius/intensity values fall back to safe defaults.
 
 ### Zia Example
 
@@ -2994,7 +2999,7 @@ For feature gating, prefer `canvas.BackendCapabilities` or `canvas.BackendSuppor
 - **Mesh generators:** `NewSphere(r, 8)` is adequate for most uses. Higher segments (16-32) for close-up objects.
 - **Lights:** Each additional light adds computation. Use 1-3 lights for best performance.
 - **Backface culling:** Enabled by default. Disable only for double-sided geometry (leaves, glass).
-- **Non-uniform scaling:** Metal, OpenGL, and D3D11 use a proper inverse-transpose normal matrix. The software path still uses the model matrix directly, so non-uniform scaling can distort lighting there.
+- **Non-uniform scaling:** All 3D backends use inverse-transpose normal transforms, so non-uniform scale preserves lighting direction consistently across software, Metal, OpenGL, and D3D11.
 
 ## Resource Limits
 

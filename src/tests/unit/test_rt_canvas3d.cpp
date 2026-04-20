@@ -129,6 +129,49 @@ extern "C" void *rt_canvas3d_screenshot(void *canvas);
 extern "C" void rt_postfx3d_set_enabled(void *obj, int8_t enabled);
 extern "C" void rt_postfx3d_add_vignette(void *obj, double radius, double softness);
 
+static bool finite_vec3(void *v) {
+    return v && std::isfinite(rt_vec3_x(v)) && std::isfinite(rt_vec3_y(v)) &&
+           std::isfinite(rt_vec3_z(v));
+}
+
+static bool finite_camera_state(rt_camera3d *cam) {
+    if (!cam)
+        return false;
+    for (double value : cam->view)
+        if (!std::isfinite(value))
+            return false;
+    for (double value : cam->projection)
+        if (!std::isfinite(value))
+            return false;
+    for (double value : cam->eye)
+        if (!std::isfinite(value))
+            return false;
+    for (double value : cam->shake_offset)
+        if (!std::isfinite(value))
+            return false;
+    return std::isfinite(cam->fov) && std::isfinite(cam->aspect) &&
+           std::isfinite(cam->near_plane) && std::isfinite(cam->far_plane) &&
+           std::isfinite(cam->fps_yaw) && std::isfinite(cam->fps_pitch) &&
+           std::isfinite(cam->shake_intensity) && std::isfinite(cam->shake_duration) &&
+           std::isfinite(cam->shake_decay) && std::isfinite(cam->ortho_size);
+}
+
+static bool finite_light_state(rt_light3d *light) {
+    if (!light)
+        return false;
+    for (double value : light->direction)
+        if (!std::isfinite(value))
+            return false;
+    for (double value : light->position)
+        if (!std::isfinite(value))
+            return false;
+    for (double value : light->color)
+        if (!std::isfinite(value))
+            return false;
+    return std::isfinite(light->intensity) && std::isfinite(light->attenuation) &&
+           std::isfinite(light->inner_cos) && std::isfinite(light->outer_cos);
+}
+
 //=============================================================================
 // Mesh3D tests
 //=============================================================================
@@ -244,10 +287,12 @@ static void test_mesh_generators_reject_invalid_dimensions() {
 static void test_mesh_clone() {
     TEST("Mesh3D.Clone preserves geometry");
     void *m = rt_mesh3d_new_box(1.0, 1.0, 1.0);
+    ((rt_mesh3d *)m)->bone_count = 4;
     void *c = rt_mesh3d_clone(m);
     assert(c);
     EXPECT_EQ(rt_mesh3d_get_vertex_count(c), 24);
     EXPECT_EQ(rt_mesh3d_get_triangle_count(c), 12);
+    EXPECT_EQ(((rt_mesh3d *)c)->bone_count, 4);
     PASS();
 }
 
@@ -892,6 +937,55 @@ static void test_camera_shake_does_not_drift_eye_in_smooth_follow() {
     PASS();
 }
 
+static void test_camera_sanitizes_nonfinite_inputs() {
+    TEST("Camera3D sanitizes non-finite public inputs");
+    rt_camera3d *cam = (rt_camera3d *)rt_camera3d_new(NAN, NAN, NAN, INFINITY);
+    assert(cam != NULL);
+    EXPECT_NEAR(cam->fov, 60.0, 0.001);
+    EXPECT_NEAR(cam->aspect, 1.0, 0.001);
+    EXPECT_NEAR(cam->near_plane, 0.1, 0.001);
+    EXPECT_NEAR(cam->far_plane, 1000.1, 0.001);
+    EXPECT_TRUE(finite_camera_state(cam), "Perspective camera starts finite after invalid construction");
+
+    rt_camera3d_set_fov(cam, NAN);
+    EXPECT_NEAR(cam->fov, 60.0, 0.001);
+
+    float render_projection[16];
+    rt_camera3d_get_render_projection(cam, INFINITY, render_projection);
+    for (float value : render_projection)
+        EXPECT_TRUE(std::isfinite(value), "Render projection rejects invalid aspect override");
+
+    void *bad_vec = rt_vec3_new(NAN, INFINITY, -INFINITY);
+    void *bad_up = rt_vec3_new(NAN, 0.0, INFINITY);
+    rt_camera3d_look_at(cam, bad_vec, bad_vec, bad_up);
+    EXPECT_TRUE(finite_camera_state(cam), "LookAt keeps view state finite");
+    EXPECT_TRUE(finite_vec3(rt_camera3d_get_position(cam)), "LookAt stores a finite eye");
+
+    rt_camera3d_orbit(cam, bad_vec, INFINITY, NAN, -INFINITY);
+    rt_camera3d_set_position(cam, bad_vec);
+    rt_camera3d_fps_update(cam, NAN, INFINITY, NAN, INFINITY, -INFINITY, NAN, INFINITY);
+    rt_camera3d_set_yaw(cam, NAN);
+    rt_camera3d_set_pitch(cam, INFINITY);
+    rt_camera3d_shake(cam, INFINITY, NAN, NAN);
+    rt_camera3d_update_shake_for_frame(cam, INFINITY);
+    rt_camera3d_smooth_follow(cam, bad_vec, INFINITY, NAN, INFINITY, NAN);
+    rt_camera3d_smooth_look_at(cam, bad_vec, INFINITY, NAN);
+    EXPECT_TRUE(finite_camera_state(cam), "Camera remains finite after invalid control updates");
+    EXPECT_TRUE(finite_vec3(rt_camera3d_screen_to_ray(cam, 320, 240, 640, 480)),
+                "ScreenToRay returns a finite fallback ray");
+
+    rt_camera3d *ortho = (rt_camera3d *)rt_camera3d_new_ortho(NAN, INFINITY, NAN, -INFINITY);
+    assert(ortho != NULL);
+    EXPECT_NEAR(ortho->ortho_size, 1.0, 0.001);
+    EXPECT_NEAR(ortho->aspect, 1.0, 0.001);
+    EXPECT_NEAR(ortho->near_plane, 0.1, 0.001);
+    EXPECT_NEAR(ortho->far_plane, 1000.1, 0.001);
+    EXPECT_TRUE(finite_camera_state(ortho), "Orthographic camera starts finite after invalid construction");
+    EXPECT_TRUE(finite_vec3(rt_camera3d_screen_to_ray(ortho, 0, 0, 640, 480)),
+                "Orthographic ScreenToRay returns a finite ray");
+    PASS();
+}
+
 //=============================================================================
 // Material3D — additional tests
 //=============================================================================
@@ -1004,6 +1098,55 @@ static void test_light_validation_and_clamping() {
                 "Spot lights reorder inner/outer cones into a valid range");
     rt_light3d_set_intensity(spot, -5.0);
     EXPECT_NEAR(spot->intensity, 0.0, 0.001);
+    PASS();
+}
+
+static void test_light_sanitizes_nonfinite_inputs() {
+    TEST("Light3D sanitizes non-finite public inputs");
+    void *bad_vec = rt_vec3_new(NAN, INFINITY, -INFINITY);
+    rt_light3d *dir = (rt_light3d *)rt_light3d_new_directional(bad_vec, -1.0, NAN, 2.0);
+    rt_light3d *point = (rt_light3d *)rt_light3d_new_point(bad_vec, INFINITY, 0.5, -1.0, INFINITY);
+    rt_light3d *ambient = (rt_light3d *)rt_light3d_new_ambient(NAN, 2.0, -1.0);
+    rt_light3d *spot = (rt_light3d *)rt_light3d_new_spot(bad_vec,
+                                                         bad_vec,
+                                                         NAN,
+                                                         2.0,
+                                                         0.25,
+                                                         NAN,
+                                                         NAN,
+                                                         INFINITY);
+    assert(dir != NULL && point != NULL && ambient != NULL && spot != NULL);
+    EXPECT_TRUE(finite_light_state(dir), "Directional light state stays finite");
+    EXPECT_TRUE(finite_light_state(point), "Point light state stays finite");
+    EXPECT_TRUE(finite_light_state(ambient), "Ambient light state stays finite");
+    EXPECT_TRUE(finite_light_state(spot), "Spot light state stays finite");
+
+    EXPECT_NEAR(dir->direction[0], 0.0, 0.001);
+    EXPECT_NEAR(dir->direction[1], -1.0, 0.001);
+    EXPECT_NEAR(dir->direction[2], 0.0, 0.001);
+    EXPECT_NEAR(dir->color[0], 0.0, 0.001);
+    EXPECT_NEAR(dir->color[1], 0.0, 0.001);
+    EXPECT_NEAR(dir->color[2], 1.0, 0.001);
+
+    EXPECT_NEAR(point->position[0], 0.0, 0.001);
+    EXPECT_NEAR(point->position[1], 0.0, 0.001);
+    EXPECT_NEAR(point->position[2], 0.0, 0.001);
+    EXPECT_NEAR(point->color[0], 0.0, 0.001);
+    EXPECT_NEAR(point->color[1], 0.5, 0.001);
+    EXPECT_NEAR(point->color[2], 0.0, 0.001);
+    EXPECT_NEAR(point->attenuation, 0.0, 0.001);
+
+    EXPECT_NEAR(ambient->color[0], 0.0, 0.001);
+    EXPECT_NEAR(ambient->color[1], 1.0, 0.001);
+    EXPECT_NEAR(ambient->color[2], 0.0, 0.001);
+    EXPECT_TRUE(spot->inner_cos >= spot->outer_cos, "Invalid spot angles clamp to a valid cone");
+
+    rt_light3d_set_intensity(spot, INFINITY);
+    rt_light3d_set_color(spot, INFINITY, 2.0, -1.0);
+    EXPECT_NEAR(spot->intensity, 0.0, 0.001);
+    EXPECT_NEAR(spot->color[0], 0.0, 0.001);
+    EXPECT_NEAR(spot->color[1], 1.0, 0.001);
+    EXPECT_NEAR(spot->color[2], 0.0, 0.001);
     PASS();
 }
 
@@ -2539,6 +2682,7 @@ int main() {
     test_camera_ortho_screen_to_ray_parallel();
     test_camera_screen_to_ray_tracks_shaken_view();
     test_camera_shake_does_not_drift_eye_in_smooth_follow();
+    test_camera_sanitizes_nonfinite_inputs();
 
     /* Material3D */
     test_material_new();
@@ -2560,6 +2704,7 @@ int main() {
     test_light_spot();
     test_light_spot_intensity();
     test_light_validation_and_clamping();
+    test_light_sanitizes_nonfinite_inputs();
     test_camera_ortho();
     test_camera_ortho_look_at();
     test_camera_perspective_not_ortho();

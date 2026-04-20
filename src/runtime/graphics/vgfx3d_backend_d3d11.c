@@ -693,6 +693,7 @@ static const char *d3d11_postfx_shader_source =
     "    int bloomEnabled;\n"
     "    float bloomThreshold;\n"
     "    float bloomIntensity;\n"
+    "    int bloomPasses;\n"
     "    int tonemapMode;\n"
     "    float tonemapExposure;\n"
     "    int fxaaEnabled;\n"
@@ -801,15 +802,16 @@ static const char *d3d11_postfx_shader_source =
     "float3 applyBloom(float2 uv, float3 color) {\n"
     "    if (bloomEnabled == 0)\n"
     "        return color;\n"
+    "    float2 bloomStep = invResolution * (float)clamp(bloomPasses, 0, 32);\n"
     "    float3 bloom = max(color - float3(bloomThreshold, bloomThreshold, bloomThreshold), "
     "float3(0.0, 0.0, 0.0));\n"
-    "    bloom += max(sceneAt(uv + float2(invResolution.x, 0.0)) - float3(bloomThreshold, "
+    "    bloom += max(sceneAt(uv + float2(bloomStep.x, 0.0)) - float3(bloomThreshold, "
     "bloomThreshold, bloomThreshold), float3(0.0, 0.0, 0.0));\n"
-    "    bloom += max(sceneAt(uv + float2(-invResolution.x, 0.0)) - float3(bloomThreshold, "
+    "    bloom += max(sceneAt(uv + float2(-bloomStep.x, 0.0)) - float3(bloomThreshold, "
     "bloomThreshold, bloomThreshold), float3(0.0, 0.0, 0.0));\n"
-    "    bloom += max(sceneAt(uv + float2(0.0, invResolution.y)) - float3(bloomThreshold, "
+    "    bloom += max(sceneAt(uv + float2(0.0, bloomStep.y)) - float3(bloomThreshold, "
     "bloomThreshold, bloomThreshold), float3(0.0, 0.0, 0.0));\n"
-    "    bloom += max(sceneAt(uv + float2(0.0, -invResolution.y)) - float3(bloomThreshold, "
+    "    bloom += max(sceneAt(uv + float2(0.0, -bloomStep.y)) - float3(bloomThreshold, "
     "bloomThreshold, bloomThreshold), float3(0.0, 0.0, 0.0));\n"
     "    return color + bloom * (bloomIntensity / 5.0);\n"
     "}\n"
@@ -954,6 +956,7 @@ typedef struct {
     int32_t bloom_enabled;
     float bloom_threshold;
     float bloom_intensity;
+    int32_t bloom_passes;
     int32_t tonemap_mode;
     float tonemap_exposure;
     int32_t fxaa_enabled;
@@ -1706,6 +1709,13 @@ static void d3d11_release_cubemap_cache(d3d11_context_t *ctx) {
     ctx->cubemap_cache_capacity = 0;
 }
 
+/// @brief Evict aged cubemap-cache entries while keeping a minimum resident set.
+/// @details Runs a compacting sweep: entries whose `last_used_frame` is more than
+///   `D3D11_CUBEMAP_CACHE_PRUNE_AGE` frames behind the current `frame_serial` are
+///   released, and the rest are packed to the front of the array. The
+///   `count - write_index > MAX_RESIDENT` guard means we never shrink below the
+///   resident floor even if everything is aged — a scene that hasn't drawn in 10
+///   seconds still keeps its working set warm for the next frame.
 static void d3d11_prune_cubemap_cache(d3d11_context_t *ctx) {
     int32_t write_index = 0;
 
@@ -1774,6 +1784,10 @@ static int d3d11_ensure_cubemap_cache_capacity(d3d11_context_t *ctx, int32_t nee
     return 1;
 }
 
+/// @brief Maximum LOD index (float) for a cubemap's full mip chain.
+/// @details Returned as a float because D3D11's `SampleLevel` / `SampleBias` expect
+///   a float LOD. A 1×1 face has only one mip and thus max-LOD 0. Used to clamp sampler
+///   LOD ranges and compute prefiltered environment-map roughness lookups.
 static float d3d11_cubemap_max_lod(const rt_cubemap3d *cubemap) {
     int32_t mip_count;
 
@@ -2351,6 +2365,11 @@ static HRESULT d3d11_ensure_postfx_target(d3d11_context_t *ctx, int32_t width, i
     return S_OK;
 }
 
+/// @brief Copy the GPU-side RTT color texture down to the CPU-side `rt_pixels` payload.
+/// @details When a Canvas3D rendertarget is read back via `RenderTarget3D.Pixels()`, the
+///   D3D11 backend copies the bound `rtt_color_tex` through a staging texture (CPU-readable),
+///   maps it, and writes the pixels into `target->color_pixels` using `rt_pixels` layout.
+///   Returns 0 when preconditions fail so the caller can fall back to the last cached copy.
 static int d3d11_sync_render_target_color(void *ctx_ptr, vgfx3d_rendertarget_t *target) {
     d3d11_context_t *ctx = (d3d11_context_t *)ctx_ptr;
     D3D11_MAPPED_SUBRESOURCE mapped;
@@ -3133,6 +3152,7 @@ static void d3d11_prepare_postfx_data(d3d11_context_t *ctx,
     postfx_data->bloom_enabled = snapshot->bloom_enabled ? 1 : 0;
     postfx_data->bloom_threshold = snapshot->bloom_threshold;
     postfx_data->bloom_intensity = snapshot->bloom_intensity;
+    postfx_data->bloom_passes = snapshot->bloom_passes;
     postfx_data->tonemap_mode = snapshot->tonemap_mode;
     postfx_data->tonemap_exposure = snapshot->tonemap_exposure;
     postfx_data->fxaa_enabled = snapshot->fxaa_enabled ? 1 : 0;
@@ -4322,6 +4342,11 @@ static int d3d11_readback_texture_rgba(d3d11_context_t *ctx,
     return 1;
 }
 
+/// @brief Point the D3D11 output-merger at one postfx render target and set its viewport.
+/// @details Each postfx pass (bloom extract, blur, tonemap) draws a full-screen triangle
+///   into a different RTV. This helper batches the OMSetRenderTargets + RSSetViewports
+///   calls so each pass is one line, not three, and so the viewport tracks the RTV size
+///   automatically (missing that is a classic source of postfx-chain letterboxing bugs).
 static void d3d11_bind_postfx_target(
     d3d11_context_t *ctx, ID3D11RenderTargetView *rtv, int32_t width, int32_t height) {
     D3D11_VIEWPORT viewport;
@@ -4573,6 +4598,12 @@ static void d3d11_set_gpu_postfx_enabled(void *ctx_ptr, int8_t enabled) {
     }
 }
 
+/// @brief Backend `set_gpu_postfx_snapshot` — latch the frame's postfx chain for replay.
+/// @details Called once per frame from the canvas. A null `postfx` clears the cached
+///   chain (equivalent to "no postfx this frame"); otherwise the chain is deep-copied
+///   into the context so later present-time passes see a stable snapshot even if the
+///   caller mutates their chain afterward. A copy failure aborts-and-resets rather than
+///   rendering with a partial chain.
 static void d3d11_set_gpu_postfx_snapshot(void *ctx_ptr, const vgfx3d_postfx_chain_t *postfx) {
     d3d11_context_t *ctx = (d3d11_context_t *)ctx_ptr;
     if (!ctx)

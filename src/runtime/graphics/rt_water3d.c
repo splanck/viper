@@ -104,6 +104,8 @@ static void water3d_assign_ref(void **slot, void *value) {
     *slot = value;
 }
 
+/// @brief Clamp a double to the `[0, 1]` range — used for water knobs like transparency,
+///   reflectivity, and wave amplitude that are physical [0, 1] scalars.
 static double water3d_clamp01(double value) {
     if (value < 0.0)
         return 0.0;
@@ -266,7 +268,25 @@ void rt_water3d_clear_waves(void *obj) {
         ((rt_water3d *)obj)->wave_count = 0;
 }
 
-/// @brief Update the water3d state (called per frame/tick).
+/// @brief Advance the water simulation by `dt` seconds and regenerate the surface mesh.
+/// @details Rebuilds the (grid+1)x(grid+1) vertex grid and the 2*grid*grid triangle list
+///          each frame. Vertex heights come from either the Gerstner multi-wave sum (when
+///          waves have been registered via `rt_water3d_add_wave`) or a single legacy sine
+///          wave. Per-vertex normals are derived analytically from the wave derivative
+///          (dy/dx, dy/dz) rather than numerically, keeping shading smooth across the
+///          grid independent of resolution.
+///
+///          Mesh and material are created lazily on the first update and then reused:
+///          `rt_mesh3d_clear` resets contents in place to avoid per-frame GC churn, and
+///          the material's color/alpha/texture/env-map bindings are pushed through every
+///          update so live property edits take effect on the next frame. Reflectivity is
+///          forced to 0 when no environment cubemap is bound so the shader skips the
+///          reflection path.
+///
+///          No work is done when `dt <= 0` — this lets callers pause the simulation by
+///          passing dt=0 without redundant mesh rebuilds.
+/// @param obj Opaque water handle from `rt_water3d_new` (no-op when NULL).
+/// @param dt Elapsed seconds since the previous update (must be > 0 to apply).
 void rt_water3d_update(void *obj, double dt) {
     if (!obj || dt <= 0)
         return;
@@ -356,7 +376,16 @@ void rt_water3d_update(void *obj, double dt) {
     rt_material3d_set_reflectivity(w->material, w->env_map ? w->reflectivity : 0.0);
 }
 
-/// @brief Draw the animated water surface to the 3D canvas.
+/// @brief Draw the animated water surface through the 3D canvas.
+/// @details Emits the current water mesh at the world origin (the grid is already built
+///          in world space around the origin by `rt_water3d_update`, so an identity model
+///          matrix is correct — reusing a static table avoids allocating a Transform3D).
+///          Backface culling is temporarily disabled so the underside of waves and any
+///          submerged camera angle still show geometry, then restored to the canvas's
+///          prior setting so this call is transparent to other draws. Does nothing if
+///          the mesh/material haven't been built yet (i.e. `update` was never called) or
+///          if `canvas` / `obj` are NULL. The `camera` argument is accepted for API
+///          symmetry with other draw functions but currently unused.
 void rt_canvas3d_draw_water(void *canvas, void *obj, void *camera) {
     if (!canvas || !obj)
         return;

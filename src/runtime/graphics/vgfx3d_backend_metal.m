@@ -2122,6 +2122,7 @@ static void *metal_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
                         "    int bloomEnabled;\n"
                         "    float bloomThreshold;\n"
                         "    float bloomStrength;\n"
+                        "    int bloomPasses;\n"
                         "    int tonemapMode;\n"
                         "    float tonemapExposure;\n"
                         "    int fxaaEnabled;\n"
@@ -2286,9 +2287,19 @@ static void *metal_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
                               "    if (p.fxaaEnabled != 0) color = applyFxaa(p, sceneTex, s, "
                               "in.uv, color);\n"
                               "    if (p.bloomEnabled) {\n"
-                              "        float br = dot(color, float3(0.2126,0.7152,0.0722));\n"
-                              "        if (br > p.bloomThreshold)\n"
-                              "            color += (color - p.bloomThreshold) * p.bloomStrength;\n"
+                              "        float2 bloomStep = p.invResolution * "
+                              "float(min(max(p.bloomPasses, 0), 32));\n"
+                              "        float3 threshold = float3(p.bloomThreshold);\n"
+                              "        float3 bloom = max(color - threshold, float3(0.0));\n"
+                              "        bloom += max(sampleScene(sceneTex, s, in.uv + "
+                              "float2(bloomStep.x, 0.0)) - threshold, float3(0.0));\n"
+                              "        bloom += max(sampleScene(sceneTex, s, in.uv - "
+                              "float2(bloomStep.x, 0.0)) - threshold, float3(0.0));\n"
+                              "        bloom += max(sampleScene(sceneTex, s, in.uv + "
+                              "float2(0.0, bloomStep.y)) - threshold, float3(0.0));\n"
+                              "        bloom += max(sampleScene(sceneTex, s, in.uv - "
+                              "float2(0.0, bloomStep.y)) - threshold, float3(0.0));\n"
+                              "        color += bloom * (p.bloomStrength / 5.0);\n"
                               "    }\n"
                               "    if (p.tonemapMode == 1) {\n"
                               "        color *= p.tonemapExposure;\n"
@@ -3520,6 +3531,7 @@ typedef struct {
     float invResolution[2];
     int32_t bloomEnabled;
     float bloomThreshold, bloomStrength;
+    int32_t bloomPasses;
     int32_t tonemapMode;
     float tonemapExposure;
     int32_t fxaaEnabled;
@@ -3528,11 +3540,11 @@ typedef struct {
     int32_t vignetteEnabled;
     float vigRadius, vigSoftness;
     /* Extended effects (parity with D3D11) */
-    int32_t dofEnabled;
-    float dofFocusDist, dofAperture, dofMaxBlur;
     int32_t ssaoEnabled;
     float ssaoRadius, ssaoIntensity;
     int32_t ssaoSamples;
+    int32_t dofEnabled;
+    float dofFocusDist, dofAperture, dofMaxBlur;
     int32_t motionBlurEnabled;
     float motionBlurIntensity;
     int32_t motionBlurSamples;
@@ -3599,6 +3611,7 @@ static void metal_fill_postfx_params(VGFXMetalContext *ctx,
     params->bloomEnabled = postfx->bloom_enabled ? 1 : 0;
     params->bloomThreshold = postfx->bloom_threshold;
     params->bloomStrength = postfx->bloom_intensity;
+    params->bloomPasses = postfx->bloom_passes;
     params->tonemapMode = (int32_t)postfx->tonemap_mode;
     params->tonemapExposure = postfx->tonemap_exposure;
     params->fxaaEnabled = postfx->fxaa_enabled ? 1 : 0;

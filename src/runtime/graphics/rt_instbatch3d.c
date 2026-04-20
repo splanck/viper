@@ -71,6 +71,10 @@ static void instbatch_copy_matrix_slot(float *dst,
     memcpy(&dst[(size_t)dst_idx * 16u], &src[(size_t)src_idx * 16u], 16u * sizeof(float));
 }
 
+/// @brief Drop a retained reference from a slot and clear it.
+/// @details Paired helper for the batch's mesh / material / user-data slots — the
+///   instance-batch owns refs to these, so finalize must release them. Idempotent on
+///   already-null slots so a partially-initialized batch can be torn down safely.
 static void instbatch_release_ref(void **slot) {
     if (!slot || !*slot)
         return;

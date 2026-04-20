@@ -92,12 +92,22 @@ vgfx3d_opengl_target_kind_t vgfx3d_opengl_choose_target_kind(int8_t rtt_active,
                               : VGFX3D_OPENGL_TARGET_SWAPCHAIN;
 }
 
+/// @brief Pick the GL internal color format for a given render-target classification.
+/// @details Scene targets go through tonemap/postfx, so they allocate HDR (half-float)
+///   to preserve intensity beyond [0, 1] prior to the final exposure curve. Swapchain
+///   and RTT targets stay in UNORM8 since those are the final consumer surfaces and
+///   extra precision is wasted on them.
 vgfx3d_opengl_color_format_t
 vgfx3d_opengl_choose_color_format(vgfx3d_opengl_target_kind_t target_kind) {
     return target_kind == VGFX3D_OPENGL_TARGET_SCENE ? VGFX3D_OPENGL_COLOR_FORMAT_HDR16F
                                                      : VGFX3D_OPENGL_COLOR_FORMAT_UNORM8;
 }
 
+/// @brief Select the GL blend mode for a draw command.
+/// @details Explicit `additive_blend` wins outright (used by particles, decals of fire,
+///   etc.). Otherwise the command's material alpha and vertex-color-alpha determine
+///   whether alpha blending is needed, via `vgfx3d_draw_cmd_uses_alpha_blend`. Opaque
+///   is the default — it skips the blend unit entirely and enables early-Z in the GPU.
 vgfx3d_opengl_blend_mode_t
 vgfx3d_opengl_choose_blend_mode(const vgfx3d_draw_cmd_t *cmd) {
     if (cmd && cmd->additive_blend)
@@ -106,6 +116,12 @@ vgfx3d_opengl_choose_blend_mode(const vgfx3d_draw_cmd_t *cmd) {
                                                  : VGFX3D_OPENGL_BLEND_OPAQUE;
 }
 
+/// @brief Decide whether a draw contributes to the motion-vector buffer.
+/// @details Motion vectors drive TAA / motion-blur postfx, both of which only run when
+///   the scene target is bound. Transparent draws are excluded because blended fragments
+///   don't have a single authoritative "this pixel came from there" source — their
+///   motion vectors would corrupt the reconstruction. Opaque scene draws write both
+///   color and motion; every other combination writes color only.
 vgfx3d_opengl_motion_attachment_mode_t
 vgfx3d_opengl_choose_motion_attachment_mode(vgfx3d_opengl_target_kind_t target_kind,
                                             const vgfx3d_draw_cmd_t *cmd) {

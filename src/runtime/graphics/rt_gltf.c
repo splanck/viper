@@ -26,9 +26,14 @@
 #include "rt_scene3d_internal.h"
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
+#include "rt_mat4.h"
+#include "rt_morphtarget3d.h"
 #include "rt_pixels.h"
+#include "rt_quat.h"
+#include "rt_skeleton3d_internal.h"
 #include "rt_skeleton3d.h"
 #include "rt_string.h"
+#include "rt_vec3.h"
 
 #include <limits.h>
 #include <math.h>
@@ -80,9 +85,27 @@ typedef struct {
     int32_t mesh_count;
     void **materials;
     int32_t material_count;
+    void **skeletons;
+    int32_t skeleton_count;
+    void **animations;
+    int32_t animation_count;
     void *scene_root;
     int32_t node_count;
 } rt_gltf_asset;
+
+typedef struct {
+    void *skeleton;
+    int32_t *joint_nodes;
+    int32_t *joint_to_bone;
+    int32_t joint_count;
+} gltf_skin_t;
+
+static void *jget(void *obj, const char *key);
+static void *jarr(void *obj, const char *key);
+static const char *jstr(void *obj, const char *key);
+static int64_t jarr_len(void *arr);
+static double jvalue_num(void *value, double def);
+static int64_t jvalue_int(void *value, int64_t def);
 
 /// @brief GC finalizer for an `rt_gltf_asset` — release every owned mesh / material / scene root.
 static void gltf_asset_finalize(void *obj) {
@@ -103,6 +126,22 @@ static void gltf_asset_finalize(void *obj) {
     }
     free(a->materials);
     a->materials = NULL;
+    if (a->skeletons) {
+        for (int32_t i = 0; i < a->skeleton_count; i++) {
+            if (a->skeletons[i] && rt_obj_release_check0(a->skeletons[i]))
+                rt_obj_free(a->skeletons[i]);
+        }
+    }
+    free(a->skeletons);
+    a->skeletons = NULL;
+    if (a->animations) {
+        for (int32_t i = 0; i < a->animation_count; i++) {
+            if (a->animations[i] && rt_obj_release_check0(a->animations[i]))
+                rt_obj_free(a->animations[i]);
+        }
+    }
+    free(a->animations);
+    a->animations = NULL;
     if (a->scene_root && rt_obj_release_check0(a->scene_root))
         rt_obj_free(a->scene_root);
     a->scene_root = NULL;
@@ -194,6 +233,72 @@ static void gltf_matrix_column_major_to_row_major(const double *src, double *dst
         for (int col = 0; col < 4; col++)
             dst[row * 4 + col] = src[col * 4 + row];
     }
+}
+
+static void gltf_build_trs_matrix(const double *pos,
+                                  const double *quat,
+                                  const double *scale,
+                                  double *out) {
+    double x = quat[0], y = quat[1], z = quat[2], w = quat[3];
+    double x2 = x + x, y2 = y + y, z2 = z + z;
+    double xx = x * x2, xy = x * y2, xz = x * z2;
+    double yy = y * y2, yz = y * z2, zz = z * z2;
+    double wx = w * x2, wy = w * y2, wz = w * z2;
+    out[0] = (1.0 - (yy + zz)) * scale[0];
+    out[1] = (xy - wz) * scale[1];
+    out[2] = (xz + wy) * scale[2];
+    out[3] = pos[0];
+    out[4] = (xy + wz) * scale[0];
+    out[5] = (1.0 - (xx + zz)) * scale[1];
+    out[6] = (yz - wx) * scale[2];
+    out[7] = pos[1];
+    out[8] = (xz - wy) * scale[0];
+    out[9] = (yz + wx) * scale[1];
+    out[10] = (1.0 - (xx + yy)) * scale[2];
+    out[11] = pos[2];
+    out[12] = 0.0;
+    out[13] = 0.0;
+    out[14] = 0.0;
+    out[15] = 1.0;
+}
+
+static int gltf_node_local_matrix(void *nodes_arr, int32_t node_idx, double *out) {
+    void *node_json;
+    void *matrix_arr;
+    void *translation;
+    void *rotation;
+    void *scale_arr;
+    double pos[3] = {0.0, 0.0, 0.0};
+    double quat[4] = {0.0, 0.0, 0.0, 1.0};
+    double scale[3] = {1.0, 1.0, 1.0};
+    if (!nodes_arr || !out || node_idx < 0 || node_idx >= jarr_len(nodes_arr))
+        return 0;
+    node_json = rt_seq_get(nodes_arr, node_idx);
+    if (!node_json)
+        return 0;
+    matrix_arr = jarr(node_json, "matrix");
+    if (matrix_arr && jarr_len(matrix_arr) >= 16) {
+        double m[16];
+        for (int i = 0; i < 16; i++)
+            m[i] = jvalue_num(rt_seq_get(matrix_arr, (int64_t)i), i % 5 == 0 ? 1.0 : 0.0);
+        gltf_matrix_column_major_to_row_major(m, out);
+        return 1;
+    }
+    translation = jarr(node_json, "translation");
+    rotation = jarr(node_json, "rotation");
+    scale_arr = jarr(node_json, "scale");
+    for (int i = 0; i < 3; i++) {
+        if (translation && jarr_len(translation) > i)
+            pos[i] = jvalue_num(rt_seq_get(translation, i), pos[i]);
+        if (scale_arr && jarr_len(scale_arr) > i)
+            scale[i] = jvalue_num(rt_seq_get(scale_arr, i), scale[i]);
+    }
+    for (int i = 0; i < 4; i++) {
+        if (rotation && jarr_len(rotation) > i)
+            quat[i] = jvalue_num(rt_seq_get(rotation, i), quat[i]);
+    }
+    gltf_build_trs_matrix(pos, quat, scale, out);
+    return 1;
 }
 
 // ---------------------------------------------------------------------------
@@ -749,6 +854,111 @@ static void gltf_release_local(void *obj) {
     gltf_release_ref(&tmp);
 }
 
+static const char *gltf_target_name(void *mesh_json,
+                                    int32_t target_index,
+                                    char *fallback,
+                                    size_t fallback_cap) {
+    void *extras;
+    void *names;
+    rt_string name;
+    const char *cstr;
+    if (fallback && fallback_cap > 0) {
+        snprintf(fallback, fallback_cap, "target_%d", (int)target_index);
+        fallback[fallback_cap - 1] = '\0';
+    }
+    extras = jget(mesh_json, "extras");
+    names = extras ? jarr(extras, "targetNames") : NULL;
+    if (!names || target_index < 0 || target_index >= jarr_len(names))
+        return fallback;
+    name = (rt_string)rt_seq_get(names, target_index);
+    cstr = name ? rt_string_cstr(name) : NULL;
+    return cstr && cstr[0] != '\0' ? cstr : fallback;
+}
+
+static void gltf_import_primitive_morph_targets(void *root,
+                                                gltf_buffer_t *buffers,
+                                                int buf_count,
+                                                void *mesh_json,
+                                                void *prim,
+                                                void *mesh_obj,
+                                                int32_t vertex_count) {
+    void *targets;
+    void *mesh_weights;
+    void *morph = NULL;
+    int64_t target_count;
+    if (!root || !prim || !mesh_obj || vertex_count <= 0)
+        return;
+    targets = jarr(prim, "targets");
+    target_count = jarr_len(targets);
+    if (!targets || target_count <= 0)
+        return;
+
+    morph = rt_morphtarget3d_new(vertex_count);
+    if (!morph)
+        return;
+    mesh_weights = mesh_json ? jarr(mesh_json, "weights") : NULL;
+
+    for (int64_t ti = 0; ti < target_count; ti++) {
+        void *target = rt_seq_get(targets, ti);
+        int64_t pos_acc = jint(target, "POSITION", -1);
+        int64_t norm_acc = jint(target, "NORMAL", -1);
+        gltf_accessor_view_t pos_view;
+        gltf_accessor_view_t norm_view;
+        int has_pos = gltf_get_accessor_view(root, pos_acc, buffers, buf_count, &pos_view);
+        int has_norm = gltf_get_accessor_view(root, norm_acc, buffers, buf_count, &norm_view);
+        char fallback_name[64];
+        const char *name;
+        int64_t shape;
+        if (!has_pos && !has_norm)
+            continue;
+
+        name = gltf_target_name(mesh_json, (int32_t)ti, fallback_name, sizeof(fallback_name));
+        shape = rt_morphtarget3d_add_shape(morph, rt_const_cstr(name));
+        if (shape < 0)
+            continue;
+
+        if (mesh_weights && ti < jarr_len(mesh_weights))
+            rt_morphtarget3d_set_weight(
+                morph, shape, jvalue_num(rt_seq_get(mesh_weights, ti), 0.0));
+
+        if (has_pos) {
+            int32_t limit = pos_view.count < vertex_count ? pos_view.count : vertex_count;
+            for (int32_t vi = 0; vi < limit; vi++) {
+                float delta[3] = {0.0f, 0.0f, 0.0f};
+                gltf_accessor_read_f32(&pos_view, vi, delta, 3);
+                rt_morphtarget3d_set_delta(morph, shape, vi, delta[0], delta[1], delta[2]);
+            }
+        }
+        if (has_norm) {
+            int32_t limit = norm_view.count < vertex_count ? norm_view.count : vertex_count;
+            for (int32_t vi = 0; vi < limit; vi++) {
+                float delta[3] = {0.0f, 0.0f, 0.0f};
+                gltf_accessor_read_f32(&norm_view, vi, delta, 3);
+                rt_morphtarget3d_set_normal_delta(morph, shape, vi, delta[0], delta[1], delta[2]);
+            }
+        }
+    }
+
+    if (rt_morphtarget3d_get_shape_count(morph) > 0)
+        rt_mesh3d_set_morph_targets(mesh_obj, morph);
+    gltf_release_local(morph);
+}
+
+static void gltf_apply_node_morph_weights(void *mesh_obj, void *weights_arr) {
+    rt_mesh3d *mesh = (rt_mesh3d *)mesh_obj;
+    int64_t shape_count;
+    int64_t limit;
+    if (!mesh || !mesh->morph_targets_ref || !weights_arr)
+        return;
+    shape_count = rt_morphtarget3d_get_shape_count(mesh->morph_targets_ref);
+    limit = jarr_len(weights_arr);
+    if (limit > shape_count)
+        limit = shape_count;
+    for (int64_t i = 0; i < limit; i++)
+        rt_morphtarget3d_set_weight(
+            mesh->morph_targets_ref, i, jvalue_num(rt_seq_get(weights_arr, i), 0.0));
+}
+
 /// @brief Combine a glTF document's directory with a relative URI to get an absolute filesystem path.
 ///
 /// External buffers and textures in glTF are referenced via paths
@@ -806,17 +1016,693 @@ static void gltf_build_embedded_name(const char *mime_type,
     snprintf(out, out_cap, "embedded%s", ext);
 }
 
+/// @brief Reverse-lookup: given a glTF node index, return the local joint slot within
+///        this skin (or -1 if the node isn't part of it). Linear scan is fine because
+///        typical skins have fewer than ~64 joints.
+static int gltf_skin_find_joint(const gltf_skin_t *skin, int32_t node_idx) {
+    if (!skin)
+        return -1;
+    for (int32_t i = 0; i < skin->joint_count; i++)
+        if (skin->joint_nodes[i] == node_idx)
+            return i;
+    return -1;
+}
+
+/// @brief Depth-first registration of a glTF joint into the engine's skeleton.
+/// @details Converts one joint (plus all of its joint-space descendants) into engine
+///          bones, preserving the parent/child hierarchy. Each node's local TRS is
+///          folded into a bind matrix via `gltf_node_local_matrix` and registered with
+///          `rt_skeleton3d_add_bone`.
+///
+///          `skin->joint_to_bone[joint_local]` doubles as a cycle-break tri-state:
+///            -1 = not visited, -2 = currently on the recursion stack, >=0 = bone idx.
+///          A self-referential or cyclic joint graph (malformed glTF) will hit the -2
+///          guard and bail instead of overflowing the stack. Unresolved joints stay at
+///          -1 so callers can retry them as roots on a second pass.
+///
+///          Children are discovered through the JSON "children" array of the node, not
+///          through a prebuilt parent table — this lets one joint be skipped (e.g. when
+///          its own parent-joint lookup failed) and still be picked up later as a root.
+/// @param skin Skin context; its `joint_to_bone` array is mutated in place.
+/// @param nodes_arr JSON "nodes" array from the glTF root (used for traversal).
+/// @param joint_local Zero-based index into `skin->joint_nodes`.
+/// @param parent_bone Engine bone index of the parent, or -1 to make a root bone.
+/// @return The newly added bone index, or -1 on failure / cycle.
+static int64_t gltf_add_skin_joint_recursive(gltf_skin_t *skin,
+                                             void *nodes_arr,
+                                             int32_t joint_local,
+                                             int64_t parent_bone) {
+    int32_t node_idx;
+    void *node_json;
+    const char *name;
+    char generated_name[64];
+    double local[16];
+    void *bind_mat;
+    int64_t bone_idx;
+    void *children;
+    if (!skin || !skin->skeleton || !nodes_arr || joint_local < 0 ||
+        joint_local >= skin->joint_count)
+        return -1;
+    if (skin->joint_to_bone[joint_local] >= 0)
+        return skin->joint_to_bone[joint_local];
+    if (skin->joint_to_bone[joint_local] == -2)
+        return -1;
+    skin->joint_to_bone[joint_local] = -2;
+    node_idx = skin->joint_nodes[joint_local];
+    if (!gltf_node_local_matrix(nodes_arr, node_idx, local)) {
+        skin->joint_to_bone[joint_local] = -1;
+        return -1;
+    }
+    node_json = rt_seq_get(nodes_arr, node_idx);
+    name = jstr(node_json, "name");
+    if (!name || name[0] == '\0') {
+        snprintf(generated_name, sizeof(generated_name), "joint_%d", (int)joint_local);
+        name = generated_name;
+    }
+    bind_mat = rt_mat4_new(local[0],
+                           local[1],
+                           local[2],
+                           local[3],
+                           local[4],
+                           local[5],
+                           local[6],
+                           local[7],
+                           local[8],
+                           local[9],
+                           local[10],
+                           local[11],
+                           local[12],
+                           local[13],
+                           local[14],
+                           local[15]);
+    bone_idx = rt_skeleton3d_add_bone(skin->skeleton, rt_const_cstr(name), parent_bone, bind_mat);
+    gltf_release_ref(&bind_mat);
+    if (bone_idx < 0) {
+        skin->joint_to_bone[joint_local] = -1;
+        return -1;
+    }
+    skin->joint_to_bone[joint_local] = (int32_t)bone_idx;
+
+    children = jarr(node_json, "children");
+    for (int64_t ci = 0; ci < jarr_len(children); ci++) {
+        int32_t child_node = (int32_t)jvalue_int(rt_seq_get(children, ci), -1);
+        int32_t child_joint = gltf_skin_find_joint(skin, child_node);
+        if (child_joint >= 0)
+            gltf_add_skin_joint_recursive(skin, nodes_arr, child_joint, bone_idx);
+    }
+    return bone_idx;
+}
+
+/// @brief Release the per-skin scratch buffers held in an array produced by
+///        `gltf_parse_skins`. Does NOT release the skeleton object itself — that is
+///        owned by `asset->skeletons` and lives beyond the parse step.
+static void gltf_free_skins(gltf_skin_t *skins, int32_t skin_count) {
+    if (!skins)
+        return;
+    for (int32_t i = 0; i < skin_count; i++) {
+        free(skins[i].joint_nodes);
+        free(skins[i].joint_to_bone);
+    }
+    free(skins);
+}
+
+/// @brief Parse every skin in a glTF document into engine `Skeleton3D` objects.
+/// @details Walks the top-level "skins" array and, for each skin, builds a Skeleton3D
+///          whose bones mirror the skin's joint hierarchy. The pipeline per skin is:
+///            1. Build a `node_parents[]` lookup table (single O(N) pass over nodes)
+///               so we can identify root joints (parent-of-joint not in same skin).
+///            2. For each skin, allocate `joint_nodes` / `joint_to_bone` scratch.
+///            3. First pass: register only root joints (parent outside the skin) so
+///               they become root bones.
+///            4. Second pass: any joint still unresolved (disconnected subtree, joint
+///               order shenanigans) is added as its own root.
+///            5. `rt_skeleton3d_compute_inverse_bind` computes the fallback inverse
+///               bind matrices from local TRS, then if the skin provides
+///               "inverseBindMatrices" the values are read and transposed from
+///               glTF column-major into the engine's row-major layout.
+///
+///          On allocation failure the partial state is rolled back (node_parents freed,
+///          skins freed, asset->skeletons cleared) so the asset is never left in a
+///          half-built state.
+///
+///          Output `out_skins` is optional; when NULL the caller indicates they only
+///          want the skeletons populated on `asset` and the helper table is freed.
+/// @param asset Target asset — `skeletons` is allocated and populated.
+/// @param root glTF JSON root object.
+/// @param buffers Parsed buffer table (indexed by bufferView.buffer).
+/// @param buf_count Number of entries in `buffers`.
+/// @param out_skins Optional; receives a per-skin scratch array (caller frees via
+///                  `gltf_free_skins`). Needed later to map vertex bone indices.
+/// @param out_skin_count Optional; receives the count that was written.
+static void gltf_parse_skins(rt_gltf_asset *asset,
+                             void *root,
+                             gltf_buffer_t *buffers,
+                             int buf_count,
+                             gltf_skin_t **out_skins,
+                             int32_t *out_skin_count) {
+    void *skins_arr = jarr(root, "skins");
+    void *nodes_arr = jarr(root, "nodes");
+    int32_t skin_count = (int32_t)jarr_len(skins_arr);
+    int32_t node_count = (int32_t)jarr_len(nodes_arr);
+    int32_t *node_parents = NULL;
+    gltf_skin_t *skins = NULL;
+    if (out_skins)
+        *out_skins = NULL;
+    if (out_skin_count)
+        *out_skin_count = 0;
+    if (!asset || !skins_arr || skin_count <= 0 || !nodes_arr || node_count <= 0)
+        return;
+
+    node_parents = (int32_t *)malloc((size_t)node_count * sizeof(*node_parents));
+    skins = (gltf_skin_t *)calloc((size_t)skin_count, sizeof(*skins));
+    asset->skeletons = (void **)calloc((size_t)skin_count, sizeof(void *));
+    if (!node_parents || !skins || !asset->skeletons) {
+        free(node_parents);
+        gltf_free_skins(skins, skin_count);
+        free(asset->skeletons);
+        asset->skeletons = NULL;
+        return;
+    }
+    for (int32_t i = 0; i < node_count; i++)
+        node_parents[i] = -1;
+    for (int32_t ni = 0; ni < node_count; ni++) {
+        void *node_json = rt_seq_get(nodes_arr, ni);
+        void *children = jarr(node_json, "children");
+        for (int64_t ci = 0; ci < jarr_len(children); ci++) {
+            int32_t child = (int32_t)jvalue_int(rt_seq_get(children, ci), -1);
+            if (child >= 0 && child < node_count)
+                node_parents[child] = ni;
+        }
+    }
+
+    for (int32_t si = 0; si < skin_count; si++) {
+        void *skin_json = rt_seq_get(skins_arr, si);
+        void *joints = jarr(skin_json, "joints");
+        int32_t joint_count = (int32_t)jarr_len(joints);
+        if (joint_count <= 0)
+            continue;
+        skins[si].joint_nodes = (int32_t *)calloc((size_t)joint_count, sizeof(int32_t));
+        skins[si].joint_to_bone = (int32_t *)malloc((size_t)joint_count * sizeof(int32_t));
+        skins[si].joint_count = joint_count;
+        skins[si].skeleton = rt_skeleton3d_new();
+        if (!skins[si].joint_nodes || !skins[si].joint_to_bone || !skins[si].skeleton) {
+            if (skins[si].skeleton)
+                gltf_release_ref(&skins[si].skeleton);
+            free(skins[si].joint_nodes);
+            free(skins[si].joint_to_bone);
+            skins[si].joint_nodes = NULL;
+            skins[si].joint_to_bone = NULL;
+            skins[si].joint_count = 0;
+            continue;
+        }
+        for (int32_t ji = 0; ji < joint_count; ji++) {
+            skins[si].joint_nodes[ji] = (int32_t)jvalue_int(rt_seq_get(joints, ji), -1);
+            skins[si].joint_to_bone[ji] = -1;
+        }
+        for (int32_t ji = 0; ji < joint_count; ji++) {
+            int32_t parent_node = skins[si].joint_nodes[ji] >= 0 &&
+                                          skins[si].joint_nodes[ji] < node_count
+                                      ? node_parents[skins[si].joint_nodes[ji]]
+                                      : -1;
+            if (gltf_skin_find_joint(&skins[si], parent_node) < 0)
+                gltf_add_skin_joint_recursive(&skins[si], nodes_arr, ji, -1);
+        }
+        for (int32_t ji = 0; ji < joint_count; ji++) {
+            if (skins[si].joint_to_bone[ji] < 0)
+                gltf_add_skin_joint_recursive(&skins[si], nodes_arr, ji, -1);
+        }
+        rt_skeleton3d_compute_inverse_bind(skins[si].skeleton);
+        {
+            int64_t ibm_acc = jint(skin_json, "inverseBindMatrices", -1);
+            gltf_accessor_view_t ibm_view;
+            if (gltf_get_accessor_view(root, ibm_acc, buffers, buf_count, &ibm_view)) {
+                rt_skeleton3d *skel = (rt_skeleton3d *)skins[si].skeleton;
+                int32_t limit = joint_count < ibm_view.count ? joint_count : ibm_view.count;
+                for (int32_t ji = 0; ji < limit; ji++) {
+                    int32_t bone = skins[si].joint_to_bone[ji];
+                    float col_major[16];
+                    if (bone < 0 || bone >= skel->bone_count)
+                        continue;
+                    gltf_accessor_read_f32(&ibm_view, ji, col_major, 16);
+                    for (int row = 0; row < 4; row++)
+                        for (int col = 0; col < 4; col++)
+                            skel->bones[bone].inverse_bind[row * 4 + col] =
+                                col_major[col * 4 + row];
+                }
+            }
+        }
+        asset->skeletons[asset->skeleton_count++] = skins[si].skeleton;
+    }
+    free(node_parents);
+    if (out_skins)
+        *out_skins = skins;
+    else
+        gltf_free_skins(skins, skin_count);
+    if (out_skin_count)
+        *out_skin_count = skin_count;
+}
+
+/// @brief Retarget a mesh's raw glTF joint indices onto the skin's engine bone indices.
+/// @details After vertex data is loaded, each vertex carries its original glTF joint
+///          indices (`bone_indices[0..3]`) and four weights. This function:
+///            - Translates each joint through `skin->joint_to_bone[]` to the matching
+///              engine bone index, dropping influences where the mapping is invalid or
+///              the weight is zero.
+///            - Renormalizes the surviving weights so they sum to 1 (glTF assets are
+///              meant to ship normalized but some exporters lie; one influence being
+///              dropped by the mapping would otherwise skew the result).
+///            - Writes the fixed-up (bone, weight) pairs back through
+///              `rt_mesh3d_set_bone_weights`.
+///          Tracks `max_bone` so the mesh's advertised bone count matches what the
+///          vertex data actually references — this is what the skinning shader uses to
+///          size the palette upload.
+/// @param mesh_obj Target mesh (mutated in place).
+/// @param skin Skin whose `joint_to_bone` table drives the remap.
+static void gltf_apply_skin_to_mesh(void *mesh_obj, const gltf_skin_t *skin) {
+    rt_mesh3d *mesh = (rt_mesh3d *)mesh_obj;
+    int32_t max_bone = 0;
+    if (!mesh || !skin || !skin->joint_to_bone)
+        return;
+    for (uint32_t vi = 0; vi < mesh->vertex_count; vi++) {
+        vgfx3d_vertex_t *v = &mesh->vertices[vi];
+        int64_t bones[4] = {0, 0, 0, 0};
+        double weights[4] = {0.0, 0.0, 0.0, 0.0};
+        double sum = 0.0;
+        for (int i = 0; i < 4; i++) {
+            uint8_t joint = v->bone_indices[i];
+            if (joint < skin->joint_count && skin->joint_to_bone[joint] >= 0 &&
+                v->bone_weights[i] > 0.0f) {
+                bones[i] = skin->joint_to_bone[joint];
+                weights[i] = v->bone_weights[i];
+                sum += weights[i];
+            }
+        }
+        if (sum <= 0.0)
+            continue;
+        for (int i = 0; i < 4; i++) {
+            weights[i] /= sum;
+            if (weights[i] > 0.0 && bones[i] + 1 > max_bone)
+                max_bone = (int32_t)(bones[i] + 1);
+        }
+        rt_mesh3d_set_bone_weights(mesh,
+                                   vi,
+                                   bones[0],
+                                   weights[0],
+                                   bones[1],
+                                   weights[1],
+                                   bones[2],
+                                   weights[2],
+                                   bones[3],
+                                   weights[3]);
+    }
+    mesh->bone_count = max_bone;
+}
+
+typedef struct {
+    int8_t valid;
+    int32_t path; /* 0=translation, 1=rotation, 2=scale */
+    int32_t node_idx;
+    int32_t bone_idx;
+    const char *interpolation;
+    gltf_accessor_view_t input;
+    gltf_accessor_view_t output;
+} gltf_anim_curve_t;
+
+static int32_t gltf_find_bone_for_node(const gltf_skin_t *skins,
+                                       int32_t skin_count,
+                                       int32_t node_idx) {
+    for (int32_t si = 0; si < skin_count; si++) {
+        int32_t joint = gltf_skin_find_joint(&skins[si], node_idx);
+        if (joint >= 0 && skins[si].joint_to_bone && skins[si].joint_to_bone[joint] >= 0)
+            return skins[si].joint_to_bone[joint];
+    }
+    return -1;
+}
+
+static double gltf_curve_time(const gltf_accessor_view_t *view, int32_t index) {
+    float t = 0.0f;
+    gltf_accessor_read_f32(view, index, &t, 1);
+    return (double)t;
+}
+
+/// @brief Insert `value` into a sorted-unique time list, growing the backing buffer as
+///        needed. Ignores values within 1e-6 of an existing entry (de-dup tolerance
+///        mirrors typical DCC exporter precision). The buffer doubles on growth
+///        starting at 16 entries so amortized cost is O(N log N) total.
+/// @return 1 on success, 0 on allocation failure (caller must free `*times` later).
+static int gltf_anim_insert_time(double **times,
+                                 int32_t *count,
+                                 int32_t *capacity,
+                                 double value) {
+    int32_t pos = 0;
+    while (pos < *count && (*times)[pos] < value - 1e-6)
+        pos++;
+    if (pos < *count && fabs((*times)[pos] - value) <= 1e-6)
+        return 1;
+    if (*count >= *capacity) {
+        int32_t new_capacity = *capacity == 0 ? 16 : *capacity * 2;
+        double *grown = (double *)realloc(*times, (size_t)new_capacity * sizeof(*grown));
+        if (!grown)
+            return 0;
+        *times = grown;
+        *capacity = new_capacity;
+    }
+    memmove(&(*times)[pos + 1], &(*times)[pos], (size_t)(*count - pos) * sizeof(**times));
+    (*times)[pos] = value;
+    (*count)++;
+    return 1;
+}
+
+/// @brief Convert a keyframe index into the real output-accessor offset for the curve.
+/// @details glTF CUBICSPLINE samplers store three floats-per-component per keyframe in
+///          the order [in-tangent, value, out-tangent]. So for N keyframes the output
+///          accessor holds 3N entries and the actual "value" element we want is
+///          `key_index * 3 + 1`. STEP and LINEAR samplers store one entry per key and
+///          map identity.
+static int32_t gltf_curve_output_index(const gltf_anim_curve_t *curve, int32_t key_index) {
+    if (curve && curve->interpolation && strcmp(curve->interpolation, "CUBICSPLINE") == 0)
+        return key_index * 3 + 1;
+    return key_index;
+}
+
+static void gltf_curve_read_output_value(const gltf_anim_curve_t *curve,
+                                         int32_t output_index,
+                                         float *out,
+                                         int32_t components) {
+    gltf_accessor_read_f32(&curve->output, output_index, out, components);
+}
+
+/// @brief Read `components` floats for one logical keyframe from the curve's output
+///        accessor, handling the CUBICSPLINE stride quirk transparently.
+static void gltf_curve_read_value(const gltf_anim_curve_t *curve,
+                                  int32_t key_index,
+                                  float *out,
+                                  int32_t components) {
+    gltf_curve_read_output_value(curve, gltf_curve_output_index(curve, key_index), out, components);
+}
+
+static void gltf_normalize_sample_if_quat(float *out, int32_t components) {
+    if (components == 4) {
+        float len =
+            sqrtf(out[0] * out[0] + out[1] * out[1] + out[2] * out[2] + out[3] * out[3]);
+        if (len > 1e-6f) {
+            for (int c = 0; c < 4; c++)
+                out[c] /= len;
+        }
+    }
+}
+
+/// @brief Sample an animation curve at an arbitrary time, respecting its interpolation.
+/// @details Handles clamping (before first / after last key), STEP interpolation (hold
+///          previous value), LINEAR interpolation, and glTF CUBICSPLINE Hermite sampling
+///          using the exported in/out tangents.
+///
+///          When sampling a rotation curve (`components == 4`) the blended quaternion
+///          is renormalized; linear quaternion blends otherwise drift below unit length
+///          on long playback and produce subtle scale creep.
+///
+///          The key-count is clamped to the smaller of input.count and output.count
+///          (or output.count/3 for CUBICSPLINE) so truncated/corrupt asset data can't
+///          run us past the accessor view.
+/// @param curve Source curve (must be marked valid; no-op otherwise).
+/// @param time Sample time in seconds.
+/// @param out Destination buffer of `components` floats.
+/// @param components 3 for translation/scale, 4 for rotation quaternions.
+static void gltf_sample_curve(const gltf_anim_curve_t *curve,
+                              double time,
+                              float *out,
+                              int32_t components) {
+    int32_t key_count;
+    if (!curve || !curve->valid || !out || components <= 0 || curve->input.count <= 0)
+        return;
+    key_count = curve->input.count;
+    if (curve->interpolation && strcmp(curve->interpolation, "CUBICSPLINE") == 0 &&
+        curve->output.count < key_count * 3)
+        key_count = curve->output.count / 3;
+    else if (curve->output.count < key_count)
+        key_count = curve->output.count;
+    if (key_count <= 0)
+        return;
+    if (time <= gltf_curve_time(&curve->input, 0)) {
+        gltf_curve_read_value(curve, 0, out, components);
+        gltf_normalize_sample_if_quat(out, components);
+        return;
+    }
+    for (int32_t i = 1; i < key_count; i++) {
+        double t0 = gltf_curve_time(&curve->input, i - 1);
+        double t1 = gltf_curve_time(&curve->input, i);
+        if (time <= t1 + 1e-6) {
+            float a[4] = {0.0f, 0.0f, 0.0f, 1.0f};
+            float b[4] = {0.0f, 0.0f, 0.0f, 1.0f};
+            double alpha = t1 > t0 ? (time - t0) / (t1 - t0) : 0.0;
+            if (alpha < 0.0)
+                alpha = 0.0;
+            if (alpha > 1.0)
+                alpha = 1.0;
+            gltf_curve_read_value(curve, i - 1, a, components);
+            if (curve->interpolation && strcmp(curve->interpolation, "STEP") == 0) {
+                memcpy(out, a, (size_t)components * sizeof(float));
+                return;
+            }
+            if (curve->interpolation && strcmp(curve->interpolation, "CUBICSPLINE") == 0) {
+                float out_tangent0[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+                float in_tangent1[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+                double dt = t1 - t0;
+                double t2 = alpha * alpha;
+                double t3 = t2 * alpha;
+                double h00 = 2.0 * t3 - 3.0 * t2 + 1.0;
+                double h10 = t3 - 2.0 * t2 + alpha;
+                double h01 = -2.0 * t3 + 3.0 * t2;
+                double h11 = t3 - t2;
+                gltf_curve_read_output_value(curve, (i - 1) * 3 + 2, out_tangent0, components);
+                gltf_curve_read_output_value(curve, i * 3, in_tangent1, components);
+                gltf_curve_read_value(curve, i, b, components);
+                for (int c = 0; c < components; c++) {
+                    out[c] = (float)(h00 * a[c] + h10 * dt * out_tangent0[c] +
+                                     h01 * b[c] + h11 * dt * in_tangent1[c]);
+                }
+                gltf_normalize_sample_if_quat(out, components);
+                return;
+            }
+            gltf_curve_read_value(curve, i, b, components);
+            for (int c = 0; c < components; c++)
+                out[c] = (float)(a[c] + (b[c] - a[c]) * alpha);
+            gltf_normalize_sample_if_quat(out, components);
+            return;
+        }
+    }
+    gltf_curve_read_value(curve, key_count - 1, out, components);
+    gltf_normalize_sample_if_quat(out, components);
+}
+
+/// @brief Parse the glTF "animations" array into engine `Animation3D` objects.
+/// @details glTF animation data is channel-oriented: each channel pairs a sampler
+///          (keyframe data) with a target (node + property path: translation /
+///          rotation / scale). The engine, in contrast, is bone-oriented: one
+///          Animation3D holds per-bone keyframes where each keyframe records T/R/S
+///          atomically.
+///
+///          This conversion works in two passes per glTF animation:
+///            1. Build a `curves[]` table where each entry resolves (node, path,
+///               sampler data, interpolation mode). Unknown paths, missing accessors,
+///               or non-skinned targets are dropped here. `duration` is accumulated
+///               as the max input-time across all valid channels.
+///            2. For each engine bone in [0, VGFX3D_MAX_BONES):
+///                 - Collect every time stamp from every curve targeting that bone,
+///                   deduplicated and sorted by `gltf_anim_insert_time`.
+///                 - Seed T/R/S from the node's bind pose so bones without a channel
+///                   keep their rest value.
+///                 - At each time stamp sample all three curves and emit a merged
+///                   keyframe. Missing curves inherit the bind-pose seed.
+///                 - Release the Vec3/Quat temporaries immediately (the animation
+///                   retains its own references internally).
+///          Animations that produce no keyframes (e.g. all targets missed the skin)
+///          are released rather than filed — a NULL-keyframe animation would just
+///          waste a slot.
+///
+///          Animations are flagged looping by default; callers can override via
+///          `rt_animation3d_set_looping` after load.
+/// @param asset Receiver for the populated `animations` array.
+/// @param root glTF JSON root.
+/// @param buffers Parsed buffer table used by `gltf_get_accessor_view`.
+/// @param buf_count Length of `buffers`.
+/// @param skins Scratch skins produced by `gltf_parse_skins`, used to resolve
+///              (node → bone index) without rebuilding a lookup.
+/// @param skin_count Length of `skins`.
+static void gltf_parse_animations(rt_gltf_asset *asset,
+                                  void *root,
+                                  gltf_buffer_t *buffers,
+                                  int buf_count,
+                                  const gltf_skin_t *skins,
+                                  int32_t skin_count) {
+    void *anims_arr = jarr(root, "animations");
+    void *nodes_arr = jarr(root, "nodes");
+    int32_t anim_count = (int32_t)jarr_len(anims_arr);
+    if (!asset || !anims_arr || anim_count <= 0 || !skins || skin_count <= 0)
+        return;
+    asset->animations = (void **)calloc((size_t)anim_count, sizeof(void *));
+    if (!asset->animations)
+        return;
+    for (int32_t ai = 0; ai < anim_count; ai++) {
+        void *anim_json = rt_seq_get(anims_arr, ai);
+        void *channels = jarr(anim_json, "channels");
+        void *samplers = jarr(anim_json, "samplers");
+        int32_t channel_count = (int32_t)jarr_len(channels);
+        gltf_anim_curve_t *curves;
+        double duration = 0.0;
+        int emitted_any = 0;
+        const char *name = jstr(anim_json, "name");
+        char generated_name[64];
+        void *anim;
+        if (channel_count <= 0 || !samplers)
+            continue;
+        curves = (gltf_anim_curve_t *)calloc((size_t)channel_count, sizeof(*curves));
+        if (!curves)
+            continue;
+        for (int32_t ci = 0; ci < channel_count; ci++) {
+            void *channel = rt_seq_get(channels, ci);
+            void *target = jget(channel, "target");
+            const char *path = jstr(target, "path");
+            int64_t sampler_idx = jint(channel, "sampler", -1);
+            int64_t node_idx = jint(target, "node", -1);
+            void *sampler;
+            int32_t bone_idx;
+            if (sampler_idx < 0 || sampler_idx >= jarr_len(samplers) || node_idx < 0)
+                continue;
+            bone_idx = gltf_find_bone_for_node(skins, skin_count, (int32_t)node_idx);
+            if (bone_idx < 0)
+                continue;
+            sampler = rt_seq_get(samplers, sampler_idx);
+            if (!path || strcmp(path, "translation") == 0)
+                curves[ci].path = 0;
+            else if (strcmp(path, "rotation") == 0)
+                curves[ci].path = 1;
+            else if (strcmp(path, "scale") == 0)
+                curves[ci].path = 2;
+            else
+                continue;
+            if (!gltf_get_accessor_view(root, jint(sampler, "input", -1), buffers, buf_count, &curves[ci].input) ||
+                !gltf_get_accessor_view(root, jint(sampler, "output", -1), buffers, buf_count, &curves[ci].output))
+                continue;
+            curves[ci].valid = 1;
+            curves[ci].node_idx = (int32_t)node_idx;
+            curves[ci].bone_idx = bone_idx;
+            curves[ci].interpolation = jstr(sampler, "interpolation");
+            for (int32_t ti = 0; ti < curves[ci].input.count; ti++) {
+                double t = gltf_curve_time(&curves[ci].input, ti);
+                if (t > duration)
+                    duration = t;
+            }
+        }
+        if (!name || name[0] == '\0') {
+            snprintf(generated_name, sizeof(generated_name), "animation_%d", (int)ai);
+            name = generated_name;
+        }
+        anim = rt_animation3d_new(rt_const_cstr(name), duration > 0.0 ? duration : 1.0);
+        if (!anim) {
+            free(curves);
+            continue;
+        }
+        for (int32_t bone = 0; bone < VGFX3D_MAX_BONES; bone++) {
+            double *times = NULL;
+            int32_t time_count = 0;
+            int32_t time_capacity = 0;
+            int32_t node_idx = -1;
+            const gltf_anim_curve_t *curve_t = NULL;
+            const gltf_anim_curve_t *curve_r = NULL;
+            const gltf_anim_curve_t *curve_s = NULL;
+            double local[16];
+            double pos_d[3];
+            double rot_d[4];
+            double scl_d[3];
+            for (int32_t ci = 0; ci < channel_count; ci++) {
+                if (!curves[ci].valid || curves[ci].bone_idx != bone)
+                    continue;
+                node_idx = curves[ci].node_idx;
+                if (curves[ci].path == 0)
+                    curve_t = &curves[ci];
+                else if (curves[ci].path == 1)
+                    curve_r = &curves[ci];
+                else if (curves[ci].path == 2)
+                    curve_s = &curves[ci];
+                for (int32_t ti = 0; ti < curves[ci].input.count; ti++)
+                    gltf_anim_insert_time(&times, &time_count, &time_capacity,
+                                          gltf_curve_time(&curves[ci].input, ti));
+            }
+            if (time_count <= 0 || node_idx < 0) {
+                free(times);
+                continue;
+            }
+            if (!gltf_node_local_matrix(nodes_arr, node_idx, local)) {
+                free(times);
+                continue;
+            }
+            gltf_matrix_to_trs(local, pos_d, rot_d, scl_d);
+            for (int32_t ti = 0; ti < time_count; ti++) {
+                float pos[3] = {(float)pos_d[0], (float)pos_d[1], (float)pos_d[2]};
+                float rot[4] = {(float)rot_d[0], (float)rot_d[1], (float)rot_d[2], (float)rot_d[3]};
+                float scl[3] = {(float)scl_d[0], (float)scl_d[1], (float)scl_d[2]};
+                void *pos_obj;
+                void *rot_obj;
+                void *scl_obj;
+                gltf_sample_curve(curve_t, times[ti], pos, 3);
+                gltf_sample_curve(curve_r, times[ti], rot, 4);
+                gltf_sample_curve(curve_s, times[ti], scl, 3);
+                pos_obj = rt_vec3_new(pos[0], pos[1], pos[2]);
+                rot_obj = rt_quat_new(rot[0], rot[1], rot[2], rot[3]);
+                scl_obj = rt_vec3_new(scl[0], scl[1], scl[2]);
+                rt_animation3d_add_keyframe(anim, bone, times[ti], pos_obj, rot_obj, scl_obj);
+                gltf_release_ref(&pos_obj);
+                gltf_release_ref(&rot_obj);
+                gltf_release_ref(&scl_obj);
+                emitted_any = 1;
+            }
+            free(times);
+        }
+        free(curves);
+        if (!emitted_any) {
+            gltf_release_ref(&anim);
+            continue;
+        }
+        rt_animation3d_set_looping(anim, 1);
+        asset->animations[asset->animation_count++] = anim;
+    }
+}
+
 //===----------------------------------------------------------------------===//
 // Main loader
 //===----------------------------------------------------------------------===//
 
-/// @brief Load a glTF 2.0 binary (.glb) file and extract meshes and materials.
-/// @details Parses the GLB container (JSON chunk + binary buffer), resolves
-///          accessors → buffer views → byte ranges, and constructs Mesh3D and
-///          Material3D objects. Supports POSITION, NORMAL, TEXCOORD_0 attributes
-///          and indexed geometry. Materials use baseColorFactor/baseColorTexture.
-/// @param path File path to the .glb file (runtime string).
-/// @return Opaque GLTF asset handle, or NULL on failure.
+/// @brief Load a glTF 2.0 asset from disk and build the engine representation.
+/// @details Top-level entry point that orchestrates the entire load pipeline. The
+///          high-level stages are:
+///            1. Read the whole file (hard cap 256 MiB to avoid denial-of-service
+///              on pathological inputs).
+///            2. Detect format: the 4-byte magic `glTF` signals a binary GLB
+///              container, otherwise treat the bytes as a JSON `.gltf`.
+///            3. For GLB: walk the chunk list, extracting the JSON chunk and the
+///              embedded BIN chunk (which substitutes for buffer index 0).
+///            4. Parse buffers (data-URIs and external files), bufferViews,
+///              accessors, and textures into a `gltf_buffer_t[]` scratch table.
+///            5. Walk the first scene: for every mesh primitive, decode
+///              POSITION / NORMAL / TEXCOORD_0 / TANGENT / JOINTS_0 / WEIGHTS_0
+///              attributes through their accessor views, plus the index buffer,
+///              and build a Mesh3D.
+///            6. Materials: baseColorFactor + baseColorTexture resolved to
+///              Material3D. Missing materials fall back to white.
+///            7. If skins are present, `gltf_parse_skins` builds Skeleton3D objects
+///              and `gltf_apply_skin_to_mesh` retargets the vertex bone indices
+///              onto engine bones.
+///            8. `gltf_parse_animations` converts glTF sampler/channel data into
+///              bone-oriented Animation3D.
+///            9. Release scratch buffers (decoded binary data freed; accessor
+///               views point into buffers freed at end).
+///
+///          Failure paths: any I/O error, JSON parse error, or allocation failure
+///          returns NULL. Partial state is rolled back via `gltf_release_ref` so
+///          the caller never sees a half-built asset.
+/// @param path File path to `.gltf` or `.glb`.
+/// @return Opaque rt_gltf_asset*, or NULL on failure.
 void *rt_gltf_load(rt_string path) {
     if (!path)
         return NULL;
@@ -917,6 +1803,9 @@ void *rt_gltf_load(rt_string path) {
     int *mesh_prim_start = NULL;
     int *mesh_prim_count = NULL;
     void **primitive_materials = NULL;
+    gltf_skin_t *skins = NULL;
+    int32_t skin_count = 0;
+    int32_t *mesh_applied_skin = NULL;
     if (!buffers) {
         free(file_data);
         return NULL;
@@ -982,6 +1871,10 @@ void *rt_gltf_load(rt_string path) {
     asset->mesh_count = 0;
     asset->materials = NULL;
     asset->material_count = 0;
+    asset->skeletons = NULL;
+    asset->skeleton_count = 0;
+    asset->animations = NULL;
+    asset->animation_count = 0;
     asset->scene_root = NULL;
     asset->node_count = 0;
     rt_obj_set_finalizer(asset, gltf_asset_finalize);
@@ -1301,6 +2194,8 @@ void *rt_gltf_load(rt_string path) {
                         if (prim_material && prim_material->normal_map)
                             rt_mesh3d_calc_tangents(mesh);
                     }
+                    gltf_import_primitive_morph_targets(
+                        root, buffers, buf_count, mesh_json, prim, mesh, pos_view.count);
 
                     asset->meshes[mesh_idx++] = mesh;
                     asset->mesh_count = mesh_idx;
@@ -1308,6 +2203,16 @@ void *rt_gltf_load(rt_string path) {
                         primitive_materials[mesh_idx - 1] = asset->materials[material_idx];
                 }
             }
+        }
+    }
+
+    gltf_parse_skins(asset, root, buffers, buf_count, &skins, &skin_count);
+    gltf_parse_animations(asset, root, buffers, buf_count, skins, skin_count);
+    if (asset->mesh_count > 0) {
+        mesh_applied_skin = (int32_t *)malloc((size_t)asset->mesh_count * sizeof(*mesh_applied_skin));
+        if (mesh_applied_skin) {
+            for (int32_t i = 0; i < asset->mesh_count; i++)
+                mesh_applied_skin[i] = -1;
         }
     }
 
@@ -1328,7 +2233,9 @@ void *rt_gltf_load(rt_string path) {
                 void *rotation = jarr(node_json, "rotation");
                 void *scale_arr = jarr(node_json, "scale");
                 void *matrix_arr = jarr(node_json, "matrix");
+                void *weights_arr = jarr(node_json, "weights");
                 int64_t mesh_ref = jint(node_json, "mesh", -1);
+                int64_t skin_ref = jint(node_json, "skin", -1);
                 nodes[ni] = node;
                 if (!node)
                     continue;
@@ -1383,6 +2290,23 @@ void *rt_gltf_load(rt_string path) {
                 if (mesh_ref >= 0 && mesh_ref < mesh_json_count && mesh_prim_count && mesh_prim_start) {
                     int prim_start = mesh_prim_start[mesh_ref];
                     int prim_count = mesh_prim_count[mesh_ref];
+                    if (skin_ref >= 0 && skin_ref < skin_count && mesh_applied_skin) {
+                        for (int pi = 0; pi < prim_count; pi++) {
+                            int mesh_index = prim_start + pi;
+                            if (mesh_index >= 0 && mesh_index < asset->mesh_count &&
+                                mesh_applied_skin[mesh_index] < 0) {
+                                gltf_apply_skin_to_mesh(asset->meshes[mesh_index], &skins[skin_ref]);
+                                mesh_applied_skin[mesh_index] = (int32_t)skin_ref;
+                            }
+                        }
+                    }
+                    if (weights_arr) {
+                        for (int pi = 0; pi < prim_count; pi++) {
+                            int mesh_index = prim_start + pi;
+                            if (mesh_index >= 0 && mesh_index < asset->mesh_count)
+                                gltf_apply_node_morph_weights(asset->meshes[mesh_index], weights_arr);
+                        }
+                    }
                     if (prim_count > 0) {
                         rt_scene_node3d_set_mesh(node, asset->meshes[prim_start]);
                         if (primitive_materials && primitive_materials[prim_start])
@@ -1457,6 +2381,8 @@ void *rt_gltf_load(rt_string path) {
     free(mesh_prim_start);
     free(mesh_prim_count);
     free(primitive_materials);
+    free(mesh_applied_skin);
+    gltf_free_skins(skins, skin_count);
 
     // Cleanup buffers (except BIN chunk which is part of file_data)
     for (int i = 0; i < buf_count; i++) {
@@ -1497,6 +2423,36 @@ void *rt_gltf_get_material(void *obj, int64_t index) {
     if (index < 0 || index >= a->material_count)
         return NULL;
     return a->materials[index];
+}
+
+/// @brief Number of skeletons extracted from the loaded glTF asset.
+int64_t rt_gltf_skeleton_count(void *obj) {
+    return obj ? ((rt_gltf_asset *)obj)->skeleton_count : 0;
+}
+
+/// @brief Get a skeleton by index from the loaded glTF asset.
+void *rt_gltf_get_skeleton(void *obj, int64_t index) {
+    if (!obj)
+        return NULL;
+    rt_gltf_asset *a = (rt_gltf_asset *)obj;
+    if (index < 0 || index >= a->skeleton_count)
+        return NULL;
+    return a->skeletons[index];
+}
+
+/// @brief Number of animation clips extracted from the loaded glTF asset.
+int64_t rt_gltf_animation_count(void *obj) {
+    return obj ? ((rt_gltf_asset *)obj)->animation_count : 0;
+}
+
+/// @brief Get an Animation3D clip by index from the loaded glTF asset.
+void *rt_gltf_get_animation(void *obj, int64_t index) {
+    if (!obj)
+        return NULL;
+    rt_gltf_asset *a = (rt_gltf_asset *)obj;
+    if (index < 0 || index >= a->animation_count)
+        return NULL;
+    return a->animations[index];
 }
 
 /// @brief Number of nodes in the loaded glTF scene tree (0 for NULL).

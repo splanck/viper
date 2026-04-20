@@ -512,7 +512,7 @@ typedef struct {
     GLint skybox_uSkybox;
 
     GLint postfx_uSceneTex, postfx_uSceneDepthTex, postfx_uSceneMotionTex, postfx_uInvResolution;
-    GLint postfx_uBloomEnabled, postfx_uBloomThreshold, postfx_uBloomIntensity;
+    GLint postfx_uBloomEnabled, postfx_uBloomThreshold, postfx_uBloomIntensity, postfx_uBloomPasses;
     GLint postfx_uTonemapMode, postfx_uTonemapExposure, postfx_uFxaaEnabled;
     GLint postfx_uColorGradeEnabled, postfx_uCgBrightness, postfx_uCgContrast, postfx_uCgSaturation;
     GLint postfx_uVignetteEnabled, postfx_uVignetteRadius, postfx_uVignetteSoftness;
@@ -1273,6 +1273,7 @@ static const char *const glsl_postfx_fragment_src[] = {
     "uniform int uBloomEnabled;\n"
     "uniform float uBloomThreshold;\n"
     "uniform float uBloomIntensity;\n"
+    "uniform int uBloomPasses;\n"
     "uniform int uTonemapMode;\n"
     "uniform float uTonemapExposure;\n"
     "uniform int uFxaaEnabled;\n"
@@ -1385,14 +1386,15 @@ static const char *const glsl_postfx_fragment_src[] = {
     "    if (uSsaoEnabled != 0) color *= computeSsao(vUV, depth);\n"
     "    if (uFxaaEnabled != 0) color = applyFxaa(vUV, color);\n"
     "    if (uBloomEnabled != 0) {\n"
+    "        vec2 bloomStep = uInvResolution * float(clamp(uBloomPasses, 0, 32));\n"
     "        vec3 bright = max(color - vec3(uBloomThreshold), vec3(0.0));\n"
-    "        bright += max(sampleScene(vUV + vec2(uInvResolution.x, 0.0)) - vec3(uBloomThreshold), "
+    "        bright += max(sampleScene(vUV + vec2(bloomStep.x, 0.0)) - vec3(uBloomThreshold), "
     "vec3(0.0));\n"
-    "        bright += max(sampleScene(vUV - vec2(uInvResolution.x, 0.0)) - vec3(uBloomThreshold), "
+    "        bright += max(sampleScene(vUV - vec2(bloomStep.x, 0.0)) - vec3(uBloomThreshold), "
     "vec3(0.0));\n"
-    "        bright += max(sampleScene(vUV + vec2(0.0, uInvResolution.y)) - vec3(uBloomThreshold), "
+    "        bright += max(sampleScene(vUV + vec2(0.0, bloomStep.y)) - vec3(uBloomThreshold), "
     "vec3(0.0));\n"
-    "        bright += max(sampleScene(vUV - vec2(0.0, uInvResolution.y)) - vec3(uBloomThreshold), "
+    "        bright += max(sampleScene(vUV - vec2(0.0, bloomStep.y)) - vec3(uBloomThreshold), "
     "vec3(0.0));\n"
     "        color += bright * (uBloomIntensity / 5.0);\n"
     "    }\n"
@@ -1762,6 +1764,11 @@ static GLuint gl_get_cached_texture(gl_context_t *ctx, const void *pixels_ptr) {
     return tex;
 }
 
+/// @brief Float max-LOD index for a cubemap's mip pyramid (parity with D3D11 version).
+/// @details Counts `log2(face_size)` levels down to 1×1. Returned as a float because
+///   GL's `TEXTURE_MAX_LOD` / `textureLod` uniforms take floats, and the returned value
+///   feeds prefiltered-environment sampling where fractional LODs select a blend between
+///   two adjacent mips for glossy reflection blur.
 static float gl_cubemap_max_lod(const rt_cubemap3d *cubemap) {
     int32_t size;
     float lod = 0.0f;
@@ -2295,6 +2302,7 @@ static void gl_apply_postfx_uniforms(gl_context_t *ctx, const vgfx3d_postfx_snap
         gl.Uniform1i(ctx->postfx_uBloomEnabled, 0);
         gl.Uniform1f(ctx->postfx_uBloomThreshold, 1.0f);
         gl.Uniform1f(ctx->postfx_uBloomIntensity, 0.0f);
+        gl.Uniform1i(ctx->postfx_uBloomPasses, 0);
         gl.Uniform1i(ctx->postfx_uTonemapMode, 0);
         gl.Uniform1f(ctx->postfx_uTonemapExposure, 1.0f);
         gl.Uniform1i(ctx->postfx_uFxaaEnabled, 0);
@@ -2322,6 +2330,7 @@ static void gl_apply_postfx_uniforms(gl_context_t *ctx, const vgfx3d_postfx_snap
     gl.Uniform1i(ctx->postfx_uBloomEnabled, snapshot->bloom_enabled ? 1 : 0);
     gl.Uniform1f(ctx->postfx_uBloomThreshold, snapshot->bloom_threshold);
     gl.Uniform1f(ctx->postfx_uBloomIntensity, snapshot->bloom_intensity);
+    gl.Uniform1i(ctx->postfx_uBloomPasses, snapshot->bloom_passes);
     gl.Uniform1i(ctx->postfx_uTonemapMode, snapshot->tonemap_mode);
     gl.Uniform1f(ctx->postfx_uTonemapExposure, snapshot->tonemap_exposure);
     gl.Uniform1i(ctx->postfx_uFxaaEnabled, snapshot->fxaa_enabled ? 1 : 0);
@@ -3454,6 +3463,7 @@ static void query_postfx_uniforms(gl_context_t *ctx) {
     ctx->postfx_uBloomEnabled = gl.GetUniformLocation(ctx->postfx_program, "uBloomEnabled");
     ctx->postfx_uBloomThreshold = gl.GetUniformLocation(ctx->postfx_program, "uBloomThreshold");
     ctx->postfx_uBloomIntensity = gl.GetUniformLocation(ctx->postfx_program, "uBloomIntensity");
+    ctx->postfx_uBloomPasses = gl.GetUniformLocation(ctx->postfx_program, "uBloomPasses");
     ctx->postfx_uTonemapMode = gl.GetUniformLocation(ctx->postfx_program, "uTonemapMode");
     ctx->postfx_uTonemapExposure = gl.GetUniformLocation(ctx->postfx_program, "uTonemapExposure");
     ctx->postfx_uFxaaEnabled = gl.GetUniformLocation(ctx->postfx_program, "uFxaaEnabled");

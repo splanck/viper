@@ -294,6 +294,12 @@ int64_t rt_canvas3d_get_backend_capabilities(void *obj) {
     return caps;
 }
 
+/// @brief Convert a user-facing capability string to its internal bitmask flag.
+/// @details `Canvas3D.SupportsCapability("shadows")` flows through here so the Zia-side
+///   name survives as a readable string rather than a numeric enum. Several common
+///   aliases are accepted per flag ("shadows" / "shadow_maps", "postfx" / "post_fx", etc.)
+///   so scripts can use whichever reads more natural. Unknown names return 0, which the
+///   caller treats as "capability not supported".
 static int64_t canvas3d_capability_from_name(const char *name) {
     if (!name || !*name)
         return 0;

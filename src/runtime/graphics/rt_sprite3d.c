@@ -62,6 +62,10 @@ typedef struct {
     void *cached_texture;  /* Track texture for material invalidation */
 } rt_sprite3d;
 
+/// @brief Release a GC-tracked reference slot and null it.
+/// @details Used for the three cached refs (`texture`, `cached_mesh`, `cached_material`)
+///   when the sprite is finalized or when the material needs to be rebuilt because the
+///   texture changed. Nulling the slot makes subsequent calls idempotent.
 static void sprite3d_release_ref(void **slot) {
     if (!slot || !*slot)
         return;

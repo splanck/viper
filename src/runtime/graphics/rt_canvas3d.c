@@ -64,6 +64,10 @@ static int canvas3d_backend_owns_gpu_rtt(const rt_canvas3d *c) {
     return c && c->render_target && c->backend && c->backend != &vgfx3d_software_backend;
 }
 
+/// @brief Clamp a double to `[0, 1]` and narrow to float; non-finite → 0.
+/// @details Canvas-facing RGB/alpha inputs come in as `double` from the IL, but the
+///   backends consume `float`. Sanitising and narrowing at this boundary keeps NaN out
+///   of shader uniforms and caps values at the physical [0, 1] range.
 static float canvas3d_clamp01_f64(double value) {
     if (!isfinite(value))
         return 0.0f;
@@ -74,6 +78,10 @@ static float canvas3d_clamp01_f64(double value) {
     return (float)value;
 }
 
+/// @brief Narrow a non-negative double to float; NaN/inf → `fallback`, negatives → 0.
+/// @details Used for scalar knobs without an upper bound (exposure, intensities, strengths)
+///   where the canvas wants to preserve the author's value faithfully but still refuse
+///   non-finite input.
 static float canvas3d_sanitize_nonnegative_f64(double value, float fallback) {
     if (!isfinite(value))
         return fallback;
@@ -385,6 +393,11 @@ static int8_t canvas3d_material_backface_cull(const rt_canvas3d *c, const rt_mat
     return (int8_t)(c->backface_cull && !(mat && mat->double_sided));
 }
 
+/// @brief Return 1 if any vertex in the mesh has a non-zero tangent vector.
+/// @details A "yes" on the first found tangent is sufficient — we only need to know
+///   whether the mesh was authored with tangent data or if they're still all zero from
+///   `rt_mesh3d_add_vertex` (which leaves tangents at 0 and handedness at 1). Early
+///   return on first hit keeps this O(1) for typical normal-mapped meshes.
 static int canvas3d_mesh_has_tangents(const rt_mesh3d *mesh) {
     if (!mesh || !mesh->vertices)
         return 0;
@@ -397,6 +410,12 @@ static int canvas3d_mesh_has_tangents(const rt_mesh3d *mesh) {
     return 0;
 }
 
+/// @brief Auto-generate per-vertex tangents when a mesh is about to be rendered with a normal map.
+/// @details Normal mapping requires a tangent frame per vertex to rotate tangent-space
+///   normals into world/view space. Rather than forcing every caller to pre-compute
+///   tangents, the canvas lazily calls `rt_mesh3d_calc_tangents` here if the material
+///   references a normal map and the mesh hasn't supplied them yet. No-op when already
+///   present — the `has_tangents` probe is cheap.
 static void canvas3d_ensure_normal_map_tangents(rt_mesh3d *mesh, const rt_material3d *mat) {
     if (!mesh || !mat || !mat->normal_map)
         return;

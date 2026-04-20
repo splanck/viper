@@ -16,6 +16,7 @@
 
 #include "rt_fbx_loader.h"
 #include "rt_gltf.h"
+#include "rt_morphtarget3d.h"
 #include "rt_object.h"
 #include "rt_scene3d.h"
 #include "rt_scene3d_internal.h"
@@ -405,11 +406,15 @@ void *rt_model3d_load(rt_string path) {
         void *asset = rt_gltf_load(path);
         int64_t mesh_count;
         int64_t material_count;
+        int64_t skeleton_count;
+        int64_t animation_count;
         void *scene_root;
         if (!asset)
             goto fail;
         mesh_count = rt_gltf_mesh_count(asset);
         material_count = rt_gltf_material_count(asset);
+        skeleton_count = rt_gltf_skeleton_count(asset);
+        animation_count = rt_gltf_animation_count(asset);
         for (int64_t i = 0; i < mesh_count; i++) {
             model_append_ref(&model->meshes,
                              &model->mesh_count,
@@ -423,6 +428,20 @@ void *rt_model3d_load(rt_string path) {
                              &model->material_capacity,
                              rt_gltf_get_material(asset, i),
                              "Model3D.Load: material list allocation failed");
+        }
+        for (int64_t i = 0; i < skeleton_count; i++) {
+            model_append_ref(&model->skeletons,
+                             &model->skeleton_count,
+                             &model->skeleton_capacity,
+                             rt_gltf_get_skeleton(asset, i),
+                             "Model3D.Load: skeleton list allocation failed");
+        }
+        for (int64_t i = 0; i < animation_count; i++) {
+            model_append_ref(&model->animations,
+                             &model->animation_count,
+                             &model->animation_capacity,
+                             rt_gltf_get_animation(asset, i),
+                             "Model3D.Load: animation list allocation failed");
         }
         scene_root = rt_gltf_get_scene_root(asset);
         if (scene_root)
@@ -445,10 +464,14 @@ void *rt_model3d_load(rt_string path) {
         scene_root = rt_fbx_get_scene_root(asset);
 
         for (int64_t i = 0; i < mesh_count; i++) {
+            void *mesh = rt_fbx_get_mesh(asset, i);
+            void *morph_targets = rt_fbx_get_morph_target(asset, i);
+            if (morph_targets)
+                rt_mesh3d_set_morph_targets(mesh, morph_targets);
             model_append_ref(&model->meshes,
                              &model->mesh_count,
                              &model->mesh_capacity,
-                             rt_fbx_get_mesh(asset, i),
+                             mesh,
                              "Model3D.Load: mesh list allocation failed");
         }
         for (int64_t i = 0; i < material_count; i++) {

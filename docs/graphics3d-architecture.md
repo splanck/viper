@@ -70,6 +70,16 @@ enable optional paths such as window readback, GPU post effects, hardware instan
 shadow maps. Those queries are derived from the active vtable hooks plus Canvas-owned software
 fallbacks, so they remain stable if backend names or platform selection change.
 
+## Runtime Input Guards
+
+Graphics3D clamps public numeric state before it enters renderer-facing structs. `Camera3D` rejects
+non-finite projection, `LookAt`, orbit, FPS, shake, and follow inputs so view/projection matrices
+and picking rays stay finite. `Light3D` clamps colors, intensities, attenuations, spot angles, and
+fallback directions before the light list is copied into backend parameters. `PostFX3D` bounds every
+effect parameter and exports the sanitized ordered chain, including bloom pass counts, to GPU
+backends. These guards are intentionally in the runtime classes instead of individual backends so
+software, Metal, D3D11, and OpenGL receive the same clean state.
+
 ### Metal Window Presentation Model
 
 The Metal backend now follows the same split as the other GPU runtimes:
@@ -315,7 +325,7 @@ The Metal fragment shader supports the following features (MTL-01 through MTL-08
 | Shadow mapping | `[[texture(4)]]` | Depth-only pass + `sample_compare` in fragment |
 | Terrain splat | `[[texture(5-9)]]` | 4-layer weight blend with per-layer UV scale |
 | Instanced draw | vtable hook | N draws with shared vertex/index buffers |
-| Post-processing | separate pipeline | Fullscreen quad: bloom, FXAA, tonemap, vignette, color grade |
+| Post-processing | separate pipeline | Ordered snapshot chain: bloom, FXAA, tonemap, vignette, color grade, SSAO, DOF, motion blur |
 
 ## GC Integration
 
@@ -384,15 +394,17 @@ Bone palette computation (per-frame, in `compute_bone_palette`):
 
 ## Post-Processing Chain
 
-`PostFX3D` applies effects to the software framebuffer in `Canvas3D.Flip()`:
+`PostFX3D` applies effects to the software framebuffer in `Canvas3D.Flip()` and exports the same
+ordered effect chain for GPU `present_postfx` / readback paths:
 
 1. Convert framebuffer RGBA8 → float RGB buffer
 2. Apply each enabled effect in chain order:
-   - **Bloom**: bright extract (half-res) → separable Gaussian blur (N passes) → additive composite
+   - **Bloom**: bright extract (half-res) → separable Gaussian blur (N passes) → additive composite; GPU paths receive the authored pass count and use it as bloom radius
    - **Tone mapping**: Reinhard (`c/(c+1)`) or ACES filmic (Narkowicz approximation) + gamma correction
    - **FXAA**: luminance-based edge detection → 3x3 average on high-contrast pixels
    - **Color grading**: brightness/contrast/saturation adjustments
    - **Vignette**: radial distance falloff from center
+   - **SSAO / DOF / motion blur**: exported to GPU backends with bounded sample counts; the software fallback skips these passes because it has no depth or motion buffer
 3. Convert float RGB → RGBA8 back to framebuffer
 
 PostFX is stored per-canvas (on the `rt_canvas3d` struct), allowing independent effect chains on multiple windows.

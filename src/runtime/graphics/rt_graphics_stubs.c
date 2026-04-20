@@ -5268,7 +5268,7 @@ void rt_postfx3d_add_bloom(void *o, double t, double i, int64_t b) {
 }
 
 /// @brief Stub for `PostFX3D.AddTonemap` — append an HDR-to-LDR tonemap
-///        pass: 0=Reinhard, 1=ACES filmic.
+///        pass: 0=off, 1=Reinhard, 2=ACES filmic.
 ///
 /// Silent no-op stub. Required to flatten HDR scene output for display
 /// on standard SDR monitors.

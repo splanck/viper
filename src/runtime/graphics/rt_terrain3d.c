@@ -78,6 +78,9 @@ typedef struct {
     int8_t splat_dirty;
 } rt_terrain3d;
 
+/// @brief Release and null a GC-tracked reference slot.
+/// @details Shared plumbing for the terrain's texture slots (`base_texture`,
+///   `baked_texture`, splat layer textures) and LOD mesh grids. Idempotent on null.
 static void terrain_release_ref(void **slot) {
     if (!slot || !*slot)
         return;
@@ -86,6 +89,10 @@ static void terrain_release_ref(void **slot) {
     *slot = NULL;
 }
 
+/// @brief Swap a GC reference into a slot with retain-then-release ordering.
+/// @details Retaining `value` first makes the assignment safe when `value` is already
+///   transitively held by `*slot` — otherwise the release could drop the last ref
+///   before we've latched the new one.
 static void terrain_assign_ref(void **slot, void *value) {
     if (!slot || *slot == value)
         return;
@@ -94,6 +101,9 @@ static void terrain_assign_ref(void **slot, void *value) {
     *slot = value;
 }
 
+/// @brief Alias for `terrain_release_ref` documenting intent at LOD-mesh call sites.
+/// @details Kept as a distinct name so a reader grepping for "mesh slot" finds the
+///   LOD-grid teardown paths without having to trace the generic ref helper.
 static void terrain_release_mesh_slot(void **slot) {
     terrain_release_ref(slot);
 }
