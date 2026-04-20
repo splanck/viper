@@ -291,6 +291,43 @@ void *rt_morphtarget3d_new(int64_t vertex_count) {
     return mt;
 }
 
+void *rt_morphtarget3d_clone(void *obj) {
+    rt_morphtarget3d *src = (rt_morphtarget3d *)obj;
+    rt_morphtarget3d *dst;
+    if (!src)
+        return NULL;
+    dst = (rt_morphtarget3d *)rt_morphtarget3d_new(src->vertex_count);
+    if (!dst)
+        return NULL;
+    for (int32_t i = 0; i < src->shape_count; i++) {
+        int64_t shape = rt_morphtarget3d_add_shape(dst, rt_const_cstr(src->shapes[i].name));
+        if (shape < 0)
+            continue;
+        if (src->shapes[i].pos_deltas && dst->shapes[shape].pos_deltas) {
+            memcpy(dst->shapes[shape].pos_deltas,
+                   src->shapes[i].pos_deltas,
+                   (size_t)src->vertex_count * 3u * sizeof(float));
+        }
+        if (src->shapes[i].nrm_deltas) {
+            dst->shapes[shape].nrm_deltas =
+                (float *)calloc((size_t)src->vertex_count * 3u, sizeof(float));
+            if (dst->shapes[shape].nrm_deltas) {
+                memcpy(dst->shapes[shape].nrm_deltas,
+                       src->shapes[i].nrm_deltas,
+                       (size_t)src->vertex_count * 3u * sizeof(float));
+            }
+        }
+        dst->weights[shape] = src->weights ? src->weights[i] : 0.0f;
+        dst->prev_weights[shape] = src->prev_weights ? src->prev_weights[i] : 0.0f;
+        dst->motion_weight_snapshot[shape] =
+            src->motion_weight_snapshot ? src->motion_weight_snapshot[i] : dst->weights[shape];
+    }
+    dst->has_prev_weights = src->has_prev_weights;
+    dst->last_motion_frame = src->last_motion_frame;
+    morphtarget_touch_payload(dst);
+    return dst;
+}
+
 /*==========================================================================
  * Shape management
  *=========================================================================*/

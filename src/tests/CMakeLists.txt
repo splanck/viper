@@ -1003,6 +1003,14 @@ if (APPLE AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm64|aarch64)$")
             PASS_REGULAR_EXPRESSION "PASS"
             LABELS "zia;smoke;native-link"
             TIMEOUT 60)
+
+    add_test(NAME native_smoke_chess_ai_arm64
+            COMMAND /bin/bash "${CMAKE_SOURCE_DIR}/src/tests/e2e/test_chess_ai_native.sh"
+            $<TARGET_FILE:viper> "${CMAKE_SOURCE_DIR}")
+    set_tests_properties(native_smoke_chess_ai_arm64 PROPERTIES
+            PASS_REGULAR_EXPRESSION "PASS"
+            LABELS "zia;smoke;native-link"
+            TIMEOUT 120)
 endif ()
 
 # =============================================================================

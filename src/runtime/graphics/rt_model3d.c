@@ -14,12 +14,16 @@
 
 #include "rt_model3d.h"
 
+#include "rt_animcontroller3d.h"
+#include "rt_canvas3d.h"
+#include "rt_canvas3d_internal.h"
 #include "rt_fbx_loader.h"
 #include "rt_gltf.h"
 #include "rt_morphtarget3d.h"
 #include "rt_object.h"
 #include "rt_scene3d.h"
 #include "rt_scene3d_internal.h"
+#include "rt_skeleton3d.h"
 #include "rt_string.h"
 #include "rt_trap.h"
 
@@ -214,10 +218,31 @@ static void model_set_root_name(rt_scene_node3d *root, const char *path_cstr) {
 /// @brief Recursive deep-copy of a scene-node subtree. Clones TRS, world-dirty flag,
 /// visibility, AABB / bounding sphere, and per-LOD entries; *retains* (does not clone)
 /// shared assets — `mesh`, `material`, `name`, and per-LOD meshes — so the cloned subtree
-/// shares geometry with the template instead of duplicating GPU resources. Children are
-/// cloned recursively and parented to the clone via `rt_scene_node3d_add_child`, then the
-/// caller's local reference is released so the parent owns the only retain.
-static rt_scene_node3d *model_clone_node(const rt_scene_node3d *src) {
+/// shares static geometry with the template instead of duplicating GPU resources. When
+/// requested, morph-enabled meshes are cloned with independent MorphTarget3D state so
+/// blend-shape weights can diverge per instance. Children are cloned recursively and
+/// parented to the clone via `rt_scene_node3d_add_child`, then the caller's local reference
+/// is released so the parent owns the only retain.
+static void *model_clone_mutable_mesh(void *mesh) {
+    rt_mesh3d *src = (rt_mesh3d *)mesh;
+    void *mesh_clone;
+    void *morph_clone;
+    if (!src || !src->morph_targets_ref)
+        return NULL;
+    mesh_clone = rt_mesh3d_clone(mesh);
+    if (!mesh_clone)
+        return NULL;
+    morph_clone = rt_morphtarget3d_clone(src->morph_targets_ref);
+    if (!morph_clone) {
+        model_release_local(mesh_clone);
+        return NULL;
+    }
+    rt_mesh3d_set_morph_targets(mesh_clone, morph_clone);
+    model_release_local(morph_clone);
+    return mesh_clone;
+}
+
+static rt_scene_node3d *model_clone_node(const rt_scene_node3d *src, int clone_mutable_meshes) {
     rt_scene_node3d *dst;
     if (!src)
         return NULL;
@@ -244,8 +269,13 @@ static rt_scene_node3d *model_clone_node(const rt_scene_node3d *src) {
     dst->bsphere_radius = src->bsphere_radius;
 
     if (src->mesh) {
-        rt_obj_retain_maybe(src->mesh);
-        dst->mesh = src->mesh;
+        void *mesh_clone = clone_mutable_meshes ? model_clone_mutable_mesh(src->mesh) : NULL;
+        if (mesh_clone) {
+            dst->mesh = mesh_clone;
+        } else {
+            rt_obj_retain_maybe(src->mesh);
+            dst->mesh = src->mesh;
+        }
     }
     if (src->material) {
         rt_obj_retain_maybe(src->material);
@@ -265,14 +295,20 @@ static rt_scene_node3d *model_clone_node(const rt_scene_node3d *src) {
         dst->lod_capacity = src->lod_count;
         dst->lod_count = src->lod_count;
         for (int32_t i = 0; i < src->lod_count; i++) {
+            void *lod_mesh_clone =
+                clone_mutable_meshes ? model_clone_mutable_mesh(src->lod_levels[i].mesh) : NULL;
             dst->lod_levels[i].distance = src->lod_levels[i].distance;
-            dst->lod_levels[i].mesh = src->lod_levels[i].mesh;
-            rt_obj_retain_maybe(dst->lod_levels[i].mesh);
+            if (lod_mesh_clone) {
+                dst->lod_levels[i].mesh = lod_mesh_clone;
+            } else {
+                dst->lod_levels[i].mesh = src->lod_levels[i].mesh;
+                rt_obj_retain_maybe(dst->lod_levels[i].mesh);
+            }
         }
     }
 
     for (int32_t i = 0; i < src->child_count; i++) {
-        rt_scene_node3d *child = model_clone_node(src->children[i]);
+        rt_scene_node3d *child = model_clone_node(src->children[i], clone_mutable_meshes);
         if (child) {
             rt_scene_node3d_add_child(dst, child);
             model_release_local(child);
@@ -290,12 +326,59 @@ static void model_clone_children_to_root(rt_scene_node3d *dst_root, const rt_sce
     if (!dst_root || !src_root)
         return;
     for (int32_t i = 0; i < src_root->child_count; i++) {
-        rt_scene_node3d *child = model_clone_node(src_root->children[i]);
+        rt_scene_node3d *child = model_clone_node(src_root->children[i], 0);
         if (child) {
             rt_scene_node3d_add_child(dst_root, child);
             model_release_local(child);
         }
     }
+}
+
+static void model_collect_scene_refs(rt_model3d *model, const rt_scene_node3d *node);
+
+static void model_collect_template_refs(rt_model3d *model) {
+    if (!model || !model->template_root)
+        return;
+    for (int32_t i = 0; i < model->template_root->child_count; i++)
+        model_collect_scene_refs(model, model->template_root->children[i]);
+}
+
+static void model_bind_default_animator(rt_model3d *model, rt_scene_node3d *root) {
+    void *controller;
+    char first_state[64];
+    int added_any = 0;
+    if (!model || !root || root->bound_animator || model->skeleton_count <= 0 ||
+        model->animation_count <= 0)
+        return;
+    controller = rt_anim_controller3d_new(model->skeletons[0]);
+    if (!controller)
+        return;
+    first_state[0] = '\0';
+    for (int32_t i = 0; i < model->animation_count; i++) {
+        rt_string anim_name = rt_animation3d_get_name(model->animations[i]);
+        const char *name = anim_name ? rt_string_cstr(anim_name) : NULL;
+        char fallback[64];
+        rt_string state_name;
+        int64_t state_index;
+        if (!name || name[0] == '\0') {
+            snprintf(fallback, sizeof(fallback), "animation_%d", (int)i);
+            name = fallback;
+        }
+        state_name = rt_const_cstr(name);
+        state_index = rt_anim_controller3d_add_state(controller, state_name, model->animations[i]);
+        if (state_index >= 0 && !added_any) {
+            size_t len = strlen(name);
+            if (len >= sizeof(first_state))
+                len = sizeof(first_state) - 1;
+            memcpy(first_state, name, len);
+            first_state[len] = '\0';
+            added_any = 1;
+        }
+    }
+    if (added_any)
+        rt_anim_controller3d_play(controller, rt_const_cstr(first_state));
+    rt_scene_node3d_bind_animator(root, controller);
+    model_release_local(controller);
 }
 
 /// @brief Walk the scene subtree at `node` and register every unique `mesh` / `material`
@@ -444,8 +527,10 @@ void *rt_model3d_load(rt_string path) {
                              "Model3D.Load: animation list allocation failed");
         }
         scene_root = rt_gltf_get_scene_root(asset);
-        if (scene_root)
+        if (scene_root) {
             model_clone_children_to_root(model->template_root, (const rt_scene_node3d *)scene_root);
+            model_collect_template_refs(model);
+        }
         model_build_synth_mesh_nodes(model);
         model_release_local(asset);
     } else if (model_has_ext(path_cstr, ".fbx")) {
@@ -495,8 +580,10 @@ void *rt_model3d_load(rt_string path) {
                              rt_fbx_get_animation(asset, i),
                              "Model3D.Load: animation list allocation failed");
         }
-        if (scene_root)
+        if (scene_root) {
             model_clone_children_to_root(model->template_root, (const rt_scene_node3d *)scene_root);
+            model_collect_template_refs(model);
+        }
         model_build_synth_mesh_nodes(model);
         model_release_local(asset);
     } else {
@@ -581,12 +668,16 @@ void *rt_model3d_find_node(void *obj, rt_string name) {
 
 /// @brief Clone the template into an independent SceneNode3D subtree (with synthetic root).
 /// Each instantiation creates a fresh deep-copy of the node hierarchy, suitable for adding to
-/// a live scene without disturbing the template. Underlying meshes/materials are shared.
+/// a live scene without disturbing the template. Static meshes/materials are shared; meshes
+/// with attached morph targets are cloned so their blend-shape weights are instance-local.
 void *rt_model3d_instantiate(void *obj) {
     rt_model3d *model = (rt_model3d *)obj;
+    rt_scene_node3d *root;
     if (!model || !model->template_root)
         return NULL;
-    return model_clone_node(model->template_root);
+    root = model_clone_node(model->template_root, 1);
+    model_bind_default_animator(model, root);
+    return root;
 }
 
 /// @brief Build a fresh Scene3D from the template's children, cloning each one. Use when the
@@ -600,12 +691,13 @@ void *rt_model3d_instantiate_scene(void *obj) {
     if (!scene)
         return NULL;
     for (int32_t i = 0; i < model->template_root->child_count; i++) {
-        rt_scene_node3d *child = model_clone_node(model->template_root->children[i]);
+        rt_scene_node3d *child = model_clone_node(model->template_root->children[i], 1);
         if (child) {
             rt_scene3d_add(scene, child);
             model_release_local(child);
         }
     }
+    model_bind_default_animator(model, scene->root);
     return scene;
 }
 

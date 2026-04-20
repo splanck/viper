@@ -740,11 +740,13 @@ static void draw_node(rt_scene_node3d *node,
                       void *canvas3d,
                       const vgfx3d_frustum_t *frustum,
                       int32_t *culled,
-                      const float *cam_pos) {
+                      const float *cam_pos,
+                      void *inherited_animator) {
     if (!node->visible)
         return;
 
     recompute_world_matrix(node);
+    void *effective_animator = node->bound_animator ? node->bound_animator : inherited_animator;
 
     int draw_self = 1;
     void *draw_mesh = node->mesh;
@@ -781,7 +783,7 @@ static void draw_node(rt_scene_node3d *node,
     if (frustum && draw_mesh && draw_radius > 0.0f) {
         rt_mesh3d *draw_mesh_impl = (rt_mesh3d *)draw_mesh;
         int has_dynamic_deformation =
-            (node->bound_animator != NULL || draw_mesh_impl->morph_targets_ref != NULL ||
+            (effective_animator != NULL || draw_mesh_impl->morph_targets_ref != NULL ||
              draw_mesh_impl->morph_deltas != NULL || draw_mesh_impl->morph_weights != NULL ||
              draw_mesh_impl->morph_shape_count > 0);
         if (!has_dynamic_deformation) {
@@ -801,10 +803,10 @@ static void draw_node(rt_scene_node3d *node,
         int32_t anim_bone_count = 0;
         int32_t mesh_bone_count = ((rt_mesh3d *)draw_mesh)->bone_count;
 
-        if (node->bound_animator) {
+        if (effective_animator) {
             anim_palette =
-                rt_anim_controller3d_get_final_palette_data(node->bound_animator, &anim_bone_count);
-            anim_prev_palette = rt_anim_controller3d_get_previous_palette_data(node->bound_animator,
+                rt_anim_controller3d_get_final_palette_data(effective_animator, &anim_bone_count);
+            anim_prev_palette = rt_anim_controller3d_get_previous_palette_data(effective_animator,
                                                                                 &anim_bone_count);
         }
         if (anim_palette && anim_bone_count > 0 && mesh_bone_count > 0) {
@@ -825,7 +827,7 @@ static void draw_node(rt_scene_node3d *node,
     }
 
     for (int32_t i = 0; i < node->child_count; i++)
-        draw_node(node->children[i], canvas3d, frustum, culled, cam_pos);
+        draw_node(node->children[i], canvas3d, frustum, culled, cam_pos, effective_animator);
 }
 
 /*==========================================================================
@@ -1404,7 +1406,7 @@ void rt_scene3d_draw(void *obj, void *canvas3d, void *camera) {
         started_frame = 1;
     }
     float cam_pos[3] = {(float)cam->eye[0], (float)cam->eye[1], (float)cam->eye[2]};
-    draw_node(s->root, canvas3d, &frustum, &culled, cam_pos);
+    draw_node(s->root, canvas3d, &frustum, &culled, cam_pos, NULL);
     if (started_frame)
         rt_canvas3d_end(canvas3d);
     s->last_culled_count = culled;

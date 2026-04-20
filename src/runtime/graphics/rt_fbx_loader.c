@@ -2166,10 +2166,13 @@ static void fbx_extract_animations(fbx_node_t *root,
             continue;
 
         int64_t stack_id = fbx_prop_i64(obj, 0);
-        const char *anim_name = obj->prop_count >= 2 ? fbx_prop_str(obj, 1) : "Untitled";
-        const char *sep = strstr(anim_name, "\x00\x01");
-        if (sep)
-            anim_name = sep + 2;
+        char decoded_anim_name[64];
+        const char *anim_name = "Untitled";
+        if (obj->prop_count >= 2) {
+            fbx_decode_object_name(fbx_prop_str(obj, 1), decoded_anim_name, sizeof(decoded_anim_name));
+            if (decoded_anim_name[0] != '\0')
+                anim_name = decoded_anim_name;
+        }
 
         /* Find AnimationLayer children of this stack */
         int64_t layer_ids[16];
@@ -2733,6 +2736,7 @@ void *rt_fbx_load(rt_string path) {
                     break;
                 }
             }
+            fbx_release_ref(&pixels);
         }
     }
 

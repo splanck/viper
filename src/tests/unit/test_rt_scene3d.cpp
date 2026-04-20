@@ -19,9 +19,12 @@
 #endif
 
 #include "rt.hpp"
+#include "rt_animcontroller3d.h"
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
 #include "rt_internal.h"
+#include "rt_mat4.h"
+#include "rt_skeleton3d.h"
 #include "rt_pixels.h"
 #include "rt_scene3d.h"
 #include "rt_string.h"
@@ -397,6 +400,7 @@ static int g_scene_submit_count = 0;
 static int g_scene_begin_count = 0;
 static int g_scene_end_count = 0;
 static const void *g_scene_last_vertices = nullptr;
+static int32_t g_scene_last_bone_count = 0;
 
 static void scene_test_begin_frame(void *, const vgfx3d_camera_params_t *) {
     g_scene_begin_count++;
@@ -416,6 +420,7 @@ static void scene_test_submit_draw(void *,
                                    int8_t) {
     g_scene_submit_count++;
     g_scene_last_vertices = cmd ? cmd->vertices : nullptr;
+    g_scene_last_bone_count = cmd ? cmd->bone_count : 0;
 }
 
 static void init_scene_test_canvas(rt_canvas3d *canvas, const vgfx3d_backend_t *backend) {
@@ -429,6 +434,7 @@ static void reset_scene_capture(void) {
     g_scene_begin_count = 0;
     g_scene_end_count = 0;
     g_scene_last_vertices = nullptr;
+    g_scene_last_bone_count = 0;
 }
 
 static void test_scene_draw_reuses_active_frame() {
@@ -858,6 +864,55 @@ static void test_lod_culling_uses_selected_mesh_bounds() {
         "Scene3D increments culled count when the selected LOD mesh is outside the frustum");
 }
 
+static void test_parent_animator_drives_child_skinned_meshes() {
+    vgfx3d_backend_t backend = {};
+    backend.name = "opengl";
+    backend.begin_frame = scene_test_begin_frame;
+    backend.end_frame = scene_test_end_frame;
+    backend.submit_draw = scene_test_submit_draw;
+
+    rt_canvas3d canvas;
+    init_scene_test_canvas(&canvas, &backend);
+    reset_scene_capture();
+
+    void *scene = rt_scene3d_new();
+    void *parent = rt_scene_node3d_new();
+    void *child = rt_scene_node3d_new();
+    void *mesh = rt_mesh3d_new();
+    void *material = rt_material3d_new_color(1.0, 1.0, 1.0);
+    void *camera = rt_camera3d_new(60.0, 1.0, 0.1, 100.0);
+    void *eye = rt_vec3_new(0.0, 0.0, 5.0);
+    void *target = rt_vec3_new(0.0, 0.0, 0.0);
+    void *up = rt_vec3_new(0.0, 1.0, 0.0);
+    void *bind = rt_mat4_identity();
+    void *skel = rt_skeleton3d_new();
+    rt_skeleton3d_add_bone(skel, rt_const_cstr("root"), -1, bind);
+    rt_skeleton3d_compute_inverse_bind(skel);
+    void *controller = rt_anim_controller3d_new(skel);
+
+    rt_mesh3d_add_vertex(mesh, -0.5, -0.5, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0);
+    rt_mesh3d_add_vertex(mesh, 0.5, -0.5, 0.0, 0.0, 0.0, 1.0, 1.0, 0.0);
+    rt_mesh3d_add_vertex(mesh, 0.0, 0.5, 0.0, 0.0, 0.0, 1.0, 0.5, 1.0);
+    rt_mesh3d_add_triangle(mesh, 0, 1, 2);
+    rt_mesh3d_set_bone_weights(mesh, 0, 0, 1.0, 0, 0.0, 0, 0.0, 0, 0.0);
+    rt_mesh3d_set_bone_weights(mesh, 1, 0, 1.0, 0, 0.0, 0, 0.0, 0, 0.0);
+    rt_mesh3d_set_bone_weights(mesh, 2, 0, 1.0, 0, 0.0, 0, 0.0, 0, 0.0);
+    ((rt_mesh3d *)mesh)->bone_count = 1;
+
+    rt_scene_node3d_bind_animator(parent, controller);
+    rt_scene_node3d_set_mesh(child, mesh);
+    rt_scene_node3d_set_material(child, material);
+    rt_scene_node3d_add_child(parent, child);
+    rt_scene3d_add(scene, parent);
+    rt_camera3d_look_at(camera, eye, target, up);
+
+    rt_scene3d_draw(scene, &canvas, camera);
+
+    EXPECT_TRUE(g_scene_submit_count == 1, "Scene3D draws the child skinned mesh");
+    EXPECT_TRUE(g_scene_last_bone_count == 1,
+                "Scene3D inherits a bound parent animator when drawing child meshes");
+}
+
 int main() {
     test_create_scene_and_node();
     test_add_remove_child();
@@ -884,6 +939,7 @@ int main() {
     test_node_aabb_refreshes_after_mesh_mutation();
     test_frustum_culled_count_initial();
     test_lod_culling_uses_selected_mesh_bounds();
+    test_parent_animator_drives_child_skinned_meshes();
     test_scene_draw_reuses_active_frame();
     test_scene_save_escapes_json_names();
     test_scene_save_serializes_visibility_and_lod_metadata();

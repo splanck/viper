@@ -234,6 +234,106 @@ static void test_gltf_loads_data_uri_buffers_and_embedded_textures() {
     EXPECT_TRUE(material->double_sided == 1, "GLTF.Load preserves doubleSided");
 }
 
+static void test_gltf_resolves_percent_encoded_external_buffers() {
+    const char *bin_path = "/tmp/viper gltf encoded buffer.bin";
+    const char *gltf_path = "/tmp/viper_gltf_encoded_external_buffer.gltf";
+    std::vector<uint8_t> gltf_buffer;
+    const float positions[9] = {0.0f, 0.0f, 0.0f, 2.0f, 0.0f,
+                                0.0f, 0.0f, 3.0f, 0.0f};
+    const uint16_t indices[3] = {0, 1, 2};
+
+    for (float v : positions)
+        append_bytes(gltf_buffer, v);
+    for (uint16_t v : indices)
+        append_bytes(gltf_buffer, v);
+
+    FILE *bin = std::fopen(bin_path, "wb");
+    EXPECT_TRUE(bin != nullptr, "External glTF buffer file can be created");
+    if (!bin)
+        return;
+    std::fwrite(gltf_buffer.data(), 1, gltf_buffer.size(), bin);
+    std::fclose(bin);
+
+    std::string gltf_json =
+        "{"
+        "\"asset\":{\"version\":\"2.0\"},"
+        "\"buffers\":[{\"uri\":\"viper%20gltf%20encoded%20buffer.bin\",\"byteLength\":" +
+        std::to_string(gltf_buffer.size()) + "}],"
+        "\"bufferViews\":["
+        "{\"buffer\":0,\"byteOffset\":0,\"byteLength\":36},"
+        "{\"buffer\":0,\"byteOffset\":36,\"byteLength\":6}"
+        "],"
+        "\"accessors\":["
+        "{\"bufferView\":0,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\"},"
+        "{\"bufferView\":1,\"componentType\":5123,\"count\":3,\"type\":\"SCALAR\"}"
+        "],"
+        "\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0},\"indices\":1}]}]"
+        "}";
+
+    FILE *gltf = std::fopen(gltf_path, "wb");
+    EXPECT_TRUE(gltf != nullptr, "External-buffer glTF fixture can be created");
+    if (!gltf)
+        return;
+    std::fwrite(gltf_json.data(), 1, gltf_json.size(), gltf);
+    std::fclose(gltf);
+
+    void *asset = rt_gltf_load(rt_const_cstr(gltf_path));
+    EXPECT_TRUE(asset != nullptr, "GLTF.Load resolves percent-encoded external buffer URIs");
+    if (!asset)
+        return;
+    auto *mesh = static_cast<rt_mesh3d *>(rt_gltf_get_mesh(asset, 0));
+    EXPECT_TRUE(mesh != nullptr && mesh->vertex_count == 3 && mesh->index_count == 3,
+                "GLTF.Load imports mesh data from an encoded external buffer path");
+    if (!mesh)
+        return;
+    EXPECT_NEAR(mesh->vertices[1].pos[0], 2.0, 0.001, "External buffer vertex X is loaded");
+    EXPECT_NEAR(mesh->vertices[2].pos[1], 3.0, 0.001, "External buffer vertex Y is loaded");
+}
+
+static void test_gltf_rejects_out_of_range_indices() {
+    const char *gltf_path = "/tmp/viper_gltf_bad_indices.gltf";
+    std::vector<uint8_t> gltf_buffer;
+    const float positions[9] = {0.0f, 0.0f, 0.0f, 1.0f, 0.0f,
+                                0.0f, 0.0f, 1.0f, 0.0f};
+    const uint16_t indices[3] = {0, 1, 99};
+
+    for (float v : positions)
+        append_bytes(gltf_buffer, v);
+    for (uint16_t v : indices)
+        append_bytes(gltf_buffer, v);
+
+    std::string buffer_b64 = base64_encode(gltf_buffer.data(), gltf_buffer.size());
+    std::string gltf_json =
+        "{"
+        "\"asset\":{\"version\":\"2.0\"},"
+        "\"buffers\":[{\"uri\":\"data:application/octet-stream;base64," +
+        buffer_b64 + "\",\"byteLength\":" + std::to_string(gltf_buffer.size()) + "}],"
+        "\"bufferViews\":["
+        "{\"buffer\":0,\"byteOffset\":0,\"byteLength\":36},"
+        "{\"buffer\":0,\"byteOffset\":36,\"byteLength\":6}"
+        "],"
+        "\"accessors\":["
+        "{\"bufferView\":0,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\"},"
+        "{\"bufferView\":1,\"componentType\":5123,\"count\":3,\"type\":\"SCALAR\"}"
+        "],"
+        "\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0},\"indices\":1}]}]"
+        "}";
+
+    FILE *gltf = std::fopen(gltf_path, "wb");
+    EXPECT_TRUE(gltf != nullptr, "Invalid-index glTF fixture can be created");
+    if (!gltf)
+        return;
+    std::fwrite(gltf_json.data(), 1, gltf_json.size(), gltf);
+    std::fclose(gltf);
+
+    void *asset = rt_gltf_load(rt_const_cstr(gltf_path));
+    EXPECT_TRUE(asset != nullptr, "GLTF.Load tolerates malformed primitive indices");
+    if (!asset)
+        return;
+    EXPECT_TRUE(rt_gltf_mesh_count(asset) == 0,
+                "GLTF.Load skips primitives whose indices reference missing vertices");
+}
+
 static void test_gltf_builds_scene_hierarchy_for_active_scene() {
     const char *gltf_path = "/tmp/viper_gltf_scene_graph.gltf";
     std::vector<uint8_t> gltf_buffer;
@@ -717,6 +817,161 @@ static void test_gltf_imports_skins_and_animation_clips() {
     }
 }
 
+static void test_gltf_splits_animation_clips_per_skin() {
+    const char *gltf_path = "/tmp/viper_gltf_multi_skin_animation.gltf";
+    std::vector<uint8_t> gltf_buffer;
+    auto align4 = [&]() {
+        while ((gltf_buffer.size() & 3u) != 0)
+            gltf_buffer.push_back(0);
+    };
+    auto append_float_array = [&](const float *values, size_t count) -> size_t {
+        align4();
+        size_t offset = gltf_buffer.size();
+        for (size_t i = 0; i < count; i++)
+            append_bytes(gltf_buffer, values[i]);
+        return offset;
+    };
+
+    static const float times[2] = {0.0f, 1.0f};
+    static const float skin_a_trans[6] = {0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f};
+    static const float skin_b_trans[6] = {0.0f, 0.0f, 0.0f, 2.0f, 0.0f, 0.0f};
+    size_t times_off = append_float_array(times, 2);
+    size_t skin_a_off = append_float_array(skin_a_trans, 6);
+    size_t skin_b_off = append_float_array(skin_b_trans, 6);
+    std::string buffer_b64 = base64_encode(gltf_buffer.data(), gltf_buffer.size());
+
+    std::string gltf_json =
+        "{"
+        "\"asset\":{\"version\":\"2.0\"},"
+        "\"buffers\":[{\"uri\":\"data:application/octet-stream;base64," +
+        buffer_b64 + "\",\"byteLength\":" + std::to_string(gltf_buffer.size()) + "}],"
+        "\"bufferViews\":["
+        "{\"buffer\":0,\"byteOffset\":" +
+        std::to_string(times_off) + ",\"byteLength\":8},"
+        "{\"buffer\":0,\"byteOffset\":" +
+        std::to_string(skin_a_off) + ",\"byteLength\":24},"
+        "{\"buffer\":0,\"byteOffset\":" +
+        std::to_string(skin_b_off) + ",\"byteLength\":24}"
+        "],"
+        "\"accessors\":["
+        "{\"bufferView\":0,\"componentType\":5126,\"count\":2,\"type\":\"SCALAR\"},"
+        "{\"bufferView\":1,\"componentType\":5126,\"count\":2,\"type\":\"VEC3\"},"
+        "{\"bufferView\":2,\"componentType\":5126,\"count\":2,\"type\":\"VEC3\"}"
+        "],"
+        "\"skins\":[{\"joints\":[0]},{\"joints\":[1]}],"
+        "\"animations\":[{\"name\":\"Split\",\"samplers\":[{\"input\":0,\"output\":1},"
+        "{\"input\":0,\"output\":2}],\"channels\":["
+        "{\"sampler\":0,\"target\":{\"node\":0,\"path\":\"translation\"}},"
+        "{\"sampler\":1,\"target\":{\"node\":1,\"path\":\"translation\"}}]}],"
+        "\"nodes\":[{\"name\":\"JointA\"},{\"name\":\"JointB\"}],"
+        "\"scenes\":[{\"nodes\":[0,1]}],\"scene\":0"
+        "}";
+
+    FILE *gltf = std::fopen(gltf_path, "wb");
+    EXPECT_TRUE(gltf != nullptr, "Multi-skin glTF fixture can be created");
+    if (!gltf)
+        return;
+    std::fwrite(gltf_json.data(), 1, gltf_json.size(), gltf);
+    std::fclose(gltf);
+
+    void *asset = rt_gltf_load(rt_const_cstr(gltf_path));
+    EXPECT_TRUE(asset != nullptr, "GLTF.Load parses multi-skin animation assets");
+    if (!asset)
+        return;
+    EXPECT_TRUE(rt_gltf_skeleton_count(asset) == 2, "GLTF.Load extracts both skeletons");
+    EXPECT_TRUE(rt_gltf_animation_count(asset) == 2,
+                "GLTF.Load creates one runtime clip per animated skin");
+
+    auto *anim_a = static_cast<rt_animation3d *>(rt_gltf_get_animation(asset, 0));
+    auto *anim_b = static_cast<rt_animation3d *>(rt_gltf_get_animation(asset, 1));
+    EXPECT_TRUE(anim_a != nullptr && anim_b != nullptr, "GLTF.Load exposes both split clips");
+    if (!anim_a || !anim_b)
+        return;
+    EXPECT_TRUE(anim_a->channel_count == 1 && anim_b->channel_count == 1,
+                "Split skin clips each target one local bone");
+    EXPECT_NEAR(anim_a->channels[0].keyframes[1].position[0],
+                1.0,
+                0.001,
+                "First split skin clip keeps its own node curve");
+    EXPECT_NEAR(anim_b->channels[0].keyframes[1].position[0],
+                2.0,
+                0.001,
+                "Second split skin clip keeps its own node curve");
+}
+
+static void test_gltf_applies_sparse_accessors() {
+    const char *gltf_path = "/tmp/viper_gltf_sparse_accessor.gltf";
+    std::vector<uint8_t> gltf_buffer;
+    auto align4 = [&]() {
+        while ((gltf_buffer.size() & 3u) != 0)
+            gltf_buffer.push_back(0);
+    };
+    auto append_u16_array = [&](const uint16_t *values, size_t count) -> size_t {
+        align4();
+        size_t offset = gltf_buffer.size();
+        for (size_t i = 0; i < count; i++)
+            append_bytes(gltf_buffer, values[i]);
+        return offset;
+    };
+    auto append_float_array = [&](const float *values, size_t count) -> size_t {
+        align4();
+        size_t offset = gltf_buffer.size();
+        for (size_t i = 0; i < count; i++)
+            append_bytes(gltf_buffer, values[i]);
+        return offset;
+    };
+
+    static const uint16_t sparse_indices[1] = {1};
+    static const float sparse_values[3] = {1.0f, 2.0f, 3.0f};
+    static const uint16_t triangle_indices[3] = {0, 1, 2};
+    size_t sparse_idx_off = append_u16_array(sparse_indices, 1);
+    size_t sparse_value_off = append_float_array(sparse_values, 3);
+    size_t index_off = append_u16_array(triangle_indices, 3);
+    std::string buffer_b64 = base64_encode(gltf_buffer.data(), gltf_buffer.size());
+
+    std::string gltf_json =
+        "{"
+        "\"asset\":{\"version\":\"2.0\"},"
+        "\"buffers\":[{\"uri\":\"data:application/octet-stream;base64," +
+        buffer_b64 + "\",\"byteLength\":" + std::to_string(gltf_buffer.size()) + "}],"
+        "\"bufferViews\":["
+        "{\"buffer\":0,\"byteOffset\":" +
+        std::to_string(sparse_idx_off) + ",\"byteLength\":2},"
+        "{\"buffer\":0,\"byteOffset\":" +
+        std::to_string(sparse_value_off) + ",\"byteLength\":12},"
+        "{\"buffer\":0,\"byteOffset\":" +
+        std::to_string(index_off) + ",\"byteLength\":6}"
+        "],"
+        "\"accessors\":["
+        "{\"componentType\":5126,\"count\":3,\"type\":\"VEC3\","
+        "\"sparse\":{\"count\":1,\"indices\":{\"bufferView\":0,\"componentType\":5123},"
+        "\"values\":{\"bufferView\":1}}},"
+        "{\"bufferView\":2,\"componentType\":5123,\"count\":3,\"type\":\"SCALAR\"}"
+        "],"
+        "\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0},\"indices\":1}]}]"
+        "}";
+
+    FILE *gltf = std::fopen(gltf_path, "wb");
+    EXPECT_TRUE(gltf != nullptr, "Sparse glTF fixture can be created");
+    if (!gltf)
+        return;
+    std::fwrite(gltf_json.data(), 1, gltf_json.size(), gltf);
+    std::fclose(gltf);
+
+    void *asset = rt_gltf_load(rt_const_cstr(gltf_path));
+    EXPECT_TRUE(asset != nullptr, "GLTF.Load parses sparse accessor assets");
+    if (!asset)
+        return;
+    auto *mesh = static_cast<rt_mesh3d *>(rt_gltf_get_mesh(asset, 0));
+    EXPECT_TRUE(mesh != nullptr, "GLTF.Load exposes sparse accessor mesh");
+    if (!mesh)
+        return;
+    EXPECT_NEAR(mesh->vertices[0].pos[0], 0.0, 0.001, "Sparse accessor defaults missing values");
+    EXPECT_NEAR(mesh->vertices[1].pos[0], 1.0, 0.001, "Sparse accessor overrides X");
+    EXPECT_NEAR(mesh->vertices[1].pos[1], 2.0, 0.001, "Sparse accessor overrides Y");
+    EXPECT_NEAR(mesh->vertices[1].pos[2], 3.0, 0.001, "Sparse accessor overrides Z");
+}
+
 static void test_gltf_imports_morph_targets() {
     const char *gltf_path = "/tmp/viper_gltf_morph_targets.gltf";
     std::vector<uint8_t> gltf_buffer;
@@ -783,8 +1038,9 @@ static void test_gltf_imports_morph_targets() {
         "\"meshes\":[{\"weights\":[0.25],\"extras\":{\"targetNames\":[\"Smile\"]},"
         "\"primitives\":[{\"attributes\":{\"POSITION\":0,\"NORMAL\":1},\"indices\":4,"
         "\"targets\":[{\"POSITION\":2,\"NORMAL\":3}]}]}],"
-        "\"nodes\":[{\"name\":\"MorphNode\",\"mesh\":0,\"weights\":[0.75]}],"
-        "\"scenes\":[{\"nodes\":[0]}],\"scene\":0"
+        "\"nodes\":[{\"name\":\"MorphNodeA\",\"mesh\":0,\"weights\":[0.75]},"
+        "{\"name\":\"MorphNodeB\",\"mesh\":0,\"weights\":[0.10]}],"
+        "\"scenes\":[{\"nodes\":[0,1]}],\"scene\":0"
         "}";
 
     FILE *gltf = std::fopen(gltf_path, "wb");
@@ -810,9 +1066,32 @@ static void test_gltf_imports_morph_targets() {
     EXPECT_TRUE(rt_morphtarget3d_get_shape_count(mesh->morph_targets_ref) == 1,
                 "GLTF.Load imports one blend shape");
     EXPECT_NEAR(rt_morphtarget3d_get_weight(mesh->morph_targets_ref, 0),
-                0.75,
+                0.25,
                 0.001,
-                "GLTF.Load applies node morph weights over mesh defaults");
+                "GLTF.Load preserves mesh default morph weights on the shared asset mesh");
+    void *scene_root = rt_gltf_get_scene_root(asset);
+    void *scene_node = scene_root ? rt_scene_node3d_get_child(scene_root, 0) : nullptr;
+    void *scene_node_b = scene_root ? rt_scene_node3d_get_child(scene_root, 1) : nullptr;
+    auto *scene_mesh =
+        scene_node ? static_cast<rt_mesh3d *>(rt_scene_node3d_get_mesh(scene_node)) : nullptr;
+    auto *scene_mesh_b =
+        scene_node_b ? static_cast<rt_mesh3d *>(rt_scene_node3d_get_mesh(scene_node_b)) : nullptr;
+    EXPECT_TRUE(scene_mesh != nullptr && scene_mesh != mesh,
+                "GLTF.Load creates a per-node morph variant when node weights override defaults");
+    if (scene_mesh && scene_mesh->morph_targets_ref) {
+        EXPECT_NEAR(rt_morphtarget3d_get_weight(scene_mesh->morph_targets_ref, 0),
+                    0.75,
+                    0.001,
+                    "GLTF.Load applies node morph weights to the scene-node mesh variant");
+    }
+    EXPECT_TRUE(scene_mesh_b != nullptr && scene_mesh_b != mesh && scene_mesh_b != scene_mesh,
+                "GLTF.Load creates independent variants for repeated mesh nodes");
+    if (scene_mesh_b && scene_mesh_b->morph_targets_ref) {
+        EXPECT_NEAR(rt_morphtarget3d_get_weight(scene_mesh_b->morph_targets_ref, 0),
+                    0.10,
+                    0.001,
+                    "GLTF.Load keeps repeated-node morph weights independent");
+    }
     const float *pos_deltas = rt_morphtarget3d_get_packed_deltas(mesh->morph_targets_ref);
     const float *normal_deltas = rt_morphtarget3d_get_packed_normal_deltas(mesh->morph_targets_ref);
     EXPECT_TRUE(pos_deltas != nullptr, "GLTF.Load packs morph position deltas");
@@ -830,10 +1109,14 @@ static void test_gltf_imports_morph_targets() {
 
 int main() {
     test_gltf_loads_data_uri_buffers_and_embedded_textures();
+    test_gltf_resolves_percent_encoded_external_buffers();
+    test_gltf_rejects_out_of_range_indices();
     test_gltf_builds_scene_hierarchy_for_active_scene();
     test_gltf_imports_extended_vertex_attributes_and_triangle_strips();
     test_gltf_applies_matrix_nodes_in_column_major_order();
     test_gltf_imports_skins_and_animation_clips();
+    test_gltf_splits_animation_clips_per_skin();
+    test_gltf_applies_sparse_accessors();
     test_gltf_imports_morph_targets();
     std::printf("GLTF tests: %d/%d passed\n", tests_passed, tests_run);
     return tests_passed == tests_run ? 0 : 1;

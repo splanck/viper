@@ -585,6 +585,13 @@ class ChessGame {
     /// @brief Pop one ply from every undo stack and restore board + UI.
     hide func undoLastMove() {
         if undoMoveStack.length() == 0 { return; }
+        if undoInfoStack.length() == 0 ||
+           undoPrevFromStack.length() == 0 ||
+           undoPrevToStack.length() == 0 ||
+           undoCaptureColorStack.length() == 0 {
+            clearUndoStacks();
+            return;
+        }
 
         var m        = undoMoveStack.pop();
         var undo     = undoInfoStack.pop();
@@ -633,6 +640,8 @@ class ChessGame {
     ///        non-promotions apply immediately.
     /// @return true if a legal move was found and applied (or queued).
     hide func tryMove(fromSq: Integer, toSq: Integer) -> Boolean {
+        if !isValidSquare(fromSq) || !isValidSquare(toSq) { return false; }
+
         var m = findLegalMove(fromSq, toSq, 0);
         if m.from == -1 { return false; }
 
@@ -650,6 +659,11 @@ class ChessGame {
 
     /// @brief Apply the queued promotion move with the chosen piece type.
     hide func executePromo(pieceType: Integer) {
+        if !isValidSquare(promoFrom) || !isValidSquare(promoTo) {
+            gameState = STATE_PLAYING;
+            return;
+        }
+
         var m = findLegalMove(promoFrom, promoTo, pieceType);
         if m.from >= 0 {
             applyMove(m);
@@ -661,6 +675,10 @@ class ChessGame {
     /// @param promoPiece 0 to match any promotion (caller will dialog).
     /// @return The matching Move, or sentinel `from=-1` Move if none.
     hide func findLegalMove(fromSq: Integer, toSq: Integer, promoPiece: Integer) -> Move {
+        if !isValidSquare(fromSq) || !isValidSquare(toSq) {
+            return new Move(-1, -1, 0, false, false, false, false, 0);
+        }
+
         var all = getLegalMoves();
         for i in 0..all.length() {
             var m = all.get(i);
@@ -678,6 +696,8 @@ class ChessGame {
     ///        invoke board.makeMove, build SAN, animate, check
     ///        terminal conditions, and queue the AI if it's its turn.
     hide func applyMove(m: Move) {
+        if !moveIsLegalNow(m) { return; }
+
         var movingPiece = board.get(m.from);
         var movingWhite = board.isWhitePiece(movingPiece);
         var movingType = board.pieceType(movingPiece);
@@ -810,6 +830,15 @@ class ChessGame {
             if elapsed < CVC_DELAY_MS {
                 Viper.Time.SleepMs(CVC_DELAY_MS - elapsed);
             }
+        }
+
+        if !moveIsLegalNow(m) {
+            var legalFallback = getLegalMoves();
+            if legalFallback.length() == 0 {
+                checkGameOver();
+                return;
+            }
+            m = legalFallback.get(0);
         }
 
         applyMove(m);
@@ -1076,6 +1105,43 @@ class ChessGame {
         legalMovesValid_ = false;
     }
 
+    hide func clearUndoStacks() {
+        undoMoveStack         = [];
+        undoInfoStack         = [];
+        undoPrevFromStack     = [];
+        undoPrevToStack       = [];
+        undoCaptureColorStack = [];
+    }
+
+    hide func isValidSquare(sq: Integer) -> Boolean {
+        return sq >= 0 && sq < 64;
+    }
+
+    hide func sameMove(a: Move, b: Move) -> Boolean {
+        return a.from == b.from &&
+               a.to == b.to &&
+               a.captured == b.captured &&
+               a.enPassant == b.enPassant &&
+               a.castleKing == b.castleKing &&
+               a.castleQueen == b.castleQueen &&
+               a.promotion == b.promotion &&
+               a.promotePiece == b.promotePiece;
+    }
+
+    hide func moveIsLegalNow(m: Move) -> Boolean {
+        if !isValidSquare(m.from) || !isValidSquare(m.to) { return false; }
+
+        var movingPiece = board.get(m.from);
+        if movingPiece == 0 { return false; }
+        if board.isWhitePiece(movingPiece) != board.whiteToMove { return false; }
+
+        var legal = getLegalMoves();
+        for i in 0..legal.length() {
+            if sameMove(legal.get(i), m) { return true; }
+        }
+        return false;
+    }
+
     /// @brief Filter the legal-move list to those originating at `sq`.
     hide func legalMovesFrom(sq: Integer) -> List[Move] {
         var all    = getLegalMoves();
@@ -1094,6 +1160,8 @@ class ChessGame {
     ///   piece (e.g. QUEEN) and produce "Qd8=Q". We force type_ = PAWN
     ///   so the prefix letter is suppressed per SAN rules.
     hide func buildSAN(m: Move) -> String {
+        if !isValidSquare(m.from) || !isValidSquare(m.to) { return "?"; }
+
         var files    = ["a", "b", "c", "d", "e", "f", "g", "h"];
         var fromFile = m.from % 8;
         var toFile   = m.to % 8;

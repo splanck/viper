@@ -9,6 +9,7 @@
 #define VIPER_ENABLE_GRAPHICS 1
 #endif
 
+#include "rt_animcontroller3d.h"
 #include "rt_canvas3d_internal.h"
 #include "rt_model3d.h"
 #include "rt_scene3d.h"
@@ -891,6 +892,20 @@ static void test_model3d_imports_fbx_skinning_and_grouped_animation() {
                 1.0,
                 0.001,
                 "Grouped FBX animation preserves default scale");
+
+    void *instance = rt_model3d_instantiate(model);
+    EXPECT_TRUE(instance != nullptr, "Model3D.Instantiate creates an animated instance root");
+    void *controller = instance ? rt_scene_node3d_get_animator(instance) : nullptr;
+    EXPECT_TRUE(controller != nullptr,
+                "Model3D.Instantiate auto-binds a controller for imported skeleton animations");
+    if (controller) {
+        EXPECT_TRUE(rt_anim_controller3d_get_state_count(controller) == 1,
+                    "Auto-bound Model3D controller registers imported clips as states");
+        rt_string state = rt_anim_controller3d_get_current_state(controller);
+        const char *state_name = state ? rt_string_cstr(state) : "";
+        EXPECT_TRUE(std::strcmp(state_name, "Walk") == 0,
+                    "Auto-bound Model3D controller starts the first imported animation");
+    }
 }
 
 static void test_model3d_rejects_truncated_fbx() {

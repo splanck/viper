@@ -11,7 +11,8 @@
 //
 // Key invariants:
 //   - Model3D.Load routes by file extension: .vscn, .fbx, .gltf, .glb.
-//   - Imported resources are shared; Instantiate() clones node trees only.
+//   - Imported resources are shared, except morph-enabled meshes are cloned per
+//     instantiation so mutable blend-shape weights do not leak across instances.
 //   - InstantiateScene() creates a fresh Scene3D and attaches cloned top-level
 //     nodes below the scene root.
 //

@@ -84,7 +84,7 @@ class ChessAI {
         maxDepth = DIFF_HARD;   // default; override with setDepth()
         ttSize   = 4096;
 
-        maxPly  = 12;
+        maxPly  = 32;
         nodesSearched = 0;
 
         resetTables();
@@ -92,7 +92,11 @@ class ChessAI {
 
     /// @brief Configure the search depth and reset the TT/killers.
     expose func setDepth(depth: Integer) {
-        maxDepth = depth;
+        var newDepth = depth;
+        if newDepth < 1 { newDepth = 1; }
+        if newDepth > 8 { newDepth = 8; }
+        maxDepth = newDepth;
+        maxPly = maxDepth + 28;
         resetTables();
     }
 
@@ -129,7 +133,7 @@ class ChessAI {
     expose func findBestMove(b: Board) -> Move {
         nodesSearched = 0;
         // Reset killer table for clean search
-        for i in 0..maxPly { killerA.set(i, -1); killerB.set(i, -1); }
+        resetKillers();
 
         var legal = moveGen.legalMoves(b);
         if legal.length() == 0 {
@@ -152,6 +156,7 @@ class ChessAI {
 
             // Move ordering for this iteration: try TT move first
             var ordered = orderMoves(legal, b, 0);
+            if ordered.length() == 0 { ordered = legal; }
 
             for i in 0..ordered.length() {
                 var m = ordered.get(i);
@@ -209,6 +214,7 @@ class ChessAI {
         }
 
         var ordered = orderMoves(legal, b, ply);
+        if ordered.length() == 0 { ordered = legal; }
         var bestScore = -INF - 1;
         var bestMove  = ordered.get(0);
         var ttBound   = TT_ALPHA;
@@ -302,7 +308,7 @@ class ChessAI {
 
         var ka = -1;
         var kb = -1;
-        if ply < maxPly {
+        if ply >= 0 && ply < killerA.length() && ply < killerB.length() {
             ka = killerA.get(ply);
             kb = killerB.get(ply);
         }
@@ -372,7 +378,8 @@ class ChessAI {
     ///        (matching hash + sufficient depth + flag-compatible
     ///        bounds), or sentinel `INF + 1` for cache miss / unusable.
     hide func probeTable(hash: Integer, depth: Integer, alpha: Integer, beta: Integer) -> Integer {
-        var idx   = absInt(hash) % ttSize;
+        var idx   = ttIndex(hash);
+        if idx < 0 { return INF + 1; }
         var entry = ttHash.get(idx);
         if entry != hash { return INF + 1; }     // cache miss (sentinel)
 
@@ -391,7 +398,8 @@ class ChessAI {
 
     /// @brief Write a TT entry, overwriting any previous slot occupant.
     hide func storeTable(hash: Integer, score: Integer, depth: Integer, flag: Integer) {
-        var idx = absInt(hash) % ttSize;
+        var idx = ttIndex(hash);
+        if idx < 0 { return; }
         ttHash.set(idx, hash);
         ttScore.set(idx, score);
         ttDepth.set(idx, depth);
@@ -405,13 +413,43 @@ class ChessAI {
     /// @details Two slots; new killer pushes old killer to slot B.
     hide func storeKiller(m: Move, ply: Integer) {
         if m.captured != 0 { return; }  // only quiet moves
-        if ply >= maxPly { return; }
+        if ply < 0 { return; }
+        if ply >= killerA.length() || ply >= killerB.length() { return; }
         // Use from*64+to as the killer key for precise move identity
         var key = m.from * 64 + m.to;
         if killerA.get(ply) != key {
             killerB.set(ply, killerA.get(ply));
             killerA.set(ply, key);
         }
+    }
+
+    hide func resetKillers() {
+        if killerA.length() != maxPly || killerB.length() != maxPly {
+            killerA = [];
+            killerB = [];
+            for i in 0..maxPly {
+                killerA.add(-1);
+                killerB.add(-1);
+            }
+            return;
+        }
+
+        for i in 0..maxPly {
+            killerA.set(i, -1);
+            killerB.set(i, -1);
+        }
+    }
+
+    hide func ttIndex(hash: Integer) -> Integer {
+        if ttSize <= 0 { return -1; }
+        if ttHash.length() != ttSize { return -1; }
+        if ttScore.length() != ttSize { return -1; }
+        if ttDepth.length() != ttSize { return -1; }
+        if ttFlag.length() != ttSize { return -1; }
+
+        var idx = hash % ttSize;
+        if idx < 0 { idx = idx + ttSize; }
+        return idx;
     }
 
     // -------------------------------------------------------------------------

@@ -422,6 +422,12 @@ typedef struct {
     int32_t comp_type;
     int32_t comp_count;
     int8_t normalized;
+    const uint8_t *sparse_indices;
+    const uint8_t *sparse_values;
+    int32_t sparse_count;
+    int32_t sparse_index_comp_type;
+    int32_t sparse_index_stride;
+    int32_t sparse_value_stride;
 } gltf_accessor_view_t;
 
 static const char gltf_base64_chars[] =
@@ -607,58 +613,104 @@ static int gltf_get_accessor_view(void *root,
                                   int buf_count,
                                   gltf_accessor_view_t *out) {
     void *accessors = jarr(root, "accessors");
-    size_t required_len;
     int comp_size;
     int comp_count;
     const char *acc_type;
+    void *acc;
+    int bv_idx;
+    int byte_offset_acc;
+    int comp_type;
     if (!accessors || accessor_idx < 0 || accessor_idx >= jarr_len(accessors))
         return 0;
-    void *acc = rt_seq_get(accessors, accessor_idx);
+    acc = rt_seq_get(accessors, accessor_idx);
     if (!acc)
         return 0;
 
     memset(out, 0, sizeof(*out));
     out->count = (int32_t)jint(acc, "count", 0);
-    int bv_idx = (int)jint(acc, "bufferView", -1);
-    int byte_offset_acc = (int)jint(acc, "byteOffset", 0);
-    int comp_type = (int)jint(acc, "componentType", 5126); // 5126=FLOAT
-
-    void *views = jarr(root, "bufferViews");
-    if (!views || bv_idx < 0 || bv_idx >= (int)jarr_len(views))
-        return 0;
-    void *bv = rt_seq_get(views, (int64_t)bv_idx);
-    if (!bv)
-        return 0;
-
-    int buf_idx = (int)jint(bv, "buffer", 0);
-    int byte_offset_bv = (int)jint(bv, "byteOffset", 0);
-    int byte_stride = (int)jint(bv, "byteStride", 0);
-
-    if (buf_idx < 0 || buf_idx >= buf_count)
-        return 0;
-
+    bv_idx = (int)jint(acc, "bufferView", -1);
+    byte_offset_acc = (int)jint(acc, "byteOffset", 0);
+    comp_type = (int)jint(acc, "componentType", 5126);
     comp_size = gltf_component_size(comp_type);
     acc_type = jstr(acc, "type");
     comp_count = gltf_component_count(acc_type);
-    if (comp_size <= 0 || comp_count <= 0)
+    if (out->count <= 0 || comp_size <= 0 || comp_count <= 0)
         return 0;
 
-    out->stride = byte_stride > 0 ? byte_stride : comp_size * comp_count;
+    out->stride = comp_size * comp_count;
     out->comp_type = comp_type;
     out->comp_count = comp_count;
     out->normalized = jint(acc, "normalized", 0) ? 1 : 0;
 
-    size_t offset = (size_t)byte_offset_bv + (size_t)byte_offset_acc;
-    if (offset > buffers[buf_idx].len)
-        return 0;
-    if (out->count <= 0)
-        return 0;
-    required_len = offset + (size_t)(out->count - 1) * (size_t)out->stride +
-                   (size_t)comp_size * (size_t)comp_count;
-    if (required_len > buffers[buf_idx].len)
-        return 0;
+    if (bv_idx >= 0) {
+        void *views = jarr(root, "bufferViews");
+        void *bv;
+        int buf_idx;
+        int byte_offset_bv;
+        int byte_stride;
+        size_t offset;
+        size_t required_len;
+        if (!views || bv_idx >= (int)jarr_len(views))
+            return 0;
+        bv = rt_seq_get(views, (int64_t)bv_idx);
+        if (!bv)
+            return 0;
+        buf_idx = (int)jint(bv, "buffer", 0);
+        byte_offset_bv = (int)jint(bv, "byteOffset", 0);
+        byte_stride = (int)jint(bv, "byteStride", 0);
+        if (buf_idx < 0 || buf_idx >= buf_count)
+            return 0;
 
-    out->data = buffers[buf_idx].data + offset;
+        out->stride = byte_stride > 0 ? byte_stride : comp_size * comp_count;
+        offset = (size_t)byte_offset_bv + (size_t)byte_offset_acc;
+        if (offset > buffers[buf_idx].len)
+            return 0;
+        required_len = offset + (size_t)(out->count - 1) * (size_t)out->stride +
+                       (size_t)comp_size * (size_t)comp_count;
+        if (required_len > buffers[buf_idx].len)
+            return 0;
+        out->data = buffers[buf_idx].data + offset;
+    }
+
+    {
+        void *sparse = jget(acc, "sparse");
+        int32_t sparse_count = sparse ? (int32_t)jint(sparse, "count", 0) : 0;
+        if (sparse && sparse_count > 0) {
+            void *indices = jget(sparse, "indices");
+            void *values = jget(sparse, "values");
+            int64_t indices_view = jint(indices, "bufferView", -1);
+            int64_t values_view = jint(values, "bufferView", -1);
+            int indices_offset = (int)jint(indices, "byteOffset", 0);
+            int values_offset = (int)jint(values, "byteOffset", 0);
+            int index_comp_type = (int)jint(indices, "componentType", 0);
+            int index_comp_size = gltf_component_size(index_comp_type);
+            size_t index_len = 0;
+            size_t value_len = 0;
+            const uint8_t *index_data =
+                gltf_get_buffer_view_data(root, indices_view, buffers, buf_count, &index_len);
+            const uint8_t *value_data =
+                gltf_get_buffer_view_data(root, values_view, buffers, buf_count, &value_len);
+            if (!index_data || !value_data || index_comp_size <= 0)
+                return 0;
+            if (index_comp_type != 5121 && index_comp_type != 5123 && index_comp_type != 5125)
+                return 0;
+            if ((size_t)indices_offset > index_len || (size_t)values_offset > value_len)
+                return 0;
+            if ((size_t)indices_offset + (size_t)sparse_count * (size_t)index_comp_size >
+                index_len)
+                return 0;
+            if ((size_t)values_offset +
+                    (size_t)sparse_count * (size_t)comp_size * (size_t)comp_count >
+                value_len)
+                return 0;
+            out->sparse_indices = index_data + indices_offset;
+            out->sparse_values = value_data + values_offset;
+            out->sparse_count = sparse_count;
+            out->sparse_index_comp_type = index_comp_type;
+            out->sparse_index_stride = index_comp_size;
+            out->sparse_value_stride = comp_size * comp_count;
+        }
+    }
     return 1;
 }
 
@@ -744,6 +796,30 @@ static uint32_t gltf_decode_component_u32(const uint8_t *src, int comp_type) {
     }
 }
 
+static int32_t gltf_accessor_sparse_value_index(const gltf_accessor_view_t *view,
+                                                int32_t element_idx) {
+    int32_t lo;
+    int32_t hi;
+    if (!view || !view->sparse_indices || view->sparse_count <= 0)
+        return -1;
+    lo = 0;
+    hi = view->sparse_count - 1;
+    while (lo <= hi) {
+        int32_t i = lo + (hi - lo) / 2;
+        uint32_t sparse_index =
+            gltf_decode_component_u32(view->sparse_indices +
+                                          (size_t)i * (size_t)view->sparse_index_stride,
+                                      view->sparse_index_comp_type);
+        if (sparse_index == (uint32_t)element_idx)
+            return i;
+        if (sparse_index < (uint32_t)element_idx)
+            lo = i + 1;
+        else
+            hi = i - 1;
+    }
+    return -1;
+}
+
 static void gltf_accessor_read_f32(const gltf_accessor_view_t *view,
                                    int32_t element_idx,
                                    float *out,
@@ -753,17 +829,30 @@ static void gltf_accessor_read_f32(const gltf_accessor_view_t *view,
     }
     for (int32_t i = 0; i < out_components; i++)
         out[i] = 0.0f;
-    if (!view || !view->data || element_idx < 0 || element_idx >= view->count)
+    if (!view || element_idx < 0 || element_idx >= view->count)
         return;
     int comp_size = gltf_component_size(view->comp_type);
     if (comp_size <= 0)
         return;
-    const uint8_t *base = view->data + (size_t)element_idx * (size_t)view->stride;
     int32_t limit = view->comp_count < out_components ? view->comp_count : out_components;
-    for (int32_t i = 0; i < limit; i++)
-        out[i] = gltf_decode_component_f32(base + (size_t)i * (size_t)comp_size,
-                                           view->comp_type,
-                                           view->normalized);
+    if (view->data) {
+        const uint8_t *base = view->data + (size_t)element_idx * (size_t)view->stride;
+        for (int32_t i = 0; i < limit; i++)
+            out[i] = gltf_decode_component_f32(base + (size_t)i * (size_t)comp_size,
+                                               view->comp_type,
+                                               view->normalized);
+    }
+    {
+        int32_t sparse_slot = gltf_accessor_sparse_value_index(view, element_idx);
+        if (sparse_slot >= 0) {
+            const uint8_t *sparse =
+                view->sparse_values + (size_t)sparse_slot * (size_t)view->sparse_value_stride;
+            for (int32_t i = 0; i < limit; i++)
+                out[i] = gltf_decode_component_f32(sparse + (size_t)i * (size_t)comp_size,
+                                                   view->comp_type,
+                                                   view->normalized);
+        }
+    }
 }
 
 static void gltf_accessor_read_u32(const gltf_accessor_view_t *view,
@@ -775,21 +864,38 @@ static void gltf_accessor_read_u32(const gltf_accessor_view_t *view,
     }
     for (int32_t i = 0; i < out_components; i++)
         out[i] = 0u;
-    if (!view || !view->data || element_idx < 0 || element_idx >= view->count)
+    if (!view || element_idx < 0 || element_idx >= view->count)
         return;
     int comp_size = gltf_component_size(view->comp_type);
     if (comp_size <= 0)
         return;
-    const uint8_t *base = view->data + (size_t)element_idx * (size_t)view->stride;
     int32_t limit = view->comp_count < out_components ? view->comp_count : out_components;
-    for (int32_t i = 0; i < limit; i++)
-        out[i] = gltf_decode_component_u32(base + (size_t)i * (size_t)comp_size, view->comp_type);
+    if (view->data) {
+        const uint8_t *base = view->data + (size_t)element_idx * (size_t)view->stride;
+        for (int32_t i = 0; i < limit; i++)
+            out[i] =
+                gltf_decode_component_u32(base + (size_t)i * (size_t)comp_size, view->comp_type);
+    }
+    {
+        int32_t sparse_slot = gltf_accessor_sparse_value_index(view, element_idx);
+        if (sparse_slot >= 0) {
+            const uint8_t *sparse =
+                view->sparse_values + (size_t)sparse_slot * (size_t)view->sparse_value_stride;
+            for (int32_t i = 0; i < limit; i++)
+                out[i] = gltf_decode_component_u32(sparse + (size_t)i * (size_t)comp_size,
+                                                   view->comp_type);
+        }
+    }
 }
 
-static void gltf_emit_triangle(void *mesh, uint32_t i0, uint32_t i1, uint32_t i2) {
+static int gltf_emit_triangle(
+    void *mesh, uint32_t vertex_count, uint32_t i0, uint32_t i1, uint32_t i2) {
     if (i0 == i1 || i1 == i2 || i0 == i2)
-        return;
+        return 0;
+    if (i0 >= vertex_count || i1 >= vertex_count || i2 >= vertex_count)
+        return 0;
     rt_mesh3d_add_triangle(mesh, (int64_t)i0, (int64_t)i1, (int64_t)i2);
+    return 1;
 }
 
 static uint32_t gltf_read_index(const gltf_accessor_view_t *view, int32_t element_idx) {
@@ -805,14 +911,18 @@ static int gltf_append_primitive_indices(void *mesh,
                                          const gltf_accessor_view_t *index_view,
                                          int32_t vertex_count) {
     int32_t count = index_view ? index_view->count : vertex_count;
+    int32_t emitted = 0;
     if (count <= 0)
         return 0;
     if (mode == 4) {
         for (int32_t i = 0; i + 2 < count; i += 3) {
-            gltf_emit_triangle(
-                mesh, gltf_read_index(index_view, i), gltf_read_index(index_view, i + 1), gltf_read_index(index_view, i + 2));
+            emitted += gltf_emit_triangle(mesh,
+                                          (uint32_t)vertex_count,
+                                          gltf_read_index(index_view, i),
+                                          gltf_read_index(index_view, i + 1),
+                                          gltf_read_index(index_view, i + 2));
         }
-        return 1;
+        return emitted > 0;
     }
     if (mode == 5) {
         for (int32_t i = 0; i + 2 < count; i++) {
@@ -824,17 +934,20 @@ static int gltf_append_primitive_indices(void *mesh,
                 i0 = i1;
                 i1 = tmp;
             }
-            gltf_emit_triangle(mesh, i0, i1, i2);
+            emitted += gltf_emit_triangle(mesh, (uint32_t)vertex_count, i0, i1, i2);
         }
-        return 1;
+        return emitted > 0;
     }
     if (mode == 6) {
         uint32_t base = gltf_read_index(index_view, 0);
         for (int32_t i = 1; i + 1 < count; i++) {
-            gltf_emit_triangle(
-                mesh, base, gltf_read_index(index_view, i), gltf_read_index(index_view, i + 1));
+            emitted += gltf_emit_triangle(mesh,
+                                          (uint32_t)vertex_count,
+                                          base,
+                                          gltf_read_index(index_view, i),
+                                          gltf_read_index(index_view, i + 1));
         }
-        return 1;
+        return emitted > 0;
     }
     return 0;
 }
@@ -964,10 +1077,45 @@ static void gltf_apply_node_morph_weights(void *mesh_obj, void *weights_arr) {
 /// External buffers and textures in glTF are referenced via paths
 /// relative to the .gltf file itself; this prepends the document's
 /// directory so the loader can open them.
+static int gltf_hex_digit(char ch) {
+    if (ch >= '0' && ch <= '9')
+        return ch - '0';
+    if (ch >= 'a' && ch <= 'f')
+        return ch - 'a' + 10;
+    if (ch >= 'A' && ch <= 'F')
+        return ch - 'A' + 10;
+    return -1;
+}
+
+static void gltf_decode_uri_path(const char *uri, char *out, size_t out_cap) {
+    size_t oi = 0;
+    if (!out || out_cap == 0)
+        return;
+    out[0] = '\0';
+    if (!uri)
+        return;
+    while (*uri && oi + 1 < out_cap) {
+        if (*uri == '#' || *uri == '?')
+            break;
+        if (*uri == '%' && uri[1] && uri[2]) {
+            int hi = gltf_hex_digit(uri[1]);
+            int lo = gltf_hex_digit(uri[2]);
+            if (hi >= 0 && lo >= 0) {
+                out[oi++] = (char)((hi << 4) | lo);
+                uri += 3;
+                continue;
+            }
+        }
+        out[oi++] = *uri++;
+    }
+    out[oi] = '\0';
+}
+
 static void gltf_resolve_relative_path(const char *base_path,
                                        const char *uri,
                                        char *out,
                                        size_t out_cap) {
+    char decoded_uri[1024];
     const char *last_sep;
     const char *last_bsep;
     size_t dir_len;
@@ -977,9 +1125,10 @@ static void gltf_resolve_relative_path(const char *base_path,
     out[0] = '\0';
     if (!uri)
         return;
+    gltf_decode_uri_path(uri, decoded_uri, sizeof(decoded_uri));
     last_sep = strrchr(base_path ? base_path : "", '/');
     last_bsep = strrchr(base_path ? base_path : "", '\\');
-    if (last_bsep > last_sep)
+    if (last_bsep && (!last_sep || last_bsep > last_sep))
         last_sep = last_bsep;
     if (last_sep) {
         dir_len = (size_t)(last_sep - base_path + 1);
@@ -987,9 +1136,9 @@ static void gltf_resolve_relative_path(const char *base_path,
             dir_len = out_cap - 1;
         memcpy(out, base_path, dir_len);
         out[dir_len] = '\0';
-        strncat(out, uri, out_cap - dir_len - 1);
+        strncat(out, decoded_uri, out_cap - dir_len - 1);
     } else {
-        strncpy(out, uri, out_cap - 1);
+        strncpy(out, decoded_uri, out_cap - 1);
         out[out_cap - 1] = '\0';
     }
 }
@@ -1318,6 +1467,54 @@ static void gltf_apply_skin_to_mesh(void *mesh_obj, const gltf_skin_t *skin) {
     mesh->bone_count = max_bone;
 }
 
+static void *gltf_clone_mesh_variant(void *source_mesh) {
+    rt_mesh3d *variant;
+    rt_mesh3d *mesh;
+    void *morph_clone;
+    if (!source_mesh)
+        return NULL;
+    variant = (rt_mesh3d *)rt_mesh3d_clone(source_mesh);
+    if (!variant)
+        return NULL;
+    mesh = (rt_mesh3d *)variant;
+    if (mesh->morph_targets_ref) {
+        morph_clone = rt_morphtarget3d_clone(mesh->morph_targets_ref);
+        if (morph_clone) {
+            rt_mesh3d_set_morph_targets(mesh, morph_clone);
+            gltf_release_local(morph_clone);
+        }
+    }
+    return variant;
+}
+
+static void *gltf_make_node_mesh_variant(rt_gltf_asset *asset,
+                                         int32_t mesh_index,
+                                         int64_t skin_ref,
+                                         void *weights_arr,
+                                         const gltf_skin_t *skins,
+                                         int32_t skin_count,
+                                         void **mesh_variant_sources) {
+    int has_skin = skin_ref >= 0 && skin_ref < skin_count;
+    int needs_variant = has_skin || weights_arr != NULL;
+    void *source_mesh;
+    void *variant;
+    if (!asset || mesh_index < 0 || mesh_index >= asset->mesh_count)
+        return NULL;
+    if (!needs_variant)
+        return asset->meshes[mesh_index];
+    source_mesh = mesh_variant_sources && mesh_variant_sources[mesh_index]
+                      ? mesh_variant_sources[mesh_index]
+                      : asset->meshes[mesh_index];
+    variant = gltf_clone_mesh_variant(source_mesh);
+    if (!variant)
+        return asset->meshes[mesh_index];
+    if (has_skin)
+        gltf_apply_skin_to_mesh(variant, &skins[skin_ref]);
+    if (weights_arr)
+        gltf_apply_node_morph_weights(variant, weights_arr);
+    return variant;
+}
+
 typedef struct {
     int8_t valid;
     int32_t path; /* 0=translation, 1=rotation, 2=scale */
@@ -1328,14 +1525,13 @@ typedef struct {
     gltf_accessor_view_t output;
 } gltf_anim_curve_t;
 
-static int32_t gltf_find_bone_for_node(const gltf_skin_t *skins,
-                                       int32_t skin_count,
-                                       int32_t node_idx) {
-    for (int32_t si = 0; si < skin_count; si++) {
-        int32_t joint = gltf_skin_find_joint(&skins[si], node_idx);
-        if (joint >= 0 && skins[si].joint_to_bone && skins[si].joint_to_bone[joint] >= 0)
-            return skins[si].joint_to_bone[joint];
-    }
+static int32_t gltf_skin_bone_for_node(const gltf_skin_t *skin, int32_t node_idx) {
+    int32_t joint;
+    if (!skin || !skin->joint_to_bone)
+        return -1;
+    joint = gltf_skin_find_joint(skin, node_idx);
+    if (joint >= 0 && skin->joint_to_bone[joint] >= 0)
+        return skin->joint_to_bone[joint];
     return -1;
 }
 
@@ -1540,7 +1736,7 @@ static void gltf_parse_animations(rt_gltf_asset *asset,
     int32_t anim_count = (int32_t)jarr_len(anims_arr);
     if (!asset || !anims_arr || anim_count <= 0 || !skins || skin_count <= 0)
         return;
-    asset->animations = (void **)calloc((size_t)anim_count, sizeof(void *));
+    asset->animations = (void **)calloc((size_t)anim_count * (size_t)skin_count, sizeof(void *));
     if (!asset->animations)
         return;
     for (int32_t ai = 0; ai < anim_count; ai++) {
@@ -1548,124 +1744,141 @@ static void gltf_parse_animations(rt_gltf_asset *asset,
         void *channels = jarr(anim_json, "channels");
         void *samplers = jarr(anim_json, "samplers");
         int32_t channel_count = (int32_t)jarr_len(channels);
-        gltf_anim_curve_t *curves;
-        double duration = 0.0;
-        int emitted_any = 0;
         const char *name = jstr(anim_json, "name");
         char generated_name[64];
-        void *anim;
         if (channel_count <= 0 || !samplers)
             continue;
-        curves = (gltf_anim_curve_t *)calloc((size_t)channel_count, sizeof(*curves));
-        if (!curves)
-            continue;
-        for (int32_t ci = 0; ci < channel_count; ci++) {
-            void *channel = rt_seq_get(channels, ci);
-            void *target = jget(channel, "target");
-            const char *path = jstr(target, "path");
-            int64_t sampler_idx = jint(channel, "sampler", -1);
-            int64_t node_idx = jint(target, "node", -1);
-            void *sampler;
-            int32_t bone_idx;
-            if (sampler_idx < 0 || sampler_idx >= jarr_len(samplers) || node_idx < 0)
-                continue;
-            bone_idx = gltf_find_bone_for_node(skins, skin_count, (int32_t)node_idx);
-            if (bone_idx < 0)
-                continue;
-            sampler = rt_seq_get(samplers, sampler_idx);
-            if (!path || strcmp(path, "translation") == 0)
-                curves[ci].path = 0;
-            else if (strcmp(path, "rotation") == 0)
-                curves[ci].path = 1;
-            else if (strcmp(path, "scale") == 0)
-                curves[ci].path = 2;
-            else
-                continue;
-            if (!gltf_get_accessor_view(root, jint(sampler, "input", -1), buffers, buf_count, &curves[ci].input) ||
-                !gltf_get_accessor_view(root, jint(sampler, "output", -1), buffers, buf_count, &curves[ci].output))
-                continue;
-            curves[ci].valid = 1;
-            curves[ci].node_idx = (int32_t)node_idx;
-            curves[ci].bone_idx = bone_idx;
-            curves[ci].interpolation = jstr(sampler, "interpolation");
-            for (int32_t ti = 0; ti < curves[ci].input.count; ti++) {
-                double t = gltf_curve_time(&curves[ci].input, ti);
-                if (t > duration)
-                    duration = t;
-            }
-        }
         if (!name || name[0] == '\0') {
             snprintf(generated_name, sizeof(generated_name), "animation_%d", (int)ai);
             name = generated_name;
         }
-        anim = rt_animation3d_new(rt_const_cstr(name), duration > 0.0 ? duration : 1.0);
-        if (!anim) {
-            free(curves);
-            continue;
-        }
-        for (int32_t bone = 0; bone < VGFX3D_MAX_BONES; bone++) {
-            double *times = NULL;
-            int32_t time_count = 0;
-            int32_t time_capacity = 0;
-            int32_t node_idx = -1;
-            const gltf_anim_curve_t *curve_t = NULL;
-            const gltf_anim_curve_t *curve_r = NULL;
-            const gltf_anim_curve_t *curve_s = NULL;
-            double local[16];
-            double pos_d[3];
-            double rot_d[4];
-            double scl_d[3];
+        for (int32_t si = 0; si < skin_count; si++) {
+            gltf_anim_curve_t *curves =
+                (gltf_anim_curve_t *)calloc((size_t)channel_count, sizeof(*curves));
+            double duration = 0.0;
+            int emitted_any = 0;
+            void *anim;
+            char skin_name[128];
+            const char *clip_name = name;
+            if (!curves)
+                continue;
             for (int32_t ci = 0; ci < channel_count; ci++) {
-                if (!curves[ci].valid || curves[ci].bone_idx != bone)
+                void *channel = rt_seq_get(channels, ci);
+                void *target = jget(channel, "target");
+                const char *path = jstr(target, "path");
+                int64_t sampler_idx = jint(channel, "sampler", -1);
+                int64_t node_idx = jint(target, "node", -1);
+                void *sampler;
+                int32_t bone_idx;
+                if (sampler_idx < 0 || sampler_idx >= jarr_len(samplers) || node_idx < 0)
                     continue;
-                node_idx = curves[ci].node_idx;
-                if (curves[ci].path == 0)
-                    curve_t = &curves[ci];
-                else if (curves[ci].path == 1)
-                    curve_r = &curves[ci];
-                else if (curves[ci].path == 2)
-                    curve_s = &curves[ci];
-                for (int32_t ti = 0; ti < curves[ci].input.count; ti++)
-                    gltf_anim_insert_time(&times, &time_count, &time_capacity,
-                                          gltf_curve_time(&curves[ci].input, ti));
+                bone_idx = gltf_skin_bone_for_node(&skins[si], (int32_t)node_idx);
+                if (bone_idx < 0)
+                    continue;
+                sampler = rt_seq_get(samplers, sampler_idx);
+                if (!path || strcmp(path, "translation") == 0)
+                    curves[ci].path = 0;
+                else if (strcmp(path, "rotation") == 0)
+                    curves[ci].path = 1;
+                else if (strcmp(path, "scale") == 0)
+                    curves[ci].path = 2;
+                else
+                    continue;
+                if (!gltf_get_accessor_view(root,
+                                            jint(sampler, "input", -1),
+                                            buffers,
+                                            buf_count,
+                                            &curves[ci].input) ||
+                    !gltf_get_accessor_view(root,
+                                            jint(sampler, "output", -1),
+                                            buffers,
+                                            buf_count,
+                                            &curves[ci].output))
+                    continue;
+                curves[ci].valid = 1;
+                curves[ci].node_idx = (int32_t)node_idx;
+                curves[ci].bone_idx = bone_idx;
+                curves[ci].interpolation = jstr(sampler, "interpolation");
+                for (int32_t ti = 0; ti < curves[ci].input.count; ti++) {
+                    double t = gltf_curve_time(&curves[ci].input, ti);
+                    if (t > duration)
+                        duration = t;
+                }
             }
-            if (time_count <= 0 || node_idx < 0) {
-                free(times);
+            if (skin_count > 1) {
+                snprintf(skin_name, sizeof(skin_name), "%s_skin_%d", name, (int)si);
+                clip_name = skin_name;
+            }
+            anim = rt_animation3d_new(rt_const_cstr(clip_name), duration > 0.0 ? duration : 1.0);
+            if (!anim) {
+                free(curves);
                 continue;
             }
-            if (!gltf_node_local_matrix(nodes_arr, node_idx, local)) {
+            for (int32_t bone = 0; bone < VGFX3D_MAX_BONES; bone++) {
+                double *times = NULL;
+                int32_t time_count = 0;
+                int32_t time_capacity = 0;
+                int32_t node_idx = -1;
+                const gltf_anim_curve_t *curve_t = NULL;
+                const gltf_anim_curve_t *curve_r = NULL;
+                const gltf_anim_curve_t *curve_s = NULL;
+                double local[16];
+                double pos_d[3];
+                double rot_d[4];
+                double scl_d[3];
+                for (int32_t ci = 0; ci < channel_count; ci++) {
+                    if (!curves[ci].valid || curves[ci].bone_idx != bone)
+                        continue;
+                    node_idx = curves[ci].node_idx;
+                    if (curves[ci].path == 0)
+                        curve_t = &curves[ci];
+                    else if (curves[ci].path == 1)
+                        curve_r = &curves[ci];
+                    else if (curves[ci].path == 2)
+                        curve_s = &curves[ci];
+                    for (int32_t ti = 0; ti < curves[ci].input.count; ti++)
+                        gltf_anim_insert_time(&times, &time_count, &time_capacity,
+                                              gltf_curve_time(&curves[ci].input, ti));
+                }
+                if (time_count <= 0 || node_idx < 0) {
+                    free(times);
+                    continue;
+                }
+                if (!gltf_node_local_matrix(nodes_arr, node_idx, local)) {
+                    free(times);
+                    continue;
+                }
+                gltf_matrix_to_trs(local, pos_d, rot_d, scl_d);
+                for (int32_t ti = 0; ti < time_count; ti++) {
+                    float pos[3] = {(float)pos_d[0], (float)pos_d[1], (float)pos_d[2]};
+                    float rot[4] = {
+                        (float)rot_d[0], (float)rot_d[1], (float)rot_d[2], (float)rot_d[3]};
+                    float scl[3] = {(float)scl_d[0], (float)scl_d[1], (float)scl_d[2]};
+                    void *pos_obj;
+                    void *rot_obj;
+                    void *scl_obj;
+                    gltf_sample_curve(curve_t, times[ti], pos, 3);
+                    gltf_sample_curve(curve_r, times[ti], rot, 4);
+                    gltf_sample_curve(curve_s, times[ti], scl, 3);
+                    pos_obj = rt_vec3_new(pos[0], pos[1], pos[2]);
+                    rot_obj = rt_quat_new(rot[0], rot[1], rot[2], rot[3]);
+                    scl_obj = rt_vec3_new(scl[0], scl[1], scl[2]);
+                    rt_animation3d_add_keyframe(anim, bone, times[ti], pos_obj, rot_obj, scl_obj);
+                    gltf_release_ref(&pos_obj);
+                    gltf_release_ref(&rot_obj);
+                    gltf_release_ref(&scl_obj);
+                    emitted_any = 1;
+                }
                 free(times);
+            }
+            free(curves);
+            if (!emitted_any) {
+                gltf_release_ref(&anim);
                 continue;
             }
-            gltf_matrix_to_trs(local, pos_d, rot_d, scl_d);
-            for (int32_t ti = 0; ti < time_count; ti++) {
-                float pos[3] = {(float)pos_d[0], (float)pos_d[1], (float)pos_d[2]};
-                float rot[4] = {(float)rot_d[0], (float)rot_d[1], (float)rot_d[2], (float)rot_d[3]};
-                float scl[3] = {(float)scl_d[0], (float)scl_d[1], (float)scl_d[2]};
-                void *pos_obj;
-                void *rot_obj;
-                void *scl_obj;
-                gltf_sample_curve(curve_t, times[ti], pos, 3);
-                gltf_sample_curve(curve_r, times[ti], rot, 4);
-                gltf_sample_curve(curve_s, times[ti], scl, 3);
-                pos_obj = rt_vec3_new(pos[0], pos[1], pos[2]);
-                rot_obj = rt_quat_new(rot[0], rot[1], rot[2], rot[3]);
-                scl_obj = rt_vec3_new(scl[0], scl[1], scl[2]);
-                rt_animation3d_add_keyframe(anim, bone, times[ti], pos_obj, rot_obj, scl_obj);
-                gltf_release_ref(&pos_obj);
-                gltf_release_ref(&rot_obj);
-                gltf_release_ref(&scl_obj);
-                emitted_any = 1;
-            }
-            free(times);
+            rt_animation3d_set_looping(anim, 1);
+            asset->animations[asset->animation_count++] = anim;
         }
-        free(curves);
-        if (!emitted_any) {
-            gltf_release_ref(&anim);
-            continue;
-        }
-        rt_animation3d_set_looping(anim, 1);
-        asset->animations[asset->animation_count++] = anim;
     }
 }
 
@@ -1803,6 +2016,7 @@ void *rt_gltf_load(rt_string path) {
     int *mesh_prim_start = NULL;
     int *mesh_prim_count = NULL;
     void **primitive_materials = NULL;
+    void **mesh_variant_sources = NULL;
     gltf_skin_t *skins = NULL;
     int32_t skin_count = 0;
     int32_t *mesh_applied_skin = NULL;
@@ -2070,10 +2284,11 @@ void *rt_gltf_load(rt_string path) {
                 void *mesh_json = rt_seq_get(meshes_arr, (int64_t)mi);
                 void *prims = jarr(mesh_json, "primitives");
                 int prim_count = (int)jarr_len(prims);
+                int mesh_start = mesh_idx;
                 if (mesh_prim_start)
-                    mesh_prim_start[mi] = mesh_idx;
+                    mesh_prim_start[mi] = mesh_start;
                 if (mesh_prim_count)
-                    mesh_prim_count[mi] = prim_count;
+                    mesh_prim_count[mi] = 0;
 
                 for (int pi = 0; pi < prim_count; pi++) {
                     void *prim = rt_seq_get(prims, (int64_t)pi);
@@ -2202,7 +2417,17 @@ void *rt_gltf_load(rt_string path) {
                     if (primitive_materials && material_idx >= 0 && material_idx < asset->material_count)
                         primitive_materials[mesh_idx - 1] = asset->materials[material_idx];
                 }
+                if (mesh_prim_count)
+                    mesh_prim_count[mi] = mesh_idx - mesh_start;
             }
+        }
+    }
+
+    if (asset->mesh_count > 0) {
+        mesh_variant_sources = (void **)calloc((size_t)asset->mesh_count, sizeof(void *));
+        if (mesh_variant_sources) {
+            for (int32_t i = 0; i < asset->mesh_count; i++)
+                mesh_variant_sources[i] = rt_mesh3d_clone(asset->meshes[i]);
         }
     }
 
@@ -2290,33 +2515,53 @@ void *rt_gltf_load(rt_string path) {
                 if (mesh_ref >= 0 && mesh_ref < mesh_json_count && mesh_prim_count && mesh_prim_start) {
                     int prim_start = mesh_prim_start[mesh_ref];
                     int prim_count = mesh_prim_count[mesh_ref];
-                    if (skin_ref >= 0 && skin_ref < skin_count && mesh_applied_skin) {
-                        for (int pi = 0; pi < prim_count; pi++) {
-                            int mesh_index = prim_start + pi;
-                            if (mesh_index >= 0 && mesh_index < asset->mesh_count &&
+                    if (prim_count > 0) {
+                        int mesh_index = prim_start;
+                        void *node_mesh = NULL;
+                        if (mesh_index >= 0 && mesh_index < asset->mesh_count) {
+                            if (skin_ref >= 0 && skin_ref < skin_count && mesh_applied_skin &&
                                 mesh_applied_skin[mesh_index] < 0) {
                                 gltf_apply_skin_to_mesh(asset->meshes[mesh_index], &skins[skin_ref]);
                                 mesh_applied_skin[mesh_index] = (int32_t)skin_ref;
                             }
+                            node_mesh = gltf_make_node_mesh_variant(asset,
+                                                                    mesh_index,
+                                                                    skin_ref,
+                                                                    weights_arr,
+                                                                    skins,
+                                                                    skin_count,
+                                                                    mesh_variant_sources);
                         }
-                    }
-                    if (weights_arr) {
-                        for (int pi = 0; pi < prim_count; pi++) {
-                            int mesh_index = prim_start + pi;
-                            if (mesh_index >= 0 && mesh_index < asset->mesh_count)
-                                gltf_apply_node_morph_weights(asset->meshes[mesh_index], weights_arr);
-                        }
-                    }
-                    if (prim_count > 0) {
-                        rt_scene_node3d_set_mesh(node, asset->meshes[prim_start]);
+                        rt_scene_node3d_set_mesh(node, node_mesh);
+                        if (node_mesh && node_mesh != asset->meshes[mesh_index])
+                            gltf_release_local(node_mesh);
                         if (primitive_materials && primitive_materials[prim_start])
                             rt_scene_node3d_set_material(node, primitive_materials[prim_start]);
                         for (int pi = 1; pi < prim_count; pi++) {
+                            void *prim_mesh = NULL;
+                            int child_mesh_index = prim_start + pi;
                             rt_scene_node3d *prim_node =
                                 (rt_scene_node3d *)rt_scene_node3d_new();
                             if (!prim_node)
                                 continue;
-                            rt_scene_node3d_set_mesh(prim_node, asset->meshes[prim_start + pi]);
+                            if (child_mesh_index >= 0 && child_mesh_index < asset->mesh_count) {
+                                if (skin_ref >= 0 && skin_ref < skin_count && mesh_applied_skin &&
+                                    mesh_applied_skin[child_mesh_index] < 0) {
+                                    gltf_apply_skin_to_mesh(asset->meshes[child_mesh_index],
+                                                            &skins[skin_ref]);
+                                    mesh_applied_skin[child_mesh_index] = (int32_t)skin_ref;
+                                }
+                                prim_mesh = gltf_make_node_mesh_variant(asset,
+                                                                        child_mesh_index,
+                                                                        skin_ref,
+                                                                        weights_arr,
+                                                                        skins,
+                                                                        skin_count,
+                                                                        mesh_variant_sources);
+                            }
+                            rt_scene_node3d_set_mesh(prim_node, prim_mesh);
+                            if (prim_mesh && prim_mesh != asset->meshes[child_mesh_index])
+                                gltf_release_local(prim_mesh);
                             if (primitive_materials && primitive_materials[prim_start + pi])
                                 rt_scene_node3d_set_material(
                                     prim_node, primitive_materials[prim_start + pi]);
@@ -2381,6 +2626,11 @@ void *rt_gltf_load(rt_string path) {
     free(mesh_prim_start);
     free(mesh_prim_count);
     free(primitive_materials);
+    if (mesh_variant_sources) {
+        for (int32_t i = 0; i < asset->mesh_count; i++)
+            gltf_release_ref(&mesh_variant_sources[i]);
+    }
+    free(mesh_variant_sources);
     free(mesh_applied_skin);
     gltf_free_skins(skins, skin_count);
 

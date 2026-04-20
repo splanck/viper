@@ -30,6 +30,8 @@ extern "C" {
 
 /// @brief Create a morph-target container for blendshape animation.
 void *rt_morphtarget3d_new(int64_t vertex_count);
+/// @brief Deep-copy a morph-target container, including shapes, deltas, and weights.
+void *rt_morphtarget3d_clone(void *mt);
 /// @brief Register a named blendshape and allocate its delta arrays. Returns the new shape index.
 int64_t rt_morphtarget3d_add_shape(void *mt, rt_string name);
 /// @brief Set position delta for one vertex of one shape.

@@ -42,6 +42,7 @@
 #include "rt_string.h"
 
 #include <assert.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
@@ -282,8 +283,15 @@ void *rt_list_get(void *list, int64_t index) {
         rt_trap("rt_list_get: negative index");
     rt_list_impl *L = as_list(list);
     size_t len = rt_arr_obj_len(L->arr);
-    if ((uint64_t)index >= (uint64_t)len)
-        rt_trap("rt_list_get: index out of bounds");
+    if ((uint64_t)index >= (uint64_t)len) {
+        char msg[128];
+        snprintf(msg,
+                 sizeof(msg),
+                 "rt_list_get: index out of bounds (index=%lld, count=%llu)",
+                 (long long)index,
+                 (unsigned long long)len);
+        rt_trap(msg);
+    }
     return rt_arr_obj_get(L->arr, (size_t)index);
 }
 
