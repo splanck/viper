@@ -67,6 +67,11 @@ typedef struct {
     int8_t dirty;
 } rt_transform3d;
 
+/// @brief GC finalizer — Transform3D owns no heap allocations, so this is a no-op.
+/// @details All fields (`position`, `rotation`, `scale`, cached `matrix`) live
+///   inline inside the struct and get freed with the object body. The finalizer
+///   still needs to exist so the GC sees this type as "finalizable" rather than
+///   plain bytes — useful for uniform lifecycle tracing across 3D object types.
 static void transform3d_finalizer(void *obj) {
     (void)obj;
 }
@@ -103,6 +108,14 @@ static void build_trs(const double *pos, const double *quat, const double *scl, 
     out[15] = 1.0;
 }
 
+/// @brief Lazily rebuild the cached 4x4 matrix from TRS components.
+/// @details Every mutating setter (`set_position`, `set_rotation`, `set_scale`)
+///   flips `dirty = 1` without doing any math; this routine is the single
+///   chokepoint where the cost is paid, right before a consumer reads
+///   `matrix`. Skipping when `dirty == 0` means repeated reads between
+///   mutations are O(1). The invariant is: after this call returns,
+///   `xf->matrix` equals `T * R * S` built from the current component
+///   fields, and `xf->dirty == 0`.
 static void ensure_matrix(rt_transform3d *xf) {
     if (!xf->dirty)
         return;

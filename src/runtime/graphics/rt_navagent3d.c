@@ -98,6 +98,12 @@ static void navagent_release_ref(void **slot) {
     *slot = NULL;
 }
 
+/// @brief Address the xyz triple for corner `index` in the flat path buffer.
+/// @details Path corners are stored as a packed `[x0,y0,z0, x1,y1,z1, ...]`
+///   array — returning a stride-adjusted pointer avoids constructing a
+///   temporary `double[3]` for every read and lets callers memcpy or index
+///   directly. The caller is responsible for bounds-checking `index`
+///   against `path_point_count` — this is a raw indexing primitive.
 static const double *navagent_path_point(const rt_navagent3d *agent, int32_t index) {
     return agent->path_points_xyz + (size_t)index * 3u;
 }
@@ -117,6 +123,12 @@ static void navagent_clear_path(rt_navagent3d *agent) {
     agent->remaining_distance = 0.0;
 }
 
+/// @brief Bring both the current and desired velocity vectors to rest.
+/// @details Called when the agent reaches its destination, loses its path,
+///   or is forcibly stopped. Clearing *both* velocity vectors matters because
+///   the integrator uses `desired_velocity` as the steering target — if only
+///   `velocity` were reset, the next step would immediately re-accelerate
+///   toward the stale desired velocity and produce a visible jitter.
 static void navagent_zero_motion(rt_navagent3d *agent) {
     if (!agent)
         return;

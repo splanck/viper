@@ -425,6 +425,16 @@ void *rt_collider3d_new_capsule(double radius, double height) {
     return collider;
 }
 
+/// @brief Shared constructor for mesh-backed collider types (convex hull / triangle mesh).
+/// @details `rt_collider3d_new_convex_hull` and `rt_collider3d_new_mesh` differ
+///   only in their type tag and static-body restriction: convex hulls accept
+///   dynamic bodies because GJK works cleanly against them, while triangle
+///   meshes are forced static because dynamic triangle-mesh-vs-anything is
+///   numerically unstable and performance-prohibitive. Retains the mesh so
+///   subsequent mesh mutation (vertex edits) doesn't dangle through this
+///   collider, and recomputes local-space AABB bounds immediately so
+///   broadphase queries see a valid envelope.
+/// @return Retained collider pointer or NULL after `rt_trap` on missing mesh.
 static void *collider3d_new_mesh_like(void *mesh, int32_t type, int8_t static_only) {
     rt_collider3d *collider;
     if (!mesh) {
@@ -744,6 +754,13 @@ void rt_collider3d_get_child_transform_raw(void *compound,
         vec3_copy(scale_out, shape->child_transforms[index].scale);
 }
 
+/// @brief Clamped heightfield cell fetch for nearest-neighbor sampling.
+/// @details Heights are stored row-major as `heights[z * width + x]` after
+///   decoding the 16-bit-per-pixel heightmap. Out-of-range indices clamp to
+///   the nearest edge cell (effective "repeat edge" wrap) so the bilinear
+///   sampler that wraps this helper never produces a discontinuity at the
+///   heightfield boundary — it just extends the rim height outward. Null
+///   colliders or uninitialized heightfields return 0.0 as a safe fallback.
 static double collider3d_heightfield_height_at(
     const rt_collider3d *collider, int32_t x, int32_t z) {
     if (!collider || !collider->heightfield_heights || collider->heightfield_width <= 0 ||

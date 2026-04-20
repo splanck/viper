@@ -390,7 +390,17 @@ static int vscn_append_raw(char **buf, size_t *len, size_t *cap, const char *src
     return 1;
 }
 
-/// @brief Append a formatted string to a dynamic buffer.
+/// @brief Append a formatted string to a growable byte buffer.
+/// @details Serialization hot path: the VSCN writer calls this once per JSON
+///   key/value pair. Uses the classic two-pass `vsnprintf` trick — first
+///   call with a null dest to learn the exact needed length, grow the
+///   buffer by doubling (starting at 4096) until it fits, then format a
+///   second time into the reserved slot. The `format(printf, 4, 5)`
+///   attribute enables -Wformat checks on callers so wrong `%d` vs `%ld`
+///   pairings fail at compile time, not silently at runtime.
+/// @return 1 on success, 0 if `vsnprintf` fails or realloc is denied. On
+///   failure the existing buffer is left intact so the caller can still
+///   emit a partial-but-valid prefix if desired.
 #if defined(__GNUC__) || defined(__clang__)
 __attribute__((format(printf, 4, 5)))
 #endif

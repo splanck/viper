@@ -371,6 +371,16 @@ void *rt_camera3d_new(double fov, double aspect, double near_val, double far_val
 /// box `(left,right) × (bottom,top) × (near_val,far_val)` to OpenGL NDC `[-1,1]³`.
 /// Returns early (leaving `m` as the zero matrix) when any axis has zero extent so
 /// the caller can trap on the all-zero result rather than emitting NaN pixels.
+/// @brief Construct a row-major orthographic projection matrix.
+/// @details Maps the axis-aligned view volume `[left,right] × [bottom,top] ×
+///   [near,far]` to the OpenGL-style clip cube `[-1, 1]^3`. Z is flipped
+///   because view space uses -Z forward while NDC uses +Z forward, giving
+///   `-2 / (far - near)` on the diagonal. The translation column centers the
+///   volume on the origin: `(r+l)/(r-l)` is negated to move "left" to -1.
+///   Degenerate inputs (any axis spanning less than 1e-12) zero the output
+///   rather than generating NaN/Inf so downstream matrix multiplies stay
+///   finite — callers can detect the collapse via a post-build check if
+///   needed.
 static void build_ortho(double *m,
                         double left,
                         double right,

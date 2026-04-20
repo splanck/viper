@@ -882,6 +882,16 @@ set_tests_properties(zia_smoke_xenoscape PROPERTIES
         LABELS "zia;smoke;requires_display"
         TIMEOUT 30)
 
+set(VIPER_DISPLAY_SMOKE_TESTS
+        zia_smoke_paint_canvas_capture
+        zia_smoke_viperide
+        zia_smoke_3dbowling
+        zia_smoke_3dscene
+        zia_smoke_3dbowling_overlay
+        zia_smoke_xenoscape)
+set_tests_properties(${VIPER_DISPLAY_SMOKE_TESTS} PROPERTIES
+        RESOURCE_LOCK viper_display)
+
 add_test(NAME zia_smoke_baseball
         COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/baseball/smoke_probe.zia"
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/baseball")
@@ -961,6 +971,7 @@ if (APPLE AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm64|aarch64)$")
     set_tests_properties(native_smoke_achievement_draw_arm64 PROPERTIES
             PASS_REGULAR_EXPRESSION "PASS"
             LABELS "zia;smoke;native-link;requires_display"
+            RESOURCE_LOCK viper_display
             TIMEOUT 60)
 
     add_test(NAME native_smoke_xenoscape_start_arm64
@@ -968,7 +979,8 @@ if (APPLE AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm64|aarch64)$")
             $<TARGET_FILE:viper> "${CMAKE_SOURCE_DIR}")
     set_tests_properties(native_smoke_xenoscape_start_arm64 PROPERTIES
             PASS_REGULAR_EXPRESSION "PASS"
-            LABELS "zia;smoke;native-link"
+            LABELS "zia;smoke;native-link;requires_display"
+            RESOURCE_LOCK viper_display
             TIMEOUT 60)
 
     add_test(NAME native_smoke_xenoscape_action_names_arm64

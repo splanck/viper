@@ -141,6 +141,11 @@ static int64_t audio3d_clamp_volume(int64_t volume) {
     return volume;
 }
 
+/// @brief Push a listener onto the head of the global listener list.
+/// @details The list is an intrusive doubly-linked list (prev/next fields
+///   live on the listener struct itself) used by `sync_bindings` to walk
+///   every live listener once per tick. Insertion at head is O(1) and
+///   order doesn't matter since every node is visited uniformly.
 static void audio3d_listener_list_add(rt_audiolistener3d *listener) {
     if (!listener)
         return;
@@ -151,6 +156,12 @@ static void audio3d_listener_list_add(rt_audiolistener3d *listener) {
     s_listener_head = listener;
 }
 
+/// @brief Splice a listener out of the global listener list.
+/// @details Handles all three cases — head node (update `s_listener_head`),
+///   middle node (relink neighbors' prev/next), tail node (just clear the
+///   previous node's next). Both prev/next fields are zeroed on exit so the
+///   listener can be re-added later without carrying stale pointers. Called
+///   by the finalizer and by deactivation paths.
 static void audio3d_listener_list_remove(rt_audiolistener3d *listener) {
     if (!listener)
         return;
@@ -164,6 +175,10 @@ static void audio3d_listener_list_remove(rt_audiolistener3d *listener) {
     listener->next = NULL;
 }
 
+/// @brief Push an audio source onto the head of the global source list.
+/// @details Mirrors `audio3d_listener_list_add` — intrusive doubly-linked
+///   list, O(1) insertion, iteration order immaterial because every live
+///   source is visited uniformly during `sync_bindings`.
 static void audio3d_source_list_add(rt_audiosource3d *source) {
     if (!source)
         return;
@@ -174,6 +189,9 @@ static void audio3d_source_list_add(rt_audiosource3d *source) {
     s_source_head = source;
 }
 
+/// @brief Splice an audio source out of the global source list.
+/// @details Symmetric to `audio3d_listener_list_remove`; clears both prev
+///   and next on exit so the source can re-enter the list cleanly.
 static void audio3d_source_list_remove(rt_audiosource3d *source) {
     if (!source)
         return;
@@ -263,6 +281,13 @@ static void audio3d_get_node_world_forward(void *node, double *out_forward) {
     out_forward[2] /= len;
 }
 
+/// @brief Copy a listener's pose into the audio core's active-listener slot.
+/// @details Only the one listener marked `is_active` contributes to spatial
+///   mixing — other listeners update their own local state without pushing
+///   it to the core, so there's no cross-talk between listeners tracked in
+///   parallel (e.g. for split-screen or debug views). The audio core holds
+///   a copy, so the listener's state can continue to change without
+///   immediately perturbing in-flight voice params until the next sync.
 static void audio3d_listener_push_active_state(rt_audiolistener3d *listener) {
     if (listener && listener->is_active)
         rt_audio3d_set_active_listener_state(&listener->state);
@@ -309,11 +334,25 @@ static void audio3d_listener_sync_binding(rt_audiolistener3d *listener, double d
     }
 }
 
+/// @brief Re-sync the active listener's bound pose with `dt = 0`.
+/// @details Called from the source-mutation path so spatial params are
+///   computed against an up-to-date listener pose without ticking the
+///   velocity calculation (which would introduce a spurious jump). Zero
+///   dt means the velocity-derivation step is a no-op; only position and
+///   forward get refreshed.
 static void audio3d_refresh_active_listener(void) {
     if (s_active_listener_obj)
         audio3d_listener_sync_binding(s_active_listener_obj, 0.0);
 }
 
+/// @brief Reap a stale voice id when the underlying audio voice has finished.
+/// @details Audio voices complete asynchronously (one-shot clips reach end,
+///   mixer culls under-resourced voices, etc.) and the scripting layer has
+///   no callback for that. Sources lazily check liveness here and zero
+///   `voice_id` so the next Play() call grabs a fresh voice instead of
+///   sending commands to a now-recycled id. Returns whether the source
+///   currently has a live voice, so callers can fast-skip spatial updates
+///   for silent sources.
 static int8_t audio3d_source_refresh_play_state(rt_audiosource3d *source) {
     if (!source || source->voice_id <= 0)
         return 0;
@@ -363,6 +402,14 @@ static void audio3d_source_sync_binding(rt_audiosource3d *source, double dt) {
     audio3d_source_apply_spatial(source);
 }
 
+/// @brief GC finalizer for a 3D audio listener.
+/// @details Three-step teardown: (1) if this listener was the active one,
+///   clear the audio core's active-listener slot so in-flight voices
+///   gracefully degrade to a null-listener pose rather than dereferencing
+///   the freed struct; (2) unlink from the global listener list so
+///   `sync_bindings` stops visiting it; (3) drop the scene-node and camera
+///   back-references. The order (active-check first) is deliberate — the
+///   core must be cleared before the listener memory is eligible for reuse.
 static void audio3d_listener_finalize(void *obj) {
     rt_audiolistener3d *listener = (rt_audiolistener3d *)obj;
     if (!listener)
@@ -376,6 +423,14 @@ static void audio3d_listener_finalize(void *obj) {
     audio3d_release_ref(&listener->bound_camera);
 }
 
+/// @brief GC finalizer for a 3D audio source.
+/// @details Stops any live voice before releasing the source so the mixer
+///   doesn't keep reading from a freed sound buffer one tick after the
+///   source disappears. Then unlinks from the global source list (so
+///   `sync_bindings` skips it), and drops references to the sound asset
+///   and bound scene node. The sound's own refcount may still keep its
+///   buffer alive if other sources share it — only this one source's
+///   handle goes away.
 static void audio3d_source_finalize(void *obj) {
     rt_audiosource3d *source = (rt_audiosource3d *)obj;
     if (!source)

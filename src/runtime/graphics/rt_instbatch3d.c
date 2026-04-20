@@ -56,6 +56,12 @@ typedef struct {
     int8_t has_prev_snapshot;
 } rt_instbatch3d;
 
+/// @brief Copy one 4x4 matrix between stride-16-float slots.
+/// @details Instance batches store transforms in a flat float array where
+///   slot `i` occupies `[i*16, i*16+16)`. This helper encapsulates the
+///   stride math so callers don't repeat it across the file, and folds in
+///   the null / negative-index guards that the motion-snapshot path
+///   depends on.
 static void instbatch_copy_matrix_slot(float *dst,
                                        int32_t dst_idx,
                                        const float *src,
@@ -73,6 +79,16 @@ static void instbatch_release_ref(void **slot) {
     *slot = NULL;
 }
 
+/// @brief Per-instance frustum cull test for an instanced batch.
+/// @details Transforms the mesh's local AABB by one instance's model matrix
+///   into world space, then runs the standard p-vertex/n-vertex frustum
+///   test. Returns visible (1) when the frustum pointer is null so disabling
+///   culling at a higher level (e.g. shadow pass without a camera frustum)
+///   doesn't accidentally hide every instance. The matrix is promoted to
+///   double precision for the transform because the AABB refit can amplify
+///   rounding at large world coordinates.
+/// @return 1 if the instance's world AABB is on-screen or intersecting, 0 if
+///   definitively outside the frustum.
 static int instbatch_instance_visible(const vgfx3d_frustum_t *frustum,
                                       const float mesh_min[3],
                                       const float mesh_max[3],
@@ -90,6 +106,14 @@ static int instbatch_instance_visible(const vgfx3d_frustum_t *frustum,
     return vgfx3d_frustum_test_aabb(frustum, world_min, world_max) != 0;
 }
 
+/// @brief GC finalizer — release the current-frame and motion-history buffers.
+/// @details Instance batches keep three parallel float-matrix arrays: the
+///   live `transforms` set, the start-of-frame `current_snapshot` captured
+///   by motion-vector logic, and last frame's `prev_transforms` used as
+///   the motion "from" pose. All three are plain float heap allocations
+///   with no downstream refs to release. Counters are zeroed post-free so
+///   a lingering post-finalize read sees an empty batch rather than
+///   capacity-matches-missing-buffer.
 static void instbatch_finalizer(void *obj) {
     rt_instbatch3d *b = (rt_instbatch3d *)obj;
     free(b->transforms);

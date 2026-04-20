@@ -931,8 +931,12 @@ static const uint64_t k_texture_cache_max_age = 240u;
 static const uint64_t k_cubemap_cache_max_age = 240u;
 static const uint64_t k_morph_cache_max_age = 240u;
 
-static int metal_copy_texture_to_rgba(
-    id<MTLTexture> tex, uint8_t *dst_rgba, int32_t w, int32_t h, int32_t stride);
+static int metal_copy_texture_to_rgba(VGFXMetalContext *ctx,
+                                      id<MTLTexture> tex,
+                                      uint8_t *dst_rgba,
+                                      int32_t w,
+                                      int32_t h,
+                                      int32_t stride);
 static void metal_update_layer_size(VGFXMetalContext *ctx);
 static int metal_capture_current_drawable_to_display_texture(VGFXMetalContext *ctx);
 static id<MTLTexture> metal_encode_postfx_if_needed(
@@ -1142,7 +1146,7 @@ static int metal_sync_render_target_color(void *userdata, vgfx3d_rendertarget_t 
     }
     entry.lastUsedFrame = ctx.frameSerial;
     return metal_copy_texture_to_rgba(
-        entry.colorTexture, target->color_buf, target->width, target->height, target->stride);
+        ctx, entry.colorTexture, target->color_buf, target->width, target->height, target->stride);
 }
 
 static MTLRenderPassDescriptor *metal_make_scene_pass_descriptor(VGFXMetalContext *ctx,
@@ -1343,15 +1347,43 @@ static int metal_upload_rgba_to_bgra_texture(id<MTLTexture> tex,
     return 1;
 }
 
-static int metal_copy_texture_to_rgba(
-    id<MTLTexture> tex, uint8_t *dst_rgba, int32_t w, int32_t h, int32_t stride) {
+static size_t metal_align_up_size(size_t value, size_t alignment) {
+    size_t remainder;
+    if (alignment == 0)
+        return value;
+    remainder = value % alignment;
+    if (remainder == 0)
+        return value;
+    if (value > SIZE_MAX - (alignment - remainder))
+        return 0;
+    return value + (alignment - remainder);
+}
+
+static int metal_copy_texture_to_rgba(VGFXMetalContext *ctx,
+                                      id<MTLTexture> tex,
+                                      uint8_t *dst_rgba,
+                                      int32_t w,
+                                      int32_t h,
+                                      int32_t stride) {
     int32_t copy_w;
     int32_t copy_h;
     MTLPixelFormat pixel_format;
+    size_t dst_row_bytes;
+    size_t source_row_bytes;
     size_t bytes_per_row;
-    uint8_t *bgra;
-    uint16_t *rgba16f;
-    if (!tex || !dst_rgba || w <= 0 || h <= 0 || stride < w * 4)
+    size_t total_bytes;
+    size_t bytes_per_pixel;
+    id<MTLBuffer> readback_buffer;
+    id<MTLCommandBuffer> command_buffer;
+    id<MTLBlitCommandEncoder> blit;
+    const uint8_t *src;
+    if (!ctx || !ctx.device || !ctx.commandQueue || !tex || !dst_rgba || w <= 0 || h <= 0 ||
+        stride <= 0)
+        return 0;
+    if ((size_t)w > SIZE_MAX / 4u)
+        return 0;
+    dst_row_bytes = (size_t)w * 4u;
+    if ((size_t)stride < dst_row_bytes || (size_t)h > SIZE_MAX / (size_t)stride)
         return 0;
 
     memset(dst_rgba, 0, (size_t)stride * (size_t)h);
@@ -1361,33 +1393,60 @@ static int metal_copy_texture_to_rgba(
         return 0;
     pixel_format = tex.pixelFormat;
     if (pixel_format == MTLPixelFormatRGBA16Float) {
-        bytes_per_row = (size_t)copy_w * 8u;
-        rgba16f = (uint16_t *)malloc((size_t)copy_h * bytes_per_row);
-        if (!rgba16f)
-            return 0;
-        [tex getBytes:rgba16f
-           bytesPerRow:(NSUInteger)bytes_per_row
-            fromRegion:MTLRegionMake2D(0, 0, (NSUInteger)copy_w, (NSUInteger)copy_h)
-           mipmapLevel:0];
-        vgfx3d_copy_linear_rgba16f_to_rgba8(
-            dst_rgba, stride, copy_w, copy_h, rgba16f, (int32_t)bytes_per_row);
-        free(rgba16f);
-        return 1;
+        bytes_per_pixel = 8u;
+    } else if (pixel_format == MTLPixelFormatBGRA8Unorm) {
+        bytes_per_pixel = 4u;
+    } else {
+        return 0;
     }
-    if (pixel_format != MTLPixelFormatBGRA8Unorm)
+
+    if ((size_t)copy_w > SIZE_MAX / bytes_per_pixel)
+        return 0;
+    source_row_bytes = (size_t)copy_w * bytes_per_pixel;
+    bytes_per_row = metal_align_up_size(source_row_bytes, 256u);
+    if (bytes_per_row == 0 || (size_t)copy_h > SIZE_MAX / bytes_per_row)
+        return 0;
+    total_bytes = bytes_per_row * (size_t)copy_h;
+    readback_buffer = [ctx.device newBufferWithLength:(NSUInteger)total_bytes
+                                              options:MTLResourceStorageModeShared];
+    if (!readback_buffer)
         return 0;
 
-    bgra = (uint8_t *)malloc((size_t)copy_h * (size_t)copy_w * 4u);
-    if (!bgra)
+    command_buffer = [ctx.commandQueue commandBuffer];
+    if (!command_buffer)
         return 0;
-    [tex getBytes:bgra
-       bytesPerRow:(NSUInteger)(copy_w * 4)
-        fromRegion:MTLRegionMake2D(0, 0, (NSUInteger)copy_w, (NSUInteger)copy_h)
-       mipmapLevel:0];
+    blit = [command_buffer blitCommandEncoder];
+    if (!blit)
+        return 0;
+    [blit copyFromTexture:tex
+              sourceSlice:0
+              sourceLevel:0
+             sourceOrigin:MTLOriginMake(0, 0, 0)
+               sourceSize:MTLSizeMake((NSUInteger)copy_w, (NSUInteger)copy_h, 1)
+                 toBuffer:readback_buffer
+        destinationOffset:0
+   destinationBytesPerRow:(NSUInteger)bytes_per_row
+ destinationBytesPerImage:(NSUInteger)total_bytes];
+    [blit endEncoding];
+    [command_buffer commit];
+    [command_buffer waitUntilCompleted];
+    if (command_buffer.status == MTLCommandBufferStatusError)
+        return 0;
+    src = (const uint8_t *)[readback_buffer contents];
+    if (!src)
+        return 0;
+
+    if (pixel_format == MTLPixelFormatRGBA16Float) {
+        if (bytes_per_row > (size_t)INT32_MAX)
+            return 0;
+        vgfx3d_copy_linear_rgba16f_to_rgba8(
+            dst_rgba, stride, copy_w, copy_h, (const uint16_t *)src, (int32_t)bytes_per_row);
+        return 1;
+    }
 
     for (int32_t y = 0; y < copy_h; y++) {
         uint8_t *dst_row = dst_rgba + (size_t)y * (size_t)stride;
-        const uint8_t *src_row = bgra + (size_t)y * (size_t)copy_w * 4u;
+        const uint8_t *src_row = src + (size_t)y * bytes_per_row;
         for (int32_t x = 0; x < copy_w; x++) {
             dst_row[(size_t)x * 4u + 0u] = src_row[(size_t)x * 4u + 2u];
             dst_row[(size_t)x * 4u + 1u] = src_row[(size_t)x * 4u + 1u];
@@ -1395,7 +1454,6 @@ static int metal_copy_texture_to_rgba(
             dst_row[(size_t)x * 4u + 3u] = src_row[(size_t)x * 4u + 3u];
         }
     }
-    free(bgra);
     return 1;
 }
 
@@ -1451,7 +1509,7 @@ static void metal_present_texture_to_framebuffer(VGFXMetalContext *ctx, id<MTLTe
         return;
     if (!vgfx_get_framebuffer(ctx.vgfxWin, &fb))
         return;
-    (void)metal_copy_texture_to_rgba(texture, fb.pixels, fb.width, fb.height, fb.stride);
+    (void)metal_copy_texture_to_rgba(ctx, texture, fb.pixels, fb.width, fb.height, fb.stride);
     ctx.displayTexture = texture;
 }
 
@@ -2998,7 +3056,9 @@ static int metal_readback_rgba(
         vgfx3d_postfx_chain_t chain_copy = {0};
         const vgfx3d_postfx_chain_t *chain = NULL;
         vgfx3d_metal_readback_kind_t readback_kind;
-        if (!ctx || !dst_rgba || w <= 0 || h <= 0 || stride < w * 4)
+        if (!ctx || !dst_rgba || w <= 0 || h <= 0 || stride <= 0)
+            return 0;
+        if ((size_t)w > SIZE_MAX / 4u || (size_t)stride < (size_t)w * 4u)
             return 0;
 
         readback_kind = vgfx3d_metal_choose_readback_kind(
@@ -3019,7 +3079,7 @@ static int metal_readback_rgba(
         }
         texture = metal_active_readback_texture(ctx);
         {
-            const int ok = metal_copy_texture_to_rgba(texture, dst_rgba, w, h, stride);
+            const int ok = metal_copy_texture_to_rgba(ctx, texture, dst_rgba, w, h, stride);
             vgfx3d_postfx_chain_free(&chain_copy);
             return ok;
         }

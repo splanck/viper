@@ -128,12 +128,22 @@ static void *rt_rendertarget3d_new_with_format(int64_t width,
     return rtd;
 }
 
+/// @brief Allocate an LDR (8-bit per channel) off-screen render target.
+/// @details Thin wrapper around the shared constructor that selects the
+///   `UNORM8` color format. Dimensions outside 1-8192 trap with a descriptive
+///   message rather than silently clamping.
+/// @return Retained pointer to the new `rt_rendertarget3d`, or traps on failure.
 void *rt_rendertarget3d_new(int64_t width, int64_t height) {
     return rt_rendertarget3d_new_with_format(
         width, height, VGFX3D_RENDERTARGET_COLOR_FORMAT_UNORM8,
         "RenderTarget3D.New: dimensions must be 1-8192");
 }
 
+/// @brief Allocate an HDR (16-bit float per channel) off-screen render target.
+/// @details Same API as `rt_rendertarget3d_new`, but picks the `HDR16F` color
+///   format so tone-mapping and bloom effects can work with values > 1.0
+///   without early clamping. Callers that don't need HDR should use the plain
+///   `new` variant — HDR targets consume 2x the VRAM per pixel.
 void *rt_rendertarget3d_new_hdr(int64_t width, int64_t height) {
     return rt_rendertarget3d_new_with_format(
         width, height, VGFX3D_RENDERTARGET_COLOR_FORMAT_HDR16F,

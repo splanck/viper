@@ -47,6 +47,14 @@ typedef struct {
     int8_t length_dirty;
 } rt_path3d;
 
+/// @brief GC finalizer — release the three parallel coordinate arrays.
+/// @details Path control points are stored in struct-of-arrays layout
+///   (separate `xs`, `ys`, `zs` rather than a packed Vec3 array) so each
+///   axis can be cache-linearly scanned during length integration. The
+///   three arrays are always index-aligned and reallocated together; the
+///   finalizer releases each independently and zeros the counts so a
+///   stale post-finalize read sees an empty path rather than dangling
+///   pointers.
 static void path3d_finalizer(void *obj) {
     rt_path3d *p = (rt_path3d *)obj;
     free(p->xs);

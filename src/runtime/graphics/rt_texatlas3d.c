@@ -47,6 +47,11 @@ typedef struct {
     int8_t dirty;
 } rt_texatlas3d;
 
+/// @brief GC finalizer — free the atlas backing pixel buffer.
+/// @details The atlas owns its `data` buffer directly (a flat RGBA byte
+///   array sized for `width * height * 4`). `cached_pixels` is not
+///   released here because it's a weak view into this atlas rather than
+///   a separately-owned object — releasing it would double-free.
 static void texatlas3d_finalizer(void *obj) {
     rt_texatlas3d *a = (rt_texatlas3d *)obj;
     free(a->data);

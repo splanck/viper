@@ -1026,6 +1026,19 @@ void rt_mesh3d_set_bone_weights(void *obj,
  * Canvas3D extension — DrawMeshSkinned
  *=========================================================================*/
 
+/// @brief Queue a skinned mesh draw with per-frame motion-vector continuity.
+/// @details Chooses between GPU and CPU skinning at the start:
+///   `vgfx3d_backend_prefers_gpu_skinning` asks the backend whether it wants
+///   to consume the palette directly (for D3D11/OpenGL with enough uniform
+///   space); if yes, we hand the palettes through to the normal draw path
+///   via a shallow-copy `rt_mesh3d` so the backend's vertex shader does the
+///   matrix blend. Otherwise we `vgfx3d_skin_vertices` on the CPU into a
+///   scratch buffer, tracked as a temp allocation so it survives until the
+///   frame is submitted and flushed. `motion_key` threads through for
+///   temporal effects (TAA, motion blur) so the engine can correlate this
+///   draw with the matching one in the previous frame. `prev_bone_palette`
+///   supplies the previous-frame palette for per-vertex motion vectors —
+///   without it, skinned motion blur falls back to object-space smearing.
 void rt_canvas3d_draw_mesh_matrix_skinned_keyed(void *canvas,
                                                 void *mesh_obj,
                                                 const double *model_matrix,
@@ -1328,6 +1341,13 @@ static const float *anim_blend_prepare_prev_palette(rt_anim_blend3d *b, int64_t 
     return b->has_prev_motion_palette ? b->prev_bone_palette : NULL;
 }
 
+/// @brief Draw a skinned mesh using a blended animation pose.
+/// @details Thin convenience layer that pulls the final bone palette and the
+///   matching previous-frame palette out of the `rt_anim_blend3d` wrapper
+///   (built by the animation controller from one or more playing clips) and
+///   forwards to `rt_canvas3d_draw_mesh_matrix_skinned_keyed`. The transform
+///   object supplies both the model matrix (via its `mat4_impl`) and a
+///   stable identity pointer used as the motion key for temporal effects.
 void rt_canvas3d_draw_mesh_blended(
     void *canvas, void *mesh_obj, void *transform, void *material, void *blend_obj) {
     if (!canvas || !mesh_obj || !transform || !material || !blend_obj)

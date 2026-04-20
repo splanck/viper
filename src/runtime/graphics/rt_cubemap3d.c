@@ -305,8 +305,15 @@ void *rt_cubemap3d_new(void *px, void *nx, void *py, void *ny, void *pz, void *n
 // Software cube map sampling
 //=============================================================================
 
-/* Sample a cube map given a 3D direction vector.
- * Returns color as floats [0.0, 1.0]. */
+/// @brief Bilinearly sample a cubemap along a world-space direction vector.
+/// @details Picks the face whose major axis dominates the direction, converts
+///   to per-face UV, then performs a cross-face bilinear tap: each of the
+///   four sample positions is re-projected back to a direction vector so that
+///   taps that fall outside the current face's UV range wrap naturally onto
+///   adjacent faces. That avoids the "seam" artifacts a simple per-face clamp
+///   would introduce at cube edges. Zero-length directions and null cubemaps
+///   produce black output so callers can skip explicit guards.
+/// @param out_r,out_g,out_b Output color channels in normalized [0.0, 1.0].
 void rt_cubemap_sample(const rt_cubemap3d *cm,
                        float dx,
                        float dy,
@@ -390,6 +397,17 @@ void rt_cubemap_sample(const rt_cubemap3d *cm,
 #undef BL
 }
 
+/// @brief Roughness-aware cubemap sample that fakes a prefiltered environment map.
+/// @details Blurs the reflection by taking nine weighted taps around the base
+///   direction in the local tangent plane — center tap plus four axis-aligned
+///   and four diagonal taps, weights biased toward the center. The `spread`
+///   angle grows with `roughness`, widening the taps so rougher surfaces
+///   receive a softer, more integrated reflection. For `roughness <= 0.001`
+///   we short-circuit to the sharp `rt_cubemap_sample` path. This is a CPU
+///   approximation of the split-sum / prefiltered environment map trick used
+///   by physically-based renderers and avoids the need to precompute per-mip
+///   convolutions.
+/// @param roughness Surface roughness in [0, 1]; 0 = mirror, 1 = fully diffuse.
 void rt_cubemap_sample_roughness(const rt_cubemap3d *cm,
                                  float dx,
                                  float dy,

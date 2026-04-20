@@ -20,7 +20,22 @@
 #include <math.h>
 #include <string.h>
 
-/// @brief 3d skin vertices.
+/// @brief Apply 4-influence linear blend skinning on the CPU.
+/// @details For every vertex, sums `weight[i] * palette[bone_index[i]] * v` over the
+///   four bone influences carried in `src[v].bone_weights` / `src[v].bone_indices`.
+///   Positions take the full affine row (translation column included); normals use
+///   only the 3x3 linear block and are re-normalized. Influences with weight below
+///   1e-6 or whose bone index exceeds `bone_count` are skipped. Non-position/normal
+///   attributes are passed through by copying `src[v]` into `dst[v]` first when the
+///   buffers differ (in-place skinning is supported by leaving `dst == src`).
+///   Vertices with zero total weight fall through unchanged so unskinned geometry
+///   is preserved for meshes that mix rigid and skinned verts.
+/// @param src Source vertex array (read-only).
+/// @param dst Destination vertex array; may alias `src`.
+/// @param vertex_count Number of vertices to transform.
+/// @param palette Row-major 4x4 matrix palette laid out as `bone_count` matrices
+///   stored back-to-back (16 floats per matrix).
+/// @param bone_count Upper bound on valid indices in `palette`.
 void vgfx3d_skin_vertices(const vgfx3d_vertex_t *src,
                           vgfx3d_vertex_t *dst,
                           uint32_t vertex_count,

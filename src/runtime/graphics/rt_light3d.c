@@ -34,10 +34,21 @@ extern double rt_vec3_x(void *v);
 extern double rt_vec3_y(void *v);
 extern double rt_vec3_z(void *v);
 
+/// @brief Clamp a value at zero from below — negatives collapse to zero.
+/// @details Used for physical quantities like intensity, radius, and
+///   attenuation where negative values are nonsensical. Chosen over a
+///   `fmax(0, value)` call to keep the hot path branch-predictable on
+///   inputs that are almost always non-negative.
 static double clamp_min0(double value) {
     return value < 0.0 ? 0.0 : value;
 }
 
+/// @brief Normalize a light's direction vector, defaulting to down on zero input.
+/// @details When a caller hands in a degenerate (zero-length) direction,
+///   rather than producing NaN we fall back to `(0, -1, 0)` — straight-down
+///   sun — so subsequent lighting math stays finite. The 1e-8 threshold
+///   is permissive enough that any artistically-meaningful input passes,
+///   but catches explicit zeroing.
 static void normalize_light_direction(double *x, double *y, double *z) {
     double len;
 

@@ -78,6 +78,13 @@ typedef struct {
     int32_t visible_capacity;
 } rt_vegetation3d;
 
+/// @brief GC finalizer — release the three flat arrays that hold the blade instances.
+/// @details The vegetation system stores per-instance data in three
+///   independent flat buffers: `base_transforms` (original 4x4 matrices),
+///   `positions` (vec3 source points kept for wind resimulation), and
+///   `visible_transforms` (this frame's culled subset). All three are
+///   plain float allocations — nothing inside them owns downstream refs,
+///   so the finalize is just three `free`s plus pointer nulling.
 static void vegetation3d_finalizer(void *obj) {
     rt_vegetation3d *v = (rt_vegetation3d *)obj;
     free(v->base_transforms);
@@ -107,7 +114,12 @@ static void build_blade_mesh(void *mesh, double w, double h) {
     rt_mesh3d_add_triangle(mesh, 4, 6, 7);
 }
 
-/// @brief Simple LCG random number generator.
+/// @brief Deterministic linear congruential RNG for scattering blade instances.
+/// @details Uses the `glibc` constants (1103515245, 12345, mod 2^32). Chosen
+///   over `rand()` so blade placement is repeatable across platforms and
+///   runs for a given seed — important for authoring workflows where an
+///   artist tunes a seed to get a specific look. Not suitable for anything
+///   cryptographic, but statistically adequate for even-ish scattering.
 static uint32_t lcg_next(uint32_t *state) {
     *state = *state * 1103515245u + 12345u;
     return *state;

@@ -98,6 +98,13 @@ static void terrain_release_mesh_slot(void **slot) {
     terrain_release_ref(slot);
 }
 
+/// @brief Release every LOD mesh stored in the chunk grid.
+/// @details Each of the three LOD arrays (`chunk_meshes`, `chunk_meshes_lod1`,
+///   `chunk_meshes_lod2`) is a flat `chunks_x * chunks_z` array of optional
+///   mesh slots. A null LOD array means that LOD has never been populated
+///   and is simply skipped. Individual slot nulls inside a populated array
+///   are handled by `terrain_release_ref`'s internal guard, so partial
+///   grids (only some chunks meshed) are safe.
 static void terrain_release_chunk_meshes(rt_terrain3d *t) {
     int32_t n;
     if (!t)
@@ -113,6 +120,15 @@ static void terrain_release_chunk_meshes(rt_terrain3d *t) {
     }
 }
 
+/// @brief GC finalizer — release every owned resource on a terrain.
+/// @details Tears down, in order: per-chunk mesh slots (all three LODs),
+///   the material reference, the splat map, each of the four layer
+///   textures, the original base texture and the baked splat composite,
+///   then frees the heightmap + chunk mesh / AABB arrays. Every slot is
+///   nulled so a subsequent sweep (possible during shutdown) becomes a
+///   no-op rather than a double-free. Order matters only loosely — meshes
+///   are released before the arrays that hold them, but nothing here has
+///   cross-allocation data dependencies.
 static void terrain3d_finalizer(void *obj) {
     rt_terrain3d *t = (rt_terrain3d *)obj;
     terrain_release_chunk_meshes(t);
@@ -462,6 +478,17 @@ void *rt_terrain3d_get_normal_at(void *obj, double wx, double wz) {
 extern void *rt_pixels_new(int64_t width, int64_t height);
 extern void rt_pixels_set(void *pixels, int64_t x, int64_t y, int64_t color);
 
+/// @brief Pre-blend the four splat-map layers into a single baked terrain texture.
+/// @details Real-time splat-mapping — sampling four layer textures and
+///   RGBA-weight blending per fragment — is bandwidth-expensive, so this CPU
+///   bake walks every splat-map texel once, reads its RGBA weights, normalizes
+///   them, samples each enabled layer texture at its configured UV scale
+///   (letting rock/moss tile at different frequencies), and writes the
+///   weighted sum into a new `Pixels` object that replaces the terrain's
+///   material texture. Degenerate zero-weight texels default to pure layer 0
+///   rather than producing black holes. Called only when the splat map or a
+///   layer texture is invalidated — subsequent frames just sample the baked
+///   result.
 static void bake_splat_texture(rt_terrain3d *t) {
     if (!t->splat_map || !t->material)
         return;

@@ -1343,6 +1343,9 @@ void rt_scene3d_remove(void *obj, void *node) {
     s->node_count = count_subtree(s->root);
 }
 
+/// @brief Locate a node by name via depth-first traversal from the scene root.
+/// @return Pointer to the first matching node or NULL. Ownership is not
+///   transferred — callers must not release the returned pointer directly.
 void *rt_scene3d_find(void *obj, rt_string name) {
     if (!obj || !name)
         return NULL;
@@ -1359,6 +1362,16 @@ static void mat4_d2f_local(const double *src, float *dst) {
         dst[i] = (float)src[i];
 }
 
+/// @brief Traverse the scene and submit visible nodes for rendering.
+/// @details Builds the view-projection matrix from the camera, extracts the
+///   six frustum planes, then recursively draws the scene tree. Nodes whose
+///   world-space bounds fall outside the frustum are skipped and counted in
+///   `last_culled_count`, queryable via `rt_scene3d_get_culled_count`. If no
+///   frame is currently active on the canvas the scene opens/closes one on
+///   behalf of the caller; otherwise it draws into the existing frame so
+///   multiple scenes can share a single Begin/End pair. Traps when invoked
+///   inside a Begin2D/End block because 2D and 3D passes use incompatible
+///   pipeline state.
 void rt_scene3d_draw(void *obj, void *canvas3d, void *camera) {
     if (!obj || !canvas3d || !camera)
         return;
@@ -1397,6 +1410,11 @@ void rt_scene3d_draw(void *obj, void *canvas3d, void *camera) {
     s->last_culled_count = culled;
 }
 
+/// @brief Detach and release every child of the root so the scene is empty.
+/// @details Preserves the root node itself — callers can continue adding
+///   children afterwards without re-instantiating the scene. Each detached
+///   subtree's retain count is decremented; subtrees held by other strong
+///   refs outside the scene graph survive and remain usable.
 void rt_scene3d_clear(void *obj) {
     if (!obj)
         return;
@@ -1410,6 +1428,12 @@ void rt_scene3d_clear(void *obj) {
     s->node_count = 1; /* just root */
 }
 
+/// @brief Propagate node transforms out to bound systems (audio, etc.) for one tick.
+/// @details Walks the tree once to let each node publish its world transform to
+///   attached subsystems (e.g. 3D audio sources following a node), then ticks
+///   the audio graph using `dt` so Doppler / attenuation stay in lockstep with
+///   the scene's own integration timestep. Callers typically invoke this once
+///   per simulation step, before submitting the scene for drawing.
 void rt_scene3d_sync_bindings(void *obj, double dt) {
     rt_scene3d *scene = (rt_scene3d *)obj;
     if (!scene || !scene->root)
@@ -1418,6 +1442,10 @@ void rt_scene3d_sync_bindings(void *obj, double dt) {
     rt_audio3d_sync_bindings(dt);
 }
 
+/// @brief Count every node in the scene, including the implicit root.
+/// @details Re-walks the tree rather than trusting a cached value so the result
+///   stays correct after direct child-list mutation. The cached `node_count`
+///   field is refreshed as a side effect.
 int64_t rt_scene3d_get_node_count(void *obj) {
     if (!obj)
         return 0;
@@ -1426,6 +1454,9 @@ int64_t rt_scene3d_get_node_count(void *obj) {
     return scene->node_count;
 }
 
+/// @brief Number of nodes culled by the most recent `rt_scene3d_draw` call.
+/// @details Zero until the first draw. Useful as a coarse telemetry signal to
+///   verify that culling is actually rejecting off-screen geometry.
 int64_t rt_scene3d_get_culled_count(void *obj) {
     return obj ? ((rt_scene3d *)obj)->last_culled_count : 0;
 }
@@ -1434,6 +1465,12 @@ int64_t rt_scene3d_get_culled_count(void *obj) {
  * LOD — Level of Detail per SceneNode3D
  *=========================================================================*/
 
+/// @brief Register a mesh LOD to swap in at or beyond a given camera distance.
+/// @details Grows the LOD array on demand (doubling, min 4 slots) and keeps
+///   entries sorted ascending by `distance` so the draw path can linearly pick
+///   the first level whose threshold exceeds the current view distance. The
+///   mesh is retained here and released by `rt_scene_node3d_clear_lod` so
+///   callers may drop their local reference immediately after adding.
 void rt_scene_node3d_add_lod(void *obj, double distance, void *mesh) {
     if (!obj || !mesh)
         return;
@@ -1466,6 +1503,9 @@ void rt_scene_node3d_add_lod(void *obj, double distance, void *mesh) {
     node->lod_count++;
 }
 
+/// @brief Release every registered LOD mesh on this node and reset the count.
+/// @details Preserves the underlying `lod_levels` allocation so subsequent
+///   `add_lod` calls can reuse it without reallocating.
 void rt_scene_node3d_clear_lod(void *obj) {
     if (!obj)
         return;
@@ -1475,10 +1515,15 @@ void rt_scene_node3d_clear_lod(void *obj) {
     node->lod_count = 0;
 }
 
+/// @brief Number of LOD levels currently registered on this node.
 int64_t rt_scene_node3d_get_lod_count(void *obj) {
     return obj ? ((rt_scene_node3d *)obj)->lod_count : 0;
 }
 
+/// @brief Distance threshold (in world units) for the LOD at `index`.
+/// @return Ascending-sorted threshold, or 0.0 for an out-of-range index or
+///   null node; 0.0 is a safe sentinel because LOD 0 (if present) would
+///   normally specify a non-zero distance anyway.
 double rt_scene_node3d_get_lod_distance(void *obj, int64_t index) {
     if (!obj)
         return 0.0;
@@ -1488,6 +1533,8 @@ double rt_scene_node3d_get_lod_distance(void *obj, int64_t index) {
     return node->lod_levels[index].distance;
 }
 
+/// @brief Borrowed pointer to the mesh registered at LOD `index`.
+/// @return The mesh or NULL; ownership stays with the scene node.
 void *rt_scene_node3d_get_lod_mesh(void *obj, int64_t index) {
     if (!obj)
         return NULL;

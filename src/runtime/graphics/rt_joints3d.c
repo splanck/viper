@@ -58,6 +58,11 @@ typedef struct {
     double target_distance;
 } rt_distance_joint3d;
 
+/// @brief GC finalizer — distance joints own no heap allocations.
+/// @details `body_a` / `body_b` are weak views into bodies owned by the
+///   physics world — the joint never retains them. No cleanup needed, but
+///   the finalizer exists so the GC treats this type as finalizable for
+///   uniform lifecycle tracing.
 static void distance_joint_finalizer(void *obj) {
     (void)obj;
 }
@@ -100,6 +105,19 @@ void rt_distance_joint3d_set_distance(void *joint, double distance) {
         ((rt_distance_joint3d *)joint)->target_distance = distance;
 }
 
+/// @brief Enforce a rigid distance constraint between two bodies for one step.
+/// @details Implements a two-pass hard constraint: a position correction that
+///   teleports the bodies so their separation matches `target_distance`, then
+///   a velocity correction that zeros out the relative velocity along the
+///   constraint axis so the bodies don't immediately separate again next
+///   frame. Both corrections are mass-weighted by inverse mass — infinite-mass
+///   (static) bodies contribute zero to the split, so a dynamic body hitched
+///   to a static one moves the full correction distance itself. `dt` is
+///   currently unused because this is a position-based constraint; leaving
+///   it in the signature keeps parity with `solve_spring` and reserves it
+///   for future XPBD-style step-size-aware variants.
+///   Early-outs: coincident bodies (no defined direction) and two static
+///   bodies (both inv_mass = 0) both skip the step cleanly.
 static void solve_distance(rt_distance_joint3d *j, double dt) {
     if (!j || !j->body_a || !j->body_b)
         return;
@@ -161,6 +179,10 @@ typedef struct {
     double damping;
 } rt_spring_joint3d;
 
+/// @brief GC finalizer — spring joints own no heap allocations.
+/// @details Same ownership model as the distance joint: body refs are
+///   non-retained weak views, so there's nothing to release. Exists to
+///   register the type as finalizable.
 static void spring_joint_finalizer(void *obj) {
     (void)obj;
 }
@@ -224,6 +246,15 @@ double rt_spring_joint3d_get_rest_length(void *joint) {
     return joint ? ((rt_spring_joint3d *)joint)->rest_length : 0;
 }
 
+/// @brief Integrate spring + damping forces into both bodies' velocities.
+/// @details Applies Hooke's law `F = -k * (dist - rest)` along the axis from
+///   A to B, plus a velocity-damping term `-c * (rel_vel · axis)` to bleed
+///   oscillation. The two forces are added into equal-and-opposite impulses
+///   of magnitude `F * dt` scaled by each body's inverse mass, preserving
+///   momentum between the pair. Unlike `solve_distance`, this is a soft
+///   constraint: it never corrects positions directly, so over-stiff springs
+///   can oscillate or explode at the current fixed step — tune `stiffness`
+///   below the stability ceiling for the caller's step frequency.
 static void solve_spring(rt_spring_joint3d *j, double dt) {
     if (!j || !j->body_a || !j->body_b || dt <= 0)
         return;

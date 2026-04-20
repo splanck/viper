@@ -545,6 +545,12 @@ static void canvas3d_copy_light_params(const rt_light3d *l, vgfx3d_light_params_
     out->outer_cos = (float)l->outer_cos;
 }
 
+/// @brief Score a directional light by luminance-weighted intensity.
+/// @details Used to rank shadow-caster candidates: only type 0 (directional)
+///   lights score above zero, and their score uses the Rec. 709 luminance
+///   coefficients so a dim yellow light doesn't outrank a bright blue one
+///   just because it has higher green. Non-directional lights and nulls
+///   return -1.0 to drop out of any ranking comparison.
 static float canvas3d_shadow_light_score(const rt_light3d *l) {
     float luminance;
 
@@ -554,6 +560,13 @@ static float canvas3d_shadow_light_score(const rt_light3d *l) {
     return (float)l->intensity * luminance;
 }
 
+/// @brief Flatten the canvas's sparse light array into a dense backend buffer.
+/// @details The canvas stores lights in fixed slots (`lights[0..VGFX3D_MAX_LIGHTS]`)
+///   so that dropped-and-readded lights keep stable slot identities, but the
+///   GPU backends expect a packed array — this routine bridges the two. Stops
+///   when either every slot has been visited or `max` entries have been
+///   written, whichever comes first.
+/// @return The number of lights actually copied into `out`.
 static int32_t build_light_params(const rt_canvas3d *c, vgfx3d_light_params_t *out, int32_t max) {
     int32_t count = 0;
     for (int i = 0; i < VGFX3D_MAX_LIGHTS && count < max; i++) {
@@ -622,6 +635,13 @@ static int32_t canvas3d_select_shadow_directional_lights(const rt_canvas3d *c,
     return count;
 }
 
+/// @brief Stamp shadow-map slot numbers onto the dense light array.
+/// @details Initializes every `shadow_index` field to -1 ("this light casts no
+///   shadow map"), then assigns `slot` for each light promoted to a shadow
+///   caster by `canvas3d_select_shadow_directional_lights`. The shader uses
+///   that index to fetch from `shadow_rts[slot]`. Out-of-range or empty
+///   shadow arrays leave all lights in the sentinel state so the shader
+///   shortcut path kicks in.
 static void canvas3d_apply_shadow_light_indices(vgfx3d_light_params_t *lights,
                                                 int32_t light_count,
                                                 const int32_t *shadow_light_indices,
@@ -1211,6 +1231,13 @@ static void canvas3d_accumulate_deferred_world_bounds(const deferred_draw_t *dd,
     }
 }
 
+/// @brief Decide whether a queued deferred draw survives frustum culling.
+/// @details Accumulates the union of the draw's world-space AABBs (one per
+///   instance for instanced batches, otherwise the single transformed bound)
+///   and tests it against the view frustum. Draws without usable bounds
+///   (e.g. procedural geometry with no declared local AABB) conservatively
+///   pass so nothing visible is clipped away.
+/// @return 1 if the draw may be visible (keep it), 0 if definitely outside.
 static int canvas3d_deferred_intersects_frustum(const deferred_draw_t *dd,
                                                 const vgfx3d_frustum_t *frustum) {
     float world_min[3] = {0.0f, 0.0f, 0.0f};
@@ -1434,6 +1461,11 @@ static int canvas3d_build_shadow_light_vp(const deferred_draw_t *cmds,
     return 1;
 }
 
+/// @brief Free every shadow-pair render target and zero the live count.
+/// @details Each slot in `shadow_rts` owns its own color and depth buffers
+///   (allocated by `canvas3d_ensure_shadow_targets`); this walks the array and
+///   releases all three allocations per slot. Safe to call during finalization
+///   or after `ensure` detects that the cached resolution no longer matches.
 static void canvas3d_release_shadow_targets(rt_canvas3d *c) {
     if (!c)
         return;
@@ -1448,6 +1480,16 @@ static void canvas3d_release_shadow_targets(rt_canvas3d *c) {
     c->shadow_count = 0;
 }
 
+/// @brief Lazily (re)allocate all shadow-pair depth targets at the requested resolution.
+/// @details Passing `resolution <= 0` short-circuits to a "do we already have
+///   any usable depth buffers?" query without reallocating. Otherwise, if any
+///   slot is missing or has a mismatching size, every slot is freed and the
+///   full set is reallocated as square `resolution x resolution` targets so
+///   the array stays uniform. Color buffers are intentionally null — shadow
+///   passes only write depth. OOM at any point during reallocation rolls back
+///   to a fully-empty state so partial allocations can't leak into subsequent
+///   draw calls.
+/// @return 1 on success (targets ready), 0 on allocation failure.
 static int canvas3d_ensure_shadow_targets(rt_canvas3d *c, int32_t resolution) {
     size_t depth_bytes;
 
@@ -1493,6 +1535,12 @@ static int canvas3d_ensure_shadow_targets(rt_canvas3d *c, int32_t resolution) {
     return 1;
 }
 
+/// @brief Drop the cached CPU-rasterized skybox so the next frame re-renders it.
+/// @details The CPU skybox is an expensive per-pixel raycast through the
+///   cubemap; we cache the last result keyed on (resolution, camera VP,
+///   cubemap generation). Call this when any of those inputs change in a way
+///   `canvas3d_skybox_cache_matches` can't detect (e.g. destroying and
+///   recreating the cubemap, or repointing the canvas at a different one).
 void rt_canvas3d_invalidate_skybox_cache(rt_canvas3d *c) {
     if (!c)
         return;
@@ -1507,6 +1555,16 @@ void rt_canvas3d_invalidate_skybox_cache(rt_canvas3d *c) {
     memset(c->skybox_cpu_cache_forward, 0, sizeof(c->skybox_cpu_cache_forward));
 }
 
+/// @brief CPU-rasterize the bound skybox cubemap into a destination pixel buffer.
+/// @details For perspective cameras, unprojects each destination pixel from NDC
+///   back to a world-space direction by multiplying through `inverse(VP)`, then
+///   samples the cubemap along that ray. Orthographic cameras collapse to a
+///   single-color fill along the camera forward direction because an ortho
+///   projection has no per-pixel ray divergence — all pixels see the same
+///   skybox direction. This is the slow fallback path used when the GPU
+///   backend can't render the skybox directly (e.g. the software renderer).
+/// @return 1 on success, 0 when the VP matrix is non-invertible or inputs
+///   are otherwise malformed.
 static int canvas3d_render_skybox_cpu(rt_canvas3d *c,
                                       uint8_t *dst_pixels,
                                       int32_t dst_w,
@@ -1591,6 +1649,15 @@ static int canvas3d_render_skybox_cpu(rt_canvas3d *c,
     return 1;
 }
 
+/// @brief Check whether the cached CPU skybox can satisfy the current frame.
+/// @details Composite key: viewport (w, h), cubemap content generation
+///   (bumped whenever a face is uploaded), projection mode (ortho vs
+///   perspective), and then either the camera forward vector (ortho) or the
+///   full VP matrix + camera position (perspective). The split on projection
+///   mode exists because ortho cameras fill the entire target with one
+///   sampled direction, so only the forward vector needs to match — the VP
+///   matrix can drift without affecting the rendered skybox.
+/// @return 1 if the cache is valid for this frame, 0 if it must be re-rendered.
 static int canvas3d_skybox_cache_matches(const rt_canvas3d *c,
                                          int32_t w,
                                          int32_t h,
@@ -1611,6 +1678,16 @@ static int canvas3d_skybox_cache_matches(const rt_canvas3d *c,
                   sizeof(c->skybox_cpu_cache_cam_pos)) == 0;
 }
 
+/// @brief Populate (or refresh) the CPU skybox cache so it's ready for blitting.
+/// @details If the cache already matches the current viewport/camera/generation
+///   we return immediately (cheap fast path). Otherwise we (re)allocate the
+///   backing buffer only when its pixel dimensions actually change, then call
+///   `canvas3d_render_skybox_cpu` to paint the fresh image and snapshot the
+///   cache key. OOM on reallocation invalidates the cache rather than leaving
+///   it in a half-valid state. Also guards against `w * h * 4` overflow on
+///   32-bit size_t targets.
+/// @return 1 when a usable cache is ready, 0 on failure (caller should skip
+///   the skybox for this frame rather than render garbage).
 static int canvas3d_ensure_skybox_cpu_cache(rt_canvas3d *c, int32_t w, int32_t h) {
     uint64_t generation;
     size_t bytes;
@@ -1647,6 +1724,12 @@ static int canvas3d_ensure_skybox_cpu_cache(rt_canvas3d *c, int32_t w, int32_t h
     return 1;
 }
 
+/// @brief Copy the cached CPU skybox into the frame's destination buffer row-by-row.
+/// @details Performs no rendering — it assumes `canvas3d_ensure_skybox_cpu_cache`
+///   has already refreshed the cache for this frame. Silently no-ops when the
+///   cache size doesn't match the destination, which is by design: the caller
+///   uses it as a "try the fast path" hook before falling back to a full
+///   CPU render.
 static void canvas3d_blit_skybox_cpu_cache(rt_canvas3d *c,
                                            uint8_t *dst_pixels,
                                            int32_t dst_w,

@@ -70,6 +70,14 @@ static void sprite3d_release_ref(void **slot) {
     *slot = NULL;
 }
 
+/// @brief GC finalizer — release the texture, billboard mesh, and cached material.
+/// @details Sprite3D lazily caches three dependent objects: the billboard
+///   mesh (regenerated per frame to face the camera), the material
+///   (valid until the texture changes), and the source texture itself.
+///   All three are ref-counted — releasing is safe even if other
+///   objects still hold the texture. `cached_texture` is only a
+///   tracking pointer (not a retained ref) so it's just nulled, not
+///   released — the actual release happened through `texture`.
 static void sprite3d_finalizer(void *obj) {
     rt_sprite3d *s = (rt_sprite3d *)obj;
     if (!s)

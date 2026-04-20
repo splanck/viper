@@ -61,6 +61,12 @@ typedef struct {
     int8_t packed_dirty;
 } rt_morphtarget3d;
 
+/// @brief Flag the packed GPU payload dirty and bump the generation counter.
+/// @details Called after any per-shape delta array mutation so downstream
+///   consumers (GPU backends that cache the flat payload as a vertex/constant
+///   buffer) know to re-upload on the next draw. The generation counter
+///   wraps from UINT64_MAX back to 1 rather than 0 so "0" remains a reliable
+///   "never seen" sentinel in caches that compare against the last-known value.
 static void morphtarget_touch_payload(rt_morphtarget3d *mt) {
     if (!mt)
         return;
@@ -71,6 +77,16 @@ static void morphtarget_touch_payload(rt_morphtarget3d *mt) {
         mt->payload_generation++;
 }
 
+/// @brief Re-linearize the per-shape delta arrays into a single GPU-friendly buffer.
+/// @details Blend shapes arrive from authoring tools as independent arrays
+///   (one `pos_deltas` / `nrm_deltas` allocation per shape). GPU backends,
+///   however, want a single flat `shape_count * vertex_count * 3` buffer
+///   they can bind once. This routine concatenates them and replaces any
+///   previously-built packed arrays. Normal deltas are optional and only
+///   allocated when at least one shape supplies them, saving memory for
+///   position-only morphs (blink, phoneme shapes, etc.).
+/// @return 1 on success (or no-op when `packed_dirty == 0`), 0 on OOM — the
+///   caller should skip the draw rather than render with stale deltas.
 static int morphtarget_rebuild_packed_payload(rt_morphtarget3d *mt) {
     size_t delta_count;
     float *packed_pos = NULL;
@@ -121,6 +137,14 @@ static int morphtarget_rebuild_packed_payload(rt_morphtarget3d *mt) {
     return 1;
 }
 
+/// @brief Grow the parallel shape / weight / prev-weight / motion arrays.
+/// @details All four arrays must remain index-aligned, so they're reallocated
+///   together under a single transaction — failure to allocate any one of
+///   them frees the rest before returning, preventing a torn state where
+///   `shapes[]` has more entries than `weights[]`. Capacity doubles from an
+///   initial 4 slots until `min_capacity` fits, with an INT32_MAX/2 guard
+///   against integer overflow.
+/// @return 1 if capacity >= min_capacity (possibly no-op), 0 on OOM.
 static int morphtarget_reserve_shapes(rt_morphtarget3d *mt, int32_t min_capacity) {
     int32_t new_capacity;
     vgfx3d_morph_shape_t *new_shapes = NULL;
@@ -175,6 +199,14 @@ static int morphtarget_reserve_shapes(rt_morphtarget3d *mt, int32_t min_capacity
     return 1;
 }
 
+/// @brief Report the maximum morph shape count the named backend can handle on-GPU.
+/// @details The limits reflect each backend's uniform/constant-buffer budget
+///   for blend-shape coefficients: Metal can bind full buffers as arguments
+///   (essentially unlimited), OpenGL's default uniform storage caps around
+///   32 shapes, and D3D11 uses the hard-coded `VGFX3D_D3D11_MAX_MORPH_SHAPES`
+///   tuned to fit alongside other per-frame constants. Unknown backends
+///   (software renderer, disabled builds) return 0 so the caller falls
+///   back to CPU deformation.
 static int32_t vgfx3d_backend_morph_shape_limit(const char *backend_name) {
     if (!backend_name)
         return 0;
@@ -187,6 +219,13 @@ static int32_t vgfx3d_backend_morph_shape_limit(const char *backend_name) {
     return 0;
 }
 
+/// @brief Decide whether to dispatch GPU-side morph blending for this draw.
+/// @details Any mesh whose `shape_count` exceeds the backend's shader payload
+///   capacity must fall back to CPU blending instead, because partial GPU
+///   evaluation would silently drop the overflow shapes. Checked per draw,
+///   not once at mesh load, so a morph that starts small can stay on the
+///   GPU path even if other morph assets on the same canvas need CPU blending.
+/// @return Non-zero when GPU morph is viable.
 static int vgfx3d_backend_prefers_gpu_morph(const char *backend_name, int32_t shape_count) {
     int32_t limit = vgfx3d_backend_morph_shape_limit(backend_name);
     return limit > 0 && shape_count <= limit;
@@ -196,6 +235,13 @@ static int vgfx3d_backend_prefers_gpu_morph(const char *backend_name, int32_t sh
  * Lifecycle
  *=========================================================================*/
 
+/// @brief GC finalizer — release every per-shape delta array and packed buffer.
+/// @details Walks `shapes[0..shape_count]` first to drop their owned
+///   `pos_deltas` / `nrm_deltas`, then releases the four index-aligned
+///   top-level arrays plus the packed GPU payload allocations. Order matters
+///   only for debuggability — nothing here has cross-allocation dependencies,
+///   so OOM during any intermediate alloc elsewhere in the file is safe
+///   because finalize is idempotent against null slots.
 static void rt_morphtarget3d_finalize(void *obj) {
     rt_morphtarget3d *mt = (rt_morphtarget3d *)obj;
     for (int32_t i = 0; i < mt->shape_count; i++) {
@@ -419,6 +465,15 @@ uint64_t rt_morphtarget3d_get_payload_generation(void *obj) {
     return mt->payload_generation;
 }
 
+/// @brief Advance the previous-weight history by one frame for motion vectors.
+/// @details Keyed on `frame_serial` so multiple draws within the same frame
+///   don't rotate history more than once: the first draw of a new frame
+///   copies the snapshot from the previous frame into `prev_weights` (so
+///   motion-vector shaders can see the delta) and then snapshots the
+///   current weights for next frame. `has_prev_weights` stays 0 on the
+///   first-ever frame so motion shaders don't blend against zero noise.
+/// @return The previous-frame weights for motion-vector use, or NULL when
+///   no history exists yet.
 static const float *morphtarget_prepare_prev_weights(rt_morphtarget3d *mt, int64_t frame_serial) {
     if (!mt)
         return NULL;
@@ -467,6 +522,19 @@ void rt_mesh3d_set_morph_targets(void *mesh, void *morph_targets) {
  * CPU morph application + drawing
  *=========================================================================*/
 
+/// @brief Submit a mesh draw with morph-target blend applied on GPU or CPU.
+/// @details Picks the evaluation path by asking the backend
+///   (`vgfx3d_backend_prefers_gpu_morph`). GPU path: shallow-stores the
+///   existing morph fields on the mesh, points them at the packed payload
+///   for this draw, invokes the normal `draw_mesh_matrix_keyed`, then
+///   restores — this pattern avoids mutating the persistent mesh state
+///   across a draw boundary and sidesteps adding a second draw overload
+///   for each backend. CPU path: allocates a scratch vertex buffer,
+///   accumulates weighted position and (optional) normal deltas per
+///   vertex, re-normalizes normals only if any shape contributed them,
+///   and tracks the buffer for end-of-frame cleanup. Small weights
+///   (|w| < 1e-6) are skipped to avoid unnecessary fp math when a shape
+///   is effectively dormant.
 static void morphtarget_draw_mesh_matrix(void *canvas,
                                          void *mesh,
                                          const double *model_matrix,
