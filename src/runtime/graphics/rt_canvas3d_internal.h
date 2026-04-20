@@ -203,6 +203,7 @@ typedef struct {
 //=============================================================================
 
 #define VGFX3D_MAX_LIGHTS 16
+#define VGFX3D_MAX_SHADOW_LIGHTS 2
 
 /* Forward declaration — defined in vgfx3d_backend.h */
 typedef struct vgfx3d_backend vgfx3d_backend_t;
@@ -225,16 +226,26 @@ typedef struct {
 typedef struct vgfx3d_rendertarget vgfx3d_rendertarget_t;
 typedef int (*vgfx3d_rendertarget_sync_fn)(void *userdata, vgfx3d_rendertarget_t *target);
 
+typedef enum {
+    VGFX3D_RENDERTARGET_COLOR_FORMAT_UNORM8 = 0,
+    VGFX3D_RENDERTARGET_COLOR_FORMAT_HDR16F = 1,
+} vgfx3d_rendertarget_color_format_t;
+
 struct vgfx3d_rendertarget {
     uint8_t *color_buf; /* RGBA pixels (software path) */
     float *depth_buf;   /* float depth buffer */
     int32_t width;
     int32_t height;
     int32_t stride; /* width * 4 */
+    int32_t color_format;
     int8_t color_dirty;
     vgfx3d_rendertarget_sync_fn sync_color;
     void *sync_color_userdata;
 };
+
+static inline int vgfx3d_rendertarget_is_hdr(const vgfx3d_rendertarget_t *target) {
+    return target && target->color_format == VGFX3D_RENDERTARGET_COLOR_FORMAT_HDR16F;
+}
 
 static inline int vgfx3d_rendertarget_ensure_color(vgfx3d_rendertarget_t *target) {
     size_t bytes;
@@ -335,6 +346,14 @@ typedef struct {
 
     /* Skybox */
     rt_cubemap3d *skybox; /* CubeMap3D for background (or NULL) */
+    uint8_t *skybox_cpu_cache; /* tightly packed RGBA8 fallback skybox */
+    int32_t skybox_cpu_cache_w;
+    int32_t skybox_cpu_cache_h;
+    uint64_t skybox_cpu_cache_generation;
+    int8_t skybox_cpu_cache_is_ortho;
+    float skybox_cpu_cache_vp[16];
+    float skybox_cpu_cache_cam_pos[3];
+    float skybox_cpu_cache_forward[3];
 
     /* Post-processing effect chain (NULL = disabled) */
     void *postfx;
@@ -368,8 +387,9 @@ typedef struct {
     int8_t shadows_enabled;
     int32_t shadow_resolution;
     float shadow_bias;
-    vgfx3d_rendertarget_t *shadow_rt;
-    float shadow_light_vp[16];
+    int32_t shadow_count;
+    vgfx3d_rendertarget_t *shadow_rts[VGFX3D_MAX_SHADOW_LIGHTS];
+    float shadow_light_vps[VGFX3D_MAX_SHADOW_LIGHTS][16];
 
     /* Pending terrain splat data (consumed by next draw_mesh call, then cleared) */
     int8_t pending_has_splat;
@@ -416,6 +436,8 @@ void rt_canvas3d_draw_mesh_matrix_keyed(void *obj,
                                         const void *motion_key,
                                         const float *prev_bone_palette,
                                         const float *prev_morph_weights);
+/// @brief Internal: invalidate and release the cached CPU skybox fallback image.
+void rt_canvas3d_invalidate_skybox_cache(rt_canvas3d *canvas);
 /// @brief Internal: submit a mesh draw after applying morph targets.
 void rt_canvas3d_draw_mesh_matrix_morphed(void *canvas,
                                           void *mesh,

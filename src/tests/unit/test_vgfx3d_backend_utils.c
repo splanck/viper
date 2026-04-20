@@ -165,6 +165,48 @@ static void test_flip_rgba_rows(void) {
                 "Row flip swaps the second row");
 }
 
+static void test_hdr_readback_helpers(void) {
+    uint16_t rgba16f[8] = {
+        0x3C00u, /* 1.0 */
+        0x3800u, /* 0.5 */
+        0x0000u, /* 0.0 */
+        0x3C00u, /* 1.0 alpha */
+        0x4400u, /* 4.0 */
+        0x0000u, /* 0.0 */
+        0x3800u, /* 0.5 */
+        0x3C00u, /* 1.0 alpha */
+    };
+    float rgba32f[8] = {
+        1.0f,
+        0.5f,
+        0.0f,
+        1.0f,
+        4.0f,
+        0.0f,
+        0.5f,
+        1.0f,
+    };
+    uint8_t rgba8_from_16f[8] = {0};
+    uint8_t rgba8_from_32f[8] = {0};
+
+    EXPECT_NEAR(vgfx3d_half_to_float(0x3C00u), 1.0f, 1e-6f, "Half-float helper decodes 1.0");
+    EXPECT_NEAR(vgfx3d_half_to_float(0xC000u), -2.0f, 1e-6f, "Half-float helper decodes -2.0");
+    EXPECT_TRUE(vgfx3d_hdr_to_unorm8(4.0f) == 204,
+                "HDR tonemap helper compresses highlights instead of hard-clamping them");
+
+    vgfx3d_copy_linear_rgba16f_to_rgba8(rgba8_from_16f, 8, 2, 1, rgba16f, 16);
+    vgfx3d_copy_linear_rgba32f_to_rgba8(rgba8_from_32f, 8, 2, 1, rgba32f, 32);
+
+    EXPECT_TRUE(rgba8_from_16f[0] == 128 && rgba8_from_16f[1] == 85 && rgba8_from_16f[2] == 0 &&
+                    rgba8_from_16f[3] == 255,
+                "RGBA16F conversion tonemaps linear HDR colors to RGBA8");
+    EXPECT_TRUE(rgba8_from_16f[4] == 204 && rgba8_from_16f[5] == 0 && rgba8_from_16f[6] == 85 &&
+                    rgba8_from_16f[7] == 255,
+                "RGBA16F conversion preserves alpha while tonemapping bright highlights");
+    EXPECT_TRUE(memcmp(rgba8_from_16f, rgba8_from_32f, sizeof(rgba8_from_16f)) == 0,
+                "RGBA16F and RGBA32F conversion helpers produce matching display-space bytes");
+}
+
 static void test_generation_helpers(void) {
     uint32_t data = 0x11223344u;
     fake_pixels_t faces[6] = {
@@ -389,6 +431,7 @@ int main(void) {
     test_unpack_cubemap_faces_rgba_success();
     test_unpack_cubemap_faces_rgba_rejects_invalid();
     test_flip_rgba_rows();
+    test_hdr_readback_helpers();
     test_generation_helpers();
     test_compute_normal_matrix_inverse_transpose();
     test_compute_normal_matrix_singular_fallback();

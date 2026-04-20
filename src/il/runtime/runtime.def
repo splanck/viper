@@ -9965,15 +9965,19 @@ RT_CLASS_END()
 //=============================================================================
 
 RT_FUNC(RenderTarget3DNew,            rt_rendertarget3d_new,            "Viper.Graphics3D.RenderTarget3D.New",            "obj(i64,i64)")
+RT_FUNC(RenderTarget3DNewHdr,         rt_rendertarget3d_new_hdr,        "Viper.Graphics3D.RenderTarget3D.NewHdr",         "obj(i64,i64)")
 RT_FUNC(RenderTarget3DGetWidth,       rt_rendertarget3d_get_width,      "Viper.Graphics3D.RenderTarget3D.get_Width",      "i64(obj)")
 RT_FUNC(RenderTarget3DGetHeight,      rt_rendertarget3d_get_height,     "Viper.Graphics3D.RenderTarget3D.get_Height",     "i64(obj)")
+RT_FUNC(RenderTarget3DGetIsHdr,       rt_rendertarget3d_get_is_hdr,     "Viper.Graphics3D.RenderTarget3D.get_IsHdr",      "i1(obj)")
 RT_FUNC(RenderTarget3DAsPixels,       rt_rendertarget3d_as_pixels,      "Viper.Graphics3D.RenderTarget3D.AsPixels",       "obj(obj)")
 RT_FUNC(Canvas3DSetRenderTarget,      rt_canvas3d_set_render_target,    "Viper.Graphics3D.Canvas3D.SetRenderTarget",      "void(obj,obj)")
 RT_FUNC(Canvas3DResetRenderTarget,    rt_canvas3d_reset_render_target,  "Viper.Graphics3D.Canvas3D.ResetRenderTarget",    "void(obj)")
 
 RT_CLASS_BEGIN("Viper.Graphics3D.RenderTarget3D", RenderTarget3D, "obj", RenderTarget3DNew)
+    RT_PROP("IsHdr", "i1", RenderTarget3DGetIsHdr, none)
     RT_PROP("Width", "i64", RenderTarget3DGetWidth, none)
     RT_PROP("Height", "i64", RenderTarget3DGetHeight, none)
+    RT_METHOD("NewHdr", "obj(i64,i64)", RenderTarget3DNewHdr)
     RT_METHOD("AsPixels", "obj()", RenderTarget3DAsPixels)
 RT_CLASS_END()
 

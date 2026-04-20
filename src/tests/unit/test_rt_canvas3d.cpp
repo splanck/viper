@@ -1059,6 +1059,66 @@ static void test_canvas_ortho_skybox_fills_render_target_uniformly() {
     PASS();
 }
 
+static void test_canvas_cpu_skybox_fallback_reuses_cache_until_inputs_change() {
+    TEST("Canvas3D CPU skybox fallback caches stable cubemap/projection output");
+    rt_canvas3d canvas = {};
+    rt_camera3d camera = {};
+    rt_rendertarget3d *rt = (rt_rendertarget3d *)rt_rendertarget3d_new(2, 2);
+    void *px = rt_pixels_new(1, 1);
+    void *cm;
+    uint8_t *first_cache;
+    uint64_t first_generation;
+
+    EXPECT_TRUE(rt != nullptr && rt->target != nullptr, "RenderTarget3D fixture exists");
+    EXPECT_TRUE(px != nullptr, "Pixels fixture exists");
+    if (!rt || !rt->target || !px)
+        return;
+
+    rt_pixels_set(px, 0, 0, 0x102030FF);
+    cm = rt_cubemap3d_new(px, px, px, px, px, px);
+    EXPECT_TRUE(cm != nullptr, "CubeMap3D fixture exists");
+    if (!cm)
+        return;
+
+    canvas.backend = &vgfx3d_software_backend;
+    canvas.render_target = rt->target;
+    canvas.width = 2;
+    canvas.height = 2;
+    canvas.skybox = (rt_cubemap3d *)cm;
+    camera.view[0] = camera.view[5] = camera.view[10] = camera.view[15] = 1.0;
+    camera.projection[0] = camera.projection[5] = camera.projection[10] = camera.projection[15] = 1.0;
+    camera.eye[2] = 5.0;
+    camera.is_ortho = 1;
+
+    rt_canvas3d_begin(&canvas, &camera);
+    rt_canvas3d_end(&canvas);
+    first_cache = canvas.skybox_cpu_cache;
+    first_generation = canvas.skybox_cpu_cache_generation;
+    EXPECT_TRUE(first_cache != nullptr, "First fallback skybox pass builds a CPU cache image");
+    EXPECT_TRUE(rt->target->color_buf[0] == 0x10 && rt->target->color_buf[1] == 0x20 &&
+                    rt->target->color_buf[2] == 0x30,
+                "First fallback skybox pass writes the cubemap color");
+
+    rt_canvas3d_begin(&canvas, &camera);
+    rt_canvas3d_end(&canvas);
+    EXPECT_TRUE(canvas.skybox_cpu_cache == first_cache &&
+                    canvas.skybox_cpu_cache_generation == first_generation,
+                "Second identical fallback skybox pass reuses the cached image");
+
+    rt_pixels_set(px, 0, 0, 0xA0B0C0FF);
+    rt_canvas3d_begin(&canvas, &camera);
+    rt_canvas3d_end(&canvas);
+    EXPECT_TRUE(canvas.skybox_cpu_cache != nullptr &&
+                    canvas.skybox_cpu_cache_generation != first_generation,
+                "Cubemap face mutation invalidates the fallback skybox cache generation");
+    EXPECT_TRUE(rt->target->color_buf[0] == 0xA0 && rt->target->color_buf[1] == 0xB0 &&
+                    rt->target->color_buf[2] == 0xC0,
+                "Fallback skybox cache refreshes after cubemap face mutation");
+
+    rt_canvas3d_invalidate_skybox_cache(&canvas);
+    PASS();
+}
+
 //=============================================================================
 // Mesh3D.Clear tests
 //=============================================================================
@@ -1182,8 +1242,22 @@ static void test_rendertarget_new() {
     rt_rendertarget3d *rt = (rt_rendertarget3d *)rt_rendertarget3d_new(256, 256);
     assert(rt);
     EXPECT_TRUE(rt->target != nullptr, "RenderTarget3D.New creates the backing target");
+    EXPECT_TRUE(rt->target->color_format == VGFX3D_RENDERTARGET_COLOR_FORMAT_UNORM8,
+                "RenderTarget3D.New defaults to LDR UNORM8 color storage");
     EXPECT_TRUE(rt->target->color_buf == nullptr && rt->target->depth_buf == nullptr,
                 "RenderTarget3D.New keeps CPU color/depth buffers lazy until first CPU use");
+    PASS();
+}
+
+static void test_rendertarget_new_hdr() {
+    TEST("RenderTarget3D.NewHdr — creates HDR target");
+    rt_rendertarget3d *rt = (rt_rendertarget3d *)rt_rendertarget3d_new_hdr(256, 128);
+    assert(rt);
+    EXPECT_TRUE(rt->target != nullptr, "RenderTarget3D.NewHdr creates the backing target");
+    EXPECT_TRUE(rt->target->color_format == VGFX3D_RENDERTARGET_COLOR_FORMAT_HDR16F,
+                "RenderTarget3D.NewHdr stores HDR color format metadata");
+    EXPECT_TRUE(rt->target->color_buf == nullptr && rt->target->depth_buf == nullptr,
+                "RenderTarget3D.NewHdr keeps CPU color/depth buffers lazy until first CPU use");
     PASS();
 }
 
@@ -1192,6 +1266,17 @@ static void test_rendertarget_dimensions() {
     void *rt = rt_rendertarget3d_new(128, 64);
     EXPECT_EQ(rt_rendertarget3d_get_width(rt), 128);
     EXPECT_EQ(rt_rendertarget3d_get_height(rt), 64);
+    PASS();
+}
+
+static void test_rendertarget_hdr_property() {
+    TEST("RenderTarget3D.IsHdr — matches constructor");
+    void *ldr = rt_rendertarget3d_new(64, 64);
+    void *hdr = rt_rendertarget3d_new_hdr(64, 64);
+    EXPECT_TRUE(rt_rendertarget3d_get_is_hdr(ldr) == 0,
+                "LDR RenderTarget3D reports IsHdr false");
+    EXPECT_TRUE(rt_rendertarget3d_get_is_hdr(hdr) == 1,
+                "HDR RenderTarget3D reports IsHdr true");
     PASS();
 }
 
@@ -1207,6 +1292,8 @@ static void test_rendertarget_null_safety() {
     TEST("RenderTarget3D — null safety");
     EXPECT_EQ(rt_rendertarget3d_get_width(NULL), 0);
     EXPECT_EQ(rt_rendertarget3d_get_height(NULL), 0);
+    EXPECT_TRUE(rt_rendertarget3d_get_is_hdr(NULL) == 0,
+                "RenderTarget3D.IsHdr returns false for null");
     assert(rt_rendertarget3d_as_pixels(NULL) == NULL);
     rt_canvas3d_set_render_target(NULL, NULL);
     rt_canvas3d_reset_render_target(NULL);
@@ -2318,6 +2405,7 @@ int main() {
     /* Phase 11 — Cube maps */
     test_cubemap_new();
     test_canvas_ortho_skybox_fills_render_target_uniformly();
+    test_canvas_cpu_skybox_fallback_reuses_cache_until_inputs_change();
     test_material_reflectivity();
 
     /* Mesh3D.Clear */
@@ -2336,7 +2424,9 @@ int main() {
 
     /* RenderTarget3D */
     test_rendertarget_new();
+    test_rendertarget_new_hdr();
     test_rendertarget_dimensions();
+    test_rendertarget_hdr_property();
     test_rendertarget_as_pixels();
     test_rendertarget_null_safety();
     test_rendertarget_as_pixels_syncs_gpu_color_on_demand();

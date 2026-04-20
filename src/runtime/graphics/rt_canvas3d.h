@@ -112,10 +112,14 @@ double rt_material3d_get_reflectivity(void *obj);
 
 /// @brief Allocate an offscreen render target of the given pixel dimensions.
 void *rt_rendertarget3d_new(int64_t width, int64_t height);
+/// @brief Allocate an HDR offscreen render target with RGBA16F color storage.
+void *rt_rendertarget3d_new_hdr(int64_t width, int64_t height);
 /// @brief Width of the render target in pixels.
 int64_t rt_rendertarget3d_get_width(void *obj);
 /// @brief Height of the render target in pixels.
 int64_t rt_rendertarget3d_get_height(void *obj);
+/// @brief Return non-zero when the render target stores HDR color internally.
+int32_t rt_rendertarget3d_get_is_hdr(void *obj);
 /// @brief Get a Pixels view of the render target's color attachment (CPU readback).
 void *rt_rendertarget3d_as_pixels(void *obj);
 

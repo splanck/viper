@@ -33,6 +33,9 @@
 #include <stdlib.h>
 #include <string.h>
 
+#define VGFX3D_STR_IMPL(x) #x
+#define VGFX3D_STR(x) VGFX3D_STR_IMPL(x)
+
 //=============================================================================
 // Objective-C wrapper to hold Metal objects under ARC
 //=============================================================================
@@ -52,8 +55,12 @@
     float _fogColor[3];
     float _fogNear, _fogFar;
     BOOL _fogEnabled;
-    /* MTL-12: Shadow light view-projection (stored from shadow_begin) */
-    float _shadowLightVP[16];
+    /* MTL-12: Shadow light view-projection matrices (stored from shadow_begin) */
+    float _shadowLightVP[VGFX3D_MAX_SHADOW_LIGHTS][16];
+    id<MTLTexture> _shadowDepthTexture[VGFX3D_MAX_SHADOW_LIGHTS];
+    int32_t _shadowPassSlot;
+    int32_t _shadowCount;
+    float _shadowBias;
 }
 @property(nonatomic, strong) id<MTLDevice> device;
 @property(nonatomic, strong) id<MTLCommandQueue> commandQueue;
@@ -105,12 +112,9 @@
 @property(nonatomic, strong) id<MTLSamplerState> cubeSampler;
 @property(nonatomic, strong) id<MTLTexture> defaultCubemap;
 /* MTL-12: Shadow mapping state */
-@property(nonatomic, strong) id<MTLTexture> shadowDepthTexture;
 @property(nonatomic, strong) id<MTLRenderPipelineState> shadowPipeline;
 @property(nonatomic, strong) id<MTLSamplerState> shadowSampler;
 @property(nonatomic, strong) id<MTLDepthStencilState> shadowDepthState;
-@property(nonatomic) BOOL shadowActive;
-@property(nonatomic) float shadowBias;
 /* MTL-13: Instanced rendering — pooled instance buffer */
 @property(nonatomic, strong) id<MTLBuffer> instanceBuf;
 /* MTL-11: Post-processing state */
@@ -194,6 +198,7 @@
 @property(nonatomic, assign) vgfx3d_rendertarget_t *target;
 @property(nonatomic) int32_t width;
 @property(nonatomic) int32_t height;
+@property(nonatomic) MTLPixelFormat colorPixelFormat;
 @property(nonatomic) uint64_t lastUsedFrame;
 @end
 
@@ -250,7 +255,9 @@ static NSString *metal_shader_source =
      "};\n"
      "\n"
      "struct Light {\n"
-     "    int type; float _p0, _p1, _p2;\n"
+     "    int type;\n"
+     "    int shadowIndex;\n"
+     "    float _p0, _p1;\n"
      "    float4 direction;\n"
      "    float4 position;\n"
      "    float4 color;\n"
@@ -268,7 +275,7 @@ static NSString *metal_shader_source =
      "    int4 counts;\n"
      "    float4 cameraForward;\n"
      "    float4x4 prevViewProjection;\n"
-     "    float4x4 shadowVP;\n"
+     "    float4x4 shadowVP[" VGFX3D_STR(VGFX3D_MAX_SHADOW_LIGHTS) "];\n"
      "};\n"
      "\n"
      "struct PerMaterial {\n"
@@ -560,6 +567,25 @@ static NSString *metal_shader_source =
      "    return envTex.sample(envSampler, normalize(dir), level(lod)).rgb;\n"
      "}\n"
      "\n"
+     "float sample_shadow(int shadowIndex,\n"
+     "                    float3 worldPos,\n"
+     "                    constant PerScene &scene,\n"
+     "                    depth2d<float> shadowMap0,\n"
+     "                    depth2d<float> shadowMap1,\n"
+     "                    sampler shadowSampler) {\n"
+     "    if (shadowIndex < 0 || shadowIndex >= scene.counts.y)\n"
+     "        return 1.0;\n"
+     "    float4 lc = scene.shadowVP[shadowIndex] * float4(worldPos, 1.0);\n"
+     "    float3 suv = lc.xyz / max(lc.w, 0.0001);\n"
+     "    suv.xy = suv.xy * 0.5 + 0.5;\n"
+     "    suv.y = 1.0 - suv.y;\n"
+     "    if (suv.x < 0.0 || suv.x > 1.0 || suv.y < 0.0 || suv.y > 1.0)\n"
+     "        return 1.0;\n"
+     "    return shadowIndex == 0\n"
+     "        ? shadowMap0.sample_compare(shadowSampler, suv.xy, suv.z - scene.fogParams.z)\n"
+     "        : shadowMap1.sample_compare(shadowSampler, suv.xy, suv.z - scene.fogParams.z);\n"
+     "}\n"
+     "\n"
      "fragment MainOut fragment_main(\n"
      "    VertexOut in [[stage_in]],\n"
      "    constant PerScene &scene [[buffer(0)]],\n"
@@ -569,15 +595,16 @@ static NSString *metal_shader_source =
      "    texture2d<float> normalTex [[texture(1)]],\n"
      "    texture2d<float> specularTex [[texture(2)]],\n"
      "    texture2d<float> emissiveTex [[texture(3)]],\n"
-     "    depth2d<float> shadowMap [[texture(4)]],\n"
-     "    texture2d<float> splatTex [[texture(5)]],\n"
-     "    texture2d<float> splatLayer0 [[texture(6)]],\n"
-     "    texture2d<float> splatLayer1 [[texture(7)]],\n"
-     "    texture2d<float> splatLayer2 [[texture(8)]],\n"
-     "    texture2d<float> splatLayer3 [[texture(9)]],\n"
-     "    texturecube<float> envTex [[texture(10)]],\n"
-     "    texture2d<float> metallicRoughnessTex [[texture(11)]],\n"
-     "    texture2d<float> aoTex [[texture(12)]],\n"
+     "    depth2d<float> shadowMap0 [[texture(4)]],\n"
+     "    depth2d<float> shadowMap1 [[texture(5)]],\n"
+     "    texture2d<float> splatTex [[texture(6)]],\n"
+     "    texture2d<float> splatLayer0 [[texture(7)]],\n"
+     "    texture2d<float> splatLayer1 [[texture(8)]],\n"
+     "    texture2d<float> splatLayer2 [[texture(9)]],\n"
+     "    texture2d<float> splatLayer3 [[texture(10)]],\n"
+     "    texturecube<float> envTex [[texture(13)]],\n"
+     "    texture2d<float> metallicRoughnessTex [[texture(14)]],\n"
+     "    texture2d<float> aoTex [[texture(15)]],\n"
      "    sampler texSampler [[sampler(0)]],\n"
      "    sampler shadowSampler [[sampler(1)]],\n"
      "    sampler envSampler [[sampler(2)]]\n"
@@ -700,17 +727,9 @@ static NSString *metal_shader_source =
      "                continue;\n"
      "            }\n"
      "            float NdotL = max(dot(N, L), 0.0);\n"
-     "            if (scene.counts.y != 0 && lights[i].type == 0) {\n"
-     "                float4 lc = scene.shadowVP * float4(in.worldPos, 1.0);\n"
-     "                float3 suv = lc.xyz / lc.w;\n"
-     "                suv.xy = suv.xy * 0.5 + 0.5;\n"
-     "                suv.y = 1.0 - suv.y;\n"
-     "                if (suv.x >= 0.0 && suv.x <= 1.0 && suv.y >= 0.0 && suv.y <= 1.0) {\n"
-     "                    float shadow = shadowMap.sample_compare(shadowSampler, suv.xy, suv.z - "
-     "scene.fogParams.z);\n"
-     "                    atten *= mix(0.15, 1.0, shadow);\n"
-     "                }\n"
-     "            }\n"
+     "            if (lights[i].type == 0)\n"
+     "                atten *= mix(0.15, 1.0, sample_shadow(lights[i].shadowIndex, in.worldPos, "
+     "scene, shadowMap0, shadowMap1, shadowSampler));\n"
      "            if (NdotL <= 0.0)\n"
      "                continue;\n"
      "            float3 H = normalize(L + V);\n"
@@ -759,17 +778,9 @@ static NSString *metal_shader_source =
      "                continue;\n"
      "            }\n"
      "            float NdotL = max(dot(N, L), 0.0);\n"
-     "            if (scene.counts.y != 0 && lights[i].type == 0) {\n"
-     "                float4 lc = scene.shadowVP * float4(in.worldPos, 1.0);\n"
-     "                float3 suv = lc.xyz / lc.w;\n"
-     "                suv.xy = suv.xy * 0.5 + 0.5;\n"
-     "                suv.y = 1.0 - suv.y;\n"
-     "                if (suv.x >= 0.0 && suv.x <= 1.0 && suv.y >= 0.0 && suv.y <= 1.0) {\n"
-     "                    float shadow = shadowMap.sample_compare(shadowSampler, suv.xy, suv.z - "
-     "scene.fogParams.z);\n"
-     "                    atten *= mix(0.15, 1.0, shadow);\n"
-     "                }\n"
-     "            }\n"
+     "            if (lights[i].type == 0)\n"
+     "                atten *= mix(0.15, 1.0, sample_shadow(lights[i].shadowIndex, in.worldPos, "
+     "scene, shadowMap0, shadowMap1, shadowSampler));\n"
      "            result += lights[i].color.rgb * lights[i].intensity * NdotL * "
      "baseColor * atten;\n"
      "            if (NdotL > 0.0 && material.specularColor.w > 0.0) {\n"
@@ -834,12 +845,13 @@ typedef struct {
     int32_t counts[4];
     float camera_forward[4];
     float prev_vp[16];
-    float shadow_vp[16];
+    float shadow_vp[VGFX3D_MAX_SHADOW_LIGHTS][16];
 } mtl_per_scene_t;
 
 typedef struct {
     int32_t type;
-    float _p0, _p1, _p2;
+    int32_t shadow_index;
+    float _p0, _p1;
     float dir[4];
     float pos[4];
     float col[4];
@@ -1059,14 +1071,18 @@ metal_ensure_render_target_entry(VGFXMetalContext *ctx, vgfx3d_rendertarget_t *r
     VGFXMetalRenderTargetCacheEntry *entry;
     MTLTextureDescriptor *color_desc;
     MTLTextureDescriptor *depth_desc;
+    MTLPixelFormat desired_color_format;
 
     if (!ctx || !ctx.renderTargetCache || !rt || rt->width <= 0 || rt->height <= 0)
         return nil;
 
     key = [NSValue valueWithPointer:rt];
     entry = ctx.renderTargetCache[key];
+    desired_color_format = metal_color_pixel_format(vgfx3d_rendertarget_is_hdr(rt)
+                                                        ? VGFX3D_METAL_COLOR_FORMAT_HDR16F
+                                                        : VGFX3D_METAL_COLOR_FORMAT_UNORM8);
     if (entry && entry.width == rt->width && entry.height == rt->height && entry.colorTexture &&
-        entry.motionTexture && entry.depthTexture) {
+        entry.motionTexture && entry.depthTexture && entry.colorPixelFormat == desired_color_format) {
         entry.target = rt;
         entry.lastUsedFrame = ctx.frameSerial;
         return entry;
@@ -1081,10 +1097,11 @@ metal_ensure_render_target_entry(VGFXMetalContext *ctx, vgfx3d_rendertarget_t *r
     entry.target = rt;
     entry.width = rt->width;
     entry.height = rt->height;
+    entry.colorPixelFormat = desired_color_format;
     entry.lastUsedFrame = ctx.frameSerial;
 
     color_desc =
-        [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm
+        [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:desired_color_format
                                                            width:(NSUInteger)rt->width
                                                           height:(NSUInteger)rt->height
                                                        mipmapped:NO];
@@ -1330,6 +1347,10 @@ static int metal_copy_texture_to_rgba(
     id<MTLTexture> tex, uint8_t *dst_rgba, int32_t w, int32_t h, int32_t stride) {
     int32_t copy_w;
     int32_t copy_h;
+    MTLPixelFormat pixel_format;
+    size_t bytes_per_row;
+    uint8_t *bgra;
+    uint16_t *rgba16f;
     if (!tex || !dst_rgba || w <= 0 || h <= 0 || stride < w * 4)
         return 0;
 
@@ -1338,21 +1359,43 @@ static int metal_copy_texture_to_rgba(
     copy_h = (int32_t)tex.height < h ? (int32_t)tex.height : h;
     if (copy_w <= 0 || copy_h <= 0)
         return 0;
+    pixel_format = tex.pixelFormat;
+    if (pixel_format == MTLPixelFormatRGBA16Float) {
+        bytes_per_row = (size_t)copy_w * 8u;
+        rgba16f = (uint16_t *)malloc((size_t)copy_h * bytes_per_row);
+        if (!rgba16f)
+            return 0;
+        [tex getBytes:rgba16f
+           bytesPerRow:(NSUInteger)bytes_per_row
+            fromRegion:MTLRegionMake2D(0, 0, (NSUInteger)copy_w, (NSUInteger)copy_h)
+           mipmapLevel:0];
+        vgfx3d_copy_linear_rgba16f_to_rgba8(
+            dst_rgba, stride, copy_w, copy_h, rgba16f, (int32_t)bytes_per_row);
+        free(rgba16f);
+        return 1;
+    }
+    if (pixel_format != MTLPixelFormatBGRA8Unorm)
+        return 0;
 
-    [tex getBytes:dst_rgba
-        bytesPerRow:(NSUInteger)stride
-         fromRegion:MTLRegionMake2D(0, 0, (NSUInteger)copy_w, (NSUInteger)copy_h)
-        mipmapLevel:0];
+    bgra = (uint8_t *)malloc((size_t)copy_h * (size_t)copy_w * 4u);
+    if (!bgra)
+        return 0;
+    [tex getBytes:bgra
+       bytesPerRow:(NSUInteger)(copy_w * 4)
+        fromRegion:MTLRegionMake2D(0, 0, (NSUInteger)copy_w, (NSUInteger)copy_h)
+       mipmapLevel:0];
 
     for (int32_t y = 0; y < copy_h; y++) {
-        uint8_t *row = dst_rgba + (size_t)y * (size_t)stride;
+        uint8_t *dst_row = dst_rgba + (size_t)y * (size_t)stride;
+        const uint8_t *src_row = bgra + (size_t)y * (size_t)copy_w * 4u;
         for (int32_t x = 0; x < copy_w; x++) {
-            uint8_t *px = row + (size_t)x * 4u;
-            uint8_t tmp = px[0];
-            px[0] = px[2];
-            px[2] = tmp;
+            dst_row[(size_t)x * 4u + 0u] = src_row[(size_t)x * 4u + 2u];
+            dst_row[(size_t)x * 4u + 1u] = src_row[(size_t)x * 4u + 1u];
+            dst_row[(size_t)x * 4u + 2u] = src_row[(size_t)x * 4u + 0u];
+            dst_row[(size_t)x * 4u + 3u] = src_row[(size_t)x * 4u + 3u];
         }
     }
+    free(bgra);
     return 1;
 }
 
@@ -2368,8 +2411,10 @@ static void metal_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) 
             new_command_buffer = YES;
         } else if (!ctx.frameBuffers)
             ctx.frameBuffers = [NSMutableArray arrayWithCapacity:32];
-        if (new_command_buffer || !is_overlay_pass)
-            ctx.shadowActive = NO;
+        if (new_command_buffer || !is_overlay_pass) {
+            ctx->_shadowPassSlot = -1;
+            ctx->_shadowCount = 0;
+        }
 
         if ((ctx.frameSerial & 31u) == 0u) {
             metal_prune_texture_cache(ctx);
@@ -2711,17 +2756,17 @@ static void metal_submit_draw(void *ctx_ptr,
         scene.fc[3] = ctx->_fogEnabled ? 1.0f : 0.0f;
         scene.fog_params[0] = ctx->_fogNear;
         scene.fog_params[1] = ctx->_fogFar;
-        scene.fog_params[2] = ctx.shadowBias;
+        scene.fog_params[2] = ctx->_shadowBias;
         scene.counts[0] = light_count < 0
                               ? 0
                               : (light_count > VGFX3D_MAX_LIGHTS ? VGFX3D_MAX_LIGHTS
                                                                   : light_count);
         /* MTL-12: Shadow mapping */
-        scene.counts[1] = ctx.shadowActive ? 1 : 0;
+        scene.counts[1] = ctx->_shadowCount;
         memcpy(scene.camera_forward, ctx->_camForward, sizeof(float) * 3);
         transpose4x4(ctx.frameHistory.draw_prev_vp, scene.prev_vp);
-        if (ctx.shadowActive)
-            transpose4x4(ctx->_shadowLightVP, scene.shadow_vp);
+        for (int32_t slot = 0; slot < ctx->_shadowCount && slot < VGFX3D_MAX_SHADOW_LIGHTS; slot++)
+            transpose4x4(ctx->_shadowLightVP[slot], scene.shadow_vp[slot]);
         [ctx.encoder setVertexBytes:&scene length:sizeof(scene) atIndex:2];
         [ctx.encoder setFragmentBytes:&scene length:sizeof(scene) atIndex:0];
 
@@ -2767,14 +2812,15 @@ static void metal_submit_draw(void *ctx_ptr,
         [ctx.encoder setFragmentBytes:&mat length:sizeof(mat) atIndex:1];
 
         /* Bind default textures to all shader slots. */
-        for (int slot = 0; slot < 10; slot++)
+        for (int slot = 0; slot <= 10; slot++)
             [ctx.encoder setFragmentTexture:ctx.defaultTexture atIndex:slot];
-        [ctx.encoder setFragmentTexture:ctx.defaultTexture atIndex:11];
-        [ctx.encoder setFragmentTexture:ctx.defaultTexture atIndex:12];
-        [ctx.encoder setFragmentTexture:ctx.defaultCubemap atIndex:10];
-        /* MTL-12: Bind shadow depth texture to slot 4 */
-        if (ctx.shadowActive && ctx.shadowDepthTexture)
-            [ctx.encoder setFragmentTexture:ctx.shadowDepthTexture atIndex:4];
+        [ctx.encoder setFragmentTexture:ctx.defaultTexture atIndex:14];
+        [ctx.encoder setFragmentTexture:ctx.defaultTexture atIndex:15];
+        [ctx.encoder setFragmentTexture:ctx.defaultCubemap atIndex:13];
+        if (ctx->_shadowCount > 0 && ctx->_shadowDepthTexture[0])
+            [ctx.encoder setFragmentTexture:ctx->_shadowDepthTexture[0] atIndex:4];
+        if (ctx->_shadowCount > 1 && ctx->_shadowDepthTexture[1])
+            [ctx.encoder setFragmentTexture:ctx->_shadowDepthTexture[1] atIndex:5];
         [ctx.encoder setFragmentSamplerState:ctx.sharedSampler atIndex:0];
         if (ctx.shadowSampler)
             [ctx.encoder setFragmentSamplerState:ctx.shadowSampler atIndex:1];
@@ -2805,23 +2851,23 @@ static void metal_submit_draw(void *ctx_ptr,
         if (cmd->metallic_roughness_map) {
             id<MTLTexture> tex = metal_get_cached_texture(ctx, cmd->metallic_roughness_map);
             if (tex)
-                [ctx.encoder setFragmentTexture:tex atIndex:11];
+                [ctx.encoder setFragmentTexture:tex atIndex:14];
         }
         if (cmd->ao_map) {
             id<MTLTexture> tex = metal_get_cached_texture(ctx, cmd->ao_map);
             if (tex)
-                [ctx.encoder setFragmentTexture:tex atIndex:12];
+                [ctx.encoder setFragmentTexture:tex atIndex:15];
         }
-        /* MTL-14: Terrain splat textures (slots 5-9) */
+        /* MTL-14: Terrain splat textures (slots 6-10) */
         if (cmd->has_splat && cmd->splat_map) {
             id<MTLTexture> sp = metal_get_cached_texture(ctx, cmd->splat_map);
             if (sp)
-                [ctx.encoder setFragmentTexture:sp atIndex:5];
+                [ctx.encoder setFragmentTexture:sp atIndex:6];
             for (int si = 0; si < 4; si++) {
                 if (cmd->splat_layers[si]) {
                     id<MTLTexture> lt = metal_get_cached_texture(ctx, cmd->splat_layers[si]);
                     if (lt)
-                        [ctx.encoder setFragmentTexture:lt atIndex:6 + si];
+                        [ctx.encoder setFragmentTexture:lt atIndex:7 + si];
                 }
             }
         }
@@ -2829,7 +2875,7 @@ static void metal_submit_draw(void *ctx_ptr,
             id<MTLTexture> envTex =
                 metal_get_cached_cubemap(ctx, (const rt_cubemap3d *)cmd->env_map);
             if (envTex)
-                [ctx.encoder setFragmentTexture:envTex atIndex:10];
+                [ctx.encoder setFragmentTexture:envTex atIndex:13];
         }
 
         /* Lights — always set buffer 2, even if empty (prevents validation warnings) */
@@ -2838,6 +2884,7 @@ static void metal_submit_draw(void *ctx_ptr,
             memset(ml, 0, sizeof(ml));
             for (int32_t i = 0; i < light_count && i < VGFX3D_MAX_LIGHTS; i++) {
                 ml[i].type = lights[i].type;
+                ml[i].shadow_index = lights[i].shadow_index;
                 ml[i].dir[0] = lights[i].direction[0];
                 ml[i].dir[1] = lights[i].direction[1];
                 ml[i].dir[2] = lights[i].direction[2];
@@ -3028,16 +3075,16 @@ static void metal_set_render_target(void *ctx_ptr, vgfx3d_rendertarget_t *rt) {
 //=============================================================================
 
 static void metal_shadow_begin(
-    void *ctx_ptr, float *depth_buf, int32_t w, int32_t h, const float *light_vp) {
+    void *ctx_ptr, int32_t slot, float *depth_buf, int32_t w, int32_t h, const float *light_vp) {
     @autoreleasepool {
         (void)depth_buf; /* GPU shadows use MTLTexture, not CPU buffer */
         VGFXMetalContext *ctx = (__bridge VGFXMetalContext *)ctx_ptr;
-        if (!ctx || !ctx.shadowPipeline)
+        if (!ctx || !ctx.shadowPipeline || slot < 0 || slot >= VGFX3D_MAX_SHADOW_LIGHTS)
             return;
 
         /* Create/recreate shadow depth texture if size changed */
-        if (!ctx.shadowDepthTexture || (int32_t)ctx.shadowDepthTexture.width != w ||
-            (int32_t)ctx.shadowDepthTexture.height != h) {
+        if (!ctx->_shadowDepthTexture[slot] || (int32_t)ctx->_shadowDepthTexture[slot].width != w ||
+            (int32_t)ctx->_shadowDepthTexture[slot].height != h) {
             MTLTextureDescriptor *desc =
                 [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatDepth32Float
                                                                    width:(NSUInteger)w
@@ -3045,11 +3092,12 @@ static void metal_shadow_begin(
                                                                mipmapped:NO];
             desc.usage = MTLTextureUsageRenderTarget | MTLTextureUsageShaderRead;
             desc.storageMode = MTLStorageModePrivate;
-            ctx.shadowDepthTexture = [ctx.device newTextureWithDescriptor:desc];
+            ctx->_shadowDepthTexture[slot] = [ctx.device newTextureWithDescriptor:desc];
         }
 
         /* Store light VP for main pass uniform */
-        memcpy(ctx->_shadowLightVP, light_vp, 16 * sizeof(float));
+        ctx->_shadowPassSlot = slot;
+        memcpy(ctx->_shadowLightVP[slot], light_vp, 16 * sizeof(float));
 
         /* Start shadow render pass */
         if (!ctx.cmdBuf)
@@ -3060,7 +3108,7 @@ static void metal_shadow_begin(
         }
 
         MTLRenderPassDescriptor *rp = [MTLRenderPassDescriptor renderPassDescriptor];
-        rp.depthAttachment.texture = ctx.shadowDepthTexture;
+        rp.depthAttachment.texture = ctx->_shadowDepthTexture[slot];
         rp.depthAttachment.loadAction = MTLLoadActionClear;
         rp.depthAttachment.storeAction = MTLStoreActionStore;
         rp.depthAttachment.clearDepth = 1.0;
@@ -3101,7 +3149,7 @@ static void metal_shadow_draw(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) {
         transpose4x4(cmd->model_matrix, obj.m);
         transpose4x4(cmd->model_matrix, obj.prev_m);
         float lvp_t[16];
-        transpose4x4(ctx->_shadowLightVP, lvp_t);
+        transpose4x4(ctx->_shadowLightVP[ctx->_shadowPassSlot], lvp_t);
         memcpy(obj.vp, lvp_t, sizeof(float) * 16);
         memcpy(obj.nm, obj.m, sizeof(float) * 16);
         has_skinning = (cmd->bone_palette && cmd->bone_count > 0) ? 1 : 0;
@@ -3120,15 +3168,17 @@ static void metal_shadow_draw(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) {
     }
 }
 
-static void metal_shadow_end(void *ctx_ptr, float bias) {
+static void metal_shadow_end(void *ctx_ptr, int32_t slot, float bias) {
     @autoreleasepool {
         VGFXMetalContext *ctx = (__bridge VGFXMetalContext *)ctx_ptr;
-        if (!ctx || !ctx.encoder)
+        if (!ctx || !ctx.encoder || slot < 0 || slot >= VGFX3D_MAX_SHADOW_LIGHTS)
             return;
         [ctx.encoder endEncoding];
         ctx.encoder = nil;
-        ctx.shadowActive = YES;
-        ctx.shadowBias = bias;
+        if (ctx->_shadowCount < slot + 1)
+            ctx->_shadowCount = slot + 1;
+        ctx->_shadowPassSlot = -1;
+        ctx->_shadowBias = bias;
         metal_begin_scene_encoder(ctx, YES, YES);
     }
 }
@@ -3231,16 +3281,16 @@ static void metal_submit_draw_instanced(void *ctx_ptr,
         scene.fc[3] = ctx->_fogEnabled ? 1.0f : 0.0f;
         scene.fog_params[0] = ctx->_fogNear;
         scene.fog_params[1] = ctx->_fogFar;
-        scene.fog_params[2] = ctx.shadowBias;
+        scene.fog_params[2] = ctx->_shadowBias;
         scene.counts[0] = light_count < 0
                               ? 0
                               : (light_count > VGFX3D_MAX_LIGHTS ? VGFX3D_MAX_LIGHTS
                                                                   : light_count);
-        scene.counts[1] = ctx.shadowActive ? 1 : 0;
+        scene.counts[1] = ctx->_shadowCount;
         memcpy(scene.camera_forward, ctx->_camForward, sizeof(float) * 3);
         transpose4x4(ctx.frameHistory.draw_prev_vp, scene.prev_vp);
-        if (ctx.shadowActive)
-            transpose4x4(ctx->_shadowLightVP, scene.shadow_vp);
+        for (int32_t slot = 0; slot < ctx->_shadowCount && slot < VGFX3D_MAX_SHADOW_LIGHTS; slot++)
+            transpose4x4(ctx->_shadowLightVP[slot], scene.shadow_vp[slot]);
         [ctx.encoder setVertexBytes:&scene length:sizeof(scene) atIndex:2];
         [ctx.encoder setFragmentBytes:&scene length:sizeof(scene) atIndex:0];
 
@@ -3287,13 +3337,15 @@ static void metal_submit_draw_instanced(void *ctx_ptr,
         metal_bind_morph_payload(ctx, cmd);
 
         /* Default textures + sampler */
-        for (int slot = 0; slot < 10; slot++)
+        for (int slot = 0; slot <= 10; slot++)
             [ctx.encoder setFragmentTexture:ctx.defaultTexture atIndex:slot];
-        [ctx.encoder setFragmentTexture:ctx.defaultTexture atIndex:11];
-        [ctx.encoder setFragmentTexture:ctx.defaultTexture atIndex:12];
-        [ctx.encoder setFragmentTexture:ctx.defaultCubemap atIndex:10];
-        if (ctx.shadowActive && ctx.shadowDepthTexture)
-            [ctx.encoder setFragmentTexture:ctx.shadowDepthTexture atIndex:4];
+        [ctx.encoder setFragmentTexture:ctx.defaultTexture atIndex:14];
+        [ctx.encoder setFragmentTexture:ctx.defaultTexture atIndex:15];
+        [ctx.encoder setFragmentTexture:ctx.defaultCubemap atIndex:13];
+        if (ctx->_shadowCount > 0 && ctx->_shadowDepthTexture[0])
+            [ctx.encoder setFragmentTexture:ctx->_shadowDepthTexture[0] atIndex:4];
+        if (ctx->_shadowCount > 1 && ctx->_shadowDepthTexture[1])
+            [ctx.encoder setFragmentTexture:ctx->_shadowDepthTexture[1] atIndex:5];
         [ctx.encoder setFragmentSamplerState:ctx.sharedSampler atIndex:0];
         if (ctx.shadowSampler)
             [ctx.encoder setFragmentSamplerState:ctx.shadowSampler atIndex:1];
@@ -3322,22 +3374,22 @@ static void metal_submit_draw_instanced(void *ctx_ptr,
         if (cmd->metallic_roughness_map) {
             id<MTLTexture> tex = metal_get_cached_texture(ctx, cmd->metallic_roughness_map);
             if (tex)
-                [ctx.encoder setFragmentTexture:tex atIndex:11];
+                [ctx.encoder setFragmentTexture:tex atIndex:14];
         }
         if (cmd->ao_map) {
             id<MTLTexture> tex = metal_get_cached_texture(ctx, cmd->ao_map);
             if (tex)
-                [ctx.encoder setFragmentTexture:tex atIndex:12];
+                [ctx.encoder setFragmentTexture:tex atIndex:15];
         }
         if (cmd->has_splat && cmd->splat_map) {
             id<MTLTexture> sp = metal_get_cached_texture(ctx, cmd->splat_map);
             if (sp)
-                [ctx.encoder setFragmentTexture:sp atIndex:5];
+                [ctx.encoder setFragmentTexture:sp atIndex:6];
             for (int si = 0; si < 4; si++) {
                 if (cmd->splat_layers[si]) {
                     id<MTLTexture> lt = metal_get_cached_texture(ctx, cmd->splat_layers[si]);
                     if (lt)
-                        [ctx.encoder setFragmentTexture:lt atIndex:6 + si];
+                        [ctx.encoder setFragmentTexture:lt atIndex:7 + si];
                 }
             }
         }
@@ -3345,7 +3397,7 @@ static void metal_submit_draw_instanced(void *ctx_ptr,
             id<MTLTexture> envTex =
                 metal_get_cached_cubemap(ctx, (const rt_cubemap3d *)cmd->env_map);
             if (envTex)
-                [ctx.encoder setFragmentTexture:envTex atIndex:10];
+                [ctx.encoder setFragmentTexture:envTex atIndex:13];
         }
 
         /* Lights */
@@ -3354,6 +3406,7 @@ static void metal_submit_draw_instanced(void *ctx_ptr,
             memset(ml, 0, sizeof(ml));
             for (int32_t i = 0; i < light_count && i < VGFX3D_MAX_LIGHTS; i++) {
                 ml[i].type = lights[i].type;
+                ml[i].shadow_index = lights[i].shadow_index;
                 ml[i].dir[0] = lights[i].direction[0];
                 ml[i].dir[1] = lights[i].direction[1];
                 ml[i].dir[2] = lights[i].direction[2];

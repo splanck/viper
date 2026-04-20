@@ -421,16 +421,18 @@ typedef struct {
     GLuint rtt_depth_rbo;
     int32_t rtt_width;
     int32_t rtt_height;
+    int32_t rtt_color_format;
     int8_t rtt_active;
     vgfx3d_rendertarget_t *rtt_target;
 
-    GLuint shadow_fbo;
-    GLuint shadow_depth_tex;
-    int32_t shadow_width;
-    int32_t shadow_height;
-    int8_t shadow_active;
+    GLuint shadow_fbo[VGFX3D_MAX_SHADOW_LIGHTS];
+    GLuint shadow_depth_tex[VGFX3D_MAX_SHADOW_LIGHTS];
+    int32_t shadow_width[VGFX3D_MAX_SHADOW_LIGHTS];
+    int32_t shadow_height[VGFX3D_MAX_SHADOW_LIGHTS];
+    int32_t shadow_pass_slot;
+    int32_t shadow_count;
     float shadow_bias;
-    float shadow_vp[16];
+    float shadow_vp[VGFX3D_MAX_SHADOW_LIGHTS][16];
 
     gl_texture_cache_entry_t *texture_cache;
     int32_t texture_cache_count;
@@ -473,8 +475,7 @@ typedef struct {
     vgfx3d_opengl_target_kind_t active_target_kind;
     vgfx3d_postfx_chain_t gpu_postfx_chain;
 
-    GLint uModelMatrix, uPrevModelMatrix, uViewProjection, uPrevViewProjection, uNormalMatrix,
-        uShadowVP;
+    GLint uModelMatrix, uPrevModelMatrix, uViewProjection, uPrevViewProjection, uNormalMatrix;
     GLint uCameraPos, uCameraForward, uAmbientColor, uDiffuseColor, uSpecularColor, uEmissiveColor,
         uAlpha;
     GLint uPbrScalars0, uPbrScalars1;
@@ -484,16 +485,19 @@ typedef struct {
         uHasAOMap, uCameraIsOrtho;
     GLint uCustomParams;
     GLint uHasSplat, uFogEnabled, uFogNear, uFogFar, uFogColor;
-    GLint uShadowEnabled, uShadowBias;
+    GLint uShadowCount, uShadowBias;
     GLint uUseInstancing, uHasSkinning, uMorphShapeCount, uVertexCount;
     GLint uHasPrevModelMatrix, uHasPrevInstanceMatrices, uHasPrevSkinning, uHasPrevMorphWeights;
     GLint uMorphWeights, uPrevMorphWeights, uMorphDeltas, uMorphNormalDeltas, uHasMorphNormalDeltas;
-    GLint uDiffuseTex, uNormalTex, uSpecularTex, uEmissiveTex, uShadowTex, uEnvMap;
+    GLint uDiffuseTex, uNormalTex, uSpecularTex, uEmissiveTex, uShadowTex[VGFX3D_MAX_SHADOW_LIGHTS],
+        uEnvMap;
     GLint uMetallicRoughnessTex, uAOTex;
     GLint uSplatTex, uSplatLayer0, uSplatLayer1, uSplatLayer2, uSplatLayer3, uSplatScales;
-    GLint uLightType[VGFX3D_MAX_LIGHTS], uLightDir[VGFX3D_MAX_LIGHTS],
+    GLint uLightType[VGFX3D_MAX_LIGHTS], uLightShadowIndex[VGFX3D_MAX_LIGHTS],
+        uLightDir[VGFX3D_MAX_LIGHTS],
         uLightPos[VGFX3D_MAX_LIGHTS], uLightColor[VGFX3D_MAX_LIGHTS],
         uLightIntensity[VGFX3D_MAX_LIGHTS];
+    GLint uShadowVP[VGFX3D_MAX_SHADOW_LIGHTS];
     GLint uLightAtten[VGFX3D_MAX_LIGHTS], uLightInnerCos[VGFX3D_MAX_LIGHTS],
         uLightOuterCos[VGFX3D_MAX_LIGHTS];
 
@@ -891,10 +895,11 @@ static const char *const glsl_fragment_src[] = {
     "uniform float uFogNear;\n"
     "uniform float uFogFar;\n"
     "uniform vec3 uFogColor;\n"
-    "uniform int uShadowEnabled;\n"
-    "uniform mat4 uShadowVP;\n"
+    "uniform int uShadowCount;\n"
+    "uniform mat4 uShadowVP[" VGFX3D_STR(VGFX3D_MAX_SHADOW_LIGHTS) "];\n"
     "uniform float uShadowBias;\n"
     "uniform int uLightType[" VGFX3D_STR(VGFX3D_MAX_LIGHTS) "];\n"
+    "uniform int uLightShadowIndex[" VGFX3D_STR(VGFX3D_MAX_LIGHTS) "];\n"
     "uniform vec3 uLightDir[" VGFX3D_STR(VGFX3D_MAX_LIGHTS) "];\n"
     "uniform vec3 uLightPos[" VGFX3D_STR(VGFX3D_MAX_LIGHTS) "];\n"
     "uniform vec3 uLightColor[" VGFX3D_STR(VGFX3D_MAX_LIGHTS) "];\n"
@@ -906,7 +911,8 @@ static const char *const glsl_fragment_src[] = {
     "uniform sampler2D uNormalTex;\n"
     "uniform sampler2D uSpecularTex;\n"
     "uniform sampler2D uEmissiveTex;\n"
-    "uniform sampler2D uShadowTex;\n"
+    "uniform sampler2D uShadowTex0;\n"
+    "uniform sampler2D uShadowTex1;\n"
     "uniform samplerCube uEnvMap;\n"
     "uniform sampler2D uMetallicRoughnessTex;\n"
     "uniform sampler2D uAOTex;\n"
@@ -938,19 +944,24 @@ static const char *const glsl_fragment_src[] = {
     "    float lod = clamp(roughness, 0.0, 1.0) * max(uEnvMaxLod, 0.0);\n"
     "    return textureLod(uEnvMap, normalize(dir), lod).rgb;\n"
     "}\n"
-    "float sampleShadow(vec3 worldPos) {\n"
-    "    if (uShadowEnabled == 0) return 1.0;\n"
-    "    vec4 lc = uShadowVP * vec4(worldPos, 1.0);\n"
+    "float sampleShadowMap(int shadowIndex, vec3 worldPos) {\n"
+    "    if (shadowIndex < 0 || shadowIndex >= uShadowCount) return 1.0;\n"
+    "    mat4 shadowVP = (shadowIndex == 0) ? uShadowVP[0] : uShadowVP[1];\n"
+    "    vec4 lc = shadowVP * vec4(worldPos, 1.0);\n"
     "    float invW = 1.0 / max(lc.w, 0.0001);\n"
     "    vec3 ndc = lc.xyz * invW;\n"
     "    vec2 uv = ndc.xy * 0.5 + 0.5;\n"
     "    float depth = ndc.z * 0.5 + 0.5;\n"
     "    if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0 || depth > 1.0) return 1.0;\n"
-    "    vec2 texel = 1.0 / vec2(textureSize(uShadowTex, 0));\n"
+    "    vec2 texel = (shadowIndex == 0)\n"
+    "        ? 1.0 / vec2(textureSize(uShadowTex0, 0))\n"
+    "        : 1.0 / vec2(textureSize(uShadowTex1, 0));\n"
     "    float lit = 0.0;\n"
     "    for (int y = -1; y <= 1; y++) {\n"
     "        for (int x = -1; x <= 1; x++) {\n"
-    "            float smp = texture(uShadowTex, uv + vec2(x, y) * texel).r;\n"
+    "            float smp = (shadowIndex == 0)\n"
+    "                ? texture(uShadowTex0, uv + vec2(x, y) * texel).r\n"
+    "                : texture(uShadowTex1, uv + vec2(x, y) * texel).r;\n"
     "            lit += (depth - uShadowBias <= smp) ? 1.0 : 0.0;\n"
     "        }\n"
     "    }\n"
@@ -1041,7 +1052,7 @@ static const char *const glsl_fragment_src[] = {
     "            float atten = 1.0;\n"
     "            if (uLightType[i] == 0) {\n"
     "                L = normalize(-uLightDir[i]);\n"
-    "                atten *= mix(0.15, 1.0, sampleShadow(vWorldPos));\n"
+    "                atten *= mix(0.15, 1.0, sampleShadowMap(uLightShadowIndex[i], vWorldPos));\n"
     "            } else if (uLightType[i] == 1) {\n"
     "                vec3 toLight = uLightPos[i] - vWorldPos;\n"
     "                float d = length(toLight);\n"
@@ -1093,7 +1104,7 @@ static const char *const glsl_fragment_src[] = {
     "            float atten = 1.0;\n"
     "            if (uLightType[i] == 0) {\n"
     "                L = normalize(-uLightDir[i]);\n"
-    "                atten *= mix(0.15, 1.0, sampleShadow(vWorldPos));\n"
+    "                atten *= mix(0.15, 1.0, sampleShadowMap(uLightShadowIndex[i], vWorldPos));\n"
     "            } else if (uLightType[i] == 1) {\n"
     "                vec3 toLight = uLightPos[i] - vWorldPos;\n"
     "                float d = length(toLight);\n"
@@ -2037,6 +2048,7 @@ static void destroy_rtt_targets(gl_context_t *ctx) {
     ctx->rtt_depth_rbo = 0;
     ctx->rtt_width = 0;
     ctx->rtt_height = 0;
+    ctx->rtt_color_format = (int32_t)VGFX3D_RENDERTARGET_COLOR_FORMAT_UNORM8;
     ctx->rtt_active = 0;
     ctx->rtt_target = NULL;
 }
@@ -2048,9 +2060,13 @@ static void destroy_rtt_targets(gl_context_t *ctx) {
 /// (not texture) for depth — RTT users don't need to read depth back
 /// from the shader, so renderbuffer is faster.
 static int ensure_rtt_targets(gl_context_t *ctx, vgfx3d_rendertarget_t *rt) {
+    GLenum color_internal_format;
+    GLenum color_type;
+
     if (!ctx || !rt)
         return -1;
-    if (ctx->rtt_fbo && ctx->rtt_width == rt->width && ctx->rtt_height == rt->height) {
+    if (ctx->rtt_fbo && ctx->rtt_width == rt->width && ctx->rtt_height == rt->height &&
+        ctx->rtt_color_format == rt->color_format) {
         if (ctx->rtt_target && ctx->rtt_target != rt) {
             if (ctx->rtt_color_dirty)
                 gl_sync_render_target_color(ctx, ctx->rtt_target);
@@ -2072,8 +2088,17 @@ static int ensure_rtt_targets(gl_context_t *ctx, vgfx3d_rendertarget_t *rt) {
 
     gl.GenTextures(1, &ctx->rtt_color_tex);
     gl.BindTexture(GL_TEXTURE_2D, ctx->rtt_color_tex);
-    gl.TexImage2D(
-        GL_TEXTURE_2D, 0, GL_RGBA8, rt->width, rt->height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+    color_internal_format = vgfx3d_rendertarget_is_hdr(rt) ? GL_RGBA16F : GL_RGBA8;
+    color_type = vgfx3d_rendertarget_is_hdr(rt) ? GL_FLOAT : GL_UNSIGNED_BYTE;
+    gl.TexImage2D(GL_TEXTURE_2D,
+                  0,
+                  color_internal_format,
+                  rt->width,
+                  rt->height,
+                  0,
+                  GL_RGBA,
+                  color_type,
+                  NULL);
     gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
@@ -2096,6 +2121,7 @@ static int ensure_rtt_targets(gl_context_t *ctx, vgfx3d_rendertarget_t *rt) {
 
     ctx->rtt_width = rt->width;
     ctx->rtt_height = rt->height;
+    ctx->rtt_color_format = rt->color_format;
     ctx->rtt_active = 1;
     ctx->rtt_target = rt;
     ctx->rtt_color_dirty = 0;
@@ -2109,14 +2135,18 @@ static int ensure_rtt_targets(gl_context_t *ctx, vgfx3d_rendertarget_t *rt) {
 static void destroy_shadow_targets(gl_context_t *ctx) {
     if (!ctx)
         return;
-    if (ctx->shadow_depth_tex)
-        gl.DeleteTextures(1, &ctx->shadow_depth_tex);
-    if (ctx->shadow_fbo)
-        gl.DeleteFramebuffers(1, &ctx->shadow_fbo);
-    ctx->shadow_fbo = 0;
-    ctx->shadow_depth_tex = 0;
-    ctx->shadow_width = 0;
-    ctx->shadow_height = 0;
+    for (int32_t slot = 0; slot < VGFX3D_MAX_SHADOW_LIGHTS; slot++) {
+        if (ctx->shadow_depth_tex[slot])
+            gl.DeleteTextures(1, &ctx->shadow_depth_tex[slot]);
+        if (ctx->shadow_fbo[slot])
+            gl.DeleteFramebuffers(1, &ctx->shadow_fbo[slot]);
+        ctx->shadow_fbo[slot] = 0;
+        ctx->shadow_depth_tex[slot] = 0;
+        ctx->shadow_width[slot] = 0;
+        ctx->shadow_height[slot] = 0;
+    }
+    ctx->shadow_pass_slot = -1;
+    ctx->shadow_count = 0;
 }
 
 /// @brief Build a depth-only FBO for shadow-map rendering.
@@ -2124,19 +2154,26 @@ static void destroy_shadow_targets(gl_context_t *ctx) {
 /// `glDrawBuffer(GL_NONE)` + `glReadBuffer(GL_NONE)` because there are
 /// no color attachments (depth-only). Linear filtering on the depth
 /// texture so the main pass can use hardware PCF when sampling.
-static int ensure_shadow_targets(gl_context_t *ctx, int32_t w, int32_t h) {
-    if (!ctx || w <= 0 || h <= 0)
+static int ensure_shadow_targets(gl_context_t *ctx, int32_t slot, int32_t w, int32_t h) {
+    if (!ctx || slot < 0 || slot >= VGFX3D_MAX_SHADOW_LIGHTS || w <= 0 || h <= 0)
         return -1;
-    if (ctx->shadow_fbo && ctx->shadow_width == w && ctx->shadow_height == h)
+    if (ctx->shadow_fbo[slot] && ctx->shadow_width[slot] == w && ctx->shadow_height[slot] == h)
         return 0;
 
-    destroy_shadow_targets(ctx);
+    if (ctx->shadow_depth_tex[slot])
+        gl.DeleteTextures(1, &ctx->shadow_depth_tex[slot]);
+    if (ctx->shadow_fbo[slot])
+        gl.DeleteFramebuffers(1, &ctx->shadow_fbo[slot]);
+    ctx->shadow_fbo[slot] = 0;
+    ctx->shadow_depth_tex[slot] = 0;
+    ctx->shadow_width[slot] = 0;
+    ctx->shadow_height[slot] = 0;
 
-    gl.GenFramebuffers(1, &ctx->shadow_fbo);
-    gl.BindFramebuffer(GL_FRAMEBUFFER, ctx->shadow_fbo);
+    gl.GenFramebuffers(1, &ctx->shadow_fbo[slot]);
+    gl.BindFramebuffer(GL_FRAMEBUFFER, ctx->shadow_fbo[slot]);
 
-    gl.GenTextures(1, &ctx->shadow_depth_tex);
-    gl.BindTexture(GL_TEXTURE_2D, ctx->shadow_depth_tex);
+    gl.GenTextures(1, &ctx->shadow_depth_tex[slot]);
+    gl.BindTexture(GL_TEXTURE_2D, ctx->shadow_depth_tex[slot]);
     gl.TexImage2D(
         GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT32F, w, h, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
     gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -2144,17 +2181,22 @@ static int ensure_shadow_targets(gl_context_t *ctx, int32_t w, int32_t h) {
     gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     gl.FramebufferTexture2D(
-        GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, ctx->shadow_depth_tex, 0);
+        GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, ctx->shadow_depth_tex[slot], 0);
     gl.DrawBuffer(GL_NONE);
     gl.ReadBuffer(GL_NONE);
 
     if (gl.CheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
-        destroy_shadow_targets(ctx);
+        if (ctx->shadow_depth_tex[slot])
+            gl.DeleteTextures(1, &ctx->shadow_depth_tex[slot]);
+        if (ctx->shadow_fbo[slot])
+            gl.DeleteFramebuffers(1, &ctx->shadow_fbo[slot]);
+        ctx->shadow_fbo[slot] = 0;
+        ctx->shadow_depth_tex[slot] = 0;
         return -1;
     }
 
-    ctx->shadow_width = w;
-    ctx->shadow_height = h;
+    ctx->shadow_width[slot] = w;
+    ctx->shadow_height[slot] = h;
     return 0;
 }
 
@@ -2407,7 +2449,9 @@ static int gl_apply_postfx_chain(gl_context_t *ctx,
 static int gl_sync_render_target_color(void *ctx_ptr, vgfx3d_rendertarget_t *rt) {
     gl_context_t *ctx = (gl_context_t *)ctx_ptr;
     uint8_t *tmp;
+    float *tmpf;
     size_t bytes;
+    size_t float_count;
 
     if (!ctx || !rt || rt->width <= 0 || rt->height <= 0 || !ctx->rtt_fbo || ctx->rtt_target != rt) {
         return 0;
@@ -2417,17 +2461,32 @@ static int gl_sync_render_target_color(void *ctx_ptr, vgfx3d_rendertarget_t *rt)
     }
 
     bytes = (size_t)rt->height * (size_t)rt->stride;
-    tmp = (uint8_t *)malloc(bytes);
-    if (!tmp)
-        return 0;
-
     glx.MakeCurrent(ctx->display, ctx->window, ctx->glxCtx);
     gl.BindFramebuffer(GL_FRAMEBUFFER, ctx->rtt_fbo);
     gl.ReadBuffer(GL_COLOR_ATTACHMENT0);
-    gl.ReadPixels(0, 0, rt->width, rt->height, GL_RGBA, GL_UNSIGNED_BYTE, tmp);
-    vgfx3d_flip_rgba_rows(tmp, rt->width, rt->height);
-    memcpy(rt->color_buf, tmp, bytes);
-    free(tmp);
+    if (vgfx3d_rendertarget_is_hdr(rt)) {
+        float_count = (size_t)rt->width * (size_t)rt->height * 4u;
+        tmpf = (float *)malloc(float_count * sizeof(float));
+        if (!tmpf) {
+            bind_main_framebuffer(ctx);
+            return 0;
+        }
+        gl.ReadPixels(0, 0, rt->width, rt->height, GL_RGBA, GL_FLOAT, tmpf);
+        vgfx3d_copy_linear_rgba32f_to_rgba8(
+            rt->color_buf, rt->stride, rt->width, rt->height, tmpf, rt->width * 16);
+        vgfx3d_flip_rgba_rows(rt->color_buf, rt->width, rt->height);
+        free(tmpf);
+    } else {
+        tmp = (uint8_t *)malloc(bytes);
+        if (!tmp) {
+            bind_main_framebuffer(ctx);
+            return 0;
+        }
+        gl.ReadPixels(0, 0, rt->width, rt->height, GL_RGBA, GL_UNSIGNED_BYTE, tmp);
+        vgfx3d_flip_rgba_rows(tmp, rt->width, rt->height);
+        memcpy(rt->color_buf, tmp, bytes);
+        free(tmp);
+    }
 
     ctx->rtt_color_dirty = 0;
     rt->color_dirty = 0;
@@ -2912,7 +2971,7 @@ static void bind_morph_payload(gl_context_t *ctx,
     if (use_skinning)
         upload_active_bone_palettes(ctx, cmd);
 
-    gl.ActiveTexture(GL_TEXTURE0 + 10);
+    gl.ActiveTexture(GL_TEXTURE0 + 11);
     if (morph_count > 0) {
         size_t bytes = (size_t)morph_count * (size_t)cmd->vertex_count * 3 * sizeof(float);
         cached_entry = gl_get_cached_morph_entry(ctx, cmd, morph_count);
@@ -2940,8 +2999,8 @@ static void bind_morph_payload(gl_context_t *ctx,
     } else {
         gl.BindTexture(GL_TEXTURE_BUFFER, 0);
     }
-    gl.Uniform1i(uMorphDeltas, 10);
-    gl.ActiveTexture(GL_TEXTURE0 + 11);
+    gl.Uniform1i(uMorphDeltas, 11);
+    gl.ActiveTexture(GL_TEXTURE0 + 12);
     if (uHasMorphNormalDeltas >= 0) {
         gl.Uniform1i(uHasMorphNormalDeltas,
                      (morph_count > 0 && cmd->morph_normal_deltas && morph_normal_tbo != 0) ? 1
@@ -2953,7 +3012,7 @@ static void bind_morph_payload(gl_context_t *ctx,
         gl.BindTexture(GL_TEXTURE_BUFFER, 0);
     }
     if (uMorphNormalDeltas >= 0)
-        gl.Uniform1i(uMorphNormalDeltas, 11);
+        gl.Uniform1i(uMorphNormalDeltas, 12);
     gl.ActiveTexture(GL_TEXTURE0);
 }
 
@@ -2983,6 +3042,7 @@ static void upload_light_uniforms(gl_context_t *ctx,
     gl.Uniform1i(ctx->uLightCount, light_count);
     for (int32_t i = 0; i < light_count; i++) {
         gl.Uniform1i(ctx->uLightType[i], lights[i].type);
+        gl.Uniform1i(ctx->uLightShadowIndex[i], lights[i].shadow_index);
         gl.Uniform3f(ctx->uLightDir[i],
                      lights[i].direction[0],
                      lights[i].direction[1],
@@ -3022,7 +3082,9 @@ static void upload_main_uniforms(gl_context_t *ctx,
     gl.UniformMatrix4fv(ctx->uViewProjection, 1, GL_TRUE, ctx->vp);
     gl.UniformMatrix4fv(ctx->uPrevViewProjection, 1, GL_TRUE, ctx->draw_prev_vp);
     gl.UniformMatrix4fv(ctx->uNormalMatrix, 1, GL_TRUE, normal_matrix);
-    gl.UniformMatrix4fv(ctx->uShadowVP, 1, GL_TRUE, ctx->shadow_vp);
+    gl.Uniform1i(ctx->uShadowCount, ctx->shadow_count);
+    for (int32_t slot = 0; slot < VGFX3D_MAX_SHADOW_LIGHTS; slot++)
+        gl.UniformMatrix4fv(ctx->uShadowVP[slot], 1, GL_TRUE, ctx->shadow_vp[slot]);
 
     gl.Uniform3f(ctx->uCameraPos, ctx->cam_pos[0], ctx->cam_pos[1], ctx->cam_pos[2]);
     gl.Uniform3f(
@@ -3065,7 +3127,6 @@ static void upload_main_uniforms(gl_context_t *ctx,
     gl.Uniform1f(ctx->uFogNear, ctx->fog_near);
     gl.Uniform1f(ctx->uFogFar, ctx->fog_far);
     gl.Uniform3f(ctx->uFogColor, ctx->fog_color[0], ctx->fog_color[1], ctx->fog_color[2]);
-    gl.Uniform1i(ctx->uShadowEnabled, ctx->shadow_active ? 1 : 0);
     gl.Uniform1f(ctx->uShadowBias, ctx->shadow_bias);
 
     upload_light_uniforms(ctx, lights, light_count);
@@ -3084,9 +3145,9 @@ static void upload_main_uniforms(gl_context_t *ctx,
 
 /// @brief Resolve every cmd texture from the cache and bind to its sampler unit.
 ///
-/// Slot map: 0=diffuse, 1=normal, 2=specular, 3=emissive, 4=shadow,
-/// 5=splat-control, 6-9=splat layers, 12=env cubemap, 14=metallic-
-/// rough, 15=AO. Slots 10/11 are reserved for morph TBOs (set by
+/// Slot map: 0=diffuse, 1=normal, 2=specular, 3=emissive, 4-5=shadow,
+/// 6=splat-control, 7-10=splat layers, 13=env cubemap, 14=metallic-
+/// rough, 15=AO. Slots 11/12 are reserved for morph TBOs (set by
 /// `bind_morph_payload`). Each `has*` uniform tells the shader which
 /// slots are populated.
 static void bind_material_textures(gl_context_t *ctx, const vgfx3d_draw_cmd_t *cmd) {
@@ -3123,13 +3184,15 @@ static void bind_material_textures(gl_context_t *ctx, const vgfx3d_draw_cmd_t *c
     bind_texture_unit(ctx->uSpecularTex, 2, GL_TEXTURE_2D, specular_tex);
     bind_texture_unit(ctx->uEmissiveTex, 3, GL_TEXTURE_2D, emissive_tex);
     bind_texture_unit(
-        ctx->uShadowTex, 4, GL_TEXTURE_2D, ctx->shadow_active ? ctx->shadow_depth_tex : 0);
-    bind_texture_unit(ctx->uSplatTex, 5, GL_TEXTURE_2D, splat_tex);
-    bind_texture_unit(ctx->uSplatLayer0, 6, GL_TEXTURE_2D, splat_layer0);
-    bind_texture_unit(ctx->uSplatLayer1, 7, GL_TEXTURE_2D, splat_layer1);
-    bind_texture_unit(ctx->uSplatLayer2, 8, GL_TEXTURE_2D, splat_layer2);
-    bind_texture_unit(ctx->uSplatLayer3, 9, GL_TEXTURE_2D, splat_layer3);
-    bind_texture_unit(ctx->uEnvMap, 12, GL_TEXTURE_CUBE_MAP, env_tex);
+        ctx->uShadowTex[0], 4, GL_TEXTURE_2D, ctx->shadow_count > 0 ? ctx->shadow_depth_tex[0] : 0);
+    bind_texture_unit(
+        ctx->uShadowTex[1], 5, GL_TEXTURE_2D, ctx->shadow_count > 1 ? ctx->shadow_depth_tex[1] : 0);
+    bind_texture_unit(ctx->uSplatTex, 6, GL_TEXTURE_2D, splat_tex);
+    bind_texture_unit(ctx->uSplatLayer0, 7, GL_TEXTURE_2D, splat_layer0);
+    bind_texture_unit(ctx->uSplatLayer1, 8, GL_TEXTURE_2D, splat_layer1);
+    bind_texture_unit(ctx->uSplatLayer2, 9, GL_TEXTURE_2D, splat_layer2);
+    bind_texture_unit(ctx->uSplatLayer3, 10, GL_TEXTURE_2D, splat_layer3);
+    bind_texture_unit(ctx->uEnvMap, 13, GL_TEXTURE_CUBE_MAP, env_tex);
     bind_texture_unit(ctx->uMetallicRoughnessTex, 14, GL_TEXTURE_2D, metallic_roughness_tex);
     bind_texture_unit(ctx->uAOTex, 15, GL_TEXTURE_2D, ao_tex);
     if (ctx->uSplatScales >= 0) {
@@ -3271,7 +3334,6 @@ static void query_main_uniforms(gl_context_t *ctx) {
     U(uViewProjection);
     U(uPrevViewProjection);
     U(uNormalMatrix);
-    U(uShadowVP);
     U(uCameraPos);
     U(uCameraForward);
     U(uAmbientColor);
@@ -3302,7 +3364,7 @@ static void query_main_uniforms(gl_context_t *ctx) {
     U(uFogNear);
     U(uFogFar);
     U(uFogColor);
-    U(uShadowEnabled);
+    U(uShadowCount);
     U(uShadowBias);
     U(uUseInstancing);
     U(uHasPrevModelMatrix);
@@ -3321,7 +3383,6 @@ static void query_main_uniforms(gl_context_t *ctx) {
     U(uNormalTex);
     U(uSpecularTex);
     U(uEmissiveTex);
-    U(uShadowTex);
     U(uEnvMap);
     U(uMetallicRoughnessTex);
     U(uAOTex);
@@ -3336,6 +3397,8 @@ static void query_main_uniforms(gl_context_t *ctx) {
         char name[64];
         snprintf(name, sizeof(name), "uLightType[%d]", i);
         ctx->uLightType[i] = gl.GetUniformLocation(ctx->program, name);
+        snprintf(name, sizeof(name), "uLightShadowIndex[%d]", i);
+        ctx->uLightShadowIndex[i] = gl.GetUniformLocation(ctx->program, name);
         snprintf(name, sizeof(name), "uLightDir[%d]", i);
         ctx->uLightDir[i] = gl.GetUniformLocation(ctx->program, name);
         snprintf(name, sizeof(name), "uLightPos[%d]", i);
@@ -3351,6 +3414,13 @@ static void query_main_uniforms(gl_context_t *ctx) {
         snprintf(name, sizeof(name), "uLightOuterCos[%d]", i);
         ctx->uLightOuterCos[i] = gl.GetUniformLocation(ctx->program, name);
     }
+    for (int i = 0; i < VGFX3D_MAX_SHADOW_LIGHTS; i++) {
+        char name[64];
+        snprintf(name, sizeof(name), "uShadowVP[%d]", i);
+        ctx->uShadowVP[i] = gl.GetUniformLocation(ctx->program, name);
+    }
+    ctx->uShadowTex[0] = gl.GetUniformLocation(ctx->program, "uShadowTex0");
+    ctx->uShadowTex[1] = gl.GetUniformLocation(ctx->program, "uShadowTex1");
 }
 
 /// @brief Resolve uniform locations for the depth-only shadow program.
@@ -3605,20 +3675,21 @@ static void *gl_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
     gl.Uniform1i(ctx->uNormalTex, 1);
     gl.Uniform1i(ctx->uSpecularTex, 2);
     gl.Uniform1i(ctx->uEmissiveTex, 3);
-    gl.Uniform1i(ctx->uShadowTex, 4);
-    gl.Uniform1i(ctx->uSplatTex, 5);
-    gl.Uniform1i(ctx->uSplatLayer0, 6);
-    gl.Uniform1i(ctx->uSplatLayer1, 7);
-    gl.Uniform1i(ctx->uSplatLayer2, 8);
-    gl.Uniform1i(ctx->uSplatLayer3, 9);
-    gl.Uniform1i(ctx->uMorphDeltas, 10);
-    gl.Uniform1i(ctx->uMorphNormalDeltas, 11);
-    gl.Uniform1i(ctx->uEnvMap, 12);
+    gl.Uniform1i(ctx->uShadowTex[0], 4);
+    gl.Uniform1i(ctx->uShadowTex[1], 5);
+    gl.Uniform1i(ctx->uSplatTex, 6);
+    gl.Uniform1i(ctx->uSplatLayer0, 7);
+    gl.Uniform1i(ctx->uSplatLayer1, 8);
+    gl.Uniform1i(ctx->uSplatLayer2, 9);
+    gl.Uniform1i(ctx->uSplatLayer3, 10);
+    gl.Uniform1i(ctx->uMorphDeltas, 11);
+    gl.Uniform1i(ctx->uMorphNormalDeltas, 12);
+    gl.Uniform1i(ctx->uEnvMap, 13);
     gl.Uniform1i(ctx->uMetallicRoughnessTex, 14);
     gl.Uniform1i(ctx->uAOTex, 15);
 
     gl.UseProgram(ctx->shadow_program);
-    gl.Uniform1i(ctx->shadow_uMorphDeltas, 10);
+    gl.Uniform1i(ctx->shadow_uMorphDeltas, 11);
 
     gl.UseProgram(ctx->skybox_program);
     gl.Uniform1i(ctx->skybox_uSkybox, 13);
@@ -3826,7 +3897,8 @@ static void gl_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) {
         return;
 
     ctx->frame_serial++;
-    ctx->shadow_active = 0;
+    ctx->shadow_pass_slot = -1;
+    ctx->shadow_count = 0;
     ctx->current_pass_is_overlay = (!ctx->rtt_active && cam->load_existing_color) ? 1 : 0;
     if (!ctx->current_pass_is_overlay) {
         ctx->scene_composited_to_backbuffer = 0;
@@ -4190,15 +4262,16 @@ static void gl_set_render_target(void *ctx_ptr, vgfx3d_rendertarget_t *rt) {
 /// binds the depth-only FBO + viewport, clears depth, switches to
 /// the shadow vertex shader (no PS).
 static void gl_shadow_begin(
-    void *ctx_ptr, float *depth_buf, int32_t w, int32_t h, const float *light_vp) {
+    void *ctx_ptr, int32_t slot, float *depth_buf, int32_t w, int32_t h, const float *light_vp) {
     (void)depth_buf;
     gl_context_t *ctx = (gl_context_t *)ctx_ptr;
-    if (!ctx || !light_vp)
+    if (!ctx || !light_vp || slot < 0 || slot >= VGFX3D_MAX_SHADOW_LIGHTS)
         return;
-    if (ensure_shadow_targets(ctx, w, h) != 0)
+    if (ensure_shadow_targets(ctx, slot, w, h) != 0)
         return;
-    memcpy(ctx->shadow_vp, light_vp, sizeof(ctx->shadow_vp));
-    gl.BindFramebuffer(GL_FRAMEBUFFER, ctx->shadow_fbo);
+    ctx->shadow_pass_slot = slot;
+    memcpy(ctx->shadow_vp[slot], light_vp, sizeof(ctx->shadow_vp[slot]));
+    gl.BindFramebuffer(GL_FRAMEBUFFER, ctx->shadow_fbo[slot]);
     gl.Viewport(0, 0, w, h);
     gl.ClearDepth(1.0);
     gl.Clear(GL_DEPTH_BUFFER_BIT);
@@ -4216,12 +4289,15 @@ static void gl_shadow_begin(
 static void gl_shadow_draw(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) {
     gl_context_t *ctx = (gl_context_t *)ctx_ptr;
     GLuint mesh_vbo, mesh_ibo;
-    if (!ctx || !cmd || cmd->vertex_count == 0 || cmd->index_count == 0)
+    if (!ctx || !cmd || ctx->shadow_pass_slot < 0 ||
+        ctx->shadow_pass_slot >= VGFX3D_MAX_SHADOW_LIGHTS || cmd->vertex_count == 0 ||
+        cmd->index_count == 0)
         return;
     prepare_mesh_buffers(ctx, cmd, &mesh_vbo, &mesh_ibo);
     configure_mesh_attributes(ctx, mesh_vbo, mesh_ibo);
     gl.UniformMatrix4fv(ctx->shadow_uModelMatrix, 1, GL_TRUE, cmd->model_matrix);
-    gl.UniformMatrix4fv(ctx->shadow_uViewProjection, 1, GL_TRUE, ctx->shadow_vp);
+    gl.UniformMatrix4fv(
+        ctx->shadow_uViewProjection, 1, GL_TRUE, ctx->shadow_vp[ctx->shadow_pass_slot]);
     bind_shadow_anim(ctx, cmd);
     gl.DrawElements(GL_TRIANGLES, (GLsizei)cmd->index_count, GL_UNSIGNED_INT, NULL);
 }
@@ -4232,12 +4308,14 @@ static void gl_shadow_draw(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) {
 /// turns shadow sampling on. Stores the bias the shader uses for
 /// depth comparison. Re-binds the main FBO and main program for
 /// subsequent draws.
-static void gl_shadow_end(void *ctx_ptr, float bias) {
+static void gl_shadow_end(void *ctx_ptr, int32_t slot, float bias) {
     gl_context_t *ctx = (gl_context_t *)ctx_ptr;
-    if (!ctx)
+    if (!ctx || slot < 0 || slot >= VGFX3D_MAX_SHADOW_LIGHTS)
         return;
-    ctx->shadow_active = 1;
+    if (ctx->shadow_count < slot + 1)
+        ctx->shadow_count = slot + 1;
     ctx->shadow_bias = bias;
+    ctx->shadow_pass_slot = -1;
     bind_main_framebuffer(ctx);
     gl.UseProgram(ctx->program);
 }

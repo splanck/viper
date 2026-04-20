@@ -11,7 +11,8 @@
 //   like shadow maps, reflections, and post-processing.
 //
 // Key invariants:
-//   - Color buffer is RGBA uint8_t (same format as vgfx framebuffer)
+//   - CPU readback buffer is always RGBA uint8_t (same format as Pixels)
+//   - GPU backends may store render-target color as RGBA16F for HDR RTTs
 //   - Depth buffer is float (same as Z-buffer)
 //   - CPU-side color/depth storage is allocated lazily on first CPU use
 //     or when the software backend binds the target.
@@ -47,7 +48,9 @@ extern void *rt_pixels_new(int64_t width, int64_t height);
 /// on first read or when the software backend binds the target — see
 /// `vgfx3d_rendertarget_ensure_color` / `_ensure_depth` in `rt_canvas3d_internal.h`. Returns
 /// NULL on calloc failure; the caller traps with a user-visible message.
-static vgfx3d_rendertarget_t *rt_alloc(int32_t w, int32_t h) {
+static vgfx3d_rendertarget_t *rt_alloc(int32_t w,
+                                       int32_t h,
+                                       vgfx3d_rendertarget_color_format_t color_format) {
     vgfx3d_rendertarget_t *rt = (vgfx3d_rendertarget_t *)calloc(1, sizeof(vgfx3d_rendertarget_t));
     if (!rt)
         return NULL;
@@ -55,6 +58,7 @@ static vgfx3d_rendertarget_t *rt_alloc(int32_t w, int32_t h) {
     rt->width = w;
     rt->height = h;
     rt->stride = w * 4;
+    rt->color_format = (int32_t)color_format;
 
     return rt;
 }
@@ -92,33 +96,48 @@ static void rt_rendertarget3d_finalize(void *obj) {
 /// @param width  Target width in pixels (1–8192).
 /// @param height Target height in pixels (1–8192).
 /// @return Opaque render target handle, or NULL on failure.
-void *rt_rendertarget3d_new(int64_t width, int64_t height) {
+static void *rt_rendertarget3d_new_with_format(int64_t width,
+                                               int64_t height,
+                                               vgfx3d_rendertarget_color_format_t color_format,
+                                               const char *trap_name) {
     if (width <= 0 || height <= 0 || width > 8192 || height > 8192) {
-        rt_trap("RenderTarget3D.New: dimensions must be 1-8192");
+        rt_trap(trap_name);
         return NULL;
     }
 
     rt_rendertarget3d *rtd =
         (rt_rendertarget3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_rendertarget3d));
     if (!rtd) {
-        rt_trap("RenderTarget3D.New: memory allocation failed");
+        rt_trap("RenderTarget3D: memory allocation failed");
         return NULL;
     }
 
     rtd->vptr = NULL;
     rtd->width = width;
     rtd->height = height;
-    rtd->target = rt_alloc((int32_t)width, (int32_t)height);
+    rtd->target = rt_alloc((int32_t)width, (int32_t)height, color_format);
 
     if (!rtd->target) {
         if (rt_obj_release_check0(rtd))
             rt_obj_free(rtd);
-        rt_trap("RenderTarget3D.New: buffer allocation failed");
+        rt_trap("RenderTarget3D: buffer allocation failed");
         return NULL;
     }
 
     rt_obj_set_finalizer(rtd, rt_rendertarget3d_finalize);
     return rtd;
+}
+
+void *rt_rendertarget3d_new(int64_t width, int64_t height) {
+    return rt_rendertarget3d_new_with_format(
+        width, height, VGFX3D_RENDERTARGET_COLOR_FORMAT_UNORM8,
+        "RenderTarget3D.New: dimensions must be 1-8192");
+}
+
+void *rt_rendertarget3d_new_hdr(int64_t width, int64_t height) {
+    return rt_rendertarget3d_new_with_format(
+        width, height, VGFX3D_RENDERTARGET_COLOR_FORMAT_HDR16F,
+        "RenderTarget3D.NewHdr: dimensions must be 1-8192");
 }
 
 /// @brief Get the width of the render target in pixels.
@@ -131,10 +150,18 @@ int64_t rt_rendertarget3d_get_height(void *obj) {
     return obj ? ((rt_rendertarget3d *)obj)->height : 0;
 }
 
+/// @brief Return whether the target stores HDR color on the GPU path.
+int32_t rt_rendertarget3d_get_is_hdr(void *obj) {
+    const rt_rendertarget3d *rtd = (const rt_rendertarget3d *)obj;
+    return (rtd && vgfx3d_rendertarget_is_hdr(rtd->target)) ? 1 : 0;
+}
+
 /// @brief Copy the render target contents into a new Pixels object for CPU access.
-/// @details Converts the internal RGBA byte buffer to Pixels' packed uint32_t
-///          format (0xRRGGBBAA). This is a full copy — the Pixels can be used
-///          as a texture, saved to disk, or processed independently.
+/// @details Converts the CPU readback buffer to Pixels' packed uint32_t format
+///          (0xRRGGBBAA). HDR render targets are tonemapped into that buffer by
+///          the active GPU backend before this copy occurs. This is a full copy
+///          — the Pixels can be used as a texture, saved to disk, or processed
+///          independently.
 /// @param obj Render target handle.
 /// @return New Pixels handle with the framebuffer contents, or NULL on failure.
 void *rt_rendertarget3d_as_pixels(void *obj) {

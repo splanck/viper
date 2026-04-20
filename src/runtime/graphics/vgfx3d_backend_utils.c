@@ -180,6 +180,104 @@ void vgfx3d_flip_rgba_rows(uint8_t *rgba, int32_t w, int32_t h) {
     free(tmp);
 }
 
+/// @brief Convert IEEE-754 binary16 to binary32.
+float vgfx3d_half_to_float(uint16_t bits) {
+    uint32_t sign = (uint32_t)(bits & 0x8000u) << 16;
+    uint32_t exp = (bits >> 10) & 0x1Fu;
+    uint32_t mant = bits & 0x03FFu;
+    uint32_t fbits;
+    float out;
+
+    if (exp == 0) {
+        if (mant == 0) {
+            fbits = sign;
+        } else {
+            exp = 127u - 15u + 1u;
+            while ((mant & 0x0400u) == 0) {
+                mant <<= 1u;
+                exp--;
+            }
+            mant &= 0x03FFu;
+            fbits = sign | (exp << 23) | (mant << 13);
+        }
+    } else if (exp == 0x1Fu) {
+        fbits = sign | 0x7F800000u | (mant << 13);
+    } else {
+        fbits = sign | ((exp + (127u - 15u)) << 23) | (mant << 13);
+    }
+
+    memcpy(&out, &fbits, sizeof(out));
+    return out;
+}
+
+/// @brief Clamp a float to [0,1] and quantize to UNORM8.
+uint8_t vgfx3d_float_to_unorm8(float value) {
+    if (!(value > 0.0f))
+        return 0;
+    if (value >= 1.0f)
+        return 255;
+    return (uint8_t)(value * 255.0f + 0.5f);
+}
+
+/// @brief Apply a simple Reinhard tonemap before UNORM8 quantization.
+uint8_t vgfx3d_hdr_to_unorm8(float value) {
+    if (!(value > 0.0f))
+        return 0;
+    return vgfx3d_float_to_unorm8(value / (1.0f + value));
+}
+
+/// @brief Convert linear RGBA16F rows to displayable RGBA8.
+void vgfx3d_copy_linear_rgba16f_to_rgba8(uint8_t *dst_rgba,
+                                         int32_t dst_stride,
+                                         int32_t copy_w,
+                                         int32_t copy_h,
+                                         const uint16_t *src_rgba16f,
+                                         int32_t src_stride_bytes) {
+    if (!dst_rgba || !src_rgba16f || dst_stride < copy_w * 4 || copy_w <= 0 || copy_h <= 0 ||
+        src_stride_bytes < copy_w * (int32_t)(sizeof(uint16_t) * 4)) {
+        return;
+    }
+
+    for (int32_t y = 0; y < copy_h; y++) {
+        uint8_t *dst_row = dst_rgba + (size_t)y * (size_t)dst_stride;
+        const uint16_t *src_row =
+            (const uint16_t *)((const uint8_t *)src_rgba16f + (size_t)y * (size_t)src_stride_bytes);
+        for (int32_t x = 0; x < copy_w; x++) {
+            dst_row[(size_t)x * 4u + 0u] = vgfx3d_hdr_to_unorm8(vgfx3d_half_to_float(src_row[0]));
+            dst_row[(size_t)x * 4u + 1u] = vgfx3d_hdr_to_unorm8(vgfx3d_half_to_float(src_row[1]));
+            dst_row[(size_t)x * 4u + 2u] = vgfx3d_hdr_to_unorm8(vgfx3d_half_to_float(src_row[2]));
+            dst_row[(size_t)x * 4u + 3u] = vgfx3d_float_to_unorm8(vgfx3d_half_to_float(src_row[3]));
+            src_row += 4;
+        }
+    }
+}
+
+/// @brief Convert linear RGBA32F rows to displayable RGBA8.
+void vgfx3d_copy_linear_rgba32f_to_rgba8(uint8_t *dst_rgba,
+                                         int32_t dst_stride,
+                                         int32_t copy_w,
+                                         int32_t copy_h,
+                                         const float *src_rgba32f,
+                                         int32_t src_stride_bytes) {
+    if (!dst_rgba || !src_rgba32f || dst_stride < copy_w * 4 || copy_w <= 0 || copy_h <= 0 ||
+        src_stride_bytes < copy_w * (int32_t)(sizeof(float) * 4)) {
+        return;
+    }
+
+    for (int32_t y = 0; y < copy_h; y++) {
+        uint8_t *dst_row = dst_rgba + (size_t)y * (size_t)dst_stride;
+        const float *src_row =
+            (const float *)((const uint8_t *)src_rgba32f + (size_t)y * (size_t)src_stride_bytes);
+        for (int32_t x = 0; x < copy_w; x++) {
+            dst_row[(size_t)x * 4u + 0u] = vgfx3d_hdr_to_unorm8(src_row[0]);
+            dst_row[(size_t)x * 4u + 1u] = vgfx3d_hdr_to_unorm8(src_row[1]);
+            dst_row[(size_t)x * 4u + 2u] = vgfx3d_hdr_to_unorm8(src_row[2]);
+            dst_row[(size_t)x * 4u + 3u] = vgfx3d_float_to_unorm8(src_row[3]);
+            src_row += 4;
+        }
+    }
+}
+
 /// @brief Compute the normal matrix (inverse-transpose of the upper 3×3 of
 /// @p model_matrix) and place it in the upper-left 3×3 of @p out_matrix.
 /// Falls back to copying the upper 3×3 directly when the matrix is singular,

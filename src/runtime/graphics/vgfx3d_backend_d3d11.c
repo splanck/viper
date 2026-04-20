@@ -72,7 +72,9 @@ static const float k_identity4x4[16] = {
 
 static const char *d3d11_shader_source =
     "struct Light {\n"
-    "    int type; float _p0, _p1, _p2;\n"
+    "    int type;\n"
+    "    int shadowIndex;\n"
+    "    float _p0, _p1;\n"
     "    float4 direction;\n"
     "    float4 position;\n"
     "    float4 color;\n"
@@ -101,7 +103,7 @@ static const char *d3d11_shader_source =
     "cbuffer PerScene : register(b1) {\n"
     "    row_major float4x4 viewProjection;\n"
     "    row_major float4x4 prevViewProjection;\n"
-    "    row_major float4x4 shadowVP;\n"
+    "    row_major float4x4 shadowVP[" VGFX3D_STR(VGFX3D_MAX_SHADOW_LIGHTS) "];\n"
     "    float4 cameraPosition;\n"
     "    float4 ambientColor;\n"
     "    float4 fogColor;\n"
@@ -109,7 +111,7 @@ static const char *d3d11_shader_source =
     "    float fogFar;\n"
     "    float shadowBias;\n"
     "    int lightCount;\n"
-    "    int shadowEnabled;\n"
+    "    int shadowCount;\n"
     "    float3 cameraForward;\n"
     "};\n"
     "\n"
@@ -148,15 +150,16 @@ static const char *d3d11_shader_source =
     "Texture2D normalTex : register(t1);\n"
     "Texture2D specularTex : register(t2);\n"
     "Texture2D emissiveTex : register(t3);\n"
-    "Texture2D<float> shadowTex : register(t4);\n"
-    "Texture2D splatTex : register(t5);\n"
-    "Texture2D splatLayer0 : register(t6);\n"
-    "Texture2D splatLayer1 : register(t7);\n"
-    "Texture2D splatLayer2 : register(t8);\n"
-    "Texture2D splatLayer3 : register(t9);\n"
-    "TextureCube envTex : register(t10);\n"
-    "Texture2D metallicRoughnessTex : register(t11);\n"
-    "Texture2D aoTex : register(t12);\n"
+    "Texture2D<float> shadowTex0 : register(t4);\n"
+    "Texture2D<float> shadowTex1 : register(t5);\n"
+    "Texture2D splatTex : register(t6);\n"
+    "Texture2D splatLayer0 : register(t7);\n"
+    "Texture2D splatLayer1 : register(t8);\n"
+    "Texture2D splatLayer2 : register(t9);\n"
+    "Texture2D splatLayer3 : register(t10);\n"
+    "TextureCube envTex : register(t13);\n"
+    "Texture2D metallicRoughnessTex : register(t14);\n"
+    "Texture2D aoTex : register(t15);\n"
     "SamplerState texSampler : register(s0);\n"
     "SamplerComparisonState shadowSampler : register(s1);\n"
     "SamplerState envSampler : register(s2);\n"
@@ -398,17 +401,20 @@ static const char *d3d11_shader_source =
     "hasPrevMorphWeights != 0) ? 1.0 : 0.0);\n"
     "}\n"
     "\n"
-    "float sampleShadow(float3 worldPos) {\n"
-    "    if (shadowEnabled == 0)\n"
+    "float sampleShadow(int shadowIndex, float3 worldPos) {\n"
+    "    if (shadowIndex < 0 || shadowIndex >= shadowCount)\n"
     "        return 1.0;\n"
-    "    float4 lc = mul(shadowVP, float4(worldPos, 1.0));\n"
+    "    row_major float4x4 shadowMatrix = shadowVP[shadowIndex];\n"
+    "    float4 lc = mul(shadowMatrix, float4(worldPos, 1.0));\n"
     "    float invW = 1.0 / max(lc.w, 0.0001);\n"
     "    float3 ndc = lc.xyz * invW;\n"
     "    float2 uv = ndc.xy * 0.5 + 0.5;\n"
     "    float depth = ndc.z * 0.5 + 0.5;\n"
     "    if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0 || depth > 1.0)\n"
     "        return 1.0;\n"
-    "    return shadowTex.SampleCmpLevelZero(shadowSampler, uv, depth - shadowBias);\n"
+    "    return shadowIndex == 0\n"
+    "        ? shadowTex0.SampleCmpLevelZero(shadowSampler, uv, depth - shadowBias)\n"
+    "        : shadowTex1.SampleCmpLevelZero(shadowSampler, uv, depth - shadowBias);\n"
     "}\n"
     "\n"
     "float distributionGGX(float NdotH, float roughness) {\n"
@@ -509,7 +515,7 @@ static const char *d3d11_shader_source =
     "                float atten = 1.0;\n"
     "                if (lights[i].type == 0) {\n"
     "                    L = normalize(-lights[i].direction.xyz);\n"
-    "                    atten *= lerp(0.15, 1.0, sampleShadow(input.worldPos));\n"
+    "                    atten *= lerp(0.15, 1.0, sampleShadow(lights[i].shadowIndex, input.worldPos));\n"
     "                } else if (lights[i].type == 1) {\n"
     "                    float3 toLight = lights[i].position.xyz - input.worldPos;\n"
     "                    float d = length(toLight);\n"
@@ -561,7 +567,7 @@ static const char *d3d11_shader_source =
     "                float atten = 1.0;\n"
     "                if (lights[i].type == 0) {\n"
     "                    L = normalize(-lights[i].direction.xyz);\n"
-    "                    atten *= lerp(0.15, 1.0, sampleShadow(input.worldPos));\n"
+    "                    atten *= lerp(0.15, 1.0, sampleShadow(lights[i].shadowIndex, input.worldPos));\n"
     "                } else if (lights[i].type == 1) {\n"
     "                    float3 toLight = lights[i].position.xyz - input.worldPos;\n"
     "                    float d = length(toLight);\n"
@@ -906,7 +912,7 @@ typedef vgfx3d_d3d11_per_object_t d3d_per_object_t;
 typedef struct {
     float vp[16];
     float prev_vp[16];
-    float shadow_vp[16];
+    float shadow_vp[VGFX3D_MAX_SHADOW_LIGHTS][16];
     float camera_pos[4];
     float ambient[4];
     float fog_color[4];
@@ -914,7 +920,7 @@ typedef struct {
     float fog_far;
     float shadow_bias;
     int32_t light_count;
-    int32_t shadow_enabled;
+    int32_t shadow_count;
     float camera_forward[3];
 } d3d_per_scene_t;
 
@@ -922,9 +928,9 @@ typedef vgfx3d_d3d11_per_material_t d3d_per_material_t;
 
 typedef struct {
     int32_t type;
+    int32_t shadow_index;
     float _pad0;
     float _pad1;
-    float _pad2;
     float direction[4];
     float position[4];
     float color[4];
@@ -1100,16 +1106,18 @@ typedef struct {
     ID3D11Texture2D *rtt_staging;
     int32_t rtt_width;
     int32_t rtt_height;
+    int32_t rtt_color_format;
     int8_t rtt_active;
     vgfx3d_rendertarget_t *rtt_target;
 
-    ID3D11Texture2D *shadow_depth_tex;
-    ID3D11DepthStencilView *shadow_dsv;
-    ID3D11ShaderResourceView *shadow_srv;
-    int32_t shadow_width;
-    int32_t shadow_height;
-    int8_t shadow_active;
-    float shadow_vp[16];
+    ID3D11Texture2D *shadow_depth_tex[VGFX3D_MAX_SHADOW_LIGHTS];
+    ID3D11DepthStencilView *shadow_dsv[VGFX3D_MAX_SHADOW_LIGHTS];
+    ID3D11ShaderResourceView *shadow_srv[VGFX3D_MAX_SHADOW_LIGHTS];
+    int32_t shadow_width[VGFX3D_MAX_SHADOW_LIGHTS];
+    int32_t shadow_height[VGFX3D_MAX_SHADOW_LIGHTS];
+    int32_t shadow_pass_slot;
+    int32_t shadow_count;
+    float shadow_vp[VGFX3D_MAX_SHADOW_LIGHTS][16];
     float shadow_bias;
 
     d3d_tex_cache_entry_t *tex_cache;
@@ -2395,6 +2403,7 @@ static void d3d11_destroy_rtt_targets(d3d11_context_t *ctx) {
     SAFE_RELEASE(ctx->rtt_color_tex);
     ctx->rtt_width = 0;
     ctx->rtt_height = 0;
+    ctx->rtt_color_format = (int32_t)VGFX3D_RENDERTARGET_COLOR_FORMAT_UNORM8;
     ctx->rtt_active = 0;
     ctx->rtt_target = NULL;
 }
@@ -2405,10 +2414,13 @@ static void d3d11_destroy_rtt_targets(d3d11_context_t *ctx) {
 /// of the swapchain. The staging texture is for CPU readback.
 static HRESULT d3d11_ensure_rtt_targets(d3d11_context_t *ctx, vgfx3d_rendertarget_t *rt) {
     HRESULT hr;
+    vgfx3d_d3d11_color_format_t color_format;
+    DXGI_FORMAT staging_format;
 
     if (!ctx || !rt)
         return E_INVALIDARG;
-    if (ctx->rtt_color_tex && ctx->rtt_width == rt->width && ctx->rtt_height == rt->height) {
+    if (ctx->rtt_color_tex && ctx->rtt_width == rt->width && ctx->rtt_height == rt->height &&
+        ctx->rtt_color_format == rt->color_format) {
         if (ctx->rtt_target && ctx->rtt_target != rt) {
             if (ctx->rtt_target->color_dirty)
                 d3d11_sync_render_target_color(ctx, ctx->rtt_target);
@@ -2423,15 +2435,13 @@ static HRESULT d3d11_ensure_rtt_targets(d3d11_context_t *ctx, vgfx3d_rendertarge
     }
 
     d3d11_destroy_rtt_targets(ctx);
+    color_format = vgfx3d_rendertarget_is_hdr(rt) ? VGFX3D_D3D11_COLOR_FORMAT_HDR16F
+                                                  : VGFX3D_D3D11_COLOR_FORMAT_UNORM8;
+    staging_format = vgfx3d_rendertarget_is_hdr(rt) ? DXGI_FORMAT_R16G16B16A16_FLOAT
+                                                    : DXGI_FORMAT_R8G8B8A8_UNORM;
 
     hr = d3d11_create_color_target(
-        ctx,
-        rt->width,
-        rt->height,
-        vgfx3d_d3d11_choose_color_format(VGFX3D_D3D11_TARGET_RTT),
-        &ctx->rtt_color_tex,
-        &ctx->rtt_rtv,
-        NULL);
+        ctx, rt->width, rt->height, color_format, &ctx->rtt_color_tex, &ctx->rtt_rtv, NULL);
     if (FAILED(hr))
         return hr;
     hr = d3d11_create_depth_target(
@@ -2441,7 +2451,7 @@ static HRESULT d3d11_ensure_rtt_targets(d3d11_context_t *ctx, vgfx3d_rendertarge
         return hr;
     }
     hr = d3d11_create_staging_texture(
-        ctx, rt->width, rt->height, DXGI_FORMAT_R8G8B8A8_UNORM, &ctx->rtt_staging);
+        ctx, rt->width, rt->height, staging_format, &ctx->rtt_staging);
     if (FAILED(hr)) {
         d3d11_destroy_rtt_targets(ctx);
         return hr;
@@ -2449,6 +2459,7 @@ static HRESULT d3d11_ensure_rtt_targets(d3d11_context_t *ctx, vgfx3d_rendertarge
 
     ctx->rtt_width = rt->width;
     ctx->rtt_height = rt->height;
+    ctx->rtt_color_format = rt->color_format;
     ctx->rtt_active = 1;
     ctx->rtt_target = rt;
     rt->color_dirty = 0;
@@ -2461,31 +2472,44 @@ static HRESULT d3d11_ensure_rtt_targets(d3d11_context_t *ctx, vgfx3d_rendertarge
 static void d3d11_destroy_shadow_targets(d3d11_context_t *ctx) {
     if (!ctx)
         return;
-    SAFE_RELEASE(ctx->shadow_srv);
-    SAFE_RELEASE(ctx->shadow_dsv);
-    SAFE_RELEASE(ctx->shadow_depth_tex);
-    ctx->shadow_width = 0;
-    ctx->shadow_height = 0;
+    for (int32_t slot = 0; slot < VGFX3D_MAX_SHADOW_LIGHTS; slot++) {
+        SAFE_RELEASE(ctx->shadow_srv[slot]);
+        SAFE_RELEASE(ctx->shadow_dsv[slot]);
+        SAFE_RELEASE(ctx->shadow_depth_tex[slot]);
+        ctx->shadow_width[slot] = 0;
+        ctx->shadow_height[slot] = 0;
+    }
+    ctx->shadow_pass_slot = -1;
+    ctx->shadow_count = 0;
 }
 
 /// @brief Allocate the shadow-map depth target at the requested size.
 ///
 /// Always shader-readable so the main pass can sample shadows.
-static HRESULT d3d11_ensure_shadow_targets(d3d11_context_t *ctx, int32_t width, int32_t height) {
+static HRESULT
+d3d11_ensure_shadow_targets(d3d11_context_t *ctx, int32_t slot, int32_t width, int32_t height) {
     HRESULT hr;
 
-    if (!ctx || width <= 0 || height <= 0)
+    if (!ctx || slot < 0 || slot >= VGFX3D_MAX_SHADOW_LIGHTS || width <= 0 || height <= 0)
         return E_INVALIDARG;
-    if (ctx->shadow_dsv && ctx->shadow_width == width && ctx->shadow_height == height)
+    if (ctx->shadow_dsv[slot] && ctx->shadow_width[slot] == width &&
+        ctx->shadow_height[slot] == height)
         return S_OK;
 
-    d3d11_destroy_shadow_targets(ctx);
-    hr = d3d11_create_depth_target(
-        ctx, width, height, 1, &ctx->shadow_depth_tex, &ctx->shadow_dsv, &ctx->shadow_srv);
+    SAFE_RELEASE(ctx->shadow_srv[slot]);
+    SAFE_RELEASE(ctx->shadow_dsv[slot]);
+    SAFE_RELEASE(ctx->shadow_depth_tex[slot]);
+    hr = d3d11_create_depth_target(ctx,
+                                   width,
+                                   height,
+                                   1,
+                                   &ctx->shadow_depth_tex[slot],
+                                   &ctx->shadow_dsv[slot],
+                                   &ctx->shadow_srv[slot]);
     if (FAILED(hr))
         return hr;
-    ctx->shadow_width = width;
-    ctx->shadow_height = height;
+    ctx->shadow_width[slot] = width;
+    ctx->shadow_height[slot] = height;
     return S_OK;
 }
 
@@ -2728,7 +2752,7 @@ static void d3d11_prepare_scene_data(d3d11_context_t *ctx,
                                          : (light_count > VGFX3D_MAX_LIGHTS ? VGFX3D_MAX_LIGHTS
                                                                              : light_count))
                                   : 0;
-    scene_data->shadow_enabled = (ctx->shadow_active && ctx->shadow_srv) ? 1 : 0;
+    scene_data->shadow_count = ctx->shadow_count;
 }
 
 /// @brief Pack material colors, scalars, and texture-availability flags into the cbuffer.
@@ -2797,6 +2821,7 @@ static void d3d11_prepare_light_data(const vgfx3d_light_params_t *lights,
     memset(light_data, 0, sizeof(d3d_light_t) * VGFX3D_MAX_LIGHTS);
     for (int32_t i = 0; i < light_count && i < VGFX3D_MAX_LIGHTS; i++) {
         light_data[i].type = lights[i].type;
+        light_data[i].shadow_index = lights[i].shadow_index;
         light_data[i].direction[0] = lights[i].direction[0];
         light_data[i].direction[1] = lights[i].direction[1];
         light_data[i].direction[2] = lights[i].direction[2];
@@ -3131,16 +3156,16 @@ static void d3d11_prepare_postfx_data(d3d11_context_t *ctx,
     postfx_data->motion_blur_samples = snapshot->motion_blur_samples;
 }
 
-/// @brief Bind every texture / cubemap SRV the shader expects (PS slots 0..12).
+/// @brief Bind every texture / cubemap SRV the shader expects (PS slots 0..15).
 ///
-/// Slots: 0=diffuse, 1=normal, 2=specular, 3=emissive, 4=shadow,
-/// 5=splat-control, 6-9=splat layers, 10=env cube, 11=metallic-rough,
-/// 12=AO. Unbound slots get NULL so the shader's `has*` flags can
+/// Slots: 0=diffuse, 1=normal, 2=specular, 3=emissive, 4-5=shadows,
+/// 6=splat-control, 7-10=splat layers, 13=env cube, 14=metallic-rough,
+/// 15=AO. Unbound slots get NULL so the shader's `has*` flags can
 /// gate sampling. Returns whether splat sampling was actually enabled.
 static int d3d11_bind_draw_resources(d3d11_context_t *ctx,
                                      const vgfx3d_draw_cmd_t *cmd,
                                      d3d_draw_resources_t *resources) {
-    ID3D11ShaderResourceView *srvs[13];
+    ID3D11ShaderResourceView *srvs[16];
 
     if (!ctx || !cmd || !resources)
         return 0;
@@ -3150,37 +3175,40 @@ static int d3d11_bind_draw_resources(d3d11_context_t *ctx,
     srvs[1] = d3d11_get_or_create_srv(ctx, cmd->normal_map, &resources->textures[1]);
     srvs[2] = d3d11_get_or_create_srv(ctx, cmd->specular_map, &resources->textures[2]);
     srvs[3] = d3d11_get_or_create_srv(ctx, cmd->emissive_map, &resources->textures[3]);
-    srvs[4] = (ctx->shadow_active && ctx->shadow_srv) ? ctx->shadow_srv : NULL;
-    srvs[5] = d3d11_get_or_create_srv(ctx, cmd->splat_map, &resources->textures[4]);
-    srvs[6] = d3d11_get_or_create_srv(ctx, cmd->splat_layers[0], &resources->textures[5]);
-    srvs[7] = d3d11_get_or_create_srv(ctx, cmd->splat_layers[1], &resources->textures[6]);
-    srvs[8] = d3d11_get_or_create_srv(ctx, cmd->splat_layers[2], &resources->textures[7]);
-    srvs[9] = d3d11_get_or_create_srv(ctx, cmd->splat_layers[3], &resources->textures[8]);
-    srvs[10] = (cmd->reflectivity > 0.0001f)
+    srvs[4] = ctx->shadow_count > 0 ? ctx->shadow_srv[0] : NULL;
+    srvs[5] = ctx->shadow_count > 1 ? ctx->shadow_srv[1] : NULL;
+    srvs[6] = d3d11_get_or_create_srv(ctx, cmd->splat_map, &resources->textures[4]);
+    srvs[7] = d3d11_get_or_create_srv(ctx, cmd->splat_layers[0], &resources->textures[5]);
+    srvs[8] = d3d11_get_or_create_srv(ctx, cmd->splat_layers[1], &resources->textures[6]);
+    srvs[9] = d3d11_get_or_create_srv(ctx, cmd->splat_layers[2], &resources->textures[7]);
+    srvs[10] = d3d11_get_or_create_srv(ctx, cmd->splat_layers[3], &resources->textures[8]);
+    srvs[11] = NULL;
+    srvs[12] = NULL;
+    srvs[13] = (cmd->reflectivity > 0.0001f)
                    ? d3d11_get_or_create_cubemap_srv(
                          ctx, (const rt_cubemap3d *)cmd->env_map, &resources->cubemap)
                    : NULL;
-    srvs[11] =
+    srvs[14] =
         d3d11_get_or_create_srv(ctx, cmd->metallic_roughness_map, &resources->textures[9]);
-    srvs[12] = d3d11_get_or_create_srv(ctx, cmd->ao_map, &resources->textures[10]);
+    srvs[15] = d3d11_get_or_create_srv(ctx, cmd->ao_map, &resources->textures[10]);
 
     resources->has_texture = srvs[0] != NULL;
     resources->has_normal_map = srvs[1] != NULL;
     resources->has_specular_map = srvs[2] != NULL;
     resources->has_emissive_map = srvs[3] != NULL;
-    resources->has_env_map = srvs[10] != NULL;
-    resources->has_metallic_roughness_map = srvs[11] != NULL;
-    resources->has_ao_map = srvs[12] != NULL;
-    resources->has_splat = cmd->has_splat && srvs[5] != NULL;
+    resources->has_env_map = srvs[13] != NULL;
+    resources->has_metallic_roughness_map = srvs[14] != NULL;
+    resources->has_ao_map = srvs[15] != NULL;
+    resources->has_splat = cmd->has_splat && srvs[6] != NULL;
     if (!resources->has_splat) {
-        srvs[5] = NULL;
         srvs[6] = NULL;
         srvs[7] = NULL;
         srvs[8] = NULL;
         srvs[9] = NULL;
+        srvs[10] = NULL;
     }
 
-    ID3D11DeviceContext_PSSetShaderResources(ctx->ctx, 0, 13, srvs);
+    ID3D11DeviceContext_PSSetShaderResources(ctx->ctx, 0, 16, srvs);
     return resources->has_splat;
 }
 
@@ -4075,7 +4103,8 @@ static void d3d11_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) 
         return;
 
     ctx->frame_serial++;
-    ctx->shadow_active = 0;
+    ctx->shadow_pass_slot = -1;
+    ctx->shadow_count = 0;
 
     memcpy(ctx->view, cam->view, sizeof(ctx->view));
     memcpy(ctx->projection, cam->projection, sizeof(ctx->projection));
@@ -4211,52 +4240,6 @@ static void d3d11_resize(void *ctx_ptr, int32_t w, int32_t h) {
     ctx->height = h;
 }
 
-/// @brief Convert IEEE 754 binary16 to binary32.
-///
-/// Used to decode HDR16F render targets back to single-precision so
-/// they can be tonemapped/quantized to 8-bit RGBA for readback.
-/// Pure bit-twiddling — no math library calls in the hot path.
-static float d3d11_half_to_float(uint16_t bits) {
-    uint32_t sign = (uint32_t)(bits & 0x8000u) << 16;
-    uint32_t exp = (bits >> 10) & 0x1Fu;
-    uint32_t mant = bits & 0x03FFu;
-    uint32_t fbits;
-    float out;
-
-    if (exp == 0) {
-        if (mant == 0) {
-            fbits = sign;
-        } else {
-            exp = 127u - 15u + 1u;
-            while ((mant & 0x0400u) == 0) {
-                mant <<= 1u;
-                exp--;
-            }
-            mant &= 0x03FFu;
-            fbits = sign | (exp << 23) | (mant << 13);
-        }
-    } else if (exp == 0x1Fu) {
-        fbits = sign | 0x7F800000u | (mant << 13);
-    } else {
-        fbits = sign | ((exp + (127u - 15u)) << 23) | (mant << 13);
-    }
-
-    memcpy(&out, &fbits, sizeof(out));
-    return out;
-}
-
-/// @brief Quantize a float to a 0..255 byte (with simple [0,1] clamp).
-///
-/// Trivial readback helper — no gamma adjustment (the readback path
-/// expects callers to handle linear→sRGB conversion separately).
-static uint8_t d3d11_float_to_unorm8(float value) {
-    if (value <= 0.0f)
-        return 0;
-    if (value >= 1.0f)
-        return 255;
-    return (uint8_t)(value * 255.0f + 0.5f);
-}
-
 /// @brief Copy a mapped texture's rows to an RGBA8 destination, format-aware.
 ///
 /// Direct memcpy for R8G8B8A8_UNORM. For R16G16B16A16_FLOAT, decodes
@@ -4280,14 +4263,8 @@ static void d3d11_copy_mapped_texture_to_rgba8(uint8_t *dst_rgba,
             continue;
         }
         if (format == DXGI_FORMAT_R16G16B16A16_FLOAT) {
-            const uint16_t *src16 = (const uint16_t *)src_row;
-            for (int32_t x = 0; x < copy_w; x++) {
-                dst_row[(size_t)x * 4u + 0u] = d3d11_float_to_unorm8(d3d11_half_to_float(src16[0]));
-                dst_row[(size_t)x * 4u + 1u] = d3d11_float_to_unorm8(d3d11_half_to_float(src16[1]));
-                dst_row[(size_t)x * 4u + 2u] = d3d11_float_to_unorm8(d3d11_half_to_float(src16[2]));
-                dst_row[(size_t)x * 4u + 3u] = d3d11_float_to_unorm8(d3d11_half_to_float(src16[3]));
-                src16 += 4;
-            }
+            vgfx3d_copy_linear_rgba16f_to_rgba8(
+                dst_row, dst_stride, copy_w, 1, (const uint16_t *)src_row, copy_w * 8);
         }
     }
 }
@@ -4643,26 +4620,28 @@ static void d3d11_set_render_target(void *ctx_ptr, vgfx3d_rendertarget_t *rt) {
 /// DSV with no color RTV (depth-only pass), clears depth, sets viewport,
 /// and binds the shadow vertex shader with no pixel shader.
 static void d3d11_shadow_begin(
-    void *ctx_ptr, float *depth_buf, int32_t width, int32_t height, const float *light_vp) {
+    void *ctx_ptr, int32_t slot, float *depth_buf, int32_t width, int32_t height, const float *light_vp) {
     d3d11_context_t *ctx = (d3d11_context_t *)ctx_ptr;
     D3D11_VIEWPORT viewport;
-    ID3D11ShaderResourceView *null_shadow_srv = NULL;
+    ID3D11ShaderResourceView *null_shadow_srvs[VGFX3D_MAX_SHADOW_LIGHTS] = {NULL, NULL};
     HRESULT hr;
 
     (void)depth_buf;
-    if (!ctx || !light_vp)
+    if (!ctx || !light_vp || slot < 0 || slot >= VGFX3D_MAX_SHADOW_LIGHTS)
         return;
-    hr = d3d11_ensure_shadow_targets(ctx, width, height);
+    hr = d3d11_ensure_shadow_targets(ctx, slot, width, height);
     if (FAILED(hr)) {
         d3d11_log_hresult("CreateShadowTargets", hr);
         return;
     }
 
-    memcpy(ctx->shadow_vp, light_vp, sizeof(ctx->shadow_vp));
-    ID3D11DeviceContext_PSSetShaderResources(ctx->ctx, 4, 1, &null_shadow_srv);
-    ID3D11DeviceContext_OMSetRenderTargets(ctx->ctx, 0, NULL, ctx->shadow_dsv);
+    ctx->shadow_pass_slot = slot;
+    memcpy(ctx->shadow_vp[slot], light_vp, sizeof(ctx->shadow_vp[slot]));
+    ID3D11DeviceContext_PSSetShaderResources(
+        ctx->ctx, 4, VGFX3D_MAX_SHADOW_LIGHTS, null_shadow_srvs);
+    ID3D11DeviceContext_OMSetRenderTargets(ctx->ctx, 0, NULL, ctx->shadow_dsv[slot]);
     ID3D11DeviceContext_ClearDepthStencilView(
-        ctx->ctx, ctx->shadow_dsv, D3D11_CLEAR_DEPTH, 1.0f, 0);
+        ctx->ctx, ctx->shadow_dsv[slot], D3D11_CLEAR_DEPTH, 1.0f, 0);
     memset(&viewport, 0, sizeof(viewport));
     viewport.Width = (FLOAT)width;
     viewport.Height = (FLOAT)height;
@@ -4692,13 +4671,14 @@ static void d3d11_shadow_draw(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) {
     ID3D11Buffer *mesh_vb = NULL;
     ID3D11Buffer *mesh_ib = NULL;
 
-    if (!ctx || !cmd || !cmd->vertices || !cmd->indices || cmd->vertex_count == 0 ||
-        cmd->index_count == 0)
+    if (!ctx || !cmd || ctx->shadow_pass_slot < 0 ||
+        ctx->shadow_pass_slot >= VGFX3D_MAX_SHADOW_LIGHTS || !cmd->vertices || !cmd->indices ||
+        cmd->vertex_count == 0 || cmd->index_count == 0)
         return;
 
     d3d11_prepare_object_data(cmd, &object_data);
     memset(&scene_data, 0, sizeof(scene_data));
-    memcpy(scene_data.vp, ctx->shadow_vp, sizeof(scene_data.vp));
+    memcpy(scene_data.vp, ctx->shadow_vp[ctx->shadow_pass_slot], sizeof(scene_data.vp));
     d3d11_prepare_anim_resources(ctx, cmd, &object_data);
 
     hr = d3d11_update_constant_buffer(ctx, ctx->cb_per_object, &object_data, sizeof(object_data));
@@ -4738,12 +4718,14 @@ static void d3d11_shadow_draw(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) {
 /// reports `shadowEnabled` to the shader. Stores the bias the shader
 /// uses to bias depth comparisons. Re-selects the active scene/RTT
 /// targets so subsequent draws hit the right buffers.
-static void d3d11_shadow_end(void *ctx_ptr, float bias) {
+static void d3d11_shadow_end(void *ctx_ptr, int32_t slot, float bias) {
     d3d11_context_t *ctx = (d3d11_context_t *)ctx_ptr;
-    if (!ctx)
+    if (!ctx || slot < 0 || slot >= VGFX3D_MAX_SHADOW_LIGHTS)
         return;
-    ctx->shadow_active = 1;
+    if (ctx->shadow_count < slot + 1)
+        ctx->shadow_count = slot + 1;
     ctx->shadow_bias = bias;
+    ctx->shadow_pass_slot = -1;
     d3d11_select_current_targets(ctx);
 }
 

@@ -85,6 +85,7 @@ typedef struct {
     size_t pos;
     uint32_t version;
     int is_64bit; /* version >= 7500 */
+    int error;
 } fbx_reader_t;
 
 /// @brief Treat POSIX roots, UNC-style roots, and `C:` prefixes as absolute paths.
@@ -207,10 +208,8 @@ static void *fbx_try_load_texture_path(const char *fbx_path, const char *texture
 
 // ---------------------------------------------------------------------------
 // FBX is little-endian; v >= 7500 promotes lengths/offsets to 64-bit
-// (`is_64bit` flag). All reader helpers below silently clamp on
-// short reads (returning zero) so the higher-level parser can keep
-// going and report a single error at the end rather than crashing
-// on the first malformed tag.
+// (`is_64bit` flag). Short reads are marked as hard parse errors so corrupt
+// assets do not surface as partially imported runtime content.
 // ---------------------------------------------------------------------------
 
 /// @brief True if the cursor has consumed the entire input.
@@ -218,25 +217,36 @@ static int fbx_eof(const fbx_reader_t *r) {
     return r->pos >= r->len;
 }
 
-/// @brief Read one unsigned byte; returns 0 at EOF.
+static int fbx_require(fbx_reader_t *r, size_t n) {
+    if (!r || r->error)
+        return 0;
+    if (r->pos > r->len || n > r->len - r->pos) {
+        r->error = 1;
+        r->pos = r->len;
+        return 0;
+    }
+    return 1;
+}
+
+/// @brief Read one unsigned byte; marks the reader malformed at EOF.
 static uint8_t fbx_u8(fbx_reader_t *r) {
-    if (r->pos + 1 > r->len)
+    if (!fbx_require(r, 1))
         return 0;
     return r->data[r->pos++];
 }
 
-/// @brief Read a little-endian uint16; 0 at short input.
+/// @brief Read a little-endian uint16; marks the reader malformed at short input.
 static uint16_t fbx_u16(fbx_reader_t *r) {
-    if (r->pos + 2 > r->len)
+    if (!fbx_require(r, 2))
         return 0;
     uint16_t v = (uint16_t)r->data[r->pos] | ((uint16_t)r->data[r->pos + 1] << 8);
     r->pos += 2;
     return v;
 }
 
-/// @brief Read a little-endian uint32; 0 at short input.
+/// @brief Read a little-endian uint32; marks the reader malformed at short input.
 static uint32_t fbx_u32(fbx_reader_t *r) {
-    if (r->pos + 4 > r->len)
+    if (!fbx_require(r, 4))
         return 0;
     uint32_t v = (uint32_t)r->data[r->pos] | ((uint32_t)r->data[r->pos + 1] << 8) |
                  ((uint32_t)r->data[r->pos + 2] << 16) | ((uint32_t)r->data[r->pos + 3] << 24);
@@ -251,7 +261,7 @@ static int32_t fbx_i32(fbx_reader_t *r) {
 
 /// @brief Read a little-endian uint64 (composed of two u32 halves).
 static uint64_t fbx_u64(fbx_reader_t *r) {
-    if (r->pos + 8 > r->len)
+    if (!fbx_require(r, 8))
         return 0;
     uint64_t lo = fbx_u32(r);
     uint64_t hi = fbx_u32(r);
@@ -279,11 +289,11 @@ static double fbx_f64(fbx_reader_t *r) {
     return d;
 }
 
-/// @brief Advance the cursor by `n` bytes, clamping at end-of-buffer.
+/// @brief Advance the cursor by `n` bytes, marking malformed if it would overrun.
 static void fbx_skip(fbx_reader_t *r, size_t n) {
+    if (!fbx_require(r, n))
+        return;
     r->pos += n;
-    if (r->pos > r->len)
-        r->pos = r->len;
 }
 
 /*==========================================================================
@@ -399,6 +409,8 @@ static int fbx_parse_property(fbx_reader_t *r, fbx_prop_t *prop) {
     if (fbx_eof(r))
         return -1;
     prop->type = (char)fbx_u8(r);
+    if (r->error)
+        return -1;
     switch (prop->type) {
         case 'C':
             prop->v.bool_val = (int8_t)fbx_u8(r);
@@ -421,18 +433,20 @@ static int fbx_parse_property(fbx_reader_t *r, fbx_prop_t *prop) {
         case 'S':
         case 'R': {
             uint32_t len = fbx_u32(r);
-            if (r->pos + len > r->len)
+            if (!fbx_require(r, len))
                 return -1;
             if (prop->type == 'S') {
                 prop->v.string.str = (char *)malloc(len + 1);
-                if (prop->v.string.str) {
-                    memcpy(prop->v.string.str, r->data + r->pos, len);
-                    prop->v.string.str[len] = '\0';
-                }
+                if (!prop->v.string.str)
+                    return -1;
+                memcpy(prop->v.string.str, r->data + r->pos, len);
+                prop->v.string.str[len] = '\0';
                 prop->v.string.len = len;
             } else {
                 prop->v.raw.data = (uint8_t *)malloc(len);
-                if (prop->v.raw.data)
+                if (len > 0 && !prop->v.raw.data)
+                    return -1;
+                if (len > 0)
                     memcpy(prop->v.raw.data, r->data + r->pos, len);
                 prop->v.raw.len = len;
             }
@@ -447,7 +461,7 @@ static int fbx_parse_property(fbx_reader_t *r, fbx_prop_t *prop) {
             uint32_t count = fbx_u32(r);
             uint32_t encoding = fbx_u32(r);
             uint32_t comp_len = fbx_u32(r);
-            if (r->pos + comp_len > r->len)
+            if (!fbx_require(r, comp_len))
                 return -1;
 
             uint32_t elem_size = 0;
@@ -474,6 +488,8 @@ static int fbx_parse_property(fbx_reader_t *r, fbx_prop_t *prop) {
             if (encoding == 1) {
                 prop->v.array.data =
                     fbx_decompress_array(r->data + r->pos, comp_len, count, elem_size);
+                if (count > 0 && !prop->v.array.data)
+                    return -1;
             } else {
                 if (elem_size > 0 && count > SIZE_MAX / elem_size)
                     return -1; /* overflow guard for 32-bit platforms */
@@ -481,7 +497,9 @@ static int fbx_parse_property(fbx_reader_t *r, fbx_prop_t *prop) {
                 if (comp_len < expected)
                     return -1;
                 prop->v.array.data = malloc(expected);
-                if (prop->v.array.data)
+                if (expected > 0 && !prop->v.array.data)
+                    return -1;
+                if (expected > 0)
                     memcpy(prop->v.array.data, r->data + r->pos, expected);
             }
             fbx_skip(r, comp_len);
@@ -537,6 +555,9 @@ static void fbx_free_node(fbx_node_t *n) {
 /// fields from 4 to 8 bytes for FBX 7500+.
 /// @return 1 on success, 0 if the buffer is malformed.
 static int fbx_parse_node(fbx_reader_t *r, fbx_node_t *node) {
+    uint8_t encoded_name_len;
+    uint8_t copy_name_len;
+
     memset(node, 0, sizeof(fbx_node_t));
 
     uint64_t end_offset = r->is_64bit ? fbx_u64(r) : fbx_u32(r);
@@ -544,18 +565,23 @@ static int fbx_parse_node(fbx_reader_t *r, fbx_node_t *node) {
     uint64_t prop_list_len = r->is_64bit ? fbx_u64(r) : fbx_u32(r);
     (void)prop_list_len;
 
-    uint8_t name_len = fbx_u8(r);
+    encoded_name_len = fbx_u8(r);
+    if (r->error)
+        return -1;
 
-    if (end_offset == 0 && num_props == 0 && name_len == 0)
+    if (end_offset == 0 && num_props == 0 && encoded_name_len == 0)
         return -1; /* null record (sentinel) */
 
-    if (name_len > 127)
-        name_len = 127;
-    if (r->pos + name_len > r->len)
+    if (end_offset > r->len || end_offset < r->pos)
         return -1;
-    memcpy(node->name, r->data + r->pos, name_len);
-    node->name[name_len] = '\0';
-    fbx_skip(r, name_len);
+    if (num_props > FBX_MAX_PROPS)
+        return -1;
+    if (!fbx_require(r, encoded_name_len))
+        return -1;
+    copy_name_len = encoded_name_len > 127 ? 127 : encoded_name_len;
+    memcpy(node->name, r->data + r->pos, copy_name_len);
+    node->name[copy_name_len] = '\0';
+    fbx_skip(r, encoded_name_len);
 
     /* Parse properties */
     if (num_props > 0) {
@@ -593,14 +619,14 @@ static int fbx_parse_node(fbx_reader_t *r, fbx_node_t *node) {
             fbx_node_t *nc =
                 (fbx_node_t *)realloc(node->children, (size_t)new_cap * sizeof(fbx_node_t));
             if (!nc)
-                break;
+                return -1;
             node->children = nc;
             node->child_capacity = new_cap;
         }
 
         fbx_node_t *child = &node->children[node->child_count];
         if (fbx_parse_node(r, child) < 0)
-            break;
+            return -1;
         node->child_count++;
     }
 
@@ -1940,6 +1966,7 @@ void *rt_fbx_load(rt_string path) {
     reader.pos = 27; /* skip 23-byte magic + 2 unknown + 4 version */
     memcpy(&reader.version, data + 23, 4);
     reader.is_64bit = (reader.version >= 7500);
+    reader.error = 0;
 
     /* Parse all top-level nodes into a virtual root */
     fbx_node_t root;
@@ -1971,12 +1998,19 @@ void *rt_fbx_load(rt_string path) {
         }
 
         fbx_node_t *child = &root.children[root.child_count];
-        if (fbx_parse_node(&reader, child) < 0)
+        if (fbx_parse_node(&reader, child) < 0) {
+            reader.error = 1;
             break;
+        }
         root.child_count++;
     }
 
     free(data);
+    if (reader.error) {
+        fbx_free_node(&root);
+        rt_trap("FBX.Load: malformed or truncated binary FBX");
+        return NULL;
+    }
 
     /* Build connection table */
     fbx_conn_table_t ct;

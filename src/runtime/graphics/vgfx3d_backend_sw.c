@@ -52,11 +52,12 @@ typedef struct {
     float fog_near, fog_far;
     float fog_color[3];
     /* Shadow mapping state */
-    float *shadow_depth; /* shadow depth buffer (during shadow pass) */
-    int32_t shadow_w, shadow_h;
-    float shadow_vp[16]; /* light view-projection matrix */
+    float *shadow_depth[VGFX3D_MAX_SHADOW_LIGHTS];
+    int32_t shadow_w[VGFX3D_MAX_SHADOW_LIGHTS], shadow_h[VGFX3D_MAX_SHADOW_LIGHTS];
+    float shadow_vp[VGFX3D_MAX_SHADOW_LIGHTS][16];
     float shadow_bias;
-    int8_t shadow_active; /* 1 = shadow map is populated and ready for lookup */
+    int8_t shadow_pass_slot;
+    int8_t shadow_count;
 } sw_context_t;
 
 static inline void sw_compute_view_vector(const sw_context_t *ctx,
@@ -66,6 +67,64 @@ static inline void sw_compute_view_vector(const sw_context_t *ctx,
                                           float *out_vx,
                                           float *out_vy,
                                           float *out_vz);
+
+static float sw_sample_shadow_visibility(const sw_context_t *ctx,
+                                         int32_t slot,
+                                         float wx,
+                                         float wy,
+                                         float wz) {
+    const float *svp;
+    float lx;
+    float ly;
+    float lz;
+    float lw;
+    float su;
+    float sv;
+    float sd;
+    int32_t shadow_w;
+    int32_t shadow_h;
+    int sxi;
+    int syi;
+    float sz_map;
+    float slope_bias;
+    float dz_du = 0.0f;
+    float dz_dv = 0.0f;
+    float slope;
+
+    if (!ctx || slot < 0 || slot >= ctx->shadow_count || !ctx->shadow_depth[slot])
+        return 1.0f;
+
+    svp = ctx->shadow_vp[slot];
+    lx = wx * svp[0] + wy * svp[1] + wz * svp[2] + svp[3];
+    ly = wx * svp[4] + wy * svp[5] + wz * svp[6] + svp[7];
+    lz = wx * svp[8] + wy * svp[9] + wz * svp[10] + svp[11];
+    lw = wx * svp[12] + wy * svp[13] + wz * svp[14] + svp[15];
+    if (fabsf(lw) <= 1e-7f)
+        return 1.0f;
+
+    su = (lx / lw) * 0.5f + 0.5f;
+    sv = (1.0f - ly / lw) * 0.5f;
+    sd = (lz / lw) * 0.5f + 0.5f;
+    if (su < 0.0f || su >= 1.0f || sv < 0.0f || sv >= 1.0f)
+        return 1.0f;
+
+    shadow_w = ctx->shadow_w[slot];
+    shadow_h = ctx->shadow_h[slot];
+    sxi = (int)(su * (float)shadow_w);
+    syi = (int)(sv * (float)shadow_h);
+    if (sxi < 0 || sxi >= shadow_w || syi < 0 || syi >= shadow_h)
+        return 1.0f;
+
+    sz_map = ctx->shadow_depth[slot][syi * shadow_w + sxi];
+    slope_bias = ctx->shadow_bias;
+    if (sxi + 1 < shadow_w)
+        dz_du = ctx->shadow_depth[slot][syi * shadow_w + sxi + 1] - sz_map;
+    if (syi + 1 < shadow_h)
+        dz_dv = ctx->shadow_depth[slot][(syi + 1) * shadow_w + sxi] - sz_map;
+    slope = sqrtf(dz_du * dz_du + dz_dv * dz_dv);
+    slope_bias += ctx->shadow_bias * slope * 4.0f;
+    return (sd > sz_map + slope_bias) ? 0.15f : 1.0f;
+}
 
 /// @brief Resize the depth buffer if dimensions changed; idempotent on match.
 ///
@@ -1130,6 +1189,10 @@ static void raster_triangle(uint8_t *pixels,
                                         continue;
                                     }
 
+                                    if (lt->type == 0 && lt->shadow_index >= 0)
+                                        la *= sw_sample_shadow_visibility(
+                                            fog_ctx, lt->shadow_index, wx, wy, wz);
+
                                     float ndl = dot3f(pnx, pny, pnz, llx, lly, llz);
                                     if (ndl <= 0.0f)
                                         continue;
@@ -1271,6 +1334,10 @@ static void raster_triangle(uint8_t *pixels,
                                         continue;
                                     }
 
+                                    if (lt->type == 0 && lt->shadow_index >= 0)
+                                        la *= sw_sample_shadow_visibility(
+                                            fog_ctx, lt->shadow_index, wx, wy, wz);
+
                                     float ndl = pnx * llx + pny * lly + pnz * llz;
                                     if (ndl < 0.0f)
                                         ndl = 0.0f;
@@ -1317,56 +1384,6 @@ static void raster_triangle(uint8_t *pixels,
                                 fr = lit_r;
                                 fg = lit_g;
                                 fb_c = lit_b;
-                            }
-                        }
-                    }
-
-                    /* Shadow map lookup — darken direct lighting if in shadow */
-                    if (fog_ctx && fog_ctx->shadow_active && fog_ctx->shadow_depth) {
-                        float swx = b0 * v0->wx + b1 * v1->wx + b2 * v2->wx;
-                        float swy = b0 * v0->wy + b1 * v1->wy + b2 * v2->wy;
-                        float swz = b0 * v0->wz + b1 * v1->wz + b2 * v2->wz;
-                        const float *svp = fog_ctx->shadow_vp;
-                        float lx = swx * svp[0] + swy * svp[1] + swz * svp[2] + svp[3];
-                        float ly = swx * svp[4] + swy * svp[5] + swz * svp[6] + svp[7];
-                        float lz = swx * svp[8] + swy * svp[9] + swz * svp[10] + svp[11];
-                        float lw = swx * svp[12] + swy * svp[13] + swz * svp[14] + svp[15];
-                        if (fabsf(lw) > 1e-7f) {
-                            float su = (lx / lw) * 0.5f + 0.5f;
-                            float sv = (1.0f - ly / lw) * 0.5f;
-                            float sd = (lz / lw) * 0.5f + 0.5f;
-                            if (su >= 0.0f && su < 1.0f && sv >= 0.0f && sv < 1.0f) {
-                                int sxi = (int)(su * (float)fog_ctx->shadow_w);
-                                int syi = (int)(sv * (float)fog_ctx->shadow_h);
-                                if (sxi >= 0 && sxi < fog_ctx->shadow_w && syi >= 0 &&
-                                    syi < fog_ctx->shadow_h) {
-                                    float sz_map =
-                                        fog_ctx->shadow_depth[syi * fog_ctx->shadow_w + sxi];
-                                    /* Slope-scaled shadow bias: steeper angles get more bias */
-                                    float slope_bias = fog_ctx->shadow_bias;
-                                    {
-                                        /* Approximate slope from depth gradient in shadow map */
-                                        float dz_du = 0.0f, dz_dv = 0.0f;
-                                        if (sxi + 1 < fog_ctx->shadow_w)
-                                            dz_du = fog_ctx->shadow_depth[syi * fog_ctx->shadow_w +
-                                                                          sxi + 1] -
-                                                    sz_map;
-                                        if (syi + 1 < fog_ctx->shadow_h)
-                                            dz_dv =
-                                                fog_ctx
-                                                    ->shadow_depth[(syi + 1) * fog_ctx->shadow_w +
-                                                                   sxi] -
-                                                sz_map;
-                                        float slope = sqrtf(dz_du * dz_du + dz_dv * dz_dv);
-                                        slope_bias += fog_ctx->shadow_bias * slope * 4.0f;
-                                    }
-                                    if (sd > sz_map + slope_bias) {
-                                        /* In shadow — keep only ambient contribution */
-                                        fr *= 0.3f;
-                                        fg *= 0.3f;
-                                        fb_c *= 0.3f;
-                                    }
-                                }
                             }
                         }
                     }
@@ -1608,14 +1625,15 @@ static void shadow_raster_tri(
 /// can resize without consulting the backend). Captures the light VP
 /// matrix that `shadow_draw` will use.
 static void sw_shadow_begin(
-    void *ctx_ptr, float *depth_buf, int32_t w, int32_t h, const float *light_vp) {
+    void *ctx_ptr, int32_t slot, float *depth_buf, int32_t w, int32_t h, const float *light_vp) {
     sw_context_t *ctx = (sw_context_t *)ctx_ptr;
-    if (!ctx || !depth_buf)
+    if (!ctx || slot < 0 || slot >= VGFX3D_MAX_SHADOW_LIGHTS || !depth_buf)
         return;
-    ctx->shadow_depth = depth_buf;
-    ctx->shadow_w = w;
-    ctx->shadow_h = h;
-    memcpy(ctx->shadow_vp, light_vp, 16 * sizeof(float));
+    ctx->shadow_pass_slot = (int8_t)slot;
+    ctx->shadow_depth[slot] = depth_buf;
+    ctx->shadow_w[slot] = w;
+    ctx->shadow_h[slot] = h;
+    memcpy(ctx->shadow_vp[slot], light_vp, 16 * sizeof(float));
     /* Clear shadow depth to FLT_MAX */
     for (int32_t i = 0; i < w * h; i++)
         depth_buf[i] = FLT_MAX;
@@ -1629,7 +1647,11 @@ static void sw_shadow_begin(
 /// checked per-pixel.
 static void sw_shadow_draw(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) {
     sw_context_t *ctx = (sw_context_t *)ctx_ptr;
-    if (!ctx || !cmd || !ctx->shadow_depth || cmd->vertex_count == 0 || cmd->index_count == 0)
+    int32_t slot;
+    if (!ctx || !cmd || cmd->vertex_count == 0 || cmd->index_count == 0)
+        return;
+    slot = ctx->shadow_pass_slot;
+    if (slot < 0 || slot >= VGFX3D_MAX_SHADOW_LIGHTS || !ctx->shadow_depth[slot])
         return;
     /* Skip transparent objects */
     if (cmd->additive_blend || vgfx3d_draw_cmd_uses_alpha_blend(cmd))
@@ -1637,10 +1659,10 @@ static void sw_shadow_draw(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) {
 
     /* Build light MVP = shadow_vp * model */
     float lmvp[16];
-    mat4f_mul(ctx->shadow_vp, cmd->model_matrix, lmvp);
+    mat4f_mul(ctx->shadow_vp[slot], cmd->model_matrix, lmvp);
 
-    float half_w = (float)ctx->shadow_w * 0.5f;
-    float half_h = (float)ctx->shadow_h * 0.5f;
+    float half_w = (float)ctx->shadow_w[slot] * 0.5f;
+    float half_h = (float)ctx->shadow_h[slot] * 0.5f;
 
     for (uint32_t i = 0; i + 2 < cmd->index_count; i += 3) {
         uint32_t i0 = cmd->indices[i], i1 = cmd->indices[i + 1], i2 = cmd->indices[i + 2];
@@ -1668,18 +1690,23 @@ static void sw_shadow_draw(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) {
         if (!ok)
             continue;
 
-        shadow_raster_tri(
-            ctx->shadow_depth, ctx->shadow_w, ctx->shadow_h, screen_x, screen_y, screen_z);
+        shadow_raster_tri(ctx->shadow_depth[slot],
+                          ctx->shadow_w[slot],
+                          ctx->shadow_h[slot],
+                          screen_x,
+                          screen_y,
+                          screen_z);
     }
 }
 
 /// @brief Backend `shadow_end` op — mark shadow map ready and store the bias.
-static void sw_shadow_end(void *ctx_ptr, float bias) {
+static void sw_shadow_end(void *ctx_ptr, int32_t slot, float bias) {
     sw_context_t *ctx = (sw_context_t *)ctx_ptr;
-    if (!ctx)
+    if (!ctx || slot < 0 || slot >= VGFX3D_MAX_SHADOW_LIGHTS)
         return;
     ctx->shadow_bias = bias;
-    ctx->shadow_active = 1;
+    if (ctx->shadow_count < slot + 1)
+        ctx->shadow_count = (int8_t)(slot + 1);
 }
 
 /*==========================================================================
@@ -1793,7 +1820,8 @@ static void sw_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) {
     ctx->fog_color[1] = cam->fog_color[1];
     ctx->fog_color[2] = cam->fog_color[2];
     /* Reset shadow state — rebuilt if shadows are enabled this frame */
-    ctx->shadow_active = 0;
+    ctx->shadow_pass_slot = -1;
+    ctx->shadow_count = 0;
 }
 
 /// @brief Backend `submit_draw` op — render one indexed mesh in software.

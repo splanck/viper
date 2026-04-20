@@ -72,7 +72,12 @@ static int skybox_draw_calls = 0;
 static int shadow_begin_calls = 0;
 static int shadow_draw_calls = 0;
 static int shadow_end_calls = 0;
-static float last_shadow_vp[16];
+static int draw_submit_calls = 0;
+static int shadow_begin_slots[VGFX3D_MAX_SHADOW_LIGHTS];
+static int shadow_end_slots[VGFX3D_MAX_SHADOW_LIGHTS];
+static float shadow_vps[VGFX3D_MAX_SHADOW_LIGHTS][16];
+static vgfx3d_light_params_t last_draw_lights[VGFX3D_MAX_LIGHTS];
+static int32_t last_draw_light_count = 0;
 static vgfx3d_draw_cmd_t last_instanced_cmd;
 static const float *last_instance_matrices = nullptr;
 static int32_t last_instance_count = 0;
@@ -109,21 +114,46 @@ static void reset_shadow_counts(void) {
     shadow_begin_calls = 0;
     shadow_draw_calls = 0;
     shadow_end_calls = 0;
-    std::memset(last_shadow_vp, 0, sizeof(last_shadow_vp));
+    std::memset(shadow_begin_slots, 0xFF, sizeof(shadow_begin_slots));
+    std::memset(shadow_end_slots, 0xFF, sizeof(shadow_end_slots));
+    std::memset(shadow_vps, 0, sizeof(shadow_vps));
+    std::memset(last_draw_lights, 0, sizeof(last_draw_lights));
+    last_draw_light_count = 0;
+    draw_submit_calls = 0;
 }
 
-static void record_shadow_begin(void *, float *, int32_t, int32_t, const float *light_vp) {
+static void record_shadow_begin(void *, int32_t slot, float *, int32_t, int32_t, const float *light_vp) {
+    if (shadow_begin_calls < VGFX3D_MAX_SHADOW_LIGHTS)
+        shadow_begin_slots[shadow_begin_calls] = slot;
+    if (light_vp && slot >= 0 && slot < VGFX3D_MAX_SHADOW_LIGHTS)
+        std::memcpy(shadow_vps[slot], light_vp, sizeof(shadow_vps[slot]));
     shadow_begin_calls++;
-    if (light_vp)
-        std::memcpy(last_shadow_vp, light_vp, sizeof(last_shadow_vp));
 }
 
 static void record_shadow_draw(void *, const vgfx3d_draw_cmd_t *) {
     shadow_draw_calls++;
 }
 
-static void record_shadow_end(void *, float) {
+static void record_shadow_end(void *, int32_t slot, float) {
+    if (shadow_end_calls < VGFX3D_MAX_SHADOW_LIGHTS)
+        shadow_end_slots[shadow_end_calls] = slot;
     shadow_end_calls++;
+}
+
+static void record_draw_with_lights(void *,
+                                    vgfx_window_t,
+                                    const vgfx3d_draw_cmd_t *,
+                                    const vgfx3d_light_params_t *lights,
+                                    int32_t light_count,
+                                    const float *,
+                                    int8_t,
+                                    int8_t) {
+    draw_submit_calls++;
+    last_draw_light_count = light_count > VGFX3D_MAX_LIGHTS ? VGFX3D_MAX_LIGHTS : light_count;
+    if (lights && last_draw_light_count > 0)
+        std::memcpy(last_draw_lights,
+                    lights,
+                    static_cast<size_t>(last_draw_light_count) * sizeof(vgfx3d_light_params_t));
 }
 
 static void reset_recorded_instancing(void) {
@@ -1339,7 +1369,7 @@ static void test_instanced_shadow_pass_includes_instances(void) {
     shadow_rt.depth_buf = shadow_depth;
     shadow_rt.width = 4;
     shadow_rt.height = 4;
-    canvas.shadow_rt = &shadow_rt;
+    canvas.shadow_rts[0] = &shadow_rt;
     canvas.shadows_enabled = 1;
     canvas.shadow_bias = 0.0025f;
     light.type = 0;
@@ -1364,10 +1394,12 @@ static void test_instanced_shadow_pass_includes_instances(void) {
     rt_canvas3d_draw_instanced(&canvas, batch);
     rt_canvas3d_end(&canvas);
 
-    EXPECT_TRUE(shadow_begin_calls == 1, "Instanced draws participate in the shadow-map pass");
+    EXPECT_TRUE(shadow_begin_calls == 1 && shadow_begin_slots[0] == 0,
+                "Instanced draws participate in the first shadow-map slot");
     EXPECT_TRUE(shadow_draw_calls == 2,
                 "Shadow rendering expands instanced draws so each visible instance casts a shadow");
-    EXPECT_TRUE(shadow_end_calls == 1, "Instanced shadow rendering finalizes the shadow pass once");
+    EXPECT_TRUE(shadow_end_calls == 1 && shadow_end_slots[0] == 0,
+                "Instanced shadow rendering finalizes the first shadow pass once");
 
     cleanup_fake_canvas(&canvas);
 }
@@ -1430,23 +1462,31 @@ static void test_shadow_selection_prefers_strongest_directional_light_regardless
     vgfx3d_backend_t backend = {};
     backend.name = "metal";
     backend.end_frame = noop_end_frame;
-    backend.submit_draw = noop_draw;
+    backend.submit_draw = record_draw_with_lights;
     backend.shadow_begin = record_shadow_begin;
     backend.shadow_draw = record_shadow_draw;
     backend.shadow_end = record_shadow_end;
 
     rt_canvas3d canvas;
-    vgfx3d_rendertarget_t shadow_rt = {};
-    float shadow_depth[16] = {};
+    vgfx3d_rendertarget_t shadow_rt0 = {};
+    vgfx3d_rendertarget_t shadow_rt1 = {};
+    float shadow_depth0[16] = {};
+    float shadow_depth1[16] = {};
     rt_light3d dim_light = {};
+    rt_light3d mid_light = {};
     rt_light3d bright_light = {};
-    float first_shadow_vp[16];
+    float first_shadow_vp0[16];
+    float first_shadow_vp1[16];
     init_fake_canvas(&canvas, &backend);
 
-    shadow_rt.depth_buf = shadow_depth;
-    shadow_rt.width = 4;
-    shadow_rt.height = 4;
-    canvas.shadow_rt = &shadow_rt;
+    shadow_rt0.depth_buf = shadow_depth0;
+    shadow_rt0.width = 4;
+    shadow_rt0.height = 4;
+    shadow_rt1.depth_buf = shadow_depth1;
+    shadow_rt1.width = 4;
+    shadow_rt1.height = 4;
+    canvas.shadow_rts[0] = &shadow_rt0;
+    canvas.shadow_rts[1] = &shadow_rt1;
     canvas.shadows_enabled = 1;
     canvas.shadow_bias = 0.0025f;
 
@@ -1454,6 +1494,11 @@ static void test_shadow_selection_prefers_strongest_directional_light_regardless
     dim_light.direction[1] = -1.0;
     dim_light.color[0] = dim_light.color[1] = dim_light.color[2] = 1.0;
     dim_light.intensity = 0.25;
+
+    mid_light.type = 0;
+    mid_light.direction[2] = -1.0;
+    mid_light.color[0] = mid_light.color[1] = mid_light.color[2] = 1.0;
+    mid_light.intensity = 1.5;
 
     bright_light.type = 0;
     bright_light.direction[0] = 1.0 / 1.41421356237;
@@ -1468,23 +1513,61 @@ static void test_shadow_selection_prefers_strongest_directional_light_regardless
 
     canvas.lights[0] = &dim_light;
     canvas.lights[1] = &bright_light;
+    canvas.lights[2] = &mid_light;
     reset_shadow_counts();
     reset_canvas_frame(&canvas, 1);
     rt_canvas3d_draw_mesh(&canvas, mesh, transform, material);
     rt_canvas3d_end(&canvas);
-    std::memcpy(first_shadow_vp, last_shadow_vp, sizeof(first_shadow_vp));
+    std::memcpy(first_shadow_vp0, shadow_vps[0], sizeof(first_shadow_vp0));
+    std::memcpy(first_shadow_vp1, shadow_vps[1], sizeof(first_shadow_vp1));
 
     canvas.lights[0] = &bright_light;
     canvas.lights[1] = &dim_light;
+    canvas.lights[2] = &mid_light;
     reset_shadow_counts();
     reset_canvas_frame(&canvas, 2);
     rt_canvas3d_draw_mesh(&canvas, mesh, transform, material);
     rt_canvas3d_end(&canvas);
 
-    EXPECT_TRUE(shadow_begin_calls == 1 && shadow_draw_calls == 1 && shadow_end_calls == 1,
-                "Shadow selection test still executes exactly one shadow pass");
-    EXPECT_TRUE(matrices_nearly_equal(first_shadow_vp, last_shadow_vp, 0.0001f),
-                "Shadow-map selection follows the strongest directional light instead of slot order");
+    EXPECT_TRUE(shadow_begin_calls == 2 && shadow_draw_calls == 2 && shadow_end_calls == 2,
+                "Shadow selection renders one pass per selected directional shadow light");
+    EXPECT_TRUE(shadow_begin_slots[0] == 0 && shadow_begin_slots[1] == 1 &&
+                    shadow_end_slots[0] == 0 && shadow_end_slots[1] == 1,
+                "Shadow selection fills contiguous shadow slots");
+    EXPECT_TRUE(matrices_nearly_equal(first_shadow_vp0, shadow_vps[0], 0.0001f) &&
+                    matrices_nearly_equal(first_shadow_vp1, shadow_vps[1], 0.0001f),
+                "Shadow-map selection follows directional light strength instead of slot order");
+    EXPECT_TRUE(last_draw_light_count == 3 && last_draw_lights[0].shadow_index == 0 &&
+                    last_draw_lights[2].shadow_index == 1 && last_draw_lights[1].shadow_index == -1,
+                "Main-pass light payload tags only the two strongest directional lights with shadow slots");
+
+    cleanup_fake_canvas(&canvas);
+}
+
+static void test_occlusion_mode_rejects_off_frustum_draws_before_submission(void) {
+    vgfx3d_backend_t backend = {};
+    backend.name = "opengl";
+    backend.end_frame = noop_end_frame;
+    backend.submit_draw = record_draw_with_lights;
+
+    rt_canvas3d canvas;
+    init_fake_canvas(&canvas, &backend);
+    reset_shadow_counts();
+    reset_canvas_frame(&canvas, 1);
+    canvas.occlusion_culling = 1;
+
+    void *mesh = make_test_mesh();
+    void *material = rt_material3d_new();
+    void *inside_tx = rt_mat4_identity();
+    void *outside_tx = rt_mat4_identity();
+    ((mat4_impl *)outside_tx)->m[3] = 8.0;
+
+    rt_canvas3d_draw_mesh(&canvas, mesh, inside_tx, material);
+    rt_canvas3d_draw_mesh(&canvas, mesh, outside_tx, material);
+    rt_canvas3d_end(&canvas);
+
+    EXPECT_TRUE(draw_submit_calls == 1,
+                "Occlusion-culling mode performs coarse frustum rejection before main-pass submission");
 
     cleanup_fake_canvas(&canvas);
 }
@@ -1695,6 +1778,7 @@ int main() {
     test_transparent_sort_key_uses_mesh_bounds_depth();
     test_instanced_batch_sort_key_uses_aggregate_bounds_center();
     test_shadow_selection_prefers_strongest_directional_light_regardless_of_slot();
+    test_occlusion_mode_rejects_off_frustum_draws_before_submission();
     test_draw_mesh_preserves_full_light_capacity();
     test_screenshot_prefers_backend_readback();
     test_gpu_postfx_state_latches_across_overlay_pass();

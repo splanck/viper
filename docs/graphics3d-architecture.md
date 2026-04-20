@@ -102,6 +102,7 @@ GPU backends now treat `RenderTarget3D` color buffers as lazily synchronized CPU
 - [`rt_rendertarget3d_as_pixels()`](/Users/stephen/git/viper/src/runtime/graphics/rt_rendertarget3d.c) and [`rt_canvas3d_screenshot()`](/Users/stephen/git/viper/src/runtime/graphics/rt_canvas3d_overlay.c) call the backend-owned sync hook only when CPU pixels are actually requested
 - [`rt_canvas3d_begin()`](/Users/stephen/git/viper/src/runtime/graphics/rt_canvas3d.c) synchronizes the camera's effective projection aspect against the active output size before `begin_frame`, so window resizes and RTT passes share the correct frustum
 - while a render target is bound, Canvas3D overlay sizing, screenshots, and `Width`/`Height` queries follow the active target dimensions instead of the window dimensions
+- `RenderTarget3D.NewHdr()` keeps the GPU color attachment in `RGBA16F` on GPU backends, but the lazy CPU mirror remains `Pixels`-compatible; backend sync hooks tonemap HDR RGB before `AsPixels()` exposes the result
 - this avoids unconditional GPU stalls on RTT-heavy frames while preserving the `RenderTarget3D.AsPixels()` contract
 
 ## Software Renderer Pipeline (vgfx3d_backend_sw.c)
@@ -173,6 +174,7 @@ Defined upfront at 84 bytes for all phases. Unused fields are zero-initialized.
 - `begin_frame` forwards the camera forward vector plus an orthographic flag so every backend can reconstruct skybox directions, view vectors, and fog distances consistently
 - GPU skyboxes use a full-screen triangle path with inverse-projection and inverse-view-rotation reconstruction for perspective cameras, and a direct forward-vector sample for orthographic cameras
 - cubemap caches key uploads by both a stable cubemap identity and per-face `Pixels` generations, preventing stale skyboxes or environment maps from surviving allocator address reuse
+- the CPU skybox fallback keeps a tight RGBA cache keyed by cubemap generation, output size, and camera state; stable fallback frames are row blits instead of full per-pixel cubemap resampling
 - D3D11 now prunes cubemap cache residency by age, matching the bounded-cache policy already used by OpenGL and Metal
 - environment reflections read roughness from either the scalar material value or the metallic-roughness texture and choose cubemap mips where available; the software backend mirrors this with a roughness-dependent blur kernel
 

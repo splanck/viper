@@ -138,6 +138,7 @@ typedef struct {
 
 typedef struct {
     int32_t type; /* 0=directional, 1=point, 2=ambient, 3=spot */
+    int32_t shadow_index; /* -1 = unshadowed, otherwise [0, VGFX3D_MAX_SHADOW_LIGHTS) */
     float direction[3];
     float position[3];
     float color[3];
@@ -176,12 +177,17 @@ typedef struct vgfx3d_backend {
     void (*set_render_target)(void *ctx, vgfx3d_rendertarget_t *rt);
 
     /* Shadow map pass. All three may be NULL if not supported by this backend.
-     * shadow_begin: initialize depth buffer, store light VP.
+     * shadow_begin: initialize the indexed depth target and store that light VP.
      * shadow_draw: depth-only rasterize one mesh into the shadow map.
-     * shadow_end: finalize shadow state for lookup in main pass. */
-    void (*shadow_begin)(void *ctx, float *depth_buf, int32_t w, int32_t h, const float *light_vp);
+     * shadow_end: finalize that slot for lookup in the main pass. */
+    void (*shadow_begin)(void *ctx,
+                         int32_t slot,
+                         float *depth_buf,
+                         int32_t w,
+                         int32_t h,
+                         const float *light_vp);
     void (*shadow_draw)(void *ctx, const vgfx3d_draw_cmd_t *cmd);
-    void (*shadow_end)(void *ctx, float bias);
+    void (*shadow_end)(void *ctx, int32_t slot, float bias);
 
     /* Optional skybox pass. When non-NULL, Canvas3D may delegate cubemap skybox
      * rendering to the backend instead of rasterizing it into the software

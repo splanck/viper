@@ -513,6 +513,7 @@ void rt_canvas3d_set_skybox(void *canvas, void *cubemap) {
     if (c->skybox && rt_obj_release_check0(c->skybox))
         rt_obj_free(c->skybox);
     c->skybox = (rt_cubemap3d *)cubemap;
+    rt_canvas3d_invalidate_skybox_cache(c);
 }
 
 /// @brief Remove the skybox from the canvas (reverts to solid clear color).
@@ -523,6 +524,7 @@ void rt_canvas3d_clear_skybox(void *canvas) {
     if (c->skybox && rt_obj_release_check0(c->skybox))
         rt_obj_free(c->skybox);
     c->skybox = NULL;
+    rt_canvas3d_invalidate_skybox_cache(c);
 }
 
 //=============================================================================

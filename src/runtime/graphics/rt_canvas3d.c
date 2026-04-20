@@ -524,75 +524,121 @@ static void canvas3d_resolve_previous_model(rt_canvas3d *c,
 /// Canvas lights live in a fixed array with NULL-able slots (so removal
 /// doesn't shift indices). This packs the non-NULL slots into a dense
 /// array the backend draw path consumes, returning the count.
+static void canvas3d_copy_light_params(const rt_light3d *l, vgfx3d_light_params_t *out) {
+    if (!l || !out)
+        return;
+    memset(out, 0, sizeof(*out));
+    out->type = l->type;
+    out->shadow_index = -1;
+    out->direction[0] = (float)l->direction[0];
+    out->direction[1] = (float)l->direction[1];
+    out->direction[2] = (float)l->direction[2];
+    out->position[0] = (float)l->position[0];
+    out->position[1] = (float)l->position[1];
+    out->position[2] = (float)l->position[2];
+    out->color[0] = (float)l->color[0];
+    out->color[1] = (float)l->color[1];
+    out->color[2] = (float)l->color[2];
+    out->intensity = (float)l->intensity;
+    out->attenuation = (float)l->attenuation;
+    out->inner_cos = (float)l->inner_cos;
+    out->outer_cos = (float)l->outer_cos;
+}
+
+static float canvas3d_shadow_light_score(const rt_light3d *l) {
+    float luminance;
+
+    if (!l || l->type != 0)
+        return -1.0f;
+    luminance = (float)(0.2126 * l->color[0] + 0.7152 * l->color[1] + 0.0722 * l->color[2]);
+    return (float)l->intensity * luminance;
+}
+
 static int32_t build_light_params(const rt_canvas3d *c, vgfx3d_light_params_t *out, int32_t max) {
     int32_t count = 0;
     for (int i = 0; i < VGFX3D_MAX_LIGHTS && count < max; i++) {
         const rt_light3d *l = c->lights[i];
         if (!l)
             continue;
-        out[count].type = l->type;
-        out[count].direction[0] = (float)l->direction[0];
-        out[count].direction[1] = (float)l->direction[1];
-        out[count].direction[2] = (float)l->direction[2];
-        out[count].position[0] = (float)l->position[0];
-        out[count].position[1] = (float)l->position[1];
-        out[count].position[2] = (float)l->position[2];
-        out[count].color[0] = (float)l->color[0];
-        out[count].color[1] = (float)l->color[1];
-        out[count].color[2] = (float)l->color[2];
-        out[count].intensity = (float)l->intensity;
-        out[count].attenuation = (float)l->attenuation;
-        out[count].inner_cos = (float)l->inner_cos;
-        out[count].outer_cos = (float)l->outer_cos;
+        canvas3d_copy_light_params(l, &out[count]);
         count++;
     }
     return count;
 }
 
-/// @brief Pick the directional light that should drive the single shadow map.
-/// @details The renderer currently exposes one shadow map, so this chooses the
-///          strongest directional light deterministically instead of using the
-///          first populated slot.
-static int canvas3d_select_shadow_directional_light(const rt_canvas3d *c,
-                                                    vgfx3d_light_params_t *out_light) {
-    float best_score = -1.0f;
-    int found = 0;
+/// @brief Pick the strongest directional lights that should receive shadow maps.
+/// @details Selection follows dense light-array order so the resulting indices
+///          can be applied directly to queued deferred draws. Slots are ordered
+///          by descending light score, not canvas slot number.
+static int32_t canvas3d_select_shadow_directional_lights(const rt_canvas3d *c,
+                                                         int32_t *out_dense_indices,
+                                                         int32_t max_shadow_lights) {
+    float best_scores[VGFX3D_MAX_SHADOW_LIGHTS];
+    int32_t best_indices[VGFX3D_MAX_SHADOW_LIGHTS];
+    int32_t dense_index = 0;
+    int32_t count = 0;
 
-    if (!c || !out_light)
+    if (!c || !out_dense_indices || max_shadow_lights <= 0)
         return 0;
-
-    for (int32_t i = 0; i < VGFX3D_MAX_LIGHTS; i++) {
-        const rt_light3d *l = c->lights[i];
-        float luminance;
-        float score;
-
-        if (!l || l->type != 0)
-            continue;
-        luminance = (float)(0.2126 * l->color[0] + 0.7152 * l->color[1] + 0.0722 * l->color[2]);
-        score = (float)l->intensity * luminance;
-        if (score <= 0.0f)
-            continue;
-        if (!found || score > best_score) {
-            out_light->type = l->type;
-            out_light->direction[0] = (float)l->direction[0];
-            out_light->direction[1] = (float)l->direction[1];
-            out_light->direction[2] = (float)l->direction[2];
-            out_light->position[0] = (float)l->position[0];
-            out_light->position[1] = (float)l->position[1];
-            out_light->position[2] = (float)l->position[2];
-            out_light->color[0] = (float)l->color[0];
-            out_light->color[1] = (float)l->color[1];
-            out_light->color[2] = (float)l->color[2];
-            out_light->intensity = (float)l->intensity;
-            out_light->attenuation = (float)l->attenuation;
-            out_light->inner_cos = (float)l->inner_cos;
-            out_light->outer_cos = (float)l->outer_cos;
-            best_score = score;
-            found = 1;
-        }
+    if (max_shadow_lights > VGFX3D_MAX_SHADOW_LIGHTS)
+        max_shadow_lights = VGFX3D_MAX_SHADOW_LIGHTS;
+    for (int32_t i = 0; i < max_shadow_lights; i++) {
+        best_scores[i] = -1.0f;
+        best_indices[i] = -1;
+        out_dense_indices[i] = -1;
     }
 
-    return found;
+    for (int32_t slot = 0; slot < VGFX3D_MAX_LIGHTS; slot++) {
+        const rt_light3d *l = c->lights[slot];
+        float score;
+        int32_t insert_at;
+
+        if (!l)
+            continue;
+        score = canvas3d_shadow_light_score(l);
+        if (score > 0.0f) {
+            insert_at = count;
+            if (insert_at >= max_shadow_lights)
+                insert_at = max_shadow_lights - 1;
+            while (insert_at > 0 && score > best_scores[insert_at - 1]) {
+                if (insert_at < max_shadow_lights) {
+                    best_scores[insert_at] = best_scores[insert_at - 1];
+                    best_indices[insert_at] = best_indices[insert_at - 1];
+                }
+                insert_at--;
+            }
+            if (insert_at < max_shadow_lights) {
+                best_scores[insert_at] = score;
+                best_indices[insert_at] = dense_index;
+                if (count < max_shadow_lights)
+                    count++;
+            }
+        }
+        dense_index++;
+    }
+
+    for (int32_t i = 0; i < count; i++)
+        out_dense_indices[i] = best_indices[i];
+    return count;
+}
+
+static void canvas3d_apply_shadow_light_indices(vgfx3d_light_params_t *lights,
+                                                int32_t light_count,
+                                                const int32_t *shadow_light_indices,
+                                                int32_t shadow_count) {
+    if (!lights || light_count <= 0)
+        return;
+    for (int32_t i = 0; i < light_count; i++)
+        lights[i].shadow_index = -1;
+    for (int32_t slot = 0; slot < shadow_count; slot++) {
+        int32_t light_index;
+
+        if (!shadow_light_indices)
+            break;
+        light_index = shadow_light_indices[slot];
+        if (light_index >= 0 && light_index < light_count)
+            lights[light_index].shadow_index = slot;
+    }
 }
 
 /// @brief Track a malloc'd buffer for end-of-frame cleanup.
@@ -1165,6 +1211,20 @@ static void canvas3d_accumulate_deferred_world_bounds(const deferred_draw_t *dd,
     }
 }
 
+static int canvas3d_deferred_intersects_frustum(const deferred_draw_t *dd,
+                                                const vgfx3d_frustum_t *frustum) {
+    float world_min[3] = {0.0f, 0.0f, 0.0f};
+    float world_max[3] = {0.0f, 0.0f, 0.0f};
+    int8_t has_bounds = 0;
+
+    if (!dd || !frustum)
+        return 1;
+    canvas3d_accumulate_deferred_world_bounds(dd, world_min, world_max, &has_bounds);
+    if (!has_bounds)
+        return 1;
+    return vgfx3d_frustum_test_aabb(frustum, world_min, world_max) != 0;
+}
+
 /// @brief Build a tight orthographic shadow-map VP that bounds every opaque draw.
 ///
 /// Algorithm:
@@ -1374,6 +1434,235 @@ static int canvas3d_build_shadow_light_vp(const deferred_draw_t *cmds,
     return 1;
 }
 
+static void canvas3d_release_shadow_targets(rt_canvas3d *c) {
+    if (!c)
+        return;
+    for (int32_t slot = 0; slot < VGFX3D_MAX_SHADOW_LIGHTS; slot++) {
+        if (!c->shadow_rts[slot])
+            continue;
+        free(c->shadow_rts[slot]->color_buf);
+        free(c->shadow_rts[slot]->depth_buf);
+        free(c->shadow_rts[slot]);
+        c->shadow_rts[slot] = NULL;
+    }
+    c->shadow_count = 0;
+}
+
+static int canvas3d_ensure_shadow_targets(rt_canvas3d *c, int32_t resolution) {
+    size_t depth_bytes;
+
+    if (!c)
+        return 0;
+    if (resolution <= 0) {
+        for (int32_t slot = 0; slot < VGFX3D_MAX_SHADOW_LIGHTS; slot++) {
+            vgfx3d_rendertarget_t *rt = c->shadow_rts[slot];
+
+            if (!rt)
+                continue;
+            if (rt->width > 0 && rt->height > 0 && rt->depth_buf)
+                return 1;
+        }
+        return 0;
+    }
+    depth_bytes = (size_t)resolution * (size_t)resolution * sizeof(float);
+    for (int32_t slot = 0; slot < VGFX3D_MAX_SHADOW_LIGHTS; slot++) {
+        vgfx3d_rendertarget_t *rt = c->shadow_rts[slot];
+
+        if (!rt || rt->width != resolution || rt->height != resolution) {
+            canvas3d_release_shadow_targets(c);
+            for (int32_t alloc_slot = 0; alloc_slot < VGFX3D_MAX_SHADOW_LIGHTS; alloc_slot++) {
+                vgfx3d_rendertarget_t *new_rt =
+                    (vgfx3d_rendertarget_t *)calloc(1, sizeof(vgfx3d_rendertarget_t));
+                if (!new_rt)
+                    return 0;
+                new_rt->width = resolution;
+                new_rt->height = resolution;
+                new_rt->stride = resolution * 4;
+                new_rt->color_buf = NULL;
+                new_rt->depth_buf = (float *)malloc(depth_bytes);
+                if (!new_rt->depth_buf) {
+                    free(new_rt);
+                    canvas3d_release_shadow_targets(c);
+                    return 0;
+                }
+                c->shadow_rts[alloc_slot] = new_rt;
+            }
+            return 1;
+        }
+    }
+    return 1;
+}
+
+void rt_canvas3d_invalidate_skybox_cache(rt_canvas3d *c) {
+    if (!c)
+        return;
+    free(c->skybox_cpu_cache);
+    c->skybox_cpu_cache = NULL;
+    c->skybox_cpu_cache_w = 0;
+    c->skybox_cpu_cache_h = 0;
+    c->skybox_cpu_cache_generation = 0;
+    c->skybox_cpu_cache_is_ortho = 0;
+    memset(c->skybox_cpu_cache_vp, 0, sizeof(c->skybox_cpu_cache_vp));
+    memset(c->skybox_cpu_cache_cam_pos, 0, sizeof(c->skybox_cpu_cache_cam_pos));
+    memset(c->skybox_cpu_cache_forward, 0, sizeof(c->skybox_cpu_cache_forward));
+}
+
+static int canvas3d_render_skybox_cpu(rt_canvas3d *c,
+                                      uint8_t *dst_pixels,
+                                      int32_t dst_w,
+                                      int32_t dst_h,
+                                      int32_t dst_stride) {
+    if (!c || !c->skybox || !dst_pixels || dst_w <= 0 || dst_h <= 0 || dst_stride < dst_w * 4)
+        return 0;
+
+    if (c->cached_cam_is_ortho) {
+        float r;
+        float g;
+        float b;
+
+        rt_cubemap_sample(c->skybox,
+                          c->cached_cam_forward[0],
+                          c->cached_cam_forward[1],
+                          c->cached_cam_forward[2],
+                          &r,
+                          &g,
+                          &b);
+        for (int32_t y = 0; y < dst_h; y++) {
+            for (int32_t x = 0; x < dst_w; x++) {
+                uint8_t *dst = &dst_pixels[y * dst_stride + x * 4];
+                dst[0] = (uint8_t)(r * 255.0f);
+                dst[1] = (uint8_t)(g * 255.0f);
+                dst[2] = (uint8_t)(b * 255.0f);
+                dst[3] = 0xFF;
+            }
+        }
+        return 1;
+    }
+
+    float inv_vp[16];
+    if (vgfx3d_invert_matrix4(c->cached_vp, inv_vp) != 0)
+        return 0;
+
+    for (int32_t y = 0; y < dst_h; y++) {
+        float ndc_y = 1.0f - 2.0f * ((float)y + 0.5f) / (float)dst_h;
+        for (int32_t x = 0; x < dst_w; x++) {
+            float ndc_x = 2.0f * ((float)x + 0.5f) / (float)dst_w - 1.0f;
+            float clip[4] = {ndc_x, ndc_y, 1.0f, 1.0f};
+            float world[4];
+            float dx;
+            float dy;
+            float dz;
+            float dl;
+            float r;
+            float g;
+            float b;
+            uint8_t *dst;
+
+            world[0] = inv_vp[0] * clip[0] + inv_vp[1] * clip[1] + inv_vp[2] * clip[2] +
+                       inv_vp[3] * clip[3];
+            world[1] = inv_vp[4] * clip[0] + inv_vp[5] * clip[1] + inv_vp[6] * clip[2] +
+                       inv_vp[7] * clip[3];
+            world[2] = inv_vp[8] * clip[0] + inv_vp[9] * clip[1] + inv_vp[10] * clip[2] +
+                       inv_vp[11] * clip[3];
+            world[3] = inv_vp[12] * clip[0] + inv_vp[13] * clip[1] + inv_vp[14] * clip[2] +
+                       inv_vp[15] * clip[3];
+            if (fabsf(world[3]) > 1e-7f) {
+                world[0] /= world[3];
+                world[1] /= world[3];
+                world[2] /= world[3];
+            }
+            dx = world[0] - c->cached_cam_pos[0];
+            dy = world[1] - c->cached_cam_pos[1];
+            dz = world[2] - c->cached_cam_pos[2];
+            dl = sqrtf(dx * dx + dy * dy + dz * dz);
+            if (dl > 1e-7f) {
+                dx /= dl;
+                dy /= dl;
+                dz /= dl;
+            }
+            rt_cubemap_sample(c->skybox, dx, dy, dz, &r, &g, &b);
+            dst = &dst_pixels[y * dst_stride + x * 4];
+            dst[0] = (uint8_t)(r * 255.0f);
+            dst[1] = (uint8_t)(g * 255.0f);
+            dst[2] = (uint8_t)(b * 255.0f);
+            dst[3] = 0xFF;
+        }
+    }
+    return 1;
+}
+
+static int canvas3d_skybox_cache_matches(const rt_canvas3d *c,
+                                         int32_t w,
+                                         int32_t h,
+                                         uint64_t generation) {
+    if (!c || !c->skybox_cpu_cache || w <= 0 || h <= 0)
+        return 0;
+    if (c->skybox_cpu_cache_w != w || c->skybox_cpu_cache_h != h ||
+        c->skybox_cpu_cache_generation != generation ||
+        c->skybox_cpu_cache_is_ortho != c->cached_cam_is_ortho)
+        return 0;
+    if (c->cached_cam_is_ortho)
+        return memcmp(c->skybox_cpu_cache_forward,
+                      c->cached_cam_forward,
+                      sizeof(c->skybox_cpu_cache_forward)) == 0;
+    return memcmp(c->skybox_cpu_cache_vp, c->cached_vp, sizeof(c->skybox_cpu_cache_vp)) == 0 &&
+           memcmp(c->skybox_cpu_cache_cam_pos,
+                  c->cached_cam_pos,
+                  sizeof(c->skybox_cpu_cache_cam_pos)) == 0;
+}
+
+static int canvas3d_ensure_skybox_cpu_cache(rt_canvas3d *c, int32_t w, int32_t h) {
+    uint64_t generation;
+    size_t bytes;
+
+    if (!c || !c->skybox || w <= 0 || h <= 0)
+        return 0;
+    generation = vgfx3d_get_cubemap_generation(c->skybox);
+    if (canvas3d_skybox_cache_matches(c, w, h, generation))
+        return 1;
+    bytes = (size_t)w * (size_t)h * 4u;
+    if (bytes / 4u / (size_t)w != (size_t)h)
+        return 0;
+    if (c->skybox_cpu_cache_w != w || c->skybox_cpu_cache_h != h || !c->skybox_cpu_cache) {
+        uint8_t *new_cache = (uint8_t *)realloc(c->skybox_cpu_cache, bytes);
+        if (!new_cache) {
+            rt_canvas3d_invalidate_skybox_cache(c);
+            return 0;
+        }
+        c->skybox_cpu_cache = new_cache;
+    }
+    c->skybox_cpu_cache_w = w;
+    c->skybox_cpu_cache_h = h;
+    if (!canvas3d_render_skybox_cpu(c, c->skybox_cpu_cache, w, h, w * 4)) {
+        rt_canvas3d_invalidate_skybox_cache(c);
+        return 0;
+    }
+    c->skybox_cpu_cache_generation = generation;
+    c->skybox_cpu_cache_is_ortho = c->cached_cam_is_ortho;
+    memcpy(c->skybox_cpu_cache_vp, c->cached_vp, sizeof(c->skybox_cpu_cache_vp));
+    memcpy(c->skybox_cpu_cache_cam_pos, c->cached_cam_pos, sizeof(c->skybox_cpu_cache_cam_pos));
+    memcpy(c->skybox_cpu_cache_forward,
+           c->cached_cam_forward,
+           sizeof(c->skybox_cpu_cache_forward));
+    return 1;
+}
+
+static void canvas3d_blit_skybox_cpu_cache(rt_canvas3d *c,
+                                           uint8_t *dst_pixels,
+                                           int32_t dst_w,
+                                           int32_t dst_h,
+                                           int32_t dst_stride) {
+    int32_t src_stride;
+
+    if (!c || !c->skybox_cpu_cache || !dst_pixels || dst_w <= 0 || dst_h <= 0 ||
+        c->skybox_cpu_cache_w != dst_w || c->skybox_cpu_cache_h != dst_h ||
+        dst_stride < dst_w * 4)
+        return;
+    src_stride = dst_w * 4;
+    for (int32_t y = 0; y < dst_h; y++)
+        memcpy(&dst_pixels[y * dst_stride], &c->skybox_cpu_cache[y * src_stride], (size_t)src_stride);
+}
+
 /*==========================================================================
  * Canvas3D lifecycle
  *=========================================================================*/
@@ -1418,19 +1707,15 @@ static void rt_canvas3d_finalize(void *obj) {
     c->text_indices = NULL;
     c->text_index_capacity = 0;
 
-    /* Free shadow render target if allocated */
-    if (c->shadow_rt) {
-        free(c->shadow_rt->color_buf);
-        free(c->shadow_rt->depth_buf);
-        free(c->shadow_rt);
-        c->shadow_rt = NULL;
-    }
+    /* Free shadow render targets if allocated */
+    canvas3d_release_shadow_targets(c);
 
     if (c->skybox) {
         if (rt_obj_release_check0(c->skybox))
             rt_obj_free(c->skybox);
         c->skybox = NULL;
     }
+    rt_canvas3d_invalidate_skybox_cache(c);
 
     vgfx3d_postfx_chain_free(&c->frame_postfx_chain);
     canvas3d_release_owned_ref(&c->postfx);
@@ -1536,7 +1821,9 @@ void *rt_canvas3d_new(rt_string title, int64_t w, int64_t h) {
     c->shadows_enabled = 0;
     c->shadow_resolution = 1024;
     c->shadow_bias = 0.005f;
-    c->shadow_rt = NULL;
+    c->shadow_count = 0;
+    memset(c->shadow_rts, 0, sizeof(c->shadow_rts));
+    memset(c->shadow_light_vps, 0, sizeof(c->shadow_light_vps));
     c->frame_serial = 0;
     c->motion_history = NULL;
     c->motion_history_count = 0;
@@ -2350,78 +2637,11 @@ void rt_canvas3d_end(void *obj) {
             }
         }
 
-        if (!c->backend->draw_skybox && out_pixels && !canvas3d_backend_owns_gpu_rtt(c)) {
-            if (c->cached_cam_is_ortho) {
-                float r;
-                float g;
-                float b;
-
-                rt_cubemap_sample(c->skybox,
-                                  c->cached_cam_forward[0],
-                                  c->cached_cam_forward[1],
-                                  c->cached_cam_forward[2],
-                                  &r,
-                                  &g,
-                                  &b);
-                for (int32_t y = 0; y < out_h; y++) {
-                    for (int32_t x = 0; x < out_w; x++) {
-                        uint8_t *dst = &out_pixels[y * out_stride + x * 4];
-                        dst[0] = (uint8_t)(r * 255.0f);
-                        dst[1] = (uint8_t)(g * 255.0f);
-                        dst[2] = (uint8_t)(b * 255.0f);
-                        dst[3] = 0xFF;
-                    }
-                }
-            } else {
-                float inv_vp[16];
-                if (vgfx3d_invert_matrix4(c->cached_vp, inv_vp) == 0) {
-                    for (int32_t y = 0; y < out_h; y++) {
-                        float ndc_y = 1.0f - 2.0f * ((float)y + 0.5f) / (float)out_h;
-                        for (int32_t x = 0; x < out_w; x++) {
-                            float ndc_x = 2.0f * ((float)x + 0.5f) / (float)out_w - 1.0f;
-                            float clip[4] = {ndc_x, ndc_y, 1.0f, 1.0f};
-                            float world[4];
-                            float dx;
-                            float dy;
-                            float dz;
-                            float dl;
-                            float r;
-                            float g;
-                            float b;
-                            uint8_t *dst;
-
-                            world[0] = inv_vp[0] * clip[0] + inv_vp[1] * clip[1] +
-                                       inv_vp[2] * clip[2] + inv_vp[3] * clip[3];
-                            world[1] = inv_vp[4] * clip[0] + inv_vp[5] * clip[1] +
-                                       inv_vp[6] * clip[2] + inv_vp[7] * clip[3];
-                            world[2] = inv_vp[8] * clip[0] + inv_vp[9] * clip[1] +
-                                       inv_vp[10] * clip[2] + inv_vp[11] * clip[3];
-                            world[3] = inv_vp[12] * clip[0] + inv_vp[13] * clip[1] +
-                                       inv_vp[14] * clip[2] + inv_vp[15] * clip[3];
-                            if (fabsf(world[3]) > 1e-7f) {
-                                world[0] /= world[3];
-                                world[1] /= world[3];
-                                world[2] /= world[3];
-                            }
-                            dx = world[0] - c->cached_cam_pos[0];
-                            dy = world[1] - c->cached_cam_pos[1];
-                            dz = world[2] - c->cached_cam_pos[2];
-                            dl = sqrtf(dx * dx + dy * dy + dz * dz);
-                            if (dl > 1e-7f) {
-                                dx /= dl;
-                                dy /= dl;
-                                dz /= dl;
-                            }
-                            rt_cubemap_sample(c->skybox, dx, dy, dz, &r, &g, &b);
-                            dst = &out_pixels[y * out_stride + x * 4];
-                            dst[0] = (uint8_t)(r * 255.0f);
-                            dst[1] = (uint8_t)(g * 255.0f);
-                            dst[2] = (uint8_t)(b * 255.0f);
-                            dst[3] = 0xFF;
-                        }
-                    }
-                }
-            }
+        if (!c->backend->draw_skybox && out_pixels && !canvas3d_backend_owns_gpu_rtt(c) &&
+            canvas3d_ensure_skybox_cpu_cache(c, out_w, out_h)) {
+            canvas3d_blit_skybox_cpu_cache(c, out_pixels, out_w, out_h, out_stride);
+            if (c->render_target)
+                c->render_target->color_dirty = 1;
         }
     }
 
@@ -2442,18 +2662,43 @@ void rt_canvas3d_end(void *obj) {
         return;
     }
 
-    if (!c->frame_is_2d && main_count > 0 && c->shadows_enabled && c->shadow_rt &&
-        c->shadow_rt->depth_buf && c->backend->shadow_begin && c->backend->shadow_draw &&
-        c->backend->shadow_end) {
-        vgfx3d_light_params_t dir_light;
-        if (canvas3d_select_shadow_directional_light(c, &dir_light)) {
-            float light_vp[16];
-            if (canvas3d_build_shadow_light_vp(cmds, c->draw_count, &dir_light, light_vp)) {
-                memcpy(c->shadow_light_vp, light_vp, sizeof(light_vp));
+    c->shadow_count = 0;
+    memset(c->shadow_light_vps, 0, sizeof(c->shadow_light_vps));
+    if (!c->frame_is_2d && main_count > 0) {
+        int32_t shadow_light_indices[VGFX3D_MAX_SHADOW_LIGHTS];
+
+        for (int32_t i = 0; i < VGFX3D_MAX_SHADOW_LIGHTS; i++)
+            shadow_light_indices[i] = -1;
+
+        if (c->shadows_enabled && c->backend->shadow_begin && c->backend->shadow_draw &&
+            c->backend->shadow_end && canvas3d_ensure_shadow_targets(c, c->shadow_resolution)) {
+            vgfx3d_light_params_t frame_lights[VGFX3D_MAX_LIGHTS];
+            int32_t frame_light_count = build_light_params(c, frame_lights, VGFX3D_MAX_LIGHTS);
+            int32_t selected_shadow_indices[VGFX3D_MAX_SHADOW_LIGHTS];
+            int32_t selected_shadow_count = canvas3d_select_shadow_directional_lights(
+                c, selected_shadow_indices, VGFX3D_MAX_SHADOW_LIGHTS);
+
+            for (int32_t slot = 0; slot < selected_shadow_count; slot++) {
+                int32_t dense_index = selected_shadow_indices[slot];
+                vgfx3d_rendertarget_t *shadow_rt;
+                float light_vp[16];
+
+                if (dense_index < 0 || dense_index >= frame_light_count)
+                    continue;
+                shadow_rt = c->shadow_rts[c->shadow_count];
+                if (!shadow_rt || !shadow_rt->depth_buf)
+                    continue;
+                if (!canvas3d_build_shadow_light_vp(
+                        cmds, c->draw_count, &frame_lights[dense_index], light_vp))
+                    continue;
+
+                memcpy(c->shadow_light_vps[c->shadow_count], light_vp, sizeof(light_vp));
+                shadow_light_indices[c->shadow_count] = dense_index;
                 c->backend->shadow_begin(c->backend_ctx,
-                                         c->shadow_rt->depth_buf,
-                                         c->shadow_rt->width,
-                                         c->shadow_rt->height,
+                                         c->shadow_count,
+                                         shadow_rt->depth_buf,
+                                         shadow_rt->width,
+                                         shadow_rt->height,
                                          light_vp);
                 for (int32_t i = 0; i < c->draw_count; i++) {
                     if (cmds[i].pass_kind != DEFERRED_PASS_MAIN ||
@@ -2461,20 +2706,34 @@ void rt_canvas3d_end(void *obj) {
                         continue;
                     canvas3d_shadow_deferred(c, &cmds[i]);
                 }
-                c->backend->shadow_end(c->backend_ctx, c->shadow_bias);
+                c->backend->shadow_end(c->backend_ctx, c->shadow_count, c->shadow_bias);
+                c->shadow_count++;
             }
         }
+
+        for (int32_t i = 0; i < c->draw_count; i++)
+            canvas3d_apply_shadow_light_indices(
+                cmds[i].lights, cmds[i].light_count, shadow_light_indices, c->shadow_count);
     }
 
     if (main_count > 0) {
+        vgfx3d_frustum_t visibility_frustum;
+        int8_t use_visibility_frustum = 0;
+
         if (c->occlusion_culling) {
-            /* This mode is currently depth-friendly ordering only. It improves
-             * early-Z efficiency for opaque draws but does not perform true
-             * visibility rejection or GPU occlusion queries. */
+            vgfx3d_frustum_extract(&visibility_frustum, c->cached_vp);
+            use_visibility_frustum = 1;
+        }
+
+        if (c->occlusion_culling) {
+            /* This mode performs coarse CPU visibility rejection against the
+             * camera frustum before front-to-back sorting opaque draws. */
             int32_t opaque_count = 0;
             for (int32_t i = 0; i < c->draw_count; i++) {
                 if (cmds[i].pass_kind == DEFERRED_PASS_MAIN &&
-                    !canvas3d_cmd_requires_blend(&cmds[i].cmd))
+                    !canvas3d_cmd_requires_blend(&cmds[i].cmd) &&
+                    (!use_visibility_frustum ||
+                     canvas3d_deferred_intersects_frustum(&cmds[i], &visibility_frustum)))
                     opaque_count++;
             }
             if (opaque_count > 0 &&
@@ -2483,7 +2742,9 @@ void rt_canvas3d_end(void *obj) {
                 int32_t oi = 0;
                 for (int32_t i = 0; i < c->draw_count; i++) {
                     if (cmds[i].pass_kind == DEFERRED_PASS_MAIN &&
-                        !canvas3d_cmd_requires_blend(&cmds[i].cmd))
+                        !canvas3d_cmd_requires_blend(&cmds[i].cmd) &&
+                        (!use_visibility_frustum ||
+                         canvas3d_deferred_intersects_frustum(&cmds[i], &visibility_frustum)))
                         opaque[oi++] = cmds[i];
                 }
                 qsort(opaque, (size_t)opaque_count, sizeof(deferred_draw_t), cmp_front_to_back);
@@ -2502,7 +2763,9 @@ void rt_canvas3d_end(void *obj) {
             int32_t trans_count = 0;
             for (int32_t i = 0; i < c->draw_count; i++) {
                 if (cmds[i].pass_kind == DEFERRED_PASS_MAIN &&
-                    canvas3d_cmd_requires_blend(&cmds[i].cmd))
+                    canvas3d_cmd_requires_blend(&cmds[i].cmd) &&
+                    (!use_visibility_frustum ||
+                     canvas3d_deferred_intersects_frustum(&cmds[i], &visibility_frustum)))
                     trans_count++;
             }
             if (trans_count > 0 &&
@@ -2511,7 +2774,9 @@ void rt_canvas3d_end(void *obj) {
                 int32_t ti = 0;
                 for (int32_t i = 0; i < c->draw_count; i++) {
                     if (cmds[i].pass_kind == DEFERRED_PASS_MAIN &&
-                        canvas3d_cmd_requires_blend(&cmds[i].cmd))
+                        canvas3d_cmd_requires_blend(&cmds[i].cmd) &&
+                        (!use_visibility_frustum ||
+                         canvas3d_deferred_intersects_frustum(&cmds[i], &visibility_frustum)))
                         trans[ti++] = cmds[i];
                 }
                 qsort(trans, (size_t)trans_count, sizeof(deferred_draw_t), cmp_back_to_front);
@@ -2855,6 +3120,8 @@ void rt_canvas3d_clear_fog(void *obj) {
 ///          casting. The shadow map is rendered from the light's perspective and
 ///          sampled during the main render pass.
 void rt_canvas3d_enable_shadows(void *obj, int64_t resolution) {
+    int ok;
+
     if (!obj)
         return;
     rt_canvas3d *c = (rt_canvas3d *)obj;
@@ -2865,23 +3132,9 @@ void rt_canvas3d_enable_shadows(void *obj, int64_t resolution) {
         res = 4096;
     c->shadows_enabled = 1;
     c->shadow_resolution = res;
-
-    /* Allocate shadow render target if needed */
-    if (!c->shadow_rt || c->shadow_rt->width != res) {
-        if (c->shadow_rt) {
-            free(c->shadow_rt->color_buf);
-            free(c->shadow_rt->depth_buf);
-            free(c->shadow_rt);
-        }
-        c->shadow_rt = (vgfx3d_rendertarget_t *)calloc(1, sizeof(vgfx3d_rendertarget_t));
-        if (c->shadow_rt) {
-            c->shadow_rt->width = res;
-            c->shadow_rt->height = res;
-            c->shadow_rt->stride = res * 4;
-            c->shadow_rt->color_buf = NULL; /* depth-only */
-            c->shadow_rt->depth_buf = (float *)malloc((size_t)res * (size_t)res * sizeof(float));
-        }
-    }
+    ok = canvas3d_ensure_shadow_targets(c, res);
+    if (!ok)
+        c->shadows_enabled = 0;
 }
 
 /// @brief Disable shadow mapping and free the shadow depth buffer.
@@ -2890,12 +3143,7 @@ void rt_canvas3d_disable_shadows(void *obj) {
         return;
     rt_canvas3d *c = (rt_canvas3d *)obj;
     c->shadows_enabled = 0;
-    if (c->shadow_rt) {
-        free(c->shadow_rt->color_buf);
-        free(c->shadow_rt->depth_buf);
-        free(c->shadow_rt);
-        c->shadow_rt = NULL;
-    }
+    canvas3d_release_shadow_targets(c);
 }
 
 /// @brief Set the shadow map depth bias to reduce shadow acne artifacts.

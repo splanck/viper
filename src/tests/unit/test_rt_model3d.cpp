@@ -14,8 +14,10 @@
 #include "rt_scene3d.h"
 #include "rt_string.h"
 
+#include <csetjmp>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <string>
 #include <vector>
@@ -31,6 +33,17 @@ extern void *rt_material3d_new_color(double r, double g, double b);
 
 static int tests_passed = 0;
 static int tests_run = 0;
+static std::jmp_buf g_trap_jmp;
+static const char *g_last_trap = nullptr;
+static bool g_expect_trap = false;
+
+extern "C" void vm_trap(const char *msg) {
+    g_last_trap = msg;
+    if (g_expect_trap)
+        std::longjmp(g_trap_jmp, 1);
+    std::fprintf(stderr, "Unexpected trap: %s\n", msg ? msg : "(null)");
+    std::abort();
+}
 
 #define EXPECT_TRUE(cond, msg)                                                                     \
     do {                                                                                           \
@@ -306,6 +319,36 @@ static bool write_fbx_fixture(const char *path) {
     bool ok = std::fwrite(bytes.data(), 1, bytes.size(), f) == bytes.size();
     std::fclose(f);
     return ok;
+}
+
+static bool write_truncated_fbx_fixture(const char *path) {
+    const char *valid_path = "/tmp/viper_model3d_valid_for_truncate.fbx";
+    if (!write_fbx_fixture(valid_path))
+        return false;
+
+    FILE *f = std::fopen(valid_path, "rb");
+    if (!f)
+        return false;
+    std::fseek(f, 0, SEEK_END);
+    long size = std::ftell(f);
+    std::fseek(f, 0, SEEK_SET);
+    if (size <= 40) {
+        std::fclose(f);
+        return false;
+    }
+    std::vector<uint8_t> bytes((size_t)size);
+    bool read_ok = std::fread(bytes.data(), 1, bytes.size(), f) == bytes.size();
+    std::fclose(f);
+    if (!read_ok)
+        return false;
+
+    FILE *out = std::fopen(path, "wb");
+    if (!out)
+        return false;
+    size_t truncated_size = bytes.size() - 7;
+    bool write_ok = std::fwrite(bytes.data(), 1, truncated_size, out) == truncated_size;
+    std::fclose(out);
+    return write_ok;
 }
 
 static bool write_scene_fixture(const char *path) {
@@ -608,6 +651,27 @@ static void test_model3d_adapts_fbx_scene_graphs() {
                 "FBX-backed Model3D instances preserve child names");
 }
 
+static void test_model3d_rejects_truncated_fbx() {
+    const char *path = "/tmp/viper_model3d_truncated_fixture.fbx";
+    bool wrote_fixture = write_truncated_fbx_fixture(path);
+    EXPECT_TRUE(wrote_fixture, "Truncated FBX fixture can be written");
+    if (!wrote_fixture)
+        return;
+
+    g_last_trap = nullptr;
+    g_expect_trap = true;
+    if (setjmp(g_trap_jmp) == 0) {
+        (void)rt_model3d_load(rt_const_cstr(path));
+        g_expect_trap = false;
+        EXPECT_TRUE(false, "Model3D.Load traps on truncated FBX input");
+        return;
+    }
+    g_expect_trap = false;
+    EXPECT_TRUE(g_last_trap != nullptr &&
+                    std::strstr(g_last_trap, "malformed or truncated binary FBX") != nullptr,
+                "Model3D.Load reports truncated FBX as a hard parse error");
+}
+
 static void test_model3d_loads_demo_fbx_textures() {
     const char *path = find_existing_path({
 #ifdef VIPER_SOURCE_DIR
@@ -643,6 +707,7 @@ int main() {
     test_model3d_roundtrips_vscn_assets();
     test_model3d_adapts_gltf_scene_graphs();
     test_model3d_adapts_fbx_scene_graphs();
+    test_model3d_rejects_truncated_fbx();
     test_model3d_loads_demo_fbx_textures();
     std::printf("Model3D tests: %d/%d passed\n", tests_passed, tests_run);
     return tests_passed == tests_run ? 0 : 1;

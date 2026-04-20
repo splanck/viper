@@ -1895,6 +1895,18 @@ void *rt_rendertarget3d_new(int64_t w, int64_t h) {
     return NULL;
 }
 
+/// @brief Stub for `RenderTarget3D.NewHdr` — would normally allocate an
+///        HDR offscreen `(w x h)` 3D render target (RGBA16F color + depth).
+///
+/// Trapping stub: HDR render targets cannot be faked headlessly because they
+/// are explicit GPU-side allocations the caller will try to bind/sample.
+void *rt_rendertarget3d_new_hdr(int64_t w, int64_t h) {
+    (void)w;
+    (void)h;
+    rt_graphics_unavailable_("RenderTarget3D.NewHdr: graphics support not compiled in");
+    return NULL;
+}
+
 /// @brief Stub for `RenderTarget3D.Width`.
 ///
 /// Silent stub returning `0`. Reachable only via a NULL handle that the
@@ -1918,6 +1930,15 @@ int64_t rt_rendertarget3d_get_width(void *o) {
 ///
 /// @return `0`.
 int64_t rt_rendertarget3d_get_height(void *o) {
+    (void)o;
+    return 0;
+}
+
+/// @brief Stub for `RenderTarget3D.IsHdr`.
+///
+/// Silent stub returning `0`. Reachable only through a NULL handle in
+/// graphics-disabled builds.
+int32_t rt_rendertarget3d_get_is_hdr(void *o) {
     (void)o;
     return 0;
 }

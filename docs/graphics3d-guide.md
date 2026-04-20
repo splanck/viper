@@ -208,7 +208,7 @@ The rendering surface. Creates a window and manages the render loop.
 | `ClearSkybox()` | `void()` | Remove skybox |
 | `SetFog(r, g, b, near, far)` | `void(f64, f64, f64, f64, f64)` | Enable linear distance fog |
 | `ClearFog()` | `void()` | Disable fog |
-| `EnableShadows(mapSize)` | `void(i64)` | Enable shadow mapping (mapSize = shadow map resolution; current shadow map follows the strongest directional light) |
+| `EnableShadows(mapSize)` | `void(i64)` | Enable shadow mapping (mapSize = shadow map resolution; up to the two strongest directional lights receive shadow maps) |
 | `DisableShadows()` | `void()` | Disable shadow mapping |
 | `SetShadowBias(bias)` | `void(f64)` | Set shadow acne bias |
 
@@ -221,7 +221,7 @@ The rendering surface. Creates a window and manages the render loop.
 | `SetRenderTarget(target)` | `void(obj)` | Redirect rendering to offscreen RenderTarget3D |
 | `ResetRenderTarget()` | `void()` | Return to window rendering |
 | `SetPostFX(fx)` | `void(obj)` | Set PostFX3D chain (applied in Flip to the window or active render target) |
-| `SetOcclusionCulling(enabled)` | `void(i1)` | Toggle occlusion culling |
+| `SetOcclusionCulling(enabled)` | `void(i1)` | Toggle coarse CPU frustum rejection plus front-to-back opaque ordering |
 
 ### Debug Drawing
 
@@ -620,11 +620,13 @@ Offscreen rendering targets for render-to-texture effects (TV screens, mirrors, 
 | Constructor | Signature | Description |
 |-------------|-----------|-------------|
 | `New(width, height)` | `obj(i64, i64)` | Create offscreen target (1-8192 pixels per dimension) |
+| `NewHdr(width, height)` | `obj(i64, i64)` | Create HDR offscreen target with RGBA16F internal color storage |
 
 ### Properties
 
 | Property | Type | Access | Description |
 |----------|------|--------|-------------|
+| `IsHdr` | Bool | read | True when the target stores HDR color internally |
 | `Width` | Integer | read | Target width |
 | `Height` | Integer | read | Target height |
 
@@ -673,6 +675,7 @@ func start() {
 ```
 
 **Note:** `AsPixels()` returns a fresh copy each call. The render target's CPU-side color/depth buffers are allocated lazily on first CPU access (or when the software backend binds the target), so GPU-only RTT passes do not pay the host-memory cost up front.
+HDR targets created with `NewHdr()` keep their GPU color attachment in `RGBA16F`, but `AsPixels()` still returns standard `Pixels`; the runtime tonemaps HDR RGB into 8-bit output during readback so RTT screenshots and texture bake-outs remain deterministic across backends.
 When a render target is bound, `Canvas3D.Width`, `Canvas3D.Height`, `Begin2D()`, debug overlays, and `Screenshot()` all operate in that target's pixel space instead of the window's.
 `Canvas3D.Begin()` also uses the target's aspect ratio for that frame's projection while the render target is bound, so switching between the window and RTT views does not stretch perspective or rewrite the camera's stored projection.
 **PostFX:** If a render target is active when you call `Flip()`, the canvas applies the current `PostFX3D` chain to that render target instead of the window backbuffer.
@@ -689,9 +692,9 @@ Six-face cube texture for skyboxes and environment reflections.
 
 CubeMap3D has no methods or properties — it is a data object used by `Canvas3D.SetSkybox` and `Material3D.SetEnvMap`.
 CubeMap faces use the same top-left pixel origin as `Pixels`; the GPU backends normalize upload orientation so skyboxes and reflections sample consistently across backends.
-Skyboxes honor the active camera projection across all backends. Perspective cameras reconstruct a per-pixel view ray; orthographic cameras sample the cubemap along the camera forward direction so the background stays stable instead of being distorted by perspective-only math.
+Skyboxes honor the active camera projection across all backends. Perspective cameras reconstruct a per-pixel view ray; orthographic cameras sample the cubemap along the camera forward direction so the background stays stable instead of being distorted by perspective-only math. When a backend lacks a native skybox hook, the CPU fallback caches the generated RGBA skybox by cubemap generation, output size, and camera projection, then blits the cached image on stable frames instead of resampling the cubemap every frame.
 Environment reflections are roughness-aware. Low-roughness materials keep a sharp cubemap reflection, while higher roughness values sample blurrier cubemap mips on GPU backends and a matching blur kernel in the software renderer.
-CubeMap uploads are keyed by a stable internal cubemap identity plus the six face `Pixels` generations, so recreating cubemaps cannot accidentally reuse stale GPU skybox or reflection textures after allocator address reuse.
+CubeMap uploads and CPU fallback skybox caches are keyed by a stable internal cubemap identity plus the six face `Pixels` generations, so recreating or mutating cubemaps cannot accidentally reuse stale GPU skybox, CPU fallback, or reflection textures after allocator address reuse.
 Seam handling is also more consistent now: the software sampler remaps bilinear taps across neighboring faces and OpenGL enables seamless cubemap filtering, which reduces visible face-edge seams when the artwork itself lines up.
 
 ### Zia Example
@@ -2957,11 +2960,11 @@ The GPU backend is selected automatically at startup:
 
 If the GPU backend fails to initialize (no GPU, driver issue), the software rasterizer is used automatically. Check `canvas.Backend` to see which renderer is active.
 
-**Software renderer** — Always available. Gouraud shading by default, switches to per-pixel Blinn-Phong when a normal map is present. Supports bilinear texture filtering, per-vertex colors, shadow mapping (directional lights), specular maps, normal maps, and per-pixel terrain splatting.
+**Software renderer** — Always available. Gouraud shading by default, switches to per-pixel Blinn-Phong when a normal map is present. Supports bilinear texture filtering, per-vertex colors, shadow mapping for up to two directional lights, specular maps, normal maps, and per-pixel terrain splatting.
 
-**Metal** (macOS) — Near-full feature parity (94%): lit/unlit textures, the shared `Material3D` PBR path (metallic/roughness, AO, alpha modes, emissive intensity, normal scale), spot light cone attenuation, linear fog, wireframe, per-frame texture caching, GPU skinning (4-bone), morph targets, shadow mapping, instanced rendering, terrain splatting, and post-processing (bloom, FXAA, tone mapping, vignette, color grading).
+**Metal** (macOS) — Near-full feature parity (94%): lit/unlit textures, the shared `Material3D` PBR path (metallic/roughness, AO, alpha modes, emissive intensity, normal scale), spot light cone attenuation, linear fog, wireframe, per-frame texture caching, GPU skinning (4-bone), morph targets, up to two directional shadow maps, instanced rendering, terrain splatting, and post-processing (bloom, FXAA, tone mapping, vignette, color grading).
 
-**OpenGL 3.3** (Linux) — Full feature parity (OGL-01 through OGL-20): all texture types, the shared `Material3D` PBR path (metallic/roughness, AO, alpha modes, emissive intensity, normal scale), spot lights, fog, wireframe, render-to-texture, shadow mapping, post-processing, instancing, skinning, morph targets, terrain splatting, cubemap skybox, environment reflections, and advanced post-FX (SSAO, depth of field, motion blur).
+**OpenGL 3.3** (Linux) — Full feature parity (OGL-01 through OGL-20): all texture types, the shared `Material3D` PBR path (metallic/roughness, AO, alpha modes, emissive intensity, normal scale), spot lights, fog, wireframe, render-to-texture, up to two directional shadow maps, post-processing, instancing, skinning, morph targets, terrain splatting, cubemap skybox, environment reflections, and advanced post-FX (SSAO, depth of field, motion blur).
 
 **Direct3D 11** (Windows) — Full feature parity: same feature set as OpenGL, including the shared `Material3D` PBR path. On non-Windows hosts, validation depends on the Windows CI lane.
 
