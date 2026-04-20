@@ -258,12 +258,14 @@ typedef enum {
 
 struct vgfx3d_rendertarget {
     uint8_t *color_buf; /* RGBA pixels (software path) */
+    float *hdr_color_buf; /* linear RGBA32F CPU mirror for HDR GPU readback */
     float *depth_buf;   /* float depth buffer */
     int32_t width;
     int32_t height;
     int32_t stride; /* width * 4 */
     int32_t color_format;
     int8_t color_dirty;
+    int8_t hdr_color_valid;
     vgfx3d_rendertarget_sync_fn sync_color;
     void *sync_color_userdata;
 };
@@ -286,6 +288,25 @@ static inline int vgfx3d_rendertarget_ensure_color(vgfx3d_rendertarget_t *target
         return 0;
     memset(target->color_buf, 0, bytes);
     return 1;
+}
+
+static inline int vgfx3d_rendertarget_ensure_hdr_color(vgfx3d_rendertarget_t *target) {
+    size_t pixel_count;
+    size_t float_count;
+    if (!vgfx3d_rendertarget_is_hdr(target))
+        return 0;
+    if (target->hdr_color_buf)
+        return 1;
+    if (target->width <= 0 || target->height <= 0)
+        return 0;
+    pixel_count = (size_t)target->width * (size_t)target->height;
+    if (target->width > 0 && pixel_count / (size_t)target->width != (size_t)target->height)
+        return 0;
+    if (pixel_count > SIZE_MAX / (sizeof(float) * 4u))
+        return 0;
+    float_count = pixel_count * 4u;
+    target->hdr_color_buf = (float *)calloc(float_count, sizeof(float));
+    return target->hdr_color_buf != NULL;
 }
 
 static inline int vgfx3d_rendertarget_ensure_depth(vgfx3d_rendertarget_t *target) {
@@ -322,6 +343,7 @@ static inline void vgfx3d_rendertarget_clear_sync(vgfx3d_rendertarget_t *target)
     if (!target)
         return;
     target->color_dirty = 0;
+    target->hdr_color_valid = 0;
     target->sync_color = NULL;
     target->sync_color_userdata = NULL;
 }
@@ -367,6 +389,8 @@ typedef struct {
 
     /* Lighting */
     rt_light3d *lights[VGFX3D_MAX_LIGHTS];
+    rt_light3d *scene_lights[VGFX3D_MAX_LIGHTS];
+    int32_t scene_light_count; /* transient, not retained: populated by Scene3D.Draw */
     float ambient[3];
 
     /* Skybox */

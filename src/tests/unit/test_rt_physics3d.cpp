@@ -154,6 +154,24 @@ static void test_body_collision_layer_mask() {
     EXPECT_TRUE(rt_body3d_get_collision_mask(b) == 6, "Collision mask = 6");
 }
 
+static void test_body_material_coefficients_are_sanitized() {
+    void *b = rt_body3d_new_aabb(1.0, 1.0, 1.0, 1.0);
+
+    rt_body3d_set_restitution(b, -1.0);
+    EXPECT_NEAR(rt_body3d_get_restitution(b), 0.0, 0.001, "Negative restitution clamps to zero");
+    rt_body3d_set_restitution(b, 2.0);
+    EXPECT_NEAR(rt_body3d_get_restitution(b), 1.0, 0.001, "Restitution clamps to one");
+    rt_body3d_set_restitution(b, NAN);
+    EXPECT_NEAR(rt_body3d_get_restitution(b), 0.0, 0.001, "NaN restitution clamps to zero");
+
+    rt_body3d_set_friction(b, -1.0);
+    EXPECT_NEAR(rt_body3d_get_friction(b), 0.0, 0.001, "Negative friction clamps to zero");
+    rt_body3d_set_friction(b, NAN);
+    EXPECT_NEAR(rt_body3d_get_friction(b), 0.0, 0.001, "NaN friction clamps to zero");
+    rt_body3d_set_friction(b, 2.5);
+    EXPECT_NEAR(rt_body3d_get_friction(b), 2.5, 0.001, "Finite friction is preserved");
+}
+
 static void test_body_trigger() {
     void *b = rt_body3d_new_aabb(1.0, 1.0, 1.0, 1.0);
     EXPECT_TRUE(rt_body3d_is_trigger(b) == 0, "Default: not trigger");
@@ -270,6 +288,47 @@ static void test_world_add_remove() {
     EXPECT_TRUE(rt_world3d_body_count(w) == 1, "Body count = 1 after add");
     rt_world3d_remove(w, b);
     EXPECT_TRUE(rt_world3d_body_count(w) == 0, "Body count = 0 after remove");
+}
+
+static void test_world_body_storage_grows_past_initial_capacity() {
+    void *w = rt_world3d_new(0, 0, 0);
+    for (int i = 0; i < 300; i++) {
+        void *b = rt_body3d_new_sphere(0.25, 0.0);
+        rt_body3d_set_position(b, (double)i * 2.0, 0.0, 0.0);
+        rt_world3d_add(w, b);
+    }
+    EXPECT_TRUE(rt_world3d_body_count(w) == 300, "World body storage grows past 256 bodies");
+}
+
+static void test_world_contact_storage_grows_past_initial_capacity() {
+    void *w = rt_world3d_new(0, 0, 0);
+    void *volume = rt_body3d_new_aabb(1000.0, 1000.0, 1000.0, 0.0);
+    rt_body3d_set_trigger(volume, 1);
+    rt_world3d_add(w, volume);
+    for (int i = 0; i < 160; i++) {
+        void *b = rt_body3d_new_sphere(0.25, 1.0);
+        rt_body3d_set_position(b, -240.0 + (double)i * 3.0, 0.0, 0.0);
+        rt_body3d_set_trigger(b, 1);
+        rt_world3d_add(w, b);
+    }
+    rt_world3d_step(w, 1.0 / 60.0);
+    EXPECT_TRUE(rt_world3d_get_collision_count(w) >= 160,
+                "World contact storage grows past 128 contacts");
+    EXPECT_TRUE(rt_world3d_get_enter_event_count(w) >= 160,
+                "World enter-event storage grows with contacts");
+}
+
+static void test_world_broadphase_rejects_separated_bodies() {
+    void *w = rt_world3d_new(0, 0, 0);
+    for (int i = 0; i < 300; i++) {
+        void *b = rt_body3d_new_sphere(0.25, 1.0);
+        rt_body3d_set_position(b, (double)i * 4.0, 0.0, 0.0);
+        rt_body3d_set_trigger(b, 1);
+        rt_world3d_add(w, b);
+    }
+    rt_world3d_step(w, 1.0 / 60.0);
+    EXPECT_TRUE(rt_world3d_get_collision_count(w) == 0,
+                "Sweep-and-prune broadphase keeps separated bodies out of narrowphase");
 }
 
 static void test_gravity_integration() {
@@ -1004,6 +1063,7 @@ int main() {
     test_body_orientation_roundtrip();
     test_body_velocity();
     test_body_collision_layer_mask();
+    test_body_material_coefficients_are_sanitized();
     test_body_trigger();
     test_body_torque_updates_angular_velocity_and_orientation();
     test_body_angular_damping();
@@ -1015,6 +1075,9 @@ int main() {
     /* World */
     test_world_create();
     test_world_add_remove();
+    test_world_body_storage_grows_past_initial_capacity();
+    test_world_contact_storage_grows_past_initial_capacity();
+    test_world_broadphase_rejects_separated_bodies();
     test_gravity_integration();
     test_force_application();
     test_impulse_application();

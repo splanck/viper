@@ -78,6 +78,8 @@ static void rt_node_animation3d_finalize(void *obj) {
         scene3d_release_ref((void **)&anim->channels[i].target_name);
         free(anim->channels[i].times);
         free(anim->channels[i].values);
+        free(anim->channels[i].in_tangents);
+        free(anim->channels[i].out_tangents);
     }
     free(anim->channels);
     anim->channels = NULL;
@@ -123,19 +125,23 @@ static int node_animation_reserve_channels(rt_node_animation3d *anim, int32_t ne
     return 1;
 }
 
-int64_t rt_node_animation3d_add_channel(void *obj,
-                                        rt_string target_name,
-                                        int64_t path,
-                                        int64_t interpolation,
-                                        int64_t key_count,
-                                        int64_t value_width,
-                                        const double *times,
-                                        const float *values) {
+static int64_t node_animation_add_channel_impl(void *obj,
+                                               rt_string target_name,
+                                               int64_t path,
+                                               int64_t interpolation,
+                                               int64_t key_count,
+                                               int64_t value_width,
+                                               const double *times,
+                                               const float *values,
+                                               const float *in_tangents,
+                                               const float *out_tangents) {
     rt_node_animation3d *anim = (rt_node_animation3d *)obj;
     rt_node_anim_channel3d *channel;
     size_t time_bytes;
     size_t value_count;
     if (!anim || !target_name || key_count <= 0 || value_width <= 0 || !times || !values)
+        return -1;
+    if (interpolation == RT_NODE_ANIM_INTERP_CUBICSPLINE && (!in_tangents || !out_tangents))
         return -1;
     if (path < RT_NODE_ANIM_PATH_TRANSLATION || path > RT_NODE_ANIM_PATH_WEIGHTS)
         return -1;
@@ -150,23 +156,79 @@ int64_t rt_node_animation3d_add_channel(void *obj,
     time_bytes = (size_t)key_count * sizeof(double);
     channel->times = (double *)malloc(time_bytes);
     channel->values = (float *)malloc(value_count * sizeof(float));
-    if (!channel->times || !channel->values) {
+    if (interpolation == RT_NODE_ANIM_INTERP_CUBICSPLINE) {
+        channel->in_tangents = (float *)malloc(value_count * sizeof(float));
+        channel->out_tangents = (float *)malloc(value_count * sizeof(float));
+    }
+    if (!channel->times || !channel->values ||
+        (interpolation == RT_NODE_ANIM_INTERP_CUBICSPLINE &&
+         (!channel->in_tangents || !channel->out_tangents))) {
         free(channel->times);
         free(channel->values);
+        free(channel->in_tangents);
+        free(channel->out_tangents);
         memset(channel, 0, sizeof(*channel));
         return -1;
     }
     memcpy(channel->times, times, time_bytes);
     memcpy(channel->values, values, value_count * sizeof(float));
+    if (interpolation == RT_NODE_ANIM_INTERP_CUBICSPLINE) {
+        memcpy(channel->in_tangents, in_tangents, value_count * sizeof(float));
+        memcpy(channel->out_tangents, out_tangents, value_count * sizeof(float));
+    }
     rt_obj_retain_maybe(target_name);
     channel->target_name = target_name;
     channel->path = (int32_t)path;
-    channel->interpolation =
-        interpolation == RT_NODE_ANIM_INTERP_STEP ? RT_NODE_ANIM_INTERP_STEP
-                                                  : RT_NODE_ANIM_INTERP_LINEAR;
+    if (interpolation == RT_NODE_ANIM_INTERP_CUBICSPLINE)
+        channel->interpolation = RT_NODE_ANIM_INTERP_CUBICSPLINE;
+    else
+        channel->interpolation =
+            interpolation == RT_NODE_ANIM_INTERP_STEP ? RT_NODE_ANIM_INTERP_STEP
+                                                      : RT_NODE_ANIM_INTERP_LINEAR;
     channel->key_count = (int32_t)key_count;
     channel->value_width = (int32_t)value_width;
     return anim->channel_count++;
+}
+
+int64_t rt_node_animation3d_add_channel(void *obj,
+                                        rt_string target_name,
+                                        int64_t path,
+                                        int64_t interpolation,
+                                        int64_t key_count,
+                                        int64_t value_width,
+                                        const double *times,
+                                        const float *values) {
+    return node_animation_add_channel_impl(obj,
+                                           target_name,
+                                           path,
+                                           interpolation,
+                                           key_count,
+                                           value_width,
+                                           times,
+                                           values,
+                                           NULL,
+                                           NULL);
+}
+
+int64_t rt_node_animation3d_add_cubic_channel(void *obj,
+                                              rt_string target_name,
+                                              int64_t path,
+                                              int64_t key_count,
+                                              int64_t value_width,
+                                              const double *times,
+                                              const float *values,
+                                              const float *in_tangents,
+                                              const float *out_tangents) {
+    return node_animation_add_channel_impl(obj,
+                                           target_name,
+                                           path,
+                                           RT_NODE_ANIM_INTERP_CUBICSPLINE,
+                                           key_count,
+                                           value_width,
+                                           times,
+                                           values,
+                                           in_tangents,
+                                           out_tangents);
 }
 
 static void rt_node_animator3d_finalize(void *obj) {
@@ -522,6 +584,60 @@ static void mark_dirty(rt_scene_node3d *node) {
 
 static rt_scene_node3d *find_by_name(rt_scene_node3d *node, const char *target);
 
+static void node_anim_normalize_quat(float *q) {
+    float len;
+    if (!q)
+        return;
+    len = sqrtf(q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3]);
+    if (len > 1e-8f) {
+        q[0] /= len;
+        q[1] /= len;
+        q[2] /= len;
+        q[3] /= len;
+    } else {
+        q[0] = 0.0f;
+        q[1] = 0.0f;
+        q[2] = 0.0f;
+        q[3] = 1.0f;
+    }
+}
+
+static void node_anim_slerp_quat(const float *a, const float *b, double alpha, float *out) {
+    float q0[4];
+    float q1[4];
+    double dot;
+    if (!a || !b || !out)
+        return;
+    memcpy(q0, a, sizeof(q0));
+    memcpy(q1, b, sizeof(q1));
+    node_anim_normalize_quat(q0);
+    node_anim_normalize_quat(q1);
+    dot = (double)q0[0] * q1[0] + (double)q0[1] * q1[1] + (double)q0[2] * q1[2] +
+          (double)q0[3] * q1[3];
+    if (dot < 0.0) {
+        dot = -dot;
+        for (int i = 0; i < 4; i++)
+            q1[i] = -q1[i];
+    }
+    if (dot > 0.9995) {
+        for (int i = 0; i < 4; i++)
+            out[i] = (float)((double)q0[i] + ((double)q1[i] - (double)q0[i]) * alpha);
+        node_anim_normalize_quat(out);
+        return;
+    }
+    {
+        double theta0 = acos(dot);
+        double theta = theta0 * alpha;
+        double sin_theta = sin(theta);
+        double sin_theta0 = sin(theta0);
+        double s0 = cos(theta) - dot * sin_theta / sin_theta0;
+        double s1 = sin_theta / sin_theta0;
+        for (int i = 0; i < 4; i++)
+            out[i] = (float)(s0 * q0[i] + s1 * q1[i]);
+        node_anim_normalize_quat(out);
+    }
+}
+
 static void node_anim_sample_channel(const rt_node_anim_channel3d *channel,
                                      double time,
                                      float *out_values) {
@@ -555,6 +671,43 @@ static void node_anim_sample_channel(const rt_node_anim_channel3d *channel,
     t1 = channel->times[hi];
     alpha = (t1 > t0 && channel->interpolation != RT_NODE_ANIM_INTERP_STEP) ? (time - t0) / (t1 - t0)
                                                                             : 0.0;
+    if (alpha < 0.0)
+        alpha = 0.0;
+    else if (alpha > 1.0)
+        alpha = 1.0;
+    if (channel->interpolation == RT_NODE_ANIM_INTERP_STEP) {
+        memcpy(out_values,
+               &channel->values[(size_t)lo * (size_t)channel->value_width],
+               (size_t)channel->value_width * sizeof(float));
+        return;
+    }
+    if (channel->interpolation == RT_NODE_ANIM_INTERP_CUBICSPLINE && channel->in_tangents &&
+        channel->out_tangents) {
+        double dt = t1 - t0;
+        double u2 = alpha * alpha;
+        double u3 = u2 * alpha;
+        double h00 = 2.0 * u3 - 3.0 * u2 + 1.0;
+        double h10 = u3 - 2.0 * u2 + alpha;
+        double h01 = -2.0 * u3 + 3.0 * u2;
+        double h11 = u3 - u2;
+        for (int32_t i = 0; i < channel->value_width; i++) {
+            size_t ai = (size_t)lo * (size_t)channel->value_width + (size_t)i;
+            size_t bi = (size_t)hi * (size_t)channel->value_width + (size_t)i;
+            out_values[i] = (float)(h00 * channel->values[ai] +
+                                    h10 * dt * channel->out_tangents[ai] +
+                                    h01 * channel->values[bi] +
+                                    h11 * dt * channel->in_tangents[bi]);
+        }
+        if (channel->path == RT_NODE_ANIM_PATH_ROTATION && channel->value_width >= 4)
+            node_anim_normalize_quat(out_values);
+        return;
+    }
+    if (channel->path == RT_NODE_ANIM_PATH_ROTATION && channel->value_width >= 4) {
+        const float *a = &channel->values[(size_t)lo * (size_t)channel->value_width];
+        const float *b = &channel->values[(size_t)hi * (size_t)channel->value_width];
+        node_anim_slerp_quat(a, b, alpha, out_values);
+        return;
+    }
     for (int32_t i = 0; i < channel->value_width; i++) {
         float a = channel->values[(size_t)lo * (size_t)channel->value_width + (size_t)i];
         float b = channel->values[(size_t)hi * (size_t)channel->value_width + (size_t)i];
@@ -929,6 +1082,70 @@ static void scene_world_point(const double *world_matrix, const float local[3], 
                      world_matrix[10] * (double)local[2] + world_matrix[11]);
 }
 
+static void scene_normalize_f32_vec3(float v[3], float fallback_x, float fallback_y, float fallback_z) {
+    float len;
+    if (!v)
+        return;
+    len = sqrtf(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
+    if (!isfinite(len) || len <= 1e-8f) {
+        v[0] = fallback_x;
+        v[1] = fallback_y;
+        v[2] = fallback_z;
+        return;
+    }
+    v[0] /= len;
+    v[1] /= len;
+    v[2] /= len;
+}
+
+/// @brief Transform a node-attached light into world space for the current draw snapshot.
+static void scene_transform_node_light(rt_scene_node3d *node, const rt_light3d *src, rt_light3d *dst) {
+    float local_pos[3];
+    float world_pos[3];
+    float world_dir[3];
+    if (!node || !src || !dst)
+        return;
+    recompute_world_matrix(node);
+    memcpy(dst, src, sizeof(*dst));
+    local_pos[0] = (float)src->position[0];
+    local_pos[1] = (float)src->position[1];
+    local_pos[2] = (float)src->position[2];
+    scene_world_point(node->world_matrix, local_pos, world_pos);
+    dst->position[0] = world_pos[0];
+    dst->position[1] = world_pos[1];
+    dst->position[2] = world_pos[2];
+
+    world_dir[0] = (float)(node->world_matrix[0] * src->direction[0] +
+                           node->world_matrix[1] * src->direction[1] +
+                           node->world_matrix[2] * src->direction[2]);
+    world_dir[1] = (float)(node->world_matrix[4] * src->direction[0] +
+                           node->world_matrix[5] * src->direction[1] +
+                           node->world_matrix[6] * src->direction[2]);
+    world_dir[2] = (float)(node->world_matrix[8] * src->direction[0] +
+                           node->world_matrix[9] * src->direction[1] +
+                           node->world_matrix[10] * src->direction[2]);
+    scene_normalize_f32_vec3(world_dir, 0.0f, 0.0f, -1.0f);
+    dst->direction[0] = world_dir[0];
+    dst->direction[1] = world_dir[1];
+    dst->direction[2] = world_dir[2];
+}
+
+static void scene_collect_node_lights(rt_scene_node3d *node,
+                                      rt_light3d *storage,
+                                      rt_light3d **out_lights,
+                                      int32_t *io_count) {
+    if (!node || !storage || !out_lights || !io_count || !node->visible)
+        return;
+    if (node->light && *io_count < VGFX3D_MAX_LIGHTS) {
+        int32_t index = *io_count;
+        scene_transform_node_light(node, (const rt_light3d *)node->light, &storage[index]);
+        out_lights[index] = &storage[index];
+        *io_count = index + 1;
+    }
+    for (int32_t i = 0; i < node->child_count; i++)
+        scene_collect_node_lights(node->children[i], storage, out_lights, io_count);
+}
+
 /// @brief Initialise a min/max pair so subsequent point inserts grow a valid AABB.
 static void scene_bounds_reset(float out_min[3], float out_max[3]) {
     if (out_min) {
@@ -1162,6 +1379,7 @@ static void rt_scene_node3d_finalize(void *obj) {
     node->lod_capacity = 0;
     scene3d_release_ref(&node->mesh);
     scene3d_release_ref(&node->material);
+    scene3d_release_ref(&node->light);
     scene3d_release_ref(&node->bound_body);
     scene3d_release_ref(&node->bound_animator);
     scene3d_release_ref(&node->bound_node_animator);
@@ -1205,6 +1423,7 @@ void *rt_scene_node3d_new(void) {
 
     node->mesh = NULL;
     node->material = NULL;
+    node->light = NULL;
     node->bound_body = NULL;
     node->bound_animator = NULL;
     node->bound_node_animator = NULL;
@@ -1453,6 +1672,23 @@ void *rt_scene_node3d_get_material(void *obj) {
     return obj ? ((rt_scene_node3d *)obj)->material : NULL;
 }
 
+/// @brief Attach a Light3D to this node; Scene3D.Draw transforms it by the node world pose.
+void rt_scene_node3d_set_light(void *obj, void *light) {
+    if (!obj)
+        return;
+    rt_scene_node3d *node = (rt_scene_node3d *)obj;
+    if (node->light == light)
+        return;
+    rt_obj_retain_maybe(light);
+    scene3d_release_ref(&node->light);
+    node->light = light;
+}
+
+/// @brief Currently attached Light3D handle (NULL if this node has no imported/local light).
+void *rt_scene_node3d_get_light(void *obj) {
+    return obj ? ((rt_scene_node3d *)obj)->light : NULL;
+}
+
 /// @brief Toggle whether this node participates in rendering.
 void rt_scene_node3d_set_visible(void *obj, int8_t visible) {
     if (obj)
@@ -1689,6 +1925,45 @@ static void mat4_d2f_local(const double *src, float *dst) {
         dst[i] = (float)src[i];
 }
 
+static double scene3d_active_output_aspect(const rt_canvas3d *canvas, const rt_camera3d *cam) {
+    int32_t w = 0;
+    int32_t h = 0;
+    if (canvas) {
+        if (canvas->render_target) {
+            w = canvas->render_target->width;
+            h = canvas->render_target->height;
+        } else {
+            w = canvas->width;
+            h = canvas->height;
+        }
+    }
+    if (w > 0 && h > 0)
+        return (double)w / (double)h;
+    return cam ? cam->aspect : 1.0;
+}
+
+static void scene3d_build_culling_vp(rt_canvas3d *canvas, rt_camera3d *cam, float *vp) {
+    float vf[16];
+    float pf[16];
+
+    if (!vp)
+        return;
+    if (canvas && canvas->in_frame && !canvas->frame_is_2d) {
+        memcpy(vp, canvas->cached_vp, sizeof(canvas->cached_vp));
+        return;
+    }
+    memset(vp, 0, sizeof(float) * 16);
+    if (!cam)
+        return;
+
+    mat4_d2f_local(cam->view, vf);
+    rt_camera3d_get_render_projection(cam, scene3d_active_output_aspect(canvas, cam), pf);
+    for (int r = 0; r < 4; r++)
+        for (int c = 0; c < 4; c++)
+            vp[r * 4 + c] = pf[r * 4 + 0] * vf[0 * 4 + c] + pf[r * 4 + 1] * vf[1 * 4 + c] +
+                            pf[r * 4 + 2] * vf[2 * 4 + c] + pf[r * 4 + 3] * vf[3 * 4 + c];
+}
+
 /// @brief Traverse the scene and submit visible nodes for rendering.
 /// @details Builds the view-projection matrix from the camera, extracts the
 ///   six frustum planes, then recursively draws the scene tree. Nodes whose
@@ -1706,21 +1981,15 @@ void rt_scene3d_draw(void *obj, void *canvas3d, void *camera) {
     rt_canvas3d *canvas = (rt_canvas3d *)canvas3d;
     rt_camera3d *cam = (rt_camera3d *)camera;
     int8_t started_frame = 0;
-
-    /* Build VP matrix and extract frustum planes */
-    float vf[16], pf[16], vp[16];
-    mat4_d2f_local(cam->view, vf);
-    mat4_d2f_local(cam->projection, pf);
-    /* VP = P * V (row-major) */
-    for (int r = 0; r < 4; r++)
-        for (int c = 0; c < 4; c++)
-            vp[r * 4 + c] = pf[r * 4 + 0] * vf[0 * 4 + c] + pf[r * 4 + 1] * vf[1 * 4 + c] +
-                            pf[r * 4 + 2] * vf[2 * 4 + c] + pf[r * 4 + 3] * vf[3 * 4 + c];
-
+    rt_light3d scene_light_storage[VGFX3D_MAX_LIGHTS];
+    rt_light3d *scene_light_ptrs[VGFX3D_MAX_LIGHTS];
+    rt_light3d *prev_scene_lights[VGFX3D_MAX_LIGHTS];
+    int32_t scene_light_count = 0;
+    int32_t prev_scene_light_count;
+    float vp[16];
     vgfx3d_frustum_t frustum;
-    vgfx3d_frustum_extract(&frustum, vp);
-
     int32_t culled = 0;
+
     if (canvas->in_frame) {
         if (canvas->frame_is_2d) {
             rt_trap("Scene3D.Draw: cannot draw a 3D scene during Begin2D/End");
@@ -1730,10 +1999,22 @@ void rt_scene3d_draw(void *obj, void *canvas3d, void *camera) {
         rt_canvas3d_begin(canvas3d, camera);
         started_frame = 1;
     }
+    scene3d_build_culling_vp(canvas, cam, vp);
+    vgfx3d_frustum_extract(&frustum, vp);
+
     float cam_pos[3] = {(float)cam->eye[0], (float)cam->eye[1], (float)cam->eye[2]};
+    prev_scene_light_count = canvas->scene_light_count;
+    memcpy(prev_scene_lights, canvas->scene_lights, sizeof(prev_scene_lights));
+    memset(scene_light_ptrs, 0, sizeof(scene_light_ptrs));
+    scene_collect_node_lights(s->root, scene_light_storage, scene_light_ptrs, &scene_light_count);
+    canvas->scene_light_count = scene_light_count;
+    memset(canvas->scene_lights, 0, sizeof(canvas->scene_lights));
+    memcpy(canvas->scene_lights, scene_light_ptrs, (size_t)scene_light_count * sizeof(scene_light_ptrs[0]));
     draw_node(s->root, canvas3d, &frustum, &culled, cam_pos, NULL);
     if (started_frame)
         rt_canvas3d_end(canvas3d);
+    canvas->scene_light_count = prev_scene_light_count;
+    memcpy(canvas->scene_lights, prev_scene_lights, sizeof(prev_scene_lights));
     s->last_culled_count = culled;
 }
 

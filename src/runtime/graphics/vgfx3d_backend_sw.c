@@ -2221,6 +2221,7 @@ static void sw_clear(void *ctx_ptr, vgfx_window_t win, float r, float g, float b
         int32_t total = rt->width * rt->height;
         for (int32_t i = 0; i < total; i++)
             rt->depth_buf[i] = FLT_MAX;
+        rt->hdr_color_valid = 0;
     } else {
         vgfx_framebuffer_t fb;
         if (vgfx_get_framebuffer(win, &fb)) {
@@ -2303,6 +2304,7 @@ static void sw_submit_draw(void *ctx_ptr,
         out_w = rt->width;
         out_h = rt->height;
         out_stride = rt->stride;
+        rt->hdr_color_valid = 0;
     } else {
         vgfx_framebuffer_t fb;
         if (!vgfx_get_framebuffer(win, &fb))

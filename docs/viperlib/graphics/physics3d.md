@@ -69,7 +69,8 @@ and joint integration.
 - Query `mask` uses the same layer bits as `Physics3DBody.CollisionLayer`. A mask of `0` matches any layer.
 - Static bodies are immovable. Kinematic bodies move from explicit velocity but do not
   receive gravity or force integration.
-- The runtime currently supports up to 256 bodies per world.
+- World storage for bodies, contacts, contact events, and joints grows on demand from production-sized initial capacities. Query result lists remain bounded for predictable allocation behavior.
+- Collision detection uses a sweep-and-prune broadphase before shape-specific narrow-phase tests.
 
 ---
 
@@ -226,8 +227,8 @@ sleeping, and optional CCD.
 | `Orientation` | Object (`Quat`) | Read | World orientation quaternion |
 | `Velocity` | Object (`Vec3`) | Read | Linear velocity |
 | `AngularVelocity` | Object (`Vec3`) | Read | Angular velocity in radians per second |
-| `Restitution` | Double | Read/Write | Bounciness, typically `0.0` to `1.0` |
-| `Friction` | Double | Read/Write | Surface friction |
+| `Restitution` | Double | Read/Write | Bounciness, clamped to `0.0` to `1.0` |
+| `Friction` | Double | Read/Write | Surface friction, clamped to finite non-negative values |
 | `LinearDamping` | Double | Read/Write | Per-step damping applied to linear motion |
 | `AngularDamping` | Double | Read/Write | Per-step damping applied to spin |
 | `CollisionLayer` | Integer | Read/Write | Layer bitmask for this body |

@@ -570,6 +570,12 @@ static NSString *metal_shader_source =
      "    return F0 + (1.0 - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);\n"
      "}\n"
      "\n"
+     "float3 srgb_to_linear(float3 c) {\n"
+     "    float3 low = c / 12.92;\n"
+     "    float3 high = pow((c + float3(0.055)) / 1.055, float3(2.4));\n"
+     "    return mix(low, high, step(float3(0.04045), c));\n"
+     "}\n"
+     "\n"
      "float3 env_sample(texturecube<float> envTex,\n"
      "                  sampler envSampler,\n"
      "                  float3 dir,\n"
@@ -644,6 +650,7 @@ static NSString *metal_shader_source =
      "    float materialAlpha = material.diffuseColor.a * material.scalars.x;\n"
      "    if (material.flags0.x != 0) {\n"
      "        float4 texSample = diffuseTex.sample(diffuseSampler, material_uv(in, material, 0));\n"
+     "        if (material.pbrFlags.x != 0) texSample.rgb = srgb_to_linear(texSample.rgb);\n"
      "        baseColor *= texSample.rgb;\n"
      "        texAlpha = texSample.a;\n"
      "    }\n"
@@ -682,7 +689,9 @@ static NSString *metal_shader_source =
      "    }\n"
      "    float3 emissive = material.emissiveColor.rgb * material.pbrScalars0.w;\n"
      "    if (material.flags1.x != 0) {\n"
-     "        emissive *= emissiveTex.sample(emissiveSampler, material_uv(in, material, 3)).rgb;\n"
+     "        float3 emissiveSample = emissiveTex.sample(emissiveSampler, material_uv(in, material, 3)).rgb;\n"
+     "        if (material.pbrFlags.x != 0) emissiveSample = srgb_to_linear(emissiveSample);\n"
+     "        emissive *= emissiveSample;\n"
      "    }\n"
      "    float4 metallicRoughnessSample = float4(1.0);\n"
      "    float envRoughness = clamp(material.pbrScalars0.y, 0.0, 1.0);\n"
@@ -969,7 +978,8 @@ static int metal_copy_texture_to_rgba(VGFXMetalContext *ctx,
                                       uint8_t *dst_rgba,
                                       int32_t w,
                                       int32_t h,
-                                      int32_t stride);
+                                      int32_t stride,
+                                      float *dst_hdr_rgba);
 static void metal_update_layer_size(VGFXMetalContext *ctx);
 static int metal_capture_current_drawable_to_display_texture(VGFXMetalContext *ctx);
 static id<MTLTexture> metal_encode_postfx_if_needed(
@@ -1170,6 +1180,8 @@ static int metal_sync_render_target_color(void *userdata, vgfx3d_rendertarget_t 
         return 0;
     if (!vgfx3d_rendertarget_ensure_color(target))
         return 0;
+    if (vgfx3d_rendertarget_is_hdr(target) && !vgfx3d_rendertarget_ensure_hdr_color(target))
+        return 0;
     entry = metal_lookup_render_target_entry(ctx, target);
     if (!entry || !entry.colorTexture)
         return 0;
@@ -1178,8 +1190,21 @@ static int metal_sync_render_target_color(void *userdata, vgfx3d_rendertarget_t 
         entry.pendingCommandBuffer = nil;
     }
     entry.lastUsedFrame = ctx.frameSerial;
-    return metal_copy_texture_to_rgba(
-        ctx, entry.colorTexture, target->color_buf, target->width, target->height, target->stride);
+    {
+        int ok = metal_copy_texture_to_rgba(ctx,
+                                            entry.colorTexture,
+                                            target->color_buf,
+                                            target->width,
+                                            target->height,
+                                            target->stride,
+                                            vgfx3d_rendertarget_is_hdr(target)
+                                                ? target->hdr_color_buf
+                                                : NULL);
+        target->hdr_color_valid = (int8_t)(ok && vgfx3d_rendertarget_is_hdr(target));
+        if (ok)
+            target->color_dirty = 0;
+        return ok;
+    }
 }
 
 static MTLRenderPassDescriptor *metal_make_scene_pass_descriptor(VGFXMetalContext *ctx,
@@ -1407,7 +1432,8 @@ static int metal_copy_texture_to_rgba(VGFXMetalContext *ctx,
                                       uint8_t *dst_rgba,
                                       int32_t w,
                                       int32_t h,
-                                      int32_t stride) {
+                                      int32_t stride,
+                                      float *dst_hdr_rgba) {
     int32_t copy_w;
     int32_t copy_h;
     MTLPixelFormat pixel_format;
@@ -1484,6 +1510,10 @@ static int metal_copy_texture_to_rgba(VGFXMetalContext *ctx,
             return 0;
         vgfx3d_copy_linear_rgba16f_to_rgba8(
             dst_rgba, stride, copy_w, copy_h, (const uint16_t *)src, (int32_t)bytes_per_row);
+        if (dst_hdr_rgba) {
+            vgfx3d_copy_linear_rgba16f_to_rgba32f(
+                dst_hdr_rgba, w * 4, copy_w, copy_h, (const uint16_t *)src, (int32_t)bytes_per_row);
+        }
         return 1;
     }
 
@@ -1552,7 +1582,7 @@ static void metal_present_texture_to_framebuffer(VGFXMetalContext *ctx, id<MTLTe
         return;
     if (!vgfx_get_framebuffer(ctx.vgfxWin, &fb))
         return;
-    (void)metal_copy_texture_to_rgba(ctx, texture, fb.pixels, fb.width, fb.height, fb.stride);
+    (void)metal_copy_texture_to_rgba(ctx, texture, fb.pixels, fb.width, fb.height, fb.stride, NULL);
     ctx.displayTexture = texture;
 }
 
@@ -3131,6 +3161,7 @@ static void metal_end_frame(void *ctx_ptr) {
             ctx.rttTarget->sync_color = metal_sync_render_target_color;
             ctx.rttTarget->sync_color_userdata = (__bridge void *)ctx;
             ctx.rttTarget->color_dirty = 1;
+            ctx.rttTarget->hdr_color_valid = 0;
         }
 
         ctx.encoder = nil;
@@ -3219,7 +3250,7 @@ static int metal_readback_rgba(
         }
         texture = metal_active_readback_texture(ctx);
         {
-            const int ok = metal_copy_texture_to_rgba(ctx, texture, dst_rgba, w, h, stride);
+            const int ok = metal_copy_texture_to_rgba(ctx, texture, dst_rgba, w, h, stride, NULL);
             vgfx3d_postfx_chain_free(&chain_copy);
             return ok;
         }

@@ -111,6 +111,8 @@ typedef struct {
 int vgfx3d_postfx_get_snapshot(void *postfx, vgfx3d_postfx_snapshot_t *out);
 /* Export the ordered PostFX chain for GPU backends. Reuses `out` storage when possible. */
 int vgfx3d_postfx_get_chain(void *postfx, vgfx3d_postfx_chain_t *out);
+/* Return non-zero if the chain contains effects that require scene depth/motion GPU buffers. */
+int vgfx3d_postfx_requires_gpu_scene_buffers(void *postfx);
 /* Deep-copy one exported PostFX chain into another. */
 int vgfx3d_postfx_chain_copy(vgfx3d_postfx_chain_t *dst, const vgfx3d_postfx_chain_t *src);
 /* Reset an exported PostFX chain to empty while preserving its allocation. */

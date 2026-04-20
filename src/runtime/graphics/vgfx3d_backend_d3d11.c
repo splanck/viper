@@ -464,6 +464,12 @@ static const char *d3d11_shader_source =
     "    return F0 + (1.0 - F0) * pow(saturate(1.0 - cosTheta), 5.0);\n"
     "}\n"
     "\n"
+    "float3 srgbToLinear(float3 c) {\n"
+    "    float3 low = c / 12.92;\n"
+    "    float3 high = pow((c + 0.055) / 1.055, float3(2.4, 2.4, 2.4));\n"
+    "    return lerp(low, high, step(float3(0.04045, 0.04045, 0.04045), c));\n"
+    "}\n"
+    "\n"
     "PS_OUTPUT PSMain(PS_INPUT input) {\n"
     "    PS_OUTPUT output;\n"
     "    float3 baseColor = diffuseColor.rgb * input.color.rgb;\n"
@@ -471,6 +477,7 @@ static const char *d3d11_shader_source =
     "    float materialAlpha = diffuseColor.a * scalars.x * input.color.a;\n"
     "    if (flags0.x != 0) {\n"
     "        float4 texSample = diffuseTex.Sample(diffuseSampler, materialUv(input, 0));\n"
+    "        if (pbrFlags.x != 0) texSample.rgb = srgbToLinear(texSample.rgb);\n"
     "        baseColor *= texSample.rgb;\n"
     "        texAlpha = texSample.a;\n"
     "    }\n"
@@ -506,8 +513,11 @@ static const char *d3d11_shader_source =
     "        ? abs(dot(input.worldPos - cameraPosition.xyz, cameraForward))\n"
     "        : length(cameraToWorld);\n"
     "    float3 emissive = emissiveColor.rgb * pbrScalars0.w;\n"
-    "    if (flags1.x != 0)\n"
-    "        emissive *= emissiveTex.Sample(emissiveSampler, materialUv(input, 3)).rgb;\n"
+    "    if (flags1.x != 0) {\n"
+    "        float3 emissiveSample = emissiveTex.Sample(emissiveSampler, materialUv(input, 3)).rgb;\n"
+    "        if (pbrFlags.x != 0) emissiveSample = srgbToLinear(emissiveSample);\n"
+    "        emissive *= emissiveSample;\n"
+    "    }\n"
     "    float finalAlpha = materialAlpha * texAlpha;\n"
     "    if (pbrFlags.y == 1) {\n"
     "        if (finalAlpha < pbrScalars1.y)\n"
@@ -2401,13 +2411,14 @@ static int d3d11_sync_render_target_color(void *ctx_ptr, vgfx3d_rendertarget_t *
     d3d11_context_t *ctx = (d3d11_context_t *)ctx_ptr;
     D3D11_MAPPED_SUBRESOURCE mapped;
     HRESULT hr;
-    int32_t row_bytes;
 
     if (!ctx || !target || !ctx->rtt_color_tex || !ctx->rtt_staging || ctx->rtt_target != target ||
         target->width <= 0 || target->height <= 0) {
         return 0;
     }
     if (!vgfx3d_rendertarget_ensure_color(target))
+        return 0;
+    if (vgfx3d_rendertarget_is_hdr(target) && !vgfx3d_rendertarget_ensure_hdr_color(target))
         return 0;
 
     ID3D11DeviceContext_CopyResource(
@@ -2419,11 +2430,32 @@ static int d3d11_sync_render_target_color(void *ctx_ptr, vgfx3d_rendertarget_t *
         return 0;
     }
 
-    row_bytes = target->stride;
-    for (int32_t y = 0; y < target->height; y++) {
-        memcpy(&target->color_buf[(size_t)y * (size_t)row_bytes],
-               (const uint8_t *)mapped.pData + (size_t)y * mapped.RowPitch,
-               (size_t)row_bytes);
+    if (vgfx3d_rendertarget_is_hdr(target)) {
+        if (mapped.RowPitch > (UINT)INT32_MAX) {
+            ID3D11DeviceContext_Unmap(ctx->ctx, (ID3D11Resource *)ctx->rtt_staging, 0);
+            return 0;
+        }
+        vgfx3d_copy_linear_rgba16f_to_rgba8(target->color_buf,
+                                            target->stride,
+                                            target->width,
+                                            target->height,
+                                            (const uint16_t *)mapped.pData,
+                                            (int32_t)mapped.RowPitch);
+        vgfx3d_copy_linear_rgba16f_to_rgba32f(target->hdr_color_buf,
+                                             target->width * 4,
+                                             target->width,
+                                             target->height,
+                                             (const uint16_t *)mapped.pData,
+                                             (int32_t)mapped.RowPitch);
+        target->hdr_color_valid = 1;
+    } else {
+        int32_t row_bytes = target->stride;
+        for (int32_t y = 0; y < target->height; y++) {
+            memcpy(&target->color_buf[(size_t)y * (size_t)row_bytes],
+                   (const uint8_t *)mapped.pData + (size_t)y * mapped.RowPitch,
+                   (size_t)row_bytes);
+        }
+        target->hdr_color_valid = 0;
     }
     ID3D11DeviceContext_Unmap(ctx->ctx, (ID3D11Resource *)ctx->rtt_staging, 0);
     target->color_dirty = 0;
@@ -4330,6 +4362,7 @@ static void d3d11_end_frame(void *ctx_ptr) {
     ctx->rtt_target->sync_color = d3d11_sync_render_target_color;
     ctx->rtt_target->sync_color_userdata = ctx;
     ctx->rtt_target->color_dirty = 1;
+    ctx->rtt_target->hdr_color_valid = 0;
 }
 
 /// @brief Backend `resize` — handle window-size changes.

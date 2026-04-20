@@ -15,6 +15,7 @@
 #include "rt_morphtarget3d.h"
 #include "rt_pixels.h"
 #include "rt_scene3d.h"
+#include "rt_scene3d_internal.h"
 #include "rt_skeleton3d_internal.h"
 #include "rt_string.h"
 #include <cmath>
@@ -606,6 +607,104 @@ static void test_gltf_imports_extended_vertex_attributes_and_triangle_strips() {
                 "GLTF.Load preserves triangle-strip winding during triangulation");
 }
 
+static void test_gltf_reduces_secondary_joint_sets_to_top_four_influences() {
+    const char *gltf_path = "/tmp/viper_gltf_joints1.gltf";
+    std::vector<uint8_t> gltf_buffer;
+    auto align4 = [&]() {
+        while ((gltf_buffer.size() & 3u) != 0)
+            gltf_buffer.push_back(0);
+    };
+    auto append_float_array = [&](const float *values, size_t count) -> size_t {
+        align4();
+        size_t offset = gltf_buffer.size();
+        for (size_t i = 0; i < count; i++)
+            append_bytes(gltf_buffer, values[i]);
+        return offset;
+    };
+    auto append_u8_array = [&](const uint8_t *values, size_t count) -> size_t {
+        align4();
+        size_t offset = gltf_buffer.size();
+        for (size_t i = 0; i < count; i++)
+            append_bytes(gltf_buffer, values[i]);
+        return offset;
+    };
+    auto append_u16_array = [&](const uint16_t *values, size_t count) -> size_t {
+        align4();
+        size_t offset = gltf_buffer.size();
+        for (size_t i = 0; i < count; i++)
+            append_bytes(gltf_buffer, values[i]);
+        return offset;
+    };
+
+    static const float positions[9] = {0.0f, 0.0f, 0.0f, 1.0f, 0.0f,
+                                       0.0f, 0.0f, 1.0f, 0.0f};
+    static const uint8_t joints0[12] = {1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4};
+    static const float weights0[12] = {0.10f, 0.20f, 0.05f, 0.05f,
+                                       0.10f, 0.20f, 0.05f, 0.05f,
+                                       0.10f, 0.20f, 0.05f, 0.05f};
+    static const uint8_t joints1[12] = {5, 6, 7, 8, 5, 6, 7, 8, 5, 6, 7, 8};
+    static const float weights1[12] = {0.30f, 0.15f, 0.10f, 0.05f,
+                                       0.30f, 0.15f, 0.10f, 0.05f,
+                                       0.30f, 0.15f, 0.10f, 0.05f};
+    static const uint16_t indices[3] = {0, 1, 2};
+
+    size_t pos_off = append_float_array(positions, 9);
+    size_t joints0_off = append_u8_array(joints0, 12);
+    size_t weights0_off = append_float_array(weights0, 12);
+    size_t joints1_off = append_u8_array(joints1, 12);
+    size_t weights1_off = append_float_array(weights1, 12);
+    size_t idx_off = append_u16_array(indices, 3);
+    std::string buffer_b64 = base64_encode(gltf_buffer.data(), gltf_buffer.size());
+
+    std::string gltf_json =
+        "{\"asset\":{\"version\":\"2.0\"},"
+        "\"buffers\":[{\"uri\":\"data:application/octet-stream;base64," +
+        buffer_b64 + "\",\"byteLength\":" + std::to_string(gltf_buffer.size()) + "}],"
+        "\"bufferViews\":["
+        "{\"buffer\":0,\"byteOffset\":" +
+        std::to_string(pos_off) + ",\"byteLength\":36},"
+        "{\"buffer\":0,\"byteOffset\":" +
+        std::to_string(joints0_off) + ",\"byteLength\":12},"
+        "{\"buffer\":0,\"byteOffset\":" +
+        std::to_string(weights0_off) + ",\"byteLength\":48},"
+        "{\"buffer\":0,\"byteOffset\":" +
+        std::to_string(joints1_off) + ",\"byteLength\":12},"
+        "{\"buffer\":0,\"byteOffset\":" +
+        std::to_string(weights1_off) + ",\"byteLength\":48},"
+        "{\"buffer\":0,\"byteOffset\":" +
+        std::to_string(idx_off) + ",\"byteLength\":6}"
+        "],"
+        "\"accessors\":["
+        "{\"bufferView\":0,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\"},"
+        "{\"bufferView\":1,\"componentType\":5121,\"count\":3,\"type\":\"VEC4\"},"
+        "{\"bufferView\":2,\"componentType\":5126,\"count\":3,\"type\":\"VEC4\"},"
+        "{\"bufferView\":3,\"componentType\":5121,\"count\":3,\"type\":\"VEC4\"},"
+        "{\"bufferView\":4,\"componentType\":5126,\"count\":3,\"type\":\"VEC4\"},"
+        "{\"bufferView\":5,\"componentType\":5123,\"count\":3,\"type\":\"SCALAR\"}"
+        "],"
+        "\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0,\"JOINTS_0\":1,"
+        "\"WEIGHTS_0\":2,\"JOINTS_1\":3,\"WEIGHTS_1\":4},\"indices\":5}]}]"
+        "}";
+    EXPECT_TRUE(write_text_file(gltf_path, gltf_json), "JOINTS_1 glTF fixture can be created");
+    void *asset = rt_gltf_load(rt_const_cstr(gltf_path));
+    EXPECT_TRUE(asset != nullptr, "GLTF.Load parses secondary joint sets");
+    if (!asset)
+        return;
+    auto *mesh = static_cast<rt_mesh3d *>(rt_gltf_get_mesh(asset, 0));
+    EXPECT_TRUE(mesh != nullptr, "GLTF.Load exposes the JOINTS_1 mesh");
+    if (!mesh)
+        return;
+    EXPECT_TRUE(mesh->vertices[0].bone_indices[0] == 1 && mesh->vertices[0].bone_indices[1] == 2 &&
+                    mesh->vertices[0].bone_indices[2] == 5 &&
+                    mesh->vertices[0].bone_indices[3] == 6,
+                "GLTF.Load keeps the four strongest influences across JOINTS_0 and JOINTS_1");
+    EXPECT_NEAR(mesh->vertices[0].bone_weights[0], 0.10 / 0.75, 0.001,
+                "GLTF.Load renormalizes reduced JOINTS_1 influence weights");
+    EXPECT_NEAR(mesh->vertices[0].bone_weights[2], 0.30 / 0.75, 0.001,
+                "GLTF.Load keeps the strongest secondary influence");
+    EXPECT_TRUE(mesh->bone_count == 7, "GLTF.Load includes retained JOINTS_1 palette entries");
+}
+
 static void test_gltf_applies_matrix_nodes_in_column_major_order() {
     const char *gltf_path = "/tmp/viper_gltf_matrix_node.gltf";
     std::vector<uint8_t> gltf_buffer;
@@ -1018,12 +1117,15 @@ static void test_gltf_imports_morph_targets() {
                                              0.0f, 0.0f, -0.25f, 0.0f};
     static const float morph_normals[9] = {0.0f, 0.0f, 0.0f, 0.0f, 0.1f,
                                            0.0f, 0.0f, 0.0f, -0.1f};
+    static const float morph_tangents[9] = {0.0f, 0.0f, 0.0f, 0.2f, 0.0f,
+                                            0.0f, 0.0f, 0.0f, -0.2f};
     static const uint16_t indices[3] = {0, 1, 2};
 
     size_t pos_off = append_float_array(positions, 9);
     size_t norm_off = append_float_array(normals, 9);
     size_t morph_pos_off = append_float_array(morph_positions, 9);
     size_t morph_norm_off = append_float_array(morph_normals, 9);
+    size_t morph_tangent_off = append_float_array(morph_tangents, 9);
     size_t idx_off = append_u16_array(indices, 3);
     std::string buffer_b64 = base64_encode(gltf_buffer.data(), gltf_buffer.size());
 
@@ -1042,6 +1144,8 @@ static void test_gltf_imports_morph_targets() {
         "{\"buffer\":0,\"byteOffset\":" +
         std::to_string(morph_norm_off) + ",\"byteLength\":36},"
         "{\"buffer\":0,\"byteOffset\":" +
+        std::to_string(morph_tangent_off) + ",\"byteLength\":36},"
+        "{\"buffer\":0,\"byteOffset\":" +
         std::to_string(idx_off) + ",\"byteLength\":6}"
         "],"
         "\"accessors\":["
@@ -1049,11 +1153,12 @@ static void test_gltf_imports_morph_targets() {
         "{\"bufferView\":1,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\"},"
         "{\"bufferView\":2,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\"},"
         "{\"bufferView\":3,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\"},"
-        "{\"bufferView\":4,\"componentType\":5123,\"count\":3,\"type\":\"SCALAR\"}"
+        "{\"bufferView\":4,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\"},"
+        "{\"bufferView\":5,\"componentType\":5123,\"count\":3,\"type\":\"SCALAR\"}"
         "],"
         "\"meshes\":[{\"weights\":[0.25],\"extras\":{\"targetNames\":[\"Smile\"]},"
-        "\"primitives\":[{\"attributes\":{\"POSITION\":0,\"NORMAL\":1},\"indices\":4,"
-        "\"targets\":[{\"POSITION\":2,\"NORMAL\":3}]}]}],"
+        "\"primitives\":[{\"attributes\":{\"POSITION\":0,\"NORMAL\":1},\"indices\":5,"
+        "\"targets\":[{\"POSITION\":2,\"NORMAL\":3,\"TANGENT\":4}]}]}],"
         "\"nodes\":[{\"name\":\"MorphNodeA\",\"mesh\":0,\"weights\":[0.75]},"
         "{\"name\":\"MorphNodeB\",\"mesh\":0,\"weights\":[0.10]}],"
         "\"scenes\":[{\"nodes\":[0,1]}],\"scene\":0"
@@ -1081,6 +1186,8 @@ static void test_gltf_imports_morph_targets() {
 
     EXPECT_TRUE(rt_morphtarget3d_get_shape_count(mesh->morph_targets_ref) == 1,
                 "GLTF.Load imports one blend shape");
+    EXPECT_TRUE(rt_morphtarget3d_has_tangent_deltas(mesh->morph_targets_ref) == 1,
+                "GLTF.Load imports morph tangent deltas");
     EXPECT_NEAR(rt_morphtarget3d_get_weight(mesh->morph_targets_ref, 0),
                 0.25,
                 0.001,
@@ -1319,7 +1426,7 @@ static void test_gltf_preserves_negative_matrix_scale_sign() {
                 "GLTF.Load preserves negative X scale from matrix transforms");
 }
 
-static void test_gltf_skips_skins_over_runtime_bone_limit() {
+static void test_gltf_rejects_skins_over_runtime_bone_limit() {
     const char *gltf_path = "/tmp/viper_gltf_oversized_skin.gltf";
     std::string nodes;
     std::string joints;
@@ -1336,11 +1443,64 @@ static void test_gltf_skips_skins_over_runtime_bone_limit() {
         "]}],\"nodes\":[" + nodes + "],\"scenes\":[{\"nodes\":[0]}],\"scene\":0}";
     EXPECT_TRUE(write_text_file(gltf_path, gltf_json), "Oversized-skin glTF fixture can be created");
     void *asset = rt_gltf_load(rt_const_cstr(gltf_path));
-    EXPECT_TRUE(asset != nullptr, "GLTF.Load parses assets with oversized skins without trapping");
+    EXPECT_TRUE(asset == nullptr,
+                "GLTF.Load rejects skins above the runtime 256-bone palette limit");
+}
+
+static void test_gltf_rejects_unsupported_required_extensions() {
+    const char *gltf_path = "/tmp/viper_gltf_required_extension.gltf";
+    std::string gltf_json =
+        "{\"asset\":{\"version\":\"2.0\"},"
+        "\"extensionsRequired\":[\"KHR_draco_mesh_compression\"],"
+        "\"extensionsUsed\":[\"KHR_draco_mesh_compression\"]}";
+    EXPECT_TRUE(write_text_file(gltf_path, gltf_json),
+                "Required-extension glTF fixture can be created");
+    void *asset = rt_gltf_load(rt_const_cstr(gltf_path));
+    EXPECT_TRUE(asset == nullptr,
+                "GLTF.Load rejects unsupported required extensions instead of rendering fallback data");
+}
+
+static void test_gltf_imports_required_punctual_lights() {
+    const char *gltf_path = "/tmp/viper_gltf_punctual_light.gltf";
+    std::string gltf_json =
+        "{\n"
+        "  \"asset\": {\"version\": \"2.0\"},\n"
+        "  \"extensionsUsed\": [\"KHR_lights_punctual\"],\n"
+        "  \"extensionsRequired\": [\"KHR_lights_punctual\"],\n"
+        "  \"extensions\": {\"KHR_lights_punctual\": {\"lights\": [{\n"
+        "    \"type\": \"spot\",\n"
+        "    \"color\": [0.2, 0.4, 0.6],\n"
+        "    \"intensity\": 7.5,\n"
+        "    \"range\": 5.0,\n"
+        "    \"spot\": {\"innerConeAngle\": 0.1, \"outerConeAngle\": 0.5}\n"
+        "  }]}},\n"
+        "  \"nodes\": [{\"name\": \"lamp\", \"translation\": [1.0, 2.0, 3.0], "
+        "\"extensions\": {\"KHR_lights_punctual\": {\"light\": 0}}}],\n"
+        "  \"scenes\": [{\"nodes\": [0]}],\n"
+        "  \"scene\": 0\n"
+        "}\n";
+    EXPECT_TRUE(write_text_file(gltf_path, gltf_json), "Punctual-light glTF fixture can be created");
+
+    void *asset = rt_gltf_load(rt_const_cstr(gltf_path));
+    EXPECT_TRUE(asset != nullptr, "GLTF.Load accepts required KHR_lights_punctual");
     if (!asset)
         return;
-    EXPECT_TRUE(rt_gltf_skeleton_count(asset) == 0,
-                "GLTF.Load skips skins above the runtime 256-bone palette limit");
+    void *root = rt_gltf_get_scene_root(asset);
+    EXPECT_TRUE(root != nullptr && rt_scene_node3d_child_count(root) == 1,
+                "GLTF.Load builds scene nodes for punctual-light fixtures");
+    if (!root || rt_scene_node3d_child_count(root) != 1)
+        return;
+    void *node = rt_scene_node3d_get_child(root, 0);
+    rt_light3d *light = (rt_light3d *)rt_scene_node3d_get_light(node);
+    EXPECT_TRUE(light != nullptr, "GLTF.Load attaches punctual lights to their nodes");
+    if (!light)
+        return;
+    EXPECT_TRUE(light->type == 3, "GLTF.Load preserves spot-light type");
+    EXPECT_NEAR(light->color[1], 0.4, 0.001, "GLTF.Load preserves light color");
+    EXPECT_NEAR(light->intensity, 7.5, 0.001, "GLTF.Load preserves light intensity");
+    EXPECT_NEAR(light->attenuation, 0.04, 0.001, "GLTF.Load maps range to attenuation");
+    EXPECT_TRUE(light->inner_cos > light->outer_cos,
+                "GLTF.Load stores valid spot inner/outer cone cosines");
 }
 
 static void test_gltf_preserves_primary_texture_sampler_state() {
@@ -1454,6 +1614,7 @@ int main() {
     test_gltf_rejects_out_of_range_indices();
     test_gltf_builds_scene_hierarchy_for_active_scene();
     test_gltf_imports_extended_vertex_attributes_and_triangle_strips();
+    test_gltf_reduces_secondary_joint_sets_to_top_four_influences();
     test_gltf_applies_matrix_nodes_in_column_major_order();
     test_gltf_imports_skins_and_animation_clips();
     test_gltf_splits_animation_clips_per_skin();
@@ -1465,7 +1626,9 @@ int main() {
     test_gltf_uses_texture_texcoord_and_transform();
     test_gltf_imports_material_extensions_supported_by_material3d();
     test_gltf_preserves_negative_matrix_scale_sign();
-    test_gltf_skips_skins_over_runtime_bone_limit();
+    test_gltf_rejects_skins_over_runtime_bone_limit();
+    test_gltf_rejects_unsupported_required_extensions();
+    test_gltf_imports_required_punctual_lights();
     test_gltf_preserves_primary_texture_sampler_state();
     test_gltf_preserves_independent_texture_slot_metadata();
     test_gltf_rejects_invalid_scene_graph_links();

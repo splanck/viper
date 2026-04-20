@@ -264,6 +264,32 @@ void vgfx3d_copy_linear_rgba16f_to_rgba8(uint8_t *dst_rgba,
     }
 }
 
+/// @brief Convert linear RGBA16F rows to linear RGBA32F.
+void vgfx3d_copy_linear_rgba16f_to_rgba32f(float *dst_rgba32f,
+                                           int32_t dst_stride_floats,
+                                           int32_t copy_w,
+                                           int32_t copy_h,
+                                           const uint16_t *src_rgba16f,
+                                           int32_t src_stride_bytes) {
+    if (!dst_rgba32f || !src_rgba16f || dst_stride_floats < copy_w * 4 || copy_w <= 0 ||
+        copy_h <= 0 || src_stride_bytes < copy_w * (int32_t)(sizeof(uint16_t) * 4)) {
+        return;
+    }
+
+    for (int32_t y = 0; y < copy_h; y++) {
+        float *dst_row = dst_rgba32f + (size_t)y * (size_t)dst_stride_floats;
+        const uint16_t *src_row =
+            (const uint16_t *)((const uint8_t *)src_rgba16f + (size_t)y * (size_t)src_stride_bytes);
+        for (int32_t x = 0; x < copy_w; x++) {
+            dst_row[(size_t)x * 4u + 0u] = vgfx3d_half_to_float(src_row[0]);
+            dst_row[(size_t)x * 4u + 1u] = vgfx3d_half_to_float(src_row[1]);
+            dst_row[(size_t)x * 4u + 2u] = vgfx3d_half_to_float(src_row[2]);
+            dst_row[(size_t)x * 4u + 3u] = vgfx3d_half_to_float(src_row[3]);
+            src_row += 4;
+        }
+    }
+}
+
 /// @brief Convert linear RGBA32F rows to displayable RGBA8.
 void vgfx3d_copy_linear_rgba32f_to_rgba8(uint8_t *dst_rgba,
                                          int32_t dst_stride,

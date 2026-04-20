@@ -12,7 +12,7 @@
 //
 // Key invariants:
 //   - CPU readback buffer is always RGBA uint8_t (same format as Pixels)
-//   - GPU backends may store render-target color as RGBA16F for HDR RTTs
+//   - HDR RTT readback also keeps an optional linear RGBA32F CPU mirror
 //   - Depth buffer is float (same as Z-buffer)
 //   - CPU-side color/depth storage is allocated lazily on first CPU use
 //     or when the software backend binds the target.
@@ -69,6 +69,7 @@ static void rt_free(vgfx3d_rendertarget_t *rt) {
     if (!rt)
         return;
     free(rt->color_buf);
+    free(rt->hdr_color_buf);
     free(rt->depth_buf);
     free(rt);
 }

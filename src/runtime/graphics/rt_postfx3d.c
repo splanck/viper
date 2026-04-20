@@ -27,6 +27,7 @@
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
 #include "vgfx.h"
+#include "vgfx3d_backend_utils.h"
 
 #include <math.h>
 #include <stdint.h>
@@ -292,6 +293,20 @@ static int vgfx3d_postfx_fill_effect_snapshot(const postfx_entry_t *e,
 
     out_effect->snapshot = snapshot;
     return 1;
+}
+
+int vgfx3d_postfx_requires_gpu_scene_buffers(void *postfx) {
+    rt_postfx3d *fx = (rt_postfx3d *)postfx;
+    if (!fx || !fx->enabled || fx->effect_count <= 0)
+        return 0;
+    for (int32_t i = 0; i < fx->effect_count; i++) {
+        const postfx_entry_t *e = &fx->effects[i];
+        if (!e->enabled)
+            continue;
+        if (e->type == POSTFX_SSAO || e->type == POSTFX_DOF || e->type == POSTFX_MOTION_BLUR)
+            return 1;
+    }
+    return 0;
 }
 
 /*==========================================================================
@@ -569,32 +584,21 @@ static void apply_vignette(float *buf, int32_t w, int32_t h, float radius, float
  * Apply entire effect chain to a framebuffer
  *=========================================================================*/
 
-/// @brief Run the full effect chain over a framebuffer. Converts the RGBA8 pixels to a
-/// temporary planar-RGB float buffer, applies each enabled effect in insertion order
-/// (skipping SSAO / DOF / motion-blur in the software pipeline because they require
-/// depth-buffer access the CPU fallback doesn't expose), then writes the result back to
-/// the framebuffer with alpha preserved. Failure to allocate the float scratch buffer
-/// leaves the framebuffer untouched.
-static void postfx_apply(rt_postfx3d *fx, uint8_t *pixels, int32_t w, int32_t h, int32_t stride) {
-    if (!fx || !fx->enabled || fx->effect_count == 0 || !pixels)
+static int postfx_chain_has_tonemap(const rt_postfx3d *fx) {
+    if (!fx || !fx->enabled)
+        return 0;
+    for (int32_t i = 0; i < fx->effect_count; i++) {
+        const postfx_entry_t *e = &fx->effects[i];
+        if (e->enabled && e->type == POSTFX_TONEMAP && e->p.tonemap.mode != 0)
+            return 1;
+    }
+    return 0;
+}
+
+static void postfx_apply_float_effects(rt_postfx3d *fx, float *fbuf, int32_t w, int32_t h) {
+    if (!fx || !fx->enabled || fx->effect_count == 0 || !fbuf)
         return;
 
-    /* Convert framebuffer to float RGB for processing */
-    int32_t count = w * h;
-    float *fbuf = (float *)malloc((size_t)count * 3 * sizeof(float));
-    if (!fbuf)
-        return;
-
-    for (int32_t y = 0; y < h; y++)
-        for (int32_t x = 0; x < w; x++) {
-            const uint8_t *src = &pixels[y * stride + x * 4];
-            int32_t di = (y * w + x) * 3;
-            fbuf[di] = (float)src[0] / 255.0f;
-            fbuf[di + 1] = (float)src[1] / 255.0f;
-            fbuf[di + 2] = (float)src[2] / 255.0f;
-        }
-
-    /* Apply each enabled effect in chain order */
     for (int32_t i = 0; i < fx->effect_count; i++) {
         postfx_entry_t *e = &fx->effects[i];
         if (!e->enabled)
@@ -625,12 +629,36 @@ static void postfx_apply(rt_postfx3d *fx, uint8_t *pixels, int32_t w, int32_t h,
             case POSTFX_SSAO:
             case POSTFX_DOF:
             case POSTFX_MOTION_BLUR:
-                /* These effects require depth buffer access which is not available
-                 * in the current PostFX software pipeline. Parameters are stored
-                 * and ready for GPU shader implementation. */
                 break;
         }
     }
+}
+
+/// @brief Run the CPU-supported effect chain over a framebuffer.
+/// @details Converts RGBA8 pixels to a temporary planar-RGB float buffer, applies each
+///   enabled CPU effect in insertion order, then writes RGB back with alpha preserved.
+///   SSAO, DOF, and motion blur require GPU scene depth/motion buffers and are rejected
+///   before this helper is called.
+static void postfx_apply(rt_postfx3d *fx, uint8_t *pixels, int32_t w, int32_t h, int32_t stride) {
+    if (!fx || !fx->enabled || fx->effect_count == 0 || !pixels)
+        return;
+
+    /* Convert framebuffer to float RGB for processing */
+    int32_t count = w * h;
+    float *fbuf = (float *)malloc((size_t)count * 3 * sizeof(float));
+    if (!fbuf)
+        return;
+
+    for (int32_t y = 0; y < h; y++)
+        for (int32_t x = 0; x < w; x++) {
+            const uint8_t *src = &pixels[y * stride + x * 4];
+            int32_t di = (y * w + x) * 3;
+            fbuf[di] = (float)src[0] / 255.0f;
+            fbuf[di + 1] = (float)src[1] / 255.0f;
+            fbuf[di + 2] = (float)src[2] / 255.0f;
+        }
+
+    postfx_apply_float_effects(fx, fbuf, w, h);
 
     /* Write back to framebuffer */
     for (int32_t y = 0; y < h; y++)
@@ -643,6 +671,47 @@ static void postfx_apply(rt_postfx3d *fx, uint8_t *pixels, int32_t w, int32_t h,
             /* Preserve alpha */
         }
 
+    free(fbuf);
+}
+
+static void postfx_apply_hdr_target(rt_postfx3d *fx, vgfx3d_rendertarget_t *target) {
+    int32_t count;
+    int tonemapped;
+    float *fbuf;
+
+    if (!fx || !target || !target->hdr_color_buf || !target->color_buf || target->width <= 0 ||
+        target->height <= 0)
+        return;
+    count = target->width * target->height;
+    fbuf = (float *)malloc((size_t)count * 3u * sizeof(float));
+    if (!fbuf)
+        return;
+    for (int32_t i = 0; i < count; i++) {
+        fbuf[(size_t)i * 3u + 0u] = target->hdr_color_buf[(size_t)i * 4u + 0u];
+        fbuf[(size_t)i * 3u + 1u] = target->hdr_color_buf[(size_t)i * 4u + 1u];
+        fbuf[(size_t)i * 3u + 2u] = target->hdr_color_buf[(size_t)i * 4u + 2u];
+    }
+
+    postfx_apply_float_effects(fx, fbuf, target->width, target->height);
+    tonemapped = postfx_chain_has_tonemap(fx);
+    for (int32_t y = 0; y < target->height; y++) {
+        uint8_t *dst = target->color_buf + (size_t)y * (size_t)target->stride;
+        for (int32_t x = 0; x < target->width; x++) {
+            int32_t i = y * target->width + x;
+            float r = fbuf[(size_t)i * 3u + 0u];
+            float g = fbuf[(size_t)i * 3u + 1u];
+            float b = fbuf[(size_t)i * 3u + 2u];
+            target->hdr_color_buf[(size_t)i * 4u + 0u] = r;
+            target->hdr_color_buf[(size_t)i * 4u + 1u] = g;
+            target->hdr_color_buf[(size_t)i * 4u + 2u] = b;
+            dst[(size_t)x * 4u + 0u] =
+                tonemapped ? (uint8_t)(clampf(r, 0.0f, 1.0f) * 255.0f) : vgfx3d_hdr_to_unorm8(r);
+            dst[(size_t)x * 4u + 1u] =
+                tonemapped ? (uint8_t)(clampf(g, 0.0f, 1.0f) * 255.0f) : vgfx3d_hdr_to_unorm8(g);
+            dst[(size_t)x * 4u + 2u] =
+                tonemapped ? (uint8_t)(clampf(b, 0.0f, 1.0f) * 255.0f) : vgfx3d_hdr_to_unorm8(b);
+        }
+    }
     free(fbuf);
 }
 
@@ -828,11 +897,22 @@ void rt_postfx3d_apply_to_canvas(void *canvas) {
     rt_postfx3d *fx = (rt_postfx3d *)c->postfx;
     if (!fx || !fx->enabled || fx->effect_count == 0)
         return;
+    if (vgfx3d_postfx_requires_gpu_scene_buffers(fx)) {
+        rt_trap("PostFX3D: SSAO, DOF, and motion blur require GPU window postfx; "
+                "RenderTarget3D and software CPU postfx support Bloom, Tonemap, FXAA, "
+                "ColorGrade, and Vignette");
+        return;
+    }
     if (c->render_target) {
         if (!vgfx3d_rendertarget_ensure_color(c->render_target))
             return;
         if (!vgfx3d_rendertarget_sync_color_if_needed(c->render_target))
             return;
+        if (vgfx3d_rendertarget_is_hdr(c->render_target) && c->render_target->hdr_color_valid &&
+            c->render_target->hdr_color_buf) {
+            postfx_apply_hdr_target(fx, c->render_target);
+            return;
+        }
         pixels = c->render_target->color_buf;
         width = c->render_target->width;
         height = c->render_target->height;

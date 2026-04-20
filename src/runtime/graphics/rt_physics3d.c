@@ -11,7 +11,7 @@
 //   bidirectional layer/mask filtering, and character controller.
 //
 // Key invariants:
-//   - Bodies in topological order not required (flat array, O(n²) broad phase).
+//   - Bodies in topological order not required (flat array, sweep-and-prune broad phase).
 //   - Integration: forces→velocity, velocity→position (symplectic Euler).
 //   - Collision response: impulse = -(1+e)*rv / (inv_mass_a + inv_mass_b).
 //   - Baumgarte stabilization: 40% excess penetration correction, 1% slop.
@@ -50,7 +50,7 @@ extern double rt_quat_y(void *q);
 extern double rt_quat_z(void *q);
 extern double rt_quat_w(void *q);
 
-#define PH3D_MAX_BODIES 256
+#define PH3D_INITIAL_BODIES 256
 #define PH3D_SHAPE_AABB 0
 #define PH3D_SHAPE_SPHERE 1
 #define PH3D_SHAPE_CAPSULE 2
@@ -60,7 +60,7 @@ extern double rt_quat_w(void *q);
 #define PH3D_SLEEP_LINEAR_THRESHOLD 0.05
 #define PH3D_SLEEP_ANGULAR_THRESHOLD 0.05
 #define PH3D_SLEEP_DELAY 0.5
-#define PH3D_MAX_CCD_SUBSTEPS 16
+#define PH3D_MAX_CCD_SUBSTEPS 64
 
 /*==========================================================================
  * Body3D
@@ -100,7 +100,7 @@ typedef struct {
     double ground_normal[3];
 } rt_body3d;
 
-#define PH3D_MAX_CONTACTS 128
+#define PH3D_INITIAL_CONTACTS 128
 #define PH3D_MAX_QUERY_HITS 256
 
 typedef struct {
@@ -116,27 +116,159 @@ typedef struct {
     int8_t is_trigger;
 } rt_contact3d;
 
+typedef struct ph3d_broadphase_entry ph3d_broadphase_entry;
+
 typedef struct {
     void *vptr;
     double gravity[3];
-    rt_body3d *bodies[PH3D_MAX_BODIES];
+    rt_body3d **bodies;
     int32_t body_count;
-    rt_contact3d contacts[PH3D_MAX_CONTACTS];
+    int32_t body_capacity;
+    rt_contact3d *contacts;
     int32_t contact_count;
-    rt_contact3d previous_contacts[PH3D_MAX_CONTACTS];
+    int32_t contact_capacity;
+    rt_contact3d *previous_contacts;
     int32_t previous_contact_count;
-    rt_contact3d enter_events[PH3D_MAX_CONTACTS];
+    int32_t previous_contact_capacity;
+    rt_contact3d *enter_events;
     int32_t enter_event_count;
-    rt_contact3d stay_events[PH3D_MAX_CONTACTS];
+    int32_t enter_event_capacity;
+    rt_contact3d *stay_events;
     int32_t stay_event_count;
-    rt_contact3d exit_events[PH3D_MAX_CONTACTS];
+    int32_t stay_event_capacity;
+    rt_contact3d *exit_events;
     int32_t exit_event_count;
+    int32_t exit_event_capacity;
 /* Joint constraints */
-#define PH3D_MAX_JOINTS 128
-    void *joints[PH3D_MAX_JOINTS];
-    int32_t joint_types[PH3D_MAX_JOINTS];
+#define PH3D_INITIAL_JOINTS 128
+    void **joints;
+    int32_t *joint_types;
     int32_t joint_count;
+    int32_t joint_capacity;
+    ph3d_broadphase_entry *broadphase_entries;
+    int32_t broadphase_capacity;
 } rt_world3d;
+
+struct ph3d_broadphase_entry {
+    rt_body3d *body;
+    double min[3];
+    double max[3];
+};
+
+static int32_t ph3d_next_capacity(int32_t current, int32_t needed, int32_t initial) {
+    int32_t capacity = current > 0 ? current : initial;
+    while (capacity < needed) {
+        if (capacity > INT32_MAX / 2)
+            return -1;
+        capacity *= 2;
+    }
+    return capacity;
+}
+
+static int world3d_reserve_body_capacity(rt_world3d *w, int32_t needed) {
+    if (!w || needed <= w->body_capacity)
+        return 1;
+    int32_t new_capacity = ph3d_next_capacity(w->body_capacity, needed, PH3D_INITIAL_BODIES);
+    if (new_capacity < 0)
+        return 0;
+    rt_body3d **new_bodies =
+        (rt_body3d **)realloc(w->bodies, (size_t)new_capacity * sizeof(*new_bodies));
+    if (!new_bodies)
+        return 0;
+    memset(new_bodies + w->body_capacity,
+           0,
+           (size_t)(new_capacity - w->body_capacity) * sizeof(*new_bodies));
+    w->bodies = new_bodies;
+    w->body_capacity = new_capacity;
+    return 1;
+}
+
+static int world3d_reserve_contact_array(rt_contact3d **array,
+                                         int32_t *capacity,
+                                         int32_t needed) {
+    if (!array || !capacity || needed <= *capacity)
+        return 1;
+    int32_t new_capacity = ph3d_next_capacity(*capacity, needed, PH3D_INITIAL_CONTACTS);
+    if (new_capacity < 0)
+        return 0;
+    rt_contact3d *new_array =
+        (rt_contact3d *)realloc(*array, (size_t)new_capacity * sizeof(*new_array));
+    if (!new_array)
+        return 0;
+    memset(new_array + *capacity, 0, (size_t)(new_capacity - *capacity) * sizeof(*new_array));
+    *array = new_array;
+    *capacity = new_capacity;
+    return 1;
+}
+
+static int world3d_reserve_contacts(rt_world3d *w, int32_t needed) {
+    return world3d_reserve_contact_array(&w->contacts, &w->contact_capacity, needed);
+}
+
+static int world3d_reserve_previous_contacts(rt_world3d *w, int32_t needed) {
+    return world3d_reserve_contact_array(
+        &w->previous_contacts, &w->previous_contact_capacity, needed);
+}
+
+static int world3d_reserve_enter_events(rt_world3d *w, int32_t needed) {
+    return world3d_reserve_contact_array(&w->enter_events, &w->enter_event_capacity, needed);
+}
+
+static int world3d_reserve_stay_events(rt_world3d *w, int32_t needed) {
+    return world3d_reserve_contact_array(&w->stay_events, &w->stay_event_capacity, needed);
+}
+
+static int world3d_reserve_exit_events(rt_world3d *w, int32_t needed) {
+    return world3d_reserve_contact_array(&w->exit_events, &w->exit_event_capacity, needed);
+}
+
+static int world3d_reserve_joint_capacity(rt_world3d *w, int32_t needed) {
+    if (!w || needed <= w->joint_capacity)
+        return 1;
+    int32_t new_capacity = ph3d_next_capacity(w->joint_capacity, needed, PH3D_INITIAL_JOINTS);
+    if (new_capacity < 0)
+        return 0;
+    void **new_joints = (void **)realloc(w->joints, (size_t)new_capacity * sizeof(*new_joints));
+    if (!new_joints)
+        return 0;
+    int32_t *new_types =
+        (int32_t *)realloc(w->joint_types, (size_t)new_capacity * sizeof(*new_types));
+    if (!new_types) {
+        w->joints = new_joints;
+        return 0;
+    }
+    memset(new_joints + w->joint_capacity,
+           0,
+           (size_t)(new_capacity - w->joint_capacity) * sizeof(*new_joints));
+    memset(new_types + w->joint_capacity,
+           0,
+           (size_t)(new_capacity - w->joint_capacity) * sizeof(*new_types));
+    w->joints = new_joints;
+    w->joint_types = new_types;
+    w->joint_capacity = new_capacity;
+    return 1;
+}
+
+static int world3d_reserve_broadphase_capacity(rt_world3d *w, int32_t needed) {
+    if (!w || needed <= w->broadphase_capacity)
+        return 1;
+    int32_t new_capacity = ph3d_next_capacity(w->broadphase_capacity, needed, PH3D_INITIAL_BODIES);
+    if (new_capacity < 0)
+        return 0;
+    ph3d_broadphase_entry *new_entries = (ph3d_broadphase_entry *)realloc(
+        w->broadphase_entries, (size_t)new_capacity * sizeof(*new_entries));
+    if (!new_entries)
+        return 0;
+    w->broadphase_entries = new_entries;
+    w->broadphase_capacity = new_capacity;
+    return 1;
+}
+
+static double ph3d_clamp_nonnegative_finite(double value, double fallback) {
+    if (!isfinite(value))
+        return fallback;
+    return value < 0.0 ? 0.0 : value;
+}
 
 typedef struct {
     void *vptr;
@@ -2046,7 +2178,9 @@ static double resolve_collision(rt_body3d *a,
 
     /* Coulomb friction — tangential impulse capped by mu * normal impulse */
     {
-        double mu = sqrt(a->friction * b->friction);
+        double fa = ph3d_clamp_nonnegative_finite(a->friction, 0.0);
+        double fb = ph3d_clamp_nonnegative_finite(b->friction, 0.0);
+        double mu = sqrt(fa * fb);
         double rvx = b->velocity[0] - a->velocity[0];
         double rvy = b->velocity[1] - a->velocity[1];
         double rvz = b->velocity[2] - a->velocity[2];
@@ -2088,6 +2222,127 @@ static double resolve_collision(rt_body3d *a,
         body3d_wake_if_dynamic(b);
     }
     return fabs(j);
+}
+
+static int ph3d_broadphase_compare_min_x(const void *lhs, const void *rhs) {
+    const ph3d_broadphase_entry *a = (const ph3d_broadphase_entry *)lhs;
+    const ph3d_broadphase_entry *b = (const ph3d_broadphase_entry *)rhs;
+    if (a->min[0] < b->min[0])
+        return -1;
+    if (a->min[0] > b->min[0])
+        return 1;
+    return 0;
+}
+
+static int ph3d_bounds_overlap(const double *a_min, const double *a_max, const double *b_min, const double *b_max) {
+    return a_min[0] <= b_max[0] && a_max[0] >= b_min[0] && a_min[1] <= b_max[1] &&
+           a_max[1] >= b_min[1] && a_min[2] <= b_max[2] && a_max[2] >= b_min[2];
+}
+
+static int world3d_process_collision_pair(rt_world3d *w, rt_body3d *a, rt_body3d *b) {
+    double normal[3], depth, point[3];
+    double relative_speed = 0.0;
+    double normal_impulse = 0.0;
+    void *leaf_a = NULL;
+    void *leaf_b = NULL;
+
+    if (!w || !a || !b)
+        return 1;
+    if (a->motion_mode != PH3D_MODE_DYNAMIC && b->motion_mode != PH3D_MODE_DYNAMIC)
+        return 1;
+    if (!(a->collision_layer & b->collision_mask))
+        return 1;
+    if (!(b->collision_layer & a->collision_mask))
+        return 1;
+    if (!test_collision(a, b, normal, &depth, point, &leaf_a, &leaf_b))
+        return 1;
+
+    if (!world3d_reserve_contacts(w, w->contact_count + 1)) {
+        rt_trap("Physics3D.World.Step: contact allocation failed");
+        return 0;
+    }
+
+    rt_contact3d *c = &w->contacts[w->contact_count++];
+    c->body_a = a;
+    c->body_b = b;
+    c->collider_a = leaf_a ? leaf_a : a->collider;
+    c->collider_b = leaf_b ? leaf_b : b->collider;
+    c->point[0] = point[0];
+    c->point[1] = point[1];
+    c->point[2] = point[2];
+    c->normal[0] = normal[0];
+    c->normal[1] = normal[1];
+    c->normal[2] = normal[2];
+    c->separation = -depth;
+    c->is_trigger = (a->is_trigger || b->is_trigger) ? 1 : 0;
+    if (c->is_trigger) {
+        relative_speed = fabs((b->velocity[0] - a->velocity[0]) * normal[0] +
+                              (b->velocity[1] - a->velocity[1]) * normal[1] +
+                              (b->velocity[2] - a->velocity[2]) * normal[2]);
+    } else {
+        normal_impulse = resolve_collision(a, b, normal, depth, &relative_speed);
+    }
+    c->relative_speed = relative_speed;
+    c->normal_impulse = normal_impulse;
+
+    if (normal[1] > 0.7) {
+        b->is_grounded = 1;
+        b->ground_normal[0] = normal[0];
+        b->ground_normal[1] = normal[1];
+        b->ground_normal[2] = normal[2];
+    } else if (normal[1] < -0.7) {
+        a->is_grounded = 1;
+        a->ground_normal[0] = -normal[0];
+        a->ground_normal[1] = -normal[1];
+        a->ground_normal[2] = -normal[2];
+    }
+    return 1;
+}
+
+static int world3d_detect_and_resolve_contacts(rt_world3d *w) {
+    if (!w)
+        return 0;
+    w->contact_count = 0;
+    if (w->body_count <= 1)
+        return 1;
+
+    if (!world3d_reserve_broadphase_capacity(w, w->body_count)) {
+        for (int32_t i = 0; i < w->body_count; i++) {
+            for (int32_t j = i + 1; j < w->body_count; j++) {
+                if (!world3d_process_collision_pair(w, w->bodies[i], w->bodies[j]))
+                    return 0;
+            }
+        }
+        return 1;
+    }
+
+    ph3d_broadphase_entry *entries = w->broadphase_entries;
+    int32_t entry_count = 0;
+    for (int32_t i = 0; i < w->body_count; i++) {
+        rt_body3d *body = w->bodies[i];
+        if (!body || !body->collider)
+            continue;
+        entries[entry_count].body = body;
+        body_aabb(body, entries[entry_count].min, entries[entry_count].max);
+        entry_count++;
+    }
+    qsort(entries, (size_t)entry_count, sizeof(*entries), ph3d_broadphase_compare_min_x);
+
+    for (int32_t i = 0; i < entry_count; i++) {
+        for (int32_t j = i + 1; j < entry_count; j++) {
+            if (entries[j].min[0] > entries[i].max[0])
+                break;
+            if (!ph3d_bounds_overlap(entries[i].min,
+                                     entries[i].max,
+                                     entries[j].min,
+                                     entries[j].max))
+                continue;
+            if (!world3d_process_collision_pair(w, entries[i].body, entries[j].body)) {
+                return 0;
+            }
+        }
+    }
+    return 1;
 }
 
 // GC finalizers for the boxed query-result objects exposed to Zia.
@@ -2267,8 +2522,8 @@ static void *collision_event3d_new_from_contact(const rt_contact3d *contact) {
 ///   - not in previous → `enter`
 /// For each previous contact not present now → `exit`. Then snapshot
 /// this frame's contacts as the new "previous" for the next call. The
-/// 128-event cap silently truncates extreme cases (consistent with the
-/// other PH3D arrays).
+/// Event arrays grow with the live contact list so large production scenes
+/// do not silently drop contacts after the initial capacity.
 static void world3d_build_event_buffers(rt_world3d *w) {
     if (!w)
         return;
@@ -2285,11 +2540,17 @@ static void world3d_build_event_buffers(rt_world3d *w) {
             }
         }
         if (found) {
-            if (w->stay_event_count < PH3D_MAX_CONTACTS)
-                contact_snapshot_copy(&w->stay_events[w->stay_event_count++], &w->contacts[i]);
+            if (!world3d_reserve_stay_events(w, w->stay_event_count + 1)) {
+                rt_trap("Physics3D.World.Step: stay-event allocation failed");
+                return;
+            }
+            contact_snapshot_copy(&w->stay_events[w->stay_event_count++], &w->contacts[i]);
         } else {
-            if (w->enter_event_count < PH3D_MAX_CONTACTS)
-                contact_snapshot_copy(&w->enter_events[w->enter_event_count++], &w->contacts[i]);
+            if (!world3d_reserve_enter_events(w, w->enter_event_count + 1)) {
+                rt_trap("Physics3D.World.Step: enter-event allocation failed");
+                return;
+            }
+            contact_snapshot_copy(&w->enter_events[w->enter_event_count++], &w->contacts[i]);
         }
     }
 
@@ -2301,10 +2562,19 @@ static void world3d_build_event_buffers(rt_world3d *w) {
                 break;
             }
         }
-        if (!found && w->exit_event_count < PH3D_MAX_CONTACTS)
+        if (!found) {
+            if (!world3d_reserve_exit_events(w, w->exit_event_count + 1)) {
+                rt_trap("Physics3D.World.Step: exit-event allocation failed");
+                return;
+            }
             contact_snapshot_copy(&w->exit_events[w->exit_event_count++], &w->previous_contacts[i]);
+        }
     }
 
+    if (!world3d_reserve_previous_contacts(w, w->contact_count)) {
+        rt_trap("Physics3D.World.Step: previous-contact allocation failed");
+        return;
+    }
     w->previous_contact_count = w->contact_count;
     for (int32_t i = 0; i < w->contact_count; ++i)
         contact_snapshot_copy(&w->previous_contacts[i], &w->contacts[i]);
@@ -2335,13 +2605,39 @@ static void world3d_finalizer(void *obj) {
     }
     w->body_count = 0;
     w->joint_count = 0;
+    free(w->bodies);
+    free(w->contacts);
+    free(w->previous_contacts);
+    free(w->enter_events);
+    free(w->stay_events);
+    free(w->exit_events);
+    free(w->joints);
+    free(w->joint_types);
+    free(w->broadphase_entries);
+    w->bodies = NULL;
+    w->contacts = NULL;
+    w->previous_contacts = NULL;
+    w->enter_events = NULL;
+    w->stay_events = NULL;
+    w->exit_events = NULL;
+    w->joints = NULL;
+    w->joint_types = NULL;
+    w->broadphase_entries = NULL;
+    w->body_capacity = 0;
+    w->contact_capacity = 0;
+    w->previous_contact_capacity = 0;
+    w->enter_event_capacity = 0;
+    w->stay_event_capacity = 0;
+    w->exit_event_capacity = 0;
+    w->joint_capacity = 0;
+    w->broadphase_capacity = 0;
 }
 
 /// @brief `Physics3D.World.New(gx, gy, gz)` — construct an empty world with gravity.
 ///
 /// Allocates an `rt_world3d`, initializes the gravity vector, and zeros
-/// every contact / event / joint table. The world has fixed maximum
-/// capacities (256 bodies, 128 joints, 128 contacts). Hooks the GC
+/// every contact / event / joint table. Body, contact, and joint arrays
+/// start at production-sized defaults and grow on demand. Hooks the GC
 /// finalizer so dropping the world frees the simulation.
 ///
 /// @param gx,gy,gz Initial world gravity acceleration (m/s²).
@@ -2363,13 +2659,35 @@ void *rt_world3d_new(double gx, double gy, double gz) {
     w->stay_event_count = 0;
     w->exit_event_count = 0;
     w->joint_count = 0;
-    memset(w->bodies, 0, sizeof(w->bodies));
-    memset(w->contacts, 0, sizeof(w->contacts));
-    memset(w->previous_contacts, 0, sizeof(w->previous_contacts));
-    memset(w->enter_events, 0, sizeof(w->enter_events));
-    memset(w->stay_events, 0, sizeof(w->stay_events));
-    memset(w->exit_events, 0, sizeof(w->exit_events));
-    memset(w->joints, 0, sizeof(w->joints));
+    w->body_capacity = 0;
+    w->contact_capacity = 0;
+    w->previous_contact_capacity = 0;
+    w->enter_event_capacity = 0;
+    w->stay_event_capacity = 0;
+    w->exit_event_capacity = 0;
+    w->joint_capacity = 0;
+    w->broadphase_capacity = 0;
+    w->bodies = NULL;
+    w->contacts = NULL;
+    w->previous_contacts = NULL;
+    w->enter_events = NULL;
+    w->stay_events = NULL;
+    w->exit_events = NULL;
+    w->joints = NULL;
+    w->joint_types = NULL;
+    w->broadphase_entries = NULL;
+    if (!world3d_reserve_body_capacity(w, PH3D_INITIAL_BODIES) ||
+        !world3d_reserve_contacts(w, PH3D_INITIAL_CONTACTS) ||
+        !world3d_reserve_previous_contacts(w, PH3D_INITIAL_CONTACTS) ||
+        !world3d_reserve_enter_events(w, PH3D_INITIAL_CONTACTS) ||
+        !world3d_reserve_stay_events(w, PH3D_INITIAL_CONTACTS) ||
+        !world3d_reserve_exit_events(w, PH3D_INITIAL_CONTACTS) ||
+        !world3d_reserve_joint_capacity(w, PH3D_INITIAL_JOINTS) ||
+        !world3d_reserve_broadphase_capacity(w, PH3D_INITIAL_BODIES)) {
+        world3d_finalizer(w);
+        rt_trap("Physics3D.World.New: storage allocation failed");
+        return NULL;
+    }
     rt_obj_set_finalizer(w, world3d_finalizer);
     return w;
 }
@@ -2421,8 +2739,8 @@ static int world3d_compute_substeps(const rt_world3d *w, double dt) {
 ///   1. **Integration**: forces → velocity (symplectic Euler), apply
 ///      gravity + linear/angular damping, then advance position +
 ///      orientation. Sleeping bodies skip the step entirely.
-///   2. **Collision detection**: O(n²) broad phase, narrow phase via
-///      `test_collision`, append contacts, run `resolve_collision` for
+///   2. **Collision detection**: sweep-and-prune broad phase, narrow phase
+///      via `test_collision`, append contacts, run `resolve_collision` for
 ///      non-trigger pairs (with a 6-iteration joint solver per substep).
 ///   3. **Grounded flag** is set when a contact normal points sufficiently
 ///      upward (Y > 0.7 ≈ 45° slope), used by character controllers.
@@ -2498,70 +2816,8 @@ void rt_world3d_step(void *obj, double dt) {
         }
 
         /* Phase 2: Collision detection + response (last substep contacts kept) */
-        w->contact_count = 0;
-        for (int32_t i = 0; i < w->body_count; i++) {
-            for (int32_t j = i + 1; j < w->body_count; j++) {
-                rt_body3d *a = w->bodies[i], *b = w->bodies[j];
-                if (!a || !b)
-                    continue;
-                if (a->motion_mode != PH3D_MODE_DYNAMIC && b->motion_mode != PH3D_MODE_DYNAMIC)
-                    continue;
-
-                if (!(a->collision_layer & b->collision_mask))
-                    continue;
-                if (!(b->collision_layer & a->collision_mask))
-                    continue;
-
-                {
-                    double normal[3], depth, point[3];
-                    double relative_speed = 0.0;
-                    double normal_impulse = 0.0;
-                    void *leaf_a = NULL;
-                    void *leaf_b = NULL;
-                    if (!test_collision(a, b, normal, &depth, point, &leaf_a, &leaf_b))
-                        continue;
-
-                    if (w->contact_count < PH3D_MAX_CONTACTS) {
-                        rt_contact3d *c = &w->contacts[w->contact_count++];
-                        c->body_a = a;
-                        c->body_b = b;
-                        c->collider_a = leaf_a ? leaf_a : a->collider;
-                        c->collider_b = leaf_b ? leaf_b : b->collider;
-                        c->point[0] = point[0];
-                        c->point[1] = point[1];
-                        c->point[2] = point[2];
-                        c->normal[0] = normal[0];
-                        c->normal[1] = normal[1];
-                        c->normal[2] = normal[2];
-                        c->separation = -depth;
-                        c->is_trigger = (a->is_trigger || b->is_trigger) ? 1 : 0;
-                        if (c->is_trigger) {
-                            relative_speed = fabs((b->velocity[0] - a->velocity[0]) * normal[0] +
-                                                  (b->velocity[1] - a->velocity[1]) * normal[1] +
-                                                  (b->velocity[2] - a->velocity[2]) * normal[2]);
-                        } else {
-                            normal_impulse = resolve_collision(a, b, normal, depth, &relative_speed);
-                        }
-                        c->relative_speed = relative_speed;
-                        c->normal_impulse = normal_impulse;
-                    } else if (!(a->is_trigger || b->is_trigger)) {
-                        (void)resolve_collision(a, b, normal, depth, NULL);
-                    }
-
-                    if (normal[1] > 0.7) {
-                        b->is_grounded = 1;
-                        b->ground_normal[0] = normal[0];
-                        b->ground_normal[1] = normal[1];
-                        b->ground_normal[2] = normal[2];
-                    } else if (normal[1] < -0.7) {
-                        a->is_grounded = 1;
-                        a->ground_normal[0] = -normal[0];
-                        a->ground_normal[1] = -normal[1];
-                        a->ground_normal[2] = -normal[2];
-                    }
-                }
-            }
-        }
+        if (!world3d_detect_and_resolve_contacts(w))
+            return;
 
         for (int32_t iter = 0; iter < 6; iter++) {
             for (int32_t j = 0; j < w->joint_count; j++) {
@@ -2585,13 +2841,13 @@ void rt_world3d_step(void *obj, double dt) {
 /// @brief `World3D.AddJoint(joint, type)` — register a constraint.
 ///
 /// Retains the joint and stores its type tag so `rt_joint3d_solve` can
-/// dispatch correctly. Traps when the 128-joint cap is exceeded.
+/// dispatch correctly. Storage grows on demand.
 void rt_world3d_add_joint(void *obj, void *joint, int64_t joint_type) {
     if (!obj || !joint)
         return;
     rt_world3d *w = (rt_world3d *)obj;
-    if (w->joint_count >= PH3D_MAX_JOINTS) {
-        rt_trap("Physics3D: max joint limit (128) exceeded");
+    if (!world3d_reserve_joint_capacity(w, w->joint_count + 1)) {
+        rt_trap("Physics3D: joint storage allocation failed");
         return;
     }
     rt_obj_retain_maybe(joint);
@@ -2628,14 +2884,13 @@ int64_t rt_world3d_joint_count(void *obj) {
 
 /// @brief `World3D.Add(body)` — register a body.
 ///
-/// Retains the body and stores it in the bodies array. Traps when the
-/// 256-body cap is exceeded.
+/// Retains the body and stores it in the growable bodies array.
 void rt_world3d_add(void *obj, void *body) {
     if (!obj || !body)
         return;
     rt_world3d *w = (rt_world3d *)obj;
-    if (w->body_count >= PH3D_MAX_BODIES) {
-        rt_trap("Physics3D: max body limit (256) exceeded");
+    if (!world3d_reserve_body_capacity(w, w->body_count + 1)) {
+        rt_trap("Physics3D: body storage allocation failed");
         return;
     }
     rt_obj_retain_maybe(body);
@@ -3758,8 +4013,10 @@ void rt_body3d_apply_angular_impulse(void *o, double ix, double iy, double iz) {
 
 /// @brief `Body3D.SetRestitution(r)` — set bounciness (0=no bounce, 1=elastic).
 void rt_body3d_set_restitution(void *o, double r) {
-    if (o)
-        ((rt_body3d *)o)->restitution = r;
+    if (o) {
+        double value = ph3d_clamp_nonnegative_finite(r, 0.0);
+        ((rt_body3d *)o)->restitution = value > 1.0 ? 1.0 : value;
+    }
 }
 
 /// @brief `Body3D.GetRestitution` — read bounciness.
@@ -3773,7 +4030,7 @@ double rt_body3d_get_restitution(void *o) {
 /// matches typical material-interaction tables.
 void rt_body3d_set_friction(void *o, double f) {
     if (o)
-        ((rt_body3d *)o)->friction = f;
+        ((rt_body3d *)o)->friction = ph3d_clamp_nonnegative_finite(f, 0.0);
 }
 
 /// @brief `Body3D.GetFriction` — read friction coefficient.

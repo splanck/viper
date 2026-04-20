@@ -128,6 +128,9 @@ extern "C" void rt_canvas3d_set_post_fx(void *canvas, void *postfx);
 extern "C" void *rt_canvas3d_screenshot(void *canvas);
 extern "C" void rt_postfx3d_set_enabled(void *obj, int8_t enabled);
 extern "C" void rt_postfx3d_add_vignette(void *obj, double radius, double softness);
+extern "C" void rt_postfx3d_add_tonemap(void *obj, int64_t mode, double exposure);
+extern "C" void rt_postfx3d_add_ssao(void *obj, double radius, double intensity, int64_t samples);
+extern "C" void rt_postfx3d_apply_to_canvas(void *canvas);
 
 static bool finite_vec3(void *v) {
     return v && std::isfinite(rt_vec3_x(v)) && std::isfinite(rt_vec3_y(v)) &&
@@ -203,9 +206,28 @@ static void test_mesh_reject_invalid_triangle_indices() {
     rt_mesh3d_add_vertex(m, 0, 0, 0, 0, 1, 0, 0, 0);
     rt_mesh3d_add_vertex(m, 1, 0, 0, 0, 1, 0, 1, 0);
     rt_mesh3d_add_vertex(m, 0, 1, 0, 0, 1, 0, 0, 1);
-    rt_mesh3d_add_triangle(m, -1, 1, 2);
-    rt_mesh3d_add_triangle(m, 0, 1, 9);
+    EXPECT_TRUE(expect_trap_contains([&] { rt_mesh3d_add_triangle(m, -1, 1, 2); },
+                                     "vertex index must be non-negative"),
+                "negative triangle indices trap");
     EXPECT_EQ(rt_mesh3d_get_triangle_count(m), 0);
+    rt_mesh3d_clear(m);
+    rt_mesh3d_add_vertex(m, 0, 0, 0, 0, 1, 0, 0, 0);
+    rt_mesh3d_add_vertex(m, 1, 0, 0, 0, 1, 0, 1, 0);
+    rt_mesh3d_add_vertex(m, 0, 1, 0, 0, 1, 0, 0, 1);
+    EXPECT_TRUE(expect_trap_contains([&] { rt_mesh3d_add_triangle(m, 0, 1, 9); },
+                                     "vertex index out of range"),
+                "out-of-range triangle indices trap");
+    rt_mesh3d_clear(m);
+    rt_mesh3d_add_vertex(m, 0, 0, 0, 0, 1, 0, 0, 0);
+    rt_mesh3d_add_vertex(m, 1, 0, 0, 0, 1, 0, 1, 0);
+    rt_mesh3d_add_vertex(m, 0, 1, 0, 0, 1, 0, 0, 1);
+    EXPECT_TRUE(expect_trap_contains([&] { rt_mesh3d_add_triangle(m, 0, 1, 1); },
+                                     "degenerate triangle"),
+                "degenerate triangle indices trap");
+    rt_mesh3d_clear(m);
+    rt_mesh3d_add_vertex(m, 0, 0, 0, 0, 1, 0, 0, 0);
+    rt_mesh3d_add_vertex(m, 1, 0, 0, 0, 1, 0, 1, 0);
+    rt_mesh3d_add_vertex(m, 0, 1, 0, 0, 1, 0, 0, 1);
     rt_mesh3d_add_triangle(m, 0, 1, 2);
     EXPECT_EQ(rt_mesh3d_get_triangle_count(m), 1);
     PASS();
@@ -2059,6 +2081,63 @@ static void test_canvas_postfx_uses_render_target_pixels() {
     PASS();
 }
 
+static void test_canvas_postfx_uses_hdr_render_target_mirror() {
+    TEST("Canvas3D postfx uses HDR render-target mirror before tonemapped readback");
+    rt_canvas3d canvas;
+    rt_rendertarget3d *rt = (rt_rendertarget3d *)rt_rendertarget3d_new_hdr(1, 1);
+    void *fx = rt_postfx3d_new();
+    assert(rt != NULL && rt->target != NULL && fx != NULL);
+
+    memset(&canvas, 0, sizeof(canvas));
+    canvas.render_target = rt->target;
+    canvas.postfx = fx;
+    rt_postfx3d_add_tonemap(fx, 1, 1.0);
+    rt_postfx3d_set_enabled(fx, 1);
+
+    EXPECT_TRUE(vgfx3d_rendertarget_ensure_color(rt->target) != 0,
+                "HDR postfx test allocates LDR mirror");
+    EXPECT_TRUE(vgfx3d_rendertarget_ensure_hdr_color(rt->target) != 0,
+                "HDR postfx test allocates linear HDR mirror");
+    rt->target->color_buf[0] = 0;
+    rt->target->color_buf[1] = 0;
+    rt->target->color_buf[2] = 0;
+    rt->target->color_buf[3] = 255;
+    rt->target->hdr_color_buf[0] = 4.0f;
+    rt->target->hdr_color_buf[1] = 0.0f;
+    rt->target->hdr_color_buf[2] = 0.0f;
+    rt->target->hdr_color_buf[3] = 1.0f;
+    rt->target->hdr_color_valid = 1;
+
+    rt_postfx3d_apply_to_canvas(&canvas);
+
+    if (rt->target->color_buf[0] < 200 || rt->target->hdr_color_buf[0] <= 0.8f) {
+        FAIL("HDR postfx did not consume the linear HDR mirror");
+        return;
+    }
+    PASS();
+}
+
+static void test_canvas_postfx_rejects_advanced_cpu_rtt_effects() {
+    TEST("Canvas3D postfx rejects advanced effects on CPU/render-target path");
+    rt_canvas3d canvas;
+    rt_rendertarget3d *rt = (rt_rendertarget3d *)rt_rendertarget3d_new(1, 1);
+    void *fx = rt_postfx3d_new();
+    assert(rt != NULL && rt->target != NULL && fx != NULL);
+
+    memset(&canvas, 0, sizeof(canvas));
+    canvas.render_target = rt->target;
+    canvas.postfx = fx;
+    rt_postfx3d_add_ssao(fx, 0.5, 1.0, 8);
+    rt_postfx3d_set_enabled(fx, 1);
+
+    if (!expect_trap_contains([&]() { rt_postfx3d_apply_to_canvas(&canvas); },
+                              "require GPU window postfx")) {
+        FAIL("Advanced render-target postfx did not trap");
+        return;
+    }
+    PASS();
+}
+
 static void test_canvas_delta_time_preserves_first_zero() {
     TEST("Canvas3D.GetDeltaTime preserves the first zero frame");
     rt_canvas3d canvas;
@@ -2225,6 +2304,29 @@ static void test_mesh_tangents_for_normal_map() {
     /* CalcTangents should not crash and mesh should still be valid */
     EXPECT_EQ(rt_mesh3d_get_vertex_count(m), 3);
     EXPECT_EQ(rt_mesh3d_get_triangle_count(m), 1);
+    PASS();
+}
+
+static void test_mesh_tangent_fallback_is_orthogonal_to_normal() {
+    TEST("Mesh3D.CalcTangents builds orthogonal fallback tangents");
+    rt_mesh3d *m = (rt_mesh3d *)rt_mesh3d_new();
+    assert(m != NULL);
+    rt_mesh3d_add_vertex(m, 0, 0, 0, 1, 0, 0, 0, 0);
+    rt_mesh3d_add_vertex(m, 0, 1, 0, 1, 0, 0, 0, 0);
+    rt_mesh3d_add_vertex(m, 0, 0, 1, 1, 0, 0, 0, 0);
+    rt_mesh3d_add_triangle(m, 0, 1, 2);
+
+    rt_mesh3d_calc_tangents(m);
+
+    float dot = m->vertices[0].normal[0] * m->vertices[0].tangent[0] +
+                m->vertices[0].normal[1] * m->vertices[0].tangent[1] +
+                m->vertices[0].normal[2] * m->vertices[0].tangent[2];
+    float len = std::sqrt(m->vertices[0].tangent[0] * m->vertices[0].tangent[0] +
+                          m->vertices[0].tangent[1] * m->vertices[0].tangent[1] +
+                          m->vertices[0].tangent[2] * m->vertices[0].tangent[2]);
+    EXPECT_NEAR(dot, 0.0, 0.001);
+    EXPECT_NEAR(len, 1.0, 0.001);
+    EXPECT_NEAR(m->vertices[0].tangent[3], 1.0, 0.001);
     PASS();
 }
 
@@ -2754,6 +2856,8 @@ int main() {
     test_canvas_begin_applies_camera_shake_without_follow();
     test_canvas_overlay_draws_replay_after_3d_frame();
     test_canvas_postfx_uses_render_target_pixels();
+    test_canvas_postfx_uses_hdr_render_target_mirror();
+    test_canvas_postfx_rejects_advanced_cpu_rtt_effects();
     test_canvas_postfx_retains_owned_reference();
     test_canvas_render_target_retains_owned_reference();
     test_canvas_light_retains_owned_reference();
@@ -2773,6 +2877,7 @@ int main() {
     test_vertex_color_default_white();
     test_shadow_enable_disable();
     test_mesh_tangents_for_normal_map();
+    test_mesh_tangent_fallback_is_orthogonal_to_normal();
     test_canvas_draw_auto_generates_missing_normal_map_tangents();
     test_mesh_normals_recalc();
     test_terrain_splat_layer_count();

@@ -72,12 +72,14 @@ fallbacks, so they remain stable if backend names or platform selection change.
 
 ## Runtime Input Guards
 
-Graphics3D clamps public numeric state before it enters renderer-facing structs. `Camera3D` rejects
-non-finite projection, `LookAt`, orbit, FPS, shake, and follow inputs so view/projection matrices
-and picking rays stay finite. `Light3D` clamps colors, intensities, attenuations, spot angles, and
-fallback directions before the light list is copied into backend parameters. `PostFX3D` bounds every
-effect parameter and exports the sanitized ordered chain, including bloom pass counts, to GPU
-backends. These guards are intentionally in the runtime classes instead of individual backends so
+Graphics3D clamps public numeric state before it enters renderer-facing structs. `Canvas3D` clamps
+clear, ambient, fog, and frame-delta inputs before they reach backend color state or camera shake.
+`Camera3D` rejects non-finite projection, `LookAt`, orbit, FPS, shake, and follow inputs so
+view/projection matrices and picking rays stay finite. `Light3D` clamps colors, intensities,
+attenuations, spot angles, and fallback directions before the light list is copied into backend
+parameters. `PostFX3D` bounds every effect parameter and exports the sanitized ordered chain,
+including bloom pass counts, to GPU backends. These guards are intentionally in the runtime classes
+instead of individual backends so
 software, Metal, D3D11, and OpenGL receive the same clean state.
 
 ### Metal Window Presentation Model
@@ -119,7 +121,7 @@ GPU backends now treat `RenderTarget3D` color buffers as lazily synchronized CPU
 - [`rt_rendertarget3d_as_pixels()`](/Users/stephen/git/viper/src/runtime/graphics/rt_rendertarget3d.c) and [`rt_canvas3d_screenshot()`](/Users/stephen/git/viper/src/runtime/graphics/rt_canvas3d_overlay.c) call the backend-owned sync hook only when CPU pixels are actually requested
 - [`rt_canvas3d_begin()`](/Users/stephen/git/viper/src/runtime/graphics/rt_canvas3d.c) synchronizes the camera's effective projection aspect against the active output size before `begin_frame`, so window resizes and RTT passes share the correct frustum
 - while a render target is bound, Canvas3D overlay sizing, screenshots, and `Width`/`Height` queries follow the active target dimensions instead of the window dimensions
-- `RenderTarget3D.NewHdr()` keeps the GPU color attachment in `RGBA16F` on GPU backends, but the lazy CPU mirror remains `Pixels`-compatible; backend sync hooks tonemap HDR RGB before `AsPixels()` exposes the result
+- `RenderTarget3D.NewHdr()` keeps the GPU color attachment in `RGBA16F` on GPU backends; backend sync hooks now fill both a `Pixels`-compatible tonemapped RGBA8 mirror and a linear RGBA32F CPU mirror so CPU-supported render-target postfx can operate before final `AsPixels()` conversion
 - this avoids unconditional GPU stalls on RTT-heavy frames while preserving the `RenderTarget3D.AsPixels()` contract
 
 ## Software Renderer Pipeline (vgfx3d_backend_sw.c)
@@ -425,7 +427,7 @@ ordered effect chain for GPU `present_postfx` / readback paths:
    - **FXAA**: luminance-based edge detection → 3x3 average on high-contrast pixels
    - **Color grading**: brightness/contrast/saturation adjustments
    - **Vignette**: radial distance falloff from center
-   - **SSAO / DOF / motion blur**: exported to GPU backends with bounded sample counts; the software fallback skips these passes because it has no depth or motion buffer
+   - **SSAO / DOF / motion blur**: exported to GPU backends with bounded sample counts; these require scene depth/history/velocity buffers, so CPU render-target/software postfx traps if such effects would otherwise be silently skipped
 3. Convert float RGB → RGBA8 back to framebuffer
 
 PostFX is stored per-canvas (on the `rt_canvas3d` struct), allowing independent effect chains on multiple windows.

@@ -13,6 +13,7 @@
 #include "vgfx3d_backend.h"
 
 #include <cmath>
+#include <climits>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -898,6 +899,35 @@ static void test_cpu_morph_fallback_for_software(void) {
     cleanup_fake_canvas(&canvas);
 }
 
+static void test_morph_tangent_deltas_fall_back_to_cpu_for_metal(void) {
+    rt_canvas3d canvas;
+    init_fake_canvas(&canvas, &kMetalBackend);
+
+    void *mesh = make_test_mesh();
+    void *material = rt_material3d_new();
+    void *transform = rt_mat4_identity();
+    void *morph = rt_morphtarget3d_new(3);
+    rt_morphtarget3d_add_shape(morph, rt_const_cstr("twist"));
+    rt_morphtarget3d_set_tangent_delta(morph, 0, 0, 1.0, 0.0, 0.0);
+    rt_morphtarget3d_set_weight(morph, 0, 1.0);
+
+    rt_canvas3d_draw_mesh_morphed(&canvas, mesh, transform, material, morph);
+
+    rt_mesh3d *mesh_view = (rt_mesh3d *)mesh;
+    test_deferred_draw_t *draws = (test_deferred_draw_t *)canvas.draw_cmds;
+    EXPECT_TRUE(canvas.draw_count == 1, "Metal tangent-morph draw enqueues one draw");
+    EXPECT_TRUE(canvas.temp_buf_count == 1,
+                "Metal tangent morph falls back to CPU until GPU tangent payloads exist");
+    EXPECT_TRUE(draws[0].cmd.vertices != mesh_view->vertices,
+                "Metal tangent morph uses CPU-morphed vertices");
+    EXPECT_TRUE(draws[0].cmd.morph_shape_count == 0 && draws[0].cmd.morph_deltas == nullptr,
+                "Metal tangent morph leaves GPU morph bindings empty");
+    EXPECT_TRUE(std::fabs(draws[0].cmd.vertices[0].tangent[0] - 1.0f) < 0.001f,
+                "CPU tangent morph applies and normalizes tangent deltas");
+
+    cleanup_fake_canvas(&canvas);
+}
+
 static void test_env_map_payload_forwarded(void) {
     rt_canvas3d canvas;
     init_fake_canvas(&canvas, &kOpenGLBackend);
@@ -992,6 +1022,30 @@ static void test_deferred_draw_retains_mesh_and_material_until_end(void) {
         rt_obj_free(mesh);
     if (rt_obj_release_check0(material))
         rt_obj_free(material);
+
+    cleanup_fake_canvas(&canvas);
+}
+
+static void test_mesh_draw_submits_immediately_when_deferred_queue_cannot_grow(void) {
+    vgfx3d_backend_t backend = {};
+    backend.name = "opengl";
+    backend.submit_draw = record_draw_with_lights;
+
+    rt_canvas3d canvas;
+    init_fake_canvas(&canvas, &backend);
+    reset_shadow_counts();
+
+    void *mesh = make_test_mesh();
+    void *material = rt_material3d_new();
+    void *transform = rt_mat4_identity();
+
+    canvas.draw_count = INT_MAX;
+    rt_canvas3d_draw_mesh(&canvas, mesh, transform, material);
+
+    EXPECT_TRUE(draw_submit_calls == 1,
+                "Mesh draws submit immediately instead of disappearing when the deferred queue cannot grow");
+    EXPECT_TRUE(canvas.draw_cmds == nullptr,
+                "Immediate fallback does not allocate a partial deferred queue");
 
     cleanup_fake_canvas(&canvas);
 }
@@ -1179,6 +1233,47 @@ static void test_instanced_transform_history_survives_count_changes(void) {
         EXPECT_TRUE(last_instanced_cmd.prev_instance_matrices[19] == 0.5f,
                     "New instances seed previous transforms from their current pose");
     }
+
+    cleanup_fake_canvas(&canvas);
+}
+
+static void test_deferred_instanced_draw_snapshots_instance_buffers(void) {
+    vgfx3d_backend_t backend = {};
+    backend.name = "opengl";
+    backend.end_frame = noop_end_frame;
+    backend.submit_draw_instanced = record_draw_instanced;
+
+    rt_canvas3d canvas;
+    init_fake_canvas(&canvas, &backend);
+    reset_recorded_instancing();
+
+    void *mesh = make_test_mesh();
+    void *material = rt_material3d_new();
+    void *batch = rt_instbatch3d_new(mesh, material);
+    void *t0 = rt_mat4_identity();
+    ((mat4_impl *)t0)->m[3] = 0.0;
+    rt_instbatch3d_add(batch, t0);
+
+    reset_canvas_frame(&canvas, 1);
+    rt_canvas3d_draw_instanced(&canvas, batch);
+    rt_canvas3d_end(&canvas);
+    EXPECT_TRUE(last_instance_matrices != nullptr && last_instance_matrices[3] == 0.0f,
+                "First instanced frame submits the original matrix");
+
+    ((mat4_impl *)t0)->m[3] = 0.1;
+    rt_instbatch3d_set(batch, 0, t0);
+    reset_canvas_frame(&canvas, 2);
+    rt_canvas3d_draw_instanced(&canvas, batch);
+
+    ((mat4_impl *)t0)->m[3] = 0.25;
+    rt_instbatch3d_set(batch, 0, t0);
+    rt_canvas3d_end(&canvas);
+
+    EXPECT_TRUE(last_instance_matrices != nullptr && last_instance_matrices[3] == 0.1f,
+                "Deferred instanced draw snapshots current matrices at enqueue time");
+    EXPECT_TRUE(last_instanced_cmd.prev_instance_matrices != nullptr &&
+                    last_instanced_cmd.prev_instance_matrices[3] == 0.0f,
+                "Deferred instanced draw snapshots previous matrices at enqueue time");
 
     cleanup_fake_canvas(&canvas);
 }
@@ -1571,6 +1666,55 @@ static void test_shadow_selection_prefers_strongest_directional_light_regardless
     cleanup_fake_canvas(&canvas);
 }
 
+static void test_shadow_selection_uses_queued_scene_light_snapshots(void) {
+    vgfx3d_backend_t backend = {};
+    backend.name = "metal";
+    backend.end_frame = noop_end_frame;
+    backend.submit_draw = record_draw_with_lights;
+    backend.shadow_begin = record_shadow_begin;
+    backend.shadow_draw = record_shadow_draw;
+    backend.shadow_end = record_shadow_end;
+
+    rt_canvas3d canvas;
+    vgfx3d_rendertarget_t shadow_rt = {};
+    float shadow_depth[16] = {};
+    rt_light3d imported_light = {};
+    init_fake_canvas(&canvas, &backend);
+
+    shadow_rt.depth_buf = shadow_depth;
+    shadow_rt.width = 4;
+    shadow_rt.height = 4;
+    canvas.shadow_rts[0] = &shadow_rt;
+    canvas.shadows_enabled = 1;
+    canvas.shadow_bias = 0.0025f;
+
+    imported_light.type = 0;
+    imported_light.direction[1] = -1.0;
+    imported_light.color[0] = imported_light.color[1] = imported_light.color[2] = 1.0;
+    imported_light.intensity = 2.0;
+
+    void *mesh = make_test_mesh();
+    void *material = rt_material3d_new();
+    void *transform = rt_mat4_identity();
+    ((mat4_impl *)transform)->m[11] = -2.0;
+
+    reset_shadow_counts();
+    reset_canvas_frame(&canvas, 1);
+    canvas.scene_lights[0] = &imported_light;
+    canvas.scene_light_count = 1;
+    rt_canvas3d_draw_mesh(&canvas, mesh, transform, material);
+    canvas.scene_lights[0] = nullptr;
+    canvas.scene_light_count = 0;
+    rt_canvas3d_end(&canvas);
+
+    EXPECT_TRUE(shadow_begin_calls == 1 && shadow_draw_calls == 1 && shadow_end_calls == 1,
+                "Shadow selection uses queued Scene3D node-light snapshots after Draw returns");
+    EXPECT_TRUE(last_draw_light_count == 1 && last_draw_lights[0].shadow_index == 0,
+                "Queued Scene3D node lights receive shadow indices in the main pass");
+
+    cleanup_fake_canvas(&canvas);
+}
+
 static void test_occlusion_mode_rejects_off_frustum_draws_before_submission(void) {
     vgfx3d_backend_t backend = {};
     backend.name = "opengl";
@@ -1790,16 +1934,19 @@ int main() {
     test_large_morph_payload_falls_back_to_cpu_for_d3d11();
     test_large_morph_payload_stays_on_gpu_for_metal();
     test_cpu_morph_fallback_for_software();
+    test_morph_tangent_deltas_fall_back_to_cpu_for_metal();
     test_env_map_payload_forwarded();
     test_backend_skybox_hook_used();
     test_static_mesh_geometry_identity_forwarded();
     test_deferred_draw_retains_mesh_and_material_until_end();
+    test_mesh_draw_submits_immediately_when_deferred_queue_cannot_grow();
     test_rect2d_queues_overlay_pass();
     test_transform_history_forwarded_for_motion_blur();
     test_morph_weight_history_forwarded();
     test_skinning_palette_history_forwarded();
     test_instanced_transform_history_forwarded();
     test_instanced_transform_history_survives_count_changes();
+    test_deferred_instanced_draw_snapshots_instance_buffers();
     test_instanced_material_payload_forwarded();
     test_pbr_material_payload_forwarded();
     test_instanced_runtime_culls_outside_frustum();
@@ -1807,6 +1954,7 @@ int main() {
     test_transparent_sort_key_uses_mesh_bounds_depth();
     test_instanced_batch_sort_key_uses_aggregate_bounds_center();
     test_shadow_selection_prefers_strongest_directional_light_regardless_of_slot();
+    test_shadow_selection_uses_queued_scene_light_snapshots();
     test_occlusion_mode_rejects_off_frustum_draws_before_submission();
     test_draw_mesh_preserves_full_light_capacity();
     test_screenshot_prefers_backend_readback();

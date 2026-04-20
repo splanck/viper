@@ -286,6 +286,10 @@ static rt_scene_node3d *model_clone_node(const rt_scene_node3d *src, int clone_m
         rt_obj_retain_maybe(src->material);
         dst->material = src->material;
     }
+    if (src->light) {
+        rt_obj_retain_maybe(src->light);
+        dst->light = src->light;
+    }
     if (src->name) {
         rt_obj_retain_maybe(src->name);
         dst->name = src->name;

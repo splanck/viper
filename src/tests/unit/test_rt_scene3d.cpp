@@ -403,6 +403,8 @@ static int g_scene_begin_count = 0;
 static int g_scene_end_count = 0;
 static const void *g_scene_last_vertices = nullptr;
 static int32_t g_scene_last_bone_count = 0;
+static vgfx3d_light_params_t g_scene_last_lights[VGFX3D_MAX_LIGHTS];
+static int32_t g_scene_last_light_count = 0;
 
 static void scene_test_begin_frame(void *, const vgfx3d_camera_params_t *) {
     g_scene_begin_count++;
@@ -415,14 +417,19 @@ static void scene_test_end_frame(void *) {
 static void scene_test_submit_draw(void *,
                                    vgfx_window_t,
                                    const vgfx3d_draw_cmd_t *cmd,
-                                   const vgfx3d_light_params_t *,
-                                   int32_t,
+                                   const vgfx3d_light_params_t *lights,
+                                   int32_t light_count,
                                    const float *,
                                    int8_t,
                                    int8_t) {
     g_scene_submit_count++;
     g_scene_last_vertices = cmd ? cmd->vertices : nullptr;
     g_scene_last_bone_count = cmd ? cmd->bone_count : 0;
+    g_scene_last_light_count = light_count > VGFX3D_MAX_LIGHTS ? VGFX3D_MAX_LIGHTS : light_count;
+    if (lights && g_scene_last_light_count > 0)
+        std::memcpy(g_scene_last_lights,
+                    lights,
+                    (size_t)g_scene_last_light_count * sizeof(g_scene_last_lights[0]));
 }
 
 static void init_scene_test_canvas(rt_canvas3d *canvas, const vgfx3d_backend_t *backend) {
@@ -437,6 +444,8 @@ static void reset_scene_capture(void) {
     g_scene_end_count = 0;
     g_scene_last_vertices = nullptr;
     g_scene_last_bone_count = 0;
+    std::memset(g_scene_last_lights, 0, sizeof(g_scene_last_lights));
+    g_scene_last_light_count = 0;
 }
 
 static void test_scene_draw_reuses_active_frame() {
@@ -476,6 +485,42 @@ static void test_scene_draw_reuses_active_frame() {
     EXPECT_TRUE(g_scene_submit_count == 0,
                 "Scene3D.Draw defers backend submission until the caller ends the frame");
     EXPECT_TRUE(canvas.in_frame == 1, "Scene3D.Draw leaves the caller-owned frame active");
+}
+
+static void test_scene_draw_culling_uses_canvas_output_aspect() {
+    vgfx3d_backend_t backend = {};
+    backend.name = "opengl";
+    backend.begin_frame = scene_test_begin_frame;
+    backend.end_frame = scene_test_end_frame;
+    backend.submit_draw = scene_test_submit_draw;
+
+    rt_canvas3d canvas;
+    init_scene_test_canvas(&canvas, &backend);
+    canvas.width = 200;
+    canvas.height = 100;
+    reset_scene_capture();
+
+    void *scene = rt_scene3d_new();
+    void *node = rt_scene_node3d_new();
+    void *mesh = rt_mesh3d_new_box(1.0, 1.0, 1.0);
+    void *material = rt_material3d_new_color(1.0, 1.0, 1.0);
+    void *camera = rt_camera3d_new(60.0, 1.0, 0.1, 100.0);
+    void *eye = rt_vec3_new(0.0, 0.0, 5.0);
+    void *target = rt_vec3_new(0.0, 0.0, 0.0);
+    void *up = rt_vec3_new(0.0, 1.0, 0.0);
+
+    rt_scene_node3d_set_position(node, 4.0, 0.0, 0.0);
+    rt_scene_node3d_set_mesh(node, mesh);
+    rt_scene_node3d_set_material(node, material);
+    rt_scene3d_add(scene, node);
+    rt_camera3d_look_at(camera, eye, target, up);
+
+    rt_scene3d_draw(scene, &canvas, camera);
+
+    EXPECT_TRUE(g_scene_submit_count == 1,
+                "Scene3D culling uses the active canvas aspect instead of the camera's stored aspect");
+    EXPECT_TRUE(rt_scene3d_get_culled_count(scene) == 0,
+                "Wide active outputs keep edge-visible nodes from being culled by a stale camera projection");
 }
 
 static void test_scene_save_escapes_json_names() {
@@ -844,6 +889,74 @@ static void test_node_animator_handles_large_morph_weight_channels() {
                 "Node animation applies morph weights beyond the old fixed scratch limit");
 }
 
+static void test_node_animator_samples_cubic_translation_channels() {
+    void *scene = rt_scene3d_new();
+    void *node = rt_scene_node3d_new();
+    double times[2] = {0.0, 1.0};
+    float values[6] = {0.0f, 0.0f, 0.0f, 2.0f, 0.0f, 0.0f};
+    float in_tangents[6] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+    float out_tangents[6] = {2.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+    void *anim;
+    void *animator;
+    void *clips[1];
+
+    rt_scene_node3d_set_name(node, rt_const_cstr("target"));
+    rt_scene3d_add(scene, node);
+    anim = rt_node_animation3d_new(rt_const_cstr("cubic"), 1.0);
+    EXPECT_TRUE(rt_node_animation3d_add_cubic_channel(anim,
+                                                      rt_const_cstr("target"),
+                                                      RT_NODE_ANIM_PATH_TRANSLATION,
+                                                      2,
+                                                      3,
+                                                      times,
+                                                      values,
+                                                      in_tangents,
+                                                      out_tangents) >= 0,
+                "Node animation accepts CUBICSPLINE channels with tangent payloads");
+    clips[0] = anim;
+    animator = rt_node_animator3d_new_from_clips(clips, 1);
+    rt_scene_node3d_bind_node_animator(rt_scene3d_get_root(scene), animator);
+    rt_scene3d_sync_bindings(scene, 0.5);
+
+    void *pos = rt_scene_node3d_get_position(node);
+    EXPECT_NEAR(rt_vec3_x(pos),
+                1.25,
+                0.001,
+                "Node animation evaluates CUBICSPLINE translation with Hermite tangents");
+}
+
+static void test_node_animator_slerps_linear_rotation_channels() {
+    void *scene = rt_scene3d_new();
+    void *node = rt_scene_node3d_new();
+    double times[2] = {0.0, 1.0};
+    float values[8] = {0.0f, 0.0f, 0.0f, 1.0f,
+                       0.0f, 0.0f, 0.70710678f, 0.70710678f};
+    void *anim;
+    void *animator;
+    void *clips[1];
+
+    rt_scene_node3d_set_name(node, rt_const_cstr("target"));
+    rt_scene3d_add(scene, node);
+    anim = rt_node_animation3d_new(rt_const_cstr("rotate"), 1.0);
+    EXPECT_TRUE(rt_node_animation3d_add_channel(anim,
+                                                rt_const_cstr("target"),
+                                                RT_NODE_ANIM_PATH_ROTATION,
+                                                RT_NODE_ANIM_INTERP_LINEAR,
+                                                2,
+                                                4,
+                                                times,
+                                                values) >= 0,
+                "Node animation accepts linear rotation channels");
+    clips[0] = anim;
+    animator = rt_node_animator3d_new_from_clips(clips, 1);
+    rt_scene_node3d_bind_node_animator(rt_scene3d_get_root(scene), animator);
+    rt_scene3d_sync_bindings(scene, 0.25);
+
+    void *rot = rt_scene_node3d_get_rotation(node);
+    EXPECT_NEAR(rt_quat_z(rot), 0.19509, 0.001, "Node animation uses quaternion slerp for rotation Z");
+    EXPECT_NEAR(rt_quat_w(rot), 0.98079, 0.001, "Node animation uses quaternion slerp for rotation W");
+}
+
 static void test_frustum_aabb_inside() {
     /* Object at origin, camera looking at it → visible (not culled) */
     void *scene = rt_scene3d_new();
@@ -1045,6 +1158,92 @@ static void test_parent_animator_drives_child_skinned_meshes() {
                 "Scene3D inherits a bound parent animator when drawing child meshes");
 }
 
+static void test_scene_draw_includes_node_attached_lights() {
+    vgfx3d_backend_t backend = {};
+    backend.name = "opengl";
+    backend.begin_frame = scene_test_begin_frame;
+    backend.end_frame = scene_test_end_frame;
+    backend.submit_draw = scene_test_submit_draw;
+
+    rt_canvas3d canvas;
+    init_scene_test_canvas(&canvas, &backend);
+    reset_scene_capture();
+
+    void *scene = rt_scene3d_new();
+    void *mesh_node = rt_scene_node3d_new();
+    void *light_node = rt_scene_node3d_new();
+    void *mesh = rt_mesh3d_new_box(1.0, 1.0, 1.0);
+    void *material = rt_material3d_new_color(1.0, 1.0, 1.0);
+    void *camera = rt_camera3d_new(60.0, 1.0, 0.1, 100.0);
+    void *eye = rt_vec3_new(0.0, 0.0, 5.0);
+    void *target = rt_vec3_new(0.0, 0.0, 0.0);
+    void *up = rt_vec3_new(0.0, 1.0, 0.0);
+    void *local_pos = rt_vec3_new(0.0, 0.0, 0.0);
+    void *light = rt_light3d_new_point(local_pos, 0.25, 0.5, 1.0, 0.2);
+
+    rt_scene_node3d_set_mesh(mesh_node, mesh);
+    rt_scene_node3d_set_material(mesh_node, material);
+    rt_scene_node3d_set_position(light_node, 2.0, 3.0, 4.0);
+    rt_scene_node3d_set_light(light_node, light);
+    rt_scene3d_add(scene, mesh_node);
+    rt_scene3d_add(scene, light_node);
+    rt_camera3d_look_at(camera, eye, target, up);
+
+    rt_scene3d_draw(scene, &canvas, camera);
+
+    EXPECT_TRUE(g_scene_submit_count == 1, "Scene3D draws lit scene geometry");
+    EXPECT_TRUE(g_scene_last_light_count == 1, "Scene3D forwards node-attached lights");
+    if (g_scene_last_light_count > 0) {
+        EXPECT_TRUE(g_scene_last_lights[0].type == 1,
+                    "Scene3D preserves node-attached point light type");
+        EXPECT_NEAR(g_scene_last_lights[0].position[0],
+                    2.0,
+                    0.001,
+                    "Scene3D transforms node-attached light X position");
+        EXPECT_NEAR(g_scene_last_lights[0].position[1],
+                    3.0,
+                    0.001,
+                    "Scene3D transforms node-attached light Y position");
+        EXPECT_NEAR(g_scene_last_lights[0].position[2],
+                    4.0,
+                    0.001,
+                    "Scene3D transforms node-attached light Z position");
+    }
+}
+
+static void test_scene_roundtrip_preserves_node_lights() {
+    const char *path = "/tmp/viper_scene_node_light_roundtrip.vscn";
+    void *scene = rt_scene3d_new();
+    void *node = rt_scene_node3d_new();
+    void *pos = rt_vec3_new(0.0, 0.0, 0.0);
+    void *dir = rt_vec3_new(0.0, 0.0, -1.0);
+    void *light = rt_light3d_new_spot(pos, dir, 0.3, 0.6, 0.9, 0.25, 10.0, 30.0);
+
+    rt_light3d_set_intensity(light, 4.0);
+    rt_scene_node3d_set_name(node, rt_const_cstr("lamp"));
+    rt_scene_node3d_set_position(node, 1.0, 2.0, 3.0);
+    rt_scene_node3d_set_light(node, light);
+    rt_scene3d_add(scene, node);
+
+    EXPECT_TRUE(rt_scene3d_save(scene, rt_const_cstr(path)) == 1,
+                "Scene3D.Save writes node-light fixtures");
+    void *loaded = rt_scene3d_load(rt_const_cstr(path));
+    EXPECT_TRUE(loaded != nullptr, "Scene3D.Load reads node-light fixtures");
+    if (!loaded)
+        return;
+    void *loaded_node = rt_scene3d_find(loaded, rt_const_cstr("lamp"));
+    rt_light3d *loaded_light = (rt_light3d *)rt_scene_node3d_get_light(loaded_node);
+    EXPECT_TRUE(loaded_light != nullptr, "Scene3D.Load restores node-attached lights");
+    if (!loaded_light)
+        return;
+    EXPECT_TRUE(loaded_light->type == 3, "Scene3D.Load restores spot-light type");
+    EXPECT_NEAR(loaded_light->color[2], 0.9, 0.001, "Scene3D.Load restores light color");
+    EXPECT_NEAR(loaded_light->intensity, 4.0, 0.001, "Scene3D.Load restores light intensity");
+    EXPECT_NEAR(loaded_light->attenuation, 0.25, 0.001, "Scene3D.Load restores light attenuation");
+    EXPECT_TRUE(loaded_light->inner_cos > loaded_light->outer_cos,
+                "Scene3D.Load restores spot cone cosines");
+}
+
 int main() {
     test_create_scene_and_node();
     test_add_remove_child();
@@ -1074,10 +1273,15 @@ int main() {
     test_dynamic_deformation_uses_conservative_frustum_culling();
     test_parent_animator_drives_child_skinned_meshes();
     test_scene_draw_reuses_active_frame();
+    test_scene_draw_culling_uses_canvas_output_aspect();
     test_scene_save_escapes_json_names();
     test_scene_save_serializes_visibility_and_lod_metadata();
     test_scene_roundtrip_loads_shared_assets();
     test_node_animator_handles_large_morph_weight_channels();
+    test_node_animator_samples_cubic_translation_channels();
+    test_node_animator_slerps_linear_rotation_channels();
+    test_scene_draw_includes_node_attached_lights();
+    test_scene_roundtrip_preserves_node_lights();
 
     printf("Scene3D tests: %d/%d passed\n", tests_passed, tests_run);
     return tests_passed == tests_run ? 0 : 1;

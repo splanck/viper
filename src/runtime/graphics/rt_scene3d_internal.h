@@ -23,6 +23,7 @@
 
 #define RT_NODE_ANIM_INTERP_LINEAR 0
 #define RT_NODE_ANIM_INTERP_STEP 1
+#define RT_NODE_ANIM_INTERP_CUBICSPLINE 2
 
 typedef struct {
     rt_string target_name;
@@ -32,6 +33,8 @@ typedef struct {
     int32_t value_width;
     double *times;
     float *values;
+    float *in_tangents;
+    float *out_tangents;
 } rt_node_anim_channel3d;
 
 typedef struct rt_node_animation3d {
@@ -72,6 +75,7 @@ typedef struct rt_scene_node3d {
 
     void *mesh;
     void *material;
+    void *light;
     void *bound_body;
     void *bound_animator;
     void *bound_node_animator;
@@ -113,8 +117,19 @@ int64_t rt_node_animation3d_add_channel(void *obj,
                                         int64_t value_width,
                                         const double *times,
                                         const float *values);
+int64_t rt_node_animation3d_add_cubic_channel(void *obj,
+                                              rt_string target_name,
+                                              int64_t path,
+                                              int64_t key_count,
+                                              int64_t value_width,
+                                              const double *times,
+                                              const float *values,
+                                              const float *in_tangents,
+                                              const float *out_tangents);
 void *rt_node_animator3d_new_from_clips(void **clips, int64_t clip_count);
 void rt_scene_node3d_bind_node_animator(void *obj, void *animator);
+void rt_scene_node3d_set_light(void *obj, void *light);
+void *rt_scene_node3d_get_light(void *obj);
 
 #ifdef __cplusplus
 }

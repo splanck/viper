@@ -204,11 +204,11 @@ The rendering surface. Creates a window and manages the render loop.
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| `SetLight(index, light)` | `void(i64, obj)` | Bind or clear a retained Light3D slot (0-7) |
-| `SetAmbient(r, g, b)` | `void(f64, f64, f64)` | Set ambient light color |
+| `SetLight(index, light)` | `void(i64, obj)` | Bind or clear a retained Light3D slot (0-15) |
+| `SetAmbient(r, g, b)` | `void(f64, f64, f64)` | Set ambient light color; values are clamped to `0..1` |
 | `SetSkybox(cubemap)` | `void(obj)` | Set CubeMap3D skybox |
 | `ClearSkybox()` | `void()` | Remove skybox |
-| `SetFog(r, g, b, near, far)` | `void(f64, f64, f64, f64, f64)` | Enable linear distance fog |
+| `SetFog(near, far, r, g, b)` | `void(f64, f64, f64, f64, f64)` | Enable linear distance fog; distances and RGB are sanitized |
 | `ClearFog()` | `void()` | Disable fog |
 | `EnableShadows(mapSize)` | `void(i64)` | Enable shadow mapping (mapSize = shadow map resolution; up to the two strongest directional lights receive shadow maps) |
 | `DisableShadows()` | `void()` | Disable shadow mapping |
@@ -222,7 +222,7 @@ The rendering surface. Creates a window and manages the render loop.
 | `SetDTMax(ms)` | `void(i64)` | Cap DeltaTime to prevent spiral-of-death |
 | `SetRenderTarget(target)` | `void(obj)` | Redirect rendering to offscreen RenderTarget3D |
 | `ResetRenderTarget()` | `void()` | Return to window rendering |
-| `SetPostFX(fx)` | `void(obj)` | Set PostFX3D chain (applied in Flip to the window or active render target) |
+| `SetPostFX(fx)` | `void(obj)` | Set PostFX3D chain applied in `Flip()` to the window or active render target; SSAO/DOF/motion blur require GPU window postfx |
 | `SetFrustumCulling(enabled)` | `void(i1)` | Toggle coarse CPU frustum rejection plus front-to-back opaque ordering |
 | `SetOcclusionCulling(enabled)` | `void(i1)` | Compatibility alias for `SetFrustumCulling`; this is not hardware occlusion-query culling |
 
@@ -272,7 +272,7 @@ func start() {
     Canvas3D.SetAmbient(canvas, 0.1, 0.1, 0.1);
 
     // Enable fog and shadows
-    Canvas3D.SetFog(canvas, 0.5, 0.5, 0.6, 10.0, 50.0);
+    Canvas3D.SetFog(canvas, 10.0, 50.0, 0.5, 0.5, 0.6);
     Canvas3D.EnableShadows(canvas, 1024);
 
     var angle = 0.0;
@@ -373,7 +373,9 @@ func start() {
 
 All mesh generators and the OBJ loader produce **counter-clockwise (CCW)** winding for front faces. When constructing meshes programmatically, vertices must be ordered CCW when viewed from the front.
 
-**Mesh validation:** Procedural generators reject non-finite and non-positive dimensions. Sphere and cylinder segment counts are clamped to production-safe maxima to avoid accidental unbounded allocation. `AddVertex` traps on non-finite vertex data, and `AddTriangle` ignores invalid or degenerate triangles.
+**Mesh validation:** Procedural generators reject non-finite and non-positive dimensions. Sphere and cylinder segment counts are clamped to production-safe maxima to avoid accidental unbounded allocation. `AddVertex` traps on non-finite vertex data. `AddTriangle` traps on negative, out-of-range, or degenerate indices and marks the mesh build failed until `Clear()` resets it.
+
+**Tangents:** `CalcTangents()` uses position/UV derivatives with Gram-Schmidt orthogonalization and `tangent.w` handedness for mirrored UVs. Degenerate UV islands get a normalized fallback tangent orthogonal to the vertex normal so normal maps never receive a tangent parallel to the normal.
 
 **OBJ loader:** Supports v/vn/vt tuples, negative indices, inline face comments, and arbitrary n-gons through fan triangulation. The loader deduplicates identical `(position, uv, normal)` tuples so indexed assets do not balloon into one vertex per face corner. Invalid face indices trap and abort the load instead of emitting corrupt geometry. `.mtl`, `usemtl`, `g`, and `o` directives are parsed and flattened but do not create per-material submeshes.
 
@@ -684,10 +686,10 @@ func start() {
 ```
 
 **Note:** `AsPixels()` returns a fresh copy each call. The render target's CPU-side color/depth buffers are allocated lazily on first CPU access (or when the software backend binds the target), so GPU-only RTT passes do not pay the host-memory cost up front.
-HDR targets created with `NewHdr()` keep their GPU color attachment in `RGBA16F`, but `AsPixels()` still returns standard `Pixels`; the runtime tonemaps HDR RGB into 8-bit output during readback so RTT screenshots and texture bake-outs remain deterministic across backends.
+HDR targets created with `NewHdr()` keep their GPU color attachment in `RGBA16F`, but `AsPixels()` still returns standard `Pixels`. GPU readback keeps both a tonemapped RGBA8 mirror and a linear RGBA32F CPU mirror; render-target postfx consumes the linear HDR mirror for Bloom, Tonemap, FXAA, ColorGrade, and Vignette before final 8-bit conversion so highlights are not clamped before the chain runs.
 When a render target is bound, `Canvas3D.Width`, `Canvas3D.Height`, `Begin2D()`, debug overlays, and `Screenshot()` all operate in that target's pixel space instead of the window's.
 `Canvas3D.Begin()` also uses the target's aspect ratio for that frame's projection while the render target is bound, so switching between the window and RTT views does not stretch perspective or rewrite the camera's stored projection.
-**PostFX:** If a render target is active when you call `Flip()`, the canvas applies the current `PostFX3D` chain to that render target instead of the window backbuffer.
+**PostFX:** If a render target is active when you call `Flip()`, the canvas applies the current CPU-supported `PostFX3D` chain to that render target instead of the window backbuffer. SSAO, DOF, and motion blur require GPU window postfx because they need scene depth/history/velocity buffers; on a render target or software CPU path they trap with a clear error instead of silently no-oping.
 
 ## CubeMap3D
 
@@ -960,14 +962,16 @@ Format note:
 - `.vscn`, FBX, and glTF imports can populate shared skeletons and animation clips when the source format contains supported skin/animation data.
 - FBX-backed `Model3D` assets preserve authored `Model` hierarchy, local TRS, and mesh/material attachments when the source file contains object connections, instead of always collapsing to synthetic `mesh_N` nodes.
 - OBJ-backed `Model3D` assets use the existing geometry-only OBJ loader and synthesize template nodes because OBJ has no scene hierarchy.
-- glTF imports populate meshes, materials, active-scene node hierarchy, skins, morph targets, skeletal clips, and node/morph animation clips.
-- glTF skeletal tracks map to `Skeleton3D` / `Animation3D`; non-joint node translation, rotation, scale, and morph `weights` tracks are bound automatically on `Model3D.Instantiate()` and `InstantiateScene()`. Call `Scene3D.SyncBindings(dt)` each frame to advance those imported node clips.
-- glTF mesh extraction supports `POSITION`, `NORMAL`, `TEXCOORD_0`, `TEXCOORD_1`, `COLOR_0`, `TANGENT`, and `JOINTS_0`/`WEIGHTS_0`. Material texture slots preserve their own `textureInfo.texCoord`, `KHR_texture_transform`, wrap mode, and nearest/linear filtering.
+- glTF imports populate meshes, materials, active-scene node hierarchy, skins, morph targets, punctual lights, skeletal clips, and node/morph animation clips.
+- glTF skeletal tracks map to `Skeleton3D` / `Animation3D`; non-joint node translation, rotation, scale, and morph `weights` tracks are bound automatically on `Model3D.Instantiate()` and `InstantiateScene()`. LINEAR rotation tracks use quaternion slerp, and CUBICSPLINE tracks use glTF Hermite tangents. Call `Scene3D.SyncBindings(dt)` each frame to advance those imported node clips.
+- glTF mesh extraction supports `POSITION`, `NORMAL`, `TEXCOORD_0`, `TEXCOORD_1`, `COLOR_0`, `TANGENT`, `JOINTS_0`/`WEIGHTS_0`, and `JOINTS_1`/`WEIGHTS_1`. Secondary joint sets are reduced to the four strongest supported influences and renormalized. Skins above the runtime 256-bone palette are rejected instead of silently dropping the rig.
+- glTF morph targets import `POSITION`, `NORMAL`, and `TANGENT` deltas. Position/normal morphs can use the GPU path; tangent morphs currently route through the CPU morph path so tangent-space normal mapping stays correct.
 - glTF node hierarchies are rejected if they contain invalid child references, duplicate parents, or cycles; valid meshes/materials still remain available to the asset container.
 - Triangle-list, triangle-strip, and triangle-fan glTF primitives are triangulated on import.
 - Materialless glTF primitives receive a shared default white PBR material so valid assets render through `Scene3D` / `Model3D` without manual material assignment.
-- VSCN round-trips the current `vgfx3d_vertex_le_v2` vertex layout and per-slot material texture metadata, while still loading older `vgfx3d_vertex_le_v1` scenes.
+- VSCN round-trips the current `vgfx3d_vertex_le_v2` vertex layout, per-slot material texture metadata, and node-attached lights, while still loading older `vgfx3d_vertex_le_v1` scenes.
 - `.glb` files are validated as GLB 2.0 containers before JSON parse. External `.gltf` buffers and images are resolved relative to the asset path and reject absolute paths, URI schemes, and `.` / `..` traversal segments.
+- glTF `extensionsRequired` is enforced. Required `KHR_texture_transform`, `KHR_materials_emissive_strength`, `KHR_materials_unlit`, and `KHR_lights_punctual` are accepted; unsupported required extensions such as Draco, Meshopt, Basis/KTX2, DDS, and exact advanced material extensions fail load rather than rendering incomplete fallback data.
 
 ## Skeleton3D
 
@@ -1300,9 +1304,10 @@ func start() {
 **Note:** GLTF functions are standalone extractor helpers. They preserve the active-scene hierarchy, matrix-authored node transforms, extended mesh attributes, materials, skeletons, animations, and morph targets listed above. For preserved node hierarchies and scene instantiation, load `.gltf` or `.glb` through `Model3D.Load`.
 
 Supported glTF material fidelity:
-- Core metallic-roughness PBR, base-color / normal / metallic-roughness / occlusion / emissive texture slots, alpha modes, `doubleSided`, and `KHR_materials_emissive_strength`.
-- `KHR_materials_unlit`, `KHR_materials_specular`, `KHR_materials_clearcoat`, and `KHR_materials_transmission` are mapped onto the current `Material3D` surface where possible.
+- Core metallic-roughness PBR, base-color / normal / metallic-roughness / occlusion / emissive texture slots, alpha modes, `doubleSided`, and `KHR_materials_emissive_strength`. PBR base-color and emissive textures are decoded from sRGB to linear before lighting on software, Metal, D3D11, and OpenGL.
+- `KHR_materials_unlit` is supported as a required extension. `KHR_materials_specular`, `KHR_materials_clearcoat`, and `KHR_materials_transmission` are mapped onto the current `Material3D` surface where possible when optional, but assets that mark those advanced material extensions as required are rejected until the renderer has exact shader support.
 - `KHR_texture_transform`, `textureInfo.texCoord`, wrap mode, and nearest/linear filter state are preserved independently for base-color, normal, specular, emissive, metallic-roughness, and occlusion texture slots across software, Metal, D3D11, and OpenGL.
+- `KHR_lights_punctual` directional, point, and spot lights attach to their authored scene nodes. `Scene3D.Draw` transforms them by node world pose and includes them in the per-draw light snapshot; imported directional lights participate in shadow selection from that snapshot, and glTF `range` maps to the runtime quadratic attenuation coefficient.
 
 ## Particles3D
 
@@ -1423,6 +1428,8 @@ Full-screen post-processing effect chain applied automatically in `Canvas3D.Flip
 Effects run strictly in append order. If you add the same effect type more than once, each pass is preserved instead of being collapsed into one combined backend setting. The GPU backends now follow that same ordered-chain behavior as the CPU path, so `Flip()`, GPU screenshots, and GPU readback all match the authored `PostFX3D` chain. Bloom `passes` is part of the backend snapshot so GPU paths can widen the bloom radius consistently with the authored quality setting.
 
 PostFX parameters are bounded before they reach CPU or GPU shaders: bloom passes clamp to `0..32`, SSAO samples to `1..128`, motion-blur samples to `1..64`, vignette softness has a non-zero floor, and non-finite exposure/radius/intensity values fall back to safe defaults.
+
+Bloom, Tonemap, FXAA, ColorGrade, and Vignette run on both GPU outputs and CPU render-target/software fallback outputs. SSAO, DOF, and MotionBlur require `Canvas3D.BackendSupports(canvas, "gpu_postfx")` and a window-backed `Flip()` so the backend can provide depth, scene history, and motion vectors; attaching those effects to a render target or software CPU path raises an explicit runtime trap.
 
 ### Zia Example
 
@@ -1724,13 +1731,17 @@ When captured, `Mouse.DeltaX()`/`Mouse.DeltaY()` report movement from center. Th
 Impulse-based 3D rigid body simulation with AABB, sphere, and capsule collision shapes.
 Bodies now track quaternion orientation and angular velocity in addition to linear motion.
 Shape-specific narrow-phase collision: sphere-sphere uses radial distance (not AABB),
-AABB-sphere uses closest-point projection. Coulomb friction and Baumgarte positional correction.
+AABB-sphere uses closest-point projection. Collision detection uses a sweep-and-prune broadphase
+before narrow-phase tests. Coulomb friction and Baumgarte positional correction are applied to
+non-trigger contacts.
 
 **Current limitation:** rotational state is fully integrated for all bodies, but the simple
 box/capsule collision backend still treats AABB and capsule primitives as axis-aligned /
 upright collision shapes. Sphere bodies are the best fit today for fully-physical rotation.
 
 ### Physics3DWorld
+
+World storage for bodies, contacts, contact events, and joints grows on demand from production-sized initial capacities. Query result lists are still bounded for predictable allocation behavior.
 
 | Constructor | Signature | Description |
 |-------------|-----------|-------------|
@@ -1882,8 +1893,8 @@ Notes:
 | `Orientation` | Quat | read | World orientation (set via `SetOrientation`) |
 | `Velocity` | Vec3 | read | Linear velocity (set via `SetVelocity`) |
 | `AngularVelocity` | Vec3 | read | Angular velocity in radians/sec (set via `SetAngularVelocity`) |
-| `Restitution` | Float | read/write | Bounciness 0-1 |
-| `Friction` | Float | read/write | Surface friction |
+| `Restitution` | Float | read/write | Bounciness, clamped to `0..1` |
+| `Friction` | Float | read/write | Surface friction, clamped to finite non-negative values |
 | `LinearDamping` | Float | read/write | Velocity damping per second |
 | `AngularDamping` | Float | read/write | Spin damping per second |
 | `CollisionLayer` | Integer | read/write | Bitmask layer |

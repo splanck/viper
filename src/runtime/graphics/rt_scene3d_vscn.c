@@ -818,6 +818,36 @@ static int vscn_serialize_node(rt_scene_node3d *node,
         return 0;
     }
 
+    if (node->light) {
+        rt_light3d *light = (rt_light3d *)node->light;
+        if (!vscn_append(buf,
+                         len,
+                         cap,
+                         ",\n%s  \"light\": {\"type\": %d, "
+                         "\"direction\": [%.6f, %.6f, %.6f], "
+                         "\"position\": [%.6f, %.6f, %.6f], "
+                         "\"color\": [%.6f, %.6f, %.6f], "
+                         "\"intensity\": %.6f, \"attenuation\": %.6f, "
+                         "\"innerCos\": %.6f, \"outerCos\": %.6f}",
+                         indent,
+                         light->type,
+                         light->direction[0],
+                         light->direction[1],
+                         light->direction[2],
+                         light->position[0],
+                         light->position[1],
+                         light->position[2],
+                         light->color[0],
+                         light->color[1],
+                         light->color[2],
+                         light->intensity,
+                         light->attenuation,
+                         light->inner_cos,
+                         light->outer_cos)) {
+            return 0;
+        }
+    }
+
     if (node->lod_count > 0) {
         if (!vscn_append(buf, len, cap, ",\n%s  \"lod\": [\n", indent))
             return 0;
@@ -1182,6 +1212,46 @@ static rt_mesh3d *vscn_parse_mesh(void *mesh_obj) {
     return mesh;
 }
 
+static rt_light3d *vscn_parse_light(void *light_obj) {
+    rt_light3d *light;
+    void *arr;
+    if (!light_obj)
+        return NULL;
+    light = (rt_light3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_light3d));
+    if (!light)
+        return NULL;
+    memset(light, 0, sizeof(*light));
+    light->type = (int32_t)vjson_i64(light_obj, "type", 1);
+    if (light->type < 0 || light->type > 3)
+        light->type = 1;
+    light->direction[2] = -1.0;
+    light->color[0] = light->color[1] = light->color[2] = 1.0;
+    light->intensity = vjson_f64(light_obj, "intensity", 1.0);
+    light->attenuation = vjson_f64(light_obj, "attenuation", 0.0);
+    light->inner_cos = vjson_f64(light_obj, "innerCos", 1.0);
+    light->outer_cos = vjson_f64(light_obj, "outerCos", 0.7071067811865476);
+
+    arr = vjson_get(light_obj, "direction");
+    if (arr && vjson_len(arr) >= 3) {
+        light->direction[0] = vjson_arr_f64(arr, 0, light->direction[0]);
+        light->direction[1] = vjson_arr_f64(arr, 1, light->direction[1]);
+        light->direction[2] = vjson_arr_f64(arr, 2, light->direction[2]);
+    }
+    arr = vjson_get(light_obj, "position");
+    if (arr && vjson_len(arr) >= 3) {
+        light->position[0] = vjson_arr_f64(arr, 0, light->position[0]);
+        light->position[1] = vjson_arr_f64(arr, 1, light->position[1]);
+        light->position[2] = vjson_arr_f64(arr, 2, light->position[2]);
+    }
+    arr = vjson_get(light_obj, "color");
+    if (arr && vjson_len(arr) >= 3) {
+        light->color[0] = vjson_arr_f64(arr, 0, light->color[0]);
+        light->color[1] = vjson_arr_f64(arr, 1, light->color[1]);
+        light->color[2] = vjson_arr_f64(arr, 2, light->color[2]);
+    }
+    return light;
+}
+
 /// @brief Reverse of `vscn_serialize_node` — recursively rebuild a node subtree from JSON.
 static rt_scene_node3d *vscn_parse_node(void *node_obj,
                                         rt_mesh3d **meshes,
@@ -1236,6 +1306,17 @@ static rt_scene_node3d *vscn_parse_node(void *node_obj,
         int64_t material_index = vjson_i64(node_obj, "material", -1);
         if (material_index >= 0 && material_index < material_count && materials[material_index])
             rt_scene_node3d_set_material(node, materials[material_index]);
+    }
+    {
+        void *light_obj = vjson_get(node_obj, "light");
+        rt_light3d *light = vscn_parse_light(light_obj);
+        if (light) {
+            rt_scene_node3d_set_light(node, light);
+            {
+                void *tmp = light;
+                scene3d_release_ref(&tmp);
+            }
+        }
     }
 
     arr = vjson_get(node_obj, "lod");

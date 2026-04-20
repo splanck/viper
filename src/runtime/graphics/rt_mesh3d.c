@@ -79,6 +79,39 @@ static void mesh_mark_build_failed(rt_mesh3d *mesh) {
         mesh->build_failed = 1;
 }
 
+/// @brief Build a stable tangent orthogonal to `normal` when UVs are degenerate.
+static void mesh_default_tangent_from_normal(const float *normal, float *tangent) {
+    float n[3] = {0.0f, 0.0f, 1.0f};
+    if (normal && isfinite(normal[0]) && isfinite(normal[1]) && isfinite(normal[2])) {
+        float len = sqrtf(normal[0] * normal[0] + normal[1] * normal[1] + normal[2] * normal[2]);
+        if (len > 1e-8f) {
+            n[0] = normal[0] / len;
+            n[1] = normal[1] / len;
+            n[2] = normal[2] / len;
+        }
+    }
+
+    float axis[3] = {fabsf(n[0]) < 0.9f ? 1.0f : 0.0f, fabsf(n[0]) < 0.9f ? 0.0f : 1.0f, 0.0f};
+    float dot = axis[0] * n[0] + axis[1] * n[1] + axis[2] * n[2];
+    tangent[0] = axis[0] - n[0] * dot;
+    tangent[1] = axis[1] - n[1] * dot;
+    tangent[2] = axis[2] - n[2] * dot;
+    {
+        float len =
+            sqrtf(tangent[0] * tangent[0] + tangent[1] * tangent[1] + tangent[2] * tangent[2]);
+        if (len <= 1e-8f) {
+            tangent[0] = 1.0f;
+            tangent[1] = 0.0f;
+            tangent[2] = 0.0f;
+        } else {
+            tangent[0] /= len;
+            tangent[1] /= len;
+            tangent[2] /= len;
+        }
+    }
+    tangent[3] = 1.0f;
+}
+
 /// @brief Decrement-and-free on a GC-tracked reference slot; no-op if the slot is NULL.
 /// @details Paired with `mesh_assign_ref` to implement `retain-then-release` ordering on
 ///   the `morph_targets_ref` field. The slot is cleared to NULL after release so a
@@ -188,6 +221,8 @@ void rt_mesh3d_add_vertex(
     if (!obj)
         return;
     rt_mesh3d *m = (rt_mesh3d *)obj;
+    if (m->build_failed)
+        return;
     if (!mesh_value_is_finite(x) || !mesh_value_is_finite(y) || !mesh_value_is_finite(z) ||
         !mesh_value_is_finite(nx) || !mesh_value_is_finite(ny) || !mesh_value_is_finite(nz) ||
         !mesh_value_is_finite(u) || !mesh_value_is_finite(v)) {
@@ -240,14 +275,25 @@ void rt_mesh3d_add_triangle(void *obj, int64_t v0, int64_t v1, int64_t v2) {
     if (!obj)
         return;
     rt_mesh3d *m = (rt_mesh3d *)obj;
+    if (m->build_failed)
+        return;
 
-    if (v0 < 0 || v1 < 0 || v2 < 0)
+    if (v0 < 0 || v1 < 0 || v2 < 0) {
+        mesh_mark_build_failed(m);
+        rt_trap("Mesh3D.AddTriangle: vertex index must be non-negative");
         return;
+    }
     if ((uint64_t)v0 >= m->vertex_count || (uint64_t)v1 >= m->vertex_count ||
-        (uint64_t)v2 >= m->vertex_count)
+        (uint64_t)v2 >= m->vertex_count) {
+        mesh_mark_build_failed(m);
+        rt_trap("Mesh3D.AddTriangle: vertex index out of range");
         return;
-    if (v0 == v1 || v1 == v2 || v0 == v2)
+    }
+    if (v0 == v1 || v1 == v2 || v0 == v2) {
+        mesh_mark_build_failed(m);
+        rt_trap("Mesh3D.AddTriangle: degenerate triangle");
         return;
+    }
 
     if (m->index_count + 3 > m->index_capacity) {
         uint32_t new_cap;
@@ -1112,11 +1158,7 @@ void rt_mesh3d_calc_tangents(void *obj) {
                            : 1.0f;
             }
         } else {
-            /* Default tangent for degenerate UVs */
-            t[0] = 1.0f;
-            t[1] = 0.0f;
-            t[2] = 0.0f;
-            t[3] = 1.0f;
+            mesh_default_tangent_from_normal(n, t);
         }
     }
     free(tan1);

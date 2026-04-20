@@ -36,6 +36,13 @@ void vgfx3d_copy_linear_rgba16f_to_rgba8(uint8_t *dst_rgba,
                                          int32_t copy_h,
                                          const uint16_t *src_rgba16f,
                                          int32_t src_stride_bytes);
+/// @brief Convert linear RGBA16F pixels to linear RGBA32F.
+void vgfx3d_copy_linear_rgba16f_to_rgba32f(float *dst_rgba32f,
+                                           int32_t dst_stride_floats,
+                                           int32_t copy_w,
+                                           int32_t copy_h,
+                                           const uint16_t *src_rgba16f,
+                                           int32_t src_stride_bytes);
 /// @brief Convert linear RGBA32F pixels to displayable RGBA8 (RGB tonemapped, alpha clamped).
 void vgfx3d_copy_linear_rgba32f_to_rgba8(uint8_t *dst_rgba,
                                          int32_t dst_stride,

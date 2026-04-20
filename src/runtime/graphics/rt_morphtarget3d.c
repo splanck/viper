@@ -6,14 +6,14 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/rt_morphtarget3d.c
-// Purpose: MorphTarget3D — named blend shapes with per-vertex position and
-//   normal deltas. Applied on GPU when the active backend can carry the payload,
-//   otherwise on CPU before draw submission.
+// Purpose: MorphTarget3D — named blend shapes with per-vertex position, normal,
+//   and tangent deltas. Applied on GPU when the active backend can carry the
+//   payload, otherwise on CPU before draw submission.
 //
 // Key invariants:
 //   - Deltas are stored as 3 floats per vertex per shape (sparse via zero default).
 //   - Morph application: dst = base + sum(weight[i] * delta[i]) per vertex.
-//   - Normals re-normalized after morph if any shape has normal deltas.
+//   - Normals/tangents re-normalized after morph if any shape has corresponding deltas.
 //   - Temporary morphed vertex buffer registered with canvas temp_buffers
 //     to avoid use-after-free with deferred draw queue.
 //
@@ -42,6 +42,7 @@ typedef struct {
     char name[64];
     float *pos_deltas; /* 3 * vertex_count floats (dx, dy, dz per vertex) */
     float *nrm_deltas; /* 3 * vertex_count floats (or NULL) */
+    float *tan_deltas; /* 3 * vertex_count floats (or NULL); tangent.w is preserved */
 } vgfx3d_morph_shape_t;
 
 typedef struct {
@@ -247,6 +248,7 @@ static void rt_morphtarget3d_finalize(void *obj) {
     for (int32_t i = 0; i < mt->shape_count; i++) {
         free(mt->shapes[i].pos_deltas);
         free(mt->shapes[i].nrm_deltas);
+        free(mt->shapes[i].tan_deltas);
     }
     free(mt->shapes);
     free(mt->weights);
@@ -314,6 +316,15 @@ void *rt_morphtarget3d_clone(void *obj) {
             if (dst->shapes[shape].nrm_deltas) {
                 memcpy(dst->shapes[shape].nrm_deltas,
                        src->shapes[i].nrm_deltas,
+                       (size_t)src->vertex_count * 3u * sizeof(float));
+            }
+        }
+        if (src->shapes[i].tan_deltas) {
+            dst->shapes[shape].tan_deltas =
+                (float *)calloc((size_t)src->vertex_count * 3u, sizeof(float));
+            if (dst->shapes[shape].tan_deltas) {
+                memcpy(dst->shapes[shape].tan_deltas,
+                       src->shapes[i].tan_deltas,
                        (size_t)src->vertex_count * 3u * sizeof(float));
             }
         }
@@ -416,6 +427,33 @@ void rt_morphtarget3d_set_normal_delta(
     morphtarget_touch_payload(mt);
 }
 
+/// @brief Set the tangent delta for a single vertex of a single shape.
+/// Lazy-allocates tangent deltas on first use. Tangent handedness (w) is not
+/// morphed; CPU fallback preserves the base tangent sign and renormalizes xyz.
+void rt_morphtarget3d_set_tangent_delta(
+    void *obj, int64_t shape, int64_t vertex, double dx, double dy, double dz) {
+    if (!obj)
+        return;
+    rt_morphtarget3d *mt = (rt_morphtarget3d *)obj;
+    if (shape < 0 || shape >= mt->shape_count)
+        return;
+    if (vertex < 0 || vertex >= mt->vertex_count)
+        return;
+
+    if (!mt->shapes[shape].tan_deltas) {
+        size_t sz = (size_t)mt->vertex_count * 3 * sizeof(float);
+        mt->shapes[shape].tan_deltas = (float *)calloc(1, sz);
+        if (!mt->shapes[shape].tan_deltas)
+            return;
+    }
+
+    float *td = mt->shapes[shape].tan_deltas;
+    td[vertex * 3 + 0] = (float)dx;
+    td[vertex * 3 + 1] = (float)dy;
+    td[vertex * 3 + 2] = (float)dz;
+    morphtarget_touch_payload(mt);
+}
+
 /*==========================================================================
  * Weight control
  *=========================================================================*/
@@ -493,6 +531,17 @@ const float *rt_morphtarget3d_get_packed_normal_deltas(void *obj) {
     return mt->packed_nrm_deltas;
 }
 
+int64_t rt_morphtarget3d_has_tangent_deltas(void *obj) {
+    rt_morphtarget3d *mt = (rt_morphtarget3d *)obj;
+    if (!mt)
+        return 0;
+    for (int32_t i = 0; i < mt->shape_count; i++) {
+        if (mt->shapes[i].tan_deltas)
+            return 1;
+    }
+    return 0;
+}
+
 /// @brief Monotonic counter that bumps whenever any delta changes.
 /// GPU caches compare against the previous value to detect when re-upload is required.
 uint64_t rt_morphtarget3d_get_payload_generation(void *obj) {
@@ -567,8 +616,8 @@ void rt_mesh3d_set_morph_targets(void *mesh, void *morph_targets) {
 ///   restores — this pattern avoids mutating the persistent mesh state
 ///   across a draw boundary and sidesteps adding a second draw overload
 ///   for each backend. CPU path: allocates a scratch vertex buffer,
-///   accumulates weighted position and (optional) normal deltas per
-///   vertex, re-normalizes normals only if any shape contributed them,
+///   accumulates weighted position plus optional normal/tangent deltas per
+///   vertex, re-normalizes affected directions when any shape contributed them,
 ///   and tracks the buffer for end-of-frame cleanup. Small weights
 ///   (|w| < 1e-6) are skipped to avoid unnecessary fp math when a shape
 ///   is effectively dormant.
@@ -590,7 +639,8 @@ static void morphtarget_draw_mesh_matrix(void *canvas,
         return;
 
     rt_canvas3d *c = (rt_canvas3d *)canvas;
-    if (c && c->backend && vgfx3d_backend_prefers_gpu_morph(c->backend->name, mt->shape_count)) {
+    if (c && c->backend && !rt_morphtarget3d_has_tangent_deltas(mt) &&
+        vgfx3d_backend_prefers_gpu_morph(c->backend->name, mt->shape_count)) {
         void *saved_ref;
         const float *saved_deltas;
         const float *saved_normal_deltas;
@@ -639,6 +689,7 @@ static void morphtarget_draw_mesh_matrix(void *canvas,
 
     /* Accumulate weighted deltas */
     int has_normal_deltas = 0;
+    int has_tangent_deltas = 0;
     for (int32_t s = 0; s < mt->shape_count; s++) {
         float w = mt->weights[s];
         if (fabsf(w) < 1e-6f)
@@ -646,6 +697,7 @@ static void morphtarget_draw_mesh_matrix(void *canvas,
 
         const float *pd = mt->shapes[s].pos_deltas;
         const float *nd = mt->shapes[s].nrm_deltas;
+        const float *td = mt->shapes[s].tan_deltas;
         if (!pd)
             continue;
 
@@ -660,6 +712,12 @@ static void morphtarget_draw_mesh_matrix(void *canvas,
                 morphed[v].normal[2] += w * nd[v * 3 + 2];
                 has_normal_deltas = 1;
             }
+            if (td) {
+                morphed[v].tangent[0] += w * td[v * 3 + 0];
+                morphed[v].tangent[1] += w * td[v * 3 + 1];
+                morphed[v].tangent[2] += w * td[v * 3 + 2];
+                has_tangent_deltas = 1;
+            }
         }
     }
 
@@ -672,6 +730,18 @@ static void morphtarget_draw_mesh_matrix(void *canvas,
                 n[0] /= len;
                 n[1] /= len;
                 n[2] /= len;
+            }
+        }
+    }
+
+    if (has_tangent_deltas) {
+        for (uint32_t v = 0; v < m->vertex_count; v++) {
+            float *t = morphed[v].tangent;
+            float len = sqrtf(t[0] * t[0] + t[1] * t[1] + t[2] * t[2]);
+            if (len > 1e-8f) {
+                t[0] /= len;
+                t[1] /= len;
+                t[2] /= len;
             }
         }
     }

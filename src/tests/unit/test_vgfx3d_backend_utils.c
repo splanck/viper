@@ -188,6 +188,7 @@ static void test_hdr_readback_helpers(void) {
     };
     uint8_t rgba8_from_16f[8] = {0};
     uint8_t rgba8_from_32f[8] = {0};
+    float rgba32f_from_16f[8] = {0};
 
     EXPECT_NEAR(vgfx3d_half_to_float(0x3C00u), 1.0f, 1e-6f, "Half-float helper decodes 1.0");
     EXPECT_NEAR(vgfx3d_half_to_float(0xC000u), -2.0f, 1e-6f, "Half-float helper decodes -2.0");
@@ -196,6 +197,7 @@ static void test_hdr_readback_helpers(void) {
 
     vgfx3d_copy_linear_rgba16f_to_rgba8(rgba8_from_16f, 8, 2, 1, rgba16f, 16);
     vgfx3d_copy_linear_rgba32f_to_rgba8(rgba8_from_32f, 8, 2, 1, rgba32f, 32);
+    vgfx3d_copy_linear_rgba16f_to_rgba32f(rgba32f_from_16f, 8, 2, 1, rgba16f, 16);
 
     EXPECT_TRUE(rgba8_from_16f[0] == 128 && rgba8_from_16f[1] == 85 && rgba8_from_16f[2] == 0 &&
                     rgba8_from_16f[3] == 255,
@@ -205,6 +207,10 @@ static void test_hdr_readback_helpers(void) {
                 "RGBA16F conversion preserves alpha while tonemapping bright highlights");
     EXPECT_TRUE(memcmp(rgba8_from_16f, rgba8_from_32f, sizeof(rgba8_from_16f)) == 0,
                 "RGBA16F and RGBA32F conversion helpers produce matching display-space bytes");
+    EXPECT_NEAR(rgba32f_from_16f[0], 1.0f, 1e-6f,
+                "RGBA16F to RGBA32F conversion preserves linear red");
+    EXPECT_NEAR(rgba32f_from_16f[4], 4.0f, 1e-6f,
+                "RGBA16F to RGBA32F conversion preserves HDR values before tonemapping");
 }
 
 static void test_generation_helpers(void) {

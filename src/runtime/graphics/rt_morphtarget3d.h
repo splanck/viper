@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/rt_morphtarget3d.h
-// Purpose: MorphTarget3D — per-vertex position/normal deltas blended by
+// Purpose: MorphTarget3D — per-vertex position/normal/tangent deltas blended by
 //   weight. Enables facial animation, muscle flex, and shape-based deformation.
 //
 // Key invariants:
@@ -14,7 +14,7 @@
 //     morphing when the active shape count exceeds backend shader limits.
 //   - vertex_count must match the mesh's vertex count at draw time.
 //   - Morphed vertices are applied on GPU when supported, otherwise on CPU.
-//   - Normal deltas are optional per shape (NULL = normals unchanged).
+//   - Normal/tangent deltas are optional per shape (NULL = channel unchanged).
 //
 // Links: plans/3d/16-morph-targets.md, rt_canvas3d.h
 //
@@ -40,6 +40,9 @@ void rt_morphtarget3d_set_delta(
 /// @brief Set normal delta for one vertex of one shape (lazy-allocates the per-shape normal array).
 void rt_morphtarget3d_set_normal_delta(
     void *mt, int64_t shape, int64_t vertex, double dx, double dy, double dz);
+/// @brief Set tangent delta for one vertex of one shape (lazy-allocates tangent storage).
+void rt_morphtarget3d_set_tangent_delta(
+    void *mt, int64_t shape, int64_t vertex, double dx, double dy, double dz);
 /// @brief Set the blend weight for a shape by index (0.0 = off, 1.0 = full).
 void rt_morphtarget3d_set_weight(void *mt, int64_t shape, double weight);
 /// @brief Get the blend weight of the @p shape-th shape.
@@ -52,6 +55,8 @@ int64_t rt_morphtarget3d_get_shape_count(void *mt);
 const float *rt_morphtarget3d_get_packed_deltas(void *mt);
 /// @brief Borrow the packed normal-delta array, or NULL if no shape has normal deltas.
 const float *rt_morphtarget3d_get_packed_normal_deltas(void *mt);
+/// @brief True when any shape carries tangent deltas that require CPU morphing.
+int64_t rt_morphtarget3d_has_tangent_deltas(void *mt);
 /// @brief Monotonic generation counter; bumps whenever any delta changes.
 uint64_t rt_morphtarget3d_get_payload_generation(void *mt);
 /// @brief Bind a MorphTarget3D to a Mesh3D (vertex counts must match exactly).

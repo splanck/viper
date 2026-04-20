@@ -15,7 +15,8 @@
 //   - SceneNode3D world_matrix is recomputed lazily when dirty.
 //   - Dirty flag propagates to all descendants on any transform change.
 //   - Children are stored as a dynamic array (not GC-managed).
-//   - Nodes with both mesh and material are drawn; others are transform groups.
+//   - Nodes with both mesh and material are drawn; imported node lights contribute
+//     to scene draw snapshots after world-transform evaluation.
 //
 // Links: rt_canvas3d.h, rt_quat.h, rt_mat4.h, plans/3d/12-scene-graph.md
 //

@@ -11,7 +11,7 @@
 //   controller with slide/step movement.
 //
 // Key invariants:
-//   - Max 256 bodies per world (PH3D_MAX_BODIES).
+//   - Body/contact/joint arrays grow on demand from production-sized initial capacities.
 //   - Symplectic Euler integration (force→velocity, velocity→position).
 //   - Dynamic bodies integrate angular velocity into quaternion orientation.
 //   - Kinematic bodies move from explicit linear/angular velocity only.
@@ -37,7 +37,7 @@ extern "C" {
 void *rt_world3d_new(double gx, double gy, double gz);
 /// @brief Integrate one simulation step of @p dt seconds (resolves contacts and updates events).
 void rt_world3d_step(void *world, double dt);
-/// @brief Add a Body3D to the world (no-op if already added; max 256 bodies).
+/// @brief Add a Body3D to the world, growing storage as needed.
 void rt_world3d_add(void *world, void *body);
 /// @brief Remove a Body3D from the world (silently ignores unknown bodies).
 void rt_world3d_remove(void *world, void *body);

@@ -969,6 +969,11 @@ static const char *const glsl_fragment_src[] = {
     "vec3 fresnelSchlick(float cosTheta, vec3 F0) {\n"
     "    return F0 + (1.0 - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);\n"
     "}\n"
+    "vec3 srgbToLinear(vec3 c) {\n"
+    "    vec3 low = c / 12.92;\n"
+    "    vec3 high = pow((c + vec3(0.055)) / 1.055, vec3(2.4));\n"
+    "    return mix(low, high, step(vec3(0.04045), c));\n"
+    "}\n"
     "vec3 envSample(vec3 dir, float roughness) {\n"
     "    float lod = clamp(roughness, 0.0, 1.0) * max(uEnvMaxLod, 0.0);\n"
     "    return textureLod(uEnvMap, normalize(dir), lod).rgb;\n"
@@ -1012,6 +1017,7 @@ static const char *const glsl_fragment_src[] = {
     "    float materialAlpha = uDiffuseColor.a * uAlpha * vColor.a;\n"
     "    if (uHasTexture != 0) {\n"
     "        vec4 texSample = texture(uDiffuseTex, materialUv(0));\n"
+    "        if (uWorkflow != 0) texSample.rgb = srgbToLinear(texSample.rgb);\n"
     "        baseColor *= texSample.rgb;\n"
     "        texAlpha = texSample.a;\n"
     "    }\n"
@@ -1036,7 +1042,11 @@ static const char *const glsl_fragment_src[] = {
     "        N = normalize(mat3(T, B, N) * mapN);\n"
     "    }\n"
     "    vec3 emissive = uEmissiveColor * uPbrScalars0.w;\n"
-    "    if (uHasEmissiveMap != 0) emissive *= texture(uEmissiveTex, materialUv(3)).rgb;\n"
+    "    if (uHasEmissiveMap != 0) {\n"
+    "        vec3 emissiveSample = texture(uEmissiveTex, materialUv(3)).rgb;\n"
+    "        if (uWorkflow != 0) emissiveSample = srgbToLinear(emissiveSample);\n"
+    "        emissive *= emissiveSample;\n"
+    "    }\n"
     "    vec3 cameraToWorld = uCameraPos - vWorldPos;\n"
     "    vec3 V = normalize((uCameraIsOrtho != 0) ? -uCameraForward : cameraToWorld);\n"
     "    float viewDistance = (uCameraIsOrtho != 0)\n"
@@ -2519,10 +2529,22 @@ static int gl_sync_render_target_color(void *ctx_ptr, vgfx3d_rendertarget_t *rt)
             bind_main_framebuffer(ctx);
             return 0;
         }
+        if (!vgfx3d_rendertarget_ensure_hdr_color(rt)) {
+            free(tmpf);
+            bind_main_framebuffer(ctx);
+            return 0;
+        }
         gl.ReadPixels(0, 0, rt->width, rt->height, GL_RGBA, GL_FLOAT, tmpf);
+        for (int32_t y = 0; y < rt->height; y++) {
+            const float *src_row =
+                tmpf + (size_t)(rt->height - 1 - y) * (size_t)rt->width * 4u;
+            float *dst_row = rt->hdr_color_buf + (size_t)y * (size_t)rt->width * 4u;
+            memcpy(dst_row, src_row, (size_t)rt->width * 4u * sizeof(float));
+        }
         vgfx3d_copy_linear_rgba32f_to_rgba8(
             rt->color_buf, rt->stride, rt->width, rt->height, tmpf, rt->width * 16);
         vgfx3d_flip_rgba_rows(rt->color_buf, rt->width, rt->height);
+        rt->hdr_color_valid = 1;
         free(tmpf);
     } else {
         tmp = (uint8_t *)malloc(bytes);
@@ -2533,6 +2555,7 @@ static int gl_sync_render_target_color(void *ctx_ptr, vgfx3d_rendertarget_t *rt)
         gl.ReadPixels(0, 0, rt->width, rt->height, GL_RGBA, GL_UNSIGNED_BYTE, tmp);
         vgfx3d_flip_rgba_rows(tmp, rt->width, rt->height);
         memcpy(rt->color_buf, tmp, bytes);
+        rt->hdr_color_valid = 0;
         free(tmp);
     }
 
@@ -4291,6 +4314,7 @@ static void gl_end_frame(void *ctx_ptr) {
     if (ctx->rtt_active && ctx->rtt_target && ctx->rtt_color_tex) {
         ctx->rtt_color_dirty = 1;
         ctx->rtt_target->color_dirty = 1;
+        ctx->rtt_target->hdr_color_valid = 0;
     }
 }
 

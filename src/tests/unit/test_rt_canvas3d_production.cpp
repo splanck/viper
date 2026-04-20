@@ -17,6 +17,7 @@
 #include "rt_canvas3d.h"
 #include "rt_string.h"
 
+#include <cmath>
 #include <cstdio>
 
 extern "C" {
@@ -48,6 +49,25 @@ static int tests_run = 0;
             tests_passed++;                                                                        \
     } while (0)
 
+#define EXPECT_NEAR(a, b, eps, msg)                                                                \
+    do {                                                                                           \
+        tests_run++;                                                                               \
+        if (std::fabs((double)(a) - (double)(b)) > (eps))                                          \
+            std::fprintf(stderr, "FAIL: %s (expected %f, got %f)\n", msg, (double)(b), (double)(a)); \
+        else                                                                                       \
+            tests_passed++;                                                                        \
+    } while (0)
+
+static float g_clear_r = -1.0f;
+static float g_clear_g = -1.0f;
+static float g_clear_b = -1.0f;
+
+static void fake_clear(void *, vgfx_window_t, float r, float g, float b) {
+    g_clear_r = r;
+    g_clear_g = g;
+    g_clear_b = b;
+}
+
 static void fake_set_render_target(void *, vgfx3d_rendertarget_t *) {}
 static void fake_shadow_begin(void *, int32_t, float *, int32_t, int32_t, const float *) {}
 static void fake_shadow_draw(void *, const vgfx3d_draw_cmd_t *) {}
@@ -71,6 +91,7 @@ static void fake_present_postfx(void *, const vgfx3d_postfx_chain_t *) {}
 static vgfx3d_backend_t make_fake_gpu_backend() {
     vgfx3d_backend_t backend = {};
     backend.name = "testgpu";
+    backend.clear = fake_clear;
     backend.set_render_target = fake_set_render_target;
     backend.shadow_begin = fake_shadow_begin;
     backend.shadow_draw = fake_shadow_draw;
@@ -173,11 +194,35 @@ static void test_frustum_culling_aliases_share_state() {
     EXPECT_TRUE(true, "culling setters tolerate null canvas handles");
 }
 
+static void test_canvas_render_state_sanitizes_inputs() {
+    vgfx3d_backend_t fake_gpu_backend = make_fake_gpu_backend();
+    vgfx3d_rendertarget_t dummy_target = {};
+    rt_canvas3d canvas = {};
+    canvas.backend = &fake_gpu_backend;
+    canvas.gfx_win = (vgfx_window_t)1;
+    canvas.render_target = &dummy_target;
+
+    rt_canvas3d_clear(&canvas, NAN, -1.0, 2.0);
+    EXPECT_NEAR(g_clear_r, 0.0, 0.001, "Clear clamps NaN red to zero");
+    EXPECT_NEAR(g_clear_g, 0.0, 0.001, "Clear clamps negative green to zero");
+    EXPECT_NEAR(g_clear_b, 1.0, 0.001, "Clear clamps blue to one");
+
+    rt_canvas3d_set_ambient(&canvas, NAN, -2.0, 3.0);
+    EXPECT_NEAR(canvas.ambient[0], 0.0, 0.001, "Ambient clamps NaN to zero");
+    EXPECT_NEAR(canvas.ambient[1], 0.0, 0.001, "Ambient clamps negative values");
+    EXPECT_NEAR(canvas.ambient[2], 1.0, 0.001, "Ambient clamps high values");
+
+    canvas.delta_time_ms = 1000;
+    canvas.dt_max_ms = 16;
+    EXPECT_EQ_I64(rt_canvas3d_get_delta_time(&canvas), 16, "Delta time getter applies max clamp");
+}
+
 int main() {
     test_null_canvas_has_no_capabilities();
     test_software_backend_reports_canvas_fallback_features();
     test_gpu_backend_capability_bits_and_names();
     test_frustum_culling_aliases_share_state();
+    test_canvas_render_state_sanitizes_inputs();
 
     if (tests_passed != tests_run) {
         std::fprintf(stderr,
