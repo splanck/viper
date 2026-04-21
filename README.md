@@ -25,8 +25,10 @@
 - [Source (zip)](https://github.com/splanck/viper/archive/refs/tags/v0.2.4-dev.zip)
 - [Release Notes](docs/release_notes/Viper_Release_Notes_0_2_4.md)
 
+**In development:** v0.2.5 (unreleased) — see the [draft release notes](docs/release_notes/Viper_Release_Notes_0_2_5.md) for what's landed on master since v0.2.4.
+
 > **Working with the latest code:** The `master` branch is a live snapshot of current
-> development and may be ahead of any tagged release. To work with the most recent code:
+> development and is ahead of v0.2.4. To work with the most recent code:
 >
 > ```bash
 > git clone https://github.com/splanck/viper.git
@@ -86,7 +88,7 @@ zia> Say(Fmt.Int(2 + 3))
 | **[VM](docs/vm.md)** | Bytecode interpreter with switch, table, and threaded dispatch |
 | **[AArch64](docs/codegen/aarch64.md) · [x86-64](docs/codegen/x86_64.md)** | Native code generators |
 | **[Assembler](docs/codegen/native-assembler.md) · [Linker](docs/codegen/native-linker.md)** | Built-in ELF/Mach-O/PE toolchain — zero external dependencies |
-| **[Runtime](docs/viperlib/README.md)** | 300 classes across 22 modules (graphics, 3D, GUI, game engine, networking, and more) |
+| **[Runtime](docs/viperlib/README.md)** | 350+ classes across 22 modules (graphics, 3D, GUI, game engine, networking, and more) |
 | **[Language Servers](docs/zia-server.md)** | Dual-protocol (LSP + MCP) servers for Zia and BASIC |
 | **[Tools](docs/tools.md)** | Compiler drivers, verifier, disassembler, [REPL](docs/repl.md), packager |
 
@@ -95,7 +97,7 @@ zia> Say(Fmt.Int(2 + 3))
 - **Platform-native** — [Zia](docs/zia-reference.md) compiles to native machine code via [Viper IL](docs/il-guide.md) — no VM required for production
 - **IL-centric** — A readable, typed IR makes semantics explicit and frontends interchangeable
 - **Self-contained** — Built-in [assembler](docs/codegen/native-assembler.md) and [linker](docs/codegen/native-linker.md) with ELF/Mach-O/PE support and dynamic linking — zero external tool dependencies for native compilation
-- **Full runtime** — 300 classes covering [graphics](docs/viperlib/graphics/README.md), [3D](docs/graphics3d-guide.md), [networking](docs/viperlib/network.md), [GUI](docs/viperlib/gui/README.md), [threading](docs/viperlib/threads.md), and more
+- **Full runtime** — 350+ classes covering [graphics](docs/viperlib/graphics/README.md), [3D](docs/graphics3d-guide.md), [networking](docs/viperlib/network.md), [GUI](docs/viperlib/gui/README.md), [threading](docs/viperlib/threads.md), and more
 
 ---
 
@@ -105,19 +107,19 @@ Viper is in **early development**. All components are functional but evolving:
 
 | Component | Notes |
 |-----------|-------|
-| [Zia Frontend](docs/zia-reference.md) | Classes, structs, generics, enums, lambdas, variadic params, type aliases, `final` enforcement, pattern matching with exhaustiveness, try/catch, modules |
-| [BASIC Frontend](docs/basic-reference.md) | Core language + OOP; enums, select-case, namespaces |
+| [Zia Frontend](docs/zia-reference.md) | Classes, structs, generics, enums, lambdas, pattern matching, try/catch, modules |
+| [BASIC Frontend](docs/basic-reference.md) | Core language with OOP, enums, select-case, namespaces |
 | [Viper IL](docs/il-guide.md) | Stable core; module linker for cross-language interop |
-| [Optimizer](docs/il-passes.md) | 20 passes (SSA opts, loop opts, inlining, peephole, GVN, LICM, DSE) |
-| [VM](docs/vm.md) | Switch, table, and threaded dispatch; SIGINT/SEH trap handling; per-VM extern registries; worker-VM execution-environment snapshots; resumable trap state |
-| [AArch64 Backend](docs/codegen/aarch64.md) | Apple Silicon + Windows ARM64; register coalescer, protected-use eviction, post-RA scheduler |
-| [x86-64 Backend](docs/codegen/x86_64.md) | Windows + Linux; 300+ stress tests, IEEE 754 NaN-safe |
-| [Native Toolchain](docs/codegen/native-assembler.md) | Assembler (ELF/Mach-O/COFF) + linker (dead stripping, ICF, branch trampolines, DWARF v5, code signing, PE/COFF import tables, ELF dynamic linking) |
-| [Runtime](docs/viperlib/README.md) | 300+ classes across 22 modules; 1,454 tests |
-| [3D Graphics](docs/graphics3d-guide.md) | 41 classes; terrain LOD, Gerstner water, vegetation, shader hooks, video playback, unified `Model3D` asset import/instantiation, `AnimController3D` state control, `Scene3D.SyncBindings` body/animator composition, Collider3D (7 shape types), Physics3D (rotation, sleep, CCD, world queries); Metal/D3D11 feature-complete, OpenGL/software |
-| [Game Engine](docs/viperlib/game/README.md) | Collision, pathfinding, physics, tweening, particles, state machines, UI widgets, entity system, AI behaviors, level loading, scene management, asset embedding (VPA) |
-| [GUI](docs/viperlib/gui/README.md) | 46 widget classes; cross-platform desktop apps |
-| [IDE / Language Servers](docs/zia-server.md) | ViperIDE with live diagnostics, hover, go-to-definition, project search; LSP + MCP servers |
+| [Optimizer](docs/il-passes.md) | 20-pass pipeline covering SSA, loop, inlining, and peephole opts |
+| [VM](docs/vm.md) | Switch / table / threaded dispatch with trap handling and worker VMs |
+| [AArch64 Backend](docs/codegen/aarch64.md) | Apple Silicon and Windows ARM64 with register coalescing and post-RA scheduling |
+| [x86-64 Backend](docs/codegen/x86_64.md) | Windows and Linux, IEEE-754 NaN-safe, 300+ stress tests |
+| [Native Toolchain](docs/codegen/native-assembler.md) | In-tree assembler and linker for ELF / Mach-O / PE with DWARF v5 and dynamic linking |
+| [Runtime](docs/viperlib/README.md) | 350+ classes across 22 modules |
+| [3D Graphics](docs/graphics3d-guide.md) | 45 classes covering meshes, materials, lighting, skeletal animation, terrain, water, physics, asset import (glTF / FBX), and post-processing across Metal / D3D11 / OpenGL / software backends |
+| [Game Engine](docs/viperlib/game/README.md) | Collision, pathfinding, physics, tweening, particles, state machines, AI behaviors, level loading, asset embedding |
+| [GUI](docs/viperlib/gui/README.md) | 47 widgets for cross-platform desktop apps |
+| [IDE / Language Servers](docs/zia-server.md) | ViperIDE with diagnostics, hover, go-to-definition, IntelliSense, symbol search; LSP + MCP servers |
 | [Packaging](docs/tools.md) | `viper package` for apps, `viper install-package` for the toolchain |
 
 Expect breaking changes. The IL specification, APIs, and tool interfaces are not stable.
@@ -128,13 +130,13 @@ Expect breaking changes. The IL specification, APIs, and tool interfaces are not
 
 | Demo | Description |
 |------|-------------|
-| [ViperIDE](examples/apps/viperide/) | IDE with live diagnostics, hover tooltips, go-to-definition, IntelliSense, project search, symbol outline |
-| [ViperSQL](examples/apps/vipersql/) | SQL database with MVCC, WAL, B-tree indexes, PG wire protocol, vsql interactive client |
-| [Paint](examples/apps/paint/) | Drawing app with 8 tools, shapes, color palette |
-| [Chess](examples/games/chess/) | Chess with alpha-beta AI, transposition tables, pre-rendered piece sprites, drag-and-drop GUI |
-| [Pac-Man](examples/games/pacman/) | Pac-Man with ghost AI, BFS pathfinding, scatter/chase modes |
-| [XENOSCAPE](examples/games/xenoscape/) | Metroid-style sidescroller: 10 levels, 25+ enemies, bosses, abilities, saves, JSON level loading |
-| [3D Bowling](examples/games/3dbowling/) | 3D bowling with Physics3D pin collision, ball spin/hook, 4-mode camera, 10-frame scoring |
+| [ViperIDE](examples/apps/viperide/) | Full-featured IDE for Zia and BASIC |
+| [ViperSQL](examples/apps/vipersql/) | SQL database engine with an interactive client |
+| [Paint](examples/apps/paint/) | Drawing app with layers, undo/redo, and an expanded tool set |
+| [Chess](examples/games/chess/) | Chess with alpha-beta AI and a drag-and-drop GUI |
+| [Crackman](examples/games/pacman/) | Maze chase game with ghost AI |
+| [XENOSCAPE](examples/games/xenoscape/) | Metroid-style sidescroller with bosses, abilities, and saves |
+| [3D Bowling](examples/games/3dbowling/) | Physics-driven 3D bowling with multi-mode camera |
 
 > **[See all demos →](examples/README.md)** — 7 applications, 16 games, API coverage audits, IL examples, and C++ embedding demos.
 
@@ -229,29 +231,29 @@ entry_0:
 
 ## Runtime Library
 
-All frontends share the **[Viper Runtime](docs/viperlib/README.md)** — 300 classes across 22 modules:
+All frontends share the **[Viper Runtime](docs/viperlib/README.md)** — 350+ classes across 22 modules:
 
 | Module | Classes | Description |
 |--------|:-------:|-------------|
-| [Collections](docs/viperlib/collections) | 29 | Lists, maps, sets, trees, heaps, queues, rings, tries |
-| [Core](docs/viperlib/core.md) | 6 | Base types, string operations, messaging |
-| [Crypto](docs/viperlib/crypto.md) | 10 | AES, AES-GCM, SHA, HMAC, HKDF, PBKDF2, TLS, ECDSA, secure RNG |
-| [Data](docs/viperlib/README.md) | 3 | XML, YAML, binary serialization |
-| [Game](docs/viperlib/game/README.md) | 22 | Collision, pathfinding, tweening, particles, state machines, platformer controller, lighting, achievements, entity physics, AI behaviors, level loading, scene management |
-| [Game.Physics2D](docs/viperlib/game/physics.md) | 6 | Rigid bodies, joints (hinge, spring, rope, distance) |
-| [Game.UI](docs/viperlib/game/ui.md) | 5 | In-game HUD widgets (bars, labels, menus, panels, buttons) |
-| [Graphics](docs/viperlib/graphics/README.md) | 12 | Canvas, sprites, tilemaps, cameras, bitmap fonts, video playback |
-| [Graphics3D](docs/graphics3d-guide.md) | 41 | Meshes, materials, lights, skeletal animation, `AnimController3D`, `Scene3D.SyncBindings`, physics (Collider3D, raycast, sweep, overlap, collision events), terrain, water, vegetation, particles, FBX/glTF, video playback |
-| [GUI](docs/viperlib/gui/README.md) | 46 | Desktop widgets, layouts, menus, code editor, tree views |
-| [I/O](docs/viperlib/io) | 16 | Files, directories, archives, compression, streaming, asset embedding |
-| [Input](docs/viperlib/input.md) | 6 | Keyboard, mouse, gamepad, action mapping |
-| [Math](docs/viperlib/math.md) | 12 | Vectors, matrices, quaternions, noise, splines, BigInt |
-| [Network](docs/viperlib/network.md) | 22 | HTTP, TCP, UDP, WebSocket, DNS, TLS, SMTP, SSE, connection pooling, rate limiting |
-| [Sound](docs/viperlib/audio.md) | 7 | Audio playback, synthesis, playlists, sound banks |
-| [Text](docs/viperlib/text) | 20 | JSON, TOML, CSV, XML, HTML, Markdown, templates, regex |
-| [Threads](docs/viperlib/threads.md) | 18 | Async, channels, futures, pools, concurrent collections |
-| [Time](docs/viperlib/time.md) | 8 | Clocks, dates, durations, countdowns, stopwatches |
-| [Utilities](docs/viperlib/README.md) | 12 | Fmt, Log, Convert, Parse, Option, Result, Lazy |
+| [Collections](docs/viperlib/collections) | 29 | General-purpose data structures |
+| [Core](docs/viperlib/core.md) | 6 | Base types and string operations |
+| [Crypto](docs/viperlib/crypto.md) | 7 | Symmetric and asymmetric ciphers, hashing, key derivation, secure RNG |
+| [Data](docs/viperlib/README.md) | 3 | Structured data serialization |
+| [Game](docs/viperlib/game/README.md) | 22 | High-level 2D game systems, AI behaviors, level and scene management |
+| [Game.Physics2D](docs/viperlib/game/physics.md) | 6 | 2D rigid-body dynamics and joints |
+| [Game.UI](docs/viperlib/game/ui.md) | 5 | In-game HUD widgets |
+| [Graphics](docs/viperlib/graphics/README.md) | 57 | 2D rendering, sprites, tilemaps, fonts, and the production 2D class set (render targets, textures, shaders, nine-slice, paths, debug draw) |
+| [Graphics3D](docs/graphics3d-guide.md) | 45 | Full 3D pipeline: meshes, materials, lighting, skeletal and node animation, physics, terrain, water, asset import |
+| [GUI](docs/viperlib/gui/README.md) | 47 | Cross-platform desktop widgets |
+| [I/O](docs/viperlib/io) | 16 | Files, archives, compression, streaming |
+| [Input](docs/viperlib/input.md) | 6 | Keyboard, mouse, gamepad, and action mapping |
+| [Math](docs/viperlib/math.md) | 11 | Linear algebra, noise, splines, arbitrary precision |
+| [Network](docs/viperlib/network.md) | 27 | HTTP/1.1 and HTTP/2 client and server, WebSocket, TLS (in-tree X.509, RSA, ECDSA), UDP, SSE, connection pooling |
+| [Sound](docs/viperlib/audio.md) | 8 | Playback, synthesis, playlists, sound banks |
+| [Text](docs/viperlib/text) | 20 | Structured-text parsing, templates, regex |
+| [Threads](docs/viperlib/threads.md) | 18 | Async primitives, channels, futures, pools |
+| [Time](docs/viperlib/time.md) | 8 | Clocks, dates, durations, timers |
+| [Utilities](docs/viperlib/README.md) | ~12 | Formatting, logging, option / result helpers |
 
 > See the **[Runtime Library Reference](docs/viperlib/README.md)** for complete API documentation.
 

@@ -544,6 +544,7 @@ class SeasonTeamManager {
 // ----------------------------------------------------------------------------
 class HumanSeasonTeamManager extends SeasonTeamManager {
     expose pacing_profile.PacingProfile profile;
+    expose manager_policy.HumanManagerPolicy humanPolicy;
 
     // Construct a human-mode season manager for a given team name. Builds a
     // HumanManagerPolicy (rather than DefaultManagerPolicy) for the in-game
@@ -551,10 +552,11 @@ class HumanSeasonTeamManager extends SeasonTeamManager {
     // keeps the existing attribution format.
     override expose func init(name: String) {
         policyName = name;
-        var policy = new manager_policy.HumanManagerPolicy();
-        policy.setPolicyName(name);
-        inGamePolicy = policy;
+        humanPolicy = new manager_policy.HumanManagerPolicy();
+        humanPolicy.setPolicyName(name);
+        inGamePolicy = humanPolicy;
         profile = pacing_profile.makeStandardManager();
+        humanPolicy.setProfile(profile);
     }
 
     // Replace the default profile (standard_manager) with a caller-supplied
@@ -562,14 +564,7 @@ class HumanSeasonTeamManager extends SeasonTeamManager {
     // agree on which checkpoints fire.
     expose func setProfile(p: pacing_profile.PacingProfile) {
         profile = p;
-        // inGamePolicy is declared as DefaultManagerPolicy on the parent,
-        // so we tunnel through a local HumanManagerPolicy view to forward
-        // the profile. If someone installs a plain DefaultManagerPolicy
-        // here via setPolicies, this call simply no-ops.
-        var inner = inGamePolicy;
-        if inner == null {
-            return;
-        }
+        humanPolicy.setProfile(p);
     }
 
     // Interactive lineup-card submission. The base class's auto-build logic

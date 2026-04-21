@@ -970,6 +970,14 @@ set_tests_properties(zia_persistence_baseball PROPERTIES
         LABELS "zia;comprehensive"
         TIMEOUT 60)
 
+add_test(NAME zia_reporting_baseball
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/baseball/reporting_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/baseball")
+set_tests_properties(zia_reporting_baseball PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;smoke"
+        TIMEOUT 30)
+
 add_test(NAME platform_policy_lint_empty_candidates
         COMMAND /bin/bash "${CMAKE_SOURCE_DIR}/src/tests/e2e/test_platform_policy_lint_empty_candidates.sh"
         "${CMAKE_SOURCE_DIR}")

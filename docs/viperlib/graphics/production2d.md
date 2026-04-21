@@ -37,6 +37,27 @@ These classes are CPU-backed in the current runtime and build on `Pixels`, `Canv
 | `SdfFont` | SDF-ready font wrapper around `BitmapFont`; the current backend uses bitmap font raster drawing. |
 | `NineSlice2D` | Stretchable nine-slice drawing into a `Pixels` target. |
 | `DebugDraw2D` | Retained debug line, rectangle, and circle draw queue for `Pixels`. |
+| `Transform2D` | Integer 2D transform with position, percent scale, rotation, origin, and point transforms. |
+| `Sampler2D` | Reusable texture sampler state for `Filter` and `Wrap`. |
+| `BlendState2D` | Reusable renderer blend state for blend mode, tint, and alpha. |
+| `SpriteRenderer2D` | Draw helper that applies `Material2D`, `Sampler2D`, and `BlendState2D` before queueing pixels or textures. |
+| `TilemapRenderer2D` | Tilemap draw facade with draw-count tracking and optional chunk-cache association. |
+| `TileChunkCache2D` | Chunk sizing and dirty-count tracking for tilemap renderers and editors. |
+| `AnimationClip2D` | Frame range, frame delay, and loop metadata for 2D sprite animation. |
+| `AnimatedSprite2D` | Runtime clip player that advances a `Sprite` frame from elapsed milliseconds. |
+| `TextLayout2D` | Text measurement helper with scale, wrap width, alignment metadata, and optional font. |
+| `SpriteFont` | Game-facing alias for `BitmapFont` loading and measurement. |
+| `RenderPass2D` | Source-target postprocess pass using an optional `Shader2D`. |
+| `RenderGraph2D` | Ordered collection of `RenderPass2D` objects for simple pass chains. |
+| `CollisionMask2D` | Dense per-pixel solid mask with alpha-threshold construction and mask overlap tests. |
+| `Hitbox2D` | Axis-aligned rectangle hitbox with containment and intersection tests. |
+| `Palette2D` | 256-entry palette that can recolor indexed `Pixels` buffers. |
+| `Gradient2D` | RGBA gradient sampling and horizontal/vertical fills for `Pixels`. |
+| `CameraRig2D` | Follow-target camera controller with smoothing, deadzone forwarding, and render shake offsets. |
+| `TexturePackerAtlas` | Texture-atlas authoring wrapper over `TextureAtlas` for named regions. |
+| `AsepriteImporter` | Grid-to-atlas helper for Aseprite-style sprite sheets. |
+| `TiledMapLoader` | Tile-size helper that creates `Tilemap` objects using Tiled-compatible dimensions. |
+| `Lighting2D` | Graphics namespace alias for `Viper.Game.Lighting2D`. |
 
 ## Color And Scale Conventions
 
@@ -83,6 +104,48 @@ auto.Apply(ground, 10, 12, 5)
 
 `TileSet2D` indexes tiles left-to-right, top-to-bottom from zero. `TileLayer2D.Get` returns `-1` for out-of-bounds coordinates.
 
+## State, Animation, And Passes
+
+```viper
+var sampler = Sampler2D.New()
+sampler.Filter = 1
+sampler.ApplyToTexture(texture)
+
+var blend = BlendState2D.New()
+blend.BlendMode = 0
+blend.Alpha = 192
+
+var spriteDraw = SpriteRenderer2D.New()
+spriteDraw.SetBlendState(blend)
+spriteDraw.SetSampler(sampler)
+spriteDraw.DrawTexture(renderer, texture, 32, 48)
+
+var clip = AnimationClip2D.New(0, 4, 80, 1)
+var animated = AnimatedSprite2D.New(sprite)
+animated.SetClip(clip)
+animated.Update(deltaMs)
+```
+
+`RenderPass2D` expects `RenderTarget2D` source and target objects. When a shader is attached, the pass applies it to the source pixels and draws the result into the target. `RenderGraph2D` executes passes in insertion order.
+
+## Collision, Color, And Camera Helpers
+
+```viper
+var mask = CollisionMask2D.FromPixels(playerPixels, 1)
+var hurt = Hitbox2D.New(4, 4, 8, 8)
+
+var palette = Palette2D.New()
+palette.SetColor(3, 0xFF0000FF)
+var recolored = palette.Apply(indexedPixels)
+
+var rig = CameraRig2D.New(camera)
+rig.SetTarget(playerX, playerY)
+rig.SetSmoothing(160)
+rig.Update()
+```
+
+`CollisionMask2D.FromPixels` marks pixels solid when alpha is greater than or equal to the threshold. `Palette2D.Apply` treats the source pixel red channel as the palette index and writes `0xRRGGBBAA` colors to a new buffer.
+
 ## UI And Debug Drawing
 
 `NineSlice2D` preserves corner pixels and stretches edges and center regions into a target. It alpha-composites over the destination `Pixels`, making it suitable for UI panels generated from sprite assets.
@@ -94,3 +157,4 @@ auto.Apply(ground, 10, 12, 5)
 - `GpuTexture2D` is a compatibility alias today. It intentionally exposes the same behavior as `Texture2D` until a GPU-backed renderer is available.
 - `SdfFont` is an SDF-ready API surface, not a full signed-distance-field rasterizer yet.
 - `ParticleSystem2D` and `Emitter2D` share the same implementation as `Viper.Game.ParticleEmitter`, including `DrawToPixels`.
+- `TexturePackerAtlas`, `AsepriteImporter`, and `TiledMapLoader` are runtime-side helpers for common 2D asset layouts. They currently provide atlas/tilemap construction primitives rather than full external JSON or `.aseprite` file parsing.

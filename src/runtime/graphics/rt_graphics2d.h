@@ -197,6 +197,170 @@ void rt_debugdraw2d_rect(
 void rt_debugdraw2d_circle(void *debug_draw, int64_t x, int64_t y, int64_t radius, int64_t rgba);
 void rt_debugdraw2d_draw_to_pixels(void *debug_draw, void *pixels);
 
+void *rt_transform2d_new(void);
+int64_t rt_transform2d_get_x(void *transform);
+void rt_transform2d_set_x(void *transform, int64_t x);
+int64_t rt_transform2d_get_y(void *transform);
+void rt_transform2d_set_y(void *transform, int64_t y);
+int64_t rt_transform2d_get_scale_x(void *transform);
+void rt_transform2d_set_scale_x(void *transform, int64_t scale_x);
+int64_t rt_transform2d_get_scale_y(void *transform);
+void rt_transform2d_set_scale_y(void *transform, int64_t scale_y);
+int64_t rt_transform2d_get_rotation(void *transform);
+void rt_transform2d_set_rotation(void *transform, int64_t degrees);
+void rt_transform2d_set_position(void *transform, int64_t x, int64_t y);
+void rt_transform2d_set_scale(void *transform, int64_t scale_x, int64_t scale_y);
+void rt_transform2d_set_origin(void *transform, int64_t x, int64_t y);
+void rt_transform2d_translate(void *transform, int64_t dx, int64_t dy);
+int64_t rt_transform2d_transform_x(void *transform, int64_t x, int64_t y);
+int64_t rt_transform2d_transform_y(void *transform, int64_t x, int64_t y);
+
+void *rt_sampler2d_new(void);
+void rt_sampler2d_set_filter(void *sampler, int64_t filter);
+int64_t rt_sampler2d_get_filter(void *sampler);
+void rt_sampler2d_set_wrap(void *sampler, int64_t wrap);
+int64_t rt_sampler2d_get_wrap(void *sampler);
+void rt_sampler2d_apply_to_texture(void *sampler, void *texture);
+
+void *rt_blendstate2d_new(void);
+void rt_blendstate2d_set_blend_mode(void *state, int64_t blend_mode);
+int64_t rt_blendstate2d_get_blend_mode(void *state);
+void rt_blendstate2d_set_tint(void *state, int64_t rgb);
+int64_t rt_blendstate2d_get_tint(void *state);
+void rt_blendstate2d_set_alpha(void *state, int64_t alpha);
+int64_t rt_blendstate2d_get_alpha(void *state);
+void rt_blendstate2d_apply_to_renderer(void *state, void *renderer);
+
+void *rt_spriterenderer2d_new(void);
+void rt_spriterenderer2d_set_material(void *sprite_renderer, void *material);
+void rt_spriterenderer2d_set_sampler(void *sprite_renderer, void *sampler);
+void rt_spriterenderer2d_set_blend_state(void *sprite_renderer, void *blend_state);
+void rt_spriterenderer2d_draw_pixels(
+    void *sprite_renderer, void *renderer, void *pixels, int64_t x, int64_t y);
+void rt_spriterenderer2d_draw_texture(
+    void *sprite_renderer, void *renderer, void *texture, int64_t x, int64_t y);
+
+void *rt_tilechunkcache2d_new(int64_t chunk_width, int64_t chunk_height);
+int64_t rt_tilechunkcache2d_get_chunk_width(void *cache);
+int64_t rt_tilechunkcache2d_get_chunk_height(void *cache);
+void rt_tilechunkcache2d_mark_dirty(void *cache);
+void rt_tilechunkcache2d_clear_dirty(void *cache);
+int64_t rt_tilechunkcache2d_get_dirty_count(void *cache);
+
+void *rt_tilemaprenderer2d_new(void);
+void rt_tilemaprenderer2d_set_chunk_cache(void *renderer, void *cache);
+int64_t rt_tilemaprenderer2d_get_draw_count(void *renderer);
+void rt_tilemaprenderer2d_draw(
+    void *renderer, void *tilemap, void *canvas, int64_t offset_x, int64_t offset_y);
+void rt_tilemaprenderer2d_draw_region(void *renderer,
+                                      void *tilemap,
+                                      void *canvas,
+                                      int64_t offset_x,
+                                      int64_t offset_y,
+                                      int64_t view_x,
+                                      int64_t view_y,
+                                      int64_t view_w,
+                                      int64_t view_h);
+
+void *rt_animationclip2d_new(
+    int64_t start_frame, int64_t frame_count, int64_t frame_delay_ms, int64_t loop);
+int64_t rt_animationclip2d_get_start_frame(void *clip);
+int64_t rt_animationclip2d_get_frame_count(void *clip);
+int64_t rt_animationclip2d_get_frame_delay_ms(void *clip);
+int64_t rt_animationclip2d_get_loop(void *clip);
+
+void *rt_animatedsprite2d_new(void *sprite);
+void rt_animatedsprite2d_set_clip(void *animated_sprite, void *clip);
+void rt_animatedsprite2d_play(void *animated_sprite);
+void rt_animatedsprite2d_stop(void *animated_sprite);
+void rt_animatedsprite2d_update(void *animated_sprite, int64_t delta_ms);
+int64_t rt_animatedsprite2d_get_frame(void *animated_sprite);
+int64_t rt_animatedsprite2d_is_playing(void *animated_sprite);
+
+void *rt_textlayout2d_new(void);
+void rt_textlayout2d_set_font(void *layout, void *font);
+void rt_textlayout2d_set_scale(void *layout, int64_t scale);
+void rt_textlayout2d_set_wrap_width(void *layout, int64_t width);
+void rt_textlayout2d_set_alignment(void *layout, int64_t alignment);
+void rt_textlayout2d_set_color(void *layout, int64_t rgb);
+int64_t rt_textlayout2d_measure_width(void *layout, rt_string text);
+int64_t rt_textlayout2d_measure_height(void *layout, rt_string text);
+
+void *rt_renderpass2d_new(void *source, void *target);
+void rt_renderpass2d_set_source(void *pass, void *source);
+void rt_renderpass2d_set_target(void *pass, void *target);
+void rt_renderpass2d_set_shader(void *pass, void *shader);
+void rt_renderpass2d_set_enabled(void *pass, int64_t enabled);
+int64_t rt_renderpass2d_get_enabled(void *pass);
+void rt_renderpass2d_execute(void *pass);
+
+void *rt_rendergraph2d_new(int64_t capacity);
+void rt_rendergraph2d_add_pass(void *graph, void *pass);
+void rt_rendergraph2d_clear(void *graph);
+int64_t rt_rendergraph2d_get_count(void *graph);
+void rt_rendergraph2d_execute(void *graph);
+
+void *rt_collisionmask2d_new(int64_t width, int64_t height);
+void *rt_collisionmask2d_from_pixels(void *pixels, int64_t alpha_threshold);
+int64_t rt_collisionmask2d_get_width(void *mask);
+int64_t rt_collisionmask2d_get_height(void *mask);
+void rt_collisionmask2d_set(void *mask, int64_t x, int64_t y, int64_t solid);
+int64_t rt_collisionmask2d_get(void *mask, int64_t x, int64_t y);
+int64_t rt_collisionmask2d_overlaps(
+    void *a, int64_t ax, int64_t ay, void *b, int64_t bx, int64_t by);
+
+void *rt_hitbox2d_new(int64_t x, int64_t y, int64_t width, int64_t height);
+void rt_hitbox2d_set(void *hitbox, int64_t x, int64_t y, int64_t width, int64_t height);
+int64_t rt_hitbox2d_get_x(void *hitbox);
+int64_t rt_hitbox2d_get_y(void *hitbox);
+int64_t rt_hitbox2d_get_width(void *hitbox);
+int64_t rt_hitbox2d_get_height(void *hitbox);
+int64_t rt_hitbox2d_contains(void *hitbox, int64_t x, int64_t y);
+int64_t rt_hitbox2d_intersects(void *a, void *b);
+
+void *rt_palette2d_new(void);
+void rt_palette2d_set_color(void *palette, int64_t index, int64_t rgba);
+int64_t rt_palette2d_get_color(void *palette, int64_t index);
+int64_t rt_palette2d_get_count(void *palette);
+void *rt_palette2d_apply(void *palette, void *pixels);
+
+void *rt_gradient2d_new(int64_t start_rgba, int64_t end_rgba, int64_t steps);
+void rt_gradient2d_set_colors(void *gradient, int64_t start_rgba, int64_t end_rgba);
+void rt_gradient2d_set_steps(void *gradient, int64_t steps);
+int64_t rt_gradient2d_sample(void *gradient, int64_t t_pct);
+void rt_gradient2d_fill_horizontal(void *gradient, void *pixels);
+void rt_gradient2d_fill_vertical(void *gradient, void *pixels);
+
+void *rt_camerarig2d_new(void *camera);
+void rt_camerarig2d_set_camera(void *rig, void *camera);
+void rt_camerarig2d_set_target(void *rig, int64_t x, int64_t y);
+void rt_camerarig2d_set_smoothing(void *rig, int64_t lerp_pct);
+void rt_camerarig2d_set_deadzone(void *rig, int64_t width, int64_t height);
+void rt_camerarig2d_add_shake(void *rig, int64_t x, int64_t y);
+void rt_camerarig2d_clear_shake(void *rig);
+void rt_camerarig2d_update(void *rig);
+int64_t rt_camerarig2d_get_render_x(void *rig);
+int64_t rt_camerarig2d_get_render_y(void *rig);
+
+void *rt_texturepackeratlas_new(void *pixels);
+void *rt_texturepackeratlas_get_atlas(void *packer);
+void rt_texturepackeratlas_add(
+    void *packer, rt_string name, int64_t x, int64_t y, int64_t width, int64_t height);
+int64_t rt_texturepackeratlas_has(void *packer, rt_string name);
+int64_t rt_texturepackeratlas_region_count(void *packer);
+
+void *rt_asepriteimporter_new(void);
+void rt_asepriteimporter_set_grid(void *importer, int64_t frame_width, int64_t frame_height);
+int64_t rt_asepriteimporter_get_frame_width(void *importer);
+int64_t rt_asepriteimporter_get_frame_height(void *importer);
+void *rt_asepriteimporter_to_atlas(void *importer, void *pixels);
+
+void *rt_tiledmaploader_new(void);
+void rt_tiledmaploader_set_tile_size(void *loader, int64_t tile_width, int64_t tile_height);
+int64_t rt_tiledmaploader_get_tile_width(void *loader);
+int64_t rt_tiledmaploader_get_tile_height(void *loader);
+void *rt_tiledmaploader_new_tilemap(void *loader, int64_t width, int64_t height);
+
 #ifdef __cplusplus
 }
 #endif

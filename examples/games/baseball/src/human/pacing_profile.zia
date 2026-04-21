@@ -8,8 +8,7 @@
 //          default AI policy.
 //
 //          Profile spec (from plan 17):
-//            - observe_only       : human sets only the pregame lineup.
-//                                   AI handles everything else.
+//            - observe_only       : AI handles lineup and game decisions.
 //            - standard_manager   : human gets pregame + pitching change +
 //                                   IBB + material substitution prompts.
 //                                   This is the DEFAULT product experience.
@@ -57,8 +56,8 @@ final PROFILE_COMMISSIONER_DEBUG = "commissioner_debug";
 class PacingProfile {
     expose String identifier;
 
-    // The user sets the daily lineup card interactively. True for every
-    // non-observe_only profile.
+    // The user sets the daily lineup card interactively. True for manager
+    // profiles, false for observe_only.
     expose Boolean prompt_on_lineup;
     // The engine asked "should we pull the pitcher here?" and the default
     // AI says yes. The human sees a pitching-change menu.
@@ -107,12 +106,12 @@ class PacingProfile {
     }
 }
 
-// observe_only — human sets only the pregame lineup. Plan 17: "human sets
-// pregame lineup, AI handles the game". The absolute minimum interaction
-// mode; useful for players who just want to pick the batting order each
-// day and watch their team play.
+// observe_only — AI sets the lineup and handles the game. This is the
+// absolute minimum interaction mode and is also useful for non-interactive
+// probes that need to exercise the human manager wrapper without terminal
+// prompts.
 func makeObserveOnly() -> PacingProfile {
-    return new PacingProfile(PROFILE_OBSERVE_ONLY, true, false, false, false, false, false);
+    return new PacingProfile(PROFILE_OBSERVE_ONLY, false, false, false, false, false, false);
 }
 
 // standard_manager — plan 17's default product experience. Human gets the

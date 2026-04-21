@@ -28,6 +28,7 @@ Recommended reading order:
 20. `19-franchise-mode.md`
 21. `20-history-and-awards.md`
 22. `21-broadcast-and-watch-mode.md`
+23. `22-franchise-shell-reporting.md`
 
 These plans assume:
 
@@ -68,3 +69,5 @@ The product-level layer (plans `16`–`21`) adds:
 - Franchise-mode economics, scouting, and player acquisition
 - Historical memory through awards, records, and archived seasons
 - A broadcast/watch-mode architecture that consumes simulation events without owning truth
+- Franchise-shell reporting: completed-game box scores, league leaders, team stat pages,
+  health/workload views, manager logs, and transaction review

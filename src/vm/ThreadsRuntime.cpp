@@ -302,7 +302,8 @@ extern "C" void vm_async_run_entry_trampoline(void *raw) {
         args.push_back(argSlot);
 
         Slot result = detail::VMAccess::callFunction(vm, *payload->entry, args);
-        rt_promise_set(payload->promise, result.ptr);
+        // Worker VMs unwind immediately after resolving; the Future must retain the result.
+        rt_promise_set_owned(payload->promise, result.ptr);
     } catch (...) {
         rt_promise_set_error(payload->promise, rt_const_cstr("Async.Run: unhandled exception"));
     }

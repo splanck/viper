@@ -47,7 +47,7 @@ int main() {
     assert(hasLength && "Viper.String should have Length property");
     assert(hasIsEmpty && "Viper.String should have IsEmpty property");
 
-    constexpr std::array<std::string_view, 22> graphics2DClasses = {
+    constexpr std::array<std::string_view, 43> graphics2DClasses = {
         "Viper.Graphics.RenderTarget2D", "Viper.Graphics.Surface2D",
         "Viper.Graphics.Texture2D",      "Viper.Graphics.GpuTexture2D",
         "Viper.Graphics.Renderer2D",     "Viper.Graphics.Material2D",
@@ -59,6 +59,20 @@ int main() {
         "Viper.Graphics.TextRenderer2D", "Viper.Graphics.SdfFont",
         "Viper.Graphics.NineSlice2D",    "Viper.Graphics.ParticleSystem2D",
         "Viper.Graphics.Emitter2D",      "Viper.Graphics.DebugDraw2D",
+        "Viper.Graphics.Transform2D",    "Viper.Graphics.Sampler2D",
+        "Viper.Graphics.BlendState2D",   "Viper.Graphics.SpriteRenderer2D",
+        "Viper.Graphics.TilemapRenderer2D",
+        "Viper.Graphics.TileChunkCache2D",
+        "Viper.Graphics.AnimationClip2D",
+        "Viper.Graphics.AnimatedSprite2D",
+        "Viper.Graphics.TextLayout2D",   "Viper.Graphics.SpriteFont",
+        "Viper.Graphics.RenderPass2D",   "Viper.Graphics.RenderGraph2D",
+        "Viper.Graphics.CollisionMask2D",
+        "Viper.Graphics.Hitbox2D",       "Viper.Graphics.Palette2D",
+        "Viper.Graphics.Gradient2D",     "Viper.Graphics.CameraRig2D",
+        "Viper.Graphics.TexturePackerAtlas",
+        "Viper.Graphics.AsepriteImporter",
+        "Viper.Graphics.TiledMapLoader", "Viper.Graphics.Lighting2D",
     };
 
     for (std::string_view qname : graphics2DClasses) {

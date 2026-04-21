@@ -295,10 +295,14 @@ class SpriteFactory {
         // Frame 11: Dead
         playerRight.add(scalePlayer(buildPlayerFrame(7, 0)));
 
-        // Create left-facing versions by flipping the scaled sprites
+        // Create left-facing versions by flipping the scaled sprites.
+        // Note: Pixels.FlipH returns a new Pixels rather than mutating in
+        // place, so we must capture the return value. An earlier version
+        // discarded it, which caused the left-facing list to end up with
+        // unflipped copies and the player sprite to always appear to face
+        // right regardless of movement direction.
         for i in 0..playerRight.length() {
-            var flipped = playerRight.get(i).Clone();
-            flipped.FlipH();
+            var flipped = playerRight.get(i).FlipH();
             playerLeft.add(flipped);
         }
     }

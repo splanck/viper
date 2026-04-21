@@ -13,9 +13,10 @@
 //                 (c) HumanSeason standard     — in-game prompts allowed
 //                 (d) HumanSeason high_touch   — adds bunt/steal
 //            2. In every non-baseline run the human manager is configured to
-//               delegate every prompt immediately (delegateRestOfGame=true),
-//               so no interactive I/O is needed and every decision falls
-//               through to the default AI logic.
+//               disable pregame lineup prompts and delegate every in-game
+//               prompt immediately (delegateRestOfGame=true), so no
+//               interactive I/O is needed and every decision falls through
+//               to the default AI logic.
 //            3. Asserts that run (a) and every delegated run produce the
 //               same completed-game count and the same decision-log length.
 //               Any divergence means the substitution or pitching-change
@@ -67,6 +68,7 @@ func runDays(days: Integer, installer: Integer) -> season_model.FranchiseState {
 // in-game prompt falls through to super.decide*Action. This is how the
 // probe achieves non-interactive delegation without scripting stdin.
 func forceDelegate(mgr: manager_layer.HumanSeasonTeamManager) {
+    mgr.profile.prompt_on_lineup = false;
     var inner = mgr.inGamePolicy;
     // inGamePolicy is typed DefaultManagerPolicy; at runtime it's the
     // HumanManagerPolicy instance HumanSeasonTeamManager installed in
@@ -78,6 +80,7 @@ func forceDelegate(mgr: manager_layer.HumanSeasonTeamManager) {
     human.setPolicyName(inner.policyName);
     human.setProfile(mgr.profile);
     human.delegateRestOfGame = true;
+    mgr.humanPolicy = human;
     mgr.inGamePolicy = human;
 }
 
