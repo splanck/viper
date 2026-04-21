@@ -666,11 +666,24 @@ static int32_t build_light_params(const rt_canvas3d *c, vgfx3d_light_params_t *o
     return count;
 }
 
+/// @brief Tolerance-based scalar equality for light parameters.
+/// @details Uses a *relative* epsilon scaled by the larger magnitude of the two inputs
+///          (floored at 1.0 so near-zero values still compare sensibly). This is what
+///          keeps shadow-light slot selection stable across frames: if the same light's
+///          direction or color wobbles by a few ULPs from floating-point noise, the
+///          comparison still says "same light" and the slot assignment doesn't flicker.
 static int canvas3d_light_param_close(float a, float b) {
     float scale = fmaxf(1.0f, fmaxf(fabsf(a), fabsf(b)));
     return fabsf(a - b) <= 1e-5f * scale;
 }
 
+/// @brief Test whether two directional-light param structs refer to the "same" light
+///        for the purpose of shadow-slot de-duplication.
+/// @details Compares direction[3], color[3], and intensity using `canvas3d_light_param_close`
+///          (tolerance-based, see above). Non-directional lights always return "not
+///          match" even when both are non-directional — shadow mapping in this runtime
+///          is directional-only, so matching a spot-vs-spot or point-vs-point light
+///          into the shadow slot table would be meaningless.
 static int canvas3d_shadow_light_params_match(const vgfx3d_light_params_t *a,
                                               const vgfx3d_light_params_t *b) {
     if (!a || !b || a->type != b->type)
@@ -685,6 +698,29 @@ static int canvas3d_shadow_light_params_match(const vgfx3d_light_params_t *a,
     return canvas3d_light_param_close(a->intensity, b->intensity);
 }
 
+/// @brief Pick the strongest directional shadow-casting lights that are actually
+///        referenced by opaque draw commands this frame.
+/// @details Walks the deferred draw queue and, for every opaque main-pass command,
+///          visits the light params the command has accumulated. Each directional
+///          light is scored (see `canvas3d_shadow_light_param_score`) and inserted
+///          into a top-K table sorted by score. Duplicate lights (same direction /
+///          color / intensity within tolerance) are collapsed so one physical light
+///          can only claim one shadow slot even when many draws reference it.
+///
+///          Behaviour difference from the old bind-order-based selection: picks
+///          propagate strictly from the draw list, so a bound but unused light can't
+///          steal a shadow slot from a bound-and-actually-drawn light. Slot assignment
+///          is deterministic per-frame and stable across frames under normal
+///          floating-point noise.
+///
+///          `shadow_index` on unused slots is set to -1 so downstream code can skip
+///          them, and the output array is zero-initialized so stale residue from a
+///          prior frame can't leak into the shader constants.
+/// @param cmds Deferred draw queue.
+/// @param draw_count Number of valid commands in `cmds`.
+/// @param out_lights Output buffer sized `max_shadow_lights`.
+/// @param max_shadow_lights Caller cap; clamped to `VGFX3D_MAX_SHADOW_LIGHTS`.
+/// @return Number of shadow-light slots populated.
 static int32_t canvas3d_select_shadow_directional_lights_from_draws(
     const deferred_draw_t *cmds,
     int32_t draw_count,

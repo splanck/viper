@@ -295,6 +295,16 @@ static int vgfx3d_postfx_fill_effect_snapshot(const postfx_entry_t *e,
     return 1;
 }
 
+/// @brief Report whether the chain contains any effect that needs GPU-side scene
+///        inputs beyond the final color buffer.
+/// @details SSAO needs a depth buffer, DOF needs depth (and sometimes velocity), and
+///          motion blur needs a velocity buffer — those inputs are expensive to
+///          allocate and pipe through, so backends skip them when the chain doesn't
+///          need them. Any other effect (bloom, tonemap, color grade, vignette)
+///          composes on the color buffer alone and doesn't force the extra targets.
+///          This gate is what the backend render-target allocator checks before
+///          creating the depth/velocity attachments.
+/// @return 1 if the chain requires auxiliary GPU scene buffers, 0 if color-only.
 int vgfx3d_postfx_requires_gpu_scene_buffers(void *postfx) {
     rt_postfx3d *fx = (rt_postfx3d *)postfx;
     if (!fx || !fx->enabled || fx->effect_count <= 0)
@@ -584,6 +594,12 @@ static void apply_vignette(float *buf, int32_t w, int32_t h, float radius, float
  * Apply entire effect chain to a framebuffer
  *=========================================================================*/
 
+/// @brief Check whether the chain contains an active non-passthrough tonemap pass.
+/// @details Tonemap mode 0 is the passthrough identity (no HDR→LDR remapping), so even
+///          an enabled tonemap entry with mode=0 doesn't count. Used to gate whether
+///          the float-buffer pipeline needs to run before the final 8-bit conversion:
+///          bloom + tonemap + color-grade in HDR produces different output than the
+///          same chain applied post-quantization.
 static int postfx_chain_has_tonemap(const rt_postfx3d *fx) {
     if (!fx || !fx->enabled)
         return 0;
@@ -595,6 +611,14 @@ static int postfx_chain_has_tonemap(const rt_postfx3d *fx) {
     return 0;
 }
 
+/// @brief Run the HDR float-buffer stage of the postfx chain in authored order.
+/// @details SSAO, DOF, and motion blur are no-ops here because they require GPU
+///          scene inputs (depth, velocity) that the CPU path doesn't have — those
+///          effects trap on CPU-path binding rather than silently dropping, so the
+///          switch intentionally skips them. Bloom / tonemap / color-grade / vignette
+///          all compose in linear float space before the final LDR conversion, which
+///          is the whole point of running this before `postfx_apply` touches the
+///          integer framebuffer.
 static void postfx_apply_float_effects(rt_postfx3d *fx, float *fbuf, int32_t w, int32_t h) {
     if (!fx || !fx->enabled || fx->effect_count == 0 || !fbuf)
         return;

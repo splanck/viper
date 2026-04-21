@@ -69,6 +69,10 @@ extern void *rt_anim_controller3d_consume_root_motion_rotation(void *obj);
  * Imported node animation clips
  *=========================================================================*/
 
+/// @brief GC finalizer for a NodeAnimation3D. Releases the clip name reference and
+///        frees every channel's target name plus its times / values / in-tangent /
+///        out-tangent buffers. Only CUBICSPLINE channels have live tangent buffers;
+///        LINEAR / STEP leave those pointers NULL and `free(NULL)` is a no-op.
 static void rt_node_animation3d_finalize(void *obj) {
     rt_node_animation3d *anim = (rt_node_animation3d *)obj;
     if (!anim)
@@ -87,6 +91,14 @@ static void rt_node_animation3d_finalize(void *obj) {
     anim->channel_capacity = 0;
 }
 
+/// @brief Allocate a NodeAnimation3D clip — the container for per-node TRS curves
+///        imported from glTF (non-skeletal node animations).
+/// @details Retains `name` so the caller can drop their reference safely. Clamps a
+///          non-finite or non-positive `duration` to 1.0 so a malformed glTF asset
+///          can't hand us a zero-length clip that would divide-by-zero during
+///          looping playback. Looping is enabled by default — callers that want a
+///          single-shot playback flip `looping` after construction.
+/// @return Opaque clip handle, or NULL and traps on allocation failure.
 void *rt_node_animation3d_new(rt_string name, double duration) {
     rt_node_animation3d *anim =
         (rt_node_animation3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_node_animation3d));
@@ -103,6 +115,14 @@ void *rt_node_animation3d_new(rt_string name, double duration) {
     return anim;
 }
 
+/// @brief Grow the channel array on an animation clip to fit at least `needed` entries.
+/// @details Doubling-growth starting at 4 channels on first allocation, with a direct
+///          jump to `needed` when the doubled value would still be too small (e.g. a
+///          bulk import calling with an exact count). New tail is zero-initialized so
+///          uninitialized channel memory can't leak into the finalizer's free path.
+///          Leaves the existing array untouched on allocation failure so callers can
+///          continue using whatever was already there.
+/// @return 1 on success (including no-op), 0 on allocation failure.
 static int node_animation_reserve_channels(rt_node_animation3d *anim, int32_t needed) {
     int32_t new_capacity;
     rt_node_anim_channel3d *grown;
@@ -125,6 +145,21 @@ static int node_animation_reserve_channels(rt_node_animation3d *anim, int32_t ne
     return 1;
 }
 
+/// @brief Add one channel (one animated property on one target node) to an animation
+///        clip, taking defensive copies of the sample data.
+/// @details Validation the caller doesn't have to repeat:
+///          - Rejects a NULL target name, non-positive key count, non-positive value
+///            width, or NULL times / values buffer.
+///          - CUBICSPLINE channels require both in-tangent and out-tangent buffers.
+///          - Path must be a valid TRS-or-weights selector.
+///          - `key_count * value_width` is bounds-checked against `SIZE_MAX / sizeof(float)`
+///            so a pathological exporter that claims billions of keys can't wrap the
+///            multiplication into a small allocation.
+///          The implementation deep-copies the times array (as `double`), the values
+///          array, and — for CUBICSPLINE channels — the two tangent arrays, so the
+///          caller can free the source buffers immediately after this returns.
+/// @return The zero-based index of the new channel, or -1 on validation / allocation
+///         failure.
 static int64_t node_animation_add_channel_impl(void *obj,
                                                rt_string target_name,
                                                int64_t path,

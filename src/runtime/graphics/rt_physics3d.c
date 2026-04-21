@@ -155,6 +155,16 @@ struct ph3d_broadphase_entry {
     double max[3];
 };
 
+/// @brief Compute the next power-of-two capacity that covers `needed`, starting from
+///        `current` (or `initial` if current is zero).
+/// @details Doubles until the result covers `needed`. Returns -1 if the next doubling
+///          would overflow `INT32_MAX`, so callers can fail the reserve cleanly rather
+///          than wrapping to a negative size that would pass a naive `< capacity` check
+///          but produce a corrupt allocation.
+/// @param current Current capacity of the array (0 = not yet allocated).
+/// @param needed Minimum capacity the caller requires.
+/// @param initial Floor capacity used when `current == 0`.
+/// @return New capacity >= needed, or -1 on overflow.
 static int32_t ph3d_next_capacity(int32_t current, int32_t needed, int32_t initial) {
     int32_t capacity = current > 0 ? current : initial;
     while (capacity < needed) {
@@ -165,6 +175,15 @@ static int32_t ph3d_next_capacity(int32_t current, int32_t needed, int32_t initi
     return capacity;
 }
 
+/// @brief Grow the world's body array to fit at least `needed` entries.
+/// @details Shared growth contract followed by every `world3d_reserve_*` helper:
+///            1. No-op and return success when the current capacity already covers it.
+///            2. On realloc failure, leave the existing array intact and return 0 —
+///               callers can safely continue using whatever was already there.
+///            3. On successful grow, zero-initialize the freshly extended tail so
+///               unused slots are always NULL-valued and can be scanned safely.
+///          Only the pointer array is touched; body lifetime is owned elsewhere.
+/// @return 1 on success (including no-op), 0 on allocation failure.
 static int world3d_reserve_body_capacity(rt_world3d *w, int32_t needed) {
     if (!w || needed <= w->body_capacity)
         return 1;
@@ -183,6 +202,13 @@ static int world3d_reserve_body_capacity(rt_world3d *w, int32_t needed) {
     return 1;
 }
 
+/// @brief Generic reserve helper used by all four contact-style arrays
+///        (active contacts, previous contacts, enter / stay / exit event queues).
+/// @details Same growth contract as `world3d_reserve_body_capacity` — realloc-in-place,
+///          leave the array untouched on failure, zero-initialize the tail on grow. The
+///          four thin wrappers below exist only to pick the right `(array, capacity)`
+///          field pair; keeping one body avoids the five-copy-paste bug-multiplication
+///          this code used to have.
 static int world3d_reserve_contact_array(rt_contact3d **array,
                                          int32_t *capacity,
                                          int32_t needed) {
@@ -222,6 +248,13 @@ static int world3d_reserve_exit_events(rt_world3d *w, int32_t needed) {
     return world3d_reserve_contact_array(&w->exit_events, &w->exit_event_capacity, needed);
 }
 
+/// @brief Grow the joint table — the one reserve helper that has to allocate two
+///        parallel arrays atomically (joint pointers + joint type tags).
+/// @details If the second realloc (types) fails, the first already-grown joints array
+///          is kept live — the world retains the expanded joints pointer and its old
+///          `joint_capacity`, so the next reserve call doesn't try to realloc the
+///          already-grown block a second time. Both tails are zero-initialized on
+///          success so unused slots always read as NULL / 0 joint_type.
 static int world3d_reserve_joint_capacity(rt_world3d *w, int32_t needed) {
     if (!w || needed <= w->joint_capacity)
         return 1;
@@ -249,6 +282,10 @@ static int world3d_reserve_joint_capacity(rt_world3d *w, int32_t needed) {
     return 1;
 }
 
+/// @brief Grow the sweep-and-prune broadphase scratch table. Capacity is sized per-body
+///        so the initial floor tracks `PH3D_INITIAL_BODIES`. Unlike the body-pointer
+///        array, entries are treated as pure scratch — the tail is NOT zero-initialized
+///        because the broadphase rebuild always writes every entry before reading it.
 static int world3d_reserve_broadphase_capacity(rt_world3d *w, int32_t needed) {
     if (!w || needed <= w->broadphase_capacity)
         return 1;

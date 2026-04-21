@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-18
+last-verified: 2026-04-20
 ---
 
 # Graphics
@@ -20,6 +20,7 @@ The current 2D runtime includes clip-correct text/image rendering inside GUI sur
 | [Canvas & Color](canvas.md) | Canvas drawing surface and Color utilities |
 | [Fonts](fonts.md) | BitmapFont for custom BDF/PSF font rendering |
 | [Images & Sprites](pixels.md) | Pixels, Sprite, SpriteSheet, Tilemap |
+| [Production 2D Graphics](production2d.md) | RenderTarget2D, Texture2D, Renderer2D, Material2D, Shader2D, PostProcess2D, Viewport2D, TileSet2D, TileLayer2D, ObjectLayer2D, AutoTile2D, ParticleSystem2D, Path2D, ShapeRenderer2D, TextRenderer2D, NineSlice2D, DebugDraw2D |
 | [Scene Graph](scene.md) | SceneNode, Scene, SpriteBatch, TextureAtlas, Camera, SpriteAnimation |
 | [3D Physics](physics3d.md) | `Physics3DWorld`, `PhysicsHit3D`, `PhysicsHitList3D`, `CollisionEvent3D`, `ContactPoint3D`, `Collider3D`, `Physics3DBody`, `Character3D`, `DistanceJoint3D`, `SpringJoint3D` |
 | [Graphics 3D Guide](../../graphics3d-guide.md) | `Model3D`, `AnimController3D`, `Canvas3D`, `Scene3D`, `SceneNode3D`, `Scene3D.SyncBindings`, `Mesh3D`, `Material3D`, `FBX`, `GLTF`, and the higher-level 3D asset pipeline |

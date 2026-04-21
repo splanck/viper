@@ -490,6 +490,14 @@ static int32_t gltf_count_subtree(const rt_scene_node3d *node) {
     return total;
 }
 
+/// @brief Membership test for the set of glTF extensions this loader handles when
+///        they appear in `extensionsRequired`.
+/// @details The supported list is deliberately small and hardcoded: adding an entry
+///          here is a commitment to actually interpret that extension's JSON in
+///          material / node / mesh parsing. Listing an extension here without
+///          implementing it is worse than not listing it, because assets that require
+///          it will load and then silently render wrong.
+/// @return 1 if the extension is supported, 0 otherwise (including NULL input).
 static int gltf_required_extension_supported(const char *name) {
     if (!name)
         return 0;
@@ -499,6 +507,15 @@ static int gltf_required_extension_supported(const char *name) {
            strcmp(name, "KHR_lights_punctual") == 0;
 }
 
+/// @brief Enforce the glTF `extensionsRequired` contract.
+/// @details If the document declares extensions as REQUIRED (not merely USED), the
+///          spec says a loader that can't handle any of them must refuse to load the
+///          asset rather than produce a degraded rendering. This function walks the
+///          required list and returns 0 on the first unsupported extension so the
+///          top-level loader can bail cleanly. Missing or empty `extensionsRequired`
+///          is treated as "nothing required" (returns 1).
+/// @return 1 when every required extension is supported (or the array is absent);
+///         0 when any required extension is unsupported and the load should fail.
 static int gltf_validate_required_extensions(void *root) {
     void *required = jarr(root, "extensionsRequired");
     if (!required)
@@ -1275,6 +1292,24 @@ static void gltf_accessor_read_u32(const gltf_accessor_view_t *view,
     }
 }
 
+/// @brief Insert a `(joint, weight)` influence into a fixed 4-slot vertex influence
+///        record, keeping the top four weights.
+/// @details GPU skinning palettes cap per-vertex influences at 4 slots, but glTF meshes
+///          can carry more influences via JOINTS_0 + JOINTS_1 accessor pairs. This
+///          helper is called once per (joint, weight) pair from every contributing
+///          accessor, folding all of them into the same 4-tuple. Policy:
+///            1. Matching joint already in a slot → sum weights (handles duplicate
+///               joints reported across JOINTS_0 and JOINTS_1 for the same bone).
+///            2. Empty slot available (weight ~= 0) → fill it.
+///            3. All slots full and the incoming weight is larger than the smallest
+///               slot → evict the weakest. Otherwise the incoming weight is dropped.
+///          Inputs whose joint index exceeds VGFX3D_MAX_BONES or whose weight is
+///          negligible (<= 1e-8 in magnitude) are silently dropped so garbage in the
+///          source accessors can't corrupt the influence record.
+/// @param joint Source joint index from a glTF JOINTS_* accessor.
+/// @param weight Source weight from the matching WEIGHTS_* accessor.
+/// @param out_joints 4-element joint-index array, mutated in place.
+/// @param out_weights 4-element weight array, mutated in place.
 static void gltf_add_top_joint_influence(uint32_t joint,
                                          float weight,
                                          uint32_t *out_joints,
@@ -1303,6 +1338,17 @@ static void gltf_add_top_joint_influence(uint32_t joint,
     out_weights[replace] = weight;
 }
 
+/// @brief Clamp negatives and renormalize a 4-element vertex weight tuple to sum 1.
+/// @details glTF assets are *meant* to ship normalized, but some exporters produce
+///          weights that sum to slightly less or more than 1 (accumulated rounding
+///          error, or after this loader's own top-4 truncation throws out some
+///          influence). Per-vertex weight sums that diverge from 1 cause the skinned
+///          mesh to bloat or shrink, so we clean up after the accessor walk:
+///            1. Any negative weight (exporter bug or bad sparse override) is clamped
+///               to 0 and dropped from the sum.
+///            2. Non-zero sum → scale to 1.
+///            3. Sum below threshold → leave the tuple alone (a zero-weight vertex is
+///               a valid "this vertex is unrigged" signal).
 static void gltf_normalize_joint_influences(float *weights) {
     float sum = 0.0f;
     if (!weights)

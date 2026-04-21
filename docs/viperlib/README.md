@@ -27,7 +27,7 @@ implemented in C and exposed through the IL runtime system.
 | [Diagnostics](diagnostics.md)   | `Assert`, `Trap` — assertion checking and traps                           |
 | [Functional](functional.md)     | `Lazy`, `Option`, `Result` — lazy evaluation, optionals, and result types  |
 | [Game Utilities](game/README.md)       | `AchievementTracker`, `AnimStateMachine`, `ButtonGroup`, `Collision`, `CollisionRect`, `Grid2D`, `Lighting2D`, `ObjectPool`, `ParticleEmitter`, `PathFollower`, `Physics2D`, `PlatformerController`, `Quadtree`, `ScreenFX`, `SmoothValue`, `SpriteAnimation`, `StateMachine`, `Timer`, `Tween`, `Typewriter` |
-| [Graphics](graphics/README.md)         | `Camera`, `Canvas`, `Color`, `Pixels`, `Scene`, `SceneNode`, `Sprite`, `SpriteBatch`, `SpriteSheet`, `TextureAtlas`, `Tilemap` |
+| [Graphics](graphics/README.md)         | `Camera`, `Canvas`, `Color`, `Pixels`, `Renderer2D`, `RenderTarget2D`, `Scene`, `SceneNode`, `Sprite`, `SpriteBatch`, `SpriteSheet`, `Texture2D`, `TextureAtlas`, `TileLayer2D`, `Tilemap`, production 2D classes |
 | [Graphics 3D & Physics](graphics/physics3d.md) | `Physics3DWorld`, `PhysicsHit3D`, `PhysicsHitList3D`, `CollisionEvent3D`, `ContactPoint3D`, `Collider3D`, `Physics3DBody`, `Character3D`, `DistanceJoint3D`, `SpringJoint3D` |
 | [GUI](gui/README.md)                   | `App`, `Breadcrumb`, `Button`, `Clipboard`, `CodeEditor`, `CommandPalette`, `Container`, `Cursor`, `FileDialog`, `Label`, `MessageBox`, `Minimap`, `Shortcuts`, `Toast`, `Tooltip`, widgets — GUI toolkit for applications |
 | [Input](input.md)               | `Action`, `Keyboard`, `KeyChord`, `Manager`, `Mouse`, `Pad` — input for games and interactive apps |
@@ -177,13 +177,29 @@ implemented in C and exposed through the IL runtime system.
 | [`Camera`](graphics/README.md#vipergraphicscamera)         | Instance | 2D camera for scrolling/zoom/parallax |
 | [`Canvas`](graphics/README.md#vipergraphicscanvas)         | Instance | 2D graphics canvas with delta time    |
 | [`Color`](graphics/README.md#vipergraphicscolor)           | Static   | Color creation                   |
+| [`DebugDraw2D`](graphics/production2d.md#classes)          | Instance | Retained debug drawing queue     |
+| [`Material2D`](graphics/production2d.md#classes)           | Instance | 2D tint, alpha, and blend state  |
+| [`NineSlice2D`](graphics/production2d.md#ui-and-debug-drawing) | Instance | Stretchable UI image drawing |
+| [`ObjectLayer2D`](graphics/production2d.md#tile-and-object-layers) | Instance | Rect object map layer       |
+| [`ParticleSystem2D`](graphics/production2d.md#classes)     | Instance | Graphics alias for particle effects |
 | [`Pixels`](graphics/README.md#vipergraphicspixels)         | Instance | Software image buffer            |
+| [`PostProcess2D`](graphics/production2d.md#classes)        | Instance | CPU image post-processing pass   |
+| [`RenderTarget2D`](graphics/production2d.md#render-target-and-renderer) | Instance | Offscreen alpha-aware render surface |
+| [`Renderer2D`](graphics/production2d.md#render-target-and-renderer) | Instance | Retained 2D draw command stream |
 | [`Scene`](graphics/README.md#vipergraphicsscene)           | Instance | Scene graph container            |
 | [`SceneNode`](graphics/README.md#vipergraphicsscenenode)   | Instance | Hierarchical scene graph node    |
+| [`Shader2D`](graphics/production2d.md#classes)             | Instance | CPU 2D image effect wrapper      |
+| [`ShapeRenderer2D`](graphics/production2d.md#classes)      | Instance | Lines, rectangles, circles, paths |
+| [`SdfFont`](graphics/production2d.md#classes)              | Instance | SDF-ready bitmap font wrapper    |
 | [`Sprite`](graphics/README.md#vipergraphicssprite)         | Instance | 2D sprite with flip/animation    |
 | [`SpriteBatch`](graphics/README.md#vipergraphicsspritebatch)| Instance | Batched sprite rendering        |
 | [`SpriteSheet`](graphics/README.md#vipergraphicsspritesheet)| Instance | Sprite sheet/atlas with named region extraction |
+| [`TextRenderer2D`](graphics/production2d.md#classes)       | Instance | Text measurement and Canvas draw wrapper |
+| [`Texture2D`](graphics/production2d.md#classes)            | Instance | Retained texture handle over Pixels |
+| [`TileLayer2D`](graphics/production2d.md#tile-and-object-layers) | Instance | Dense tile ID layer          |
+| [`TileSet2D`](graphics/production2d.md#tile-and-object-layers) | Instance | Uniform grid tileset         |
 | [`Tilemap`](graphics/README.md#vipergraphicstilemap)       | Instance | Tile-based game maps             |
+| [`Viewport2D`](graphics/production2d.md#color-and-scale-conventions) | Instance | Virtual-to-screen scaling and transforms |
 
 ### Viper.Graphics3D
 

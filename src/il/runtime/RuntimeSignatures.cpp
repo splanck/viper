@@ -124,6 +124,7 @@
 #include "rt_glob.h"
 #include "rt_gltf.h"
 #include "rt_graphics.h"
+#include "rt_graphics2d.h"
 #include "rt_grid2d.h"
 #include "rt_gui.h"
 #include "rt_guid.h"

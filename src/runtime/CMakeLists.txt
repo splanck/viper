@@ -242,6 +242,7 @@ set(RT_GRAPHICS_SOURCES
         graphics/rt_spritebatch.c
         graphics/rt_texatlas.c
         graphics/rt_bitmapfont.c
+        graphics/rt_graphics2d.c
         graphics/fonts/embedded_font.c  # JetBrains Mono Regular (MIT) — embedded for portable font rendering
         graphics/rt_canvas3d.c
         graphics/rt_canvas3d_overlay.c
@@ -331,6 +332,7 @@ set(RT_GRAPHICS_DISABLED_SOURCES
         graphics/rt_spritebatch.c
         graphics/rt_texatlas.c
         graphics/rt_bitmapfont.c
+        graphics/rt_graphics2d.c
         graphics/fonts/embedded_font.c
         graphics/rt_avi.c
         graphics/rt_theora.c

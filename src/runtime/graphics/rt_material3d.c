@@ -128,6 +128,17 @@ static double sanitize_color(double value) {
     return clamp01(value);
 }
 
+/// @brief Initialize all six texture slots to neutral defaults so materials that
+///        never set slot metadata render as they did before the per-slot machinery
+///        was introduced.
+/// @details Per slot: REPEAT wrap on both axes, LINEAR filter, UV set 0, and a 2×3
+///          identity UV transform stored as six doubles in the layout
+///          `[scale_u, shear_u, shear_v, scale_v, offset_u, offset_v]` — i.e. row-
+///          major 2-row matrix with `(1,0,0,1,0,0)` = identity.
+///
+///          The legacy material-wide `texture_wrap_s` / `_t` / `_filter` scalars are
+///          mirrored from slot 0 (base color) so older code reading those fields
+///          directly sees a sensible default instead of an uninitialized value.
 static void material_init_texture_slots(rt_material3d *mat) {
     if (!mat)
         return;
