@@ -633,6 +633,34 @@ PRINT count
     EXPECT_GE(countCallsTo(*mainFn, "Viper.Collections.Seq.get_Length"), static_cast<size_t>(1));
 }
 
+TEST(BasicRuntimeCalls, TextWrapperWrapLinesObjectResultKeepsSeqSurface) {
+    auto module = compileModule(R"(
+DIM lines AS OBJECT
+DIM count AS INTEGER
+lines = Viper.Text.TextWrapper.WrapLines("one two three", 7)
+count = lines.Length
+PRINT count
+)");
+    ASSERT_TRUE(module.has_value());
+    const auto *mainFn = findFunction(*module, "main");
+    ASSERT_TRUE(mainFn != nullptr);
+    EXPECT_GE(countCallsTo(*mainFn, "Viper.Collections.Seq.get_Length"), static_cast<size_t>(1));
+}
+
+TEST(BasicRuntimeCalls, TemplateKeysObjectResultKeepsSeqSurface) {
+    auto module = compileModule(R"(
+DIM keys AS OBJECT
+DIM count AS INTEGER
+keys = Viper.Text.Template.Keys("Hello {{name}} from {{place}}")
+count = keys.Length
+PRINT count
+)");
+    ASSERT_TRUE(module.has_value());
+    const auto *mainFn = findFunction(*module, "main");
+    ASSERT_TRUE(mainFn != nullptr);
+    EXPECT_GE(countCallsTo(*mainFn, "Viper.Collections.Seq.get_Length"), static_cast<size_t>(1));
+}
+
 TEST(BasicRuntimeCalls, LazySeqToSeqNObjectResultKeepsSeqSurface) {
     auto module = compileModule(R"(
 DIM seq AS OBJECT

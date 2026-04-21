@@ -17,7 +17,7 @@
 //   - Pre-release versions have lower precedence than the release they extend.
 //   - Build metadata is ignored for comparison purposes.
 //   - Constraint checking supports the operators: =, !=, <, <=, >, >=, ^, ~.
-//   - Invalid version strings cause Parse to return a zero version (0.0.0).
+//   - Invalid version strings cause Parse to return NULL.
 //
 // Ownership/Lifetime:
 //   - Parsed version objects are heap-allocated and managed by the runtime GC.
@@ -35,6 +35,8 @@
 #include "rt_string_builder.h"
 
 #include <ctype.h>
+#include <limits.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -71,6 +73,47 @@ static char *dup_str(const char *s, size_t len) {
     return r;
 }
 
+static void release_version(void *v) {
+    if (v && rt_obj_release_check0(v))
+        rt_obj_free(v);
+}
+
+static void check_sb(rt_sb_status_t status, const char *op) {
+    if (status != RT_SB_OK)
+        rt_trap(op);
+}
+
+static int semver_ident_char(char c) {
+    return isalnum((unsigned char)c) || c == '-';
+}
+
+static int semver_validate_identifiers(const char *s, size_t len, int prerelease) {
+    if (len == 0)
+        return 0;
+
+    size_t start = 0;
+    while (start < len) {
+        size_t end = start;
+        int numeric = 1;
+        while (end < len && s[end] != '.') {
+            if (!semver_ident_char(s[end]))
+                return 0;
+            if (!isdigit((unsigned char)s[end]))
+                numeric = 0;
+            end++;
+        }
+        if (end == start)
+            return 0;
+        if (prerelease && numeric && end - start > 1 && s[start] == '0')
+            return 0;
+        if (end == len)
+            return 1;
+        start = end + 1;
+    }
+
+    return 0;
+}
+
 /// @brief Parse a non-negative decimal integer from `str` at `*pos`, advancing the cursor.
 /// @details Enforces the SemVer "no leading zeros" rule (so `01` is
 ///          rejected, but plain `0` is fine). Returns -1 on
@@ -87,7 +130,10 @@ static int64_t parse_num(const char *str, size_t len, size_t *pos) {
 
     int64_t val = 0;
     while (*pos < len && isdigit((unsigned char)str[*pos])) {
-        val = val * 10 + (str[*pos] - '0');
+        int digit = str[*pos] - '0';
+        if (val > (INT64_MAX - digit) / 10)
+            return -1;
+        val = val * 10 + digit;
         (*pos)++;
     }
     return val;
@@ -102,7 +148,7 @@ void *rt_version_parse(rt_string str) {
     const char *src = rt_string_cstr(str);
     if (!src)
         return NULL;
-    size_t len = strlen(src);
+    size_t len = (size_t)rt_str_len(str);
     if (len == 0)
         return NULL;
 
@@ -126,14 +172,15 @@ void *rt_version_parse(rt_string str) {
     if (minor < 0)
         return NULL;
 
-    // PATCH is optional - default to 0
-    int64_t patch = 0;
-    if (pos < len && src[pos] == '.') {
-        pos++;
-        patch = parse_num(src, len, &pos);
-        if (patch < 0)
-            return NULL;
-    }
+    // Expect '.'
+    if (pos >= len || src[pos] != '.')
+        return NULL;
+    pos++;
+
+    // Parse PATCH
+    int64_t patch = parse_num(src, len, &pos);
+    if (patch < 0)
+        return NULL;
 
     // Pre-release: -alpha.1.beta
     char *prerelease = NULL;
@@ -142,8 +189,11 @@ void *rt_version_parse(rt_string str) {
         size_t start = pos;
         while (pos < len && src[pos] != '+')
             pos++;
-        if (pos > start)
-            prerelease = dup_str(src + start, pos - start);
+        if (!semver_validate_identifiers(src + start, pos - start, 1))
+            return NULL;
+        prerelease = dup_str(src + start, pos - start);
+        if (!prerelease)
+            rt_trap("Version.Parse: memory allocation failed");
     }
 
     // Build metadata: +build.42
@@ -153,8 +203,15 @@ void *rt_version_parse(rt_string str) {
         size_t start = pos;
         while (pos < len)
             pos++;
-        if (pos > start)
-            build = dup_str(src + start, pos - start);
+        if (!semver_validate_identifiers(src + start, pos - start, 0)) {
+            free(prerelease);
+            return NULL;
+        }
+        build = dup_str(src + start, pos - start);
+        if (!build) {
+            free(prerelease);
+            rt_trap("Version.Parse: memory allocation failed");
+        }
     }
 
     // Should have consumed everything
@@ -185,8 +242,7 @@ int8_t rt_version_is_valid(rt_string str) {
     void *v = rt_version_parse(str);
     if (!v)
         return 0;
-    rt_obj_release_check0(v);
-    rt_obj_free(v);
+    release_version(v);
     return 1;
 }
 
@@ -236,19 +292,25 @@ rt_string rt_version_to_string(void *ver) {
         return rt_string_from_bytes("", 0);
     rt_version_impl *v = (rt_version_impl *)ver;
 
-    char buf[256];
-    int written = snprintf(buf,
-                           sizeof(buf),
-                           "%lld.%lld.%lld",
-                           (long long)v->major,
-                           (long long)v->minor,
-                           (long long)v->patch);
-    if (v->prerelease)
-        written += snprintf(buf + written, sizeof(buf) - (size_t)written, "-%s", v->prerelease);
-    if (v->build)
-        written += snprintf(buf + written, sizeof(buf) - (size_t)written, "+%s", v->build);
+    rt_string_builder sb;
+    rt_sb_init(&sb);
+    check_sb(rt_sb_append_int(&sb, v->major), "Version.ToString: formatting failed");
+    check_sb(rt_sb_append_cstr(&sb, "."), "Version.ToString: formatting failed");
+    check_sb(rt_sb_append_int(&sb, v->minor), "Version.ToString: formatting failed");
+    check_sb(rt_sb_append_cstr(&sb, "."), "Version.ToString: formatting failed");
+    check_sb(rt_sb_append_int(&sb, v->patch), "Version.ToString: formatting failed");
+    if (v->prerelease) {
+        check_sb(rt_sb_append_cstr(&sb, "-"), "Version.ToString: formatting failed");
+        check_sb(rt_sb_append_cstr(&sb, v->prerelease), "Version.ToString: formatting failed");
+    }
+    if (v->build) {
+        check_sb(rt_sb_append_cstr(&sb, "+"), "Version.ToString: formatting failed");
+        check_sb(rt_sb_append_cstr(&sb, v->build), "Version.ToString: formatting failed");
+    }
 
-    return rt_string_from_bytes(buf, (size_t)written);
+    rt_string result = rt_string_from_bytes(sb.data, sb.len);
+    rt_sb_free(&sb);
+    return result;
 }
 
 // Compare pre-release identifiers per SemVer spec.
@@ -288,16 +350,14 @@ static int cmp_prerelease(const char *a, const char *b) {
                 b_num = 0;
 
         if (a_num && b_num) {
-            // Both numeric: compare as integers
-            long long va = 0, vb = 0;
-            for (size_t i = 0; i < la; ++i)
-                va = va * 10 + (pa[i] - '0');
-            for (size_t i = 0; i < lb; ++i)
-                vb = vb * 10 + (pb[i] - '0');
-            if (va < vb)
+            // Both numeric: compare by length and bytes to avoid integer overflow.
+            if (la < lb)
                 return -1;
-            if (va > vb)
+            if (la > lb)
                 return 1;
+            int cmp = memcmp(pa, pb, la);
+            if (cmp != 0)
+                return cmp < 0 ? -1 : 1;
         } else if (a_num != b_num) {
             // Numeric < alphanumeric
             return a_num ? -1 : 1;
@@ -355,14 +415,19 @@ int8_t rt_version_satisfies(void *ver, rt_string constraint) {
 
     rt_version_impl *v = (rt_version_impl *)ver;
 
-    // Parse operator and version
     const char *p = cstr;
+    while (*p && isspace((unsigned char)*p))
+        p++;
+
+    // Parse operator and version
     char op[3] = {0};
 
     if (p[0] == '^') {
         // Caret: compatible with (same major, if major > 0)
         p++;
-        rt_string vs = rt_string_from_bytes(p, len - 1);
+        while (*p && isspace((unsigned char)*p))
+            p++;
+        rt_string vs = rt_string_from_bytes(p, strlen(p));
         void *cv = rt_version_parse(vs);
         rt_string_unref(vs);
         if (!cv)
@@ -378,12 +443,13 @@ int8_t rt_version_satisfies(void *ver, rt_string constraint) {
         } else {
             result = (rt_version_cmp(ver, cv) == 0) ? 1 : 0;
         }
-        rt_obj_release_check0(cv);
-        rt_obj_free(cv);
+        release_version(cv);
         return result;
     } else if (p[0] == '~') {
         // Tilde: same major.minor
         p++;
+        while (*p && isspace((unsigned char)*p))
+            p++;
         rt_string vs = rt_string_from_bytes(p, strlen(p));
         void *cv = rt_version_parse(vs);
         rt_string_unref(vs);
@@ -393,8 +459,7 @@ int8_t rt_version_satisfies(void *ver, rt_string constraint) {
         rt_version_impl *c = (rt_version_impl *)cv;
         int8_t result =
             (v->major == c->major && v->minor == c->minor && rt_version_cmp(ver, cv) >= 0) ? 1 : 0;
-        rt_obj_release_check0(cv);
-        rt_obj_free(cv);
+        release_version(cv);
         return result;
     }
 
@@ -426,7 +491,7 @@ int8_t rt_version_satisfies(void *ver, rt_string constraint) {
     }
 
     // Skip whitespace after operator
-    while (*p == ' ')
+    while (*p && isspace((unsigned char)*p))
         p++;
 
     rt_string vs = rt_string_from_bytes(p, strlen(p));
@@ -436,8 +501,7 @@ int8_t rt_version_satisfies(void *ver, rt_string constraint) {
         return 0;
 
     int64_t cmp = rt_version_cmp(ver, cv);
-    rt_obj_release_check0(cv);
-    rt_obj_free(cv);
+    release_version(cv);
 
     if (op[0] == '>' && op[1] == '=')
         return cmp >= 0 ? 1 : 0;
@@ -459,9 +523,15 @@ rt_string rt_version_bump_major(void *ver) {
     if (!ver)
         return rt_string_from_bytes("", 0);
     rt_version_impl *v = (rt_version_impl *)ver;
-    char buf[64];
-    snprintf(buf, sizeof(buf), "%lld.0.0", (long long)(v->major + 1));
-    return rt_string_from_bytes(buf, strlen(buf));
+    if (v->major == INT64_MAX)
+        rt_trap("Version.BumpMajor: component overflow");
+    rt_string_builder sb;
+    rt_sb_init(&sb);
+    check_sb(rt_sb_append_int(&sb, v->major + 1), "Version.BumpMajor: formatting failed");
+    check_sb(rt_sb_append_cstr(&sb, ".0.0"), "Version.BumpMajor: formatting failed");
+    rt_string result = rt_string_from_bytes(sb.data, sb.len);
+    rt_sb_free(&sb);
+    return result;
 }
 
 /// @brief Return a new version string with the minor component incremented and patch reset to 0.
@@ -469,9 +539,17 @@ rt_string rt_version_bump_minor(void *ver) {
     if (!ver)
         return rt_string_from_bytes("", 0);
     rt_version_impl *v = (rt_version_impl *)ver;
-    char buf[64];
-    snprintf(buf, sizeof(buf), "%lld.%lld.0", (long long)v->major, (long long)(v->minor + 1));
-    return rt_string_from_bytes(buf, strlen(buf));
+    if (v->minor == INT64_MAX)
+        rt_trap("Version.BumpMinor: component overflow");
+    rt_string_builder sb;
+    rt_sb_init(&sb);
+    check_sb(rt_sb_append_int(&sb, v->major), "Version.BumpMinor: formatting failed");
+    check_sb(rt_sb_append_cstr(&sb, "."), "Version.BumpMinor: formatting failed");
+    check_sb(rt_sb_append_int(&sb, v->minor + 1), "Version.BumpMinor: formatting failed");
+    check_sb(rt_sb_append_cstr(&sb, ".0"), "Version.BumpMinor: formatting failed");
+    rt_string result = rt_string_from_bytes(sb.data, sb.len);
+    rt_sb_free(&sb);
+    return result;
 }
 
 /// @brief Return a new version string with the patch component incremented.
@@ -479,12 +557,16 @@ rt_string rt_version_bump_patch(void *ver) {
     if (!ver)
         return rt_string_from_bytes("", 0);
     rt_version_impl *v = (rt_version_impl *)ver;
-    char buf[64];
-    snprintf(buf,
-             sizeof(buf),
-             "%lld.%lld.%lld",
-             (long long)v->major,
-             (long long)v->minor,
-             (long long)(v->patch + 1));
-    return rt_string_from_bytes(buf, strlen(buf));
+    if (v->patch == INT64_MAX)
+        rt_trap("Version.BumpPatch: component overflow");
+    rt_string_builder sb;
+    rt_sb_init(&sb);
+    check_sb(rt_sb_append_int(&sb, v->major), "Version.BumpPatch: formatting failed");
+    check_sb(rt_sb_append_cstr(&sb, "."), "Version.BumpPatch: formatting failed");
+    check_sb(rt_sb_append_int(&sb, v->minor), "Version.BumpPatch: formatting failed");
+    check_sb(rt_sb_append_cstr(&sb, "."), "Version.BumpPatch: formatting failed");
+    check_sb(rt_sb_append_int(&sb, v->patch + 1), "Version.BumpPatch: formatting failed");
+    rt_string result = rt_string_from_bytes(sb.data, sb.len);
+    rt_sb_free(&sb);
+    return result;
 }

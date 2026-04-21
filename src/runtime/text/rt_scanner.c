@@ -517,6 +517,7 @@ rt_string rt_scanner_read_quoted(void *obj, int64_t quote) {
     if (s->pos >= s->len || s->data[s->pos] != (char)quote)
         return rt_const_cstr("");
 
+    int64_t start = s->pos;
     s->pos++; // Skip opening quote
 
     // Build result, handling escapes
@@ -575,8 +576,13 @@ rt_string rt_scanner_read_quoted(void *obj, int64_t quote) {
     }
 
     // Skip closing quote
-    if (s->pos < s->len && s->data[s->pos] == (char)quote)
+    if (s->pos < s->len && s->data[s->pos] == (char)quote) {
         s->pos++;
+    } else {
+        free(buf);
+        s->pos = start;
+        rt_trap("Scanner.ReadQuoted: unterminated quoted string");
+    }
 
     rt_string result = rt_string_from_bytes(buf, buf_pos);
     free(buf);

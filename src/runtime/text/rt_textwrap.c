@@ -29,11 +29,32 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_textwrap.h"
+#include "rt_internal.h"
 #include "rt_seq.h"
 #include "rt_string.h"
 
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+
+static size_t checked_i64_to_size(int64_t value, const char *op) {
+    if (value < 0)
+        rt_trap(op);
+    return (size_t)value;
+}
+
+static size_t checked_mul_add(size_t base, size_t count, size_t each, const char *op) {
+    if (each != 0 && count > (SIZE_MAX - base) / each)
+        rt_trap(op);
+    return base + count * each;
+}
+
+static char *checked_malloc(size_t size, const char *op) {
+    char *ptr = (char *)malloc(size);
+    if (!ptr)
+        rt_trap(op);
+    return ptr;
+}
 
 //=============================================================================
 // Basic Text Wrapping
@@ -55,10 +76,10 @@ rt_string rt_textwrap_wrap(rt_string text, int64_t width) {
     const char *src = rt_string_cstr(text);
     int64_t src_len = rt_str_len(text);
 
-    // Allocate result buffer (worst case: same size + newlines)
-    char *result = (char *)malloc((size_t)(src_len * 2 + 1));
-    if (!result)
-        return text;
+    size_t alloc_size = checked_mul_add(
+        1, checked_i64_to_size(src_len, "TextWrapper.Wrap: invalid length"), 2,
+        "TextWrapper.Wrap: output length overflow");
+    char *result = checked_malloc(alloc_size, "TextWrapper.Wrap: memory allocation failed");
 
     int64_t result_pos = 0;
     int64_t line_start = 0;
@@ -133,6 +154,7 @@ void *rt_textwrap_wrap_lines(rt_string text, int64_t width) {
         }
     }
 
+    rt_string_unref(wrapped);
     return lines;
 }
 
@@ -166,10 +188,12 @@ rt_string rt_textwrap_indent(rt_string text, rt_string prefix) {
             line_count++;
     }
 
-    // Allocate result
-    char *result = (char *)malloc((size_t)(src_len + line_count * pre_len + 1));
-    if (!result)
-        return text;
+    size_t alloc_size =
+        checked_mul_add(checked_i64_to_size(src_len, "TextWrapper.Indent: invalid length") + 1,
+                        checked_i64_to_size(line_count, "TextWrapper.Indent: invalid line count"),
+                        checked_i64_to_size(pre_len, "TextWrapper.Indent: invalid prefix length"),
+                        "TextWrapper.Indent: output length overflow");
+    char *result = checked_malloc(alloc_size, "TextWrapper.Indent: memory allocation failed");
 
     int64_t result_pos = 0;
     int at_line_start = 1;
@@ -195,62 +219,66 @@ rt_string rt_textwrap_indent(rt_string text, rt_string prefix) {
     return ret;
 }
 
-/// @brief Strip the longest leading-whitespace prefix common to every non-empty line.
+/// @brief Strip the longest leading-whitespace byte prefix common to every non-empty line.
 /// @details Two passes:
 ///          1. Walk the input once to find `min_indent` — the smallest
-///             leading-whitespace count across all non-empty lines
+///             leading-whitespace prefix across all non-empty lines
 ///             (empty lines are skipped to match Python's
 ///             `textwrap.dedent` behavior).
-///          2. Emit each line with that many leading whitespace bytes
-///             skipped. Tabs count as 4 spaces for the indent
-///             measurement (and 4-space worth of skip).
-///          Returns the input unchanged when `min_indent <= 0`.
+///          2. Emit each line with exactly those leading bytes skipped.
+///          Tabs and spaces are compared literally so a partial tab is never
+///          removed as if it were a run of spaces.
 rt_string rt_textwrap_dedent(rt_string text) {
     const char *src = rt_string_cstr(text);
     int64_t src_len = rt_str_len(text);
 
-    // Find minimum indentation (excluding empty lines)
-    int64_t min_indent = -1;
-    int64_t current_indent = 0;
+    int64_t common_start = -1;
+    int64_t common_len = -1;
+    int64_t line_start = 0;
+
+    while (line_start < src_len) {
+        int64_t line_end = line_start;
+        while (line_end < src_len && src[line_end] != '\n')
+            line_end++;
+
+        int64_t pos = line_start;
+        while (pos < line_end && (src[pos] == ' ' || src[pos] == '\t'))
+            pos++;
+
+        if (pos < line_end) {
+            int64_t indent_len = pos - line_start;
+            if (common_len < 0) {
+                common_start = line_start;
+                common_len = indent_len;
+            } else {
+                int64_t keep = 0;
+                while (keep < common_len && keep < indent_len &&
+                       src[common_start + keep] == src[line_start + keep]) {
+                    keep++;
+                }
+                common_len = keep;
+            }
+        }
+
+        line_start = line_end + 1;
+    }
+
+    if (common_len <= 0)
+        return rt_string_ref(text);
+
+    // Build result without common indent
+    char *result = checked_malloc(
+        checked_i64_to_size(src_len, "TextWrapper.Dedent: invalid length") + 1,
+        "TextWrapper.Dedent: memory allocation failed");
+
+    int64_t result_pos = 0;
+    int64_t skip_remaining = common_len;
     int at_line_start = 1;
 
     for (int64_t i = 0; i < src_len; i++) {
         if (at_line_start) {
-            if (src[i] == ' ') {
-                current_indent++;
-            } else if (src[i] == '\t') {
-                current_indent += 4; // Treat tab as 4 spaces
-            } else if (src[i] == '\n') {
-                // Empty line, skip
-                current_indent = 0;
-            } else {
-                if (min_indent < 0 || current_indent < min_indent) {
-                    min_indent = current_indent;
-                }
-                at_line_start = 0;
-            }
-        } else if (src[i] == '\n') {
-            at_line_start = 1;
-            current_indent = 0;
-        }
-    }
-
-    if (min_indent <= 0)
-        return text;
-
-    // Build result without common indent
-    char *result = (char *)malloc((size_t)(src_len + 1));
-    if (!result)
-        return text;
-
-    int64_t result_pos = 0;
-    int64_t skip_remaining = min_indent;
-    at_line_start = 1;
-
-    for (int64_t i = 0; i < src_len; i++) {
-        if (at_line_start) {
-            if ((src[i] == ' ' || src[i] == '\t') && skip_remaining > 0) {
-                skip_remaining -= (src[i] == '\t') ? 4 : 1;
+            if (skip_remaining > 0) {
+                skip_remaining--;
                 continue;
             }
             at_line_start = 0;
@@ -260,7 +288,7 @@ rt_string rt_textwrap_dedent(rt_string text) {
 
         if (src[i] == '\n') {
             at_line_start = 1;
-            skip_remaining = min_indent;
+            skip_remaining = common_len;
         }
     }
 
@@ -288,10 +316,12 @@ rt_string rt_textwrap_hang(rt_string text, rt_string prefix) {
             line_count++;
     }
 
-    // Allocate result
-    char *result = (char *)malloc((size_t)(src_len + line_count * pre_len + 1));
-    if (!result)
-        return text;
+    size_t alloc_size =
+        checked_mul_add(checked_i64_to_size(src_len, "TextWrapper.Hang: invalid length") + 1,
+                        checked_i64_to_size(line_count, "TextWrapper.Hang: invalid line count"),
+                        checked_i64_to_size(pre_len, "TextWrapper.Hang: invalid prefix length"),
+                        "TextWrapper.Hang: output length overflow");
+    char *result = checked_malloc(alloc_size, "TextWrapper.Hang: memory allocation failed");
 
     int64_t result_pos = 0;
     int first_line = 1;
@@ -321,7 +351,10 @@ rt_string rt_textwrap_hang(rt_string text, rt_string prefix) {
 
 /// @brief Truncate to `width` characters total, appending `"..."` if it didn't fit.
 rt_string rt_textwrap_truncate(rt_string text, int64_t width) {
-    return rt_textwrap_truncate_with(text, width, rt_const_cstr("..."));
+    rt_string suffix = rt_const_cstr("...");
+    rt_string result = rt_textwrap_truncate_with(text, width, suffix);
+    rt_string_unref(suffix);
+    return result;
 }
 
 /// @brief Truncate to `width` characters total, appending `suffix` if shortened.
@@ -334,14 +367,14 @@ rt_string rt_textwrap_truncate_with(rt_string text, int64_t width, rt_string suf
     int64_t suffix_len = rt_str_len(suffix);
 
     if (text_len <= width)
-        return text;
+        return rt_string_ref(text);
 
     if (width <= suffix_len)
-        return suffix;
+        return rt_str_substr(suffix, 0, width);
 
     int64_t keep = width - suffix_len;
     rt_string kept = rt_str_substr(text, 0, keep);
-    return rt_str_concat(kept, suffix);
+    return rt_str_concat(kept, rt_string_ref(suffix));
 }
 
 /// @brief Shorten by replacing the middle with `"..."` while preserving start and end.
@@ -354,7 +387,7 @@ rt_string rt_textwrap_shorten(rt_string text, int64_t width) {
     int64_t text_len = rt_str_len(text);
 
     if (text_len <= width)
-        return text;
+        return rt_string_ref(text);
 
     if (width < 5)
         return rt_str_substr(text, 0, width);
@@ -379,12 +412,10 @@ rt_string rt_textwrap_shorten(rt_string text, int64_t width) {
 rt_string rt_textwrap_left(rt_string text, int64_t width) {
     int64_t text_len = rt_str_len(text);
     if (text_len >= width)
-        return text;
+        return rt_string_ref(text);
 
     int64_t pad = width - text_len;
-    char *spaces = (char *)malloc((size_t)(pad + 1));
-    if (!spaces)
-        return text;
+    char *spaces = checked_malloc((size_t)pad + 1, "TextWrapper.Left: memory allocation failed");
 
     memset(spaces, ' ', (size_t)pad);
     spaces[pad] = '\0';
@@ -392,19 +423,17 @@ rt_string rt_textwrap_left(rt_string text, int64_t width) {
     rt_string padding = rt_string_from_bytes(spaces, pad);
     free(spaces);
 
-    return rt_str_concat(text, padding);
+    return rt_str_concat(rt_string_ref(text), padding);
 }
 
 /// @brief Right-justify `text` in a `width`-column field, padding with leading spaces.
 rt_string rt_textwrap_right(rt_string text, int64_t width) {
     int64_t text_len = rt_str_len(text);
     if (text_len >= width)
-        return text;
+        return rt_string_ref(text);
 
     int64_t pad = width - text_len;
-    char *spaces = (char *)malloc((size_t)(pad + 1));
-    if (!spaces)
-        return text;
+    char *spaces = checked_malloc((size_t)pad + 1, "TextWrapper.Right: memory allocation failed");
 
     memset(spaces, ' ', (size_t)pad);
     spaces[pad] = '\0';
@@ -412,7 +441,7 @@ rt_string rt_textwrap_right(rt_string text, int64_t width) {
     rt_string padding = rt_string_from_bytes(spaces, pad);
     free(spaces);
 
-    return rt_str_concat(padding, text);
+    return rt_str_concat(padding, rt_string_ref(text));
 }
 
 /// @brief Center `text` in a `width`-column field with balanced space padding.
@@ -421,21 +450,16 @@ rt_string rt_textwrap_right(rt_string text, int64_t width) {
 rt_string rt_textwrap_center(rt_string text, int64_t width) {
     int64_t text_len = rt_str_len(text);
     if (text_len >= width)
-        return text;
+        return rt_string_ref(text);
 
     int64_t total_pad = width - text_len;
     int64_t left_pad = total_pad / 2;
     int64_t right_pad = total_pad - left_pad;
 
-    char *left_spaces = (char *)malloc((size_t)(left_pad + 1));
-    char *right_spaces = (char *)malloc((size_t)(right_pad + 1));
-    if (!left_spaces || !right_spaces) {
-        if (left_spaces)
-            free(left_spaces);
-        if (right_spaces)
-            free(right_spaces);
-        return text;
-    }
+    char *left_spaces =
+        checked_malloc((size_t)left_pad + 1, "TextWrapper.Center: memory allocation failed");
+    char *right_spaces =
+        checked_malloc((size_t)right_pad + 1, "TextWrapper.Center: memory allocation failed");
 
     memset(left_spaces, ' ', (size_t)left_pad);
     left_spaces[left_pad] = '\0';
@@ -447,7 +471,7 @@ rt_string rt_textwrap_center(rt_string text, int64_t width) {
     free(left_spaces);
     free(right_spaces);
 
-    rt_string result = rt_str_concat(left_padding, text);
+    rt_string result = rt_str_concat(left_padding, rt_string_ref(text));
     return rt_str_concat(result, right_padding);
 }
 
@@ -464,7 +488,7 @@ int64_t rt_textwrap_line_count(rt_string text) {
     int64_t count = 1;
 
     for (int64_t i = 0; i < len; i++) {
-        if (src[i] == '\n')
+        if (src[i] == '\n' && i + 1 < len)
             count++;
     }
 

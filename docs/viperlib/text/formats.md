@@ -106,8 +106,9 @@ END IF
 ### Correctness Notes
 
 - `Parse`, `ParseObject`, `ParseArray`, and `IsValid` use the runtime string byte length, not C-string truncation.
-- Invalid escapes, raw control characters inside strings, trailing content, and leading-zero numbers are rejected.
-- `Format` escapes embedded `NUL` and other control bytes as JSON escapes.
+- Invalid escapes, malformed UTF-16 surrogate pairs, raw control characters inside strings, trailing content, leading-zero numbers, and out-of-range/non-finite numbers are rejected.
+- `IsValid` mirrors the parser for string escapes and number range checks.
+- `Format` escapes embedded `NUL` and other control bytes as JSON escapes, and traps on cyclic `Seq`/`Map` object graphs instead of recursing indefinitely.
 
 ---
 
@@ -362,13 +363,15 @@ RFC 4180-compliant CSV parsing and formatting.
     - Embedded quotes are escaped by doubling (`""`)
     - Newlines within quoted fields are preserved
     - Leading/trailing whitespace in fields is preserved
-- Custom delimiter must be a single character
+- Custom delimiter uses the first character and must not be `"`, CR, LF, or NUL
 - A null or empty custom delimiter falls back to comma
 - Empty fields are supported (adjacent delimiters create empty strings)
 - Null fields passed to formatters are emitted as empty fields
 - Runtime string byte length is used, so embedded `NUL` bytes are preserved
 - Parse functions return `Seq` objects (use `Count`, `Get(index)` to access)
-- Malformed quoted fields trap when non-delimiter characters appear after the closing quote
+- `ParseLine` accepts exactly one CSV record; use `Parse` / `ParseWith` for multi-record text
+- Malformed quoted fields trap on unterminated quotes or non-delimiter characters after the closing quote
+- Quotes inside unquoted fields are rejected as malformed CSV
 
 ### Zia Example
 

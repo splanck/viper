@@ -33,6 +33,7 @@
 
 #include "rt_box.h"
 #include "rt_internal.h"
+#include "rt_object.h"
 #include "rt_seq.h"
 #include "rt_string.h"
 
@@ -45,25 +46,23 @@
 /// Default CSV delimiter.
 #define DEFAULT_DELIMITER ','
 
-/// @brief Extract an rt_string from a value that may be a boxed string or raw string.
-/// @details Checks if the pointer is a boxed string (tag == RT_BOX_STR) and unboxes it,
-///          otherwise treats it as a raw rt_string.
-static rt_string csv_extract_string(void *val, bool *owned) {
+/// @brief Convert a CSV field value to an owned string safely.
+/// @details Raw runtime strings are retained, boxed strings are unboxed, and other boxed/runtime
+///          values use the shared object stringification path. This avoids interpreting arbitrary
+///          object payloads as rt_string handles.
+static rt_string csv_value_to_string(void *val, bool *owned) {
     if (owned)
         *owned = false;
     if (!val)
         return NULL;
-    if (rt_string_is_handle(val))
-        return (rt_string)val;
-    // Check if the value is a boxed string (first 8 bytes = tag 0-3)
-    int64_t tag = *(int64_t *)val;
-    if (tag == RT_BOX_STR) {
+    if (rt_string_is_handle(val)) {
         if (owned)
             *owned = true;
-        return rt_unbox_str(val);
+        return rt_string_ref((rt_string)val);
     }
-    // Treat as raw rt_string
-    return (rt_string)val;
+    if (owned)
+        *owned = true;
+    return rt_obj_to_string(val);
 }
 
 /// @brief Get delimiter character from string.
@@ -71,7 +70,10 @@ static char get_delim(rt_string delim) {
     if (!delim || rt_str_len(delim) <= 0)
         return DEFAULT_DELIMITER;
     const char *s = rt_string_cstr(delim);
-    return s[0] != '\0' ? s[0] : DEFAULT_DELIMITER;
+    char d = s[0];
+    if (d == '\0' || d == '"' || d == '\r' || d == '\n')
+        rt_trap("Csv: invalid delimiter");
+    return d;
 }
 
 static void csv_checked_add(size_t *total, size_t add, const char *op) {
@@ -167,6 +169,7 @@ static rt_string parse_field(csv_parser *p, bool *at_line_end) {
         if (!buf)
             rt_trap("Csv.Parse: memory allocation failed");
 
+        bool closed = false;
         while (!parser_eof(p)) {
             char c = parser_consume(p);
 
@@ -191,6 +194,7 @@ static rt_string parse_field(csv_parser *p, bool *at_line_end) {
                     buf[len++] = '"';
                 } else {
                     // End of quoted field
+                    closed = true;
                     break;
                 }
             } else {
@@ -210,6 +214,11 @@ static rt_string parse_field(csv_parser *p, bool *at_line_end) {
                 }
                 buf[len++] = c;
             }
+        }
+
+        if (!closed) {
+            free(buf);
+            rt_trap("Csv.Parse: unterminated quoted field");
         }
 
         buf[len] = '\0';
@@ -245,6 +254,8 @@ static rt_string parse_field(csv_parser *p, bool *at_line_end) {
             char c = parser_peek(p);
             if (c == p->delim || c == '\r' || c == '\n')
                 break;
+            if (c == '"')
+                rt_trap("Csv.Parse: quote in unquoted field");
             parser_consume(p);
         }
         size_t field_len = p->pos - start;
@@ -419,7 +430,10 @@ void *rt_csv_parse_line_with(rt_string line, rt_string delim) {
     csv_parser p;
     parser_init(&p, input, len, d);
 
-    return parse_row(&p);
+    void *row = parse_row(&p);
+    if (!parser_eof(&p))
+        rt_trap("Csv.ParseLine: expected a single CSV record");
+    return row;
 }
 
 /// @brief Parses multi-line CSV text into a Seq of Seqs.
@@ -607,7 +621,7 @@ rt_string rt_csv_format_line_with(void *fields, rt_string delim) {
     size_t total_size = 0;
     for (int64_t i = 0; i < count; i++) {
         bool owned = false;
-        rt_string field = csv_extract_string(rt_seq_get(fields, i), &owned);
+        rt_string field = csv_value_to_string(rt_seq_get(fields, i), &owned);
         const char *str = field ? rt_string_cstr(field) : "";
         size_t field_len = field ? (size_t)rt_str_len(field) : 0;
         csv_checked_add(&total_size,
@@ -628,7 +642,7 @@ rt_string rt_csv_format_line_with(void *fields, rt_string delim) {
     size_t pos = 0;
     for (int64_t i = 0; i < count; i++) {
         bool owned = false;
-        rt_string field = csv_extract_string(rt_seq_get(fields, i), &owned);
+        rt_string field = csv_value_to_string(rt_seq_get(fields, i), &owned);
         const char *str = field ? rt_string_cstr(field) : "";
         size_t field_len = field ? (size_t)rt_str_len(field) : 0;
         pos += format_field(str, field_len, d, out + pos);
@@ -739,7 +753,7 @@ rt_string rt_csv_format_with(void *rows, rt_string delim) {
         int64_t count = rt_seq_len(row);
         for (int64_t i = 0; i < count; i++) {
             bool owned = false;
-            rt_string field = csv_extract_string(rt_seq_get(row, i), &owned);
+            rt_string field = csv_value_to_string(rt_seq_get(row, i), &owned);
             const char *str = field ? rt_string_cstr(field) : "";
             size_t field_len = field ? (size_t)rt_str_len(field) : 0;
             csv_checked_add(&total_size,
@@ -770,7 +784,7 @@ rt_string rt_csv_format_with(void *rows, rt_string delim) {
         int64_t count = rt_seq_len(row);
         for (int64_t i = 0; i < count; i++) {
             bool owned = false;
-            rt_string field = csv_extract_string(rt_seq_get(row, i), &owned);
+            rt_string field = csv_value_to_string(rt_seq_get(row, i), &owned);
             const char *str = field ? rt_string_cstr(field) : "";
             size_t field_len = field ? (size_t)rt_str_len(field) : 0;
             pos += format_field(str, field_len, d, out + pos);

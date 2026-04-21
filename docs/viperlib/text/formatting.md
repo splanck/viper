@@ -25,7 +25,7 @@ Simple string templating with placeholder substitution.
 | `RenderSeq(template, values)`             | `String(String, Seq)`               | Replace `{{0}}`, `{{1}}` with Seq values          |
 | `RenderWith(template, values, pre, suf)`  | `String(String, Map, String, String)` | Use custom delimiters instead of `{{` `}}`      |
 | `Has(template, key)`                      | `Boolean(String, String)`           | Check if template contains placeholder for key   |
-| `Keys(template)`                          | `Bag(String)`                       | Extract all unique placeholder keys               |
+| `Keys(template)`                          | `Seq(String)`                       | Extract all unique placeholder keys               |
 | `Escape(text)`                            | `String(String)`                    | Escape `{{` and `}}` for literal output           |
 
 ### Placeholder Syntax
@@ -145,7 +145,7 @@ IF Viper.Text.Template.Has(template, "name") THEN
     PRINT "Template uses 'name' placeholder"
 END IF
 
-' Get all placeholder keys (as a Bag - unique values)
+' Get all placeholder keys as a Seq of unique strings
 DIM keys AS OBJECT = Viper.Text.Template.Keys(template)
 PRINT keys.Length()  ' Output: 3
 
@@ -298,6 +298,9 @@ Text wrapping, alignment, indentation, and truncation utilities for formatting t
 - `Wrap` breaks at word boundaries (spaces); words longer than the width are not broken
 - `Fill` is equivalent to `Wrap` but ensures single newlines between lines (normalizes whitespace)
 - `Truncate` appends "..." only when the text exceeds the specified width; the total length including "..." equals width
+- `TruncateWith` clips a suffix that is longer than the requested width so the returned string never exceeds width
+- `Dedent` removes a common leading whitespace byte prefix; tabs and spaces are not treated as interchangeable
+- `LineCount` does not count a final trailing newline as an extra empty line
 - `Shorten` keeps the beginning and end of the text, replacing the middle with "..."
 
 ### Zia Example
@@ -585,12 +588,14 @@ Semantic version (SemVer 2.0.0) parsing, comparison, and manipulation. Supports 
 | `BumpPatch()`     | `String()`           | Bump patch version                                          |
 | `Cmp(other)`      | `Integer(Version)`   | Compare to another version: -1 (less), 0 (equal), 1 (greater) |
 | `IsValid(str)`    | `Boolean(String)`    | Check if a string is a valid semantic version (static)      |
-| `Satisfies(constraint)` | `Boolean(String)` | Check if version satisfies a constraint (e.g., ">=1.0.0", "^1.2", "~1.2.3") |
+| `Satisfies(constraint)` | `Boolean(String)` | Check if version satisfies a constraint (e.g., ">=1.0.0", "^1.2.3", "~1.2.3") |
 | `ToString()`      | `String()`           | Format version object back to string                        |
 
 ### Notes
 
 - Follows SemVer 2.0.0: `MAJOR.MINOR.PATCH[-prerelease][+buildmetadata]`
+- `Parse` requires all three numeric components and returns NULL for invalid SemVer strings
+- Pre-release and build identifiers must be non-empty dot-separated ASCII alphanumeric/hyphen identifiers; numeric pre-release identifiers cannot have leading zeroes
 - `Cmp` ignores build metadata per the SemVer specification; pre-release versions have lower precedence than the associated normal version
 - `Satisfies` supports constraint operators: `>=`, `<=`, `>`, `<`, `=`, `^` (compatible), `~` (approximate)
 - `BumpMajor`, `BumpMinor`, and `BumpPatch` return new version strings (they do not modify the original object)

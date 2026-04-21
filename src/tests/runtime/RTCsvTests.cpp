@@ -11,6 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_csv.h"
+#include "rt_box.h"
 #include "rt_internal.h"
 #include "rt_seq.h"
 #include "rt_string.h"
@@ -157,6 +158,12 @@ static void test_parse_line_embedded_nul() {
     assert_str_eq((rt_string)rt_seq_get(fields, 1), "b");
 
     printf("test_parse_line_embedded_nul: PASSED\n");
+}
+
+static void test_parse_line_rejects_extra_records() {
+    EXPECT_TRAP(rt_csv_parse_line(make_str("a,b\nc,d")));
+
+    printf("test_parse_line_rejects_extra_records: PASSED\n");
 }
 
 // ============================================================================
@@ -309,6 +316,28 @@ static void test_format_line_embedded_nul() {
     printf("test_format_line_embedded_nul: PASSED\n");
 }
 
+static void test_format_line_boxed_non_strings() {
+    void *fields = rt_seq_new();
+    rt_seq_push(fields, rt_box_i64(42));
+    rt_seq_push(fields, rt_box_i1(1));
+
+    rt_string result = rt_csv_format_line(fields);
+    assert_str_eq(result, "42,True");
+
+    printf("test_format_line_boxed_non_strings: PASSED\n");
+}
+
+static void test_invalid_delimiter_traps() {
+    void *fields = rt_seq_new();
+    rt_seq_push(fields, (void *)make_str("a"));
+
+    EXPECT_TRAP(rt_csv_parse_line_with(make_str("a\"b"), make_str("\"")));
+    EXPECT_TRAP(rt_csv_parse_line_with(make_str("a\nb"), make_str("\n")));
+    EXPECT_TRAP(rt_csv_format_line_with(fields, make_str("\"")));
+
+    printf("test_invalid_delimiter_traps: PASSED\n");
+}
+
 // ============================================================================
 // Format (multi-line) Tests
 // ============================================================================
@@ -384,6 +413,19 @@ static void test_invalid_char_after_closing_quote_traps() {
     printf("test_invalid_char_after_closing_quote_traps: PASSED\n");
 }
 
+static void test_unterminated_quoted_field_traps() {
+    EXPECT_TRAP(rt_csv_parse_line(make_str("\"unterminated")));
+    EXPECT_TRAP(rt_csv_parse(make_str("a,\"unterminated\nnext,row")));
+
+    printf("test_unterminated_quoted_field_traps: PASSED\n");
+}
+
+static void test_quote_in_unquoted_field_traps() {
+    EXPECT_TRAP(rt_csv_parse_line(make_str("a,b\"c")));
+
+    printf("test_quote_in_unquoted_field_traps: PASSED\n");
+}
+
 // ============================================================================
 // Main
 // ============================================================================
@@ -400,6 +442,7 @@ int main() {
     test_parse_line_custom_delimiter();
     test_parse_line_null_or_empty_delimiter_defaults();
     test_parse_line_embedded_nul();
+    test_parse_line_rejects_extra_records();
 
     // Parse (multi-line) tests
     test_parse_multiline();
@@ -415,6 +458,8 @@ int main() {
     test_format_line_null_delimiter_defaults();
     test_format_line_null_field_is_empty();
     test_format_line_embedded_nul();
+    test_format_line_boxed_non_strings();
+    test_invalid_delimiter_traps();
 
     // Format (multi-line) tests
     test_format_multiline();
@@ -427,6 +472,8 @@ int main() {
     test_empty_input();
     test_single_field();
     test_invalid_char_after_closing_quote_traps();
+    test_unterminated_quoted_field_traps();
+    test_quote_in_unquoted_field_traps();
 
     printf("\nAll RTCsvTests passed!\n");
     return 0;

@@ -44,6 +44,44 @@ static uint64_t abs_i64_magnitude(int64_t n) {
     return (uint64_t)(-(n + 1)) + 1;
 }
 
+static char *numfmt_alloc_buffer(int needed) {
+    if (needed < 0) {
+        rt_trap("NumberFormat: formatting failed");
+    }
+
+    char *buf = (char *)malloc((size_t)needed + 1);
+    if (!buf)
+        rt_trap("NumberFormat: memory allocation failed");
+    return buf;
+}
+
+static rt_string numfmt_finish_buffer(char *buf, int written, int needed) {
+    if (written < 0 || written > needed) {
+        free(buf);
+        rt_trap("NumberFormat: formatting failed");
+    }
+
+    rt_string result = rt_string_from_bytes(buf, (size_t)written);
+    free(buf);
+    return result;
+}
+
+static rt_string numfmt_fixed(double value, int decimals) {
+    int needed = snprintf(NULL, 0, "%.*f", decimals, value);
+    char *buf = numfmt_alloc_buffer(needed);
+    int written = snprintf(buf, (size_t)needed + 1, "%.*f", decimals, value);
+    return numfmt_finish_buffer(buf, written, needed);
+}
+
+static rt_string numfmt_percent_fixed(double value, int decimals) {
+    int needed = decimals == 0 ? snprintf(NULL, 0, "%.0f%%", value)
+                               : snprintf(NULL, 0, "%.1f%%", value);
+    char *buf = numfmt_alloc_buffer(needed);
+    int written = decimals == 0 ? snprintf(buf, (size_t)needed + 1, "%.0f%%", value)
+                                : snprintf(buf, (size_t)needed + 1, "%.1f%%", value);
+    return numfmt_finish_buffer(buf, written, needed);
+}
+
 // ---------------------------------------------------------------------------
 // rt_numfmt_decimals
 // ---------------------------------------------------------------------------
@@ -60,13 +98,7 @@ rt_string rt_numfmt_decimals(double n, int64_t decimals) {
     if (decimals > 20)
         decimals = 20;
 
-    char buf[64];
-    int len = snprintf(buf, sizeof(buf), "%.*f", (int)decimals, n);
-    if (len < 0)
-        len = 0;
-    if (len >= (int)sizeof(buf))
-        len = (int)sizeof(buf) - 1;
-    return rt_string_from_bytes(buf, (size_t)len);
+    return numfmt_fixed(n, (int)decimals);
 }
 
 // ---------------------------------------------------------------------------
@@ -149,12 +181,9 @@ rt_string rt_numfmt_currency(double n, rt_string symbol) {
     double abs_n = fabs(n);
 
     // Round to 2 decimal places
-    char amount[64];
-    int alen = snprintf(amount, sizeof(amount), "%.2f", abs_n);
-    if (alen < 0)
-        alen = 0;
-    if (alen >= (int)sizeof(amount))
-        alen = (int)sizeof(amount) - 1;
+    rt_string amount_str = numfmt_fixed(abs_n, 2);
+    const char *amount = rt_string_cstr(amount_str);
+    int alen = (int)rt_str_len(amount_str);
 
     // Find the decimal point
     char *dot = strchr(amount, '.');
@@ -188,6 +217,7 @@ rt_string rt_numfmt_currency(double n, rt_string symbol) {
 
     rt_string result = rt_string_from_bytes(sb.data, sb.len);
     rt_sb_free(&sb);
+    rt_string_unref(amount_str);
     return result;
 }
 
@@ -203,23 +233,17 @@ rt_string rt_numfmt_currency(double n, rt_string symbol) {
 ///          `0.345 → "34.5%"`, `0.5 → "50%"` (not `"50.0%"`).
 rt_string rt_numfmt_percent(double n) {
     double pct = n * 100.0;
-    char buf[64];
 
     // Use at most 1 decimal place, but omit trailing .0
     double rounded = round(pct * 10.0) / 10.0;
-    double frac = rounded - (int64_t)rounded;
+    if (!isfinite(rounded))
+        return numfmt_percent_fixed(rounded, 0);
 
-    int len;
+    double integral = 0.0;
+    double frac = modf(rounded, &integral);
     if (frac == 0.0 || frac == -0.0)
-        len = snprintf(buf, sizeof(buf), "%.0f%%", rounded);
-    else
-        len = snprintf(buf, sizeof(buf), "%.1f%%", rounded);
-
-    if (len < 0)
-        len = 0;
-    if (len >= (int)sizeof(buf))
-        len = (int)sizeof(buf) - 1;
-    return rt_string_from_bytes(buf, (size_t)len);
+        return numfmt_percent_fixed(rounded, 0);
+    return numfmt_percent_fixed(rounded, 1);
 }
 
 // ---------------------------------------------------------------------------
@@ -234,9 +258,9 @@ rt_string rt_numfmt_percent(double n) {
 ///          Sign is preserved on the number portion (so `-1 → "-1st"`).
 rt_string rt_numfmt_ordinal(int64_t n) {
     const char *suffix;
-    int64_t abs_n = (n == INT64_MIN) ? INT64_MAX : (n < 0 ? -n : n);
-    int64_t mod100 = abs_n % 100;
-    int64_t mod10 = abs_n % 10;
+    uint64_t abs_n = abs_i64_magnitude(n);
+    uint64_t mod100 = abs_n % 100;
+    uint64_t mod10 = abs_n % 10;
 
     if (mod100 >= 11 && mod100 <= 13)
         suffix = "th";
@@ -327,13 +351,19 @@ rt_string rt_numfmt_to_words(int64_t n) {
         rt_sb_append_cstr(&sb, "negative ");
 
     // Break into groups of three
-    static const char *const scale[] = {
-        "", "thousand", "million", "billion", "trillion", "quadrillion", "quintillion"};
-    int groups[7] = {0};
+    static const char *const scale[] = {"",
+                                        "thousand",
+                                        "million",
+                                        "billion",
+                                        "trillion",
+                                        "quadrillion",
+                                        "quintillion",
+                                        "sextillion"};
+    int groups[8] = {0};
     int num_groups = 0;
 
     uint64_t temp = abs_n;
-    while (temp > 0 && num_groups < 7) {
+    while (temp > 0 && num_groups < 8) {
         groups[num_groups++] = (int)(temp % 1000);
         temp /= 1000;
     }

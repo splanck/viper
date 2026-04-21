@@ -11,6 +11,7 @@
 
 #include <cassert>
 #include <cstring>
+#include <string>
 
 extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
@@ -88,13 +89,31 @@ static void test_parse_full() {
     rt_string_unref(s);
 }
 
-static void test_parse_no_patch() {
+static void test_parse_rejects_missing_patch() {
     rt_string s = make_str("1.0");
     void *v = rt_version_parse(s);
-    assert(v != NULL);
-    assert(rt_version_major(v) == 1);
-    assert(rt_version_minor(v) == 0);
-    assert(rt_version_patch(v) == 0);
+    assert(v == NULL);
+    rt_string_unref(s);
+}
+
+static void test_parse_rejects_invalid_semver_identifiers() {
+    const char *invalid[] = {"1.2.3-",
+                             "1.2.3+",
+                             "1.2.3-alpha..1",
+                             "1.2.3-01",
+                             "1.2.3-alpha_beta",
+                             "1.2.3+build..1",
+                             "1.2.3+build+again"};
+    for (const char *text : invalid) {
+        rt_string s = make_str(text);
+        assert(rt_version_parse(s) == NULL);
+        rt_string_unref(s);
+    }
+}
+
+static void test_parse_rejects_numeric_overflow() {
+    rt_string s = make_str("9223372036854775808.0.0");
+    assert(rt_version_parse(s) == NULL);
     rt_string_unref(s);
 }
 
@@ -117,6 +136,22 @@ static void test_to_string() {
     void *v = rt_version_parse(s);
     rt_string str = rt_version_to_string(v);
     assert(str_eq(str, "1.2.3-beta.1+build.42"));
+    rt_string_unref(str);
+    rt_string_unref(s);
+}
+
+static void test_to_string_long_metadata() {
+    std::string input = "1.2.3-";
+    input.append(260, 'a');
+    input += "+";
+    input.append(260, 'b');
+
+    rt_string s = make_str(input.c_str());
+    void *v = rt_version_parse(s);
+    assert(v != NULL);
+    rt_string str = rt_version_to_string(v);
+    assert(rt_str_len(str) == (int64_t)input.size());
+    assert(strcmp(rt_string_cstr(str), input.c_str()) == 0);
     rt_string_unref(str);
     rt_string_unref(s);
 }
@@ -263,11 +298,14 @@ int main() {
     test_parse_prerelease();
     test_parse_build();
     test_parse_full();
-    test_parse_no_patch();
+    test_parse_rejects_missing_patch();
+    test_parse_rejects_invalid_semver_identifiers();
+    test_parse_rejects_numeric_overflow();
     test_is_valid();
 
     // ToString
     test_to_string();
+    test_to_string_long_metadata();
 
     // Compare
     test_cmp_equal();

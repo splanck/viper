@@ -1686,6 +1686,52 @@ func start() {
     EXPECT_GE(countCallsTo(*mainFn, kSeqLen), static_cast<size_t>(1));
 }
 
+/// @brief TextWrapper.WrapLines should surface a typed Seq[String] in Zia.
+TEST(ZiaBugFixes, SeqReturnType_TextWrapperWrapLines_UsesSeqLength) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+func start() {
+    var lines = Viper.Text.TextWrapper.WrapLines("one two three", 7);
+    var count = lines.Length;
+    Viper.Terminal.SayInt(count);
+}
+)";
+    CompilerInput input{.source = source, .path = "textwrapper_wraplines_seq.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    ASSERT_TRUE(result.succeeded());
+    const auto *mainFn = findFunction(result.module, "main");
+    ASSERT_TRUE(mainFn != nullptr);
+    EXPECT_GE(countCallsTo(*mainFn, kSeqLen), static_cast<size_t>(1));
+}
+
+/// @brief Template.Keys should surface a typed Seq[String] in Zia.
+TEST(ZiaBugFixes, SeqReturnType_TemplateKeys_UsesSeqLength) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+func start() {
+    var keys = Viper.Text.Template.Keys("Hello {{name}} from {{place}}");
+    var count = keys.Length;
+    Viper.Terminal.SayInt(count);
+}
+)";
+    CompilerInput input{.source = source, .path = "template_keys_seq.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    ASSERT_TRUE(result.succeeded());
+    const auto *mainFn = findFunction(result.module, "main");
+    ASSERT_TRUE(mainFn != nullptr);
+    EXPECT_GE(countCallsTo(*mainFn, kSeqLen), static_cast<size_t>(1));
+}
+
 /// @brief LazySeq.ToSeqN should surface a typed Seq[Object] in Zia.
 TEST(ZiaBugFixes, SeqReturnType_LazySeqToSeqN_UsesSeqLength) {
     SourceManager sm;

@@ -10,13 +10,36 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "rt_internal.h"
 #include "rt_scanner.h"
 #include "rt_string.h"
 
 #include <cassert>
+#include <csetjmp>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+
+namespace {
+static jmp_buf g_trap_jmp;
+static bool g_trap_expected = false;
+} // namespace
+
+extern "C" void vm_trap(const char *msg) {
+    if (g_trap_expected)
+        longjmp(g_trap_jmp, 1);
+    rt_abort(msg);
+}
+
+#define EXPECT_TRAP(expr)                                                                          \
+    do {                                                                                           \
+        g_trap_expected = true;                                                                    \
+        if (setjmp(g_trap_jmp) == 0) {                                                             \
+            expr;                                                                                  \
+            assert(false && "Expected trap did not occur");                                        \
+        }                                                                                          \
+        g_trap_expected = false;                                                                   \
+    } while (0)
 
 /// @brief Helper to print test result.
 static void test_result(const char *name, bool passed) {
@@ -296,6 +319,15 @@ static void test_scanner_tokens() {
         void *s = rt_scanner_new(rt_string_from_bytes(text, 5002));
         rt_string quoted = rt_scanner_read_quoted(s, '"');
         test_result("ReadQuoted preserves long content", rt_str_len(quoted) == 5000);
+    }
+
+    // Test 5c: Unterminated quotes are malformed
+    {
+        rt_string src = rt_const_cstr("\"unterminated");
+        void *s = rt_scanner_new(src);
+
+        EXPECT_TRAP(rt_scanner_read_quoted(s, '"'));
+        test_result("ReadQuoted restores position on unterminated input", rt_scanner_pos(s) == 0);
     }
 
     // Test 6: ReadLine

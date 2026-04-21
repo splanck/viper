@@ -139,6 +139,16 @@ TEST(RuntimeMethodIndexBasic, CollectionReturningMethodsPreserveConcreteClass) {
     EXPECT_EQ(findAll->ret, BasicType::Object);
     EXPECT_EQ(findAll->returnClassQName, std::string("Viper.Collections.Seq"));
 
+    auto wrapLines = runtimeMethodIndex().find("Viper.Text.TextWrapper", "WrapLines", 2);
+    ASSERT_TRUE(wrapLines.has_value());
+    EXPECT_EQ(wrapLines->ret, BasicType::Object);
+    EXPECT_EQ(wrapLines->returnClassQName, std::string("Viper.Collections.Seq"));
+
+    auto templateKeys = runtimeMethodIndex().find("Viper.Text.Template", "Keys", 1);
+    ASSERT_TRUE(templateKeys.has_value());
+    EXPECT_EQ(templateKeys->ret, BasicType::Object);
+    EXPECT_EQ(templateKeys->returnClassQName, std::string("Viper.Collections.Seq"));
+
     auto keys = runtimeMethodIndex().find("Viper.Collections.DefaultMap", "Keys", 0);
     ASSERT_TRUE(keys.has_value());
     EXPECT_EQ(keys->ret, BasicType::Object);
@@ -153,6 +163,21 @@ TEST(RuntimeMethodIndexBasic, CollectionReturningMethodsPreserveConcreteClass) {
     ASSERT_TRUE(lazyToSeqN.has_value());
     EXPECT_EQ(lazyToSeqN->ret, BasicType::Object);
     EXPECT_EQ(lazyToSeqN->returnClassQName, std::string("Viper.Collections.Seq"));
+}
+
+TEST(RuntimeMethodIndexBasic, JsonStreamInstanceMethodsDoNotRequireExplicitReceiver) {
+    runtimeMethodIndex().seed();
+
+    auto next = runtimeMethodIndex().find("Viper.Text.JsonStream", "Next", 0);
+    ASSERT_TRUE(next.has_value());
+    EXPECT_EQ(next->ret, BasicType::Int);
+
+    auto hasNext = runtimeMethodIndex().find("Viper.Text.JsonStream", "HasNext", 0);
+    ASSERT_TRUE(hasNext.has_value());
+    EXPECT_EQ(hasNext->ret, BasicType::Bool);
+
+    auto wrongArity = runtimeMethodIndex().find("Viper.Text.JsonStream", "Next", 1);
+    EXPECT_FALSE(wrongArity.has_value());
 }
 
 TEST(RuntimeMethodIndexBasic, IoConstructorAliasesResolveToCtorTargets) {

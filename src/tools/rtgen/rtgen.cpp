@@ -1507,6 +1507,16 @@ static std::string ilTypeToZiaType(const std::string &ilType, const std::string 
         return "types::boolean()";
     if (baseType == "void")
         return "types::voidType()";
+    if (baseType == "seq") {
+        if (typeArg.empty())
+            return "types::runtimeClass(\"Viper.Collections.Seq\")";
+        return "types::seqOf(" + ilTypeToZiaType(typeArg, canonical) + ")";
+    }
+    if (baseType == "list") {
+        if (typeArg.empty())
+            return "types::runtimeClass(\"Viper.Collections.List\")";
+        return "types::list(" + ilTypeToZiaType(typeArg, canonical) + ")";
+    }
     if ((baseType == "obj" || baseType == "ptr") && !typeArg.empty())
         return "types::runtimeClass(\"" + typeArg + "\")";
     if (baseType == "obj" || baseType == "ptr") {
@@ -1599,6 +1609,18 @@ static std::string ilParamTypeToZiaType(const std::string &ilType) {
         return "types::boolean()";
     if (baseType == "void")
         return "types::voidType()";
+    if (baseType == "seq") {
+        std::string typeArg = extractTypeArg(ilType);
+        if (typeArg.empty())
+            return "types::ptr()";
+        return "types::seqOf(" + ilParamTypeToZiaType(typeArg) + ")";
+    }
+    if (baseType == "list") {
+        std::string typeArg = extractTypeArg(ilType);
+        if (typeArg.empty())
+            return "types::ptr()";
+        return "types::list(" + ilParamTypeToZiaType(typeArg) + ")";
+    }
     if (baseType == "obj" || baseType == "ptr")
         return "types::ptr()";
     return "types::ptr()";

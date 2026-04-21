@@ -22,6 +22,7 @@
 #include <csetjmp>
 #include <cstdio>
 #include <cstring>
+#include <string>
 
 namespace {
 static jmp_buf g_trap_jmp;
@@ -101,6 +102,10 @@ static void test_is_valid_basic() {
     assert(rt_json_is_valid(make_str("\"bad\\xescape\"")) == 0);
     assert(rt_json_is_valid(make_str("\"raw\nnewline\"")) == 0);
     assert(rt_json_is_valid(make_str("01")) == 0);
+    assert(rt_json_is_valid(make_str("1e309")) == 0);
+    assert(rt_json_is_valid(make_str("\"\\uD800\"")) == 0);
+    assert(rt_json_is_valid(make_str("\"\\uDC00\"")) == 0);
+    assert(rt_json_is_valid(make_str("\"\\uD83D\\uDE00\"")) == 1);
 
     const char raw_control[] = {'"', 'a', '\x01', 'b', '"'};
     assert(rt_json_is_valid(make_bytes(raw_control, sizeof(raw_control))) == 0);
@@ -218,6 +223,22 @@ static void test_parse_object() {
     printf("test_parse_object: PASSED\n");
 }
 
+static void test_parse_many_empty_objects_does_not_leak_depth() {
+    std::string json = "[";
+    for (int i = 0; i < 205; i++) {
+        if (i > 0)
+            json += ",";
+        json += "{}";
+    }
+    json += "]";
+
+    void *arr = rt_json_parse(make_str(json.c_str()));
+    assert(arr != nullptr);
+    assert(rt_seq_len(arr) == 205);
+
+    printf("test_parse_many_empty_objects_does_not_leak_depth: PASSED\n");
+}
+
 static void test_parse_array_only() {
     void *arr = rt_json_parse_array(make_str("[1, 2]"));
     assert(arr != nullptr);
@@ -328,6 +349,15 @@ static void test_format_pretty() {
     printf("test_format_pretty: PASSED\n");
 }
 
+static void test_format_cycle_traps() {
+    void *seq = rt_seq_new();
+    rt_seq_push(seq, seq);
+
+    EXPECT_TRAP(rt_json_format(seq));
+
+    printf("test_format_cycle_traps: PASSED\n");
+}
+
 // ============================================================================
 // Round-Trip Tests
 // ============================================================================
@@ -374,6 +404,8 @@ static void test_parse_invalid_traps() {
     EXPECT_TRAP(rt_json_parse(make_str("{\"a\":")));
     EXPECT_TRAP(rt_json_parse(make_str("01")));
     EXPECT_TRAP(rt_json_parse(make_str("\"bad\\xescape\"")));
+    EXPECT_TRAP(rt_json_parse(make_str("1e309")));
+    EXPECT_TRAP(rt_json_parse(make_str("\"\\uD800\"")));
 
     const char raw_control[] = {'"', 'a', '\x01', 'b', '"'};
     EXPECT_TRAP(rt_json_parse(make_bytes(raw_control, sizeof(raw_control))));
@@ -400,6 +432,7 @@ int main() {
     test_parse_string();
     test_parse_array();
     test_parse_object();
+    test_parse_many_empty_objects_does_not_leak_depth();
     test_parse_array_only();
     test_parse_object_only();
 
@@ -411,6 +444,7 @@ int main() {
     test_format_array();
     test_format_object();
     test_format_pretty();
+    test_format_cycle_traps();
 
     // Round-trip
     test_roundtrip();

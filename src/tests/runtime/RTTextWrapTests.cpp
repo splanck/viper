@@ -12,6 +12,7 @@
 
 #include "rt_string.h"
 #include "rt_textwrap.h"
+#include "rt_seq.h"
 
 #include <cassert>
 #include <cstdio>
@@ -49,6 +50,14 @@ static void test_wrap() {
         rt_string text = rt_const_cstr("Line1\nLine2");
         rt_string result = rt_textwrap_wrap(text, 80);
         test_result("Preserves newlines", strcmp(rt_string_cstr(result), "Line1\nLine2") == 0);
+    }
+
+    // Test 4: WrapLines returns individual strings
+    {
+        void *lines = rt_textwrap_wrap_lines(rt_const_cstr("one two three"), 7);
+        test_result("WrapLines count", rt_seq_len(lines) == 2);
+        test_result("WrapLines first line",
+                    strcmp(rt_string_cstr((rt_string)rt_seq_get(lines, 0)), "one two") == 0);
     }
 
     printf("\n");
@@ -92,6 +101,14 @@ static void test_dedent() {
         test_result("Uses minimum indent", strncmp(rt_string_cstr(result), "Line1\n", 6) == 0);
     }
 
+    // Test 3: Tabs and spaces are not treated as interchangeable bytes
+    {
+        rt_string text = rt_const_cstr("\tLine1\n  Line2");
+        rt_string result = rt_textwrap_dedent(text);
+        test_result("Does not over-remove partial tab indent",
+                    strcmp(rt_string_cstr(result), "\tLine1\n  Line2") == 0);
+    }
+
     printf("\n");
 }
 
@@ -117,6 +134,13 @@ static void test_truncate() {
         rt_string text = rt_const_cstr("Hello World");
         rt_string result = rt_textwrap_truncate_with(text, 9, rt_const_cstr(">>"));
         test_result("Custom suffix", strcmp(rt_string_cstr(result), "Hello W>>") == 0);
+    }
+
+    // Test 4: Long suffix is clipped to the requested width
+    {
+        rt_string text = rt_const_cstr("Hello World");
+        rt_string result = rt_textwrap_truncate_with(text, 2, rt_const_cstr("..."));
+        test_result("Suffix clipped to width", strcmp(rt_string_cstr(result), "..") == 0);
     }
 
     printf("\n");
@@ -186,7 +210,13 @@ static void test_utility() {
         test_result("Single line count", rt_textwrap_line_count(text) == 1);
     }
 
-    // Test 3: Max line length
+    // Test 3: Trailing newline does not add an empty trailing line
+    {
+        rt_string text = rt_const_cstr("Line1\nLine2\n");
+        test_result("Trailing newline ignored", rt_textwrap_line_count(text) == 2);
+    }
+
+    // Test 4: Max line length
     {
         rt_string text = rt_const_cstr("Hi\nHello\nHi");
         test_result("Max line length", rt_textwrap_max_line_len(text) == 5);

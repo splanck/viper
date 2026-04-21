@@ -16,7 +16,7 @@
 //   - Unicode escape sequences (\uXXXX) are decoded during parsing.
 //   - JSON null is represented as Box.I64(0) with a null type tag.
 //   - Format produces compact JSON (no whitespace); FormatPretty indents.
-//   - Parse returns NULL on invalid JSON input (not a trap).
+//   - Invalid JSON input traps with a diagnostic; use IsValid for non-trapping validation.
 //   - All functions are thread-safe with no global mutable state.
 //
 // Ownership/Lifetime:
@@ -35,10 +35,12 @@
 #include "rt_heap.h"
 #include "rt_internal.h"
 #include "rt_map.h"
+#include "rt_object.h"
 #include "rt_seq.h"
 #include "rt_string.h"
 
 #include <ctype.h>
+#include <errno.h>
 #include <limits.h>
 #include <math.h>
 #include <stdbool.h>
@@ -136,6 +138,24 @@ static void parser_error(json_parser *p, const char *msg) {
     char buf[256];
     snprintf(buf, sizeof(buf), "Json.Parse: %s at line %zu, column %zu", msg, line, col);
     rt_trap(buf);
+}
+
+static int json_number_is_finite_span(const char *start, size_t len) {
+    if (!start || len == 0)
+        return 0;
+
+    char *num_str = (char *)malloc(len + 1);
+    if (!num_str)
+        rt_trap("Json: memory allocation failed");
+    memcpy(num_str, start, len);
+    num_str[len] = '\0';
+
+    errno = 0;
+    char *endptr = NULL;
+    double value = strtod(num_str, &endptr);
+    int ok = endptr == num_str + len && errno != ERANGE && isfinite(value);
+    free(num_str);
+    return ok;
 }
 
 //=============================================================================
@@ -440,7 +460,14 @@ static void *parse_number(json_parser *p) {
     memcpy(num_str, p->input + start, num_len);
     num_str[num_len] = '\0';
 
-    double value = strtod(num_str, NULL);
+    errno = 0;
+    char *endptr = NULL;
+    double value = strtod(num_str, &endptr);
+    if (endptr != num_str + num_len || errno == ERANGE || !isfinite(value)) {
+        free(num_str);
+        parser_error(p, "number out of range");
+        return rt_box_f64(0.0);
+    }
     free(num_str);
 
     return rt_box_f64(value);
@@ -485,8 +512,10 @@ static void *parse_array(json_parser *p) {
         parser_skip_whitespace(p);
         void *value = parse_value(p);
         /* S-16: depth limit hit inside nested value — bail out cleanly */
-        if (p->depth_exceeded)
+        if (p->depth_exceeded) {
+            p->depth--;
             return seq;
+        }
         rt_seq_push(seq, value);
 
         parser_skip_whitespace(p);
@@ -538,6 +567,7 @@ static void *parse_object(json_parser *p) {
     // Empty object
     if (parser_peek(p) == '}') {
         parser_consume(p);
+        p->depth--;
         return map;
     }
 
@@ -564,6 +594,7 @@ static void *parse_object(json_parser *p) {
         /* S-16: depth limit hit inside nested value — bail out cleanly */
         if (p->depth_exceeded) {
             rt_str_release_maybe(key);
+            p->depth--;
             return map;
         }
 
@@ -668,6 +699,12 @@ typedef struct {
     size_t cap;
 } string_builder;
 
+typedef struct {
+    void **items;
+    size_t len;
+    size_t cap;
+} format_context;
+
 // ---------------------------------------------------------------------------
 // `string_builder` — a simple growing-buffer used to assemble the
 // JSON output. Doubles capacity on overflow; the final `sb_finish`
@@ -743,6 +780,57 @@ static rt_string sb_finish(string_builder *sb) {
     return result;
 }
 
+static void format_ctx_init(format_context *ctx) {
+    ctx->items = NULL;
+    ctx->len = 0;
+    ctx->cap = 0;
+}
+
+static void format_ctx_free(format_context *ctx) {
+    free(ctx->items);
+    ctx->items = NULL;
+    ctx->len = 0;
+    ctx->cap = 0;
+}
+
+static void format_ctx_enter(format_context *ctx, void *obj) {
+    if (!obj)
+        return;
+    for (size_t i = 0; i < ctx->len; i++) {
+        if (ctx->items[i] == obj)
+            rt_trap("Json.Format: cyclic object graph");
+    }
+    if (ctx->len >= JSON_MAX_DEPTH)
+        rt_trap("Json.Format: maximum nesting depth exceeded");
+    if (ctx->len == ctx->cap) {
+        size_t new_cap = ctx->cap == 0 ? 16 : ctx->cap * 2;
+        if (new_cap < ctx->cap || new_cap > SIZE_MAX / sizeof(void *))
+            rt_trap("Json.Format: nesting stack overflow");
+        void **tmp = (void **)realloc(ctx->items, new_cap * sizeof(void *));
+        if (!tmp)
+            rt_trap("Json.Format: memory allocation failed");
+        ctx->items = tmp;
+        ctx->cap = new_cap;
+    }
+    ctx->items[ctx->len++] = obj;
+}
+
+static void format_ctx_exit(format_context *ctx, void *obj) {
+    if (!obj || ctx->len == 0)
+        return;
+    if (ctx->items[ctx->len - 1] == obj) {
+        ctx->len--;
+        return;
+    }
+    for (size_t i = ctx->len; i > 0; i--) {
+        if (ctx->items[i - 1] == obj) {
+            memmove(ctx->items + i - 1, ctx->items + i, (ctx->len - i) * sizeof(void *));
+            ctx->len--;
+            return;
+        }
+    }
+}
+
 //=============================================================================
 // JSON String Escaping
 //=============================================================================
@@ -808,17 +896,24 @@ static void format_string(string_builder *sb, rt_string s) {
 //=============================================================================
 
 /// @brief Forward declaration: serialise any Viper value as JSON.
-static void format_value(string_builder *sb, void *obj, int64_t indent, int64_t level);
+static void format_value(string_builder *sb,
+                         void *obj,
+                         int64_t indent,
+                         int64_t level,
+                         format_context *ctx);
 
 /// @brief Emit a Seq as a JSON array, optionally pretty-printed.
 ///
 /// `indent == 0` emits compactly (`[1,2,3]`); `indent > 0` puts
 /// each element on its own line at `(level + 1) * indent` spaces.
-static void format_array(string_builder *sb, void *seq, int64_t indent, int64_t level) {
+static void format_array(
+    string_builder *sb, void *seq, int64_t indent, int64_t level, format_context *ctx) {
+    format_ctx_enter(ctx, seq);
     int64_t len = rt_seq_len(seq);
 
     if (len == 0) {
         sb_append(sb, "[]");
+        format_ctx_exit(ctx, seq);
         return;
     }
 
@@ -831,7 +926,7 @@ static void format_array(string_builder *sb, void *seq, int64_t indent, int64_t 
             sb_append_indent(sb, indent, level + 1);
 
         void *item = rt_seq_get(seq, i);
-        format_value(sb, item, indent, level + 1);
+        format_value(sb, item, indent, level + 1, ctx);
 
         if (i < len - 1)
             sb_append_char(sb, ',');
@@ -842,6 +937,7 @@ static void format_array(string_builder *sb, void *seq, int64_t indent, int64_t 
     if (indent > 0)
         sb_append_indent(sb, indent, level);
     sb_append_char(sb, ']');
+    format_ctx_exit(ctx, seq);
 }
 
 /// @brief Emit a Map as a JSON object, optionally pretty-printed.
@@ -849,11 +945,14 @@ static void format_array(string_builder *sb, void *seq, int64_t indent, int64_t 
 /// Iterates the map in insertion order (Viper Maps preserve it).
 /// Each key is forced to its string form via `format_string`; non-
 /// string keys are silently coerced.
-static void format_object(string_builder *sb, void *map, int64_t indent, int64_t level) {
+static void format_object(
+    string_builder *sb, void *map, int64_t indent, int64_t level, format_context *ctx) {
+    format_ctx_enter(ctx, map);
     int64_t len = rt_map_len(map);
 
     if (len == 0) {
         sb_append(sb, "{}");
+        format_ctx_exit(ctx, map);
         return;
     }
 
@@ -876,7 +975,7 @@ static void format_object(string_builder *sb, void *map, int64_t indent, int64_t
             sb_append_char(sb, ' ');
 
         void *value = rt_map_get(map, key);
-        format_value(sb, value, indent, level + 1);
+        format_value(sb, value, indent, level + 1, ctx);
 
         if (i < keys_len - 1)
             sb_append_char(sb, ',');
@@ -887,6 +986,9 @@ static void format_object(string_builder *sb, void *map, int64_t indent, int64_t
     if (indent > 0)
         sb_append_indent(sb, indent, level);
     sb_append_char(sb, '}');
+    if (keys && rt_obj_release_check0(keys))
+        rt_obj_free(keys);
+    format_ctx_exit(ctx, map);
 }
 
 /// @brief Recursive JSON emitter for any Viper value.
@@ -899,7 +1001,8 @@ static void format_object(string_builder *sb, void *map, int64_t indent, int64_t
 ///   - Map[Any,Any]          → JSON object via `format_object`
 /// `indent == 0` produces compact output; positive values trigger
 /// pretty printing with `indent` spaces per level.
-static void format_value(string_builder *sb, void *obj, int64_t indent, int64_t level) {
+static void format_value(
+    string_builder *sb, void *obj, int64_t indent, int64_t level, format_context *ctx) {
     // null
     if (!obj) {
         sb_append(sb, "null");
@@ -920,12 +1023,12 @@ static void format_value(string_builder *sb, void *obj, int64_t indent, int64_t 
     if (rt_heap_try_get_header(obj, &hdr)) {
         // Check collection types by class_id first
         if (hdr->class_id == RT_SEQ_CLASS_ID) {
-            format_array(sb, obj, indent, level);
+            format_array(sb, obj, indent, level, ctx);
             return;
         }
 
         if (hdr->class_id == RT_MAP_CLASS_ID) {
-            format_object(sb, obj, indent, level);
+            format_object(sb, obj, indent, level, ctx);
             return;
         }
 
@@ -1177,8 +1280,11 @@ void *rt_json_parse_array(rt_string text) {
 /// @see rt_json_parse For the inverse operation
 rt_string rt_json_format(void *obj) {
     string_builder sb;
+    format_context ctx;
     sb_init(&sb);
-    format_value(&sb, obj, 0, 0);
+    format_ctx_init(&ctx);
+    format_value(&sb, obj, 0, 0, &ctx);
+    format_ctx_free(&ctx);
     return sb_finish(&sb);
 }
 
@@ -1221,8 +1327,11 @@ rt_string rt_json_format_pretty(void *obj, int64_t indent) {
         return rt_json_format(obj);
 
     string_builder sb;
+    format_context ctx;
     sb_init(&sb);
-    format_value(&sb, obj, indent, 0);
+    format_ctx_init(&ctx);
+    format_value(&sb, obj, indent, 0, &ctx);
+    format_ctx_free(&ctx);
     return sb_finish(&sb);
 }
 
@@ -1256,6 +1365,20 @@ rt_string rt_json_format_pretty(void *obj, int64_t indent) {
 ///          Used by `rt_json_is_valid` for cheap pre-validation
 ///          when callers want to test parseability before committing.
 /// @return 1 if a complete JSON value was consumed, 0 otherwise.
+static int validate_hex4(json_parser *p, unsigned int *out) {
+    if (p->pos + 4 > p->len)
+        return 0;
+    unsigned int codepoint = 0;
+    for (int i = 0; i < 4; i++) {
+        int digit = rt_hex_digit_value(parser_consume(p));
+        if (digit < 0)
+            return 0;
+        codepoint = (codepoint << 4) | (unsigned int)digit;
+    }
+    *out = codepoint;
+    return 1;
+}
+
 static int validate_value(json_parser *p) {
     parser_skip_whitespace(p);
     if (parser_eof(p))
@@ -1287,12 +1410,26 @@ static int validate_value(json_parser *p) {
                     case 't':
                         break;
                     case 'u':
-                        for (int i = 0; i < 4; i++) {
-                            if (parser_eof(p) ||
-                                rt_hex_digit_value(parser_consume(p)) < 0)
+                    {
+                        unsigned int codepoint = 0;
+                        if (!validate_hex4(p, &codepoint))
+                            return 0;
+                        if (codepoint >= 0xD800 && codepoint <= 0xDBFF) {
+                            if (p->pos + 6 > p->len || parser_peek(p) != '\\' ||
+                                p->input[p->pos + 1] != 'u')
+                                return 0;
+                            parser_consume(p);
+                            parser_consume(p);
+                            unsigned int low = 0;
+                            if (!validate_hex4(p, &low))
+                                return 0;
+                            if (low < 0xDC00 || low > 0xDFFF)
                                 return 0;
                         }
+                        if (codepoint >= 0xDC00 && codepoint <= 0xDFFF)
+                            return 0;
                         break;
+                    }
                     default:
                         return 0;
                 }
@@ -1303,6 +1440,7 @@ static int validate_value(json_parser *p) {
 
     if (c == '-' || (c >= '0' && c <= '9')) {
         // Number
+        size_t number_start = p->pos;
         if (c == '-')
             parser_consume(p);
         if (parser_eof(p))
@@ -1335,6 +1473,8 @@ static int validate_value(json_parser *p) {
             while (!parser_eof(p) && parser_peek(p) >= '0' && parser_peek(p) <= '9')
                 parser_consume(p);
         }
+        if (!json_number_is_finite_span(p->input + number_start, p->pos - number_start))
+            return 0;
         return 1;
     }
 

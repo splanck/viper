@@ -48,6 +48,13 @@ static void test_decimals_padding() {
     rt_string_unref(r);
 }
 
+static void test_decimals_large_value_not_truncated() {
+    rt_string r = rt_numfmt_decimals(1e100, 2);
+    assert(rt_str_len(r) > 64);
+    assert(strstr(rt_string_cstr(r), ".00") != nullptr);
+    rt_string_unref(r);
+}
+
 // ---------------------------------------------------------------------------
 // Thousands
 // ---------------------------------------------------------------------------
@@ -114,6 +121,16 @@ static void test_currency_euro() {
     rt_string_unref(sym);
 }
 
+static void test_currency_large_value_not_truncated() {
+    rt_string sym = make_str("$");
+    rt_string r = rt_numfmt_currency(1e100, sym);
+    assert(rt_str_len(r) > 64);
+    assert(rt_string_cstr(r)[0] == '$');
+    assert(strstr(rt_string_cstr(r), ".00") != nullptr);
+    rt_string_unref(r);
+    rt_string_unref(sym);
+}
+
 // ---------------------------------------------------------------------------
 // Percent
 // ---------------------------------------------------------------------------
@@ -133,6 +150,14 @@ static void test_percent_whole() {
 static void test_percent_zero() {
     rt_string r = rt_numfmt_percent(0.0);
     assert(str_eq(r, "0%"));
+    rt_string_unref(r);
+}
+
+static void test_percent_large_value_no_integer_cast_overflow() {
+    rt_string r = rt_numfmt_percent(1e20);
+    assert(rt_str_len(r) > 0);
+    const char *text = rt_string_cstr(r);
+    assert(text[rt_str_len(r) - 1] == '%');
     rt_string_unref(r);
 }
 
@@ -178,6 +203,9 @@ static void test_ordinal() {
     r = rt_numfmt_ordinal(111);
     assert(str_eq(r, "111th"));
     rt_string_unref(r);
+    r = rt_numfmt_ordinal(INT64_MIN);
+    assert(str_eq(r, "-9223372036854775808th"));
+    rt_string_unref(r);
 }
 
 // ---------------------------------------------------------------------------
@@ -209,6 +237,9 @@ static void test_to_words() {
     rt_string_unref(r);
     r = rt_numfmt_to_words(-5);
     assert(str_eq(r, "negative five"));
+    rt_string_unref(r);
+    r = rt_numfmt_to_words(INT64_MAX);
+    assert(strstr(rt_string_cstr(r), "quintillion") != nullptr);
     rt_string_unref(r);
 }
 
@@ -273,6 +304,7 @@ int main() {
     test_decimals_basic();
     test_decimals_zero();
     test_decimals_padding();
+    test_decimals_large_value_not_truncated();
 
     // Thousands
     test_thousands_basic();
@@ -284,11 +316,13 @@ int main() {
     test_currency_basic();
     test_currency_negative();
     test_currency_euro();
+    test_currency_large_value_not_truncated();
 
     // Percent
     test_percent_basic();
     test_percent_whole();
     test_percent_zero();
+    test_percent_large_value_no_integer_cast_overflow();
 
     // Ordinal
     test_ordinal();
