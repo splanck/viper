@@ -43,6 +43,15 @@ static void test_setrgb_stores_full_alpha() {
     printf("test_setrgb_stores_full_alpha: PASSED\n");
 }
 
+static void test_setrgb_masks_color_rgba_without_signed_shift_overflow() {
+    void *p = rt_pixels_new(2, 2);
+    int64_t transparent = rt_color_rgba(0x11, 0x22, 0x33, 0);
+    rt_pixels_set_rgb(p, 0, 0, transparent);
+    assert(rt_pixels_get(p, 0, 0) == 0x112233FF);
+    assert(rt_pixels_get_rgb(p, 0, 0) == 0x112233);
+    printf("test_setrgb_masks_color_rgba_without_signed_shift_overflow: PASSED\n");
+}
+
 static void test_getrgb_discards_alpha() {
     // GetRGB should return 0x00RRGGBB regardless of stored alpha
     void *p = rt_pixels_new(4, 4);
@@ -304,6 +313,7 @@ int main() {
     // SetRGB / GetRGB
     test_setrgb_getrgb_roundtrip();
     test_setrgb_stores_full_alpha();
+    test_setrgb_masks_color_rgba_without_signed_shift_overflow();
     test_getrgb_discards_alpha();
     test_color_rgba_packing_differs_from_pixels_storage();
 

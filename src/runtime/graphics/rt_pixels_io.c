@@ -34,8 +34,10 @@
 #include "rt_compress.h"
 #include "rt_crc32.h"
 #include "rt_internal.h"
+#include "rt_object.h"
 #include "rt_string.h"
 
+#include <limits.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -50,6 +52,50 @@
 #define px_fseek(fp, off, whence) fseeko((fp), (off_t)(off), (whence))
 #define px_ftell(fp) ftello((fp))
 #endif
+
+static int px_mul_size(size_t a, size_t b, size_t *out) {
+    if (a != 0 && b > SIZE_MAX / a)
+        return 0;
+    if (out)
+        *out = a * b;
+    return 1;
+}
+
+static int px_add_size(size_t a, size_t b, size_t *out) {
+    if (b > SIZE_MAX - a)
+        return 0;
+    if (out)
+        *out = a + b;
+    return 1;
+}
+
+static int px_png_stride_checked(uint32_t width,
+                                 uint8_t bit_depth,
+                                 int samples_per_pixel,
+                                 size_t *stride_out) {
+    size_t stride = 0;
+    if (samples_per_pixel <= 0)
+        return 0;
+    if (bit_depth < 8) {
+        size_t bits = 0;
+        if (!px_mul_size((size_t)width, (size_t)samples_per_pixel, &bits))
+            return 0;
+        if (!px_mul_size(bits, (size_t)bit_depth, &bits))
+            return 0;
+        if (!px_add_size(bits, 7, &bits))
+            return 0;
+        stride = bits / 8;
+    } else {
+        size_t sample_bytes = (size_t)bit_depth / 8;
+        if (!px_mul_size((size_t)width, (size_t)samples_per_pixel, &stride))
+            return 0;
+        if (!px_mul_size(stride, sample_bytes, &stride))
+            return 0;
+    }
+    if (stride_out)
+        *stride_out = stride;
+    return 1;
+}
 
 //=============================================================================
 // BMP Image I/O
@@ -107,6 +153,7 @@ void *rt_pixels_load_bmp(void *path) {
 
     uint8_t *row_buf = NULL;
     rt_pixels_impl *pixels = NULL;
+    int success = 0;
 
     // Read file header
     bmp_file_header file_hdr;
@@ -132,6 +179,8 @@ void *rt_pixels_load_bmp(void *path) {
 
     // Handle negative height (top-down)
     if (height < 0) {
+        if (height == INT32_MIN)
+            goto bmp_cleanup;
         height = -height;
         bottom_up = 0;
     }
@@ -140,10 +189,13 @@ void *rt_pixels_load_bmp(void *path) {
         goto bmp_cleanup;
 
     // Calculate row padding (rows must be 4-byte aligned)
-    int row_size = ((width * 3 + 3) / 4) * 4;
+    size_t row_payload = 0;
+    if (!px_mul_size((size_t)width, 3, &row_payload))
+        goto bmp_cleanup;
+    size_t row_size = (row_payload + 3u) & ~(size_t)3u;
 
     // Allocate row buffer
-    row_buf = (uint8_t *)malloc((size_t)row_size);
+    row_buf = (uint8_t *)malloc(row_size);
     if (!row_buf)
         goto bmp_cleanup;
 
@@ -153,17 +205,13 @@ void *rt_pixels_load_bmp(void *path) {
         goto bmp_cleanup;
 
     // Seek to pixel data
-    if (fseek(f, (long)file_hdr.data_offset, SEEK_SET) != 0) {
-        pixels = NULL; // signal failure; pixels_alloc object is GC-managed
+    if (fseek(f, (long)file_hdr.data_offset, SEEK_SET) != 0)
         goto bmp_cleanup;
-    }
 
     // Read pixel data
     for (int32_t y = 0; y < height; y++) {
-        if (fread(row_buf, 1, (size_t)row_size, f) != (size_t)row_size) {
-            pixels = NULL;
+        if (fread(row_buf, 1, row_size, f) != row_size)
             goto bmp_cleanup;
-        }
 
         // Determine destination row (bottom-up reverses row order)
         int32_t dst_y = bottom_up ? (height - 1 - y) : y;
@@ -178,8 +226,14 @@ void *rt_pixels_load_bmp(void *path) {
             dst_row[x] = ((uint32_t)r << 24) | ((uint32_t)g << 16) | ((uint32_t)b << 8) | 0xFF;
         }
     }
+    success = 1;
 
 bmp_cleanup:
+    if (!success && pixels) {
+        if (rt_obj_release_check0(pixels))
+            rt_obj_free(pixels);
+        pixels = NULL;
+    }
     free(row_buf);
     fclose(f);
     return pixels;
@@ -208,8 +262,11 @@ int64_t rt_pixels_save_bmp(void *pixels, void *path) {
     int32_t height = (int32_t)p->height;
 
     // Calculate row padding
-    int row_size = ((width * 3 + 3) / 4) * 4;
-    int padding = row_size - width * 3;
+    size_t row_payload = 0;
+    if (!px_mul_size((size_t)width, 3, &row_payload))
+        return 0;
+    size_t row_size = (row_payload + 3u) & ~(size_t)3u;
+    size_t padding = row_size - row_payload;
 
     // Calculate file size (guard against uint32 overflow for very large images)
     uint64_t data_size_u64 = (uint64_t)row_size * (uint64_t)height;
@@ -255,7 +312,7 @@ int64_t rt_pixels_save_bmp(void *pixels, void *path) {
     }
 
     // Allocate row buffer
-    uint8_t *row_buf = (uint8_t *)calloc(1, (size_t)row_size);
+    uint8_t *row_buf = (uint8_t *)calloc(1, row_size);
     if (!row_buf) {
         fclose(f);
         return 0;
@@ -275,10 +332,10 @@ int64_t rt_pixels_save_bmp(void *pixels, void *path) {
         }
 
         // Zero padding bytes
-        for (int i = 0; i < padding; i++)
-            row_buf[width * 3 + i] = 0;
+        for (size_t i = 0; i < padding; i++)
+            row_buf[row_payload + i] = 0;
 
-        if (fwrite(row_buf, 1, (size_t)row_size, f) != (size_t)row_size) {
+        if (fwrite(row_buf, 1, row_size, f) != row_size) {
             free(row_buf);
             fclose(f);
             return 0;
@@ -446,9 +503,17 @@ void *rt_pixels_load_png(void *path) {
                     free(idat_buf);
                 return NULL;
             }
-            if (idat_len + chunk_len > idat_cap) {
-                idat_cap = (idat_len + chunk_len) * 2;
-                uint8_t *new_buf = (uint8_t *)realloc(idat_buf, idat_cap);
+            size_t needed_idat = idat_len + (size_t)chunk_len;
+            if (needed_idat > idat_cap) {
+                size_t new_cap = idat_cap ? idat_cap : 1;
+                while (new_cap < needed_idat) {
+                    if (new_cap > SIZE_MAX / 2) {
+                        new_cap = needed_idat;
+                        break;
+                    }
+                    new_cap *= 2;
+                }
+                uint8_t *new_buf = (uint8_t *)realloc(idat_buf, new_cap);
                 if (!new_buf) {
                     free(file_data);
                     if (idat_buf)
@@ -456,6 +521,7 @@ void *rt_pixels_load_png(void *path) {
                     return NULL;
                 }
                 idat_buf = new_buf;
+                idat_cap = new_cap;
             }
             memcpy(idat_buf + idat_len, chunk_data, chunk_len);
             idat_len += chunk_len;
@@ -519,6 +585,8 @@ void *rt_pixels_load_png(void *path) {
     } bytes_t;
 
     bytes_t *raw = (bytes_t *)raw_bytes;
+    if (raw->len < 0)
+        goto cleanup;
 
     // Compute bytes-per-pixel at the filter level (before sub-byte unpacking).
     // For sub-byte depths (1,2,4-bit), each row is ceil(width*bit_depth/8) bytes.
@@ -535,11 +603,6 @@ void *rt_pixels_load_png(void *path) {
     // For sub-byte depths, bpp is 1 (minimum for filter byte calculations)
     if (bpp < 1)
         bpp = 1;
-
-// Helper: compute row stride for a given image width
-#define PNG_STRIDE(w)                                                                              \
-    (bit_depth < 8 ? (((size_t)(w) * (size_t)bit_depth * (size_t)samples_per_pixel + 7) / 8)       \
-                   : ((size_t)(w) * (size_t)samples_per_pixel * ((size_t)bit_depth / 8)))
 
 // Helper: reconstruct one filtered row
 #define PNG_FILTER_ROW(dst, src, prev, row_stride)                                                 \
@@ -573,7 +636,9 @@ void *rt_pixels_load_png(void *path) {
         (src) += (row_stride);                                                                     \
     } while (0)
 
-    size_t stride = PNG_STRIDE(width);
+    size_t stride = 0;
+    if (!px_png_stride_checked(width, bit_depth, samples_per_pixel, &stride))
+        goto cleanup;
 
     if (interlace == 1) {
         // Adam7 interlaced PNG: 7 passes
@@ -583,7 +648,10 @@ void *rt_pixels_load_png(void *path) {
         static const int a7_dy[7] = {8, 8, 8, 4, 4, 2, 2};
 
         // Allocate full-size image buffer (row-major, sequential)
-        img = (uint8_t *)calloc(stride * height, 1);
+        size_t image_bytes = 0;
+        if (!px_mul_size(stride, (size_t)height, &image_bytes))
+            goto cleanup;
+        img = (uint8_t *)calloc(image_bytes, 1);
         if (!img)
             goto cleanup;
 
@@ -598,14 +666,20 @@ void *rt_pixels_load_png(void *path) {
             if (sub_w == 0 || sub_h == 0)
                 continue;
 
-            size_t sub_stride = PNG_STRIDE(sub_w);
+            size_t sub_stride = 0;
+            if (!px_png_stride_checked(sub_w, bit_depth, samples_per_pixel, &sub_stride))
+                goto cleanup;
             // Allocate temp buffer for this sub-image
-            uint8_t *sub_img = (uint8_t *)calloc(sub_stride * sub_h, 1);
+            size_t sub_image_bytes = 0;
+            if (!px_mul_size(sub_stride, (size_t)sub_h, &sub_image_bytes))
+                goto cleanup;
+            uint8_t *sub_img = (uint8_t *)calloc(sub_image_bytes, 1);
             if (!sub_img)
                 goto cleanup;
 
             for (uint32_t sy = 0; sy < sub_h; sy++) {
-                if (src_ptr + 1 + sub_stride > src_end) {
+                size_t src_avail = (size_t)(src_end - src_ptr);
+                if (src_avail <= sub_stride) {
                     free(sub_img);
                     goto cleanup;
                 }
@@ -651,13 +725,19 @@ void *rt_pixels_load_png(void *path) {
         }
     } else {
         // Non-interlaced (sequential)
-        if (height > 0 && (stride + 1) > SIZE_MAX / (size_t)height)
+        size_t filtered_stride = 0;
+        if (!px_add_size(stride, 1, &filtered_stride))
             goto cleanup;
-        size_t expected = (stride + 1) * (size_t)height;
+        size_t expected = 0;
+        if (!px_mul_size(filtered_stride, (size_t)height, &expected))
+            goto cleanup;
         if ((size_t)raw->len < expected)
             goto cleanup;
 
-        img = (uint8_t *)malloc(stride * height);
+        size_t image_bytes = 0;
+        if (!px_mul_size(stride, (size_t)height, &image_bytes))
+            goto cleanup;
+        img = (uint8_t *)malloc(image_bytes);
         if (!img)
             goto cleanup;
 
@@ -668,8 +748,6 @@ void *rt_pixels_load_png(void *path) {
             PNG_FILTER_ROW(dst_row, src_ptr, prev_row, stride);
         }
     }
-
-#undef PNG_STRIDE
 
     // Create Pixels object and convert to our RGBA format (0xRRGGBBAA)
     pixels = pixels_alloc((int64_t)width, (int64_t)height);
@@ -802,17 +880,25 @@ int64_t rt_pixels_save_png(void *pixels_ptr, void *path) {
 
     rt_pixels_impl *p = (rt_pixels_impl *)pixels_ptr;
     const char *filepath = rt_string_cstr((rt_string)path);
-    if (!filepath || p->width <= 0 || p->height <= 0)
+    if (!filepath || p->width <= 0 || p->height <= 0 ||
+        p->width > UINT32_MAX || p->height > UINT32_MAX)
         return 0;
 
     uint32_t w = (uint32_t)p->width;
     uint32_t h = (uint32_t)p->height;
-    size_t stride = (size_t)w * 4; // RGBA
+    size_t stride = 0;
+    if (!px_mul_size((size_t)w, 4, &stride))
+        return 0;
 
     // Build raw PNG scanline data with filter byte.
     // First row uses filter=0 (None); subsequent rows use filter=1 (Sub)
     // which encodes differences from the left neighbor for better compression.
-    size_t raw_len = (stride + 1) * h;
+    size_t row_len = 0;
+    if (!px_add_size(stride, 1, &row_len))
+        return 0;
+    size_t raw_len = 0;
+    if (!px_mul_size(row_len, (size_t)h, &raw_len) || raw_len > (size_t)INT64_MAX)
+        return 0;
     uint8_t *raw = (uint8_t *)malloc(raw_len);
     if (!raw)
         return 0;
@@ -830,8 +916,8 @@ int64_t rt_pixels_save_png(void *pixels_ptr, void *path) {
             raw[y * (stride + 1)] = 0; // Filter: None (no left neighbor for first row)
         } else {
             raw[y * (stride + 1)] = 1; // Filter: Sub
-            for (int32_t i = stride - 1; i >= 4; i--)
-                dst[i] -= dst[i - 4]; // Sub: each byte minus byte at same position 4 bytes left
+            for (size_t i = stride; i > 4; i--)
+                dst[i - 1] -= dst[i - 5]; // Sub: each byte minus byte at same position 4 bytes left
         }
     }
 
@@ -869,6 +955,8 @@ int64_t rt_pixels_save_png(void *pixels_ptr, void *path) {
     } bytes_t;
 
     bytes_t *comp = (bytes_t *)comp_bytes;
+    if (comp->len < 0 || (uint64_t)comp->len > (uint64_t)UINT32_MAX - 6u)
+        goto save_cleanup;
 
     // Build zlib stream: 2-byte header + deflate data + 4-byte adler32
     // Zlib header: CMF=0x78 (deflate, window=32K), FLG=0x01 (no dict, check=1)

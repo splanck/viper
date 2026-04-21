@@ -127,6 +127,7 @@ void rt_sprite_set_flip_y(void *sprite, int64_t flip);
 void rt_sprite_draw(void *sprite, void *canvas);
 
 /// @brief Internal helper used by SpriteBatch and scene traversal.
+/// @param tint_color Tint color (0xAARRGGBB or 0x00RRGGBB), or -1 for no tint.
 void rt_sprite_draw_transformed(void *sprite,
                                 void *canvas,
                                 int64_t x,

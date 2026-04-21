@@ -16,7 +16,7 @@
 //     owns no GPU resources. The surface is shaped so a GPU backend can be
 //     swapped in later without changing callers.
 //   - Pixels storage is `0xRRGGBBAA`; shape and debug-draw colors accept
-//     Canvas-style `0x00RRGGBB`. `draw_rgb` normalizes between the two.
+//     Canvas-style `0x00RRGGBB` and Color.RGBA-style `0xAARRGGBB`.
 //   - Every object holds retained references via `retain_ref` /
 //     `release_ref_slot` — replacing a slot always retains the new value
 //     before releasing the old so self-assignment can't drop refcount to 0.
@@ -46,6 +46,7 @@
 
 #include <limits.h>
 #include <math.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -216,6 +217,99 @@ static int64_t clamp_u8_i64(int64_t value) {
     return clamp_i64(value, 0, 255);
 }
 
+static int64_t saturating_add_i64(int64_t a, int64_t b) {
+    if (b > 0 && a > INT64_MAX - b)
+        return INT64_MAX;
+    if (b < 0 && a < INT64_MIN - b)
+        return INT64_MIN;
+    return a + b;
+}
+
+static int32_t point_in_interval_i64(int64_t start, int64_t length, int64_t value) {
+    if (length <= 0 || value < start)
+        return 0;
+    return ((uint64_t)value - (uint64_t)start) < (uint64_t)length;
+}
+
+static int32_t intervals_overlap_i64(int64_t a_start,
+                                     int64_t a_length,
+                                     int64_t b_start,
+                                     int64_t b_length) {
+    if (a_length <= 0 || b_length <= 0)
+        return 0;
+    return point_in_interval_i64(a_start, a_length, b_start) ||
+           point_in_interval_i64(b_start, b_length, a_start);
+}
+
+static uint64_t distance_to_zero_i64(int64_t value) {
+    return (uint64_t)(-(value + 1)) + 1u;
+}
+
+static int32_t blit_clip_axis(int64_t *dst_pos,
+                              int64_t *src_pos,
+                              int64_t *length,
+                              int64_t dst_limit,
+                              int64_t src_limit) {
+    if (!dst_pos || !src_pos || !length || *length <= 0 || dst_limit <= 0 || src_limit <= 0) {
+        if (length)
+            *length = 0;
+        return 0;
+    }
+    if ((*dst_pos >= 0 && *dst_pos >= dst_limit) || (*src_pos >= 0 && *src_pos >= src_limit)) {
+        *length = 0;
+        return 0;
+    }
+
+    uint64_t skip = 0;
+    if (*dst_pos < 0)
+        skip = distance_to_zero_i64(*dst_pos);
+    if (*src_pos < 0) {
+        uint64_t src_skip = distance_to_zero_i64(*src_pos);
+        if (src_skip > skip)
+            skip = src_skip;
+    }
+    if (skip > 0) {
+        if (skip >= (uint64_t)*length) {
+            *length = 0;
+            return 0;
+        }
+        if (*dst_pos >= 0 && skip >= (uint64_t)(dst_limit - *dst_pos)) {
+            *length = 0;
+            return 0;
+        }
+        if (*src_pos >= 0 && skip >= (uint64_t)(src_limit - *src_pos)) {
+            *length = 0;
+            return 0;
+        }
+        int64_t offset = (int64_t)skip;
+        *dst_pos += offset;
+        *src_pos += offset;
+        *length -= offset;
+    }
+    if (*dst_pos < 0 || *src_pos < 0 || *dst_pos >= dst_limit || *src_pos >= src_limit) {
+        *length = 0;
+        return 0;
+    }
+
+    int64_t dst_remaining = dst_limit - *dst_pos;
+    int64_t src_remaining = src_limit - *src_pos;
+    if (*length > dst_remaining)
+        *length = dst_remaining;
+    if (*length > src_remaining)
+        *length = src_remaining;
+    return *length > 0;
+}
+
+static int64_t round_long_double_to_i64(long double value) {
+    if (!isfinite((double)value))
+        return value < 0.0L ? INT64_MIN : INT64_MAX;
+    if (value >= (long double)INT64_MAX)
+        return INT64_MAX;
+    if (value <= (long double)INT64_MIN)
+        return INT64_MIN;
+    return (int64_t)(value >= 0.0L ? value + 0.5L : value - 0.5L);
+}
+
 /// @brief Clamp a dimension to `[1, RT2D_MAX_DIM]`. Zero / negative requests become
 ///        1 so nothing downstream has to special-case an empty row or column.
 static int64_t normalized_dim(int64_t value) {
@@ -293,16 +387,13 @@ static void release_ref_slot(void **slot) {
 }
 
 /// @brief Normalize a user-supplied color to `0x00RRGGBB` form.
-/// @details Callers pass colors in two conventions: Canvas-style `0x00RRGGBB`
-///          (24-bit RGB, implicit full alpha) or Pixels-style `0xRRGGBBAA`
-///          (32-bit RGBA). This helper detects the wider form by the presence of
-///          bits above `0x00FFFFFF` and shifts the alpha byte off, giving shape /
-///          debug-draw primitives (which operate in RGB) a single canonical form.
+/// @details Shape/debug APIs take Canvas-style `0x00RRGGBB` or Color.RGBA-style
+///          `0xAARRGGBB`. Alpha is ignored by these RGB-only drawing primitives.
 static int64_t draw_rgb(int64_t color) {
-    uint64_t c = (uint64_t)color;
+    uint64_t c = (uint64_t)color & 0xFFFFFFFFu;
     if (c <= 0x00FFFFFFu)
         return (int64_t)c;
-    return (int64_t)((c >> 8) & 0x00FFFFFFu);
+    return (int64_t)(c & 0x00FFFFFFu);
 }
 
 /// @brief Apply a tint multiplier and alpha scale to a single `0xRRGGBBAA` texel.
@@ -410,35 +501,8 @@ static void blit_pixels(void *dst,
     int64_t src_width = rt_pixels_width(src);
     int64_t src_height = rt_pixels_height(src);
 
-    if (sx < 0) {
-        width += sx;
-        dx -= sx;
-        sx = 0;
-    }
-    if (sy < 0) {
-        height += sy;
-        dy -= sy;
-        sy = 0;
-    }
-    if (dx < 0) {
-        width += dx;
-        sx -= dx;
-        dx = 0;
-    }
-    if (dy < 0) {
-        height += dy;
-        sy -= dy;
-        dy = 0;
-    }
-    if (sx + width > src_width)
-        width = src_width - sx;
-    if (sy + height > src_height)
-        height = src_height - sy;
-    if (dx + width > dst_width)
-        width = dst_width - dx;
-    if (dy + height > dst_height)
-        height = dst_height - dy;
-    if (width <= 0 || height <= 0)
+    if (!blit_clip_axis(&dx, &sx, &width, dst_width, src_width) ||
+        !blit_clip_axis(&dy, &sy, &height, dst_height, src_height))
         return;
 
     for (int64_t y = 0; y < height; y++) {
@@ -934,6 +998,8 @@ void rt_renderer2d_end(void *renderer, void *canvas) {
     if (!renderer)
         return;
     rt_renderer2d_impl *impl = (rt_renderer2d_impl *)renderer;
+    if (!impl->active)
+        return;
     if (canvas) {
         for (int64_t i = 0; i < impl->count; i++) {
             rt_renderer2d_cmd *cmd = &impl->cmds[i];
@@ -958,6 +1024,7 @@ void rt_renderer2d_end(void *renderer, void *canvas) {
         }
     }
     impl->active = 0;
+    rt_renderer2d_clear(renderer);
 }
 
 //=============================================================================
@@ -1224,28 +1291,36 @@ int64_t rt_viewport2d_world_to_screen_x(void *viewport, int64_t x) {
     if (!viewport)
         return x;
     rt_viewport2d_impl *impl = (rt_viewport2d_impl *)viewport;
-    return impl->offset_x + x * impl->scale / 1000;
+    long double mapped =
+        (long double)impl->offset_x + ((long double)x * (long double)impl->scale) / 1000.0L;
+    return round_long_double_to_i64(mapped);
 }
 
 int64_t rt_viewport2d_world_to_screen_y(void *viewport, int64_t y) {
     if (!viewport)
         return y;
     rt_viewport2d_impl *impl = (rt_viewport2d_impl *)viewport;
-    return impl->offset_y + y * impl->scale / 1000;
+    long double mapped =
+        (long double)impl->offset_y + ((long double)y * (long double)impl->scale) / 1000.0L;
+    return round_long_double_to_i64(mapped);
 }
 
 int64_t rt_viewport2d_screen_to_world_x(void *viewport, int64_t x) {
     if (!viewport)
         return x;
     rt_viewport2d_impl *impl = (rt_viewport2d_impl *)viewport;
-    return (x - impl->offset_x) * 1000 / impl->scale;
+    long double mapped =
+        ((long double)x - (long double)impl->offset_x) * 1000.0L / (long double)impl->scale;
+    return round_long_double_to_i64(mapped);
 }
 
 int64_t rt_viewport2d_screen_to_world_y(void *viewport, int64_t y) {
     if (!viewport)
         return y;
     rt_viewport2d_impl *impl = (rt_viewport2d_impl *)viewport;
-    return (y - impl->offset_y) * 1000 / impl->scale;
+    long double mapped =
+        ((long double)y - (long double)impl->offset_y) * 1000.0L / (long double)impl->scale;
+    return round_long_double_to_i64(mapped);
 }
 
 //=============================================================================
@@ -2245,6 +2320,12 @@ typedef struct {
 
 /// @brief Round a double to the nearest int64, away from zero.
 static int64_t round_double_to_i64(double value) {
+    if (!isfinite(value))
+        return value < 0.0 ? INT64_MIN : INT64_MAX;
+    if (value >= (double)INT64_MAX)
+        return INT64_MAX;
+    if (value <= (double)INT64_MIN)
+        return INT64_MIN;
     return (int64_t)(value >= 0.0 ? value + 0.5 : value - 0.5);
 }
 
@@ -2368,8 +2449,8 @@ void rt_transform2d_translate(void *transform, int64_t dx, int64_t dy) {
     if (!transform)
         return;
     rt_transform2d_impl *impl = (rt_transform2d_impl *)transform;
-    impl->x += dx;
-    impl->y += dy;
+    impl->x = saturating_add_i64(impl->x, dx);
+    impl->y = saturating_add_i64(impl->y, dy);
 }
 
 int64_t rt_transform2d_transform_x(void *transform, int64_t x, int64_t y) {
@@ -3031,16 +3112,29 @@ int64_t rt_collisionmask2d_overlaps(
         return 0;
     int64_t left = ax > bx ? ax : bx;
     int64_t top = ay > by ? ay : by;
-    int64_t right_a = ax + ma->width;
-    int64_t right_b = bx + mb->width;
-    int64_t bottom_a = ay + ma->height;
-    int64_t bottom_b = by + mb->height;
-    int64_t right = right_a < right_b ? right_a : right_b;
-    int64_t bottom = bottom_a < bottom_b ? bottom_a : bottom_b;
-    for (int64_t y = top; y < bottom; y++) {
-        for (int64_t x = left; x < right; x++) {
-            if (rt_collisionmask2d_get(a, x - ax, y - ay) &&
-                rt_collisionmask2d_get(b, x - bx, y - by))
+    if (!point_in_interval_i64(ax, ma->width, left) ||
+        !point_in_interval_i64(bx, mb->width, left) ||
+        !point_in_interval_i64(ay, ma->height, top) ||
+        !point_in_interval_i64(by, mb->height, top))
+        return 0;
+
+    uint64_t ax0 = (uint64_t)left - (uint64_t)ax;
+    uint64_t bx0 = (uint64_t)left - (uint64_t)bx;
+    uint64_t ay0 = (uint64_t)top - (uint64_t)ay;
+    uint64_t by0 = (uint64_t)top - (uint64_t)by;
+    uint64_t overlap_w = (uint64_t)ma->width - ax0;
+    uint64_t b_rem_w = (uint64_t)mb->width - bx0;
+    if (b_rem_w < overlap_w)
+        overlap_w = b_rem_w;
+    uint64_t overlap_h = (uint64_t)ma->height - ay0;
+    uint64_t b_rem_h = (uint64_t)mb->height - by0;
+    if (b_rem_h < overlap_h)
+        overlap_h = b_rem_h;
+
+    for (uint64_t dy = 0; dy < overlap_h; dy++) {
+        for (uint64_t dx = 0; dx < overlap_w; dx++) {
+            if (rt_collisionmask2d_get(a, (int64_t)(ax0 + dx), (int64_t)(ay0 + dy)) &&
+                rt_collisionmask2d_get(b, (int64_t)(bx0 + dx), (int64_t)(by0 + dy)))
                 return 1;
         }
     }
@@ -3084,8 +3178,8 @@ int64_t rt_hitbox2d_get_height(void *hitbox) {
 
 int64_t rt_hitbox2d_contains(void *hitbox, int64_t x, int64_t y) {
     rt_hitbox2d_impl *impl = (rt_hitbox2d_impl *)hitbox;
-    return impl && x >= impl->x && y >= impl->y && x < impl->x + impl->width &&
-           y < impl->y + impl->height;
+    return impl && point_in_interval_i64(impl->x, impl->width, x) &&
+           point_in_interval_i64(impl->y, impl->height, y);
 }
 
 int64_t rt_hitbox2d_intersects(void *a, void *b) {
@@ -3093,8 +3187,8 @@ int64_t rt_hitbox2d_intersects(void *a, void *b) {
     rt_hitbox2d_impl *hb = (rt_hitbox2d_impl *)b;
     if (!ha || !hb)
         return 0;
-    return ha->x < hb->x + hb->width && ha->x + ha->width > hb->x &&
-           ha->y < hb->y + hb->height && ha->y + ha->height > hb->y;
+    return intervals_overlap_i64(ha->x, ha->width, hb->x, hb->width) &&
+           intervals_overlap_i64(ha->y, ha->height, hb->y, hb->height);
 }
 
 void *rt_palette2d_new(void) {
@@ -3299,11 +3393,20 @@ static void texturepackeratlas_finalize(void *obj) {
 }
 
 void *rt_texturepackeratlas_new(void *pixels) {
+    if (!pixels) {
+        rt_trap("TexturePackerAtlas.New: null pixels");
+        return NULL;
+    }
     rt_texturepackeratlas_impl *impl =
         (rt_texturepackeratlas_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_texturepackeratlas_impl));
     if (!impl)
         return NULL;
     impl->atlas = rt_texatlas_new(pixels);
+    if (!impl->atlas) {
+        if (rt_obj_release_check0(impl))
+            rt_obj_free(impl);
+        return NULL;
+    }
     rt_obj_set_finalizer(impl, texturepackeratlas_finalize);
     return impl;
 }

@@ -152,7 +152,7 @@ void rt_spritebatch_set_sort_by_depth(void *batch, int8_t enabled);
 
 /// @brief Set a global tint color for all sprites in the batch.
 /// @param batch SpriteBatch object.
-/// @param color Tint color (0xAARRGGBB), or 0 for no tint.
+/// @param color Tint color (0xAARRGGBB or 0x00RRGGBB), or -1 for no tint.
 void rt_spritebatch_set_tint(void *batch, int64_t color);
 
 /// @brief Set a global alpha for all sprites in the batch.

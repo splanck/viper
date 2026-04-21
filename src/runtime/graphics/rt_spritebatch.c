@@ -44,6 +44,7 @@
 #include "rt_pixels.h"
 #include "rt_sprite.h"
 
+#include <limits.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -56,6 +57,7 @@
 
 #define DEFAULT_CAPACITY 256
 #define GROWTH_FACTOR 2
+#define MAX_BATCH_CAPACITY 1048576LL
 
 typedef enum { BATCH_ITEM_SPRITE, BATCH_ITEM_PIXELS, BATCH_ITEM_REGION } batch_item_type;
 
@@ -95,6 +97,28 @@ typedef struct {
 
 static int64_t spritebatch_normalize_scale(int64_t scale) {
     return scale < 1 ? 1 : scale;
+}
+
+static int64_t spritebatch_initial_capacity(int64_t capacity) {
+    if (capacity <= 0)
+        return DEFAULT_CAPACITY;
+    return capacity > MAX_BATCH_CAPACITY ? MAX_BATCH_CAPACITY : capacity;
+}
+
+static int64_t spritebatch_normalize_tint(int64_t color) {
+    if (color < 0)
+        return -1;
+    return (int64_t)((uint64_t)color & 0x00FFFFFFu);
+}
+
+static int64_t spritebatch_saturating_scaled_dim(int64_t value, int64_t scale) {
+    long double scaled =
+        ((long double)value * (long double)spritebatch_normalize_scale(scale)) / 100.0L;
+    if (scaled >= (long double)INT64_MAX)
+        return INT64_MAX;
+    if (scaled <= 1.0L)
+        return 1;
+    return (int64_t)(scaled + 0.5L);
 }
 
 //=============================================================================
@@ -159,12 +183,25 @@ static void spritebatch_clear_items(spritebatch_impl *batch) {
 }
 
 static int8_t ensure_capacity(spritebatch_impl *batch, int64_t needed) {
-    if (batch->count + needed <= batch->capacity)
+    if (!batch || needed < 0)
+        return 0;
+    if (needed > INT64_MAX - batch->count)
+        return 0;
+    int64_t required = batch->count + needed;
+    if (required > MAX_BATCH_CAPACITY)
+        return 0;
+    if (required <= batch->capacity)
         return 1;
 
+    if (batch->capacity > INT64_MAX / GROWTH_FACTOR)
+        return 0;
     int64_t new_capacity = batch->capacity * GROWTH_FACTOR;
-    if (new_capacity < batch->count + needed)
-        new_capacity = batch->count + needed;
+    if (new_capacity < required)
+        new_capacity = required;
+    if (new_capacity > MAX_BATCH_CAPACITY)
+        new_capacity = MAX_BATCH_CAPACITY;
+    if (new_capacity > INT64_MAX / (int64_t)sizeof(batch_item))
+        return 0;
 
     batch_item *new_items =
         (batch_item *)realloc(batch->items, (size_t)new_capacity * sizeof(batch_item));
@@ -187,11 +224,11 @@ static void add_item(spritebatch_impl *batch, batch_item *item) {
 }
 
 static void *apply_batch_color(void *pixels, int64_t tint_color, int64_t alpha) {
-    if (!pixels || (tint_color == 0 && alpha >= 255))
+    if (!pixels || (tint_color < 0 && alpha >= 255))
         return pixels;
 
     void *result = pixels;
-    if (tint_color != 0) {
+    if (tint_color >= 0) {
         void *tinted = rt_pixels_tint(result, tint_color);
         if (tinted)
             result = tinted;
@@ -239,7 +276,7 @@ static void draw_region_item(spritebatch_impl *batch, void *canvas, const batch_
     int64_t scale_y = spritebatch_normalize_scale(item->scale_y);
 
     const bool needsTransform = scale_x != 100 || scale_y != 100 || item->rotation != 0;
-    const bool needsColor = batch->tint_color != 0 || batch->alpha < 255;
+    const bool needsColor = batch->tint_color >= 0 || batch->alpha < 255;
     if (!needsTransform && !needsColor) {
         rt_canvas_blit_region(canvas,
                               item->x,
@@ -258,12 +295,8 @@ static void draw_region_item(spritebatch_impl *batch, void *canvas, const batch_
         return;
 
     if (scale_x != 100 || scale_y != 100) {
-        int64_t new_w = item->src_w * scale_x / 100;
-        int64_t new_h = item->src_h * scale_y / 100;
-        if (new_w < 1)
-            new_w = 1;
-        if (new_h < 1)
-            new_h = 1;
+        int64_t new_w = spritebatch_saturating_scaled_dim(item->src_w, scale_x);
+        int64_t new_h = spritebatch_saturating_scaled_dim(item->src_h, scale_y);
         void *scaled = rt_pixels_scale(transformed, new_w, new_h);
         spritebatch_replace_temp(&transformed, scaled, item->source);
     }
@@ -273,6 +306,11 @@ static void draw_region_item(spritebatch_impl *batch, void *canvas, const batch_
         int64_t src_h = rt_pixels_height(transformed);
         int64_t half_w = src_w;
         int64_t half_h = src_h;
+        if (half_w > INT64_MAX / 2 || half_h > INT64_MAX / 2) {
+            spritebatch_release_temp(&transformed, item->source);
+            rt_trap("SpriteBatch: transformed dimensions too large");
+            return;
+        }
         void *padded = rt_pixels_new(half_w * 2, half_h * 2);
         if (padded) {
             rt_pixels_copy(padded, half_w, half_h, transformed, 0, 0, src_w, src_h);
@@ -282,7 +320,8 @@ static void draw_region_item(spritebatch_impl *batch, void *canvas, const batch_
         spritebatch_replace_temp(&transformed, rotated, item->source);
     }
 
-    transformed = apply_batch_color(transformed, batch->tint_color, batch->alpha);
+    void *colored = apply_batch_color(transformed, batch->tint_color, batch->alpha);
+    spritebatch_replace_temp(&transformed, colored, item->source);
 
     int64_t blit_x = item->x;
     int64_t blit_y = item->y;
@@ -307,7 +346,7 @@ static void spritebatch_finalize(void *obj) {
 }
 
 /// @brief Construct a SpriteBatch with initial command-array capacity. `capacity <= 0` falls
-/// back to 256. The batch starts inactive (default tint 0, alpha 255, depth-sort off). Use
+/// back to 256. The batch starts inactive (no tint, alpha 255, depth-sort off). Use
 /// `_begin` / draw calls / `_end` to submit batched draws to a Canvas in one pass.
 void *rt_spritebatch_new(int64_t capacity) {
     spritebatch_impl *batch =
@@ -316,8 +355,13 @@ void *rt_spritebatch_new(int64_t capacity) {
         return NULL;
     memset(batch, 0, sizeof(spritebatch_impl));
 
-    if (capacity <= 0)
-        capacity = DEFAULT_CAPACITY;
+    capacity = spritebatch_initial_capacity(capacity);
+    if (capacity > INT64_MAX / (int64_t)sizeof(batch_item)) {
+        rt_trap("SpriteBatch: capacity too large");
+        if (rt_obj_release_check0(batch))
+            rt_obj_free(batch);
+        return NULL;
+    }
 
     batch->items = (batch_item *)malloc((size_t)capacity * sizeof(batch_item));
     if (!batch->items) {
@@ -331,7 +375,7 @@ void *rt_spritebatch_new(int64_t capacity) {
     batch->capacity = capacity;
     batch->active = 0;
     batch->sort_by_depth = 0;
-    batch->tint_color = 0;
+    batch->tint_color = -1;
     batch->alpha = 255;
     batch->next_submission_order = 0;
 
@@ -566,7 +610,7 @@ void rt_spritebatch_set_sort_by_depth(void *batch_ptr, int8_t enabled) {
 void rt_spritebatch_set_tint(void *batch_ptr, int64_t color) {
     if (!batch_ptr)
         return;
-    ((spritebatch_impl *)batch_ptr)->tint_color = color;
+    ((spritebatch_impl *)batch_ptr)->tint_color = spritebatch_normalize_tint(color);
 }
 
 /// @brief Set the alpha of the spritebatch.
@@ -586,6 +630,6 @@ void rt_spritebatch_reset_settings(void *batch_ptr) {
         return;
     spritebatch_impl *batch = (spritebatch_impl *)batch_ptr;
     batch->sort_by_depth = 0;
-    batch->tint_color = 0;
+    batch->tint_color = -1;
     batch->alpha = 255;
 }

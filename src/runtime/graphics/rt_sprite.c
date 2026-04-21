@@ -48,6 +48,7 @@
 #include "rt_string.h"
 #include "rt_time.h"
 
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -105,13 +106,42 @@ static void sprite_apply_alpha(void *pixels, int64_t alpha) {
     }
 }
 
-/// @brief Scale a pixel origin by the sprite scale percentage (1..100..n).
-static int64_t sprite_scale_origin(int64_t origin, int64_t scale) {
-    return (origin * scale) / 100;
-}
-
 static int64_t sprite_normalize_scale(int64_t scale) {
     return scale < 1 ? 1 : scale;
+}
+
+static int64_t sprite_saturating_scale(int64_t value, int64_t scale) {
+    long double scaled = ((long double)value * (long double)sprite_normalize_scale(scale)) / 100.0L;
+    if (scaled >= (long double)INT64_MAX)
+        return INT64_MAX;
+    if (scaled <= (long double)INT64_MIN)
+        return INT64_MIN;
+    return (int64_t)(scaled >= 0.0L ? scaled + 0.5L : scaled - 0.5L);
+}
+
+/// @brief Scale a pixel origin by the sprite scale percentage (1..100..n).
+static int64_t sprite_scale_origin(int64_t origin, int64_t scale) {
+    return sprite_saturating_scale(origin, scale);
+}
+
+static int64_t sprite_abs_sat(int64_t value) {
+    if (value == INT64_MIN)
+        return INT64_MAX;
+    return value < 0 ? -value : value;
+}
+
+static int64_t sprite_saturating_sub(int64_t a, int64_t b) {
+    if (b < 0 && a > INT64_MAX + b)
+        return INT64_MAX;
+    if (b > 0 && a < INT64_MIN + b)
+        return INT64_MIN;
+    return a - b;
+}
+
+static int64_t sprite_normalize_tint(int64_t tint_color) {
+    if (tint_color < 0)
+        return -1;
+    return (int64_t)((uint64_t)tint_color & 0x00FFFFFFu);
 }
 
 /// @brief Release a transformed-pixels buffer if it isn't the original frame.
@@ -207,8 +237,8 @@ static void *sprite_prepare_pixels(rt_sprite_impl *sprite,
         return NULL;
 
     if (scale_x != 100 || scale_y != 100) {
-        int64_t new_w = rt_pixels_width(transformed) * scale_x / 100;
-        int64_t new_h = rt_pixels_height(transformed) * scale_y / 100;
+        int64_t new_w = sprite_saturating_scale(rt_pixels_width(transformed), scale_x);
+        int64_t new_h = sprite_saturating_scale(rt_pixels_height(transformed), scale_y);
         if (new_w < 1)
             new_w = 1;
         if (new_h < 1)
@@ -228,10 +258,10 @@ static void *sprite_prepare_pixels(rt_sprite_impl *sprite,
         int64_t center_y = src_h / 2;
 
         if (origin_x != center_x || origin_y != center_y) {
-            int64_t half_w = llabs(origin_x);
-            int64_t edge_w = llabs(src_w - origin_x);
-            int64_t half_h = llabs(origin_y);
-            int64_t edge_h = llabs(src_h - origin_y);
+            int64_t half_w = sprite_abs_sat(origin_x);
+            int64_t edge_w = sprite_abs_sat(sprite_saturating_sub(src_w, origin_x));
+            int64_t half_h = sprite_abs_sat(origin_y);
+            int64_t edge_h = sprite_abs_sat(sprite_saturating_sub(src_h, origin_y));
             if (edge_w > half_w)
                 half_w = edge_w;
             if (edge_h > half_h)
@@ -241,6 +271,11 @@ static void *sprite_prepare_pixels(rt_sprite_impl *sprite,
             if (half_h < 1)
                 half_h = 1;
 
+            if (half_w > INT64_MAX / 2 || half_h > INT64_MAX / 2) {
+                sprite_release_if_owned(transformed, frame);
+                rt_trap("Sprite.DrawTransformed: transformed dimensions too large");
+                return NULL;
+            }
             void *padded = rt_pixels_new(half_w * 2, half_h * 2);
             if (padded) {
                 rt_pixels_copy(
@@ -256,8 +291,9 @@ static void *sprite_prepare_pixels(rt_sprite_impl *sprite,
         origin_centered = 1;
     }
 
-    if (tint_color != 0) {
-        void *tinted = rt_pixels_tint(transformed, tint_color);
+    int64_t tint = sprite_normalize_tint(tint_color);
+    if (tint >= 0) {
+        void *tinted = rt_pixels_tint(transformed, tint);
         transformed = sprite_replace_pixels(tinted, &transformed, frame);
     }
 
@@ -444,7 +480,8 @@ void *rt_sprite_from_file(void *path) {
 // match the runtime calling convention. Each is null-safe; getters
 // on a null sprite return 0 (or false), setters silently no-op.
 // `scale_x`, `scale_y`, `rotation` are stored as integers (percent
-// or degrees); `tint_color` follows the standard 0xRRGGBBAA layout.
+// or degrees); `tint_color` accepts 0xAARRGGBB / 0x00RRGGBB and uses
+// -1 as the no-tint sentinel.
 // ---------------------------------------------------------------------------
 
 /// @brief Get the sprite's x-coordinate. 0 for null.
@@ -700,7 +737,7 @@ void rt_sprite_draw_transformed(void *sprite_ptr,
 
     // If no transform at all, use simple blit
     if (scale_x == 100 && scale_y == 100 && rotation == 0 && !sprite->flip_x && !sprite->flip_y &&
-        tint_color == 0 && alpha >= 255) {
+        tint_color < 0 && alpha >= 255) {
         rt_canvas_blit_alpha(canvas_ptr, x - sprite->origin_x, y - sprite->origin_y, frame);
         return;
     }
@@ -744,7 +781,7 @@ void rt_sprite_draw(void *sprite_ptr, void *canvas_ptr) {
                                sprite->scale_x,
                                sprite->scale_y,
                                sprite->rotation,
-                               0,
+                               -1,
                                255);
 }
 

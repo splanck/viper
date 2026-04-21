@@ -28,6 +28,8 @@
 
 #include "rt_graphics_internal.h"
 
+#include <limits.h>
+
 #ifdef VIPER_ENABLE_GRAPHICS
 
 enum {
@@ -479,11 +481,20 @@ void rt_canvas_flood_fill(void *canvas_ptr, int64_t start_x, int64_t start_y, in
         pixel[3] = 255;
 
         // Grow stack if needed before pushing 4 neighbors
-        if (stack_top + 4 > stack_cap) {
-            int64_t new_cap = stack_cap * 2;
-            int64_t max_cap = (clip_px1 - clip_px0) * (clip_py1 - clip_py0) + 4;
-            if (new_cap > max_cap)
-                new_cap = max_cap;
+        if (stack_top > stack_cap - 4) {
+            if (stack_top > INT64_MAX - 4)
+                break;
+            int64_t required = stack_top + 4;
+            int64_t new_cap = stack_cap;
+            while (new_cap < required) {
+                if (new_cap > INT64_MAX / 2) {
+                    new_cap = required;
+                    break;
+                }
+                new_cap *= 2;
+            }
+            if (new_cap > INT64_MAX / (int64_t)sizeof(int64_t))
+                break;
             int64_t *nx = (int64_t *)realloc(stack_x, (size_t)new_cap * sizeof(int64_t));
             if (!nx) {
                 free(stack_x);

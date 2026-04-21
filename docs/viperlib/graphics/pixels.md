@@ -89,7 +89,8 @@ Alpha is always 255 (fully opaque). Coordinates outside the pixel buffer are sil
 > **Color format note:** `Pixels.Set(x, y, color)` and `Pixels.Get(x, y)` use `0xRRGGBBAA` (packed RGBA
 > with explicit alpha). Drawing primitives and `SetRGB`/`GetRGB` use `0x00RRGGBB` — the same format as
 > `Canvas` drawing calls and `Color.RGB()`. This allows the same color constants to be used when drawing
-> to both a Canvas and an off-screen Pixels buffer without any format conversion.
+> to both a Canvas and an off-screen Pixels buffer without any format conversion. If a `Color.RGBA()`
+> value is passed to an RGB-only primitive, its alpha byte is ignored and the RGB channels are used.
 
 #### Zia Example — Drawing into an off-screen buffer
 
@@ -132,14 +133,16 @@ func start() {
 
 **Drawing primitives** (`SetRGB`, `GetRGB`, `DrawLine`, `DrawBox`, etc.) use `0x00RRGGBB` — the same
 format as `Canvas` methods and `Color.RGB()`. This makes it straightforward to share color constants
-between on-screen canvas drawing and off-screen pixel buffer operations.
+between on-screen canvas drawing and off-screen pixel buffer operations. `Color.RGBA()` values are
+also accepted for these RGB-only primitives; alpha is ignored.
 
 Use packed literals like `0xRRGGBBAA` for `Set`/`Get`, and `Viper.Graphics.Color.RGB()` for
 drawing primitives.
 
 > `Viper.Graphics.Color.RGBA()` returns `0xAARRGGBB`, which is suitable for alpha-aware Canvas
-> drawing APIs, but it does **not** match the `0xRRGGBBAA` layout used by `Pixels.Set`/`Pixels.Get`.
-> For opaque pixels, prefer `SetRGB()`; for explicit alpha, pass a packed `0xRRGGBBAA` value.
+> drawing APIs and RGB-only drawing primitives, but it does **not** match the `0xRRGGBBAA` layout used
+> by `Pixels.Set`/`Pixels.Get`. For opaque pixels, prefer `SetRGB()`; for explicit alpha, pass a packed
+> `0xRRGGBBAA` value.
 
 ### Zia Example
 
@@ -587,9 +590,9 @@ Efficient tile-based 2D map rendering for platformers, RPGs, and strategy games.
 | `ToTileX(pixelX)`                              | `Integer(Integer)`                           | Convert pixel X to tile X                             |
 | `ToTileY(pixelY)`                              | `Integer(Integer)`                           | Convert pixel Y to tile Y                             |
 
-Advanced runtime support also includes multi-layer tilemaps, per-layer tilesets, JSON save/load, auto-tiling rules, per-tile properties, and tile animation state. `SaveToFile` / `LoadFromFile` preserve layer visibility, collision-layer selection, collision types, tile properties, auto-tile rules, and animation progress.
+Advanced runtime support also includes multi-layer tilemaps, per-layer tilesets, JSON save/load, auto-tiling rules, per-tile properties, and tile animation state. Layer names are limited to the fixed runtime name slot (31 bytes); overlong names are rejected without adding a layer. `SaveToFile` / `LoadFromFile` preserve layer visibility, collision-layer selection, collision types, tile properties, auto-tile rules, and animation progress.
 
-Animated tiles keep collision from the base tile ID stored in the map. Changing the visual animation frame does not change solidity or one-way behavior unless you also change the base tile's collision type.
+Animated tiles keep collision from the base tile ID stored in the map. Changing the visual animation frame does not change solidity or one-way behavior unless you also change the base tile's collision type. Negative animation deltas are ignored; very large deltas advance in one modulo step instead of looping once per elapsed frame.
 
 ### Zia Example
 

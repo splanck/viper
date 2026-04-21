@@ -45,10 +45,54 @@
 #include "rt_object.h"
 #include "rt_string.h"
 
+#include <limits.h>
 #include <stdlib.h>
 #include <string.h>
 
 static volatile int64_t g_next_pixels_cache_identity = 1;
+
+static int32_t pixels_checked_layout(int64_t width,
+                                     int64_t height,
+                                     int64_t *pixel_count_out,
+                                     size_t *data_size_out,
+                                     size_t *total_size_out) {
+    if (width < 0 || height < 0)
+        return 0;
+
+    int64_t pixel_count = 0;
+    if (width != 0 && height != 0) {
+        if (width > INT64_MAX / height)
+            return 0;
+        pixel_count = width * height;
+    }
+
+    if (pixel_count > (INT64_MAX - (int64_t)sizeof(rt_pixels_impl)) / (int64_t)sizeof(uint32_t))
+        return 0;
+
+    size_t data_size = (size_t)pixel_count * sizeof(uint32_t);
+    size_t total = sizeof(rt_pixels_impl) + data_size;
+    if (total < sizeof(rt_pixels_impl) || total > (size_t)INT64_MAX)
+        return 0;
+
+    if (pixel_count_out)
+        *pixel_count_out = pixel_count;
+    if (data_size_out)
+        *data_size_out = data_size;
+    if (total_size_out)
+        *total_size_out = total;
+    return 1;
+}
+
+static int32_t pixels_checked_raw_bytes(int64_t width, int64_t height, int64_t *byte_count_out) {
+    int64_t pixel_count = 0;
+    if (!pixels_checked_layout(width, height, &pixel_count, NULL, NULL))
+        return 0;
+    if (pixel_count > INT64_MAX / 4)
+        return 0;
+    if (byte_count_out)
+        *byte_count_out = pixel_count * 4;
+    return 1;
+}
 
 /// @brief Allocate a new Pixels object with embedded pixel data.
 rt_pixels_impl *pixels_alloc(int64_t width, int64_t height) {
@@ -57,21 +101,19 @@ rt_pixels_impl *pixels_alloc(int64_t width, int64_t height) {
     if (height < 0)
         height = 0;
 
-    int64_t pixel_count = width * height;
-
-    // Check for overflow
-    if (width > 0 && height > 0 && pixel_count / width != height)
+    int64_t pixel_count = 0;
+    size_t data_size = 0;
+    size_t total = 0;
+    if (!pixels_checked_layout(width, height, &pixel_count, &data_size, &total)) {
         rt_trap("Pixels: dimensions too large");
-
-    size_t data_size = (size_t)pixel_count * sizeof(uint32_t);
-    size_t total = sizeof(rt_pixels_impl) + data_size;
-
-    if (total < sizeof(rt_pixels_impl) || total > (size_t)INT64_MAX)
-        rt_trap("Pixels: memory allocation failed");
+        return NULL;
+    }
 
     rt_pixels_impl *pixels = (rt_pixels_impl *)rt_obj_new_i64(0, (int64_t)total);
-    if (!pixels)
+    if (!pixels) {
         rt_trap("Pixels: memory allocation failed");
+        return NULL;
+    }
 
     pixels->width = width;
     pixels->height = height;
@@ -287,6 +329,8 @@ void *rt_pixels_clone(void *pixels) {
     rt_pixels_impl *p = (rt_pixels_impl *)pixels;
 
     rt_pixels_impl *clone = pixels_alloc(p->width, p->height);
+    if (!clone)
+        return NULL;
     if (p->data && clone->data) {
         size_t size = (size_t)(p->width * p->height) * sizeof(uint32_t);
         memcpy(clone->data, p->data, size);
@@ -313,8 +357,14 @@ void *rt_pixels_to_bytes(void *pixels) {
     }
     rt_pixels_impl *p = (rt_pixels_impl *)pixels;
 
-    int64_t byte_count = p->width * p->height * 4; // 4 bytes per pixel (RGBA)
+    int64_t byte_count = 0;
+    if (!pixels_checked_raw_bytes(p->width, p->height, &byte_count)) {
+        rt_trap("Pixels.ToBytes: dimensions too large");
+        return NULL;
+    }
     void *bytes = rt_bytes_new(byte_count);
+    if (!bytes)
+        return NULL;
 
     if (byte_count > 0 && p->data) {
         rt_bytes_impl *b = (rt_bytes_impl *)bytes;
@@ -325,7 +375,7 @@ void *rt_pixels_to_bytes(void *pixels) {
 }
 
 /// @brief Deserialize a `width × height` pixel buffer from a Bytes blob (raw RGBA payload).
-/// Bytes length must equal `width * height * 4`; otherwise returns an empty Pixels.
+/// Bytes length must be at least `width * height * 4`; surplus bytes are ignored.
 void *rt_pixels_from_bytes(int64_t width, int64_t height, void *bytes) {
     if (!bytes) {
         rt_trap("Pixels.FromBytes: null bytes");
@@ -337,7 +387,11 @@ void *rt_pixels_from_bytes(int64_t width, int64_t height, void *bytes) {
     if (height < 0)
         height = 0;
 
-    int64_t required_bytes = width * height * 4;
+    int64_t required_bytes = 0;
+    if (!pixels_checked_raw_bytes(width, height, &required_bytes)) {
+        rt_trap("Pixels.FromBytes: dimensions too large");
+        return NULL;
+    }
     int64_t available_bytes = rt_bytes_len(bytes);
 
     if (available_bytes < required_bytes) {
@@ -346,6 +400,8 @@ void *rt_pixels_from_bytes(int64_t width, int64_t height, void *bytes) {
     }
 
     rt_pixels_impl *p = pixels_alloc(width, height);
+    if (!p)
+        return NULL;
 
     if (required_bytes > 0 && p->data) {
         rt_bytes_impl *b = (rt_bytes_impl *)bytes;

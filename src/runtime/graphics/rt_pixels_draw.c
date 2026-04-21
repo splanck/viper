@@ -45,7 +45,7 @@
 /// @brief Write an opaque RGB pixel (color in 0x00RRGGBB format, alpha forced to 0xFF).
 /// Out-of-bounds is a silent no-op (delegates to `rt_pixels_set`).
 void rt_pixels_set_rgb(void *pixels, int64_t x, int64_t y, int64_t color) {
-    rt_pixels_set(pixels, x, y, (color << 8) | 0xFF);
+    rt_pixels_set(pixels, x, y, (int64_t)rgb_to_rgba(color));
 }
 
 /// @brief Read an RGB pixel (returns 0x00RRGGBB, dropping the alpha channel).

@@ -34,6 +34,8 @@
 #include "rt_string.h"
 #include "rt_tilemap.h"
 #include <cassert>
+#include <climits>
+#include <cstdint>
 #include <cstdio>
 #include <cstring>
 
@@ -375,6 +377,38 @@ static void test_max_layers(void) {
     PASS();
 }
 
+static void test_long_layer_name_rejected_without_consuming_slot(void) {
+    TEST("Overlong layer name is rejected without consuming a layer slot");
+    void *tm = rt_tilemap_new(2, 2, 16, 16);
+    rt_string long_name = make_str("abcdefghijklmnopqrstuvwxyz1234567890");
+    assert(rt_tilemap_add_layer(tm, long_name) == -1);
+    assert(rt_tilemap_get_layer_count(tm) == 1);
+
+    rt_string ok_name = make_str("ok");
+    assert(rt_tilemap_add_layer(tm, ok_name) == 1);
+    assert(rt_tilemap_get_layer_count(tm) == 2);
+    assert(rt_tilemap_get_layer_by_name(tm, ok_name) == 1);
+    PASS();
+}
+
+static void test_tile_animation_negative_and_huge_dt(void) {
+    TEST("Tile animations ignore negative dt and handle huge dt in one step");
+    void *tm = rt_tilemap_new(2, 2, 16, 16);
+    rt_tilemap_set_tile_anim(tm, 7, 3, 100);
+    rt_tilemap_set_tile_anim_frame(tm, 7, 0, 7);
+    rt_tilemap_set_tile_anim_frame(tm, 7, 1, 8);
+    rt_tilemap_set_tile_anim_frame(tm, 7, 2, 9);
+
+    rt_tilemap_update_anims(tm, 100);
+    assert(rt_tilemap_resolve_anim_tile(tm, 7) == 8);
+    rt_tilemap_update_anims(tm, -1000000);
+    assert(rt_tilemap_resolve_anim_tile(tm, 7) == 8);
+    rt_tilemap_update_anims(tm, INT64_MAX);
+    int64_t resolved = rt_tilemap_resolve_anim_tile(tm, 7);
+    assert(resolved >= 7 && resolved <= 9);
+    PASS();
+}
+
 static void test_invalid_layer_id(void) {
     TEST("Invalid layer ID returns defaults");
     void *tm = rt_tilemap_new(4, 4, 16, 16);
@@ -465,6 +499,8 @@ int main() {
     test_remove_layer();
     test_cannot_remove_base_layer();
     test_max_layers();
+    test_long_layer_name_rejected_without_consuming_slot();
+    test_tile_animation_negative_and_huge_dt();
     test_invalid_layer_id();
     test_null_safety();
     test_collision_layer_adjusts_on_remove();

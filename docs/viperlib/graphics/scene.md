@@ -488,7 +488,7 @@ Creates a sprite batch with the given initial capacity (use 0 for default). Spri
 | `ResetSettings()`                               | `Void()`                                               | Clear all settings to defaults                 |
 | `SetAlpha(alpha)`                               | `Void(Integer)`                                        | Set global alpha (0-255) for all sprites       |
 | `SetSortByDepth(enabled)`                       | `Void(Integer)`                                        | Enable/disable depth sorting (1=on, 0=off); equal depths stay stable in submission order |
-| `SetTint(color)`                                | `Void(Integer)`                                        | Set tint color (ARGB) for all sprites          |
+| `SetTint(color)`                                | `Void(Integer)`                                        | Set tint color (ARGB or RGB); pass `-1` for no tint |
 | `DrawAtlas(atlas, name, x, y)`                  | `Void(TextureAtlas, String, Integer, Integer)`         | Draw named atlas region at position            |
 | `DrawAtlasScaled(atlas, name, x, y, scale)`     | `Void(TextureAtlas, String, Integer, Integer, Integer)`| Draw named atlas region with uniform scale     |
 | `DrawAtlasEx(atlas, name, x, y, scale, rot, depth)` | `Void(TextureAtlas, String, Integer...)`           | Draw named atlas region with full transform    |
@@ -624,6 +624,8 @@ batch.Draw(sprite, 400, 100)
 batch.End(canvas)
 ```
 
+`SetTint(0)` applies a black multiplicative tint. Use `SetTint(-1)` or `ResetSettings()` when you want no tint.
+
 ### Performance Tips
 
 - **Batch similar sprites:** Draw sprites that share the same texture together
@@ -637,7 +639,8 @@ batch.End(canvas)
 
 Named-region sprite sheet atlas. Maps string names to rectangular sub-regions of a
 backing Pixels buffer, enabling content pipelines where frames are referenced by name
-instead of raw pixel coordinates.
+instead of raw pixel coordinates. Added regions must stay inside the backing `Pixels`
+bounds.
 
 **Type:** Instance (obj)
 **Constructor:** `NEW Viper.Graphics.TextureAtlas(pixels)` or `TextureAtlas.LoadGrid(pixels, frameW, frameH)`

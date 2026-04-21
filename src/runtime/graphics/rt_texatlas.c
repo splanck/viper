@@ -196,6 +196,12 @@ void rt_texatlas_add(void *atlas, void *name, int64_t x, int64_t y, int64_t w, i
         rt_trap("TextureAtlas.Add: width/height must be positive");
         return;
     }
+    int64_t atlas_w = rt_pixels_width(impl->pixels);
+    int64_t atlas_h = rt_pixels_height(impl->pixels);
+    if (x < 0 || y < 0 || x > atlas_w || y > atlas_h || w > atlas_w - x || h > atlas_h - y) {
+        rt_trap("TextureAtlas.Add: region outside backing pixels");
+        return;
+    }
 
     // Overwrite if name already exists
     int existing = find_region(impl, cname);

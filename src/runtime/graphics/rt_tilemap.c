@@ -52,6 +52,8 @@
 #include "rt_pixels.h"
 #include "rt_string.h"
 
+#include <limits.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -68,6 +70,63 @@ static int64_t tilemap_floor_div(int64_t value, int64_t divisor) {
     if (rem != 0 && ((rem < 0) != (divisor < 0)))
         quot--;
     return quot;
+}
+
+static int32_t tilemap_checked_grid_size(int64_t width,
+                                         int64_t height,
+                                         int64_t *tile_count_out,
+                                         size_t *tiles_size_out) {
+    if (width <= 0 || height <= 0)
+        return 0;
+    if (width > INT64_MAX / height)
+        return 0;
+    int64_t tile_count = width * height;
+    if (tile_count > INT64_MAX / (int64_t)sizeof(int64_t))
+        return 0;
+    size_t tiles_size = (size_t)tile_count * sizeof(int64_t);
+    if (tile_count_out)
+        *tile_count_out = tile_count;
+    if (tiles_size_out)
+        *tiles_size_out = tiles_size;
+    return 1;
+}
+
+static uint64_t tilemap_distance_to_zero(int64_t value) {
+    return (uint64_t)(-(value + 1)) + 1u;
+}
+
+static int64_t tilemap_negate_saturating(int64_t value) {
+    return value == INT64_MIN ? INT64_MAX : -value;
+}
+
+static int64_t tilemap_add_two_saturating(int64_t value) {
+    return value > INT64_MAX - 2 ? INT64_MAX : value + 2;
+}
+
+static int32_t tilemap_clip_span_to_bounds(int64_t *start, int64_t *length, int64_t limit) {
+    if (!start || !length || *length <= 0 || limit <= 0) {
+        if (length)
+            *length = 0;
+        return 0;
+    }
+    if (*start < 0) {
+        uint64_t skip = tilemap_distance_to_zero(*start);
+        if (skip >= (uint64_t)*length) {
+            *start = 0;
+            *length = 0;
+            return 0;
+        }
+        *start = 0;
+        *length -= (int64_t)skip;
+    }
+    if (*start >= limit) {
+        *length = 0;
+        return 0;
+    }
+    int64_t remaining = limit - *start;
+    if (*length > remaining)
+        *length = remaining;
+    return *length > 0;
 }
 
 //=============================================================================
@@ -105,16 +164,18 @@ void *rt_tilemap_new(int64_t width, int64_t height, int64_t tile_width, int64_t 
     if (tile_height <= 0)
         tile_height = 16;
 
-    int64_t tile_count = width * height;
-
-    // Check for overflow
-    if (tile_count / width != height) {
+    int64_t tile_count = 0;
+    size_t tiles_size = 0;
+    if (!tilemap_checked_grid_size(width, height, &tile_count, &tiles_size)) {
         rt_trap("Tilemap: dimensions too large");
         return NULL;
     }
 
-    size_t tiles_size = (size_t)tile_count * sizeof(int64_t);
     size_t total_size = sizeof(rt_tilemap_impl) + tiles_size;
+    if (total_size < sizeof(rt_tilemap_impl) || total_size > (size_t)INT64_MAX) {
+        rt_trap("Tilemap: dimensions too large");
+        return NULL;
+    }
 
     rt_tilemap_impl *tilemap = (rt_tilemap_impl *)rt_obj_new_i64(0, (int64_t)total_size);
     if (!tilemap)
@@ -354,8 +415,10 @@ static void rt_tilemap_draw_region_layer_impl(rt_tilemap_impl *tilemap,
     int64_t tw = tilemap->tile_width;
     int64_t th = tilemap->tile_height;
 
-    for (int64_t ty = view_y; ty < view_y + view_h; ty++) {
-        for (int64_t tx = view_x; tx < view_x + view_w; tx++) {
+    int64_t end_y = view_y + view_h;
+    int64_t end_x = view_x + view_w;
+    for (int64_t ty = view_y; ty < end_y; ty++) {
+        for (int64_t tx = view_x; tx < end_x; tx++) {
             int64_t tile_index =
                 rt_tilemap_resolve_anim_tile(tilemap_ptr, layer->tiles[ty * tilemap->width + tx]);
             if (tile_index <= 0 || tile_index > tile_count)
@@ -386,8 +449,8 @@ void rt_tilemap_draw(void *tilemap_ptr, void *canvas_ptr, int64_t offset_x, int6
     int64_t th = tilemap->tile_height > 0 ? tilemap->tile_height : 1;
 
     /* Compute the first tile that is visible (partially or fully) on screen */
-    int64_t first_x = tilemap_floor_div(-offset_x, tw);
-    int64_t first_y = tilemap_floor_div(-offset_y, th);
+    int64_t first_x = tilemap_floor_div(tilemap_negate_saturating(offset_x), tw);
+    int64_t first_y = tilemap_floor_div(tilemap_negate_saturating(offset_y), th);
     if (first_x < 0)
         first_x = 0;
     if (first_y < 0)
@@ -396,15 +459,12 @@ void rt_tilemap_draw(void *tilemap_ptr, void *canvas_ptr, int64_t offset_x, int6
     /* Compute how many tiles fit in the canvas (plus two for partial edges) */
     int64_t canvas_w = rt_canvas_width(canvas_ptr);
     int64_t canvas_h = rt_canvas_height(canvas_ptr);
-    int64_t vis_w = canvas_w / tw + 2;
-    int64_t vis_h = canvas_h / th + 2;
+    int64_t vis_w = tilemap_add_two_saturating(canvas_w / tw);
+    int64_t vis_h = tilemap_add_two_saturating(canvas_h / th);
 
     /* Clamp to tilemap dimensions */
-    if (first_x + vis_w > tilemap->width)
-        vis_w = tilemap->width - first_x;
-    if (first_y + vis_h > tilemap->height)
-        vis_h = tilemap->height - first_y;
-    if (vis_w <= 0 || vis_h <= 0)
+    if (!tilemap_clip_span_to_bounds(&first_x, &vis_w, tilemap->width) ||
+        !tilemap_clip_span_to_bounds(&first_y, &vis_h, tilemap->height))
         return;
 
     rt_tilemap_draw_region(
@@ -429,15 +489,9 @@ void rt_tilemap_draw_region(void *tilemap_ptr,
 
     rt_tilemap_impl *tilemap = (rt_tilemap_impl *)tilemap_ptr;
 
-    // Clamp view to tilemap bounds
-    if (view_x < 0)
-        view_x = 0;
-    if (view_y < 0)
-        view_y = 0;
-    if (view_x + view_w > tilemap->width)
-        view_w = tilemap->width - view_x;
-    if (view_y + view_h > tilemap->height)
-        view_h = tilemap->height - view_y;
+    if (!tilemap_clip_span_to_bounds(&view_x, &view_w, tilemap->width) ||
+        !tilemap_clip_span_to_bounds(&view_y, &view_h, tilemap->height))
+        return;
 
     for (int32_t layer = 0; layer < tilemap->layer_count; layer++) {
         rt_tilemap_draw_region_layer_impl(tilemap,
@@ -687,7 +741,8 @@ int8_t rt_tilemap_collide_body(void *tilemap_ptr, void *body_ptr) {
 //=============================================================================
 
 /// @brief Append a new tile layer (allocating its own zeroed grid) and return its index.
-/// Names are truncated to 31 characters; layers default to visible with no per-layer tileset.
+/// Names must fit in the fixed 31-byte layer name slot; layers default to visible with no per-layer
+/// tileset.
 /// Returns -1 on null input, on hitting `TM_MAX_LAYERS`, or on allocation failure.
 int64_t rt_tilemap_add_layer(void *tilemap_ptr, rt_string name) {
     if (!tilemap_ptr)
@@ -697,8 +752,24 @@ int64_t rt_tilemap_add_layer(void *tilemap_ptr, rt_string name) {
     if (tilemap->layer_count >= TM_MAX_LAYERS)
         return -1;
 
+    size_t grid_size = 0;
+    if (!tilemap_checked_grid_size(tilemap->width, tilemap->height, NULL, &grid_size)) {
+        rt_trap("Tilemap.AddLayer: dimensions too large");
+        return -1;
+    }
+
     int32_t idx = tilemap->layer_count;
-    size_t grid_size = (size_t)(tilemap->width * tilemap->height) * sizeof(int64_t);
+    char layer_name[sizeof(tilemap->layers[0].name)];
+    memset(layer_name, 0, sizeof(layer_name));
+    if (name) {
+        const char *cstr = rt_string_cstr(name);
+        if (cstr) {
+            size_t len = strlen(cstr);
+            if (len >= sizeof(layer_name))
+                return -1;
+            memcpy(layer_name, cstr, len);
+        }
+    }
 
     int64_t *grid = (int64_t *)malloc(grid_size);
     if (!grid)
@@ -714,17 +785,7 @@ int64_t rt_tilemap_add_layer(void *tilemap_ptr, rt_string name) {
     layer->visible = 1;
     layer->owns_tiles = 1;
 
-    // Copy layer name (truncate to 31 chars)
-    memset(layer->name, 0, sizeof(layer->name));
-    if (name) {
-        const char *cstr = rt_string_cstr(name);
-        if (cstr) {
-            size_t len = strlen(cstr);
-            if (len > 31)
-                len = 31;
-            memcpy(layer->name, cstr, len);
-        }
-    }
+    memcpy(layer->name, layer_name, sizeof(layer->name));
 
     tilemap->layer_count = idx + 1;
     return (int64_t)idx;
@@ -938,8 +999,8 @@ void rt_tilemap_draw_layer(
     int64_t th = tilemap->tile_height > 0 ? tilemap->tile_height : 1;
 
     // Viewport culling
-    int64_t first_x = tilemap_floor_div(-cam_x, tw);
-    int64_t first_y = tilemap_floor_div(-cam_y, th);
+    int64_t first_x = tilemap_floor_div(tilemap_negate_saturating(cam_x), tw);
+    int64_t first_y = tilemap_floor_div(tilemap_negate_saturating(cam_y), th);
     if (first_x < 0)
         first_x = 0;
     if (first_y < 0)
@@ -947,14 +1008,11 @@ void rt_tilemap_draw_layer(
 
     int64_t canvas_w = rt_canvas_width(canvas_ptr);
     int64_t canvas_h = rt_canvas_height(canvas_ptr);
-    int64_t vis_w = canvas_w / tw + 2;
-    int64_t vis_h = canvas_h / th + 2;
+    int64_t vis_w = tilemap_add_two_saturating(canvas_w / tw);
+    int64_t vis_h = tilemap_add_two_saturating(canvas_h / th);
 
-    if (first_x + vis_w > tilemap->width)
-        vis_w = tilemap->width - first_x;
-    if (first_y + vis_h > tilemap->height)
-        vis_h = tilemap->height - first_y;
-    if (vis_w <= 0 || vis_h <= 0)
+    if (!tilemap_clip_span_to_bounds(&first_x, &vis_w, tilemap->width) ||
+        !tilemap_clip_span_to_bounds(&first_y, &vis_h, tilemap->height))
         return;
 
     rt_tilemap_draw_region_layer_impl(tilemap,
@@ -1039,21 +1097,28 @@ void rt_tilemap_set_tile_anim_frame(void *tilemap_ptr,
 }
 
 /// @brief Advance all registered tile animations by `dt_ms` milliseconds.
-/// Each animation accumulates time and rolls its `current_frame` modulo `frame_count`. The
-/// `while` loop catches large dt values that span multiple frames in one tick.
+/// Negative deltas are ignored. Large deltas advance by division/modulo so one call can span many
+/// frames without looping once per elapsed frame.
 void rt_tilemap_update_anims(void *tilemap_ptr, int64_t dt_ms) {
     if (!tilemap_ptr)
         return;
+    if (dt_ms < 0)
+        dt_ms = 0;
     rt_tilemap_impl *tm = (rt_tilemap_impl *)tilemap_ptr;
     for (int32_t i = 0; i < tm->tile_anim_count; i++) {
         tm_tile_anim *anim = &tm->tile_anims[i];
         if (anim->ms_per_frame <= 0 || anim->frame_count <= 0)
             continue;
-        anim->timer += dt_ms;
-        while (anim->timer >= anim->ms_per_frame) {
-            anim->timer -= anim->ms_per_frame;
-            anim->current_frame = (anim->current_frame + 1) % anim->frame_count;
-        }
+        if (dt_ms > INT64_MAX - anim->timer)
+            anim->timer = INT64_MAX;
+        else
+            anim->timer += dt_ms;
+        int64_t steps = anim->timer / anim->ms_per_frame;
+        if (steps <= 0)
+            continue;
+        anim->timer %= anim->ms_per_frame;
+        anim->current_frame =
+            (anim->current_frame + (int32_t)(steps % anim->frame_count)) % anim->frame_count;
     }
 }
 

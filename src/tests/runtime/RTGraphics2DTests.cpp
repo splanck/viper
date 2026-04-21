@@ -12,6 +12,7 @@
 
 #include "rt_graphics2d.h"
 #include "rt_camera.h"
+#include "rt_graphics.h"
 #include "rt_internal.h"
 #include "rt_pixels.h"
 #include "rt_sprite.h"
@@ -19,6 +20,7 @@
 #include "rt_tilemap.h"
 
 #include <cassert>
+#include <climits>
 #include <cstdint>
 #include <cstdio>
 
@@ -53,6 +55,9 @@ static void test_render_target_alpha_blend() {
     assert(red_of(blended) >= 126 && red_of(blended) <= 129);
     assert(green_of(blended) == 0);
     assert(blue_of(blended) == 0);
+
+    rt_rendertarget2d_draw_region(target, INT64_MAX - 1, 0, src, -1, 0, INT64_MAX, 1);
+    assert(rt_pixels_get(rt_rendertarget2d_get_pixels(target), 0, 0) == 0x000000FF);
     printf("test_render_target_alpha_blend: PASSED\n");
 }
 
@@ -97,6 +102,10 @@ static void test_texture_renderer_material_and_effects() {
     assert(rt_renderer2d_count(renderer) == 1);
     rt_renderer2d_flush_to_target(renderer, target);
     assert(rt_pixels_get(rt_rendertarget2d_get_pixels(target), 1, 1) == 0x808080FF);
+    rt_renderer2d_end(renderer, nullptr);
+    assert(rt_renderer2d_count(renderer) == 0);
+    rt_renderer2d_end(renderer, nullptr);
+    assert(rt_renderer2d_count(renderer) == 0);
     printf("test_texture_renderer_material_and_effects: PASSED\n");
 }
 
@@ -154,11 +163,16 @@ static void test_paths_shapes_text_nineslice_and_debugdraw() {
     assert(rt_path2d_count(path) == 2);
     rt_path2d_draw_to_pixels(path, pixels, 0x00FF0000);
     assert(rt_pixels_get(pixels, 3, 0) == 0xFF0000FF);
+    rt_path2d_draw_to_pixels(path, pixels, rt_color_rgba(0, 0, 255, 255));
+    assert(rt_pixels_get(pixels, 3, 0) == 0x0000FFFF);
 
     void *shape = rt_shaperenderer2d_new();
     rt_shaperenderer2d_set_stroke(shape, 0x0000FF00);
     rt_shaperenderer2d_line(shape, pixels, 0, 1, 3, 1);
     assert(rt_pixels_get(pixels, 3, 1) == 0x00FF00FF);
+    rt_shaperenderer2d_set_stroke(shape, rt_color_rgba(255, 0, 0, 255));
+    rt_shaperenderer2d_line(shape, pixels, 0, 3, 3, 3);
+    assert(rt_pixels_get(pixels, 3, 3) == 0xFF0000FF);
 
     rt_string text = rt_str_from_lit("Hi", 2);
     void *text_renderer = rt_textrenderer2d_new();
@@ -185,9 +199,11 @@ static void test_paths_shapes_text_nineslice_and_debugdraw() {
     void *debug = rt_debugdraw2d_new(1);
     rt_debugdraw2d_line(debug, 0, 2, 3, 2, 0x000000FF);
     rt_debugdraw2d_rect(debug, 1, 1, 3, 3, 0x00FFFFFF);
-    assert(rt_debugdraw2d_count(debug) == 2);
+    rt_debugdraw2d_line(debug, 0, 4, 3, 4, rt_color_rgba(0, 255, 0, 255));
+    assert(rt_debugdraw2d_count(debug) == 3);
     rt_debugdraw2d_draw_to_pixels(debug, pixels);
     assert(rt_pixels_get(pixels, 0, 2) == 0x0000FFFF);
+    assert(rt_pixels_get(pixels, 3, 4) == 0x00FF00FF);
     rt_debugdraw2d_clear(debug);
     assert(rt_debugdraw2d_count(debug) == 0);
     printf("test_paths_shapes_text_nineslice_and_debugdraw: PASSED\n");
@@ -249,11 +265,18 @@ static void test_animation_collision_palette_gradient_and_rig() {
     rt_collisionmask2d_set(mask_a, 1, 1, 1);
     rt_collisionmask2d_set(mask_b, 0, 0, 1);
     assert(rt_collisionmask2d_overlaps(mask_a, 0, 0, mask_b, 1, 1) == 1);
+    rt_collisionmask2d_set(mask_a, 1, 0, 1);
+    rt_collisionmask2d_set(mask_b, 0, 0, 1);
+    assert(rt_collisionmask2d_overlaps(mask_a, INT64_MAX - 1, 0, mask_b, INT64_MAX, 0) == 1);
 
     void *hit_a = rt_hitbox2d_new(0, 0, 10, 10);
     void *hit_b = rt_hitbox2d_new(5, 5, 2, 2);
     assert(rt_hitbox2d_contains(hit_a, 9, 9) == 1);
     assert(rt_hitbox2d_intersects(hit_a, hit_b) == 1);
+    void *hit_max = rt_hitbox2d_new(INT64_MAX - 1, 0, 2, 2);
+    void *hit_edge = rt_hitbox2d_new(INT64_MAX, 1, 1, 1);
+    assert(rt_hitbox2d_contains(hit_max, INT64_MAX, 1) == 1);
+    assert(rt_hitbox2d_intersects(hit_max, hit_edge) == 1);
 
     void *palette = rt_palette2d_new();
     rt_palette2d_set_color(palette, 3, 0xFF0000FF);

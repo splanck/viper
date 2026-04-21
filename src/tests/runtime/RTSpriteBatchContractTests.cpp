@@ -33,12 +33,16 @@ DrawCall g_alpha_calls[16];
 DrawCall g_region_calls[16];
 int g_alpha_call_count = 0;
 int g_region_call_count = 0;
+int g_tint_call_count = 0;
+int64_t g_last_tint = -2;
 
 void reset_draw_calls() {
     std::memset(g_alpha_calls, 0, sizeof(g_alpha_calls));
     std::memset(g_region_calls, 0, sizeof(g_region_calls));
     g_alpha_call_count = 0;
     g_region_call_count = 0;
+    g_tint_call_count = 0;
+    g_last_tint = -2;
 }
 
 } // namespace
@@ -68,7 +72,9 @@ extern "C" void rt_trap(const char *msg) {
     std::abort();
 }
 
-extern "C" void *rt_pixels_tint(void *pixels, int64_t) {
+extern "C" void *rt_pixels_tint(void *pixels, int64_t tint) {
+    g_tint_call_count++;
+    g_last_tint = tint;
     return pixels;
 }
 
@@ -170,9 +176,41 @@ static void test_depth_sort_preserves_submission_order_within_equal_depth() {
     assert(g_region_calls[2].pixels_id == 30);
 }
 
+static void test_zero_tint_applies_black_and_negative_tint_disables_tint() {
+    StubPixels pixels{4, 4, 50};
+
+    void *batch = rt_spritebatch_new(0);
+    assert(batch != nullptr);
+
+    rt_spritebatch_begin(batch);
+    rt_spritebatch_draw_pixels(batch, &pixels, 0, 0);
+    reset_draw_calls();
+    rt_spritebatch_end(batch, reinterpret_cast<void *>(1));
+    assert(g_alpha_call_count == 1);
+    assert(g_tint_call_count == 0);
+
+    rt_spritebatch_set_tint(batch, 0);
+    rt_spritebatch_begin(batch);
+    rt_spritebatch_draw_pixels(batch, &pixels, 0, 0);
+    reset_draw_calls();
+    rt_spritebatch_end(batch, reinterpret_cast<void *>(1));
+    assert(g_alpha_call_count == 1);
+    assert(g_tint_call_count == 1);
+    assert(g_last_tint == 0);
+
+    rt_spritebatch_set_tint(batch, -1);
+    rt_spritebatch_begin(batch);
+    rt_spritebatch_draw_pixels(batch, &pixels, 0, 0);
+    reset_draw_calls();
+    rt_spritebatch_end(batch, reinterpret_cast<void *>(1));
+    assert(g_alpha_call_count == 1);
+    assert(g_tint_call_count == 0);
+}
+
 int main() {
     test_equal_depth_pixels_preserve_submission_order();
     test_depth_sort_preserves_submission_order_within_equal_depth();
+    test_zero_tint_applies_black_and_negative_tint_disables_tint();
     std::printf("RTSpriteBatchContractTests passed.\n");
     return 0;
 }

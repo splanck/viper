@@ -62,7 +62,8 @@ These classes are CPU-backed in the current runtime and build on `Pixels`, `Canv
 ## Color And Scale Conventions
 
 - `Pixels` storage is `0xRRGGBBAA`.
-- Shape and debug draw colors accept Canvas-style `0x00RRGGBB`; full RGBA input is also accepted by dropping alpha for the current CPU drawing primitives.
+- Shape, path, and debug draw colors accept Canvas-style `0x00RRGGBB` and `Color.RGBA(...)` / `0xAARRGGBB`; alpha is ignored by these RGB-only CPU drawing primitives.
+- Renderer/material/blend-state tint uses `-1` for no tint. A tint value of `0` is black.
 - `Viewport2D.Scale` is fixed-point with `1000` representing `1.0x`. For example, `4000` means `4.0x`.
 - `Texture2D.Filter` uses `0 = nearest`, `1 = linear`.
 - `Texture2D.Wrap` uses `0 = clamp`, `1 = repeat`.
@@ -84,7 +85,7 @@ renderer.FlushToTarget(target)
 canvas.BlitAlpha(0, 0, target.Pixels)
 ```
 
-`Renderer2D` keeps retained references to queued sources, so textures and pixels can be queued safely during a frame. Calling `Begin` clears the previous command list.
+`Renderer2D` keeps retained references to queued sources, so textures and pixels can be queued safely during a frame. Calling `Begin` clears the previous command list. `FlushToTarget(target)` draws to an offscreen target without ending the batch; `End(canvas)` draws to a Canvas, clears queued commands, and makes repeated `End` calls a no-op until the next `Begin`.
 
 ## Tile And Object Layers
 
@@ -157,4 +158,4 @@ rig.Update()
 - `GpuTexture2D` is a compatibility alias today. It intentionally exposes the same behavior as `Texture2D` until a GPU-backed renderer is available.
 - `SdfFont` is an SDF-ready API surface, not a full signed-distance-field rasterizer yet.
 - `ParticleSystem2D` and `Emitter2D` share the same implementation as `Viper.Game.ParticleEmitter`, including `DrawToPixels`.
-- `TexturePackerAtlas`, `AsepriteImporter`, and `TiledMapLoader` are runtime-side helpers for common 2D asset layouts. They currently provide atlas/tilemap construction primitives rather than full external JSON or `.aseprite` file parsing.
+- `TexturePackerAtlas`, `AsepriteImporter`, and `TiledMapLoader` are runtime-side helpers for common 2D asset layouts. They currently provide atlas/tilemap construction primitives rather than full external JSON or `.aseprite` file parsing. Atlas regions are validated against their backing `Pixels` buffer before registration.

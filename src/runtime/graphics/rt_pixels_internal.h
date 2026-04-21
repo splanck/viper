@@ -45,7 +45,8 @@ typedef struct rt_pixels_impl {
 
 /// @brief Convert 0x00RRGGBB canvas color to 0xRRGGBBFF (fully-opaque RGBA).
 static inline uint32_t rgb_to_rgba(int64_t color) {
-    return (uint32_t)((color << 8) | 0xFF);
+    uint32_t rgb = (uint32_t)((uint64_t)color & 0x00FFFFFFu);
+    return (rgb << 8) | 0xFFu;
 }
 
 /// @brief Write one pixel with bounds check (no null check — caller ensures p is valid).

@@ -30,6 +30,14 @@
 
 #ifdef VIPER_ENABLE_GRAPHICS
 
+static int32_t rt_canvas_dimension_to_i32(int64_t value, const char *op) {
+    if (value <= 0 || value > INT32_MAX) {
+        rt_trap(op);
+        return 0;
+    }
+    return (int32_t)value;
+}
+
 /// @brief Clear keyboard/mouse module references that point at this window.
 /// @details The input modules cache the active canvas so global queries like
 ///          `Action.Held()` can route to the right vgfx window. When a canvas
@@ -107,6 +115,11 @@ int8_t rt_canvas_is_available(void) {
 /// @return Opaque canvas handle, or NULL if window creation fails (e.g., no
 ///   display server available). On failure, traps with a diagnostic message.
 void *rt_canvas_new(rt_string title, int64_t width, int64_t height) {
+    int32_t win_width = rt_canvas_dimension_to_i32(width, "Canvas.New: invalid width");
+    int32_t win_height = rt_canvas_dimension_to_i32(height, "Canvas.New: invalid height");
+    if (win_width <= 0 || win_height <= 0)
+        return NULL;
+
     rt_canvas *canvas = (rt_canvas *)rt_obj_new_i64(0, (int64_t)sizeof(rt_canvas));
     if (!canvas)
         return NULL;
@@ -128,8 +141,8 @@ void *rt_canvas_new(rt_string title, int64_t width, int64_t height) {
     rt_obj_set_finalizer(canvas, rt_canvas_finalize);
 
     vgfx_window_params_t params = vgfx_window_params_default();
-    params.width = (int32_t)width;
-    params.height = (int32_t)height;
+    params.width = win_width;
+    params.height = win_height;
     char *ctitle = NULL;
     if (title) {
         size_t title_len = (size_t)rt_str_len(title);
@@ -495,7 +508,11 @@ rt_string rt_canvas_get_title(void *canvas_ptr) {
 void rt_canvas_resize(void *canvas_ptr, int64_t width, int64_t height) {
     rt_canvas *canvas = (rt_canvas *)canvas_ptr;
     if (canvas && canvas->gfx_win) {
-        vgfx_set_window_size(canvas->gfx_win, (int32_t)width, (int32_t)height);
+        int32_t win_width = rt_canvas_dimension_to_i32(width, "Canvas.Resize: invalid width");
+        int32_t win_height = rt_canvas_dimension_to_i32(height, "Canvas.Resize: invalid height");
+        if (win_width <= 0 || win_height <= 0)
+            return;
+        vgfx_set_window_size(canvas->gfx_win, win_width, win_height);
         rt_canvas_resync_window_state(canvas);
     }
 }

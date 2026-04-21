@@ -27,6 +27,8 @@ static int64_t g_next_pixels_id = 1000;
 static int64_t g_last_blit_pixels_id = 0;
 static int64_t g_last_blit_x = 0;
 static int64_t g_last_blit_y = 0;
+static int g_tint_call_count = 0;
+static int64_t g_last_tint = -2;
 
 static StubPixels *make_pixels(int64_t width, int64_t height, int64_t id) {
     auto *pixels = static_cast<StubPixels *>(std::calloc(1, sizeof(StubPixels)));
@@ -35,6 +37,14 @@ static StubPixels *make_pixels(int64_t width, int64_t height, int64_t id) {
     pixels->height = height;
     pixels->id = id;
     return pixels;
+}
+
+static void reset_draw_state() {
+    g_last_blit_pixels_id = 0;
+    g_last_blit_x = 0;
+    g_last_blit_y = 0;
+    g_tint_call_count = 0;
+    g_last_tint = -2;
 }
 
 static void test_flip_x_uses_returned_pixels_buffer() {
@@ -82,6 +92,23 @@ static void test_tiny_positive_scale_still_has_nonzero_collision_bounds() {
 
     assert(rt_sprite_contains(a, 5, 7) == 1);
     assert(rt_sprite_overlaps(a, b) == 1);
+}
+
+static void test_transformed_tint_zero_is_black_and_negative_is_no_tint() {
+    StubPixels source{6, 6, 50};
+    void *sprite = rt_sprite_new(&source);
+    assert(sprite != nullptr);
+
+    reset_draw_state();
+    rt_sprite_draw_transformed(sprite, reinterpret_cast<void *>(1), 0, 0, 100, 100, 0, -1, 255);
+    assert(g_tint_call_count == 0);
+    assert(g_last_blit_pixels_id == 50);
+
+    reset_draw_state();
+    rt_sprite_draw_transformed(sprite, reinterpret_cast<void *>(1), 0, 0, 100, 100, 0, 0, 255);
+    assert(g_tint_call_count == 1);
+    assert(g_last_tint == 0);
+    assert(g_last_blit_pixels_id != 50);
 }
 
 } // namespace
@@ -161,7 +188,9 @@ extern "C" void *rt_pixels_rotate(void *pixels, double) {
     return src ? make_pixels(src->width, src->height, g_next_pixels_id++) : nullptr;
 }
 
-extern "C" void *rt_pixels_tint(void *pixels, int64_t) {
+extern "C" void *rt_pixels_tint(void *pixels, int64_t tint) {
+    g_tint_call_count++;
+    g_last_tint = tint;
     auto *src = static_cast<StubPixels *>(pixels);
     return src ? make_pixels(src->width, src->height, g_next_pixels_id++) : nullptr;
 }
@@ -213,5 +242,6 @@ int main() {
     test_flip_x_uses_returned_pixels_buffer();
     test_scale_setters_clamp_to_positive_values();
     test_tiny_positive_scale_still_has_nonzero_collision_bounds();
+    test_transformed_tint_zero_is_black_and_negative_is_no_tint();
     return 0;
 }

@@ -614,7 +614,7 @@ void rt_scene_node_draw(void *node_ptr, void *canvas) {
                                    node->world_scale_x,
                                    node->world_scale_y,
                                    node->world_rotation,
-                                   0,
+                                   -1,
                                    255);
 
     // Draw children in insertion order
@@ -652,7 +652,7 @@ void rt_scene_node_draw_with_camera(void *node_ptr, void *canvas, void *camera) 
         }
 
         rt_sprite_draw_transformed(
-            node->sprite, canvas, screen_x, screen_y, scale_x, scale_y, rotation, 0, 255);
+            node->sprite, canvas, screen_x, screen_y, scale_x, scale_y, rotation, -1, 255);
     }
 
     // Draw children
@@ -858,7 +858,7 @@ void rt_scene_draw(void *scene_ptr, void *canvas) {
                                        node->world_scale_x,
                                        node->world_scale_y,
                                        node->world_rotation,
-                                       0,
+                                       -1,
                                        255);
     }
 
@@ -926,7 +926,7 @@ void rt_scene_draw_with_camera(void *scene_ptr, void *canvas, void *camera) {
             }
 
             rt_sprite_draw_transformed(
-                node->sprite, canvas, screen_x, screen_y, final_sx, final_sy, rotation, 0, 255);
+                node->sprite, canvas, screen_x, screen_y, final_sx, final_sy, rotation, -1, 255);
         }
     }
 
