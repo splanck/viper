@@ -35,6 +35,7 @@
 #include "rt_object.h"
 #include "rt_threads.h"
 
+#include <limits.h>
 #include <stdlib.h>
 #include <string.h>
 #if defined(_WIN32)
@@ -78,7 +79,9 @@ typedef struct {
 
 static channel_deadline channel_deadline_from_now(int64_t ms) {
     channel_deadline d;
-    d.deadline = GetTickCount64() + (ms > 0 ? (ULONGLONG)ms : 0);
+    ULONGLONG now = GetTickCount64();
+    ULONGLONG add = ms > 0 ? (ULONGLONG)ms : 0;
+    d.deadline = (ULLONG_MAX - now < add) ? ULLONG_MAX : now + add;
     return d;
 }
 
@@ -95,8 +98,15 @@ static channel_deadline channel_deadline_from_now(int64_t ms) {
     channel_deadline d;
     clock_gettime(CLOCK_MONOTONIC, &d.deadline);
     if (ms > 0) {
-        d.deadline.tv_sec += ms / 1000;
-        d.deadline.tv_nsec += (ms % 1000) * 1000000L;
+        int64_t add_sec = ms / 1000;
+        long add_nsec = (long)((ms % 1000) * 1000000L);
+        if (add_sec > (int64_t)LONG_MAX - (int64_t)d.deadline.tv_sec) {
+            d.deadline.tv_sec = (time_t)LONG_MAX;
+            d.deadline.tv_nsec = 999999999L;
+            return d;
+        }
+        d.deadline.tv_sec += (time_t)add_sec;
+        d.deadline.tv_nsec += add_nsec;
         if (d.deadline.tv_nsec >= 1000000000L) {
             d.deadline.tv_sec++;
             d.deadline.tv_nsec -= 1000000000L;
@@ -116,6 +126,8 @@ static int64_t channel_remaining_ms(channel_deadline d) {
     }
     if (sec < 0)
         return 0;
+    if (sec > INT64_MAX / 1000)
+        return INT64_MAX;
     return sec * 1000 + ns / 1000000L;
 }
 #endif
@@ -375,24 +387,8 @@ int8_t rt_channel_send_for(void *channel, void *item, int64_t ms) {
         ch->count = 1;
         rt_monitor_pause_all(ch->monitor);
 
-        while (ch->sync_acked_epoch < my_epoch) {
-            int64_t remaining = channel_remaining_ms(deadline);
-            if (remaining <= 0 || !rt_monitor_wait_for(ch->monitor, remaining)) {
-                if (ch->sync_acked_epoch >= my_epoch)
-                    break;
-                if (ch->count != 0) {
-                    void *pending = ch->buffer[0];
-                    ch->buffer[0] = NULL;
-                    ch->count = 0;
-                    if (pending && rt_obj_release_check0(pending))
-                        rt_obj_free(pending);
-                    rt_monitor_pause_all(ch->monitor);
-                }
-                ch->waiting_senders--;
-                rt_monitor_exit(ch->monitor);
-                return 0;
-            }
-        }
+        while (ch->sync_acked_epoch < my_epoch)
+            rt_monitor_wait(ch->monitor);
         ch->waiting_senders--;
         rt_monitor_exit(ch->monitor);
         return 1;
@@ -516,8 +512,25 @@ int8_t rt_channel_try_recv(void *channel, void **out) {
 
     rt_monitor_enter(ch->monitor);
 
+    if (!out) {
+        int8_t available =
+            ch->capacity == 0 ? (ch->count > 0 || (ch->waiting_senders > 0 && !ch->closed)) : ch->count > 0;
+        rt_monitor_exit(ch->monitor);
+        return available;
+    }
+
     // For synchronous channel, need a waiting sender
     if (ch->capacity == 0) {
+        if (ch->count == 0 && ch->waiting_senders > 0 && !ch->closed) {
+            ch->waiting_receivers++;
+            rt_monitor_pause(ch->monitor);
+            while (ch->count == 0 && !ch->closed) {
+                if (!rt_monitor_wait_for(ch->monitor, 1))
+                    break;
+            }
+            ch->waiting_receivers--;
+        }
+
         if (ch->count == 0) {
             rt_monitor_exit(ch->monitor);
             return 0;
@@ -530,10 +543,7 @@ int8_t rt_channel_try_recv(void *channel, void **out) {
         if (ch->waiting_senders > 0)
             rt_monitor_pause_all(ch->monitor);
 
-        if (out)
-            *out = item;
-        else if (item && rt_obj_release_check0(item))
-            rt_obj_free(item);
+        *out = item;
 
         rt_monitor_exit(ch->monitor);
         return 1;
@@ -551,13 +561,18 @@ int8_t rt_channel_try_recv(void *channel, void **out) {
     if (ch->waiting_senders > 0)
         rt_monitor_pause(ch->monitor);
 
-    if (out)
-        *out = item;
-    else if (item && rt_obj_release_check0(item))
-        rt_obj_free(item);
+    *out = item;
 
     rt_monitor_exit(ch->monitor);
     return 1;
+}
+
+/// @brief Managed ABI wrapper for TryRecv. Returns the item, or NULL if none is available.
+void *rt_channel_try_recv_val(void *channel) {
+    void *out = NULL;
+    if (!rt_channel_try_recv(channel, &out))
+        return NULL;
+    return out;
 }
 
 /// @brief Receive with a timeout. Returns 1 and sets *out if received, 0 on timeout/close.
@@ -646,6 +661,14 @@ int8_t rt_channel_recv_for(void *channel, void **out, int64_t ms) {
     return 1;
 }
 
+/// @brief Managed ABI wrapper for RecvFor. Returns the item, or NULL if timed out/closed.
+void *rt_channel_recv_for_val(void *channel, int64_t ms) {
+    void *out = NULL;
+    if (!rt_channel_recv_for(channel, &out, ms))
+        return NULL;
+    return out;
+}
+
 //=============================================================================
 // Public API - Close
 //=============================================================================
@@ -696,7 +719,10 @@ int64_t rt_channel_get_cap(void *channel) {
         return 0;
 
     channel_impl *ch = (channel_impl *)channel;
-    return ch->capacity;
+    rt_monitor_enter(ch->monitor);
+    int64_t cap = ch->capacity;
+    rt_monitor_exit(ch->monitor);
+    return cap;
 }
 
 /// @brief Check whether the channel has been closed.
@@ -705,7 +731,10 @@ int8_t rt_channel_get_is_closed(void *channel) {
         return 1;
 
     channel_impl *ch = (channel_impl *)channel;
-    return ch->closed;
+    rt_monitor_enter(ch->monitor);
+    int8_t closed = ch->closed;
+    rt_monitor_exit(ch->monitor);
+    return closed;
 }
 
 /// @brief Check whether the channel buffer is empty (no items waiting to be received).
@@ -729,11 +758,8 @@ int8_t rt_channel_get_is_full(void *channel) {
 
     channel_impl *ch = (channel_impl *)channel;
 
-    if (ch->capacity == 0)
-        return 1; // Synchronous channels are always "full"
-
     rt_monitor_enter(ch->monitor);
-    int8_t full = (ch->count >= ch->capacity) ? 1 : 0;
+    int8_t full = (ch->capacity == 0 || ch->count >= ch->capacity) ? 1 : 0;
     rt_monitor_exit(ch->monitor);
 
     return full;

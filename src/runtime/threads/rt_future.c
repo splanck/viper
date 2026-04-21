@@ -35,8 +35,10 @@
 #include "rt_future.h"
 #include "rt_internal.h"
 #include "rt_object.h"
+#include "rt_string_internal.h"
 
 #include <errno.h>
+#include <limits.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -156,10 +158,15 @@ static future_deadline_t future_deadline_abs_from_now(int64_t ms, int8_t use_mon
     if (ms <= 0)
         return d;
 
-    const int64_t kNsPerMs = 1000000;
-    int64_t add_ns = ms * kNsPerMs;
-    int64_t sec = (int64_t)d.deadline.tv_sec + add_ns / 1000000000;
-    int64_t ns = (int64_t)d.deadline.tv_nsec + add_ns % 1000000000;
+    int64_t add_sec = ms / 1000;
+    long add_nsec = (long)((ms % 1000) * 1000000L);
+    if (add_sec > (int64_t)LONG_MAX - (int64_t)d.deadline.tv_sec) {
+        d.deadline.tv_sec = (time_t)LONG_MAX;
+        d.deadline.tv_nsec = 999999999L;
+        return d;
+    }
+    int64_t sec = (int64_t)d.deadline.tv_sec + add_sec;
+    int64_t ns = (int64_t)d.deadline.tv_nsec + add_nsec;
     if (ns >= 1000000000) {
         sec += 1;
         ns -= 1000000000;
@@ -182,6 +189,8 @@ static int64_t future_remaining_ms(future_deadline_t deadline, int8_t use_monoto
     }
     if (sec < 0)
         return 0;
+    if (sec > INT64_MAX / 1000)
+        return INT64_MAX;
     return sec * 1000 + ns / 1000000L;
 }
 #endif
@@ -299,6 +308,7 @@ void *rt_promise_get_future(void *obj) {
     pthread_mutex_lock(&p->mutex);
 #endif
 
+    int8_t created = 0;
     if (!p->future) {
         future_impl *f = (future_impl *)rt_obj_new_i64(0, (int64_t)sizeof(future_impl));
         if (!f) {
@@ -313,9 +323,12 @@ void *rt_promise_get_future(void *obj) {
         rt_obj_retain_maybe(p); // Future holds a reference to prevent premature GC of promise
         rt_obj_set_finalizer(f, future_finalizer);
         p->future = f;
+        created = 1;
     }
 
     void *result = p->future;
+    if (!created && result)
+        rt_obj_retain_maybe(result);
 
 #ifdef _WIN32
     LeaveCriticalSection(&p->mutex);
@@ -436,6 +449,49 @@ void rt_promise_set_owned(void *obj, void *value) {
     future_notify_listeners(listeners);
 }
 
+/// @brief Resolve the promise by transferring an existing producer reference.
+/// @details This marks the value as promise-owned without retaining it first.
+///          It is intended for async callback results where the callback's
+///          returned reference is handed directly to the Future.
+void rt_promise_set_transferred(void *obj, void *value) {
+    if (!obj)
+        rt_trap("Promise: null object");
+
+    promise_impl *p = (promise_impl *)obj;
+
+#ifdef _WIN32
+    EnterCriticalSection(&p->mutex);
+#else
+    pthread_mutex_lock(&p->mutex);
+#endif
+
+    if (p->done) {
+#ifdef _WIN32
+        LeaveCriticalSection(&p->mutex);
+#else
+        pthread_mutex_unlock(&p->mutex);
+#endif
+        rt_trap("Promise: already completed");
+    }
+
+    p->value = value;
+    p->done = 1;
+    p->is_error = 0;
+    p->owns_value = value ? 1 : 0;
+    future_listener *listeners = p->listeners;
+    p->listeners = NULL;
+
+#ifdef _WIN32
+    WakeAllConditionVariable(&p->cond);
+    LeaveCriticalSection(&p->mutex);
+#else
+    pthread_cond_broadcast(&p->cond);
+    pthread_mutex_unlock(&p->mutex);
+#endif
+
+    future_notify_listeners(listeners);
+}
+
 /// @brief Complete the promise with an error; wakes all waiting futures.
 void rt_promise_set_error(void *obj, rt_string error) {
     if (!obj)
@@ -458,10 +514,9 @@ void rt_promise_set_error(void *obj, rt_string error) {
         rt_trap("Promise: already completed");
     }
 
-    // Copy the error string
-    const char *err_str = rt_string_cstr(error);
-    p->error =
-        err_str ? rt_string_from_bytes(err_str, strlen(err_str)) : rt_const_cstr("Unknown error");
+    const char *err_str = error ? rt_string_cstr(error) : NULL;
+    p->error = err_str ? rt_string_from_bytes(err_str, rt_string_len_bytes(error))
+                       : rt_const_cstr("Unknown error");
     p->done = 1;
     p->is_error = 1;
     p->owns_value = 0;
@@ -510,11 +565,21 @@ void *rt_future_get(void *obj) {
 
     future_impl *f = (future_impl *)obj;
     promise_impl *p = f->promise;
+    void *result = NULL;
+    rt_string error = NULL;
+    int8_t is_error = 0;
 
 #ifdef _WIN32
     EnterCriticalSection(&p->mutex);
     while (!p->done) {
         SleepConditionVariableCS(&p->cond, &p->mutex, INFINITE);
+    }
+    if (p->is_error) {
+        is_error = 1;
+        if (p->error)
+            error = rt_string_ref(p->error);
+    } else {
+        result = future_export_value_locked(p);
     }
     LeaveCriticalSection(&p->mutex);
 #else
@@ -522,15 +587,36 @@ void *rt_future_get(void *obj) {
     while (!p->done) {
         pthread_cond_wait(&p->cond, &p->mutex);
     }
+    if (p->is_error) {
+        is_error = 1;
+        if (p->error)
+            error = rt_string_ref(p->error);
+    } else {
+        result = future_export_value_locked(p);
+    }
     pthread_mutex_unlock(&p->mutex);
 #endif
 
-    if (p->is_error) {
-        const char *err = rt_string_cstr(p->error);
-        rt_trap(err ? err : "Future: resolved with error");
+    if (is_error) {
+        char error_msg[512];
+        error_msg[0] = '\0';
+        if (error) {
+            const char *err = rt_string_cstr(error);
+            int64_t len = rt_string_len_bytes(error);
+            if (err && len > 0) {
+                size_t copy_len = (size_t)(len < (int64_t)(sizeof(error_msg) - 1)
+                                               ? len
+                                               : (int64_t)(sizeof(error_msg) - 1));
+                memcpy(error_msg, err, copy_len);
+                error_msg[copy_len] = '\0';
+            }
+            rt_str_release_maybe(error);
+        }
+        rt_trap(error_msg[0] ? error_msg : "Future: resolved with error");
+        return NULL;
     }
 
-    return future_export_value_locked(p);
+    return result;
 }
 
 /// @brief Wait up to @p ms milliseconds for the future to complete, returning success.
@@ -547,10 +633,11 @@ int8_t rt_future_get_for(void *obj, int64_t ms, void **out) {
 
 #ifdef _WIN32
     EnterCriticalSection(&p->mutex);
-    DWORD deadline = GetTickCount() + future_deadline_ms_from_now(ms);
+    ULONGLONG deadline = GetTickCount64() + future_deadline_ms_from_now(ms);
     while (!p->done) {
-        DWORD now = GetTickCount();
-        DWORD remaining = (deadline > now) ? (deadline - now) : 0;
+        ULONGLONG now = GetTickCount64();
+        ULONGLONG delta = (deadline > now) ? (deadline - now) : 0;
+        DWORD remaining = delta > MAXDWORD ? MAXDWORD : (DWORD)delta;
         if (remaining == 0)
             break;
         if (!SleepConditionVariableCS(&p->cond, &p->mutex, remaining) && !p->done) {
@@ -716,10 +803,11 @@ void *rt_future_get_for_val(void *obj, int64_t ms) {
 
 #ifdef _WIN32
     EnterCriticalSection(&p->mutex);
-    DWORD deadline = GetTickCount() + future_deadline_ms_from_now(ms);
+    ULONGLONG deadline = GetTickCount64() + future_deadline_ms_from_now(ms);
     while (!p->done) {
-        DWORD now = GetTickCount();
-        DWORD remaining = (deadline > now) ? (deadline - now) : 0;
+        ULONGLONG now = GetTickCount64();
+        ULONGLONG delta = (deadline > now) ? (deadline - now) : 0;
+        DWORD remaining = delta > MAXDWORD ? MAXDWORD : (DWORD)delta;
         if (remaining == 0)
             break;
         if (!SleepConditionVariableCS(&p->cond, &p->mutex, remaining) && !p->done) {
@@ -782,10 +870,11 @@ int8_t rt_future_wait_for(void *obj, int64_t ms) {
 
 #ifdef _WIN32
     EnterCriticalSection(&p->mutex);
-    DWORD deadline = GetTickCount() + future_deadline_ms_from_now(ms);
+    ULONGLONG deadline = GetTickCount64() + future_deadline_ms_from_now(ms);
     while (!p->done) {
-        DWORD now = GetTickCount();
-        DWORD remaining = (deadline > now) ? (deadline - now) : 0;
+        ULONGLONG now = GetTickCount64();
+        ULONGLONG delta = (deadline > now) ? (deadline - now) : 0;
+        DWORD remaining = delta > MAXDWORD ? MAXDWORD : (DWORD)delta;
         if (remaining == 0)
             break;
         if (!SleepConditionVariableCS(&p->cond, &p->mutex, remaining) && !p->done) {

@@ -38,6 +38,11 @@
 #include <stdlib.h>
 #include <string.h>
 
+static void numfmt_check_sb(rt_sb_status_t status, const char *op) {
+    if (status != RT_SB_OK)
+        rt_trap(op);
+}
+
 static uint64_t abs_i64_magnitude(int64_t n) {
     if (n >= 0)
         return (uint64_t)n;
@@ -116,9 +121,16 @@ rt_string rt_numfmt_decimals(double n, int64_t decimals) {
 ///             exhausted.
 ///          Examples: `1234567 → "1,234,567"`, `-12345 → "-12,345"`.
 rt_string rt_numfmt_thousands(int64_t n, rt_string sep) {
-    const char *sep_cstr = sep ? rt_string_cstr(sep) : ",";
-    if (!sep_cstr || *sep_cstr == '\0')
-        sep_cstr = ",";
+    const char *sep_bytes = ",";
+    size_t sep_len = 1;
+    if (sep) {
+        const char *candidate = rt_string_cstr(sep);
+        int64_t candidate_len = rt_str_len(sep);
+        if (candidate && candidate_len > 0) {
+            sep_bytes = candidate;
+            sep_len = (size_t)candidate_len;
+        }
+    }
 
     int negative = n < 0;
     // Handle INT64_MIN
@@ -134,25 +146,30 @@ rt_string rt_numfmt_thousands(int64_t n, rt_string sep) {
     if (dlen < 0)
         dlen = 0;
 
-    size_t sep_len = strlen(sep_cstr);
     int num_seps = (dlen - 1) / 3;
 
     rt_string_builder sb;
     rt_sb_init(&sb);
 
     if (negative)
-        rt_sb_append_cstr(&sb, "-");
+        numfmt_check_sb(rt_sb_append_cstr(&sb, "-"), "NumberFormat.Thousands: formatting failed");
 
     int first_group = dlen % 3;
     if (first_group == 0)
         first_group = 3;
 
-    rt_sb_append_bytes(&sb, digits, (size_t)first_group);
+    numfmt_check_sb(
+        rt_sb_append_bytes(&sb, digits, (size_t)first_group),
+        "NumberFormat.Thousands: formatting failed");
     int pos = first_group;
 
     while (pos < dlen) {
-        rt_sb_append_bytes(&sb, sep_cstr, sep_len);
-        rt_sb_append_bytes(&sb, digits + pos, 3);
+        numfmt_check_sb(
+            rt_sb_append_bytes(&sb, sep_bytes, sep_len),
+            "NumberFormat.Thousands: formatting failed");
+        numfmt_check_sb(
+            rt_sb_append_bytes(&sb, digits + pos, 3),
+            "NumberFormat.Thousands: formatting failed");
         pos += 3;
     }
 
@@ -173,9 +190,16 @@ rt_string rt_numfmt_thousands(int64_t n, rt_string sep) {
 ///          Hard-codes `,` as the thousands separator — locale-aware
 ///          formatting is intentionally out of scope.
 rt_string rt_numfmt_currency(double n, rt_string symbol) {
-    const char *sym = symbol ? rt_string_cstr(symbol) : "$";
-    if (!sym)
+    const char *sym = "$";
+    size_t sym_len = 1;
+    if (symbol) {
+        sym = rt_string_cstr(symbol);
+        sym_len = (size_t)rt_str_len(symbol);
+    }
+    if (!sym) {
         sym = "$";
+        sym_len = 1;
+    }
 
     int negative = n < 0;
     double abs_n = fabs(n);
@@ -186,33 +210,40 @@ rt_string rt_numfmt_currency(double n, rt_string symbol) {
     int alen = (int)rt_str_len(amount_str);
 
     // Find the decimal point
-    char *dot = strchr(amount, '.');
+    char *dot = (char *)memchr(amount, '.', (size_t)alen);
     int int_len = dot ? (int)(dot - amount) : alen;
 
     rt_string_builder sb;
     rt_sb_init(&sb);
 
     if (negative)
-        rt_sb_append_cstr(&sb, "-");
-    rt_sb_append_cstr(&sb, sym);
+        numfmt_check_sb(rt_sb_append_cstr(&sb, "-"), "NumberFormat.Currency: formatting failed");
+    numfmt_check_sb(
+        rt_sb_append_bytes(&sb, sym, sym_len), "NumberFormat.Currency: formatting failed");
 
     // Add thousands separators to integer part
     int first_group = int_len % 3;
     if (first_group == 0)
         first_group = 3;
 
-    rt_sb_append_bytes(&sb, amount, (size_t)first_group);
+    numfmt_check_sb(
+        rt_sb_append_bytes(&sb, amount, (size_t)first_group),
+        "NumberFormat.Currency: formatting failed");
     int pos = first_group;
 
     while (pos < int_len) {
-        rt_sb_append_cstr(&sb, ",");
-        rt_sb_append_bytes(&sb, amount + pos, 3);
+        numfmt_check_sb(rt_sb_append_cstr(&sb, ","), "NumberFormat.Currency: formatting failed");
+        numfmt_check_sb(
+            rt_sb_append_bytes(&sb, amount + pos, 3),
+            "NumberFormat.Currency: formatting failed");
         pos += 3;
     }
 
     // Add decimal part
     if (dot) {
-        rt_sb_append_cstr(&sb, dot);
+        numfmt_check_sb(
+            rt_sb_append_bytes(&sb, dot, (size_t)(alen - int_len)),
+            "NumberFormat.Currency: formatting failed");
     }
 
     rt_string result = rt_string_from_bytes(sb.data, sb.len);
@@ -239,11 +270,24 @@ rt_string rt_numfmt_percent(double n) {
     if (!isfinite(rounded))
         return numfmt_percent_fixed(rounded, 0);
 
-    double integral = 0.0;
-    double frac = modf(rounded, &integral);
-    if (frac == 0.0 || frac == -0.0)
-        return numfmt_percent_fixed(rounded, 0);
-    return numfmt_percent_fixed(rounded, 1);
+    rt_string formatted = numfmt_percent_fixed(rounded, 1);
+    const char *text = rt_string_cstr(formatted);
+    int64_t len = rt_str_len(formatted);
+
+    if (len >= 3 && text[len - 3] == '.' && text[len - 2] == '0' && text[len - 1] == '%') {
+        rt_string_builder sb;
+        rt_sb_init(&sb);
+        numfmt_check_sb(
+            rt_sb_append_bytes(&sb, text, (size_t)(len - 3)),
+            "NumberFormat.Percent: formatting failed");
+        numfmt_check_sb(rt_sb_append_cstr(&sb, "%"), "NumberFormat.Percent: formatting failed");
+        rt_string trimmed = rt_string_from_bytes(sb.data, sb.len);
+        rt_sb_free(&sb);
+        rt_string_unref(formatted);
+        return trimmed;
+    }
+
+    return formatted;
 }
 
 // ---------------------------------------------------------------------------
@@ -308,25 +352,30 @@ static void append_chunk(rt_string_builder *sb, int64_t n, int *has_prev) {
         return;
 
     if (*has_prev)
-        rt_sb_append_cstr(sb, " ");
+        numfmt_check_sb(rt_sb_append_cstr(sb, " "), "NumberFormat.ToWords: formatting failed");
 
     if (n >= 100) {
-        rt_sb_append_cstr(sb, ones[n / 100]);
-        rt_sb_append_cstr(sb, " hundred");
+        numfmt_check_sb(
+            rt_sb_append_cstr(sb, ones[n / 100]), "NumberFormat.ToWords: formatting failed");
+        numfmt_check_sb(
+            rt_sb_append_cstr(sb, " hundred"), "NumberFormat.ToWords: formatting failed");
         n %= 100;
         if (n > 0)
-            rt_sb_append_cstr(sb, " ");
+            numfmt_check_sb(rt_sb_append_cstr(sb, " "), "NumberFormat.ToWords: formatting failed");
     }
 
     if (n >= 20) {
-        rt_sb_append_cstr(sb, tens[n / 10]);
+        numfmt_check_sb(
+            rt_sb_append_cstr(sb, tens[n / 10]), "NumberFormat.ToWords: formatting failed");
         n %= 10;
         if (n > 0) {
-            rt_sb_append_cstr(sb, "-");
-            rt_sb_append_cstr(sb, ones[n]);
+            numfmt_check_sb(
+                rt_sb_append_cstr(sb, "-"), "NumberFormat.ToWords: formatting failed");
+            numfmt_check_sb(
+                rt_sb_append_cstr(sb, ones[n]), "NumberFormat.ToWords: formatting failed");
         }
     } else if (n > 0) {
-        rt_sb_append_cstr(sb, ones[n]);
+        numfmt_check_sb(rt_sb_append_cstr(sb, ones[n]), "NumberFormat.ToWords: formatting failed");
     }
 
     *has_prev = 1;
@@ -348,7 +397,8 @@ rt_string rt_numfmt_to_words(int64_t n) {
         abs_n = (uint64_t)(negative ? -n : n);
 
     if (negative)
-        rt_sb_append_cstr(&sb, "negative ");
+        numfmt_check_sb(
+            rt_sb_append_cstr(&sb, "negative "), "NumberFormat.ToWords: formatting failed");
 
     // Break into groups of three
     static const char *const scale[] = {"",
@@ -374,8 +424,10 @@ rt_string rt_numfmt_to_words(int64_t n) {
             continue;
         append_chunk(&sb, groups[i], &has_prev);
         if (i > 0 && scale[i][0] != '\0') {
-            rt_sb_append_cstr(&sb, " ");
-            rt_sb_append_cstr(&sb, scale[i]);
+            numfmt_check_sb(
+                rt_sb_append_cstr(&sb, " "), "NumberFormat.ToWords: formatting failed");
+            numfmt_check_sb(
+                rt_sb_append_cstr(&sb, scale[i]), "NumberFormat.ToWords: formatting failed");
         }
     }
 

@@ -12,7 +12,9 @@
 
 #include <cassert>
 #include <cstring>
+#include <string>
 #include <thread>
+#include <vector>
 
 extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
@@ -128,6 +130,78 @@ static void test_duplicate_name_replaces() {
     assert(rt_scheduler_pending(s) == 1);
 }
 
+static void test_embedded_nul_names_are_distinct() {
+    void *s = rt_scheduler_new();
+    const char name1_bytes[3] = {'a', '\0', '1'};
+    const char name2_bytes[3] = {'a', '\0', '2'};
+    rt_string name1 = rt_string_from_bytes(name1_bytes, 3);
+    rt_string name2 = rt_string_from_bytes(name2_bytes, 3);
+
+    rt_scheduler_schedule(s, name1, 0);
+    rt_scheduler_schedule(s, name2, 60000);
+    assert(rt_scheduler_pending(s) == 2);
+    assert(rt_scheduler_is_due(s, name1) == 1);
+    assert(rt_scheduler_is_due(s, name2) == 0);
+
+    assert(rt_scheduler_cancel(s, name1) == 1);
+    assert(rt_scheduler_pending(s) == 1);
+    assert(rt_scheduler_cancel(s, name1) == 0);
+    assert(rt_scheduler_cancel(s, name2) == 1);
+    assert(rt_scheduler_pending(s) == 0);
+}
+
+static void test_embedded_nul_poll_preserves_name() {
+    void *s = rt_scheduler_new();
+    const char name_bytes[3] = {'x', '\0', 'z'};
+    rt_string name = rt_string_from_bytes(name_bytes, 3);
+
+    rt_scheduler_schedule(s, name, 0);
+    std::this_thread::sleep_for(std::chrono::milliseconds(5));
+
+    void *due = rt_scheduler_poll(s);
+    assert(rt_seq_len(due) == 1);
+    const char *got = rt_string_cstr((rt_string)rt_seq_get(due, 0));
+    assert(got[0] == 'x');
+    assert(got[1] == '\0');
+    assert(got[2] == 'z');
+}
+
+static void test_concurrent_schedule_cancel() {
+    void *s = rt_scheduler_new();
+    constexpr int kThreads = 4;
+    constexpr int kTasksPerThread = 50;
+
+    std::vector<std::thread> schedulers;
+    for (int tid = 0; tid < kThreads; ++tid) {
+        schedulers.emplace_back([=]() {
+            for (int i = 0; i < kTasksPerThread; ++i) {
+                std::string name = "task-" + std::to_string(tid) + "-" + std::to_string(i);
+                rt_string rt_name = rt_string_from_bytes(name.data(), (int64_t)name.size());
+                rt_scheduler_schedule(s, rt_name, 60000);
+            }
+        });
+    }
+    for (auto &t : schedulers)
+        t.join();
+
+    assert(rt_scheduler_pending(s) == kThreads * kTasksPerThread);
+
+    std::vector<std::thread> cancellers;
+    for (int tid = 0; tid < kThreads; ++tid) {
+        cancellers.emplace_back([=]() {
+            for (int i = 0; i < kTasksPerThread; i += 2) {
+                std::string name = "task-" + std::to_string(tid) + "-" + std::to_string(i);
+                rt_string rt_name = rt_string_from_bytes(name.data(), (int64_t)name.size());
+                assert(rt_scheduler_cancel(s, rt_name) == 1);
+            }
+        });
+    }
+    for (auto &t : cancellers)
+        t.join();
+
+    assert(rt_scheduler_pending(s) == kThreads * (kTasksPerThread / 2));
+}
+
 static void test_null_safety() {
     assert(rt_scheduler_pending(NULL) == 0);
     /// @brief Rt_scheduler_clear.
@@ -144,6 +218,9 @@ int main() {
     test_poll_returns_due();
     test_clear();
     test_duplicate_name_replaces();
+    test_embedded_nul_names_are_distinct();
+    test_embedded_nul_poll_preserves_name();
+    test_concurrent_schedule_cancel();
     test_null_safety();
     return 0;
 }

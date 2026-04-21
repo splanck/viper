@@ -36,6 +36,7 @@
 #include "rt_object.h"
 #include "rt_seq.h"
 #include "rt_string.h"
+#include "rt_string_internal.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -93,12 +94,16 @@ typedef struct {
 //=============================================================================
 
 static const char *get_key_data(rt_string key, size_t *out_len) {
+    if (!key) {
+        *out_len = 0;
+        return "";
+    }
     const char *cstr = rt_string_cstr(key);
     if (!cstr) {
         *out_len = 0;
         return "";
     }
-    *out_len = strlen(cstr);
+    *out_len = (size_t)rt_string_len_bytes(key);
     return cstr;
 }
 
@@ -434,7 +439,7 @@ void *rt_concmap_keys(void *obj) {
         cm_entry *e = cm->buckets[i];
         while (e) {
             rt_string s = rt_string_from_bytes(e->key, e->key_len);
-            rt_seq_push(seq, (void *)s);
+            rt_seq_push_raw(seq, (void *)s);
             e = e->next;
         }
     }

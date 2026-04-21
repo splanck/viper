@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-13
+last-verified: 2026-04-21
 ---
 
 # Threads
@@ -249,6 +249,7 @@ FIFO-serialized “safe variable” for shared counters and flags.
 
 - Operations are implemented by acquiring a FIFO monitor on the `SafeI64` object itself.
 - You can also lock a `SafeI64` explicitly via `Monitor.Enter(cell)` when you need to group multiple operations.
+- `Add` uses two's-complement wraparound on overflow instead of trapping.
 
 ### Errors (Traps)
 
@@ -335,6 +336,7 @@ FIFO-fair permit gate (semaphore concept).
 
 - **FIFO:** Contended `Enter`/`TryEnterFor` acquisition is FIFO-fair.
 - **Timeout units:** milliseconds. `TryEnterFor` treats negative values as `0` (immediate).
+- `Leave`/`LeaveMany` trap instead of wrapping if the permit count would overflow.
 
 ### Errors (Traps)
 
@@ -344,6 +346,7 @@ FIFO-fair permit gate (semaphore concept).
 - `Gate.TryEnterFor: null object`
 - `Gate.Leave: null object`
 - `Gate.Leave: count cannot be negative`
+- `Gate.Leave: permit count overflow`
 
 ### Zia Example
 
@@ -491,6 +494,9 @@ Writer-preference reader-writer lock.
 ### Notes
 
 - **Writer preference:** new readers block while any writer is waiting.
+- `ReadExit` must be called by the same thread that acquired the read lock.
+- Read-to-write upgrades are not supported: `WriteEnter` traps while the current thread holds a read lock, and `TryWriteEnter` returns false.
+- A thread that already owns the write lock may also enter the read side; this supports explicit write-to-read downgrade patterns when the matching `ReadExit` and `WriteExit` calls are balanced.
 
 ### Errors (Traps)
 
@@ -498,6 +504,7 @@ Writer-preference reader-writer lock.
 - `RwLock.ReadExit: null object`
 - `RwLock.ReadExit: exit without matching enter`
 - `RwLock.WriteEnter: null object`
+- `RwLock.WriteEnter: cannot upgrade read lock`
 - `RwLock.WriteExit: null object`
 - `RwLock.WriteExit: exit without matching enter`
 - `RwLock.WriteExit: not owner`
@@ -592,10 +599,14 @@ Thread pool for submitting tasks to a fixed set of worker threads.
 - Tasks are executed in FIFO order.
 - `Submit` returns false after `Shutdown` or `ShutdownNow` has been called.
 - `ShutdownNow` discards queued tasks; `Shutdown` allows them to finish.
+- Calling `Wait`, `WaitFor`, `Shutdown`, or `ShutdownNow` from a worker in the same pool traps to prevent self-deadlock.
+- Traps raised by a task do not leave the pool stuck in an active state; waits still complete after the worker records the task as finished.
+- Pool handles own their worker thread handles and release them after joins. Releasing a pool from one of its own workers requests shutdown and defers reclamation rather than freeing state out from under the running worker.
 
 ### Zia Example
 
 > Pool requires function pointers (`addr_of`) for task callbacks. See the BASIC example or use `addr_of` in advanced Zia code.
+> VM execution supports `Thread.Start` and `Async.Run` with VM-aware function pointers. `Pool.Submit` still requires native callback pointers and traps when called from the VM with an IL function pointer.
 
 ### BASIC Example
 
@@ -824,6 +835,7 @@ END IF
 ### Notes
 
 - A Promise can only be completed once (either `Set` or `SetError`)
+- `GetFuture()` returns the cached Future and each call receives its own retained handle.
 - Calling `Get()` on an error-resolved Future will trap
 - `WaitFor()` returns false on timeout without trapping
 - Multiple threads can wait on the same Future
@@ -942,11 +954,14 @@ pool.Shutdown()
 ### Notes
 
 - **Default pool:** Operations without explicit pool use a shared pool with `DefaultWorkers()` threads
+- **Default pool handle:** `DefaultPool()` returns a retained handle; release it like other runtime objects when using the C ABI directly.
 - **Order preservation:** `Map` guarantees output order matches input order
 - **Blocking:** All parallel operations block until work is complete
 - **Thread safety:** Functions passed to parallel operations must be thread-safe
 - **Work distribution:** Work is distributed in small chunks for load balancing
 - **Reduce identity:** `Reduce` applies the identity value once on the calling thread after per-chunk reduction; workers do not share or mutate the identity concurrently
+- **Task traps:** If a worker callback traps, the operation wakes its caller and then traps with a `Parallel.*: task trapped` message instead of hanging.
+- **VM callback limit:** `Parallel` callback APIs require native callback pointers; VM code should use VM-aware `Thread.Start` or `Async.Run` until VM-backed `Parallel` callbacks are implemented.
 
 ### Use Cases
 
@@ -1084,7 +1099,7 @@ END IF
 - **Window resize:** Recalculate layout after resizing stops
 - **Auto-save:** Save document after editing pauses
 - **Network requests:** Coalesce rapid updates into a single API call
-- **Synchronization note:** Debouncer state is not internally synchronized; guard it externally if multiple threads share one instance
+- **Thread-safe:** Debouncer state is synchronized internally; multiple threads can call `Signal`, `Reset`, and properties safely.
 
 ---
 
@@ -1156,7 +1171,7 @@ PRINT "Time until next allowed: "; throttle.get_RemainingMs(); "ms"
 - **UI updates:** Throttle expensive re-renders
 - **Logging:** Limit log output rate
 - **Polling:** Control polling frequency
-- **Synchronization note:** Throttler state is not internally synchronized; guard it externally if multiple threads share one instance
+- **Thread-safe:** Throttler state is synchronized internally; multiple threads can call `Try`, `Reset`, and properties safely.
 
 ---
 
@@ -1187,9 +1202,11 @@ Named task scheduler for scheduling delayed operations. Tasks are identified by 
 
 - **Poll-based:** Tasks don't execute automatically. Call `Poll()` or `IsDue()` to check for due tasks.
 - **Named tasks:** Tasks are identified by name. Scheduling a task with the same name as an existing task replaces it.
+- **Full string keys:** Task names compare by byte length and contents, so strings with embedded NUL bytes remain distinct.
+- **Poll ownership:** `Poll()` returns a Seq that owns the returned task-name strings.
 - **Monotonic clock:** Uses monotonic clock for accurate timing unaffected by system clock changes.
 - **Immediate tasks:** A delay of 0 schedules a task that is immediately due on the next `Poll()`.
-- **Synchronization note:** Scheduler state is not internally synchronized; guard it externally if multiple threads share one instance
+- **Thread-safe:** Scheduler operations are internally synchronized; multiple threads may schedule, cancel, poll, and clear the same instance.
 
 ### BASIC Example
 
@@ -1262,6 +1279,7 @@ Async task combinators for composing asynchronous results. Built on Future/Promi
 - All methods are thread-safe.
 - `Delay` returns a Future that resolves with NULL after the specified delay.
 - `All` returns a Future resolving to a Seq of results. If any input future has an error, the combined Future resolves with that error without waiting for the remaining inputs.
+- The Seq returned by `All` owns retained runtime-managed result values, so results remain valid after the source futures are released.
 - `Any` returns a Future resolving with the value of the first completed input future.
 - `Run` spawns a new thread to execute the callback and returns a Future that resolves with the callback's return value.
 - `Map` chains a transformation: when the input future resolves, `mapper` is called with the result and `arg`, producing a new Future.
@@ -1269,7 +1287,8 @@ Async task combinators for composing asynchronous results. Built on Future/Promi
 - Traps raised inside `Run`, `RunCancellable`, or `Map` callbacks are converted into Future errors.
 - Callback `arg` values are forwarded as raw pointers; if you pass non-global native memory, keep it alive until the callback has run.
 - Use `RunOwned`, `MapOwned`, and `RunCancellableOwned` when the callback argument is a runtime-managed object or string handle that should be retained for the duration of the callback.
-- If a callback wants to transfer ownership of a runtime-managed result explicitly, pair these APIs with `Promise.SetOwned` in custom promise/future flows.
+- Callback-created return values from `Run`, `RunCancellable`, and `Map` are owned by the returned Future. If a callback returns the exact borrowed argument or input Future value, ownership stays borrowed; owned arguments and owned input Future values are retained or transferred safely.
+- If a callback wants to transfer ownership of a runtime-managed result explicitly in custom promise/future flows, use `Promise.SetOwned` or the internal transferred-result API.
 
 ---
 
@@ -1305,6 +1324,7 @@ Thread-safe string-keyed hash map for concurrent access from multiple threads.
 
 - Uses mutex protection; safe for concurrent reads and writes from any thread.
 - Keys are copied on insert (not retained by reference).
+- Keys compare by byte length and contents, so strings with embedded NUL bytes are supported.
 - Values are retained while in the map.
 - `Get`, `GetOr`, and `Values` return stable retained references/snapshots that remain valid even if the map is concurrently updated after the call returns.
 - Uses FNV-1a hash with separate chaining for collision resolution.
@@ -1509,8 +1529,8 @@ Thread-safe bounded channel for inter-thread communication. Supports blocking, n
 | `TrySend(item)`         | `Boolean(Object)`            | Try to send without blocking; returns false if full or closed|
 | `SendFor(item, ms)`     | `Boolean(Object, Integer)`   | Send with timeout; returns false if timed out or closed      |
 | `Recv()`                | `Object()`                   | Receive item, blocking if empty; returns NULL if closed and empty |
-| `TryRecv(out)`          | `Boolean(Object)`            | Try to receive without blocking; returns false if empty      |
-| `RecvFor(out, ms)`      | `Boolean(Object, Integer)`   | Receive with timeout; returns false if timed out or closed   |
+| `TryRecv()`             | `Object()`                   | Try to receive without blocking; returns NULL if empty       |
+| `RecvFor(ms)`           | `Object(Integer)`            | Receive with timeout; returns NULL if timed out or closed    |
 | `Close()`               | `Void()`                     | Close the channel; wakes all blocked senders/receivers       |
 
 ### Properties
@@ -1527,6 +1547,8 @@ Thread-safe bounded channel for inter-thread communication. Supports blocking, n
 
 - Closing a channel prevents further sends but receivers can still drain remaining items.
 - A synchronous channel (capacity 0) blocks the sender until a receiver is ready.
+- On a synchronous channel, `TryRecv()` can complete an already-waiting sender handoff.
+- At the C ABI layer, `rt_channel_try_recv(channel, NULL)` checks availability without consuming or releasing a value.
 - `Send` traps if the channel is closed.
 
 ### Zia Example
@@ -1600,10 +1622,9 @@ DIM item AS OBJECT = ch.Recv()
 PRINT "Recv: "; Viper.Core.Box.ToI64(item)  ' Output: 10
 
 ' Timeout-based receive (100ms)
-DIM out AS OBJECT = NULL
-DIM got AS INTEGER = ch.RecvFor(out, 100)
-IF got THEN
-    PRINT "Got: "; Viper.Core.Box.ToI64(out)
+DIM timed AS OBJECT = ch.RecvFor(100)
+IF timed <> NULL THEN
+    PRINT "Got: "; Viper.Core.Box.ToI64(timed)
 ELSE
     PRINT "Timed out"
 END IF

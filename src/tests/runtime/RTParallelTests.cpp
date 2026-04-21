@@ -10,6 +10,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_parallel.h"
+#include "rt_internal.h"
+#include "rt_object.h"
 #include "rt_seq.h"
 #include "rt_string.h"
 #include "rt_threadpool.h"
@@ -27,6 +29,10 @@ static void test_result(bool cond, const char *name) {
         fprintf(stderr, "FAIL: %s\n", name);
         assert(false);
     }
+}
+
+extern "C" void vm_trap(const char *msg) {
+    rt_abort(msg);
 }
 
 //=============================================================================
@@ -47,6 +53,11 @@ static void test_default_pool() {
     // Same pool on repeated calls
     void *pool2 = rt_parallel_default_pool();
     test_result(pool == pool2, "default_pool: should return same pool");
+
+    if (rt_obj_release_check0(pool))
+        rt_obj_free(pool);
+    if (rt_obj_release_check0(pool2))
+        rt_obj_free(pool2);
 }
 
 //=============================================================================
@@ -96,6 +107,18 @@ static void call_foreach_shutdown_pool() {
     void *pool = rt_threadpool_new(1);
     rt_threadpool_shutdown(pool);
     rt_parallel_foreach_pool(seq, (void *)foreach_increment, pool);
+}
+
+static void foreach_trap(void *item) {
+    (void)item;
+    rt_trap("parallel foreach trap");
+}
+
+static void call_foreach_trapping_task() {
+    void *seq = rt_seq_new();
+    rt_seq_push(seq, (void *)1);
+    void *pool = rt_threadpool_new(1);
+    rt_parallel_foreach_pool(seq, (void *)foreach_trap, pool);
 }
 
 //=============================================================================
@@ -242,6 +265,7 @@ static void test_invoke_empty() {
 
 int main(int argc, char *argv[]) {
     viper::tests::registerChildFunction(call_foreach_shutdown_pool);
+    viper::tests::registerChildFunction(call_foreach_trapping_task);
     if (viper::tests::dispatchChild(argc, argv))
         return 0;
 
@@ -257,6 +281,9 @@ int main(int argc, char *argv[]) {
     test_result(result.stderrText.find("Parallel.ForEach: failed to submit work") !=
                     std::string::npos,
                 "foreach_shutdown_pool: should trap without hanging");
+    result = viper::tests::runIsolated(call_foreach_trapping_task);
+    test_result(result.stderrText.find("Parallel.ForEach: task trapped") != std::string::npos,
+                "foreach_task_trap: should trap without hanging");
 
     // Map tests
     test_map_basic();

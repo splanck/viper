@@ -32,6 +32,8 @@
 #include "rt_debounce.h"
 
 #include "rt_internal.h"
+#include "rt_object.h"
+#include "rt_threads.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -70,13 +72,19 @@ static int64_t current_time_ms(void) {
 // --- Debouncer ---
 
 typedef struct {
+    void *monitor;
     int64_t delay_ms;
     int64_t last_signal_time;
     int64_t signal_count;
 } rt_debounce_data;
 
 static void debounce_finalizer(void *obj) {
-    (void)obj;
+    rt_debounce_data *data = (rt_debounce_data *)obj;
+    if (!data || !data->monitor)
+        return;
+    if (rt_obj_release_check0(data->monitor))
+        rt_obj_free(data->monitor);
+    data->monitor = NULL;
 }
 
 /// @brief Create a new debouncer — signal() must be followed by delay_ms of quiet before is_ready()
@@ -88,6 +96,12 @@ void *rt_debounce_new(int64_t delay_ms) {
         return NULL;
     }
     rt_debounce_data *data = (rt_debounce_data *)obj;
+    data->monitor = rt_obj_new_i64(0, 1);
+    if (!data->monitor) {
+        rt_obj_free(obj);
+        rt_trap("Debouncer.New: memory allocation failed");
+        return NULL;
+    }
     data->delay_ms = delay_ms > 0 ? delay_ms : 0;
     data->last_signal_time = 0;
     data->signal_count = 0;
@@ -100,8 +114,10 @@ void rt_debounce_signal(void *debouncer) {
     if (!debouncer)
         return;
     rt_debounce_data *data = (rt_debounce_data *)debouncer;
+    rt_monitor_enter(data->monitor);
     data->last_signal_time = current_time_ms();
     data->signal_count++;
+    rt_monitor_exit(data->monitor);
 }
 
 /// @brief Check whether enough time has elapsed since the last signal (delay satisfied).
@@ -109,10 +125,15 @@ int8_t rt_debounce_is_ready(void *debouncer) {
     if (!debouncer)
         return 0;
     rt_debounce_data *data = (rt_debounce_data *)debouncer;
-    if (data->last_signal_time == 0)
+    rt_monitor_enter(data->monitor);
+    if (data->last_signal_time == 0) {
+        rt_monitor_exit(data->monitor);
         return 0; // Never signaled
+    }
     int64_t elapsed = current_time_ms() - data->last_signal_time;
-    return elapsed >= data->delay_ms ? 1 : 0;
+    int8_t ready = elapsed >= data->delay_ms ? 1 : 0;
+    rt_monitor_exit(data->monitor);
+    return ready;
 }
 
 /// @brief Reset the debouncer's signal time and count to zero.
@@ -120,34 +141,50 @@ void rt_debounce_reset(void *debouncer) {
     if (!debouncer)
         return;
     rt_debounce_data *data = (rt_debounce_data *)debouncer;
+    rt_monitor_enter(data->monitor);
     data->last_signal_time = 0;
     data->signal_count = 0;
+    rt_monitor_exit(data->monitor);
 }
 
 /// @brief Return the debounce delay in milliseconds.
 int64_t rt_debounce_get_delay(void *debouncer) {
     if (!debouncer)
         return 0;
-    return ((rt_debounce_data *)debouncer)->delay_ms;
+    rt_debounce_data *data = (rt_debounce_data *)debouncer;
+    rt_monitor_enter(data->monitor);
+    int64_t delay = data->delay_ms;
+    rt_monitor_exit(data->monitor);
+    return delay;
 }
 
 /// @brief Return the count of elements in the debounce.
 int64_t rt_debounce_get_signal_count(void *debouncer) {
     if (!debouncer)
         return 0;
-    return ((rt_debounce_data *)debouncer)->signal_count;
+    rt_debounce_data *data = (rt_debounce_data *)debouncer;
+    rt_monitor_enter(data->monitor);
+    int64_t count = data->signal_count;
+    rt_monitor_exit(data->monitor);
+    return count;
 }
 
 // --- Throttler ---
 
 typedef struct {
+    void *monitor;
     int64_t interval_ms;
     int64_t last_allowed_time;
     int64_t count;
 } rt_throttle_data;
 
 static void throttle_finalizer(void *obj) {
-    (void)obj;
+    rt_throttle_data *data = (rt_throttle_data *)obj;
+    if (!data || !data->monitor)
+        return;
+    if (rt_obj_release_check0(data->monitor))
+        rt_obj_free(data->monitor);
+    data->monitor = NULL;
 }
 
 /// @brief Create a new throttle — try() returns true at most once per interval_ms.
@@ -158,6 +195,12 @@ void *rt_throttle_new(int64_t interval_ms) {
         return NULL;
     }
     rt_throttle_data *data = (rt_throttle_data *)obj;
+    data->monitor = rt_obj_new_i64(0, 1);
+    if (!data->monitor) {
+        rt_obj_free(obj);
+        rt_trap("Throttler.New: memory allocation failed");
+        return NULL;
+    }
     data->interval_ms = interval_ms > 0 ? interval_ms : 0;
     data->last_allowed_time = 0;
     data->count = 0;
@@ -171,12 +214,15 @@ int8_t rt_throttle_try(void *throttler) {
         return 0;
     rt_throttle_data *data = (rt_throttle_data *)throttler;
     int64_t now = current_time_ms();
+    rt_monitor_enter(data->monitor);
     int64_t elapsed = now - data->last_allowed_time;
     if (data->last_allowed_time == 0 || elapsed >= data->interval_ms) {
         data->last_allowed_time = now;
         data->count++;
+        rt_monitor_exit(data->monitor);
         return 1;
     }
+    rt_monitor_exit(data->monitor);
     return 0;
 }
 
@@ -185,10 +231,15 @@ int8_t rt_throttle_can_proceed(void *throttler) {
     if (!throttler)
         return 0;
     rt_throttle_data *data = (rt_throttle_data *)throttler;
-    if (data->last_allowed_time == 0)
+    rt_monitor_enter(data->monitor);
+    if (data->last_allowed_time == 0) {
+        rt_monitor_exit(data->monitor);
         return 1;
+    }
     int64_t elapsed = current_time_ms() - data->last_allowed_time;
-    return elapsed >= data->interval_ms ? 1 : 0;
+    int8_t ready = elapsed >= data->interval_ms ? 1 : 0;
+    rt_monitor_exit(data->monitor);
+    return ready;
 }
 
 /// @brief Reset the throttler's timing so the next try always succeeds.
@@ -196,22 +247,32 @@ void rt_throttle_reset(void *throttler) {
     if (!throttler)
         return;
     rt_throttle_data *data = (rt_throttle_data *)throttler;
+    rt_monitor_enter(data->monitor);
     data->last_allowed_time = 0;
     data->count = 0;
+    rt_monitor_exit(data->monitor);
 }
 
 /// @brief Return the throttle interval in milliseconds.
 int64_t rt_throttle_get_interval(void *throttler) {
     if (!throttler)
         return 0;
-    return ((rt_throttle_data *)throttler)->interval_ms;
+    rt_throttle_data *data = (rt_throttle_data *)throttler;
+    rt_monitor_enter(data->monitor);
+    int64_t interval = data->interval_ms;
+    rt_monitor_exit(data->monitor);
+    return interval;
 }
 
 /// @brief Return the count of elements in the throttle.
 int64_t rt_throttle_get_count(void *throttler) {
     if (!throttler)
         return 0;
-    return ((rt_throttle_data *)throttler)->count;
+    rt_throttle_data *data = (rt_throttle_data *)throttler;
+    rt_monitor_enter(data->monitor);
+    int64_t count = data->count;
+    rt_monitor_exit(data->monitor);
+    return count;
 }
 
 /// @brief Return milliseconds remaining until the next try would succeed (0 if ready).
@@ -219,9 +280,14 @@ int64_t rt_throttle_remaining_ms(void *throttler) {
     if (!throttler)
         return 0;
     rt_throttle_data *data = (rt_throttle_data *)throttler;
-    if (data->last_allowed_time == 0)
+    rt_monitor_enter(data->monitor);
+    if (data->last_allowed_time == 0) {
+        rt_monitor_exit(data->monitor);
         return 0;
+    }
     int64_t elapsed = current_time_ms() - data->last_allowed_time;
     int64_t remaining = data->interval_ms - elapsed;
-    return remaining > 0 ? remaining : 0;
+    int64_t out = remaining > 0 ? remaining : 0;
+    rt_monitor_exit(data->monitor);
+    return out;
 }

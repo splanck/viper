@@ -39,6 +39,7 @@
 #include "rt_object.h"
 
 #include <errno.h>
+#include <limits.h>
 #include <setjmp.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -485,10 +486,15 @@ static thread_deadline_t thread_deadline_from_now(int64_t ms, int8_t use_monoton
     if (ms <= 0)
         return d;
 
-    const int64_t kNsPerMs = 1000000;
-    int64_t add_ns = ms * kNsPerMs;
-    int64_t sec = (int64_t)d.deadline.tv_sec + add_ns / 1000000000;
-    int64_t ns = (int64_t)d.deadline.tv_nsec + add_ns % 1000000000;
+    int64_t add_sec = ms / 1000;
+    long add_nsec = (long)((ms % 1000) * 1000000L);
+    if (add_sec > (int64_t)LONG_MAX - (int64_t)d.deadline.tv_sec) {
+        d.deadline.tv_sec = (time_t)LONG_MAX;
+        d.deadline.tv_nsec = 999999999L;
+        return d;
+    }
+    int64_t sec = (int64_t)d.deadline.tv_sec + add_sec;
+    int64_t ns = (int64_t)d.deadline.tv_nsec + add_nsec;
     if (ns >= 1000000000) {
         sec += 1;
         ns -= 1000000000;
@@ -510,6 +516,8 @@ static int64_t thread_remaining_ms(thread_deadline_t deadline, int8_t use_monoto
     }
     if (sec < 0)
         return 0;
+    if (sec > INT64_MAX / 1000)
+        return INT64_MAX;
     return sec * 1000 + ns / 1000000L;
 }
 #endif

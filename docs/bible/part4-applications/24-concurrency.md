@@ -334,6 +334,8 @@ func start() {
 | `.Leave(n)` | Release N permits |
 | `.Permits` | Current available permit count |
 
+`Gate.Leave` and `Gate.Leave(n)` trap if the permit count would overflow instead of wrapping.
+
 ### Barrier
 
 A `Barrier` makes multiple threads wait until all of them have arrived at a synchronization point before any can proceed. Useful for phased algorithms.
@@ -398,6 +400,8 @@ func writeCache(value: String) {
 | `.Readers` | Number of current readers |
 | `.IsWriteLocked` | Whether a writer holds the lock |
 
+Read-to-write upgrades are rejected to avoid self-deadlock. A thread that already owns the write lock may enter and exit the read side, which supports explicit downgrade patterns when calls are balanced.
+
 ---
 
 ## 24.4 Channels
@@ -444,9 +448,11 @@ func start() {
 | `.TrySend(item)` | Try to send without blocking |
 | `.SendFor(item, ms)` | Send with timeout |
 | `.Recv()` | Receive an item (blocks if empty) |
-| `.TryRecv(out)` | Try to receive without blocking |
-| `.RecvFor(out, ms)` | Receive with timeout |
+| `.TryRecv()` | Try to receive without blocking; returns `null` if empty |
+| `.RecvFor(ms)` | Receive with timeout; returns `null` on timeout |
 | `.Close()` | Close the channel (no more sends) |
+
+At the C ABI layer, `rt_channel_try_recv(channel, NULL)` checks availability without consuming or releasing a value.
 
 ### Channel Properties
 
@@ -547,6 +553,8 @@ func start() {
 | `Active` | `Integer` | Tasks currently executing |
 | `IsShutdown` | `Boolean` | Whether shutdown was requested |
 
+Pool waits remain correct when a task traps: the worker still marks the task complete, so `Wait` and `WaitFor` do not hang. Calls that would wait for or shut down the same pool from inside one of its workers trap to prevent self-deadlock.
+
 ---
 
 ## 24.6 Promises and Futures
@@ -644,6 +652,8 @@ func start() {
 | `Async.All(futures)` | Future that resolves when all complete |
 | `Async.Any(futures)` | Future that resolves when any completes |
 | `Async.Map(future, func)` | Transform a future's value |
+
+Traps raised inside `Async.Run`, `Async.RunCancellable`, and `Async.Map` callbacks become Future errors. Callback-created runtime results are owned by the returned Future, so they remain valid for consumers after the worker exits; exact borrowed argument/input passthrough stays borrowed.
 
 ---
 
@@ -795,6 +805,8 @@ func start() {
 | `Parallel.ReducePool(collection, func, initial, pool)` | Same, with custom pool |
 | `Parallel.DefaultWorkers()` | Number of default worker threads |
 | `Parallel.DefaultPool()` | Access the shared default pool |
+
+Parallel operations wake the caller and trap with a `Parallel.*: task trapped` message if a worker callback traps. The callback-based `Parallel` and `Pool.Submit` APIs require native callback pointers; VM code should use VM-aware `Thread.Start` or `Async.Run` until VM-backed parallel callbacks are available.
 
 ---
 
@@ -955,6 +967,8 @@ func start() {
 | `.Poll()` | Get next due task name (or null) |
 | `.Clear()` | Cancel all tasks |
 | `.Pending` | Number of scheduled tasks |
+
+Scheduler operations are internally synchronized; multiple threads may schedule, cancel, poll, and clear the same instance.
 
 ---
 

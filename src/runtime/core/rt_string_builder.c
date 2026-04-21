@@ -438,8 +438,8 @@ static void rt_text_sb_trap_status(const char *op, rt_sb_status_t status) {
 }
 
 /// @brief Return the current content length of the embedded builder in bytes.
-/// @details Exposes StringBuilder.Length to the runtime dispatch layer. Returns
-///          0 for a null receiver so callers never observe an error path.
+/// @details Exposes StringBuilder.Length to the runtime dispatch layer. A null
+///          receiver traps through get_builder, matching other instance methods.
 int64_t rt_text_sb_get_length(void *sb) {
     rt_string_builder *builder = get_builder(sb);
     if (!builder)
@@ -451,7 +451,7 @@ int64_t rt_text_sb_get_length(void *sb) {
 
 /// @brief Return the current allocated capacity of the embedded builder in bytes.
 /// @details Exposes StringBuilder.Capacity for diagnostics and tests. Capacity
-///          includes space for the null terminator.
+///          includes space for the null terminator. A null receiver traps.
 int64_t rt_text_sb_get_capacity(void *sb) {
     rt_string_builder *builder = get_builder(sb);
     if (!builder)

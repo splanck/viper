@@ -51,6 +51,11 @@ static void *identity_cb(void *arg) {
     return arg;
 }
 
+static void *new_obj_cb(void *arg) {
+    (void)arg;
+    return make_obj();
+}
+
 static void *slow_cb(void *arg) {
     rt_thread_sleep(50);
     return arg;
@@ -138,6 +143,8 @@ static void test_async_run_basic() {
     void *future = rt_async_run((void *)identity_cb, val);
     assert(future != NULL);
 
+    rt_future_wait(future);
+    assert(rt_future_value_is_owned(future) == 0);
     void *result = rt_future_get(future);
     assert(result == val);
 }
@@ -198,6 +205,21 @@ static void test_async_run_owned_passthrough_preserves_result() {
         rt_obj_free(future);
 
     assert(rt_seq_len(result) == 0);
+    if (rt_obj_release_check0(result))
+        rt_obj_free(result);
+}
+
+static void test_async_run_transfers_result_ownership() {
+    void *future = rt_async_run((void *)new_obj_cb, NULL);
+    assert(future != NULL);
+
+    rt_future_wait(future);
+    assert(rt_future_value_is_owned(future) == 1);
+
+    void *result = rt_future_get(future);
+    assert(result != NULL);
+    if (rt_obj_release_check0(future))
+        rt_obj_free(future);
     if (rt_obj_release_check0(result))
         rt_obj_free(result);
 }
@@ -305,6 +327,52 @@ static void test_async_all_short_circuits_on_error() {
         rt_obj_free(error_promise);
 }
 
+static void test_async_all_result_owns_values() {
+    void *promise1 = rt_promise_new();
+    void *future1 = rt_promise_get_future(promise1);
+    void *promise2 = rt_promise_new();
+    void *future2 = rt_promise_get_future(promise2);
+    void *futures = rt_seq_new();
+    void *value1 = rt_seq_new();
+    void *value2 = rt_seq_new();
+
+    rt_seq_push(futures, future1);
+    rt_seq_push(futures, future2);
+    void *all_future = rt_async_all(futures);
+    assert(all_future != NULL);
+
+    rt_promise_set_owned(promise1, value1);
+    rt_promise_set_owned(promise2, value2);
+    if (rt_obj_release_check0(value1))
+        rt_obj_free(value1);
+    if (rt_obj_release_check0(value2))
+        rt_obj_free(value2);
+
+    void *results = rt_future_get(all_future);
+    assert(results != NULL);
+    assert(rt_seq_get(results, 0) != NULL);
+    assert(rt_seq_get(results, 1) != NULL);
+
+    if (rt_obj_release_check0(future1))
+        rt_obj_free(future1);
+    if (rt_obj_release_check0(future2))
+        rt_obj_free(future2);
+    if (rt_obj_release_check0(promise1))
+        rt_obj_free(promise1);
+    if (rt_obj_release_check0(promise2))
+        rt_obj_free(promise2);
+    if (rt_obj_release_check0(all_future))
+        rt_obj_free(all_future);
+    if (rt_obj_release_check0(futures))
+        rt_obj_free(futures);
+
+    assert(rt_seq_len(rt_seq_get(results, 0)) == 0);
+    assert(rt_seq_len(rt_seq_get(results, 1)) == 0);
+
+    if (rt_obj_release_check0(results))
+        rt_obj_free(results);
+}
+
 //=============================================================================
 // rt_async_any tests
 //=============================================================================
@@ -360,6 +428,24 @@ static void test_async_map_chained() {
 
     void *result = rt_future_get(f3);
     assert(result != NULL);
+}
+
+static void test_async_map_transfers_result_ownership() {
+    void *source = rt_async_run((void *)new_obj_cb, NULL);
+    void *mapped = rt_async_map(source, (void *)add_one_mapper, NULL);
+    assert(mapped != NULL);
+
+    rt_future_wait(mapped);
+    assert(rt_future_value_is_owned(mapped) == 1);
+    void *result = rt_future_get(mapped);
+    assert(result != NULL);
+
+    if (rt_obj_release_check0(mapped))
+        rt_obj_free(mapped);
+    if (rt_obj_release_check0(source))
+        rt_obj_free(source);
+    if (rt_obj_release_check0(result))
+        rt_obj_free(result);
 }
 
 //=============================================================================
@@ -466,6 +552,7 @@ int main() {
     test_async_run_multiple();
     test_async_run_owned_keeps_object_arg_alive();
     test_async_run_owned_passthrough_preserves_result();
+    test_async_run_transfers_result_ownership();
     test_async_delay();
     test_async_delay_zero();
     test_async_delay_negative();
@@ -473,10 +560,12 @@ int main() {
     test_async_all_empty();
     test_async_all_null();
     test_async_all_short_circuits_on_error();
+    test_async_all_result_owns_values();
     test_async_any_basic();
     test_async_any_empty();
     test_async_map_basic();
     test_async_map_chained();
+    test_async_map_transfers_result_ownership();
     test_cancellable_normal();
     test_cancellable_cancelled();
     test_cancellable_null_token();

@@ -25,6 +25,8 @@
 #include "rt_async.h"
 #include "rt_future.h"
 #include "rt_object.h"
+#include "rt_parallel.h"
+#include "rt_threadpool.h"
 #include "rt_threads.h"
 #include "vm/OpHandlerAccess.hpp"
 #include "vm/VM.hpp"
@@ -49,6 +51,7 @@ struct VmThreadStartPayload {
     ExternRegistry *externRegistry = nullptr;
     const il::core::Function *entry = nullptr;
     void *arg = nullptr;
+    bool ownsArg = false;
 };
 
 /// @brief Payload passed to VM-backed Async.Run worker threads.
@@ -63,6 +66,21 @@ struct VmAsyncRunPayload {
     void *promise = nullptr;
 };
 
+/// @brief Release all resources owned by a VM thread-start payload.
+static void releaseThreadStartPayload(VmThreadStartPayload *payload) {
+    if (!payload)
+        return;
+    if (payload->ownsArg && payload->arg) {
+        if (rt_obj_release_check0(payload->arg))
+            rt_obj_free(payload->arg);
+        payload->arg = nullptr;
+        payload->ownsArg = false;
+    }
+    releaseExternRegistry(payload->externRegistry);
+    payload->externRegistry = nullptr;
+    delete payload;
+}
+
 /// @brief Thread entry trampoline for VM-backed Thread.Start.
 /// @details Validates the payload, creates a new VM bound to the same program
 ///          state, and invokes the entry function. Any unexpected exception
@@ -71,9 +89,7 @@ struct VmAsyncRunPayload {
 extern "C" void vm_thread_entry_trampoline(void *raw) {
     VmThreadStartPayload *payload = static_cast<VmThreadStartPayload *>(raw);
     if (!payload || !payload->module || !payload->entry) {
-        if (payload)
-            releaseExternRegistry(payload->externRegistry);
-        delete payload;
+        releaseThreadStartPayload(payload);
         rt_abort("Thread.Start: invalid entry");
     }
 
@@ -90,13 +106,11 @@ extern "C" void vm_thread_entry_trampoline(void *raw) {
 
         detail::VMAccess::callFunction(vm, *payload->entry, args);
     } catch (...) {
-        releaseExternRegistry(payload->externRegistry);
-        payload->externRegistry = nullptr;
+        releaseThreadStartPayload(payload);
         rt_abort("Thread.Start: unhandled exception");
     }
 
-    releaseExternRegistry(payload->externRegistry);
-    delete payload;
+    releaseThreadStartPayload(payload);
 }
 
 /// @brief Resolve a function pointer into a module function.
@@ -181,13 +195,57 @@ static void threads_thread_start_handler(void **args, void *result) {
     validateEntrySignature(*entryFn);
 
     auto *payload = new VmThreadStartPayload{
-        &module, std::move(program), parentVm->externRegistry(), entryFn, arg};
+        &module, std::move(program), parentVm->externRegistry(), entryFn, arg, false};
     retainExternRegistry(payload->externRegistry);
     void *thread = rt_thread_start(reinterpret_cast<void *>(&vm_thread_entry_trampoline), payload);
     if (!thread) {
-        releaseExternRegistry(payload->externRegistry);
-        delete payload;
+        releaseThreadStartPayload(payload);
         rt_trap("Thread.Start: failed to create thread");
+    }
+    if (result)
+        *reinterpret_cast<void **>(result) = thread;
+}
+
+/// @brief Runtime bridge handler for Viper.Threads.Thread.StartOwned.
+/// @details VM variant retains the managed argument until the IL entry returns.
+static void threads_thread_start_owned_handler(void **args, void *result) {
+    void *entry = nullptr;
+    void *arg = nullptr;
+    if (args && args[0])
+        entry = *reinterpret_cast<void **>(args[0]);
+    if (args && args[1])
+        arg = *reinterpret_cast<void **>(args[1]);
+
+    if (!entry)
+        rt_trap("Thread.StartOwned: null entry");
+
+    VM *parentVm = activeVMInstance();
+    if (!parentVm) {
+        void *thread = rt_thread_start_owned(entry, arg);
+        if (result)
+            *reinterpret_cast<void **>(result) = thread;
+        return;
+    }
+
+    std::shared_ptr<VM::ProgramState> program = parentVm->programState();
+    if (!program)
+        rt_trap("Thread.StartOwned: invalid runtime state");
+
+    const il::core::Module &module = parentVm->module();
+    const il::core::Function *entryFn = resolveEntryFunction(module, entry);
+    if (!entryFn)
+        rt_trap("Thread.StartOwned: invalid entry");
+    validateEntrySignature(*entryFn);
+
+    auto *payload = new VmThreadStartPayload{
+        &module, std::move(program), parentVm->externRegistry(), entryFn, arg, arg != nullptr};
+    if (payload->ownsArg)
+        rt_obj_retain_maybe(arg);
+    retainExternRegistry(payload->externRegistry);
+    void *thread = rt_thread_start(reinterpret_cast<void *>(&vm_thread_entry_trampoline), payload);
+    if (!thread) {
+        releaseThreadStartPayload(payload);
+        rt_trap("Thread.StartOwned: failed to create thread");
     }
     if (result)
         *reinterpret_cast<void **>(result) = thread;
@@ -201,9 +259,7 @@ static void threads_thread_start_handler(void **args, void *result) {
 extern "C" void vm_thread_safe_entry_trampoline(void *raw) {
     VmThreadStartPayload *payload = static_cast<VmThreadStartPayload *>(raw);
     if (!payload || !payload->module || !payload->entry) {
-        if (payload)
-            releaseExternRegistry(payload->externRegistry);
-        delete payload;
+        releaseThreadStartPayload(payload);
         rt_abort("Thread.StartSafe: invalid entry");
     }
 
@@ -223,15 +279,12 @@ extern "C" void vm_thread_safe_entry_trampoline(void *raw) {
         // Trap was intercepted by setjmp in the caller (safe_thread_entry).
         // If not, this is an unexpected exception.  Cannot re-throw from
         // extern "C" linkage (UB / MSVC C4297), so abort.
-        releaseExternRegistry(payload->externRegistry);
-        payload->externRegistry = nullptr;
-        delete payload;
+        releaseThreadStartPayload(payload);
         rt_abort("Thread.StartSafe: unhandled exception in thread entry");
         return;
     }
 
-    releaseExternRegistry(payload->externRegistry);
-    delete payload;
+    releaseThreadStartPayload(payload);
 }
 
 /// @brief Runtime bridge handler for Viper.Threads.Thread.StartSafe.
@@ -267,14 +320,59 @@ static void threads_thread_start_safe_handler(void **args, void *result) {
     validateEntrySignature(*entryFn);
 
     auto *payload = new VmThreadStartPayload{
-        &module, std::move(program), parentVm->externRegistry(), entryFn, arg};
+        &module, std::move(program), parentVm->externRegistry(), entryFn, arg, false};
     retainExternRegistry(payload->externRegistry);
     void *thread =
         rt_thread_start_safe(reinterpret_cast<void *>(&vm_thread_safe_entry_trampoline), payload);
     if (!thread) {
-        releaseExternRegistry(payload->externRegistry);
-        delete payload;
+        releaseThreadStartPayload(payload);
         rt_trap("Thread.StartSafe: failed to create thread");
+    }
+    if (result)
+        *reinterpret_cast<void **>(result) = thread;
+}
+
+/// @brief Runtime bridge handler for Viper.Threads.Thread.StartSafeOwned.
+/// @details VM variant combines safe trap capture with retaining the managed argument.
+static void threads_thread_start_safe_owned_handler(void **args, void *result) {
+    void *entry = nullptr;
+    void *arg = nullptr;
+    if (args && args[0])
+        entry = *reinterpret_cast<void **>(args[0]);
+    if (args && args[1])
+        arg = *reinterpret_cast<void **>(args[1]);
+
+    if (!entry)
+        rt_trap("Thread.StartSafeOwned: null entry");
+
+    VM *parentVm = activeVMInstance();
+    if (!parentVm) {
+        void *thread = rt_thread_start_safe_owned(entry, arg);
+        if (result)
+            *reinterpret_cast<void **>(result) = thread;
+        return;
+    }
+
+    std::shared_ptr<VM::ProgramState> program = parentVm->programState();
+    if (!program)
+        rt_trap("Thread.StartSafeOwned: invalid runtime state");
+
+    const il::core::Module &module = parentVm->module();
+    const il::core::Function *entryFn = resolveEntryFunction(module, entry);
+    if (!entryFn)
+        rt_trap("Thread.StartSafeOwned: invalid entry");
+    validateEntrySignature(*entryFn);
+
+    auto *payload = new VmThreadStartPayload{
+        &module, std::move(program), parentVm->externRegistry(), entryFn, arg, arg != nullptr};
+    if (payload->ownsArg)
+        rt_obj_retain_maybe(arg);
+    retainExternRegistry(payload->externRegistry);
+    void *thread =
+        rt_thread_start_safe(reinterpret_cast<void *>(&vm_thread_safe_entry_trampoline), payload);
+    if (!thread) {
+        releaseThreadStartPayload(payload);
+        rt_trap("Thread.StartSafeOwned: failed to create thread");
     }
     if (result)
         *reinterpret_cast<void **>(result) = thread;
@@ -359,6 +457,8 @@ static void threads_async_run_handler(void **args, void *result) {
         releaseExternRegistry(payload->externRegistry);
         delete payload;
         rt_promise_set_error(promise, rt_const_cstr("Async.Run: failed to create thread"));
+        if (rt_obj_release_check0(promise))
+            rt_obj_free(promise);
         if (result)
             *reinterpret_cast<void **>(result) = future;
         return;
@@ -368,6 +468,120 @@ static void threads_async_run_handler(void **args, void *result) {
         rt_obj_free(thread);
     if (result)
         *reinterpret_cast<void **>(result) = future;
+}
+
+static void threads_pool_submit_handler(void **args, void *result) {
+    void *pool = args && args[0] ? *reinterpret_cast<void **>(args[0]) : nullptr;
+    void *callback = args && args[1] ? *reinterpret_cast<void **>(args[1]) : nullptr;
+    void *arg = args && args[2] ? *reinterpret_cast<void **>(args[2]) : nullptr;
+
+    if (activeVMInstance())
+        rt_trap("Pool.Submit: VM callback pointers are not supported");
+
+    int8_t submitted = rt_threadpool_submit(pool, callback, arg);
+    if (result)
+        *reinterpret_cast<int8_t *>(result) = submitted;
+}
+
+static void threads_parallel_foreach_handler(void **args, void *result) {
+    (void)result;
+    void *seq = args && args[0] ? *reinterpret_cast<void **>(args[0]) : nullptr;
+    void *func = args && args[1] ? *reinterpret_cast<void **>(args[1]) : nullptr;
+    if (activeVMInstance())
+        rt_trap("Parallel.ForEach: VM callback pointers are not supported");
+    rt_parallel_foreach(seq, func);
+}
+
+static void threads_parallel_foreach_pool_handler(void **args, void *result) {
+    (void)result;
+    void *seq = args && args[0] ? *reinterpret_cast<void **>(args[0]) : nullptr;
+    void *func = args && args[1] ? *reinterpret_cast<void **>(args[1]) : nullptr;
+    void *pool = args && args[2] ? *reinterpret_cast<void **>(args[2]) : nullptr;
+    if (activeVMInstance())
+        rt_trap("Parallel.ForEachPool: VM callback pointers are not supported");
+    rt_parallel_foreach_pool(seq, func, pool);
+}
+
+static void threads_parallel_map_handler(void **args, void *result) {
+    void *seq = args && args[0] ? *reinterpret_cast<void **>(args[0]) : nullptr;
+    void *func = args && args[1] ? *reinterpret_cast<void **>(args[1]) : nullptr;
+    if (activeVMInstance())
+        rt_trap("Parallel.Map: VM callback pointers are not supported");
+    void *mapped = rt_parallel_map(seq, func);
+    if (result)
+        *reinterpret_cast<void **>(result) = mapped;
+}
+
+static void threads_parallel_map_pool_handler(void **args, void *result) {
+    void *seq = args && args[0] ? *reinterpret_cast<void **>(args[0]) : nullptr;
+    void *func = args && args[1] ? *reinterpret_cast<void **>(args[1]) : nullptr;
+    void *pool = args && args[2] ? *reinterpret_cast<void **>(args[2]) : nullptr;
+    if (activeVMInstance())
+        rt_trap("Parallel.MapPool: VM callback pointers are not supported");
+    void *mapped = rt_parallel_map_pool(seq, func, pool);
+    if (result)
+        *reinterpret_cast<void **>(result) = mapped;
+}
+
+static void threads_parallel_invoke_handler(void **args, void *result) {
+    (void)result;
+    void *funcs = args && args[0] ? *reinterpret_cast<void **>(args[0]) : nullptr;
+    if (activeVMInstance())
+        rt_trap("Parallel.Invoke: VM callback pointers are not supported");
+    rt_parallel_invoke(funcs);
+}
+
+static void threads_parallel_invoke_pool_handler(void **args, void *result) {
+    (void)result;
+    void *funcs = args && args[0] ? *reinterpret_cast<void **>(args[0]) : nullptr;
+    void *pool = args && args[1] ? *reinterpret_cast<void **>(args[1]) : nullptr;
+    if (activeVMInstance())
+        rt_trap("Parallel.InvokePool: VM callback pointers are not supported");
+    rt_parallel_invoke_pool(funcs, pool);
+}
+
+static void threads_parallel_for_handler(void **args, void *result) {
+    (void)result;
+    int64_t start = args && args[0] ? *reinterpret_cast<int64_t *>(args[0]) : 0;
+    int64_t end = args && args[1] ? *reinterpret_cast<int64_t *>(args[1]) : 0;
+    void *func = args && args[2] ? *reinterpret_cast<void **>(args[2]) : nullptr;
+    if (activeVMInstance())
+        rt_trap("Parallel.For: VM callback pointers are not supported");
+    rt_parallel_for(start, end, func);
+}
+
+static void threads_parallel_for_pool_handler(void **args, void *result) {
+    (void)result;
+    int64_t start = args && args[0] ? *reinterpret_cast<int64_t *>(args[0]) : 0;
+    int64_t end = args && args[1] ? *reinterpret_cast<int64_t *>(args[1]) : 0;
+    void *func = args && args[2] ? *reinterpret_cast<void **>(args[2]) : nullptr;
+    void *pool = args && args[3] ? *reinterpret_cast<void **>(args[3]) : nullptr;
+    if (activeVMInstance())
+        rt_trap("Parallel.ForPool: VM callback pointers are not supported");
+    rt_parallel_for_pool(start, end, func, pool);
+}
+
+static void threads_parallel_reduce_handler(void **args, void *result) {
+    void *seq = args && args[0] ? *reinterpret_cast<void **>(args[0]) : nullptr;
+    void *func = args && args[1] ? *reinterpret_cast<void **>(args[1]) : nullptr;
+    void *identity = args && args[2] ? *reinterpret_cast<void **>(args[2]) : nullptr;
+    if (activeVMInstance())
+        rt_trap("Parallel.Reduce: VM callback pointers are not supported");
+    void *reduced = rt_parallel_reduce(seq, func, identity);
+    if (result)
+        *reinterpret_cast<void **>(result) = reduced;
+}
+
+static void threads_parallel_reduce_pool_handler(void **args, void *result) {
+    void *seq = args && args[0] ? *reinterpret_cast<void **>(args[0]) : nullptr;
+    void *func = args && args[1] ? *reinterpret_cast<void **>(args[1]) : nullptr;
+    void *identity = args && args[2] ? *reinterpret_cast<void **>(args[2]) : nullptr;
+    void *pool = args && args[3] ? *reinterpret_cast<void **>(args[3]) : nullptr;
+    if (activeVMInstance())
+        rt_trap("Parallel.ReducePool: VM callback pointers are not supported");
+    void *reduced = rt_parallel_reduce_pool(seq, func, identity, pool);
+    if (result)
+        *reinterpret_cast<void **>(result) = reduced;
 }
 
 } // namespace
@@ -388,6 +602,13 @@ void registerThreadsRuntimeExternals() {
     }
     {
         ExternDesc ext;
+        ext.name = il::runtime::names::kThreadsThreadStartOwned;
+        ext.signature = make_signature(ext.name, {SigParam::Ptr, SigParam::Ptr}, {SigParam::Ptr});
+        ext.fn = reinterpret_cast<void *>(&threads_thread_start_owned_handler);
+        RuntimeBridge::registerExtern(ext);
+    }
+    {
+        ExternDesc ext;
         ext.name = il::runtime::names::kThreadsThreadStartSafe;
         ext.signature = make_signature(ext.name, {SigParam::Ptr, SigParam::Ptr}, {SigParam::Ptr});
         ext.fn = reinterpret_cast<void *>(&threads_thread_start_safe_handler);
@@ -395,9 +616,99 @@ void registerThreadsRuntimeExternals() {
     }
     {
         ExternDesc ext;
+        ext.name = il::runtime::names::kThreadsThreadStartSafeOwned;
+        ext.signature = make_signature(ext.name, {SigParam::Ptr, SigParam::Ptr}, {SigParam::Ptr});
+        ext.fn = reinterpret_cast<void *>(&threads_thread_start_safe_owned_handler);
+        RuntimeBridge::registerExtern(ext);
+    }
+    {
+        ExternDesc ext;
         ext.name = il::runtime::names::kThreadsAsyncRun;
         ext.signature = make_signature(ext.name, {SigParam::Ptr, SigParam::Ptr}, {SigParam::Ptr});
         ext.fn = reinterpret_cast<void *>(&threads_async_run_handler);
+        RuntimeBridge::registerExtern(ext);
+    }
+    {
+        ExternDesc ext;
+        ext.name = "Viper.Threads.Pool.Submit";
+        ext.signature =
+            make_signature(ext.name, {SigParam::Ptr, SigParam::Ptr, SigParam::Ptr}, {SigParam::I1});
+        ext.fn = reinterpret_cast<void *>(&threads_pool_submit_handler);
+        RuntimeBridge::registerExtern(ext);
+    }
+    {
+        ExternDesc ext;
+        ext.name = "Viper.Threads.Parallel.ForEach";
+        ext.signature = make_signature(ext.name, {SigParam::Ptr, SigParam::Ptr});
+        ext.fn = reinterpret_cast<void *>(&threads_parallel_foreach_handler);
+        RuntimeBridge::registerExtern(ext);
+    }
+    {
+        ExternDesc ext;
+        ext.name = "Viper.Threads.Parallel.ForEachPool";
+        ext.signature =
+            make_signature(ext.name, {SigParam::Ptr, SigParam::Ptr, SigParam::Ptr});
+        ext.fn = reinterpret_cast<void *>(&threads_parallel_foreach_pool_handler);
+        RuntimeBridge::registerExtern(ext);
+    }
+    {
+        ExternDesc ext;
+        ext.name = "Viper.Threads.Parallel.Map";
+        ext.signature = make_signature(ext.name, {SigParam::Ptr, SigParam::Ptr}, {SigParam::Ptr});
+        ext.fn = reinterpret_cast<void *>(&threads_parallel_map_handler);
+        RuntimeBridge::registerExtern(ext);
+    }
+    {
+        ExternDesc ext;
+        ext.name = "Viper.Threads.Parallel.MapPool";
+        ext.signature =
+            make_signature(ext.name, {SigParam::Ptr, SigParam::Ptr, SigParam::Ptr}, {SigParam::Ptr});
+        ext.fn = reinterpret_cast<void *>(&threads_parallel_map_pool_handler);
+        RuntimeBridge::registerExtern(ext);
+    }
+    {
+        ExternDesc ext;
+        ext.name = "Viper.Threads.Parallel.Invoke";
+        ext.signature = make_signature(ext.name, {SigParam::Ptr});
+        ext.fn = reinterpret_cast<void *>(&threads_parallel_invoke_handler);
+        RuntimeBridge::registerExtern(ext);
+    }
+    {
+        ExternDesc ext;
+        ext.name = "Viper.Threads.Parallel.InvokePool";
+        ext.signature = make_signature(ext.name, {SigParam::Ptr, SigParam::Ptr});
+        ext.fn = reinterpret_cast<void *>(&threads_parallel_invoke_pool_handler);
+        RuntimeBridge::registerExtern(ext);
+    }
+    {
+        ExternDesc ext;
+        ext.name = "Viper.Threads.Parallel.For";
+        ext.signature = make_signature(ext.name, {SigParam::I64, SigParam::I64, SigParam::Ptr});
+        ext.fn = reinterpret_cast<void *>(&threads_parallel_for_handler);
+        RuntimeBridge::registerExtern(ext);
+    }
+    {
+        ExternDesc ext;
+        ext.name = "Viper.Threads.Parallel.ForPool";
+        ext.signature =
+            make_signature(ext.name, {SigParam::I64, SigParam::I64, SigParam::Ptr, SigParam::Ptr});
+        ext.fn = reinterpret_cast<void *>(&threads_parallel_for_pool_handler);
+        RuntimeBridge::registerExtern(ext);
+    }
+    {
+        ExternDesc ext;
+        ext.name = "Viper.Threads.Parallel.Reduce";
+        ext.signature =
+            make_signature(ext.name, {SigParam::Ptr, SigParam::Ptr, SigParam::Ptr}, {SigParam::Ptr});
+        ext.fn = reinterpret_cast<void *>(&threads_parallel_reduce_handler);
+        RuntimeBridge::registerExtern(ext);
+    }
+    {
+        ExternDesc ext;
+        ext.name = "Viper.Threads.Parallel.ReducePool";
+        ext.signature = make_signature(
+            ext.name, {SigParam::Ptr, SigParam::Ptr, SigParam::Ptr, SigParam::Ptr}, {SigParam::Ptr});
+        ext.fn = reinterpret_cast<void *>(&threads_parallel_reduce_pool_handler);
         RuntimeBridge::registerExtern(ext);
     }
 }

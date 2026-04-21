@@ -83,6 +83,14 @@ static void check_sb(rt_sb_status_t status, const char *op) {
         rt_trap(op);
 }
 
+static rt_string trimmed_slice_string(const char *start, const char *end) {
+    while (start < end && isspace((unsigned char)*start))
+        start++;
+    while (end > start && isspace((unsigned char)end[-1]))
+        end--;
+    return rt_string_from_bytes(start, (size_t)(end - start));
+}
+
 static int semver_ident_char(char c) {
     return isalnum((unsigned char)c) || c == '-';
 }
@@ -409,25 +417,27 @@ int8_t rt_version_satisfies(void *ver, rt_string constraint) {
     const char *cstr = rt_string_cstr(constraint);
     if (!cstr)
         return 0;
-    size_t len = strlen(cstr);
+    size_t len = (size_t)rt_str_len(constraint);
+    const char *constraint_end = cstr + len;
+    while (cstr < constraint_end && isspace((unsigned char)*cstr))
+        cstr++;
+    while (constraint_end > cstr && isspace((unsigned char)constraint_end[-1]))
+        constraint_end--;
+    len = (size_t)(constraint_end - cstr);
     if (len == 0)
         return 1; // Empty constraint matches all
 
     rt_version_impl *v = (rt_version_impl *)ver;
 
     const char *p = cstr;
-    while (*p && isspace((unsigned char)*p))
-        p++;
 
     // Parse operator and version
     char op[3] = {0};
 
-    if (p[0] == '^') {
+    if (p < constraint_end && p[0] == '^') {
         // Caret: compatible with (same major, if major > 0)
         p++;
-        while (*p && isspace((unsigned char)*p))
-            p++;
-        rt_string vs = rt_string_from_bytes(p, strlen(p));
+        rt_string vs = trimmed_slice_string(p, constraint_end);
         void *cv = rt_version_parse(vs);
         rt_string_unref(vs);
         if (!cv)
@@ -445,12 +455,10 @@ int8_t rt_version_satisfies(void *ver, rt_string constraint) {
         }
         release_version(cv);
         return result;
-    } else if (p[0] == '~') {
+    } else if (p < constraint_end && p[0] == '~') {
         // Tilde: same major.minor
         p++;
-        while (*p && isspace((unsigned char)*p))
-            p++;
-        rt_string vs = rt_string_from_bytes(p, strlen(p));
+        rt_string vs = trimmed_slice_string(p, constraint_end);
         void *cv = rt_version_parse(vs);
         rt_string_unref(vs);
         if (!cv)
@@ -464,25 +472,25 @@ int8_t rt_version_satisfies(void *ver, rt_string constraint) {
     }
 
     // Comparison operators: >=, <=, !=, >, <, =
-    if (p[0] == '>' && p[1] == '=') {
+    if (p + 1 < constraint_end && p[0] == '>' && p[1] == '=') {
         op[0] = '>';
         op[1] = '=';
         p += 2;
-    } else if (p[0] == '<' && p[1] == '=') {
+    } else if (p + 1 < constraint_end && p[0] == '<' && p[1] == '=') {
         op[0] = '<';
         op[1] = '=';
         p += 2;
-    } else if (p[0] == '!' && p[1] == '=') {
+    } else if (p + 1 < constraint_end && p[0] == '!' && p[1] == '=') {
         op[0] = '!';
         op[1] = '=';
         p += 2;
-    } else if (p[0] == '>') {
+    } else if (p < constraint_end && p[0] == '>') {
         op[0] = '>';
         p++;
-    } else if (p[0] == '<') {
+    } else if (p < constraint_end && p[0] == '<') {
         op[0] = '<';
         p++;
-    } else if (p[0] == '=') {
+    } else if (p < constraint_end && p[0] == '=') {
         op[0] = '=';
         p++;
     } else {
@@ -491,10 +499,10 @@ int8_t rt_version_satisfies(void *ver, rt_string constraint) {
     }
 
     // Skip whitespace after operator
-    while (*p && isspace((unsigned char)*p))
+    while (p < constraint_end && isspace((unsigned char)*p))
         p++;
 
-    rt_string vs = rt_string_from_bytes(p, strlen(p));
+    rt_string vs = trimmed_slice_string(p, constraint_end);
     void *cv = rt_version_parse(vs);
     rt_string_unref(vs);
     if (!cv)

@@ -54,6 +54,13 @@ static void test_safe_i64_concurrent_add() {
     assert(final == 1000LL * kThreads);
 }
 
+static void test_safe_i64_add_wraps() {
+    void *cell = rt_safe_i64_new(INT64_MAX);
+    assert(cell != nullptr);
+    assert(rt_safe_i64_add(cell, 1) == INT64_MIN);
+    assert(rt_safe_i64_get(cell) == INT64_MIN);
+}
+
 extern "C" void sleep_then_store(void *arg) {
     auto *p = static_cast<std::atomic<int> *>(arg);
     rt_thread_sleep(50);
@@ -145,5 +152,6 @@ int main(int argc, char *argv[]) {
     test_thread_start_owned_keeps_object_arg_alive();
     test_thread_start_safe_owned_keeps_object_arg_alive();
     test_safe_i64_concurrent_add();
+    test_safe_i64_add_wraps();
     return 0;
 }

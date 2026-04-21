@@ -97,6 +97,33 @@ static void async_promise_error_from_trap(void *promise, const char *fallback) {
     async_promise_error_copy(promise, rt_trap_get_error(), fallback);
 }
 
+static void async_promise_error_from_future(void *promise, void *future) {
+    rt_string error = rt_future_get_error(future);
+    rt_promise_set_error(promise, error);
+    rt_string_unref(error);
+}
+
+/// @brief Transfer an async callback result into a promise.
+/// @details Callback-returned runtime objects are treated as handed off to the
+///          Future. If the result is the owned argument, transfer the context's
+///          retained argument reference instead of releasing it in the finalizer.
+static void async_promise_set_callback_result(void *promise,
+                                              void *result,
+                                              void **owned_arg_slot,
+                                              int8_t *owns_arg) {
+    if (owned_arg_slot && owns_arg && *owns_arg && result == *owned_arg_slot) {
+        *owned_arg_slot = NULL;
+        *owns_arg = 0;
+        rt_promise_set_transferred(promise, result);
+        return;
+    }
+    if (owned_arg_slot && owns_arg && !*owns_arg && result == *owned_arg_slot) {
+        rt_promise_set(promise, result);
+        return;
+    }
+    rt_promise_set_transferred(promise, result);
+}
+
 /// @brief Spawn a detached worker thread on `entry(arg)`, releasing the thread handle immediately.
 /// Returns 0 on thread-creation failure (caller should resolve the promise as Err in that case).
 /// "Detached" means the runtime won't await the thread; cleanup happens via the worker's own
@@ -182,10 +209,7 @@ static void async_run_entry(void *ctx_ptr) {
     rt_trap_set_recovery(&recovery);
     if (setjmp(recovery) == 0) {
         void *result = ctx->callback(ctx->arg);
-        if (ctx->owns_arg && result == ctx->arg)
-            rt_promise_set_owned(ctx->promise, result);
-        else
-            rt_promise_set(ctx->promise, result);
+        async_promise_set_callback_result(ctx->promise, result, &ctx->arg, &ctx->owns_arg);
     } else {
         async_promise_error_from_trap(ctx->promise, "Async.Run: task trapped");
     }
@@ -235,10 +259,8 @@ static void async_cancel_entry(void *ctx_ptr) {
         void *result = ctx->callback(ctx->arg, ctx->token);
         if (ctx->token && rt_cancellation_is_cancelled(ctx->token))
             async_promise_error_cstr(ctx->promise, "cancelled");
-        else if (ctx->owns_arg && result == ctx->arg)
-            rt_promise_set_owned(ctx->promise, result);
         else
-            rt_promise_set(ctx->promise, result);
+            async_promise_set_callback_result(ctx->promise, result, &ctx->arg, &ctx->owns_arg);
     } else {
         async_promise_error_from_trap(ctx->promise, "Async.RunCancellable: task trapped");
     }
@@ -421,18 +443,23 @@ static void async_map_complete(void *future, void *ctx) {
         goto done;
 
     if (rt_future_is_error(future)) {
-        rt_promise_set_error(state->promise, rt_future_get_error(future));
+        async_promise_error_from_future(state->promise, future);
         goto done;
     }
 
     jmp_buf recovery;
     rt_trap_set_recovery(&recovery);
     if (setjmp(recovery) == 0) {
-        void *mapped = state->mapper(rt_future_peek_value(future), state->arg);
-        if (state->owns_arg && mapped == state->arg)
-            rt_promise_set_owned(state->promise, mapped);
-        else
-            rt_promise_set(state->promise, mapped);
+        void *source_value = rt_future_peek_value(future);
+        void *mapped = state->mapper(source_value, state->arg);
+        if (mapped == source_value) {
+            if (rt_future_value_is_owned(future))
+                rt_promise_set_owned(state->promise, mapped);
+            else
+                rt_promise_set(state->promise, mapped);
+        } else {
+            async_promise_set_callback_result(state->promise, mapped, &state->arg, &state->owns_arg);
+        }
     } else {
         async_promise_error_from_trap(state->promise, "Async.Map: mapper trapped");
     }
@@ -567,7 +594,7 @@ static void async_any_complete(void *future, void *ctx) {
         goto done;
 
     if (rt_future_is_error(future))
-        rt_promise_set_error(state->promise, rt_future_get_error(future));
+        async_promise_error_from_future(state->promise, future);
     else if (rt_future_value_is_owned(future))
         rt_promise_set_owned(state->promise, rt_future_peek_value(future));
     else
@@ -655,7 +682,6 @@ typedef struct {
     void *results;
     void **sources;
     struct async_all_listener_ctx **listeners;
-    uint8_t *owned_slots;
     int64_t slot_count;
     int64_t remaining;
     int8_t completed;
@@ -671,27 +697,15 @@ static void async_all_complete(void *future, void *ctx);
 // ----- All state machine ----------------------------------------------------
 // `Async.All` waits for every input future. Each slot tracks: the source pointer
 // (for cancellation), the per-listener context (so cancel hooks can drop the
-// state retain), and an `owned_slots[i]` byte recording whether the deposited
-// value needs to be released when the result Seq is finalized. The `remaining`
-// counter tracks unfilled slots; reaching zero resolves the result Seq.
+// state retain), and a result sequence that owns deposited runtime objects. The
+// `remaining` counter tracks unfilled slots; reaching zero resolves the result Seq.
 
-/// @brief GC finalizer for `Async.All` state: release any retained per-slot values, free helper
-/// arrays, release monitor + results Seq + promise.
+/// @brief GC finalizer for `Async.All` state: free helper arrays, release monitor + result Seq +
+/// promise. The result Seq owns and releases any runtime-managed values deposited into it.
 static void async_all_state_finalize(void *obj) {
     async_all_state *state = (async_all_state *)obj;
     if (!state)
         return;
-    if (state->owned_slots && state->results) {
-        for (int64_t i = 0; i < state->slot_count; i++) {
-            if (!state->owned_slots[i])
-                continue;
-            void *value = rt_seq_get(state->results, i);
-            if (value && rt_obj_release_check0(value))
-                rt_obj_free(value);
-        }
-    }
-    free(state->owned_slots);
-    state->owned_slots = NULL;
     free(state->listeners);
     state->listeners = NULL;
     free(state->sources);
@@ -726,9 +740,9 @@ static void async_all_cancel_remaining(async_all_state *state, int64_t skip_inde
 
 /// @brief Listener fired when one of the input futures resolves. **Err short-circuits:** the
 /// first Err propagates to the result and cancels remaining listeners. **Ok accumulates:** value
-/// is deposited at the per-listener index in the result Seq, owned-flag captured for finalize,
-/// and `remaining--`. When `remaining == 0` the result Seq is sent to the promise as Owned (so
-/// the consumer's release frees the inner values too). Frees the listener context unconditionally.
+/// is deposited at the per-listener index in the result Seq, which retains runtime objects, and
+/// `remaining--`. When `remaining == 0` the result Seq is sent to the promise as Owned. Frees the
+/// listener context unconditionally.
 static void async_all_complete(void *future, void *ctx) {
     async_all_listener_ctx *listener = (async_all_listener_ctx *)ctx;
     async_all_state *state = listener ? listener->state : NULL;
@@ -745,7 +759,7 @@ static void async_all_complete(void *future, void *ctx) {
         }
         rt_monitor_exit(state->monitor);
         if (should_resolve) {
-            rt_promise_set_error(state->promise, rt_future_get_error(future));
+            async_promise_error_from_future(state->promise, future);
             async_all_cancel_remaining(state, listener->index);
         }
         goto done;
@@ -756,10 +770,6 @@ static void async_all_complete(void *future, void *ctx) {
     state->listeners[listener->index] = NULL;
     if (!state->completed) {
         void *value = rt_future_peek_value(future);
-        int8_t owned = rt_future_value_is_owned(future);
-        if (owned && value)
-            rt_obj_retain_maybe(value);
-        state->owned_slots[listener->index] = owned;
         rt_seq_set(state->results, listener->index, value);
         state->remaining--;
         if (state->remaining == 0) {
@@ -808,13 +818,13 @@ void *rt_async_all(void *futures) {
     state->sources = (void **)calloc((size_t)count, sizeof(void *));
     state->listeners =
         (async_all_listener_ctx **)calloc((size_t)count, sizeof(async_all_listener_ctx *));
-    state->owned_slots = (uint8_t *)calloc((size_t)count, sizeof(uint8_t));
     state->slot_count = count;
     state->remaining = count;
     state->completed = 0;
     rt_obj_set_finalizer(state, async_all_state_finalize);
-    if (!state->monitor || !state->results || !state->sources || !state->listeners ||
-        !state->owned_slots) {
+    if (state->results)
+        rt_seq_set_owns_elements(state->results, 1);
+    if (!state->monitor || !state->results || !state->sources || !state->listeners) {
         async_promise_error_cstr(promise, "Async.All: failed to allocate state");
         if (rt_obj_release_check0(state))
             rt_obj_free(state);

@@ -93,14 +93,13 @@ void rt_safe_i64_set(void *obj, int64_t value) {
     InterlockedExchange64(&cell->value, (LONG64)value);
 }
 
-/// @brief Win32 SafeI64 atomic add — `InterlockedExchangeAdd64` returns the OLD value, so we
-/// add `delta` back to it to match the POSIX path's "return the new value" contract.
+/// @brief Win32 SafeI64 atomic add — returns the new value with two's-complement wraparound.
 int64_t rt_safe_i64_add(void *obj, int64_t delta) {
     RtSafeI64Win *cell = require_safe_win(obj, "SafeI64.Add: null object");
     if (!cell)
         return 0;
-    // InterlockedExchangeAdd64 returns the OLD value; we want the NEW value
-    return (int64_t)InterlockedExchangeAdd64(&cell->value, (LONG64)delta) + delta;
+    uint64_t old = (uint64_t)InterlockedExchangeAdd64(&cell->value, (LONG64)delta);
+    return (int64_t)(old + (uint64_t)delta);
 }
 
 /// @brief Win32 SafeI64 CAS — `InterlockedCompareExchange64` is one machine instruction (LOCK
@@ -243,13 +242,14 @@ void rt_safe_i64_set(void *obj, int64_t value) {
 ///
 /// @note Thread-safe.
 /// @note Traps if obj is NULL.
-/// @note Overflow follows standard signed integer semantics.
+/// @note Overflow wraps using two's-complement arithmetic.
 int64_t rt_safe_i64_add(void *obj, int64_t delta) {
     RtSafeI64 *cell = require_safe(obj, "SafeI64.Add: null object");
     if (!cell)
         return 0;
     rt_monitor_enter(cell);
-    cell->value += delta;
+    uint64_t next = (uint64_t)cell->value + (uint64_t)delta;
+    cell->value = (int64_t)next;
     const int64_t out = cell->value;
     rt_monitor_exit(cell);
     return out;

@@ -48,6 +48,15 @@
 // Internal Helpers
 //=============================================================================
 
+static void release_local_obj(void *obj) {
+    if (obj && rt_obj_release_check0(obj))
+        rt_obj_free(obj);
+}
+
+static int ascii_eq_ci(char a, char b) {
+    return tolower((unsigned char)a) == tolower((unsigned char)b);
+}
+
 /// @brief Case-insensitive prefix match.
 static int starts_with_ci(const char *s, const char *prefix) {
     while (*prefix) {
@@ -57,6 +66,84 @@ static int starts_with_ci(const char *s, const char *prefix) {
         prefix++;
     }
     return 1;
+}
+
+static int starts_with_ci_bounded(const char *s, const char *end, const char *prefix) {
+    while (*prefix) {
+        if (s >= end || !ascii_eq_ci(*s, *prefix))
+            return 0;
+        s++;
+        prefix++;
+    }
+    return 1;
+}
+
+static int bytes_eq_ci(const char *a, size_t a_len, const char *b, size_t b_len) {
+    if (a_len != b_len)
+        return 0;
+    for (size_t i = 0; i < a_len; i++) {
+        if (!ascii_eq_ci(a[i], b[i]))
+            return 0;
+    }
+    return 1;
+}
+
+static const char *find_byte_bounded(const char *p, const char *end, char needle) {
+    while (p < end) {
+        if (*p == needle)
+            return p;
+        p++;
+    }
+    return NULL;
+}
+
+static const char *find_bytes_bounded(const char *p,
+                                      const char *end,
+                                      const char *needle,
+                                      size_t needle_len) {
+    if (needle_len == 0)
+        return p;
+    while ((size_t)(end - p) >= needle_len) {
+        if (memcmp(p, needle, needle_len) == 0)
+            return p;
+        p++;
+    }
+    return NULL;
+}
+
+static void *map_get_cstr(void *map, const char *key_cstr) {
+    rt_string key = rt_const_cstr(key_cstr);
+    void *value = rt_map_get(map, key);
+    rt_string_unref(key);
+    return value;
+}
+
+static int runtime_string_eq_ci_bytes(rt_string value, const char *bytes, size_t len) {
+    if (!value)
+        return len == 0;
+    return bytes_eq_ci(rt_string_cstr(value), (size_t)rt_str_len(value), bytes, len);
+}
+
+static int tag_boundary(char c) {
+    return c == '>' || c == '/' || c == ' ' || c == '\t' || c == '\n' || c == '\r';
+}
+
+static int tag_name_matches_at(const char *lt,
+                               const char *end,
+                               const char *tag,
+                               size_t tag_len,
+                               int closing) {
+    if (lt >= end || *lt != '<')
+        return 0;
+    const char *p = lt + 1;
+    if (closing) {
+        if (p >= end || *p != '/')
+            return 0;
+        p++;
+    }
+    if ((size_t)(end - p) < tag_len || !bytes_eq_ci(p, tag_len, tag, tag_len))
+        return 0;
+    return p + tag_len == end || tag_boundary(p[tag_len]);
 }
 
 /// @brief Create a new HTML node as a map with tag, text, attrs, children.
@@ -72,11 +159,21 @@ static void *make_node(const char *tag, size_t tag_len, const char *text, size_t
     rt_string text_val = rt_string_from_bytes(text ? text : "", text_len);
     void *attrs = rt_map_new();
     void *children = rt_seq_new();
+    rt_seq_set_owns_elements(children, 1);
 
     rt_map_set(node, tag_key, (void *)tag_val);
     rt_map_set(node, text_key, (void *)text_val);
     rt_map_set(node, attrs_key, attrs);
     rt_map_set(node, children_key, children);
+
+    rt_string_unref(tag_key);
+    rt_string_unref(text_key);
+    rt_string_unref(attrs_key);
+    rt_string_unref(children_key);
+    rt_string_unref(tag_val);
+    rt_string_unref(text_val);
+    release_local_obj(attrs);
+    release_local_obj(children);
 
     return node;
 }
@@ -171,11 +268,15 @@ static void parse_attrs(void *attrs_map, const char *start, const char *end) {
             rt_string key = rt_string_from_bytes(name_start, name_len);
             rt_string val = rt_string_from_bytes(val_start, val_len);
             rt_map_set(attrs_map, key, (void *)val);
+            rt_string_unref(key);
+            rt_string_unref(val);
         } else {
             // Boolean attribute (no value)
             rt_string key = rt_string_from_bytes(name_start, name_len);
             rt_string val = rt_string_from_bytes("", 0);
             rt_map_set(attrs_map, key, (void *)val);
+            rt_string_unref(key);
+            rt_string_unref(val);
         }
     }
 }
@@ -198,10 +299,10 @@ void *rt_html_parse(rt_string str) {
         return root;
 
     const char *src = rt_string_cstr(str);
-    if (!src || !*src)
+    size_t len = (size_t)rt_str_len(str);
+    if (!src || len == 0)
         return root;
 
-    size_t len = strlen(src);
     const char *p = src;
     const char *end = src + len;
 
@@ -213,23 +314,39 @@ void *rt_html_parse(rt_string str) {
     while (p < end) {
         if (*p == '<') {
             // Check for closing tag
-            if (p + 1 < end && p[1] == '/') {
+            if ((size_t)(end - p) >= 2 && p[1] == '/') {
                 const char *close_start = p + 2;
-                const char *close_end = strchr(close_start, '>');
+                const char *close_end = find_byte_bounded(close_start, end, '>');
                 if (!close_end)
                     break;
 
-                // Pop from stack if tag matches
-                if (depth > 0)
-                    depth--;
+                while (close_start < close_end &&
+                       (*close_start == ' ' || *close_start == '\t' || *close_start == '\n' ||
+                        *close_start == '\r'))
+                    close_start++;
+                const char *close_name_end = close_start;
+                while (close_name_end < close_end && !tag_boundary(*close_name_end))
+                    close_name_end++;
+                size_t close_len = (size_t)(close_name_end - close_start);
+
+                // Pop only when the closing name matches an open element.
+                if (close_len > 0) {
+                    for (int d = depth; d > 0; d--) {
+                        rt_string open_tag = (rt_string)map_get_cstr(stack[d], "tag");
+                        if (runtime_string_eq_ci_bytes(open_tag, close_start, close_len)) {
+                            depth = d - 1;
+                            break;
+                        }
+                    }
+                }
 
                 p = close_end + 1;
                 continue;
             }
 
             // Check for comment
-            if (p + 3 < end && p[1] == '!' && p[2] == '-' && p[3] == '-') {
-                const char *comment_end = strstr(p + 4, "-->");
+            if ((size_t)(end - p) >= 4 && p[1] == '!' && p[2] == '-' && p[3] == '-') {
+                const char *comment_end = find_bytes_bounded(p + 4, end, "-->", 3);
                 if (comment_end)
                     p = comment_end + 3;
                 else
@@ -238,15 +355,15 @@ void *rt_html_parse(rt_string str) {
             }
 
             // Check for doctype / processing instruction
-            if (p + 1 < end && (p[1] == '!' || p[1] == '?')) {
-                const char *tag_close = strchr(p, '>');
+            if ((size_t)(end - p) >= 2 && (p[1] == '!' || p[1] == '?')) {
+                const char *tag_close = find_byte_bounded(p, end, '>');
                 p = tag_close ? tag_close + 1 : end;
                 continue;
             }
 
             // Opening tag
             const char *tag_start = p + 1;
-            const char *tag_close = strchr(p, '>');
+            const char *tag_close = find_byte_bounded(p, end, '>');
             if (!tag_close)
                 break;
 
@@ -271,16 +388,14 @@ void *rt_html_parse(rt_string str) {
                 if (tag_close > tag_start && tag_close[-1] == '/')
                     attr_end = tag_close - 1;
 
-                rt_string attrs_key = rt_const_cstr("attrs");
-                void *attrs = rt_map_get(node, attrs_key);
+                void *attrs = map_get_cstr(node, "attrs");
                 if (attrs)
                     parse_attrs(attrs, name_end, attr_end);
             }
 
             // Add as child of current parent
             void *parent = stack[depth];
-            rt_string children_key = rt_const_cstr("children");
-            void *children = rt_map_get(parent, children_key);
+            void *children = map_get_cstr(parent, "children");
             rt_seq_push(children, node);
 
             // Check if self-closing
@@ -291,6 +406,8 @@ void *rt_html_parse(rt_string str) {
                 depth++;
                 stack[depth] = node;
             }
+
+            release_local_obj(node);
 
             p = tag_close + 1;
         } else {
@@ -315,9 +432,9 @@ void *rt_html_parse(rt_string str) {
                 void *text_node = make_node("", 0, text_start, text_len);
 
                 void *parent = stack[depth];
-                rt_string children_key = rt_const_cstr("children");
-                void *children = rt_map_get(parent, children_key);
+                void *children = map_get_cstr(parent, "children");
                 rt_seq_push(children, text_node);
+                release_local_obj(text_node);
             }
         }
     }
@@ -334,6 +451,7 @@ void *rt_html_parse(rt_string str) {
 rt_string rt_html_to_text(rt_string str) {
     rt_string stripped = rt_html_strip_tags(str);
     rt_string result = rt_html_unescape(stripped);
+    rt_string_unref(stripped);
     return result;
 }
 
@@ -351,7 +469,7 @@ rt_string rt_html_escape(rt_string str) {
     if (!src)
         return rt_string_from_bytes("", 0);
 
-    size_t src_len = strlen(src);
+    size_t src_len = (size_t)rt_str_len(str);
 
     // Calculate output size
     size_t out_len = 0;
@@ -359,22 +477,34 @@ rt_string rt_html_escape(rt_string str) {
         switch (src[i]) {
             case '<':
             case '>':
+                if (out_len > SIZE_MAX - 4)
+                    rt_trap("Html.Escape: output length overflow");
                 out_len += 4;
                 break; // &lt; &gt;
             case '&':
+                if (out_len > SIZE_MAX - 5)
+                    rt_trap("Html.Escape: output length overflow");
                 out_len += 5;
                 break; // &amp;
             case '"':
+                if (out_len > SIZE_MAX - 6)
+                    rt_trap("Html.Escape: output length overflow");
                 out_len += 6;
                 break; // &quot;
             case '\'':
+                if (out_len > SIZE_MAX - 5)
+                    rt_trap("Html.Escape: output length overflow");
                 out_len += 5;
                 break; // &#39;
             default:
+                if (out_len == SIZE_MAX)
+                    rt_trap("Html.Escape: output length overflow");
                 out_len += 1;
                 break;
         }
     }
+    if (out_len == SIZE_MAX)
+        rt_trap("Html.Escape: output length overflow");
 
     char *out = (char *)malloc(out_len + 1);
     if (!out) {
@@ -432,7 +562,7 @@ rt_string rt_html_unescape(rt_string str) {
     if (!src)
         return rt_string_from_bytes("", 0);
 
-    size_t src_len = strlen(src);
+    size_t src_len = (size_t)rt_str_len(str);
 
     char *out = (char *)malloc(src_len + 1);
     if (!out) {
@@ -442,43 +572,61 @@ rt_string rt_html_unescape(rt_string str) {
 
     size_t pos = 0;
     const char *p = src;
+    const char *end = src + src_len;
 
-    while (*p) {
+    while (p < end) {
         if (*p == '&') {
-            if (starts_with_ci(p, "&lt;")) {
+            if (starts_with_ci_bounded(p, end, "&lt;")) {
                 out[pos++] = '<';
                 p += 4;
-            } else if (starts_with_ci(p, "&gt;")) {
+            } else if (starts_with_ci_bounded(p, end, "&gt;")) {
                 out[pos++] = '>';
                 p += 4;
-            } else if (starts_with_ci(p, "&amp;")) {
+            } else if (starts_with_ci_bounded(p, end, "&amp;")) {
                 out[pos++] = '&';
                 p += 5;
-            } else if (starts_with_ci(p, "&quot;")) {
+            } else if (starts_with_ci_bounded(p, end, "&quot;")) {
                 out[pos++] = '"';
                 p += 6;
-            } else if (starts_with_ci(p, "&#39;")) {
+            } else if (starts_with_ci_bounded(p, end, "&#39;")) {
                 out[pos++] = '\'';
                 p += 5;
-            } else if (starts_with_ci(p, "&apos;")) {
+            } else if (starts_with_ci_bounded(p, end, "&apos;")) {
                 out[pos++] = '\'';
                 p += 6;
-            } else if (starts_with_ci(p, "&nbsp;")) {
+            } else if (starts_with_ci_bounded(p, end, "&nbsp;")) {
                 out[pos++] = ' ';
                 p += 6;
-            } else if (p[1] == '#') {
+            } else if (p + 1 < end && p[1] == '#') {
                 // Numeric character reference
                 const char *start = p + 2;
                 int base = 10;
-                if (*start == 'x' || *start == 'X') {
+                if (start < end && (*start == 'x' || *start == 'X')) {
                     base = 16;
                     start++;
                 }
-                char *num_end;
-                long code = strtol(start, &num_end, base);
-                if (*num_end == ';' && code > 0 && code < 128) {
+                long code = 0;
+                int saw_digit = 0;
+                while (start < end) {
+                    int digit = -1;
+                    if (*start >= '0' && *start <= '9')
+                        digit = *start - '0';
+                    else if (base == 16 && *start >= 'a' && *start <= 'f')
+                        digit = *start - 'a' + 10;
+                    else if (base == 16 && *start >= 'A' && *start <= 'F')
+                        digit = *start - 'A' + 10;
+                    else
+                        break;
+                    if (digit >= base)
+                        break;
+                    saw_digit = 1;
+                    if (code < 128)
+                        code = code * base + digit;
+                    start++;
+                }
+                if (saw_digit && start < end && *start == ';' && code > 0 && code < 128) {
                     out[pos++] = (char)code;
-                    p = num_end + 1;
+                    p = start + 1;
                 } else {
                     out[pos++] = *p;
                     p++;
@@ -514,7 +662,7 @@ rt_string rt_html_strip_tags(rt_string str) {
     if (!src)
         return rt_string_from_bytes("", 0);
 
-    size_t src_len = strlen(src);
+    size_t src_len = (size_t)rt_str_len(str);
 
     char *out = (char *)malloc(src_len + 1);
     if (!out) {
@@ -524,21 +672,19 @@ rt_string rt_html_strip_tags(rt_string str) {
 
     size_t pos = 0;
     int in_tag = 0;
-    const char *p = src;
 
-    while (*p) {
-        if (*p == '<') {
+    for (size_t i = 0; i < src_len; i++) {
+        if (src[i] == '<') {
             in_tag = 1;
-        } else if (*p == '>') {
+        } else if (src[i] == '>') {
             in_tag = 0;
             // Insert space separator between stripped tags so block elements
             // don't merge their text content (e.g., "<p>a</p><p>b</p>" → "a b")
             if (pos > 0 && out[pos - 1] != ' ')
                 out[pos++] = ' ';
         } else if (!in_tag) {
-            out[pos++] = *p;
+            out[pos++] = src[i];
         }
-        p++;
     }
     // Trim trailing whitespace added by tag-boundary spacing
     while (pos > 0 && out[pos - 1] == ' ')
@@ -559,6 +705,7 @@ rt_string rt_html_strip_tags(rt_string str) {
 /// @return Seq of href value strings. Empty seq for NULL input.
 void *rt_html_extract_links(rt_string str) {
     void *seq = rt_seq_new();
+    rt_seq_set_owns_elements(seq, 1);
     if (!str)
         return seq;
 
@@ -566,45 +713,66 @@ void *rt_html_extract_links(rt_string str) {
     if (!src)
         return seq;
 
+    const char *end = src + rt_str_len(str);
     const char *p = src;
 
-    while (*p) {
-        if (*p == '<' && (p[1] == 'a' || p[1] == 'A') &&
-            (p[2] == ' ' || p[2] == '\t' || p[2] == '\n')) {
-            const char *tag_end = strchr(p, '>');
+    while (p < end) {
+        if (*p == '<' && (size_t)(end - p) >= 3 && (p[1] == 'a' || p[1] == 'A') &&
+            (p[2] == ' ' || p[2] == '\t' || p[2] == '\n' || p[2] == '\r')) {
+            const char *tag_end = find_byte_bounded(p, end, '>');
             if (!tag_end)
                 break;
 
-            // Search for href= within the tag
-            const char *href = p + 2;
-            while (href < tag_end) {
-                if (starts_with_ci(href, "href=")) {
-                    href += 5;
-                    // Skip whitespace
-                    while (href < tag_end && (*href == ' ' || *href == '\t'))
-                        href++;
+            const char *attr = p + 2;
+            while (attr < tag_end) {
+                while (attr < tag_end && isspace((unsigned char)*attr))
+                    attr++;
+                if (attr >= tag_end)
+                    break;
 
-                    char quote = 0;
-                    if (href < tag_end && (*href == '"' || *href == '\'')) {
-                        quote = *href;
-                        href++;
-                    }
+                const char *name_start = attr;
+                while (attr < tag_end && *attr != '=' && !isspace((unsigned char)*attr) &&
+                       *attr != '/' && *attr != '>')
+                    attr++;
+                size_t name_len = (size_t)(attr - name_start);
+                while (attr < tag_end && isspace((unsigned char)*attr))
+                    attr++;
 
-                    const char *url_start = href;
-                    if (quote) {
-                        while (href < tag_end && *href != quote)
-                            href++;
+                const char *value_start = attr;
+                const char *value_end = attr;
+                int has_value = 0;
+                if (attr < tag_end && *attr == '=') {
+                    has_value = 1;
+                    attr++;
+                    while (attr < tag_end && isspace((unsigned char)*attr))
+                        attr++;
+                    if (attr < tag_end && (*attr == '"' || *attr == '\'')) {
+                        char quote = *attr++;
+                        value_start = attr;
+                        while (attr < tag_end && *attr != quote)
+                            attr++;
+                        value_end = attr;
+                        if (attr < tag_end)
+                            attr++;
                     } else {
-                        while (href < tag_end && *href != ' ' && *href != '>')
-                            href++;
+                        value_start = attr;
+                        while (attr < tag_end && !isspace((unsigned char)*attr) && *attr != '>')
+                            attr++;
+                        value_end = attr;
                     }
+                }
 
-                    size_t url_len = (size_t)(href - url_start);
-                    rt_string url = rt_string_from_bytes(url_start, url_len);
+                if (name_len == 4 && bytes_eq_ci(name_start, name_len, "href", 4)) {
+                    rt_string url =
+                        has_value ? rt_string_from_bytes(value_start, (size_t)(value_end - value_start))
+                                  : rt_string_from_bytes("", 0);
                     rt_seq_push(seq, (void *)url);
+                    rt_string_unref(url);
                     break;
                 }
-                href++;
+
+                if (!has_value && attr == name_start)
+                    attr++;
             }
             p = tag_end + 1;
         } else {
@@ -624,6 +792,7 @@ void *rt_html_extract_links(rt_string str) {
 /// @return Seq of text content strings. Empty seq for NULL input.
 void *rt_html_extract_text(rt_string str, rt_string tag) {
     void *seq = rt_seq_new();
+    rt_seq_set_owns_elements(seq, 1);
     if (!str || !tag)
         return seq;
 
@@ -632,16 +801,16 @@ void *rt_html_extract_text(rt_string str, rt_string tag) {
     if (!src || !tag_name)
         return seq;
 
-    size_t tag_len = strlen(tag_name);
+    size_t tag_len = (size_t)rt_str_len(tag);
+    if (tag_len == 0)
+        return seq;
+    const char *end = src + rt_str_len(str);
     const char *p = src;
 
-    while (*p) {
+    while (p < end) {
         if (*p == '<') {
-            const char *start = p + 1;
-            if (starts_with_ci(start, tag_name) &&
-                (start[tag_len] == '>' || start[tag_len] == ' ' || start[tag_len] == '\t' ||
-                 start[tag_len] == '/')) {
-                const char *tag_end = strchr(p, '>');
+            if (tag_name_matches_at(p, end, tag_name, tag_len, 0)) {
+                const char *tag_end = find_byte_bounded(p, end, '>');
                 if (!tag_end)
                     break;
 
@@ -653,27 +822,22 @@ void *rt_html_extract_text(rt_string str, rt_string tag) {
 
                 const char *content_start = tag_end + 1;
 
-                // Build close pattern: </tagname
-                char close_pat[64];
-                close_pat[0] = '/';
-                size_t copy_len = tag_len < 60 ? tag_len : 60;
-                memcpy(close_pat + 1, tag_name, copy_len);
-                close_pat[1 + copy_len] = '\0';
-
                 // Find closing tag
                 const char *close = content_start;
-                while (*close) {
-                    if (*close == '<' && starts_with_ci(close + 1, close_pat))
+                while (close < end) {
+                    if (*close == '<' && tag_name_matches_at(close, end, tag_name, tag_len, 1))
                         break;
                     close++;
                 }
 
-                if (*close) {
+                if (close < end) {
                     size_t inner_len = (size_t)(close - content_start);
                     rt_string inner = rt_string_from_bytes(content_start, inner_len);
                     rt_string text = rt_html_strip_tags(inner);
                     rt_seq_push(seq, (void *)text);
-                    const char *close_end = strchr(close, '>');
+                    rt_string_unref(inner);
+                    rt_string_unref(text);
+                    const char *close_end = find_byte_bounded(close, end, '>');
                     p = close_end ? close_end + 1 : close;
                 } else {
                     p = tag_end + 1;

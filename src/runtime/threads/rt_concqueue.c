@@ -34,6 +34,7 @@
 
 #include "rt_internal.h"
 
+#include <limits.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -148,8 +149,15 @@ static cq_deadline_t cq_deadline_ms_from_now(int64_t timeout_ms, int8_t use_mono
     d.deadline = cq_now_clock(use_monotonic);
     if (timeout_ms <= 0)
         return d;
-    d.deadline.tv_sec += timeout_ms / 1000;
-    d.deadline.tv_nsec += (timeout_ms % 1000) * 1000000L;
+    int64_t add_sec = timeout_ms / 1000;
+    long add_nsec = (long)((timeout_ms % 1000) * 1000000L);
+    if (add_sec > (int64_t)LONG_MAX - (int64_t)d.deadline.tv_sec) {
+        d.deadline.tv_sec = (time_t)LONG_MAX;
+        d.deadline.tv_nsec = 999999999L;
+        return d;
+    }
+    d.deadline.tv_sec += (time_t)add_sec;
+    d.deadline.tv_nsec += add_nsec;
     if (d.deadline.tv_nsec >= 1000000000L) {
         d.deadline.tv_sec++;
         d.deadline.tv_nsec -= 1000000000L;
@@ -168,6 +176,8 @@ static int64_t cq_remaining_ms(cq_deadline_t deadline, int8_t use_monotonic) {
     }
     if (sec < 0)
         return 0;
+    if (sec > INT64_MAX / 1000)
+        return INT64_MAX;
     return sec * 1000 + ns / 1000000L;
 }
 #endif
@@ -374,11 +384,13 @@ void *rt_concqueue_dequeue_timeout(void *obj, int64_t timeout_ms) {
 
 #if defined(_WIN32)
     CQ_LOCK(cq);
-    DWORD start = GetTickCount();
+    ULONGLONG now0 = GetTickCount64();
+    ULONGLONG add = (ULONGLONG)timeout_ms;
+    ULONGLONG deadline = (ULLONG_MAX - now0 < add) ? ULLONG_MAX : now0 + add;
     while (!cq->head && !cq->closed) {
-        DWORD now = GetTickCount();
-        DWORD elapsed = now - start;
-        DWORD remaining = (elapsed >= (DWORD)timeout_ms) ? 0 : (DWORD)timeout_ms - elapsed;
+        ULONGLONG now = GetTickCount64();
+        ULONGLONG delta = deadline > now ? deadline - now : 0;
+        DWORD remaining = delta > (ULONGLONG)MAXDWORD ? MAXDWORD : (DWORD)delta;
         if (remaining == 0) {
             CQ_UNLOCK(cq);
             return NULL;

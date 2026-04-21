@@ -156,6 +156,32 @@ static void test_set_if_missing() {
     printf("test_set_if_missing: PASSED\n");
 }
 
+static void test_embedded_nul_keys_are_distinct() {
+    void *m = rt_concmap_new();
+    const char key1_bytes[3] = {'a', '\0', '1'};
+    const char key2_bytes[3] = {'a', '\0', '2'};
+    rt_string key1 = rt_string_from_bytes(key1_bytes, 3);
+    rt_string key2 = rt_string_from_bytes(key2_bytes, 3);
+    void *v1 = new_obj();
+    void *v2 = new_obj();
+
+    rt_concmap_set(m, key1, v1);
+    rt_concmap_set(m, key2, v2);
+
+    assert(rt_concmap_len(m) == 2);
+    assert(rt_concmap_has(m, key1) == 1);
+    assert(rt_concmap_has(m, key2) == 1);
+    assert(rt_concmap_get(m, key1) == v1);
+    assert(rt_concmap_get(m, key2) == v2);
+
+    assert(rt_concmap_remove(m, key1) == 1);
+    assert(rt_concmap_has(m, key1) == 0);
+    assert(rt_concmap_has(m, key2) == 1);
+    assert(rt_concmap_get(m, key2) == v2);
+
+    printf("test_embedded_nul_keys_are_distinct: PASSED\n");
+}
+
 static void test_keys_values() {
     void *m = rt_concmap_new();
     rt_concmap_set(m, make_str("a"), new_obj());
@@ -333,6 +359,7 @@ int main() {
     test_remove();
     test_clear();
     test_set_if_missing();
+    test_embedded_nul_keys_are_distinct();
     test_keys_values();
     test_snapshot_values_survive_clear();
     test_get_survives_remove();

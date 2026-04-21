@@ -47,6 +47,12 @@ static void slow_task(void *arg) {
     rt_thread_sleep(50);
     g_counter.fetch_add(1);
 }
+
+static void trap_task(void *arg) {
+    (void)arg;
+    g_counter.fetch_add(1);
+    rt_trap("pool task trap");
+}
 }
 
 //=============================================================================
@@ -158,6 +164,20 @@ static void test_wait_for_timeout_budget() {
     rt_threadpool_shutdown(pool);
 }
 
+static void test_task_trap_does_not_hang_wait() {
+    init_counter();
+    void *pool = rt_threadpool_new(1);
+
+    assert(rt_threadpool_submit(pool, (void *)trap_task, NULL) == 1);
+    assert(rt_threadpool_submit(pool, (void *)increment_task, NULL) == 1);
+    assert(rt_threadpool_wait_for(pool, 1000) == 1);
+    assert(g_counter.load() == 2);
+    assert(rt_threadpool_get_pending(pool) == 0);
+    assert(rt_threadpool_get_active(pool) == 0);
+
+    rt_threadpool_shutdown(pool);
+}
+
 //=============================================================================
 // Shutdown modes
 //=============================================================================
@@ -251,6 +271,7 @@ int main() {
     test_wait_for_success();
     test_wait_for_immediate_check();
     test_wait_for_timeout_budget();
+    test_task_trap_does_not_hang_wait();
     test_graceful_shutdown();
     test_shutdown_now();
     test_null_safety();

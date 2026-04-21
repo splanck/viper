@@ -44,6 +44,7 @@ Simple string templating with placeholder substitution.
 - Placeholder indices that overflow integer range are ignored (placeholder left as-is)
 - Template rendering and escaping use runtime string byte length, so embedded `NUL` bytes in values are preserved
 - `Escape()` always returns a new string result, even when the input contains no template delimiters
+- `Keys()` returns unique key strings in an owned sequence; callers can release the sequence normally
 - Thread safe: all functions are stateless
 
 ### Traps
@@ -265,6 +266,7 @@ NEXT i
 - `Append(NULL)` treats the input as empty; `AppendLine(NULL)` appends just `\n`.
 - `Length` is a byte count, not a Unicode codepoint count.
 - Embedded `NUL` bytes are preserved in appended text and in `ToString()`.
+- Calling instance properties or methods with a null `StringBuilder` receiver traps with `InvalidOperation`.
 
 ---
 
@@ -302,6 +304,8 @@ Text wrapping, alignment, indentation, and truncation utilities for formatting t
 - `Dedent` removes a common leading whitespace byte prefix; tabs and spaces are not treated as interchangeable
 - `LineCount` does not count a final trailing newline as an extra empty line
 - `Shorten` keeps the beginning and end of the text, replacing the middle with "..."
+- `Wrap`, `Fill`, and `WrapLines` treat null text as empty text
+- `WrapLines` returns an owned sequence of owned line strings
 
 ### Zia Example
 
@@ -421,9 +425,12 @@ Number formatting utilities for human-readable display of integers and floating-
 
 - `Bytes` uses binary units: B, KB, MB, GB, TB with two decimal places where appropriate
 - `Currency` adds thousands separators and always shows two decimal places (e.g., `$1,234.56`)
+- `Currency` preserves the full runtime string for the symbol, including embedded `NUL` bytes
 - `Ordinal` handles special cases: 11th, 12th, 13th (not 11st, 12nd, 13th)
 - `Bytes` and `Pad` handle the full signed 64-bit integer range, including `INT64_MIN`
+- `Thousands` preserves the full runtime string for the separator, including embedded `NUL` bytes; null or empty separators default to `","`
 - `ToWords` produces hyphenated compound numbers (e.g., "forty-two", "one hundred twenty-three")
+- Formatting helpers trap on internal builder allocation or overflow failure instead of returning partial output
 
 ### Zia Example
 
@@ -510,6 +517,8 @@ English noun pluralization and singularization. Handles common English rules, ir
 - Handles regular English pluralization rules (adding -s, -es, -ies, etc.)
 - Knows common irregular forms: child/children, person/people, mouse/mice, ox/oxen, etc.
 - `Count` automatically chooses singular or plural form based on the number (1 = singular, everything else = plural)
+- Irregular forms preserve input casing for title-case and all-uppercase words, e.g. `Child` -> `Children`, `CHILD` -> `CHILDREN`
+- Runtime string byte length is used, so embedded `NUL` bytes are preserved in regular inflection and `Count`
 - Not a full NLP engine -- covers the approximately 95% common case for English nouns
 
 ### Zia Example
@@ -598,6 +607,8 @@ Semantic version (SemVer 2.0.0) parsing, comparison, and manipulation. Supports 
 - Pre-release and build identifiers must be non-empty dot-separated ASCII alphanumeric/hyphen identifiers; numeric pre-release identifiers cannot have leading zeroes
 - `Cmp` ignores build metadata per the SemVer specification; pre-release versions have lower precedence than the associated normal version
 - `Satisfies` supports constraint operators: `>=`, `<=`, `>`, `<`, `=`, `^` (compatible), `~` (approximate)
+- `Satisfies` trims leading and trailing whitespace around the constraint and version operand
+- Embedded `NUL` bytes in constraints are not treated as terminators; constraints containing them are parsed by full byte length and generally fail as invalid
 - `BumpMajor`, `BumpMinor`, and `BumpPatch` return new version strings (they do not modify the original object)
 
 ### Zia Example
@@ -715,8 +726,12 @@ Tolerant HTML parser and utility functions for escaping, unescaping, tag strippi
 ### Notes
 
 - **Tolerant parser:** Handles malformed HTML without trapping. Unclosed tags, missing quotes, and other common issues are handled gracefully.
+- Closing tags are matched by tag name; unmatched closing tags are ignored instead of blindly popping the parse stack.
 - **Entity support:** Handles named entities (`&lt;`, `&gt;`, `&amp;`, `&quot;`, `&apos;`, `&nbsp;`), numeric entities (`&#60;`, `&#x3C;`), and passes through unknown entities unchanged.
 - **StripTags vs ToText:** `StripTags` removes tags but leaves entities as-is. `ToText` removes tags AND unescapes entities.
+- Escaping, unescaping, stripping, and extraction use runtime string byte length, so embedded `NUL` bytes are preserved.
+- `ExtractLinks` recognizes `href` attributes with whitespace around `=` and ignores non-`href` names such as `data-href`.
+- `ExtractLinks` and `ExtractText` return owned sequences of owned strings.
 - All methods return empty string/empty Seq for NULL input.
 
 ### Zia Example
@@ -873,6 +888,10 @@ PRINT headings.Get(0)  ' Output: "Introduction"
 
 - This is a basic Markdown converter, not a full CommonMark implementation
 - Supports the most commonly used Markdown features
+- Link URLs are escaped before being written to HTML attributes, and unsafe schemes are blocked even with leading whitespace/control bytes
+- Unmatched `**`, `*`, and backtick markers are emitted as literal text rather than as unclosed formatting spans
+- `ToText` preserves source line breaks but does not append an extra final newline
+- Extraction helpers return owned sequences of owned strings
 - Nested formatting (e.g., bold within italic) may not render correctly
 
 ### Use Cases

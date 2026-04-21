@@ -60,6 +60,16 @@ static void test_wrap() {
                     strcmp(rt_string_cstr((rt_string)rt_seq_get(lines, 0)), "one two") == 0);
     }
 
+    // Test 5: Null input is treated as empty text
+    {
+        rt_string result = rt_textwrap_wrap(NULL, 20);
+        test_result("Null wraps to empty", strcmp(rt_string_cstr(result), "") == 0);
+        void *lines = rt_textwrap_wrap_lines(NULL, 20);
+        test_result("Null WrapLines has one empty line", rt_seq_len(lines) == 1);
+        test_result("Null WrapLines item empty",
+                    strcmp(rt_string_cstr((rt_string)rt_seq_get(lines, 0)), "") == 0);
+    }
+
     printf("\n");
 }
 

@@ -4,13 +4,13 @@
 // See LICENSE for license information.
 //
 // File: src/runtime/threads/rt_channel.h
-// Purpose: Thread-safe channel for inter-thread communication providing FIFO bounded/unbounded send
-// and receive with blocking semantics when empty or full.
+// Purpose: Thread-safe channel for inter-thread communication providing FIFO bounded and
+// synchronous send/receive with blocking semantics when empty or full.
 //
 // Key invariants:
 //   - FIFO ordering is guaranteed across all operations.
 //   - Bounded channels block senders when full until a receiver makes space.
-//   - Unbounded channels (capacity 0) never block senders.
+//   - Synchronous channels (capacity 0) rendezvous sender and receiver.
 //   - rt_channel_recv blocks until a message is available or the channel is closed.
 //
 // Ownership/Lifetime:
@@ -68,11 +68,18 @@ int8_t rt_channel_send_for(void *channel, void *item, int64_t ms);
 void *rt_channel_recv(void *channel);
 
 /// @brief Try to receive an item without blocking.
-/// @details Returns immediately with the item if available.
+/// @details Returns immediately with the item if available. Passing NULL for
+///          @p out checks availability without consuming or releasing an item.
 /// @param channel Channel object pointer.
 /// @param out Pointer to store the received item (may be NULL to check only).
 /// @return 1 if received, 0 if channel is empty.
 int8_t rt_channel_try_recv(void *channel, void **out);
+
+/// @brief Managed ABI wrapper for TryRecv.
+/// @details Returns the received item directly, or NULL if no item is available.
+/// @param channel Channel object pointer.
+/// @return Received item, or NULL if empty/closed.
+void *rt_channel_try_recv_val(void *channel);
 
 /// @brief Receive with a timeout.
 /// @details Blocks up to @p ms milliseconds for an item.
@@ -81,6 +88,13 @@ int8_t rt_channel_try_recv(void *channel, void **out);
 /// @param ms Timeout in milliseconds.
 /// @return 1 if received, 0 if timed out or closed.
 int8_t rt_channel_recv_for(void *channel, void **out, int64_t ms);
+
+/// @brief Managed ABI wrapper for RecvFor.
+/// @details Returns the received item directly, or NULL on timeout/closed.
+/// @param channel Channel object pointer.
+/// @param ms Timeout in milliseconds.
+/// @return Received item, or NULL if timed out/closed.
+void *rt_channel_recv_for_val(void *channel, int64_t ms);
 
 /// @brief Close the channel.
 /// @details Prevents further sends. Receivers can still drain remaining items.

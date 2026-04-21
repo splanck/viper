@@ -37,14 +37,24 @@
 #include "rt_internal.h"
 
 #include <errno.h>
+#include <limits.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <string.h>
 #include <time.h>
 
 #if defined(_WIN32)
 
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+
+static DWORD monitor_clamp_timeout_ms(int64_t ms) {
+    if (ms <= 0)
+        return 0;
+    if (ms > (int64_t)MAXDWORD)
+        return MAXDWORD;
+    return (DWORD)ms;
+}
 
 /// @brief Waiter state enumeration for Windows.
 enum {
@@ -175,7 +185,15 @@ void rt_monitor_forget(void *obj) {
         LeaveCriticalSection(&g_monitor_table_cs);
         return;
     }
+    EnterCriticalSection(&node->monitor.cs);
+    if (node->monitor.owner_valid || node->monitor.acq_head || node->monitor.wait_head) {
+        LeaveCriticalSection(&node->monitor.cs);
+        LeaveCriticalSection(&g_monitor_table_cs);
+        return;
+    }
+
     *link = node->next;
+    LeaveCriticalSection(&node->monitor.cs);
     LeaveCriticalSection(&g_monitor_table_cs);
 
     DeleteCriticalSection(&node->monitor.cs);
@@ -416,7 +434,7 @@ int8_t rt_monitor_try_enter_for(void *obj, int64_t ms) {
     monitor_enqueue_acq(m, &w);
 
     ULONGLONG start = GetTickCount64();
-    DWORD timeout_ms = (DWORD)ms;
+    DWORD timeout_ms = monitor_clamp_timeout_ms(ms);
     while (w.state != RT_MON_WAITER_ACQUIRED) {
         ULONGLONG elapsed = GetTickCount64() - start;
         if (elapsed >= timeout_ms) {
@@ -551,7 +569,7 @@ int8_t rt_monitor_wait_for(void *obj, int64_t ms) {
 
     int timed_out = 0;
     ULONGLONG start = GetTickCount64();
-    DWORD timeout_ms = (DWORD)ms;
+    DWORD timeout_ms = monitor_clamp_timeout_ms(ms);
     while (w.state == RT_MON_WAITER_WAITING_PAUSE) {
         ULONGLONG elapsed = GetTickCount64() - start;
         if (elapsed >= timeout_ms) {
@@ -658,6 +676,11 @@ void rt_monitor_pause_all(void *obj) {
 #else
 
 #include <pthread.h>
+#if defined(__APPLE__)
+extern int pthread_cond_timedwait_relative_np(pthread_cond_t *cond,
+                                              pthread_mutex_t *mutex,
+                                              const struct timespec *rel_time);
+#endif
 
 /// @brief Waiter state enumeration.
 ///
@@ -684,6 +707,7 @@ enum {
 typedef struct RtMonitorWaiter {
     struct RtMonitorWaiter *next; ///< Next waiter in queue (singly linked).
     pthread_cond_t cv;            ///< Per-waiter condition variable.
+    int8_t cond_uses_monotonic;   ///< Non-zero when cv uses CLOCK_MONOTONIC.
     pthread_t thread;             ///< The waiting thread's ID.
     int state;                    ///< Current state (from enum above).
     size_t desired_recursion;     ///< Recursion count to restore on acquisition.
@@ -800,7 +824,15 @@ void rt_monitor_forget(void *obj) {
         pthread_mutex_unlock(&g_monitor_table_mu);
         return;
     }
+    pthread_mutex_lock(&node->monitor.mu);
+    if (node->monitor.owner_valid || node->monitor.acq_head || node->monitor.wait_head) {
+        pthread_mutex_unlock(&node->monitor.mu);
+        pthread_mutex_unlock(&g_monitor_table_mu);
+        return;
+    }
+
     *link = node->next;
+    pthread_mutex_unlock(&node->monitor.mu);
     pthread_mutex_unlock(&g_monitor_table_mu);
 
     (void)pthread_mutex_destroy(&node->monitor.mu);
@@ -893,28 +925,105 @@ static void monitor_remove_wait(RtMonitor *m, RtMonitorWaiter *w) {
     }
 }
 
-/// @brief Compute an absolute `CLOCK_REALTIME` timespec `ms` ahead of now.
-///
-/// Used to feed `pthread_cond_timedwait`, which takes an absolute
-/// deadline rather than a relative timeout. Spurious wakeups are
-/// handled by the caller's loop (which retests its condition).
-static struct timespec abs_time_ms_from_now(int64_t ms) {
-    struct timespec ts;
-    clock_gettime(CLOCK_REALTIME, &ts);
-    if (ms <= 0)
-        return ts;
+typedef struct {
+    struct timespec deadline;
+} monitor_deadline_t;
 
-    const int64_t kNsPerMs = 1000000;
-    int64_t add_ns = ms * kNsPerMs;
-    int64_t sec = (int64_t)ts.tv_sec + add_ns / 1000000000;
-    int64_t ns = (int64_t)ts.tv_nsec + add_ns % 1000000000;
+static int monitor_cond_init(pthread_cond_t *cond, int8_t *uses_monotonic) {
+    if (uses_monotonic)
+        *uses_monotonic = 0;
+#if defined(__APPLE__)
+    if (uses_monotonic)
+        *uses_monotonic = 1;
+    return pthread_cond_init(cond, NULL);
+#elif defined(CLOCK_MONOTONIC)
+    pthread_condattr_t attr;
+    if (pthread_condattr_init(&attr) != 0)
+        return pthread_cond_init(cond, NULL);
+    if (pthread_condattr_setclock(&attr, CLOCK_MONOTONIC) != 0) {
+        pthread_condattr_destroy(&attr);
+        return pthread_cond_init(cond, NULL);
+    }
+    if (uses_monotonic)
+        *uses_monotonic = 1;
+    int rc = pthread_cond_init(cond, &attr);
+    if (rc != 0 && uses_monotonic)
+        *uses_monotonic = 0;
+    pthread_condattr_destroy(&attr);
+    return rc;
+#else
+    return pthread_cond_init(cond, NULL);
+#endif
+}
+
+static struct timespec monitor_now_clock(int8_t use_monotonic) {
+    struct timespec ts;
+    memset(&ts, 0, sizeof(ts));
+#ifdef CLOCK_MONOTONIC
+    if (use_monotonic && clock_gettime(CLOCK_MONOTONIC, &ts) == 0)
+        return ts;
+#endif
+    (void)clock_gettime(CLOCK_REALTIME, &ts);
+    return ts;
+}
+
+static monitor_deadline_t monitor_deadline_ms_from_now(int64_t ms, int8_t use_monotonic) {
+    monitor_deadline_t d;
+    d.deadline = monitor_now_clock(use_monotonic);
+    if (ms <= 0)
+        return d;
+
+    int64_t add_sec = ms / 1000;
+    long add_nsec = (long)((ms % 1000) * 1000000L);
+    if (add_sec > (int64_t)LONG_MAX - (int64_t)d.deadline.tv_sec) {
+        d.deadline.tv_sec = (time_t)LONG_MAX;
+        d.deadline.tv_nsec = 999999999L;
+        return d;
+    }
+    int64_t sec = (int64_t)d.deadline.tv_sec + add_sec;
+    int64_t ns = (int64_t)d.deadline.tv_nsec + add_nsec;
     if (ns >= 1000000000) {
         sec += 1;
         ns -= 1000000000;
     }
-    ts.tv_sec = (time_t)sec;
-    ts.tv_nsec = (long)ns;
-    return ts;
+    d.deadline.tv_sec = (time_t)sec;
+    d.deadline.tv_nsec = (long)ns;
+    return d;
+}
+
+#if defined(__APPLE__)
+static int64_t monitor_remaining_ms(monitor_deadline_t deadline, int8_t use_monotonic) {
+    struct timespec now = monitor_now_clock(use_monotonic);
+    int64_t sec = (int64_t)deadline.deadline.tv_sec - (int64_t)now.tv_sec;
+    int64_t ns = (int64_t)deadline.deadline.tv_nsec - (int64_t)now.tv_nsec;
+    if (ns < 0) {
+        sec--;
+        ns += 1000000000L;
+    }
+    if (sec < 0)
+        return 0;
+    if (sec > INT64_MAX / 1000)
+        return INT64_MAX;
+    return sec * 1000 + ns / 1000000L;
+}
+#endif
+
+static int monitor_cond_timedwait_deadline(pthread_cond_t *cond,
+                                           pthread_mutex_t *mutex,
+                                           monitor_deadline_t deadline,
+                                           int8_t use_monotonic) {
+#if defined(__APPLE__)
+    int64_t remaining = monitor_remaining_ms(deadline, use_monotonic);
+    if (remaining <= 0)
+        return ETIMEDOUT;
+    struct timespec rel;
+    rel.tv_sec = (time_t)(remaining / 1000);
+    rel.tv_nsec = (long)((remaining % 1000) * 1000000L);
+    return pthread_cond_timedwait_relative_np(cond, mutex, &rel);
+#else
+    (void)use_monotonic;
+    return pthread_cond_timedwait(cond, mutex, &deadline.deadline);
+#endif
 }
 
 /// @brief POSIX equivalent of the Win32 `monitor_enter_blocking`.
@@ -941,19 +1050,21 @@ static void monitor_enter_blocking(RtMonitor *m, pthread_t self, int64_t timeout
     }
 
     RtMonitorWaiter w = {0};
-    (void)pthread_cond_init(&w.cv, NULL);
+    (void)monitor_cond_init(&w.cv, &w.cond_uses_monotonic);
     w.thread = self;
     w.state = RT_MON_WAITER_WAITING_LOCK;
     w.desired_recursion = 1;
     monitor_enqueue_acq(m, &w);
 
     int rc = 0;
-    const struct timespec deadline = abs_time_ms_from_now(timeout_ms);
+    const monitor_deadline_t deadline =
+        monitor_deadline_ms_from_now(timeout_ms, w.cond_uses_monotonic);
     while (w.state != RT_MON_WAITER_ACQUIRED) {
         if (!timed) {
             rc = pthread_cond_wait(&w.cv, &m->mu);
         } else {
-            rc = pthread_cond_timedwait(&w.cv, &m->mu, &deadline);
+            rc = monitor_cond_timedwait_deadline(
+                &w.cv, &m->mu, deadline, w.cond_uses_monotonic);
         }
 
         if (timed && rc == ETIMEDOUT && w.state != RT_MON_WAITER_ACQUIRED) {
@@ -1094,16 +1205,16 @@ int8_t rt_monitor_try_enter_for(void *obj, int64_t ms) {
     }
 
     RtMonitorWaiter w = {0};
-    (void)pthread_cond_init(&w.cv, NULL);
+    (void)monitor_cond_init(&w.cv, &w.cond_uses_monotonic);
     w.thread = self;
     w.state = RT_MON_WAITER_WAITING_LOCK;
     w.desired_recursion = 1;
     monitor_enqueue_acq(m, &w);
 
-    const struct timespec deadline = abs_time_ms_from_now(ms);
+    const monitor_deadline_t deadline = monitor_deadline_ms_from_now(ms, w.cond_uses_monotonic);
     int rc = 0;
     while (w.state != RT_MON_WAITER_ACQUIRED) {
-        rc = pthread_cond_timedwait(&w.cv, &m->mu, &deadline);
+        rc = monitor_cond_timedwait_deadline(&w.cv, &m->mu, deadline, w.cond_uses_monotonic);
         if (rc == ETIMEDOUT && w.state != RT_MON_WAITER_ACQUIRED) {
             monitor_remove_acq(m, &w);
             pthread_cond_destroy(&w.cv);
@@ -1234,7 +1345,7 @@ void rt_monitor_wait(void *obj) {
     monitor_grant_next_waiter(m);
 
     RtMonitorWaiter w = {0};
-    (void)pthread_cond_init(&w.cv, NULL);
+    (void)monitor_cond_init(&w.cv, &w.cond_uses_monotonic);
     w.thread = self;
     w.state = RT_MON_WAITER_WAITING_PAUSE;
     w.desired_recursion = saved_recursion;
@@ -1282,16 +1393,17 @@ int8_t rt_monitor_wait_for(void *obj, int64_t ms) {
     monitor_grant_next_waiter(m);
 
     RtMonitorWaiter w = {0};
-    (void)pthread_cond_init(&w.cv, NULL);
+    (void)monitor_cond_init(&w.cv, &w.cond_uses_monotonic);
     w.thread = self;
     w.state = RT_MON_WAITER_WAITING_PAUSE;
     w.desired_recursion = saved_recursion;
     monitor_enqueue_wait(m, &w);
 
     int timed_out = 0;
-    const struct timespec deadline = abs_time_ms_from_now(ms);
+    const monitor_deadline_t deadline = monitor_deadline_ms_from_now(ms, w.cond_uses_monotonic);
     while (w.state == RT_MON_WAITER_WAITING_PAUSE) {
-        const int rc = pthread_cond_timedwait(&w.cv, &m->mu, &deadline);
+        const int rc =
+            monitor_cond_timedwait_deadline(&w.cv, &m->mu, deadline, w.cond_uses_monotonic);
         if (rc == ETIMEDOUT && w.state == RT_MON_WAITER_WAITING_PAUSE) {
             timed_out = 1;
             break;

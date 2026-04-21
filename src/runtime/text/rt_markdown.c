@@ -7,13 +7,13 @@
 //
 // File: src/runtime/text/rt_markdown.c
 // Purpose: Implements Markdown parsing utilities for the Viper.Text.Markdown
-//          class. Provides ExtractLinks (href + text pairs), ExtractHeadings
-//          (level + text), ToHtml (basic Markdown to HTML conversion), and
+//          class. Provides ExtractLinks (URLs), ExtractHeadings (heading text),
+//          ToHtml (basic Markdown to HTML conversion), and
 //          StripMarkdown (remove formatting, return plain text).
 //
 // Key invariants:
-//   - ExtractLinks returns a Seq<Seq<String>> where each inner seq is [href, text].
-//   - ExtractHeadings returns a Seq<Seq> where each inner seq is [level, text].
+//   - ExtractLinks returns a Seq<String> of URL targets.
+//   - ExtractHeadings returns a Seq<String> of heading text.
 //   - ToHtml converts headings, bold, italic, links, code, and lists; does not
 //     implement the full CommonMark spec.
 //   - StripMarkdown removes **, *, _, `, and link syntax leaving plain text.
@@ -52,6 +52,11 @@ static bool url_scheme_is_blocked(const char *url, int64_t len) {
         const char *scheme;
         int scheme_len;
     } blocked[] = {{"javascript:", 11}, {"data:", 5}, {"vbscript:", 9}};
+
+    while (len > 0 && (unsigned char)*url <= 0x20) {
+        url++;
+        len--;
+    }
 
     for (int s = 0; s < 3; s++) {
         int sl = blocked[s].scheme_len;
@@ -120,43 +125,62 @@ static void process_inline(rt_string_builder *sb, const char *line, int64_t len)
     while (i < len) {
         // Bold **text**
         if (i + 1 < len && line[i] == '*' && line[i + 1] == '*') {
+            int64_t close = i + 2;
+            while (close + 1 < len && !(line[close] == '*' && line[close + 1] == '*'))
+                close++;
+            if (close + 1 >= len) {
+                append_escaped(sb, line[i++]);
+                append_escaped(sb, line[i++]);
+                continue;
+            }
             i += 2;
             rt_sb_append_cstr(sb, "<strong>");
-            while (i + 1 < len && !(line[i] == '*' && line[i + 1] == '*')) {
+            while (i < close) {
                 append_escaped(sb, line[i]);
                 i++;
             }
             rt_sb_append_cstr(sb, "</strong>");
-            if (i + 1 < len)
-                i += 2;
+            i += 2;
             continue;
         }
 
         // Italic *text*
         if (line[i] == '*' && (i + 1 < len) && line[i + 1] != '*') {
+            int64_t close = i + 1;
+            while (close < len && line[close] != '*')
+                close++;
+            if (close >= len) {
+                append_escaped(sb, line[i++]);
+                continue;
+            }
             i++;
             rt_sb_append_cstr(sb, "<em>");
-            while (i < len && line[i] != '*') {
+            while (i < close) {
                 append_escaped(sb, line[i]);
                 i++;
             }
             rt_sb_append_cstr(sb, "</em>");
-            if (i < len)
-                i++;
+            i++;
             continue;
         }
 
         // Inline code `code`
         if (line[i] == '`') {
+            int64_t close = i + 1;
+            while (close < len && line[close] != '`')
+                close++;
+            if (close >= len) {
+                append_escaped(sb, line[i++]);
+                continue;
+            }
             i++;
             rt_sb_append_cstr(sb, "<code>");
-            while (i < len && line[i] != '`') {
+            while (i < close) {
                 append_escaped(sb, line[i]);
                 i++;
             }
             rt_sb_append_cstr(sb, "</code>");
-            if (i < len)
-                i++;
+            i++;
             continue;
         }
 
@@ -177,8 +201,10 @@ static void process_inline(rt_string_builder *sb, const char *line, int64_t len)
                     int64_t url_len = k - url_start;
                     if (url_scheme_is_blocked(line + url_start, url_len))
                         rt_sb_append_cstr(sb, "#");
-                    else
-                        rt_sb_append_bytes(sb, line + url_start, url_len);
+                    else {
+                        for (int64_t m = url_start; m < k; m++)
+                            append_escaped(sb, line[m]);
+                    }
                     rt_sb_append_cstr(sb, "\">");
                     for (int64_t m = text_start; m < j; m++)
                         append_escaped(sb, line[m]);
@@ -202,17 +228,19 @@ rt_string rt_markdown_to_html(rt_string md) {
         return rt_string_from_bytes("", 0);
 
     const char *src = rt_string_cstr(md);
-    int64_t src_len = (int64_t)strlen(src);
+    int64_t src_len = rt_str_len(md);
     rt_string_builder sb;
     rt_sb_init(&sb);
 
     const char *p = src;
     int in_list = 0;
 
-    while (p < src + src_len) {
+    const char *end = src + src_len;
+
+    while (p < end) {
         // Find end of line
         const char *eol = p;
-        while (eol < src + src_len && *eol != '\n')
+        while (eol < end && *eol != '\n')
             eol++;
         int64_t line_len = (int64_t)(eol - p);
 
@@ -230,11 +258,11 @@ rt_string rt_markdown_to_html(rt_string md) {
         if (*p == '#') {
             int level = 0;
             const char *h = p;
-            while (*h == '#' && level < 6) {
+            while (h < eol && *h == '#' && level < 6) {
                 level++;
                 h++;
             }
-            if (*h == ' ')
+            if (h < eol && *h == ' ')
                 h++;
             char tag[8];
             snprintf(tag, sizeof(tag), "<h%d>", level);
@@ -263,9 +291,9 @@ rt_string rt_markdown_to_html(rt_string md) {
         if (line_len >= 3 && p[0] == '`' && p[1] == '`' && p[2] == '`') {
             p = eol + 1;
             rt_sb_append_cstr(&sb, "<pre><code>");
-            while (p < src + src_len) {
+            while (p < end) {
                 eol = p;
-                while (eol < src + src_len && *eol != '\n')
+                while (eol < end && *eol != '\n')
                     eol++;
                 line_len = (int64_t)(eol - p);
                 if (line_len >= 3 && p[0] == '`' && p[1] == '`' && p[2] == '`') {
@@ -331,16 +359,22 @@ rt_string rt_markdown_to_text(rt_string md) {
         return rt_string_from_bytes("", 0);
 
     const char *src = rt_string_cstr(md);
-    int64_t src_len = (int64_t)strlen(src);
+    int64_t src_len = rt_str_len(md);
     rt_string_builder sb;
     rt_sb_init(&sb);
 
     const char *p = src;
+    const char *end = src + src_len;
+    int first_line = 1;
 
-    while (p < src + src_len) {
+    while (p < end) {
         const char *eol = p;
-        while (eol < src + src_len && *eol != '\n')
+        while (eol < end && *eol != '\n')
             eol++;
+
+        if (!first_line)
+            rt_sb_append_cstr(&sb, "\n");
+        first_line = 0;
 
         // Skip heading markers
         const char *start = p;
@@ -355,26 +389,25 @@ rt_string rt_markdown_to_text(rt_string md) {
                 continue;
             if (*c == '[') {
                 // Extract link text only
-                const char *end = c + 1;
-                while (end < eol && *end != ']')
-                    end++;
-                for (const char *t = c + 1; t < end; t++)
+                const char *link_text_end = c + 1;
+                while (link_text_end < eol && *link_text_end != ']')
+                    link_text_end++;
+                for (const char *t = c + 1; t < link_text_end; t++)
                     rt_sb_append_bytes(&sb, t, 1);
                 // Skip URL part
-                if (end + 1 < eol && end[1] == '(') {
-                    const char *close = end + 2;
+                if ((eol - link_text_end) > 1 && link_text_end[1] == '(') {
+                    const char *close = link_text_end + 2;
                     while (close < eol && *close != ')')
                         close++;
                     c = close;
                 } else {
-                    c = end;
+                    c = link_text_end;
                 }
                 continue;
             }
             rt_sb_append_bytes(&sb, c, 1);
         }
-        rt_sb_append_cstr(&sb, "\n");
-        p = eol + 1;
+        p = eol < end ? eol + 1 : end;
     }
 
     rt_string result = rt_string_from_bytes(sb.data, sb.len);
@@ -384,26 +417,30 @@ rt_string rt_markdown_to_text(rt_string md) {
 
 void *rt_markdown_extract_links(rt_string md) {
     void *seq = rt_seq_new();
+    rt_seq_set_owns_elements(seq, 1);
     if (!md)
         return seq;
 
     const char *src = rt_string_cstr(md);
+    int64_t src_len = rt_str_len(md);
     const char *p = src;
+    const char *end_src = src + src_len;
 
-    while (*p) {
+    while (p < end_src) {
         // Find [text](url) pattern
         if (*p == '[') {
             const char *end = p + 1;
-            while (*end && *end != ']')
+            while (end < end_src && *end != ']')
                 end++;
-            if (*end == ']' && end[1] == '(') {
+            if (end < end_src && *end == ']' && end + 1 < end_src && end[1] == '(') {
                 const char *url_start = end + 2;
                 const char *url_end = url_start;
-                while (*url_end && *url_end != ')')
+                while (url_end < end_src && *url_end != ')')
                     url_end++;
-                if (*url_end == ')') {
+                if (url_end < end_src && *url_end == ')') {
                     rt_string url = rt_string_from_bytes(url_start, (int64_t)(url_end - url_start));
                     rt_seq_push(seq, url);
+                    rt_string_unref(url);
                     p = url_end + 1;
                     continue;
                 }
@@ -416,28 +453,32 @@ void *rt_markdown_extract_links(rt_string md) {
 
 void *rt_markdown_extract_headings(rt_string md) {
     void *seq = rt_seq_new();
+    rt_seq_set_owns_elements(seq, 1);
     if (!md)
         return seq;
 
     const char *src = rt_string_cstr(md);
+    int64_t src_len = rt_str_len(md);
     const char *p = src;
+    const char *end_src = src + src_len;
 
-    while (*p) {
+    while (p < end_src) {
         // Beginning of line (or start of string)
         if (p == src || p[-1] == '\n') {
             if (*p == '#') {
                 const char *h = p;
-                while (*h == '#')
+                while (h < end_src && *h == '#')
                     h++;
-                if (*h == ' ')
+                if (h < end_src && *h == ' ')
                     h++;
                 const char *eol = h;
-                while (*eol && *eol != '\n')
+                while (eol < end_src && *eol != '\n')
                     eol++;
                 rt_string heading = rt_string_from_bytes(h, (int64_t)(eol - h));
                 rt_seq_push(seq, heading);
+                rt_string_unref(heading);
                 p = eol;
-                if (*p)
+                if (p < end_src)
                     p++;
                 continue;
             }

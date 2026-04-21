@@ -18,6 +18,7 @@
 #include <chrono>
 #include <csetjmp>
 #include <cstdint>
+#include <limits>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -56,6 +57,12 @@ static void test_gate_traps() {
     EXPECT_TRAP(rt_gate_leave_many(gate, -2));
     assert(g_last_trap && std::string(g_last_trap).find("Gate.Leave: count cannot be negative") !=
                               std::string::npos);
+
+    void *overflow_gate = rt_gate_new(std::numeric_limits<int64_t>::max());
+    EXPECT_TRAP(rt_gate_leave(overflow_gate));
+    assert(g_last_trap &&
+           std::string(g_last_trap).find("Gate.Leave: permit count overflow") !=
+               std::string::npos);
 
     EXPECT_TRAP(rt_gate_enter(nullptr));
     assert(g_last_trap &&
@@ -250,6 +257,52 @@ static void test_rwlock_write_exit_non_owner_traps() {
     rt_rwlock_write_exit(lock);
 }
 
+static void test_rwlock_read_exit_non_owner_traps() {
+    void *lock = rt_rwlock_new();
+    rt_rwlock_read_enter(lock);
+
+    std::atomic<const char *> trap_msg = nullptr;
+    std::thread t([&] {
+        EXPECT_TRAP(rt_rwlock_read_exit(lock));
+        trap_msg.store(g_last_trap, std::memory_order_release);
+    });
+    t.join();
+
+    const char *msg = trap_msg.load(std::memory_order_acquire);
+    assert(msg &&
+           std::string(msg).find("RwLock.ReadExit: exit without matching enter") !=
+               std::string::npos);
+
+    rt_rwlock_read_exit(lock);
+}
+
+static void test_rwlock_upgrade_rejected() {
+    void *lock = rt_rwlock_new();
+    rt_rwlock_read_enter(lock);
+
+    assert(rt_rwlock_try_write_enter(lock) == 0);
+    EXPECT_TRAP(rt_rwlock_write_enter(lock));
+    assert(g_last_trap &&
+           std::string(g_last_trap).find("RwLock.WriteEnter: cannot upgrade read lock") !=
+               std::string::npos);
+
+    rt_rwlock_read_exit(lock);
+}
+
+static void test_rwlock_writer_owner_can_enter_read() {
+    void *lock = rt_rwlock_new();
+
+    rt_rwlock_write_enter(lock);
+    rt_rwlock_read_enter(lock);
+    assert(rt_rwlock_get_readers(lock) == 1);
+    rt_rwlock_read_exit(lock);
+
+    assert(rt_rwlock_try_read_enter(lock) == 1);
+    assert(rt_rwlock_get_readers(lock) == 1);
+    rt_rwlock_read_exit(lock);
+    rt_rwlock_write_exit(lock);
+}
+
 int main() {
     test_gate_traps();
     test_gate_basic_and_timeout();
@@ -261,5 +314,8 @@ int main() {
     test_rwlock_traps();
     test_rwlock_writer_preference();
     test_rwlock_write_exit_non_owner_traps();
+    test_rwlock_read_exit_non_owner_traps();
+    test_rwlock_upgrade_rejected();
+    test_rwlock_writer_owner_can_enter_read();
     return 0;
 }

@@ -60,6 +60,20 @@ static void test_link() {
     assert(strstr(rt_string_cstr(html), "<a href=\"https://google.com\">Google</a>") != NULL);
 }
 
+static void test_link_url_attribute_escaping() {
+    rt_string md = make_str("Visit [x](https://example.test/\" onclick=\"evil) now");
+    rt_string html = rt_markdown_to_html(md);
+    const char *out = rt_string_cstr(html);
+    assert(strstr(out, "href=\"https://example.test/&quot; onclick=&quot;evil\"") != NULL);
+    assert(strstr(out, "onclick=\"evil") == NULL);
+}
+
+static void test_link_url_leading_space_scheme_blocked() {
+    rt_string md = make_str("[x](  javascript:alert(1))");
+    rt_string html = rt_markdown_to_html(md);
+    assert(strstr(rt_string_cstr(html), "<a href=\"#\">x</a>") != NULL);
+}
+
 static void test_list() {
     rt_string md = make_str("- Item 1\n- Item 2\n- Item 3");
     rt_string html = rt_markdown_to_html(md);
@@ -73,6 +87,16 @@ static void test_paragraph() {
     rt_string md = make_str("Hello world");
     rt_string html = rt_markdown_to_html(md);
     assert(strstr(rt_string_cstr(html), "<p>Hello world</p>") != NULL);
+}
+
+static void test_unmatched_inline_markers_are_literal() {
+    rt_string md = make_str("This is **not closed and `code");
+    rt_string html = rt_markdown_to_html(md);
+    const char *out = rt_string_cstr(html);
+    assert(strstr(out, "<strong>") == NULL);
+    assert(strstr(out, "<code>") == NULL);
+    assert(strstr(out, "**not closed") != NULL);
+    assert(strstr(out, "`code") != NULL);
 }
 
 static void test_code_block() {
@@ -94,6 +118,17 @@ static void test_to_text() {
     assert(strstr(t, "bold") != NULL);
     // Should contain "link" but not the URL
     assert(strstr(t, "link") != NULL);
+}
+
+static void test_to_text_does_not_add_final_newline() {
+    rt_string md = make_str("plain");
+    rt_string text = rt_markdown_to_text(md);
+    assert(rt_str_len(text) == 5);
+    assert(strcmp(rt_string_cstr(text), "plain") == 0);
+
+    md = make_str("# Title\nNext");
+    text = rt_markdown_to_text(md);
+    assert(strcmp(rt_string_cstr(text), "Title\nNext") == 0);
 }
 
 static void test_extract_links() {
@@ -135,10 +170,14 @@ int main() {
     test_italic();
     test_inline_code();
     test_link();
+    test_link_url_attribute_escaping();
+    test_link_url_leading_space_scheme_blocked();
     test_list();
     test_paragraph();
+    test_unmatched_inline_markers_are_literal();
     test_code_block();
     test_to_text();
+    test_to_text_does_not_add_final_newline();
     test_extract_links();
     test_extract_headings();
     test_null_safety();

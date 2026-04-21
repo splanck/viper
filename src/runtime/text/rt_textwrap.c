@@ -73,6 +73,9 @@ rt_string rt_textwrap_wrap(rt_string text, int64_t width) {
     if (width < 1)
         width = 1;
 
+    if (!text)
+        return rt_string_from_bytes("", 0);
+
     const char *src = rt_string_cstr(text);
     int64_t src_len = rt_str_len(text);
 
@@ -141,6 +144,7 @@ rt_string rt_textwrap_wrap(rt_string text, int64_t width) {
 void *rt_textwrap_wrap_lines(rt_string text, int64_t width) {
     rt_string wrapped = rt_textwrap_wrap(text, width);
     void *lines = rt_seq_new();
+    rt_seq_set_owns_elements(lines, 1);
 
     const char *src = rt_string_cstr(wrapped);
     int64_t len = rt_str_len(wrapped);
@@ -150,6 +154,7 @@ void *rt_textwrap_wrap_lines(rt_string text, int64_t width) {
         if (i == len || src[i] == '\n') {
             rt_string line = rt_string_from_bytes(src + start, i - start);
             rt_seq_push(lines, (void *)line);
+            rt_string_unref(line);
             start = i + 1;
         }
     }

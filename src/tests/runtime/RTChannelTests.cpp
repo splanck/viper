@@ -101,6 +101,26 @@ static void test_try_recv_empty() {
     rt_channel_close(ch);
 }
 
+static void test_try_recv_null_out_does_not_consume() {
+    void *ch = rt_channel_new(2);
+    void *a = make_obj();
+    void *b = make_obj();
+
+    assert(rt_channel_try_send(ch, a) == 1);
+    assert(rt_channel_try_send(ch, b) == 1);
+    assert(rt_channel_get_len(ch) == 2);
+
+    assert(rt_channel_try_recv(ch, NULL) == 1);
+    assert(rt_channel_get_len(ch) == 2);
+
+    void *out = NULL;
+    assert(rt_channel_try_recv(ch, &out) == 1);
+    assert(out == a);
+    assert(rt_channel_get_len(ch) == 1);
+
+    rt_channel_close(ch);
+}
+
 static void test_try_send_full() {
     void *ch = rt_channel_new(2);
     void *a = make_obj();
@@ -188,6 +208,22 @@ static void test_recv_for_immediate() {
     void *out = NULL;
     assert(rt_channel_recv_for(ch, &out, 100) == 1);
     assert(out == a);
+    rt_channel_close(ch);
+}
+
+static void test_managed_value_wrappers() {
+    void *ch = rt_channel_new(2);
+    void *a = make_obj();
+    void *b = make_obj();
+
+    assert(rt_channel_try_recv_val(ch) == NULL);
+    assert(rt_channel_try_send(ch, a) == 1);
+    assert(rt_channel_try_recv_val(ch) == a);
+
+    assert(rt_channel_recv_for_val(ch, 5) == NULL);
+    assert(rt_channel_try_send(ch, b) == 1);
+    assert(rt_channel_recv_for_val(ch, 100) == b);
+
     rt_channel_close(ch);
 }
 
@@ -343,6 +379,26 @@ static void test_synchronous_send_for_timeout_budget() {
     rt_channel_close(ch);
 }
 
+static void test_synchronous_try_recv_rendezvous() {
+    void *ch = rt_channel_new(0);
+    void *item = make_obj();
+
+    std::thread sender([&]() { rt_channel_send(ch, item); });
+
+    rt_thread_sleep(20);
+    void *out = NULL;
+    int8_t ok = rt_channel_try_recv(ch, &out);
+    if (!ok) {
+        rt_channel_close(ch);
+        sender.join();
+    }
+    assert(ok == 1);
+    assert(out == item);
+
+    sender.join();
+    rt_channel_close(ch);
+}
+
 /// @brief Main.
 int main() {
     test_new_buffered();
@@ -350,6 +406,7 @@ int main() {
     test_new_negative_capacity();
     test_try_send_recv();
     test_try_recv_empty();
+    test_try_recv_null_out_does_not_consume();
     test_try_send_full();
     test_fifo_order();
     test_close_prevents_send();
@@ -357,6 +414,7 @@ int main() {
     test_double_close();
     test_recv_for_timeout();
     test_recv_for_immediate();
+    test_managed_value_wrappers();
     test_send_for_timeout();
     test_send_for_zero_ms();
     test_null_safety();
@@ -365,6 +423,7 @@ int main() {
     test_synchronous_channel();
     test_synchronous_multi_sender_order();
     test_synchronous_send_for_timeout_budget();
+    test_synchronous_try_recv_rendezvous();
 
     printf("Channel tests: all passed\n");
     return 0;

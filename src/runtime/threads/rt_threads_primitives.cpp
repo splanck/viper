@@ -36,9 +36,11 @@
 #include <condition_variable>
 #include <cstdint>
 #include <deque>
+#include <limits>
 #include <mutex>
 #include <new>
 #include <thread>
+#include <unordered_map>
 
 namespace {
 
@@ -96,6 +98,18 @@ template <typename T> static T *requireObject(void *obj, const char *typeName, c
         return nullptr;
     }
     return typed;
+}
+
+/// @brief Build a steady-clock deadline without overflowing the time_point range.
+static std::chrono::steady_clock::time_point steadyDeadlineFromNow(int64_t ms) {
+    const auto now = std::chrono::steady_clock::now();
+    if (ms <= 0)
+        return now;
+    const auto max_delta = std::chrono::steady_clock::time_point::max() - now;
+    const auto max_ms = std::chrono::duration_cast<std::chrono::milliseconds>(max_delta).count();
+    if (max_ms <= 0 || ms >= max_ms)
+        return std::chrono::steady_clock::time_point::max();
+    return now + std::chrono::milliseconds(ms);
 }
 
 /// @brief Validate a gate object pointer and return its typed wrapper.
@@ -173,6 +187,7 @@ struct RwLockState {
     std::condition_variable readers_cv;
 
     int64_t active_readers = 0;
+    std::unordered_map<std::thread::id, int64_t> reader_counts;
 
     bool writer_active = false;
     std::thread::id writer_owner;
@@ -231,6 +246,8 @@ void *rt_gate_new(int64_t permits) {
 
     auto *state = new (std::nothrow) GateState(permits);
     if (!state) {
+        if (rt_obj_release_check0(gate))
+            rt_obj_free(gate);
         rt_trap("Gate.New: alloc failed");
         return nullptr;
     }
@@ -310,8 +327,7 @@ int8_t rt_gate_try_enter_for(void *gate, int64_t ms) {
     GateWaiter waiter;
     state.waiters.push_back(&waiter);
 
-    const auto deadline =
-        std::chrono::steady_clock::now() + std::chrono::milliseconds(static_cast<int64_t>(ms));
+    const auto deadline = steadyDeadlineFromNow(ms);
 
     while (!waiter.granted) {
         if (waiter.cv.wait_until(lock, deadline) == std::cv_status::timeout && !waiter.granted) {
@@ -349,6 +365,12 @@ void rt_gate_leave_many(void *gate, int64_t count) {
 
     GateState &state = *g->state;
     std::unique_lock<std::mutex> lock(state.mu);
+
+    if (count > std::numeric_limits<int64_t>::max() - state.permits) {
+        lock.unlock();
+        rt_trap("Gate.Leave: permit count overflow");
+        return;
+    }
 
     state.permits += count;
     while (state.permits > 0 && !state.waiters.empty()) {
@@ -398,6 +420,8 @@ void *rt_barrier_new(int64_t parties) {
 
     auto *state = new (std::nothrow) BarrierState(parties);
     if (!state) {
+        if (rt_obj_release_check0(barrier))
+            rt_obj_free(barrier);
         rt_trap("Barrier.New: alloc failed");
         return nullptr;
     }
@@ -500,6 +524,8 @@ void *rt_rwlock_new(void) {
 
     auto *state = new (std::nothrow) RwLockState();
     if (!state) {
+        if (rt_obj_release_check0(lock))
+            rt_obj_free(lock);
         rt_trap("RwLock.New: alloc failed");
         return nullptr;
     }
@@ -519,11 +545,18 @@ void rt_rwlock_read_enter(void *lock) {
         return;
 
     RwLockState &state = *rw->state;
+    const std::thread::id tid = std::this_thread::get_id();
     std::unique_lock<std::mutex> lk(state.mu);
+    if (state.writer_active && state.writer_owner == tid) {
+        ++state.active_readers;
+        ++state.reader_counts[tid];
+        return;
+    }
     while (state.writer_active || !state.waiting_writers.empty()) {
         state.readers_cv.wait(lk);
     }
     ++state.active_readers;
+    ++state.reader_counts[tid];
 }
 
 /// @brief Release a previously acquired read lock.
@@ -535,12 +568,17 @@ void rt_rwlock_read_exit(void *lock) {
         return;
 
     RwLockState &state = *rw->state;
+    const std::thread::id tid = std::this_thread::get_id();
     std::unique_lock<std::mutex> lk(state.mu);
-    if (state.active_readers <= 0) {
+    auto it = state.reader_counts.find(tid);
+    if (it == state.reader_counts.end() || it->second <= 0) {
         lk.unlock(); // Release lock before trap to avoid deadlock if longjmp is used
         rt_trap("RwLock.ReadExit: exit without matching enter");
         return;
     }
+    --it->second;
+    if (it->second == 0)
+        state.reader_counts.erase(it);
     --state.active_readers;
     if (state.active_readers == 0 && !state.writer_active && !state.waiting_writers.empty()) {
         state.waiting_writers.front()->cv.notify_one();
@@ -563,6 +601,13 @@ void rt_rwlock_write_enter(void *lock) {
 
     if (state.writer_active && state.writer_owner == tid) {
         ++state.write_recursion;
+        return;
+    }
+
+    auto reader_it = state.reader_counts.find(tid);
+    if (reader_it != state.reader_counts.end() && reader_it->second > 0) {
+        lk.unlock();
+        rt_trap("RwLock.WriteEnter: cannot upgrade read lock");
         return;
     }
 
@@ -631,10 +676,17 @@ int8_t rt_rwlock_try_read_enter(void *lock) {
         return 0;
 
     RwLockState &state = *rw->state;
+    const std::thread::id tid = std::this_thread::get_id();
     std::unique_lock<std::mutex> lk(state.mu);
+    if (state.writer_active && state.writer_owner == tid) {
+        ++state.active_readers;
+        ++state.reader_counts[tid];
+        return 1;
+    }
     if (state.writer_active || !state.waiting_writers.empty())
         return 0;
     ++state.active_readers;
+    ++state.reader_counts[tid];
     return 1;
 }
 
@@ -657,6 +709,10 @@ int8_t rt_rwlock_try_write_enter(void *lock) {
         ++state.write_recursion;
         return 1;
     }
+
+    auto reader_it = state.reader_counts.find(tid);
+    if (reader_it != state.reader_counts.end() && reader_it->second > 0)
+        return 0;
 
     if (state.writer_active || state.active_readers > 0 || !state.waiting_writers.empty())
         return 0;

@@ -35,7 +35,15 @@ int main() {
     b.addExtern("Viper.Threads.Thread.Start",
                 Type(Type::Kind::Ptr),
                 {Type(Type::Kind::Ptr), Type(Type::Kind::Ptr)});
+    b.addExtern("Viper.Threads.Thread.StartOwned",
+                Type(Type::Kind::Ptr),
+                {Type(Type::Kind::Ptr), Type(Type::Kind::Ptr)});
+    b.addExtern("Viper.Threads.Thread.StartSafeOwned",
+                Type(Type::Kind::Ptr),
+                {Type(Type::Kind::Ptr), Type(Type::Kind::Ptr)});
     b.addExtern("Viper.Threads.Thread.Join", Type(Type::Kind::Void), {Type(Type::Kind::Ptr)});
+    b.addExtern(
+        "Viper.Threads.Thread.SafeJoin", Type(Type::Kind::Void), {Type(Type::Kind::Ptr)});
     b.addExtern("Viper.Threads.Async.Run",
                 Type(Type::Kind::Ptr),
                 {Type(Type::Kind::Ptr), Type(Type::Kind::Ptr)});
@@ -235,6 +243,26 @@ int main() {
                {1, 2, 5});
     b.emitCall(
         "Viper.Threads.Thread.Join", {Value::temp(threadId)}, std::optional<Value>{}, {1, 2, 6});
+
+    unsigned ownedThreadId = b.reserveTempId();
+    b.emitCall("Viper.Threads.Thread.StartOwned",
+               {Value::temp(entryId), Value::temp(nullId)},
+               Value::temp(ownedThreadId),
+               {1, 2, 6});
+    b.emitCall("Viper.Threads.Thread.Join",
+               {Value::temp(ownedThreadId)},
+               std::optional<Value>{},
+               {1, 2, 6});
+
+    unsigned safeOwnedThreadId = b.reserveTempId();
+    b.emitCall("Viper.Threads.Thread.StartSafeOwned",
+               {Value::temp(entryId), Value::temp(nullId)},
+               Value::temp(safeOwnedThreadId),
+               {1, 2, 6});
+    b.emitCall("Viper.Threads.Thread.SafeJoin",
+               {Value::temp(safeOwnedThreadId)},
+               std::optional<Value>{},
+               {1, 2, 6});
 
     // Reset global and exercise Async.Run/Future.Get through the VM-aware extern bridge.
     Instr storeAsyncInit;

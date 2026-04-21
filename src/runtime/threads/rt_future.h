@@ -60,6 +60,15 @@ void rt_promise_set(void *promise, void *value);
 /// @param value Runtime-managed result object.
 void rt_promise_set_owned(void *promise, void *value);
 
+/// @brief Complete the Promise by transferring one existing value reference.
+/// @details The promise owns @p value after this call and releases it from the
+///          promise finalizer. Unlike rt_promise_set_owned, this does not
+///          retain first; callers must only use it for callback results whose
+///          reference is being handed to the Future.
+/// @param promise Promise object pointer.
+/// @param value Runtime-managed result object or raw pointer.
+void rt_promise_set_transferred(void *promise, void *value);
+
 /// @brief Complete the Promise with an error.
 /// @details The associated Future is resolved with an error state.
 ///          Can only be called once; subsequent calls trap.

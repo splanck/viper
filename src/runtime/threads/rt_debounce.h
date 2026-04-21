@@ -11,7 +11,7 @@
 //   - Debouncer resets its timer on each call; fires only after quiet_ms have passed.
 //   - Throttler fires at most once per interval_ms regardless of call frequency.
 //   - Both utilities are time-based using the monotonic clock.
-//   - Objects are not internally synchronized; callers must serialize shared access.
+//   - Mutable state is synchronized internally so instances can be shared across threads.
 //
 // Ownership/Lifetime:
 //   - Debouncer and Throttler objects are heap-allocated runtime objects.

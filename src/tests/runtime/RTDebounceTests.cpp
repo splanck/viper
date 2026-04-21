@@ -12,6 +12,7 @@
 #include <chrono>
 #include <cstdio>
 #include <thread>
+#include <vector>
 
 extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
@@ -91,6 +92,45 @@ static void test_throttle_remaining() {
     assert(remaining > 0 && remaining <= 100);
 }
 
+static void test_debounce_concurrent_signal_count() {
+    void *d = rt_debounce_new(0);
+    constexpr int kThreads = 4;
+    constexpr int kSignals = 1000;
+    std::vector<std::thread> threads;
+    threads.reserve(kThreads);
+
+    for (int i = 0; i < kThreads; ++i) {
+        threads.emplace_back([&] {
+            for (int j = 0; j < kSignals; ++j)
+                rt_debounce_signal(d);
+        });
+    }
+    for (auto &t : threads)
+        t.join();
+
+    assert(rt_debounce_get_signal_count(d) == kThreads * kSignals);
+    assert(rt_debounce_is_ready(d) == 1);
+}
+
+static void test_throttle_concurrent_zero_interval_count() {
+    void *t = rt_throttle_new(0);
+    constexpr int kThreads = 4;
+    constexpr int kTries = 1000;
+    std::vector<std::thread> threads;
+    threads.reserve(kThreads);
+
+    for (int i = 0; i < kThreads; ++i) {
+        threads.emplace_back([&] {
+            for (int j = 0; j < kTries; ++j)
+                assert(rt_throttle_try(t) == 1);
+        });
+    }
+    for (auto &worker : threads)
+        worker.join();
+
+    assert(rt_throttle_get_count(t) == kThreads * kTries);
+}
+
 static void test_null_safety() {
     assert(rt_debounce_is_ready(NULL) == 0);
     assert(rt_debounce_get_delay(NULL) == 0);
@@ -117,6 +157,8 @@ int main() {
     test_throttle_after_interval();
     test_throttle_reset();
     test_throttle_remaining();
+    test_debounce_concurrent_signal_count();
+    test_throttle_concurrent_zero_interval_count();
     test_null_safety();
     return 0;
 }

@@ -250,6 +250,31 @@ static void test_satisfies_tilde() {
     rt_string_unref(s);
 }
 
+static void test_satisfies_trims_trailing_whitespace() {
+    rt_string s = make_str("1.2.9");
+    void *v = rt_version_parse(s);
+
+    rt_string c1 = make_str("  >= 1.2.3 \t");
+    assert(rt_version_satisfies(v, c1) == 1);
+    rt_string_unref(c1);
+
+    rt_string c2 = make_str("~ 1.2.0\n");
+    assert(rt_version_satisfies(v, c2) == 1);
+    rt_string_unref(c2);
+
+    rt_string_unref(s);
+}
+
+static void test_satisfies_embedded_nul_not_truncated() {
+    rt_string s = make_str("1.2.3");
+    void *v = rt_version_parse(s);
+    const char constraint_bytes[] = {'>', '=', '1', '.', '0', '.', '0', '\0'};
+    rt_string c = rt_string_from_bytes(constraint_bytes, sizeof(constraint_bytes));
+    assert(rt_version_satisfies(v, c) == 0);
+    rt_string_unref(c);
+    rt_string_unref(s);
+}
+
 // ---------------------------------------------------------------------------
 // Bump tests
 // ---------------------------------------------------------------------------
@@ -317,6 +342,8 @@ int main() {
     test_satisfies_gte();
     test_satisfies_caret();
     test_satisfies_tilde();
+    test_satisfies_trims_trailing_whitespace();
+    test_satisfies_embedded_nul_not_truncated();
 
     // Bump
     test_bump_major();

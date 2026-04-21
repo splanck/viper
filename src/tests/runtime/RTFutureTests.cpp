@@ -258,6 +258,26 @@ static void test_future_recreate_after_release() {
         rt_obj_free(promise);
 }
 
+static void test_cached_future_retained_for_each_caller() {
+    void *promise = rt_promise_new();
+    void *future1 = rt_promise_get_future(promise);
+    void *future2 = rt_promise_get_future(promise);
+    test_result(future1 == future2, "future_cached_retain: should return cached future");
+
+    if (rt_obj_release_check0(future1))
+        rt_obj_free(future1);
+
+    int value = 2027;
+    rt_promise_set(promise, &value);
+    test_result(rt_future_get(future2) == &value,
+                "future_cached_retain: second caller should remain valid");
+
+    if (rt_obj_release_check0(future2))
+        rt_obj_free(future2);
+    if (rt_obj_release_check0(promise))
+        rt_obj_free(promise);
+}
+
 static void test_owned_value_survives_future_release() {
     void *promise = rt_promise_new();
     void *future = rt_promise_get_future(promise);
@@ -328,6 +348,27 @@ static void test_owned_get_for_val_survives_future_release() {
         rt_obj_free(got);
 }
 
+static void test_transferred_value_survives_future_release() {
+    void *promise = rt_promise_new();
+    void *future = rt_promise_get_future(promise);
+    void *seq = rt_seq_new();
+
+    rt_promise_set_transferred(promise, seq);
+
+    void *got = rt_future_get(future);
+    test_result(got != nullptr, "transferred_value: future get returns seq");
+
+    if (rt_obj_release_check0(future))
+        rt_obj_free(future);
+    if (rt_obj_release_check0(promise))
+        rt_obj_free(promise);
+
+    test_result(rt_seq_len(got) == 0,
+                "transferred_value: returned seq survives future/promise release");
+    if (rt_obj_release_check0(got))
+        rt_obj_free(got);
+}
+
 //=============================================================================
 // Main
 //=============================================================================
@@ -358,9 +399,11 @@ int main() {
     test_future_get_for_timeout();
     test_future_get_for_success();
     test_future_recreate_after_release();
+    test_cached_future_retained_for_each_caller();
     test_owned_value_survives_future_release();
     test_owned_try_get_survives_future_release();
     test_owned_get_for_val_survives_future_release();
+    test_transferred_value_survives_future_release();
 
     printf("All Future/Promise tests passed!\n");
     return 0;

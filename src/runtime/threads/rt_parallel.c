@@ -38,6 +38,7 @@
 #include "rt_seq.h"
 #include "rt_threadpool.h"
 
+#include <setjmp.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -74,9 +75,11 @@ typedef struct {
     void (*func)(void *);
 #ifdef _WIN32
     LONG *remaining;
+    LONG *failed;
     HANDLE event;
 #else
     int *remaining;
+    int *failed;
     pthread_mutex_t *mutex;
     pthread_cond_t *cond;
 #endif
@@ -91,9 +94,11 @@ typedef struct {
     int64_t end;
 #ifdef _WIN32
     LONG *remaining;
+    LONG *failed;
     HANDLE event;
 #else
     int *remaining;
+    int *failed;
     pthread_mutex_t *mutex;
     pthread_cond_t *cond;
 #endif
@@ -104,9 +109,11 @@ typedef struct {
     void (*func)(void);
 #ifdef _WIN32
     LONG *remaining;
+    LONG *failed;
     HANDLE event;
 #else
     int *remaining;
+    int *failed;
     pthread_mutex_t *mutex;
     pthread_cond_t *cond;
 #endif
@@ -122,9 +129,11 @@ typedef struct {
     void *result;
 #ifdef _WIN32
     LONG *remaining;
+    LONG *failed;
     HANDLE event;
 #else
     int *remaining;
+    int *failed;
     pthread_mutex_t *mutex;
     pthread_cond_t *cond;
 #endif
@@ -137,9 +146,11 @@ typedef struct {
     void (*func)(int64_t);
 #ifdef _WIN32
     LONG *remaining;
+    LONG *failed;
     HANDLE event;
 #else
     int *remaining;
+    int *failed;
     pthread_mutex_t *mutex;
     pthread_cond_t *cond;
 #endif
@@ -171,6 +182,14 @@ static void parallel_sync_wait_and_free(parallel_sync *s) {
     while (s->remaining > 0)
         pthread_cond_wait(&s->cond, &s->mutex);
     pthread_mutex_unlock(&s->mutex);
+    pthread_mutex_destroy(&s->mutex);
+    pthread_cond_destroy(&s->cond);
+    free(s);
+}
+
+static void parallel_sync_destroy(parallel_sync *s) {
+    if (!s)
+        return;
     pthread_mutex_destroy(&s->mutex);
     pthread_cond_destroy(&s->cond);
     free(s);
@@ -244,13 +263,24 @@ void *rt_parallel_default_pool(void) {
             rt_obj_free(old_pool);
     }
 
+    void *result = g_default_pool;
+    if (result)
+        rt_obj_retain_maybe(result);
+
 #ifdef _WIN32
     LeaveCriticalSection(&g_pool_lock);
 #else
     pthread_mutex_unlock(&g_pool_lock);
 #endif
 
-    return g_default_pool;
+    return result;
+}
+
+static void parallel_release_default_pool(void *requested_pool, void *actual_pool) {
+    if (requested_pool || !actual_pool)
+        return;
+    if (rt_obj_release_check0(actual_pool))
+        rt_obj_free(actual_pool);
 }
 
 static int64_t parallel_pool_size(void *pool) {
@@ -301,15 +331,28 @@ static void parallel_split_range(
 
 static void foreach_callback(void *arg) {
     foreach_task *task = (foreach_task *)arg;
-    for (int64_t i = task->start; i < task->end; i++)
-        task->func(task->items[i]);
+    int task_failed = 0;
+
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) == 0) {
+        for (int64_t i = task->start; i < task->end; i++)
+            task->func(task->items[i]);
+    } else {
+        task_failed = 1;
+    }
+    rt_trap_clear_recovery();
 
 #ifdef _WIN32
+    if (task_failed)
+        InterlockedExchange(task->failed, 1);
     if (InterlockedDecrement(task->remaining) == 0) {
         SetEvent(task->event);
     }
 #else
     pthread_mutex_lock(task->mutex);
+    if (task_failed)
+        *task->failed = 1;
     (*task->remaining)--;
     if (*task->remaining == 0) {
         pthread_cond_signal(task->cond);
@@ -320,15 +363,28 @@ static void foreach_callback(void *arg) {
 
 static void map_callback(void *arg) {
     map_task *task = (map_task *)arg;
-    for (int64_t i = task->start; i < task->end; i++)
-        task->results[i] = task->func(task->items[i]);
+    int task_failed = 0;
+
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) == 0) {
+        for (int64_t i = task->start; i < task->end; i++)
+            task->results[i] = task->func(task->items[i]);
+    } else {
+        task_failed = 1;
+    }
+    rt_trap_clear_recovery();
 
 #ifdef _WIN32
+    if (task_failed)
+        InterlockedExchange(task->failed, 1);
     if (InterlockedDecrement(task->remaining) == 0) {
         SetEvent(task->event);
     }
 #else
     pthread_mutex_lock(task->mutex);
+    if (task_failed)
+        *task->failed = 1;
     (*task->remaining)--;
     if (*task->remaining == 0) {
         pthread_cond_signal(task->cond);
@@ -339,14 +395,26 @@ static void map_callback(void *arg) {
 
 static void invoke_callback(void *arg) {
     invoke_task *task = (invoke_task *)arg;
-    task->func();
+    int task_failed = 0;
+
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) == 0)
+        task->func();
+    else
+        task_failed = 1;
+    rt_trap_clear_recovery();
 
 #ifdef _WIN32
+    if (task_failed)
+        InterlockedExchange(task->failed, 1);
     if (InterlockedDecrement(task->remaining) == 0) {
         SetEvent(task->event);
     }
 #else
     pthread_mutex_lock(task->mutex);
+    if (task_failed)
+        *task->failed = 1;
     (*task->remaining)--;
     if (*task->remaining == 0) {
         pthread_cond_signal(task->cond);
@@ -357,22 +425,35 @@ static void invoke_callback(void *arg) {
 
 static void reduce_callback(void *arg) {
     reduce_task *task = (reduce_task *)arg;
-    if (task->start >= task->end) {
-        task->result = task->identity;
-    } else {
-        void *accum = task->items[task->start];
-        for (int64_t i = task->start + 1; i < task->end; i++) {
-            accum = task->func(accum, task->items[i]);
+    int task_failed = 0;
+
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) == 0) {
+        if (task->start >= task->end) {
+            task->result = task->identity;
+        } else {
+            void *accum = task->items[task->start];
+            for (int64_t i = task->start + 1; i < task->end; i++) {
+                accum = task->func(accum, task->items[i]);
+            }
+            task->result = accum;
         }
-        task->result = accum;
+    } else {
+        task_failed = 1;
     }
+    rt_trap_clear_recovery();
 
 #ifdef _WIN32
+    if (task_failed)
+        InterlockedExchange(task->failed, 1);
     if (InterlockedDecrement(task->remaining) == 0) {
         SetEvent(task->event);
     }
 #else
     pthread_mutex_lock(task->mutex);
+    if (task_failed)
+        *task->failed = 1;
     (*task->remaining)--;
     if (*task->remaining == 0) {
         pthread_cond_signal(task->cond);
@@ -383,15 +464,28 @@ static void reduce_callback(void *arg) {
 
 static void for_callback(void *arg) {
     for_task *task = (for_task *)arg;
-    for (int64_t i = task->start; i < task->end; i++)
-        task->func(i);
+    int task_failed = 0;
+
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) == 0) {
+        for (int64_t i = task->start; i < task->end; i++)
+            task->func(i);
+    } else {
+        task_failed = 1;
+    }
+    rt_trap_clear_recovery();
 
 #ifdef _WIN32
+    if (task_failed)
+        InterlockedExchange(task->failed, 1);
     if (InterlockedDecrement(task->remaining) == 0) {
         SetEvent(task->event);
     }
 #else
     pthread_mutex_lock(task->mutex);
+    if (task_failed)
+        *task->failed = 1;
     (*task->remaining)--;
     if (*task->remaining == 0) {
         pthread_cond_signal(task->cond);
@@ -416,18 +510,23 @@ void rt_parallel_foreach_pool(void *seq, void *func, void *pool) {
     void *actual_pool = pool ? pool : rt_parallel_default_pool();
     int64_t task_count = parallel_choose_task_count(actual_pool, count);
     void **items = (void **)malloc((size_t)count * sizeof(void *));
-    if (!items)
+    if (!items) {
+        parallel_release_default_pool(pool, actual_pool);
         rt_trap("Parallel.ForEach: memory allocation failed");
+    }
     for (int64_t i = 0; i < count; i++)
         items[i] = rt_seq_get(seq, i);
 
 #ifdef _WIN32
     LONG remaining = (LONG)task_count;
+    LONG task_failed = 0;
     HANDLE event = CreateEvent(NULL, TRUE, FALSE, NULL);
 #else
+    int task_failed = 0;
     parallel_sync *sync = parallel_sync_new((int)task_count);
     if (!sync) {
         free(items);
+        parallel_release_default_pool(pool, actual_pool);
         rt_trap("Parallel.ForEach: memory allocation failed");
     }
 #endif
@@ -438,9 +537,10 @@ void rt_parallel_foreach_pool(void *seq, void *func, void *pool) {
 #ifdef _WIN32
         CloseHandle(event);
 #else
-        parallel_sync_wait_and_free(sync);
+        parallel_sync_destroy(sync);
 #endif
         free(items);
+        parallel_release_default_pool(pool, actual_pool);
         rt_trap("Parallel.ForEach: memory allocation failed");
     }
 
@@ -453,9 +553,11 @@ void rt_parallel_foreach_pool(void *seq, void *func, void *pool) {
         tasks[i].func = (void (*)(void *))func;
 #ifdef _WIN32
         tasks[i].remaining = &remaining;
+        tasks[i].failed = &task_failed;
         tasks[i].event = event;
 #else
         tasks[i].remaining = &sync->remaining;
+        tasks[i].failed = &task_failed;
         tasks[i].mutex = &sync->mutex;
         tasks[i].cond = &sync->cond;
 #endif
@@ -481,6 +583,9 @@ void rt_parallel_foreach_pool(void *seq, void *func, void *pool) {
     free(tasks);
     free(items);
 
+    parallel_release_default_pool(pool, actual_pool);
+    if (task_failed)
+        rt_trap("Parallel.ForEach: task trapped");
     if (submit_failed)
         rt_trap("Parallel.ForEach: failed to submit work");
 }
@@ -510,6 +615,7 @@ void *rt_parallel_map_pool(void *seq, void *func, void *pool) {
     if (!items || !results) {
         free(items);
         free(results);
+        parallel_release_default_pool(pool, actual_pool);
         rt_trap("Parallel.Map: memory allocation failed");
     }
     for (int64_t i = 0; i < count; i++)
@@ -517,12 +623,15 @@ void *rt_parallel_map_pool(void *seq, void *func, void *pool) {
 
 #ifdef _WIN32
     LONG remaining = (LONG)task_count;
+    LONG task_failed = 0;
     HANDLE event = CreateEvent(NULL, TRUE, FALSE, NULL);
 #else
+    int task_failed = 0;
     parallel_sync *sync = parallel_sync_new((int)task_count);
     if (!sync) {
         free(items);
         free(results);
+        parallel_release_default_pool(pool, actual_pool);
         rt_trap("Parallel.Map: memory allocation failed");
     }
 #endif
@@ -533,10 +642,11 @@ void *rt_parallel_map_pool(void *seq, void *func, void *pool) {
 #ifdef _WIN32
         CloseHandle(event);
 #else
-        parallel_sync_wait_and_free(sync);
+        parallel_sync_destroy(sync);
 #endif
         free(items);
         free(results);
+        parallel_release_default_pool(pool, actual_pool);
         rt_trap("Parallel.Map: memory allocation failed");
     }
 
@@ -550,9 +660,11 @@ void *rt_parallel_map_pool(void *seq, void *func, void *pool) {
         parallel_split_range(count, task_count, i, &tasks[i].start, &tasks[i].end);
 #ifdef _WIN32
         tasks[i].remaining = &remaining;
+        tasks[i].failed = &task_failed;
         tasks[i].event = event;
 #else
         tasks[i].remaining = &sync->remaining;
+        tasks[i].failed = &task_failed;
         tasks[i].mutex = &sync->mutex;
         tasks[i].cond = &sync->cond;
 #endif
@@ -584,8 +696,17 @@ void *rt_parallel_map_pool(void *seq, void *func, void *pool) {
     free(tasks);
     free(items);
     free(results);
-    if (submit_failed)
+    parallel_release_default_pool(pool, actual_pool);
+    if (task_failed) {
+        if (rt_obj_release_check0(result))
+            rt_obj_free(result);
+        rt_trap("Parallel.Map: task trapped");
+    }
+    if (submit_failed) {
+        if (rt_obj_release_check0(result))
+            rt_obj_free(result);
         rt_trap("Parallel.Map: failed to submit work");
+    }
     return result;
 }
 
@@ -611,11 +732,15 @@ void rt_parallel_invoke_pool(void *funcs, void *pool) {
 
 #ifdef _WIN32
     LONG remaining = (LONG)count;
+    LONG task_failed = 0;
     HANDLE event = CreateEvent(NULL, TRUE, FALSE, NULL);
 #else
+    int task_failed = 0;
     parallel_sync *sync = parallel_sync_new((int)count);
-    if (!sync)
+    if (!sync) {
+        parallel_release_default_pool(pool, actual_pool);
         rt_trap("Parallel.Invoke: memory allocation failed");
+    }
 #endif
 
     // Allocate task array
@@ -624,8 +749,9 @@ void rt_parallel_invoke_pool(void *funcs, void *pool) {
 #ifdef _WIN32
         CloseHandle(event);
 #else
-        parallel_sync_wait_and_free(sync);
+        parallel_sync_destroy(sync);
 #endif
+        parallel_release_default_pool(pool, actual_pool);
         rt_trap("Parallel.Invoke: memory allocation failed");
     }
 
@@ -636,9 +762,11 @@ void rt_parallel_invoke_pool(void *funcs, void *pool) {
         tasks[i].func = (void (*)(void))rt_seq_get(funcs, i);
 #ifdef _WIN32
         tasks[i].remaining = &remaining;
+        tasks[i].failed = &task_failed;
         tasks[i].event = event;
 #else
         tasks[i].remaining = &sync->remaining;
+        tasks[i].failed = &task_failed;
         tasks[i].mutex = &sync->mutex;
         tasks[i].cond = &sync->cond;
 #endif
@@ -663,6 +791,9 @@ void rt_parallel_invoke_pool(void *funcs, void *pool) {
 
     free(tasks);
 
+    parallel_release_default_pool(pool, actual_pool);
+    if (task_failed)
+        rt_trap("Parallel.Invoke: task trapped");
     if (submit_failed)
         rt_trap("Parallel.Invoke: failed to submit work");
 }
@@ -702,19 +833,24 @@ void *rt_parallel_reduce_pool(void *seq, void *func, void *identity, void *pool)
 
     /* Extract items array for chunk access. */
     void **items = (void **)malloc((size_t)count * sizeof(void *));
-    if (!items)
+    if (!items) {
+        parallel_release_default_pool(pool, actual_pool);
         rt_trap("Parallel.Reduce: memory allocation failed");
+    }
     for (int64_t i = 0; i < count; i++) {
         items[i] = rt_seq_get(seq, i);
     }
 
 #ifdef _WIN32
     LONG remaining = (LONG)nworkers;
+    LONG task_failed = 0;
     HANDLE event = CreateEvent(NULL, TRUE, FALSE, NULL);
 #else
+    int task_failed = 0;
     parallel_sync *sync = parallel_sync_new((int)nworkers);
     if (!sync) {
         free(items);
+        parallel_release_default_pool(pool, actual_pool);
         rt_trap("Parallel.Reduce: memory allocation failed");
     }
 #endif
@@ -724,9 +860,10 @@ void *rt_parallel_reduce_pool(void *seq, void *func, void *identity, void *pool)
 #ifdef _WIN32
         CloseHandle(event);
 #else
-        parallel_sync_wait_and_free(sync);
+        parallel_sync_destroy(sync);
 #endif
         free(items);
+        parallel_release_default_pool(pool, actual_pool);
         rt_trap("Parallel.Reduce: memory allocation failed");
     }
 
@@ -745,9 +882,11 @@ void *rt_parallel_reduce_pool(void *seq, void *func, void *identity, void *pool)
         tasks[i].result = identity;
 #ifdef _WIN32
         tasks[i].remaining = &remaining;
+        tasks[i].failed = &task_failed;
         tasks[i].event = event;
 #else
         tasks[i].remaining = &sync->remaining;
+        tasks[i].failed = &task_failed;
         tasks[i].mutex = &sync->mutex;
         tasks[i].cond = &sync->cond;
 #endif
@@ -779,6 +918,9 @@ void *rt_parallel_reduce_pool(void *seq, void *func, void *identity, void *pool)
 
     free(tasks);
     free(items);
+    parallel_release_default_pool(pool, actual_pool);
+    if (task_failed)
+        rt_trap("Parallel.Reduce: task trapped");
     if (submit_failed)
         rt_trap("Parallel.Reduce: failed to submit work");
     return result;
@@ -804,11 +946,15 @@ void rt_parallel_for_pool(int64_t start, int64_t end, void *func, void *pool) {
 
 #ifdef _WIN32
     LONG remaining = (LONG)task_count;
+    LONG task_failed = 0;
     HANDLE event = CreateEvent(NULL, TRUE, FALSE, NULL);
 #else
+    int task_failed = 0;
     parallel_sync *sync = parallel_sync_new((int)task_count);
-    if (!sync)
+    if (!sync) {
+        parallel_release_default_pool(pool, actual_pool);
         rt_trap("Parallel.For: memory allocation failed");
+    }
 #endif
 
     // Allocate task array
@@ -817,8 +963,9 @@ void rt_parallel_for_pool(int64_t start, int64_t end, void *func, void *pool) {
 #ifdef _WIN32
         CloseHandle(event);
 #else
-        parallel_sync_wait_and_free(sync);
+        parallel_sync_destroy(sync);
 #endif
+        parallel_release_default_pool(pool, actual_pool);
         rt_trap("Parallel.For: memory allocation failed");
     }
 
@@ -834,9 +981,11 @@ void rt_parallel_for_pool(int64_t start, int64_t end, void *func, void *pool) {
         tasks[i].func = (void (*)(int64_t))func;
 #ifdef _WIN32
         tasks[i].remaining = &remaining;
+        tasks[i].failed = &task_failed;
         tasks[i].event = event;
 #else
         tasks[i].remaining = &sync->remaining;
+        tasks[i].failed = &task_failed;
         tasks[i].mutex = &sync->mutex;
         tasks[i].cond = &sync->cond;
 #endif
@@ -861,6 +1010,9 @@ void rt_parallel_for_pool(int64_t start, int64_t end, void *func, void *pool) {
 
     free(tasks);
 
+    parallel_release_default_pool(pool, actual_pool);
+    if (task_failed)
+        rt_trap("Parallel.For: task trapped");
     if (submit_failed)
         rt_trap("Parallel.For: failed to submit work");
 }

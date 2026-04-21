@@ -34,6 +34,7 @@
 #include "rt_string_builder.h"
 
 #include <ctype.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -110,14 +111,49 @@ static int str_ends_with(const char *str, size_t len, const char *suffix) {
 ///          uncountable word tables, which are stored lowercase.
 ///          ASCII-only — locale-aware folds (e.g. Turkish `İ`) are
 ///          out of scope.
-static int str_eq_nocase(const char *a, const char *b) {
-    while (*a && *b) {
-        if (tolower((unsigned char)*a) != tolower((unsigned char)*b))
+static int str_eq_nocase_len(const char *a, size_t a_len, const char *b) {
+    size_t b_len = strlen(b);
+    if (a_len != b_len)
+        return 0;
+    for (size_t i = 0; i < a_len; i++) {
+        if (tolower((unsigned char)a[i]) != tolower((unsigned char)b[i]))
             return 0;
-        a++;
-        b++;
     }
-    return *a == *b;
+    return 1;
+}
+
+static int is_ascii_all_caps_word(const char *src, size_t len) {
+    int saw_alpha = 0;
+    for (size_t i = 0; i < len; i++) {
+        unsigned char c = (unsigned char)src[i];
+        if (isalpha(c)) {
+            saw_alpha = 1;
+            if (islower(c))
+                return 0;
+        }
+    }
+    return saw_alpha;
+}
+
+static rt_string inflection_with_input_case(const char *src,
+                                            size_t src_len,
+                                            const char *replacement) {
+    size_t len = strlen(replacement);
+    char *buf = (char *)malloc(len + 1);
+    if (!buf)
+        rt_trap("Pluralize: memory allocation failed");
+    memcpy(buf, replacement, len + 1);
+
+    if (is_ascii_all_caps_word(src, src_len)) {
+        for (size_t i = 0; i < len; i++)
+            buf[i] = (char)toupper((unsigned char)buf[i]);
+    } else if (src_len > 0 && isupper((unsigned char)src[0]) && len > 0) {
+        buf[0] = (char)toupper((unsigned char)buf[0]);
+    }
+
+    rt_string result = rt_string_from_bytes(buf, len);
+    free(buf);
+    return result;
 }
 
 /// @brief Test whether `word` is in the uncountable-noun list (case-insensitive).
@@ -125,9 +161,9 @@ static int str_eq_nocase(const char *a, const char *b) {
 ///          lookup wouldn't pay off. Words like "sheep", "rice",
 ///          "information" pluralize to themselves, so the caller
 ///          short-circuits with "return the word as-is" on a hit.
-static int is_uncountable(const char *word) {
+static int is_uncountable(const char *word, size_t len) {
     for (int i = 0; uncountables[i]; ++i) {
-        if (str_eq_nocase(word, uncountables[i]))
+        if (str_eq_nocase_len(word, len, uncountables[i]))
             return 1;
     }
     return 0;
@@ -150,18 +186,18 @@ rt_string rt_pluralize(rt_string word) {
     const char *src = rt_string_cstr(word);
     if (!src)
         return rt_string_from_bytes("", 0);
-    size_t len = strlen(src);
+    size_t len = (size_t)rt_str_len(word);
     if (len == 0)
         return rt_string_from_bytes("", 0);
 
     // Check uncountable
-    if (is_uncountable(src))
+    if (is_uncountable(src, len))
         return rt_string_from_bytes(src, len);
 
     // Check irregulars
     for (int i = 0; irregulars[i].singular; ++i) {
-        if (str_eq_nocase(src, irregulars[i].singular))
-            return rt_string_from_bytes(irregulars[i].plural, strlen(irregulars[i].plural));
+        if (str_eq_nocase_len(src, len, irregulars[i].singular))
+            return inflection_with_input_case(src, len, irregulars[i].plural);
     }
 
     // Rules applied in order:
@@ -173,7 +209,9 @@ rt_string rt_pluralize(rt_string word) {
         char *buf = (char *)malloc(blen + 1);
         if (!buf)
             rt_trap("Pluralize: memory allocation failed");
-        snprintf(buf, blen + 1, "%ses", src);
+        memcpy(buf, src, len);
+        memcpy(buf + len, "es", 2);
+        buf[blen] = '\0';
         rt_string result = rt_string_from_bytes(buf, blen);
         free(buf);
         return result;
@@ -232,7 +270,9 @@ rt_string rt_pluralize(rt_string word) {
             char *buf = (char *)malloc(blen + 1);
             if (!buf)
                 rt_trap("Pluralize: memory allocation failed");
-            snprintf(buf, blen + 1, "%ses", src);
+            memcpy(buf, src, len);
+            memcpy(buf + len, "es", 2);
+            buf[blen] = '\0';
             rt_string result = rt_string_from_bytes(buf, blen);
             free(buf);
             return result;
@@ -245,7 +285,9 @@ rt_string rt_pluralize(rt_string word) {
         char *buf = (char *)malloc(blen + 1);
         if (!buf)
             rt_trap("Pluralize: memory allocation failed");
-        snprintf(buf, blen + 1, "%ss", src);
+        memcpy(buf, src, len);
+        buf[len] = 's';
+        buf[blen] = '\0';
         rt_string result = rt_string_from_bytes(buf, blen);
         free(buf);
         return result;
@@ -270,18 +312,18 @@ rt_string rt_singularize(rt_string word) {
     const char *src = rt_string_cstr(word);
     if (!src)
         return rt_string_from_bytes("", 0);
-    size_t len = strlen(src);
+    size_t len = (size_t)rt_str_len(word);
     if (len == 0)
         return rt_string_from_bytes("", 0);
 
     // Check uncountable
-    if (is_uncountable(src))
+    if (is_uncountable(src, len))
         return rt_string_from_bytes(src, len);
 
     // Check irregulars (reverse lookup)
     for (int i = 0; irregulars[i].singular; ++i) {
-        if (str_eq_nocase(src, irregulars[i].plural))
-            return rt_string_from_bytes(irregulars[i].singular, strlen(irregulars[i].singular));
+        if (str_eq_nocase_len(src, len, irregulars[i].plural))
+            return inflection_with_input_case(src, len, irregulars[i].singular);
     }
 
     // -ves -> -f or -fe
@@ -351,16 +393,30 @@ rt_string rt_pluralize_count(int64_t count, rt_string word) {
     if (!nstr)
         nstr = "";
 
-    // 21 = max chars for int64 (sign + 19 digits) + 1 space + word + null
-    size_t blen = 21 + strlen(nstr);
+    size_t noun_len = (size_t)rt_str_len(noun);
+    char count_buf[32];
+    int count_len = snprintf(count_buf, sizeof(count_buf), "%lld", (long long)count);
+    if (count_len < 0) {
+        rt_string_unref(noun);
+        rt_trap("Pluralize: count formatting failed");
+    }
+    if ((size_t)count_len > SIZE_MAX - noun_len - 1) {
+        rt_string_unref(noun);
+        rt_trap("Pluralize: output length overflow");
+    }
+
+    size_t blen = (size_t)count_len + 1 + noun_len;
     char *buf = (char *)malloc(blen + 1);
     if (!buf) {
         rt_string_unref(noun);
         rt_trap("Pluralize: memory allocation failed");
     }
-    int written = snprintf(buf, blen + 1, "%lld %s", (long long)count, nstr);
+    memcpy(buf, count_buf, (size_t)count_len);
+    buf[count_len] = ' ';
+    memcpy(buf + count_len + 1, nstr, noun_len);
+    buf[blen] = '\0';
     rt_string_unref(noun);
-    rt_string result = rt_string_from_bytes(buf, (size_t)(written > 0 ? written : 0));
+    rt_string result = rt_string_from_bytes(buf, blen);
     free(buf);
     return result;
 }

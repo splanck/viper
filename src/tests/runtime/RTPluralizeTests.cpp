@@ -85,6 +85,31 @@ static void test_plural_irregular() {
     rt_string_unref(w);
 }
 
+static void test_plural_irregular_preserves_case() {
+    rt_string w = make_str("Child");
+    rt_string r = rt_pluralize(w);
+    assert(str_eq(r, "Children"));
+    rt_string_unref(r);
+    rt_string_unref(w);
+
+    w = make_str("CHILD");
+    r = rt_pluralize(w);
+    assert(str_eq(r, "CHILDREN"));
+    rt_string_unref(r);
+    rt_string_unref(w);
+}
+
+static void test_plural_embedded_nul() {
+    const char input[] = {'c', 'a', 't', '\0', 'd', 'o', 'g'};
+    const char expected[] = {'c', 'a', 't', '\0', 'd', 'o', 'g', 's'};
+    rt_string w = rt_string_from_bytes(input, sizeof(input));
+    rt_string r = rt_pluralize(w);
+    assert(rt_str_len(r) == (int64_t)sizeof(expected));
+    assert(memcmp(rt_string_cstr(r), expected, sizeof(expected)) == 0);
+    rt_string_unref(r);
+    rt_string_unref(w);
+}
+
 static void test_plural_man() {
     rt_string w = make_str("man");
     rt_string r = rt_pluralize(w);
@@ -137,6 +162,20 @@ static void test_singular_irregular() {
     rt_string_unref(w);
 }
 
+static void test_singular_irregular_preserves_case() {
+    rt_string w = make_str("Children");
+    rt_string r = rt_singularize(w);
+    assert(str_eq(r, "Child"));
+    rt_string_unref(r);
+    rt_string_unref(w);
+
+    w = make_str("CHILDREN");
+    r = rt_singularize(w);
+    assert(str_eq(r, "CHILD"));
+    rt_string_unref(r);
+    rt_string_unref(w);
+}
+
 static void test_singular_uncountable() {
     rt_string w = make_str("fish");
     rt_string r = rt_singularize(w);
@@ -173,6 +212,17 @@ static void test_count_zero() {
     rt_string_unref(w);
 }
 
+static void test_count_embedded_nul() {
+    const char input[] = {'c', 'a', 't', '\0', 'd', 'o', 'g'};
+    const char expected[] = {'2', ' ', 'c', 'a', 't', '\0', 'd', 'o', 'g', 's'};
+    rt_string w = rt_string_from_bytes(input, sizeof(input));
+    rt_string r = rt_pluralize_count(2, w);
+    assert(rt_str_len(r) == (int64_t)sizeof(expected));
+    assert(memcmp(rt_string_cstr(r), expected, sizeof(expected)) == 0);
+    rt_string_unref(r);
+    rt_string_unref(w);
+}
+
 static void test_null_safety() {
     rt_string r = rt_pluralize(NULL);
     assert(str_eq(r, ""));
@@ -197,6 +247,8 @@ int main() {
     test_plural_y_to_ies();
     test_plural_vowel_y();
     test_plural_irregular();
+    test_plural_irregular_preserves_case();
+    test_plural_embedded_nul();
     test_plural_man();
     test_plural_uncountable();
 
@@ -205,12 +257,14 @@ int main() {
     test_singular_es();
     test_singular_ies();
     test_singular_irregular();
+    test_singular_irregular_preserves_case();
     test_singular_uncountable();
 
     // Count
     test_count_one();
     test_count_many();
     test_count_zero();
+    test_count_embedded_nul();
 
     // Null safety
     test_null_safety();

@@ -34,9 +34,12 @@
 #include "rt_threadpool.h"
 
 #include "rt_gc.h"
+#include "rt_internal.h"
 #include "rt_object.h"
 #include "rt_threads.h"
 
+#include <limits.h>
+#include <setjmp.h>
 #include <stdlib.h>
 #include <string.h>
 #if defined(_WIN32)
@@ -85,6 +88,20 @@ static void worker_entry(void *arg);
 
 #include "rt_trap.h"
 
+#if defined(_MSC_VER)
+static __declspec(thread) pool_impl *g_current_worker_pool = NULL;
+#else
+static __thread pool_impl *g_current_worker_pool = NULL;
+#endif
+
+static void pool_release_thread_handle(void **slot) {
+    if (!slot || !*slot)
+        return;
+    if (rt_obj_release_check0(*slot))
+        rt_obj_free(*slot);
+    *slot = NULL;
+}
+
 //=============================================================================
 // Pool Management
 //=============================================================================
@@ -104,24 +121,46 @@ static void pool_finalizer(void *obj) {
     if (!pool)
         return;
 
+    if (g_current_worker_pool == pool) {
+        /*
+         * A worker may be the last owner of a pool through a user callback.
+         * Joining/freeing the worker array and monitor from that same worker
+         * would free state while it is still executing. Keep the object alive
+         * and ask workers to stop; a later non-worker release/finalizer can
+         * reclaim the pool safely.
+         */
+        rt_obj_resurrect(pool);
+        rt_obj_set_finalizer(pool, pool_finalizer);
+        if (pool->monitor) {
+            rt_monitor_enter(pool->monitor);
+            pool->shutdown = 1;
+            pool->shutdown_now = 1;
+            rt_monitor_pause_all(pool->monitor);
+            rt_monitor_exit(pool->monitor);
+        }
+        return;
+    }
+
     rt_gc_untrack(pool);
 
     /* If not already shut down, signal workers and join them.
        This handles the case where a program exits without calling
        rt_threadpool_shutdown() — the atexit finalizer sweep invokes
        this finalizer to prevent abandoned worker threads. */
-    if (!pool->shutdown && pool->monitor) {
-        pool->shutdown = 1;
-        pool->shutdown_now = 1;
+    if (pool->monitor) {
         rt_monitor_enter(pool->monitor);
+        if (!pool->shutdown) {
+            pool->shutdown = 1;
+            pool->shutdown_now = 1;
+        }
         rt_monitor_pause_all(pool->monitor);
         rt_monitor_exit(pool->monitor);
+    }
 
-        for (int64_t i = 0; i < pool->worker_count; i++) {
-            if (pool->workers && pool->workers[i].thread) {
-                rt_thread_join(pool->workers[i].thread);
-                pool->workers[i].thread = NULL;
-            }
+    for (int64_t i = 0; i < pool->worker_count; i++) {
+        if (pool->workers && pool->workers[i].thread) {
+            rt_thread_join(pool->workers[i].thread);
+            pool_release_thread_handle(&pool->workers[i].thread);
         }
     }
 
@@ -192,15 +231,17 @@ void *rt_threadpool_new(int64_t size) {
         pool->workers[i].thread = rt_thread_start((void *)worker_entry, &pool->workers[i]);
         if (!pool->workers[i].thread) {
             // Shutdown already started workers
+            rt_monitor_enter(pool->monitor);
             pool->shutdown = 1;
             pool->shutdown_now = 1;
-            rt_monitor_enter(pool->monitor);
             rt_monitor_pause_all(pool->monitor);
             rt_monitor_exit(pool->monitor);
 
             for (int64_t j = 0; j < i; j++) {
-                if (pool->workers[j].thread)
+                if (pool->workers[j].thread) {
                     rt_thread_join(pool->workers[j].thread);
+                    pool_release_thread_handle(&pool->workers[j].thread);
+                }
             }
             free(pool->workers);
             pool->workers = NULL;
@@ -222,6 +263,7 @@ void *rt_threadpool_new(int64_t size) {
 static void worker_entry(void *arg) {
     pool_worker *worker = (pool_worker *)arg;
     pool_impl *pool = worker->pool;
+    g_current_worker_pool = pool;
 
     for (;;) {
         rt_monitor_enter(pool->monitor);
@@ -234,13 +276,13 @@ static void worker_entry(void *arg) {
         // Check for immediate shutdown
         if (pool->shutdown_now) {
             rt_monitor_exit(pool->monitor);
-            return;
+            break;
         }
 
         // Check for graceful shutdown with empty queue
         if (pool->shutdown && pool->queue_head == NULL) {
             rt_monitor_exit(pool->monitor);
-            return;
+            break;
         }
 
         // Dequeue a task
@@ -257,7 +299,11 @@ static void worker_entry(void *arg) {
 
         // Execute the task
         if (task && task->callback) {
-            task->callback(task->arg);
+            jmp_buf recovery;
+            rt_trap_set_recovery(&recovery);
+            if (setjmp(recovery) == 0)
+                task->callback(task->arg);
+            rt_trap_clear_recovery();
             free(task);
         }
 
@@ -270,6 +316,8 @@ static void worker_entry(void *arg) {
         }
         rt_monitor_exit(pool->monitor);
     }
+
+    g_current_worker_pool = NULL;
 }
 
 //=============================================================================
@@ -328,6 +376,10 @@ void rt_threadpool_wait(void *pool_obj) {
         return;
 
     pool_impl *pool = (pool_impl *)pool_obj;
+    if (g_current_worker_pool == pool) {
+        rt_trap("Pool.Wait: cannot wait from pool worker");
+        return;
+    }
 
     rt_monitor_enter(pool->monitor);
 
@@ -343,21 +395,26 @@ int8_t rt_threadpool_wait_for(void *pool_obj, int64_t ms) {
     if (!pool_obj)
         return 1;
 
+    pool_impl *pool = (pool_impl *)pool_obj;
+    if (g_current_worker_pool == pool) {
+        rt_trap("Pool.WaitFor: cannot wait from pool worker");
+        return 0;
+    }
+
     if (ms <= 0) {
         // Immediate check
-        pool_impl *pool = (pool_impl *)pool_obj;
         rt_monitor_enter(pool->monitor);
         int8_t done = (pool->pending_count == 0 && pool->active_count == 0) ? 1 : 0;
         rt_monitor_exit(pool->monitor);
         return done;
     }
 
-    pool_impl *pool = (pool_impl *)pool_obj;
-
     rt_monitor_enter(pool->monitor);
 
 #if defined(_WIN32)
-    ULONGLONG deadline = GetTickCount64() + (ULONGLONG)ms;
+    ULONGLONG now0 = GetTickCount64();
+    ULONGLONG add = (ULONGLONG)ms;
+    ULONGLONG deadline = (ULLONG_MAX - now0 < add) ? ULLONG_MAX : now0 + add;
 #else
     struct timespec start;
     clock_gettime(CLOCK_MONOTONIC, &start);
@@ -376,7 +433,7 @@ int8_t rt_threadpool_wait_for(void *pool_obj, int64_t ms) {
             sec--;
             ns += 1000000000L;
         }
-        int64_t elapsed_ms = sec * 1000 + ns / 1000000L;
+        int64_t elapsed_ms = sec > INT64_MAX / 1000 ? INT64_MAX : sec * 1000 + ns / 1000000L;
         int64_t remaining = ms - elapsed_ms;
 #endif
         if (remaining <= 0 || !rt_monitor_wait_for(pool->monitor, remaining)) {
@@ -402,6 +459,10 @@ void rt_threadpool_shutdown(void *pool_obj) {
         return;
 
     pool_impl *pool = (pool_impl *)pool_obj;
+    if (g_current_worker_pool == pool) {
+        rt_trap("Pool.Shutdown: cannot shutdown from pool worker");
+        return;
+    }
 
     rt_monitor_enter(pool->monitor);
     pool->shutdown = 1;
@@ -412,7 +473,7 @@ void rt_threadpool_shutdown(void *pool_obj) {
     for (int64_t i = 0; i < pool->worker_count; i++) {
         if (pool->workers[i].thread) {
             rt_thread_join(pool->workers[i].thread);
-            pool->workers[i].thread = NULL;
+            pool_release_thread_handle(&pool->workers[i].thread);
         }
     }
 }
@@ -423,6 +484,10 @@ void rt_threadpool_shutdown_now(void *pool_obj) {
         return;
 
     pool_impl *pool = (pool_impl *)pool_obj;
+    if (g_current_worker_pool == pool) {
+        rt_trap("Pool.ShutdownNow: cannot shutdown from pool worker");
+        return;
+    }
 
     rt_monitor_enter(pool->monitor);
     pool->shutdown = 1;
@@ -446,7 +511,7 @@ void rt_threadpool_shutdown_now(void *pool_obj) {
     for (int64_t i = 0; i < pool->worker_count; i++) {
         if (pool->workers[i].thread) {
             rt_thread_join(pool->workers[i].thread);
-            pool->workers[i].thread = NULL;
+            pool_release_thread_handle(&pool->workers[i].thread);
         }
     }
 }
@@ -498,5 +563,8 @@ int8_t rt_threadpool_get_is_shutdown(void *pool_obj) {
         return 1;
 
     pool_impl *pool = (pool_impl *)pool_obj;
-    return pool->shutdown;
+    rt_monitor_enter(pool->monitor);
+    int8_t shutdown = pool->shutdown;
+    rt_monitor_exit(pool->monitor);
+    return shutdown;
 }

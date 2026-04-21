@@ -31,6 +31,15 @@ static void test_escape_single_quotes() {
     assert(strcmp(rt_string_cstr(result), "it&#39;s") == 0);
 }
 
+static void test_escape_preserves_embedded_nul() {
+    const char bytes[] = {'A', '\0', '<'};
+    const char expected[] = {'A', '\0', '&', 'l', 't', ';'};
+    rt_string input = rt_string_from_bytes(bytes, sizeof(bytes));
+    rt_string result = rt_html_escape(input);
+    assert(rt_str_len(result) == (int64_t)sizeof(expected));
+    assert(memcmp(rt_string_cstr(result), expected, sizeof(expected)) == 0);
+}
+
 static void test_unescape() {
     rt_string input = rt_string_from_bytes("&lt;b&gt;Hello&lt;/b&gt;", 24);
     rt_string result = rt_html_unescape(input);
@@ -47,6 +56,15 @@ static void test_unescape_nbsp() {
     rt_string input = rt_string_from_bytes("a&nbsp;b", 8);
     rt_string result = rt_html_unescape(input);
     assert(strcmp(rt_string_cstr(result), "a b") == 0);
+}
+
+static void test_unescape_preserves_embedded_nul() {
+    const char bytes[] = {'A', '\0', '&', 'a', 'm', 'p', ';'};
+    const char expected[] = {'A', '\0', '&'};
+    rt_string input = rt_string_from_bytes(bytes, sizeof(bytes));
+    rt_string result = rt_html_unescape(input);
+    assert(rt_str_len(result) == (int64_t)sizeof(expected));
+    assert(memcmp(rt_string_cstr(result), expected, sizeof(expected)) == 0);
 }
 
 static void test_strip_tags() {
@@ -74,6 +92,15 @@ static void test_extract_links() {
     assert(strcmp(rt_string_cstr(link1), "https://test.org") == 0);
 }
 
+static void test_extract_links_attribute_scanning() {
+    const char *html = "<a data-href=\"bad\" href = \"ok\">Example</a><a HREF=/next>Next</a>";
+    rt_string input = rt_string_from_bytes(html, strlen(html));
+    void *links = rt_html_extract_links(input);
+    assert(rt_seq_len(links) == 2);
+    assert(strcmp(rt_string_cstr((rt_string)rt_seq_get(links, 0)), "ok") == 0);
+    assert(strcmp(rt_string_cstr((rt_string)rt_seq_get(links, 1)), "/next") == 0);
+}
+
 static void test_extract_text() {
     rt_string input = rt_string_from_bytes("<h1>Title</h1><p>Para 1</p><p>Para 2</p>", 41);
     rt_string tag = rt_string_from_bytes("p", 1);
@@ -97,6 +124,14 @@ static void test_parse_basic() {
     void *children = rt_map_get(root, children_key);
     assert(children != NULL);
     assert(rt_seq_len(children) >= 1);
+}
+
+static void test_parse_matches_closing_tag_names() {
+    rt_string input = rt_string_from_bytes("<div><span>x</div>y", 19);
+    void *root = rt_html_parse(input);
+    void *children = rt_map_get(root, rt_const_cstr("children"));
+    assert(children != NULL);
+    assert(rt_seq_len(children) == 2);
 }
 
 static void test_null_safety() {
@@ -130,14 +165,18 @@ static void test_roundtrip_escape_unescape() {
 int main() {
     test_escape();
     test_escape_single_quotes();
+    test_escape_preserves_embedded_nul();
     test_unescape();
     test_unescape_numeric();
     test_unescape_nbsp();
+    test_unescape_preserves_embedded_nul();
     test_strip_tags();
     test_to_text();
     test_extract_links();
+    test_extract_links_attribute_scanning();
     test_extract_text();
     test_parse_basic();
+    test_parse_matches_closing_tag_names();
     test_null_safety();
     test_roundtrip_escape_unescape();
     return 0;

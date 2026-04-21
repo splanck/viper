@@ -91,6 +91,17 @@ static void test_thousands_custom_sep() {
     rt_string_unref(sep);
 }
 
+static void test_thousands_embedded_nul_sep() {
+    const char sep_bytes[] = {',', '\0', '|'};
+    const char expected[] = {'1', ',', '\0', '|', '2', '3', '4', ',', '\0', '|', '5', '6', '7'};
+    rt_string sep = rt_string_from_bytes(sep_bytes, sizeof(sep_bytes));
+    rt_string r = rt_numfmt_thousands(1234567, sep);
+    assert(rt_str_len(r) == (int64_t)sizeof(expected));
+    assert(memcmp(rt_string_cstr(r), expected, sizeof(expected)) == 0);
+    rt_string_unref(r);
+    rt_string_unref(sep);
+}
+
 // ---------------------------------------------------------------------------
 // Currency
 // ---------------------------------------------------------------------------
@@ -127,6 +138,17 @@ static void test_currency_large_value_not_truncated() {
     assert(rt_str_len(r) > 64);
     assert(rt_string_cstr(r)[0] == '$');
     assert(strstr(rt_string_cstr(r), ".00") != nullptr);
+    rt_string_unref(r);
+    rt_string_unref(sym);
+}
+
+static void test_currency_embedded_nul_symbol() {
+    const char sym_bytes[] = {'U', '\0', '$'};
+    const char expected[] = {'U', '\0', '$', '1', '2', '.', '0', '0'};
+    rt_string sym = rt_string_from_bytes(sym_bytes, sizeof(sym_bytes));
+    rt_string r = rt_numfmt_currency(12.0, sym);
+    assert(rt_str_len(r) == (int64_t)sizeof(expected));
+    assert(memcmp(rt_string_cstr(r), expected, sizeof(expected)) == 0);
     rt_string_unref(r);
     rt_string_unref(sym);
 }
@@ -311,12 +333,14 @@ int main() {
     test_thousands_small();
     test_thousands_negative();
     test_thousands_custom_sep();
+    test_thousands_embedded_nul_sep();
 
     // Currency
     test_currency_basic();
     test_currency_negative();
     test_currency_euro();
     test_currency_large_value_not_truncated();
+    test_currency_embedded_nul_symbol();
 
     // Percent
     test_percent_basic();

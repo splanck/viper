@@ -16,7 +16,7 @@
 //   - Due timestamps are computed from CLOCK_MONOTONIC to avoid wall-clock skew.
 //   - Scheduling the same name twice replaces the previous due time.
 //   - Poll removes and returns all tasks due at or before the current time.
-//   - The scheduler is not thread-safe; external synchronization is required.
+//   - Scheduler operations are internally synchronized.
 //   - Task name strings are retained by the scheduler until the task fires.
 //
 // Ownership/Lifetime:
@@ -35,7 +35,9 @@
 #include "rt_object.h"
 #include "rt_seq.h"
 #include "rt_string.h"
+#include "rt_string_internal.h"
 
+#include <limits.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -45,6 +47,7 @@
 #endif
 #include <windows.h>
 #else
+#include <pthread.h>
 #include <time.h>
 #endif
 
@@ -75,6 +78,29 @@ static int64_t current_time_ms(void) {
 #endif
 }
 
+static int64_t due_time_from_now(int64_t delay_ms) {
+    if (delay_ms < 0)
+        delay_ms = 0;
+    int64_t now = current_time_ms();
+    if (delay_ms > INT64_MAX - now)
+        return INT64_MAX;
+    return now + delay_ms;
+}
+
+static int8_t scheduler_name_equals(rt_string a, rt_string b) {
+    if (!a || !b)
+        return 0;
+    int64_t a_len = rt_string_len_bytes(a);
+    int64_t b_len = rt_string_len_bytes(b);
+    if (a_len != b_len)
+        return 0;
+    const char *a_data = rt_string_cstr(a);
+    const char *b_data = rt_string_cstr(b);
+    if (!a_data || !b_data)
+        return a_data == b_data ? 1 : 0;
+    return memcmp(a_data, b_data, (size_t)a_len) == 0 ? 1 : 0;
+}
+
 //=============================================================================
 // Internal Structures
 //=============================================================================
@@ -90,14 +116,33 @@ typedef struct sched_entry {
 typedef struct {
     sched_entry *head; ///< Head of the linked list of entries.
     int64_t count;     ///< Number of entries in the list.
+#if defined(_WIN32)
+    CRITICAL_SECTION mutex;
+#else
+    pthread_mutex_t mutex;
+#endif
 } rt_scheduler_data;
+
+#if defined(_WIN32)
+#define SCHED_LOCK(data) EnterCriticalSection(&(data)->mutex)
+#define SCHED_UNLOCK(data) LeaveCriticalSection(&(data)->mutex)
+#else
+#define SCHED_LOCK(data) pthread_mutex_lock(&(data)->mutex)
+#define SCHED_UNLOCK(data) pthread_mutex_unlock(&(data)->mutex)
+#endif
 
 /// @brief Finalizer for scheduler objects. Frees all entries.
 static void scheduler_finalizer(void *obj) {
     if (!obj)
         return;
     rt_scheduler_data *data = (rt_scheduler_data *)obj;
+
+    SCHED_LOCK(data);
     sched_entry *e = data->head;
+    data->head = NULL;
+    data->count = 0;
+    SCHED_UNLOCK(data);
+
     while (e) {
         sched_entry *next = e->next;
         if (e->name)
@@ -105,8 +150,12 @@ static void scheduler_finalizer(void *obj) {
         free(e);
         e = next;
     }
-    data->head = NULL;
-    data->count = 0;
+
+#if defined(_WIN32)
+    DeleteCriticalSection(&data->mutex);
+#else
+    pthread_mutex_destroy(&data->mutex);
+#endif
 }
 
 //=============================================================================
@@ -127,6 +176,11 @@ void *rt_scheduler_new(void) {
     }
     data->head = NULL;
     data->count = 0;
+#if defined(_WIN32)
+    InitializeCriticalSection(&data->mutex);
+#else
+    pthread_mutex_init(&data->mutex, NULL);
+#endif
     rt_obj_set_finalizer(data, scheduler_finalizer);
     return data;
 }
@@ -144,17 +198,16 @@ void rt_scheduler_schedule(void *sched, rt_string name, int64_t delay_ms) {
         return;
     rt_scheduler_data *data = (rt_scheduler_data *)sched;
 
-    if (delay_ms < 0)
-        delay_ms = 0;
+    int64_t due = due_time_from_now(delay_ms);
 
-    int64_t due = current_time_ms() + delay_ms;
-    const char *name_cstr = rt_string_cstr(name);
+    SCHED_LOCK(data);
 
     // Check for existing entry with the same name and update it
     sched_entry *e = data->head;
     while (e) {
-        if (strcmp(rt_string_cstr(e->name), name_cstr) == 0) {
+        if (scheduler_name_equals(e->name, name)) {
             e->due_time_ms = due;
+            SCHED_UNLOCK(data);
             return;
         }
         e = e->next;
@@ -163,6 +216,7 @@ void rt_scheduler_schedule(void *sched, rt_string name, int64_t delay_ms) {
     // Create new entry
     sched_entry *entry = (sched_entry *)malloc(sizeof(sched_entry));
     if (!entry) {
+        SCHED_UNLOCK(data);
         rt_trap("Scheduler.Schedule: memory allocation failed");
         return;
     }
@@ -171,6 +225,7 @@ void rt_scheduler_schedule(void *sched, rt_string name, int64_t delay_ms) {
     entry->next = data->head;
     data->head = entry;
     data->count++;
+    SCHED_UNLOCK(data);
 }
 
 /// @brief Cancels a scheduled task by name.
@@ -184,20 +239,22 @@ int8_t rt_scheduler_cancel(void *sched, rt_string name) {
     if (!sched || !name)
         return 0;
     rt_scheduler_data *data = (rt_scheduler_data *)sched;
-    const char *name_cstr = rt_string_cstr(name);
 
+    SCHED_LOCK(data);
     sched_entry **pp = &data->head;
     while (*pp) {
-        if (strcmp(rt_string_cstr((*pp)->name), name_cstr) == 0) {
+        if (scheduler_name_equals((*pp)->name, name)) {
             sched_entry *e = *pp;
             *pp = e->next;
             rt_string_unref(e->name);
             free(e);
             data->count--;
+            SCHED_UNLOCK(data);
             return 1;
         }
         pp = &(*pp)->next;
     }
+    SCHED_UNLOCK(data);
     return 0;
 }
 
@@ -212,15 +269,19 @@ int8_t rt_scheduler_is_due(void *sched, rt_string name) {
     if (!sched || !name)
         return 0;
     rt_scheduler_data *data = (rt_scheduler_data *)sched;
-    const char *name_cstr = rt_string_cstr(name);
     int64_t now = current_time_ms();
 
+    SCHED_LOCK(data);
     sched_entry *e = data->head;
     while (e) {
-        if (strcmp(rt_string_cstr(e->name), name_cstr) == 0)
-            return now >= e->due_time_ms ? 1 : 0;
+        if (scheduler_name_equals(e->name, name)) {
+            int8_t due = now >= e->due_time_ms ? 1 : 0;
+            SCHED_UNLOCK(data);
+            return due;
+        }
         e = e->next;
     }
+    SCHED_UNLOCK(data);
     return 0;
 }
 
@@ -233,23 +294,38 @@ int8_t rt_scheduler_is_due(void *sched, rt_string name) {
 /// @return Seq of due task name strings. Empty seq if none due.
 void *rt_scheduler_poll(void *sched) {
     void *result = rt_seq_new();
+    rt_seq_set_owns_elements(result, 1);
     if (!sched)
         return result;
     rt_scheduler_data *data = (rt_scheduler_data *)sched;
     int64_t now = current_time_ms();
+    sched_entry *due_head = NULL;
+    sched_entry *due_tail = NULL;
 
+    SCHED_LOCK(data);
     sched_entry **pp = &data->head;
     while (*pp) {
         if (now >= (*pp)->due_time_ms) {
             sched_entry *e = *pp;
             *pp = e->next;
-            // Transfer name ownership to the result seq
-            rt_seq_push(result, (void *)e->name);
-            free(e);
+            e->next = NULL;
+            if (due_tail)
+                due_tail->next = e;
+            else
+                due_head = e;
+            due_tail = e;
             data->count--;
         } else {
             pp = &(*pp)->next;
         }
+    }
+    SCHED_UNLOCK(data);
+
+    while (due_head) {
+        sched_entry *next = due_head->next;
+        rt_seq_push_raw(result, (void *)due_head->name);
+        free(due_head);
+        due_head = next;
     }
     return result;
 }
@@ -261,7 +337,11 @@ void *rt_scheduler_poll(void *sched) {
 int64_t rt_scheduler_pending(void *sched) {
     if (!sched)
         return 0;
-    return ((rt_scheduler_data *)sched)->count;
+    rt_scheduler_data *data = (rt_scheduler_data *)sched;
+    SCHED_LOCK(data);
+    int64_t count = data->count;
+    SCHED_UNLOCK(data);
+    return count;
 }
 
 /// @brief Clears all scheduled tasks.
@@ -273,13 +353,17 @@ void rt_scheduler_clear(void *sched) {
     if (!sched)
         return;
     rt_scheduler_data *data = (rt_scheduler_data *)sched;
+
+    SCHED_LOCK(data);
     sched_entry *e = data->head;
+    data->head = NULL;
+    data->count = 0;
+    SCHED_UNLOCK(data);
+
     while (e) {
         sched_entry *next = e->next;
         rt_string_unref(e->name);
         free(e);
         e = next;
     }
-    data->head = NULL;
-    data->count = 0;
 }
