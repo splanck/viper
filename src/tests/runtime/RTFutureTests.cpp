@@ -19,7 +19,12 @@
 #include <chrono>
 #include <cstdio>
 #include <cstring>
+#include <setjmp.h>
 #include <thread>
+
+extern "C" void rt_trap(const char *msg);
+extern "C" void rt_trap_set_recovery(jmp_buf *buf);
+extern "C" void rt_trap_clear_recovery(void);
 
 static void test_result(bool cond, const char *name) {
     if (!cond) {
@@ -369,6 +374,94 @@ static void test_transferred_value_survives_future_release() {
         rt_obj_free(got);
 }
 
+static void test_set_value_survives_producer_release() {
+    void *promise = rt_promise_new();
+    void *future = rt_promise_get_future(promise);
+    void *seq = rt_seq_new();
+
+    rt_promise_set(promise, seq);
+    if (rt_obj_release_check0(seq))
+        rt_obj_free(seq);
+
+    void *got = rt_future_get(future);
+    test_result(got != nullptr, "set_value: future get returns seq");
+
+    if (rt_obj_release_check0(future))
+        rt_obj_free(future);
+    if (rt_obj_release_check0(promise))
+        rt_obj_free(promise);
+
+    test_result(rt_seq_len(got) == 0, "set_value: returned seq survives future/promise release");
+    if (rt_obj_release_check0(got))
+        rt_obj_free(got);
+}
+
+static int g_listener_trap_count = 0;
+static int g_listener_ok_count = 0;
+
+static void trapping_listener(void *future, void *ctx) {
+    (void)future;
+    (void)ctx;
+    ++g_listener_trap_count;
+    rt_trap("listener trap");
+}
+
+static void ok_listener(void *future, void *ctx) {
+    (void)future;
+    (void)ctx;
+    ++g_listener_ok_count;
+}
+
+static void test_listener_trap_rethrows_after_cleanup() {
+    g_listener_trap_count = 0;
+    g_listener_ok_count = 0;
+
+    void *promise = rt_promise_new();
+    void *future = rt_promise_get_future(promise);
+    int value = 1;
+
+    test_result(rt_future_on_complete(future, trapping_listener, nullptr) == 1,
+                "listener_trap: register trapping listener");
+    test_result(rt_future_on_complete(future, ok_listener, nullptr) == 1,
+                "listener_trap: register ok listener");
+
+    jmp_buf recovery;
+    int trapped = 0;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) == 0) {
+        rt_promise_set(promise, &value);
+    } else {
+        trapped = 1;
+    }
+    rt_trap_clear_recovery();
+
+    test_result(trapped == 1, "listener_trap: promise set should rethrow listener trap");
+    test_result(g_listener_trap_count == 1, "listener_trap: trapping listener called");
+    test_result(g_listener_ok_count == 1, "listener_trap: later listener still called");
+}
+
+static void test_completed_future_listener_trap_cleans_up() {
+    g_listener_trap_count = 0;
+
+    void *promise = rt_promise_new();
+    void *future = rt_promise_get_future(promise);
+    int value = 2;
+    rt_promise_set(promise, &value);
+
+    jmp_buf recovery;
+    int trapped = 0;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) == 0) {
+        (void)rt_future_on_complete(future, trapping_listener, nullptr);
+    } else {
+        trapped = 1;
+    }
+    rt_trap_clear_recovery();
+
+    test_result(trapped == 1, "completed_listener_trap: should rethrow listener trap");
+    test_result(g_listener_trap_count == 1, "completed_listener_trap: listener called once");
+}
+
 //=============================================================================
 // Main
 //=============================================================================
@@ -404,6 +497,9 @@ int main() {
     test_owned_try_get_survives_future_release();
     test_owned_get_for_val_survives_future_release();
     test_transferred_value_survives_future_release();
+    test_set_value_survives_producer_release();
+    test_listener_trap_rethrows_after_cleanup();
+    test_completed_future_listener_trap_cleans_up();
 
     printf("All Future/Promise tests passed!\n");
     return 0;

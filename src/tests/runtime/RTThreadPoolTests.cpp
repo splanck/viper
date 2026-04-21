@@ -11,6 +11,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <setjmp.h>
 #include <thread>
 
 extern "C" {
@@ -24,6 +25,9 @@ void vm_trap(const char *msg) {
     fprintf(stderr, "TRAP: %s\n", msg);
     rt_abort(msg);
 }
+
+void rt_trap_set_recovery(jmp_buf *buf);
+void rt_trap_clear_recovery(void);
 }
 
 //=============================================================================
@@ -170,7 +174,18 @@ static void test_task_trap_does_not_hang_wait() {
 
     assert(rt_threadpool_submit(pool, (void *)trap_task, NULL) == 1);
     assert(rt_threadpool_submit(pool, (void *)increment_task, NULL) == 1);
-    assert(rt_threadpool_wait_for(pool, 1000) == 1);
+
+    jmp_buf recovery;
+    int trapped = 0;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) == 0) {
+        (void)rt_threadpool_wait_for(pool, 1000);
+    } else {
+        trapped = 1;
+    }
+    rt_trap_clear_recovery();
+
+    assert(trapped == 1);
     assert(g_counter.load() == 2);
     assert(rt_threadpool_get_pending(pool) == 0);
     assert(rt_threadpool_get_active(pool) == 0);

@@ -34,6 +34,7 @@
 #include "rt_error.h"
 #include "rt_internal.h"
 #include "rt_object.h"
+#include "rt_threads.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -49,23 +50,17 @@
 
 // --- Internal structures ---
 
-typedef struct {
+typedef struct rt_cancellation_data {
 #if defined(_WIN32)
     volatile LONG cancelled;
 #else
     atomic_int cancelled;
 #endif
-    void *parent; // linked parent token (NULL if root)
+    void *parent;                         // linked parent token (NULL if root)
+    void *monitor;                        // protects the weak child list
+    struct rt_cancellation_data *first_child;
+    struct rt_cancellation_data *next_sibling;
 } rt_cancellation_data;
-
-static void cancellation_finalizer(void *obj) {
-    rt_cancellation_data *data = (rt_cancellation_data *)obj;
-    if (!data || !data->parent)
-        return;
-    if (rt_obj_release_check0(data->parent))
-        rt_obj_free(data->parent);
-    data->parent = NULL;
-}
 
 // --- Platform-specific atomic helpers ---
 
@@ -93,6 +88,56 @@ static inline void cancel_store(rt_cancellation_data *data, int value) {
 #endif
 }
 
+static void cancellation_release_object(void *obj) {
+    if (obj && rt_obj_release_check0(obj))
+        rt_obj_free(obj);
+}
+
+static void cancellation_mark_cancelled(rt_cancellation_data *data) {
+    if (!data)
+        return;
+    cancel_store(data, 1);
+    if (!data->monitor)
+        return;
+
+    rt_monitor_enter(data->monitor);
+    for (rt_cancellation_data *child = data->first_child; child; child = child->next_sibling)
+        cancellation_mark_cancelled(child);
+    rt_monitor_exit(data->monitor);
+}
+
+static void cancellation_finalizer(void *obj) {
+    rt_cancellation_data *data = (rt_cancellation_data *)obj;
+    if (!data)
+        return;
+
+    if (data->parent) {
+        rt_cancellation_data *parent = (rt_cancellation_data *)data->parent;
+        if (parent->monitor) {
+            rt_monitor_enter(parent->monitor);
+            rt_cancellation_data **link = &parent->first_child;
+            while (*link) {
+                if (*link == data) {
+                    *link = data->next_sibling;
+                    break;
+                }
+                link = &(*link)->next_sibling;
+            }
+            rt_monitor_exit(parent->monitor);
+        }
+        cancellation_release_object(data->parent);
+        data->parent = NULL;
+    }
+
+    data->first_child = NULL;
+    data->next_sibling = NULL;
+
+    if (data->monitor) {
+        cancellation_release_object(data->monitor);
+        data->monitor = NULL;
+    }
+}
+
 // --- Public API ---
 
 /// @brief Create a new cancellation token (initially not cancelled).
@@ -108,6 +153,17 @@ void *rt_cancellation_new(void) {
     rt_cancellation_data *data = (rt_cancellation_data *)obj;
     cancel_init(data, 0);
     data->parent = NULL;
+    data->monitor = rt_obj_new_i64(0, 1);
+    if (!data->monitor) {
+        cancellation_release_object(obj);
+        rt_trap_raise_kind(RT_TRAP_KIND_RUNTIME_ERROR,
+                           Err_RuntimeError,
+                           -1,
+                           "CancelToken.New: memory allocation failed");
+        return NULL;
+    }
+    data->first_child = NULL;
+    data->next_sibling = NULL;
     rt_obj_set_finalizer(obj, cancellation_finalizer);
     return obj;
 }
@@ -129,7 +185,7 @@ void rt_cancellation_cancel(void *token) {
     if (!token)
         return;
     rt_cancellation_data *data = (rt_cancellation_data *)token;
-    cancel_store(data, 1);
+    cancellation_mark_cancelled(data);
 }
 
 /// @brief Set a value in the cancellation.
@@ -152,9 +208,32 @@ void *rt_cancellation_linked(void *parent) {
     }
     rt_cancellation_data *data = (rt_cancellation_data *)obj;
     cancel_init(data, 0);
-    data->parent = parent;
-    if (parent)
+    data->parent = NULL;
+    data->monitor = rt_obj_new_i64(0, 1);
+    if (!data->monitor) {
+        cancellation_release_object(obj);
+        rt_trap_raise_kind(RT_TRAP_KIND_RUNTIME_ERROR,
+                           Err_RuntimeError,
+                           -1,
+                           "CancelToken.Linked: memory allocation failed");
+        return NULL;
+    }
+    data->first_child = NULL;
+    data->next_sibling = NULL;
+
+    if (parent) {
         rt_obj_retain_maybe(parent);
+        data->parent = parent;
+        rt_cancellation_data *parent_data = (rt_cancellation_data *)parent;
+        if (rt_cancellation_is_cancelled(parent))
+            cancel_store(data, 1);
+        if (parent_data->monitor) {
+            rt_monitor_enter(parent_data->monitor);
+            data->next_sibling = parent_data->first_child;
+            parent_data->first_child = data;
+            rt_monitor_exit(parent_data->monitor);
+        }
+    }
     rt_obj_set_finalizer(obj, cancellation_finalizer);
     return obj;
 }

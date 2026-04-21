@@ -283,6 +283,18 @@ static void parallel_release_default_pool(void *requested_pool, void *actual_poo
         rt_obj_free(actual_pool);
 }
 
+/// @brief Resolve the effective worker count for a parallel-for invocation.
+/// @details Three-step fallback chain so we always return a usable positive
+///          integer regardless of caller inputs:
+///            1. If a `pool` is provided, ask it for its configured size.
+///            2. If that returned zero or negative (no pool, or a mis-configured
+///               pool), fall back to `rt_parallel_default_workers()` which
+///               derives a platform-appropriate default (typically CPU count).
+///            3. If even that fails (returning zero on a platform where we
+///               can't query CPU count), return `1` so work still runs
+///               serially instead of being silently skipped.
+///          Used by `parallel_choose_task_count` to size the per-iteration
+///          batch split.
 static int64_t parallel_pool_size(void *pool) {
     int64_t size = pool ? rt_threadpool_get_size(pool) : 0;
     if (size <= 0)

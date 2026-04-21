@@ -39,12 +39,9 @@
 #if defined(_WIN32)
 
 // =============================================================================
-// Win32 backend — lock-free via Interlocked* intrinsics.
-// Functionally equivalent to the POSIX monitor-based path below, but uses
-// hardware atomic ops for lower contention overhead. The 64-bit variants
-// (LONG64, *64) ensure correct atomicity on x86 where 64-bit reads/writes
-// are NOT atomic by default (without the LOCK prefix). Each function below
-// has the same contract as its POSIX counterpart — see those for full docs.
+// Win32 backend — monitor-composable operations backed by Interlocked* intrinsics.
+// The monitor keeps explicit Monitor.Enter(cell) sections portable with POSIX;
+// the Interlocked calls keep each 64-bit operation atomic on 32-bit Windows.
 // =============================================================================
 
 #define WIN32_LEAN_AND_MEAN
@@ -81,8 +78,11 @@ int64_t rt_safe_i64_get(void *obj) {
     RtSafeI64Win *cell = require_safe_win(obj, "SafeI64.Get: null object");
     if (!cell)
         return 0;
+    rt_monitor_enter(cell);
     // Acquire read via InterlockedCompareExchange64 (returns current value)
-    return (int64_t)InterlockedCompareExchange64(&cell->value, 0, 0);
+    int64_t value = (int64_t)InterlockedCompareExchange64(&cell->value, 0, 0);
+    rt_monitor_exit(cell);
+    return value;
 }
 
 /// @brief Win32 SafeI64 write — `InterlockedExchange64` for atomicity on 32-bit Windows.
@@ -90,7 +90,9 @@ void rt_safe_i64_set(void *obj, int64_t value) {
     RtSafeI64Win *cell = require_safe_win(obj, "SafeI64.Set: null object");
     if (!cell)
         return;
+    rt_monitor_enter(cell);
     InterlockedExchange64(&cell->value, (LONG64)value);
+    rt_monitor_exit(cell);
 }
 
 /// @brief Win32 SafeI64 atomic add — returns the new value with two's-complement wraparound.
@@ -98,8 +100,11 @@ int64_t rt_safe_i64_add(void *obj, int64_t delta) {
     RtSafeI64Win *cell = require_safe_win(obj, "SafeI64.Add: null object");
     if (!cell)
         return 0;
+    rt_monitor_enter(cell);
     uint64_t old = (uint64_t)InterlockedExchangeAdd64(&cell->value, (LONG64)delta);
-    return (int64_t)(old + (uint64_t)delta);
+    int64_t value = (int64_t)(old + (uint64_t)delta);
+    rt_monitor_exit(cell);
+    return value;
 }
 
 /// @brief Win32 SafeI64 CAS — `InterlockedCompareExchange64` is one machine instruction (LOCK
@@ -109,8 +114,11 @@ int64_t rt_safe_i64_compare_exchange(void *obj, int64_t expected, int64_t desire
     RtSafeI64Win *cell = require_safe_win(obj, "SafeI64.CompareExchange: null object");
     if (!cell)
         return 0;
+    rt_monitor_enter(cell);
     // Returns the old value (whether exchange happened or not)
-    return (int64_t)InterlockedCompareExchange64(&cell->value, (LONG64)desired, (LONG64)expected);
+    int64_t old = (int64_t)InterlockedCompareExchange64(&cell->value, (LONG64)desired, (LONG64)expected);
+    rt_monitor_exit(cell);
+    return old;
 }
 
 #else

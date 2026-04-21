@@ -39,6 +39,7 @@
 
 #include <errno.h>
 #include <limits.h>
+#include <setjmp.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -53,6 +54,10 @@ extern int pthread_cond_timedwait_relative_np(pthread_cond_t *cond,
                                               const struct timespec *rel_time);
 #endif
 #endif
+
+void rt_trap_set_recovery(jmp_buf *buf);
+void rt_trap_clear_recovery(void);
+const char *rt_trap_get_error(void);
 
 //=============================================================================
 // Internal Structure
@@ -221,14 +226,33 @@ static int future_cond_timedwait_deadline(pthread_cond_t *cond,
 /// detached the list from `promise_impl.listeners` and released the promise mutex (notification
 /// happens outside the critical section to avoid blocking other threads on long callbacks).
 static void future_notify_listeners(future_listener *listeners) {
+    char first_error[512];
+    first_error[0] = '\0';
+
     while (listeners) {
         future_listener *next = listeners->next;
-        listeners->callback(listeners->future_obj, listeners->ctx);
+
+        jmp_buf recovery;
+        rt_trap_set_recovery(&recovery);
+        if (setjmp(recovery) == 0) {
+            listeners->callback(listeners->future_obj, listeners->ctx);
+        } else if (first_error[0] == '\0') {
+            const char *msg = rt_trap_get_error();
+            if (!msg || !msg[0])
+                msg = "Future.OnComplete: listener trapped";
+            strncpy(first_error, msg, sizeof(first_error) - 1);
+            first_error[sizeof(first_error) - 1] = '\0';
+        }
+        rt_trap_clear_recovery();
+
         if (rt_obj_release_check0(listeners->future_obj))
             rt_obj_free(listeners->future_obj);
         free(listeners);
         listeners = next;
     }
+
+    if (first_error[0] != '\0')
+        rt_trap(first_error);
 }
 
 /// @brief Retrieve the resolved value, retaining it for the consumer if `owns_value` is set.
@@ -365,7 +389,7 @@ static void future_finalizer(void *obj) {
         rt_obj_free(p);
 }
 
-/// @brief Set a value in the promise.
+/// @brief Set a value in the promise, retaining runtime-managed values until consumed/finalized.
 void rt_promise_set(void *obj, void *value) {
     if (!obj)
         rt_trap("Promise: null object");
@@ -387,10 +411,12 @@ void rt_promise_set(void *obj, void *value) {
         rt_trap("Promise: already completed");
     }
 
+    if (value)
+        rt_obj_retain_maybe(value);
     p->value = value;
     p->done = 1;
     p->is_error = 0;
-    p->owns_value = 0;
+    p->owns_value = value ? 1 : 0;
     future_listener *listeners = p->listeners;
     p->listeners = NULL;
 
@@ -405,9 +431,8 @@ void rt_promise_set(void *obj, void *value) {
     future_notify_listeners(listeners);
 }
 
-/// @brief Resolve the promise with a value the runtime should retain. Otherwise identical to
-/// `rt_promise_set` but takes ownership: the promise retains a reference and the finalizer will
-/// release it. Use this when the resolved value's lifetime extends beyond the producer's scope.
+/// @brief Resolve the promise with a value the runtime should retain. Kept as an explicit alias for
+/// callers that want to document ownership; `rt_promise_set` now has the same retain semantics.
 void rt_promise_set_owned(void *obj, void *value) {
     if (!obj)
         rt_trap("Promise: null object");
@@ -936,10 +961,27 @@ int8_t rt_future_on_complete_ex(void *obj,
 #else
         pthread_mutex_unlock(&p->mutex);
 #endif
-        callback(obj, ctx);
+        char callback_error[512];
+        callback_error[0] = '\0';
+
+        jmp_buf recovery;
+        rt_trap_set_recovery(&recovery);
+        if (setjmp(recovery) == 0) {
+            callback(obj, ctx);
+        } else {
+            const char *msg = rt_trap_get_error();
+            if (!msg || !msg[0])
+                msg = "Future.OnComplete: listener trapped";
+            strncpy(callback_error, msg, sizeof(callback_error) - 1);
+            callback_error[sizeof(callback_error) - 1] = '\0';
+        }
+        rt_trap_clear_recovery();
+
         if (rt_obj_release_check0(listener->future_obj))
             rt_obj_free(listener->future_obj);
         free(listener);
+        if (callback_error[0] != '\0')
+            rt_trap(callback_error);
         return 1;
     }
 

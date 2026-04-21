@@ -167,6 +167,10 @@ static void cm_clear_unlocked(rt_concmap_impl *cm) {
     cm->count = 0;
 }
 
+/// @brief GC finalizer for a `ConcMap` — clears every entry under the lock,
+///        then frees the bucket array and destroys the mutex. Acquires the
+///        mutex before clearing so any late observer sees a consistent
+///        empty-then-destroyed state rather than racing on a half-freed bucket.
 static void cm_finalizer(void *obj) {
     rt_concmap_impl *cm = (rt_concmap_impl *)obj;
     CM_LOCK(cm);

@@ -22,6 +22,7 @@
 #include "vm/Trap.hpp"
 
 #include "rt.hpp"
+#include "vm/RuntimeBridge.hpp"
 #include "vm/TrapInvariants.hpp"
 #include "vm/VM.hpp"
 
@@ -49,6 +50,13 @@ namespace {
 thread_local VmError tlsTrapError{};
 thread_local std::string tlsTrapMessage;
 thread_local bool tlsTrapValid = false;
+
+il::support::SourceLoc locFromFrame(const FrameInfo &frame) {
+    il::support::SourceLoc loc{};
+    if (frame.line >= 0)
+        loc.line = static_cast<uint32_t>(frame.line);
+    return loc;
+}
 } // namespace
 
 /// @brief Acquire a mutable trap token for recording runtime errors.
@@ -225,6 +233,8 @@ void vm_raise_from_error(const VmError &input) {
     }
 
     if (!frame.handlerInstalled) {
+        RuntimeBridge::interceptTrap(
+            error.kind, error.code, message, locFromFrame(frame), frame.function, frame.block);
         if (activeVm) {
             auto bt = activeVm->buildBacktrace();
             if (bt.size() > 1)
@@ -283,6 +293,8 @@ void vm_raise(TrapKind kind, int32_t code) {
     }
 
     if (!frame.handlerInstalled) {
+        RuntimeBridge::interceptTrap(
+            error.kind, error.code, message, locFromFrame(frame), frame.function, frame.block);
         if (vm) {
             auto bt = vm->buildBacktrace();
             if (bt.size() > 1)

@@ -133,6 +133,14 @@ static int cq_cond_init(pthread_cond_t *cond, int8_t *uses_monotonic) {
 #endif
 }
 
+/// @brief Read the current clock for ConcQueue deadline computation, preferring
+///        `CLOCK_MONOTONIC` when available and requested.
+/// @details Same rationale as `rt_monitor.c::monitor_now_clock` — deadline math
+///          for timed `Pop` / `Offer` calls wants a clock that's immune to
+///          wall-clock adjustments. Falls back to `CLOCK_REALTIME` on platforms
+///          without `CLOCK_MONOTONIC` or when the caller explicitly opts into
+///          realtime (pthread-condvar default). Zero-init on error so
+///          `clock_gettime` failure returns epoch rather than stack garbage.
 static struct timespec cq_now_clock(int8_t use_monotonic) {
     struct timespec ts;
     memset(&ts, 0, sizeof(ts));

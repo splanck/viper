@@ -251,6 +251,15 @@ class RuntimeBridge {
                      const std::string &block,
                      int32_t code = 0);
 
+    /// @brief Dispatch a VM/runtime trap through the installed thread-local interceptor.
+    /// @details No-ops when no interceptor is active; otherwise throws RuntimeTrapSignal.
+    static void interceptTrap(TrapKind kind,
+                              int32_t code,
+                              const std::string &msg,
+                              const il::support::SourceLoc &loc,
+                              const std::string &fn,
+                              const std::string &block);
+
     /// @brief Access the runtime call context active on the current thread.
     /// @return Pointer to the call context when a runtime call is executing; nullptr otherwise.
     static const RuntimeCallContext *activeContext();

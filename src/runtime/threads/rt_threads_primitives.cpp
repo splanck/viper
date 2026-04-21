@@ -34,6 +34,7 @@
 #include <algorithm>
 #include <chrono>
 #include <condition_variable>
+#include <cstdio>
 #include <cstdint>
 #include <deque>
 #include <limits>
@@ -54,6 +55,7 @@ namespace {
 struct GateWaiter {
     std::condition_variable cv;
     bool granted = false;
+    bool cancelled = false;
 };
 
 /// @brief Shared gate state implementing a FIFO semaphore.
@@ -64,6 +66,7 @@ struct GateState {
     std::mutex mu;
     int64_t permits = 0;
     std::deque<GateWaiter *> waiters;
+    bool closing = false;
 };
 
 /// @brief Runtime object wrapper storing gate state.
@@ -87,14 +90,20 @@ struct RtGate {
 /// @return Valid typed pointer, or nullptr if validation fails.
 template <typename T> static T *requireObject(void *obj, const char *typeName, const char *what) {
     if (!obj) {
-        std::string msg = what ? what : (std::string(typeName) + ": null object");
-        rt_trap(msg.c_str());
+        char msg[128];
+        if (what) {
+            std::snprintf(msg, sizeof(msg), "%s", what);
+        } else {
+            std::snprintf(msg, sizeof(msg), "%s: null object", typeName ? typeName : "Object");
+        }
+        rt_trap(msg);
         return nullptr;
     }
     auto *typed = static_cast<T *>(obj);
     if (!typed->state) {
-        std::string msg = std::string(typeName) + ": invalid object";
-        rt_trap(msg.c_str());
+        char msg[128];
+        std::snprintf(msg, sizeof(msg), "%s: invalid object", typeName ? typeName : "Object");
+        rt_trap(msg);
         return nullptr;
     }
     return typed;
@@ -125,8 +134,24 @@ static RtGate *require_gate(void *gate, const char *what) {
 /// @param obj Runtime object pointer to finalize.
 static void gate_finalizer(void *obj) {
     auto *gate = static_cast<RtGate *>(obj);
-    delete gate->state;
+    GateState *state = gate->state;
+    if (!state)
+        return;
+
+    bool can_delete = false;
+    {
+        std::unique_lock<std::mutex> lock(state->mu);
+        state->closing = true;
+        for (GateWaiter *waiter : state->waiters) {
+            waiter->cancelled = true;
+            waiter->cv.notify_one();
+        }
+        can_delete = state->waiters.empty();
+    }
+
     gate->state = nullptr;
+    if (can_delete)
+        delete state;
 }
 
 // ============================================================================
@@ -143,6 +168,7 @@ struct BarrierState {
     int64_t parties = 0;
     int64_t waiting = 0;
     int64_t generation = 0;
+    bool closing = false;
 };
 
 /// @brief Runtime object wrapper storing barrier state.
@@ -165,8 +191,22 @@ static RtBarrier *require_barrier(void *barrier, const char *what) {
 /// @param obj Runtime object pointer to finalize.
 static void barrier_finalizer(void *obj) {
     auto *barrier = static_cast<RtBarrier *>(obj);
-    delete barrier->state;
+    BarrierState *state = barrier->state;
+    if (!state)
+        return;
+
+    bool can_delete = false;
+    {
+        std::unique_lock<std::mutex> lock(state->mu);
+        state->closing = true;
+        ++state->generation;
+        state->cv.notify_all();
+        can_delete = state->waiting == 0;
+    }
+
     barrier->state = nullptr;
+    if (can_delete)
+        delete state;
 }
 
 // ============================================================================
@@ -177,6 +217,7 @@ static void barrier_finalizer(void *obj) {
 /// @details Writers enqueue in FIFO order and are signaled individually.
 struct RwLockWriterWaiter {
     std::condition_variable cv;
+    bool cancelled = false;
 };
 
 /// @brief Shared reader-writer lock state with writer preference.
@@ -194,6 +235,7 @@ struct RwLockState {
     int64_t write_recursion = 0;
 
     std::deque<RwLockWriterWaiter *> waiting_writers;
+    bool closing = false;
 };
 
 /// @brief Runtime object wrapper storing reader-writer lock state.
@@ -216,8 +258,25 @@ static RtRwLock *require_rwlock(void *lock, const char *what) {
 /// @param obj Runtime object pointer to finalize.
 static void rwlock_finalizer(void *obj) {
     auto *rw = static_cast<RtRwLock *>(obj);
-    delete rw->state;
+    RwLockState *state = rw->state;
+    if (!state)
+        return;
+
+    bool can_delete = false;
+    {
+        std::unique_lock<std::mutex> lock(state->mu);
+        state->closing = true;
+        state->readers_cv.notify_all();
+        for (RwLockWriterWaiter *waiter : state->waiting_writers) {
+            waiter->cancelled = true;
+            waiter->cv.notify_one();
+        }
+        can_delete = state->active_readers == 0 && !state->writer_active && state->waiting_writers.empty();
+    }
+
     rw->state = nullptr;
+    if (can_delete)
+        delete state;
 }
 
 } // namespace
@@ -267,19 +326,33 @@ void rt_gate_enter(void *gate) {
     if (!g)
         return;
 
-    GateState &state = *g->state;
-    std::unique_lock<std::mutex> lock(state.mu);
+    const char *trap_msg = nullptr;
+    {
+        GateState &state = *g->state;
+        std::unique_lock<std::mutex> lock(state.mu);
 
-    if (state.waiters.empty() && state.permits > 0) {
-        --state.permits;
-        return;
+        if (state.closing) {
+            trap_msg = "Gate.Enter: object finalized";
+        } else if (state.waiters.empty() && state.permits > 0) {
+            --state.permits;
+            return;
+        } else {
+            GateWaiter waiter;
+            state.waiters.push_back(&waiter);
+            while (!waiter.granted && !waiter.cancelled && !state.closing) {
+                waiter.cv.wait(lock);
+            }
+            if (waiter.cancelled || state.closing) {
+                auto it = std::find(state.waiters.begin(), state.waiters.end(), &waiter);
+                if (it != state.waiters.end())
+                    state.waiters.erase(it);
+                trap_msg = "Gate.Enter: object finalized while waiting";
+            }
+        }
     }
 
-    GateWaiter waiter;
-    state.waiters.push_back(&waiter);
-    while (!waiter.granted) {
-        waiter.cv.wait(lock);
-    }
+    if (trap_msg)
+        rt_trap(trap_msg);
 }
 
 /// @brief Attempt to enter the gate without blocking.
@@ -291,12 +364,22 @@ int8_t rt_gate_try_enter(void *gate) {
     if (!g)
         return 0;
 
-    GateState &state = *g->state;
-    std::unique_lock<std::mutex> lock(state.mu);
-    if (!state.waiters.empty() || state.permits <= 0)
-        return 0;
-    --state.permits;
-    return 1;
+    const char *trap_msg = nullptr;
+    int8_t result = 0;
+    {
+        GateState &state = *g->state;
+        std::unique_lock<std::mutex> lock(state.mu);
+        if (state.closing) {
+            trap_msg = "Gate.TryEnter: object finalized";
+        } else if (state.waiters.empty() && state.permits > 0) {
+            --state.permits;
+            result = 1;
+        }
+    }
+
+    if (trap_msg)
+        rt_trap(trap_msg);
+    return result;
 }
 
 /// @brief Attempt to enter the gate with a timeout.
@@ -313,32 +396,46 @@ int8_t rt_gate_try_enter_for(void *gate, int64_t ms) {
     if (ms < 0)
         ms = 0;
 
-    GateState &state = *g->state;
-    std::unique_lock<std::mutex> lock(state.mu);
+    const char *trap_msg = nullptr;
+    int8_t result = 0;
+    {
+        GateState &state = *g->state;
+        std::unique_lock<std::mutex> lock(state.mu);
 
-    if (state.waiters.empty() && state.permits > 0) {
-        --state.permits;
-        return 1;
-    }
+        if (state.closing) {
+            trap_msg = "Gate.TryEnterFor: object finalized";
+        } else if (state.waiters.empty() && state.permits > 0) {
+            --state.permits;
+            result = 1;
+        } else if (ms != 0) {
+            GateWaiter waiter;
+            state.waiters.push_back(&waiter);
 
-    if (ms == 0)
-        return 0;
+            const auto deadline = steadyDeadlineFromNow(ms);
 
-    GateWaiter waiter;
-    state.waiters.push_back(&waiter);
-
-    const auto deadline = steadyDeadlineFromNow(ms);
-
-    while (!waiter.granted) {
-        if (waiter.cv.wait_until(lock, deadline) == std::cv_status::timeout && !waiter.granted) {
-            auto it = std::find(state.waiters.begin(), state.waiters.end(), &waiter);
-            if (it != state.waiters.end())
-                state.waiters.erase(it);
-            return 0;
+            while (!waiter.granted && !waiter.cancelled && !state.closing) {
+                if (waiter.cv.wait_until(lock, deadline) == std::cv_status::timeout &&
+                    !waiter.granted) {
+                    auto it = std::find(state.waiters.begin(), state.waiters.end(), &waiter);
+                    if (it != state.waiters.end())
+                        state.waiters.erase(it);
+                    return 0;
+                }
+            }
+            if (waiter.cancelled || state.closing) {
+                auto it = std::find(state.waiters.begin(), state.waiters.end(), &waiter);
+                if (it != state.waiters.end())
+                    state.waiters.erase(it);
+                trap_msg = "Gate.TryEnterFor: object finalized while waiting";
+            } else {
+                result = 1;
+            }
         }
     }
 
-    return 1;
+    if (trap_msg)
+        rt_trap(trap_msg);
+    return result;
 }
 
 /// @brief Release a single permit back to the gate.
@@ -363,23 +460,29 @@ void rt_gate_leave_many(void *gate, int64_t count) {
         return;
     }
 
-    GateState &state = *g->state;
-    std::unique_lock<std::mutex> lock(state.mu);
+    const char *trap_msg = nullptr;
+    {
+        GateState &state = *g->state;
+        std::unique_lock<std::mutex> lock(state.mu);
 
-    if (count > std::numeric_limits<int64_t>::max() - state.permits) {
-        lock.unlock();
-        rt_trap("Gate.Leave: permit count overflow");
-        return;
+        if (state.closing) {
+            trap_msg = "Gate.Leave: object finalized";
+        } else if (count > std::numeric_limits<int64_t>::max() - state.permits) {
+            trap_msg = "Gate.Leave: permit count overflow";
+        } else {
+            state.permits += count;
+            while (state.permits > 0 && !state.waiters.empty()) {
+                GateWaiter *waiter = state.waiters.front();
+                state.waiters.pop_front();
+                --state.permits; // Reserve the permit for the woken waiter.
+                waiter->granted = true;
+                waiter->cv.notify_one();
+            }
+        }
     }
 
-    state.permits += count;
-    while (state.permits > 0 && !state.waiters.empty()) {
-        GateWaiter *waiter = state.waiters.front();
-        state.waiters.pop_front();
-        --state.permits; // Reserve the permit for the woken waiter.
-        waiter->granted = true;
-        waiter->cv.notify_one();
-    }
+    if (trap_msg)
+        rt_trap(trap_msg);
 }
 
 /// @brief Query the current permit count.
@@ -391,9 +494,20 @@ int64_t rt_gate_get_permits(void *gate) {
     if (!g)
         return 0;
 
-    GateState &state = *g->state;
-    std::unique_lock<std::mutex> lock(state.mu);
-    return state.permits;
+    const char *trap_msg = nullptr;
+    int64_t permits = 0;
+    {
+        GateState &state = *g->state;
+        std::unique_lock<std::mutex> lock(state.mu);
+        if (state.closing)
+            trap_msg = "Gate.get_Permits: object finalized";
+        else
+            permits = state.permits;
+    }
+
+    if (trap_msg)
+        rt_trap(trap_msg);
+    return permits;
 }
 
 // ============================================================================
@@ -442,24 +556,39 @@ int64_t rt_barrier_arrive(void *barrier) {
     if (!b)
         return 0;
 
-    BarrierState &state = *b->state;
-    std::unique_lock<std::mutex> lock(state.mu);
+    const char *trap_msg = nullptr;
+    int64_t index = 0;
+    {
+        BarrierState &state = *b->state;
+        std::unique_lock<std::mutex> lock(state.mu);
 
-    const int64_t index = state.waiting;
-    const int64_t gen = state.generation;
-    ++state.waiting;
+        if (state.closing) {
+            trap_msg = "Barrier.Arrive: object finalized";
+        } else {
+            index = state.waiting;
+            const int64_t gen = state.generation;
+            ++state.waiting;
 
-    if (state.waiting == state.parties) {
-        state.waiting = 0;
-        ++state.generation;
-        state.cv.notify_all();
-        return index;
+            if (state.waiting == state.parties) {
+                state.waiting = 0;
+                ++state.generation;
+                state.cv.notify_all();
+                return index;
+            }
+
+            while (state.generation == gen && !state.closing) {
+                state.cv.wait(lock);
+            }
+            if (state.closing) {
+                if (state.waiting > 0)
+                    --state.waiting;
+                trap_msg = "Barrier.Arrive: object finalized while waiting";
+            }
+        }
     }
 
-    while (state.generation == gen) {
-        state.cv.wait(lock);
-    }
-
+    if (trap_msg)
+        rt_trap(trap_msg);
     return index;
 }
 
@@ -472,14 +601,20 @@ void rt_barrier_reset(void *barrier) {
     if (!b)
         return;
 
-    BarrierState &state = *b->state;
-    std::unique_lock<std::mutex> lock(state.mu);
-    if (state.waiting != 0) {
-        lock.unlock(); // Release lock before trap to avoid deadlock if longjmp is used
-        rt_trap("Barrier.Reset: threads are waiting");
-        return;
+    const char *trap_msg = nullptr;
+    {
+        BarrierState &state = *b->state;
+        std::unique_lock<std::mutex> lock(state.mu);
+        if (state.closing)
+            trap_msg = "Barrier.Reset: object finalized";
+        else if (state.waiting != 0)
+            trap_msg = "Barrier.Reset: threads are waiting";
+        else
+            ++state.generation;
     }
-    ++state.generation;
+
+    if (trap_msg)
+        rt_trap(trap_msg);
 }
 
 /// @brief Get the configured party count for the barrier.
@@ -490,9 +625,20 @@ int64_t rt_barrier_get_parties(void *barrier) {
     if (!b)
         return 0;
 
-    BarrierState &state = *b->state;
-    std::unique_lock<std::mutex> lock(state.mu);
-    return state.parties;
+    const char *trap_msg = nullptr;
+    int64_t parties = 0;
+    {
+        BarrierState &state = *b->state;
+        std::unique_lock<std::mutex> lock(state.mu);
+        if (state.closing)
+            trap_msg = "Barrier.get_Parties: object finalized";
+        else
+            parties = state.parties;
+    }
+
+    if (trap_msg)
+        rt_trap(trap_msg);
+    return parties;
 }
 
 /// @brief Get the number of parties currently waiting.
@@ -503,9 +649,20 @@ int64_t rt_barrier_get_waiting(void *barrier) {
     if (!b)
         return 0;
 
-    BarrierState &state = *b->state;
-    std::unique_lock<std::mutex> lock(state.mu);
-    return state.waiting;
+    const char *trap_msg = nullptr;
+    int64_t waiting = 0;
+    {
+        BarrierState &state = *b->state;
+        std::unique_lock<std::mutex> lock(state.mu);
+        if (state.closing)
+            trap_msg = "Barrier.get_Waiting: object finalized";
+        else
+            waiting = state.waiting;
+    }
+
+    if (trap_msg)
+        rt_trap(trap_msg);
+    return waiting;
 }
 
 // ============================================================================
@@ -544,19 +701,32 @@ void rt_rwlock_read_enter(void *lock) {
     if (!rw)
         return;
 
-    RwLockState &state = *rw->state;
-    const std::thread::id tid = std::this_thread::get_id();
-    std::unique_lock<std::mutex> lk(state.mu);
-    if (state.writer_active && state.writer_owner == tid) {
-        ++state.active_readers;
-        ++state.reader_counts[tid];
-        return;
+    const char *trap_msg = nullptr;
+    {
+        RwLockState &state = *rw->state;
+        const std::thread::id tid = std::this_thread::get_id();
+        std::unique_lock<std::mutex> lk(state.mu);
+        if (state.closing) {
+            trap_msg = "RwLock.ReadEnter: object finalized";
+        } else if (state.writer_active && state.writer_owner == tid) {
+            ++state.active_readers;
+            ++state.reader_counts[tid];
+            return;
+        } else {
+            while ((state.writer_active || !state.waiting_writers.empty()) && !state.closing) {
+                state.readers_cv.wait(lk);
+            }
+            if (state.closing) {
+                trap_msg = "RwLock.ReadEnter: object finalized while waiting";
+            } else {
+                ++state.active_readers;
+                ++state.reader_counts[tid];
+            }
+        }
     }
-    while (state.writer_active || !state.waiting_writers.empty()) {
-        state.readers_cv.wait(lk);
-    }
-    ++state.active_readers;
-    ++state.reader_counts[tid];
+
+    if (trap_msg)
+        rt_trap(trap_msg);
 }
 
 /// @brief Release a previously acquired read lock.
@@ -567,22 +737,28 @@ void rt_rwlock_read_exit(void *lock) {
     if (!rw)
         return;
 
-    RwLockState &state = *rw->state;
-    const std::thread::id tid = std::this_thread::get_id();
-    std::unique_lock<std::mutex> lk(state.mu);
-    auto it = state.reader_counts.find(tid);
-    if (it == state.reader_counts.end() || it->second <= 0) {
-        lk.unlock(); // Release lock before trap to avoid deadlock if longjmp is used
-        rt_trap("RwLock.ReadExit: exit without matching enter");
-        return;
+    const char *trap_msg = nullptr;
+    {
+        RwLockState &state = *rw->state;
+        const std::thread::id tid = std::this_thread::get_id();
+        std::unique_lock<std::mutex> lk(state.mu);
+        auto it = state.reader_counts.find(tid);
+        if (it == state.reader_counts.end() || it->second <= 0) {
+            trap_msg = "RwLock.ReadExit: exit without matching enter";
+        } else {
+            --it->second;
+            if (it->second == 0)
+                state.reader_counts.erase(it);
+            --state.active_readers;
+            if (state.active_readers == 0 && !state.writer_active &&
+                !state.waiting_writers.empty()) {
+                state.waiting_writers.front()->cv.notify_one();
+            }
+        }
     }
-    --it->second;
-    if (it->second == 0)
-        state.reader_counts.erase(it);
-    --state.active_readers;
-    if (state.active_readers == 0 && !state.writer_active && !state.waiting_writers.empty()) {
-        state.waiting_writers.front()->cv.notify_one();
-    }
+
+    if (trap_msg)
+        rt_trap(trap_msg);
 }
 
 /// @brief Acquire the lock in exclusive (writer) mode.
@@ -595,36 +771,50 @@ void rt_rwlock_write_enter(void *lock) {
     if (!rw)
         return;
 
-    RwLockState &state = *rw->state;
-    const std::thread::id tid = std::this_thread::get_id();
-    std::unique_lock<std::mutex> lk(state.mu);
+    const char *trap_msg = nullptr;
+    {
+        RwLockState &state = *rw->state;
+        const std::thread::id tid = std::this_thread::get_id();
+        std::unique_lock<std::mutex> lk(state.mu);
 
-    if (state.writer_active && state.writer_owner == tid) {
-        ++state.write_recursion;
-        return;
-    }
-
-    auto reader_it = state.reader_counts.find(tid);
-    if (reader_it != state.reader_counts.end() && reader_it->second > 0) {
-        lk.unlock();
-        rt_trap("RwLock.WriteEnter: cannot upgrade read lock");
-        return;
-    }
-
-    RwLockWriterWaiter waiter;
-    state.waiting_writers.push_back(&waiter);
-
-    while (true) {
-        const bool is_front = state.waiting_writers.front() == &waiter;
-        if (is_front && !state.writer_active && state.active_readers == 0) {
-            state.waiting_writers.pop_front();
-            state.writer_active = true;
-            state.writer_owner = tid;
-            state.write_recursion = 1;
+        if (state.closing) {
+            trap_msg = "RwLock.WriteEnter: object finalized";
+        } else if (state.writer_active && state.writer_owner == tid) {
+            ++state.write_recursion;
             return;
+        } else {
+            auto reader_it = state.reader_counts.find(tid);
+            if (reader_it != state.reader_counts.end() && reader_it->second > 0) {
+                trap_msg = "RwLock.WriteEnter: cannot upgrade read lock";
+            } else {
+                RwLockWriterWaiter waiter;
+                state.waiting_writers.push_back(&waiter);
+
+                while (true) {
+                    if (state.closing || waiter.cancelled) {
+                        auto it = std::find(
+                            state.waiting_writers.begin(), state.waiting_writers.end(), &waiter);
+                        if (it != state.waiting_writers.end())
+                            state.waiting_writers.erase(it);
+                        trap_msg = "RwLock.WriteEnter: object finalized while waiting";
+                        break;
+                    }
+                    const bool is_front = state.waiting_writers.front() == &waiter;
+                    if (is_front && !state.writer_active && state.active_readers == 0) {
+                        state.waiting_writers.pop_front();
+                        state.writer_active = true;
+                        state.writer_owner = tid;
+                        state.write_recursion = 1;
+                        return;
+                    }
+                    waiter.cv.wait(lk);
+                }
+            }
         }
-        waiter.cv.wait(lk);
     }
+
+    if (trap_msg)
+        rt_trap(trap_msg);
 }
 
 /// @brief Release a previously acquired write lock.
@@ -637,33 +827,34 @@ void rt_rwlock_write_exit(void *lock) {
     if (!rw)
         return;
 
-    RwLockState &state = *rw->state;
-    const std::thread::id tid = std::this_thread::get_id();
-    std::unique_lock<std::mutex> lk(state.mu);
+    const char *trap_msg = nullptr;
+    {
+        RwLockState &state = *rw->state;
+        const std::thread::id tid = std::this_thread::get_id();
+        std::unique_lock<std::mutex> lk(state.mu);
 
-    if (!state.writer_active) {
-        lk.unlock(); // Release lock before trap to avoid deadlock if longjmp is used
-        rt_trap("RwLock.WriteExit: exit without matching enter");
-        return;
+        if (!state.writer_active) {
+            trap_msg = "RwLock.WriteExit: exit without matching enter";
+        } else if (state.writer_owner != tid) {
+            trap_msg = "RwLock.WriteExit: not owner";
+        } else {
+            --state.write_recursion;
+            if (state.write_recursion > 0)
+                return;
+
+            state.writer_active = false;
+            state.writer_owner = std::thread::id();
+
+            if (!state.waiting_writers.empty()) {
+                state.waiting_writers.front()->cv.notify_one();
+            } else {
+                state.readers_cv.notify_all();
+            }
+        }
     }
-    if (state.writer_owner != tid) {
-        lk.unlock(); // Release lock before trap to avoid deadlock if longjmp is used
-        rt_trap("RwLock.WriteExit: not owner");
-        return;
-    }
 
-    --state.write_recursion;
-    if (state.write_recursion > 0)
-        return;
-
-    state.writer_active = false;
-    state.writer_owner = std::thread::id();
-
-    if (!state.waiting_writers.empty()) {
-        state.waiting_writers.front()->cv.notify_one();
-    } else {
-        state.readers_cv.notify_all();
-    }
+    if (trap_msg)
+        rt_trap(trap_msg);
 }
 
 /// @brief Attempt to acquire a read lock without blocking.
@@ -675,19 +866,28 @@ int8_t rt_rwlock_try_read_enter(void *lock) {
     if (!rw)
         return 0;
 
-    RwLockState &state = *rw->state;
-    const std::thread::id tid = std::this_thread::get_id();
-    std::unique_lock<std::mutex> lk(state.mu);
-    if (state.writer_active && state.writer_owner == tid) {
-        ++state.active_readers;
-        ++state.reader_counts[tid];
-        return 1;
+    const char *trap_msg = nullptr;
+    int8_t result = 0;
+    {
+        RwLockState &state = *rw->state;
+        const std::thread::id tid = std::this_thread::get_id();
+        std::unique_lock<std::mutex> lk(state.mu);
+        if (state.closing) {
+            trap_msg = "RwLock.TryReadEnter: object finalized";
+        } else if (state.writer_active && state.writer_owner == tid) {
+            ++state.active_readers;
+            ++state.reader_counts[tid];
+            result = 1;
+        } else if (!state.writer_active && state.waiting_writers.empty()) {
+            ++state.active_readers;
+            ++state.reader_counts[tid];
+            result = 1;
+        }
     }
-    if (state.writer_active || !state.waiting_writers.empty())
-        return 0;
-    ++state.active_readers;
-    ++state.reader_counts[tid];
-    return 1;
+
+    if (trap_msg)
+        rt_trap(trap_msg);
+    return result;
 }
 
 /// @brief Attempt to acquire a write lock without blocking.
@@ -701,26 +901,35 @@ int8_t rt_rwlock_try_write_enter(void *lock) {
     if (!rw)
         return 0;
 
-    RwLockState &state = *rw->state;
-    const std::thread::id tid = std::this_thread::get_id();
-    std::unique_lock<std::mutex> lk(state.mu);
+    const char *trap_msg = nullptr;
+    int8_t result = 0;
+    {
+        RwLockState &state = *rw->state;
+        const std::thread::id tid = std::this_thread::get_id();
+        std::unique_lock<std::mutex> lk(state.mu);
 
-    if (state.writer_active && state.writer_owner == tid) {
-        ++state.write_recursion;
-        return 1;
+        if (state.closing) {
+            trap_msg = "RwLock.TryWriteEnter: object finalized";
+        } else if (state.writer_active && state.writer_owner == tid) {
+            ++state.write_recursion;
+            result = 1;
+        } else {
+            auto reader_it = state.reader_counts.find(tid);
+            if (reader_it == state.reader_counts.end() || reader_it->second <= 0) {
+                if (!state.writer_active && state.active_readers == 0 &&
+                    state.waiting_writers.empty()) {
+                    state.writer_active = true;
+                    state.writer_owner = tid;
+                    state.write_recursion = 1;
+                    result = 1;
+                }
+            }
+        }
     }
 
-    auto reader_it = state.reader_counts.find(tid);
-    if (reader_it != state.reader_counts.end() && reader_it->second > 0)
-        return 0;
-
-    if (state.writer_active || state.active_readers > 0 || !state.waiting_writers.empty())
-        return 0;
-
-    state.writer_active = true;
-    state.writer_owner = tid;
-    state.write_recursion = 1;
-    return 1;
+    if (trap_msg)
+        rt_trap(trap_msg);
+    return result;
 }
 
 /// @brief Query the number of active readers.
@@ -732,9 +941,20 @@ int64_t rt_rwlock_get_readers(void *lock) {
     if (!rw)
         return 0;
 
-    RwLockState &state = *rw->state;
-    std::unique_lock<std::mutex> lk(state.mu);
-    return state.active_readers;
+    const char *trap_msg = nullptr;
+    int64_t readers = 0;
+    {
+        RwLockState &state = *rw->state;
+        std::unique_lock<std::mutex> lk(state.mu);
+        if (state.closing)
+            trap_msg = "RwLock.get_Readers: object finalized";
+        else
+            readers = state.active_readers;
+    }
+
+    if (trap_msg)
+        rt_trap(trap_msg);
+    return readers;
 }
 
 /// @brief Check whether a writer currently holds the lock.
@@ -746,9 +966,20 @@ int8_t rt_rwlock_get_is_write_locked(void *lock) {
     if (!rw)
         return 0;
 
-    RwLockState &state = *rw->state;
-    std::unique_lock<std::mutex> lk(state.mu);
-    return state.writer_active ? 1 : 0;
+    const char *trap_msg = nullptr;
+    int8_t locked = 0;
+    {
+        RwLockState &state = *rw->state;
+        std::unique_lock<std::mutex> lk(state.mu);
+        if (state.closing)
+            trap_msg = "RwLock.get_IsWriteLocked: object finalized";
+        else
+            locked = state.writer_active ? 1 : 0;
+    }
+
+    if (trap_msg)
+        rt_trap(trap_msg);
+    return locked;
 }
 
 } // extern "C"

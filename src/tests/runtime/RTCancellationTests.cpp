@@ -40,6 +40,32 @@ static void test_linked() {
     assert(rt_cancellation_is_cancelled(child) == 1); // Linked parent cancellation is visible
 }
 
+static void test_linked_cancel_is_sticky_after_parent_reset() {
+    void *parent = rt_cancellation_new();
+    void *child = rt_cancellation_linked(parent);
+
+    rt_cancellation_cancel(parent);
+    assert(rt_cancellation_is_cancelled(child) == 1);
+
+    rt_cancellation_reset(parent);
+    assert(rt_cancellation_is_cancelled(parent) == 0);
+    assert(rt_cancellation_is_cancelled(child) == 1);
+
+    rt_cancellation_reset(child);
+    assert(rt_cancellation_is_cancelled(child) == 0);
+}
+
+static void test_linked_cancellation_reaches_grandchild() {
+    void *parent = rt_cancellation_new();
+    void *child = rt_cancellation_linked(parent);
+    void *grandchild = rt_cancellation_linked(child);
+
+    rt_cancellation_cancel(parent);
+    assert(rt_cancellation_is_cancelled(parent) == 1);
+    assert(rt_cancellation_is_cancelled(child) == 1);
+    assert(rt_cancellation_is_cancelled(grandchild) == 1);
+}
+
 static void test_linked_self_cancel() {
     void *parent = rt_cancellation_new();
     void *child = rt_cancellation_linked(parent);
@@ -60,6 +86,8 @@ int main() {
     test_basic();
     test_reset();
     test_linked();
+    test_linked_cancel_is_sticky_after_parent_reset();
+    test_linked_cancellation_reaches_grandchild();
     test_linked_self_cancel();
     test_null_safety();
     return 0;

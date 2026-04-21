@@ -38,10 +38,15 @@ int main() {
     b.addExtern("Viper.Threads.Thread.StartOwned",
                 Type(Type::Kind::Ptr),
                 {Type(Type::Kind::Ptr), Type(Type::Kind::Ptr)});
+    b.addExtern("Viper.Threads.Thread.StartSafe",
+                Type(Type::Kind::Ptr),
+                {Type(Type::Kind::Ptr), Type(Type::Kind::Ptr)});
     b.addExtern("Viper.Threads.Thread.StartSafeOwned",
                 Type(Type::Kind::Ptr),
                 {Type(Type::Kind::Ptr), Type(Type::Kind::Ptr)});
     b.addExtern("Viper.Threads.Thread.Join", Type(Type::Kind::Void), {Type(Type::Kind::Ptr)});
+    b.addExtern(
+        "Viper.Threads.Thread.get_HasError", Type(Type::Kind::I1), {Type(Type::Kind::Ptr)});
     b.addExtern(
         "Viper.Threads.Thread.SafeJoin", Type(Type::Kind::Void), {Type(Type::Kind::Ptr)});
     b.addExtern("Viper.Threads.Async.Run",
@@ -117,6 +122,18 @@ int main() {
     storeThreadExt.loc = {1, 1, 4};
     workerEntry.instructions.push_back(storeThreadExt);
 
+    b.emitRet(std::optional<Value>{}, {1, 1, 5});
+
+    // worker_trap() -> void: trap; used to verify VM Thread.StartSafe records errors.
+    auto &workerTrap = b.startFunction("worker_trap", Type(Type::Kind::Void), {});
+    auto &workerTrapEntry = b.addBlock(workerTrap, "entry");
+    b.setInsertPoint(workerTrapEntry);
+
+    Instr trapInstr;
+    trapInstr.op = Opcode::Trap;
+    trapInstr.type = Type(Type::Kind::Void);
+    trapInstr.loc = {1, 1, 5};
+    workerTrapEntry.instructions.push_back(trapInstr);
     b.emitRet(std::optional<Value>{}, {1, 1, 5});
 
     // worker_async(ptr) -> ptr: g = g + 1; return null
@@ -264,6 +281,38 @@ int main() {
                std::optional<Value>{},
                {1, 2, 6});
 
+    Instr trapEntryPtr;
+    trapEntryPtr.result = b.reserveTempId();
+    trapEntryPtr.op = Opcode::GAddr;
+    trapEntryPtr.type = Type(Type::Kind::Ptr);
+    trapEntryPtr.operands.push_back(Value::global("worker_trap"));
+    trapEntryPtr.loc = {1, 2, 6};
+    mainEntry.instructions.push_back(trapEntryPtr);
+
+    unsigned safeTrapThreadId = b.reserveTempId();
+    b.emitCall("Viper.Threads.Thread.StartSafe",
+               {Value::temp(*trapEntryPtr.result), Value::temp(nullId)},
+               Value::temp(safeTrapThreadId),
+               {1, 2, 6});
+    b.emitCall("Viper.Threads.Thread.Join",
+               {Value::temp(safeTrapThreadId)},
+               std::optional<Value>{},
+               {1, 2, 6});
+
+    unsigned safeTrapHasErrorId = b.reserveTempId();
+    b.emitCall("Viper.Threads.Thread.get_HasError",
+               {Value::temp(safeTrapThreadId)},
+               Value::temp(safeTrapHasErrorId),
+               {1, 2, 6});
+
+    Instr safeTrapHasErrorI64;
+    safeTrapHasErrorI64.result = b.reserveTempId();
+    safeTrapHasErrorI64.op = Opcode::Zext1;
+    safeTrapHasErrorI64.type = Type(Type::Kind::I64);
+    safeTrapHasErrorI64.operands.push_back(Value::temp(safeTrapHasErrorId));
+    safeTrapHasErrorI64.loc = {1, 2, 6};
+    mainEntry.instructions.push_back(safeTrapHasErrorI64);
+
     // Reset global and exercise Async.Run/Future.Get through the VM-aware extern bridge.
     Instr storeAsyncInit;
     storeAsyncInit.op = Opcode::Store;
@@ -350,7 +399,16 @@ int main() {
     sumAll.loc = {1, 2, 10};
     mainEntry.instructions.push_back(sumAll);
 
-    b.emitRet(Value::temp(*sumAll.result), {1, 2, 11});
+    Instr sumWithSafeTrap;
+    sumWithSafeTrap.result = b.reserveTempId();
+    sumWithSafeTrap.op = Opcode::Add;
+    sumWithSafeTrap.type = Type(Type::Kind::I64);
+    sumWithSafeTrap.operands.push_back(Value::temp(*sumAll.result));
+    sumWithSafeTrap.operands.push_back(Value::temp(*safeTrapHasErrorI64.result));
+    sumWithSafeTrap.loc = {1, 2, 10};
+    mainEntry.instructions.push_back(sumWithSafeTrap);
+
+    b.emitRet(Value::temp(*sumWithSafeTrap.result), {1, 2, 11});
 
     il::vm::VM vm(m);
     auto reg = il::vm::createExternRegistry();
@@ -363,6 +421,6 @@ int main() {
     reg.reset();
 
     const int64_t rc = vm.run();
-    assert(rc == (42 + 777 + 777));
+    assert(rc == (42 + 777 + 777 + 1));
     return 0;
 }

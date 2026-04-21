@@ -240,16 +240,8 @@ struct TrapCtx {
 /// INVARIANT: If ctx.vm is non-null, VM::activeInstance() must also be non-null.
 /// GUARANTEE: This function does not return to its caller when no handler catches.
 static void finalizeTrap(TrapCtx &ctx) {
-    if (tlsTrapInterceptor) {
-        RuntimeTrapSignal signal{ctx.kind,
-                                 ctx.error.code,
-                                 ctx.message,
-                                 ctx.loc,
-                                 ctx.function,
-                                 ctx.block};
-        tlsTrapInterceptor(signal, tlsTrapInterceptorUserData);
-        throw signal;
-    }
+    RuntimeBridge::interceptTrap(
+        ctx.kind, ctx.error.code, ctx.message, ctx.loc, ctx.function, ctx.block);
 
     if (ctx.vm) {
         // Assert that activeInstance is consistent with ctx.vm
@@ -635,6 +627,20 @@ void RuntimeBridge::trap(TrapKind kind,
     // configuration finalizeTrap() intentionally returns after recording the
     // trap, so the bridge must not assume control flow is impossible here.
     return;
+}
+
+void RuntimeBridge::interceptTrap(TrapKind kind,
+                                  int32_t code,
+                                  const std::string &msg,
+                                  const SourceLoc &loc,
+                                  const std::string &fn,
+                                  const std::string &block) {
+    if (!tlsTrapInterceptor)
+        return;
+
+    RuntimeTrapSignal signal{kind, code, msg, loc, fn, block};
+    tlsTrapInterceptor(signal, tlsTrapInterceptorUserData);
+    throw signal;
 }
 
 /// @brief Retrieve the currently installed runtime call context, if any.

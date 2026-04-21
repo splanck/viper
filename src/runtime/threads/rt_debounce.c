@@ -78,6 +78,9 @@ typedef struct {
     int64_t signal_count;
 } rt_debounce_data;
 
+/// @brief GC finalizer for a `Debounce` timer — releases the monitor the timer
+///        waits on and drops the held callable / argument references, no-op if
+///        already torn down.
 static void debounce_finalizer(void *obj) {
     rt_debounce_data *data = (rt_debounce_data *)obj;
     if (!data || !data->monitor)
@@ -98,7 +101,8 @@ void *rt_debounce_new(int64_t delay_ms) {
     rt_debounce_data *data = (rt_debounce_data *)obj;
     data->monitor = rt_obj_new_i64(0, 1);
     if (!data->monitor) {
-        rt_obj_free(obj);
+        if (rt_obj_release_check0(obj))
+            rt_obj_free(obj);
         rt_trap("Debouncer.New: memory allocation failed");
         return NULL;
     }
@@ -178,6 +182,8 @@ typedef struct {
     int64_t count;
 } rt_throttle_data;
 
+/// @brief GC finalizer for a `Throttle` limiter — mirror of `debounce_finalizer`
+///        but on the throttle-data struct (same monitor + callback release pattern).
 static void throttle_finalizer(void *obj) {
     rt_throttle_data *data = (rt_throttle_data *)obj;
     if (!data || !data->monitor)
@@ -197,7 +203,8 @@ void *rt_throttle_new(int64_t interval_ms) {
     rt_throttle_data *data = (rt_throttle_data *)obj;
     data->monitor = rt_obj_new_i64(0, 1);
     if (!data->monitor) {
-        rt_obj_free(obj);
+        if (rt_obj_release_check0(obj))
+            rt_obj_free(obj);
         rt_trap("Throttler.New: memory allocation failed");
         return NULL;
     }

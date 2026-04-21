@@ -5,6 +5,7 @@
 // RTChannelTests.cpp - Tests for rt_channel (thread-safe bounded channel)
 //===----------------------------------------------------------------------===//
 
+#include <atomic>
 #include <cassert>
 #include <chrono>
 #include <cstdint>
@@ -379,6 +380,46 @@ static void test_synchronous_send_for_timeout_budget() {
     rt_channel_close(ch);
 }
 
+static void test_synchronous_probe_ignores_waiting_sender() {
+    void *ch = rt_channel_new(0);
+    void *item = make_obj();
+
+    std::thread sender([&]() { rt_channel_send(ch, item); });
+
+    rt_thread_sleep(20);
+    assert(rt_channel_try_recv(ch, NULL) == 0);
+
+    void *out = NULL;
+    assert(rt_channel_recv_for(ch, &out, 1000) == 1);
+    assert(out == item);
+
+    sender.join();
+    rt_channel_close(ch);
+}
+
+static void test_synchronous_is_full_honors_waiting_receiver() {
+    void *ch = rt_channel_new(0);
+    void *item = make_obj();
+    void *received = NULL;
+    std::atomic<int> receiver_started{0};
+
+    std::thread receiver([&]() {
+        receiver_started.store(1, std::memory_order_release);
+        received = rt_channel_recv(ch);
+    });
+
+    while (receiver_started.load(std::memory_order_acquire) == 0)
+        rt_thread_sleep(1);
+    rt_thread_sleep(20);
+
+    assert(rt_channel_get_is_full(ch) == 0);
+    assert(rt_channel_send_for(ch, item, 1000) == 1);
+
+    receiver.join();
+    assert(received == item);
+    rt_channel_close(ch);
+}
+
 static void test_synchronous_try_recv_rendezvous() {
     void *ch = rt_channel_new(0);
     void *item = make_obj();
@@ -423,6 +464,8 @@ int main() {
     test_synchronous_channel();
     test_synchronous_multi_sender_order();
     test_synchronous_send_for_timeout_budget();
+    test_synchronous_probe_ignores_waiting_sender();
+    test_synchronous_is_full_honors_waiting_receiver();
     test_synchronous_try_recv_rendezvous();
 
     printf("Channel tests: all passed\n");

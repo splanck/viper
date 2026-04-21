@@ -14,11 +14,13 @@
 
 #include "rt_object.h"
 #include "rt_seq.h"
+#include "rt_string.h"
 #include "rt_threads.h"
 
 #include "common/ProcessIsolation.hpp"
 #include <atomic>
 #include <cassert>
+#include <cstring>
 #include <string>
 #include <thread>
 #include <vector>
@@ -68,10 +70,17 @@ extern "C" void sleep_then_store(void *arg) {
 }
 
 static std::atomic<int64_t> g_owned_thread_arg_len{0};
+static std::atomic<int> g_safe_thread_flag{0};
 
 extern "C" void observe_owned_seq(void *arg) {
     rt_thread_sleep(20);
     g_owned_thread_arg_len.store(rt_seq_len(arg), std::memory_order_release);
+}
+
+extern "C" void set_safe_thread_flag(void *arg) {
+    (void)arg;
+    rt_thread_sleep(20);
+    g_safe_thread_flag.store(1, std::memory_order_release);
 }
 
 static void test_thread_join_for_timeout() {
@@ -134,6 +143,32 @@ static void test_thread_start_safe_owned_keeps_object_arg_alive() {
     assert(g_owned_thread_arg_len.load(std::memory_order_acquire) == 0);
 }
 
+static void test_safe_thread_supports_standard_thread_methods() {
+    g_safe_thread_flag.store(0, std::memory_order_release);
+    void *t = rt_thread_start_safe((void *)&set_safe_thread_flag, nullptr);
+    assert(t != nullptr);
+
+    assert(rt_thread_get_id(t) > 0);
+    assert(rt_thread_join_for(t, 1000) == 1);
+    assert(rt_thread_try_join(t) == 1);
+    assert(rt_thread_get_is_alive(t) == 0);
+    assert(rt_thread_has_error(t) == 0);
+    assert(g_safe_thread_flag.load(std::memory_order_acquire) == 1);
+}
+
+static void test_safe_thread_methods_accept_regular_thread_handle() {
+    g_safe_thread_flag.store(0, std::memory_order_release);
+    void *t = rt_thread_start((void *)&set_safe_thread_flag, nullptr);
+    assert(t != nullptr);
+
+    assert(rt_thread_safe_get_id(t) > 0);
+    rt_thread_safe_join(t);
+    assert(rt_thread_safe_is_alive(t) == 0);
+    assert(rt_thread_has_error(t) == 0);
+    assert(strcmp(rt_string_cstr(rt_thread_get_error(t)), "") == 0);
+    assert(g_safe_thread_flag.load(std::memory_order_acquire) == 1);
+}
+
 int main(int argc, char *argv[]) {
     viper::tests::registerChildFunction(call_thread_start_null);
     viper::tests::registerChildFunction(call_thread_join_null);
@@ -151,6 +186,8 @@ int main(int argc, char *argv[]) {
     test_multiple_join_waiters();
     test_thread_start_owned_keeps_object_arg_alive();
     test_thread_start_safe_owned_keeps_object_arg_alive();
+    test_safe_thread_supports_standard_thread_methods();
+    test_safe_thread_methods_accept_regular_thread_handle();
     test_safe_i64_concurrent_add();
     test_safe_i64_add_wraps();
     return 0;

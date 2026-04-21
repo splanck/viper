@@ -48,6 +48,17 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 
+/// @brief Clamp an int64 millisecond timeout into the Win32 `DWORD` domain.
+/// @details Win32 wait APIs (`WaitForSingleObject`, `SleepConditionVariableCS`,
+///          etc.) take an unsigned 32-bit `DWORD` timeout with special values
+///          `0` (return immediately) and `INFINITE == MAXDWORD == 0xFFFFFFFF`.
+///          A naked `(DWORD)ms` cast on a negative int64 sign-extends into a
+///          huge unsigned and causes a ~49-day hang; a value greater than
+///          `MAXDWORD` truncates unpredictably. This helper maps:
+///            - `ms <= 0` → 0 (poll / return immediately)
+///            - `ms > MAXDWORD` → `MAXDWORD` (effectively infinite)
+///            - otherwise the direct cast.
+///          Called before every Win32 timed-wait entry.
 static DWORD monitor_clamp_timeout_ms(int64_t ms) {
     if (ms <= 0)
         return 0;
@@ -187,6 +198,7 @@ void rt_monitor_forget(void *obj) {
     }
     EnterCriticalSection(&node->monitor.cs);
     if (node->monitor.owner_valid || node->monitor.acq_head || node->monitor.wait_head) {
+        node->key = NULL;
         LeaveCriticalSection(&node->monitor.cs);
         LeaveCriticalSection(&g_monitor_table_cs);
         return;
@@ -826,6 +838,7 @@ void rt_monitor_forget(void *obj) {
     }
     pthread_mutex_lock(&node->monitor.mu);
     if (node->monitor.owner_valid || node->monitor.acq_head || node->monitor.wait_head) {
+        node->key = NULL;
         pthread_mutex_unlock(&node->monitor.mu);
         pthread_mutex_unlock(&g_monitor_table_mu);
         return;
@@ -956,6 +969,17 @@ static int monitor_cond_init(pthread_cond_t *cond, int8_t *uses_monotonic) {
 #endif
 }
 
+/// @brief Read the current clock, preferring the monotonic source when requested
+///        and available.
+/// @details Monitor timeouts and pthread condvar waits need a consistent clock
+///          source. `CLOCK_MONOTONIC` is the right choice for "wait 500ms" because
+///          it's immune to wall-clock adjustments (NTP sync, DST), but some
+///          pthread implementations require `CLOCK_REALTIME` for `pthread_cond_timedwait`
+///          with the default attributes — the caller picks which per-condvar.
+///          On platforms without `CLOCK_MONOTONIC` (few, at this point) we fall
+///          back to `CLOCK_REALTIME` silently. A stack-allocated `timespec` is
+///          zero-initialized so a `clock_gettime` failure returns a sensible
+///          "epoch" value rather than uninitialized stack garbage.
 static struct timespec monitor_now_clock(int8_t use_monotonic) {
     struct timespec ts;
     memset(&ts, 0, sizeof(ts));
@@ -967,6 +991,18 @@ static struct timespec monitor_now_clock(int8_t use_monotonic) {
     return ts;
 }
 
+/// @brief Compute an absolute deadline `ms` milliseconds in the future from now,
+///        using the caller-selected clock source.
+/// @details Takes the current clock reading and adds the millisecond budget as
+///          `(sec, nsec)`. Overflow-safe: before adding, checks that
+///          `d.deadline.tv_sec + add_sec` doesn't exceed `LONG_MAX` — if it
+///          would, clamps to `(LONG_MAX, 999999999ns)` so the deadline becomes
+///          "effectively forever" rather than wrapping to a past value that
+///          would trigger an immediate spurious timeout. Also normalizes
+///          nanosecond overflow (`ns >= 1e9` → carry into seconds) so downstream
+///          `pthread_cond_timedwait` doesn't see a malformed timespec. Negative
+///          or zero `ms` returns the current time so a "no timeout" caller still
+///          gets a valid struct.
 static monitor_deadline_t monitor_deadline_ms_from_now(int64_t ms, int8_t use_monotonic) {
     monitor_deadline_t d;
     d.deadline = monitor_now_clock(use_monotonic);

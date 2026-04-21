@@ -100,8 +100,8 @@ failure, etc.), the trap is captured instead of crashing the process.
 
 This applies uniformly to VM-backed and BytecodeVM-backed worker functions. A
 trapped worker marks the safe thread handle as failed instead of silently
-completing. BytecodeVM-backed workers now route runtime-call traps through the
-same safe-thread boundary as bytecode traps raised directly by the interpreter.
+completing. VM and BytecodeVM workers route both runtime-call traps and
+interpreter traps through the same safe-thread boundary.
 
 After the thread finishes, check `HasError` and `Error` on the returned handle:
 
@@ -115,8 +115,10 @@ if (t.HasError) {
 }
 ```
 
-Use `SafeJoin()`, `SafeGetId()`, and `SafeIsAlive()` instead of `Join()`, `Id`, and `IsAlive`
-for safe thread handles, as they wrap the internal thread structure.
+`SafeJoin()`, `SafeGetId()`, and `SafeIsAlive()` remain available for explicit
+safe-thread handling. Standard `Join()`, `TryJoin()`, `JoinFor()`, `Id`, and
+`IsAlive` also accept safe-thread handles and delegate to the underlying worker.
+The safe-specific methods also accept regular thread handles.
 
 **Use cases:**
 - Database servers: isolate per-connection errors so one bad query doesn't crash all sessions
@@ -600,7 +602,7 @@ Thread pool for submitting tasks to a fixed set of worker threads.
 - `Submit` returns false after `Shutdown` or `ShutdownNow` has been called.
 - `ShutdownNow` discards queued tasks; `Shutdown` allows them to finish.
 - Calling `Wait`, `WaitFor`, `Shutdown`, or `ShutdownNow` from a worker in the same pool traps to prevent self-deadlock.
-- Traps raised by a task do not leave the pool stuck in an active state; waits still complete after the worker records the task as finished.
+- Traps raised by a task do not leave the pool stuck in an active state. Once the pool drains, `Wait()` and successful `WaitFor(ms)` rethrow the last task trap instead of silently reporting success.
 - Pool handles own their worker thread handles and release them after joins. Releasing a pool from one of its own workers requests shutdown and defers reclamation rather than freeing state out from under the running worker.
 
 ### Zia Example
@@ -671,8 +673,8 @@ value (or error), and the Future is used by the consumer thread to retrieve the 
 | Method           | Signature           | Description                                      |
 |------------------|---------------------|--------------------------------------------------|
 | `GetFuture()`    | `Future()`          | Get the linked Future (always returns same one)  |
-| `Set(value)`     | `Void(Object)`      | Complete with a value (can only call once)       |
-| `SetOwned(value)`| `Void(Object)`      | Complete with a retained runtime-managed value   |
+| `Set(value)`     | `Void(Object)`      | Complete with a value and retain runtime-managed values (can only call once) |
+| `SetOwned(value)`| `Void(Object)`      | Explicit ownership-retaining alias for `Set`     |
 | `SetError(msg)`  | `Void(String)`      | Complete with an error (can only call once)      |
 
 ### Properties
@@ -698,6 +700,12 @@ promise.SetError("Operation failed")
 ' Or transfer ownership of a runtime-managed object result
 promise.SetOwned(someObject)
 ```
+
+### Notes
+
+- `Set(value)` retains runtime-managed object and string handles until the result is consumed or the Promise/Future pair is finalized.
+- `SetOwned(value)` is kept for call sites that want to document ownership explicitly; it has the same retain semantics as `Set`.
+- A Promise can only be completed once (either `Set`, `SetOwned`, or `SetError`).
 
 ### Errors (Traps)
 
@@ -839,6 +847,7 @@ END IF
 - Calling `Get()` on an error-resolved Future will trap
 - `WaitFor()` returns false on timeout without trapping
 - Multiple threads can wait on the same Future
+- Completion listeners run outside the Promise lock. If a listener traps, the Future releases all listener references and invokes remaining listeners before rethrowing the first listener trap.
 
 ---
 
@@ -999,7 +1008,8 @@ Cooperative cancellation token for signaling cancellation to long-running or asy
 
 - **Thread-safe:** All operations use atomic memory operations, safe to call from any thread.
 - **Reusable:** `Reset()` clears this token's local cancelled bit so it can be reused.
-- **Linked tokens:** Child tokens created with `Linked()` report `IsCancelled = true` when either the child or parent has been cancelled.
+- **Linked tokens:** Child tokens created with `Linked()` are cancelled when the parent is cancelled. Parent cancellation is propagated into children and is sticky: resetting the parent later does not clear already-cancelled children.
+- **Child reset:** After a parent has been reset, a linked child may be reset independently to clear its propagated cancellation state. If the parent is still cancelled, the child continues to report cancelled.
 - **Cooperative:** Cancellation is advisory. The operation must check the token and respond appropriately.
 
 ### BASIC Example
@@ -1548,7 +1558,9 @@ Thread-safe bounded channel for inter-thread communication. Supports blocking, n
 - Closing a channel prevents further sends but receivers can still drain remaining items.
 - A synchronous channel (capacity 0) blocks the sender until a receiver is ready.
 - On a synchronous channel, `TryRecv()` can complete an already-waiting sender handoff.
-- At the C ABI layer, `rt_channel_try_recv(channel, NULL)` checks availability without consuming or releasing a value.
+- At the C ABI layer, `rt_channel_try_recv(channel, NULL)` checks only an already-queued value without consuming or releasing it; it does not advertise a merely waiting synchronous sender as available.
+- `IsFull` means a send would block. For synchronous channels it is false when a receiver is already waiting and no handoff value is queued.
+- `SendFor` includes both the wait for a receiver/space and the synchronous handoff acknowledgement in its timeout budget.
 - `Send` traps if the channel is closed.
 
 ### Zia Example

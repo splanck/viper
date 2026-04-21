@@ -46,6 +46,36 @@
 #include <stdlib.h>
 #include <string.h>
 
+typedef void (*rt_thread_entry_fn)(void *);
+
+#define RT_THREAD_MAGIC 0x56545244u      /* "VTRD" */
+#define RT_SAFE_THREAD_MAGIC 0x56545346u /* "VTSF" */
+
+typedef struct SafeThreadCtx {
+    uint32_t magic;
+    rt_thread_entry_fn entry;
+    void *arg;
+    int8_t owns_arg;
+    void *thread;
+    void *monitor;
+    int8_t trapped;
+    char error[512];
+} SafeThreadCtx;
+
+static uint32_t thread_handle_magic(const void *obj) {
+    if (!obj)
+        return 0;
+    return *(const uint32_t *)obj;
+}
+
+static int is_safe_thread_handle(const void *obj) {
+    return thread_handle_magic(obj) == RT_SAFE_THREAD_MAGIC;
+}
+
+static int is_regular_thread_handle(const void *obj) {
+    return thread_handle_magic(obj) == RT_THREAD_MAGIC;
+}
+
 #if defined(_WIN32)
 
 //===----------------------------------------------------------------------===//
@@ -68,15 +98,13 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 
-/// @brief Function pointer type for thread entry functions.
-typedef void (*rt_thread_entry_fn)(void *);
-
 /// @brief Internal representation of a Viper thread (Windows).
 ///
 /// Uses Windows CRITICAL_SECTION and CONDITION_VARIABLE for synchronization.
 /// The thread handle is stored for potential future use (e.g., priority changes)
 /// but is not required for join operations since we use condition variables.
 typedef struct RtThread {
+    uint32_t magic;           ///< Runtime tag for validating Thread handles.
     CRITICAL_SECTION cs;      ///< Critical section protecting state access.
     CONDITION_VARIABLE cv;    ///< Condition var for Join() signaling.
     HANDLE hThread;           ///< OS thread handle.
@@ -112,6 +140,7 @@ static void rt_thread_finalize_win(void *obj) {
     if (!obj)
         return;
     RtThread *t = (RtThread *)obj;
+    t->magic = 0;
     rt_thread_release_owned_arg_win(t);
     if (t->hThread)
         CloseHandle(t->hThread);
@@ -148,6 +177,10 @@ static RtThread *require_thread_win(void *thread, const char *what) {
         rt_trap(what ? what : "Thread: null thread");
         return NULL;
     }
+    if (!is_regular_thread_handle(thread)) {
+        rt_trap("Thread: invalid thread handle");
+        return NULL;
+    }
     return (RtThread *)thread;
 }
 
@@ -181,6 +214,7 @@ static void *rt_thread_start_impl_win(void *entry, void *arg, int8_t retain_arg)
     t->hThread = NULL;
     t->threadId = 0;
     t->finished = 0;
+    t->magic = RT_THREAD_MAGIC;
     t->id = next_thread_id_win();
     t->inherited_ctx = ctx;
     t->entry = (rt_thread_entry_fn)entry;
@@ -222,15 +256,20 @@ void *rt_thread_start_owned(void *entry, void *arg) {
 
 /// @brief Block until `thread` finishes executing. Traps if a thread tries to join itself.
 void rt_thread_join(void *thread) {
+    if (is_safe_thread_handle(thread)) {
+        rt_thread_safe_join(thread);
+        return;
+    }
     RtThread *t = require_thread_win(thread, "Thread.Join: null thread");
     if (!t)
         return;
-    if (GetCurrentThreadId() == t->threadId) {
+
+    EnterCriticalSection(&t->cs);
+    if (!t->finished && GetCurrentThreadId() == t->threadId) {
+        LeaveCriticalSection(&t->cs);
         rt_trap("Thread.Join: cannot join self");
         return;
     }
-
-    EnterCriticalSection(&t->cs);
     while (!t->finished) {
         SleepConditionVariableCS(&t->cv, &t->cs, INFINITE);
     }
@@ -239,15 +278,18 @@ void rt_thread_join(void *thread) {
 
 /// @brief Non-blocking join: returns 1 if the thread already finished, 0 if still running.
 int8_t rt_thread_try_join(void *thread) {
+    if (is_safe_thread_handle(thread))
+        return rt_thread_safe_is_alive(thread) ? 0 : 1;
     RtThread *t = require_thread_win(thread, "Thread.TryJoin: null thread");
     if (!t)
         return 0;
-    if (GetCurrentThreadId() == t->threadId) {
+
+    EnterCriticalSection(&t->cs);
+    if (!t->finished && GetCurrentThreadId() == t->threadId) {
+        LeaveCriticalSection(&t->cs);
         rt_trap("Thread.Join: cannot join self");
         return 0;
     }
-
-    EnterCriticalSection(&t->cs);
     if (!t->finished) {
         LeaveCriticalSection(&t->cs);
         return 0;
@@ -259,13 +301,19 @@ int8_t rt_thread_try_join(void *thread) {
 /// @brief Bounded join — wait at most `ms` milliseconds. Returns 1 on join, 0 on timeout.
 /// `ms < 0` waits forever (delegates to `rt_thread_join`); `ms == 0` is a try-join.
 int8_t rt_thread_join_for(void *thread, int64_t ms) {
+    if (is_safe_thread_handle(thread)) {
+        if (ms < 0) {
+            rt_thread_safe_join(thread);
+            return 1;
+        }
+        if (ms == 0)
+            return rt_thread_safe_is_alive(thread) ? 0 : 1;
+        SafeThreadCtx *ctx = (SafeThreadCtx *)thread;
+        return ctx->thread ? rt_thread_join_for(ctx->thread, ms) : 1;
+    }
     RtThread *t = require_thread_win(thread, "Thread.JoinFor: null thread");
     if (!t)
         return 0;
-    if (GetCurrentThreadId() == t->threadId) {
-        rt_trap("Thread.Join: cannot join self");
-        return 0;
-    }
 
     if (ms < 0) {
         rt_thread_join(t);
@@ -273,6 +321,11 @@ int8_t rt_thread_join_for(void *thread, int64_t ms) {
     }
 
     EnterCriticalSection(&t->cs);
+    if (!t->finished && GetCurrentThreadId() == t->threadId) {
+        LeaveCriticalSection(&t->cs);
+        rt_trap("Thread.Join: cannot join self");
+        return 0;
+    }
     if (ms == 0) {
         if (!t->finished) {
             LeaveCriticalSection(&t->cs);
@@ -310,6 +363,8 @@ int8_t rt_thread_join_for(void *thread, int64_t ms) {
 
 /// @brief The thread's monotonically-increasing per-process ID (from `next_thread_id_*`).
 int64_t rt_thread_get_id(void *thread) {
+    if (is_safe_thread_handle(thread))
+        return rt_thread_safe_get_id(thread);
     RtThread *t = require_thread_win(thread, "Thread.get_Id: null thread");
     if (!t)
         return 0;
@@ -318,6 +373,8 @@ int64_t rt_thread_get_id(void *thread) {
 
 /// @brief True if the thread is still running; false once its entry function has returned.
 int8_t rt_thread_get_is_alive(void *thread) {
+    if (is_safe_thread_handle(thread))
+        return rt_thread_safe_is_alive(thread);
     RtThread *t = require_thread_win(thread, "Thread.get_IsAlive: null thread");
     if (!t)
         return 0;
@@ -354,8 +411,6 @@ extern int pthread_cond_timedwait_relative_np(pthread_cond_t *cond,
 #endif
 
 /// @brief Function pointer type for thread entry functions.
-typedef void (*rt_thread_entry_fn)(void *);
-
 /// @brief Internal representation of a Viper thread.
 ///
 /// This structure holds all state for a single thread, including synchronization
@@ -391,6 +446,7 @@ typedef void (*rt_thread_entry_fn)(void *);
 /// └────────────────────┴────────────────────────────────────────┘
 /// ```
 typedef struct RtThread {
+    uint32_t magic;             ///< Runtime tag for validating Thread handles.
     pthread_mutex_t mu;         ///< Mutex protecting state access.
     pthread_cond_t cv;          ///< Condition var for Join() signaling.
     pthread_t pthread;          ///< OS thread handle.
@@ -555,6 +611,7 @@ static void rt_thread_finalize(void *obj) {
     if (!obj)
         return;
     RtThread *t = (RtThread *)obj;
+    t->magic = 0;
     rt_thread_release_owned_arg(t);
     (void)pthread_mutex_destroy(&t->mu);
     (void)pthread_cond_destroy(&t->cv);
@@ -606,6 +663,10 @@ static void *rt_thread_trampoline(void *p) {
 static RtThread *require_thread(void *thread, const char *what) {
     if (!thread) {
         rt_trap(what ? what : "Thread: null thread");
+        return NULL;
+    }
+    if (!is_regular_thread_handle(thread)) {
+        rt_trap("Thread: invalid thread handle");
         return NULL;
     }
     return (RtThread *)thread;
@@ -668,6 +729,7 @@ static void *rt_thread_start_impl(void *entry, void *arg, int8_t retain_arg) {
     (void)thread_cond_init(&t->cv, &t->cond_uses_monotonic);
 
     t->finished = 0;
+    t->magic = RT_THREAD_MAGIC;
     t->id = next_thread_id();
     t->inherited_ctx = ctx;
     t->entry = (rt_thread_entry_fn)entry;
@@ -732,15 +794,20 @@ void *rt_thread_start_owned(void *entry, void *arg) {
 /// @see rt_thread_try_join For non-blocking check
 /// @see rt_thread_join_for For waiting with timeout
 void rt_thread_join(void *thread) {
+    if (is_safe_thread_handle(thread)) {
+        rt_thread_safe_join(thread);
+        return;
+    }
     RtThread *t = require_thread(thread, "Thread.Join: null thread");
     if (!t)
         return;
-    if (pthread_equal(pthread_self(), t->pthread)) {
+
+    pthread_mutex_lock(&t->mu);
+    if (!t->finished && pthread_equal(pthread_self(), t->pthread)) {
+        pthread_mutex_unlock(&t->mu);
         rt_trap("Thread.Join: cannot join self");
         return;
     }
-
-    pthread_mutex_lock(&t->mu);
     while (!t->finished) {
         (void)pthread_cond_wait(&t->cv, &t->mu);
     }
@@ -775,15 +842,18 @@ void rt_thread_join(void *thread) {
 /// @see rt_thread_join For blocking wait
 /// @see rt_thread_join_for For waiting with timeout
 int8_t rt_thread_try_join(void *thread) {
+    if (is_safe_thread_handle(thread))
+        return rt_thread_safe_is_alive(thread) ? 0 : 1;
     RtThread *t = require_thread(thread, "Thread.TryJoin: null thread");
     if (!t)
         return 0;
-    if (pthread_equal(pthread_self(), t->pthread)) {
+
+    pthread_mutex_lock(&t->mu);
+    if (!t->finished && pthread_equal(pthread_self(), t->pthread)) {
+        pthread_mutex_unlock(&t->mu);
         rt_trap("Thread.Join: cannot join self");
         return 0;
     }
-
-    pthread_mutex_lock(&t->mu);
     if (!t->finished) {
         pthread_mutex_unlock(&t->mu);
         return 0;
@@ -831,13 +901,19 @@ int8_t rt_thread_try_join(void *thread) {
 /// @see rt_thread_join For indefinite waiting
 /// @see rt_thread_try_join For immediate check
 int8_t rt_thread_join_for(void *thread, int64_t ms) {
+    if (is_safe_thread_handle(thread)) {
+        if (ms < 0) {
+            rt_thread_safe_join(thread);
+            return 1;
+        }
+        if (ms == 0)
+            return rt_thread_safe_is_alive(thread) ? 0 : 1;
+        SafeThreadCtx *ctx = (SafeThreadCtx *)thread;
+        return ctx->thread ? rt_thread_join_for(ctx->thread, ms) : 1;
+    }
     RtThread *t = require_thread(thread, "Thread.JoinFor: null thread");
     if (!t)
         return 0;
-    if (pthread_equal(pthread_self(), t->pthread)) {
-        rt_trap("Thread.Join: cannot join self");
-        return 0;
-    }
 
     if (ms < 0) {
         rt_thread_join(t);
@@ -845,6 +921,11 @@ int8_t rt_thread_join_for(void *thread, int64_t ms) {
     }
 
     pthread_mutex_lock(&t->mu);
+    if (!t->finished && pthread_equal(pthread_self(), t->pthread)) {
+        pthread_mutex_unlock(&t->mu);
+        rt_trap("Thread.Join: cannot join self");
+        return 0;
+    }
     if (ms == 0) {
         if (!t->finished) {
             pthread_mutex_unlock(&t->mu);
@@ -886,6 +967,8 @@ int8_t rt_thread_join_for(void *thread, int64_t ms) {
 /// @note Traps if thread is NULL.
 /// @note Thread IDs are stable - they don't change after thread creation.
 int64_t rt_thread_get_id(void *thread) {
+    if (is_safe_thread_handle(thread))
+        return rt_thread_safe_get_id(thread);
     RtThread *t = require_thread(thread, "Thread.get_Id: null thread");
     if (!t)
         return 0;
@@ -917,6 +1000,8 @@ int64_t rt_thread_get_id(void *thread) {
 /// @note Thread-safe - uses mutex to access state.
 /// @note A finished thread may not be joined yet; IsAlive checks execution state.
 int8_t rt_thread_get_is_alive(void *thread) {
+    if (is_safe_thread_handle(thread))
+        return rt_thread_safe_is_alive(thread);
     RtThread *t = require_thread(thread, "Thread.get_IsAlive: null thread");
     if (!t)
         return 0;
@@ -988,21 +1073,6 @@ void rt_thread_yield(void) {
 // Safe Thread Implementation (platform-independent)
 //===----------------------------------------------------------------------===//
 
-/// @brief Function pointer type for safe thread entry (matches rt_thread_entry_fn).
-typedef void (*rt_safe_entry_fn)(void *);
-
-/// @brief Context for a safe thread that captures trap errors instead of
-///        terminating the process.
-typedef struct SafeThreadCtx {
-    rt_safe_entry_fn entry;
-    void *arg;
-    int8_t owns_arg;
-    void *thread;    // The underlying thread handle from rt_thread_start
-    void *monitor;   // Protects trapped/error state.
-    int8_t trapped;  // 1 if the thread exited due to a trap
-    char error[512]; // Captured trap error message
-} SafeThreadCtx;
-
 /// @brief Drop the owned-arg refcount for a SafeThread context.
 static void safe_thread_release_owned_arg(SafeThreadCtx *ctx) {
     if (!ctx || !ctx->owns_arg || !ctx->arg)
@@ -1018,6 +1088,7 @@ static void safe_thread_finalize(void *obj) {
     SafeThreadCtx *ctx = (SafeThreadCtx *)obj;
     if (!ctx)
         return;
+    ctx->magic = 0;
     safe_thread_release_owned_arg(ctx);
     if (ctx->thread) {
         if (rt_obj_release_check0(ctx->thread))
@@ -1081,7 +1152,8 @@ static void *rt_thread_start_safe_impl(void *entry, void *arg, int8_t retain_arg
 
     memset(ctx, 0, sizeof(*ctx));
     rt_obj_set_finalizer(ctx, safe_thread_finalize);
-    ctx->entry = (rt_safe_entry_fn)entry;
+    ctx->magic = RT_SAFE_THREAD_MAGIC;
+    ctx->entry = (rt_thread_entry_fn)entry;
     ctx->arg = arg;
     ctx->owns_arg = (retain_arg && arg) ? 1 : 0;
     if (ctx->owns_arg)
@@ -1129,6 +1201,12 @@ void *rt_thread_start_safe_owned(void *entry, void *arg) {
 int8_t rt_thread_has_error(void *obj) {
     if (!obj)
         return 0;
+    if (is_regular_thread_handle(obj))
+        return 0;
+    if (!is_safe_thread_handle(obj)) {
+        rt_trap("Thread.HasError: invalid thread handle");
+        return 0;
+    }
     SafeThreadCtx *ctx = (SafeThreadCtx *)obj;
     rt_monitor_enter(ctx->monitor);
     int8_t trapped = ctx->trapped;
@@ -1140,23 +1218,41 @@ int8_t rt_thread_has_error(void *obj) {
 rt_string rt_thread_get_error(void *obj) {
     if (!obj)
         return rt_const_cstr("");
+    if (is_regular_thread_handle(obj))
+        return rt_const_cstr("");
+    if (!is_safe_thread_handle(obj)) {
+        rt_trap("Thread.Error: invalid thread handle");
+        return rt_const_cstr("");
+    }
     SafeThreadCtx *ctx = (SafeThreadCtx *)obj;
+    char error[512];
+    error[0] = '\0';
     rt_monitor_enter(ctx->monitor);
     int8_t trapped = ctx->trapped;
     int has_error = ctx->error[0] != '\0';
-    rt_string result = (!trapped || !has_error)
-                           ? rt_const_cstr("")
-                           : rt_string_from_bytes(ctx->error, strlen(ctx->error));
+    if (trapped && has_error) {
+        snprintf(error, sizeof(error), "%s", ctx->error);
+    }
     rt_monitor_exit(ctx->monitor);
     if (!trapped || !has_error)
         return rt_const_cstr("");
-    return result;
+    return rt_string_from_bytes(error, strlen(error));
 }
 
 /// @brief Join the underlying thread of a safe-started thread.
 void rt_thread_safe_join(void *obj) {
     if (!obj)
         rt_trap("Thread.SafeJoin: null object");
+    if (!obj)
+        return;
+    if (is_regular_thread_handle(obj)) {
+        rt_thread_join(obj);
+        return;
+    }
+    if (!is_safe_thread_handle(obj)) {
+        rt_trap("Thread.SafeJoin: invalid thread handle");
+        return;
+    }
     SafeThreadCtx *ctx = (SafeThreadCtx *)obj;
     if (ctx->thread)
         rt_thread_join(ctx->thread);
@@ -1166,6 +1262,12 @@ void rt_thread_safe_join(void *obj) {
 int64_t rt_thread_safe_get_id(void *obj) {
     if (!obj)
         return 0;
+    if (is_regular_thread_handle(obj))
+        return rt_thread_get_id(obj);
+    if (!is_safe_thread_handle(obj)) {
+        rt_trap("Thread.SafeGetId: invalid thread handle");
+        return 0;
+    }
     SafeThreadCtx *ctx = (SafeThreadCtx *)obj;
     if (ctx->thread)
         return rt_thread_get_id(ctx->thread);
@@ -1176,6 +1278,12 @@ int64_t rt_thread_safe_get_id(void *obj) {
 int8_t rt_thread_safe_is_alive(void *obj) {
     if (!obj)
         return 0;
+    if (is_regular_thread_handle(obj))
+        return rt_thread_get_is_alive(obj);
+    if (!is_safe_thread_handle(obj)) {
+        rt_trap("Thread.SafeIsAlive: invalid thread handle");
+        return 0;
+    }
     SafeThreadCtx *ctx = (SafeThreadCtx *)obj;
     if (ctx->thread)
         return rt_thread_get_is_alive(ctx->thread);

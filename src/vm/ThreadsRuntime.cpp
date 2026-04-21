@@ -34,6 +34,7 @@
 
 #include "support/small_vector.hpp"
 
+#include <cstdio>
 #include <cstdint>
 
 namespace il::vm {
@@ -79,6 +80,52 @@ static void releaseThreadStartPayload(VmThreadStartPayload *payload) {
     releaseExternRegistry(payload->externRegistry);
     payload->externRegistry = nullptr;
     delete payload;
+}
+
+static void vmThreadTrapPassthrough(const RuntimeTrapSignal &, void *) {}
+
+static bool runVmThreadPayload(VmThreadStartPayload *payload, char *errorBuf, size_t errorBufSize) {
+    if (errorBuf && errorBufSize > 0)
+        errorBuf[0] = '\0';
+    if (!payload || !payload->module || !payload->entry) {
+        if (errorBuf && errorBufSize > 0)
+            std::snprintf(errorBuf, errorBufSize, "%s", "Thread.StartSafe: invalid entry");
+        releaseThreadStartPayload(payload);
+        return false;
+    }
+
+    try {
+        VM vm(*payload->module, payload->program);
+        vm.setExternRegistry(payload->externRegistry);
+        ScopedRuntimeTrapInterceptor trapInterceptor(&vmThreadTrapPassthrough, nullptr);
+
+        il::support::SmallVector<Slot, 2> args;
+        if (payload->entry->params.size() == 1) {
+            Slot s{};
+            s.ptr = payload->arg;
+            args.push_back(s);
+        }
+
+        detail::VMAccess::callFunction(vm, *payload->entry, args);
+    } catch (const RuntimeTrapSignal &signal) {
+        if (errorBuf && errorBufSize > 0) {
+            std::snprintf(errorBuf,
+                          errorBufSize,
+                          "%s",
+                          signal.message.empty() ? "Thread.StartSafe: trapped VM worker"
+                                                 : signal.message.c_str());
+        }
+        releaseThreadStartPayload(payload);
+        return false;
+    } catch (...) {
+        if (errorBuf && errorBufSize > 0)
+            std::snprintf(errorBuf, errorBufSize, "%s", "Thread.StartSafe: unhandled exception");
+        releaseThreadStartPayload(payload);
+        return false;
+    }
+
+    releaseThreadStartPayload(payload);
+    return true;
 }
 
 /// @brief Thread entry trampoline for VM-backed Thread.Start.
@@ -257,34 +304,9 @@ static void threads_thread_start_owned_handler(void **args, void *result) {
 ///          terminating the process.
 /// @param raw Opaque pointer to a @ref VmThreadStartPayload.
 extern "C" void vm_thread_safe_entry_trampoline(void *raw) {
-    VmThreadStartPayload *payload = static_cast<VmThreadStartPayload *>(raw);
-    if (!payload || !payload->module || !payload->entry) {
-        releaseThreadStartPayload(payload);
-        rt_abort("Thread.StartSafe: invalid entry");
-    }
-
-    try {
-        VM vm(*payload->module, payload->program);
-        vm.setExternRegistry(payload->externRegistry);
-
-        il::support::SmallVector<Slot, 2> args;
-        if (payload->entry->params.size() == 1) {
-            Slot s{};
-            s.ptr = payload->arg;
-            args.push_back(s);
-        }
-
-        detail::VMAccess::callFunction(vm, *payload->entry, args);
-    } catch (...) {
-        // Trap was intercepted by setjmp in the caller (safe_thread_entry).
-        // If not, this is an unexpected exception.  Cannot re-throw from
-        // extern "C" linkage (UB / MSVC C4297), so abort.
-        releaseThreadStartPayload(payload);
-        rt_abort("Thread.StartSafe: unhandled exception in thread entry");
-        return;
-    }
-
-    releaseThreadStartPayload(payload);
+    char error[512];
+    if (!runVmThreadPayload(static_cast<VmThreadStartPayload *>(raw), error, sizeof(error)))
+        rt_trap(error[0] ? error : "Thread.StartSafe: trapped VM worker");
 }
 
 /// @brief Runtime bridge handler for Viper.Threads.Thread.StartSafe.
