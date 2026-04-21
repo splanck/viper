@@ -39,6 +39,22 @@ enum {
     RTG_CORNER_BOTTOM_RIGHT = 3,
 };
 
+static int64_t rt_canvas_adv_floor_ld_to_i64_sat(long double value) {
+    if (value >= (long double)INT64_MAX)
+        return INT64_MAX;
+    if (value <= (long double)INT64_MIN)
+        return INT64_MIN;
+    return (int64_t)floorl(value);
+}
+
+static int64_t rt_canvas_adv_ceil_ld_to_i64_sat(long double value) {
+    if (value >= (long double)INT64_MAX)
+        return INT64_MAX;
+    if (value <= (long double)INT64_MIN)
+        return INT64_MIN;
+    return (int64_t)ceill(value);
+}
+
 static void rt_canvas_plot_quarter_circle(rt_canvas *canvas,
                                           int64_t cx,
                                           int64_t cy,
@@ -69,12 +85,8 @@ static void rt_canvas_plot_quarter_circle(rt_canvas *canvas,
     }
 }
 
-static void rt_canvas_draw_quarter_circle(rt_canvas *canvas,
-                                          int64_t cx,
-                                          int64_t cy,
-                                          int64_t radius,
-                                          int corner,
-                                          vgfx_color_t color) {
+static void rt_canvas_draw_quarter_circle(
+    rt_canvas *canvas, int64_t cx, int64_t cy, int64_t radius, int corner, vgfx_color_t color) {
     if (!canvas || !canvas->gfx_win || radius < 0)
         return;
 
@@ -98,12 +110,8 @@ static void rt_canvas_draw_quarter_circle(rt_canvas *canvas,
     }
 }
 
-static int8_t rt_canvas_get_scaled_clip_bounds(rt_canvas *canvas,
-                                               float *scale_out,
-                                               int64_t *px0,
-                                               int64_t *py0,
-                                               int64_t *px1,
-                                               int64_t *py1) {
+static int8_t rt_canvas_get_scaled_clip_bounds(
+    rt_canvas *canvas, float *scale_out, int64_t *px0, int64_t *py0, int64_t *px1, int64_t *py1) {
     int64_t clip_x = 0;
     int64_t clip_y = 0;
     int64_t clip_w = 0;
@@ -376,8 +384,7 @@ void rt_canvas_round_frame(
               col);
 
     // Draw corner arcs as true quarter circles so the outline stays hollow.
-    rt_canvas_draw_quarter_circle(
-        canvas, x + radius, y + radius, radius, RTG_CORNER_TOP_LEFT, col);
+    rt_canvas_draw_quarter_circle(canvas, x + radius, y + radius, radius, RTG_CORNER_TOP_LEFT, col);
     rt_canvas_draw_quarter_circle(
         canvas, x + w - radius - 1, y + radius, radius, RTG_CORNER_TOP_RIGHT, col);
     rt_canvas_draw_quarter_circle(
@@ -844,18 +851,41 @@ void rt_canvas_ellipse_alpha(void *canvas_ptr,
     }
 
     uint32_t argb = ((uint32_t)(alpha & 0xFF) << 24) | ((uint32_t)color & 0x00FFFFFF);
-    const double ry2 = (double)ry * (double)ry;
 
-    for (int64_t dy = -ry; dy <= ry; ++dy) {
-        double norm = 1.0 - ((double)dy * (double)dy) / ry2;
-        if (norm < 0.0)
+    int64_t clip_x = 0;
+    int64_t clip_y = 0;
+    int64_t clip_w = 0;
+    int64_t clip_h = 0;
+    if (!rt_canvas_get_logical_clip_bounds(canvas, &clip_x, &clip_y, &clip_w, &clip_h))
+        return;
+    int64_t y0 = rtg_sub_nonneg_sat64(cy, ry);
+    int64_t y1 = rtg_add_sat64(cy, ry);
+    int64_t clip_y1 = rtg_add_sat64(clip_y, clip_h) - 1;
+    if (y0 < clip_y)
+        y0 = clip_y;
+    if (y1 > clip_y1)
+        y1 = clip_y1;
+    if (y1 < y0)
+        return;
+
+    long double rx_ld = (long double)rx;
+    long double ry_ld = (long double)ry;
+    int64_t clip_x1 = rtg_add_sat64(clip_x, clip_w) - 1;
+    for (int64_t py = y0; py <= y1; ++py) {
+        long double dy = (long double)py - (long double)cy;
+        long double norm = 1.0L - (dy * dy) / (ry_ld * ry_ld);
+        if (norm < 0.0L)
             continue;
 
-        int64_t span = (int64_t)floor((double)rx * sqrt(norm));
-        int32_t py = (int32_t)(cy + dy);
-        for (int64_t dx = -span; dx <= span; ++dx) {
-            vgfx_pset_alpha(canvas->gfx_win, (int32_t)(cx + dx), py, argb);
-        }
+        long double span = rx_ld * sqrtl(norm);
+        int64_t x0 = rt_canvas_adv_floor_ld_to_i64_sat((long double)cx - span);
+        int64_t x1 = rt_canvas_adv_ceil_ld_to_i64_sat((long double)cx + span);
+        if (x0 < clip_x)
+            x0 = clip_x;
+        if (x1 > clip_x1)
+            x1 = clip_x1;
+        for (int64_t px = x0; px <= x1; ++px)
+            vgfx_pset_alpha(canvas->gfx_win, (int32_t)px, (int32_t)py, argb);
     }
 }
 
@@ -891,29 +921,51 @@ void rt_canvas_arc(void *canvas_ptr,
     if (end_angle <= start_angle)
         end_angle += 360;
 
-    // Draw filled arc using scanline approach
-    for (int64_t y = -radius; y <= radius; y++) {
-        for (int64_t x = -radius; x <= radius; x++) {
-            if (x * x + y * y <= radius * radius) {
-                // Calculate angle of this point (in degrees, 0 = right)
-                if (x == 0 && y == 0) {
-                    vgfx_pset(canvas->gfx_win, (int32_t)(cx), (int32_t)(cy), col);
-                    continue;
-                }
+    int64_t clip_x = 0;
+    int64_t clip_y = 0;
+    int64_t clip_w = 0;
+    int64_t clip_h = 0;
+    if (!rt_canvas_get_logical_clip_bounds(canvas, &clip_x, &clip_y, &clip_w, &clip_h))
+        return;
+    int64_t y0 = rtg_sub_nonneg_sat64(cy, radius);
+    int64_t y1 = rtg_add_sat64(cy, radius);
+    int64_t clip_y1 = rtg_add_sat64(clip_y, clip_h) - 1;
+    if (y0 < clip_y)
+        y0 = clip_y;
+    if (y1 > clip_y1)
+        y1 = clip_y1;
+    if (y1 < y0)
+        return;
 
-                double angle = atan2((double)y, (double)x) * (180.0 / 3.14159265358979323846);
-                if (angle < 0.0)
-                    angle += 360.0;
-
-                // Check if angle is within arc range
-                double check_angle = angle;
-                if (check_angle < start_angle)
-                    check_angle += 360;
-
-                if (check_angle >= (double)start_angle && check_angle <= (double)end_angle) {
-                    vgfx_pset(canvas->gfx_win, (int32_t)(cx + x), (int32_t)(cy - y), col);
-                }
+    long double r2 = (long double)radius * (long double)radius;
+    int64_t clip_x1 = rtg_add_sat64(clip_x, clip_w) - 1;
+    for (int64_t py = y0; py <= y1; py++) {
+        long double y_math = (long double)cy - (long double)py;
+        long double rem = r2 - y_math * y_math;
+        if (rem < 0.0L)
+            continue;
+        long double span = sqrtl(rem);
+        int64_t x0 = rt_canvas_adv_floor_ld_to_i64_sat((long double)cx - span);
+        int64_t x1 = rt_canvas_adv_ceil_ld_to_i64_sat((long double)cx + span);
+        if (x0 < clip_x)
+            x0 = clip_x;
+        if (x1 > clip_x1)
+            x1 = clip_x1;
+        for (int64_t px = x0; px <= x1; px++) {
+            long double x_math = (long double)px - (long double)cx;
+            if (x_math == 0.0L && y_math == 0.0L) {
+                vgfx_pset(canvas->gfx_win, (int32_t)px, (int32_t)py, col);
+                continue;
             }
+
+            long double angle = atan2l(y_math, x_math) * (180.0L / 3.14159265358979323846L);
+            if (angle < 0.0L)
+                angle += 360.0L;
+            long double check_angle = angle;
+            if (check_angle < (long double)start_angle)
+                check_angle += 360.0L;
+            if (check_angle >= (long double)start_angle && check_angle <= (long double)end_angle)
+                vgfx_pset(canvas->gfx_win, (int32_t)px, (int32_t)py, col);
         }
     }
 }

@@ -39,6 +39,7 @@
 #include "rt_string.h"
 
 #include <ctype.h>
+#include <limits.h>
 #include <math.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -685,11 +686,17 @@ static void sb_init(string_builder *sb) {
 
 /// @brief Ensure the builder has room for at least `needed` more bytes; doubles capacity.
 static void sb_grow(string_builder *sb, size_t needed) {
-    if (sb->len + needed < sb->cap)
+    if (needed > SIZE_MAX - sb->len)
+        rt_trap("Json.Format: output length overflow");
+    size_t required = sb->len + needed;
+    if (required < sb->cap)
         return;
 
-    while (sb->cap <= sb->len + needed)
+    while (sb->cap <= required) {
+        if (sb->cap > SIZE_MAX / 2)
+            rt_trap("Json.Format: output length overflow");
         sb->cap *= 2;
+    }
 
     char *tmp = (char *)realloc(sb->buf, sb->cap);
     if (!tmp) {
@@ -719,6 +726,8 @@ static void sb_append_char(string_builder *sb, char c) {
 static void sb_append_indent(string_builder *sb, int64_t indent, int64_t level) {
     if (indent <= 0)
         return;
+    if (level < 0 || (level > 0 && indent > INT64_MAX / level))
+        rt_trap("Json.Format: indentation overflow");
 
     int64_t spaces = indent * level;
     sb_grow(sb, (size_t)spaces + 1);
@@ -746,13 +755,13 @@ static rt_string sb_finish(string_builder *sb) {
 static void format_string(string_builder *sb, rt_string s) {
     sb_append_char(sb, '"');
 
-    const char *str = rt_string_cstr(s);
-    if (!str) {
+    if (!s) {
         sb_append_char(sb, '"');
         return;
     }
 
-    size_t len = strlen(str);
+    const char *str = rt_string_cstr(s);
+    size_t len = (size_t)rt_str_len(s);
     for (size_t i = 0; i < len; i++) {
         unsigned char c = (unsigned char)str[i];
 
@@ -956,6 +965,7 @@ static void format_value(string_builder *sb, void *obj, int64_t indent, int64_t 
         if (box_type == RT_BOX_STR) {
             rt_string str = rt_unbox_str(obj);
             format_string(sb, str);
+            rt_string_unref(str);
             return;
         }
     }
@@ -1003,11 +1013,11 @@ static void format_value(string_builder *sb, void *obj, int64_t indent, int64_t 
 /// @see rt_json_parse_array For parsing specifically as array
 /// @see rt_json_format For the inverse operation
 void *rt_json_parse(rt_string text) {
-    const char *input = rt_string_cstr(text);
-    if (!input)
+    if (!text)
         return NULL;
 
-    size_t len = strlen(input);
+    const char *input = rt_string_cstr(text);
+    size_t len = (size_t)rt_str_len(text);
     if (len == 0) {
         rt_trap("Json.Parse: empty input");
         return NULL;
@@ -1051,13 +1061,13 @@ void *rt_json_parse(rt_string text) {
 /// @see rt_json_parse For parsing any JSON value
 /// @see rt_json_parse_array For parsing specifically as array
 void *rt_json_parse_object(rt_string text) {
-    const char *input = rt_string_cstr(text);
-    if (!input) {
+    if (!text) {
         rt_trap("Json.ParseObject: null input");
         return rt_map_new();
     }
 
-    size_t len = strlen(input);
+    const char *input = rt_string_cstr(text);
+    size_t len = (size_t)rt_str_len(text);
     if (len == 0) {
         rt_trap("Json.ParseObject: empty input");
         return rt_map_new();
@@ -1103,13 +1113,13 @@ void *rt_json_parse_object(rt_string text) {
 /// @see rt_json_parse For parsing any JSON value
 /// @see rt_json_parse_object For parsing specifically as object
 void *rt_json_parse_array(rt_string text) {
-    const char *input = rt_string_cstr(text);
-    if (!input) {
+    if (!text) {
         rt_trap("Json.ParseArray: null input");
         return rt_seq_new();
     }
 
-    size_t len = strlen(input);
+    const char *input = rt_string_cstr(text);
+    size_t len = (size_t)rt_str_len(text);
     if (len == 0) {
         rt_trap("Json.ParseArray: empty input");
         return rt_seq_new();
@@ -1257,13 +1267,35 @@ static int validate_value(json_parser *p) {
         // String: consume opening quote, scan to closing quote handling escapes
         parser_consume(p);
         while (!parser_eof(p)) {
-            char ch = parser_consume(p);
+            unsigned char ch = (unsigned char)parser_consume(p);
             if (ch == '"')
                 return 1;
+            if (ch < 0x20)
+                return 0;
             if (ch == '\\') {
                 if (parser_eof(p))
                     return 0;
-                parser_consume(p); // skip escaped char
+                char esc = parser_consume(p);
+                switch (esc) {
+                    case '"':
+                    case '\\':
+                    case '/':
+                    case 'b':
+                    case 'f':
+                    case 'n':
+                    case 'r':
+                    case 't':
+                        break;
+                    case 'u':
+                        for (int i = 0; i < 4; i++) {
+                            if (parser_eof(p) ||
+                                rt_hex_digit_value(parser_consume(p)) < 0)
+                                return 0;
+                        }
+                        break;
+                    default:
+                        return 0;
+                }
             }
         }
         return 0; // unterminated string
@@ -1276,10 +1308,17 @@ static int validate_value(json_parser *p) {
         if (parser_eof(p))
             return 0;
         c = parser_peek(p);
-        if (!(c >= '0' && c <= '9'))
-            return 0;
-        while (!parser_eof(p) && parser_peek(p) >= '0' && parser_peek(p) <= '9')
+        if (c == '0') {
             parser_consume(p);
+            if (!parser_eof(p) && parser_peek(p) >= '0' && parser_peek(p) <= '9')
+                return 0;
+        } else if (c >= '1' && c <= '9') {
+            parser_consume(p);
+            while (!parser_eof(p) && parser_peek(p) >= '0' && parser_peek(p) <= '9')
+                parser_consume(p);
+        } else {
+            return 0;
+        }
         if (!parser_eof(p) && parser_peek(p) == '.') {
             parser_consume(p);
             if (parser_eof(p) || !(parser_peek(p) >= '0' && parser_peek(p) <= '9'))
@@ -1382,12 +1421,13 @@ static int validate_value(json_parser *p) {
 /// trap. Useful for input validation before committing to a parse.
 /// @return 1 if valid, 0 if any parse error occurs.
 int8_t rt_json_is_valid(rt_string text) {
-    const char *input = rt_string_cstr(text);
-    if (!input || strlen(input) == 0)
+    if (!text || rt_str_len(text) == 0)
         return 0;
 
+    const char *input = rt_string_cstr(text);
+    size_t len = (size_t)rt_str_len(text);
     json_parser p;
-    parser_init(&p, input, strlen(input));
+    parser_init(&p, input, len);
 
     if (!validate_value(&p))
         return 0;

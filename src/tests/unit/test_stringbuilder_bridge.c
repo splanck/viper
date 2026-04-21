@@ -75,6 +75,14 @@ static int tests_failed = 0;
         }                                                                                          \
     } while (0)
 
+#define ASSERT_BYTES_EQ(expected, actual, len)                                                      \
+    do {                                                                                           \
+        if (memcmp((expected), (actual), (len)) != 0) {                                            \
+            printf("\n    FAILED: Byte buffers differ at line %d\n", __LINE__);                    \
+            test_passed = false;                                                                   \
+        }                                                                                          \
+    } while (0)
+
 #define ASSERT_TRUE(cond)                                                                          \
     do {                                                                                           \
         if (!(cond)) {                                                                             \
@@ -221,6 +229,40 @@ void test_empty_append(void) {
     TEST_END();
 }
 
+void test_null_append_and_line(void) {
+    TEST_START("append NULL string");
+
+    void *sb = rt_sb_new();
+    rt_text_sb_append(sb, make_string("Start"));
+    rt_text_sb_append(sb, NULL);
+
+    ASSERT_EQ(5, rt_text_sb_get_length(sb));
+
+    rt_text_sb_append_line(sb, NULL);
+    ASSERT_EQ(6, rt_text_sb_get_length(sb));
+
+    rt_string result = rt_text_sb_to_string(sb);
+    ASSERT_STR_EQ("Start\n", rt_string_cstr(result));
+
+    TEST_END();
+}
+
+void test_embedded_nul_length(void) {
+    TEST_START("embedded NUL length");
+
+    void *sb = rt_sb_new();
+    const char bytes[] = {'A', '\0', 'B'};
+    rt_text_sb_append(sb, rt_string_from_bytes(bytes, sizeof(bytes)));
+
+    ASSERT_EQ(3, rt_text_sb_get_length(sb));
+
+    rt_string result = rt_text_sb_to_string(sb);
+    ASSERT_EQ(3, rt_str_len(result));
+    ASSERT_BYTES_EQ(bytes, rt_string_cstr(result), sizeof(bytes));
+
+    TEST_END();
+}
+
 void test_method_chaining(void) {
     TEST_START("method chaining");
 
@@ -273,6 +315,8 @@ int main(void) {
     test_clear();
     test_capacity_growth();
     test_empty_append();
+    test_null_append_and_line();
+    test_embedded_nul_length();
     test_method_chaining();
     test_toString_preserves_state();
 

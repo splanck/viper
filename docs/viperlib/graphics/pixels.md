@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-17
+last-verified: 2026-04-21
 ---
 
 # Images & Sprites
@@ -20,7 +20,7 @@ rendering.
 
 **Constructor:** `NEW Viper.Graphics.Pixels(width, height)`
 
-Creates a new pixel buffer initialized to transparent black (0x00000000).
+Creates a new pixel buffer initialized to transparent black (0x00000000). Negative dimensions and dimensions whose storage size would overflow fail cleanly instead of creating a wrapped or zero-sized buffer.
 
 ### Properties
 
@@ -34,6 +34,7 @@ Creates a new pixel buffer initialized to transparent black (0x00000000).
 | Method                            | Signature                                                            | Description                                                                       |
 |-----------------------------------|----------------------------------------------------------------------|-----------------------------------------------------------------------------------|
 | `Blur(radius)`                    | `Pixels(Integer)`                                                    | Return an alpha-aware box-blurred copy (`0` = exact copy, positive radii use separable horizontal+vertical passes) |
+| `BlendPixel(x, y, color, alpha)`  | `Void(Integer, Integer, Integer, Integer)`                           | Source-over blend `0x00RRGGBB` over one pixel using `alpha` 0-255 |
 | `Clear()`                         | `Void()`                                                             | Clear buffer to transparent black (0x00000000)                                    |
 | `Clone()`                         | `Pixels()`                                                           | Create a deep copy of this buffer                                                 |
 | `Copy(dx, dy, src, sx, sy, w, h)` | `Void(Integer, Integer, Pixels, Integer, Integer, Integer, Integer)` | Copy a rectangle from source to this buffer                                       |
@@ -58,7 +59,7 @@ Creates a new pixel buffer initialized to transparent black (0x00000000).
 
 | Method                            | Signature                         | Description                                           |
 |-----------------------------------|-----------------------------------|-------------------------------------------------------|
-| `FromBytes(width, height, bytes)` | `Pixels(Integer, Integer, Bytes)` | Create from raw bytes (RGBA, row-major)               |
+| `FromBytes(width, height, bytes)` | `Pixels(Integer, Integer, Bytes)` | Create from raw bytes (RGBA, row-major); returns NULL on invalid dimensions or byte count |
 | `LoadBmp(path)`                   | `Pixels(String)`                  | Load from a 24-bit BMP file. Returns null on failure  |
 | `LoadPng(path)`                   | `Pixels(String)`                  | Load from a PNG file. Returns null on failure          |
 | `LoadJpeg(path)`                  | `Pixels(String)`                  | Load from a JPEG file. Returns null on failure         |
@@ -68,7 +69,7 @@ Creates a new pixel buffer initialized to transparent black (0x00000000).
 ### Drawing Primitives
 
 Drawing primitives use the `0x00RRGGBB` color format (compatible with `Canvas` and `Color.RGB()`).
-Alpha is always 255 (fully opaque). Coordinates outside the pixel buffer are silently clipped.
+Alpha is always 255 (fully opaque). Coordinates outside the pixel buffer are silently clipped, including extreme coordinates that would otherwise overflow rectangle or line endpoint math.
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
@@ -262,7 +263,8 @@ pixels.SavePng("output.png")
 - Pixel data is stored in row-major order (row 0 first, then row 1, etc.)
 - Out-of-bounds reads return 0 (transparent black)
 - Out-of-bounds writes are silently ignored
-- The `Copy` method automatically clips to buffer boundaries
+- The `Copy` method automatically clips to buffer boundaries with overflow-safe source and destination arithmetic
+- `BlendPixel` uses straight-alpha Porter-Duff source-over and preserves source RGB when blending over transparent pixels
 - `ToBytes` returns 4 bytes per pixel (width × height × 4 total bytes)
 - BMP support is limited to 24-bit uncompressed format (most common)
 - When loading BMP files, alpha is set to 255 (opaque) for all pixels
@@ -320,7 +322,7 @@ pixels.SavePng("output.png")
 | `Update()`                  | `Void()`                           | Advance animation (call each frame)                   |
 
 Scaled sprite bounds used for `Contains()` and `Overlaps()` never collapse below `1x1`, even when
-very small scale values are provided.
+very small scale values are provided. Movement, hit tests, and overlap checks saturate at the int64 coordinate limits instead of wrapping, so sprites at the extreme edge of the coordinate range keep consistent 1-pixel-inclusive bounds.
 
 ### Zia Example
 
@@ -590,9 +592,9 @@ Efficient tile-based 2D map rendering for platformers, RPGs, and strategy games.
 | `ToTileX(pixelX)`                              | `Integer(Integer)`                           | Convert pixel X to tile X                             |
 | `ToTileY(pixelY)`                              | `Integer(Integer)`                           | Convert pixel Y to tile Y                             |
 
-Advanced runtime support also includes multi-layer tilemaps, per-layer tilesets, JSON save/load, auto-tiling rules, per-tile properties, and tile animation state. Layer names are limited to the fixed runtime name slot (31 bytes); overlong names are rejected without adding a layer. `SaveToFile` / `LoadFromFile` preserve layer visibility, collision-layer selection, collision types, tile properties, auto-tile rules, and animation progress.
+Advanced runtime support also includes multi-layer tilemaps, per-layer tilesets, JSON save/load, auto-tiling rules, per-tile properties, and tile animation state. Layer names are limited to the fixed runtime name slot (31 bytes); overlong names are rejected without adding a layer. `SaveToFile` / `LoadFromFile` preserve layer visibility, collision-layer selection, collision types, tile properties, auto-tile rules, and animation progress. JSON loading ignores layers beyond the runtime layer cap, normalizes negative saved animation frames, and clamps CSV tile values that exceed the int64 range.
 
-Animated tiles keep collision from the base tile ID stored in the map. Changing the visual animation frame does not change solidity or one-way behavior unless you also change the base tile's collision type. Negative animation deltas are ignored; very large deltas advance in one modulo step instead of looping once per elapsed frame.
+Animated tiles keep collision from the base tile ID stored in the map. Changing the visual animation frame does not change solidity or one-way behavior unless you also change the base tile's collision type. Invalid collision types are ignored. Negative animation deltas are ignored; very large deltas advance in one modulo step instead of looping once per elapsed frame. `FillRect`, tile drawing, and tile-to-pixel conversion clip or saturate extreme coordinates rather than wrapping.
 
 ### Zia Example
 

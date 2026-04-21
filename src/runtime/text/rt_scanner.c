@@ -17,11 +17,11 @@
 //   - AtEnd returns true when position >= length; Peek/Read at end return '\0'.
 //   - Match advances only if the current character equals the expected one.
 //   - Expect advances unconditionally and traps if the character is unexpected.
-//   - The source string is borrowed; the scanner does not retain or copy it.
+//   - The source string is retained by the scanner for the scanner lifetime.
 //
 // Ownership/Lifetime:
 //   - Scanner objects are heap-allocated and managed by the runtime GC.
-//   - The source string must outlive the scanner; it is not retained by the scanner.
+//   - Scanner finalization releases the retained source string.
 //
 // Links: src/runtime/text/rt_scanner.h (public API),
 //        src/runtime/text/rt_compiled_pattern.h (regex pattern, related scanning)
@@ -29,9 +29,12 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_scanner.h"
+#include "rt_internal.h"
 #include "rt_object.h"
 #include "rt_string.h"
 
+#include <limits.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -46,6 +49,15 @@ typedef struct {
     int64_t pos;
 } Scanner;
 
+static void scanner_finalizer(void *obj) {
+    Scanner *s = (Scanner *)obj;
+    if (s && s->source) {
+        rt_string_unref(s->source);
+        s->source = NULL;
+        s->data = NULL;
+    }
+}
+
 //=============================================================================
 // Scanner Creation
 //=============================================================================
@@ -53,10 +65,11 @@ typedef struct {
 void *rt_scanner_new(rt_string source) {
     Scanner *s = (Scanner *)rt_obj_new_i64(0, (int64_t)sizeof(Scanner));
 
-    s->source = source;
-    s->data = rt_string_cstr(source);
-    s->len = rt_str_len(source);
+    s->source = source ? rt_string_ref(source) : NULL;
+    s->data = source ? rt_string_cstr(source) : "";
+    s->len = source ? rt_str_len(source) : 0;
     s->pos = 0;
+    rt_obj_set_finalizer(s, scanner_finalizer);
     return s;
 }
 
@@ -135,6 +148,9 @@ int64_t rt_scanner_peek_at(void *obj, int64_t offset) {
     if (!obj)
         return -1;
     Scanner *s = (Scanner *)obj;
+    if ((offset > 0 && s->pos > INT64_MAX - offset) ||
+        (offset < 0 && s->pos < INT64_MIN - offset))
+        return -1;
     int64_t idx = s->pos + offset;
     if (idx < 0 || idx >= s->len)
         return -1;
@@ -209,6 +225,8 @@ rt_string rt_scanner_read_until_any(void *obj, rt_string delims) {
         return rt_const_cstr("");
     Scanner *s = (Scanner *)obj;
 
+    if (!delims)
+        return rt_scanner_read_str(obj, s->len - s->pos);
     const char *delim_str = rt_string_cstr(delims);
     int64_t delim_len = rt_str_len(delims);
 
@@ -268,10 +286,12 @@ int8_t rt_scanner_match_str(void *obj, rt_string str) {
         return 0;
     Scanner *s = (Scanner *)obj;
 
+    if (!str)
+        return 0;
     const char *str_data = rt_string_cstr(str);
     int64_t str_len = rt_str_len(str);
 
-    if (s->pos + str_len > s->len)
+    if (str_len < 0 || str_len > s->len - s->pos)
         return 0;
 
     return memcmp(s->data + s->pos, str_data, (size_t)str_len) == 0 ? 1 : 0;
@@ -291,7 +311,10 @@ int8_t rt_scanner_accept_str(void *obj, rt_string str) {
     if (!rt_scanner_match_str(obj, str))
         return 0;
     Scanner *s = (Scanner *)obj;
-    s->pos += rt_str_len(str);
+    int64_t len = rt_str_len(str);
+    if (len > s->len - s->pos)
+        return 0;
+    s->pos += len;
     return 1;
 }
 
@@ -303,6 +326,8 @@ int8_t rt_scanner_accept_any(void *obj, rt_string chars) {
     if (s->pos >= s->len)
         return 0;
 
+    if (!chars)
+        return 0;
     const char *char_str = rt_string_cstr(chars);
     int64_t char_len = rt_str_len(chars);
     char c = s->data[s->pos];
@@ -325,9 +350,10 @@ void rt_scanner_skip(void *obj, int64_t n) {
     if (!obj || n <= 0)
         return;
     Scanner *s = (Scanner *)obj;
-    s->pos += n;
-    if (s->pos > s->len)
+    if (n > s->len - s->pos)
         s->pos = s->len;
+    else
+        s->pos += n;
 }
 
 /// @brief Skip over whitespace characters (space, tab, newline, carriage return).
@@ -494,14 +520,17 @@ rt_string rt_scanner_read_quoted(void *obj, int64_t quote) {
     s->pos++; // Skip opening quote
 
     // Build result, handling escapes
-    char buf[4096];
-    int64_t buf_pos = 0;
+    size_t cap = 64;
+    size_t buf_pos = 0;
+    char *buf = (char *)malloc(cap);
+    if (!buf)
+        rt_trap("Scanner.ReadQuoted: memory allocation failed");
 
     while (s->pos < s->len && s->data[s->pos] != (char)quote) {
+        char actual;
         if (s->data[s->pos] == '\\' && s->pos + 1 < s->len) {
             s->pos++;
             char esc = s->data[s->pos++];
-            char actual;
             switch (esc) {
                 case 'n':
                     actual = '\n';
@@ -525,21 +554,33 @@ rt_string rt_scanner_read_quoted(void *obj, int64_t quote) {
                     actual = esc;
                     break;
             }
-            if (buf_pos < 4095)
-                buf[buf_pos++] = actual;
         } else {
-            if (buf_pos < 4095)
-                buf[buf_pos++] = s->data[s->pos];
+            actual = s->data[s->pos];
             s->pos++;
         }
+        if (buf_pos + 1 >= cap) {
+            if (cap > SIZE_MAX / 2) {
+                free(buf);
+                rt_trap("Scanner.ReadQuoted: string length overflow");
+            }
+            cap *= 2;
+            char *tmp = (char *)realloc(buf, cap);
+            if (!tmp) {
+                free(buf);
+                rt_trap("Scanner.ReadQuoted: memory allocation failed");
+            }
+            buf = tmp;
+        }
+        buf[buf_pos++] = actual;
     }
 
     // Skip closing quote
     if (s->pos < s->len && s->data[s->pos] == (char)quote)
         s->pos++;
 
-    buf[buf_pos] = '\0';
-    return rt_string_from_bytes(buf, buf_pos);
+    rt_string result = rt_string_from_bytes(buf, buf_pos);
+    free(buf);
+    return result;
 }
 
 /// @brief Read until end-of-line and consume the line terminator (\r\n or \n).

@@ -46,6 +46,7 @@
 
 #include <stdarg.h>
 #include <stdbool.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -441,9 +442,10 @@ static void rt_text_sb_trap_status(const char *op, rt_sb_status_t status) {
 ///          0 for a null receiver so callers never observe an error path.
 int64_t rt_text_sb_get_length(void *sb) {
     rt_string_builder *builder = get_builder(sb);
+    if (!builder)
+        return 0;
 
     // Return the current string length in bytes
-    // Note: for ASCII/UTF-8, byte length = character count for ASCII chars
     return (int64_t)builder->len;
 }
 
@@ -452,6 +454,8 @@ int64_t rt_text_sb_get_length(void *sb) {
 ///          includes space for the null terminator.
 int64_t rt_text_sb_get_capacity(void *sb) {
     rt_string_builder *builder = get_builder(sb);
+    if (!builder)
+        return 0;
 
     // Return the current allocated capacity in bytes
     return (int64_t)builder->cap;
@@ -463,6 +467,8 @@ int64_t rt_text_sb_get_capacity(void *sb) {
 ///          Null strings are treated as empty (no bytes appended).
 void *rt_text_sb_append(void *sb, rt_string s) {
     rt_string_builder *builder = get_builder(sb);
+    if (!builder)
+        return sb;
     const char *str_data = s ? s->data : NULL;
     size_t str_len = s ? rt_str_len(s) : 0;
     rt_sb_status_t status = rt_sb_append_bytes(builder, str_data, str_len);
@@ -479,15 +485,24 @@ void *rt_text_sb_append(void *sb, rt_string s) {
 ///          chaining.
 void *rt_text_sb_append_line(void *sb, rt_string s) {
     rt_string_builder *builder = get_builder(sb);
+    if (!builder)
+        return sb;
     const char *str_data = s ? s->data : NULL;
     size_t str_len = s ? (size_t)rt_str_len(s) : 0;
 
     // Reserve enough space for string bytes + '\n' + NUL terminator.
-    size_t required = builder->len + str_len + 2;
-    if (required < builder->len) {
+    if (str_len > SIZE_MAX - builder->len) {
         rt_trap_raise_kind(
             RT_TRAP_KIND_OVERFLOW, Err_Overflow, -1, "StringBuilder.AppendLine overflow");
+        return sb;
     }
+    size_t content_len = builder->len + str_len;
+    if (content_len > SIZE_MAX - 2) {
+        rt_trap_raise_kind(
+            RT_TRAP_KIND_OVERFLOW, Err_Overflow, -1, "StringBuilder.AppendLine overflow");
+        return sb;
+    }
+    size_t required = content_len + 2;
 
     rt_sb_status_t status = rt_sb_reserve(builder, required);
     if (status != RT_SB_OK)
@@ -510,6 +525,8 @@ void *rt_text_sb_append_line(void *sb, rt_string s) {
 ///          The builder's state is unchanged (callers can continue appending).
 rt_string rt_text_sb_to_string(void *sb) {
     rt_string_builder *builder = get_builder(sb);
+    if (!builder)
+        return rt_str_empty();
 
     // Create a string from the builder's current contents
     // The builder maintains a null-terminated buffer
@@ -525,6 +542,8 @@ rt_string rt_text_sb_to_string(void *sb) {
 ///          builder can be reused without freeing and re-allocating storage.
 void rt_text_sb_clear(void *sb) {
     rt_string_builder *builder = get_builder(sb);
+    if (!builder)
+        return;
 
     // Reset the builder to empty state while keeping allocated memory
     builder->len = 0;

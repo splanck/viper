@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-09
+last-verified: 2026-04-21
 ---
 
 # Data Formats
@@ -102,6 +102,12 @@ END IF
 - **Configuration:** Read/write JSON config files
 - **Data interchange:** Standard format for data exchange
 - **Storage:** Serialize application state
+
+### Correctness Notes
+
+- `Parse`, `ParseObject`, `ParseArray`, and `IsValid` use the runtime string byte length, not C-string truncation.
+- Invalid escapes, raw control characters inside strings, trailing content, and leading-zero numbers are rejected.
+- `Format` escapes embedded `NUL` and other control bytes as JSON escapes.
 
 ---
 
@@ -251,6 +257,9 @@ SAX-style streaming JSON parser for processing large or incremental JSON data wi
 - `Depth` tracks nesting level for structural navigation
 - More memory-efficient than `Json.Parse()` for large documents
 - Tokens are consumed in order — no random access
+- The parser enforces JSON separators and container state: missing commas/colons, mismatched closers, trailing commas, and multiple top-level values produce `TOK_ERROR`
+- Number parsing rejects leading zeroes, incomplete fractions/exponents, NaN, Infinity, and overflow
+- Strings reject raw control characters and invalid UTF-16 surrogate pairs
 
 ### Zia Example
 
@@ -354,8 +363,12 @@ RFC 4180-compliant CSV parsing and formatting.
     - Newlines within quoted fields are preserved
     - Leading/trailing whitespace in fields is preserved
 - Custom delimiter must be a single character
+- A null or empty custom delimiter falls back to comma
 - Empty fields are supported (adjacent delimiters create empty strings)
+- Null fields passed to formatters are emitted as empty fields
+- Runtime string byte length is used, so embedded `NUL` bytes are preserved
 - Parse functions return `Seq` objects (use `Count`, `Get(index)` to access)
+- Malformed quoted fields trap when non-delimiter characters appear after the closing quote
 
 ### Zia Example
 
@@ -443,8 +456,11 @@ TOML (Tom's Obvious Minimal Language) configuration file parser and formatter.
 
 - **Parse output:** Returns a Map where keys are strings and values are strings, Maps (for sections), or Seqs (for arrays).
 - **Dotted paths:** `Get()` and `GetStr()` support dotted key paths like `"server.host"` to navigate into nested sections.
+- Dotted section headers such as `[server.database.primary]` create nested Maps for each path part.
 - **Format:** Converts a Map back to TOML text format.
 - Invalid TOML returns NULL from `Parse()` rather than trapping.
+- Missing closing section or array brackets, trailing junk after section headers, duplicate keys, scalar/table conflicts, and overly deep section paths are invalid.
+- `GetStr()` returns a retained string value when found, or a new empty string when the path is missing or not a string.
 
 ### Zia Example
 

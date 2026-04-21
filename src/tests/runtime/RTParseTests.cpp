@@ -273,6 +273,32 @@ static void test_int_radix() {
 }
 
 // ============================================================================
+// NULL Input Tests
+// ============================================================================
+
+static void test_null_inputs() {
+    int64_t i = 123;
+    double d = 4.5;
+    int8_t b = 1;
+
+    assert(rt_parse_try_int(NULL, &i) == 0);
+    assert(i == 123);
+    assert(rt_parse_try_num(NULL, &d) == 0);
+    assert(fabs(d - 4.5) < 0.001);
+    assert(rt_parse_try_bool(NULL, &b) == 0);
+    assert(b == 1);
+
+    assert(rt_parse_int_or(NULL, 7) == 7);
+    assert(fabs(rt_parse_num_or(NULL, 2.5) - 2.5) < 0.001);
+    assert(rt_parse_bool_or(NULL, 1) == 1);
+    assert(rt_parse_is_int(NULL) == 0);
+    assert(rt_parse_is_num(NULL) == 0);
+    assert(rt_parse_int_radix(NULL, 10, 99) == 99);
+
+    printf("test_null_inputs: PASSED\n");
+}
+
+// ============================================================================
 // Main
 // ============================================================================
 
@@ -303,6 +329,9 @@ int main() {
 
     // IntRadix
     test_int_radix();
+
+    // NULL input handling
+    test_null_inputs();
 
     printf("\nAll RTParseTests passed!\n");
     return 0;

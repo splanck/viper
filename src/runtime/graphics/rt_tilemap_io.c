@@ -37,6 +37,8 @@
 #include "rt_seq.h"
 #include "rt_string.h"
 
+#include <errno.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -583,10 +585,16 @@ void *rt_tilemap_load_from_file(rt_string path) {
     void *layers_arr = rt_map_get(root, rt_const_cstr("layers"));
     if (layers_arr) {
         int64_t lcount = rt_seq_len(layers_arr);
+        if (lcount > TM_MAX_LAYERS)
+            lcount = TM_MAX_LAYERS;
         for (int64_t li = 0; li < lcount; li++) {
+            int64_t layer_index = li;
             // Add layer if not layer 0
-            if (li > 0)
-                rt_tilemap_add_layer(tm, rt_const_cstr(""));
+            if (li > 0) {
+                layer_index = rt_tilemap_add_layer(tm, rt_const_cstr(""));
+                if (layer_index < 0)
+                    continue;
+            }
 
             void *layer_obj = rt_seq_get(layers_arr, li);
             if (!layer_obj)
@@ -602,27 +610,30 @@ void *rt_tilemap_load_from_file(rt_string path) {
                     int64_t tile = (int64_t)rt_unbox_f64(tval);
                     int64_t tx = ti % w;
                     int64_t ty = ti / w;
-                    rt_tilemap_set_tile_layer(tm, li, tx, ty, tile);
+                    rt_tilemap_set_tile_layer(tm, layer_index, tx, ty, tile);
                 }
             }
 
             int64_t vis = (int64_t)rt_map_get_float(layer_obj, rt_const_cstr("visible"));
-            rt_tilemap_set_layer_visible(tm, li, (int8_t)vis);
+            rt_tilemap_set_layer_visible(tm, layer_index, (int8_t)vis);
             rt_string lname = (rt_string)rt_map_get(layer_obj, rt_const_cstr("name"));
             if (lname) {
                 const char *name_cstr = rt_string_cstr(lname);
                 if (name_cstr) {
-                    memset(tilemap->layers[li].name, 0, sizeof(tilemap->layers[li].name));
-                    strncpy(
-                        tilemap->layers[li].name, name_cstr, sizeof(tilemap->layers[li].name) - 1);
+                    memset(tilemap->layers[layer_index].name,
+                           0,
+                           sizeof(tilemap->layers[layer_index].name));
+                    strncpy(tilemap->layers[layer_index].name,
+                            name_cstr,
+                            sizeof(tilemap->layers[layer_index].name) - 1);
                 }
             }
-            if (li > 0) {
+            if (layer_index > 0) {
                 void *layer_tileset = rt_map_get(layer_obj, rt_const_cstr("tileset"));
                 if (layer_tileset) {
                     void *pixels = deserialize_pixels_blob(layer_tileset);
                     if (pixels)
-                        assign_layer_tileset(tilemap, li, pixels);
+                        assign_layer_tileset(tilemap, layer_index, pixels);
                 }
             }
         }
@@ -719,9 +730,15 @@ void *rt_tilemap_load_from_file(rt_string path) {
             if (tilemap->tile_anim_count > 0) {
                 tm_tile_anim *anim = &tilemap->tile_anims[tilemap->tile_anim_count - 1];
                 anim->timer = map_get_i64(anim_obj, "timer");
-                anim->current_frame = (int32_t)map_get_i64(anim_obj, "currentFrame");
-                if (anim->frame_count > 0)
-                    anim->current_frame %= anim->frame_count;
+                int64_t current = map_get_i64(anim_obj, "currentFrame");
+                if (anim->frame_count > 0) {
+                    current %= anim->frame_count;
+                    if (current < 0)
+                        current += anim->frame_count;
+                    anim->current_frame = (int32_t)current;
+                } else {
+                    anim->current_frame = 0;
+                }
             }
         }
     }
@@ -797,24 +814,23 @@ void *rt_tilemap_load_csv(rt_string path, int64_t tile_w, int64_t tile_h) {
         int64_t x = 0;
         char *tok = line_buf;
         while (*tok && x < max_cols) {
-            // Parse integer
             int64_t val = 0;
-            int neg = 0;
-            if (*tok == '-') {
-                neg = 1;
-                tok++;
+            errno = 0;
+            char *end = tok;
+            long long parsed = strtoll(tok, &end, 10);
+            if (end != tok) {
+                if (errno == ERANGE)
+                    val = parsed < 0 ? INT64_MIN : INT64_MAX;
+                else
+                    val = (int64_t)parsed;
+                tok = end;
             }
-            while (*tok >= '0' && *tok <= '9') {
-                val = val * 10 + (*tok - '0');
-                tok++;
-            }
-            if (neg)
-                val = -val;
 
             rt_tilemap_set_tile(tm, x, y, val);
             x++;
 
-            // Skip comma
+            while (*tok && *tok != ',')
+                tok++;
             if (*tok == ',')
                 tok++;
         }

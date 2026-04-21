@@ -888,8 +888,8 @@ set_tests_properties(zia_smoke_chess PROPERTIES
         TIMEOUT 30)
 
 add_test(NAME zia_smoke_crackman
-        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/pacman/smoke_probe.zia"
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/pacman")
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/crackman/smoke_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/crackman")
 set_tests_properties(zia_smoke_crackman PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
         LABELS "zia;smoke"

@@ -23,6 +23,11 @@ static void test_result(const char *name, bool passed) {
     assert(passed);
 }
 
+static bool bytes_eq(rt_string s, const char *expected, size_t expected_len) {
+    return rt_str_len(s) == (int64_t)expected_len &&
+           memcmp(rt_string_cstr(s), expected, expected_len) == 0;
+}
+
 //=============================================================================
 // URL Encoding Tests
 //=============================================================================
@@ -57,6 +62,11 @@ static void test_url_encode_basic() {
     rt_string utf8 = rt_const_cstr("caf\xC3\xA9"); // cafe with accent
     rt_string enc_utf8 = rt_codec_url_encode(utf8);
     test_result("UTF-8 bytes encoded", strcmp(rt_string_cstr(enc_utf8), "caf%c3%a9") == 0);
+
+    const char nul_bytes[] = {'a', '\0', ' ', 'b'};
+    rt_string with_nul = rt_string_from_bytes(nul_bytes, sizeof(nul_bytes));
+    rt_string enc_nul = rt_codec_url_encode(with_nul);
+    test_result("Embedded NUL byte is encoded", strcmp(rt_string_cstr(enc_nul), "a%00%20b") == 0);
 
     printf("\n");
 }
@@ -111,6 +121,11 @@ static void test_url_decode_basic() {
     rt_string dec_invalid3 = rt_codec_url_decode(invalid3);
     test_result("Invalid hex %GH passes through",
                 strcmp(rt_string_cstr(dec_invalid3), "100%GH") == 0);
+
+    rt_string nul_encoded = rt_const_cstr("a%00%20b");
+    rt_string dec_nul = rt_codec_url_decode(nul_encoded);
+    const char nul_bytes[] = {'a', '\0', ' ', 'b'};
+    test_result("Embedded NUL byte is decoded", bytes_eq(dec_nul, nul_bytes, sizeof(nul_bytes)));
 
     printf("\n");
 }
@@ -181,6 +196,11 @@ static void test_base64_encode() {
     test_result("'Hello' -> 'SGVsbG8='",
                 strcmp(rt_string_cstr(rt_codec_base64_enc(hello)), "SGVsbG8=") == 0);
 
+    const char nul_bytes[] = {'a', '\0', 'b'};
+    rt_string with_nul = rt_string_from_bytes(nul_bytes, sizeof(nul_bytes));
+    test_result("'a\\0b' -> 'YQBi'",
+                strcmp(rt_string_cstr(rt_codec_base64_enc(with_nul)), "YQBi") == 0);
+
     printf("\n");
 }
 
@@ -219,14 +239,17 @@ static void test_base64_decode() {
     test_result("'SGVsbG8=' -> 'Hello'",
                 strcmp(rt_string_cstr(rt_codec_base64_dec(hello_b64)), "Hello") == 0);
 
+    rt_string nul_b64 = rt_const_cstr("YQBi");
+    const char nul_bytes[] = {'a', '\0', 'b'};
+    test_result("'YQBi' -> 'a\\0b'",
+                bytes_eq(rt_codec_base64_dec(nul_b64), nul_bytes, sizeof(nul_bytes)));
+
     printf("\n");
 }
 
 static void test_base64_roundtrip() {
     printf("Testing Base64 encode/decode roundtrip:\n");
 
-    // Note: Codec functions work on C strings (no embedded nulls)
-    // For binary data with nulls, use Bytes.ToBase64/FromBase64
     const char *test_strings[] = {"",
                                   "a",
                                   "ab",
@@ -248,6 +271,13 @@ static void test_base64_roundtrip() {
         }
     }
     test_result("All roundtrips preserve original", all_passed);
+
+    const char nul_bytes[] = {'a', '\0', 'b'};
+    rt_string original = rt_string_from_bytes(nul_bytes, sizeof(nul_bytes));
+    rt_string encoded = rt_codec_base64_enc(original);
+    rt_string decoded = rt_codec_base64_dec(encoded);
+    test_result("Embedded NUL roundtrip preserves all bytes",
+                bytes_eq(decoded, nul_bytes, sizeof(nul_bytes)));
 
     printf("\n");
 }
@@ -272,11 +302,14 @@ static void test_hex_encode() {
     test_result("'Hello' -> '48656c6c6f'",
                 strcmp(rt_string_cstr(rt_codec_hex_enc(hello)), "48656c6c6f") == 0);
 
-    // High-byte characters (no embedded nulls - Codec works on C strings)
-    // For binary data with nulls, use Bytes.ToHex/FromHex instead
     rt_string binary = rt_const_cstr("\xFF\x10\x20");
     test_result("High-byte chars -> 'ff1020'",
                 strcmp(rt_string_cstr(rt_codec_hex_enc(binary)), "ff1020") == 0);
+
+    const char nul_bytes[] = {'a', '\0', 'b'};
+    rt_string with_nul = rt_string_from_bytes(nul_bytes, sizeof(nul_bytes));
+    test_result("'a\\0b' -> '610062'",
+                strcmp(rt_string_cstr(rt_codec_hex_enc(with_nul)), "610062") == 0);
 
     printf("\n");
 }
@@ -307,14 +340,16 @@ static void test_hex_decode() {
     test_result("Mixed case hex decodes",
                 strcmp(rt_string_cstr(rt_codec_hex_dec(hex_mixed)), "Hello") == 0);
 
+    rt_string hex_nul = rt_const_cstr("610062");
+    const char nul_bytes[] = {'a', '\0', 'b'};
+    test_result("'610062' -> 'a\\0b'", bytes_eq(rt_codec_hex_dec(hex_nul), nul_bytes, sizeof(nul_bytes)));
+
     printf("\n");
 }
 
 static void test_hex_roundtrip() {
     printf("Testing Hex encode/decode roundtrip:\n");
 
-    // Note: Codec functions work on C strings (no embedded nulls)
-    // For binary data with nulls, use Bytes.ToHex/FromHex
     const char *test_strings[] = {"", "a", "ab", "Hello, World!", "\x01\x02\xFF", NULL};
 
     bool all_passed = true;
@@ -328,6 +363,13 @@ static void test_hex_roundtrip() {
         }
     }
     test_result("All roundtrips preserve original", all_passed);
+
+    const char nul_bytes[] = {'a', '\0', 'b'};
+    rt_string original = rt_string_from_bytes(nul_bytes, sizeof(nul_bytes));
+    rt_string encoded = rt_codec_hex_enc(original);
+    rt_string decoded = rt_codec_hex_dec(encoded);
+    test_result("Embedded NUL hex roundtrip preserves all bytes",
+                bytes_eq(decoded, nul_bytes, sizeof(nul_bytes)));
 
     printf("\n");
 }

@@ -43,6 +43,10 @@ static bool str_eq(rt_string a, const char *b) {
     return strcmp(a_str, b) == 0;
 }
 
+static bool bytes_eq(rt_string a, const char *b, size_t len) {
+    return rt_str_len(a) == (int64_t)len && memcmp(rt_string_cstr(a), b, len) == 0;
+}
+
 /// @brief Helper to check if bag contains string.
 static bool bag_contains(void *bag, const char *str) {
     return rt_bag_has(bag, rt_const_cstr(str)) != 0;
@@ -79,6 +83,12 @@ static void test_render() {
     result = rt_template_render(tmpl, values);
     test_result("Missing key left as-is", str_eq(result, "Hello {{unknown}}!"));
 
+    // Non-string values are not coerced; placeholder is left as literal.
+    rt_map_set(values, rt_const_cstr("number"), rt_box_i64(42));
+    tmpl = rt_const_cstr("Value {{number}}");
+    result = rt_template_render(tmpl, values);
+    test_result("Non-string map value left as-is", str_eq(result, "Value {{number}}"));
+
     // Empty template
     tmpl = rt_const_cstr("");
     result = rt_template_render(tmpl, values);
@@ -113,6 +123,16 @@ static void test_render() {
     tmpl = rt_const_cstr("User: {{name}}");
     result = rt_template_render(tmpl, values);
     test_result("Placeholder at end", str_eq(result, "User: Alice"));
+
+    const char embedded_value[] = {'A', '\0', 'B'};
+    rt_map_set(values,
+               rt_const_cstr("binary"),
+               rt_box_str(rt_string_from_bytes(embedded_value, sizeof(embedded_value))));
+    tmpl = rt_const_cstr("x{{binary}}y");
+    result = rt_template_render(tmpl, values);
+    const char embedded_expected[] = {'x', 'A', '\0', 'B', 'y'};
+    test_result("Embedded NUL map value is preserved",
+                bytes_eq(result, embedded_expected, sizeof(embedded_expected)));
 
     printf("\n");
 }
@@ -153,6 +173,16 @@ static void test_render_seq() {
     tmpl = rt_const_cstr("{{-1}} and {{0}}");
     result = rt_template_render_seq(tmpl, values);
     test_result("Negative number left as-is", str_eq(result, "{{-1}} and Alice"));
+
+    tmpl = rt_const_cstr("{{92233720368547758070}} and {{0}}");
+    result = rt_template_render_seq(tmpl, values);
+    test_result("Overflowing index left as-is",
+                str_eq(result, "{{92233720368547758070}} and Alice"));
+
+    rt_seq_push(values, rt_box_i64(99));
+    tmpl = rt_const_cstr("{{3}}");
+    result = rt_template_render_seq(tmpl, values);
+    test_result("Non-string seq value left as-is", str_eq(result, "{{3}}"));
 
     printf("\n");
 }
@@ -274,9 +304,10 @@ static void test_escape() {
     test_result("Escape {{ and }}", str_eq(result, "Use {{{{name}}}} for placeholders"));
 
     // No special chars
-    text = rt_const_cstr("No braces here");
+    text = make_str("No braces here");
     result = rt_template_escape(text);
     test_result("No braces unchanged", str_eq(result, "No braces here"));
+    test_result("No braces returns new string", result != text);
 
     // Only opening braces
     text = rt_const_cstr("{{");

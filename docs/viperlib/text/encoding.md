@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-09
+last-verified: 2026-04-21
 ---
 
 # Encoding & Identity
@@ -30,12 +30,13 @@ String-based encoding and decoding utilities for Base64, Hex, and URL encoding.
 
 ### Notes
 
-- All methods operate on strings (C strings without embedded null bytes)
-- For binary data with null bytes, use `Bytes.ToBase64`/`Bytes.FromBase64` or `Bytes.ToHex`/`Bytes.FromHex`
+- All methods operate on the runtime string byte length, so embedded `NUL` bytes are preserved
+- For arbitrary binary buffers, `Bytes.ToBase64`/`Bytes.FromBase64` and `Bytes.ToHex`/`Bytes.FromHex` remain the preferred APIs
 - **URL Encoding:**
     - Unreserved characters (A-Z, a-z, 0-9, `-`, `_`, `.`, `~`) pass through unchanged
     - All other characters are encoded as `%XX` (lowercase hex)
     - Decoding treats `+` as space (form encoding convention)
+    - Invalid or incomplete `%XX` escapes are left unchanged
 - **Base64:** RFC 4648 standard alphabet with `=` padding
 - **Hex:** Lowercase hex encoding (e.g., "Hello" → "48656c6c6f")
 - Invalid input to `Base64Dec` or `HexDec` will trap
@@ -116,6 +117,8 @@ UUID version 4 (random) generation and manipulation per RFC 4122.
     - `y` is one of `8`, `9`, `a`, or `b` (variant indicator)
 - All hex characters are lowercase
 - Uses cryptographically secure random source where available (/dev/urandom on Unix, CryptGenRandom on Windows)
+- `Empty` returns a fresh string handle containing the nil UUID
+- `IsValid()` checks the runtime string byte length; extra embedded bytes make the value invalid
 - `ToBytes()` traps if the UUID format is invalid
 - `FromBytes()` traps if the Bytes object is not exactly 16 bytes
 

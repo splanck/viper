@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-09
+last-verified: 2026-04-21
 ---
 
 # Core Types
@@ -242,6 +242,7 @@ Safe string parsing utilities. Methods return a success flag or a default value 
 ### Notes
 
 - `TryInt`/`TryNum`/`TryBool` write through a raw pointer and are most useful from IL or advanced Zia/BASIC code. For typical use, prefer `IntOr`/`NumOr`/`BoolOr`.
+- Null input is treated as parse failure: `Try*` returns false, `Is*` returns false, and `*Or`/`IntRadix` returns the supplied default.
 - `IntRadix` supports bases 2 through 36 (e.g., 16 for hex, 2 for binary).
 - Leading/trailing whitespace is rejected; the input must be a clean numeric string.
 - `Parse.Double` and `Parse.Int64` return optional (nullable) values, unlike `Convert.ToDouble`/`Convert.ToInt64` which trap on failure. Use them when invalid input is expected and should be handled gracefully rather than terminating the program.

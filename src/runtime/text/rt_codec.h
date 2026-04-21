@@ -11,7 +11,7 @@
 //   - Base64 encoding uses the standard alphabet (A-Z, a-z, 0-9, +, /); output includes padding.
 //   - URL encoding uses percent-encoding for reserved characters.
 //   - Hex encoding uses lowercase hexadecimal digits.
-//   - Decoding functions return NULL on invalid input.
+//   - Base64 and Hex decoders trap on invalid input; URL decoding is forgiving.
 //
 // Ownership/Lifetime:
 //   - Returned strings are newly allocated; caller must release.

@@ -48,9 +48,7 @@ static void test_new_zero_dimensions() {
 
 static void test_new_negative_dimensions() {
     void *p = rt_pixels_new(-10, -20);
-    assert(p != nullptr);
-    assert(rt_pixels_width(p) == 0);
-    assert(rt_pixels_height(p) == 0);
+    assert(p == nullptr);
     printf("test_new_negative_dimensions: PASSED\n");
 }
 
@@ -264,6 +262,21 @@ static void test_copy_overlap_backward() {
             assert(rt_pixels_get(p, x, y) == (int64_t)((y + 1) * 10 + (x + 1)));
 
     printf("test_copy_overlap_backward: PASSED\n");
+}
+
+static void test_copy_extreme_coordinates_noop() {
+    void *src = rt_pixels_new(2, 2);
+    void *dst = rt_pixels_new(2, 2);
+    rt_pixels_fill(src, 0x11223344);
+
+    rt_pixels_copy(dst, INT64_MAX - 1, 0, src, -1, 0, INT64_MAX, 1);
+    rt_pixels_copy(dst, 0, 0, src, INT64_MAX - 1, 0, INT64_MAX, 1);
+
+    assert(rt_pixels_get(dst, 0, 0) == 0);
+    assert(rt_pixels_get(dst, 1, 0) == 0);
+    assert(rt_pixels_get(dst, 0, 1) == 0);
+    assert(rt_pixels_get(dst, 1, 1) == 0);
+    printf("test_copy_extreme_coordinates_noop: PASSED\n");
 }
 
 static void test_clone() {
@@ -732,6 +745,26 @@ static void test_rotate_180() {
     printf("test_rotate_180: PASSED\n");
 }
 
+static void test_rotate_positive_90_is_clockwise() {
+    void *p = rt_pixels_new(3, 2);
+    rt_pixels_set(p, 0, 0, 0xAAAAAAAA);
+    rt_pixels_set(p, 1, 0, 0xBBBBBBBB);
+    rt_pixels_set(p, 2, 0, 0xCCCCCCCC);
+    rt_pixels_set(p, 0, 1, 0xDDDDDDDD);
+    rt_pixels_set(p, 1, 1, 0xEEEEEEEE);
+    rt_pixels_set(p, 2, 1, 0xFFFFFFFF);
+
+    void *rotated = rt_pixels_rotate(p, 90.0);
+    assert(rotated != nullptr);
+    assert(rt_pixels_width(rotated) == 2);
+    assert(rt_pixels_height(rotated) == 3);
+    assert(rt_pixels_get(rotated, 0, 0) == 0xDDDDDDDD);
+    assert(rt_pixels_get(rotated, 1, 0) == 0xAAAAAAAA);
+    assert(rt_pixels_get(rotated, 0, 2) == 0xFFFFFFFF);
+    assert(rt_pixels_get(rotated, 1, 2) == 0xCCCCCCCC);
+    printf("test_rotate_positive_90_is_clockwise: PASSED\n");
+}
+
 static void test_scale_up() {
     // Create a 2x2 image and scale to 4x4
     void *p = rt_pixels_new(2, 2);
@@ -817,8 +850,8 @@ static void test_scale_down() {
 }
 
 static int64_t pack_rgba(int r, int g, int b, int a) {
-    return ((int64_t)(r & 0xFF) << 24) | ((int64_t)(g & 0xFF) << 16) |
-           ((int64_t)(b & 0xFF) << 8) | (int64_t)(a & 0xFF);
+    return ((int64_t)(r & 0xFF) << 24) | ((int64_t)(g & 0xFF) << 16) | ((int64_t)(b & 0xFF) << 8) |
+           (int64_t)(a & 0xFF);
 }
 
 static int channel_r(int64_t rgba) {
@@ -847,27 +880,27 @@ static int64_t bilerp_rgba_premul(
     int a01 = channel_a(p01);
     int a11 = channel_a(p11);
 
-    int a = (a00 * inv_frac_x * inv_frac_y + a10 * frac_x * inv_frac_y +
-             a01 * inv_frac_x * frac_y + a11 * frac_x * frac_y) >>
+    int a = (a00 * inv_frac_x * inv_frac_y + a10 * frac_x * inv_frac_y + a01 * inv_frac_x * frac_y +
+             a11 * frac_x * frac_y) >>
             16;
     if (a <= 0)
         return 0;
 
-    int premul_r = ((channel_r(p00) * a00) * inv_frac_x * inv_frac_y +
-                    (channel_r(p10) * a10) * frac_x * inv_frac_y +
-                    (channel_r(p01) * a01) * inv_frac_x * frac_y +
-                    (channel_r(p11) * a11) * frac_x * frac_y) >>
-                   16;
-    int premul_g = ((channel_g(p00) * a00) * inv_frac_x * inv_frac_y +
-                    (channel_g(p10) * a10) * frac_x * inv_frac_y +
-                    (channel_g(p01) * a01) * inv_frac_x * frac_y +
-                    (channel_g(p11) * a11) * frac_x * frac_y) >>
-                   16;
-    int premul_b = ((channel_b(p00) * a00) * inv_frac_x * inv_frac_y +
-                    (channel_b(p10) * a10) * frac_x * inv_frac_y +
-                    (channel_b(p01) * a01) * inv_frac_x * frac_y +
-                    (channel_b(p11) * a11) * frac_x * frac_y) >>
-                   16;
+    int premul_r =
+        ((channel_r(p00) * a00) * inv_frac_x * inv_frac_y +
+         (channel_r(p10) * a10) * frac_x * inv_frac_y +
+         (channel_r(p01) * a01) * inv_frac_x * frac_y + (channel_r(p11) * a11) * frac_x * frac_y) >>
+        16;
+    int premul_g =
+        ((channel_g(p00) * a00) * inv_frac_x * inv_frac_y +
+         (channel_g(p10) * a10) * frac_x * inv_frac_y +
+         (channel_g(p01) * a01) * inv_frac_x * frac_y + (channel_g(p11) * a11) * frac_x * frac_y) >>
+        16;
+    int premul_b =
+        ((channel_b(p00) * a00) * inv_frac_x * inv_frac_y +
+         (channel_b(p10) * a10) * frac_x * inv_frac_y +
+         (channel_b(p01) * a01) * inv_frac_x * frac_y + (channel_b(p11) * a11) * frac_x * frac_y) >>
+        16;
 
     int r = (premul_r + a / 2) / a;
     int g = (premul_g + a / 2) / a;
@@ -1024,6 +1057,17 @@ static void test_blend_50_percent() {
     printf("test_blend_50_percent: PASSED\n");
 }
 
+static void test_blend_50_percent_over_transparent_keeps_source_color() {
+    void *p = rt_pixels_new(1, 1);
+    rt_pixels_blend_pixel(p, 0, 0, 0x00FF0000, 128);
+    int64_t rgba = rt_pixels_get(p, 0, 0);
+    assert(channel_r(rgba) == 255);
+    assert(channel_g(rgba) == 0);
+    assert(channel_b(rgba) == 0);
+    assert(channel_a(rgba) >= 127 && channel_a(rgba) <= 128);
+    printf("test_blend_50_percent_over_transparent_keeps_source_color: PASSED\n");
+}
+
 static void test_blend_out_of_bounds() {
     // Should silently clip — no crash
     void *p = rt_pixels_new(4, 4);
@@ -1060,6 +1104,7 @@ int main() {
     test_copy_negative_dest();
     test_copy_overlap_forward();
     test_copy_overlap_backward();
+    test_copy_extreme_coordinates_noop();
     test_clone();
 
     // Byte conversion
@@ -1083,6 +1128,7 @@ int main() {
     test_rotate_cw();
     test_rotate_ccw();
     test_rotate_180();
+    test_rotate_positive_90_is_clockwise();
     test_scale_up();
     test_scale_down();
     test_blur_zero_returns_exact_copy();
@@ -1095,6 +1141,7 @@ int main() {
     test_blend_fully_opaque();
     test_blend_transparent();
     test_blend_50_percent();
+    test_blend_50_percent_over_transparent_keeps_source_color();
     test_blend_out_of_bounds();
 
     printf("\nAll tests passed!\n");

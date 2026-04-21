@@ -38,17 +38,47 @@
 #include "rt_string.h"
 
 #include <limits.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include "rt_trap.h"
 
-/// @brief Safely cast strlen() result to int, trapping on overflow.
-static int safe_strlen_int(const char *s) {
-    size_t n = strlen(s);
+static int safe_rt_string_len_int(rt_string s) {
+    size_t n = s ? (size_t)rt_str_len(s) : 0;
     if (n > (size_t)INT_MAX)
         rt_trap("CompiledPattern: string too long for regex engine");
     return (int)n;
+}
+
+static const char *compiled_text_or_empty(rt_string text) {
+    return text ? rt_string_cstr(text) : "";
+}
+
+static void compiled_ensure_result_capacity(char **result,
+                                            size_t *result_cap,
+                                            size_t result_len,
+                                            size_t add) {
+    if (add > SIZE_MAX - result_len)
+        rt_trap("CompiledPattern: replacement length overflow");
+    size_t needed = result_len + add;
+    if (needed < *result_cap)
+        return;
+    if (needed == SIZE_MAX)
+        rt_trap("CompiledPattern: replacement length overflow");
+    size_t new_cap = *result_cap;
+    while (new_cap <= needed) {
+        if (new_cap > SIZE_MAX / 2) {
+            new_cap = needed + 1;
+            break;
+        }
+        new_cap *= 2;
+    }
+    char *tmp = (char *)realloc(*result, new_cap);
+    if (!tmp)
+        rt_trap("CompiledPattern: memory allocation failed");
+    *result = tmp;
+    *result_cap = new_cap;
 }
 
 //=============================================================================
@@ -81,9 +111,9 @@ static void compiled_pattern_finalizer(void *obj) {
 
 /// @brief Compile a regex pattern for reuse (avoids recompilation on each call).
 void *rt_compiled_pattern_new(rt_string pattern) {
-    const char *pat_str = rt_string_cstr(pattern);
-    if (!pat_str)
+    if (!pattern)
         rt_trap("CompiledPattern: null pattern");
+    const char *pat_str = pattern ? rt_string_cstr(pattern) : "";
 
     compiled_pattern_obj *obj =
         (compiled_pattern_obj *)rt_obj_new_i64(0, (int64_t)sizeof(compiled_pattern_obj));
@@ -115,13 +145,11 @@ int8_t rt_compiled_pattern_is_match(void *obj, rt_string text) {
         rt_trap("CompiledPattern: null pattern object");
 
     compiled_pattern_obj *cpo = (compiled_pattern_obj *)obj;
-    const char *txt_str = rt_string_cstr(text);
-    if (!txt_str)
-        txt_str = "";
+    const char *txt_str = compiled_text_or_empty(text);
 
     int match_start, match_end;
     return re_find_match(
-        cpo->pattern, txt_str, safe_strlen_int(txt_str), 0, &match_start, &match_end);
+        cpo->pattern, txt_str, safe_rt_string_len_int(text), 0, &match_start, &match_end);
 }
 
 /// @brief Find the first match of the compiled pattern in the text.
@@ -130,11 +158,9 @@ rt_string rt_compiled_pattern_find(void *obj, rt_string text) {
         rt_trap("CompiledPattern: null pattern object");
 
     compiled_pattern_obj *cpo = (compiled_pattern_obj *)obj;
-    const char *txt_str = rt_string_cstr(text);
-    if (!txt_str)
-        txt_str = "";
+    const char *txt_str = compiled_text_or_empty(text);
 
-    int text_len = safe_strlen_int(txt_str);
+    int text_len = safe_rt_string_len_int(text);
     int match_start, match_end;
 
     if (re_find_match(cpo->pattern, txt_str, text_len, 0, &match_start, &match_end)) {
@@ -149,11 +175,9 @@ rt_string rt_compiled_pattern_find_from(void *obj, rt_string text, int64_t start
         rt_trap("CompiledPattern: null pattern object");
 
     compiled_pattern_obj *cpo = (compiled_pattern_obj *)obj;
-    const char *txt_str = rt_string_cstr(text);
-    if (!txt_str)
-        txt_str = "";
+    const char *txt_str = compiled_text_or_empty(text);
 
-    int text_len = safe_strlen_int(txt_str);
+    int text_len = safe_rt_string_len_int(text);
     if (start < 0)
         start = 0;
     if (start > text_len)
@@ -172,13 +196,11 @@ int64_t rt_compiled_pattern_find_pos(void *obj, rt_string text) {
         rt_trap("CompiledPattern: null pattern object");
 
     compiled_pattern_obj *cpo = (compiled_pattern_obj *)obj;
-    const char *txt_str = rt_string_cstr(text);
-    if (!txt_str)
-        txt_str = "";
+    const char *txt_str = compiled_text_or_empty(text);
 
     int match_start, match_end;
     if (re_find_match(
-            cpo->pattern, txt_str, safe_strlen_int(txt_str), 0, &match_start, &match_end)) {
+            cpo->pattern, txt_str, safe_rt_string_len_int(text), 0, &match_start, &match_end)) {
         return (int64_t)match_start;
     }
     return -1;
@@ -190,12 +212,10 @@ void *rt_compiled_pattern_find_all(void *obj, rt_string text) {
         rt_trap("CompiledPattern: null pattern object");
 
     compiled_pattern_obj *cpo = (compiled_pattern_obj *)obj;
-    const char *txt_str = rt_string_cstr(text);
-    if (!txt_str)
-        txt_str = "";
+    const char *txt_str = compiled_text_or_empty(text);
 
     void *seq = rt_seq_new();
-    int text_len = safe_strlen_int(txt_str);
+    int text_len = safe_rt_string_len_int(text);
     int pos = 0;
 
     while (pos <= text_len) {
@@ -227,12 +247,10 @@ void *rt_compiled_pattern_captures_from(void *obj, rt_string text, int64_t start
         rt_trap("CompiledPattern: null pattern object");
 
     compiled_pattern_obj *cpo = (compiled_pattern_obj *)obj;
-    const char *txt_str = rt_string_cstr(text);
-    if (!txt_str)
-        txt_str = "";
+    const char *txt_str = compiled_text_or_empty(text);
 
     void *seq = rt_seq_new();
-    int text_len = safe_strlen_int(txt_str);
+    int text_len = safe_rt_string_len_int(text);
 
     if (start < 0)
         start = 0;
@@ -278,19 +296,16 @@ rt_string rt_compiled_pattern_replace(void *obj, rt_string text, rt_string repla
         rt_trap("CompiledPattern: null pattern object");
 
     compiled_pattern_obj *cpo = (compiled_pattern_obj *)obj;
-    const char *txt_str = rt_string_cstr(text);
-    const char *rep_str = rt_string_cstr(replacement);
+    const char *txt_str = compiled_text_or_empty(text);
+    const char *rep_str = compiled_text_or_empty(replacement);
 
-    if (!txt_str)
-        txt_str = "";
-    if (!rep_str)
-        rep_str = "";
-
-    int text_len = safe_strlen_int(txt_str);
-    int rep_len = safe_strlen_int(rep_str);
+    int text_len = safe_rt_string_len_int(text);
+    int rep_len = safe_rt_string_len_int(replacement);
 
     // Build result
-    size_t result_cap = text_len + 64;
+    size_t result_cap = (size_t)text_len + 64;
+    if (result_cap < (size_t)text_len)
+        rt_trap("CompiledPattern: replacement length overflow");
     char *result = (char *)malloc(result_cap);
     if (!result)
         rt_trap("CompiledPattern: memory allocation failed");
@@ -302,12 +317,7 @@ rt_string rt_compiled_pattern_replace(void *obj, rt_string text, rt_string repla
         if (!re_find_match(cpo->pattern, txt_str, text_len, pos, &match_start, &match_end)) {
             // Copy rest of text
             size_t remaining = text_len - pos;
-            if (result_len + remaining >= result_cap) {
-                result_cap = result_len + remaining + 1;
-                result = (char *)realloc(result, result_cap);
-                if (!result)
-                    rt_trap("CompiledPattern: memory allocation failed");
-            }
+            compiled_ensure_result_capacity(&result, &result_cap, result_len, remaining);
             memcpy(result + result_len, txt_str + pos, remaining);
             result_len += remaining;
             break;
@@ -315,12 +325,8 @@ rt_string rt_compiled_pattern_replace(void *obj, rt_string text, rt_string repla
 
         // Copy text before match
         size_t before_len = match_start - pos;
-        if (result_len + before_len + rep_len >= result_cap) {
-            result_cap = (result_len + before_len + rep_len) * 2 + 64;
-            result = (char *)realloc(result, result_cap);
-            if (!result)
-                rt_trap("CompiledPattern: memory allocation failed");
-        }
+        compiled_ensure_result_capacity(
+            &result, &result_cap, result_len, before_len + (size_t)rep_len);
         memcpy(result + result_len, txt_str + pos, before_len);
         result_len += before_len;
 
@@ -343,16 +349,11 @@ rt_string rt_compiled_pattern_replace_first(void *obj, rt_string text, rt_string
         rt_trap("CompiledPattern: null pattern object");
 
     compiled_pattern_obj *cpo = (compiled_pattern_obj *)obj;
-    const char *txt_str = rt_string_cstr(text);
-    const char *rep_str = rt_string_cstr(replacement);
+    const char *txt_str = compiled_text_or_empty(text);
+    const char *rep_str = compiled_text_or_empty(replacement);
 
-    if (!txt_str)
-        txt_str = "";
-    if (!rep_str)
-        rep_str = "";
-
-    int text_len = safe_strlen_int(txt_str);
-    int rep_len = safe_strlen_int(rep_str);
+    int text_len = safe_rt_string_len_int(text);
+    int rep_len = safe_rt_string_len_int(replacement);
 
     int match_start, match_end;
     if (!re_find_match(cpo->pattern, txt_str, text_len, 0, &match_start, &match_end)) {
@@ -360,7 +361,13 @@ rt_string rt_compiled_pattern_replace_first(void *obj, rt_string text, rt_string
     }
 
     // Build result: before + replacement + after
-    size_t result_len = match_start + rep_len + (text_len - match_end);
+    size_t result_len = (size_t)match_start;
+    if ((size_t)rep_len > SIZE_MAX - result_len ||
+        (size_t)(text_len - match_end) > SIZE_MAX - result_len - (size_t)rep_len)
+        rt_trap("CompiledPattern: replacement length overflow");
+    result_len += (size_t)rep_len + (size_t)(text_len - match_end);
+    if (result_len == SIZE_MAX)
+        rt_trap("CompiledPattern: replacement length overflow");
     char *result = (char *)malloc(result_len + 1);
     if (!result)
         rt_trap("CompiledPattern: memory allocation failed");
@@ -389,12 +396,10 @@ void *rt_compiled_pattern_split_n(void *obj, rt_string text, int64_t limit) {
         rt_trap("CompiledPattern: null pattern object");
 
     compiled_pattern_obj *cpo = (compiled_pattern_obj *)obj;
-    const char *txt_str = rt_string_cstr(text);
-    if (!txt_str)
-        txt_str = "";
+    const char *txt_str = compiled_text_or_empty(text);
 
     void *seq = rt_seq_new();
-    int text_len = safe_strlen_int(txt_str);
+    int text_len = safe_rt_string_len_int(text);
     int pos = 0;
     int64_t split_count = 0;
 

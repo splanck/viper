@@ -27,6 +27,8 @@
 #include "rt_string.h"
 #include "rt_tilemap.h"
 #include <cassert>
+#include <climits>
+#include <cstdint>
 #include <cstdio>
 #include <cstring>
 
@@ -198,6 +200,67 @@ static void test_csv_import(void) {
     PASS();
 }
 
+static void test_csv_import_clamps_overflow_values(void) {
+    TEST("CSV import clamps overflowing integer values");
+    const char *csv_path = "/tmp/test_tilemap_overflow.csv";
+    FILE *f = fopen(csv_path, "w");
+    assert(f != NULL);
+    fprintf(f, "999999999999999999999999999999,-999999999999999999999999999999\n");
+    fclose(f);
+
+    void *tm = rt_tilemap_load_csv(make_str(csv_path), 16, 16);
+    assert(tm != NULL);
+    assert(rt_tilemap_get_tile(tm, 0, 0) == INT64_MAX);
+    assert(rt_tilemap_get_tile(tm, 1, 0) == INT64_MIN);
+    PASS();
+}
+
+static void test_json_negative_anim_frame_normalizes(void) {
+    TEST("JSON load normalizes negative animation frame");
+    const char *path = "/tmp/test_tilemap_negative_frame.json";
+    FILE *f = fopen(path, "w");
+    assert(f != NULL);
+    fprintf(f,
+            "{"
+            "\"version\":1,\"width\":1,\"height\":1,\"tileWidth\":16,\"tileHeight\":16,"
+            "\"layers\":[{\"tiles\":[7],\"visible\":1,\"name\":\"base\"}],"
+            "\"collision\":{\"layer\":0,\"types\":[]},"
+            "\"tileProperties\":[],\"autotiles\":[],"
+            "\"animations\":[{\"baseTile\":7,\"frameCount\":2,\"msPerFrame\":100,"
+            "\"timer\":0,\"currentFrame\":-1,\"frames\":[7,8]}]"
+            "}");
+    fclose(f);
+
+    void *tm = rt_tilemap_load_from_file(make_str(path));
+    assert(tm != NULL);
+    assert(rt_tilemap_resolve_anim_tile(tm, 7) == 8);
+    PASS();
+}
+
+static void test_json_excess_layers_are_ignored(void) {
+    TEST("JSON load ignores layers beyond maximum");
+    const char *path = "/tmp/test_tilemap_excess_layers.json";
+    FILE *f = fopen(path, "w");
+    assert(f != NULL);
+    fprintf(f, "{\"version\":1,\"width\":1,\"height\":1,\"tileWidth\":16,\"tileHeight\":16,");
+    fprintf(f, "\"layers\":[");
+    for (int i = 0; i < 20; i++) {
+        if (i > 0)
+            fprintf(f, ",");
+        fprintf(f, "{\"tiles\":[%d],\"visible\":1,\"name\":\"l%d\"}", i, i);
+    }
+    fprintf(f,
+            "],\"collision\":{\"layer\":0,\"types\":[]},"
+            "\"tileProperties\":[],\"autotiles\":[],\"animations\":[]}");
+    fclose(f);
+
+    void *tm = rt_tilemap_load_from_file(make_str(path));
+    assert(tm != NULL);
+    assert(rt_tilemap_get_layer_count(tm) == 16);
+    assert(rt_tilemap_get_tile_layer(tm, 15, 0, 0) == 15);
+    PASS();
+}
+
 static void test_load_nonexistent(void) {
     TEST("Load nonexistent file returns NULL");
     assert(rt_tilemap_load_from_file(make_str("/tmp/nonexistent_tilemap.json")) == NULL);
@@ -232,6 +295,9 @@ int main() {
     test_json_save_load();
     test_json_save_load_preserves_extended_state();
     test_csv_import();
+    test_csv_import_clamps_overflow_values();
+    test_json_negative_anim_frame_normalizes();
+    test_json_excess_layers_are_ignored();
     test_load_nonexistent();
     test_clear_autotile();
 

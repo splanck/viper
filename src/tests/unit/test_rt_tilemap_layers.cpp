@@ -409,6 +409,43 @@ static void test_tile_animation_negative_and_huge_dt(void) {
     PASS();
 }
 
+static void test_animated_tile_collision_uses_base_tile(void) {
+    TEST("Animated tile collision uses base tile");
+    void *tm = rt_tilemap_new(2, 2, 16, 16);
+    rt_tilemap_set_tile(tm, 0, 0, 7);
+    rt_tilemap_set_tile_anim(tm, 7, 2, 100);
+    rt_tilemap_set_tile_anim_frame(tm, 7, 0, 7);
+    rt_tilemap_set_tile_anim_frame(tm, 7, 1, 8);
+    rt_tilemap_set_collision(tm, 7, RT_TILE_COLLISION_SOLID);
+    rt_tilemap_set_collision(tm, 8, RT_TILE_COLLISION_NONE);
+
+    rt_tilemap_update_anims(tm, 100);
+    assert(rt_tilemap_resolve_anim_tile(tm, 7) == 8);
+    assert(rt_tilemap_is_solid_at(tm, 1, 1) == 1);
+    PASS();
+}
+
+static void test_collision_type_validation(void) {
+    TEST("Collision type validation rejects out-of-range values");
+    void *tm = rt_tilemap_new(2, 2, 16, 16);
+    rt_tilemap_set_collision(tm, 1, 300);
+    assert(rt_tilemap_get_collision(tm, 1) == RT_TILE_COLLISION_NONE);
+    rt_tilemap_set_collision(tm, 1, RT_TILE_COLLISION_ONE_WAY_UP);
+    assert(rt_tilemap_get_collision(tm, 1) == RT_TILE_COLLISION_ONE_WAY_UP);
+    PASS();
+}
+
+static void test_fill_rect_and_pixel_conversion_extremes(void) {
+    TEST("FillRect and pixel conversion handle extreme coordinates");
+    void *tm = rt_tilemap_new(4, 4, 16, 16);
+    rt_tilemap_fill_rect(tm, INT64_MAX - 1, 0, INT64_MAX, 1, 9);
+    for (int64_t y = 0; y < 4; y++)
+        for (int64_t x = 0; x < 4; x++)
+            assert(rt_tilemap_get_tile(tm, x, y) == 0);
+    assert(rt_tilemap_to_pixel_x(tm, INT64_MAX / 2) == INT64_MAX);
+    PASS();
+}
+
 static void test_invalid_layer_id(void) {
     TEST("Invalid layer ID returns defaults");
     void *tm = rt_tilemap_new(4, 4, 16, 16);
@@ -501,6 +538,9 @@ int main() {
     test_max_layers();
     test_long_layer_name_rejected_without_consuming_slot();
     test_tile_animation_negative_and_huge_dt();
+    test_animated_tile_collision_uses_base_tile();
+    test_collision_type_validation();
+    test_fill_rect_and_pixel_conversion_extremes();
     test_invalid_layer_id();
     test_null_safety();
     test_collision_layer_adjusts_on_remove();

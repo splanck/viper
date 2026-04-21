@@ -17,7 +17,7 @@
 //   - String token values are unescaped (\\, \", \n etc. processed).
 //   - Number tokens are parsed as IEEE 754 double.
 //   - Invalid JSON causes an Error token; the stream is not recoverable after error.
-//   - Input is a borrowed char* with length; the caller must keep it alive.
+//   - The input string is retained so the source bytes stay alive while streaming.
 //
 // Ownership/Lifetime:
 //   - The stream object is heap-allocated and managed by the runtime GC.
@@ -36,11 +36,24 @@
 #include "rt_string.h"
 
 #include <ctype.h>
+#include <errno.h>
+#include <limits.h>
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
 
 #define MAX_DEPTH 256
+
+typedef enum {
+    JSON_CTX_OBJECT_KEY_OR_END = 1,
+    JSON_CTX_OBJECT_KEY = 2,
+    JSON_CTX_OBJECT_COLON = 3,
+    JSON_CTX_OBJECT_VALUE = 4,
+    JSON_CTX_OBJECT_AFTER_VALUE = 5,
+    JSON_CTX_ARRAY_VALUE_OR_END = 6,
+    JSON_CTX_ARRAY_VALUE = 7,
+    JSON_CTX_ARRAY_AFTER_VALUE = 8
+} json_stream_ctx_state_t;
 
 typedef struct {
     rt_string input_owner;
@@ -58,6 +71,8 @@ typedef struct {
     int8_t expect_key;
     int8_t in_object[MAX_DEPTH];
     int8_t first_value[MAX_DEPTH];
+    uint8_t state[MAX_DEPTH];
+    int8_t top_value_seen;
 } rt_json_stream_impl;
 
 /// @brief GC finalizer — release the input ref, scratch string buffer, and error string.
@@ -134,6 +149,10 @@ static void str_buf_clear(rt_json_stream_impl *s) {
 ///          observe `current_type = ERROR`.
 static void str_buf_push(rt_json_stream_impl *s, char c) {
     if (s->str_buf_len + 1 >= s->str_buf_cap) {
+        if (s->str_buf_cap > SIZE_MAX / 2) {
+            set_error(s, "string too long");
+            return;
+        }
         size_t new_cap = s->str_buf_cap * 2;
         if (new_cap < 64)
             new_cap = 64;
@@ -268,7 +287,13 @@ static int parse_string_content(rt_json_stream_impl *s) {
                                 return 0;
                             }
                             cp = 0x10000 + ((cp - 0xD800) << 10) + (lo - 0xDC00);
+                        } else {
+                            set_error(s, "invalid surrogate pair");
+                            return 0;
                         }
+                    } else if (cp >= 0xDC00 && cp <= 0xDFFF) {
+                        set_error(s, "invalid surrogate pair");
+                        return 0;
                     }
                     encode_utf8(s, cp);
                     break;
@@ -278,6 +303,10 @@ static int parse_string_content(rt_json_stream_impl *s) {
                     return 0;
             }
         } else {
+            if ((unsigned char)c < 0x20) {
+                set_error(s, "control character in string");
+                return 0;
+            }
             str_buf_push(s, c);
         }
     }
@@ -291,9 +320,8 @@ static int parse_string_content(rt_json_stream_impl *s) {
 ///          (`. digits`), optional exponent (`[eE] [+-]? digits`).
 ///          The matched span is then handed to `strtod` for the
 ///          actual conversion. Sets an error and returns 0 on
-///          malformed input (leading zero with extra digits is
-///          *not* rejected by the cursor walk — `strtod` accepts it,
-///          which is a slight deviation from strict RFC 8259).
+///          malformed input, including leading zeroes, missing fraction digits,
+///          and missing exponent digits.
 static int parse_number(rt_json_stream_impl *s) {
     size_t start = s->pos;
     if (s->pos < s->len && s->input[s->pos] == '-')
@@ -302,10 +330,22 @@ static int parse_number(rt_json_stream_impl *s) {
         set_error(s, "invalid number");
         return 0;
     }
-    while (s->pos < s->len && isdigit((unsigned char)s->input[s->pos]))
+    if (s->input[s->pos] == '0') {
         s->pos++;
+        if (s->pos < s->len && isdigit((unsigned char)s->input[s->pos])) {
+            set_error(s, "invalid number");
+            return 0;
+        }
+    } else {
+        while (s->pos < s->len && isdigit((unsigned char)s->input[s->pos]))
+            s->pos++;
+    }
     if (s->pos < s->len && s->input[s->pos] == '.') {
         s->pos++;
+        if (s->pos >= s->len || !isdigit((unsigned char)s->input[s->pos])) {
+            set_error(s, "invalid number");
+            return 0;
+        }
         while (s->pos < s->len && isdigit((unsigned char)s->input[s->pos]))
             s->pos++;
     }
@@ -313,18 +353,36 @@ static int parse_number(rt_json_stream_impl *s) {
         s->pos++;
         if (s->pos < s->len && (s->input[s->pos] == '+' || s->input[s->pos] == '-'))
             s->pos++;
+        if (s->pos >= s->len || !isdigit((unsigned char)s->input[s->pos])) {
+            set_error(s, "invalid number");
+            return 0;
+        }
         while (s->pos < s->len && isdigit((unsigned char)s->input[s->pos]))
             s->pos++;
     }
 
     /* Copy number text and parse */
     size_t nlen = s->pos - start;
-    char buf[64];
-    if (nlen >= sizeof(buf))
-        nlen = sizeof(buf) - 1;
+    if (nlen == 0 || nlen == SIZE_MAX) {
+        set_error(s, "invalid number");
+        return 0;
+    }
+    char *buf = (char *)malloc(nlen + 1);
+    if (!buf) {
+        set_error(s, "out of memory");
+        return 0;
+    }
     memcpy(buf, s->input + start, nlen);
     buf[nlen] = '\0';
-    s->num_value = strtod(buf, NULL);
+    errno = 0;
+    char *endptr = NULL;
+    s->num_value = strtod(buf, &endptr);
+    if (errno == ERANGE || !endptr || *endptr != '\0' || !isfinite(s->num_value)) {
+        free(buf);
+        set_error(s, "invalid number");
+        return 0;
+    }
+    free(buf);
     return 1;
 }
 
@@ -372,6 +430,8 @@ void *rt_json_stream_new(rt_string json) {
     s->expect_key = 0;
     memset(s->in_object, 0, sizeof(s->in_object));
     memset(s->first_value, 0, sizeof(s->first_value));
+    memset(s->state, 0, sizeof(s->state));
+    s->top_value_seen = 0;
 
     rt_obj_set_finalizer(s, stream_finalizer);
     return s;
@@ -390,89 +450,199 @@ int64_t rt_json_stream_next(void *parser) {
 
     char c = peek(s);
 
-    /* Handle comma separators */
-    if (c == ',') {
-        s->pos++;
-        c = peek(s);
-    }
-
-    /* Handle colon after key */
-    if (c == ':') {
-        s->pos++;
-        c = peek(s);
-    }
-
-    if (c == '\0') {
-        s->current_type = RT_JSON_TOK_END;
-        return RT_JSON_TOK_END;
-    }
-
-    /* After object start or comma in object, expect key */
-    if (s->depth > 0 && s->in_object[s->depth] && c == '"') {
-        if (s->expect_key) {
-            if (!parse_string_content(s))
-                return RT_JSON_TOK_ERROR;
-            s->current_type = RT_JSON_TOK_KEY;
-            s->expect_key = 0;
-            return RT_JSON_TOK_KEY;
+    if (s->depth == 0 && s->top_value_seen) {
+        if (c == '\0') {
+            s->current_type = RT_JSON_TOK_END;
+            return RT_JSON_TOK_END;
         }
+        set_error(s, "unexpected content after JSON value");
+        return RT_JSON_TOK_ERROR;
+    }
+
+    if (s->depth == 0 && c == '\0') {
+        set_error(s, "empty JSON input");
+        return RT_JSON_TOK_ERROR;
+    }
+
+    while (s->depth > 0) {
+        uint8_t state = s->state[s->depth];
+        c = peek(s);
+        if (c == '\0') {
+            set_error(s, "unexpected end of JSON input");
+            return RT_JSON_TOK_ERROR;
+        }
+
+        if (s->in_object[s->depth]) {
+            if (state == JSON_CTX_OBJECT_KEY_OR_END) {
+                if (c == '}') {
+                    s->pos++;
+                    s->in_object[s->depth] = 0;
+                    s->state[s->depth] = 0;
+                    s->depth--;
+                    s->expect_key = (s->depth > 0 && s->in_object[s->depth]) ? 1 : 0;
+                    s->current_type = RT_JSON_TOK_OBJECT_END;
+                    return RT_JSON_TOK_OBJECT_END;
+                }
+                if (c != '"') {
+                    set_error(s, "expected object key");
+                    return RT_JSON_TOK_ERROR;
+                }
+                if (!parse_string_content(s))
+                    return RT_JSON_TOK_ERROR;
+                s->state[s->depth] = JSON_CTX_OBJECT_COLON;
+                s->expect_key = 0;
+                s->current_type = RT_JSON_TOK_KEY;
+                return RT_JSON_TOK_KEY;
+            }
+
+            if (state == JSON_CTX_OBJECT_KEY) {
+                if (c != '"') {
+                    set_error(s, "expected object key");
+                    return RT_JSON_TOK_ERROR;
+                }
+                if (!parse_string_content(s))
+                    return RT_JSON_TOK_ERROR;
+                s->state[s->depth] = JSON_CTX_OBJECT_COLON;
+                s->expect_key = 0;
+                s->current_type = RT_JSON_TOK_KEY;
+                return RT_JSON_TOK_KEY;
+            }
+
+            if (state == JSON_CTX_OBJECT_COLON) {
+                if (c != ':') {
+                    set_error(s, "expected ':' after object key");
+                    return RT_JSON_TOK_ERROR;
+                }
+                s->pos++;
+                s->state[s->depth] = JSON_CTX_OBJECT_VALUE;
+                continue;
+            }
+
+            if (state == JSON_CTX_OBJECT_AFTER_VALUE) {
+                if (c == ',') {
+                    s->pos++;
+                    s->state[s->depth] = JSON_CTX_OBJECT_KEY;
+                    continue;
+                }
+                if (c == '}') {
+                    s->pos++;
+                    s->in_object[s->depth] = 0;
+                    s->state[s->depth] = 0;
+                    s->depth--;
+                    s->expect_key = (s->depth > 0 && s->in_object[s->depth]) ? 1 : 0;
+                    s->current_type = RT_JSON_TOK_OBJECT_END;
+                    return RT_JSON_TOK_OBJECT_END;
+                }
+                set_error(s, "expected ',' or '}' after object value");
+                return RT_JSON_TOK_ERROR;
+            }
+
+            if (state != JSON_CTX_OBJECT_VALUE) {
+                set_error(s, "invalid object parser state");
+                return RT_JSON_TOK_ERROR;
+            }
+            break;
+        }
+
+        if (state == JSON_CTX_ARRAY_VALUE_OR_END) {
+            if (c == ']') {
+                s->pos++;
+                s->state[s->depth] = 0;
+                s->depth--;
+                s->expect_key = (s->depth > 0 && s->in_object[s->depth]) ? 1 : 0;
+                s->current_type = RT_JSON_TOK_ARRAY_END;
+                return RT_JSON_TOK_ARRAY_END;
+            }
+            break;
+        }
+
+        if (state == JSON_CTX_ARRAY_AFTER_VALUE) {
+            if (c == ',') {
+                s->pos++;
+                s->state[s->depth] = JSON_CTX_ARRAY_VALUE;
+                continue;
+            }
+            if (c == ']') {
+                s->pos++;
+                s->state[s->depth] = 0;
+                s->depth--;
+                s->expect_key = (s->depth > 0 && s->in_object[s->depth]) ? 1 : 0;
+                s->current_type = RT_JSON_TOK_ARRAY_END;
+                return RT_JSON_TOK_ARRAY_END;
+            }
+            set_error(s, "expected ',' or ']' after array value");
+            return RT_JSON_TOK_ERROR;
+        }
+
+        if (state != JSON_CTX_ARRAY_VALUE) {
+            set_error(s, "invalid array parser state");
+            return RT_JSON_TOK_ERROR;
+        }
+        break;
+    }
+
+    c = peek(s);
+    if (c == '\0') {
+        set_error(s, "unexpected end of JSON input");
+        return RT_JSON_TOK_ERROR;
+    }
+
+    if (s->depth == 0) {
+        s->top_value_seen = 1;
+    } else if (s->in_object[s->depth]) {
+        s->state[s->depth] = JSON_CTX_OBJECT_AFTER_VALUE;
+        s->expect_key = 1;
+    } else {
+        s->state[s->depth] = JSON_CTX_ARRAY_AFTER_VALUE;
     }
 
     switch (c) {
         case '{':
+            if (s->depth + 1 >= MAX_DEPTH) {
+                set_error(s, "maximum JSON depth exceeded");
+                return RT_JSON_TOK_ERROR;
+            }
             s->pos++;
             s->depth++;
-            if (s->depth < MAX_DEPTH) {
-                s->in_object[s->depth] = 1;
-                s->first_value[s->depth] = 1;
-            }
+            s->in_object[s->depth] = 1;
+            s->first_value[s->depth] = 1;
+            s->state[s->depth] = JSON_CTX_OBJECT_KEY_OR_END;
             s->expect_key = 1;
             s->current_type = RT_JSON_TOK_OBJECT_START;
             return RT_JSON_TOK_OBJECT_START;
 
         case '}':
-            s->pos++;
-            if (s->depth > 0) {
-                s->in_object[s->depth] = 0;
-                s->depth--;
-            }
-            s->expect_key = (s->depth > 0 && s->in_object[s->depth]) ? 1 : 0;
-            s->current_type = RT_JSON_TOK_OBJECT_END;
-            return RT_JSON_TOK_OBJECT_END;
+            set_error(s, "unexpected '}'");
+            return RT_JSON_TOK_ERROR;
 
         case '[':
+            if (s->depth + 1 >= MAX_DEPTH) {
+                set_error(s, "maximum JSON depth exceeded");
+                return RT_JSON_TOK_ERROR;
+            }
             s->pos++;
             s->depth++;
-            if (s->depth < MAX_DEPTH) {
-                s->in_object[s->depth] = 0;
-                s->first_value[s->depth] = 1;
-            }
+            s->in_object[s->depth] = 0;
+            s->first_value[s->depth] = 1;
+            s->state[s->depth] = JSON_CTX_ARRAY_VALUE_OR_END;
             s->expect_key = 0;
             s->current_type = RT_JSON_TOK_ARRAY_START;
             return RT_JSON_TOK_ARRAY_START;
 
         case ']':
-            s->pos++;
-            if (s->depth > 0) {
-                s->in_object[s->depth] = 0;
-                s->depth--;
-            }
-            s->expect_key = (s->depth > 0 && s->in_object[s->depth]) ? 1 : 0;
-            s->current_type = RT_JSON_TOK_ARRAY_END;
-            return RT_JSON_TOK_ARRAY_END;
+            set_error(s, "unexpected ']'");
+            return RT_JSON_TOK_ERROR;
 
         case '"':
             if (!parse_string_content(s))
                 return RT_JSON_TOK_ERROR;
             s->current_type = RT_JSON_TOK_STRING;
-            s->expect_key = (s->depth > 0 && s->in_object[s->depth]) ? 1 : 0;
             return RT_JSON_TOK_STRING;
 
         case 't':
             if (match_literal(s, "true", 4)) {
                 s->bool_value = 1;
                 s->current_type = RT_JSON_TOK_BOOL;
-                s->expect_key = (s->depth > 0 && s->in_object[s->depth]) ? 1 : 0;
                 return RT_JSON_TOK_BOOL;
             }
             set_error(s, "invalid token");
@@ -482,7 +652,6 @@ int64_t rt_json_stream_next(void *parser) {
             if (match_literal(s, "false", 5)) {
                 s->bool_value = 0;
                 s->current_type = RT_JSON_TOK_BOOL;
-                s->expect_key = (s->depth > 0 && s->in_object[s->depth]) ? 1 : 0;
                 return RT_JSON_TOK_BOOL;
             }
             set_error(s, "invalid token");
@@ -491,7 +660,6 @@ int64_t rt_json_stream_next(void *parser) {
         case 'n':
             if (match_literal(s, "null", 4)) {
                 s->current_type = RT_JSON_TOK_NULL;
-                s->expect_key = (s->depth > 0 && s->in_object[s->depth]) ? 1 : 0;
                 return RT_JSON_TOK_NULL;
             }
             set_error(s, "invalid token");
@@ -501,7 +669,6 @@ int64_t rt_json_stream_next(void *parser) {
             if (c == '-' || isdigit((unsigned char)c)) {
                 if (parse_number(s)) {
                     s->current_type = RT_JSON_TOK_NUMBER;
-                    s->expect_key = (s->depth > 0 && s->in_object[s->depth]) ? 1 : 0;
                     return RT_JSON_TOK_NUMBER;
                 }
                 return RT_JSON_TOK_ERROR;
@@ -578,7 +745,11 @@ int8_t rt_json_stream_has_next(void *parser) {
     rt_json_stream_impl *s = (rt_json_stream_impl *)parser;
     if (s->current_type == RT_JSON_TOK_END || s->current_type == RT_JSON_TOK_ERROR)
         return 0;
+    if (s->depth > 0)
+        return 1;
     char c = peek(s);
+    if (!s->top_value_seen)
+        return c != '\0' ? 1 : 0;
     return c != '\0' ? 1 : 0;
 }
 

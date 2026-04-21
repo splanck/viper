@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-09
+last-verified: 2026-04-21
 ---
 
 # Pattern Matching
@@ -64,6 +64,13 @@ The following advanced regex features are not implemented:
 ### Traps
 
 - Invalid pattern syntax traps with a descriptive error message
+- Null pattern strings trap. Null text and null replacement strings are treated as empty strings.
+
+### Byte Semantics
+
+- Pattern matching uses runtime string byte length, so embedded `NUL` bytes in text can be matched and returned.
+- Match positions and `FindFrom` start values are byte offsets.
+- The regex cache is safe for concurrent users of cached patterns; in-use compiled entries are not evicted.
 
 ### Zia Example
 
@@ -226,6 +233,12 @@ The `Captures` and `CapturesFrom` methods return a Seq containing:
 
 If there is no match, an empty Seq is returned.
 
+### Notes
+
+- Null text and replacement arguments are treated as empty strings.
+- Returned matches preserve runtime string byte length, including embedded `NUL` bytes.
+- A null pattern passed to the constructor traps.
+
 ### Zia Example
 
 > CompiledPattern is not yet available as a constructible type in Zia. Use the static `Viper.Text.Pattern` functions instead.
@@ -360,7 +373,10 @@ Stateful string scanner for lexing and parsing text. Maintains a position cursor
 ### Notes
 
 - The scanner operates on byte positions; all character values are byte values (ASCII/Latin-1)
+- The scanner retains the source string for its lifetime, so scanning remains valid even if the caller releases its reference
+- A null source creates an empty scanner
 - `Match` and `MatchStr` test without advancing; `Accept` and `AcceptStr` advance only if matched
+- Null delimiter/character-set arguments fail safely; `ReadUntilAny(NULL)` reads the rest of the source
 - `ReadIdent`, `ReadInt`, `ReadNumber`, and `ReadQuoted` return empty string if the current position does not start a valid token of that type
 - Setting `Pos` to a value outside the valid range clamps it to the string boundaries
 

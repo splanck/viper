@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-17
+last-verified: 2026-04-21
 ---
 
 # Canvas & Color
@@ -39,11 +39,14 @@ last-verified: 2026-04-17
 | `BlitAlpha(x, y, pixels)`             | `Void(Integer, Integer, Pixels)`      | Blits with alpha blending (respects alpha channel and clip rect) |
 | `BlitRegion(dx, dy, pixels, sx, sy, w, h)` | `Void(Integer...)`               | Blits a region of a Pixels buffer to the canvas; honors the active clip rect |
 | `Box(x, y, w, h, color)`              | `Void(Integer...)`                    | Draws a filled rectangle                                   |
+| `BoxAlpha(x, y, w, h, color, alpha)`  | `Void(Integer...)`                    | Draws a source-over alpha-blended rectangle                |
 | `Clear(color)`                        | `Void(Integer)`                       | Clears the canvas with a solid color                       |
 | `ClearClipRect()`                     | `Void()`                              | Clears clipping rectangle; restores full canvas drawing    |
 | `CopyRect(x, y, w, h)`                | `Pixels(Integer...)`                  | Copies canvas region to a Pixels buffer                    |
 | `Disc(cx, cy, r, color)`              | `Void(Integer...)`                    | Draws a filled circle                                      |
+| `DiscAlpha(cx, cy, r, color, alpha)`  | `Void(Integer...)`                    | Draws a source-over alpha-blended filled circle            |
 | `Ellipse(cx, cy, rx, ry, color)`      | `Void(Integer...)`                    | Draws a filled ellipse                                     |
+| `EllipseAlpha(cx, cy, rx, ry, color, alpha)` | `Void(Integer...)`              | Draws a source-over alpha-blended filled ellipse           |
 | `EllipseFrame(cx, cy, rx, ry, color)` | `Void(Integer...)`                    | Draws an ellipse outline                                   |
 | `Flip()`                              | `Void()`                              | Presents the back buffer and displays drawn content        |
 | `FloodFill(x, y, color)`              | `Void(Integer, Integer, Integer)`     | Flood fills connected area starting at (x, y), constrained by the active clip rect |
@@ -101,7 +104,7 @@ Colors are specified as 32-bit integers in `0x00RRGGBB` format:
 - White: `0x00FFFFFF`
 - Black: `0x00000000`
 
-Use `Viper.Graphics.Color.RGB()` or `Viper.Graphics.Color.RGBA()` to create colors from components.
+Use `Viper.Graphics.Color.RGB()` or `Viper.Graphics.Color.RGBA()` to create colors from components. RGB-only drawing calls use the RGB channels. Alpha-aware calls such as `BoxAlpha`, `DiscAlpha`, `EllipseAlpha`, and `BlitAlpha` use straight-alpha source-over compositing.
 
 ### Zia Example
 
@@ -294,6 +297,7 @@ Restrict drawing to a rectangular region. All drawing operations will be clipped
 specified bounds until `ClearClipRect()` is called. This includes direct framebuffer-backed paths
 such as `Blit`, `BlitRegion`, `BlitAlpha`, `FloodFill`, `GradientH`, and `GradientV`.
 Clipped gradients keep their original color ramp; they do not restart from the clipped edge.
+Line, rectangle, circle, ellipse, alpha-shape, pixel-read, and blit paths clip before narrowing to the backend coordinate type, so very large or offscreen coordinates do not wrap into visible pixels.
 
 ```basic
 ' Set a clipping region (x=100, y=100, width=200, height=150)

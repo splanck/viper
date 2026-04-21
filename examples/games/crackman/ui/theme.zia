@@ -72,7 +72,7 @@ func initAssets() {
     if assetsReady_ { return; }
     assetsReady_ = true;
 
-    bodyFont_ = BitmapFont.LoadBDF("examples/games/pacman/assets/fonts/viper_8x8.bdf");
+    bodyFont_ = BitmapFont.LoadBDF("examples/games/crackman/assets/fonts/viper_8x8.bdf");
     if bodyFont_ == null {
         bodyFont_ = BitmapFont.LoadBDF("assets/fonts/viper_8x8.bdf");
     }

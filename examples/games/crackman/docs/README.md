@@ -60,6 +60,6 @@ crackman/
 ## Running
 
 ```bash
-cd examples/games/pacman
+cd examples/games/crackman
 viper run .
 ```

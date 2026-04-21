@@ -25,6 +25,10 @@ static void test_result(bool cond, const char *name) {
     }
 }
 
+static bool bytes_eq(rt_string s, const char *expected, size_t len) {
+    return rt_str_len(s) == (int64_t)len && memcmp(rt_string_cstr(s), expected, len) == 0;
+}
+
 //=============================================================================
 // Basic Matching Tests
 //=============================================================================
@@ -78,6 +82,14 @@ static void test_find_from() {
 
     rt_string result = rt_compiled_pattern_find_from(pattern, rt_const_cstr("abc123def456"), 6);
     test_result(strcmp(rt_string_cstr(result), "456") == 0, "find_from: should find from position");
+
+    void *dot = rt_compiled_pattern_new(rt_const_cstr("."));
+    const char embedded_bytes[] = {'a', '\0', 'b'};
+    rt_string embedded = rt_string_from_bytes(embedded_bytes, sizeof(embedded_bytes));
+    result = rt_compiled_pattern_find_from(dot, embedded, 1);
+    const char nul_only[] = {'\0'};
+    test_result(bytes_eq(result, nul_only, sizeof(nul_only)),
+                "find_from: should match embedded NUL byte");
 }
 
 static void test_find_pos() {
@@ -168,6 +180,20 @@ static void test_replace_no_match() {
         rt_compiled_pattern_replace(pattern, rt_const_cstr("no digits"), rt_const_cstr("X"));
     test_result(strcmp(rt_string_cstr(result), "no digits") == 0,
                 "replace_no_match: should return original on no match");
+}
+
+static void test_null_text_and_replacement() {
+    void *digits = rt_compiled_pattern_new(rt_const_cstr("\\d+"));
+    rt_string result = rt_compiled_pattern_find(digits, NULL);
+    test_result(strcmp(rt_string_cstr(result), "") == 0, "null_text: find returns empty");
+
+    result = rt_compiled_pattern_replace(digits, rt_const_cstr("a1b2"), NULL);
+    test_result(strcmp(rt_string_cstr(result), "ab") == 0,
+                "null_replacement: replace deletes matches");
+
+    result = rt_compiled_pattern_replace_first(digits, rt_const_cstr("a1b2"), NULL);
+    test_result(strcmp(rt_string_cstr(result), "ab2") == 0,
+                "null_replacement: replace_first deletes first match");
 }
 
 //=============================================================================
@@ -310,6 +336,7 @@ int main() {
     test_replace();
     test_replace_first();
     test_replace_no_match();
+    test_null_text_and_replacement();
 
     // Split operations
     test_split();

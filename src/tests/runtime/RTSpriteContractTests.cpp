@@ -11,6 +11,7 @@ extern "C" {
 }
 
 #include <cassert>
+#include <climits>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -29,6 +30,7 @@ static int64_t g_last_blit_x = 0;
 static int64_t g_last_blit_y = 0;
 static int g_tint_call_count = 0;
 static int64_t g_last_tint = -2;
+static bool g_clone_returns_null = false;
 
 static StubPixels *make_pixels(int64_t width, int64_t height, int64_t id) {
     auto *pixels = static_cast<StubPixels *>(std::calloc(1, sizeof(StubPixels)));
@@ -94,6 +96,34 @@ static void test_tiny_positive_scale_still_has_nonzero_collision_bounds() {
     assert(rt_sprite_overlaps(a, b) == 1);
 }
 
+static void test_extreme_collision_bounds_do_not_wrap() {
+    StubPixels a_src{2, 2, 31};
+    StubPixels b_src{1, 1, 41};
+    void *a = rt_sprite_new(&a_src);
+    void *b = rt_sprite_new(&b_src);
+    assert(a != nullptr);
+    assert(b != nullptr);
+
+    rt_sprite_set_x(a, INT64_MAX - 1);
+    rt_sprite_set_y(a, 0);
+    rt_sprite_set_x(b, INT64_MAX);
+    rt_sprite_set_y(b, 1);
+
+    assert(rt_sprite_contains(a, INT64_MAX, 1) == 1);
+    assert(rt_sprite_overlaps(a, b) == 1);
+
+    rt_sprite_move(a, 100, 0);
+    assert(rt_sprite_get_x(a) == INT64_MAX);
+}
+
+static void test_sprite_new_fails_when_initial_clone_fails() {
+    StubPixels source{4, 4, 60};
+    g_clone_returns_null = true;
+    void *sprite = rt_sprite_new(&source);
+    g_clone_returns_null = false;
+    assert(sprite == nullptr);
+}
+
 static void test_transformed_tint_zero_is_black_and_negative_is_no_tint() {
     StubPixels source{6, 6, 50};
     void *sprite = rt_sprite_new(&source);
@@ -151,7 +181,8 @@ extern "C" rt_string rt_str_empty(void) {
     return nullptr;
 }
 
-extern "C" int gif_decode_file(const char *, gif_frame_t **out_frames, int *out_frame_count, int *out_width, int *out_height) {
+extern "C" int gif_decode_file(
+    const char *, gif_frame_t **out_frames, int *out_frame_count, int *out_width, int *out_height) {
     if (out_frames)
         *out_frames = nullptr;
     if (out_frame_count)
@@ -164,6 +195,8 @@ extern "C" int gif_decode_file(const char *, gif_frame_t **out_frames, int *out_
 }
 
 extern "C" void *rt_pixels_clone(void *pixels) {
+    if (g_clone_returns_null)
+        return nullptr;
     auto *src = static_cast<StubPixels *>(pixels);
     return src ? make_pixels(src->width, src->height, src->id) : nullptr;
 }
@@ -199,7 +232,8 @@ extern "C" void *rt_pixels_new(int64_t width, int64_t height) {
     return make_pixels(width, height, g_next_pixels_id++);
 }
 
-extern "C" void rt_pixels_copy(void *, int64_t, int64_t, void *, int64_t, int64_t, int64_t, int64_t) {}
+extern "C" void rt_pixels_copy(
+    void *, int64_t, int64_t, void *, int64_t, int64_t, int64_t, int64_t) {}
 
 extern "C" int64_t rt_pixels_width(void *pixels) {
     auto *p = static_cast<StubPixels *>(pixels);
@@ -242,6 +276,8 @@ int main() {
     test_flip_x_uses_returned_pixels_buffer();
     test_scale_setters_clamp_to_positive_values();
     test_tiny_positive_scale_still_has_nonzero_collision_bounds();
+    test_extreme_collision_bounds_do_not_wrap();
+    test_sprite_new_fails_when_initial_clone_fails();
     test_transformed_tint_zero_is_black_and_negative_is_no_tint();
     return 0;
 }

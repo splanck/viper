@@ -10,6 +10,7 @@
 #include "rt_string.h"
 
 #include <cassert>
+#include <cstdint>
 #include <cstring>
 
 extern "C" void vm_trap(const char *msg) {
@@ -235,6 +236,9 @@ static void test_bytes() {
     r = rt_numfmt_bytes(1073741824);
     assert(str_eq(r, "1.00 GB"));
     rt_string_unref(r);
+    r = rt_numfmt_bytes(INT64_MIN);
+    assert(str_eq(r, "-8.00 EB"));
+    rt_string_unref(r);
 }
 
 // ---------------------------------------------------------------------------
@@ -257,6 +261,9 @@ static void test_pad() {
     rt_string_unref(r);
     r = rt_numfmt_pad(-7, 4);
     assert(str_eq(r, "-007"));
+    rt_string_unref(r);
+    r = rt_numfmt_pad(INT64_MIN, 20);
+    assert(str_eq(r, "-9223372036854775808"));
     rt_string_unref(r);
 }
 

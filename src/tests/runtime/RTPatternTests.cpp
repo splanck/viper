@@ -32,6 +32,10 @@ static const char *seq_get_str(void *seq, int64_t idx) {
     return rt_string_cstr(s);
 }
 
+static bool bytes_eq(rt_string s, const char *expected, size_t len) {
+    return rt_str_len(s) == (int64_t)len && memcmp(rt_string_cstr(s), expected, len) == 0;
+}
+
 //=============================================================================
 // IsMatch Tests
 //=============================================================================
@@ -199,6 +203,12 @@ static void test_find_from() {
     result = rt_pattern_find_from(text, rt_const_cstr("\\d+"), 18);
     test_result("FindFrom \\d+ at 18 = '' (no match)", strcmp(rt_string_cstr(result), "") == 0);
 
+    const char embedded_bytes[] = {'a', '\0', 'b'};
+    rt_string embedded = rt_string_from_bytes(embedded_bytes, sizeof(embedded_bytes));
+    result = rt_pattern_find_from(embedded, rt_const_cstr("."), 1);
+    const char nul_only[] = {'\0'};
+    test_result("FindFrom can match embedded NUL byte", bytes_eq(result, nul_only, sizeof(nul_only)));
+
     printf("\n");
 }
 
@@ -286,6 +296,9 @@ static void test_replace() {
         rt_const_cstr("hello world test"), rt_const_cstr("\\s+"), rt_const_cstr(""));
     test_result("Replace \\s+ with '' = 'helloworldtest'",
                 strcmp(rt_string_cstr(result), "helloworldtest") == 0);
+
+    result = rt_pattern_replace(rt_const_cstr("a1b2"), rt_const_cstr("\\d"), NULL);
+    test_result("Replace with NULL replacement deletes matches", strcmp(rt_string_cstr(result), "ab") == 0);
 
     printf("\n");
 }
@@ -435,6 +448,11 @@ static void test_edge_cases() {
     // Empty pattern matches anywhere
     test_result("Empty pattern matches empty string",
                 rt_pattern_is_match(rt_const_cstr(""), rt_const_cstr("")));
+
+    // NULL text is treated as an empty string.
+    test_result("Empty pattern matches NULL text", rt_pattern_is_match(NULL, rt_const_cstr("")));
+    rt_string null_find = rt_pattern_find(NULL, rt_const_cstr("."));
+    test_result("Find on NULL text returns empty", strcmp(rt_string_cstr(null_find), "") == 0);
 
     // Empty text
     test_result("'a' does not match empty text",

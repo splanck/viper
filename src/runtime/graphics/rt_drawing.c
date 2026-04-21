@@ -129,6 +129,91 @@ static int64_t rt_canvas_text_codepoint_width(rt_string text, int64_t scale) {
     return count * 8 * scale;
 }
 
+static int64_t rt_canvas_round_ld_to_i64_sat(long double value) {
+    if (value >= (long double)INT64_MAX)
+        return INT64_MAX;
+    if (value <= (long double)INT64_MIN)
+        return INT64_MIN;
+    return (int64_t)(value >= 0.0L ? floorl(value + 0.5L) : ceill(value - 0.5L));
+}
+
+static int64_t rt_canvas_floor_ld_to_i64_sat(long double value) {
+    if (value >= (long double)INT64_MAX)
+        return INT64_MAX;
+    if (value <= (long double)INT64_MIN)
+        return INT64_MIN;
+    return (int64_t)floorl(value);
+}
+
+static int64_t rt_canvas_ceil_ld_to_i64_sat(long double value) {
+    if (value >= (long double)INT64_MAX)
+        return INT64_MAX;
+    if (value <= (long double)INT64_MIN)
+        return INT64_MIN;
+    return (int64_t)ceill(value);
+}
+
+static int8_t rt_canvas_clip_line_test(long double p,
+                                       long double q,
+                                       long double *u1,
+                                       long double *u2) {
+    if (p == 0.0L)
+        return q >= 0.0L;
+    long double r = q / p;
+    if (p < 0.0L) {
+        if (r > *u2)
+            return 0;
+        if (r > *u1)
+            *u1 = r;
+    } else {
+        if (r < *u1)
+            return 0;
+        if (r < *u2)
+            *u2 = r;
+    }
+    return 1;
+}
+
+static int8_t rt_canvas_clip_line_to_logical(
+    rt_canvas *canvas, int64_t *x1, int64_t *y1, int64_t *x2, int64_t *y2) {
+    int64_t clip_x = 0;
+    int64_t clip_y = 0;
+    int64_t clip_w = 0;
+    int64_t clip_h = 0;
+    if (!rt_canvas_get_logical_clip_bounds(canvas, &clip_x, &clip_y, &clip_w, &clip_h))
+        return 0;
+
+    long double lx1 = (long double)*x1;
+    long double ly1 = (long double)*y1;
+    long double dx = (long double)*x2 - lx1;
+    long double dy = (long double)*y2 - ly1;
+    long double min_x = (long double)clip_x;
+    long double min_y = (long double)clip_y;
+    long double max_x = (long double)(rtg_add_sat64(clip_x, clip_w) - 1);
+    long double max_y = (long double)(rtg_add_sat64(clip_y, clip_h) - 1);
+    long double u1 = 0.0L;
+    long double u2 = 1.0L;
+
+    if (!rt_canvas_clip_line_test(-dx, lx1 - min_x, &u1, &u2) ||
+        !rt_canvas_clip_line_test(dx, max_x - lx1, &u1, &u2) ||
+        !rt_canvas_clip_line_test(-dy, ly1 - min_y, &u1, &u2) ||
+        !rt_canvas_clip_line_test(dy, max_y - ly1, &u1, &u2))
+        return 0;
+
+    *x1 = rt_canvas_round_ld_to_i64_sat(lx1 + u1 * dx);
+    *y1 = rt_canvas_round_ld_to_i64_sat(ly1 + u1 * dy);
+    *x2 = rt_canvas_round_ld_to_i64_sat(lx1 + u2 * dx);
+    *y2 = rt_canvas_round_ld_to_i64_sat(ly1 + u2 * dy);
+    return rtg_i64_fits_i32(*x1) && rtg_i64_fits_i32(*y1) && rtg_i64_fits_i32(*x2) &&
+           rtg_i64_fits_i32(*y2);
+}
+
+static int64_t rt_canvas_rect_last(int64_t start, int64_t length) {
+    if (length <= 1)
+        return start;
+    return rtg_add_sat64(start, length - 1);
+}
+
 /// @brief Draw a line between two points on the canvas.
 void rt_canvas_line(
     void *canvas_ptr, int64_t x1, int64_t y1, int64_t x2, int64_t y2, int64_t color) {
@@ -138,6 +223,8 @@ void rt_canvas_line(
     rt_canvas *canvas = (rt_canvas *)canvas_ptr;
     if (canvas->gfx_win) {
         rt_canvas_resync_window_state(canvas);
+        if (!rt_canvas_clip_line_to_logical(canvas, &x1, &y1, &x2, &y2))
+            return;
         vgfx_line(canvas->gfx_win,
                   (int32_t)x1,
                   (int32_t)y1,
@@ -168,6 +255,8 @@ void rt_canvas_box(void *canvas_ptr, int64_t x, int64_t y, int64_t w, int64_t h,
     rt_canvas *canvas = (rt_canvas *)canvas_ptr;
     if (canvas->gfx_win) {
         rt_canvas_resync_window_state(canvas);
+        if (!rt_canvas_clip_intersect_logical(canvas, &x, &y, &w, &h))
+            return;
         vgfx_fill_rect(
             canvas->gfx_win, (int32_t)x, (int32_t)y, (int32_t)w, (int32_t)h, (vgfx_color_t)color);
     }
@@ -180,9 +269,14 @@ void rt_canvas_frame(void *canvas_ptr, int64_t x, int64_t y, int64_t w, int64_t 
 
     rt_canvas *canvas = (rt_canvas *)canvas_ptr;
     if (canvas->gfx_win) {
-        rt_canvas_resync_window_state(canvas);
-        vgfx_rect(
-            canvas->gfx_win, (int32_t)x, (int32_t)y, (int32_t)w, (int32_t)h, (vgfx_color_t)color);
+        if (w <= 0 || h <= 0)
+            return;
+        int64_t x1 = rt_canvas_rect_last(x, w);
+        int64_t y1 = rt_canvas_rect_last(y, h);
+        rt_canvas_line(canvas_ptr, x, y, x1, y, color);
+        rt_canvas_line(canvas_ptr, x, y1, x1, y1, color);
+        rt_canvas_line(canvas_ptr, x, y, x, y1, color);
+        rt_canvas_line(canvas_ptr, x1, y, x1, y1, color);
     }
 }
 
@@ -194,6 +288,9 @@ void rt_canvas_disc(void *canvas_ptr, int64_t cx, int64_t cy, int64_t radius, in
     rt_canvas *canvas = (rt_canvas *)canvas_ptr;
     if (canvas->gfx_win) {
         rt_canvas_resync_window_state(canvas);
+        if (radius < 0 || !rtg_i64_fits_i32(cx) || !rtg_i64_fits_i32(cy) ||
+            !rtg_i64_fits_i32(radius))
+            return;
         vgfx_fill_circle(
             canvas->gfx_win, (int32_t)cx, (int32_t)cy, (int32_t)radius, (vgfx_color_t)color);
     }
@@ -207,6 +304,9 @@ void rt_canvas_ring(void *canvas_ptr, int64_t cx, int64_t cy, int64_t radius, in
     rt_canvas *canvas = (rt_canvas *)canvas_ptr;
     if (canvas->gfx_win) {
         rt_canvas_resync_window_state(canvas);
+        if (radius < 0 || !rtg_i64_fits_i32(cx) || !rtg_i64_fits_i32(cy) ||
+            !rtg_i64_fits_i32(radius))
+            return;
         vgfx_circle(
             canvas->gfx_win, (int32_t)cx, (int32_t)cy, (int32_t)radius, (vgfx_color_t)color);
     }
@@ -220,6 +320,10 @@ void rt_canvas_plot(void *canvas_ptr, int64_t x, int64_t y, int64_t color) {
     rt_canvas *canvas = (rt_canvas *)canvas_ptr;
     if (canvas->gfx_win) {
         rt_canvas_resync_window_state(canvas);
+        int64_t w = 1;
+        int64_t h = 1;
+        if (!rt_canvas_clip_intersect_logical(canvas, &x, &y, &w, &h))
+            return;
         vgfx_pset(canvas->gfx_win, (int32_t)x, (int32_t)y, (vgfx_color_t)color);
     }
 }
@@ -289,8 +393,8 @@ int64_t rt_color_rgba(int64_t r, int64_t g, int64_t b, int64_t a) {
     uint8_t g8 = (g < 0) ? 0 : (g > 255) ? 255 : (uint8_t)g;
     uint8_t b8 = (b < 0) ? 0 : (b > 255) ? 255 : (uint8_t)b;
     uint8_t a8 = (a < 0) ? 0 : (a > 255) ? 255 : (uint8_t)a;
-    int64_t packed = (int64_t)(((uint32_t)a8 << 24) | ((uint32_t)r8 << 16) | ((uint32_t)g8 << 8) |
-                               (uint32_t)b8);
+    int64_t packed =
+        (int64_t)(((uint32_t)a8 << 24) | ((uint32_t)r8 << 16) | ((uint32_t)g8 << 8) | (uint32_t)b8);
     if (a8 == 0)
         packed |= RT_COLOR_EXPLICIT_ALPHA_FLAG;
     return packed;
@@ -538,6 +642,8 @@ void rt_canvas_box_alpha(
 
     if (alpha <= 0)
         return;
+    if (!rt_canvas_clip_intersect_logical(canvas, &x, &y, &w, &h))
+        return;
     if (alpha >= 255) {
         vgfx_fill_rect(
             canvas->gfx_win, (int32_t)x, (int32_t)y, (int32_t)w, (int32_t)h, (vgfx_color_t)color);
@@ -546,8 +652,10 @@ void rt_canvas_box_alpha(
 
     uint32_t argb = ((uint32_t)(alpha & 0xFF) << 24) | ((uint32_t)color & 0x00FFFFFF);
 
-    for (int64_t py = y; py < y + h; py++) {
-        for (int64_t px = x; px < x + w; px++) {
+    int64_t y_end = y + h;
+    int64_t x_end = x + w;
+    for (int64_t py = y; py < y_end; py++) {
+        for (int64_t px = x; px < x_end; px++) {
             vgfx_pset_alpha(canvas->gfx_win, (int32_t)px, (int32_t)py, argb);
         }
     }
@@ -565,20 +673,49 @@ void rt_canvas_disc_alpha(
 
     if (alpha <= 0)
         return;
-    if (alpha >= 255) {
+    if (alpha >= 255 && rtg_i64_fits_i32(cx) && rtg_i64_fits_i32(cy) && rtg_i64_fits_i32(radius)) {
         vgfx_fill_circle(
             canvas->gfx_win, (int32_t)cx, (int32_t)cy, (int32_t)radius, (vgfx_color_t)color);
         return;
     }
 
     uint32_t argb = ((uint32_t)(alpha & 0xFF) << 24) | ((uint32_t)color & 0x00FFFFFF);
-    int64_t r2 = radius * radius;
 
-    for (int64_t dy = -radius; dy <= radius; dy++) {
-        for (int64_t dx = -radius; dx <= radius; dx++) {
-            if (dx * dx + dy * dy <= r2) {
-                vgfx_pset_alpha(canvas->gfx_win, (int32_t)(cx + dx), (int32_t)(cy + dy), argb);
-            }
+    int64_t clip_x = 0;
+    int64_t clip_y = 0;
+    int64_t clip_w = 0;
+    int64_t clip_h = 0;
+    if (!rt_canvas_get_logical_clip_bounds(canvas, &clip_x, &clip_y, &clip_w, &clip_h))
+        return;
+    int64_t y0 = rtg_sub_nonneg_sat64(cy, radius);
+    int64_t y1 = rtg_add_sat64(cy, radius);
+    int64_t clip_y1 = rtg_add_sat64(clip_y, clip_h) - 1;
+    if (y0 < clip_y)
+        y0 = clip_y;
+    if (y1 > clip_y1)
+        y1 = clip_y1;
+    if (y1 < y0)
+        return;
+
+    long double r2 = (long double)radius * (long double)radius;
+    for (int64_t py = y0; py <= y1; py++) {
+        long double dy = (long double)py - (long double)cy;
+        long double rem = r2 - dy * dy;
+        if (rem < 0.0L)
+            continue;
+        long double dx = sqrtl(rem);
+        int64_t x0 = rt_canvas_floor_ld_to_i64_sat((long double)cx - dx);
+        int64_t x1 = rt_canvas_ceil_ld_to_i64_sat((long double)cx + dx);
+        int64_t clip_x1 = rtg_add_sat64(clip_x, clip_w) - 1;
+        if (x0 < clip_x)
+            x0 = clip_x;
+        if (x1 > clip_x1)
+            x1 = clip_x1;
+        for (int64_t px = x0; px <= x1; px++) {
+            if (alpha >= 255)
+                vgfx_pset(canvas->gfx_win, (int32_t)px, (int32_t)py, (vgfx_color_t)color);
+            else
+                vgfx_pset_alpha(canvas->gfx_win, (int32_t)px, (int32_t)py, argb);
         }
     }
 }
@@ -609,30 +746,16 @@ static int8_t rt_canvas_prepare_blit_region(rt_canvas *canvas,
                                             int64_t *sy,
                                             int64_t *w,
                                             int64_t *h) {
-    if (!canvas || !canvas->gfx_win || !pixels || !pixels->data || !dx || !dy || !sx || !sy ||
-        !w || !h)
+    if (!canvas || !canvas->gfx_win || !pixels || !pixels->data || !dx || !dy || !sx || !sy || !w ||
+        !h)
         return 0;
 
     if (*w <= 0 || *h <= 0)
         return 0;
 
-    if (*sx < 0) {
-        int64_t skip = -*sx;
-        *dx += skip;
-        *w -= skip;
-        *sx = 0;
-    }
-    if (*sy < 0) {
-        int64_t skip = -*sy;
-        *dy += skip;
-        *h -= skip;
-        *sy = 0;
-    }
-    if (*sx + *w > pixels->width)
-        *w = pixels->width - *sx;
-    if (*sy + *h > pixels->height)
-        *h = pixels->height - *sy;
-    if (*w <= 0 || *h <= 0)
+    int64_t dummy_limit = INT64_MAX;
+    if (!rtg_clip_copy_axis(dummy_limit, pixels->width, dx, sx, w) ||
+        !rtg_clip_copy_axis(dummy_limit, pixels->height, dy, sy, h))
         return 0;
 
     int64_t clip_x = 0;
@@ -643,23 +766,29 @@ static int8_t rt_canvas_prepare_blit_region(rt_canvas *canvas,
         return 0;
 
     if (*dx < clip_x) {
-        int64_t skip = clip_x - *dx;
+        int64_t skip = *dx == INT64_MIN ? *w : clip_x - *dx;
+        if (skip >= *w)
+            return 0;
         *sx += skip;
         *w -= skip;
         *dx = clip_x;
     }
     if (*dy < clip_y) {
-        int64_t skip = clip_y - *dy;
+        int64_t skip = *dy == INT64_MIN ? *h : clip_y - *dy;
+        if (skip >= *h)
+            return 0;
         *sy += skip;
         *h -= skip;
         *dy = clip_y;
     }
 
-    int64_t clip_x1 = clip_x + clip_w;
-    int64_t clip_y1 = clip_y + clip_h;
-    if (*dx + *w > clip_x1)
+    int64_t clip_x1 = rtg_add_sat64(clip_x, clip_w);
+    int64_t clip_y1 = rtg_add_sat64(clip_y, clip_h);
+    if (*dx >= clip_x1 || *dy >= clip_y1)
+        return 0;
+    if (*w > clip_x1 - *dx)
         *w = clip_x1 - *dx;
-    if (*dy + *h > clip_y1)
+    if (*h > clip_y1 - *dy)
         *h = clip_y1 - *dy;
 
     return *w > 0 && *h > 0;
@@ -920,6 +1049,8 @@ int64_t rt_canvas_get_pixel(void *canvas_ptr, int64_t x, int64_t y) {
         return 0;
 
     rt_canvas_resync_window_state(canvas);
+    if (!rtg_i64_fits_i32(x) || !rtg_i64_fits_i32(y))
+        return 0;
 
     vgfx_color_t color;
     if (vgfx_point(canvas->gfx_win, (int32_t)x, (int32_t)y, &color) != 0) {
@@ -969,7 +1100,7 @@ void *rt_canvas_copy_rect(void *canvas_ptr, int64_t x, int64_t y, int64_t w, int
     rt_pixels_impl *pix = (rt_pixels_impl *)pixels;
 
     for (int64_t py = 0; py < h; py++) {
-        int64_t src_y = rtg_scale_up_i64(y + py, scale);
+        int64_t src_y = rtg_scale_up_i64(rtg_add_sat64(y, py), scale);
         if (src_y < 0 || src_y >= fb.height)
             continue;
 
@@ -977,7 +1108,7 @@ void *rt_canvas_copy_rect(void *canvas_ptr, int64_t x, int64_t y, int64_t w, int
         uint32_t *dst_row = &pix->data[(size_t)(py * w)];
 
         for (int64_t px = 0; px < w; px++) {
-            int64_t src_x = rtg_scale_up_i64(x + px, scale);
+            int64_t src_x = rtg_scale_up_i64(rtg_add_sat64(x, px), scale);
             if (src_x < 0 || src_x >= fb.width) {
                 dst_row[px] = 0;
                 continue;
@@ -986,8 +1117,8 @@ void *rt_canvas_copy_rect(void *canvas_ptr, int64_t x, int64_t y, int64_t w, int
             uint8_t g = src_row[(size_t)src_x * 4u + 1u];
             uint8_t b = src_row[(size_t)src_x * 4u + 2u];
             uint8_t a = src_row[(size_t)src_x * 4u + 3u];
-            dst_row[px] = ((uint32_t)r << 24) | ((uint32_t)g << 16) | ((uint32_t)b << 8) |
-                          (uint32_t)a;
+            dst_row[px] =
+                ((uint32_t)r << 24) | ((uint32_t)g << 16) | ((uint32_t)b << 8) | (uint32_t)a;
         }
     }
 

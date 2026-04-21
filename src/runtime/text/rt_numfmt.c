@@ -32,10 +32,17 @@
 #include "rt_internal.h"
 #include "rt_string_builder.h"
 
+#include <inttypes.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+static uint64_t abs_i64_magnitude(int64_t n) {
+    if (n >= 0)
+        return (uint64_t)n;
+    return (uint64_t)(-(n + 1)) + 1;
+}
 
 // ---------------------------------------------------------------------------
 // rt_numfmt_decimals
@@ -360,7 +367,8 @@ rt_string rt_numfmt_to_words(int64_t n) {
 ///          absolute value for unit selection.
 rt_string rt_numfmt_bytes(int64_t bytes) {
     static const char *const units[] = {"B", "KB", "MB", "GB", "TB", "PB", "EB"};
-    double val = (double)(bytes < 0 ? -bytes : bytes);
+    uint64_t magnitude = abs_i64_magnitude(bytes);
+    double val = (double)magnitude;
     int unit_idx = 0;
 
     while (val >= 1024.0 && unit_idx < 6) {
@@ -374,9 +382,9 @@ rt_string rt_numfmt_bytes(int64_t bytes) {
     if (unit_idx == 0) {
         len = snprintf(buf,
                        sizeof(buf),
-                       "%s%lld %s",
+                       "%s%" PRIu64 " %s",
                        bytes < 0 ? "-" : "",
-                       (long long)(bytes < 0 ? -bytes : bytes),
+                       magnitude,
                        units[0]);
     } else {
         if (bytes < 0)
@@ -415,8 +423,10 @@ rt_string rt_numfmt_pad(int64_t n, int64_t width) {
 
     if (n >= 0)
         len = snprintf(buf, sizeof(buf), "%0*lld", (int)width, (long long)n);
-    else
-        len = snprintf(buf, sizeof(buf), "-%0*lld", (int)(width - 1), (long long)(-n));
+    else {
+        uint64_t magnitude = abs_i64_magnitude(n);
+        len = snprintf(buf, sizeof(buf), "-%0*" PRIu64, (int)(width - 1), magnitude);
+    }
 
     if (len < 0)
         len = 0;

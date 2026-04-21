@@ -138,11 +138,11 @@ rt_sb_status_t rt_sb_printf(rt_string_builder *sb, const char *fmt, ...);
 // operating on the embedded rt_string_builder stored inside the opaque
 // object (see rt_sb_bridge.c for the layout and construction helper).
 
-/// @brief Return the builder length (characters) from an opaque StringBuilder object.
+/// @brief Return the builder length in bytes from an opaque StringBuilder object.
 /// @details Exposes StringBuilder.Length to the runtime by reading the embedded
 ///          builder's current length field.
 /// @param sb Opaque StringBuilder object pointer (contains embedded rt_string_builder).
-/// @return Number of characters accumulated (bytes in current encoding).
+/// @return Number of bytes accumulated in the current UTF-8 buffer.
 int64_t rt_text_sb_get_length(void *sb);
 
 /// @brief Return the builder capacity in bytes from an opaque StringBuilder object.

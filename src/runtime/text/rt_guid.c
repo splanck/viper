@@ -33,6 +33,7 @@
 #include "rt_string.h"
 
 #include <ctype.h>
+#include <errno.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -131,9 +132,10 @@ static void get_random_bytes(uint8_t *buf, size_t len) {
 #if defined(_WIN32)
     HCRYPTPROV hProv;
     if (CryptAcquireContext(&hProv, NULL, NULL, PROV_RSA_FULL, CRYPT_VERIFYCONTEXT)) {
-        CryptGenRandom(hProv, (DWORD)len, buf);
+        BOOL ok = CryptGenRandom(hProv, (DWORD)len, buf);
         CryptReleaseContext(hProv, 0);
-        return;
+        if (ok)
+            return;
     }
     // Fallback: thread-safe PRNG (RACE-011 fix)
     fallback_random_bytes(buf, len);
@@ -141,9 +143,19 @@ static void get_random_bytes(uint8_t *buf, size_t len) {
     // Unix and ViperDOS: use /dev/urandom
     int fd = open("/dev/urandom", O_RDONLY);
     if (fd >= 0) {
-        ssize_t result = read(fd, buf, len);
+        size_t off = 0;
+        while (off < len) {
+            ssize_t result = read(fd, buf + off, len - off);
+            if (result > 0) {
+                off += (size_t)result;
+                continue;
+            }
+            if (result < 0 && errno == EINTR)
+                continue;
+            break;
+        }
         close(fd);
-        if (result == (ssize_t)len) {
+        if (off == len) {
             return;
         }
     }
@@ -249,7 +261,7 @@ rt_string rt_guid_new(void) {
 /// @return The nil UUID string "00000000-0000-0000-0000-000000000000".
 ///
 /// @note O(1) time complexity.
-/// @note Returns a constant string (no allocation).
+/// @note Returns a fresh runtime string that the caller owns.
 /// @note The nil UUID is valid according to rt_guid_is_valid.
 ///
 /// @see rt_guid_new For generating unique UUIDs
@@ -305,7 +317,7 @@ int8_t rt_guid_is_valid(rt_string str) {
     }
 
     const char *s = rt_string_cstr(str);
-    if (!s || strlen(s) != 36) {
+    if (!s || rt_str_len(str) != 36) {
         return 0;
     }
 

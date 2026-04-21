@@ -15,7 +15,7 @@
 //     multiple of 4 characters.
 //   - Hex encoding produces lowercase hex pairs; decoding accepts upper or lower.
 //   - URL encoding percent-encodes all characters except A-Z, a-z, 0-9, -, _, ., ~.
-//   - Invalid Base64 or Hex input during decoding returns an empty string.
+//   - Invalid Base64 or Hex input during decoding traps with a diagnostic.
 //   - All functions are thread-safe with no global mutable state.
 //
 // Ownership/Lifetime:
@@ -34,6 +34,7 @@
 #include "rt_string.h"
 
 #include <ctype.h>
+#include <limits.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -105,11 +106,11 @@ static int is_url_unreserved(unsigned char c) {
 ///
 /// @see rt_codec_url_decode For decoding URL-encoded strings
 rt_string rt_codec_url_encode(rt_string str) {
-    const char *input = rt_string_cstr(str);
-    if (!input)
+    if (!str)
         return rt_string_from_bytes("", 0);
 
-    size_t input_len = strlen(input);
+    const char *input = rt_string_cstr(str);
+    size_t input_len = (size_t)rt_str_len(str);
     if (input_len == 0)
         return rt_string_from_bytes("", 0);
 
@@ -119,9 +120,17 @@ rt_string rt_codec_url_encode(rt_string str) {
         unsigned char c = (unsigned char)input[i];
         if (is_url_unreserved(c))
             out_len++;
-        else
+        else {
+            if (out_len > SIZE_MAX - 3)
+                rt_trap("Codec.UrlEncode: output length overflow");
             out_len += 3; // %XX
+            continue;
+        }
+        if (out_len == 0)
+            rt_trap("Codec.UrlEncode: output length overflow");
     }
+    if (out_len == SIZE_MAX)
+        rt_trap("Codec.UrlEncode: output length overflow");
 
     char *out = (char *)malloc(out_len + 1);
     if (!out)
@@ -179,11 +188,11 @@ rt_string rt_codec_url_encode(rt_string str) {
 ///
 /// @see rt_codec_url_encode For encoding strings for URLs
 rt_string rt_codec_url_decode(rt_string str) {
-    const char *input = rt_string_cstr(str);
-    if (!input)
+    if (!str)
         return rt_string_from_bytes("", 0);
 
-    size_t input_len = strlen(input);
+    const char *input = rt_string_cstr(str);
+    size_t input_len = (size_t)rt_str_len(str);
     if (input_len == 0)
         return rt_string_from_bytes("", 0);
 
@@ -262,15 +271,22 @@ rt_string rt_codec_url_decode(rt_string str) {
 ///
 /// @see rt_codec_base64_dec For decoding Base64 strings
 rt_string rt_codec_base64_enc(rt_string str) {
-    const char *input = rt_string_cstr(str);
-    if (!input)
+    if (!str)
         return rt_string_from_bytes("", 0);
 
-    size_t input_len = strlen(input);
+    const char *input = rt_string_cstr(str);
+    size_t input_len = (size_t)rt_str_len(str);
     if (input_len == 0)
         return rt_string_from_bytes("", 0);
 
-    size_t output_len = ((input_len + 2) / 3) * 4;
+    if (input_len > SIZE_MAX - 2)
+        rt_trap("Codec.Base64Enc: output length overflow");
+    size_t groups = (input_len + 2) / 3;
+    if (groups > SIZE_MAX / 4)
+        rt_trap("Codec.Base64Enc: output length overflow");
+    size_t output_len = groups * 4;
+    if (output_len == SIZE_MAX)
+        rt_trap("Codec.Base64Enc: output length overflow");
 
     char *out = (char *)malloc(output_len + 1);
     if (!out)
@@ -350,11 +366,11 @@ rt_string rt_codec_base64_enc(rt_string str) {
 ///
 /// @see rt_codec_base64_enc For encoding strings to Base64
 rt_string rt_codec_base64_dec(rt_string str) {
-    const char *input = rt_string_cstr(str);
-    if (!input)
+    if (!str)
         return rt_string_from_bytes("", 0);
 
-    size_t b64_len = strlen(input);
+    const char *input = rt_string_cstr(str);
+    size_t b64_len = (size_t)rt_str_len(str);
     if (b64_len == 0)
         return rt_string_from_bytes("", 0);
 
@@ -503,14 +519,16 @@ rt_string rt_codec_base64_dec(rt_string str) {
 /// @see rt_codec_hex_dec For decoding hex strings
 /// @see rt_hash_md5 For hashing to hex output
 rt_string rt_codec_hex_enc(rt_string str) {
-    const char *input = rt_string_cstr(str);
-    if (!input)
+    if (!str)
         return rt_string_from_bytes("", 0);
 
-    size_t input_len = strlen(input);
+    const char *input = rt_string_cstr(str);
+    size_t input_len = (size_t)rt_str_len(str);
     if (input_len == 0)
         return rt_string_from_bytes("", 0);
 
+    if (input_len > (SIZE_MAX - 1) / 2)
+        rt_trap("Codec.HexEnc: output length overflow");
     size_t output_len = input_len * 2;
     char *out = (char *)malloc(output_len + 1);
     if (!out)
@@ -540,6 +558,8 @@ rt_string rt_codec_hex_enc_bytes(const uint8_t *data, size_t len) {
     if (!data || len == 0)
         return rt_string_from_bytes("", 0);
 
+    if (len > (SIZE_MAX - 1) / 2)
+        rt_trap("Codec.HexEncBytes: output length overflow");
     size_t output_len = len * 2;
     char *out = (char *)malloc(output_len + 1);
     if (!out)
@@ -593,11 +613,11 @@ rt_string rt_codec_hex_enc_bytes(const uint8_t *data, size_t len) {
 ///
 /// @see rt_codec_hex_enc For encoding strings to hex
 rt_string rt_codec_hex_dec(rt_string str) {
-    const char *input = rt_string_cstr(str);
-    if (!input)
+    if (!str)
         return rt_string_from_bytes("", 0);
 
-    size_t hex_len = strlen(input);
+    const char *input = rt_string_cstr(str);
+    size_t hex_len = (size_t)rt_str_len(str);
     if (hex_len == 0)
         return rt_string_from_bytes("", 0);
 

@@ -49,7 +49,10 @@ static uint8_t pixels_clamp_u8_i64(int64_t value) {
     return (uint8_t)value;
 }
 
-static uint32_t pixels_pack_rgba_pm(int64_t premul_r, int64_t premul_g, int64_t premul_b, int64_t a) {
+static uint32_t pixels_pack_rgba_pm(int64_t premul_r,
+                                    int64_t premul_g,
+                                    int64_t premul_b,
+                                    int64_t a) {
     uint8_t a8 = pixels_clamp_u8_i64(a);
     if (a8 == 0)
         return 0;
@@ -114,18 +117,15 @@ static uint32_t pixels_bilerp_rgba_premul_double(
     if (a <= 0.0)
         return 0;
 
-    double premul_r = (double)((c00 >> 24) & 0xFF) * a00 * w00 +
-                      (double)((c10 >> 24) & 0xFF) * a10 * w10 +
-                      (double)((c01 >> 24) & 0xFF) * a01 * w01 +
-                      (double)((c11 >> 24) & 0xFF) * a11 * w11;
-    double premul_g = (double)((c00 >> 16) & 0xFF) * a00 * w00 +
-                      (double)((c10 >> 16) & 0xFF) * a10 * w10 +
-                      (double)((c01 >> 16) & 0xFF) * a01 * w01 +
-                      (double)((c11 >> 16) & 0xFF) * a11 * w11;
-    double premul_b = (double)((c00 >> 8) & 0xFF) * a00 * w00 +
-                      (double)((c10 >> 8) & 0xFF) * a10 * w10 +
-                      (double)((c01 >> 8) & 0xFF) * a01 * w01 +
-                      (double)((c11 >> 8) & 0xFF) * a11 * w11;
+    double premul_r =
+        (double)((c00 >> 24) & 0xFF) * a00 * w00 + (double)((c10 >> 24) & 0xFF) * a10 * w10 +
+        (double)((c01 >> 24) & 0xFF) * a01 * w01 + (double)((c11 >> 24) & 0xFF) * a11 * w11;
+    double premul_g =
+        (double)((c00 >> 16) & 0xFF) * a00 * w00 + (double)((c10 >> 16) & 0xFF) * a10 * w10 +
+        (double)((c01 >> 16) & 0xFF) * a01 * w01 + (double)((c11 >> 16) & 0xFF) * a11 * w11;
+    double premul_b =
+        (double)((c00 >> 8) & 0xFF) * a00 * w00 + (double)((c10 >> 8) & 0xFF) * a10 * w10 +
+        (double)((c01 >> 8) & 0xFF) * a01 * w01 + (double)((c11 >> 8) & 0xFF) * a11 * w11;
 
     return pixels_pack_rgba_pm((int64_t)(premul_r + 0.5),
                                (int64_t)(premul_g + 0.5),
@@ -133,8 +133,11 @@ static uint32_t pixels_bilerp_rgba_premul_double(
                                (int64_t)(a + 0.5));
 }
 
-static uint32_t pixels_average_rgba_premul(
-    int64_t sum_premul_r, int64_t sum_premul_g, int64_t sum_premul_b, int64_t sum_a, int64_t count) {
+static uint32_t pixels_average_rgba_premul(int64_t sum_premul_r,
+                                           int64_t sum_premul_g,
+                                           int64_t sum_premul_b,
+                                           int64_t sum_a,
+                                           int64_t count) {
     if (count <= 0)
         return 0;
 
@@ -274,7 +277,7 @@ void *rt_pixels_rotate_180(void *pixels) {
     return result;
 }
 
-/// @brief Rotate by an arbitrary `angle_degrees` (positive = counter-clockwise). Output Pixels
+/// @brief Rotate by an arbitrary `angle_degrees` (positive = clockwise). Output Pixels
 /// is sized to fit the rotated rectangle; corners outside become transparent. Bilinear sampling
 /// for smooth interpolation. Returns a NEW Pixels.
 void *rt_pixels_rotate(void *pixels, double angle_degrees) {

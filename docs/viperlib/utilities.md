@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-09
+last-verified: 2026-04-21
 ---
 
 # Utilities
@@ -287,6 +287,7 @@ graceful error handling.
 - `IsInt` and `IsNum` accept optional leading `+` or `-`
 - `TryInt`, `TryNum`, and `TryBool` require an output pointer; frontends without pointer/out parameters should use
   `IntOr`, `NumOr`, `BoolOr`, `IsInt`, or `IsNum` instead.
+- Null input is treated as parse failure: `Try*` returns false, `Is*` returns false, and `*Or`/`IntRadix` returns the supplied default.
 - `IntRadix` supports radix 2-36 (digits 0-9, letters a-z)
 - Leading/trailing whitespace is trimmed before parsing
 

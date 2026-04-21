@@ -15,7 +15,7 @@
 //
 // Ownership/Lifetime:
 //   - Scanner objects are heap-allocated; caller must free after use.
-//   - The source string is borrowed; it must remain valid for the scanner's lifetime.
+//   - The source string is retained by the scanner and released at finalization.
 //
 // Links: src/runtime/text/rt_scanner.c (implementation), src/runtime/core/rt_string.h
 //

@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-20
+last-verified: 2026-04-21
 ---
 
 # Production 2D Graphics
@@ -67,7 +67,7 @@ These classes are CPU-backed in the current runtime and build on `Pixels`, `Canv
 - `Viewport2D.Scale` is fixed-point with `1000` representing `1.0x`. For example, `4000` means `4.0x`.
 - `Texture2D.Filter` uses `0 = nearest`, `1 = linear`.
 - `Texture2D.Wrap` uses `0 = clamp`, `1 = repeat`.
-- Blend modes use `0 = alpha`, `1 = opaque`, `2 = additive`.
+- Blend modes use `0 = alpha`, `1 = opaque`, `2 = additive`. Alpha mode uses straight-alpha source-over, matching `Pixels.BlendPixel` and `Canvas.BlitAlpha`.
 
 ## Render Target And Renderer
 

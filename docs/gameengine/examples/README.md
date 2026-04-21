@@ -67,7 +67,7 @@ Crackman maze chase with smart ghost AI (scatter/chase/frightened modes), dot co
 
 **Engine features:** Canvas, StateMachine, ButtonGroup, Action, Grid2D, Timer, Tween, SmoothValue, ScreenFX, ParticleEmitter
 
-**Source:** [`examples/games/pacman/`](../../../examples/games/pacman/)
+**Source:** [`examples/games/crackman/`](../../../examples/games/crackman/)
 
 ---
 

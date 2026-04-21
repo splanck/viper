@@ -16,12 +16,30 @@
 #include "rt_string.h"
 
 #include <cassert>
+#include <csetjmp>
 #include <cstdio>
 #include <cstring>
 
+namespace {
+static jmp_buf g_trap_jmp;
+static bool g_trap_expected = false;
+} // namespace
+
 extern "C" void vm_trap(const char *msg) {
+    if (g_trap_expected)
+        longjmp(g_trap_jmp, 1);
     rt_abort(msg);
 }
+
+#define EXPECT_TRAP(expr)                                                                          \
+    do {                                                                                           \
+        g_trap_expected = true;                                                                    \
+        if (setjmp(g_trap_jmp) == 0) {                                                             \
+            expr;                                                                                  \
+            assert(false && "Expected trap did not occur");                                        \
+        }                                                                                          \
+        g_trap_expected = false;                                                                   \
+    } while (0)
 
 // ============================================================================
 // Helper
@@ -38,6 +56,11 @@ static const char *str_cstr(rt_string s) {
 static void assert_str_eq(rt_string s, const char *expected) {
     const char *actual = str_cstr(s);
     assert(strcmp(actual, expected) == 0);
+}
+
+static void assert_bytes_eq(rt_string s, const char *expected, size_t expected_len) {
+    assert(rt_str_len(s) == (int64_t)expected_len);
+    assert(memcmp(rt_string_cstr(s), expected, expected_len) == 0);
 }
 
 // ============================================================================
@@ -107,6 +130,33 @@ static void test_parse_line_custom_delimiter() {
     assert_str_eq((rt_string)rt_seq_get(fields, 2), "c");
 
     printf("test_parse_line_custom_delimiter: PASSED\n");
+}
+
+static void test_parse_line_null_or_empty_delimiter_defaults() {
+    void *fields = rt_csv_parse_line_with(make_str("a,b"), NULL);
+
+    assert(rt_seq_len(fields) == 2);
+    assert_str_eq((rt_string)rt_seq_get(fields, 0), "a");
+    assert_str_eq((rt_string)rt_seq_get(fields, 1), "b");
+
+    fields = rt_csv_parse_line_with(make_str("x,y"), make_str(""));
+    assert(rt_seq_len(fields) == 2);
+    assert_str_eq((rt_string)rt_seq_get(fields, 0), "x");
+    assert_str_eq((rt_string)rt_seq_get(fields, 1), "y");
+
+    printf("test_parse_line_null_or_empty_delimiter_defaults: PASSED\n");
+}
+
+static void test_parse_line_embedded_nul() {
+    const char input[] = {'a', '\0', ',', 'b'};
+    void *fields = rt_csv_parse_line(rt_string_from_bytes(input, sizeof(input)));
+
+    assert(rt_seq_len(fields) == 2);
+    const char first[] = {'a', '\0'};
+    assert_bytes_eq((rt_string)rt_seq_get(fields, 0), first, sizeof(first));
+    assert_str_eq((rt_string)rt_seq_get(fields, 1), "b");
+
+    printf("test_parse_line_embedded_nul: PASSED\n");
 }
 
 // ============================================================================
@@ -222,6 +272,43 @@ static void test_format_line_custom_delimiter() {
     printf("test_format_line_custom_delimiter: PASSED\n");
 }
 
+static void test_format_line_null_delimiter_defaults() {
+    void *fields = rt_seq_new();
+    rt_seq_push(fields, (void *)make_str("a"));
+    rt_seq_push(fields, (void *)make_str("b"));
+
+    rt_string result = rt_csv_format_line_with(fields, NULL);
+    assert_str_eq(result, "a,b");
+
+    result = rt_csv_format_line_with(fields, make_str(""));
+    assert_str_eq(result, "a,b");
+
+    printf("test_format_line_null_delimiter_defaults: PASSED\n");
+}
+
+static void test_format_line_null_field_is_empty() {
+    void *fields = rt_seq_new();
+    rt_seq_push(fields, NULL);
+    rt_seq_push(fields, (void *)make_str("b"));
+
+    rt_string result = rt_csv_format_line(fields);
+    assert_str_eq(result, ",b");
+
+    printf("test_format_line_null_field_is_empty: PASSED\n");
+}
+
+static void test_format_line_embedded_nul() {
+    void *fields = rt_seq_new();
+    const char field[] = {'a', '\0', ',', 'b'};
+    rt_seq_push(fields, (void *)rt_string_from_bytes(field, sizeof(field)));
+
+    rt_string result = rt_csv_format_line(fields);
+    const char expected[] = {'"', 'a', '\0', ',', 'b', '"'};
+    assert_bytes_eq(result, expected, sizeof(expected));
+
+    printf("test_format_line_embedded_nul: PASSED\n");
+}
+
 // ============================================================================
 // Format (multi-line) Tests
 // ============================================================================
@@ -291,6 +378,12 @@ static void test_single_field() {
     printf("test_single_field: PASSED\n");
 }
 
+static void test_invalid_char_after_closing_quote_traps() {
+    EXPECT_TRAP(rt_csv_parse_line(make_str("\"a\"b")));
+
+    printf("test_invalid_char_after_closing_quote_traps: PASSED\n");
+}
+
 // ============================================================================
 // Main
 // ============================================================================
@@ -305,6 +398,8 @@ int main() {
     test_parse_line_embedded_comma();
     test_parse_line_empty_fields();
     test_parse_line_custom_delimiter();
+    test_parse_line_null_or_empty_delimiter_defaults();
+    test_parse_line_embedded_nul();
 
     // Parse (multi-line) tests
     test_parse_multiline();
@@ -317,6 +412,9 @@ int main() {
     test_format_line_escape_quotes();
     test_format_line_newline();
     test_format_line_custom_delimiter();
+    test_format_line_null_delimiter_defaults();
+    test_format_line_null_field_is_empty();
+    test_format_line_embedded_nul();
 
     // Format (multi-line) tests
     test_format_multiline();
@@ -328,6 +426,7 @@ int main() {
     // Edge cases
     test_empty_input();
     test_single_field();
+    test_invalid_char_after_closing_quote_traps();
 
     printf("\nAll RTCsvTests passed!\n");
     return 0;

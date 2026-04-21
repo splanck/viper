@@ -112,6 +112,40 @@ static void test_get_dotted() {
     rt_string_unref(path);
 }
 
+static void test_get_deep_dotted_section() {
+    rt_string src = make_str("[a.b.c]\nvalue = \"ok\"\n");
+    void *root = rt_toml_parse(src);
+    assert(root != NULL);
+
+    rt_string path = make_str("a.b.c.value");
+    rt_string val = rt_toml_get_str(root, path);
+    assert(strcmp(rt_string_cstr(val), "ok") == 0);
+
+    rt_string_unref(path);
+}
+
+static void test_invalid_syntax_returns_null() {
+    rt_string missing_section_close = make_str("[server\nhost = \"localhost\"\n");
+    assert(rt_toml_parse(missing_section_close) == NULL);
+    assert(rt_toml_is_valid(missing_section_close) == 0);
+
+    rt_string missing_array_close = make_str("values = [1, 2\n");
+    assert(rt_toml_parse(missing_array_close) == NULL);
+    assert(rt_toml_is_valid(missing_array_close) == 0);
+
+    rt_string duplicate_key = make_str("key = \"one\"\nkey = \"two\"\n");
+    assert(rt_toml_parse(duplicate_key) == NULL);
+    assert(rt_toml_is_valid(duplicate_key) == 0);
+
+    rt_string trailing_section_junk = make_str("[server] junk\nhost = \"localhost\"\n");
+    assert(rt_toml_parse(trailing_section_junk) == NULL);
+    assert(rt_toml_is_valid(trailing_section_junk) == 0);
+
+    rt_string table_conflict = make_str("a = \"scalar\"\n[a.b]\nvalue = \"bad\"\n");
+    assert(rt_toml_parse(table_conflict) == NULL);
+    assert(rt_toml_is_valid(table_conflict) == 0);
+}
+
 static void test_null_safety() {
     assert(rt_toml_parse(NULL) == NULL);
     assert(rt_toml_is_valid(NULL) == 0);
@@ -170,6 +204,8 @@ int main() {
     test_parse_bare_values();
     test_is_valid();
     test_get_dotted();
+    test_get_deep_dotted_section();
+    test_invalid_syntax_returns_null();
     test_null_safety();
     test_empty();
     test_depth_limit();

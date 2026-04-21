@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-09
+last-verified: 2026-04-21
 ---
 
 # Formatting & Generation
@@ -41,6 +41,9 @@ Simple string templating with placeholder substitution.
 - Map values must be boxed strings (created with boxing)
 - Seq values must be boxed strings (created with boxing)
 - Non-string boxed values in the Map/Seq are ignored (placeholder left as-is)
+- Placeholder indices that overflow integer range are ignored (placeholder left as-is)
+- Template rendering and escaping use runtime string byte length, so embedded `NUL` bytes in values are preserved
+- `Escape()` always returns a new string result, even when the input contains no template delimiters
 - Thread safe: all functions are stateless
 
 ### Traps
@@ -186,8 +189,8 @@ many intermediate string objects.
 
 | Property   | Type    | Description                              |
 |------------|---------|------------------------------------------|
-| `Length`   | Integer | Current length of the accumulated string |
-| `Capacity` | Integer | Current buffer capacity                  |
+| `Length`   | Integer | Current byte length of the accumulated string |
+| `Capacity` | Integer | Current buffer capacity in bytes         |
 
 ### Methods
 
@@ -256,6 +259,12 @@ FOR i = 1 TO 1000
     result = result + "item "  ' Creates new string each iteration
 NEXT i
 ```
+
+### Notes
+
+- `Append(NULL)` treats the input as empty; `AppendLine(NULL)` appends just `\n`.
+- `Length` is a byte count, not a Unicode codepoint count.
+- Embedded `NUL` bytes are preserved in appended text and in `ToString()`.
 
 ---
 
@@ -410,6 +419,7 @@ Number formatting utilities for human-readable display of integers and floating-
 - `Bytes` uses binary units: B, KB, MB, GB, TB with two decimal places where appropriate
 - `Currency` adds thousands separators and always shows two decimal places (e.g., `$1,234.56`)
 - `Ordinal` handles special cases: 11th, 12th, 13th (not 11st, 12nd, 13th)
+- `Bytes` and `Pad` handle the full signed 64-bit integer range, including `INT64_MIN`
 - `ToWords` produces hyphenated compound numbers (e.g., "forty-two", "one hundred twenty-three")
 
 ### Zia Example

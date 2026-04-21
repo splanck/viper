@@ -10,9 +10,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "rt_graphics2d.h"
 #include "rt_camera.h"
 #include "rt_graphics.h"
+#include "rt_graphics2d.h"
 #include "rt_internal.h"
 #include "rt_pixels.h"
 #include "rt_sprite.h"
@@ -58,6 +58,14 @@ static void test_render_target_alpha_blend() {
 
     rt_rendertarget2d_draw_region(target, INT64_MAX - 1, 0, src, -1, 0, INT64_MAX, 1);
     assert(rt_pixels_get(rt_rendertarget2d_get_pixels(target), 0, 0) == 0x000000FF);
+
+    rt_rendertarget2d_clear(target, 0x00000000);
+    rt_rendertarget2d_draw_pixels(target, 2, 2, src);
+    int64_t over_transparent = rt_pixels_get(rt_rendertarget2d_get_pixels(target), 2, 2);
+    assert(red_of(over_transparent) == 255);
+    assert(green_of(over_transparent) == 0);
+    assert(blue_of(over_transparent) == 0);
+    assert((over_transparent & 255) >= 127 && (over_transparent & 255) <= 128);
     printf("test_render_target_alpha_blend: PASSED\n");
 }
 
@@ -302,6 +310,21 @@ static void test_animation_collision_palette_gradient_and_rig() {
     printf("test_animation_collision_palette_gradient_and_rig: PASSED\n");
 }
 
+static void test_camera_extreme_arithmetic_saturates() {
+    void *camera = rt_camera_new(INT64_MAX, INT64_MAX);
+    assert(camera != nullptr);
+    rt_camera_follow(camera, INT64_MAX, INT64_MAX);
+    rt_camera_move(camera, INT64_MAX, INT64_MAX);
+    assert(rt_camera_get_x(camera) == INT64_MAX);
+    assert(rt_camera_get_y(camera) == INT64_MAX);
+
+    rt_camera_set_bounds(camera, INT64_MIN, INT64_MIN, INT64_MAX, INT64_MAX);
+    rt_camera_smooth_follow(camera, INT64_MIN, INT64_MIN, 500);
+    assert(rt_camera_get_x(camera) >= INT64_MIN);
+    assert(rt_camera_get_y(camera) >= INT64_MIN);
+    printf("test_camera_extreme_arithmetic_saturates: PASSED\n");
+}
+
 static void test_layout_rendergraph_tile_helpers_and_importers() {
     rt_string text = rt_str_from_lit("Hello", 5);
     void *layout = rt_textlayout2d_new();
@@ -363,6 +386,7 @@ int main() {
     test_paths_shapes_text_nineslice_and_debugdraw();
     test_transform_sampler_blend_and_sprite_renderer();
     test_animation_collision_palette_gradient_and_rig();
+    test_camera_extreme_arithmetic_saturates();
     test_layout_rendergraph_tile_helpers_and_importers();
     printf("RTGraphics2DTests: ALL PASSED\n");
     return 0;

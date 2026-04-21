@@ -105,6 +105,52 @@ static int safe_strlen_int(const char *s) {
     return (int)n;
 }
 
+static int safe_rt_string_len_int(rt_string s) {
+    size_t n = s ? (size_t)rt_str_len(s) : 0;
+    if (n > (size_t)INT_MAX)
+        rt_trap("Pattern: string too long for regex engine");
+    return (int)n;
+}
+
+static const char *pattern_text_or_empty(rt_string text) {
+    return text ? rt_string_cstr(text) : "";
+}
+
+static const char *pattern_required(rt_string pattern) {
+    if (!pattern) {
+        rt_trap("Pattern: null pattern");
+        return "";
+    }
+    return rt_string_cstr(pattern);
+}
+
+static void ensure_result_capacity(char **result,
+                                   size_t *result_cap,
+                                   size_t result_len,
+                                   size_t add,
+                                   const char *trap_msg) {
+    if (add > SIZE_MAX - result_len)
+        rt_trap(trap_msg);
+    size_t needed = result_len + add;
+    if (needed < *result_cap)
+        return;
+    if (needed == SIZE_MAX)
+        rt_trap(trap_msg);
+    size_t new_cap = *result_cap;
+    while (new_cap <= needed) {
+        if (new_cap > SIZE_MAX / 2) {
+            new_cap = needed + 1;
+            break;
+        }
+        new_cap *= 2;
+    }
+    char *tmp = (char *)realloc(*result, new_cap);
+    if (!tmp)
+        rt_trap("Pattern: memory allocation failed");
+    *result = tmp;
+    *result_cap = new_cap;
+}
+
 //=============================================================================
 // Regex AST Node Types
 //=============================================================================
@@ -163,6 +209,8 @@ struct re_compiled_pattern {
     bool anchored_start; // Pattern starts with ^
     bool anchored_end;   // Pattern ends with $
     int group_count;     // Number of capture groups (not including group 0)
+    unsigned int cache_refs;
+    bool cache_linked;
 };
 
 // Local typedef for compatibility with existing code
@@ -1293,58 +1341,82 @@ typedef struct cache_entry {
 static cache_entry pattern_cache[PATTERN_CACHE_SIZE];
 static unsigned long access_counter = 0;
 
-/// @brief Look up or compile a pattern, caching the result in the LRU table.
-///
-/// Searches the 16-entry table for an existing compile of the same
-/// source string; on hit, bumps the access counter and returns it.
-/// On miss, compiles the pattern, evicts the least-recently-used slot
-/// (or fills an empty one), and stores the new compile. The lock is
-/// held for the entire duration to keep the cache consistent under
-/// concurrent calls (S-12). The returned pointer is owned by the
-/// cache — callers must not free it.
 static compiled_pattern *get_cached_pattern(const char *pattern_str) {
-    /* S-12: Lock cache for concurrent access safety */
     pattern_cache_lock();
 
-    // Look for existing pattern
     for (int i = 0; i < PATTERN_CACHE_SIZE; i++) {
         if (pattern_cache[i].pattern &&
             strcmp(pattern_cache[i].pattern->pattern_str, pattern_str) == 0) {
             pattern_cache[i].access_count = ++access_counter;
             compiled_pattern *found = pattern_cache[i].pattern;
+            found->cache_refs++;
             pattern_cache_unlock();
             return found;
         }
     }
 
-    // Compile new pattern (outside lock would be better, but kept simple here)
+    pattern_cache_unlock();
     compiled_pattern *cp = compile_pattern(pattern_str);
+    cp->cache_refs = 1;
+    cp->cache_linked = false;
 
-    // Find slot (empty or LRU)
-    int slot = 0;
+    pattern_cache_lock();
+
+    for (int i = 0; i < PATTERN_CACHE_SIZE; i++) {
+        if (pattern_cache[i].pattern &&
+            strcmp(pattern_cache[i].pattern->pattern_str, pattern_str) == 0) {
+            pattern_cache[i].access_count = ++access_counter;
+            compiled_pattern *found = pattern_cache[i].pattern;
+            found->cache_refs++;
+            pattern_cache_unlock();
+            pattern_free(cp);
+            return found;
+        }
+    }
+
+    int slot = -1;
     unsigned long min_access = ULONG_MAX;
     for (int i = 0; i < PATTERN_CACHE_SIZE; i++) {
         if (!pattern_cache[i].pattern) {
             slot = i;
-            min_access = 0;
             break;
         }
-        if (pattern_cache[i].access_count < min_access) {
+        if (pattern_cache[i].pattern->cache_refs == 0 &&
+            pattern_cache[i].access_count < min_access) {
             min_access = pattern_cache[i].access_count;
             slot = i;
         }
     }
 
-    // Evict if necessary
+    if (slot < 0) {
+        pattern_cache_unlock();
+        return cp;
+    }
+
     if (pattern_cache[slot].pattern) {
+        pattern_cache[slot].pattern->cache_linked = false;
         pattern_free(pattern_cache[slot].pattern);
     }
 
+    cp->cache_linked = true;
     pattern_cache[slot].pattern = cp;
     pattern_cache[slot].access_count = ++access_counter;
 
     pattern_cache_unlock();
     return cp;
+}
+
+static void release_cached_pattern(compiled_pattern *cp) {
+    if (!cp)
+        return;
+    bool should_free = false;
+    pattern_cache_lock();
+    if (cp->cache_refs > 0)
+        cp->cache_refs--;
+    should_free = (cp->cache_refs == 0 && !cp->cache_linked);
+    pattern_cache_unlock();
+    if (should_free)
+        pattern_free(cp);
 }
 
 //=============================================================================
@@ -1353,50 +1425,42 @@ static compiled_pattern *get_cached_pattern(const char *pattern_str) {
 
 /// @brief Test whether a regex pattern matches anywhere in the text.
 int8_t rt_pattern_is_match(rt_string text, rt_string pattern) {
-    const char *pat_str = rt_string_cstr(pattern);
-    const char *txt_str = rt_string_cstr(text);
-
-    if (!pat_str)
-        rt_trap("Pattern: null pattern");
-    if (!txt_str)
-        txt_str = "";
+    const char *pat_str = pattern_required(pattern);
+    const char *txt_str = pattern_text_or_empty(text);
+    int text_len = safe_rt_string_len_int(text);
 
     compiled_pattern *cp = get_cached_pattern(pat_str);
     int match_start, match_end;
-    return find_match(cp, txt_str, safe_strlen_int(txt_str), 0, &match_start, &match_end);
+    int8_t matched = find_match(cp, txt_str, text_len, 0, &match_start, &match_end) ? 1 : 0;
+    release_cached_pattern(cp);
+    return matched;
 }
 
 /// @brief Find the first match of a regex pattern in the text (empty string if no match).
 rt_string rt_pattern_find(rt_string text, rt_string pattern) {
-    const char *pat_str = rt_string_cstr(pattern);
-    const char *txt_str = rt_string_cstr(text);
-
-    if (!pat_str)
-        rt_trap("Pattern: null pattern");
-    if (!txt_str)
-        txt_str = "";
+    const char *pat_str = pattern_required(pattern);
+    const char *txt_str = pattern_text_or_empty(text);
 
     compiled_pattern *cp = get_cached_pattern(pat_str);
-    int text_len = safe_strlen_int(txt_str);
+    int text_len = safe_rt_string_len_int(text);
     int match_start, match_end;
+    rt_string result;
 
     if (find_match(cp, txt_str, text_len, 0, &match_start, &match_end)) {
-        return rt_string_from_bytes(txt_str + match_start, match_end - match_start);
+        result = rt_string_from_bytes(txt_str + match_start, match_end - match_start);
+    } else {
+        result = rt_const_cstr("");
     }
-    return rt_const_cstr("");
+    release_cached_pattern(cp);
+    return result;
 }
 
 /// @brief Find the first match starting at or after the given byte offset.
 rt_string rt_pattern_find_from(rt_string text, rt_string pattern, int64_t start) {
-    const char *pat_str = rt_string_cstr(pattern);
-    const char *txt_str = rt_string_cstr(text);
+    const char *pat_str = pattern_required(pattern);
+    const char *txt_str = pattern_text_or_empty(text);
 
-    if (!pat_str)
-        rt_trap("Pattern: null pattern");
-    if (!txt_str)
-        txt_str = "";
-
-    int text_len = safe_strlen_int(txt_str);
+    int text_len = safe_rt_string_len_int(text);
     if (start < 0)
         start = 0;
     if (start > text_len)
@@ -1404,45 +1468,40 @@ rt_string rt_pattern_find_from(rt_string text, rt_string pattern, int64_t start)
 
     compiled_pattern *cp = get_cached_pattern(pat_str);
     int match_start, match_end;
+    rt_string result;
 
     if (find_match(cp, txt_str, text_len, (int)start, &match_start, &match_end)) {
-        return rt_string_from_bytes(txt_str + match_start, match_end - match_start);
+        result = rt_string_from_bytes(txt_str + match_start, match_end - match_start);
+    } else {
+        result = rt_const_cstr("");
     }
-    return rt_const_cstr("");
+    release_cached_pattern(cp);
+    return result;
 }
 
 /// @brief Find the byte position of the first match (-1 if no match).
 int64_t rt_pattern_find_pos(rt_string text, rt_string pattern) {
-    const char *pat_str = rt_string_cstr(pattern);
-    const char *txt_str = rt_string_cstr(text);
-
-    if (!pat_str)
-        rt_trap("Pattern: null pattern");
-    if (!txt_str)
-        txt_str = "";
+    const char *pat_str = pattern_required(pattern);
+    const char *txt_str = pattern_text_or_empty(text);
 
     compiled_pattern *cp = get_cached_pattern(pat_str);
     int match_start, match_end;
+    int64_t result = -1;
 
-    if (find_match(cp, txt_str, safe_strlen_int(txt_str), 0, &match_start, &match_end)) {
-        return (int64_t)match_start;
-    }
-    return -1;
+    if (find_match(cp, txt_str, safe_rt_string_len_int(text), 0, &match_start, &match_end))
+        result = (int64_t)match_start;
+    release_cached_pattern(cp);
+    return result;
 }
 
 /// @brief Find all non-overlapping matches and return them as a sequence of strings.
 void *rt_pattern_find_all(rt_string text, rt_string pattern) {
-    const char *pat_str = rt_string_cstr(pattern);
-    const char *txt_str = rt_string_cstr(text);
-
-    if (!pat_str)
-        rt_trap("Pattern: null pattern");
-    if (!txt_str)
-        txt_str = "";
+    const char *pat_str = pattern_required(pattern);
+    const char *txt_str = pattern_text_or_empty(text);
 
     void *seq = rt_seq_new();
     compiled_pattern *cp = get_cached_pattern(pat_str);
-    int text_len = safe_strlen_int(txt_str);
+    int text_len = safe_rt_string_len_int(text);
     int pos = 0;
 
     while (pos <= text_len) {
@@ -1457,28 +1516,24 @@ void *rt_pattern_find_all(rt_string text, rt_string pattern) {
         pos = match_end > match_start ? match_end : match_start + 1;
     }
 
+    release_cached_pattern(cp);
     return seq;
 }
 
 /// @brief Replace all matches of a regex pattern with the replacement string.
 rt_string rt_pattern_replace(rt_string text, rt_string pattern, rt_string replacement) {
-    const char *pat_str = rt_string_cstr(pattern);
-    const char *txt_str = rt_string_cstr(text);
-    const char *rep_str = rt_string_cstr(replacement);
-
-    if (!pat_str)
-        rt_trap("Pattern: null pattern");
-    if (!txt_str)
-        txt_str = "";
-    if (!rep_str)
-        rep_str = "";
+    const char *pat_str = pattern_required(pattern);
+    const char *txt_str = pattern_text_or_empty(text);
+    const char *rep_str = pattern_text_or_empty(replacement);
 
     compiled_pattern *cp = get_cached_pattern(pat_str);
-    int text_len = safe_strlen_int(txt_str);
-    int rep_len = safe_strlen_int(rep_str);
+    int text_len = safe_rt_string_len_int(text);
+    int rep_len = safe_rt_string_len_int(replacement);
 
     // Build result
-    size_t result_cap = text_len + 64;
+    size_t result_cap = (size_t)text_len + 64;
+    if (result_cap < (size_t)text_len)
+        rt_trap("Pattern: replacement length overflow");
     char *result = (char *)malloc(result_cap);
     if (!result)
         rt_trap("Pattern: memory allocation failed");
@@ -1490,12 +1545,8 @@ rt_string rt_pattern_replace(rt_string text, rt_string pattern, rt_string replac
         if (!find_match(cp, txt_str, text_len, pos, &match_start, &match_end)) {
             // Copy rest of text
             size_t remaining = text_len - pos;
-            if (result_len + remaining >= result_cap) {
-                result_cap = result_len + remaining + 1;
-                result = (char *)realloc(result, result_cap);
-                if (!result)
-                    rt_trap("Pattern: memory allocation failed");
-            }
+            ensure_result_capacity(
+                &result, &result_cap, result_len, remaining, "Pattern: replacement length overflow");
             memcpy(result + result_len, txt_str + pos, remaining);
             result_len += remaining;
             break;
@@ -1503,12 +1554,11 @@ rt_string rt_pattern_replace(rt_string text, rt_string pattern, rt_string replac
 
         // Copy text before match
         size_t before_len = match_start - pos;
-        if (result_len + before_len + rep_len >= result_cap) {
-            result_cap = (result_len + before_len + rep_len) * 2 + 64;
-            result = (char *)realloc(result, result_cap);
-            if (!result)
-                rt_trap("Pattern: memory allocation failed");
-        }
+        ensure_result_capacity(&result,
+                               &result_cap,
+                               result_len,
+                               before_len + (size_t)rep_len,
+                               "Pattern: replacement length overflow");
         memcpy(result + result_len, txt_str + pos, before_len);
         result_len += before_len;
 
@@ -1522,34 +1572,36 @@ rt_string rt_pattern_replace(rt_string text, rt_string pattern, rt_string replac
 
     rt_string out = rt_string_from_bytes(result, result_len);
     free(result);
+    release_cached_pattern(cp);
     return out;
 }
 
 /// @brief Replace only the first match of a regex pattern with the replacement string.
 rt_string rt_pattern_replace_first(rt_string text, rt_string pattern, rt_string replacement) {
-    const char *pat_str = rt_string_cstr(pattern);
-    const char *txt_str = rt_string_cstr(text);
-    const char *rep_str = rt_string_cstr(replacement);
-
-    if (!pat_str)
-        rt_trap("Pattern: null pattern");
-    if (!txt_str)
-        txt_str = "";
-    if (!rep_str)
-        rep_str = "";
+    const char *pat_str = pattern_required(pattern);
+    const char *txt_str = pattern_text_or_empty(text);
+    const char *rep_str = pattern_text_or_empty(replacement);
 
     compiled_pattern *cp = get_cached_pattern(pat_str);
-    int text_len = safe_strlen_int(txt_str);
-    int rep_len = safe_strlen_int(rep_str);
+    int text_len = safe_rt_string_len_int(text);
+    int rep_len = safe_rt_string_len_int(replacement);
 
     int match_start, match_end;
     if (!find_match(cp, txt_str, text_len, 0, &match_start, &match_end)) {
         // No match, return original
-        return rt_string_from_bytes(txt_str, text_len);
+        rt_string out = rt_string_from_bytes(txt_str, text_len);
+        release_cached_pattern(cp);
+        return out;
     }
 
     // Build result: before + replacement + after
-    size_t result_len = match_start + rep_len + (text_len - match_end);
+    size_t result_len = (size_t)match_start;
+    if ((size_t)rep_len > SIZE_MAX - result_len ||
+        (size_t)(text_len - match_end) > SIZE_MAX - result_len - (size_t)rep_len)
+        rt_trap("Pattern: replacement length overflow");
+    result_len += (size_t)rep_len + (size_t)(text_len - match_end);
+    if (result_len == SIZE_MAX)
+        rt_trap("Pattern: replacement length overflow");
     char *result = (char *)malloc(result_len + 1);
     if (!result)
         rt_trap("Pattern: memory allocation failed");
@@ -1560,22 +1612,18 @@ rt_string rt_pattern_replace_first(rt_string text, rt_string pattern, rt_string 
 
     rt_string out = rt_string_from_bytes(result, result_len);
     free(result);
+    release_cached_pattern(cp);
     return out;
 }
 
 /// @brief Split a string by a regex pattern, returning a sequence of substrings.
 void *rt_pattern_split(rt_string text, rt_string pattern) {
-    const char *pat_str = rt_string_cstr(pattern);
-    const char *txt_str = rt_string_cstr(text);
-
-    if (!pat_str)
-        rt_trap("Pattern: null pattern");
-    if (!txt_str)
-        txt_str = "";
+    const char *pat_str = pattern_required(pattern);
+    const char *txt_str = pattern_text_or_empty(text);
 
     void *seq = rt_seq_new();
     compiled_pattern *cp = get_cached_pattern(pat_str);
-    int text_len = safe_strlen_int(txt_str);
+    int text_len = safe_rt_string_len_int(text);
     int pos = 0;
 
     while (pos <= text_len) {
@@ -1605,16 +1653,15 @@ void *rt_pattern_split(rt_string text, rt_string pattern) {
         rt_seq_push(seq, (void *)rt_string_from_bytes(txt_str, text_len));
     }
 
+    release_cached_pattern(cp);
     return seq;
 }
 
 /// @brief Escape all regex metacharacters in a string so it matches literally.
 rt_string rt_pattern_escape(rt_string text) {
-    const char *txt_str = rt_string_cstr(text);
-    if (!txt_str)
-        txt_str = "";
+    const char *txt_str = pattern_text_or_empty(text);
 
-    int text_len = safe_strlen_int(txt_str);
+    int text_len = safe_rt_string_len_int(text);
 
     // Count special characters
     int special_count = 0;

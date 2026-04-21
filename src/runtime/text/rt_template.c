@@ -14,7 +14,7 @@
 //   - Default placeholder delimiters are "{{" and "}}".
 //   - RenderWith allows custom open/close delimiters for any character pair.
 //   - Keys are whitespace-trimmed before lookup: "{{ name }}" == "{{name}}".
-//   - Missing keys are left as-is in the output (not replaced with empty).
+//   - Missing or non-string keys are left as-is in the output.
 //   - Seq-based rendering replaces "{{0}}", "{{1}}" with seq elements by index.
 //   - All functions are thread-safe with no global mutable state.
 //
@@ -47,9 +47,8 @@
 
 #include "rt_trap.h"
 
-/// @brief Safely cast strlen() result to int, trapping on overflow.
-static int safe_strlen_int(const char *s) {
-    size_t n = strlen(s);
+/// @brief Safely cast a byte length to int, trapping on overflow.
+static int safe_size_to_int(size_t n) {
     if (n > (size_t)INT_MAX)
         rt_trap("Template: string too long");
     return (int)n;
@@ -94,9 +93,10 @@ static int64_t parse_index(const char *s, int len) {
     for (int i = 0; i < len; i++) {
         if (!isdigit((unsigned char)s[i]))
             return -1;
-        result = result * 10 + (s[i] - '0');
-        if (result > INT64_MAX / 10)
+        int digit = s[i] - '0';
+        if (result > (INT64_MAX - digit) / 10)
             return -1; // Overflow protection
+        result = result * 10 + digit;
     }
     return result;
 }
@@ -226,8 +226,10 @@ static rt_string render_internal(const char *tmpl,
                 boxed_value = rt_map_get(values, key);
                 found = true;
             }
+            rt_string_unref(key);
         }
 
+        bool rendered = false;
         if (found && boxed_value) {
             // Handle both boxed strings and raw rt_string handles
             // Map may store either depending on how Set was called
@@ -236,7 +238,8 @@ static rt_string render_internal(const char *tmpl,
                 rt_string value = (rt_string)boxed_value;
                 const char *val_str = rt_string_cstr(value);
                 if (val_str) {
-                    rt_sb_append_cstr(&sb, val_str);
+                    rt_sb_append_bytes(&sb, val_str, (size_t)rt_str_len(value));
+                    rendered = true;
                 }
             } else if (rt_box_type(boxed_value) == RT_BOX_STR) {
                 // Boxed string - unbox to get the actual string
@@ -244,12 +247,14 @@ static rt_string render_internal(const char *tmpl,
                 if (value) {
                     const char *val_str = rt_string_cstr(value);
                     if (val_str) {
-                        rt_sb_append_cstr(&sb, val_str);
+                        rt_sb_append_bytes(&sb, val_str, (size_t)rt_str_len(value));
+                        rendered = true;
                     }
                     rt_string_unref(value); // Release the retained string from unbox
                 }
             }
-        } else {
+        }
+        if (!rendered) {
             // Key not found, leave placeholder as-is
             rt_sb_append_bytes(&sb, tmpl + start, end + suffix_len - start);
         }
@@ -283,7 +288,7 @@ rt_string rt_template_render(rt_string tmpl, void *values) {
     if (!tmpl_str)
         tmpl_str = "";
 
-    int tmpl_len = safe_strlen_int(tmpl_str);
+    int tmpl_len = safe_size_to_int((size_t)rt_str_len(tmpl));
 
     return render_internal(tmpl_str, tmpl_len, values, false, "{{", 2, "}}", 2);
 }
@@ -299,7 +304,7 @@ rt_string rt_template_render_seq(rt_string tmpl, void *values) {
     if (!tmpl_str)
         tmpl_str = "";
 
-    int tmpl_len = safe_strlen_int(tmpl_str);
+    int tmpl_len = safe_size_to_int((size_t)rt_str_len(tmpl));
 
     return render_internal(tmpl_str, tmpl_len, values, true, "{{", 2, "}}", 2);
 }
@@ -330,9 +335,9 @@ rt_string rt_template_render_with(rt_string tmpl,
     if (!suffix_str)
         suffix_str = "";
 
-    int tmpl_len = safe_strlen_int(tmpl_str);
-    int prefix_len = safe_strlen_int(prefix_str);
-    int suffix_len = safe_strlen_int(suffix_str);
+    int tmpl_len = safe_size_to_int((size_t)rt_str_len(tmpl));
+    int prefix_len = safe_size_to_int((size_t)rt_str_len(prefix));
+    int suffix_len = safe_size_to_int((size_t)rt_str_len(suffix));
 
     if (prefix_len == 0)
         rt_trap("Template.RenderWith: prefix is empty");
@@ -358,8 +363,8 @@ int8_t rt_template_has(rt_string tmpl, rt_string key) {
     if (!key_str)
         return 0;
 
-    int tmpl_len = safe_strlen_int(tmpl_str);
-    int key_len = safe_strlen_int(key_str);
+    int tmpl_len = safe_size_to_int((size_t)rt_str_len(tmpl));
+    int key_len = safe_size_to_int((size_t)rt_str_len(key));
 
     if (key_len == 0)
         return 0;
@@ -403,7 +408,7 @@ void *rt_template_keys(rt_string tmpl) {
     if (!tmpl_str)
         return bag;
 
-    int tmpl_len = safe_strlen_int(tmpl_str);
+    int tmpl_len = safe_size_to_int((size_t)rt_str_len(tmpl));
 
     int pos = 0;
     while (pos < tmpl_len) {
@@ -442,7 +447,7 @@ rt_string rt_template_escape(rt_string text) {
     if (!txt_str)
         return rt_const_cstr("");
 
-    int txt_len = safe_strlen_int(txt_str);
+    int txt_len = safe_size_to_int((size_t)rt_str_len(text));
 
     // Count {{ and }} occurrences
     int escape_count = 0;
@@ -455,9 +460,11 @@ rt_string rt_template_escape(rt_string text) {
     }
 
     if (escape_count == 0)
-        return text;
+        return rt_string_from_bytes(txt_str, (size_t)txt_len);
 
     // Allocate result (each {{ or }} becomes {{{{ or }}}})
+    if (escape_count > (INT_MAX - txt_len) / 2)
+        rt_trap("Template.Escape: output length overflow");
     int result_len = txt_len + escape_count * 2;
     char *result = (char *)malloc(result_len + 1);
     if (!result)

@@ -36,7 +36,9 @@
 #include "rt_seq.h"
 #include "rt_string.h"
 
+#include <limits.h>
 #include <stdbool.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -46,23 +48,36 @@
 /// @brief Extract an rt_string from a value that may be a boxed string or raw string.
 /// @details Checks if the pointer is a boxed string (tag == RT_BOX_STR) and unboxes it,
 ///          otherwise treats it as a raw rt_string.
-static rt_string csv_extract_string(void *val) {
+static rt_string csv_extract_string(void *val, bool *owned) {
+    if (owned)
+        *owned = false;
     if (!val)
         return NULL;
+    if (rt_string_is_handle(val))
+        return (rt_string)val;
     // Check if the value is a boxed string (first 8 bytes = tag 0-3)
     int64_t tag = *(int64_t *)val;
-    if (tag == RT_BOX_STR)
+    if (tag == RT_BOX_STR) {
+        if (owned)
+            *owned = true;
         return rt_unbox_str(val);
+    }
     // Treat as raw rt_string
     return (rt_string)val;
 }
 
 /// @brief Get delimiter character from string.
 static char get_delim(rt_string delim) {
+    if (!delim || rt_str_len(delim) <= 0)
+        return DEFAULT_DELIMITER;
     const char *s = rt_string_cstr(delim);
-    if (s && s[0] != '\0')
-        return s[0];
-    return DEFAULT_DELIMITER;
+    return s[0] != '\0' ? s[0] : DEFAULT_DELIMITER;
+}
+
+static void csv_checked_add(size_t *total, size_t add, const char *op) {
+    if (*total > SIZE_MAX - add)
+        rt_trap(op);
+    *total += add;
 }
 
 /// @brief Check if field needs quoting for CSV output.
@@ -161,6 +176,10 @@ static rt_string parse_field(csv_parser *p, bool *at_line_end) {
                     // Escaped quote - consume and add single quote
                     parser_consume(p);
                     if (len + 1 >= cap) {
+                        if (cap > SIZE_MAX / 2) {
+                            free(buf);
+                            rt_trap("Csv.Parse: field length overflow");
+                        }
                         cap *= 2;
                         char *tmp = (char *)realloc(buf, cap);
                         if (!tmp) {
@@ -177,6 +196,10 @@ static rt_string parse_field(csv_parser *p, bool *at_line_end) {
             } else {
                 // Regular character (including newlines in quoted fields)
                 if (len + 1 >= cap) {
+                    if (cap > SIZE_MAX / 2) {
+                        free(buf);
+                        rt_trap("Csv.Parse: field length overflow");
+                    }
                     cap *= 2;
                     char *tmp = (char *)realloc(buf, cap);
                     if (!tmp) {
@@ -206,6 +229,9 @@ static rt_string parse_field(csv_parser *p, bool *at_line_end) {
             } else if (c == '\n') {
                 parser_consume(p);
                 *at_line_end = true;
+            } else {
+                rt_string_unref(result);
+                rt_trap("Csv.Parse: invalid character after closing quote");
             }
         } else {
             *at_line_end = true;
@@ -300,7 +326,10 @@ static size_t calc_field_size(const char *field, size_t field_len, char delim) {
     // 2 for quotes + escaped quotes
     size_t size = 2;
     for (size_t i = 0; i < field_len; i++) {
-        size += (field[i] == '"') ? 2 : 1;
+        size_t add = (field[i] == '"') ? 2 : 1;
+        if (size > SIZE_MAX - add)
+            rt_trap("Csv.Format: output length overflow");
+        size += add;
     }
     return size;
 }
@@ -341,7 +370,7 @@ static size_t calc_field_size(const char *field, size_t field_len, char delim) {
 /// @see rt_csv_parse For parsing multiple lines
 /// @see rt_csv_format_line For the inverse operation
 void *rt_csv_parse_line(rt_string line) {
-    return rt_csv_parse_line_with(line, rt_const_cstr(","));
+    return rt_csv_parse_line_with(line, NULL);
 }
 
 /// @brief Parses a single line of CSV with a custom delimiter.
@@ -380,11 +409,11 @@ void *rt_csv_parse_line(rt_string line) {
 /// @see rt_csv_parse_line For the default comma delimiter
 /// @see rt_csv_parse_with For parsing multiple lines
 void *rt_csv_parse_line_with(rt_string line, rt_string delim) {
-    const char *input = rt_string_cstr(line);
-    if (!input)
+    if (!line)
         return rt_seq_new();
 
-    size_t len = strlen(input);
+    const char *input = rt_string_cstr(line);
+    size_t len = (size_t)rt_str_len(line);
     char d = get_delim(delim);
 
     csv_parser p;
@@ -436,7 +465,7 @@ void *rt_csv_parse_line_with(rt_string line, rt_string delim) {
 /// @see rt_csv_parse_line For parsing a single line
 /// @see rt_csv_format For the inverse operation
 void *rt_csv_parse(rt_string text) {
-    return rt_csv_parse_with(text, rt_const_cstr(","));
+    return rt_csv_parse_with(text, NULL);
 }
 
 /// @brief Parses multi-line CSV text with a custom delimiter.
@@ -470,11 +499,11 @@ void *rt_csv_parse(rt_string text) {
 /// @see rt_csv_parse For the default comma delimiter
 /// @see rt_csv_parse_line_with For parsing a single line
 void *rt_csv_parse_with(rt_string text, rt_string delim) {
-    const char *input = rt_string_cstr(text);
-    if (!input)
+    if (!text)
         return rt_seq_new();
 
-    size_t len = strlen(input);
+    const char *input = rt_string_cstr(text);
+    size_t len = (size_t)rt_str_len(text);
     if (len == 0)
         return rt_seq_new();
 
@@ -530,7 +559,7 @@ void *rt_csv_parse_with(rt_string text, rt_string delim) {
 /// @see rt_csv_format For formatting multiple rows
 /// @see rt_csv_parse_line For the inverse operation
 rt_string rt_csv_format_line(void *fields) {
-    return rt_csv_format_line_with(fields, rt_const_cstr(","));
+    return rt_csv_format_line_with(fields, NULL);
 }
 
 /// @brief Formats a Seq of strings as a CSV line with custom delimiter.
@@ -577,15 +606,20 @@ rt_string rt_csv_format_line_with(void *fields, rt_string delim) {
     // Calculate total output size
     size_t total_size = 0;
     for (int64_t i = 0; i < count; i++) {
-        rt_string field = csv_extract_string(rt_seq_get(fields, i));
-        const char *str = rt_string_cstr(field);
-        if (!str)
-            str = "";
-        size_t field_len = strlen(str);
-        total_size += calc_field_size(str, field_len, d);
+        bool owned = false;
+        rt_string field = csv_extract_string(rt_seq_get(fields, i), &owned);
+        const char *str = field ? rt_string_cstr(field) : "";
+        size_t field_len = field ? (size_t)rt_str_len(field) : 0;
+        csv_checked_add(&total_size,
+                        calc_field_size(str, field_len, d),
+                        "Csv.FormatLine: output length overflow");
         if (i < count - 1)
-            total_size++; // delimiter
+            csv_checked_add(&total_size, 1, "Csv.FormatLine: output length overflow");
+        if (owned)
+            rt_string_unref(field);
     }
+    if (total_size == SIZE_MAX)
+        rt_trap("Csv.FormatLine: output length overflow");
 
     char *out = (char *)malloc(total_size + 1);
     if (!out)
@@ -593,14 +627,15 @@ rt_string rt_csv_format_line_with(void *fields, rt_string delim) {
 
     size_t pos = 0;
     for (int64_t i = 0; i < count; i++) {
-        rt_string field = csv_extract_string(rt_seq_get(fields, i));
-        const char *str = rt_string_cstr(field);
-        if (!str)
-            str = "";
-        size_t field_len = strlen(str);
+        bool owned = false;
+        rt_string field = csv_extract_string(rt_seq_get(fields, i), &owned);
+        const char *str = field ? rt_string_cstr(field) : "";
+        size_t field_len = field ? (size_t)rt_str_len(field) : 0;
         pos += format_field(str, field_len, d, out + pos);
         if (i < count - 1)
             out[pos++] = d;
+        if (owned)
+            rt_string_unref(field);
     }
     out[pos] = '\0';
 
@@ -646,7 +681,7 @@ rt_string rt_csv_format_line_with(void *fields, rt_string delim) {
 /// @see rt_csv_format_line For formatting a single row
 /// @see rt_csv_parse For the inverse operation
 rt_string rt_csv_format(void *rows) {
-    return rt_csv_format_with(rows, rt_const_cstr(","));
+    return rt_csv_format_with(rows, NULL);
 }
 
 /// @brief Formats a Seq of Seqs as CSV text with custom delimiter.
@@ -703,17 +738,22 @@ rt_string rt_csv_format_with(void *rows, rt_string delim) {
 
         int64_t count = rt_seq_len(row);
         for (int64_t i = 0; i < count; i++) {
-            rt_string field = csv_extract_string(rt_seq_get(row, i));
-            const char *str = rt_string_cstr(field);
-            if (!str)
-                str = "";
-            size_t field_len = strlen(str);
-            total_size += calc_field_size(str, field_len, d);
+            bool owned = false;
+            rt_string field = csv_extract_string(rt_seq_get(row, i), &owned);
+            const char *str = field ? rt_string_cstr(field) : "";
+            size_t field_len = field ? (size_t)rt_str_len(field) : 0;
+            csv_checked_add(&total_size,
+                            calc_field_size(str, field_len, d),
+                            "Csv.Format: output length overflow");
             if (i < count - 1)
-                total_size++; // delimiter
+                csv_checked_add(&total_size, 1, "Csv.Format: output length overflow");
+            if (owned)
+                rt_string_unref(field);
         }
-        total_size++; // newline
+        csv_checked_add(&total_size, 1, "Csv.Format: output length overflow");
     }
+    if (total_size == SIZE_MAX)
+        rt_trap("Csv.Format: output length overflow");
 
     char *out = (char *)malloc(total_size + 1);
     if (!out)
@@ -729,14 +769,15 @@ rt_string rt_csv_format_with(void *rows, rt_string delim) {
 
         int64_t count = rt_seq_len(row);
         for (int64_t i = 0; i < count; i++) {
-            rt_string field = csv_extract_string(rt_seq_get(row, i));
-            const char *str = rt_string_cstr(field);
-            if (!str)
-                str = "";
-            size_t field_len = strlen(str);
+            bool owned = false;
+            rt_string field = csv_extract_string(rt_seq_get(row, i), &owned);
+            const char *str = field ? rt_string_cstr(field) : "";
+            size_t field_len = field ? (size_t)rt_str_len(field) : 0;
             pos += format_field(str, field_len, d, out + pos);
             if (i < count - 1)
                 out[pos++] = d;
+            if (owned)
+                rt_string_unref(field);
         }
         out[pos++] = '\n';
     }

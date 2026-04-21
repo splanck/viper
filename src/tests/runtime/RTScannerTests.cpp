@@ -14,6 +14,7 @@
 #include "rt_string.h"
 
 #include <cassert>
+#include <cstdint>
 #include <cstdio>
 #include <cstring>
 
@@ -40,6 +41,14 @@ static void test_scanner_creation() {
         test_result("Not at end", rt_scanner_is_end(s) == 0);
     }
 
+    // Test 2: NULL source is treated as an empty scanner
+    {
+        void *s = rt_scanner_new(NULL);
+        test_result("NULL scanner source created", s != NULL);
+        test_result("NULL source length is zero", rt_scanner_len(s) == 0);
+        test_result("NULL source starts at end", rt_scanner_is_end(s) == 1);
+    }
+
     printf("\n");
 }
 
@@ -61,6 +70,7 @@ static void test_scanner_peeking() {
         test_result("PeekAt(1) is 'b'", rt_scanner_peek_at(s, 1) == 'b');
         test_result("PeekAt(5) is '3'", rt_scanner_peek_at(s, 5) == '3');
         test_result("PeekAt(6) out of bounds", rt_scanner_peek_at(s, 6) == -1);
+        test_result("PeekAt(INT64_MAX) out of bounds", rt_scanner_peek_at(s, INT64_MAX) == -1);
     }
 
     // Test 3: PeekStr
@@ -118,6 +128,20 @@ static void test_scanner_reading() {
         test_result("ReadUntilAny gives 'hello'", strcmp(rt_string_cstr(word), "hello") == 0);
     }
 
+    // Test 5: ReadUntilAny with NULL or empty delimiters reads the remainder
+    {
+        rt_string src = rt_const_cstr("abc");
+        void *s = rt_scanner_new(src);
+
+        rt_string rest = rt_scanner_read_until_any(s, NULL);
+        test_result("ReadUntilAny NULL delimiter reads rest", strcmp(rt_string_cstr(rest), "abc") == 0);
+        test_result("ReadUntilAny NULL delimiter advances to end", rt_scanner_is_end(s) == 1);
+
+        s = rt_scanner_new(src);
+        rest = rt_scanner_read_until_any(s, rt_const_cstr(""));
+        test_result("ReadUntilAny empty delimiter reads rest", strcmp(rt_string_cstr(rest), "abc") == 0);
+    }
+
     printf("\n");
 }
 
@@ -169,6 +193,17 @@ static void test_scanner_matching() {
         test_result("AcceptAny 'xyz' fails", rt_scanner_accept_any(s, rt_const_cstr("xyz")) == 0);
         test_result("AcceptAny 'cba' succeeds",
                     rt_scanner_accept_any(s, rt_const_cstr("cba")) == 1);
+    }
+
+    // Test 6: NULL string helpers fail without advancing
+    {
+        rt_string src = rt_const_cstr("abc");
+        void *s = rt_scanner_new(src);
+
+        test_result("MatchStr NULL fails", rt_scanner_match_str(s, NULL) == 0);
+        test_result("AcceptStr NULL fails", rt_scanner_accept_str(s, NULL) == 0);
+        test_result("AcceptAny NULL fails", rt_scanner_accept_any(s, NULL) == 0);
+        test_result("Position unchanged after NULL matches", rt_scanner_pos(s) == 0);
     }
 
     printf("\n");
@@ -248,6 +283,19 @@ static void test_scanner_tokens() {
         rt_string quoted = rt_scanner_read_quoted(s, '"');
         test_result("ReadQuoted extracts content",
                     strcmp(rt_string_cstr(quoted), "hello\nworld") == 0);
+    }
+
+    // Test 5b: ReadQuoted grows beyond the old fixed-size scratch buffer
+    {
+        char text[5003];
+        text[0] = '"';
+        memset(text + 1, 'x', 5000);
+        text[5001] = '"';
+        text[5002] = '\0';
+
+        void *s = rt_scanner_new(rt_string_from_bytes(text, 5002));
+        rt_string quoted = rt_scanner_read_quoted(s, '"');
+        test_result("ReadQuoted preserves long content", rt_str_len(quoted) == 5000);
     }
 
     // Test 6: ReadLine

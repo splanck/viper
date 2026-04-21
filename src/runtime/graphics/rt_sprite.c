@@ -119,6 +119,38 @@ static int64_t sprite_saturating_scale(int64_t value, int64_t scale) {
     return (int64_t)(scaled >= 0.0L ? scaled + 0.5L : scaled - 0.5L);
 }
 
+static int64_t sprite_add_saturating(int64_t a, int64_t b) {
+    if (b > 0 && a > INT64_MAX - b)
+        return INT64_MAX;
+    if (b < 0 && a < INT64_MIN - b)
+        return INT64_MIN;
+    return a + b;
+}
+
+static int64_t sprite_sub_saturating(int64_t a, int64_t b) {
+    long double value = (long double)a - (long double)b;
+    if (value >= (long double)INT64_MAX)
+        return INT64_MAX;
+    if (value <= (long double)INT64_MIN)
+        return INT64_MIN;
+    return (int64_t)value;
+}
+
+static int8_t sprite_interval_overlaps(int64_t a0, int64_t a_len, int64_t b0, int64_t b_len) {
+    if (a_len <= 0 || b_len <= 0)
+        return 0;
+    int64_t a_last = sprite_add_saturating(a0, a_len - 1);
+    int64_t b_last = sprite_add_saturating(b0, b_len - 1);
+    return a0 <= b_last && b0 <= a_last;
+}
+
+static int8_t sprite_interval_contains(int64_t start, int64_t len, int64_t point) {
+    if (len <= 0 || point < start)
+        return 0;
+    int64_t last = sprite_add_saturating(start, len - 1);
+    return point <= last;
+}
+
 /// @brief Scale a pixel origin by the sprite scale percentage (1..100..n).
 static int64_t sprite_scale_origin(int64_t origin, int64_t scale) {
     return sprite_saturating_scale(origin, scale);
@@ -372,10 +404,12 @@ void *rt_sprite_new(void *pixels) {
 
     // Clone the pixels and store as first frame
     void *cloned = rt_pixels_clone(pixels);
-    if (cloned) {
-        sprite->frames[0] = cloned;
-        sprite->frame_count = 1;
+    if (!cloned) {
+        rt_obj_free(sprite);
+        return NULL;
     }
+    sprite->frames[0] = cloned;
+    sprite->frame_count = 1;
 
     return sprite;
 }
@@ -876,10 +910,10 @@ int8_t rt_sprite_overlaps(void *sprite_ptr, void *other_ptr) {
         return false;
 
     // Get bounding boxes
-    int64_t w1 = rt_sprite_get_width(sprite_ptr) * s1->scale_x / 100;
-    int64_t h1 = rt_sprite_get_height(sprite_ptr) * s1->scale_y / 100;
-    int64_t w2 = rt_sprite_get_width(other_ptr) * s2->scale_x / 100;
-    int64_t h2 = rt_sprite_get_height(other_ptr) * s2->scale_y / 100;
+    int64_t w1 = sprite_saturating_scale(rt_sprite_get_width(sprite_ptr), s1->scale_x);
+    int64_t h1 = sprite_saturating_scale(rt_sprite_get_height(sprite_ptr), s1->scale_y);
+    int64_t w2 = sprite_saturating_scale(rt_sprite_get_width(other_ptr), s2->scale_x);
+    int64_t h2 = sprite_saturating_scale(rt_sprite_get_height(other_ptr), s2->scale_y);
     if (w1 < 1)
         w1 = 1;
     if (h1 < 1)
@@ -889,13 +923,12 @@ int8_t rt_sprite_overlaps(void *sprite_ptr, void *other_ptr) {
     if (h2 < 1)
         h2 = 1;
 
-    int64_t x1 = s1->x - sprite_scale_origin(s1->origin_x, s1->scale_x);
-    int64_t y1 = s1->y - sprite_scale_origin(s1->origin_y, s1->scale_y);
-    int64_t x2 = s2->x - sprite_scale_origin(s2->origin_x, s2->scale_x);
-    int64_t y2 = s2->y - sprite_scale_origin(s2->origin_y, s2->scale_y);
+    int64_t x1 = sprite_sub_saturating(s1->x, sprite_scale_origin(s1->origin_x, s1->scale_x));
+    int64_t y1 = sprite_sub_saturating(s1->y, sprite_scale_origin(s1->origin_y, s1->scale_y));
+    int64_t x2 = sprite_sub_saturating(s2->x, sprite_scale_origin(s2->origin_x, s2->scale_x));
+    int64_t y2 = sprite_sub_saturating(s2->y, sprite_scale_origin(s2->origin_y, s2->scale_y));
 
-    // AABB collision test
-    return (x1 < x2 + w2 && x1 + w1 > x2 && y1 < y2 + h2 && y1 + h1 > y2);
+    return sprite_interval_overlaps(x1, w1, x2, w2) && sprite_interval_overlaps(y1, h1, y2, h2);
 }
 
 /// @brief Point-in-AABB test: is `(px, py)` inside the sprite's bounding rectangle?
@@ -907,16 +940,18 @@ int8_t rt_sprite_contains(void *sprite_ptr, int64_t px, int64_t py) {
     if (!sprite->visible)
         return false;
 
-    int64_t w = rt_sprite_get_width(sprite_ptr) * sprite->scale_x / 100;
-    int64_t h = rt_sprite_get_height(sprite_ptr) * sprite->scale_y / 100;
+    int64_t w = sprite_saturating_scale(rt_sprite_get_width(sprite_ptr), sprite->scale_x);
+    int64_t h = sprite_saturating_scale(rt_sprite_get_height(sprite_ptr), sprite->scale_y);
     if (w < 1)
         w = 1;
     if (h < 1)
         h = 1;
-    int64_t x = sprite->x - sprite_scale_origin(sprite->origin_x, sprite->scale_x);
-    int64_t y = sprite->y - sprite_scale_origin(sprite->origin_y, sprite->scale_y);
+    int64_t x =
+        sprite_sub_saturating(sprite->x, sprite_scale_origin(sprite->origin_x, sprite->scale_x));
+    int64_t y =
+        sprite_sub_saturating(sprite->y, sprite_scale_origin(sprite->origin_y, sprite->scale_y));
 
-    return (px >= x && px < x + w && py >= y && py < y + h);
+    return sprite_interval_contains(x, w, px) && sprite_interval_contains(y, h, py);
 }
 
 /// @brief Translate the sprite by `(dx, dy)` pixels.
@@ -926,8 +961,8 @@ void rt_sprite_move(void *sprite_ptr, int64_t dx, int64_t dy) {
         return;
     }
     rt_sprite_impl *sprite = (rt_sprite_impl *)sprite_ptr;
-    sprite->x += dx;
-    sprite->y += dy;
+    sprite->x = sprite_add_saturating(sprite->x, dx);
+    sprite->y = sprite_add_saturating(sprite->y, dy);
 }
 
 //=============================================================================

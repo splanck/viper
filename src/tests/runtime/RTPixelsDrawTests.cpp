@@ -10,12 +10,14 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "rt_internal.h"
 #include "rt_graphics.h"
+#include "rt_internal.h"
 #include "rt_pixels.h"
 
 #include "tests/common/PosixCompat.h"
 #include <cassert>
+#include <climits>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 
@@ -63,7 +65,7 @@ static void test_getrgb_discards_alpha() {
 
 static void test_color_rgba_packing_differs_from_pixels_storage() {
     void *p = rt_pixels_new(1, 1);
-    int64_t packed_pixels = 0x12345678;                 // 0xRRGGBBAA
+    int64_t packed_pixels = 0x12345678;                           // 0xRRGGBBAA
     int64_t packed_color = rt_color_rgba(0x12, 0x34, 0x56, 0x78); // 0xAARRGGBB
 
     rt_pixels_set(p, 0, 0, packed_pixels);
@@ -135,6 +137,15 @@ static void test_drawbox_clipped() {
     printf("test_drawbox_clipped: PASSED\n");
 }
 
+static void test_drawbox_extreme_endpoint_noop() {
+    void *p = rt_pixels_new(4, 4);
+    rt_pixels_draw_box(p, INT64_MAX - 1, 0, 8, 1, 0xFFFFFF);
+    for (int64_t y = 0; y < 4; y++)
+        for (int64_t x = 0; x < 4; x++)
+            assert(rt_pixels_get(p, x, y) == 0);
+    printf("test_drawbox_extreme_endpoint_noop: PASSED\n");
+}
+
 // ============================================================================
 // DrawFrame
 // ============================================================================
@@ -172,6 +183,15 @@ static void test_drawdisc_outside_clear() {
     assert(rt_pixels_get_rgb(p, 15, 21) == 0); // dy=6 > r=5
     assert(rt_pixels_get_rgb(p, 21, 15) == 0);
     printf("test_drawdisc_outside_clear: PASSED\n");
+}
+
+static void test_drawdisc_huge_radius_clips_to_buffer() {
+    void *p = rt_pixels_new(4, 4);
+    rt_pixels_draw_disc(p, 0, 0, INT64_MAX, 0x102030);
+    for (int64_t y = 0; y < 4; y++)
+        for (int64_t x = 0; x < 4; x++)
+            assert(rt_pixels_get_rgb(p, x, y) == 0x102030);
+    printf("test_drawdisc_huge_radius_clips_to_buffer: PASSED\n");
 }
 
 // ============================================================================
@@ -325,6 +345,7 @@ int main() {
     // DrawBox
     test_drawbox_fills_all_pixels();
     test_drawbox_clipped();
+    test_drawbox_extreme_endpoint_noop();
 
     // DrawFrame
     test_drawframe_outline_only();
@@ -332,6 +353,7 @@ int main() {
     // DrawDisc
     test_drawdisc_center_set();
     test_drawdisc_outside_clear();
+    test_drawdisc_huge_radius_clips_to_buffer();
 
     // DrawRing
     test_drawring_outline_set_interior_clear();

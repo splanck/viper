@@ -134,7 +134,7 @@ Expect breaking changes. The IL specification, APIs, and tool interfaces are not
 | [ViperSQL](examples/apps/vipersql/) | SQL database engine with an interactive client |
 | [Paint](examples/apps/paint/) | Drawing app with layers, undo/redo, and an expanded tool set |
 | [Chess](examples/games/chess/) | Chess with alpha-beta AI and a drag-and-drop GUI |
-| [Crackman](examples/games/pacman/) | Maze chase game with ghost AI |
+| [Crackman](examples/games/crackman/) | Maze chase game with ghost AI |
 | [XENOSCAPE](examples/games/xenoscape/) | Metroid-style sidescroller with bosses, abilities, and saves |
 | [3D Bowling](examples/games/3dbowling/) | Physics-driven 3D bowling with multi-mode camera |
 
@@ -253,7 +253,7 @@ All frontends share the **[Viper Runtime](docs/viperlib/README.md)** — 350+ cl
 | [Text](docs/viperlib/text) | 20 | Structured-text parsing, templates, regex |
 | [Threads](docs/viperlib/threads.md) | 18 | Async primitives, channels, futures, pools |
 | [Time](docs/viperlib/time.md) | 8 | Clocks, dates, durations, timers |
-| [Utilities](docs/viperlib/README.md) | ~12 | Formatting, logging, option / result helpers |
+| [Utilities](docs/viperlib/README.md) | 12 | Formatting, logging, option / result helpers |
 
 > See the **[Runtime Library Reference](docs/viperlib/README.md)** for complete API documentation.
 

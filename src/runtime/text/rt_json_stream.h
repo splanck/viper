@@ -11,12 +11,12 @@
 //   - Stateful, pull-based: call rt_json_stream_next to advance to the next token.
 //   - Token types: object_start, object_end, array_start, array_end, key, string, number, bool,
 //   null.
-//   - No memory allocation for the token stream itself; caller reads token data inline.
+//   - The stream retains the input and allocates scratch storage for decoded strings.
 //   - Returns an error token on malformed JSON; does not trap.
 //
 // Ownership/Lifetime:
 //   - Stream objects are heap-allocated; caller must free after use.
-//   - Input string is borrowed for the lifetime of the stream.
+//   - Input string is retained for the lifetime of the stream.
 //
 // Links: src/runtime/text/rt_json_stream.c (implementation), src/runtime/core/rt_string.h
 //

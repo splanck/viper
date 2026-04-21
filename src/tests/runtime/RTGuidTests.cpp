@@ -91,9 +91,11 @@ static void test_empty() {
 
     rt_string empty = rt_guid_empty();
     const char *str = rt_string_cstr(empty);
+    rt_string empty2 = rt_guid_empty();
 
     test_result("Empty returns non-null", empty != nullptr);
     test_result("Empty is all zeros", strcmp(str, "00000000-0000-0000-0000-000000000000") == 0);
+    test_result("Empty returns a new string handle", empty != empty2);
 
     // Empty should be valid format
     test_result("Empty is valid format", rt_guid_is_valid(empty) != 0);
@@ -157,6 +159,13 @@ static void test_is_valid_negative() {
 
     // Null
     test_result("Null is invalid", rt_guid_is_valid(nullptr) == 0);
+
+    // Stored runtime length is authoritative; a valid GUID plus an embedded NUL byte is too long.
+    char valid_plus_nul[37];
+    memcpy(valid_plus_nul, "12345678-1234-1234-1234-123456789abc", 36);
+    valid_plus_nul[36] = '\0';
+    rt_string embedded_nul = rt_string_from_bytes(valid_plus_nul, sizeof(valid_plus_nul));
+    test_result("Valid GUID bytes plus embedded NUL is invalid", rt_guid_is_valid(embedded_nul) == 0);
 
     printf("\n");
 }

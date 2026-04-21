@@ -35,7 +35,7 @@ extern "C" {
 rt_string rt_guid_new(void);
 
 /// @brief Return the nil UUID (all zeros).
-/// @return Static string "00000000-0000-0000-0000-000000000000".
+/// @return Newly allocated string "00000000-0000-0000-0000-000000000000".
 rt_string rt_guid_empty(void);
 
 /// @brief Check if string is a valid GUID format.

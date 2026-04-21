@@ -35,6 +35,7 @@
 
 #include "rt_internal.h"
 
+#include <math.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -53,6 +54,99 @@ int64_t rt_pixels_get_rgb(void *pixels, int64_t x, int64_t y) {
     return rt_pixels_get(pixels, x, y) >> 8;
 }
 
+static int64_t pixels_round_ld_to_i64_sat(long double value) {
+    if (value >= (long double)INT64_MAX)
+        return INT64_MAX;
+    if (value <= (long double)INT64_MIN)
+        return INT64_MIN;
+    return (int64_t)(value >= 0.0L ? floorl(value + 0.5L) : ceill(value - 0.5L));
+}
+
+static int64_t pixels_floor_ld_to_i64_sat(long double value) {
+    if (value >= (long double)INT64_MAX)
+        return INT64_MAX;
+    if (value <= (long double)INT64_MIN)
+        return INT64_MIN;
+    return (int64_t)floorl(value);
+}
+
+static int64_t pixels_ceil_ld_to_i64_sat(long double value) {
+    if (value >= (long double)INT64_MAX)
+        return INT64_MAX;
+    if (value <= (long double)INT64_MIN)
+        return INT64_MIN;
+    return (int64_t)ceill(value);
+}
+
+static int8_t pixels_clip_line_test(long double p,
+                                    long double q,
+                                    long double *u1,
+                                    long double *u2) {
+    if (p == 0.0L)
+        return q >= 0.0L;
+    long double r = q / p;
+    if (p < 0.0L) {
+        if (r > *u2)
+            return 0;
+        if (r > *u1)
+            *u1 = r;
+    } else {
+        if (r < *u1)
+            return 0;
+        if (r < *u2)
+            *u2 = r;
+    }
+    return 1;
+}
+
+static int8_t pixels_clip_line_to_bounds(
+    rt_pixels_impl *p, int64_t *x1, int64_t *y1, int64_t *x2, int64_t *y2) {
+    if (!p || !p->data || p->width <= 0 || p->height <= 0 || !x1 || !y1 || !x2 || !y2)
+        return 0;
+
+    long double lx1 = (long double)*x1;
+    long double ly1 = (long double)*y1;
+    long double dx = (long double)*x2 - lx1;
+    long double dy = (long double)*y2 - ly1;
+    long double u1 = 0.0L;
+    long double u2 = 1.0L;
+    long double xmax = (long double)(p->width - 1);
+    long double ymax = (long double)(p->height - 1);
+
+    if (!pixels_clip_line_test(-dx, lx1, &u1, &u2) ||
+        !pixels_clip_line_test(dx, xmax - lx1, &u1, &u2) ||
+        !pixels_clip_line_test(-dy, ly1, &u1, &u2) ||
+        !pixels_clip_line_test(dy, ymax - ly1, &u1, &u2))
+        return 0;
+
+    long double nx1 = lx1 + u1 * dx;
+    long double ny1 = ly1 + u1 * dy;
+    long double nx2 = lx1 + u2 * dx;
+    long double ny2 = ly1 + u2 * dy;
+    *x1 = pixels_round_ld_to_i64_sat(nx1);
+    *y1 = pixels_round_ld_to_i64_sat(ny1);
+    *x2 = pixels_round_ld_to_i64_sat(nx2);
+    *y2 = pixels_round_ld_to_i64_sat(ny2);
+    return 1;
+}
+
+static int64_t pixels_rect_last(int64_t start, int64_t length) {
+    if (length <= 1)
+        return start;
+    return rt_pixels_add_sat64(start, length - 1);
+}
+
+static void pixels_fill_span(rt_pixels_impl *p, int64_t y, int64_t x0, int64_t x1, uint32_t rgba) {
+    if (!p || !p->data || y < 0 || y >= p->height || x1 < x0 || x1 < 0 || x0 >= p->width)
+        return;
+    if (x0 < 0)
+        x0 = 0;
+    if (x1 >= p->width)
+        x1 = p->width - 1;
+    for (int64_t x = x0; x <= x1; x++)
+        p->data[y * p->width + x] = rgba;
+}
+
 /// @brief Draw a 1-pixel-wide line between (x1,y1) and (x2,y2) using Bresenham.
 /// Color is 0x00RRGGBB. Out-of-bounds pixels along the line are clipped silently.
 void rt_pixels_draw_line(
@@ -63,6 +157,9 @@ void rt_pixels_draw_line(
     }
     rt_pixels_impl *p = (rt_pixels_impl *)pixels;
     uint32_t rgba = rgb_to_rgba(color);
+
+    if (!pixels_clip_line_to_bounds(p, &x1, &y1, &x2, &y2))
+        return;
 
     int64_t dx = x2 - x1;
     int64_t dy = y2 - y1;
@@ -81,7 +178,7 @@ void rt_pixels_draw_line(
         set_pixel_raw(p, x, y, rgba);
         if (x == x2 && y == y2)
             break;
-        int64_t e2 = err * 2;
+        int64_t e2 = err > INT64_MAX / 2 ? INT64_MAX : err < INT64_MIN / 2 ? INT64_MIN : err * 2;
         if (e2 > -ady) {
             err -= ady;
             x += sx;
@@ -103,22 +200,13 @@ void rt_pixels_draw_box(void *pixels, int64_t x, int64_t y, int64_t w, int64_t h
     rt_pixels_impl *p = (rt_pixels_impl *)pixels;
     uint32_t rgba = rgb_to_rgba(color);
 
-    // Clip to buffer bounds
-    int64_t x0 = x < 0 ? 0 : x;
-    int64_t y0 = y < 0 ? 0 : y;
-    int64_t x1 = x + w;
-    int64_t y1 = y + h;
-    if (x1 > p->width)
-        x1 = p->width;
-    if (y1 > p->height)
-        y1 = p->height;
-    if (x0 >= x1 || y0 >= y1)
+    if (!rt_pixels_clip_rect_to_bounds(p, &x, &y, &w, &h))
         return;
 
     pixels_touch(p);
 
-    for (int64_t row = y0; row < y1; row++)
-        for (int64_t col = x0; col < x1; col++)
+    for (int64_t row = y; row < y + h; row++)
+        for (int64_t col = x; col < x + w; col++)
             p->data[row * p->width + col] = rgba;
 }
 
@@ -129,24 +217,15 @@ void rt_pixels_draw_frame(void *pixels, int64_t x, int64_t y, int64_t w, int64_t
         rt_trap("Pixels.DrawFrame: null pixels");
         return;
     }
-    rt_pixels_impl *p = (rt_pixels_impl *)pixels;
-    uint32_t rgba = rgb_to_rgba(color);
-
     if (w <= 0 || h <= 0)
         return;
 
-    pixels_touch(p);
-
-    // Top and bottom rows
-    for (int64_t col = x; col < x + w; col++) {
-        set_pixel_raw(p, col, y, rgba);
-        set_pixel_raw(p, col, y + h - 1, rgba);
-    }
-    // Left and right columns (skip corners already drawn)
-    for (int64_t row = y + 1; row < y + h - 1; row++) {
-        set_pixel_raw(p, x, row, rgba);
-        set_pixel_raw(p, x + w - 1, row, rgba);
-    }
+    int64_t x1 = pixels_rect_last(x, w);
+    int64_t y1 = pixels_rect_last(y, h);
+    rt_pixels_draw_line(pixels, x, y, x1, y, color);
+    rt_pixels_draw_line(pixels, x, y1, x1, y1, color);
+    rt_pixels_draw_line(pixels, x, y, x, y1, color);
+    rt_pixels_draw_line(pixels, x1, y, x1, y1, color);
 }
 
 /// @brief Fill a circle of radius @p r centered at (cx,cy) with @p color (0x00RRGGBB).
@@ -160,14 +239,29 @@ void rt_pixels_draw_disc(void *pixels, int64_t cx, int64_t cy, int64_t r, int64_
     uint32_t rgba = rgb_to_rgba(color);
 
     if (r < 0)
-        r = 0;
+        return;
 
     pixels_touch(p);
 
-    for (int64_t dy = -r; dy <= r; dy++) {
-        int64_t dx = isqrt64(r * r - dy * dy);
-        for (int64_t fx = cx - dx; fx <= cx + dx; fx++)
-            set_pixel_raw(p, fx, cy + dy, rgba);
+    int64_t y0 = rt_pixels_sub_nonneg_sat64(cy, r);
+    int64_t y1 = rt_pixels_add_sat64(cy, r);
+    if (y1 < 0 || y0 >= p->height)
+        return;
+    if (y0 < 0)
+        y0 = 0;
+    if (y1 >= p->height)
+        y1 = p->height - 1;
+
+    long double r2 = (long double)r * (long double)r;
+    for (int64_t py = y0; py <= y1; py++) {
+        long double dy = (long double)py - (long double)cy;
+        long double rem = r2 - dy * dy;
+        if (rem < 0.0L)
+            continue;
+        long double dx = sqrtl(rem);
+        int64_t x0 = pixels_floor_ld_to_i64_sat((long double)cx - dx);
+        int64_t x1 = pixels_ceil_ld_to_i64_sat((long double)cx + dx);
+        pixels_fill_span(p, py, x0, x1, rgba);
     }
 }
 
@@ -189,28 +283,36 @@ void rt_pixels_draw_ring(void *pixels, int64_t cx, int64_t cy, int64_t r, int64_
         return;
     }
 
-    // Midpoint circle: 8-way symmetry
-    int64_t mx = r;
-    int64_t my = 0;
-    int64_t err = 0;
-
-    while (mx >= my) {
-        set_pixel_raw(p, cx + mx, cy + my, rgba);
-        set_pixel_raw(p, cx + my, cy + mx, rgba);
-        set_pixel_raw(p, cx - my, cy + mx, rgba);
-        set_pixel_raw(p, cx - mx, cy + my, rgba);
-        set_pixel_raw(p, cx - mx, cy - my, rgba);
-        set_pixel_raw(p, cx - my, cy - mx, rgba);
-        set_pixel_raw(p, cx + my, cy - mx, rgba);
-        set_pixel_raw(p, cx + mx, cy - my, rgba);
-
-        my++;
-        if (err <= 0) {
-            err += 2 * my + 1;
-        } else {
-            mx--;
-            err += 2 * (my - mx) + 1;
-        }
+    int64_t y0 = rt_pixels_sub_nonneg_sat64(cy, r);
+    int64_t y1 = rt_pixels_add_sat64(cy, r);
+    if (y0 < 0)
+        y0 = 0;
+    if (y1 >= p->height)
+        y1 = p->height - 1;
+    long double r2 = (long double)r * (long double)r;
+    for (int64_t py = y0; py <= y1; py++) {
+        long double dy = (long double)py - (long double)cy;
+        long double rem = r2 - dy * dy;
+        if (rem < 0.0L)
+            continue;
+        int64_t dx = pixels_round_ld_to_i64_sat(sqrtl(rem));
+        set_pixel_raw(p, rt_pixels_sub_nonneg_sat64(cx, dx), py, rgba);
+        set_pixel_raw(p, rt_pixels_add_sat64(cx, dx), py, rgba);
+    }
+    int64_t x0 = rt_pixels_sub_nonneg_sat64(cx, r);
+    int64_t x1 = rt_pixels_add_sat64(cx, r);
+    if (x0 < 0)
+        x0 = 0;
+    if (x1 >= p->width)
+        x1 = p->width - 1;
+    for (int64_t px = x0; px <= x1; px++) {
+        long double dx = (long double)px - (long double)cx;
+        long double rem = r2 - dx * dx;
+        if (rem < 0.0L)
+            continue;
+        int64_t dy = pixels_round_ld_to_i64_sat(sqrtl(rem));
+        set_pixel_raw(p, px, rt_pixels_sub_nonneg_sat64(cy, dy), rgba);
+        set_pixel_raw(p, px, rt_pixels_add_sat64(cy, dy), rgba);
     }
 }
 
@@ -233,16 +335,26 @@ void rt_pixels_draw_ellipse(
 
     pixels_touch(p);
 
-    // Scanline fill: for each row dy, fill span [cx-dx .. cx+dx]
-    // dx = rx * isqrt(ry^2 - dy^2) / ry  (integer arithmetic, no float)
-    int64_t ry2 = ry * ry;
-    for (int64_t dy = -ry; dy <= ry; dy++) {
-        int64_t rem = ry2 - dy * dy;
-        if (rem < 0)
-            rem = 0;
-        int64_t dx = rx * isqrt64(rem) / ry;
-        for (int64_t fx = cx - dx; fx <= cx + dx; fx++)
-            set_pixel_raw(p, fx, cy + dy, rgba);
+    int64_t y0 = rt_pixels_sub_nonneg_sat64(cy, ry);
+    int64_t y1 = rt_pixels_add_sat64(cy, ry);
+    if (y1 < 0 || y0 >= p->height)
+        return;
+    if (y0 < 0)
+        y0 = 0;
+    if (y1 >= p->height)
+        y1 = p->height - 1;
+
+    long double rx_ld = (long double)rx;
+    long double ry_ld = (long double)ry;
+    for (int64_t py = y0; py <= y1; py++) {
+        long double dy = (long double)py - (long double)cy;
+        long double ratio = 1.0L - (dy * dy) / (ry_ld * ry_ld);
+        if (ratio < 0.0L)
+            continue;
+        long double dx = rx_ld * sqrtl(ratio);
+        int64_t x0 = pixels_floor_ld_to_i64_sat((long double)cx - dx);
+        int64_t x1 = pixels_ceil_ld_to_i64_sat((long double)cx + dx);
+        pixels_fill_span(p, py, x0, x1, rgba);
     }
 }
 
@@ -264,50 +376,38 @@ void rt_pixels_draw_ellipse_frame(
 
     pixels_touch(p);
 
-    // Midpoint ellipse algorithm — 4-quadrant symmetry
-    int64_t rx2 = rx * rx;
-    int64_t ry2 = ry * ry;
-    int64_t two_rx2 = 2 * rx2;
-    int64_t two_ry2 = 2 * ry2;
-    int64_t ex = 0;
-    int64_t ey = ry;
-    int64_t px_val = 0;
-    int64_t py_val = two_rx2 * ey;
-
-    // Region 1 (slope magnitude < 1)
-    int64_t d1 = ry2 - rx2 * ry + rx2 / 4;
-    while (px_val < py_val) {
-        set_pixel_raw(p, cx + ex, cy + ey, rgba);
-        set_pixel_raw(p, cx - ex, cy + ey, rgba);
-        set_pixel_raw(p, cx + ex, cy - ey, rgba);
-        set_pixel_raw(p, cx - ex, cy - ey, rgba);
-        ex++;
-        px_val += two_ry2;
-        if (d1 < 0) {
-            d1 += ry2 + px_val;
-        } else {
-            ey--;
-            py_val -= two_rx2;
-            d1 += ry2 + px_val - py_val;
-        }
+    long double rx_ld = (long double)rx;
+    long double ry_ld = (long double)ry;
+    int64_t y0 = rt_pixels_sub_nonneg_sat64(cy, ry);
+    int64_t y1 = rt_pixels_add_sat64(cy, ry);
+    if (y0 < 0)
+        y0 = 0;
+    if (y1 >= p->height)
+        y1 = p->height - 1;
+    for (int64_t py = y0; py <= y1; py++) {
+        long double dy = (long double)py - (long double)cy;
+        long double ratio = 1.0L - (dy * dy) / (ry_ld * ry_ld);
+        if (ratio < 0.0L)
+            continue;
+        int64_t dx = pixels_round_ld_to_i64_sat(rx_ld * sqrtl(ratio));
+        set_pixel_raw(p, rt_pixels_sub_nonneg_sat64(cx, dx), py, rgba);
+        set_pixel_raw(p, rt_pixels_add_sat64(cx, dx), py, rgba);
     }
 
-    // Region 2 (slope magnitude >= 1)
-    int64_t d2 = ry2 * ex * ex + rx2 * (ey - 1) * (ey - 1) - rx2 * ry2;
-    while (ey >= 0) {
-        set_pixel_raw(p, cx + ex, cy + ey, rgba);
-        set_pixel_raw(p, cx - ex, cy + ey, rgba);
-        set_pixel_raw(p, cx + ex, cy - ey, rgba);
-        set_pixel_raw(p, cx - ex, cy - ey, rgba);
-        ey--;
-        py_val -= two_rx2;
-        if (d2 > 0) {
-            d2 += rx2 - py_val;
-        } else {
-            ex++;
-            px_val += two_ry2;
-            d2 += rx2 - py_val + px_val;
-        }
+    int64_t x0 = rt_pixels_sub_nonneg_sat64(cx, rx);
+    int64_t x1 = rt_pixels_add_sat64(cx, rx);
+    if (x0 < 0)
+        x0 = 0;
+    if (x1 >= p->width)
+        x1 = p->width - 1;
+    for (int64_t px = x0; px <= x1; px++) {
+        long double dx = (long double)px - (long double)cx;
+        long double ratio = 1.0L - (dx * dx) / (rx_ld * rx_ld);
+        if (ratio < 0.0L)
+            continue;
+        int64_t dy = pixels_round_ld_to_i64_sat(ry_ld * sqrtl(ratio));
+        set_pixel_raw(p, px, rt_pixels_sub_nonneg_sat64(cy, dy), rgba);
+        set_pixel_raw(p, px, rt_pixels_add_sat64(cy, dy), rgba);
     }
 }
 
@@ -615,32 +715,21 @@ void rt_pixels_blend_pixel(void *pixels, int64_t x, int64_t y, int64_t color, in
 
     // Fully opaque fast path — same as set_rgb
     if (alpha == 255) {
-        p->data[y * p->width + x] = (uint32_t)((color << 8) | 0xFF);
+        p->data[y * p->width + x] = rgb_to_rgba(color);
         pixels_touch(p);
         return;
     }
 
     // Extract source channels from 0x00RRGGBB
-    uint32_t sr = (uint32_t)((color >> 16) & 0xFF);
-    uint32_t sg = (uint32_t)((color >> 8) & 0xFF);
-    uint32_t sb = (uint32_t)(color & 0xFF);
+    uint32_t rgb = (uint32_t)((uint64_t)color & 0x00FFFFFFu);
+    uint32_t sr = (rgb >> 16) & 0xFFu;
+    uint32_t sg = (rgb >> 8) & 0xFFu;
+    uint32_t sb = rgb & 0xFFu;
     uint32_t sa = (uint32_t)alpha;
 
-    // Extract destination channels from 0xRRGGBBAA
     uint32_t dst = p->data[y * p->width + x];
-    uint32_t dr = (dst >> 24) & 0xFF;
-    uint32_t dg = (dst >> 16) & 0xFF;
-    uint32_t db = (dst >> 8) & 0xFF;
-    uint32_t da = (dst) & 0xFF;
+    uint32_t src = (sr << 24) | (sg << 16) | (sb << 8) | sa;
 
-    // Porter-Duff "over": out = src * sa/255 + dst * da/255 * (255 - sa)/255
-    // Simplified (pre-multiplied integer arithmetic, +127 for rounding):
-    uint32_t inv = 255 - sa;
-    uint32_t or_ = (sr * sa + dr * inv + 127) / 255;
-    uint32_t og = (sg * sa + dg * inv + 127) / 255;
-    uint32_t ob = (sb * sa + db * inv + 127) / 255;
-    uint32_t oa = sa + (da * inv + 127) / 255;
-
-    p->data[y * p->width + x] = (or_ << 24) | (og << 16) | (ob << 8) | oa;
+    p->data[y * p->width + x] = rt_pixels_alpha_over_rgba(dst, src);
     pixels_touch(p);
 }

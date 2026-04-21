@@ -591,7 +591,7 @@ For more complete examples, see the `examples/games/` directory:
 
 - `examples/games/frogger/` — Complete Frogger game example
 - `examples/games/centipede/` — Centipede arcade game
-- `examples/games/pacman/` — Crackman game
+- `examples/games/crackman/` — Crackman game
 
 **Interactive:**
 

@@ -64,6 +64,10 @@ static void assert_str_eq(rt_string s, const char *expected) {
     assert(strcmp(actual, expected) == 0);
 }
 
+static rt_string make_bytes(const char *bytes, size_t len) {
+    return rt_string_from_bytes(bytes, len);
+}
+
 // ============================================================================
 // Validation Tests
 // ============================================================================
@@ -94,6 +98,15 @@ static void test_is_valid_basic() {
     assert(rt_json_is_valid(make_str("{incomplete")) == 0);
     assert(rt_json_is_valid(make_str("[1, 2,]")) == 0);   // trailing comma
     assert(rt_json_is_valid(make_str("{\"key\"}")) == 0); // missing value
+    assert(rt_json_is_valid(make_str("\"bad\\xescape\"")) == 0);
+    assert(rt_json_is_valid(make_str("\"raw\nnewline\"")) == 0);
+    assert(rt_json_is_valid(make_str("01")) == 0);
+
+    const char raw_control[] = {'"', 'a', '\x01', 'b', '"'};
+    assert(rt_json_is_valid(make_bytes(raw_control, sizeof(raw_control))) == 0);
+
+    const char trailing_after_nul[] = {'t', 'r', 'u', 'e', '\0', 'f', 'a', 'l', 's', 'e'};
+    assert(rt_json_is_valid(make_bytes(trailing_after_nul, sizeof(trailing_after_nul))) == 0);
 
     printf("test_is_valid_basic: PASSED\n");
 }
@@ -269,6 +282,11 @@ static void test_format_string() {
     rt_string s2 = rt_json_format((void *)make_str("line\nbreak"));
     assert(strstr(str_cstr(s2), "\\n") != nullptr);
 
+    const char embedded_bytes[] = {'a', '\0', 'b'};
+    rt_string embedded = rt_string_from_bytes(embedded_bytes, sizeof(embedded_bytes));
+    rt_string s3 = rt_json_format((void *)embedded);
+    assert_str_eq(s3, "\"a\\u0000b\"");
+
     printf("test_format_string: PASSED\n");
 }
 
@@ -354,6 +372,14 @@ static void test_parse_invalid_traps() {
     EXPECT_TRAP(rt_json_parse(make_str("invalid")));
     EXPECT_TRAP(rt_json_parse(make_str("[1,2,]")));
     EXPECT_TRAP(rt_json_parse(make_str("{\"a\":")));
+    EXPECT_TRAP(rt_json_parse(make_str("01")));
+    EXPECT_TRAP(rt_json_parse(make_str("\"bad\\xescape\"")));
+
+    const char raw_control[] = {'"', 'a', '\x01', 'b', '"'};
+    EXPECT_TRAP(rt_json_parse(make_bytes(raw_control, sizeof(raw_control))));
+
+    const char trailing_after_nul[] = {'t', 'r', 'u', 'e', '\0', 'f', 'a', 'l', 's', 'e'};
+    EXPECT_TRAP(rt_json_parse(make_bytes(trailing_after_nul, sizeof(trailing_after_nul))));
 
     printf("test_parse_invalid_traps: PASSED\n");
 }

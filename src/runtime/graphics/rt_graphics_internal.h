@@ -31,8 +31,10 @@
 #include "rt_string.h"
 #include "rt_trap.h"
 
+#include <limits.h>
 #include <math.h>
 #include <stddef.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -54,6 +56,101 @@ static inline int64_t rtg_min64(int64_t a, int64_t b) {
 /// @brief Maximum of two int64_t values.
 static inline int64_t rtg_max64(int64_t a, int64_t b) {
     return a > b ? a : b;
+}
+
+/// @brief Saturating int64 addition for bounds math.
+static inline int64_t rtg_add_sat64(int64_t a, int64_t b) {
+    if (b > 0 && a > INT64_MAX - b)
+        return INT64_MAX;
+    if (b < 0 && a < INT64_MIN - b)
+        return INT64_MIN;
+    return a + b;
+}
+
+/// @brief Saturating subtract by a non-negative amount.
+static inline int64_t rtg_sub_nonneg_sat64(int64_t a, int64_t b) {
+    if (b <= 0)
+        return a;
+    if (a < INT64_MIN + b)
+        return INT64_MIN;
+    return a - b;
+}
+
+/// @brief Clamp an int64 to the int32 range accepted by ViperGFX.
+static inline int32_t rtg_clamp_i64_to_i32(int64_t value) {
+    if (value > INT32_MAX)
+        return INT32_MAX;
+    if (value < INT32_MIN)
+        return INT32_MIN;
+    return (int32_t)value;
+}
+
+/// @brief Return whether an int64 can be passed to ViperGFX without narrowing.
+static inline int8_t rtg_i64_fits_i32(int64_t value) {
+    return value >= INT32_MIN && value <= INT32_MAX;
+}
+
+static inline int64_t rtg_negative_skip(int64_t start, int64_t len) {
+    if (start >= 0 || len <= 0)
+        return 0;
+    if (start == INT64_MIN)
+        return len;
+    int64_t skip = -start;
+    return skip >= len ? len : skip;
+}
+
+static inline int8_t rtg_clip_copy_axis(
+    int64_t dst_limit, int64_t src_limit, int64_t *dst, int64_t *src, int64_t *len) {
+    if (!dst || !src || !len || *len <= 0 || dst_limit <= 0 || src_limit <= 0) {
+        if (len)
+            *len = 0;
+        return 0;
+    }
+
+    int64_t skip = rtg_negative_skip(*src, *len);
+    if (skip >= *len) {
+        *len = 0;
+        return 0;
+    }
+    if (skip > 0) {
+        if (*dst > INT64_MAX - skip) {
+            *len = 0;
+            return 0;
+        }
+        *dst += skip;
+        *src = 0;
+        *len -= skip;
+    }
+    if (*src >= src_limit) {
+        *len = 0;
+        return 0;
+    }
+    int64_t src_remaining = src_limit - *src;
+    if (*len > src_remaining)
+        *len = src_remaining;
+
+    skip = rtg_negative_skip(*dst, *len);
+    if (skip >= *len) {
+        *len = 0;
+        return 0;
+    }
+    if (skip > 0) {
+        if (*src > INT64_MAX - skip) {
+            *len = 0;
+            return 0;
+        }
+        *src += skip;
+        *dst = 0;
+        *len -= skip;
+    }
+    if (*dst >= dst_limit) {
+        *len = 0;
+        return 0;
+    }
+    int64_t dst_remaining = dst_limit - *dst;
+    if (*len > dst_remaining)
+        *len = dst_remaining;
+    return *len > 0;
 }
 
 /// @brief Simple sine approximation using a lookup table (degrees).
@@ -240,6 +337,10 @@ static inline float rtg_sanitize_scale(float scale) {
 }
 
 static inline int64_t rtg_round_scaled(double value) {
+    if (value >= (double)INT64_MAX)
+        return INT64_MAX;
+    if (value <= (double)INT64_MIN)
+        return INT64_MIN;
     return (int64_t)(value >= 0.0 ? value + 0.5 : value - 0.5);
 }
 
@@ -259,10 +360,10 @@ static inline void rt_canvas_resync_window_state(rt_canvas *canvas) {
     vgfx_set_coord_scale(canvas->gfx_win, scale);
     if (canvas->clip_enabled) {
         vgfx_set_clip(canvas->gfx_win,
-                      (int32_t)canvas->clip_x,
-                      (int32_t)canvas->clip_y,
-                      (int32_t)canvas->clip_w,
-                      (int32_t)canvas->clip_h);
+                      rtg_clamp_i64_to_i32(canvas->clip_x),
+                      rtg_clamp_i64_to_i32(canvas->clip_y),
+                      rtg_clamp_i64_to_i32(canvas->clip_w),
+                      rtg_clamp_i64_to_i32(canvas->clip_h));
     } else {
         vgfx_clear_clip(canvas->gfx_win);
     }
@@ -292,8 +393,8 @@ static inline int8_t rt_canvas_get_logical_clip_bounds(
 
     int64_t x0 = rtg_max64(0, clip_x);
     int64_t y0 = rtg_max64(0, clip_y);
-    int64_t x1 = rtg_min64((int64_t)canvas_w, clip_x + clip_w);
-    int64_t y1 = rtg_min64((int64_t)canvas_h, clip_y + clip_h);
+    int64_t x1 = rtg_min64((int64_t)canvas_w, rtg_add_sat64(clip_x, clip_w));
+    int64_t y1 = rtg_min64((int64_t)canvas_h, rtg_add_sat64(clip_y, clip_h));
     if (clip_w <= 0 || clip_h <= 0 || x1 <= x0 || y1 <= y0) {
         *x = x0;
         *y = y0;
@@ -326,8 +427,8 @@ static inline int8_t rt_canvas_clip_intersect_logical(
 
     int64_t x0 = rtg_max64(*x, clip_x);
     int64_t y0 = rtg_max64(*y, clip_y);
-    int64_t x1 = rtg_min64(*x + *w, clip_x + clip_w);
-    int64_t y1 = rtg_min64(*y + *h, clip_y + clip_h);
+    int64_t x1 = rtg_min64(rtg_add_sat64(*x, *w), rtg_add_sat64(clip_x, clip_w));
+    int64_t y1 = rtg_min64(rtg_add_sat64(*y, *h), rtg_add_sat64(clip_y, clip_h));
     if (x1 <= x0 || y1 <= y0) {
         *x = x0;
         *y = y0;

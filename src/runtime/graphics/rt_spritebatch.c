@@ -302,20 +302,6 @@ static void draw_region_item(spritebatch_impl *batch, void *canvas, const batch_
     }
 
     if (item->rotation != 0) {
-        int64_t src_w = rt_pixels_width(transformed);
-        int64_t src_h = rt_pixels_height(transformed);
-        int64_t half_w = src_w;
-        int64_t half_h = src_h;
-        if (half_w > INT64_MAX / 2 || half_h > INT64_MAX / 2) {
-            spritebatch_release_temp(&transformed, item->source);
-            rt_trap("SpriteBatch: transformed dimensions too large");
-            return;
-        }
-        void *padded = rt_pixels_new(half_w * 2, half_h * 2);
-        if (padded) {
-            rt_pixels_copy(padded, half_w, half_h, transformed, 0, 0, src_w, src_h);
-            spritebatch_replace_temp(&transformed, padded, item->source);
-        }
         void *rotated = rt_pixels_rotate(transformed, (double)item->rotation);
         spritebatch_replace_temp(&transformed, rotated, item->source);
     }
@@ -323,14 +309,7 @@ static void draw_region_item(spritebatch_impl *batch, void *canvas, const batch_
     void *colored = apply_batch_color(transformed, batch->tint_color, batch->alpha);
     spritebatch_replace_temp(&transformed, colored, item->source);
 
-    int64_t blit_x = item->x;
-    int64_t blit_y = item->y;
-    if (item->rotation != 0) {
-        blit_x = item->x - rt_pixels_width(transformed) / 2;
-        blit_y = item->y - rt_pixels_height(transformed) / 2;
-    }
-
-    rt_canvas_blit_alpha(canvas, blit_x, blit_y, transformed);
+    rt_canvas_blit_alpha(canvas, item->x, item->y, transformed);
     spritebatch_release_temp(&transformed, item->source);
 }
 

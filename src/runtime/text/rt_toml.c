@@ -34,6 +34,7 @@
 #include "rt_box.h"
 #include "rt_internal.h"
 #include "rt_map.h"
+#include "rt_object.h"
 #include "rt_seq.h"
 #include "rt_string.h"
 
@@ -133,6 +134,9 @@ static rt_string parse_value(const char **p) {
     return make_str(start, (int64_t)(end - start));
 }
 
+// --- Internal parse error flag (S-14, thread-local to avoid concurrent parse clobbering) ---
+static _Thread_local int g_toml_had_error = 0;
+
 // --- Helper: parse an inline array ---
 
 /// @brief Parse a TOML inline array literal `[a, b, c]` into a Seq of strings.
@@ -143,29 +147,82 @@ static rt_string parse_value(const char **p) {
 static void *parse_array(const char **p) {
     (*p)++; // skip '['
     void *seq = rt_seq_new();
+    int closed = 0;
 
-    while (**p && **p != ']') {
+    while (**p && **p != '\n') {
         skip_ws(p);
-        if (**p == ']' || **p == '\n')
+        if (**p == ']') {
+            closed = 1;
             break;
+        }
         if (**p == ',') {
             (*p)++;
             continue;
         }
         rt_string val = parse_value(p);
-        if (val)
+        if (val) {
             rt_seq_push(seq, val);
+            rt_string_unref(val);
+        }
     }
-    if (**p == ']')
+    if (closed && **p == ']')
         (*p)++;
+    else
+        g_toml_had_error = 1;
     return seq;
 }
 
 /// @brief Maximum nesting depth for TOML sections/tables (consistent with JSON/XML/YAML).
 #define TOML_MAX_DEPTH 200
 
-// --- Internal parse error flag (S-14, thread-local to avoid concurrent parse clobbering) ---
-static _Thread_local int g_toml_had_error = 0;
+static void release_obj_maybe(void *obj) {
+    if (obj && rt_obj_release_check0(obj))
+        rt_obj_free(obj);
+}
+
+static int is_map_obj(void *obj) {
+    return obj && !rt_string_is_handle(obj) && rt_obj_class_id(obj) == RT_MAP_CLASS_ID;
+}
+
+static void *ensure_table_path(void *root, const char *name, size_t len) {
+    void *current = root;
+    size_t pos = 0;
+
+    while (pos < len) {
+        if (!is_map_obj(current)) {
+            g_toml_had_error = 1;
+            return current;
+        }
+
+        size_t start = pos;
+        while (pos < len && name[pos] != '.')
+            pos++;
+        if (pos == start) {
+            g_toml_had_error = 1;
+            return current;
+        }
+
+        rt_string key = make_str(name + start, (int64_t)(pos - start));
+        void *next = rt_map_get(current, key);
+        if (next && !is_map_obj(next)) {
+            g_toml_had_error = 1;
+            rt_string_unref(key);
+            return current;
+        }
+        if (!next) {
+            next = rt_map_new();
+            rt_map_set(current, key, next);
+            release_obj_maybe(next);
+        }
+        rt_string_unref(key);
+        current = next;
+
+        if (pos < len && name[pos] == '.')
+            pos++;
+    }
+
+    return current;
+}
 
 // --- Public API ---
 
@@ -206,52 +263,55 @@ void *rt_toml_parse(rt_string src) {
             rt_string section_name = parse_bare_key(&p);
             skip_ws(&p);
 
-            if (*p == ']')
+            if (*p == ']') {
                 p++;
-            if (is_array && *p == ']')
-                p++;
+            } else {
+                g_toml_had_error = 1;
+                if (section_name)
+                    rt_string_unref(section_name);
+                skip_line(&p);
+                continue;
+            }
+            if (is_array) {
+                if (*p == ']') {
+                    p++;
+                } else {
+                    g_toml_had_error = 1;
+                    if (section_name)
+                        rt_string_unref(section_name);
+                    skip_line(&p);
+                    continue;
+                }
+            }
+            skip_ws(&p);
+            if (*p != '\0' && *p != '\n' && *p != '#') {
+                g_toml_had_error = 1;
+                if (section_name)
+                    rt_string_unref(section_name);
+                skip_line(&p);
+                continue;
+            }
 
             if (section_name) {
                 // Create nested map for section
                 const char *name_cstr = rt_string_cstr(section_name);
+                size_t name_len = (size_t)rt_str_len(section_name);
 
                 // Count nesting depth (dots + 1)
                 int depth = 1;
-                for (const char *d = name_cstr; *d; d++) {
-                    if (*d == '.')
+                for (size_t di = 0; di < name_len; di++) {
+                    if (name_cstr[di] == '.')
                         depth++;
                 }
                 if (depth > TOML_MAX_DEPTH) {
                     g_toml_had_error = 1;
+                    rt_string_unref(section_name);
                     skip_line(&p);
                     continue;
                 }
 
-                // Handle dotted section names
-                void *target = root;
-                const char *dot = strchr(name_cstr, '.');
-                if (dot) {
-                    rt_string parent_key = make_str(name_cstr, (int64_t)(dot - name_cstr));
-                    void *parent = rt_map_get(root, parent_key);
-                    if (!parent) {
-                        parent = rt_map_new();
-                        rt_map_set(root, parent_key, parent);
-                    }
-                    target = parent;
-
-                    rt_string child_key = make_str(
-                        dot + 1, (int64_t)(strlen(name_cstr) - (size_t)(dot - name_cstr) - 1));
-                    void *child = rt_map_new();
-                    rt_map_set(target, child_key, child);
-                    current_section = child;
-                } else {
-                    void *section_map = rt_map_get(root, section_name);
-                    if (!section_map) {
-                        section_map = rt_map_new();
-                        rt_map_set(root, section_name, section_map);
-                    }
-                    current_section = section_map;
-                }
+                current_section = ensure_table_path(root, name_cstr, name_len);
+                rt_string_unref(section_name);
             }
             skip_line(&p);
             continue;
@@ -282,27 +342,41 @@ void *rt_toml_parse(rt_string src) {
         skip_ws(&p);
 
         // Parse value
+        if (rt_map_has(current_section, key)) {
+            g_toml_had_error = 1;
+            rt_string_unref(key);
+            skip_line(&p);
+            continue;
+        }
         if (*p == '[') {
             void *arr = parse_array(&p);
             rt_map_set(current_section, key, arr);
+            release_obj_maybe(arr);
         } else {
             rt_string val = parse_value(&p);
-            if (val)
+            if (val) {
                 rt_map_set(current_section, key, val);
+                rt_string_unref(val);
+            }
         }
+        rt_string_unref(key);
 
         skip_line(&p);
     }
 
+    if (g_toml_had_error) {
+        release_obj_maybe(root);
+        return NULL;
+    }
     return root;
 }
 
 /// @brief Check whether a string contains valid TOML syntax.
 int8_t rt_toml_is_valid(rt_string src) {
-    /* S-14: rt_toml_parse always returns a (partial) map; check error flag */
     void *result = rt_toml_parse(src);
     if (!result || g_toml_had_error)
         return 0;
+    release_obj_maybe(result);
     return 1;
 }
 
@@ -378,6 +452,7 @@ void *rt_toml_get(void *root, rt_string key_path) {
         rt_string s = rt_unbox_str(root);
         if (s) {
             root = rt_toml_parse(s);
+            rt_string_unref(s);
             if (!root)
                 return NULL;
         }
@@ -387,6 +462,9 @@ void *rt_toml_get(void *root, rt_string key_path) {
     void *current = root;
 
     while (*path) {
+        if (!is_map_obj(current))
+            return NULL;
+
         const char *dot = strchr(path, '.');
         rt_string key;
         if (dot) {
@@ -414,7 +492,7 @@ rt_string rt_toml_get_str(void *root, rt_string key_path) {
         return rt_string_from_bytes("", 0);
     // Check if value is a raw string
     if (rt_string_is_handle(val))
-        return (rt_string)val;
+        return rt_string_ref((rt_string)val);
     // Try as boxed string
     if (rt_box_type(val) == RT_BOX_STR)
         return rt_unbox_str(val);

@@ -46,6 +46,7 @@
 #include "rt_object.h"
 #include "rt_pixels.h"
 
+#include <limits.h>
 #include <math.h>
 #include <string.h>
 
@@ -89,14 +90,40 @@ static void camera_release_ref(void **slot) {
     *slot = NULL;
 }
 
+static int64_t camera_ld_to_i64_sat(long double value) {
+    if (value >= (long double)INT64_MAX)
+        return INT64_MAX;
+    if (value <= (long double)INT64_MIN)
+        return INT64_MIN;
+    return (int64_t)(value >= 0.0L ? value + 0.5L : value - 0.5L);
+}
+
+static int64_t camera_add_saturating(int64_t a, int64_t b) {
+    if (b > 0 && a > INT64_MAX - b)
+        return INT64_MAX;
+    if (b < 0 && a < INT64_MIN - b)
+        return INT64_MIN;
+    return a + b;
+}
+
+static int64_t camera_sub_saturating(int64_t a, int64_t b) {
+    return camera_ld_to_i64_sat((long double)a - (long double)b);
+}
+
+static int64_t camera_mul_div_saturating(int64_t value, int64_t mul, int64_t div) {
+    if (div == 0)
+        return 0;
+    return camera_ld_to_i64_sat(((long double)value * (long double)mul) / (long double)div);
+}
+
 /// @brief World-space width covered by the viewport at the current zoom (zoom is in percent).
 static int64_t camera_world_width(const rt_camera_impl *camera) {
-    return (camera->width * 100) / camera->zoom;
+    return camera_mul_div_saturating(camera->width, 100, camera->zoom);
 }
 
 /// @brief World-space height covered by the viewport at the current zoom.
 static int64_t camera_world_height(const rt_camera_impl *camera) {
-    return (camera->height * 100) / camera->zoom;
+    return camera_mul_div_saturating(camera->height, 100, camera->zoom);
 }
 
 /// @brief World-space X coordinate at the centre of the viewport.
@@ -198,8 +225,9 @@ static int64_t camera_draw_parallax_transformed(const rt_camera_impl *camera,
                                                 const rt_parallax_layer *layer,
                                                 void *canvas) {
     rt_camera_impl layer_camera = *camera;
-    layer_camera.x = camera->x * layer->scroll_factor_x / 100;
-    layer_camera.y = camera->y * layer->scroll_factor_y / 100 + layer->offset_y;
+    layer_camera.x = camera_mul_div_saturating(camera->x, layer->scroll_factor_x, 100);
+    layer_camera.y = camera_add_saturating(
+        camera_mul_div_saturating(camera->y, layer->scroll_factor_y, 100), layer->offset_y);
     layer_camera.has_bounds = 0;
 
     int64_t pw = rt_pixels_width(layer->pixels);
@@ -212,8 +240,8 @@ static int64_t camera_draw_parallax_transformed(const rt_camera_impl *camera,
     void *rotated = NULL;
 
     if (camera->zoom != 100) {
-        int64_t scaled_w = (int64_t)llround((double)pw * (double)camera->zoom / 100.0);
-        int64_t scaled_h = (int64_t)llround((double)ph * (double)camera->zoom / 100.0);
+        int64_t scaled_w = camera_mul_div_saturating(pw, camera->zoom, 100);
+        int64_t scaled_h = camera_mul_div_saturating(ph, camera->zoom, 100);
         if (scaled_w < 1)
             scaled_w = 1;
         if (scaled_h < 1)
@@ -277,24 +305,29 @@ static int64_t camera_draw_parallax_transformed(const rt_camera_impl *camera,
     if (world_y > max_world_y)
         max_world_y = world_y;
 
-    int64_t first_tile_x = camera_floor_div((int64_t)floor(min_world_x) - pw, pw);
-    int64_t last_tile_x = camera_floor_div((int64_t)floor(max_world_x) + pw, pw);
-    int64_t first_tile_y = camera_floor_div((int64_t)floor(min_world_y) - ph, ph);
-    int64_t last_tile_y = camera_floor_div((int64_t)floor(max_world_y) + ph, ph);
+    int64_t first_tile_x =
+        camera_floor_div(camera_sub_saturating(camera_ld_to_i64_sat(floorl(min_world_x)), pw), pw);
+    int64_t last_tile_x =
+        camera_floor_div(camera_add_saturating(camera_ld_to_i64_sat(floorl(max_world_x)), pw), pw);
+    int64_t first_tile_y =
+        camera_floor_div(camera_sub_saturating(camera_ld_to_i64_sat(floorl(min_world_y)), ph), ph);
+    int64_t last_tile_y =
+        camera_floor_div(camera_add_saturating(camera_ld_to_i64_sat(floorl(max_world_y)), ph), ph);
 
     for (int64_t ty = first_tile_y; ty <= last_tile_y; ty++) {
         for (int64_t tx = first_tile_x; tx <= last_tile_x; tx++) {
             double screen_x = 0.0;
             double screen_y = 0.0;
             camera_apply_transform(&layer_camera,
-                                   (double)(tx * pw) + (double)pw * 0.5,
-                                   (double)(ty * ph) + (double)ph * 0.5,
+                                   (double)camera_mul_div_saturating(tx, pw, 1) + (double)pw * 0.5,
+                                   (double)camera_mul_div_saturating(ty, ph, 1) + (double)ph * 0.5,
                                    &screen_x,
                                    &screen_y);
-            rt_canvas_blit_alpha(canvas,
-                                 (int64_t)llround(screen_x - (double)draw_w * 0.5),
-                                 (int64_t)llround(screen_y - (double)draw_h * 0.5),
-                                 tile_pixels);
+            rt_canvas_blit_alpha(
+                canvas,
+                camera_ld_to_i64_sat((long double)screen_x - (long double)draw_w * 0.5L),
+                camera_ld_to_i64_sat((long double)screen_y - (long double)draw_h * 0.5L),
+                tile_pixels);
         }
     }
 
@@ -327,8 +360,8 @@ static void camera_clamp_bounds(rt_camera_impl *camera) {
     if (!camera->has_bounds)
         return;
 
-    int64_t max_x = camera->max_x - camera_world_width(camera);
-    int64_t max_y = camera->max_y - camera_world_height(camera);
+    int64_t max_x = camera_sub_saturating(camera->max_x, camera_world_width(camera));
+    int64_t max_y = camera_sub_saturating(camera->max_y, camera_world_height(camera));
     if (max_x < camera->min_x)
         max_x = camera->min_x;
     if (max_y < camera->min_y)
@@ -507,8 +540,8 @@ void rt_camera_follow(void *camera_ptr, int64_t x, int64_t y) {
     rt_camera_impl *camera = (rt_camera_impl *)camera_ptr;
 
     // Center the camera on the given position
-    camera->x = x - camera_world_width(camera) / 2;
-    camera->y = y - camera_world_height(camera) / 2;
+    camera->x = camera_sub_saturating(x, camera_world_width(camera) / 2);
+    camera->y = camera_sub_saturating(y, camera_world_height(camera) / 2);
     camera->dirty = 1;
     camera_clamp_bounds(camera);
 }
@@ -527,13 +560,13 @@ void rt_camera_smooth_follow(void *camera_ptr,
     rt_camera_impl *camera = (rt_camera_impl *)camera_ptr;
 
     // Desired camera position (center target in viewport)
-    int64_t desired_x = target_x - camera_world_width(camera) / 2;
-    int64_t desired_y = target_y - camera_world_height(camera) / 2;
+    int64_t desired_x = camera_sub_saturating(target_x, camera_world_width(camera) / 2);
+    int64_t desired_y = camera_sub_saturating(target_y, camera_world_height(camera) / 2);
 
     // Deadzone: skip if target is within deadzone of current position
     if (camera->deadzone_w > 0 || camera->deadzone_h > 0) {
-        int64_t dx = desired_x - camera->x;
-        int64_t dy = desired_y - camera->y;
+        int64_t dx = camera_sub_saturating(desired_x, camera->x);
+        int64_t dy = camera_sub_saturating(desired_y, camera->y);
         int64_t hw = camera->deadzone_w / 2;
         int64_t hh = camera->deadzone_h / 2;
         if (dx > -hw && dx < hw && dy > -hh && dy < hh)
@@ -545,8 +578,12 @@ void rt_camera_smooth_follow(void *camera_ptr,
         camera->x = desired_x;
         camera->y = desired_y;
     } else if (lerp_pct > 0) {
-        camera->x += (desired_x - camera->x) * lerp_pct / 1000;
-        camera->y += (desired_y - camera->y) * lerp_pct / 1000;
+        camera->x = camera_add_saturating(
+            camera->x,
+            camera_mul_div_saturating(camera_sub_saturating(desired_x, camera->x), lerp_pct, 1000));
+        camera->y = camera_add_saturating(
+            camera->y,
+            camera_mul_div_saturating(camera_sub_saturating(desired_y, camera->y), lerp_pct, 1000));
     }
 
     camera->dirty = 1;
@@ -574,8 +611,8 @@ void rt_camera_world_to_screen(
     rt_camera_impl *camera = (rt_camera_impl *)camera_ptr;
     double sx = 0.0, sy = 0.0;
     camera_apply_transform(camera, (double)world_x, (double)world_y, &sx, &sy);
-    *screen_x = (int64_t)llround(sx);
-    *screen_y = (int64_t)llround(sy);
+    *screen_x = camera_ld_to_i64_sat((long double)sx);
+    *screen_y = camera_ld_to_i64_sat((long double)sy);
 }
 
 /// @brief One-axis convenience: project just the X component of a world point. Y is implicitly
@@ -586,7 +623,7 @@ int64_t rt_camera_to_screen_x(void *camera_ptr, int64_t world_x) {
     rt_camera_impl *camera = (rt_camera_impl *)camera_ptr;
     double sx = 0.0;
     camera_apply_transform(camera, (double)world_x, camera_center_y(camera), &sx, NULL);
-    return (int64_t)llround(sx);
+    return camera_ld_to_i64_sat((long double)sx);
 }
 
 /// @brief One-axis convenience: project just the Y component of a world point.
@@ -596,7 +633,7 @@ int64_t rt_camera_to_screen_y(void *camera_ptr, int64_t world_y) {
     rt_camera_impl *camera = (rt_camera_impl *)camera_ptr;
     double sy = 0.0;
     camera_apply_transform(camera, camera_center_x(camera), (double)world_y, NULL, &sy);
-    return (int64_t)llround(sy);
+    return camera_ld_to_i64_sat((long double)sy);
 }
 
 /// @brief Inverse of `_world_to_screen`: turn a screen pixel into world coordinates. Useful
@@ -609,8 +646,8 @@ void rt_camera_screen_to_world(
     rt_camera_impl *camera = (rt_camera_impl *)camera_ptr;
     double wx = 0.0, wy = 0.0;
     camera_apply_inverse_transform(camera, (double)screen_x, (double)screen_y, &wx, &wy);
-    *world_x = (int64_t)llround(wx);
-    *world_y = (int64_t)llround(wy);
+    *world_x = camera_ld_to_i64_sat((long double)wx);
+    *world_y = camera_ld_to_i64_sat((long double)wy);
 }
 
 /// @brief One-axis convenience: unproject just the X component of a screen pixel to world.
@@ -621,7 +658,7 @@ int64_t rt_camera_to_world_x(void *camera_ptr, int64_t screen_x) {
     double wx = 0.0;
     camera_apply_inverse_transform(
         camera, (double)screen_x, (double)camera->height * 0.5, &wx, NULL);
-    return (int64_t)llround(wx);
+    return camera_ld_to_i64_sat((long double)wx);
 }
 
 /// @brief One-axis convenience: unproject just the Y component of a screen pixel to world.
@@ -632,7 +669,7 @@ int64_t rt_camera_to_world_y(void *camera_ptr, int64_t screen_y) {
     double wy = 0.0;
     camera_apply_inverse_transform(
         camera, (double)camera->width * 0.5, (double)screen_y, NULL, &wy);
-    return (int64_t)llround(wy);
+    return camera_ld_to_i64_sat((long double)wy);
 }
 
 /// @brief Translate the camera by (dx, dy) world units. Re-clamps to bounds; marks dirty.
@@ -642,8 +679,8 @@ void rt_camera_move(void *camera_ptr, int64_t dx, int64_t dy) {
         return;
     }
     rt_camera_impl *camera = (rt_camera_impl *)camera_ptr;
-    camera->x += dx;
-    camera->y += dy;
+    camera->x = camera_add_saturating(camera->x, dx);
+    camera->y = camera_add_saturating(camera->y, dy);
     camera->dirty = 1;
     camera_clamp_bounds(camera);
 }
@@ -694,9 +731,15 @@ int64_t rt_camera_is_visible(void *camera_ptr, int64_t x, int64_t y, int64_t w, 
     double sx[4];
     double sy[4];
     camera_apply_transform(camera, (double)x, (double)y, &sx[0], &sy[0]);
-    camera_apply_transform(camera, (double)(x + w), (double)y, &sx[1], &sy[1]);
-    camera_apply_transform(camera, (double)x, (double)(y + h), &sx[2], &sy[2]);
-    camera_apply_transform(camera, (double)(x + w), (double)(y + h), &sx[3], &sy[3]);
+    camera_apply_transform(
+        camera, (double)((long double)x + (long double)w), (double)y, &sx[1], &sy[1]);
+    camera_apply_transform(
+        camera, (double)x, (double)((long double)y + (long double)h), &sx[2], &sy[2]);
+    camera_apply_transform(camera,
+                           (double)((long double)x + (long double)w),
+                           (double)((long double)y + (long double)h),
+                           &sx[3],
+                           &sy[3]);
 
     double min_x = sx[0], max_x = sx[0];
     double min_y = sy[0], max_y = sy[0];
@@ -825,8 +868,9 @@ int64_t rt_camera_draw_parallax(void *camera_ptr, void *canvas) {
         }
 
         /* Compute the parallax scroll offset */
-        int64_t scroll_x = camera->x * layer->scroll_factor_x / 100;
-        int64_t scroll_y = camera->y * layer->scroll_factor_y / 100 + layer->offset_y;
+        int64_t scroll_x = camera_mul_div_saturating(camera->x, layer->scroll_factor_x, 100);
+        int64_t scroll_y = camera_add_saturating(
+            camera_mul_div_saturating(camera->y, layer->scroll_factor_y, 100), layer->offset_y);
 
         /* Compute starting tile position (wrap negative modulo) */
         int64_t start_x = -(scroll_x % pw);

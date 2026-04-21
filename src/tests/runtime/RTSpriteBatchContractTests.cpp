@@ -115,14 +115,8 @@ extern "C" void rt_canvas_blit_alpha(void *canvas, int64_t x, int64_t y, void *p
     g_alpha_calls[g_alpha_call_count++] = {static_cast<StubPixels *>(pixels)->id, x, y};
 }
 
-extern "C" void rt_canvas_blit_region(void *canvas,
-                                      int64_t x,
-                                      int64_t y,
-                                      void *pixels,
-                                      int64_t,
-                                      int64_t,
-                                      int64_t,
-                                      int64_t) {
+extern "C" void rt_canvas_blit_region(
+    void *canvas, int64_t x, int64_t y, void *pixels, int64_t, int64_t, int64_t, int64_t) {
     (void)canvas;
     assert(g_region_call_count < (int)(sizeof(g_region_calls) / sizeof(g_region_calls[0])));
     g_region_calls[g_region_call_count++] = {static_cast<StubPixels *>(pixels)->id, x, y};
@@ -207,10 +201,27 @@ static void test_zero_tint_applies_black_and_negative_tint_disables_tint() {
     assert(g_tint_call_count == 0);
 }
 
+static void test_rotated_region_keeps_requested_top_left() {
+    StubPixels pixels{16, 16, 60};
+
+    void *batch = rt_spritebatch_new(0);
+    assert(batch != nullptr);
+    rt_spritebatch_begin(batch);
+    rt_spritebatch_draw_region_ex(batch, &pixels, 100, 200, 4, 4, 8, 8, 100, 100, 90, 0);
+
+    reset_draw_calls();
+    rt_spritebatch_end(batch, reinterpret_cast<void *>(1));
+
+    assert(g_alpha_call_count == 1);
+    assert(g_alpha_calls[0].x == 100);
+    assert(g_alpha_calls[0].y == 200);
+}
+
 int main() {
     test_equal_depth_pixels_preserve_submission_order();
     test_depth_sort_preserves_submission_order_within_equal_depth();
     test_zero_tint_applies_black_and_negative_tint_disables_tint();
+    test_rotated_region_keeps_requested_top_left();
     std::printf("RTSpriteBatchContractTests passed.\n");
     return 0;
 }

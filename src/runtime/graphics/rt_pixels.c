@@ -96,10 +96,8 @@ static int32_t pixels_checked_raw_bytes(int64_t width, int64_t height, int64_t *
 
 /// @brief Allocate a new Pixels object with embedded pixel data.
 rt_pixels_impl *pixels_alloc(int64_t width, int64_t height) {
-    if (width < 0)
-        width = 0;
-    if (height < 0)
-        height = 0;
+    if (width < 0 || height < 0)
+        return NULL;
 
     int64_t pixel_count = 0;
     size_t data_size = 0;
@@ -225,6 +223,8 @@ void rt_pixels_fill(void *pixels, int64_t color) {
 
     uint32_t c = (uint32_t)color;
     int64_t count = p->width * p->height;
+    if (count <= 0 || !p->data)
+        return;
     if (c == 0) {
         memset(p->data, 0, (size_t)count * sizeof(uint32_t));
         pixels_touch(p);
@@ -266,40 +266,8 @@ void rt_pixels_copy(
     rt_pixels_impl *d = (rt_pixels_impl *)dst;
     rt_pixels_impl *s = (rt_pixels_impl *)src;
 
-    // Clip source rectangle to source bounds
-    if (sx < 0) {
-        w += sx;
-        dx -= sx;
-        sx = 0;
-    }
-    if (sy < 0) {
-        h += sy;
-        dy -= sy;
-        sy = 0;
-    }
-    if (sx + w > s->width)
-        w = s->width - sx;
-    if (sy + h > s->height)
-        h = s->height - sy;
-
-    // Clip destination rectangle to destination bounds
-    if (dx < 0) {
-        w += dx;
-        sx -= dx;
-        dx = 0;
-    }
-    if (dy < 0) {
-        h += dy;
-        sy -= dy;
-        dy = 0;
-    }
-    if (dx + w > d->width)
-        w = d->width - dx;
-    if (dy + h > d->height)
-        h = d->height - dy;
-
-    // Nothing to copy
-    if (w <= 0 || h <= 0)
+    if (!rt_pixels_clip_copy_axis(d->width, s->width, &dx, &sx, &w) ||
+        !rt_pixels_clip_copy_axis(d->height, s->height, &dy, &sy, &h))
         return;
 
     int same_buffer = (d == s);
@@ -382,10 +350,8 @@ void *rt_pixels_from_bytes(int64_t width, int64_t height, void *bytes) {
         return NULL;
     }
 
-    if (width < 0)
-        width = 0;
-    if (height < 0)
-        height = 0;
+    if (width < 0 || height < 0)
+        return NULL;
 
     int64_t required_bytes = 0;
     if (!pixels_checked_raw_bytes(width, height, &required_bytes)) {

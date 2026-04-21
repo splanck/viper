@@ -9,7 +9,7 @@
 //
 // Key invariants:
 //   - Placeholders have the form {{key}}; whitespace around key is trimmed.
-//   - Missing keys are left as literal placeholder text (not replaced).
+//   - Missing or non-string values leave placeholders as literal text.
 //   - Empty placeholders {{}} are left as-is.
 //   - Custom delimiters can be configured via rt_template_render_with.
 //

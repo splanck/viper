@@ -81,6 +81,8 @@ static inline int str_eq_ci(const char *a, const char *b) {
 int8_t rt_parse_try_int(rt_string s, int64_t *out_value) {
     if (!out_value)
         return 0;
+    if (!s)
+        return 0;
 
     const char *text = rt_string_cstr(s);
     if (!text)
@@ -111,6 +113,8 @@ int8_t rt_parse_try_int(rt_string s, int64_t *out_value) {
 /// `isfinite`. On Win32 uses `_strtod_l` (per-call locale); on POSIX uses `uselocale` thread-local.
 int8_t rt_parse_try_num(rt_string s, double *out_value) {
     if (!out_value)
+        return 0;
+    if (!s)
         return 0;
 
     const char *text = rt_string_cstr(s);
@@ -157,6 +161,8 @@ int8_t rt_parse_try_num(rt_string s, double *out_value) {
 /// words are rejected (so "true today" doesn't parse as true).
 int8_t rt_parse_try_bool(rt_string s, int8_t *out_value) {
     if (!out_value)
+        return 0;
+    if (!s)
         return 0;
 
     const char *text = rt_string_cstr(s);
@@ -238,6 +244,8 @@ int8_t rt_parse_is_num(rt_string s) {
 int64_t rt_parse_int_radix(rt_string s, int64_t radix, int64_t default_value) {
     // Validate radix range
     if (radix < 2 || radix > 36)
+        return default_value;
+    if (!s)
         return default_value;
 
     const char *text = rt_string_cstr(s);

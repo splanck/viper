@@ -40,6 +40,7 @@
 #include "rt_internal.h"
 #include "rt_object.h"
 #include "rt_pixels.h"
+#include "rt_pixels_internal.h"
 #include "rt_sprite.h"
 #include "rt_texatlas.h"
 #include "rt_tilemap.h"
@@ -245,11 +246,8 @@ static uint64_t distance_to_zero_i64(int64_t value) {
     return (uint64_t)(-(value + 1)) + 1u;
 }
 
-static int32_t blit_clip_axis(int64_t *dst_pos,
-                              int64_t *src_pos,
-                              int64_t *length,
-                              int64_t dst_limit,
-                              int64_t src_limit) {
+static int32_t blit_clip_axis(
+    int64_t *dst_pos, int64_t *src_pos, int64_t *length, int64_t dst_limit, int64_t src_limit) {
     if (!dst_pos || !src_pos || !length || *length <= 0 || dst_limit <= 0 || src_limit <= 0) {
         if (length)
             *length = 0;
@@ -429,7 +427,7 @@ static uint32_t apply_tint_alpha(uint32_t rgba, int64_t tint, int64_t alpha) {
 ///            destination with per-channel clamp at 255. Destination alpha rises
 ///            using the standard over-style `a + sa - a*sa/255` formula so adding
 ///            onto an existing alpha surface doesn't reset it.
-///          - **ALPHA** (default): classic source-over — `src * sa + dst * (255-sa)`.
+///          - **ALPHA** (default): straight-alpha Porter-Duff source-over.
 ///          All multiplies use the `(a * b + 127) / 255` rounding bias so results
 ///          match float-reference output within 1 ULP.
 static uint32_t blend_pixel(uint32_t dst, uint32_t src, int64_t blend_mode) {
@@ -453,12 +451,7 @@ static uint32_t blend_pixel(uint32_t dst, uint32_t src, int64_t blend_mode) {
         return (uint32_t)((r << 24) | (g << 16) | (b << 8) | a);
     }
 
-    int64_t inv = 255 - sa;
-    int64_t r = (sr * sa + dr * inv + 127) / 255;
-    int64_t g = (sg * sa + dg * inv + 127) / 255;
-    int64_t b = (sb * sa + db * inv + 127) / 255;
-    int64_t a = sa + (da * inv + 127) / 255;
-    return (uint32_t)((r << 24) | (g << 16) | (b << 8) | clamp_u8_i64(a));
+    return rt_pixels_alpha_over_rgba(dst, src);
 }
 
 /// @brief Copy a region from `src` to `dst` with tint + alpha + blend mode, clipping
@@ -2342,11 +2335,8 @@ static int64_t round_double_to_i64(double value) {
 ///          that lands *exactly* between pixels snaps consistently
 ///          regardless of sign. Passing a NULL transform is a no-op —
 ///          input point is copied straight to output (identity).
-static void transform2d_point(rt_transform2d_impl *impl,
-                              int64_t x,
-                              int64_t y,
-                              int64_t *out_x,
-                              int64_t *out_y) {
+static void transform2d_point(
+    rt_transform2d_impl *impl, int64_t x, int64_t y, int64_t *out_x, int64_t *out_y) {
     if (!impl) {
         if (out_x)
             *out_x = x;
@@ -2477,9 +2467,9 @@ void *rt_sampler2d_new(void) {
 
 void rt_sampler2d_set_filter(void *sampler, int64_t filter) {
     if (sampler)
-        ((rt_sampler2d_impl *)sampler)->filter =
-            filter == RT_GRAPHICS2D_FILTER_LINEAR ? RT_GRAPHICS2D_FILTER_LINEAR
-                                                   : RT_GRAPHICS2D_FILTER_NEAREST;
+        ((rt_sampler2d_impl *)sampler)->filter = filter == RT_GRAPHICS2D_FILTER_LINEAR
+                                                     ? RT_GRAPHICS2D_FILTER_LINEAR
+                                                     : RT_GRAPHICS2D_FILTER_NEAREST;
 }
 
 int64_t rt_sampler2d_get_filter(void *sampler) {
@@ -2488,8 +2478,9 @@ int64_t rt_sampler2d_get_filter(void *sampler) {
 
 void rt_sampler2d_set_wrap(void *sampler, int64_t wrap) {
     if (sampler)
-        ((rt_sampler2d_impl *)sampler)->wrap =
-            wrap == RT_GRAPHICS2D_WRAP_REPEAT ? RT_GRAPHICS2D_WRAP_REPEAT : RT_GRAPHICS2D_WRAP_CLAMP;
+        ((rt_sampler2d_impl *)sampler)->wrap = wrap == RT_GRAPHICS2D_WRAP_REPEAT
+                                                   ? RT_GRAPHICS2D_WRAP_REPEAT
+                                                   : RT_GRAPHICS2D_WRAP_CLAMP;
 }
 
 int64_t rt_sampler2d_get_wrap(void *sampler) {
@@ -2573,7 +2564,8 @@ static void spriterenderer2d_set_ref(void **slot, void *value) {
 
 void rt_spriterenderer2d_set_material(void *sprite_renderer, void *material) {
     if (sprite_renderer)
-        spriterenderer2d_set_ref(&((rt_spriterenderer2d_impl *)sprite_renderer)->material, material);
+        spriterenderer2d_set_ref(&((rt_spriterenderer2d_impl *)sprite_renderer)->material,
+                                 material);
 }
 
 void rt_spriterenderer2d_set_sampler(void *sprite_renderer, void *sampler) {
@@ -2699,8 +2691,10 @@ void rt_tilemaprenderer2d_draw_region(void *renderer,
 ///          `frame_delay_ms` → 100ms (~10 fps default). Clip data is immutable
 ///          after construction; callers that need different parameters build
 ///          a new clip rather than mutating.
-void *rt_animationclip2d_new(
-    int64_t start_frame, int64_t frame_count, int64_t frame_delay_ms, int64_t loop) {
+void *rt_animationclip2d_new(int64_t start_frame,
+                             int64_t frame_count,
+                             int64_t frame_delay_ms,
+                             int64_t loop) {
     rt_animationclip2d_impl *impl =
         (rt_animationclip2d_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_animationclip2d_impl));
     if (!impl)
@@ -2875,8 +2869,8 @@ int64_t rt_textlayout2d_measure_width(void *layout, rt_string text) {
 
 int64_t rt_textlayout2d_measure_height(void *layout, rt_string text) {
     rt_textlayout2d_impl *impl = (rt_textlayout2d_impl *)layout;
-    int64_t line_height = impl && impl->font ? rt_bitmapfont_text_height(impl->font)
-                                             : rt_canvas_text_height();
+    int64_t line_height =
+        impl && impl->font ? rt_bitmapfont_text_height(impl->font) : rt_canvas_text_height();
     int64_t scale = impl ? impl->scale : 1;
     int64_t lines = 1;
     if (impl && impl->wrap_width > 0) {
@@ -3114,8 +3108,7 @@ int64_t rt_collisionmask2d_overlaps(
     int64_t top = ay > by ? ay : by;
     if (!point_in_interval_i64(ax, ma->width, left) ||
         !point_in_interval_i64(bx, mb->width, left) ||
-        !point_in_interval_i64(ay, ma->height, top) ||
-        !point_in_interval_i64(by, mb->height, top))
+        !point_in_interval_i64(ay, ma->height, top) || !point_in_interval_i64(by, mb->height, top))
         return 0;
 
     uint64_t ax0 = (uint64_t)left - (uint64_t)ax;
@@ -3397,8 +3390,8 @@ void *rt_texturepackeratlas_new(void *pixels) {
         rt_trap("TexturePackerAtlas.New: null pixels");
         return NULL;
     }
-    rt_texturepackeratlas_impl *impl =
-        (rt_texturepackeratlas_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_texturepackeratlas_impl));
+    rt_texturepackeratlas_impl *impl = (rt_texturepackeratlas_impl *)rt_obj_new_i64(
+        0, (int64_t)sizeof(rt_texturepackeratlas_impl));
     if (!impl)
         return NULL;
     impl->atlas = rt_texatlas_new(pixels);

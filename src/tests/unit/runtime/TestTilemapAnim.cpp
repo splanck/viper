@@ -57,7 +57,7 @@ TEST(TilemapAnim, InvalidFrameDurationIgnored) {
     EXPECT_EQ(rt_tilemap_resolve_anim_tile(tm, 7), 7);
 }
 
-TEST(TilemapAnim, AnimatedTilesFollowResolvedCollision) {
+TEST(TilemapAnim, AnimatedTilesUseBaseCollision) {
     void *tm = rt_tilemap_new(2, 2, 16, 16);
     rt_tilemap_set_tile(tm, 0, 0, 5);
     rt_tilemap_set_collision(tm, 5, 1);
@@ -72,11 +72,11 @@ TEST(TilemapAnim, AnimatedTilesFollowResolvedCollision) {
 
     rt_tilemap_update_anims(tm, 100);
     EXPECT_EQ(rt_tilemap_resolve_anim_tile(tm, 5), 6);
-    EXPECT_EQ(rt_tilemap_is_solid_at(tm, 8, 8), 0);
+    EXPECT_EQ(rt_tilemap_is_solid_at(tm, 8, 8), 1);
 
     rt_tilemap_update_anims(tm, 100);
     EXPECT_EQ(rt_tilemap_resolve_anim_tile(tm, 5), 7);
-    EXPECT_EQ(rt_tilemap_is_solid_at(tm, 8, 8), 0);
+    EXPECT_EQ(rt_tilemap_is_solid_at(tm, 8, 8), 1);
 }
 
 int main() {

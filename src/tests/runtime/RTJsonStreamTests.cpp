@@ -27,6 +27,22 @@ static rt_string make_str(const char *s) {
     return rt_const_cstr(s);
 }
 
+static rt_string make_bytes(const char *bytes, size_t len) {
+    return rt_string_from_bytes(bytes, len);
+}
+
+static void expect_stream_error(rt_string text) {
+    void *p = rt_json_stream_new(text);
+    for (int i = 0; i < 32; i++) {
+        int64_t tok = rt_json_stream_next(p);
+        if (tok == RT_JSON_TOK_ERROR)
+            return;
+        if (tok == RT_JSON_TOK_END)
+            break;
+    }
+    assert(false && "Expected JsonStream error token");
+}
+
 // ============================================================================
 // Basic token tests
 // ============================================================================
@@ -329,6 +345,32 @@ static void test_invalid_json() {
     printf("test_invalid_json: PASSED\n");
 }
 
+static void test_strict_invalid_json() {
+    expect_stream_error(make_str("[1 2]"));
+    expect_stream_error(make_str("{\"a\" \"b\"}"));
+    expect_stream_error(make_str("]"));
+    expect_stream_error(make_str("true false"));
+    expect_stream_error(make_str("[1,]"));
+    expect_stream_error(make_str("{\"a\":1,}"));
+    expect_stream_error(make_str("01"));
+    expect_stream_error(make_str("1."));
+    expect_stream_error(make_str("1e"));
+
+    const char raw_control[] = {'[', '"', 'a', '\x01', 'b', '"', ']'};
+    expect_stream_error(make_bytes(raw_control, sizeof(raw_control)));
+
+    printf("test_strict_invalid_json: PASSED\n");
+}
+
+static void test_invalid_surrogate_pairs() {
+    expect_stream_error(make_str("[\"\\uD800\"]"));
+    expect_stream_error(make_str("[\"\\uD800x\"]"));
+    expect_stream_error(make_str("[\"\\uD800\\u0041\"]"));
+    expect_stream_error(make_str("[\"\\uDC00\"]"));
+
+    printf("test_invalid_surrogate_pairs: PASSED\n");
+}
+
 static void test_unterminated_string() {
     void *p = rt_json_stream_new(make_str("[\"no closing quote]"));
 
@@ -465,6 +507,8 @@ int main() {
 
     /* Error handling */
     test_invalid_json();
+    test_strict_invalid_json();
+    test_invalid_surrogate_pairs();
     test_unterminated_string();
 
     /* NULL safety */
