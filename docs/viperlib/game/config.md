@@ -6,6 +6,7 @@ Typed config loader wrapping JSON with dotted path access and default values.
 
 ### Config.Load(path) -> Config?
 Load and parse a JSON config file. Returns `null` when the path is missing, unreadable, or empty, so callers can keep defaults without a JSON parser trap.
+This optional-loader behavior is independent of `Viper.IO.File.ReadAllText`, which traps on missing files and other read errors.
 
 ### Config.FromString(jsonStr) -> Config?
 Parse an inline JSON string.

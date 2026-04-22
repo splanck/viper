@@ -5,17 +5,17 @@ bind Viper.IO.Dir;
 bind Viper.Terminal;
 
 func start() {
-    Say(Combine("a", "b"));
-    Say(GetExtension("file.txt"));
-    Say(GetFileName("dir/file.txt"));
-    Say(GetFileNameNoExt("dir/file.txt"));
-    Say(GetDirectory("dir/file.txt"));
-    SayBool(HasExtension("file.txt"));
-    SayBool(HasExtension("file"));
-    Say(ChangeExtension("file.txt", ".md"));
-    SayBool(IsAbsolute("C:\\foo"));
-    SayBool(IsAbsolute("foo"));
-    Say(Normalize("a/b/../c"));
+    Say(Join("a", "b"));
+    Say(Ext("file.txt"));
+    Say(Name("dir/file.txt"));
+    Say(Stem("dir/file.txt"));
+    Say(Dir("dir/file.txt"));
+    SayBool(Ext("file.txt") != "");
+    SayBool(Ext("file") != "");
+    Say(WithExt("file.txt", ".md"));
+    SayBool(IsAbs("C:\\foo"));
+    SayBool(IsAbs("foo"));
+    Say(Norm("a/b/../c"));
 
     // File write/read round-trip
     var tmp = "_rt_api_test_tmp.txt";
@@ -23,7 +23,7 @@ func start() {
     SayBool(Exists(tmp));
     Say(ReadAllText(tmp));
     SayInt(Size(tmp));
-    AppendAllText(tmp, "!");
+    Append(tmp, "!");
     Say(ReadAllText(tmp));
     Delete(tmp);
     SayBool(Viper.IO.File.Exists(tmp));

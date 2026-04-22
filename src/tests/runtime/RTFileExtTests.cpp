@@ -21,6 +21,7 @@
 #include "tests/common/PlatformSkip.h"
 
 #include <cassert>
+#include <csetjmp>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -36,6 +37,31 @@
 #define mkdir_p(path) mkdir(path, 0755)
 #define rmdir_p(path) rmdir(path)
 #endif
+
+namespace {
+static jmp_buf g_trap_jmp;
+static const char *g_last_trap = nullptr;
+static bool g_trap_expected = false;
+} // namespace
+
+extern "C" void vm_trap(const char *msg) {
+    g_last_trap = msg;
+    if (g_trap_expected)
+        longjmp(g_trap_jmp, 1);
+    rt_abort(msg);
+}
+
+#define EXPECT_TRAP(expr)                                                                          \
+    do {                                                                                           \
+        g_trap_expected = true;                                                                    \
+        g_last_trap = nullptr;                                                                     \
+        if (setjmp(g_trap_jmp) == 0) {                                                             \
+            expr;                                                                                  \
+            assert(false && "Expected trap did not occur");                                        \
+        }                                                                                          \
+        g_trap_expected = false;                                                                   \
+        assert(g_last_trap != nullptr);                                                            \
+    } while (0)
 
 /// @brief Helper to print test result.
 static void test_result(const char *name, bool passed) {
@@ -163,6 +189,26 @@ static void test_copy() {
     remove_file(src_path);
     remove_file(dst_path);
 
+    printf("\n");
+}
+
+/// @brief Test rt_file_copy refuses to copy a file onto itself.
+static void test_copy_same_file_traps() {
+    printf("Testing rt_file_copy same-file guard:\n");
+
+    const char *base = get_test_base();
+    char path_buf[512];
+    snprintf(path_buf, sizeof(path_buf), "%s_copy_same.txt", base);
+    create_test_file(path_buf, "preserve me");
+
+    rt_string path = rt_const_cstr(path_buf);
+    EXPECT_TRAP(rt_file_copy(path, path));
+
+    rt_string content = rt_io_file_read_all_text(path);
+    test_result("same-file copy preserves content",
+                rt_str_eq(content, rt_const_cstr("preserve me")));
+
+    remove_file(path_buf);
     printf("\n");
 }
 
@@ -462,6 +508,19 @@ static void test_read_all_lines() {
 
     remove_file(file_path);
 
+    snprintf(file_path, sizeof(file_path), "%s_read_all_lines_trailing.txt", base);
+    static const char trailing[] = "one\n\n";
+    create_test_file_bin(file_path, trailing, sizeof(trailing) - 1);
+    path = rt_const_cstr(file_path);
+    lines = rt_io_file_read_all_lines(path);
+    test_result("trailing empty lines preserved", rt_seq_len(lines) == 3);
+    test_result("trailing line0",
+                rt_str_eq((rt_string)rt_seq_get(lines, 0), rt_const_cstr("one")));
+    test_result("trailing line1 empty", rt_str_len((rt_string)rt_seq_get(lines, 1)) == 0);
+    test_result("trailing line2 empty", rt_str_len((rt_string)rt_seq_get(lines, 2)) == 0);
+
+    remove_file(file_path);
+
     printf("\n");
 }
 
@@ -532,6 +591,23 @@ static void test_touch() {
     printf("\n");
 }
 
+/// @brief Test Delete traps on non-file paths but remains idempotent for missing files.
+static void test_delete_error_contract() {
+    printf("Testing rt_io_file_delete error contract:\n");
+
+    rt_io_file_delete(rt_const_cstr(get_missing_path()));
+    test_result("delete missing is idempotent", true);
+
+    const char *base = get_test_base();
+    char dir_path[512];
+    snprintf(dir_path, sizeof(dir_path), "%s_delete_dir", base);
+    mkdir_p(dir_path);
+    EXPECT_TRAP(rt_io_file_delete(rt_const_cstr(dir_path)));
+    rmdir_p(dir_path);
+
+    printf("\n");
+}
+
 /// @brief Test empty file handling.
 static void test_empty_file() {
     printf("Testing empty file handling:\n");
@@ -570,15 +646,11 @@ static void test_nonexistent() {
 
     rt_string path = rt_const_cstr(get_missing_path());
 
-    // Read operations should return empty/default values
-    rt_string text = rt_io_file_read_all_text(path);
-    test_result("read text returns empty", rt_str_len(text) == 0);
+    // High-level text/line reads trap on I/O errors.
+    EXPECT_TRAP(rt_io_file_read_all_text(path));
+    EXPECT_TRAP(rt_file_read_lines(path));
 
-    void *bytes = rt_file_read_bytes(path);
-    test_result("read bytes returns empty", rt_bytes_len(bytes) == 0);
-
-    void *lines = rt_file_read_lines(path);
-    test_result("read lines returns empty", rt_seq_len(lines) == 0);
+    EXPECT_TRAP(rt_file_read_bytes(path));
 
     test_result("size returns -1", rt_file_size(path) == -1);
     test_result("modified returns 0", rt_file_modified(path) == 0);
@@ -592,6 +664,7 @@ int main() {
 
     test_exists();
     test_copy();
+    test_copy_same_file_traps();
     test_move();
     test_move_overwrite();
     test_size();
@@ -604,6 +677,7 @@ int main() {
     test_read_all_lines();
     test_modified();
     test_touch();
+    test_delete_error_contract();
     test_empty_file();
     test_nonexistent();
 

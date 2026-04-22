@@ -14,12 +14,39 @@
 
 #include "rt_bytes.h"
 #include "rt_compress.h"
+#include "rt_internal.h"
 #include "rt_string.h"
 
 #include <cassert>
+#include <csetjmp>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+
+namespace {
+static jmp_buf g_trap_jmp;
+static const char *g_last_trap = nullptr;
+static bool g_trap_expected = false;
+} // namespace
+
+extern "C" void vm_trap(const char *msg) {
+    g_last_trap = msg;
+    if (g_trap_expected)
+        longjmp(g_trap_jmp, 1);
+    rt_abort(msg);
+}
+
+#define EXPECT_TRAP(expr)                                                                          \
+    do {                                                                                           \
+        g_trap_expected = true;                                                                    \
+        g_last_trap = nullptr;                                                                     \
+        if (setjmp(g_trap_jmp) == 0) {                                                             \
+            expr;                                                                                  \
+            assert(false && "Expected trap did not occur");                                        \
+        }                                                                                          \
+        g_trap_expected = false;                                                                   \
+        assert(g_last_trap != nullptr);                                                            \
+    } while (0)
 
 /// @brief Helper to print test result.
 static void test_result(const char *name, bool passed) {
@@ -306,6 +333,29 @@ static void test_gzip_crc() {
     test_result("CRC verification passed", bytes_equal(original, decompressed));
 }
 
+static void test_gzip_rejects_reserved_flags() {
+    printf("Testing GZIP reserved flags rejection:\n");
+
+    void *original = make_bytes_str("reserved flag payload");
+    void *compressed = rt_compress_gzip(original);
+    uint8_t *data = get_bytes_data(compressed);
+    data[3] |= 0x20;
+
+    EXPECT_TRAP(rt_compress_gunzip(compressed));
+    test_result("reserved flags trap", true);
+}
+
+static void test_gzip_rejects_truncated_optional_filename() {
+    printf("Testing GZIP optional filename bounds:\n");
+
+    uint8_t truncated[] = {0x1F, 0x8B, 0x08, 0x08, 0, 0, 0, 0, 0, 0xFF,
+                           'n',  'a',  'm',  'e',  'x', 'x', 'x', 'x'};
+    void *compressed = make_bytes(truncated, sizeof(truncated));
+
+    EXPECT_TRAP(rt_compress_gunzip(compressed));
+    test_result("truncated filename traps", true);
+}
+
 //=============================================================================
 // String Convenience Tests
 //=============================================================================
@@ -354,6 +404,16 @@ static void test_inflate_known_data() {
     void *decompressed = rt_compress_inflate(compressed);
 
     test_result("Known data round-trip", bytes_equal(original, decompressed));
+}
+
+static void test_inflate_truncated_data_traps() {
+    printf("Testing Inflate Truncated Data:\n");
+
+    uint8_t invalid[] = {0x01, 0x00};
+    void *compressed = make_bytes(invalid, sizeof(invalid));
+    EXPECT_TRAP(rt_compress_inflate(compressed));
+
+    test_result("Truncated input traps", true);
 }
 
 //=============================================================================
@@ -446,6 +506,10 @@ int main() {
     printf("\n");
     test_gzip_crc();
     printf("\n");
+    test_gzip_rejects_reserved_flags();
+    printf("\n");
+    test_gzip_rejects_truncated_optional_filename();
+    printf("\n");
 
     // String tests
     test_deflate_string();
@@ -455,6 +519,8 @@ int main() {
 
     // Known data
     test_inflate_known_data();
+    printf("\n");
+    test_inflate_truncated_data_traps();
     printf("\n");
 
     // Large data

@@ -14,8 +14,8 @@
 //
 // Key invariants:
 //   - Keys are unique; last-write wins.
-//   - Save writes atomically (open, write, close).
-//   - Load replaces all in-memory data with file contents.
+//   - Save writes atomically through an exclusive temp file and replace.
+//   - Load replaces all in-memory data with file contents; missing file is empty.
 //   - All internal strings are heap-allocated via strdup/malloc.
 //
 // Ownership/Lifetime:
@@ -41,6 +41,7 @@
 
 #ifdef _WIN32
 #include <direct.h>
+#include <fcntl.h>
 #include <io.h>
 #include <process.h>
 #include <windows.h>
@@ -479,39 +480,65 @@ static void json_escape_append(rt_string_builder *sb, const char *str, size_t le
 
 static int savedata_write_atomic(const char *path, const char *data, size_t len) {
     size_t path_len = strlen(path);
-    char *tmp_path = (char *)malloc(path_len + 48);
-    if (!tmp_path)
-        return 0;
-
 #ifdef _WIN32
     unsigned long pid = (unsigned long)_getpid();
 #else
     unsigned long pid = (unsigned long)getpid();
 #endif
-    snprintf(tmp_path, path_len + 48, "%s.tmp.%lu.%p", path, pid, (const void *)data);
 
-    FILE *fp =
+    char *tmp_path = NULL;
+    FILE *fp = NULL;
+    for (unsigned attempt = 0; attempt < 128; ++attempt) {
+        tmp_path = (char *)malloc(path_len + 96);
+        if (!tmp_path)
+            return 0;
+        snprintf(tmp_path, path_len + 96, "%s.tmp.%lu.%p.%u", path, pid, (const void *)data, attempt);
 #ifdef _WIN32
-        savedata_fopen_utf8(tmp_path, L"wb");
+        wchar_t *wide_path = rt_file_path_utf8_to_wide(tmp_path);
+        if (!wide_path) {
+            free(tmp_path);
+            return 0;
+        }
+        int fd = _wopen(wide_path, _O_WRONLY | _O_CREAT | _O_EXCL | _O_BINARY, _S_IREAD | _S_IWRITE);
+        free(wide_path);
+        if (fd >= 0)
+            fp = _fdopen(fd, "wb");
+        if (fd >= 0 && !fp)
+            _close(fd);
 #else
-        savedata_fopen_utf8(tmp_path, "wb");
+        int fd = open(tmp_path, O_WRONLY | O_CREAT | O_EXCL, 0600);
+        if (fd >= 0)
+            fp = fdopen(fd, "wb");
+        if (fd >= 0 && !fp)
+            close(fd);
 #endif
+        if (fp)
+            break;
+        int err = errno;
+        free(tmp_path);
+        tmp_path = NULL;
+        if (err != EEXIST)
+            return 0;
+    }
     if (!fp) {
         free(tmp_path);
         return 0;
     }
 
+    int ok = 1;
     size_t written = 0;
     while (written < len) {
         size_t n = fwrite(data + written, 1, len - written, fp);
         if (n == 0) {
             if (ferror(fp))
                 break;
+            ok = 0;
+            break;
         }
         written += n;
     }
 
-    int ok = (written == len) ? 1 : 0;
+    ok = ok && (written == len) ? 1 : 0;
     if (ok && fflush(fp) != 0)
         ok = 0;
     if (ok && !savedata_sync_file(fp))
@@ -700,8 +727,13 @@ int8_t rt_savedata_load(void *obj) {
 #else
         savedata_fopen_utf8(sd->file_path, "rb");
 #endif
-    if (!fp)
+    if (!fp) {
+        if (errno == ENOENT) {
+            free_all_entries(sd);
+            return 1;
+        }
         return 0;
+    }
 
     /* Read entire file */
     uint64_t file_size = 0;

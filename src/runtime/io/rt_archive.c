@@ -47,6 +47,7 @@
 #include <errno.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -220,12 +221,93 @@ static void archive_write_exact_posix(int fd, const uint8_t *src, size_t total, 
 }
 #endif
 
-/// @brief Truncate-create a file at a UTF-8 path and write `total` bytes.
+static char *archive_make_temp_path(const char *path, unsigned attempt) {
+    size_t path_len = strlen(path);
+    char *tmp = (char *)malloc(path_len + 96);
+    if (!tmp)
+        return NULL;
+#ifdef _WIN32
+    unsigned long pid = (unsigned long)GetCurrentProcessId();
+#else
+    unsigned long pid = (unsigned long)getpid();
+#endif
+    snprintf(tmp, path_len + 96, "%s.tmp.%lu.%p.%u", path, pid, (void *)tmp, attempt);
+    return tmp;
+}
+
+static int archive_replace_utf8(const char *src, const char *dst) {
+#ifdef _WIN32
+    wchar_t *wsrc = rt_file_path_utf8_to_wide(src);
+    wchar_t *wdst = rt_file_path_utf8_to_wide(dst);
+    if (!wsrc || !wdst) {
+        free(wsrc);
+        free(wdst);
+        return 0;
+    }
+    BOOL ok = MoveFileExW(wsrc, wdst, MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH);
+    free(wsrc);
+    free(wdst);
+    return ok ? 1 : 0;
+#else
+    return rename(src, dst) == 0 ? 1 : 0;
+#endif
+}
+
+static void archive_unlink_utf8(const char *path) {
+#ifdef _WIN32
+    wchar_t *wide = rt_file_path_utf8_to_wide(path);
+    if (wide) {
+        (void)DeleteFileW(wide);
+        free(wide);
+    }
+#else
+    (void)unlink(path);
+#endif
+}
+
+static int archive_sync_parent_dir(const char *path) {
+#ifdef _WIN32
+    (void)path;
+    return 1;
+#else
+    const char *last = strrchr(path, '/');
+    const char *parent = ".";
+    char *owned = NULL;
+    if (last) {
+        size_t len = (size_t)(last - path);
+        if (len == 0) {
+            parent = "/";
+        } else {
+            owned = (char *)malloc(len + 1);
+            if (!owned)
+                return 0;
+            memcpy(owned, path, len);
+            owned[len] = '\0';
+            parent = owned;
+        }
+    }
+    int flags = O_RDONLY;
+#ifdef O_DIRECTORY
+    flags |= O_DIRECTORY;
+#endif
+    int fd = open(parent, flags);
+    free(owned);
+    if (fd < 0)
+        return 0;
+    int ok = fsync(fd) == 0 ? 1 : 0;
+    if (close(fd) != 0)
+        ok = 0;
+    return ok;
+#endif
+}
+
+/// @brief Atomically replace a file at a UTF-8 path with `total` bytes.
 ///
 /// Cross-platform helper used to flush the assembled write buffer
 /// during `Finish` and to drop extracted entries onto disk during
-/// `Extract`/`ExtractAll`. Always uses `CREATE_ALWAYS` (Windows) or
-/// `O_TRUNC` (POSIX) — the destination is replaced unconditionally.
+/// `Extract`/`ExtractAll`. Writes an exclusive temp sidecar first,
+/// flushes it, then replaces the destination so readers never observe
+/// a partially-written archive or extracted file.
 ///
 /// @param cpath    UTF-8 destination file path.
 /// @param src      Source byte buffer.
@@ -233,17 +315,83 @@ static void archive_write_exact_posix(int fd, const uint8_t *src, size_t total, 
 /// @param trap_msg Trap message used on any failure.
 static void archive_write_file_all_utf8(const char *cpath, const uint8_t *src, size_t total, const char *trap_msg) {
 #ifdef _WIN32
-    HANDLE h = archive_open_win_path(cpath, GENERIC_WRITE, 0, CREATE_ALWAYS);
-    if (h == INVALID_HANDLE_VALUE)
+    char *tmp = NULL;
+    HANDLE h = INVALID_HANDLE_VALUE;
+    for (unsigned attempt = 0; attempt < 128; ++attempt) {
+        tmp = archive_make_temp_path(cpath, attempt);
+        if (!tmp) {
+            rt_trap(trap_msg);
+            return;
+        }
+        h = archive_open_win_path(tmp, GENERIC_WRITE, 0, CREATE_NEW);
+        if (h != INVALID_HANDLE_VALUE)
+            break;
+        free(tmp);
+        tmp = NULL;
+        DWORD err = GetLastError();
+        if (err != ERROR_FILE_EXISTS && err != ERROR_ALREADY_EXISTS)
+            break;
+    }
+    if (h == INVALID_HANDLE_VALUE || !tmp) {
+        free(tmp);
         rt_trap(trap_msg);
+        return;
+    }
     archive_write_exact_win(h, src, total, trap_msg);
-    CloseHandle(h);
-#else
-    int fd = open(cpath, O_WRONLY | O_CREAT | O_TRUNC, 0644);
-    if (fd < 0)
+    int ok = FlushFileBuffers(h) ? 1 : 0;
+    if (!CloseHandle(h))
+        ok = 0;
+    if (ok)
+        ok = archive_replace_utf8(tmp, cpath);
+    if (!ok) {
+        archive_unlink_utf8(tmp);
+        free(tmp);
         rt_trap(trap_msg);
+        return;
+    }
+    free(tmp);
+#else
+    char *tmp = NULL;
+    int fd = -1;
+    for (unsigned attempt = 0; attempt < 128; ++attempt) {
+        tmp = archive_make_temp_path(cpath, attempt);
+        if (!tmp) {
+            rt_trap(trap_msg);
+            return;
+        }
+        int flags = O_WRONLY | O_CREAT | O_EXCL;
+#ifdef O_NOFOLLOW
+        flags |= O_NOFOLLOW;
+#endif
+        fd = open(tmp, flags, 0644);
+        if (fd >= 0)
+            break;
+        int err = errno;
+        free(tmp);
+        tmp = NULL;
+        if (err != EEXIST)
+            break;
+    }
+    if (fd < 0 || !tmp) {
+        free(tmp);
+        rt_trap(trap_msg);
+        return;
+    }
     archive_write_exact_posix(fd, src, total, trap_msg);
-    close(fd);
+    int ok = fsync(fd) == 0 ? 1 : 0;
+    if (close(fd) != 0)
+        ok = 0;
+    if (ok)
+        ok = archive_replace_utf8(tmp, cpath);
+    if (ok)
+        ok = archive_sync_parent_dir(cpath);
+    if (!ok) {
+        archive_unlink_utf8(tmp);
+        free(tmp);
+        rt_trap(trap_msg);
+        return;
+    }
+    free(tmp);
 #endif
 }
 
@@ -604,14 +752,25 @@ static void *read_entry_data(rt_archive_t *ar, zip_entry_t *e) {
     uint16_t name_len = read_u16(local + 26);
     uint16_t extra_len = read_u16(local + 28);
 
-    size_t data_offset = e->local_offset + ZIP_LOCAL_HEADER_SIZE + name_len + extra_len;
-    if (data_offset + e->compressed_size > ar->data_len)
+    if ((size_t)e->local_offset > SIZE_MAX - ZIP_LOCAL_HEADER_SIZE - name_len - extra_len) {
         rt_trap("Archive: corrupt entry data");
+        return NULL;
+    }
+    size_t data_offset = (size_t)e->local_offset + ZIP_LOCAL_HEADER_SIZE + name_len + extra_len;
+    if ((size_t)e->compressed_size > ar->data_len ||
+        data_offset > ar->data_len - (size_t)e->compressed_size) {
+        rt_trap("Archive: corrupt entry data");
+        return NULL;
+    }
 
     const uint8_t *compressed = ar->data + data_offset;
 
     // Handle uncompressed (stored) data
     if (e->method == ZIP_METHOD_STORED) {
+        if (e->compressed_size != e->uncompressed_size) {
+            rt_trap("Archive: stored entry size mismatch");
+            return NULL;
+        }
         // Verify CRC
         uint32_t crc = rt_crc32_compute(compressed, e->uncompressed_size);
         if (crc != e->crc32)
@@ -630,15 +789,22 @@ static void *read_entry_data(rt_archive_t *ar, zip_entry_t *e) {
 
         // Inflate
         void *result = rt_compress_inflate(comp_bytes);
+        archive_release_temp_object(comp_bytes);
+        if (!result)
+            rt_trap("Archive: failed to inflate entry");
 
         // Verify CRC
         uint32_t crc = rt_crc32_compute(bytes_data(result), bytes_len(result));
-        if (crc != e->crc32)
+        if (crc != e->crc32) {
+            archive_release_temp_object(result);
             rt_trap("Archive: CRC mismatch");
+        }
 
         // Verify size
-        if (bytes_len(result) != e->uncompressed_size)
+        if (bytes_len(result) != e->uncompressed_size) {
+            archive_release_temp_object(result);
             rt_trap("Archive: size mismatch");
+        }
 
         return result;
     }
@@ -656,17 +822,31 @@ static void *read_entry_data(rt_archive_t *ar, zip_entry_t *e) {
 /// Doubles the capacity (or jumps to `len + need + 4096` if doubling
 /// is still too small) using `realloc`. Traps on OOM. Cheap when the
 /// buffer is already large enough.
-static void write_ensure(rt_archive_t *ar, size_t need) {
-    if (ar->write_len + need > ar->write_cap) {
-        size_t new_cap = ar->write_cap * 2;
-        if (new_cap < ar->write_len + need)
-            new_cap = ar->write_len + need + 4096;
-        uint8_t *new_buf = (uint8_t *)realloc(ar->write_buf, new_cap);
-        if (!new_buf)
-            rt_trap("Archive: memory allocation failed");
-        ar->write_buf = new_buf;
-        ar->write_cap = new_cap;
+static int write_ensure(rt_archive_t *ar, size_t need) {
+    if (need > SIZE_MAX - ar->write_len) {
+        rt_trap("Archive: write buffer size overflow");
+        return 0;
     }
+    size_t required = ar->write_len + need;
+    if (required <= ar->write_cap)
+        return 1;
+
+    size_t new_cap = ar->write_cap ? ar->write_cap : 4096;
+    while (new_cap < required) {
+        if (new_cap > SIZE_MAX / 2) {
+            new_cap = required;
+            break;
+        }
+        new_cap *= 2;
+    }
+    uint8_t *new_buf = (uint8_t *)realloc(ar->write_buf, new_cap);
+    if (!new_buf) {
+        rt_trap("Archive: memory allocation failed");
+        return 0;
+    }
+    ar->write_buf = new_buf;
+    ar->write_cap = new_cap;
+    return 1;
 }
 
 /// @brief Append `len` bytes to the write buffer, growing it as needed.
@@ -675,7 +855,8 @@ static void write_ensure(rt_archive_t *ar, size_t need) {
 /// only path for appending bytes during archive construction so the
 /// growth policy is centralized.
 static void write_bytes(rt_archive_t *ar, const uint8_t *data, size_t len) {
-    write_ensure(ar, len);
+    if (!write_ensure(ar, len))
+        return;
     memcpy(ar->write_buf + ar->write_len, data, len);
     ar->write_len += len;
 }
@@ -809,6 +990,12 @@ static char *ensure_trailing_slash(char *name) {
     return new_name;
 }
 
+static void archive_map_set_boxed(void *map, const char *key_cstr, void *boxed) {
+    rt_string key = rt_const_cstr(key_cstr);
+    rt_map_set(map, key, boxed);
+    rt_string_unref(key);
+}
+
 /// @brief Produce DOS time/date words for the local-header timestamp.
 ///
 /// Currently emits a fixed `2001-01-01 00:00:00` so that archives are
@@ -841,14 +1028,18 @@ static void get_dos_time(uint16_t *time, uint16_t *date) {
 /// @return Owned `Archive` handle in read mode.
 void *rt_archive_open(rt_string path) {
     const char *cpath = rt_string_cstr(path);
-    if (!cpath || *cpath == '\0')
+    if (!cpath || *cpath == '\0') {
         rt_trap("Archive: invalid path");
+        return NULL;
+    }
 
     // Open and read file
 #ifdef _WIN32
     HANDLE h = archive_open_win_path(cpath, GENERIC_READ, FILE_SHARE_READ, OPEN_EXISTING);
-    if (h == INVALID_HANDLE_VALUE)
+    if (h == INVALID_HANDLE_VALUE) {
         rt_trap("Archive: file not found");
+        return NULL;
+    }
 
     LARGE_INTEGER size;
     if (!GetFileSizeEx(h, &size)) {
@@ -862,8 +1053,8 @@ void *rt_archive_open(rt_string path) {
     }
 
     size_t data_len = (size_t)size.QuadPart;
-    uint8_t *data = (uint8_t *)malloc(data_len);
-    if (!data) {
+    uint8_t *data = data_len > 0 ? (uint8_t *)malloc(data_len) : NULL;
+    if (data_len > 0 && !data) {
         CloseHandle(h);
         rt_trap("Archive: memory allocation failed");
     }
@@ -871,8 +1062,10 @@ void *rt_archive_open(rt_string path) {
     CloseHandle(h);
 #else
     int fd = open(cpath, O_RDONLY);
-    if (fd < 0)
+    if (fd < 0) {
         rt_trap("Archive: file not found");
+        return NULL;
+    }
 
     struct stat st;
     if (fstat(fd, &st) != 0) {
@@ -886,8 +1079,8 @@ void *rt_archive_open(rt_string path) {
     }
 
     size_t data_len = (size_t)st.st_size;
-    uint8_t *data = (uint8_t *)malloc(data_len);
-    if (!data) {
+    uint8_t *data = data_len > 0 ? (uint8_t *)malloc(data_len) : NULL;
+    if (data_len > 0 && !data) {
         close(fd);
         rt_trap("Archive: memory allocation failed");
     }
@@ -903,8 +1096,9 @@ void *rt_archive_open(rt_string path) {
     ar->is_writing = false;
 
     if (!parse_central_directory(ar)) {
-        free(ar->data);
+        archive_release_temp_object(ar);
         rt_trap("Archive: not a valid ZIP file");
+        return NULL;
     }
 
     return ar;
@@ -912,30 +1106,72 @@ void *rt_archive_open(rt_string path) {
 
 /// @brief `Archive.Create(path)` — start a new ZIP file for writing.
 ///
-/// Truncates / creates the destination file immediately to fail-fast on
-/// permission errors, then closes the handle (we re-open at `Finish`
-/// time once the in-memory layout is complete). All entry data is
-/// buffered in `write_buf` until then. Traps on invalid path or
-/// allocation failure.
+/// Probes that the destination directory is writable without truncating
+/// an existing archive. All entry data is buffered in `write_buf` until
+/// `Finish`, which atomically replaces the destination. Traps on invalid
+/// path or allocation failure.
 ///
 /// @param path UTF-8 destination path.
 /// @return Owned `Archive` handle in write mode.
 void *rt_archive_create(rt_string path) {
     const char *cpath = rt_string_cstr(path);
-    if (!cpath || *cpath == '\0')
+    if (!cpath || *cpath == '\0') {
         rt_trap("Archive: invalid path");
+        return NULL;
+    }
 
 #ifdef _WIN32
-    HANDLE h = archive_open_win_path(cpath, GENERIC_WRITE, 0, CREATE_ALWAYS);
-    if (h == INVALID_HANDLE_VALUE)
+    char *probe_tmp = NULL;
+    HANDLE h = INVALID_HANDLE_VALUE;
+    for (unsigned attempt = 0; attempt < 128; ++attempt) {
+        probe_tmp = archive_make_temp_path(cpath, attempt);
+        if (!probe_tmp) {
+            rt_trap("Archive: memory allocation failed");
+            return NULL;
+        }
+        h = archive_open_win_path(probe_tmp, GENERIC_WRITE, 0, CREATE_NEW);
+        if (h != INVALID_HANDLE_VALUE)
+            break;
+        free(probe_tmp);
+        probe_tmp = NULL;
+        DWORD err = GetLastError();
+        if (err != ERROR_FILE_EXISTS && err != ERROR_ALREADY_EXISTS)
+            break;
+    }
+    if (h == INVALID_HANDLE_VALUE || !probe_tmp) {
+        free(probe_tmp);
         rt_trap("Archive: failed to create file");
+        return NULL;
+    }
     CloseHandle(h);
+    archive_unlink_utf8(probe_tmp);
+    free(probe_tmp);
 #else
-    int fd = open(cpath, O_WRONLY | O_CREAT | O_TRUNC, 0644);
-    if (fd < 0)
+    char *probe_tmp = NULL;
+    int fd = -1;
+    for (unsigned attempt = 0; attempt < 128; ++attempt) {
+        probe_tmp = archive_make_temp_path(cpath, attempt);
+        if (!probe_tmp) {
+            rt_trap("Archive: memory allocation failed");
+            return NULL;
+        }
+        fd = open(probe_tmp, O_WRONLY | O_CREAT | O_EXCL, 0644);
+        if (fd >= 0)
+            break;
+        int err = errno;
+        free(probe_tmp);
+        probe_tmp = NULL;
+        if (err != EEXIST)
+            break;
+    }
+    if (fd < 0 || !probe_tmp) {
+        free(probe_tmp);
         rt_trap("Archive: failed to create file");
+        return NULL;
+    }
     close(fd);
-    fd = -1; // We'll reopen at Finish time
+    unlink(probe_tmp);
+    free(probe_tmp);
 #endif
 
     rt_archive_t *ar = archive_alloc();
@@ -943,8 +1179,11 @@ void *rt_archive_create(rt_string path) {
     ar->is_writing = true;
     ar->write_cap = 4096;
     ar->write_buf = (uint8_t *)malloc(ar->write_cap);
-    if (!ar->write_buf)
+    if (!ar->write_buf) {
+        archive_release_temp_object(ar);
         rt_trap("Archive: memory allocation failed");
+        return NULL;
+    }
 
     return ar;
 }
@@ -964,13 +1203,19 @@ void *rt_archive_from_bytes(void *data) {
         rt_trap("Archive: NULL data");
 
     int64_t len = bytes_len(data);
+    if (len < 0)
+        rt_trap("Archive: invalid data length");
     uint8_t *src = bytes_data(data);
 
     // Copy the data
-    uint8_t *copy = (uint8_t *)malloc((size_t)len);
-    if (!copy)
+    uint8_t *copy = NULL;
+    if (len > 0) {
+        copy = (uint8_t *)malloc((size_t)len);
+    }
+    if (len > 0 && !copy)
         rt_trap("Archive: memory allocation failed");
-    memcpy(copy, src, (size_t)len);
+    if (len > 0)
+        memcpy(copy, src, (size_t)len);
 
     rt_archive_t *ar = archive_alloc();
     ar->path = NULL;
@@ -980,8 +1225,9 @@ void *rt_archive_from_bytes(void *data) {
     ar->is_writing = false;
 
     if (!parse_central_directory(ar)) {
-        free(ar->data);
+        archive_release_temp_object(ar);
         rt_trap("Archive: not a valid ZIP archive");
+        return NULL;
     }
 
     return ar;
@@ -1138,7 +1384,9 @@ void *rt_archive_read(void *obj, rt_string name) {
 /// @return Owned `rt_string` containing the entry text.
 rt_string rt_archive_read_str(void *obj, rt_string name) {
     void *data = rt_archive_read(obj, name);
-    return rt_bytes_to_str(data);
+    rt_string result = rt_bytes_to_str(data);
+    archive_release_temp_object(data);
+    return result;
 }
 
 /// @brief `Archive.Extract(name, destPath)` — write a single entry to disk.
@@ -1153,12 +1401,13 @@ rt_string rt_archive_read_str(void *obj, rt_string name) {
 /// @param name      Entry to extract.
 /// @param dest_path UTF-8 destination file path.
 void rt_archive_extract(void *obj, rt_string name, rt_string dest_path) {
-    void *data = rt_archive_read(obj, name);
-
     const char *cpath = rt_string_cstr(dest_path);
-    if (!cpath || *cpath == '\0')
+    if (!cpath || *cpath == '\0') {
         rt_trap("Archive: invalid destination path");
+        return;
+    }
 
+    void *data = rt_archive_read(obj, name);
     archive_write_bytes_to_path(cpath, data);
     archive_release_temp_object(data);
 }
@@ -1201,10 +1450,18 @@ void rt_archive_extract_all(void *obj, rt_string dest_dir) {
 
         // Build full path
         size_t name_len = strlen(norm_name);
+        if (dir_len > SIZE_MAX - 1 - name_len) {
+            free(norm_name);
+            rt_trap("Archive: destination path too long");
+            return;
+        }
         size_t path_len = dir_len + 1 + name_len;
         char *full_path = (char *)malloc(path_len + 1);
-        if (!full_path)
+        if (!full_path) {
+            free(norm_name);
             rt_trap("Archive: memory allocation failed");
+            return;
+        }
 
         memcpy(full_path, cdir, dir_len);
         full_path[dir_len] = PATH_SEP;
@@ -1221,6 +1478,7 @@ void rt_archive_extract_all(void *obj, rt_string dest_dir) {
             // Create directory
             rt_string dir_path = rt_const_cstr(full_path);
             rt_dir_make_all(dir_path);
+            rt_string_unref(dir_path);
         } else {
             // Create parent directory
             char *last_sep = strrchr(full_path, PATH_SEP);
@@ -1228,6 +1486,7 @@ void rt_archive_extract_all(void *obj, rt_string dest_dir) {
                 *last_sep = '\0';
                 rt_string parent = rt_const_cstr(full_path);
                 rt_dir_make_all(parent);
+                rt_string_unref(parent);
                 *last_sep = PATH_SEP;
             }
 
@@ -1285,23 +1544,23 @@ void *rt_archive_info(void *obj, rt_string name) {
 
     // Add size
     boxed = rt_box_i64(e->uncompressed_size);
-    rt_map_set(map, rt_const_cstr("size"), boxed);
+    archive_map_set_boxed(map, "size", boxed);
     if (boxed && rt_obj_release_check0(boxed))
         rt_obj_free(boxed);
 
     // Add compressed size
     boxed = rt_box_i64(e->compressed_size);
-    rt_map_set(map, rt_const_cstr("compressedSize"), boxed);
+    archive_map_set_boxed(map, "compressedSize", boxed);
     if (boxed && rt_obj_release_check0(boxed))
         rt_obj_free(boxed);
 
     boxed = rt_box_i64((int64_t)e->crc32);
-    rt_map_set(map, rt_const_cstr("crc"), boxed);
+    archive_map_set_boxed(map, "crc", boxed);
     if (boxed && rt_obj_release_check0(boxed))
         rt_obj_free(boxed);
 
     boxed = rt_box_i64((int64_t)e->method);
-    rt_map_set(map, rt_const_cstr("method"), boxed);
+    archive_map_set_boxed(map, "method", boxed);
     if (boxed && rt_obj_release_check0(boxed))
         rt_obj_free(boxed);
 
@@ -1325,14 +1584,14 @@ void *rt_archive_info(void *obj, rt_string name) {
     timestamp += second;
 
     boxed = rt_box_i64(timestamp);
-    rt_map_set(map, rt_const_cstr("modifiedTime"), boxed);
+    archive_map_set_boxed(map, "modifiedTime", boxed);
     if (boxed && rt_obj_release_check0(boxed))
         rt_obj_free(boxed);
 
     // Add isDirectory
     boxed = rt_box_i1(e->is_directory ? 1 : 0);
-    rt_map_set(map, rt_const_cstr("isDirectory"), boxed);
-    rt_map_set(map, rt_const_cstr("isDir"), boxed);
+    archive_map_set_boxed(map, "isDirectory", boxed);
+    archive_map_set_boxed(map, "isDir", boxed);
     if (boxed && rt_obj_release_check0(boxed))
         rt_obj_free(boxed);
 

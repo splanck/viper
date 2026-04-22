@@ -65,6 +65,16 @@ static void test_join() {
     test_result("trailing sep", rt_str_eq(r, rt_const_cstr("/foo/bar")));
     rt_string_unref(r);
 
+#ifndef _WIN32
+    // A leading backslash is a valid relative filename byte on POSIX.
+    a = rt_const_cstr("/foo");
+    b = rt_const_cstr("\\bar");
+    r = rt_path_join(a, b);
+    test_result("posix leading backslash stays relative",
+                rt_str_eq(r, rt_const_cstr("/foo/\\bar")));
+    rt_string_unref(r);
+#endif
+
     printf("\n");
 }
 
@@ -85,6 +95,16 @@ static void test_dir() {
     p = rt_const_cstr("/baz.txt");
     r = rt_path_dir(p);
     test_result("root file", rt_str_eq(r, rt_const_cstr("/")));
+    rt_string_unref(r);
+
+    p = rt_const_cstr("/foo/bar/");
+    r = rt_path_dir(p);
+    test_result("trailing separator", rt_str_eq(r, rt_const_cstr("/foo")));
+    rt_string_unref(r);
+
+    p = rt_const_cstr("/");
+    r = rt_path_dir(p);
+    test_result("root directory", rt_str_eq(r, rt_const_cstr("/")));
     rt_string_unref(r);
 
     p = rt_const_cstr("");

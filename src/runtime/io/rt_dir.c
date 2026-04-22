@@ -72,6 +72,13 @@
 #define PATH_SEP '/'
 #endif
 
+#if !defined(_WIN32)
+static int rt_dir_posix_path_is_dir(const char *path) {
+    struct stat st;
+    return stat(path, &st) == 0 && S_ISDIR(st.st_mode);
+}
+#endif
+
 /// @brief Test whether `ch` is a path separator (accepts both `/` and `\`).
 ///
 /// Both forms are accepted everywhere (Windows uses `\` natively
@@ -381,9 +388,9 @@ static int rt_dir_win_is_dot_name(const wchar_t *name) {
     return wcscmp(name, L".") == 0 || wcscmp(name, L"..") == 0;
 }
 
-/// @brief Best-effort delete of a file (errors ignored — used during recursive remove).
-static void rt_dir_win_delete_file_w(const wchar_t *path) {
-    (void)DeleteFileW(path);
+/// @brief Delete a file during recursive remove.
+static int rt_dir_win_delete_file_w(const wchar_t *path) {
+    return DeleteFileW(path) ? 1 : 0;
 }
 #endif
 
@@ -499,11 +506,15 @@ void rt_dir_make(rt_string path) {
         rt_dir_trap_io("Dir.Make: failed to create directory");
     }
 #elif defined(__viperdos__)
-    if (mkdir(cpath, 0755) != 0 && errno != EEXIST) {
+    if (mkdir(cpath, 0755) != 0) {
+        if (errno == EEXIST && rt_dir_posix_path_is_dir(cpath))
+            return;
         rt_dir_trap_io("Dir.Make: failed to create directory");
     }
 #else
-    if (mkdir(cpath, 0755) != 0 && errno != EEXIST) {
+    if (mkdir(cpath, 0755) != 0) {
+        if (errno == EEXIST && rt_dir_posix_path_is_dir(cpath))
+            return;
         rt_dir_trap_io("Dir.Make: failed to create directory");
     }
 #endif
@@ -575,6 +586,12 @@ void rt_dir_make_all(rt_string path) {
         return;
     }
     memcpy(tmp, cpath, len + 1);
+#if !defined(_WIN32)
+    for (size_t i = 0; i < len; ++i) {
+        if (tmp[i] == '\\')
+            tmp[i] = '/';
+    }
+#endif
 
     size_t root_len = rt_dir_root_prefix_len(tmp, len);
 
@@ -604,19 +621,41 @@ void rt_dir_make_all(rt_string path) {
             }
 #elif defined(__viperdos__)
             struct stat st;
-            if (stat(tmp, &st) != 0) {
+            if (stat(tmp, &st) == 0) {
+                if (!S_ISDIR(st.st_mode)) {
+                    free(tmp);
+                    rt_dir_trap_io("Dir.MakeAll: path component exists and is not a directory");
+                    return;
+                }
+            } else {
                 if (mkdir(tmp, 0755) != 0 && errno != EEXIST) {
                     free(tmp);
                     rt_dir_trap_io("Dir.MakeAll: failed to create intermediate directory");
                     return;
                 }
+                if (!rt_dir_posix_path_is_dir(tmp)) {
+                    free(tmp);
+                    rt_dir_trap_io("Dir.MakeAll: path component exists and is not a directory");
+                    return;
+                }
             }
 #else
             struct stat st;
-            if (stat(tmp, &st) != 0) {
+            if (stat(tmp, &st) == 0) {
+                if (!S_ISDIR(st.st_mode)) {
+                    free(tmp);
+                    rt_dir_trap_io("Dir.MakeAll: path component exists and is not a directory");
+                    return;
+                }
+            } else {
                 if (mkdir(tmp, 0755) != 0 && errno != EEXIST) {
                     free(tmp);
                     rt_dir_trap_io("Dir.MakeAll: failed to create intermediate directory");
+                    return;
+                }
+                if (!rt_dir_posix_path_is_dir(tmp)) {
+                    free(tmp);
+                    rt_dir_trap_io("Dir.MakeAll: path component exists and is not a directory");
                     return;
                 }
             }
@@ -635,19 +674,41 @@ void rt_dir_make_all(rt_string path) {
     }
 #elif defined(__viperdos__)
     struct stat st;
-    if (stat(tmp, &st) != 0) {
+    if (stat(tmp, &st) == 0) {
+        if (!S_ISDIR(st.st_mode)) {
+            free(tmp);
+            rt_dir_trap_io("Dir.MakeAll: path exists and is not a directory");
+            return;
+        }
+    } else {
         if (mkdir(tmp, 0755) != 0 && errno != EEXIST) {
             free(tmp);
             rt_dir_trap_io("Dir.MakeAll: failed to create directory");
             return;
         }
+        if (!rt_dir_posix_path_is_dir(tmp)) {
+            free(tmp);
+            rt_dir_trap_io("Dir.MakeAll: path exists and is not a directory");
+            return;
+        }
     }
 #else
     struct stat st;
-    if (stat(tmp, &st) != 0) {
+    if (stat(tmp, &st) == 0) {
+        if (!S_ISDIR(st.st_mode)) {
+            free(tmp);
+            rt_dir_trap_io("Dir.MakeAll: path exists and is not a directory");
+            return;
+        }
+    } else {
         if (mkdir(tmp, 0755) != 0 && errno != EEXIST) {
             free(tmp);
             rt_dir_trap_io("Dir.MakeAll: failed to create directory");
+            return;
+        }
+        if (!rt_dir_posix_path_is_dir(tmp)) {
+            free(tmp);
+            rt_dir_trap_io("Dir.MakeAll: path exists and is not a directory");
             return;
         }
     }
@@ -719,21 +780,121 @@ void rt_dir_remove(rt_string path) {
 }
 
 /// @brief Internal helper to delete a single file.
-///
-/// Used by rt_dir_remove_all during recursive directory deletion. Silently
-/// ignores errors to continue deletion of other files.
-///
-/// @param path Absolute or relative path to the file.
-///
-/// @note Errors are silently ignored (best-effort deletion).
-/// @note Not part of the public API.
-static void delete_file(const char *path) {
+static int delete_file(const char *path) {
 #ifdef _WIN32
-    (void)_unlink(path);
+    return _unlink(path) == 0 ? 1 : 0;
 #elif defined(__viperdos__)
-    (void)unlink(path);
+    return unlink(path) == 0 ? 1 : 0;
 #else
-    (void)unlink(path);
+    return unlink(path) == 0 ? 1 : 0;
+#endif
+}
+
+static int rt_dir_remove_all_cpath(const char *cpath) {
+#ifdef _WIN32
+    wchar_t *dir_path = rt_dir_win_prepare_path(cpath);
+    wchar_t *pattern = rt_dir_win_make_pattern(cpath);
+    if (!dir_path || !pattern) {
+        free(dir_path);
+        free(pattern);
+        return 0;
+    }
+
+    WIN32_FIND_DATAW fd;
+    HANDLE h = FindFirstFileW(pattern, &fd);
+    if (h == INVALID_HANDLE_VALUE) {
+        DWORD err = GetLastError();
+        int ok = 1;
+        if (err == ERROR_FILE_NOT_FOUND || err == ERROR_PATH_NOT_FOUND) {
+            ok = 1;
+        } else if (!RemoveDirectoryW(dir_path)) {
+            DWORD remove_err = GetLastError();
+            ok = (remove_err == ERROR_FILE_NOT_FOUND || remove_err == ERROR_PATH_NOT_FOUND) ? 1 : 0;
+        }
+        free(pattern);
+        free(dir_path);
+        return ok;
+    }
+
+    int ok = 1;
+    do {
+        if (rt_dir_win_is_dot_name(fd.cFileName))
+            continue;
+
+        wchar_t *full_path = rt_dir_win_join(dir_path, fd.cFileName);
+        if (!full_path) {
+            ok = 0;
+            continue;
+        }
+
+        if ((fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0) {
+            if ((fd.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0) {
+                if (!RemoveDirectoryW(full_path) && GetLastError() != ERROR_FILE_NOT_FOUND)
+                    ok = 0;
+            } else {
+                rt_string sub = rt_dir_win_wide_to_string(full_path);
+                const char *sub_cpath = sub ? rt_string_cstr(sub) : NULL;
+                if (!sub_cpath || !rt_dir_remove_all_cpath(sub_cpath))
+                    ok = 0;
+                if (sub)
+                    rt_string_unref(sub);
+            }
+        } else {
+            if (!rt_dir_win_delete_file_w(full_path) && GetLastError() != ERROR_FILE_NOT_FOUND)
+                ok = 0;
+        }
+
+        free(full_path);
+    } while (FindNextFileW(h, &fd));
+
+    DWORD find_err = GetLastError();
+    if (find_err != ERROR_NO_MORE_FILES)
+        ok = 0;
+    FindClose(h);
+    if (!RemoveDirectoryW(dir_path) && GetLastError() != ERROR_FILE_NOT_FOUND)
+        ok = 0;
+    free(pattern);
+    free(dir_path);
+    return ok;
+#else
+    DIR *dir = opendir(cpath);
+    if (!dir) {
+        if (errno == ENOENT)
+            return 1;
+        struct stat st;
+        if (lstat(cpath, &st) == 0 && !S_ISDIR(st.st_mode))
+            return 0;
+        return rmdir(cpath) == 0 || errno == ENOENT;
+    }
+
+    int ok = 1;
+    struct dirent *ent;
+    while ((ent = readdir(dir)) != NULL) {
+        if (strcmp(ent->d_name, ".") == 0 || strcmp(ent->d_name, "..") == 0)
+            continue;
+
+        char *full_path = rt_dir_join_child_alloc(cpath, ent->d_name);
+        if (!full_path) {
+            ok = 0;
+            continue;
+        }
+
+        struct stat st;
+        if (lstat(full_path, &st) == 0 && S_ISDIR(st.st_mode)) {
+            if (!rt_dir_remove_all_cpath(full_path))
+                ok = 0;
+        } else {
+            if (!delete_file(full_path) && errno != ENOENT)
+                ok = 0;
+        }
+        free(full_path);
+    }
+
+    if (closedir(dir) != 0)
+        ok = 0;
+    if (rmdir(cpath) != 0 && errno != ENOENT)
+        ok = 0;
+    return ok;
 #endif
 }
 
@@ -776,18 +937,18 @@ static void delete_file(const char *path) {
 /// - Permanently deletes files (no recycle bin)
 /// - Cannot be undone
 /// - May delete more than expected if symlinks point elsewhere
-/// - Continues on errors (best-effort deletion)
+/// - Traps if any child cannot be removed
 ///
 /// **Edge cases:**
-/// - Non-existent directory: attempts rmdir anyway (may fail silently)
+/// - Non-existent directory: silently succeeds
 /// - Empty directory: removes it directly
-/// - Read-only files: deletion may fail on some platforms
+/// - Read-only files: deletion may trap on some platforms
 ///
 /// @param path Path to the directory to remove recursively.
 ///
 /// @note O(n) time complexity where n is total number of files/directories.
 /// @note Does not follow symbolic links into other directories.
-/// @note Silent on most errors (best-effort deletion).
+/// @note Traps on deletion failures except for an already-missing top-level path.
 ///
 /// @see rt_dir_remove For removing empty directories only
 /// @see rt_dir_make_all For creating nested directories
@@ -798,96 +959,8 @@ void rt_dir_remove_all(rt_string path) {
         return;
     }
 
-#ifdef _WIN32
-    wchar_t *dir_path = rt_dir_win_prepare_path(cpath);
-    wchar_t *pattern = rt_dir_win_make_pattern(cpath);
-    if (!dir_path || !pattern) {
-        free(dir_path);
-        free(pattern);
-        rt_dir_trap_io("Dir.RemoveAll: failed to enumerate directory");
-        return;
-    }
-
-    WIN32_FIND_DATAW fd;
-    HANDLE h = FindFirstFileW(pattern, &fd);
-    if (h == INVALID_HANDLE_VALUE) {
-        // Directory might be empty or not exist
-        (void)RemoveDirectoryW(dir_path);
-        free(pattern);
-        free(dir_path);
-        return;
-    }
-
-    do {
-        if (rt_dir_win_is_dot_name(fd.cFileName))
-            continue;
-
-        wchar_t *full_path = rt_dir_win_join(dir_path, fd.cFileName);
-        if (!full_path)
-            continue;
-
-        if ((fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0) {
-            if ((fd.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0) {
-                (void)RemoveDirectoryW(full_path);
-            } else {
-                rt_string sub = rt_dir_win_wide_to_string(full_path);
-                rt_dir_remove_all(sub);
-                rt_string_unref(sub);
-            }
-        } else {
-            rt_dir_win_delete_file_w(full_path);
-        }
-
-        free(full_path);
-    } while (FindNextFileW(h, &fd));
-
-    FindClose(h);
-    (void)RemoveDirectoryW(dir_path);
-    free(pattern);
-    free(dir_path);
-#elif defined(__viperdos__)
-    // ViperDOS: Use POSIX directory APIs from libc (same as Unix).
-    // Falls through to the shared Unix implementation.
-#else
-    // Shared Unix/ViperDOS implementation.
-#endif
-
-#if !defined(_WIN32)
-    DIR *dir = opendir(cpath);
-    if (!dir) {
-        rmdir(cpath);
-        return;
-    }
-
-    struct dirent *ent;
-    while ((ent = readdir(dir)) != NULL) {
-        if (strcmp(ent->d_name, ".") == 0 || strcmp(ent->d_name, "..") == 0)
-            continue;
-
-        char *full_path = rt_dir_join_child_alloc(cpath, ent->d_name);
-        if (!full_path) {
-            closedir(dir);
-            rt_dir_trap_runtime("Dir.RemoveAll: out of memory");
-            return;
-        }
-
-        struct stat st;
-        /* Use lstat() so we do not follow symlinks into other trees.
-           A symlink pointing to a directory reports S_ISLNK, not S_ISDIR,
-           so delete_file() will call unlink() on the symlink itself. */
-        if (lstat(full_path, &st) == 0 && S_ISDIR(st.st_mode)) {
-            rt_string sub = rt_string_from_bytes(full_path, strlen(full_path));
-            rt_dir_remove_all(sub);
-            rt_string_unref(sub);
-        } else {
-            delete_file(full_path);
-        }
-        free(full_path);
-    }
-
-    closedir(dir);
-    rmdir(cpath);
-#endif
+    if (!rt_dir_remove_all_cpath(cpath))
+        rt_dir_trap_io("Dir.RemoveAll: failed to remove directory tree");
 }
 
 /// @brief List all entries (files and subdirectories) in a directory.
@@ -1443,13 +1516,15 @@ rt_string rt_dir_current(void) {
     free(wide);
     return result;
 #else
-    char buffer[PATH_MAX];
-    // Unix and ViperDOS: use POSIX getcwd.
-    if (getcwd(buffer, PATH_MAX) == NULL) {
+    // Unix and ViperDOS: allocate dynamically so very long cwd paths work.
+    char *buffer = getcwd(NULL, 0);
+    if (buffer == NULL) {
         rt_dir_trap_io("Dir.Current: failed to get current directory");
         return rt_str_empty();
     }
-    return rt_string_from_bytes(buffer, strlen(buffer));
+    rt_string result = rt_string_from_bytes(buffer, strlen(buffer));
+    free(buffer);
+    return result;
 #endif
 }
 

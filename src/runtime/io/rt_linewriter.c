@@ -275,9 +275,11 @@ void rt_linewriter_close(void *obj) {
 
     rt_linewriter_impl *lw = (rt_linewriter_impl *)obj;
     if (lw->fp && !lw->closed) {
-        fclose(lw->fp);
+        int rc = fclose(lw->fp);
         lw->fp = NULL;
         lw->closed = 1;
+        if (rc != 0)
+            rt_trap("LineWriter.Close: close failed (disk full or I/O error)");
     }
 }
 

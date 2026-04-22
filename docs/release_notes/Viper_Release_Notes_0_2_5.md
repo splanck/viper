@@ -21,10 +21,10 @@ The biggest user-visible new thing is a text-mode baseball-franchise simulator b
 
 | Metric | v0.2.4 | v0.2.5 | Delta |
 |---|---|---|---|
-| Commits | — | 53 | +53 |
+| Commits | — | 54 | +54 |
 | Source files | 2,869 | 2,900 | +31 |
 | Production SLOC | 450K | 496K | +46K |
-| Test SLOC | 183K | 201K | +18K |
+| Test SLOC | 183K | 202K | +19K |
 | Demo SLOC | 177K | 189K | +12K |
 
 Counts via `scripts/count_sloc.sh`.
@@ -98,6 +98,16 @@ Four rounds of widget audit. Themes: dark-theme palette refresh, HiDPI consisten
 - WeakMap now stores zeroing weak-reference handles, and direct reference-count frees clear registered weak refs before finalization. `Length`, `Has`, and `Keys` report live weak values; `Compact` removes stale slots.
 - Overflow hardening landed across sequence growth, queue / stack / priority queue capacity, hash-table resize, count totals, BloomFilter sizing / merge counts, key-copy allocation paths, Bytes range copies, Bytes base64 output sizing, and BinaryBuffer length-prefix writes. Invalid BloomFilter false-positive rates are sanitized.
 - SparseArray `Set(index, NULL)` removes the entry, and SortedSet `Range(from, to)` is inclusive with a null upper bound for open-ended scans.
+
+### IO runtime
+
+- File replacement paths (`WriteAllText`, `WriteAllBytes`, `WriteBytes`, `WriteLines`, `Archive.Finish`, `Archive.Extract`, `Archive.ExtractAll`, and `SaveData.Save`) now write exclusive temp sidecars, flush them, and atomically replace the destination. Failed writes trap and clean up temp files instead of leaving partial destinations.
+- `Archive.Create(path)` no longer truncates an existing archive before `Finish()`. Stored ZIP entries now validate compressed/uncompressed size agreement, entry data bounds, CRCs, and inflated sizes before returning data.
+- Stream wrappers now distinguish owning `Open*` constructors from borrowed `From*` wrappers. Closed or null streams trap on all operations except `Close(NULL)`, and `Write(NULL)` traps instead of silently succeeding.
+- Directory cleanup now propagates recursive delete failures while still treating a missing top-level directory as success. `Dir.MakeAll` accepts backslash separators on POSIX too.
+- `Path.Dir` preserves roots and trims trailing separators correctly; `Path.ExeDir()` is registered in the runtime catalog. `Glob.Match` documents and enforces `(path, pattern)` order, and glob helpers return false/empty on null inputs.
+- GZIP decompression now rejects reserved flags, malformed optional headers, bad FHCRC, CRC mismatches, and size mismatches. Compression string helpers release temporary byte buffers eagerly.
+- `SaveData.Load()` treats a missing save file as a successful empty load and clears stale in-memory entries; malformed JSON still leaves the prior state intact.
 
 ### Text runtime
 

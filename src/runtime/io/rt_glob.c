@@ -209,8 +209,12 @@ static int glob_match_impl(const char *pattern, const char *text, int allow_slas
 }
 
 int8_t rt_glob_match(rt_string path, rt_string pattern) {
+    if (!path || !pattern)
+        return 0;
     const char *pat = rt_string_cstr(pattern);
     const char *txt = rt_string_cstr(path);
+    if (!pat || !txt)
+        return 0;
     return glob_match_impl(pat, txt, 0) ? 1 : 0;
 }
 
@@ -225,7 +229,11 @@ static int glob_is_real_directory(rt_string path) {
         return 0;
 
 #ifdef _WIN32
-    DWORD attrs = GetFileAttributesA(cpath);
+    wchar_t *wide = rt_file_path_utf8_to_wide(cpath);
+    if (!wide)
+        return 0;
+    DWORD attrs = GetFileAttributesW(wide);
+    free(wide);
     if (attrs == INVALID_FILE_ATTRIBUTES)
         return 0;
     if ((attrs & FILE_ATTRIBUTE_DIRECTORY) == 0)
@@ -247,13 +255,18 @@ static int glob_is_real_directory(rt_string path) {
 
 void *rt_glob_files(rt_string dir, rt_string pattern) {
     void *result = rt_seq_new();
+    if (!dir || !pattern)
+        return result;
+    const char *pat_cstr = rt_string_cstr(pattern);
+    if (!pat_cstr)
+        return result;
+
     void *files = rt_dir_files_seq(dir);
 
     int64_t count = rt_seq_len(files);
     for (int64_t i = 0; i < count; i++) {
         rt_string name = (rt_string)rt_seq_get(files, i);
         const char *name_cstr = rt_string_cstr(name);
-        const char *pat_cstr = rt_string_cstr(pattern);
 
         if (glob_match_impl(pat_cstr, name_cstr, 0)) {
             // Build full path
@@ -330,21 +343,36 @@ static void glob_recursive_helper(rt_string base_dir,
 void *rt_glob_files_recursive(rt_string base, rt_string pattern) {
     void *result = rt_seq_new();
     rt_string empty = rt_str_empty();
+    if (!base || !pattern) {
+        rt_string_unref(empty);
+        return result;
+    }
+    const char *pat = rt_string_cstr(pattern);
+    if (!pat) {
+        rt_string_unref(empty);
+        return result;
+    }
 
-    glob_recursive_helper(base, empty, rt_string_cstr(pattern), result);
+    glob_recursive_helper(base, empty, pat, result);
+    rt_string_unref(empty);
 
     return result;
 }
 
 void *rt_glob_entries(rt_string dir, rt_string pattern) {
     void *result = rt_seq_new();
+    if (!dir || !pattern)
+        return result;
+    const char *pat_cstr = rt_string_cstr(pattern);
+    if (!pat_cstr)
+        return result;
+
     void *entries = rt_dir_list_seq(dir);
 
     int64_t count = rt_seq_len(entries);
     for (int64_t i = 0; i < count; i++) {
         rt_string name = (rt_string)rt_seq_get(entries, i);
         const char *name_cstr = rt_string_cstr(name);
-        const char *pat_cstr = rt_string_cstr(pattern);
 
         if (glob_match_impl(pat_cstr, name_cstr, 0)) {
             // Build full path

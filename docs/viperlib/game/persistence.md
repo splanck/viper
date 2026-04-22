@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-13
+last-verified: 2026-04-22
 ---
 
 # SaveData — Game Persistence
@@ -96,6 +96,10 @@ func start() {
 ### Atomic Writes
 
 `Save()` writes the complete JSON payload to a temporary file in the destination directory, flushes that file, and then replaces the live save file. On POSIX platforms the parent directory is also synced after replacement so the save is durable across power loss more often than a plain rename-only path. There is no incremental or append mode; each save writes the full state atomically.
+
+### Missing Save Files
+
+`Load()` treats a missing save file as a successful empty load. It clears any current in-memory entries and returns true. Malformed JSON or other read errors still return false and leave the current in-memory state unchanged.
 
 ### Last-Write Wins
 

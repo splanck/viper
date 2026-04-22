@@ -143,6 +143,21 @@ static void test_make_remove() {
     printf("\n");
 }
 
+/// @brief Test rt_dir_make rejects existing non-directory paths.
+static void test_make_existing_file_traps() {
+    printf("Testing rt_dir_make existing-file guard:\n");
+
+    const char *base = get_test_base();
+    char file_path[512];
+    snprintf(file_path, sizeof(file_path), "%s_make_file", base);
+    create_file(file_path);
+
+    EXPECT_TRAP(rt_dir_make(rt_const_cstr(file_path)));
+
+    remove_file(file_path);
+    printf("\n");
+}
+
 /// @brief Test rt_dir_make_all.
 static void test_make_all() {
     printf("Testing rt_dir_make_all:\n");
@@ -173,6 +188,43 @@ static void test_make_all() {
     printf("\n");
 }
 
+/// @brief Test rt_dir_make_all accepts backslash separators on POSIX hosts.
+static void test_make_all_backslash_path() {
+    printf("Testing rt_dir_make_all backslash separators:\n");
+
+    const char *base = get_test_base();
+    char nested[512];
+    snprintf(nested, sizeof(nested), "%s\\slash\\nested", base);
+
+    rt_dir_make_all(rt_const_cstr(nested));
+
+    char normalized[512];
+    snprintf(normalized, sizeof(normalized), "%s/slash/nested", base);
+    test_result("make_all normalizes backslashes", rt_dir_exists(rt_const_cstr(normalized)) == 1);
+
+    rt_dir_remove_all(rt_const_cstr(base));
+    printf("\n");
+}
+
+/// @brief Test rt_dir_make_all rejects files in the requested path.
+static void test_make_all_existing_file_traps() {
+    printf("Testing rt_dir_make_all existing-file guard:\n");
+
+    const char *base = get_test_base();
+    char file_path[512], nested[512];
+    snprintf(file_path, sizeof(file_path), "%s/a", base);
+    snprintf(nested, sizeof(nested), "%s/a/b", base);
+
+    mkdir_p(base);
+    create_file(file_path);
+
+    EXPECT_TRAP(rt_dir_make_all(rt_const_cstr(nested)));
+
+    remove_file(file_path);
+    rmdir_p(base);
+    printf("\n");
+}
+
 /// @brief Test rt_dir_remove_all.
 static void test_remove_all() {
     printf("Testing rt_dir_remove_all:\n");
@@ -195,6 +247,19 @@ static void test_remove_all() {
     // Remove all
     rt_dir_remove_all(path);
     test_result("remove_all deletes everything", rt_dir_exists(path) == 0);
+
+    printf("\n");
+}
+
+static void test_remove_all_missing_is_success() {
+    printf("Testing rt_dir_remove_all missing directory:\n");
+
+    const char *base = get_test_base();
+    char missing[512];
+    snprintf(missing, sizeof(missing), "%s_missing_remove_all", base);
+
+    rt_dir_remove_all(rt_const_cstr(missing));
+    test_result("remove_all missing succeeds", true);
 
     printf("\n");
 }
@@ -578,8 +643,12 @@ int main() {
 
     test_exists();
     test_make_remove();
+    test_make_existing_file_traps();
     test_make_all();
+    test_make_all_backslash_path();
+    test_make_all_existing_file_traps();
     test_remove_all();
+    test_remove_all_missing_is_success();
     test_list();
     test_entries();
     test_files();

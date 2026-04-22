@@ -63,8 +63,8 @@ func start() {
     Say(Viper.IO.Dir.Current());
 
     // --- Glob ---
-    SayBool(Viper.IO.Glob.Match("*.txt", "hello.txt"));
-    SayBool(Viper.IO.Glob.Match("*.bas", "hello.txt"));
+    SayBool(Viper.IO.Glob.Match("hello.txt", "*.txt"));
+    SayBool(Viper.IO.Glob.Match("hello.txt", "*.bas"));
 
     // --- Cleanup ---
     Viper.IO.File.Delete(testfile);

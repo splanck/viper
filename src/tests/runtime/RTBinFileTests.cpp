@@ -17,6 +17,7 @@
 #include "tests/common/PlatformSkip.h"
 
 #include <cassert>
+#include <cstdint>
 #include <cstdio>
 #include <cstring>
 
@@ -215,6 +216,57 @@ static void test_size() {
         assert(rt_binfile_size(bf) == 100);
         // Position should still be 0 after size query
         assert(rt_binfile_pos(bf) == 0);
+        rt_binfile_close(bf);
+    }
+
+    cleanup_test_file();
+}
+
+static void test_large_count_clamps_without_overflow() {
+    cleanup_test_file();
+
+    {
+        rt_string path = make_string(test_file);
+        rt_string mode = make_string("w");
+        void *bf = rt_binfile_open(path, mode);
+        for (int i = 0; i < 4; ++i)
+            rt_binfile_write_byte(bf, 'A' + i);
+        rt_binfile_close(bf);
+    }
+
+    {
+        rt_string path = make_string(test_file);
+        rt_string mode = make_string("r");
+        void *bf = rt_binfile_open(path, mode);
+        void *bytes = rt_bytes_new(4);
+        int64_t read = rt_binfile_read(bf, bytes, 1, INT64_MAX);
+        assert(read == 3);
+        assert(rt_bytes_get(bytes, 1) == 'A');
+        assert(rt_bytes_get(bytes, 3) == 'C');
+        rt_binfile_close(bf);
+    }
+
+    {
+        rt_string path = make_string(test_file);
+        rt_string mode = make_string("w");
+        void *bf = rt_binfile_open(path, mode);
+        void *bytes = rt_bytes_new(4);
+        rt_bytes_set(bytes, 0, 'W');
+        rt_bytes_set(bytes, 1, 'X');
+        rt_bytes_set(bytes, 2, 'Y');
+        rt_bytes_set(bytes, 3, 'Z');
+        rt_binfile_write(bf, bytes, 1, INT64_MAX);
+        rt_binfile_close(bf);
+    }
+
+    {
+        rt_string path = make_string(test_file);
+        rt_string mode = make_string("r");
+        void *bf = rt_binfile_open(path, mode);
+        assert(rt_binfile_size(bf) == 3);
+        assert(rt_binfile_read_byte(bf) == 'X');
+        assert(rt_binfile_read_byte(bf) == 'Y');
+        assert(rt_binfile_read_byte(bf) == 'Z');
         rt_binfile_close(bf);
     }
 
@@ -485,6 +537,7 @@ int main() {
     test_read_byte_write_byte();
     test_seek_and_pos();
     test_size();
+    test_large_count_clamps_without_overflow();
     test_eof();
     test_append_mode();
     test_read_write_mode();

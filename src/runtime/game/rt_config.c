@@ -11,6 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_config.h"
+#include "rt_bytes.h"
 #include "rt_file_ext.h"
 #include "rt_json.h"
 #include "rt_jsonpath.h"
@@ -35,10 +36,24 @@ static config_impl *get(void *cfg) {
 void *rt_config_load(void *path) {
     if (!path)
         return NULL;
-    rt_string text = rt_io_file_read_all_text((rt_string)path);
+
+    // rt_file_read_bytes now traps on a missing file (hardened I/O path),
+    // but Config.Load's contract is "missing config → NULL so the caller
+    // can fall back to defaults." Pre-check existence with the non-trapping
+    // helper so a missing config stays a soft failure.
+    if (!rt_io_file_exists((rt_string)path))
+        return NULL;
+
+    void *bytes = rt_file_read_bytes((rt_string)path);
+    if (rt_bytes_len(bytes) == 0)
+        return NULL;
+
+    rt_string text = rt_bytes_to_str(bytes);
     if (!text || rt_str_len(text) == 0)
         return NULL;
+
     void *root = rt_json_parse((rt_string)text);
+    rt_string_unref(text);
     if (!root)
         return NULL;
 

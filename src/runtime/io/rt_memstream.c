@@ -35,6 +35,7 @@
 #include "rt_object.h"
 #include "rt_string.h"
 
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -67,20 +68,28 @@ static void rt_memstream_finalize(void *obj) {
 }
 
 /// @brief Ensure buffer has at least required capacity.
-static void ensure_capacity(rt_memstream_impl *ms, int64_t required) {
+static int ensure_capacity(rt_memstream_impl *ms, int64_t required) {
+    if (required < 0) {
+        rt_trap("MemStream: capacity overflow");
+        return 0;
+    }
     if (required <= ms->capacity)
-        return;
+        return 1;
 
     int64_t new_cap = (ms->capacity <= INT64_MAX / 2) ? ms->capacity * 2 : INT64_MAX;
     if (new_cap < required)
         new_cap = required;
     if (new_cap < MEMSTREAM_INITIAL_CAPACITY)
         new_cap = MEMSTREAM_INITIAL_CAPACITY;
+    if ((uint64_t)new_cap > (uint64_t)SIZE_MAX) {
+        rt_trap("MemStream: capacity exceeds addressable memory");
+        return 0;
+    }
 
     uint8_t *new_data = (uint8_t *)realloc(ms->data, (size_t)new_cap);
     if (!new_data) {
         rt_trap("MemStream: memory allocation failed");
-        return;
+        return 0;
     }
 
     // Zero new portion
@@ -89,15 +98,19 @@ static void ensure_capacity(rt_memstream_impl *ms, int64_t required) {
 
     ms->data = new_data;
     ms->capacity = new_cap;
+    return 1;
 }
 
 /// @brief Ensure we can write 'count' bytes at current position.
 /// Expands buffer and fills gaps with zeros if needed.
-static void prepare_write(rt_memstream_impl *ms, int64_t count) {
-    if (count < 0 || ms->pos > INT64_MAX - count)
+static int prepare_write(rt_memstream_impl *ms, int64_t count) {
+    if (count < 0 || ms->pos > INT64_MAX - count) {
         rt_trap("MemStream: write position overflow");
+        return 0;
+    }
     int64_t end_pos = ms->pos + count;
-    ensure_capacity(ms, end_pos);
+    if (!ensure_capacity(ms, end_pos))
+        return 0;
 
     // If writing past current length, zero the gap
     if (ms->pos > ms->len) {
@@ -107,13 +120,16 @@ static void prepare_write(rt_memstream_impl *ms, int64_t count) {
     // Update length if we're extending
     if (end_pos > ms->len)
         ms->len = end_pos;
+    return 1;
 }
 
 /// @brief Check that we have enough bytes to read.
-static void check_read(rt_memstream_impl *ms, int64_t count, const char *op) {
+static int check_read(rt_memstream_impl *ms, int64_t count, const char *op) {
     if (count < 0 || count > ms->len || ms->pos > ms->len - count) {
         rt_trap(op);
+        return 0;
     }
+    return 1;
 }
 
 //=============================================================================
@@ -157,8 +173,11 @@ void *rt_memstream_new_capacity(int64_t capacity) {
     ms->pos = 0;
     rt_obj_set_finalizer(ms, rt_memstream_finalize);
 
-    if (capacity > 0)
-        ensure_capacity(ms, capacity);
+    if (capacity > 0 && !ensure_capacity(ms, capacity)) {
+        if (rt_obj_release_check0(ms))
+            rt_obj_free(ms);
+        return NULL;
+    }
 
     return ms;
 }
@@ -187,7 +206,11 @@ void *rt_memstream_from_bytes(void *bytes) {
     rt_obj_set_finalizer(ms, rt_memstream_finalize);
 
     if (b->len > 0) {
-        ensure_capacity(ms, b->len);
+        if (!ensure_capacity(ms, b->len)) {
+            if (rt_obj_release_check0(ms))
+                rt_obj_free(ms);
+            return NULL;
+        }
         memcpy(ms->data, b->data, (size_t)b->len);
         ms->len = b->len;
     }
@@ -258,7 +281,8 @@ int64_t rt_memstream_read_i8(void *obj) {
         return 0;
     }
     rt_memstream_impl *ms = (rt_memstream_impl *)obj;
-    check_read(ms, 1, "MemStream.ReadI8: insufficient bytes");
+    if (!check_read(ms, 1, "MemStream.ReadI8: insufficient bytes"))
+        return 0;
     int8_t val = (int8_t)ms->data[ms->pos];
     ms->pos++;
     return (int64_t)val;
@@ -270,7 +294,8 @@ void rt_memstream_write_i8(void *obj, int64_t value) {
         return;
     }
     rt_memstream_impl *ms = (rt_memstream_impl *)obj;
-    prepare_write(ms, 1);
+    if (!prepare_write(ms, 1))
+        return;
     ms->data[ms->pos] = (uint8_t)(value & 0xFF);
     ms->pos++;
 }
@@ -281,7 +306,8 @@ int64_t rt_memstream_read_u8(void *obj) {
         return 0;
     }
     rt_memstream_impl *ms = (rt_memstream_impl *)obj;
-    check_read(ms, 1, "MemStream.ReadU8: insufficient bytes");
+    if (!check_read(ms, 1, "MemStream.ReadU8: insufficient bytes"))
+        return 0;
     uint8_t val = ms->data[ms->pos];
     ms->pos++;
     return (int64_t)val;
@@ -293,7 +319,8 @@ void rt_memstream_write_u8(void *obj, int64_t value) {
         return;
     }
     rt_memstream_impl *ms = (rt_memstream_impl *)obj;
-    prepare_write(ms, 1);
+    if (!prepare_write(ms, 1))
+        return;
     ms->data[ms->pos] = (uint8_t)(value & 0xFF);
     ms->pos++;
 }
@@ -304,7 +331,8 @@ int64_t rt_memstream_read_i16(void *obj) {
         return 0;
     }
     rt_memstream_impl *ms = (rt_memstream_impl *)obj;
-    check_read(ms, 2, "MemStream.ReadI16: insufficient bytes");
+    if (!check_read(ms, 2, "MemStream.ReadI16: insufficient bytes"))
+        return 0;
     uint8_t *p = ms->data + ms->pos;
     int16_t val = (int16_t)(p[0] | ((uint16_t)p[1] << 8));
     ms->pos += 2;
@@ -317,7 +345,8 @@ void rt_memstream_write_i16(void *obj, int64_t value) {
         return;
     }
     rt_memstream_impl *ms = (rt_memstream_impl *)obj;
-    prepare_write(ms, 2);
+    if (!prepare_write(ms, 2))
+        return;
     uint8_t *p = ms->data + ms->pos;
     p[0] = (uint8_t)(value & 0xFF);
     p[1] = (uint8_t)((value >> 8) & 0xFF);
@@ -330,7 +359,8 @@ int64_t rt_memstream_read_u16(void *obj) {
         return 0;
     }
     rt_memstream_impl *ms = (rt_memstream_impl *)obj;
-    check_read(ms, 2, "MemStream.ReadU16: insufficient bytes");
+    if (!check_read(ms, 2, "MemStream.ReadU16: insufficient bytes"))
+        return 0;
     uint8_t *p = ms->data + ms->pos;
     uint16_t val = (uint16_t)(p[0] | ((uint16_t)p[1] << 8));
     ms->pos += 2;
@@ -343,7 +373,8 @@ void rt_memstream_write_u16(void *obj, int64_t value) {
         return;
     }
     rt_memstream_impl *ms = (rt_memstream_impl *)obj;
-    prepare_write(ms, 2);
+    if (!prepare_write(ms, 2))
+        return;
     uint8_t *p = ms->data + ms->pos;
     p[0] = (uint8_t)(value & 0xFF);
     p[1] = (uint8_t)((value >> 8) & 0xFF);
@@ -356,7 +387,8 @@ int64_t rt_memstream_read_i32(void *obj) {
         return 0;
     }
     rt_memstream_impl *ms = (rt_memstream_impl *)obj;
-    check_read(ms, 4, "MemStream.ReadI32: insufficient bytes");
+    if (!check_read(ms, 4, "MemStream.ReadI32: insufficient bytes"))
+        return 0;
     uint8_t *p = ms->data + ms->pos;
     int32_t val =
         (int32_t)(p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24));
@@ -370,7 +402,8 @@ void rt_memstream_write_i32(void *obj, int64_t value) {
         return;
     }
     rt_memstream_impl *ms = (rt_memstream_impl *)obj;
-    prepare_write(ms, 4);
+    if (!prepare_write(ms, 4))
+        return;
     uint8_t *p = ms->data + ms->pos;
     p[0] = (uint8_t)(value & 0xFF);
     p[1] = (uint8_t)((value >> 8) & 0xFF);
@@ -385,7 +418,8 @@ int64_t rt_memstream_read_u32(void *obj) {
         return 0;
     }
     rt_memstream_impl *ms = (rt_memstream_impl *)obj;
-    check_read(ms, 4, "MemStream.ReadU32: insufficient bytes");
+    if (!check_read(ms, 4, "MemStream.ReadU32: insufficient bytes"))
+        return 0;
     uint8_t *p = ms->data + ms->pos;
     uint32_t val =
         (uint32_t)(p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24));
@@ -399,7 +433,8 @@ void rt_memstream_write_u32(void *obj, int64_t value) {
         return;
     }
     rt_memstream_impl *ms = (rt_memstream_impl *)obj;
-    prepare_write(ms, 4);
+    if (!prepare_write(ms, 4))
+        return;
     uint8_t *p = ms->data + ms->pos;
     p[0] = (uint8_t)(value & 0xFF);
     p[1] = (uint8_t)((value >> 8) & 0xFF);
@@ -414,7 +449,8 @@ int64_t rt_memstream_read_i64(void *obj) {
         return 0;
     }
     rt_memstream_impl *ms = (rt_memstream_impl *)obj;
-    check_read(ms, 8, "MemStream.ReadI64: insufficient bytes");
+    if (!check_read(ms, 8, "MemStream.ReadI64: insufficient bytes"))
+        return 0;
     uint8_t *p = ms->data + ms->pos;
     uint64_t val = (uint64_t)p[0] | ((uint64_t)p[1] << 8) | ((uint64_t)p[2] << 16) |
                    ((uint64_t)p[3] << 24) | ((uint64_t)p[4] << 32) | ((uint64_t)p[5] << 40) |
@@ -429,7 +465,8 @@ void rt_memstream_write_i64(void *obj, int64_t value) {
         return;
     }
     rt_memstream_impl *ms = (rt_memstream_impl *)obj;
-    prepare_write(ms, 8);
+    if (!prepare_write(ms, 8))
+        return;
     uint8_t *p = ms->data + ms->pos;
     uint64_t v = (uint64_t)value;
     p[0] = (uint8_t)(v & 0xFF);
@@ -454,7 +491,8 @@ double rt_memstream_read_f32(void *obj) {
         return 0.0;
     }
     rt_memstream_impl *ms = (rt_memstream_impl *)obj;
-    check_read(ms, 4, "MemStream.ReadF32: insufficient bytes");
+    if (!check_read(ms, 4, "MemStream.ReadF32: insufficient bytes"))
+        return 0.0;
     uint8_t *p = ms->data + ms->pos;
     uint32_t bits =
         (uint32_t)(p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24));
@@ -470,7 +508,8 @@ void rt_memstream_write_f32(void *obj, double value) {
         return;
     }
     rt_memstream_impl *ms = (rt_memstream_impl *)obj;
-    prepare_write(ms, 4);
+    if (!prepare_write(ms, 4))
+        return;
     float f = (float)value;
     uint32_t bits;
     memcpy(&bits, &f, sizeof(float));
@@ -489,7 +528,8 @@ double rt_memstream_read_f64(void *obj) {
         return 0.0;
     }
     rt_memstream_impl *ms = (rt_memstream_impl *)obj;
-    check_read(ms, 8, "MemStream.ReadF64: insufficient bytes");
+    if (!check_read(ms, 8, "MemStream.ReadF64: insufficient bytes"))
+        return 0.0;
     uint8_t *p = ms->data + ms->pos;
     uint64_t bits = (uint64_t)p[0] | ((uint64_t)p[1] << 8) | ((uint64_t)p[2] << 16) |
                     ((uint64_t)p[3] << 24) | ((uint64_t)p[4] << 32) | ((uint64_t)p[5] << 40) |
@@ -506,7 +546,8 @@ void rt_memstream_write_f64(void *obj, double value) {
         return;
     }
     rt_memstream_impl *ms = (rt_memstream_impl *)obj;
-    prepare_write(ms, 8);
+    if (!prepare_write(ms, 8))
+        return;
     uint64_t bits;
     memcpy(&bits, &value, sizeof(double));
     uint8_t *p = ms->data + ms->pos;
@@ -539,7 +580,8 @@ void *rt_memstream_read_bytes(void *obj, int64_t count) {
         return NULL;
     }
     rt_memstream_impl *ms = (rt_memstream_impl *)obj;
-    check_read(ms, count, "MemStream.ReadBytes: insufficient bytes");
+    if (!check_read(ms, count, "MemStream.ReadBytes: insufficient bytes"))
+        return NULL;
 
     void *bytes = rt_bytes_new(count);
     if (!bytes)
@@ -567,7 +609,8 @@ void rt_memstream_write_bytes(void *obj, void *bytes) {
     rt_bytes_impl *b = (rt_bytes_impl *)bytes;
 
     if (b->len > 0) {
-        prepare_write(ms, b->len);
+        if (!prepare_write(ms, b->len))
+            return;
         memcpy(ms->data + ms->pos, b->data, (size_t)b->len);
         ms->pos += b->len;
     }
@@ -585,7 +628,8 @@ rt_string rt_memstream_read_str(void *obj, int64_t count) {
         return NULL;
     }
     rt_memstream_impl *ms = (rt_memstream_impl *)obj;
-    check_read(ms, count, "MemStream.ReadStr: insufficient bytes");
+    if (!check_read(ms, count, "MemStream.ReadStr: insufficient bytes"))
+        return NULL;
 
     rt_string str = rt_string_from_bytes((const char *)(ms->data + ms->pos), (size_t)count);
     ms->pos += count;
@@ -609,7 +653,8 @@ void rt_memstream_write_str(void *obj, rt_string text) {
     int64_t len = rt_str_len(text);
     const char *cstr = rt_string_cstr(text);
     if (cstr && len > 0) {
-        prepare_write(ms, len);
+        if (!prepare_write(ms, len))
+            return;
         memcpy(ms->data + ms->pos, cstr, (size_t)len);
         ms->pos += len;
     }
@@ -662,10 +707,14 @@ void rt_memstream_skip(void *obj, int64_t count) {
         return;
     }
     rt_memstream_impl *ms = (rt_memstream_impl *)obj;
-    int64_t new_pos = ms->pos + count;
-    if (new_pos < 0) {
+    if (count > 0 && ms->pos > INT64_MAX - count) {
+        rt_trap("MemStream.Skip: position overflow");
+        return;
+    }
+    if (count == INT64_MIN || (count < 0 && ms->pos < -count)) {
         rt_trap("MemStream.Skip: would result in negative position");
         return;
     }
+    int64_t new_pos = ms->pos + count;
     ms->pos = new_pos;
 }

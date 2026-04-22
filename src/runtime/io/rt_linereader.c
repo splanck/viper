@@ -31,6 +31,7 @@
 
 #include "rt_linereader.h"
 
+#include "rt_file_path.h"
 #include "rt_internal.h"
 #include "rt_object.h"
 #include "rt_string.h"
@@ -38,6 +39,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#if defined(_WIN32)
+#include <wchar.h>
+#endif
 
 // Use 64-bit seek/tell to support files larger than 2 GB on Windows
 // where `long` (and thus ftell/fseek) is only 32 bits even on 64-bit builds.
@@ -57,6 +62,19 @@ typedef struct rt_linereader_impl {
     int peeked;     ///< Peeked character (-1 if none, or 0-255).
     int has_peeked; ///< Whether we have a peeked character.
 } rt_linereader_impl;
+
+static FILE *rt_linereader_fopen_utf8(const char *path) {
+#if defined(_WIN32)
+    wchar_t *wide_path = rt_file_path_utf8_to_wide(path);
+    if (!wide_path)
+        return NULL;
+    FILE *fp = _wfopen(wide_path, L"rb");
+    free(wide_path);
+    return fp;
+#else
+    return fopen(path, "rb");
+#endif
+}
 
 /// @brief Finalizer callback invoked when a LineReader is garbage collected.
 ///
@@ -144,7 +162,7 @@ void *rt_linereader_open(rt_string path) {
         return NULL;
     }
 
-    FILE *fp = fopen(path_str, "r");
+    FILE *fp = rt_linereader_fopen_utf8(path_str);
     if (!fp) {
         rt_trap("LineReader.Open: failed to open file");
         return NULL;
@@ -295,6 +313,11 @@ rt_string rt_linereader_read(void *obj) {
         } else if (c == '\r') {
             // CR - check for CRLF
             int next = fgetc(lr->fp);
+            if (next == EOF && ferror(lr->fp)) {
+                free(buf);
+                rt_trap("LineReader.Read: read failed");
+                return rt_string_from_bytes("", 0);
+            }
             if (next != '\n' && next != EOF) {
                 // Standalone CR, put back the next char
                 lr->peeked = next;
@@ -326,6 +349,11 @@ rt_string rt_linereader_read(void *obj) {
     }
 
     if (c == EOF && len == 0) {
+        if (ferror(lr->fp)) {
+            free(buf);
+            rt_trap("LineReader.Read: read failed");
+            return rt_string_from_bytes("", 0);
+        }
         // EOF with no content - set EOF flag
         lr->eof = 1;
         free(buf);
@@ -333,6 +361,11 @@ rt_string rt_linereader_read(void *obj) {
     }
 
     if (c == EOF) {
+        if (ferror(lr->fp)) {
+            free(buf);
+            rt_trap("LineReader.Read: read failed");
+            return rt_string_from_bytes("", 0);
+        }
         // Got content but hit EOF
         lr->eof = 1;
     }
@@ -376,6 +409,10 @@ int64_t rt_linereader_read_char(void *obj) {
 
     int c = lr_getc(lr);
     if (c == EOF) {
+        if (ferror(lr->fp)) {
+            rt_trap("LineReader.ReadChar: read failed");
+            return -1;
+        }
         lr->eof = 1;
         return -1;
     }
@@ -435,6 +472,10 @@ int64_t rt_linereader_peek_char(void *obj) {
 
     int c = fgetc(lr->fp);
     if (c == EOF) {
+        if (ferror(lr->fp)) {
+            rt_trap("LineReader.PeekChar: read failed");
+            return -1;
+        }
         lr->eof = 1;
         return -1;
     }
@@ -495,12 +536,24 @@ rt_string rt_linereader_read_all(void *obj) {
 
     // Get current position and file size (64-bit safe)
     int64_t pos = lr_ftell(lr->fp);
-    if (pos < 0)
-        pos = 0;
+    if (pos < 0) {
+        rt_trap("LineReader.ReadAll: tell failed");
+        return rt_string_from_bytes("", 0);
+    }
 
-    lr_fseek(lr->fp, 0, SEEK_END);
+    if (lr_fseek(lr->fp, 0, SEEK_END) != 0) {
+        rt_trap("LineReader.ReadAll: seek failed");
+        return rt_string_from_bytes("", 0);
+    }
     int64_t end = lr_ftell(lr->fp);
-    lr_fseek(lr->fp, pos, SEEK_SET);
+    if (end < 0) {
+        rt_trap("LineReader.ReadAll: tell failed");
+        return rt_string_from_bytes("", 0);
+    }
+    if (lr_fseek(lr->fp, pos, SEEK_SET) != 0) {
+        rt_trap("LineReader.ReadAll: seek failed");
+        return rt_string_from_bytes("", 0);
+    }
 
     size_t remaining = (end > pos) ? (size_t)(end - pos) : 0;
 

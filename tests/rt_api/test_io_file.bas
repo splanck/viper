@@ -98,8 +98,8 @@ curdir = Viper.IO.Dir.Current()
 PRINT "curdir nonempty: "; (LEN(curdir) > 0)
 
 ' --- IO.Glob: match ---
-PRINT "glob match: "; Viper.IO.Glob.Match("*.txt", "hello.txt")
-PRINT "glob nomatch: "; Viper.IO.Glob.Match("*.bas", "hello.txt")
+PRINT "glob match: "; Viper.IO.Glob.Match("hello.txt", "*.txt")
+PRINT "glob nomatch: "; Viper.IO.Glob.Match("hello.txt", "*.bas")
 
 ' --- Cleanup ---
 Viper.IO.File.Delete(testfile)

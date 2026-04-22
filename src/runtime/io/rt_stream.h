@@ -10,12 +10,14 @@
 // Key invariants:
 //   - Stream type is one of STREAM_TYPE_BINFILE (0) or STREAM_TYPE_MEMSTREAM (1).
 //   - The stream wraps its underlying object and forwards all calls transparently.
-//   - Stream owns the wrapped object and closes it on finalization.
+//   - Open* streams own their wrapped object; From* streams borrow it.
+//   - Operations on null or closed streams trap, except Close(NULL) is a no-op.
 //   - All primitive read/write operations use little-endian byte order.
 //
 // Ownership/Lifetime:
 //   - Stream objects are heap-allocated; caller is responsible for lifetime management.
-//   - Destroying the stream destroys the wrapped backing object.
+//   - Destroying or closing an owning stream releases the wrapped backing object.
+//   - Destroying or closing a From* wrapper does not close/free the original object.
 //
 // Links: src/runtime/io/rt_stream.c (implementation), src/runtime/io/rt_binfile.h,
 // src/runtime/io/rt_memstream.h

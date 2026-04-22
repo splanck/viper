@@ -43,6 +43,12 @@
 #include <stdlib.h>
 #include <string.h>
 
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <pthread.h>
+#endif
+
 //=============================================================================
 // Constants
 //=============================================================================
@@ -97,6 +103,11 @@ static inline int64_t bytes_len(void *obj) {
     return ((bytes_impl *)obj)->len;
 }
 
+static void compress_release_temp_object(void *obj) {
+    if (obj && rt_obj_release_check0(obj))
+        rt_obj_free(obj);
+}
+
 //=============================================================================
 // Bit Stream Reader (for decompression)
 //=============================================================================
@@ -108,6 +119,7 @@ typedef struct {
     int bit_pos;     // Current bit position (0-7)
     uint32_t buffer; // Bit buffer
     int bits_in_buf; // Bits available in buffer
+    bool error;      // True after a short/truncated bit read
 } bit_reader_t;
 
 /// @brief Initialize a bit reader over a byte buffer.
@@ -123,6 +135,7 @@ static void br_init(bit_reader_t *br, const uint8_t *data, size_t len) {
     br->bit_pos = 0;
     br->buffer = 0;
     br->bits_in_buf = 0;
+    br->error = false;
 }
 
 /// @brief Ensure at least n bits in buffer
@@ -131,10 +144,6 @@ static void br_init(bit_reader_t *br, const uint8_t *data, size_t len) {
 static bool br_fill(bit_reader_t *br, int n) {
     while (br->bits_in_buf < n) {
         if (br->pos >= br->len) {
-            // At end of stream — return what we have without fabricating bits.
-            // DEFLATE streams are zero-padded to byte boundary, so remaining
-            // bits in the buffer are valid. Don't inflate bits_in_buf beyond
-            // what was actually read to prevent processing fabricated data.
             return br->bits_in_buf > 0;
         }
         br->buffer |= ((uint32_t)br->data[br->pos++]) << br->bits_in_buf;
@@ -145,8 +154,10 @@ static bool br_fill(bit_reader_t *br, int n) {
 
 /// @brief Read n bits (LSB first)
 static uint32_t br_read(bit_reader_t *br, int n) {
-    if (!br_fill(br, n))
+    if (!br_fill(br, n) || br->bits_in_buf < n) {
+        br->error = true;
         return 0;
+    }
     uint32_t val = br->buffer & ((1U << n) - 1);
     br->buffer >>= n;
     br->bits_in_buf -= n;
@@ -155,12 +166,19 @@ static uint32_t br_read(bit_reader_t *br, int n) {
 
 /// @brief Peek n bits without consuming
 static uint32_t br_peek(bit_reader_t *br, int n) {
-    br_fill(br, n);
+    if (!br_fill(br, n))
+        return 0;
     return br->buffer & ((1U << n) - 1);
 }
 
 /// @brief Consume n bits
 static void br_consume(bit_reader_t *br, int n) {
+    if (n > br->bits_in_buf) {
+        br->bits_in_buf = 0;
+        br->buffer = 0;
+        br->error = true;
+        return;
+    }
     br->buffer >>= n;
     br->bits_in_buf -= n;
 }
@@ -207,16 +225,24 @@ static void bw_init(bit_writer_t *bw, size_t initial_cap) {
 /// Doubles the capacity (with overflow guard) or jumps to
 /// `len + need + 256`, whichever is larger. Traps on OOM.
 static void bw_ensure(bit_writer_t *bw, size_t need) {
-    if (bw->len + need > bw->capacity) {
-        size_t new_cap = (bw->capacity <= SIZE_MAX / 2) ? bw->capacity * 2 : SIZE_MAX;
-        if (new_cap < bw->len + need)
-            new_cap = bw->len + need + 256;
-        uint8_t *new_data = (uint8_t *)realloc(bw->data, new_cap);
-        if (!new_data)
-            rt_trap("Compress: out of memory");
-        bw->data = new_data;
-        bw->capacity = new_cap;
+    if (need > SIZE_MAX - bw->len)
+        rt_trap("Compress: output size overflow");
+    size_t required = bw->len + need;
+    if (required <= bw->capacity)
+        return;
+    size_t new_cap = bw->capacity ? bw->capacity : 256;
+    while (new_cap < required) {
+        if (new_cap > SIZE_MAX / 2) {
+            new_cap = required;
+            break;
+        }
+        new_cap *= 2;
     }
+    uint8_t *new_data = (uint8_t *)realloc(bw->data, new_cap);
+    if (!new_data)
+        rt_trap("Compress: out of memory");
+    bw->data = new_data;
+    bw->capacity = new_cap;
 }
 
 /// @brief Write n bits (LSB first)
@@ -379,7 +405,11 @@ static void free_huffman_tree(huffman_tree_t *tree) {
 
 static huffman_tree_t fixed_lit_tree;
 static huffman_tree_t fixed_dist_tree;
-static int fixed_trees_init = 0;
+#ifdef _WIN32
+static INIT_ONCE fixed_trees_once = INIT_ONCE_STATIC_INIT;
+#else
+static pthread_once_t fixed_trees_once = PTHREAD_ONCE_INIT;
+#endif
 
 /// @brief Lazily build the fixed-Huffman literal/distance trees.
 ///
@@ -389,10 +419,7 @@ static int fixed_trees_init = 0;
 /// `fixed_trees_init` flag mitigates (single-threaded init is fine
 /// since runtime startup is serialized — no concurrent inflate calls
 /// can occur before the runtime is up).
-static void init_fixed_trees(void) {
-    if (fixed_trees_init)
-        return;
-
+static void init_fixed_trees_impl(void) {
     // Fixed literal/length code lengths (RFC 1951 section 3.2.6)
     uint8_t lit_lengths[FIXED_LIT_CODES];
     for (int i = 0; i <= 143; i++)
@@ -412,8 +439,24 @@ static void init_fixed_trees(void) {
         dist_lengths[i] = 5;
 
     build_huffman_tree(&fixed_dist_tree, dist_lengths, FIXED_DIST_CODES);
+}
 
-    fixed_trees_init = 1;
+#ifdef _WIN32
+static BOOL CALLBACK init_fixed_trees_once_cb(PINIT_ONCE InitOnce, PVOID Parameter, PVOID *Context) {
+    (void)InitOnce;
+    (void)Parameter;
+    (void)Context;
+    init_fixed_trees_impl();
+    return TRUE;
+}
+#endif
+
+static void init_fixed_trees(void) {
+#ifdef _WIN32
+    InitOnceExecuteOnce(&fixed_trees_once, init_fixed_trees_once_cb, NULL, NULL);
+#else
+    pthread_once(&fixed_trees_once, init_fixed_trees_impl);
+#endif
 }
 
 //=============================================================================
@@ -475,21 +518,29 @@ static void out_init(output_buffer_t *out, size_t initial_cap) {
 /// against malicious inputs that inflate to many GB. Otherwise grows
 /// geometrically (capped at the limit) and traps on OOM.
 static void out_ensure(output_buffer_t *out, size_t need) {
-    if (out->len + need > INFLATE_MAX_OUTPUT)
+    if (need > SIZE_MAX - out->len)
+        rt_trap("Inflate: output size overflow");
+    size_t required = out->len + need;
+    if (required > INFLATE_MAX_OUTPUT)
         rt_trap("Inflate: decompressed output exceeds 256 MB limit");
 
-    if (out->len + need > out->capacity) {
-        size_t new_cap = out->capacity * 2;
-        if (new_cap < out->len + need)
-            new_cap = out->len + need + 256;
-        if (new_cap > INFLATE_MAX_OUTPUT)
-            new_cap = INFLATE_MAX_OUTPUT;
-        uint8_t *new_data = (uint8_t *)realloc(out->data, new_cap);
-        if (!new_data)
-            rt_trap("Inflate: out of memory");
-        out->data = new_data;
-        out->capacity = new_cap;
+    if (required <= out->capacity)
+        return;
+    size_t new_cap = out->capacity ? out->capacity : 256;
+    while (new_cap < required) {
+        if (new_cap > INFLATE_MAX_OUTPUT / 2) {
+            new_cap = required;
+            break;
+        }
+        new_cap *= 2;
     }
+    if (new_cap > INFLATE_MAX_OUTPUT)
+        new_cap = INFLATE_MAX_OUTPUT;
+    uint8_t *new_data = (uint8_t *)realloc(out->data, new_cap);
+    if (!new_data)
+        rt_trap("Inflate: out of memory");
+    out->data = new_data;
+    out->capacity = new_cap;
 }
 
 /// @brief Append a single literal byte to the output buffer.
@@ -575,8 +626,11 @@ static bool inflate_huffman(bit_reader_t *br,
             int len_idx = sym - 257;
             int length = length_base[len_idx];
             int extra = length_extra_bits[len_idx];
-            if (extra > 0)
+            if (extra > 0) {
                 length += br_read(br, extra);
+                if (br->error)
+                    return false;
+            }
 
             // Distance code
             int dist_sym = decode_symbol(dist_tree, br);
@@ -585,8 +639,11 @@ static bool inflate_huffman(bit_reader_t *br,
 
             int distance = dist_base[dist_sym];
             extra = dist_extra_bits[dist_sym];
-            if (extra > 0)
+            if (extra > 0) {
                 distance += br_read(br, extra);
+                if (br->error)
+                    return false;
+            }
 
             // Validate distance
             if (distance > (int)out->len)
@@ -606,6 +663,8 @@ static bool inflate_dynamic(bit_reader_t *br, output_buffer_t *out) {
     int hlit = br_read(br, 5) + 257; // Number of literal/length codes
     int hdist = br_read(br, 5) + 1;  // Number of distance codes
     int hclen = br_read(br, 4) + 4;  // Number of code length codes
+    if (br->error)
+        return false;
 
     if (hlit > MAX_LIT_CODES || hdist > MAX_DIST_CODES)
         return false;
@@ -614,6 +673,8 @@ static bool inflate_dynamic(bit_reader_t *br, output_buffer_t *out) {
     uint8_t cl_lengths[MAX_CODE_LEN_CODES] = {0};
     for (int i = 0; i < hclen; i++) {
         cl_lengths[code_length_order[i]] = (uint8_t)br_read(br, 3);
+        if (br->error)
+            return false;
     }
 
     // Build code length tree
@@ -643,17 +704,29 @@ static bool inflate_dynamic(bit_reader_t *br, output_buffer_t *out) {
                 return false;
             }
             int repeat = br_read(br, 2) + 3;
+            if (br->error) {
+                free_huffman_tree(&cl_tree);
+                return false;
+            }
             uint8_t prev = lengths[i - 1];
             while (repeat-- > 0 && i < total_codes)
                 lengths[i++] = prev;
         } else if (sym == 17) {
             // Repeat 0, 3-10 times
             int repeat = br_read(br, 3) + 3;
+            if (br->error) {
+                free_huffman_tree(&cl_tree);
+                return false;
+            }
             while (repeat-- > 0 && i < total_codes)
                 lengths[i++] = 0;
         } else if (sym == 18) {
             // Repeat 0, 11-138 times
             int repeat = br_read(br, 7) + 11;
+            if (br->error) {
+                free_huffman_tree(&cl_tree);
+                return false;
+            }
             while (repeat-- > 0 && i < total_codes)
                 lengths[i++] = 0;
         } else {
@@ -692,7 +765,8 @@ static void *inflate_data(const uint8_t *data, size_t len) {
     br_init(&br, data, len);
 
     output_buffer_t out;
-    out_init(&out, len * 4); // Estimate 4x expansion
+    size_t estimate = len > INFLATE_MAX_OUTPUT / 4 ? INFLATE_MAX_OUTPUT : len * 4;
+    out_init(&out, estimate); // Estimate 4x expansion without overflowing.
 
     bool last_block = false;
 
@@ -705,6 +779,10 @@ static void *inflate_data(const uint8_t *data, size_t len) {
         // Read block header
         last_block = br_read(&br, 1);
         int block_type = br_read(&br, 2);
+        if (br.error) {
+            out_free(&out);
+            rt_trap("Inflate: unexpected end of data");
+        }
 
         bool ok = false;
         switch (block_type) {
@@ -758,14 +836,23 @@ static inline int compute_hash(const uint8_t *data) {
 }
 
 /// @brief Initialize LZ77 state
-static void lz77_init(lz77_state_t *lz) {
+static bool lz77_init(lz77_state_t *lz) {
     lz->head = (int *)malloc(HASH_SIZE * sizeof(int));
     lz->prev = (int *)malloc(WINDOW_SIZE * sizeof(int));
+    if (!lz->head || !lz->prev) {
+        free(lz->head);
+        free(lz->prev);
+        lz->head = NULL;
+        lz->prev = NULL;
+        rt_trap("Compress: memory allocation failed");
+        return false;
+    }
     for (int i = 0; i < HASH_SIZE; i++)
         lz->head[i] = NIL;
     for (int i = 0; i < WINDOW_SIZE; i++)
         lz->prev[i] = NIL;
     lz->window_pos = 0;
+    return true;
 }
 
 /// @brief Release LZ77 hash-chain memory (head + prev arrays).
@@ -905,11 +992,12 @@ static void deflate_stored(bit_writer_t *bw, const uint8_t *data, size_t len) {
 }
 
 /// @brief Compress data using fixed Huffman codes
-static void deflate_fixed(bit_writer_t *bw, const uint8_t *data, size_t len, int level) {
+static int deflate_fixed(bit_writer_t *bw, const uint8_t *data, size_t len, int level) {
     init_fixed_trees();
 
     lz77_state_t lz;
-    lz77_init(&lz);
+    if (!lz77_init(&lz))
+        return 0;
 
     int max_chain = 4 << level;
 
@@ -984,6 +1072,7 @@ static void deflate_fixed(bit_writer_t *bw, const uint8_t *data, size_t len, int
     write_code(bw, 0, 7);
 
     lz77_free(&lz);
+    return 1;
 }
 
 /// @brief Main DEFLATE compression function
@@ -1001,7 +1090,10 @@ static void *deflate_data(const uint8_t *data, size_t len, int level) {
     if (len <= 64 || level == 1) {
         deflate_stored(&bw, data, len);
     } else {
-        deflate_fixed(&bw, data, len, level);
+        if (!deflate_fixed(&bw, data, len, level)) {
+            bw_free(&bw);
+            return rt_bytes_new(0);
+        }
     }
 
     bw_flush(&bw);
@@ -1029,6 +1121,11 @@ static void *gzip_data(const uint8_t *data, size_t len, int level) {
     uint32_t crc = rt_crc32_compute(data, len);
 
     // Create output: header (10) + deflated + trailer (8)
+    if (deflated_len > SIZE_MAX - 18) {
+        compress_release_temp_object(deflated);
+        rt_trap("Gzip: output size overflow");
+        return NULL;
+    }
     size_t total_len = 10 + deflated_len + 8;
     void *result = rt_bytes_new(total_len);
     uint8_t *out = bytes_data(result);
@@ -1059,32 +1156,49 @@ static void *gzip_data(const uint8_t *data, size_t len, int level) {
     out[trailer_pos + 6] = (len >> 16) & 0xFF;
     out[trailer_pos + 7] = (len >> 24) & 0xFF;
 
+    compress_release_temp_object(deflated);
     return result;
 }
 
 /// @brief Decompress GZIP data
 static void *gunzip_data(const uint8_t *data, size_t len) {
-    if (len < 18)
+    if (len < 18) {
         rt_trap("Gunzip: data too short");
+        return NULL;
+    }
 
     // Verify magic
-    if (data[0] != 0x1F || data[1] != 0x8B)
+    if (data[0] != 0x1F || data[1] != 0x8B) {
         rt_trap("Gunzip: invalid magic number");
+        return NULL;
+    }
 
     // Check compression method
-    if (data[2] != 0x08)
+    if (data[2] != 0x08) {
         rt_trap("Gunzip: unsupported compression method");
+        return NULL;
+    }
 
     uint8_t flags = data[3];
+    if (flags & 0xE0) {
+        rt_trap("Gunzip: reserved flags set");
+        return NULL;
+    }
 
     // Skip header
     size_t pos = 10;
 
     // Skip FEXTRA
     if (flags & 0x04) {
-        if (pos + 2 > len)
+        if (pos + 2 > len) {
             rt_trap("Gunzip: truncated header");
+            return NULL;
+        }
         size_t xlen = data[pos] | (data[pos + 1] << 8);
+        if (xlen > len - pos - 2) {
+            rt_trap("Gunzip: truncated extra field");
+            return NULL;
+        }
         pos += 2 + xlen;
     }
 
@@ -1092,6 +1206,10 @@ static void *gunzip_data(const uint8_t *data, size_t len) {
     if (flags & 0x08) {
         while (pos < len && data[pos] != 0)
             pos++;
+        if (pos >= len) {
+            rt_trap("Gunzip: truncated filename");
+            return NULL;
+        }
         pos++; // Skip null terminator
     }
 
@@ -1099,16 +1217,32 @@ static void *gunzip_data(const uint8_t *data, size_t len) {
     if (flags & 0x10) {
         while (pos < len && data[pos] != 0)
             pos++;
+        if (pos >= len) {
+            rt_trap("Gunzip: truncated comment");
+            return NULL;
+        }
         pos++;
     }
 
     // Skip FHCRC
     if (flags & 0x02) {
+        if (pos + 2 > len) {
+            rt_trap("Gunzip: truncated header CRC");
+            return NULL;
+        }
+        uint16_t expected_hcrc = (uint16_t)(data[pos] | (data[pos + 1] << 8));
+        uint16_t actual_hcrc = (uint16_t)(rt_crc32_compute(data, pos) & 0xFFFFu);
+        if (actual_hcrc != expected_hcrc) {
+            rt_trap("Gunzip: header CRC mismatch");
+            return NULL;
+        }
         pos += 2;
     }
 
-    if (pos >= len - 8)
+    if (pos >= len - 8) {
         rt_trap("Gunzip: truncated data");
+        return NULL;
+    }
 
     // Extract trailer
     size_t trailer_pos = len - 8;
@@ -1123,12 +1257,18 @@ static void *gunzip_data(const uint8_t *data, size_t len) {
 
     // Verify CRC
     uint32_t actual_crc = rt_crc32_compute(bytes_data(result), bytes_len(result));
-    if (actual_crc != expected_crc)
+    if (actual_crc != expected_crc) {
+        compress_release_temp_object(result);
         rt_trap("Gunzip: CRC mismatch");
+        return NULL;
+    }
 
     // Verify size (mod 2^32)
-    if ((bytes_len(result) & 0xFFFFFFFF) != expected_size)
+    if ((bytes_len(result) & 0xFFFFFFFF) != expected_size) {
+        compress_release_temp_object(result);
         rt_trap("Gunzip: size mismatch");
+        return NULL;
+    }
 
     return result;
 }
@@ -1239,6 +1379,7 @@ void *rt_compress_deflate_str(rt_string text) {
         rt_trap("Compress.DeflateStr: text is null");
     void *bytes = rt_bytes_from_str(text);
     void *result = deflate_data(bytes_data(bytes), bytes_len(bytes), DEFLATE_DEFAULT_LEVEL);
+    compress_release_temp_object(bytes);
     return result;
 }
 
@@ -1253,7 +1394,10 @@ rt_string rt_compress_inflate_str(void *data) {
     if (!data)
         rt_trap("Compress.InflateStr: data is null");
     void *result = inflate_data(bytes_data(data), bytes_len(data));
+    if (!result)
+        return rt_str_empty();
     rt_string str = rt_bytes_to_str(result);
+    compress_release_temp_object(result);
     return str;
 }
 
@@ -1266,6 +1410,7 @@ void *rt_compress_gzip_str(rt_string text) {
         rt_trap("Compress.GzipStr: text is null");
     void *bytes = rt_bytes_from_str(text);
     void *result = gzip_data(bytes_data(bytes), bytes_len(bytes), DEFLATE_DEFAULT_LEVEL);
+    compress_release_temp_object(bytes);
     return result;
 }
 
@@ -1277,6 +1422,9 @@ rt_string rt_compress_gunzip_str(void *data) {
     if (!data)
         rt_trap("Compress.GunzipStr: data is null");
     void *result = gunzip_data(bytes_data(data), bytes_len(data));
+    if (!result)
+        return rt_str_empty();
     rt_string str = rt_bytes_to_str(result);
+    compress_release_temp_object(result);
     return str;
 }

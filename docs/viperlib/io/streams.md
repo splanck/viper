@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-13
+last-verified: 2026-04-22
 ---
 
 # Streams & Buffers
@@ -54,9 +54,19 @@ Unified stream abstraction providing a common interface over file and memory str
 | Mode   | Description                               |
 |--------|-------------------------------------------|
 | `"r"`  | Read only (file must exist)               |
+| `"rb"` | Read only binary alias                    |
 | `"w"`  | Write only (creates or truncates)         |
+| `"wb"` | Write only binary alias                   |
 | `"rw"` | Read and write (file must exist)          |
+| `"r+"` | Read and write alias                      |
 | `"a"`  | Append (creates if needed)                |
+| `"ab"` | Append binary alias                       |
+
+### Ownership and Closed Streams
+
+`OpenFile`, `OpenMemory`, and `OpenBytes` create streams that own their backing `BinFile` or `MemStream`; `Close()` releases that backing object. `FromBinFile` and `FromMemStream` borrow an existing object, so closing the wrapper does not close or free the original.
+
+All operations except `Close()` trap on a null or already-closed stream. `Write(bytes)` also traps when `bytes` is null. This avoids silent reads from or writes to invalid backing objects.
 
 ### Zia Example
 
@@ -235,6 +245,7 @@ All multi-byte integers and floats use **little-endian** byte order. This matche
 - **Auto-expansion:** Writing beyond current capacity automatically grows the buffer
 - **Gap filling:** Writing past the current length fills the gap with zeros
 - **Read traps:** Reading past the end of data traps with an error
+- **Overflow traps:** `Seek`, `Skip`, and writes that would overflow the signed 64-bit position or addressable capacity trap instead of wrapping.
 
 ### Zia Example
 

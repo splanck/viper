@@ -13,12 +13,47 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_bytes.h"
+#include "rt_internal.h"
 #include "rt_stream.h"
 #include "rt_string.h"
 
 #include <cassert>
+#include <csetjmp>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
+
+#ifdef _WIN32
+#include <process.h>
+#define getpid _getpid
+#else
+#include "tests/common/PosixCompat.h"
+#endif
+
+namespace {
+static jmp_buf g_trap_jmp;
+static const char *g_last_trap = nullptr;
+static bool g_trap_expected = false;
+} // namespace
+
+extern "C" void vm_trap(const char *msg) {
+    g_last_trap = msg;
+    if (g_trap_expected)
+        longjmp(g_trap_jmp, 1);
+    rt_abort(msg);
+}
+
+#define EXPECT_TRAP(expr)                                                                          \
+    do {                                                                                           \
+        g_trap_expected = true;                                                                    \
+        g_last_trap = nullptr;                                                                     \
+        if (setjmp(g_trap_jmp) == 0) {                                                             \
+            expr;                                                                                  \
+            assert(false && "Expected trap did not occur");                                        \
+        }                                                                                          \
+        g_trap_expected = false;                                                                   \
+        assert(g_last_trap != nullptr);                                                            \
+    } while (0)
 
 /// @brief Helper to print test result.
 static void test_result(const char *name, bool passed) {
@@ -52,6 +87,19 @@ static bool bytes_equal(void *a, void *b) {
             return false;
     }
     return true;
+}
+
+static const char *stream_test_file() {
+    static char path[512];
+#ifdef _WIN32
+    const char *tmp = getenv("TEMP");
+    if (!tmp)
+        tmp = ".";
+    snprintf(path, sizeof(path), "%s\\viper_stream_test.bin", tmp);
+#else
+    snprintf(path, sizeof(path), "/tmp/viper_stream_test_%d.bin", (int)getpid());
+#endif
+    return path;
 }
 
 //=============================================================================
@@ -176,6 +224,32 @@ static void test_stream_conversion() {
     printf("\n");
 }
 
+static void test_file_stream_modes() {
+    printf("Testing Stream.OpenFile mode normalization:\n");
+
+    const char *path_cstr = stream_test_file();
+    remove(path_cstr);
+    rt_string path = rt_const_cstr(path_cstr);
+
+    void *writer = rt_stream_open_file(path, rt_const_cstr("wb"));
+    test_result("OpenFile accepts wb", writer != NULL);
+    rt_stream_write(writer, make_bytes_str("mode"));
+    rt_stream_close(writer);
+
+    void *reader = rt_stream_open_file(path, rt_const_cstr("rb"));
+    test_result("OpenFile accepts rb", reader != NULL);
+    void *read = rt_stream_read(reader, 4);
+    test_result("rb read contents", bytes_equal(read, make_bytes_str("mode")));
+    rt_stream_close(reader);
+
+    void *rw = rt_stream_open_file(path, rt_const_cstr("r+"));
+    test_result("OpenFile accepts r+", rw != NULL);
+    rt_stream_close(rw);
+
+    remove(path_cstr);
+    printf("\n");
+}
+
 //=============================================================================
 // Edge Cases
 //=============================================================================
@@ -217,6 +291,27 @@ static void test_edge_cases() {
     printf("\n");
 }
 
+static void test_closed_and_null_streams_trap() {
+    printf("Testing Stream closed/null contracts:\n");
+
+    void *stream = rt_stream_open_memory();
+    rt_stream_close(stream);
+
+    EXPECT_TRAP(rt_stream_get_pos(stream));
+    EXPECT_TRAP(rt_stream_read(stream, 1));
+    EXPECT_TRAP(rt_stream_write(stream, make_bytes_str("x")));
+    EXPECT_TRAP(rt_stream_to_bytes(stream));
+
+    EXPECT_TRAP(rt_stream_get_type(nullptr));
+    EXPECT_TRAP(rt_stream_from_memstream(nullptr));
+
+    void *open = rt_stream_open_memory();
+    EXPECT_TRAP(rt_stream_write(open, nullptr));
+
+    test_result("closed/null operations trap", true);
+    printf("\n");
+}
+
 //=============================================================================
 // Entry Point
 //=============================================================================
@@ -226,7 +321,9 @@ int main() {
 
     test_memory_stream_basic();
     test_stream_conversion();
+    test_file_stream_modes();
     test_edge_cases();
+    test_closed_and_null_streams_trap();
 
     printf("All Stream tests passed!\n");
     return 0;

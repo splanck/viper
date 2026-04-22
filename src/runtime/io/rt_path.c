@@ -70,6 +70,14 @@ static inline int is_path_sep(char c) {
     return c == '/' || c == '\\';
 }
 
+static inline int is_join_sep(char c) {
+#ifdef _WIN32
+    return is_path_sep(c);
+#else
+    return c == '/';
+#endif
+}
+
 /// @brief Get the length of a runtime string safely (null-safe).
 ///
 /// Returns the byte length of a runtime string, handling NULL pointers
@@ -157,9 +165,9 @@ rt_string rt_path_join(rt_string a, rt_string b) {
     if (b_len == 0)
         return rt_string_from_bytes(a_data, a_len);
 
-    // If b is absolute, return b
-    // Check for Unix absolute path
-    if (is_path_sep(b_data[0]))
+    // If b is absolute, return b. On POSIX a leading backslash is a normal
+    // filename byte, not a root separator.
+    if (b_data[0] == '/')
         return rt_string_from_bytes(b_data, b_len);
 
 #ifdef _WIN32
@@ -171,9 +179,9 @@ rt_string rt_path_join(rt_string a, rt_string b) {
 #endif
 
     // Check if a ends with separator
-    int a_has_sep = (a_len > 0 && is_path_sep(a_data[a_len - 1]));
+    int a_has_sep = (a_len > 0 && is_join_sep(a_data[a_len - 1]));
     // Check if b starts with separator
-    int b_has_sep = (b_len > 0 && is_path_sep(b_data[0]));
+    int b_has_sep = (b_len > 0 && is_join_sep(b_data[0]));
 
     rt_string_builder sb;
     rt_sb_init(&sb);
@@ -240,6 +248,34 @@ rt_string rt_path_dir(rt_string path) {
 
     if (len == 0)
         return rt_str_empty();
+
+    size_t root_len = 0;
+#ifdef _WIN32
+    if (len >= 3 && isalpha((unsigned char)data[0]) && data[1] == ':' && is_path_sep(data[2])) {
+        root_len = 3;
+    } else if (len >= 2 && is_path_sep(data[0]) && is_path_sep(data[1])) {
+        size_t j = 2;
+        while (j < len && !is_path_sep(data[j]))
+            ++j;
+        if (j < len) {
+            ++j;
+            while (j < len && !is_path_sep(data[j]))
+                ++j;
+            root_len = j;
+        } else {
+            root_len = len;
+        }
+    }
+#else
+    if (is_path_sep(data[0]))
+        root_len = 1;
+#endif
+
+    // Ignore trailing separators before locating the parent, but preserve roots.
+    while (len > root_len && is_path_sep(data[len - 1]))
+        --len;
+    if (len == 0)
+        return rt_string_from_bytes("/", 1);
 
     // Find the last path separator
     size_t i = len;
@@ -724,15 +760,16 @@ rt_string rt_path_abs(rt_string path) {
     if (rt_path_is_abs(path))
         return rt_path_norm(path);
 
-    // Get current working directory
-    char cwd[4096];
-    if (!getcwd(cwd, sizeof(cwd))) {
+    // Get current working directory with a dynamic buffer so deep paths work.
+    char *cwd = getcwd(NULL, 0);
+    if (!cwd) {
         rt_trap("Path.Abs: failed to get current directory");
         return rt_const_cstr("");
     }
 
     // Join cwd with path
     rt_string cwd_str = rt_string_from_bytes(cwd, strlen(cwd));
+    free(cwd);
     rt_string path_str = rt_string_from_bytes(data, len);
     rt_string joined = rt_path_join(cwd_str, path_str);
 
@@ -836,16 +873,16 @@ rt_string rt_path_norm(rt_string path) {
         // UNC path
         is_absolute = 1;
         prefix_len = 2;
-        // Find end of server\share
-        int slashes = 0;
-        while (prefix_len < len && slashes < 2) {
-            if (is_path_sep(data[prefix_len]))
-                slashes++;
-            else if (slashes == 0 || slashes == 1)
-                prefix_len++;
-            if (slashes < 2)
-                prefix_len++;
-        }
+        while (prefix_len < len && is_path_sep(data[prefix_len]))
+            prefix_len++;
+        while (prefix_len < len && !is_path_sep(data[prefix_len]))
+            prefix_len++;
+        if (prefix_len < len)
+            prefix_len++;
+        while (prefix_len < len && is_path_sep(data[prefix_len]))
+            prefix_len++;
+        while (prefix_len < len && !is_path_sep(data[prefix_len]))
+            prefix_len++;
     } else
 #endif
         if (is_path_sep(data[0])) {

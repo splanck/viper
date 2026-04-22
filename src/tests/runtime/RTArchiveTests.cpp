@@ -27,6 +27,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <vector>
 
 #ifdef _WIN32
 #include <direct.h>
@@ -151,6 +152,31 @@ static bool file_equals_text(const char *path, const char *expected) {
     bool ok = strcmp(buf, expected) == 0;
     free(buf);
     return ok;
+}
+
+static std::vector<uint8_t> read_file_bytes(const char *path) {
+    FILE *fp = fopen(path, "rb");
+    assert(fp != NULL);
+    fseek(fp, 0, SEEK_END);
+    long size = ftell(fp);
+    assert(size >= 0);
+    fseek(fp, 0, SEEK_SET);
+
+    std::vector<uint8_t> bytes((size_t)size);
+    if (size > 0) {
+        size_t read = fread(bytes.data(), 1, (size_t)size, fp);
+        assert(read == (size_t)size);
+    }
+    fclose(fp);
+    return bytes;
+}
+
+static void write_u32_le(std::vector<uint8_t> &bytes, size_t offset, uint32_t value) {
+    assert(offset + 4 <= bytes.size());
+    bytes[offset + 0] = (uint8_t)(value & 0xFF);
+    bytes[offset + 1] = (uint8_t)((value >> 8) & 0xFF);
+    bytes[offset + 2] = (uint8_t)((value >> 16) & 0xFF);
+    bytes[offset + 3] = (uint8_t)((value >> 24) & 0xFF);
 }
 
 //=============================================================================
@@ -476,6 +502,27 @@ static void test_path_retained_after_caller_release() {
     delete_file(c_path);
 }
 
+static void test_create_does_not_truncate_until_finish() {
+    printf("Testing Create Defers Destination Replacement:\n");
+
+    const char *path = get_temp_path("test_create_deferred.zip");
+    delete_file(path);
+
+    FILE *fp = fopen(path, "wb");
+    assert(fp != NULL);
+    fputs("old payload", fp);
+    fclose(fp);
+
+    void *ar = rt_archive_create(rt_const_cstr(path));
+    test_result("existing file unchanged after Create", file_equals_text(path, "old payload"));
+
+    rt_archive_add_str(ar, rt_const_cstr("entry.txt"), rt_const_cstr("new payload"));
+    rt_archive_finish(ar);
+    test_result("Finish writes valid zip", rt_archive_is_zip(rt_const_cstr(path)) == 1);
+
+    delete_file(path);
+}
+
 static void test_entry_info() {
     printf("Testing Entry Info:\n");
 
@@ -558,6 +605,41 @@ static void test_from_bytes() {
     // Path should be empty for FromBytes
     rt_string ar_path = rt_archive_path(ar2);
     test_result("Path is empty", strlen(rt_string_cstr(ar_path)) == 0);
+
+    void *invalid = make_bytes_str("not a zip");
+    EXPECT_TRAP(rt_archive_from_bytes(invalid));
+
+    delete_file(path);
+}
+
+static void test_stored_size_mismatch_traps() {
+    printf("Testing Stored Entry Size Validation:\n");
+
+    const char *path = get_temp_path("test_stored_mismatch.zip");
+    delete_file(path);
+
+    void *ar = rt_archive_create(rt_const_cstr(path));
+    rt_archive_add_str(ar, rt_const_cstr("bad.txt"), rt_const_cstr("abc"));
+    rt_archive_finish(ar);
+
+    std::vector<uint8_t> bytes = read_file_bytes(path);
+    bool patched = false;
+    for (size_t i = 0; i + 46 <= bytes.size(); ++i) {
+        if (bytes[i] == 0x50 && bytes[i + 1] == 0x4b && bytes[i + 2] == 0x01 &&
+            bytes[i + 3] == 0x02) {
+            write_u32_le(bytes, i + 24, 4);
+            patched = true;
+            break;
+        }
+    }
+    assert(patched);
+
+    void *zip_bytes = rt_bytes_new((int64_t)bytes.size());
+    memcpy(get_bytes_data(zip_bytes), bytes.data(), bytes.size());
+
+    void *bad_archive = rt_archive_from_bytes(zip_bytes);
+    EXPECT_TRAP(rt_archive_read(bad_archive, rt_const_cstr("bad.txt")));
+    test_result("stored size mismatch traps", true);
 
     delete_file(path);
 }
@@ -709,11 +791,15 @@ int main() {
     printf("\n");
     test_path_retained_after_caller_release();
     printf("\n");
+    test_create_does_not_truncate_until_finish();
+    printf("\n");
     test_entry_info();
     printf("\n");
 
     // FromBytes tests
     test_from_bytes();
+    printf("\n");
+    test_stored_size_mismatch_traps();
     printf("\n");
 
     // Static method tests

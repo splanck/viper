@@ -11,12 +11,40 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_dir.h"
+#include "rt_internal.h"
 #include "rt_string.h"
 #include "rt_tempfile.h"
 
 #include <cassert>
+#include <csetjmp>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
+
+namespace {
+static jmp_buf g_trap_jmp;
+static const char *g_last_trap = nullptr;
+static bool g_trap_expected = false;
+} // namespace
+
+extern "C" void vm_trap(const char *msg) {
+    g_last_trap = msg;
+    if (g_trap_expected)
+        longjmp(g_trap_jmp, 1);
+    rt_abort(msg);
+}
+
+#define EXPECT_TRAP(expr)                                                                          \
+    do {                                                                                           \
+        g_trap_expected = true;                                                                    \
+        g_last_trap = nullptr;                                                                     \
+        if (setjmp(g_trap_jmp) == 0) {                                                             \
+            expr;                                                                                  \
+            assert(false && "Expected trap did not occur");                                        \
+        }                                                                                          \
+        g_trap_expected = false;                                                                   \
+        assert(g_last_trap != nullptr);                                                            \
+    } while (0)
 
 /// @brief Helper to print test result.
 static void test_result(const char *name, bool passed) {
@@ -79,6 +107,29 @@ static void test_tempfile() {
         test_result("CreateDir creates directory", rt_dir_exists(path) == 1);
         // Clean up
         rt_dir_remove(path);
+    }
+
+#ifndef _WIN32
+    // Test 7: Root TMPDIR remains absolute instead of becoming an empty path
+    {
+        const char *old_tmpdir = getenv("TMPDIR");
+        char old_copy[512] = {0};
+        if (old_tmpdir)
+            snprintf(old_copy, sizeof(old_copy), "%s", old_tmpdir);
+        setenv("TMPDIR", "/", 1);
+        rt_string dir = rt_tempfile_dir();
+        test_result("root TMPDIR preserved", strcmp(rt_string_cstr(dir), "/") == 0);
+        if (old_tmpdir)
+            setenv("TMPDIR", old_copy, 1);
+        else
+            unsetenv("TMPDIR");
+    }
+#endif
+
+    // Test 8: Prefix and extension are filename fragments, not paths.
+    {
+        EXPECT_TRAP(rt_tempfile_path_with_prefix(rt_const_cstr("../bad")));
+        EXPECT_TRAP(rt_tempfile_path_with_ext(rt_const_cstr("ok_"), rt_const_cstr("../bad")));
     }
 
     printf("\n");

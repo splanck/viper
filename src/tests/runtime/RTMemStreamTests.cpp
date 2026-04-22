@@ -21,6 +21,7 @@
 #include <cassert>
 #include <cmath>
 #include <csetjmp>
+#include <cstdint>
 #include <cstdio>
 #include <cstring>
 
@@ -423,6 +424,19 @@ static void test_negative_pos() {
     test_result("Negative position traps", true);
 }
 
+/// @brief Test relative skips reject signed overflow.
+static void test_skip_overflow_traps() {
+    printf("Testing skip overflow traps...\n");
+
+    void *ms = rt_memstream_new();
+    rt_memstream_set_pos(ms, INT64_MAX);
+
+    EXPECT_TRAP(rt_memstream_skip(ms, 1));
+    EXPECT_TRAP(rt_memstream_skip(ms, INT64_MIN));
+
+    test_result("Skip overflow traps", true);
+}
+
 /// @brief Test little-endian encoding.
 static void test_little_endian() {
     printf("Testing little-endian encoding...\n");
@@ -463,6 +477,7 @@ int main() {
     test_pos_beyond_len();
     test_read_past_end();
     test_negative_pos();
+    test_skip_overflow_traps();
     test_little_endian();
 
     printf("\nAll MemStream tests passed!\n");

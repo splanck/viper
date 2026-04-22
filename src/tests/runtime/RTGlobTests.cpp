@@ -11,6 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_glob.h"
+#include "rt_seq.h"
 #include "rt_string.h"
 
 #include <cassert>
@@ -138,6 +139,33 @@ static void test_glob_match() {
     printf("\n");
 }
 
+static void test_glob_null_safety() {
+    printf("Testing Glob null safety:\n");
+
+    test_result("null path returns false", rt_glob_match(nullptr, rt_const_cstr("*.txt")) == 0);
+    test_result("null pattern returns false", rt_glob_match(rt_const_cstr("hello.txt"), nullptr) == 0);
+
+    void *files = rt_glob_files(rt_const_cstr("."), nullptr);
+    test_result("Files null pattern returns empty", rt_seq_len(files) == 0);
+
+    files = rt_glob_files(nullptr, rt_const_cstr("*"));
+    test_result("Files null dir returns empty", rt_seq_len(files) == 0);
+
+    void *recursive = rt_glob_files_recursive(rt_const_cstr("."), nullptr);
+    test_result("FilesRecursive null pattern returns empty", rt_seq_len(recursive) == 0);
+
+    recursive = rt_glob_files_recursive(nullptr, rt_const_cstr("*"));
+    test_result("FilesRecursive null base returns empty", rt_seq_len(recursive) == 0);
+
+    void *entries = rt_glob_entries(rt_const_cstr("."), nullptr);
+    test_result("Entries null pattern returns empty", rt_seq_len(entries) == 0);
+
+    entries = rt_glob_entries(nullptr, rt_const_cstr("*"));
+    test_result("Entries null dir returns empty", rt_seq_len(entries) == 0);
+
+    printf("\n");
+}
+
 //=============================================================================
 // Entry Point
 //=============================================================================
@@ -146,6 +174,7 @@ int main() {
     printf("=== RT Glob Tests ===\n\n");
 
     test_glob_match();
+    test_glob_null_safety();
 
     printf("All Glob tests passed!\n");
     return 0;

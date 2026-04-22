@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-13
+last-verified: 2026-04-22
 ---
 
 # Advanced IO
@@ -20,7 +20,7 @@ ZIP archive reader and writer for creating, reading, and extracting ZIP files.
 **Constructors:**
 
 - `Viper.IO.Archive.Open(path)` - Opens an existing ZIP archive for reading
-- `Viper.IO.Archive.Create(path)` - Creates a new ZIP archive for writing
+- `Viper.IO.Archive.Create(path)` - Stages a new ZIP archive for writing; the destination is replaced on `Finish()`
 - `Viper.IO.Archive.FromBytes(data)` - Opens a ZIP archive from in-memory Bytes object
 
 ### Properties
@@ -62,6 +62,10 @@ ZIP archive reader and writer for creating, reading, and extracting ZIP files.
 ### Compression
 
 The archive uses DEFLATE compression (method 8) by default for added entries. Small entries or entries that don't compress well use stored mode (method 0). The implementation reads archives with any combination of stored and deflate-compressed entries.
+
+### Disk Write Semantics
+
+`Create(path)` checks that the destination can be written, but it does not truncate or replace an existing file until `Finish()`. `Finish()`, `Extract()`, and `ExtractAll()` write through an exclusive temporary file in the destination directory and then atomically replace the final path. Failed writes trap and remove their temporary file.
 
 ### Entry Name Rules
 
@@ -203,9 +207,10 @@ END IF
 Archive operations trap on errors:
 
 - `Open()` traps if file doesn't exist or isn't a valid ZIP
+- `FromBytes()` traps if the buffer is not a valid ZIP archive
 - `Read()`/`ReadStr()` trap if entry doesn't exist
 - `Extract()` traps if entry doesn't exist or destination is unwritable
-- `Finish()` must be called before the archive file is valid; until then the output path is not a complete ZIP
+- `Finish()` must be called before a created archive is valid; until then an existing output path remains unchanged
 - Invalid or corrupted entries may trap during reading
 
 ### ZIP Format Support
@@ -215,6 +220,7 @@ Archive operations trap on errors:
 - **Features:** Directory entries, file attributes, CRC32 validation
 - **Limitations:** ZIP64 not supported, encryption not supported
 - Oversize entry counts or file sizes that require ZIP64 trap instead of producing a truncated archive
+- Corrupt compressed data, CRC mismatches, size mismatches, and internal buffer overflows trap instead of returning partial data
 
 ### Use Cases
 
@@ -354,7 +360,7 @@ Compression traps on:
 - Null input data
 - Invalid compression level (must be 1-9)
 - Invalid or truncated compressed data
-- CRC32 mismatch in GZIP decompression
+- Reserved GZIP flags, malformed optional headers, header CRC mismatches, trailer CRC32 mismatches, or trailer size mismatches
 - Corrupted DEFLATE stream
 - Inflated output exceeding the runtime safety cap (256 MiB)
 

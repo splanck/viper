@@ -33,6 +33,7 @@
 
 #include "rt_binfile.h"
 
+#include "rt_file_path.h"
 #include "rt_internal.h"
 #include "rt_object.h"
 #include "rt_string.h"
@@ -41,6 +42,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#if defined(_WIN32)
+#include <wchar.h>
+#endif
 
 // IO-C-2/C-3: Use 64-bit seek/tell to support files larger than 2GB.
 #if defined(_WIN32)
@@ -63,6 +68,27 @@ typedef struct rt_binfile_impl {
     int8_t eof;    ///< EOF flag.
     int8_t closed; ///< Closed flag.
 } rt_binfile_impl;
+
+static FILE *rt_binfile_fopen_utf8(const char *path, const char *mode) {
+#if defined(_WIN32)
+    wchar_t *wide_path = rt_file_path_utf8_to_wide(path);
+    if (!wide_path)
+        return NULL;
+    wchar_t wide_mode[8] = {0};
+    size_t mode_len = strlen(mode);
+    if (mode_len >= sizeof(wide_mode) / sizeof(wide_mode[0])) {
+        free(wide_path);
+        return NULL;
+    }
+    for (size_t i = 0; i < mode_len; ++i)
+        wide_mode[i] = (wchar_t)(unsigned char)mode[i];
+    FILE *fp = _wfopen(wide_path, wide_mode);
+    free(wide_path);
+    return fp;
+#else
+    return fopen(path, mode);
+#endif
+}
 
 /// @brief Finalizer callback invoked when a BinFile is garbage collected.
 ///
@@ -153,20 +179,21 @@ void *rt_binfile_open(void *path, void *mode) {
 
     // Map mode string to fopen mode
     const char *fmode = NULL;
-    if (strcmp(mode_str, "r") == 0)
+    if (strcmp(mode_str, "r") == 0 || strcmp(mode_str, "rb") == 0)
         fmode = "rb";
-    else if (strcmp(mode_str, "w") == 0)
+    else if (strcmp(mode_str, "w") == 0 || strcmp(mode_str, "wb") == 0)
         fmode = "wb";
-    else if (strcmp(mode_str, "rw") == 0)
+    else if (strcmp(mode_str, "rw") == 0 || strcmp(mode_str, "r+") == 0 ||
+             strcmp(mode_str, "rb+") == 0 || strcmp(mode_str, "r+b") == 0)
         fmode = "r+b";
-    else if (strcmp(mode_str, "a") == 0)
+    else if (strcmp(mode_str, "a") == 0 || strcmp(mode_str, "ab") == 0)
         fmode = "ab";
     else {
-        rt_trap("BinFile.Open: invalid mode (use r, w, rw, or a)");
+        rt_trap("BinFile.Open: invalid mode (use r/rb, w/wb, rw/r+, or a/ab)");
         return NULL;
     }
 
-    FILE *fp = fopen(path_str, fmode);
+    FILE *fp = rt_binfile_fopen_utf8(path_str, fmode);
     if (!fp) {
         char buf[512];
         snprintf(
@@ -220,9 +247,11 @@ void rt_binfile_close(void *obj) {
 
     rt_binfile_impl *bf = (rt_binfile_impl *)obj;
     if (bf->fp && !bf->closed) {
-        fclose(bf->fp);
+        int rc = fclose(bf->fp);
         bf->fp = NULL;
         bf->closed = 1;
+        if (rc != 0)
+            rt_trap("BinFile.Close: close failed (disk full or I/O error)");
     }
 }
 
@@ -291,8 +320,8 @@ int64_t rt_binfile_read(void *obj, void *bytes, int64_t offset, int64_t count) {
     if (offset >= b->len)
         return 0;
 
-    // Clamp count to available space
-    if (offset + count > b->len)
+    // Clamp count to available space without overflowing offset + count.
+    if (count > b->len - offset)
         count = b->len - offset;
 
     size_t read = fread(b->data + offset, 1, (size_t)count, bf->fp);
@@ -374,8 +403,8 @@ void rt_binfile_write(void *obj, void *bytes, int64_t offset, int64_t count) {
     if (offset >= b->len)
         return;
 
-    // Clamp count to available data
-    if (offset + count > b->len)
+    // Clamp count to available data without overflowing offset + count.
+    if (count > b->len - offset)
         count = b->len - offset;
 
     size_t written = fwrite(b->data + offset, 1, (size_t)count, bf->fp);
@@ -647,9 +676,16 @@ int64_t rt_binfile_size(void *obj) {
         return -1;
 
     int64_t size = (int64_t)binfile_ftell(bf->fp);
+    if (size < 0) {
+        (void)binfile_fseek(bf->fp, pos, SEEK_SET);
+        return -1;
+    }
 
     // Restore position
-    binfile_fseek(bf->fp, pos, SEEK_SET);
+    if (binfile_fseek(bf->fp, pos, SEEK_SET) != 0) {
+        rt_trap("BinFile.Size: failed to restore file position");
+        return -1;
+    }
 
     return size;
 }

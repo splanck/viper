@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-13
+last-verified: 2026-04-22
 ---
 
 # Files & Directories
@@ -22,33 +22,32 @@ File system operations.
 | Method                        | Signature              | Description                                                                               |
 |-------------------------------|------------------------|-------------------------------------------------------------------------------------------|
 | `Exists(path)`                | `Boolean(String)`      | Returns true only if the path exists and is a regular file                               |
-| `ReadAllText(path)`           | `String(String)`       | Reads the entire file contents as a string                                                |
+| `ReadAllText(path)`           | `String(String)`       | Reads the entire file contents as a string; traps on I/O errors                           |
 | `WriteAllText(path, content)` | `Void(String, String)` | Atomically replaces a text file with new contents                                          |
-| `Delete(path)`                | `Void(String)`         | Deletes a file                                                                            |
-| `Copy(src, dst)`              | `Void(String, String)` | Copies a file from src to dst                                                             |
+| `Delete(path)`                | `Void(String)`         | Deletes a file; missing files are ignored, other failures trap                            |
+| `Copy(src, dst)`              | `Void(String, String)` | Copies a file from src to dst; traps if both paths name the same file                     |
 | `Move(src, dst)`              | `Void(String, String)` | Moves or renames a file, replacing `dst` when supported by the platform                   |
 | `Size(path)`                  | `Integer(String)`      | Returns file size in bytes, or -1 if not found                                            |
-| `ReadBytes(path)`             | `ptr(String)`          | Reads the entire file as a raw runtime buffer                                             |
-| `WriteBytes(path, data)`      | `Void(String, ptr)`    | Writes a raw runtime buffer to a file                                                     |
+| `ReadBytes(path)`             | `ptr(String)`          | Reads the entire file as a raw runtime buffer; traps on I/O errors                        |
+| `WriteBytes(path, data)`      | `Void(String, ptr)`    | Atomically replaces a file with a raw runtime buffer                                      |
 | `ReadAllBytes(path)`          | `Bytes(String)`        | Reads the entire file as binary data (traps on I/O errors)                                |
 | `WriteAllBytes(path, bytes)`  | `Void(String, Bytes)`  | Atomically replaces a file with binary data (traps on I/O errors)                         |
-| `ReadLines(path)`             | `ptr(String)`          | Reads the file as a raw runtime buffer of lines                                           |
-| `WriteLines(path, lines)`     | `Void(String, Seq)`    | Writes a sequence of strings as lines                                                     |
-| `Append(path, text)`          | `Void(String, String)` | Appends text to a file                                                                    |
+| `ReadLines(path)`             | `ptr(String)`          | Reads the file as a runtime sequence of lines; traps on I/O errors                        |
+| `WriteLines(path, lines)`     | `Void(String, Seq)`    | Atomically writes a sequence of strings as lines; traps on I/O errors                     |
+| `Append(path, text)`          | `Void(String, String)` | Appends text to a file; traps on I/O errors                                               |
 | `AppendLine(path, text)`      | `Void(String, String)` | Appends text followed by `\n` to a file (creates if missing)                              |
 | `ReadAllLines(path)`          | `Seq(String)`          | Reads file as a sequence of lines; strips `\n` / `\r\n` terminators (traps on I/O errors) |
 | `Modified(path)`              | `Integer(String)`      | Returns file modification time as Unix timestamp                                          |
-| `Touch(path)`                 | `Void(String)`         | Creates file or updates its modification time                                             |
+| `Touch(path)`                 | `Void(String)`         | Creates file or updates its modification time; traps on I/O errors                        |
 
 ### Notes
 
 - `AppendLine` always appends a single `\n` byte (no platform newline normalization).
 - `Exists` returns false for directories; use `Dir.Exists` for directory checks.
-- `WriteAllText` and `WriteAllBytes` write to a temporary file in the destination directory and then replace the live file. Failed writes trap instead of silently leaving a partial overwrite behind.
+- `WriteAllText`, `WriteAllBytes`, `WriteBytes`, and `WriteLines` write to an exclusive temporary file in the destination directory and then replace the live file. Failed writes trap instead of silently leaving a partial overwrite behind.
 - `Move` first attempts an in-place replace/rename. It only falls back to copy-plus-delete when the source and destination are on different filesystems or volumes.
-- `ReadAllLines` splits on `\n` and `\r\n` and does not include line endings in returned strings; a trailing line ending
-  does not add an extra empty final line.
-- `WriteAllText`, `ReadAllBytes`, `WriteAllBytes`, and `ReadAllLines` trap (write a diagnostic to stderr and terminate) on I/O errors.
+- `ReadAllLines` splits on `\n`, `\r`, and `\r\n` and does not include line endings in returned strings. Trailing empty lines are preserved.
+- `WriteAllText`, `ReadAllText`, `ReadBytes`, `ReadAllBytes`, `WriteAllBytes`, `ReadAllLines`, `WriteBytes`, `WriteLines`, `Append`, and `Touch` trap on I/O errors.
 - `ReadBytes` and `ReadLines` return raw `ptr` values representing internal runtime buffer objects. They are intended for use with other low-level runtime functions and are not strongly-typed Zia objects. Similarly, `WriteBytes` accepts a raw `ptr` for the data parameter. For strongly-typed binary and line I/O, prefer `ReadAllBytes`, `WriteAllBytes`, and `ReadAllLines`.
 
 ### Zia Example
@@ -184,9 +183,15 @@ Binary file stream for reading and writing raw bytes with random access capabili
 | Mode   | Description                               |
 |--------|-------------------------------------------|
 | `"r"`  | Read only (file must exist)               |
+| `"rb"` | Read only binary alias                    |
 | `"w"`  | Write only (creates or truncates)         |
+| `"wb"` | Write only binary alias                   |
 | `"rw"` | Read and write (file must exist)          |
+| `"r+"` | Read and write alias                      |
 | `"a"`  | Append (creates if needed, writes at end) |
+| `"ab"` | Append binary alias                       |
+
+`Close()` and `Flush()` trap if the platform reports a delayed write or close failure.
 
 ### Properties
 
@@ -345,6 +350,7 @@ Temporary file and directory creation utilities. Generates unique paths in the s
 - `Path` and `PathWithPrefix` only generate paths -- they do not create files on disk
 - `Create` and `CreateDir` actually create the file or directory on disk
 - `PathWithExt("v", ".txt")` produces a path like `/tmp/v_<unique>.txt`
+- Prefixes and extensions are filename fragments: path separators, drive separators, and traversal syntax are rejected.
 - Temporary files and directories are not automatically cleaned up; the caller is responsible for deletion
 
 ### Zia Example
@@ -438,6 +444,8 @@ Cross-platform directory operations for creating, removing, listing, and navigat
 **Note:** `Entries()`, `List()`, `Files()`, and `Dirs()` return entry names (not full paths). Use
 `Viper.IO.Path.Join(dir, name)` to build full paths when needed.
 
+`Make()` and `MakeAll()` are idempotent for existing directories, but they trap if the target path or any intermediate path component already exists as a non-directory. `MakeAll()` accepts both `/` and `\` as path separators.
+
 ### Zia Example
 
 ```rust
@@ -525,7 +533,7 @@ Directory operations trap on errors:
 
 - `Make()` traps if the parent directory doesn't exist or creation fails
 - `Remove()` traps if the directory is not empty or doesn't exist
-- `RemoveAll()` silently ignores non-existent directories
+- `RemoveAll()` ignores an already-missing top-level directory, but traps if any existing child cannot be removed
 - `SetCurrent()` traps if the directory doesn't exist
 
 Use `Exists()` to check before performing operations that may fail.
@@ -564,7 +572,7 @@ is returned.
 
 ## Viper.IO.Path
 
-Cross-platform path manipulation utilities. All functions work with both Unix (`/`) and Windows (`\`) path separators.
+Cross-platform path manipulation utilities. Most functions accept both Unix (`/`) and Windows (`\`) separators. On POSIX, `Path.Join(a, b)` only treats a leading `/` in `b` as absolute; a leading backslash remains a relative filename character.
 
 **Type:** Static utility class
 
@@ -580,6 +588,7 @@ Cross-platform path manipulation utilities. All functions work with both Unix (`
 | `WithExt(path, ext)` | `String(String, String)` | Replaces the extension of a path                            |
 | `IsAbs(path)`        | `Boolean(String)`        | Returns true if the path is absolute                        |
 | `Abs(path)`          | `String(String)`         | Converts a relative path to absolute                        |
+| `ExeDir()`           | `String()`               | Returns the directory containing the running executable     |
 | `Norm(path)`         | `String(String)`         | Normalizes a path (removes `.`, `..`, duplicate separators) |
 | `Sep()`              | `String()`               | Returns the platform-specific path separator                |
 
@@ -707,6 +716,7 @@ File globbing utilities for matching file paths against wildcard patterns and fi
 ### Notes
 
 - **Parameter order is (path, pattern)** for `Match`, not (pattern, path)
+- Null path or pattern inputs return false for `Match` and an empty sequence for listing helpers
 - `Files` returns only regular files, not directories
 - `FilesRecursive` descends into all subdirectories
 - `Entries` returns both files and directories that match the pattern

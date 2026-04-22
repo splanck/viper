@@ -64,6 +64,17 @@
 // Internal Helpers
 //=============================================================================
 
+static const char *tempfile_require_fragment(rt_string fragment, const char *what) {
+    const char *cstr = rt_string_cstr(fragment);
+    if (!cstr)
+        rt_trap(what);
+    for (const char *p = cstr; *p; ++p) {
+        if (*p == '/' || *p == '\\' || *p == ':')
+            rt_trap(what);
+    }
+    return cstr;
+}
+
 /// @brief Generate a unique identifier using OS-provided entropy (S-21).
 static void generate_unique_id(char *buffer, size_t size) {
     uint64_t rnd = 0;
@@ -170,7 +181,7 @@ rt_string rt_tempfile_dir(void) {
             rt_trap("TempFile.Dir: memory allocation failed");
         DWORD got = GetTempPathW(len, buffer);
         if (got > 0 && got < len) {
-            while (got > 0 && (buffer[got - 1] == L'\\' || buffer[got - 1] == L'/')) {
+            while (got > 1 && (buffer[got - 1] == L'\\' || buffer[got - 1] == L'/')) {
                 buffer[got - 1] = L'\0';
                 got--;
             }
@@ -186,7 +197,7 @@ rt_string rt_tempfile_dir(void) {
     if (tmp && *tmp) {
         size_t len = strlen(tmp);
         // Remove trailing slash if present
-        if (len > 0 && tmp[len - 1] == '/') {
+        if (len > 1 && tmp[len - 1] == '/') {
             char *copy = (char *)malloc(len);
             if (!copy)
                 rt_trap("rt_tempfile: memory allocation failed");
@@ -219,8 +230,10 @@ rt_string rt_tempfile_path_with_ext(rt_string prefix, rt_string extension) {
     char unique_id[64];
     generate_unique_id(unique_id, sizeof(unique_id));
 
-    const char *prefix_cstr = rt_string_cstr(prefix);
-    const char *ext_cstr = rt_string_cstr(extension);
+    const char *prefix_cstr =
+        tempfile_require_fragment(prefix, "TempFile: invalid prefix");
+    const char *ext_cstr =
+        tempfile_require_fragment(extension, "TempFile: invalid extension");
 
     // Build filename: prefix + unique_id + extension
     size_t filename_len = strlen(prefix_cstr) + strlen(unique_id) + strlen(ext_cstr) + 1;
@@ -254,14 +267,15 @@ rt_string rt_tempfile_create_with_prefix(rt_string prefix) {
 #ifndef _WIN32
     /* S-21: Use mkstemp for atomic, exclusive, unpredictable file creation on POSIX */
     rt_string temp_dir = rt_tempfile_dir();
-    const char *prefix_cstr = rt_string_cstr(prefix);
+    const char *prefix_cstr =
+        tempfile_require_fragment(prefix, "TempFile.Create: invalid prefix");
     const char *dir_cstr = rt_string_cstr(temp_dir);
 
     size_t tmpl_len = strlen(dir_cstr) + 1 + strlen(prefix_cstr) + 6 + 1;
     char *tmpl = (char *)malloc(tmpl_len);
     if (!tmpl) {
         rt_string_unref(temp_dir);
-        return rt_tempfile_path_with_prefix(prefix);
+        rt_trap("TempFile.Create: memory allocation failed");
     }
     snprintf(tmpl, tmpl_len, "%s/%sXXXXXX", dir_cstr, prefix_cstr);
     rt_string_unref(temp_dir);
@@ -301,6 +315,7 @@ rt_string rt_tempdir_create(void) {
 /// @brief Atomic temp-directory creation with custom prefix. Same retry pattern as `_create`
 /// but uses `mkdir`/`_wmkdir` as the atomic primitive.
 rt_string rt_tempdir_create_with_prefix(rt_string prefix) {
+    (void)tempfile_require_fragment(prefix, "TempFile.CreateDir: invalid prefix");
     for (int attempt = 0; attempt < 128; attempt++) {
         rt_string result = rt_tempfile_path_with_ext(prefix, rt_const_cstr(""));
         const char *cpath = rt_string_cstr(result);

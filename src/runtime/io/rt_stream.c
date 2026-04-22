@@ -35,6 +35,7 @@
 #include "rt_bytes.h"
 #include "rt_memstream.h"
 #include "rt_object.h"
+#include "rt_string.h"
 
 #include <stdint.h>
 #include <stdlib.h>
@@ -51,6 +52,7 @@ typedef struct {
     int64_t type;  // RT_STREAM_TYPE_BINFILE or RT_STREAM_TYPE_MEMSTREAM
     void *wrapped; // The wrapped BinFile or MemStream
     int8_t owns;   // Whether we own the wrapped object
+    int8_t closed; // Whether Close has been called
 } stream_impl;
 
 //=============================================================================
@@ -68,14 +70,20 @@ static inline int64_t bytes_len(void *obj) {
     return ((bytes_impl *)obj)->len;
 }
 
+static void stream_release_object(void *obj) {
+    if (obj && rt_obj_release_check0(obj))
+        rt_obj_free(obj);
+}
+
 static void stream_release_wrapped(stream_impl *s) {
-    if (!s || !s->owns || !s->wrapped)
+    if (!s)
         return;
 
     void *wrapped = s->wrapped;
     s->wrapped = NULL;
-    if (rt_obj_release_check0(wrapped))
-        rt_obj_free(wrapped);
+    s->closed = 1;
+    if (s->owns)
+        stream_release_object(wrapped);
 }
 
 static void stream_dispose_bytes(void *bytes) {
@@ -98,6 +106,29 @@ static void *stream_shrink_bytes(void *bytes, int64_t len) {
     return slice;
 }
 
+static stream_impl *stream_alloc(void) {
+    stream_impl *s = (stream_impl *)rt_obj_new_i64(0, sizeof(stream_impl));
+    if (!s) {
+        rt_trap("Stream: memory allocation failed");
+        return NULL;
+    }
+    memset(s, 0, sizeof(*s));
+    return s;
+}
+
+static stream_impl *stream_require_open(void *stream, const char *context) {
+    if (!stream) {
+        rt_trap(context);
+        return NULL;
+    }
+    stream_impl *s = (stream_impl *)stream;
+    if (s->closed || !s->wrapped) {
+        rt_trap("Stream: stream is closed");
+        return NULL;
+    }
+    return s;
+}
+
 //=============================================================================
 // Finalizer
 //=============================================================================
@@ -118,10 +149,15 @@ void *rt_stream_open_file(rt_string path, rt_string mode) {
     if (!binfile)
         return NULL;
 
-    stream_impl *s = (stream_impl *)rt_obj_new_i64(0, sizeof(stream_impl));
+    stream_impl *s = stream_alloc();
+    if (!s) {
+        stream_release_object(binfile);
+        return NULL;
+    }
     s->type = RT_STREAM_TYPE_BINFILE;
     s->wrapped = binfile;
     s->owns = 1;
+    s->closed = 0;
 
     rt_obj_set_finalizer(s, stream_finalizer);
     return s;
@@ -130,11 +166,18 @@ void *rt_stream_open_file(rt_string path, rt_string mode) {
 /// @brief Open a Stream backed by a fresh in-memory buffer (zero-length, growable).
 void *rt_stream_open_memory(void) {
     void *memstream = rt_memstream_new();
+    if (!memstream)
+        return NULL;
 
-    stream_impl *s = (stream_impl *)rt_obj_new_i64(0, sizeof(stream_impl));
+    stream_impl *s = stream_alloc();
+    if (!s) {
+        stream_release_object(memstream);
+        return NULL;
+    }
     s->type = RT_STREAM_TYPE_MEMSTREAM;
     s->wrapped = memstream;
     s->owns = 1;
+    s->closed = 0;
 
     rt_obj_set_finalizer(s, stream_finalizer);
     return s;
@@ -144,11 +187,18 @@ void *rt_stream_open_memory(void) {
 /// itself is not retained — subsequent edits to the original don't affect the Stream.
 void *rt_stream_open_bytes(void *bytes) {
     void *memstream = rt_memstream_from_bytes(bytes);
+    if (!memstream)
+        return NULL;
 
-    stream_impl *s = (stream_impl *)rt_obj_new_i64(0, sizeof(stream_impl));
+    stream_impl *s = stream_alloc();
+    if (!s) {
+        stream_release_object(memstream);
+        return NULL;
+    }
     s->type = RT_STREAM_TYPE_MEMSTREAM;
     s->wrapped = memstream;
     s->owns = 1;
+    s->closed = 0;
 
     rt_obj_set_finalizer(s, stream_finalizer);
     return s;
@@ -162,10 +212,13 @@ void *rt_stream_from_binfile(void *binfile) {
         return NULL;
     }
 
-    stream_impl *s = (stream_impl *)rt_obj_new_i64(0, sizeof(stream_impl));
+    stream_impl *s = stream_alloc();
+    if (!s)
+        return NULL;
     s->type = RT_STREAM_TYPE_BINFILE;
     s->wrapped = binfile;
     s->owns = 0; // Don't own it, caller retains ownership
+    s->closed = 0;
 
     rt_obj_set_finalizer(s, stream_finalizer);
     return s;
@@ -179,10 +232,13 @@ void *rt_stream_from_memstream(void *memstream) {
         return NULL;
     }
 
-    stream_impl *s = (stream_impl *)rt_obj_new_i64(0, sizeof(stream_impl));
+    stream_impl *s = stream_alloc();
+    if (!s)
+        return NULL;
     s->type = RT_STREAM_TYPE_MEMSTREAM;
     s->wrapped = memstream;
     s->owns = 0; // Don't own it, caller retains ownership
+    s->closed = 0;
 
     rt_obj_set_finalizer(s, stream_finalizer);
     return s;
@@ -194,17 +250,17 @@ void *rt_stream_from_memstream(void *memstream) {
 
 /// @brief Return the stream type: RT_STREAM_TYPE_BINFILE or RT_STREAM_TYPE_MEMSTREAM.
 int64_t rt_stream_get_type(void *stream) {
-    if (!stream)
+    stream_impl *s = stream_require_open(stream, "Stream.Type: null stream");
+    if (!s)
         return -1;
-    return ((stream_impl *)stream)->type;
+    return s->type;
 }
 
 /// @brief Return the current read/write position within the stream.
 int64_t rt_stream_get_pos(void *stream) {
-    if (!stream)
-        return 0;
-
-    stream_impl *s = (stream_impl *)stream;
+    stream_impl *s = stream_require_open(stream, "Stream.Pos: null stream");
+    if (!s)
+        return -1;
     if (s->type == RT_STREAM_TYPE_BINFILE) {
         return rt_binfile_pos(s->wrapped);
     } else {
@@ -214,10 +270,10 @@ int64_t rt_stream_get_pos(void *stream) {
 
 /// @brief Seek to an absolute byte position within the stream.
 void rt_stream_set_pos(void *stream, int64_t pos) {
-    if (!stream)
+    stream_impl *s = stream_require_open(stream, "Stream.set_Pos: null stream");
+    if (!s)
         return;
 
-    stream_impl *s = (stream_impl *)stream;
     if (s->type == RT_STREAM_TYPE_BINFILE) {
         rt_binfile_seek(s->wrapped, pos, 0); // SEEK_SET
     } else {
@@ -227,10 +283,9 @@ void rt_stream_set_pos(void *stream, int64_t pos) {
 
 /// @brief Return the number of elements in the stream.
 int64_t rt_stream_get_len(void *stream) {
-    if (!stream)
-        return 0;
-
-    stream_impl *s = (stream_impl *)stream;
+    stream_impl *s = stream_require_open(stream, "Stream.Len: null stream");
+    if (!s)
+        return -1;
     if (s->type == RT_STREAM_TYPE_BINFILE) {
         return rt_binfile_size(s->wrapped);
     } else {
@@ -240,10 +295,10 @@ int64_t rt_stream_get_len(void *stream) {
 
 /// @brief Check whether the stream has reached end-of-file (position >= length).
 int8_t rt_stream_is_eof(void *stream) {
-    if (!stream)
+    stream_impl *s = stream_require_open(stream, "Stream.Eof: null stream");
+    if (!s)
         return 1;
 
-    stream_impl *s = (stream_impl *)stream;
     if (s->type == RT_STREAM_TYPE_BINFILE) {
         return rt_binfile_eof(s->wrapped);
     } else {
@@ -261,10 +316,12 @@ int8_t rt_stream_is_eof(void *stream) {
 /// @brief Read up to `count` bytes from the current position. Returns a Bytes object sized to
 /// the actual count read (which may be smaller than `count` if EOF is hit).
 void *rt_stream_read(void *stream, int64_t count) {
-    if (!stream || count <= 0)
+    stream_impl *s = stream_require_open(stream, "Stream.Read: null stream");
+    if (!s)
+        return rt_bytes_new(0);
+    if (count <= 0)
         return rt_bytes_new(0);
 
-    stream_impl *s = (stream_impl *)stream;
     if (s->type == RT_STREAM_TYPE_BINFILE) {
         void *bytes = rt_bytes_new(count);
         int64_t read = rt_binfile_read(s->wrapped, bytes, 0, count);
@@ -277,14 +334,18 @@ void *rt_stream_read(void *stream, int64_t count) {
 /// @brief Read every remaining byte from the current position to EOF. Convenience for
 /// "slurp the rest" operations on a partially-consumed stream.
 void *rt_stream_read_all(void *stream) {
-    if (!stream)
+    stream_impl *s = stream_require_open(stream, "Stream.ReadAll: null stream");
+    if (!s)
         return rt_bytes_new(0);
 
-    stream_impl *s = (stream_impl *)stream;
     if (s->type == RT_STREAM_TYPE_BINFILE) {
         // Read remaining bytes from current position
         int64_t pos = rt_binfile_pos(s->wrapped);
         int64_t size = rt_binfile_size(s->wrapped);
+        if (pos < 0 || size < 0 || size < pos) {
+            rt_trap("Stream.ReadAll: invalid file position or size");
+            return rt_bytes_new(0);
+        }
         int64_t remaining = size - pos;
 
         if (remaining <= 0)
@@ -308,10 +369,14 @@ void *rt_stream_read_all(void *stream) {
 
 /// @brief Write the stream.
 void rt_stream_write(void *stream, void *bytes) {
-    if (!stream || !bytes)
+    stream_impl *s = stream_require_open(stream, "Stream.Write: null stream");
+    if (!s)
         return;
+    if (!bytes) {
+        rt_trap("Stream.Write: null bytes");
+        return;
+    }
 
-    stream_impl *s = (stream_impl *)stream;
     if (s->type == RT_STREAM_TYPE_BINFILE) {
         int64_t len = bytes_len(bytes);
         rt_binfile_write(s->wrapped, bytes, 0, len);
@@ -323,10 +388,10 @@ void rt_stream_write(void *stream, void *bytes) {
 /// @brief Read a single byte from the stream at the current position and advance.
 /// @details Returns -1 if the stream is at EOF.
 int64_t rt_stream_read_byte(void *stream) {
-    if (!stream)
+    stream_impl *s = stream_require_open(stream, "Stream.ReadByte: null stream");
+    if (!s)
         return -1;
 
-    stream_impl *s = (stream_impl *)stream;
     if (s->type == RT_STREAM_TYPE_BINFILE) {
         return rt_binfile_read_byte(s->wrapped);
     } else {
@@ -341,10 +406,10 @@ int64_t rt_stream_read_byte(void *stream) {
 
 /// @brief Write a single byte to the stream at the current position and advance.
 void rt_stream_write_byte(void *stream, int64_t byte) {
-    if (!stream)
+    stream_impl *s = stream_require_open(stream, "Stream.WriteByte: null stream");
+    if (!s)
         return;
 
-    stream_impl *s = (stream_impl *)stream;
     if (s->type == RT_STREAM_TYPE_BINFILE) {
         rt_binfile_write_byte(s->wrapped, byte);
     } else {
@@ -354,10 +419,10 @@ void rt_stream_write_byte(void *stream, int64_t byte) {
 
 /// @brief Flush the stream.
 void rt_stream_flush(void *stream) {
-    if (!stream)
+    stream_impl *s = stream_require_open(stream, "Stream.Flush: null stream");
+    if (!s)
         return;
 
-    stream_impl *s = (stream_impl *)stream;
     if (s->type == RT_STREAM_TYPE_BINFILE) {
         rt_binfile_flush(s->wrapped);
     }
@@ -380,10 +445,10 @@ void rt_stream_close(void *stream) {
 /// @brief Unwrap to the underlying BinFile (if the Stream is file-backed). Returns NULL for
 /// MemStream-backed Streams. The reference is borrowed — caller must NOT release it.
 void *rt_stream_as_binfile(void *stream) {
-    if (!stream)
+    stream_impl *s = stream_require_open(stream, "Stream.AsBinFile: null stream");
+    if (!s)
         return NULL;
 
-    stream_impl *s = (stream_impl *)stream;
     if (s->type == RT_STREAM_TYPE_BINFILE) {
         return s->wrapped;
     }
@@ -392,10 +457,10 @@ void *rt_stream_as_binfile(void *stream) {
 
 /// @brief Unwrap to the underlying MemStream (if memory-backed). Returns NULL otherwise.
 void *rt_stream_as_memstream(void *stream) {
-    if (!stream)
+    stream_impl *s = stream_require_open(stream, "Stream.AsMemStream: null stream");
+    if (!s)
         return NULL;
 
-    stream_impl *s = (stream_impl *)stream;
     if (s->type == RT_STREAM_TYPE_MEMSTREAM) {
         return s->wrapped;
     }
@@ -405,10 +470,10 @@ void *rt_stream_as_memstream(void *stream) {
 /// @brief Snapshot a MemStream's contents as a Bytes object. NULL for file-backed Streams (use
 /// `_set_pos(0)` then `_read_all` instead).
 void *rt_stream_to_bytes(void *stream) {
-    if (!stream)
+    stream_impl *s = stream_require_open(stream, "Stream.ToBytes: null stream");
+    if (!s)
         return NULL;
 
-    stream_impl *s = (stream_impl *)stream;
     if (s->type == RT_STREAM_TYPE_MEMSTREAM) {
         return rt_memstream_to_bytes(s->wrapped);
     }

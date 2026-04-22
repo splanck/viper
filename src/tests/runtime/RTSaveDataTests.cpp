@@ -352,14 +352,17 @@ static void test_save_load_round_trip() {
     printf("  test_save_load_round_trip: PASSED\n");
 }
 
-static void test_load_nonexistent_returns_zero() {
+static void test_load_nonexistent_returns_success_and_clears_entries() {
     void *sd = rt_savedata_new(S("no-such-game-ever-9999"));
     assert(sd != nullptr);
+    rt_savedata_set_int(sd, S("stale"), 123);
+    assert(rt_savedata_count(sd) == 1);
 
     int8_t result = rt_savedata_load(sd);
-    assert(result == 0); // File doesn't exist
+    assert(result == 1); // Missing save file is an empty successful load.
+    assert(rt_savedata_count(sd) == 0);
 
-    printf("  test_load_nonexistent_returns_zero: PASSED\n");
+    printf("  test_load_nonexistent_returns_success_and_clears_entries: PASSED\n");
 }
 
 static void test_save_overwrite() {
@@ -534,7 +537,7 @@ int main() {
 
     printf("\n--- Save / Load ---\n");
     test_save_load_round_trip();
-    test_load_nonexistent_returns_zero();
+    test_load_nonexistent_returns_success_and_clears_entries();
     test_save_overwrite();
 
     printf("\n--- Edge Cases ---\n");
